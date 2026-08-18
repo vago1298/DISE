@@ -378,23 +378,60 @@ public sealed partial class SeccionDrawer
     /// y el opuesto <b>sobre la circunferencia</b>, y su comportamiento con la
     /// longitud del director cambia entre versiones.
     /// </para>
+    /// <para>
+    /// <b>Dónde se coloca, y por qué ahí.</b> Alrededor de la sección hay tres cosas
+    /// que se reparten el sitio, y cada una ocupa un cuadrante:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     La <b>llamada de las varillas</b> sale de la varilla más alta hacia
+    ///     <b>arriba y a la derecha</b>. Ver <see cref="LlamadaDelCirculo"/>.
+    ///   </item>
+    ///   <item>El <b>rótulo</b> de la sección va <b>abajo y centrado</b>.</item>
+    ///   <item>
+    ///     Así que a esta cota le toca <b>arriba y a la IZQUIERDA</b>, que es el
+    ///     cuadrante que queda libre.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Antes usaba 45°, o sea arriba y a la derecha, el mismo cuadrante que la llamada
+    /// de las varillas, y el «Ø 50» acababa escrito encima del «8 vars. #8C». La
+    /// separación no se arregla empujando la cota unos centímetros: se arregla
+    /// mandándola a otro cuadrante, que es lo único que garantiza que no se encimen
+    /// aunque cambie el diámetro o el número de varillas.
+    /// </para>
     /// </remarks>
     private void CotaDelDiametro(double cx, double cy, double r)
     {
         ConfigurarCotas();
 
+        // Arriba y a la IZQUIERDA. Ver el porqué en el comentario del método.
+        const double AnguloCota = 3 * Pi / 4;
+
+        // El director, más largo que el radio: saca el texto fuera del círculo y de
+        // paso lo aleja del rótulo de abajo.
+        var director = 0.65 * r;
+
         try
         {
             AcadConnection.Retry(() =>
             {
-                // Los dos extremos de un diámetro a 45°, para que la cota no se
-                // monte sobre la llamada de las varillas, que sale por arriba.
-                var a = Pi / 4;
-
+                // AddDimDiametric pone el texto del lado del PRIMER punto, al final
+                // del director. Por eso el primer punto es el del cuadrante libre.
                 dynamic dd = _ms.AddDimDiametric(
-                    new[] { cx + (r * Math.Cos(a)), cy + (r * Math.Sin(a)), 0d },
-                    new[] { cx - (r * Math.Cos(a)), cy - (r * Math.Sin(a)), 0d },
-                    0.5 * r);
+                    new[]
+                    {
+                        cx + (r * Math.Cos(AnguloCota)),
+                        cy + (r * Math.Sin(AnguloCota)),
+                        0d
+                    },
+                    new[]
+                    {
+                        cx - (r * Math.Cos(AnguloCota)),
+                        cy - (r * Math.Sin(AnguloCota)),
+                        0d
+                    },
+                    director);
 
                 FormatearCota(dd);
             });
@@ -412,10 +449,14 @@ public sealed partial class SeccionDrawer
         {
             AcadConnection.Retry(() =>
             {
+                // El respaldo va por ENCIMA de la llamada de las varillas, no entre
+                // ella y el círculo. La llamada sube 0.08 desde la varilla más alta,
+                // que está dentro del zuncho, así que 0.22 sobre el paño del concreto
+                // la deja despejada con holgura.
                 dynamic dh = _ms.AddDimRotated(
                     new[] { cx - r, cy, 0d },
                     new[] { cx + r, cy, 0d },
-                    new[] { cx, cy + r + (3 * 0.02 * _f), 0d },
+                    new[] { cx, cy + r + (0.22 * _f), 0d },
                     0d);
 
                 FormatearCota(dh);

@@ -396,43 +396,16 @@ public partial class MainWindow : Window
     // Proyecto
     // ======================================================================
 
-    private void OnBrowseExcel(object sender, RoutedEventArgs e)
-    {
-        var dialogo = new OpenFileDialog
-        {
-            Title = "Selecciona el libro de Excel",
-            Filter = "Libros de Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Todos los archivos (*.*)|*.*"
-        };
-
-        if (dialogo.ShowDialog(this) == true)
-        {
-            // La casilla de la ruta ya no esta en la interfaz: los datos del
-            // proyecto los lleva la solapa. La ruta se recuerda aqui.
-            _rutaExcel = dialogo.FileName;
-            StatusText.Text = "Libro seleccionado: " + Path.GetFileName(dialogo.FileName);
-        }
-    }
-
-    private void OnImportExcel(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_rutaExcel))
-        {
-            MessageBox.Show("Selecciona primero el libro de Excel.",
-                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        // ================== PENDIENTE DE IMPLEMENTAR ==================
-        // Leer la hoja "Secciones Estructurales Concreto" con ClosedXML,
-        // columnas A a V mas AC, segun docs/macro-secciones-concreto.md
-        // seccion 1, y llenar _datos.SeccionesConcreto.
-        // ==============================================================
-
-        MessageBox.Show(
-            "El importador de Excel todavía no está implementado.\n\n" +
-            "Es el siguiente paso: leer la hoja de secciones con sus columnas A a V.",
-            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
-    }
+    // El importador de Excel SE RETIRO. Ofrecia un boton en la barra, otro en la hoja
+    // Proyecto y una entrada de menu, y las tres terminaban en el mismo aviso de «no
+    // esta implementado». Un boton que solo sirve para decir que no funciona estorba
+    // mas de lo que ayuda: ocupa sitio en la barra y hace dudar de si el problema es
+    // del programa o de la hoja de calculo.
+    //
+    // Cuando se porte de verdad, lo que hace falta esta escrito en
+    // docs/macro-secciones-concreto.md seccion 1: leer la hoja «Secciones
+    // Estructurales Concreto» con ClosedXML, columnas A a V mas AC, y llenar
+    // _datos.SeccionesConcreto.
 
     private void OnLoadSample(object sender, RoutedEventArgs e)
     {
@@ -1096,9 +1069,6 @@ public partial class MainWindow : Window
     // ======================================================================
 
     private readonly JuegoDePlanos _juego = new();
-
-    /// <summary>Libro de Excel elegido. Ya no hay casilla para el en la interfaz.</summary>
-    private string _rutaExcel = string.Empty;
 
     /// <summary>
     /// Enlaza la solapa y el juego de planos. Se llama una vez, al arrancar.
@@ -2009,22 +1979,29 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Escala de captura a unidades de dibujo. 0.01 = cm a metros.</summary>
-    private double LeerEscala()
-    {
-        if (double.TryParse(ScaleBox.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out var v)
-            && v > 0)
-        {
-            return v;
-        }
+    /// <summary>
+    /// Escala del dibujo: <b>cuánto mide en AutoCAD un centímetro capturado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Ya no se captura en la interfaz. La casilla que había solo servía para
+    /// descuadrar el dibujo: el juego de planos se dibuja siempre con la misma
+    /// correspondencia, así que exponerla era ofrecer una forma de romperlo sin ganar
+    /// nada.
+    /// </para>
+    /// <para>
+    /// <b>El valor NO cambia: sigue siendo 0.01.</b> Es la misma correspondencia de la
+    /// macro —se captura en centímetros y se dibuja en metros— y es la que produce la
+    /// geometría que ya estás obteniendo. Ponerlo en 1.0 «porque es 1=1» multiplicaría
+    /// todo el dibujo por cien: una columna de 50 cm saldría de 50 m.
+    /// </para>
+    /// <para>
+    /// Si algún día hiciera falta otra escala, este es el único sitio que se toca.
+    /// </para>
+    /// </remarks>
+    private const double EscalaDeDibujo = 0.01;
 
-        if (double.TryParse(ScaleBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out v)
-            && v > 0)
-        {
-            return v;
-        }
-
-        return 0.01;
-    }
+    private double LeerEscala() => EscalaDeDibujo;
 
     /// <summary>Claves de varilla presentes en la captura, para crear solo esas capas.</summary>
     private IEnumerable<string> ClavesDeVarillaUsadas()

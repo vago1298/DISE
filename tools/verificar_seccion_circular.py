@@ -204,15 +204,91 @@ print(f"  cruces por el eje = {cruces}   esperados ~= {esperados:.0f}")
 check("el paso de la helice se respeta", abs(cruces - esperados) <= 1,
       f"{cruces} contra {esperados:.0f}")
 
-# Resolucion: con pocos puntos por vuelta el seno sale como un zigzag. Se
-# comprueba que el error de la cuerda contra el arco real sea pequeño.
-por_vuelta = 24
-paso_ang = 2 * math.pi / por_vuelta
-error_rel = 1 - math.sin(paso_ang / 2) / (paso_ang / 2)
-print(f"  con {por_vuelta} puntos por vuelta, el error de la cuerda es "
-      f"{error_rel*100:.2f} %")
-check("24 puntos por vuelta dan una curva suave", error_rel < 0.005,
-      f"error {error_rel*100:.2f} %")
+# ======================================================================
+# 4b. Resolucion de la helice: por que 24 puntos por vuelta dan PICOS
+# ======================================================================
+print("\nResolucion de la helice: que no salga con picos en las crestas")
+
+# El usuario: "TRATA DE HACERLO MAS REFINADO NO CON TANTAS LINEAS PUNTEAGUDAS".
+#
+# Lo que se medía antes aqui era el error de la cuerda contra el arco de una
+# CIRCUNFERENCIA, y con 24 puntos daba 0.29 %: parecia buenisimo. Pero esa no es la
+# metrica que manda. La helice proyectada es un SENO, y lo que se ve como un pico es
+# la flecha de la cuerda en la CRESTA, donde el seno tiene toda su curvatura
+# concentrada. Ahi el radio de curvatura no es r, es 1/(A*k^2), muchisimo menor.
+#
+# Deduccion:
+#   y = A*sen(k*x),  k = 2*pi/paso
+#   en la cresta el radio de curvatura es R = 1/(A*k^2)
+#   la flecha de una cuerda c sobre un arco de radio R es c^2/(8*R)
+#   con muestreo uniforme c ~= paso/N, y al sustituir SE CANCELA EL PASO:
+#
+#       flecha = (paso/N)^2 * A * (2*pi/paso)^2 / 8 = A * pi^2 / (2*N^2)
+#
+# O sea que la flecha solo depende del radio del eje y de los puntos por vuelta.
+
+def flecha_cresta(r_eje, por_vuelta):
+    """Cuanto se aparta la cuerda de la helice real en la cresta."""
+    return r_eje * math.pi ** 2 / (2 * por_vuelta ** 2)
+
+
+def puntos_por_vuelta(r_eje, d_zun, fraccion=0.02, minimo=24, maximo=180):
+    """El PuntosPorVuelta(rEje, dZun) del C#."""
+    if r_eje <= 0 or d_zun <= 0:
+        return minimo
+    n = math.ceil(math.pi * math.sqrt(r_eje / (2 * fraccion * d_zun)))
+    return max(minimo, min(maximo, n))
+
+
+# La flecha se compara contra el DIAMETRO DE LA BARRA, que es lo que decide si el
+# defecto se ve: medio milimetro es invisible en una #8 y un escalon en una #2.
+print(f"  {'N/vuelta':>9} {'flecha':>10} {'% del diam.':>12}")
+for n_pv in (24, 48, 73, 96):
+    fl = flecha_cresta(r_h, n_pv)
+    print(f"  {n_pv:>9} {fl*1000:>9.3f}mm {100*fl/d_est:>11.1f}%")
+
+fl_24 = flecha_cresta(r_h, 24)
+check("con 24 puntos por vuelta la flecha ES visible: de ahi los picos",
+      fl_24 > 0.10 * d_est,
+      f"flecha {fl_24*1000:.3f} mm = {100*fl_24/d_est:.1f} % del diametro")
+
+# El muestreo adaptativo: se piden los puntos que hagan falta segun el radio y el
+# calibre, en lugar de un numero fijo que no se adapta a ninguno de los dos.
+n_pv = puntos_por_vuelta(r_h, d_est)
+fl = flecha_cresta(r_h, n_pv)
+print(f"  el muestreo adaptativo pide {n_pv} puntos por vuelta")
+print(f"  y la flecha baja a {fl*1000:.3f} mm = {100*fl/d_est:.2f} % del diametro")
+
+check("el muestreo adaptativo deja la flecha por debajo del 2 % del diametro",
+      fl <= 0.02 * d_est + 1e-12,
+      f"flecha {fl*1000:.3f} mm = {100*fl/d_est:.2f} %")
+
+check("y eso es al menos 8 veces mejor que con 24 puntos",
+      fl_24 / fl >= 8, f"mejora x{fl_24/fl:.1f}")
+
+# La formula tiene que cumplirse para cualquier columna y cualquier calibre, no solo
+# para el ejemplo: si el radio crece hace falta mas resolucion, y si la barra es mas
+# gorda hace falta menos, porque el defecto se disimula en su propio grosor.
+for r_eje, d_zun in ((0.10, 0.00952), (0.2052, 0.00952), (0.30, 0.0127),
+                     (0.45, 0.00635), (0.05, 0.0159)):
+    n_i = puntos_por_vuelta(r_eje, d_zun)
+    fl_i = flecha_cresta(r_eje, n_i)
+    ok = fl_i <= 0.02 * d_zun + 1e-12 or n_i in (24, 180)
+    check(f"radio {r_eje:.4f} m con zuncho de {d_zun*1000:.2f} mm -> {n_i} pts/vuelta",
+          ok, f"flecha {100*fl_i/d_zun:.2f} % del diametro")
+
+# El tope de puntos no debe recortar la resolucion en una columna normal: con 73
+# puntos por vuelta, el tope viejo de 4000 se agotaba a las 55 vueltas.
+MAX_PUNTOS_HELICE = 12000
+vueltas_col = largo / paso
+n_total = math.ceil(vueltas_col * n_pv)
+print(f"  una columna de {largo} m con paso {paso} m son {vueltas_col:.0f} vueltas "
+      f"y {n_total} puntos")
+check("el tope de puntos no recorta una columna normal",
+      n_total <= MAX_PUNTOS_HELICE, f"{n_total} > {MAX_PUNTOS_HELICE}")
+check("el tope viejo de 4000 SI la habria recortado",
+      math.ceil((6.0 / 0.05) * n_pv) > 4000,
+      "una columna de 6 m con paso de 5 cm")
 
 # ======================================================================
 # 5. Helicoidal y normal llevan el MISMO acero
@@ -440,6 +516,163 @@ check("el eje proyectado es mas corto que la helice real",
       largo_eje < largo_helice,
       f"{largo_eje:.3f} contra {largo_helice:.3f}")
 check("pero del mismo orden", largo_eje > 0.5 * largo_helice)
+
+# ======================================================================
+# 9b. El zuncho SIN RELLENO: la silueta con el ancho de la varilla
+# ======================================================================
+print("\nZuncho en contorno: tiene que leerse con el ancho de la varilla")
+
+# El usuario: "CUANDO NO ES RELLENO EL ESTRIBO HELICOIDAL DEBE TENER EL ANCHO DE LA
+# VARILLA".
+#
+# La via 3 (polilinea con ancho) solo vale para la seccion RELLENA: una polilinea con
+# ancho se dibuja siempre maciza. En la seccion sin relleno el acero va en contorno, y
+# ahi hay que dibujar la SILUETA de la barra.
+#
+# Y la silueta NO son las amplitudes r +- d/2 de la via 1, aunque sean las
+# proyecciones de las helices exterior e interior de la barra. Se ve con numeros.
+
+# --- criterio viejo: amplitudes r +- d/2, medido perpendicular al eje
+k = 2 * math.pi / paso
+
+def ancho_radial(fase):
+    """Separacion entre las dos caras r+-d/2, medida perpendicular al eje."""
+    sep_vertical = abs((r_h + d_est / 2 - (r_h - d_est / 2)) * math.sin(fase))
+    pendiente = r_h * math.cos(fase) * k
+    return sep_vertical * math.cos(math.atan(pendiente))
+
+
+print(f"  {'fase':>7} {'donde':>16} {'radial':>10} {'normal':>10}")
+for grados, donde in ((0, "cruce del eje"), (45, ""), (90, "cresta"),
+                      (135, ""), (180, "cruce del eje"), (270, "valle")):
+    f_ = math.radians(grados)
+    print(f"  {grados:>6}o {donde:>16} {ancho_radial(f_)*1000:>9.2f}mm "
+          f"{d_est*1000:>9.2f}mm")
+
+check("el criterio radial se estrangula a CERO en los cruces por el eje",
+      ancho_radial(0.0) < 1e-9 and ancho_radial(math.pi) < 1e-9,
+      f"{ancho_radial(0.0)*1000:.4f} mm")
+
+# Cuantas veces pasa eso a lo largo de la columna: dos por vuelta.
+estrangulamientos = int(2 * largo / paso)
+print(f"  eso pasa {estrangulamientos} veces en una columna de {largo} m")
+check("y eso ocurre dos veces por vuelta, no una",
+      estrangulamientos == 2 * round(largo / paso))
+
+# Y el motivo por el que estrangular ahi es geometricamente FALSO: la profundidad de
+# la helice va con cos(fase), asi que su velocidad en profundidad es -r*sen(fase),
+# que en el cruce por el eje vale CERO. La barra se mueve DENTRO del plano del dibujo
+# y se ve en toda su anchura, no de perfil.
+vel_profundidad_cruce = abs(-r_h * math.sin(0.0))
+vel_profundidad_cresta = abs(-r_h * math.sin(math.pi / 2))
+print(f"  velocidad en profundidad: en el cruce {vel_profundidad_cruce:.6f}, "
+      f"en la cresta {vel_profundidad_cresta:.4f}")
+check("en el cruce por el eje la barra NO se ve de perfil",
+      vel_profundidad_cruce < 1e-12,
+      "si se viera de perfil, su velocidad en profundidad seria maxima ahi")
+
+# --- criterio nuevo: el eje desplazado +-d/2 por su NORMAL
+n_pv_c = puntos_por_vuelta(r_h, d_est)
+vueltas_c = largo / paso
+n_c = math.ceil(vueltas_c * n_pv_c)
+dx_c = largo / n_c
+
+xc, yc, fase = [], [], 0.0
+for i in range(n_c + 1):
+    if i > 0:
+        fase += 2 * math.pi * dx_c / paso
+    xc.append(i * dx_c)
+    yc.append(r_h * math.sin(fase))
+
+w_c = d_est / 2
+cara_a, cara_b = [], []
+for i in range(n_c + 1):
+    ia, isg = max(0, i - 1), min(n_c, i + 1)
+    tx, ty = xc[isg] - xc[ia], yc[isg] - yc[ia]
+    m_ = math.hypot(tx, ty) or 1.0
+    nx, ny = -ty / m_, tx / m_
+    cara_a.append((i, xc[i] + w_c * nx, yc[i] + w_c * ny))
+    cara_b.append((i, xc[i] - w_c * nx, yc[i] - w_c * ny))
+
+# Las TAPAS se sacan de las caras SIN filtrar, para que caigan en los extremos
+# exactos del eje.
+tapa_ini = (cara_a[0][1:], cara_b[0][1:])
+tapa_fin = (cara_a[-1][1:], cara_b[-1][1:])
+
+
+def retrocesos(cara):
+    return sum(1 for i in range(1, len(cara)) if cara[i][1] < cara[i - 1][1])
+
+
+def sin_rizos(cara):
+    """El SinRizos del C#: DESCARTA los puntos que retroceden en X."""
+    if len(cara) < 3:
+        return cara
+    salida = [cara[0]]
+    x_ultima = cara[0][1]
+    for p in cara[1:-1]:
+        if p[1] < x_ultima:
+            continue
+        x_ultima = p[1]
+        salida.append(p)
+    salida.append(cara[-1])
+    return salida
+
+
+print(f"  desplazando por la normal: {retrocesos(cara_a)} y "
+      f"{retrocesos(cara_b)} retrocesos en X (los rizos de las crestas)")
+check("desplazar por la normal riza en las crestas, como estaba previsto",
+      retrocesos(cara_a) > 0 and retrocesos(cara_b) > 0)
+
+fa, fb = sin_rizos(cara_a), sin_rizos(cara_b)
+print(f"  tras descartar los rizos: {len(cara_a)} puntos -> "
+      f"{len(fa)} y {len(fb)}")
+
+check("tras filtrar no queda ningun rizo",
+      retrocesos(fa) == 0 and retrocesos(fb) == 0,
+      f"{retrocesos(fa)} y {retrocesos(fb)} retrocesos")
+
+# El ancho se mide contra el PUNTO GENERADOR de cada cara, que es la unica medida
+# honesta: en el lado concavo de una cresta el desplazamiento pasa del centro de
+# curvatura, y la distancia al punto mas cercano del eje baja por geometria.
+desv = max(abs(math.dist((x, y), (xc[i], yc[i])) - w_c)
+           for cara in (fa, fb) for (i, x, y) in cara)
+print(f"  ancho de la barra tras filtrar: {2*w_c*1000:.3f} mm en todos los puntos "
+      f"(desviacion maxima {desv*1e9:.1f} nm)")
+
+check("el ancho es EXACTAMENTE el diametro de la varilla en todos los puntos",
+      desv < 1e-12, f"desviacion {desv*1e9:.3f} nm")
+
+# Descartar y NO aplastar: aplastar la X mueve el punto respecto del eje y el ancho
+# se pierde. Se comprueba que la alternativa mala es de verdad peor.
+def aplastando(cara):
+    out = [list(p) for p in cara]
+    for i in range(1, len(out)):
+        if out[i][1] < out[i - 1][1]:
+            out[i][1] = out[i - 1][1]
+    return [tuple(p) for p in out]
+
+
+ap_a, ap_b = aplastando(cara_a), aplastando(cara_b)
+ancho_ap = min(math.dist(ap_a[i][1:], ap_b[i][1:]) for i in range(len(ap_a)))
+print(f"  si en vez de descartar se aplastara la X, el ancho bajaria a "
+      f"{ancho_ap*1000:.2f} mm")
+check("descartar los rizos conserva mas ancho que aplastar la X",
+      ancho_ap < 2 * w_c - 1e-6,
+      f"aplastando {ancho_ap*1000:.2f} mm contra {2*w_c*1000:.2f} mm")
+
+# Las tapas cierran la barra en los extremos: sin ellas las dos caras quedan como dos
+# curvas sueltas que arrancan y mueren en el aire.
+for nombre, tapa in (("inicial", tapa_ini), ("final", tapa_fin)):
+    largo_tapa = math.dist(*tapa)
+    check(f"la tapa {nombre} mide el diametro de la varilla",
+          abs(largo_tapa - d_est) < 1e-12,
+          f"{largo_tapa*1000:.4f} mm contra {d_est*1000:.4f} mm")
+
+# Y caen en los extremos exactos del eje, no en los del contorno recortado.
+check("las tapas caen en los extremos del eje",
+      abs((tapa_ini[0][0] + tapa_ini[1][0]) / 2 - xc[0]) < 1e-12
+      and abs((tapa_fin[0][0] + tapa_fin[1][0]) / 2 - xc[-1]) < 1e-12)
 
 # ======================================================================
 # 10. Donde se RECORTAN las varillas: solo los pasos por DELANTE

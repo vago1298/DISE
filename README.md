@@ -52,17 +52,18 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Validación de conectividad y vista previa del unifilar | ✅ Completo |
 | Columnas calculadas (kVA, corriente, ampacidad total) | ✅ Completo |
 | Conexión a AutoCAD por COM (`AcadConnection`) | ✅ Completo |
-| Barra de guardar y menú arriba, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
+| **Una sola barra arriba**: menú y botones en la misma fila, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
 | Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
 | **Columna circular**, elegida en la columna *Elemento* | ✅ Completo |
 | **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |
-| Alzados y bloques a 2 m sobre la sección más alta | ✅ Completo |
+| Alzados y bloques a **1 m** sobre la sección más alta | ✅ Completo |
 | Vista previa con fondo azul, igual para las dos formas | ✅ Completo |
-| Rótulo dentro del bloque de alzado | ✅ Completo |
+| **Rótulo del alzado debajo del bloque insertado y de sus cotas** | ✅ Completo |
 | Zuncho en contorno o macizo según el estilo de la sección | ✅ Completo |
+| Zuncho en contorno **con el ancho de la varilla** y sin picos en las crestas | ✅ Completo |
 | Varillas recortadas donde el zuncho pasa por delante | ✅ Completo |
 | Hoja con paneles inmovilizados y color por grupo de columnas | ✅ Completo |
-| **Importar desde Excel** | ⛔ Pendiente — aquí va la lógica de tus macros |
+| **Importar desde Excel** | ⛔ Retirado de la interfaz — ver `docs/macro-secciones-concreto.md` §1 |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
 | **Lectura de ETABS (CSI OAPI)** | ⛔ Pendiente |
 
@@ -431,11 +432,12 @@ cadlink/
 
 ## Las pestañas
 
-Están **arriba**, debajo del menú y de la barra de guardar:
+Están **arriba**, debajo de la barra única que lleva el menú y los botones de guardar
+en la misma fila:
 
 | Hoja | Qué hace |
 |---|---|
-| **Proyecto** | Solapa de los planos, juego de planos con su numeración, importar de Excel |
+| **Proyecto** | Solapa de los planos y juego de planos con su numeración |
 | **Secciones Concreto** | La tabla principal. Genera secciones y alzados, con vista previa |
 | **Secciones Acero** | Pendiente de portar |
 | **Zapatas Corridas** | Pendiente de portar |

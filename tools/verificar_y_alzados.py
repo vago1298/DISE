@@ -1,4 +1,4 @@
-"""Comprueba que los alzados queden 2 m por encima de la seccion mas alta.
+"""Comprueba que los alzados queden 1 m por encima de la seccion mas alta.
 
 La macro coloca TODO en Y=2 (su constante Y_BLOQUES), una cota absoluta. Eso
 funciona mientras ninguna seccion pase de 2 m de alto en el papel, y deja de
@@ -7,9 +7,9 @@ y el plano queda encimado.
 
 Lo que se comprueba:
 
-  1. Que con secciones bajitas la Y siga siendo 2, o sea que un plano ya
-     acomodado con la version anterior NO se mueva.
-  2. Que con una seccion alta la Y suba, y que quede exactamente 2 m de aire
+  1. Que el aire sea EXACTAMENTE de 1 m sobre la seccion mas alta, y no
+     «1 m como minimo»: con una trabe de 60 cm la fila queda en 1.60.
+  2. Que con una seccion alta la Y suba, y que quede exactamente 1 m de aire
      entre el paño superior de la seccion mas alta y la fila de alzados.
   3. Que la seccion mas alta NUNCA invada la fila, que es el defecto que se
      corrige.
@@ -19,8 +19,8 @@ Lo que se comprueba:
      por elemento, la fila saldria escalonada.
 """
 
-AIRE_SOBRE_SECCIONES = 2.0
-Y_BLOQUES = 2.0
+AIRE_SOBRE_SECCIONES = 1.0
+Y_BLOQUES = 1.0
 
 fallos = []
 
@@ -65,13 +65,13 @@ y = y_arranque(am)
 print(f"  alto maximo = {am:.3f} m   ->   Y = {y:.3f} m")
 
 # El aire son SIEMPRE 2 m, no «2 como minimo». Con la trabe de 60 cm la fila queda
-# en 2.60 y no en 2.00, que es justo lo que se pidio. Esta comprobacion existe
+# en 1.60 y no en 1.00, que es justo lo que se pidio. Esta comprobacion existe
 # porque la primera version del codigo llevaba un max() contra 2 que hacia creer
 # que un plano viejo no se movia, y si se mueve: hay que decirlo, no taparlo.
-check("el aire son exactamente 2 m sobre la mas alta",
+check("el aire es exactamente 1 m sobre la mas alta",
       abs((y - am) - AIRE_SOBRE_SECCIONES) < 1e-12,
       f"aire de {y - am:.4f} m")
-check("con la trabe de 60 cm la fila queda en 2.60", abs(y - 2.60) < 1e-12,
+check("con la trabe de 60 cm la fila queda en 1.60", abs(y - 1.60) < 1e-12,
       f"salio {y}")
 check("o sea que NO se queda en la cota fija de la macro", abs(y - Y_BLOQUES) > 1e-9)
 
@@ -86,8 +86,8 @@ am2 = alto_max(alta, 0.10)
 y2 = y_arranque(am2)
 print(f"  alto maximo = {am2:.3f} m   ->   Y = {y2:.3f} m")
 
-check("con una seccion alta la Y sube", y2 > 2.0, f"salio {y2}")
-check("y queda EXACTAMENTE 2 m de aire",
+check("con una seccion alta la Y sube", y2 > Y_BLOQUES, f"salio {y2}")
+check("y queda EXACTAMENTE 1 m de aire",
       abs((y2 - am2) - AIRE_SOBRE_SECCIONES) < 1e-12,
       f"aire de {y2 - am2:.4f} m")
 
@@ -117,7 +117,7 @@ for escala in (0.01, 0.02, 0.05, 0.10, 0.20):
                   f"aire de {aire:.4f} m")
 
 print(f"  el peor aire de todo el barrido = {peor_aire:.4f} m")
-check("en ninguna combinacion el aire baja de 2 m",
+check("en ninguna combinacion el aire baja de 1 m",
       peor_aire >= AIRE_SOBRE_SECCIONES - 1e-12,
       f"el peor fue {peor_aire:.4f} m")
 
@@ -135,12 +135,14 @@ print(f"  D=50, altura=0, escala 0.10   ->   alto maximo = {am4:.3f} m, Y = {y4:
 
 check("la circular cuenta por su diametro", abs(am4 - 5.0) < 1e-12,
       f"conto {am4}")
-check("y la Y sube en consecuencia", abs(y4 - 7.0) < 1e-12, f"salio {y4}")
+check("y la Y sube en consecuencia",
+      abs(y4 - (5.0 + AIRE_SOBRE_SECCIONES)) < 1e-12, f"salio {y4}")
 
-# Si se hubiera mirado la altura, el alto seria 0 y la Y se quedaria en 2
+# Si se hubiera mirado la altura, el alto seria 0 y la Y se quedaria en la cota
+# de respaldo, sin dejar sitio a la columna redonda
 am4_mal = 0 * 0.10
-check("mirando la altura se habria quedado en Y=2 (el defecto)",
-      abs(y_arranque(am4_mal) - 2.0) < 1e-12)
+check("mirando la altura se habria quedado en la cota de respaldo (el defecto)",
+      abs(y_arranque(am4_mal) - Y_BLOQUES) < 1e-12)
 
 # ----------------------------------------------------------------------
 # 5. La misma Y para toda la corrida
@@ -158,7 +160,7 @@ print(f"  Y por elemento: {[round(v, 4) for v in ys]}")
 
 check("todos los elementos comparten la misma Y", len(set(ys)) == 1)
 check("y es la del elemento mas alto del juego",
-      abs(y5 - (am5 + AIRE_SOBRE_SECCIONES)) < 1e-12 or abs(y5 - 2.0) < 1e-12)
+      abs(y5 - (am5 + AIRE_SOBRE_SECCIONES)) < 1e-12 or abs(y5 - Y_BLOQUES) < 1e-12)
 
 # El mas alto de la mezcla es la contratrabe de 250 cm a 0.01 = 2.50 m
 check("el mas alto de la mezcla es la contratrabe", abs(am5 - 2.50) < 1e-12,

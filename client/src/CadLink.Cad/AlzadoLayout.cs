@@ -31,24 +31,30 @@ namespace CadLink.Cad;
 public static class AlzadoLayout
 {
     /// <summary>
-    /// Aire que se deja entre las secciones y la fila de alzados: <b>2 m</b>.
+    /// Aire que se deja entre las secciones y la fila de alzados: <b>1 m</b>.
     /// </summary>
     /// <remarks>
-    /// En la macro este 2 es el <c>Y_BLOQUES</c>, una <b>cota absoluta</b>: todo se
-    /// colocaba en Y=2 pasara lo que pasara. Funcionaba porque las secciones se
-    /// dibujaban en Y=0 y ninguna medía más de 2 m de alto en el papel.
+    /// En la macro este valor es el <c>Y_BLOQUES</c> y vale 2, pero como una <b>cota
+    /// absoluta</b>: todo se colocaba en Y=2 pasara lo que pasara. Funcionaba porque
+    /// las secciones se dibujaban en Y=0 y ninguna medía más de 2 m de alto en el
+    /// papel.
+    /// <para>
+    /// Aquí es una separación <b>relativa</b> a la sección más alta, y por eso se
+    /// puede apretar: con 2 m el hueco entre las dos filas quedaba mayor que las
+    /// propias secciones, y el plano salía con una banda vacía en medio. Con 1 m las
+    /// dos filas se leen como partes del mismo juego.
+    /// </para>
     /// </remarks>
-    public const double AireSobreSecciones = 2.0;
+    public const double AireSobreSecciones = 1.0;
 
     /// <summary>Y de arranque de la fila de alzados cuando no hay secciones medidas.</summary>
     /// <remarks>
-    /// Es el <c>Y_BLOQUES</c> de la macro tal cual. Solo se usa como respaldo: el
-    /// camino normal es <see cref="YArranque"/>.
+    /// Solo se usa como respaldo: el camino normal es <see cref="YArranque"/>.
     /// </remarks>
     public const double YBloques = AireSobreSecciones;
 
     /// <summary>
-    /// Y donde arranca la fila de alzados: <b>2 m por encima de la sección más
+    /// Y donde arranca la fila de alzados: <b>1 m por encima de la sección más
     /// alta</b> de las que se dibujaron al principio.
     /// </summary>
     /// <remarks>
@@ -58,19 +64,18 @@ public static class AlzadoLayout
     /// ve bien, pero en cuanto entra un elemento alto —una columna de 3 m dibujada a
     /// escala 1:10 mide 30 cm, pero un muro o una contratrabe de 2.50 m ya no— la
     /// sección <b>invade la fila de alzados</b> y el plano queda encimado. El usuario
-    /// lo pidió explícitamente: los bloques y los alzados a 2 m por encima de la
-    /// sección más alta, no a 2 m del origen.
+    /// lo pidió explícitamente: los bloques y los alzados por encima de la sección más
+    /// alta, no a una cota fija desde el origen.
     /// </para>
     /// <para>
     /// Las secciones se dibujan apoyadas en <c>Y=0</c>, así que el paño superior de
     /// la más alta es su propio alto y basta con sumarle el aire.
     /// </para>
     /// <para>
-    /// <b>El aire son SIEMPRE 2 m</b>, no «2 m como mínimo». Con una trabe de 60 cm
-    /// dibujada a escala 1:100 la fila queda en Y=2.6, no en Y=2. Es lo que se pidió,
-    /// y tiene una consecuencia que conviene tener presente: un plano acomodado con la
-    /// versión anterior, que ponía todo en Y=2, verá la fila de alzados desplazada
-    /// hacia arriba la próxima vez que se generen.
+    /// <b>El aire es SIEMPRE 1 m</b>, no «1 m como mínimo». Con una trabe de 60 cm
+    /// dibujada a escala 1:100 la fila queda en Y=1.6, no en Y=1. Y tiene una
+    /// consecuencia que conviene tener presente: un plano acomodado con una versión
+    /// anterior verá la fila de alzados desplazada la próxima vez que se generen.
     /// </para>
     /// </remarks>
     /// <param name="altoMaximoSeccion">
@@ -100,6 +105,54 @@ public static class AlzadoLayout
 
     /// <summary>Separación entre la sección y su alzado: <c>SEP_SEC_ALZ</c>.</summary>
     public const double SepSecAlz = 0.2;
+
+    /// <summary>
+    /// Aire extra que se abre <b>debajo del alzado vertical</b> para su rótulo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El rótulo del alzado va siempre <b>debajo del bloque insertado</b>, y en el
+    /// alzado vertical eso choca con la sección: el bloque arranca en
+    /// <c>topeSeccion + SepSecAlz</c>, o sea a 20 cm del paño superior de la sección, y
+    /// el rótulo necesita más que eso.
+    /// </para>
+    /// <para>
+    /// La cuenta, con el rótulo más largo que puede salir —elemento, ID, tres lechos,
+    /// estribo, recubrimiento, f'c y escala, nueve renglones de 2.5 mm con el
+    /// interlineado de AutoCAD— son 35.8 cm de texto, más los 5 cm de
+    /// <c>ROTULO_GAP</c> y 5 cm de holgura contra la sección: 45.8 cm. Ya hay 20, así
+    /// que faltan 26. Se redondean al alza.
+    /// </para>
+    /// <para>
+    /// En el alzado <b>horizontal</b> no hace falta ninguna constante nueva: debajo del
+    /// bloque están sus cotas de estribos, las etiquetas de zona, el título y la
+    /// escala, y por debajo de todo eso queda el metro de
+    /// <see cref="AireSobreSecciones"/>, que da de sobra.
+    /// </para>
+    /// </remarks>
+    public const double AireRotuloAlzado = 0.30;
+
+    /// <summary>
+    /// Y de la <b>segunda cara</b> de una columna rectangular.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La segunda cara va encima del paño superior de la primera, separada
+    /// <see cref="SepCaras"/>… más el aire del rótulo, porque la segunda cara también
+    /// lleva el suyo debajo y con solo los 30 cm de <c>SEP_CARAS</c> el rótulo de arriba
+    /// caía <b>dentro</b> del alzado de abajo.
+    /// </para>
+    /// <para>
+    /// Está como función y no como constante porque hasta ahora este cálculo estaba
+    /// <b>escrito dos veces</b>: aquí, en <c>YAlzado2</c>, y otra vez a mano en
+    /// <c>AlzadoDrawer.DibujarVertical</c> con un <c>0.3</c> literal. Coincidían por
+    /// suerte, y al abrir el hueco del rótulo habrían dejado de coincidir.
+    /// </para>
+    /// </remarks>
+    /// <param name="yPrimera">Y de inserción de la primera cara.</param>
+    /// <param name="largo">Longitud del elemento, en metros de dibujo.</param>
+    public static double YSegundaCara(double yPrimera, double largo) =>
+        yPrimera + largo + SepCaras + AireRotuloAlzado;
 
     /// <summary>Aire a la derecha del alzado horizontal: <c>HOOK_DIM_OFF_2</c>.</summary>
     public const double HookDimOff2 = 0.14;
@@ -180,7 +233,10 @@ public static class AlzadoLayout
             // de inserción.
             var xAlz = xSec + anchoSeccion;
 
-            var y1 = topeSeccion + SepSecAlz;
+            // El aire del rótulo se suma AQUÍ y no en SepSecAlz porque SepSecAlz es una
+            // constante de la macro que se usa también en la trabe, donde el rótulo no
+            // estorba. Ver AireRotuloAlzado.
+            var y1 = topeSeccion + SepSecAlz + AireRotuloAlzado;
 
             return new Puesto
             {
@@ -188,8 +244,8 @@ public static class AlzadoLayout
                 XAlzado = xAlz,
                 YAlzado = y1,
 
-                // La segunda cara, a SEP_CARAS del paño superior de la primera.
-                YAlzado2 = dosCaras ? y1 + largo + SepCaras : null,
+                // La segunda cara, encima del paño superior de la primera.
+                YAlzado2 = dosCaras ? YSegundaCara(y1, largo) : null,
 
                 // OJO: se avanza desde x0, no desde xSec. El MARGEN_COL se abre y no
                 // se vuelve a contar, tal como está en el VBA:

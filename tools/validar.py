@@ -2117,9 +2117,14 @@ def v16_extruida_piers() -> None:
     check("existe la colocacion como aritmetica aparte",
           "public static class AlzadoLayout" in lay)
 
+    # El aire sobre las secciones NO es una constante de la macro: alli el valor es
+    # una cota absoluta de 2 m desde el origen. Aqui es una separacion RELATIVA a la
+    # seccion mas alta, y por eso se puede apretar a 1 m sin que nada se encime.
+    check("el aire sobre las secciones es de 1 m",
+          re.search(r"AireSobreSecciones = 1\.0\s*;", lay) is not None)
+
     # Las constantes de la macro, con su valor exacto.
     for nombre, valor in [
-        ("AireSobreSecciones", "2.0"),
         ("SepSecciones", "0.6"),
         ("MargenCol", "0.4"),
         ("SepCaras", "0.3"),
@@ -2227,12 +2232,15 @@ def v16_extruida_piers() -> None:
 
         # En la columna el alzado va ENCIMA de la seccion: arranca en su paño
         # superior mas SEP_SEC_ALZ.
+        # Y ademas se le abre el aire del rotulo, que ahora va debajo del bloque
+        # insertado y choca con la seccion si solo se deja SEP_SEC_ALZ.
         check("en la columna el alzado arranca sobre la seccion",
-              "var y1 = topeSeccion + SepSecAlz;" in cuerpo and "YAlzado = y1," in cuerpo)
+              "topeSeccion + SepSecAlz + AireRotuloAlzado" in cuerpo
+              and "YAlzado = y1," in cuerpo)
 
-        # La segunda cara, a SEP_CARAS del paño superior de la primera.
-        check("la segunda cara va a SEP_CARAS de la primera",
-              "y1 + largo + SepCaras" in cuerpo)
+        # La segunda cara, encima de la primera y con sitio para SU rotulo.
+        check("la segunda cara sale del calculo unico del layout",
+              "YSegundaCara(y1, largo)" in cuerpo)
 
         # En la trabe el alzado va a la DERECHA de la seccion, y los dos apoyados.
         check("en la trabe el alzado va al lado de la seccion",
@@ -2254,6 +2262,27 @@ def v16_extruida_piers() -> None:
     # El MARGEN_COL solo en la columna, y en un solo sitio.
     check("XSeccion abre el margen solo en la columna",
           "vertical ? x0 + MargenCol : x0" in lay)
+
+    # ------------------------------------------------------------------
+    # Hueco para el rotulo del alzado, que ahora va FUERA del bloque
+    # ------------------------------------------------------------------
+    # El rotulo cuelga debajo del bloque insertado. En el alzado vertical debajo esta
+    # la seccion, y en la segunda cara de una columna rectangular esta el alzado de la
+    # primera: sin abrir hueco, el rotulo cae dentro de uno o de otro.
+    check("hay una constante para el aire del rotulo del alzado",
+          "public const double AireRotuloAlzado = 0.30;" in lay)
+
+    check("la segunda cara tiene su calculo en el layout",
+          "public static double YSegundaCara(" in lay)
+    check("y ese calculo suma SEP_CARAS mas el aire del rotulo",
+          "yPrimera + largo + SepCaras + AireRotuloAlzado" in lay)
+
+    # Estaba escrito DOS veces: en el layout y a mano en DibujarVertical con un 0.3
+    # literal. Coincidian por suerte, y al abrir el hueco habrian dejado de coincidir.
+    check("DibujarVertical usa el calculo del layout y no un literal",
+          "AlzadoLayout.YSegundaCara(y, largo)" in alz2)
+    check("y ya no queda el 0.3 escrito a mano",
+          "var y2 = y + largo + 0.3;" not in alz2)
 
     # El rotulo se LLAMA, no solo se declara: renombrar el metodo dejaba pasar el
     # check anterior porque el texto seguia en el archivo.
@@ -2877,19 +2906,73 @@ def v19_circular_y_ui() -> None:
         check("y no se intenta rellenar la helice con un hatch",
               'Hatch(bloque, "SOLID"' not in cuerpo)
         check("en modo relleno el zuncho toma el color del estribo",
-              "ColorRellenoEstribo" in cuerpo)
+              "ColorDelZuncho()" in cuerpo)
+        check("y se guarda la polilinea para poder repintarla",
+              "_zunchoMacizo = pl;" in cuerpo)
 
-    # El zuncho EN CONTORNO: las dos caras, abiertas y sin ancho.
+    # El color se reaplica DESPUES de ContornosNegros, que si no lo deja negro: el
+    # zuncho macizo es una polilinea con ancho, no un hatch, y ContornosNegros repinta
+    # todo lo que no sea hatch. Era el motivo de que la helice saliera negra.
+    check("el zuncho se repinta despues de ContornosNegros",
+          "private void ColorDelZuncho(" in alz
+          and "_zunchoMacizo" in alz)
+
+    m_geo_col = re.search(r"private Geo Geometria\(.*?\n    \}", alz, re.S)
+    if m_geo_col:
+        cuerpo = m_geo_col.group(0)
+        i_negros = cuerpo.find("ContornosNegros(bloque, inicio)")
+        i_color = cuerpo.find("ColorDelZuncho()")
+        check("y el orden es ContornosNegros primero y el color despues",
+              0 <= i_negros < i_color,
+              f"ContornosNegros en {i_negros}, color en {i_color}")
+        check("el zuncho guardado se limpia en cada alzado",
+              "_zunchoMacizo = null;" in cuerpo)
+
+    # El zuncho EN CONTORNO: la silueta con el ancho de la varilla.
     m_hc = re.search(r"private void HeliceEnContorno\(.*?\n    \}", alz, re.S)
     check("se puede leer HeliceEnContorno", m_hc is not None)
     if m_hc:
         cuerpo = m_hc.group(0)
-        check("el contorno son las dos caras de la barra",
-              "REje + (dZun / 2)" in cuerpo and "REje - (dZun / 2)" in cuerpo)
+
+        # Las amplitudes r +- d/2 NO son la silueta: las dos valen cero donde el seno
+        # vale cero, asi que el zuncho se estrangulaba a 0 mm en cada cruce por el eje,
+        # sesenta veces en una columna de 3 m. La silueta es el eje desplazado por su
+        # NORMAL, que da ancho constante d.
+        check("el contorno no usa las amplitudes r +- d/2",
+              "REje + (dZun / 2)" not in cuerpo
+              and "REje - (dZun / 2)" not in cuerpo)
+        check("el contorno desplaza el eje por su normal",
+              "var nx = -ty / m;" in cuerpo and "var ny = tx / m;" in cuerpo)
+        check("y el desplazamiento es medio diametro",
+              "var w = dZun / 2;" in cuerpo)
         check("van abiertas, que es lo que lo hace seguro",
               "cerrada: false" in cuerpo)
         check("y sin ancho, para que no salgan macizas",
               "AnchoDePolilinea" not in cuerpo)
+
+        # Desplazar por la normal riza en las crestas, porque ahi el radio de curvatura
+        # (1.2 mm) es menor que medio diametro (4.8 mm).
+        check("los rizos de las crestas se quitan",
+              "SinRizos(caraA)" in cuerpo and "SinRizos(caraB)" in cuerpo)
+
+        # Sin tapas las dos caras quedan como dos curvas sueltas que mueren en el aire.
+        check("el zuncho en contorno lleva tapas en los extremos",
+              "tapaIni" in cuerpo and "tapaFin" in cuerpo)
+        check("y las tapas se sacan de las caras SIN recortar",
+              cuerpo.find("var tapaIni") < cuerpo.find("caraA = SinRizos(caraA);"))
+
+    # SinRizos DESCARTA los puntos que retroceden, no les aplasta la X: aplastarlos
+    # mueve el punto respecto del eje y el ancho de la barra se queda en 6.3 mm de los
+    # 9.5 que deberia. Descartandolos el ancho es exacto.
+    m_sr = re.search(r"private static double\[\] SinRizos\(.*?\n    \}", alz, re.S)
+    check("se puede leer SinRizos", m_sr is not None)
+    if m_sr:
+        cuerpo = m_sr.group(0)
+        check("SinRizos descarta los puntos del rizo", "continue;" in cuerpo)
+        check("y no les aplasta la X",
+              "pts[2 * i] = pts[2 * (i - 1)];" not in cuerpo)
+        check("los extremos se conservan siempre, que llevan las tapas",
+              "salida.Add(pts[2 * (n - 1)]);" in cuerpo)
 
     # ------------------------------------------------------------------
     # Las varillas se recortan donde el zuncho pasa por DELANTE
@@ -3101,18 +3184,25 @@ def v19_circular_y_ui() -> None:
     # ------------------------------------------------------------------
     check("ya no hay pestaña AutoCAD", '<TabItem Header="AutoCAD">' not in xaml)
 
-    # Lo que vivia en ella y el codigo sigue necesitando, reubicado
-    check("la escala de dibujo sigue existiendo", 'x:Name="ScaleBox"' in xaml)
-    check("y los avisos del dibujo tambien", 'x:Name="ExportHintText"' in xaml)
+    check("los avisos del dibujo siguen a mano", 'x:Name="ExportHintText"' in xaml)
 
-    # La escala se movio junto a la tabla que dibuja, o sea DENTRO de la hoja de
-    # secciones y no en otra.
-    i_sec = xaml.find('Header="Secciones Concreto"')
-    i_esc = xaml.find('x:Name="ScaleBox"')
-    i_acero = xaml.find('Header="Secciones Acero"')
-    check("la escala de dibujo esta en la hoja de secciones",
-          0 <= i_sec < i_esc < i_acero,
-          f"secciones {i_sec}, escala {i_esc}, acero {i_acero}")
+    # ------------------------------------------------------------------
+    # La escala de dibujo YA NO SE CAPTURA
+    # ------------------------------------------------------------------
+    # El dibujo sale siempre con la misma correspondencia, asi que la casilla solo
+    # era una forma de descuadrarlo. Vive en una constante, en un solo sitio.
+    check("la casilla de la escala de dibujo se retiro",
+          'x:Name="ScaleBox"' not in xaml)
+    check("la escala vive en una constante",
+          re.search(r"private const double EscalaDeDibujo = 0\.01\s*;", codigo) is not None)
+
+    # El valor NO puede ser 1.0 «porque es 1=1»: la correspondencia real es cm
+    # capturados a metros dibujados, y con 1.0 una columna de 50 cm saldria de 50 m.
+    m_le = re.search(r"private double LeerEscala\(\)[^\n]*", codigo)
+    check("se puede leer LeerEscala", m_le is not None)
+    if m_le:
+        check("LeerEscala devuelve la constante",
+              "EscalaDeDibujo" in m_le.group(0))
 
     # Y lo que SOLO servia al modo DXF, que no estaba implementado, se retiro.
     for muerto in ("OutputPathBox", "ModeComRadio", "ModeDxfRadio", "OnBrowseOutput"):
@@ -3143,38 +3233,109 @@ def v19_circular_y_ui() -> None:
           "haciaLaDerecha: true" in circ)
 
     # ------------------------------------------------------------------
-    # El bloque de alzado lleva su rotulo dentro
+    # El rotulo del alzado va FUERA del bloque, debajo del bloque insertado
     # ------------------------------------------------------------------
-    check("el bloque de alzado se rotula",
-          "private void RotuloDelBloque(" in alz)
+    # Antes se metia dentro de la definicion del bloque, y entonces se dibujaba en
+    # coordenadas del bloque: caia pegado al pie de la geometria, POR ENCIMA de las
+    # cotas que el espacio modelo pone despues, y en el alzado vertical el giro de 90
+    # grados se lo llevaba por delante. Ahora va al espacio modelo, debajo del bloque
+    # insertado y de sus cotas.
+    check("el rotulo del alzado ya no se mete en el bloque",
+          "private void RotuloDelBloque(" not in alz)
 
-    m_rb = re.search(r"private void RotuloDelBloque\(.*?\n    \}", alz, re.S)
-    check("se puede leer RotuloDelBloque", m_rb is not None)
+    check("hay rotulo del alzado en el espacio modelo",
+          "private void RotuloDelAlzado(" in alz)
+
+    # El texto es el mismo en los dos alzados, y solo cambia donde se escribe.
+    check("los renglones del rotulo estan en su propio metodo",
+          "private List<string> LineasDelRotulo(" in alz)
+
+    m_rb = re.search(r"private void RotuloDelAlzado\(.*?\n    \}", alz, re.S)
+    check("se puede leer RotuloDelAlzado", m_rb is not None)
     if m_rb:
         cuerpo = m_rb.group(0)
-        # Tras el giro de 90 grados el centro ya no esta en largo/2 sino en -ancho/2.
-        check("el rotulo se centra bien en los dos casos",
-              "girar ? -ancho / 2 : largo / 2" in cuerpo)
-        check("y dice el armado del circulo cuando toca",
-              "TextoCirculo(a)" in cuerpo)
+        check("usa los renglones comunes", "LineasDelRotulo(a)" in cuerpo)
 
-    # Va DESPUES del giro, o el texto saldria tumbado de lado.
+        # El bloque vertical se inserta por su borde DERECHO y crece hacia la izquierda,
+        # asi que su centro esta en x - ancho/2; el horizontal, en x + largo/2.
+        check("el rotulo se centra bien en los dos casos",
+              "vertical ? x - (ancho / 2) : x + (largo / 2)" in cuerpo)
+
+        # En el horizontal hay que bajar por debajo de la cota de estribos, las
+        # etiquetas de zona, el titulo y la escala.
+        check("en el horizontal baja por debajo de las cotas y el titulo",
+              "PieAnotacionHorizontal" in cuerpo)
+        check("y en el vertical basta el ROTULO_GAP",
+              "y - (RotuloGap * _f)" in cuerpo)
+
+    check("hay una constante del pie de las anotaciones horizontales",
+          "private const double PieAnotacionHorizontal = 0.36;" in alz)
+
+    # Se escribe en el espacio modelo, NO en el bloque.
+    check("el texto del rotulo va al espacio modelo",
+          "private void TextoRotulo(" in alz)
+    m_te = re.search(r"private void TextoRotulo\(.*?\n    \}", alz, re.S)
+    if m_te:
+        cuerpo = m_te.group(0)
+        check("y escribe en el espacio modelo, no en un contenedor",
+              "_ms.AddMText" in cuerpo)
+        check("anclado por arriba y al centro, para que cuelgue del alzado",
+              "mt.AttachmentPoint = 2;" in cuerpo)
+        check("en la capa ROTULOS", '"ROTULOS"' in cuerpo)
+
+    # Ya no hay ningun texto que escriba dentro de la definicion del bloque.
+    check("ya no queda el helper que escribia dentro del bloque",
+          "private void TextoEn(" not in alz)
+
+    # Y Geometria ya no lo dibuja.
     m_geo = re.search(r"private Geo Geometria\(.*?\n    \}", alz, re.S)
     if m_geo:
         cuerpo = m_geo.group(0)
-        i_giro = cuerpo.find("Girar90(bloque, inicio)")
-        i_rot = cuerpo.find("RotuloDelBloque(")
-        check("el rotulo del bloque va despues del giro de 90 grados",
-              0 <= i_giro < i_rot, f"giro en {i_giro}, rotulo en {i_rot}")
+        check("Geometria ya no rotula el bloque",
+              "RotuloDelBloque(" not in cuerpo
+              and "RotuloDelAlzado(" not in cuerpo)
 
-    # Y se escribe DENTRO de la definicion del bloque: si fuera al espacio modelo, no
-    # viajaria con el bloque, que es justo lo que se queria arreglar.
-    check("hay texto que escribe dentro del bloque",
-          "private void TextoEn(" in alz)
-    m_te = re.search(r"private void TextoEn\(.*?\n    \}", alz, re.S)
-    if m_te:
-        check("y escribe en el contenedor, no en el espacio modelo",
-              "((dynamic)cont).AddMText" in m_te.group(0))
+    # Se dibuja DESPUES de las cotas, en los dos caminos, y una vez por cada bloque
+    # insertado: la columna rectangular lleva dos caras y cada una tiene su rotulo.
+    m_dh = re.search(r"private double DibujarHorizontal\(.*?\n    \}", alz, re.S)
+    if m_dh:
+        cuerpo = m_dh.group(0)
+        i_cotas = cuerpo.find("AnotarHorizontal(")
+        i_rot = cuerpo.find("RotuloDelAlzado(")
+        check("el horizontal rotula despues de acotar",
+              0 <= i_cotas < i_rot, f"cotas en {i_cotas}, rotulo en {i_rot}")
+
+    m_dv = re.search(r"private double DibujarVertical\(.*?\n    \}", alz, re.S)
+    if m_dv:
+        cuerpo = m_dv.group(0)
+        i_cotas = cuerpo.find("AnotarVertical(")
+        i_rot = cuerpo.find("RotuloDelAlzado(")
+        check("el vertical rotula despues de acotar",
+              0 <= i_cotas < i_rot, f"cotas en {i_cotas}, rotulo en {i_rot}")
+        check("y las dos caras de la columna llevan rotulo",
+              cuerpo.count("RotuloDelAlzado(") == 2,
+              f"{cuerpo.count('RotuloDelAlzado(')} llamada(s)")
+
+    # ------------------------------------------------------------------
+    # UNA sola barra arriba, no dos
+    # ------------------------------------------------------------------
+    # El menu y los botones de acceso rapido gastaban dos filas para ofrecer las
+    # mismas acciones. Ahora comparten una, y el Menu va DENTRO del Border de la
+    # barra para que los dos grupos queden en la misma linea de base.
+    m_barra = re.search(
+        r'<Border Grid\.Row="0".*?</Border>', xaml, re.S)
+    check("se puede leer la barra de arriba", m_barra is not None)
+    if m_barra:
+        cuerpo = m_barra.group(0)
+        check("el menu vive dentro de la barra", "<Menu " in cuerpo)
+        check("y los botones de guardar tambien",
+              'Command="ApplicationCommands.Save"' in cuerpo)
+        check("y el nombre del archivo abierto", 'x:Name="ArchivoText"' in cuerpo)
+
+    # El Menu no puede seguir siendo un hijo directo del Grid raiz: eso seria la
+    # segunda fila que se quito.
+    check("el menu ya no es una fila aparte",
+          re.search(r'\n        <Menu Grid\.Row=', xaml) is None)
 
     # ------------------------------------------------------------------
     # Las pestañas NO deben reordenarse al elegir una hoja
@@ -4079,7 +4240,21 @@ def v17_guardar_y_defaults() -> None:
         check(f"ya no esta la casilla {campo}", f'x:Name="{campo}"' not in xaml)
 
     check("y el codigo ya no la busca", "ExcelPathBox" not in codigo)
-    check("la ruta del libro se recuerda aparte", "_rutaExcel" in codigo)
+
+    # ------------------------------------------------------------------
+    # El importador de Excel se RETIRO por completo
+    # ------------------------------------------------------------------
+    # Ofrecia un boton en la barra, otro en la hoja Proyecto y una entrada de menu, y
+    # las tres terminaban en el mismo aviso de «no esta implementado». Un boton que
+    # solo sirve para decir que no funciona hace dudar de si el problema es del
+    # programa o de la hoja de calculo.
+    for muerto in ("OnImportExcel", "OnBrowseExcel", "_rutaExcel"):
+        check(f"{muerto} se retiro del codigo", muerto not in codigo)
+        check(f"y del XAML ({muerto})", muerto not in xaml)
+
+    # Pero queda escrito QUE haria falta para portarlo de verdad.
+    check("queda apuntado como portar el importador",
+          "docs/macro-secciones-concreto.md" in codigo)
 
     # ------------------------------------------------------------------
     # Diamante: doblez sobre las DOS mas juntas si no hay una en el eje

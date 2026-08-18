@@ -27,21 +27,35 @@
     </Window.CommandBindings>
 
     <Grid>
-        <!-- 5 filas: menu, barra de guardar, aviso, hojas, barra de estado.
-             Eran 6: la que sobraba era el cuadro azul de marca. -->
+        <!-- 4 filas: barra unica, aviso, hojas, barra de estado.
+             Eran 6: se quito el cuadro azul de marca, y despues el menu y la barra
+             de guardar se fusionaron en UNA sola fila. Cada fila que se va es alto
+             util que ganan las hojas. -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ==================== Menu ==================== -->
-        <!-- Arriba de todo, como en cualquier programa de Windows. Guardar y abrir
-             el trabajo vivian dentro de la hoja «Proyecto», al final de un
-             ScrollViewer: para guardar habia que cambiar de pestaña y bajar. -->
-        <Menu Grid.Row="0" Background="{StaticResource TabStripBrush}" Padding="6,2">
+        <!-- ==================== Barra unica ====================
+             El menu y los botones de acceso rapido comparten UNA fila. Antes eran
+             dos, una encima de la otra, y gastaban el doble de alto para ofrecer
+             las mismas acciones: el menu con todo, y la barra con lo de siempre.
+
+             El Menu va DENTRO de esta barra y no como control suelto para que los
+             dos grupos queden alineados en la misma linea de base. -->
+        <Border Grid.Row="0" Background="{StaticResource TabStripBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="4,2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+        <Menu Grid.Column="0" Background="Transparent" VerticalAlignment="Center">
             <MenuItem Header="_Archivo">
                 <MenuItem Header="_Nuevo" Command="ApplicationCommands.New"
                           InputGestureText="Ctrl+N" />
@@ -53,7 +67,6 @@
                 <MenuItem Header="Guardar _como..." Command="ApplicationCommands.SaveAs"
                           InputGestureText="Ctrl+Mayus+G" />
                 <Separator />
-                <MenuItem Header="_Importar desde Excel..." Click="OnImportExcel" />
                 <MenuItem Header="Cargar _ejemplo" Click="OnLoadSample" />
                 <MenuItem Header="_Limpiar todo" Click="OnClearAll" />
                 <Separator />
@@ -83,17 +96,13 @@
             </MenuItem>
         </Menu>
 
-        <!-- ==================== Barra de guardar ==================== -->
-        <Border Grid.Row="1" Background="{StaticResource TabInactiveBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1"
-                Padding="8,4">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
+                <!-- Separador entre el menu y los botones, para que no se lean como
+                     un solo grupo. -->
+                <Border Grid.Column="1" Style="{StaticResource ToolbarSeparatorStyle}"
+                        Margin="8,4,6,4" />
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                            VerticalAlignment="Center">
                     <Button Content="Nuevo" Style="{StaticResource ToolbarButtonStyle}"
                             Command="ApplicationCommands.New"
                             ToolTip="Empieza un trabajo en blanco (Ctrl+N)." />
@@ -109,20 +118,17 @@
 
                     <Border Style="{StaticResource ToolbarSeparatorStyle}" />
 
-                    <Button Content="Importar Excel" Style="{StaticResource ToolbarButtonStyle}"
-                            Click="OnImportExcel"
-                            ToolTip="Lee la hoja de calculo y llena las tablas." />
                     <Button Content="Revisar datos" Style="{StaticResource ToolbarButtonStyle}"
                             Click="OnValidate"
                             ToolTip="Busca errores en lo capturado antes de dibujar." />
-                </StackPanel>
 
-                <!-- El nombre del archivo abierto, a la derecha de su barra: es el
-                     sitio donde se busca «en que estoy trabajando». -->
-                <TextBlock Grid.Column="1" x:Name="ArchivoText" FontSize="11.5"
-                           VerticalAlignment="Center" HorizontalAlignment="Right"
-                           Margin="14,0,6,0" TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource MutedTextBrush}" />
+                    <!-- El nombre del archivo abierto, al final de la barra: es el
+                         sitio donde se busca «en que estoy trabajando». -->
+                    <TextBlock x:Name="ArchivoText" FontSize="11.5"
+                               VerticalAlignment="Center"
+                               Margin="16,0,6,0" TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource MutedTextBrush}" />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -133,14 +139,14 @@
              estaba en otro sitio era el estado de la licencia, y eso se fue a la
              barra de estado de abajo, que es su lugar. Esos 54 px son ahora alto
              util de las hojas. El logo sigue vivo: es el icono de la ventana. -->
-        <Border x:Name="NoticeBar" Grid.Row="2"
+        <Border x:Name="NoticeBar" Grid.Row="1"
                 Background="#FFFFF4CE" BorderBrush="#FFE0C36A" BorderThickness="0,0,0,1"
                 Padding="16,8" Visibility="Collapsed">
             <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="#FF7A5B00" />
         </Border>
 
         <!-- ==================== Hojas ==================== -->
-        <TabControl x:Name="Sheets" Grid.Row="3"
+        <TabControl x:Name="Sheets" Grid.Row="2"
                     Style="{StaticResource ExcelTabControlStyle}" Margin="8,6,8,0">
 
             <!-- ===== Proyecto ===== -->
@@ -253,8 +259,7 @@
                              barra de la ventana, no aqui. Aqui solo queda lo que es
                              propio de esta hoja. -->
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                            <Button Content="Importar desde Excel" Style="{StaticResource PrimaryButtonStyle}" Click="OnImportExcel" />
-                            <Button Content="Cargar ejemplo" Style="{StaticResource SecondaryButtonStyle}" Click="OnLoadSample" />
+                            <Button Content="Cargar ejemplo" Style="{StaticResource PrimaryButtonStyle}" Click="OnLoadSample" />
                             <Button Content="Limpiar todo" Style="{StaticResource SecondaryButtonStyle}" Click="OnClearAll" />
                         </StackPanel>
                     </StackPanel>
@@ -313,23 +318,10 @@
                                            FontSize="10.5" VerticalAlignment="Center" Margin="8,0,0,0"
                                            Foreground="{StaticResource MutedTextBrush}" />
 
-                                <Border Width="1" Background="{StaticResource BorderBrush}"
-                                        Margin="18,2,18,2" />
-
-                                <!-- La escala de DIBUJO vivia en la pestaña AutoCAD, que se
-                                     quito. Su sitio natural es este: junto a la tabla que
-                                     dibuja y al lado de la otra escala, para no tener que
-                                     cambiar de hoja para ajustarla. -->
-                                <TextBlock Text="Escala de dibujo:" FontWeight="SemiBold" FontSize="12"
-                                           VerticalAlignment="Center" Margin="0,0,8,0"
-                                           Foreground="{StaticResource BrandDarkBrush}" />
-                                <TextBox x:Name="ScaleBox" Text="0.01" Width="90" Height="26"
-                                         VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                         Padding="6,0"
-                                         ToolTip="0.01 = se captura en cm y se dibuja en metros, como la macro." />
-                                <TextBlock Text="(0.01 = cm capturados, metros dibujados)"
-                                           FontSize="10.5" VerticalAlignment="Center" Margin="8,0,0,0"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <!-- La escala de DIBUJO ya no se captura: el dibujo sale
+                                     siempre igual, asi que la casilla solo era una forma de
+                                     descuadrarlo. El valor vive en
+                                     MainWindow.EscalaDeDibujo, en un solo sitio. -->
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -911,7 +903,7 @@
         <!-- Aqui aterrizo lo unico del cuadro azul que no estaba en otro sitio: el
              estado de la licencia y la version. Ocupan el alto que ya gastaba esta
              barra, asi que la ventana gano el alto entero del encabezado. -->
-        <Border Grid.Row="4" Background="{StaticResource TabStripBrush}"
+        <Border Grid.Row="3" Background="{StaticResource TabStripBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
             <Grid>
                 <Grid.ColumnDefinitions>
