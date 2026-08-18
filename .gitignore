@@ -1,0 +1,40 @@
+# ===================== SECRETOS: NUNCA SUBIR =====================
+# La llave privada firma las licencias. Si se filtra, cualquiera puede
+# emitir licencias válidas y todo el esquema queda inservible.
+server/keys/
+*.pem
+server/.env
+.env
+
+# Base de datos de licencias (contiene datos de tus clientes)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ===================== .NET =====================
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+publish/
+*.user
+*.suo
+*.cache
+.vs/
+
+# ===================== Python =====================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===================== Sistema =====================
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Cad</RootNamespace>
+    <AssemblyName>CadLink.Cad</AssemblyName>
+
+    <!-- Enlace TARDÍO a AutoCAD: se usa 'dynamic' contra los objetos COM, así que
+         no hace falta referencia a ninguna DLL de Autodesk y el mismo binario
+         sirve para AutoCAD 2021 a 2026. Es exactamente lo que hace la macro de
+         VBA con GetObject / CreateObject. -->
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- No hace falta ninguna referencia externa. El soporte de 'dynamic' ya viene
+       incluido en .NET 8; el paquete Microsoft.CSharp solo era necesario en
+       .NET Framework. -->
+
+
+</Project>

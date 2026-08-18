@@ -1,0 +1,2474 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Shapes;
+using CadLink.App.Models;
+using CadLink.Cad;
+using CadLink.Etabs;
+using CadLink.Licensing;
+using Microsoft.Win32;
+
+// System.Windows.Shapes tambien define un tipo llamado Path, que choca con
+// System.IO.Path. Estos alias dejan claro cual se usa en cada caso: 'Path' es
+// el de archivos y 'FormaPath' es la figura de WPF que se usa en la vista previa.
+using Path = System.IO.Path;
+using FormaPath = System.Windows.Shapes.Path;
+
+namespace CadLink.App;
+
+/// <summary>
+/// Ventana principal, organizada en hojas al estilo de Excel, con los mismos
+/// módulos del libro original.
+/// </summary>
+public partial class MainWindow : Window
+{
+    private readonly LicenseService _licenseService;
+    private LicenseInfo _license;
+    private DatosProyecto _datos = DatosProyecto.CrearEjemplo();
+    private ModeloEtabs? _modeloEtabs;
+    private readonly VistaModelo _vista = new();
+    private Point _arrastreDesde;
+    private bool _girando;
+    private bool _moviendo;
+    private bool _listo;
+
+    public MainWindow(LicenseService licenseService, LicenseInfo license)
+    {
+        _licenseService = licenseService;
+        _license = license;
+
+        InitializeComponent();
+
+        LogoImage.Source = Branding.Logo;
+        Icon = Branding.Logo;
+
+        LlenarListas();
+
+        HeaderProduct.Text = AppInfo.ProductName;
+        HeaderVersion.Text = "v" + AppInfo.Version;
+
+        // Con el nombre de empresa vacío se oculta el renglón entero, para que no
+        // quede un hueco ni un guion suelto en el título.
+        var empresa = AppInfo.CompanyName;
+        var hayEmpresa = !string.IsNullOrWhiteSpace(empresa);
+
+        HeaderCompany.Text = hayEmpresa ? empresa : string.Empty;
+        HeaderCompany.Visibility = hayEmpresa ? Visibility.Visible : Visibility.Collapsed;
+
+        Title = hayEmpresa
+            ? $"{AppInfo.ProductName} — {empresa}"
+            : AppInfo.ProductName;
+
+        OutputPathBox.Text = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "secciones.dxf");
+
+        Enlazar();
+        AplicarLicencia(license);
+
+        PreviewCanvas.SizeChanged += (_, _) => DibujarVistaPrevia();
+        SeccionesGrid.SelectionChanged += OnSeccionSeleccionada;
+
+        // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
+        // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
+        // el primer layout.
+        Vista3DCanvas.SizeChanged += (_, _) => _vista.Dibujar3D(Vista3DCanvas);
+        ExtruidaCanvas.SizeChanged += (_, _) => _vista.DibujarExtruido(ExtruidaCanvas);
+        PlantaCanvas.SizeChanged += (_, _) => DibujarPlanta();
+
+        Loaded += (_, _) =>
+        {
+            DibujarVistaPrevia();
+            RedibujarVistas();
+        };
+
+        PrepararSolapa();
+
+        _listo = true;
+    }
+
+    /// <summary>
+    /// Estilo elegido para TODAS las secciones. Equivale a la celda AC de la hoja.
+    /// </summary>
+    private ModoSeccion ModoElegido =>
+        Tipo1Radio.IsChecked == true ? ModoSeccion.Tipo1SinRelleno : ModoSeccion.Tipo2Rellena;
+
+    /// <remarks>
+    /// El evento Checked de un RadioButton con IsChecked en el XAML se dispara
+    /// durante InitializeComponent, cuando los demás controles todavía no existen.
+    /// Esta bandera evita el fallo por referencia nula en ese primer disparo.
+    /// </remarks>
+    private void OnTipoSeccionCambiado(object sender, RoutedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        DibujarVistaPrevia();
+        StatusText.Text = ModoElegido == ModoSeccion.Tipo1SinRelleno
+            ? "Secciones tipo 1: no rellenas."
+            : "Secciones tipo 2: rellenas.";
+    }
+
+    // ======================================================================
+    // Datos
+    // ======================================================================
+
+    /// <summary>
+    /// Llena las listas desplegables de las celdas, al estilo de la validación de
+    /// datos de Excel.
+    /// </summary>
+    /// <remarks>
+    /// Las listas salen de <see cref="Varilla.DiametrosCm"/>, que es la misma tabla
+    /// que usa la validación. Así no pueden desincronizarse: si algún día se agrega
+    /// un diámetro, aparece en el desplegable y se acepta al validar, sin tocar dos
+    /// lugares.
+    /// </remarks>
+    private void LlenarListas()
+    {
+        var diametros = Varilla.DiametrosCm.Keys.ToList();
+
+        // Las columnas opcionales llevan una entrada vacía al principio, para
+        // poder dejarlas en blanco y que herede el diámetro del otro lecho.
+        var opcionales = new List<string> { string.Empty };
+        opcionales.AddRange(diametros);
+
+        ColElemento.ItemsSource = new[]
+        {
+            // COLUMNA y DADO van juntos porque son los dos verticales, y son los
+            // dos que llevan alzado vertical.
+            "COLUMNA", "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
+            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"
+        };
+
+        ColVarEsqSup.ItemsSource = diametros;
+        ColEstribo.ItemsSource = diametros;
+
+        ColVarIntSup.ItemsSource = opcionales;
+        ColVarEsqInf.ItemsSource = opcionales;
+        ColVarIntInf.ItemsSource = opcionales;
+        ColVarLateral.ItemsSource = opcionales;
+        ColVarDiamante.ItemsSource = opcionales;
+
+        ColDiamante.ItemsSource = new[] { string.Empty, "SI" };
+    }
+
+    private void Enlazar()
+    {
+        SeccionesGrid.ItemsSource = _datos.SeccionesConcreto;
+
+        // TIEMPO REAL. La colección solo avisa cuando se agrega o se quita una fila,
+        // no cuando se EDITA una celda. Sin esto, cambiar el gancho o la separación no
+        // movía la vista previa hasta que se seleccionaba otra sección: el usuario
+        // ajustaba un valor y no veía el efecto, que es justo lo que sirve la vista.
+        //
+        // Se escucha el PropertyChanged de cada fila, y se entra y se sale de la
+        // suscripción con la colección para no dejar filas escuchando después de
+        // borrarlas, que es una fuga de memoria y además redibuja de más.
+        _datos.SeccionesConcreto.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems is not null)
+            {
+                foreach (Row fila in e.OldItems)
+                {
+                    fila.PropertyChanged -= OnFilaEditada;
+                }
+            }
+
+            if (e.NewItems is not null)
+            {
+                foreach (Row fila in e.NewItems)
+                {
+                    fila.PropertyChanged += OnFilaEditada;
+                }
+            }
+
+            DatosCambiaron();
+        };
+
+        foreach (var fila in _datos.SeccionesConcreto)
+        {
+            fila.PropertyChanged += OnFilaEditada;
+        }
+
+        if (_datos.SeccionesConcreto.Count > 0)
+        {
+            SeccionesGrid.SelectedIndex = 0;
+        }
+
+        DatosCambiaron();
+    }
+
+    /// <summary>
+    /// Una celda cambió: se redibuja al instante.
+    /// </summary>
+    /// <remarks>
+    /// Solo se redibuja si la fila editada es la que se está viendo. En una hoja con
+    /// cien secciones, redibujar por cada tecla de cualquier fila haría la edición
+    /// pesada sin que se viera nada distinto.
+    /// </remarks>
+    private void OnFilaEditada(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        ActualizarTotales();
+
+        if (ReferenceEquals(sender, Seleccionada))
+        {
+            DibujarVistaPrevia();
+        }
+    }
+
+    private void DatosCambiaron()
+    {
+        ActualizarContadores();
+        ActualizarTotales();
+        DibujarVistaPrevia();
+    }
+
+    private void ActualizarContadores() =>
+        CountsText.Text = $"Secciones de concreto: {_datos.SeccionesConcreto.Count}";
+
+    private void ActualizarTotales()
+    {
+        var n = _datos.SeccionesConcreto.Count;
+        var vars = _datos.SeccionesConcreto.Sum(s => s.TotalVarillas);
+        var acero = _datos.SeccionesConcreto.Sum(s => s.AreaAceroCm2);
+
+        TotalesText.Text =
+            $"{n} seccion(es)   ·   {vars} varillas longitudinales   ·   " +
+            $"acero total {acero:N2} cm²";
+    }
+
+    private void OnSeccionSeleccionada(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, SeccionesGrid))
+        {
+            return;
+        }
+
+        DibujarVistaPrevia();
+    }
+
+    private SeccionConcretoRow? Seleccionada => SeccionesGrid.SelectedItem as SeccionConcretoRow;
+
+    // ======================================================================
+    // Licencia
+    // ======================================================================
+
+    private void AplicarLicencia(LicenseInfo info)
+    {
+        info = AppInfo.ConNombreDeEmpresa(info);
+        _license = info;
+
+        HeaderLicense.Text = info.StatusLine;
+        StatusText.Text = info.StatusLine;
+
+        LicTierText.Text = info.Tier switch
+        {
+            LicenseTier.Internal => "Interna, permanente (uso de la empresa)",
+            LicenseTier.Commercial => "Comercial (suscripción)",
+            LicenseTier.Trial => "Prueba gratuita",
+            _ => "Desconocida"
+        };
+
+        LicOrgText.Text = string.IsNullOrWhiteSpace(info.Organization) ? "—" : info.Organization;
+
+        LicExpiryText.Text = info.LicenseExpiresAt is null
+            ? "Sin fecha de vencimiento"
+            : $"{info.LicenseExpiresAt.Value.ToLocalTime():dd/MM/yyyy} " +
+              $"({info.DaysRemaining} día(s) restantes)";
+
+        LicTokenExpiryText.Text = info.TokenExpiresAt is null
+            ? "—"
+            : info.TokenExpiresAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.CurrentCulture);
+
+        LicFeaturesText.Text = info.Features.Count == 0 ? "—" : string.Join(", ", info.Features);
+        LicFingerprintText.Text = MachineFingerprint.ToDisplayGroups(info.Fingerprint);
+
+        if (info.State == LicenseState.Grace)
+        {
+            NoticeBar.Visibility = Visibility.Visible;
+            NoticeText.Text =
+                $"Trabajando sin conexión. Quedan {info.GraceDaysRemaining} día(s) antes de que " +
+                "el programa necesite validar la licencia en línea.";
+        }
+        else if (info.Tier == LicenseTier.Trial)
+        {
+            NoticeBar.Visibility = Visibility.Visible;
+            NoticeText.Text =
+                $"Versión de prueba: {info.DaysRemaining ?? 0} día(s) restantes. " +
+                "Si este es tu equipo, ejecuta 4-hazme-permanente.bat para dejarlo con " +
+                "licencia interna permanente.";
+        }
+        else
+        {
+            NoticeBar.Visibility = Visibility.Collapsed;
+        }
+
+        AplicarModulos();
+    }
+
+    /// <summary>
+    /// Habilita o deshabilita módulos según el tier.
+    /// </summary>
+    /// <remarks>
+    /// Esta comprobación es por comodidad del usuario, NO es la medida de
+    /// seguridad: ocultar un botón no impide nada. La validación real va también
+    /// en el código que ejecuta la función.
+    /// </remarks>
+    private void AplicarModulos()
+    {
+        var puedeDibujar = _license.HasFeature("export-dxf");
+        ExportButton.IsEnabled = puedeDibujar;
+        ExportHintText.Text = puedeDibujar
+            ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
+            : "La generación de dibujos no está incluida en la versión de prueba.";
+
+        var puedeEtabs = _license.HasFeature("etabs");
+        EtabsTab.IsEnabled = puedeEtabs;
+        if (!puedeEtabs)
+        {
+            EtabsStatusText.Text = "El módulo de ETABS no está incluido en tu licencia.";
+        }
+    }
+
+    private async void OnRevalidate(object sender, RoutedEventArgs e)
+    {
+        LicMessageText.Text = "Contactando al servidor de licencias…";
+        var info = await _licenseService.EvaluateAsync().ConfigureAwait(true);
+        AplicarLicencia(info);
+        LicMessageText.Text = info.IsUsable
+            ? "Licencia revalidada correctamente."
+            : "No se pudo revalidar: " + info.Message;
+    }
+
+    private void OnCopyFingerprint(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(_licenseService.Fingerprint);
+            LicMessageText.Text = "Huella copiada al portapapeles.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            LicMessageText.Text = "No se pudo acceder al portapapeles. Copia el texto con Ctrl+C.";
+        }
+    }
+
+    private void OnDeactivate(object sender, RoutedEventArgs e)
+    {
+        var confirmar = MessageBox.Show(
+            "Se borrará la licencia guardada en este equipo y el programa se cerrará.\n\n" +
+            "¿Continuar?",
+            AppInfo.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (confirmar != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _licenseService.Deactivate();
+        MessageBox.Show("Licencia liberada. El programa se cerrará.",
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+        Application.Current.Shutdown();
+    }
+
+    // ======================================================================
+    // Proyecto
+    // ======================================================================
+
+    private void OnBrowseExcel(object sender, RoutedEventArgs e)
+    {
+        var dialogo = new OpenFileDialog
+        {
+            Title = "Selecciona el libro de Excel",
+            Filter = "Libros de Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Todos los archivos (*.*)|*.*"
+        };
+
+        if (dialogo.ShowDialog(this) == true)
+        {
+            // La casilla de la ruta ya no esta en la interfaz: los datos del
+            // proyecto los lleva la solapa. La ruta se recuerda aqui.
+            _rutaExcel = dialogo.FileName;
+            StatusText.Text = "Libro seleccionado: " + Path.GetFileName(dialogo.FileName);
+        }
+    }
+
+    private void OnImportExcel(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_rutaExcel))
+        {
+            MessageBox.Show("Selecciona primero el libro de Excel.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // ================== PENDIENTE DE IMPLEMENTAR ==================
+        // Leer la hoja "Secciones Estructurales Concreto" con ClosedXML,
+        // columnas A a V mas AC, segun docs/macro-secciones-concreto.md
+        // seccion 1, y llenar _datos.SeccionesConcreto.
+        // ==============================================================
+
+        MessageBox.Show(
+            "El importador de Excel todavía no está implementado.\n\n" +
+            "Es el siguiente paso: leer la hoja de secciones con sus columnas A a V.",
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OnLoadSample(object sender, RoutedEventArgs e)
+    {
+        _datos = DatosProyecto.CrearEjemplo();
+        Enlazar();
+        StatusText.Text = "Ejemplo cargado.";
+    }
+
+    private void OnClearAll(object sender, RoutedEventArgs e)
+    {
+        var confirmar = MessageBox.Show("Se borrarán todos los datos capturados. ¿Continuar?",
+            AppInfo.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (confirmar != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _datos = new DatosProyecto();
+        Enlazar();
+        StatusText.Text = "Datos borrados.";
+    }
+
+    // ======================================================================
+    // ETABS
+    // ======================================================================
+
+    private void OnTestEtabs(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            using var cx = new EtabsConnection();
+            cx.Conectar();
+
+            EtabsStatusText.Text =
+                "Conexión correcta.\n\n" +
+                $"Programa : {cx.Programa}\n" +
+                $"Modelo   : {cx.Modelo}\n\n" +
+                "Ya puedes pulsar 'Leer modelo'.";
+
+            StatusText.Text = "ETABS conectado.";
+        }
+        catch (EtabsException ex)
+        {
+            EtabsStatusText.Text = "No se pudo conectar.\n\n" + ex.Message;
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>
+    /// Lee las etiquetas de pier de los muros. Es una lectura aparte, a petición.
+    /// </summary>
+    /// <remarks>
+    /// No se hace junto con el modelo a propósito: recorrer todos los paños de muro
+    /// preguntando su pier tarda, y en un modelo sin piers asignados no aporta nada.
+    /// </remarks>
+    private void OnLeerPiers(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Cursor = Cursors.Wait;
+            EtabsStatusText.Text = "Leyendo los piers de los muros…";
+
+            using var cx = new EtabsConnection();
+            cx.Conectar();
+
+            var piers = EtabsPiers.Leer(cx);
+
+            PiersGrid.ItemsSource = piers.Piers;
+
+            // La tabla aparece solo cuando hay algo que enseñar. Una tabla vacía
+            // encima de la de elementos solo estorba.
+            var hay = piers.Piers.Count > 0;
+            PiersGrid.Visibility = hay ? Visibility.Visible : Visibility.Collapsed;
+            PiersTitulo.Visibility = hay ? Visibility.Visible : Visibility.Collapsed;
+
+            EtabsStatusText.Text = piers.Resumen();
+            StatusText.Text = hay
+                ? $"Piers leídos: {piers.Etiquetas.Count} etiqueta(s), " +
+                  $"{piers.Piers.Count} renglón(es)."
+                : "No se encontró ningún pier asignado en el modelo.";
+        }
+        catch (EtabsException ex)
+        {
+            EtabsStatusText.Text = "No se pudieron leer los piers.\n\n" + ex.Message;
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    private void OnImportEtabs(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Cursor = Cursors.Wait;
+            EtabsStatusText.Text = "Leyendo el modelo…";
+
+            using var cx = new EtabsConnection();
+            cx.Conectar();
+
+            var modelo = EtabsReader.Leer(cx);
+            _modeloEtabs = modelo;
+
+            EtabsGrid.ItemsSource = modelo.Elementos;
+            EtabsStatusText.Text = modelo.Resumen();
+            StatusText.Text =
+                $"Modelo leído: {modelo.Elementos.Count} elementos en {modelo.Niveles.Count} nivel(es).";
+
+            // El visor se alimenta del mismo modelo que la cuadrícula
+            _vista.Modelo = modelo;
+            _vista.Reiniciar();
+            PoblarNiveles(modelo);
+            RedibujarVistas();
+        }
+        catch (EtabsException ex)
+        {
+            EtabsStatusText.Text = "No se pudo leer el modelo.\n\n" + ex.Message;
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>
+    /// Dibuja los alzados de todas las filas en AutoCAD.
+    /// </summary>
+    /// <remarks>
+    /// Va en la misma pestaña que las secciones porque se alimenta de la misma
+    /// tabla: la macro de alzados lee las mismas columnas A–V más la W.
+    /// </remarks>
+    private void OnExportAlzados(object sender, RoutedEventArgs e)
+    {
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!Revisar(out var problemas))
+        {
+            MessageBox.Show(
+                "Corrige esto antes de generar los alzados:\n\n" + string.Join("\n", problemas),
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            var escala = LeerEscala();
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new AlzadoDrawer(doc, escala)
+            {
+                EscalaHatch = LeerEscalaHatch()
+            };
+
+            // Capas de varilla, estilos de texto y de cota: los mismos de la sección
+            new SeccionDrawer(doc, escala).AsegurarCapas(ClavesDeVarillaUsadas());
+
+            // Y la capa ALZADOS, que solo usa el alzado
+            dibujante.AsegurarCapas();
+
+            var x = 0d;
+            var dibujados = 0;
+            var omitidos = new List<string>();
+
+            foreach (var r in _datos.SeccionesConcreto)
+            {
+                // Solo trabes, contratrabes, columnas y dados llevan alzado.
+                if (TipoDe(r.Elemento, r.Id) is null)
+                {
+                    omitidos.Add($"{r.Elemento} \"{r.Id}\"");
+                    continue;
+                }
+
+                var a = AFormatoAlzado(r);
+
+                // DibujarElemento coloca la SECCION al costado del alzado y devuelve
+                // la X del elemento siguiente. El avance no se calcula aquí a
+                // propósito: depende del tipo de elemento y son cinco constantes de
+                // la macro. Vive en AlzadoLayout, comprobado contra el VBA.
+                var siguiente = dibujante.DibujarElemento(a, x);
+
+                if (siguiente > x)
+                {
+                    dibujados++;
+                    x = siguiente;
+                }
+            }
+
+            AcadConnection.Retry(() => { app.ZoomExtents(); });
+
+            var fallos = dibujante.Fallos;
+
+            StatusText.Text = $"Dibujados {dibujados} alzado(s) en AutoCAD.";
+
+            // Los omitidos se dicen, no se callan: si alguien esperaba el alzado de
+            // un castillo, tiene que enterarse de por qué no salió.
+            var nota = omitidos.Count == 0
+                ? string.Empty
+                : $"\n\nSin alzado ({omitidos.Count}), porque solo lo llevan trabes, " +
+                  "contratrabes, columnas y dados:\n  " + string.Join("\n  ", omitidos);
+
+            if (fallos.Count == 0)
+            {
+                MessageBox.Show(
+                    $"Listo.\n\n{dibujados} alzado(s) dibujados.\n\n" +
+                    "Cada alzado quedó en su propio bloque, y las cotas por fuera." + nota,
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
+
+                ExportHintText.Text =
+                    "AVISOS DEL ULTIMO ALZADO (" + fallos.Count + "):" +
+                    Environment.NewLine + detalle;
+
+                MessageBox.Show(
+                    $"{dibujados} alzado(s) dibujados, pero hubo {fallos.Count} fallo(s) " +
+                    "que se toleraron:\n\n" + detalle,
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (AcadNotAvailableException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("No se pudieron generar los alzados:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    // ======================================================================
+    // Visor del modelo: 3D y planta
+    // ======================================================================
+
+    /// <summary>Llena la lista de niveles, con una opción para ver todos.</summary>
+    private void PoblarNiveles(ModeloEtabs modelo)
+    {
+        NivelPlantaCombo.Items.Clear();
+        NivelPlantaCombo.Items.Add("(todos los niveles)");
+
+        // Se toman los niveles del modelo y, además, los que aparecen asignados a
+        // los elementos: si el modelo no expone el objeto Story, la lista de
+        // niveles llega vacía y sin esto la vista en planta quedaría inservible.
+        var nombres = modelo.Niveles
+            .Select(n => n.Nombre)
+            .Concat(modelo.Elementos.Select(el => el.Story))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var n in nombres)
+        {
+            NivelPlantaCombo.Items.Add(n);
+        }
+
+        // Arranca en el nivel más alto, que suele ser el de interés
+        NivelPlantaCombo.SelectedIndex = nombres.Count > 0 ? 1 : 0;
+    }
+
+    /// <summary>Nivel elegido, o <c>null</c> cuando están seleccionados todos.</summary>
+    private string? NivelElegido =>
+        NivelPlantaCombo.SelectedIndex <= 0
+            ? null
+            : NivelPlantaCombo.SelectedItem?.ToString();
+
+    private void RedibujarVistas()
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        _vista.VerColumnas = VerColumnasChk.IsChecked == true;
+        _vista.VerTrabes = VerTrabesChk.IsChecked == true;
+        _vista.VerDiagonales = VerDiagonalesChk.IsChecked == true;
+        _vista.VerMuros = VerMurosChk.IsChecked == true;
+        _vista.VerLosas = VerLosasChk.IsChecked == true;
+
+        _vista.Dibujar3D(Vista3DCanvas);
+        _vista.DibujarExtruido(ExtruidaCanvas);
+
+        // La planta va aparte: vive en el modulo de planos y usa sus propias
+        // casillas, asi que se dibuja con DibujarPlanta y no aqui.
+        DibujarPlanta();
+    }
+
+    private void OnFiltroVistaCambiado(object sender, RoutedEventArgs e) => RedibujarVistas();
+
+    /// <summary>
+    /// Filtros de la planta, que ahora vive en su propio módulo.
+    /// </summary>
+    /// <remarks>
+    /// La planta tiene sus <b>propias</b> casillas y no las del visor de ETABS: son
+    /// dos pestañas distintas y compartirlas obligaría al usuario a ir a la otra para
+    /// cambiar lo que está viendo aquí. Las diagonales no aparecen porque en planta se
+    /// proyectan como una línea suelta que no dice nada.
+    /// </remarks>
+    private void OnFiltroPlanoCambiado(object sender, RoutedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        DibujarPlanta();
+    }
+
+    // ======================================================================
+    // Guardar y abrir el trabajo (.clk)
+    // ======================================================================
+
+    /// <summary>Archivo abierto, para que «Guardar» no vuelva a preguntar.</summary>
+    private string _archivoActual = string.Empty;
+
+    private void OnGuardarTrabajo(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_archivoActual))
+        {
+            OnGuardarComo(sender, e);
+            return;
+        }
+
+        GuardarEn(_archivoActual);
+    }
+
+    private void OnGuardarComo(object sender, RoutedEventArgs e)
+    {
+        var dialogo = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Guardar el trabajo",
+            Filter = ArchivoProyecto.Filtro,
+            DefaultExt = ArchivoProyecto.Extension,
+
+            // Se propone el nombre de la obra: es lo que el usuario reconoce.
+            FileName = string.IsNullOrWhiteSpace(_juego.Solapa.Obra)
+                ? "trabajo" + ArchivoProyecto.Extension
+                : _juego.Solapa.Obra + ArchivoProyecto.Extension
+        };
+
+        if (dialogo.ShowDialog(this) == true)
+        {
+            GuardarEn(dialogo.FileName);
+        }
+    }
+
+    private void GuardarEn(string ruta)
+    {
+        try
+        {
+            ArchivoProyecto.Guardar(ruta, ArmarProyecto());
+
+            _archivoActual = ruta;
+            ArchivoText.Text = "Guardado: " + Path.GetFileName(ruta);
+            StatusText.Text = $"Trabajo guardado en {Path.GetFileName(ruta)}.";
+        }
+        catch (Exception ex)
+        {
+            // Se dice la RUTA y el motivo: "no se pudo guardar" no deja hacer nada.
+            MessageBox.Show(
+                $"No se pudo guardar en:\n{ruta}\n\n{ex.Message}",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OnAbrirTrabajo(object sender, RoutedEventArgs e)
+    {
+        var dialogo = new OpenFileDialog
+        {
+            Title = "Abrir un trabajo",
+            Filter = ArchivoProyecto.Filtro,
+            DefaultExt = ArchivoProyecto.Extension
+        };
+
+        if (dialogo.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            AplicarProyecto(ArchivoProyecto.Leer(dialogo.FileName));
+
+            _archivoActual = dialogo.FileName;
+            ArchivoText.Text = "Abierto: " + Path.GetFileName(dialogo.FileName);
+            StatusText.Text = $"Trabajo abierto: {Path.GetFileName(dialogo.FileName)}.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "No se pudo abrir el trabajo.\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Recoge de la interfaz todo lo que hay que guardar.</summary>
+    private ProyectoGuardado ArmarProyecto()
+    {
+        var p = new ProyectoGuardado
+        {
+            Aplicacion = AppInfo.ProductName,
+            Calculista = _juego.Solapa.Calculista,
+            Propietario = _juego.Solapa.Propietario,
+            Ubicacion = _juego.Solapa.Ubicacion,
+            Obra = _juego.Solapa.Obra,
+            Dibujo = _juego.Solapa.Dibujo,
+            Fecha = _juego.Solapa.Fecha,
+            Escala = _juego.Solapa.Escala,
+            Acotacion = _juego.Solapa.Acotacion,
+            EscalaDibujo = LeerEscala(),
+            EscalaHatch = LeerEscalaHatch(),
+            ModoSeccion = (int)ModoElegido
+        };
+
+        foreach (var pl in _juego.Planos)
+        {
+            p.Planos.Add(new PlanoGuardado
+            {
+                Clave = pl.Clave, Contiene = pl.Contiene, Escala = pl.Escala
+            });
+        }
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            p.Secciones.Add(new SeccionGuardada
+            {
+                Elemento = s.Elemento, Id = s.Id,
+                BaseCm = s.BaseCm, AlturaCm = s.AlturaCm,
+                NEsqSup = s.NEsqSup, DiamEsqSup = s.DiamEsqSup,
+                NIntSup = s.NIntSup, DiamIntSup = s.DiamIntSup,
+                NEsqInf = s.NEsqInf, DiamEsqInf = s.DiamEsqInf,
+                NIntInf = s.NIntInf, DiamIntInf = s.DiamIntInf,
+                NInter = s.NInter, DiamInter = s.DiamInter,
+                RecubrimientoCm = s.RecubrimientoCm,
+                Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
+                EstriboDiamante = s.EstriboDiamante,
+                DiamEstriboDiamante = s.DiamEstriboDiamante,
+                GanchoCm = s.GanchoCm, Fc = s.Fc, Escala = s.Escala,
+                LongitudM = s.LongitudM
+            });
+        }
+
+        return p;
+    }
+
+    /// <summary>Vuelca un proyecto leído en la interfaz.</summary>
+    /// <remarks>
+    /// Se apaga <c>_listo</c> mientras se cargan los datos y se vuelve a encender al
+    /// final. Sin eso, cada renglón que entra dispara la vista previa y el recuento, y
+    /// abrir un trabajo de cien secciones redibuja cien veces para nada.
+    /// </remarks>
+    private void AplicarProyecto(ProyectoGuardado p)
+    {
+        var estaba = _listo;
+        _listo = false;
+
+        try
+        {
+            _juego.Solapa.Calculista = p.Calculista;
+            _juego.Solapa.Propietario = p.Propietario;
+            _juego.Solapa.Ubicacion = p.Ubicacion;
+            _juego.Solapa.Obra = p.Obra;
+            _juego.Solapa.Dibujo = p.Dibujo;
+            _juego.Solapa.Fecha = p.Fecha;
+            _juego.Solapa.Escala = p.Escala;
+            _juego.Solapa.Acotacion = p.Acotacion;
+
+            CalculistaBox.Text = p.Calculista;
+            PropietarioBox.Text = p.Propietario;
+            UbicacionBox.Text = p.Ubicacion;
+            ObraBox.Text = p.Obra;
+            DibujoBox.Text = p.Dibujo;
+            FechaPicker.SelectedDate = p.Fecha;
+            EscalaSolapaBox.Text = p.Escala;
+
+            HatchScaleBox.Text = p.EscalaHatch.ToString(
+                "0.######", CultureInfo.InvariantCulture);
+
+            _juego.Planos.Clear();
+
+            foreach (var pl in p.Planos)
+            {
+                _juego.Agregar(pl.Contiene, pl.Clave).Escala = pl.Escala;
+            }
+
+            _datos.SeccionesConcreto.Clear();
+
+            foreach (var s in p.Secciones)
+            {
+                _datos.SeccionesConcreto.Add(new SeccionConcretoRow
+                {
+                    Elemento = s.Elemento, Id = s.Id,
+                    BaseCm = s.BaseCm, AlturaCm = s.AlturaCm,
+                    NEsqSup = s.NEsqSup, DiamEsqSup = s.DiamEsqSup,
+                    NIntSup = s.NIntSup, DiamIntSup = s.DiamIntSup,
+                    NEsqInf = s.NEsqInf, DiamEsqInf = s.DiamEsqInf,
+                    NIntInf = s.NIntInf, DiamIntInf = s.DiamIntInf,
+                    NInter = s.NInter, DiamInter = s.DiamInter,
+                    RecubrimientoCm = s.RecubrimientoCm,
+                    Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
+                    EstriboDiamante = s.EstriboDiamante,
+                    DiamEstriboDiamante = s.DiamEstriboDiamante,
+                    GanchoCm = s.GanchoCm,
+
+                    // El f'c va DESPUES del elemento en el inicializador: al
+                    // escribirlo se marca como puesto a mano, y asi el valor
+                    // guardado no lo pisa el automatico del elemento.
+                    Fc = s.Fc,
+                    Escala = s.Escala, LongitudM = s.LongitudM
+                });
+            }
+        }
+        finally
+        {
+            _listo = estaba;
+        }
+
+        if (_datos.SeccionesConcreto.Count > 0)
+        {
+            SeccionesGrid.SelectedIndex = 0;
+        }
+
+        DatosCambiaron();
+    }
+
+    // ======================================================================
+    // Solapa y juego de planos
+    // ======================================================================
+
+    private readonly JuegoDePlanos _juego = new();
+
+    /// <summary>Libro de Excel elegido. Ya no hay casilla para el en la interfaz.</summary>
+    private string _rutaExcel = string.Empty;
+
+    /// <summary>
+    /// Enlaza la solapa y el juego de planos. Se llama una vez, al arrancar.
+    /// </summary>
+    /// <remarks>
+    /// Los campos se enlazan a mano y no con <c>Binding</c> del XAML a propósito: así
+    /// el modelo de la solapa no depende de que la ventana exista, y el día que estos
+    /// datos haya que escribirlos en el cuadro de rótulos de AutoCAD se leen del
+    /// modelo y no de los controles.
+    /// </remarks>
+    private void PrepararSolapa()
+    {
+        PlanosGrid.ItemsSource = _juego.Planos;
+
+        // El resumen se actualiza con la lista, no al pulsar cada botón: así no hay
+        // forma de cambiar el juego por un camino que se olvide de refrescarlo.
+        _juego.Planos.CollectionChanged += (_, _) => ResumenPlanos();
+
+        FechaPicker.SelectedDate = _juego.Solapa.Fecha;
+        EscalaSolapaBox.Text = _juego.Solapa.Escala;
+
+        CalculistaBox.TextChanged += (_, _) => _juego.Solapa.Calculista = CalculistaBox.Text;
+        PropietarioBox.TextChanged += (_, _) => _juego.Solapa.Propietario = PropietarioBox.Text;
+        UbicacionBox.TextChanged += (_, _) => _juego.Solapa.Ubicacion = UbicacionBox.Text;
+        ObraBox.TextChanged += (_, _) => _juego.Solapa.Obra = ObraBox.Text;
+        DibujoBox.TextChanged += (_, _) => _juego.Solapa.Dibujo = DibujoBox.Text;
+        EscalaSolapaBox.TextChanged += (_, _) => _juego.Solapa.Escala = EscalaSolapaBox.Text;
+
+        FechaPicker.SelectedDateChanged += (_, _) =>
+        {
+            if (FechaPicker.SelectedDate is not null)
+            {
+                _juego.Solapa.Fecha = FechaPicker.SelectedDate.Value;
+            }
+        };
+
+        AcotacionCombo.SelectionChanged += (_, _) =>
+        {
+            if (AcotacionCombo.SelectedItem is ComboBoxItem it)
+            {
+                _juego.Solapa.Acotacion = it.Content?.ToString() ?? "cm";
+            }
+        };
+
+        ResumenPlanos();
+    }
+
+    private void ResumenPlanos()
+    {
+        var n = _juego.Planos.Count;
+
+        PlanosResumenText.Text = n == 0
+            ? "Sin planos todavía."
+            : n == 1 ? "1 plano en el juego." : $"{n} planos en el juego.";
+    }
+
+    private void OnAgregarPlano(object sender, RoutedEventArgs e)
+    {
+        // El número y el total los pone el juego; aquí solo se agrega.
+        var p = _juego.Agregar();
+        PlanosGrid.SelectedItem = p;
+        PlanosGrid.ScrollIntoView(p);
+    }
+
+    private void OnQuitarPlano(object sender, RoutedEventArgs e)
+    {
+        if (PlanosGrid.SelectedItem is PlanoRow p)
+        {
+            _juego.Planos.Remove(p);
+        }
+    }
+
+    private void OnSubirPlano(object sender, RoutedEventArgs e) => MoverPlano(-1);
+
+    private void OnBajarPlano(object sender, RoutedEventArgs e) => MoverPlano(+1);
+
+    /// <summary>
+    /// Sube o baja el plano seleccionado. Renumera solo, por la colección.
+    /// </summary>
+    private void MoverPlano(int paso)
+    {
+        if (PlanosGrid.SelectedItem is not PlanoRow p)
+        {
+            return;
+        }
+
+        var i = _juego.Planos.IndexOf(p);
+        var j = i + paso;
+
+        if (i < 0 || j < 0 || j >= _juego.Planos.Count)
+        {
+            return;
+        }
+
+        _juego.Planos.Move(i, j);
+
+        // Move NO dispara Add ni Remove, así que la renumeración hay que pedirla:
+        // sin esto, reordenar dejaba los números en su sitio anterior.
+        _juego.Renumerar();
+
+        PlanosGrid.SelectedItem = p;
+    }
+
+    /// <summary>
+    /// Lee el modelo de ETABS y arma un plano por nivel.
+    /// </summary>
+    /// <remarks>
+    /// Es el arranque del juego de planos: en un edificio, cada nivel es un plano de
+    /// planta. Los planos se agregan al juego, así que la numeración sale puesta.
+    /// </remarks>
+    private void OnLeerPlantas(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            using var cx = new EtabsConnection();
+            cx.Conectar();
+
+            var modelo = EtabsReader.Leer(cx);
+            _modeloEtabs = modelo;
+            _vista.Modelo = modelo;
+            _vista.Reiniciar();
+            PoblarNiveles(modelo);
+            DibujarPlanta();
+
+            // Un plano por nivel, del más alto al más bajo, que es el orden en que se
+            // arma un juego de planos estructurales.
+            var niveles = modelo.Niveles
+                .OrderByDescending(n => n.ElevacionM)
+                .ToList();
+
+            var nuevos = 0;
+
+            foreach (var n in niveles)
+            {
+                var contiene = $"PLANTA {n.Nombre}";
+
+                // No se duplica lo que ya está: leer dos veces no debe dejar el juego
+                // con cada planta repetida.
+                if (_juego.Planos.Any(p =>
+                        string.Equals(p.Contiene, contiene, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                _juego.Agregar(contiene);
+                nuevos++;
+            }
+
+            PlantasResumenText.Text =
+                $"{modelo.Niveles.Count} nivel(es) leídos · {nuevos} plano(s) agregados al juego.";
+
+            StatusText.Text = $"Plantas leídas: {modelo.Niveles.Count} nivel(es).";
+
+            if (modelo.Niveles.Count == 0)
+            {
+                PlanoHintText.Text =
+                    "ETABS no reportó niveles. Revisa la pestaña de ETABS: ahí queda el " +
+                    "detalle de por qué falló cada miembro del modelo.";
+            }
+        }
+        catch (EtabsException ex)
+        {
+            PlantasResumenText.Text = "No se pudieron leer las plantas.";
+            PlanoHintText.Text = ex.Message;
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>Redibuja la planta con los filtros de su propia pestaña.</summary>
+    private void DibujarPlanta()
+    {
+        _vista.VerColumnas = VerColumnasPlanoChk.IsChecked == true;
+        _vista.VerTrabes = VerTrabesPlanoChk.IsChecked == true;
+        _vista.VerMuros = VerMurosPlanoChk.IsChecked == true;
+        _vista.VerLosas = VerLosasPlanoChk.IsChecked == true;
+        _vista.VerDiagonales = false;
+
+        _vista.DibujarPlanta(PlantaCanvas, NivelElegido);
+
+        // Y se dejan como estaban, para que el visor 3D no herede estos filtros: es
+        // el MISMO objeto de vista, así que sin restaurarlos, tocar una casilla aquí
+        // cambiaría en silencio lo que se ve en la pestaña de ETABS.
+        RestaurarFiltrosDelVisor();
+    }
+
+    private void RestaurarFiltrosDelVisor()
+    {
+        _vista.VerColumnas = VerColumnasChk.IsChecked == true;
+        _vista.VerTrabes = VerTrabesChk.IsChecked == true;
+        _vista.VerDiagonales = VerDiagonalesChk.IsChecked == true;
+        _vista.VerMuros = VerMurosChk.IsChecked == true;
+        _vista.VerLosas = VerLosasChk.IsChecked == true;
+    }
+
+    /// <summary>
+    /// Escala del patrón AR-CONC que se escribió en la casilla.
+    /// </summary>
+    /// <remarks>
+    /// Se acepta coma o punto como separador decimal: en un teclado en español la
+    /// coma es lo natural, y con <c>InvariantCulture</c> a secas «0,0006» se leería
+    /// como 6 y saldría un rayado absurdo.
+    /// </remarks>
+    private double LeerEscalaHatch()
+    {
+        var texto = (HatchScaleBox.Text ?? string.Empty).Trim().Replace(',', '.');
+
+        if (double.TryParse(texto, NumberStyles.Any, CultureInfo.InvariantCulture, out var v)
+            && v > 0)
+        {
+            return v;
+        }
+
+        // El mismo valor por omision que EscalaPatronBase en SeccionDrawer: el
+        // 0.0003 de la macro. Tienen que coincidir, o lo que el usuario ve en la
+        // casilla no es lo que se dibuja cuando la deja en blanco.
+        return 0.0003;
+    }
+
+    private void OnEscalaHatchCambiada(object sender, RoutedEventArgs e)
+    {
+        // Se normaliza lo escrito para que se vea qué valor se va a usar de verdad
+        HatchScaleBox.Text =
+            LeerEscalaHatch().ToString("0.######", CultureInfo.InvariantCulture);
+    }
+
+    private void OnVistaTabCambiada(object sender, SelectionChangedEventArgs e)
+    {
+        // Solo interesa el cambio de las pestañas del visor, no el de los
+        // controles de dentro, que propagan el mismo evento.
+        if (ReferenceEquals(e.OriginalSource, VistaTabs))
+        {
+            RedibujarVistas();
+        }
+    }
+
+    private void OnNivelPlantaCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        if (_listo)
+        {
+            DibujarPlanta();
+        }
+    }
+
+    /// <summary>Vistas predefinidas, con los mismos nombres que usa ETABS.</summary>
+    private void OnVistaPreset(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b)
+        {
+            return;
+        }
+
+        switch (b.Tag?.ToString())
+        {
+            case "ISO":
+                _vista.Azimut = 35;
+                _vista.Elevacion = 22;
+                break;
+
+            case "FRENTE":
+                _vista.Azimut = 0;
+                _vista.Elevacion = 0;
+                break;
+
+            case "LADO":
+                _vista.Azimut = 90;
+                _vista.Elevacion = 0;
+                break;
+
+            case "PLANTA":
+                // 90° de elevación mira desde arriba: es la planta
+                _vista.Azimut = 0;
+                _vista.Elevacion = 90;
+                break;
+        }
+
+        _vista.Zoom = 1;
+        _vista.PanX = 0;
+        _vista.PanY = 0;
+        RedibujarVistas();
+    }
+
+    private void OnVistaMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Canvas lienzo)
+        {
+            return;
+        }
+
+        _arrastreDesde = e.GetPosition(lienzo);
+
+        // Girar tiene sentido en las dos vistas de volumen; en planta, no.
+        _girando = e.ChangedButton == MouseButton.Left
+                   && (ReferenceEquals(lienzo, Vista3DCanvas)
+                       || ReferenceEquals(lienzo, ExtruidaCanvas));
+        _moviendo = e.ChangedButton == MouseButton.Right;
+
+        if (_girando || _moviendo)
+        {
+            lienzo.CaptureMouse();
+        }
+    }
+
+    private void OnVistaMouseMove(object sender, MouseEventArgs e)
+    {
+        if (sender is not Canvas lienzo || (!_girando && !_moviendo))
+        {
+            return;
+        }
+
+        var p = e.GetPosition(lienzo);
+        var dx = p.X - _arrastreDesde.X;
+        var dy = p.Y - _arrastreDesde.Y;
+        _arrastreDesde = p;
+
+        if (_girando)
+        {
+            _vista.Azimut += dx * 0.5;
+
+            // La elevación se limita: pasando de ±90° la vista se voltea y se
+            // pierde la noción de qué es arriba.
+            _vista.Elevacion = Math.Clamp(_vista.Elevacion + (dy * 0.4), -89, 89);
+        }
+        else
+        {
+            _vista.PanX += dx;
+            _vista.PanY += dy;
+        }
+
+        // Al arrastrar solo se redibuja el lienzo que se está manipulando: hacerlo
+        // en los dos duplicaría el trabajo en cada movimiento del mouse.
+        // Se redibuja SOLO el lienzo que se esta manipulando. Hacerlo en los tres
+        // multiplicaria el trabajo en cada movimiento del mouse, y la extruida es la
+        // mas caras de las tres: pinta seis caras por barra.
+        if (ReferenceEquals(lienzo, Vista3DCanvas))
+        {
+            _vista.Dibujar3D(Vista3DCanvas);
+        }
+        else if (ReferenceEquals(lienzo, ExtruidaCanvas))
+        {
+            _vista.DibujarExtruido(ExtruidaCanvas);
+        }
+        else
+        {
+            DibujarPlanta();
+        }
+    }
+
+    private void OnVistaMouseUp(object sender, MouseEventArgs e)
+    {
+        if (sender is Canvas lienzo && (_girando || _moviendo))
+        {
+            lienzo.ReleaseMouseCapture();
+        }
+
+        _girando = false;
+        _moviendo = false;
+    }
+
+    private void OnVistaWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not Canvas lienzo)
+        {
+            return;
+        }
+
+        var factor = e.Delta > 0 ? 1.12 : 1 / 1.12;
+        _vista.Zoom = Math.Clamp(_vista.Zoom * factor, 0.08, 60);
+
+        // Se redibuja SOLO el lienzo que se esta manipulando. Hacerlo en los tres
+        // multiplicaria el trabajo en cada movimiento del mouse, y la extruida es la
+        // mas caras de las tres: pinta seis caras por barra.
+        if (ReferenceEquals(lienzo, Vista3DCanvas))
+        {
+            _vista.Dibujar3D(Vista3DCanvas);
+        }
+        else if (ReferenceEquals(lienzo, ExtruidaCanvas))
+        {
+            _vista.DibujarExtruido(ExtruidaCanvas);
+        }
+        else
+        {
+            DibujarPlanta();
+        }
+
+        // Sin esto la rueda además desplaza el ScrollViewer de la pestaña y la
+        // vista se va de la pantalla mientras se hace zoom.
+        e.Handled = true;
+    }
+
+    // ======================================================================
+    // AutoCAD
+    // ======================================================================
+
+    private void OnBrowseOutput(object sender, RoutedEventArgs e)
+    {
+        var dialogo = new SaveFileDialog
+        {
+            Title = "Archivo de salida",
+            Filter = "Archivos DXF (*.dxf)|*.dxf|Dibujos de AutoCAD (*.dwg)|*.dwg",
+            FileName = Path.GetFileName(OutputPathBox.Text)
+        };
+
+        if (dialogo.ShowDialog(this) == true)
+        {
+            OutputPathBox.Text = dialogo.FileName;
+        }
+    }
+
+    private void OnExport(object sender, RoutedEventArgs e)
+    {
+        // Segunda comprobación, en el punto de ejecución.
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!Revisar(out var problemas))
+        {
+            MessageBox.Show(
+                "Corrige esto antes de generar el dibujo:\n\n" + string.Join("\n", problemas),
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (ModeDxfRadio.IsChecked == true)
+        {
+            MessageBox.Show(
+                "La escritura directa de DXF todavía no está implementada.\n\n" +
+                "Usa la primera opción, dibujar en la sesión abierta de AutoCAD.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            var escala = LeerEscala();
+
+            // launchIfMissing en false a proposito: arrancar AutoCAD tarda mucho y
+            // consume una licencia. Mejor pedirle al usuario que lo abra.
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new SeccionDrawer(doc, escala)
+            {
+                EscalaHatch = LeerEscalaHatch(),
+                Redibujar = RedibujarChk.IsChecked == true
+            };
+
+            dibujante.AsegurarCapas(ClavesDeVarillaUsadas());
+
+            // Se empieza después de lo que ya esté dibujado, para no encimarlo
+            var x = dibujante.PosicionInicialX();
+            var entidades = 0;
+
+            var dibujadas = 0;
+
+            foreach (var s in _datos.SeccionesConcreto)
+            {
+                var saltadasAntes = dibujante.Saltadas.Count;
+
+                var n = dibujante.Dibujar(AFormatoCad(s), x, 0);
+
+                // Igual que la macro: la seccion que ya es bloque se SALTA. Quien
+                // decide es el dibujante, no esta linea: aqui solo se detecta que
+                // la salto porque su lista crecio. Asi no hay dos sitios distintos
+                // decidiendo lo mismo, que es como se acaba dibujando doble.
+                if (dibujante.Saltadas.Count > saltadasAntes)
+                {
+                    continue;
+                }
+
+                entidades += n;
+                dibujadas++;
+
+                // Igual que la macro: se avanza el ancho mas 35 cm de aire. Solo lo
+                // avanzan las que SI se dibujaron; si lo avanzaran las saltadas,
+                // cada seccion ya hecha dejaria un hueco vacio en la fila.
+                //
+                // Y tampoco lo avanzan las que volvieron a SU SITIO al redibujarse:
+                // esas no ocupan lugar nuevo, asi que si avanzaran, actualizar un
+                // plano ya acomodado dejaria la fila llena de huecos.
+                if (!dibujante.UltimaFueASuSitio)
+                {
+                    x += (s.BaseCm + 35) * escala;
+                }
+            }
+
+            var saltadas = dibujante.Saltadas
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Lo ULTIMO: el rotulado por encima de todo. Va aquí, fuera del bucle,
+            // porque sube el rotulado de todas las secciones de una sola pasada, y
+            // porque tiene que aplicarse despues de que los estribos suban al
+            // frente en cada seccion.
+            dibujante.RotulosAlFrente();
+
+            // Si los contornos no pudieron quedar en negro de verdad, hay que
+            // decirlo: con el fondo del Model oscuro se dibujan BLANCOS y el usuario
+            // ve el defecto sin ninguna pista de a qué se debe.
+            dibujante.RevisarColorNegro();
+
+            AcadConnection.Retry(() => { app.ZoomExtents(); });
+
+            // Los fallos tolerados se MUESTRAN. Antes se descartaban y por eso los
+            // hatches podían faltar sin que nada lo dijera: el dibujo salía
+            // incompleto y no había forma de saber qué había fallado.
+            var fallos = dibujante.Fallos;
+
+            // Las saltadas se dicen con NOMBRE Y MOTIVO. Un simple "se saltaron 3"
+            // no sirve: el usuario tiene que poder ver si la que cambió es una de
+            // ellas, y saber qué hacer para forzar el redibujado.
+            var rehechas = dibujante.Redibujadas
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var aviso = saltadas.Count == 0
+                ? string.Empty
+                : $"\n\nSE SALTARON {saltadas.Count} sección(es) porque su bloque ya " +
+                  "existe en el dibujo:\n  " + string.Join(", ", saltadas) +
+                  "\n\nAsí lo hace tu macro, para no deshacer el acomodo del plano.\n" +
+                  "Si cambiaste su armado y quieres rehacerlas, marca la casilla\n" +
+                  "\"Redibujar las que ya existen\" y vuelve a dibujar: cada una\n" +
+                  "vuelve al mismo sitio donde ya estaba.";
+
+            if (rehechas.Count > 0)
+            {
+                aviso +=
+                    $"\n\nSe REHICIERON {rehechas.Count} sección(es) en su mismo sitio:\n  " +
+                    string.Join(", ", rehechas);
+            }
+
+            var resumen =
+                "Listo.\n\n" +
+                $"{dibujadas} sección(es) dibujadas\n" +
+                $"{entidades} entidades creadas\n\n" +
+                "Cada sección quedó agrupada en un bloque con el nombre de su ID." +
+                aviso;
+
+            var conteo = saltadas.Count == 0
+                ? $"Dibujadas {dibujadas} sección(es) en AutoCAD."
+                : $"Dibujadas {dibujadas} sección(es); {saltadas.Count} saltada(s) " +
+                  "por existir ya.";
+
+            if (fallos.Count == 0)
+            {
+                StatusText.Text = conteo;
+
+                // Las notas informativas quedan a mano, pero NO interrumpen: el
+                // dibujo salió bien y no hay nada que el usuario deba atender.
+                ExportHintText.Text = dibujante.Notas.Count == 0
+                    ? string.Empty
+                    : "Notas del ultimo dibujo:" + Environment.NewLine +
+                      string.Join(Environment.NewLine,
+                          dibujante.Notas.Select(n => "  - " + n));
+
+                MessageBox.Show(resumen, AppInfo.ProductName,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
+
+                StatusText.Text =
+                    $"Dibujadas {dibujadas} sección(es), " +
+                    $"con {fallos.Count} aviso(s). Ver la pestaña AutoCAD.";
+
+                ExportHintText.Text =
+                    "AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
+                    Environment.NewLine + detalle;
+
+                MessageBox.Show(
+                    resumen + "\n\n" +
+                    "PERO hubo " + fallos.Count + " fallo(s) que se toleraron, " +
+                    "así que el dibujo puede estar incompleto:\n\n" + detalle +
+                    "\n\nEste mismo texto queda en la pestaña AutoCAD.",
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (AcadNotAvailableException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (AcadBusyException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "Error al dibujar en AutoCAD:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>Escala de captura a unidades de dibujo. 0.01 = cm a metros.</summary>
+    private double LeerEscala()
+    {
+        if (double.TryParse(ScaleBox.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out var v)
+            && v > 0)
+        {
+            return v;
+        }
+
+        if (double.TryParse(ScaleBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out v)
+            && v > 0)
+        {
+            return v;
+        }
+
+        return 0.01;
+    }
+
+    /// <summary>Claves de varilla presentes en la captura, para crear solo esas capas.</summary>
+    private IEnumerable<string> ClavesDeVarillaUsadas()
+    {
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            yield return Varilla.Normalizar(s.Estribo);
+            yield return Varilla.Normalizar(s.DiamEsqSup);
+            yield return Varilla.Normalizar(s.DiamIntSupEfectivo);
+            yield return Varilla.Normalizar(s.DiamEsqInfEfectivo);
+            yield return Varilla.Normalizar(s.DiamIntInfEfectivo);
+            yield return Varilla.Normalizar(s.DiamInter);
+            yield return Varilla.Normalizar(s.DiamEstriboDiamante);
+        }
+    }
+
+    /// <summary>
+    /// Pasa una fila de la cuadrícula al formato que consume el motor de dibujo,
+    /// resolviendo aquí los diámetros.
+    /// </summary>
+    /// <remarks>
+    /// La resolución se hace en esta capa a propósito: el motor de dibujo recibe
+    /// diámetros ya en centímetros y no puede recibir uno sin reconocer, que es
+    /// justamente el error silencioso de la macro.
+    /// </remarks>
+    private SeccionCad AFormatoCad(SeccionConcretoRow r)
+    {
+        static VarCad V(string clave) =>
+            Varilla.TryDiametroCm(clave, out var cm)
+                ? new VarCad(Varilla.Normalizar(clave), cm)
+                : new VarCad(string.Empty, 0);
+
+        return new SeccionCad
+        {
+            Modo = ModoElegido,
+            Elemento = r.Elemento,
+            Id = r.Id,
+            BaseCm = r.BaseCm,
+            AlturaCm = r.AlturaCm,
+            RecubrimientoCm = r.RecubrimientoCm,
+            GanchoCm = r.GanchoCm,
+            Estribo = V(r.Estribo),
+            Superior = new LechoCad
+            {
+                NEsquina = r.NEsqSup,
+                Esquina = V(r.DiamEsqSup),
+                NIntermedia = r.NIntSup,
+                Intermedia = V(r.DiamIntSupEfectivo)
+            },
+            Inferior = new LechoCad
+            {
+                NEsquina = r.NEsqInf,
+                Esquina = V(r.DiamEsqInfEfectivo),
+                NIntermedia = r.NIntInf,
+                Intermedia = V(r.DiamIntInfEfectivo)
+            },
+            NLateral = r.NInter,
+            Lateral = V(r.DiamInter),
+            Fc = r.Fc,
+            Escala = r.Escala,
+            Separacion = r.SeparacionCm,
+
+            // Columna R de la hoja: la macro compara contra "SI" en mayusculas y
+            // sin espacios. Aqui se acepta cualquier variante razonable para que
+            // "Si", "sí" o "X" no dejen de dibujar el diamante en silencio.
+            Diamante = EsSi(r.EstriboDiamante),
+
+            // Columna S. Vacia = se usa la varilla del estribo principal.
+            EstriboDiamanteVar = V(
+                string.IsNullOrWhiteSpace(r.DiamEstriboDiamante)
+                    ? r.Estribo
+                    : r.DiamEstriboDiamante)
+        };
+    }
+
+    /// <summary>Convierte una fila de la tabla en datos de alzado.</summary>
+    private AlzadoCad AFormatoAlzado(SeccionConcretoRow r)
+    {
+        static VarCad V(string clave) =>
+            Varilla.TryDiametroCm(clave, out var cm)
+                ? new VarCad(Varilla.Normalizar(clave), cm)
+                : new VarCad(string.Empty, 0);
+
+        var estribo = V(r.Estribo);
+
+        // Con diamante, el alzado se dibuja con el diámetro del DIAMANTE, no con el
+        // del estribo principal. Es lo que hace la macro al reasignar estrDia.
+        var diamante = EsSi(r.EstriboDiamante);
+        var varDiamante = V(
+            string.IsNullOrWhiteSpace(r.DiamEstriboDiamante) ? r.Estribo : r.DiamEstriboDiamante);
+
+        return new AlzadoCad
+        {
+            Tipo = TipoDe(r.Elemento, r.Id) ?? TipoElemento.Trabe,
+            Modo = ModoElegido,
+            Elemento = r.Elemento,
+            Id = r.Id,
+            BaseCm = r.BaseCm,
+            AlturaCm = r.AlturaCm,
+            RecubrimientoCm = r.RecubrimientoCm > 0 ? r.RecubrimientoCm : 2.5,
+            LongitudM = Estribos.LongitudDeColumnaW(r.LongitudM),
+            GanchoCm = r.GanchoCm,
+            SeparacionesCm = Separaciones(r.SeparacionCm),
+            Estribo = estribo,
+            EstriboDibujo = diamante && varDiamante.Existe ? varDiamante : estribo,
+            Superior = new LechoCad
+            {
+                NEsquina = r.NEsqSup,
+                Esquina = V(r.DiamEsqSup),
+                NIntermedia = r.NIntSup,
+                Intermedia = V(r.DiamIntSupEfectivo)
+            },
+            Inferior = new LechoCad
+            {
+                NEsquina = r.NEsqInf,
+                Esquina = V(r.DiamEsqInfEfectivo),
+                NIntermedia = r.NIntInf,
+                Intermedia = V(r.DiamIntInfEfectivo)
+            },
+            NLateral = r.NInter,
+            Lateral = V(r.DiamInter),
+            Fc = r.Fc,
+            Escala = r.Escala,
+            Separacion = r.SeparacionCm,
+            Diamante = diamante,
+            EstriboDiamanteVar = varDiamante
+        };
+    }
+
+    /// <summary>
+    /// Clasifica el elemento para el alzado, o <c>null</c> si no lleva alzado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Solo cuatro familias llevan alzado</b>: trabe, contratrabe, columna y dado.
+    /// Es lo que hace la macro, cuyo bucle envuelve todo en
+    /// <c>If isTrabeOrContratrabe Or isColumnaODado Then</c> y salta el resto.
+    /// </para>
+    /// <para>
+    /// Antes esto devolvía <c>Trabe</c> para cualquier cosa que no reconociera, así
+    /// que un castillo o una cadena acababan con un alzado de trabe sin haberlo
+    /// pedido. Ahora lo que no encaja se <b>omite</b> y se informa.
+    /// </para>
+    /// <para>
+    /// Se reconoce por el nombre de la columna A y, si no coincide, por el prefijo
+    /// del ID. El orden importa: <c>CT-</c> se prueba antes que <c>C-</c>, porque una
+    /// contratrabe también empieza con C.
+    /// </para>
+    /// </remarks>
+    private static TipoElemento? TipoDe(string? elemento, string? id)
+    {
+        var e = (elemento ?? string.Empty).Trim().ToUpperInvariant();
+        var i = (id ?? string.Empty).Trim().ToUpperInvariant();
+
+        if (e == "CONTRATRABE" || i.StartsWith("CT-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Contratrabe;
+        }
+
+        if (e == "COLUMNA" || i.StartsWith("C-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Columna;
+        }
+
+        if (e == "DADO" || i.StartsWith("D-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Dado;
+        }
+
+        if (e == "TRABE" || i.StartsWith("T-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Trabe;
+        }
+
+        // Castillos, cadenas y cualquier otro elemento: sin alzado.
+        return null;
+    }
+
+    /// <summary>
+    /// Separaciones de las tres zonas a partir de la celda <c>10-15-20</c>.
+    /// </summary>
+    /// <remarks>
+    /// Si falta la segunda se repite la primera, y si falta la tercera se repite la
+    /// segunda, igual que <c>ParseSpacings</c>. Sin ningún valor se usan 15 cm.
+    /// </remarks>
+    private static double[] Separaciones(string? celda)
+    {
+        var partes = (celda ?? string.Empty)
+            .Replace(" ", string.Empty)
+            .Replace("m", string.Empty)
+            .Replace(',', '.')
+            .Split('-');
+
+        double Leer(int i)
+        {
+            if (i >= partes.Length)
+            {
+                return 0;
+            }
+
+            return double.TryParse(partes[i], NumberStyles.Any,
+                CultureInfo.InvariantCulture, out var v) ? v : 0;
+        }
+
+        var a = Leer(0);
+        var b = Leer(1);
+        var c = Leer(2);
+
+        if (a <= 0 && b <= 0 && c <= 0) { a = 15; }
+        if (b <= 0) { b = a; }
+        if (c <= 0) { c = b; }
+
+        return new[] { a, b, c };
+    }
+
+    /// <summary>¿La celda dice que sí?</summary>
+    private static bool EsSi(string? v)
+    {
+        var t = (v ?? string.Empty).Trim();
+
+        return t.Equals("SI", StringComparison.OrdinalIgnoreCase)
+               || t.Equals("SÍ", StringComparison.OrdinalIgnoreCase)
+               || t.Equals("S", StringComparison.OrdinalIgnoreCase)
+               || t.Equals("X", StringComparison.OrdinalIgnoreCase)
+               || t.Equals("TRUE", StringComparison.OrdinalIgnoreCase)
+               || t == "1";
+    }
+
+    private void OnValidate(object sender, RoutedEventArgs e)
+    {
+        if (Revisar(out var problemas))
+        {
+            MessageBox.Show(
+                $"Sin errores.\n\n{_datos.SeccionesConcreto.Count} sección(es) revisadas.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        MessageBox.Show(
+            $"Se encontraron {problemas.Count} problema(s):\n\n" + string.Join("\n", problemas),
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// Revisa la captura. Esta validación sí está implementada y funcionando.
+    /// </summary>
+    /// <remarks>
+    /// <b>Incluye la comprobación que le falta a la macro:</b> que todo diámetro
+    /// de varilla sea reconocido. En la macro, un diámetro mal escrito no producía
+    /// error: se usaba un valor por omisión y la sección se dibujaba con el
+    /// diámetro equivocado sin avisar.
+    /// </remarks>
+    private bool Revisar(out List<string> problemas)
+    {
+        problemas = new List<string>();
+
+        if (_datos.SeccionesConcreto.Count == 0)
+        {
+            problemas.Add("• No hay ninguna sección capturada.");
+            return false;
+        }
+
+        var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fila = 1;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            fila++;
+            var etiqueta = string.IsNullOrWhiteSpace(s.Id) ? $"fila {fila}" : s.Id;
+
+            if (string.IsNullOrWhiteSpace(s.Id))
+            {
+                problemas.Add($"• Fila {fila}: falta el ID. Es el nombre del bloque de AutoCAD.");
+            }
+            else if (!vistos.Add(s.Id))
+            {
+                problemas.Add($"• El ID '{s.Id}' está repetido. Cada bloque necesita un nombre único.");
+            }
+
+            if (s.BaseCm <= 0 || s.AlturaCm <= 0)
+            {
+                problemas.Add($"• {etiqueta}: base y altura deben ser mayores que cero.");
+            }
+
+            if (s.RecubrimientoCm < 0)
+            {
+                problemas.Add($"• {etiqueta}: el recubrimiento no puede ser negativo.");
+            }
+
+            RevisarDiametro(problemas, etiqueta, "estribo", s.Estribo, obligatorio: true);
+
+            RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
+            RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
+            RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
+            RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
+            RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
+
+            if (string.Equals(s.EstriboDiamante.Trim(), "SI", StringComparison.OrdinalIgnoreCase))
+            {
+                var d = string.IsNullOrWhiteSpace(s.DiamEstriboDiamante)
+                    ? s.Estribo
+                    : s.DiamEstriboDiamante;
+                RevisarDiametro(problemas, etiqueta, "estribo diamante", d, obligatorio: true);
+            }
+
+            // El acero debe caber: dos varillas de esquina mas los estribos
+            if (Varilla.TryDiametroCm(s.Estribo, out var de) &&
+                Varilla.TryDiametroCm(s.DiamEsqSup, out var dv) &&
+                s.BaseCm > 0)
+            {
+                var necesario = (2 * s.RecubrimientoCm) + (2 * de) + (2 * dv);
+                if (necesario >= s.BaseCm)
+                {
+                    problemas.Add(
+                        $"• {etiqueta}: con recubrimiento {s.RecubrimientoCm:N1} cm, estribo " +
+                        $"{Varilla.Normalizar(s.Estribo)} y varilla {Varilla.Normalizar(s.DiamEsqSup)} " +
+                        $"se necesitan {necesario:N1} cm y la base es de {s.BaseCm:N1} cm.");
+                }
+            }
+        }
+
+        return problemas.Count == 0;
+    }
+
+    private static void RevisarLecho(
+        List<string> problemas, string etiqueta, string lecho, int cantidad, string diametro)
+    {
+        if (cantidad <= 0)
+        {
+            return;
+        }
+
+        RevisarDiametro(problemas, etiqueta, lecho, diametro, obligatorio: true);
+    }
+
+    private static void RevisarDiametro(
+        List<string> problemas, string etiqueta, string donde, string diametro, bool obligatorio)
+    {
+        if (string.IsNullOrWhiteSpace(diametro))
+        {
+            if (obligatorio)
+            {
+                problemas.Add($"• {etiqueta}: falta el diámetro del {donde}.");
+            }
+
+            return;
+        }
+
+        if (!Varilla.TryDiametroCm(diametro, out _))
+        {
+            problemas.Add(
+                $"• {etiqueta}: el diámetro '{diametro}' del {donde} no se reconoce. " +
+                $"Válidos: {Varilla.ClavesValidas}.");
+        }
+    }
+
+    // ======================================================================
+    // Vista previa de la sección
+    // ======================================================================
+
+    /// <summary>
+    /// Dibuja la sección seleccionada con su geometría real: concreto, estribo,
+    /// lechos y varillas laterales, a escala.
+    /// </summary>
+    private void DibujarVistaPrevia()
+    {
+        PreviewCanvas.Children.Clear();
+
+        var s = Seleccionada;
+        var ancho = PreviewCanvas.ActualWidth;
+        var alto = PreviewCanvas.ActualHeight;
+
+        if (ancho < 60 || alto < 60)
+        {
+            return;
+        }
+
+        if (s is null || s.BaseCm <= 0 || s.AlturaCm <= 0)
+        {
+            PreviewCanvas.Children.Add(new TextBlock
+            {
+                Text = "Selecciona una sección con base y altura para verla dibujada.",
+                Foreground = Brushes.Gray,
+                FontSize = 12,
+                Margin = new Thickness(14, 34, 0, 0)
+            });
+            return;
+        }
+
+        const double margen = 34;
+        var escala = Math.Min((ancho - (2 * margen)) / s.BaseCm, (alto - (2 * margen)) / s.AlturaCm);
+        if (escala <= 0 || double.IsInfinity(escala))
+        {
+            return;
+        }
+
+        var x0 = (ancho - (s.BaseCm * escala)) / 2;
+        var y0 = (alto - (s.AlturaCm * escala)) / 2;
+
+        // Del modelo (y hacia arriba) al lienzo (y hacia abajo)
+        double PX(double xcm) => x0 + (xcm * escala);
+        double PY(double ycm) => y0 + ((s.AlturaCm - ycm) * escala);
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
+        var negro = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
+
+        var conFondoSolido = ModoElegido == ModoSeccion.Tipo2Rellena;
+
+        // Concreto. El fondo solido solo existe en el tipo 1, igual que en
+        // AutoCAD, donde es un hatch SOLID de color ACI 9 debajo del AR-CONC.
+        var relleno = conFondoSolido
+            ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC))   // ACI 9
+            : Brushes.White;
+
+        var cx0 = PX(0);
+        var cy0 = PY(s.AlturaCm);
+        var cw = s.BaseCm * escala;
+        var ch = s.AlturaCm * escala;
+
+        PreviewCanvas.Children.Add(Rectangulo(cx0, cy0, cw, ch, azul, 1.6, relleno));
+
+        // Patron AR-CONC. Se dibuja SIEMPRE, en los dos estilos: es justo el
+        // rayado que faltaba en el dibujo. Va antes que estribo y varillas para
+        // que estos queden encima, como las islas del hatch real.
+        DibujarPatronConcreto(cx0, cy0, cw, ch);
+
+        var rec = s.RecubrimientoCm;
+        Varilla.TryDiametroCm(s.Estribo, out var de);
+
+        // Estribo: dos contornos, como en la macro
+        if (rec > 0 && rec * 2 < s.BaseCm && rec * 2 < s.AlturaCm)
+        {
+            var i = rec + de;
+            var hayInterior = de > 0 && i * 2 < s.BaseCm && i * 2 < s.AlturaCm;
+
+            // En el tipo 1, el cuerpo del estribo es un hatch SOLID
+            // entre las dos fronteras. Se representa como un anillo relleno.
+            if (conFondoSolido && hayInterior)
+            {
+                PreviewCanvas.Children.Add(Anillo(
+                    PX(rec), PY(s.AlturaCm - rec),
+                    (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
+                    (de * escala),
+                    new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B)),   // ACI 152
+                    negro));
+            }
+            else
+            {
+                var trazo = conFondoSolido ? negro : gris;
+
+                PreviewCanvas.Children.Add(Rectangulo(PX(rec), PY(s.AlturaCm - rec),
+                    (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
+                    trazo, 1.4, null));
+
+                if (hayInterior)
+                {
+                    PreviewCanvas.Children.Add(Rectangulo(PX(i), PY(s.AlturaCm - i),
+                        (s.BaseCm - (2 * i)) * escala, (s.AlturaCm - (2 * i)) * escala,
+                        trazo, 1.0, null));
+                }
+            }
+        }
+
+        // Lechos
+        DibujarLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec, escala, PX, PY, arriba: true, intermedio: false);
+        DibujarLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec, escala, PX, PY, arriba: true, intermedio: true);
+        DibujarLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec, escala, PX, PY, arriba: false, intermedio: false);
+        DibujarLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec, escala, PX, PY, arriba: false, intermedio: true);
+
+        // Varillas laterales, a los dos lados
+        if (s.NInter > 0 && Varilla.TryDiametroCm(s.DiamInter, out var dl))
+        {
+            Varilla.TryDiametroCm(s.DiamEsqSup, out var dsup);
+            Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dinf);
+
+            var offSup = rec + de + (dsup / 2);
+            var offInf = rec + de + (dinf / 2);
+            var hueco = s.AlturaCm - offSup - offInf;
+            var paso = s.NInter > 1 ? hueco / (s.NInter + 1) : hueco / 2;
+            var offLado = rec + de + (dl / 2);
+
+            for (var k = 1; k <= s.NInter; k++)
+            {
+                var y = offInf + (k * paso);
+                Barra(PX(offLado), PY(y), dl * escala / 2);
+                Barra(PX(s.BaseCm - offLado), PY(y), dl * escala / 2);
+            }
+        }
+
+        // Cotas de referencia
+        Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
+        Etiqueta($"{s.AlturaCm:N0} cm", x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
+        Etiqueta($"{s.Elemento}  {s.Id}", 14, 26);
+
+        // El alzado va a la derecha de la sección, en el espacio que sobra
+        DibujarAlzadoPrevio(s, x0 + (s.BaseCm * escala) + 70, alto);
+    }
+
+    /// <summary>
+    /// Vista previa del alzado, con el reparto real de estribos.
+    /// </summary>
+    /// <remarks>
+    /// Usa <see cref="Estribos.Centros"/>, la <b>misma</b> aritmética que el dibujo de
+    /// AutoCAD. Así el reparto por zonas L/4-L/2-L/4, los estribos de frontera y la
+    /// separación mínima se ven aquí antes de mandar nada a AutoCAD.
+    /// </remarks>
+    private void DibujarAlzadoPrevio(SeccionConcretoRow s, double izquierda, double alto)
+    {
+        // Mismo filtro que al dibujar: si este elemento no lleva alzado, la vista
+        // previa lo dice en lugar de mostrar uno que nunca se va a generar.
+        if (TipoDe(s.Elemento, s.Id) is null)
+        {
+            Etiqueta($"{s.Elemento} no lleva alzado.", izquierda, (alto / 2) - 10);
+            Etiqueta("Solo trabes, contratrabes, columnas y dados.",
+                izquierda, (alto / 2) + 8);
+            return;
+        }
+
+        var a = AFormatoAlzado(s);
+
+        var largo = a.LongitudM > 0
+            ? a.LongitudM
+            : a.EsVertical
+                ? (a.Tipo == TipoElemento.Dado ? 1.0 : 3.0)
+                : Estribos.LongitudFlexible(
+                    a.SeparacionesCm[0] / 100, a.SeparacionesCm[1] / 100, a.SeparacionesCm[2] / 100);
+
+        // El alzado se dibuja siempre tendido: para una columna es el mismo dibujo
+        // girado, y en un panel ancho y bajo se lee mejor así.
+        var anchoDisp = PreviewCanvas.ActualWidth - izquierda - 20;
+        var peralteM = (a.EsVertical ? (a.BaseCm > 0 ? a.BaseCm : a.AlturaCm) : a.AlturaCm) / 100.0;
+
+        if (anchoDisp < 60 || largo <= 0 || peralteM <= 0)
+        {
+            return;
+        }
+
+        // El alzado se estira a lo LARGO: manda el ancho disponible y el peralte solo
+        // limita si de verdad no cabe de alto. Antes el tope era 0.55 del alto y en un
+        // elemento de poco peralte era ESE tope el que mandaba, así que el alzado
+        // salía corto y apretado con media pantalla vacía a la derecha.
+        var esc = Math.Min(anchoDisp / largo, (alto * 0.92) / peralteM);
+        if (esc <= 0 || double.IsInfinity(esc))
+        {
+            return;
+        }
+
+        var w = largo * esc;
+        var h = peralteM * esc;
+        var top = (alto - h) / 2;
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
+        var relleno = a.Modo == ModoSeccion.Tipo2Rellena
+            ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC))
+            : Brushes.White;
+
+        // Concreto
+        PreviewCanvas.Children.Add(Rectangulo(izquierda, top, w, h, azul, 1.4, relleno));
+        DibujarPatronConcreto(izquierda, top, w, h);
+
+        var rec = a.RecubrimientoCm / 100.0 * esc;
+        var dEst = a.EstriboDibujo.Cm / 100.0 * esc;
+        if (dEst < 1.5) { dEst = 1.5; }
+
+        // Estribos: mismas posiciones que en AutoCAD
+        // La MISMA función que usa el dibujo de AutoCAD, reglas del elemento
+        // incluidas. Ver Estribos.CentrosDeAlzado.
+        var centros = Estribos.CentrosDeAlzado(
+            largo,
+            a.SeparacionesCm[0] / 100, a.SeparacionesCm[1] / 100, a.SeparacionesCm[2] / 100,
+            vertical: a.EsVertical,
+            esColumna: a.Tipo == TipoElemento.Columna);
+
+        var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
+
+        foreach (var c in centros)
+        {
+            var xc = izquierda + (c * esc);
+
+            // La cápsula: rectángulo con las puntas redondeadas
+            PreviewCanvas.Children.Add(new Rectangle
+            {
+                Width = Math.Max(dEst, 1.5),
+                Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
+                RadiusX = dEst / 2,
+                RadiusY = dEst / 2,
+                Stroke = brochaEst,
+                StrokeThickness = 0.7,
+                Fill = a.Modo == ModoSeccion.Tipo2Rellena
+                    ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
+                    : null,
+                Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
+            });
+        }
+
+        // ---------- Varillas, con su GANCHO SISMICO ----------
+        //
+        // El gancho se dibuja aquí con la MISMA regla que en AutoCAD, sacada de
+        // Estribos: en la trabe mide 12 diámetros y en la columna es el valor de la
+        // columna T; y si no cabe ni un diámetro, no se dibuja. Antes la vista previa
+        // dibujaba la varilla como una raya recta, así que el gancho —que es lo que
+        // el usuario está ajustando en la casilla— era justo lo único que no se veía.
+        var ganchoM = a.GanchoCm / 100.0;
+
+        void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM)
+        {
+            var dM = dCm / 100.0;
+            var grosor = Math.Max(dM * esc, 1.4);
+            var verde = new SolidColorBrush(Color.FromRgb(0x1D, 0x8A, 0x4E));
+
+            var xIni = izquierda + rec;
+            var xFin = izquierda + w - rec;
+
+            PreviewCanvas.Children.Add(new Line
+            {
+                X1 = xIni, Y1 = yCentro,
+                X2 = xFin, Y2 = yCentro,
+                Stroke = verde,
+                StrokeThickness = grosor
+            });
+
+            if (ganchoM <= 0)
+            {
+                return;
+            }
+
+            var gM = Estribos.GanchoEfectivo(
+                Estribos.GanchoNominal(a.EsVertical, ganchoM, dM), disponibleM, dM);
+
+            if (gM <= 0)
+            {
+                return;
+            }
+
+            // El gancho va hacia DENTRO de la pieza: el del lecho superior baja y el
+            // del inferior sube. Al revés saldría del concreto.
+            var g = gM * esc * (dobleHaciaAbajo ? 1 : -1);
+
+            foreach (var x in new[] { xIni, xFin })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = x, Y1 = yCentro,
+                    X2 = x, Y2 = yCentro + g,
+                    Stroke = verde,
+                    StrokeThickness = grosor
+                });
+            }
+        }
+
+        var dSupCm = a.Superior.Esquina.Cm > 0 ? a.Superior.Esquina.Cm : 0.95;
+        var dInfCm = a.Inferior.Esquina.Cm > 0 ? a.Inferior.Esquina.Cm : 0.95;
+
+        var recM = a.RecubrimientoCm / 100.0;
+        var ySupM = peralteM - recM - (dSupCm / 200.0);
+        var yInfM = recM + (dInfCm / 200.0);
+
+        // Lo que cabe para cada gancho: del borde de la varilla al recubrimiento
+        // opuesto. Es el mismo recorte que hace la macro con maxSup y maxInf.
+        var libreSup = ySupM - (dSupCm / 200.0) - recM;
+        var libreInf = peralteM - recM - (yInfM + (dInfCm / 200.0));
+
+        BarraDeAlzado(top + rec + (dSupCm / 100.0 * esc / 2), dSupCm,
+            dobleHaciaAbajo: true, disponibleM: libreSup);
+
+        BarraDeAlzado(top + h - rec - (dInfCm / 100.0 * esc / 2), dInfCm,
+            dobleHaciaAbajo: false, disponibleM: libreInf);
+
+        Etiqueta($"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
+
+        var textoGancho = ganchoM > 0
+            ? $"   ·   gancho {a.GanchoCm:N0} cm"
+            : "   ·   sin gancho";
+
+        Etiqueta($"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
+                 $"{a.SeparacionesCm[0]:N0}-{a.SeparacionesCm[1]:N0}-{a.SeparacionesCm[2]:N0} cm" +
+                 textoGancho,
+            izquierda, top + h + 8);
+    }
+
+    private void DibujarLecho(
+        SeccionConcretoRow s, int cantidad, string diametro, double de, double rec,
+        double escala, Func<double, double> px, Func<double, double> py,
+        bool arriba, bool intermedio)
+    {
+        if (cantidad <= 0 || !Varilla.TryDiametroCm(diametro, out var d))
+        {
+            return;
+        }
+
+        var off = rec + de + (d / 2);
+        var y = arriba ? s.AlturaCm - off : off;
+        var r = d * escala / 2;
+
+        if (!intermedio)
+        {
+            // Lecho de esquina: repartido de off a base menos off
+            if (cantidad == 1)
+            {
+                Barra(px(s.BaseCm / 2), py(y), r);
+                return;
+            }
+
+            var paso = (s.BaseCm - (2 * off)) / (cantidad - 1);
+            for (var i = 0; i < cantidad; i++)
+            {
+                Barra(px(off + (i * paso)), py(y), r);
+            }
+
+            return;
+        }
+
+        // Lecho intermedio: queda ENTRE las de esquina
+        var xIni = off;
+        var xFin = s.BaseCm - off;
+
+        if (cantidad == 1)
+        {
+            Barra(px(s.BaseCm / 2), py(y), r);
+            return;
+        }
+
+        var p = (xFin - xIni) / (cantidad + 1);
+        for (var i = 1; i <= cantidad; i++)
+        {
+            Barra(px(xIni + (i * p)), py(y), r);
+        }
+    }
+
+    private void Barra(double cx, double cy, double radio)
+    {
+        var r = Math.Max(radio, 1.8);
+        var c = new Ellipse
+        {
+            Width = r * 2,
+            Height = r * 2,
+            Fill = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x7B, 0x24, 0x1B)),
+            StrokeThickness = 0.8
+        };
+        Canvas.SetLeft(c, cx - r);
+        Canvas.SetTop(c, cy - r);
+        PreviewCanvas.Children.Add(c);
+    }
+
+    /// <summary>
+    /// Aproximación del patrón <c>AR-CONC</c> de AutoCAD para la vista previa.
+    /// </summary>
+    /// <remarks>
+    /// No pretende ser idéntico al patrón real: <c>AR-CONC</c> combina líneas
+    /// inclinadas con áridos distribuidos al azar, y reproducirlo exactamente
+    /// no aporta nada aquí. Lo que importa es que <b>se vea el rayado</b>, para
+    /// poder comparar los dos estilos antes de mandar el dibujo a AutoCAD.
+    /// <para>
+    /// La semilla es fija a propósito: si fuera aleatoria, los áridos saltarían
+    /// de sitio en cada redibujado, por ejemplo al cambiar el tamaño del panel.
+    /// </para>
+    /// </remarks>
+    private void DibujarPatronConcreto(double left, double top, double w, double h)
+    {
+        if (w < 4 || h < 4)
+        {
+            return;
+        }
+
+        var recorte = new RectangleGeometry(new Rect(left, top, w, h));
+        var tinta = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0x9C));
+
+        // Líneas a 45°, recortadas al rectángulo de concreto
+        var lineas = new GeometryGroup();
+        const double paso = 9.0;
+
+        for (var d = -h; d < w + h; d += paso)
+        {
+            lineas.Children.Add(new LineGeometry(
+                new Point(left + d, top + h),
+                new Point(left + d + h, top)));
+        }
+
+        PreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = lineas,
+            Stroke = tinta,
+            StrokeThickness = 0.55,
+            Clip = recorte
+        });
+
+        // Áridos: puntos dispersos, con semilla fija
+        var rnd = new Random(20260817);
+        var cuantos = (int)Math.Clamp(w * h / 380.0, 6, 260);
+        var aridos = new GeometryGroup();
+
+        for (var k = 0; k < cuantos; k++)
+        {
+            var px = left + (rnd.NextDouble() * w);
+            var py = top + (rnd.NextDouble() * h);
+            var r = 0.7 + (rnd.NextDouble() * 1.15);
+            aridos.Children.Add(new EllipseGeometry(new Point(px, py), r, r));
+        }
+
+        PreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = aridos,
+            Fill = tinta,
+            Clip = recorte
+        });
+    }
+
+    /// <summary>
+    /// Anillo relleno: representa el cuerpo del estribo, que en AutoCAD es un
+    /// hatch <c>SOLID</c> entre la frontera exterior y la interior.
+    /// </summary>
+    private static FormaPath Anillo(
+        double left, double top, double w, double h, double grosor,
+        Brush relleno, Brush trazo)
+    {
+        var externo = new RectangleGeometry(new Rect(left, top, Math.Max(w, 1), Math.Max(h, 1)));
+
+        var g = Math.Max(grosor, 0.8);
+        var iw = Math.Max(w - (2 * g), 0.5);
+        var ih = Math.Max(h - (2 * g), 0.5);
+        var interno = new RectangleGeometry(new Rect(left + g, top + g, iw, ih));
+
+        return new FormaPath
+        {
+            // EvenOdd deja hueco el interior: queda el anillo, no un bloque macizo
+            Data = new GeometryGroup
+            {
+                FillRule = FillRule.EvenOdd,
+                Children = { externo, interno }
+            },
+            Fill = relleno,
+            Stroke = trazo,
+            StrokeThickness = 0.9
+        };
+    }
+
+    private static Rectangle Rectangulo(
+        double left, double top, double w, double h, Brush trazo, double grosor, Brush? relleno)
+    {
+        var r = new Rectangle
+        {
+            Width = Math.Max(w, 1),
+            Height = Math.Max(h, 1),
+            Stroke = trazo,
+            StrokeThickness = grosor,
+            Fill = relleno
+        };
+        Canvas.SetLeft(r, left);
+        Canvas.SetTop(r, top);
+        return r;
+    }
+
+    private void Etiqueta(string texto, double left, double top)
+    {
+        var t = new TextBlock
+        {
+            Text = texto,
+            FontSize = 10.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33))
+        };
+        Canvas.SetLeft(t, left);
+        Canvas.SetTop(t, top);
+        PreviewCanvas.Children.Add(t);
+    }
+}

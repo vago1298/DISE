@@ -1,0 +1,42 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.App", "src\CadLink.App\CadLink.App.csproj", "{78A1DFC0-03D8-44F7-A7B0-3C63453534C9}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Licensing", "src\CadLink.Licensing\CadLink.Licensing.csproj", "{CF145662-1A06-4CBC-9523-012BB25AC0A3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Cad", "src\CadLink.Cad\CadLink.Cad.csproj", "{921ABB80-F042-498D-AB65-A5EA72487084}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Etabs", "src\CadLink.Etabs\CadLink.Etabs.csproj", "{C2042874-CFEE-4BC9-840C-3DC08D94B5E0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{78A1DFC0-03D8-44F7-A7B0-3C63453534C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78A1DFC0-03D8-44F7-A7B0-3C63453534C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78A1DFC0-03D8-44F7-A7B0-3C63453534C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78A1DFC0-03D8-44F7-A7B0-3C63453534C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CF145662-1A06-4CBC-9523-012BB25AC0A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CF145662-1A06-4CBC-9523-012BB25AC0A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF145662-1A06-4CBC-9523-012BB25AC0A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CF145662-1A06-4CBC-9523-012BB25AC0A3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{921ABB80-F042-498D-AB65-A5EA72487084}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{921ABB80-F042-498D-AB65-A5EA72487084}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{921ABB80-F042-498D-AB65-A5EA72487084}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{921ABB80-F042-498D-AB65-A5EA72487084}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C2042874-CFEE-4BC9-840C-3DC08D94B5E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C2042874-CFEE-4BC9-840C-3DC08D94B5E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C2042874-CFEE-4BC9-840C-3DC08D94B5E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C2042874-CFEE-4BC9-840C-3DC08D94B5E0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {464077A2-1B29-4867-BB29-DBD27589C4B9}
+	EndGlobalSection
+EndGlobal

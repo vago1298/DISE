@@ -1,0 +1,69 @@
+{
+  // ===================================================================
+  //  CONFIGURACION DE CADLINK
+  //
+  //  Este archivo se lee AL ARRANCAR. Puedes cambiarlo con el Bloc de
+  //  notas y basta con volver a abrir la aplicacion: NO hay que
+  //  recompilar nada.
+  //
+  //  Se admiten comentarios como este.
+  // ===================================================================
+
+  // Direccion del servidor de licencias.
+  //
+  //   Para probar en tu propia computadora:  http://localhost:8000
+  //   Para produccion, tu servidor real:     https://licencias.tuempresa.com
+  //
+  // En produccion DEBE ser https. Sin TLS, cualquiera en la red puede
+  // interceptar y suplantar las respuestas del servidor de licencias.
+  "servidorLicencias": "http://localhost:8000",
+
+  // Nombre de tu producto. Aparece en el splash, en la barra de titulo
+  // y en todos los cuadros de dialogo.
+  "nombreProducto": "CadLink",
+
+  // Razon social de tu empresa. Aparece en el splash y, en los equipos
+  // de la oficina, como "Licencia interna - <esto>".
+  //
+  // VACIO a proposito: si lo dejas asi, no se muestra ningun nombre de
+  // empresa en ninguna parte, ni queda un guion suelto. Ponlo solo si
+  // quieres que aparezca.
+  "nombreEmpresa": "",
+
+  // Segundo renglon del splash.
+  "lema": "Excel - ETABS - AutoCAD",
+
+  // Correo que se muestra al usuario cuando algo falla con la licencia.
+  "correoSoporte": "soporte@miempresa.com",
+
+  // ===================================================================
+  //  LIBRERIA DE LA API DE ETABS  (ETABSv1.dll)
+  //
+  //  NORMALMENTE NO HAY QUE TOCAR ESTO. La libreria se busca sola,
+  //  y primero JUNTO AL ETABS QUE ESTE ABIERTO, con lo que siempre
+  //  corresponde a la version que estas usando.
+  //
+  //  Llena esta clave solo si la busqueda automatica falla. Acepta la
+  //  carpeta o el archivo completo. Recuerda las diagonales DOBLES:
+  //
+  //    "rutaLibreriaEtabs": "C:\\Program Files\\Computers and Structures\\ETABS 21"
+  // ===================================================================
+  "rutaLibreriaEtabs": "",
+
+  // ===================================================================
+  //  LOGO DE LA EMPRESA
+  //
+  //  Ruta al archivo del logo. Acepta .ico, .png, .jpg y .bmp.
+  //  De un .ico se toma automaticamente la resolucion mas grande.
+  //
+  //  OJO con las diagonales: en JSON hay que escribirlas DOBLES,
+  //  o usar diagonales normales. Las dos formas valen:
+  //
+  //     "C:\\Users\\PC\\OneDrive\\Escritorio\\GIPC\\LOGOS\\CADLINK.ico"
+  //     "C:/Users/PC/OneDrive/Escritorio/GIPC/LOGOS/CADLINK.ico"
+  //
+  //  Si se deja vacio, o si el archivo no existe, se usa el logo
+  //  embebido en el ejecutable y la aplicacion arranca igual.
+  // ===================================================================
+  "logo": "C:/Users/PC/OneDrive/Escritorio/GIPC/Oficina GIPC/LOGOS/CADLINK.ico"
+}

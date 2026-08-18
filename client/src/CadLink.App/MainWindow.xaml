@@ -1,0 +1,786 @@
+<Window x:Class="CadLink.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CadLink"
+        Width="1240" Height="760"
+        MinWidth="960" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFF7F9FB">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ==================== Encabezado ==================== -->
+        <Border Grid.Row="0" Background="{StaticResource BrandDarkBrush}" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Image Grid.Column="0"
+                       x:Name="LogoImage"
+                       Width="34" Height="34"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="HeaderProduct" Text="CadLink"
+                               FontSize="16" FontWeight="SemiBold" Foreground="White" />
+                    <TextBlock x:Name="HeaderCompany" Text=""
+                               FontSize="10.5" Foreground="#FFB9D4EC" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock x:Name="HeaderLicense" FontSize="11.5" FontWeight="SemiBold"
+                               HorizontalAlignment="Right" Foreground="White" />
+                    <TextBlock x:Name="HeaderVersion" FontSize="10"
+                               HorizontalAlignment="Right" Foreground="#FFB9D4EC" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ==================== Aviso ==================== -->
+        <Border x:Name="NoticeBar" Grid.Row="1"
+                Background="#FFFFF4CE" BorderBrush="#FFE0C36A" BorderThickness="0,0,0,1"
+                Padding="16,8" Visibility="Collapsed">
+            <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="#FF7A5B00" />
+        </Border>
+
+        <!-- ==================== Hojas ==================== -->
+        <TabControl x:Name="Sheets" Grid.Row="2"
+                    Style="{StaticResource ExcelTabControlStyle}" Margin="8,8,8,0">
+
+            <!-- ===== Proyecto ===== -->
+            <TabItem Header="Proyecto">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Datos del proyecto" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Los datos del juego de planos y su solapa." />
+
+                        <!-- ===== Datos de la SOLAPA (el cuadro de rotulos) ===== -->
+                        <TextBlock Text="Solapa de los planos" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,24,0,2" Foreground="{StaticResource BrandDarkBrush}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Lo que se imprime en el cuadro de rotulos de cada plano." />
+
+                        <Grid Margin="0,4,0,0" HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="330" />
+                                <ColumnDefinition Width="36" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="250" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="34" />
+                                <RowDefinition Height="34" />
+                                <RowDefinition Height="34" />
+                                <RowDefinition Height="34" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Calculista:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="0" Grid.Column="1" x:Name="CalculistaBox" Height="26" VerticalContentAlignment="Center" />
+                            <TextBlock Grid.Row="0" Grid.Column="3" Text="Dibujo:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="0" Grid.Column="4" x:Name="DibujoBox" Height="26" VerticalContentAlignment="Center" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Propietario:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="1" Grid.Column="1" x:Name="PropietarioBox" Height="26" VerticalContentAlignment="Center" />
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="Fecha:" VerticalAlignment="Center" />
+                            <DatePicker Grid.Row="1" Grid.Column="4" x:Name="FechaPicker" Height="26" />
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Ubicacion:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="2" Grid.Column="1" x:Name="UbicacionBox" Height="26" VerticalContentAlignment="Center" />
+                            <TextBlock Grid.Row="2" Grid.Column="3" Text="Escala:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="2" Grid.Column="4" x:Name="EscalaSolapaBox" Height="26" VerticalContentAlignment="Center" />
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Proyecto/Obra:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="3" Grid.Column="1" x:Name="ObraBox" Height="26" VerticalContentAlignment="Center" />
+                            <TextBlock Grid.Row="3" Grid.Column="3" Text="Acotacion:" VerticalAlignment="Center" />
+                            <ComboBox  Grid.Row="3" Grid.Column="4" x:Name="AcotacionCombo" Height="26">
+                                <ComboBoxItem Content="cm" IsSelected="True" />
+                                <ComboBoxItem Content="m" />
+                                <ComboBoxItem Content="mm" />
+                            </ComboBox>
+                        </Grid>
+
+                        <!-- ===== Juego de planos ===== -->
+                        <TextBlock Text="Juego de planos" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,22,0,2" Foreground="{StaticResource BrandDarkBrush}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="El numero de plano se pone solo: al agregar, quitar o reordenar se renumera todo el juego." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                            <Button Content="Agregar plano" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnAgregarPlano" />
+                            <Button Content="Quitar" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnQuitarPlano" />
+                            <Button Content="Subir" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnSubirPlano" />
+                            <Button Content="Bajar" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnBajarPlano" />
+                            <TextBlock x:Name="PlanosResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                        </StackPanel>
+
+                        <!-- Se permite BORRAR con la tecla Supr. Agregar sigue siendo por el boton, para
+                             que la clave y el numero se pongan solos. -->
+                        <DataGrid x:Name="PlanosGrid" Style="{StaticResource SheetGridStyle}"
+                                  Height="170" CanUserAddRows="False" CanUserDeleteRows="True"
+                                  AutoGenerateColumns="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="130" />
+                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="240" />
+                                <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="110" />
+                                <!-- Solo lectura a proposito: el numero lo calcula el juego. -->
+                                <DataGridTextColumn Header="No. Plano" Binding="{Binding NumeroTexto}"
+                                                    Width="120" IsReadOnly="True" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- Guardar y abrir el trabajo: extension .clk -->
+                        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                            <Button Content="Guardar trabajo" Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnGuardarTrabajo"
+                                    ToolTip="Guarda todo lo capturado en un archivo .clk (Ctrl+G)." />
+                            <Button Content="Guardar como..." Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnGuardarComo" />
+                            <Button Content="Abrir trabajo" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnAbrirTrabajo"
+                                    ToolTip="Abre un archivo .clk guardado antes (Ctrl+A)." />
+                            <TextBlock x:Name="ArchivoText" FontSize="11.5" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Importar desde Excel" Style="{StaticResource PrimaryButtonStyle}" Click="OnImportExcel" />
+                            <Button Content="Cargar ejemplo" Style="{StaticResource SecondaryButtonStyle}" Click="OnLoadSample" />
+                            <Button Content="Limpiar todo" Style="{StaticResource SecondaryButtonStyle}" Click="OnClearAll" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== Secciones de concreto ===== -->
+            <TabItem Header="Secciones Concreto">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="230" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Secciones estructurales de concreto" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Las columnas ID, base, altura, lechos, estribo y gancho son las mismas de tu hoja. Las tres ultimas son calculadas: total de varillas, area de acero y cuantia." />
+
+                        <!-- Equivale a la celda AC de la hoja: un solo estilo para
+                             TODAS las secciones de la tabla. -->
+                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,14,0"
+                                           Foreground="{StaticResource BrandDarkBrush}" />
+
+                                <RadioButton x:Name="Tipo1Radio" GroupName="TipoSeccion" IsChecked="True"
+                                             VerticalAlignment="Center" Margin="0,0,22,0"
+                                             Checked="OnTipoSeccionCambiado">
+                                    <TextBlock Text="Seccion tipo 1 - no rellena" FontWeight="SemiBold" FontSize="12" />
+                                </RadioButton>
+
+                                <RadioButton x:Name="Tipo2Radio" GroupName="TipoSeccion"
+                                             VerticalAlignment="Center"
+                                             Checked="OnTipoSeccionCambiado">
+                                    <TextBlock Text="Seccion tipo 2 - rellena" FontWeight="SemiBold" FontSize="12" />
+                                </RadioButton>
+
+                                <Border Width="1" Background="{StaticResource BorderBrush}"
+                                        Margin="18,2,18,2" />
+
+                                <TextBlock Text="Escala del hatch:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"
+                                           Foreground="{StaticResource BrandDarkBrush}" />
+                                <TextBox x:Name="HatchScaleBox" Text="0.0003" Width="90" Height="26"
+                                         VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                         Padding="6,0"
+                                         ToolTip="Tamaño del rayado AR-CONC. Sube el numero si se ve muy fino. Aplica a los dos tipos."
+                                         LostFocus="OnEscalaHatchCambiada" />
+                                <TextBlock Text="(sube el numero si se ve muy fino)"
+                                           FontSize="10.5" VerticalAlignment="Center" Margin="8,0,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="1" x:Name="SeccionesGrid" Style="{StaticResource SheetGridStyle}"
+                              SelectionMode="Single" SelectionUnit="FullRow">
+                        <DataGrid.Columns>
+                            <!-- Las columnas de varilla son listas desplegables, como la
+                                 validacion de datos de Excel. La lista se llena en el
+                                 code-behind desde la tabla de diametros, asi que no puede
+                                 desincronizarse con la validacion. -->
+                            <DataGridComboBoxColumn x:Name="ColElemento" Header="Elemento"
+                                                    SelectedItemBinding="{Binding Elemento}" Width="115"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                            <DataGridTextColumn Header="ID"         Binding="{Binding Id}" Width="90" />
+                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1}" Width="75" />
+                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1}" Width="80" />
+
+                            <DataGridTextColumn Header="N esq sup"  Binding="{Binding NEsqSup}" Width="80" />
+                            <DataGridComboBoxColumn x:Name="ColVarEsqSup" Header="Var esq sup"
+                                                    SelectedItemBinding="{Binding DiamEsqSup}" Width="95"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                            <DataGridTextColumn Header="N int sup"  Binding="{Binding NIntSup}" Width="80" />
+                            <DataGridComboBoxColumn x:Name="ColVarIntSup" Header="Var int sup"
+                                                    SelectedItemBinding="{Binding DiamIntSup}" Width="95"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+
+                            <DataGridTextColumn Header="N esq inf"  Binding="{Binding NEsqInf}" Width="80" />
+                            <DataGridComboBoxColumn x:Name="ColVarEsqInf" Header="Var esq inf"
+                                                    SelectedItemBinding="{Binding DiamEsqInf}" Width="95"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                            <DataGridTextColumn Header="N int inf"  Binding="{Binding NIntInf}" Width="80" />
+                            <DataGridComboBoxColumn x:Name="ColVarIntInf" Header="Var int inf"
+                                                    SelectedItemBinding="{Binding DiamIntInf}" Width="95"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+
+                            <DataGridTextColumn Header="N lateral"  Binding="{Binding NInter}" Width="80" />
+                            <DataGridComboBoxColumn x:Name="ColVarLateral" Header="Var lateral"
+                                                    SelectedItemBinding="{Binding DiamInter}" Width="95"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+
+                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1}" Width="70" />
+                            <DataGridComboBoxColumn x:Name="ColEstribo" Header="Estribo"
+                                                    SelectedItemBinding="{Binding Estribo}" Width="85"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                            <DataGridTextColumn Header="Sep cm"     Binding="{Binding SeparacionCm}" Width="95" />
+                            <DataGridComboBoxColumn x:Name="ColDiamante" Header="Diamante"
+                                                    SelectedItemBinding="{Binding EstriboDiamante}" Width="85"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                            <DataGridComboBoxColumn x:Name="ColVarDiamante" Header="Var diam."
+                                                    SelectedItemBinding="{Binding DiamEstriboDiamante}" Width="95"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1}" Width="85" />
+                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc}" Width="65" />
+                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala}" Width="65" />
+                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2}" Width="80" />
+
+                            <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas}"
+                                                IsReadOnly="True" Width="85" />
+                            <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2}"
+                                                IsReadOnly="True" Width="80" />
+                            <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3}"
+                                                IsReadOnly="True" Width="85" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="2" Background="#FFEDF3F8" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1,0,1,1" Padding="12,7">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock x:Name="TotalesText" Grid.Column="0" FontSize="12" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource BrandDarkBrush}" />
+
+                            <!-- El boton de dibujar vive aqui, junto a la tabla que
+                                 dibuja, y no en una pestaña aparte. -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <!-- Sin esta casilla, una seccion ya dibujada no habia
+                                     forma de actualizarla mas que purgando su bloque
+                                     a mano en AutoCAD. -->
+                                <CheckBox x:Name="RedibujarChk" VerticalAlignment="Center"
+                                          Margin="0,0,14,0"
+                                          Content="Redibujar las que ya existen"
+                                          ToolTip="Apagado: la seccion que ya es bloque se salta, como DibujarSecciones de la macro.&#10;Encendido: se rehace EN SU MISMO SITIO, como ActualizarSecciones." />
+                                <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnValidate" />
+                                <Button x:Name="AlzadosButton" Content="Generar alzados"
+                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
+                                <Button x:Name="ExportButton" Content="Generar dibujo"
+                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnExport" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" Margin="0,10,0,0">
+                        <Grid>
+                            <Canvas x:Name="PreviewCanvas" Background="White" ClipToBounds="True" />
+                            <TextBlock Text="Vista previa de la seccion seleccionada"
+                                       FontSize="10.5" Margin="8,6,0,0"
+                                       VerticalAlignment="Top" HorizontalAlignment="Left"
+                                       Foreground="{StaticResource MutedTextBrush}" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ===== Secciones de acero ===== -->
+            <TabItem Header="Secciones Acero">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
+                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                               Text="Perfiles IPR, IR, HSS, canales y angulos, con sus placas y atiesadores." />
+                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja y armo la cuadricula con sus columnas reales, igual que se hizo con las secciones de concreto." />
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== Zapatas corridas ===== -->
+            <TabItem Header="Zapatas Corridas">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}" />
+                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                               Text="Cimentacion continua, con su armado longitudinal y transversal." />
+                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== Zapatas aisladas ===== -->
+            <TabItem Header="Zapatas Aisladas">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Zapatas aisladas" Style="{StaticResource ModuleTitleStyle}" />
+                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                               Text="Dados, parrillas y anclaje de la columna que desplanta." />
+                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== Muros de contencion ===== -->
+            <TabItem Header="Muros de Contencion">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Muros de contencion" Style="{StaticResource ModuleTitleStyle}" />
+                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                               Text="Seccion del muro, talon, punta y su armado." />
+                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== Placa base ===== -->
+            <TabItem Header="Placa Base">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}" />
+                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                               Text="Placa, anclas, atiesadores y su detalle de montaje." />
+                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== Conexiones ===== -->
+            <TabItem Header="Conexiones">
+                <StackPanel Margin="22">
+                    <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}" />
+                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                               Text="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
+                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                    </Border>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== ETABS ===== -->
+            <TabItem x:Name="EtabsTab" Header="ETABS">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Lectura del modelo de ETABS" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
+
+                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="16"
+                                MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="Antes de conectar" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" />
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource MutedTextBrush}"
+                                           Text="1. ETABS abierto, con el modelo cargado.&#x0a;2. Sin cuadros de dialogo abiertos en ETABS.&#x0a;3. El modelo guardado al menos una vez." />
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <Button Content="Probar conexion" Style="{StaticResource PrimaryButtonStyle}" Click="OnTestEtabs" />
+                            <Button Content="Leer modelo" Style="{StaticResource SecondaryButtonStyle}" Click="OnImportEtabs" />
+                            <Button Content="Leer piers de muros" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnLeerPiers"
+                                    ToolTip="Lee las etiquetas de pier de los muros y sus medidas por nivel.&#10;En ETABS se asignan con Assign &gt; Shell &gt; Pier Label." />
+                        </StackPanel>
+
+                        <TextBlock x:Name="EtabsStatusText" FontSize="12" TextWrapping="Wrap" MaxWidth="760"
+                                   FontFamily="Consolas"
+                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,14" />
+
+                        <!-- ===== Visor del modelo: 3D y planta ===== -->
+                        <TextBlock Text="Vista del modelo" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
+
+                        <!-- Filtros por tipo de elemento, comunes a las dos vistas -->
+                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,8"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
+                                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <CheckBox x:Name="VerColumnasChk" Content="Columnas" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                <CheckBox x:Name="VerTrabesChk" Content="Trabes" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                <CheckBox x:Name="VerDiagonalesChk" Content="Diagonales" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                <CheckBox x:Name="VerMurosChk" Content="Muros" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                <CheckBox x:Name="VerLosasChk" Content="Losas" IsChecked="True"
+                                          VerticalAlignment="Center" Click="OnFiltroVistaCambiado" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Sin MaxWidth ni HorizontalAlignment: la vista del modelo
+                             ocupa TODO el ancho disponible. Con el MaxWidth de 980 que
+                             tenia antes, en una pantalla ancha quedaba un vacio a la
+                             derecha y el modelo se veia apretado sin motivo. -->
+                        <TabControl x:Name="VistaTabs" Margin="0,0,0,16"
+                                    HorizontalAlignment="Stretch"
+                                    SelectionChanged="OnVistaTabCambiada">
+
+                            <!-- ===== 3D ===== -->
+                            <TabItem Header="Vista 3D">
+                                <StackPanel Margin="10">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button Content="Isometrica" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="ISO" Click="OnVistaPreset" />
+                                        <Button Content="Frente (XZ)" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="FRENTE" Click="OnVistaPreset" />
+                                        <Button Content="Lado (YZ)" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="LADO" Click="OnVistaPreset" />
+                                        <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="PLANTA" Click="OnVistaPreset" />
+                                        <TextBlock Text="Arrastra para girar. Rueda para zoom. Boton derecho para mover."
+                                                   FontSize="10.5" Foreground="{StaticResource MutedTextBrush}"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                                    </StackPanel>
+
+                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="White">
+                                        <!-- El Background es imprescindible: sin el, el Canvas no
+                                             recibe los eventos del mouse. -->
+                                        <Canvas x:Name="Vista3DCanvas" Height="430" ClipToBounds="True"
+                                                Background="White"
+                                                MouseLeftButtonDown="OnVistaMouseDown"
+                                                MouseRightButtonDown="OnVistaMouseDown"
+                                                MouseMove="OnVistaMouseMove"
+                                                MouseLeftButtonUp="OnVistaMouseUp"
+                                                MouseRightButtonUp="OnVistaMouseUp"
+                                                MouseLeave="OnVistaMouseUp"
+                                                MouseWheel="OnVistaWheel" />
+                                    </Border>
+                                </StackPanel>
+                            </TabItem>
+
+                            <!-- ===== Extruida ===== -->
+                            <TabItem Header="Vista extruida">
+                                <StackPanel Margin="10">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button Content="Isometrica" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="ISO" Click="OnVistaPreset" />
+                                        <Button Content="Frente (XZ)" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="FRENTE" Click="OnVistaPreset" />
+                                        <Button Content="Lado (YZ)" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="LADO" Click="OnVistaPreset" />
+                                        <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="PLANTA" Click="OnVistaPreset" />
+                                        <TextBlock Text="Cada elemento con su seccion real y sombreado. Arrastra para girar."
+                                                   FontSize="10.5" Foreground="{StaticResource MutedTextBrush}"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                                    </StackPanel>
+
+                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="White">
+                                        <Canvas x:Name="ExtruidaCanvas" Height="430" ClipToBounds="True"
+                                                Background="White"
+                                                MouseLeftButtonDown="OnVistaMouseDown"
+                                                MouseRightButtonDown="OnVistaMouseDown"
+                                                MouseMove="OnVistaMouseMove"
+                                                MouseLeftButtonUp="OnVistaMouseUp"
+                                                MouseRightButtonUp="OnVistaMouseUp"
+                                                MouseLeave="OnVistaMouseUp"
+                                                MouseWheel="OnVistaWheel" />
+                                    </Border>
+                                </StackPanel>
+                            </TabItem>
+
+                        </TabControl>
+
+                        <!-- Los piers van en su propia tabla: son pier x nivel, no
+                             elementos del modelo, y mezclarlos con los elementos
+                             obligaria a columnas vacias en las dos. -->
+                        <TextBlock x:Name="PiersTitulo" Text="Piers de muros" FontWeight="SemiBold"
+                                   FontSize="12.5" Visibility="Collapsed"
+                                   Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
+
+                        <DataGrid x:Name="PiersGrid" Style="{StaticResource SheetGridStyle}"
+                                  Height="200" IsReadOnly="True" CanUserAddRows="False"
+                                  CanUserDeleteRows="False" Visibility="Collapsed"
+                                  Margin="0,0,0,16">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Pier"     Binding="{Binding Nombre}" Width="120" />
+                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="120" />
+                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoBaseM, StringFormat=N3}" Width="90" />
+                                <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorBaseM, StringFormat=N3}" Width="95" />
+                                <DataGridTextColumn Header="Medidas"  Binding="{Binding Dimensiones}" Width="130" />
+                                <DataGridTextColumn Header="Angulo"   Binding="{Binding AnguloEje, StringFormat=N1}" Width="80" />
+                                <DataGridTextColumn Header="Material" Binding="{Binding Material}" Width="*" MinWidth="110" />
+                                <DataGridTextColumn Header="Paños"    Binding="{Binding Areas}" Width="70" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Text="Elementos leidos" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
+
+                        <DataGrid x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
+                                  Height="300" IsReadOnly="True" CanUserAddRows="False"
+                                  CanUserDeleteRows="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="95" />
+                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="110" />
+                                <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="110" />
+                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
+                                <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="130" />
+                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="90" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== AutoCAD ===== -->
+            <TabItem Header="AutoCAD">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Dibujar en AutoCAD" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Cada seccion se dibuja y se agrupa en un bloque con el nombre de su ID, igual que hace la macro." />
+
+                        <StackPanel Margin="0,0,0,16">
+                            <RadioButton x:Name="ModeComRadio" GroupName="CadMode" IsChecked="True" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Text="Dibujar en la sesion abierta de AutoCAD" FontWeight="SemiBold" />
+                                    <TextBlock Text="Por COM, igual que la macro. Requiere AutoCAD abierto."
+                                               FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxWidth="580" />
+                                </StackPanel>
+                            </RadioButton>
+
+                            <RadioButton x:Name="ModeDxfRadio" GroupName="CadMode">
+                                <StackPanel>
+                                    <TextBlock Text="Escribir un archivo DXF" FontWeight="SemiBold" />
+                                    <TextBlock Text="No requiere AutoCAD instalado. Se agrega despues del motor por COM."
+                                               FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxWidth="580" />
+                                </StackPanel>
+                            </RadioButton>
+                        </StackPanel>
+
+                        <Grid Margin="0,0,0,16" MaxWidth="700">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Archivo de salida" VerticalAlignment="Center" Margin="0,0,0,8" />
+                            <Grid Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" x:Name="OutputPathBox" Height="28" VerticalContentAlignment="Center" Padding="6,0" />
+                                <Button  Grid.Column="1" Content="Examinar..." Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0" Click="OnBrowseOutput" />
+                            </Grid>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Escala de dibujo" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="1" Grid.Column="1" x:Name="ScaleBox" Text="0.01" Height="28" Width="110"
+                                       HorizontalAlignment="Left" VerticalContentAlignment="Center" Padding="6,0"
+                                       ToolTip="0.01 = se captura en cm y se dibuja en metros, como la macro" />
+                        </Grid>
+
+                        <TextBlock FontSize="11.5" TextWrapping="Wrap" MaxWidth="640"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="El boton para dibujar esta en la pestaña Secciones Concreto, junto a la tabla." />
+
+                        <TextBlock x:Name="ExportHintText" FontSize="11.5" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" MaxWidth="640" Foreground="{StaticResource MutedTextBrush}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== Licencia ===== -->
+            <TabItem Header="Licencia">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22" MaxWidth="760" HorizontalAlignment="Left">
+                        <TextBlock Text="Estado de la licencia" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
+
+                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tipo de licencia" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="LicTierText" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Licenciado a" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LicOrgText" TextWrapping="Wrap" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Vigencia" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="LicExpiryText" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Proxima validacion" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="LicTokenExpiryText" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Modulos habilitados" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="LicFeaturesText" TextWrapping="Wrap" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Huella del equipo" FontWeight="SemiBold" />
+                                <TextBox   Grid.Row="5" Grid.Column="1" x:Name="LicFingerprintText"
+                                           IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Revalidar ahora" Style="{StaticResource PrimaryButtonStyle}" Click="OnRevalidate" />
+                            <Button Content="Copiar huella" Style="{StaticResource SecondaryButtonStyle}" Click="OnCopyFingerprint" />
+                            <Button Content="Liberar este equipo" Style="{StaticResource SecondaryButtonStyle}" Click="OnDeactivate" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="LicMessageText" FontSize="11.5" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== Dibujar planos estructurales ===== -->
+            <TabItem Header="Dibujar planos estructurales">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Dibujar planos estructurales" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="La planta del modelo de ETABS, nivel por nivel. Es el punto de partida del plano estructural." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+                            <Button Content="Leer plantas de ETABS" Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnLeerPlantas"
+                                    ToolTip="Lee el modelo de ETABS y arma la lista de niveles con sus plantas." />
+                            <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                        </StackPanel>
+
+                        <!-- Los mismos filtros por tipo de elemento que el visor 3D -->
+                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,10"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
+                                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <CheckBox x:Name="VerColumnasPlanoChk" Content="Columnas" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
+                                <CheckBox x:Name="VerTrabesPlanoChk" Content="Trabes" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
+                                <CheckBox x:Name="VerMurosPlanoChk" Content="Muros" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
+                                <CheckBox x:Name="VerLosasPlanoChk" Content="Losas" IsChecked="True"
+                                          VerticalAlignment="Center" Click="OnFiltroPlanoCambiado" />
+                            </StackPanel>
+                        </Border>
+
+<StackPanel Margin="10">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="Nivel:" FontWeight="SemiBold" FontSize="11.5"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <ComboBox x:Name="NivelPlantaCombo" Width="190"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="OnNivelPlantaCambiado" />
+                                        <TextBlock Text="Rueda para zoom. Boton derecho para mover."
+                                                   FontSize="10.5" Foreground="{StaticResource MutedTextBrush}"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                                    </StackPanel>
+
+                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="White">
+                                        <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
+                                                Background="White"
+                                                MouseRightButtonDown="OnVistaMouseDown"
+                                                MouseMove="OnVistaMouseMove"
+                                                MouseRightButtonUp="OnVistaMouseUp"
+                                                MouseLeave="OnVistaMouseUp"
+                                                MouseWheel="OnVistaWheel" />
+                                    </Border>
+                                </StackPanel>
+                        <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <!-- ==================== Barra de estado ==================== -->
+        <Border Grid.Row="3" Background="{StaticResource TabStripBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="StatusText" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+                <TextBlock Grid.Column="1" x:Name="CountsText" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

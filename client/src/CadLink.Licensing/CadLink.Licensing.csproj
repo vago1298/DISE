@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Licensing</RootNamespace>
+    <AssemblyName>CadLink.Licensing</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WMI para leer identificadores de hardware -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <!-- DPAPI para cifrar el cache de licencia con alcance de usuario -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

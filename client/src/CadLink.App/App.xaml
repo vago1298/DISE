@@ -1,0 +1,16 @@
+<Application x:Class="CadLink.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Sin StartupUri: el arranque se controla desde App.xaml.cs porque primero
+        hay que mostrar el splash y validar la licencia antes de decidir qué
+        ventana abrir.
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme/ExcelTabs.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

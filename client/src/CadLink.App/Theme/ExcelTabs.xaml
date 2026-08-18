@@ -1,0 +1,211 @@
+<!--
+    Pestañas al estilo de las hojas de Excel: en la parte inferior de la ventana,
+    la activa en blanco con acento de color, las inactivas en gris.
+
+    La idea es que el usuario reconozca de inmediato la metáfora: cada pestaña es
+    una "hoja" independiente del programa.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework">
+
+    <!-- ===================== Paleta ===================== -->
+    <Color x:Key="BrandDarkColor">#FF0B3D6B</Color>
+    <Color x:Key="BrandColor">#FF1776BF</Color>
+
+    <SolidColorBrush x:Key="BrandDarkBrush" Color="{StaticResource BrandDarkColor}" />
+    <SolidColorBrush x:Key="BrandBrush" Color="{StaticResource BrandColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FFFFC72C" />
+
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="TabStripBrush" Color="#FFE9EDF1" />
+    <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF3F5F7" />
+    <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE1E7EC" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#FFC9D2DA" />
+    <SolidColorBrush x:Key="TextBrush" Color="#FF1F2933" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#FF6B7A88" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFC0392B" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFB8860B" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF1E7E34" />
+
+    <!-- ===================== Pestaña individual ===================== -->
+    <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Grid>
+                        <Border x:Name="Bg"
+                                Background="{StaticResource TabInactiveBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1,0,1,1"
+                                CornerRadius="0,0,4,4">
+                            <ContentPresenter x:Name="Label"
+                                              ContentSource="Header"
+                                              Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+
+                        <!-- Barra de acento inferior, como el subrayado de la hoja
+                             activa en Excel. Oculta salvo en la pestaña seleccionada. -->
+                        <Border x:Name="Accent"
+                                Height="3"
+                                VerticalAlignment="Bottom"
+                                Background="{StaticResource BrandBrush}"
+                                CornerRadius="0,0,4,4"
+                                Visibility="Collapsed" />
+                    </Grid>
+
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource SurfaceBrush}" />
+                            <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+                            <Setter Property="Panel.ZIndex" Value="10" />
+                        </Trigger>
+
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsSelected" Value="False" />
+                                <Condition Property="IsMouseOver" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource TabHoverBrush}" />
+                        </MultiTrigger>
+
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                            <Setter Property="Opacity" Value="0.55" />
+                            <Setter Property="Cursor" Value="No" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Contenedor de pestañas ===================== -->
+    <Style x:Key="ExcelTabControlStyle" TargetType="TabControl">
+        <Setter Property="TabStripPlacement" Value="Bottom" />
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource ExcelTabItemStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Contenido de la hoja activa -->
+                        <Border Grid.Row="0"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="0,0,0,1">
+                            <ContentPresenter ContentSource="SelectedContent" />
+                        </Border>
+
+                        <!-- Franja de pestañas. TabPanel acomoda las pestañas en varias
+                             filas si no caben en el ancho de la ventana. Va directo en el
+                             Border: envolverlo en un ScrollViewer complica la localización
+                             del panel anfitrión de los elementos. -->
+                        <Border Grid.Row="1" Background="{StaticResource TabStripBrush}" Padding="6,3,6,4">
+                            <prim:TabPanel IsItemsHost="True" />
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Estilos auxiliares ===================== -->
+    <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="17" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="Margin" Value="0,0,0,3" />
+    </Style>
+
+    <Style x:Key="ModuleSubtitleStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,14" />
+    </Style>
+
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource BrandBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="3"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandDarkBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="#FFB6C2CC" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="Background" Value="#FF6B7A88" />
+    </Style>
+
+    <!-- Celda con lista desplegable, como la validación de datos de Excel.
+         IsDropDownOpen en True hace que la lista se abra en cuanto la celda entra
+         en edición, en lugar de exigir un segundo clic en la flechita. -->
+    <Style x:Key="ComboCeldaEdicion" TargetType="ComboBox">
+        <Setter Property="IsDropDownOpen" Value="True" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="ComboCeldaLectura" TargetType="TextBlock">
+        <Setter Property="Padding" Value="4,3" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Cuadrícula con aire de hoja de cálculo: encabezados grises, líneas suaves,
+         filas alternadas y edición directa. -->
+    <Style x:Key="SheetGridStyle" TargetType="DataGrid">
+        <Setter Property="AutoGenerateColumns" Value="False" />
+        <Setter Property="CanUserAddRows" Value="True" />
+        <Setter Property="CanUserDeleteRows" Value="True" />
+        <Setter Property="HeadersVisibility" Value="All" />
+        <Setter Property="GridLinesVisibility" Value="All" />
+        <Setter Property="HorizontalGridLinesBrush" Value="#FFE3E8ED" />
+        <Setter Property="VerticalGridLinesBrush" Value="#FFE3E8ED" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="RowBackground" Value="White" />
+        <Setter Property="AlternatingRowBackground" Value="#FFF8FAFB" />
+        <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+</ResourceDictionary>

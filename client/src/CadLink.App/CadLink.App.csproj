@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <RootNamespace>CadLink.App</RootNamespace>
+    <AssemblyName>CadLink</AssemblyName>
+    <Version>1.0.0</Version>
+    <Company>MiEmpresa</Company>
+    <Product>CadLink</Product>
+
+    <!-- Genera un solo .exe autocontenido para facilitar la distribucion.
+         El comando exacto de publicacion esta en el README.
+
+         Nota: aqui no se puede escribir el comando con sus opciones porque XML
+         PROHIBE el doble guion dentro de un comentario, ya que lo reserva para
+         cerrarlo. Es el mismo motivo por el que un comentario XML tampoco puede
+         terminar en guion. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Resource (no Content): el logo queda EMBEBIDO en el ejecutable, así que
+         nadie puede sustituir el archivo para cambiar la marca del programa. -->
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- La configuracion, al contrario del logo, va como archivo SUELTO junto al
+         ejecutable a proposito: el cliente debe poder cambiar la direccion del
+         servidor con el Bloc de notas, sin recompilar. -->
+    <None Update="cadlink.config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- IMPORTANTE: en un proyecto de WPF, System.IO NO viene entre los using
+         implicitos, a diferencia de una libreria de clases normal. Sin esta
+         linea, cualquier archivo de este proyecto que use Path, File o
+         IOException falla al compilar con un CS0103 desconcertante.
+         Se declara aqui para todo el proyecto y no archivo por archivo. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadLink.Licensing\CadLink.Licensing.csproj" />
+    <ProjectReference Include="..\CadLink.Cad\CadLink.Cad.csproj" />
+    <ProjectReference Include="..\CadLink.Etabs\CadLink.Etabs.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Icono del ejecutable, el que se ve en la barra de tareas y en el Explorador.
+         Solo se aplica si el archivo existe, para que el proyecto compile aunque no
+         lo hayas puesto todavia. Copia aqui tu CADLINK.ico como Assets\app.ico. -->
+    <ApplicationIcon Condition="Exists('Assets\app.ico')">Assets\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+</Project>
