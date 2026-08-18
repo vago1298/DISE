@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 
 namespace CadLink.App.Models;
 
@@ -91,7 +92,53 @@ public sealed class Solapa : Row
     /// <summary>Quién dibujó.</summary>
     public string Dibujo { get => _dibujo; set => Set(ref _dibujo, value); }
 
-    public DateTime Fecha { get => _fecha; set => Set(ref _fecha, value); }
+    public DateTime Fecha
+    {
+        get => _fecha;
+        set
+        {
+            Set(ref _fecha, value);
+
+            // Los dos textos derivan de la fecha, así que hay que reavisar o el
+            // rótulo de la solapa se quedaría con el mes anterior.
+            Raise(nameof(FechaTexto));
+            Raise(nameof(FechaTextoLargo));
+        }
+    }
+
+    /// <summary>
+    /// La fecha como se <b>rotula en la solapa</b>: mes y año con letra.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// «AGOSTO DE 2026», no «18/08/2026». Es lo que pidió el usuario y es lo normal en
+    /// un juego de planos: la solapa fecha el <b>juego</b>, que se emite en un mes, no
+    /// un día concreto. Poner el día invita a que alguien lo lea como fecha de
+    /// revisión.
+    /// </para>
+    /// <para>
+    /// El día se sigue capturando y se sigue guardando en el <c>.clk</c>: se puede
+    /// elegir en el calendario y está disponible en <see cref="FechaTextoLargo"/> para
+    /// quien lo necesite. Lo único que cambia es <b>qué se imprime por omisión</b>.
+    /// </para>
+    /// <para>
+    /// Va en <c>es-MX</c> y no en la cultura del equipo a propósito: el plano se
+    /// entrega en español pase lo que pase, y en un Windows en inglés
+    /// <c>CurrentCulture</c> daría «August of 2026» en una solapa mexicana.
+    /// </para>
+    /// </remarks>
+    public string FechaTexto => TextoDeMesYAnio(_fecha);
+
+    /// <summary>La fecha completa con el mes en letra, por si hace falta el día.</summary>
+    public string FechaTextoLargo =>
+        _fecha.ToString("d 'de' MMMM 'de' yyyy", CulturaPlanos).ToUpperInvariant();
+
+    /// <summary>Cultura de los planos. Ver <see cref="FechaTexto"/>.</summary>
+    private static readonly CultureInfo CulturaPlanos = CultureInfo.GetCultureInfo("es-MX");
+
+    /// <summary>Mes y año con letra, en mayúsculas.</summary>
+    public static string TextoDeMesYAnio(DateTime f) =>
+        f.ToString("MMMM 'de' yyyy", CulturaPlanos).ToUpperInvariant();
 
     /// <summary>Escala por omisión del juego. Cada plano puede llevar la suya.</summary>
     public string Escala { get => _escala; set => Set(ref _escala, value); }

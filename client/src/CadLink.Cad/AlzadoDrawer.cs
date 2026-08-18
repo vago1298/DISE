@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 
 namespace CadLink.Cad;
@@ -491,9 +492,20 @@ public sealed class AlzadoDrawer
         // ---------- Zuncho helicoidal, o estribos/anillos ----------
         // La hélice NO es una cápsula repetida: es una sola pieza continua, y en el
         // alzado se ve como un resorte. Lo elige el usuario, no el programa.
+        //
+        // Se muestrea UNA vez y se reutiliza: la usan el dibujo del zuncho y, después,
+        // el recorte de las varillas que pasan por detrás. Si cada uno la calculara por
+        // su cuenta, los cortes caerían donde no está dibujada.
+        Helice? helice = null;
+
         if (a.Circular && a.ZunchoHelicoidal)
         {
-            HeliceDelZuncho(bloque, a, x0, x1, y0, y1, rec, dEst, relleno);
+            helice = MuestrearHelice(a, x0, x1, y0, y1, rec, dEst);
+
+            if (helice is not null)
+            {
+                HeliceDelZuncho(bloque, a, helice, dEst, relleno);
+            }
         }
         else
         {
@@ -582,7 +594,8 @@ public sealed class AlzadoDrawer
             // de abajo no dibujarían nada: sus lechos vienen vacíos. Las varillas se
             // proyectan desde el círculo.
             VarillasCirculares(bloque, a, xa, xb, xaInf, xbInf,
-                (y0 + y1) / 2, ycSup, ycInf, dSup, gSup, gInf, centros, dEst, relleno);
+                (y0 + y1) / 2, ycSup, ycInf, dSup, gSup, gInf, centros, dEst, relleno,
+                helice);
         }
         else
         {
@@ -609,6 +622,11 @@ public sealed class AlzadoDrawer
             Girar90(bloque, inicio);
         }
 
+        // ---------- Rótulo DENTRO del bloque ----------
+        // Va DESPUÉS del giro a propósito: si se dibujara antes, el giro de 90° se lo
+        // llevaría por delante y el texto saldría tumbado de lado.
+        RotuloDelBloque(bloque, a, girar, largo, ancho);
+
         return new Geo
         {
             DSup = dSup, DInf = dInf,
@@ -617,6 +635,150 @@ public sealed class AlzadoDrawer
             GanchoSup = gSup, GanchoInf = gInf,
             Centros = centros
         };
+    }
+
+    // ==================================================================
+    // Rótulo del bloque de alzado
+    // ==================================================================
+
+    /// <summary>Separación entre el alzado y su rótulo. Es el <c>ROTULO_GAP</c>.</summary>
+    private const double RotuloGap = 0.05;
+
+    /// <summary>
+    /// El rótulo del alzado, <b>dentro de su propio bloque</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Qué faltaba.</b> El bloque de alzado llevaba solo geometría: concreto,
+    /// estribos y varillas. Su título y sus cotas se dibujan en el espacio modelo, por
+    /// fuera, siguiendo el reparto de la macro. El resultado es que el bloque
+    /// <c>ALZ-C-2</c> insertado en cualquier otro sitio del plano —o en otro plano— no
+    /// dice qué es: es una mancha de concreto con acero, sin identificación.
+    /// </para>
+    /// <para>
+    /// Con el rótulo dentro, el alzado se identifica <b>solo</b>, y sigue el mismo
+    /// criterio que ya cumple el bloque de la sección, que sí lleva el suyo.
+    /// </para>
+    /// <para>
+    /// <b>Va después del giro de 90°.</b> El alzado vertical se dibuja tendido y se gira
+    /// al final; si el rótulo se dibujara antes, el giro lo dejaría tumbado. Por eso las
+    /// coordenadas de abajo distinguen los dos casos: tras el giro antihorario alrededor
+    /// del origen, la geometría que ocupaba <c>x ∈ [0, largo]</c> pasa a ocupar
+    /// <c>x ∈ [−ancho, 0]</c>, así que el centro ya no está en <c>largo/2</c> sino en
+    /// <c>−ancho/2</c>.
+    /// </para>
+    /// </remarks>
+    private void RotuloDelBloque(
+        object bloque, AlzadoCad a, bool girar, double largo, double ancho)
+    {
+        var lineas = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(a.Elemento))
+        {
+            // Ya viene con el nombre de rótulo: una columna redonda dice COLUMNA.
+            lineas.Add(a.Elemento.ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(a.Id))
+        {
+            lineas.Add("\"" + a.Id + "\"");
+        }
+
+        // Armado longitudinal, con el mismo texto que las cotas del alzado
+        if (a.Circular)
+        {
+            var t = TextoCirculo(a);
+            if (t != "---") { lineas.Add(t); }
+        }
+        else
+        {
+            var sup = TextoLecho(a.Superior, "Superiores");
+            var inf = TextoLecho(a.Inferior, "Inferiores");
+            var lat = TextoSimple(a.NLateral * 2, a.Lateral, "Intermedias");
+
+            if (sup != "---") { lineas.Add(sup); }
+            if (lat != "---") { lineas.Add(lat); }
+            if (inf != "---") { lineas.Add(inf); }
+        }
+
+        // Acero transversal. Se usa la separación TAL COMO se capturó —«10-20-20»— y no
+        // solo la de una zona, porque el rótulo describe el elemento entero.
+        if (a.Estribo.Existe)
+        {
+            var sep = string.IsNullOrWhiteSpace(a.Separacion)
+                ? a.SeparacionesCm[0].ToString("0", CultureInfo.InvariantCulture)
+                : a.Separacion.Trim();
+
+            lineas.Add(a.Circular
+                ? $"Zuncho {(a.ZunchoHelicoidal ? "helic." : "anillos")} " +
+                  $"{Etiqueta(a.Estribo.Clave)} @ {sep} cm"
+                : $"Est. {Etiqueta(a.Estribo.Clave)} @ {sep} cm");
+        }
+
+        lineas.Add($"Rec. {a.RecubrimientoCm:0.#} cm");
+
+        if (!string.IsNullOrWhiteSpace(a.Fc))
+        {
+            lineas.Add($"f'c={a.Fc} kg/cm\u00B2");
+        }
+
+        if (!string.IsNullOrWhiteSpace(a.Escala))
+        {
+            lineas.Add($"Escala 1:{a.Escala}");
+        }
+
+        if (lineas.Count == 0)
+        {
+            return;
+        }
+
+        // Centro y pie del alzado ya colocado. Ver el comentario sobre el giro.
+        var xCentro = girar ? -ancho / 2 : largo / 2;
+        var yPie = -RotuloGap * _f;
+
+        TextoEn(bloque, xCentro, yPie, string.Join("\\P", lineas),
+            AlturaRotuloBloque, anclaje: 2);   // 2 = TopCenter
+    }
+
+    /// <summary>Altura del texto del rótulo del bloque de alzado.</summary>
+    /// <remarks>
+    /// El mismo <c>H_TX_ROTULO</c> de la macro, para que el rótulo del alzado y el de la
+    /// sección se lean del mismo tamaño cuando quedan uno al lado del otro.
+    /// </remarks>
+    private const double AlturaRotuloBloque = 0.025;
+
+    /// <summary>
+    /// Texto dentro de un contenedor, que puede ser la definición de un bloque.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Texto"/> escribe siempre en el espacio modelo, y para el rótulo del
+    /// bloque hace falta escribir <b>dentro</b> de la definición: si se escribiera en el
+    /// modelo, el rótulo no viajaría con el bloque, que es justo lo que se quiere
+    /// arreglar.
+    /// </remarks>
+    private void TextoEn(
+        object cont, double x, double y, string texto, double alto, int anclaje)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic mt = ((dynamic)cont).AddMText(new[] { x, y, 0d }, 0d, texto);
+                mt.StyleName = EstiloTexto;
+                mt.Height = alto * _f;
+                mt.AttachmentPoint = anclaje;
+                mt.InsertionPoint = new[] { x, y, 0d };
+                mt.Width = 0;
+                mt.Layer = "ROTULOS";
+                mt.Color = ColorVerde;
+                mt.Update();
+            });
+        }
+        catch (Exception ex)
+        {
+            // Sin rotulo el alzado sigue siendo valido.
+            Fallo("Rótulo del bloque de alzado", ex);
+        }
     }
 
     // ==================================================================
@@ -646,11 +808,16 @@ public sealed class AlzadoDrawer
     /// los otros dos.
     /// </para>
     /// </remarks>
+    /// <param name="helice">
+    /// La hélice del zuncho, o <c>null</c> si el zuncho va en anillos. Cuando la hay, es
+    /// ella la que decide dónde se recorta cada varilla.
+    /// </param>
     private void VarillasCirculares(
         object bloque, AlzadoCad a,
         double xa, double xb, double xaInf, double xbInf,
         double yMedio, double ycSup, double ycInf, double dVar,
-        double gSup, double gInf, List<double> centros, double dEst, bool relleno)
+        double gSup, double gInf, List<double> centros, double dEst, bool relleno,
+        Helice? helice)
     {
         if (a.NVarTotal <= 0 || dVar <= 0)
         {
@@ -690,6 +857,8 @@ public sealed class AlzadoDrawer
             $"{ys.Count} posición(es) distinta(s) del alzado; las parejas simétricas se " +
             "proyectan una sobre otra.");
 
+        var recortes = 0;
+
         for (var i = 0; i < ys.Count; i++)
         {
             var esPrimera = i == 0;
@@ -702,9 +871,32 @@ public sealed class AlzadoDrawer
             var xIzq = esPrimera ? xaInf : xa;
             var xDer = esPrimera ? xbInf : xb;
 
+            // ---------- Dónde se recorta esta varilla ----------
+            // Con zuncho HELICOIDAL no hay anillos: lo que tapa la varilla son los
+            // pasos del zuncho por delante de ella, y caen en un sitio distinto para
+            // cada varilla. Pasarle los centros de los anillos, que es lo que se hacía
+            // antes, recortaba donde no hay nada y dejaba sin recortar donde sí lo hay:
+            // en el plano las varillas cruzaban la hélice de lado a lado.
+            var cortes = helice is null
+                ? centros
+                : CrucesFrontales(helice, ys[i]);
+
+            if (helice is not null)
+            {
+                recortes += cortes.Count;
+            }
+
             VarillaConGanchos(
-                bloque, xIzq, xDer, ys[i], dVar, capa, centros, dEst, gancho,
+                bloque, xIzq, xDer, ys[i], dVar, capa, cortes, dEst, gancho,
                 hacia: esPrimera, relleno);
+        }
+
+        if (helice is not null)
+        {
+            Nota(
+                $"Alzado '{a.Id}': las varillas se recortaron en {recortes} paso(s) del " +
+                "zuncho por delante de ellas. Los pasos por detrás no se recortan: ahí " +
+                "es la varilla la que tapa al zuncho.");
         }
     }
 
@@ -762,16 +954,48 @@ public sealed class AlzadoDrawer
     /// En modo sección rellena, el cuerpo del zuncho se rellena de color como los
     /// estribos. En modo sin relleno queda solo el contorno.
     /// </param>
-    private void HeliceDelZuncho(
-        object bloque, AlzadoCad a,
-        double x0, double x1, double y0, double y1, double rec, double dZun,
-        bool relleno)
+    /// <summary>
+    /// El recorrido de la hélice, muestreado. Lo comparten el dibujo y los recortes.
+    /// </summary>
+    /// <remarks>
+    /// Vive aparte porque lo usan <b>dos</b> cosas: dibujar el zuncho y decidir dónde
+    /// se recortan las varillas que pasan por detrás. Tienen que salir de la MISMA
+    /// muestra, o los cortes caerían en un sitio y la hélice se dibujaría en otro.
+    /// </remarks>
+    private sealed class Helice
+    {
+        /// <summary>Radio del eje de la barra, desde el eje del elemento.</summary>
+        public required double REje { get; init; }
+
+        /// <summary>Elevación del eje del elemento.</summary>
+        public required double YMedio { get; init; }
+
+        public required double[] X { get; init; }
+
+        /// <summary>Seno de la fase: el desplazamiento, en fracción del radio.</summary>
+        public required double[] Sen { get; init; }
+
+        /// <summary>
+        /// Coseno de la fase: la <b>profundidad</b>. Positivo = la barra pasa por
+        /// DELANTE del elemento, hacia quien mira.
+        /// </summary>
+        public required double[] Cos { get; init; }
+
+        public required double Vueltas { get; init; }
+        public required double P1 { get; init; }
+        public required double P2 { get; init; }
+        public required double P3 { get; init; }
+    }
+
+    /// <summary>Muestrea la hélice del zuncho, o <c>null</c> si no cabe.</summary>
+    private Helice? MuestrearHelice(
+        AlzadoCad a, double x0, double x1, double y0, double y1, double rec, double dZun)
     {
         var largo = x1 - x0;
 
         if (largo <= 0 || dZun <= 0)
         {
-            return;
+            return null;
         }
 
         // Radio del EJE de la barra del zuncho, medido desde el eje del elemento
@@ -783,10 +1007,8 @@ public sealed class AlzadoDrawer
             _log.Add(
                 $"Alzado '{a.Id}': con diámetro {a.DiametroCm:0.#} cm y recubrimiento " +
                 $"{a.RecubrimientoCm:0.#} cm no queda sitio para el zuncho helicoidal.");
-            return;
+            return null;
         }
-
-        var yMedio = (y0 + y1) / 2;
 
         // Separaciones de las tres zonas, en metros de dibujo
         var s = a.SeparacionesCm;
@@ -805,7 +1027,7 @@ public sealed class AlzadoDrawer
 
         if (vueltas <= 0)
         {
-            return;
+            return null;
         }
 
         var n = (int)Math.Ceiling(vueltas * PuntosPorVuelta);
@@ -821,6 +1043,46 @@ public sealed class AlzadoDrawer
         }
 
         var dx = largo / n;
+
+        var xs = new double[n + 1];
+        var sen = new double[n + 1];
+        var cos = new double[n + 1];
+
+        var fase = 0d;
+
+        for (var i = 0; i <= n; i++)
+        {
+            var x = x0 + (i * dx);
+
+            if (i > 0)
+            {
+                // La fase se acumula con el paso de la zona donde cae el tramo. Se
+                // evalúa en el punto MEDIO del tramo: en la frontera de zonas, tomar
+                // el extremo daría medio tramo con el paso equivocado.
+                fase += 2 * Math.PI * dx / PasoEn(x - (dx / 2));
+            }
+
+            xs[i] = x;
+            sen[i] = Math.Sin(fase);
+            cos[i] = Math.Cos(fase);
+        }
+
+        return new Helice
+        {
+            REje = rEje,
+            YMedio = (y0 + y1) / 2,
+            X = xs, Sen = sen, Cos = cos,
+            Vueltas = vueltas, P1 = p1, P2 = p2, P3 = p3
+        };
+    }
+
+    private void HeliceDelZuncho(
+        object bloque, AlzadoCad a, Helice h, double dZun, bool relleno)
+    {
+        var vueltas = h.Vueltas;
+        var p1 = h.P1;
+        var p2 = h.P2;
+        var p3 = h.P3;
 
         // ------------------------------------------------------------------
         // El EJE de la hélice, y el grosor por ANCHO DE POLILÍNEA
@@ -844,29 +1106,116 @@ public sealed class AlzadoDrawer
         // Los dos fallos los encontró tools/verificar_seccion_circular.py, no la
         // lectura del código.
         //
-        // La vía que sí funciona es la idiomática de AutoCAD: UNA polilínea del eje con
-        // ANCHO CONSTANTE igual al diámetro del zuncho. AutoCAD la dibuja como una
-        // banda maciza de ese ancho real en unidades de dibujo, resuelve él las uniones
-        // entre tramos, y no hay ninguna frontera que cerrar. Es una sola entidad y el
-        // grosor es el de la tabla, no un grosor de línea.
-        var pts = new double[(n + 1) * 2];
+        // La vía que sí funciona para el zuncho MACIZO es la idiomática de AutoCAD:
+        // UNA polilínea del eje con ANCHO CONSTANTE igual al diámetro del zuncho.
+        // AutoCAD la dibuja como una banda maciza de ese ancho real en unidades de
+        // dibujo, resuelve él las uniones entre tramos, y no hay ninguna frontera que
+        // cerrar. Es una sola entidad y el grosor es el de la tabla.
+        //
+        // Pero eso vale SOLO para la sección rellena: una polilínea con ancho se
+        // dibuja siempre maciza, no hay versión «solo contorno». En la sección SIN
+        // relleno el acero va en contorno, como todo lo demás del dibujo, así que ahí
+        // se dibujan las dos CARAS como polilíneas abiertas sin ancho. Abiertas no da
+        // ningún problema: el problema de las dos caras era cerrarlas para rellenar,
+        // y aquí no se rellena nada.
+        if (relleno)
+        {
+            HeliceMaciza(bloque, a, h, dZun);
+        }
+        else
+        {
+            HeliceEnContorno(bloque, a, h, dZun);
+        }
 
-        var fase = 0d;
+        Nota(
+            $"Alzado '{a.Id}': zuncho HELICOIDAL de {dZun / _escala:0.##} cm, " +
+            $"{vueltas:0.#} vuelta(s) con paso " +
+            $"{p1 / _escala:0.#}-{p2 / _escala:0.#}-{p3 / _escala:0.#} cm. " +
+            "Si lo querías en anillos, quita el SI de la columna «Zuncho helic.».");
+    }
+
+    /// <summary>
+    /// Dónde el zuncho pasa <b>por delante</b> de una varilla y por tanto la tapa.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Por qué solo los de delante.</b> El zuncho cruza la posición proyectada de
+    /// una varilla <b>dos veces por vuelta</b>: una con la barra hacia el observador y
+    /// otra con la barra al otro lado del elemento. Solo la primera la tapa; en la
+    /// segunda es la varilla la que tapa al zuncho. Recortar en todos los cruces
+    /// partiría la varilla en el doble de trozos de los que toca, y encima dejaría
+    /// huecos donde debería verse entera.
+    /// </para>
+    /// <para>
+    /// El criterio es el <b>coseno de la fase</b>, que es la profundidad de la hélice:
+    /// positivo significa hacia quien mira. Comprobado con números para 8 varillas: de
+    /// los 60 cruces de una columna de 3 m con paso de 10 cm, 30 son por delante.
+    /// </para>
+    /// <para>
+    /// Los cruces se buscan sobre la <b>misma muestra</b> con la que se dibuja la
+    /// hélice, detectando el cambio de signo de <c>(r·sen φ − y)</c>. Así el corte cae
+    /// exactamente donde está la línea dibujada y no un poco antes.
+    /// </para>
+    /// </remarks>
+    /// <param name="yBarra">Elevación de la varilla en el alzado.</param>
+    private static List<double> CrucesFrontales(Helice h, double yBarra)
+    {
+        var cruces = new List<double>();
+
+        // Desplazamiento de la varilla respecto al eje del elemento
+        var objetivo = yBarra - h.YMedio;
+
+        if (Math.Abs(objetivo) > h.REje)
+        {
+            // La varilla está más afuera que el zuncho: nunca se cruzan.
+            return cruces;
+        }
+
+        for (var i = 0; i + 1 < h.X.Length; i++)
+        {
+            var d0 = (h.REje * h.Sen[i]) - objetivo;
+            var d1 = (h.REje * h.Sen[i + 1]) - objetivo;
+
+            // Cambio de signo = hay un cruce en este tramo
+            if (d0 == 0 || (d0 < 0) == (d1 < 0))
+            {
+                continue;
+            }
+
+            // Interpolación lineal dentro del tramo
+            var t = d0 / (d0 - d1);
+            var x = h.X[i] + (t * (h.X[i + 1] - h.X[i]));
+
+            // La profundidad en el punto del cruce. Se interpola igual que la X para
+            // no equivocarse justo en los tramos donde el coseno cambia de signo.
+            var c = h.Cos[i] + (t * (h.Cos[i + 1] - h.Cos[i]));
+
+            if (c > 0)
+            {
+                cruces.Add(x);
+            }
+        }
+
+        cruces.Sort();
+        return cruces;
+    }
+
+    /// <summary>
+    /// El zuncho <b>macizo</b>: una polilínea del eje con el ancho de la barra.
+    /// </summary>
+    /// <remarks>
+    /// Solo para la sección rellena. Se pinta del mismo color que el cuerpo de los
+    /// estribos (ACI 152): es el mismo acero transversal y tiene que leerse igual.
+    /// </remarks>
+    private void HeliceMaciza(object bloque, AlzadoCad a, Helice h, double dZun)
+    {
+        var n = h.X.Length - 1;
+        var pts = new double[(n + 1) * 2];
 
         for (var i = 0; i <= n; i++)
         {
-            var x = x0 + (i * dx);
-
-            if (i > 0)
-            {
-                // La fase se acumula con el paso de la zona donde cae el tramo. Se
-                // evalúa en el punto MEDIO del tramo: en la frontera de zonas, tomar
-                // el extremo daría medio tramo con el paso equivocado.
-                fase += 2 * Math.PI * dx / PasoEn(x - (dx / 2));
-            }
-
-            pts[2 * i] = x;
-            pts[(2 * i) + 1] = yMedio + (rEje * Math.Sin(fase));
+            pts[2 * i] = h.X[i];
+            pts[(2 * i) + 1] = h.YMedio + (h.REje * h.Sen[i]);
         }
 
         var pl = Poli(bloque, pts, "ESTRIBOS", cerrada: false, bulges: null);
@@ -877,10 +1226,7 @@ public sealed class AlzadoDrawer
             return;
         }
 
-        // ---------- Grosor real y color ----------
-        var conGrosor = AnchoDePolilinea(pl, dZun);
-
-        if (!conGrosor)
+        if (!AnchoDePolilinea(pl, dZun))
         {
             Nota(
                 $"Alzado '{a.Id}': no se pudo dar grosor al zuncho helicoidal, así que " +
@@ -888,27 +1234,73 @@ public sealed class AlzadoDrawer
                 "pero no muestra el diámetro de la barra.");
         }
 
-        // En la sección RELLENA el zuncho se pinta del mismo color que el cuerpo de
-        // los estribos (ACI 152): es el mismo acero transversal y tiene que leerse
-        // igual. En la sección sin relleno se queda con el color de su capa, como el
-        // resto de los contornos.
-        if (relleno)
+        try
         {
-            try
+            AcadConnection.Retry(() => { ((dynamic)pl).Color = ColorRellenoEstribo; });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Color del zuncho helicoidal", ex);
+        }
+    }
+
+    /// <summary>
+    /// El zuncho <b>en contorno</b>: las dos caras de la barra, sin relleno.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Para la sección sin relleno, donde todo el acero va en contorno. Se dibujan dos
+    /// polilíneas abiertas, una por cara, con amplitudes <c>r ± d/2</c> y la
+    /// <b>misma fase</b>. Así el zuncho muestra su grosor real sin quedar macizo.
+    /// </para>
+    /// <para>
+    /// Que sean <b>abiertas</b> es lo que lo hace seguro. El problema de las dos caras
+    /// —que se cruzan en cada paso por el eje y encierran área cero— solo aparece al
+    /// cerrarlas para meterles un hatch. Como contorno no se cierra nada y cada cara es
+    /// simplemente la proyección exacta de una de las dos superficies de la barra.
+    /// </para>
+    /// </remarks>
+    private void HeliceEnContorno(object bloque, AlzadoCad a, Helice h, double dZun)
+    {
+        var n = h.X.Length - 1;
+
+        var rOut = h.REje + (dZun / 2);
+        var rIn = h.REje - (dZun / 2);
+
+        var dibujadas = 0;
+
+        foreach (var r in new[] { rOut, rIn })
+        {
+            if (r <= 0)
             {
-                AcadConnection.Retry(() => { ((dynamic)pl).Color = ColorRellenoEstribo; });
+                continue;
             }
-            catch (Exception ex)
+
+            var pts = new double[(n + 1) * 2];
+
+            for (var i = 0; i <= n; i++)
             {
-                Fallo("Color del zuncho helicoidal", ex);
+                pts[2 * i] = h.X[i];
+                pts[(2 * i) + 1] = h.YMedio + (r * h.Sen[i]);
+            }
+
+            if (Poli(bloque, pts, "ESTRIBOS", cerrada: false, bulges: null) is not null)
+            {
+                dibujadas++;
             }
         }
 
-        Nota(
-            $"Alzado '{a.Id}': zuncho HELICOIDAL de {dZun / _escala:0.##} cm, " +
-            $"{vueltas:0.#} vuelta(s) con paso " +
-            $"{p1 / _escala:0.#}-{p2 / _escala:0.#}-{p3 / _escala:0.#} cm. " +
-            "Si lo querías en anillos, quita el SI de la columna «Zuncho helic.».");
+        if (dibujadas == 0)
+        {
+            _log.Add($"Alzado '{a.Id}': no se pudo dibujar el zuncho helicoidal.");
+        }
+        else if (dibujadas == 1)
+        {
+            Nota(
+                $"Alzado '{a.Id}': el zuncho helicoidal salió con una sola cara. Con " +
+                $"zuncho {a.Estribo.Clave} y ese diámetro de columna, la cara interior " +
+                "cae sobre el eje y no aporta nada.");
+        }
     }
 
     /// <summary>

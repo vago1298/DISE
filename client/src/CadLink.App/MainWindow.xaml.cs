@@ -58,10 +58,6 @@ public partial class MainWindow : Window
             ? $"{AppInfo.ProductName} — {empresa}"
             : AppInfo.ProductName;
 
-        OutputPathBox.Text = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "secciones.dxf");
-
         Enlazar();
         AplicarLicencia(license);
 
@@ -507,6 +503,7 @@ public partial class MainWindow : Window
             ObraBox.Text = string.Empty;
             DibujoBox.Text = string.Empty;
             FechaPicker.SelectedDate = DateTime.Today;
+            RefrescarFecha();
 
             _modeloEtabs = null;
             _vista.Modelo = null;
@@ -1038,6 +1035,7 @@ public partial class MainWindow : Window
             ObraBox.Text = p.Obra;
             DibujoBox.Text = p.Dibujo;
             FechaPicker.SelectedDate = p.Fecha;
+            RefrescarFecha();
             EscalaSolapaBox.Text = p.Escala;
 
             HatchScaleBox.Text = p.EscalaHatch.ToString(
@@ -1135,7 +1133,11 @@ public partial class MainWindow : Window
             {
                 _juego.Solapa.Fecha = FechaPicker.SelectedDate.Value;
             }
+
+            RefrescarFecha();
         };
+
+        RefrescarFecha();
 
         AcotacionCombo.SelectionChanged += (_, _) =>
         {
@@ -1147,6 +1149,16 @@ public partial class MainWindow : Window
 
         ResumenPlanos();
     }
+
+    /// <summary>
+    /// Pone al día el texto de la fecha: el mes y el año con letra.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que se rotula en la solapa, así que se muestra al lado del calendario
+    /// para que se vea <b>lo que va a salir impreso</b> y no solo lo que se capturó.
+    /// </remarks>
+    private void RefrescarFecha() =>
+        FechaTextoLabel.Text = _juego.Solapa.FechaTexto;
 
     private void ResumenPlanos()
     {
@@ -1165,12 +1177,40 @@ public partial class MainWindow : Window
         PlanosGrid.ScrollIntoView(p);
     }
 
+    /// <summary>
+    /// Quita del juego <b>todos</b> los planos seleccionados.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Antes quitaba solo <c>SelectedItem</c>, o sea uno, aunque hubiera diez
+    /// marcados. Con la cuadrícula ya en modo <c>Extended</c> se pueden marcar varios,
+    /// así que el botón tiene que quitarlos todos o quedaría prometiendo algo que no
+    /// hace.
+    /// </para>
+    /// <para>
+    /// La lista de seleccionados se copia ANTES de empezar a borrar. Si se recorriera
+    /// <c>SelectedItems</c> directamente, cada borrado la modificaría mientras se está
+    /// recorriendo y saltaría una excepción o se quedarían filas sin quitar.
+    /// </para>
+    /// </remarks>
     private void OnQuitarPlano(object sender, RoutedEventArgs e)
     {
-        if (PlanosGrid.SelectedItem is PlanoRow p)
+        var marcados = PlanosGrid.SelectedItems.OfType<PlanoRow>().ToList();
+
+        if (marcados.Count == 0)
+        {
+            StatusText.Text = "Marca en la tabla los planos que quieres quitar.";
+            return;
+        }
+
+        foreach (var p in marcados)
         {
             _juego.Planos.Remove(p);
         }
+
+        StatusText.Text = marcados.Count == 1
+            ? "Se quitó 1 plano del juego."
+            : $"Se quitaron {marcados.Count} planos del juego.";
     }
 
     private void OnSubirPlano(object sender, RoutedEventArgs e) => MoverPlano(-1);
@@ -1775,20 +1815,6 @@ public partial class MainWindow : Window
     // AutoCAD
     // ======================================================================
 
-    private void OnBrowseOutput(object sender, RoutedEventArgs e)
-    {
-        var dialogo = new SaveFileDialog
-        {
-            Title = "Archivo de salida",
-            Filter = "Archivos DXF (*.dxf)|*.dxf|Dibujos de AutoCAD (*.dwg)|*.dwg",
-            FileName = Path.GetFileName(OutputPathBox.Text)
-        };
-
-        if (dialogo.ShowDialog(this) == true)
-        {
-            OutputPathBox.Text = dialogo.FileName;
-        }
-    }
 
     private void OnExport(object sender, RoutedEventArgs e)
     {
@@ -1808,15 +1834,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (ModeDxfRadio.IsChecked == true)
-        {
-            MessageBox.Show(
-                "La escritura directa de DXF todavía no está implementada.\n\n" +
-                "Usa la primera opción, dibujar en la sesión abierta de AutoCAD.",
-                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
+        // Ya no hay que elegir modo: se dibuja SIEMPRE por COM sobre la sesion
+        // abierta de AutoCAD. La otra opcion de la pestaña que se quito era escribir
+        // un DXF, y no estaba implementada: lo unico que hacia era ofrecerse y
+        // despues avisar de que no funcionaba.
         try
         {
             Cursor = Cursors.Wait;
@@ -1951,7 +1972,7 @@ public partial class MainWindow : Window
 
                 StatusText.Text =
                     $"Dibujadas {dibujadas} sección(es), " +
-                    $"con {fallos.Count} aviso(s). Ver la pestaña AutoCAD.";
+                    $"con {fallos.Count} aviso(s). Ver el detalle bajo la vista previa.";
 
                 ExportHintText.Text =
                     "AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
@@ -1961,7 +1982,7 @@ public partial class MainWindow : Window
                     resumen + "\n\n" +
                     "PERO hubo " + fallos.Count + " fallo(s) que se toleraron, " +
                     "así que el dibujo puede estar incompleto:\n\n" + detalle +
-                    "\n\nEste mismo texto queda en la pestaña AutoCAD.",
+                    "\n\nEste mismo texto queda bajo la vista previa.",
                     AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

@@ -345,14 +345,22 @@ public sealed partial class SeccionDrawer
         var xCodo = cx + (1.15 * (destino.X - cx)) + (0.10 * _f);
         var yCodo = destino.Y + (0.08 * _f);
 
+        // El tramo horizontal del codo: la repisa sobre la que se apoya el texto.
+        var xRepisa = xCodo + (0.05 * _f);
+
         var l1 = Linea(destino.X, destino.Y + rVar, xCodo, yCodo, "ROTULOS");
-        var l2 = Linea(xCodo, yCodo, xCodo + (0.05 * _f), yCodo, "ROTULOS");
+        var l2 = Linea(xCodo, yCodo, xRepisa, yCodo, "ROTULOS");
 
         Rotulado(l1);
         Rotulado(l2);
 
         FlechaTriangular(destino.X, destino.Y + rVar, haciaArriba: false);
-        TextoLeader(xCodo + (0.06 * _f), yCodo, texto);
+
+        // El texto arranca DONDE TERMINA la repisa y crece hacia la derecha, así que
+        // la línea le sale por el lado IZQUIERDO. Antes se anclaba por la derecha y
+        // el texto se extendía hacia atrás sobre su propia línea de llamada: en el
+        // plano la línea parecía salir de la última letra.
+        TextoLeader(xRepisa + (0.01 * _f), yCodo, texto, haciaLaDerecha: true);
     }
 
     /// <summary>

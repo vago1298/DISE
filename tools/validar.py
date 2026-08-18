@@ -2825,29 +2825,99 @@ def v19_circular_y_ui() -> None:
     check("y se elige segun la columna del usuario",
           "a.Circular && a.ZunchoHelicoidal" in alz)
 
-    m_h = re.search(r"private void HeliceDelZuncho\(.*?\n    \}", alz, re.S)
-    check("se puede leer HeliceDelZuncho", m_h is not None)
-    if m_h:
-        cuerpo = m_h.group(0)
+    # La helice se MUESTREA una sola vez y la comparten el dibujo del zuncho y el
+    # recorte de las varillas. Si cada uno la calculara por su cuenta, los cortes
+    # caerian donde la helice no esta dibujada.
+    m_mh = re.search(r"private Helice\? MuestrearHelice\(.*?\n    \}", alz, re.S)
+    check("la helice se muestrea aparte", m_mh is not None)
+    if m_mh:
+        cuerpo = m_mh.group(0)
         # Se acumula la FASE para respetar las zonas L/4-L/2-L/4. Con un periodo
         # fijo, el zuncho saldria con paso constante y la tabla no se cumpliria.
         check("la fase se acumula con el paso de cada zona",
               "fase += 2 * Math.PI * dx / PasoEn(" in cuerpo)
-        # El grosor va por ANCHO DE POLILINEA, no por un contorno relleno con hatch.
-        # Las dos vias obvias se descartaron con numeros y no se pueden reintroducir:
-        #   1. Contorno cerrado con las dos caras radiales -> encierra area CERO,
-        #      porque donde el seno es negativo la cara exterior queda por debajo.
-        #   2. Banda por la normal -> d/2 supera el radio de curvatura en las
-        #      crestas, asi que tambien se cruza.
-        # Las dos las encontro tools/verificar_seccion_circular.py.
-        check("la helice es UNA polilinea abierta del eje",
+        # El COSENO es la profundidad, y hace falta para saber cuando el zuncho pasa
+        # por DELANTE de una varilla.
+        check("se guarda el coseno de la fase, que es la profundidad",
+              "Math.Cos(fase)" in cuerpo)
+        check("hay tope de puntos por si la separacion viene mal",
+              "MaxPuntosHelice" in cuerpo)
+
+    check("la muestra se reutiliza y no se recalcula",
+          alz.count("MuestrearHelice(") == 2,
+          f"se llama {alz.count('MuestrearHelice(')} vez/veces")
+
+    # ------------------------------------------------------------------
+    # Dos formas de dibujar el zuncho, segun el modo de la seccion
+    # ------------------------------------------------------------------
+    # Una polilinea con ancho se dibuja SIEMPRE maciza: no hay version «solo
+    # contorno». Asi que la seccion sin relleno necesita otro camino, o el zuncho
+    # saldria macizo en un dibujo que va todo en contorno.
+    m_h = re.search(r"private void HeliceDelZuncho\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceDelZuncho", m_h is not None)
+    if m_h:
+        cuerpo = m_h.group(0)
+        check("el modo de la seccion decide como se dibuja el zuncho",
+              "HeliceMaciza(" in cuerpo and "HeliceEnContorno(" in cuerpo)
+
+    # El zuncho MACIZO: ancho de polilinea, no hatch. Las dos vias obvias se
+    # descartaron con numeros y no se pueden reintroducir:
+    #   1. Contorno cerrado con las dos caras radiales -> encierra area CERO,
+    #      porque donde el seno es negativo la cara exterior queda por debajo.
+    #   2. Banda por la normal -> d/2 supera el radio de curvatura en las crestas.
+    # Las dos las encontro tools/verificar_seccion_circular.py.
+    m_hm = re.search(r"private void HeliceMaciza\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceMaciza", m_hm is not None)
+    if m_hm:
+        cuerpo = m_hm.group(0)
+        check("el zuncho macizo es UNA polilinea abierta del eje",
               "cerrada: false" in cuerpo)
         check("el grosor va por ancho de polilinea, no por hatch",
               "AnchoDePolilinea(pl, dZun)" in cuerpo)
         check("y no se intenta rellenar la helice con un hatch",
               'Hatch(bloque, "SOLID"' not in cuerpo)
-        check("el ancho es el diametro del zuncho de la tabla",
-              "dZun" in cuerpo)
+        check("en modo relleno el zuncho toma el color del estribo",
+              "ColorRellenoEstribo" in cuerpo)
+
+    # El zuncho EN CONTORNO: las dos caras, abiertas y sin ancho.
+    m_hc = re.search(r"private void HeliceEnContorno\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceEnContorno", m_hc is not None)
+    if m_hc:
+        cuerpo = m_hc.group(0)
+        check("el contorno son las dos caras de la barra",
+              "REje + (dZun / 2)" in cuerpo and "REje - (dZun / 2)" in cuerpo)
+        check("van abiertas, que es lo que lo hace seguro",
+              "cerrada: false" in cuerpo)
+        check("y sin ancho, para que no salgan macizas",
+              "AnchoDePolilinea" not in cuerpo)
+
+    # ------------------------------------------------------------------
+    # Las varillas se recortan donde el zuncho pasa por DELANTE
+    # ------------------------------------------------------------------
+    # El zuncho cruza cada varilla dos veces por vuelta, pero solo la tapa cuando
+    # pasa por delante. Recortar en todos los cruces la partiria en el doble de
+    # trozos y dejaria huecos donde deberia verse entera.
+    check("hay calculo de los pasos del zuncho por delante",
+          "private static List<double> CrucesFrontales(" in alz)
+
+    m_cf = re.search(r"private static List<double> CrucesFrontales\(.*?\n    \}", alz, re.S)
+    check("se puede leer CrucesFrontales", m_cf is not None)
+    if m_cf:
+        cuerpo = m_cf.group(0)
+        check("se filtra por la profundidad, no por el cruce a secas",
+              "if (c > 0)" in cuerpo)
+        check("una varilla mas afuera que el zuncho no se recorta",
+              "Math.Abs(objetivo) > h.REje" in cuerpo)
+        check("el cruce se interpola dentro del tramo",
+              "d0 / (d0 - d1)" in cuerpo)
+
+    m_vc2 = re.search(r"private void VarillasCirculares\(.*?\n    \}", alz, re.S)
+    if m_vc2:
+        cuerpo = m_vc2.group(0)
+        check("con helice, los cortes salen de los pasos por delante",
+              "CrucesFrontales(helice, ys[i])" in cuerpo)
+        check("y con anillos se siguen usando sus centros",
+              "helice is null" in cuerpo and "? centros" in cuerpo)
 
     # El helper del ancho, con su via de respaldo.
     m_ap = re.search(r"private bool AnchoDePolilinea\(.*?\n    \}", alz, re.S)
@@ -2856,12 +2926,9 @@ def v19_circular_y_ui() -> None:
         check("se intenta ConstantWidth", "ConstantWidth = ancho" in m_ap.group(0))
         check("y hay respaldo vertice por vertice", "SetWidth(" in m_ap.group(0))
 
-    # En modo relleno el zuncho se pinta como el cuerpo de los estribos.
-    if m_h:
-        check("en modo relleno el zuncho toma el color del estribo",
-              "ColorRellenoEstribo" in m_h.group(0))
-        check("hay tope de puntos por si la separacion viene mal",
-              "MaxPuntosHelice" in cuerpo)
+    # El color del zuncho relleno y el tope de puntos ya se comprueban arriba, en
+    # HeliceMaciza y en MuestrearHelice, que es donde viven desde que la helice se
+    # partio en tres metodos.
 
     # Una columna redonda no tiene segunda cara: se veria igual.
     check("la columna redonda no lleva dos alzados", "&& !a.Circular" in alz)
@@ -2938,6 +3005,176 @@ def v19_circular_y_ui() -> None:
 
     check("hay documento de cotejo con la macro",
           os.path.exists(ruta("docs/comparacion-macro-alzados.md")))
+
+    # ------------------------------------------------------------------
+    # «Esa propiedad no existe» no es un fallo del dibujo
+    # ------------------------------------------------------------------
+    # Cuatro propiedades de cota no estan en todas las versiones de AutoCAD, y se
+    # contaban como fallos. El resultado era el aviso «hubo 4 fallo(s), el dibujo
+    # puede estar incompleto» en un dibujo perfecto. Un aviso que salta siempre y
+    # que no se puede atender enseña al usuario a ignorar TODOS los avisos.
+    drawer = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("se distingue una propiedad inexistente de un fallo real",
+          "private static bool EsPropiedadInexistente(" in drawer)
+
+    m_pi = re.search(r"private static bool EsPropiedadInexistente\(.*?\n    \}",
+                     drawer, re.S)
+    check("se puede leer EsPropiedadInexistente", m_pi is not None)
+    if m_pi:
+        cuerpo = m_pi.group(0)
+        # Por HRESULT y no por el texto: el mensaje viene traducido al idioma de
+        # AutoCAD, asi que buscar «Nombre desconocido» funcionaria en una
+        # instalacion y no en la siguiente.
+        check("se comprueba por HRESULT y no por el texto del mensaje",
+              "0x80020006" in cuerpo)
+        check("y se desenvuelve la excepcion de la reflexion",
+              "TargetInvocationException" in cuerpo)
+
+    m_pc = re.search(r"private void PropCota\(.*?\n    \}", drawer, re.S)
+    check("se puede leer PropCota", m_pc is not None)
+    if m_pc:
+        cuerpo = m_pc.group(0)
+        check("una propiedad que no existe va a Nota y no a Fallo",
+              "EsPropiedadInexistente(ex)" in cuerpo and "Nota(" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # Borrado de VARIOS planos
+    # ------------------------------------------------------------------
+    # SheetGridStyle pone SelectionUnit en CellOrRowHeader, y con eso la tecla Supr
+    # actua sobre la CELDA: el DataGrid no borraba ninguna fila. Hay que fijarlo en
+    # la propia cuadricula, que es donde gana al estilo.
+    m_pg = re.search(r'<DataGrid x:Name="PlanosGrid".*?>', xaml, re.S)
+    check("se puede leer la apertura del PlanosGrid", m_pg is not None)
+    if m_pg:
+        cuerpo = m_pg.group(0)
+        check("los planos se seleccionan por fila entera",
+              'SelectionUnit="FullRow"' in cuerpo)
+        check("y se pueden marcar varios", 'SelectionMode="Extended"' in cuerpo)
+        check("y se pueden borrar", 'CanUserDeleteRows="True"' in cuerpo)
+
+    m_qp = re.search(r"private void OnQuitarPlano\(.*?\n    \}", codigo, re.S)
+    check("se puede leer OnQuitarPlano", m_qp is not None)
+    if m_qp:
+        cuerpo = m_qp.group(0)
+        check("Quitar borra TODOS los planos marcados",
+              "SelectedItems" in cuerpo)
+        # La lista se copia ANTES de borrar: recorrer SelectedItems mientras se
+        # modifica salta una excepcion o deja filas sin quitar.
+        check("y la lista se copia antes de empezar a borrar",
+              ".ToList()" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # La fecha, con el mes y el ano en letra
+    # ------------------------------------------------------------------
+    solapa = leer(ruta("client/src/CadLink.App/Models/Solapa.cs"))
+
+    check("la solapa da la fecha con letra", "public string FechaTexto =>" in solapa)
+    check("y tambien la larga, por si hace falta el dia",
+          "public string FechaTextoLargo =>" in solapa)
+    check("el mes va en letra", "MMMM" in solapa)
+
+    # En es-MX y no en la cultura del equipo: el plano se entrega en español pase lo
+    # que pase, y en un Windows en ingles saldria «August of 2026».
+    check("la fecha del plano no depende del idioma del equipo",
+          'GetCultureInfo("es-MX")' in solapa)
+    # Se mira el codigo SIN comentarios: el propio archivo menciona CurrentCulture en
+    # el comentario que explica por que no se usa, y buscar la palabra a pelo daba por
+    # incumplida justo la regla que el comentario documenta.
+    check("y no usa CurrentCulture para el rotulo",
+          "CurrentCulture" not in _sin_comentarios(solapa))
+
+    # El calendario se queda: sirve para elegir el dia.
+    check("el calendario sigue estando", 'x:Name="FechaPicker"' in xaml)
+    check("y al lado se ve lo que se va a imprimir",
+          'x:Name="FechaTextoLabel"' in xaml)
+    check("el texto de la fecha se refresca", "private void RefrescarFecha()" in codigo)
+
+    # Se refresca en los TRES sitios que cambian la fecha, o se quedaria con el mes
+    # anterior al abrir un trabajo o al empezar uno nuevo.
+    check("se refresca al cambiarla, al abrir y al empezar de nuevo",
+          codigo.count("RefrescarFecha();") >= 4,
+          f"se llama {codigo.count('RefrescarFecha();')} vez/veces")
+
+    # ------------------------------------------------------------------
+    # La pestaña AutoCAD, fuera; y Licencia al final
+    # ------------------------------------------------------------------
+    check("ya no hay pestaña AutoCAD", '<TabItem Header="AutoCAD">' not in xaml)
+
+    # Lo que vivia en ella y el codigo sigue necesitando, reubicado
+    check("la escala de dibujo sigue existiendo", 'x:Name="ScaleBox"' in xaml)
+    check("y los avisos del dibujo tambien", 'x:Name="ExportHintText"' in xaml)
+
+    # La escala se movio junto a la tabla que dibuja, o sea DENTRO de la hoja de
+    # secciones y no en otra.
+    i_sec = xaml.find('Header="Secciones Concreto"')
+    i_esc = xaml.find('x:Name="ScaleBox"')
+    i_acero = xaml.find('Header="Secciones Acero"')
+    check("la escala de dibujo esta en la hoja de secciones",
+          0 <= i_sec < i_esc < i_acero,
+          f"secciones {i_sec}, escala {i_esc}, acero {i_acero}")
+
+    # Y lo que SOLO servia al modo DXF, que no estaba implementado, se retiro.
+    for muerto in ("OutputPathBox", "ModeComRadio", "ModeDxfRadio", "OnBrowseOutput"):
+        check(f"{muerto} se retiro del XAML", muerto not in xaml)
+        check(f"y del codigo ({muerto})", muerto not in codigo)
+
+    # Licencia, al final de la tira.
+    tabs = re.findall(r'^            <TabItem[^>]*Header="([^"]+)"', xaml, re.M)
+    check("se pudieron leer las pestañas de primer nivel", len(tabs) > 5,
+          f"{len(tabs)}")
+    if tabs:
+        check("Licencia es la ultima pestaña", tabs[-1] == "Licencia",
+              f"la ultima es '{tabs[-1]}'")
+
+    # ------------------------------------------------------------------
+    # El leader del circulo sale por la IZQUIERDA del texto
+    # ------------------------------------------------------------------
+    m_tl = re.search(r"private void TextoLeader\(.*?\n    \}", drawer, re.S)
+    check("se puede leer TextoLeader", m_tl is not None)
+    if m_tl:
+        cuerpo = m_tl.group(0)
+        # 4 = MiddleLeft (el texto crece a la derecha, la linea sale por la
+        # izquierda), 6 = MiddleRight, que es lo que quiere la llamada de lecho.
+        check("el anclaje del texto de llamada se puede elegir",
+              "haciaLaDerecha ? 4 : 6" in cuerpo)
+
+    check("la llamada del circulo pide el anclaje a la izquierda",
+          "haciaLaDerecha: true" in circ)
+
+    # ------------------------------------------------------------------
+    # El bloque de alzado lleva su rotulo dentro
+    # ------------------------------------------------------------------
+    check("el bloque de alzado se rotula",
+          "private void RotuloDelBloque(" in alz)
+
+    m_rb = re.search(r"private void RotuloDelBloque\(.*?\n    \}", alz, re.S)
+    check("se puede leer RotuloDelBloque", m_rb is not None)
+    if m_rb:
+        cuerpo = m_rb.group(0)
+        # Tras el giro de 90 grados el centro ya no esta en largo/2 sino en -ancho/2.
+        check("el rotulo se centra bien en los dos casos",
+              "girar ? -ancho / 2 : largo / 2" in cuerpo)
+        check("y dice el armado del circulo cuando toca",
+              "TextoCirculo(a)" in cuerpo)
+
+    # Va DESPUES del giro, o el texto saldria tumbado de lado.
+    m_geo = re.search(r"private Geo Geometria\(.*?\n    \}", alz, re.S)
+    if m_geo:
+        cuerpo = m_geo.group(0)
+        i_giro = cuerpo.find("Girar90(bloque, inicio)")
+        i_rot = cuerpo.find("RotuloDelBloque(")
+        check("el rotulo del bloque va despues del giro de 90 grados",
+              0 <= i_giro < i_rot, f"giro en {i_giro}, rotulo en {i_rot}")
+
+    # Y se escribe DENTRO de la definicion del bloque: si fuera al espacio modelo, no
+    # viajaria con el bloque, que es justo lo que se queria arreglar.
+    check("hay texto que escribe dentro del bloque",
+          "private void TextoEn(" in alz)
+    m_te = re.search(r"private void TextoEn\(.*?\n    \}", alz, re.S)
+    if m_te:
+        check("y escribe en el contenedor, no en el espacio modelo",
+              "((dynamic)cont).AddMText" in m_te.group(0))
 
     # ------------------------------------------------------------------
     # Las pestañas NO deben reordenarse al elegir una hoja

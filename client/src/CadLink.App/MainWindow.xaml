@@ -180,7 +180,18 @@
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Propietario:" VerticalAlignment="Center" />
                             <TextBox   Grid.Row="1" Grid.Column="1" x:Name="PropietarioBox" Height="26" VerticalContentAlignment="Center" />
                             <TextBlock Grid.Row="1" Grid.Column="3" Text="Fecha:" VerticalAlignment="Center" />
-                            <DatePicker Grid.Row="1" Grid.Column="4" x:Name="FechaPicker" Height="26" />
+
+                            <!-- El calendario se queda: sirve para elegir el dia. Pero lo
+                                 que se ROTULA en la solapa es el mes y el ano con letra,
+                                 y eso es lo que se ve al lado, que es el dato que de
+                                 verdad sale impreso. -->
+                            <StackPanel Grid.Row="1" Grid.Column="4" Orientation="Horizontal">
+                                <DatePicker x:Name="FechaPicker" Height="26" Width="118"
+                                            ToolTip="Elige el dia en el calendario. En la solapa se imprime el mes y el ano con letra." />
+                                <TextBlock x:Name="FechaTextoLabel" VerticalAlignment="Center"
+                                           Margin="10,0,0,0" FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{StaticResource BrandDarkBrush}" />
+                            </StackPanel>
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Ubicacion:" VerticalAlignment="Center" />
                             <TextBox   Grid.Row="2" Grid.Column="1" x:Name="UbicacionBox" Height="26" VerticalContentAlignment="Center" />
@@ -218,9 +229,16 @@
 
                         <!-- Se permite BORRAR con la tecla Supr. Agregar sigue siendo por el boton, para
                              que la clave y el numero se pongan solos. -->
+                        <!-- SelectionUnit y SelectionMode van AQUI y no se heredan del
+                             estilo, y es la razon por la que no se podian borrar varios
+                             planos: SheetGridStyle pone SelectionUnit en CellOrRowHeader,
+                             y con eso la tecla Supr actua sobre la CELDA, no sobre la
+                             fila, asi que el DataGrid no borraba ninguna. Con FullRow y
+                             Extended se pueden marcar varias filas y borrarlas de una. -->
                         <DataGrid x:Name="PlanosGrid" Style="{StaticResource SheetGridStyle}"
                                   Height="170" CanUserAddRows="False" CanUserDeleteRows="True"
-                                  AutoGenerateColumns="False">
+                                  AutoGenerateColumns="False"
+                                  SelectionUnit="FullRow" SelectionMode="Extended">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="130" />
                                 <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="240" />
@@ -292,6 +310,24 @@
                                          ToolTip="Tamaño del rayado AR-CONC. Sube el numero si se ve muy fino. Aplica a los dos tipos."
                                          LostFocus="OnEscalaHatchCambiada" />
                                 <TextBlock Text="(sube el numero si se ve muy fino)"
+                                           FontSize="10.5" VerticalAlignment="Center" Margin="8,0,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+
+                                <Border Width="1" Background="{StaticResource BorderBrush}"
+                                        Margin="18,2,18,2" />
+
+                                <!-- La escala de DIBUJO vivia en la pestaña AutoCAD, que se
+                                     quito. Su sitio natural es este: junto a la tabla que
+                                     dibuja y al lado de la otra escala, para no tener que
+                                     cambiar de hoja para ajustarla. -->
+                                <TextBlock Text="Escala de dibujo:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"
+                                           Foreground="{StaticResource BrandDarkBrush}" />
+                                <TextBox x:Name="ScaleBox" Text="0.01" Width="90" Height="26"
+                                         VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                         Padding="6,0"
+                                         ToolTip="0.01 = se captura en cm y se dibuja en metros, como la macro." />
+                                <TextBlock Text="(0.01 = cm capturados, metros dibujados)"
                                            FontSize="10.5" VerticalAlignment="Center" Margin="8,0,0,0"
                                            Foreground="{StaticResource MutedTextBrush}" />
                             </StackPanel>
@@ -462,6 +498,20 @@
                                        FontSize="10.5" Margin="8,6,0,0"
                                        VerticalAlignment="Top" HorizontalAlignment="Left"
                                        Foreground="{StaticResource BrandDarkBrush}" />
+
+                            <!-- Notas y avisos del ultimo dibujo. Vivian en la pestaña
+                                 AutoCAD, que se quito; van aqui porque es donde esta el
+                                 boton que los produce. Solo se ve cuando hay algo que
+                                 decir: el codigo lo deja vacio si el dibujo salio limpio. -->
+                            <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+                                    Background="#CCFFFFFF" Padding="8,4" Margin="1"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                                <ScrollViewer MaxHeight="72" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="ExportHintText" FontSize="10.5"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource MutedTextBrush}" />
+                                </ScrollViewer>
+                            </Border>
                         </Grid>
                     </Border>
                 </Grid>
@@ -723,125 +773,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- ===== AutoCAD ===== -->
-            <TabItem Header="AutoCAD">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
-                        <TextBlock Text="Dibujar en AutoCAD" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Cada seccion se dibuja y se agrupa en un bloque con el nombre de su ID, igual que hace la macro." />
 
-                        <StackPanel Margin="0,0,0,16">
-                            <RadioButton x:Name="ModeComRadio" GroupName="CadMode" IsChecked="True" Margin="0,0,0,8">
-                                <StackPanel>
-                                    <TextBlock Text="Dibujar en la sesion abierta de AutoCAD" FontWeight="SemiBold" />
-                                    <TextBlock Text="Por COM, igual que la macro. Requiere AutoCAD abierto."
-                                               FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxWidth="580" />
-                                </StackPanel>
-                            </RadioButton>
-
-                            <RadioButton x:Name="ModeDxfRadio" GroupName="CadMode">
-                                <StackPanel>
-                                    <TextBlock Text="Escribir un archivo DXF" FontWeight="SemiBold" />
-                                    <TextBlock Text="No requiere AutoCAD instalado. Se agrega despues del motor por COM."
-                                               FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxWidth="580" />
-                                </StackPanel>
-                            </RadioButton>
-                        </StackPanel>
-
-                        <Grid Margin="0,0,0,16" MaxWidth="700">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Archivo de salida" VerticalAlignment="Center" Margin="0,0,0,8" />
-                            <Grid Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0" x:Name="OutputPathBox" Height="28" VerticalContentAlignment="Center" Padding="6,0" />
-                                <Button  Grid.Column="1" Content="Examinar..." Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0" Click="OnBrowseOutput" />
-                            </Grid>
-
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Escala de dibujo" VerticalAlignment="Center" />
-                            <TextBox   Grid.Row="1" Grid.Column="1" x:Name="ScaleBox" Text="0.01" Height="28" Width="110"
-                                       HorizontalAlignment="Left" VerticalContentAlignment="Center" Padding="6,0"
-                                       ToolTip="0.01 = se captura en cm y se dibuja en metros, como la macro" />
-                        </Grid>
-
-                        <TextBlock FontSize="11.5" TextWrapping="Wrap" MaxWidth="640"
-                                   Foreground="{StaticResource MutedTextBrush}"
-                                   Text="Los botones para dibujar viven junto a lo que dibujan: las secciones y los alzados en la pestaña Secciones Concreto, y la planta en la pestaña Dibujar planos estructurales, con el boton Dibujar en AutoCAD. Tambien estan todos en el menu Dibujar de arriba." />
-
-                        <TextBlock x:Name="ExportHintText" FontSize="11.5" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" MaxWidth="640" Foreground="{StaticResource MutedTextBrush}" />
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- ===== Licencia ===== -->
-            <TabItem Header="Licencia">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22" MaxWidth="760" HorizontalAlignment="Left">
-                        <TextBlock Text="Estado de la licencia" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
-
-                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,16">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="190" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tipo de licencia" FontWeight="SemiBold" Margin="0,0,0,7" />
-                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="LicTierText" Margin="0,0,0,7" />
-
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Licenciado a" FontWeight="SemiBold" Margin="0,0,0,7" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LicOrgText" TextWrapping="Wrap" Margin="0,0,0,7" />
-
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Vigencia" FontWeight="SemiBold" Margin="0,0,0,7" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="LicExpiryText" Margin="0,0,0,7" />
-
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Proxima validacion" FontWeight="SemiBold" Margin="0,0,0,7" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="LicTokenExpiryText" Margin="0,0,0,7" />
-
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Modulos habilitados" FontWeight="SemiBold" Margin="0,0,0,7" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="LicFeaturesText" TextWrapping="Wrap" Margin="0,0,0,7" />
-
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Huella del equipo" FontWeight="SemiBold" />
-                                <TextBox   Grid.Row="5" Grid.Column="1" x:Name="LicFingerprintText"
-                                           IsReadOnly="True" BorderThickness="0" Background="Transparent"
-                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
-                            </Grid>
-                        </Border>
-
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Revalidar ahora" Style="{StaticResource PrimaryButtonStyle}" Click="OnRevalidate" />
-                            <Button Content="Copiar huella" Style="{StaticResource SecondaryButtonStyle}" Click="OnCopyFingerprint" />
-                            <Button Content="Liberar este equipo" Style="{StaticResource SecondaryButtonStyle}" Click="OnDeactivate" />
-                        </StackPanel>
-
-                        <TextBlock x:Name="LicMessageText" FontSize="11.5" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
 
             <!-- ===== Dibujar planos estructurales ===== -->
             <TabItem Header="Dibujar planos estructurales">
@@ -912,6 +844,64 @@
                         <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
                                    TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
                                    Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== Licencia ===== -->
+            <TabItem Header="Licencia">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22" MaxWidth="760" HorizontalAlignment="Left">
+                        <TextBlock Text="Estado de la licencia" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
+
+                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tipo de licencia" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="LicTierText" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Licenciado a" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LicOrgText" TextWrapping="Wrap" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Vigencia" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="LicExpiryText" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Proxima validacion" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="LicTokenExpiryText" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Modulos habilitados" FontWeight="SemiBold" Margin="0,0,0,7" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" x:Name="LicFeaturesText" TextWrapping="Wrap" Margin="0,0,0,7" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Huella del equipo" FontWeight="SemiBold" />
+                                <TextBox   Grid.Row="5" Grid.Column="1" x:Name="LicFingerprintText"
+                                           IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Revalidar ahora" Style="{StaticResource PrimaryButtonStyle}" Click="OnRevalidate" />
+                            <Button Content="Copiar huella" Style="{StaticResource SecondaryButtonStyle}" Click="OnCopyFingerprint" />
+                            <Button Content="Liberar este equipo" Style="{StaticResource SecondaryButtonStyle}" Click="OnDeactivate" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="LicMessageText" FontSize="11.5" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -704,8 +704,76 @@ public sealed partial class SeccionDrawer
         }
         catch (Exception ex)
         {
+            // ------------------------------------------------------------------
+            // «Esa propiedad no existe» NO es un fallo del dibujo
+            // ------------------------------------------------------------------
+            // Las propiedades de cota no son las mismas en todas las versiones de
+            // AutoCAD. Cuatro de las que pide la macro —ExtensionLineOffset,
+            // ExtensionLineExtend, ExtLineFixedLen y ExtLineFixedLenSuppress— no
+            // están en algunas, y el enlace tardío responde con
+            // DISP_E_UNKNOWNNAME (0x80020006).
+            //
+            // Eso se estaba contando como fallo, y el resultado era que al terminar
+            // de dibujar salía «PERO hubo 4 fallo(s) que se toleraron, así que el
+            // dibujo puede estar incompleto» en un dibujo que estaba perfecto. Un
+            // aviso que se dispara siempre y que no hay forma de atender enseña al
+            // usuario a ignorar los avisos, y entonces los de verdad tampoco se
+            // leen.
+            //
+            // Son propiedades de PRESENTACIÓN: afinan cuánto sobresale la línea de
+            // extensión. Sin ellas la cota sale igual de correcta, solo con el
+            // remate por omisión de la versión. Así que se registran como NOTA.
+            if (EsPropiedadInexistente(ex))
+            {
+                Nota(
+                    $"Esta versión de AutoCAD no tiene la propiedad de cota " +
+                    $"'{propiedad}', así que se dejó su valor por omisión. Es un " +
+                    "detalle de presentación de la línea de extensión: las cotas " +
+                    "salen bien.");
+
+                return;
+            }
+
             Fallo($"Cota: propiedad {propiedad}", ex);
         }
+    }
+
+    /// <summary>
+    /// ¿El error es «esa propiedad no existe» y no un fallo de verdad?
+    /// </summary>
+    /// <remarks>
+    /// Se comprueba por <b>HRESULT</b> y no por el texto del mensaje: el mensaje
+    /// viene traducido al idioma de AutoCAD —«Nombre desconocido» en español,
+    /// «Unknown name» en inglés— así que buscar en el texto funcionaría en una
+    /// instalación y no en la siguiente.
+    /// <para>
+    /// <c>DISP_E_UNKNOWNNAME</c> es el error del enlace tardío cuando el objeto COM
+    /// no expone ese nombre. <c>DISP_E_MEMBERNOTFOUND</c> es su equivalente cuando
+    /// el nombre se resuelve pero no como miembro asignable.
+    /// </para>
+    /// </remarks>
+    private static bool EsPropiedadInexistente(Exception ex)
+    {
+        const uint DispUnknownName = 0x80020006;      // DISP_E_UNKNOWNNAME
+        const uint DispMemberNotFound = 0x80020003;   // DISP_E_MEMBERNOTFOUND
+
+        var e = ex;
+
+        // El InvokeMember envuelve la excepción de COM, así que hay que desenvolverla
+        // o el HRESULT que se leería sería el del envoltorio.
+        while (e is TargetInvocationException && e.InnerException is not null)
+        {
+            e = e.InnerException;
+        }
+
+        if (e is COMException com)
+        {
+            var h = (uint)com.HResult;
+            return h == DispUnknownName || h == DispMemberNotFound;
+        }
+
+        // Sin COM por medio, la reflexión avisa así de que el miembro no está.
+        return e is MissingMemberException;
     }
 
     /// <summary>Aplica a una cota el estilo, la capa y los ajustes de la macro.</summary>
@@ -2027,7 +2095,21 @@ public sealed partial class SeccionDrawer
         }
     }
 
-    private void TextoLeader(double x, double y, string texto)
+    /// <param name="haciaLaDerecha">
+    /// El texto crece hacia la <b>derecha</b> del punto, así que la línea de llamada
+    /// sale por su lado <b>izquierdo</b>.
+    /// </param>
+    /// <remarks>
+    /// El anclaje por omisión es <c>MiddleRight</c>, que es el
+    /// <c>ATTACH_MIDDLE_RIGHT</c> de la macro y lo correcto en las llamadas de lecho:
+    /// ahí el texto va a la izquierda de la sección y la línea entra por su derecha.
+    /// <para>
+    /// En la llamada del círculo hace falta lo contrario. Con el anclaje a la derecha
+    /// el texto se extendía hacia la izquierda y la línea salía pegada a su última
+    /// letra, que es el defecto que se veía en el plano.
+    /// </para>
+    /// </remarks>
+    private void TextoLeader(double x, double y, string texto, bool haciaLaDerecha = false)
     {
         try
         {
@@ -2035,7 +2117,9 @@ public sealed partial class SeccionDrawer
             {
                 dynamic mt = _ms.AddMText(new[] { x, y, 0d }, 1.0 * _f, texto);
                 mt.Height = AlturaTextoLeader * _f;
-                mt.AttachmentPoint = 6;   // acAttachmentPointMiddleRight
+
+                // 4 = acAttachmentPointMiddleLeft, 6 = acAttachmentPointMiddleRight
+                mt.AttachmentPoint = haciaLaDerecha ? 4 : 6;
                 mt.InsertionPoint = new[] { x, y, 0d };
                 mt.Layer = "ROTULOS";
                 mt.Color = PorCapa;

@@ -441,6 +441,110 @@ check("el eje proyectado es mas corto que la helice real",
       f"{largo_eje:.3f} contra {largo_helice:.3f}")
 check("pero del mismo orden", largo_eje > 0.5 * largo_helice)
 
+# ======================================================================
+# 10. Donde se RECORTAN las varillas: solo los pasos por DELANTE
+# ======================================================================
+print("\nRecorte de las varillas: el zuncho solo tapa cuando pasa por delante")
+
+# El zuncho cruza la posicion proyectada de una varilla DOS veces por vuelta: una
+# con la barra hacia el observador y otra al otro lado del elemento. Solo la
+# primera la tapa. Recortar en todos los cruces partiria la varilla en el doble de
+# trozos y dejaria huecos donde deberia verse entera.
+#
+# El criterio es el COSENO de la fase, que es la profundidad de la helice.
+
+def muestrear(r_eje, paso, largo, por_vuelta=24):
+    """Port de MuestrearHelice: x, sen y cos de la fase."""
+    vueltas = largo / paso
+    n = max(8, int(math.ceil(vueltas * por_vuelta)))
+    dx = largo / n
+
+    xs, sen, cos = [], [], []
+    fase = 0.0
+    for i in range(n + 1):
+        if i > 0:
+            fase += 2 * math.pi * dx / paso
+        xs.append(i * dx)
+        sen.append(math.sin(fase))
+        cos.append(math.cos(fase))
+    return xs, sen, cos
+
+
+def cruces_frontales(xs, sen, cos, r_eje, objetivo):
+    """Port de CrucesFrontales."""
+    out = []
+    if abs(objetivo) > r_eje:
+        return out
+
+    for i in range(len(xs) - 1):
+        d0 = r_eje * sen[i] - objetivo
+        d1 = r_eje * sen[i + 1] - objetivo
+        if d0 == 0 or (d0 < 0) == (d1 < 0):
+            continue
+        t = d0 / (d0 - d1)
+        x = xs[i] + t * (xs[i + 1] - xs[i])
+        c = cos[i] + t * (cos[i + 1] - cos[i])
+        if c > 0:
+            out.append(x)
+    return sorted(out)
+
+
+def todos_los_cruces(xs, sen, r_eje, objetivo):
+    out = []
+    for i in range(len(xs) - 1):
+        d0 = r_eje * sen[i] - objetivo
+        d1 = r_eje * sen[i + 1] - objetivo
+        if d0 == 0 or (d0 < 0) == (d1 < 0):
+            continue
+        t = d0 / (d0 - d1)
+        out.append(xs[i] + t * (xs[i + 1] - xs[i]))
+    return out
+
+
+xs, sen, cos = muestrear(r_h, paso, largo)
+vueltas = largo / paso
+
+# Una varilla en el eje del elemento: la cruza en cada media vuelta
+frente = cruces_frontales(xs, sen, cos, r_h, 0.0)
+todos = todos_los_cruces(xs, sen, r_h, 0.0)
+
+print(f"  varilla en el eje: {len(todos)} cruces en total, "
+      f"{len(frente)} por delante")
+
+check("hay dos cruces por vuelta en total",
+      abs(len(todos) - 2 * vueltas) <= 1,
+      f"{len(todos)} contra {2*vueltas:.0f}")
+check("y solo la MITAD son por delante",
+      abs(len(frente) - vueltas) <= 1,
+      f"{len(frente)} contra {vueltas:.0f}")
+
+# Los cruces frontales van separados justo un paso: es una vez por vuelta
+if len(frente) >= 3:
+    huecos = [frente[i+1] - frente[i] for i in range(len(frente)-1)]
+    print(f"  separacion entre cruces frontales: {min(huecos):.4f} a {max(huecos):.4f} m "
+          f"(el paso es {paso})")
+    check("los cruces frontales van separados un paso",
+          abs(sum(huecos)/len(huecos) - paso) < paso * 0.02,
+          f"media {sum(huecos)/len(huecos):.4f}")
+
+# Una varilla en el borde del circulo de paso: tambien la cruza
+for idx in (0, 2, 4, 6):
+    ang = math.pi / 2 + idx * 2 * math.pi / 8
+    yb = r_paso * math.cos(ang)
+    fr = cruces_frontales(xs, sen, cos, r_h, yb)
+    print(f"  varilla {idx} (y={yb:+.4f}): {len(fr)} recortes")
+    check(f"la varilla {idx} se recorta al menos una vez por vuelta",
+          len(fr) >= vueltas - 1, f"{len(fr)} recortes")
+
+# Una varilla MAS AFUERA que el zuncho no se recorta nunca: no se cruzan
+fuera = cruces_frontales(xs, sen, cos, r_h, r_h * 1.5)
+check("una varilla fuera del alcance del zuncho no se recorta", len(fuera) == 0,
+      f"{len(fuera)} recortes")
+
+# Y todos los recortes caen DENTRO del elemento
+check("todos los recortes caen dentro del elemento",
+      all(0 <= x <= largo for x in frente))
+
 print("\n" + "=" * 78)
 if fallos:
     print(f" {len(fallos)} PROBLEMA(S):")

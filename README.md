@@ -58,6 +58,9 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |
 | Alzados y bloques a 2 m sobre la sección más alta | ✅ Completo |
 | Vista previa con fondo azul, igual para las dos formas | ✅ Completo |
+| Rótulo dentro del bloque de alzado | ✅ Completo |
+| Zuncho en contorno o macizo según el estilo de la sección | ✅ Completo |
+| Varillas recortadas donde el zuncho pasa por delante | ✅ Completo |
 | Hoja con paneles inmovilizados y color por grupo de columnas | ✅ Completo |
 | **Importar desde Excel** | ⛔ Pendiente — aquí va la lógica de tus macros |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
@@ -255,9 +258,10 @@ servidor recibirá una **licencia de prueba de 30 días**.
 
 ### A. Prueba gratuita (comportamiento por defecto)
 
-Ya lo viste en el paso 3. Nota que la pestaña **AutoCAD** tiene el botón de
-generar dibujo deshabilitado: la prueba no incluye exportación. Eso se configura
-en `server/app/tokens.py`, función `features_for`.
+Ya lo viste en el paso 3. Nota que en la pestaña **Secciones Concreto** los botones
+de *Generar dibujo* y *Generar alzados* están deshabilitados, igual que el de
+*Dibujar en AutoCAD*: la prueba no incluye exportación. Eso se configura en
+`server/app/tokens.py`, función `features_for`.
 
 ### B. Licencia interna gratuita (PCs de tus trabajadores)
 
@@ -440,9 +444,8 @@ Están **arriba**, debajo del menú y de la barra de guardar:
 | **Placa Base** | Pendiente de portar |
 | **Conexiones** | Pendiente de portar |
 | **ETABS** | Conexión por la CSI OAPI, lectura del modelo y de los piers, visor 3D y extruido |
-| **AutoCAD** | Modo de dibujo (COM o DXF), archivo de salida y escala |
-| **Licencia** | Tipo, vigencia, módulos habilitados, huella del equipo, revalidar |
 | **Dibujar planos estructurales** | La planta por nivel, y el botón *Dibujar en AutoCAD* |
+| **Licencia** | Tipo, vigencia, módulos habilitados, huella del equipo, revalidar |
 
 Las columnas calculadas son de solo lectura y se actualizan al instante, igual
 que una fórmula de Excel.
