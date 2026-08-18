@@ -3057,6 +3057,226 @@ def v19_circular_y_ui() -> None:
           'Est. {a.Estribo.Clave} @' not in alz)
 
 
+# ======================================================================
+# 20. Miembros estaticos usados desde OTRA clase sin cualificar (CS0103)
+# ======================================================================
+def _pila_de_clases(texto: str) -> list[list[str]]:
+    """Para cada linea, la PILA de clases que la contienen, de fuera hacia dentro.
+
+    Se cuenta la profundidad de llaves de verdad, en lugar de suponer que la clase
+    vigente es la ultima declarada. La diferencia importa en cuanto hay una clase
+    ANIDADA: con el atajo, todo lo que viene DESPUES del cierre de la anidada se
+    atribuye a ella, y eso producia dos falsos positivos distintos que parecian no
+    tener nada que ver entre si:
+
+      - 'MargenCol' de AlzadoLayout se reportaba como usado dentro de Puesto,
+        porque Puesto se declara antes del metodo que lo usa.
+      - 'Normalizar' de VistaModelo se reportaba como no declarado, porque su
+        declaracion cae despues de un tipo anidado y se atribuia a el.
+
+    El texto tiene que venir SIN comentarios ni cadenas, o una llave dentro de una
+    cadena descuadra la cuenta.
+    """
+    salida: list[list[str]] = []
+    pila: list[tuple[str, int]] = []      # (nombre, profundidad del cuerpo)
+    profundidad = 0
+    pendiente: str | None = None          # clase declarada, cuerpo aun sin abrir
+
+    for linea in texto.split("\n"):
+        salida.append([nombre for nombre, _ in pila])
+
+        m = re.search(r"\b(?:class|struct|record|interface)\s+(\w+)", linea)
+        if m and not re.match(r"\s*(?://|\*)", linea):
+            pendiente = m.group(1)
+
+        for ch in linea:
+            if ch == "{":
+                profundidad += 1
+                if pendiente is not None:
+                    pila.append((pendiente, profundidad))
+                    pendiente = None
+            elif ch == "}":
+                while pila and pila[-1][1] == profundidad:
+                    pila.pop()
+                profundidad -= 1
+
+    return salida
+
+
+def v20_estaticos_sin_cualificar() -> None:
+    """Un `const` de otra clase usado a pelo. Rompe la compilacion.
+
+    Por que existe esta seccion: `CadLink.App` no se puede compilar en este
+    entorno, asi que un CS0103 llega hasta el usuario. Paso exactamente eso con
+    `ElementoColumnaCircular`, declarada en SeccionConcretoRow y usada a pelo
+    dentro de DatosProyecto, en el MISMO archivo, que es lo que lo hace facil de
+    pasar por alto: parece que esta en ambito y no lo esta.
+
+    La comprobacion v15 no lo caza porque solo mira identificadores en posicion de
+    ARGUMENTO de llamada, y este estaba en un inicializador de objeto.
+    """
+    print("\n[20] Miembros estaticos de otra clase, sin cualificar")
+
+    # ------------------------------------------------------------------
+    # 1. Se recogen los miembros estaticos publicos, por clase
+    # ------------------------------------------------------------------
+    # Solo const y static: los de instancia no pueden usarse sin objeto y el
+    # compilador da otro error distinto.
+    # Los estaticos PUBLICOS, que son los unicos que otra clase puede usar.
+    declarados: dict[str, str] = {}     # nombre del miembro -> clase que lo declara
+
+    # TODOS los miembros de cada clase, de cualquier visibilidad. Hace falta para
+    # descartar el falso positivo importante: que la clase que usa el nombre tenga
+    # un miembro PROPIO llamado igual. Pasa de verdad y varias veces:
+    # AppInfo y Branding tienen cada una su 'Cargar' privado, MainWindow tiene su
+    # 'Guardar', y AppConfig tiene su 'RutaLibreriaEtabs' de instancia. Sin esto la
+    # comprobacion reporta seis errores que no existen.
+    miembros_de: dict[str, set[str]] = {}
+
+    clases_por_archivo: dict[str, list[tuple[int, str]]] = {}
+
+    rutas = [p for p in archivos(".cs", "client/src") if "obj" not in p and "bin" not in p]
+
+    for p in rutas:
+        texto = _sin_comentarios(leer(p))
+        lineas = texto.split("\n")
+
+        pilas = _pila_de_clases(texto)
+        clases_por_archivo[p] = pilas
+
+        def clase_en(idx: int, ps=pilas) -> str:
+            """La clase mas interna que contiene la linea."""
+            return ps[idx][-1] if idx < len(ps) and ps[idx] else ""
+
+        for i, l in enumerate(lineas):
+            # Nombres declarados DENTRO de esta clase. Se recoge de mas a proposito:
+            # esto solo sirve para descartar falsos positivos, asi que colar algun
+            # nombre extra no hace daño y perder uno si.
+            #
+            # Hacen falta las dos formas de abajo, y las dos costaron un falso
+            # positivo antes de estar bien:
+            #
+            #   - Metodos y FUNCIONES LOCALES, a cualquier sangria. 'Leer' es una
+            #     funcion local dentro de un metodo de MainWindow, a 8 espacios, y
+            #     con un patron de solo 4 se reportaba como si fuera el 'Leer' de
+            #     EtabsReader.
+            #   - El tipo puede llevar PARENTESIS, porque puede ser una tupla.
+            #     'Normalizar' devuelve (double X, double Y, double Z) y por eso no
+            #     se recogia, aunque estuviera declarada en la misma clase parcial.
+            # Metodos y funciones locales. NO se exige emparejar el parentesis de
+            # cierre: los parametros pueden llevar parentesis anidados, como en
+            # 'Normalizar((double, double, double) v)', y con \([^)]*\) esa linea no
+            # casaba y su nombre se perdia.
+            #
+            # Para no confundir una LLAMADA con una declaracion se pide que la linea
+            # no termine en ';'. Asi 'var a = Leer(0);' queda fuera y
+            # 'double Leer(int i)' dentro.
+            # Se recogen TODOS los identificadores seguidos de '(' de la linea, no
+            # solo el primero. Con un patron de un solo nombre se capturaba el
+            # equivocado en cuanto el tipo de retorno era una TUPLA: en
+            #     private static (double X, double Y, double Z) Normalizar(...)
+            # el parentesis de la tupla hace que 'static' parezca el nombre del
+            # metodo, y 'Normalizar' no se registraba nunca.
+            #
+            # Recoger de mas es seguro para lo que esto sirve: solo se usa para
+            # descartar falsos positivos, y un nombre seguido de '(' nunca es una
+            # constante, que es la clase de error que se quiere cazar.
+            if not l.rstrip().endswith(";"):
+                for m_met in re.finditer(r"\b(\w+)\s*\(", l):
+                    if m_met.group(1) not in _NO_ES_LLAMADA:
+                        miembros_de.setdefault(clase_en(i), set()).add(m_met.group(1))
+
+            # Propiedades y campos, a CUALQUIER sangria de 4 o mas. Con 4 exactos se
+            # perdian los de las clases anidadas, que van a 8: por eso el 'XSeccion'
+            # de AlzadoLayout.Puesto se reportaba contra el metodo estatico del mismo
+            # nombre de la clase de fuera.
+            m_prop = re.match(
+                r"^ {4,}(?:public|private|protected|internal)[^;=]*?"
+                r"\b(\w+)\s*(?:\{|=>|=|;)", l)
+            if m_prop:
+                miembros_de.setdefault(clase_en(i), set()).add(m_prop.group(1))
+
+            # Y los estaticos publicos, que son los que se pueden usar desde fuera
+            m = re.match(
+                r"\s*public\s+(?:const|static\s+readonly|static)\s+"
+                r"[\w<>,?\[\]\.]+\s+(\w+)\s*(?:=|\()", l)
+            if m:
+                declarados[m.group(1)] = clase_en(i)
+
+    check("se recogieron miembros estaticos", len(declarados) > 0,
+          f"{len(declarados)}")
+
+    # ------------------------------------------------------------------
+    # 2. Cada uso tiene que estar en su clase, o cualificado
+    # ------------------------------------------------------------------
+    problemas: list[str] = []
+    usos_revisados = 0
+
+    for p in rutas:
+        texto = _sin_comentarios(leer(p))
+        lineas = texto.split("\n")
+        pilas = clases_por_archivo[p]
+
+        for i, l in enumerate(lineas):
+            # La PILA entera, no solo la clase mas interna: desde una clase anidada
+            # se ven los miembros de la que la contiene sin cualificar nada.
+            pila = pilas[i] if i < len(pilas) else []
+
+            for miembro, duena in declarados.items():
+                # Uso, no declaracion
+                if re.search(r"^\s*public\s.*\b" + miembro + r"\b\s*(?:=|\()", l):
+                    continue
+
+                for m in re.finditer(r"(\.)?\b" + miembro + r"\b", l):
+                    if m.group(1):
+                        continue        # ya viene cualificado con algo
+
+                    if duena == "" or duena in pila:
+                        continue        # esta en su clase o en una que la contiene
+
+                    # Alguna clase del ambito tiene un miembro propio con ese
+                    # nombre: el identificador se resuelve a ESE.
+                    if any(miembro in miembros_de.get(c, set()) for c in pila):
+                        continue
+
+                    aqui = pila[-1] if pila else ""
+
+                    # Nombre de propiedad dentro de un inicializador de objeto:
+                    # 'Elemento = ...' se resuelve contra el tipo que se construye.
+                    if re.match(r"\s*" + miembro + r"\s*=[^=]", l):
+                        continue
+
+                    usos_revisados += 1
+
+                    problemas.append(
+                        f"{rel(p)}:{i+1}: '{miembro}' se declara en {duena} y se usa "
+                        f"a pelo dentro de {aqui}")
+                    break
+
+    check(f"ningun estatico de otra clase sin cualificar ({usos_revisados} usos "
+          f"sospechosos revisados)", not problemas, "; ".join(problemas[:6]))
+
+    # ------------------------------------------------------------------
+    # 3. El caso concreto que rompio la compilacion, fijado
+    # ------------------------------------------------------------------
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+
+    m_ej = re.search(r"public static DatosProyecto CrearEjemplo\(\).*?\n    \}",
+                     filas, re.S)
+    check("se puede leer CrearEjemplo", m_ej is not None)
+    if m_ej:
+        cuerpo = m_ej.group(0)
+
+        # CrearEjemplo vive en DatosProyecto, asi que las constantes de
+        # SeccionConcretoRow tienen que ir con el nombre de la clase delante.
+        for c in ("ElementoColumnaCircular", "ElementoColumna"):
+            usos = re.findall(r"(SeccionConcretoRow\.)?\b" + c + r"\b", cuerpo)
+            sin_cualificar = [u for u in usos if u == ""]
+            check(f"en CrearEjemplo, {c} va cualificada",
+                  not sin_cualificar,
+                  f"{len(sin_cualificar)} uso(s) a pelo")
+
+
 def main() -> int:
     print("=" * 66)
     print(" Validaciones estaticas de CadLink")
@@ -3068,7 +3288,8 @@ def main() -> int:
               v11_visor, v12_fidelidad, v13_compilacion,
               v14_bloques_diamante_etabs, v15_cs0103,
               v16_extruida_piers, v17_guardar_y_defaults,
-              v18_planta_autocad, v19_circular_y_ui):
+              v18_planta_autocad, v19_circular_y_ui,
+              v20_estaticos_sin_cualificar):
         f()
 
     print("\n" + "=" * 66)

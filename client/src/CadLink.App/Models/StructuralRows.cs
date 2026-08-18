@@ -626,7 +626,10 @@ public sealed class DatosProyecto
         d.SeccionesConcreto.Add(new SeccionConcretoRow
         {
             // La forma la manda el Elemento. En el plano se rotula «COLUMNA».
-            Elemento = ElementoColumnaCircular, Id = "C-2",
+            // La constante va CUALIFICADA: este metodo vive en DatosProyecto, no en
+            // SeccionConcretoRow, asi que sin el nombre de la clase delante no esta
+            // en ambito. Es el CS0103 que rompio la compilacion.
+            Elemento = SeccionConcretoRow.ElementoColumnaCircular, Id = "C-2",
             BaseCm = 50, AlturaCm = 50,
             NVarTotal = 8, DiamVarTotal = "#8",
             ZunchoHelicoidal = "SI",
