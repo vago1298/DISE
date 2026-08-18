@@ -54,9 +54,11 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Conexión a AutoCAD por COM (`AcadConnection`) | ✅ Completo |
 | Barra de guardar y menú arriba, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
 | Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
-| **Sección circular por fila**, con varillas totales y zuncho | ✅ Completo |
+| **Columna circular**, elegida en la columna *Elemento* | ✅ Completo |
 | **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |
 | Alzados y bloques a 2 m sobre la sección más alta | ✅ Completo |
+| Vista previa con fondo azul, igual para las dos formas | ✅ Completo |
+| Hoja con paneles inmovilizados y color por grupo de columnas | ✅ Completo |
 | **Importar desde Excel** | ⛔ Pendiente — aquí va la lógica de tus macros |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
 | **Lectura de ETABS (CSI OAPI)** | ⛔ Pendiente |
@@ -445,13 +447,19 @@ Están **arriba**, debajo del menú y de la barra de guardar:
 Las columnas calculadas son de solo lectura y se actualizan al instante, igual
 que una fórmula de Excel.
 
-### Columnas de la sección circular
+### La columna circular
 
-En **Secciones Concreto**, cuatro columnas mandan la forma de **cada fila**:
+La forma se elige en la columna **Elemento**: hay `COLUMNA` y `COLUMNA CIRCULAR`.
+Solo la fila puesta como circular se dibuja redonda; las demás no cambian.
+
+> En el plano las dos se rotulan **COLUMNA**. «COLUMNA CIRCULAR» es solo el nombre
+> de captura: en el dibujo lo que distingue a una de otra es su forma y su cota de
+> diámetro, no el texto del rótulo.
+
+Su armado se captura en tres columnas:
 
 | Columna | Qué hace |
 |---|---|
-| **Circular** | `SI` y solo esa sección se dibuja redonda. Las demás no cambian |
 | **N total** | Varillas **totales** del círculo. En una sección redonda no hay lechos |
 | **Var total** | Su diámetro. Si va vacía hereda el de *Var esq sup* |
 | **Zuncho helic.** | `SI` = el zuncho sube en hélice; vacío = anillos sueltos |
@@ -460,6 +468,17 @@ En una fila circular la columna **Base cm** es el **diámetro** y la altura se
 ignora; *Revisar datos* lo avisa si traen valores distintos. El estribo diamante
 no aplica: es un rombo entre las varillas de dos lechos y en un círculo no hay
 lechos.
+
+### Ayudas de captura de la hoja
+
+- **Paneles inmovilizados.** *Elemento* e *ID* se quedan pegados a la izquierda al
+  desplazarse por las 27 columnas, y el encabezado no se va al bajar.
+- **Color por grupo.** Identificación, geometría, lecho superior, lecho inferior,
+  laterales, círculo, estribos, acabado y calculadas llevan cada uno su tono. El
+  lecho superior y el inferior son de colores **distintos** a propósito: es el par
+  que se confunde al capturar.
+- Las columnas **calculadas** van en gris y cursiva, para que se vea que ahí no se
+  escribe.
 
 ---
 

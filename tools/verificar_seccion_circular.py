@@ -327,6 +327,120 @@ check("4 varillas se ven en 3 posiciones distintas",
 check("ninguna proyeccion se sale del circulo de paso",
       all(abs(x) <= r_paso + 1e-12 for x in proyectadas(8, r_paso)))
 
+# ======================================================================
+# 9. Como se le da GROSOR al zuncho, y por que las dos vias obvias fallan
+# ======================================================================
+print("\nGrosor del zuncho: las dos vias que NO sirven, y la que si")
+
+# ------------------------------------------------------------------
+# VIA 1: contorno cerrado con las dos caras, ida por fuera y vuelta por dentro
+# ------------------------------------------------------------------
+# Parece la solucion evidente para poder rellenar con un hatch. No sirve, y el
+# motivo es de signo: las caras son R*sin(f) y r*sin(f) con R > r, asi que donde
+# sin(f) < 0 la cara exterior queda POR DEBAJO de la interior. La banda se cruza
+# en cada paso por el eje y el area con signo se anula.
+
+def contorno_radial(r_eje, d, paso, largo, por_vuelta=24):
+    vueltas = largo / paso
+    n = max(2, int(math.ceil(vueltas * por_vuelta)))
+    dx = largo / n
+
+    fases = []
+    fase = 0.0
+    for i in range(n + 1):
+        if i > 0:
+            fase += 2 * math.pi * dx / paso
+        fases.append(fase)
+
+    r_out, r_in = r_eje + d / 2, r_eje - d / 2
+    pts = [(i * dx, r_out * math.sin(fases[i])) for i in range(n + 1)]
+    pts += [((n - i) * dx, r_in * math.sin(fases[n - i])) for i in range(n + 1)]
+    return pts
+
+
+def area_con_signo(pts):
+    return sum(pts[k][0] * pts[(k + 1) % len(pts)][1] -
+               pts[(k + 1) % len(pts)][0] * pts[k][1]
+               for k in range(len(pts))) / 2
+
+
+cont = contorno_radial(r_h, d_est, paso, largo)
+area_radial = area_con_signo(cont)
+cruces_eje = int(2 * largo / paso)
+
+print(f"  via 1, contorno radial : area = {area_radial:.9f} m2, "
+      f"{cruces_eje} cruces por el eje")
+
+check("la via 1 se descarta: encierra area cero", abs(area_radial) < 1e-9,
+      f"area {area_radial:.9f}")
+
+# ------------------------------------------------------------------
+# VIA 2: desplazar el eje +-d/2 por su NORMAL
+# ------------------------------------------------------------------
+# Esta si es la silueta geometrica correcta de la barra. Tampoco se puede
+# rellenar: la banda se cruza en las CRESTAS, porque el medio diametro de la
+# barra es mayor que el radio de curvatura del seno ahi.
+k = 2 * math.pi / paso
+pendiente_max = r_h * k
+curvatura_max = r_h * k * k
+radio_curvatura = 1 / curvatura_max
+
+print(f"  via 2, banda por normal: pendiente max {pendiente_max:.1f} "
+      f"({math.degrees(math.atan(pendiente_max)):.1f} grados)")
+print(f"                           radio de curvatura minimo "
+      f"{radio_curvatura*1000:.2f} mm contra d/2 = {d_est/2*1000:.2f} mm")
+
+check("la via 2 se descarta: d/2 supera el radio de curvatura",
+      d_est / 2 > radio_curvatura,
+      f"d/2 {d_est/2*1000:.2f} mm, radio {radio_curvatura*1000:.2f} mm")
+
+# ------------------------------------------------------------------
+# VIA 3: una polilinea del EJE con ancho constante (la que se usa)
+# ------------------------------------------------------------------
+# AutoCAD dibuja una polilinea de ancho constante como una banda maciza de ese
+# ancho real en unidades de dibujo, y resuelve el solo las uniones. No hay
+# frontera que cerrar, asi que el problema de las dos vias anteriores desaparece.
+
+def eje_helice(r_eje, paso, largo, por_vuelta=24):
+    vueltas = largo / paso
+    n = max(2, int(math.ceil(vueltas * por_vuelta)))
+    dx = largo / n
+
+    pts, fase = [], 0.0
+    for i in range(n + 1):
+        if i > 0:
+            fase += 2 * math.pi * dx / paso
+        pts.append((i * dx, r_eje * math.sin(fase)))
+    return pts
+
+
+eje = eje_helice(r_h, paso, largo)
+print(f"  via 3, eje con ancho   : {len(eje)} vertices, ancho = "
+      f"{d_est*100:.2f} cm (el diametro de la tabla)")
+
+check("la via 3 es UNA sola polilinea abierta", len(eje) > 0)
+check("el eje arranca en la base", abs(eje[0][0]) < 1e-12)
+check("y termina en el tope", abs(eje[-1][0] - largo) < 1e-12)
+check("el eje no se sale del radio del zuncho",
+      all(abs(y) <= r_h + 1e-12 for _, y in eje))
+
+# El ancho es el DIAMETRO de la tabla, no la mitad ni un grosor de linea
+check("el ancho de la polilinea es el diametro completo de la varilla",
+      abs(d_est - DIAM["#3"] * ESCALA) < 1e-15,
+      f"{d_est:.6f} contra {DIAM['#3']*ESCALA:.6f}")
+
+# Y el area que cubre la banda es ancho x largo del eje recorrido
+largo_eje = sum(math.hypot(eje[i+1][0]-eje[i][0], eje[i+1][1]-eje[i][1])
+                for i in range(len(eje)-1))
+largo_helice = (largo / paso) * math.hypot(2 * math.pi * r_h, paso)
+print(f"  largo del eje proyectado = {largo_eje:.3f} m")
+print(f"  largo real de la helice  = {largo_helice:.3f} m")
+
+check("el eje proyectado es mas corto que la helice real",
+      largo_eje < largo_helice,
+      f"{largo_eje:.3f} contra {largo_helice:.3f}")
+check("pero del mismo orden", largo_eje > 0.5 * largo_helice)
+
 print("\n" + "=" * 78)
 if fallos:
     print(f" {len(fallos)} PROBLEMA(S):")

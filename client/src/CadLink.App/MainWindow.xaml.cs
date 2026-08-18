@@ -137,7 +137,13 @@ public partial class MainWindow : Window
         {
             // COLUMNA y DADO van juntos porque son los dos verticales, y son los
             // dos que llevan alzado vertical.
-            "COLUMNA", "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
+            //
+            // COLUMNA CIRCULAR va justo despues de COLUMNA: es donde se elige la
+            // FORMA. En el plano las dos se rotulan «COLUMNA», ver
+            // SeccionConcretoRow.ElementoRotulo.
+            SeccionConcretoRow.ElementoColumna,
+            SeccionConcretoRow.ElementoColumnaCircular,
+            "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
             "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"
         };
 
@@ -152,10 +158,9 @@ public partial class MainWindow : Window
 
         ColDiamante.ItemsSource = new[] { string.Empty, "SI" };
 
-        // Seccion circular: las tres columnas nuevas. «Var total» es opcional
-        // porque si va vacia hereda el diametro de la columna F, igual que hacen
-        // los demas diametros de la hoja.
-        ColCircular.ItemsSource = new[] { string.Empty, "SI" };
+        // Seccion circular. La FORMA se elige en ColElemento, no aqui: lo unico que
+        // se captura es su armado. «Var total» es opcional porque si va vacia hereda
+        // el diametro de la columna F, igual que los demas diametros de la hoja.
         ColZuncho.ItemsSource = new[] { string.Empty, "SI" };
         ColVarTotal.ItemsSource = opcionales;
     }
@@ -2039,7 +2044,8 @@ public partial class MainWindow : Window
         return new SeccionCad
         {
             Modo = ModoElegido,
-            Elemento = r.Elemento,
+            // El nombre que va al PLANO: una columna redonda se rotula COLUMNA.
+            Elemento = r.ElementoRotulo,
             Id = r.Id,
             BaseCm = r.BaseCm,
             AlturaCm = r.AlturaCm,
@@ -2115,7 +2121,8 @@ public partial class MainWindow : Window
         {
             Tipo = TipoDe(r.Elemento, r.Id) ?? TipoElemento.Trabe,
             Modo = ModoElegido,
-            Elemento = r.Elemento,
+            // El nombre que va al PLANO: una columna redonda se rotula COLUMNA.
+            Elemento = r.ElementoRotulo,
             Id = r.Id,
             BaseCm = r.BaseCm,
             AlturaCm = r.AlturaCm,
@@ -2186,7 +2193,12 @@ public partial class MainWindow : Window
             return TipoElemento.Contratrabe;
         }
 
-        if (e == "COLUMNA" || i.StartsWith("C-", StringComparison.Ordinal))
+        // «COLUMNA» y «COLUMNA CIRCULAR» son las dos columnas: las dos llevan alzado
+        // VERTICAL y las dos se rotulan COLUMNA. Con la comparacion exacta que habia
+        // antes, una columna redonda caia al final del metodo y se quedaba SIN alzado
+        // salvo que su ID empezara por C-.
+        if (e == "COLUMNA" || e == SeccionConcretoRow.ElementoColumnaCircular
+            || i.StartsWith("C-", StringComparison.Ordinal))
         {
             return TipoElemento.Columna;
         }
@@ -2650,7 +2662,11 @@ public partial class MainWindow : Window
         // Cotas de referencia
         Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
         Etiqueta($"{s.AlturaCm:N0} cm", x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
-        Etiqueta($"{s.Elemento}  {s.Id}", 14, 26);
+
+        // La MISMA linea de titulo que la circular: elemento, ID y resumen del
+        // armado. Antes la rectangular solo decia elemento e ID, asi que las dos
+        // formas no se veian igual.
+        Etiqueta(TituloVistaPrevia(s), 14, 26);
 
         // El alzado va a la derecha de la sección, en el espacio que sobra
         DibujarAlzadoPrevio(s, x0 + (s.BaseCm * escala) + 70, alto);
@@ -2742,12 +2758,141 @@ public partial class MainWindow : Window
 
         // ---------- Etiquetas ----------
         Etiqueta($"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
-
-        var zuncho = s.EsZunchoHelicoidal ? "zuncho helicoidal" : "zuncho en anillos";
-        Etiqueta($"{s.Elemento}  {s.Id}   ({s.NVarTotal} vars. " +
-                 $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)}, {zuncho})", 14, 26);
+        Etiqueta(TituloVistaPrevia(s), 14, 26);
 
         DibujarAlzadoPrevio(s, cx + r + 70, alto);
+    }
+
+    /// <summary>
+    /// Línea de título de la vista previa: elemento, ID y resumen del armado.
+    /// </summary>
+    /// <remarks>
+    /// Es la <b>misma</b> para las dos formas, y por eso vive aquí en lugar de estar
+    /// escrita dos veces. Se muestra el nombre de <b>captura</b> —«COLUMNA
+    /// CIRCULAR»— y no el de rótulo, porque en la pantalla lo que se quiere confirmar
+    /// es que la fila está capturada como se pretende; en el plano sí sale «COLUMNA».
+    /// </remarks>
+    private static string TituloVistaPrevia(SeccionConcretoRow s)
+    {
+        var cabeza = $"{s.Elemento}  {s.Id}";
+
+        if (s.EsCircular)
+        {
+            var zuncho = s.EsZunchoHelicoidal ? "zuncho helicoidal" : "zuncho en anillos";
+
+            return $"{cabeza}   ({s.NVarTotal} vars. " +
+                   $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)}, {zuncho})";
+        }
+
+        var total = s.TotalVarillas;
+        var estribo = Varilla.Normalizar(s.Estribo);
+
+        return total > 0
+            ? $"{cabeza}   ({total} vars., estribo {estribo})"
+            : $"{cabeza}   (estribo {estribo})";
+    }
+
+    /// <summary>
+    /// El zuncho helicoidal en el alzado de la vista previa.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Usa la <b>misma</b> geometría que <c>AlzadoDrawer.HeliceDelZuncho</c>: la
+    /// proyección de una hélice es un seno de amplitud igual al radio del zuncho, y la
+    /// fase se acumula con el paso de cada zona L/4-L/2-L/4 en lugar de con un periodo
+    /// fijo. Si aquí se dibujara un seno de paso constante, la vista previa no
+    /// mostraría el cierre del zuncho en los extremos, que es justo lo que se quiere
+    /// comprobar antes de mandar el dibujo.
+    /// </para>
+    /// <para>
+    /// Se dibujan las <b>dos caras</b> de la barra, con amplitudes <c>r ± d/2</c> y la
+    /// misma fase, para que se vea con su grosor real y no como una línea.
+    /// </para>
+    /// </remarks>
+    private void DibujarHelicePrevia(
+        AlzadoCad a, double izquierda, double top, double w, double h,
+        double rec, double dEst, Brush brocha)
+    {
+        if (w <= 0 || h <= 0 || dEst <= 0)
+        {
+            return;
+        }
+
+        var yMedio = top + (h / 2);
+        var rExt = (h / 2) - rec;
+        var rEje = rExt - (dEst / 2);
+
+        if (rEje <= 0)
+        {
+            return;
+        }
+
+        // Separaciones en metros, y de ahí a píxeles del lienzo
+        var s = a.SeparacionesCm;
+        var esc = w / (a.LongitudM > 0 ? a.LongitudM : 3.0);
+
+        double PasoPx(int i)
+        {
+            var cm = i < s.Length && s[i] > 0 ? s[i] : 15;
+            return cm / 100.0 * esc;
+        }
+
+        var p1 = PasoPx(0);
+        var p2 = PasoPx(1);
+        var p3 = PasoPx(2);
+
+        if (p1 <= 0 || p2 <= 0 || p3 <= 0)
+        {
+            return;
+        }
+
+        var z1 = izquierda + (w * 0.25);
+        var z2 = izquierda + (w * 0.75);
+
+        double PasoEn(double x) => x < z1 ? p1 : x < z2 ? p2 : p3;
+
+        var vueltas = ((z1 - izquierda) / p1) + ((z2 - z1) / p2)
+                      + ((izquierda + w - z2) / p3);
+
+        if (vueltas <= 0)
+        {
+            return;
+        }
+
+        // 12 puntos por vuelta bastan en pantalla: el lienzo tiene unos pocos
+        // cientos de píxeles y más puntos no se distinguen.
+        var n = Math.Clamp((int)Math.Ceiling(vueltas * 12), 8, 1200);
+        var dx = w / n;
+
+        var caraExt = new PointCollection();
+        var caraInt = new PointCollection();
+
+        var fase = 0d;
+
+        for (var i = 0; i <= n; i++)
+        {
+            var x = izquierda + (i * dx);
+
+            if (i > 0)
+            {
+                fase += 2 * Math.PI * dx / PasoEn(x - (dx / 2));
+            }
+
+            var sen = Math.Sin(fase);
+
+            caraExt.Add(new Point(x, yMedio + ((rEje + (dEst / 2)) * sen)));
+            caraInt.Add(new Point(x, yMedio + ((rEje - (dEst / 2)) * sen)));
+        }
+
+        foreach (var cara in new[] { caraExt, caraInt })
+        {
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = cara,
+                Stroke = brocha,
+                StrokeThickness = 0.9
+            });
+        }
     }
 
     /// <summary>Una circunferencia en el lienzo de la vista previa.</summary>
@@ -2846,24 +2991,35 @@ public partial class MainWindow : Window
 
         var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
 
-        foreach (var c in centros)
+        if (a.Circular && a.ZunchoHelicoidal)
         {
-            var xc = izquierda + (c * esc);
-
-            // La cápsula: rectángulo con las puntas redondeadas
-            PreviewCanvas.Children.Add(new Rectangle
+            // El zuncho helicoidal NO son capsulas repetidas: es una sola pieza que
+            // sube en helice. Dibujarlo como estribos sueltos aqui haria que la vista
+            // previa mostrara una cosa y AutoCAD otra, que es lo peor que puede hacer
+            // una vista previa.
+            DibujarHelicePrevia(a, izquierda, top, w, h, rec, dEst, brochaEst);
+        }
+        else
+        {
+            foreach (var c in centros)
             {
-                Width = Math.Max(dEst, 1.5),
-                Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
-                RadiusX = dEst / 2,
-                RadiusY = dEst / 2,
-                Stroke = brochaEst,
-                StrokeThickness = 0.7,
-                Fill = a.Modo == ModoSeccion.Tipo2Rellena
-                    ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
-                    : null,
-                Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
-            });
+                var xc = izquierda + (c * esc);
+
+                // La cápsula: rectángulo con las puntas redondeadas
+                PreviewCanvas.Children.Add(new Rectangle
+                {
+                    Width = Math.Max(dEst, 1.5),
+                    Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
+                    RadiusX = dEst / 2,
+                    RadiusY = dEst / 2,
+                    Stroke = brochaEst,
+                    StrokeThickness = 0.7,
+                    Fill = a.Modo == ModoSeccion.Tipo2Rellena
+                        ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
+                        : null,
+                    Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
+                });
+            }
         }
 
         // ---------- Varillas, con su GANCHO SISMICO ----------

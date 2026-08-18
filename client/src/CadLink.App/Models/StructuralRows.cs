@@ -219,6 +219,13 @@ public sealed class SeccionConcretoRow : Row
         {
             Set(ref _elemento, value);
             AplicarFcPorOmision();
+
+            // El Elemento decide la FORMA: al pasar de COLUMNA a COLUMNA CIRCULAR
+            // cambia todo lo que depende de ella, y la cuadricula y la vista previa
+            // tienen que enterarse.
+            Raise(nameof(EsCircular));
+            Raise(nameof(ElementoRotulo));
+            Raise(nameof(DiametroCm));
         }
     }
 
@@ -313,13 +320,26 @@ public sealed class SeccionConcretoRow : Row
     // Sección circular
     // ==================================================================
 
+    /// <summary>Nombre del elemento cuando es una columna redonda.</summary>
+    /// <remarks>
+    /// La forma se elige en la columna <b>Elemento</b>, no en una casilla aparte. Es
+    /// una decisión del usuario y tiene sentido: una columna circular <i>es</i> otro
+    /// tipo de elemento, no una columna normal con una opción marcada, y así la lista
+    /// desplegable de Elemento muestra de una vez todo lo que se puede capturar.
+    /// </remarks>
+    public const string ElementoColumnaCircular = "COLUMNA CIRCULAR";
+
+    /// <summary>Nombre con el que se <b>rotula</b> una columna, redonda o no.</summary>
+    public const string ElementoColumna = "COLUMNA";
+
     /// <summary>
-    /// <c>SI</c> para que <b>esta</b> sección se dibuje redonda.
+    /// Columna heredada: <c>SI</c> marcaba la sección como redonda.
     /// </summary>
     /// <remarks>
-    /// Es por fila a propósito. Un juego de planos normal mezcla columnas
-    /// rectangulares y circulares, así que un interruptor global obligaría a hacer
-    /// dos corridas y a acomodar el plano a mano.
+    /// <b>Ya no se captura.</b> La forma se elige en <see cref="Elemento"/>, poniendo
+    /// «COLUMNA CIRCULAR». Esta propiedad se conserva <b>solo</b> para que un archivo
+    /// <c>.clk</c> guardado con la versión anterior siga abriendo con sus columnas
+    /// redondas intactas; por eso <see cref="EsCircular"/> la sigue mirando.
     /// </remarks>
     public string Circular
     {
@@ -338,8 +358,39 @@ public sealed class SeccionConcretoRow : Row
     }
 
     /// <summary>¿Esta sección es circular?</summary>
+    /// <remarks>
+    /// Manda el <b>Elemento</b>. La columna <see cref="Circular"/> se sigue mirando
+    /// para no romper los <c>.clk</c> guardados antes de que la forma se eligiera
+    /// desde el Elemento; un archivo viejo no tiene «COLUMNA CIRCULAR» en ninguna
+    /// fila y sin esto sus columnas redondas volverían a salir cuadradas.
+    /// </remarks>
     public bool EsCircular =>
-        (_circular ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+        EsElementoCircular(_elemento)
+        || (_circular ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>¿El nombre del elemento es el de una columna redonda?</summary>
+    public static bool EsElementoCircular(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim();
+
+        return e.Equals(ElementoColumnaCircular, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Nombre del elemento <b>tal como debe aparecer en el plano</b>.
+    /// </summary>
+    /// <remarks>
+    /// Una columna redonda se rotula <b>COLUMNA</b>, igual que una cuadrada. Lo pidió
+    /// el usuario y es lo correcto: en el plano lo que distingue a una de otra es su
+    /// dibujo y su cota de diámetro, no el nombre. Escribir «COLUMNA CIRCULAR» en el
+    /// rótulo sería redundante, y además rompería la nomenclatura del juego de planos.
+    /// <para>
+    /// «COLUMNA CIRCULAR» es solo el nombre de <b>captura</b>, el que se elige en la
+    /// cuadrícula para decidir la forma.
+    /// </para>
+    /// </remarks>
+    public string ElementoRotulo =>
+        EsElementoCircular(_elemento) ? ElementoColumna : _elemento;
 
     /// <summary>
     /// Diámetro de la sección circular, en cm. Es la <b>base</b>.
@@ -574,8 +625,8 @@ public sealed class DatosProyecto
         // diametro y el armado se captura como TOTAL, no por lechos.
         d.SeccionesConcreto.Add(new SeccionConcretoRow
         {
-            Elemento = "COLUMNA", Id = "C-2",
-            Circular = "SI",
+            // La forma la manda el Elemento. En el plano se rotula «COLUMNA».
+            Elemento = ElementoColumnaCircular, Id = "C-2",
             BaseCm = 50, AlturaCm = 50,
             NVarTotal = 8, DiamVarTotal = "#8",
             ZunchoHelicoidal = "SI",

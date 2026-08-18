@@ -493,7 +493,7 @@ public sealed class AlzadoDrawer
         // alzado se ve como un resorte. Lo elige el usuario, no el programa.
         if (a.Circular && a.ZunchoHelicoidal)
         {
-            HeliceDelZuncho(bloque, a, x0, x1, y0, y1, rec, dEst);
+            HeliceDelZuncho(bloque, a, x0, x1, y0, y1, rec, dEst, relleno);
         }
         else
         {
@@ -754,9 +754,18 @@ public sealed class AlzadoDrawer
     /// separación única sale exactamente el seno de siempre.
     /// </para>
     /// </remarks>
+    /// <param name="dZun">
+    /// Diámetro del zuncho, en metros de dibujo. Sale de la <b>columna Estribo de la
+    /// tabla</b>: es el grosor real de la barra, no un grosor de línea.
+    /// </param>
+    /// <param name="relleno">
+    /// En modo sección rellena, el cuerpo del zuncho se rellena de color como los
+    /// estribos. En modo sin relleno queda solo el contorno.
+    /// </param>
     private void HeliceDelZuncho(
         object bloque, AlzadoCad a,
-        double x0, double x1, double y0, double y1, double rec, double dZun)
+        double x0, double x1, double y0, double y1, double rec, double dZun,
+        bool relleno)
     {
         var largo = x1 - x0;
 
@@ -813,13 +822,36 @@ public sealed class AlzadoDrawer
 
         var dx = largo / n;
 
-        // Dos caras: exterior e interior de la barra, en fase
-        var caraExt = new double[(n + 1) * 2];
-        var caraInt = new double[(n + 1) * 2];
+        // ------------------------------------------------------------------
+        // El EJE de la hélice, y el grosor por ANCHO DE POLILÍNEA
+        // ------------------------------------------------------------------
+        // Aquí hubo que descartar dos caminos, y conviene dejarlo escrito porque los
+        // dos parecen correctos hasta que se hacen los números:
+        //
+        //   1. Dibujar las DOS CARAS, exterior e interior, como un contorno cerrado y
+        //      rellenarlo con un hatch. NO FUNCIONA: las caras son R·sen(f) y r·sen(f)
+        //      con R > r, así que donde sen(f) es negativo la exterior queda POR DEBAJO
+        //      de la interior. La banda se cruza en cada paso por el eje —60 veces en
+        //      una columna de 3 m con paso de 10 cm— el polígono no es simple y el área
+        //      con signo sale EXACTAMENTE CERO. El hatch saldría vacío o corrupto.
+        //
+        //   2. Desplazar el eje ±d/2 por su NORMAL, que sí es la silueta geométrica
+        //      correcta. Tampoco se puede rellenar: la pendiente del seno llega a 12.9
+        //      (unos 86°) y su radio de curvatura en las crestas baja a 1.2 mm, menos
+        //      que el medio diámetro de la barra (4.75 mm). La banda se cruza otra vez,
+        //      ahora en las crestas.
+        //
+        // Los dos fallos los encontró tools/verificar_seccion_circular.py, no la
+        // lectura del código.
+        //
+        // La vía que sí funciona es la idiomática de AutoCAD: UNA polilínea del eje con
+        // ANCHO CONSTANTE igual al diámetro del zuncho. AutoCAD la dibuja como una
+        // banda maciza de ese ancho real en unidades de dibujo, resuelve él las uniones
+        // entre tramos, y no hay ninguna frontera que cerrar. Es una sola entidad y el
+        // grosor es el de la tabla, no un grosor de línea.
+        var pts = new double[(n + 1) * 2];
 
         var fase = 0d;
-        var rOut = rEje + (dZun / 2);
-        var rIn = rEje - (dZun / 2);
 
         for (var i = 0; i <= n; i++)
         {
@@ -833,30 +865,102 @@ public sealed class AlzadoDrawer
                 fase += 2 * Math.PI * dx / PasoEn(x - (dx / 2));
             }
 
-            var sen = Math.Sin(fase);
-
-            caraExt[2 * i] = x;
-            caraExt[(2 * i) + 1] = yMedio + (rOut * sen);
-
-            caraInt[2 * i] = x;
-            caraInt[(2 * i) + 1] = yMedio + (rIn * sen);
+            pts[2 * i] = x;
+            pts[(2 * i) + 1] = yMedio + (rEje * Math.Sin(fase));
         }
 
-        // Abiertas, no cerradas: es una barra continua, no un contorno. Cerrarlas
-        // dibujaría una recta del tope a la base atravesando el elemento entero.
-        var plExt = Poli(bloque, caraExt, "ESTRIBOS", cerrada: false, bulges: null);
-        var plInt = Poli(bloque, caraInt, "ESTRIBOS", cerrada: false, bulges: null);
+        var pl = Poli(bloque, pts, "ESTRIBOS", cerrada: false, bulges: null);
 
-        if (plExt is null && plInt is null)
+        if (pl is null)
         {
             _log.Add($"Alzado '{a.Id}': no se pudo dibujar el zuncho helicoidal.");
             return;
         }
 
+        // ---------- Grosor real y color ----------
+        var conGrosor = AnchoDePolilinea(pl, dZun);
+
+        if (!conGrosor)
+        {
+            Nota(
+                $"Alzado '{a.Id}': no se pudo dar grosor al zuncho helicoidal, así que " +
+                "queda como una línea. Es el aspecto clásico de un zuncho en un plano, " +
+                "pero no muestra el diámetro de la barra.");
+        }
+
+        // En la sección RELLENA el zuncho se pinta del mismo color que el cuerpo de
+        // los estribos (ACI 152): es el mismo acero transversal y tiene que leerse
+        // igual. En la sección sin relleno se queda con el color de su capa, como el
+        // resto de los contornos.
+        if (relleno)
+        {
+            try
+            {
+                AcadConnection.Retry(() => { ((dynamic)pl).Color = ColorRellenoEstribo; });
+            }
+            catch (Exception ex)
+            {
+                Fallo("Color del zuncho helicoidal", ex);
+            }
+        }
+
         Nota(
-            $"Alzado '{a.Id}': zuncho HELICOIDAL, {vueltas:0.#} vuelta(s) con paso " +
+            $"Alzado '{a.Id}': zuncho HELICOIDAL de {dZun / _escala:0.##} cm, " +
+            $"{vueltas:0.#} vuelta(s) con paso " +
             $"{p1 / _escala:0.#}-{p2 / _escala:0.#}-{p3 / _escala:0.#} cm. " +
             "Si lo querías en anillos, quita el SI de la columna «Zuncho helic.».");
+    }
+
+    /// <summary>
+    /// Da a una polilínea un <b>ancho real</b> en unidades de dibujo.
+    /// </summary>
+    /// <remarks>
+    /// Es la forma que tiene AutoCAD de dibujar una barra continua con su grosor: la
+    /// polilínea se rellena sola, sin hatch y sin frontera cerrada. Se intenta primero
+    /// <c>ConstantWidth</c>, que es lo que corresponde a una <c>LightWeightPolyline</c>;
+    /// si esta versión no lo acepta se cae a poner el ancho vértice por vértice con
+    /// <c>SetWidth</c>, que es la vía antigua.
+    /// </remarks>
+    /// <returns><c>true</c> si quedó con grosor.</returns>
+    private bool AnchoDePolilinea(object pl, double ancho)
+    {
+        if (ancho <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                dynamic p = pl;
+
+                try
+                {
+                    p.ConstantWidth = ancho;
+                    return true;
+                }
+                catch (Exception)
+                {
+                    // Vía antigua: el ancho se pone en cada tramo. Se recorre hasta
+                    // Count - 2 porque el ancho es del SEGMENTO, no del vértice, y una
+                    // polilínea abierta de n vértices tiene n - 1 segmentos.
+                    var n = (int)p.Coordinates.Length / 2;
+
+                    for (var i = 0; i < n - 1; i++)
+                    {
+                        p.SetWidth(i, ancho, ancho);
+                    }
+
+                    return true;
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Ancho de la polilínea del zuncho", ex);
+            return false;
+        }
     }
 
     /// <summary>Separación en metros de dibujo, con respaldo.</summary>
@@ -1397,7 +1501,7 @@ public sealed class AlzadoDrawer
             var medio = (q[i] + q[i + 1]) / 2;
 
             Cota(q[i], y, q[i + 1], y, medio, yEst,
-                $"Est. {a.Estribo.Clave} @ {s[i]:0} cm", false);
+                TextoTransversal(a, s[i]), false);
 
             Cota(q[i], y, q[i + 1], y, medio, yZona, etiquetas[i], false);
         }
@@ -1487,9 +1591,25 @@ public sealed class AlzadoDrawer
         var xIzq = x - ancho;
         var y1 = y + largo;
 
-        Cota(xDer, y, xDer, y1, xDer + 0.08, y + (largo / 2), TextoLecho(a.Superior, "Izquierdas"), true);
-        Cota(xDer, y, xDer, y1, xDer + 0.16, y + (largo / 2), TextoSimple(a.NLateral * 2, a.Lateral, "Intermedias"), true);
-        Cota(xDer, y, xDer, y1, xDer + 0.24, y + (largo / 2), TextoLecho(a.Inferior, "Derechas"), true);
+        // ---------- Textos del armado longitudinal ----------
+        if (a.Circular)
+        {
+            // En la columna redonda NO hay lechos, así que los tres textos de siempre
+            // leerían grupos vacíos y saldrían como «---»: el alzado quedaba SIN
+            // rótulo de armado, que es lo que faltaba.
+            //
+            // Va UNA sola cota, con el total, porque en un círculo todas las varillas
+            // son el mismo grupo. Y no dice «Izquierdas» ni «Derechas»: en un círculo
+            // eso no significa nada.
+            Cota(xDer, y, xDer, y1, xDer + 0.08, y + (largo / 2),
+                TextoCirculo(a), true);
+        }
+        else
+        {
+            Cota(xDer, y, xDer, y1, xDer + 0.08, y + (largo / 2), TextoLecho(a.Superior, "Izquierdas"), true);
+            Cota(xDer, y, xDer, y1, xDer + 0.16, y + (largo / 2), TextoSimple(a.NLateral * 2, a.Lateral, "Intermedias"), true);
+            Cota(xDer, y, xDer, y1, xDer + 0.24, y + (largo / 2), TextoLecho(a.Inferior, "Derechas"), true);
+        }
 
         var s = a.SeparacionesCm;
         var q = new[] { y, y + (largo / 4), y + (3 * largo / 4), y1 };
@@ -1500,7 +1620,7 @@ public sealed class AlzadoDrawer
             var medio = (q[i] + q[i + 1]) / 2;
 
             Cota(xIzq, q[i], xIzq, q[i + 1], xIzq - 0.08, medio,
-                $"Est. {a.Estribo.Clave} @ {s[i]:0} cm", true);
+                TextoTransversal(a, s[i]), true);
 
             Cota(xIzq, q[i], xIzq, q[i + 1], xIzq - 0.18, medio, etiquetas[i], true);
         }
@@ -1666,6 +1786,51 @@ public sealed class AlzadoDrawer
         var p2 = l.NIntermedia == 1 ? $"1 Varilla {d2}" : $"{l.NIntermedia} Varillas {d2}";
 
         return $"{p1} + {p2} {posicion}";
+    }
+
+    /// <summary>
+    /// Texto del armado longitudinal de una columna <b>circular</b>.
+    /// </summary>
+    /// <remarks>
+    /// Sin posición: en un círculo todas las varillas son el mismo grupo y no hay
+    /// «izquierdas» ni «derechas» que distinguir.
+    /// </remarks>
+    private static string TextoCirculo(AlzadoCad a)
+    {
+        var d = Etiqueta(a.VarTotal.Existe ? a.VarTotal.Clave : a.EstriboDibujo.Clave);
+
+        if (a.NVarTotal <= 0 || string.IsNullOrEmpty(d))
+        {
+            return "---";
+        }
+
+        return a.NVarTotal == 1
+            ? $"1 Varilla {d}"
+            : $"{a.NVarTotal} Varillas {d}";
+    }
+
+    /// <summary>
+    /// Texto del acero transversal: <b>estribo</b> en la rectangular y <b>zuncho</b>
+    /// en la circular.
+    /// </summary>
+    /// <remarks>
+    /// No es un detalle de redacción. Un estribo y un zuncho se piden, se doblan y se
+    /// colocan distinto, y en la circular además hay que decir si sube en hélice o son
+    /// anillos: es lo que el fierrero necesita para armarlo. Con el texto «Est. #3 @ 10
+    /// cm» en una columna redonda, el plano no dice cuál de las dos cosas es.
+    /// </remarks>
+    private static string TextoTransversal(AlzadoCad a, double separacionCm)
+    {
+        var clave = a.Estribo.Clave;
+
+        if (!a.Circular)
+        {
+            return $"Est. {clave} @ {separacionCm:0} cm";
+        }
+
+        var forma = a.ZunchoHelicoidal ? "helic." : "anillos";
+
+        return $"Zuncho {forma} {clave} @ {separacionCm:0} cm";
     }
 
     private static string TextoSimple(int n, VarCad v, string posicion)

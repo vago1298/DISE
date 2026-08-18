@@ -298,8 +298,19 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- FrozenColumnCount = paneles inmovilizados, como en Excel.
+                         Elemento e ID se quedan pegados a la izquierda al desplazarse
+                         hacia la derecha. Con 27 columnas, sin esto se pierde de vista
+                         DE QUE FILA se está capturando en cuanto pasas de «N int sup»,
+                         y se acaba escribiendo el armado en el renglón equivocado.
+                         La fila de encabezado no se desplaza al bajar: el DataGrid la
+                         mantiene fija de serie. -->
                     <DataGrid Grid.Row="1" x:Name="SeccionesGrid" Style="{StaticResource SheetGridStyle}"
-                              SelectionMode="Single" SelectionUnit="FullRow">
+                              SelectionMode="Single" SelectionUnit="FullRow"
+                              FrozenColumnCount="2"
+                              HeadersVisibility="All"
+                              EnableRowVirtualization="True"
+                              ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
                         <DataGrid.Columns>
                             <!-- Las columnas de varilla son listas desplegables, como la
                                  validacion de datos de Excel. La lista se llena en el
@@ -307,72 +318,99 @@
                                  desincronizarse con la validacion. -->
                             <DataGridComboBoxColumn x:Name="ColElemento" Header="Elemento"
                                                     SelectedItemBinding="{Binding Elemento}" Width="115"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
-                            <DataGridTextColumn Header="ID"         Binding="{Binding Id}" Width="90" />
-                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1}" Width="75" />
-                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1}" Width="80" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+                            <DataGridTextColumn Header="ID"         Binding="{Binding Id}" Width="90"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1}" Width="75"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1}" Width="80"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
 
-                            <DataGridTextColumn Header="N esq sup"  Binding="{Binding NEsqSup}" Width="80" />
+                            <DataGridTextColumn Header="N esq sup"  Binding="{Binding NEsqSup}" Width="80"
+                                                    CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqSup" Header="Var esq sup"
                                                     SelectedItemBinding="{Binding DiamEsqSup}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
-                            <DataGridTextColumn Header="N int sup"  Binding="{Binding NIntSup}" Width="80" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoSup}" />
+                            <DataGridTextColumn Header="N int sup"  Binding="{Binding NIntSup}" Width="80"
+                                                    CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntSup" Header="Var int sup"
                                                     SelectedItemBinding="{Binding DiamIntSup}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoSup}" />
 
-                            <DataGridTextColumn Header="N esq inf"  Binding="{Binding NEsqInf}" Width="80" />
+                            <DataGridTextColumn Header="N esq inf"  Binding="{Binding NEsqInf}" Width="80"
+                                                    CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqInf" Header="Var esq inf"
                                                     SelectedItemBinding="{Binding DiamEsqInf}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
-                            <DataGridTextColumn Header="N int inf"  Binding="{Binding NIntInf}" Width="80" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoInf}" />
+                            <DataGridTextColumn Header="N int inf"  Binding="{Binding NIntInf}" Width="80"
+                                                    CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntInf" Header="Var int inf"
                                                     SelectedItemBinding="{Binding DiamIntInf}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoInf}" />
 
-                            <DataGridTextColumn Header="N lateral"  Binding="{Binding NInter}" Width="80" />
+                            <DataGridTextColumn Header="N lateral"  Binding="{Binding NInter}" Width="80"
+                                                    CellStyle="{StaticResource CeldaLateral}" />
                             <DataGridComboBoxColumn x:Name="ColVarLateral" Header="Var lateral"
                                                     SelectedItemBinding="{Binding DiamInter}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLateral}" />
 
                             <!-- ===== Seccion circular =====
-                                 Va POR FILA: solo la seccion marcada con SI sale
-                                 redonda. En una fila circular la base es el DIAMETRO,
-                                 la altura se ignora, y el armado se lee de «N total» y
-                                 «Var total» en lugar de los cuatro lechos. -->
-                            <DataGridComboBoxColumn x:Name="ColCircular" Header="Circular"
-                                                    SelectedItemBinding="{Binding Circular}" Width="80"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
-                            <DataGridTextColumn Header="N total" Binding="{Binding NVarTotal}" Width="75" />
+                                 La FORMA se elige en la columna «Elemento», poniendo
+                                 COLUMNA CIRCULAR. Aqui solo va su armado: en una fila
+                                 circular la base es el DIAMETRO, la altura se ignora, y
+                                 el acero se captura como TOTAL en lugar de por lechos.
+                                 En el plano se rotula «COLUMNA», igual que una cuadrada. -->
+                            <DataGridTextColumn Header="N total" Binding="{Binding NVarTotal}" Width="75"
+                                                    CellStyle="{StaticResource CeldaCircular}" />
                             <DataGridComboBoxColumn x:Name="ColVarTotal" Header="Var total"
                                                     SelectedItemBinding="{Binding DiamVarTotal}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaCircular}" />
                             <DataGridComboBoxColumn x:Name="ColZuncho" Header="Zuncho helic."
                                                     SelectedItemBinding="{Binding ZunchoHelicoidal}" Width="100"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaCircular}" />
 
-                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1}" Width="70" />
+                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1}" Width="70"
+                                                    CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColEstribo" Header="Estribo"
                                                     SelectedItemBinding="{Binding Estribo}" Width="85"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
-                            <DataGridTextColumn Header="Sep cm"     Binding="{Binding SeparacionCm}" Width="95" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaEstribo}" />
+                            <DataGridTextColumn Header="Sep cm"     Binding="{Binding SeparacionCm}" Width="95"
+                                                    CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColDiamante" Header="Diamante"
                                                     SelectedItemBinding="{Binding EstriboDiamante}" Width="85"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColVarDiamante" Header="Var diam."
                                                     SelectedItemBinding="{Binding DiamEstriboDiamante}" Width="95"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
-                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1}" Width="85" />
-                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc}" Width="65" />
-                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala}" Width="65" />
-                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2}" Width="80" />
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaEstribo}" />
+                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1}" Width="85"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc}" Width="65"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala}" Width="65"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2}" Width="80"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
 
                             <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas}"
-                                                IsReadOnly="True" Width="85" />
+                                                IsReadOnly="True" Width="85"
+                                                    CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2}"
-                                                IsReadOnly="True" Width="80" />
+                                                IsReadOnly="True" Width="80"
+                                                    CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3}"
-                                                IsReadOnly="True" Width="85" />
+                                                IsReadOnly="True" Width="85"
+                                                    CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -408,14 +446,22 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                    <!-- Fondo AZUL, para que la vista previa se lea como un panel
+                         aparte y no como una prolongacion en blanco de la tabla.
+                         Es un azul CLARO a proposito: el dibujo va en tinta oscura
+                         sobre concreto claro, asi que un azul fuerte dejaria las
+                         varillas y las cotas sin contraste. -->
+                    <Border Grid.Row="3" Background="{StaticResource PreviewFondoBrush}"
+                            BorderBrush="{StaticResource BrandBrush}"
                             BorderThickness="1" Margin="0,10,0,0">
                         <Grid>
-                            <Canvas x:Name="PreviewCanvas" Background="White" ClipToBounds="True" />
+                            <Canvas x:Name="PreviewCanvas"
+                                    Background="{StaticResource PreviewFondoBrush}"
+                                    ClipToBounds="True" />
                             <TextBlock Text="Vista previa de la seccion seleccionada"
                                        FontSize="10.5" Margin="8,6,0,0"
                                        VerticalAlignment="Top" HorizontalAlignment="Left"
-                                       Foreground="{StaticResource MutedTextBrush}" />
+                                       Foreground="{StaticResource BrandDarkBrush}" />
                         </Grid>
                     </Border>
                 </Grid>

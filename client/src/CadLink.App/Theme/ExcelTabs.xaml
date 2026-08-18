@@ -18,6 +18,11 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#FFFFC72C" />
 
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF" />
+
+    <!-- Fondo de la vista previa. Azul CLARO: el dibujo va en tinta oscura sobre
+         concreto claro, asi que un azul fuerte dejaria las varillas, las cotas y
+         el rayado del concreto sin contraste. -->
+    <SolidColorBrush x:Key="PreviewFondoBrush" Color="#FFE8F1FA" />
     <SolidColorBrush x:Key="TabStripBrush" Color="#FFE9EDF1" />
     <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF3F5F7" />
     <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE1E7EC" />
@@ -112,12 +117,29 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <!-- Franja de pestañas. TabPanel acomoda las pestañas en varias
-                             filas si no caben en el ancho de la ventana. Va directo en el
-                             Border: envolverlo en un ScrollViewer complica la localización
-                             del panel anfitrión de los elementos. -->
+                        <!-- Franja de pestañas.
+                             ==============================================================
+                             OJO: aquí NO va un TabPanel, y es a propósito.
+
+                             El TabPanel de WPF, cuando las pestañas no caben en una fila,
+                             REORDENA las filas para dejar la de la pestaña seleccionada
+                             pegada al contenido. El resultado es que las pestañas SALTAN de
+                             sitio cada vez que eliges una: pulsas «Placa Base» en la fila de
+                             arriba y de pronto aparece abajo, con todo lo demás movido. Con
+                             12 hojas eso pasa constantemente y obliga a buscar la pestaña
+                             otra vez después de cada clic.
+
+                             Un WrapPanel acomoda las pestañas en varias filas igual que el
+                             TabPanel, pero conserva el ORDEN: cada hoja se queda siempre en
+                             el mismo sitio, que es lo que se espera de una barra de
+                             pestañas y lo que pidió el usuario.
+
+                             Lo que se pierde es el efecto de «fila pegada al contenido». No
+                             es un problema: la pestaña activa ya se distingue por su fondo
+                             blanco, su barra de acento y su texto en negrita.
+                             ============================================================== -->
                         <Border Grid.Row="0" Background="{StaticResource TabStripBrush}" Padding="6,4,6,0">
-                            <prim:TabPanel IsItemsHost="True" />
+                            <WrapPanel IsItemsHost="True" Orientation="Horizontal" />
                         </Border>
 
                         <!-- Contenido de la hoja activa. El borde va ARRIBA, contra la
@@ -214,6 +236,92 @@
         <Setter Property="AlternatingRowBackground" Value="#FFF8FAFB" />
         <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
         <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- ==================================================================
+         Colores de celda por grupo de columnas
+         ==================================================================
+         Con 27 columnas seguidas, todas del mismo color, es muy facil escribir
+         el armado del lecho inferior en el del superior: las cabeceras se
+         parecen y no hay nada que separe un grupo del siguiente. Los colores
+         hacen ese trabajo, igual que en la hoja de Excel original.
+
+         Los tonos van MUY suaves a proposito: tienen que separar grupos sin
+         competir con la seleccion de fila ni con el texto.
+
+         Cada estilo hereda del DataGridCell de serie, asi que el resaltado de
+         seleccion sigue funcionando: el trigger IsSelected del estilo base gana
+         al Setter de fondo. Sin el BasedOn se perderia el resaltado y no se
+         veria que fila esta seleccionada. -->
+
+    <Style x:Key="CeldaBase" TargetType="DataGridCell"
+           BasedOn="{StaticResource {x:Type DataGridCell}}">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="4,2" />
+    </Style>
+
+    <!-- Identificacion: que elemento es y como se llama su bloque -->
+    <Style x:Key="CeldaIdent" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFDCE7F3" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- Geometria: base y altura -->
+    <Style x:Key="CeldaGeom" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFE6F2E1" />
+    </Style>
+
+    <!-- Lecho superior -->
+    <Style x:Key="CeldaLechoSup" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFDCEEF6" />
+    </Style>
+
+    <!-- Lecho inferior. Distinto del superior, que es justo el par que se
+         confunde al capturar. -->
+    <Style x:Key="CeldaLechoInf" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFEFE8F6" />
+    </Style>
+
+    <!-- Varillas laterales -->
+    <Style x:Key="CeldaLateral" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFFBF2D9" />
+    </Style>
+
+    <!-- Seccion circular: armado del circulo y forma del zuncho -->
+    <Style x:Key="CeldaCircular" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFFBE4DE" />
+    </Style>
+
+    <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
+    <Style x:Key="CeldaEstribo" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFE9EEF2" />
+    </Style>
+
+    <!-- Acabado: gancho, f'c, escala, longitud -->
+    <Style x:Key="CeldaAcabado" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFF4F1E8" />
+    </Style>
+
+    <!-- Calculadas: de solo lectura. Van en gris y en cursiva para que se vea de
+         un golpe que ahi no se escribe. -->
+    <Style x:Key="CeldaCalculada" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="#FFEDEDED" />
+        <Setter Property="FontStyle" Value="Italic" />
+        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+    </Style>
+
+    <!-- Encabezado de la hoja: se queda fijo arriba y con aire suficiente para
+         que los nombres de dos palabras se lean. -->
+    <Style x:Key="EncabezadoHojaStyle" TargetType="DataGridColumnHeader">
+        <Setter Property="Background" Value="#FFD6DEE6" />
+        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Padding" Value="6,6" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
     <!-- ==================================================================

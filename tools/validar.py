@@ -709,16 +709,37 @@ def v12_fidelidad() -> None:
     )
     check("sin la descripcion larga del estilo", "La de uso normal" not in xaml)
 
-    m = re.search(r'"COLUMNA", "DADO"(.*?)\n\s*\}', codigo, re.S)
-    lista = ('"COLUMNA", "DADO"' + m.group(1)) if m else ""
+    filas_cs = leer(ruta("client", "src", "CadLink.App", "Models", "StructuralRows.cs"))
+
+    # La lista de elementos. COLUMNA y COLUMNA CIRCULAR llegan por CONSTANTE y no
+    # como literal, porque el nombre lo comparten el desplegable, la clasificacion
+    # del tipo y el rotulo: escribirlo tres veces es como se desincroniza.
+    m = re.search(r"ColElemento\.ItemsSource = new\[\](.*?)\n\s*\};", codigo, re.S)
+    lista = m.group(1) if m else ""
     check("lista de elementos localizada", m is not None)
 
     for fuera in ["MURO", "LOSA", "DALA", "VIGA"]:
         check(f"sin {fuera} en la lista", f'"{fuera}"' not in lista)
 
-    for dentro in ["COLUMNA", "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
+    # Los que van como literal en la lista
+    for dentro in ["DADO", "CASTILLO", "TRABE", "CONTRATRABE",
                    "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"]:
         check(f"con {dentro} en la lista", f'"{dentro}"' in lista)
+
+    # Y los dos que van por constante
+    check("con COLUMNA en la lista",
+          "SeccionConcretoRow.ElementoColumna," in lista)
+    check("con COLUMNA CIRCULAR en la lista",
+          "SeccionConcretoRow.ElementoColumnaCircular" in lista)
+
+    # Las constantes tienen que valer lo que se espera: si alguien cambiara
+    # ElementoColumnaCircular por otra cosa, TipoDe dejaria de reconocerla y la
+    # columna redonda se quedaria sin alzado.
+    check('ElementoColumna vale "COLUMNA"',
+          re.search(r'ElementoColumna\s*=\s*"COLUMNA"\s*;', filas_cs) is not None)
+    check('ElementoColumnaCircular vale "COLUMNA CIRCULAR"',
+          re.search(r'ElementoColumnaCircular\s*=\s*"COLUMNA CIRCULAR"\s*;',
+                    filas_cs) is not None)
 
     # La fila de ejemplo no puede usar un nombre que no lleva alzado, o el usuario
     # abre el programa, pulsa Generar alzados y no sale nada.
@@ -2705,9 +2726,44 @@ def v19_circular_y_ui() -> None:
     # La forma es POR FILA
     # ------------------------------------------------------------------
     check("la fila sabe si es circular", "public bool EsCircular" in filas)
-    check("y es por fila, no un interruptor global",
+
+    # La FORMA se elige en la columna Elemento, no en una casilla aparte. La casilla
+    # «Circular» ya no se captura: se quito de la cuadricula.
+    check("la forma se elige en el Elemento",
+          "EsElementoCircular(_elemento)" in filas)
+    check("y ya no hay casilla Circular en la cuadricula",
+          'x:Name="ColCircular"' not in xaml)
+
+    # Pero la propiedad SIGUE existiendo, solo para que un .clk guardado antes del
+    # cambio abra con sus columnas redondas intactas. Sin esto, un trabajo viejo
+    # volveria a salir cuadrado sin avisar.
+    check("se conserva la lectura de la casilla vieja por compatibilidad",
           "public string Circular" in filas)
-    check("hay columna Circular en la cuadricula", 'x:Name="ColCircular"' in xaml)
+    m_ec = re.search(r"public bool EsCircular =>.*?;", filas, re.S)
+    check("se puede leer EsCircular", m_ec is not None)
+    if m_ec:
+        check("EsCircular mira el Elemento Y la casilla vieja",
+              "EsElementoCircular" in m_ec.group(0) and "_circular" in m_ec.group(0))
+
+    # El rotulo del plano dice COLUMNA en los dos casos. «COLUMNA CIRCULAR» es solo
+    # el nombre de captura.
+    check("hay nombre de rotulo aparte del de captura",
+          "public string ElementoRotulo =>" in filas)
+    m_er = re.search(r"public string ElementoRotulo =>.*?;", filas, re.S)
+    if m_er:
+        check("el rotulo de una columna redonda es COLUMNA",
+              "ElementoColumna :" in m_er.group(0))
+    check("y los dos mapeadores mandan el nombre de rotulo al dibujo",
+          codigo.count("Elemento = r.ElementoRotulo,") == 2,
+          f"aparece {codigo.count('Elemento = r.ElementoRotulo,')} vez/veces")
+
+    # TipoDe tiene que reconocerla, o la columna redonda se queda SIN alzado.
+    m_td = re.search(r"private static TipoElemento\? TipoDe\(.*?\n    \}", codigo, re.S)
+    check("se puede leer TipoDe", m_td is not None)
+    if m_td:
+        check("TipoDe clasifica la columna redonda como columna",
+              "ElementoColumnaCircular" in m_td.group(0))
+
     check("y columna de zuncho helicoidal", 'x:Name="ColZuncho"' in xaml)
 
     # ------------------------------------------------------------------
@@ -2777,11 +2833,33 @@ def v19_circular_y_ui() -> None:
         # fijo, el zuncho saldria con paso constante y la tabla no se cumpliria.
         check("la fase se acumula con el paso de cada zona",
               "fase += 2 * Math.PI * dx / PasoEn(" in cuerpo)
-        # Dos caras con amplitudes DISTINTAS. Un seno desplazado en Y daria un
-        # grosor constante, y el real se estrecha donde la barra va de perfil.
-        check("las dos caras tienen amplitudes distintas y la misma fase",
-              "rEje + (dZun / 2)" in cuerpo and "rEje - (dZun / 2)" in cuerpo)
-        check("las polilineas van ABIERTAS", "cerrada: false" in cuerpo)
+        # El grosor va por ANCHO DE POLILINEA, no por un contorno relleno con hatch.
+        # Las dos vias obvias se descartaron con numeros y no se pueden reintroducir:
+        #   1. Contorno cerrado con las dos caras radiales -> encierra area CERO,
+        #      porque donde el seno es negativo la cara exterior queda por debajo.
+        #   2. Banda por la normal -> d/2 supera el radio de curvatura en las
+        #      crestas, asi que tambien se cruza.
+        # Las dos las encontro tools/verificar_seccion_circular.py.
+        check("la helice es UNA polilinea abierta del eje",
+              "cerrada: false" in cuerpo)
+        check("el grosor va por ancho de polilinea, no por hatch",
+              "AnchoDePolilinea(pl, dZun)" in cuerpo)
+        check("y no se intenta rellenar la helice con un hatch",
+              'Hatch(bloque, "SOLID"' not in cuerpo)
+        check("el ancho es el diametro del zuncho de la tabla",
+              "dZun" in cuerpo)
+
+    # El helper del ancho, con su via de respaldo.
+    m_ap = re.search(r"private bool AnchoDePolilinea\(.*?\n    \}", alz, re.S)
+    check("se puede leer AnchoDePolilinea", m_ap is not None)
+    if m_ap:
+        check("se intenta ConstantWidth", "ConstantWidth = ancho" in m_ap.group(0))
+        check("y hay respaldo vertice por vertice", "SetWidth(" in m_ap.group(0))
+
+    # En modo relleno el zuncho se pinta como el cuerpo de los estribos.
+    if m_h:
+        check("en modo relleno el zuncho toma el color del estribo",
+              "ColorRellenoEstribo" in m_h.group(0))
         check("hay tope de puntos por si la separacion viene mal",
               "MaxPuntosHelice" in cuerpo)
 
@@ -2860,6 +2938,123 @@ def v19_circular_y_ui() -> None:
 
     check("hay documento de cotejo con la macro",
           os.path.exists(ruta("docs/comparacion-macro-alzados.md")))
+
+    # ------------------------------------------------------------------
+    # Las pestañas NO deben reordenarse al elegir una hoja
+    # ------------------------------------------------------------------
+    # El TabPanel de WPF mueve la fila de la pestaña seleccionada para dejarla
+    # pegada al contenido. Con 12 hojas en dos filas, eso hace que las pestañas
+    # SALTEN de sitio en cada clic. Un WrapPanel acomoda igual pero conserva el
+    # orden.
+    check("la tira de pestañas conserva el orden",
+          "<WrapPanel IsItemsHost=\"True\"" in tema)
+    check("y ya no usa el TabPanel que reordena",
+          "TabPanel IsItemsHost" not in tema)
+
+    # ------------------------------------------------------------------
+    # Paneles inmovilizados y encabezado fijo, como en Excel
+    # ------------------------------------------------------------------
+    m_grid = re.search(r'<DataGrid Grid\.Row="1" x:Name="SeccionesGrid".*?>', xaml, re.S)
+    check("se puede leer la apertura del SeccionesGrid", m_grid is not None)
+    if m_grid:
+        cuerpo = m_grid.group(0)
+        check("las primeras columnas quedan inmovilizadas",
+              'FrozenColumnCount="2"' in cuerpo)
+        check("y el encabezado lleva su propio estilo",
+              'ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"' in cuerpo)
+
+    check("existe el estilo del encabezado",
+          'x:Key="EncabezadoHojaStyle"' in tema)
+
+    # ------------------------------------------------------------------
+    # Color de celda por grupo de columnas
+    # ------------------------------------------------------------------
+    grupos = ["CeldaIdent", "CeldaGeom", "CeldaLechoSup", "CeldaLechoInf",
+              "CeldaLateral", "CeldaCircular", "CeldaEstribo", "CeldaAcabado",
+              "CeldaCalculada"]
+
+    for g in grupos:
+        check(f"existe el estilo {g}", f'x:Key="{g}"' in tema)
+        check(f"y alguna columna usa {g}",
+              f'CellStyle="{{StaticResource {g}}}"' in xaml)
+
+    # El lecho superior y el inferior tienen que ser de COLORES DISTINTOS: es el par
+    # que se confunde al capturar, y pintarlos igual no resolveria nada.
+    def fondo_de(clave):
+        m_ = re.search(
+            rf'x:Key="{clave}".*?Property="Background" Value="(#[0-9A-Fa-f]+)"',
+            tema, re.S)
+        return m_.group(1) if m_ else None
+
+    sup, inf = fondo_de("CeldaLechoSup"), fondo_de("CeldaLechoInf")
+    check("el lecho superior y el inferior son de colores distintos",
+          sup is not None and inf is not None and sup != inf,
+          f"sup {sup}, inf {inf}")
+
+    # Heredan del DataGridCell de serie, o se pierde el resaltado de seleccion y no
+    # se ve que fila esta seleccionada.
+    check("los estilos de celda heredan del DataGridCell de serie",
+          "BasedOn=\"{StaticResource {x:Type DataGridCell}}\"" in tema)
+
+    # Todas las columnas de la hoja tienen que llevar color: una sin asignar se ve
+    # como un hueco blanco en medio de los grupos.
+    ini_cols = xaml.find('x:Name="SeccionesGrid"')
+    fin_cols = xaml.find("</DataGrid.Columns>", ini_cols)
+    bloque_cols = xaml[ini_cols:fin_cols]
+    n_cols = len(re.findall(r"<DataGrid\w*Column\b", bloque_cols))
+    n_estilos = len(re.findall(r'CellStyle="\{StaticResource Celda', bloque_cols))
+    check("todas las columnas de la hoja llevan color",
+          n_cols == n_estilos, f"{n_cols} columnas y {n_estilos} con estilo")
+
+    # ------------------------------------------------------------------
+    # Vista previa con fondo azul
+    # ------------------------------------------------------------------
+    check("hay color de fondo para la vista previa",
+          'x:Key="PreviewFondoBrush"' in tema)
+    check("y el lienzo de la vista previa lo usa",
+          'x:Name="PreviewCanvas"' in xaml
+          and 'Background="{StaticResource PreviewFondoBrush}"' in xaml)
+
+    # La linea de titulo es la MISMA para las dos formas: antes la rectangular solo
+    # decia elemento e ID y la circular ademas el armado, asi que no se veian igual.
+    check("la vista previa tiene una linea de titulo comun",
+          "private static string TituloVistaPrevia(" in codigo)
+    check("y la usan las dos formas",
+          codigo.count("Etiqueta(TituloVistaPrevia(s)") == 2,
+          f"la usa {codigo.count('Etiqueta(TituloVistaPrevia(s)')} vez/veces")
+
+    # La vista previa tambien dibuja la helice, o mostraria estribos rectos donde
+    # AutoCAD va a dibujar un resorte.
+    check("la vista previa dibuja la helice",
+          "private void DibujarHelicePrevia(" in codigo)
+    check("y se elige segun el zuncho",
+          "a.Circular && a.ZunchoHelicoidal" in codigo)
+
+    # ------------------------------------------------------------------
+    # Rotulos del alzado de la columna circular
+    # ------------------------------------------------------------------
+    # Sin esto los tres textos de armado leian lechos VACIOS y salian como «---»:
+    # el alzado de la columna redonda se quedaba sin rotulo de armado.
+    check("hay texto de armado para el circulo",
+          "private static string TextoCirculo(" in alz)
+    check("y el alzado vertical lo usa", "TextoCirculo(a)" in alz)
+
+    # Y el acero transversal se llama por su nombre: zuncho, no estribo.
+    check("hay texto propio del acero transversal",
+          "private static string TextoTransversal(" in alz)
+    m_tt = re.search(r"private static string TextoTransversal\(.*?\n    \}", alz, re.S)
+    if m_tt:
+        cuerpo = m_tt.group(0)
+        check("en la circular dice Zuncho y no Est.", '"Zuncho ' in cuerpo)
+        check("y distingue helice de anillos",
+              "helic." in cuerpo and "anillos" in cuerpo)
+
+    # Lo usan los DOS alzados, el vertical y el horizontal.
+    check("los dos alzados usan el texto transversal",
+          alz.count("TextoTransversal(a, s[i])") == 2,
+          f"lo usan {alz.count('TextoTransversal(a, s[i])')} vez/veces")
+    check("y ya no queda el texto fijo de estribo",
+          'Est. {a.Estribo.Clave} @' not in alz)
 
 
 def main() -> int:
