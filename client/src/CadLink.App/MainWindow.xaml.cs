@@ -41,21 +41,18 @@ public partial class MainWindow : Window
 
         InitializeComponent();
 
-        LogoImage.Source = Branding.Logo;
+        // El logo ya no se pinta en un encabezado propio: es el ICONO de la ventana,
+        // que es donde Windows lo muestra sin gastar alto de la hoja.
         Icon = Branding.Logo;
 
         LlenarListas();
 
-        HeaderProduct.Text = AppInfo.ProductName;
         HeaderVersion.Text = "v" + AppInfo.Version;
 
-        // Con el nombre de empresa vacío se oculta el renglón entero, para que no
-        // quede un hueco ni un guion suelto en el título.
+        // El nombre del producto y la empresa van SOLO en la barra de titulo. Antes
+        // se repetian en el encabezado azul, que es lo que se quito.
         var empresa = AppInfo.CompanyName;
         var hayEmpresa = !string.IsNullOrWhiteSpace(empresa);
-
-        HeaderCompany.Text = hayEmpresa ? empresa : string.Empty;
-        HeaderCompany.Visibility = hayEmpresa ? Visibility.Visible : Visibility.Collapsed;
 
         Title = hayEmpresa
             ? $"{AppInfo.ProductName} — {empresa}"
@@ -154,6 +151,13 @@ public partial class MainWindow : Window
         ColVarDiamante.ItemsSource = opcionales;
 
         ColDiamante.ItemsSource = new[] { string.Empty, "SI" };
+
+        // Seccion circular: las tres columnas nuevas. «Var total» es opcional
+        // porque si va vacia hereda el diametro de la columna F, igual que hacen
+        // los demas diametros de la hoja.
+        ColCircular.ItemsSource = new[] { string.Empty, "SI" };
+        ColZuncho.ItemsSource = new[] { string.Empty, "SI" };
+        ColVarTotal.ItemsSource = opcionales;
     }
 
     private void Enlazar()
@@ -681,7 +685,13 @@ public partial class MainWindow : Window
 
             var dibujante = new AlzadoDrawer(doc, escala)
             {
-                EscalaHatch = LeerEscalaHatch()
+                EscalaHatch = LeerEscalaHatch(),
+
+                // Los bloques y los alzados van 2 m por ENCIMA de la seccion mas
+                // alta, no en la cota fija Y=2 de la macro. Con una contratrabe o un
+                // muro altos, la cota fija dejaba la seccion invadiendo la fila de
+                // alzados.
+                AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)
             };
 
             // Capas de varilla, estilos de texto y de cota: los mismos de la sección
@@ -980,6 +990,9 @@ public partial class MainWindow : Window
                 NEsqInf = s.NEsqInf, DiamEsqInf = s.DiamEsqInf,
                 NIntInf = s.NIntInf, DiamIntInf = s.DiamIntInf,
                 NInter = s.NInter, DiamInter = s.DiamInter,
+                Circular = s.Circular,
+                NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
+                ZunchoHelicoidal = s.ZunchoHelicoidal,
                 RecubrimientoCm = s.RecubrimientoCm,
                 Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                 EstriboDiamante = s.EstriboDiamante,
@@ -1045,6 +1058,9 @@ public partial class MainWindow : Window
                     NEsqInf = s.NEsqInf, DiamEsqInf = s.DiamEsqInf,
                     NIntInf = s.NIntInf, DiamIntInf = s.DiamIntInf,
                     NInter = s.NInter, DiamInter = s.DiamInter,
+                    Circular = s.Circular,
+                    NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
+                    ZunchoHelicoidal = s.ZunchoHelicoidal,
                     RecubrimientoCm = s.RecubrimientoCm,
                     Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                     EstriboDiamante = s.EstriboDiamante,
@@ -1389,6 +1405,41 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Arrow;
         }
+    }
+
+    /// <summary>
+    /// Alto de la sección más alta, en metros de dibujo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que decide dónde arranca la fila de alzados: van
+    /// <see cref="AlzadoLayout.AireSobreSecciones"/> metros por encima de esto.
+    /// </para>
+    /// <para>
+    /// Se calcula de los DATOS y no midiendo los bloques en AutoCAD, y es a propósito.
+    /// Medir los bloques parece más fiel —«la sección más alta dibujada»— pero tiene
+    /// dos problemas: hay que insertar cada bloque para poder medirlo, y si el usuario
+    /// dibuja los alzados sin haber dibujado antes las secciones no habría nada que
+    /// medir y la fila se iría a la cota mínima. Con los datos, el resultado es el
+    /// mismo y es <b>determinista</b>: la altura del dibujo de una sección es su
+    /// peralte por la escala, y en una circular su diámetro.
+    /// </para>
+    /// </remarks>
+    private double AltoMaximoDeLasSecciones(double escala)
+    {
+        var maximo = 0d;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            // En la circular la altura no se usa: el alto del dibujo es el DIAMETRO,
+            // que se captura en la base. Tomar AlturaCm dejaria una columna redonda
+            // de 50 cm contando como 0 y la fila de alzados se le echaria encima.
+            var altoCm = s.EsCircular ? s.DiametroCm : s.AlturaCm;
+
+            maximo = Math.Max(maximo, altoCm * escala);
+        }
+
+        return maximo;
     }
 
     /// <summary>
@@ -1961,6 +2012,11 @@ public partial class MainWindow : Window
             yield return Varilla.Normalizar(s.DiamIntInfEfectivo);
             yield return Varilla.Normalizar(s.DiamInter);
             yield return Varilla.Normalizar(s.DiamEstriboDiamante);
+
+            // La varilla del circulo. Sin esto, la capa VAR_#8 de una columna redonda
+            // no se crearia y sus varillas saldrian en la capa activa del dibujo, con
+            // otro color y sin poder apagarlas por separado.
+            yield return Varilla.Normalizar(s.DiamVarTotalEfectivo);
         }
     }
 
@@ -2013,13 +2069,22 @@ public partial class MainWindow : Window
             // Columna R de la hoja: la macro compara contra "SI" en mayusculas y
             // sin espacios. Aqui se acepta cualquier variante razonable para que
             // "Si", "sí" o "X" no dejen de dibujar el diamante en silencio.
-            Diamante = EsSi(r.EstriboDiamante),
+            //
+            // Y NO en la seccion redonda: el diamante es un rombo entre las varillas
+            // de dos lechos, y en un circulo no hay lechos ni esquinas donde apoyarlo.
+            Diamante = EsSi(r.EstriboDiamante) && !r.EsCircular,
 
             // Columna S. Vacia = se usa la varilla del estribo principal.
             EstriboDiamanteVar = V(
                 string.IsNullOrWhiteSpace(r.DiamEstriboDiamante)
                     ? r.Estribo
-                    : r.DiamEstriboDiamante)
+                    : r.DiamEstriboDiamante),
+
+            // ---------- Seccion circular ----------
+            Circular = r.EsCircular,
+            NVarTotal = r.NVarTotal,
+            VarTotal = V(r.DiamVarTotalEfectivo),
+            ZunchoHelicoidal = r.EsZunchoHelicoidal
         };
     }
 
@@ -2035,7 +2100,14 @@ public partial class MainWindow : Window
 
         // Con diamante, el alzado se dibuja con el diámetro del DIAMANTE, no con el
         // del estribo principal. Es lo que hace la macro al reasignar estrDia.
-        var diamante = EsSi(r.EstriboDiamante);
+        //
+        // Pero el diamante NO aplica a una sección redonda: es un rombo entre las
+        // varillas de dos lechos, y en un círculo no hay lechos. Se descarta AQUI, en
+        // una sola variable, para que no se cuele por dos caminos: si se dejara el
+        // 'diamante' crudo, el zuncho de la columna redonda se dibujaría con el
+        // diámetro del diamante y nadie entendería por qué.
+        var diamante = EsSi(r.EstriboDiamante) && !r.EsCircular;
+
         var varDiamante = V(
             string.IsNullOrWhiteSpace(r.DiamEstriboDiamante) ? r.Estribo : r.DiamEstriboDiamante);
 
@@ -2072,8 +2144,15 @@ public partial class MainWindow : Window
             Fc = r.Fc,
             Escala = r.Escala,
             Separacion = r.SeparacionCm,
+
             Diamante = diamante,
-            EstriboDiamanteVar = varDiamante
+            EstriboDiamanteVar = varDiamante,
+
+            // ---------- Seccion circular ----------
+            Circular = r.EsCircular,
+            NVarTotal = r.NVarTotal,
+            VarTotal = V(r.DiamVarTotalEfectivo),
+            ZunchoHelicoidal = r.EsZunchoHelicoidal
         };
     }
 
@@ -2227,11 +2306,6 @@ public partial class MainWindow : Window
                 problemas.Add($"• El ID '{s.Id}' está repetido. Cada bloque necesita un nombre único.");
             }
 
-            if (s.BaseCm <= 0 || s.AlturaCm <= 0)
-            {
-                problemas.Add($"• {etiqueta}: base y altura deben ser mayores que cero.");
-            }
-
             if (s.RecubrimientoCm < 0)
             {
                 problemas.Add($"• {etiqueta}: el recubrimiento no puede ser negativo.");
@@ -2239,37 +2313,162 @@ public partial class MainWindow : Window
 
             RevisarDiametro(problemas, etiqueta, "estribo", s.Estribo, obligatorio: true);
 
-            RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
-            RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
-            RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
-            RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
-            RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
-
-            if (string.Equals(s.EstriboDiamante.Trim(), "SI", StringComparison.OrdinalIgnoreCase))
+            if (s.EsCircular)
             {
-                var d = string.IsNullOrWhiteSpace(s.DiamEstriboDiamante)
-                    ? s.Estribo
-                    : s.DiamEstriboDiamante;
-                RevisarDiametro(problemas, etiqueta, "estribo diamante", d, obligatorio: true);
+                RevisarCircular(problemas, etiqueta, s);
             }
-
-            // El acero debe caber: dos varillas de esquina mas los estribos
-            if (Varilla.TryDiametroCm(s.Estribo, out var de) &&
-                Varilla.TryDiametroCm(s.DiamEsqSup, out var dv) &&
-                s.BaseCm > 0)
+            else
             {
-                var necesario = (2 * s.RecubrimientoCm) + (2 * de) + (2 * dv);
-                if (necesario >= s.BaseCm)
-                {
-                    problemas.Add(
-                        $"• {etiqueta}: con recubrimiento {s.RecubrimientoCm:N1} cm, estribo " +
-                        $"{Varilla.Normalizar(s.Estribo)} y varilla {Varilla.Normalizar(s.DiamEsqSup)} " +
-                        $"se necesitan {necesario:N1} cm y la base es de {s.BaseCm:N1} cm.");
-                }
+                RevisarRectangular(problemas, etiqueta, s);
             }
         }
 
         return problemas.Count == 0;
+    }
+
+    /// <summary>Revisiones propias de la sección rectangular.</summary>
+    private static void RevisarRectangular(
+        List<string> problemas, string etiqueta, SeccionConcretoRow s)
+    {
+        if (s.BaseCm <= 0 || s.AlturaCm <= 0)
+        {
+            problemas.Add($"• {etiqueta}: base y altura deben ser mayores que cero.");
+        }
+
+        RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
+        RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
+        RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
+        RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
+        RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
+
+        if (string.Equals(s.EstriboDiamante.Trim(), "SI", StringComparison.OrdinalIgnoreCase))
+        {
+            var d = string.IsNullOrWhiteSpace(s.DiamEstriboDiamante)
+                ? s.Estribo
+                : s.DiamEstriboDiamante;
+            RevisarDiametro(problemas, etiqueta, "estribo diamante", d, obligatorio: true);
+        }
+
+        // El acero debe caber: dos varillas de esquina mas los estribos
+        if (Varilla.TryDiametroCm(s.Estribo, out var de) &&
+            Varilla.TryDiametroCm(s.DiamEsqSup, out var dv) &&
+            s.BaseCm > 0)
+        {
+            var necesario = (2 * s.RecubrimientoCm) + (2 * de) + (2 * dv);
+            if (necesario >= s.BaseCm)
+            {
+                problemas.Add(
+                    $"• {etiqueta}: con recubrimiento {s.RecubrimientoCm:N1} cm, estribo " +
+                    $"{Varilla.Normalizar(s.Estribo)} y varilla {Varilla.Normalizar(s.DiamEsqSup)} " +
+                    $"se necesitan {necesario:N1} cm y la base es de {s.BaseCm:N1} cm.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Revisiones propias de la sección circular.
+    /// </summary>
+    /// <remarks>
+    /// Son OTRAS, no las mismas con un aviso: en una sección redonda no hay lechos
+    /// que revisar, la altura no significa nada, y en cambio aparece una comprobación
+    /// que la rectangular no necesita —que las varillas quepan en el perímetro del
+    /// círculo de paso—, que es el error de captura típico de una columna redonda.
+    /// </remarks>
+    private static void RevisarCircular(
+        List<string> problemas, string etiqueta, SeccionConcretoRow s)
+    {
+        if (s.DiametroCm <= 0)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, así que la base es el DIÁMETRO y tiene " +
+                "que ser mayor que cero.");
+            return;
+        }
+
+        // La altura no se usa. Si trae algo distinto del diámetro, es que el usuario
+        // cree que sirve para algo: mejor decirlo que dibujar callando.
+        if (s.AlturaCm > 0 && Math.Abs(s.AlturaCm - s.DiametroCm) > 0.01)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, así que la altura ({s.AlturaCm:N1} cm) se " +
+                $"ignora y se usa la base como diámetro ({s.DiametroCm:N1} cm). " +
+                "Pon el mismo valor en las dos, o deja la altura en cero.");
+        }
+
+        if (s.NVarTotal <= 0)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, así que el armado se captura en «N total» " +
+                "y no por lechos. Falta el número de varillas.");
+        }
+
+        RevisarDiametro(problemas, etiqueta, "varilla del círculo",
+            s.DiamVarTotalEfectivo, obligatorio: s.NVarTotal > 0);
+
+        // Con menos de 3 varillas no hay círculo de acero que confine nada, y el
+        // dibujo saldría como dos o una varilla suelta en el aire.
+        if (s.NVarTotal is > 0 and < 3)
+        {
+            problemas.Add(
+                $"• {etiqueta}: {s.NVarTotal} varilla(s) en una columna redonda no " +
+                "forman un círculo. El mínimo práctico es 3, y lo habitual son 6 u 8.");
+        }
+
+        // Los lechos capturados NO se dibujan en una sección circular. Es el error
+        // que se comete al marcar «Circular» sobre una fila que ya estaba llena.
+        var enLechos = s.NEsqSup + s.NIntSup + s.NEsqInf + s.NIntInf + s.NInter;
+        if (enLechos > 0)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, pero tiene {enLechos} varilla(s) " +
+                "capturadas por lechos. Esas NO se dibujan: en una sección redonda " +
+                "solo se usa «N total». Vacía los lechos o quita el «SI» de Circular.");
+        }
+
+        // Que las varillas quepan en el perímetro del círculo de paso. Es la
+        // comprobación que de verdad hace falta aquí: con 12 varillas del #10 en una
+        // columna de 30 cm el acero se traslapa, y en el dibujo salen las varillas
+        // pisándose unas a otras sin ningún aviso.
+        if (Varilla.TryDiametroCm(s.Estribo, out var dEst) &&
+            Varilla.TryDiametroCm(s.DiamVarTotalEfectivo, out var dVar) &&
+            s.NVarTotal >= 3)
+        {
+            // Radio del círculo donde van los centros de las varillas
+            var rPaso = (s.DiametroCm / 2.0) - s.RecubrimientoCm - dEst - (dVar / 2.0);
+
+            if (rPaso <= 0)
+            {
+                problemas.Add(
+                    $"• {etiqueta}: con diámetro {s.DiametroCm:N1} cm, recubrimiento " +
+                    $"{s.RecubrimientoCm:N1} cm y zuncho {Varilla.Normalizar(s.Estribo)} " +
+                    "no queda sitio para ninguna varilla.");
+            }
+            else
+            {
+                // Separación libre entre varillas contiguas, medida sobre la cuerda
+                var cuerda = 2 * rPaso * Math.Sin(Math.PI / s.NVarTotal);
+                var libre = cuerda - dVar;
+
+                if (libre < 0)
+                {
+                    problemas.Add(
+                        $"• {etiqueta}: {s.NVarTotal} varillas " +
+                        $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)} no caben en el " +
+                        $"círculo: se traslaparían {-libre:N1} cm. Baja el número o el " +
+                        "calibre, o sube el diámetro de la columna.");
+                }
+                else if (libre < dVar)
+                {
+                    // El mínimo normativo habitual es la mayor de 1.5·db y 4 cm. Se
+                    // avisa con db para no atarse a una norma concreta.
+                    problemas.Add(
+                        $"• {etiqueta}: {s.NVarTotal} varillas " +
+                        $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)} quedan a " +
+                        $"{libre:N1} cm libres entre sí, menos de un diámetro " +
+                        $"({dVar:N1} cm). Revísalo contra la separación mínima de tu norma.");
+                }
+            }
+        }
     }
 
     private static void RevisarLecho(
@@ -2322,6 +2521,16 @@ public partial class MainWindow : Window
 
         if (ancho < 60 || alto < 60)
         {
+            return;
+        }
+
+        // La seccion redonda se previsualiza aparte, con su propia geometria. Si
+        // cayera en el camino de abajo se veria como un rectangulo con estribo
+        // rectangular, o sea NO se veria lo que se va a dibujar, que es justo para lo
+        // que sirve una vista previa.
+        if (s is not null && s.EsCircular)
+        {
+            DibujarVistaPreviaCircular(s, ancho, alto);
             return;
         }
 
@@ -2445,6 +2654,118 @@ public partial class MainWindow : Window
 
         // El alzado va a la derecha de la sección, en el espacio que sobra
         DibujarAlzadoPrevio(s, x0 + (s.BaseCm * escala) + 70, alto);
+    }
+
+    /// <summary>
+    /// Vista previa de la sección <b>circular</b>.
+    /// </summary>
+    /// <remarks>
+    /// Usa las MISMAS fórmulas que <c>SeccionDrawer.Circular</c>: el radio de paso
+    /// resta recubrimiento, diámetro del zuncho y <b>radio</b> de la varilla, y el
+    /// reparto arranca arriba y gira en sentido antihorario. Tienen que coincidir, o
+    /// la vista previa estaría mintiendo, que es peor que no tenerla.
+    /// </remarks>
+    private void DibujarVistaPreviaCircular(SeccionConcretoRow s, double ancho, double alto)
+    {
+        if (s.DiametroCm <= 0)
+        {
+            PreviewCanvas.Children.Add(new TextBlock
+            {
+                Text = "La sección es circular: pon el diámetro en la columna «Base cm».",
+                Foreground = Brushes.Gray,
+                FontSize = 12,
+                Margin = new Thickness(14, 34, 0, 0)
+            });
+            return;
+        }
+
+        const double margen = 34;
+
+        // Se reserva la mitad derecha para el alzado, igual que en la rectangular
+        var escala = Math.Min((ancho * 0.45) / s.DiametroCm, (alto - (2 * margen)) / s.DiametroCm);
+
+        if (escala <= 0 || double.IsInfinity(escala))
+        {
+            return;
+        }
+
+        var r = s.DiametroCm * escala / 2;
+        var cx = margen + r;
+        var cy = alto / 2;
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
+        var negro = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
+
+        var conFondoSolido = ModoElegido == ModoSeccion.Tipo2Rellena;
+
+        var relleno = conFondoSolido
+            ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC))
+            : Brushes.White;
+
+        // ---------- Concreto ----------
+        PreviewCanvas.Children.Add(Circunferencia(cx, cy, r, azul, 1.6, relleno));
+
+        var rec = s.RecubrimientoCm * escala;
+        Varilla.TryDiametroCm(s.Estribo, out var deCm);
+        var dZun = deCm * escala;
+
+        // ---------- Zuncho ----------
+        var rZunExt = r - rec;
+        var rZunInt = rZunExt - dZun;
+
+        if (rZunInt > 0)
+        {
+            var trazo = conFondoSolido ? negro : gris;
+
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunExt, trazo, 1.4, null));
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunInt, trazo, 1.0, null));
+        }
+
+        // ---------- Varillas ----------
+        Varilla.TryDiametroCm(s.DiamVarTotalEfectivo, out var dVarCm);
+        var dVar = dVarCm * escala;
+        var rPaso = r - rec - dZun - (dVar / 2);
+
+        if (s.NVarTotal > 0 && rPaso > 0 && dVar > 0)
+        {
+            for (var i = 0; i < s.NVarTotal; i++)
+            {
+                // Arriba y antihorario. En el lienzo la Y baja, asi que el seno va
+                // con signo NEGATIVO: sin eso el reparto sale girado al reves y no
+                // coincidiria con el de AutoCAD.
+                var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
+
+                Barra(cx + (rPaso * Math.Cos(a)), cy - (rPaso * Math.Sin(a)), dVar / 2);
+            }
+        }
+
+        // ---------- Etiquetas ----------
+        Etiqueta($"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
+
+        var zuncho = s.EsZunchoHelicoidal ? "zuncho helicoidal" : "zuncho en anillos";
+        Etiqueta($"{s.Elemento}  {s.Id}   ({s.NVarTotal} vars. " +
+                 $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)}, {zuncho})", 14, 26);
+
+        DibujarAlzadoPrevio(s, cx + r + 70, alto);
+    }
+
+    /// <summary>Una circunferencia en el lienzo de la vista previa.</summary>
+    private static System.Windows.Shapes.Ellipse Circunferencia(
+        double cx, double cy, double r, Brush trazo, double grosor, Brush? relleno)
+    {
+        var e = new System.Windows.Shapes.Ellipse
+        {
+            Width = 2 * r,
+            Height = 2 * r,
+            Stroke = trazo,
+            StrokeThickness = grosor,
+            Fill = relleno
+        };
+
+        Canvas.SetLeft(e, cx - r);
+        Canvas.SetTop(e, cy - r);
+        return e;
     }
 
     /// <summary>

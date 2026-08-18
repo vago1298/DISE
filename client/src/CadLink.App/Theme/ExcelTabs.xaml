@@ -39,11 +39,14 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
                     <Grid>
+                        <!-- Pestaña de tira SUPERIOR: el borde se abre por abajo,
+                             hacia el contenido, y las esquinas se redondean arriba.
+                             Cuando la tira estaba abajo era al contrario. -->
                         <Border x:Name="Bg"
                                 Background="{StaticResource TabInactiveBrush}"
                                 BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1,0,1,1"
-                                CornerRadius="0,0,4,4">
+                                BorderThickness="1,1,1,0"
+                                CornerRadius="4,4,0,0">
                             <ContentPresenter x:Name="Label"
                                               ContentSource="Header"
                                               Margin="{TemplateBinding Padding}"
@@ -52,13 +55,13 @@
                                               RecognizesAccessKey="True" />
                         </Border>
 
-                        <!-- Barra de acento inferior, como el subrayado de la hoja
-                             activa en Excel. Oculta salvo en la pestaña seleccionada. -->
+                        <!-- Barra de acento, arriba: es el borde que marca la hoja
+                             activa. Oculta salvo en la pestaña seleccionada. -->
                         <Border x:Name="Accent"
                                 Height="3"
-                                VerticalAlignment="Bottom"
+                                VerticalAlignment="Top"
                                 Background="{StaticResource BrandBrush}"
-                                CornerRadius="0,0,4,4"
+                                CornerRadius="4,4,0,0"
                                 Visibility="Collapsed" />
                     </Grid>
 
@@ -92,7 +95,11 @@
 
     <!-- ===================== Contenedor de pestañas ===================== -->
     <Style x:Key="ExcelTabControlStyle" TargetType="TabControl">
-        <Setter Property="TabStripPlacement" Value="Bottom" />
+        <!-- ARRIBA, no abajo. Las hojas al estilo de Excel llevan la tira abajo,
+             pero aqui hay 12 pestañas y con la tira abajo el usuario tenia que ir a
+             buscarlas al pie de la ventana, lejos del menu y de la barra de
+             herramientas con las que se combinan. -->
+        <Setter Property="TabStripPlacement" Value="Top" />
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource ExcelTabItemStyle}" />
@@ -101,24 +108,25 @@
                 <ControlTemplate TargetType="TabControl">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-
-                        <!-- Contenido de la hoja activa -->
-                        <Border Grid.Row="0"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="0,0,0,1">
-                            <ContentPresenter ContentSource="SelectedContent" />
-                        </Border>
 
                         <!-- Franja de pestañas. TabPanel acomoda las pestañas en varias
                              filas si no caben en el ancho de la ventana. Va directo en el
                              Border: envolverlo en un ScrollViewer complica la localización
                              del panel anfitrión de los elementos. -->
-                        <Border Grid.Row="1" Background="{StaticResource TabStripBrush}" Padding="6,3,6,4">
+                        <Border Grid.Row="0" Background="{StaticResource TabStripBrush}" Padding="6,4,6,0">
                             <prim:TabPanel IsItemsHost="True" />
+                        </Border>
+
+                        <!-- Contenido de la hoja activa. El borde va ARRIBA, contra la
+                             tira, para que la hoja activa se lea unida a su pestaña. -->
+                        <Border Grid.Row="1"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="0,1,0,0">
+                            <ContentPresenter ContentSource="SelectedContent" />
                         </Border>
                     </Grid>
                 </ControlTemplate>

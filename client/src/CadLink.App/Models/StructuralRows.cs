@@ -58,20 +58,53 @@ public abstract class Row : INotifyPropertyChanged
 /// </remarks>
 public static class Varilla
 {
-    /// <summary>Diámetros nominales en centímetros.</summary>
+    /// <summary>
+    /// Diámetros nominales en centímetros: <b>n octavos de pulgada</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Estos números estaban redondeados y uno de ellos estaba mal.</b> Salió al
+    /// comparar el port con la macro de alzados, cuya tabla <c>RebarDiaM</c> es más
+    /// precisa que la que tenía aquí:
+    /// </para>
+    /// <list type="table">
+    ///   <item><term>#2</term><description>0.60 aquí, 0.64 en la macro, 0.635 el nominal. El área salía <b>12.1 % baja</b>.</description></item>
+    ///   <item><term>#6</term><description>1.90 aquí, 1.905 el nominal. Área 1.0 % baja.</description></item>
+    ///   <item><term>#10</term><description>3.20 aquí, 3.175 el nominal. Área 1.3 % <b>alta</b>.</description></item>
+    ///   <item><term>#12</term><description>3.80 aquí, 3.81 el nominal. Área 0.5 % baja.</description></item>
+    /// </list>
+    /// <para>
+    /// Un 12 % de menos en el área de un #2 no es un detalle de dibujo: se propaga a
+    /// <c>AreaAceroCm2</c> y a la cuantía, y una cuantía baja es del lado
+    /// <b>inseguro</b>, porque hace pasar por bueno un armado que no llega al mínimo.
+    /// </para>
+    /// <para>
+    /// Así que la tabla se pone en el valor <b>exacto</b>: la varilla del número
+    /// <c>n</c> mide <c>n/8</c> de pulgada, y una pulgada son 25.4 mm exactos. No se
+    /// redondea nada, y la comprobación está en
+    /// <c>tools/verificar_diametros_varilla.py</c>.
+    /// </para>
+    /// </remarks>
     public static readonly IReadOnlyDictionary<string, double> DiametrosCm =
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
         {
-            ["#2"] = 0.60,
-            ["#2.5"] = 0.80,
-            ["#3"] = 0.95,
-            ["#4"] = 1.27,
-            ["#5"] = 1.59,
-            ["#6"] = 1.90,
-            ["#8"] = 2.54,
-            ["#10"] = 3.20,
-            ["#12"] = 3.80
+            ["#2"] = 0.635,       // 2/8"
+            ["#2.5"] = 0.79375,   // 2.5/8"
+            ["#3"] = 0.9525,      // 3/8"
+            ["#4"] = 1.27,        // 4/8"
+            ["#5"] = 1.5875,      // 5/8"
+            ["#6"] = 1.905,       // 6/8"
+            ["#8"] = 2.54,        // 8/8"
+            ["#10"] = 3.175,      // 10/8"
+            ["#12"] = 3.81        // 12/8"
         };
+
+    /// <summary>Diámetro nominal exacto de la varilla número <paramref name="n"/>.</summary>
+    /// <remarks>
+    /// Existe para que la tabla se pueda comprobar contra la fórmula en lugar de
+    /// contra otra tabla escrita a mano, que es como se colaron los redondeos.
+    /// </remarks>
+    public static double NominalCm(double n) => n / 8.0 * 2.54;
 
     /// <summary>
     /// Lleva cualquier variante de captura a la forma canónica <c>#N</c>.
@@ -149,6 +182,15 @@ public sealed class SeccionConcretoRow : Row
 
     private int _nInter;
     private string _diamInter = string.Empty;
+
+    // ---------------- Sección circular ----------------
+    // Va POR FILA, no por corrida: en un mismo juego de planos conviven columnas
+    // rectangulares y circulares, y el usuario pidió expresamente que solo la
+    // sección que él marque salga redonda.
+    private string _circular = string.Empty;
+    private int _nVarTotal;
+    private string _diamVarTotal = string.Empty;
+    private string _zunchoHelicoidal = string.Empty;
 
     private double _recubrimientoCm = 4;
     private string _estribo = "#3";
@@ -267,6 +309,90 @@ public sealed class SeccionConcretoRow : Row
     /// <summary>Columna N.</summary>
     public string DiamInter { get => _diamInter; set => Set(ref _diamInter, value); }
 
+    // ==================================================================
+    // Sección circular
+    // ==================================================================
+
+    /// <summary>
+    /// <c>SI</c> para que <b>esta</b> sección se dibuje redonda.
+    /// </summary>
+    /// <remarks>
+    /// Es por fila a propósito. Un juego de planos normal mezcla columnas
+    /// rectangulares y circulares, así que un interruptor global obligaría a hacer
+    /// dos corridas y a acomodar el plano a mano.
+    /// </remarks>
+    public string Circular
+    {
+        get => _circular;
+        set
+        {
+            Set(ref _circular, value);
+
+            // El armado se lee de otras columnas segun la forma, así que al cambiar
+            // la forma hay que reavisar de las calculadas. Set() ya lo hace, pero
+            // tambien cambia EsCircular y DiametroCm, que la cuadricula usa para
+            // atenuar las columnas que dejan de aplicar.
+            Raise(nameof(EsCircular));
+            Raise(nameof(DiametroCm));
+        }
+    }
+
+    /// <summary>¿Esta sección es circular?</summary>
+    public bool EsCircular =>
+        (_circular ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Diámetro de la sección circular, en cm. Es la <b>base</b>.
+    /// </summary>
+    /// <remarks>
+    /// No se agrega una columna nueva para el diámetro: en una sección redonda la
+    /// base ES el diámetro, y tener dos casillas para el mismo número es la forma
+    /// segura de que un día no coincidan. La altura se ignora, y
+    /// <c>Revisar</c> lo avisa si trae un valor distinto.
+    /// </remarks>
+    public double DiametroCm => BaseCm;
+
+    /// <summary>
+    /// Varillas <b>totales</b> del círculo, no por lecho.
+    /// </summary>
+    /// <remarks>
+    /// En una columna redonda no hay lecho superior ni inferior: el acero se reparte
+    /// en un solo círculo de paso. Pedirlo por lechos obligaría al usuario a hacer
+    /// una división mental que además no tiene una respuesta única.
+    /// </remarks>
+    public int NVarTotal { get => _nVarTotal; set => Set(ref _nVarTotal, value); }
+
+    /// <summary>Diámetro de las varillas del círculo. Si va vacío se toma la F.</summary>
+    public string DiamVarTotal { get => _diamVarTotal; set => Set(ref _diamVarTotal, value); }
+
+    /// <summary>Diámetro efectivo de las varillas del círculo.</summary>
+    public string DiamVarTotalEfectivo =>
+        string.IsNullOrWhiteSpace(DiamVarTotal) ? DiamEsqSup : DiamVarTotal;
+
+    /// <summary>
+    /// <c>SI</c> = el zuncho sube en <b>hélice</b>; vacío = anillos sueltos.
+    /// </summary>
+    /// <remarks>
+    /// Lo decide el usuario y no el programa, porque son dos formas de armar
+    /// distintas y las dos son correctas: la hélice se arma de una pieza continua y
+    /// el anillo se corta y se amarra uno por uno. Solo cambia el alzado; en la
+    /// sección las dos se ven igual, como un anillo.
+    /// </remarks>
+    public string ZunchoHelicoidal
+    {
+        get => _zunchoHelicoidal;
+        set
+        {
+            Set(ref _zunchoHelicoidal, value);
+            Raise(nameof(EsZunchoHelicoidal));
+        }
+    }
+
+    /// <summary>¿El zuncho sube en hélice?</summary>
+    public bool EsZunchoHelicoidal =>
+        (_zunchoHelicoidal ?? string.Empty).Trim()
+            .Equals("SI", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Columna O.</summary>
     public double RecubrimientoCm { get => _recubrimientoCm; set => Set(ref _recubrimientoCm, value); }
 
@@ -333,8 +459,18 @@ public sealed class SeccionConcretoRow : Row
     public string DiamIntInfEfectivo =>
         string.IsNullOrWhiteSpace(DiamIntInf) ? DiamEsqInfEfectivo : DiamIntInf;
 
-    /// <summary>Total de varillas longitudinales. Las laterales cuentan por los dos lados.</summary>
-    public int TotalVarillas => NEsqSup + NIntSup + NEsqInf + NIntInf + (2 * NInter);
+    /// <summary>
+    /// Total de varillas longitudinales.
+    /// </summary>
+    /// <remarks>
+    /// En la sección <b>circular</b> es el conteo total y ya está: no se suma nada,
+    /// porque no hay lechos. En la rectangular se suman los cuatro grupos y las
+    /// laterales cuentan por los dos lados.
+    /// </remarks>
+    public int TotalVarillas =>
+        EsCircular
+            ? NVarTotal
+            : NEsqSup + NIntSup + NEsqInf + NIntInf + (2 * NInter);
 
     /// <summary>
     /// Área total de acero longitudinal, en cm². No la calcula la macro, pero es
@@ -342,29 +478,51 @@ public sealed class SeccionConcretoRow : Row
     /// </summary>
     public double AreaAceroCm2 =>
         Math.Round(
-            (NEsqSup * Varilla.AreaCm2(DiamEsqSup)) +
-            (NIntSup * Varilla.AreaCm2(DiamIntSupEfectivo)) +
-            (NEsqInf * Varilla.AreaCm2(DiamEsqInfEfectivo)) +
-            (NIntInf * Varilla.AreaCm2(DiamIntInfEfectivo)) +
-            (2 * NInter * Varilla.AreaCm2(DiamInter)),
+            EsCircular
+                ? NVarTotal * Varilla.AreaCm2(DiamVarTotalEfectivo)
+                : (NEsqSup * Varilla.AreaCm2(DiamEsqSup)) +
+                  (NIntSup * Varilla.AreaCm2(DiamIntSupEfectivo)) +
+                  (NEsqInf * Varilla.AreaCm2(DiamEsqInfEfectivo)) +
+                  (NIntInf * Varilla.AreaCm2(DiamIntInfEfectivo)) +
+                  (2 * NInter * Varilla.AreaCm2(DiamInter)),
             2);
+
+    /// <summary>
+    /// Área bruta de concreto, en cm². Depende de la forma.
+    /// </summary>
+    /// <remarks>
+    /// Existe aparte de la cuantía porque es el número que se equivoca solo: usar
+    /// <c>base × altura</c> en una sección redonda da un área un 27 % mayor que la
+    /// real (<c>D²</c> contra <c>πD²/4</c>) y por tanto una cuantía un 27 % MENOR
+    /// que la verdadera. Una cuantía subestimada es del lado inseguro: hace pasar
+    /// por bueno un armado que no llega al mínimo.
+    /// </remarks>
+    public double AreaBrutaCm2 =>
+        EsCircular
+            ? Math.PI * DiametroCm * DiametroCm / 4.0
+            : BaseCm * AlturaCm;
 
     /// <summary>
     /// Cuantía de acero longitudinal en porcentaje del área bruta.
     /// Es la comprobación inmediata contra los mínimos y máximos de la norma.
     /// </summary>
     public double CuantiaPorcentaje =>
-        BaseCm <= 0 || AlturaCm <= 0
+        AreaBrutaCm2 <= 0
             ? 0
-            : Math.Round(AreaAceroCm2 / (BaseCm * AlturaCm) * 100.0, 3);
+            : Math.Round(AreaAceroCm2 / AreaBrutaCm2 * 100.0, 3);
 
     protected override void RaiseCalculadas()
     {
         Raise(nameof(DiamIntSupEfectivo));
         Raise(nameof(DiamEsqInfEfectivo));
         Raise(nameof(DiamIntInfEfectivo));
+        Raise(nameof(DiamVarTotalEfectivo));
+        Raise(nameof(EsCircular));
+        Raise(nameof(DiametroCm));
+        Raise(nameof(EsZunchoHelicoidal));
         Raise(nameof(TotalVarillas));
         Raise(nameof(AreaAceroCm2));
+        Raise(nameof(AreaBrutaCm2));
         Raise(nameof(CuantiaPorcentaje));
     }
 }
@@ -410,6 +568,20 @@ public sealed class DatosProyecto
             RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20",
             EstriboDiamante = "SI", DiamEstriboDiamante = "#3",
             GanchoCm = 5, Fc = "250", Escala = "20"
+        });
+
+        // Columna REDONDA, para que el ejemplo muestre las dos formas. La base es el
+        // diametro y el armado se captura como TOTAL, no por lechos.
+        d.SeccionesConcreto.Add(new SeccionConcretoRow
+        {
+            Elemento = "COLUMNA", Id = "C-2",
+            Circular = "SI",
+            BaseCm = 50, AlturaCm = 50,
+            NVarTotal = 8, DiamVarTotal = "#8",
+            ZunchoHelicoidal = "SI",
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20",
+            GanchoCm = 5, Fc = "250", Escala = "20",
+            LongitudM = 3
         });
 
         d.SeccionesConcreto.Add(new SeccionConcretoRow

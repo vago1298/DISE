@@ -88,6 +88,16 @@ public sealed class SeccionGuardada
     public int NInter { get; set; }
     public string DiamInter { get; set; } = string.Empty;
 
+    // ---------------- Sección circular ----------------
+    // Se agregan al final y con valor por omisión vacío / cero a propósito: un .clk
+    // guardado ANTES de que existiera la sección circular se sigue abriendo, y sus
+    // filas salen rectangulares, que es lo que eran. Sin esto, abrir un trabajo
+    // viejo fallaría o, peor, lo abriría con datos inventados.
+    public string Circular { get; set; } = string.Empty;
+    public int NVarTotal { get; set; }
+    public string DiamVarTotal { get; set; } = string.Empty;
+    public string ZunchoHelicoidal { get; set; } = string.Empty;
+
     public double RecubrimientoCm { get; set; }
     public string Estribo { get; set; } = string.Empty;
     public string SeparacionCm { get; set; } = string.Empty;

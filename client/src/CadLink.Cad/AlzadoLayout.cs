@@ -30,8 +30,64 @@ namespace CadLink.Cad;
 /// </remarks>
 public static class AlzadoLayout
 {
-    /// <summary>Y de arranque de todo: <c>Y_BLOQUES</c>.</summary>
-    public const double YBloques = 2.0;
+    /// <summary>
+    /// Aire que se deja entre las secciones y la fila de alzados: <b>2 m</b>.
+    /// </summary>
+    /// <remarks>
+    /// En la macro este 2 es el <c>Y_BLOQUES</c>, una <b>cota absoluta</b>: todo se
+    /// colocaba en Y=2 pasara lo que pasara. Funcionaba porque las secciones se
+    /// dibujaban en Y=0 y ninguna medía más de 2 m de alto en el papel.
+    /// </remarks>
+    public const double AireSobreSecciones = 2.0;
+
+    /// <summary>Y de arranque de la fila de alzados cuando no hay secciones medidas.</summary>
+    /// <remarks>
+    /// Es el <c>Y_BLOQUES</c> de la macro tal cual. Solo se usa como respaldo: el
+    /// camino normal es <see cref="YArranque"/>.
+    /// </remarks>
+    public const double YBloques = AireSobreSecciones;
+
+    /// <summary>
+    /// Y donde arranca la fila de alzados: <b>2 m por encima de la sección más
+    /// alta</b> de las que se dibujaron al principio.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Por qué no vale la constante de la macro.</b> Allí los alzados se ponen
+    /// siempre en Y=2. Con secciones de trabe de 60 cm eso deja 1.40 m de aire y se
+    /// ve bien, pero en cuanto entra un elemento alto —una columna de 3 m dibujada a
+    /// escala 1:10 mide 30 cm, pero un muro o una contratrabe de 2.50 m ya no— la
+    /// sección <b>invade la fila de alzados</b> y el plano queda encimado. El usuario
+    /// lo pidió explícitamente: los bloques y los alzados a 2 m por encima de la
+    /// sección más alta, no a 2 m del origen.
+    /// </para>
+    /// <para>
+    /// Las secciones se dibujan apoyadas en <c>Y=0</c>, así que el paño superior de
+    /// la más alta es su propio alto y basta con sumarle el aire.
+    /// </para>
+    /// <para>
+    /// <b>El aire son SIEMPRE 2 m</b>, no «2 m como mínimo». Con una trabe de 60 cm
+    /// dibujada a escala 1:100 la fila queda en Y=2.6, no en Y=2. Es lo que se pidió,
+    /// y tiene una consecuencia que conviene tener presente: un plano acomodado con la
+    /// versión anterior, que ponía todo en Y=2, verá la fila de alzados desplazada
+    /// hacia arriba la próxima vez que se generen.
+    /// </para>
+    /// </remarks>
+    /// <param name="altoMaximoSeccion">
+    /// Alto de la sección más alta, en <b>metros de dibujo</b>, ya multiplicado por la
+    /// escala. Cero si no hay ninguna.
+    /// </param>
+    public static double YArranque(double altoMaximoSeccion)
+    {
+        // Sin secciones no hay nada que esquivar, así que se cae a la cota de la
+        // macro. Es el único caso en que el resultado no es «alto + aire».
+        if (altoMaximoSeccion <= 0)
+        {
+            return YBloques;
+        }
+
+        return altoMaximoSeccion + AireSobreSecciones;
+    }
 
     /// <summary>Separación entre un elemento y el siguiente: <c>SEP_SECCIONES</c>.</summary>
     public const double SepSecciones = 0.6;
@@ -103,9 +159,14 @@ public static class AlzadoLayout
     /// <param name="topeSeccion">Y del paño superior del bloque de la sección.</param>
     /// <param name="largo">Longitud del elemento, en metros de dibujo.</param>
     /// <param name="dosCaras">La columna es rectangular y lleva dos alzados.</param>
+    /// <param name="yArranque">
+    /// Y de la fila, la que devuelve <see cref="YArranque"/>. Es un parámetro y no la
+    /// constante porque depende de las secciones que se hayan dibujado, y eso solo lo
+    /// sabe quien llama.
+    /// </param>
     public static Puesto Colocar(
         double x0, bool vertical, double anchoSeccion, double topeSeccion,
-        double largo, bool dosCaras)
+        double largo, bool dosCaras, double yArranque)
     {
         if (vertical)
         {
@@ -138,12 +199,13 @@ public static class AlzadoLayout
             };
         }
 
-        // Trabe: la sección a la izquierda y el alzado a su derecha.
+        // Trabe: la sección a la izquierda y el alzado a su derecha, los dos apoyados
+        // en la misma Y de la fila.
         return new Puesto
         {
             XSeccion = x0,
             XAlzado = x0 + anchoSeccion + SepSecAlz,
-            YAlzado = YBloques,
+            YAlzado = yArranque,
             YAlzado2 = null,
             XSiguiente = x0 + anchoSeccion + SepSecAlz + largo + HookDimOff2 + SepSecciones
         };

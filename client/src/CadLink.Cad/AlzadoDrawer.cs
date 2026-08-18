@@ -77,6 +77,31 @@ public sealed class AlzadoDrawer
     /// <summary>Escala del patrón AR-CONC.</summary>
     public double EscalaHatch { get; set; } = 0.01;
 
+    /// <summary>
+    /// Alto de la sección más alta ya dibujada, en <b>metros de dibujo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que separa la fila de alzados de la fila de secciones. Se pone <b>antes</b>
+    /// de dibujar, y con ello los bloques y los alzados quedan a
+    /// <see cref="AlzadoLayout.AireSobreSecciones"/> metros por encima de la sección
+    /// más alta en lugar de en la cota fija Y=2 de la macro.
+    /// </para>
+    /// <para>
+    /// En cero se comporta exactamente como la macro. Así, quien no lo ponga sigue
+    /// obteniendo el resultado de siempre.
+    /// </para>
+    /// </remarks>
+    public double AltoMaximoSeccion { get; set; }
+
+    /// <summary>Y en la que se apoya toda la fila de alzados.</summary>
+    /// <remarks>
+    /// Se calcula cada vez a partir de <see cref="AltoMaximoSeccion"/> y no se guarda
+    /// en un campo: si se cacheara, cambiar el alto después de dibujar el primer
+    /// elemento dejaría la fila partida en dos alturas.
+    /// </remarks>
+    private double YDeLaFila => AlzadoLayout.YArranque(AltoMaximoSeccion);
+
     public IReadOnlyList<string> Fallos => _log;
 
     public IReadOnlyList<string> Notas
@@ -154,19 +179,25 @@ public sealed class AlzadoDrawer
         // MARGEN_COL de la columna.
         var xSec = AlzadoLayout.XSeccion(x0, a.EsVertical);
 
-        var sec = InsertarSeccion(a.Id, xSec, AlzadoLayout.YBloques);
+        var y = YDeLaFila;
+
+        var sec = InsertarSeccion(a.Id, xSec, y);
 
         // Si el bloque de la sección no existe, la macro supone 0.8 x 0.4 para que
         // los elementos siguientes no se encimen. No es un adorno: sin esto, un ID
         // sin sección arrastra el desorden al resto de la fila.
         var ancho = sec?.Ancho ?? AlzadoLayout.AnchoSeccionSupuesto;
-        var tope = sec?.Tope ?? (AlzadoLayout.YBloques + AlzadoLayout.AltoSeccionSupuesto);
+        var tope = sec?.Tope ?? (y + AlzadoLayout.AltoSeccionSupuesto);
 
+        // Una columna RECTANGULAR lleva dos alzados cuando no es cuadrada, uno por
+        // cada cara. Una columna REDONDA no: se ve igual desde cualquier lado, así
+        // que el segundo alzado sería una copia exacta del primero ocupando plano.
         var dosCaras = a.EsVertical
+                       && !a.Circular
                        && a.BaseCm > 0
                        && Math.Abs(a.BaseCm - a.AlturaCm) > 1e-4;
 
-        var p = AlzadoLayout.Colocar(x0, a.EsVertical, ancho, tope, largo, dosCaras);
+        var p = AlzadoLayout.Colocar(x0, a.EsVertical, ancho, tope, largo, dosCaras, y);
 
         if (a.EsVertical)
         {
@@ -457,7 +488,42 @@ public sealed class AlzadoDrawer
         var dEst = a.EstriboDibujo.Cm * _escala;
         if (dEst <= 0) { dEst = 0.0095 * _f; }
 
-        CapsulasDeEstribo(bloque, centros, y0, y1, rec, dEst, relleno);
+        // ---------- Zuncho helicoidal, o estribos/anillos ----------
+        // La hélice NO es una cápsula repetida: es una sola pieza continua, y en el
+        // alzado se ve como un resorte. Lo elige el usuario, no el programa.
+        if (a.Circular && a.ZunchoHelicoidal)
+        {
+            HeliceDelZuncho(bloque, a, x0, x1, y0, y1, rec, dEst);
+        }
+        else
+        {
+            // El anillo de un zuncho normal se proyecta EXACTAMENTE como la cápsula
+            // del estribo rectangular: un rectángulo de ancho igual al diámetro del
+            // anillo y alto igual al de la barra. Así que aquí no hace falta
+            // geometría nueva, y se reutiliza la que ya está probada.
+            CapsulasDeEstribo(bloque, centros, y0, y1, rec, dEst, relleno);
+        }
+
+        // ---------- Corrección de los ejes cuando la sección es CIRCULAR ----------
+        // En la redonda las varillas no van pegadas al recubrimiento: van sobre el
+        // círculo de paso, que además está dentro del zuncho. Así que hay que restar
+        // el diámetro del zuncho, y usar la varilla del círculo y no la de un lecho
+        // que en circular está vacío. Sin esto las varillas del alzado saldrían un
+        // diámetro de zuncho más afuera que en la sección, y las dos vistas del mismo
+        // elemento no coincidirían.
+        if (a.Circular)
+        {
+            var dv = a.VarTotal.Cm * _escala;
+
+            if (dv > 0)
+            {
+                dSup = dv;
+                dInf = dv;
+            }
+
+            ycSup = y1 - rec - dEst - (dSup / 2);
+            ycInf = y0 + rec + dEst + (dInf / 2);
+        }
 
         var xa = x0 + rec;
         var xb = x1 - rec;
@@ -510,14 +576,25 @@ public sealed class AlzadoDrawer
         }
 
         // ---------- Varillas ----------
-        VarillaConGanchos(bloque, xa, xb, ycSup, dSup,
-            CapaVar(a.Superior.Esquina.Clave), centros, dEst, gSup, hacia: false, relleno);
+        if (a.Circular)
+        {
+            // En la redonda el armado NO está por lechos, así que las tres llamadas
+            // de abajo no dibujarían nada: sus lechos vienen vacíos. Las varillas se
+            // proyectan desde el círculo.
+            VarillasCirculares(bloque, a, xa, xb, xaInf, xbInf,
+                (y0 + y1) / 2, ycSup, ycInf, dSup, gSup, gInf, centros, dEst, relleno);
+        }
+        else
+        {
+            VarillaConGanchos(bloque, xa, xb, ycSup, dSup,
+                CapaVar(a.Superior.Esquina.Clave), centros, dEst, gSup, hacia: false, relleno);
 
-        VarillaConGanchos(bloque, xaInf, xbInf, ycInf, dInf,
-            CapaVar(a.Inferior.Esquina.Clave), centros, dEst, gInf, hacia: true, relleno);
+            VarillaConGanchos(bloque, xaInf, xbInf, ycInf, dInf,
+                CapaVar(a.Inferior.Esquina.Clave), centros, dEst, gInf, hacia: true, relleno);
 
-        Intermedias(bloque, a, xa, xb, xaInf, xbInf, ycSup, ycInf,
-            dSup, dInf, gSup, gInf, centros, dEst, relleno);
+            Intermedias(bloque, a, xa, xb, xaInf, xbInf, ycSup, ycInf,
+                dSup, dInf, gSup, gInf, centros, dEst, relleno);
+        }
 
         // ---------- Color y orden ----------
         if (relleno)
@@ -540,6 +617,257 @@ public sealed class AlzadoDrawer
             GanchoSup = gSup, GanchoInf = gInf,
             Centros = centros
         };
+    }
+
+    // ==================================================================
+    // Varillas de la columna circular en alzado
+    // ==================================================================
+
+    /// <summary>
+    /// Las varillas del círculo, <b>proyectadas</b> sobre el plano del alzado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Una varilla que en la sección está en el ángulo <c>α</c> se ve en el alzado a
+    /// una distancia <c>r·cos(α)</c> del eje. Eso hace que las <b>parejas simétricas
+    /// se proyecten en el mismo sitio</b>: de 8 varillas se ven 5 posiciones
+    /// distintas, y de 4 se ven 3. Comprobado en
+    /// <c>tools/verificar_seccion_circular.py</c>.
+    /// </para>
+    /// <para>
+    /// Por eso se quitan las repetidas. Dibujarlas todas pondría dos varillas
+    /// exactamente encima de otra: en pantalla no se nota, pero el archivo lleva
+    /// entidades duplicadas y al editar una queda la de debajo, que es el tipo de
+    /// defecto que aparece meses después.
+    /// </para>
+    /// <para>
+    /// Las dos varillas de los extremos llevan el gancho, como las de esquina de una
+    /// columna rectangular. Las de en medio no: quedan dentro y su gancho chocaría con
+    /// los otros dos.
+    /// </para>
+    /// </remarks>
+    private void VarillasCirculares(
+        object bloque, AlzadoCad a,
+        double xa, double xb, double xaInf, double xbInf,
+        double yMedio, double ycSup, double ycInf, double dVar,
+        double gSup, double gInf, List<double> centros, double dEst, bool relleno)
+    {
+        if (a.NVarTotal <= 0 || dVar <= 0)
+        {
+            return;
+        }
+
+        // El radio del círculo de paso sale de los ejes que ya se corrigieron
+        var rPaso = ycSup - yMedio;
+
+        if (rPaso <= 0)
+        {
+            return;
+        }
+
+        var capa = CapaVar(a.VarTotal.Existe ? a.VarTotal.Clave : a.EstriboDibujo.Clave);
+
+        // Posiciones proyectadas, sin repetidas
+        var ys = new List<double>();
+
+        for (var i = 0; i < a.NVarTotal; i++)
+        {
+            var ang = (Math.PI / 2) + (i * 2 * Math.PI / a.NVarTotal);
+            var y = yMedio + (rPaso * Math.Cos(ang));
+
+            // La tolerancia es un décimo del diámetro de la varilla: por debajo de
+            // eso las dos varillas se dibujarían pisándose y no aportan nada.
+            if (!ys.Any(v => Math.Abs(v - y) < dVar * 0.1))
+            {
+                ys.Add(y);
+            }
+        }
+
+        ys.Sort();
+
+        Nota(
+            $"Alzado '{a.Id}': las {a.NVarTotal} varillas del círculo se ven en " +
+            $"{ys.Count} posición(es) distinta(s) del alzado; las parejas simétricas se " +
+            "proyectan una sobre otra.");
+
+        for (var i = 0; i < ys.Count; i++)
+        {
+            var esPrimera = i == 0;
+            var esUltima = i == ys.Count - 1;
+
+            // Solo las dos de los extremos llevan gancho
+            var gancho = esUltima ? gSup : esPrimera ? gInf : 0;
+
+            // Y solo la de abajo usa el arranque corrido para no chocar con el otro
+            var xIzq = esPrimera ? xaInf : xa;
+            var xDer = esPrimera ? xbInf : xb;
+
+            VarillaConGanchos(
+                bloque, xIzq, xDer, ys[i], dVar, capa, centros, dEst, gancho,
+                hacia: esPrimera, relleno);
+        }
+    }
+
+    // ==================================================================
+    // Zuncho helicoidal
+    // ==================================================================
+
+    /// <summary>Puntos por vuelta con que se aproxima la hélice.</summary>
+    /// <remarks>
+    /// Con 24 el error de la cuerda contra el arco real es del 0.29 %, comprobado en
+    /// <c>tools/verificar_seccion_circular.py</c>. Subirlo engorda el dibujo sin que
+    /// se note; bajarlo empieza a verse como un zigzag en lugar de un resorte.
+    /// </remarks>
+    private const int PuntosPorVuelta = 24;
+
+    /// <summary>Tope de puntos de la polilínea de la hélice.</summary>
+    /// <remarks>
+    /// Una columna de 6 m con paso de 5 cm son 120 vueltas y 2 880 puntos por cara.
+    /// El tope está para que una separación capturada por error —5 mm, por ejemplo—
+    /// no genere una polilínea de cien mil vértices que deje AutoCAD inservible.
+    /// </remarks>
+    private const int MaxPuntosHelice = 4000;
+
+    /// <summary>
+    /// El zuncho helicoidal en alzado: la <b>proyección de la hélice</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>La geometría, que es exacta y no una aproximación.</b> Una hélice de radio
+    /// <c>r</c> y paso <c>p</c> alrededor del eje del elemento se proyecta sobre el
+    /// plano del alzado como <c>desplazamiento = r · sen(2π·x/p)</c>: un seno de
+    /// amplitud <c>r</c> y periodo <c>p</c>. Eso es la proyección, no un parecido.
+    /// </para>
+    /// <para>
+    /// <b>El grosor también es exacto.</b> La barra tiene diámetro <c>d</c>, así que
+    /// su superficie exterior es una hélice de radio <c>r + d/2</c> y la interior una
+    /// de radio <c>r − d/2</c>. Se dibujan las dos, con la <b>misma fase</b> y
+    /// amplitudes distintas. Ojo con la tentación de dibujar un solo seno y
+    /// desplazarlo: eso daría un grosor constante medido en vertical, y el grosor real
+    /// se estrecha donde la hélice cruza el eje, porque ahí la barra se ve de perfil.
+    /// </para>
+    /// <para>
+    /// <b>El paso no es constante.</b> La tabla de separaciones da tres zonas
+    /// L/4-L/2-L/4, y en una columna real el zuncho va más cerrado en los extremos.
+    /// Así que en lugar de un seno de periodo fijo se acumula la <b>fase</b>:
+    /// <c>Δφ = 2π·Δx / paso(x)</c>, con el paso de la zona en que cae cada tramo. Con
+    /// separación única sale exactamente el seno de siempre.
+    /// </para>
+    /// </remarks>
+    private void HeliceDelZuncho(
+        object bloque, AlzadoCad a,
+        double x0, double x1, double y0, double y1, double rec, double dZun)
+    {
+        var largo = x1 - x0;
+
+        if (largo <= 0 || dZun <= 0)
+        {
+            return;
+        }
+
+        // Radio del EJE de la barra del zuncho, medido desde el eje del elemento
+        var rExt = ((y1 - y0) / 2) - rec;
+        var rEje = rExt - (dZun / 2);
+
+        if (rEje <= 0)
+        {
+            _log.Add(
+                $"Alzado '{a.Id}': con diámetro {a.DiametroCm:0.#} cm y recubrimiento " +
+                $"{a.RecubrimientoCm:0.#} cm no queda sitio para el zuncho helicoidal.");
+            return;
+        }
+
+        var yMedio = (y0 + y1) / 2;
+
+        // Separaciones de las tres zonas, en metros de dibujo
+        var s = a.SeparacionesCm;
+        var p1 = Paso(s.Length > 0 ? s[0] : 0);
+        var p2 = Paso(s.Length > 1 ? s[1] : 0, p1);
+        var p3 = Paso(s.Length > 2 ? s[2] : 0, p1);
+
+        // Fronteras de las zonas L/4 - L/2 - L/4
+        var z1 = x0 + (largo * 0.25);
+        var z2 = x0 + (largo * 0.75);
+
+        double PasoEn(double x) => x < z1 ? p1 : x < z2 ? p2 : p3;
+
+        // Vueltas totales: la integral de dx/paso(x) sobre el elemento
+        var vueltas = ((z1 - x0) / p1) + ((z2 - z1) / p2) + ((x1 - z2) / p3);
+
+        if (vueltas <= 0)
+        {
+            return;
+        }
+
+        var n = (int)Math.Ceiling(vueltas * PuntosPorVuelta);
+        if (n < 8) { n = 8; }
+
+        if (n > MaxPuntosHelice)
+        {
+            _log.Add(
+                $"Alzado '{a.Id}': el zuncho helicoidal daría {vueltas:0} vueltas y una " +
+                $"polilínea de más de {MaxPuntosHelice} puntos. Se dibujó con la " +
+                "resolución máxima; revisa la separación capturada.");
+            n = MaxPuntosHelice;
+        }
+
+        var dx = largo / n;
+
+        // Dos caras: exterior e interior de la barra, en fase
+        var caraExt = new double[(n + 1) * 2];
+        var caraInt = new double[(n + 1) * 2];
+
+        var fase = 0d;
+        var rOut = rEje + (dZun / 2);
+        var rIn = rEje - (dZun / 2);
+
+        for (var i = 0; i <= n; i++)
+        {
+            var x = x0 + (i * dx);
+
+            if (i > 0)
+            {
+                // La fase se acumula con el paso de la zona donde cae el tramo. Se
+                // evalúa en el punto MEDIO del tramo: en la frontera de zonas, tomar
+                // el extremo daría medio tramo con el paso equivocado.
+                fase += 2 * Math.PI * dx / PasoEn(x - (dx / 2));
+            }
+
+            var sen = Math.Sin(fase);
+
+            caraExt[2 * i] = x;
+            caraExt[(2 * i) + 1] = yMedio + (rOut * sen);
+
+            caraInt[2 * i] = x;
+            caraInt[(2 * i) + 1] = yMedio + (rIn * sen);
+        }
+
+        // Abiertas, no cerradas: es una barra continua, no un contorno. Cerrarlas
+        // dibujaría una recta del tope a la base atravesando el elemento entero.
+        var plExt = Poli(bloque, caraExt, "ESTRIBOS", cerrada: false, bulges: null);
+        var plInt = Poli(bloque, caraInt, "ESTRIBOS", cerrada: false, bulges: null);
+
+        if (plExt is null && plInt is null)
+        {
+            _log.Add($"Alzado '{a.Id}': no se pudo dibujar el zuncho helicoidal.");
+            return;
+        }
+
+        Nota(
+            $"Alzado '{a.Id}': zuncho HELICOIDAL, {vueltas:0.#} vuelta(s) con paso " +
+            $"{p1 / _escala:0.#}-{p2 / _escala:0.#}-{p3 / _escala:0.#} cm. " +
+            "Si lo querías en anillos, quita el SI de la columna «Zuncho helic.».");
+    }
+
+    /// <summary>Separación en metros de dibujo, con respaldo.</summary>
+    private double Paso(double cm, double respaldo = 0)
+    {
+        if (cm > 0)
+        {
+            return cm / 100 * _f;
+        }
+
+        return respaldo > 0 ? respaldo : 0.15 * _f;
     }
 
     // ==================================================================

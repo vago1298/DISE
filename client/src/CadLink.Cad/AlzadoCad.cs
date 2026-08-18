@@ -80,6 +80,40 @@ public sealed class AlzadoCad
 
     public ModoSeccion Modo { get; set; } = ModoSeccion.Tipo1SinRelleno;
 
+    // ==================================================================
+    // Sección circular
+    // ==================================================================
+
+    /// <summary>El elemento es de sección circular.</summary>
+    public bool Circular { get; set; }
+
+    /// <summary>Diámetro de la sección circular, en cm. Es la base.</summary>
+    public double DiametroCm => BaseCm;
+
+    /// <summary>Varillas totales del círculo.</summary>
+    public int NVarTotal { get; set; }
+
+    /// <summary>Varilla del círculo.</summary>
+    public VarCad VarTotal { get; set; }
+
+    /// <summary>
+    /// El zuncho sube en <b>hélice</b> en lugar de ser anillos sueltos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo decide el <b>usuario</b>, no el programa. Son dos formas de armar reales y
+    /// las dos son correctas: la hélice se dobla de una pieza continua y se coloca
+    /// estirándola como un resorte; el anillo se corta, se dobla y se amarra uno por
+    /// uno. Cuál conviene depende del taller y de la obra, no de la geometría, así
+    /// que el programa no tiene con qué decidirlo.
+    /// </para>
+    /// <para>
+    /// Solo cambia el <b>alzado</b>. En la sección las dos se ven como un anillo,
+    /// porque el corte de una hélice ES un anillo.
+    /// </para>
+    /// </remarks>
+    public bool ZunchoHelicoidal { get; set; }
+
     /// <summary>Alzado vertical: columnas y dados.</summary>
     public bool EsVertical => Tipo is TipoElemento.Columna or TipoElemento.Dado;
 

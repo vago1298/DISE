@@ -2098,7 +2098,7 @@ def v16_extruida_piers() -> None:
 
     # Las constantes de la macro, con su valor exacto.
     for nombre, valor in [
-        ("YBloques", "2.0"),
+        ("AireSobreSecciones", "2.0"),
         ("SepSecciones", "0.6"),
         ("MargenCol", "0.4"),
         ("SepCaras", "0.3"),
@@ -2119,7 +2119,47 @@ def v16_extruida_piers() -> None:
     check("el alzado inserta el bloque de la seccion",
           "public SeccionPuesta? InsertarSeccion(" in alz2)
     check("y se llama al dibujar el elemento",
-          "InsertarSeccion(a.Id, xSec, AlzadoLayout.YBloques)" in alz2)
+          "InsertarSeccion(a.Id, xSec, y)" in alz2)
+
+    # ------------------------------------------------------------------
+    # La Y de la fila es RELATIVA a la seccion mas alta, no la cota fija
+    # ------------------------------------------------------------------
+    # La macro pone todo en Y=2 (su Y_BLOQUES). Con una contratrabe alta, la
+    # seccion invade la fila de alzados. Se comprueba que ya no sea una constante.
+    check("la Y de la fila se calcula, no es una constante",
+          "public static double YArranque(" in lay)
+
+    m_ya = re.search(r"public static double YArranque\(.*?\n    \}", lay, re.S)
+    check("se puede leer YArranque", m_ya is not None)
+    if m_ya:
+        cuerpo = m_ya.group(0)
+        # El aire son SIEMPRE 2 m sobre la mas alta. Un max() contra 2 haria que
+        # con secciones bajitas se quedara en 2, que NO es lo que se pidio.
+        check("el aire se suma al alto de la seccion",
+              "altoMaximoSeccion + AireSobreSecciones" in cuerpo)
+        check("y no se recorta con un maximo contra la cota fija",
+              "Math.Max" not in cuerpo)
+
+    check("el dibujante expone el alto de la seccion mas alta",
+          "public double AltoMaximoSeccion" in alz2)
+    check("y la Y de la fila sale de ahi",
+          "AlzadoLayout.YArranque(AltoMaximoSeccion)" in alz2)
+
+    cod_win = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    check("la ventana calcula el alto maximo y lo pasa",
+          "AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)" in cod_win)
+
+    m_am = re.search(
+        r"private double AltoMaximoDeLasSecciones\(.*?\n    \}", cod_win, re.S)
+    check("se puede leer AltoMaximoDeLasSecciones", m_am is not None)
+    if m_am:
+        # En circular el alto del dibujo es el DIAMETRO. Con AlturaCm, una columna
+        # redonda contaria 0 y la fila de alzados se le echaria encima.
+        check("en circular cuenta el diametro y no la altura",
+              "s.EsCircular ? s.DiametroCm : s.AlturaCm" in m_am.group(0))
+
+    check("hay comprobacion numerica de la Y de los alzados",
+          os.path.exists(ruta("tools/verificar_y_alzados.py")))
     check("la seccion se rotula CORTE A-A'",
           "CORTE A-A'" in alz2 and "private void RotuloCorte(" in alz2)
 
@@ -2176,7 +2216,12 @@ def v16_extruida_piers() -> None:
         # En la trabe el alzado va a la DERECHA de la seccion, y los dos apoyados.
         check("en la trabe el alzado va al lado de la seccion",
               "XAlzado = x0 + anchoSeccion + SepSecAlz," in cuerpo)
-        check("y los dos apoyados en Y_BLOQUES", "YAlzado = YBloques," in cuerpo)
+        # Apoyados en la Y de la FILA, que llega como parametro. Antes era la
+        # constante YBloques, o sea la cota fija de la macro.
+        check("y los dos apoyados en la Y de la fila",
+              "YAlzado = yArranque," in cuerpo)
+        check("la Y de la fila llega como parametro y no como constante",
+              "double yArranque)" in lay)
 
         # Los dos avances, cada uno con sus terminos.
         check("el avance de la columna es blockWidth + alzadoWidth + SEP_SECCIONES",
@@ -2590,6 +2635,233 @@ def v18_planta_autocad() -> None:
     check("los fallos se pueden consultar", "IReadOnlyList<string> Fallos" in dib)
 
 
+# ======================================================================
+# 19. Seccion circular, zuncho, encabezado quitado y pestañas arriba
+# ======================================================================
+def v19_circular_y_ui() -> None:
+    """La columna redonda, el zuncho helicoidal y los dos cambios de interfaz."""
+    print("\n[19] Seccion circular, zuncho y interfaz")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+    seccad = leer(ruta("client/src/CadLink.Cad/SeccionCad.cs"))
+    circ = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Circular.cs"))
+    alz = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
+
+    # ------------------------------------------------------------------
+    # El cuadro azul, fuera
+    # ------------------------------------------------------------------
+    # Se comprueba por AUSENCIA de los controles que vivian en el, no por el color:
+    # el BrandDarkBrush se sigue usando en otros sitios legitimos.
+    for nombre in ("LogoImage", "HeaderProduct", "HeaderCompany"):
+        check(f"el encabezado azul ya no tiene {nombre}",
+              f'x:Name="{nombre}"' not in xaml)
+        check(f"y el codigo ya no lo busca ({nombre})",
+              not re.search(rf"\b{nombre}\.", codigo))
+
+    # Lo unico que no estaba en otro sitio SI se conserva, en la barra de estado.
+    check("el estado de la licencia sigue estando", 'x:Name="HeaderLicense"' in xaml)
+    check("y la version tambien", 'x:Name="HeaderVersion"' in xaml)
+
+    i_lic = xaml.find('x:Name="HeaderLicense"')
+    i_tabs = xaml.find('<TabControl x:Name="Sheets"')
+    check("la licencia bajo a la barra de estado, debajo de las hojas",
+          i_lic > i_tabs, f"licencia en {i_lic}, hojas en {i_tabs}")
+
+    # El logo no se perdio: es el icono de la ventana.
+    check("el logo sigue vivo como icono de la ventana",
+          "Icon = Branding.Logo;" in codigo)
+
+    # ------------------------------------------------------------------
+    # Pestañas arriba
+    # ------------------------------------------------------------------
+    check("la tira de pestañas va arriba",
+          re.search(r'TabStripPlacement"\s+Value="Top"', tema) is not None)
+    check("y ya no abajo",
+          re.search(r'TabStripPlacement"\s+Value="Bottom"', tema) is None)
+
+    # En el template, la tira tiene que ir ANTES del contenido.
+    m_tpl = re.search(
+        r'Style x:Key="ExcelTabControlStyle".*?</Style>', tema, re.S)
+    check("se puede leer el estilo del contenedor", m_tpl is not None)
+    if m_tpl:
+        cuerpo = m_tpl.group(0)
+        i_panel = cuerpo.find("TabPanel")
+        i_cont = cuerpo.find("SelectedContent")
+        check("la tira va antes del contenido en el template",
+              0 <= i_panel < i_cont, f"tira en {i_panel}, contenido en {i_cont}")
+
+    # La pestaña se abre hacia el contenido, o sea por ABAJO.
+    m_item = re.search(r'Style x:Key="ExcelTabItemStyle".*?</Style>', tema, re.S)
+    if m_item:
+        check("la pestaña se abre hacia abajo, hacia el contenido",
+              'BorderThickness="1,1,1,0"' in m_item.group(0))
+        check("y se redondea por arriba",
+              'CornerRadius="4,4,0,0"' in m_item.group(0))
+
+    # ------------------------------------------------------------------
+    # La forma es POR FILA
+    # ------------------------------------------------------------------
+    check("la fila sabe si es circular", "public bool EsCircular" in filas)
+    check("y es por fila, no un interruptor global",
+          "public string Circular" in filas)
+    check("hay columna Circular en la cuadricula", 'x:Name="ColCircular"' in xaml)
+    check("y columna de zuncho helicoidal", 'x:Name="ColZuncho"' in xaml)
+
+    # ------------------------------------------------------------------
+    # Varillas TOTALES, no por lechos
+    # ------------------------------------------------------------------
+    check("hay conteo total de varillas", "public int NVarTotal" in filas)
+    check("y su diametro, que hereda si va vacio",
+          "DiamVarTotalEfectivo" in filas)
+    check("hay columna N total en la cuadricula", "NVarTotal}" in xaml)
+
+    m_tv = re.search(r"public int TotalVarillas =>.*?;", filas, re.S)
+    check("se puede leer TotalVarillas", m_tv is not None)
+    if m_tv:
+        # En circular es el total y ya: sumar los lechos contaria varillas que no
+        # se dibujan.
+        check("en circular el total NO suma los lechos",
+              "EsCircular" in m_tv.group(0) and "NVarTotal" in m_tv.group(0))
+
+    # El area bruta depende de la forma. Con base x altura en una redonda la
+    # cuantia sale un 27 % baja, y una cuantia baja es del lado INSEGURO.
+    m_ab = re.search(r"public double AreaBrutaCm2 =>.*?;", filas, re.S)
+    check("el area bruta depende de la forma", m_ab is not None)
+    if m_ab:
+        check("en circular el area bruta es pi*D^2/4",
+              "Math.PI" in m_ab.group(0))
+    check("y la cuantia usa el area bruta y no base x altura",
+          "AreaAceroCm2 / AreaBrutaCm2" in filas)
+
+    # ------------------------------------------------------------------
+    # El dibujo circular vive aparte
+    # ------------------------------------------------------------------
+    check("el motor de dibujo conoce la forma", "public bool Circular" in seccad)
+    check("y el diametro y el radio", "public double DiametroCm" in seccad)
+    check("hay dibujante circular", "private int DibujarCircular(" in circ)
+    check("y se deriva a el desde Dibujar",
+          "return DibujarCircular(" in leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs")))
+
+    m_pos = re.search(
+        r"private List<\(double X, double Y\)> PosicionesCirculares\(.*?\n    \}",
+        circ, re.S)
+    check("se puede leer PosicionesCirculares", m_pos is not None)
+    if m_pos:
+        cuerpo = m_pos.group(0)
+        # El radio de paso resta el RADIO de la varilla. Ese medio diametro es el
+        # que se olvida, y olvidarlo deja la varilla mordiendo el recubrimiento.
+        check("el radio de paso resta rec, zuncho y RADIO de varilla",
+              "r - rec - dZun - (dVar / 2)" in cuerpo)
+        check("y avisa si las varillas se traslapan", "se traslapan" in cuerpo)
+
+    # El diamante no aplica a un circulo: no hay lechos ni esquinas.
+    check("el diamante se descarta en la seccion redonda",
+          "EsSi(r.EstriboDiamante) && !r.EsCircular" in codigo)
+
+    # ------------------------------------------------------------------
+    # Zuncho: helicoidal o en anillos, y lo elige el usuario
+    # ------------------------------------------------------------------
+    check("el zuncho sabe si va en helice", "public bool ZunchoHelicoidal" in seccad)
+    check("hay helice en el alzado", "private void HeliceDelZuncho(" in alz)
+    check("y se elige segun la columna del usuario",
+          "a.Circular && a.ZunchoHelicoidal" in alz)
+
+    m_h = re.search(r"private void HeliceDelZuncho\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceDelZuncho", m_h is not None)
+    if m_h:
+        cuerpo = m_h.group(0)
+        # Se acumula la FASE para respetar las zonas L/4-L/2-L/4. Con un periodo
+        # fijo, el zuncho saldria con paso constante y la tabla no se cumpliria.
+        check("la fase se acumula con el paso de cada zona",
+              "fase += 2 * Math.PI * dx / PasoEn(" in cuerpo)
+        # Dos caras con amplitudes DISTINTAS. Un seno desplazado en Y daria un
+        # grosor constante, y el real se estrecha donde la barra va de perfil.
+        check("las dos caras tienen amplitudes distintas y la misma fase",
+              "rEje + (dZun / 2)" in cuerpo and "rEje - (dZun / 2)" in cuerpo)
+        check("las polilineas van ABIERTAS", "cerrada: false" in cuerpo)
+        check("hay tope de puntos por si la separacion viene mal",
+              "MaxPuntosHelice" in cuerpo)
+
+    # Una columna redonda no tiene segunda cara: se veria igual.
+    check("la columna redonda no lleva dos alzados", "&& !a.Circular" in alz)
+
+    # Las varillas del circulo se PROYECTAN, y las parejas simetricas coinciden.
+    check("las varillas del circulo se proyectan al alzado",
+          "private void VarillasCirculares(" in alz)
+    m_vc = re.search(r"private void VarillasCirculares\(.*?\n    \}", alz, re.S)
+    if m_vc:
+        check("y se quitan las que caen una sobre otra",
+              "dVar * 0.1" in m_vc.group(0))
+
+    # ------------------------------------------------------------------
+    # La vista previa no puede mentir
+    # ------------------------------------------------------------------
+    check("la vista previa dibuja la seccion redonda",
+          "DibujarVistaPreviaCircular" in codigo)
+    m_vp = re.search(
+        r"private void DibujarVistaPreviaCircular\(.*?\n    \}", codigo, re.S)
+    if m_vp:
+        cuerpo = m_vp.group(0)
+        # Las MISMAS formulas que el dibujo de AutoCAD, o la vista previa miente.
+        check("usa el mismo radio de paso que AutoCAD",
+              "r - rec - dZun - (dVar / 2)" in cuerpo)
+        # En el lienzo la Y baja: el seno va con signo negativo o el reparto sale
+        # girado al reves respecto a AutoCAD.
+        check("compensa que la Y del lienzo baja",
+              "cy - (rPaso * Math.Sin(a))" in cuerpo)
+
+    # La capa de la varilla del circulo tiene que crearse.
+    check("se crea la capa de la varilla del circulo",
+          "Varilla.Normalizar(s.DiamVarTotalEfectivo)" in codigo)
+
+    # ------------------------------------------------------------------
+    # Revisiones propias de la forma
+    # ------------------------------------------------------------------
+    check("hay revisiones propias de la circular",
+          "private static void RevisarCircular(" in codigo)
+    check("y las rectangulares siguen aparte",
+          "private static void RevisarRectangular(" in codigo)
+
+    m_rc = re.search(
+        r"private static void RevisarCircular\(.*?\n    \}", codigo, re.S)
+    if m_rc:
+        cuerpo = m_rc.group(0)
+        check("se revisa que las varillas quepan en el perimetro",
+              "Math.Sin(Math.PI / s.NVarTotal)" in cuerpo)
+        check("y se avisa de los lechos que no se van a dibujar",
+              "capturadas por lechos" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # El .clk sigue abriendo trabajos viejos
+    # ------------------------------------------------------------------
+    proy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    for campo in ("Circular", "NVarTotal", "DiamVarTotal", "ZunchoHelicoidal"):
+        check(f"el .clk guarda {campo}", f"public string {campo}" in proy
+              or f"public int {campo}" in proy)
+
+    # ------------------------------------------------------------------
+    # Comprobaciones numericas
+    # ------------------------------------------------------------------
+    for f in ("verificar_seccion_circular.py", "verificar_diametros_varilla.py"):
+        check(f"existe {f}", os.path.exists(ruta("tools/" + f)))
+
+    # La tabla de diametros, en el nominal exacto. El #2 estaba en 0.60 y el
+    # nominal es 0.635: el area salia un 12 % baja, y una cuantia baja es del
+    # lado inseguro.
+    check("los diametros estan en el nominal exacto",
+          '["#2"] = 0.635' in filas and '["#10"] = 3.175' in filas)
+    check("y ya no en el valor redondeado",
+          '["#2"] = 0.60' not in filas and '["#10"] = 3.20' not in filas)
+    check("hay formula para comprobar la tabla",
+          "public static double NominalCm(" in filas)
+
+    check("hay documento de cotejo con la macro",
+          os.path.exists(ruta("docs/comparacion-macro-alzados.md")))
+
+
 def main() -> int:
     print("=" * 66)
     print(" Validaciones estaticas de CadLink")
@@ -2601,7 +2873,7 @@ def main() -> int:
               v11_visor, v12_fidelidad, v13_compilacion,
               v14_bloques_diamante_etabs, v15_cs0103,
               v16_extruida_piers, v17_guardar_y_defaults,
-              v18_planta_autocad):
+              v18_planta_autocad, v19_circular_y_ui):
         f()
 
     print("\n" + "=" * 66)

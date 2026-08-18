@@ -840,6 +840,18 @@ public sealed partial class SeccionDrawer
             _ => true
         };
 
+        // ---------- La seccion REDONDA se va por su propio camino ----------
+        // No es una variante del rectangulo con un radio: no tiene esquinas, no tiene
+        // lechos, el acero transversal es un zuncho y no un estribo, y el hatch se
+        // recorta contra coronas y no contra rectangulos redondeados. Intentar que
+        // una sola rutina hiciera las dos formas llenaria de 'if (circular)' cada
+        // una de las veinte etapas del dibujo rectangular, que es codigo ya probado
+        // y no hay ninguna razon para arriesgarlo.
+        if (s.Circular)
+        {
+            return DibujarCircular(s, xIzquierda, yAbajo, inicio, destino, conFondoSolido);
+        }
+
         var b = s.BaseCm * _escala;
         var h = s.AlturaCm * _escala;
         var rec = s.RecubrimientoCm * _escala;
@@ -2139,13 +2151,27 @@ public sealed partial class SeccionDrawer
 
         if (s.Estribo.Existe)
         {
-            lineas.Add($"Estr. {s.Estribo.Clave} @{sep} cm");
+            // En la seccion redonda el acero transversal NO es un estribo: es un
+            // zuncho, y ademas hay que decir si sube en helice o son anillos, porque
+            // son dos formas de armar distintas y el fierrero necesita saber cual.
+            if (s.Circular)
+            {
+                var forma = s.ZunchoHelicoidal ? "helicoidal" : "en anillos";
+                lineas.Add($"Zuncho {forma} {s.Estribo.Clave} @{sep} cm");
+            }
+            else
+            {
+                lineas.Add($"Estr. {s.Estribo.Clave} @{sep} cm");
+            }
         }
 
         // Renglón del estribo diamante, con la MISMA separación que el principal.
         // Faltaba: el diamante se dibujaba pero no se rotulaba, así que el plano no
         // decía qué varilla llevaba.
-        if (s.Diamante)
+        //
+        // En la seccion circular no aplica: el diamante es un rombo entre las
+        // varillas de dos lechos, y en un circulo no hay lechos ni esquinas.
+        if (s.Diamante && !s.Circular)
         {
             var clave = s.EstriboDiamanteVar.Existe
                 ? s.EstriboDiamanteVar.Clave
@@ -2241,11 +2267,21 @@ public sealed partial class SeccionDrawer
             d[v.Clave] = d.TryGetValue(v.Clave, out var actual) ? actual + n : n;
         }
 
-        Sumar(s.Superior.Esquina, s.Superior.NEsquina);
-        Sumar(s.Superior.Intermedia, s.Superior.NIntermedia);
-        Sumar(s.Inferior.Esquina, s.Inferior.NEsquina);
-        Sumar(s.Inferior.Intermedia, s.Inferior.NIntermedia);
-        Sumar(s.Lateral, s.NLateral * 2);
+        if (s.Circular)
+        {
+            // En la seccion redonda hay UN solo grupo: el circulo de varillas. Sumar
+            // aqui los lechos dejaria el rotulo diciendo varillas que no se
+            // dibujaron, porque el dibujo circular no los usa.
+            Sumar(s.VarTotal, s.NVarTotal);
+        }
+        else
+        {
+            Sumar(s.Superior.Esquina, s.Superior.NEsquina);
+            Sumar(s.Superior.Intermedia, s.Superior.NIntermedia);
+            Sumar(s.Inferior.Esquina, s.Inferior.NEsquina);
+            Sumar(s.Inferior.Intermedia, s.Inferior.NIntermedia);
+            Sumar(s.Lateral, s.NLateral * 2);
+        }
 
         return d.OrderByDescending(p => Numero(p.Key));
 

@@ -54,6 +54,9 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Conexión a AutoCAD por COM (`AcadConnection`) | ✅ Completo |
 | Barra de guardar y menú arriba, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
 | Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
+| **Sección circular por fila**, con varillas totales y zuncho | ✅ Completo |
+| **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |
+| Alzados y bloques a 2 m sobre la sección más alta | ✅ Completo |
 | **Importar desde Excel** | ⛔ Pendiente — aquí va la lógica de tus macros |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
 | **Lectura de ETABS (CSI OAPI)** | ⛔ Pendiente |
@@ -70,6 +73,13 @@ del port**, incluyendo los errores detectados en el código actual:
 |---|---|---|
 | `SECCIONES ESTRUCTURALES COTAS Y ROTULOS V3` | ~2.500 | [`docs/macro-secciones-concreto.md`](docs/macro-secciones-concreto.md) |
 | `PLANOS ESTRUCTURALES` (v50) | ~5.000 | [`docs/macro-plantas-etabs.md`](docs/macro-plantas-etabs.md) |
+| `ALZADOS V2` | ~1.900 | [`docs/comparacion-macro-alzados.md`](docs/comparacion-macro-alzados.md) — **cotejo rutina por rutina contra el código real** |
+
+> ⚠️ **El cotejo de `ALZADOS V2` encontró un defecto numérico en el port.** La tabla
+> de diámetros de varilla estaba redondeada y el `#2` estaba mal: 0.60 cm en lugar
+> de 0.635, lo que daba un **área un 12 % baja** y con ella una cuantía baja, que es
+> del lado inseguro. Corregido al nominal exacto (`n/8` de pulgada). Detalle en
+> [`docs/comparacion-macro-alzados.md`](docs/comparacion-macro-alzados.md) §1.
 
 **Decisión de arquitectura:** el motor de dibujo va por **COM**, no por plugin
 nativo. Razones y consecuencias en
@@ -415,22 +425,41 @@ cadlink/
 
 ## Las pestañas
 
-Están en la parte inferior de la ventana, como las hojas de Excel:
+Están **arriba**, debajo del menú y de la barra de guardar:
 
 | Hoja | Qué hace |
 |---|---|
-| **Proyecto** | Datos generales, selección del archivo de Excel, norma aplicable |
-| **Buses** | Barras y nodos, con las coordenadas X/Y que definen su posición en el dibujo |
-| **Transformadores** | Capacidad, tensiones, impedancia. Corriente nominal calculada |
-| **Cables** | Calibre, longitud, conductores por fase. Ampacidad total calculada |
-| **Cargas** | Cuadro de cargas con kVA, corriente y totales con factor de potencia resultante |
-| **Unifilar** | Vista previa del diagrama antes de generar el DWG |
-| **AutoCAD** | Generación del dibujo, en modo DXF o COM sobre la sesión abierta |
-| **ETAP** | Conexión con etapAPI |
+| **Proyecto** | Solapa de los planos, juego de planos con su numeración, importar de Excel |
+| **Secciones Concreto** | La tabla principal. Genera secciones y alzados, con vista previa |
+| **Secciones Acero** | Pendiente de portar |
+| **Zapatas Corridas** | Pendiente de portar |
+| **Zapatas Aisladas** | Pendiente de portar |
+| **Muros de Contención** | Pendiente de portar |
+| **Placa Base** | Pendiente de portar |
+| **Conexiones** | Pendiente de portar |
+| **ETABS** | Conexión por la CSI OAPI, lectura del modelo y de los piers, visor 3D y extruido |
+| **AutoCAD** | Modo de dibujo (COM o DXF), archivo de salida y escala |
 | **Licencia** | Tipo, vigencia, módulos habilitados, huella del equipo, revalidar |
+| **Dibujar planos estructurales** | La planta por nivel, y el botón *Dibujar en AutoCAD* |
 
 Las columnas calculadas son de solo lectura y se actualizan al instante, igual
 que una fórmula de Excel.
+
+### Columnas de la sección circular
+
+En **Secciones Concreto**, cuatro columnas mandan la forma de **cada fila**:
+
+| Columna | Qué hace |
+|---|---|
+| **Circular** | `SI` y solo esa sección se dibuja redonda. Las demás no cambian |
+| **N total** | Varillas **totales** del círculo. En una sección redonda no hay lechos |
+| **Var total** | Su diámetro. Si va vacía hereda el de *Var esq sup* |
+| **Zuncho helic.** | `SI` = el zuncho sube en hélice; vacío = anillos sueltos |
+
+En una fila circular la columna **Base cm** es el **diámetro** y la altura se
+ignora; *Revisar datos* lo avisa si traen valores distintos. El estribo diamante
+no aplica: es un rombo entre las varillas de dos lechos y en un círculo no hay
+lechos.
 
 ---
 
