@@ -94,8 +94,8 @@ public static class Perfil2D
             "TUBO" => Circulo(b / 2),
             "I" => PerfilI(b, h, tf, tw),
             "T" => PerfilT(b, h, tf, tw),
-            "C" => Canal(b, h, tf, tw),
-            "L" => Angulo(b, h, tf, tw),
+            "C" => PerfilC(b, h, tf, tw),
+            "L" => PerfilL(b, h, tf, tw),
             "CAJON" => Rectangulo(b, h),
             _ => Rectangulo(b, h)
         };
@@ -173,7 +173,7 @@ public static class Perfil2D
     }
 
     /// <summary>Canal <b>C</b>: alma a la izquierda y los dos patines hacia la derecha.</summary>
-    public static Contorno Canal(double b, double h, double tf, double tw)
+    public static Contorno PerfilC(double b, double h, double tf, double tw)
     {
         var x = b / 2;
         var y = h / 2;
@@ -191,7 +191,7 @@ public static class Perfil2D
     /// El vértice va abajo a la izquierda, que es como se dibuja un ángulo suelto. Aquí no
     /// se sabe cómo está girado en la estructura: eso lo pone quien lo coloca.
     /// </remarks>
-    public static Contorno Angulo(double b, double h, double tf, double tw)
+    public static Contorno PerfilL(double b, double h, double tf, double tw)
     {
         var x = b / 2;
         var y = h / 2;
