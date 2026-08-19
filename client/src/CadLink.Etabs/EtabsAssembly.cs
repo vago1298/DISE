@@ -231,7 +231,7 @@ public static class EtabsAssembly
             var u = Unica(Path.Combine(carpeta, NombreDll));
             if (u is not null)
             {
-                Bitacora.Add($"Carpeta del ETABS en ejecución: {carpeta}");
+                Bitacora.Add($"Carpeta de {(ParaSap2000 ? "SAP2000" : "ETABS")} en ejecución: {carpeta}");
                 yield return u;
             }
         }
@@ -296,7 +296,10 @@ public static class EtabsAssembly
         {
             try
             {
-                if (!p.ProcessName.Contains("etabs", StringComparison.OrdinalIgnoreCase))
+                // OJO: el nombre del proceso tambien depende del programa. Buscando
+                // siempre 'etabs' nunca se daba con la carpeta de SAP2000, y encima se
+                // ofrecia la de ETABS como candidata.
+                if (!p.ProcessName.Contains(CarpetaClave, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }

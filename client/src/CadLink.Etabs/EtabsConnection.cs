@@ -80,6 +80,20 @@ public sealed class EtabsConnection : IDisposable
     /// entre versiones. Si el Helper no aparece, la conexión sigue por el camino del
     /// objeto activo, que no lo necesita.
     /// </remarks>
+    /// <summary>
+    /// Prefijo de los tipos del ensamblado de la API.
+    /// </summary>
+    /// <remarks>
+    /// <b>Esto era el fallo grande.</b> Los tipos de la interop llevan el nombre del
+    /// programa en su espacio de nombres: <c>ETABSv1.Helper</c> en la librería de ETABS y
+    /// <c>SAP2000v1.Helper</c> en la de SAP2000. Al pedir el tipo por su nombre en duro,
+    /// en la librería de SAP2000 devolvía <c>null</c>, la vía del Helper se caía y todo
+    /// terminaba en el camino de respaldo, que fallaba con «Object does not match target
+    /// type». Y como el mensaje se armaba con la palabra ETABS, parecía que la lectura se
+    /// hubiera ido a ETABS cuando lo que pasaba es que se buscaba un tipo que no existe.
+    /// </remarks>
+    private string PrefijoTipos => Destino == ProgramaCsi.Sap2000 ? "SAP2000v1" : "ETABSv1";
+
     private string[] ProgIdsHelper => Destino == ProgramaCsi.Sap2000
         ? new[] { "SAP2000v1.Helper", "CSI.SAP2000.API.Helper", "SAP2000v20.Helper" }
         : new[] { "ETABSv1.Helper", "CSI.ETABS.API.Helper", "ETABS2016.Helper" };
@@ -444,7 +458,7 @@ public sealed class EtabsConnection : IDisposable
         Type? tipoHelper;
         try
         {
-            tipoHelper = asm.GetType("ETABSv1.Helper")
+            tipoHelper = asm.GetType(PrefijoTipos + ".Helper")
                          ?? asm.GetTypes().FirstOrDefault(t =>
                                 t.Name == "Helper" && !t.IsInterface);
         }
@@ -560,7 +574,12 @@ public sealed class EtabsConnection : IDisposable
             {
                 try
                 {
-                    if (p.ProcessName.Contains("etabs", StringComparison.OrdinalIgnoreCase))
+                    // El nombre del proceso depende del programa: 'ETABS' o 'SAP2000'.
+                    // Se mira la bandera ESTATICA porque este bloque lo es; Conectar la
+                    // fija antes de llegar aqui.
+                    if (p.ProcessName.Contains(
+                            EtabsAssembly.ParaSap2000 ? "sap2000" : "etabs",
+                            StringComparison.OrdinalIgnoreCase))
                     {
                         ids.Add(p.Id);
                     }
@@ -713,7 +732,7 @@ public sealed class EtabsConnection : IDisposable
         catch (Exception ex)
         {
             _bitacora.Add("GetProgramInfo: " + Detalle(ex));
-            Programa = "ETABS (versión no reportada)";
+            Programa = $"{NombreDelDestino} (versión no reportada)";
         }
 
         try

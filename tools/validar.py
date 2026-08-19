@@ -2369,6 +2369,37 @@ def v16_extruida_piers() -> None:
           "_cargadoParaSap == ParaSap2000" in asmb
           and "_cargadoParaSap = ParaSap2000;" in asmb)
 
+    # EL FALLO GRANDE: el nombre del TIPO Helper lleva el prefijo del ensamblado, y en la
+    # libreria de SAP2000 ese prefijo es SAP2000v1, no ETABSv1. Pidiendolo en duro
+    # devolvia null, la via del Helper se caia, y todo terminaba en el respaldo fallando
+    # con «Object does not match target type».
+    check("el prefijo de los tipos depende del programa",
+          'PrefijoTipos => Destino == ProgramaCsi.Sap2000 ? "SAP2000v1" : "ETABSv1"' in conx)
+    check("y el Helper se pide con ese prefijo, no en duro",
+          'asm.GetType(PrefijoTipos + ".Helper")' in conx)
+    check("ya no se pide el tipo de ETABS en duro",
+          'GetType("ETABSv1.Helper")' not in conx)
+
+    # El nombre del PROCESO tambien depende del programa: buscando siempre 'etabs' nunca
+    # se daba con la carpeta de SAP2000, y encima se ofrecia la de ETABS como candidata.
+    check("el proceso que se busca depende del programa",
+          'p.ProcessName.Contains(CarpetaClave' in asmb)
+    check("y en la conexion tambien",
+          'EtabsAssembly.ParaSap2000 ? "sap2000" : "etabs"' in conx)
+
+    # Ningun literal de ETABS puede decidir NADA: si queda uno, con SAP2000 se va por el
+    # camino de ETABS y el usuario ve «no se pudo leer ETABS», que es lo que reporto.
+    for arch, texto in (("EtabsAssembly", asmb), ("EtabsConnection", conx)):
+        duros = [l.strip() for l in texto.splitlines()
+                 if ('"etabs' in l.lower() or '"ETABS' in l)
+                 and "ParaSap2000 ?" not in l
+                 and "Destino == ProgramaCsi" not in l
+                 and "NombreDelDestino" not in l
+                 and 'ETABSv1.Helper", "CSI.ETABS' not in l
+                 and not l.startswith("///")]
+        check(f"{arch}: ningun literal de ETABS decide el comportamiento",
+              not duros, f"{len(duros)}: " + "; ".join(duros[:2]))
+
     # Y hay que avisarle ANTES de cargar.
     m_con = re.search(r"public void Conectar\(\).*?\n    \}", conx, re.S)
     if m_con:
