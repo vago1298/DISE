@@ -109,6 +109,13 @@ public static class Tema
     ///     azul oscuro lo haría invisible. En oscuro pasa a ser el tono claro.
     ///   </item>
     ///   <item>
+    ///     <b>La cuadrícula va en un gris INTERMEDIO</b>, no en negro. El marco es
+    ///     negro y las celdas conservan sus pasteles claros, así que si las filas
+    ///     fueran también negras el salto sería durísimo justo donde está la vista.
+    ///     Un gris a media altura amortigua ese contraste sin apagar los colores de
+    ///     las columnas.
+    ///   </item>
+    ///   <item>
     ///     <b>Los nueve colores de celda de la hoja NO se tocan.</b> No están en esta
     ///     tabla a propósito, así que en oscuro conservan sus pasteles. Es lo que pidió
     ///     el usuario: <i>«deja los colores de las columnas de las secciones
@@ -152,10 +159,10 @@ public static class Tema
         ["WarningBrush"] = "#FFE0A82E",
         ["SuccessBrush"] = "#FF3FB56B",
 
-        ["GridRowBrush"] = "#FF0D0D0D",
-        ["GridAltRowBrush"] = "#FF141414",
-        ["GridLineBrush"] = "#FF2E2E2E",
-        ["HeaderBrush"] = "#FF1C1C1C",
+        ["GridRowBrush"] = "#FF4A4A4A",
+        ["GridAltRowBrush"] = "#FF525252",
+        ["GridLineBrush"] = "#FF6A6A6A",
+        ["HeaderBrush"] = "#FF3C3C3C",
 
         ["NoticeFondoBrush"] = "#FF3A3320",
         ["NoticeBordeBrush"] = "#FF7A6A32",

@@ -96,6 +96,24 @@
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
 
+    <!-- ===================== Casillas y opciones =====================
+         Los RadioButton de «Sección tipo 1 / tipo 2» y los CheckBox salían con el
+         texto NEGRO por omisión de Windows, así que en tema oscuro desaparecían
+         sobre el fondo. Con la ventana clara no se notaba porque el negro es el
+         color que tocaba. Van sin x:Key para que apliquen a todos. -->
+    <Style TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <!-- Y las etiquetas, por lo mismo. -->
+    <Style TargetType="Label">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
     <!-- ===================== Pestaña individual ===================== -->
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />

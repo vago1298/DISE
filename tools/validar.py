@@ -3123,22 +3123,21 @@ def v19_circular_y_ui() -> None:
         #   - el EXTERIOR llega a rZunExt, o sea que ATRAVIESA la banda del zuncho, y su
         #     tramo de dentro es la linea que se veia cruzando y delataba que el gancho
         #     era una pieza pegada encima. Ese tramo NO se dibuja.
-        check("el arco interior del doblez se dibuja completo",
-              "Agregar(contorno, Arco(bx, by, rIn, a1, a1 + Pi));" in cuerpo)
-        check("y el exterior se recorta donde lo tapa la banda",
-              "ArcoFueraDeLaBanda(contorno, bx, by, rOut, a1, a1 + Pi, cx, cy, rZunInt)"
-              in cuerpo)
-        check("ya no se dibuja el arco exterior completo",
-              "Agregar(contorno, Arco(bx, by, rOut, a1, a1 + Pi));" not in cuerpo)
+        # Los dos arcos del doblez arrancan en la TANGENCIA con la banda, no en el borde
+        # de la cola. Es lo que hace que el gancho se lea como continuacion del zuncho:
+        #   - el EXTERIOR sigue hasta hacerse tangente al pano exterior, porque
+        #     rPaso + rOut = rZunExt exacto; antes se cortaba donde entraba en la banda y
+        #     quedaba un tajo plano a media vuelta;
+        #   - y el INTERIOR se recorta SOLO por ese lado, el derecho.
+        check("los dos arcos del doblez arrancan en la tangencia",
+              "Agregar(contorno, Arco(bx, by, rIn, aTangente, a1 + Pi));" in cuerpo
+              and "Agregar(contorno, Arco(bx, by, rOut, aTangente, a1 + Pi));" in cuerpo)
 
-    m_afb = re.search(r"private void ArcoFueraDeLaBanda\(.*?\n    \}", circ, re.S)
-    check("se puede leer ArcoFueraDeLaBanda", m_afb is not None)
-    if m_afb:
-        c2 = m_afb.group(0)
-        check("el recorte resuelve el cono tapado con un arcocoseno",
-              "Math.Acos(k)" in c2)
-        check("y descarta los trozos de menos de medio grado",
-              "b - a < 0.009" in c2)
+        check("la tangencia es la direccion centro->varilla",
+              "var aTangente = Math.Atan2(ry * -1, rx * -1);" in cuerpo)
+
+        check("ya no se recorta el arco contra la banda, ahora sigue hasta la tangencia",
+              "ArcoFueraDeLaBanda(" not in circ)
 
         # Y la cola de dentro se recorta contra el circulo interior del zuncho, que es el
         # equivalente circular del recorte contra la linea recta del estribo.
@@ -3671,6 +3670,8 @@ def v19_circular_y_ui() -> None:
               'x:Key="CeldaLechoSupBrush"' in tema)
 
         # Lo que si tiene que oscurecerse es todo lo blanco del marco.
+        # La cuadricula NO entra en esta lista: va en un gris intermedio a proposito,
+        # para que el salto del marco negro a las celdas pastel no sea tan duro.
         for clave in ("WindowBrush", "SurfaceBrush", "CardBrush", "TabStripBrush"):
             hex_osc = re.search(rf'\["{clave}"\] = "#FF(\w{{6}})"', m_noche.group(1))
             claro_es = int(hex_osc.group(1)[:2], 16) if hex_osc else 255
@@ -3723,6 +3724,21 @@ def v19_circular_y_ui() -> None:
     check("los menus tambien siguen el tema",
           '<Style TargetType="Menu">' in tema
           and '<Style TargetType="MenuItem">' in tema)
+
+    # Los RadioButton de «Seccion tipo 1 / tipo 2» y los CheckBox salian con el texto
+    # NEGRO por omision de Windows, asi que en tema oscuro desaparecian.
+    check("las opciones y casillas tambien siguen el tema",
+          '<Style TargetType="RadioButton">' in tema
+          and '<Style TargetType="CheckBox">' in tema)
+
+    # Y la cuadricula va en gris INTERMEDIO, no en negro: el salto del marco negro a
+    # unas celdas pastel claras seria demasiado duro justo donde esta la vista.
+    if m_noche:
+        gris = re.search(r'\["GridRowBrush"\] = "#FF(\w{6})"', m_noche.group(1))
+        nivel = int(gris.group(1)[:2], 16) if gris else 0
+        check("la cuadricula va en un gris intermedio, no en negro",
+              gris is not None and 0x30 < nivel < 0x80,
+              f"vale #{gris.group(1) if gris else '?'}")
     check("ya no queda el gris de tarjeta escrito a mano",
           '#FFF3F6F9' not in xaml)
 

@@ -731,9 +731,27 @@ public sealed partial class SeccionDrawer
         //     centrados en la dirección que va del centro de la sección a la varilla.
         //
         // Comprobado al bit en tools/verificar_seccion_circular.py.
-        Agregar(contorno, Arco(bx, by, rIn, a1, a1 + Pi));
+        //
+        // ------------------------------------------------------------------
+        // Y LOS DOS ARRANCAN EN LA TANGENCIA, no en el borde de la cola
+        // ------------------------------------------------------------------
+        // Este fue el ultimo ajuste, y es el que hace que el gancho se lea como una
+        // CONTINUACION del zuncho y no como una pieza pegada:
+        //
+        //   * El arco EXTERIOR sigue hasta hacerse TANGENTE a la banda. La tangencia cae
+        //     exactamente en la direccion centro->varilla, porque rPaso + rOut = rZunExt:
+        //     ahi el doblez roza el pano exterior del zuncho y los dos se funden. Antes lo
+        //     cortaba donde entraba en la banda, y quedaba un tajo plano a media vuelta.
+        //
+        //   * El arco INTERIOR se recorta SOLO por ese lado, el derecho. Su otro extremo
+        //     llega hasta donde sale la segunda cola, sin tocar.
+        //
+        // O sea que el barrido de los dos va de la tangencia a la salida de la cola, y no
+        // del borde de una cola al de la otra como estaba antes.
+        var aTangente = Math.Atan2(ry * -1, rx * -1);
 
-        ArcoFueraDeLaBanda(contorno, bx, by, rOut, a1, a1 + Pi, cx, cy, rZunInt);
+        Agregar(contorno, Arco(bx, by, rIn, aTangente, a1 + Pi));
+        Agregar(contorno, Arco(bx, by, rOut, aTangente, a1 + Pi));
 
         // ------------------------------------------------------------------
         // Las DOS colas, una a cada lado de la varilla
@@ -769,113 +787,6 @@ public sealed partial class SeccionDrawer
                 $"Sección circular '{s.Id}': la varilla del gancho queda muy adentro " +
                 "del núcleo. Revisa el recubrimiento y el diámetro del zuncho.");
         }
-    }
-
-    /// <summary>
-    /// Dibuja un arco del doblez <b>solo donde no lo tapa la banda del zuncho</b>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// El arco vive alrededor de la varilla, en <c>(bx, by)</c>, y la banda del zuncho es
-    /// la corona de la sección, centrada en <c>(cx, cy)</c>. Lo que se ve del arco es lo
-    /// que queda <b>dentro del núcleo</b>, o sea a menos de <paramref name="rNucleo"/> del
-    /// centro de la sección; el resto está debajo del acero del zuncho y dibujarlo deja
-    /// una línea cruzando que estropea el detalle.
-    /// </para>
-    /// <para>
-    /// <b>La cuenta.</b> Un punto del arco a ángulo <c>t</c> está en
-    /// <c>B + ρ·n(t)</c>, y como <c>B = C + d·e</c>, su distancia al centro cumple
-    /// <c>|P−C|² = d² + ρ² + 2dρ·(e·n)</c>. Igualando a <c>rNucleo²</c> sale
-    /// <c>cos(t − α) = (rNucleo² − d² − ρ²) / (2dρ)</c>, con <c>α</c> el ángulo de
-    /// <c>e</c>. Es decir: el arco está tapado en un cono de semiángulo
-    /// <c>β = acos(...)</c> alrededor de <c>α</c>, y visible fuera de él.
-    /// </para>
-    /// <para>
-    /// Si el coseno se sale de <c>[−1, 1]</c> no hay cruce: el arco entero está dentro
-    /// del núcleo y se dibuja completo.
-    /// </para>
-    /// </remarks>
-    private void ArcoFueraDeLaBanda(
-        List<object> contorno, double bx, double by, double radio,
-        double angIni, double angFin, double cx, double cy, double rNucleo)
-    {
-        var dx = bx - cx;
-        var dy = by - cy;
-        var d = Math.Sqrt((dx * dx) + (dy * dy));
-
-        if (d < 1e-12 || radio <= 0)
-        {
-            Agregar(contorno, Arco(bx, by, radio, angIni, angFin));
-            return;
-        }
-
-        var k = ((rNucleo * rNucleo) - (d * d) - (radio * radio)) / (2 * d * radio);
-
-        if (k <= -1 || k >= 1)
-        {
-            // Ningun cruce: o esta todo dentro del nucleo, o todo fuera. Si el punto mas
-            // cercano al centro ya esta dentro, se ve entero.
-            if (d - radio < rNucleo)
-            {
-                Agregar(contorno, Arco(bx, by, radio, angIni, angFin));
-            }
-
-            return;
-        }
-
-        var alfa = Math.Atan2(dy, dx);
-        var beta = Math.Acos(k);
-
-        // Se trabaja en el marco del propio barrido: t = 0 en angIni.
-        var barrido = angFin - angIni;
-
-        while (barrido < 0) { barrido += 2 * Pi; }
-
-        // El tramo TAPADO, trasladado a ese marco.
-        var hIni = Normalizar(alfa - beta - angIni);
-        var hFin = hIni + (2 * beta);
-
-        // Los trozos visibles son [0, barrido] menos [hIni, hFin], contando tambien la
-        // copia desplazada 2π: el tramo tapado puede cruzar el origen del barrido.
-        var visibles = new List<(double A, double B)> { (0, barrido) };
-
-        foreach (var (tIni, tFin) in new[] { (hIni, hFin), (hIni - (2 * Pi), hFin - (2 * Pi)) })
-        {
-            var salida = new List<(double A, double B)>();
-
-            foreach (var (a, b) in visibles)
-            {
-                if (tFin <= a || tIni >= b)
-                {
-                    salida.Add((a, b));
-                    continue;
-                }
-
-                if (tIni > a) { salida.Add((a, tIni)); }
-                if (tFin < b) { salida.Add((tFin, b)); }
-            }
-
-            visibles = salida;
-        }
-
-        foreach (var (a, b) in visibles)
-        {
-            // Los trozos de menos de medio grado no aportan nada y solo ensucian el
-            // dibujo con arcos diminutos.
-            if (b - a < 0.009)
-            {
-                continue;
-            }
-
-            Agregar(contorno, Arco(bx, by, radio, angIni + a, angIni + b));
-        }
-    }
-
-    /// <summary>Lleva un ángulo al rango <c>[0, 2π)</c>.</summary>
-    private static double Normalizar(double a)
-    {
-        var t = a % (2 * Pi);
-        return t < 0 ? t + (2 * Pi) : t;
     }
 
     /// <summary>

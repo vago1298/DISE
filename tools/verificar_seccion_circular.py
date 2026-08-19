@@ -983,90 +983,51 @@ print(f"  colas que cruzan el nucleo y se recortan: {recortadas} de 2")
 check("al menos una de las dos colas se recorta contra el nucleo", recortadas >= 1,
       f"{recortadas} de 2")
 
-# ---- 7) El RECORTE de los arcos del doblez ----
+# ---- 7) Los dos arcos del doblez arrancan en la TANGENCIA ----
 #
-# El defecto que se veia en el plano era una linea cruzando por dentro de la banda del
-# zuncho, que delataba que el gancho era una pieza pegada encima en lugar de una
-# continuacion. Y los dos arcos del doblez NO estan en la misma situacion:
+# Lo que hace que el gancho se lea como una CONTINUACION del zuncho y no como una pieza
+# pegada encima es donde arrancan sus dos arcos: en la tangencia con la banda, no en el
+# borde de la cola.
 print()
-print("  hasta donde llega cada arco del doblez, medido desde el centro de la seccion:")
-for nombre, rho in (("interior (rVar)", r_var), ("exterior (rVar+dZun)", r_var + d_est)):
-    print(f"    {nombre:<22} de {r_paso-rho:.5f} a {r_paso+rho:.5f}")
-print(f"    la BANDA del zuncho     de {r_zun_int:.5f} a {r_zun_ext:.5f}")
-
-check("el arco interior es TANGENTE al nucleo, asi que se ve entero",
-      abs((r_paso + r_var) - r_zun_int) < 1e-15,
-      f"{r_paso+r_var:.8f} contra {r_zun_int:.8f}")
-
-check("el arco exterior llega al borde exterior, asi que ATRAVIESA la banda",
-      abs((r_paso + r_var + d_est) - r_zun_ext) < 1e-15)
-
-
-def arco_fuera(bx_, by_, radio, ang_ini, ang_fin, rn):
-    """Espejo de ArcoFueraDeLaBanda: los trozos del arco que NO tapa la banda."""
-    d_ = math.hypot(bx_, by_)
-    if d_ < 1e-12 or radio <= 0:
-        return [(ang_ini, ang_fin)]
-    k_ = ((rn*rn) - (d_*d_) - (radio*radio)) / (2*d_*radio)
-    if k_ <= -1 or k_ >= 1:
-        return [(ang_ini, ang_fin)] if d_ - radio < rn else []
-    alfa_ = math.atan2(by_, bx_)
-    beta_ = math.acos(k_)
-    barrido = ang_fin - ang_ini
-    while barrido < 0:
-        barrido += 2*math.pi
-    hi = (alfa_ - beta_ - ang_ini) % (2*math.pi)
-    hf = hi + 2*beta_
-    vis = [(0.0, barrido)]
-    for (ti, tf) in ((hi, hf), (hi - 2*math.pi, hf - 2*math.pi)):
-        out = []
-        for (a_, b_) in vis:
-            if tf <= a_ or ti >= b_:
-                out.append((a_, b_)); continue
-            if ti > a_: out.append((a_, ti))
-            if tf < b_: out.append((tf, b_))
-        vis = out
-    return [(ang_ini+a_, ang_ini+b_) for (a_, b_) in vis if b_-a_ >= 0.009]
-
-
-# Para CUALQUIER posicion de varilla, nada de lo que se dibuja puede caer en la banda.
-malos = 0
-for grados in range(0, 360, 5):
-    t_ = math.radians(grados)
-    bx_, by_ = r_paso*math.cos(t_), r_paso*math.sin(t_)
-    (ux_, uy_), n1_, _ = direcciones(t_)
-    a1_ = math.atan2(n1_[1], n1_[0])
-
-    # interior: completo
-    for i_ in range(101):
-        ss = a1_ + math.pi*i_/100
-        if math.hypot(bx_+r_var*math.cos(ss), by_+r_var*math.sin(ss)) > r_zun_int + 1e-9:
-            malos += 1
-
-    # exterior: recortado
-    for (ai_, af_) in arco_fuera(bx_, by_, r_var+d_est, a1_, a1_+math.pi, r_zun_int):
-        for i_ in range(101):
-            ss = ai_ + (af_-ai_)*i_/100
-            if math.hypot(bx_+(r_var+d_est)*math.cos(ss),
-                          by_+(r_var+d_est)*math.sin(ss)) > r_zun_int + 1e-9:
-                malos += 1
-
-check("ningun punto dibujado del doblez cae dentro de la banda del zuncho",
-      malos == 0, f"{malos} puntos dentro, en 72 posiciones de varilla")
-
-# Y el recorte tiene que recortar DE VERDAD, o no serviria de nada.
-t_ = -math.pi/2
+t_ = -math.pi/2                       # varilla abajo
 bx_, by_ = r_paso*math.cos(t_), r_paso*math.sin(t_)
 (ux_, uy_), n1_, _ = direcciones(t_)
 a1_ = math.atan2(n1_[1], n1_[0])
-trozos = arco_fuera(bx_, by_, r_var+d_est, a1_, a1_+math.pi, r_zun_int)
-dibujado = sum(b_-a_ for a_, b_ in trozos)
-print(f"  arco exterior: {math.degrees(math.pi):.0f} grados sin recortar, "
-      f"{math.degrees(dibujado):.1f} dibujados en {len(trozos)} trozo(s)")
 
-check("el recorte oculta una parte apreciable del arco exterior",
-      dibujado < math.pi - 0.1,
-      f"se oculta {math.degrees(math.pi-dibujado):.1f} grados")
+# alfa = direccion centro -> varilla, que es la OPUESTA al radio interior
+alfa_ = math.atan2(-(-math.sin(t_)), -(-math.cos(t_)))
+alfa_ = math.atan2(math.sin(t_), math.cos(t_))
+
+print(f"  alfa (centro->varilla)       = {math.degrees(alfa_)%360:7.2f} grados")
+print(f"  salida de la segunda cola    = {math.degrees(a1_+math.pi)%360:7.2f} grados")
+
+# El arco EXTERIOR en alfa tiene que caer EXACTAMENTE en el pano exterior del zuncho.
+p_ext = (bx_ + (r_var+d_est)*math.cos(alfa_), by_ + (r_var+d_est)*math.sin(alfa_))
+print(f"  el arco exterior en alfa esta a {math.hypot(*p_ext):.8f} del centro")
+print(f"  y el pano exterior del zuncho a {r_zun_ext:.8f}")
+
+check("el arco exterior se hace TANGENTE al pano exterior del zuncho",
+      abs(math.hypot(*p_ext) - r_zun_ext) < 1e-12,
+      f"{math.hypot(*p_ext):.8f} contra {r_zun_ext:.8f}")
+
+# Y el INTERIOR en alfa toca el pano interior, que es donde se recorta.
+p_int = (bx_ + r_var*math.cos(alfa_), by_ + r_var*math.sin(alfa_))
+check("y el interior toca el pano interior justo donde se recorta",
+      abs(math.hypot(*p_int) - r_zun_int) < 1e-12,
+      f"{math.hypot(*p_int):.8f} contra {r_zun_int:.8f}")
+
+barrido_ = (a1_ + math.pi) - alfa_
+while barrido_ < 0:
+    barrido_ += 2*math.pi
+
+print(f"  barrido de los dos arcos = {math.degrees(barrido_):.2f} grados")
+
+check("el barrido es de la tangencia a la salida de la cola, no media vuelta",
+      abs(math.degrees(barrido_) - 135) < 1e-9,
+      f"{math.degrees(barrido_):.4f} grados")
+
+check("y eso recorta 45 grados del interior por el lado derecho",
+      abs(math.degrees(math.pi - barrido_) - 45) < 1e-9)
 
 print("\n" + "=" * 78)
 if fallos:
