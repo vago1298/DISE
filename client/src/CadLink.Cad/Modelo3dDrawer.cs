@@ -167,16 +167,21 @@ public sealed class Modelo3dDrawer
                     return false;
                 }
 
-                var pts = new double[n * 3];
+                // Polilínea LIGERA, con coordenadas 2D, y no una 3D.
+                //
+                // Una polilínea 3D es válida como entidad pero AddRegion la rechaza o la
+                // acepta a medias: la región exige una curva cerrada y PLANA, y una
+                // ligera lo es por construcción, porque solo tiene X e Y. Es además la que
+                // usa el resto del programa para todos sus contornos cerrados.
+                var pts = new double[n * 2];
 
                 for (var i = 0; i < n; i++)
                 {
-                    pts[(3 * i) + 0] = b.PerfilX[i];
-                    pts[(3 * i) + 1] = b.PerfilY[i];
-                    pts[(3 * i) + 2] = 0;
+                    pts[(2 * i) + 0] = b.PerfilX[i];
+                    pts[(2 * i) + 1] = b.PerfilY[i];
                 }
 
-                dynamic pl = _ms.Add3DPoly(pts);
+                dynamic pl = _ms.AddLightWeightPolyline(pts);
                 pl.Closed = true;
 
                 // 2) La region, que es lo unico que AutoCAD sabe extruir.
@@ -202,12 +207,16 @@ public sealed class Modelo3dDrawer
 
                 dynamic region = regiones[0];
 
-                // 3) La extrusion, a lo largo de +Z.
+                // 3) La extrusión.
+                //
+                // OJO: AddExtrudedSolid está en el ESPACIO MODELO, no en la región. La
+                // región es el perfil que se le pasa. Llamarlo sobre la región es lo que
+                // hacía esta línea antes y no existe en la API.
                 dynamic solido;
 
                 try
                 {
-                    solido = region.AddExtrudedSolid(largo, 0d);
+                    solido = _ms.AddExtrudedSolid(region, largo, 0d);
                 }
                 catch (Exception)
                 {
@@ -215,10 +224,15 @@ public sealed class Modelo3dDrawer
                     return false;
                 }
 
-                // La region se consume al extruir en algunas versiones y en otras no.
-                Borrar(region);
+                // Y LA REGIÓN NO SE BORRA. Aquí estaba el cierre inesperado de AutoCAD:
+                // AddExtrudedSolid CONSUME el perfil —pasa a formar parte del sólido— así
+                // que la región ya no existe cuando se vuelve. Llamar a Delete() sobre un
+                // objeto COM ya destruido no lanza excepción: se lleva AutoCAD por
+                // delante, y por eso no había forma de capturarlo. Antes había aquí un
+                // Borrar(region) con un comentario que decía que «en algunas versiones se
+                // consume y en otras no». Era una suposición, y era la equivocada.
 
-                // 4) Y la colocacion, de una sola vez.
+                // 4) Y la colocación, de una sola vez.
                 solido.TransformBy(Matriz(b.P1, b.P2, largo));
                 solido.Layer = b.Capa;
 
@@ -277,7 +291,13 @@ public sealed class Modelo3dDrawer
     /// derecho.
     /// </para>
     /// </remarks>
-    private static double[] Matriz(double[] p1, double[] p2, double largo)
+    /// <remarks>
+    /// <b>Devuelve una matriz 4×4 de verdad</b>, un <c>double[4,4]</c>, y no un arreglo
+    /// plano de dieciséis. <c>TransformBy</c> espera lo primero, y pasarle lo segundo era
+    /// el tercero de los tres errores de API que tenía este método: AutoCAD no puede
+    /// interpretar las dimensiones y el comportamiento queda indefinido.
+    /// </remarks>
+    private static double[,] Matriz(double[] p1, double[] p2, double largo)
     {
         var w = new[]
         {
@@ -313,13 +333,14 @@ public sealed class Modelo3dDrawer
             };
         }
 
-        // Por FILAS, que es como la quiere AutoCAD.
-        return new[]
+        // Por FILAS, que es como la quiere AutoCAD: las tres primeras columnas son el
+        // marco y la cuarta la traslación.
+        return new[,]
         {
-            u[0], v[0], w[0], p1[0],
-            u[1], v[1], w[1], p1[1],
-            u[2], v[2], w[2], p1[2],
-            0d,   0d,   0d,   1d
+            { u[0], v[0], w[0], p1[0] },
+            { u[1], v[1], w[1], p1[1] },
+            { u[2], v[2], w[2], p1[2] },
+            { 0d,   0d,   0d,   1d    }
         };
     }
 

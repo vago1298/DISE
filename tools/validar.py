@@ -2478,8 +2478,44 @@ def v16_extruida_piers() -> None:
     check("y su manejador existe", "private void OnDibujar3dCad(" in codigo)
 
     # SOLIDOS y no cajas ni lineas: un solido se puede seccionar y acotar en AutoCAD.
-    check("cada barra se extruye como solido",
-          "AddExtrudedSolid(largo, 0d)" in m3d)
+    # ------------------------------------------------------------------
+    # Las tres llamadas COM que cerraban AutoCAD
+    # ------------------------------------------------------------------
+    # Ninguna de las tres la ve el compilador: todo va por dynamic. Y una de ellas no
+    # lanzaba excepcion, se llevaba AutoCAD por delante, asi que no habia forma de
+    # capturarla. Se fijan aqui por texto porque es el unico sitio donde se pueden fijar.
+
+    # 1) AddExtrudedSolid esta en el ESPACIO MODELO, no en la region.
+    check("la extrusion se pide al espacio modelo, no a la region",
+          "_ms.AddExtrudedSolid(region, largo, 0d)" in m3d)
+    check("y ya no se llama sobre la region, que no existe en la API",
+          "region.AddExtrudedSolid(" not in m3d)
+
+    # 2) EL CIERRE DE AUTOCAD: AddExtrudedSolid CONSUME la region, asi que borrarla
+    #    despues es llamar Delete() sobre un objeto COM ya destruido. Eso no lanza: mata
+    #    el proceso.
+    # Solo puede quedar UN Borrar(region): el del catch, que si es correcto, porque si la
+    # extrusion FALLA la region no se consumio y hay que limpiarla. Lo que no puede haber
+    # es uno en el camino de exito.
+    check("solo se borra la region si la extrusion FALLO",
+          m3d.count("Borrar(region);") == 1,
+          f"{m3d.count('Borrar(region);')} Borrar(region), deberia haber 1")
+
+    check("y queda escrito por que no se borra al salir bien",
+          "AddExtrudedSolid CONSUME el perfil" in m3d)
+
+    # 3) TransformBy quiere una matriz 4x4 de verdad, no un arreglo plano de 16.
+    check("la matriz de colocacion es 4x4, no un arreglo plano",
+          "private static double[,] Matriz(" in m3d)
+    check("y se construye por filas", "return new[,]" in m3d)
+
+    # Y el contorno va como polilinea LIGERA: AddRegion exige una curva cerrada y PLANA,
+    # y una ligera lo es por construccion porque solo tiene X e Y.
+    check("el contorno del perfil es una polilinea ligera y plana",
+          "_ms.AddLightWeightPolyline(pts)" in m3d)
+    check("y ya no una polilinea 3D, que AddRegion no acepta bien",
+          "Add3DPoly(" not in m3d)
+
     check("y el perfil sale de la region de su contorno",
           "_ms.AddRegion(" in m3d)
 
@@ -2488,7 +2524,7 @@ def v16_extruida_piers() -> None:
     check("la barra se coloca con una matriz, no con giros sucesivos",
           "solido.TransformBy(Matriz(b.P1, b.P2, largo));" in m3d)
 
-    m_mat = re.search(r"private static double\[\] Matriz\(.*?\n    \}", m3d, re.S)
+    m_mat = re.search(r"private static double\[,\] Matriz\(.*?\n    \}", m3d, re.S)
     check("se puede leer Matriz", m_mat is not None)
     if m_mat:
         cuerpo = m_mat.group(0)
