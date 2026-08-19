@@ -5,7 +5,7 @@
         Width="1240" Height="760"
         MinWidth="960" MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource WindowBrush}">
+        Background="{DynamicResource WindowBrush}">
 
     <!-- Los atajos de siempre. Estaban prometidos en los ToolTip de los botones
          pero no existian: escribir Ctrl+G no hacia nada. -->
@@ -45,8 +45,8 @@
 
              El Menu va DENTRO de esta barra y no como control suelto para que los
              dos grupos queden alineados en la misma linea de base. -->
-        <Border Grid.Row="0" Background="{StaticResource TabStripBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                 Padding="4,2">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -143,7 +143,7 @@
                     <TextBlock x:Name="ArchivoText" FontSize="11.5"
                                VerticalAlignment="Center"
                                Margin="16,0,6,0" TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource MutedTextBrush}" />
+                               Foreground="{DynamicResource MutedTextBrush}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -156,9 +156,9 @@
              barra de estado de abajo, que es su lugar. Esos 54 px son ahora alto
              util de las hojas. El logo sigue vivo: es el icono de la ventana. -->
         <Border x:Name="NoticeBar" Grid.Row="1"
-                Background="{StaticResource NoticeFondoBrush}" BorderBrush="{StaticResource NoticeBordeBrush}" BorderThickness="0,0,0,1"
+                Background="{DynamicResource NoticeFondoBrush}" BorderBrush="{DynamicResource NoticeBordeBrush}" BorderThickness="0,0,0,1"
                 Padding="16,8" Visibility="Collapsed">
-            <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource NoticeTextoBrush}" />
+            <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource NoticeTextoBrush}" />
         </Border>
 
         <!-- ==================== Hojas ==================== -->
@@ -175,7 +175,7 @@
 
                         <!-- ===== Datos de la SOLAPA (el cuadro de rotulos) ===== -->
                         <TextBlock Text="Solapa de los planos" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,24,0,2" Foreground="{StaticResource BrandDarkBrush}" />
+                                   Margin="0,24,0,2" Foreground="{DynamicResource BrandDarkBrush}" />
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Lo que se imprime en el cuadro de rotulos de cada plano." />
 
@@ -212,7 +212,7 @@
                                             ToolTip="Elige el dia en el calendario. En la solapa se imprime el mes y el ano con letra." />
                                 <TextBlock x:Name="FechaTextoLabel" VerticalAlignment="Center"
                                            Margin="10,0,0,0" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{StaticResource BrandDarkBrush}" />
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
                             </StackPanel>
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Ubicacion:" VerticalAlignment="Center" />
@@ -232,7 +232,7 @@
 
                         <!-- ===== Juego de planos ===== -->
                         <TextBlock Text="Juego de planos" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,22,0,2" Foreground="{StaticResource BrandDarkBrush}" />
+                                   Margin="0,22,0,2" Foreground="{DynamicResource BrandDarkBrush}" />
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="El numero de plano se pone solo: al agregar, quitar o reordenar se renumera todo el juego." />
 
@@ -246,7 +246,7 @@
                             <Button Content="Bajar" Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnBajarPlano" />
                             <TextBlock x:Name="PlanosResumenText" FontSize="11.5" VerticalAlignment="Center"
-                                       Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                                       Margin="14,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
                         </StackPanel>
 
                         <!-- Se permite BORRAR con la tecla Supr. Agregar sigue siendo por el boton, para
@@ -299,13 +299,13 @@
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
                                            VerticalAlignment="Center" Margin="0,0,14,0"
-                                           Foreground="{StaticResource BrandDarkBrush}" />
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
 
                                 <RadioButton x:Name="Tipo1Radio" GroupName="TipoSeccion" IsChecked="True"
                                              VerticalAlignment="Center" Margin="0,0,22,0"
@@ -319,12 +319,12 @@
                                     <TextBlock Text="Seccion tipo 2 - rellena" FontWeight="SemiBold" FontSize="12" />
                                 </RadioButton>
 
-                                <Border Width="1" Background="{StaticResource BorderBrush}"
+                                <Border Width="1" Background="{DynamicResource BorderBrush}"
                                         Margin="18,2,18,2" />
 
                                 <TextBlock Text="Escala del hatch:" FontWeight="SemiBold" FontSize="12"
                                            VerticalAlignment="Center" Margin="0,0,8,0"
-                                           Foreground="{StaticResource BrandDarkBrush}" />
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
                                 <TextBox x:Name="HatchScaleBox" Text="0.0003" Width="90" Height="26"
                                          VerticalAlignment="Center" VerticalContentAlignment="Center"
                                          Padding="6,0"
@@ -332,7 +332,7 @@
                                          LostFocus="OnEscalaHatchCambiada" />
                                 <TextBlock Text="(sube el numero si se ve muy fino)"
                                            FontSize="10.5" VerticalAlignment="Center" Margin="8,0,0,0"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                           Foreground="{DynamicResource MutedTextBrush}" />
 
                                 <!-- La escala de DIBUJO ya no se captura: el dibujo sale
                                      siempre igual, asi que la casilla solo era una forma de
@@ -458,7 +458,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="2" Background="{StaticResource TotalesBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Grid.Row="2" Background="{DynamicResource TotalesBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1,0,1,1" Padding="12,7">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -468,7 +468,7 @@
 
                             <TextBlock x:Name="TotalesText" Grid.Column="0" FontSize="12" FontWeight="SemiBold"
                                        VerticalAlignment="Center"
-                                       Foreground="{StaticResource BrandDarkBrush}" />
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
 
                             <!-- El boton de dibujar vive aqui, junto a la tabla que
                                  dibuja, y no en una pestaña aparte. -->
@@ -496,7 +496,7 @@
                          sobre concreto claro, asi que un azul fuerte dejaria las
                          varillas y las cotas sin contraste. -->
                     <Border Grid.Row="3" Background="{StaticResource PreviewFondoBrush}"
-                            BorderBrush="{StaticResource BrandBrush}"
+                            BorderBrush="{DynamicResource BrandBrush}"
                             BorderThickness="1" Margin="0,10,0,0">
                         <Grid>
                             <Canvas x:Name="PreviewCanvas"
@@ -505,7 +505,7 @@
                             <TextBlock Text="Vista previa de la seccion seleccionada"
                                        FontSize="10.5" Margin="8,6,0,0"
                                        VerticalAlignment="Top" HorizontalAlignment="Left"
-                                       Foreground="{StaticResource BrandDarkBrush}" />
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
 
                             <!-- Notas y avisos del ultimo dibujo. Vivian en la pestaña
                                  AutoCAD, que se quito; van aqui porque es donde esta el
@@ -513,11 +513,11 @@
                                  decir: el codigo lo deja vacio si el dibujo salio limpio. -->
                             <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
                                     Background="#CCFFFFFF" Padding="8,4" Margin="1"
-                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
                                 <ScrollViewer MaxHeight="72" VerticalScrollBarVisibility="Auto">
                                     <TextBlock x:Name="ExportHintText" FontSize="10.5"
                                                TextWrapping="Wrap"
-                                               Foreground="{StaticResource MutedTextBrush}" />
+                                               Foreground="{DynamicResource MutedTextBrush}" />
                                 </ScrollViewer>
                             </Border>
                         </Grid>
@@ -531,9 +531,9 @@
                     <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Perfiles IPR, IR, HSS, canales y angulos, con sus placas y atiesadores." />
-                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja y armo la cuadricula con sus columnas reales, igual que se hizo con las secciones de concreto." />
                     </Border>
                 </StackPanel>
@@ -545,9 +545,9 @@
                     <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Cimentacion continua, con su armado longitudinal y transversal." />
-                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
                 </StackPanel>
@@ -559,9 +559,9 @@
                     <TextBlock Text="Zapatas aisladas" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Dados, parrillas y anclaje de la columna que desplanta." />
-                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
                 </StackPanel>
@@ -573,9 +573,9 @@
                     <TextBlock Text="Muros de contencion" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Seccion del muro, talon, punta y su armado." />
-                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
                 </StackPanel>
@@ -587,9 +587,9 @@
                     <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Placa, anclas, atiesadores y su detalle de montaje." />
-                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
                 </StackPanel>
@@ -601,9 +601,9 @@
                     <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
-                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
                 </StackPanel>
@@ -617,12 +617,12 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
 
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="16"
                                 MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,16">
                             <StackPanel>
                                 <TextBlock Text="Antes de conectar" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" />
-                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource MutedTextBrush}"
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"
                                            Text="1. ETABS abierto, con el modelo cargado.&#x0a;2. Sin cuadros de dialogo abiertos en ETABS.&#x0a;3. El modelo guardado al menos una vez." />
                             </StackPanel>
                         </Border>
@@ -637,14 +637,14 @@
 
                         <TextBlock x:Name="EtabsStatusText" FontSize="12" TextWrapping="Wrap" MaxWidth="760"
                                    FontFamily="Consolas"
-                                   Foreground="{StaticResource TextBrush}" Margin="0,0,0,14" />
+                                   Foreground="{DynamicResource TextBrush}" Margin="0,0,0,14" />
 
                         <!-- ===== Visor del modelo: 3D y planta ===== -->
                         <TextBlock Text="Vista del modelo" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
+                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
 
                         <!-- Filtros por tipo de elemento, comunes a las dos vistas -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
@@ -684,16 +684,16 @@
                                         <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="PLANTA" Click="OnVistaPreset" />
                                         <TextBlock Text="Arrastra para girar. Rueda para zoom. Boton derecho para mover."
-                                                   FontSize="10.5" Foreground="{StaticResource MutedTextBrush}"
+                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
                                                    VerticalAlignment="Center" Margin="14,0,0,0" />
                                     </StackPanel>
 
-                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{StaticResource SurfaceBrush}">
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
                                         <!-- El Background es imprescindible: sin el, el Canvas no
                                              recibe los eventos del mouse. -->
                                         <Canvas x:Name="Vista3DCanvas" Height="430" ClipToBounds="True"
-                                                Background="{StaticResource SurfaceBrush}"
+                                                Background="{DynamicResource SurfaceBrush}"
                                                 MouseLeftButtonDown="OnVistaMouseDown"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
@@ -718,14 +718,14 @@
                                         <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="PLANTA" Click="OnVistaPreset" />
                                         <TextBlock Text="Cada elemento con su seccion real y sombreado. Arrastra para girar."
-                                                   FontSize="10.5" Foreground="{StaticResource MutedTextBrush}"
+                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
                                                    VerticalAlignment="Center" Margin="14,0,0,0" />
                                     </StackPanel>
 
-                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{StaticResource SurfaceBrush}">
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
                                         <Canvas x:Name="ExtruidaCanvas" Height="430" ClipToBounds="True"
-                                                Background="{StaticResource SurfaceBrush}"
+                                                Background="{DynamicResource SurfaceBrush}"
                                                 MouseLeftButtonDown="OnVistaMouseDown"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
@@ -744,7 +744,7 @@
                              obligaria a columnas vacias en las dos. -->
                         <TextBlock x:Name="PiersTitulo" Text="Piers de muros" FontWeight="SemiBold"
                                    FontSize="12.5" Visibility="Collapsed"
-                                   Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
+                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
 
                         <DataGrid x:Name="PiersGrid" Style="{StaticResource SheetGridStyle}"
                                   Height="200" IsReadOnly="True" CanUserAddRows="False"
@@ -763,7 +763,7 @@
                         </DataGrid>
 
                         <TextBlock Text="Elementos leidos" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
+                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
 
                         <DataGrid x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
                                   Height="300" IsReadOnly="True" CanUserAddRows="False"
@@ -805,11 +805,11 @@
                                     ToolTip="Dibuja en AutoCAD la planta del nivel elegido, con los filtros de arriba.&#10;Requiere AutoCAD abierto." />
 
                             <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
-                                       Margin="14,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                                       Margin="14,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
                         </StackPanel>
 
                         <!-- Los mismos filtros por tipo de elemento que el visor 3D -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
@@ -834,14 +834,14 @@
                                                   VerticalAlignment="Center"
                                                   SelectionChanged="OnNivelPlantaCambiado" />
                                         <TextBlock Text="Rueda para zoom. Boton derecho para mover."
-                                                   FontSize="10.5" Foreground="{StaticResource MutedTextBrush}"
+                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
                                                    VerticalAlignment="Center" Margin="14,0,0,0" />
                                     </StackPanel>
 
-                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{StaticResource SurfaceBrush}">
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
                                         <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
-                                                Background="{StaticResource SurfaceBrush}"
+                                                Background="{DynamicResource SurfaceBrush}"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
                                                 MouseRightButtonUp="OnVistaMouseUp"
@@ -850,7 +850,7 @@
                                     </Border>
                                 </StackPanel>
                         <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}"
                                    Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
                     </StackPanel>
                 </ScrollViewer>
@@ -864,7 +864,7 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
 
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -909,7 +909,7 @@
                         </StackPanel>
 
                         <TextBlock x:Name="LicMessageText" FontSize="11.5" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
+                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -919,8 +919,8 @@
         <!-- Aqui aterrizo lo unico del cuadro azul que no estaba en otro sitio: el
              estado de la licencia y la version. Ocupan el alto que ya gastaba esta
              barra, asi que la ventana gano el alto entero del encabezado. -->
-        <Border Grid.Row="3" Background="{StaticResource TabStripBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
+        <Border Grid.Row="3" Background="{DynamicResource TabStripBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -931,14 +931,14 @@
 
                 <TextBlock Grid.Column="0" x:Name="StatusText" FontSize="11"
                            TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource MutedTextBrush}" />
+                           Foreground="{DynamicResource MutedTextBrush}" />
                 <TextBlock Grid.Column="1" x:Name="CountsText" FontSize="11"
-                           Margin="12,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                           Margin="12,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
 
                 <TextBlock Grid.Column="2" x:Name="HeaderLicense" FontSize="11" FontWeight="SemiBold"
-                           Margin="16,0,0,0" Foreground="{StaticResource BrandDarkBrush}" />
+                           Margin="16,0,0,0" Foreground="{DynamicResource BrandDarkBrush}" />
                 <TextBlock Grid.Column="3" x:Name="HeaderVersion" FontSize="11"
-                           Margin="8,0,0,0" Foreground="{StaticResource MutedTextBrush}" />
+                           Margin="8,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
             </Grid>
         </Border>
     </Grid>

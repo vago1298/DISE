@@ -3116,9 +3116,29 @@ def v19_circular_y_ui() -> None:
 
         # El doblez se dibuja tambien como CONTORNO, no solo como relleno: si no, en la
         # seccion tipo 1 el gancho salia como dos colas sueltas sin nada que las uniera.
-        check("el doblez se dibuja como contorno, para que salga en tipo 1",
-              "Agregar(contorno, Arco(bx, by, rIn, a1, a1 + Pi));" in cuerpo
-              and "Agregar(contorno, Arco(bx, by, rOut, a1, a1 + Pi));" in cuerpo)
+        # El doblez se dibuja como contorno, para que salga tambien en tipo 1. Y los dos
+        # arcos NO estan en la misma situacion, que es lo que faltaba mirar:
+        #   - el INTERIOR es tangente al borde del nucleo (rPaso + rVar = rZunInt, exacto)
+        #     asi que cae entero dentro y se dibuja COMPLETO;
+        #   - el EXTERIOR llega a rZunExt, o sea que ATRAVIESA la banda del zuncho, y su
+        #     tramo de dentro es la linea que se veia cruzando y delataba que el gancho
+        #     era una pieza pegada encima. Ese tramo NO se dibuja.
+        check("el arco interior del doblez se dibuja completo",
+              "Agregar(contorno, Arco(bx, by, rIn, a1, a1 + Pi));" in cuerpo)
+        check("y el exterior se recorta donde lo tapa la banda",
+              "ArcoFueraDeLaBanda(contorno, bx, by, rOut, a1, a1 + Pi, cx, cy, rZunInt)"
+              in cuerpo)
+        check("ya no se dibuja el arco exterior completo",
+              "Agregar(contorno, Arco(bx, by, rOut, a1, a1 + Pi));" not in cuerpo)
+
+    m_afb = re.search(r"private void ArcoFueraDeLaBanda\(.*?\n    \}", circ, re.S)
+    check("se puede leer ArcoFueraDeLaBanda", m_afb is not None)
+    if m_afb:
+        c2 = m_afb.group(0)
+        check("el recorte resuelve el cono tapado con un arcocoseno",
+              "Math.Acos(k)" in c2)
+        check("y descarta los trozos de menos de medio grado",
+              "b - a < 0.009" in c2)
 
         # Y la cola de dentro se recorta contra el circulo interior del zuncho, que es el
         # equivalente circular del recorte contra la linea recta del estribo.
@@ -3690,10 +3710,19 @@ def v19_circular_y_ui() -> None:
               "TemaButton.Content" in cuerpo)
 
     # Y los colores quemados a mano salieron a la paleta, o no podrian cambiar.
+    # DynamicResource y no StaticResource: es lo que permite SUSTITUIR el recurso
+    # cuando la brocha esta congelada, que es el caso en que el tema no aplicaba.
     check("el fondo de la ventana sale de la paleta",
-          'Background="{StaticResource WindowBrush}"' in xaml)
+          'Background="{DynamicResource WindowBrush}"' in xaml)
     check("y las tarjetas tambien, que estaban repetidas once veces",
-          xaml.count('Background="{StaticResource CardBrush}"') >= 10)
+          xaml.count('Background="{DynamicResource CardBrush}"') >= 10)
+    check("las brochas del tema se referencian con DynamicResource",
+          xaml.count("{DynamicResource") > 50)
+    check("y el tema sabe sustituir la brocha si esta congelada",
+          "recursos[clave] = new SolidColorBrush(color);" in temacs)
+    check("los menus tambien siguen el tema",
+          '<Style TargetType="Menu">' in tema
+          and '<Style TargetType="MenuItem">' in tema)
     check("ya no queda el gris de tarjeta escrito a mano",
           '#FFF3F6F9' not in xaml)
 

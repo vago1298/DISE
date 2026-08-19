@@ -219,6 +219,7 @@ public sealed class SeccionConcretoRow : Row
         {
             Set(ref _elemento, value);
             AplicarFcPorOmision();
+            AplicarPrefijoDeId();
 
             // El Elemento decide la FORMA: al pasar de COLUMNA a COLUMNA CIRCULAR
             // cambia todo lo que depende de ella, y la cuadricula y la vista previa
@@ -227,6 +228,110 @@ public sealed class SeccionConcretoRow : Row
             Raise(nameof(ElementoRotulo));
             Raise(nameof(DiametroCm));
         }
+    }
+
+    // ==================================================================
+    //  Prefijo del ID según el elemento
+    // ==================================================================
+
+    /// <summary>
+    /// Prefijo de ID que le toca a cada elemento, y <c>null</c> si no le toca ninguno.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son los mismos prefijos que <c>MainWindow.TipoDe</c> ya reconoce para adivinar el
+    /// tipo cuando el elemento viene en blanco, así que esto no inventa una convención
+    /// nueva: la <b>completa sola</b> en lugar de esperar a que el usuario se la sepa de
+    /// memoria.
+    /// </para>
+    /// <para>
+    /// <b>OTRO no lleva prefijo</b> a propósito: es la fila donde el usuario pone lo que
+    /// quiera, y ahí el ID también es suyo.
+    /// </para>
+    /// </remarks>
+    public static string? PrefijoDeId(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim().ToUpperInvariant();
+
+        return e switch
+        {
+            // Las dos columnas comparten prefijo: en el plano las dos son COLUMNA, y la
+            // forma no cambia como se numeran.
+            "COLUMNA" => "C-",
+            "COLUMNA CIRCULAR" => "C-",
+            "DADO" => "D-",
+            "CASTILLO" => "K-",
+            "TRABE" => "T-",
+            "CONTRATRABE" => "CT-",
+            "CABEZAL" => "CA-",
+            "CADENA DE CERRAMIENTO" => "CC-",
+            "CADENA DE DESPLANTE" => "CD-",
+            _ => null
+        };
+    }
+
+    /// <summary>Todos los prefijos conocidos, del más largo al más corto.</summary>
+    /// <remarks>
+    /// El orden importa: al reconocer el prefijo de un ID hay que probar <c>CT-</c> antes
+    /// que <c>C-</c>, o «CT-3» se leería como una columna llamada «T-3».
+    /// </remarks>
+    private static readonly string[] Prefijos =
+        { "CT-", "CC-", "CD-", "CA-", "C-", "D-", "K-", "T-" };
+
+    /// <summary>
+    /// Pone en el ID el prefijo del elemento, <b>conservando el número</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Al elegir TRABE el ID pasa a <c>T-</c> y el usuario escribe el número. Si ya había
+    /// un número, se conserva: de <c>T-101</c> a COLUMNA sale <c>C-101</c>, no
+    /// <c>C-</c> vacío. Es lo que espera quien se equivocó de elemento y lo corrige.
+    /// </para>
+    /// <para>
+    /// <b>Un ID que no sigue la convención NO se toca.</b> Si el usuario escribió
+    /// «MÉNSULA-3» o «EJE 4», eso es suyo y cambiar el elemento no puede borrárselo: solo
+    /// se reescribe cuando el ID está vacío o cuando empieza por uno de los prefijos
+    /// conocidos, que es la señal de que lo puso este mismo mecanismo.
+    /// </para>
+    /// </remarks>
+    private void AplicarPrefijoDeId()
+    {
+        var prefijo = PrefijoDeId(_elemento);
+
+        if (prefijo is null)
+        {
+            // OTRO y cualquier nombre escrito a mano: el ID se queda como esté.
+            return;
+        }
+
+        var actual = (_id ?? string.Empty).Trim();
+
+        if (actual.Length == 0)
+        {
+            Id = prefijo;
+            return;
+        }
+
+        // ¿Empieza por un prefijo conocido? Entonces se cambia el prefijo y se conserva
+        // lo que venía detrás.
+        foreach (var p in Prefijos)
+        {
+            if (!actual.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var resto = actual[p.Length..];
+
+            if (!string.Equals(p, prefijo, StringComparison.OrdinalIgnoreCase))
+            {
+                Id = prefijo + resto;
+            }
+
+            return;
+        }
+
+        // No sigue la convención: es un ID del usuario y no se toca.
     }
 
     /// <summary>

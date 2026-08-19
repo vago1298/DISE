@@ -180,20 +180,25 @@ public static class Tema
             // Si la brocha no existe se salta en silencio: puede pasar mientras se
             // reorganiza el XAML, y una ventana con un color viejo es mejor que una
             // excepcion al arrancar.
-            if (recursos[clave] is not SolidColorBrush brocha)
-            {
-                continue;
-            }
-
-            if (brocha.IsFrozen)
-            {
-                // No deberia pasar con las brochas del XAML, pero si alguien las
-                // congela, mutarlas lanza excepcion.
-                continue;
-            }
-
             var color = (Color)ColorConverter.ConvertFromString(hex);
-            brocha.Color = color;
+
+            // Camino 1: mutar la brocha que ya está. Repinta en el sitio, y funciona
+            // igual con StaticResource que con DynamicResource.
+            if (recursos[clave] is SolidColorBrush brocha && !brocha.IsFrozen)
+            {
+                brocha.Color = color;
+                continue;
+            }
+
+            // Camino 2: la brocha está CONGELADA, así que mutarla lanzaría excepción.
+            //
+            // Y esto pasa de verdad: WPF congela los Freezable de un ResourceDictionary
+            // cargado de BAML cuando puede, y entonces el camino 1 no hacía nada y el
+            // tema «no aplicaba» sin dar ningún error. Era exactamente el síntoma que se
+            // reportó. Aquí se SUSTITUYE el recurso, que es lo que obliga a que las
+            // referencias sean DynamicResource: una StaticResource ya resuelta no se
+            // enteraría del cambio.
+            recursos[clave] = new SolidColorBrush(color);
         }
 
         Oscuro = oscuro;

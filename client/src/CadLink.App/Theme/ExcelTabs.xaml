@@ -81,9 +81,24 @@
     <SolidColorBrush x:Key="CeldaAcabadoBrush" Color="#FFF4F1E8" />
     <SolidColorBrush x:Key="CeldaCalculadaBrush" Color="#FFEDEDED" />
 
+    <!-- ===================== Menú =====================
+         Sin estos dos estilos el menú se queda con los colores por omisión de
+         Windows —fondo claro y texto negro— y en tema oscuro era lo único que
+         seguía saliendo blanco. Van SIN x:Key a propósito: así se aplican a
+         todos los Menu y MenuItem de la ventana sin tener que tocarlos uno a uno. -->
+    <Style TargetType="Menu">
+        <Setter Property="Background" Value="{DynamicResource TabStripBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
     <!-- ===================== Pestaña individual ===================== -->
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Padding" Value="14,7" />
         <Setter Property="Margin" Value="0,0,2,0" />
@@ -96,8 +111,8 @@
                              hacia el contenido, y las esquinas se redondean arriba.
                              Cuando la tira estaba abajo era al contrario. -->
                         <Border x:Name="Bg"
-                                Background="{StaticResource TabInactiveBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
+                                Background="{DynamicResource TabInactiveBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1,1,1,0"
                                 CornerRadius="4,4,0,0">
                             <ContentPresenter x:Name="Label"
@@ -113,17 +128,17 @@
                         <Border x:Name="Accent"
                                 Height="3"
                                 VerticalAlignment="Top"
-                                Background="{StaticResource BrandBrush}"
+                                Background="{DynamicResource BrandBrush}"
                                 CornerRadius="4,4,0,0"
                                 Visibility="Collapsed" />
                     </Grid>
 
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource SurfaceBrush}" />
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceBrush}" />
                             <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
                             <Setter Property="FontWeight" Value="SemiBold" />
-                            <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
                             <Setter Property="Panel.ZIndex" Value="10" />
                         </Trigger>
 
@@ -132,11 +147,11 @@
                                 <Condition Property="IsSelected" Value="False" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource TabHoverBrush}" />
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource TabHoverBrush}" />
                         </MultiTrigger>
 
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                             <Setter Property="Opacity" Value="0.55" />
                             <Setter Property="Cursor" Value="No" />
                         </Trigger>
@@ -153,7 +168,7 @@
              buscarlas al pie de la ventana, lejos del menu y de la barra de
              herramientas con las que se combinan. -->
         <Setter Property="TabStripPlacement" Value="Top" />
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource ExcelTabItemStyle}" />
         <Setter Property="Template">
@@ -186,7 +201,7 @@
                              es un problema: la pestaña activa ya se distingue por su fondo
                              blanco, su barra de acento y su texto en negrita.
                              ============================================================== -->
-                        <Border Grid.Row="0" Background="{StaticResource TabStripBrush}" Padding="6,4,6,0">
+                        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}" Padding="6,4,6,0">
                             <WrapPanel IsItemsHost="True" Orientation="Horizontal" />
                         </Border>
 
@@ -194,7 +209,7 @@
                              tira, para que la hoja activa se lea unida a su pestaña. -->
                         <Border Grid.Row="1"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="0,1,0,0">
                             <ContentPresenter ContentSource="SelectedContent" />
                         </Border>
@@ -208,19 +223,19 @@
     <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="17" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="Margin" Value="0,0,0,3" />
     </Style>
 
     <Style x:Key="ModuleSubtitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,0,0,14" />
     </Style>
 
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource BrandBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BrandBrush}" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="14,7" />
@@ -238,10 +253,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandDarkBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandDarkBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource DisabledTextBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DisabledTextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -250,7 +265,7 @@
     </Style>
 
     <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-        <Setter Property="Background" Value="{StaticResource MutedTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource MutedTextBrush}" />
     </Style>
 
     <!-- Celda con lista desplegable, como la validación de datos de Excel.
@@ -276,12 +291,12 @@
         <Setter Property="CanUserDeleteRows" Value="True" />
         <Setter Property="HeadersVisibility" Value="All" />
         <Setter Property="GridLinesVisibility" Value="All" />
-        <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource GridLineBrush}" />
-        <Setter Property="VerticalGridLinesBrush" Value="{StaticResource GridLineBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="RowBackground" Value="{StaticResource GridRowBrush}" />
-        <Setter Property="AlternatingRowBackground" Value="{StaticResource GridAltRowBrush}" />
+        <Setter Property="RowBackground" Value="{DynamicResource GridRowBrush}" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource GridAltRowBrush}" />
         <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
         <Setter Property="FontSize" Value="12" />
     </Style>
@@ -355,18 +370,18 @@
     <Style x:Key="CeldaCalculada" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
         <Setter Property="FontStyle" Value="Italic" />
-        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
     </Style>
 
     <!-- Encabezado de la hoja: se queda fijo arriba y con aire suficiente para
          que los nombres de dos palabras se lean. -->
     <Style x:Key="EncabezadoHojaStyle" TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="{StaticResource HeaderBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Padding" Value="6,6" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="0,0,1,1" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -382,7 +397,7 @@
          alto de la ventana. -->
     <Style x:Key="ToolbarButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="Margin" Value="0,0,2,0" />
@@ -399,13 +414,13 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource TabHoverBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ToolbarPressedBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarPressedBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -418,14 +433,14 @@
          un golpe de vista sin romper la barra. -->
     <Style x:Key="ToolbarPrimaryButtonStyle" TargetType="Button"
            BasedOn="{StaticResource ToolbarButtonStyle}">
-        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <!-- Separador vertical de la barra, para agrupar acciones -->
     <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
         <Setter Property="Width" Value="1" />
-        <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
         <Setter Property="Margin" Value="7,5,7,5" />
     </Style>
 
