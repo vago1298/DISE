@@ -115,7 +115,7 @@ public sealed class ModeloEtabs
         s.AppendLine($"Programa : {Programa}");
         s.AppendLine($"Modelo   : {Archivo}");
         s.AppendLine();
-        s.AppendLine($"ETABS devolvió:  {Puntos} puntos, {Frames} frames, {Areas} áreas");
+        s.AppendLine($"Se leyeron:      {Puntos} puntos, {Frames} frames, {Areas} áreas");
         s.AppendLine($"Niveles  : {Niveles.Count}");
         s.AppendLine();
         s.AppendLine($"  Columnas   : {Contar(ClaseElemento.Columna)}");

@@ -2400,6 +2400,44 @@ def v16_extruida_piers() -> None:
         check(f"{arch}: ningun literal de ETABS decide el comportamiento",
               not duros, f"{len(duros)}: " + "; ".join(duros[:2]))
 
+    # ------------------------------------------------------------------
+    # SAP2000 leia 0 frames y 0 areas: GetLabelNameList es de ETABS
+    # ------------------------------------------------------------------
+    # Devuelve nombre + etiqueta + piso de una vez, y la etiqueta y el piso son conceptos
+    # de ETABS. SAP2000 no tiene ese metodo, asi que el lector se rendia y devolvia cero
+    # aunque el modelo tuviera cientos de barras. Los PUNTOS si se leian porque usan
+    # GetNameList, que es el comun: 232 puntos y 0 frames era la pista.
+    lect = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+
+    check("hay respaldo para la lista de nombres",
+          "private static (string[] Nombres, string[] Etiquetas, string[] Niveles) "
+          "ListaDeNombres(" in lect)
+
+    m_ln = re.search(r"ListaDeNombres\(\s*object\? obj.*?\n    \}", lect, re.S)
+    check("se puede leer ListaDeNombres", m_ln is not None)
+    if m_ln:
+        cuerpo = m_ln.group(0)
+        check("intenta primero el metodo de ETABS",
+              'Com.Call(obj, "GetLabelNameList"' in cuerpo)
+        check("y cae al comun, que es el que tiene SAP2000",
+              'Com.Call(obj, "GetNameList"' in cuerpo)
+        check("y avisa de que se leyeron sin nivel, en vez de callarlo",
+              "m.Avisos.Add(" in cuerpo)
+
+    # Los dos sitios lo usan: si uno se quedara con GetLabelNameList, SAP2000 leeria
+    # frames pero no areas, o al reves.
+    check("los frames usan el respaldo",
+          'ListaDeNombres(frameObj, m, "frames")' in lect)
+    check("y las areas tambien",
+          'ListaDeNombres(areaObj, m, "áreas")' in lect)
+    check("ya no se llama a GetLabelNameList a pelo",
+          'Com.Call(frameObj, "GetLabelNameList"' not in lect
+          and 'Com.Call(areaObj, "GetLabelNameList"' not in lect)
+
+    # Y el resumen no puede decir ETABS: el modelo puede venir de SAP2000.
+    check("el resumen no atribuye el modelo a ETABS",
+          "ETABS devolvió" not in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs")))
+
     # Y hay que avisarle ANTES de cargar.
     m_con = re.search(r"public void Conectar\(\).*?\n    \}", conx, re.S)
     if m_con:

@@ -137,7 +137,10 @@ public static class EtabsReader
         object? story = Com.TryGet(cx.SapModel, "Story");
         if (story is null)
         {
-            m.Avisos.Add("Esta versión de ETABS no expone el objeto Story.");
+            // SAP2000 NO tiene pisos: es lo normal, no un defecto de version.
+            m.Avisos.Add(
+                "El modelo no expone el objeto Story, así que no hay niveles. En "
+                + "SAP2000 es lo normal: los pisos son un concepto de ETABS.");
             return;
         }
 
@@ -210,11 +213,7 @@ public static class EtabsReader
 
         try
         {
-            object?[] a = { 0, null, null, null };
-            Com.Call(frameObj, "GetLabelNameList", a, 0, 1, 2, 3);
-            nombres = Com.AsStrings(a[1]);
-            etiquetas = Com.AsStrings(a[2]);
-            niveles = Com.AsStrings(a[3]);
+            (nombres, etiquetas, niveles) = ListaDeNombres(frameObj, m, "frames");
             m.Frames = nombres.Length;
         }
         catch (Exception ex) when (EsFalloCom(ex))
@@ -433,11 +432,7 @@ public static class EtabsReader
 
         try
         {
-            object?[] a = { 0, null, null, null };
-            Com.Call(areaObj, "GetLabelNameList", a, 0, 1, 2, 3);
-            nombres = Com.AsStrings(a[1]);
-            etiquetas = Com.AsStrings(a[2]);
-            niveles = Com.AsStrings(a[3]);
+            (nombres, etiquetas, niveles) = ListaDeNombres(areaObj, m, "áreas");
             m.Areas = nombres.Length;
         }
         catch (Exception ex) when (EsFalloCom(ex))
@@ -607,4 +602,67 @@ public static class EtabsReader
             or NullReferenceException
             or FormatException
             or OverflowException;
+    /// <summary>
+    /// La lista de nombres de un objeto del modelo, con sus etiquetas y niveles si los hay.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí se separan ETABS y SAP2000, y era el motivo de que SAP2000 leyera 0 frames
+    /// y 0 áreas.</b> Se usaba <c>GetLabelNameList</c>, que devuelve nombre + etiqueta +
+    /// piso de una vez. Pero eso es de <b>ETABS</b>: la etiqueta y el piso son conceptos
+    /// suyos, y SAP2000 no tiene ese método. Al fallar, el lector se rendía y devolvía
+    /// cero, aunque el modelo tuviera cientos de barras.
+    /// </para>
+    /// <para>
+    /// SAP2000 sí tiene <c>GetNameList</c>, que devuelve solo los nombres. Es el mismo
+    /// que ya se usaba para los puntos, <b>y por eso los puntos sí se leían</b>: 232
+    /// puntos y 0 frames en el mismo modelo era la pista de que el problema no era la
+    /// conexión sino el método.
+    /// </para>
+    /// <para>
+    /// Que el nivel quede vacío no se calla: significa que el modelo se ve en 3D pero no
+    /// se agrupa por pisos, y eso se avisa.
+    /// </para>
+    /// </remarks>
+    private static (string[] Nombres, string[] Etiquetas, string[] Niveles) ListaDeNombres(
+        object? obj, ModeloEtabs m, string queEs)
+    {
+        if (obj is null)
+        {
+            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        // 1) El camino de ETABS: nombre, etiqueta y piso de una vez.
+        try
+        {
+            object?[] a = { 0, null, null, null };
+            Com.Call(obj, "GetLabelNameList", a, 0, 1, 2, 3);
+
+            return (Com.AsStrings(a[1]), Com.AsStrings(a[2]), Com.AsStrings(a[3]));
+        }
+        catch (Exception)
+        {
+            // No está: casi seguro que es SAP2000. Se sigue por el camino común.
+        }
+
+        // 2) El camino común, que es el que tiene SAP2000.
+        object?[] b = { 0, null };
+        Com.Call(obj, "GetNameList", b, 0, 1);
+
+        var nombres = Com.AsStrings(b[1]);
+        var vacios = new string[nombres.Length];
+
+        for (var i = 0; i < vacios.Length; i++)
+        {
+            vacios[i] = string.Empty;
+        }
+
+        m.Avisos.Add(
+            $"Los {queEs} se leyeron sin etiqueta ni nivel: este modelo no expone " +
+            "'GetLabelNameList', que es de ETABS. Se ven en 3D, pero no se agrupan " +
+            "por piso.");
+
+        return (nombres, vacios, vacios);
+    }
+
 }
