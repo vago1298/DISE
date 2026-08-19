@@ -227,6 +227,10 @@ public sealed class SeccionConcretoRow : Row
             Raise(nameof(EsCircular));
             Raise(nameof(ElementoRotulo));
             Raise(nameof(DiametroCm));
+
+            // Al cambiar el elemento cambia el prefijo, y con el la parte editable.
+            Raise(nameof(PrefijoId));
+            Raise(nameof(NumeroId));
         }
     }
 
@@ -335,6 +339,49 @@ public sealed class SeccionConcretoRow : Row
     }
 
     /// <summary>
+    /// El <b>prefijo</b> del ID de esta fila, o cadena vacía si no le toca ninguno.
+    /// </summary>
+    /// <remarks>
+    /// Es de solo lectura y se muestra fijo al editar la celda del ID, para que el
+    /// usuario no pueda romper la nomenclatura sin querer.
+    /// </remarks>
+    public string PrefijoId => PrefijoDeId(_elemento) ?? string.Empty;
+
+    /// <summary>
+    /// La <b>parte editable</b> del ID: el número, sin el prefijo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El usuario pidió que al editar la celda del ID solo se toque el número: si la
+    /// trabe es <c>T-01</c>, editar debe cambiar el <c>01</c> por el <c>02</c> y no dejar
+    /// borrar el <c>T-</c>. Eso se resuelve <b>separando el dato</b>, no intentando
+    /// controlar el cursor dentro de la celda: la plantilla de edición pinta el prefijo
+    /// como texto fijo y engancha el cuadro de escritura aquí.
+    /// </para>
+    /// <para>
+    /// <b>Y el caso OTRO sale gratis</b>, que es lo bonito de plantearlo así. En OTRO no
+    /// hay prefijo, así que <see cref="PrefijoId"/> es la cadena vacía, esta propiedad
+    /// vale el ID entero y al escribirla se escribe el ID entero. O sea que el mismo
+    /// mecanismo da «solo el número» en los elementos con nomenclatura y «todo editable»
+    /// en OTRO, sin una sola condición de por medio.
+    /// </para>
+    /// </remarks>
+    public string NumeroId
+    {
+        get
+        {
+            var id = _id ?? string.Empty;
+            var p = PrefijoId;
+
+            return p.Length > 0 && id.StartsWith(p, StringComparison.OrdinalIgnoreCase)
+                ? id[p.Length..]
+                : id;
+        }
+
+        set => Id = PrefijoId + (value ?? string.Empty);
+    }
+
+    /// <summary>
     /// El usuario escribió el f'c a mano, así que ya no se toca solo.
     /// </summary>
     /// <remarks>
@@ -383,7 +430,19 @@ public sealed class SeccionConcretoRow : Row
     }
 
     /// <summary>Columna B: identificador. <b>Es el nombre del bloque de AutoCAD.</b></summary>
-    public string Id { get => _id; set => Set(ref _id, value); }
+    public string Id
+    {
+        get => _id;
+        set
+        {
+            Set(ref _id, value);
+
+            // La celda del ID se pinta con el prefijo aparte del numero, asi que las dos
+            // partes tienen que enterarse de que el ID cambio.
+            Raise(nameof(PrefijoId));
+            Raise(nameof(NumeroId));
+        }
+    }
 
     /// <summary>Columna C.</summary>
     public double BaseCm { get => _baseCm; set => Set(ref _baseCm, value); }

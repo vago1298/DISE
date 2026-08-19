@@ -361,46 +361,80 @@
                                  code-behind desde la tabla de diametros, asi que no puede
                                  desincronizarse con la validacion. -->
                             <DataGridComboBoxColumn x:Name="ColElemento" Header="Elemento"
-                                                    SelectedItemBinding="{Binding Elemento}" Width="115"
+                                                    SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
-                            <DataGridTextColumn Header="ID"         Binding="{Binding Id}" Width="90"
-                                                    CellStyle="{StaticResource CeldaIdent}" />
-                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1}" Width="75"
+                            <!-- ID: el PREFIJO va fijo y solo se edita el NUMERO.
+                                 Si la trabe es T-01, al editar se cambia el 01 por el 02
+                                 y el T- no se puede borrar. No se controla el cursor
+                                 dentro de la celda —eso seria fragil— sino que el dato
+                                 esta SEPARADO: PrefijoId de solo lectura y NumeroId
+                                 editable. Ver SeccionConcretoRow.NumeroId.
+
+                                 Y el caso OTRO sale gratis: alli no hay prefijo, asi que
+                                 PrefijoId queda vacio, NumeroId vale el ID entero y se
+                                 edita todo. El mismo mecanismo para los dos casos. -->
+                            <DataGridTemplateColumn Header="ID" Width="90"
+                                                    CellStyle="{StaticResource CeldaIdent}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Id}" Padding="4,2"
+                                                   VerticalAlignment="Center" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <!-- El prefijo, que NO se puede tocar -->
+                                            <TextBlock Text="{Binding PrefijoId}"
+                                                       VerticalAlignment="Center"
+                                                       Padding="4,2,0,2"
+                                                       Foreground="{DynamicResource MutedTextBrush}" />
+                                            <!-- UpdateSourceTrigger=PropertyChanged: la
+                                                 tabla y la vista previa se actualizan
+                                                 mientras se escribe, no al salir. -->
+                                            <TextBox Text="{Binding NumeroId, UpdateSourceTrigger=PropertyChanged}"
+                                                     BorderThickness="0" MinWidth="40"
+                                                     VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="75"
                                                     CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1}" Width="80"
+                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaGeom}" />
 
-                            <DataGridTextColumn Header="N esq sup"  Binding="{Binding NEsqSup}" Width="80"
+                            <DataGridTextColumn Header="N esq sup"  Binding="{Binding NEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqSup" Header="Var esq sup"
-                                                    SelectedItemBinding="{Binding DiamEsqSup}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
-                            <DataGridTextColumn Header="N int sup"  Binding="{Binding NIntSup}" Width="80"
+                            <DataGridTextColumn Header="N int sup"  Binding="{Binding NIntSup, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntSup" Header="Var int sup"
-                                                    SelectedItemBinding="{Binding DiamIntSup}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamIntSup, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
 
-                            <DataGridTextColumn Header="N esq inf"  Binding="{Binding NEsqInf}" Width="80"
+                            <DataGridTextColumn Header="N esq inf"  Binding="{Binding NEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqInf" Header="Var esq inf"
-                                                    SelectedItemBinding="{Binding DiamEsqInf}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="N int inf"  Binding="{Binding NIntInf}" Width="80"
+                            <DataGridTextColumn Header="N int inf"  Binding="{Binding NIntInf, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntInf" Header="Var int inf"
-                                                    SelectedItemBinding="{Binding DiamIntInf}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamIntInf, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
 
-                            <DataGridTextColumn Header="N lateral"  Binding="{Binding NInter}" Width="80"
+                            <DataGridTextColumn Header="N lateral"  Binding="{Binding NInter, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaLateral}" />
                             <DataGridComboBoxColumn x:Name="ColVarLateral" Header="Var lateral"
-                                                    SelectedItemBinding="{Binding DiamInter}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamInter, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLateral}" />
 
@@ -410,49 +444,49 @@
                                  circular la base es el DIAMETRO, la altura se ignora, y
                                  el acero se captura como TOTAL en lugar de por lechos.
                                  En el plano se rotula «COLUMNA», igual que una cuadrada. -->
-                            <DataGridTextColumn Header="N total" Binding="{Binding NVarTotal}" Width="75"
+                            <DataGridTextColumn Header="N total" Binding="{Binding NVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="75"
                                                     CellStyle="{StaticResource CeldaCircular}" />
                             <DataGridComboBoxColumn x:Name="ColVarTotal" Header="Var total"
-                                                    SelectedItemBinding="{Binding DiamVarTotal}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaCircular}" />
                             <DataGridComboBoxColumn x:Name="ColZuncho" Header="Zuncho helic."
-                                                    SelectedItemBinding="{Binding ZunchoHelicoidal}" Width="100"
+                                                    SelectedItemBinding="{Binding ZunchoHelicoidal, UpdateSourceTrigger=PropertyChanged}" Width="100"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaCircular}" />
 
-                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1}" Width="70"
+                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="70"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColEstribo" Header="Estribo"
-                                                    SelectedItemBinding="{Binding Estribo}" Width="85"
+                                                    SelectedItemBinding="{Binding Estribo, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
-                            <DataGridTextColumn Header="Sep cm"     Binding="{Binding SeparacionCm}" Width="95"
+                            <DataGridTextColumn Header="Sep cm"     Binding="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColDiamante" Header="Diamante"
-                                                    SelectedItemBinding="{Binding EstriboDiamante}" Width="85"
+                                                    SelectedItemBinding="{Binding EstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColVarDiamante" Header="Var diam."
-                                                    SelectedItemBinding="{Binding DiamEstriboDiamante}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamEstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="95"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
-                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1}" Width="85"
+                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc}" Width="65"
+                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}" Width="65"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala}" Width="65"
+                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala, UpdateSourceTrigger=PropertyChanged}" Width="65"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2}" Width="80"
+                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
 
-                            <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas}"
+                            <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas, UpdateSourceTrigger=PropertyChanged}"
                                                 IsReadOnly="True" Width="85"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
-                            <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2}"
+                            <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
                                                 IsReadOnly="True" Width="80"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
-                            <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3}"
+                            <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}"
                                                 IsReadOnly="True" Width="85"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>

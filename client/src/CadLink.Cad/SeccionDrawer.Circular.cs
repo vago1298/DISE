@@ -750,7 +750,15 @@ public sealed partial class SeccionDrawer
         // del borde de una cola al de la otra como estaba antes.
         var aTangente = Math.Atan2(ry * -1, rx * -1);
 
-        Agregar(contorno, Arco(bx, by, rIn, aTangente, a1 + Pi));
+        // Y del doblez se dibuja SOLO EL ARCO EXTERIOR.
+        //
+        // El interior sobra, y no es una decisión estética: su radio es rIn = rVar y su
+        // centro es el centro de la varilla, o sea que <b>es exactamente la
+        // circunferencia de la varilla</b>, que ya se dibuja como varilla. Dibujarlo otra
+        // vez no añade nada donde coincide, y donde el doblez se pasa del contorno de la
+        // varilla —por el lado derecho, al correrse hasta la tangencia— deja una línea
+        // suelta cruzando que rompe la sensación de que el doblez viene corrido del
+        // zuncho. Era la línea que se veía en el plano.
         Agregar(contorno, Arco(bx, by, rOut, aTangente, a1 + Pi));
 
         // ------------------------------------------------------------------

@@ -2819,7 +2819,53 @@ def v19_circular_y_ui() -> None:
     check("hay conteo total de varillas", "public int NVarTotal" in filas)
     check("y su diametro, que hereda si va vacio",
           "DiamVarTotalEfectivo" in filas)
-    check("hay columna N total en la cuadricula", "NVarTotal}" in xaml)
+    check("hay columna N total en la cuadricula", "Binding NVarTotal" in xaml)
+
+    # ------------------------------------------------------------------
+    # La celda del ID: prefijo fijo, solo el numero editable
+    # ------------------------------------------------------------------
+    # Al editar T-01 solo se toca el 01, y el T- no se puede borrar. NO se controla el
+    # cursor dentro de la celda —seria fragil— sino que el dato esta SEPARADO.
+    check("el prefijo del ID es de solo lectura", "public string PrefijoId =>" in filas)
+    check("y el numero es la parte editable", "public string NumeroId" in filas)
+    check("escribir el numero recompone el ID con su prefijo",
+          "set => Id = PrefijoId + (value ?? string.Empty);" in filas)
+
+    # El caso OTRO sale gratis: sin prefijo, NumeroId ES el ID entero.
+    m_num = re.search(r"public string NumeroId\s*\{.*?\n    \}", filas, re.S)
+    if m_num:
+        check("sin prefijo, la parte editable es el ID entero (el caso OTRO)",
+              "p.Length > 0 && id.StartsWith(p" in m_num.group(0))
+
+    # Y el ID avisa de las dos partes, o la celda no se refresca al cambiar el elemento.
+    check("el ID avisa de que su prefijo y su numero cambiaron",
+          "Raise(nameof(PrefijoId));" in filas and "Raise(nameof(NumeroId));" in filas)
+
+    # La celda es una plantilla: prefijo como texto fijo y cuadro solo para el numero.
+    check("la celda del ID usa plantilla, no un cuadro para todo",
+          '<DataGridTemplateColumn Header="ID"' in xaml)
+    check("el prefijo se pinta fijo en la edicion",
+          'Text="{Binding PrefijoId}"' in xaml)
+    check("y solo el numero es escribible",
+          "Text=\"{Binding NumeroId, UpdateSourceTrigger=PropertyChanged}\"" in xaml)
+    check("ya no hay un cuadro de texto para el ID completo",
+          'Binding="{Binding Id}"' not in xaml)
+
+    # ------------------------------------------------------------------
+    # La tabla se edita en TIEMPO REAL
+    # ------------------------------------------------------------------
+    # Las celdas confirmaban al SALIR, asi que la vista previa no se movia mientras se
+    # escribia. La suscripcion al PropertyChanged de cada fila ya existia; lo que faltaba
+    # era que el binding avisara en cada tecla.
+    ini_c = xaml.find('x:Name="SeccionesGrid"')
+    fin_c = xaml.find("</DataGrid.Columns>", ini_c)
+    bloque = xaml[ini_c:fin_c]
+    n_bind = len(re.findall(r'Binding="\{Binding \w+', bloque))
+    n_real = bloque.count("UpdateSourceTrigger=PropertyChanged")
+    check("las celdas de la hoja se confirman mientras se escribe",
+          n_real >= n_bind, f"{n_real} en tiempo real de {n_bind} bindings")
+    check("y la vista previa escucha la edicion de cada fila",
+          "fila.PropertyChanged += OnFilaEditada;" in codigo)
 
     m_tv = re.search(r"public int TotalVarillas =>.*?;", filas, re.S)
     check("se puede leer TotalVarillas", m_tv is not None)
@@ -3129,9 +3175,15 @@ def v19_circular_y_ui() -> None:
         #     rPaso + rOut = rZunExt exacto; antes se cortaba donde entraba en la banda y
         #     quedaba un tajo plano a media vuelta;
         #   - y el INTERIOR se recorta SOLO por ese lado, el derecho.
-        check("los dos arcos del doblez arrancan en la tangencia",
-              "Agregar(contorno, Arco(bx, by, rIn, aTangente, a1 + Pi));" in cuerpo
-              and "Agregar(contorno, Arco(bx, by, rOut, aTangente, a1 + Pi));" in cuerpo)
+        check("el arco exterior del doblez arranca en la tangencia",
+              "Agregar(contorno, Arco(bx, by, rOut, aTangente, a1 + Pi));" in cuerpo)
+
+        # El arco INTERIOR no se dibuja: su radio es rVar y su centro es el de la varilla,
+        # o sea que es EXACTAMENTE la circunferencia de la varilla, que ya se dibuja. Y
+        # donde el doblez se corre mas alla del contorno de la varilla dejaba una linea
+        # suelta cruzando, que era la que se veia en el plano.
+        check("el arco interior del doblez no se dibuja, que es la varilla misma",
+              "Arco(bx, by, rIn," not in cuerpo)
 
         check("la tangencia es la direccion centro->varilla",
               "var aTangente = Math.Atan2(ry * -1, rx * -1);" in cuerpo)
@@ -3599,7 +3651,10 @@ def v19_circular_y_ui() -> None:
     ini_cols = xaml.find('x:Name="SeccionesGrid"')
     fin_cols = xaml.find("</DataGrid.Columns>", ini_cols)
     bloque_cols = xaml[ini_cols:fin_cols]
-    n_cols = len(re.findall(r"<DataGrid\w*Column\b", bloque_cols))
+    # OJO: hay que excluir las etiquetas de PROPIEDAD como
+    # <DataGridTemplateColumn.CellTemplate>, que casan con el patron pero no son
+    # columnas. Sin el (?!\.) una columna con plantilla contaba tres veces.
+    n_cols = len(re.findall(r"<DataGrid\w*Column\b(?!\.)", bloque_cols))
     n_estilos = len(re.findall(r'CellStyle="\{StaticResource Celda', bloque_cols))
     check("todas las columnas de la hoja llevan color",
           n_cols == n_estilos, f"{n_cols} columnas y {n_estilos} con estilo")
