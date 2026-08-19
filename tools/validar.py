@@ -722,6 +722,14 @@ def v12_fidelidad() -> None:
         check(f"sin {fuera} en la lista", f'"{fuera}"' not in lista)
 
     # Los que van como literal en la lista
+    # CABEZAL y OTRO se anadieron a peticion del usuario. CABEZAL lleva alzado
+    # horizontal, porque es una pieza tendida; OTRO es el recordatorio de que la casilla
+    # admite un nombre escrito a mano.
+    check("la lista incluye CABEZAL", "ElementoCabezal" in codigo)
+    check("y OTRO", "ElementoOtro" in codigo)
+    check("el CABEZAL lleva alzado horizontal, como pieza tendida",
+          "if (e == SeccionConcretoRow.ElementoCabezal)" in codigo)
+
     for dentro in ["DADO", "CASTILLO", "TRABE", "CONTRATRABE",
                    "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"]:
         check(f"con {dentro} en la lista", f'"{dentro}"' in lista)
@@ -3091,9 +3099,26 @@ def v19_circular_y_ui() -> None:
         check("las normales de arranque son perpendiculares a la cola",
               "var n1X = -uy;" in cuerpo and "var n1Y = ux;" in cuerpo)
 
-        # Dos colas en anillos, una en helice: una espiral es UNA barra continua.
-        check("en helice se dibuja una sola cola",
-              "if (!s.ZunchoHelicoidal)" in cuerpo)
+        # LAS DOS colas siempre, igual que el estribo rectangular. Antes se dibujaba una
+        # sola en helice, con el argumento de que una espiral es una barra continua con
+        # un solo arranque. Es cierto de la barra, pero NO es el detalle que se dibuja:
+        # el remate se representa con sus dos ganchos, uno encima del otro y con el de
+        # dentro recortado, y asi se lee en tipo 1 y en tipo 2.
+        check("van las dos colas, no una",
+              "foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })" in cuerpo)
+        check("y ya no se dibuja una sola en helice",
+              "if (!s.ZunchoHelicoidal)" not in cuerpo)
+
+        # El doblez se dibuja tambien como CONTORNO, no solo como relleno: si no, en la
+        # seccion tipo 1 el gancho salia como dos colas sueltas sin nada que las uniera.
+        check("el doblez se dibuja como contorno, para que salga en tipo 1",
+              "Agregar(contorno, Arco(bx, by, rIn, a1, a1 + Pi));" in cuerpo
+              and "Agregar(contorno, Arco(bx, by, rOut, a1, a1 + Pi));" in cuerpo)
+
+        # Y la cola de dentro se recorta contra el circulo interior del zuncho, que es el
+        # equivalente circular del recorte contra la linea recta del estribo.
+        check("la cola se recorta contra el nucleo",
+              "CruceConElNucleo(poX, poY, ux, uy, cx, cy, rZunInt, gancho)" in cuerpo)
 
         # La varilla elegida es la de ABAJO, porque la llamada apunta a la de arriba.
         check("el gancho va en la varilla de abajo, lejos de la llamada",

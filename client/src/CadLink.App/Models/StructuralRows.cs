@@ -332,6 +332,32 @@ public sealed class SeccionConcretoRow : Row
     /// <summary>Nombre con el que se <b>rotula</b> una columna, redonda o no.</summary>
     public const string ElementoColumna = "COLUMNA";
 
+    /// <summary>Cabezal de pilas o de pilotes.</summary>
+    /// <remarks>
+    /// Lleva alzado <b>horizontal</b>: es una pieza tendida, como una trabe, no un
+    /// elemento vertical. Ver <c>MainWindow.TipoDe</c>.
+    /// </remarks>
+    public const string ElementoCabezal = "CABEZAL";
+
+    /// <summary>
+    /// <b>OTRO</b>: cualquier elemento que no esté en la lista.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está en el desplegable como recordatorio de que la casilla <b>se puede
+    /// escribir</b>: el combo de Elemento es editable, así que en vez de elegir OTRO se
+    /// puede teclear directamente el nombre que se quiera —«MÉNSULA», «VIGA DE
+    /// TRANSFERENCIA», lo que sea— y ese nombre es el que sale en el rótulo del plano.
+    /// </para>
+    /// <para>
+    /// Un elemento escrito a mano <b>no lleva alzado</b> a menos que su ID empiece por
+    /// el prefijo de un tipo conocido (<c>C-</c>, <c>T-</c>, <c>D-</c>, <c>CT-</c>),
+    /// porque el programa no puede adivinar si es una pieza tendida o de pie. Sí lleva
+    /// sección, con su armado y su rótulo.
+    /// </para>
+    /// </remarks>
+    public const string ElementoOtro = "OTRO";
+
     /// <summary>
     /// Columna heredada: <c>SI</c> marcaba la sección como redonda.
     /// </summary>

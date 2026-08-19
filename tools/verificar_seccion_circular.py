@@ -954,8 +954,34 @@ check("un gancho absurdo se recorta",
 # Dos en anillos: cada anillo es cerrado y sus dos extremos se juntan sobre la misma
 # varilla, igual que el estribo rectangular. Una en helice: una espiral es UNA barra
 # continua y solo tiene un arranque.
-check("en anillos el gancho lleva dos colas, como el estribo rectangular", True)
-check("en helice lleva una sola, porque la espiral es una sola barra", True)
+# Las DOS colas siempre, en anillos y en helice, y en los dos tipos de seccion: el
+# remate de un zuncho se dibuja con sus dos ganchos, uno encima del otro y con el de
+# dentro recortado. Que la espiral sea una barra continua describe la BARRA, no el
+# detalle que va en el plano.
+check("el gancho lleva dos colas, como el estribo rectangular", True)
+
+# Y el recorte: la cara exterior de la cola arranca donde cruza el circulo interior del
+# zuncho, no en su punto radial, o entre las dos caras queda una cuña sin cerrar.
+def cruce_con_nucleo(px, py, ux_, uy_, radio, largo):
+    b_ = 2*(px*ux_ + py*uy_)
+    c_ = px*px + py*py - radio*radio
+    disc = b_*b_ - 4*c_
+    if disc < 0: return None
+    r_ = math.sqrt(disc)
+    t1, t2 = (-b_-r_)/2, (-b_+r_)/2
+    t = t1 if t1 >= 0 else t2
+    return None if (t < 0 or t > largo) else (px+t*ux_, py+t*uy_)
+
+g = 5.0*ESCALA
+recortadas = 0
+for (nx_, ny_) in (n1, n2):
+    pox, poy = bx + (r_var+d_est)*nx_, by + (r_var+d_est)*ny_
+    if cruce_con_nucleo(pox, poy, ux, uy, r_zun_int, g) is not None:
+        recortadas += 1
+
+print(f"  colas que cruzan el nucleo y se recortan: {recortadas} de 2")
+check("al menos una de las dos colas se recorta contra el nucleo", recortadas >= 1,
+      f"{recortadas} de 2")
 
 print("\n" + "=" * 78)
 if fallos:

@@ -694,19 +694,56 @@ public sealed partial class SeccionDrawer
             gancho = tope;
         }
 
-        // El doblez, para el relleno: media corona alrededor de la varilla, del
-        // arranque de una cola al de la otra.
+        // ------------------------------------------------------------------
+        // El DOBLEZ que abraza la varilla
+        // ------------------------------------------------------------------
+        // Media corona, del arranque de una cola al de la otra. El barrido va en sentido
+        // antihorario de n1 a n2, y su punto medio cae en -u, o sea en el lado OPUESTO a
+        // las colas: el doblez rodea la cara de atrás de la varilla y las colas salen
+        // por delante, que es como se dobla de verdad.
         var a1 = Math.Atan2(n1Y, n1X);
+
+        // Para el RELLENO de la sección tipo 2.
         sectores.Add(new[] { bx, by, rIn, rOut, a1, a1 + Pi });
 
-        // Y las colas. Aquí se reutiliza tal cual la Cola del estribo rectangular: no
-        // se recorta nada (recortar: false), porque el recorte de allí existe para una
-        // cara recta y vertical del estribo, y aquí no hay ninguna.
-        Cola(contorno, quads, bx, by, rIn, rOut, n1X, n1Y, ux, uy, gancho, false, 0, 0);
+        // Y los dos ARCOS del contorno, que faltaban.
+        //
+        // Este era el motivo de que el gancho saliera incompleto en la sección de
+        // CONTORNO: el doblez solo se metía en la lista de relleno, y esa lista únicamente
+        // se consume cuando la sección es rellena. En tipo 1 el gancho aparecía como dos
+        // colas sueltas, sin nada que las uniera alrededor de la varilla.
+        //
+        // En el estribo rectangular no se nota porque allí el doblez de la esquina lo
+        // dibujan EstriboExterior y EstriboInterior, que en esa esquina barren un arco
+        // extendido a propósito. El zuncho circular no tiene esa esquina —es un círculo
+        // completo— así que sus arcos hay que dibujarlos aquí.
+        Agregar(contorno, Arco(bx, by, rIn, a1, a1 + Pi));
+        Agregar(contorno, Arco(bx, by, rOut, a1, a1 + Pi));
 
-        if (!s.ZunchoHelicoidal)
+        // ------------------------------------------------------------------
+        // Las DOS colas, una a cada lado de la varilla
+        // ------------------------------------------------------------------
+        // Van siempre las dos, igual que en el estribo rectangular. Durante un tiempo
+        // aquí se dibujaba UNA sola cuando el zuncho era helicoidal, con el argumento de
+        // que una espiral es una barra continua con un solo arranque. Es cierto como
+        // descripción de la barra, pero <b>no es el detalle que se dibuja</b>: el remate
+        // de un zuncho —espiral o anillo— se representa con sus dos ganchos, uno encima
+        // del otro y con el de dentro recortado, y así se lee en el plano tanto en la
+        // sección de contorno como en la rellena.
+        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
         {
-            Cola(contorno, quads, bx, by, rIn, rOut, n2X, n2Y, ux, uy, gancho, false, 0, 0);
+            // El RECORTE. La cara exterior de la cola arranca en el borde radial del
+            // doblez, y ese punto puede caer dentro de la banda del zuncho: entonces la
+            // cola y el zuncho se solapan y entre las dos caras queda una cuña. El
+            // rectangular resuelve lo mismo arrancando la cara exterior sobre la línea
+            // interior del estribo; aquí esa línea es el círculo interior del zuncho.
+            var poX = bx + (rOut * nx);
+            var poY = by + (rOut * ny);
+
+            var recorte = CruceConElNucleo(poX, poY, ux, uy, cx, cy, rZunInt, gancho);
+
+            Cola(contorno, quads, bx, by, rIn, rOut, nx, ny, ux, uy, gancho,
+                recorte is not null, recorte?.X ?? 0, recorte?.Y ?? 0);
         }
 
         // El núcleo solo se usa para el aviso: si la varilla que se abraza estuviera
@@ -717,6 +754,65 @@ public sealed partial class SeccionDrawer
                 $"Sección circular '{s.Id}': la varilla del gancho queda muy adentro " +
                 "del núcleo. Revisa el recubrimiento y el diámetro del zuncho.");
         }
+    }
+
+    /// <summary>
+    /// Dónde la cara exterior de una cola <b>entra en el núcleo</b>, o <c>null</c> si no
+    /// lo hace dentro de su longitud.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el equivalente circular del recorte del estribo rectangular. Allí la cara
+    /// exterior de la segunda cola arranca sobre la <b>línea interior recta</b> del
+    /// estribo; aquí esa frontera es el <b>círculo interior</b> del zuncho, así que hay
+    /// que resolver la intersección de una recta con una circunferencia en lugar de
+    /// leer una coordenada.
+    /// </para>
+    /// <para>
+    /// Se busca el cruce <b>hacia delante</b>: la cola nace en la banda del zuncho y va
+    /// hacia el núcleo, así que el corte que interesa es el primero con
+    /// <c>t &gt;= 0</c>. Si sale de la longitud del gancho, no hay recorte: la cola es
+    /// tan corta que muere dentro de la banda.
+    /// </para>
+    /// </remarks>
+    private static (double X, double Y)? CruceConElNucleo(
+        double px, double py, double ux, double uy,
+        double cx, double cy, double radio, double largo)
+    {
+        if (radio <= 0)
+        {
+            return null;
+        }
+
+        // |p + t*u - c|^2 = radio^2, con u unitario, asi que a = 1.
+        var dx = px - cx;
+        var dy = py - cy;
+
+        var b = 2 * ((dx * ux) + (dy * uy));
+        var c = (dx * dx) + (dy * dy) - (radio * radio);
+
+        var disc = (b * b) - (4 * c);
+
+        if (disc < 0)
+        {
+            // La cola no llega a cruzar el circulo del nucleo en ninguna direccion.
+            return null;
+        }
+
+        var raiz = Math.Sqrt(disc);
+
+        // Las dos soluciones, de menor a mayor.
+        var t1 = (-b - raiz) / 2;
+        var t2 = (-b + raiz) / 2;
+
+        var t = t1 >= 0 ? t1 : t2;
+
+        if (t < 0 || t > largo)
+        {
+            return null;
+        }
+
+        return (px + (t * ux), py + (t * uy));
     }
 
     /// <summary>

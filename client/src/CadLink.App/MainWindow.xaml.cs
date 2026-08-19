@@ -147,7 +147,13 @@ public partial class MainWindow : Window
             SeccionConcretoRow.ElementoColumna,
             SeccionConcretoRow.ElementoColumnaCircular,
             "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
-            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"
+            SeccionConcretoRow.ElementoCabezal,
+            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE",
+
+            // OTRO va AL FINAL, y es un recordatorio de que la casilla se puede
+            // escribir: el combo es editable, asi que se puede teclear cualquier nombre
+            // y ese es el que sale en el rotulo. Ver SeccionConcretoRow.ElementoOtro.
+            SeccionConcretoRow.ElementoOtro
         };
 
         ColVarEsqSup.ItemsSource = diametros;
@@ -2231,6 +2237,14 @@ public partial class MainWindow : Window
         }
 
         if (e == "TRABE" || i.StartsWith("T-", StringComparison.Ordinal))
+        {
+            return TipoElemento.Trabe;
+        }
+
+        // El CABEZAL es una pieza TENDIDA, asi que lleva alzado horizontal como una
+        // trabe. Se rotula con su propio nombre, no como trabe: el tipo solo decide la
+        // orientacion del alzado.
+        if (e == SeccionConcretoRow.ElementoCabezal)
         {
             return TipoElemento.Trabe;
         }
