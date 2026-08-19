@@ -68,7 +68,8 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Hoja con paneles inmovilizados y color por grupo de columnas | ✅ Completo |
 | **Importar desde Excel** | ⛔ Retirado de la interfaz — ver `docs/macro-secciones-concreto.md` §1 |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
-| **Lectura de ETABS (CSI OAPI)** | ⛔ Pendiente |
+| **Lectura de ETABS (CSI OAPI)** | ✅ Completo — `EtabsConnection` por ProgID `CSI.ETABS.API.ETABSObject` |
+| **Lectura de SAP2000** | 🚧 En proceso — CSI comparte la OAPI, así que es el mismo lector con otro ProgID |
 
 Los pendientes están marcados en el código con el comentario
 `PENDIENTE DE IMPLEMENTAR`.

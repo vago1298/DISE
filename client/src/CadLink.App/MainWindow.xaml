@@ -665,7 +665,7 @@
             </TabItem>
 
             <!-- ===== ETABS ===== -->
-            <TabItem x:Name="EtabsTab" Header="ETABS">
+            <TabItem x:Name="EtabsTab" Header="ETABS/SAP2000">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22">
                         <TextBlock Text="Lectura del modelo de ETABS" Style="{StaticResource ModuleTitleStyle}" />
