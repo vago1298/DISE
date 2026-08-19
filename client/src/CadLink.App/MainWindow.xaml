@@ -678,13 +678,21 @@
                             <StackPanel>
                                 <TextBlock Text="Antes de conectar" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" />
                                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"
-                                           Text="1. ETABS abierto, con el modelo cargado.&#x0a;2. Sin cuadros de dialogo abiertos en ETABS.&#x0a;3. El modelo guardado al menos una vez." />
+                                           Text="1. ETABS o SAP2000 abierto, con el modelo cargado.&#x0a;2. Sin cuadros de dialogo abiertos en el programa.&#x0a;3. El modelo guardado al menos una vez." />
                             </StackPanel>
                         </Border>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                             <Button Content="Probar conexion" Style="{StaticResource PrimaryButtonStyle}" Click="OnTestEtabs" />
-                            <Button Content="Leer modelo" Style="{StaticResource SecondaryButtonStyle}" Click="OnImportEtabs" />
+                            <Button Content="Leer modelo de ETABS" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnImportEtabs"
+                                    ToolTip="Lee el modelo abierto en ETABS y lo muestra en el visor." />
+                            <!-- El mismo lector: CSI comparte la OAPI entre ETABS y
+                                 SAP2000, y lo unico que cambia es el ProgID con el que se
+                                 pide el objeto activo. -->
+                            <Button Content="Leer modelo de SAP2000" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnImportSap2000"
+                                    ToolTip="Lee el modelo abierto en SAP2000 y lo muestra en el visor." />
                             <Button Content="Leer piers de muros" Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnLeerPiers"
                                     ToolTip="Lee las etiquetas de pier de los muros y sus medidas por nivel.&#10;En ETABS se asignan con Assign &gt; Shell &gt; Pier Label." />

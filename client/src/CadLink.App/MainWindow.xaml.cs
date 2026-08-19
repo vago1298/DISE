@@ -604,14 +604,45 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnImportEtabs(object sender, RoutedEventArgs e)
+    private void OnImportEtabs(object sender, RoutedEventArgs e) =>
+        LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs);
+
+    /// <summary>Lee el modelo abierto en <b>SAP2000</b>.</summary>
+    /// <remarks>
+    /// Es el mismo lector que el de ETABS, y no es un atajo: CSI comparte la OAPI entre
+    /// los dos programas —la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las
+    /// mismas llamadas para pisos, marcos y áreas— así que lo único que cambia es el
+    /// ProgID con el que se pide el objeto activo. Ver
+    /// <c>EtabsConnection.ProgramaCsi</c>.
+    /// </remarks>
+    private void OnImportSap2000(object sender, RoutedEventArgs e) =>
+        LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000);
+
+    /// <summary>
+    /// Lee el modelo abierto en el programa de CSI que se le diga, y lo <b>visualiza</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está en un solo sitio para los dos programas porque el cuerpo era idéntico salvo
+    /// el destino: duplicarlo garantizaba que un arreglo entrara en uno y no en el otro.
+    /// </para>
+    /// <para>
+    /// La visualización no hay que añadirla: al dejar el modelo en <c>_vista.Modelo</c> y
+    /// llamar a <c>RedibujarVistas</c>, el visor 3D, la vista extruida y la planta se
+    /// pintan igual que con ETABS, porque todos trabajan sobre el mismo
+    /// <c>ModeloEtabs</c>.
+    /// </para>
+    /// </remarks>
+    private void LeerModeloCsi(EtabsConnection.ProgramaCsi destino)
     {
         try
         {
             Cursor = Cursors.Wait;
-            EtabsStatusText.Text = "Leyendo el modelo…";
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = destino };
+
+            EtabsStatusText.Text = $"Leyendo el modelo de {cx.NombreDelDestino}…";
+
             cx.Conectar();
 
             var modelo = EtabsReader.Leer(cx);
@@ -620,7 +651,8 @@ public partial class MainWindow : Window
             EtabsGrid.ItemsSource = modelo.Elementos;
             EtabsStatusText.Text = modelo.Resumen();
             StatusText.Text =
-                $"Modelo leído: {modelo.Elementos.Count} elementos en {modelo.Niveles.Count} nivel(es).";
+                $"Modelo de {cx.NombreDelDestino} leído: {modelo.Elementos.Count} " +
+                $"elementos en {modelo.Niveles.Count} nivel(es).";
 
             // El visor se alimenta del mismo modelo que la cuadrícula
             _vista.Modelo = modelo;

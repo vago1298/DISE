@@ -2313,6 +2313,52 @@ def v16_extruida_piers() -> None:
     # ------------------------------------------------------------------
     # 0b. Modulo nuevo: dibujar planos estructurales
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # SAP2000: el MISMO lector, con otro ProgID
+    # ------------------------------------------------------------------
+    # CSI comparte la OAPI entre ETABS y SAP2000 —misma interfaz cOAPI, mismo SapModel y
+    # mismas llamadas para pisos, marcos y areas— asi que no hace falta un lector aparte:
+    # basta decirle a la conexion a quien buscar.
+    conx = leer(ruta("client/src/CadLink.Etabs/EtabsConnection.cs"))
+
+    check("la conexion sabe a que programa de CSI va",
+          "public enum ProgramaCsi" in conx and "public ProgramaCsi Destino" in conx)
+    check("y el ProgID sale del destino, no de una constante fija",
+          "private string ProgIdApp => Destino == ProgramaCsi.Sap2000" in conx)
+    check("el ProgID de SAP2000 es SapObject, que es el que se escribe mal de memoria",
+          '"CSI.SAP2000.API.SapObject"' in conx)
+    check("y los Helper de SAP2000 tambien se prueban",
+          '"SAP2000v1.Helper"' in conx)
+    check("ya no queda el ProgID de ETABS escrito como constante unica",
+          "private const string ProgIdEtabs" not in conx)
+
+    # Los mensajes no pueden decir ETABS cuando se pidio SAP2000.
+    check("los mensajes dicen a que programa se intento conectar",
+          "NombreDelDestino" in conx)
+
+    # La pestaña y el boton.
+    check("la pestaña dice ETABS/SAP2000", 'Header="ETABS/SAP2000"' in xaml)
+    check("hay boton para leer el modelo de SAP2000",
+          'Click="OnImportSap2000"' in xaml)
+    check("y su manejador existe", "private void OnImportSap2000(" in codigo)
+
+    # UN solo lector para los dos, o un arreglo entraria en uno y no en el otro.
+    check("los dos botones usan el mismo lector",
+          "LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs)" in codigo
+          and "LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000)" in codigo)
+
+    # Y el modelo se VISUALIZA: es lo que pidio el usuario, no solo leerlo.
+    m_lm = re.search(r"private void LeerModeloCsi\(.*?\n    \}", codigo, re.S)
+    check("se puede leer LeerModeloCsi", m_lm is not None)
+    if m_lm:
+        cuerpo = m_lm.group(0)
+        check("el modelo leido se manda al visor",
+              "_vista.Modelo = modelo;" in cuerpo)
+        check("y se redibujan las vistas",
+              "RedibujarVistas();" in cuerpo)
+        check("y se poblan los niveles para la planta",
+              "PoblarNiveles(modelo);" in cuerpo)
+
     check("hay pestaña de planos estructurales",
           'Header="Dibujar planos estructurales"' in xaml)
     # La planta se MUEVE ahi; el 3D y la extruida se quedan en ETABS.

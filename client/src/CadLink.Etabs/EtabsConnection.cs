@@ -31,16 +31,58 @@ namespace CadLink.Etabs;
 /// </remarks>
 public sealed class EtabsConnection : IDisposable
 {
-    private const string ProgIdEtabs = "CSI.ETABS.API.ETABSObject";
     private const int UnidadesKnMC = 6;
 
-    /// <summary>ProgIDs de Helper conocidos, del más nuevo al más viejo.</summary>
-    private static readonly string[] ProgIdsHelper =
+    /// <summary>
+    /// A qué programa de CSI se conecta.
+    /// </summary>
+    /// <remarks>
+    /// <b>El lector es el mismo para los dos.</b> CSI comparte la OAPI entre ETABS y
+    /// SAP2000: la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las mismas
+    /// llamadas para pisos, marcos y áreas. Lo único que cambia de verdad es el
+    /// <b>ProgID</b> con el que se pide el objeto activo, así que no hace falta un lector
+    /// aparte: basta decirle a la conexión a quién buscar.
+    /// </remarks>
+    /// <remarks>
+    /// Se llama <c>ProgramaCsi</c> y no <c>Programa</c> porque ya hay una propiedad
+    /// <see cref="Programa"/> que guarda el nombre y la versión que reporta el programa
+    /// una vez conectado. Son dos cosas distintas: esto es a quién se BUSCA, y aquello es
+    /// qué se ENCONTRÓ.
+    /// </remarks>
+    public enum ProgramaCsi
     {
-        "ETABSv1.Helper",
-        "CSI.ETABS.API.Helper",
-        "ETABS2016.Helper"
-    };
+        /// <summary>ETABS.</summary>
+        Etabs,
+
+        /// <summary>SAP2000.</summary>
+        Sap2000
+    }
+
+    /// <summary>El programa al que se conecta esta instancia.</summary>
+    public ProgramaCsi Destino { get; init; } = ProgramaCsi.Etabs;
+
+    /// <summary>Nombre para los mensajes y la bitácora.</summary>
+    public string NombreDelDestino => Destino == ProgramaCsi.Sap2000 ? "SAP2000" : "ETABS";
+
+    /// <summary>ProgID del objeto de aplicación, según el destino.</summary>
+    /// <remarks>
+    /// Son los dos ProgID que registra el instalador de CSI. El de SAP2000 se llama
+    /// <c>SapObject</c> y no <c>SAP2000Object</c>, que es el error tipico al escribirlo
+    /// de memoria.
+    /// </remarks>
+    private string ProgIdApp => Destino == ProgramaCsi.Sap2000
+        ? "CSI.SAP2000.API.SapObject"
+        : "CSI.ETABS.API.ETABSObject";
+
+    /// <summary>ProgIDs de Helper conocidos, del más nuevo al más viejo.</summary>
+    /// <remarks>
+    /// Cada programa tiene los suyos, y se prueban en ese orden porque el nombre cambió
+    /// entre versiones. Si el Helper no aparece, la conexión sigue por el camino del
+    /// objeto activo, que no lo necesita.
+    /// </remarks>
+    private string[] ProgIdsHelper => Destino == ProgramaCsi.Sap2000
+        ? new[] { "SAP2000v1.Helper", "CSI.SAP2000.API.Helper", "SAP2000v20.Helper" }
+        : new[] { "ETABSv1.Helper", "CSI.ETABS.API.Helper", "ETABS2016.Helper" };
 
     [DllImport("ole32.dll", PreserveSig = false)]
     private static extern void CLSIDFromProgID(
@@ -72,7 +114,7 @@ public sealed class EtabsConnection : IDisposable
     private Type? _tipoOapi;
 
     public object SapModel =>
-        _sapModel ?? throw new EtabsException("No hay conexión con ETABS.");
+        _sapModel ?? throw new EtabsException($"No hay conexión con {NombreDelDestino}.");
 
     public string Programa { get; private set; } = string.Empty;
 
@@ -438,7 +480,7 @@ public sealed class EtabsConnection : IDisposable
                 _tipoOapi = m.ReturnType;
                 _bitacora.Add($"Librería: GetObject devuelve '{m.ReturnType.FullName}'.");
 
-                var obj = m.Invoke(helper, new object?[] { ProgIdEtabs });
+                var obj = m.Invoke(helper, new object?[] { ProgIdApp });
                 if (obj is not null)
                 {
                     _bitacora.Add("Librería: GetObject entregó el objeto de ETABS.");
@@ -478,7 +520,7 @@ public sealed class EtabsConnection : IDisposable
             {
                 try
                 {
-                    var obj = m.Invoke(helper, new object?[] { ProgIdEtabs, pid });
+                    var obj = m.Invoke(helper, new object?[] { ProgIdApp, pid });
                     if (obj is not null)
                     {
                         _bitacora.Add($"Librería: GetObjectProcess entregó ETABS (pid {pid}).");
@@ -533,14 +575,14 @@ public sealed class EtabsConnection : IDisposable
     {
         try
         {
-            CLSIDFromProgID(ProgIdEtabs, out var clsid);
+            CLSIDFromProgID(ProgIdApp, out var clsid);
             GetActiveObject(ref clsid, IntPtr.Zero, out var obj);
-            _bitacora.Add($"Objeto activo '{ProgIdEtabs}': encontrado.");
+            _bitacora.Add($"Objeto activo '{ProgIdApp}': encontrado.");
             return obj;
         }
         catch (Exception ex)
         {
-            _bitacora.Add($"Objeto activo '{ProgIdEtabs}': {Detalle(ex)}");
+            _bitacora.Add($"Objeto activo '{ProgIdApp}': {Detalle(ex)}");
             return null;
         }
     }
@@ -566,7 +608,7 @@ public sealed class EtabsConnection : IDisposable
                     continue;
                 }
 
-                var obj = Com.Call(helper, "GetObject", new object?[] { ProgIdEtabs });
+                var obj = Com.Call(helper, "GetObject", new object?[] { ProgIdApp });
                 if (obj is not null)
                 {
                     _bitacora.Add($"Helper '{progId}': entregó el objeto de ETABS.");
