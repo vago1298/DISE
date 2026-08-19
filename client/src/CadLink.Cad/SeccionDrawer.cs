@@ -1758,16 +1758,63 @@ public sealed partial class SeccionDrawer
         List<object> circulos, LechoCad lecho, SeccionCad s,
         double x0, double y0, double b, double h, double rec, double dEst, bool arriba)
     {
+        var p = PosicionesDeLecho(lecho, x0, y0, b, h, rec, dEst, arriba);
+
+        foreach (var x in p.Esquina)
+        {
+            var rr = lecho.Esquina.Cm * _escala / 2;
+            Agregar(circulos, Varilla(x, p.YEsquina, rr, lecho.Esquina.Clave));
+            (arriba ? _varSup : _varInf).Add((x, p.YEsquina, rr));
+        }
+
+        foreach (var x in p.Intermedia)
+        {
+            var rr = lecho.Intermedia.Cm * _escala / 2;
+            Agregar(circulos, Varilla(x, p.YIntermedia, rr, lecho.Intermedia.Clave));
+            (arriba ? _varSup : _varInf).Add((x, p.YIntermedia, rr));
+        }
+
+        return (p.Esquina, p.Intermedia, p.YGrupo);
+    }
+
+    /// <summary>
+    /// <b>Dónde</b> van las varillas de un lecho, sin dibujar nada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está separado del dibujo porque hace falta <b>dos veces</b>: al dibujar la
+    /// sección, y otra vez al rehacer sus llamadas junto al bloque que el alzado
+    /// inserta a su lado. Ver <see cref="LlamadasJuntoAlBloque"/>. Antes el cálculo
+    /// estaba dentro de <see cref="Lecho"/>, mezclado con la creación de los círculos,
+    /// así que la única forma de recuperar las posiciones era dibujar las varillas otra
+    /// vez encima.
+    /// </para>
+    /// <para>
+    /// Devuelve <b>las dos Y</b> además de la del grupo. Cuando la varilla de esquina y
+    /// la intermedia son de distinto diámetro, sus centros no están a la misma altura
+    /// —el reparto es desde la cara, así que media diferencia de diámetro las
+    /// separa— y para dibujarlas hace falta cada una. <c>YGrupo</c> es la que usan las
+    /// llamadas, y es la de las intermedias cuando existen, igual que en la macro, donde
+    /// <c>ySup</c> termina valiendo la de la última fila dibujada.
+    /// </para>
+    /// </remarks>
+    private (double[] Esquina, double YEsquina, double[] Intermedia, double YIntermedia,
+        double YGrupo) PosicionesDeLecho(
+        LechoCad lecho,
+        double x0, double y0, double b, double h, double rec, double dEst, bool arriba)
+    {
         var xsEsquina = Array.Empty<double>();
         var xsIntermedia = Array.Empty<double>();
+        var yEsquina = 0d;
+        var yIntermedia = 0d;
         var yGrupo = 0d;
 
         if (lecho.NEsquina > 0 && lecho.Esquina.Existe)
         {
             var d = lecho.Esquina.Cm * _escala;
             var off = rec + dEst + (d / 2);
-            var y = arriba ? y0 + h - off : y0 + off;
-            yGrupo = y;
+            yEsquina = arriba ? y0 + h - off : y0 + off;
+            yGrupo = yEsquina;
 
             var xs = new List<double>();
 
@@ -1784,12 +1831,6 @@ public sealed partial class SeccionDrawer
                 }
             }
 
-            foreach (var x in xs)
-            {
-                Agregar(circulos, Varilla(x, y, d / 2, lecho.Esquina.Clave));
-                (arriba ? _varSup : _varInf).Add((x, y, d / 2));
-            }
-
             xsEsquina = xs.ToArray();
         }
 
@@ -1797,13 +1838,8 @@ public sealed partial class SeccionDrawer
         {
             var d = lecho.Intermedia.Cm * _escala;
             var off = rec + dEst + (d / 2);
-            var y = arriba ? y0 + h - off : y0 + off;
-
-            // Se queda la Y de las intermedias cuando existen, igual que la macro,
-            // donde 'ySup' termina valiendo la de la última fila dibujada. Con el
-            // mismo diámetro las dos filas están a la misma altura, así que solo
-            // cambia algo cuando los diámetros difieren.
-            yGrupo = y;
+            yIntermedia = arriba ? y0 + h - off : y0 + off;
+            yGrupo = yIntermedia;
 
             var xs = new List<double>();
 
@@ -1822,16 +1858,42 @@ public sealed partial class SeccionDrawer
                 }
             }
 
-            foreach (var x in xs)
-            {
-                Agregar(circulos, Varilla(x, y, d / 2, lecho.Intermedia.Clave));
-                (arriba ? _varSup : _varInf).Add((x, y, d / 2));
-            }
-
             xsIntermedia = xs.ToArray();
         }
 
-        return (xsEsquina, xsIntermedia, yGrupo);
+        return (xsEsquina, yEsquina, xsIntermedia, yIntermedia, yGrupo);
+    }
+
+    /// <summary>
+    /// <b>Dónde</b> van las varillas laterales, sin dibujar nada.
+    /// </summary>
+    /// <remarks>Separado de <see cref="Laterales"/> por lo mismo que
+    /// <see cref="PosicionesDeLecho"/>.</remarks>
+    private List<(double XIzq, double XDer, double Y)> PosicionesLaterales(
+        SeccionCad s, double x0, double y0, double b, double h,
+        double rec, double dEst, double dSup, double dInf)
+    {
+        var salida = new List<(double XIzq, double XDer, double Y)>();
+
+        if (s.NLateral <= 0 || !s.Lateral.Existe)
+        {
+            return salida;
+        }
+
+        var d = s.Lateral.Cm * _escala;
+        var offSup = rec + dEst + (dSup / 2);
+        var offInf = rec + dEst + (dInf / 2);
+        var offLado = rec + dEst + (d / 2);
+
+        var hueco = h - offSup - offInf;
+        var paso = s.NLateral > 1 ? hueco / (s.NLateral + 1) : hueco / 2;
+
+        for (var i = 1; i <= s.NLateral; i++)
+        {
+            salida.Add((x0 + offLado, x0 + b - offLado, y0 + offInf + (i * paso)));
+        }
+
+        return salida;
     }
 
     /// <summary>
@@ -1888,20 +1950,10 @@ public sealed partial class SeccionDrawer
         }
 
         var d = s.Lateral.Cm * _escala;
-        var offSup = rec + dEst + (dSup / 2);
-        var offInf = rec + dEst + (dInf / 2);
-        var offLado = rec + dEst + (d / 2);
 
-        var hueco = h - offSup - offInf;
-        var paso = s.NLateral > 1 ? hueco / (s.NLateral + 1) : hueco / 2;
-
-        for (var i = 1; i <= s.NLateral; i++)
+        foreach (var (xIzq, xDer, y) in
+                 PosicionesLaterales(s, x0, y0, b, h, rec, dEst, dSup, dInf))
         {
-            var y = y0 + offInf + (i * paso);
-
-            var xIzq = x0 + offLado;
-            var xDer = x0 + b - offLado;
-
             Agregar(circulos, Varilla(xIzq, y, d / 2, s.Lateral.Clave));
             Agregar(circulos, Varilla(xDer, y, d / 2, s.Lateral.Clave));
 

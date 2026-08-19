@@ -2269,8 +2269,12 @@ def v16_extruida_piers() -> None:
     # El rotulo cuelga debajo del bloque insertado. En el alzado vertical debajo esta
     # la seccion, y en la segunda cara de una columna rectangular esta el alzado de la
     # primera: sin abrir hueco, el rotulo cae dentro de uno o de otro.
+    # 0.46 y no 0.30: en la cuenta entra tambien el CORTE A-A' que el alzado pone
+    # sobre el pano superior de la seccion. Con 0.30 el rotulo se lo comia 5.8 cm.
     check("hay una constante para el aire del rotulo del alzado",
-          "public const double AireRotuloAlzado = 0.30;" in lay)
+          "public const double AireRotuloAlzado = 0.46;" in lay)
+    check("y la cuenta del aire incluye el CORTE A-A'",
+          "CORTE A-A'" in lay)
 
     check("la segunda cara tiene su calculo en el layout",
           "public static double YSegundaCara(" in lay)
@@ -2973,6 +2977,160 @@ def v19_circular_y_ui() -> None:
               "pts[2 * i] = pts[2 * (i - 1)];" not in cuerpo)
         check("los extremos se conservan siempre, que llevan las tapas",
               "salida.Add(pts[2 * (n - 1)]);" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # Las LLAMADAS del corte que se inserta junto al alzado
+    # ------------------------------------------------------------------
+    # Bloquear deja fuera las capas COTAS y ROTULOS a proposito, asi que las llamadas
+    # no viajan dentro del bloque y el corte que el alzado pone al lado llegaba pelado.
+    # NO se arregla metiendolas en el bloque —descentraria su origen y romperia el
+    # apoyado por pano inferior— sino REDIBUJANDOLAS junto al bloque insertado, igual
+    # que ya hacen el CORTE A-A' y el rotulo del alzado.
+    secdrawer = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("el corte insertado junto al alzado recupera sus llamadas",
+          "public void LlamadasJuntoAlBloque(" in circ)
+
+    # Y el bloque sigue SIN llevarlas dentro: eso no ha cambiado.
+    check("y el bloque sigue excluyendo COTAS y ROTULOS",
+          '"ROTULOS", StringComparison.OrdinalIgnoreCase' in secdrawer)
+
+    m_lb = re.search(r"public void LlamadasJuntoAlBloque\(.*?\n    \}", circ, re.S)
+    check("se puede leer LlamadasJuntoAlBloque", m_lb is not None)
+    if m_lb:
+        cuerpo = m_lb.group(0)
+
+        # Reutiliza las MISMAS llamadas que la seccion, no unas nuevas.
+        check("reutiliza los leaders de los lechos",
+              "LeadersDeLecho(s.Superior" in cuerpo
+              and "LeadersDeLecho(s.Inferior" in cuerpo)
+        check("y los de las laterales",
+              "LeaderVarilla(xIzq" in cuerpo and "LeaderVarilla(xDer" in cuerpo)
+
+        # Y las MISMAS posiciones, sacadas del calculo puro.
+        check("usa el calculo puro de posiciones, sin redibujar varillas",
+              "PosicionesDeLecho(s.Superior" in cuerpo
+              and "PosicionesLaterales(s," in cuerpo)
+
+        # El circulo va por su propio camino: alli no hay lechos.
+        check("el corte circular tiene su propio camino",
+              "LlamadasCirculoJuntoAlBloque(" in cuerpo)
+
+    # El calculo de posiciones esta SEPARADO del dibujo, o la unica forma de recuperar
+    # las posiciones seria volver a dibujar las varillas encima.
+    check("hay calculo de posiciones de lecho sin dibujo",
+          "private (double[] Esquina, double YEsquina, double[] Intermedia, "
+          "double YIntermedia,\n        double YGrupo) PosicionesDeLecho(" in secdrawer)
+    check("y de las laterales",
+          "PosicionesLaterales(" in secdrawer)
+
+    # Y el dibujo lo USA, en vez de tener su propia copia de la aritmetica.
+    m_lecho = re.search(
+        r"private \(double\[\] Esquina, double\[\] Intermedia, double Y\) Lecho\(.*?\n    \}",
+        secdrawer, re.S)
+    if m_lecho:
+        cuerpo = m_lecho.group(0)
+        check("Lecho usa el calculo puro y no repite el reparto",
+              "PosicionesDeLecho(lecho, x0, y0, b, h, rec, dEst, arriba)" in cuerpo)
+        check("y ya no calcula el paso por su cuenta",
+              "(b - (2 * off)) / (lecho.NEsquina - 1)" not in cuerpo)
+
+    # El alzado AVISA de donde dejo el bloque, y no llama al dibujante de secciones:
+    # asi no se mete aqui una dependencia de SeccionCad.
+    check("el alzado avisa de donde inserto la seccion",
+          "public Action<string, double, double>? TrasInsertarSeccion" in alz)
+    check("y avisa DESPUES de apoyar el bloque en su sitio",
+          "TrasInsertarSeccion?.Invoke(id, x, y);" in alz)
+
+    m_is = re.search(r"public SeccionPuesta\? InsertarSeccion\(.*?\n    \}", alz, re.S)
+    if m_is:
+        cuerpo = m_is.group(0)
+        i_mover = cuerpo.find("Mover(br,")
+        i_avis = cuerpo.find("TrasInsertarSeccion?.Invoke")
+        check("el aviso va despues del Mover, o la esquina no estaria en (x,y)",
+              0 <= i_mover < i_avis, f"Mover en {i_mover}, aviso en {i_avis}")
+
+    # ------------------------------------------------------------------
+    # El GANCHO SISMICO del zuncho circular
+    # ------------------------------------------------------------------
+    # Antes no existia, y el <remarks> del archivo lo justificaba diciendo que un
+    # zuncho circular no lleva gancho porque no tiene esquinas donde doblar. Es falso:
+    # lo que ancla un zuncho es el doblez a 135 grados alrededor de una VARILLA con la
+    # cola en el nucleo, y la esquina solo era donde estaba la varilla.
+    check("el zuncho circular lleva gancho sismico",
+          "private void GanchoDelZuncho(" in circ)
+
+    check("y ya no se afirma que un zuncho circular no lleva gancho",
+          "No hay gancho sísmico en la esquina" not in circ)
+
+    m_gz = re.search(r"private void GanchoDelZuncho\(.*?\n    \}", circ, re.S)
+    check("se puede leer GanchoDelZuncho", m_gz is not None)
+
+    if m_gz:
+        cuerpo = m_gz.group(0)
+
+        # Reutiliza la Cola del estribo rectangular en vez de repetir la geometria.
+        check("el gancho circular reutiliza la Cola de la rectangular",
+              "Cola(contorno, quads, bx, by, rIn, rOut" in cuerpo)
+
+        # Mismo criterio de longitud que la seccion rectangular: la columna T cruda,
+        # sin el 12*db, que es regla del alzado.
+        check("usa la columna T tal cual, como la seccion rectangular",
+              "s.GanchoCm * _escala" in cuerpo)
+
+        # El doblez envuelve la VARILLA: radio interior = radio de la varilla.
+        check("el doblez envuelve la varilla, no la cara del concreto",
+              "var rIn = rVar;" in cuerpo and "var rOut = rVar + dZun;" in cuerpo)
+
+        # La cola sale del radio interior girado 45 grados, que es girar el avance 135.
+        check("la cola es el radio interior girado 45 grados",
+              "(rx - ry) * Rt2I" in cuerpo and "(rx + ry) * Rt2I" in cuerpo)
+
+        # Las normales son las perpendiculares a la cola, no constantes escritas.
+        check("las normales de arranque son perpendiculares a la cola",
+              "var n1X = -uy;" in cuerpo and "var n1Y = ux;" in cuerpo)
+
+        # Dos colas en anillos, una en helice: una espiral es UNA barra continua.
+        check("en helice se dibuja una sola cola",
+              "if (!s.ZunchoHelicoidal)" in cuerpo)
+
+        # La varilla elegida es la de ABAJO, porque la llamada apunta a la de arriba.
+        check("el gancho va en la varilla de abajo, lejos de la llamada",
+              "if (p.Y < barra.Y)" in cuerpo)
+
+        # Y la cola no puede pasarse del nucleo.
+        check("la cola se recorta si no cabe en el nucleo",
+              "gancho = tope;" in cuerpo)
+
+    # Se DIBUJA, no solo se declara.
+    check("el gancho del zuncho se dibuja de verdad",
+          "GanchoDelZuncho(" in circ and circ.count("GanchoDelZuncho(") >= 2)
+
+    # Va DESPUES de las varillas: se abraza a una de ellas.
+    m_dc = re.search(r"private int DibujarCircular\(.*?\n    \}", circ, re.S)
+    if m_dc:
+        cuerpo = m_dc.group(0)
+        i_var = cuerpo.find("RellenarVarillas(circulos, rellenosVarilla)")
+        i_gan = cuerpo.find("GanchoDelZuncho(")
+        check("el gancho se dibuja despues de las varillas",
+              0 <= i_var < i_gan, f"varillas en {i_var}, gancho en {i_gan}")
+
+        check("y el gancho se rellena en la seccion rellena",
+              "RellenoDelGancho(ganchoQuads, ganchoSectores)" in cuerpo)
+
+    # El relleno borra sus fronteras auxiliares, o quedarian dos contornos sueltos
+    # encima del acero.
+    m_rg = re.search(r"private void RellenoDelGancho\(.*?\n    \}", circ, re.S)
+    check("se puede leer RellenoDelGancho", m_rg is not None)
+    if m_rg:
+        cuerpo = m_rg.group(0)
+        check("el relleno del gancho borra sus fronteras auxiliares",
+              "Borrar(t);" in cuerpo)
+        check("y usa el sector anular para el doblez y el quad para la cola",
+              "SectorAnular(" in cuerpo and "PolyCerrada(" in cuerpo)
+
+    check("hay comprobacion numerica del gancho del zuncho",
+          "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
 
     # ------------------------------------------------------------------
     # Las varillas se recortan donde el zuncho pasa por DELANTE

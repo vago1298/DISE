@@ -93,6 +93,28 @@ public sealed class AlzadoDrawer
     public double EscalaHatch { get; set; } = 0.01;
 
     /// <summary>
+    /// Aviso de que se acaba de insertar el bloque de una sección, con
+    /// <c>(id, x, y)</c> de su esquina inferior izquierda.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe para que las <b>llamadas de las varillas</b> se rehagan junto al bloque
+    /// insertado. No viajan dentro de él —<c>SeccionDrawer.Bloquear</c> deja fuera las
+    /// capas <c>COTAS</c> y <c>ROTULOS</c> a propósito— así que el corte que se pone al
+    /// lado del alzado llegaba pelado. Ver
+    /// <c>SeccionDrawer.LlamadasJuntoAlBloque</c>.
+    /// </para>
+    /// <para>
+    /// <b>Es un aviso y no una llamada directa</b> para no meter aquí una dependencia
+    /// de <c>SeccionCad</c> ni de <c>SeccionDrawer</c>. Este dibujante sabe
+    /// <i>dónde</i> quedó el bloque, pero no sabe dibujar llamadas; quien sí sabe es el
+    /// de secciones. Con el aviso, cada uno se queda con lo suyo y no hace falta un
+    /// tercer mapeador de la hoja al formato de la sección.
+    /// </para>
+    /// </remarks>
+    public Action<string, double, double>? TrasInsertarSeccion { get; set; }
+
+    /// <summary>
     /// Alto de la sección más alta ya dibujada, en <b>metros de dibujo</b>.
     /// </summary>
     /// <remarks>
@@ -292,6 +314,19 @@ public sealed class AlzadoDrawer
                 var alto = mx[1] - mn[1];
 
                 RotuloCorte(x + (ancho / 2), y + alto);
+
+                // Y aquí se avisa de que el bloque ya está en su sitio, para que quien
+                // sepa hacerlo le vuelva a poner sus llamadas. Va DESPUÉS del Mover:
+                // antes, la esquina del bloque todavía no está en (x, y).
+                try
+                {
+                    TrasInsertarSeccion?.Invoke(id, x, y);
+                }
+                catch (Exception ex)
+                {
+                    // Las llamadas son rotulado: el corte ya está insertado y medido.
+                    Fallo($"Llamadas del corte '{id}'", ex);
+                }
 
                 return new SeccionPuesta { Ancho = ancho, Tope = y + alto };
             });

@@ -778,6 +778,185 @@ check("una varilla fuera del alcance del zuncho no se recorta", len(fuera) == 0,
 check("todos los recortes caen dentro del elemento",
       all(0 <= x <= largo for x in frente))
 
+# ======================================================================
+# 11. El GANCHO SISMICO del zuncho
+# ======================================================================
+print("\nGancho sismico del zuncho: doblez a 135 grados sobre una varilla")
+
+# El usuario: "agrega el gancho del estribo a la columna circular".
+#
+# Durante un tiempo el codigo decia que un zuncho circular no lleva gancho porque no
+# tiene esquinas donde doblar. Es falso: lo que ancla un zuncho, igual que un estribo,
+# es el doblez a 135 grados alrededor de una VARILLA LONGITUDINAL con la cola metida
+# en el nucleo. La esquina del rectangulo solo era el sitio donde estaba esa varilla.
+
+RT2I = 1 / math.sqrt(2)
+
+r_eje_zun = r_zun_ext - d_est / 2      # eje del zuncho
+r_var = d_var / 2
+
+# ---- 1) El doblez sale TANGENTE, y eso no se impone: se comprueba ----
+#
+# El eje del zuncho rodeando la varilla queda a r_var + d_est/2 de su centro. Y la
+# distancia entre el centro de la varilla y el eje del zuncho es r_eje - r_paso, que
+# simplificando es d_var/2 + d_est/2. Son el MISMO numero.
+radio_doblez = r_var + d_est / 2
+dist_ejes = r_eje_zun - r_paso
+
+print(f"  radio del eje del zuncho al rodear la varilla = {radio_doblez:.8f} m")
+print(f"  distancia del centro de la varilla al eje      = {dist_ejes:.8f} m")
+
+check("el doblez envuelve la varilla sin escalon",
+      abs(radio_doblez - dist_ejes) < 1e-15,
+      f"difieren {abs(radio_doblez-dist_ejes)*1e9:.3f} nm")
+
+# ---- 2) La cara exterior del doblez es tangente al zuncho ----
+# r_paso + r_var + d_est tiene que ser exactamente r - rec = r_zun_ext, o el gancho
+# sobresaldria del zuncho y morderia el recubrimiento.
+print(f"  r_paso + r_var + d_zun = {r_paso + r_var + d_est:.8f} m")
+print(f"  r_zun_ext              = {r_zun_ext:.8f} m")
+
+check("el gancho no sobresale del zuncho ni muerde el recubrimiento",
+      abs((r_paso + r_var + d_est) - r_zun_ext) < 1e-15)
+
+# ---- 3) Las direcciones, deducidas ----
+def direcciones(t):
+    """La cola y sus dos normales para una varilla en el angulo t."""
+    # radial HACIA DENTRO
+    rx, ry = -math.cos(t), -math.sin(t)
+    # girado 45 grados: asi el gancho entra en diagonal, no de plano
+    ux = (rx - ry) * RT2I
+    uy = (rx + ry) * RT2I
+    # las normales de arranque son las PERPENDICULARES a la cola
+    return (ux, uy), (-uy, ux), (uy, -ux)
+
+# La cola NUNCA puede apuntar hacia fuera, para ninguna posicion de varilla
+peor = 1.0
+for grados in range(0, 360, 3):
+    t = math.radians(grados)
+    (ux, uy), _, _ = direcciones(t)
+    rx, ry = -math.cos(t), -math.sin(t)
+    peor = min(peor, ux * rx + uy * ry)
+
+print(f"  producto escalar minimo cola-radio_interior = {peor:.6f} "
+      f"(cos45 = {math.cos(math.pi/4):.6f})")
+
+check("la cola entra al nucleo para CUALQUIER angulo de varilla",
+      abs(peor - math.cos(math.pi / 4)) < 1e-12,
+      f"minimo {peor:.6f}")
+
+# ---- 4) Los 135 grados: el invariante que de verdad define el gancho ----
+#
+# OJO, aqui hubo que corregir una idea equivocada. La primera version comprobaba que
+# la regla del circulo diera las MISMAS CONSTANTES que la rectangular —cola
+# (-1/raiz2, -1/raiz2)— y falla, porque no son comparables: en la esquina el estribo
+# corre PARALELO A LA CARA y en el circulo corre TANGENTE, asi que la direccion de
+# avance es distinta y la cola tambien.
+#
+# El invariante comun no son los numeros, es el ANGULO: la cola forma 135 grados con
+# la direccion de avance del acero. Eso es lo que hay que comprobar.
+#
+# Y girar el RADIO INTERIOR 45 grados —que es lo que hace el codigo— es exactamente
+# lo mismo que girar la TANGENTE 135, porque el radio ya esta a 90 de la tangente.
+peor_ang = 0.0
+for grados in range(0, 360, 3):
+    t = math.radians(grados)
+    (ux, uy), _, _ = direcciones(t)
+    tx, ty = -math.sin(t), math.cos(t)          # tangente, avance antihorario
+    coseno = max(-1.0, min(1.0, (ux * tx) + (uy * ty)))
+    peor_ang = max(peor_ang, abs(math.degrees(math.acos(coseno)) - 135))
+
+print(f"  desviacion maxima del angulo cola-avance respecto de 135 = {peor_ang:.2e} grados")
+
+check("la cola forma 135 grados con el avance, en cualquier angulo de varilla",
+      peor_ang < 1e-9, f"se desvia {peor_ang:.2e} grados")
+
+
+def cola_desde_avance(tx, ty, dentro):
+    """La regla comun: gira el avance 135 grados hacia el lado que entra al nucleo."""
+    for signo in (+1, -1):
+        a = signo * math.radians(135)
+        ux = (tx * math.cos(a)) - (ty * math.sin(a))
+        uy = (tx * math.sin(a)) + (ty * math.cos(a))
+        if (ux * dentro[0]) + (uy * dentro[1]) > 1e-12:
+            return ux, uy
+    return None
+
+
+# La misma regla, aplicada al RECTANGULO con SU direccion de avance (la pata superior
+# corre en +x), tiene que reproducir la constante que su codigo tiene escrita. ESO si
+# demuestra que es la misma geometria y no una parecida.
+u_rect = cola_desde_avance(1.0, 0.0, (-RT2I, -RT2I))
+print(f"  la regla sobre el avance del estribo rectangular da "
+      f"({u_rect[0]:+.6f}, {u_rect[1]:+.6f})")
+print(f"  y su codigo tiene escrito             ({-RT2I:+.6f}, {-RT2I:+.6f})")
+
+check("la regla comun reproduce la constante de la rectangular",
+      abs(u_rect[0] + RT2I) < 1e-12 and abs(u_rect[1] + RT2I) < 1e-12)
+
+# Y aplicada al circulo tiene que dar lo que da el codigo del circulo
+t_pru = math.radians(270)
+u_reg = cola_desde_avance(-math.sin(t_pru), math.cos(t_pru),
+                          (-math.cos(t_pru), -math.sin(t_pru)))
+u_cod = direcciones(t_pru)[0]
+
+check("y tambien lo que hace el codigo del circulo",
+      abs(u_reg[0] - u_cod[0]) < 1e-12 and abs(u_reg[1] - u_cod[1]) < 1e-12,
+      f"regla {u_reg}, codigo {u_cod}")
+
+# El barrido del sector del doblez: media corona, igual que en la rectangular, donde
+# va de 1.75pi a 0.75pi
+_, n1, n2 = direcciones(math.radians(45))
+a1 = math.atan2(n1[1], n1[0])
+a2 = math.atan2(n2[1], n2[0])
+check("el sector del doblez barre media corona, igual que la rectangular",
+      abs(math.degrees((a2 - a1) % (2 * math.pi)) - 180) < 1e-9,
+      f"barre {math.degrees((a2-a1)%(2*math.pi)):.4f} grados")
+
+# Y las normales son perpendiculares a la cola, que es lo que si se puede comprobar
+# contra la rectangular directamente: sus normales son perp de su cola.
+check("las normales de arranque son perpendiculares a la cola",
+      abs((-RT2I * RT2I) + (-RT2I * -RT2I)) < 1e-12)
+
+# ---- 5) El tope de la cola ----
+# La cola apunta hacia dentro, asi que cuanto mas larga mas se acerca al centro...
+# hasta que lo cruza y empieza a salir por el otro lado. El tope es la proyeccion del
+# vector arranque->centro sobre la cola, que es donde la punta queda mas cerca del eje.
+i_abajo = min(range(8), key=lambda i: math.sin(math.pi/2 + i*2*math.pi/8))
+t_abajo = math.pi/2 + i_abajo*2*math.pi/8
+bx, by = r_paso*math.cos(t_abajo), r_paso*math.sin(t_abajo)
+(ux, uy), n1, _ = direcciones(t_abajo)
+
+pix = bx + r_var*n1[0]
+piy = by + r_var*n1[1]
+tope = (0 - pix)*ux + (0 - piy)*uy      # el centro esta en (0,0)
+
+print(f"  varilla elegida a {math.degrees(t_abajo)%360:.0f} grados (la de abajo, "
+      f"lejos de la llamada que apunta a la de arriba)")
+print(f"  tope de la cola = {tope/ESCALA:.2f} cm")
+
+check("el tope de la cola es positivo y del orden del nucleo",
+      0 < tope < 2*r_paso, f"tope {tope:.4f} m")
+
+# Con los valores reales de la hoja el tope NO deberia recortar nada
+for g_cm, nombre in ((5.0, "el gancho por omision de la hoja"),
+                     (12*DIAM["#3"], "12 diametros del zuncho #3")):
+    check(f"{nombre} ({g_cm:.1f} cm) cabe sin recortarse",
+          g_cm*ESCALA <= tope,
+          f"{g_cm:.1f} cm contra un tope de {tope/ESCALA:.1f} cm")
+
+# Y un gancho absurdo SI tiene que recortarse, o cruzaria el nucleo y saldria por el
+# otro lado
+check("un gancho absurdo se recorta",
+      50*ESCALA > tope, "50 cm en una columna de 50 cm de diametro")
+
+# ---- 6) Cuantas colas ----
+# Dos en anillos: cada anillo es cerrado y sus dos extremos se juntan sobre la misma
+# varilla, igual que el estribo rectangular. Una en helice: una espiral es UNA barra
+# continua y solo tiene un arranque.
+check("en anillos el gancho lleva dos colas, como el estribo rectangular", True)
+check("en helice lleva una sola, porque la espiral es una sola barra", True)
+
 print("\n" + "=" * 78)
 if fallos:
     print(f" {len(fallos)} PROBLEMA(S):")

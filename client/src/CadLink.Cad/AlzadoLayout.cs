@@ -117,11 +117,28 @@ public static class AlzadoLayout
     /// el rótulo necesita más que eso.
     /// </para>
     /// <para>
-    /// La cuenta, con el rótulo más largo que puede salir —elemento, ID, tres lechos,
-    /// estribo, recubrimiento, f'c y escala, nueve renglones de 2.5 mm con el
-    /// interlineado de AutoCAD— son 35.8 cm de texto, más los 5 cm de
-    /// <c>ROTULO_GAP</c> y 5 cm de holgura contra la sección: 45.8 cm. Ya hay 20, así
-    /// que faltan 26. Se redondean al alza.
+    /// La cuenta, de arriba abajo, con el rótulo más largo que puede salir —elemento,
+    /// ID, tres lechos, estribo, recubrimiento, f'c y escala, nueve renglones de 2.5 mm
+    /// con el interlineado de AutoCAD—:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>5 cm de <c>ROTULO_GAP</c> entre el pie del alzado y el rótulo,</item>
+    ///   <item>35.8 cm del rótulo,</item>
+    ///   <item>5 cm de holgura,</item>
+    ///   <item>
+    ///     y <b>15 cm del <c>CORTE A-A'</c></b>, que <c>AlzadoDrawer.RotuloCorte</c>
+    ///     pone sobre el paño superior de la sección, más 5 cm de aire.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Son 65.8 cm. Ya hay 20 de <see cref="SepSecAlz"/>, así que faltan 45.8, que se
+    /// redondean al alza.
+    /// </para>
+    /// <para>
+    /// <b>El renglón del <c>CORTE A-A'</c> faltaba</b>, y con 30 cm el rótulo del alzado
+    /// se le comía 5.8 cm. No se vio antes porque el <c>CORTE A-A'</c> lo dibuja el
+    /// alzado y el hueco lo reserva el layout: dos archivos distintos. Ahora está en la
+    /// cuenta y comprobado en <c>tools/verificar_layout_alzados.py</c>.
     /// </para>
     /// <para>
     /// En el alzado <b>horizontal</b> no hace falta ninguna constante nueva: debajo del
@@ -130,7 +147,7 @@ public static class AlzadoLayout
     /// <see cref="AireSobreSecciones"/>, que da de sobra.
     /// </para>
     /// </remarks>
-    public const double AireRotuloAlzado = 0.30;
+    public const double AireRotuloAlzado = 0.46;
 
     /// <summary>
     /// Y de la <b>segunda cara</b> de una columna rectangular.

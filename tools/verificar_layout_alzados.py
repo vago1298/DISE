@@ -30,7 +30,11 @@ ANCHO_COTAS_VERTICAL = DIM_OFF_3 + ROTULO_OFF_COL + 0.1
 #
 # Ojo: esto hace que la Y del alzado vertical YA NO coincida con la del VBA, y es a
 # proposito. La X si tiene que seguir coincidiendo clavada.
-AIRE_ROTULO_ALZADO = 0.30
+AIRE_ROTULO_ALZADO = 0.46
+
+# El CORTE A-A' que AlzadoDrawer.RotuloCorte pone sobre el pano superior de la seccion.
+# Entra en la cuenta del hueco: con 0.30 de aire el rotulo del alzado se lo comia.
+CORTE_OFF = 0.15
 
 fallos = []
 
@@ -307,6 +311,26 @@ hueco_1a = SEP_SEC_ALZ + AIRE_ROTULO_ALZADO
 check("el hueco bajo la primera cara alcanza para su rotulo",
       hueco_1a > ROTULO_GAP + alto_rotulo,
       f"hueco {hueco_1a:.4f} m, el rotulo ocupa {ROTULO_GAP + alto_rotulo:.4f} m")
+
+# 1b) Y sobre todo: el rotulo del alzado NO puede comerse el CORTE A-A'.
+#
+# Este es el fallo que se escapo al abrir el hueco: el CORTE A-A' lo dibuja el ALZADO
+# y el hueco lo reserva el LAYOUT, dos archivos distintos, asi que nadie sumo los 15 cm.
+# Medido con una columna redonda de 50 cm: el CORTE caia 5.8 cm DENTRO del rotulo.
+pie_rotulo = hueco_1a - ROTULO_GAP - alto_rotulo   # medido desde el pano de la seccion
+print(f"  el CORTE A-A' esta a {CORTE_OFF:.4f} m del pano superior de la seccion")
+print(f"  y el rotulo del alzado baja hasta {pie_rotulo:.4f} m de ese mismo pano")
+
+check("el rotulo del alzado no se come el CORTE A-A'",
+      pie_rotulo > CORTE_OFF,
+      f"el rotulo baja a {pie_rotulo:.4f} y el CORTE esta en {CORTE_OFF:.4f}: "
+      f"se pisan {CORTE_OFF - pie_rotulo:.4f} m")
+
+# Y que con el aire viejo SI se pisaban, para que quede fijado el motivo del cambio
+pie_viejo = SEP_SEC_ALZ + 0.30 - ROTULO_GAP - alto_rotulo
+check("con el aire viejo de 0.30 el CORTE A-A' quedaba dentro del rotulo",
+      pie_viejo < CORTE_OFF,
+      f"bajaba a {pie_viejo:.4f} contra un CORTE en {CORTE_OFF:.4f}")
 
 # 2) El rotulo de la segunda cara, contra el techo del alzado de la primera
 hueco_2a = SEP_CARAS + AIRE_ROTULO_ALZADO

@@ -670,7 +670,24 @@ public partial class MainWindow : Window
             };
 
             // Capas de varilla, estilos de texto y de cota: los mismos de la sección
-            new SeccionDrawer(doc, escala).AsegurarCapas(ClavesDeVarillaUsadas());
+            var secciones = new SeccionDrawer(doc, escala);
+            secciones.AsegurarCapas(ClavesDeVarillaUsadas());
+
+            // Las llamadas de las varillas NO viajan dentro del bloque de la sección:
+            // Bloquear deja fuera las capas COTAS y ROTULOS a propósito, así que el
+            // corte que se inserta junto al alzado llegaba sin ellas. Se rehacen aquí,
+            // cuando el alzado avisa de dónde dejó el bloque.
+            dibujante.TrasInsertarSeccion = (id, xs, ys) =>
+            {
+                var fila = _datos.SeccionesConcreto.FirstOrDefault(
+                    f => string.Equals((f.Id ?? string.Empty).Trim(), id,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (fila is not null)
+                {
+                    secciones.LlamadasJuntoAlBloque(AFormatoCad(fila), xs, ys);
+                }
+            };
 
             // Y la capa ALZADOS, que solo usa el alzado
             dibujante.AsegurarCapas();

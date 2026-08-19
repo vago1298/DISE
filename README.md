@@ -56,6 +56,8 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
 | **Columna circular**, elegida en la columna *Elemento* | ✅ Completo |
 | **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |
+| **Gancho sísmico del zuncho** a 135° sobre una varilla, con la cola en el núcleo | ✅ Completo |
+| **El corte insertado junto al alzado lleva sus llamadas de varillas** | ✅ Completo |
 | Alzados y bloques a **1 m** sobre la sección más alta | ✅ Completo |
 | Vista previa con fondo azul, igual para las dos formas | ✅ Completo |
 | **Rótulo del alzado debajo del bloque insertado y de sus cotas** | ✅ Completo |

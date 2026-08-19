@@ -29,9 +29,14 @@ namespace CadLink.Cad;
 ///     pero en el alzado sube en hélice o en anillos, y eso lo decide el usuario.
 ///   </item>
 ///   <item>
-///     <b>No hay gancho sísmico en la esquina.</b> Un zuncho circular no tiene
-///     esquinas donde doblar: se traslapa. La columna T se ignora aquí, y el rótulo
-///     no la menciona.
+///     <b>El gancho sísmico no va en una esquina, va sobre una varilla.</b> Aquí no
+///     hay esquinas donde doblar, y durante un tiempo eso se tomó como que un zuncho
+///     circular no lleva gancho y la columna T se podía ignorar. Es falso: lo que
+///     ancla un zuncho —igual que un estribo— es el <b>doblez a 135° alrededor de una
+///     varilla longitudinal</b> con la cola metida en el núcleo, y la esquina del
+///     rectángulo solo era el sitio donde esa varilla estaba. En el círculo la varilla
+///     está en el círculo de paso, así que el gancho se dibuja ahí. Ver
+///     <see cref="GanchoDelZuncho"/>.
 ///   </item>
 ///   <item>
 ///     <b>El hatch se recorta contra coronas</b>, no contra rectángulos con
@@ -158,6 +163,20 @@ public sealed partial class SeccionDrawer
         var rellenosVarilla = new List<object>();
         RellenarVarillas(circulos, rellenosVarilla);
 
+        // ---------- Gancho sísmico del zuncho ----------
+        // Va DESPUÉS de las varillas porque se abraza a una de ellas, exactamente por
+        // el mismo motivo que el estribo diamante en la rectangular: necesita saber
+        // dónde quedaron.
+        var ganchoQuads = new List<double[]>();
+        var ganchoSectores = new List<double[]>();
+
+        if (hayZuncho)
+        {
+            GanchoDelZuncho(
+                s, contorno, ganchoQuads, ganchoSectores,
+                cx, cy, posiciones, rVar, dZun, rZunInt);
+        }
+
         // ---------- Hatch de concreto, en dos partes ----------
         // Igual que en la rectangular: primero el recubrimiento, entre la cara del
         // concreto y el zuncho, y después el núcleo, con las varillas como islas. Se
@@ -182,6 +201,16 @@ public sealed partial class SeccionDrawer
             {
                 AlFondo(creados);
             }
+        }
+
+        // ---------- Relleno del gancho ----------
+        // El cuerpo del zuncho ya se rellenó arriba con la corona. El gancho sobresale
+        // de ella —el doblez rodea la varilla y la cola entra al núcleo—, así que sus
+        // dos piezas se rellenan aparte, igual que hace RellenoEstribo en la
+        // rectangular.
+        if (conFondoSolido && (ganchoSectores.Count > 0 || ganchoQuads.Count > 0))
+        {
+            RellenoDelGancho(ganchoQuads, ganchoSectores);
         }
 
         // ---------- Contornos en negro, solo en la sección rellena ----------
@@ -498,4 +527,404 @@ public sealed partial class SeccionDrawer
             return null;
         }
     }
+
+    // ==================================================================
+    //  Gancho sísmico del zuncho
+    // ==================================================================
+    //
+    // Va al final del archivo, y no junto al dibujo del zuncho, porque necesita las
+    // varillas ya colocadas.
+
+    /// <summary>
+    /// El <b>gancho sísmico</b> del zuncho: doblez a 135° sobre una varilla y cola
+    /// hacia el núcleo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Es el mismo gancho del estribo rectangular</b>, y por eso reutiliza su
+    /// <see cref="Cola"/> en lugar de repetir la geometría. Lo que cambia es solo
+    /// dónde está la varilla que se abraza: en el rectángulo es la de la esquina, y en
+    /// el círculo es una del círculo de paso.
+    /// </para>
+    /// <para>
+    /// <b>El doblez sale tangente sin que haya que forzarlo</b>, y esa es la
+    /// comprobación de que el planteamiento es correcto. El eje del zuncho rodeando la
+    /// varilla queda a <c>rVar + dZun/2</c> de su centro; y la distancia entre el
+    /// centro de la varilla y el eje del zuncho es
+    /// <c>rEje − rPaso = (r − rec − dZun/2) − (r − rec − dZun − dVar/2)</c>, que
+    /// simplificando es <c>dVar/2 + dZun/2</c>. Los dos números son <b>el mismo</b>,
+    /// así que el zuncho envuelve la varilla sin escalón. Comprobado al bit en
+    /// <c>tools/verificar_seccion_circular.py</c>.
+    /// </para>
+    /// <para>
+    /// Y por lo mismo la cara exterior del doblez queda tangente al círculo exterior
+    /// del zuncho: <c>rPaso + rVar + dZun = r − rec = rZunExt</c>. O sea que el gancho
+    /// <b>no sobresale</b> del zuncho por fuera, ni muerde el recubrimiento.
+    /// </para>
+    /// <para>
+    /// <b>Las direcciones se deducen, no se escriben a mano.</b> En la rectangular
+    /// están puestas como constantes —cola <c>(−1/√2, −1/√2)</c> y normales
+    /// <c>±(1/√2, −1/√2)</c>— porque allí la esquina siempre es la misma. Aquí la
+    /// varilla puede estar en cualquier ángulo, así que:
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     La cola apunta al núcleo: se toma el radio <b>hacia dentro</b> y se gira
+    ///     45°, que es lo que hace que el gancho entre en diagonal y no de plano. Así
+    ///     el producto escalar con el radio interior vale siempre <c>cos 45°</c>, o
+    ///     sea que la cola <b>nunca</b> puede apuntar hacia fuera.
+    ///   </item>
+    ///   <item>
+    ///     Las dos normales de arranque son las <b>perpendiculares a la cola</b>, igual
+    ///     que en la rectangular.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// <b>Y girar el radio 45° es girar el avance 135°</b>, que es la definición del
+    /// gancho. Sale gratis: el radio ya está a 90° de la tangente, así que 90 + 45 son
+    /// los 135 de la norma. Comprobado para todos los ángulos de varilla.
+    /// </para>
+    /// <para>
+    /// <b>Cuidado con una comparación que parece obvia y es falsa.</b> Uno esperaría
+    /// que esta regla diera los mismos números que la rectangular, y no los da: allí
+    /// el estribo corre <b>paralelo a la cara</b> y aquí el zuncho corre <b>tangente</b>,
+    /// así que la dirección de avance es distinta y la cola también. Lo que comparten
+    /// es el ángulo, no las constantes. Si se aplica «gira el avance 135° hacia el
+    /// núcleo» a la pata superior del estribo rectangular, que corre en <c>+x</c>, sale
+    /// su <c>(−1/√2, −1/√2)</c> exacto; es esa comprobación, y no la de los números
+    /// sueltos, la que está en el script.
+    /// </para>
+    /// <para>
+    /// <b>Cuántas colas.</b> Dos si el zuncho va en <b>anillos</b>, porque cada anillo
+    /// es cerrado y sus dos extremos se juntan sobre la misma varilla, igual que en el
+    /// estribo rectangular. Una sola si va en <b>hélice</b>: una espiral es una sola
+    /// barra continua y solo tiene un arranque, así que dibujar dos ganchos diría que
+    /// hay dos barras donde hay una.
+    /// </para>
+    /// </remarks>
+    /// <param name="contorno">Donde se acumulan las líneas, para pintarlas de negro.</param>
+    /// <param name="quads">Cuadriláteros de las colas, para rellenarlas.</param>
+    /// <param name="sectores">Sectores anulares de los dobleces, para rellenarlos.</param>
+    /// <param name="rVar">El <b>radio</b> de la varilla, no su diámetro.</param>
+    /// <param name="rZunInt">Radio interior del zuncho, para saber dónde está el núcleo.</param>
+    private void GanchoDelZuncho(
+        SeccionCad s, List<object> contorno,
+        List<double[]> quads, List<double[]> sectores,
+        double cx, double cy, List<(double X, double Y)> posiciones,
+        double rVar, double dZun, double rZunInt)
+    {
+        var gancho = s.GanchoCm * _escala;
+
+        // Mismo criterio que la sección rectangular: la columna T tal cual, sin el
+        // 12·db, que es regla del alzado. Cero significa sin gancho.
+        if (gancho <= 0)
+        {
+            return;
+        }
+
+        if (posiciones.Count == 0)
+        {
+            // Sin varillas no hay de dónde agarrarse. Un zuncho sin nada que abrazar
+            // no se ancla, y dibujar el doblez en el aire sería mentir.
+            _log.Add(
+                $"Sección circular '{s.Id}': el zuncho no lleva gancho porque no hay " +
+                "varillas longitudinales a las que agarrarlo.");
+            return;
+        }
+
+        // La varilla de ABAJO. La llamada de varillas apunta a la de arriba
+        // (LlamadaDelCirculo), así que poniendo el gancho en la de abajo la flecha y el
+        // doblez no se pisan.
+        var barra = posiciones[0];
+
+        foreach (var p in posiciones)
+        {
+            if (p.Y < barra.Y)
+            {
+                barra = p;
+            }
+        }
+
+        var bx = barra.X;
+        var by = barra.Y;
+
+        // Radio HACIA DENTRO, normalizado. Se saca del vector varilla->centro en vez
+        // del ángulo, que ahorra un atan2 y un par de trigonométricas.
+        var rx = cx - bx;
+        var ry = cy - by;
+        var rl = Math.Sqrt((rx * rx) + (ry * ry));
+
+        if (rl < 1e-9)
+        {
+            // La varilla está en el centro: no hay dirección «hacia dentro».
+            return;
+        }
+
+        rx /= rl;
+        ry /= rl;
+
+        // La cola: el radio interior girado 45°.
+        var ux = (rx - ry) * Rt2I;
+        var uy = (rx + ry) * Rt2I;
+
+        // Las normales de arranque: las perpendiculares a la cola.
+        var n1X = -uy;
+        var n1Y = ux;
+        var n2X = uy;
+        var n2Y = -ux;
+
+        var rIn = rVar;
+        var rOut = rVar + dZun;
+
+        // La cola no puede pasarse del núcleo. Apunta hacia dentro, así que cuanto más
+        // larga más se acerca al centro… hasta que lo cruza y empieza a salir por el
+        // otro lado. El tope es la proyección del vector arranque->centro sobre la
+        // propia cola, que es justo donde la punta queda lo más cerca posible del eje.
+        var piX = bx + (rIn * n1X);
+        var piY = by + (rIn * n1Y);
+
+        var tope = ((cx - piX) * ux) + ((cy - piY) * uy);
+
+        if (tope > 0 && gancho > tope)
+        {
+            _log.Add(
+                $"Sección circular '{s.Id}': el gancho de {s.GanchoCm:0.#} cm no cabe " +
+                $"en el núcleo y se recortó a {tope / _escala:0.#} cm. Con un diámetro " +
+                $"de {s.DiametroCm:0.#} cm la cola llegaría al otro lado.");
+            gancho = tope;
+        }
+
+        // El doblez, para el relleno: media corona alrededor de la varilla, del
+        // arranque de una cola al de la otra.
+        var a1 = Math.Atan2(n1Y, n1X);
+        sectores.Add(new[] { bx, by, rIn, rOut, a1, a1 + Pi });
+
+        // Y las colas. Aquí se reutiliza tal cual la Cola del estribo rectangular: no
+        // se recorta nada (recortar: false), porque el recorte de allí existe para una
+        // cara recta y vertical del estribo, y aquí no hay ninguna.
+        Cola(contorno, quads, bx, by, rIn, rOut, n1X, n1Y, ux, uy, gancho, false, 0, 0);
+
+        if (!s.ZunchoHelicoidal)
+        {
+            Cola(contorno, quads, bx, by, rIn, rOut, n2X, n2Y, ux, uy, gancho, false, 0, 0);
+        }
+
+        // El núcleo solo se usa para el aviso: si la varilla que se abraza estuviera
+        // fuera del zuncho, el gancho no tendría sentido.
+        if (rl > rZunInt + rOut)
+        {
+            _log.Add(
+                $"Sección circular '{s.Id}': la varilla del gancho queda muy adentro " +
+                "del núcleo. Revisa el recubrimiento y el diámetro del zuncho.");
+        }
+    }
+
+    /// <summary>
+    /// Rellena las dos piezas del gancho: el doblez y las colas.
+    /// </summary>
+    /// <remarks>
+    /// Es el paso 2 y 3 de <see cref="RellenoEstribo"/>, sin el paso 1: el cuerpo del
+    /// zuncho circular ya se rellenó con la corona entre los dos círculos, que es una
+    /// frontera mucho más simple que la del estribo rectangular.
+    /// <para>
+    /// Las polilíneas de frontera se <b>borran</b> al terminar. Los hatches son no
+    /// asociativos, así que no les afecta, y si se dejaran quedarían dos contornos
+    /// sueltos encima del acero.
+    /// </para>
+    /// </remarks>
+    private void RellenoDelGancho(List<double[]> quads, List<double[]> sectores)
+    {
+        var creados = new List<object>();
+        var temporales = new List<object>();
+
+        try
+        {
+            foreach (var s in sectores)
+            {
+                var pl = SectorAnular(s[0], s[1], s[2], s[3], s[4], s[5]);
+
+                if (pl is null)
+                {
+                    continue;
+                }
+
+                temporales.Add(pl);
+
+                var hs = Hatch("SOLID", 1, pl, null, "ESTRIBOS", ColorRellenoEstribo);
+
+                if (hs is not null)
+                {
+                    creados.Add(hs);
+                }
+            }
+
+            foreach (var q in quads)
+            {
+                var pl = PolyCerrada(q);
+
+                if (pl is null)
+                {
+                    continue;
+                }
+
+                temporales.Add(pl);
+
+                var hq = Hatch("SOLID", 1, pl, null, "ESTRIBOS", ColorRellenoEstribo);
+
+                if (hq is not null)
+                {
+                    creados.Add(hq);
+                }
+            }
+
+            if (creados.Count > 0)
+            {
+                AlFondo(creados);
+            }
+        }
+        catch (Exception ex)
+        {
+            // El relleno es decorativo: el contorno del gancho ya está dibujado.
+            Fallo("Relleno del gancho del zuncho", ex);
+        }
+        finally
+        {
+            foreach (var t in temporales)
+            {
+                Borrar(t);
+            }
+        }
+    }
+
+    // ==================================================================
+    //  Llamadas junto al bloque de sección que inserta el alzado
+    // ==================================================================
+
+    /// <summary>
+    /// Rehace las <b>llamadas de las varillas</b> junto a un bloque de sección ya
+    /// insertado, por ejemplo el que el alzado pone a un lado o debajo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Por qué hace falta.</b> Las llamadas no viajan dentro del bloque, y es a
+    /// propósito: <see cref="Bloquear"/> salta todo lo que esté en las capas
+    /// <c>COTAS</c> y <c>ROTULOS</c>, porque si entraran, el origen del bloque —que es
+    /// el centro de su caja envolvente— quedaría descentrado, y además dejarían de
+    /// poder editarse por capa. Así que se quedan sueltas en el espacio modelo, donde se
+    /// dibujó la sección.
+    /// </para>
+    /// <para>
+    /// La consecuencia es la que se ve en el plano: en la fila de secciones las
+    /// llamadas están, y el bloque que el alzado inserta a su lado llega
+    /// <b>pelado</b> —solo concreto, acero y rayado— con nada más que su
+    /// <c>CORTE A-A'</c>. El usuario lo pidió al revés: que el bloque insertado lleve
+    /// sus llamadas.
+    /// </para>
+    /// <para>
+    /// <b>Y no se arregla metiéndolas en el bloque</b>, por las dos razones de arriba.
+    /// Se arregla <b>volviéndolas a dibujar</b> en el espacio modelo junto al bloque
+    /// insertado, que es exactamente lo que ya hacen el <c>CORTE A-A'</c> y el rótulo
+    /// del alzado.
+    /// </para>
+    /// <para>
+    /// <b>Las coordenadas salen gratis.</b> La caja del bloque solo contiene geometría
+    /// —el rotulado y las cotas se quedaron fuera— y su polilínea de concreto es la más
+    /// externa, así que después de que el alzado lo apoya por su paño inferior
+    /// izquierdo, la esquina del concreto cae <b>exactamente</b> en
+    /// <paramref name="xIzquierda"/>, <paramref name="yAbajo"/>. Son los mismos dos
+    /// números que recibió <c>Dibujar</c> cuando dibujó la sección original, así que las
+    /// fórmulas no cambian: se reutilizan tal cual.
+    /// </para>
+    /// </remarks>
+    /// <param name="xIzquierda">Borde izquierdo del concreto del bloque insertado.</param>
+    /// <param name="yAbajo">Paño inferior del concreto del bloque insertado.</param>
+    public void LlamadasJuntoAlBloque(SeccionCad s, double xIzquierda, double yAbajo)
+    {
+        try
+        {
+            if (s.Circular)
+            {
+                LlamadasCirculoJuntoAlBloque(s, xIzquierda, yAbajo);
+                return;
+            }
+
+            var b = s.BaseCm * _escala;
+            var h = s.AlturaCm * _escala;
+
+            if (b <= 0 || h <= 0)
+            {
+                return;
+            }
+
+            var rec = s.RecubrimientoCm * _escala;
+            var dEst = s.Estribo.Cm * _escala;
+
+            var dSup = s.Superior.Esquina.Cm * _escala;
+            var dInf = s.Inferior.Esquina.Cm * _escala;
+            if (dSup <= 0) { dSup = dEst; }
+            if (dInf <= 0) { dInf = dEst; }
+
+            // Las MISMAS posiciones que se usaron al dibujar la sección, sacadas del
+            // cálculo puro para no volver a dibujar las varillas encima.
+            var pSup = PosicionesDeLecho(s.Superior, xIzquierda, yAbajo, b, h, rec, dEst, true);
+            var pInf = PosicionesDeLecho(s.Inferior, xIzquierda, yAbajo, b, h, rec, dEst, false);
+
+            LeadersDeLecho(s.Superior, (pSup.Esquina, pSup.Intermedia, pSup.YGrupo),
+                xIzquierda, arriba: true);
+            LeadersDeLecho(s.Inferior, (pInf.Esquina, pInf.Intermedia, pInf.YGrupo),
+                xIzquierda, arriba: false);
+
+            if (s.NLateral > 0 && s.Lateral.Existe)
+            {
+                foreach (var (xIzq, xDer, y) in
+                         PosicionesLaterales(s, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf))
+                {
+                    LeaderVarilla(xIzq, y, 2, s.Lateral.Clave, xIzquierda);
+                    LeaderVarilla(xDer, y, 2, s.Lateral.Clave, xIzquierda);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Las llamadas son rotulado: si fallan, el corte sigue dibujado y medido.
+            Fallo($"Llamadas del corte '{s.Id}' junto a su alzado", ex);
+        }
+    }
+
+    /// <summary>La misma cosa para el corte circular: una sola llamada.</summary>
+    /// <remarks>
+    /// Aquí no hay lechos, así que se reutiliza <see cref="LlamadaDelCirculo"/> tal
+    /// cual. El centro sale de la esquina igual que en <see cref="DibujarCircular"/>:
+    /// <c>cx = xIzquierda + r</c>, <c>cy = yAbajo + r</c>.
+    /// </remarks>
+    private void LlamadasCirculoJuntoAlBloque(
+        SeccionCad s, double xIzquierda, double yAbajo)
+    {
+        var r = s.DiametroCm * _escala / 2;
+
+        if (r <= 0)
+        {
+            return;
+        }
+
+        var rec = s.RecubrimientoCm * _escala;
+        var dZun = s.Estribo.Cm * _escala;
+
+        var cx = xIzquierda + r;
+        var cy = yAbajo + r;
+
+        var posiciones = PosicionesCirculares(s, cx, cy, r, rec, dZun);
+
+        if (posiciones.Count == 0)
+        {
+            return;
+        }
+
+        var rVar = s.VarTotal.Existe
+            ? s.VarTotal.Cm * _escala / 2
+            : s.Estribo.Cm * _escala / 2;
+
+        LlamadaDelCirculo(s, cx, cy, posiciones, rVar);
+    }
+
 }
