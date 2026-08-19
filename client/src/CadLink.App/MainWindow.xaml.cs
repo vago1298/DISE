@@ -61,6 +61,13 @@ public partial class MainWindow : Window
         Enlazar();
         AplicarLicencia(license);
 
+        // El tema que el usuario dejó puesto la última vez. Va AQUÍ, en el
+        // constructor, y no en el Loaded: WPF no dibuja nada hasta que el
+        // constructor termina, así que la ventana ya aparece con su tema y no se ve
+        // el parpadeo de claro a oscuro.
+        Tema.Cargar();
+        TemaButton.Content = Tema.TextoDelBoton;
+
         PreviewCanvas.SizeChanged += (_, _) => DibujarVistaPrevia();
         SeccionesGrid.SelectionChanged += OnSeccionSeleccionada;
 
@@ -3307,5 +3314,37 @@ public partial class MainWindow : Window
         Canvas.SetLeft(t, left);
         Canvas.SetTop(t, top);
         PreviewCanvas.Children.Add(t);
+    }
+
+    // ==================================================================
+    //  Tema claro / oscuro
+    // ==================================================================
+
+    /// <summary>Cambia entre el tema claro y el oscuro.</summary>
+    /// <remarks>
+    /// <para>
+    /// El cambio en sí lo hace <see cref="Tema.Alternar"/>, mutando el color de las
+    /// brochas de la paleta: eso repinta solo todo lo que las use, que es casi toda la
+    /// ventana. Aquí solo quedan las dos cosas que <b>no</b> se enteran por su cuenta.
+    /// </para>
+    /// <para>
+    /// <b>La vista previa</b>, porque su contenido no son controles con brochas de la
+    /// paleta: se dibuja desde código sobre un <c>Canvas</c>, y solo se rehace al
+    /// cambiar de tamaño. Sin volver a llamarla, el dibujo se quedaría con los colores
+    /// del tema anterior hasta que el usuario moviera la ventana.
+    /// </para>
+    /// <para>
+    /// <b>Y el texto del propio botón</b>, que dice a dónde se va, no dónde se está.
+    /// </para>
+    /// </remarks>
+    private void OnCambiarTema(object sender, RoutedEventArgs e)
+    {
+        Tema.Alternar();
+
+        TemaButton.Content = Tema.TextoDelBoton;
+
+        // Los lienzos que se pintan a mano, no por estilo.
+        DibujarVistaPrevia();
+        RedibujarVistas();
     }
 }

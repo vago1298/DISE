@@ -53,6 +53,7 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Columnas calculadas (kVA, corriente, ampacidad total) | ✅ Completo |
 | Conexión a AutoCAD por COM (`AcadConnection`) | ✅ Completo |
 | **Una sola barra arriba**: menú y botones en la misma fila, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
+| **Tema claro u oscuro**, con botón en la barra y recordado entre sesiones | ✅ Completo |
 | Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
 | **Columna circular**, elegida en la columna *Elemento* | ✅ Completo |
 | **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |

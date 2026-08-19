@@ -3536,7 +3536,25 @@ def v19_circular_y_ui() -> None:
 
     # El lecho superior y el inferior tienen que ser de COLORES DISTINTOS: es el par
     # que se confunde al capturar, y pintarlos igual no resolveria nada.
+    # Al montar el tema oscuro los fondos de celda dejaron de ser un hex escrito en el
+    # Setter y pasaron a ser una brocha de la paleta, que es lo que permite cambiarlos
+    # en caliente. Asi que hay que resolver un paso mas: del estilo a la brocha, y de la
+    # brocha a su color. Lo que se comprueba sigue siendo lo mismo.
+    def color_de_brocha(nombre):
+        m_ = re.search(
+            rf'<SolidColorBrush x:Key="{nombre}" Color="(#[0-9A-Fa-f]+)"', tema)
+        return m_.group(1) if m_ else None
+
     def fondo_de(clave):
+        m_ = re.search(
+            rf'x:Key="{clave}".*?Property="Background" '
+            rf'Value="\{{StaticResource (\w+)\}}"',
+            tema, re.S)
+
+        if m_:
+            return color_de_brocha(m_.group(1))
+
+        # Respaldo: si alguien vuelve a poner el hex directo, tambien vale.
         m_ = re.search(
             rf'x:Key="{clave}".*?Property="Background" Value="(#[0-9A-Fa-f]+)"',
             tema, re.S)
@@ -3564,6 +3582,94 @@ def v19_circular_y_ui() -> None:
 
     # ------------------------------------------------------------------
     # Vista previa con fondo azul
+    # ------------------------------------------------------------------
+    # Tema claro / oscuro
+    # ------------------------------------------------------------------
+    temacs = leer(ruta("client/src/CadLink.App/Tema.cs"))
+
+    check("hay tema claro y oscuro", "public static class Tema" in temacs)
+    check("y un boton para cambiarlo", 'x:Name="TemaButton"' in xaml)
+    check("el boton vive en la barra de arriba",
+          xaml.index('x:Name="TemaButton"') < xaml.index('<TabControl'))
+    check("y su manejador existe", "private void OnCambiarTema(" in codigo)
+
+    # El cambio se hace MUTANDO el color de las brochas, no sustituyendo el diccionario:
+    # los 221 usos de la paleta son StaticResource y esos no se re-resuelven, asi que
+    # cambiar el diccionario con la ventana abierta no repinta nada.
+    check("el tema muta el color de las brochas",
+          "brocha.Color = color;" in temacs)
+    check("y no sustituye el diccionario, que no repintaria",
+          "MergedDictionaries" not in temacs)
+
+    # Las dos paletas tienen que tener LAS MISMAS claves, o al cambiar de tema quedarian
+    # colores del tema anterior mezclados.
+    m_claro = re.search(r"Claro = new\(\)\s*\{(.*?)\n    \};", temacs, re.S)
+    m_noche = re.search(r"Noche = new\(\)\s*\{(.*?)\n    \};", temacs, re.S)
+    check("se pueden leer las dos paletas",
+          m_claro is not None and m_noche is not None)
+
+    if m_claro and m_noche:
+        kc = set(re.findall(r'\["(\w+)"\]', m_claro.group(1)))
+        kn = set(re.findall(r'\["(\w+)"\]', m_noche.group(1)))
+        check("las dos paletas cubren las mismas brochas",
+              kc == kn, f"solo en claro: {kc-kn}; solo en oscuro: {kn-kc}")
+
+        # Y toda brocha de la paleta que el XAML use tiene que estar en las dos.
+        usadas = set(re.findall(r"\{StaticResource (\w+Brush)\}", xaml + tema))
+        declaradas = set(re.findall(r'<SolidColorBrush x:Key="(\w+)"', tema))
+        # Solo las que el tema declara Y el XAML usa
+        deberian = usadas & declaradas
+        # PreviewFondoBrush se queda CLARO en los dos temas a proposito: el dibujo va en
+        # tinta oscura y sobre fondo oscuro no se veria. Por eso NO esta en las paletas.
+        faltan = deberian - kc - {"PreviewFondoBrush"}
+        check("toda brocha usada esta en las paletas, salvo la de la vista previa",
+              not faltan, f"faltan: {sorted(faltan)}")
+
+        check("la vista previa se queda clara en los dos temas a proposito",
+              "PreviewFondoBrush" not in kc and "PreviewFondoBrush" not in kn)
+
+    # El azul de marca se usa como color de TEXTO en los encabezados y en el boton de
+    # guardar, asi que en oscuro tiene que ACLARARSE o desaparece.
+    if m_noche:
+        cuerpo = m_noche.group(1)
+        m_bd = re.search(r'\["BrandDarkBrush"\] = "#FF(\w{6})"', cuerpo)
+        check("en oscuro el azul de marca se aclara, porque es color de texto",
+              m_bd is not None and int(m_bd.group(1)[:2], 16) > 0x60,
+              f"vale #{m_bd.group(1) if m_bd else '?'}")
+
+        # Y el lecho superior sigue siendo distinto del inferior tambien en oscuro.
+        sup_n = re.search(r'\["CeldaLechoSupBrush"\] = "(#\w+)"', cuerpo)
+        inf_n = re.search(r'\["CeldaLechoInfBrush"\] = "(#\w+)"', cuerpo)
+        check("en oscuro el lecho superior y el inferior siguen siendo distintos",
+              sup_n is not None and inf_n is not None
+              and sup_n.group(1) != inf_n.group(1))
+
+    # La preferencia va en LOCALAPPDATA, no en el .clk: el tema es del usuario y de su
+    # maquina, no del trabajo. En el proyecto obligaria a subir la version del formato y
+    # abrir el archivo de un compañero te cambiaria el tema.
+    check("el tema se recuerda en la carpeta del usuario",
+          "SpecialFolder.LocalApplicationData" in temacs)
+    check("y no se guarda en el proyecto",
+          "TemaOscuro" not in leer(ruta("client/src/CadLink.App/Models/Proyecto.cs")))
+
+    # Al cambiar de tema hay que REDIBUJAR los lienzos: su contenido se pinta desde
+    # codigo, no con brochas de la paleta, asi que no se enteran solos.
+    m_oct = re.search(r"private void OnCambiarTema\(.*?\n    \}", codigo, re.S)
+    if m_oct:
+        cuerpo = m_oct.group(0)
+        check("al cambiar de tema se redibuja la vista previa",
+              "DibujarVistaPrevia()" in cuerpo)
+        check("y se actualiza el texto del boton",
+              "TemaButton.Content" in cuerpo)
+
+    # Y los colores quemados a mano salieron a la paleta, o no podrian cambiar.
+    check("el fondo de la ventana sale de la paleta",
+          'Background="{StaticResource WindowBrush}"' in xaml)
+    check("y las tarjetas tambien, que estaban repetidas once veces",
+          xaml.count('Background="{StaticResource CardBrush}"') >= 10)
+    check("ya no queda el gris de tarjeta escrito a mano",
+          '#FFF3F6F9' not in xaml)
+
     # ------------------------------------------------------------------
     check("hay color de fondo para la vista previa",
           'x:Key="PreviewFondoBrush"' in tema)

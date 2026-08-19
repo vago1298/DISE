@@ -33,6 +33,54 @@
     <SolidColorBrush x:Key="WarningBrush" Color="#FFB8860B" />
     <SolidColorBrush x:Key="SuccessBrush" Color="#FF1E7E34" />
 
+    <!-- ===================== Paleta, segunda parte =====================
+         Estas brochas se anadieron al montar el tema oscuro. Antes cada uno de
+         estos colores estaba QUEMADO A MANO en el sitio donde se usaba, y el
+         #FFF3F6F9 de las tarjetas estaba repetido ONCE VECES. Mientras el
+         programa fue solo claro eso no molestaba; con dos temas es imposible,
+         porque un literal no puede cambiar de valor.
+
+         El tema se cambia MUTANDO EL COLOR de estas brochas, no sustituyendo el
+         diccionario. Ver Tema.cs, que explica por que. -->
+
+    <!-- Fondo de la ventana -->
+    <SolidColorBrush x:Key="WindowBrush" Color="#FFF7F9FB" />
+
+    <!-- Tarjetas: las cabeceras de cada hoja -->
+    <SolidColorBrush x:Key="CardBrush" Color="#FFF3F6F9" />
+
+    <!-- Barra de totales, debajo de la cuadricula -->
+    <SolidColorBrush x:Key="TotalesBrush" Color="#FFEDF3F8" />
+
+    <!-- Cuadricula: filas, alternas y lineas -->
+    <SolidColorBrush x:Key="GridRowBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="GridAltRowBrush" Color="#FFF8FAFB" />
+    <SolidColorBrush x:Key="GridLineBrush" Color="#FFE3E8ED" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#FFD6DEE6" />
+
+    <!-- Aviso amarillo de la barra de notificaciones -->
+    <SolidColorBrush x:Key="NoticeFondoBrush" Color="#FFFFF4CE" />
+    <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE0C36A" />
+    <SolidColorBrush x:Key="NoticeTextoBrush" Color="#FF7A5B00" />
+
+    <!-- Botones -->
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="#FFB6C2CC" />
+    <SolidColorBrush x:Key="ToolbarPressedBrush" Color="#FFD2DAE1" />
+
+    <!-- ===================== Colores de celda =====================
+         Sacados a brochas por lo mismo: en tema oscuro estos nueve pasteles
+         sobre blanco no se leen. Los estilos de celda de mas abajo los usan en
+         lugar de llevar el hex escrito. -->
+    <SolidColorBrush x:Key="CeldaIdentBrush" Color="#FFDCE7F3" />
+    <SolidColorBrush x:Key="CeldaGeomBrush" Color="#FFE6F2E1" />
+    <SolidColorBrush x:Key="CeldaLechoSupBrush" Color="#FFDCEEF6" />
+    <SolidColorBrush x:Key="CeldaLechoInfBrush" Color="#FFEFE8F6" />
+    <SolidColorBrush x:Key="CeldaLateralBrush" Color="#FFFBF2D9" />
+    <SolidColorBrush x:Key="CeldaCircularBrush" Color="#FFFBE4DE" />
+    <SolidColorBrush x:Key="CeldaEstriboBrush" Color="#FFE9EEF2" />
+    <SolidColorBrush x:Key="CeldaAcabadoBrush" Color="#FFF4F1E8" />
+    <SolidColorBrush x:Key="CeldaCalculadaBrush" Color="#FFEDEDED" />
+
     <!-- ===================== Pestaña individual ===================== -->
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -193,7 +241,7 @@
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandDarkBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="#FFB6C2CC" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource DisabledTextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -202,7 +250,7 @@
     </Style>
 
     <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-        <Setter Property="Background" Value="#FF6B7A88" />
+        <Setter Property="Background" Value="{StaticResource MutedTextBrush}" />
     </Style>
 
     <!-- Celda con lista desplegable, como la validación de datos de Excel.
@@ -228,12 +276,12 @@
         <Setter Property="CanUserDeleteRows" Value="True" />
         <Setter Property="HeadersVisibility" Value="All" />
         <Setter Property="GridLinesVisibility" Value="All" />
-        <Setter Property="HorizontalGridLinesBrush" Value="#FFE3E8ED" />
-        <Setter Property="VerticalGridLinesBrush" Value="#FFE3E8ED" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource GridLineBrush}" />
+        <Setter Property="VerticalGridLinesBrush" Value="{StaticResource GridLineBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="RowBackground" Value="White" />
-        <Setter Property="AlternatingRowBackground" Value="#FFF8FAFB" />
+        <Setter Property="RowBackground" Value="{StaticResource GridRowBrush}" />
+        <Setter Property="AlternatingRowBackground" Value="{StaticResource GridAltRowBrush}" />
         <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
         <Setter Property="FontSize" Value="12" />
     </Style>
@@ -262,50 +310,50 @@
 
     <!-- Identificacion: que elemento es y como se llama su bloque -->
     <Style x:Key="CeldaIdent" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFDCE7F3" />
+        <Setter Property="Background" Value="{StaticResource CeldaIdentBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <!-- Geometria: base y altura -->
     <Style x:Key="CeldaGeom" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFE6F2E1" />
+        <Setter Property="Background" Value="{StaticResource CeldaGeomBrush}" />
     </Style>
 
     <!-- Lecho superior -->
     <Style x:Key="CeldaLechoSup" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFDCEEF6" />
+        <Setter Property="Background" Value="{StaticResource CeldaLechoSupBrush}" />
     </Style>
 
     <!-- Lecho inferior. Distinto del superior, que es justo el par que se
          confunde al capturar. -->
     <Style x:Key="CeldaLechoInf" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFEFE8F6" />
+        <Setter Property="Background" Value="{StaticResource CeldaLechoInfBrush}" />
     </Style>
 
     <!-- Varillas laterales -->
     <Style x:Key="CeldaLateral" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFFBF2D9" />
+        <Setter Property="Background" Value="{StaticResource CeldaLateralBrush}" />
     </Style>
 
     <!-- Seccion circular: armado del circulo y forma del zuncho -->
     <Style x:Key="CeldaCircular" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFFBE4DE" />
+        <Setter Property="Background" Value="{StaticResource CeldaCircularBrush}" />
     </Style>
 
     <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
     <Style x:Key="CeldaEstribo" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFE9EEF2" />
+        <Setter Property="Background" Value="{StaticResource CeldaEstriboBrush}" />
     </Style>
 
     <!-- Acabado: gancho, f'c, escala, longitud -->
     <Style x:Key="CeldaAcabado" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFF4F1E8" />
+        <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
     </Style>
 
     <!-- Calculadas: de solo lectura. Van en gris y en cursiva para que se vea de
          un golpe que ahi no se escribe. -->
     <Style x:Key="CeldaCalculada" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
-        <Setter Property="Background" Value="#FFEDEDED" />
+        <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
         <Setter Property="FontStyle" Value="Italic" />
         <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
     </Style>
@@ -313,7 +361,7 @@
     <!-- Encabezado de la hoja: se queda fijo arriba y con aire suficiente para
          que los nombres de dos palabras se lean. -->
     <Style x:Key="EncabezadoHojaStyle" TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="#FFD6DEE6" />
+        <Setter Property="Background" Value="{StaticResource HeaderBrush}" />
         <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="11.5" />
@@ -354,7 +402,7 @@
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource TabHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#FFD2DAE1" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ToolbarPressedBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />

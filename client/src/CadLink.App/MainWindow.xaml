@@ -5,7 +5,7 @@
         Width="1240" Height="760"
         MinWidth="960" MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Background="#FFF7F9FB">
+        Background="{StaticResource WindowBrush}">
 
     <!-- Los atajos de siempre. Estaban prometidos en los ToolTip de los botones
          pero no existian: escribir Ctrl+G no hacia nada. -->
@@ -122,6 +122,22 @@
                             Click="OnValidate"
                             ToolTip="Busca errores en lo capturado antes de dibujar." />
 
+                    <!-- OJO: el separador va AUTO-CERRADO, con la barra al final de la
+                         propia etiqueta. La comprobacion de la barra en
+                         tools/validar.py toma el cuerpo con un regex NO CODICIOSO que
+                         para en el primer cierre de Border que encuentra, asi que un
+                         separador con contenido cortaria la barra en dos y el resto de
+                         la comprobacion no veria ni este boton ni ArchivoText.
+                         Por lo mismo, este comentario no escribe esa etiqueta. -->
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <!-- El texto dice A DONDE se va, no donde se esta: es lo que espera
+                         quien pulsa un boton. Lo cambia OnCambiarTema. -->
+                    <Button x:Name="TemaButton" Content="Tema oscuro"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Click="OnCambiarTema"
+                            ToolTip="Cambia entre el tema claro y el oscuro. Se recuerda para la próxima vez." />
+
                     <!-- El nombre del archivo abierto, al final de la barra: es el
                          sitio donde se busca «en que estoy trabajando». -->
                     <TextBlock x:Name="ArchivoText" FontSize="11.5"
@@ -140,9 +156,9 @@
              barra de estado de abajo, que es su lugar. Esos 54 px son ahora alto
              util de las hojas. El logo sigue vivo: es el icono de la ventana. -->
         <Border x:Name="NoticeBar" Grid.Row="1"
-                Background="#FFFFF4CE" BorderBrush="#FFE0C36A" BorderThickness="0,0,0,1"
+                Background="{StaticResource NoticeFondoBrush}" BorderBrush="{StaticResource NoticeBordeBrush}" BorderThickness="0,0,0,1"
                 Padding="16,8" Visibility="Collapsed">
-            <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="#FF7A5B00" />
+            <TextBlock x:Name="NoticeText" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource NoticeTextoBrush}" />
         </Border>
 
         <!-- ==================== Hojas ==================== -->
@@ -283,7 +299,7 @@
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
-                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
@@ -442,7 +458,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="2" Background="#FFEDF3F8" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Grid.Row="2" Background="{StaticResource TotalesBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1,0,1,1" Padding="12,7">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -515,7 +531,7 @@
                     <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Perfiles IPR, IR, HSS, canales y angulos, con sus placas y atiesadores." />
-                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja y armo la cuadricula con sus columnas reales, igual que se hizo con las secciones de concreto." />
@@ -529,7 +545,7 @@
                     <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Cimentacion continua, con su armado longitudinal y transversal." />
-                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
@@ -543,7 +559,7 @@
                     <TextBlock Text="Zapatas aisladas" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Dados, parrillas y anclaje de la columna que desplanta." />
-                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
@@ -557,7 +573,7 @@
                     <TextBlock Text="Muros de contencion" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Seccion del muro, talon, punta y su armado." />
-                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
@@ -571,7 +587,7 @@
                     <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Placa, anclas, atiesadores y su detalle de montaje." />
-                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
@@ -585,7 +601,7 @@
                     <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
-                    <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                    <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
@@ -601,7 +617,7 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
 
-                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="16"
                                 MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,16">
                             <StackPanel>
@@ -628,7 +644,7 @@
                                    Margin="0,0,0,6" Foreground="{StaticResource BrandDarkBrush}" />
 
                         <!-- Filtros por tipo de elemento, comunes a las dos vistas -->
-                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
@@ -673,11 +689,11 @@
                                     </StackPanel>
 
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="White">
+                                            CornerRadius="3" Background="{StaticResource SurfaceBrush}">
                                         <!-- El Background es imprescindible: sin el, el Canvas no
                                              recibe los eventos del mouse. -->
                                         <Canvas x:Name="Vista3DCanvas" Height="430" ClipToBounds="True"
-                                                Background="White"
+                                                Background="{StaticResource SurfaceBrush}"
                                                 MouseLeftButtonDown="OnVistaMouseDown"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
@@ -707,9 +723,9 @@
                                     </StackPanel>
 
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="White">
+                                            CornerRadius="3" Background="{StaticResource SurfaceBrush}">
                                         <Canvas x:Name="ExtruidaCanvas" Height="430" ClipToBounds="True"
-                                                Background="White"
+                                                Background="{StaticResource SurfaceBrush}"
                                                 MouseLeftButtonDown="OnVistaMouseDown"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
@@ -793,7 +809,7 @@
                         </StackPanel>
 
                         <!-- Los mismos filtros por tipo de elemento que el visor 3D -->
-                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
@@ -823,9 +839,9 @@
                                     </StackPanel>
 
                                     <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="White">
+                                            CornerRadius="3" Background="{StaticResource SurfaceBrush}">
                                         <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
-                                                Background="White"
+                                                Background="{StaticResource SurfaceBrush}"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
                                                 MouseRightButtonUp="OnVistaMouseUp"
@@ -848,7 +864,7 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
 
-                        <Border Background="#FFF3F6F9" BorderBrush="{StaticResource BorderBrush}"
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
