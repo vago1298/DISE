@@ -2468,6 +2468,61 @@ def v16_extruida_piers() -> None:
         check("y se poblan los niveles para la planta",
               "PoblarNiveles(modelo);" in cuerpo)
 
+    # ------------------------------------------------------------------
+    # Modelo 3D en AutoCAD
+    # ------------------------------------------------------------------
+    m3d = leer(ruta("client/src/CadLink.Cad/Modelo3dDrawer.cs"))
+
+    check("hay dibujante del modelo 3D", "public sealed class Modelo3dDrawer" in m3d)
+    check("y boton para dibujarlo", 'x:Name="Modelo3dButton"' in xaml)
+    check("y su manejador existe", "private void OnDibujar3dCad(" in codigo)
+
+    # SOLIDOS y no cajas ni lineas: un solido se puede seccionar y acotar en AutoCAD.
+    check("cada barra se extruye como solido",
+          "AddExtrudedSolid(largo, 0d)" in m3d)
+    check("y el perfil sale de la region de su contorno",
+          "_ms.AddRegion(" in m3d)
+
+    # La colocacion va en UNA matriz, no en giros sucesivos: una diagonal no esta en
+    # ningun plano comodo y encadenar rotaciones acumula error.
+    check("la barra se coloca con una matriz, no con giros sucesivos",
+          "solido.TransformBy(Matriz(b.P1, b.P2, largo));" in m3d)
+
+    m_mat = re.search(r"private static double\[\] Matriz\(.*?\n    \}", m3d, re.S)
+    check("se puede leer Matriz", m_mat is not None)
+    if m_mat:
+        cuerpo = m_mat.group(0)
+        # u = Z x w, para que v quede lo mas vertical posible: es lo que hace que una
+        # viga salga con el alma de pie y no tumbada al azar.
+        check("el marco se apoya en la perpendicular comun con la vertical",
+              "var u = new[] { -w[1], w[0], 0d };" in cuerpo)
+
+        # Y el caso de la COLUMNA, que no es raro: son todas las columnas del modelo.
+        check("la barra vertical se resuelve aparte, que si no el marco se anula",
+              "if (n < 1e-9)" in cuerpo)
+        check("y se distingue si va hacia arriba o hacia abajo",
+              "w[2] > 0 ? 1d : -1d" in cuerpo)
+
+    # Si una barra no se puede extruir NO se pierde: se dibuja su eje y se dice.
+    check("una barra que no se puede extruir se dibuja como eje",
+          "if (Eje(b))" in m3d)
+    check("y se cuenta en el resumen",
+          "solo como eje" in m3d)
+
+    # Las areas no son barras con perfil: se dicen en vez de dibujarlas mal.
+    m_o3 = re.search(r"private void OnDibujar3dCad\(.*?\n    \}", codigo, re.S)
+    if m_o3:
+        cuerpo = m_o3.group(0)
+        check("las areas se cuentan aparte y no se extruyen",
+              'string.Equals(el.Forma, "AREA"' in cuerpo)
+        check("el 3D usa el MISMO contorno que la vista extruida",
+              "Perfil2D.De(" in cuerpo)
+        check("y avisa si no hay modelo leido",
+              "no hay nada que dibujar" in cuerpo)
+
+    check("hay comprobacion numerica del marco de colocacion",
+          "marco ortonormal" in leer(ruta("tools/verificar_modelo3d.py")))
+
     check("hay pestaña de planos estructurales",
           'Header="Dibujar planos estructurales"' in xaml)
     # La planta se MUEVE ahi; el 3D y la extruida se quedan en ETABS.

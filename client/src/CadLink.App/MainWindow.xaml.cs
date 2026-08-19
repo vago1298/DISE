@@ -3390,4 +3390,108 @@ public partial class MainWindow : Window
         DibujarVistaPrevia();
         RedibujarVistas();
     }
+    /// <summary>Dibuja el modelo completo en 3D en AutoCAD.</summary>
+    /// <remarks>
+    /// <para>
+    /// Cada barra va como un <b>sólido</b> con su perfil real, no como una caja ni como una
+    /// línea: es lo que permite después seccionarlo, medirlo y acotarlo en AutoCAD, que es
+    /// para lo que sirve tener el modelo ahí.
+    /// </para>
+    /// <para>
+    /// El contorno de cada sección sale de <c>Perfil2D</c>, el mismo que usa la vista
+    /// extruida de esta ventana. Comparten la geometría a propósito: con una copia cada uno,
+    /// el visor y el dibujo acabarían mostrando perfiles distintos.
+    /// </para>
+    /// <para>
+    /// <b>Las áreas no se extruyen aquí.</b> Un muro o una losa no es una barra con perfil:
+    /// es una superficie, y su sólido se construye de otra forma. Se dicen cuántas se
+    /// quedaron fuera en lugar de dibujarlas mal.
+    /// </para>
+    /// </remarks>
+    private void OnDibujar3dCad(object sender, RoutedEventArgs e)
+    {
+        if (_modeloEtabs is null || _modeloEtabs.Elementos.Count == 0)
+        {
+            EtabsStatusText.Text =
+                "Primero lee el modelo de ETABS o de SAP2000: no hay nada que dibujar.";
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new Modelo3dDrawer(doc);
+            dibujante.AsegurarCapas();
+
+            var barras = new List<Modelo3dDrawer.Barra>();
+            var areas = 0;
+
+            foreach (var el in _modeloEtabs.Elementos)
+            {
+                // Las areas no son barras: no tienen perfil que extruir.
+                if (string.Equals(el.Forma, "AREA", StringComparison.OrdinalIgnoreCase))
+                {
+                    areas++;
+                    continue;
+                }
+
+                var c = Perfil2D.De(
+                    el.Forma, el.AnchoM, el.PeralteM, el.PatinM, el.AlmaM, el.ParedM);
+
+                barras.Add(new Modelo3dDrawer.Barra
+                {
+                    P1 = new[] { el.X1, el.Y1, el.Z1 },
+                    P2 = new[] { el.X2, el.Y2, el.Z2 },
+                    PerfilX = c.X,
+                    PerfilY = c.Y,
+                    Capa = CapaDe(el.Clase),
+                    Id = el.Etiqueta
+                });
+            }
+
+            var r = dibujante.Dibujar(barras);
+
+            var notas = dibujante.Notas.ToList();
+
+            if (areas > 0)
+            {
+                notas.Add(
+                    $"{areas} área(s) —muros y losas— no se extruyeron: no son barras con "
+                    + "perfil.");
+            }
+
+            EtabsStatusText.Text =
+                $"Modelo 3D dibujado en AutoCAD: {r}."
+                + (notas.Count > 0
+                    ? Environment.NewLine + Environment.NewLine
+                      + string.Join(Environment.NewLine, notas.Select(n => "  - " + n))
+                    : string.Empty);
+
+            StatusText.Text = $"Modelo 3D en AutoCAD: {r}.";
+        }
+        catch (Exception ex)
+        {
+            EtabsStatusText.Text = "No se pudo dibujar el modelo en 3D.\n\n" + ex.Message;
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>La capa del modelo 3D que le toca a cada tipo de elemento.</summary>
+    private static string CapaDe(ClaseElemento clase) => clase switch
+    {
+        ClaseElemento.Columna => "MODELO3D-COLUMNAS",
+        ClaseElemento.Trabe => "MODELO3D-TRABES",
+        ClaseElemento.Diagonal => "MODELO3D-DIAGONALES",
+        ClaseElemento.Muro => "MODELO3D-MUROS",
+        ClaseElemento.Losa => "MODELO3D-LOSAS",
+        _ => "MODELO3D"
+    };
+
 }

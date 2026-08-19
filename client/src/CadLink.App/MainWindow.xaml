@@ -862,6 +862,14 @@
                             <!-- El boton de dibujar vive junto a la planta que dibuja:
                                  lo que se manda a AutoCAD es EXACTAMENTE el nivel y los
                                  filtros que se estan viendo aqui abajo. -->
+                            <!-- El modelo COMPLETO en 3D, cada barra con su perfil real
+                                 extruido. Va aqui, al lado del de la planta, porque los
+                                 dos salen del mismo modelo leido. -->
+                            <Button x:Name="Modelo3dButton" Content="Dibujar en 3D"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnDibujar3dCad"
+                                    ToolTip="Dibuja todo el modelo en 3D en AutoCAD, cada barra con su perfil real como sólido." />
+
                             <Button x:Name="PlantaCadButton" Content="Dibujar en AutoCAD"
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     Click="OnDibujarPlantaCad"
