@@ -87,15 +87,6 @@ public static class Tema
         ["NoticeBordeBrush"] = "#FFE0C36A",
         ["NoticeTextoBrush"] = "#FF7A5B00",
 
-        ["CeldaIdentBrush"] = "#FFDCE7F3",
-        ["CeldaGeomBrush"] = "#FFE6F2E1",
-        ["CeldaLechoSupBrush"] = "#FFDCEEF6",
-        ["CeldaLechoInfBrush"] = "#FFEFE8F6",
-        ["CeldaLateralBrush"] = "#FFFBF2D9",
-        ["CeldaCircularBrush"] = "#FFFBE4DE",
-        ["CeldaEstriboBrush"] = "#FFE9EEF2",
-        ["CeldaAcabadoBrush"] = "#FFF4F1E8",
-        ["CeldaCalculadaBrush"] = "#FFEDEDED"
     };
 
     /// <summary>
@@ -118,12 +109,21 @@ public static class Tema
     ///     azul oscuro lo haría invisible. En oscuro pasa a ser el tono claro.
     ///   </item>
     ///   <item>
-    ///     <b>Las nueve celdas conservan su MATIZ.</b> Lo que hacen es separar grupos de
-    ///     columnas, así que lo que importa es que sigan distinguiéndose entre sí, y en
-    ///     particular el lecho superior del inferior, que es el par que se confunde al
-    ///     capturar. Se bajaron a tintes oscuros del mismo tono, no a grises.
+    ///     <b>Los nueve colores de celda de la hoja NO se tocan.</b> No están en esta
+    ///     tabla a propósito, así que en oscuro conservan sus pasteles. Es lo que pidió
+    ///     el usuario: <i>«deja los colores de las columnas de las secciones
+    ///     estructurales de concreto»</i>. Y tiene sentido: esos tonos son la única cosa
+    ///     que separa los 27 grupos de columnas al capturar, y son la referencia que ya
+    ///     tiene memorizada de la hoja de Excel. Cambiarlos con el tema obligaría a
+    ///     reaprenderlos.
     ///   </item>
     /// </list>
+    /// <para>
+    /// La consecuencia es que la <b>cuadrícula de captura se queda clara</b> aunque el
+    /// resto de la ventana esté oscuro, y eso es intencionado: es la superficie de
+    /// trabajo, con sus colores de referencia y su texto en tinta oscura. El marco, las
+    /// barras, las pestañas, las tarjetas y los paneles sí se oscurecen.
+    /// </para>
     /// </remarks>
     private static readonly Dictionary<string, string> Noche = new()
     {
@@ -161,15 +161,6 @@ public static class Tema
         ["NoticeBordeBrush"] = "#FF7A6A32",
         ["NoticeTextoBrush"] = "#FFF0DFA0",
 
-        ["CeldaIdentBrush"] = "#FF243343",
-        ["CeldaGeomBrush"] = "#FF25352A",
-        ["CeldaLechoSupBrush"] = "#FF213743",
-        ["CeldaLechoInfBrush"] = "#FF2E2839",
-        ["CeldaLateralBrush"] = "#FF3A3520",
-        ["CeldaCircularBrush"] = "#FF3B2A26",
-        ["CeldaEstriboBrush"] = "#FF272E35",
-        ["CeldaAcabadoBrush"] = "#FF33302A",
-        ["CeldaCalculadaBrush"] = "#FF23262A"
     };
 
     /// <summary>Pone el tema pedido, repintando en caliente.</summary>

@@ -30,10 +30,11 @@ ANCHO_COTAS_VERTICAL = DIM_OFF_3 + ROTULO_OFF_COL + 0.1
 #
 # Ojo: esto hace que la Y del alzado vertical YA NO coincida con la del VBA, y es a
 # proposito. La X si tiene que seguir coincidiendo clavada.
-AIRE_ROTULO_ALZADO = 0.46
+AIRE_ROTULO_ALZADO = 0.10
 
 # El CORTE A-A' que AlzadoDrawer.RotuloCorte pone sobre el pano superior de la seccion.
-# Entra en la cuenta del hueco: con 0.30 de aire el rotulo del alzado se lo comia.
+# Es lo UNICO que carga ese hueco: el rotulo del elemento cuelga del bloque de la
+# seccion, por DEBAJO, no del pie del alzado.
 CORTE_OFF = 0.15
 
 fallos = []
@@ -306,42 +307,38 @@ ROTULO_GAP = 0.05
 
 alto_rotulo = H_TX_ROTULO * (1 + INTERLINEADO * (9 - 1))
 
-# 1) El rotulo de la primera cara, contra el pano superior de la seccion
-hueco_1a = SEP_SEC_ALZ + AIRE_ROTULO_ALZADO
-check("el hueco bajo la primera cara alcanza para su rotulo",
-      hueco_1a > ROTULO_GAP + alto_rotulo,
-      f"hueco {hueco_1a:.4f} m, el rotulo ocupa {ROTULO_GAP + alto_rotulo:.4f} m")
+# 1) El hueco sobre la seccion solo tiene que alcanzar para el CORTE A-A'.
+hueco_corte = SEP_SEC_ALZ + AIRE_ROTULO_ALZADO
+print(f"  hueco entre la seccion y el alzado = {hueco_corte:.4f} m")
+print(f"  y el CORTE A-A' esta a {CORTE_OFF:.4f} m del pano de la seccion")
 
-# 1b) Y sobre todo: el rotulo del alzado NO puede comerse el CORTE A-A'.
+check("el hueco sobre la seccion alcanza para el CORTE A-A'",
+      hueco_corte > CORTE_OFF,
+      f"hueco {hueco_corte:.4f}, CORTE en {CORTE_OFF:.4f}")
+
+# 2) El rotulo del elemento cuelga del bloque de la SECCION, hacia ABAJO, asi que lo
+#    que tiene que esquivar es la FILA DE SECCIONES, no el alzado.
 #
-# Este es el fallo que se escapo al abrir el hueco: el CORTE A-A' lo dibuja el ALZADO
-# y el hueco lo reserva el LAYOUT, dos archivos distintos, asi que nadie sumo los 15 cm.
-# Medido con una columna redonda de 50 cm: el CORTE caia 5.8 cm DENTRO del rotulo.
-pie_rotulo = hueco_1a - ROTULO_GAP - alto_rotulo   # medido desde el pano de la seccion
-print(f"  el CORTE A-A' esta a {CORTE_OFF:.4f} m del pano superior de la seccion")
-print(f"  y el rotulo del alzado baja hasta {pie_rotulo:.4f} m de ese mismo pano")
+#    Y aqui esta el motivo de que el aire volviera a bajar: mientras el rotulo colgaba
+#    del pie del alzado hacian falta 46 cm de hueco, y eso dejaba media banda vacia
+#    entre las dos filas.
+AIRE_SOBRE_SECCIONES = 1.0
+alto_sec = 0.60                       # la seccion mas alta de la fila de abajo
+y_fila = alto_sec + AIRE_SOBRE_SECCIONES
 
-check("el rotulo del alzado no se come el CORTE A-A'",
-      pie_rotulo > CORTE_OFF,
-      f"el rotulo baja a {pie_rotulo:.4f} y el CORTE esta en {CORTE_OFF:.4f}: "
-      f"se pisan {CORTE_OFF - pie_rotulo:.4f} m")
+pie_rotulo = y_fila - ROTULO_GAP - alto_rotulo
+print(f"  la fila de alzados arranca en y = {y_fila:.4f}")
+print(f"  el rotulo cuelga de ahi y baja hasta y = {pie_rotulo:.4f}")
+print(f"  la fila de secciones llega a y = {alto_sec:.4f}")
 
-# Y que con el aire viejo SI se pisaban, para que quede fijado el motivo del cambio
-pie_viejo = SEP_SEC_ALZ + 0.30 - ROTULO_GAP - alto_rotulo
-check("con el aire viejo de 0.30 el CORTE A-A' quedaba dentro del rotulo",
-      pie_viejo < CORTE_OFF,
-      f"bajaba a {pie_viejo:.4f} contra un CORTE en {CORTE_OFF:.4f}")
+check("el rotulo del elemento no alcanza la fila de secciones",
+      pie_rotulo > alto_sec,
+      f"baja a {pie_rotulo:.4f} y la seccion llega a {alto_sec:.4f}")
 
-# 2) El rotulo de la segunda cara, contra el techo del alzado de la primera
-hueco_2a = SEP_CARAS + AIRE_ROTULO_ALZADO
-check("y el hueco entre las dos caras alcanza para el rotulo de la de arriba",
-      hueco_2a > ROTULO_GAP + alto_rotulo,
-      f"hueco {hueco_2a:.4f} m, el rotulo ocupa {ROTULO_GAP + alto_rotulo:.4f} m")
-
-# 3) Sin el aire, las dos cosas se encimaban: es lo que se esta arreglando.
-check("sin el aire del rotulo la segunda cara se encimaba",
-      SEP_CARAS < ROTULO_GAP + alto_rotulo,
-      f"SEP_CARAS {SEP_CARAS} vs rotulo {ROTULO_GAP + alto_rotulo:.4f}")
+# 3) Con el aire viejo el hueco sobre la seccion era absurdo para lo que carga.
+check("con el aire viejo de 0.46 el hueco sobraba",
+      (SEP_SEC_ALZ + 0.46) - CORTE_OFF > 3 * CORTE_OFF,
+      f"sobraban {(SEP_SEC_ALZ + 0.46) - CORTE_OFF:.4f} m sobre el CORTE")
 check("la columna abre MARGEN_COL antes de su seccion",
       abs(p["x_sec"] - MARGEN_COL) < 1e-12)
 

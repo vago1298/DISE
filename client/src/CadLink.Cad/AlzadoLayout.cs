@@ -107,47 +107,24 @@ public static class AlzadoLayout
     public const double SepSecAlz = 0.2;
 
     /// <summary>
-    /// Aire extra que se abre <b>debajo del alzado vertical</b> para su rótulo.
+    /// Aire extra bajo el alzado vertical, para el <c>CORTE A-A'</c>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// El rótulo del alzado va siempre <b>debajo del bloque insertado</b>, y en el
-    /// alzado vertical eso choca con la sección: el bloque arranca en
-    /// <c>topeSeccion + SepSecAlz</c>, o sea a 20 cm del paño superior de la sección, y
-    /// el rótulo necesita más que eso.
+    /// Entre el paño superior de la sección y el pie del alzado hay que dejar sitio para
+    /// el <c>CORTE A-A'</c>, que <c>AlzadoDrawer.RotuloCorte</c> pone 15 cm por encima
+    /// de la sección. Con los 20 cm de <see cref="SepSecAlz"/> el texto queda a solo 5,
+    /// así que se abre un poco más.
     /// </para>
     /// <para>
-    /// La cuenta, de arriba abajo, con el rótulo más largo que puede salir —elemento,
-    /// ID, tres lechos, estribo, recubrimiento, f'c y escala, nueve renglones de 2.5 mm
-    /// con el interlineado de AutoCAD—:
-    /// </para>
-    /// <list type="bullet">
-    ///   <item>5 cm de <c>ROTULO_GAP</c> entre el pie del alzado y el rótulo,</item>
-    ///   <item>35.8 cm del rótulo,</item>
-    ///   <item>5 cm de holgura,</item>
-    ///   <item>
-    ///     y <b>15 cm del <c>CORTE A-A'</c></b>, que <c>AlzadoDrawer.RotuloCorte</c>
-    ///     pone sobre el paño superior de la sección, más 5 cm de aire.
-    ///   </item>
-    /// </list>
-    /// <para>
-    /// Son 65.8 cm. Ya hay 20 de <see cref="SepSecAlz"/>, así que faltan 45.8, que se
-    /// redondean al alza.
-    /// </para>
-    /// <para>
-    /// <b>El renglón del <c>CORTE A-A'</c> faltaba</b>, y con 30 cm el rótulo del alzado
-    /// se le comía 5.8 cm. No se vio antes porque el <c>CORTE A-A'</c> lo dibuja el
-    /// alzado y el hueco lo reserva el layout: dos archivos distintos. Ahora está en la
-    /// cuenta y comprobado en <c>tools/verificar_layout_alzados.py</c>.
-    /// </para>
-    /// <para>
-    /// En el alzado <b>horizontal</b> no hace falta ninguna constante nueva: debajo del
-    /// bloque están sus cotas de estribos, las etiquetas de zona, el título y la
-    /// escala, y por debajo de todo eso queda el metro de
-    /// <see cref="AireSobreSecciones"/>, que da de sobra.
+    /// <b>Esta constante valió 46 cm durante un tiempo</b>, y era para hacerle sitio al
+    /// rótulo del elemento, que entonces colgaba del pie del alzado. Ya no: el rótulo va
+    /// bajo el bloque de la <b>sección</b> —ver <c>AlzadoDrawer.RotuloDelElemento</c>—
+    /// donde no compite con nada, así que esos 46 cm sobraban y dejaban una banda vacía
+    /// entre las dos filas. Se devuelven.
     /// </para>
     /// </remarks>
-    public const double AireRotuloAlzado = 0.46;
+    public const double AireRotuloAlzado = 0.10;
 
     /// <summary>
     /// Y de la <b>segunda cara</b> de una columna rectangular.

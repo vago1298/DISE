@@ -2269,11 +2269,12 @@ def v16_extruida_piers() -> None:
     # El rotulo cuelga debajo del bloque insertado. En el alzado vertical debajo esta
     # la seccion, y en la segunda cara de una columna rectangular esta el alzado de la
     # primera: sin abrir hueco, el rotulo cae dentro de uno o de otro.
-    # 0.46 y no 0.30: en la cuenta entra tambien el CORTE A-A' que el alzado pone
-    # sobre el pano superior de la seccion. Con 0.30 el rotulo se lo comia 5.8 cm.
-    check("hay una constante para el aire del rotulo del alzado",
-          "public const double AireRotuloAlzado = 0.46;" in lay)
-    check("y la cuenta del aire incluye el CORTE A-A'",
+    # 0.10: el hueco sobre la seccion ya solo carga el CORTE A-A'. Valio 0.46 mientras
+    # el rotulo colgaba del pie del alzado; al mover el rotulo bajo el bloque de la
+    # SECCION esos 46 cm sobraban y dejaban media banda vacia entre las dos filas.
+    check("hay una constante para el aire sobre la seccion",
+          "public const double AireRotuloAlzado = 0.10;" in lay)
+    check("y la cuenta del aire es la del CORTE A-A'",
           "CORTE A-A'" in lay)
 
     check("la segunda cara tiene su calculo en el layout",
@@ -3401,78 +3402,52 @@ def v19_circular_y_ui() -> None:
     check("el rotulo del alzado ya no se mete en el bloque",
           "private void RotuloDelBloque(" not in alz)
 
-    check("hay rotulo del alzado en el espacio modelo",
-          "private void RotuloDelAlzado(" in alz)
+    # El rotulo cuelga del bloque de la SECCION, no del alzado. Hubo dos malentendidos
+    # seguidos: primero iba DENTRO de la definicion del bloque de alzado, y despues
+    # colgado del bloque de alzado, cuando "el bloque insertado" era el de la seccion,
+    # el del CORTE A-A'. En el modulo de alzados se insertan DOS bloques.
+    check("hay rotulo del elemento en el espacio modelo",
+          "private void RotuloDelElemento(" in alz)
+    check("y ya no cuelga del alzado",
+          "RotuloDelAlzado(" not in alz)
 
-    # El texto es el mismo en los dos alzados, y solo cambia donde se escribe.
-    check("los renglones del rotulo estan en su propio metodo",
-          "private List<string> LineasDelRotulo(" in alz)
-
-    m_rb = re.search(r"private void RotuloDelAlzado\(.*?\n    \}", alz, re.S)
-    check("se puede leer RotuloDelAlzado", m_rb is not None)
+    m_rb = re.search(r"private void RotuloDelElemento\(.*?\n    \}", alz, re.S)
+    check("se puede leer RotuloDelElemento", m_rb is not None)
     if m_rb:
         cuerpo = m_rb.group(0)
         check("usa los renglones comunes", "LineasDelRotulo(a)" in cuerpo)
 
-        # El bloque vertical se inserta por su borde DERECHO y crece hacia la izquierda,
-        # asi que su centro esta en x - ancho/2; el horizontal, en x + largo/2.
-        check("el rotulo se centra bien en los dos casos",
-              "vertical ? x - (ancho / 2) : x + (largo / 2)" in cuerpo)
+        # Centrado bajo el bloque de la seccion, colgando de su pano inferior.
+        check("se centra bajo el bloque de la seccion",
+              "xSeccion + (anchoSeccion / 2)" in cuerpo)
+        check("y cuelga de su pano inferior",
+              "yAbajo - (RotuloGap * _f)" in cuerpo)
 
-        # En el horizontal hay que bajar por debajo de la cota de estribos, las
-        # etiquetas de zona, el titulo y la escala.
-        check("en el horizontal baja por debajo de las cotas y el titulo",
-              "PieAnotacionHorizontal" in cuerpo)
-        check("y en el vertical basta el ROTULO_GAP",
-              "y - (RotuloGap * _f)" in cuerpo)
+    # UNO por elemento, aunque el elemento lleve DOS alzados: el rotulo describe el
+    # elemento, no una de sus vistas. Colgado del alzado salian dos rotulos iguales.
+    check("el rotulo se dibuja una sola vez por elemento",
+          alz.count("RotuloDelElemento(a,") == 1,
+          f"{alz.count('RotuloDelElemento(a,')} llamada(s)")
 
-    check("hay una constante del pie de las anotaciones horizontales",
-          "private const double PieAnotacionHorizontal = 0.36;" in alz)
+    m_de = re.search(r"public double DibujarElemento\(.*?\n    \}", alz, re.S)
+    if m_de:
+        cuerpo = m_de.group(0)
+        check("y se dibuja en DibujarElemento, donde se conoce la seccion",
+              "RotuloDelElemento(a, xSec, y, ancho);" in cuerpo)
 
-    # Se escribe en el espacio modelo, NO en el bloque.
-    check("el texto del rotulo va al espacio modelo",
-          "private void TextoRotulo(" in alz)
-    m_te = re.search(r"private void TextoRotulo\(.*?\n    \}", alz, re.S)
-    if m_te:
-        cuerpo = m_te.group(0)
-        check("y escribe en el espacio modelo, no en un contenedor",
-              "_ms.AddMText" in cuerpo)
-        check("anclado por arriba y al centro, para que cuelgue del alzado",
-              "mt.AttachmentPoint = 2;" in cuerpo)
-        check("en la capa ROTULOS", '"ROTULOS"' in cuerpo)
+        # Despues de insertar la seccion: hace falta su ancho medido para centrarlo.
+        i_ins = cuerpo.find("InsertarSeccion(a.Id, xSec, y)")
+        i_rot = cuerpo.find("RotuloDelElemento(")
+        check("despues de insertar la seccion, que es de donde sale su ancho",
+              0 <= i_ins < i_rot, f"insercion en {i_ins}, rotulo en {i_rot}")
 
-    # Ya no hay ningun texto que escriba dentro de la definicion del bloque.
-    check("ya no queda el helper que escribia dentro del bloque",
-          "private void TextoEn(" not in alz)
-
-    # Y Geometria ya no lo dibuja.
-    m_geo = re.search(r"private Geo Geometria\(.*?\n    \}", alz, re.S)
-    if m_geo:
-        cuerpo = m_geo.group(0)
-        check("Geometria ya no rotula el bloque",
-              "RotuloDelBloque(" not in cuerpo
-              and "RotuloDelAlzado(" not in cuerpo)
-
-    # Se dibuja DESPUES de las cotas, en los dos caminos, y una vez por cada bloque
-    # insertado: la columna rectangular lleva dos caras y cada una tiene su rotulo.
-    m_dh = re.search(r"private double DibujarHorizontal\(.*?\n    \}", alz, re.S)
-    if m_dh:
-        cuerpo = m_dh.group(0)
-        i_cotas = cuerpo.find("AnotarHorizontal(")
-        i_rot = cuerpo.find("RotuloDelAlzado(")
-        check("el horizontal rotula despues de acotar",
-              0 <= i_cotas < i_rot, f"cotas en {i_cotas}, rotulo en {i_rot}")
-
-    m_dv = re.search(r"private double DibujarVertical\(.*?\n    \}", alz, re.S)
-    if m_dv:
-        cuerpo = m_dv.group(0)
-        i_cotas = cuerpo.find("AnotarVertical(")
-        i_rot = cuerpo.find("RotuloDelAlzado(")
-        check("el vertical rotula despues de acotar",
-              0 <= i_cotas < i_rot, f"cotas en {i_cotas}, rotulo en {i_rot}")
-        check("y las dos caras de la columna llevan rotulo",
-              cuerpo.count("RotuloDelAlzado(") == 2,
-              f"{cuerpo.count('RotuloDelAlzado(')} llamada(s)")
+    # Y los dos caminos de alzado ya NO rotulan.
+    for nombre in ("DibujarHorizontal", "DibujarVertical"):
+        m_ = re.search(rf"private double {nombre}\(.*?\n    \}}", alz, re.S)
+        if m_:
+            check(f"{nombre} ya no rotula",
+                  "RotuloDelAlzado(" not in m_.group(0)
+                  and "RotuloDelElemento(" not in m_.group(0))
 
     # ------------------------------------------------------------------
     # UNA sola barra arriba, no dos
@@ -3619,14 +3594,39 @@ def v19_circular_y_ui() -> None:
         declaradas = set(re.findall(r'<SolidColorBrush x:Key="(\w+)"', tema))
         # Solo las que el tema declara Y el XAML usa
         deberian = usadas & declaradas
-        # PreviewFondoBrush se queda CLARO en los dos temas a proposito: el dibujo va en
-        # tinta oscura y sobre fondo oscuro no se veria. Por eso NO esta en las paletas.
-        faltan = deberian - kc - {"PreviewFondoBrush"}
-        check("toda brocha usada esta en las paletas, salvo la de la vista previa",
+        # Dos grupos se quedan CLAROS en los dos temas, a proposito, asi que no estan
+        # en las paletas:
+        #
+        #   PreviewFondoBrush  el dibujo de la previa va en tinta oscura, pintada desde
+        #                      codigo; sobre fondo oscuro no se veria.
+        #   Celda*Brush        son los colores de las columnas de la hoja, la unica cosa
+        #                      que separa los 27 grupos al capturar. El usuario pidio
+        #                      expresamente conservarlos.
+        aparte = {"PreviewFondoBrush"} | {b for b in declaradas if b.startswith("Celda")}
+
+        faltan = deberian - kc - aparte
+        check("toda brocha usada esta en las paletas, salvo las que se quedan claras",
               not faltan, f"faltan: {sorted(faltan)}")
 
         check("la vista previa se queda clara en los dos temas a proposito",
               "PreviewFondoBrush" not in kc and "PreviewFondoBrush" not in kn)
+
+        # Y los colores de la hoja no los toca NINGUNA de las dos paletas.
+        check("los colores de las columnas de la hoja no los cambia el tema",
+              not any(k.startswith("Celda") for k in kc | kn),
+              f"celdas en las paletas: {sorted(k for k in kc | kn if k.startswith('Celda'))}")
+
+        # Pero SI tienen que seguir declarados como brochas, o el estilo no compila.
+        check("aunque siguen siendo brochas de la paleta",
+              'x:Key="CeldaLechoSupBrush"' in tema)
+
+        # Lo que si tiene que oscurecerse es todo lo blanco del marco.
+        for clave in ("WindowBrush", "SurfaceBrush", "CardBrush", "TabStripBrush"):
+            hex_osc = re.search(rf'\["{clave}"\] = "#FF(\w{{6}})"', m_noche.group(1))
+            claro_es = int(hex_osc.group(1)[:2], 16) if hex_osc else 255
+            check(f"en oscuro {clave} es realmente oscuro",
+                  hex_osc is not None and claro_es < 0x40,
+                  f"vale #{hex_osc.group(1) if hex_osc else '?'}")
 
     # El azul de marca se usa como color de TEXTO en los encabezados y en el boton de
     # guardar, asi que en oscuro tiene que ACLARARSE o desaparece.
@@ -3637,12 +3637,9 @@ def v19_circular_y_ui() -> None:
               m_bd is not None and int(m_bd.group(1)[:2], 16) > 0x60,
               f"vale #{m_bd.group(1) if m_bd else '?'}")
 
-        # Y el lecho superior sigue siendo distinto del inferior tambien en oscuro.
-        sup_n = re.search(r'\["CeldaLechoSupBrush"\] = "(#\w+)"', cuerpo)
-        inf_n = re.search(r'\["CeldaLechoInfBrush"\] = "(#\w+)"', cuerpo)
-        check("en oscuro el lecho superior y el inferior siguen siendo distintos",
-              sup_n is not None and inf_n is not None
-              and sup_n.group(1) != inf_n.group(1))
+        # El lecho superior contra el inferior ya se comprueba sobre el XAML, mas
+        # arriba, y con esto vale para los dos temas: si el tema no toca esos colores,
+        # basta comprobarlos una vez.
 
     # La preferencia va en LOCALAPPDATA, no en el .clk: el tema es del usuario y de su
     # maquina, no del trabajo. En el proyecto obligaria a subir la version del formato y

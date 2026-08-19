@@ -226,6 +226,10 @@ public sealed class AlzadoDrawer
         var ancho = sec?.Ancho ?? AlzadoLayout.AnchoSeccionSupuesto;
         var tope = sec?.Tope ?? (y + AlzadoLayout.AltoSeccionSupuesto);
 
+        // El rótulo del elemento cuelga del bloque de la SECCION, no del alzado, y va
+        // UNO por elemento aunque el elemento lleve dos alzados. Ver RotuloDelElemento.
+        RotuloDelElemento(a, xSec, y, ancho);
+
         // Una columna RECTANGULAR lleva dos alzados cuando no es cuadrada, uno por
         // cada cara. Una columna REDONDA no: se ve igual desde cualquier lado, así
         // que el segundo alzado sería una copia exacta del primero ocupando plano.
@@ -414,9 +418,6 @@ public sealed class AlzadoDrawer
         InsertarBloque(nombre, x, y);
         AnotarHorizontal(a, x, y, largo, alto, geo);
 
-        // Después de las cotas: el rótulo va debajo de todo. Ver RotuloDelAlzado.
-        RotuloDelAlzado(a, x, y, largo, alto, vertical: false);
-
         return largo + 0.16;
     }
 
@@ -442,7 +443,6 @@ public sealed class AlzadoDrawer
         var geo1 = Geometria(b1, a, largo, ancho1 * _escala, girar: true);
         InsertarBloque(nombre1, x, y);
         AnotarVertical(a, x, y, largo, ancho1 * _escala, geo1, conRotulo: true);
-        RotuloDelAlzado(a, x, y, largo, ancho1 * _escala, vertical: true);
 
         if (ancho2 > 0)
         {
@@ -458,10 +458,6 @@ public sealed class AlzadoDrawer
                 var geo2 = Geometria(b2, a, largo, ancho2 * _escala, girar: true);
                 InsertarBloque(nombre2, x, y2);
                 AnotarVertical(a, x, y2, largo, ancho2 * _escala, geo2, conRotulo: true);
-
-                // La segunda cara lleva su propio rótulo: es otro bloque insertado, y el
-                // rótulo va debajo de CADA bloque insertado.
-                RotuloDelAlzado(a, x, y2, largo, ancho2 * _escala, vertical: true);
             }
         }
 
@@ -681,13 +677,28 @@ public sealed class AlzadoDrawer
 
         OrdenarRellenos(bloque);
 
+        // El zuncho helicoidal, al FRENTE, y solo en la sección rellena.
+        //
+        // Va DESPUÉS de OrdenarRellenos porque ese método manda al fondo los rellenos
+        // de estribo, y el zuncho macizo es una polilínea con ancho que cuenta como
+        // relleno: si se subiera antes, OrdenarRellenos lo volvería a hundir.
+        //
+        // Solo en la rellena porque es donde estorba: ahí el concreto y las varillas
+        // llevan hatch sólido, y la hélice queda tapada por ellos justo en los tramos
+        // en que pasa por delante. En la sección de contorno no hay nada opaco que la
+        // tape, así que subirla no cambiaría nada.
+        if (relleno)
+        {
+            ZunchoAlFrente(bloque);
+        }
+
         if (girar)
         {
             Girar90(bloque, inicio);
         }
 
         // El rótulo NO se dibuja aquí: va en el espacio modelo, debajo del bloque ya
-        // insertado y de sus cotas. Ver RotuloDelAlzado.
+        // insertado. Ver RotuloDelElemento.
 
         return new Geo
         {
@@ -775,44 +786,41 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>
-    /// El rótulo del alzado, en el <b>espacio modelo</b> y siempre <b>debajo</b> del
-    /// bloque insertado y de sus cotas.
+    /// El rótulo del elemento, en el <b>espacio modelo</b> y colgando del
+    /// <b>bloque de la sección</b>, que es el que se inserta a un lado o debajo.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Antes iba dentro del bloque</b>, en <c>Geometria</c>, con la idea de que el
-    /// bloque viajara identificado. Pero mete el rótulo en la definición, y entonces el
-    /// rótulo se dibuja en coordenadas del bloque: cae pegado al pie de la geometría,
-    /// por encima de las cotas que el espacio modelo pone después, y en el alzado
-    /// vertical el giro de 90° se lo llevaba por delante. El usuario lo pidió al
-    /// contrario, y con razón: <b>fuera del bloque, y debajo del bloque insertado y de
-    /// las cotas que ese bloque lleva</b>.
+    /// <b>Aquí hubo dos malentendidos seguidos, y conviene dejarlos escritos.</b>
     /// </para>
     /// <para>
-    /// <b>Dónde queda el pie en cada caso.</b> No es el mismo sitio porque debajo de
-    /// cada alzado hay cosas distintas:
+    /// Primero el rótulo se metía <b>dentro</b> de la definición del bloque de alzado.
+    /// Eso lo dibujaba en coordenadas del bloque, así que caía pegado al pie de la
+    /// geometría, por encima de las cotas que el espacio modelo pone después, y en el
+    /// alzado vertical el giro de 90° lo dejaba tumbado.
     /// </para>
-    /// <list type="bullet">
-    ///   <item>
-    ///     <b>Horizontal.</b> Debajo están la cota de estribos (<c>y − 0.05</c>), las
-    ///     etiquetas de zona (<c>y − 0.15</c>), el título (<c>y − 0.23</c>) y la escala,
-    ///     cuyo pie cae en <c>y − 0.3165</c>. El rótulo va por debajo de todo eso.
-    ///   </item>
-    ///   <item>
-    ///     <b>Vertical.</b> Sus cotas van a los lados, así que debajo del bloque no hay
-    ///     nada… salvo la sección. Por eso el hueco se abre en el layout, con
-    ///     <see cref="AlzadoLayout.AireRotuloAlzado"/>, y aquí basta con separarse
-    ///     <c>ROTULO_GAP</c> del pie del bloque.
-    ///   </item>
-    /// </list>
+    /// <para>
+    /// Al sacarlo se colgó del <b>bloque del alzado</b>, porque «el bloque insertado»
+    /// se leyó como ése. Tampoco era: en el módulo de alzados se insertan <b>dos</b>
+    /// bloques, el del alzado y el de la sección, y el que el usuario quería es el de
+    /// la <b>sección</b> —el del <c>CORTE A-A'</c>—, con el rótulo debajo de él. Lo
+    /// aclaró con dos capturas: el rótulo va bajo el corte, a la izquierda, y no
+    /// centrado bajo el alzado.
+    /// </para>
+    /// <para>
+    /// Y tiene sentido de plano: el rótulo describe el <b>elemento</b>, no una de sus
+    /// vistas. Debajo del corte hay <b>uno solo</b> por elemento, aunque una columna
+    /// rectangular lleve dos alzados; colgado del alzado salían dos rótulos iguales.
+    /// Además el pie del alzado ya está ocupado por sus cotas de estribos, las
+    /// etiquetas de zona, el título y la escala, y el rótulo tenía que bajar mucho para
+    /// esquivarlos.
+    /// </para>
     /// </remarks>
-    /// <param name="x">X de inserción del bloque.</param>
-    /// <param name="y">Y de inserción del bloque, que es su pie.</param>
-    /// <param name="largo">Longitud del elemento, en metros de dibujo.</param>
-    /// <param name="ancho">Ancho del elemento, en metros de dibujo.</param>
-    /// <param name="vertical">Columna o dado, con el bloque ya girado 90°.</param>
-    private void RotuloDelAlzado(
-        AlzadoCad a, double x, double y, double largo, double ancho, bool vertical)
+    /// <param name="xSeccion">Borde izquierdo del bloque de la sección.</param>
+    /// <param name="yAbajo">Paño inferior del bloque de la sección.</param>
+    /// <param name="anchoSeccion">Ancho medido del bloque de la sección.</param>
+    private void RotuloDelElemento(
+        AlzadoCad a, double xSeccion, double yAbajo, double anchoSeccion)
     {
         var lineas = LineasDelRotulo(a);
 
@@ -821,14 +829,11 @@ public sealed class AlzadoDrawer
             return;
         }
 
-        // El bloque vertical se inserta por su borde DERECHO y crece hacia la
-        // izquierda, así que su centro está en x - ancho/2. El horizontal crece hacia la
-        // derecha y su centro está en x + largo/2.
-        var xCentro = vertical ? x - (ancho / 2) : x + (largo / 2);
-
-        var yPie = vertical
-            ? y - (RotuloGap * _f)
-            : y - (PieAnotacionHorizontal * _f);
+        // Centrado bajo el bloque de la SECCIÓN, y colgando de su paño inferior. Es el
+        // mismo sitio en los dos tipos de elemento, porque la sección se apoya en la Y
+        // de la fila tanto en la trabe como en la columna.
+        var xCentro = xSeccion + (anchoSeccion / 2);
+        var yPie = yAbajo - (RotuloGap * _f);
 
         TextoRotulo(xCentro, yPie, string.Join("\\P", lineas));
     }
@@ -1405,6 +1410,31 @@ public sealed class AlzadoDrawer
         _zunchoMacizo = pl;
 
         ColorDelZuncho();
+    }
+
+    /// <summary>
+    /// Sube el zuncho helicoidal macizo al frente del orden de dibujo.
+    /// </summary>
+    /// <remarks>
+    /// La hélice es lo único del alzado que <b>pasa por delante y por detrás</b> de las
+    /// varillas a lo largo de su recorrido, y en la sección rellena las varillas y el
+    /// concreto son opacos, así que la tapaban por tramos y el resorte se leía a trozos.
+    /// Subirla entera al frente es lo que se hace a mano en AutoCAD con
+    /// <i>bring to front</i>.
+    /// <para>
+    /// No falsea el dibujo: las varillas ya se <b>recortan</b> donde el zuncho pasa por
+    /// delante —ver <c>CrucesFrontales</c>— así que en los tramos en que debería ganar la
+    /// varilla no hay zuncho que la tape.
+    /// </para>
+    /// </remarks>
+    private void ZunchoAlFrente(object bloque)
+    {
+        if (_zunchoMacizo is null)
+        {
+            return;
+        }
+
+        AlFrente(bloque, new List<object> { _zunchoMacizo });
     }
 
     /// <summary>
@@ -2867,6 +2897,46 @@ public sealed class AlzadoDrawer
         {
             Fallo($"Hatch '{patron}' del alzado", ex);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Sube entidades al <b>frente</b> del orden de dibujo del bloque.
+    /// </summary>
+    /// <remarks>
+    /// El simétrico de <see cref="AlFondo"/>, con la misma tabla <c>ACAD_SORTENTS</c>.
+    /// Lo usa el zuncho helicoidal macizo: ver <see cref="ZunchoAlFrente"/>.
+    /// </remarks>
+    private void AlFrente(object cont, List<object> objetos)
+    {
+        if (objetos.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic dict = ((dynamic)cont).GetExtensionDictionary;
+                dynamic tabla;
+
+                try
+                {
+                    tabla = dict.GetObject("ACAD_SORTENTS");
+                }
+                catch (Exception)
+                {
+                    tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
+                }
+
+                AcadArreglos.Llamar("MoveToTop del alzado", objetos,
+                    arr => { tabla.MoveToTop(arr); }, Fallo, Nota);
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Orden de dibujo del alzado", ex);
         }
     }
 
