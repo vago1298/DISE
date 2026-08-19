@@ -172,9 +172,33 @@ public sealed partial class SeccionDrawer
 
         if (hayZuncho)
         {
-            GanchoDelZuncho(
+            var anguloGancho = GanchoDelZuncho(
                 s, contorno, ganchoQuads, ganchoSectores,
                 cx, cy, posiciones, rVar, dZun, rZunInt);
+
+            // ------------------------------------------------------------------
+            // Y el CIRCULO INTERIOR del zuncho se recorta en el gancho
+            // ------------------------------------------------------------------
+            // Es un círculo completo y se sube al frente con el resto del contorno, así
+            // que su línea cruzaba por encima del doblez y delataba otra vez que había
+            // dos piezas superpuestas. Es exactamente el mismo problema que el estribo
+            // rectangular resuelve recortando su línea interior con `yTrim`.
+            //
+            // Aquí no se puede partir el círculo, porque además hace de frontera del
+            // hatch de concreto. Lo que se hace es dejarlo como frontera —sin pintarlo—
+            // y dibujar en su lugar un ARCO que se salta el trozo del gancho.
+            if (anguloGancho is not null && zunInt is not null)
+            {
+                contorno.Remove(zunInt);
+
+                var medio = SemiAnguloDelGancho(rVar, dZun, rec, r);
+
+                // El arco va del final del hueco a su principio, o sea la vuelta larga.
+                Agregar(contorno, Arco(
+                    cx, cy, rZunInt,
+                    anguloGancho.Value + medio,
+                    anguloGancho.Value - medio));
+            }
         }
 
         // ---------- Hatch de concreto, en dos partes ----------
@@ -607,7 +631,35 @@ public sealed partial class SeccionDrawer
     /// <param name="sectores">Sectores anulares de los dobleces, para rellenarlos.</param>
     /// <param name="rVar">El <b>radio</b> de la varilla, no su diámetro.</param>
     /// <param name="rZunInt">Radio interior del zuncho, para saber dónde está el núcleo.</param>
-    private void GanchoDelZuncho(
+    /// <summary>
+    /// Medio ángulo que ocupa el gancho visto <b>desde el centro de la sección</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que hay que saltarse del círculo interior del zuncho. El doblez llega a
+    /// <c>rOut</c> del centro de la varilla, y la varilla está a <c>rPaso</c> del centro
+    /// de la sección, así que subtiende <c>atan(rOut / rPaso)</c>. Se le suman dos grados
+    /// de margen para que el corte no quede justo pegado al acero.
+    /// </remarks>
+    private static double SemiAnguloDelGancho(double rVar, double dZun, double rec, double r)
+    {
+        // El MISMO radio de paso que usa PosicionesCirculares. Se recalcula en lugar de
+        // deducirlo de los radios del doblez: al intentarlo se contaba dZun dos veces, y
+        // aunque el hueco salía de más y tapaba igual, con otros calibres habría derivado.
+        var rPaso = r - rec - dZun - rVar;
+
+        if (rPaso <= 0)
+        {
+            return 0.35;
+        }
+
+        return Math.Atan2(rVar + dZun, rPaso) + (2 * Pi / 180);
+    }
+
+    /// <returns>
+    /// El ángulo de la varilla del gancho visto desde el centro de la sección, o
+    /// <c>null</c> si no se dibujó gancho.
+    /// </returns>
+    private double? GanchoDelZuncho(
         SeccionCad s, List<object> contorno,
         List<double[]> quads, List<double[]> sectores,
         double cx, double cy, List<(double X, double Y)> posiciones,
@@ -619,7 +671,7 @@ public sealed partial class SeccionDrawer
         // 12·db, que es regla del alzado. Cero significa sin gancho.
         if (gancho <= 0)
         {
-            return;
+            return null;
         }
 
         if (posiciones.Count == 0)
@@ -629,7 +681,7 @@ public sealed partial class SeccionDrawer
             _log.Add(
                 $"Sección circular '{s.Id}': el zuncho no lleva gancho porque no hay " +
                 "varillas longitudinales a las que agarrarlo.");
-            return;
+            return null;
         }
 
         // La varilla de ABAJO. La llamada de varillas apunta a la de arriba
@@ -657,7 +709,7 @@ public sealed partial class SeccionDrawer
         if (rl < 1e-9)
         {
             // La varilla está en el centro: no hay dirección «hacia dentro».
-            return;
+            return null;
         }
 
         rx /= rl;
@@ -795,6 +847,11 @@ public sealed partial class SeccionDrawer
                 $"Sección circular '{s.Id}': la varilla del gancho queda muy adentro " +
                 "del núcleo. Revisa el recubrimiento y el diámetro del zuncho.");
         }
+
+        // El ángulo de la varilla visto desde el CENTRO DE LA SECCION, que es lo que
+        // necesita quien recorta el círculo interior del zuncho. Ojo: es el opuesto al
+        // radio interior, que apunta al revés.
+        return Math.Atan2(by - cy, bx - cx);
     }
 
     /// <summary>

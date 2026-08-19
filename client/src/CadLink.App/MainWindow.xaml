@@ -545,9 +545,30 @@
                                  AutoCAD, que se quito; van aqui porque es donde esta el
                                  boton que los produce. Solo se ve cuando hay algo que
                                  decir: el codigo lo deja vacio si el dibujo salio limpio. -->
-                            <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+                            <!-- OCULTO de entrada. Es una capa por ENCIMA de la vista
+                                 previa, y con el fondo semitransparente tapaba el dibujo
+                                 justo por abajo. Solo aparece si el ultimo dibujo dejo
+                                 algo que decir; lo enciende y lo apaga MostrarNotas. -->
+                            <Border x:Name="NotasPanel"
+                                    VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
                                     Background="#CCFFFFFF" Padding="8,4" Margin="1"
                                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
+                                <!-- La visibilidad la manda el TEXTO, con un disparador,
+                                     y no una linea de codigo: hay CUATRO sitios que
+                                     escriben estas notas, y con un Visibility puesto a
+                                     mano habria que acordarse de apagarlo en los cuatro.
+                                     Asi el cuadro aparece y desaparece solo. -->
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Value=""
+                                                         Binding="{Binding Text, ElementName=ExportHintText}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <ScrollViewer MaxHeight="72" VerticalScrollBarVisibility="Auto">
                                     <TextBlock x:Name="ExportHintText" FontSize="10.5"
                                                TextWrapping="Wrap"

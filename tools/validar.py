@@ -3117,13 +3117,15 @@ def v19_circular_y_ui() -> None:
     # zuncho circular no lleva gancho porque no tiene esquinas donde doblar. Es falso:
     # lo que ancla un zuncho es el doblez a 135 grados alrededor de una VARILLA con la
     # cola en el nucleo, y la esquina solo era donde estaba la varilla.
+    # Devuelve el angulo de la varilla del gancho, que necesita quien recorta el circulo
+    # interior del zuncho.
     check("el zuncho circular lleva gancho sismico",
-          "private void GanchoDelZuncho(" in circ)
+          "private double? GanchoDelZuncho(" in circ)
 
     check("y ya no se afirma que un zuncho circular no lleva gancho",
           "No hay gancho sísmico en la esquina" not in circ)
 
-    m_gz = re.search(r"private void GanchoDelZuncho\(.*?\n    \}", circ, re.S)
+    m_gz = re.search(r"private double\? GanchoDelZuncho\(.*?\n    \}", circ, re.S)
     check("se puede leer GanchoDelZuncho", m_gz is not None)
 
     if m_gz:
@@ -3230,6 +3232,34 @@ def v19_circular_y_ui() -> None:
               "Borrar(t);" in cuerpo)
         check("y usa el sector anular para el doblez y el quad para la cola",
               "SectorAnular(" in cuerpo and "PolyCerrada(" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # El circulo interior del zuncho se recorta en el gancho
+    # ------------------------------------------------------------------
+    # Es un circulo completo y se sube al frente con el resto del contorno, asi que su
+    # linea cruzaba POR ENCIMA del doblez y delataba que habia dos piezas superpuestas.
+    # Es el mismo problema que el estribo rectangular resuelve con su yTrim.
+    check("el circulo interior del zuncho se recorta en el gancho",
+          "contorno.Remove(zunInt);" in circ)
+    check("y se sustituye por un arco que se salta el gancho",
+          "Agregar(contorno, Arco(\n                    cx, cy, rZunInt," in circ)
+    check("hay cuenta del hueco que hay que saltarse",
+          "private static double SemiAnguloDelGancho(" in circ)
+
+    m_sa = re.search(r"private static double SemiAnguloDelGancho\(.*?\n    \}", circ, re.S)
+    if m_sa:
+        c3 = m_sa.group(0)
+        # El radio de paso se RECALCULA, no se deduce de los radios del doblez: al
+        # intentarlo se contaba dZun dos veces y el hueco salia de mas.
+        check("el hueco usa el mismo radio de paso que las varillas",
+              "var rPaso = r - rec - dZun - rVar;" in c3)
+        check("y deja margen para que el corte no quede pegado al acero",
+              "(2 * Pi / 180)" in c3)
+
+    # El cuadro de notas es una capa sobre la vista previa: tapaba el dibujo.
+    check("el cuadro de notas se oculta cuando no hay nada que decir",
+          'x:Name="NotasPanel"' in xaml
+          and 'Binding="{Binding Text, ElementName=ExportHintText}"' in xaml)
 
     check("hay comprobacion numerica del gancho del zuncho",
           "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
