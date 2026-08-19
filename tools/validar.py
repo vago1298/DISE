@@ -2336,6 +2336,46 @@ def v16_extruida_piers() -> None:
     check("los mensajes dicen a que programa se intento conectar",
           "NombreDelDestino" in conx)
 
+    # Y NINGUNO puede decir ETABS a mano: el usuario pulso «Leer modelo de SAP2000» y le
+    # salio «No se pudo leer ETABS», que es lo que reporto.
+    sueltos = [l.strip() for l in conx.splitlines()
+               if ("_bitacora.Add" in l or "EtabsException(" in l)
+               and "ETABS" in l and "NombreDelDestino" not in l
+               and "MensajeNoEncontrada" not in l]
+    check("ningun mensaje dice ETABS a mano", not sueltos,
+          f"{len(sueltos)}: " + "; ".join(sueltos[:2]))
+
+    # ------------------------------------------------------------------
+    # LO DE FONDO: la libreria tiene que ser la del programa
+    # ------------------------------------------------------------------
+    # El ProgID de SAP2000 SI se encontraba —la bitacora decia «Objeto activo
+    # 'CSI.SAP2000.API.SapObject': encontrado»— pero luego no se podia sacar el SapModel,
+    # porque la libreria cargada seguia siendo ETABSv1.dll y los tipos del enlace temprano
+    # (cOAPI, cSapModel) salen de ella. El delator era el error
+    # «Object of type 'System.Int32' cannot be converted to type 'ETABSv1.eSlabTypeX'».
+    asmb = leer(ruta("client/src/CadLink.Etabs/EtabsAssembly.cs"))
+
+    check("la libreria que se busca depende del programa",
+          "public static bool ParaSap2000" in asmb
+          and 'ParaSap2000 ? "SAP2000v1.dll" : "ETABSv1.dll"' in asmb)
+    check("y tambien la carpeta donde se busca",
+          'ParaSap2000 ? "sap2000" : "etabs"' in asmb)
+    check("ya no queda el nombre de la dll como constante unica",
+          'private const string NombreDll' not in asmb)
+
+    # La cache tiene que distinguir el programa, o leer ETABS y despues SAP2000 en la
+    # misma sesion devolveria la libreria de ETABS la segunda vez.
+    check("la cache de la libreria distingue el programa",
+          "_cargadoParaSap == ParaSap2000" in asmb
+          and "_cargadoParaSap = ParaSap2000;" in asmb)
+
+    # Y hay que avisarle ANTES de cargar.
+    m_con = re.search(r"public void Conectar\(\).*?\n    \}", conx, re.S)
+    if m_con:
+        check("Conectar le dice a la libreria a quien se le habla",
+              "EtabsAssembly.ParaSap2000 = Destino == ProgramaCsi.Sap2000;"
+              in m_con.group(0))
+
     # La pestaña y el boton.
     check("la pestaña dice ETABS/SAP2000", 'Header="ETABS/SAP2000"' in xaml)
     check("hay boton para leer el modelo de SAP2000",

@@ -144,6 +144,12 @@ public sealed class EtabsConnection : IDisposable
     /// </remarks>
     public void Conectar()
     {
+        // ANTES de cargar la libreria: la de ETABS y la de SAP2000 son distintas, y los
+        // tipos del enlace temprano salen de ella. Sin esto se encontraba el objeto de
+        // SAP2000 pero se intentaba castear con las interfaces de ETABS, y fallaba con
+        // «Object does not match target type». Ver EtabsAssembly.ParaSap2000.
+        EtabsAssembly.ParaSap2000 = Destino == ProgramaCsi.Sap2000;
+
         _bitacora.Clear();
 
         var vias = new (string Nombre, Func<object?> Obtener)[]
@@ -198,12 +204,14 @@ public sealed class EtabsConnection : IDisposable
             }
 
             throw new EtabsException(
-                "No pude obtener el modelo de ETABS.\n\n" +
+                $"No pude obtener el modelo de {NombreDelDestino}.\n\n" +
                 "La librería de la API sí se cargó:\n  " + EtabsAssembly.RutaCargada + "\n\n" +
                 "Revisa que:\n" +
-                "  1. ETABS esté abierto, con un modelo cargado.\n" +
-                "  2. ETABS no tenga ningún cuadro de diálogo esperando respuesta.\n" +
-                "  3. ETABS y esta aplicación corran igual: si ETABS está como\n" +
+                $"  1. {NombreDelDestino} esté abierto, con un modelo cargado.\n" +
+                $"  2. {NombreDelDestino} no tenga ningún cuadro de diálogo esperando " +
+                "respuesta.\n" +
+                $"  3. {NombreDelDestino} y esta aplicación corran igual: si " +
+                $"{NombreDelDestino} está como\n" +
                 "     administrador y esta aplicación no, o al revés, no se ven\n" +
                 "     entre sí. Ciérralos y abre los dos del mismo modo.\n\n" +
                 "Detalle de cada intento:\n" + Diagnostico);
@@ -231,7 +239,7 @@ public sealed class EtabsConnection : IDisposable
         // entender el diagnóstico: si aquí sale 'System.__ComObject', ya se sabe que
         // ninguna vía basada en GetType() puede funcionar, y no hay que seguir
         // buscando el problema en ETABS.
-        _bitacora.Add($"Objeto de ETABS: tipo en ejecución '{candidato.GetType().FullName}'.");
+        _bitacora.Add($"Objeto de {NombreDelDestino}: tipo en ejecución '{candidato.GetType().FullName}'.");
 
         // 1) LA VIA BUENA: la interfaz cOAPI que declara la propiedad, sacada del
         //    ensamblado. Va primero porque es la única que funciona con el
@@ -429,7 +437,7 @@ public sealed class EtabsConnection : IDisposable
 
         if (asm is null)
         {
-            _bitacora.Add("Librería ETABSv1.dll: no se encontró.");
+            _bitacora.Add($"Librería de {NombreDelDestino}: no se encontró.");
             return null;
         }
 
@@ -483,7 +491,7 @@ public sealed class EtabsConnection : IDisposable
                 var obj = m.Invoke(helper, new object?[] { ProgIdApp });
                 if (obj is not null)
                 {
-                    _bitacora.Add("Librería: GetObject entregó el objeto de ETABS.");
+                    _bitacora.Add($"Librería: GetObject entregó el objeto de {NombreDelDestino}.");
                     return obj;
                 }
 
@@ -523,7 +531,7 @@ public sealed class EtabsConnection : IDisposable
                     var obj = m.Invoke(helper, new object?[] { ProgIdApp, pid });
                     if (obj is not null)
                     {
-                        _bitacora.Add($"Librería: GetObjectProcess entregó ETABS (pid {pid}).");
+                        _bitacora.Add($"Librería: GetObjectProcess entregó {NombreDelDestino} (pid {pid}).");
                         return obj;
                     }
                 }
@@ -611,7 +619,7 @@ public sealed class EtabsConnection : IDisposable
                 var obj = Com.Call(helper, "GetObject", new object?[] { ProgIdApp });
                 if (obj is not null)
                 {
-                    _bitacora.Add($"Helper '{progId}': entregó el objeto de ETABS.");
+                    _bitacora.Add($"Helper '{progId}': entregó el objeto de {NombreDelDestino}.");
                     return obj;
                 }
 
