@@ -49,6 +49,19 @@ public sealed class ElementoEtabs
     /// <summary>RECT, CIRC, I, TUBO, PIPE, C, T, L.</summary>
     public string Forma { get; set; } = "RECT";
 
+    /// <summary>Espesor del patín, en metros. Solo en perfiles I, C y T.</summary>
+    /// <remarks>
+    /// Hace falta para dibujar el perfil DE VERDAD. Con solo el ancho y el peralte lo
+    /// único que se puede dibujar es una caja, que es lo que se veía antes.
+    /// </remarks>
+    public double PatinM { get; set; }
+
+    /// <summary>Espesor del alma, en metros. Solo en perfiles I, C y T.</summary>
+    public double AlmaM { get; set; }
+
+    /// <summary>Espesor de pared, en metros. Solo en tubos y cajones.</summary>
+    public double ParedM { get; set; }
+
     /// <summary>Vértices en planta, solo para losas y muros.</summary>
     public List<(double X, double Y)> Vertices { get; } = new();
 
