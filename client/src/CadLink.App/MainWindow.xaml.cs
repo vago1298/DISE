@@ -2241,15 +2241,12 @@ public partial class MainWindow : Window
             return TipoElemento.Trabe;
         }
 
-        // El CABEZAL es una pieza TENDIDA, asi que lleva alzado horizontal como una
-        // trabe. Se rotula con su propio nombre, no como trabe: el tipo solo decide la
-        // orientacion del alzado.
-        if (e == SeccionConcretoRow.ElementoCabezal)
-        {
-            return TipoElemento.Trabe;
-        }
-
-        // Castillos, cadenas y cualquier otro elemento: sin alzado.
+        // Castillos, cadenas, CABEZAL y cualquier otro elemento: sin alzado.
+        //
+        // El CABEZAL estuvo un rato devolviendo Trabe, por la idea de que al ser una
+        // pieza tendida le tocaba alzado horizontal. El usuario lo quito: un cabezal se
+        // documenta con su seccion y su armado, no con un alzado de estribos por zonas
+        // L/4-L/2-L/4, que es lo que dibuja el alzado de trabe y no describe un cabezal.
         return null;
     }
 

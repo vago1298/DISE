@@ -127,20 +127,20 @@ public static class Tema
     /// </remarks>
     private static readonly Dictionary<string, string> Noche = new()
     {
-        ["WindowBrush"] = "#FF14181C",
-        ["SurfaceBrush"] = "#FF1E242B",
-        ["CardBrush"] = "#FF232A32",
-        ["TotalesBrush"] = "#FF1A2027",
+        ["WindowBrush"] = "#FF000000",
+        ["SurfaceBrush"] = "#FF0D0D0D",
+        ["CardBrush"] = "#FF161616",
+        ["TotalesBrush"] = "#FF0D0D0D",
 
-        ["TabStripBrush"] = "#FF1A2027",
-        ["TabInactiveBrush"] = "#FF232A32",
-        ["TabHoverBrush"] = "#FF2C343D",
+        ["TabStripBrush"] = "#FF0A0A0A",
+        ["TabInactiveBrush"] = "#FF161616",
+        ["TabHoverBrush"] = "#FF242424",
 
-        ["BorderBrush"] = "#FF3A444F",
+        ["BorderBrush"] = "#FF3A3A3A",
         ["TextBrush"] = "#FFE6EBF0",
         ["MutedTextBrush"] = "#FF95A3B0",
         ["DisabledTextBrush"] = "#FF5A6672",
-        ["ToolbarPressedBrush"] = "#FF394350",
+        ["ToolbarPressedBrush"] = "#FF2A2A2A",
 
         ["BrandBrush"] = "#FF3B9BE0",
 
@@ -152,10 +152,10 @@ public static class Tema
         ["WarningBrush"] = "#FFE0A82E",
         ["SuccessBrush"] = "#FF3FB56B",
 
-        ["GridRowBrush"] = "#FF1E242B",
-        ["GridAltRowBrush"] = "#FF222932",
-        ["GridLineBrush"] = "#FF333C46",
-        ["HeaderBrush"] = "#FF2A323B",
+        ["GridRowBrush"] = "#FF0D0D0D",
+        ["GridAltRowBrush"] = "#FF141414",
+        ["GridLineBrush"] = "#FF2E2E2E",
+        ["HeaderBrush"] = "#FF1C1C1C",
 
         ["NoticeFondoBrush"] = "#FF3A3320",
         ["NoticeBordeBrush"] = "#FF7A6A32",

@@ -727,8 +727,13 @@ def v12_fidelidad() -> None:
     # admite un nombre escrito a mano.
     check("la lista incluye CABEZAL", "ElementoCabezal" in codigo)
     check("y OTRO", "ElementoOtro" in codigo)
-    check("el CABEZAL lleva alzado horizontal, como pieza tendida",
-          "if (e == SeccionConcretoRow.ElementoCabezal)" in codigo)
+    # El CABEZAL NO lleva alzado. Estuvo un rato devolviendo Trabe, y el usuario lo
+    # quito: un cabezal se documenta con su seccion y su armado, no con un alzado de
+    # estribos por zonas L/4-L/2-L/4, que es lo que dibuja el alzado de trabe.
+    check("el CABEZAL no lleva alzado",
+          "if (e == SeccionConcretoRow.ElementoCabezal)" not in codigo)
+    check("y queda dicho por que, para que nadie lo vuelva a anadir",
+          "CABEZAL y cualquier otro elemento: sin alzado" in codigo)
 
     for dentro in ["DADO", "CASTILLO", "TRABE", "CONTRATRABE",
                    "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"]:
@@ -3649,8 +3654,8 @@ def v19_circular_y_ui() -> None:
         for clave in ("WindowBrush", "SurfaceBrush", "CardBrush", "TabStripBrush"):
             hex_osc = re.search(rf'\["{clave}"\] = "#FF(\w{{6}})"', m_noche.group(1))
             claro_es = int(hex_osc.group(1)[:2], 16) if hex_osc else 255
-            check(f"en oscuro {clave} es realmente oscuro",
-                  hex_osc is not None and claro_es < 0x40,
+            check(f"en oscuro {clave} es realmente NEGRO, no gris",
+                  hex_osc is not None and claro_es < 0x20,
                   f"vale #{hex_osc.group(1) if hex_osc else '?'}")
 
     # El azul de marca se usa como color de TEXTO en los encabezados y en el boton de
