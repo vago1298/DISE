@@ -416,34 +416,37 @@ check("en el rectangular, la cola escrita a mano ES el radio hacia el nucleo",
       abs(u_esq[0] + RT2I) < 1e-12 and abs(u_esq[1] + RT2I) < 1e-12)
 
 
-
-
 # ===========================================================================
-#  EL CONTORNO DEL GANCHO TIENE QUE QUEDAR SEGUIDO: COLA, DOBLEZ, CINTA
+#  NINGUNA LINEA DEL GANCHO DEBE QUEDAR DENTRO DEL ACERO DEL DIAMANTE
 # ===========================================================================
 #
-# El borde exterior del doblez y el borde exterior de la cinta son la MISMA
-# circunferencia: los dos van a rOut del centro de la varilla. Pero la cinta solo la
-# recorre entre sus dos tangencias, y las colas arrancan mas alla, en la
-# perpendicular. Entre una cosa y la otra falta un pedazo de circunferencia, y sin el
-# el borde del brazo del gancho aparece cortado en el aire. Eso es lo que el usuario
-# ve y lo que se arregla dibujando esos dos pedazos.
+# El defecto que el usuario ve: rayas negras cruzando el relleno azul por encima y
+# por debajo de la varilla. Son lineas del gancho dibujadas donde la cinta del
+# diamante ya esta, o sea rayas por dentro del acero. En el dibujo eso se lee como
+# una grieta, no como un contorno.
 #
-# Se comprueba, con la misma geometria con la que se dibuja la cinta:
+# Aqui se calcula, con la MISMA geometria con la que se dibuja la cinta, que parte de
+# cada linea del gancho cae dentro de ese acero. Se comprueba:
 #
-#   1. Que la tangencia de la cinta esta a rOut del centro de la varilla, o sea que es
-#      la misma circunferencia que el doblez. Si no lo fuera, el pedazo no empalmaria.
-#   2. Que el pedazo EMPIEZA justo donde arranca la cola y TERMINA justo en la
-#      tangencia: las dos uniones al bit, sin hueco y sin solape.
-#   3. Que el pedazo barre lo que separa la cola de la diagonal, y que eso es siempre
-#      menos de 90 grados: es la guardia que lleva el codigo.
-#   4. Que el tramo de en medio NO se vuelve a dibujar, que ese lo traza la cinta.
-#   5. Que la linea interior de la cola, la que se dejo de dibujar, era TANGENTE a la
-#      varilla: por eso su sitio lo cubre la propia circunferencia de la varilla.
-#   6. Y que el contorno queda encadenado de punta a punta.
+#   1. Que el arco del doblez, fuera de donde la cinta abraza la varilla, cae dentro
+#      del acero: era la raya que se veia. Por eso ya no se dibuja.
+#
+#      Se probo a dibujar SOLO esos dos pedazos de fuera del abrazo, para cerrar el
+#      contorno de la cola contra la cinta, y empalmaban al bit: pedazo + abrazo +
+#      pedazo sumaban 180.00000 grados exactos. El usuario los rechazo igual, porque
+#      por bien empalmados que esten son rayas cruzando el relleno y ahi lo que tiene
+#      que verse es el hatch limpio. Queda anotado para no reintentarlo.
+#   2. Que entre los dos puntos de tangencia ese arco ES el borde exterior de la
+#      cinta -mismo centro, mismo radio, mismo barrido-, o sea que no se pierde
+#      ninguna linea al no dibujarlo: ya estaba dibujada.
+#   3. Que la linea exterior de cada cola arranca dentro del acero, y que el punto de
+#      salida que calcula el programa es el de verdad, comparado contra un muestreo
+#      fino e independiente.
+#   4. Que despues del recorte NINGUN punto de NINGUNA linea del gancho queda dentro
+#      del acero del diamante.
 
 print("\n" + "=" * 78)
-print(" El contorno del gancho, pedazo a pedazo")
+print(" Lineas del gancho contra el acero del diamante")
 print("=" * 78)
 
 
@@ -490,32 +493,88 @@ def geometria_cinta(centros, extra):
     return pts
 
 
-def tangencias_de_la_cinta(pts, bx, by, i_barra, n1):
-    """Port de TangenciasDeLaCinta. Devuelve (angulo del lado de n1, el del otro)."""
+def punto_en_poligono(px, py, pts):
+    """Port de PuntoEnPoligono: conteo de cruces."""
+    n = len(pts) // 2
+    dentro = False
+    j = n - 1
+
+    for i in range(n):
+        xi, yi = pts[2 * i], pts[2 * i + 1]
+        xj, yj = pts[2 * j], pts[2 * j + 1]
+
+        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
+            dentro = not dentro
+
+        j = i
+
+    return dentro
+
+
+def en_region(p, centros, extra):
+    """Lo que encierra un borde de la cinta.
+
+    Es la caracterizacion exacta que ya usaba el C# para recortar el estribo bajo el
+    diamante: la region que encierra el borde es la union de los DISCOS de radio
+    R+extra centrados en los circulos que la cinta abraza, mas el POLIGONO que pasa
+    por los puntos de tangencia. Los discos cubren los dobleces y el poligono los
+    tramos rectos.
+    """
+    for (cx_, cy_, r_) in centros:
+        if math.hypot(p[0] - cx_, p[1] - cy_) < r_ + extra:
+            return True
+
+    pts = geometria_cinta(centros, extra)
+
+    return pts is not None and punto_en_poligono(p[0], p[1], pts)
+
+
+def dentro_del_acero(p, centros, d_dia, margen=0.0):
+    """Si el punto cae en el acero de la cinta: dentro del borde exterior y fuera del
+    interior. Con 'margen' se mide 'bien dentro', para no discutir el pelo del borde.
+    """
+    return (en_region(p, centros, d_dia - margen)
+            and not en_region(p, centros, margen))
+
+
+def salida_del_acero(pts, centros, i_barra, n_, p, u, largo):
+    """Port de SalidaDelAceroDelDiamante."""
+    n = len(centros)
+
+    if n < 3 or i_barra < 0:
+        return None
+
+    c = centros[i_barra]
+
     llega = (pts[4 * i_barra], pts[4 * i_barra + 1])
     sale = (pts[4 * i_barra + 2], pts[4 * i_barra + 3])
 
-    a_llega = math.atan2(llega[1] - by, llega[0] - bx)
-    a_sale = math.atan2(sale[1] - by, sale[0] - bx)
+    lado_llega = ((llega[0] - c[0]) * n_[0] + (llega[1] - c[1]) * n_[1]) / c[2]
+    lado_sale = ((sale[0] - c[0]) * n_[0] + (sale[1] - c[1]) * n_[1]) / c[2]
 
-    lado_llega = (llega[0] - bx) * n1[0] + (llega[1] - by) * n1[1]
-    lado_sale = (sale[0] - bx) * n1[0] + (sale[1] - by) * n1[1]
+    if lado_llega >= lado_sale:
+        previo = (i_barra - 1) % n
+        a = (pts[4 * previo + 2], pts[4 * previo + 3])
+        b = llega
+    else:
+        sig = (i_barra + 1) % n
+        a = sale
+        b = (pts[4 * sig], pts[4 * sig + 1])
 
-    return ((a_llega, a_sale) if lado_llega >= lado_sale
-            else (a_sale, a_llega))
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    cruz = u[0] * dy - u[1] * dx
 
+    if abs(cruz) < 1e-12:
+        return None
 
-def barrido(a_ini, a_fin):
-    """Port del barrido de ArcoDelDoblez: siempre antihorario, en [0, 2pi)."""
-    b = a_fin - a_ini
+    rx, ry = a[0] - p[0], a[1] - p[1]
+    t = (rx * dy - ry * dx) / cruz
+    s = (rx * u[1] - ry * u[0]) / cruz
 
-    while b < 0:
-        b += 2 * math.pi
+    if t <= 1e-12 or t >= largo or s < -1e-9 or s > 1 + 1e-9:
+        return None
 
-    while b >= 2 * math.pi:
-        b -= 2 * math.pi
-
-    return b
+    return (p[0] + t * u[0], p[1] + t * u[1]), t
 
 
 def armado(b, h, rec, est, var, n_lat_izq=1, sep=10.0):
@@ -534,28 +593,23 @@ def armado(b, h, rec, est, var, n_lat_izq=1, sep=10.0):
 
     if n_lat_izq == 1:
         centros.append((xl, cy, r))
+        i_barra = 2
     else:
         centros.append((xl, cy + sep / 2, r))
         centros.append((xl, cy - sep / 2, r))
+        i_barra = 2      # el gancho va en la de ARRIBA
 
     centros.append((cx, yb, r))
 
-    return centros, 2, (cx, cy)      # el gancho va en el indice 2, la de ARRIBA
+    return centros, i_barra, (cx, cy)
 
 
-CASOS_CONTORNO = [
-    # nombre,                                b,   h, rec, est,  var, n_lat
-    ("Columna 40x40, 1 lateral",             40,  40,   4, "#3", "#8", 1),
-    ("Columna 30x60, 1 lateral",             30,  60,   4, "#3", "#8", 1),
-    ("Trabe 60x30, 1 lateral",               60,  30,   4, "#3", "#6", 1),
-    ("Columna 100x100, 1 lateral",          100, 100,   5, "#4", "#8", 1),
-    ("Trabe 80x25, 1 lateral",               80,  25,   4, "#3", "#5", 1),
-    ("Columna 40x40, 2 laterales",           40,  40,   4, "#3", "#8", 2),
-]
+def lineas_del_gancho(centros, i_barra, centro, d_dia, gancho_cm, recortar=True):
+    """Las lineas que el programa dibuja del gancho, ya recortadas.
 
-for nombre, b, h, rec, est, var, n_lat in CASOS_CONTORNO:
-    d_dia = DIAM[est]
-    centros, i_barra, centro = armado(b, h, rec, est, var, n_lat)
+    Devuelve una lista de (nombre, (x0,y0), (x1,y1)) y el recorte aplicado a cada
+    cola, para poder comprobarlas punto a punto.
+    """
     barra = centros[i_barra]
     r_in = barra[2]
     r_out = r_in + d_dia
@@ -563,122 +617,245 @@ for nombre, b, h, rec, est, var, n_lat in CASOS_CONTORNO:
     u = unit(centro[0] - barra[0], centro[1] - barra[1])
     n1 = (-u[1], u[0])
     n2 = (u[1], -u[0])
-    a1 = math.atan2(n1[1], n1[0])
 
-    pts_ext = geometria_cinta(centros, d_dia)
-    t_a, t_b = tangencias_de_la_cinta(pts_ext, barra[0], barra[1], i_barra, n1)
+    # El tope hacia el nucleo, igual que el C#.
+    pi1 = (barra[0] + r_in * n1[0], barra[1] + r_in * n1[1])
+    tope = (centro[0] - pi1[0]) * u[0] + (centro[1] - pi1[1]) * u[1]
+    largo = min(gancho_cm, tope) if tope > 0 else gancho_cm
 
-    # Los dos pedazos, como los dibuja el C#: [a1 -> tA] y [tB -> a1+pi].
-    b_a = barrido(a1, t_a)
-    b_b = barrido(t_b, a1 + math.pi)
+    pts_int = geometria_cinta(centros, 0)
+
+    lineas = []
+    recortes = {}
+
+    for nombre, nn in (("cola de arriba", n1), ("cola de abajo", n2)):
+        p_in = (barra[0] + r_in * nn[0], barra[1] + r_in * nn[1])
+        p_out = (barra[0] + r_out * nn[0], barra[1] + r_out * nn[1])
+
+        q_in = (p_in[0] + largo * u[0], p_in[1] + largo * u[1])
+        q_out = (p_out[0] + largo * u[0], p_out[1] + largo * u[1])
+
+        arranque = p_out
+
+        if recortar:
+            sal = salida_del_acero(pts_int, centros, i_barra, nn, p_out, u, largo)
+
+            if sal is not None:
+                arranque, t = sal
+                recortes[nombre] = t
+
+        # La linea INTERIOR, la que nace pegada a la varilla, ya no se dibuja: es tangente
+        # a la varilla y su sitio lo cubre la propia circunferencia de la varilla. Se
+        # comprueba aparte que era tangente; aqui no entra, porque esta lista es la de las
+        # lineas que el programa DIBUJA.
+        lineas.append((f"{nombre}: linea exterior", arranque, q_out))
+        lineas.append((f"{nombre}: punta", q_in, q_out))
+
+    return lineas, recortes, largo, u, (n1, n2)
+
+
+CASOS_LINEAS = [
+    # nombre,                                b,   h, rec, est,  var, n_lat, gancho
+    ("Columna 40x40, 1 lateral",             40,  40,   4, "#3", "#8", 1, 5.0),
+    ("Columna 30x60, 1 lateral",             30,  60,   4, "#3", "#8", 1, 5.0),
+    ("Trabe 60x30, 1 lateral",               60,  30,   4, "#3", "#6", 1, 5.0),
+    ("Columna 100x100, 1 lateral",          100, 100,   5, "#4", "#8", 1, 8.0),
+    ("Columna 40x40, 2 laterales",           40,  40,   4, "#3", "#8", 2, 5.0),
+]
+
+MARGEN = 0.02      # 0.2 mm: 'bien dentro' del acero, sin discutir el pelo del borde
+MUESTRAS = 400
+
+hubo_defecto = []
+arco_metido = []
+
+for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
+    d_dia = DIAM[est]
+    centros, i_barra, centro = armado(b, h, rec, est, var, n_lat)
+    barra = centros[i_barra]
+    r_in = barra[2]
+    r_out = r_in + d_dia
 
     print(f"\n{nombre}")
-    print(f"    cola de arriba en {math.degrees(a1) % 360:7.2f}°   tangencia en "
-          f"{math.degrees(t_a) % 360:7.2f}°   pedazo de {math.degrees(b_a):5.2f}°")
-    print(f"    tangencia en {math.degrees(t_b) % 360:7.2f}°   cola de abajo en "
-          f"{math.degrees(a1 + math.pi) % 360:7.2f}°   pedazo de {math.degrees(b_b):5.2f}°")
 
-    # ---- 1. Misma circunferencia que el doblez ----
-    for etiqueta, ang in (("de arriba", t_a), ("de abajo", t_b)):
-        p = (barra[0] + r_out * math.cos(ang), barra[1] + r_out * math.sin(ang))
-        d = math.hypot(p[0] - barra[0], p[1] - barra[1])
+    # ---- 1. El arco del doblez, fuera de la tangencia, cae DENTRO del acero ----
+    pts_ext = geometria_cinta(centros, d_dia)
+    llega = (pts_ext[4 * i_barra], pts_ext[4 * i_barra + 1])
+    sale = (pts_ext[4 * i_barra + 2], pts_ext[4 * i_barra + 3])
 
-        check(f"'{nombre}': la tangencia {etiqueta} esta a rOut de la varilla",
-              abs(d - r_out) < 1e-12, f"{d:.12f} contra {r_out:.12f}")
+    a_llega = math.degrees(math.atan2(llega[1] - barra[1], llega[0] - barra[0])) % 360
+    a_sale = math.degrees(math.atan2(sale[1] - barra[1], sale[0] - barra[0])) % 360
 
-    # La tangencia leida de la cinta y el punto a rOut en ese angulo son el MISMO
-    # punto: es lo que garantiza que el pedazo empalme y no quede un pelo de hueco.
-    for etiqueta, ang, idx in (("de arriba", t_a, None), ("de abajo", t_b, None)):
-        p_arco = (barra[0] + r_out * math.cos(ang), barra[1] + r_out * math.sin(ang))
+    u = unit(centro[0] - barra[0], centro[1] - barra[1])
+    n1 = (-u[1], u[0])
+    a1 = math.degrees(math.atan2(n1[1], n1[0])) % 360      # arranque del arco del C#
 
-        # El punto de tangencia tal como lo dibuja la cinta.
-        cands = [(pts_ext[4 * i_barra], pts_ext[4 * i_barra + 1]),
-                 (pts_ext[4 * i_barra + 2], pts_ext[4 * i_barra + 3])]
-        cerca = min(cands, key=lambda q: math.hypot(q[0] - p_arco[0], q[1] - p_arco[1]))
-        sep = math.hypot(cerca[0] - p_arco[0], cerca[1] - p_arco[1])
+    print(f"    la cinta abraza la varilla de {min(a_llega, a_sale):.2f}° a "
+          f"{max(a_llega, a_sale):.2f}°   el arco del gancho iba de {a1:.2f}° a "
+          f"{(a1 + 180) % 360:.2f}°")
 
-        check(f"'{nombre}': el pedazo {etiqueta} termina EN el punto que dibuja la cinta",
-              sep < 1e-12, f"a {sep:.3e} cm")
+    # El radio del arco del gancho y el del borde exterior de la cinta son el MISMO.
+    check(f"'{nombre}': el arco del gancho tiene el radio del borde de la cinta",
+          abs(math.hypot(llega[0] - barra[0], llega[1] - barra[1]) - r_out) < 1e-12
+          and abs(math.hypot(sale[0] - barra[0], sale[1] - barra[1]) - r_out) < 1e-12)
 
-    # ---- 2. El pedazo empieza donde arranca la cola ----
-    for etiqueta, nn, ang in (("de arriba", n1, a1), ("de abajo", n2, a1 + math.pi)):
-        p_cola = (barra[0] + r_out * nn[0], barra[1] + r_out * nn[1])
-        p_arco = (barra[0] + r_out * math.cos(ang), barra[1] + r_out * math.sin(ang))
-        sep = math.hypot(p_cola[0] - p_arco[0], p_cola[1] - p_arco[1])
+    # Los trozos del arco que se salen del abrazo de la cinta: dentro del acero.
+    dentro_fuera_del_abrazo = 0
+    total_fuera_del_abrazo = 0
+    dentro_del_abrazo = 0
+    total_del_abrazo = 0
 
-        check(f"'{nombre}': el pedazo {etiqueta} empalma con la linea exterior de la cola",
-              sep < 1e-12, f"a {sep:.3e} cm")
+    lo = min(a_llega, a_sale)
+    hi = max(a_llega, a_sale)
 
-    # ---- 3. El barrido es lo que separa la cola de la diagonal, y cabe en la guardia --
-    # La diagonal sale de la varilla hacia el circulo vecino; la tangencia esta a 90 de
-    # esa direccion. Asi que el pedazo mide lo que la cola se separa de la diagonal.
-    n = len(centros)
-    vecinos = {}
-    for j in ((i_barra - 1) % n, (i_barra + 1) % n):
-        d = unit(centros[j][0] - barra[0], centros[j][1] - barra[1])
-        vecinos["arriba" if (d[0] * n1[0] + d[1] * n1[1]) > 0 else "abajo"] = d
+    for k in range(MUESTRAS + 1):
+        ang = a1 + 180.0 * k / MUESTRAS
+        p = (barra[0] + r_out * math.cos(math.radians(ang)),
+             barra[1] + r_out * math.sin(math.radians(ang)))
 
-    for etiqueta, bb in (("arriba", b_a), ("abajo", b_b)):
-        if etiqueta in vecinos:
-            sep_diag = grados_entre(u, vecinos[etiqueta])
+        en_abrazo = lo - 1e-9 <= ang % 360 <= hi + 1e-9
 
-            check(f"'{nombre}': el pedazo de {etiqueta} mide lo que la cola se separa "
-                  "de su diagonal",
-                  abs(math.degrees(bb) - sep_diag) < 1e-9,
-                  f"pedazo {math.degrees(bb):.6f}°, separacion {sep_diag:.6f}°")
+        if en_abrazo:
+            total_del_abrazo += 1
+            dentro_del_abrazo += 1 if dentro_del_acero(p, centros, d_dia, MARGEN) else 0
+        else:
+            total_fuera_del_abrazo += 1
+            dentro_fuera_del_abrazo += 1 if dentro_del_acero(p, centros, d_dia, MARGEN) else 0
 
-        check(f"'{nombre}': el pedazo de {etiqueta} pasa la guardia de 90 grados",
-              1e-9 < bb <= math.pi / 2 + 1e-12,
-              f"{math.degrees(bb):.4f}°")
+    # Se mide en CENTIMETROS de arco, no en porcentaje de muestras. El porcentaje no
+    # sirve como condicion: el arco va justo por el borde exterior de la cinta, asi que
+    # cerca de la tangencia las muestras caen sobre el borde y no 'bien dentro'. Lo que
+    # importa es si el trozo metido en el relleno es lo bastante largo para VERSE.
+    largo_muestra = math.radians(180.0 / MUESTRAS) * r_out
+    largo_dentro = dentro_fuera_del_abrazo * largo_muestra
 
-    # ---- 4. El tramo que ya dibuja la cinta NO se repite ----
-    # Los dos pedazos van de la cola a la tangencia; el abrazo de la cinta va de una
-    # tangencia a la otra. Se comprueba que no se pisan: la suma de los tres es la media
-    # vuelta del doblez, ni mas ni menos.
-    b_abrazo = barrido(t_a, t_b)
-    suma = b_a + b_abrazo + b_b
+    print(f"    del arco fuera del abrazo caian {largo_dentro:.2f} cm dentro del acero "
+          f"({dentro_fuera_del_abrazo} de {total_fuera_del_abrazo} muestras)")
 
-    print(f"    pedazo {math.degrees(b_a):5.2f}° + abrazo de la cinta "
-          f"{math.degrees(b_abrazo):6.2f}° + pedazo {math.degrees(b_b):5.2f}° = "
-          f"{math.degrees(suma):6.2f}°")
+    check(f"'{nombre}': el arco cruzaba el acero por un tramo bien visible",
+          largo_dentro > 0.2,
+          f"solo {largo_dentro:.4f} cm")
 
-    check(f"'{nombre}': los dos pedazos y el abrazo suman la media vuelta del doblez",
-          abs(suma - math.pi) < 1e-9,
-          f"{math.degrees(suma):.6f}° en vez de 180")
+    arco_metido.append(largo_dentro)
 
-    # ---- 5. La linea que se dejo de dibujar era TANGENTE a la varilla ----
+    # Y dentro del abrazo el arco ES el borde: ni dentro ni fuera, esta EN el borde.
+    # Se comprueba por el otro lado: ninguna muestra del abrazo esta bien dentro.
+    check(f"'{nombre}': dentro del abrazo el arco es el propio borde de la cinta",
+          dentro_del_abrazo == 0,
+          f"{dentro_del_abrazo} de {total_del_abrazo} muestras dentro")
+
+    # ---- 2. El punto de salida del programa contra un muestreo independiente ----
+    lineas, recortes, largo, u, (n1, n2) = lineas_del_gancho(
+        centros, i_barra, centro, d_dia, gancho_cm)
+
+    for etiqueta, nn in (("cola de arriba", n1), ("cola de abajo", n2)):
+        p_out = (barra[0] + r_out * nn[0], barra[1] + r_out * nn[1])
+
+        # Muestreo fino: el primer punto de la linea que ya NO esta en el acero.
+        paso = largo / 20000
+        t_muestreo = None
+
+        for k in range(20001):
+            t = k * paso
+            p = (p_out[0] + t * u[0], p_out[1] + t * u[1])
+
+            if not dentro_del_acero(p, centros, d_dia, 0.0):
+                t_muestreo = t
+                break
+
+        t_prog = recortes.get(etiqueta)
+
+        print(f"    {etiqueta}: recorte del programa "
+              f"{('%.4f cm' % t_prog) if t_prog is not None else 'ninguno'}"
+              f"   por muestreo {('%.4f cm' % t_muestreo) if t_muestreo is not None else 'nunca sale'}")
+
+        # No siempre hay que recortar, y eso NO es un fallo: si la diagonal llega muy
+        # empinada -una columna alta- la cola arranca ya fuera del acero de la cinta y
+        # no hay nada que quitar. Lo que se exige es que el programa recorte cuando hace
+        # falta, donde hace falta, y que no recorte cuando no.
+        arranca_dentro = t_muestreo is None or t_muestreo > 2 * paso
+
+        if arranca_dentro:
+            check(f"'{nombre}', {etiqueta}: el programa recorta la linea que entra "
+                  "en el acero", t_prog is not None)
+
+            if t_prog is not None and t_muestreo is not None:
+                check(f"'{nombre}', {etiqueta}: y recorta donde de verdad sale del acero",
+                      abs(t_prog - t_muestreo) <= 2 * paso,
+                      f"programa {t_prog:.6f}, muestreo {t_muestreo:.6f}, "
+                      f"paso {paso:.6f}")
+        else:
+            check(f"'{nombre}', {etiqueta}: no recorta nada donde no hace falta",
+                  t_prog is None,
+                  f"recorto {t_prog} sin necesidad")
+
+    # ---- 2b. La linea interior que se dejo de dibujar era TANGENTE a la varilla ----
     # Por eso no se echa de menos: su sitio, pegado al acero, lo cubre la propia
     # circunferencia de la varilla, que ya esta dibujada.
     for etiqueta, nn in (("de arriba", n1), ("de abajo", n2)):
         p_in = (barra[0] + r_in * nn[0], barra[1] + r_in * nn[1])
-
-        # Distancia del centro de la varilla a la recta que sale de p_in en direccion u.
         rx, ry = p_in[0] - barra[0], p_in[1] - barra[1]
         dist = abs(rx * u[1] - ry * u[0])          # |r x u|, con u unitario
 
-        check(f"'{nombre}': la linea interior {etiqueta} era tangente a la varilla",
+        check(f"'{nombre}': la linea interior {etiqueta}, la que no se dibuja, era "
+              "tangente a la varilla",
               abs(dist - r_in) < 1e-12, f"a {dist:.12f} de {r_in:.12f}")
 
-    # ---- 6. El contorno queda encadenado ----
-    # cola arriba -> pedazo -> cinta -> pedazo -> cola abajo, sin saltos.
-    cadena = [
-        ("arranque de la cola de arriba",
-         (barra[0] + r_out * n1[0], barra[1] + r_out * n1[1])),
-        ("fin del pedazo de arriba",
-         (barra[0] + r_out * math.cos(t_a), barra[1] + r_out * math.sin(t_a))),
-        ("arranque del pedazo de abajo",
-         (barra[0] + r_out * math.cos(t_b), barra[1] + r_out * math.sin(t_b))),
-        ("arranque de la cola de abajo",
-         (barra[0] + r_out * n2[0], barra[1] + r_out * n2[1])),
-    ]
+    # ---- 3. Ya recortadas, ninguna linea queda dentro del acero ----
+    peores = []
 
-    # Todos a rOut: es lo que hace que el contorno se lea como una sola curva.
-    radios = [math.hypot(p[0] - barra[0], p[1] - barra[1]) for _, p in cadena]
+    for etiqueta, p0, p1 in lineas:
+        dentro = 0
 
-    check(f"'{nombre}': los cuatro extremos del contorno estan en la misma "
-          "circunferencia",
-          max(abs(r - r_out) for r in radios) < 1e-12,
-          f"radios {['%.9f' % r for r in radios]}")
+        for k in range(MUESTRAS + 1):
+            f = k / MUESTRAS
+            p = (p0[0] + f * (p1[0] - p0[0]), p0[1] + f * (p1[1] - p0[1]))
+
+            if dentro_del_acero(p, centros, d_dia, MARGEN):
+                dentro += 1
+
+        if dentro:
+            peores.append(f"{etiqueta}: {dentro}/{MUESTRAS + 1}")
+
+    check(f"'{nombre}': ninguna linea del gancho queda dentro del acero",
+          not peores, "; ".join(peores))
+
+    # ---- 4. Y sin recortar SI quedaban: el defecto era real ----
+    sin_recortar, _, _, _, _ = lineas_del_gancho(
+        centros, i_barra, centro, d_dia, gancho_cm, recortar=False)
+
+    metidas = 0
+
+    for etiqueta, p0, p1 in sin_recortar:
+        for k in range(MUESTRAS + 1):
+            f = k / MUESTRAS
+            p = (p0[0] + f * (p1[0] - p0[0]), p0[1] + f * (p1[1] - p0[1]))
+
+            if dentro_del_acero(p, centros, d_dia, MARGEN):
+                metidas += 1
+
+    print(f"    sin recortar quedaban {metidas} muestras de linea dentro del acero")
+
+    if metidas > 0:
+        hubo_defecto.append(f"{nombre}: {metidas} muestras")
+
+# El defecto no aparece en TODOS los armados -en una columna alta la cola nace ya fuera
+# del acero-, asi que se exige que aparezca en alguno: si no apareciera en ninguno, el
+# recorte no estaria probado y podria estar sin hacer nada.
+print()
+check("el recorte de las colas hace falta de verdad en algun armado",
+      len(hubo_defecto) > 0)
+
+# El arco, en cambio, se metia en el acero en TODOS los armados probados. Por eso no se
+# recorta: se deja de dibujar, que su parte visible ya la traza la cinta.
+check("el arco del doblez se metia en el acero en todos los armados",
+      len(arco_metido) == len(CASOS_LINEAS) and min(arco_metido) > 0.2,
+      f"el menor fue {min(arco_metido):.4f} cm" if arco_metido else "sin datos")
+
+print(f"    armados donde la cola entraba en el acero: {len(hubo_defecto)} de "
+      f"{len(CASOS_LINEAS)}")
+print(f"    arco metido en el acero: de {min(arco_metido):.2f} a "
+      f"{max(arco_metido):.2f} cm")
 
 print("\n" + "=" * 78)
 if fallos:
