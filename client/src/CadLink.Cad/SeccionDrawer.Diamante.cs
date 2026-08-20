@@ -174,6 +174,11 @@ public sealed partial class SeccionDrawer
 
         AlFrente(new List<object> { interior, exterior });
 
+        // ---------- Gancho sísmico del diamante ----------
+        // Va al FINAL, cuando la cinta ya está dibujada y coloreada: el gancho es una
+        // pieza aparte que se le añade, igual que en el zuncho circular.
+        GanchoDelDiamante(s, contorno, cx, cy, dDia, conFondoSolido);
+
         // Y AL FINAL, con la cinta ya hecha: se abre el estribo principal por donde
         // el diamante pasa por encima. Va aquí y no antes porque solo tiene sentido
         // si la cinta se construyó de verdad; si hubiera fallado, recortar el
@@ -1074,6 +1079,142 @@ public sealed partial class SeccionDrawer
         {
             Fallo("Cinta tangente del estribo diamante", ex);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// El <b>gancho sísmico del diamante</b>, en el vértice izquierdo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un diamante es un estribo cerrado, así que sus dos extremos se juntan en algún
+    /// sitio y ahí van sus ganchos, igual que el estribo rectangular los lleva en una
+    /// esquina. Se ponen en el <b>vértice izquierdo</b> porque es donde el rectangular NO
+    /// tiene el suyo —el suyo está arriba a la derecha— y así los dos ganchos de la sección
+    /// no se montan uno encima del otro.
+    /// </para>
+    /// <para>
+    /// <b>Se engancha a la varilla que el diamante ya abraza ahí.</b> Eso es lo que hace
+    /// que el gancho sea real: un gancho sísmico rodea una varilla longitudinal, no dobla
+    /// en el aire. Si en ese costado no hay varilla, el vértice del diamante es un doblez
+    /// ficticio sobre una posición calculada y <b>no se dibuja gancho</b>: no habría de qué
+    /// agarrarlo.
+    /// </para>
+    /// <para>
+    /// <b>Reutiliza lo que ya existe:</b> <see cref="Cola"/> del estribo rectangular para
+    /// las dos colas, y <see cref="RellenoDelGancho"/> del zuncho circular para el relleno
+    /// del doblez y de las colas. La geometría del gancho se escribió una vez y este es el
+    /// tercer sitio que la usa.
+    /// </para>
+    /// <para>
+    /// La dirección de la cola sale de la misma regla que en el zuncho circular: el radio
+    /// <b>hacia el núcleo</b> girado 45°, que equivale a girar 135° la dirección de avance
+    /// del acero. Aquí «hacia el núcleo» es del vértice izquierdo hacia el centro.
+    /// </para>
+    /// </remarks>
+    private void GanchoDelDiamante(
+        SeccionCad s, List<object> contorno, double cx, double cy, double dDia,
+        bool conFondoSolido)
+    {
+        var gancho = s.GanchoCm * _escala;
+
+        if (gancho <= 0)
+        {
+            return;
+        }
+
+        // Las varillas del costado IZQUIERDO, que es donde va el gancho.
+        var delLado = _varLat.Where(v => v.X < cx).ToList();
+
+        if (delLado.Count == 0)
+        {
+            // Sin varilla en ese costado el vértice es un doblez ficticio: no hay de qué
+            // agarrar el gancho, así que no se dibuja. Se dice, porque el usuario pidió el
+            // gancho y conviene que sepa por qué no está.
+            _log.Add(
+                $"Sección '{s.Id}': el diamante no lleva gancho porque no hay varillas " +
+                "laterales en el costado izquierdo a las que agarrarlo.");
+            return;
+        }
+
+        // La MISMA regla que usa el vértice: una varilla si hay alguna a media altura, y
+        // las dos más juntas si el eje cae entre dos.
+        var seleccion = VarillasDelCentro(delLado, cy, porY: true);
+
+        if (seleccion.Count == 0)
+        {
+            return;
+        }
+
+        // Con dos, el gancho va en la de ARRIBA: el recorrido del costado izquierdo va de
+        // arriba hacia abajo, así que ahí es donde el acero llega al vértice.
+        var barra = seleccion.OrderByDescending(v => v.Y).First();
+
+        var rIn = barra.R;
+        var rOut = rIn + dDia;
+
+        // Hacia el núcleo: del vértice izquierdo hacia el centro, o sea +X.
+        var rx = cx - barra.X;
+        var ry = cy - barra.Y;
+        var rl = Math.Sqrt((rx * rx) + (ry * ry));
+
+        if (rl < 1e-9)
+        {
+            return;
+        }
+
+        rx /= rl;
+        ry /= rl;
+
+        // La cola: el radio interior girado 45°.
+        var ux = (rx - ry) * Rt2I;
+        var uy = (rx + ry) * Rt2I;
+
+        // Las normales de arranque: las perpendiculares a la cola.
+        var n1X = -uy;
+        var n1Y = ux;
+        var n2X = uy;
+        var n2Y = -ux;
+
+        // El tope: la cola apunta al núcleo, así que cuanto más larga más se acerca al
+        // centro. Se recorta donde queda lo más cerca posible, para que no lo cruce y
+        // salga por el otro lado.
+        var piX = barra.X + (rIn * n1X);
+        var piY = barra.Y + (rIn * n1Y);
+
+        var tope = ((cx - piX) * ux) + ((cy - piY) * uy);
+
+        if (tope > 0 && gancho > tope)
+        {
+            _log.Add(
+                $"Sección '{s.Id}': el gancho del diamante de {s.GanchoCm:0.#} cm no cabe " +
+                $"y se recortó a {tope / _escala:0.#} cm.");
+            gancho = tope;
+        }
+
+        var quads = new List<double[]>();
+        var sectores = new List<double[]>();
+
+        // El doblez: media corona alrededor de la varilla, del arranque de una cola al de
+        // la otra. Su punto medio cae en -u, o sea en el lado OPUESTO a las colas.
+        var a1 = Math.Atan2(n1Y, n1X);
+        sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });
+
+        // Y el arco EXTERIOR del contorno. El interior no se dibuja: su radio es el de la
+        // varilla y su centro el de la varilla, o sea que ES la circunferencia de la
+        // varilla, que ya está dibujada. Es la misma razón que en el zuncho circular.
+        Agregar(contorno, Arco(barra.X, barra.Y, rOut, a1, a1 + Pi));
+
+        // Las dos colas, con la Cola del estribo rectangular.
+        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
+        {
+            Cola(contorno, quads, barra.X, barra.Y, rIn, rOut, nx, ny, ux, uy, gancho,
+                false, 0, 0);
+        }
+
+        if (conFondoSolido && (sectores.Count > 0 || quads.Count > 0))
+        {
+            RellenoDelGancho(quads, sectores);
         }
     }
 }

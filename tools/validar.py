@@ -3551,6 +3551,63 @@ def v19_circular_y_ui() -> None:
           'x:Name="NotasPanel"' in xaml
           and 'Binding="{Binding Text, ElementName=ExportHintText}"' in xaml)
 
+    # ------------------------------------------------------------------
+    # El gancho sismico del DIAMANTE
+    # ------------------------------------------------------------------
+    # Un diamante es un estribo cerrado, asi que sus dos extremos se juntan y ahi van sus
+    # ganchos. En el vertice IZQUIERDO, que es donde el rectangular NO tiene el suyo —el
+    # suyo esta arriba a la derecha— para que los dos no se monten.
+    diam = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Diamante.cs"))
+
+    check("el diamante lleva gancho sismico",
+          "private void GanchoDelDiamante(" in diam)
+    check("y se dibuja de verdad",
+          "GanchoDelDiamante(s, contorno, cx, cy, dDia, conFondoSolido);" in diam)
+
+    m_gd = re.search(r"private void GanchoDelDiamante\(.*?\n    \}", diam, re.S)
+    check("se puede leer GanchoDelDiamante", m_gd is not None)
+    if m_gd:
+        cuerpo = m_gd.group(0)
+
+        # Va en el costado IZQUIERDO.
+        check("el gancho del diamante va en el costado izquierdo",
+              "_varLat.Where(v => v.X < cx)" in cuerpo)
+
+        # Y se engancha a la varilla que el diamante YA abraza ahi, con la misma regla que
+        # usa el vertice: si no, el gancho doblaria en un sitio y la cinta en otro.
+        check("usa la misma regla del vertice para elegir la varilla",
+              "VarillasDelCentro(delLado, cy, porY: true)" in cuerpo)
+
+        # Sin varilla no se dibuja: un gancho sismico rodea una varilla, no dobla en el aire.
+        check("sin varilla en ese costado no se dibuja gancho",
+              "no hay varillas " in cuerpo)
+
+        # El doblez envuelve la VARILLA.
+        check("el doblez envuelve la varilla",
+              "var rIn = barra.R;" in cuerpo and "var rOut = rIn + dDia;" in cuerpo)
+
+        # La misma regla de direccion que el zuncho circular.
+        check("la cola es el radio interior girado 45 grados",
+              "(rx - ry) * Rt2I" in cuerpo and "(rx + ry) * Rt2I" in cuerpo)
+        check("y las normales son las perpendiculares a la cola",
+              "var n1X = -uy;" in cuerpo)
+
+        # REUTILIZA lo que ya existe: es el tercer sitio que usa esta geometria.
+        check("reutiliza la Cola del estribo rectangular",
+              "Cola(contorno, quads, barra.X, barra.Y, rIn, rOut" in cuerpo)
+        check("y el relleno del gancho del zuncho circular",
+              "RellenoDelGancho(quads, sectores)" in cuerpo)
+
+        # El arco interior no se dibuja: ES la circunferencia de la varilla.
+        check("no dibuja el arco interior, que es la varilla misma",
+              "Arco(barra.X, barra.Y, rIn," not in cuerpo)
+        check("y si el exterior",
+              "Arco(barra.X, barra.Y, rOut, a1, a1 + Pi)" in cuerpo)
+
+        # Y la cola se recorta si no cabe en el nucleo.
+        check("la cola del diamante se recorta si no cabe",
+              "gancho = tope;" in cuerpo)
+
     check("hay comprobacion numerica del gancho del zuncho",
           "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
 
