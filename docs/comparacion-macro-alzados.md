@@ -180,6 +180,31 @@ macro; el port usa la escala de la casilla para que sección y alzado coincidan.
 | El diamante **rodea** las varillas laterales en lugar de atravesarlas | La macro las cruza |
 | El estribo principal se **abre** por donde pasa el diamante | `TrimEstriboBajoDiamante` |
 | Tope de estribos por separación mínima | Ver `CalculateFlexibleLength` en §2.1 |
+| **Cotas del bloque de sección** insertado en el alzado | Lo pediste. Ver el apartado 3.1 |
+
+### 3.1 El bloque de sección del alzado va acotado
+
+La macro inserta el bloque de la sección al lado del alzado y lo deja **sin acotar**: las
+cotas que dibuja son las del alzado —la longitud, los estribos, los ejes—, no las de la
+sección insertada. Así que en el plano la sección se veía, pero no decía cuánto medía.
+
+Ahora `CotasDelCorte(x, y, ancho, alto)` acota **la caja real del bloque insertado**, no las
+medidas capturadas: la base por abajo y la altura por la derecha, separadas `SepCotaCorte`
+(0.06) por el factor de escala. Y se llama después de `Mover`, para que las dos cotas caigan
+donde el bloque quedó.
+
+Dos cosas que hay que saber:
+
+- **Van fuera del bloque, a propósito.** `SeccionDrawer.Bloquear` excluye las capas COTAS y
+  ROTULOS al armar el bloque de la sección, así que estas dos cotas no se pueden dibujar
+  «dentro» de él: se dibujan en el dibujo, sobre el sitio donde el bloque quedó.
+- El rótulo `CORTE A-A'` sube `AltoCotaCorte` (0.09) por el factor, y el aire sobre la
+  sección —`AlzadoLayout.AireRotuloAlzado`— pasó de **0.10 a 0.19** para que la cota de la
+  base no se meta en el rótulo. Son los 12.5 cm de aire que se habían perdido.
+- **Muestran metros**: una sección de 30 × 60 se acota «0.30» y «0.60», igual que las cotas
+  del concreto, porque llevan el texto vacío y el número lo mide AutoCAD sobre un dibujo que
+  está en metros. Es el mismo defecto de unidades que ya tenían las cotas del alzado, no algo
+  nuevo de estas dos.
 
 ---
 

@@ -321,6 +321,8 @@ public sealed class PerfilAceroRow : Row
     private double _radioCm;
     private double _anchoMenorCm;
 
+    private PropiedadesPerfil _propiedades = PropiedadesPerfil.Ninguna;
+
     /// <summary>Elementos de acero que se rotulan.</summary>
     public const string ElementoViga = "VIGA";
 
@@ -377,6 +379,17 @@ public sealed class PerfilAceroRow : Row
     /// </remarks>
     public static readonly string[] Clasificaciones =
         { string.Empty, "PRINCIPAL", "SECUNDARIA", "DE BORDE", "DE PISO", "DE TECHO" };
+
+    /// <summary>
+    /// Una fila nueva arranca con un perfil del catálogo, medidas y propiedades incluidas.
+    /// </summary>
+    /// <remarks>
+    /// El perfil de arranque está en el catálogo, así que sus medidas se traen de ahí en
+    /// lugar de fiarse de las que hay escritas arriba: si algún día el catálogo corrige un
+    /// espesor, la fila nueva sale con el valor corregido y no con el de hace dos versiones.
+    /// Y de paso trae sus propiedades, que no se pueden escribir a mano.
+    /// </remarks>
+    public PerfilAceroRow() => TraerDelCatalogo();
 
     /// <summary>Familia del perfil. Decide qué lista se ofrece y con qué nombre se rotula.</summary>
     public string Familia
@@ -477,6 +490,17 @@ public sealed class PerfilAceroRow : Row
 
         if (c is null)
         {
+            // Las MEDIDAS no se tocan —quien escribe un perfil a mano las va a capturar a
+            // mano— pero las PROPIEDADES sí se limpian, y esa diferencia importa: dejar las
+            // del perfil anterior sería mostrar el Ix de una W12 junto al nombre de un
+            // perfil hecho a la medida. Es el peor de los errores posibles en una tabla de
+            // perfiles, porque el número es creíble.
+            if (_propiedades.Cuantas > 0)
+            {
+                _propiedades = PropiedadesPerfil.Ninguna;
+                Raise(nameof(Propiedades));
+            }
+
             return;
         }
 
@@ -487,6 +511,7 @@ public sealed class PerfilAceroRow : Row
         _labioCm = c.LabioCm;
         _radioCm = c.RadioCm;
         _anchoMenorCm = c.AnchoMenorCm;
+        _propiedades = c.Props;
 
         // Se avisa de las siete a la vez, con los campos ya puestos: si se usaran las
         // propiedades una por una, cada asignación dispararía su propio aviso y la columna
@@ -498,8 +523,26 @@ public sealed class PerfilAceroRow : Row
         Raise(nameof(LabioCm));
         Raise(nameof(RadioCm));
         Raise(nameof(AnchoMenorCm));
+        Raise(nameof(Propiedades));
         Raise(nameof(FaltanDatos));
     }
+
+    /// <summary>
+    /// Las <b>propiedades geométricas</b> del perfil del catálogo: solo para leerlas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No se capturan ni se dibujan: se traen del catálogo con las medidas y se muestran al
+    /// final de la cuadrícula, para poder comparar dos perfiles al elegir sin tener que ir al
+    /// manual. El dibujante no recibe ninguna.
+    /// </para>
+    /// <para>
+    /// Un perfil escrito a mano, que no está en el catálogo, <b>se queda sin ellas</b>: no
+    /// hay de dónde sacarlas y no se calculan. Las celdas salen vacías, que es lo que hay que
+    /// decir; inventar un <c>Ix</c> a partir del área sería peor que dejarlo en blanco.
+    /// </para>
+    /// </remarks>
+    public PropiedadesPerfil Propiedades => _propiedades;
 
     /// <summary>Identificador de la sección. Es el nombre del bloque en AutoCAD.</summary>
     public string Id { get => _id; set => Set(ref _id, value); }
@@ -798,6 +841,7 @@ public sealed class PerfilAceroRow : Row
     {
         Raise(nameof(Forma));
         Raise(nameof(FormaNombre));
+        Raise(nameof(Propiedades));
         Raise(nameof(PerfilRotulo));
         Raise(nameof(ElementoRotulo));
         Raise(nameof(FaltanDatos));

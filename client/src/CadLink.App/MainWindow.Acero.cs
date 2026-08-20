@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using CadLink.App.Models;
 using CadLink.Cad;
 
@@ -30,6 +32,20 @@ public partial class MainWindow
         ColElementoAcero.ItemsSource = PerfilAceroRow.Elementos;
         ColClasificacion.ItemsSource = PerfilAceroRow.Clasificaciones;
         ColAcero.ItemsSource = PerfilAceroRow.Aceros;
+    }
+
+    /// <summary>
+    /// Engancha la vista previa de acero: se redibuja al cambiar de fila y al redimensionar.
+    /// </summary>
+    /// <remarks>
+    /// Va aparte de <see cref="EnlazarAcero"/> porque esto se hace UNA VEZ, en el arranque:
+    /// <c>Enlazar</c> se vuelve a llamar al cargar el ejemplo, al borrar todo y al empezar de
+    /// nuevo, y suscribirse ahí dejaría el mismo evento enganchado cinco veces.
+    /// </remarks>
+    private void EngancharVistaPreviaAcero()
+    {
+        AceroPreviewCanvas.SizeChanged += (_, _) => DibujarVistaPreviaAcero();
+        AceroGrid.SelectionChanged += (_, _) => DibujarVistaPreviaAcero();
     }
 
     /// <summary>Enlaza la cuadrícula de acero y mantiene sus totales al día.</summary>
@@ -68,6 +84,15 @@ public partial class MainWindow
         }
 
         ActualizarTotalesAcero();
+
+        // La primera fila queda seleccionada para que la vista previa arranque con algo
+        // dibujado en lugar de con un aviso de «selecciona un perfil».
+        if (AceroGrid.SelectedItem is null && _datos.SeccionesAcero.Count > 0)
+        {
+            AceroGrid.SelectedIndex = 0;
+        }
+
+        DibujarVistaPreviaAcero();
     }
 
     private void OnFilaAceroEditada(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -78,6 +103,21 @@ public partial class MainWindow
         }
 
         ActualizarTotalesAcero();
+
+        // Y la vista previa, EN CADA CELDA QUE SE EDITA.
+        //
+        // Va aquí y no en el SelectionChanged de la cuadrícula porque lo que hace útil una
+        // vista previa es que responda mientras se teclea: si solo se refrescara al cambiar
+        // de fila, habría que salir y volver a entrar para ver el efecto de cambiar un
+        // espesor, y a esas alturas ya se perdió de vista qué se cambió.
+        //
+        // Solo se redibuja si la fila que cambió es la que se está viendo: con veinte filas
+        // enlazadas, redibujar por cualquiera de ellas sería veinte veces el trabajo para
+        // enseñar lo mismo.
+        if (sender is null || ReferenceEquals(sender, AceroGrid.SelectedItem))
+        {
+            DibujarVistaPreviaAcero();
+        }
     }
 
     /// <summary>
@@ -114,13 +154,249 @@ public partial class MainWindow
             texto += $"   ·   {incompletos} con datos incompletos (ver la columna «Falta»)";
         }
 
+        // Cuántos traen sus propiedades geométricas.
+        //
+        // Hace falta decirlo porque las dieciséis columnas del final salen VACÍAS en dos
+        // casos que se ven igual y no son lo mismo: un perfil escrito a mano, que no está en
+        // el catálogo y no tiene de dónde sacarlas, y un perfil de catálogo de una familia
+        // para la que el manual no da esa propiedad. Sin este aviso, el usuario ve celdas en
+        // blanco y no sabe si le falta un dato o si el dato no existe.
+        var sinPropiedades = _datos.SeccionesAcero.Count(p => p.Propiedades.Cuantas == 0);
+
+        if (sinPropiedades > 0)
+        {
+            texto += $"   ·   {sinPropiedades} sin propiedades geométricas " +
+                     "(no están en el catálogo)";
+        }
+
         // De dónde salió el catálogo, porque es la diferencia entre elegir el perfil de una
         // lista y teclear sus medidas: si dice «semilla», el archivo no se encontró y la
-        // lista solo trae cuatro perfiles.
+        // lista solo trae doce perfiles, y encima sin propiedades.
         texto += $"   ·   catálogo: {CatalogoPerfiles.Todos.Count} perfil(es) de " +
                  CatalogoPerfiles.Origen;
 
         TotalesAceroText.Text = texto;
+    }
+
+    // ======================================================================
+    // Vista previa del perfil
+    // ======================================================================
+
+    /// <summary>
+    /// Dibuja el perfil seleccionado con su geometría real, a escala y con su hueco.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>La geometría sale de <see cref="TrazoAcero"/>, que es el mismo cálculo que usa el
+    /// dibujante de AutoCAD.</b> Es la razón de que esa clase exista: una vista previa que
+    /// calcula la forma por su cuenta puede acabar enseñando algo distinto de lo que se
+    /// dibuja, y entonces no sirve para lo único que sirve una vista previa, que es
+    /// confiar en ella.
+    /// </para>
+    /// <para>
+    /// Se dibuja con <b>una sola figura de regla par-impar</b>. Eso hace que el hueco del
+    /// tubo sea un hueco de verdad —no un parche del color del fondo— así que se ve el
+    /// espesor de pared tal como va a salir, y funciona igual para las nueve formas sin
+    /// tener un camino para cada una.
+    /// </para>
+    /// </remarks>
+    private void DibujarVistaPreviaAcero()
+    {
+        AceroPreviewCanvas.Children.Clear();
+
+        var ancho = AceroPreviewCanvas.ActualWidth;
+        var alto = AceroPreviewCanvas.ActualHeight;
+
+        if (ancho < 60 || alto < 60)
+        {
+            return;
+        }
+
+        if (AceroGrid.SelectedItem is not PerfilAceroRow fila)
+        {
+            AvisoVistaAcero("Selecciona un perfil de la tabla para verlo dibujado.");
+            return;
+        }
+
+        // Si a la fila le faltan datos se dice CUÁLES, con el mismo texto de la columna
+        // «Falta»: dibujar un perfil imposible enseñaría un borrón, y el borrón no explica
+        // nada. Es el mismo criterio que la vista previa del concreto.
+        var falta = fila.FaltanDatos;
+
+        if (falta.Length > 0)
+        {
+            AvisoVistaAcero($"No se puede dibujar todavía: falta {falta}.");
+            return;
+        }
+
+        var p = AFormatoAceroCad(fila);
+
+        // El trazo se pide EN CENTÍMETROS —escala 1 y origen en cero— y el ajuste al lienzo
+        // se hace después. Así la escala de pantalla no se mezcla con la del dibujo.
+        var cuantos = p.Doble ? 2 : 1;
+        var unoCm = p.AnchoDeUnoCm;
+
+        var figuras = new GeometryGroup { FillRule = FillRule.EvenOdd };
+
+        for (var i = 0; i < cuantos; i++)
+        {
+            var trazo = TrazoAcero.De(p, i * unoCm, 0, 1, espejo: i == 1);
+
+            if (trazo is null)
+            {
+                AvisoVistaAcero("No se pudo calcular el contorno con esas medidas.");
+                return;
+            }
+
+            AgregarAlGrupo(figuras, trazo);
+        }
+
+        if (figuras.Children.Count == 0)
+        {
+            AvisoVistaAcero("No se pudo calcular el contorno con esas medidas.");
+            return;
+        }
+
+        // ---------- Ajuste al lienzo ----------
+        const double margen = 40;
+
+        var anchoCm = p.AnchoDibujoCm;
+        var altoCm = p.AltoDibujoCm;
+
+        if (anchoCm <= 0 || altoCm <= 0)
+        {
+            AvisoVistaAcero("El perfil no tiene ancho o alto que dibujar.");
+            return;
+        }
+
+        var escala = Math.Min(
+            (ancho - (2 * margen)) / anchoCm,
+            (alto - (2 * margen)) / altoCm);
+
+        if (escala <= 0 || double.IsInfinity(escala))
+        {
+            return;
+        }
+
+        // De centímetros con la Y hacia arriba a píxeles con la Y hacia abajo, centrado.
+        var dx = (ancho - (anchoCm * escala)) / 2;
+        var dy = (alto + (altoCm * escala)) / 2;
+
+        var transformar = new TransformGroup();
+        transformar.Children.Add(new ScaleTransform(escala, -escala));
+        transformar.Children.Add(new TranslateTransform(dx, dy));
+
+        figuras.Transform = transformar;
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+
+        AceroPreviewCanvas.Children.Add(new Path
+        {
+            Data = figuras,
+
+            // Gris de acero, no blanco: así se distingue el acero del hueco del tubo.
+            Fill = new SolidColorBrush(Color.FromRgb(0xC3, 0xCB, 0xD3)),
+            Stroke = azul,
+            StrokeThickness = 1.6,
+            StrokeLineJoin = PenLineJoin.Round
+        });
+
+        // ---------- Lo que hay que poder leer sin medir ----------
+        Etiqueta(
+            $"{fila.PerfilRotulo}    ·    {FormaPerfil.Nombre(fila.Forma)}"
+            + (p.Doble ? "    ·    PERFIL DOBLE" : string.Empty),
+            10, alto - 40, 12.5, azul, negrita: true);
+
+        Etiqueta(
+            $"{altoCm:N2} × {anchoCm:N2} cm" +
+            (fila.Propiedades.AreaCm2 is { } a ? $"    ·    área {a:N2} cm²" : string.Empty) +
+            (fila.Propiedades.PesoKgM is { } w ? $"    ·    {w:N2} kg/m" : string.Empty),
+            10, alto - 22, 11.5, Brushes.DimGray);
+
+        // Y las dos medidas que gobiernan la forma, cada una junto a su lado, para poder
+        // cotejarlas con la tabla de un vistazo.
+        Etiqueta($"{anchoCm:N2}", dx + (anchoCm * escala / 2) - 16,
+                 dy - (altoCm * escala) - 18, 11, azul);
+
+        Etiqueta($"{altoCm:N2}", dx + (anchoCm * escala) + 6,
+                 dy - (altoCm * escala / 2) - 8, 11, azul);
+    }
+
+    /// <summary>Mete el trazo de un perfil en el grupo de figuras de la vista previa.</summary>
+    /// <remarks>
+    /// Las cuatro piezas que puede traer un trazo se convierten cada una en su geometría, y
+    /// van todas al mismo grupo par-impar: lo que quede encerrado por dos contornos —el hueco
+    /// del tubo— sale vacío solo, sin tener que tratarlo aparte.
+    /// </remarks>
+    private static void AgregarAlGrupo(GeometryGroup grupo, TrazoAcero.Trazo trazo)
+    {
+        foreach (var contorno in new[] { trazo.Exterior, trazo.Interior })
+        {
+            if (contorno is null)
+            {
+                continue;
+            }
+
+            // Los arcos se muestrean: un lienzo de WPF no tiene bulges. Veinte tramos por
+            // arco es de sobra para que el doblez de una lámina se vea curvo a este tamaño.
+            var pts = TrazoAcero.Muestrear(contorno, 20);
+
+            if (pts.Count < 3)
+            {
+                continue;
+            }
+
+            var figura = new PathFigure
+            {
+                StartPoint = new Point(pts[0].X, pts[0].Y),
+                IsClosed = true,
+                IsFilled = true
+            };
+
+            for (var k = 1; k < pts.Count; k++)
+            {
+                figura.Segments.Add(
+                    new LineSegment(new Point(pts[k].X, pts[k].Y), true));
+            }
+
+            var geo = new PathGeometry();
+            geo.Figures.Add(figura);
+
+            grupo.Children.Add(geo);
+        }
+
+        foreach (var circulo in new[] { trazo.CircExterior, trazo.CircInterior })
+        {
+            if (circulo is null || circulo.R <= 0)
+            {
+                continue;
+            }
+
+            grupo.Children.Add(new EllipseGeometry(
+                new Point(circulo.Cx, circulo.Cy), circulo.R, circulo.R));
+        }
+    }
+
+    /// <summary>Un aviso centrado en la vista previa de acero.</summary>
+    private void AvisoVistaAcero(string texto) =>
+        Etiqueta(texto, 14, 34, 12, Brushes.Gray);
+
+    /// <summary>Un texto en el lienzo de la vista previa de acero.</summary>
+    private void Etiqueta(
+        string texto, double x, double y, double tamano, Brush color, bool negrita = false)
+    {
+        var t = new System.Windows.Controls.TextBlock
+        {
+            Text = texto,
+            FontSize = tamano,
+            Foreground = color,
+            FontWeight = negrita ? FontWeights.SemiBold : FontWeights.Normal
+        };
+
+        System.Windows.Controls.Canvas.SetLeft(t, x);
+        System.Windows.Controls.Canvas.SetTop(t, y);
+
+        AceroPreviewCanvas.Children.Add(t);
     }
 
     /// <summary>
@@ -261,53 +537,50 @@ public partial class MainWindow
             // semiplano negativo las dos hojas no se pisan nunca, aunque se dibujen en el
             // mismo dwg y en cualquier orden.
             //
-            // CADA FAMILIA EN SU PROPIA BANDA, y esto salió de releer las cuatro macros:
-            // las cuatro arrancan en x = -0.6, así que si dibujaran a la misma altura se
-            // encimarían unas con otras. Lo que las separa es la Y.
+            // CADA SECCIÓN EN SU PROPIO RENGLÓN, y todas arrancando en la misma x.
+            //
+            // Las cuatro macros arrancan en x = -0.6 y van colocando los perfiles de una
+            // familia HACIA LA IZQUIERDA, uno tras otro. Eso deja una tira horizontal por
+            // familia, y con nombres de catálogo largos —«IS - 225 mm x 12.7 mm / 750 mm x
+            // 9.5 mm»— los rótulos, que van centrados debajo y miden casi un metro, se
+            // pisan unos con otros aunque los perfiles no se toquen.
+            //
+            // Así que ahora TODAS las secciones se alinean en x = -0.6, cada una en su
+            // renglón, y lo que crece es la altura. Se lee como una tabla de detalles: una
+            // sección por renglón, todas con su borde derecho a plomo.
             var entidades = 0;
             var dibujados = 0;
             var bandas = new List<string>();
 
-            // LA ALTURA DE CADA BANDA SE CALCULA, no está en una tabla.
-            //
-            // La primera arranca en 0 y cada una de las siguientes va UN METRO por encima de
-            // la sección MÁS ALTA de la de abajo. Las macros lo tenían en cuatro números
-            // fijos —el IR en 0, el OR en 2.0, el CF en 3.5, el OC en 5.0— y con doce
-            // familias esa tabla no hay manera de acertarla: para que nunca se encimen habría
-            // que reservarle a cada una el hueco de su perfil más alto del catálogo, y la IS
-            // llega a 1.90 m, así que una hoja de ángulos y montenes quedaría con metros de
-            // papel vacío entre banda y banda.
-            //
-            // Calculándola, el plano sale siempre lo más compacto que puede y NO SE PUEDE
-            // ENCIMAR: el metro se mide desde la sección más alta que se acabó de dibujar,
-            // no desde la más alta que podría haber.
+            // La primera arranca en 0 y cada una va SETENTA CENTÍMETROS por encima de la de
+            // abajo, medidos desde su cima. Setenta da de sobra para lo que sobresale de una
+            // sección: los cuatro renglones del rótulo cuelgan del orden de 20 cm por debajo
+            // de su base y las cotas suben otros 15 por encima del perfil de abajo.
             var yCm = 0.0;
 
-            // Se agrupa por familia para recorrer una banda completa antes de pasar a la
-            // siguiente, que es lo que hace cada macro con su hoja. Y se recorren en el
-            // ORDEN DE LA LISTA de familias, no en el de captura: así el plano sale siempre
-            // igual aunque las filas estén revueltas, y las familias que se parecen quedan
-            // en bandas vecinas para poder compararlas.
+            // Se agrupa por familia y se recorren en el ORDEN DE LA LISTA, no en el de
+            // captura: así el plano sale siempre igual aunque las filas estén revueltas, y
+            // las familias que se parecen quedan juntas para poder compararlas.
             foreach (var grupo in _datos.SeccionesAcero
                          .GroupBy(f => f.Familia)
                          .OrderBy(g => OrdenDeLaFamilia(g.Key)))
             {
-                var xDerecha = OrigenAceroCm * escala;
-                var y = yCm * escala;
-                var aireFamilia = AireDeLaFamiliaCm(grupo.Key);
-
-                var masAlto = 0.0;
+                var yPrimera = yCm;
+                var cuantas = 0;
 
                 foreach (var fila in grupo)
                 {
                     var perfil = AFormatoAceroCad(fila);
 
-                    var ancho = perfil.AnchoDibujoCm * escala;
-                    var xIzquierda = xDerecha - ancho;
+                    // TODAS en x = -0.6. El borde DERECHO va en el origen y el dibujo crece
+                    // hacia la izquierda, que es el xDerechaActual de las macros; lo que
+                    // cambia es que ya no se avanza en x de una sección a la siguiente.
+                    var xDerecha = OrigenAceroCm * escala;
+                    var xIzquierda = xDerecha - (perfil.AnchoDibujoCm * escala);
 
                     var saltadasAntes = dibujante.Saltadas.Count;
 
-                    var n = dibujante.DibujarAcero(perfil, xIzquierda, y);
+                    var n = dibujante.DibujarAcero(perfil, xIzquierda, yCm * escala);
 
                     if (dibujante.Saltadas.Count == saltadasAntes)
                     {
@@ -315,45 +588,26 @@ public partial class MainWindow
                         dibujados++;
                     }
 
-                    masAlto = Math.Max(masAlto, perfil.AltoDibujoCm);
+                    cuantas++;
 
-                    // EL AIRE LO MANDA EL RÓTULO, no el perfil.
+                    // Y se sube al renglón siguiente SIEMPRE, incluso si esta sección se
+                    // saltó por tener ya su bloque.
                     //
-                    // El rótulo va centrado debajo de la sección y casi siempre es MÁS ANCHO
-                    // que ella: un renglón como «PERFIL: IS - 225 mm x 12.7 mm / 750 mm x
-                    // 9.5 mm» mide casi un metro, y el perfil que rotula, 22 cm. Con el aire
-                    // de las macros —45 cm— dos secciones así quedan a 67 cm de centro a
-                    // centro y sus rótulos se pisan, aunque las secciones no se toquen.
+                    // Es lo mismo que antes se hacía en x y por el mismo motivo: el acero
+                    // arranca en un punto FIJO, así que si las saltadas no avanzaran el
+                    // renglón, al volver a dibujar una hoja con dos secciones ya hechas las
+                    // otras se dibujarían justo encima de ellas. Avanzando siempre, cada
+                    // sección cae en el MISMO sitio se dibuje la hoja entera o solo una.
                     //
-                    // Así que el hueco es el mayor de los dos: el de la macro, o el que
-                    // necesita el rótulo con diez centímetros de respiro.
-                    var aire = Math.Max(
-                        aireFamilia,
-                        perfil.AnchoRotuloCm - perfil.AnchoDibujoCm + 10) * escala;
-
-                    // El hueco se avanza SIEMPRE, incluso para los que se saltaron.
-                    //
-                    // Aquí el acomodo es distinto del concreto y por un motivo: el concreto
-                    // arranca después de lo que ya esté dibujado, así que lo nuevo nunca
-                    // cae encima. El acero arranca en un punto FIJO, el -0.6 de las macros,
-                    // y si los saltados no avanzaran el hueco, al volver a dibujar una hoja
-                    // con dos perfiles ya hechos los otros dos se dibujarían justo encima.
-                    //
-                    // Avanzando siempre, cada perfil cae en el MISMO sitio pase lo que
-                    // pase: la fila queda igual se dibuje entera o se rehaga solo una.
-                    xDerecha = xIzquierda - aire;
+                    // Se suma el ALTO DIBUJADO, no el peralte capturado, porque en el tubo
+                    // rectangular no son lo mismo: un tubo se dibuja de pie, con su lado
+                    // mayor en vertical, aunque se haya capturado al revés.
+                    yCm += perfil.AltoDibujoCm + SeparacionEntreSeccionesCm;
                 }
 
                 bandas.Add(
-                    $"{grupo.Key} en y = {yCm / 100:0.00} m " +
-                    $"(la más alta mide {masAlto:N0} cm)");
-
-                // Y aquí se sube a la banda siguiente: la sección más alta de esta familia,
-                // más el metro de separación. Se suma el ALTO DIBUJADO, no el peralte
-                // capturado, porque en el tubo rectangular no son lo mismo: un tubo se
-                // dibuja de pie, con su lado mayor en vertical, aunque se haya capturado al
-                // revés.
-                yCm += masAlto + SeparacionDeBandasCm;
+                    $"{grupo.Key}: {cuantas} sección(es), de y = {yPrimera / 100:0.00} m " +
+                    $"a {(yCm - SeparacionEntreSeccionesCm) / 100:0.00} m");
             }
 
             dibujante.RotulosAlFrente();
@@ -390,8 +644,9 @@ public partial class MainWindow
             // diga.
             var dondeQuedaron = bandas.Count == 0
                 ? string.Empty
-                : $"\n\nCada familia en su banda, separadas {SeparacionDeBandasCm / 100:0} m " +
-                  "de la sección más alta de la de abajo:\n  " +
+                : $"\n\nTodas las secciones alineadas en x = {OrigenAceroCm / 100:0.0} m, " +
+                  $"una por renglón y separadas {SeparacionEntreSeccionesCm / 100:0.0} m " +
+                  "de la cima de la de abajo:\n  " +
                   string.Join("\n  ", bandas);
 
             var resumen =
@@ -445,74 +700,36 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Aire mínimo entre un perfil y el siguiente, en centímetros.
+    /// Separación vertical entre la cima de una sección y la base de la siguiente.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Las cuatro primeras son el <c>sepIzq</c> de cada macro: 0.45 el IR, 0.55 el OR, 0.60
-    /// el OC y 0.65 el CF, en metros. Antes aquí había uno solo para las cuatro, y era un
-    /// error de port: cada familia lleva su rótulo de distinto tamaño debajo —el del IR es
-    /// el más grande— así que el hueco que necesita también es distinto.
+    /// <b>Setenta centímetros, y se miden desde la CIMA de la sección de abajo</b>, así que
+    /// una sección alta empuja a la siguiente hacia arriba y nunca se tocan.
     /// </para>
     /// <para>
-    /// Las ocho nuevas se ponen <b>al revés de lo que parece</b>: las familias de perfiles
-    /// anchos llevan menos aire y las de perfiles estrechos, más. No es un descuido. El hueco
-    /// no lo pide la sección, lo pide su rótulo, y el rótulo mide casi lo mismo para todas:
-    /// un ángulo de 5 cm con un rótulo de 70 necesita 65 cm de aire para que su rótulo no
-    /// toque el de al lado, y una IS de 22 cm con el mismo rótulo necesita 48. Es un mínimo,
-    /// además: el que dibuja recalcula el aire con el ancho real del rótulo de cada perfil.
+    /// Da de sobra para lo que sobresale de una sección por arriba y por abajo: los cuatro
+    /// renglones del rótulo cuelgan del orden de 20 cm por debajo de su base —hasta 6 cm de
+    /// separación más cuatro renglones de hasta 3— y las cotas suben otros 15 por encima del
+    /// perfil de abajo. Quedan más de 30 cm de aire entre el rótulo de una y las cotas de la
+    /// otra.
+    /// </para>
+    /// <para>
+    /// <b>Antes había un aire horizontal por familia</b> —el <c>sepIzq</c> de cada macro: 45
+    /// el IR, 55 el OR, 60 el OC, 65 el CF— porque las secciones de una familia se ponían una
+    /// al lado de la otra. Ya no hace falta ninguno: todas las secciones se alinean en la
+    /// misma x y lo único que las separa es la altura.
+    /// </para>
+    /// <para>
+    /// <b>Lo que cuesta</b> conviene saberlo: la altura de una sección depende de las que
+    /// tenga debajo, así que ya no es un número que se pueda consultar. Dibujando la hoja
+    /// entera cada cosa cae en su sitio, pero si se agrega una sección en medio y se vuelve a
+    /// dibujar, las que ya son bloque se quedan donde estaban y las nuevas van a la altura
+    /// nueva. Si pasa, se borran los bloques y se dibuja la hoja de una vez. El programa dice
+    /// al terminar a qué altura quedó cada familia.
     /// </para>
     /// </remarks>
-    private static double AireDeLaFamiliaCm(string? familia) => familia switch
-    {
-        // Las cuatro de las macros, tal cual.
-        FamiliaPerfil.Ir => 45,
-        FamiliaPerfil.Or => 55,
-        FamiliaPerfil.Oc => 60,
-        FamiliaPerfil.Cf => 65,
-
-        // Las de perfil ancho, como el IR.
-        FamiliaPerfil.Is => 45,
-        FamiliaPerfil.Ic => 45,
-        FamiliaPerfil.S => 50,
-        FamiliaPerfil.Wt => 55,
-
-        // Las estrechas, que necesitan más porque su rótulo es más ancho que ellas.
-        FamiliaPerfil.C => 60,
-        FamiliaPerfil.Zf => 65,
-        FamiliaPerfil.L => 70,
-        FamiliaPerfil.Os => 70,
-
-        _ => 55
-    };
-
-    /// <summary>
-    /// Separación vertical entre la sección más alta de una familia y la banda de arriba.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Un metro, y se mide desde la sección más alta que se dibujó</b>, no desde la más
-    /// alta que podría haber. Antes había una tabla de alturas fijas —la del IR en 0, la del
-    /// OR en 2.0…— que venía de las cuatro macros, y con doce familias esa tabla no hay
-    /// manera de acertarla: para que nunca se encimen hay que reservarle a cada familia el
-    /// hueco de su perfil más alto del catálogo, y la IS llega a 1.90 m, así que una hoja de
-    /// ángulos y montenes quedaba con metros de papel vacío entre banda y banda.
-    /// </para>
-    /// <para>
-    /// El metro da de sobra para lo que sobresale de la sección: los cuatro renglones del
-    /// rótulo cuelgan del orden de 20 cm por debajo de su base, y las cotas suben otros 15
-    /// por encima del perfil de abajo.
-    /// </para>
-    /// <para>
-    /// <b>Lo que se pierde al calcularla</b> conviene saberlo: la altura de una familia
-    /// depende ahora de las que tenga debajo, así que si se agrega un perfil más alto a la
-    /// IR, todo lo que esté encima sube. Dibujando la hoja entera eso da igual —cada cosa
-    /// cae en su sitio— pero si se redibuja después de haber cambiado alturas, las secciones
-    /// que ya son bloque se quedan donde estaban y las nuevas van a la altura nueva. Si pasa,
-    /// se borran los bloques y se dibuja la hoja de una vez.
-    /// </para>
-    /// </remarks>
-    private const double SeparacionDeBandasCm = 100;
+    private const double SeparacionEntreSeccionesCm = 70;
 
     /// <summary>Dónde va una familia en el orden del acomodo.</summary>
     /// <remarks>

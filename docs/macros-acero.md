@@ -141,7 +141,10 @@ ejecuta, y es lo que se portó.
 | Las familias | cuatro hojas y cuatro botones | **doce** familias en una tabla, con una columna de familia | cuatro bloques de columnas separados obligan a saberse dónde se captura cada cosa y dejan el 75 % de la fila en blanco |
 | Familia y forma | lo mismo: una macro por familia | dos cosas distintas: doce familias, nueve formas | cuatro familias se dibujan igual pero tienen que ser cuatro listas separadas. Ver el apartado 7 |
 | Aparato de la cota | flecha 2 cm, texto 1.5, fijos | proporcional al peralte, con topes | el catálogo va de 0.64 cm a 1.90 m. Ver el apartado 8 |
-| Altura de las bandas | cuatro números fijos: 0, 2.0, 3.5 y 5.0 m | **se calcula**: 1 m por encima de la sección más alta de la banda de abajo | con doce familias la tabla no hay manera de acertarla. Ver el apartado 8 |
+| Acomodo de las secciones | cuatro bandas en alturas fijas: 0, 2.0, 3.5 y 5.0 m | **una por renglón**: todas con el borde derecho en `x = −0.6` y 70 cm de la cima de una a la base de la siguiente | con doce familias la tabla de alturas no hay manera de acertarla, y las bandas por familia dejaban metros de papel vacío. Ver el apartado 8 |
+| Colores | cada macro pinta su familia | **ninguno**: capa `PERFILES` color 7 y el rayado propio de cada macro | el color por familia no lo pidió nadie y cambiaba secciones que ya estaban bien |
+| Propiedades geométricas | no las trae | 16 columnas de solo lectura al final de la tabla, sacadas del manual | ver el apartado 9 |
+| Geometría de las formas | dentro de cada macro | `TrazoAcero`, una sola fuente que usan el dibujante y la vista previa | ver el apartado 10 |
 | Dimensiones | se teclean | salen del catálogo IMCA al elegir el perfil | cuatro números por fila son cuatro oportunidades de equivocarse, y un espesor mal escrito no se ve en el dibujo |
 | Contorno del CF | 24 líneas y arcos unidos, más otra polilínea igual para el rayado | **una** polilínea con bulges | dos entidades con la misma geometría, una encima de otra |
 | Perfil espejeado | se calcula con el signo `s` | igual, pero el bulge sale del **barrido real** | al invertir el lado, los ocho barridos cambian de signo solos |
@@ -263,35 +266,122 @@ Y de ahí sale otra cosa: **el aire entre secciones lo manda el rótulo**, no el
 renglón de casi un metro debajo de una sección de 22 cm significa que dos secciones seguidas
 pueden quedar separadas y sus rótulos pisarse. El hueco es el mayor de los dos.
 
-### La altura de cada banda se calcula
+### El acomodo: una sección por renglón, 70 cm entre ellas
 
-Las cuatro macros arrancan todas en `x = −0.6`, así que lo único que evita que se encimen unas
-con otras es la altura: `baseY = 0` el IR, 2.0 el OR, 3.5 el CF y 5.0 el OC. **Con doce
-familias esa tabla no hay manera de acertarla.** Para que nunca se encimen habría que
-reservarle a cada familia el hueco de su perfil más alto del catálogo, y la IS llega a 1.90 m:
-una hoja de ángulos y montenes quedaría con metros de papel vacío entre banda y banda.
+Las cuatro macros arrancan todas en `x = −0.6`, así que lo único que evitaba que se encimaran
+unas con otras era la altura de cada banda: `baseY = 0` el IR, 2.0 el OR, 3.5 el CF y 5.0 el
+OC. **Con doce familias esa tabla no hay manera de acertarla**, porque para que nunca se
+encimen habría que reservarle a cada familia el hueco de su perfil más alto del catálogo, y la
+IS llega a 1.90 m: una hoja de ángulos y montenes quedaría con metros de papel vacío entre
+banda y banda.
 
-Así que se calcula. La primera arranca en 0 y **cada una de las siguientes va un metro por
-encima de la sección más alta de la de abajo**. El metro da de sobra para lo que sobresale de
-una sección: los cuatro renglones del rótulo cuelgan del orden de 20 cm por debajo de su base,
-y las cotas suben otros 15 por encima del perfil de abajo.
+Se intentó calcular la altura de cada banda —un metro por encima de la sección más alta de la
+de abajo— y **también estaba mal**, por dos motivos que se vieron al usarlo: dos perfiles de la
+misma familia se ponían uno al lado del otro, y ahí el ancho de la sección no manda nada
+porque el rótulo es mucho más ancho que el perfil y los rótulos se pisaban; y la altura de una
+familia dependía de las que tuviera debajo, así que agregar un perfil movía de sitio a todo lo
+que estaba encima.
 
-Dos cosas que salen de esto y hay que saber:
+El acomodo que quedó no tiene bandas ni familias:
 
-- Para una hoja de verdad el plano sale **mucho más compacto**: la del ejemplo, con un perfil
-  corriente de cada una de las doce familias, mide 13.5 m de alto contra los 17.1 de la tabla
-  fija. En el **caso peor** —el perfil más alto de las doce familias— sale 1.5 m *más* alto que
-  la tabla, porque la separación pasó de los 40 cm de margen que dejaba la tabla a un metro
-  entero. Ese es el lado seguro.
-- La altura de una familia **depende de las que tenga debajo**. Dibujando la hoja entera cada
-  cosa cae en su sitio, pero si se agrega un perfil más alto y se vuelve a dibujar, las
-  secciones que ya son bloque se quedan donde estaban y las nuevas van a la altura nueva. Si
-  pasa, se borran los bloques y se dibuja la hoja de una vez. El programa dice a qué altura
-  quedó cada familia al terminar, porque ya no es un número que se pueda consultar.
+- **Todas las secciones alinean su borde derecho en `x = −0.6`**, sea cual sea su familia. Ese
+  −0.6 es el `OrigenAceroCm = −60` y es el mismo que usaban las macros.
+- **Una sección por renglón.** Ninguna se pone al lado de otra, así que no hay rótulo que se
+  pueda pisar con el de al lado.
+- **70 cm de la cima de una a la base de la siguiente** (`SeparacionEntreSeccionesCm = 70`).
+  Los 70 cm dan de sobra para lo que sobresale: los cuatro renglones del rótulo cuelgan del
+  orden de 20 cm por debajo de la base, y las cotas suben otros 15 por encima del perfil de
+  abajo.
+
+Lo que se fue con las bandas: `AireDeLaFamiliaCm`, `BandaDeLaFamiliaCm`, `TechoDeLaBandaCm` y
+`MargenDeBandaCm`. Una sola separación para las doce familias en lugar de un aire por familia.
+
+Y una cosa que sí hay que saber: el sitio de cada sección **depende de las que van antes en la
+tabla**, no de su familia. Dibujando la hoja entera cada cosa cae en su sitio, y saltarse las
+que ya son bloque no mueve nada, porque el renglón se avanza igual para las saltadas. Pero si
+se **agrega una fila en medio** y se vuelve a dibujar, lo que ya es bloque se queda donde
+estaba y lo nuevo va a la altura nueva. Si pasa, se borran los bloques y se dibuja la hoja de
+una vez.
 
 ---
 
-## 9. Lo que sigue faltando
+## 9. Las propiedades geométricas del manual
+
+La tabla de acero traía las cuatro medidas que hacen falta para **dibujar** el perfil. Las que
+hacen falta para **revisarlo** —momento de inercia, módulo de sección, radio de giro— están en
+la misma página del manual de la que salen las medidas, así que se traen las **16**:
+
+| | |
+|---|---|
+| Peso y área | `PesoKgM`, `AreaCm2` |
+| Eje fuerte | `IxCm4`, `SxCm3`, `ZxCm3`, `RxCm` |
+| Eje débil | `IyCm4`, `SyCm3`, `ZyCm3`, `RyCm` |
+| Pandeo y torsión | `RminCm`, `JCm4`, `CwCm6` |
+| Asimetría | `IxyCm4`, `XbarCm`, `YbarCm` |
+
+Van en 16 columnas **al final** de la tabla y son de **solo lectura**, con el mismo estilo de
+celda calculada que el resto de lo que sale del catálogo: no son un dato que se teclee, son lo
+que dice el manual del perfil que se eligió. Al cambiar de perfil se traen las del nuevo, y si
+el perfil que se escribe no está en el catálogo se **borran**, para que no queden las del
+anterior al lado de un nombre que no es el suyo.
+
+**Cada una es un `double?`, y `null` no es cero.** Ninguna familia trae las 16: el manual no da
+`Cw` de un redondo macizo ni `Ixy` de nada que sea simétrico. Con un 0 la celda diría «0.00» y
+eso se lee como un dato —un módulo de sección de cero es un perfil que no resiste nada—, así
+que la celda se queda **vacía**: el manual no lo dice.
+
+Dos cosas de los datos, que son del manual y no del programa:
+
+- **`Ix` y `Sx` del CF y del ZF** salen de las columnas `Idx` y `Sxe` de la hoja, que son
+  valores **de diseño por ancho efectivo**, no los geométricos brutos. Es lo que el manual
+  publica para esas dos familias.
+- **En los tubos, el peso usa la pared nominal y el área la de diseño** (0.93 · t), así que la
+  comprobación de `peso = área × 0.785` sale con una razón de 1/0.93 en toda la familia. No es
+  un error de captura: está contado con `FACTOR_PARED_DISEÑO`.
+
+La extracción del Excel no corrige nada. `tools/catalogo_imca.py` comprueba cada perfil contra
+la física —`peso = área × 0.785`, `r = √(I/A)`, `Z ≥ S`— y **avisa** de los que no cuadran, con
+nombre y números, sin tocarlos: cuando dos valores se contradicen no hay manera de saber cuál
+de los dos está mal, y blanquear los dos sería tirar el bueno. De los 1617 perfiles, **56** no
+cuadran, y revisadas contra AISC son **erratas de la hoja**: `W - 14" x 61.01` trae
+`Ix = 56639` donde debe decir ~26640, `W - 24" x 84.06` trae `Zx = 2671` por 3671,
+`W - 40" x 294.12` trae un dígito de más en `Ix`, y hay 10 IS con el peso y el área cruzados.
+Son celdas de la hoja de origen que hay que corregir ahí.
+
+---
+
+## 10. `TrazoAcero`: la geometría, en un solo sitio
+
+Las nueve formas se dibujan con vértices y bulges calculados a mano. Ese cálculo estaba dentro
+del dibujante de AutoCAD, y en cuanto la pestaña de acero pidió una **vista previa** —lo mismo
+que ya tenía el concreto, para ver la forma antes de dibujarla— hacía falta el mismo contorno
+en dos sitios.
+
+Duplicarlo no es una opción: una vista previa que calcula la forma por su cuenta puede acabar
+enseñando algo **distinto** de lo que se dibuja, que es justo lo único que no puede hacer.
+
+Así que la geometría se sacó a `CadLink.Cad/TrazoAcero.cs`, que no sabe nada de AutoCAD ni de
+WPF: recibe el perfil y las medidas y devuelve un `Trazo` —`Contorno`, con sus vértices y sus
+bulges, y `Circulo` para el redondo y el tubo redondo—. `TrazoAcero.De(p, x, yAbajo, escala,
+espejo)` es la única cuenta de las nueve formas, y `TrazoAcero.Muestrear(contorno, n)` convierte
+los bulges en puntos para quien no sepa dibujar arcos.
+
+De ahí lo usan los dos:
+
+- `SeccionDrawer.Acero.cs` pide el trazo y lo pasa a la polilínea de AutoCAD, con sus bulges de
+  verdad. Las nueve funciones de vértices que tenía dentro se borraron.
+- La vista previa de la pestaña de acero pide el **mismo** trazo y lo pinta en un `Path`.
+
+La vista previa se dibuja en un `GeometryGroup` con `FillRule = EvenOdd`, así que el hueco del
+tubo es **hueco de verdad** y no un relleno del color del fondo: pintado del color del fondo,
+al cambiar el tema deja de ser hueco. Se redibuja al seleccionar otra fila, al cambiar de tamaño
+el cuadro y **al editar una celda**, pero esto último solo si la fila que se editó es la que se
+está viendo, porque si no, editar una fila cambiaba el dibujo de otra. Y cuando no se puede
+dibujar lo **dice** —qué medida falta— en vez de dejar el cuadro en blanco.
+
+---
+
+## 11. Lo que sigue faltando
 
 Nada del catálogo IMCA: las doce familias de la hoja se dibujan. Lo que queda son cosas de
 detalle que el manual no da o que a escala de plano no se verían:

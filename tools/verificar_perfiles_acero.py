@@ -83,12 +83,10 @@ FORMAS = {
 
 FAMILIAS_ESPERADAS = set(FORMAS)
 
-# El orden en que se apilan las familias, y la separacion vertical entre una banda y la
-# siguiente. Es el SeparacionDeBandasCm del programa: un metro por encima de la seccion
-# MAS ALTA de la familia de abajo.
+# El orden en que se capturan las familias. Ya NO hay bandas por familia: todas las
+# secciones van una por renglon, alineadas por su borde derecho, y la separacion sale del
+# codigo -MainWindow.Acero.cs- en el apartado 4, no de una constante copiada aqui.
 ORDEN_FAMILIAS = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
-
-SEPARACION_BANDAS = 100
 
 # El rayado de cada forma, que es el de la macro que le corresponde. Se coteja contra el
 # codigo mas abajo, no se da por bueno.
@@ -1981,122 +1979,130 @@ for fam in ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
               f"de {min(esp)} a {max(esp)} cm")
 
 
-# ---- 4. Las bandas: cada familia UN METRO por encima de la mas alta de abajo ----
+# ---- 4. El acomodo: una seccion por renglon, con el CATALOGO ENTERO ----
 #
-# La altura de cada banda ya no esta en una tabla: se CALCULA. La primera arranca en 0 y
-# cada una de las siguientes va un metro por encima de la seccion mas alta de la de
-# abajo, asi que el plano sale siempre lo mas compacto que puede y no se puede encimar.
+# Ya no hay bandas por familia. El acomodo es: TODAS las secciones con el borde derecho
+# en x = -0.6, una por renglon, y SEPARACION cm de la cima de una a la base de la
+# siguiente. Los dos numeros salen del codigo, no se copian aqui: si alguien cambia la
+# constante y no este script, esto tiene que enterarse.
 #
-# Se comprueba con el catalogo ENTERO, que es el caso peor: una hoja con el perfil mas
-# alto de cada familia. Si con eso no se encima, con cualquier hoja de verdad tampoco.
-print("\n    las bandas, con el perfil mas alto de cada familia (el caso peor):")
+# El acomodo con cuatro perfiles ya esta comprobado en verificar_catalogo_y_acomodo.py.
+# Lo que se hace aqui es lo que ese no puede hacer: pasar el CATALOGO COMPLETO -las 1617
+# secciones, ordenadas por familia, que es la hoja mas grande que se puede pedir- y
+# comprobar que ni una se pisa con la de abajo ni se mete en el semiplano del concreto.
+print("\n    el acomodo, con el catalogo ENTERO (la hoja mas grande posible):")
+
+with open("client/src/CadLink.App/MainWindow.Acero.cs", encoding="utf-8") as f:
+    fuente_app = f.read()
+
+m_sep = _re.search(
+    r"const double SeparacionEntreSeccionesCm = (-?[\d.]+);", fuente_app)
+m_org = _re.search(r"const double OrigenAceroCm = (-?[\d.]+);", fuente_app)
+
+check("la separacion entre secciones se lee del codigo", m_sep is not None)
+check("y el origen del acero tambien", m_org is not None)
+
+SEPARACION = float(m_sep.group(1)) if m_sep else 0.0
+ORIGEN_CM = float(m_org.group(1)) if m_org else 0.0
+
+print(f"       del codigo: separacion {SEPARACION:.0f} cm, "
+      f"origen {ORIGEN_CM:.0f} cm")
+
+check("la separacion es la que se pidio: 0.7 m", SEPARACION == 70, f"{SEPARACION}")
+check("y el borde derecho de todas es -0.6 m", ORIGEN_CM == -60, f"{ORIGEN_CM}")
+
+# La hoja: el catalogo entero, agrupado por familia, que es como se captura.
+hoja = [p for fam in ORDEN_FAMILIAS for p in catalogo if p["familia"] == fam]
+
+check("la hoja de prueba es el catalogo entero",
+      len(hoja) == len(catalogo), f"{len(hoja)} de {len(catalogo)}")
+
+ESCALA = 0.01        # el LinearScaleFactor: cm de catalogo a metros de dibujo
 
 y_cm = 0.0
-bandas_calculadas = {}
-encimadas = []
+puestos = []         # (x_izq, x_der, y_base, y_cima) por seccion
 
-for fam in ORDEN_FAMILIAS:
-    de_esta = [p for p in catalogo if p["familia"] == fam]
+for p in hoja:
+    x_der = ORIGEN_CM * ESCALA
+    puestos.append((x_der - (ancho_que_ocupa(p) * ESCALA), x_der,
+                    y_cm * ESCALA, (y_cm + alto_que_ocupa(p)) * ESCALA))
 
-    if not de_esta:
-        continue
+    y_cm += alto_que_ocupa(p) + SEPARACION
 
-    mas_alto = max(alto_que_ocupa(p) for p in de_esta)
+# 1. NINGUNA se pisa con la de abajo, y entre las dos quedan los 70 cm enteros.
+pisadas = []
+huecos_malos = []
 
-    bandas_calculadas[fam] = (y_cm, mas_alto)
+for i in range(len(puestos) - 1):
+    hueco = puestos[i + 1][2] - puestos[i][3]
 
-    print(f"       {fam:3} en y = {y_cm / 100:6.2f} m   el mas alto mide "
-          f"{mas_alto:6.2f} cm   y su cima queda en "
-          f"{(y_cm + mas_alto) / 100:6.2f} m")
+    if hueco < -1e-9:
+        pisadas.append(f"{hoja[i]['nombre']} con {hoja[i + 1]['nombre']}")
 
-    y_cm += mas_alto + SEPARACION_BANDAS
+    if abs(hueco - SEPARACION * ESCALA) > 1e-9:
+        huecos_malos.append(f"{hoja[i]['nombre']}: {hueco / ESCALA:.2f} cm")
 
-# Lo que de verdad importa: que la base de cada banda quede al menos un metro por encima
-# de la CIMA de la de abajo. Es lo que garantiza que el rotulo de una -que cuelga unos 20
-# cm por debajo de su base- no toque las cotas de la de abajo, que suben otros 15.
-anterior = None
+check("ninguna de las 1617 secciones se pisa con la de abajo", not pisadas,
+      "; ".join(pisadas[:3]))
+check(f"y entre cada dos quedan los {SEPARACION:.0f} cm exactos", not huecos_malos,
+      "; ".join(huecos_malos[:3]))
 
-for fam, (base, alto) in bandas_calculadas.items():
-    if anterior is not None:
-        fam_ant, cima_ant = anterior
-        hueco = base - cima_ant
+# 2. NINGUNA se mete en el semiplano positivo, que es donde dibuja el concreto. Es la
+#    consecuencia de alinear por la DERECHA: la mas ancha del catalogo -la IS de 750 mm-
+#    sobresale hacia la izquierda, no hacia el concreto.
+en_el_concreto = [hoja[i]["nombre"] for i, q in enumerate(puestos) if q[1] > 1e-12]
 
-        check(f"entre la cima de {fam_ant} y la base de {fam} hay un metro",
-              abs(hueco - SEPARACION_BANDAS) < 1e-9,
-              f"{hueco:.2f} cm")
+check("ninguna se mete en el semiplano del concreto", not en_el_concreto,
+      "; ".join(en_el_concreto[:3]))
 
-    anterior = (fam, base + alto)
+# 3. TODAS acaban exactamente en el mismo x, sea cual sea su familia y su ancho. Es el
+#    cambio que se pidio: antes cada macro tenia su sepIzq y las de una familia se
+#    ponian una al lado de otra.
+derechos = {round(q[1], 9) for q in puestos}
 
-check("ninguna banda se encima con la de abajo", not encimadas,
-      "; ".join(encimadas))
+check("todas las secciones acaban en el MISMO borde derecho",
+      derechos == {round(ORIGEN_CM * ESCALA, 9)}, f"{sorted(derechos)[:3]}")
 
-# La primera arranca en cero, que es el baseY de la macro del IR.
-primera = next(iter(bandas_calculadas))
+# Y los izquierdos NO estan a plomo, que es la otra cara de lo mismo.
+izquierdos = [q[0] for q in puestos]
 
-check("la primera banda arranca en cero, como la macro del IR",
-      bandas_calculadas[primera][0] == 0, f"{primera} en {bandas_calculadas[primera][0]}")
+print(f"       los bordes izquierdos van de {min(izquierdos):+.2f} a "
+      f"{max(izquierdos):+.2f} m: alineadas por la DERECHA")
 
-# Y el metro de separacion es de sobra para lo que sobresale de una seccion: el rotulo
-# cuelga por debajo de la base y las cotas suben por encima del perfil.
+check("y los bordes izquierdos no estan a plomo",
+      len({round(q, 9) for q in izquierdos}) > 1)
+
+# 4. Los 70 cm dan para lo que sobresale de una seccion: el rotulo cuelga por debajo de
+#    su base y las cotas de la de abajo suben por encima de su cima.
 ROTULO_ABAJO = 6 + (4 * 3)      # gap maximo + cuatro renglones de 3 cm
 COTAS_ARRIBA = 6 + 1.5 + 2      # gap maximo + texto + flecha
 
-check("el metro de separacion da para el rotulo de arriba y las cotas de abajo",
-      ROTULO_ABAJO + COTAS_ARRIBA < SEPARACION_BANDAS,
-      f"hacen falta {ROTULO_ABAJO + COTAS_ARRIBA:.1f} cm de {SEPARACION_BANDAS}")
+print(f"       de los {SEPARACION:.0f} cm, el rotulo de arriba se come "
+      f"{ROTULO_ABAJO} y las cotas de abajo {COTAS_ARRIBA}")
 
-# ---- Y cuanto mide el plano, comparado con la tabla de alturas fijas ----
-#
-# CONVIENE SER EXACTO CON ESTO, porque es facil venderlo de mas. En el CASO PEOR -una
-# hoja con el perfil mas alto de cada una de las doce familias- el apilado NO sale mas
-# compacto que la tabla fija: sale un poco mas alto, porque la tabla dejaba 40 cm de
-# margen entre familias y ahora se deja un metro entero. Eso es lo que se pidio, y es el
-# lado seguro.
-#
-# Donde si gana, y por mucho, es en una hoja DE VERDAD, que nunca lleva el perfil mas
-# alto de cada familia: ahi cada banda ocupa lo que ocupa su seccion mas alta en lugar
-# del hueco reservado a la mas alta del catalogo.
-alto_peor = y_cm - SEPARACION_BANDAS
-ALTO_TABLA_FIJA = 1700 + 10.16      # la banda de la OS mas su perfil mas alto
+check("los 70 cm dan para el rotulo de arriba y las cotas de abajo",
+      ROTULO_ABAJO + COTAS_ARRIBA < SEPARACION,
+      f"hacen falta {ROTULO_ABAJO + COTAS_ARRIBA:.1f} cm")
 
-print(f"\n    el caso peor -el perfil mas alto de las doce familias- mide "
-      f"{alto_peor / 100:.2f} m")
-print(f"    con la tabla de alturas fijas ese mismo caso medía "
-      f"{ALTO_TABLA_FIJA / 100:.2f} m")
+# 5. La primera arranca en cero, que es el baseY de la macro del IR.
+check("la primera seccion arranca en y = 0", abs(puestos[0][2]) < 1e-12)
 
-# Una hoja de verdad: la del ejemplo del programa, un perfil de cada familia.
-EJEMPLO = {"IR": 31.3, "IS": 46.9, "IC": 39.9, "S": 25.4, "WT": 19.9, "C": 20.3,
-           "CF": 15.24, "ZF": 20.32, "L": 7.62, "OR": 15.2, "OC": 10.2, "OS": 1.91}
+# Y cuanto mide esa hoja. No se compara con nada: es un dato para saber de que se habla.
+alto_hoja = (y_cm - SEPARACION) * ESCALA
 
-y_ejemplo = 0.0
-for fam in ORDEN_FAMILIAS:
-    if fam in EJEMPLO:
-        y_ejemplo += EJEMPLO[fam] + SEPARACION_BANDAS
+print(f"\n    las {len(hoja)} secciones del catalogo, una por renglon, miden "
+      f"{alto_hoja:.0f} m de alto")
+print("    -nadie captura el catalogo entero, pero si lo hiciera, saldria-")
 
-alto_ejemplo = y_ejemplo - SEPARACION_BANDAS
+# El invariante que no depende de comparar con nada: el alto de la hoja es la suma de lo
+# que mide cada seccion mas la separacion por cada hueco.
+suma_altos = sum(alto_que_ocupa(p) for p in hoja)
+huecos = len(hoja) - 1
 
-print(f"\n    la hoja de ejemplo -un perfil corriente de cada familia- mide "
-      f"{alto_ejemplo / 100:.2f} m")
-print(f"    con la tabla de alturas fijas medía {ALTO_TABLA_FIJA / 100:.2f} m")
+check("el alto de la hoja es la suma de las secciones mas la separacion por hueco",
+      abs((alto_hoja / ESCALA) - (suma_altos + huecos * SEPARACION)) < 1e-6,
+      f"{alto_hoja / ESCALA:.2f} contra {suma_altos + huecos * SEPARACION:.2f}")
 
-check("con una hoja de verdad el plano sale mas compacto que con la tabla fija",
-      alto_ejemplo < ALTO_TABLA_FIJA,
-      f"{alto_ejemplo:.0f} contra {ALTO_TABLA_FIJA:.0f} cm")
-
-print(f"\n    en el caso peor el apilado mide {alto_peor - ALTO_TABLA_FIJA:.0f} cm MAS "
-      "que la tabla fija, porque la separacion")
-print("    paso de los 40 cm de margen que dejaba la tabla a un metro entero. Es el "
-      "lado seguro.")
-
-# El invariante de verdad, que no depende de comparar con nada: el alto del plano es la
-# suma de lo que mide la seccion mas alta de cada familia, mas un metro por cada hueco.
-# Si esto se cumple, el apilado esta bien hecho, y da igual como salga la comparacion.
-suma_altos = sum(alto for _, alto in bandas_calculadas.values())
-huecos = len(bandas_calculadas) - 1
-
-check("el alto del plano es la suma de las secciones mas altas mas un metro por hueco",
-      abs(alto_peor - (suma_altos + (huecos * SEPARACION_BANDAS))) < 1e-9,
-      f"{alto_peor:.2f} contra {suma_altos + huecos * SEPARACION_BANDAS:.2f}")
 
 # ---- 5. Que el ancho que ocupa cada perfil es positivo ----
 #

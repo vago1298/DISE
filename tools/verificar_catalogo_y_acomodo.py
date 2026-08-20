@@ -7,11 +7,11 @@ Dos cosas que no se pueden comprobar leyendo el codigo:
      separador, punto o coma de decimal, campos vacios y una cabecera. Se le pasan
      todos esos casos y se comprueba que saca lo que debe y que no se cae.
 
-  2. EL ACOMODO A LA IZQUIERDA DEL ORIGEN. El acero se dibuja desde x = -0.6 hacia
-     la izquierda, como las macros. Lo que hay que comprobar es que los perfiles NO
-     SE PISAN entre ellos, que ninguno se mete en el semiplano positivo -donde
-     dibuja el concreto- y que el sitio de cada uno es el MISMO se dibuje la hoja
-     entera o se salte la mitad.
+  2. EL ACOMODO. TODAS las secciones se alinean con su borde derecho en x = -0.6, cada
+     una en su renglon, y lo que crece es la altura: 70 cm de la cima de una a la base
+     de la siguiente. Lo que hay que comprobar es que las secciones NO SE PISAN, que
+     ninguna se mete en el semiplano positivo -donde dibuja el concreto- y que el sitio
+     de cada una es el MISMO se dibuje la hoja entera o se salte la mitad.
 """
 
 import math
@@ -77,17 +77,32 @@ def familia_del_nombre(perfil):
     return PREFIJOS.get(letras)
 
 
-def numero(campos, i):
-    """Port de CatalogoPerfiles.Numero."""
+# Las dieciseis propiedades geometricas, en el orden en que van en el CSV.
+PROPIEDADES = ("peso", "area", "ix", "sx", "rx", "zx", "iy", "sy", "ry", "zy",
+               "j", "cw", "xbar", "ybar", "rmin", "ixy")
+
+
+def opcional(campos, i):
+    """Port de CatalogoPerfiles.Opcional: el hueco es None, no cero."""
     if i >= len(campos):
-        return 0.0
+        return None
 
     texto = campos[i].strip().replace(",", ".")
+
+    if not texto:
+        return None
 
     try:
         return float(texto)
     except ValueError:
-        return 0.0
+        return None
+
+
+def numero(campos, i):
+    """Port de CatalogoPerfiles.Numero: en una MEDIDA, el hueco vale cero."""
+    v = opcional(campos, i)
+
+    return 0.0 if v is None else v
 
 
 def leer_catalogo(lineas):
@@ -121,7 +136,7 @@ def leer_catalogo(lineas):
         if numero(campos, 2) <= 0:
             continue
 
-        perfiles.append({
+        fila = {
             "familia": familia,
             "nombre": nombre,
             "peralte": numero(campos, 2),
@@ -131,7 +146,15 @@ def leer_catalogo(lineas):
             "labio": numero(campos, 6),
             "radio": numero(campos, 7),
             "ancho2": numero(campos, 8),
-        })
+        }
+
+        # Las dieciseis propiedades. Se leen como OPCIONAL y no como numero: en una
+        # propiedad, el hueco quiere decir «el manual no da esto para esta familia», que
+        # no es cero. Es el CatalogoPerfiles.Opcional del programa.
+        for i, clave in enumerate(PROPIEDADES):
+            fila[clave] = opcional(campos, 9 + i)
+
+        perfiles.append(fila)
 
     return perfiles
 
@@ -331,6 +354,197 @@ check("y un CSV de ocho columnas deja el ancho 2 en cero, no rompe",
       vieja["ancho2"] == 0 and abs(vieja["labio"] - 1.52) < 1e-12, str(vieja))
 
 
+# ===========================================================================
+#  LAS PROPIEDADES GEOMETRICAS: que sean las que dicen ser
+# ===========================================================================
+#
+# Esta es la comprobacion que de verdad hacia falta al traer dieciseis columnas nuevas
+# del manual, y no es «que esten»: es que CADA UNA SEA LA QUE DICE SER.
+#
+# Un mapeo de columna equivocado no se ve. Si el area y el peso se cruzaran, o si el Sx
+# saliera de la columna del Zx, el CSV se leeria perfectamente y la tabla mostraria
+# numeros creibles. Lo unico que lo caza es la FISICA, que relaciona unas con otras:
+#
+#     peso = area x 7.85 g/cm3          el acero pesa lo que pesa
+#     rx   = raiz(Ix / area)            definicion del radio de giro
+#     Zx   > Sx                         el modulo plastico siempre pasa al elastico
+#
+# Se comprueban sobre el catalogo entero. Las tolerancias son generosas -un 6 %- porque
+# el manual redondea a dos o tres cifras, y solo se exige en los perfiles grandes: en un
+# angulo con Ix = 0.4 cm4, el propio redondeo ya es un 10 %.
+
+print("\n" + "=" * 78)
+print(" Las propiedades geometricas: que sean las que dicen ser")
+print("=" * 78)
+
+DENSIDAD_ACERO = 0.785      # kg/m por cada cm2 de seccion
+
+# En los TUBOS el peso va con la pared NOMINAL y el area con la de DISEÑO, que para un
+# tubo soldado es 0.93 veces la nominal. Asi que el peso de un tubo sale un 7 % por
+# encima de lo que diria su area, y las dos cifras son correctas: no es una errata.
+FACTOR_PARED = 0.93
+
+TUBOS = ("OR", "OC")
+
+# QUE SE EXIGE Y QUE NO.
+#
+# Estas comprobaciones tienen dos cosas distintas que decir, y hay que separarlas:
+#
+#   * SI EL MAPEO DE COLUMNAS ESTA MAL, falla CASI TODO: cruzar el area con el peso, o
+#     leer el Sx de la columna del Zx, descuadra el 100 % de una familia. Eso es un error
+#     MIO y tiene que hacer fallar la comprobacion.
+#   * SI LA HOJA TRAE UNA CELDA MAL ESCRITA, falla UN perfil. Eso es un dato del usuario,
+#     no se corrige por cuenta propia y no puede hacer fallar nada: se cuenta y se avisa.
+#
+# Asi que lo que se exige es una TASA baja por familia. Con el catalogo de hoy salen 56
+# descuadres de 1617 perfiles (3.5 %), todos sueltos y comprobados uno por uno contra el
+# manual del AISC: son erratas de la hoja, del tipo «Zx = 2671 donde debia decir 3671».
+TASA_MAXIMA = 0.10
+
+con_props = [p for p in entregado if p["peso"] is not None]
+
+print(f"\n    {len(con_props)} de {len(entregado)} perfiles traen propiedades")
+
+check("la mayoria de los perfiles traen sus propiedades",
+      len(con_props) > 0.9 * len(entregado),
+      f"solo {len(con_props)} de {len(entregado)}")
+
+
+def tasa(familia, malos, revisados):
+    """Comprueba la TASA de descuadres de una familia, no que sea cero."""
+    if revisados == 0:
+        return
+
+    t = len(malos) / revisados
+
+    check(f"las propiedades de {familia} cuadran entre ellas ({revisados} revisadas)",
+          t <= TASA_MAXIMA,
+          f"descuadran {len(malos)} ({100 * t:.0f} %): " + "; ".join(malos[:2]))
+
+
+todos_los_malos = []
+
+for familia in FAMILIAS:
+    de_esta = [p for p in con_props if p["familia"] == familia]
+
+    if not de_esta:
+        continue
+
+    malos = []
+    revisados = 0
+    es_tubo = familia in TUBOS
+
+    for p in de_esta:
+        # ---- 1. El peso contra el area ----
+        if p["area"] is not None and p["area"] >= 5:
+            revisados += 1
+            esperado = p["area"] * DENSIDAD_ACERO
+
+            if es_tubo:
+                esperado /= FACTOR_PARED
+
+            if abs(p["peso"] - esperado) > 0.06 * esperado:
+                malos.append(f"{p['nombre']}: pesa {p['peso']} y su area daria "
+                             f"{esperado:.1f}")
+
+        # ---- 2. El radio de giro contra la inercia y el area ----
+        # Es la que caza que la inercia y el area vengan de SU columna y en SUS unidades:
+        # si el area estuviera en mm2 o el Ix saliera de la columna del Zx, el radio no
+        # saldria por ningun lado.
+        for inercia, radio, eje in (("ix", "rx", "x"), ("iy", "ry", "y")):
+            if (p[inercia] is None or p[radio] is None or p["area"] is None
+                    or p["area"] < 5 or p[inercia] < 10):
+                continue
+
+            revisados += 1
+            esperado = math.sqrt(p[inercia] / p["area"])
+
+            if abs(p[radio] - esperado) > 0.06 * esperado:
+                malos.append(f"{p['nombre']}: r{eje}={p[radio]} pero raiz(I/A) = "
+                             f"{esperado:.2f}")
+
+        # ---- 3. El modulo plastico pasa al elastico ----
+        for elastico, plastico, eje in (("sx", "zx", "x"), ("sy", "zy", "y")):
+            if p[elastico] is None or p[plastico] is None or p[elastico] < 10:
+                continue
+
+            revisados += 1
+
+            # Un 2 % de margen por el redondeo del manual: hay perfiles donde los dos
+            # valores redondeados salen practicamente iguales.
+            if p[plastico] < 0.98 * p[elastico]:
+                malos.append(f"{p['nombre']}: Z{eje}={p[plastico]} < S{eje}={p[elastico]}")
+
+    print(f"    {familia:3}: {revisados:5} comprobaciones, {len(malos):3} descuadran"
+          f"   ({100 * len(malos) / revisados:4.1f} %)" if revisados else
+          f"    {familia:3}: sin propiedades que comprobar")
+
+    tasa(familia, malos, revisados)
+    todos_los_malos += malos
+
+print(f"\n    en total descuadran {len(todos_los_malos)} de "
+      f"{sum(1 for _ in con_props)} perfiles con propiedades")
+
+# Y la comprobacion que de verdad separa un error de mapeo de una errata de la hoja: si
+# el mapeo estuviera mal, descuadraria casi todo.
+check("el descuadre es de celdas sueltas, no de un mapeo de columnas equivocado",
+      len(todos_los_malos) < 0.10 * len(con_props),
+      f"{len(todos_los_malos)} de {len(con_props)}")
+
+# Y que el convertidor los AVISE, porque son celdas que el usuario tiene que ir a mirar.
+with open("tools/catalogo_imca.py", encoding="utf-8") as f:
+    fuente_conv = f.read()
+
+check("el convertidor avisa de las propiedades que no cuadran",
+      "PROPIEDAD(ES) QUE NO CUADRAN" in fuente_conv
+      and "def revisar_propiedades(" in fuente_conv)
+
+check("y no las corrige ni salta el perfil por ellas",
+      "NO corrige nada y NO hace que el perfil se salte" in fuente_conv)
+
+check("y cuenta la pared de diseño de los tubos, que no es una errata",
+      "FACTOR_PARED_DISEÑO" in fuente_conv)
+
+# ---- 4. Que las propiedades sean POSITIVAS ----
+negativas = [(p["nombre"], k) for p in entregado
+             for k in ("peso", "area", "ix", "sx", "rx", "zx", "iy", "sy", "ry",
+                       "zy", "j", "cw", "rmin", "ixy")
+             if p[k] is not None and p[k] <= 0]
+
+check("ninguna propiedad sale negativa ni cero", not negativas,
+      "; ".join(f"{n}:{k}" for n, k in negativas[:5]))
+
+# ---- 5. Y que el hueco sea un HUECO, no un cero ----
+# Es la diferencia que hace util la tabla: el redondo macizo NO trae Sx en el manual, y
+# eso tiene que llegar como vacio. Con cero, la celda diria «0.00» y se leeria como un
+# dato: un modulo de seccion cero significa que el perfil no resiste nada.
+oss = [p for p in entregado if p["familia"] == "OS"]
+
+check("el redondo macizo llega SIN Sx, no con Sx en cero",
+      oss and all(p["sx"] is None for p in oss),
+      str([p["sx"] for p in oss[:3]]))
+
+check("y con su area y su inercia, que si las trae",
+      oss and all(p["area"] is not None and p["ix"] is not None for p in oss))
+
+# La canal formada en frio no trae rx: el manual da su Ix como valor de diseño y no le
+# pone radio de giro.
+cfs_con_props = [p for p in entregado if p["familia"] == "CF" and p["peso"] is not None]
+
+check("la canal formada en frio llega sin rx, que el manual no le da",
+      cfs_con_props and all(p["rx"] is None for p in cfs_con_props))
+
+# Y el ángulo trae rmin, que es lo que decide su pandeo: es su propiedad clave.
+eles_con_props = [p for p in entregado if p["familia"] == "L" and p["peso"] is not None]
+
+check("el angulo trae su rmin, que es con lo que se revisa su pandeo",
+      eles_con_props and all(p["rmin"] is not None for p in eles_con_props))
+
+check("y su rmin es menor que su rx, porque es el del eje debil",
+      all(p["rmin"] <= p["rx"] + 1e-9 for p in eles_con_props
+          if p["rmin"] is not None and p["rx"] is not None))
+
+
 # ---- Los prefijos que se pisan unos con otros ----
 #
 # Es donde estaba el error de verdad. Con doce familias hay prefijos que son prefijo de
@@ -397,136 +611,169 @@ print("=" * 78)
 ORIGEN_CM = -60          # el xDerechaActual = -0.6 de las macros, en cm
 ESCALA = 0.01
 
-# El aire y la banda de cada familia, en centimetros. Las doce arrancan en la misma x,
-# asi que lo unico que evita que se encimen es la banda.
+# YA NO HAY AIRE HORIZONTAL POR FAMILIA.
 #
-# Las cuatro primeras son el sepIzq y el baseY de las macros, y siguen donde estaban a
-# proposito: quien vuelva a generar un plano suyo encuentra el acero en su sitio. Las
-# ocho nuevas se apilan encima, a partir de 6.5 m.
-AIRE = {
-    "IR": 45, "OR": 55, "OC": 60, "CF": 65,
-    "IS": 45, "IC": 45, "S": 50, "WT": 55,
-    "C": 60, "ZF": 65, "L": 70, "OS": 70,
-}
+# Las macros ponian los perfiles de una familia uno al lado del otro hacia la izquierda,
+# separados el sepIzq de su macro -45 el IR, 55 el OR, 60 el OC, 65 el CF-. Con los
+# nombres del catalogo IMCA eso no se sostiene: el rotulo va centrado debajo de cada
+# seccion y mide casi un metro -«PERFIL: IS - 225 mm x 12.7 mm / 750 mm x 9.5 mm»-, asi
+# que los rotulos se pisaban aunque los perfiles no se tocaran.
+#
+# Ahora cada seccion va en su propio renglon y todas alineadas en la misma x, asi que no
+# hay nada al lado con lo que chocar.
 
-# La altura de las bandas NO es una tabla: se CALCULA. La primera arranca en cero y cada
-# una de las siguientes va un metro por encima de la seccion MAS ALTA de la de abajo.
+# TODAS las secciones en la misma x, una por renglon, y 70 cm de la cima de una a la base
+# de la siguiente.
 ORDEN_FAMILIAS = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
 
-SEPARACION_BANDAS = 100
-
-AIRE_CM = AIRE["OR"]     # el que usan las pruebas de una sola familia
+SEPARACION = 70
 
 
 def acomodar(perfiles, saltados=()):
-    """El acomodo del OnExportAcero: de -0.6 hacia la izquierda.
+    """El acomodo del OnExportAcero: TODAS en x = -0.6, una por renglon.
 
-    'perfiles' son los anchos de dibujo en cm. Devuelve la lista de (x_izq, x_der)
-    de cada uno, en unidades de dibujo. Los saltados NO se dibujan, pero SI avanzan
-    el hueco: es lo que hace que el sitio de cada perfil no dependa de cuales se
-    dibujaron.
+    'perfiles' son parejas (ancho, alto) en cm. Devuelve una lista de
+    (x_izq, x_der, y_base, y_cima) por seccion, en unidades de dibujo, o None para las
+    saltadas.
+
+    Las saltadas NO se dibujan pero SI avanzan el renglon: es lo que hace que el sitio
+    de cada seccion no dependa de cuales se dibujaron.
     """
-    x_der = ORIGEN_CM * ESCALA
-    huecos = []
+    y_cm = 0.0
+    puestos = []
 
-    for i, ancho_cm in enumerate(perfiles):
-        ancho = ancho_cm * ESCALA
-        x_izq = x_der - ancho
+    for i, (ancho_cm, alto_cm) in enumerate(perfiles):
+        x_der = ORIGEN_CM * ESCALA
+        x_izq = x_der - (ancho_cm * ESCALA)
+        y_base = y_cm * ESCALA
+        y_cima = (y_cm + alto_cm) * ESCALA
 
-        huecos.append(None if i in saltados else (x_izq, x_der))
+        puestos.append(None if i in saltados else (x_izq, x_der, y_base, y_cima))
 
-        x_der = x_izq - AIRE_CM * ESCALA
+        y_cm += alto_cm + SEPARACION
 
-    return huecos
+    return puestos
 
 
-# Anchos de dibujo: el IR de ejemplo, un OR doble, un OC y un CF doble.
-ANCHOS = [16.5, 2 * 15.24, 11.43, 2 * 5.0]
+# (ancho, alto) de dibujo: el IR de ejemplo, un OR doble, un OC y un CF doble.
+PERFILES = [(16.6, 31.3), (2 * 15.2, 15.2), (10.2, 10.2), (2 * 5.08, 15.24)]
 
-huecos = acomodar(ANCHOS)
+puestos = acomodar(PERFILES)
 
 print()
-for ancho, hueco in zip(ANCHOS, huecos):
-    print(f"    perfil de {ancho:6.2f} cm  ->  de x={hueco[0]:+.4f} a {hueco[1]:+.4f}")
+for (ancho, alto), p in zip(PERFILES, puestos):
+    print(f"    seccion de {ancho:6.2f} x {alto:6.2f} cm  ->  x de {p[0]:+.4f} a "
+          f"{p[1]:+.4f}   y de {p[2]:+.4f} a {p[3]:+.4f}")
 
-check("el primer perfil acaba justo en -0.6",
-      abs(huecos[0][1] - (-0.6)) < 1e-12, f"{huecos[0][1]:+.6f}")
+# LO PRIMERO: TODAS acaban en -0.6, no solo la primera. Es el cambio.
+for i, p in enumerate(puestos):
+    check(f"la seccion {i + 1} acaba justo en -0.6",
+          abs(p[1] - (-0.6)) < 1e-12, f"{p[1]:+.6f}")
 
-check("todos quedan a la izquierda del origen",
-      all(h[1] <= 0 for h in huecos),
-      str([f"{h[1]:+.4f}" for h in huecos]))
+check("todas quedan a la izquierda del origen",
+      all(p[1] <= 0 for p in puestos))
 
-# Que no se pisen: el borde izquierdo de uno tiene que quedar a la derecha del borde
-# derecho del siguiente, y con el aire completo entre medias.
-for i in range(len(huecos) - 1):
-    izq_actual = huecos[i][0]
-    der_siguiente = huecos[i + 1][1]
+# Y las anchas sobresalen MAS a la izquierda, que es la consecuencia de alinear por la
+# derecha: los bordes izquierdos NO estan a plomo, y no tienen por que estarlo.
+izquierdos = [p[0] for p in puestos]
 
-    check(f"el perfil {i + 1} y el {i + 2} no se pisan",
-          der_siguiente <= izq_actual + 1e-12,
-          f"{der_siguiente:+.6f} contra {izq_actual:+.6f}")
+print(f"\n    los bordes izquierdos van de {min(izquierdos):+.4f} a "
+      f"{max(izquierdos):+.4f}: alineadas por la DERECHA, no por la izquierda")
 
-    check(f"y entre ellos queda el aire de {AIRE_CM} cm",
-          abs((izq_actual - der_siguiente) - AIRE_CM * ESCALA) < 1e-12,
-          f"{(izq_actual - der_siguiente) / ESCALA:.4f} cm")
+check("las secciones se alinean por su borde derecho, no por el izquierdo",
+      len({round(p[1], 9) for p in puestos}) == 1
+      and len({round(p[0], 9) for p in puestos}) > 1)
 
-# El ancho de un perfil DOBLE es el doble: si no, el segundo se saldria de su hueco.
-check("el hueco de un doble mide el doble que el de un simple",
-      abs((huecos[1][1] - huecos[1][0]) - 2 * 15.24 * ESCALA) < 1e-12)
+# Que no se pisen EN VERTICAL: la base de una tiene que quedar por encima de la cima de
+# la de abajo, y con la separacion completa entre medias.
+for i in range(len(puestos) - 1):
+    cima = puestos[i][3]
+    base_siguiente = puestos[i + 1][2]
+
+    check(f"la seccion {i + 1} y la {i + 2} no se pisan",
+          base_siguiente >= cima - 1e-12,
+          f"{base_siguiente:+.6f} contra {cima:+.6f}")
+
+    check(f"y entre ellas quedan los {SEPARACION} cm",
+          abs((base_siguiente - cima) - SEPARACION * ESCALA) < 1e-12,
+          f"{(base_siguiente - cima) / ESCALA:.4f} cm")
+
+# La primera arranca en cero, que es el baseY de la macro del IR.
+check("la primera seccion arranca en y = 0", abs(puestos[0][2]) < 1e-12)
+
+# El ancho de una seccion DOBLE es el doble: si no, la segunda se saldria de su hueco.
+check("el hueco de una doble mide el doble que el de una simple",
+      abs((puestos[1][1] - puestos[1][0]) - 2 * 15.2 * ESCALA) < 1e-12)
+
+# Y LOS 70 CM DAN PARA LO QUE SOBRESALE de una seccion: el rotulo cuelga por debajo de
+# su base y las cotas suben por encima de la de abajo.
+ROTULO_ABAJO = 6 + (4 * 3)      # gap maximo + cuatro renglones de 3 cm
+COTAS_ARRIBA = 6 + 1.5 + 2      # gap maximo + texto + flecha
+
+print(f"\n    de los {SEPARACION} cm, el rotulo de arriba se come {ROTULO_ABAJO} y las "
+      f"cotas de abajo {COTAS_ARRIBA}")
+
+check("los 70 cm dan para el rotulo de arriba y las cotas de abajo",
+      ROTULO_ABAJO + COTAS_ARRIBA < SEPARACION,
+      f"hacen falta {ROTULO_ABAJO + COTAS_ARRIBA:.1f}")
+
+check("y sobran mas de 30 cm de aire",
+      SEPARACION - ROTULO_ABAJO - COTAS_ARRIBA > 30,
+      f"solo {SEPARACION - ROTULO_ABAJO - COTAS_ARRIBA:.1f} cm")
 
 # ---- Y lo que de verdad importa: los sitios NO cambian si se saltan perfiles ----
 print("\n" + "-" * 78)
 print(" El sitio de cada perfil no depende de cuales se dibujen")
 print("-" * 78)
 
-completo = acomodar(ANCHOS)
-con_saltados = acomodar(ANCHOS, saltados=(0, 2))
+completo = acomodar(PERFILES)
+con_saltados = acomodar(PERFILES, saltados=(0, 2))
 
 print()
 for i, (a, b) in enumerate(zip(completo, con_saltados)):
-    estado = "saltado" if b is None else f"de {b[0]:+.4f} a {b[1]:+.4f}"
-    print(f"    perfil {i + 1}: dibujando todos {a[0]:+.4f}   "
-          f"saltando el 1 y el 3 -> {estado}")
+    estado = "saltada" if b is None else f"en y = {b[2]:+.4f}"
+    print(f"    seccion {i + 1}: dibujando todas y = {a[2]:+.4f}   "
+          f"saltando la 1 y la 3 -> {estado}")
 
 iguales = all(
-    b is None or (abs(a[0] - b[0]) < 1e-12 and abs(a[1] - b[1]) < 1e-12)
+    b is None or all(abs(a[k] - b[k]) < 1e-12 for k in range(4))
     for a, b in zip(completo, con_saltados))
 
-check("los que se dibujan caen en el MISMO sitio aunque otros se salten", iguales)
+check("las que se dibujan caen en el MISMO sitio aunque otras se salten", iguales)
 
-# Y la prueba de que hacia falta: si los saltados no avanzaran el hueco, el segundo
-# perfil se dibujaria encima del primero.
+# Y la prueba de que hacia falta: si las saltadas no avanzaran el renglon, la segunda
+# seccion se dibujaria encima de la primera.
 def acomodar_mal(perfiles, saltados=()):
-    """El acomodo INGENUO: los saltados no avanzan el hueco."""
-    x_der = ORIGEN_CM * ESCALA
-    huecos = []
+    """El acomodo INGENUO: las saltadas no avanzan el renglon."""
+    y_cm = 0.0
+    puestos = []
 
-    for i, ancho_cm in enumerate(perfiles):
-        ancho = ancho_cm * ESCALA
-        x_izq = x_der - ancho
-
+    for i, (ancho_cm, alto_cm) in enumerate(perfiles):
         if i in saltados:
-            huecos.append(None)
+            puestos.append(None)
             continue
 
-        huecos.append((x_izq, x_der))
-        x_der = x_izq - AIRE_CM * ESCALA
+        x_der = ORIGEN_CM * ESCALA
+        puestos.append((x_der - (ancho_cm * ESCALA), x_der,
+                        y_cm * ESCALA, (y_cm + alto_cm) * ESCALA))
 
-    return huecos
+        y_cm += alto_cm + SEPARACION
+
+    return puestos
 
 
-mal = acomodar_mal(ANCHOS, saltados=(0,))
-bien = acomodar(ANCHOS, saltados=(0,))
+mal = acomodar_mal(PERFILES, saltados=(0,))
+bien = acomodar(PERFILES, saltados=(0,))
 
-# En el ingenuo, el perfil 2 ocupa el hueco del 1, que ya esta dibujado en el plano.
-encima = abs(mal[1][1] - completo[0][1]) < 1e-12
+# En el ingenuo, la seccion 2 ocupa el renglon de la 1, que ya esta en el plano.
+encima = abs(mal[1][2] - completo[0][2]) < 1e-12
 
-print(f"\n    sin avanzar el hueco, el perfil 2 acabaria en x={mal[1][1]:+.4f}, "
-      f"justo donde acaba el 1 ({completo[0][1]:+.4f})")
-print(f"    avanzandolo, acaba en x={bien[1][1]:+.4f}, en su sitio")
+print(f"\n    sin avanzar el renglon, la seccion 2 arrancaria en y={mal[1][2]:+.4f}, "
+      f"justo donde arranca la 1 ({completo[0][2]:+.4f})")
+print(f"    avanzandolo, arranca en y={bien[1][2]:+.4f}, en su sitio")
 
-check("sin avanzar el hueco de los saltados, el siguiente se dibuja encima", encima)
-check("y avanzandolo, no", abs(bien[1][1] - completo[0][1]) > 1e-9)
+check("sin avanzar el renglon de las saltadas, la siguiente se dibuja encima", encima)
+check("y avanzandolo, no", abs(bien[1][2] - completo[0][2]) > 1e-9)
 
 
 # ===========================================================================
@@ -542,65 +789,62 @@ with open("client/src/CadLink.App/MainWindow.Acero.cs", encoding="utf-8") as f:
 
 check("el origen del acero es -60 cm, el -0.6 de las macros",
       "OrigenAceroCm = -60" in codigo)
-check("se dibuja de derecha a izquierda",
-      "var xIzquierda = xDerecha - ancho;" in codigo)
-check("y el hueco se avanza SIEMPRE, tambien para los saltados",
-      re.search(r"xDerecha = xIzquierda - aire;", codigo) is not None
-      and "El hueco se avanza SIEMPRE" in codigo)
 
-# El aire de CADA una de las doce familias.
-CLAVE = {
-    "IR": "Ir", "IS": "Is", "IC": "Ic", "S": "S", "WT": "Wt", "C": "C",
-    "CF": "Cf", "ZF": "Zf", "L": "L", "OR": "Or", "OC": "Oc", "OS": "Os",
-}
+# TODAS en la misma x: la x de la derecha se vuelve a poner en el origen DENTRO del
+# bucle de secciones, no una vez por familia. Ahi esta el cambio.
+check("la x de la derecha se fija en el origen para CADA seccion",
+      re.search(r"foreach \(var fila in grupo\)\s*\{\s*"
+                r"var perfil = AFormatoAceroCad\(fila\);\s*"
+                r"(//[^\n]*\n\s*)*"
+                r"var xDerecha = OrigenAceroCm \* escala;", codigo) is not None)
 
-bloque_aire = codigo.split("AireDeLaFamiliaCm")[-1].split("OrdenDeLaFamilia")[0]
+check("y el dibujo crece hacia la izquierda desde ahi",
+      "var xIzquierda = xDerecha - (perfil.AnchoDibujoCm * escala);" in codigo)
 
-for fam, aire in AIRE.items():
-    check(f"el aire de {fam} en el codigo es {aire} cm",
-          f"FamiliaPerfil.{CLAVE[fam]} => {aire}," in bloque_aire)
+check("ya no se avanza en x de una seccion a la siguiente",
+      "xDerecha = xIzquierda - aire" not in codigo)
 
-# LA BANDA SE CALCULA, no se busca en una tabla. Lo que hay que comprobar es que ya no
-# quede tabla ninguna y que la cuenta sea la de subir un metro sobre la mas alta.
-check(f"la separacion entre bandas es de {SEPARACION_BANDAS} cm",
-      f"SeparacionDeBandasCm = {SEPARACION_BANDAS}" in codigo)
+check("ya no hay aire horizontal por familia",
+      "AireDeLaFamiliaCm" not in codigo)
 
-check("la banda de la siguiente familia se calcula con la seccion mas alta",
-      "yCm += masAlto + SeparacionDeBandasCm;" in codigo)
+# LO QUE AVANZA ES EL RENGLON, y avanza SIEMPRE, tambien para las saltadas.
+check(f"la separacion entre secciones es de {SEPARACION} cm",
+      f"SeparacionEntreSeccionesCm = {SEPARACION}" in codigo)
 
-check("y ya no queda tabla de alturas de banda",
+check("el renglon se avanza con el alto de la seccion mas la separacion",
+      "yCm += perfil.AltoDibujoCm + SeparacionEntreSeccionesCm;" in codigo)
+
+check("y se avanza siempre, tambien para las saltadas",
+      "se sube al renglón siguiente SIEMPRE" in codigo)
+
+check("ya no queda tabla de alturas de banda",
       "BandaDeLaFamiliaCm" not in codigo and "TechoDeLaBandaCm" not in codigo)
 
-check("la primera banda arranca en cero, como la macro del IR",
+check("la primera seccion arranca en y = 0",
       "var yCm = 0.0;" in codigo)
 
 # El alto que se acumula es el DIBUJADO, no el peralte capturado: en el tubo rectangular
 # no son lo mismo, porque se dibuja de pie con su lado mayor en vertical.
 check("se acumula el alto dibujado, no el peralte capturado",
-      "masAlto = Math.Max(masAlto, perfil.AltoDibujoCm);" in codigo)
-
-# Y EL AIRE LO MANDA EL ROTULO cuando es mas ancho que el perfil. Sin esto, dos
-# secciones con un nombre largo quedan separadas pero sus rotulos se pisan.
-check("el aire se recalcula con el ancho del rotulo de cada perfil",
-      "perfil.AnchoRotuloCm - perfil.AnchoDibujoCm" in codigo)
+      "perfil.AltoDibujoCm + SeparacionEntreSeccionesCm" in codigo)
 
 check("las familias se recorren en el orden de la lista, no en el de captura",
       "OrderBy(g => OrdenDeLaFamilia(g.Key))" in codigo)
 
 check("y se dice a que altura quedo cada familia, que ya no es un numero fijo",
-      "bandas.Add(" in codigo and "Cada familia en su banda" in codigo)
+      "bandas.Add(" in codigo and "una por renglón" in codigo)
 
 
 # ===========================================================================
-#  Las bandas: que las cuatro familias no se encimen entre ellas
+#  El caso peor: el perfil mas alto de cada familia, una seccion por renglon
 # ===========================================================================
 #
-# Las cuatro macros arrancan en x = -0.6, asi que lo unico que las separa es la Y. Con
-# el catalogo del IMCA eso hay que comprobarlo de verdad, porque trae perfiles IS de
-# hasta 1.90 m de peralte y la banda del IR solo tiene 2.00 m hasta la del OR.
+# Con el catalogo delante, que es la unica manera de saber si la separacion alcanza: la
+# IS llega a 1.90 m de peralte, y una hoja con la mas alta de cada familia es lo mas
+# exigente que se le puede pedir al acomodo.
 
 print("\n" + "=" * 78)
-print(" Las bandas de cada familia")
+print(" El caso peor: la seccion mas alta de cada familia")
 print("=" * 78)
 
 catalogo_real = []
@@ -616,88 +860,55 @@ def alto_de(p):
     return p["peralte"]
 
 
-def apilar(alturas):
-    """El calculo de las bandas del OnExportAcero.
+# El caso peor: una hoja con la seccion MAS ALTA de cada familia del catalogo, en el
+# orden en que se dibujan. Es lo mas exigente que se le puede pedir al acomodo.
+mas_altos = {}
 
-    Devuelve {familia: (base, alto)}. La primera arranca en cero y cada una de las
-    siguientes va un metro por encima de la CIMA de la de abajo.
-    """
-    y = 0.0
-    bandas = {}
+for p_ in catalogo_real:
+    f = p_["familia"]
 
-    for fam in ORDEN_FAMILIAS:
-        if fam not in alturas:
-            continue
+    if f not in mas_altos or alto_de(p_) > mas_altos[f][1]:
+        mas_altos[f] = (p_["nombre"], alto_de(p_), p_["ancho"] or p_["peralte"])
 
-        bandas[fam] = (y, alturas[fam])
-        y += alturas[fam] + SEPARACION_BANDAS
+familias_peor = [f for f in ORDEN_FAMILIAS if f in mas_altos]
+hoja_peor = [(mas_altos[f][2], mas_altos[f][1]) for f in familias_peor]
 
-    return bandas
-
-
-# El caso peor: una hoja con el perfil mas alto de cada familia del catalogo.
-altos_del_catalogo = {}
-
-for p in catalogo_real:
-    f = p["familia"]
-    altos_del_catalogo[f] = max(altos_del_catalogo.get(f, 0), alto_de(p))
-
-bandas = apilar(altos_del_catalogo)
+puestas = acomodar(hoja_peor)
 
 print()
-for fam, (base, alto) in bandas.items():
-    print(f"    {fam:3}: banda en {base / 100:6.2f} m   la mas alta mide {alto:6.2f} cm"
-          f"   su cima queda en {(base + alto) / 100:6.2f} m")
+for f, pu in zip(familias_peor, puestas):
+    nombre, alto, ancho = mas_altos[f]
+    print(f"    {f:3}: y de {pu[2]:6.2f} a {pu[3]:6.2f} m   "
+          f"{alto:6.2f} cm de alto   {nombre[:36]}")
 
-# LO QUE HAY QUE COMPROBAR: que entre la cima de una y la base de la siguiente haya
-# exactamente un metro. Es lo que garantiza que no se encimen, y ya no depende de que
-# una tabla de alturas este bien puesta.
-anterior = None
+# Que ninguna se encime con la de abajo, con los perfiles REALES mas exigentes.
+for i in range(len(puestas) - 1):
+    check(f"la seccion {i + 1} y la {i + 2} del caso peor no se pisan",
+          puestas[i + 1][2] >= puestas[i][3] - 1e-12,
+          f"{puestas[i + 1][2]:.4f} contra {puestas[i][3]:.4f}")
 
-for fam, (base, alto) in bandas.items():
-    if anterior is not None:
-        fam_ant, cima_ant = anterior
+# Y que TODAS acaben en -0.6: da igual la familia y da igual el ancho de la seccion.
+check("las doce del caso peor acaban todas en -0.6",
+      all(abs(pu[1] - (-0.6)) < 1e-12 for pu in puestas))
 
-        check(f"entre la cima de {fam_ant} y la base de {fam} hay un metro justo",
-              abs((base - cima_ant) - SEPARACION_BANDAS) < 1e-9,
-              f"{base - cima_ant:.2f} cm")
+print(f"\n    el plano entero, con la mas alta de cada familia, mide "
+      f"{puestas[-1][3]:.2f} m de alto")
 
-    anterior = (fam, base + alto)
+# Y con perfiles chicos el plano se encoge, que es la ventaja de medir desde la cima de
+# cada seccion y no desde una tabla de alturas fijas.
+puestas_chicas = acomodar([(5.08, 15.24), (5.08, 7.62), (1.91, 1.91)])
 
-check("la primera banda arranca en cero, como la macro del IR",
-      next(iter(bandas.values()))[0] == 0)
+print(f"    una hoja de tres perfiles chicos mide {puestas_chicas[-1][3]:.2f} m")
 
-# Y con una hoja de perfiles chicos las bandas se acercan, que es de lo que se trata:
-# con la tabla de alturas fijas la OS se dibujaba a 17 m aunque la hoja solo llevara
-# angulos de 3 pulgadas.
-chicos = {"L": 7.62, "OS": 1.91, "CF": 15.24}
-bandas_chicas = apilar(chicos)
+check("una hoja de perfiles chicos ocupa poco, no un hueco fijo",
+      puestas_chicas[-1][3] < 2.0, f"{puestas_chicas[-1][3]:.2f} m")
 
-print("\n    una hoja de solo perfiles chicos (CF, L y OS):")
-for fam, (base, alto) in bandas_chicas.items():
-    print(f"    {fam:3}: banda en {base / 100:6.2f} m   la mas alta mide {alto:6.2f} cm")
-
-check("con perfiles chicos las bandas se acercan en lugar de quedarse fijas",
-      max(b for b, _ in bandas_chicas.values()) < 300,
-      f"la ultima queda en {max(b for b, _ in bandas_chicas.values()):.0f} cm")
-
-# El metro da de sobra para lo que sobresale de una seccion: el rotulo cuelga por debajo
-# de la base y las cotas suben por encima del perfil de abajo.
-ROTULO_ABAJO = 6 + (4 * 3)
-COTAS_ARRIBA = 6 + 1.5 + 2
-
-check("el metro de separacion da para el rotulo de arriba y las cotas de abajo",
-      ROTULO_ABAJO + COTAS_ARRIBA < SEPARACION_BANDAS,
-      f"hacen falta {ROTULO_ABAJO + COTAS_ARRIBA:.1f} de {SEPARACION_BANDAS}")
-
-# El aire NO es el mismo para todas: el rotulo de una familia de perfiles estrechos es
-# mucho mas ancho que su seccion, asi que necesita mas hueco que uno de perfiles anchos.
-# Es al reves de lo que parece, y por eso se comprueba.
-check("las familias tienen aires distintos entre si", len(set(AIRE.values())) >= 4,
-      str(sorted(set(AIRE.values()))))
-
-check("y el angulo, que es el mas estrecho, lleva mas aire que la IR",
-      AIRE["L"] > AIRE["IR"], f"L={AIRE['L']} IR={AIRE['IR']}")
+# Y LA SEPARACION ES UNA SOLA para todas, que es lo que se gana al apilarlas: ya no hay
+# que darle a cada familia su propio aire segun lo ancho que sea su rotulo, porque no hay
+# nada al lado con lo que chocar.
+check("la separacion es una sola para las doce familias",
+      f"SeparacionEntreSeccionesCm = {SEPARACION}" in codigo
+      and "AireDeLaFamiliaCm" not in codigo)
 
 # ===========================================================================
 #  4. La vuelta completa: Excel -> CSV -> lo que lee el programa

@@ -165,6 +165,45 @@ Después se **recorta** el estribo principal que quede bajo la banda del diamant
 (`TrimEstriboBajoDiamante`) y los tramos verticales de los leaders
 (`TrimVerticalesEnDiamante`).
 
+#### El gancho del diamante: las dos colas enteras y la cinta entera
+
+El gancho del diamante sale de una de las varillas centrales y tiene **dos colas**, una a
+cada lado del radio hacia el centro de la sección. Cada cola es un rectángulo largo, y va
+con sus **tres líneas**: la exterior, la interior —la que nace pegada a la varilla, tangente
+a ella— y la punta que las une. Es la misma `Cola` que usa el gancho del estribo
+rectangular, y dibuja las tres siempre: no hay ningún parámetro para saltarse ninguna.
+
+Arriba de la varilla el contorno es **curvo**: es el arco del doblez del extremo que llega
+por la diagonal de abajo, la envuelve y sale como la cola de arriba. Ese arco se dibuja solo
+en el trozo que asoma del abrazo de la cinta (`ArcoDelDoblez`), porque el resto ya lo traza
+el borde de la propia cinta.
+
+Se probaron tres cosas y **las tres se revirtieron**, así que quedan escritas para no
+reintentarlas:
+
+1. **Quitar la línea interior de cada cola**, con el argumento de que su sitio lo cubre la
+   circunferencia de la varilla. Eran **dos líneas que le faltaban al gancho**, una por
+   cola, y sin ellas el rectángulo de la cola no cierra. Se restauraron.
+2. **Abrirle un hueco a la línea interior de la cinta** por donde la cola le pasa por
+   encima, para que la diagonal no pareciera cortar el gancho. Al estribo no le falta ningún
+   tramo: la cinta va **entera** y el gancho se lee encima porque el dibujo se ordena. Se
+   borró el método y sus dos recortes en lugar de dejarlos inalcanzables.
+3. **Alargar la cola de arriba hacia atrás** hasta el borde de la cinta, para que no naciera
+   «en el aire». `Cola` engorda su cuadrilátero de relleno el espesor del estribo cuando le
+   pasan un arranque distinto del natural, así que el alargue se sumaba al inflado y el
+   hatch se salía del diamante **1.87 cm**. Era el «hatch que sale».
+
+Lo que sí se recorta es la cola de **abajo**, donde sale del acero de la cinta
+(`SalidaDelAceroDelDiamante`), porque por ese lado el gancho pasa por debajo. La de arriba
+no, que justo en su arranque acaba el arco del doblez y las dos empalman tangentes.
+
+`tools/verificar_gancho_diamante.py` lo comprueba con números: las seis líneas —tres por
+cola—, que la interior sale tangente a la varilla, que lo que el acero dobla es lo que
+envuelve, que el relleno no se sale y que alargando la cola sí se salía. Y **informa**, sin
+exigir nada, cuánto tapa el brazo de arriba de la línea interior de la cinta: unos
+milímetros sobre una diagonal de decenas de centímetros. Es justo lo que se resolvería
+abriendo el hueco, y se dejó sin abrir a propósito.
+
 ---
 
 ## 4. Hatch de concreto: dos partes

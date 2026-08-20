@@ -71,6 +71,12 @@ public partial class MainWindow : Window
         PreviewCanvas.SizeChanged += (_, _) => DibujarVistaPrevia();
         SeccionesGrid.SelectionChanged += OnSeccionSeleccionada;
 
+        // Lo mismo para la hoja de acero. Va aquí, junto a lo del concreto, porque las dos
+        // vistas previas se enganchan UNA VEZ en el arranque: Enlazar se vuelve a llamar al
+        // cargar el ejemplo y al empezar de nuevo, y suscribirse ahí dejaría el mismo evento
+        // enganchado cinco veces.
+        EngancharVistaPreviaAcero();
+
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
         // el primer layout.

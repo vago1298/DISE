@@ -622,6 +622,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
@@ -648,6 +649,14 @@
                                     <TextBlock FontSize="11.5" VerticalAlignment="Center"
                                                Foreground="{DynamicResource MutedTextBrush}"
                                                Text="I, te y canal: peralte, ancho, e alma, e patin  |  L: el peralte es el ALA LARGA y el ancho la CORTA  |  OR: peralte, ancho, e pared  |  OC y OS: el peralte es el DIAMETRO  |  CF: ademas labio y radio  |  ZF: ademas ancho 2 y radio" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="Al final de la tabla:" FontWeight="SemiBold" FontSize="12"
+                                               VerticalAlignment="Center" Margin="0,0,14,0"
+                                               Foreground="{DynamicResource BrandDarkBrush}" />
+                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Text="las 16 propiedades geometricas del manual (peso, area, Ix, Sx, Zx, rx, Iy, Sy, Zy, ry, rmin, J, Cw, Ixy, x barra, y barra). Son de solo lectura y una celda VACIA quiere decir que el manual no da esa propiedad para esa familia, no que valga cero." />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -761,10 +770,99 @@
                             <DataGridTextColumn Header="Falta" Binding="{Binding FaltanDatos}"
                                                 IsReadOnly="True" Width="220"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <!-- ===== PROPIEDADES GEOMETRICAS, del manual IMCA =====
+
+                                 Van al final y son de SOLO LECTURA: no se capturan ni se
+                                 dibujan, se traen del catalogo con las medidas para poder
+                                 comparar dos perfiles al elegir sin ir al manual.
+
+                                 Se enlazan a un double? a proposito. Un hueco significa
+                                 que el manual NO DA esa propiedad para esa familia -el
+                                 redondo macizo no trae Sx, la canal formada en frio no
+                                 trae rx- y eso no es cero: con cero la celda diria «0.00»
+                                 y se leeria como un dato. Con nulo, sale vacia.
+
+                                 El Ix y el Sx de las formadas en frio (CF y ZF) son los
+                                 valores de DISEÑO por ancho efectivo, que es lo que da el
+                                 manual para una lamina delgada. -->
+                            <DataGridTextColumn Header="Peso kg/m" Binding="{Binding Propiedades.PesoKgM, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Área cm²" Binding="{Binding Propiedades.AreaCm2, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Ix cm⁴" Binding="{Binding Propiedades.IxCm4, StringFormat=N2}"
+                                                IsReadOnly="True" Width="90"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Sx cm³" Binding="{Binding Propiedades.SxCm3, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Zx cm³" Binding="{Binding Propiedades.ZxCm3, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="rx cm" Binding="{Binding Propiedades.RxCm, StringFormat=N2}"
+                                                IsReadOnly="True" Width="75"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Iy cm⁴" Binding="{Binding Propiedades.IyCm4, StringFormat=N2}"
+                                                IsReadOnly="True" Width="90"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Sy cm³" Binding="{Binding Propiedades.SyCm3, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Zy cm³" Binding="{Binding Propiedades.ZyCm3, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="ry cm" Binding="{Binding Propiedades.RyCm, StringFormat=N2}"
+                                                IsReadOnly="True" Width="75"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="rmín cm" Binding="{Binding Propiedades.RminCm, StringFormat=N2}"
+                                                IsReadOnly="True" Width="80"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="J cm⁴" Binding="{Binding Propiedades.JCm4, StringFormat=N3}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Cw cm⁶" Binding="{Binding Propiedades.CwCm6, StringFormat=N1}"
+                                                IsReadOnly="True" Width="95"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Ixy cm⁴" Binding="{Binding Propiedades.IxyCm4, StringFormat=N2}"
+                                                IsReadOnly="True" Width="85"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="x̄ cm" Binding="{Binding Propiedades.XbarCm, StringFormat=N2}"
+                                                IsReadOnly="True" Width="70"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="ȳ cm" Binding="{Binding Propiedades.YbarCm, StringFormat=N2}"
+                                                IsReadOnly="True" Width="70"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="2" Background="{DynamicResource TotalesBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                    <!-- ===== VISTA PREVIA DE LA FORMA =====
+
+                         Igual que la del concreto, y por el mismo motivo: la tabla dice
+                         numeros y el perfil se dibuja con una FORMA, asi que un espesor
+                         mal capturado no se ve en la tabla pero si en el dibujo.
+
+                         La geometria sale de TrazoAcero, que es el MISMO calculo que usa
+                         el dibujante de AutoCAD. Una vista previa que calcula la forma por
+                         su cuenta puede acabar enseñando algo distinto de lo que se
+                         dibuja, que es justo lo que no puede hacer. -->
+                    <Border Grid.Row="2" Height="240"
+                            Background="{StaticResource PreviewFondoBrush}"
+                            BorderBrush="{DynamicResource BrandBrush}"
+                            BorderThickness="1" Margin="0,10,0,0">
+                        <Grid>
+                            <Canvas x:Name="AceroPreviewCanvas"
+                                    Background="{StaticResource PreviewFondoBrush}"
+                                    ClipToBounds="True" />
+                            <TextBlock Text="Vista previa del perfil seleccionado"
+                                       FontSize="10.5" Margin="8,6,0,0"
+                                       VerticalAlignment="Top" HorizontalAlignment="Left"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="3" Background="{DynamicResource TotalesBrush}" BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1,0,1,1" Padding="12,7">
                         <Grid>
                             <Grid.ColumnDefinitions>

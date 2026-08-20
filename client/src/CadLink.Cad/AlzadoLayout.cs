@@ -123,8 +123,15 @@ public static class AlzadoLayout
     /// donde no compite con nada, así que esos 46 cm sobraban y dejaban una banda vacía
     /// entre las dos filas. Se devuelven.
     /// </para>
+    /// <para>
+    /// <b>Y ahora vale 19 y no 10</b>, porque en esa banda entró algo más: la <b>cota de la
+    /// base del bloque de sección</b>, que va 6 cm por encima de su paño y que antes no
+    /// existía. Eso empuja el <c>CORTE A-A'</c> de los 15 cm a los 24
+    /// —<c>AlzadoDrawer.AltoCotaCorte</c>—, así que con los 10 de antes el pie del alzado
+    /// caía a 3.5 cm del rótulo. Con 19 se recuperan los 12 cm de aire que había.
+    /// </para>
     /// </remarks>
-    public const double AireRotuloAlzado = 0.10;
+    public const double AireRotuloAlzado = 0.19;
 
     /// <summary>
     /// Y de la <b>segunda cara</b> de una columna rectangular.

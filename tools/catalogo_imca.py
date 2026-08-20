@@ -46,6 +46,29 @@ QUE COLUMNAS SE USAN, FAMILIA POR FAMILIA
 
 TODO SALE EN CENTIMETROS, que es lo que lee CadLink.
 
+LAS PROPIEDADES GEOMETRICAS
+---------------------------
+Ademas de las medidas, se traen las dieciseis propiedades con las que se diseña, que la
+hoja ya da en unidades de centimetro:
+
+    peso kg/m, area cm2, Ix Iy J cm4, Sx Sy Zx Zy cm3, rx ry rmin cm, Cw cm6,
+    x barra e y barra cm (el centroide), Ixy cm4
+
+De sus columnas, con dos casos que hay que tratar aparte:
+
+  * LAS FORMADAS EN FRIO -CF y ZF- no traen Ix ni Sx en las columnas 48 y 50: las
+    traen en la 71 y la 72, 'Idx' y 'Sxe', que son los valores de DISEÑO -calculados
+    con el metodo del ancho efectivo, que es como se diseña una lamina delgada-. Se
+    toman de ahi y se avisa en el CSV, porque no son exactamente lo mismo que el Ix
+    geometrico de un perfil laminado.
+  * EL CENTROIDE cambia de columna segun la familia: la canal y el CF lo traen en la
+    35, el angulo en la 57, y la te y el angulo traen su 'y barra' en la 52.
+
+Lo que la hoja trae y NO se recoge, por si algun dia hace falta: las relaciones de
+esbeltez (b/2tf, h/tw, D/t, b/t), los ejes principales del angulo (Iz, Sz, Iw, Sw,
+rw), las cotas de detallado (kdet, k, T, gramil, soldadura minima) y las propiedades
+efectivas por grado de acero (Ae, Mnx0).
+
 LO QUE SE COMPRUEBA AL CONVERTIR
 --------------------------------
 Las columnas numericas se cotejan contra los nominales en pulgadas que la propia hoja
@@ -54,6 +77,7 @@ con su nombre y su diferencia, sin corregirlo por cuenta propia: si la hoja y su
 nominal no coinciden, quien tiene que decidir es el usuario.
 """
 
+import math
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -112,6 +136,66 @@ FORMAS = {
 # El orden en que salen las familias en el CSV y en el informe: por forma, para que se
 # lea como una tabla de perfiles y no como un revoltijo.
 ORDEN = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
+
+# Las dieciseis propiedades geometricas, con la columna de la que sale cada una.
+#
+# La segunda columna de la pareja es la ALTERNATIVA, para las familias que traen esa
+# propiedad en otro sitio; se usa solo si la primera viene vacia:
+#
+#   Ix y Sx     las formadas en frio los traen en Idx y Sxe (71 y 72), que son los
+#               valores de DISEÑO por ancho efectivo
+#   x barra     la canal y el CF en la 35, el angulo en la 57
+#   rmin        la zeta lo trae como 'rmin' (81) y el angulo como 'rz' (63), que es lo
+#               mismo: el radio de giro del eje principal debil
+PROPIEDADES = (
+    ("peso", 18, None),      # kg/m
+    ("area", 20, None),      # cm2
+    ("ix", 48, 71),          # cm4
+    ("sx", 50, 72),          # cm3
+    ("rx", 51, None),        # cm
+    ("zx", 49, None),        # cm3
+    ("iy", 53, None),        # cm4
+    ("sy", 55, None),        # cm3
+    ("ry", 56, None),        # cm
+    ("zy", 54, None),        # cm3
+    ("j", 44, None),         # cm4
+    ("cw", 45, None),        # cm6
+    ("xbar", 35, 57),        # cm
+    ("ybar", 52, None),      # cm
+    ("rmin", 81, 63),        # cm
+    ("ixy", 78, None),       # cm4
+)
+
+
+# El acero pesa 7.85 g/cm3, o sea 0.785 kg/m por cada cm2 de seccion.
+KG_POR_CM2 = 0.785
+
+# ...salvo en los TUBOS, y esto no es una errata de la hoja sino como se hacen las
+# tablas: el PESO de un tubo se calcula con su pared NOMINAL, mientras que su AREA y sus
+# inercias se calculan con la pared de DISEÑO, que para un tubo soldado es 0.93 veces la
+# nominal. Asi que en un tubo el peso sale un 7 % por encima de lo que diria su area, y
+# las dos cifras son correctas.
+FACTOR_PARED_DISEÑO = 0.93
+
+
+def propiedades_de(c):
+    """Las dieciseis propiedades de una fila, o None cada una si la hoja no la da.
+
+    No se calcula ninguna: si la hoja no trae el dato, sale vacio. Un Ix deducido de
+    rx y del area seria un numero que nadie firmo, y en una tabla de perfiles eso es
+    peor que un hueco.
+    """
+    valores = []
+
+    for _, col, alterna in PROPIEDADES:
+        v = numero(c.get(col))
+
+        if v is None and alterna is not None:
+            v = numero(c.get(alterna))
+
+        valores.append(v)
+
+    return valores
 
 
 def columna(ref):
@@ -248,6 +332,66 @@ def medidas_del_angulo(designacion):
             espesor * MM_POR_PULGADA)
 
 
+def revisar_propiedades(nombre, forma, props):
+    """Coteja las propiedades entre ellas por fisica. Devuelve la lista de dudas.
+
+    NO corrige nada y NO hace que el perfil se salte: son propiedades para mostrar, no
+    medidas para dibujar, asi que un Ix dudoso no impide dibujar el perfil. Lo que hace
+    falta es decirlo, con nombre y numeros, para que se pueda ir a la celda.
+
+    Y no se puede adivinar CUAL de los dos numeros esta mal. Cuando el peso no cuadra con
+    el area, puede ser el peso o puede ser el area; cuando el radio de giro no cuadra con
+    la inercia, casi siempre es la inercia -porque el radio es un numero corto y se copia
+    bien- pero no siempre. Se avisa de la pareja que no cuadra y decide quien tiene la
+    hoja delante.
+    """
+    (peso, area, ix, sx, rx, zx, iy, sy, ry, zy, j, cw,
+     xbar, ybar, rmin, ixy) = props
+
+    dudas = []
+    es_tubo = forma in ("tubo rectangular", "tubo redondo")
+
+    # ---- El peso contra el area ----
+    if peso and area and area >= 5:
+        esperado = area * KG_POR_CM2
+
+        # En un tubo el peso va con la pared NOMINAL y el area con la de DISEÑO, asi que
+        # la razon correcta no es 1 sino 1/0.93. Ver FACTOR_PARED_DISEÑO.
+        if es_tubo:
+            esperado /= FACTOR_PARED_DISEÑO
+
+        if abs(peso - esperado) > 0.06 * esperado:
+            dudas.append(
+                f"{nombre}: pesa {peso} kg/m y su area de {area} cm2 daria "
+                f"{esperado:.1f}" + (" (contando la pared de diseño)" if es_tubo else ""))
+
+    # ---- El radio de giro contra la inercia y el area ----
+    for inercia, radio, eje in ((ix, rx, "x"), (iy, ry, "y")):
+        if not (inercia and radio and area) or area < 5 or inercia < 10:
+            continue
+
+        esperado = math.sqrt(inercia / area)
+
+        if abs(radio - esperado) > 0.06 * esperado:
+            dudas.append(
+                f"{nombre}: r{eje} = {radio} cm pero raiz(I{eje}/area) = "
+                f"raiz({inercia}/{area}) = {esperado:.2f}")
+
+    # ---- El modulo plastico contra el elastico ----
+    for elastico, plastico, eje in ((sx, zx, "x"), (sy, zy, "y")):
+        if not (elastico and plastico) or elastico < 10:
+            continue
+
+        # Un 2 % de margen por el redondeo del manual: hay perfiles donde los dos valores
+        # redondeados salen practicamente iguales.
+        if plastico < 0.98 * elastico:
+            dudas.append(
+                f"{nombre}: Z{eje} = {plastico} cm3 es MENOR que S{eje} = {elastico}, y "
+                "el modulo plastico nunca baja del elastico")
+
+    return dudas
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -258,6 +402,11 @@ def main(argv):
     perfiles = []
     fuera = {}
     avisos = []
+
+    # Las dudas de las PROPIEDADES van en su propia lista, separadas de los avisos de las
+    # medidas: unas hacen que el perfil se salte y las otras no, y mezcladas parecerian
+    # igual de graves.
+    avisos_props = []
 
     for r in sorted(filas):
         if r <= 2:
@@ -501,6 +650,25 @@ def main(argv):
             avisos.append(f"{nombre}: SE SALTA, {problema}. Revisa esa celda en la hoja")
             continue
 
+        # ------------------------------------------------------------------
+        #  Y que las PROPIEDADES cuadren entre ellas
+        # ------------------------------------------------------------------
+        # Estas se cotejan aparte y NO hacen que el perfil se salte, y las dos cosas son
+        # a proposito: son propiedades para mostrar, no medidas para dibujar, asi que un
+        # Ix dudoso no impide dibujar el perfil. Lo que hace falta es DECIRLO.
+        #
+        # Se cotejan por FISICA, que es lo unico que caza un numero mal escrito en una
+        # columna de propiedades:
+        #
+        #     peso = area x 7.85 g/cm3      el acero pesa lo que pesa
+        #     r    = raiz(I / area)         definicion del radio de giro
+        #     Z    >= S                     el modulo plastico pasa al elastico
+        props = propiedades_de(c)
+        dudas = revisar_propiedades(nombre, forma, props)
+
+        for duda in dudas:
+            avisos_props.append(duda)
+
         # El redondo macizo es la unica forma sin ancho ni espesor: es un circulo.
         if forma not in ("tubo redondo", "redondo macizo") and not ancho:
             avisos.append(f"{nombre}: se salta, sin ancho en la hoja")
@@ -522,12 +690,16 @@ def main(argv):
         def cm(v):
             return None if v is None else v / 10
 
+        # Las propiedades NO se convierten: la hoja ya las da en unidades de
+        # centimetro -kg/m, cm2, cm3, cm4, cm6- al contrario que las medidas, que
+        # vienen en milimetros. Pasarlas por cm() las dividiria por diez.
         perfiles.append((
             familia,
             nombre,
             cm(peralte), cm(ancho), cm(espesor), cm(e_patin), cm(labio), cm(radio),
             cm(ancho2),
             familia_imca,
+            props,
         ))
 
     if not perfiles:
@@ -554,6 +726,8 @@ def main(argv):
     print("#  Se puede editar con el Bloc de notas o con Excel, y no hay que recompilar")
     print("#  nada: se guarda, se vuelve a abrir CadLink y los cambios ya estan.")
     print("#")
+    print("#  LAS MEDIDAS, que son las que se dibujan (columnas 1 a 9):")
+    print("#")
     print("#  familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio;ancho2")
     print("#")
     print("#     peralte   en OC y OS es el DIAMETRO EXTERIOR; en la L, el ala larga")
@@ -565,6 +739,33 @@ def main(argv):
     print("#     ancho2    solo la ZF: su patin ANGOSTO, el que permite el traslape")
     print("#")
     print("#  El redondo macizo (OS) solo usa el peralte: no tiene pared ni ancho.")
+    print("#")
+    print("#  LAS PROPIEDADES GEOMETRICAS, que solo se muestran (columnas 10 a 25):")
+    print("#")
+    print("#  ...;peso;area;ix;sx;rx;zx;iy;sy;ry;zy;j;cw;xbar;ybar;rmin;ixy")
+    print("#")
+    print("#     peso        kg/m          area        cm2")
+    print("#     ix iy       cm4           sx sy       cm3")
+    print("#     zx zy       cm3           rx ry rmin  cm")
+    print("#     j           cm4           cw          cm6")
+    print("#     xbar ybar   cm            ixy         cm4")
+    print("#")
+    print("#  ESTAS YA VIENEN EN CENTIMETROS EN EL MANUAL: no se convierten, al")
+    print("#  contrario que las medidas, que vienen en milimetros.")
+    print("#")
+    print("#  Una propiedad VACIA quiere decir que el manual no la da para esa familia,")
+    print("#  no que valga cero. No se calcula ninguna: un Ix deducido de rx y del area")
+    print("#  seria un numero que nadie firmo.")
+    print("#")
+    print("#  OJO CON EL Ix Y EL Sx DE LAS FORMADAS EN FRIO (CF y ZF): el manual no los")
+    print("#  da en su columna, los da como Idx y Sxe, que son los valores de DISEÑO")
+    print("#  calculados por ancho efectivo. Es lo que hay, y es con lo que se diseña una")
+    print("#  lamina delgada, pero no es el Ix geometrico de un perfil laminado.")
+    print("#")
+    print("#  Lo que el manual trae y NO esta aqui: las relaciones de esbeltez (b/2tf,")
+    print("#  h/tw, D/t, b/t), los ejes principales del angulo (Iz, Sz, Iw, Sw, rw), las")
+    print("#  cotas de detallado (kdet, k, T, gramil) y las propiedades efectivas por")
+    print("#  grado de acero (Ae, Mnx0).")
     print("#")
 
     for familia in ORDEN:
@@ -579,11 +780,30 @@ def main(argv):
         print(f"# {'-' * 74}")
         print(f"#  {familia}: {len(de_esta)} perfiles, forma {FORMAS[familia]}   "
               f"(del IMCA: {', '.join(origen)})")
+
+        # Y se dice QUE PROPIEDADES trae esta familia, contando las que vienen llenas.
+        # Es informacion que solo se puede saber contando: el manual deja huecos
+        # distintos en cada familia, y sin esto el usuario ve una columna vacia en su
+        # tabla y no sabe si es que falta el dato o que su perfil esta mal.
+        cuantas = []
+
+        for i, (nombre_prop, _, _) in enumerate(PROPIEDADES):
+            con = sum(1 for p in de_esta if p[10][i] is not None)
+
+            if con == len(de_esta):
+                cuantas.append(nombre_prop)
+            elif con > 0:
+                cuantas.append(f"{nombre_prop}({con})")
+
+        print(f"#  propiedades: {', '.join(cuantas) if cuantas else 'ninguna'}")
         print(f"# {'-' * 74}")
 
         for p in de_esta:
-            print(";".join([p[0], p[1], fmt(p[2]), fmt(p[3]), fmt(p[4]),
-                            fmt(p[5]), fmt(p[6]), fmt(p[7]), fmt(p[8])]))
+            campos = [p[0], p[1], fmt(p[2]), fmt(p[3]), fmt(p[4]),
+                      fmt(p[5]), fmt(p[6]), fmt(p[7]), fmt(p[8])]
+            campos += [fmt(v) for v in p[10]]
+
+            print(";".join(campos))
 
     # ------------------------------------------------------------------
     #  El informe, por la salida de errores para no ensuciar el CSV
@@ -618,6 +838,30 @@ def main(argv):
 
         if len(avisos) > 40:
             print(f"   ... y {len(avisos) - 40} mas", file=sys.stderr)
+
+    # ------------------------------------------------------------------
+    #  Las propiedades que no cuadran entre ellas
+    # ------------------------------------------------------------------
+    if avisos_props:
+        print(f"\n{len(avisos_props)} PROPIEDAD(ES) QUE NO CUADRAN, de "
+              f"{len(perfiles)} perfiles.", file=sys.stderr)
+        print("Estos perfiles SI se dibujan: lo que no cuadra es una propiedad que solo",
+              file=sys.stderr)
+        print("se muestra, no una medida. Pero conviene mirar esas celdas de la hoja,",
+              file=sys.stderr)
+        print("porque el numero se va a ver en la tabla y es creible:", file=sys.stderr)
+        print(file=sys.stderr)
+
+        # Se listan TODAS, sin cortar: cada una es una celda que hay que ir a mirar, y una
+        # lista recortada obliga a volver a correr el convertidor para ver el resto.
+        for a in avisos_props:
+            print("   - " + a, file=sys.stderr)
+
+        print("\nSe cotejan por fisica: peso = area x 7.85 g/cm3, r = raiz(I/area) y",
+              file=sys.stderr)
+        print("Z >= S. En los tubos el peso va con la pared nominal y el area con la de",
+              file=sys.stderr)
+        print("diseño (0.93 t), y eso ya esta contado.", file=sys.stderr)
 
     return 0
 

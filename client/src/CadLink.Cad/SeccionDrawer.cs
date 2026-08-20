@@ -1727,8 +1727,7 @@ public sealed partial class SeccionDrawer
         List<object> contorno, List<double[]> quads,
         double bx, double by, double rIn, double rOut,
         double nx, double ny, double ux, double uy, double largo,
-        bool recortar, double xIni, double yIni,
-        bool sinLineaInterior = false)
+        bool recortar, double xIni, double yIni)
     {
         var piX = bx + (rIn * nx);
         var piY = by + (rIn * ny);
@@ -1746,15 +1745,13 @@ public sealed partial class SeccionDrawer
             poY = yIni;
         }
 
-        // La línea de la cara que da a la varilla puede no dibujarse. La usa el gancho
-        // del diamante: allí el doblez se lee como una pieza que pasa POR ENCIMA de la
-        // varilla, y esa línea, que nace pegada al acero de la varilla, cortaba el
-        // doblez por dentro y rompía esa lectura.
-        if (!sinLineaInterior)
-        {
-            Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));
-        }
-
+        // Las TRES líneas de la cola, siempre: la cara que da a la varilla, la de fuera y
+        // la punta que las cierra.
+        //
+        // Hubo un parámetro para saltarse la primera, que usaba el gancho del diamante. Se
+        // quitó a pedido del usuario: eran las dos líneas que le faltaban al gancho del
+        // diamante, una por cola. La cola de un gancho tiene sus tres líneas y punto.
+        Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));
         Agregar(contorno, Linea(poX, poY, qoX, qoY, "ESTRIBOS"));
         Agregar(contorno, Linea(qiX, qiY, qoX, qoY, "ESTRIBOS"));
 

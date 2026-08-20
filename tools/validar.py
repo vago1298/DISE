@@ -2300,13 +2300,14 @@ def v16_extruida_piers() -> None:
     # El rotulo cuelga debajo del bloque insertado. En el alzado vertical debajo esta
     # la seccion, y en la segunda cara de una columna rectangular esta el alzado de la
     # primera: sin abrir hueco, el rotulo cae dentro de uno o de otro.
-    # 0.10: el hueco sobre la seccion ya solo carga el CORTE A-A'. Valio 0.46 mientras
-    # el rotulo colgaba del pie del alzado; al mover el rotulo bajo el bloque de la
-    # SECCION esos 46 cm sobraban y dejaban media banda vacia entre las dos filas.
+    # 0.19: el hueco sobre la seccion carga DOS cosas, la cota de la base del bloque y el
+    # CORTE A-A' encima de ella. Valio 0.46 mientras el rotulo colgaba del pie del alzado,
+    # bajo a 0.10 al mover el rotulo bajo el bloque de la SECCION, y ha vuelto a subir a
+    # 0.19 al aparecer la cota, que empuja el CORTE de 15 a 24 cm.
     check("hay una constante para el aire sobre la seccion",
-          "public const double AireRotuloAlzado = 0.10;" in lay)
-    check("y la cuenta del aire es la del CORTE A-A'",
-          "CORTE A-A'" in lay)
+          "public const double AireRotuloAlzado = 0.19;" in lay)
+    check("y la cuenta del aire es la del CORTE A-A' y su cota",
+          "CORTE A-A'" in lay and "AltoCotaCorte" in lay)
 
     check("la segunda cara tiene su calculo en el layout",
           "public static double YSegundaCara(" in lay)
@@ -2323,10 +2324,55 @@ def v16_extruida_piers() -> None:
     # El rotulo se LLAMA, no solo se declara: renombrar el metodo dejaba pasar el
     # check anterior porque el texto seguia en el archivo.
     check("el CORTE A-A' se dibuja de verdad",
-          "RotuloCorte(x + (ancho / 2), y + alto);" in alz2)
+          "RotuloCorte(x + (ancho / 2), y + alto + (AltoCotaCorte * _f));" in alz2)
+
+    # ------------------------------------------------------------------
+    # EL BLOQUE DE SECCION INSERTADO SE ACOTA
+    # ------------------------------------------------------------------
+    # Esto faltaba, y faltaba por algo que no se ve: la seccion de concreto SI se acota
+    # cuando se dibuja en su propia hoja, pero esas cotas NO ENTRAN AL BLOQUE, porque
+    # SeccionDrawer.Bloquear se salta a proposito todo lo que este en las capas COTAS y
+    # ROTULOS. Asi que al insertar el mismo bloque como CORTE A-A' junto a su alzado,
+    # llegaba sin una sola cota: se veia la seccion pero no cuanto medía, con el alzado al
+    # lado completamente acotado.
+    check("las cotas y el rotulado NO entran al bloque de la seccion",
+          'string.Equals(capa, "COTAS", StringComparison.OrdinalIgnoreCase)'
+          in leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs")))
+
+    check("por eso el alzado acota el bloque insertado",
+          "private void CotasDelCorte(" in alz2
+          and "CotasDelCorte(x, y, ancho, alto);" in alz2)
+
+    check("y acota su CAJA REAL, no las medidas capturadas",
+          "var caja = Caja(br);" in alz2 and "mx[0] - mn[0]" in alz2)
+
+    check("la base va arriba y la altura a la derecha, como en la macro",
+          "x + (ancho / 2), y + alto + off" in alz2
+          and "x + ancho + off, y + (alto / 2)" in alz2)
+
+    # Con el texto VACIO, o sea con el numero que mide AutoCAD: las demas cotas del
+    # alzado llevan TextOverride con rotulos de armado, que es otra cosa.
+    m_cotas_corte = re.search(
+        r"private void CotasDelCorte\(.*?\n    \}", alz2, re.S)
+
+    check("se puede leer CotasDelCorte", m_cotas_corte is not None)
+
+    if m_cotas_corte:
+        cuerpo = m_cotas_corte.group(0)
+
+        check("las dos cotas del corte muestran el numero medido, no un rotulo",
+              cuerpo.count("string.Empty") == 2)
+        check("y una va girada, que es la de la altura",
+              cuerpo.count("true);") == 1 and cuerpo.count("false);") == 1)
+        check("un bloque sin caja no se acota",
+              "if (ancho <= 0 || alto <= 0)" in cuerpo)
 
     check("hay comprobacion de la colocacion contra el VBA",
           os.path.exists(ruta("tools/verificar_layout_alzados.py")))
+
+    check("y de que la cota del corte cabe debajo del CORTE A-A'",
+          "la cota de la base cabe por debajo del CORTE"
+          in leer(ruta("tools/verificar_layout_alzados.py")))
 
     # ------------------------------------------------------------------
     # 0b. Modulo nuevo: dibujar planos estructurales
@@ -3649,11 +3695,14 @@ def v19_circular_y_ui() -> None:
         check("la tangencia es el extremo del tramo que esta sobre la varilla",
               "var tang = d1 <= d2 ? ext1 : ext2;" in cuerpo)
 
-        # Y la LINEA interior de las colas se va por lo mismo que el arco interior: nace
-        # pegada al acero de la varilla, cuya circunferencia ya esta dibujada.
-        check("ni la linea interior de las colas",
-              "sinLineaInterior: true" in cuerpo)
-        check("pero el doblez si se rellena",
+        # PERO LAS COLAS VAN ENTERAS, con sus tres lineas cada una.
+        #
+        # Hubo una version que les quitaba la linea interior -la que nace pegada a la
+        # varilla-, con el argumento de que el doblez pasa por encima de la varilla. El
+        # usuario lo rechazo: eran DOS lineas que le faltaban al gancho, una por cola.
+        check("las colas del diamante van con sus tres lineas",
+              "sinLineaInterior" not in cuerpo)
+        check("y el doblez se rellena",
               "sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });"
               in cuerpo)
 
@@ -3676,50 +3725,33 @@ def v19_circular_y_ui() -> None:
         check("y las dos se le pasan a la misma Cola del rectangular",
               "arranque is not null, arranque?.X ?? 0, arranque?.Y ?? 0" in cuerpo)
 
-        # Y debajo del brazo de arriba se ABRE la linea interior de la cinta, que si no le
-        # cruzaba por dentro: en el plano parecia que la diagonal cortaba el gancho.
-        check("la cinta se abre bajo el brazo de arriba",
-              "AbrirCintaBajoLaCola(" in cuerpo)
-        check("la cinta vieja se borra solo si la nueva se creo",
-              "if (cintaAbierta is not null)" in cuerpo
-              and "Borrar(_diamInt);" in cuerpo
-              and "_diamInt = cintaAbierta;" in cuerpo)
+        # Y LA CINTA DEL DIAMANTE SE DEJA ENTERA.
+        #
+        # Hubo una version que le abria un hueco a la linea interior por donde el brazo del
+        # gancho le pasa por encima, para que en el plano no pareciera que la diagonal
+        # cortaba el gancho. El usuario la rechazo: al estribo no le falta ningun tramo.
+        check("la cinta del diamante se deja entera",
+              "AbrirCintaBajoLaCola(" not in cuerpo)
 
         # Y la cola se recorta si no cabe en el nucleo.
         check("la cola del diamante se recorta si no cabe",
               "gancho = tope;" in cuerpo)
 
-    m_abrir = re.search(r"private object\? AbrirCintaBajoLaCola\(.*?\n    \}", diam, re.S)
+    # Y no queda NADA de la apertura: ni el metodo, ni sus dos recortes, ni la polilinea
+    # abierta, ni su tope. Codigo muerto en un archivo que se lee es peor que no tenerlo.
+    # Se busca la DECLARACION, no el nombre: el comentario que explica por que se quito
+    # menciona el metodo, y tiene que poder hacerlo.
+    for muerto in ("AbrirCintaBajoLaCola", "RecorteDeLaCola", "RecorteDelDoblez",
+                   "PolilineaAbierta"):
+        check(f"no queda el metodo {muerto}",
+              not re.search(r"private [\w<>?,\.\( ]*\b" + muerto + r"\(", diam))
 
-    check("se puede leer AbrirCintaBajoLaCola", m_abrir is not None)
-    if m_abrir:
-        abr = m_abrir.group(0)
+    check("ni el tope del hueco que ya no se abre",
+          "FraccionMaxHuecoCinta" not in diam)
 
-        # Se mira lo que tapa el gancho, que son DOS piezas. Con solo la cola, el hueco
-        # empezaba en la perpendicular a la varilla y dejaba un rabito de linea justo
-        # encima de ella; y en una columna alta la cola no llega a cruzar la diagonal, asi
-        # que no se abria nada aunque el doblez la tapara igual.
-        check("el hueco mira lo que tapan la cola Y el doblez",
-              "RecorteDeLaCola(" in abr and "RecorteDelDoblez(" in abr)
-        check("y si el gancho no tapa nada, no abre nada",
-              "pieza1 is null && pieza2 is null" in abr)
-
-        # El hueco lleva tope, como el recorte del estribo: mas vale una linea cruzando
-        # que media diagonal borrada.
-        check("el hueco lleva tope de seguridad",
-              "FraccionMaxHuecoCinta" in abr and "no se abrió la línea interior" in abr)
-        check("y la cinta se vuelve a montar con TODOS sus vertices",
-              "for (var k = 1; k <= m; k++)" in abr
-              and "nuevosBulges.Add(bulges[v]);" in abr)
-        check("la cinta nueva va abierta, no cerrada",
-              "PolilineaAbierta(" in abr and "pl.Closed = false;" in diam)
-
-    check("el recorte contra el rectangulo de la cola son cuatro semiplanos",
-          "private static (double S0, double S1)? RecorteDeLaCola(" in diam
-          and "Nx: -ux, Ny: -uy" in diam)
-    check("y el del doblez es el disco de rOut mas la media vuelta",
-          "private static (double S0, double S1)? RecorteDelDoblez(" in diam
-          and "(fx * ux) + (fy * uy)" in diam)
+    check("y se dice por que se quito, no se borra en silencio",
+          "LA CINTA DEL DIAMANTE SE DEJA ENTERA" in diam
+          and "a pedido del usuario" in diam)
 
     m_sal = re.search(
         r"private static \(double X, double Y\)\? SalidaDelAceroDelDiamante\(.*?\n    \}",
@@ -3750,28 +3782,40 @@ def v19_circular_y_ui() -> None:
         check("y devuelve el vertice, que es lo que hace falta para abrir la cinta",
               "(2 * previo) + 1" in tra and "(2 * iBarra) + 1" in tra)
 
-    check("el recorte, el arco y el hueco usan el mismo tramo",
-          diam.count("TramoDeLaCinta(") >= 4)
+    check("el recorte y el arco usan el mismo tramo",
+          diam.count("TramoDeLaCinta(") >= 3)
 
-    # La Cola compartida con el estribo rectangular tiene que saber saltarse la linea
-    # interior, y SOLO esa: el gancho del rectangular la sigue dibujando.
+    # La Cola es UNA para los dos ganchos, el del rectangular y el del diamante, y dibuja
+    # sus TRES lineas siempre. El parametro para saltarse la interior se quito.
     dib = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
 
-    check("la Cola compartida admite dibujarse sin la linea interior",
-          "bool sinLineaInterior = false)" in dib)
-    check("y lo que se salta es SOLO la linea interior",
-          "if (!sinLineaInterior)\n        {\n            Agregar(contorno, "
-          "Linea(piX, piY, qiX, qiY, \"ESTRIBOS\"));" in dib)
-    check("el gancho del rectangular sigue con su linea interior",
+    check("la Cola dibuja sus tres lineas, sin excepciones",
+          "sinLineaInterior" not in dib
+          and 'Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));' in dib)
+    check("el gancho del rectangular sigue igual",
           "Cola(contorno, quads, bx, by, rIn, rOut, Rt2I, -Rt2I, ux, uy, gancho, "
           "false, 0, 0);" in dib)
 
+    gancho_py = leer(ruta("tools/verificar_gancho_diamante.py"))
+
     check("hay comprobacion numerica de la direccion de la cola del diamante",
-          "Direccion de la cola del gancho del diamante"
-          in leer(ruta("tools/verificar_gancho_diamante.py")))
+          "Direccion de la cola del gancho del diamante" in gancho_py)
     check("y de que ninguna linea del gancho queda dentro del acero del diamante",
-          "NINGUNA LINEA DEL GANCHO DEBE QUEDAR DENTRO DEL ACERO"
-          in leer(ruta("tools/verificar_gancho_diamante.py")))
+          "NINGUNA LINEA DEL GANCHO DEBE QUEDAR DENTRO DEL ACERO" in gancho_py)
+
+    # Y esa comprobacion cuenta las TRES lineas de cada cola, que es lo que se recupero:
+    # mientras porto la version que se saltaba la interior, daba OK a un gancho al que le
+    # faltaban dos lineas.
+    check("la comprobacion del gancho cuenta las tres lineas de cada cola",
+          "cada cola va con sus tres lineas" in gancho_py
+          and "es tangente a la varilla" in gancho_py)
+    check("y ya no porta el hueco de la cinta, que no se abre",
+          "hueco_de_la_cinta" not in gancho_py
+          and "def recorte_de_la_cola(" not in gancho_py
+          and "FRACCION_MAX_HUECO" not in gancho_py)
+    check("lo que el brazo tapa de la cinta se informa, no se exige",
+          "ESTO SE INFORMA, NO SE EXIGE" in gancho_py
+          and "la cinta se deja ENTERA" in gancho_py)
 
     check("hay comprobacion numerica del gancho del zuncho",
           "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
@@ -3890,6 +3934,33 @@ def v19_circular_y_ui() -> None:
 
     check("hay documento de cotejo con la macro",
           os.path.exists(ruta("docs/comparacion-macro-alzados.md")))
+
+    # Y el documento explica las cotas del bloque de seccion, incluido lo que NO esta
+    # bien de ellas: muestran metros, como el resto de las cotas del concreto. Un
+    # documento que solo cuenta lo que salio bien no sirve para revisar el plano.
+    cotejo_alz = leer(ruta("docs/comparacion-macro-alzados.md"))
+
+    check("el cotejo explica las cotas del bloque de seccion",
+          "El bloque de sección del alzado va acotado" in cotejo_alz
+          and "CotasDelCorte(x, y, ancho, alto)" in cotejo_alz)
+    check("y dice que van fuera del bloque, y por que",
+          "excluye las capas COTAS y" in cotejo_alz)
+    check("y que el aire sobre la seccion subio de 0.10 a 0.19",
+          "de **0.10 a 0.19**" in cotejo_alz)
+    check("y avisa de que muestran metros, como las del concreto",
+          "**Muestran metros**" in cotejo_alz and "0.30" in cotejo_alz)
+
+    # Y el del concreto explica el gancho del diamante, con las TRES cosas que se
+    # probaron y se revirtieron: es lo que evita reintentarlas.
+    doc_conc = leer(ruta("docs/macro-secciones-concreto.md"))
+
+    check("el documento del concreto explica el gancho del diamante",
+          "las dos colas enteras y la cinta entera" in doc_conc
+          and "sus **tres líneas**" in doc_conc)
+    check("y las tres cosas que se probaron y se revirtieron",
+          "las tres se revirtieron" in doc_conc
+          and "dos líneas que le faltaban al gancho" in doc_conc
+          and "1.87 cm" in doc_conc)
 
     # ------------------------------------------------------------------
     # «Esa propiedad no existe» no es un fallo del dibujo
@@ -4544,6 +4615,16 @@ def v20_estaticos_sin_cualificar() -> None:
             if m_var:
                 miembros_de.setdefault(clase_en(i), set()).add(m_var.group(1))
 
+            #   2b. EL NOMBRE DE UN TIPO ANIDADO. En
+            #          public sealed record Circulo(double Cx, double Cy, double R);
+            #      dentro de TrazoAcero, el 'Circulo' es una declaracion, no un uso, y se
+            #      reportaba contra el Circulo de Perfil2D.
+            m_tipo = re.match(
+                r"^\s+(?:public|private|protected|internal)[\w\s]*?"
+                r"\b(?:class|record|struct|interface|enum)\s+(\w+)", l)
+            if m_tipo:
+                miembros_de.setdefault(clase_en(i), set()).add(m_tipo.group(1))
+
             #   3. PARAMETROS, incluidos los POSICIONALES DE UN RECORD, que son
             #      propiedades. En
             #          public sealed record PerfilCatalogo(
@@ -4564,6 +4645,19 @@ def v20_estaticos_sin_cualificar() -> None:
                 for m_par in re.finditer(
                         r"\b[\w<>,?\[\]\.]+\s+(\w+)\s*(?=[,)])", l):
                     miembros_de.setdefault(clase_en(i), set()).add(m_par.group(1))
+
+                # Y los parametros CON VALOR POR DEFECTO, que no acaban en coma ni en
+                # parentesis sino en un '='. Es lo que tiene el record de propiedades:
+                #     public sealed record PropiedadesPerfil(
+                #         double? PesoKgM = null,
+                #         double? AreaCm2 = null,
+                # y el 'AreaCm2' se reportaba contra el AreaCm2 de la clase Varilla,
+                # siendo su propia declaracion. Se pide un tipo y un nombre separados por
+                # espacio, asi que un 'Familia = familia,' de un inicializador de objeto
+                # -que solo tiene un nombre antes del '='- no cae aqui.
+                for m_def in re.finditer(
+                        r"\b[\w<>,?\[\]\.]+\s+(\w+)\s*=\s*[^=]", l):
+                    miembros_de.setdefault(clase_en(i), set()).add(m_def.group(1))
 
             # Propiedades y campos, a CUALQUIER sangria de 4 o mas. Con 4 exactos se
             # perdian los de las clases anidadas, que van a 8: por eso el 'XSeccion'
@@ -5496,6 +5590,94 @@ def v21_separacion_y_acero() -> None:
         check("y dice que columna usa cada familia",
               "el peralte es el DIAMETRO" in tab)
 
+        # ---------------------------------------------------------------
+        # Las columnas de propiedades geometricas
+        # ---------------------------------------------------------------
+        # Son las 16 que trae el manual. Van al FINAL y son de solo lectura: no se
+        # capturan, salen del catalogo. Se comprueba una por una porque el que falte
+        # una no se nota mirando la tabla -las 15 que quedan se ven bien- y es justo
+        # la que hace falta para revisar un perfil.
+        propiedades = (
+            "PesoKgM", "AreaCm2", "IxCm4", "SxCm3", "ZxCm3", "RxCm",
+            "IyCm4", "SyCm3", "ZyCm3", "RyCm", "RminCm", "JCm4", "CwCm6",
+            "IxyCm4", "XbarCm", "YbarCm")
+
+        for prop in propiedades:
+            check(f"la tabla de acero trae la propiedad {prop}",
+                  f"Binding Propiedades.{prop}," in tab)
+
+        # Y todas de solo lectura: son un dato del manual, no algo que se teclee.
+        col_props = re.findall(
+            r"<DataGridTextColumn[^>]*Binding=\"\{Binding Propiedades\.[^}]*\}\""
+            r"[^/]*/>", tab)
+
+        check("las 16 columnas de propiedades estan en el XAML",
+              len(col_props) == 16, f"{len(col_props)} columnas")
+        check("y todas son de solo lectura",
+              all('IsReadOnly="True"' in c for c in col_props))
+        check("y se ven como celda calculada, no como celda que se captura",
+              all("CeldaCalculada" in c for c in col_props))
+
+        # ---------------------------------------------------------------
+        # La vista previa de la forma
+        # ---------------------------------------------------------------
+        # Lo mismo que en concreto: la tabla dice numeros y el perfil se dibuja con
+        # una FORMA, asi que un espesor mal capturado no se ve en la tabla y si en el
+        # dibujo.
+        check("la pestaña de acero tiene su vista previa",
+              'x:Name="AceroPreviewCanvas"' in tab)
+        check("y la vista previa recorta lo que se sale",
+              re.search(r'x:Name="AceroPreviewCanvas".*?ClipToBounds="True"',
+                        tab, re.S) is not None)
+        check("y la tabla dejo su renglon para que quepa",
+              'x:Name="AceroGrid" Grid.Row="1"' in tab
+              and 'Grid.Row="2" Height="240"' in tab)
+
+    check("la vista previa de acero se engancha al arrancar",
+          "private void EngancharVistaPreviaAcero()" in acero_cb
+          and "EngancharVistaPreviaAcero();" in codigo)
+    check("existe el dibujo de la vista previa de acero",
+          "private void DibujarVistaPreviaAcero()" in acero_cb)
+    check("se redibuja al cambiar de fila y al cambiar de tamaño",
+          "AceroGrid.SelectionChanged += (_, _) => DibujarVistaPreviaAcero();" in acero_cb
+          and "AceroPreviewCanvas.SizeChanged += (_, _) => DibujarVistaPreviaAcero();"
+          in acero_cb)
+
+    # EN TIEMPO REAL: al editar una celda se vuelve a dibujar, pero SOLO si la fila
+    # editada es la que se esta viendo. Sin esa condicion, editar una fila de arriba
+    # cambiaba el dibujo de la de abajo.
+    m_edit = re.search(
+        r"private void OnFilaAceroEditada\(.*?\n    \}", acero_cb, re.S)
+
+    check("se puede leer OnFilaAceroEditada", m_edit is not None)
+
+    if m_edit:
+        edicion = m_edit.group(0)
+
+        check("editar una celda redibuja la vista previa",
+              "DibujarVistaPreviaAcero();" in edicion)
+        check("y solo si la fila editada es la que se esta viendo",
+              "ReferenceEquals(sender, AceroGrid.SelectedItem)" in edicion)
+
+    # La geometria NO se calcula aqui: sale de TrazoAcero, que es el mismo calculo que
+    # usa el dibujante de AutoCAD. Una vista previa con su propia cuenta puede acabar
+    # enseñando algo distinto de lo que se dibuja, que es justo lo que no puede hacer.
+    check("la vista previa usa la geometria del dibujante",
+          "TrazoAcero.De(" in acero_cb and "TrazoAcero.Muestrear(" in acero_cb)
+    check("y no se calcula ningun vertice a mano en la vista previa",
+          "Math.Cos(" not in acero_cb and "Math.Tan(" not in acero_cb)
+
+    # El hueco del tubo tiene que ser HUECO, no del color del fondo: si se pinta del
+    # color del fondo, al cambiar el tema deja de ser hueco y se ve el relleno.
+    check("el hueco del tubo es hueco de verdad",
+          "new GeometryGroup { FillRule = FillRule.EvenOdd }" in acero_cb)
+
+    # Y cuando no se puede dibujar se DICE por que, en vez de dejar el cuadro vacio.
+    check("la vista previa avisa cuando no puede dibujar",
+          "private void AvisoVistaAcero(string texto)" in acero_cb
+          and "Selecciona un perfil de la tabla" in acero_cb
+          and "No se puede dibujar todavía: falta" in acero_cb)
+
     for col in ("ColFamilia", "ColElementoAcero", "ColClasificacion", "ColAcero"):
         check(f"la columna {col} esta en el XAML", f'x:Name="{col}"' in xaml)
         check(f"y su lista se llena en el code-behind ({col})",
@@ -5586,9 +5768,42 @@ def v21_separacion_y_acero() -> None:
           "no se reconoce" in acero_cad
           and "FormaAcero.Todas.Contains(p.Forma)" in acero_cad)
 
-    # Las cinco formas que no tenian macro.
-    for metodo in ("PerfilTe", "PerfilCanal", "PerfilAngulo", "PerfilZeta", "PerfilOs"):
-        check(f"existe {metodo}", f"private void {metodo}(" in acero_cad)
+    # ------------------------------------------------------------------
+    # LA GEOMETRIA VIVE APARTE, EN TrazoAcero
+    # ------------------------------------------------------------------
+    # Y no es orden por el orden: es lo que hace que la VISTA PREVIA de la pantalla y el
+    # dibujo de AutoCAD salgan del MISMO calculo. Con los vertices dentro del dibujante, la
+    # vista previa tendria que repetirlos, y una vista previa que calcula la forma por su
+    # cuenta puede acabar enseñando algo distinto de lo que se dibuja.
+    trazo = leer(ruta("client/src/CadLink.Cad/TrazoAcero.cs"))
+
+    check("la geometria de los perfiles vive en TrazoAcero",
+          "public static class TrazoAcero" in trazo
+          and "public static Trazo? De(" in trazo)
+
+    # Las siete formas poligonales, cada una con su funcion de vertices.
+    for metodo in ("PerfilI", "PerfilTe", "PerfilCanal", "PerfilAngulo", "PerfilCf",
+                   "PerfilZeta", "TuboRectangular"):
+        check(f"TrazoAcero sabe hacer {metodo}",
+              f"{metodo}(" in trazo and f"private static " in trazo)
+
+    check("y las dos redondas salen como circunferencias",
+          "CircExterior: new Circulo(" in trazo)
+
+    check("el dibujante ya NO tiene vertices: se los pide a TrazoAcero",
+          "TrazoAcero.De(p, x, yAbajo, _escala, espejo)" in acero_cad
+          and "private void Trazar(TrazoAcero.Trazo trazo" in acero_cad)
+
+    check("y no queda ninguna funcion de vertices en el dibujante",
+          not any(f"private void {m}(" in acero_cad
+                  for m in ("PerfilI", "PerfilTe", "PerfilCanal", "PerfilAngulo",
+                            "PerfilCf", "PerfilZeta", "PerfilOr", "PerfilOc",
+                            "PerfilOs")))
+
+    # El hueco del tubo es una ISLA del rayado, no un agujero: en AutoCAD un hatch con isla
+    # deja sin rellenar lo que la isla encierra, que es lo que hace que un tubo se vea tubo.
+    check("el hueco del tubo entra como isla del rayado",
+          "interior is null ? null : new List<object> { interior }" in acero_cad)
 
     # El DTO no interpreta nada: llega todo resuelto.
     check("el DTO lleva el ancho que ocupa el dibujo",
@@ -5599,7 +5814,7 @@ def v21_separacion_y_acero() -> None:
     # Las nueve formas se rayan por el mismo camino, que es el que decide el rayado de
     # cada una: nadie llama a Hatch por su cuenta con colores escritos a mano.
     check("las nueve formas se rayan por el mismo camino",
-          acero_cad.count("RayarPerfil(") >= 5)
+          acero_cad.count("RayarPerfil(") >= 3)
 
     # El corte de las cinco pulgadas es de la macro del HSS, y SOLO la afecta a ella.
     check("el corte de las 5 pulgadas es solo del tubo rectangular",
@@ -5659,9 +5874,9 @@ def v21_separacion_y_acero() -> None:
 
     # Los radios del CF se recortan a lo que cabe, como en la macro.
     check("el radio exterior del CF se recorta",
-          "var rExt = Math.Min(ri, Math.Min(b / 2, Math.Min(lip, h / 2)));" in acero_cad)
+          "Math.Min(ri, Math.Min(b / 2, Math.Min(lip, h / 2)))" in trazo)
     check("y el interior es la mitad, recortada por su cuenta",
-          "var rInt = Math.Min(ri / 2, rIntMax);" in acero_cad)
+          "Math.Min(ri / 2, rIntMax)" in trazo)
 
     # El peralte del OR es el lado mayor: un tubo capturado al reves es el mismo tubo. Y
     # ahora eso lo dice EL HUECO tambien, no solo el trazo: antes el trazo se volteaba y
@@ -5683,10 +5898,10 @@ def v21_separacion_y_acero() -> None:
     # salen a lados contrarios: con los dos al mismo lado -que es como estaba- el
     # contorno de abajo se devolvia sobre si mismo y el rayado salia por fuera.
     check("el radio interior de la zeta es el exterior menos el espesor",
-          "var rInt = Math.Max(0, rExt - t);" in acero_cad)
+          "var rInt = Math.Max(0, rExt - t);" in trazo)
     check("y sus dos dobleces interiores van a distinto lado del alma",
-          "X(xAlmaDer + rInt), yt - t - rInt, 3, 4" in acero_cad
-          and "X(xAlmaIzq - rInt), y0 + t + rInt, 9, 10" in acero_cad)
+          "X(xAlmaDer + rInt), yt - t - rInt, 3, 4" in trazo
+          and "X(xAlmaIzq - rInt), y0 + t + rInt, 9, 10" in trazo)
     check("hay comprobacion de que el contorno de la zeta no se cruza",
           "def se_cruza(pts" in leer(ruta("tools/verificar_perfiles_acero.py")))
     check("y de que sus arcos son concentricos",
@@ -5702,10 +5917,9 @@ def v21_separacion_y_acero() -> None:
     # hatch, que es lo que hacia la macro. Ahora el trazo con dobleces esta compartido
     # con la zeta, que es la otra forma que lleva radios.
     check("las formas con dobleces se trazan con una sola polilinea",
-          "private void TrazarPerfilConDobleces(" in acero_cad
-          and "PolilineaConBulges(pts, lista, CapaPerfiles)" in acero_cad)
+          "PolilineaConBulges(c.Puntos, lista, CapaPerfiles)" in acero_cad)
     check("el bulge sale del barrido real, asi el espejo se resuelve solo",
-          "private static double BulgeDesdeCentro(" in acero_cad)
+          "public static double BulgeDesdeCentro(" in trazo)
 
 
 
@@ -5720,6 +5934,19 @@ def v21_separacion_y_acero() -> None:
           all(t in perfiles_py for t in ("CF: la canal formada en frio", "WT: la te",
                                          "C: la canal laminada", "L: el angulo",
                                          "ZF: la zeta", "OS: el redondo macizo")))
+
+    # Y el acomodo se prueba con el CATALOGO ENTERO, que es la hoja mas grande que se
+    # puede pedir: 1617 secciones, ni una pisando a la de abajo. La separacion y el
+    # origen los LEE del codigo, asi que cambiar la constante y no el script se nota.
+    check("el acomodo se comprueba con el catalogo entero",
+          "El acomodo: una seccion por renglon, con el CATALOGO ENTERO" in perfiles_py
+          and "ninguna de las 1617 secciones se pisa con la de abajo" in perfiles_py)
+    check("y la separacion y el origen se leen del codigo, no se copian",
+          "const double SeparacionEntreSeccionesCm = (-?[\\d.]+);" in perfiles_py
+          and "const double OrigenAceroCm = (-?[\\d.]+);" in perfiles_py)
+    check("ya no queda ninguna banda por familia en la comprobacion",
+          "SEPARACION_BANDAS" not in perfiles_py
+          and "bandas_calculadas" not in perfiles_py)
 
     # Y una vista de las nueve, porque las comprobaciones numericas dicen si la geometria
     # se sostiene pero no si el perfil se PARECE a lo que tiene que parecer: un area
@@ -5747,9 +5974,26 @@ def v21_separacion_y_acero() -> None:
     check("el acero empieza en -60 cm, el -0.6 de las macros",
           "OrigenAceroCm = -60" in acero_cb)
     check("y crece hacia la izquierda",
-          "var xIzquierda = xDerecha - ancho;" in acero_cb)
+          "var xIzquierda = xDerecha - (perfil.AnchoDibujoCm * escala);" in acero_cb)
     check("ya no arranca donde acabe el concreto",
           "dibujante.PosicionInicialX()" not in acero_cb)
+
+    # TODAS LAS SECCIONES EN LA MISMA X, una por renglon.
+    #
+    # Las macros ponian los perfiles de una familia uno al lado del otro hacia la
+    # izquierda. Con los nombres del catalogo IMCA eso no se sostiene: el rotulo va
+    # centrado debajo de cada seccion y mide casi un metro, asi que los rotulos se
+    # pisaban aunque los perfiles no se tocaran.
+    check("la x de la derecha se fija en el origen para CADA seccion",
+          acero_cb.count("var xDerecha = OrigenAceroCm * escala;") == 1
+          and re.search(r"foreach \(var fila in grupo\)(.|\n)*?"
+                        r"var xDerecha = OrigenAceroCm \* escala;", acero_cb) is not None)
+
+    check("ya no se avanza en x de una seccion a la siguiente",
+          "xDerecha = xIzquierda - aire" not in acero_cb)
+
+    check("y ya no hay aire horizontal por familia",
+          "AireDeLaFamiliaCm" not in acero_cb)
 
     # El hueco se avanza tambien para los saltados: si no, al redibujar una hoja con
     # dos perfiles ya hechos, los otros dos caerian justo encima de ellos.
@@ -5760,70 +6004,55 @@ def v21_separacion_y_acero() -> None:
     if m_export:
         cuerpo_exp = m_export.group(0)
 
-        check("el hueco se avanza siempre, tambien para los saltados",
-              "xDerecha = xIzquierda - aire;" in cuerpo_exp
-              and cuerpo_exp.count("xDerecha = xIzquierda") == 1)
+        check("el RENGLON se avanza siempre, tambien para las saltadas",
+              "yCm += perfil.AltoDibujoCm + SeparacionEntreSeccionesCm;" in cuerpo_exp
+              and cuerpo_exp.count("yCm +=") == 1)
         check("y el saltado solo se descuenta del conteo",
               "if (dibujante.Saltadas.Count == saltadasAntes)" in cuerpo_exp)
 
         # CADA FAMILIA EN SU BANDA. Las cuatro macros arrancan en la misma x, asi que lo
         # unico que evita que se encimen es la Y: baseY 0 el IR, 2.0 el OR, 3.5 el CF y
         # 5.0 el OC. Sin esto, las cuatro familias caian una encima de otra.
-        check("se agrupa por familia para recorrer banda por banda",
+        check("se agrupa por familia para recorrerlas juntas",
               "GroupBy(f => f.Familia)" in cuerpo_exp)
-        check("y cada familia se dibuja a la altura que le toca",
-              "var y = yCm * escala;" in cuerpo_exp
-              and "DibujarAcero(perfil, xIzquierda, y)" in cuerpo_exp)
-        check("con el aire que le toca a esa familia",
-              "AireDeLaFamiliaCm(grupo.Key)" in cuerpo_exp)
+        check("y cada seccion se dibuja a la altura de su renglon",
+              "DibujarAcero(perfil, xIzquierda, yCm * escala)" in cuerpo_exp)
 
-        # LA ALTURA DE CADA BANDA SE CALCULA: un metro por encima de la seccion MAS ALTA
-        # de la familia de abajo. Antes eran cuatro numeros fijos venidos de las macros, y
-        # con doce familias esa tabla no hay manera de acertarla: para que no se encimen
-        # habria que reservarle a cada una el hueco de su perfil mas alto del catalogo, y
-        # la IS llega a 1.90 m, asi que una hoja de angulos quedaba con metros de papel
-        # vacio entre banda y banda.
-        check("la banda de la siguiente familia se calcula con la seccion mas alta",
-              "yCm += masAlto + SeparacionDeBandasCm;" in cuerpo_exp)
+        # CADA SECCION EN SU RENGLON, y el siguiente 70 cm por encima de la CIMA de esta.
+        # Antes eran cuatro alturas fijas por familia venidas de las macros, y los
+        # perfiles de una familia iban en fila hacia la izquierda.
         check("la primera arranca en cero, como la macro del IR",
               "var yCm = 0.0;" in cuerpo_exp)
         check("y se acumula el alto DIBUJADO, no el peralte capturado",
-              "masAlto = Math.Max(masAlto, perfil.AltoDibujoCm);" in cuerpo_exp)
+              "perfil.AltoDibujoCm + SeparacionEntreSeccionesCm" in cuerpo_exp)
 
-    # El aire de las DOCE familias, uno por uno. La banda ya no es una tabla, asi que no
-    # hay dos switch sobre la misma familia y basta con leer el bloque del aire.
-    bloque_aire = acero_cb.split("AireDeLaFamiliaCm")[-1].split("OrdenDeLaFamilia")[0]
+    # UNA SOLA separacion para las doce familias, en lugar de un aire por familia. Es lo
+    # que se gana al apilarlas: ya no hay que darle a cada una su propio hueco segun lo
+    # ancho que sea su rotulo, porque no hay nada al lado con lo que chocar.
+    check("la separacion entre secciones es de 70 cm",
+          "SeparacionEntreSeccionesCm = 70" in acero_cb)
 
-    AIRES_CB = (("Ir", "45"), ("Or", "55"), ("Oc", "60"), ("Cf", "65"),
-                ("Is", "45"), ("Ic", "45"), ("S", "50"), ("Wt", "55"),
-                ("C", "60"), ("Zf", "65"), ("L", "70"), ("Os", "70"))
-
-    for familia, aire in AIRES_CB:
-        check(f"el aire de {familia.upper()} es de {aire} cm",
-              f"FamiliaPerfil.{familia} => {aire}," in bloque_aire)
-
-    check("la separacion entre bandas es de un metro",
-          "SeparacionDeBandasCm = 100" in acero_cb)
-
-    check("y ya no queda tabla de alturas de banda",
+    check("y ya no queda tabla de alturas de banda ni aire por familia",
           "BandaDeLaFamiliaCm" not in acero_cb
           and "TechoDeLaBandaCm" not in acero_cb
-          and "MargenDeBandaCm" not in acero_cb)
+          and "MargenDeBandaCm" not in acero_cb
+          and "AireDeLaFamiliaCm" not in acero_cb)
 
-    check("las bandas se comprueban con el catalogo de verdad",
-          "las bandas, con el perfil mas alto de cada familia"
-          in leer(ruta("tools/verificar_perfiles_acero.py")))
+    check("el acomodo vertical se comprueba con el catalogo de verdad",
+          "el caso peor: la seccion mas alta de cada familia".lower()
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")).lower())
 
-    check("y se comprueba que entre banda y banda hay un metro justo",
-          "hay un metro justo" in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+    check("y se comprueba que entre seccion y seccion quedan los 70 cm",
+          "y entre ellas quedan los"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
 
     check("las familias se recorren en el orden de la lista, no en el de captura",
           "OrderBy(g => OrdenDeLaFamilia(g.Key))" in acero_cb)
 
-    # La altura de cada banda ya no se puede consultar en una tabla, asi que el programa
+    # La altura de cada seccion ya no se puede consultar en una tabla, asi que el programa
     # tiene que decir donde quedo cada familia: es la unica manera de saber donde buscar.
     check("se dice a que altura quedo cada familia",
-          "bandas.Add(" in acero_cb and "Cada familia en su banda" in acero_cb)
+          "bandas.Add(" in acero_cb and "una por renglón" in acero_cb)
 
     # ------------------------------------------------------------------
     # El catalogo de perfiles: las medidas NO se teclean
@@ -6031,8 +6260,11 @@ def v21_separacion_y_acero() -> None:
     # Un renglon como «PERFIL: IS - 225 mm x 12.7 mm / 750 mm x 9.5 mm» mide casi un
     # metro y el perfil que rotula, 22 cm: con el aire de la macro, dos secciones asi
     # quedan separadas pero sus rotulos se pisan.
-    check("el aire cuenta el ancho del rotulo de cada perfil",
-          "perfil.AnchoRotuloCm - perfil.AnchoDibujoCm + 10" in acero_cb)
+    # El ancho del rotulo ya no decide ningun aire horizontal -no hay nada al lado con lo
+    # que chocar-, pero si decide el ancho de su caja, que es lo que evita que un nombre de
+    # cuarenta y seis caracteres se parta en tres renglones.
+    check("el ancho de la caja del rotulo sale de su renglon mas largo",
+          "masLargo * AlturaRotuloCm * 0.6" in perfil_cad)
     check("hay comprobacion de que el nombre mas largo del IMCA no se parte",
           "sin partirlo" in leer(ruta("tools/verificar_perfiles_acero.py")))
 
@@ -6056,17 +6288,48 @@ def v21_separacion_y_acero() -> None:
           "proporcional al peralte" in audit and "0.64 cm" in audit)
     check("y por que el rayado, en cambio, NO se liga al peralte",
           "misma densidad en el papel" in audit)
-    check("explica como se calcula la altura de cada banda",
-          "La altura de cada banda se calcula" in audit
-          and "un metro por\nencima de la sección más alta" in audit)
+    check("explica el acomodo de una seccion por renglon",
+          "El acomodo: una sección por renglón, 70 cm entre ellas" in audit
+          and "borde derecho en `x = −0.6`" in audit
+          and "SeparacionEntreSeccionesCm = 70" in audit)
+    check("y por que las bandas por familia estaban mal",
+          "también estaba mal" in audit
+          and "los rótulos se pisaban" in audit)
+    check("y cuenta las constantes que se fueron con las bandas",
+          all(c in audit for c in ("AireDeLaFamiliaCm", "BandaDeLaFamiliaCm",
+                                   "TechoDeLaBandaCm", "MargenDeBandaCm")))
+
+    check("explica las 16 propiedades del manual",
+          "Las propiedades geométricas del manual" in audit
+          and all(p in audit for p in ("PesoKgM", "AreaCm2", "IxCm4", "SxCm3",
+                                       "ZxCm3", "RxCm", "IyCm4", "SyCm3",
+                                       "ZyCm3", "RyCm", "RminCm", "JCm4",
+                                       "CwCm6", "IxyCm4", "XbarCm", "YbarCm")))
+    check("y que null no es cero",
+          "`null` no es cero" in audit and "se queda **vacía**" in audit)
+    check("y avisa de los 56 perfiles que no cuadran",
+          "**56**" in audit and "erratas de la hoja" in audit)
+    check("y de los valores de diseño del CF y del ZF",
+          "`Idx` y `Sxe`" in audit and "ancho efectivo" in audit)
+    check("y de la pared de diseño de los tubos",
+          "FACTOR_PARED_DISEÑO" in audit)
+
+    check("explica que la geometria vive en un solo sitio",
+          "la geometría, en un solo sitio" in audit
+          and "TrazoAcero.De(p, x, yAbajo, escala," in audit)
+    check("y por que la vista previa no calcula la forma por su cuenta",
+          "puede acabar\nenseñando algo **distinto** de lo que se dibuja" in audit)
+    check("y por que el hueco del tubo es EvenOdd",
+          "FillRule = EvenOdd" in audit and "hueco de verdad" in audit)
+
     check("y lo que sigue faltando",
           "Lo que sigue faltando" in audit and "acuerdo entre alma y patín" in audit)
 
     check("hay comprobacion numerica del catalogo y del acomodo",
           "El acomodo del acero"
           in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
-    check("y de las bandas de cada familia",
-          "Las bandas de cada familia"
+    check("y del acomodo vertical de las secciones",
+          "TODAS las secciones se alinean con su borde derecho en x = -0.6"
           in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
     check("y la vuelta completa Excel a catalogo esta probada",
           "La vuelta completa: Excel -> CSV -> catalogo"

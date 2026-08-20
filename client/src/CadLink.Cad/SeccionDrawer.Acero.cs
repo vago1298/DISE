@@ -292,44 +292,24 @@ public sealed partial class SeccionDrawer
             // En las simétricas el espejo no cambia nada, así que da igual.
             var espejo = i == 1;
 
-            switch (p.Forma)
+            // LOS VÉRTICES LOS DA TrazoAcero, no este archivo.
+            //
+            // Están ahí, y no aquí, para que la VISTA PREVIA de la pantalla y el dibujo de
+            // AutoCAD salgan del mismo cálculo. Con los vértices dentro del dibujante, la
+            // vista previa tendría que repetirlos, y una vista previa que calcula la forma
+            // por su cuenta puede acabar enseñando algo distinto de lo que se dibuja, que
+            // es justo lo que una vista previa no puede hacer.
+            var trazo = TrazoAcero.De(p, x, yAbajo, _escala, espejo);
+
+            if (trazo is null)
             {
-                case FormaAcero.I:
-                    PerfilI(x + (uno / 2), yAbajo, h, b, t, tf, p);
-                    break;
-
-                case FormaAcero.Te:
-                    PerfilTe(x + (uno / 2), yAbajo, h, b, t, tf, p);
-                    break;
-
-                case FormaAcero.Canal:
-                    PerfilCanal(x, yAbajo, h, b, t, tf, espejo, p);
-                    break;
-
-                case FormaAcero.CanalConLabios:
-                    PerfilCf(x, yAbajo, h, b, t, labio, radio, espejo, p);
-                    break;
-
-                case FormaAcero.Zeta:
-                    PerfilZeta(x, yAbajo, h, b, bMenor, t, radio, espejo, p);
-                    break;
-
-                case FormaAcero.Angulo:
-                    PerfilAngulo(x, yAbajo, h, b, t, espejo, p);
-                    break;
-
-                case FormaAcero.TuboRectangular:
-                    PerfilOr(x + (uno / 2), yAbajo, uno, alto, t, p);
-                    break;
-
-                case FormaAcero.TuboRedondo:
-                    PerfilOc(x + (h / 2), yAbajo + (h / 2), h / 2, (h / 2) - t, p);
-                    break;
-
-                case FormaAcero.RedondoMacizo:
-                    PerfilOs(x + (h / 2), yAbajo + (h / 2), h / 2, p);
-                    break;
+                Nota(
+                    $"Sección de acero '{p.Id}': no se pudo calcular el contorno de la " +
+                    $"forma '{p.Forma}' con esas medidas.");
+                return 0;
             }
+
+            Trazar(trazo, p);
         }
 
         // Las cotas van APARTE del trazo y se dibujan UNA VEZ para el conjunto, no una por
@@ -386,70 +366,7 @@ public sealed partial class SeccionDrawer
     //  Forma I: el perfil laminado de alma y dos patines (IR, IS, IC, S)
     // ==================================================================
 
-    /// <summary>
-    /// El contorno del perfil I, de doce vértices, con su rayado.
-    /// </summary>
-    /// <remarks>
-    /// Port de <c>DibujarPerfilW</c>. Los doce puntos van en el mismo orden que la macro,
-    /// empezando por el patín inferior derecho y girando en sentido antihorario. No lleva
-    /// curvas de acuerdo entre alma y patín: la macro tampoco, y a la escala de un plano
-    /// estructural no se distinguirían.
-    /// </remarks>
-    private void PerfilI(
-        double cx, double cy, double d, double bf, double tw, double tf,
-        PerfilAceroCad p)
-    {
-        var pts = new[]
-        {
-            cx + (bf / 2), cy,
-            cx + (bf / 2), cy + tf,
-            cx + (tw / 2), cy + tf,
-            cx + (tw / 2), cy + d - tf,
-            cx + (bf / 2), cy + d - tf,
-            cx + (bf / 2), cy + d,
-            cx - (bf / 2), cy + d,
-            cx - (bf / 2), cy + d - tf,
-            cx - (tw / 2), cy + d - tf,
-            cx - (tw / 2), cy + tf,
-            cx - (bf / 2), cy + tf,
-            cx - (bf / 2), cy
-        };
 
-        TrazarPerfil(pts, p, "perfil I");
-    }
-
-    /// <summary>
-    /// El contorno de la te: un patín arriba y el alma colgando.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// No tiene macro: es una de las cinco formas nuevas. Son ocho vértices, y la te se
-    /// dibuja <b>con el patín arriba</b>, que es la posición en la que se usa como cuerda
-    /// superior de armadura y como la mitad de un perfil I partido, que es de donde sale.
-    /// </para>
-    /// <para>
-    /// El peralte es el <b>total</b>, del canto del patín a la punta del alma, que es la
-    /// columna <c>d</c> del manual y no la <c>h</c>, que solo mide el alma libre.
-    /// </para>
-    /// </remarks>
-    private void PerfilTe(
-        double cx, double cy, double d, double bf, double tw, double tf,
-        PerfilAceroCad p)
-    {
-        var pts = new[]
-        {
-            cx + (tw / 2), cy,
-            cx + (tw / 2), cy + d - tf,
-            cx + (bf / 2), cy + d - tf,
-            cx + (bf / 2), cy + d,
-            cx - (bf / 2), cy + d,
-            cx - (bf / 2), cy + d - tf,
-            cx - (tw / 2), cy + d - tf,
-            cx - (tw / 2), cy
-        };
-
-        TrazarPerfil(pts, p, "te");
-    }
 
     /// <summary>
     /// Las cotas de la forma I y de la te, que son las mismas cuatro.
@@ -509,47 +426,6 @@ public sealed partial class SeccionDrawer
     //  Canal laminada: la C, sin labios
     // ==================================================================
 
-    /// <summary>
-    /// La canal estándar: alma a un lado y dos patines, <b>sin labios</b>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// No tiene macro, y no se puede dibujar con la de la CF aunque las dos se llamen
-    /// «canal»: la CF es lámina doblada de espesor único, con labios y radios de doblez,
-    /// mientras que la C es laminada, con el alma y los patines de <b>distinto espesor</b> y
-    /// sin nada doblado. Son ocho vértices en pico.
-    /// </para>
-    /// <para>
-    /// Los patines se dibujan de espesor constante. El manual da un solo <c>tf</c> por
-    /// perfil, que es el espesor medio: la cuña real del patín laminado no está en los datos
-    /// y a escala de plano no se vería.
-    /// </para>
-    /// </remarks>
-    private void PerfilCanal(
-        double xIzq, double y0, double d, double bf, double tw, double tf, bool espejo,
-        PerfilAceroCad p)
-    {
-        var ancho = bf;
-        var s = espejo ? -1.0 : 1.0;
-
-        // Con espejo el alma se va al otro extremo del hueco, para que dos canales queden
-        // enfrentadas formando un cajón.
-        var xAlma = espejo ? xIzq + ancho : xIzq;
-
-        var pts = new[]
-        {
-            xAlma, y0,
-            xAlma, y0 + d,
-            xAlma + (s * bf), y0 + d,
-            xAlma + (s * bf), y0 + d - tf,
-            xAlma + (s * tw), y0 + d - tf,
-            xAlma + (s * tw), y0 + tf,
-            xAlma + (s * bf), y0 + tf,
-            xAlma + (s * bf), y0
-        };
-
-        TrazarPerfil(pts, p, "canal laminada");
-    }
 
     private void CotasCanal(
         double xIzq, double y0, double d, double bf, double tw, double tf, bool doble)
@@ -593,45 +469,6 @@ public sealed partial class SeccionDrawer
     //  Ángulo: la L, de alas iguales o desiguales
     // ==================================================================
 
-    /// <summary>
-    /// El ángulo: dos alas en escuadra del mismo espesor.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// No tiene macro. Son seis vértices, con el <b>talón abajo a la izquierda</b> y las dos
-    /// alas subiendo y saliendo de ahí, que es como se dibuja un ángulo en un plano.
-    /// </para>
-    /// <para>
-    /// <b>Va en pico, sin el acuerdo del talón ni las puntas redondeadas</b>, y esto no es
-    /// una simplificación gratuita: el manual IMCA <b>no da ningún radio para el ángulo</b>.
-    /// Las 144 filas de la familia L tienen todas las columnas de geometría en «-» —ni
-    /// peralte, ni espesor, ni radio— y las medidas están únicamente en la designación. Con
-    /// las alas y el espesor leídos del nombre se dibuja lo que la hoja sabe; inventar un
-    /// radio sería dibujar un dato que nadie dio.
-    /// </para>
-    /// </remarks>
-    private void PerfilAngulo(
-        double xIzq, double y0, double alaLarga, double alaCorta, double t, bool espejo,
-        PerfilAceroCad p)
-    {
-        var s = espejo ? -1.0 : 1.0;
-
-        // El talón se va al otro extremo del hueco al espejear, para que dos ángulos
-        // queden espalda contra espalda, que es como se arma un doble ángulo.
-        var xTalon = espejo ? xIzq + alaCorta : xIzq;
-
-        var pts = new[]
-        {
-            xTalon, y0,
-            xTalon + (s * alaCorta), y0,
-            xTalon + (s * alaCorta), y0 + t,
-            xTalon + (s * t), y0 + t,
-            xTalon + (s * t), y0 + alaLarga,
-            xTalon, y0 + alaLarga
-        };
-
-        TrazarPerfil(pts, p, "ángulo");
-    }
 
     private void CotasAngulo(
         double xIzq, double y0, double alaLarga, double alaCorta, double t, bool doble)
@@ -665,54 +502,6 @@ public sealed partial class SeccionDrawer
     //  OR: el tubo rectangular
     // ==================================================================
 
-    /// <summary>
-    /// Los dos rectángulos redondeados del tubo, con el rayado que le toca al peralte.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Port de <c>DibujarPerfilHSS</c> y <c>AplicarHatchHSS</c>. Los radios no se capturan:
-    /// el exterior es el propio espesor y el interior su mitad, como en la macro, y los dos
-    /// se recortan si no caben.
-    /// </para>
-    /// </remarks>
-    private void PerfilOr(
-        double cx, double cy, double bHss, double hHss, double tHss, PerfilAceroCad p)
-    {
-        var rOut = Math.Min(tHss, Math.Min(bHss, hHss) / 2);
-
-        var x0 = cx - (bHss / 2);
-        var x1 = cx + (bHss / 2);
-        var y0 = cy;
-        var y1 = cy + hHss;
-
-        var exterior = RectanguloRedondeado(x0, y0, x1, y1, rOut);
-
-        if (exterior is null)
-        {
-            Nota("Perfil OR: no se pudo crear el contorno exterior.");
-            return;
-        }
-
-        // El tubo NO lleva ancho constante: su macro no hace PEDIT, solo la del IR lo hace.
-        // Ver PeditDeLaForma.
-
-        var bInt = bHss - (2 * tHss);
-        var hInt = hHss - (2 * tHss);
-
-        object? interior = null;
-
-        if (bInt > 0 && hInt > 0)
-        {
-            var rIn = Math.Min(tHss / 2, Math.Min(bInt, hInt) / 2);
-
-            interior = RectanguloRedondeado(
-                x0 + tHss, y0 + tHss, x1 - tHss, y1 - tHss, rIn);
-        }
-
-        var islas = interior is null ? null : new List<object> { interior };
-
-        RayarPerfil(exterior, islas, p);
-    }
 
     private void CotasOr(
         double xIzq, double cy, double bHss, double hHss, double tHss, bool doble)
@@ -753,37 +542,6 @@ public sealed partial class SeccionDrawer
     //  OC y OS: el tubo redondo y el redondo macizo
     // ==================================================================
 
-    /// <summary>Las dos circunferencias del tubo redondo, con su corona rayada.</summary>
-    /// <remarks>
-    /// <para>
-    /// Port de <c>DibujarPerfilOC</c> y <c>AplicarHatchOC</c>. Si el espesor se come el
-    /// radio, la circunferencia interior no se dibuja y el tubo sale macizo, que es lo que
-    /// hace la macro cuando <c>radioInt</c> queda en cero.
-    /// </para>
-    /// <para>
-    /// <b>El rayado de esta macro es invisible</b>, y se conserva así: rellena con
-    /// <c>SOLID</c> en el color 162 y raya con <c>ANSI31</c> <b>también</b> en 162, así que
-    /// las líneas del rayado no se distinguen del fondo y el tubo sale como un anillo liso.
-    /// Está apuntado en <c>docs/macros-acero.md</c>: es una decisión de dibujo y con cambiar
-    /// el color de las líneas se arregla, pero no se toca por cuenta propia.
-    /// </para>
-    /// </remarks>
-    private void PerfilOc(
-        double cx, double cy, double rExt, double rInt, PerfilAceroCad p)
-    {
-        var exterior = Circulo(cx, cy, rExt);
-
-        if (exterior is null)
-        {
-            Nota("Perfil OC: no se pudo crear la circunferencia exterior.");
-            return;
-        }
-
-        var interior = rInt > 0 ? Circulo(cx, cy, rInt) : null;
-        var islas = interior is null ? null : new List<object> { interior };
-
-        RayarPerfil(exterior, islas, p);
-    }
 
     private void CotasOc(double xIzq, double yAbajo, double d, double espesorCm, bool doble)
     {
@@ -813,24 +571,6 @@ public sealed partial class SeccionDrawer
             "COTAS");
     }
 
-    /// <summary>La circunferencia del redondo macizo.</summary>
-    /// <remarks>
-    /// No tiene macro. Es la forma más simple de las nueve —una circunferencia rellena— y la
-    /// que faltaba para poder dibujar los tensores y las contravientos, que se piden como
-    /// varilla lisa y hasta ahora había que capturar como un tubo de pared falsa.
-    /// </remarks>
-    private void PerfilOs(double cx, double cy, double r, PerfilAceroCad p)
-    {
-        var contorno = Circulo(cx, cy, r);
-
-        if (contorno is null)
-        {
-            Nota("Perfil OS: no se pudo crear la circunferencia.");
-            return;
-        }
-
-        RayarPerfil(contorno, null, p);
-    }
 
     /// <summary>
     /// La medida del redondo macizo, que va como <b>texto y no como cota</b>.
@@ -868,121 +608,6 @@ public sealed partial class SeccionDrawer
     //  CF: la canal formada en frío, con labios
     // ==================================================================
 
-    /// <summary>
-    /// La canal con labios, sus radios de doblez y su rayado.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Port de <c>CrearCFReal</c> y <c>CrearPolilineaHatchCF</c>. El radio exterior es el
-    /// capturado y el interior su mitad, cada uno recortado a lo que cabe, igual que la
-    /// macro: en el exterior manda el menor entre medio ancho, el labio y medio peralte, y
-    /// en el interior lo mismo descontando el espesor.
-    /// </para>
-    /// <para>
-    /// <b>Aquí se dibuja UNA polilínea donde la macro dibuja dos cosas.</b> La macro traza
-    /// el contorno como veinticuatro líneas y arcos sueltos, los une con <c>JoinEntities</c>
-    /// y además construye una segunda polilínea con bulges para el hatch: dos entidades con
-    /// exactamente la misma geometría, una encima de la otra. Con los bulges basta una, que
-    /// hace de contorno y de frontera del rayado.
-    /// </para>
-    /// </remarks>
-    private void PerfilCf(
-        double xWeb, double y0, double h, double b, double t, double lip, double ri,
-        bool espejo, PerfilAceroCad p)
-    {
-        var s = espejo ? -1.0 : 1.0;
-
-        if (lip <= t) { lip = t + (0.1 * Cm); }
-        if (b <= 2 * t) { b = (2 * t) + (0.1 * Cm); }
-        if (h <= 2 * t) { h = (2 * t) + (0.1 * Cm); }
-        if (ri < 0) { ri = 0; }
-
-        // Con espejo el alma se va al otro extremo del hueco, para que dos canales queden
-        // enfrentadas formando un cajón, que es como se arman.
-        if (espejo) { xWeb += b; }
-
-        // Radio EXTERIOR: el capturado, recortado a lo que cabe.
-        var rExt = Math.Min(ri, Math.Min(b / 2, Math.Min(lip, h / 2)));
-        if (rExt < 0) { rExt = 0; }
-
-        // Radio INTERIOR: la mitad, recortada por su cuenta. No es rExt - t: la macro lo
-        // fija en ri/2, y con eso el doblez interior sale más cerrado que el exterior.
-        var rIntMax = Math.Min((b - t) / 2, Math.Min((h - (2 * t)) / 2, lip - t));
-        var rInt = Math.Min(ri / 2, rIntMax);
-        if (rInt < 0) { rInt = 0; }
-
-        var xWebOut = xWeb;
-        var xWebIn = xWeb + (s * t);
-        var xFlangeOut = xWeb + (s * b);
-        var xFlangeIn = xFlangeOut - (s * t);
-        var yb = y0;
-        var yt = y0 + h;
-
-        if (rExt <= 0 && rInt <= 0)
-        {
-            // Sin radios: doce vértices en pico, el caso que la macro dibuja con líneas.
-            TrazarPerfil(
-                new[]
-                {
-                    xWebOut, yb,
-                    xWebOut, yt,
-                    xFlangeOut, yt,
-                    xFlangeOut, yt - lip,
-                    xFlangeIn, yt - lip,
-                    xFlangeIn, yt - t,
-                    xWebIn, yt - t,
-                    xWebIn, yb + t,
-                    xFlangeIn, yb + t,
-                    xFlangeIn, yb + lip,
-                    xFlangeOut, yb + lip,
-                    xFlangeOut, yb
-                },
-                p, "canal con labios");
-
-            return;
-        }
-
-        var pts = new[]
-        {
-            xWebOut, yb + rExt,
-            xWebOut, yt - rExt,
-            xWebOut + (s * rExt), yt,
-            xFlangeOut - (s * rExt), yt,
-            xFlangeOut, yt - rExt,
-            xFlangeOut, yt - lip,
-            xFlangeIn, yt - lip,
-            xFlangeIn, yt - t - rInt,
-            xFlangeIn - (s * rInt), yt - t,
-            xWebIn + (s * rInt), yt - t,
-            xWebIn, yt - t - rInt,
-            xWebIn, yb + t + rInt,
-            xWebIn + (s * rInt), yb + t,
-            xFlangeIn - (s * rInt), yb + t,
-            xFlangeIn, yb + t + rInt,
-            xFlangeIn, yb + lip,
-            xFlangeOut, yb + lip,
-            xFlangeOut, yb + rExt,
-            xFlangeOut - (s * rExt), yb,
-            xWebOut + (s * rExt), yb
-        };
-
-        // Los ocho dobleces, cada uno con su centro. El bulge sale del barrido real
-        // entre los dos vértices vistos desde el centro, así que el espejo se resuelve
-        // solo: al invertir s, los barridos cambian de signo y los arcos también.
-        var bulges = new (int Indice, double Cx, double Cy, int A, int B)[]
-        {
-            (1, xWebOut + (s * rExt), yt - rExt, 1, 2),
-            (3, xFlangeOut - (s * rExt), yt - rExt, 3, 4),
-            (7, xFlangeIn - (s * rInt), yt - t - rInt, 7, 8),
-            (9, xWebIn + (s * rInt), yt - t - rInt, 9, 10),
-            (11, xWebIn + (s * rInt), yb + t + rInt, 11, 12),
-            (13, xFlangeIn - (s * rInt), yb + t + rInt, 13, 14),
-            (17, xFlangeOut - (s * rExt), yb + rExt, 17, 18),
-            (19, xWebOut + (s * rExt), yb + rExt, 19, 0)
-        };
-
-        TrazarPerfilConDobleces(pts, bulges, p, "canal con labios");
-    }
 
     private void CotasCf(
         double xIzq, double yBase, double h, double b, double t, double lip, bool doble)
@@ -1019,120 +644,6 @@ public sealed partial class SeccionDrawer
     //  ZF: la zeta formada en frío
     // ==================================================================
 
-    /// <summary>
-    /// La zeta: el alma vertical con un patín a cada lado, y sus cuatro dobleces.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// No tiene macro. Los <b>dos patines son de distinto ancho</b> —60.3 y 54 mm en la de
-    /// 2 3/8"— y eso no es una errata del manual: es lo que permite traslapar dos zetas en el
-    /// apoyo, porque el patín angosto de una entra dentro del ancho de la otra. Dibujarla
-    /// simétrica sería dibujar una zeta que no se fabrica. El ancho angosto se puede dejar en
-    /// cero, y entonces sí sale simétrica, que es lo que hay que hacer con una zeta de
-    /// fabricación propia.
-    /// </para>
-    /// <para>
-    /// El patín <b>ancho va arriba</b> y el angosto abajo, que es la posición de montaje: la
-    /// zeta se apoya por el patín angosto y el ancho recibe la lámina de cubierta.
-    /// </para>
-    /// <para>
-    /// Lleva <b>cuatro dobleces</b>, dos exteriores y dos interiores, con la misma regla que
-    /// la CF: el radio capturado por fuera y su mitad por dentro. Los radios reales de una
-    /// zeta son de 4.76 mm, así que a escala de plano apenas se ven, pero sin ellos las
-    /// esquinas salen en pico y una lámina doblada en pico no existe.
-    /// </para>
-    /// </remarks>
-    private void PerfilZeta(
-        double xIzq, double y0, double h, double bAncho, double bAngosto, double t,
-        double ri, bool espejo, PerfilAceroCad p)
-    {
-        if (t <= 0) { t = 0.1 * Cm; }
-        if (bAngosto <= t) { bAngosto = bAncho; }
-        if (h <= 2 * t) { h = (2 * t) + (0.1 * Cm); }
-        if (ri < 0) { ri = 0; }
-
-        // El ancho total: los dos patines menos el espesor del alma, que comparten.
-        var w = bAncho + bAngosto - t;
-
-        // Radio EXTERIOR: el capturado, recortado por el medio patín más corto y por el
-        // medio alma libre.
-        var rExt = Math.Min(ri, Math.Min(Math.Min(bAncho, bAngosto) / 2, (h - (2 * t)) / 2));
-        if (rExt < 0) { rExt = 0; }
-
-        // Radio INTERIOR: el exterior MENOS EL ESPESOR, y esto no es una convención sino
-        // geometría. Una zeta es una lámina de espesor único doblada dos veces, así que en
-        // cada doblez la cara de dentro y la de fuera son dos arcos CONCÉNTRICOS separados
-        // exactamente el espesor. Con cualquier otra relación la lámina saldría más gorda o
-        // más delgada en la esquina que en el tramo recto.
-        //
-        // La CF, que es un port de macro, usa en cambio la mitad del radio capturado, y ahí
-        // se respeta lo que hace el original. Aquí no hay original al que ser fiel, así que
-        // se dibuja lo que es. Si el radio no llega ni al espesor, el doblez interior sale
-        // en pico, que es lo que pasa de verdad en una esquina prensada.
-        var rInt = Math.Max(0, rExt - t);
-
-        // Sin espejo: el patín ancho sale a la DERECHA por arriba y el angosto a la
-        // IZQUIERDA por abajo. Espejeada, al contrario.
-        double X(double x) => espejo ? (2 * xIzq) + w - x : x;
-
-        var xAlmaIzq = xIzq + bAngosto - t;   // cara izquierda del alma
-        var xAlmaDer = xIzq + bAngosto;       // cara derecha del alma
-        var xTope = xAlmaIzq + bAncho;        // punta del patín ancho
-        var yt = y0 + h;
-
-        if (rExt <= 0 && rInt <= 0)
-        {
-            TrazarPerfil(
-                new[]
-                {
-                    X(xIzq), y0,
-                    X(xAlmaDer), y0,
-                    X(xAlmaDer), yt - t,
-                    X(xTope), yt - t,
-                    X(xTope), yt,
-                    X(xAlmaIzq), yt,
-                    X(xAlmaIzq), y0 + t,
-                    X(xIzq), y0 + t
-                },
-                p, "zeta");
-
-            return;
-        }
-
-        // Los cuatro dobleces, y OJO CON LOS DOS INTERIORES: sus centros caen FUERA del
-        // acero, en el hueco de la esquina, y a distinto lado del alma cada uno. El de
-        // arriba se sale por la derecha del alma —a xAlmaDer + rInt— y el de abajo por la
-        // IZQUIERDA —a xAlmaIzq − rInt—, porque los dos patines salen a lados contrarios.
-        // Con los dos al mismo lado, el contorno de abajo se devolvía sobre sí mismo y la
-        // polilínea se cruzaba: el rayado salía por fuera del perfil.
-        var pts = new[]
-        {
-            X(xIzq), y0,
-            X(xAlmaDer - rExt), y0,
-            X(xAlmaDer), y0 + rExt,
-            X(xAlmaDer), yt - t - rInt,
-            X(xAlmaDer + rInt), yt - t,
-            X(xTope), yt - t,
-            X(xTope), yt,
-            X(xAlmaIzq + rExt), yt,
-            X(xAlmaIzq), yt - rExt,
-            X(xAlmaIzq), y0 + t + rInt,
-            X(xAlmaIzq - rInt), y0 + t,
-            X(xIzq), y0 + t
-        };
-
-        // Los centros también se espejean, y el bulge sale del barrido visto desde el
-        // centro, así que el signo se resuelve solo.
-        var bulges = new (int Indice, double Cx, double Cy, int A, int B)[]
-        {
-            (1, X(xAlmaDer - rExt), y0 + rExt, 1, 2),
-            (3, X(xAlmaDer + rInt), yt - t - rInt, 3, 4),
-            (7, X(xAlmaIzq + rExt), yt - rExt, 7, 8),
-            (9, X(xAlmaIzq - rInt), y0 + t + rInt, 9, 10)
-        };
-
-        TrazarPerfilConDobleces(pts, bulges, p, "zeta");
-    }
 
     private void CotasZeta(
         double xIzq, double y0, double h, double bAncho, double bAngosto, double t,
@@ -1174,55 +685,89 @@ public sealed partial class SeccionDrawer
     //  Trazo y rayado, comunes a las nueve formas
     // ==================================================================
 
+
+
     /// <summary>
-    /// Traza un contorno en pico y lo raya con lo que le toca a su forma.
+    /// Convierte el trazo de un perfil en entidades de AutoCAD, y lo raya.
     /// </summary>
     /// <remarks>
-    /// Las nueve formas acaban aquí o en <see cref="TrazarPerfilConDobleces"/>: el trazo es
-    /// el mismo para todas, y lo único que cambia de una a otra es el rayado, que decide
-    /// <see cref="RayarPerfil"/>.
+    /// <para>
+    /// Las nueve formas pasan por aquí. Lo único que cambia de una a otra es <b>qué piezas
+    /// trae su trazo</b> —las siete poligonales una polilínea, el tubo rectangular dos, y
+    /// los dos redondos circunferencias— y eso lo decide <see cref="TrazoAcero"/>, no este
+    /// método: aquí solo se dibuja lo que venga.
+    /// </para>
+    /// <para>
+    /// El <b>hueco es una isla del rayado</b>, no un agujero de verdad: en AutoCAD un hatch
+    /// con isla deja sin rellenar lo que la isla encierra, que es lo que hace que un tubo se
+    /// vea como un tubo y no como una barra maciza.
+    /// </para>
     /// </remarks>
-    private void TrazarPerfil(double[] pts, PerfilAceroCad p, string queEs)
+    private void Trazar(TrazoAcero.Trazo trazo, PerfilAceroCad p)
     {
-        var pl = Polilinea(pts, CapaPerfiles);
+        // ---------- Las formas poligonales ----------
+        var exterior = Poligonal(trazo.Exterior);
 
-        if (pl is null)
+        if (exterior is not null)
         {
-            Nota($"Perfil de acero ({queEs}): no se pudo crear el contorno.");
+            PeditDeLaForma(exterior, p);
+
+            var interior = Poligonal(trazo.Interior);
+
+            RayarPerfil(
+                exterior,
+                interior is null ? null : new List<object> { interior },
+                p);
+
             return;
         }
 
-        PeditDeLaForma(pl, p);
-        RayarPerfil(pl, null, p);
+        // ---------- Las dos formas redondas ----------
+        if (trazo.CircExterior is null)
+        {
+            Nota($"Perfil de acero '{p.Id}': el trazo vino vacío, así que no se dibujó.");
+            return;
+        }
+
+        var ce = trazo.CircExterior;
+        var circulo = Circulo(ce.Cx, ce.Cy, ce.R);
+
+        if (circulo is null)
+        {
+            Nota($"Perfil de acero '{p.Id}': no se pudo crear la circunferencia.");
+            return;
+        }
+
+        // Si el espesor se come el radio, la circunferencia interior no viene y el tubo sale
+        // macizo, que es lo que hace la macro cuando su radioInt queda en cero.
+        var dentro = trazo.CircInterior is null
+            ? null
+            : Circulo(trazo.CircInterior.Cx, trazo.CircInterior.Cy, trazo.CircInterior.R);
+
+        RayarPerfil(circulo, dentro is null ? null : new List<object> { dentro }, p);
     }
 
-    /// <summary>Lo mismo, con dobleces: la canal con labios y la zeta.</summary>
-    private void TrazarPerfilConDobleces(
-        double[] pts,
-        (int Indice, double Cx, double Cy, int A, int B)[] dobleces,
-        PerfilAceroCad p,
-        string queEs)
+    /// <summary>Una polilínea cerrada a partir de un contorno, con o sin dobleces.</summary>
+    private object? Poligonal(TrazoAcero.Contorno? c)
     {
+        if (c is null || c.Puntos.Length < 6)
+        {
+            return null;
+        }
+
+        if (c.Dobleces.Length == 0)
+        {
+            return Polilinea(c.Puntos, CapaPerfiles);
+        }
+
         var lista = new List<(int, double)>();
 
-        foreach (var (indice, cx, cy, a, b) in dobleces)
+        foreach (var (indice, bulge) in c.Dobleces)
         {
-            lista.Add((indice, BulgeDesdeCentro(
-                cx, cy,
-                pts[2 * a], pts[(2 * a) + 1],
-                pts[2 * b], pts[(2 * b) + 1])));
+            lista.Add((indice, bulge));
         }
 
-        var pl = PolilineaConBulges(pts, lista, CapaPerfiles);
-
-        if (pl is null)
-        {
-            Nota($"Perfil de acero ({queEs}): no se pudo crear el contorno.");
-            return;
-        }
-
-        PeditDeLaForma(pl, p);
-        RayarPerfil(pl, null, p);
+        return PolilineaConBulges(c.Puntos, lista, CapaPerfiles);
     }
 
     /// <summary>
@@ -1479,41 +1024,6 @@ public sealed partial class SeccionDrawer
         }
     }
 
-    /// <summary>Un rectángulo con las cuatro esquinas redondeadas, en una polilínea.</summary>
-    /// <remarks>
-    /// Port de <c>CrearRectanguloRedondeado</c>. Con radio cero sale el rectángulo de cuatro
-    /// vértices; con radio, ocho vértices y cuatro bulges de un cuarto de círculo.
-    /// </remarks>
-    private object? RectanguloRedondeado(
-        double x0, double y0, double x1, double y1, double r)
-    {
-        if (x1 - x0 <= 0 || y1 - y0 <= 0)
-        {
-            return null;
-        }
-
-        if (r <= 1e-7)
-        {
-            return Polilinea(new[] { x0, y0, x1, y0, x1, y1, x0, y1 }, CapaPerfiles);
-        }
-
-        var pts = new[]
-        {
-            x0 + r, y0,
-            x1 - r, y0,
-            x1, y0 + r,
-            x1, y1 - r,
-            x1 - r, y1,
-            x0 + r, y1,
-            x0, y1 - r,
-            x0, y0 + r
-        };
-
-        return PolilineaConBulges(
-            pts,
-            new List<(int, double)> { (1, Bulge90), (3, Bulge90), (5, Bulge90), (7, Bulge90) },
-            CapaPerfiles);
-    }
 
     /// <summary>Una polilínea cerrada con bulges en los vértices que se le digan.</summary>
     private object? PolilineaConBulges(
@@ -1547,32 +1057,6 @@ public sealed partial class SeccionDrawer
         }
     }
 
-    /// <summary>El bulge de un arco visto desde su centro.</summary>
-    /// <remarks>
-    /// Port de <c>BulgeDesdeCentro</c>: es la tangente de la cuarta parte del barrido, con
-    /// el barrido normalizado a media vuelta para cada lado. Así el signo sale solo y los
-    /// arcos del perfil espejeado giran al revés sin tener que decírselo.
-    /// </remarks>
-    private static double BulgeDesdeCentro(
-        double cx, double cy, double xa, double ya, double xb, double yb)
-    {
-        var aa = Math.Atan2(ya - cy, xa - cx);
-        var ab = Math.Atan2(yb - cy, xb - cx);
-
-        var barrido = ab - aa;
-
-        while (barrido > Pi)
-        {
-            barrido -= 2 * Pi;
-        }
-
-        while (barrido <= -Pi)
-        {
-            barrido += 2 * Pi;
-        }
-
-        return Math.Tan(barrido / 4);
-    }
 
     /// <summary>Una circunferencia, en la capa de la familia que se dibuja.</summary>
     private object? Circulo(double cx, double cy, double radio)

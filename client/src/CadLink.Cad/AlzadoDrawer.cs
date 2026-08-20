@@ -317,7 +317,12 @@ public sealed class AlzadoDrawer
                 var ancho = mx[0] - mn[0];
                 var alto = mx[1] - mn[1];
 
-                RotuloCorte(x + (ancho / 2), y + alto);
+                // Y AQUÍ SE ACOTA EL BLOQUE, que es lo que faltaba. Ver CotasDelCorte.
+                CotasDelCorte(x, y, ancho, alto);
+
+                // El CORTE A-A' sube para dejarle sitio a la cota de la base, que ahora
+                // ocupa la banda donde antes él estaba solo.
+                RotuloCorte(x + (ancho / 2), y + alto + (AltoCotaCorte * _f));
 
                 // Y aquí se avisa de que el bloque ya está en su sitio, para que quien
                 // sepa hacerlo le vuelva a poner sus llamadas. Va DESPUÉS del Mover:
@@ -341,6 +346,75 @@ public sealed class AlzadoDrawer
             return null;
         }
     }
+
+    /// <summary>Cuánto sube el <c>CORTE A-A'</c> para dejar sitio a la cota de arriba.</summary>
+    /// <remarks>
+    /// Es la separación de la cota más un respiro. Sin esto el rótulo del corte y la cota de
+    /// la base caerían en la misma banda de 15 cm y se solaparían.
+    /// </remarks>
+    private const double AltoCotaCorte = 0.09;
+
+    /// <summary>
+    /// Las dos cotas del <b>bloque de sección insertado</b>: su base arriba y su altura a la
+    /// derecha.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Esto faltaba, y faltaba por una razón que no se ve.</b> La sección de concreto sí
+    /// se acota cuando se dibuja en su propia hoja —<c>SeccionDrawer.Cotas</c> le pone la
+    /// base arriba y la altura a la derecha— pero esas cotas <b>no entran al bloque</b>:
+    /// <c>SeccionDrawer.Bloquear</c> se salta a propósito todo lo que esté en las capas
+    /// <c>COTAS</c> y <c>ROTULOS</c>, para que el origen del bloque quede centrado en la
+    /// geometría y para que el rotulado se pueda editar por capa.
+    /// </para>
+    /// <para>
+    /// La consecuencia es que al insertar ese mismo bloque como <c>CORTE A-A'</c> junto a su
+    /// alzado, <b>llega sin ninguna cota</b>: se ve la sección pero no cuánto mide. Y el
+    /// alzado sí está acotado, así que el plano quedaba con el detalle largo cotizado y su
+    /// corte transversal a ojo.
+    /// </para>
+    /// <para>
+    /// Se acota <b>la caja real del bloque insertado</b>, medida con <see cref="Caja"/>
+    /// después de moverlo, y no las dimensiones capturadas de la sección. No es lo mismo: el
+    /// bloque puede traer un zuncho, un diamante o unas pestañas que sobresalgan del
+    /// rectángulo de concreto, y lo que hay que acotar es lo que se ve.
+    /// </para>
+    /// <para>
+    /// Van con el texto vacío, o sea con <b>el número que mide AutoCAD</b>, igual que la cota
+    /// de la longitud total del alzado. Las demás cotas del alzado llevan
+    /// <c>TextOverride</c> con rótulos de armado, que es otra cosa.
+    /// </para>
+    /// </remarks>
+    /// <param name="x">Borde izquierdo del bloque, ya colocado.</param>
+    /// <param name="y">Paño inferior del bloque, ya colocado.</param>
+    /// <param name="ancho">Ancho real de su caja envolvente.</param>
+    /// <param name="alto">Alto real de su caja envolvente.</param>
+    private void CotasDelCorte(double x, double y, double ancho, double alto)
+    {
+        if (ancho <= 0 || alto <= 0)
+        {
+            return;
+        }
+
+        var off = SepCotaCorte * _f;
+
+        // La base, arriba. El CORTE A-A' se sube para no chocar con ella.
+        Cota(x, y + alto, x + ancho, y + alto,
+             x + (ancho / 2), y + alto + off, string.Empty, false);
+
+        // La altura, a la derecha. En el alzado horizontal cabe en el hueco de 20 cm que
+        // AlzadoLayout deja entre la sección y el alzado; en el vertical no hay nada a la
+        // derecha de la sección, porque el alzado va encima.
+        Cota(x + ancho, y, x + ancho, y + alto,
+             x + ancho + off, y + (alto / 2), string.Empty, true);
+    }
+
+    /// <summary>Separación de las cotas del corte respecto de su bloque.</summary>
+    /// <remarks>
+    /// Los 6 cm son los de las cotas de gancho del propio alzado, así que las dos quedan a la
+    /// misma distancia de lo que miden y el plano se lee parejo.
+    /// </remarks>
+    private const double SepCotaCorte = 0.06;
 
     /// <summary>Mueve una entidad. Es el <c>br.Move</c> de la macro.</summary>
     private static void Mover(object ent, double dx, double dy)

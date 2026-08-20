@@ -30,12 +30,25 @@ ANCHO_COTAS_VERTICAL = DIM_OFF_3 + ROTULO_OFF_COL + 0.1
 #
 # Ojo: esto hace que la Y del alzado vertical YA NO coincida con la del VBA, y es a
 # proposito. La X si tiene que seguir coincidiendo clavada.
-AIRE_ROTULO_ALZADO = 0.10
+AIRE_ROTULO_ALZADO = 0.19
+
+# LAS COTAS DEL BLOQUE DE SECCION INSERTADO, que antes no existian.
+#
+# La seccion de concreto SI se acota cuando se dibuja en su propia hoja, pero esas cotas
+# NO ENTRAN AL BLOQUE: SeccionDrawer.Bloquear se salta a proposito todo lo que este en
+# las capas COTAS y ROTULOS. Asi que al insertar el mismo bloque como CORTE A-A' junto a
+# su alzado, llegaba SIN NINGUNA COTA: se veia la seccion pero no cuanto medía, con el
+# alzado al lado completamente acotado.
+#
+# Ahora se acota su caja real: la base 6 cm por encima de su pano y la altura 6 cm a su
+# derecha. Eso ocupa la banda donde vivia el CORTE A-A', que sube de 15 a 24 cm.
+SEP_COTA_CORTE = 0.06
+ALTO_COTA_CORTE = 0.09
 
 # El CORTE A-A' que AlzadoDrawer.RotuloCorte pone sobre el pano superior de la seccion.
 # Es lo UNICO que carga ese hueco: el rotulo del elemento cuelga del bloque de la
 # seccion, por DEBAJO, no del pie del alzado.
-CORTE_OFF = 0.15
+CORTE_OFF = 0.15 + ALTO_COTA_CORTE
 
 fallos = []
 
@@ -307,14 +320,38 @@ ROTULO_GAP = 0.05
 
 alto_rotulo = H_TX_ROTULO * (1 + INTERLINEADO * (9 - 1))
 
-# 1) El hueco sobre la seccion solo tiene que alcanzar para el CORTE A-A'.
+# 1) El hueco sobre la seccion tiene que alcanzar para la COTA DE LA BASE y para el
+#    CORTE A-A' que va encima de ella, en ese orden.
 hueco_corte = SEP_SEC_ALZ + AIRE_ROTULO_ALZADO
-print(f"  hueco entre la seccion y el alzado = {hueco_corte:.4f} m")
-print(f"  y el CORTE A-A' esta a {CORTE_OFF:.4f} m del pano de la seccion")
+alto_texto_corte = 0.025          # la altura del AddText del CORTE A-A'
 
-check("el hueco sobre la seccion alcanza para el CORTE A-A'",
-      hueco_corte > CORTE_OFF,
-      f"hueco {hueco_corte:.4f}, CORTE en {CORTE_OFF:.4f}")
+print(f"  hueco entre la seccion y el alzado = {hueco_corte:.4f} m")
+print(f"  la cota de la base del bloque esta a {SEP_COTA_CORTE:.4f} m del pano")
+print(f"  y el CORTE A-A' esta a {CORTE_OFF:.4f} m")
+
+check("la cota de la base cabe por debajo del CORTE A-A'",
+      SEP_COTA_CORTE < CORTE_OFF,
+      f"cota en {SEP_COTA_CORTE:.4f}, CORTE en {CORTE_OFF:.4f}")
+
+check("el hueco sobre la seccion alcanza para la cota y para el CORTE A-A'",
+      hueco_corte > CORTE_OFF + alto_texto_corte,
+      f"hueco {hueco_corte:.4f}, el CORTE acaba en "
+      f"{CORTE_OFF + alto_texto_corte:.4f}")
+
+# Y que quede AIRE de verdad, no que quepa justo: antes del cambio sobraban 12.5 cm
+# entre el CORTE y el pie del alzado, y hay que seguir teniendo del orden de eso. Es lo
+# que obligo a subir AIRE_ROTULO_ALZADO de 10 a 19 cm: con los 10 de antes, la cota nueva
+# dejaba el rotulo a 3.5 cm del alzado.
+aire_sobre_corte = hueco_corte - CORTE_OFF - alto_texto_corte
+
+print(f"  quedan {aire_sobre_corte:.4f} m de aire entre el CORTE A-A' y el pie del alzado")
+
+check("y queda aire de sobra, no justo", aire_sobre_corte > 0.10,
+      f"solo {aire_sobre_corte:.4f} m")
+
+check("con el aire de 0.10 que habia antes NO cabria la cota nueva",
+      (SEP_SEC_ALZ + 0.10) - CORTE_OFF - alto_texto_corte < 0.05,
+      f"quedarian {(SEP_SEC_ALZ + 0.10) - CORTE_OFF - alto_texto_corte:.4f} m")
 
 # 2) El rotulo del elemento cuelga del bloque de la SECCION, hacia ABAJO, asi que lo
 #    que tiene que esquivar es la FILA DE SECCIONES, no el alzado.
@@ -337,7 +374,7 @@ check("el rotulo del elemento no alcanza la fila de secciones",
 
 # 3) Con el aire viejo el hueco sobre la seccion era absurdo para lo que carga.
 check("con el aire viejo de 0.46 el hueco sobraba",
-      (SEP_SEC_ALZ + 0.46) - CORTE_OFF > 3 * CORTE_OFF,
+      (SEP_SEC_ALZ + 0.46) - CORTE_OFF > 1.5 * CORTE_OFF,
       f"sobraban {(SEP_SEC_ALZ + 0.46) - CORTE_OFF:.4f} m sobre el CORTE")
 check("la columna abre MARGEN_COL antes de su seccion",
       abs(p["x_sec"] - MARGEN_COL) < 1e-12)
