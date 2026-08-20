@@ -3562,7 +3562,8 @@ def v19_circular_y_ui() -> None:
     check("el diamante lleva gancho sismico",
           "private void GanchoDelDiamante(" in diam)
     check("y se dibuja de verdad",
-          "GanchoDelDiamante(s, contorno, cx, cy, dDia, conFondoSolido);" in diam)
+          "GanchoDelDiamante(s, contorno, centros, cx, cy, dDia, conFondoSolido);"
+          in diam)
 
     m_gd = re.search(r"private void GanchoDelDiamante\(.*?\n    \}", diam, re.S)
     check("se puede leer GanchoDelDiamante", m_gd is not None)
@@ -3602,18 +3603,57 @@ def v19_circular_y_ui() -> None:
         check("y el relleno del gancho del zuncho circular",
               "RellenoDelGancho(quads, sectores)" in cuerpo)
 
-        # El arco interior no se dibuja: ES la circunferencia de la varilla.
+        # NINGUN arco del doblez se dibuja, ni el interior ni el exterior:
+        #
+        #   * el interior tiene el centro y el radio de la varilla, o sea que ES su
+        #     circunferencia, ya trazada;
+        #   * y el exterior, entre los dos puntos donde la cinta toca la varilla, ES el
+        #     borde exterior de la cinta, tambien ya trazado; y fuera de esos dos puntos
+        #     se mete DENTRO del acero de la cinta, o sea que pintaba una raya negra por
+        #     dentro del relleno. Medido: entre 0.84 y 3.63 cm de raya, segun la seccion.
+        #
+        # El gancho del estribo rectangular hace lo mismo desde el principio: tampoco
+        # traza el arco de su doblez.
         check("no dibuja el arco interior, que es la varilla misma",
               "Arco(barra.X, barra.Y, rIn," not in cuerpo)
-        check("y si el exterior",
-              "Arco(barra.X, barra.Y, rOut, a1, a1 + Pi)" in cuerpo)
+        check("ni el exterior, que es el borde de la cinta",
+              "Arco(barra.X, barra.Y, rOut" not in cuerpo)
+        check("pero el doblez si se rellena",
+              "sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });"
+              in cuerpo)
+
+        # La linea exterior de cada cola arranca donde SALE del acero de la cinta.
+        check("la cola se recorta donde la cinta le pasa por encima",
+              "SalidaDelAceroDelDiamante(" in cuerpo)
+        check("y el recorte se le pasa a la misma Cola del rectangular",
+              "salida is not null, salida?.X ?? 0, salida?.Y ?? 0" in cuerpo)
 
         # Y la cola se recorta si no cabe en el nucleo.
         check("la cola del diamante se recorta si no cabe",
               "gancho = tope;" in cuerpo)
 
+    m_sal = re.search(
+        r"private static \(double X, double Y\)\? SalidaDelAceroDelDiamante\(.*?\n    \}",
+        diam, re.S)
+
+    check("se puede leer SalidaDelAceroDelDiamante", m_sal is not None)
+    if m_sal:
+        sal = m_sal.group(0)
+
+        # El borde con el que se recorta es el que DIBUJA la cinta, no una estimacion:
+        # los mismos numeros, asi que el recorte cae sobre la linea trazada.
+        check("el recorte usa el borde interior que dibuja la cinta",
+              "GeometriaCinta(centros, 0)" in cuerpo)
+        check("cada cola se recorta con SU diagonal, por el lado",
+              "ladoLlega >= ladoSale" in sal)
+        check("y no se recorta si el cruce cae fuera de la cola o del tramo",
+              "t <= 1e-12 || t >= largo || sTramo < -1e-9 || sTramo > 1 + 1e-9" in sal)
+
     check("hay comprobacion numerica de la direccion de la cola del diamante",
           "Direccion de la cola del gancho del diamante"
+          in leer(ruta("tools/verificar_gancho_diamante.py")))
+    check("y de que ninguna linea del gancho queda dentro del acero del diamante",
+          "NINGUNA LINEA DEL GANCHO DEBE QUEDAR DENTRO DEL ACERO"
           in leer(ruta("tools/verificar_gancho_diamante.py")))
 
     check("hay comprobacion numerica del gancho del zuncho",
