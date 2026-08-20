@@ -5344,41 +5344,79 @@ def v21_separacion_y_acero() -> None:
           and 'Binding="{Binding FormaNombre}"' in xaml)
 
     # ------------------------------------------------------------------
-    # Un COLOR por familia, y por capa
+    # UNA SOLA CAPA y el rayado de cada macro: NO hay color por familia
     # ------------------------------------------------------------------
-    # Cuatro familias con la misma forma: si ademas tuvieran el mismo color, no habria
-    # manera de saber cual es cual en el plano sin leer el rotulo de cada una.
-    check("hay una tabla de color por familia", "public static class ColorAcero" in forma_cad)
+    # Se probo a darle una capa y un color a cada una de las doce familias, y se quito:
+    # el plano dejaba de parecerse al que ya se venia haciendo. Las cuatro familias
+    # portadas tienen cada una su propio rayado, y eso es lo que las distingue.
+    check("no queda ninguna tabla de color por familia",
+          "ColorAcero" not in forma_cad and "ColorAcero" not in acero_cad)
 
-    colores = {m.group(1): int(m.group(2))
-               for m in re.finditer(r'"(\w+)" => (\d+),', forma_cad)}
+    check("ni capas por familia: una sola PERFILES, la de las macros",
+          'CapaPerfiles = "PERFILES"' in acero_cad
+          and "Capa(CapaPerfiles, 7);" in acero_cad
+          and 'CapaBase + "-"' not in acero_cad)
 
-    check("las doce familias tienen color", all(f in colores for f in DOCE),
-          str([f for f in DOCE if f not in colores]))
-    check("y son doce colores DISTINTOS",
-          len({colores[f] for f in DOCE if f in colores}) == len(DOCE),
-          str(sorted((colores.get(f), f) for f in DOCE)))
-
-    # El color va en la CAPA y los objetos van «por capa», que es como se hace en
-    # AutoCAD: asi el usuario puede apagar una familia entera de un clic.
-    check("cada familia tiene su propia capa",
-          "public static string Capa(string? familia)" in forma_cad
-          and 'CapaBase + "-" + f' in forma_cad)
-    check("y las doce capas se crean al preparar el dibujo",
-          "Capa(ColorAcero.Capa(familia), ColorAcero.Lineas(familia));" in acero_cad)
-    check("la capa PERFILES de las macros se sigue creando",
-          "Capa(ColorAcero.CapaBase, 7);" in acero_cad)
     check("y los objetos van por capa, no con el color pegado",
           "c.Color = PorCapa;" in acero_cad)
 
-    # El relleno macizo NO puede ser del color de su rayado. Ese era un defecto real
-    # del tubo redondo: SOLID en 162 y ANSI31 tambien en 162, asi que el rayado no se
-    # veia y el tubo salia como un anillo liso.
-    check("el relleno macizo es de otro tono que el rayado",
-          "return linea == 7 ? 8 : linea + 6;" in forma_cad)
-    check("y el rayado y el relleno se piden en un solo sitio",
-          "private void HatchAcero(" in acero_cad
-          and acero_cad.count('Hatch("SOLID"') == 1)
+    # EL RAYADO DE CADA FORMA, patron por patron y color por color, es el de su macro.
+    m_rayar = re.search(r"private void RayarPerfil\(.*?\n    \}", acero_cad, re.S)
+
+    check("el rayado se decide en un solo sitio, por forma", m_rayar is not None)
+
+    if m_rayar:
+        rayar = m_rayar.group(0)
+
+        # Los pares (patron, color) de las cuatro macros, uno por uno.
+        for patron, color, de_quien in (
+                ("ANSI32", 252, "el IR"),
+                ("SOLID", 4, "el CF"), ("ANSI31", 142, "el CF"),
+                ("SOLID", 162, "el OC"), ("ANSI31", 162, "el OC"),
+                ("SOLID", 141, "el HSS grande")):
+            check(f"esta el rayado {patron} en {color}, de la macro de {de_quien}",
+                  f'"{patron}", ' in rayar and f"CapaPerfiles, {color})" in rayar)
+
+        # Las escalas, tal cual. Un rayado con separacion FIJA da la misma densidad en el
+        # papel para cualquier tamaño de perfil, que es lo que tiene que hacer.
+        for escala in ("0.0009", "0.0008", "0.002"):
+            check(f"esta la escala de rayado {escala} de su macro",
+                  f"{escala} * _f" in rayar)
+
+        check("y la del tubo cambia a las 5 pulgadas, como su macro",
+              "(menorDe5 ? 0.001 : 0.002) * _f" in rayar)
+
+        # Las cinco formas nuevas van agrupadas con la macro de su material: la te, la
+        # canal laminada y el angulo con el IR; la zeta con el CF; el macizo con el OC.
+        check("la te, la canal laminada y el angulo se rayan como el IR",
+              re.search(r"case FormaAcero\.I:\s*case FormaAcero\.Te:\s*"
+                        r"case FormaAcero\.Canal:\s*case FormaAcero\.Angulo:", rayar)
+              is not None)
+        check("la zeta se raya como el CF",
+              re.search(r"case FormaAcero\.CanalConLabios:\s*case FormaAcero\.Zeta:",
+                        rayar) is not None)
+        check("y el redondo macizo como el tubo redondo",
+              re.search(r"case FormaAcero\.TuboRedondo:\s*"
+                        r"case FormaAcero\.RedondoMacizo:", rayar) is not None)
+
+    # EL PEDIT: de las cuatro macros, solo la del IR engruesa el contorno.
+    m_pedit = re.search(r"private void PeditDeLaForma\(.*?\n    \}", acero_cad, re.S)
+
+    check("el PEDIT del contorno se decide en un solo sitio", m_pedit is not None)
+
+    if m_pedit:
+        pedit = m_pedit.group(0)
+
+        check("lo llevan las cuatro formas laminadas, como la macro del IR",
+              all(f"FormaAcero.{f}" in pedit
+                  for f in ("I", "Te", "Canal", "Angulo")))
+        check("y NO lo llevan el tubo, el redondo ni las formadas en frio",
+              not any(f"FormaAcero.{f}" in pedit
+                      for f in ("TuboRectangular", "TuboRedondo", "RedondoMacizo",
+                                "CanalConLabios", "Zeta")))
+
+    check("el ancho constante se pide solo desde ahi",
+          acero_cad.count("AnchoConstante(pl,") == 1)
 
     # La familia se ajusta sola cuando el nombre del perfil la delata: un HSS dibujado
     # como IR sale como un perfil I con las medidas de un tubo, y eso no se ve venir.
@@ -5558,21 +5596,17 @@ def v21_separacion_y_acero() -> None:
     check("y sabe que la zeta ocupa sus dos patines menos el alma",
           "FormaAcero.Zeta => AnchoCm + PatinAngostoCm - EspesorCm" in perfil_cad)
 
-    # El rayado, ahora en UN solo sitio y con el color de la familia. Los cuatro
-    # literales de color que tenia cada forma eran justo lo que dejaba el rayado del
-    # tubo redondo invisible sin que se notara.
+    # Las nueve formas se rayan por el mismo camino, que es el que decide el rayado de
+    # cada una: nadie llama a Hatch por su cuenta con colores escritos a mano.
     check("las nueve formas se rayan por el mismo camino",
-          acero_cad.count("HatchAcero(") >= 5
-          and "Hatch(\n            patron, _escalaHatchAcero" in acero_cad)
-    check("y con el color de su familia, no con un numero escrito a mano",
-          "_colorLineasAcero" in acero_cad and "_colorRellenoAcero" in acero_cad)
+          acero_cad.count("RayarPerfil(") >= 5)
 
-    # El corte de las cinco pulgadas es de la macro del HSS, y ahora vale para las nueve
-    # formas: el motivo no era del tubo sino del tamaño.
-    check("el relleno macizo se decide por el peralte en pulgadas",
-          "p.PeralteCm / 2.54 >= PeralteLimitePulg - 0.01" in acero_cad)
-    check("el perfil chico lleva fondo tenue en vez de relleno",
-          "FondoDelHatch(trama, _colorFondoAcero);" in acero_cad)
+    # El corte de las cinco pulgadas es de la macro del HSS, y SOLO la afecta a ella.
+    check("el corte de las 5 pulgadas es solo del tubo rectangular",
+          "PeralteLimitePulg - 0.01" in acero_cad
+          and acero_cad.count("menorDe5") >= 3)
+    check("el tubo chico lleva el fondo cian de su macro",
+          "FondoDelHatch(trama, 4);" in acero_cad)
 
     # ------------------------------------------------------------------
     # El aparato de la cota, PROPORCIONAL AL PERFIL
@@ -5594,13 +5628,12 @@ def v21_separacion_y_acero() -> None:
           'PropCota((object)cota, "ArrowheadSize", _flechaAcero);' in acero_cad
           and 'PropCota((object)cota, "TextHeight", _textoCotaAcero);' in acero_cad)
 
-    # La separacion del rayado tambien: con el 0.0009 fijo de la macro, una IS de 1.90 m
-    # se rayaba con mas de dos mil lineas y AutoCAD contesta que el patron es demasiado
-    # denso y no dibuja nada.
-    check("la separacion del rayado tambien es proporcional",
-          "_escalaHatchAcero = Acotar(referencia / 300," in acero_cad)
-    check("ya no hay separaciones de rayado escritas a mano",
-          "0.0009 * _f" not in acero_cad and "0.0008 * _f" not in acero_cad)
+    # LA SEPARACION DEL RAYADO NO SE TOCA: es la fija de cada macro. Un patron de
+    # sombreado con separacion fija da la MISMA densidad en el papel para cualquier
+    # tamaño de perfil, que es justo lo que tiene que hacer; ligarlo al peralte deja los
+    # grandes con el rayado abierto y los chicos con el rayado cerrado.
+    check("el aparato de la cota no toca la separacion del rayado",
+          "_escalaHatchAcero" not in acero_cad)
 
     check("hay comprobacion numerica del aparato de la cota",
           "El aparato de la cota, proporcional al perfil"
@@ -5670,15 +5703,11 @@ def v21_separacion_y_acero() -> None:
     # con la zeta, que es la otra forma que lleva radios.
     check("las formas con dobleces se trazan con una sola polilinea",
           "private void TrazarPerfilConDobleces(" in acero_cad
-          and "PolilineaConBulges(pts, lista, _capaAcero)" in acero_cad)
+          and "PolilineaConBulges(pts, lista, CapaPerfiles)" in acero_cad)
     check("el bulge sale del barrido real, asi el espejo se resuelve solo",
           "private static double BulgeDesdeCentro(" in acero_cad)
 
-    # El PEDIT > Width del contorno, que en las macros solo hacia la del IR: es lo que
-    # hace que una seccion se lea como acero y no como una linea de construccion, y
-    # tenerlo en una de cuatro es una inconsistencia y no una decision.
-    check("las formas de polilinea llevan el ancho constante del contorno",
-          acero_cad.count("AnchoConstante(") >= 4)
+
 
     # Ninguna forma puede acabar en la capa ESTRIBOS: PolyCerrada la tiene escrita a
     # mano, asi que el acero usa Polilinea, que si respeta la capa que se le da.
@@ -5742,57 +5771,59 @@ def v21_separacion_y_acero() -> None:
         # 5.0 el OC. Sin esto, las cuatro familias caian una encima de otra.
         check("se agrupa por familia para recorrer banda por banda",
               "GroupBy(f => f.Familia)" in cuerpo_exp)
-        check("y cada familia se dibuja a la altura de su macro",
-              "BandaDeLaFamiliaCm(grupo.Key)" in cuerpo_exp
+        check("y cada familia se dibuja a la altura que le toca",
+              "var y = yCm * escala;" in cuerpo_exp
               and "DibujarAcero(perfil, xIzquierda, y)" in cuerpo_exp)
         check("con el aire que le toca a esa familia",
               "AireDeLaFamiliaCm(grupo.Key)" in cuerpo_exp)
-        check("y se avisa si una banda no da de alto",
-              "TechoDeLaBandaCm(grupo.Key)" in cuerpo_exp)
 
-    # Las alturas y los huecos de las DOCE familias, una por una.
-    #
-    # Cada uno se busca en el bloque de SU metodo, no en todo el archivo: los dos son un
-    # switch sobre la misma familia, asi que buscar «FamiliaPerfil.Ir => 0,» en el
-    # archivo entero encontraria la banda del IR al comprobar su aire, y al reves.
-    bloque_aire = acero_cb.split("AireDeLaFamiliaCm")[-1].split("BandaDeLaFamiliaCm")[0]
-    bloque_banda = acero_cb.split("BandaDeLaFamiliaCm")[-1].split("TechoDeLaBandaCm")[0]
+        # LA ALTURA DE CADA BANDA SE CALCULA: un metro por encima de la seccion MAS ALTA
+        # de la familia de abajo. Antes eran cuatro numeros fijos venidos de las macros, y
+        # con doce familias esa tabla no hay manera de acertarla: para que no se encimen
+        # habria que reservarle a cada una el hueco de su perfil mas alto del catalogo, y
+        # la IS llega a 1.90 m, asi que una hoja de angulos quedaba con metros de papel
+        # vacio entre banda y banda.
+        check("la banda de la siguiente familia se calcula con la seccion mas alta",
+              "yCm += masAlto + SeparacionDeBandasCm;" in cuerpo_exp)
+        check("la primera arranca en cero, como la macro del IR",
+              "var yCm = 0.0;" in cuerpo_exp)
+        check("y se acumula el alto DIBUJADO, no el peralte capturado",
+              "masAlto = Math.Max(masAlto, perfil.AltoDibujoCm);" in cuerpo_exp)
 
-    # Las cuatro de las macros siguen donde estaban a proposito: quien vuelva a generar
-    # un plano suyo encuentra el acero en su sitio de siempre.
-    BANDAS_CB = (("Ir", "0"), ("Or", "200"), ("Cf", "350"), ("Oc", "500"),
-                 ("Is", "650"), ("Ic", "900"), ("S", "1100"), ("Wt", "1250"),
-                 ("C", "1400"), ("Zf", "1500"), ("L", "1600"), ("Os", "1700"))
+    # El aire de las DOCE familias, uno por uno. La banda ya no es una tabla, asi que no
+    # hay dos switch sobre la misma familia y basta con leer el bloque del aire.
+    bloque_aire = acero_cb.split("AireDeLaFamiliaCm")[-1].split("OrdenDeLaFamilia")[0]
 
     AIRES_CB = (("Ir", "45"), ("Or", "55"), ("Oc", "60"), ("Cf", "65"),
                 ("Is", "45"), ("Ic", "45"), ("S", "50"), ("Wt", "55"),
                 ("C", "60"), ("Zf", "65"), ("L", "70"), ("Os", "70"))
 
-    for familia, banda in BANDAS_CB:
-        check(f"la banda de {familia.upper()} esta en {banda} cm",
-              f"FamiliaPerfil.{familia} => {banda}," in bloque_banda)
-
     for familia, aire in AIRES_CB:
         check(f"el aire de {familia.upper()} es de {aire} cm",
               f"FamiliaPerfil.{familia} => {aire}," in bloque_aire)
 
-    check("las cuatro familias de las macros siguen en su banda de siempre",
-          all(f"FamiliaPerfil.{f} => {b}," in bloque_banda
-              for f, b in (("Ir", "0"), ("Or", "200"), ("Cf", "350"), ("Oc", "500"))))
+    check("la separacion entre bandas es de un metro",
+          "SeparacionDeBandasCm = 100" in acero_cb)
 
-    check("y las bandas se comprueban con el catalogo de verdad",
-          "cada familia en su banda"
+    check("y ya no queda tabla de alturas de banda",
+          "BandaDeLaFamiliaCm" not in acero_cb
+          and "TechoDeLaBandaCm" not in acero_cb
+          and "MargenDeBandaCm" not in acero_cb)
+
+    check("las bandas se comprueban con el catalogo de verdad",
+          "las bandas, con el perfil mas alto de cada familia"
           in leer(ruta("tools/verificar_perfiles_acero.py")))
+
+    check("y se comprueba que entre banda y banda hay un metro justo",
+          "hay un metro justo" in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
 
     check("las familias se recorren en el orden de la lista, no en el de captura",
           "OrderBy(g => OrdenDeLaFamilia(g.Key))" in acero_cb)
 
-    # Los avisos de banda, en UN solo mensaje y al final. Antes salia un MessageBox por
-    # familia y en medio del recorrido, asi que con tres familias apretadas habia que
-    # cerrar tres avisos antes de que el dibujo terminara.
-    check("los avisos de banda salen todos juntos, y al acabar de dibujar",
-          "apretadas.Add(" in acero_cb
-          and acero_cb.count("apretadas") >= 4)
+    # La altura de cada banda ya no se puede consultar en una tabla, asi que el programa
+    # tiene que decir donde quedo cada familia: es la unica manera de saber donde buscar.
+    check("se dice a que altura quedo cada familia",
+          "bandas.Add(" in acero_cb and "Cada familia en su banda" in acero_cb)
 
     # ------------------------------------------------------------------
     # El catalogo de perfiles: las medidas NO se teclean
@@ -6022,7 +6053,12 @@ def v21_separacion_y_acero() -> None:
     check("explica que familia y forma son dos cosas distintas",
           "Familia y forma son dos cosas distintas" in audit)
     check("y por que el aparato de la cota tiene que ser proporcional",
-          "proporcional al perfil" in audit and "demasiado denso" in audit)
+          "proporcional al peralte" in audit and "0.64 cm" in audit)
+    check("y por que el rayado, en cambio, NO se liga al peralte",
+          "misma densidad en el papel" in audit)
+    check("explica como se calcula la altura de cada banda",
+          "La altura de cada banda se calcula" in audit
+          and "un metro por\nencima de la sección más alta" in audit)
     check("y lo que sigue faltando",
           "Lo que sigue faltando" in audit and "acuerdo entre alma y patín" in audit)
 

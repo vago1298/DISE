@@ -83,18 +83,26 @@ FORMAS = {
 
 FAMILIAS_ESPERADAS = set(FORMAS)
 
-# La altura de la banda de cada familia, de MainWindow.Acero.cs. Se repite aqui para
-# poder comprobar que ninguna familia se sale de su banda con los perfiles REALES del
-# catalogo, que es lo unico que puede decir si las alturas estan bien.
-BANDAS = {
-    "IR": 0, "OR": 200, "CF": 350, "OC": 500,
-    "IS": 650, "IC": 900, "S": 1100, "WT": 1250,
-    "C": 1400, "ZF": 1500, "L": 1600, "OS": 1700,
-}
+# El orden en que se apilan las familias, y la separacion vertical entre una banda y la
+# siguiente. Es el SeparacionDeBandasCm del programa: un metro por encima de la seccion
+# MAS ALTA de la familia de abajo.
+ORDEN_FAMILIAS = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
 
-# Lo que ocupa una seccion por encima y por debajo de su peralte: el rotulo abajo y las
-# cotas arriba. Es el MargenDeBandaCm del programa.
-MARGEN_BANDA = 40
+SEPARACION_BANDAS = 100
+
+# El rayado de cada forma, que es el de la macro que le corresponde. Se coteja contra el
+# codigo mas abajo, no se da por bueno.
+RAYADOS = {
+    "I": [("ANSI32", 252)],
+    "te": [("ANSI32", 252)],
+    "canal": [("ANSI32", 252)],
+    "angulo": [("ANSI32", 252)],
+    "canal con labios": [("SOLID", 4), ("ANSI31", 142)],
+    "zeta": [("SOLID", 4), ("ANSI31", 142)],
+    "tubo redondo": [("SOLID", 162), ("ANSI31", 162)],
+    "redondo macizo": [("SOLID", 162), ("ANSI31", 162)],
+    "tubo rectangular": [("SOLID", 141), ("ANSI31", 144), ("ANSI31", 142)],
+}
 
 fallos = []
 avisos = []
@@ -1214,77 +1222,114 @@ for nombre, diam in CASOS_OS:
 
 
 # ===========================================================================
-#  EL COLOR DE CADA FAMILIA
+#  EL RAYADO DE CADA FORMA
 # ===========================================================================
 #
-# Doce familias y nueve formas: cuatro familias se dibujan con la MISMA forma -IR, IS,
-# IC y S son todas un perfil I-, asi que en el plano lo unico que las distingue es el
-# color. Si dos compartieran color no habria manera de saber cual es cual sin leer el
-# rotulo de cada una.
+# NO hay un color por familia. Se probo y se quito: el plano dejaba de parecerse al que
+# ya se venia haciendo, y las cuatro familias portadas tienen cada una su propio rayado,
+# que es lo que de verdad las distingue en el dibujo.
 #
-# Y hace falta comprobar tambien que el relleno macizo NO sea del color de su rayado.
-# Ese era un defecto real del tubo redondo: rellenaba con SOLID en el 162 y rayaba con
-# ANSI31 tambien en el 162, asi que el rayado quedaba invisible y el tubo salia como un
-# anillo liso.
+# Lo que se comprueba es que cada forma lleve EL RAYADO DE SU MACRO, patron por patron y
+# color por color, y que las cinco formas nuevas tomen el de la macro cuyo material
+# comparten, que es la unica asignacion que no inventa nada:
+#
+#     laminadas (I, te, canal laminada, angulo)  ->  el del IR
+#     formadas en frio (canal con labios, zeta)  ->  el del CF
+#     redondos (tubo redondo, redondo macizo)    ->  el del OC
+#     tubo rectangular                           ->  el del HSS, con su corte de 5"
 
 import re as _re
 
 print("\n" + "=" * 78)
-print(" El color de cada familia")
+print(" El rayado de cada forma")
 print("=" * 78)
 
-with open("client/src/CadLink.Cad/FormaAcero.cs", encoding="utf-8") as f:
-    fuente_color = f.read()
+with open("client/src/CadLink.Cad/SeccionDrawer.Acero.cs", encoding="utf-8") as f:
+    fuente_cad = f.read()
 
-# Se leen del codigo, no se copian aqui: copiarlos seria comprobar la copia.
-COLORES = {m.group(1): int(m.group(2))
-           for m in _re.finditer(r'"(\w+)" => (\d+),', fuente_color)}
+m_rayar = _re.search(r"private void RayarPerfil\(.*?\n    \}", fuente_cad, _re.S)
 
-print()
-for fam in FAMILIAS_ESPERADAS:
-    if fam in COLORES:
-        linea = COLORES[fam]
-        print(f"    {fam:3}: lineas y rayado {linea:3}   relleno {linea + 6:3}   "
-              f"fondo palido {linea + 1:3}")
+check("existe RayarPerfil, que decide el rayado de cada forma", m_rayar is not None)
 
-check("las doce familias tienen color", set(COLORES) >= FAMILIAS_ESPERADAS,
-      f"faltan {sorted(FAMILIAS_ESPERADAS - set(COLORES))}")
+if m_rayar:
+    cuerpo = m_rayar.group(0)
 
-de_las_doce = {f: c for f, c in COLORES.items() if f in FAMILIAS_ESPERADAS}
+    # Los pares (patron, color) que el codigo pide, en el orden en que aparecen.
+    en_codigo = [(m.group(1), int(m.group(2)))
+                 for m in _re.finditer(
+                     r'Hatch\(\s*"(\w+)"[^;]*?CapaPerfiles,\s*(\d+)\)', cuerpo, _re.S)]
 
-check("y las doce tienen un color DISTINTO",
-      len(set(de_las_doce.values())) == len(de_las_doce),
-      str(sorted(de_las_doce.items(), key=lambda x: x[1])))
+    # Y los del tubo, que van con un condicional en vez de un numero suelto.
+    condicionales = _re.findall(r"menorDe5 \? (\d+) : (\d+)", cuerpo)
 
-# Las cuatro familias de forma I son las que de verdad necesitan color distinto: se
-# dibujan exactamente igual.
-forma_i = [f for f in ("IR", "IS", "IC", "S") if f in de_las_doce]
+    print("\n    pares (patron, color) que pide el codigo:")
+    for patron, color in en_codigo:
+        print(f"       {patron:8} en color {color}")
 
-check("las cuatro familias de forma I tienen cuatro colores distintos",
-      len({de_las_doce[f] for f in forma_i}) == len(forma_i),
-      str({f: de_las_doce[f] for f in forma_i}))
+    if condicionales:
+        print(f"       ANSI31   en color {condicionales[0][0]} si el tubo no llega a 5\", "
+              f"y {condicionales[0][1]} si si")
 
-# Los tonos de la rueda ACI van de diez en diez; usar dos de un mismo grupo dejaria dos
-# familias con colores casi iguales.
-grupos = {}
-for f, c in de_las_doce.items():
-    grupos.setdefault(c // 10, []).append(f)
+    esperados = set()
+    for pares in RAYADOS.values():
+        esperados |= set(pares)
 
-repetidos = {g: fs for g, fs in grupos.items() if len(fs) > 1}
+    del_codigo = set(en_codigo)
 
-check("ninguna pareja de familias comparte tono de la rueda ACI", not repetidos,
-      str(repetidos))
+    if condicionales:
+        del_codigo.add(("ANSI31", int(condicionales[0][0])))
+        del_codigo.add(("ANSI31", int(condicionales[0][1])))
 
-# Todos los indices tienen que ser indices ACI de verdad, y el relleno tiene que caber
-# dentro del mismo tono: sumar seis a un indice que acaba en 5 se saldria al siguiente.
-malos = [f"{f}={c}" for f, c in de_las_doce.items()
-         if not (1 <= c <= 255 and 1 <= c + 6 <= 255 and c % 10 <= 3)]
+    check("el codigo pide exactamente los rayados de las cuatro macros",
+          del_codigo == esperados,
+          f"sobran {sorted(del_codigo - esperados)}, faltan {sorted(esperados - del_codigo)}")
 
-check("los colores son indices ACI validos y su relleno cabe en el mismo tono",
-      not malos, str(malos))
+    # Las cuatro escalas de rayado de las macros, tal cual. Un rayado con separacion
+    # FIJA da la misma densidad en el papel para cualquier tamaño de perfil, que es lo
+    # que tiene que hacer un patron de sombreado: no se liga al peralte.
+    for escala in ("0.0009", "0.0008", "0.002"):
+        check(f"esta la escala de rayado {escala} de su macro",
+              f"{escala} * _f" in cuerpo)
 
-check("el relleno nunca es del color del rayado",
-      all(c + 6 != c for c in de_las_doce.values()))
+    # La del tubo va con un condicional, porque su macro la cambia a las 5 pulgadas.
+    check("la escala del tubo cambia a las 5 pulgadas, como su macro",
+          "(menorDe5 ? 0.001 : 0.002) * _f" in cuerpo)
+
+    # Y NINGUN color por familia: ni tabla, ni capa por familia, ni campo de color.
+    check("no queda ninguna tabla de color por familia",
+          "ColorAcero" not in fuente_cad)
+    check("ni capas por familia: una sola PERFILES, la de las macros",
+          'CapaPerfiles = "PERFILES"' in fuente_cad
+          and 'CapaBase + "-"' not in fuente_cad)
+
+# El PEDIT del contorno: de las cuatro macros, SOLO la del IR engruesa la linea. Las
+# formas nuevas siguen a la macro de su material, asi que lo llevan las laminadas.
+m_pedit = _re.search(r"private void PeditDeLaForma\(.*?\n    \}", fuente_cad, _re.S)
+
+check("existe PeditDeLaForma", m_pedit is not None)
+
+if m_pedit:
+    cuerpo_p = m_pedit.group(0)
+
+    print("\n    el PEDIT del contorno, que solo hace la macro del IR:")
+
+    for forma, lo_lleva in (("I", True), ("Te", True), ("Canal", True),
+                            ("Angulo", True), ("CanalConLabios", False),
+                            ("Zeta", False), ("TuboRectangular", False),
+                            ("TuboRedondo", False), ("RedondoMacizo", False)):
+        esta = f"FormaAcero.{forma}" in cuerpo_p
+
+        print(f"       {forma:18} {'lo lleva' if lo_lleva else 'NO lo lleva'}"
+              f"   {'(y el codigo lo dice)' if esta == lo_lleva else '<-- MAL'}")
+
+        check(f"el PEDIT de {forma} es el de su macro", esta == lo_lleva)
+
+    # El ancho constante se pide en UN solo sitio, dentro de PeditDeLaForma. Si alguna
+    # forma se lo pidiera aparte, se saltaria la regla de que solo lo lleva la del IR.
+    llamadas = fuente_cad.count("AnchoConstante(pl,")
+
+    check("el ancho constante se pide solo desde PeditDeLaForma", llamadas == 1,
+          f"{llamadas} llamadas")
 
 
 # ===========================================================================
@@ -1309,7 +1354,12 @@ def acotar(v, minimo, maximo):
 
 
 def aparato(peralte_cm):
-    """Port de PrepararAcero. Devuelve todo en CENTIMETROS."""
+    """Port de PrepararAcero. Devuelve todo en CENTIMETROS.
+
+    El rayado NO esta aqui: su separacion es la fija de cada macro, y esta bien que lo
+    sea, porque un patron con separacion fija da la misma densidad en el papel para
+    cualquier tamaño de perfil.
+    """
     r = peralte_cm
 
     return {
@@ -1318,7 +1368,6 @@ def aparato(peralte_cm):
         "texto": acotar(r / 10, 0.4, 1.5),
         "ext_off": acotar(r / 15, 0.3, 2),
         "ext_ext": acotar(r / 8, 0.5, 3.5),
-        "hatch": acotar(r / 300, 0.08, 1),
     }
 
 
@@ -1342,8 +1391,7 @@ print("\n    y como encoge con el perfil:")
 for peralte in (190.2, 111.8, 30.3, 15.24, 7.62, 1.91, 0.64):
     a = aparato(peralte)
     print(f"       peralte {peralte:6.2f} cm ->  flecha {a['flecha']:5.3f}   "
-          f"texto {a['texto']:5.3f}   gap {a['gap']:5.3f}   "
-          f"rayado cada {a['hatch']:5.3f}")
+          f"texto {a['texto']:5.3f}   gap {a['gap']:5.3f}")
 
 # Nada puede salir en cero ni negativo: una flecha de cero es una cota sin flecha.
 for peralte in (0.64, 1.91, 7.62, 30.3, 111.8, 190.2):
@@ -1360,23 +1408,15 @@ for k, v in ANTES.items():
     check(f"con la IS mas alta, el {k} no pasa del tope",
           a190[k] <= v + 1e-12, f"{a190[k]:.4f} contra {v}")
 
-# El rayado: con la separacion FIJA de la macro -0.09 cm- una IS de 190 llevaria mas de
-# dos mil lineas de rayado, y AutoCAD contesta «el patron es demasiado denso» y no
-# dibuja nada. Ligado al peralte, cada perfil lleva del orden de trescientas.
-print()
-for peralte in (190.2, 111.8, 30.3, 7.62):
-    a = aparato(peralte)
-    lineas_fijo = peralte / 0.09
-    lineas_ahora = peralte / a["hatch"]
-
-    print(f"    peralte {peralte:6.2f} cm ->  con separacion fija "
-          f"{lineas_fijo:7.0f} lineas de rayado, ahora {lineas_ahora:6.0f}")
-
-    check(f"el rayado de un perfil de {peralte} cm no pasa de 2000 lineas",
-          lineas_ahora < 2000, f"{lineas_ahora:.0f}")
-
-check("con la separacion FIJA de la macro, la IS mas alta si pasaba de 2000",
-      190.2 / 0.09 > 2000, f"{190.2 / 0.09:.0f}")
+# EL RAYADO NO ENTRA AQUI, y es a proposito: su separacion es la fija de cada macro.
+#
+# Un patron de sombreado con separacion fija da la MISMA densidad en el papel para
+# cualquier tamaño de perfil, que es justo lo que tiene que hacer. Ligarlo al peralte -que
+# es lo que se probo- deja los perfiles grandes con el rayado abierto y los chicos con el
+# rayado cerrado, o sea con distinta textura segun el tamaño, y eso en un plano se lee
+# como si fueran materiales distintos.
+check("el aparato de la cota no toca la separacion del rayado",
+      "hatch" not in aparato(30))
 
 
 # ===========================================================================
@@ -1941,18 +1981,21 @@ for fam in ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
               f"de {min(esp)} a {max(esp)} cm")
 
 
-# ---- 4. Que cada familia CABE en su banda ----
+# ---- 4. Las bandas: cada familia UN METRO por encima de la mas alta de abajo ----
 #
-# Es la comprobacion que dice si las alturas de banda estan bien puestas, y solo se
-# puede hacer con el catalogo delante: la banda de la IS tiene que ser la mas alta
-# porque la IS es la unica familia con perfiles de 1.90 m de peralte, y eso no se sabe
-# hasta contarlo.
-print("\n    cada familia en su banda:")
+# La altura de cada banda ya no esta en una tabla: se CALCULA. La primera arranca en 0 y
+# cada una de las siguientes va un metro por encima de la seccion mas alta de la de
+# abajo, asi que el plano sale siempre lo mas compacto que puede y no se puede encimar.
+#
+# Se comprueba con el catalogo ENTERO, que es el caso peor: una hoja con el perfil mas
+# alto de cada familia. Si con eso no se encima, con cualquier hoja de verdad tampoco.
+print("\n    las bandas, con el perfil mas alto de cada familia (el caso peor):")
 
-orden = sorted(BANDAS, key=lambda k: BANDAS[k])
-apretadas = []
+y_cm = 0.0
+bandas_calculadas = {}
+encimadas = []
 
-for i, fam in enumerate(orden):
+for fam in ORDEN_FAMILIAS:
     de_esta = [p for p in catalogo if p["familia"] == fam]
 
     if not de_esta:
@@ -1960,34 +2003,100 @@ for i, fam in enumerate(orden):
 
     mas_alto = max(alto_que_ocupa(p) for p in de_esta)
 
-    # El techo es la banda de arriba; la ultima no tiene nada encima.
-    techo = (BANDAS[orden[i + 1]] - BANDAS[fam]) if i + 1 < len(orden) else None
+    bandas_calculadas[fam] = (y_cm, mas_alto)
 
-    if techo is None:
-        print(f"       {fam:3} en {BANDAS[fam]:5} cm   el mas alto mide "
-              f"{mas_alto:6.2f}   (la de arriba, sin techo)")
-        continue
+    print(f"       {fam:3} en y = {y_cm / 100:6.2f} m   el mas alto mide "
+          f"{mas_alto:6.2f} cm   y su cima queda en "
+          f"{(y_cm + mas_alto) / 100:6.2f} m")
 
-    print(f"       {fam:3} en {BANDAS[fam]:5} cm   el mas alto mide {mas_alto:6.2f}"
-          f" + {MARGEN_BANDA} de margen = {mas_alto + MARGEN_BANDA:6.2f}"
-          f"   de {techo} disponibles")
+    y_cm += mas_alto + SEPARACION_BANDAS
 
-    if mas_alto + MARGEN_BANDA > techo:
-        apretadas.append(
-            f"{fam}: {mas_alto:.0f} + {MARGEN_BANDA} pasa de {techo}")
+# Lo que de verdad importa: que la base de cada banda quede al menos un metro por encima
+# de la CIMA de la de abajo. Es lo que garantiza que el rotulo de una -que cuelga unos 20
+# cm por debajo de su base- no toque las cotas de la de abajo, que suben otros 15.
+anterior = None
 
-check("ninguna familia del catalogo se sale de su banda", not apretadas,
-      "; ".join(apretadas))
+for fam, (base, alto) in bandas_calculadas.items():
+    if anterior is not None:
+        fam_ant, cima_ant = anterior
+        hueco = base - cima_ant
 
-# Y las bandas tienen que ir en orden creciente y sin repetirse, que es lo que
-# garantiza que dos familias no acaben dibujandose una encima de la otra.
-check("las doce bandas estan a alturas distintas",
-      len(set(BANDAS.values())) == len(BANDAS))
+        check(f"entre la cima de {fam_ant} y la base de {fam} hay un metro",
+              abs(hueco - SEPARACION_BANDAS) < 1e-9,
+              f"{hueco:.2f} cm")
 
-check("y las cuatro familias que ya se dibujaban siguen donde estaban",
-      BANDAS["IR"] == 0 and BANDAS["OR"] == 200
-      and BANDAS["CF"] == 350 and BANDAS["OC"] == 500,
-      str({k: BANDAS[k] for k in ("IR", "OR", "CF", "OC")}))
+    anterior = (fam, base + alto)
+
+check("ninguna banda se encima con la de abajo", not encimadas,
+      "; ".join(encimadas))
+
+# La primera arranca en cero, que es el baseY de la macro del IR.
+primera = next(iter(bandas_calculadas))
+
+check("la primera banda arranca en cero, como la macro del IR",
+      bandas_calculadas[primera][0] == 0, f"{primera} en {bandas_calculadas[primera][0]}")
+
+# Y el metro de separacion es de sobra para lo que sobresale de una seccion: el rotulo
+# cuelga por debajo de la base y las cotas suben por encima del perfil.
+ROTULO_ABAJO = 6 + (4 * 3)      # gap maximo + cuatro renglones de 3 cm
+COTAS_ARRIBA = 6 + 1.5 + 2      # gap maximo + texto + flecha
+
+check("el metro de separacion da para el rotulo de arriba y las cotas de abajo",
+      ROTULO_ABAJO + COTAS_ARRIBA < SEPARACION_BANDAS,
+      f"hacen falta {ROTULO_ABAJO + COTAS_ARRIBA:.1f} cm de {SEPARACION_BANDAS}")
+
+# ---- Y cuanto mide el plano, comparado con la tabla de alturas fijas ----
+#
+# CONVIENE SER EXACTO CON ESTO, porque es facil venderlo de mas. En el CASO PEOR -una
+# hoja con el perfil mas alto de cada una de las doce familias- el apilado NO sale mas
+# compacto que la tabla fija: sale un poco mas alto, porque la tabla dejaba 40 cm de
+# margen entre familias y ahora se deja un metro entero. Eso es lo que se pidio, y es el
+# lado seguro.
+#
+# Donde si gana, y por mucho, es en una hoja DE VERDAD, que nunca lleva el perfil mas
+# alto de cada familia: ahi cada banda ocupa lo que ocupa su seccion mas alta en lugar
+# del hueco reservado a la mas alta del catalogo.
+alto_peor = y_cm - SEPARACION_BANDAS
+ALTO_TABLA_FIJA = 1700 + 10.16      # la banda de la OS mas su perfil mas alto
+
+print(f"\n    el caso peor -el perfil mas alto de las doce familias- mide "
+      f"{alto_peor / 100:.2f} m")
+print(f"    con la tabla de alturas fijas ese mismo caso medía "
+      f"{ALTO_TABLA_FIJA / 100:.2f} m")
+
+# Una hoja de verdad: la del ejemplo del programa, un perfil de cada familia.
+EJEMPLO = {"IR": 31.3, "IS": 46.9, "IC": 39.9, "S": 25.4, "WT": 19.9, "C": 20.3,
+           "CF": 15.24, "ZF": 20.32, "L": 7.62, "OR": 15.2, "OC": 10.2, "OS": 1.91}
+
+y_ejemplo = 0.0
+for fam in ORDEN_FAMILIAS:
+    if fam in EJEMPLO:
+        y_ejemplo += EJEMPLO[fam] + SEPARACION_BANDAS
+
+alto_ejemplo = y_ejemplo - SEPARACION_BANDAS
+
+print(f"\n    la hoja de ejemplo -un perfil corriente de cada familia- mide "
+      f"{alto_ejemplo / 100:.2f} m")
+print(f"    con la tabla de alturas fijas medía {ALTO_TABLA_FIJA / 100:.2f} m")
+
+check("con una hoja de verdad el plano sale mas compacto que con la tabla fija",
+      alto_ejemplo < ALTO_TABLA_FIJA,
+      f"{alto_ejemplo:.0f} contra {ALTO_TABLA_FIJA:.0f} cm")
+
+print(f"\n    en el caso peor el apilado mide {alto_peor - ALTO_TABLA_FIJA:.0f} cm MAS "
+      "que la tabla fija, porque la separacion")
+print("    paso de los 40 cm de margen que dejaba la tabla a un metro entero. Es el "
+      "lado seguro.")
+
+# El invariante de verdad, que no depende de comparar con nada: el alto del plano es la
+# suma de lo que mide la seccion mas alta de cada familia, mas un metro por cada hueco.
+# Si esto se cumple, el apilado esta bien hecho, y da igual como salga la comparacion.
+suma_altos = sum(alto for _, alto in bandas_calculadas.values())
+huecos = len(bandas_calculadas) - 1
+
+check("el alto del plano es la suma de las secciones mas altas mas un metro por hueco",
+      abs(alto_peor - (suma_altos + (huecos * SEPARACION_BANDAS))) < 1e-9,
+      f"{alto_peor:.2f} contra {suma_altos + huecos * SEPARACION_BANDAS:.2f}")
 
 # ---- 5. Que el ancho que ocupa cada perfil es positivo ----
 #

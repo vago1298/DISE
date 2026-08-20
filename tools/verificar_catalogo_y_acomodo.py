@@ -409,15 +409,11 @@ AIRE = {
     "C": 60, "ZF": 65, "L": 70, "OS": 70,
 }
 
-BANDA = {
-    "IR": 0, "OR": 200, "CF": 350, "OC": 500,
-    "IS": 650, "IC": 900, "S": 1100, "WT": 1250,
-    "C": 1400, "ZF": 1500, "L": 1600, "OS": 1700,
-}
+# La altura de las bandas NO es una tabla: se CALCULA. La primera arranca en cero y cada
+# una de las siguientes va un metro por encima de la seccion MAS ALTA de la de abajo.
+ORDEN_FAMILIAS = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
 
-# Lo que ocupa una seccion por encima y por debajo de su peralte: el rotulo abajo y las
-# cotas arriba. Es el MargenDeBandaCm del programa.
-MARGEN_BANDA = 40
+SEPARACION_BANDAS = 100
 
 AIRE_CM = AIRE["OR"]     # el que usan las pruebas de una sola familia
 
@@ -552,28 +548,36 @@ check("y el hueco se avanza SIEMPRE, tambien para los saltados",
       re.search(r"xDerecha = xIzquierda - aire;", codigo) is not None
       and "El hueco se avanza SIEMPRE" in codigo)
 
-# El aire y la banda de CADA una de las doce familias.
+# El aire de CADA una de las doce familias.
 CLAVE = {
     "IR": "Ir", "IS": "Is", "IC": "Ic", "S": "S", "WT": "Wt", "C": "C",
     "CF": "Cf", "ZF": "Zf", "L": "L", "OR": "Or", "OC": "Oc", "OS": "Os",
 }
 
-# El aire y la banda se leen del bloque de SU metodo, no de todo el archivo: los dos son
-# switch sobre la misma familia, asi que buscar «FamiliaPerfil.Ir => 0,» en el archivo
-# entero encontraria la banda del IR al comprobar su aire, y al reves.
-bloque_aire = codigo.split("AireDeLaFamiliaCm")[-1].split("BandaDeLaFamiliaCm")[0]
-bloque_banda = codigo.split("BandaDeLaFamiliaCm")[-1].split("TechoDeLaBandaCm")[0]
+bloque_aire = codigo.split("AireDeLaFamiliaCm")[-1].split("OrdenDeLaFamilia")[0]
 
 for fam, aire in AIRE.items():
     check(f"el aire de {fam} en el codigo es {aire} cm",
           f"FamiliaPerfil.{CLAVE[fam]} => {aire}," in bloque_aire)
 
-for fam, banda in BANDA.items():
-    check(f"la banda de {fam} en el codigo esta en {banda} cm",
-          f"FamiliaPerfil.{CLAVE[fam]} => {banda}," in bloque_banda)
+# LA BANDA SE CALCULA, no se busca en una tabla. Lo que hay que comprobar es que ya no
+# quede tabla ninguna y que la cuenta sea la de subir un metro sobre la mas alta.
+check(f"la separacion entre bandas es de {SEPARACION_BANDAS} cm",
+      f"SeparacionDeBandasCm = {SEPARACION_BANDAS}" in codigo)
 
-check(f"el margen de banda del codigo es {MARGEN_BANDA} cm",
-      f"MargenDeBandaCm = {MARGEN_BANDA}" in codigo)
+check("la banda de la siguiente familia se calcula con la seccion mas alta",
+      "yCm += masAlto + SeparacionDeBandasCm;" in codigo)
+
+check("y ya no queda tabla de alturas de banda",
+      "BandaDeLaFamiliaCm" not in codigo and "TechoDeLaBandaCm" not in codigo)
+
+check("la primera banda arranca en cero, como la macro del IR",
+      "var yCm = 0.0;" in codigo)
+
+# El alto que se acumula es el DIBUJADO, no el peralte capturado: en el tubo rectangular
+# no son lo mismo, porque se dibuja de pie con su lado mayor en vertical.
+check("se acumula el alto dibujado, no el peralte capturado",
+      "masAlto = Math.Max(masAlto, perfil.AltoDibujoCm);" in codigo)
 
 # Y EL AIRE LO MANDA EL ROTULO cuando es mas ancho que el perfil. Sin esto, dos
 # secciones con un nombre largo quedan separadas pero sus rotulos se pisan.
@@ -583,8 +587,8 @@ check("el aire se recalcula con el ancho del rotulo de cada perfil",
 check("las familias se recorren en el orden de la lista, no en el de captura",
       "OrderBy(g => OrdenDeLaFamilia(g.Key))" in codigo)
 
-check("y los avisos de banda salen todos en un solo mensaje, al final",
-      "apretadas" in codigo and "TODOS EN UN SOLO" in codigo)
+check("y se dice a que altura quedo cada familia, que ya no es un numero fijo",
+      "bandas.Add(" in codigo and "Cada familia en su banda" in codigo)
 
 
 # ===========================================================================
@@ -612,48 +616,79 @@ def alto_de(p):
     return p["peralte"]
 
 
+def apilar(alturas):
+    """El calculo de las bandas del OnExportAcero.
+
+    Devuelve {familia: (base, alto)}. La primera arranca en cero y cada una de las
+    siguientes va un metro por encima de la CIMA de la de abajo.
+    """
+    y = 0.0
+    bandas = {}
+
+    for fam in ORDEN_FAMILIAS:
+        if fam not in alturas:
+            continue
+
+        bandas[fam] = (y, alturas[fam])
+        y += alturas[fam] + SEPARACION_BANDAS
+
+    return bandas
+
+
+# El caso peor: una hoja con el perfil mas alto de cada familia del catalogo.
+altos_del_catalogo = {}
+
+for p in catalogo_real:
+    f = p["familia"]
+    altos_del_catalogo[f] = max(altos_del_catalogo.get(f, 0), alto_de(p))
+
+bandas = apilar(altos_del_catalogo)
+
 print()
-orden = sorted(BANDA, key=lambda f: BANDA[f])
+for fam, (base, alto) in bandas.items():
+    print(f"    {fam:3}: banda en {base / 100:6.2f} m   la mas alta mide {alto:6.2f} cm"
+          f"   su cima queda en {(base + alto) / 100:6.2f} m")
 
-for i, fam in enumerate(orden):
-    de_esta = [p for p in catalogo_real if p["familia"] == fam]
+# LO QUE HAY QUE COMPROBAR: que entre la cima de una y la base de la siguiente haya
+# exactamente un metro. Es lo que garantiza que no se encimen, y ya no depende de que
+# una tabla de alturas este bien puesta.
+anterior = None
 
-    if not de_esta:
-        continue
+for fam, (base, alto) in bandas.items():
+    if anterior is not None:
+        fam_ant, cima_ant = anterior
 
-    mas_alto = max(alto_de(p) for p in de_esta)
-    base = BANDA[fam]
-    techo = BANDA[orden[i + 1]] if i + 1 < len(orden) else None
+        check(f"entre la cima de {fam_ant} y la base de {fam} hay un metro justo",
+              abs((base - cima_ant) - SEPARACION_BANDAS) < 1e-9,
+              f"{base - cima_ant:.2f} cm")
 
-    if techo is None:
-        print(f"    {fam:3}: banda en {base:5} cm   el mas alto mide {mas_alto:6.2f} cm   "
-              f"(no tiene banda encima)")
-        continue
+    anterior = (fam, base + alto)
 
-    hueco = techo - base
-    cabe = mas_alto + MARGEN_BANDA <= hueco
+check("la primera banda arranca en cero, como la macro del IR",
+      next(iter(bandas.values()))[0] == 0)
 
-    print(f"    {fam:3}: banda en {base:5} cm   el mas alto mide {mas_alto:6.2f} cm "
-          f"+ {MARGEN_BANDA} de margen   hueco de {hueco:4} cm   "
-          f"{'cabe' if cabe else 'NO CABE'}")
+# Y con una hoja de perfiles chicos las bandas se acercan, que es de lo que se trata:
+# con la tabla de alturas fijas la OS se dibujaba a 17 m aunque la hoja solo llevara
+# angulos de 3 pulgadas.
+chicos = {"L": 7.62, "OS": 1.91, "CF": 15.24}
+bandas_chicas = apilar(chicos)
 
-    # Aqui NO es un aviso: es un fallo. Con las bandas puestas al peralte maximo de cada
-    # familia mas el margen, que una no quepa significa que la tabla esta mal.
-    check(f"la familia {fam} cabe en su banda", cabe,
-          f"{mas_alto:.0f} + {MARGEN_BANDA} pasa de {hueco}")
+print("\n    una hoja de solo perfiles chicos (CF, L y OS):")
+for fam, (base, alto) in bandas_chicas.items():
+    print(f"    {fam:3}: banda en {base / 100:6.2f} m   la mas alta mide {alto:6.2f} cm")
 
-# Y que las bandas esten separadas y en orden creciente, porque de eso depende que dos
-# familias no acaben dibujandose una encima de la otra.
-for i in range(len(orden) - 1):
-    check(f"la banda de {orden[i]} esta por debajo de la de {orden[i+1]}",
-          BANDA[orden[i]] < BANDA[orden[i + 1]])
+check("con perfiles chicos las bandas se acercan en lugar de quedarse fijas",
+      max(b for b, _ in bandas_chicas.values()) < 300,
+      f"la ultima queda en {max(b for b, _ in bandas_chicas.values()):.0f} cm")
 
-check("las doce bandas son distintas", len(set(BANDA.values())) == len(BANDA))
+# El metro da de sobra para lo que sobresale de una seccion: el rotulo cuelga por debajo
+# de la base y las cotas suben por encima del perfil de abajo.
+ROTULO_ABAJO = 6 + (4 * 3)
+COTAS_ARRIBA = 6 + 1.5 + 2
 
-check("y las cuatro familias que ya se dibujaban siguen en su sitio de siempre",
-      BANDA["IR"] == 0 and BANDA["OR"] == 200
-      and BANDA["CF"] == 350 and BANDA["OC"] == 500,
-      str({k: BANDA[k] for k in ("IR", "OR", "CF", "OC")}))
+check("el metro de separacion da para el rotulo de arriba y las cotas de abajo",
+      ROTULO_ABAJO + COTAS_ARRIBA < SEPARACION_BANDAS,
+      f"hacen falta {ROTULO_ABAJO + COTAS_ARRIBA:.1f} de {SEPARACION_BANDAS}")
 
 # El aire NO es el mismo para todas: el rotulo de una familia de perfiles estrechos es
 # mucho mas ancho que su seccion, asi que necesita mas hueco que uno de perfiles anchos.

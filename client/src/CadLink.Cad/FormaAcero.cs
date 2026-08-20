@@ -17,6 +17,12 @@ namespace CadLink.Cad;
 /// pero <b>qué formas existen</b> lo decide quien las traza. Así no hay dos listas de
 /// cadenas que se puedan desincronizar.
 /// </para>
+/// <para>
+/// <b>La forma decide también con qué rayado se dibuja</b>, y no la familia: las cuatro
+/// macros de acero dejaron un rayado por familia, y las cinco formas que no tenían macro
+/// toman el de la macro cuyo <i>material</i> comparten. Ver
+/// <c>SeccionDrawer.RayarPerfil</c>.
+/// </para>
 /// </remarks>
 public static class FormaAcero
 {
@@ -68,99 +74,4 @@ public static class FormaAcero
         RedondoMacizo => "redondo macizo",
         _ => "desconocida"
     };
-}
-
-/// <summary>
-/// El <b>color de cada familia</b> de perfil, y la capa en la que se dibuja.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Un color por familia, y por capa, no por objeto.</b> Antes las cuatro familias
-/// portadas se dibujaban todas en la capa <c>PERFILES</c>, así que en el plano las secciones
-/// de acero salían todas del mismo color y solo se distinguían por su forma. Con doce
-/// familias eso ya no vale: una IR y una IS tienen la misma forma, y si además tienen el
-/// mismo color no hay manera de saber cuál es cuál sin leer el rótulo.
-/// </para>
-/// <para>
-/// El color se pone en la <b>capa</b> y los objetos van «por capa», que es como se hace en
-/// AutoCAD: así el usuario puede apagar todas las zetas de un clic, cambiarles el color a
-/// todas a la vez o dejarlas fuera de la impresión, cosas que con el color pegado a cada
-/// objeto no se pueden hacer. La capa <c>PERFILES</c> se sigue creando: es la que usaban las
-/// macros, y los dibujos que ya existen la tienen.
-/// </para>
-/// <para>
-/// Los índices están tomados de la <b>rueda de color ACI</b> de a 20 en 20 —cada familia en
-/// un tono claramente distinto del de sus vecinas— y de cada tono se usan dos: el saturado
-/// para las líneas y el rayado, y uno oscuro para el relleno macizo. Un relleno del mismo
-/// color que su rayado deja el rayado invisible, que es justo lo que le pasaba al tubo
-/// redondo: rellenaba con SOLID en 162 y rayaba con ANSI31 <b>también</b> en 162.
-/// </para>
-/// </remarks>
-public static class ColorAcero
-{
-    /// <summary>La capa de las macros. Se sigue creando por compatibilidad.</summary>
-    public const string CapaBase = "PERFILES";
-
-    /// <summary>El color de la trama y de las líneas de cada familia.</summary>
-    /// <remarks>
-    /// El 30 y el 250 no se usan: el 30 es casi el naranja de las cotas y el 250 es gris
-    /// oscuro, que sobre fondo negro no se ve.
-    /// </remarks>
-    public static int Lineas(string? familia) => (familia ?? string.Empty).ToUpperInvariant() switch
-    {
-        "IR" => 40,    // ámbar
-        "IS" => 50,    // amarillo
-        "IC" => 70,    // verde amarillo
-        "S" => 90,     // verde
-        "WT" => 110,   // verde cian
-        "C" => 130,    // cian
-        "CF" => 150,   // azul cian
-        "ZF" => 170,   // azul
-        "L" => 190,    // azul violeta
-        "OR" => 210,   // magenta
-        "OC" => 230,   // rosa
-        "OS" => 20,    // naranja
-        _ => 7         // blanco, el de la capa PERFILES de las macros
-    };
-
-    /// <summary>
-    /// El color del <b>relleno macizo</b>: el mismo tono, seis pasos más oscuro.
-    /// </summary>
-    /// <remarks>
-    /// En la rueda ACI cada tono ocupa diez índices y los pares van del saturado al muy
-    /// oscuro, así que sumar seis da el mismo color bastante más apagado. Es lo que hace que
-    /// el rayado que va encima se siga leyendo.
-    /// </remarks>
-    public static int Relleno(string? familia)
-    {
-        var linea = Lineas(familia);
-
-        return linea == 7 ? 8 : linea + 6;
-    }
-
-    /// <summary>
-    /// El color <b>pálido</b> del tono, para el fondo del rayado de los perfiles chicos.
-    /// </summary>
-    /// <remarks>
-    /// Los índices <b>impares</b> de cada tono son sus versiones pálidas, y el <c>+1</c> es
-    /// el más claro de todos. El fondo pálido es lo que hace que un tubo de dos pulgadas se
-    /// lea como lleno sin tener que rellenarlo de macizo, que a ese tamaño lo convertiría en
-    /// un manchón. Es la misma idea del fondo cian que le ponía la macro del HSS, pero del
-    /// color de su familia, y con el rayado saturado encima quedando más oscuro que el
-    /// fondo, que es lo que lo hace legible.
-    /// </remarks>
-    public static int Fondo(string? familia)
-    {
-        var linea = Lineas(familia);
-
-        return linea == 7 ? 254 : linea + 1;
-    }
-
-    /// <summary>La capa de una familia: <c>PERFILES-IR</c>, <c>PERFILES-ZF</c>…</summary>
-    public static string Capa(string? familia)
-    {
-        var f = (familia ?? string.Empty).Trim().ToUpperInvariant();
-
-        return f.Length == 0 ? CapaBase : CapaBase + "-" + f;
-    }
 }

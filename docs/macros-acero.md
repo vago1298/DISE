@@ -141,7 +141,7 @@ ejecuta, y es lo que se portó.
 | Las familias | cuatro hojas y cuatro botones | **doce** familias en una tabla, con una columna de familia | cuatro bloques de columnas separados obligan a saberse dónde se captura cada cosa y dejan el 75 % de la fila en blanco |
 | Familia y forma | lo mismo: una macro por familia | dos cosas distintas: doce familias, nueve formas | cuatro familias se dibujan igual pero tienen que ser cuatro listas separadas. Ver el apartado 7 |
 | Aparato de la cota | flecha 2 cm, texto 1.5, fijos | proporcional al peralte, con topes | el catálogo va de 0.64 cm a 1.90 m. Ver el apartado 8 |
-| Grosor del contorno | solo el IR hace `PEDIT > Width` | **las nueve formas** llevan 1 mm de ancho constante | es lo que hace que una sección se lea como acero y no como una línea de construcción. Tenerlo en una de cuatro es una inconsistencia, no una decisión |
+| Altura de las bandas | cuatro números fijos: 0, 2.0, 3.5 y 5.0 m | **se calcula**: 1 m por encima de la sección más alta de la banda de abajo | con doce familias la tabla no hay manera de acertarla. Ver el apartado 8 |
 | Dimensiones | se teclean | salen del catálogo IMCA al elegir el perfil | cuatro números por fila son cuatro oportunidades de equivocarse, y un espesor mal escrito no se ve en el dibujo |
 | Contorno del CF | 24 líneas y arcos unidos, más otra polilínea igual para el rayado | **una** polilínea con bulges | dos entidades con la misma geometría, una encima de otra |
 | Perfil espejeado | se calcula con el signo `s` | igual, pero el bulge sale del **barrido real** | al invertir el lado, los ocho barridos cambian de signo solos |
@@ -150,9 +150,17 @@ ejecuta, y es lo que se portó.
 | Orden de dibujo | — | se avisa como nota, no como fallo | reordenar es estético: el dibujo está completo aunque falle |
 
 Lo que **sí** se conserva tal cual, porque son decisiones del dibujo y no del programa: la
-geometría de las cuatro formas, los patrones y colores de rayado, el corte de las 5″ del OR,
-qué cotas lleva cada familia, la altura del rótulo, y el acomodo — `x = −0.6` hacia la
-izquierda, cada familia en su banda de `baseY` y con su propio `sepIzq`.
+geometría de las cuatro formas, **los patrones, las escalas y los colores de rayado**, el
+`PEDIT > Width` del contorno —que solo hace la del IR—, el corte de las 5″ del OR, qué cotas
+lleva cada familia, la capa única `PERFILES`, y el arranque del acomodo en `x = −0.6` hacia
+la izquierda con el `sepIzq` de cada familia.
+
+**Se probó a darle un color y una capa propia a cada familia, y se quitó.** La idea era que
+cuatro familias comparten la forma del perfil I y sin color no hay cómo distinguirlas; pero
+el resultado es un plano que no se parece al que ya se venía haciendo, y las cuatro familias
+portadas ya se distinguen por su rayado, que es lo propio de un plano estructural. Lo que se
+conserva de aquello es la idea de asignar a cada forma nueva el rayado de la macro cuyo
+material comparte, que es el apartado 6.
 
 ---
 
@@ -215,18 +223,16 @@ separadas: quien pide una IR quiere ver **solo** las W. Antes las cuatro se met�
 «porque son perfiles I», y el desplegable de la IR ofrecía 573 perfiles de cuatro
 nomenclaturas revueltas, en el que había que ir sorteando IS, IC y S para encontrar una W.
 
-Separadas, lo único que las distingue en el plano es el **color**, y por eso cada familia
-tiene el suyo y una capa propia —`PERFILES-IR`, `PERFILES-IS`…—. El color va en la capa y los
-objetos van «por capa», que es como se hace en AutoCAD: así se puede apagar una familia
-entera de un clic, recolorearla o dejarla fuera de la impresión. La `PERFILES` a secas se
-sigue creando porque es la de las macros.
+Así que la familia decide **la lista y el nombre**, y la forma decide **el trazo y el
+rayado**. Las doce van a la misma capa `PERFILES`, como en las macros.
 
-Eso además arregla el **rayado invisible del OC** que está apuntado más arriba: el relleno
-macizo va seis pasos más oscuro que el rayado dentro del mismo tono, así que el rayado se lee.
+Lo que eso deja pendiente conviene decirlo: una IR y una IS del mismo peralte salen en el
+plano con el mismo trazo y el mismo rayado, y solo se distinguen por su rótulo. Es lo que
+hacían las macros con una sola familia de perfil I, y es lo que se pidió mantener.
 
 ---
 
-## 8. El aparato de la cota, ahora proporcional al perfil
+## 8. El aparato de la cota y la altura de las bandas
 
 Las macros dejaban la flecha en 2 cm, las líneas de extensión en 3.5 y el texto en 1.5. Esos
 números vienen del concreto, donde una sección es de 30 por 60 y son un 5 % de la pieza. El
@@ -238,10 +244,11 @@ Ahora sale del peralte, con topes arriba y abajo, y está puesto para que **un p
 salga exactamente como antes**: 30 entre 15 son los 2 cm de flecha de siempre. Lo que cambia
 es que de ahí para abajo el aparato encoge con la pieza.
 
-La separación del rayado también, y esa no era cosmética: con el `0.0009` fijo de la macro
-del IR, una IS de 1.90 m se rayaba con **más de dos mil líneas**, y a eso AutoCAD contesta
-«el patrón de sombreado es demasiado denso» y no dibuja nada. Ligada al peralte, cada perfil
-lleva del orden de trescientas.
+**La separación del rayado no se toca**, y conviene decir por qué, porque se intentó y estaba
+mal: un patrón de sombreado con separación fija da la **misma densidad en el papel** para
+cualquier tamaño de perfil, que es justo lo que tiene que hacer. Ligarlo al peralte deja los
+perfiles grandes con el rayado abierto y los chicos con el rayado cerrado, o sea con distinta
+textura según el tamaño, y en un plano eso se lee como si fueran materiales distintos.
 
 Y la altura del rótulo sale de la única de las cuatro reglas de las macros que tenía un
 motivo: la del OR, que ponía 0.02 si su primer número no pasaba de 6 y 0.03 si sí, porque el
@@ -255,6 +262,32 @@ del perfil no se parta en dos»: era el mismo problema, parcheado en una de las 
 Y de ahí sale otra cosa: **el aire entre secciones lo manda el rótulo**, no el perfil. Un
 renglón de casi un metro debajo de una sección de 22 cm significa que dos secciones seguidas
 pueden quedar separadas y sus rótulos pisarse. El hueco es el mayor de los dos.
+
+### La altura de cada banda se calcula
+
+Las cuatro macros arrancan todas en `x = −0.6`, así que lo único que evita que se encimen unas
+con otras es la altura: `baseY = 0` el IR, 2.0 el OR, 3.5 el CF y 5.0 el OC. **Con doce
+familias esa tabla no hay manera de acertarla.** Para que nunca se encimen habría que
+reservarle a cada familia el hueco de su perfil más alto del catálogo, y la IS llega a 1.90 m:
+una hoja de ángulos y montenes quedaría con metros de papel vacío entre banda y banda.
+
+Así que se calcula. La primera arranca en 0 y **cada una de las siguientes va un metro por
+encima de la sección más alta de la de abajo**. El metro da de sobra para lo que sobresale de
+una sección: los cuatro renglones del rótulo cuelgan del orden de 20 cm por debajo de su base,
+y las cotas suben otros 15 por encima del perfil de abajo.
+
+Dos cosas que salen de esto y hay que saber:
+
+- Para una hoja de verdad el plano sale **mucho más compacto**: la del ejemplo, con un perfil
+  corriente de cada una de las doce familias, mide 13.5 m de alto contra los 17.1 de la tabla
+  fija. En el **caso peor** —el perfil más alto de las doce familias— sale 1.5 m *más* alto que
+  la tabla, porque la separación pasó de los 40 cm de margen que dejaba la tabla a un metro
+  entero. Ese es el lado seguro.
+- La altura de una familia **depende de las que tenga debajo**. Dibujando la hoja entera cada
+  cosa cae en su sitio, pero si se agrega un perfil más alto y se vuelve a dibujar, las
+  secciones que ya son bloque se quedan donde estaban y las nuevas van a la altura nueva. Si
+  pasa, se borran los bloques y se dibuja la hoja de una vez. El programa dice a qué altura
+  quedó cada familia al terminar, porque ya no es un número que se pueda consultar.
 
 ---
 

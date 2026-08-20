@@ -21,9 +21,10 @@ namespace CadLink.Cad;
 /// <see cref="Bloquear"/>, <see cref="Capa"/> y compañía. El acero los reusa.
 /// </para>
 /// <para>
-/// <b>Se dibuja por FORMA y se colorea por FAMILIA.</b> Cuatro familias comparten la forma
-/// del perfil I, así que el trazo se escribe una vez; lo que las distingue en el plano es el
-/// color de su capa, que sale de <see cref="ColorAcero"/>.
+/// <b>Se dibuja por FORMA, no por familia.</b> Cuatro familias comparten la forma del perfil
+/// I, así que el trazo se escribe una vez. Y el <b>rayado</b> también va por forma: cada una
+/// lleva el de la macro que le corresponde, y las cinco que no tenían macro toman el de la
+/// macro cuyo material comparten. Ver <see cref="RayarPerfil"/>.
 /// </para>
 /// </remarks>
 public sealed partial class SeccionDrawer
@@ -38,15 +39,20 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private const string EstiloTextoAcero = "ACERO";
 
-    /// <summary>Peralte, en pulgadas, a partir del cual el perfil se rellena de macizo.</summary>
+    /// <summary>Capa de los perfiles de acero, la de las cuatro macros.</summary>
     /// <remarks>
-    /// <para>
-    /// Sale de la macro del HSS, que rellenaba de sólido solo los tubos de cinco pulgadas
-    /// para arriba y a los chicos les ponía un fondo tenue. <b>Aquí se aplica a las nueve
-    /// formas</b>, porque el motivo no era del tubo sino del tamaño: una sección de dos
-    /// pulgadas rellena de macizo sale como un manchón negro y no se le distingue la forma,
-    /// que es justamente lo que se va a ver en el plano.
-    /// </para>
+    /// <b>Una sola capa para las doce familias</b>, como en las macros. Se probó a darle una
+    /// capa y un color a cada familia, y se quitó: el plano deja de parecerse al que ya se
+    /// venía haciendo, y las cuatro familias portadas tienen cada una su propio rayado, que
+    /// es lo que de verdad las distingue.
+    /// </remarks>
+    private const string CapaPerfiles = "PERFILES";
+
+    /// <summary>Peralte, en pulgadas, a partir del cual el tubo rectangular se rellena.</summary>
+    /// <remarks>
+    /// Es de la macro del HSS, y <b>solo la afecta a ella</b>: por debajo de cinco pulgadas
+    /// el tubo se raya fino con fondo cian, y de ahí para arriba se rellena sólido con un
+    /// rayado más abierto encima.
     /// </remarks>
     private const double PeralteLimitePulg = 5.0;
 
@@ -61,21 +67,9 @@ public sealed partial class SeccionDrawer
     // ------------------------------------------------------------------
     //  El estado del perfil que se está dibujando
     // ------------------------------------------------------------------
-    // Son campos y no parámetros porque los usan las quince funciones de trazo y de cota
-    // de cada forma, y pasarlos uno por uno convertiría cada firma en una lista de ocho
+    // Son campos y no parámetros porque los usan las quince funciones de cota de cada
+    // forma, y pasarlos uno por uno convertiría cada firma en una lista de ocho
     // argumentos que nadie lee. Los fija PrepararAcero y valen durante UN perfil.
-
-    /// <summary>Capa del perfil que se dibuja ahora: <c>PERFILES-IR</c>, <c>PERFILES-ZF</c>…</summary>
-    private string _capaAcero = ColorAcero.CapaBase;
-
-    /// <summary>Color del rayado y de las líneas de la familia que se dibuja ahora.</summary>
-    private int _colorLineasAcero = 7;
-
-    /// <summary>Color del relleno macizo de la familia que se dibuja ahora.</summary>
-    private int _colorRellenoAcero = 8;
-
-    /// <summary>Color del fondo tenue, para los perfiles que no se rellenan.</summary>
-    private int _colorFondoAcero = 254;
 
     /// <summary>Separación entre el perfil y sus cotas, proporcional al perfil.</summary>
     private double _gapAcero;
@@ -92,38 +86,17 @@ public sealed partial class SeccionDrawer
     /// <summary>Remate de la línea de extensión más allá de la línea de cota.</summary>
     private double _extExtiendeAcero;
 
-    /// <summary>Separación del rayado, proporcional al perfil.</summary>
-    private double _escalaHatchAcero;
-
-    /// <summary>Si el perfil es lo bastante grande para rellenarse de macizo.</summary>
-    private bool _rellenoMacizoAcero;
-
     /// <summary>
     /// Deja el dibujo listo para las secciones de acero: capas, texto y cotas.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Las cuatro macros crean <c>PERFILES</c>, <c>COTAS</c> y <c>ROTULOS</c>, cada una a su
-    /// manera y con un color distinto para la misma capa.
-    /// </para>
-    /// <para>
-    /// <b>Aquí se crea además una capa por familia</b>, <c>PERFILES-IR</c>,
-    /// <c>PERFILES-OR</c> y así hasta doce, cada una con su color. Es lo que hace que en el
-    /// plano se distinga una IR de una IS, que tienen la misma forma; y al ir por capa y no
-    /// por objeto, el usuario puede apagar una familia entera, recolorearla o dejarla fuera
-    /// de la impresión desde el administrador de capas. La <c>PERFILES</c> a secas se sigue
-    /// creando porque es la de las macros y los dibujos viejos la traen.
-    /// </para>
+    /// manera y con un color distinto para la misma capa. Aquí se crean una vez con el
+    /// blanco 7 que usan las tres macros que sí lo fijan.
     /// </remarks>
     public void AsegurarCapasAcero()
     {
-        Capa(ColorAcero.CapaBase, 7);
-
-        foreach (var familia in FamiliasConCapa)
-        {
-            Capa(ColorAcero.Capa(familia), ColorAcero.Lineas(familia));
-        }
-
+        Capa(CapaPerfiles, 7);
         Capa("COTAS", 253);
         Capa("ROTULOS", 3);
 
@@ -135,18 +108,6 @@ public sealed partial class SeccionDrawer
 
         ConfigurarCotas();
     }
-
-    /// <summary>
-    /// Las familias que tienen capa propia.
-    /// </summary>
-    /// <remarks>
-    /// Se escriben aquí, y no se sacan de la interfaz, porque el dibujante no puede depender
-    /// de ella: es la interfaz la que lo usa a él. Si algún día se agrega una familia y esta
-    /// lista se queda corta, el perfil se dibuja igual —cae en la capa <c>PERFILES</c> y con
-    /// el blanco de las macros— y el usuario ve un perfil, no un error.
-    /// </remarks>
-    private static readonly string[] FamiliasConCapa =
-        { "IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS" };
 
     /// <summary>
     /// Crea el estilo de texto <c>ACERO</c> de las cotas.
@@ -233,21 +194,13 @@ public sealed partial class SeccionDrawer
     /// con cotas ilegibles.
     /// </para>
     /// <para>
-    /// <b>Y la separación del rayado también.</b> Con el <c>0.0009</c> fijo de la macro del
-    /// IR, una IS de 1.90 m se rayaba con más de dos mil líneas: AutoCAD contesta «el patrón
-    /// de sombreado es demasiado denso» y no dibuja nada. Ligada al peralte, cada perfil
-    /// lleva del orden de trescientas líneas, se raye grande o chico.
+    /// <b>El rayado no se toca:</b> cada forma lleva la separación y los colores de su
+    /// macro, fijos. Un rayado con separación fija da la misma densidad en el papel para
+    /// cualquier tamaño de perfil, que es lo que tiene que hacer un patrón de sombreado.
     /// </para>
     /// </remarks>
     private void PrepararAcero(PerfilAceroCad p)
     {
-        var familia = p.Familia;
-
-        _capaAcero = ColorAcero.Capa(familia);
-        _colorLineasAcero = ColorAcero.Lineas(familia);
-        _colorRellenoAcero = ColorAcero.Relleno(familia);
-        _colorFondoAcero = ColorAcero.Fondo(familia);
-
         // La referencia es el PERALTE, no el ancho ni la diagonal: es la medida con la que
         // se nombra el perfil y la que el ojo usa para juzgar su tamaño.
         var referencia = p.PeralteCm * _escala;
@@ -257,11 +210,6 @@ public sealed partial class SeccionDrawer
         _textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm);
         _extOffsetAcero = Acotar(referencia / 15, 0.3 * Cm, 2 * Cm);
         _extExtiendeAcero = Acotar(referencia / 8, 0.5 * Cm, 3.5 * Cm);
-
-        _escalaHatchAcero = Acotar(referencia / 300, 0.08 * Cm, 1 * Cm);
-
-        // El relleno macizo solo en los perfiles grandes. Ver PeralteLimitePulg.
-        _rellenoMacizoAcero = p.PeralteCm / 2.54 >= PeralteLimitePulg - 0.01;
     }
 
     /// <summary>Un valor metido entre dos topes.</summary>
@@ -347,39 +295,39 @@ public sealed partial class SeccionDrawer
             switch (p.Forma)
             {
                 case FormaAcero.I:
-                    PerfilI(x + (uno / 2), yAbajo, h, b, t, tf);
+                    PerfilI(x + (uno / 2), yAbajo, h, b, t, tf, p);
                     break;
 
                 case FormaAcero.Te:
-                    PerfilTe(x + (uno / 2), yAbajo, h, b, t, tf);
+                    PerfilTe(x + (uno / 2), yAbajo, h, b, t, tf, p);
                     break;
 
                 case FormaAcero.Canal:
-                    PerfilCanal(x, yAbajo, h, b, t, tf, espejo);
+                    PerfilCanal(x, yAbajo, h, b, t, tf, espejo, p);
                     break;
 
                 case FormaAcero.CanalConLabios:
-                    PerfilCf(x, yAbajo, h, b, t, labio, radio, espejo);
+                    PerfilCf(x, yAbajo, h, b, t, labio, radio, espejo, p);
                     break;
 
                 case FormaAcero.Zeta:
-                    PerfilZeta(x, yAbajo, h, b, bMenor, t, radio, espejo);
+                    PerfilZeta(x, yAbajo, h, b, bMenor, t, radio, espejo, p);
                     break;
 
                 case FormaAcero.Angulo:
-                    PerfilAngulo(x, yAbajo, h, b, t, espejo);
+                    PerfilAngulo(x, yAbajo, h, b, t, espejo, p);
                     break;
 
                 case FormaAcero.TuboRectangular:
-                    PerfilOr(x + (uno / 2), yAbajo, uno, alto, t);
+                    PerfilOr(x + (uno / 2), yAbajo, uno, alto, t, p);
                     break;
 
                 case FormaAcero.TuboRedondo:
-                    PerfilOc(x + (h / 2), yAbajo + (h / 2), h / 2, (h / 2) - t);
+                    PerfilOc(x + (h / 2), yAbajo + (h / 2), h / 2, (h / 2) - t, p);
                     break;
 
                 case FormaAcero.RedondoMacizo:
-                    PerfilOs(x + (h / 2), yAbajo + (h / 2), h / 2);
+                    PerfilOs(x + (h / 2), yAbajo + (h / 2), h / 2, p);
                     break;
             }
         }
@@ -447,7 +395,9 @@ public sealed partial class SeccionDrawer
     /// curvas de acuerdo entre alma y patín: la macro tampoco, y a la escala de un plano
     /// estructural no se distinguirían.
     /// </remarks>
-    private void PerfilI(double cx, double cy, double d, double bf, double tw, double tf)
+    private void PerfilI(
+        double cx, double cy, double d, double bf, double tw, double tf,
+        PerfilAceroCad p)
     {
         var pts = new[]
         {
@@ -465,7 +415,7 @@ public sealed partial class SeccionDrawer
             cx - (bf / 2), cy
         };
 
-        TrazarPerfil(pts, "ANSI32", "perfil I");
+        TrazarPerfil(pts, p, "perfil I");
     }
 
     /// <summary>
@@ -482,7 +432,9 @@ public sealed partial class SeccionDrawer
     /// columna <c>d</c> del manual y no la <c>h</c>, que solo mide el alma libre.
     /// </para>
     /// </remarks>
-    private void PerfilTe(double cx, double cy, double d, double bf, double tw, double tf)
+    private void PerfilTe(
+        double cx, double cy, double d, double bf, double tw, double tf,
+        PerfilAceroCad p)
     {
         var pts = new[]
         {
@@ -496,7 +448,7 @@ public sealed partial class SeccionDrawer
             cx - (tw / 2), cy
         };
 
-        TrazarPerfil(pts, "ANSI32", "te");
+        TrazarPerfil(pts, p, "te");
     }
 
     /// <summary>
@@ -574,7 +526,8 @@ public sealed partial class SeccionDrawer
     /// </para>
     /// </remarks>
     private void PerfilCanal(
-        double xIzq, double y0, double d, double bf, double tw, double tf, bool espejo)
+        double xIzq, double y0, double d, double bf, double tw, double tf, bool espejo,
+        PerfilAceroCad p)
     {
         var ancho = bf;
         var s = espejo ? -1.0 : 1.0;
@@ -595,7 +548,7 @@ public sealed partial class SeccionDrawer
             xAlma + (s * bf), y0
         };
 
-        TrazarPerfil(pts, "ANSI32", "canal laminada");
+        TrazarPerfil(pts, p, "canal laminada");
     }
 
     private void CotasCanal(
@@ -658,7 +611,8 @@ public sealed partial class SeccionDrawer
     /// </para>
     /// </remarks>
     private void PerfilAngulo(
-        double xIzq, double y0, double alaLarga, double alaCorta, double t, bool espejo)
+        double xIzq, double y0, double alaLarga, double alaCorta, double t, bool espejo,
+        PerfilAceroCad p)
     {
         var s = espejo ? -1.0 : 1.0;
 
@@ -676,7 +630,7 @@ public sealed partial class SeccionDrawer
             xTalon, y0 + alaLarga
         };
 
-        TrazarPerfil(pts, "ANSI31", "ángulo");
+        TrazarPerfil(pts, p, "ángulo");
     }
 
     private void CotasAngulo(
@@ -722,7 +676,7 @@ public sealed partial class SeccionDrawer
     /// </para>
     /// </remarks>
     private void PerfilOr(
-        double cx, double cy, double bHss, double hHss, double tHss)
+        double cx, double cy, double bHss, double hHss, double tHss, PerfilAceroCad p)
     {
         var rOut = Math.Min(tHss, Math.Min(bHss, hHss) / 2);
 
@@ -739,11 +693,8 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        // El ancho constante del PEDIT, que en las macros solo hacía la del IR. Aquí lo
-        // llevan las nueve formas: es lo que hace que una sección se lea como acero y no
-        // como una línea de construcción, y tenerlo en una de cuatro es una
-        // inconsistencia y no una decisión. Es 1 mm, que a 1:10 son 0.1 mm en el papel.
-        AnchoConstante(exterior, 0.1 * Cm);
+        // El tubo NO lleva ancho constante: su macro no hace PEDIT, solo la del IR lo hace.
+        // Ver PeditDeLaForma.
 
         var bInt = bHss - (2 * tHss);
         var hInt = hHss - (2 * tHss);
@@ -760,7 +711,7 @@ public sealed partial class SeccionDrawer
 
         var islas = interior is null ? null : new List<object> { interior };
 
-        HatchAcero(exterior, islas, "ANSI31");
+        RayarPerfil(exterior, islas, p);
     }
 
     private void CotasOr(
@@ -810,14 +761,15 @@ public sealed partial class SeccionDrawer
     /// hace la macro cuando <c>radioInt</c> queda en cero.
     /// </para>
     /// <para>
-    /// <b>Aquí se arregla un rayado invisible.</b> La macro rellenaba con <c>SOLID</c> en el
-    /// color 162 y rayaba con <c>ANSI31</c> <b>también</b> en 162: el rayado quedaba del
-    /// mismo color que su fondo, así que no se veía y el tubo salía como un anillo liso. Con
-    /// los colores por familia el relleno va oscuro y el rayado va saturado, así que el
-    /// rayado se lee.
+    /// <b>El rayado de esta macro es invisible</b>, y se conserva así: rellena con
+    /// <c>SOLID</c> en el color 162 y raya con <c>ANSI31</c> <b>también</b> en 162, así que
+    /// las líneas del rayado no se distinguen del fondo y el tubo sale como un anillo liso.
+    /// Está apuntado en <c>docs/macros-acero.md</c>: es una decisión de dibujo y con cambiar
+    /// el color de las líneas se arregla, pero no se toca por cuenta propia.
     /// </para>
     /// </remarks>
-    private void PerfilOc(double cx, double cy, double rExt, double rInt)
+    private void PerfilOc(
+        double cx, double cy, double rExt, double rInt, PerfilAceroCad p)
     {
         var exterior = Circulo(cx, cy, rExt);
 
@@ -830,7 +782,7 @@ public sealed partial class SeccionDrawer
         var interior = rInt > 0 ? Circulo(cx, cy, rInt) : null;
         var islas = interior is null ? null : new List<object> { interior };
 
-        HatchAcero(exterior, islas, "ANSI31");
+        RayarPerfil(exterior, islas, p);
     }
 
     private void CotasOc(double xIzq, double yAbajo, double d, double espesorCm, bool doble)
@@ -867,7 +819,7 @@ public sealed partial class SeccionDrawer
     /// que faltaba para poder dibujar los tensores y las contravientos, que se piden como
     /// varilla lisa y hasta ahora había que capturar como un tubo de pared falsa.
     /// </remarks>
-    private void PerfilOs(double cx, double cy, double r)
+    private void PerfilOs(double cx, double cy, double r, PerfilAceroCad p)
     {
         var contorno = Circulo(cx, cy, r);
 
@@ -877,7 +829,7 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        HatchAcero(contorno, null, "ANSI31");
+        RayarPerfil(contorno, null, p);
     }
 
     /// <summary>
@@ -936,7 +888,7 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private void PerfilCf(
         double xWeb, double y0, double h, double b, double t, double lip, double ri,
-        bool espejo)
+        bool espejo, PerfilAceroCad p)
     {
         var s = espejo ? -1.0 : 1.0;
 
@@ -985,7 +937,7 @@ public sealed partial class SeccionDrawer
                     xFlangeOut, yb + lip,
                     xFlangeOut, yb
                 },
-                "ANSI31", "canal con labios");
+                p, "canal con labios");
 
             return;
         }
@@ -1029,7 +981,7 @@ public sealed partial class SeccionDrawer
             (19, xWebOut + (s * rExt), yb + rExt, 19, 0)
         };
 
-        TrazarPerfilConDobleces(pts, bulges, "ANSI31", "canal con labios");
+        TrazarPerfilConDobleces(pts, bulges, p, "canal con labios");
     }
 
     private void CotasCf(
@@ -1092,7 +1044,7 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private void PerfilZeta(
         double xIzq, double y0, double h, double bAncho, double bAngosto, double t,
-        double ri, bool espejo)
+        double ri, bool espejo, PerfilAceroCad p)
     {
         if (t <= 0) { t = 0.1 * Cm; }
         if (bAngosto <= t) { bAngosto = bAncho; }
@@ -1142,7 +1094,7 @@ public sealed partial class SeccionDrawer
                     X(xAlmaIzq), y0 + t,
                     X(xIzq), y0 + t
                 },
-                "ANSI31", "zeta");
+                p, "zeta");
 
             return;
         }
@@ -1179,7 +1131,7 @@ public sealed partial class SeccionDrawer
             (9, X(xAlmaIzq - rInt), y0 + t + rInt, 9, 10)
         };
 
-        TrazarPerfilConDobleces(pts, bulges, "ANSI31", "zeta");
+        TrazarPerfilConDobleces(pts, bulges, p, "zeta");
     }
 
     private void CotasZeta(
@@ -1223,17 +1175,16 @@ public sealed partial class SeccionDrawer
     // ==================================================================
 
     /// <summary>
-    /// Traza un contorno en pico, le da grosor de acero y lo raya.
+    /// Traza un contorno en pico y lo raya con lo que le toca a su forma.
     /// </summary>
     /// <remarks>
-    /// Las nueve formas acaban aquí o en <see cref="TrazarPerfilConDobleces"/>. Antes cada
-    /// forma repetía las tres llamadas —polilínea, ancho constante, rayado— con sus propios
-    /// colores literales, y así es como el tubo redondo se quedó rellenando y rayando del
-    /// mismo color sin que se notara.
+    /// Las nueve formas acaban aquí o en <see cref="TrazarPerfilConDobleces"/>: el trazo es
+    /// el mismo para todas, y lo único que cambia de una a otra es el rayado, que decide
+    /// <see cref="RayarPerfil"/>.
     /// </remarks>
-    private void TrazarPerfil(double[] pts, string patron, string queEs)
+    private void TrazarPerfil(double[] pts, PerfilAceroCad p, string queEs)
     {
-        var pl = Polilinea(pts, _capaAcero);
+        var pl = Polilinea(pts, CapaPerfiles);
 
         if (pl is null)
         {
@@ -1241,18 +1192,15 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        // El ancho constante del PEDIT de la macro: engrosa la línea del perfil para que
-        // se lea como acero y no como una línea de construcción.
-        AnchoConstante(pl, 0.1 * Cm);
-
-        HatchAcero(pl, null, patron);
+        PeditDeLaForma(pl, p);
+        RayarPerfil(pl, null, p);
     }
 
     /// <summary>Lo mismo, con dobleces: la canal con labios y la zeta.</summary>
     private void TrazarPerfilConDobleces(
         double[] pts,
         (int Indice, double Cx, double Cy, int A, int B)[] dobleces,
-        string patron,
+        PerfilAceroCad p,
         string queEs)
     {
         var lista = new List<(int, double)>();
@@ -1265,7 +1213,7 @@ public sealed partial class SeccionDrawer
                 pts[2 * b], pts[(2 * b) + 1])));
         }
 
-        var pl = PolilineaConBulges(pts, lista, _capaAcero);
+        var pl = PolilineaConBulges(pts, lista, CapaPerfiles);
 
         if (pl is null)
         {
@@ -1273,40 +1221,120 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        AnchoConstante(pl, 0.1 * Cm);
-
-        HatchAcero(pl, null, patron);
+        PeditDeLaForma(pl, p);
+        RayarPerfil(pl, null, p);
     }
 
     /// <summary>
-    /// El rayado de un perfil, <b>del color de su familia</b>.
+    /// El <c>PEDIT &gt; Width</c> del contorno, <b>el de la macro de cada forma</b>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Los perfiles grandes llevan relleno macizo con el rayado encima; los de menos de cinco
-    /// pulgadas, solo el rayado sobre un fondo tenue. La regla es de la macro del HSS y el
-    /// motivo vale para las nueve formas: a dos pulgadas, un relleno macizo convierte la
-    /// sección en un manchón del que no se distingue la forma.
+    /// De las cuatro macros, <b>solo la del IR engruesa el contorno</b>: le pone 0.001 de
+    /// ancho constante para que la sección se lea como acero y no como una línea de
+    /// construcción. La del HSS, la del OC y la del CF lo dejan con línea fina.
     /// </para>
     /// <para>
-    /// El relleno va <b>seis pasos más oscuro</b> que el rayado dentro del mismo tono. Dos
-    /// hatches del mismo color, uno encima del otro, dejan el de arriba invisible, que es lo
-    /// que le pasaba al tubo redondo: <c>SOLID</c> en 162 y <c>ANSI31</c> también en 162.
+    /// Aquí se conserva exactamente así, y las formas nuevas siguen a la macro cuyo material
+    /// comparten: la te, la canal laminada y el ángulo son perfiles <b>laminados</b> como el
+    /// IR y llevan su ancho; la zeta es lámina doblada como el CF y no lo lleva; los redondos
+    /// van como el OC. Se probó a ponérselo a las nueve y se quitó: cambia el aspecto de las
+    /// tres familias que ya se venían dibujando.
     /// </para>
     /// </remarks>
-    private void HatchAcero(object contorno, List<object>? islas, string patron)
+    private void PeditDeLaForma(object pl, PerfilAceroCad p)
     {
-        if (_rellenoMacizoAcero)
+        if (p.Forma is FormaAcero.I or FormaAcero.Te or FormaAcero.Canal
+            or FormaAcero.Angulo)
         {
-            Hatch("SOLID", 1, contorno, islas, _capaAcero, _colorRellenoAcero);
+            AnchoConstante(pl, 0.1 * Cm);
         }
+    }
 
-        var trama = Hatch(
-            patron, _escalaHatchAcero, contorno, islas, _capaAcero, _colorLineasAcero);
-
-        if (!_rellenoMacizoAcero && trama is not null)
+    /// <summary>
+    /// El rayado de un perfil: <b>el de la macro que le corresponde a su forma</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los patrones, las escalas y los colores son los que dejaron las cuatro macros de
+    /// acero, uno por uno. No hay un color por familia: se probó y se quitó, porque el plano
+    /// dejaba de parecerse al que ya se venía haciendo. Lo que distingue una familia de otra
+    /// en el dibujo es su rayado, que es como estaba.
+    /// </para>
+    /// <para>
+    /// <b>Las cinco formas que no tenían macro toman la de su material</b>, que es la
+    /// asignación que no inventa nada:
+    /// </para>
+    /// <list type="table">
+    ///   <listheader><term>Forma</term><description>Rayado que usa</description></listheader>
+    ///   <item><term>I, te, canal laminada, ángulo</term><description>el del <b>IR</b>:
+    ///   <c>ANSI32</c> a 0.0009 en color 252. Las cuatro son perfil laminado.</description></item>
+    ///   <item><term>canal con labios, zeta</term><description>el del <b>CF</b>: fondo sólido
+    ///   4 y <c>ANSI31</c> a 0.0008 en 142. Las dos son lámina doblada en frío.</description></item>
+    ///   <item><term>tubo redondo, redondo macizo</term><description>el del <b>OC</b>:
+    ///   <c>SOLID</c> y <c>ANSI31</c>, los dos en 162.</description></item>
+    ///   <item><term>tubo rectangular</term><description>el del <b>HSS</b>, con su corte de
+    ///   las cinco pulgadas.</description></item>
+    /// </list>
+    /// <para>
+    /// <b>Ojo con el del OC:</b> el relleno y el rayado van del mismo color 162, así que las
+    /// líneas del rayado no se distinguen del fondo y el tubo se ve macizo. Es lo que hace la
+    /// macro y se conserva; está apuntado en <c>docs/macros-acero.md</c> por si algún día se
+    /// quiere cambiar el color de las líneas.
+    /// </para>
+    /// </remarks>
+    private void RayarPerfil(object contorno, List<object>? islas, PerfilAceroCad p)
+    {
+        switch (p.Forma)
         {
-            FondoDelHatch(trama, _colorFondoAcero);
+            // Laminados: el rayado de la macro del IR.
+            case FormaAcero.I:
+            case FormaAcero.Te:
+            case FormaAcero.Canal:
+            case FormaAcero.Angulo:
+                Hatch("ANSI32", 0.0009 * _f, contorno, islas, CapaPerfiles, 252);
+                break;
+
+            // Formados en frío: el de la macro del CF.
+            case FormaAcero.CanalConLabios:
+            case FormaAcero.Zeta:
+                Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 4);
+                Hatch("ANSI31", 0.0008 * _f, contorno, islas, CapaPerfiles, 142);
+                break;
+
+            // Redondos: el de la macro del OC.
+            case FormaAcero.TuboRedondo:
+            case FormaAcero.RedondoMacizo:
+                Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 162);
+                Hatch("ANSI31", 0.002 * _f, contorno, islas, CapaPerfiles, 162);
+                break;
+
+            // Tubo rectangular: el de la macro del HSS, con su corte de las 5 pulgadas.
+            //
+            // El peralte en pulgadas, con la misma tolerancia de la macro para que un 5"
+            // nominal no caiga del lado equivocado por un redondeo. Los colores son los de
+            // sus CONSTANTES (141 y 144); sus comentarios dicen 94 y 80, que es lo que tuvo
+            // alguna vez, y manda la constante, que es lo que se ejecuta.
+            case FormaAcero.TuboRectangular:
+                var menorDe5 = p.PeralteCm / 2.54 < PeralteLimitePulg - 0.01;
+
+                if (!menorDe5)
+                {
+                    Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 141);
+                }
+
+                var trama = Hatch(
+                    "ANSI31",
+                    (menorDe5 ? 0.001 : 0.002) * _f,
+                    contorno, islas, CapaPerfiles,
+                    menorDe5 ? 142 : 144);
+
+                if (menorDe5 && trama is not null)
+                {
+                    FondoDelHatch(trama, 4);
+                }
+
+                break;
         }
     }
 
@@ -1466,7 +1494,7 @@ public sealed partial class SeccionDrawer
 
         if (r <= 1e-7)
         {
-            return Polilinea(new[] { x0, y0, x1, y0, x1, y1, x0, y1 }, _capaAcero);
+            return Polilinea(new[] { x0, y0, x1, y0, x1, y1, x0, y1 }, CapaPerfiles);
         }
 
         var pts = new[]
@@ -1484,7 +1512,7 @@ public sealed partial class SeccionDrawer
         return PolilineaConBulges(
             pts,
             new List<(int, double)> { (1, Bulge90), (3, Bulge90), (5, Bulge90), (7, Bulge90) },
-            _capaAcero);
+            CapaPerfiles);
     }
 
     /// <summary>Una polilínea cerrada con bulges en los vértices que se le digan.</summary>
@@ -1559,14 +1587,14 @@ public sealed partial class SeccionDrawer
             return AcadConnection.Retry<object?>(() =>
             {
                 dynamic c = _ms.AddCircle(new[] { cx, cy, 0d }, radio);
-                c.Layer = _capaAcero;
+                c.Layer = CapaPerfiles;
                 c.Color = PorCapa;
                 return (object?)c;
             });
         }
         catch (Exception ex)
         {
-            Fallo($"Circunferencia de radio {radio:0.###} en la capa {_capaAcero}", ex);
+            Fallo($"Circunferencia de radio {radio:0.###} en la capa {CapaPerfiles}", ex);
             return null;
         }
     }

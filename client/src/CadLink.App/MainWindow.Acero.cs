@@ -263,12 +263,25 @@ public partial class MainWindow
             //
             // CADA FAMILIA EN SU PROPIA BANDA, y esto salió de releer las cuatro macros:
             // las cuatro arrancan en x = -0.6, así que si dibujaran a la misma altura se
-            // encimarían unas con otras. Lo que las separa es la Y: la macro del IR usa
-            // baseY = 0, la del OR 2.0, la del CF 3.5 y la del OC 5.0. Cada familia tiene
-            // su renglón en el plano, y con doce familias hacen falta doce renglones.
+            // encimarían unas con otras. Lo que las separa es la Y.
             var entidades = 0;
             var dibujados = 0;
-            var apretadas = new List<string>();
+            var bandas = new List<string>();
+
+            // LA ALTURA DE CADA BANDA SE CALCULA, no está en una tabla.
+            //
+            // La primera arranca en 0 y cada una de las siguientes va UN METRO por encima de
+            // la sección MÁS ALTA de la de abajo. Las macros lo tenían en cuatro números
+            // fijos —el IR en 0, el OR en 2.0, el CF en 3.5, el OC en 5.0— y con doce
+            // familias esa tabla no hay manera de acertarla: para que nunca se encimen habría
+            // que reservarle a cada una el hueco de su perfil más alto del catálogo, y la IS
+            // llega a 1.90 m, así que una hoja de ángulos y montenes quedaría con metros de
+            // papel vacío entre banda y banda.
+            //
+            // Calculándola, el plano sale siempre lo más compacto que puede y NO SE PUEDE
+            // ENCIMAR: el metro se mide desde la sección más alta que se acabó de dibujar,
+            // no desde la más alta que podría haber.
+            var yCm = 0.0;
 
             // Se agrupa por familia para recorrer una banda completa antes de pasar a la
             // siguiente, que es lo que hace cada macro con su hoja. Y se recorren en el
@@ -280,7 +293,7 @@ public partial class MainWindow
                          .OrderBy(g => OrdenDeLaFamilia(g.Key)))
             {
                 var xDerecha = OrigenAceroCm * escala;
-                var y = BandaDeLaFamiliaCm(grupo.Key) * escala;
+                var y = yCm * escala;
                 var aireFamilia = AireDeLaFamiliaCm(grupo.Key);
 
                 var masAlto = 0.0;
@@ -331,35 +344,16 @@ public partial class MainWindow
                     xDerecha = xIzquierda - aire;
                 }
 
-                // Y se apunta si la banda se sale de su hueco. Las alturas están puestas con
-                // el peralte máximo de cada familia del IMCA más un margen, así que esto
-                // solo puede pasar con un perfil capturado a mano más alto que cualquiera
-                // del catálogo.
-                var techo = TechoDeLaBandaCm(grupo.Key);
+                bandas.Add(
+                    $"{grupo.Key} en y = {yCm / 100:0.00} m " +
+                    $"(la más alta mide {masAlto:N0} cm)");
 
-                if (techo > 0 && masAlto + MargenDeBandaCm > techo)
-                {
-                    apretadas.Add(
-                        $"{grupo.Key}: llega a {masAlto:N0} cm y su banda tiene " +
-                        $"{techo:N0} cm");
-                }
-            }
-
-            // Los avisos de banda, TODOS EN UN SOLO mensaje y después de dibujar.
-            //
-            // Antes salía un MessageBox por familia y en medio del recorrido, así que con
-            // tres familias apretadas había que cerrar tres avisos idénticos antes de que
-            // el dibujo terminara, y cada uno dejaba AutoCAD a medias esperando.
-            if (apretadas.Count > 0)
-            {
-                MessageBox.Show(
-                    "El dibujo salió completo, pero estas familias llegan casi al techo de " +
-                    "su banda y pueden encimarse con la de arriba:\n\n  " +
-                    string.Join("\n  ", apretadas) +
-                    "\n\nPasa con perfiles capturados a mano más altos que cualquiera del " +
-                    "catálogo. Si lo ves encimado, dibuja esa familia en un plano aparte o " +
-                    "dime y le doy más altura a la banda.",
-                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+                // Y aquí se sube a la banda siguiente: la sección más alta de esta familia,
+                // más el metro de separación. Se suma el ALTO DIBUJADO, no el peralte
+                // capturado, porque en el tubo rectangular no son lo mismo: un tubo se
+                // dibuja de pie, con su lado mayor en vertical, aunque se haya capturado al
+                // revés.
+                yCm += masAlto + SeparacionDeBandasCm;
             }
 
             dibujante.RotulosAlFrente();
@@ -390,11 +384,22 @@ public partial class MainWindow
 
             var fallos = dibujante.Fallos;
 
+            // A qué altura quedó cada familia. Se dice porque ya no es un número fijo que se
+            // pueda consultar: se calcula con las secciones de esta hoja, así que la única
+            // manera de saber dónde buscar cada familia en el plano es que el programa lo
+            // diga.
+            var dondeQuedaron = bandas.Count == 0
+                ? string.Empty
+                : $"\n\nCada familia en su banda, separadas {SeparacionDeBandasCm / 100:0} m " +
+                  "de la sección más alta de la de abajo:\n  " +
+                  string.Join("\n  ", bandas);
+
             var resumen =
                 "Listo.\n\n" +
                 $"{dibujados} perfil(es) dibujados\n" +
                 $"{entidades} entidades creadas\n\n" +
                 "Cada perfil quedó agrupado en un bloque con el nombre de su ID." +
+                dondeQuedaron +
                 aviso;
 
             StatusText.Text = saltados.Count == 0
@@ -482,80 +487,32 @@ public partial class MainWindow
     };
 
     /// <summary>
-    /// A qué altura va la fila de cada familia, en centímetros.
+    /// Separación vertical entre la sección más alta de una familia y la banda de arriba.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Las doce familias arrancan en la misma x, el −0.6 de las macros, así que lo único que
-    /// evita que se encimen unas con otras es esta altura.
+    /// <b>Un metro, y se mide desde la sección más alta que se dibujó</b>, no desde la más
+    /// alta que podría haber. Antes había una tabla de alturas fijas —la del IR en 0, la del
+    /// OR en 2.0…— que venía de las cuatro macros, y con doce familias esa tabla no hay
+    /// manera de acertarla: para que nunca se encimen hay que reservarle a cada familia el
+    /// hueco de su perfil más alto del catálogo, y la IS llega a 1.90 m, así que una hoja de
+    /// ángulos y montenes quedaba con metros de papel vacío entre banda y banda.
     /// </para>
     /// <para>
-    /// <b>Las cuatro de las macros se quedan donde estaban</b> —el IR en 0, el OR en 2.0, el
-    /// CF en 3.5 y el OC en 5.0— y las ocho nuevas se apilan encima, a partir de 6.5 m. Se
-    /// podía haber reordenado todo para agrupar por forma, pero eso movería de sitio a las
-    /// cuatro familias que ya se venían dibujando: quien vuelva a generar un plano suyo
-    /// encontraría el acero donde siempre.
+    /// El metro da de sobra para lo que sobresale de la sección: los cuatro renglones del
+    /// rótulo cuelgan del orden de 20 cm por debajo de su base, y las cotas suben otros 15
+    /// por encima del perfil de abajo.
     /// </para>
     /// <para>
-    /// El alto de cada banda es el <b>peralte máximo de esa familia en el catálogo IMCA más
-    /// un margen</b>, redondeado a medio metro. Por eso la de la IS es la más alta, de 2.5 m:
-    /// es la única familia con perfiles de 1.90 m de peralte.
+    /// <b>Lo que se pierde al calcularla</b> conviene saberlo: la altura de una familia
+    /// depende ahora de las que tenga debajo, así que si se agrega un perfil más alto a la
+    /// IR, todo lo que esté encima sube. Dibujando la hoja entera eso da igual —cada cosa
+    /// cae en su sitio— pero si se redibuja después de haber cambiado alturas, las secciones
+    /// que ya son bloque se quedan donde estaban y las nuevas van a la altura nueva. Si pasa,
+    /// se borran los bloques y se dibuja la hoja de una vez.
     /// </para>
     /// </remarks>
-    private static double BandaDeLaFamiliaCm(string? familia) => familia switch
-    {
-        // Las cuatro de las macros, en su sitio de siempre.
-        FamiliaPerfil.Ir => 0,      // hasta 200: el IR llega a 111.8 cm
-        FamiliaPerfil.Or => 200,    // hasta 350: el OR llega a 50.8
-        FamiliaPerfil.Cf => 350,    // hasta 500: el CF llega a 30.5
-        FamiliaPerfil.Oc => 500,    // hasta 650: el OC llega a 50.8
-
-        // Las ocho nuevas, apiladas encima.
-        FamiliaPerfil.Is => 650,    // hasta 900: la IS llega a 190.2, la más alta de todas
-        FamiliaPerfil.Ic => 900,    // hasta 1100: la IC llega a 111.8
-        FamiliaPerfil.S => 1100,    // hasta 1250: la S llega a 62.2
-        FamiliaPerfil.Wt => 1250,   // hasta 1400: la WT llega a 55.9
-        FamiliaPerfil.C => 1400,    // hasta 1500: la C llega a 38.1
-        FamiliaPerfil.Zf => 1500,   // hasta 1600: la ZF llega a 30.5
-        FamiliaPerfil.L => 1600,    // hasta 1700: la L llega a 20.3
-        FamiliaPerfil.Os => 1700,   // sin techo: la OS llega a 10.2
-
-        _ => 0
-    };
-
-    /// <summary>
-    /// Cuánto alto tiene la banda de una familia antes de tocar la de arriba.
-    /// </summary>
-    /// <remarks>
-    /// Sirve solo para avisar. La familia de más arriba —la OS, que además es la más
-    /// pequeña— no tiene nada encima, así que devuelve cero: no hay con qué encimarse.
-    /// </remarks>
-    private static double TechoDeLaBandaCm(string? familia) => familia switch
-    {
-        FamiliaPerfil.Ir => 200,
-        FamiliaPerfil.Or => 150,
-        FamiliaPerfil.Cf => 150,
-        FamiliaPerfil.Oc => 150,
-        FamiliaPerfil.Is => 250,
-        FamiliaPerfil.Ic => 200,
-        FamiliaPerfil.S => 150,
-        FamiliaPerfil.Wt => 150,
-        FamiliaPerfil.C => 100,
-        FamiliaPerfil.Zf => 100,
-        FamiliaPerfil.L => 100,
-        _ => 0
-    };
-
-    /// <summary>
-    /// Lo que ocupa una sección <b>por encima y por debajo</b> de su propio peralte.
-    /// </summary>
-    /// <remarks>
-    /// Son los cuatro renglones del rótulo, que van debajo de la base, y las cotas de arriba,
-    /// que se separan del perfil. Se cuenta al comprobar si una banda se sale de su hueco,
-    /// porque una sección que quepa justa por peralte sigue encimando su rótulo con las cotas
-    /// de la familia de abajo.
-    /// </remarks>
-    private const double MargenDeBandaCm = 40;
+    private const double SeparacionDeBandasCm = 100;
 
     /// <summary>Dónde va una familia en el orden del acomodo.</summary>
     /// <remarks>

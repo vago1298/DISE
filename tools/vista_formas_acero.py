@@ -24,11 +24,13 @@ Importarlo tiene un efecto de lado que conviene: ese modulo comprueba al cargars
 que si la geometria esta mal, ESTE script no llega a dibujar nada. La vista no puede
 salir bonita con las formulas rotas.
 
-LOS COLORES
------------
-Son los de verdad, leidos de FormaAcero.cs y traducidos de indice ACI a RGB con la
-regla del propio AutoCAD: los indices del 10 en adelante van en 24 tonos de 15 grados y
-diez sombras cada uno, las pares saturadas y las impares palidas.
+EL RAYADO
+---------
+NO hay un color por familia: las doce van en la misma capa PERFILES, como en las macros,
+y lo que distingue una de otra es su RAYADO. Cada forma lleva el de la macro que le
+corresponde, y las cinco que no tenian macro toman el de la macro cuyo material
+comparten. Aqui se dibujan con patrones SVG que imitan el ANSI31 y el ANSI32, y con los
+colores ACI de verdad traducidos a RGB.
 """
 
 import colorsys
@@ -37,7 +39,6 @@ import importlib.util
 import io
 import math
 import os
-import re
 import sys
 
 
@@ -78,7 +79,36 @@ def _cargar_geometria():
 g = _cargar_geometria()
 
 
-RUTA_COLORES = "client/src/CadLink.Cad/FormaAcero.cs"
+# El rayado de cada forma, que es el de su macro. Tiene que decir lo mismo que
+# SeccionDrawer.RayarPerfil; validar.py comprueba que los pares (patron, color) de aqui
+# esten tambien alli.
+#
+#     (patron del relleno, color del relleno, patron de la trama, color de la trama)
+#
+# El relleno en None quiere decir que esa forma no se rellena: solo lleva la trama, como
+# el IR.
+RAYADO = {
+    # Laminados: el de la macro del IR. Sin relleno, solo ANSI32 en 252.
+    "I": (None, None, "ANSI32", 252),
+    "te": (None, None, "ANSI32", 252),
+    "canal": (None, None, "ANSI32", 252),
+    "angulo": (None, None, "ANSI32", 252),
+
+    # Formados en frio: el de la macro del CF. Fondo solido 4 y ANSI31 en 142.
+    "canal con labios": ("SOLID", 4, "ANSI31", 142),
+    "zeta": ("SOLID", 4, "ANSI31", 142),
+
+    # Redondos: el de la macro del OC. Los dos en 162, asi que la trama NO SE VE: es un
+    # defecto de la macro que se conserva a proposito, y esta apuntado en la
+    # documentacion. Aqui se dibuja igual que saldra en AutoCAD.
+    "tubo redondo": ("SOLID", 162, "ANSI31", 162),
+    "redondo macizo": ("SOLID", 162, "ANSI31", 162),
+
+    # Tubo rectangular: el de la macro del HSS. De 5 pulgadas para arriba, solido 141 y
+    # ANSI31 en 144; por debajo, fondo cian 4 y ANSI31 en 142.
+    "tubo rectangular": ("SOLID", 141, "ANSI31", 144),
+    "tubo rectangular chico": ("SOLID", 4, "ANSI31", 142),
+}
 
 
 def aci_a_rgb(indice):
@@ -117,15 +147,6 @@ def aci_a_rgb(indice):
 def hex_de(indice):
     r, v, a = aci_a_rgb(indice)
     return f"#{r:02x}{v:02x}{a:02x}"
-
-
-def leer_colores():
-    """La tabla de color por familia, leida de FormaAcero.cs."""
-    with open(RUTA_COLORES, encoding="utf-8") as f:
-        fuente = f.read()
-
-    return {m.group(1): int(m.group(2))
-            for m in re.finditer(r'"(\w+)" => (\d+),', fuente)}
 
 
 def puntos_con_arcos(pts, bulges, por_arco=14):
@@ -178,77 +199,80 @@ def puntos_con_arcos(pts, bulges, por_arco=14):
 # ---------------------------------------------------------------------------
 # Las medidas son del catalogo IMCA, en centimetros, y el nombre es su designacion.
 
-def forma_i():
-    return g.perfil_ir(0, 0, 31.3, 16.6, 0.67, 1.12), {}
-
-
-def forma_te():
-    return g.perfil_te(0, 0, 19.9, 14.0, 0.64, 0.88), {}
-
-
-def forma_canal():
-    return g.perfil_canal(0, 0, 20.3, 5.7, 0.56, 0.99, False), {}
-
-
-def forma_angulo():
-    return g.perfil_angulo(0, 0, 7.62, 5.08, 0.635, False), {}
-
-
-def forma_cf():
-    pts, bulges, _, _, _ = g.perfil_cf(0, 0, 15.24, 5.08, 0.19, 1.52, 0.24, False)
-    return pts, bulges
-
-
-def forma_zeta():
-    pts, bulges, _, _, _, _ = g.perfil_zeta(0, 0, 20.32, 6.03, 5.4, 0.19, 0.476, False)
-    return pts, bulges
-
-
-def forma_or():
-    pts, bulges = g.rectangulo_redondeado(0, 0, 15.2, 15.2, 0.64)
-    return pts, bulges
-
-
 FORMAS = [
-    ("IR", "perfil I", "W - 12'' x 30.04 lb/ft", forma_i, None),
-    ("IS", "perfil I", "IS - 150 x 9.5 / 450 x 6.4 mm",
+    ("IR", "I", "W - 12'' x 30.04 lb/ft",
+     lambda: (g.perfil_ir(0, 0, 31.3, 16.6, 0.67, 1.12), {}), None),
+    ("IS", "I", "IS - 150 x 9.5 / 450 x 6.4 mm",
      lambda: (g.perfil_ir(0, 0, 46.9, 15.0, 0.64, 0.95), {}), None),
-    ("WT", "te", "WT - 8'' x 13.0 lb/ft", forma_te, None),
-    ("C", "canal laminada", "C - 8'' x 12.0 lb/ft", forma_canal, None),
-    ("CF", "canal con labios", 'CF - 6" x 2" x #14', forma_cf, None),
-    ("ZF", "zeta", 'ZF - 8" x 2 3/8" x #14', forma_zeta, None),
-    ("L", "angulo", "L - 3'' x 2'' x 1/4''", forma_angulo, None),
-    ("OR", "tubo rectangular", 'HSS - 6" x 1/4"', forma_or, None),
+    ("WT", "te", "WT - 8'' x 13.0 lb/ft",
+     lambda: (g.perfil_te(0, 0, 19.9, 14.0, 0.64, 0.88), {}), None),
+    ("C", "canal", "C - 8'' x 12.0 lb/ft",
+     lambda: (g.perfil_canal(0, 0, 20.3, 5.7, 0.56, 0.99, False), {}), None),
+    ("CF", "canal con labios", 'CF - 6" x 2" x #14',
+     lambda: g.perfil_cf(0, 0, 15.24, 5.08, 0.19, 1.52, 0.24, False)[:2], None),
+    ("ZF", "zeta", 'ZF - 8" x 2 3/8" x #14',
+     lambda: g.perfil_zeta(0, 0, 20.32, 6.03, 5.4, 0.19, 0.476, False)[:2], None),
+    ("L", "angulo", "L - 3'' x 2'' x 1/4''",
+     lambda: (g.perfil_angulo(0, 0, 7.62, 5.08, 0.635, False), {}), None),
+    ("OR", "tubo rectangular", 'HSS - 6" x 1/4"',
+     lambda: g.rectangulo_redondeado(0, 0, 15.2, 15.2, 0.64), ("hueco", 0.64, 0.32)),
     ("OC", "tubo redondo", "PIPE - 4.02 in x 0.19 in", None, ("tubo", 10.2, 0.48)),
     ("OS", "redondo macizo", 'OS - 3/4"', None, ("macizo", 1.91, 0)),
 ]
 
 
-def main():
-    colores = leer_colores()
+def patrones_svg():
+    """Las definiciones de patron: uno por cada (patron, color) que se usa."""
+    usados = set()
 
-    # Cada forma en su casilla, todas del mismo tamaño y a la MISMA escala: asi se ve
-    # que un angulo de 3" es de verdad mas pequeño que una IS de 47 cm, que es
-    # informacion. Lo que se centra es el perfil dentro de su casilla.
+    for relleno_p, relleno_c, trama_p, trama_c in RAYADO.values():
+        usados.add((trama_p, trama_c))
+
+    defs = []
+
+    for patron, color in sorted(usados):
+        nombre = f"{patron}_{color}".lower()
+        c = hex_de(color)
+
+        # El ANSI31 es una familia de rayas a 45 grados; el ANSI32, dos rayas juntas por
+        # cada hueco. Aqui se imitan con un patron de 8 px.
+        if patron == "ANSI32":
+            lineas = (f'<path d="M0,8 l8,-8 M-1,1 l2,-2 M7,9 l2,-2" '
+                      f'stroke="{c}" stroke-width="0.9"/>'
+                      f'<path d="M0,4 l4,-4 M4,8 l4,-4" '
+                      f'stroke="{c}" stroke-width="0.9"/>')
+        else:
+            lineas = (f'<path d="M0,8 l8,-8 M-1,1 l2,-2 M7,9 l2,-2" '
+                      f'stroke="{c}" stroke-width="0.9"/>')
+
+        defs.append(f'<pattern id="{nombre}" width="8" height="8" '
+                    f'patternUnits="userSpaceOnUse">{lineas}</pattern>')
+
+    return defs
+
+
+def main():
     ancho_casilla = 300
-    alto_casilla = 330
+    alto_casilla = 340
     columnas = 5
     filas = (len(FORMAS) + columnas - 1) // columnas
 
-    # Una sola escala para todos, la que hace que el mas alto quepa.
+    # Una sola escala para todos: asi se ve que un angulo de 3" es de verdad mas pequeño
+    # que una IS de 47 cm, que es informacion.
     mas_alto = 46.9
-    escala = (alto_casilla - 120) / mas_alto
+    escala = (alto_casilla - 130) / mas_alto
 
     w = columnas * ancho_casilla
-    h = filas * alto_casilla + 70
+    h = filas * alto_casilla + 74
 
     out = []
     out.append(f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
                f'viewBox="0 0 {w} {h}">')
+    out.append("<defs>" + "".join(patrones_svg()) + "</defs>")
     out.append('<rect width="100%" height="100%" fill="#1c1c1c"/>')
     out.append('<style>'
                'text{font-family:"Bahnschrift SemiLight",Arial,sans-serif}'
-               '.fam{font-size:19px;font-weight:600}'
+               '.fam{font-size:19px;font-weight:600;fill:#e6e6e6}'
                '.forma{font-size:13px;fill:#c8c8c8}'
                '.perfil{font-size:12px;fill:#8f8f8f}'
                '.med{font-size:11px;fill:#707070}'
@@ -256,59 +280,68 @@ def main():
                '.sub{font-size:13px;fill:#9a9a9a}'
                '</style>')
 
-    out.append(f'<text class="tit" x="20" y="32">'
-               f'Las nueve formas de perfil de acero de CadLink</text>')
+    out.append('<text class="tit" x="20" y="32">'
+               'Las nueve formas de perfil de acero de CadLink</text>')
     out.append('<text class="sub" x="20" y="54">'
-               'Doce familias, nueve formas y un color por familia. Todas a la misma '
-               'escala: el tamaño relativo es real. Medidas del catalogo IMCA, en cm.'
-               '</text>')
+               'Todas en la capa PERFILES, como en las macros: lo que distingue una '
+               'familia de otra es su RAYADO, no un color. Misma escala en las diez '
+               'casillas, medidas del catalogo IMCA en cm.</text>')
 
     for i, (familia, forma, perfil, hacer, especial) in enumerate(FORMAS):
         col = i % columnas
         fil = i // columnas
 
         x0 = col * ancho_casilla
-        y0 = 70 + (fil * alto_casilla)
-
-        aci = colores.get(familia, 7)
-        linea = hex_de(aci)
-        relleno = hex_de(aci + 6)
-        palido = hex_de(aci + 1)
+        y0 = 74 + (fil * alto_casilla)
 
         out.append(f'<g transform="translate({x0},{y0})">')
         out.append(f'<rect x="6" y="6" width="{ancho_casilla - 12}" '
                    f'height="{alto_casilla - 12}" rx="6" fill="#242424" '
                    f'stroke="#333" stroke-width="1"/>')
 
-        out.append(f'<text class="fam" x="20" y="32" fill="{linea}">{familia}</text>')
+        out.append(f'<text class="fam" x="20" y="32">{familia}</text>')
         out.append(f'<text class="forma" x="20" y="52">{forma}</text>')
         out.append(f'<text class="perfil" x="20" y="70">'
                    f'{perfil.replace("&", "&amp;").replace("<", "&lt;")}</text>')
 
         cx_casilla = ancho_casilla / 2
-        base = alto_casilla - 40
+        base = alto_casilla - 46
 
-        if especial:
-            que, diam, pared = especial
+        # El rayado que le toca. En el tubo rectangular depende del peralte, con el corte
+        # de las cinco pulgadas de su macro.
+        clave = forma
+
+        if forma == "tubo rectangular" and 15.2 / 2.54 < 4.99:
+            clave = "tubo rectangular chico"
+
+        relleno_p, relleno_c, trama_p, trama_c = RAYADO[clave]
+
+        fondo = hex_de(relleno_c) if relleno_p else "none"
+        trama = f'url(#{trama_p}_{trama_c}'.lower() + ")"
+        borde = hex_de(trama_c)
+
+        if especial and especial[0] in ("tubo", "macizo"):
+            _, diam, pared = especial
             r = diam * escala / 2
             cy = base - r
 
-            # Los perfiles chicos NO se rellenan de macizo: el corte de las cinco
-            # pulgadas de la macro del HSS, que aqui vale para las nueve formas.
-            solido = diam / 2.54 >= 4.99
-            fondo = relleno if solido else palido
+            for pintura in (fondo, trama):
+                if pintura == "none":
+                    continue
+                out.append(f'<circle cx="{cx_casilla:.2f}" cy="{cy:.2f}" r="{r:.2f}" '
+                           f'fill="{pintura}" stroke="none"/>')
 
             out.append(f'<circle cx="{cx_casilla:.2f}" cy="{cy:.2f}" r="{r:.2f}" '
-                       f'fill="{fondo}" stroke="{linea}" stroke-width="1.6"/>')
+                       f'fill="none" stroke="{borde}" stroke-width="1.4"/>')
 
-            if que == "tubo" and pared > 0:
+            if pared > 0:
                 ri = r - (pared * escala)
                 if ri > 0:
                     out.append(f'<circle cx="{cx_casilla:.2f}" cy="{cy:.2f}" '
-                               f'r="{ri:.2f}" fill="#242424" stroke="{linea}" '
-                               f'stroke-width="1.6"/>')
+                               f'r="{ri:.2f}" fill="#242424" stroke="{borde}" '
+                               f'stroke-width="1.4"/>')
 
-            medida = (f'D {diam} cm, pared {pared} cm' if que == "tubo"
+            medida = (f'D {diam} cm, pared {pared} cm' if pared > 0
                       else f'diametro {diam} cm')
         else:
             pts, bulges = hacer()
@@ -321,20 +354,43 @@ def main():
 
             dx = cx_casilla - (((min(xs) + max(xs)) / 2) * escala)
 
-            solido = altura / 2.54 >= 4.99
-            fondo = relleno if solido else palido
-
             d = " ".join(
                 f'{"M" if k == 0 else "L"}{(p[0] * escala) + dx:.2f},'
                 f'{base - (p[1] * escala):.2f}'
                 for k, p in enumerate(trazo)) + " Z"
 
-            out.append(f'<path d="{d}" fill="{fondo}" stroke="{linea}" '
-                       f'stroke-width="1.6" stroke-linejoin="round"/>')
+            for pintura in (fondo, trama):
+                if pintura == "none":
+                    continue
+                out.append(f'<path d="{d}" fill="{pintura}" stroke="none"/>')
+
+            # El grosor del contorno: solo las formas laminadas llevan el PEDIT de la
+            # macro del IR, que es lo que las hace verse como acero.
+            grueso = 2.4 if forma in ("I", "te", "canal", "angulo") else 1.4
+
+            out.append(f'<path d="{d}" fill="none" stroke="{borde}" '
+                       f'stroke-width="{grueso}" stroke-linejoin="round"/>')
+
+            # El hueco del tubo rectangular, que es una isla del rayado.
+            if especial and especial[0] == "hueco":
+                _, t, ri = especial
+                pi, bi = g.rectangulo_redondeado(t, t, 15.2 - t, 15.2 - t, ri)
+                trazo_i = puntos_con_arcos(pi, bi)
+
+                di = " ".join(
+                    f'{"M" if k == 0 else "L"}{(p[0] * escala) + dx:.2f},'
+                    f'{base - (p[1] * escala):.2f}'
+                    for k, p in enumerate(trazo_i)) + " Z"
+
+                out.append(f'<path d="{di}" fill="#242424" stroke="{borde}" '
+                           f'stroke-width="1.4" stroke-linejoin="round"/>')
 
             medida = f'{altura:.2f} x {anchura:.2f} cm'
 
-        out.append(f'<text class="med" x="20" y="{alto_casilla - 18}">{medida}</text>')
+        out.append(f'<text class="med" x="20" y="{alto_casilla - 20}">'
+                   f'{medida}   ·   rayado {trama_p} en {trama_c}'
+                   + (f' sobre {relleno_p} en {relleno_c}' if relleno_p else '')
+                   + '</text>')
         out.append('</g>')
 
     out.append('</svg>')
