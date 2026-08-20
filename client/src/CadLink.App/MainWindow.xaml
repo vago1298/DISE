@@ -1,6 +1,7 @@
 <Window x:Class="CadLink.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:CadLink.App.Models"
         Title="CadLink"
         Width="1240" Height="760"
         MinWidth="960" MinHeight="620"
@@ -461,8 +462,42 @@
                                                     SelectedItemBinding="{Binding Estribo, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
-                            <DataGridTextColumn Header="Sep cm"     Binding="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}" Width="95"
-                                                    CellStyle="{StaticResource CeldaEstribo}" />
+                            <!-- Sep cm: desplegable con las separaciones de siempre, pero
+                                 SIN cerrar la puerta a teclear otra.
+
+                                 Va como DataGridTemplateColumn y no como
+                                 DataGridComboBoxColumn a proposito. Un
+                                 DataGridComboBoxColumn se enlaza por SelectedItemBinding,
+                                 y con IsEditable lo que el usuario teclea a mano NO pasa
+                                 al SelectedItem: se perderia al salir de la celda. Aqui el
+                                 ComboBox se enlaza por Text, que recoge las dos cosas, lo
+                                 elegido de la lista y lo escrito.
+
+                                 La lista sale de SeccionConcretoRow.SeparacionesUsuales,
+                                 un solo sitio, igual que los diametros salen de
+                                 Varilla.DiametrosCm. -->
+                            <DataGridTemplateColumn Header="Sep cm" Width="95"
+                                                    CellStyle="{StaticResource CeldaEstribo}"
+                                                    SortMemberPath="SeparacionCm">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SeparacionCm}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True"
+                                                  IsDropDownOpen="True"
+                                                  BorderThickness="0"
+                                                  Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"
+                                                  Text="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Elige una de la lista o escribe la que necesites, por ejemplo 6-12-6 o 15.&#10;Los tramos se reparten como confinamiento, centro y confinamiento." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridComboBoxColumn x:Name="ColDiamante" Header="Diamante"
                                                     SelectedItemBinding="{Binding EstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
@@ -582,16 +617,120 @@
 
             <!-- ===== Secciones de acero ===== -->
             <TabItem Header="Secciones Acero">
-                <StackPanel Margin="22">
-                    <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
-                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                               Text="Perfiles IPR, IR, HSS, canales y angulos, con sus placas y atiesadores." />
-                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja y armo la cuadricula con sus columnas reales, igual que se hizo con las secciones de concreto." />
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Las cuatro familias de tus macros en una sola tabla: IR (perfil I), OR (tubo rectangular), OC (tubo redondo) y CF (canal formada en frio). Cada familia usa las columnas de dimension que necesita y deja las demas en blanco." />
+
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Que columna usa cada familia:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,14,0"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+                                <TextBlock FontSize="11.5" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           Text="IR: peralte, ancho, e alma, e patin  |  OR: peralte, ancho, e pared  |  OC: el peralte es el DIAMETRO, y e pared  |  CF: ademas labio y radio" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <DataGrid x:Name="AceroGrid" Grid.Row="1"
+                              Style="{StaticResource SheetGridStyle}"
+                              SelectionUnit="FullRow"
+                              FrozenColumnCount="3"
+                              HeadersVisibility="All"
+                              EnableRowVirtualization="True"
+                              ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
+                        <DataGrid.Columns>
+                            <DataGridComboBoxColumn x:Name="ColFamilia" Header="Familia"
+                                                    SelectedItemBinding="{Binding Familia, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+
+                            <!-- El nombre de catalogo. Al escribirlo se ajusta la familia
+                                 sola si el nombre la delata: quien escribe HSS6X6X1/4 esta
+                                 capturando un OR, y dibujarlo como IR daria un perfil I con
+                                 las medidas de un tubo. Ver FamiliaPerfil.DelNombre. -->
+                            <DataGridTextColumn Header="Perfil" Binding="{Binding Perfil, UpdateSourceTrigger=PropertyChanged}" Width="130"
+                                                CellStyle="{StaticResource CeldaIdent}" />
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                                                CellStyle="{StaticResource CeldaIdent}" />
+
+                            <DataGridComboBoxColumn x:Name="ColElementoAcero" Header="Elemento"
+                                                    SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+                            <!-- Solo se pega al rotulo cuando el elemento es VIGA: una
+                                 «COLUMNA SECUNDARIA» no significa nada. -->
+                            <DataGridComboBoxColumn x:Name="ColClasificacion" Header="Clasif. viga"
+                                                    SelectedItemBinding="{Binding Clasificacion, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+
+                            <DataGridTextColumn Header="Peralte cm" Binding="{Binding PeralteCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="e alma cm" Binding="{Binding EspesorAlmaCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="e patin cm" Binding="{Binding EspesorPatinCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Labio cm" Binding="{Binding LabioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="r cm" Binding="{Binding RadioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="70"
+                                                CellStyle="{StaticResource CeldaAcabado}" />
+
+                            <DataGridCheckBoxColumn Header="Doble" Binding="{Binding Doble, UpdateSourceTrigger=PropertyChanged}" Width="60"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridComboBoxColumn x:Name="ColAcero" Header="Acero"
+                                                    SelectedItemBinding="{Binding Acero, UpdateSourceTrigger=PropertyChanged}" Width="115"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+
+                            <!-- Calculadas. «En el plano» es la traduccion a nomenclatura
+                                 mexicana que hacen las macros al rotular, y «Falta» dice,
+                                 para la familia elegida, que dimension no se sostiene. -->
+                            <DataGridTextColumn Header="En el plano" Binding="{Binding PerfilRotulo}"
+                                                IsReadOnly="True" Width="130"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Falta" Binding="{Binding FaltanDatos}"
+                                                IsReadOnly="True" Width="220"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="2" Background="{DynamicResource TotalesBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1,0,1,1" Padding="12,7">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock x:Name="TotalesAceroText" Grid.Column="0" FontSize="12" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <CheckBox x:Name="RedibujarAceroChk" VerticalAlignment="Center"
+                                          Margin="0,0,14,0"
+                                          Content="Redibujar las que ya existen"
+                                          ToolTip="Apagado: el perfil que ya es bloque se salta.&#10;Encendido: se rehace EN SU MISMO SITIO." />
+                                <Button x:Name="AceroButton" Content="Generar dibujo de acero"
+                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnExportAcero" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
-                </StackPanel>
+                </Grid>
             </TabItem>
 
             <!-- ===== Zapatas corridas ===== -->

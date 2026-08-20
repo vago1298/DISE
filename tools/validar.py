@@ -308,7 +308,21 @@ def v6_handlers() -> None:
         cb = x + ".cs"
         if not os.path.exists(cb):
             continue
-        codigo = leer(cb)
+
+        # El code-behind puede estar repartido en VARIOS archivos parciales, y hay que
+        # leerlos todos. Antes solo se leia MainWindow.xaml.cs, asi que un handler que
+        # viviera en MainWindow.Acero.cs se reportaba como inexistente: la comprobacion
+        # daba un falso positivo justo cuando el code-behind se parte para no crecer sin
+        # freno, que es lo que se quiere que se pueda hacer.
+        base = os.path.basename(x)[: -len(".xaml")]
+        carpeta = os.path.dirname(x)
+
+        codigo = "\n".join(
+            leer(os.path.join(carpeta, f))
+            for f in sorted(os.listdir(carpeta))
+            if f.endswith(".cs") and (f == base + ".xaml.cs" or f.startswith(base + "."))
+        )
+
         txt = leer(x)
         handlers = set()
         # 'Executed' y 'CanExecute' van en la lista igual que 'Click'. Sin ellos,
@@ -4583,7 +4597,10 @@ def v20_estaticos_sin_cualificar() -> None:
         # CrearEjemplo vive en DatosProyecto, asi que las constantes de
         # SeccionConcretoRow tienen que ir con el nombre de la clase delante.
         for c in ("ElementoColumnaCircular", "ElementoColumna"):
-            usos = re.findall(r"(SeccionConcretoRow\.)?\b" + c + r"\b", cuerpo)
+            # Vale CUALQUIER clase delante, no solo SeccionConcretoRow. Con el nombre
+            # fijo, PerfilAceroRow.ElementoColumna -que es de la hoja de acero y esta
+            # perfectamente cualificada- salia marcada como uso a pelo.
+            usos = re.findall(r"([A-Za-z_][A-Za-z0-9_]*\.)?\b" + c + r"\b", cuerpo)
             sin_cualificar = [u for u in usos if u == ""]
             check(f"en CrearEjemplo, {c} va cualificada",
                   not sin_cualificar,
@@ -4602,7 +4619,8 @@ def main() -> int:
               v14_bloques_diamante_etabs, v15_cs0103,
               v16_extruida_piers, v17_guardar_y_defaults,
               v18_planta_autocad, v19_circular_y_ui,
-              v20_estaticos_sin_cualificar):
+              v20_estaticos_sin_cualificar,
+              v21_separacion_y_acero):
         f()
 
     print("\n" + "=" * 66)
@@ -5182,6 +5200,191 @@ def v17_guardar_y_defaults() -> None:
     # dos varillas no cabria y la lista quedaria mal.
     n_ar = len(re.findall(r"centros\.AddRange\(DoblezLateral\(", diamante))
     check("los dos dobleces se agregan con AddRange", n_ar == 2, f"son {n_ar}")
+
+
+
+
+# ======================================================================
+#  [21] Separacion con lista, y el modulo de secciones de ACERO
+# ======================================================================
+def v21_separacion_y_acero() -> None:
+    print("\n[21] Separacion de estribos con lista, y secciones de acero")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    perfil_row = leer(ruta("client/src/CadLink.App/Models/PerfilAceroRow.cs"))
+    codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    acero_cb = leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs"))
+    acero_cad = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Acero.cs"))
+    perfil_cad = leer(ruta("client/src/CadLink.Cad/PerfilAceroCad.cs"))
+
+    # ------------------------------------------------------------------
+    # La separacion de estribos, con sus valores de siempre
+    # ------------------------------------------------------------------
+    check("las separaciones usuales viven en un solo sitio",
+          "public static readonly string[] SeparacionesUsuales" in filas)
+
+    for sep in ("6-12-6", "7-14-4", "15"):
+        check(f"esta la separacion {sep}", f'"{sep}"' in filas)
+
+    # La celda es un combo EDITABLE enlazado por Text. Con SelectedItemBinding, que es
+    # lo que usan las demas columnas de lista, el texto que se teclea a mano no llega a
+    # la propiedad y se perderia al salir de la celda.
+    check("la celda de separacion es un combo editable",
+          'ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"'
+          in xaml
+          and 'IsEditable="True"' in xaml)
+    check("y se enlaza por Text, no por SelectedItem",
+          'Text="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}"' in xaml)
+    check("ya no es una columna de texto pelada",
+          'DataGridTextColumn Header="Sep cm"' not in xaml)
+    check("el XAML declara el espacio de nombres de los modelos",
+          'xmlns:models="clr-namespace:CadLink.App.Models"' in xaml)
+
+    # ------------------------------------------------------------------
+    # Las cuatro familias de perfil
+    # ------------------------------------------------------------------
+    for fam in ("IR", "OR", "OC", "CF"):
+        check(f"existe la familia {fam}", f'= "{fam}";' in perfil_row)
+
+    # La familia se ajusta sola cuando el nombre del perfil la delata: un HSS dibujado
+    # como IR sale como un perfil I con las medidas de un tubo, y eso no se ve venir.
+    check("la familia se deduce del nombre del perfil",
+          "public static string? DelNombre(string? perfil)" in perfil_row)
+    check("y se aplica al escribir el perfil",
+          "var familia = FamiliaPerfil.DelNombre(_perfil);" in perfil_row)
+
+    # La traduccion a nomenclatura mexicana que hacen las macros al rotular.
+    check("W se rotula IR", '"IR" + s.Substring(1)' in perfil_row)
+    check("HSS se rotula OR", 'Reemplazar(s, "HSS", "OR")' in perfil_row)
+    check("PIPE se rotula OC", 'Reemplazar(s, "PIPE", "OC")' in perfil_row)
+    check("y el # del calibre se rotula CAL", 's.Replace("#", "CAL ")' in perfil_row)
+
+    # Cada familia pide unas dimensiones y no otras.
+    check("hay una columna calculada que dice que falta",
+          "public string FaltanDatos" in perfil_row)
+    check("el OC no pide ancho, que es redondo",
+          "if (_familia != FamiliaPerfil.Oc && _anchoCm <= 0)" in perfil_row)
+    check("el labio solo lo pide el CF",
+          "_familia == FamiliaPerfil.Cf && _labioCm <= 0" in perfil_row)
+
+    # ------------------------------------------------------------------
+    # La pestaña
+    # ------------------------------------------------------------------
+    # Se mira DENTRO de su TabItem, no en todo el XAML: las demas pestañas por portar
+    # siguen llevando su aviso de pendiente, y eso esta bien.
+    m_tab = re.search(
+        r'<TabItem Header="Secciones Acero">.*?</TabItem>', xaml, re.S)
+
+    check("se puede leer la pestaña de acero", m_tab is not None)
+
+    if m_tab:
+        tab = m_tab.group(0)
+
+        check("la pestaña de acero ya no es un aviso de pendiente",
+              "Modulo pendiente de portar" not in tab)
+        check("tiene su cuadricula", 'x:Name="AceroGrid"' in tab)
+        check("y su boton de dibujar", 'Click="OnExportAcero"' in tab)
+        check("y dice que columna usa cada familia",
+              "el peralte es el DIAMETRO" in tab)
+
+    for col in ("ColFamilia", "ColElementoAcero", "ColClasificacion", "ColAcero"):
+        check(f"la columna {col} esta en el XAML", f'x:Name="{col}"' in xaml)
+        check(f"y su lista se llena en el code-behind ({col})",
+              f"{col}.ItemsSource" in acero_cb)
+
+    # Las dos llamadas van DENTRO de las de concreto, no en el constructor: Enlazar se
+    # vuelve a llamar al cargar el ejemplo, al borrar todo y al empezar de nuevo, y en
+    # esos casos _datos es otro objeto.
+    check("las listas de acero se llenan con las demas",
+          "LlenarListasAcero();" in codigo)
+    check("y la cuadricula se enlaza dentro de Enlazar",
+          "EnlazarAcero();" in codigo)
+
+    m_enlazar = re.search(r"private void Enlazar\(\).*?\n    \}", codigo, re.S)
+    check("se puede leer Enlazar", m_enlazar is not None)
+    if m_enlazar:
+        check("EnlazarAcero se llama desde Enlazar",
+              "EnlazarAcero();" in m_enlazar.group(0))
+
+    check("la coleccion de acero vive en DatosProyecto",
+          "ObservableCollection<PerfilAceroRow> SeccionesAcero" in filas)
+
+    # Antes de dibujar se revisa lo que NO se puede dibujar.
+    check("la hoja de acero se revisa antes de dibujar",
+          "private bool RevisarAcero(out List<string> problemas)" in acero_cb)
+    check("se revisan los ID repetidos, que son el nombre del bloque",
+          "está repetido" in acero_cb)
+
+    # ------------------------------------------------------------------
+    # El dibujante
+    # ------------------------------------------------------------------
+    check("el dibujante de acero es parte de SeccionDrawer",
+          "public sealed partial class SeccionDrawer" in acero_cad)
+    check("y por eso reusa el Hatch, la cota y el bloque del concreto",
+          "Hatch(" in acero_cad and "FormatearCota(" in acero_cad
+          and "Bloquear(p.Id, inicio, fin, destino);" in acero_cad)
+
+    check("existe DibujarAcero", "public int DibujarAcero(" in acero_cad)
+    check("con sus cuatro familias",
+          all(f'case "{f}":' in acero_cad for f in ("IR", "OR", "OC", "CF")))
+    check("una familia desconocida se avisa, no se dibuja mal",
+          "no se reconoce" in acero_cad)
+
+    # El DTO no interpreta nada: llega todo resuelto.
+    check("el DTO lleva el ancho que ocupa el dibujo",
+          "public double AnchoDibujoCm" in perfil_cad)
+
+    # Los rayados de cada familia, tal como los dejaron las macros.
+    check("el IR se raya con ANSI32 a 0.0009 en color 252",
+          'Hatch("ANSI32", 0.0009 * _f, pl, null, CapaPerfiles, 252)' in acero_cad)
+    check("el OC va con solido y rayado en 162",
+          'Hatch("SOLID", 1, exterior, islas, CapaPerfiles, 162)' in acero_cad
+          and 'Hatch("ANSI31", 0.002 * _f, exterior, islas, CapaPerfiles, 162)'
+          in acero_cad)
+    check("el CF va con fondo cian y rayado 142 a 0.0008",
+          'Hatch("SOLID", 1, pl, null, CapaPerfiles, 4)' in acero_cad
+          and 'Hatch("ANSI31", 0.0008 * _f, pl, null, CapaPerfiles, 142)' in acero_cad)
+
+    # El OR cambia de rayado segun el peralte, y ese corte esta en la macro.
+    check("el OR decide el rayado por el peralte en pulgadas",
+          "var peralteIn = p.PeralteCm / 2.54;" in acero_cad
+          and "PeralteLimitePulg - 0.01" in acero_cad)
+    check("el tubo grande se rellena solido",
+          'Hatch("SOLID", 1, exterior, islas, CapaPerfiles, 141)' in acero_cad)
+    check("y el chico lleva fondo cian", "FondoDelHatch(trama, 4);" in acero_cad)
+
+    # El color de fondo de un hatch no es un numero, es un objeto que hay que pedir por
+    # su ProgID con la version pegada.
+    check("el fondo del hatch prueba varias versiones de AutoCAD",
+          '"AutoCAD.AcCmColor." + v' in acero_cad)
+
+    # Los radios del CF se recortan a lo que cabe, como en la macro.
+    check("el radio exterior del CF se recorta",
+          "var rExt = Math.Min(ri, Math.Min(b / 2, Math.Min(lip, h / 2)));" in acero_cad)
+    check("y el interior es la mitad, recortada por su cuenta",
+          "var rInt = Math.Min(ri / 2, rIntMax);" in acero_cad)
+
+    # El peralte del OR es el lado mayor: un tubo capturado al reves es el mismo tubo.
+    check("el peralte del OR es el lado mayor",
+          "var hOr = Math.Max(b, h);" in acero_cad)
+
+    # LO QUE MAS IMPORTA DE LAS COTAS: el factor de escala lineal. El dibujo esta en
+    # metros, asi que sin el la cota de un peralte de 30 cm diria «0.30» en un plano
+    # rotulado «Acot. cm». Las cuatro macros lo fijan en 100, que es 1/escala.
+    check("las cotas de acero llevan el factor de escala lineal",
+          'PropCota((object)cota, "LinearScaleFactor", 1 / _escala);' in acero_cad)
+
+    # Y el CF se dibuja con UNA polilinea, no con el contorno mas otra igual para el
+    # hatch, que es lo que hacia la macro.
+    check("el CF se dibuja con una sola polilinea con dobleces",
+          "PolilineaConBulges(pts, lista, CapaPerfiles)" in acero_cad)
+    check("el bulge sale del barrido real, asi el espejo se resuelve solo",
+          "private static double BulgeDesdeCentro(" in acero_cad)
+
+    check("hay comprobacion numerica de los cuatro perfiles",
+          "CF: la canal formada en frio"
+          in leer(ruta("tools/verificar_perfiles_acero.py")))
 
 if __name__ == "__main__":
     sys.exit(main())

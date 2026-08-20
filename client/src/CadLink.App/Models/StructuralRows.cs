@@ -523,6 +523,36 @@ public sealed class SeccionConcretoRow : Row
     public const string ElementoOtro = "OTRO";
 
     /// <summary>
+    /// Las separaciones de estribos que se usan a diario, para el desplegable.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son <b>sugerencias, no una lista cerrada</b>: la celda sigue siendo de texto libre
+    /// y se puede teclear cualquier otra. Por eso el combo de esa columna va con
+    /// <c>IsEditable</c> y enlazado por <c>Text</c> y no por <c>SelectedItem</c>: con
+    /// <c>SelectedItem</c>, lo que se teclea a mano no llega a la propiedad y se perdería
+    /// al salir de la celda.
+    /// </para>
+    /// <para>
+    /// El orden no es alfabético, es de uso: primero las de tres tramos —confinamiento en
+    /// los extremos y el centro más abierto, que es el caso normal de una trabe o una
+    /// columna—, luego las de dos y al final las de separación única.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] SeparacionesUsuales =
+    {
+        "6-12-6",
+        "7-14-4",
+        "10-15-20",
+        "10-20-10",
+        "5-10-15",
+        "10-20",
+        "15",
+        "20",
+        "30"
+    };
+
+    /// <summary>
     /// Columna heredada: <c>SI</c> marcaba la sección como redonda.
     /// </summary>
     /// <remarks>
@@ -776,6 +806,9 @@ public sealed class DatosProyecto
 {
     public ObservableCollection<SeccionConcretoRow> SeccionesConcreto { get; } = new();
 
+    /// <summary>Las secciones de acero: perfiles IR, OR, OC y CF.</summary>
+    public ObservableCollection<PerfilAceroRow> SeccionesAcero { get; } = new();
+
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     public static DatosProyecto CrearEjemplo()
     {
@@ -840,6 +873,47 @@ public sealed class DatosProyecto
             RecubrimientoCm = 2, Estribo = "#2", SeparacionCm = "20",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
             GanchoCm = 5, Fc = "200", Escala = "10"
+        });
+
+        // ---------- Secciones de acero, una de cada familia ----------
+        // Las medidas son de catálogo, convertidas a centímetros, para que el ejemplo se
+        // pueda comparar con una tabla de perfiles y no sean números inventados.
+
+        // IR (W12X30): d=31.3, bf=16.5, tw=0.66, tf=1.11 cm
+        d.SeccionesAcero.Add(new PerfilAceroRow
+        {
+            Familia = FamiliaPerfil.Ir, Perfil = "W12X30", Id = "V-1",
+            Elemento = PerfilAceroRow.ElementoViga, Clasificacion = "PRINCIPAL",
+            Acero = PerfilAceroRow.AceroA992,
+            PeralteCm = 31.3, AnchoCm = 16.5, EspesorAlmaCm = 0.66, EspesorPatinCm = 1.11
+        });
+
+        // OR (HSS6X6X1/4): 15.24 x 15.24 cm, pared 0.635 cm
+        d.SeccionesAcero.Add(new PerfilAceroRow
+        {
+            Familia = FamiliaPerfil.Or, Perfil = "HSS6X6X1/4", Id = "C-1",
+            Elemento = PerfilAceroRow.ElementoColumna,
+            Acero = PerfilAceroRow.AceroA500B,
+            PeralteCm = 15.24, AnchoCm = 15.24, EspesorAlmaCm = 0.635
+        });
+
+        // OC (PIPE 4 STD): diámetro exterior 11.43 cm, pared 0.602 cm
+        d.SeccionesAcero.Add(new PerfilAceroRow
+        {
+            Familia = FamiliaPerfil.Oc, Perfil = "PIPE 4 STD", Id = "TN-1",
+            Elemento = PerfilAceroRow.ElementoTensor,
+            Acero = PerfilAceroRow.AceroA53B,
+            PeralteCm = 11.43, EspesorAlmaCm = 0.602
+        });
+
+        // CF calibre 14: canal 15 x 5 cm, espesor 0.19, labio 1.5 y radio 0.4
+        d.SeccionesAcero.Add(new PerfilAceroRow
+        {
+            Familia = FamiliaPerfil.Cf, Perfil = "CF 6X2 #14", Id = "LG-1",
+            Elemento = "LARGUERO",
+            Acero = PerfilAceroRow.AceroA36,
+            PeralteCm = 15, AnchoCm = 5, EspesorAlmaCm = 0.19,
+            LabioCm = 1.5, RadioCm = 0.4
         });
 
         return d;

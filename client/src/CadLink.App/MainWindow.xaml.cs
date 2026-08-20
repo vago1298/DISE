@@ -172,6 +172,9 @@ public partial class MainWindow : Window
         // el diametro de la columna F, igual que los demas diametros de la hoja.
         ColZuncho.ItemsSource = new[] { string.Empty, "SI" };
         ColVarTotal.ItemsSource = opcionales;
+
+        // Y las de la hoja de acero, que viven en MainWindow.Acero.cs.
+        LlenarListasAcero();
     }
 
     private void Enlazar()
@@ -216,6 +219,12 @@ public partial class MainWindow : Window
         {
             SeccionesGrid.SelectedIndex = 0;
         }
+
+        // La hoja de acero se enlaza AQUI, dentro de Enlazar, y no en el constructor:
+        // Enlazar se vuelve a llamar al cargar el ejemplo, al borrar todo y al empezar un
+        // trabajo nuevo, y en esos tres casos _datos es OTRO objeto. Enlazando el acero
+        // aparte, su cuadricula seguiria mostrando la coleccion del proyecto anterior.
+        EnlazarAcero();
 
         DatosCambiaron();
     }
