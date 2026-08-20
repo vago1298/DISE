@@ -3634,15 +3634,63 @@ def v19_circular_y_ui() -> None:
               "sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });"
               in cuerpo)
 
-        # La linea exterior de cada cola arranca donde SALE del acero de la cinta.
-        check("la cola se recorta donde la cinta le pasa por encima",
+        # Las dos colas NO se tratan igual, porque la de arriba es el gancho que va encima:
+        # la de arriba se ALARGA hacia atras hasta el borde exterior de la cinta, para que
+        # muera sobre la linea del diamante en vez de nacer en el aire; la de abajo se
+        # RECORTA donde sale del acero, porque por ese lado pasa por debajo.
+        check("la cola de arriba se alarga hasta el borde de la cinta",
+              "AlcanceConLaCinta(" in cuerpo)
+        check("y la de abajo se recorta donde sale del acero",
               "SalidaDelAceroDelDiamante(" in cuerpo)
-        check("y el recorte se le pasa a la misma Cola del rectangular",
-              "salida is not null, salida?.X ?? 0, salida?.Y ?? 0" in cuerpo)
+        check("se distinguen por el lado, no por el orden",
+              "new[] { (n1X, n1Y, true), (n2X, n2Y, false) }" in cuerpo)
+        check("y las dos se le pasan a la misma Cola del rectangular",
+              "arranque is not null, arranque?.X ?? 0, arranque?.Y ?? 0" in cuerpo)
+
+        # Y debajo del brazo de arriba se ABRE la linea interior de la cinta, que si no le
+        # cruzaba por dentro: en el plano parecia que la diagonal cortaba el gancho.
+        check("la cinta se abre bajo el brazo de arriba",
+              "AbrirCintaBajoLaCola(" in cuerpo)
+        check("la cinta vieja se borra solo si la nueva se creo",
+              "if (cintaAbierta is not null)" in cuerpo
+              and "Borrar(_diamInt);" in cuerpo
+              and "_diamInt = cintaAbierta;" in cuerpo)
 
         # Y la cola se recorta si no cabe en el nucleo.
         check("la cola del diamante se recorta si no cabe",
               "gancho = tope;" in cuerpo)
+
+    m_abrir = re.search(r"private object\? AbrirCintaBajoLaCola\(.*?\n    \}", diam, re.S)
+
+    check("se puede leer AbrirCintaBajoLaCola", m_abrir is not None)
+    if m_abrir:
+        abr = m_abrir.group(0)
+
+        # Se mira lo que tapa el gancho, que son DOS piezas. Con solo la cola, el hueco
+        # empezaba en la perpendicular a la varilla y dejaba un rabito de linea justo
+        # encima de ella; y en una columna alta la cola no llega a cruzar la diagonal, asi
+        # que no se abria nada aunque el doblez la tapara igual.
+        check("el hueco mira lo que tapan la cola Y el doblez",
+              "RecorteDeLaCola(" in abr and "RecorteDelDoblez(" in abr)
+        check("y si el gancho no tapa nada, no abre nada",
+              "pieza1 is null && pieza2 is null" in abr)
+
+        # El hueco lleva tope, como el recorte del estribo: mas vale una linea cruzando
+        # que media diagonal borrada.
+        check("el hueco lleva tope de seguridad",
+              "FraccionMaxHuecoCinta" in abr and "no se abrió la línea interior" in abr)
+        check("y la cinta se vuelve a montar con TODOS sus vertices",
+              "for (var k = 1; k <= m; k++)" in abr
+              and "nuevosBulges.Add(bulges[v]);" in abr)
+        check("la cinta nueva va abierta, no cerrada",
+              "PolilineaAbierta(" in abr and "pl.Closed = false;" in diam)
+
+    check("el recorte contra el rectangulo de la cola son cuatro semiplanos",
+          "private static (double S0, double S1)? RecorteDeLaCola(" in diam
+          and "Nx: -ux, Ny: -uy" in diam)
+    check("y el del doblez es el disco de rOut mas la media vuelta",
+          "private static (double S0, double S1)? RecorteDelDoblez(" in diam
+          and "(fx * ux) + (fy * uy)" in diam)
 
     m_sal = re.search(
         r"private static \(double X, double Y\)\? SalidaDelAceroDelDiamante\(.*?\n    \}",
@@ -3656,10 +3704,25 @@ def v19_circular_y_ui() -> None:
         # los mismos numeros, asi que el recorte cae sobre la linea trazada.
         check("el recorte usa el borde interior que dibuja la cinta",
               "GeometriaCinta(centros, 0)" in cuerpo)
-        check("cada cola se recorta con SU diagonal, por el lado",
-              "ladoLlega >= ladoSale" in sal)
         check("y no se recorta si el cruce cae fuera de la cola o del tramo",
               "t <= 1e-12 || t >= largo || sTramo < -1e-9 || sTramo > 1 + 1e-9" in sal)
+
+    # Cada cola mira SU diagonal, y de eso se encarga una sola funcion: el recorte de una,
+    # el alargue de la otra y el hueco de la cinta preguntan los tres por el mismo lado.
+    m_tramo = re.search(
+        r"TramoDeLaCinta\(\n?.*?\n    \{.*?\n    \}", diam, re.S)
+
+    check("se puede leer TramoDeLaCinta", m_tramo is not None)
+    if m_tramo:
+        tra = m_tramo.group(0)
+
+        check("el lado se decide comparando con la normal de la cola",
+              "ladoLlega >= ladoSale" in tra)
+        check("y devuelve el vertice, que es lo que hace falta para abrir la cinta",
+              "(2 * previo) + 1" in tra and "(2 * iBarra) + 1" in tra)
+
+    check("el recorte, el alargue y el hueco usan el mismo tramo",
+          diam.count("TramoDeLaCinta(pts") >= 3)
 
     # La Cola compartida con el estribo rectangular tiene que saber saltarse la linea
     # interior, y SOLO esa: el gancho del rectangular la sigue dibujando.

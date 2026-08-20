@@ -1240,25 +1240,67 @@ public sealed partial class SeccionDrawer
         // El borde INTERIOR de la cinta: los mismos números con los que se dibujó.
         var geoInt = GeometriaCinta(centros, 0);
 
+        // El borde EXTERIOR, para alargar hasta él la línea de la cola de arriba.
+        var geoExt = GeometriaCinta(centros, dDia);
+
         // Las dos colas, con la Cola del estribo rectangular.
         //
         // SIN la línea interior, la que nace pegada a la varilla: va fuera por lo mismo
         // que el arco interior, porque el doblez pasa POR ENCIMA de la varilla y su cara de
         // dentro es la circunferencia de la varilla, que ya está dibujada.
         //
-        // Y con la exterior RECORTADA donde sale del acero de la cinta, que le pasa por
-        // encima justo ahí.
-        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
+        // Y las dos líneas exteriores se tratan DISTINTO, porque el gancho de arriba es el
+        // que se dibuja encima:
+        //
+        //   * la de ARRIBA se ALARGA hacia atrás hasta el borde exterior de la cinta, para
+        //     que muera sobre la línea del diamante en vez de nacer en el aire;
+        //   * la de ABAJO se RECORTA donde sale del acero de la cinta, porque por ese lado
+        //     el gancho pasa por debajo.
+        //
+        // Es la misma asimetría del estribo rectangular: una cola entera y la otra
+        // recortada contra el estribo.
+        foreach (var (nx, ny, arriba) in
+            new[] { (n1X, n1Y, true), (n2X, n2Y, false) })
         {
-            var salida = iBarra >= 0 && geoInt is not null
-                ? SalidaDelAceroDelDiamante(
-                    geoInt.Value.Pts, centros, iBarra, nx, ny,
-                    barra.X + (rOut * nx), barra.Y + (rOut * ny), ux, uy, gancho)
-                : null;
+            var poX = barra.X + (rOut * nx);
+            var poY = barra.Y + (rOut * ny);
+
+            (double X, double Y)? arranque = null;
+
+            if (iBarra >= 0)
+            {
+                arranque = arriba
+                    ? (geoExt is not null
+                        ? AlcanceConLaCinta(
+                            geoExt.Value.Pts, centros, iBarra, nx, ny, poX, poY, ux, uy,
+                            2 * dDia)
+                        : null)
+                    : (geoInt is not null
+                        ? SalidaDelAceroDelDiamante(
+                            geoInt.Value.Pts, centros, iBarra, nx, ny, poX, poY, ux, uy,
+                            gancho)
+                        : null);
+            }
 
             Cola(contorno, quads, barra.X, barra.Y, rIn, rOut, nx, ny, ux, uy, gancho,
-                salida is not null, salida?.X ?? 0, salida?.Y ?? 0,
+                arranque is not null, arranque?.X ?? 0, arranque?.Y ?? 0,
                 sinLineaInterior: true);
+        }
+
+        // ------------------------------------------------------------------
+        // Y se abre la línea interior de la cinta por donde el brazo le pasa por encima
+        // ------------------------------------------------------------------
+        // Solo la de ARRIBA, que es el gancho que va encima. La de abajo pasa por debajo de
+        // la cinta y por eso su línea exterior se recortó en lugar de abrir nada.
+        var cintaAbierta = AbrirCintaBajoLaCola(
+            centros, iBarra, n1X, n1Y, ux, uy, rIn, rOut, gancho, conFondoSolido);
+
+        if (cintaAbierta is not null)
+        {
+            // La vieja se borra AHORA, no antes: hacía de isla del relleno del diamante,
+            // que ya está hecho, y los hatches no son asociativos.
+            Borrar(_diamInt);
+            _diamInt = cintaAbierta;
         }
 
         if (conFondoSolido && (sectores.Count > 0 || quads.Count > 0))
@@ -1268,7 +1310,470 @@ public sealed partial class SeccionDrawer
     }
 
     /// <summary>
-    ///     /// Dónde sale del acero del diamante la línea exterior de una cola del gancho.
+    /// El tramo recto de la cinta que llega o sale de la varilla <b>por un lado</b>.
+    /// </summary>
+    /// <remarks>
+    /// La cinta toca cada varilla en dos puntos: por donde llega la diagonal anterior y
+    /// por donde sale la siguiente. Cuál de las dos es «la de arriba» depende del costado y
+    /// del sentido del recorrido, así que no se da por sabido: se decide comparando con la
+    /// normal que se pide.
+    /// </remarks>
+    /// <returns>
+    /// Los dos extremos del tramo y el <b>índice del vértice</b> donde empieza, que es lo
+    /// que hace falta para volver a montar la cinta con un hueco.
+    /// </returns>
+    private static ((double X, double Y) A, (double X, double Y) B, int VerticeA)?
+        TramoDeLaCinta(
+            double[] pts, List<(double X, double Y, double R)> centros, int iBarra,
+            double nx, double ny)
+    {
+        var n = centros.Count;
+
+        if (n < 3 || pts.Length < 4 * n || iBarra < 0 || iBarra >= n)
+        {
+            return null;
+        }
+
+        var c = centros[iBarra];
+
+        if (c.R <= 0)
+        {
+            return null;
+        }
+
+        var llegaX = pts[4 * iBarra];
+        var llegaY = pts[(4 * iBarra) + 1];
+        var saleX = pts[(4 * iBarra) + 2];
+        var saleY = pts[(4 * iBarra) + 3];
+
+        var ladoLlega = ((llegaX - c.X) * nx) + ((llegaY - c.Y) * ny);
+        var ladoSale = ((saleX - c.X) * nx) + ((saleY - c.Y) * ny);
+
+        if (ladoLlega >= ladoSale)
+        {
+            // El de LLEGADA: viene del círculo anterior y muere en la tangencia. Su
+            // vértice de arranque es la salida del círculo anterior.
+            var previo = ((iBarra - 1) % n + n) % n;
+
+            return ((pts[(4 * previo) + 2], pts[(4 * previo) + 3]),
+                    (llegaX, llegaY),
+                    (2 * previo) + 1);
+        }
+
+        // El de SALIDA: arranca en la tangencia y se va al círculo siguiente.
+        var siguiente = (iBarra + 1) % n;
+
+        return ((saleX, saleY),
+                (pts[4 * siguiente], pts[(4 * siguiente) + 1]),
+                (2 * iBarra) + 1);
+    }
+
+    /// <summary>
+    /// Hasta dónde hay que <b>alargar hacia atrás</b> la línea exterior de una cola para
+    /// que llegue al borde exterior de la cinta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La cola arranca en la perpendicular a la varilla, y ahí no hay ninguna línea: el
+    /// borde exterior de la cinta pasa un poco más atrás, porque deja de abrazar la varilla
+    /// antes de llegar a esa perpendicular. Resultado: la línea de la cola nacía en el
+    /// aire, a media banda del diamante.
+    /// </para>
+    /// <para>
+    /// Se alarga hacia atrás hasta el borde exterior de la cinta, que es el mismo tramo
+    /// recto con el que <see cref="GeometriaCinta"/> la dibuja. Así la línea del gancho
+    /// <b>muere sobre la línea del diamante</b> y el contorno se lee seguido.
+    /// </para>
+    /// <para>
+    /// Solo hacia ATRÁS y con tope. Si el cruce cayera hacia delante, o más atrás que
+    /// <paramref name="maxAtras"/>, o fuera del tramo recto, no se alarga: los números no
+    /// describirían este vértice, y una línea larga de más se ve peor que una corta.
+    /// </para>
+    /// </remarks>
+    private static (double X, double Y)? AlcanceConLaCinta(
+        double[] pts, List<(double X, double Y, double R)> centros, int iBarra,
+        double nx, double ny, double px, double py, double ux, double uy,
+        double maxAtras)
+    {
+        var tramo = TramoDeLaCinta(pts, centros, iBarra, nx, ny);
+
+        if (tramo is null)
+        {
+            return null;
+        }
+
+        var (a, b, _) = tramo.Value;
+
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+
+        var cruz = (ux * dy) - (uy * dx);
+
+        if (Math.Abs(cruz) < 1e-12)
+        {
+            return null;
+        }
+
+        var rx = a.X - px;
+        var ry = a.Y - py;
+
+        var t = ((rx * dy) - (ry * dx)) / cruz;
+        var sTramo = ((rx * uy) - (ry * ux)) / cruz;
+
+        // t NEGATIVO es hacia atrás, que es lo que se busca aquí.
+        if (t >= -1e-12 || t < -maxAtras || sTramo < -1e-9 || sTramo > 1 + 1e-9)
+        {
+            return null;
+        }
+
+        return (px + (t * ux), py + (t * uy));
+    }
+
+    /// <summary>Fracción del tramo de la cinta que como máximo se acepta abrir.</summary>
+    /// <remarks>
+    /// El hueco real es del ancho de la cola, unos milímetros sobre una diagonal de
+    /// decenas de centímetros: en los armados probados no pasa del 15 % del tramo. El 50 %
+    /// no está para afinar nada, está para que una cuenta equivocada no borre media
+    /// diagonal del diamante.
+    /// </remarks>
+    private const double FraccionMaxHuecoCinta = 0.5;
+
+    /// <summary>
+    /// Abre la línea interior de la cinta <b>por donde la cola le pasa por encima</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Qué se ve sin esto.</b> El brazo del gancho sale por encima de la varilla y cruza
+    /// la diagonal del diamante. Pero la línea interior de la cinta seguía dibujada de
+    /// punta a punta, así que <b>atravesaba el brazo por dentro</b>: en el plano parecía que
+    /// la diagonal cortaba el gancho, en lugar de pasar por debajo. Es el mismo defecto que
+    /// <see cref="RecortarEstriboBajoDiamante"/> arregla para el estribo principal, y la
+    /// misma solución: abrir el hueco de verdad, no taparlo con el orden de dibujo, porque
+    /// en la sección de contorno no hay relleno que tape nada.
+    /// </para>
+    /// <para>
+    /// <b>Cómo se decide qué se abre.</b> Sin ninguna prueba de «está dentro»: se recorta el
+    /// tramo recto de la cinta contra el <b>rectángulo de la cola</b>, que son cuatro
+    /// semiplanos —las dos caras, el arranque en la varilla y la punta—. Geometría cerrada,
+    /// no una estimación.
+    /// </para>
+    /// <para>
+    /// <b>Y se vuelve a montar la cinta entera, con el hueco.</b> No se puede borrar un
+    /// trozo de una polilínea, así que se construye otra ABIERTA: empieza donde acaba el
+    /// hueco, da la vuelta completa por todos los vértices y termina donde el hueco empieza.
+    /// Los arcos de los dobleces se conservan tal cual, con sus mismos bulges, porque son
+    /// los mismos vértices; lo único que cambia es por dónde se corta. Y la nueva sustituye
+    /// a la vieja solo si se creó: al revés, un fallo dejaría la cinta sin línea interior.
+    /// </para>
+    /// <para>
+    /// Se puede borrar la vieja sin miedo aunque haya servido de isla del relleno: los
+    /// hatches de AutoCAD no son asociativos. El rayado del concreto no la usa —la cinta del
+    /// diamante no es una isla válida, está explicado en el hatch— así que no queda nadie
+    /// que dependa de ella.
+    /// </para>
+    /// </remarks>
+    /// <returns>La cinta interior nueva, o <c>null</c> si se deja la de antes.</returns>
+    private object? AbrirCintaBajoLaCola(
+        List<(double X, double Y, double R)> centros, int iBarra,
+        double nx, double ny, double ux, double uy,
+        double rIn, double rOut, double largo, bool conFondoSolido)
+    {
+        var geo = GeometriaCinta(centros, 0);
+
+        if (geo is null || iBarra < 0 || iBarra >= centros.Count)
+        {
+            return null;
+        }
+
+        var pts = geo.Value.Pts;
+        var bulges = geo.Value.Bulges;
+
+        var tramo = TramoDeLaCinta(pts, centros, iBarra, nx, ny);
+
+        if (tramo is null)
+        {
+            return null;
+        }
+
+        var (a, b, verticeA) = tramo.Value;
+
+        var c = centros[iBarra];
+
+        // ---------- Qué tapa el gancho, que son DOS piezas ----------
+        // Y hay que mirar las dos, no solo la cola. La primera versión de esto solo
+        // recortaba contra el rectángulo de la cola, y con eso el hueco empezaba en la
+        // perpendicular a la varilla en vez de en la tangencia: quedaba un rabito de línea
+        // justo encima de la varilla, que es lo que el usuario seguía viendo. Y en una
+        // columna alta, con la diagonal muy empinada, la cola no llega a cruzar el tramo y
+        // no se abría NADA, aunque el doblez lo tapara igual.
+        var pieza1 = RecorteDeLaCola(a, b, c, nx, ny, ux, uy, rIn, rOut, largo);
+        var pieza2 = RecorteDelDoblez(a, b, c, ux, uy, rOut);
+
+        if (pieza1 is null && pieza2 is null)
+        {
+            // El gancho no tapa nada de este tramo: no hay hueco que abrir.
+            return null;
+        }
+
+        // Las dos piezas se tocan por la perpendicular a la varilla —una está a un lado y
+        // la otra al otro—, así que su unión es un solo hueco seguido.
+        var s0 = Math.Min(pieza1?.S0 ?? double.MaxValue, pieza2?.S0 ?? double.MaxValue);
+        var s1 = Math.Max(pieza1?.S1 ?? double.MinValue, pieza2?.S1 ?? double.MinValue);
+
+        var largoTramo = Math.Sqrt(
+            ((b.X - a.X) * (b.X - a.X)) + ((b.Y - a.Y) * (b.Y - a.Y)));
+
+        if (largoTramo < 1e-9 || (s1 - s0) * largoTramo < LargoMinTramo)
+        {
+            return null;
+        }
+
+        if (s1 - s0 > FraccionMaxHuecoCinta)
+        {
+            Nota(
+                "Estribo diamante: no se abrió la línea interior de la cinta bajo el " +
+                $"gancho porque el hueco calculado se comía el {100 * (s1 - s0):0} % de " +
+                "la diagonal. El dibujo queda completo, con la línea cruzando el gancho.");
+            return null;
+        }
+
+        // ---------- La cinta, otra vez, abierta por el hueco ----------
+        var m = 2 * centros.Count;
+
+        var nuevos = new List<double>();
+        var nuevosBulges = new List<double> { 0 };
+
+        // Empieza donde ACABA el hueco…
+        nuevos.Add(a.X + (s1 * (b.X - a.X)));
+        nuevos.Add(a.Y + (s1 * (b.Y - a.Y)));
+
+        // …da la vuelta entera por los vértices de siempre…
+        for (var k = 1; k <= m; k++)
+        {
+            var v = (verticeA + k) % m;
+
+            nuevos.Add(pts[2 * v]);
+            nuevos.Add(pts[(2 * v) + 1]);
+            nuevosBulges.Add(bulges[v]);
+        }
+
+        // …y termina donde el hueco EMPIEZA.
+        nuevos.Add(a.X + (s0 * (b.X - a.X)));
+        nuevos.Add(a.Y + (s0 * (b.Y - a.Y)));
+        nuevosBulges.Add(0);
+
+        var abierta = PolilineaAbierta(nuevos.ToArray(), nuevosBulges.ToArray());
+
+        if (abierta is null)
+        {
+            return null;
+        }
+
+        if (conFondoSolido)
+        {
+            Negro(abierta);
+        }
+
+        AlFrente(new List<object> { abierta });
+
+        return abierta;
+    }
+
+    /// <summary>
+    /// Qué parte del tramo tapa <b>la cola</b>: recorte contra su rectángulo.
+    /// </summary>
+    /// <remarks>
+    /// Cuatro semiplanos —las dos caras, el arranque en la varilla y la punta—, cada uno
+    /// «este producto escalar no pasa de aquí». Es el recorte de Liang-Barsky de toda la
+    /// vida: geometría cerrada, sin ninguna prueba de «está dentro».
+    /// </remarks>
+    private static (double S0, double S1)? RecorteDeLaCola(
+        (double X, double Y) a, (double X, double Y) b,
+        (double X, double Y, double R) c,
+        double nx, double ny, double ux, double uy,
+        double rIn, double rOut, double largo)
+    {
+        var piX = c.X + (rIn * nx);
+        var piY = c.Y + (rIn * ny);
+
+        var poX = c.X + (rOut * nx);
+        var poY = c.Y + (rOut * ny);
+
+        var qiX = piX + (largo * ux);
+        var qiY = piY + (largo * uy);
+
+        var lados = new[]
+        {
+            // Por dentro de la cara interior y de la exterior
+            (Nx: -nx, Ny: -ny, Tope: -((piX * nx) + (piY * ny))),
+            (Nx: nx, Ny: ny, Tope: (poX * nx) + (poY * ny)),
+
+            // Del arranque en la varilla a la punta
+            (Nx: -ux, Ny: -uy, Tope: -((piX * ux) + (piY * uy))),
+            (Nx: ux, Ny: uy, Tope: (qiX * ux) + (qiY * uy))
+        };
+
+        var s0 = 0.0;
+        var s1 = 1.0;
+
+        foreach (var lado in lados)
+        {
+            var pa = (a.X * lado.Nx) + (a.Y * lado.Ny) - lado.Tope;
+            var pb = (b.X * lado.Nx) + (b.Y * lado.Ny) - lado.Tope;
+
+            var de = pb - pa;
+
+            if (Math.Abs(de) < 1e-15)
+            {
+                // Tramo paralelo a este lado: o entra entero o no entra nada.
+                if (pa > 0)
+                {
+                    return null;
+                }
+
+                continue;
+            }
+
+            var corte = -pa / de;
+
+            if (de > 0)
+            {
+                s1 = Math.Min(s1, corte);
+            }
+            else
+            {
+                s0 = Math.Max(s0, corte);
+            }
+
+            if (s0 >= s1)
+            {
+                return null;
+            }
+        }
+
+        return (s0, s1);
+    }
+
+    /// <summary>
+    /// Qué parte del tramo tapa <b>el doblez</b>: la media corona que rodea la varilla.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El doblez ocupa la corona de <c>rIn</c> a <c>rOut</c> alrededor de la varilla, media
+    /// vuelta, la mitad OPUESTA a las colas. Así que el recorte es doble: dentro del disco
+    /// de radio <c>rOut</c> y del lado de la media vuelta, que es el semiplano
+    /// <c>(P − C)·u ≤ 0</c>.
+    /// </para>
+    /// <para>
+    /// El radio interior no hace falta mirarlo: el borde interior de la cinta es
+    /// <b>tangente</b> a la varilla, así que nunca se mete dentro de ella. Y si en algún
+    /// armado se metiera, ese trozo lo tapa la varilla, que se dibuja encima.
+    /// </para>
+    /// </remarks>
+    private static (double S0, double S1)? RecorteDelDoblez(
+        (double X, double Y) a, (double X, double Y) b,
+        (double X, double Y, double R) c,
+        double ux, double uy, double rOut)
+    {
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+
+        var largo2 = (dx * dx) + (dy * dy);
+
+        if (largo2 < 1e-18)
+        {
+            return null;
+        }
+
+        // |a + s·d − C|² = rOut², en s.
+        var fx = a.X - c.X;
+        var fy = a.Y - c.Y;
+
+        var bb = 2 * ((fx * dx) + (fy * dy));
+        var cc = (fx * fx) + (fy * fy) - (rOut * rOut);
+
+        var disc = (bb * bb) - (4 * largo2 * cc);
+
+        if (disc <= 0)
+        {
+            // El tramo no llega a entrar en el doblez.
+            return null;
+        }
+
+        var raiz = Math.Sqrt(disc);
+
+        var s0 = Math.Max(0, (-bb - raiz) / (2 * largo2));
+        var s1 = Math.Min(1, (-bb + raiz) / (2 * largo2));
+
+        if (s0 >= s1)
+        {
+            return null;
+        }
+
+        // Y del lado de la media vuelta: (P − C)·u ≤ 0.
+        var pa = (fx * ux) + (fy * uy);
+        var pb = ((b.X - c.X) * ux) + ((b.Y - c.Y) * uy);
+
+        var de = pb - pa;
+
+        if (Math.Abs(de) < 1e-15)
+        {
+            if (pa > 0)
+            {
+                return null;
+            }
+        }
+        else
+        {
+            var corte = -pa / de;
+
+            if (de > 0)
+            {
+                s1 = Math.Min(s1, corte);
+            }
+            else
+            {
+                s0 = Math.Max(s0, corte);
+            }
+        }
+
+        return s0 < s1 ? (s0, s1) : null;
+    }
+
+    /// <summary>La cinta interior, abierta: misma polilínea con arcos, pero sin cerrar.</summary>
+    private object? PolilineaAbierta(double[] pts, double[] bulges)
+    {
+        try
+        {
+            return AcadConnection.Retry<object?>(() =>
+            {
+                dynamic pl = _ms.AddLightWeightPolyline(pts);
+                pl.Closed = false;
+                pl.Layer = "ESTRIBOS";
+
+                for (var i = 0; i < bulges.Length && i < pts.Length / 2; i++)
+                {
+                    pl.SetBulge(i, bulges[i]);
+                }
+
+                pl.Update();
+
+                // El color al FINAL, después de los bulges y del Update, igual que en
+                // CintaTangente: es el orden que la macro dejó anotado como necesario.
+                pl.Color = PorCapa;
+
+                return (object?)pl;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Cinta interior del diamante, abierta bajo el gancho", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Dónde sale del acero del diamante la línea exterior de una cola del gancho.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1306,56 +1811,22 @@ public sealed partial class SeccionDrawer
         double[] pts, List<(double X, double Y, double R)> centros, int iBarra,
         double nx, double ny, double px, double py, double ux, double uy, double largo)
     {
-        var n = centros.Count;
+        // El tramo recto de la cinta de ESE lado, el mismo que sirve para alargar la otra
+        // cola: una sola función decide de qué lado se mira.
+        var tramo = TramoDeLaCinta(pts, centros, iBarra, nx, ny);
 
-        if (n < 3 || pts.Length < 4 * n || iBarra < 0 || iBarra >= n)
+        if (tramo is null)
         {
             return null;
         }
 
-        var c = centros[iBarra];
+        var (a, b, _) = tramo.Value;
 
-        if (c.R <= 0)
-        {
-            return null;
-        }
+        var ax = a.X;
+        var ay = a.Y;
 
-        // Los dos puntos donde la cinta toca esta varilla: por donde llega la diagonal
-        // anterior y por donde sale la siguiente.
-        var llegaX = pts[4 * iBarra];
-        var llegaY = pts[(4 * iBarra) + 1];
-        var saleX = pts[(4 * iBarra) + 2];
-        var saleY = pts[(4 * iBarra) + 3];
-
-        // De qué lado está cada uno, medido con la normal de la cola.
-        var ladoLlega = (((llegaX - c.X) * nx) + ((llegaY - c.Y) * ny)) / c.R;
-        var ladoSale = (((saleX - c.X) * nx) + ((saleY - c.Y) * ny)) / c.R;
-
-        // El tramo recto de la cinta de ESE lado. El de llegada viene del círculo
-        // anterior y muere en la tangencia; el de salida arranca en ella.
-        double ax, ay, bx, by;
-
-        if (ladoLlega >= ladoSale)
-        {
-            var previo = ((iBarra - 1) % n + n) % n;
-
-            ax = pts[(4 * previo) + 2];
-            ay = pts[(4 * previo) + 3];
-            bx = llegaX;
-            by = llegaY;
-        }
-        else
-        {
-            var siguiente = (iBarra + 1) % n;
-
-            ax = saleX;
-            ay = saleY;
-            bx = pts[4 * siguiente];
-            by = pts[(4 * siguiente) + 1];
-        }
-
-        var dx = bx - ax;
-        var dy = by - ay;
+        var dx = b.X - ax;
+        var dy = b.Y - ay;
 
         // Producto cruzado de la dirección de la cola con la del tramo. Cero es que van
         // paralelas: no se cruzan y no hay nada que recortar.
