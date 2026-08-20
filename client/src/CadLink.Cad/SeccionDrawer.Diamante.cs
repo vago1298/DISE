@@ -1107,9 +1107,24 @@ public sealed partial class SeccionDrawer
     /// tercer sitio que la usa.
     /// </para>
     /// <para>
-    /// La dirección de la cola sale de la misma regla que en el zuncho circular: el radio
-    /// <b>hacia el núcleo</b> girado 45°, que equivale a girar 135° la dirección de avance
-    /// del acero. Aquí «hacia el núcleo» es del vértice izquierdo hacia el centro.
+    /// <b>Las colas apuntan al núcleo</b>, o sea del vértice izquierdo hacia el centro de
+    /// la sección, que es la misma regla del estribo rectangular: allí las colas van por la
+    /// diagonal de la esquina, que es justamente el radio hacia el núcleo.
+    /// </para>
+    /// <para>
+    /// <b>Aquí NO se gira 45° el radio.</b> Ese giro es del zuncho circular y solo tiene
+    /// sentido ahí: en el zuncho el acero llega al doblez en dirección tangente, o sea
+    /// perpendicular al radio, así que girar el radio 45° es lo mismo que doblar el acero
+    /// 135°. En el diamante el acero llega por la diagonal del rombo, no en tangente, y ese
+    /// giro de 45° dejaba la cola <b>exactamente encima de la propia diagonal del
+    /// diamante</b>: en una sección cuadrada las dos diagonales que salen del vértice van a
+    /// ±45° del eje, así que la cola girada 45° caía sobre una de ellas y el gancho se veía
+    /// como una prolongación del estribo en vez de un gancho metido en el concreto.
+    /// </para>
+    /// <para>
+    /// El radio sin girar es además la dirección más segura: cae en la <b>bisectriz</b> del
+    /// vértice, o sea lo más lejos posible de las dos diagonales, así que la cola nunca se
+    /// monta sobre el acero del diamante, sea la sección cuadrada, alta o achatada.
     /// </para>
     /// </remarks>
     private void GanchoDelDiamante(
@@ -1153,22 +1168,20 @@ public sealed partial class SeccionDrawer
         var rIn = barra.R;
         var rOut = rIn + dDia;
 
-        // Hacia el núcleo: del vértice izquierdo hacia el centro, o sea +X.
-        var rx = cx - barra.X;
-        var ry = cy - barra.Y;
-        var rl = Math.Sqrt((rx * rx) + (ry * ry));
+        // La cola apunta AL NÚCLEO: del vértice izquierdo hacia el centro, o sea +X.
+        // Sin girar 45°, que es lo del zuncho circular y aquí caía sobre la diagonal
+        // del propio diamante.
+        var ux = cx - barra.X;
+        var uy = cy - barra.Y;
+        var ul = Math.Sqrt((ux * ux) + (uy * uy));
 
-        if (rl < 1e-9)
+        if (ul < 1e-9)
         {
             return;
         }
 
-        rx /= rl;
-        ry /= rl;
-
-        // La cola: el radio interior girado 45°.
-        var ux = (rx - ry) * Rt2I;
-        var uy = (rx + ry) * Rt2I;
+        ux /= ul;
+        uy /= ul;
 
         // Las normales de arranque: las perpendiculares a la cola.
         var n1X = -uy;

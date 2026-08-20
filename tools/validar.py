@@ -3586,9 +3586,13 @@ def v19_circular_y_ui() -> None:
         check("el doblez envuelve la varilla",
               "var rIn = barra.R;" in cuerpo and "var rOut = rIn + dDia;" in cuerpo)
 
-        # La misma regla de direccion que el zuncho circular.
-        check("la cola es el radio interior girado 45 grados",
-              "(rx - ry) * Rt2I" in cuerpo and "(rx + ry) * Rt2I" in cuerpo)
+        # La cola apunta AL NUCLEO: el radio sin girar, que es la regla del estribo
+        # rectangular. Girarlo 45 grados es del zuncho circular -alli el acero llega
+        # en tangente- y aqui dejaba la cola encima de la propia diagonal del rombo.
+        check("la cola del diamante es el radio hacia el nucleo",
+              "var ux = cx - barra.X;" in cuerpo and "var uy = cy - barra.Y;" in cuerpo)
+        check("y NO se gira 45 grados, que es lo del zuncho circular",
+              "Rt2I" not in cuerpo)
         check("y las normales son las perpendiculares a la cola",
               "var n1X = -uy;" in cuerpo)
 
@@ -3607,6 +3611,10 @@ def v19_circular_y_ui() -> None:
         # Y la cola se recorta si no cabe en el nucleo.
         check("la cola del diamante se recorta si no cabe",
               "gancho = tope;" in cuerpo)
+
+    check("hay comprobacion numerica de la direccion de la cola del diamante",
+          "Direccion de la cola del gancho del diamante"
+          in leer(ruta("tools/verificar_gancho_diamante.py")))
 
     check("hay comprobacion numerica del gancho del zuncho",
           "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
