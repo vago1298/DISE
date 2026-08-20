@@ -1684,7 +1684,8 @@ public sealed partial class SeccionDrawer
         List<object> contorno, List<double[]> quads,
         double bx, double by, double rIn, double rOut,
         double nx, double ny, double ux, double uy, double largo,
-        bool recortar, double xIni, double yIni)
+        bool recortar, double xIni, double yIni,
+        bool sinLineaInterior = false)
     {
         var piX = bx + (rIn * nx);
         var piY = by + (rIn * ny);
@@ -1702,7 +1703,15 @@ public sealed partial class SeccionDrawer
             poY = yIni;
         }
 
-        Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));
+        // La línea de la cara que da a la varilla puede no dibujarse. La usa el gancho
+        // del diamante: allí el doblez se lee como una pieza que pasa POR ENCIMA de la
+        // varilla, y esa línea, que nace pegada al acero de la varilla, cortaba el
+        // doblez por dentro y rompía esa lectura.
+        if (!sinLineaInterior)
+        {
+            Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));
+        }
+
         Agregar(contorno, Linea(poX, poY, qoX, qoY, "ESTRIBOS"));
         Agregar(contorno, Linea(qiX, qiY, qoX, qoY, "ESTRIBOS"));
 

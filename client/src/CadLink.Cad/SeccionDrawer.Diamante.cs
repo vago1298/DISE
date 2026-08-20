@@ -1211,43 +1211,65 @@ public sealed partial class SeccionDrawer
 
         // El doblez: media corona alrededor de la varilla, del arranque de una cola al de
         // la otra. Su punto medio cae en -u, o sea en el lado OPUESTO a las colas.
-        //
-        // Va SOLO al relleno. Su contorno NO se dibuja, y eso no es un olvido:
-        //
-        //   * Entre los dos puntos donde la cinta toca la varilla, el arco de radio
-        //     rOut ES el borde exterior de la cinta, con el mismo centro, el mismo radio
-        //     y el mismo barrido. Ya está dibujado. Volver a trazarlo es pintar una raya
-        //     encima de otra.
-        //   * Y fuera de esos dos puntos, el arco entra en el acero de la cinta -en la
-        //     cuña que la cinta forma al doblar en el vértice-, así que pintaba una raya
-        //     NEGRA POR DENTRO DEL RELLENO. Es la línea que el usuario ve cruzar la
-        //     diagonal por encima y por debajo de la varilla.
-        //
-        // El estribo rectangular hace lo mismo desde el principio: su gancho tampoco
-        // traza el arco del doblez, lo trae el contorno del propio estribo.
         var a1 = Math.Atan2(n1Y, n1X);
         sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });
 
-        // El índice de la varilla en el recorrido de la cinta. Hace falta para saber por
-        // dónde entra y sale el acero del diamante en este vértice, y así recortar las
-        // colas justo donde la cinta les pasa por encima.
+        // ------------------------------------------------------------------
+        // El contorno del doblez: los DOS PEDAZOS que le faltan a la cinta
+        // ------------------------------------------------------------------
+        // El borde exterior del doblez y el borde exterior de la cinta son la MISMA
+        // circunferencia: los dos van a rOut del centro de la varilla. Pero la cinta solo
+        // la recorre entre sus dos puntos de tangencia -donde deja de abrazar la varilla y
+        // se va por la diagonal-, y las colas arrancan un poco más allá, en la
+        // perpendicular. Entre la tangencia y el arranque de cada cola queda un pedazo
+        // pequeño de esa circunferencia SIN DIBUJAR, y por eso el borde del brazo del
+        // gancho aparecía cortado en el aire.
+        //
+        // Se dibujan esos dos pedazos y nada más:
+        //
+        //   * de donde arranca cada cola HASTA donde empieza la cinta, y ahí se corta;
+        //   * el tramo de en medio no, que ese ya lo traza la cinta y sería pintar una
+        //     raya encima de otra.
+        //
+        // Así el contorno queda seguido: cola, doblez, cinta. El gancho se lee como una
+        // pieza que viene del estribo y no como algo pegado encima.
+        //
+        // El arco INTERIOR sigue sin dibujarse: su radio es el de la varilla y su centro
+        // el de la varilla, o sea que ES su circunferencia, ya trazada. Misma razón que en
+        // el zuncho circular.
         var iBarra = centros.FindIndex(
             c => Math.Abs(c.X - barra.X) < 1e-9 && Math.Abs(c.Y - barra.Y) < 1e-9);
 
-        // El borde INTERIOR de la cinta: los mismos números con los que se dibujó.
-        var geoInt = GeometriaCinta(centros, 0);
+        // Los mismos números con los que se DIBUJA la cinta, no una estimación: así el
+        // pedazo empalma con ella y no queda un pelo de hueco ni un solape.
+        var geoExt = GeometriaCinta(centros, dDia);
+
+        if (iBarra >= 0 && geoExt is not null)
+        {
+            var (tA, tB) = TangenciasDeLaCinta(
+                geoExt.Value.Pts, barra.X, barra.Y, iBarra, n1X, n1Y);
+
+            // Del arranque de la cola de arriba a la tangencia, en sentido antihorario.
+            ArcoDelDoblez(contorno, barra.X, barra.Y, rOut, a1, tA);
+
+            // Y de la otra tangencia al arranque de la cola de abajo.
+            ArcoDelDoblez(contorno, barra.X, barra.Y, rOut, tB, a1 + Pi);
+        }
 
         // Las dos colas, con la Cola del estribo rectangular.
+        //
+        // SIN la línea interior, la que nace pegada a la varilla. Va fuera por lo mismo
+        // que el arco interior: el doblez pasa POR ENCIMA de la varilla y su cara de
+        // dentro es la circunferencia de la varilla, que ya está. Dibujada, esa línea
+        // cruzaba el doblez justo encima del acero y lo partía en dos.
+        //
+        // Y sin recortar la exterior: ahora el pedazo de arco la empalma con la cinta, así
+        // que la línea tiene que llegar hasta el arco. Recortarla dejaría el hueco que el
+        // usuario veía como «una línea suelta arriba de la varilla».
         foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
         {
-            var salida = iBarra >= 0 && geoInt is not null
-                ? SalidaDelAceroDelDiamante(
-                    geoInt.Value.Pts, centros, iBarra, nx, ny,
-                    barra.X + (rOut * nx), barra.Y + (rOut * ny), ux, uy, gancho)
-                : null;
-
             Cola(contorno, quads, barra.X, barra.Y, rIn, rOut, nx, ny, ux, uy, gancho,
-                salida is not null, salida?.X ?? 0, salida?.Y ?? 0);
+                false, 0, 0, sinLineaInterior: true);
         }
 
         if (conFondoSolido && (sectores.Count > 0 || quads.Count > 0))
@@ -1257,118 +1279,85 @@ public sealed partial class SeccionDrawer
     }
 
     /// <summary>
-    /// Dónde sale del acero del diamante la línea exterior de una cola del gancho.
+    /// Los dos ángulos en los que la cinta <b>deja de abrazar</b> la varilla del gancho.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>El problema.</b> La cola arranca en el borde exterior del doblez, o sea a
-    /// <c>rOut</c> de la varilla, y de ahí sale recta hacia el núcleo. Pero justo ahí la
-    /// cinta del diamante <b>le pasa por encima</b>: la diagonal del rombo llega al
-    /// vértice por ese mismo sitio. Así que el primer trocito de esa línea queda dentro
-    /// del acero del diamante, y dibujarlo pinta una raya por dentro del relleno.
+    /// Son los puntos de tangencia: por donde la diagonal que llega se despega de la
+    /// varilla y por donde arranca la que sale. Se leen de los mismos puntos con los que
+    /// se dibuja la cinta, así que el arco del doblez empalma con ella exactamente.
     /// </para>
     /// <para>
-    /// <b>La solución.</b> La línea empieza donde <b>sale</b> de ese acero, o sea donde
-    /// cruza el borde interior de la cinta. Y ese borde no se estima: es el tramo recto
-    /// que <see cref="GeometriaCinta"/> calcula para dibujar la cinta, con los mismos
-    /// números, así que el recorte cae <i>sobre</i> la línea dibujada y no un poco antes
-    /// ni un poco después.
+    /// Se devuelven ORDENADOS por el lado de la cola de arriba, no por el orden del
+    /// recorrido. El recorrido de la cinta puede llegar por arriba o por abajo según el
+    /// costado, y lo que hace falta aquí es «la del lado de esta cola», no «la primera».
     /// </para>
-    /// <para>
-    /// Es el mismo recorte que ya hacía el gancho del estribo rectangular, donde la línea
-    /// exterior de la segunda cola arranca sobre la línea interior del estribo. De hecho
-    /// se le pasa a la misma <see cref="Cola"/>, por los mismos parámetros.
-    /// </para>
-    /// <para>
-    /// Cada cola se recorta con <b>su</b> diagonal: la de arriba con la que llega y la de
-    /// abajo con la que sale. Se distinguen por el lado, comparando la normal del punto de
-    /// tangencia con la de la cola.
-    /// </para>
-    /// <returns>
-    /// El punto de salida, o <c>null</c> si no hay recorte que hacer: si las dos rectas
-    /// son paralelas, si el cruce cae fuera de la cola o si cae fuera del tramo recto de
-    /// la cinta. En todos esos casos se dibuja la cola entera, que es lo que se hacía
-    /// antes; equivocar el recorte sería peor.
-    /// </returns>
     /// </remarks>
-    private static (double X, double Y)? SalidaDelAceroDelDiamante(
-        double[] pts, List<(double X, double Y, double R)> centros, int iBarra,
-        double nx, double ny, double px, double py, double ux, double uy, double largo)
+    /// <returns>
+    /// <c>A</c> es la tangencia del lado de la normal <paramref name="n1X"/>,
+    /// <paramref name="n1Y"/> y <c>B</c> la del otro lado.
+    /// </returns>
+    private static (double A, double B) TangenciasDeLaCinta(
+        double[] pts, double bx, double by, int iBarra, double n1X, double n1Y)
     {
-        var n = centros.Count;
-
-        if (n < 3 || pts.Length < 4 * n || iBarra < 0 || iBarra >= n)
-        {
-            return null;
-        }
-
-        var c = centros[iBarra];
-
-        if (c.R <= 0)
-        {
-            return null;
-        }
-
-        // Los dos puntos donde la cinta toca esta varilla: por donde llega la diagonal
-        // anterior y por donde sale la siguiente.
         var llegaX = pts[4 * iBarra];
         var llegaY = pts[(4 * iBarra) + 1];
         var saleX = pts[(4 * iBarra) + 2];
         var saleY = pts[(4 * iBarra) + 3];
 
-        // De qué lado está cada uno, medido con la normal de la cola.
-        var ladoLlega = (((llegaX - c.X) * nx) + ((llegaY - c.Y) * ny)) / c.R;
-        var ladoSale = (((saleX - c.X) * nx) + ((saleY - c.Y) * ny)) / c.R;
+        var aLlega = Math.Atan2(llegaY - by, llegaX - bx);
+        var aSale = Math.Atan2(saleY - by, saleX - bx);
 
-        // El tramo recto de la cinta de ESE lado. El de llegada viene del círculo
-        // anterior y muere en la tangencia; el de salida arranca en ella.
-        double ax, ay, bx, by;
+        var ladoLlega = ((llegaX - bx) * n1X) + ((llegaY - by) * n1Y);
+        var ladoSale = ((saleX - bx) * n1X) + ((saleY - by) * n1Y);
 
-        if (ladoLlega >= ladoSale)
+        return ladoLlega >= ladoSale ? (aLlega, aSale) : (aSale, aLlega);
+    }
+
+    /// <summary>
+    /// Un pedazo del contorno del doblez: de donde arranca una cola a donde empieza la
+    /// cinta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lleva una <b>guardia</b>: el pedazo tiene que barrer menos de media vuelta. Por
+    /// geometría barre lo que separa la cola de la diagonal, que en cualquier sección real
+    /// va de unos 10° a 70°; si sale más, los ángulos no describen este vértice —una
+    /// sección absurda, un recorrido raro— y entonces <b>no se dibuja nada</b>. Un arco de
+    /// más daría media vuelta alrededor de la varilla y se vería peor que la falta del
+    /// pedazo.
+    /// </para>
+    /// </remarks>
+    private void ArcoDelDoblez(
+        List<object> contorno, double bx, double by, double r, double aIni, double aFin)
+    {
+        var barrido = aFin - aIni;
+
+        while (barrido < 0)
         {
-            var previo = ((iBarra - 1) % n + n) % n;
-
-            ax = pts[(4 * previo) + 2];
-            ay = pts[(4 * previo) + 3];
-            bx = llegaX;
-            by = llegaY;
-        }
-        else
-        {
-            var siguiente = (iBarra + 1) % n;
-
-            ax = saleX;
-            ay = saleY;
-            bx = pts[4 * siguiente];
-            by = pts[(4 * siguiente) + 1];
-        }
-
-        var dx = bx - ax;
-        var dy = by - ay;
-
-        // Producto cruzado de la dirección de la cola con la del tramo. Cero es que van
-        // paralelas: no se cruzan y no hay nada que recortar.
-        var cruz = (ux * dy) - (uy * dx);
-
-        if (Math.Abs(cruz) < 1e-12)
-        {
-            return null;
+            barrido += 2 * Pi;
         }
 
-        var rx = ax - px;
-        var ry = ay - py;
-
-        var t = ((rx * dy) - (ry * dx)) / cruz;
-        var sTramo = ((rx * uy) - (ry * ux)) / cruz;
-
-        // El cruce tiene que caer DENTRO de la cola y DENTRO del tramo recto de la cinta.
-        // Si no, o la cinta no le pasa por encima o la cuenta no describe este caso, y en
-        // los dos la cola entera es la respuesta correcta.
-        if (t <= 1e-12 || t >= largo || sTramo < -1e-9 || sTramo > 1 + 1e-9)
+        while (barrido >= 2 * Pi)
         {
-            return null;
+            barrido -= 2 * Pi;
         }
 
-        return (px + (t * ux), py + (t * uy));
+        if (barrido < 1e-9)
+        {
+            // La cola arranca justo en la tangencia: no falta ningún pedazo.
+            return;
+        }
+
+        if (barrido > Pi / 2)
+        {
+            _log.Add(
+                "Estribo diamante: no se dibujó un pedazo del contorno del gancho " +
+                $"porque barría {barrido * 180 / Pi:0.#}°, más de lo que puede separar " +
+                "una cola de la diagonal del rombo.");
+            return;
+        }
+
+        Agregar(contorno, Arco(bx, by, r, aIni, aFin));
     }
 }

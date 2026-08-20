@@ -3603,57 +3603,80 @@ def v19_circular_y_ui() -> None:
         check("y el relleno del gancho del zuncho circular",
               "RellenoDelGancho(quads, sectores)" in cuerpo)
 
-        # NINGUN arco del doblez se dibuja, ni el interior ni el exterior:
-        #
-        #   * el interior tiene el centro y el radio de la varilla, o sea que ES su
-        #     circunferencia, ya trazada;
-        #   * y el exterior, entre los dos puntos donde la cinta toca la varilla, ES el
-        #     borde exterior de la cinta, tambien ya trazado; y fuera de esos dos puntos
-        #     se mete DENTRO del acero de la cinta, o sea que pintaba una raya negra por
-        #     dentro del relleno. Medido: entre 0.84 y 3.63 cm de raya, segun la seccion.
-        #
-        # El gancho del estribo rectangular hace lo mismo desde el principio: tampoco
-        # traza el arco de su doblez.
+        # El arco INTERIOR no se dibuja: tiene el centro y el radio de la varilla, o sea
+        # que ES su circunferencia, ya trazada. Y la LINEA interior de las colas se va por
+        # lo mismo: nace pegada al acero de la varilla y partia el doblez en dos.
         check("no dibuja el arco interior, que es la varilla misma",
               "Arco(barra.X, barra.Y, rIn," not in cuerpo)
-        check("ni el exterior, que es el borde de la cinta",
-              "Arco(barra.X, barra.Y, rOut" not in cuerpo)
+        check("ni la linea interior de las colas",
+              "sinLineaInterior: true" in cuerpo)
+
+        # Del arco EXTERIOR se dibujan los dos PEDAZOS que le faltan a la cinta: de donde
+        # arranca cada cola hasta donde la cinta empieza a abrazar la varilla. El tramo de
+        # en medio no, que ese ya lo traza la cinta.
+        check("dibuja el pedazo de arco de la cola de arriba a la tangencia",
+              "ArcoDelDoblez(contorno, barra.X, barra.Y, rOut, a1, tA);" in cuerpo)
+        check("y el de la otra tangencia a la cola de abajo",
+              "ArcoDelDoblez(contorno, barra.X, barra.Y, rOut, tB, a1 + Pi);" in cuerpo)
+        check("las tangencias se leen de la cinta, no se estiman",
+              "TangenciasDeLaCinta(" in cuerpo
+              and "GeometriaCinta(centros, dDia)" in cuerpo)
+
+        # Y la linea exterior NO se recorta: tiene que llegar hasta el pedazo de arco.
+        check("la linea exterior de la cola no se recorta",
+              "false, 0, 0, sinLineaInterior: true" in cuerpo)
+
         check("pero el doblez si se rellena",
               "sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });"
               in cuerpo)
-
-        # La linea exterior de cada cola arranca donde SALE del acero de la cinta.
-        check("la cola se recorta donde la cinta le pasa por encima",
-              "SalidaDelAceroDelDiamante(" in cuerpo)
-        check("y el recorte se le pasa a la misma Cola del rectangular",
-              "salida is not null, salida?.X ?? 0, salida?.Y ?? 0" in cuerpo)
 
         # Y la cola se recorta si no cabe en el nucleo.
         check("la cola del diamante se recorta si no cabe",
               "gancho = tope;" in cuerpo)
 
-    m_sal = re.search(
-        r"private static \(double X, double Y\)\? SalidaDelAceroDelDiamante\(.*?\n    \}",
+    m_tan = re.search(
+        r"private static \(double A, double B\) TangenciasDeLaCinta\(.*?\n    \}",
         diam, re.S)
 
-    check("se puede leer SalidaDelAceroDelDiamante", m_sal is not None)
-    if m_sal:
-        sal = m_sal.group(0)
+    check("se puede leer TangenciasDeLaCinta", m_tan is not None)
+    if m_tan:
+        tan = m_tan.group(0)
 
-        # El borde con el que se recorta es el que DIBUJA la cinta, no una estimacion:
-        # los mismos numeros, asi que el recorte cae sobre la linea trazada.
-        check("el recorte usa el borde interior que dibuja la cinta",
-              "GeometriaCinta(centros, 0)" in cuerpo)
-        check("cada cola se recorta con SU diagonal, por el lado",
-              "ladoLlega >= ladoSale" in sal)
-        check("y no se recorta si el cruce cae fuera de la cola o del tramo",
-              "t <= 1e-12 || t >= largo || sTramo < -1e-9 || sTramo > 1 + 1e-9" in sal)
+        # Se ordenan por el LADO de la cola de arriba, no por el orden del recorrido: la
+        # cinta puede llegar al vertice por arriba o por abajo segun el costado.
+        check("las tangencias se ordenan por el lado de la cola",
+              "ladoLlega >= ladoSale ? (aLlega, aSale) : (aSale, aLlega)" in tan)
+
+    m_arc = re.search(r"private void ArcoDelDoblez\(.*?\n    \}", diam, re.S)
+
+    check("se puede leer ArcoDelDoblez", m_arc is not None)
+    if m_arc:
+        arc = m_arc.group(0)
+
+        # La guardia: por geometria el pedazo mide lo que la cola se separa de la
+        # diagonal, siempre menos de 90 grados. Si sale mas, los angulos no describen
+        # este vertice y es mejor no dibujar nada que dar media vuelta a la varilla.
+        check("el pedazo de arco lleva guardia de media vuelta",
+              "barrido > Pi / 2" in arc)
+        check("y si no la pasa, no dibuja nada y lo dice",
+              "no se dibujó un pedazo del contorno del gancho" in arc)
+        check("un barrido nulo no dibuja nada",
+              "barrido < 1e-9" in arc)
+
+    # La Cola compartida tiene que saber saltarse la linea interior, y solo esa.
+    dib = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("la Cola compartida admite dibujarse sin la linea interior",
+          "bool sinLineaInterior = false)" in dib)
+    check("y lo que se salta es SOLO la linea interior",
+          "if (!sinLineaInterior)\n        {\n            Agregar(contorno, "
+          "Linea(piX, piY, qiX, qiY, \"ESTRIBOS\"));" in dib)
 
     check("hay comprobacion numerica de la direccion de la cola del diamante",
           "Direccion de la cola del gancho del diamante"
           in leer(ruta("tools/verificar_gancho_diamante.py")))
-    check("y de que ninguna linea del gancho queda dentro del acero del diamante",
-          "NINGUNA LINEA DEL GANCHO DEBE QUEDAR DENTRO DEL ACERO"
+    check("y de que el contorno del gancho queda seguido",
+          "EL CONTORNO DEL GANCHO TIENE QUE QUEDAR SEGUIDO"
           in leer(ruta("tools/verificar_gancho_diamante.py")))
 
     check("hay comprobacion numerica del gancho del zuncho",
