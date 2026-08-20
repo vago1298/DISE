@@ -30,6 +30,19 @@ public sealed partial class SeccionDrawer
     // El bulge del cuarto de círculo -el BULGE_90 de la macro del HSS- ya existe en la
     // parte principal de la clase, con el mismo número de quince cifras: Bulge90.
 
+    /// <summary>
+    /// Estilo de texto de las <b>cotas</b> del acero, el que crean las cuatro macros.
+    /// </summary>
+    /// <remarks>
+    /// Las cuatro lo crean con <c>AsegurarTextStyleAcero</c> y se lo ponen a cada cota con
+    /// <c>dimObj.TextStyle = "ACERO"</c>. Es distinto del de los rótulos —esos van con
+    /// <c>SECCIONES</c>— y por eso hacen falta los dos.
+    /// </remarks>
+    private const string EstiloTextoAcero = "ACERO";
+
+    /// <summary>Altura del texto de las cotas de acero, la de las cuatro macros.</summary>
+    private const double AlturaTextoCotaAcero = 0.015;
+
     /// <summary>Peralte, en pulgadas, a partir del cual el tubo rectangular se rellena.</summary>
     private const double PeralteLimitePulg = 5.0;
 
@@ -47,8 +60,77 @@ public sealed partial class SeccionDrawer
         Capa("COTAS", 253);
         Capa("ROTULOS", 3);
 
+        // Los DOS estilos de texto, que es lo que faltaba. Las macros usan uno para los
+        // rótulos —SECCIONES— y otro para las cotas —ACERO—, y se lo ponen a cada cota a
+        // mano. Sin crear el segundo, las cotas se quedaban con el de los rótulos.
         AsegurarEstiloTexto();
+        AsegurarEstiloAcero();
+
         ConfigurarCotas();
+    }
+
+    /// <summary>
+    /// Crea el estilo de texto <c>ACERO</c> de las cotas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Las cuatro macros no se ponen de acuerdo en cómo es este estilo</b>, así que hay
+    /// que elegir, y conviene decir por qué:
+    /// </para>
+    /// <list type="table">
+    ///   <listheader><term>Macro</term><description>Cómo lo crea</description></listheader>
+    ///   <item><term>IR (V2)</term><description><c>BAHNSCHRIFT SEMILIGHT</c>, altura
+    ///   <b>0.015</b></description></item>
+    ///   <item><term>CF, OC, OR</term><description><c>arial.ttf</c>, altura
+    ///   <b>0</b></description></item>
+    /// </list>
+    /// <para>
+    /// <b>La fuente se toma de la IR</b>, que es la única en V2 y además la que coincide con
+    /// el estilo de los rótulos y con el de las secciones de concreto: tres familias con
+    /// Arial y una con Bahnschrift dejarían el mismo plano con dos tipografías en las cotas
+    /// según de qué perfil sea cada una.
+    /// </para>
+    /// <para>
+    /// <b>Y la altura se toma de las otras tres, que la dejan en cero</b>, y esto no es un
+    /// término medio: es que el cero hace falta. Un estilo con altura fija <i>manda sobre
+    /// la del texto</i>, así que con el 0.015 de la IR ninguna cota podría cambiarla, y las
+    /// cuatro macros —la IR incluida— le fijan la altura a cada cota una por una con
+    /// <c>TextHeight = 0.015</c>. O sea que la IR se contradice a sí misma: pone una altura
+    /// fija en el estilo y luego la asigna por objeto. Con altura 0 las dos cosas encajan.
+    /// </para>
+    /// </remarks>
+    private void AsegurarEstiloAcero()
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic estilos = _doc.TextStyles;
+                dynamic estilo;
+
+                try
+                {
+                    estilo = estilos.Item(EstiloTextoAcero);
+                }
+                catch (Exception)
+                {
+                    estilo = estilos.Add(EstiloTextoAcero);
+                }
+
+                estilo.SetFont(FuenteTexto, false, false, 0, 0);
+
+                // Altura 0 = variable. Ver el remarks: es lo que permite que cada cota
+                // fije la suya, que es lo que hacen las cuatro macros.
+                estilo.Height = 0d;
+                estilo.Width = FactorAnchoTexto;
+            });
+        }
+        catch (Exception ex)
+        {
+            // Si la fuente no está instalada AutoCAD la sustituye y el texto sale igual;
+            // solo cambia el tipo de letra.
+            Fallo($"Estilo de texto '{EstiloTextoAcero}' con la fuente '{FuenteTexto}'", ex);
+        }
     }
 
     /// <summary>
@@ -166,7 +248,10 @@ public sealed partial class SeccionDrawer
                 return 0;
         }
 
-        RotuloAcero(p, centro, yAbajo - (0.06 * _f));
+        // El rótulo va 0.06 por debajo de la base, salvo en el CF, que lo sube a 0.05.
+        // Es de la propia macro del CF, con su comentario: «Rotulo 0.05 mas arriba (antes
+        // baseY - 0.1) para acercarlo al perfil».
+        RotuloAcero(p, centro, yAbajo - ((p.Familia == "CF" ? 0.05 : 0.06) * _f));
 
         var fin = (int)_ms.Count;
 
@@ -635,7 +720,14 @@ public sealed partial class SeccionDrawer
             _ => 0.02
         };
 
-        TextoAcero(string.Join("\\P", lineas), xCentro, yBase, altura * _f, "ROTULOS");
+        // El ANCHO de la caja del MText también es distinto en una de las cuatro: el OC la
+        // pone en 2.5 y las otras tres en 0.7. Con 0.7 el renglón del perfil de un tubo
+        // redondo —«PERFIL: OC 4 STD»— se parte en dos líneas, que es lo que la macro del
+        // OC estaba arreglando al subirlo.
+        var ancho = p.Familia == "OC" ? 2.5 : 0.7;
+
+        TextoAcero(
+            string.Join("\\P", lineas), xCentro, yBase, altura * _f, "ROTULOS", ancho * _f);
     }
 
     /// <summary>El primer número que aparece en el nombre del perfil, o cero.</summary>
@@ -708,6 +800,11 @@ public sealed partial class SeccionDrawer
 
                 FormatearCota((object)cota);
 
+                // Lo que las cuatro macros le ponen a cada cota, y que FormatearCota no
+                // sabe porque es del concreto: su propio estilo de texto y su altura.
+                PropCota((object)cota, "TextStyle", EstiloTextoAcero);
+                PropCota((object)cota, "TextHeight", AlturaTextoCotaAcero * _f);
+
                 PropCota((object)cota, "LinearScaleFactor", 1 / _escala);
                 PropCota((object)cota, "TextRotation", 0d);
 
@@ -722,13 +819,21 @@ public sealed partial class SeccionDrawer
     }
 
     /// <summary>Un MText centrado por arriba, como los rótulos de las macros.</summary>
-    private void TextoAcero(string contenido, double x, double y, double altura, string capa)
+    /// <param name="anchoCaja">
+    /// Ancho de la caja del MText. Las macros lo dejan en 0.7, salvo la del tubo redondo,
+    /// que lo sube a 2.5 para que el renglón del perfil no se le parta en dos.
+    /// </param>
+    private void TextoAcero(
+        string contenido, double x, double y, double altura, string capa,
+        double anchoCaja = 0)
     {
         try
         {
             AcadConnection.Retry(() =>
             {
-                dynamic t = _ms.AddMText(new[] { x, y, 0d }, 0.7 * _f, contenido);
+                var caja = anchoCaja > 0 ? anchoCaja : 0.7 * _f;
+
+                dynamic t = _ms.AddMText(new[] { x, y, 0d }, caja, contenido);
                 t.Layer = capa;
                 t.Color = PorCapa;
                 t.StyleName = EstiloTexto;

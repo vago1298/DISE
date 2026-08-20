@@ -252,8 +252,13 @@ print(" El acomodo del acero: a la izquierda del origen, desde -0.6")
 print("=" * 78)
 
 ORIGEN_CM = -60          # el xDerechaActual = -0.6 de las macros, en cm
-AIRE_CM = 55
 ESCALA = 0.01
+
+# El sepIzq y el baseY de cada macro, en centimetros. Las cuatro arrancan en la misma x,
+# asi que lo unico que evita que se encimen es la banda.
+AIRE = {"IR": 45, "OR": 55, "OC": 60, "CF": 65}
+BANDA = {"IR": 0, "OR": 200, "CF": 350, "OC": 500}
+AIRE_CM = AIRE["OR"]     # el que usan las pruebas de una sola familia
 
 
 def acomodar(perfiles, saltados=()):
@@ -380,14 +385,82 @@ with open("client/src/CadLink.App/MainWindow.Acero.cs", encoding="utf-8") as f:
 
 check("el origen del acero es -60 cm, el -0.6 de las macros",
       "OrigenAceroCm = -60" in codigo)
-check("el aire entre perfiles es de 55 cm",
-      "AireEntrePerfilesCm = 55" in codigo)
 check("se dibuja de derecha a izquierda",
       "var xIzquierda = xDerecha - ancho;" in codigo)
 check("y el hueco se avanza SIEMPRE, tambien para los saltados",
-      re.search(r"xDerecha = xIzquierda - \(AireEntrePerfilesCm \* escala\);",
-                codigo) is not None
+      re.search(r"xDerecha = xIzquierda - aire;", codigo) is not None
       and "El hueco se avanza SIEMPRE" in codigo)
+
+# El aire y la banda de CADA familia, los de su macro.
+for fam, aire in AIRE.items():
+    clave = {"IR": "Ir", "OR": "Or", "OC": "Oc", "CF": "Cf"}[fam]
+    check(f"el aire de {fam} es el de su macro ({aire} cm)",
+          f"FamiliaPerfil.{clave} => {aire}," in codigo)
+
+for fam, banda in BANDA.items():
+    clave = {"IR": "Ir", "OR": "Or", "OC": "Oc", "CF": "Cf"}[fam]
+    check(f"la banda de {fam} es la de su macro ({banda} cm)",
+          f"FamiliaPerfil.{clave} => {banda}," in codigo)
+
+
+# ===========================================================================
+#  Las bandas: que las cuatro familias no se encimen entre ellas
+# ===========================================================================
+#
+# Las cuatro macros arrancan en x = -0.6, asi que lo unico que las separa es la Y. Con
+# el catalogo del IMCA eso hay que comprobarlo de verdad, porque trae perfiles IS de
+# hasta 1.90 m de peralte y la banda del IR solo tiene 2.00 m hasta la del OR.
+
+print("\n" + "=" * 78)
+print(" Las bandas de cada familia")
+print("=" * 78)
+
+catalogo_real = []
+with open("client/src/CadLink.App/perfiles-acero.csv", encoding="utf-8") as f:
+    catalogo_real = leer_catalogo(f.readlines())
+
+print()
+orden = sorted(BANDA, key=lambda f: BANDA[f])
+
+for i, fam in enumerate(orden):
+    de_esta = [p for p in catalogo_real if p["familia"] == fam]
+
+    if not de_esta:
+        continue
+
+    mas_alto = max(p["peralte"] for p in de_esta)
+    base = BANDA[fam]
+    techo = BANDA[orden[i + 1]] if i + 1 < len(orden) else None
+
+    if techo is None:
+        print(f"    {fam}: banda en {base:4} cm   el mas alto mide {mas_alto:6.2f} cm   "
+              f"(no tiene banda encima)")
+        continue
+
+    hueco = techo - base
+    cabe = mas_alto <= hueco
+
+    print(f"    {fam}: banda en {base:4} cm   el mas alto mide {mas_alto:6.2f} cm   "
+          f"hueco de {hueco:4} cm   {'cabe' if cabe else 'NO CABE'}")
+
+    if not cabe:
+        avisos.append(
+            f"{fam}: el perfil mas alto del catalogo mide {mas_alto:.0f} cm y su banda "
+            f"solo tiene {hueco} cm hasta la de {orden[i+1]}. El programa lo avisa al "
+            "dibujar; hay que separar las bandas o dibujar esa familia aparte.")
+
+# Lo que SI se exige: que las bandas esten separadas y en el orden de las macros, porque
+# de eso depende que no se encimen.
+for i in range(len(orden) - 1):
+    check(f"la banda de {orden[i]} esta por debajo de la de {orden[i+1]}",
+          BANDA[orden[i]] < BANDA[orden[i + 1]])
+
+check("las cuatro bandas son distintas", len(set(BANDA.values())) == 4)
+
+# Y que el aire de cada familia sea el de SU macro, no uno solo para todas: el rotulo
+# del IR es el mas grande y necesita mas hueco que el de un tubo.
+check("cada familia tiene su propio aire", len(set(AIRE.values())) == 4,
+      str(AIRE))
 
 # ===========================================================================
 #  4. La vuelta completa: Excel -> CSV -> lo que lee el programa

@@ -252,39 +252,75 @@ public partial class MainWindow
             // desde donde acabe lo que ya haya en el plano, así que dejando el acero en el
             // semiplano negativo las dos hojas no se pisan nunca, aunque se dibujen en el
             // mismo dwg y en cualquier orden.
-            var xDerecha = OrigenAceroCm * escala;
-
+            //
+            // CADA FAMILIA EN SU PROPIA BANDA, y esto salió de releer las cuatro macros:
+            // las cuatro arrancan en x = -0.6, así que si dibujaran a la misma altura se
+            // encimarían unas con otras. Lo que las separa es la Y: la macro del IR usa
+            // baseY = 0, la del OR 2.0, la del CF 3.5 y la del OC 5.0. Cada familia tiene
+            // su renglón en el plano.
             var entidades = 0;
             var dibujados = 0;
 
-            foreach (var fila in _datos.SeccionesAcero)
+            // Se agrupa por familia para recorrer una banda completa antes de pasar a la
+            // siguiente, que es lo que hace cada macro con su hoja.
+            foreach (var grupo in _datos.SeccionesAcero.GroupBy(f => f.Familia))
             {
-                var perfil = AFormatoAceroCad(fila);
+                var xDerecha = OrigenAceroCm * escala;
+                var y = BandaDeLaFamiliaCm(grupo.Key) * escala;
+                var aire = AireDeLaFamiliaCm(grupo.Key) * escala;
 
-                var ancho = perfil.AnchoDibujoCm * escala;
-                var xIzquierda = xDerecha - ancho;
+                var masAlto = 0.0;
 
-                var saltadasAntes = dibujante.Saltadas.Count;
-
-                var n = dibujante.DibujarAcero(perfil, xIzquierda, 0);
-
-                if (dibujante.Saltadas.Count == saltadasAntes)
+                foreach (var fila in grupo)
                 {
-                    entidades += n;
-                    dibujados++;
+                    var perfil = AFormatoAceroCad(fila);
+
+                    var ancho = perfil.AnchoDibujoCm * escala;
+                    var xIzquierda = xDerecha - ancho;
+
+                    var saltadasAntes = dibujante.Saltadas.Count;
+
+                    var n = dibujante.DibujarAcero(perfil, xIzquierda, y);
+
+                    if (dibujante.Saltadas.Count == saltadasAntes)
+                    {
+                        entidades += n;
+                        dibujados++;
+                    }
+
+                    masAlto = Math.Max(masAlto, perfil.AltoDibujoCm);
+
+                    // El hueco se avanza SIEMPRE, incluso para los que se saltaron.
+                    //
+                    // Aquí el acomodo es distinto del concreto y por un motivo: el concreto
+                    // arranca después de lo que ya esté dibujado, así que lo nuevo nunca
+                    // cae encima. El acero arranca en un punto FIJO, el -0.6 de las macros,
+                    // y si los saltados no avanzaran el hueco, al volver a dibujar una hoja
+                    // con dos perfiles ya hechos los otros dos se dibujarían justo encima.
+                    //
+                    // Avanzando siempre, cada perfil cae en el MISMO sitio pase lo que
+                    // pase: la fila queda igual se dibuje entera o se rehaga solo una.
+                    xDerecha = xIzquierda - aire;
                 }
 
-                // El hueco se avanza SIEMPRE, incluso para los que se saltaron.
-                //
-                // Aquí el acomodo es distinto del concreto y por un motivo: el concreto
-                // arranca después de lo que ya esté dibujado, así que lo nuevo nunca cae
-                // encima. El acero arranca en un punto FIJO, el -0.6 de las macros, y si
-                // los saltados no avanzaran el hueco, al volver a dibujar una hoja con dos
-                // perfiles ya hechos los otros dos se dibujarían justo encima de ellos.
-                //
-                // Avanzando siempre, cada perfil cae en el MISMO sitio pase lo que pase:
-                // la fila queda igual se dibuje entera o se rehaga solo una.
-                xDerecha = xIzquierda - (AireEntrePerfilesCm * escala);
+                // Y se avisa si la banda se sale de su hueco. Las alturas de las macros se
+                // eligieron con perfiles de catálogo corriente, pero el IMCA trae perfiles
+                // IS de hasta 1.90 m de peralte, y uno de esos dibujado en la banda del IR
+                // —que empieza en 0— llega justo a la del OR, que está en 2.0.
+                var techo = TechoDeLaBandaCm(grupo.Key);
+
+                if (techo > 0 && masAlto > techo)
+                {
+                    MessageBox.Show(
+                        $"Los perfiles {grupo.Key} llegan a {masAlto:N0} cm de peralte, y su " +
+                        $"banda solo tiene {techo:N0} cm de alto hasta la familia de " +
+                        "arriba.\n\nEl dibujo sale completo, pero esa familia puede " +
+                        "encimarse con la siguiente. Las alturas de banda son las de tus " +
+                        "macros (IR en 0, OR en 2.0, CF en 3.5 y OC en 5.0) y ahí no había " +
+                        "perfiles tan altos.\n\nSi lo ves encimado, dibuja esa familia en " +
+                        "un plano aparte o dime y separo las bandas.",
+                        AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+                }
             }
 
             dibujante.RotulosAlFrente();
@@ -364,13 +400,55 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Aire entre un perfil y el siguiente, en centímetros.</summary>
+    /// <summary>
+    /// Aire entre un perfil y el siguiente, <b>el de cada macro</b>.
+    /// </summary>
     /// <remarks>
-    /// Las cuatro macros dejan entre 45 y 65 cm según la familia —<c>sepIzq</c> de 0.45 a
-    /// 0.65 en metros—. Aquí es uno solo, 55, porque las secciones se dibujan mezcladas en
-    /// la misma fila y un hueco distinto por familia se vería como un acomodo descuidado.
+    /// Es el <c>sepIzq</c> de cada una: 0.45 el IR, 0.55 el OR, 0.60 el OC y 0.65 el CF, en
+    /// metros. Antes aquí había uno solo para las cuatro, y era un error de port: cada
+    /// familia lleva su rótulo de distinto tamaño debajo —el del IR es el más grande— así
+    /// que el hueco que necesita para que los rótulos no se toquen también es distinto.
     /// </remarks>
-    private const double AireEntrePerfilesCm = 55;
+    private static double AireDeLaFamiliaCm(string? familia) => familia switch
+    {
+        FamiliaPerfil.Ir => 45,
+        FamiliaPerfil.Or => 55,
+        FamiliaPerfil.Oc => 60,
+        FamiliaPerfil.Cf => 65,
+        _ => 55
+    };
+
+    /// <summary>
+    /// A qué altura va la fila de cada familia, <b>la <c>baseY</c> de cada macro</b>.
+    /// </summary>
+    /// <remarks>
+    /// Las cuatro macros arrancan en la misma x, el −0.6, así que lo único que evita que se
+    /// encimen unas con otras es esta altura. En metros: el IR en 0, el OR en 2.0, el CF en
+    /// 3.5 y el OC en 5.0.
+    /// </remarks>
+    private static double BandaDeLaFamiliaCm(string? familia) => familia switch
+    {
+        FamiliaPerfil.Ir => 0,
+        FamiliaPerfil.Or => 200,
+        FamiliaPerfil.Cf => 350,
+        FamiliaPerfil.Oc => 500,
+        _ => 0
+    };
+
+    /// <summary>
+    /// Cuánto alto tiene la banda de una familia antes de tocar la de arriba.
+    /// </summary>
+    /// <remarks>
+    /// Sirve solo para avisar. La familia de más arriba —el OC— no tiene nada encima, así
+    /// que devuelve cero: no hay con qué encimarse.
+    /// </remarks>
+    private static double TechoDeLaBandaCm(string? familia) => familia switch
+    {
+        FamiliaPerfil.Ir => 200 - 0,
+        FamiliaPerfil.Or => 350 - 200,
+        FamiliaPerfil.Cf => 500 - 350,
+        _ => 0
+    };
 
     /// <summary>
     /// Dónde empieza la fila de perfiles de acero: el borde <b>derecho</b> del primero.

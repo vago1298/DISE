@@ -5413,10 +5413,32 @@ def v21_separacion_y_acero() -> None:
         cuerpo_exp = m_export.group(0)
 
         check("el hueco se avanza siempre, tambien para los saltados",
-              "xDerecha = xIzquierda - (AireEntrePerfilesCm * escala);" in cuerpo_exp
+              "xDerecha = xIzquierda - aire;" in cuerpo_exp
               and cuerpo_exp.count("xDerecha = xIzquierda") == 1)
         check("y el saltado solo se descuenta del conteo",
               "if (dibujante.Saltadas.Count == saltadasAntes)" in cuerpo_exp)
+
+        # CADA FAMILIA EN SU BANDA. Las cuatro macros arrancan en la misma x, asi que lo
+        # unico que evita que se encimen es la Y: baseY 0 el IR, 2.0 el OR, 3.5 el CF y
+        # 5.0 el OC. Sin esto, las cuatro familias caian una encima de otra.
+        check("se agrupa por familia para recorrer banda por banda",
+              "GroupBy(f => f.Familia)" in cuerpo_exp)
+        check("y cada familia se dibuja a la altura de su macro",
+              "BandaDeLaFamiliaCm(grupo.Key)" in cuerpo_exp
+              and "DibujarAcero(perfil, xIzquierda, y)" in cuerpo_exp)
+        check("con el aire que le toca a esa familia",
+              "AireDeLaFamiliaCm(grupo.Key)" in cuerpo_exp)
+        check("y se avisa si una banda no da de alto",
+              "TechoDeLaBandaCm(grupo.Key)" in cuerpo_exp)
+
+    # Las alturas y los huecos son los de las macros, uno por uno.
+    for familia, banda in (("Ir", "0"), ("Or", "200"), ("Cf", "350"), ("Oc", "500")):
+        check(f"la banda de {familia.upper()} es la de su macro ({banda} cm)",
+              f"FamiliaPerfil.{familia} => {banda}," in acero_cb)
+
+    for familia, aire in (("Ir", "45"), ("Or", "55"), ("Oc", "60"), ("Cf", "65")):
+        check(f"el aire de {familia.upper()} es el de su macro ({aire} cm)",
+              f"FamiliaPerfil.{familia} => {aire}," in acero_cb)
 
     # ------------------------------------------------------------------
     # El catalogo de perfiles: las medidas NO se teclean
@@ -5523,8 +5545,55 @@ def v21_separacion_y_acero() -> None:
     check("y si la hoja viene en milimetros avisa, no convierte solo",
           "--mm" in conv and "convertir por si mismo lo que PARECE" in conv)
 
+    # ------------------------------------------------------------------
+    # Los DOS estilos de texto de las macros de acero
+    # ------------------------------------------------------------------
+    # Las cuatro macros crean el estilo ACERO y se lo ponen a cada cota; los rotulos
+    # van con SECCIONES. El port usaba el de los rotulos para todo, asi que las cotas
+    # salian con otra letra y otra altura de las que dicen las macros.
+    check("se crea el estilo de texto ACERO de las cotas",
+          "private void AsegurarEstiloAcero()" in acero_cad
+          and 'EstiloTextoAcero = "ACERO"' in acero_cad)
+    check("y se crea junto con el de los rotulos",
+          "AsegurarEstiloTexto();" in acero_cad and "AsegurarEstiloAcero();" in acero_cad)
+    check("cada cota de acero lleva ese estilo y su altura",
+          'PropCota((object)cota, "TextStyle", EstiloTextoAcero);' in acero_cad
+          and 'PropCota((object)cota, "TextHeight", AlturaTextoCotaAcero * _f);'
+          in acero_cad)
+    check("la altura de la cota es la de las macros, 0.015",
+          "AlturaTextoCotaAcero = 0.015" in acero_cad)
+
+    # La altura del estilo va en CERO. Un estilo con altura fija manda sobre la del
+    # texto, y las cuatro macros le fijan la altura a cada cota por objeto: con el
+    # 0.015 que pone la IR en el estilo, esas asignaciones no harian nada.
+    check("el estilo ACERO va con altura variable",
+          "estilo.Height = 0d;" in acero_cad)
+
+    # Y las diferencias de rotulo entre macros, que el port tenia unificadas de mas.
+    check("el ancho del MText del tubo redondo es 2.5, como su macro",
+          'p.Familia == "OC" ? 2.5 : 0.7' in acero_cad)
+    check("y el rotulo del CF va 0.05 mas arriba, como su macro",
+          '(p.Familia == "CF" ? 0.05 : 0.06)' in acero_cad)
+
+    # ------------------------------------------------------------------
+    # La auditoria de las cuatro macros, escrita
+    # ------------------------------------------------------------------
+    audit = leer(ruta("docs/macros-acero.md"))
+
+    check("esta escrita la revision de las cuatro macros", len(audit) > 3000)
+    check("dice que hace cada una", "Qué hace cada macro" in audit)
+    check("y que se repite en las cuatro", "se repite, literalmente" in audit)
+    check("apunta las contradicciones que traen",
+          "se contradicen en cómo es ese estilo" in audit
+          and "El rayado del OC es invisible" in audit)
+    check("y lo que falta por portar",
+          "no sabe" in audit and "WT" in audit and "ZF" in audit)
+
     check("hay comprobacion numerica del catalogo y del acomodo",
           "El acomodo del acero"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+    check("y de las bandas de cada familia",
+          "Las bandas de cada familia"
           in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
     check("y la vuelta completa Excel a catalogo esta probada",
           "La vuelta completa: Excel -> CSV -> catalogo"
