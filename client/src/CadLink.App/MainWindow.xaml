@@ -627,18 +627,28 @@
                     <StackPanel Grid.Row="0">
                         <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Las cuatro familias de tus macros en una sola tabla: IR (perfil I), OR (tubo rectangular), OC (tubo redondo) y CF (canal formada en frio). Cada familia usa las columnas de dimension que necesita y deja las demas en blanco." />
+                                   Text="Las doce familias del manual IMCA en una sola tabla. Elige la familia y la celda Perfil te ofrece SOLO los perfiles de esa familia: la IR trae las W, y la IS, la IC y la S tienen cada una su propia lista. Al elegir un perfil sus medidas se traen solas, y cada familia usa las columnas que necesita y deja las demas en blanco." />
 
                         <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Que columna usa cada familia:" FontWeight="SemiBold" FontSize="12"
-                                           VerticalAlignment="Center" Margin="0,0,14,0"
-                                           Foreground="{DynamicResource BrandDarkBrush}" />
-                                <TextBlock FontSize="11.5" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource MutedTextBrush}"
-                                           Text="IR: peralte, ancho, e alma, e patin  |  OR: peralte, ancho, e pared  |  OC: el peralte es el DIAMETRO, y e pared  |  CF: ademas labio y radio" />
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="Las doce familias:" FontWeight="SemiBold" FontSize="12"
+                                               VerticalAlignment="Center" Margin="0,0,14,0"
+                                               Foreground="{DynamicResource BrandDarkBrush}" />
+                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Text="IR, IS, IC y S: perfil I  |  WT: te  |  C: canal laminada  |  CF: canal con labios (monten)  |  ZF: zeta  |  L: angulo  |  OR: tubo rectangular  |  OC: tubo redondo  |  OS: redondo macizo" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Que columna usa cada una:" FontWeight="SemiBold" FontSize="12"
+                                               VerticalAlignment="Center" Margin="0,0,14,0"
+                                               Foreground="{DynamicResource BrandDarkBrush}" />
+                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Text="I, te y canal: peralte, ancho, e alma, e patin  |  L: el peralte es el ALA LARGA y el ancho la CORTA  |  OR: peralte, ancho, e pared  |  OC y OS: el peralte es el DIAMETRO  |  CF: ademas labio y radio  |  ZF: ademas ancho 2 y radio" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -699,9 +709,12 @@
                                                     SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="110"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
-                            <!-- Solo se pega al rotulo cuando el elemento es VIGA: una
-                                 «COLUMNA SECUNDARIA» no significa nada. -->
-                            <DataGridComboBoxColumn x:Name="ColClasificacion" Header="Clasif. viga"
+                            <!-- Se pega al rotulo detras del elemento, sea cual sea: una
+                                 DIAGONAL PRINCIPAL o un LARGUERO DE BORDE son cosas que se
+                                 dicen en un plano. La macro solo lo hacia con la VIGA, y el
+                                 resultado era que la clasificacion se elegia, se veia en la
+                                 celda y luego no aparecia en el dibujo. -->
+                            <DataGridComboBoxColumn x:Name="ColClasificacion" Header="Clasificación"
                                                     SelectedItemBinding="{Binding Clasificacion, UpdateSourceTrigger=PropertyChanged}" Width="110"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
@@ -718,6 +731,12 @@
                                                 CellStyle="{StaticResource CeldaAcabado}" />
                             <DataGridTextColumn Header="r cm" Binding="{Binding RadioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="70"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
+                            <!-- Solo la ZF. Una zeta de catalogo tiene los dos patines de
+                                 distinto ancho (60.3 y 54 mm en la de 2 3/8") y eso no es
+                                 una errata del manual: es lo que permite traslapar dos
+                                 zetas en el apoyo. En cero, la zeta sale simetrica. -->
+                            <DataGridTextColumn Header="Ancho 2 cm" Binding="{Binding AnchoMenorCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                                                CellStyle="{StaticResource CeldaAcabado}" />
 
                             <DataGridCheckBoxColumn Header="Doble" Binding="{Binding Doble, UpdateSourceTrigger=PropertyChanged}" Width="60"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
@@ -726,11 +745,18 @@
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
 
-                            <!-- Calculadas. «En el plano» es la traduccion a nomenclatura
-                                 mexicana que hacen las macros al rotular, y «Falta» dice,
-                                 para la familia elegida, que dimension no se sostiene. -->
+                            <!-- Calculadas. «Forma» es lo que se va a dibujar, y esta aqui
+                                 para que se vea que cuatro familias distintas (IR, IS, IC y
+                                 S) se dibujan igual y solo cambian de color y de nombre.
+                                 «En el plano» es la traduccion a nomenclatura mexicana que
+                                 hacen las macros al rotular (W a IR, HSS a OR, PIPE a OC), y
+                                 «Falta» dice, para la forma elegida, que dimension no se
+                                 sostiene. -->
+                            <DataGridTextColumn Header="Forma" Binding="{Binding FormaNombre}"
+                                                IsReadOnly="True" Width="120"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="En el plano" Binding="{Binding PerfilRotulo}"
-                                                IsReadOnly="True" Width="130"
+                                                IsReadOnly="True" Width="190"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Falta" Binding="{Binding FaltanDatos}"
                                                 IsReadOnly="True" Width="220"

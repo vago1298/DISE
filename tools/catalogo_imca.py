@@ -5,8 +5,8 @@
 POR QUE UN SCRIPT APARTE DEL GENERICO
 -------------------------------------
 catalogo_desde_excel.py sirve para una hoja normal: una fila de encabezados y debajo
-los perfiles. La hoja del IMCA no es asi, y por tres razones que hay que tratar una por
-una:
+los perfiles. La hoja del IMCA no es asi, y por cuatro razones que hay que tratar una
+por una:
 
   1. CADA FAMILIA USA COLUMNAS DISTINTAS. El perfil I trae sus medidas en las columnas
      con encabezado -d, h, tw, bf, tf-, pero el tubo rectangular las trae en tres
@@ -18,17 +18,31 @@ una:
      el tubo y en MILIMETROS para la lamina doblada. Confundirlas es un error de diez
      veces que no se ve en el dibujo: sale un perfil creible con la medida mal.
 
-  3. HAY FAMILIAS QUE ESTE PROGRAMA TODAVIA NO SABE DIBUJAR: angulos, tes, canales
-     laminados, zetas y redondos macizos. Se dejan fuera y se dice cuantas, en lugar de
-     colarlas como si fueran otra cosa.
+  3. EL ANGULO NO TRAE NINGUNA MEDIDA. Las 144 filas de la familia L tienen TODAS las
+     columnas de geometria en '-': solo hay peso, area, gramil y J. Sus medidas estan
+     unicamente en la DESIGNACION -«L - 3'' x 2'' x 1/4''»-, asi que hay que leerlas
+     de ahi, en pulgadas, y pasarlas a centimetros.
+
+  4. UNA FAMILIA TRAE UNA MEDIDA QUE NINGUNA OTRA TIENE. La zeta formada en frio
+     tiene los DOS PATINES DE DISTINTO ANCHO -60.3 y 54 mm en la de 2 3/8"-, y no es
+     un error de la hoja: es lo que permite traslapar dos zetas en el apoyo. Por eso
+     el CSV lleva una novena columna, 'ancho2', que solo usa la ZF.
 
 QUE COLUMNAS SE USAN, FAMILIA POR FAMILIA
 -----------------------------------------
-    W, IS, IC, S  ->  IR     col 2 = d (mm)    col 27 = bf   col 26 = tw   col 28 = tf
-    HSS           ->  OR     col 6 = h (mm)    col 7 = b     col 8 = espesor
-    PIPE          ->  OC     col 12 = D (mm)   col 13 = espesor
-    CF            ->  CF     col 6 = h (mm)    col 7 = b     col 4 = espesor
-                             col 11 = labio    col 12 = radio de doblez
+    W, IS, IC, S  (forma I)        col 2 = d (mm)   col 27 = bf   col 26 = tw   col 28 = tf
+    WT            (forma te)       las mismas cuatro
+    C             (canal laminada) las mismas cuatro
+    HSS -> OR     (tubo rect.)     col 6 = h (mm)   col 7 = b     col 8 = espesor
+    PIPE -> OC    (tubo redondo)   col 12 = D (mm)  col 13 = espesor
+    OS            (redondo macizo) col 6 = D (mm)   -- la col 2 de esta familia esta
+                                   en CENTIMETROS, no en mm: 0.638 para el de 1/4"
+    CF            (canal c/labios) col 6 = h (mm)   col 7 = b     col 4 = espesor
+                                   col 11 = labio   col 12 = radio de doblez
+    ZF            (zeta)           col 6 = h (mm)   col 7 = patin ancho
+                                   col 8 = patin angosto            col 4 = espesor
+                                   col 68 = r
+    L             (angulo)         NINGUNA: se lee de la designacion
 
 TODO SALE EN CENTIMETROS, que es lo que lee CadLink.
 
@@ -49,29 +63,55 @@ NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 
 MM_POR_PULGADA = 25.4
 
-# La familia del IMCA -> la familia de CadLink, o None si no se sabe dibujar.
+# La familia del IMCA -> la familia de CadLink.
 #
-# IS, IC y S se dibujan con la FORMA del IR porque son perfiles I: alma y dos patines.
-# El nombre del rotulo NO se traduce, se conserva el del catalogo, asi que en el plano
-# una IS sigue diciendo IS. Lo unico que se comparte es la forma.
+# CASI SIEMPRE ES LA MISMA LETRA, y eso es deliberado. Antes las cuatro familias que
+# se sabian dibujar metian IS, IC y S dentro de IR «porque son perfiles I», y el
+# resultado era que el desplegable de IR ofrecia 573 perfiles con cuatro nombres
+# distintos mezclados: quien buscaba una W tenia que ir sorteando IS, IC y S.
+#
+# Ahora la FAMILIA y la FORMA son dos cosas distintas: la familia es la lista en la
+# que se busca el perfil -y el nombre con el que se rotula-, y la forma es lo que se
+# dibuja. Cuatro familias comparten la forma I y siguen siendo cuatro listas.
+#
+# Las tres unicas traducciones de nombre son las que ya hacian las macros, porque son
+# nomenclatura americana que en el plano mexicano se rotula de otro modo:
+#     W -> IR      HSS -> OR      PIPE -> OC
 FAMILIAS = {
     "W": "IR",
-    "IS": "IR",
-    "IC": "IR",
-    "S": "IR",
+    "IS": "IS",
+    "IC": "IC",
+    "S": "S",
+    "WT": "WT",
+    "C": "C",
+    "L": "L",
     "HSS": "OR",
     "PIPE": "OC",
+    "OS": "OS",
     "CF": "CF",
+    "ZF": "ZF",
 }
 
-# Las que este programa no sabe dibujar todavia, con el motivo.
-SIN_FORMA = {
-    "L": "angulo: dos alas en escuadra, sin forma en el dibujante",
-    "WT": "te: medio perfil I, sin forma en el dibujante",
-    "C": "canal laminado: sin labios y con patin en cuña, no es el CF",
-    "ZF": "zeta formada en frio, sin forma en el dibujante",
-    "OS": "redondo macizo, sin forma en el dibujante",
+# La forma con la que se dibuja cada familia de CadLink. Tiene que decir lo mismo que
+# FormaPerfil.DeLaFamilia del programa; si aqui se agrega una familia, alla tambien.
+FORMAS = {
+    "IR": "I",
+    "IS": "I",
+    "IC": "I",
+    "S": "I",
+    "WT": "te",
+    "C": "canal",
+    "CF": "canal con labios",
+    "ZF": "zeta",
+    "L": "angulo",
+    "OR": "tubo rectangular",
+    "OC": "tubo redondo",
+    "OS": "redondo macizo",
 }
+
+# El orden en que salen las familias en el CSV y en el informe: por forma, para que se
+# lea como una tabla de perfiles y no como un revoltijo.
+ORDEN = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
 
 
 def columna(ref):
@@ -168,6 +208,46 @@ def pulgadas(texto):
         return None
 
 
+def medidas_del_angulo(designacion):
+    """Las medidas de un angulo, leidas de su NOMBRE y devueltas en milimetros.
+
+    Las 144 filas de la familia L no traen NINGUNA medida en la hoja -todas las
+    columnas de geometria estan en '-'-, asi que la designacion es la unica fuente:
+
+        L - 3/4'' x 1/8''            ->  alas iguales de 3/4",  espesor 1/8"
+        L - 3'' x 2'' x 1/4''        ->  alas de 3" y 2",       espesor 1/4"
+
+    Devuelve (ala mayor, ala menor, espesor) en mm, o None si el nombre no se entiende.
+    Leerlo del nombre no es una comodidad: es que no hay de donde mas sacarlo.
+    """
+    t = (designacion or "").upper()
+
+    # Se quita el prefijo 'L -' y se parten los factores por la equis.
+    t = re.sub(r"^\s*L\s*-?\s*", "", t)
+
+    trozos = [p.strip() for p in t.split("X")]
+
+    valores = [pulgadas(p) for p in trozos]
+
+    if any(v is None for v in valores):
+        return None
+
+    if len(valores) == 2:
+        ala1 = ala2 = valores[0]
+        espesor = valores[1]
+    elif len(valores) == 3:
+        ala1, ala2, espesor = valores
+    else:
+        return None
+
+    if not ala1 or not ala2 or not espesor:
+        return None
+
+    return (max(ala1, ala2) * MM_POR_PULGADA,
+            min(ala1, ala2) * MM_POR_PULGADA,
+            espesor * MM_POR_PULGADA)
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -194,11 +274,6 @@ def main(argv):
         if not nombre:
             continue
 
-        if familia_imca in SIN_FORMA:
-            fuera.setdefault(familia_imca, 0)
-            fuera[familia_imca] += 1
-            continue
-
         familia = FAMILIAS.get(familia_imca)
 
         if familia is None:
@@ -206,20 +281,22 @@ def main(argv):
             fuera[familia_imca or "(vacia)"] += 1
             continue
 
+        forma = FORMAS[familia]
+
         # ------------------------------------------------------------------
         #  Las medidas, cada familia de sus columnas y en sus unidades
         # ------------------------------------------------------------------
-        peralte = ancho = espesor = e_patin = labio = radio = None
+        peralte = ancho = espesor = e_patin = labio = radio = ancho2 = None
 
-        if familia == "IR":
-            # Perfil I: todo en milimetros, en las columnas con encabezado.
-            # Se usa 'd', el peralte TOTAL, y no 'h', que es el alma libre.
+        if forma in ("I", "te", "canal"):
+            # Perfil I, te y canal laminada: todo en milimetros, en las columnas con
+            # encabezado. Se usa 'd', el peralte TOTAL, y no 'h', que es el alma libre.
             peralte = numero(c.get(2))
             ancho = numero(c.get(27))
             espesor = numero(c.get(26))
             e_patin = numero(c.get(28))
 
-        elif familia == "OR":
+        elif forma == "tubo rectangular":
             # Tubo rectangular: tres columnas sin encabezado, en milimetros. El
             # peralte es el lado MAYOR, que es como se dibuja.
             a = numero(c.get(6))
@@ -244,7 +321,7 @@ def main(argv):
                             f"{nombre}: el {que} dice {v} mm pero su nominal "
                             f"{c.get(col_pulg)} son {esperado:.1f} mm")
 
-        elif familia == "OC":
+        elif forma == "tubo redondo":
             # Tubo redondo: diametro y espesor en milimetros.
             peralte = numero(c.get(12))
             espesor = numero(c.get(13))
@@ -261,7 +338,27 @@ def main(argv):
                             f"{nombre}: el {que} dice {v} mm pero su nominal "
                             f"{c.get(col_pulg)} in son {esperado:.1f} mm")
 
-        elif familia == "CF":
+        elif forma == "redondo macizo":
+            # Redondo macizo: solo el diametro, y se toma de la columna 6, que esta en
+            # MILIMETROS. La columna 2 -la 'd' con la que vienen los perfiles I- en
+            # esta familia esta en CENTIMETROS: dice 0.638 para el de 1/4". Tomarla
+            # por milimetros daria una varilla de 0.6 mm.
+            peralte = numero(c.get(6))
+
+            # El espesor no aplica: es macizo. Se pone en cero y la forma lo sabe.
+            espesor = 0
+
+            p = pulgadas(c.get(11))
+
+            if peralte is not None and p is not None:
+                esperado = p * MM_POR_PULGADA
+
+                if abs(peralte - esperado) > 1.0:
+                    avisos.append(
+                        f"{nombre}: el diametro dice {peralte} mm pero su nominal "
+                        f"{c.get(11)} son {esperado:.1f} mm")
+
+        elif forma == "canal con labios":
             # Lamina doblada: peralte y ancho en milimetros, y aqui 'tdist' SI esta en
             # milimetros -es el calibre-, al contrario que en el tubo.
             peralte = numero(c.get(6))
@@ -282,7 +379,45 @@ def main(argv):
                             f"{nombre}: el {que} dice {v} mm pero su nominal "
                             f"{c.get(col_pulg)} son {esperado:.1f} mm")
 
-        if not peralte or not espesor:
+        elif forma == "zeta":
+            # Zeta formada en frio. Los DOS PATINES SON DE DISTINTO ANCHO -60.3 y 54
+            # en la de 2 3/8"-, y eso no es una errata de la hoja: es lo que deja
+            # traslapar dos zetas en el apoyo, porque la angosta entra dentro de la
+            # ancha. Por eso hay una columna 'ancho2' en el CSV.
+            #
+            # El radio sale de la columna 'r', no de la 12 como en el CF: en la ZF la
+            # 12 esta vacia.
+            peralte = numero(c.get(6))
+            ancho = numero(c.get(7))
+            ancho2 = numero(c.get(8))
+            espesor = numero(c.get(4))
+            radio = numero(c.get(68))
+
+            for col_num, col_pulg, que in ((6, 9, "peralte"), (7, 10, "patin")):
+                v = numero(c.get(col_num))
+                p = pulgadas(c.get(col_pulg))
+
+                if v is not None and p is not None:
+                    esperado = p * MM_POR_PULGADA
+
+                    if abs(v - esperado) > 1.0:
+                        avisos.append(
+                            f"{nombre}: el {que} dice {v} mm pero su nominal "
+                            f"{c.get(col_pulg)} son {esperado:.1f} mm")
+
+        elif forma == "angulo":
+            # El angulo NO trae medidas en la hoja: se leen de su nombre.
+            m = medidas_del_angulo(nombre)
+
+            if m is None:
+                avisos.append(
+                    f"{nombre}: se salta, su nombre no dice las medidas y la hoja "
+                    "tiene todas las columnas de geometria en '-'")
+                continue
+
+            peralte, ancho, espesor = m
+
+        if not peralte or espesor is None:
             avisos.append(f"{nombre}: se salta, sin peralte o sin espesor en la hoja")
             continue
 
@@ -291,20 +426,21 @@ def main(argv):
         # ------------------------------------------------------------------
         # Esto caza los errores de dedo de la hoja, que es lo que ninguna otra
         # comprobacion ve: un numero que esta en su celda, es un numero y aun asi no
-        # puede ser. El caso real de este archivo es el
+        # puede ser. Los dos casos reales de este archivo son
         #
-        #     W - 36'' x 442.16 lb/ft   ->   alma de 346 mm
+        #     W - 36'' x 442.16 lb/ft   ->   alma de 346 mm  (deberia ser 34.6)
+        #     L - 1/4'' x 1/8''         ->   un ala de 1/4" con 1/8" de espesor
         #
-        # cuando sus dos vecinos de la tabla tienen 31 y 38.1: alguien escribio 346 en
-        # lugar de 34.6. Un perfil asi se dibuja con el alma mas gorda que el patin y
-        # en el plano se ve como un borron.
+        # El del angulo se ve solo al mirar la tabla: esa fila esta entre las de 1" y
+        # las de 1 1/4", su peso -1.5 kg/m- y su gramil -18 mm- son los de la
+        # «L - 1 1/4'' x 1/8''», asi que le falta el «1 » al nombre. Un ala de 6.35 mm
+        # con 3.18 mm de espesor no es un angulo, es media barra.
         #
-        # Los limites son de proporcion, no de tamaño, asi que valen igual para un
-        # perfil de 8 cm y para uno de 2 m: ningun perfil laminado tiene el alma mas
-        # gruesa que la sexta parte de su peralte ni el patin mas que un tercio.
+        # Los limites son de PROPORCION, no de tamaño, asi que valen igual para un
+        # perfil de 8 cm y para uno de 2 m.
         problema = None
 
-        if familia == "IR":
+        if forma in ("I", "canal"):
             if espesor > peralte / 6:
                 problema = (f"el alma mide {espesor} mm en un peralte de {peralte} mm, "
                             "mas de la sexta parte")
@@ -315,14 +451,30 @@ def main(argv):
                 problema = (f"el alma ({espesor} mm) pasa de la mitad del patin "
                             f"({ancho} mm)")
 
-        elif familia in ("OR", "OC"):
-            menor = peralte if familia == "OC" else min(peralte, ancho or peralte)
+        elif forma == "te":
+            # La te se comprueba distinto que el perfil I, y no por capricho: la te es
+            # MEDIO perfil I, asi que su alma es igual de gruesa que la del entero
+            # pero su peralte es la mitad. Con el limite del I -la sexta parte- se
+            # caerian tes buenas: la WT - 2'' x 6.5 lb/ft tiene 7.2 mm de alma en 53
+            # de peralte, que es casi la septima parte y es correcta.
+            if espesor > peralte / 3:
+                problema = (f"el alma mide {espesor} mm en un peralte de {peralte} mm, "
+                            "mas de la tercera parte")
+            elif e_patin and e_patin > peralte / 2:
+                problema = (f"el patin mide {e_patin} mm en un peralte de {peralte} mm, "
+                            "mas de la mitad")
+            elif ancho and espesor > ancho / 2:
+                problema = (f"el alma ({espesor} mm) pasa de la mitad del patin "
+                            f"({ancho} mm)")
+
+        elif forma in ("tubo rectangular", "tubo redondo"):
+            menor = peralte if forma == "tubo redondo" else min(peralte, ancho or peralte)
 
             if espesor > menor / 4:
                 problema = (f"la pared mide {espesor} mm en un lado de {menor} mm, "
                             "mas de la cuarta parte")
 
-        elif familia == "CF":
+        elif forma == "canal con labios":
             if espesor > peralte / 10:
                 problema = (f"la lamina mide {espesor} mm en un peralte de "
                             f"{peralte} mm, mas de la decima parte")
@@ -330,20 +482,40 @@ def main(argv):
                 problema = (f"el labio ({labio} mm) pasa de la mitad del peralte "
                             f"({peralte} mm)")
 
+        elif forma == "zeta":
+            if espesor > peralte / 10:
+                problema = (f"la lamina mide {espesor} mm en un peralte de "
+                            f"{peralte} mm, mas de la decima parte")
+            elif ancho2 and ancho2 > ancho:
+                problema = (f"el patin angosto ({ancho2} mm) es mas ancho que el "
+                            f"ancho ({ancho} mm), que es al reves de lo que debe ser")
+
+        elif forma == "angulo":
+            # En el angulo manda el ala CORTA: un ala de 2" con 1/2" de espesor sigue
+            # siendo un angulo, pero una de 1/4" con 1/8" no.
+            if espesor > ancho / 3:
+                problema = (f"el espesor ({espesor:.2f} mm) pasa de la tercera parte "
+                            f"del ala corta ({ancho:.2f} mm)")
+
         if problema:
             avisos.append(f"{nombre}: SE SALTA, {problema}. Revisa esa celda en la hoja")
             continue
 
-        if familia != "OC" and not ancho:
+        # El redondo macizo es la unica forma sin ancho ni espesor: es un circulo.
+        if forma not in ("tubo redondo", "redondo macizo") and not ancho:
             avisos.append(f"{nombre}: se salta, sin ancho en la hoja")
             continue
 
-        if familia == "IR" and not e_patin:
+        if forma in ("I", "te", "canal") and not e_patin:
             avisos.append(f"{nombre}: se salta, sin espesor de patin en la hoja")
             continue
 
-        if familia == "CF" and (not labio or not radio):
+        if forma == "canal con labios" and (not labio or not radio):
             avisos.append(f"{nombre}: se salta, sin labio o sin radio en la hoja")
+            continue
+
+        if forma == "zeta" and not ancho2:
+            avisos.append(f"{nombre}: se salta, sin el ancho del patin angosto")
             continue
 
         # Todo estaba en milimetros: a centimetros, que es lo que lee CadLink.
@@ -354,6 +526,7 @@ def main(argv):
             familia,
             nombre,
             cm(peralte), cm(ancho), cm(espesor), cm(e_patin), cm(labio), cm(radio),
+            cm(ancho2),
             familia_imca,
         ))
 
@@ -370,8 +543,9 @@ def main(argv):
     print("#  CATALOGO DE PERFILES DE ACERO DE CADLINK")
     print("# ============================================================================")
     print("#")
-    print(f"#  Generado del manual IMCA con tools/catalogo_imca.py")
-    print(f"#  {len(perfiles)} perfiles. TODAS LAS MEDIDAS EN CENTIMETROS.")
+    print("#  Generado del manual IMCA con tools/catalogo_imca.py")
+    print(f"#  {len(perfiles)} perfiles de {len({p[0] for p in perfiles})} familias.")
+    print("#  TODAS LAS MEDIDAS EN CENTIMETROS.")
     print("#")
     print("#  Este archivo llena los desplegables de la pestaña «Secciones Acero»: al")
     print("#  elegir la familia, la celda «Perfil» ofrece los perfiles de esa familia, y")
@@ -380,59 +554,60 @@ def main(argv):
     print("#  Se puede editar con el Bloc de notas o con Excel, y no hay que recompilar")
     print("#  nada: se guarda, se vuelve a abrir CadLink y los cambios ya estan.")
     print("#")
-    print("#  familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio")
+    print("#  familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio;ancho2")
     print("#")
-    print("#     peralte   en el OC es el DIAMETRO EXTERIOR")
-    print("#     ancho     patin en IR y CF, cara en OR. El OC no lo usa")
-    print("#     e_alma    espesor del alma en el IR; espesor de PARED en OR, OC y CF")
-    print("#     e_patin   solo el IR")
+    print("#     peralte   en OC y OS es el DIAMETRO EXTERIOR; en la L, el ala larga")
+    print("#     ancho     patin en I/te/canales, cara en OR, ala corta en la L")
+    print("#     e_alma    alma en I/te/canal; PARED en OR y OC; lamina en CF y ZF")
+    print("#     e_patin   solo las formas laminadas: I, te y canal")
     print("#     labio     solo el CF")
-    print("#     radio     solo el CF, el radio de doblez exterior")
+    print("#     radio     doblez exterior: el CF y la ZF")
+    print("#     ancho2    solo la ZF: su patin ANGOSTO, el que permite el traslape")
+    print("#")
+    print("#  El redondo macizo (OS) solo usa el peralte: no tiene pared ni ancho.")
     print("#")
 
-    for familia in ("IR", "OR", "OC", "CF"):
+    for familia in ORDEN:
         de_esta = [p for p in perfiles if p[0] == familia]
 
         if not de_esta:
             continue
 
-        origen = sorted({p[8] for p in de_esta})
+        origen = sorted({p[9] for p in de_esta})
 
         print("#")
         print(f"# {'-' * 74}")
-        print(f"#  {familia}: {len(de_esta)} perfiles   "
+        print(f"#  {familia}: {len(de_esta)} perfiles, forma {FORMAS[familia]}   "
               f"(del IMCA: {', '.join(origen)})")
         print(f"# {'-' * 74}")
 
         for p in de_esta:
             print(";".join([p[0], p[1], fmt(p[2]), fmt(p[3]), fmt(p[4]),
-                            fmt(p[5]), fmt(p[6]), fmt(p[7])]))
+                            fmt(p[5]), fmt(p[6]), fmt(p[7]), fmt(p[8])]))
 
     # ------------------------------------------------------------------
     #  El informe, por la salida de errores para no ensuciar el CSV
     # ------------------------------------------------------------------
     print(f"\n{len(perfiles)} perfiles convertidos:", file=sys.stderr)
 
-    for familia in ("IR", "OR", "OC", "CF"):
+    for familia in ORDEN:
         de_esta = [p for p in perfiles if p[0] == familia]
 
         if de_esta:
-            por_imca = {}
+            por_imca = ", ".join(sorted({p[9] for p in de_esta}))
+            alto = max(p[2] for p in de_esta)
 
-            for p in de_esta:
-                por_imca[p[8]] = por_imca.get(p[8], 0) + 1
-
-            detalle = ", ".join(f"{n} {k}" for k, n in sorted(por_imca.items()))
-            print(f"   {familia}: {len(de_esta):4}   ({detalle})", file=sys.stderr)
+            print(f"   {familia:4} {len(de_esta):4}   forma {FORMAS[familia]:18}"
+                  f" del IMCA {por_imca:5}  peralte maximo {alto:7.2f} cm",
+                  file=sys.stderr)
 
     if fuera:
         total = sum(fuera.values())
-        print(f"\n{total} perfiles FUERA, de familias que el dibujante no sabe hacer:",
+        print(f"\n{total} filas FUERA, de familias que no estan en la tabla:",
               file=sys.stderr)
 
         for k, n in sorted(fuera.items(), key=lambda x: -x[1]):
-            motivo = SIN_FORMA.get(k, "familia desconocida en la hoja")
-            print(f"   {k:5} {n:4}   {motivo}", file=sys.stderr)
+            print(f"   {k:5} {n:4}", file=sys.stderr)
 
     if avisos:
         print(f"\n{len(avisos)} aviso(s) al cotejar las medidas con sus nominales:",

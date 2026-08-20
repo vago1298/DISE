@@ -875,46 +875,87 @@ public sealed class DatosProyecto
             GanchoCm = 5, Fc = "200", Escala = "10"
         });
 
-        // ---------- Secciones de acero, una de cada familia ----------
-        // Las medidas son de catálogo, convertidas a centímetros, para que el ejemplo se
-        // pueda comparar con una tabla de perfiles y no sean números inventados.
+        // ---------- Secciones de acero, UNA DE CADA FAMILIA ----------
+        //
+        // Son doce, una por familia, y eso es a propósito: entre las doce se dibujan las
+        // NUEVE formas distintas, así que el ejemplo enseña de una vez todo lo que la hoja
+        // sabe hacer. Y de paso enseña lo que no se ve mirando una sola fila: que la IR, la
+        // IS, la IC y la S se dibujan iguales y solo se distinguen por el color y el nombre.
+        //
+        // Los nombres son las DESIGNACIONES DEL MANUAL IMCA, tal como salen en el
+        // desplegable, no versiones abreviadas: así, al abrir la celda «Perfil», el que ya
+        // está puesto aparece marcado en la lista. Y las medidas son las del catálogo, no
+        // números inventados: se pueden cotejar contra la tabla de perfiles.
 
-        // IR (W12X30): d=31.3, bf=16.5, tw=0.66, tf=1.11 cm
-        d.SeccionesAcero.Add(new PerfilAceroRow
+        void Acero(
+            string familia, string perfil, string id, string elemento, string acero,
+            double peralte, double ancho = 0, double eAlma = 0, double ePatin = 0,
+            double labio = 0, double radio = 0, double anchoMenor = 0,
+            string clasificacion = "")
         {
-            Familia = FamiliaPerfil.Ir, Perfil = "W12X30", Id = "V-1",
-            Elemento = PerfilAceroRow.ElementoViga, Clasificacion = "PRINCIPAL",
-            Acero = PerfilAceroRow.AceroA992,
-            PeralteCm = 31.3, AnchoCm = 16.5, EspesorAlmaCm = 0.66, EspesorPatinCm = 1.11
-        });
+            d.SeccionesAcero.Add(new PerfilAceroRow
+            {
+                Familia = familia, Perfil = perfil, Id = id,
+                Elemento = elemento, Clasificacion = clasificacion, Acero = acero,
+                PeralteCm = peralte, AnchoCm = ancho,
+                EspesorAlmaCm = eAlma, EspesorPatinCm = ePatin,
+                LabioCm = labio, RadioCm = radio, AnchoMenorCm = anchoMenor
+            });
+        }
 
-        // OR (HSS6X6X1/4): 15.24 x 15.24 cm, pared 0.635 cm
-        d.SeccionesAcero.Add(new PerfilAceroRow
-        {
-            Familia = FamiliaPerfil.Or, Perfil = "HSS6X6X1/4", Id = "C-1",
-            Elemento = PerfilAceroRow.ElementoColumna,
-            Acero = PerfilAceroRow.AceroA500B,
-            PeralteCm = 15.24, AnchoCm = 15.24, EspesorAlmaCm = 0.635
-        });
+        // Forma I: cuatro familias que se dibujan igual y llevan cuatro colores.
+        Acero(FamiliaPerfil.Ir, "W - 12'' x 30.04 lb/ft", "V-1",
+              PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA992,
+              31.3, 16.6, 0.67, 1.12, clasificacion: "PRINCIPAL");
 
-        // OC (PIPE 4 STD): diámetro exterior 11.43 cm, pared 0.602 cm
-        d.SeccionesAcero.Add(new PerfilAceroRow
-        {
-            Familia = FamiliaPerfil.Oc, Perfil = "PIPE 4 STD", Id = "TN-1",
-            Elemento = PerfilAceroRow.ElementoTensor,
-            Acero = PerfilAceroRow.AceroA53B,
-            PeralteCm = 11.43, EspesorAlmaCm = 0.602
-        });
+        Acero(FamiliaPerfil.Is, "IS - 150 mm x 9.5 mm / 450 mm x 6.4 mm", "VA-1",
+              PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA572,
+              46.9, 15.0, 0.64, 0.95, clasificacion: "PRINCIPAL");
 
-        // CF calibre 14: canal 15 x 5 cm, espesor 0.19, labio 1.5 y radio 0.4
-        d.SeccionesAcero.Add(new PerfilAceroRow
-        {
-            Familia = FamiliaPerfil.Cf, Perfil = "CF 6X2 #14", Id = "LG-1",
-            Elemento = "LARGUERO",
-            Acero = PerfilAceroRow.AceroA36,
-            PeralteCm = 15, AnchoCm = 5, EspesorAlmaCm = 0.19,
-            LabioCm = 1.5, RadioCm = 0.4
-        });
+        Acero(FamiliaPerfil.Ic, "IC - 16 '' x 52.14 lb/ft", "CA-1",
+              PerfilAceroRow.ElementoColumna, PerfilAceroRow.AceroA572,
+              39.9, 14.0, 0.64, 0.88);
+
+        Acero(FamiliaPerfil.S, "S - 10'' x 25.4 lb/ft", "V-2",
+              PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA36,
+              25.4, 11.8, 0.79, 1.25, clasificacion: "SECUNDARIA");
+
+        // Te y canal laminada.
+        Acero(FamiliaPerfil.Wt, "WT - 8'' x 13.0 lb/ft", "CS-1",
+              "PUNTAL", PerfilAceroRow.AceroA992,
+              19.9, 14.0, 0.64, 0.88);
+
+        Acero(FamiliaPerfil.C, "C - 8'' x 12.0 lb/ft", "AT-1",
+              "ATIESADOR", PerfilAceroRow.AceroA36,
+              20.3, 5.7, 0.56, 0.99);
+
+        // Formados en frío. El monten es el larguero de cubierta y la zeta su alternativa:
+        // la zeta lleva el patín angosto, que es lo que permite traslaparlas en el apoyo.
+        Acero(FamiliaPerfil.Cf, "CF - 6\" x 2\" x #14", "MO-1",
+              "MONTEN", PerfilAceroRow.AceroA36,
+              15.24, 5.08, 0.19, labio: 1.52, radio: 0.24);
+
+        Acero(FamiliaPerfil.Zf, "ZF - 8\" x 2 3/8\" x #14", "LG-1",
+              "LARGUERO", PerfilAceroRow.AceroA36,
+              20.32, 6.03, 0.19, radio: 0.476, anchoMenor: 5.4);
+
+        // Ángulo: sus dos alas y su espesor, que es lo único que da el manual.
+        Acero(FamiliaPerfil.L, "L - 3'' x 1/4''", "DG-1",
+              "DIAGONAL", PerfilAceroRow.AceroA36,
+              7.62, 7.62, 0.635);
+
+        // Tubos y redondo macizo.
+        Acero(FamiliaPerfil.Or, "HSS - 6\" x 1/4\"", "C-1",
+              PerfilAceroRow.ElementoColumna, PerfilAceroRow.AceroA500B,
+              15.2, 15.2, 0.64);
+
+        Acero(FamiliaPerfil.Oc, "PIPE - 4.02 in x 0.19 in", "PT-1",
+              "PUNTAL", PerfilAceroRow.AceroA53B,
+              10.2, eAlma: 0.48);
+
+        Acero(FamiliaPerfil.Os, "OS - 3/4\"", "TN-1",
+              PerfilAceroRow.ElementoTensor, PerfilAceroRow.AceroA36,
+              1.91);
 
         return d;
     }

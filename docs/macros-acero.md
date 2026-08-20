@@ -1,5 +1,9 @@
 # Las cuatro macros de acero, una por una
 
+> Los apartados 1 a 5 son la revisión de las **cuatro macros originales** —IR, HSS, OC y CF—.
+> Del 6 en adelante está lo que el port añadió por encima de ellas: las cinco formas que no
+> tenían macro, la separación entre familia y forma, y el aparato de cota proporcional.
+
 Auditoría de `SECCIONES DE IR V2`, `SECCIONES OR V2`, `SECCIONES OC` y `SECCIONES CF V1`
 frente al port de CadLink (`SeccionDrawer.Acero.cs` y `MainWindow.Acero.cs`).
 
@@ -134,7 +138,10 @@ ejecuta, y es lo que se portó.
 
 | | Macros | Port | Motivo |
 |---|---|---|---|
-| Las cuatro familias | cuatro hojas y cuatro botones | una tabla y una columna de familia | cuatro bloques de columnas separados obligan a saberse dónde se captura cada cosa y dejan el 75 % de la fila en blanco |
+| Las familias | cuatro hojas y cuatro botones | **doce** familias en una tabla, con una columna de familia | cuatro bloques de columnas separados obligan a saberse dónde se captura cada cosa y dejan el 75 % de la fila en blanco |
+| Familia y forma | lo mismo: una macro por familia | dos cosas distintas: doce familias, nueve formas | cuatro familias se dibujan igual pero tienen que ser cuatro listas separadas. Ver el apartado 7 |
+| Aparato de la cota | flecha 2 cm, texto 1.5, fijos | proporcional al peralte, con topes | el catálogo va de 0.64 cm a 1.90 m. Ver el apartado 8 |
+| Grosor del contorno | solo el IR hace `PEDIT > Width` | **las nueve formas** llevan 1 mm de ancho constante | es lo que hace que una sección se lea como acero y no como una línea de construcción. Tenerlo en una de cuatro es una inconsistencia, no una decisión |
 | Dimensiones | se teclean | salen del catálogo IMCA al elegir el perfil | cuatro números por fila son cuatro oportunidades de equivocarse, y un espesor mal escrito no se ve en el dibujo |
 | Contorno del CF | 24 líneas y arcos unidos, más otra polilínea igual para el rayado | **una** polilínea con bulges | dos entidades con la misma geometría, una encima de otra |
 | Perfil espejeado | se calcula con el signo `s` | igual, pero el bulge sale del **barrido real** | al invertir el lado, los ocho barridos cambian de signo solos |
@@ -149,18 +156,115 @@ izquierda, cada familia en su banda de `baseY` y con su propio `sepIzq`.
 
 ---
 
-## 6. Lo que falta
+## 6. Las cinco formas que no tenían macro
 
-El catálogo del IMCA trae **499 perfiles de familias que el dibujante todavía no sabe
-hacer**, y por eso quedan fuera:
+> **Se pueden ver sin abrir AutoCAD:** [`formas-acero.svg`](formas-acero.svg) dibuja las
+> nueve formas a la misma escala y con el color de cada familia. Lo genera
+> `tools/vista_formas_acero.py` con la misma geometría que se verifica, así que si las
+> comprobaciones fallan la imagen no se genera.
 
-| Familia | Cuántos | Qué haría falta |
-|---|---|---|
-| `WT` | 274 | te: medio perfil I, con el alma colgando de un solo patín |
-| `L` | 144 | ángulo: dos alas en escuadra con radios de acuerdo |
-| `OS` | 36 | redondo macizo: una circunferencia rellena |
-| `C` | 31 | canal laminado: **no es el CF**, no lleva labios y su patín va en cuña |
-| `ZF` | 14 | zeta formada en frío |
+El catálogo del IMCA traía **499 perfiles de familias que el dibujante no sabía hacer**, y
+quedaban fuera. Ya están las cinco:
 
-El más fácil es el `OS` —una circunferencia— y el que más se parece a algo que ya existe es
-el `WT`, que es el IR partido por la mitad.
+| Familia | Cuántos | Forma | Cómo se dibuja |
+|---|---|---|---|
+| `WT` | 274 | te | ocho vértices, patín arriba y alma colgando. El peralte es el **total** (`d`), no la `h` del alma libre |
+| `L` | 143 | ángulo | seis vértices con el talón abajo. **En pico**: el manual no da ningún radio |
+| `OS` | 36 | redondo macizo | una circunferencia rellena |
+| `C` | 31 | canal laminada | ocho vértices. **No es el CF**: sin labios, y con alma y patines de distinto espesor |
+| `ZF` | 14 | zeta | doce vértices y cuatro dobleces, con los **dos patines de distinto ancho** |
+
+Tres cosas de esas cinco merecen explicación:
+
+**El ángulo no trae ninguna medida en la hoja.** Las 143 filas de la familia `L` tienen
+**todas** las columnas de geometría en `-`: solo hay peso, área, gramil y `J`. Sus medidas
+están únicamente en la designación —`L - 3'' x 2'' x 1/4''`— así que hay que leerlas de ahí,
+en pulgadas, y distinguir las de alas iguales (dos números) de las desiguales (tres). Por lo
+mismo se dibuja en pico: inventarle un radio de acuerdo sería dibujar un dato que nadie dio.
+
+**El redondo macizo trae su diámetro en dos columnas y en dos unidades.** La columna 2 —la
+`d` con la que vienen los perfiles I— en esta familia está en **centímetros**: dice `0.638`
+para el de 1/4″. Se usa la columna 6, que está en milímetros como todas las demás. Y es la
+única forma que **no lleva ninguna cota**: un redondo tiene una sola dimensión, y para casi
+todo el catálogo —de 1/4″ a 4″— el aparato de una cota mide más que la varilla. Va como
+texto, con el símbolo Ø.
+
+**La zeta tiene los dos patines de distinto ancho, y no es una errata.** 60.3 y 54 mm en la
+de 2 3/8″, y los dos valores son fijos para todos los calibres: es lo que permite traslapar
+dos zetas en el apoyo, porque el patín angosto de una entra dentro del ancho de la otra. Por
+eso el CSV tiene una novena columna, `ancho2`, que solo usa esta familia, y por eso el hueco
+que ocupa una zeta en la fila **no es su patín**: es la suma de los dos menos el alma que
+comparten.
+
+Y una cosa que la verificación numérica encontró y el ojo no habría visto: en la zeta, los
+dos dobleces interiores tienen el centro del arco a **distinto lado del alma** —el de arriba
+a la derecha, el de abajo a la izquierda— porque los dos patines salen a lados contrarios.
+Con los dos al mismo lado, que es como estaban, el contorno de abajo se devolvía sobre sí
+mismo: las líneas quedaban donde tenían que estar, así que en la pantalla el perfil se veía
+bien, pero AutoCAD rellena un polígono cruzado por paridad y el rayado salía por fuera del
+acero. Lo cazó la prueba de que el contorno no se corta consigo mismo, en
+`tools/verificar_perfiles_acero.py`.
+
+---
+
+## 7. Familia y forma son dos cosas distintas
+
+Doce familias, nueve formas. Cuatro familias —`IR`, `IS`, `IC` y `S`— se dibujan **igual**,
+porque las cuatro son un alma con dos patines, y aun así tienen que ser cuatro listas
+separadas: quien pide una IR quiere ver **solo** las W. Antes las cuatro se metían en `IR`
+«porque son perfiles I», y el desplegable de la IR ofrecía 573 perfiles de cuatro
+nomenclaturas revueltas, en el que había que ir sorteando IS, IC y S para encontrar una W.
+
+Separadas, lo único que las distingue en el plano es el **color**, y por eso cada familia
+tiene el suyo y una capa propia —`PERFILES-IR`, `PERFILES-IS`…—. El color va en la capa y los
+objetos van «por capa», que es como se hace en AutoCAD: así se puede apagar una familia
+entera de un clic, recolorearla o dejarla fuera de la impresión. La `PERFILES` a secas se
+sigue creando porque es la de las macros.
+
+Eso además arregla el **rayado invisible del OC** que está apuntado más arriba: el relleno
+macizo va seis pasos más oscuro que el rayado dentro del mismo tono, así que el rayado se lee.
+
+---
+
+## 8. El aparato de la cota, ahora proporcional al perfil
+
+Las macros dejaban la flecha en 2 cm, las líneas de extensión en 3.5 y el texto en 1.5. Esos
+números vienen del concreto, donde una sección es de 30 por 60 y son un 5 % de la pieza. El
+catálogo de acero va de un redondo de **0.64 cm** a una IS de **190**: con el aparato fijo,
+una flecha de 2 cm sobre un ángulo de 1.9 cm es más grande que el perfil y la cota tapa lo
+que pretende medir.
+
+Ahora sale del peralte, con topes arriba y abajo, y está puesto para que **un perfil de 30 cm
+salga exactamente como antes**: 30 entre 15 son los 2 cm de flecha de siempre. Lo que cambia
+es que de ahí para abajo el aparato encoge con la pieza.
+
+La separación del rayado también, y esa no era cosmética: con el `0.0009` fijo de la macro
+del IR, una IS de 1.90 m se rayaba con **más de dos mil líneas**, y a eso AutoCAD contesta
+«el patrón de sombreado es demasiado denso» y no dibuja nada. Ligada al peralte, cada perfil
+lleva del orden de trescientas.
+
+Y la altura del rótulo sale de la única de las cuatro reglas de las macros que tenía un
+motivo: la del OR, que ponía 0.02 si su primer número no pasaba de 6 y 0.03 si sí, porque el
+rótulo se centra bajo el perfil y en uno chico un texto grande sobresale por los lados.
+Generalizada al peralte, da los mismos números donde ellas los daban. El **ancho de la caja**
+ya no es fijo: se calcula del renglón más largo, porque hay nombres de cuarenta y seis
+caracteres —`IS - 225 mm x 12.7 mm / 750 mm x 9.5 mm`— que en la caja de 0.7 m de las macros
+se partían en tres renglones. La macro del OC ya la subía a 2.5 a mano «para que el renglón
+del perfil no se parta en dos»: era el mismo problema, parcheado en una de las cuatro.
+
+Y de ahí sale otra cosa: **el aire entre secciones lo manda el rótulo**, no el perfil. Un
+renglón de casi un metro debajo de una sección de 22 cm significa que dos secciones seguidas
+pueden quedar separadas y sus rótulos pisarse. El hueco es el mayor de los dos.
+
+---
+
+## 9. Lo que sigue faltando
+
+Nada del catálogo IMCA: las doce familias de la hoja se dibujan. Lo que queda son cosas de
+detalle que el manual no da o que a escala de plano no se verían:
+
+- El **acuerdo entre alma y patín** de las formas laminadas (I, te, canal). Las macros
+  tampoco lo dibujan.
+- La **cuña del patín** de la canal laminada y de la S. El manual da un solo `tf`, que es el
+  espesor medio.
+- Los **radios del ángulo**, que la hoja no trae.

@@ -19,6 +19,11 @@ import re
 
 fallos = []
 
+# Los avisos son cosas que NO tumban la comprobacion pero hay que decir. Estaba usado
+# mas abajo sin declararlo, asi que el dia que una banda se quedara corta este script
+# habria muerto con un NameError en vez de avisar de lo que encontro.
+avisos = []
+
 
 def check(nombre, cond, detalle=""):
     print(f"  {'OK  ' if cond else 'FALLA'}  {nombre}"
@@ -31,24 +36,45 @@ def check(nombre, cond, detalle=""):
 #  1. El lector del catalogo
 # ===========================================================================
 
-FAMILIAS = ("IR", "OR", "OC", "CF")
+FAMILIAS = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
+
+# Los prefijos de nombre que delatan una familia. Port de FamiliaPerfil.PorPrefijo.
+PREFIJOS = {
+    "W": "IR", "IR": "IR", "IPR": "IR",
+    "IS": "IS",
+    "IC": "IC",
+    "S": "S",
+    "WT": "WT", "TR": "WT",
+    "C": "C", "CE": "C",
+    "L": "L", "LI": "L", "LD": "L",
+    "HSS": "OR", "OR": "OR", "PTR": "OR",
+    "PIPE": "OC", "OC": "OC", "TUBO": "OC",
+    "OS": "OS", "VR": "OS",
+    "CF": "CF", "MONTEN": "CF", "MON": "CF",
+    "ZF": "ZF", "Z": "ZF",
+}
 
 
 def familia_del_nombre(perfil):
-    """Port de FamiliaPerfil.DelNombre."""
+    """Port de FamiliaPerfil.DelNombre.
+
+    Se compara con el PREFIJO DE LETRAS COMPLETO, no con un startswith. Es la
+    diferencia entre acertar y no: con startswith, un «CF - 3" x 1 1/2"» entra por la
+    puerta de la C si esa se prueba antes, y un «WT - 2''» por la de la W.
+    """
     p = (perfil or "").strip().upper()
 
     if not p:
         return None
 
-    for pre, fam in (("HSS", "OR"), ("OR", "OR"), ("PTR", "OR"),
-                     ("PIPE", "OC"), ("OC", "OC"), ("TUBO", "OC"),
-                     ("CF", "CF"), ("CANAL", "CF"), ("MONTEN", "CF"),
-                     ("W", "IR"), ("IR", "IR"), ("IPR", "IR")):
-        if p.startswith(pre):
-            return fam
+    letras = ""
 
-    return None
+    for ch in p:
+        if not ch.isalpha():
+            break
+        letras += ch
+
+    return PREFIJOS.get(letras)
 
 
 def numero(campos, i):
@@ -104,6 +130,7 @@ def leer_catalogo(lineas):
             "e_patin": numero(campos, 5),
             "labio": numero(campos, 6),
             "radio": numero(campos, 7),
+            "ancho2": numero(campos, 8),
         })
 
     return perfiles
@@ -128,17 +155,21 @@ print(f"\n    del archivo entregado salen {len(entregado)} perfiles: "
 # Ya no es la semilla de cuatro: es el catalogo del IMCA. No se fija el numero exacto
 # a proposito -crecera cuando se añadan familias- pero si que sea un catalogo de verdad
 # y que las cuatro familias esten.
-check("el catalogo que se entrega se lee", len(entregado) > 500,
+check("el catalogo que se entrega se lee", len(entregado) > 1500,
       f"salieron {len(entregado)}")
-check("y trae las cuatro familias", set(porfam) == set(FAMILIAS), str(sorted(porfam)))
+check("y trae las DOCE familias", set(porfam) == set(FAMILIAS),
+      f"tiene {sorted(porfam)}, faltan {sorted(set(FAMILIAS) - set(porfam))}")
 
-# Los IR traen sus cuatro medidas: sin el espesor de patin no se puede dibujar el perfil.
-irs = [p for p in entregado if p["familia"] == "IR"]
-sin_medidas = [p["nombre"] for p in irs
+# Las cuatro familias de forma I y la te y la canal traen sus cuatro medidas: sin el
+# espesor de patin no se puede dibujar ninguna de ellas.
+LAMINADAS = ("IR", "IS", "IC", "S", "WT", "C")
+
+laminadas = [p for p in entregado if p["familia"] in LAMINADAS]
+sin_medidas = [f"{p['familia']} {p['nombre']}" for p in laminadas
                if not (p["peralte"] > 0 and p["ancho"] > 0
                        and p["e_alma"] > 0 and p["e_patin"] > 0)]
 
-check("todos los IR traen sus cuatro medidas", not sin_medidas,
+check("las seis familias laminadas traen sus cuatro medidas", not sin_medidas,
       f"{len(sin_medidas)} sin completar: {sin_medidas[:3]}")
 
 # El OC es redondo: no puede traer ancho ni espesor de patin, porque no los tiene.
@@ -148,16 +179,55 @@ con_sobras = [p["nombre"] for p in ocs if p["ancho"] or p["e_patin"]]
 check("ningun OC trae ancho ni espesor de patin", not con_sobras,
       f"{len(con_sobras)}: {con_sobras[:3]}")
 
-# El labio y el radio son SOLO del CF.
+# Y el OS es macizo: solo diametro. Ni ancho, ni pared, ni patin.
+oss = [p for p in entregado if p["familia"] == "OS"]
+os_con_sobras = [p["nombre"] for p in oss
+                 if p["ancho"] or p["e_alma"] or p["e_patin"]]
+
+check("los OS traen SOLO su diametro", oss and not os_con_sobras,
+      f"{len(os_con_sobras)}: {os_con_sobras[:3]}")
+
+# El labio es SOLO del CF; el radio, del CF y de la ZF; el ancho 2, solo de la ZF.
 cfs = [p for p in entregado if p["familia"] == "CF"]
+zfs = [p for p in entregado if p["familia"] == "ZF"]
+
 sin_labio = [p["nombre"] for p in cfs if not (p["labio"] > 0 and p["radio"] > 0)]
-otros_con_labio = [p["nombre"] for p in entregado
-                   if p["familia"] != "CF" and (p["labio"] or p["radio"])]
+otros_con_labio = [f"{p['familia']} {p['nombre']}" for p in entregado
+                   if p["familia"] != "CF" and p["labio"]]
+otros_con_radio = [f"{p['familia']} {p['nombre']}" for p in entregado
+                   if p["familia"] not in ("CF", "ZF") and p["radio"]]
 
 check("todos los CF traen labio y radio", not sin_labio,
       f"{len(sin_labio)}: {sin_labio[:3]}")
-check("y ninguna otra familia los trae", not otros_con_labio,
+check("y ninguna otra familia trae labio", not otros_con_labio,
       f"{len(otros_con_labio)}: {otros_con_labio[:3]}")
+check("el radio solo lo traen las dos formadas en frio, el CF y la ZF",
+      not otros_con_radio,
+      f"{len(otros_con_radio)}: {otros_con_radio[:3]}")
+
+# El ancho 2 es el patin ANGOSTO de la zeta, y no lo tiene nadie mas.
+sin_ancho2 = [p["nombre"] for p in zfs
+              if not (0 < p["ancho2"] <= p["ancho"])]
+otros_con_ancho2 = [f"{p['familia']} {p['nombre']}" for p in entregado
+                    if p["familia"] != "ZF" and p["ancho2"]]
+
+check("todas las ZF traen su patin angosto, y no pasa del ancho",
+      zfs and not sin_ancho2, f"{len(sin_ancho2)}: {sin_ancho2[:3]}")
+check("y el ancho 2 no lo trae ninguna otra familia", not otros_con_ancho2,
+      f"{len(otros_con_ancho2)}: {otros_con_ancho2[:3]}")
+
+# La L no trae ni patin ni labio ni radio: sus unicas medidas son las dos alas y el
+# espesor, porque la hoja del IMCA no le da nada mas.
+eles = [p for p in entregado if p["familia"] == "L"]
+eles_con_sobras = [p["nombre"] for p in eles
+                   if p["e_patin"] or p["labio"] or p["radio"]]
+
+check("los angulos traen solo sus dos alas y su espesor",
+      eles and not eles_con_sobras, f"{len(eles_con_sobras)}: {eles_con_sobras[:3]}")
+
+check("y su ala corta nunca es mas larga que la larga",
+      all(p["ancho"] <= p["peralte"] + 1e-9 for p in eles),
+      str([p["nombre"] for p in eles if p["ancho"] > p["peralte"]][:3]))
 
 # ---- Lo que el usuario le va a echar de verdad ----
 print("\n" + "-" * 78)
@@ -205,6 +275,14 @@ CASOS = [
     ("espacios de sobra por todos lados",
      ["  IR ;  W12X30  ; 31.3 ; 16.5 ; 0.66 ; 1.11 ; ; "],
      1),
+
+    ("una zeta con su noveno campo, el patin angosto",
+     ['ZF;ZF - 8" x 2 3/8" x #14;20.32;6.03;0.19;;;0.476;5.4'],
+     1),
+
+    ("un CSV VIEJO de ocho columnas, sin el ancho 2",
+     ["CF;CF - 6\" x 2\" x #14;15.24;5.08;0.19;;1.52;0.24"],
+     1),
 ]
 
 for nombre, lineas, esperados in CASOS:
@@ -242,6 +320,71 @@ mezclado = leer_catalogo([
 check("una linea de basura se salta sin tumbar el resto", len(mezclado) == 2,
       f"salieron {len(mezclado)}")
 
+# La zeta con su noveno campo tiene que llegar con el patin angosto, y una linea vieja
+# de ocho columnas con el ancho 2 en cero, que es lo que significa «zeta simetrica».
+zeta = leer_catalogo(['ZF;ZF - 8" x 2 3/8" x #14;20.32;6.03;0.19;;;0.476;5.4'])[0]
+vieja = leer_catalogo(["CF;CF - 6\" x 2\" x #14;15.24;5.08;0.19;;1.52;0.24"])[0]
+
+check("el patin angosto de la zeta se lee del noveno campo",
+      abs(zeta["ancho2"] - 5.4) < 1e-12, str(zeta))
+check("y un CSV de ocho columnas deja el ancho 2 en cero, no rompe",
+      vieja["ancho2"] == 0 and abs(vieja["labio"] - 1.52) < 1e-12, str(vieja))
+
+
+# ---- Los prefijos que se pisan unos con otros ----
+#
+# Es donde estaba el error de verdad. Con doce familias hay prefijos que son prefijo de
+# otro -W y WT, C y CF, Z y ZF, O y OR/OC/OS- asi que un startswith los confunde: un
+# «CF - 3" x 1 1/2"» acaba en la familia C si esa se prueba antes, y un «WT - 2''» en la
+# W. Tomando las letras de delante ENTERAS, el orden de la tabla deja de importar.
+print("\n" + "-" * 78)
+print(" Los prefijos que se pisan unos con otros")
+print("-" * 78)
+
+NOMBRES = [
+    ("W - 12'' x 30.04 lb/ft", "IR"),
+    ("WT - 8'' x 13.0 lb/ft", "WT"),
+    ("W12X30", "IR"),
+    ("C - 8'' x 12.0 lb/ft", "C"),
+    ('CF - 6" x 2" x #14', "CF"),
+    ('ZF - 8" x 2 3/8" x #14', "ZF"),
+    ("S - 10'' x 25.4 lb/ft", "S"),
+    ("IS - 225 mm x 12.7 mm / 750 mm x 9.5 mm", "IS"),
+    ("IC - 16 '' x 52.14 lb/ft", "IC"),
+    ("IR - 12'' x 30 lb/ft", "IR"),
+    ("L - 3'' x 2'' x 1/4''", "L"),
+    ('HSS - 6" x 1/4"', "OR"),
+    ("PIPE - 4.02 in x 0.19 in", "OC"),
+    ('OS - 3/4"', "OS"),
+    ("MONTEN 6X2", "CF"),
+    ("PTR 4X4", "OR"),
+    ("LO QUE SEA", None),
+    ("", None),
+]
+
+print()
+for nombre, esperada in NOMBRES:
+    salio = familia_del_nombre(nombre)
+
+    print(f"    {nombre!r:48} -> {salio}")
+
+    check(f"'{nombre}' es de la familia {esperada}", salio == esperada,
+          f"salio {salio}")
+
+# Y la comprobacion que resume las de arriba: cada perfil del catalogo entregado tiene
+# que caer en SU familia si se le quita la columna. Es la prueba mas fuerte que se puede
+# hacer del deductor, porque son mil seiscientos nombres reales.
+mal_deducidos = [(p["familia"], p["nombre"], familia_del_nombre(p["nombre"]))
+                 for p in entregado
+                 if familia_del_nombre(p["nombre"]) != p["familia"]]
+
+print(f"\n    de los {len(entregado)} nombres del catalogo, "
+      f"{len(mal_deducidos)} se deducirian mal")
+
+check("los mil seiscientos nombres del catalogo se deducen a su propia familia",
+      not mal_deducidos,
+      "; ".join(f"{f} {n} -> {s}" for f, n, s in mal_deducidos[:5]))
+
 
 # ===========================================================================
 #  2. El acomodo a la izquierda del origen
@@ -254,10 +397,28 @@ print("=" * 78)
 ORIGEN_CM = -60          # el xDerechaActual = -0.6 de las macros, en cm
 ESCALA = 0.01
 
-# El sepIzq y el baseY de cada macro, en centimetros. Las cuatro arrancan en la misma x,
+# El aire y la banda de cada familia, en centimetros. Las doce arrancan en la misma x,
 # asi que lo unico que evita que se encimen es la banda.
-AIRE = {"IR": 45, "OR": 55, "OC": 60, "CF": 65}
-BANDA = {"IR": 0, "OR": 200, "CF": 350, "OC": 500}
+#
+# Las cuatro primeras son el sepIzq y el baseY de las macros, y siguen donde estaban a
+# proposito: quien vuelva a generar un plano suyo encuentra el acero en su sitio. Las
+# ocho nuevas se apilan encima, a partir de 6.5 m.
+AIRE = {
+    "IR": 45, "OR": 55, "OC": 60, "CF": 65,
+    "IS": 45, "IC": 45, "S": 50, "WT": 55,
+    "C": 60, "ZF": 65, "L": 70, "OS": 70,
+}
+
+BANDA = {
+    "IR": 0, "OR": 200, "CF": 350, "OC": 500,
+    "IS": 650, "IC": 900, "S": 1100, "WT": 1250,
+    "C": 1400, "ZF": 1500, "L": 1600, "OS": 1700,
+}
+
+# Lo que ocupa una seccion por encima y por debajo de su peralte: el rotulo abajo y las
+# cotas arriba. Es el MargenDeBandaCm del programa.
+MARGEN_BANDA = 40
+
 AIRE_CM = AIRE["OR"]     # el que usan las pruebas de una sola familia
 
 
@@ -391,16 +552,39 @@ check("y el hueco se avanza SIEMPRE, tambien para los saltados",
       re.search(r"xDerecha = xIzquierda - aire;", codigo) is not None
       and "El hueco se avanza SIEMPRE" in codigo)
 
-# El aire y la banda de CADA familia, los de su macro.
+# El aire y la banda de CADA una de las doce familias.
+CLAVE = {
+    "IR": "Ir", "IS": "Is", "IC": "Ic", "S": "S", "WT": "Wt", "C": "C",
+    "CF": "Cf", "ZF": "Zf", "L": "L", "OR": "Or", "OC": "Oc", "OS": "Os",
+}
+
+# El aire y la banda se leen del bloque de SU metodo, no de todo el archivo: los dos son
+# switch sobre la misma familia, asi que buscar «FamiliaPerfil.Ir => 0,» en el archivo
+# entero encontraria la banda del IR al comprobar su aire, y al reves.
+bloque_aire = codigo.split("AireDeLaFamiliaCm")[-1].split("BandaDeLaFamiliaCm")[0]
+bloque_banda = codigo.split("BandaDeLaFamiliaCm")[-1].split("TechoDeLaBandaCm")[0]
+
 for fam, aire in AIRE.items():
-    clave = {"IR": "Ir", "OR": "Or", "OC": "Oc", "CF": "Cf"}[fam]
-    check(f"el aire de {fam} es el de su macro ({aire} cm)",
-          f"FamiliaPerfil.{clave} => {aire}," in codigo)
+    check(f"el aire de {fam} en el codigo es {aire} cm",
+          f"FamiliaPerfil.{CLAVE[fam]} => {aire}," in bloque_aire)
 
 for fam, banda in BANDA.items():
-    clave = {"IR": "Ir", "OR": "Or", "OC": "Oc", "CF": "Cf"}[fam]
-    check(f"la banda de {fam} es la de su macro ({banda} cm)",
-          f"FamiliaPerfil.{clave} => {banda}," in codigo)
+    check(f"la banda de {fam} en el codigo esta en {banda} cm",
+          f"FamiliaPerfil.{CLAVE[fam]} => {banda}," in bloque_banda)
+
+check(f"el margen de banda del codigo es {MARGEN_BANDA} cm",
+      f"MargenDeBandaCm = {MARGEN_BANDA}" in codigo)
+
+# Y EL AIRE LO MANDA EL ROTULO cuando es mas ancho que el perfil. Sin esto, dos
+# secciones con un nombre largo quedan separadas pero sus rotulos se pisan.
+check("el aire se recalcula con el ancho del rotulo de cada perfil",
+      "perfil.AnchoRotuloCm - perfil.AnchoDibujoCm" in codigo)
+
+check("las familias se recorren en el orden de la lista, no en el de captura",
+      "OrderBy(g => OrdenDeLaFamilia(g.Key))" in codigo)
+
+check("y los avisos de banda salen todos en un solo mensaje, al final",
+      "apretadas" in codigo and "TODOS EN UN SOLO" in codigo)
 
 
 # ===========================================================================
@@ -419,6 +603,15 @@ catalogo_real = []
 with open("client/src/CadLink.App/perfiles-acero.csv", encoding="utf-8") as f:
     catalogo_real = leer_catalogo(f.readlines())
 
+
+def alto_de(p):
+    """Port de PerfilAceroCad.AltoDibujoCm: el tubo rectangular se dibuja DE PIE."""
+    if p["familia"] == "OR" and p["ancho"] > 0:
+        return max(p["peralte"], p["ancho"])
+
+    return p["peralte"]
+
+
 print()
 orden = sorted(BANDA, key=lambda f: BANDA[f])
 
@@ -428,39 +621,48 @@ for i, fam in enumerate(orden):
     if not de_esta:
         continue
 
-    mas_alto = max(p["peralte"] for p in de_esta)
+    mas_alto = max(alto_de(p) for p in de_esta)
     base = BANDA[fam]
     techo = BANDA[orden[i + 1]] if i + 1 < len(orden) else None
 
     if techo is None:
-        print(f"    {fam}: banda en {base:4} cm   el mas alto mide {mas_alto:6.2f} cm   "
+        print(f"    {fam:3}: banda en {base:5} cm   el mas alto mide {mas_alto:6.2f} cm   "
               f"(no tiene banda encima)")
         continue
 
     hueco = techo - base
-    cabe = mas_alto <= hueco
+    cabe = mas_alto + MARGEN_BANDA <= hueco
 
-    print(f"    {fam}: banda en {base:4} cm   el mas alto mide {mas_alto:6.2f} cm   "
-          f"hueco de {hueco:4} cm   {'cabe' if cabe else 'NO CABE'}")
+    print(f"    {fam:3}: banda en {base:5} cm   el mas alto mide {mas_alto:6.2f} cm "
+          f"+ {MARGEN_BANDA} de margen   hueco de {hueco:4} cm   "
+          f"{'cabe' if cabe else 'NO CABE'}")
 
-    if not cabe:
-        avisos.append(
-            f"{fam}: el perfil mas alto del catalogo mide {mas_alto:.0f} cm y su banda "
-            f"solo tiene {hueco} cm hasta la de {orden[i+1]}. El programa lo avisa al "
-            "dibujar; hay que separar las bandas o dibujar esa familia aparte.")
+    # Aqui NO es un aviso: es un fallo. Con las bandas puestas al peralte maximo de cada
+    # familia mas el margen, que una no quepa significa que la tabla esta mal.
+    check(f"la familia {fam} cabe en su banda", cabe,
+          f"{mas_alto:.0f} + {MARGEN_BANDA} pasa de {hueco}")
 
-# Lo que SI se exige: que las bandas esten separadas y en el orden de las macros, porque
-# de eso depende que no se encimen.
+# Y que las bandas esten separadas y en orden creciente, porque de eso depende que dos
+# familias no acaben dibujandose una encima de la otra.
 for i in range(len(orden) - 1):
     check(f"la banda de {orden[i]} esta por debajo de la de {orden[i+1]}",
           BANDA[orden[i]] < BANDA[orden[i + 1]])
 
-check("las cuatro bandas son distintas", len(set(BANDA.values())) == 4)
+check("las doce bandas son distintas", len(set(BANDA.values())) == len(BANDA))
 
-# Y que el aire de cada familia sea el de SU macro, no uno solo para todas: el rotulo
-# del IR es el mas grande y necesita mas hueco que el de un tubo.
-check("cada familia tiene su propio aire", len(set(AIRE.values())) == 4,
-      str(AIRE))
+check("y las cuatro familias que ya se dibujaban siguen en su sitio de siempre",
+      BANDA["IR"] == 0 and BANDA["OR"] == 200
+      and BANDA["CF"] == 350 and BANDA["OC"] == 500,
+      str({k: BANDA[k] for k in ("IR", "OR", "CF", "OC")}))
+
+# El aire NO es el mismo para todas: el rotulo de una familia de perfiles estrechos es
+# mucho mas ancho que su seccion, asi que necesita mas hueco que uno de perfiles anchos.
+# Es al reves de lo que parece, y por eso se comprueba.
+check("las familias tienen aires distintos entre si", len(set(AIRE.values())) >= 4,
+      str(sorted(set(AIRE.values()))))
+
+check("y el angulo, que es el mas estrecho, lleva mas aire que la IR",
+      AIRE["L"] > AIRE["IR"], f"L={AIRE['L']} IR={AIRE['IR']}")
 
 # ===========================================================================
 #  4. La vuelta completa: Excel -> CSV -> lo que lee el programa

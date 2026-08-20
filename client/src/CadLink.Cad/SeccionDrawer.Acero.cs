@@ -1,13 +1,16 @@
 namespace CadLink.Cad;
 
 /// <summary>
-/// Secciones de <b>acero</b>: la parte de <see cref="SeccionDrawer"/> que dibuja los
-/// perfiles IR, OR, OC y CF.
+/// Secciones de <b>acero</b>: la parte de <see cref="SeccionDrawer"/> que dibuja las nueve
+/// formas de perfil de las doce familias del catálogo.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Port de las cuatro macros de la hoja de acero: <c>DibujarSeccionIR</c>,
-/// <c>DibujarSeccionHSS</c>, <c>DibujarSeccionOC</c> y <c>DibujarSeccionCF</c>.
+/// Port de las cuatro macros de la hoja de acero —<c>DibujarSeccionIR</c>,
+/// <c>DibujarSeccionHSS</c>, <c>DibujarSeccionOC</c> y <c>DibujarSeccionCF</c>— <b>y de las
+/// cinco formas que no tenían macro</b>: la te, el ángulo, la canal laminada, la zeta y el
+/// redondo macizo. Esas cinco eran las que dejaban 499 perfiles del manual IMCA fuera del
+/// catálogo, y no por falta de datos: por falta de quien los dibujara.
 /// </para>
 /// <para>
 /// <b>Va aquí, y no en una clase aparte, para no duplicar la mitad del programa.</b> Las
@@ -18,18 +21,13 @@ namespace CadLink.Cad;
 /// <see cref="Bloquear"/>, <see cref="Capa"/> y compañía. El acero los reusa.
 /// </para>
 /// <para>
-/// Lo que sí es propio de cada familia se conserva tal cual: la geometría, los patrones y
-/// colores de rayado, qué cotas lleva y la altura del rótulo.
+/// <b>Se dibuja por FORMA y se colorea por FAMILIA.</b> Cuatro familias comparten la forma
+/// del perfil I, así que el trazo se escribe una vez; lo que las distingue en el plano es el
+/// color de su capa, que sale de <see cref="ColorAcero"/>.
 /// </para>
 /// </remarks>
 public sealed partial class SeccionDrawer
 {
-    /// <summary>Capa de los perfiles de acero, la de las macros.</summary>
-    private const string CapaPerfiles = "PERFILES";
-
-    // El bulge del cuarto de círculo -el BULGE_90 de la macro del HSS- ya existe en la
-    // parte principal de la clase, con el mismo número de quince cifras: Bulge90.
-
     /// <summary>
     /// Estilo de texto de las <b>cotas</b> del acero, el que crean las cuatro macros.
     /// </summary>
@@ -40,23 +38,92 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private const string EstiloTextoAcero = "ACERO";
 
-    /// <summary>Altura del texto de las cotas de acero, la de las cuatro macros.</summary>
-    private const double AlturaTextoCotaAcero = 0.015;
-
-    /// <summary>Peralte, en pulgadas, a partir del cual el tubo rectangular se rellena.</summary>
+    /// <summary>Peralte, en pulgadas, a partir del cual el perfil se rellena de macizo.</summary>
+    /// <remarks>
+    /// <para>
+    /// Sale de la macro del HSS, que rellenaba de sólido solo los tubos de cinco pulgadas
+    /// para arriba y a los chicos les ponía un fondo tenue. <b>Aquí se aplica a las nueve
+    /// formas</b>, porque el motivo no era del tubo sino del tamaño: una sección de dos
+    /// pulgadas rellena de macizo sale como un manchón negro y no se le distingue la forma,
+    /// que es justamente lo que se va a ver en el plano.
+    /// </para>
+    /// </remarks>
     private const double PeralteLimitePulg = 5.0;
+
+    /// <summary>Un centímetro, en unidades de dibujo. Todo el acero se mide con esto.</summary>
+    /// <remarks>
+    /// El dibujo va en metros, así que un centímetro es <c>0.01</c> multiplicado por el
+    /// factor de escala. Tenerlo con nombre evita el <c>0.01 * _f</c> repetido cuarenta
+    /// veces y, sobre todo, deja claro que los números de abajo son centímetros de verdad.
+    /// </remarks>
+    private double Cm => 0.01 * _f;
+
+    // ------------------------------------------------------------------
+    //  El estado del perfil que se está dibujando
+    // ------------------------------------------------------------------
+    // Son campos y no parámetros porque los usan las quince funciones de trazo y de cota
+    // de cada forma, y pasarlos uno por uno convertiría cada firma en una lista de ocho
+    // argumentos que nadie lee. Los fija PrepararAcero y valen durante UN perfil.
+
+    /// <summary>Capa del perfil que se dibuja ahora: <c>PERFILES-IR</c>, <c>PERFILES-ZF</c>…</summary>
+    private string _capaAcero = ColorAcero.CapaBase;
+
+    /// <summary>Color del rayado y de las líneas de la familia que se dibuja ahora.</summary>
+    private int _colorLineasAcero = 7;
+
+    /// <summary>Color del relleno macizo de la familia que se dibuja ahora.</summary>
+    private int _colorRellenoAcero = 8;
+
+    /// <summary>Color del fondo tenue, para los perfiles que no se rellenan.</summary>
+    private int _colorFondoAcero = 254;
+
+    /// <summary>Separación entre el perfil y sus cotas, proporcional al perfil.</summary>
+    private double _gapAcero;
+
+    /// <summary>Tamaño de la flecha de cota, proporcional al perfil.</summary>
+    private double _flechaAcero;
+
+    /// <summary>Altura del texto de cota, proporcional al perfil.</summary>
+    private double _textoCotaAcero;
+
+    /// <summary>Separación de la línea de extensión respecto de la pieza.</summary>
+    private double _extOffsetAcero;
+
+    /// <summary>Remate de la línea de extensión más allá de la línea de cota.</summary>
+    private double _extExtiendeAcero;
+
+    /// <summary>Separación del rayado, proporcional al perfil.</summary>
+    private double _escalaHatchAcero;
+
+    /// <summary>Si el perfil es lo bastante grande para rellenarse de macizo.</summary>
+    private bool _rellenoMacizoAcero;
 
     /// <summary>
     /// Deja el dibujo listo para las secciones de acero: capas, texto y cotas.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Las cuatro macros crean <c>PERFILES</c>, <c>COTAS</c> y <c>ROTULOS</c>, cada una a su
-    /// manera y con un color distinto para la misma capa. Aquí se crean una vez con el
-    /// blanco 7 que usan las tres macros que sí lo fijan.
+    /// manera y con un color distinto para la misma capa.
+    /// </para>
+    /// <para>
+    /// <b>Aquí se crea además una capa por familia</b>, <c>PERFILES-IR</c>,
+    /// <c>PERFILES-OR</c> y así hasta doce, cada una con su color. Es lo que hace que en el
+    /// plano se distinga una IR de una IS, que tienen la misma forma; y al ir por capa y no
+    /// por objeto, el usuario puede apagar una familia entera, recolorearla o dejarla fuera
+    /// de la impresión desde el administrador de capas. La <c>PERFILES</c> a secas se sigue
+    /// creando porque es la de las macros y los dibujos viejos la traen.
+    /// </para>
     /// </remarks>
     public void AsegurarCapasAcero()
     {
-        Capa(CapaPerfiles, 7);
+        Capa(ColorAcero.CapaBase, 7);
+
+        foreach (var familia in FamiliasConCapa)
+        {
+            Capa(ColorAcero.Capa(familia), ColorAcero.Lineas(familia));
+        }
+
         Capa("COTAS", 253);
         Capa("ROTULOS", 3);
 
@@ -68,6 +135,18 @@ public sealed partial class SeccionDrawer
 
         ConfigurarCotas();
     }
+
+    /// <summary>
+    /// Las familias que tienen capa propia.
+    /// </summary>
+    /// <remarks>
+    /// Se escriben aquí, y no se sacan de la interfaz, porque el dibujante no puede depender
+    /// de ella: es la interfaz la que lo usa a él. Si algún día se agrega una familia y esta
+    /// lista se queda corta, el perfil se dibuja igual —cae en la capa <c>PERFILES</c> y con
+    /// el blanco de las macros— y el usuario ve un perfil, no un error.
+    /// </remarks>
+    private static readonly string[] FamiliasConCapa =
+        { "IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS" };
 
     /// <summary>
     /// Crea el estilo de texto <c>ACERO</c> de las cotas.
@@ -96,7 +175,8 @@ public sealed partial class SeccionDrawer
     /// la del texto</i>, así que con el 0.015 de la IR ninguna cota podría cambiarla, y las
     /// cuatro macros —la IR incluida— le fijan la altura a cada cota una por una con
     /// <c>TextHeight = 0.015</c>. O sea que la IR se contradice a sí misma: pone una altura
-    /// fija en el estilo y luego la asigna por objeto. Con altura 0 las dos cosas encajan.
+    /// fija en el estilo y luego la asigna por objeto. Con altura 0 las dos cosas encajan, y
+    /// además es lo que permite que aquí la altura salga <b>proporcional al perfil</b>.
     /// </para>
     /// </remarks>
     private void AsegurarEstiloAcero()
@@ -134,6 +214,61 @@ public sealed partial class SeccionDrawer
     }
 
     /// <summary>
+    /// Deja fijado todo lo que depende del <b>tamaño y la familia</b> de un perfil.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>El aparato de cota tiene que ser proporcional al perfil, y antes no lo era.</b> Los
+    /// valores heredados del concreto —flecha de 2 cm, líneas de extensión de 3.5 cm, texto
+    /// de 1.5 cm— se eligieron para secciones de 30 por 60, donde son un 5 % de la pieza. El
+    /// catálogo de acero, en cambio, va de un redondo de 3/4" a una IS de 1.90 m: con el
+    /// aparato fijo, una flecha de 2 cm sobre un ángulo de 1.9 cm es <b>más grande que el
+    /// perfil</b> y la cota tapa lo que pretende medir.
+    /// </para>
+    /// <para>
+    /// Las proporciones están puestas para que un perfil de 30 cm salga <b>exactamente igual
+    /// que antes</b>: 30 cm entre 15 son los 2 cm de flecha de siempre. Lo que cambia es que
+    /// de ahí para abajo el aparato se encoge con la pieza, y los topes evitan los dos
+    /// extremos: que una IS de dos metros salga con flechas de 13 cm y que un redondo salga
+    /// con cotas ilegibles.
+    /// </para>
+    /// <para>
+    /// <b>Y la separación del rayado también.</b> Con el <c>0.0009</c> fijo de la macro del
+    /// IR, una IS de 1.90 m se rayaba con más de dos mil líneas: AutoCAD contesta «el patrón
+    /// de sombreado es demasiado denso» y no dibuja nada. Ligada al peralte, cada perfil
+    /// lleva del orden de trescientas líneas, se raye grande o chico.
+    /// </para>
+    /// </remarks>
+    private void PrepararAcero(PerfilAceroCad p)
+    {
+        var familia = p.Familia;
+
+        _capaAcero = ColorAcero.Capa(familia);
+        _colorLineasAcero = ColorAcero.Lineas(familia);
+        _colorRellenoAcero = ColorAcero.Relleno(familia);
+        _colorFondoAcero = ColorAcero.Fondo(familia);
+
+        // La referencia es el PERALTE, no el ancho ni la diagonal: es la medida con la que
+        // se nombra el perfil y la que el ojo usa para juzgar su tamaño.
+        var referencia = p.PeralteCm * _escala;
+
+        _gapAcero = Acotar(referencia / 5, 0.8 * Cm, 6 * Cm);
+        _flechaAcero = Acotar(referencia / 15, 0.4 * Cm, 2 * Cm);
+        _textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm);
+        _extOffsetAcero = Acotar(referencia / 15, 0.3 * Cm, 2 * Cm);
+        _extExtiendeAcero = Acotar(referencia / 8, 0.5 * Cm, 3.5 * Cm);
+
+        _escalaHatchAcero = Acotar(referencia / 300, 0.08 * Cm, 1 * Cm);
+
+        // El relleno macizo solo en los perfiles grandes. Ver PeralteLimitePulg.
+        _rellenoMacizoAcero = p.PeralteCm / 2.54 >= PeralteLimitePulg - 0.01;
+    }
+
+    /// <summary>Un valor metido entre dos topes.</summary>
+    private static double Acotar(double valor, double minimo, double maximo) =>
+        valor < minimo ? minimo : valor > maximo ? maximo : valor;
+
+    /// <summary>
     /// Dibuja un perfil de acero con sus cotas, su rótulo y su bloque.
     /// </summary>
     /// <remarks>
@@ -147,6 +282,14 @@ public sealed partial class SeccionDrawer
     public int DibujarAcero(PerfilAceroCad p, double xIzquierda, double yAbajo)
     {
         UltimaFueASuSitio = false;
+
+        if (!FormaAcero.Todas.Contains(p.Forma))
+        {
+            Nota(
+                $"Sección de acero '{p.Id}': la forma '{p.Forma}' de la familia " +
+                $"'{p.Familia}' no se reconoce, así que no se dibujó.");
+            return 0;
+        }
 
         double[]? destino = null;
 
@@ -170,6 +313,8 @@ public sealed partial class SeccionDrawer
             UltimaFueASuSitio = destino is not null;
         }
 
+        PrepararAcero(p);
+
         var inicio = (int)_ms.Count;
 
         var h = p.PeralteCm * _escala;
@@ -178,80 +323,109 @@ public sealed partial class SeccionDrawer
         var tf = p.EspesorPatinCm * _escala;
         var labio = p.LabioCm * _escala;
         var radio = p.RadioCm * _escala;
+        var bMenor = p.PatinAngostoCm * _escala;
 
-        // El ancho del hueco y el centro del PRIMER perfil. En el OC el ancho es el
-        // diámetro, que viene en el peralte.
-        var uno = p.Familia == "OC" ? h : b;
+        // El alto del DIBUJO, que en el tubo rectangular es el lado mayor aunque se haya
+        // capturado al revés. En las otras ocho formas es el peralte y punto.
+        var alto = p.AltoDibujoCm * _escala;
+
+        // El hueco de UN perfil y el centro del dibujo completo. El doble ocupa dos huecos
+        // pegados, así que el segundo empieza justo donde acaba el primero.
+        var uno = p.AnchoDeUnoCm * _escala;
         var centro = xIzquierda + (p.AnchoDibujoCm * _escala / 2);
+        var cuantos = p.Doble ? 2 : 1;
 
-        switch (p.Familia)
+        for (var i = 0; i < cuantos; i++)
         {
-            case "IR":
-                PerfilIr(xIzquierda + (uno / 2), yAbajo, h, b, t, tf);
+            var x = xIzquierda + (i * uno);
 
-                if (p.Doble)
-                {
-                    PerfilIr(xIzquierda + uno + (uno / 2), yAbajo, h, b, t, tf);
-                }
+            // El segundo va ESPEJEADO en las formas que tienen un lado: dos canales
+            // enfrentadas forman un cajón y dos ángulos una cruz, que es como se arman.
+            // En las simétricas el espejo no cambia nada, así que da igual.
+            var espejo = i == 1;
 
-                CotasIr(xIzquierda + (uno / 2), yAbajo, h, b, t, tf, p.Doble);
+            switch (p.Forma)
+            {
+                case FormaAcero.I:
+                    PerfilI(x + (uno / 2), yAbajo, h, b, t, tf);
+                    break;
+
+                case FormaAcero.Te:
+                    PerfilTe(x + (uno / 2), yAbajo, h, b, t, tf);
+                    break;
+
+                case FormaAcero.Canal:
+                    PerfilCanal(x, yAbajo, h, b, t, tf, espejo);
+                    break;
+
+                case FormaAcero.CanalConLabios:
+                    PerfilCf(x, yAbajo, h, b, t, labio, radio, espejo);
+                    break;
+
+                case FormaAcero.Zeta:
+                    PerfilZeta(x, yAbajo, h, b, bMenor, t, radio, espejo);
+                    break;
+
+                case FormaAcero.Angulo:
+                    PerfilAngulo(x, yAbajo, h, b, t, espejo);
+                    break;
+
+                case FormaAcero.TuboRectangular:
+                    PerfilOr(x + (uno / 2), yAbajo, uno, alto, t);
+                    break;
+
+                case FormaAcero.TuboRedondo:
+                    PerfilOc(x + (h / 2), yAbajo + (h / 2), h / 2, (h / 2) - t);
+                    break;
+
+                case FormaAcero.RedondoMacizo:
+                    PerfilOs(x + (h / 2), yAbajo + (h / 2), h / 2);
+                    break;
+            }
+        }
+
+        // Las cotas van APARTE del trazo y se dibujan UNA VEZ para el conjunto, no una por
+        // perfil: en un doble, acotar dos veces el mismo peralte solo ensucia.
+        switch (p.Forma)
+        {
+            case FormaAcero.I:
+                CotasI(xIzquierda, yAbajo, h, b, t, tf, p.Doble, false);
                 break;
 
-            case "OR":
-                // El peralte es el lado MAYOR: un tubo capturado como 10x20 y otro como
-                // 20x10 son el mismo tubo, y en el plano se dibuja de pie.
-                var bOr = Math.Min(b, h);
-                var hOr = Math.Max(b, h);
-
-                PerfilOr(xIzquierda + (bOr / 2), yAbajo, bOr, hOr, t, p);
-
-                if (p.Doble)
-                {
-                    PerfilOr(xIzquierda + bOr + (bOr / 2), yAbajo, bOr, hOr, t, p);
-                }
-
-                CotasOr(xIzquierda + (bOr / 2), yAbajo, bOr, hOr, t, p.Doble);
+            case FormaAcero.Te:
+                CotasI(xIzquierda, yAbajo, h, b, t, tf, p.Doble, true);
                 break;
 
-            case "OC":
-                var rExt = h / 2;
-                var cyOc = yAbajo + rExt;
-
-                PerfilOc(xIzquierda + rExt, cyOc, rExt, rExt - t);
-
-                if (p.Doble)
-                {
-                    PerfilOc(xIzquierda + h + rExt, cyOc, rExt, rExt - t);
-                }
-
-                CotasOc(xIzquierda + rExt, cyOc, rExt, p.EspesorCm, p.Doble);
+            case FormaAcero.Canal:
+                CotasCanal(xIzquierda, yAbajo, h, b, t, tf, p.Doble);
                 break;
 
-            case "CF":
-                // El primero con el alma a la IZQUIERDA. El segundo, si es doble, va
-                // ESPEJEADO con su alma a la derecha del todo: las dos canales quedan
-                // enfrentadas formando un cajón, que es como se arman.
-                PerfilCf(xIzquierda, yAbajo, h, b, t, labio, radio, false);
-
-                if (p.Doble)
-                {
-                    PerfilCf(xIzquierda + (2 * b), yAbajo, h, b, t, labio, radio, true);
-                }
-
+            case FormaAcero.CanalConLabios:
                 CotasCf(xIzquierda, yAbajo, h, b, t, labio, p.Doble);
                 break;
 
-            default:
-                Nota(
-                    $"Sección de acero '{p.Id}': la familia '{p.Familia}' no se reconoce. " +
-                    "Las que se dibujan son IR, OR, OC y CF.");
-                return 0;
+            case FormaAcero.Zeta:
+                CotasZeta(xIzquierda, yAbajo, h, b, bMenor, t, p.Doble);
+                break;
+
+            case FormaAcero.Angulo:
+                CotasAngulo(xIzquierda, yAbajo, h, b, t, p.Doble);
+                break;
+
+            case FormaAcero.TuboRectangular:
+                CotasOr(xIzquierda, yAbajo, uno, alto, t, p.Doble);
+                break;
+
+            case FormaAcero.TuboRedondo:
+                CotasOc(xIzquierda, yAbajo, h, p.EspesorCm, p.Doble);
+                break;
+
+            case FormaAcero.RedondoMacizo:
+                CotasOs(xIzquierda, yAbajo, h, p.PeralteCm, p.Doble);
+                break;
         }
 
-        // El rótulo va 0.06 por debajo de la base, salvo en el CF, que lo sube a 0.05.
-        // Es de la propia macro del CF, con su comentario: «Rotulo 0.05 mas arriba (antes
-        // baseY - 0.1) para acercarlo al perfil».
-        RotuloAcero(p, centro, yAbajo - ((p.Familia == "CF" ? 0.05 : 0.06) * _f));
+        RotuloAcero(p, centro, yAbajo - _gapAcero);
 
         var fin = (int)_ms.Count;
 
@@ -261,7 +435,7 @@ public sealed partial class SeccionDrawer
     }
 
     // ==================================================================
-    //  IR: el perfil I laminado
+    //  Forma I: el perfil laminado de alma y dos patines (IR, IS, IC, S)
     // ==================================================================
 
     /// <summary>
@@ -273,7 +447,7 @@ public sealed partial class SeccionDrawer
     /// curvas de acuerdo entre alma y patín: la macro tampoco, y a la escala de un plano
     /// estructural no se distinguirían.
     /// </remarks>
-    private void PerfilIr(double cx, double cy, double d, double bf, double tw, double tf)
+    private void PerfilI(double cx, double cy, double d, double bf, double tw, double tf)
     {
         var pts = new[]
         {
@@ -291,42 +465,70 @@ public sealed partial class SeccionDrawer
             cx - (bf / 2), cy
         };
 
-        var pl = Polilinea(pts, CapaPerfiles);
-
-        if (pl is null)
-        {
-            Nota("Perfil IR: no se pudo crear el contorno.");
-            return;
-        }
-
-        // El ancho constante del PEDIT de la macro: engrosa la línea del perfil para que
-        // se lea como acero y no como una línea de construcción.
-        AnchoConstante(pl, 0.001 * _f);
-
-        Hatch("ANSI32", 0.0009 * _f, pl, null, CapaPerfiles, 252);
+        TrazarPerfil(pts, "ANSI32", "perfil I");
     }
 
-    private void CotasIr(
-        double cx, double cy, double d, double bf, double tw, double tf, bool doble)
+    /// <summary>
+    /// El contorno de la te: un patín arriba y el alma colgando.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No tiene macro: es una de las cinco formas nuevas. Son ocho vértices, y la te se
+    /// dibuja <b>con el patín arriba</b>, que es la posición en la que se usa como cuerda
+    /// superior de armadura y como la mitad de un perfil I partido, que es de donde sale.
+    /// </para>
+    /// <para>
+    /// El peralte es el <b>total</b>, del canto del patín a la punta del alma, que es la
+    /// columna <c>d</c> del manual y no la <c>h</c>, que solo mide el alma libre.
+    /// </para>
+    /// </remarks>
+    private void PerfilTe(double cx, double cy, double d, double bf, double tw, double tf)
     {
-        var gap = 0.06 * _f;
+        var pts = new[]
+        {
+            cx + (tw / 2), cy,
+            cx + (tw / 2), cy + d - tf,
+            cx + (bf / 2), cy + d - tf,
+            cx + (bf / 2), cy + d,
+            cx - (bf / 2), cy + d,
+            cx - (bf / 2), cy + d - tf,
+            cx - (tw / 2), cy + d - tf,
+            cx - (tw / 2), cy
+        };
+
+        TrazarPerfil(pts, "ANSI32", "te");
+    }
+
+    /// <summary>
+    /// Las cotas de la forma I y de la te, que son las mismas cuatro.
+    /// </summary>
+    /// <remarks>
+    /// La única diferencia es dónde va la cota del espesor del alma: en el perfil I a media
+    /// altura, donde el alma está sola; en la te, más abajo, porque a media altura de una te
+    /// el alma también está sola pero el patín ya no estorba y la cota se lee mejor pegada a
+    /// la punta.
+    /// </remarks>
+    private void CotasI(
+        double xIzq, double cy, double d, double bf, double tw, double tf,
+        bool doble, bool esTe)
+    {
+        var gap = _gapAcero;
+        var cx = xIzq + (bf / 2);
+        var cxUlt = doble ? cx + bf : cx;
 
         // Ancho del patín, arriba de cada perfil
         CotaAcero(cx - (bf / 2), cy + d, cx + (bf / 2), cy + d, cx, cy + d + gap);
 
-        var cxUlt = cx;
-
         if (doble)
         {
             var cx2 = cx + bf;
-            cxUlt = cx2;
 
             CotaAcero(cx2 - (bf / 2), cy + d, cx2 + (bf / 2), cy + d, cx2, cy + d + gap);
 
             // Y el ancho TOTAL de los dos, más arriba
             CotaAcero(
                 cx - (bf / 2), cy + d, cx2 + (bf / 2), cy + d,
-                cx + (bf / 2), cy + d + gap + (0.05 * _f));
+                cx + (bf / 2), cy + d + gap + _textoCotaAcero + _flechaAcero);
         }
 
         // Peralte, a la derecha del último
@@ -339,16 +541,170 @@ public sealed partial class SeccionDrawer
             cx - (bf / 2), cy + d, cx - (bf / 2), cy + d - tf,
             cx - (bf / 2) - gap, cy + d - (tf / 2));
 
-        // Espesor del alma, a media altura
-        CotaAcero(cx - (tw / 2), cy + (d / 2), cx + (tw / 2), cy + (d / 2), cx, cy + (d / 2) - gap);
+        // Espesor del alma
+        var yAlma = esTe ? cy + ((d - tf) / 4) : cy + (d / 2);
+
+        CotaAcero(cx - (tw / 2), yAlma, cx + (tw / 2), yAlma, cx, yAlma - gap);
 
         if (doble)
         {
             var cx2 = cx + bf;
-            CotaAcero(
-                cx2 - (tw / 2), cy + (d / 2), cx2 + (tw / 2), cy + (d / 2),
-                cx2, cy + (d / 2) - gap);
+            CotaAcero(cx2 - (tw / 2), yAlma, cx2 + (tw / 2), yAlma, cx2, yAlma - gap);
         }
+    }
+
+    // ==================================================================
+    //  Canal laminada: la C, sin labios
+    // ==================================================================
+
+    /// <summary>
+    /// La canal estándar: alma a un lado y dos patines, <b>sin labios</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No tiene macro, y no se puede dibujar con la de la CF aunque las dos se llamen
+    /// «canal»: la CF es lámina doblada de espesor único, con labios y radios de doblez,
+    /// mientras que la C es laminada, con el alma y los patines de <b>distinto espesor</b> y
+    /// sin nada doblado. Son ocho vértices en pico.
+    /// </para>
+    /// <para>
+    /// Los patines se dibujan de espesor constante. El manual da un solo <c>tf</c> por
+    /// perfil, que es el espesor medio: la cuña real del patín laminado no está en los datos
+    /// y a escala de plano no se vería.
+    /// </para>
+    /// </remarks>
+    private void PerfilCanal(
+        double xIzq, double y0, double d, double bf, double tw, double tf, bool espejo)
+    {
+        var ancho = bf;
+        var s = espejo ? -1.0 : 1.0;
+
+        // Con espejo el alma se va al otro extremo del hueco, para que dos canales queden
+        // enfrentadas formando un cajón.
+        var xAlma = espejo ? xIzq + ancho : xIzq;
+
+        var pts = new[]
+        {
+            xAlma, y0,
+            xAlma, y0 + d,
+            xAlma + (s * bf), y0 + d,
+            xAlma + (s * bf), y0 + d - tf,
+            xAlma + (s * tw), y0 + d - tf,
+            xAlma + (s * tw), y0 + tf,
+            xAlma + (s * bf), y0 + tf,
+            xAlma + (s * bf), y0
+        };
+
+        TrazarPerfil(pts, "ANSI32", "canal laminada");
+    }
+
+    private void CotasCanal(
+        double xIzq, double y0, double d, double bf, double tw, double tf, bool doble)
+    {
+        var gap = _gapAcero;
+        var anchoTotal = doble ? 2 * bf : bf;
+
+        // Peralte, a la derecha de todo
+        CotaAcero(
+            xIzq + anchoTotal, y0, xIzq + anchoTotal, y0 + d,
+            xIzq + anchoTotal + gap, y0 + (d / 2));
+
+        // Ancho del patín, arriba del primero
+        CotaAcero(xIzq, y0 + d, xIzq + bf, y0 + d, xIzq + (bf / 2), y0 + d + gap);
+
+        if (doble)
+        {
+            CotaAcero(
+                xIzq, y0 + d, xIzq + anchoTotal, y0 + d,
+                xIzq + (anchoTotal / 2), y0 + d + gap + _textoCotaAcero + _flechaAcero);
+        }
+
+        // Espesor del patín, arriba a la izquierda. Se mide en la cara del alma, donde el
+        // patín tiene su espesor completo.
+        CotaAcero(
+            xIzq, y0 + d, xIzq, y0 + d - tf,
+            xIzq - gap, y0 + d - (tf / 2));
+
+        // Espesor del alma, con el texto DENTRO DEL HUECO de la canal.
+        //
+        // NINGUNA COTA PUEDE LLEVAR SU TEXTO POR DEBAJO DE LA BASE, y ese es el motivo de
+        // esta posición: debajo de la base va el rótulo —cuatro renglones y hasta un metro
+        // de ancho, centrado— así que un número ahí acaba encima de él. El hueco entre los
+        // dos patines, en cambio, está vacío por definición y es donde se pondría a mano.
+        CotaAcero(
+            xIzq, y0 + (d / 2), xIzq + tw, y0 + (d / 2),
+            xIzq + tw + gap, y0 + (d / 2));
+    }
+
+    // ==================================================================
+    //  Ángulo: la L, de alas iguales o desiguales
+    // ==================================================================
+
+    /// <summary>
+    /// El ángulo: dos alas en escuadra del mismo espesor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No tiene macro. Son seis vértices, con el <b>talón abajo a la izquierda</b> y las dos
+    /// alas subiendo y saliendo de ahí, que es como se dibuja un ángulo en un plano.
+    /// </para>
+    /// <para>
+    /// <b>Va en pico, sin el acuerdo del talón ni las puntas redondeadas</b>, y esto no es
+    /// una simplificación gratuita: el manual IMCA <b>no da ningún radio para el ángulo</b>.
+    /// Las 144 filas de la familia L tienen todas las columnas de geometría en «-» —ni
+    /// peralte, ni espesor, ni radio— y las medidas están únicamente en la designación. Con
+    /// las alas y el espesor leídos del nombre se dibuja lo que la hoja sabe; inventar un
+    /// radio sería dibujar un dato que nadie dio.
+    /// </para>
+    /// </remarks>
+    private void PerfilAngulo(
+        double xIzq, double y0, double alaLarga, double alaCorta, double t, bool espejo)
+    {
+        var s = espejo ? -1.0 : 1.0;
+
+        // El talón se va al otro extremo del hueco al espejear, para que dos ángulos
+        // queden espalda contra espalda, que es como se arma un doble ángulo.
+        var xTalon = espejo ? xIzq + alaCorta : xIzq;
+
+        var pts = new[]
+        {
+            xTalon, y0,
+            xTalon + (s * alaCorta), y0,
+            xTalon + (s * alaCorta), y0 + t,
+            xTalon + (s * t), y0 + t,
+            xTalon + (s * t), y0 + alaLarga,
+            xTalon, y0 + alaLarga
+        };
+
+        TrazarPerfil(pts, "ANSI31", "ángulo");
+    }
+
+    private void CotasAngulo(
+        double xIzq, double y0, double alaLarga, double alaCorta, double t, bool doble)
+    {
+        var gap = _gapAcero;
+        var anchoTotal = doble ? 2 * alaCorta : alaCorta;
+
+        // Ala larga, a la derecha de todo
+        CotaAcero(
+            xIzq + anchoTotal, y0, xIzq + anchoTotal, y0 + alaLarga,
+            xIzq + anchoTotal + gap, y0 + (alaLarga / 2));
+
+        // Ala corta, con el texto DENTRO DE LA ESCUADRA.
+        //
+        // No va debajo de la base porque ahí va el rótulo: cuatro renglones centrados y de
+        // hasta un metro de ancho, así que un número debajo de un ángulo de 7 cm cae justo
+        // encima de su primer renglón. El hueco de la escuadra está vacío y es donde se
+        // pondría a mano.
+        CotaAcero(
+            xIzq, y0, xIzq + alaCorta, y0,
+            xIzq + (alaCorta / 2), y0 + t + gap);
+
+        // Espesor, arriba en el ala vertical. Es el mismo en las dos alas, así que se acota
+        // una sola vez: acotarlo dos veces diría que pueden ser distintos, y no pueden.
+        CotaAcero(
+            xIzq, y0 + alaLarga, xIzq + t, y0 + alaLarga,
+            xIzq + (t / 2), y0 + alaLarga + gap);
     }
 
     // ==================================================================
@@ -364,15 +720,9 @@ public sealed partial class SeccionDrawer
     /// el exterior es el propio espesor y el interior su mitad, como en la macro, y los dos
     /// se recortan si no caben.
     /// </para>
-    /// <para>
-    /// <b>El rayado depende del peralte</b>, y esa es una decisión de la macro que se
-    /// conserva: por debajo de 5 pulgadas el tubo se raya fino con fondo cian, y de ahí
-    /// para arriba se rellena sólido con un rayado más abierto encima. Un tubo pequeño
-    /// relleno sale como un manchón negro en el plano.
-    /// </para>
     /// </remarks>
     private void PerfilOr(
-        double cx, double cy, double bHss, double hHss, double tHss, PerfilAceroCad p)
+        double cx, double cy, double bHss, double hHss, double tHss)
     {
         var rOut = Math.Min(tHss, Math.Min(bHss, hHss) / 2);
 
@@ -389,6 +739,12 @@ public sealed partial class SeccionDrawer
             return;
         }
 
+        // El ancho constante del PEDIT, que en las macros solo hacía la del IR. Aquí lo
+        // llevan las nueve formas: es lo que hace que una sección se lea como acero y no
+        // como una línea de construcción, y tenerlo en una de cuatro es una
+        // inconsistencia y no una decisión. Es 1 mm, que a 1:10 son 0.1 mm en el papel.
+        AnchoConstante(exterior, 0.1 * Cm);
+
         var bInt = bHss - (2 * tHss);
         var hInt = hHss - (2 * tHss);
 
@@ -404,44 +760,21 @@ public sealed partial class SeccionDrawer
 
         var islas = interior is null ? null : new List<object> { interior };
 
-        // El peralte en pulgadas, con la misma tolerancia de la macro para que un 5"
-        // nominal no caiga del lado equivocado por un redondeo.
-        var peralteIn = p.PeralteCm / 2.54;
-        var menorDe5 = peralteIn < PeralteLimitePulg - 0.01;
-
-        if (!menorDe5)
-        {
-            // Los colores son los de las CONSTANTES de la macro (141 y 144). Sus
-            // comentarios dicen 94 y 80, que es lo que tuvo alguna vez; manda la
-            // constante, que es lo que se ejecuta.
-            Hatch("SOLID", 1, exterior, islas, CapaPerfiles, 141);
-        }
-
-        var trama = Hatch(
-            "ANSI31",
-            (menorDe5 ? 0.001 : 0.002) * _f,
-            exterior, islas, CapaPerfiles,
-            menorDe5 ? 142 : 144);
-
-        if (menorDe5 && trama is not null)
-        {
-            FondoDelHatch(trama, 4);
-        }
+        HatchAcero(exterior, islas, "ANSI31");
     }
 
     private void CotasOr(
-        double cx, double cy, double bHss, double hHss, double tHss, bool doble)
+        double xIzq, double cy, double bHss, double hHss, double tHss, bool doble)
     {
-        var gap = 0.06 * _f;
+        var gap = _gapAcero;
+        var cx = xIzq + (bHss / 2);
+        var cxUlt = doble ? cx + bHss : cx;
 
         CotaAcero(cx - (bHss / 2), cy + hHss, cx + (bHss / 2), cy + hHss, cx, cy + hHss + gap);
-
-        var cxUlt = cx;
 
         if (doble)
         {
             var cx2 = cx + bHss;
-            cxUlt = cx2;
 
             CotaAcero(
                 cx2 - (bHss / 2), cy + hHss, cx2 + (bHss / 2), cy + hHss,
@@ -449,7 +782,7 @@ public sealed partial class SeccionDrawer
 
             CotaAcero(
                 cx - (bHss / 2), cy + hHss, cx2 + (bHss / 2), cy + hHss,
-                cx + (bHss / 2), cy + hHss + gap + (0.05 * _f));
+                cx + (bHss / 2), cy + hHss + gap + _textoCotaAcero + _flechaAcero);
 
             CotaAcero(
                 cx2 - (bHss / 2), cy + hHss, cx2 - (bHss / 2), cy + hHss - tHss,
@@ -466,18 +799,27 @@ public sealed partial class SeccionDrawer
     }
 
     // ==================================================================
-    //  OC: el tubo redondo
+    //  OC y OS: el tubo redondo y el redondo macizo
     // ==================================================================
 
     /// <summary>Las dos circunferencias del tubo redondo, con su corona rayada.</summary>
     /// <remarks>
+    /// <para>
     /// Port de <c>DibujarPerfilOC</c> y <c>AplicarHatchOC</c>. Si el espesor se come el
     /// radio, la circunferencia interior no se dibuja y el tubo sale macizo, que es lo que
     /// hace la macro cuando <c>radioInt</c> queda en cero.
+    /// </para>
+    /// <para>
+    /// <b>Aquí se arregla un rayado invisible.</b> La macro rellenaba con <c>SOLID</c> en el
+    /// color 162 y rayaba con <c>ANSI31</c> <b>también</b> en 162: el rayado quedaba del
+    /// mismo color que su fondo, así que no se veía y el tubo salía como un anillo liso. Con
+    /// los colores por familia el relleno va oscuro y el rayado va saturado, así que el
+    /// rayado se lee.
+    /// </para>
     /// </remarks>
     private void PerfilOc(double cx, double cy, double rExt, double rInt)
     {
-        var exterior = Circulo(cx, cy, rExt, CapaPerfiles);
+        var exterior = Circulo(cx, cy, rExt);
 
         if (exterior is null)
         {
@@ -485,29 +827,29 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        var interior = rInt > 0 ? Circulo(cx, cy, rInt, CapaPerfiles) : null;
+        var interior = rInt > 0 ? Circulo(cx, cy, rInt) : null;
         var islas = interior is null ? null : new List<object> { interior };
 
-        Hatch("SOLID", 1, exterior, islas, CapaPerfiles, 162);
-        Hatch("ANSI31", 0.002 * _f, exterior, islas, CapaPerfiles, 162);
+        HatchAcero(exterior, islas, "ANSI31");
     }
 
-    private void CotasOc(double cx, double cy, double rExt, double espesorCm, bool doble)
+    private void CotasOc(double xIzq, double yAbajo, double d, double espesorCm, bool doble)
     {
-        var gap = 0.06 * _f;
+        var gap = _gapAcero;
+        var rExt = d / 2;
+        var cx = xIzq + rExt;
+        var cy = yAbajo + rExt;
+        var cxUlt = doble ? cx + d : cx;
 
         CotaAcero(cx - rExt, cy + rExt, cx + rExt, cy + rExt, cx, cy + rExt + gap);
 
-        var cxUlt = cx;
-
         if (doble)
         {
-            var cx2 = cx + (2 * rExt);
-            cxUlt = cx2;
+            var cx2 = cx + d;
 
             CotaAcero(
                 cx - rExt, cy + rExt, cx2 + rExt, cy + rExt,
-                (cx + cx2) / 2, cy + rExt + gap + (0.05 * _f));
+                (cx + cx2) / 2, cy + rExt + gap + _textoCotaAcero + _flechaAcero);
         }
 
         // El espesor va como TEXTO y no como cota: en un tubo redondo la pared no tiene
@@ -515,12 +857,63 @@ public sealed partial class SeccionDrawer
         TextoAcero(
             $"e={espesorCm:0.000} cm",
             cxUlt + rExt + gap, cy,
-            0.018 * _f,
+            _textoCotaAcero,
+            "COTAS");
+    }
+
+    /// <summary>La circunferencia del redondo macizo.</summary>
+    /// <remarks>
+    /// No tiene macro. Es la forma más simple de las nueve —una circunferencia rellena— y la
+    /// que faltaba para poder dibujar los tensores y las contravientos, que se piden como
+    /// varilla lisa y hasta ahora había que capturar como un tubo de pared falsa.
+    /// </remarks>
+    private void PerfilOs(double cx, double cy, double r)
+    {
+        var contorno = Circulo(cx, cy, r);
+
+        if (contorno is null)
+        {
+            Nota("Perfil OS: no se pudo crear la circunferencia.");
+            return;
+        }
+
+        HatchAcero(contorno, null, "ANSI31");
+    }
+
+    /// <summary>
+    /// La medida del redondo macizo, que va como <b>texto y no como cota</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la única forma que no lleva ni una sola cota, y es a propósito. Un redondo macizo
+    /// tiene <b>una</b> dimensión, el diámetro, y el catálogo del IMCA va del de 1/4" al de
+    /// 4": para casi todos ellos el aparato de una cota —dos líneas de extensión, dos flechas
+    /// y el número en medio— mide más que la varilla que pretende medir, y el resultado es un
+    /// nudo de líneas del que no se lee nada. Escrito al lado con el símbolo de diámetro se
+    /// lee a cualquier tamaño y no tapa el dibujo.
+    /// </para>
+    /// <para>
+    /// El <c>%%C</c> es el código de AutoCAD para el símbolo Ø: se escribe así, y no con el
+    /// carácter, porque el símbolo depende de que la fuente lo tenga y el código lo resuelve
+    /// AutoCAD.
+    /// </para>
+    /// </remarks>
+    private void CotasOs(double xIzq, double yAbajo, double d, double diametroCm, bool doble)
+    {
+        var gap = _gapAcero;
+        var r = d / 2;
+        var cy = yAbajo + r;
+        var xDerecha = xIzq + (doble ? 2 * d : d);
+
+        TextoAcero(
+            $"%%C{diametroCm:0.00} cm",
+            xDerecha + gap, cy,
+            _textoCotaAcero,
             "COTAS");
     }
 
     // ==================================================================
-    //  CF: la canal formada en frío
+    //  CF: la canal formada en frío, con labios
     // ==================================================================
 
     /// <summary>
@@ -547,10 +940,14 @@ public sealed partial class SeccionDrawer
     {
         var s = espejo ? -1.0 : 1.0;
 
-        if (lip <= t) { lip = t + (0.001 * _f); }
-        if (b <= 2 * t) { b = (2 * t) + (0.001 * _f); }
-        if (h <= 2 * t) { h = (2 * t) + (0.001 * _f); }
+        if (lip <= t) { lip = t + (0.1 * Cm); }
+        if (b <= 2 * t) { b = (2 * t) + (0.1 * Cm); }
+        if (h <= 2 * t) { h = (2 * t) + (0.1 * Cm); }
         if (ri < 0) { ri = 0; }
+
+        // Con espejo el alma se va al otro extremo del hueco, para que dos canales queden
+        // enfrentadas formando un cajón, que es como se arman.
+        if (espejo) { xWeb += b; }
 
         // Radio EXTERIOR: el capturado, recortado a lo que cabe.
         var rExt = Math.Min(ri, Math.Min(b / 2, Math.Min(lip, h / 2)));
@@ -569,95 +966,76 @@ public sealed partial class SeccionDrawer
         var yb = y0;
         var yt = y0 + h;
 
-        object? pl;
-
         if (rExt <= 0 && rInt <= 0)
         {
             // Sin radios: doce vértices en pico, el caso que la macro dibuja con líneas.
-            pl = PolyCerrada(new[]
-            {
-                xWebOut, yb,
-                xWebOut, yt,
-                xFlangeOut, yt,
-                xFlangeOut, yt - lip,
-                xFlangeIn, yt - lip,
-                xFlangeIn, yt - t,
-                xWebIn, yt - t,
-                xWebIn, yb + t,
-                xFlangeIn, yb + t,
-                xFlangeIn, yb + lip,
-                xFlangeOut, yb + lip,
-                xFlangeOut, yb
-            });
-        }
-        else
-        {
-            var pts = new[]
-            {
-                xWebOut, yb + rExt,
-                xWebOut, yt - rExt,
-                xWebOut + (s * rExt), yt,
-                xFlangeOut - (s * rExt), yt,
-                xFlangeOut, yt - rExt,
-                xFlangeOut, yt - lip,
-                xFlangeIn, yt - lip,
-                xFlangeIn, yt - t - rInt,
-                xFlangeIn - (s * rInt), yt - t,
-                xWebIn + (s * rInt), yt - t,
-                xWebIn, yt - t - rInt,
-                xWebIn, yb + t + rInt,
-                xWebIn + (s * rInt), yb + t,
-                xFlangeIn - (s * rInt), yb + t,
-                xFlangeIn, yb + t + rInt,
-                xFlangeIn, yb + lip,
-                xFlangeOut, yb + lip,
-                xFlangeOut, yb + rExt,
-                xFlangeOut - (s * rExt), yb,
-                xWebOut + (s * rExt), yb
-            };
+            TrazarPerfil(
+                new[]
+                {
+                    xWebOut, yb,
+                    xWebOut, yt,
+                    xFlangeOut, yt,
+                    xFlangeOut, yt - lip,
+                    xFlangeIn, yt - lip,
+                    xFlangeIn, yt - t,
+                    xWebIn, yt - t,
+                    xWebIn, yb + t,
+                    xFlangeIn, yb + t,
+                    xFlangeIn, yb + lip,
+                    xFlangeOut, yb + lip,
+                    xFlangeOut, yb
+                },
+                "ANSI31", "canal con labios");
 
-            // Los ocho dobleces, cada uno con su centro. El bulge sale del barrido real
-            // entre los dos vértices vistos desde el centro, así que el espejo se resuelve
-            // solo: al invertir s, los barridos cambian de signo y los arcos también.
-            var bulges = new (int Indice, double Cx, double Cy, int A, int B)[]
-            {
-                (1, xWebOut + (s * rExt), yt - rExt, 1, 2),
-                (3, xFlangeOut - (s * rExt), yt - rExt, 3, 4),
-                (7, xFlangeIn - (s * rInt), yt - t - rInt, 7, 8),
-                (9, xWebIn + (s * rInt), yt - t - rInt, 9, 10),
-                (11, xWebIn + (s * rInt), yb + t + rInt, 11, 12),
-                (13, xFlangeIn - (s * rInt), yb + t + rInt, 13, 14),
-                (17, xFlangeOut - (s * rExt), yb + rExt, 17, 18),
-                (19, xWebOut + (s * rExt), yb + rExt, 19, 0)
-            };
-
-            var lista = new List<(int, double)>();
-
-            foreach (var (indice, cx, cy, a, bb) in bulges)
-            {
-                lista.Add((indice, BulgeDesdeCentro(
-                    cx, cy,
-                    pts[2 * a], pts[(2 * a) + 1],
-                    pts[2 * bb], pts[(2 * bb) + 1])));
-            }
-
-            pl = PolilineaConBulges(pts, lista, CapaPerfiles);
-        }
-
-        if (pl is null)
-        {
-            Nota("Perfil CF: no se pudo crear el contorno.");
             return;
         }
 
-        Hatch("SOLID", 1, pl, null, CapaPerfiles, 4);
-        Hatch("ANSI31", 0.0008 * _f, pl, null, CapaPerfiles, 142);
+        var pts = new[]
+        {
+            xWebOut, yb + rExt,
+            xWebOut, yt - rExt,
+            xWebOut + (s * rExt), yt,
+            xFlangeOut - (s * rExt), yt,
+            xFlangeOut, yt - rExt,
+            xFlangeOut, yt - lip,
+            xFlangeIn, yt - lip,
+            xFlangeIn, yt - t - rInt,
+            xFlangeIn - (s * rInt), yt - t,
+            xWebIn + (s * rInt), yt - t,
+            xWebIn, yt - t - rInt,
+            xWebIn, yb + t + rInt,
+            xWebIn + (s * rInt), yb + t,
+            xFlangeIn - (s * rInt), yb + t,
+            xFlangeIn, yb + t + rInt,
+            xFlangeIn, yb + lip,
+            xFlangeOut, yb + lip,
+            xFlangeOut, yb + rExt,
+            xFlangeOut - (s * rExt), yb,
+            xWebOut + (s * rExt), yb
+        };
+
+        // Los ocho dobleces, cada uno con su centro. El bulge sale del barrido real
+        // entre los dos vértices vistos desde el centro, así que el espejo se resuelve
+        // solo: al invertir s, los barridos cambian de signo y los arcos también.
+        var bulges = new (int Indice, double Cx, double Cy, int A, int B)[]
+        {
+            (1, xWebOut + (s * rExt), yt - rExt, 1, 2),
+            (3, xFlangeOut - (s * rExt), yt - rExt, 3, 4),
+            (7, xFlangeIn - (s * rInt), yt - t - rInt, 7, 8),
+            (9, xWebIn + (s * rInt), yt - t - rInt, 9, 10),
+            (11, xWebIn + (s * rInt), yb + t + rInt, 11, 12),
+            (13, xFlangeIn - (s * rInt), yb + t + rInt, 13, 14),
+            (17, xFlangeOut - (s * rExt), yb + rExt, 17, 18),
+            (19, xWebOut + (s * rExt), yb + rExt, 19, 0)
+        };
+
+        TrazarPerfilConDobleces(pts, bulges, "ANSI31", "canal con labios");
     }
 
     private void CotasCf(
         double xIzq, double yBase, double h, double b, double t, double lip, bool doble)
     {
-        var gap = 0.08 * _f;
+        var gap = _gapAcero;
         var anchoTotal = doble ? 2 * b : b;
 
         // Peralte, a la derecha de todo
@@ -667,18 +1045,269 @@ public sealed partial class SeccionDrawer
 
         // Ancho del patín, arriba
         CotaAcero(
-            xIzq, yBase + h + (0.02 * _f), xIzq + b, yBase + h + (0.02 * _f),
+            xIzq, yBase + h, xIzq + b, yBase + h,
             xIzq + (b / 2), yBase + h + gap);
 
-        // Largo del labio, junto al labio
+        // Largo del labio, medido en la cara del alma y con el texto a su izquierda. Es la
+        // colocación de la macro, que acotaba el labio sobre una vertical junto al alma y
+        // dejaba el número fuera del perfil por ese lado; lo único que cambia es que los
+        // desplazamientos ya no son 5 y 12 cm fijos, sino proporcionales al perfil.
         CotaAcero(
-            xIzq + b - (0.05 * _f), yBase + h - lip, xIzq + b - (0.05 * _f), yBase + h,
-            xIzq + b - (0.12 * _f), yBase + h - (lip / 2));
+            xIzq, yBase + h - lip, xIzq, yBase + h,
+            xIzq - gap, yBase + h - (lip / 2));
 
-        // Espesor del alma, abajo a la izquierda
+        // Espesor de la lámina, medido en el patín inferior y con el texto abajo a la
+        // izquierda. NO va debajo de la base: ahí va el rótulo.
         CotaAcero(
-            xIzq + (0.02 * _f), yBase, xIzq + (0.02 * _f), yBase + t,
+            xIzq, yBase, xIzq, yBase + t,
             xIzq - gap, yBase + (t / 2));
+    }
+
+    // ==================================================================
+    //  ZF: la zeta formada en frío
+    // ==================================================================
+
+    /// <summary>
+    /// La zeta: el alma vertical con un patín a cada lado, y sus cuatro dobleces.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No tiene macro. Los <b>dos patines son de distinto ancho</b> —60.3 y 54 mm en la de
+    /// 2 3/8"— y eso no es una errata del manual: es lo que permite traslapar dos zetas en el
+    /// apoyo, porque el patín angosto de una entra dentro del ancho de la otra. Dibujarla
+    /// simétrica sería dibujar una zeta que no se fabrica. El ancho angosto se puede dejar en
+    /// cero, y entonces sí sale simétrica, que es lo que hay que hacer con una zeta de
+    /// fabricación propia.
+    /// </para>
+    /// <para>
+    /// El patín <b>ancho va arriba</b> y el angosto abajo, que es la posición de montaje: la
+    /// zeta se apoya por el patín angosto y el ancho recibe la lámina de cubierta.
+    /// </para>
+    /// <para>
+    /// Lleva <b>cuatro dobleces</b>, dos exteriores y dos interiores, con la misma regla que
+    /// la CF: el radio capturado por fuera y su mitad por dentro. Los radios reales de una
+    /// zeta son de 4.76 mm, así que a escala de plano apenas se ven, pero sin ellos las
+    /// esquinas salen en pico y una lámina doblada en pico no existe.
+    /// </para>
+    /// </remarks>
+    private void PerfilZeta(
+        double xIzq, double y0, double h, double bAncho, double bAngosto, double t,
+        double ri, bool espejo)
+    {
+        if (t <= 0) { t = 0.1 * Cm; }
+        if (bAngosto <= t) { bAngosto = bAncho; }
+        if (h <= 2 * t) { h = (2 * t) + (0.1 * Cm); }
+        if (ri < 0) { ri = 0; }
+
+        // El ancho total: los dos patines menos el espesor del alma, que comparten.
+        var w = bAncho + bAngosto - t;
+
+        // Radio EXTERIOR: el capturado, recortado por el medio patín más corto y por el
+        // medio alma libre.
+        var rExt = Math.Min(ri, Math.Min(Math.Min(bAncho, bAngosto) / 2, (h - (2 * t)) / 2));
+        if (rExt < 0) { rExt = 0; }
+
+        // Radio INTERIOR: el exterior MENOS EL ESPESOR, y esto no es una convención sino
+        // geometría. Una zeta es una lámina de espesor único doblada dos veces, así que en
+        // cada doblez la cara de dentro y la de fuera son dos arcos CONCÉNTRICOS separados
+        // exactamente el espesor. Con cualquier otra relación la lámina saldría más gorda o
+        // más delgada en la esquina que en el tramo recto.
+        //
+        // La CF, que es un port de macro, usa en cambio la mitad del radio capturado, y ahí
+        // se respeta lo que hace el original. Aquí no hay original al que ser fiel, así que
+        // se dibuja lo que es. Si el radio no llega ni al espesor, el doblez interior sale
+        // en pico, que es lo que pasa de verdad en una esquina prensada.
+        var rInt = Math.Max(0, rExt - t);
+
+        // Sin espejo: el patín ancho sale a la DERECHA por arriba y el angosto a la
+        // IZQUIERDA por abajo. Espejeada, al contrario.
+        double X(double x) => espejo ? (2 * xIzq) + w - x : x;
+
+        var xAlmaIzq = xIzq + bAngosto - t;   // cara izquierda del alma
+        var xAlmaDer = xIzq + bAngosto;       // cara derecha del alma
+        var xTope = xAlmaIzq + bAncho;        // punta del patín ancho
+        var yt = y0 + h;
+
+        if (rExt <= 0 && rInt <= 0)
+        {
+            TrazarPerfil(
+                new[]
+                {
+                    X(xIzq), y0,
+                    X(xAlmaDer), y0,
+                    X(xAlmaDer), yt - t,
+                    X(xTope), yt - t,
+                    X(xTope), yt,
+                    X(xAlmaIzq), yt,
+                    X(xAlmaIzq), y0 + t,
+                    X(xIzq), y0 + t
+                },
+                "ANSI31", "zeta");
+
+            return;
+        }
+
+        // Los cuatro dobleces, y OJO CON LOS DOS INTERIORES: sus centros caen FUERA del
+        // acero, en el hueco de la esquina, y a distinto lado del alma cada uno. El de
+        // arriba se sale por la derecha del alma —a xAlmaDer + rInt— y el de abajo por la
+        // IZQUIERDA —a xAlmaIzq − rInt—, porque los dos patines salen a lados contrarios.
+        // Con los dos al mismo lado, el contorno de abajo se devolvía sobre sí mismo y la
+        // polilínea se cruzaba: el rayado salía por fuera del perfil.
+        var pts = new[]
+        {
+            X(xIzq), y0,
+            X(xAlmaDer - rExt), y0,
+            X(xAlmaDer), y0 + rExt,
+            X(xAlmaDer), yt - t - rInt,
+            X(xAlmaDer + rInt), yt - t,
+            X(xTope), yt - t,
+            X(xTope), yt,
+            X(xAlmaIzq + rExt), yt,
+            X(xAlmaIzq), yt - rExt,
+            X(xAlmaIzq), y0 + t + rInt,
+            X(xAlmaIzq - rInt), y0 + t,
+            X(xIzq), y0 + t
+        };
+
+        // Los centros también se espejean, y el bulge sale del barrido visto desde el
+        // centro, así que el signo se resuelve solo.
+        var bulges = new (int Indice, double Cx, double Cy, int A, int B)[]
+        {
+            (1, X(xAlmaDer - rExt), y0 + rExt, 1, 2),
+            (3, X(xAlmaDer + rInt), yt - t - rInt, 3, 4),
+            (7, X(xAlmaIzq + rExt), yt - rExt, 7, 8),
+            (9, X(xAlmaIzq - rInt), y0 + t + rInt, 9, 10)
+        };
+
+        TrazarPerfilConDobleces(pts, bulges, "ANSI31", "zeta");
+    }
+
+    private void CotasZeta(
+        double xIzq, double y0, double h, double bAncho, double bAngosto, double t,
+        bool doble)
+    {
+        var gap = _gapAcero;
+        var w = bAncho + bAngosto - t;
+        var anchoTotal = doble ? 2 * w : w;
+        var xAlmaIzq = xIzq + bAngosto - t;
+
+        // Peralte, a la derecha de todo
+        CotaAcero(
+            xIzq + anchoTotal, y0, xIzq + anchoTotal, y0 + h,
+            xIzq + anchoTotal + gap, y0 + (h / 2));
+
+        // Patín ANCHO, arriba: va del alma a la punta
+        CotaAcero(
+            xAlmaIzq, y0 + h, xAlmaIzq + bAncho, y0 + h,
+            xAlmaIzq + (bAncho / 2), y0 + h + gap);
+
+        // Patín ANGOSTO. Los dos se acotan porque son distintos, y ver los dos números
+        // juntos es lo que hace evidente que la zeta no es simétrica.
+        //
+        // El texto va ENCIMA del patín angosto, no debajo, porque debajo de la base va el
+        // rótulo. Encima del patín angosto y a la izquierda del alma no hay nada: es el
+        // hueco que deja la zeta por ese lado.
+        CotaAcero(
+            xIzq, y0, xIzq + bAngosto, y0,
+            xIzq + (bAngosto / 2), y0 + t + gap);
+
+        // Espesor de la lámina, medido en el patín ancho y con el texto arriba a la
+        // izquierda, que es la otra zona vacía de la zeta.
+        CotaAcero(
+            xAlmaIzq, y0 + h, xAlmaIzq, y0 + h - t,
+            xAlmaIzq - gap, y0 + h - (t / 2));
+    }
+
+    // ==================================================================
+    //  Trazo y rayado, comunes a las nueve formas
+    // ==================================================================
+
+    /// <summary>
+    /// Traza un contorno en pico, le da grosor de acero y lo raya.
+    /// </summary>
+    /// <remarks>
+    /// Las nueve formas acaban aquí o en <see cref="TrazarPerfilConDobleces"/>. Antes cada
+    /// forma repetía las tres llamadas —polilínea, ancho constante, rayado— con sus propios
+    /// colores literales, y así es como el tubo redondo se quedó rellenando y rayando del
+    /// mismo color sin que se notara.
+    /// </remarks>
+    private void TrazarPerfil(double[] pts, string patron, string queEs)
+    {
+        var pl = Polilinea(pts, _capaAcero);
+
+        if (pl is null)
+        {
+            Nota($"Perfil de acero ({queEs}): no se pudo crear el contorno.");
+            return;
+        }
+
+        // El ancho constante del PEDIT de la macro: engrosa la línea del perfil para que
+        // se lea como acero y no como una línea de construcción.
+        AnchoConstante(pl, 0.1 * Cm);
+
+        HatchAcero(pl, null, patron);
+    }
+
+    /// <summary>Lo mismo, con dobleces: la canal con labios y la zeta.</summary>
+    private void TrazarPerfilConDobleces(
+        double[] pts,
+        (int Indice, double Cx, double Cy, int A, int B)[] dobleces,
+        string patron,
+        string queEs)
+    {
+        var lista = new List<(int, double)>();
+
+        foreach (var (indice, cx, cy, a, b) in dobleces)
+        {
+            lista.Add((indice, BulgeDesdeCentro(
+                cx, cy,
+                pts[2 * a], pts[(2 * a) + 1],
+                pts[2 * b], pts[(2 * b) + 1])));
+        }
+
+        var pl = PolilineaConBulges(pts, lista, _capaAcero);
+
+        if (pl is null)
+        {
+            Nota($"Perfil de acero ({queEs}): no se pudo crear el contorno.");
+            return;
+        }
+
+        AnchoConstante(pl, 0.1 * Cm);
+
+        HatchAcero(pl, null, patron);
+    }
+
+    /// <summary>
+    /// El rayado de un perfil, <b>del color de su familia</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los perfiles grandes llevan relleno macizo con el rayado encima; los de menos de cinco
+    /// pulgadas, solo el rayado sobre un fondo tenue. La regla es de la macro del HSS y el
+    /// motivo vale para las nueve formas: a dos pulgadas, un relleno macizo convierte la
+    /// sección en un manchón del que no se distingue la forma.
+    /// </para>
+    /// <para>
+    /// El relleno va <b>seis pasos más oscuro</b> que el rayado dentro del mismo tono. Dos
+    /// hatches del mismo color, uno encima del otro, dejan el de arriba invisible, que es lo
+    /// que le pasaba al tubo redondo: <c>SOLID</c> en 162 y <c>ANSI31</c> también en 162.
+    /// </para>
+    /// </remarks>
+    private void HatchAcero(object contorno, List<object>? islas, string patron)
+    {
+        if (_rellenoMacizoAcero)
+        {
+            Hatch("SOLID", 1, contorno, islas, _capaAcero, _colorRellenoAcero);
+        }
+
+        var trama = Hatch(
+            patron, _escalaHatchAcero, contorno, islas, _capaAcero, _colorLineasAcero);
+
+        if (!_rellenoMacizoAcero && trama is not null)
+        {
+            FondoDelHatch(trama, _colorFondoAcero);
+        }
     }
 
     // ==================================================================
@@ -686,14 +1315,24 @@ public sealed partial class SeccionDrawer
     // ==================================================================
 
     /// <summary>
-    /// Los cuatro renglones del rótulo, con la altura de letra de cada familia.
+    /// Los cuatro renglones del rótulo, con la altura y el ancho de caja que le tocan.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Port de los cuatro <c>AgregarRotulo…</c>, que dicen lo mismo con alturas distintas:
     /// 0.03 el IR, 0.02 el OC, 0.022 el CF y el OR 0.02 o 0.03 según si su primer número
-    /// pasa de 6. Esa última regla se conserva porque tiene sentido: el rótulo se centra
-    /// bajo el perfil y en un tubo de 4 pulgadas un texto grande sobresale por los lados.
+    /// pasa de 6. <b>Esa última regla es la que se generalizó</b>, porque es la única de las
+    /// cuatro que tiene un motivo: el rótulo se centra bajo el perfil, así que en un tubo de
+    /// cuatro pulgadas un texto grande sobresale por los lados. Ahora la altura sale del
+    /// peralte para las doce familias, y da los mismos números que las macros donde ellas
+    /// los daban. Ver <see cref="PerfilAceroCad.AlturaRotuloCm"/>.
+    /// </para>
+    /// <para>
+    /// El ancho de la caja <b>se calcula del renglón más largo</b> en lugar de ser un número
+    /// fijo. Las macros lo dejaban en 0.7, salvo la del tubo redondo que lo subía a 2.5 «para
+    /// que el renglón del perfil no se parta en dos»: era un parche a mano del mismo problema.
+    /// Y con el catálogo del IMCA el problema es peor, porque hay nombres como
+    /// «IS - 225 mm x 12.7 mm / 750 mm x 9.5 mm» que en una caja de 0.7 se parten en tres.
     /// </para>
     /// <para>
     /// El salto de renglón va como <c>\P</c>, el de MText, no como salto de línea real: es
@@ -702,65 +1341,13 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private void RotuloAcero(PerfilAceroCad p, double xCentro, double yBase)
     {
-        var etiqueta = p.Doble ? "PERFIL DOBLE: " : "PERFIL: ";
-
-        var lineas = new List<string>
-        {
-            $"{p.Elemento.ToUpperInvariant()} \"{p.Id}\"",
-            etiqueta + p.Perfil.ToUpperInvariant(),
-            "ACERO " + p.Acero.ToUpperInvariant(),
-            $"Acot. cm    Esc. {p.EscalaRotulo}"
-        };
-
-        var altura = p.Familia switch
-        {
-            "IR" => 0.03,
-            "CF" => 0.022,
-            "OR" => PrimerNumero(p.Perfil) is > 0 and <= 6 ? 0.02 : 0.03,
-            _ => 0.02
-        };
-
-        // El ANCHO de la caja del MText también es distinto en una de las cuatro: el OC la
-        // pone en 2.5 y las otras tres en 0.7. Con 0.7 el renglón del perfil de un tubo
-        // redondo —«PERFIL: OC 4 STD»— se parte en dos líneas, que es lo que la macro del
-        // OC estaba arreglando al subirlo.
-        var ancho = p.Familia == "OC" ? 2.5 : 0.7;
-
         TextoAcero(
-            string.Join("\\P", lineas), xCentro, yBase, altura * _f, "ROTULOS", ancho * _f);
-    }
-
-    /// <summary>El primer número que aparece en el nombre del perfil, o cero.</summary>
-    /// <remarks>
-    /// Port de <c>ExtraerPrimerNumero</c>. Sirve para decidir la altura del rótulo del OR:
-    /// en <c>OR6X6X1/4</c> el primer número es el 6.
-    /// </remarks>
-    private static double PrimerNumero(string? texto)
-    {
-        var s = (texto ?? string.Empty).Trim();
-        var acumulado = new System.Text.StringBuilder();
-        var empezo = false;
-
-        foreach (var ch in s)
-        {
-            if (char.IsDigit(ch) || ch == '.')
-            {
-                acumulado.Append(ch);
-                empezo = true;
-            }
-            else if (empezo)
-            {
-                break;
-            }
-        }
-
-        return double.TryParse(
-            acumulado.ToString(),
-            System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out var v)
-            ? v
-            : 0;
+            string.Join("\\P", p.LineasRotulo),
+            xCentro,
+            yBase,
+            p.AlturaRotuloCm * _escala,
+            "ROTULOS",
+            p.AnchoRotuloCm * _escala);
     }
 
     // ==================================================================
@@ -780,6 +1367,11 @@ public sealed partial class SeccionDrawer
     /// rotulado «Acot. cm». Las cuatro macros lo fijan en 100, que es exactamente
     /// <c>1/escala</c>: se calcula así para que siga valiendo si algún día se dibuja a otra
     /// escala.
+    /// </para>
+    /// <para>
+    /// <b>Y el aparato de la cota se reajusta al tamaño del perfil</b>, encima de lo que deja
+    /// <see cref="FormatearCota"/>, que trae las medidas del concreto. Ver
+    /// <see cref="PrepararAcero"/>: sin esto, un ángulo de 1.9 cm salía con flechas de 2 cm.
     /// </para>
     /// </remarks>
     private void CotaAcero(
@@ -803,7 +1395,15 @@ public sealed partial class SeccionDrawer
                 // Lo que las cuatro macros le ponen a cada cota, y que FormatearCota no
                 // sabe porque es del concreto: su propio estilo de texto y su altura.
                 PropCota((object)cota, "TextStyle", EstiloTextoAcero);
-                PropCota((object)cota, "TextHeight", AlturaTextoCotaAcero * _f);
+
+                // El aparato, proporcional al perfil. Va DESPUÉS de FormatearCota porque
+                // es quien tiene que mandar: FormatearCota deja los valores del concreto.
+                PropCota((object)cota, "TextHeight", _textoCotaAcero);
+                PropCota((object)cota, "ArrowheadSize", _flechaAcero);
+                PropCota((object)cota, "ExtensionLineOffset", _extOffsetAcero);
+                PropCota((object)cota, "ExtensionLineExtend", _extExtiendeAcero);
+                PropCota((object)cota, "ExtLineFixedLen", _extExtiendeAcero);
+                PropCota((object)cota, "TextGap", _textoCotaAcero / 3);
 
                 PropCota((object)cota, "LinearScaleFactor", 1 / _escala);
                 PropCota((object)cota, "TextRotation", 0d);
@@ -820,8 +1420,7 @@ public sealed partial class SeccionDrawer
 
     /// <summary>Un MText centrado por arriba, como los rótulos de las macros.</summary>
     /// <param name="anchoCaja">
-    /// Ancho de la caja del MText. Las macros lo dejan en 0.7, salvo la del tubo redondo,
-    /// que lo sube a 2.5 para que el renglón del perfil no se le parta en dos.
+    /// Ancho de la caja del MText. Si no se dice, el 0.7 de las macros.
     /// </param>
     private void TextoAcero(
         string contenido, double x, double y, double altura, string capa,
@@ -831,7 +1430,7 @@ public sealed partial class SeccionDrawer
         {
             AcadConnection.Retry(() =>
             {
-                var caja = anchoCaja > 0 ? anchoCaja : 0.7 * _f;
+                var caja = anchoCaja > 0 ? anchoCaja : 70 * Cm;
 
                 dynamic t = _ms.AddMText(new[] { x, y, 0d }, caja, contenido);
                 t.Layer = capa;
@@ -867,7 +1466,7 @@ public sealed partial class SeccionDrawer
 
         if (r <= 1e-7)
         {
-            return PolyCerrada(new[] { x0, y0, x1, y0, x1, y1, x0, y1 });
+            return Polilinea(new[] { x0, y0, x1, y0, x1, y1, x0, y1 }, _capaAcero);
         }
 
         var pts = new[]
@@ -885,7 +1484,7 @@ public sealed partial class SeccionDrawer
         return PolilineaConBulges(
             pts,
             new List<(int, double)> { (1, Bulge90), (3, Bulge90), (5, Bulge90), (7, Bulge90) },
-            CapaPerfiles);
+            _capaAcero);
     }
 
     /// <summary>Una polilínea cerrada con bulges en los vértices que se le digan.</summary>
@@ -947,8 +1546,8 @@ public sealed partial class SeccionDrawer
         return Math.Tan(barrido / 4);
     }
 
-    /// <summary>Una circunferencia.</summary>
-    private object? Circulo(double cx, double cy, double radio, string capa)
+    /// <summary>Una circunferencia, en la capa de la familia que se dibuja.</summary>
+    private object? Circulo(double cx, double cy, double radio)
     {
         if (radio <= 0)
         {
@@ -960,14 +1559,14 @@ public sealed partial class SeccionDrawer
             return AcadConnection.Retry<object?>(() =>
             {
                 dynamic c = _ms.AddCircle(new[] { cx, cy, 0d }, radio);
-                c.Layer = capa;
+                c.Layer = _capaAcero;
                 c.Color = PorCapa;
                 return (object?)c;
             });
         }
         catch (Exception ex)
         {
-            Fallo($"Circunferencia de radio {radio:0.###} en la capa {capa}", ex);
+            Fallo($"Circunferencia de radio {radio:0.###} en la capa {_capaAcero}", ex);
             return null;
         }
     }
@@ -1042,7 +1641,7 @@ public sealed partial class SeccionDrawer
         }
 
         Nota(
-            "Rayado de acero: no se pudo poner el color de fondo. El tubo queda con el " +
-            "rayado pero sin el fondo cian, que es solo decorativo.");
+            "Rayado de acero: no se pudo poner el color de fondo. El perfil queda con el " +
+            "rayado pero sin el fondo tenue, que es solo decorativo.");
     }
 }

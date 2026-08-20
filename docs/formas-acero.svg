@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="730" viewBox="0 0 1500 730">
+<rect width="100%" height="100%" fill="#1c1c1c"/>
+<style>text{font-family:"Bahnschrift SemiLight",Arial,sans-serif}.fam{font-size:19px;font-weight:600}.forma{font-size:13px;fill:#c8c8c8}.perfil{font-size:12px;fill:#8f8f8f}.med{font-size:11px;fill:#707070}.tit{font-size:22px;fill:#e6e6e6;font-weight:600}.sub{font-size:13px;fill:#9a9a9a}</style>
+<text class="tit" x="20" y="32">Las nueve formas de perfil de acero de CadLink</text>
+<text class="sub" x="20" y="54">Doce familias, nueve formas y un color por familia. Todas a la misma escala: el tamaño relativo es real. Medidas del catalogo IMCA, en cm.</text>
+<g transform="translate(0,70)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#ffbf00">IR</text>
+<text class="forma" x="20" y="52">perfil I</text>
+<text class="perfil" x="20" y="70">W - 12'' x 30.04 lb/ft</text>
+<path d="M187.16,290.00 L187.16,284.99 L151.50,284.99 L151.50,154.87 L187.16,154.87 L187.16,149.85 L112.84,149.85 L112.84,154.87 L148.50,154.87 L148.50,284.99 L112.84,284.99 L112.84,290.00 Z" fill="#4c3900" stroke="#ffbf00" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">31.30 x 16.60 cm</text>
+</g>
+<g transform="translate(300,70)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#ffff00">IS</text>
+<text class="forma" x="20" y="52">perfil I</text>
+<text class="perfil" x="20" y="70">IS - 150 x 9.5 / 450 x 6.4 mm</text>
+<path d="M183.58,290.00 L183.58,285.75 L151.43,285.75 L151.43,84.25 L183.58,84.25 L183.58,80.00 L116.42,80.00 L116.42,84.25 L148.57,84.25 L148.57,285.75 L116.42,285.75 L116.42,290.00 Z" fill="#4c4c00" stroke="#ffff00" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">46.90 x 15.00 cm</text>
+</g>
+<g transform="translate(600,70)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#00ff80">WT</text>
+<text class="forma" x="20" y="52">te</text>
+<text class="perfil" x="20" y="70">WT - 8'' x 13.0 lb/ft</text>
+<path d="M151.43,290.00 L151.43,204.84 L181.34,204.84 L181.34,200.90 L118.66,200.90 L118.66,204.84 L148.57,204.84 L148.57,290.00 Z" fill="#004c26" stroke="#00ff80" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">19.90 x 14.00 cm</text>
+</g>
+<g transform="translate(900,70)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#00ffff">C</text>
+<text class="forma" x="20" y="52">canal laminada</text>
+<text class="perfil" x="20" y="70">C - 8'' x 12.0 lb/ft</text>
+<path d="M137.24,290.00 L137.24,199.10 L162.76,199.10 L162.76,203.54 L139.75,203.54 L139.75,285.57 L162.76,285.57 L162.76,290.00 Z" fill="#004c4c" stroke="#00ffff" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">20.30 x 5.70 cm</text>
+</g>
+<g transform="translate(1200,70)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#0080ff">CF</text>
+<text class="forma" x="20" y="52">canal con labios</text>
+<text class="perfil" x="20" y="70">CF - 6" x 2" x #14</text>
+<path d="M138.63,288.93 L138.63,222.84 L138.63,222.72 L138.65,222.60 L138.69,222.48 L138.73,222.37 L138.79,222.26 L138.86,222.17 L138.94,222.08 L139.03,222.00 L139.13,221.93 L139.24,221.87 L139.35,221.82 L139.46,221.79 L139.58,221.77 L139.70,221.76 L160.30,221.76 L160.42,221.77 L160.54,221.79 L160.65,221.82 L160.76,221.87 L160.87,221.93 L160.97,222.00 L161.06,222.08 L161.14,222.17 L161.21,222.26 L161.27,222.37 L161.31,222.48 L161.35,222.60 L161.37,222.72 L161.37,222.84 L161.37,228.57 L160.52,228.57 L160.52,223.15 L160.52,223.09 L160.51,223.03 L160.49,222.97 L160.47,222.92 L160.44,222.86 L160.41,222.81 L160.37,222.77 L160.32,222.73 L160.27,222.69 L160.22,222.67 L160.16,222.64 L160.10,222.63 L160.05,222.62 L159.99,222.61 L140.01,222.61 L139.95,222.62 L139.90,222.63 L139.84,222.64 L139.78,222.67 L139.73,222.69 L139.68,222.73 L139.63,222.77 L139.59,222.81 L139.56,222.86 L139.53,222.92 L139.51,222.97 L139.49,223.03 L139.48,223.09 L139.48,223.15 L139.48,288.61 L139.48,288.67 L139.49,288.73 L139.51,288.79 L139.53,288.85 L139.56,288.90 L139.59,288.95 L139.63,288.99 L139.68,289.03 L139.73,289.07 L139.78,289.10 L139.84,289.12 L139.90,289.14 L139.95,289.15 L140.01,289.15 L159.99,289.15 L160.05,289.15 L160.10,289.14 L160.16,289.12 L160.22,289.10 L160.27,289.07 L160.32,289.03 L160.37,288.99 L160.41,288.95 L160.44,288.90 L160.47,288.85 L160.49,288.79 L160.51,288.73 L160.52,288.67 L160.52,288.61 L160.52,283.19 L161.37,283.19 L161.37,288.93 L161.37,289.05 L161.35,289.16 L161.31,289.28 L161.27,289.39 L161.21,289.50 L161.14,289.60 L161.06,289.69 L160.97,289.77 L160.87,289.84 L160.76,289.89 L160.65,289.94 L160.54,289.97 L160.42,289.99 L160.30,290.00 L139.70,290.00 L139.58,289.99 L139.46,289.97 L139.35,289.94 L139.24,289.89 L139.13,289.84 L139.03,289.77 L138.94,289.69 L138.86,289.60 L138.79,289.50 L138.73,289.39 L138.69,289.28 L138.65,289.16 L138.63,289.05 Z" fill="#00264c" stroke="#0080ff" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">15.24 x 5.08 cm</text>
+</g>
+<g transform="translate(0,400)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#0000ff">ZF</text>
+<text class="forma" x="20" y="52">zeta</text>
+<text class="perfil" x="20" y="70">ZF - 8" x 2 3/8" x #14</text>
+<path d="M124.84,290.00 L146.88,290.00 L147.12,289.99 L147.36,289.95 L147.59,289.88 L147.81,289.79 L148.02,289.67 L148.21,289.54 L148.39,289.38 L148.55,289.20 L148.69,289.00 L148.80,288.79 L148.90,288.57 L148.96,288.34 L149.00,288.11 L149.01,287.87 L149.01,201.15 L149.02,201.00 L149.05,200.86 L149.09,200.72 L149.14,200.59 L149.21,200.46 L149.29,200.35 L149.39,200.24 L149.50,200.15 L149.61,200.06 L149.74,199.99 L149.87,199.94 L150.01,199.90 L150.15,199.87 L150.30,199.87 L175.16,199.87 L175.16,199.01 L150.30,199.01 L150.06,199.03 L149.82,199.07 L149.59,199.13 L149.37,199.23 L149.16,199.34 L148.97,199.48 L148.79,199.64 L148.63,199.82 L148.49,200.01 L148.38,200.22 L148.28,200.44 L148.22,200.67 L148.18,200.91 L148.16,201.15 L148.16,287.87 L148.16,288.01 L148.13,288.15 L148.09,288.29 L148.04,288.42 L147.97,288.55 L147.88,288.67 L147.79,288.77 L147.68,288.87 L147.56,288.95 L147.44,289.02 L147.31,289.08 L147.17,289.12 L147.03,289.14 L146.88,289.15 L124.84,289.15 Z" fill="#00004c" stroke="#0000ff" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">20.32 x 11.24 cm</text>
+</g>
+<g transform="translate(300,400)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#8000ff">L</text>
+<text class="forma" x="20" y="52">angulo</text>
+<text class="perfil" x="20" y="70">L - 3'' x 2'' x 1/4''</text>
+<path d="M138.63,290.00 L161.37,290.00 L161.37,287.16 L141.47,287.16 L141.47,255.88 L138.63,255.88 Z" fill="#bf80ff" stroke="#8000ff" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">7.62 x 5.08 cm</text>
+</g>
+<g transform="translate(600,400)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#ff00ff">OR</text>
+<text class="forma" x="20" y="52">tubo rectangular</text>
+<text class="perfil" x="20" y="70">HSS - 6" x 1/4"</text>
+<path d="M118.84,290.00 L181.16,290.00 L181.49,289.98 L181.80,289.93 L182.11,289.84 L182.41,289.72 L182.69,289.56 L182.95,289.37 L183.19,289.16 L183.40,288.92 L183.59,288.66 L183.75,288.38 L183.87,288.08 L183.96,287.77 L184.01,287.46 L184.03,287.13 L184.03,224.81 L184.01,224.49 L183.96,224.17 L183.87,223.86 L183.75,223.56 L183.59,223.28 L183.40,223.02 L183.19,222.78 L182.95,222.57 L182.69,222.38 L182.41,222.22 L182.11,222.10 L181.80,222.01 L181.49,221.96 L181.16,221.94 L118.84,221.94 L118.51,221.96 L118.20,222.01 L117.89,222.10 L117.59,222.22 L117.31,222.38 L117.05,222.57 L116.81,222.78 L116.60,223.02 L116.41,223.28 L116.25,223.56 L116.13,223.86 L116.04,224.17 L115.99,224.49 L115.97,224.81 L115.97,287.13 L115.99,287.46 L116.04,287.77 L116.13,288.08 L116.25,288.38 L116.41,288.66 L116.60,288.92 L116.81,289.16 L117.05,289.37 L117.31,289.56 L117.59,289.72 L117.89,289.84 L118.20,289.93 L118.51,289.98 Z" fill="#4c004c" stroke="#ff00ff" stroke-width="1.6" stroke-linejoin="round"/>
+<text class="med" x="20" y="312">15.20 x 15.20 cm</text>
+</g>
+<g transform="translate(900,400)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#ff0080">OC</text>
+<text class="forma" x="20" y="52">tubo redondo</text>
+<text class="perfil" x="20" y="70">PIPE - 4.02 in x 0.19 in</text>
+<circle cx="150.00" cy="267.16" r="22.84" fill="#ff80bf" stroke="#ff0080" stroke-width="1.6"/>
+<circle cx="150.00" cy="267.16" r="20.69" fill="#242424" stroke="#ff0080" stroke-width="1.6"/>
+<text class="med" x="20" y="312">D 10.2 cm, pared 0.48 cm</text>
+</g>
+<g transform="translate(1200,400)">
+<rect x="6" y="6" width="288" height="318" rx="6" fill="#242424" stroke="#333" stroke-width="1"/>
+<text class="fam" x="20" y="32" fill="#ff4000">OS</text>
+<text class="forma" x="20" y="52">redondo macizo</text>
+<text class="perfil" x="20" y="70">OS - 3/4"</text>
+<circle cx="150.00" cy="285.72" r="4.28" fill="#ff9f80" stroke="#ff4000" stroke-width="1.6"/>
+<text class="med" x="20" y="312">diametro 1.91 cm</text>
+</g>
+</svg>
