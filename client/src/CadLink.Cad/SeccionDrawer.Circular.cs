@@ -102,6 +102,11 @@ public sealed partial class SeccionDrawer
         object? zunExt = null;
         object? zunInt = null;
 
+        // La circunferencia interior del zuncho, cuando el gancho obliga a sustituirla por
+        // un arco recortado. Se guarda para borrarla DESPUES del hatch de concreto, que la
+        // necesita como frontera. Ver el comentario en el bloque del gancho.
+        object? zunIntPorBorrar = null;
+
         if (hayZuncho)
         {
             zunExt = CirculoEn(cx, cy, rZunExt, "ESTRIBOS");
@@ -189,7 +194,17 @@ public sealed partial class SeccionDrawer
             // y dibujar en su lugar un ARCO que se salta el trozo del gancho.
             if (anguloGancho is not null && zunInt is not null)
             {
+                // Se saca de la lista para que no se pinte ni se suba al frente, y se
+                // APUNTA PARA BORRARLA. Sacarla de la lista no la quita del dibujo, que es
+                // justo el error que tenía esto antes: la circunferencia entera seguía ahí,
+                // solo que ya no entraba en el repintado. En la sección rellena eso dejaba
+                // una línea azul tenue cruzando por delante del hatch —azul porque se había
+                // librado del negro— y en la de contorno, la línea entera sin recortar.
+                //
+                // No se puede borrar aquí: todavía hace de FRONTERA del hatch de concreto,
+                // que se construye más abajo. Se borra después de eso.
                 contorno.Remove(zunInt);
+                zunIntPorBorrar = zunInt;
 
                 // El hueco es ASIMÉTRICO, y ahí estaba el defecto anterior.
                 //
@@ -240,6 +255,14 @@ public sealed partial class SeccionDrawer
             {
                 AlFondo(creados);
             }
+        }
+
+        // Y AHORA sí se puede borrar la circunferencia interior: el hatch ya está hecho y
+        // los hatches no son asociativos, así que no le afecta. Lo que queda visible es el
+        // arco recortado que puso el gancho.
+        if (zunIntPorBorrar is not null)
+        {
+            Borrar(zunIntPorBorrar);
         }
 
         // ---------- Relleno del gancho ----------

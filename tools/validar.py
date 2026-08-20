@@ -3487,6 +3487,31 @@ def v19_circular_y_ui() -> None:
     # Es el mismo problema que el estribo rectangular resuelve con su yTrim.
     check("el circulo interior del zuncho se recorta en el gancho",
           "contorno.Remove(zunInt);" in circ)
+    # LA CIRCUNFERENCIA SE BORRA DE VERDAD. Sacarla de la lista de contorno no la quita
+    # del dibujo, y eso era el fallo: en la seccion rellena dejaba una linea azul tenue
+    # cruzando por delante del hatch —azul porque se habia librado del repintado a negro—
+    # y en la de contorno, la linea entera sin recortar.
+    check("la circunferencia interior se borra, no solo se saca de la lista",
+          "zunIntPorBorrar = zunInt;" in circ
+          and "Borrar(zunIntPorBorrar);" in circ)
+
+    # Y el ORDEN es lo critico: tiene que sobrevivir al hatch de concreto, que la usa como
+    # frontera, y morir antes del repintado.
+    if m_dc:
+        cuerpo = m_dc.group(0)
+        i_gan = cuerpo.find("zunIntPorBorrar = zunInt;")
+        i_hat = cuerpo.find("ParteHatch(zunInt, circulos")
+        i_bor = cuerpo.find("Borrar(zunIntPorBorrar);")
+        i_neg = cuerpo.find("foreach (var ent in contorno)")
+
+        check("se borra DESPUES del hatch, que la necesita como frontera",
+              0 <= i_hat < i_bor,
+              f"hatch en {i_hat}, borrado en {i_bor}")
+
+        check("y ANTES del repintado, o no serviria de nada",
+              0 <= i_bor < i_neg,
+              f"borrado en {i_bor}, repintado en {i_neg}")
+
     check("y se sustituye por un arco que se salta el gancho",
           "Agregar(contorno, Arco(\n                    cx, cy, rZunInt," in circ)
     check("hay cuenta del hueco que hay que saltarse",
