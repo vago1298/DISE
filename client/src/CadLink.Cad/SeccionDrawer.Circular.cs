@@ -191,13 +191,28 @@ public sealed partial class SeccionDrawer
             {
                 contorno.Remove(zunInt);
 
-                var medio = SemiAnguloDelGancho(rVar, dZun, rec, r);
+                // El hueco es ASIMÉTRICO, y ahí estaba el defecto anterior.
+                //
+                // El círculo interior es TANGENTE al doblez por dentro justo en el ángulo
+                // de la varilla —sale de que rPaso + rVar = rZunInt— y a partir de ahí el
+                // doblez se corre hacia UN SOLO lado, el de la cola, hasta hacerse
+                // tangente al círculo exterior. Así que solo por ese lado hay algo que
+                // tape la línea:
+                //
+                //   * antes del ángulo de la varilla, el círculo se ve entero;
+                //   * desde la varilla hasta donde la curva del doblez lo cruza, no;
+                //   * y pasada la curva, se ve otra vez.
+                //
+                // Antes quitaba un trozo SIMÉTRICO a los dos lados, así que borraba
+                // también la línea del lado donde no hay nada que la tape. Eso es lo que
+                // se veía mal.
+                var hueco = HuecoDelGancho(rVar, dZun, rec, r);
 
-                // El arco va del final del hueco a su principio, o sea la vuelta larga.
+                // El arco va del final del hueco a su principio: la vuelta larga.
                 Agregar(contorno, Arco(
                     cx, cy, rZunInt,
-                    anguloGancho.Value + medio,
-                    anguloGancho.Value - medio));
+                    anguloGancho.Value + hueco,
+                    anguloGancho.Value));
             }
         }
 
@@ -640,19 +655,39 @@ public sealed partial class SeccionDrawer
     /// de la sección, así que subtiende <c>atan(rOut / rPaso)</c>. Se le suman dos grados
     /// de margen para que el corte no quede justo pegado al acero.
     /// </remarks>
-    private static double SemiAnguloDelGancho(double rVar, double dZun, double rec, double r)
+    private static double HuecoDelGancho(double rVar, double dZun, double rec, double r)
     {
         // El MISMO radio de paso que usa PosicionesCirculares. Se recalcula en lugar de
-        // deducirlo de los radios del doblez: al intentarlo se contaba dZun dos veces, y
-        // aunque el hueco salía de más y tapaba igual, con otros calibres habría derivado.
+        // deducirlo de los radios del doblez: al intentarlo se contaba dZun dos veces.
         var rPaso = r - rec - dZun - rVar;
+        var rZunInt = r - rec - dZun;
+        var rOut = rVar + dZun;
 
-        if (rPaso <= 0)
+        if (rPaso <= 0 || rZunInt <= 0)
         {
-            return 0.35;
+            return 0.12;
         }
 
-        return Math.Atan2(rVar + dZun, rPaso) + (2 * Pi / 180);
+        // Intersección de DOS CIRCUNFERENCIAS: la interior del zuncho, centrada en la
+        // sección, y la exterior del doblez, centrada en la varilla. La distancia entre
+        // centros es rPaso.
+        //
+        // 'a' es lo que hay del centro de la sección al pie de la perpendicular que baja
+        // desde el cruce a la línea de centros, y 'h' esa perpendicular. El ángulo que se
+        // busca es el que forman las dos.
+        var a = ((rPaso * rPaso) - (rOut * rOut) + (rZunInt * rZunInt)) / (2 * rPaso);
+
+        var disc = (rZunInt * rZunInt) - (a * a);
+
+        if (disc <= 0)
+        {
+            // No se cruzan: el doblez no llega a tapar el círculo. Con las proporciones
+            // reales no pasa, pero una sección absurda no debe dejar el hueco sin definir.
+            return 0.12;
+        }
+
+        // Un grado de margen, para que el corte no quede pegado al acero del doblez.
+        return Math.Atan2(Math.Sqrt(disc), a) + (Pi / 180);
     }
 
     /// <returns>

@@ -3490,17 +3490,31 @@ def v19_circular_y_ui() -> None:
     check("y se sustituye por un arco que se salta el gancho",
           "Agregar(contorno, Arco(\n                    cx, cy, rZunInt," in circ)
     check("hay cuenta del hueco que hay que saltarse",
-          "private static double SemiAnguloDelGancho(" in circ)
+          "private static double HuecoDelGancho(" in circ)
 
-    m_sa = re.search(r"private static double SemiAnguloDelGancho\(.*?\n    \}", circ, re.S)
+    # El hueco es ASIMETRICO: el circulo interior es tangente al doblez justo en el
+    # angulo de la varilla, y el doblez se corre hacia UN SOLO lado. Quitar un trozo
+    # simetrico borraba tambien la linea del lado donde no hay nada que la tape.
+    check("el hueco arranca EN la varilla y no a los dos lados",
+          "anguloGancho.Value + hueco,\n                    anguloGancho.Value));" in circ)
+    check("y ya no se usa un semiangulo simetrico",
+          "SemiAnguloDelGancho" not in circ)
+
+    m_sa = re.search(r"private static double HuecoDelGancho\(.*?\n    \}", circ, re.S)
     if m_sa:
         c3 = m_sa.group(0)
         # El radio de paso se RECALCULA, no se deduce de los radios del doblez: al
         # intentarlo se contaba dZun dos veces y el hueco salia de mas.
         check("el hueco usa el mismo radio de paso que las varillas",
               "var rPaso = r - rec - dZun - rVar;" in c3)
+
+        # Se resuelve la interseccion de las dos circunferencias, no se estima con un
+        # arcotangente del radio del doblez: el cruce real cae bastante antes.
+        check("el hueco sale del cruce real de las dos circunferencias",
+              "(rZunInt * rZunInt)) / (2 * rPaso)" in c3
+              and "Math.Sqrt(disc)" in c3)
         check("y deja margen para que el corte no quede pegado al acero",
-              "(2 * Pi / 180)" in c3)
+              "(Pi / 180)" in c3)
 
     # El cuadro de notas es una capa sobre la vista previa: tapaba el dibujo.
     check("el cuadro de notas se oculta cuando no hay nada que decir",
