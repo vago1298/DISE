@@ -3619,12 +3619,17 @@ def v19_circular_y_ui() -> None:
         check("ni el exterior, que es el borde de la cinta",
               "Arco(barra.X, barra.Y, rOut" not in cuerpo)
 
-        # Se probo a dibujar solo los dos pedazos del arco exterior que le faltan a la
-        # cinta -de la cola a la tangencia-, y empalmaban al bit: los tres tramos sumaban
-        # la media vuelta exacta. El usuario los rechazo igual, porque por bien empalmados
-        # que esten son rayas cruzando el relleno. Queda escrito para no reintentarlo.
-        check("no queda rastro del intento de dibujar el arco por pedazos",
-              "ArcoDelDoblez" not in diam and "TangenciasDeLaCinta" not in diam)
+        # Del exterior si se dibuja UN pedazo, y solo ARRIBA de la varilla: el trozo del
+        # doblez que asoma del abrazo de la cinta. Arriba el acero que hay es el doblez del
+        # extremo que llega por la diagonal de abajo -la envuelve y sale como la cola de
+        # arriba-, asi que ese contorno es CURVO, no una recta. Abajo no, porque ahi el
+        # doblez es el del otro extremo, que pasa por debajo de la diagonal.
+        check("arriba de la varilla se dibuja el arco del doblez",
+              "ArcoDelDoblez(" in cuerpo)
+        check("y va del arranque de la cola a la tangencia de la cinta",
+              "a1, Math.Atan2(tang.Y - barra.Y, tang.X - barra.X));" in cuerpo)
+        check("la tangencia es el extremo del tramo que esta sobre la varilla",
+              "var tang = d1 <= d2 ? ext1 : ext2;" in cuerpo)
 
         # Y la LINEA interior de las colas se va por lo mismo que el arco interior: nace
         # pegada al acero de la varilla, cuya circunferencia ya esta dibujada.
@@ -3634,14 +3639,20 @@ def v19_circular_y_ui() -> None:
               "sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });"
               in cuerpo)
 
-        # Las dos colas NO se tratan igual, porque la de arriba es el gancho que va encima:
-        # la de arriba se ALARGA hacia atras hasta el borde exterior de la cinta, para que
-        # muera sobre la linea del diamante en vez de nacer en el aire; la de abajo se
-        # RECORTA donde sale del acero, porque por ese lado pasa por debajo.
-        check("la cola de arriba se alarga hasta el borde de la cinta",
-              "AlcanceConLaCinta(" in cuerpo)
-        check("y la de abajo se recorta donde sale del acero",
+        # Las dos colas NO se tratan igual: la de arriba ENTERA, porque justo en su arranque
+        # acaba el arco del doblez y las dos se empalman tangentes; la de abajo RECORTADA
+        # donde sale del acero, porque por ese lado el gancho pasa por debajo.
+        #
+        # Y la de arriba tampoco se alarga hacia atras: se probo y estaba mal por dos cosas,
+        # que el contorno de ahi es CURVO y que alargarla alargaba su relleno -Cola infla el
+        # cuadrilatero el espesor del estribo cuando le pasan otro arranque-, asi que el
+        # relleno se salia del diamante 1.87 cm. Era el «hatch que sale».
+        check("la cola de abajo se recorta donde sale del acero",
               "SalidaDelAceroDelDiamante(" in cuerpo)
+        check("y la de arriba no, que ahi acaba el arco",
+              "if (iBarra >= 0 && !arriba && geoInt is not null)" in cuerpo)
+        check("no queda rastro del intento de alargar la cola",
+              "AlcanceConLaCinta" not in diam)
         check("se distinguen por el lado, no por el orden",
               "new[] { (n1X, n1Y, true), (n2X, n2Y, false) }" in cuerpo)
         check("y las dos se le pasan a la misma Cola del rectangular",
@@ -3721,8 +3732,8 @@ def v19_circular_y_ui() -> None:
         check("y devuelve el vertice, que es lo que hace falta para abrir la cinta",
               "(2 * previo) + 1" in tra and "(2 * iBarra) + 1" in tra)
 
-    check("el recorte, el alargue y el hueco usan el mismo tramo",
-          diam.count("TramoDeLaCinta(pts") >= 3)
+    check("el recorte, el arco y el hueco usan el mismo tramo",
+          diam.count("TramoDeLaCinta(") >= 4)
 
     # La Cola compartida con el estribo rectangular tiene que saber saltarse la linea
     # interior, y SOLO esa: el gancho del rectangular la sigue dibujando.

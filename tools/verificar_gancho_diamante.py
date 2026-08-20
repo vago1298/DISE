@@ -577,6 +577,19 @@ def salida_del_acero(pts, centros, i_barra, n_, p, u, largo):
     return (p[0] + t * u[0], p[1] + t * u[1]), t
 
 
+def barrido(a_ini, a_fin):
+    """Port del barrido de ArcoDelDoblez: siempre antihorario, en [0, 2pi)."""
+    b = a_fin - a_ini
+
+    while b < 0:
+        b += 2 * math.pi
+
+    while b >= 2 * math.pi:
+        b -= 2 * math.pi
+
+    return b
+
+
 def tramo_de_la_cinta(pts, centros, i_barra, nn):
     """Port de TramoDeLaCinta. Devuelve (A, B, vertice de A)."""
     n = len(centros)
@@ -686,16 +699,15 @@ def lineas_del_gancho(centros, i_barra, centro, d_dia, gancho_cm, recortar=True)
         q_out = (p_out[0] + largo * u[0], p_out[1] + largo * u[1])
 
         arranque = p_out
-        sobre_el_relleno = False
+
+        # La de ARRIBA se dibuja entera desde su arranque, y su primer trozo queda sobre el
+        # relleno A PROPOSITO: ahi es donde acaba el arco del doblez, que es el contorno del
+        # gancho pasando por encima de la diagonal. Debajo de ella se abre la linea interior
+        # de la cinta, por eso.
+        sobre_el_relleno = arriba
 
         if recortar and arriba:
-            alc = alcance_con_la_cinta(pts_ext, centros, i_barra, nn, p_out, u,
-                                       2 * d_dia)
-
-            if alc is not None:
-                arranque, t, _ = alc
-                recortes[nombre] = t
-                sobre_el_relleno = True
+            pass
 
         elif recortar:
             sal = salida_del_acero(pts_int, centros, i_barra, nn, p_out, u, largo)
@@ -890,8 +902,8 @@ for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
     check(f"'{nombre}': ninguna linea del gancho queda dentro del acero sin querer",
           not peores, "; ".join(peores))
 
-    # Y la que va encima, va encima de verdad: si no cruzara el relleno, alargarla no
-    # tendria sentido y no habria que abrir nada debajo.
+    # La de arriba puede cruzar el relleno o no, segun lo empinada que llegue la diagonal,
+    # y las dos cosas estan bien: es el gancho que va encima. Se informa y no se exige.
     for etiqueta, p0, p1, encima in lineas:
         if not encima:
             continue
@@ -903,8 +915,8 @@ for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
                  p0[1] + k / MUESTRAS * (p1[1] - p0[1])),
                 centros, d_dia, MARGEN))
 
-        check(f"'{nombre}': {etiqueta} cruza el relleno, que es para lo que se alarga",
-              dentro > 0)
+        print(f"    {etiqueta} va encima del relleno en {dentro} de {MUESTRAS + 1} "
+              "muestras (va a proposito: es el gancho que pasa por arriba)")
 
     # ---- 4. Y sin tocar nada SI quedaban lineas metidas: el defecto era real ----
     sin_recortar, _, _, _, _ = lineas_del_gancho(
@@ -1124,33 +1136,160 @@ for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
 
     print(f"\n{nombre}")
 
-    # ---- 1. La linea de arriba se alarga hasta el borde exterior de la cinta ----
+    # ---- 1. Arriba de la varilla el contorno es CURVO: el arco del doblez ----
+    #
+    # Y no es una eleccion de dibujo, es el recorrido del acero. El extremo que llega por
+    # la diagonal de ABAJO envuelve la varilla 135 grados -de su tangencia, por la
+    # izquierda, hasta arriba- y sale como la cola de ARRIBA. Asi que el acero que hay
+    # encima de la varilla es ESE doblez. Se comprueba con la tangente.
     pts_ext = geometria_cinta(centros, d_dia)
     p_out = (barra[0] + r_out * n1[0], barra[1] + r_out * n1[1])
 
-    alc = alcance_con_la_cinta(pts_ext, centros, i_barra, n1, p_out, u, 2 * d_dia)
+    a1 = math.atan2(n1[1], n1[0])
 
-    check(f"'{nombre}': la linea de arriba se alarga hasta la cinta", alc is not None)
+    ext1, ext2, _ = tramo_de_la_cinta(pts_ext, centros, i_barra, n1)
+    tang = min((ext1, ext2), key=lambda q: math.hypot(q[0] - barra[0], q[1] - barra[1]))
+    a_tang = math.atan2(tang[1] - barra[1], tang[0] - barra[0])
 
-    if alc is not None:
-        punto, t, s = alc
+    barr = barrido(a1, a_tang)
 
-        print(f"    la linea de arriba se alarga {-t:.4f} cm hacia atras "
-              f"(tope {2 * d_dia:.2f} cm)")
+    print(f"    arco del doblez de {math.degrees(a1) % 360:.2f}° a "
+          f"{math.degrees(a_tang) % 360:.2f}°   barrido {math.degrees(barr):.2f}°")
 
-        check(f"'{nombre}': se alarga hacia ATRAS, no hacia delante", t < 0)
-        check(f"'{nombre}': y no mas del tope", -t <= 2 * d_dia)
+    check(f"'{nombre}': el arco pasa la guardia de media vuelta",
+          1e-9 < barr <= math.pi / 2 + 1e-12, f"{math.degrees(barr):.4f}°")
 
-        # El punto tiene que caer SOBRE el tramo recto del borde exterior, no cerca.
-        a, bb, _ = tramo_de_la_cinta(pts_ext, centros, i_barra, n1)
-        dx, dy = bb[0] - a[0], bb[1] - a[1]
-        ln = math.hypot(dx, dy)
-        fuera = abs((punto[0] - a[0]) * dy - (punto[1] - a[1]) * dx) / ln
+    # Arranca EN el arranque de la cola, y ademas TANGENTE: por eso el contorno se lee
+    # seguido y sin esquina. La tangente del arco en a1 es perpendicular al radio.
+    p_arco = (barra[0] + r_out * math.cos(a1), barra[1] + r_out * math.sin(a1))
 
-        check(f"'{nombre}': el punto cae sobre la linea del borde exterior",
-              fuera < 1e-12, f"a {fuera:.3e} cm de ella")
-        check(f"'{nombre}': y dentro del tramo, no en su prolongacion",
-              -1e-9 <= s <= 1 + 1e-9, f"s = {s:.6f}")
+    check(f"'{nombre}': el arco arranca donde arranca la cola",
+          math.hypot(p_arco[0] - p_out[0], p_arco[1] - p_out[1]) < 1e-12)
+
+    tg = (-math.sin(a1), math.cos(a1))
+
+    check(f"'{nombre}': y es TANGENTE a la cola, no la corta en esquina",
+          abs(abs(tg[0] * u[0] + tg[1] * u[1]) - 1) < 1e-12,
+          f"tangente {math.degrees(math.atan2(tg[1], tg[0])):.4f}°, "
+          f"cola {math.degrees(math.atan2(u[1], u[0])):.4f}°")
+
+    # Y acaba EN la tangencia de la cinta, donde se funde con el borde de la diagonal.
+    p_fin = (barra[0] + r_out * math.cos(a_tang), barra[1] + r_out * math.sin(a_tang))
+
+    check(f"'{nombre}': el arco acaba en la tangencia que dibuja la cinta",
+          math.hypot(p_fin[0] - tang[0], p_fin[1] - tang[1]) < 1e-12)
+
+    # La comprobacion de fondo: el acero que hay ahi es el doblez del extremo de abajo, y
+    # se demuestra con la tangente. En cada angulo del contacto, la tangente del arco
+    # tiene que ser la direccion de avance del acero, y al llegar a la cola tiene que ser
+    # la de la cola.
+    vecinos = {}
+    n = len(centros)
+    for j in ((i_barra - 1) % n, (i_barra + 1) % n):
+        d = unit(centros[j][0] - barra[0], centros[j][1] - barra[1])
+        vecinos["arriba" if (d[0] * n1[0] + d[1] * n1[1]) > 0 else "abajo"] = d
+
+    if "abajo" in vecinos:
+        # El acero viene DE la diagonal de abajo, o sea que avanza hacia la varilla: la
+        # direccion contraria a la que apunta al vecino.
+        avance = (-vecinos["abajo"][0], -vecinos["abajo"][1])
+        giro = grados_entre(avance, u)
+
+        print(f"    el acero llega por abajo a {math.degrees(math.atan2(avance[1], avance[0])) % 360:.2f}° "
+              f"y sale a {math.degrees(math.atan2(u[1], u[0])) % 360:.2f}°: dobla {giro:.2f}°")
+
+        # El doblez, de su tangencia a la cola.
+        e1, e2, _ = tramo_de_la_cinta(pts_ext, centros, i_barra, n2)
+        tg2 = min((e1, e2), key=lambda q: math.hypot(q[0] - barra[0], q[1] - barra[1]))
+        a_tang2 = math.atan2(tg2[1] - barra[1], tg2[0] - barra[0])
+
+        # El acero envuelve la varilla EN SENTIDO HORARIO -de 225 a 90 en la cuadrada-, asi
+        # que el barrido se mide de la cola a la tangencia, no al contrario. Medirlo del
+        # revés da la vuelta larga: 225 grados en vez de 135.
+        barr_total = barrido(a1, a_tang2)
+
+        print(f"    su doblez envuelve de {math.degrees(a_tang2) % 360:.2f}° a "
+              f"{math.degrees(a1) % 360:.2f}°: {math.degrees(barr_total):.2f}°")
+
+        # LA INVARIANTE: lo que el acero DOBLA es lo que ENVUELVE. Sale de que la tangente
+        # es perpendicular al radio, asi que girar la tangente 110 grados gira el radio 110.
+        # Es lo que demuestra que el arco dibujado es el doblez de verdad, y vale en
+        # cualquier seccion, no solo en la cuadrada.
+        check(f"'{nombre}': el acero envuelve la varilla lo mismo que dobla",
+              abs(math.degrees(barr_total) - giro) < 1e-9,
+              f"envuelve {math.degrees(barr_total):.6f}°, dobla {giro:.6f}°")
+
+        # Y el arco que se dibuja es el trozo de ese doblez que asoma de la cinta: lo que
+        # envuelve menos lo que la cinta ya abraza.
+        check(f"'{nombre}': el arco dibujado es lo que asoma del abrazo de la cinta",
+              abs(barr + barrido(a_tang, a_tang2) - barr_total) < 1e-9,
+              f"arco {math.degrees(barr):.4f}° + abrazo "
+              f"{math.degrees(barrido(a_tang, a_tang2)):.4f}° contra doblez "
+              f"{math.degrees(barr_total):.4f}°")
+
+        # 135 grados es el gancho de norma, y sale solo cuando el vertice es de 90, o sea en
+        # la seccion cuadrada. En una alta o achatada el diamante llega mas o menos
+        # empinado y el doblez es otro; el gancho sigue siendo el mismo dibujo.
+        if abs(giro - 135) < 1e-9:
+            print("    (vertice de 90°: el gancho sale de 135°, el de norma)")
+
+    # ---- 1b. El relleno de la cola NO se sale del acero ----
+    # Aqui estaba el «hatch que sale». Cola infla su cuadrilatero hacia atras el espesor
+    # del estribo cuando le pasan un arranque distinto del natural, y al alargar la cola
+    # hacia atras ese inflado se sumaba al alargue: el relleno se salia del diamante por
+    # arriba a la izquierda. Se comprueba con las dos versiones.
+    solape = 0.00001 * 100          # SolapeGancho * _f, en cm
+    espesor = r_out - r_in
+
+    def esquinas_del_relleno(atras):
+        """Las cuatro esquinas del cuadrilatero de relleno de la cola, como Cola."""
+        p_i = (barra[0] + r_in * n1[0], barra[1] + r_in * n1[1])
+        p_o = (barra[0] + r_out * n1[0], barra[1] + r_out * n1[1])
+        q_i = (p_i[0] + largo * u[0], p_i[1] + largo * u[1])
+        q_o = (p_o[0] + largo * u[0], p_o[1] + largo * u[1])
+
+        return [
+            (p_i[0] - u[0] * atras - n1[0] * solape, p_i[1] - u[1] * atras - n1[1] * solape),
+            (q_i[0] + u[0] * solape - n1[0] * solape, q_i[1] + u[1] * solape - n1[1] * solape),
+            (q_o[0] + u[0] * solape + n1[0] * solape, q_o[1] + u[1] * solape + n1[1] * solape),
+            (p_o[0] - u[0] * atras + n1[0] * solape, p_o[1] - u[1] * atras + n1[1] * solape),
+        ]
+
+    def cuanto_se_sale(esquinas):
+        """Cuanto se sale el relleno del acero de la cola, en cm.
+
+        No vale contar esquinas: el cuadrilatero va inflado A PROPOSITO unas micras hacia
+        fuera, para que no queden costuras blancas entre la cola y el doblez. Lo que hay que
+        medir es CUANTO se sale, porque diez micras no se ven y dos centimetros si.
+        """
+        peor = 0.0
+
+        for p in esquinas:
+            if (en_el_gancho(p, barra, n1, u, r_in, r_out, largo)
+                    or dentro_del_acero(p, centros, d_dia, 0.0)):
+                continue
+
+            # Distancia al rectangulo de la cola, en sus propias coordenadas.
+            t = (p[0] - barra[0]) * u[0] + (p[1] - barra[1]) * u[1]
+            cara = (p[0] - barra[0]) * n1[0] + (p[1] - barra[1]) * n1[1]
+
+            fuera_t = max(0.0, -t, t - largo)
+            fuera_c = max(0.0, r_in - cara, cara - r_out)
+
+            peor = max(peor, math.hypot(fuera_t, fuera_c))
+
+        return peor
+
+    ahora = cuanto_se_sale(esquinas_del_relleno(solape))
+    antes = cuanto_se_sale(esquinas_del_relleno(espesor + 0.9204))   # el alargue medido
+
+    print(f"    el relleno de la cola se sale {ahora:.5f} cm; alargando hacia atras se "
+          f"salia {antes:.5f} cm")
+
+    check(f"'{nombre}': el relleno de la cola no se sale de forma visible",
+          ahora <= 0.02, f"{ahora:.5f} cm")
+    check(f"'{nombre}': y alargando hacia atras SI se salia (era el hatch mal)",
+          antes > 0.2, f"solo {antes:.5f} cm")
 
     # ---- 2. El hueco de la linea interior, del ancho del brazo ----
     hue = hueco_de_la_cinta(centros, i_barra, n1, u, r_in, r_out, largo)
