@@ -660,8 +660,38 @@
                                  sola si el nombre la delata: quien escribe HSS6X6X1/4 esta
                                  capturando un OR, y dibujarlo como IR daria un perfil I con
                                  las medidas de un tubo. Ver FamiliaPerfil.DelNombre. -->
-                            <DataGridTextColumn Header="Perfil" Binding="{Binding Perfil, UpdateSourceTrigger=PropertyChanged}" Width="130"
-                                                CellStyle="{StaticResource CeldaIdent}" />
+                            <!-- Perfil: desplegable con los perfiles DE SU FAMILIA, y al
+                                 elegir uno se traen sus medidas del catalogo. Asi no hay
+                                 que teclear peralte, ancho y dos espesores por fila, que
+                                 son cuatro oportunidades de equivocarse y un espesor mal
+                                 escrito no se ve en el dibujo: sale un perfil creible con
+                                 la medida equivocada.
+
+                                 La lista sale de la FILA y no de la columna porque cada
+                                 fila puede ser de otra familia. Y es editable, para poder
+                                 capturar un perfil que no este en el catalogo. -->
+                            <DataGridTemplateColumn Header="Perfil" Width="150"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="Perfil">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Perfil}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True"
+                                                  IsDropDownOpen="True"
+                                                  BorderThickness="0"
+                                                  Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding PerfilesDeLaFamilia}"
+                                                  Text="{Binding Perfil, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Elige del catalogo y las medidas se llenan solas, o escribe un perfil que no este en la lista y captura sus medidas a mano." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Width="80"
                                                 CellStyle="{StaticResource CeldaIdent}" />
 

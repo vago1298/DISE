@@ -1,0 +1,45 @@
+# ============================================================================
+#  CATALOGO DE PERFILES DE ACERO DE CADLINK
+# ============================================================================
+#
+# Este archivo llena los desplegables de la pestaña «Secciones Acero»: al elegir
+# la familia, la celda «Perfil» ofrece los perfiles de esa familia, y al elegir uno
+# se traen sus medidas solas. Asi no hay que teclear peralte, ancho y espesores.
+#
+# SE PUEDE EDITAR CON EL BLOC DE NOTAS O CON EXCEL. No hay que recompilar nada:
+# se guarda, se vuelve a abrir CadLink y los perfiles nuevos ya estan en la lista.
+#
+# DONDE VA. En cualquiera de estos tres sitios, y se usa el primero que exista:
+#   1. junto a CadLink.exe
+#   2. en la carpeta desde la que se abre el programa
+#   3. en %LOCALAPPDATA%\CadLink\perfiles-acero.csv
+#
+# COMO SE ESCRIBE CADA RENGLON. Ocho campos separados por punto y coma:
+#
+#   familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio
+#
+#   familia   IR, OR, OC o CF
+#   nombre    el del catalogo, tal como quieras verlo en la tabla: W12X30
+#   peralte   en el OC es el DIAMETRO EXTERIOR
+#   ancho     patin en IR y CF, cara en OR. El OC lo deja vacio
+#   e_alma    espesor del alma en el IR; espesor de PARED en OR, OC y CF
+#   e_patin   solo el IR
+#   labio     solo el CF
+#   radio     solo el CF, el radio de doblez exterior
+#
+# TODAS LAS MEDIDAS EN CENTIMETROS. El decimal puede ser punto o coma.
+# Los campos que no apliquen se dejan vacios.
+# Las lineas que empiezan con # son comentarios y se ignoran.
+#
+# ---------------------------------------------------------------------------
+# OJO CON ESTOS CUATRO. Son una SEMILLA para que los desplegables no arranquen
+# vacios, y sus medidas hay que cotejarlas contra la tabla de perfiles del
+# proyecto antes de fiarse. Un peralte equivocado dibuja un perfil creible con
+# la medida mal, y eso no se ve en el plano. Sustituyelos por tu lista.
+# ---------------------------------------------------------------------------
+#
+# familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio
+IR;W12X30;31.3;16.5;0.66;1.11;;
+OR;HSS6X6X1/4;15.24;15.24;0.635;;;
+OC;PIPE 4 STD;11.43;;0.602;;;
+CF;CF 6X2 #14;15.0;5.0;0.19;;1.5;0.4

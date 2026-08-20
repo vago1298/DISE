@@ -170,9 +170,36 @@ public static class AcadConnection
         Retry<object?>(() => { action(); return null; }, attempts, delayMs);
     }
 
-    private static bool IsBusy(COMException ex)
+    private static bool IsBusy(COMException ex) => EstaOcupado(ex);
+
+    /// <summary>
+    /// Si el error es de los recuperables: <b>AutoCAD estaba ocupado</b>, no que la
+    /// llamada estuviera mal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está expuesto porque <see cref="Retry{T}"/> no sirve en un caso: cuando una
+    /// llamada se prueba de <b>varias formas en cascada</b>, como los arreglos de
+    /// entidades de <c>AcadArreglos</c>. Ahí, tragarse el error y pasar a la forma
+    /// siguiente es exactamente lo que NO hay que hacer si el error fue «ocupado»:
+    /// se abandona la única vía que esa versión de AutoCAD acepta y las siguientes
+    /// fallan por otro motivo, así que el diagnóstico acaba señalando al arreglo
+    /// cuando el problema era que AutoCAD estaba a media faena.
+    /// </para>
+    /// <para>
+    /// Fue el error real que vio el usuario al dibujar cuatro secciones:
+    /// <c>MoveToTop [AcadEntity tipado] -&gt; RPC_E_CALL_REJECTED</c> y a
+    /// continuación las otras dos vías con <c>Invalid object array</c>.
+    /// </para>
+    /// </remarks>
+    public static bool EstaOcupado(Exception ex)
     {
-        var hr = (uint)ex.HResult;
+        if (ex is not COMException com)
+        {
+            return false;
+        }
+
+        var hr = (uint)com.HResult;
         return hr is RpcECallRejected or RpcEServerCallRetryLater;
     }
 }

@@ -2931,7 +2931,7 @@ public sealed class AlzadoDrawer
                 }
 
                 AcadArreglos.Llamar("MoveToTop del alzado", objetos,
-                    arr => { tabla.MoveToTop(arr); }, Fallo, Nota);
+                    arr => { tabla.MoveToTop(arr); }, FalloDeOrden, Nota);
             });
         }
         catch (Exception ex)
@@ -2964,7 +2964,7 @@ public sealed class AlzadoDrawer
                 }
 
                 AcadArreglos.Llamar("MoveToBottom del alzado", objetos,
-                    arr => { tabla.MoveToBottom(arr); }, Fallo, Nota);
+                    arr => { tabla.MoveToBottom(arr); }, FalloDeOrden, Nota);
             });
         }
         catch (Exception ex)
@@ -3048,6 +3048,20 @@ public sealed class AlzadoDrawer
             _log.Add(linea);
         }
     }
+
+    /// <summary>
+    /// Lo que falle al <b>reordenar</b> va como nota, no como fallo.
+    /// </summary>
+    /// <remarks>
+    /// El orden de dibujo es estético: cambia qué queda encima de qué, no qué hay en el
+    /// plano. Como fallo hacía que el resumen avisara de que «el dibujo puede estar
+    /// incompleto» cuando estaba entero, y eso enseña al usuario a desconfiar de un aviso
+    /// que casi siempre es falsa alarma.
+    /// </remarks>
+    private void FalloDeOrden(string operacion, Exception ex) =>
+        Nota(
+            $"{operacion}: no se pudo reordenar ({ex.GetType().Name}). El alzado está " +
+            "completo; lo único que puede pasar es que algo quede tapado por encima.");
 
     private void Nota(string texto)
     {

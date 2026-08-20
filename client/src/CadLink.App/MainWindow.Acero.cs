@@ -114,6 +114,12 @@ public partial class MainWindow
             texto += $"   ·   {incompletos} con datos incompletos (ver la columna «Falta»)";
         }
 
+        // De dónde salió el catálogo, porque es la diferencia entre elegir el perfil de una
+        // lista y teclear sus medidas: si dice «semilla», el archivo no se encontró y la
+        // lista solo trae cuatro perfiles.
+        texto += $"   ·   catálogo: {CatalogoPerfiles.Todos.Count} perfil(es) de " +
+                 CatalogoPerfiles.Origen;
+
         TotalesAceroText.Text = texto;
     }
 
@@ -235,33 +241,50 @@ public partial class MainWindow
 
             dibujante.AsegurarCapasAcero();
 
-            var x = dibujante.PosicionInicialX();
+            // El acero se dibuja A LA IZQUIERDA DEL ORIGEN, empezando en x = -0.6 y
+            // creciendo hacia la izquierda, igual que las cuatro macros:
+            //
+            //     xDerechaActual = -0.6
+            //     xIzquierdaActual = xDerechaActual - anchoTotal
+            //     xDerechaActual = xIzquierdaActual - sepIzq
+            //
+            // Y esto NO es un capricho de acomodo: el concreto crece hacia la derecha
+            // desde donde acabe lo que ya haya en el plano, así que dejando el acero en el
+            // semiplano negativo las dos hojas no se pisan nunca, aunque se dibujen en el
+            // mismo dwg y en cualquier orden.
+            var xDerecha = OrigenAceroCm * escala;
+
             var entidades = 0;
             var dibujados = 0;
 
             foreach (var fila in _datos.SeccionesAcero)
             {
                 var perfil = AFormatoAceroCad(fila);
+
+                var ancho = perfil.AnchoDibujoCm * escala;
+                var xIzquierda = xDerecha - ancho;
+
                 var saltadasAntes = dibujante.Saltadas.Count;
 
-                var n = dibujante.DibujarAcero(perfil, x, 0);
+                var n = dibujante.DibujarAcero(perfil, xIzquierda, 0);
 
-                if (dibujante.Saltadas.Count > saltadasAntes)
+                if (dibujante.Saltadas.Count == saltadasAntes)
                 {
-                    continue;
+                    entidades += n;
+                    dibujados++;
                 }
 
-                entidades += n;
-                dibujados++;
-
-                // Se avanza el ancho del perfil más un aire, y solo lo avanzan los que se
-                // dibujaron de nuevo: los que volvieron a su sitio no ocupan lugar nuevo.
-                // Es la misma regla del concreto, con el aire de las macros de acero, que
-                // separan entre 45 y 65 cm según la familia.
-                if (!dibujante.UltimaFueASuSitio)
-                {
-                    x += (perfil.AnchoDibujoCm + AireEntrePerfilesCm) * escala;
-                }
+                // El hueco se avanza SIEMPRE, incluso para los que se saltaron.
+                //
+                // Aquí el acomodo es distinto del concreto y por un motivo: el concreto
+                // arranca después de lo que ya esté dibujado, así que lo nuevo nunca cae
+                // encima. El acero arranca en un punto FIJO, el -0.6 de las macros, y si
+                // los saltados no avanzaran el hueco, al volver a dibujar una hoja con dos
+                // perfiles ya hechos los otros dos se dibujarían justo encima de ellos.
+                //
+                // Avanzando siempre, cada perfil cae en el MISMO sitio pase lo que pase:
+                // la fila queda igual se dibuje entera o se rehaga solo una.
+                xDerecha = xIzquierda - (AireEntrePerfilesCm * escala);
             }
 
             dibujante.RotulosAlFrente();
@@ -348,4 +371,14 @@ public partial class MainWindow
     /// la misma fila y un hueco distinto por familia se vería como un acomodo descuidado.
     /// </remarks>
     private const double AireEntrePerfilesCm = 55;
+
+    /// <summary>
+    /// Dónde empieza la fila de perfiles de acero: el borde <b>derecho</b> del primero.
+    /// </summary>
+    /// <remarks>
+    /// Es el <c>xDerechaActual = -0.6</c> de las cuatro macros, dicho en centímetros porque
+    /// es la unidad en la que se captura todo en esta interfaz: −60 cm por la escala de
+    /// dibujo da exactamente el −0.6 del original.
+    /// </remarks>
+    private const double OrigenAceroCm = -60;
 }

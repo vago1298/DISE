@@ -1064,9 +1064,13 @@ def v12_fidelidad() -> None:
         and "MoveToBottom(objetos.ToArray()" not in drawer
         and "MoveToTop(objetos.ToArray()" not in drawer,
     )
-    n_arr = len(re.findall(r"ConArregloDeEntidades\(", drawer))
+    # Se cuentan LOS DOS envoltorios. Son el mismo mecanismo con distinto reporte:
+    # ConArregloParaOrdenar es el de las llamadas de ORDEN DE DIBUJO, que al fallar
+    # dejan nota en lugar de fallo porque son esteticas. Contando solo el primero, el
+    # dia que una llamada paso al otro envoltorio esta comprobacion se cayo sola.
+    n_arr = len(re.findall(r"ConArreglo(?:DeEntidades|ParaOrdenar)\(", drawer))
     check(
-        "las 6 llamadas con arreglo pasan por el envoltorio",
+        "las 6 llamadas con arreglo pasan por alguno de los dos envoltorios",
         n_arr >= 6,
         f"solo {n_arr}",
     )
@@ -5385,6 +5389,159 @@ def v21_separacion_y_acero() -> None:
     check("hay comprobacion numerica de los cuatro perfiles",
           "CF: la canal formada en frio"
           in leer(ruta("tools/verificar_perfiles_acero.py")))
+
+    # ------------------------------------------------------------------
+    # El acero se dibuja A LA IZQUIERDA del origen, desde -0.6
+    # ------------------------------------------------------------------
+    # Es el xDerechaActual = -0.6 de las macros. Y no es solo acomodo: el concreto
+    # crece hacia la derecha desde donde acabe lo que ya haya, asi que con el acero
+    # en el semiplano negativo las dos hojas no se pisan nunca.
+    check("el acero empieza en -60 cm, el -0.6 de las macros",
+          "OrigenAceroCm = -60" in acero_cb)
+    check("y crece hacia la izquierda",
+          "var xIzquierda = xDerecha - ancho;" in acero_cb)
+    check("ya no arranca donde acabe el concreto",
+          "dibujante.PosicionInicialX()" not in acero_cb)
+
+    # El hueco se avanza tambien para los saltados: si no, al redibujar una hoja con
+    # dos perfiles ya hechos, los otros dos caerian justo encima de ellos.
+    m_export = re.search(
+        r"private void OnExportAcero\(.*?\n    \}", acero_cb, re.S)
+
+    check("se puede leer OnExportAcero", m_export is not None)
+    if m_export:
+        cuerpo_exp = m_export.group(0)
+
+        check("el hueco se avanza siempre, tambien para los saltados",
+              "xDerecha = xIzquierda - (AireEntrePerfilesCm * escala);" in cuerpo_exp
+              and cuerpo_exp.count("xDerecha = xIzquierda") == 1)
+        check("y el saltado solo se descuenta del conteo",
+              "if (dibujante.Saltadas.Count == saltadasAntes)" in cuerpo_exp)
+
+    # ------------------------------------------------------------------
+    # El catalogo de perfiles: las medidas NO se teclean
+    # ------------------------------------------------------------------
+    catalogo = leer(ruta("client/src/CadLink.App/Models/CatalogoPerfiles.cs"))
+    csv = leer(ruta("client/src/CadLink.App/perfiles-acero.csv"))
+
+    check("existe el catalogo de perfiles",
+          "public static class CatalogoPerfiles" in catalogo)
+    check("es un archivo de datos, no una tabla dentro del programa",
+          'public const string Archivo = "perfiles-acero.csv";' in catalogo)
+    check("y se busca en tres sitios",
+          "AppContext.BaseDirectory" in catalogo
+          and "Directory.GetCurrentDirectory()" in catalogo
+          and "LocalApplicationData" in catalogo)
+    check("si no aparece, queda una semilla y el programa abre igual",
+          "Semilla.ToList()" in catalogo)
+    check("y se dice de donde salio el catalogo",
+          "public static string Origen" in catalogo
+          and "CatalogoPerfiles.Origen" in acero_cb)
+
+    # El lector tiene que tragarse lo que salga de un Excel.
+    check("el lector acepta punto y coma o coma de separador",
+          "linea.Contains(';') ? ';' : ','" in catalogo)
+    check("y punto o coma de decimal",
+          "Replace(',', '.')" in catalogo)
+    check("se salta comentarios y lineas en blanco",
+          "linea.StartsWith('#')" in catalogo)
+    check("una cabecera exportada se salta sola",
+          "Numero(campos, 2) <= 0" in catalogo)
+    check("y una familia vacia se deduce del nombre",
+          "FamiliaPerfil.DelNombre(nombre)" in catalogo)
+
+    # La lista del desplegable es de la FILA, porque cada fila puede ser de otra
+    # familia. Una lista por columna solo podria ofrecerlas todas mezcladas.
+    check("cada fila ofrece los perfiles de SU familia",
+          "public string[] PerfilesDeLaFamilia" in perfil_row)
+    check("y la celda de perfil se enlaza a esa lista",
+          'ItemsSource="{Binding PerfilesDeLaFamilia}"' in xaml)
+    check("al cambiar de familia se refresca la lista",
+          "Raise(nameof(PerfilesDeLaFamilia));" in perfil_row)
+
+    # Y al elegir un perfil del catalogo se traen sus medidas.
+    check("elegir un perfil trae sus medidas",
+          "private void TraerDelCatalogo()" in perfil_row
+          and "TraerDelCatalogo();" in perfil_row)
+    check("se avisa de las seis medidas juntas, no una por una",
+          "Raise(nameof(PeralteCm));" in perfil_row
+          and "Raise(nameof(RadioCm));" in perfil_row)
+    check("un perfil que no esta en el catalogo no borra lo capturado",
+          "if (c is null)" in perfil_row)
+
+    # El CSV que se entrega tiene que explicarse solo y advertir de la semilla.
+    check("el csv explica como se escribe cada renglon",
+          "familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio" in csv)
+    check("dice que las medidas van en centimetros",
+          "TODAS LAS MEDIDAS EN CENTIMETROS" in csv)
+    check("y advierte de que la semilla hay que cotejarla",
+          "SEMILLA" in csv.upper() and "cotejarlas" in csv)
+    check("el csv se copia junto al ejecutable",
+          "perfiles-acero.csv" in leer(ruta("client/src/CadLink.App/CadLink.App.csproj")))
+
+    # Y la herramienta que convierte la hoja de perfiles del usuario en ese CSV. Va
+    # como script aparte y no dentro del programa a proposito: el catalogo se escribe
+    # una vez y se lee mil, asi que no hay por que arrastrar un lector de xlsx en el
+    # ejecutable para algo que se hace el dia que cambia la lista.
+    conv = leer(ruta("tools/catalogo_desde_excel.py"))
+
+    check("hay herramienta para convertir la hoja de Excel",
+          "def filas_de_xlsx(ruta)" in conv)
+    check("lee el xlsx sin bibliotecas de fuera",
+          "import zipfile" in conv and "openpyxl" not in conv)
+    check("encuentra los encabezados aunque haya titulos arriba",
+          "mapear_encabezados(fila)" in conv)
+    check("reconoce los nombres de columna de los catalogos",
+          '"tw"' in conv and '"bf"' in conv and '"tf"' in conv)
+    check("y si la hoja viene en milimetros avisa, no convierte solo",
+          "--mm" in conv and "convertir por si mismo lo que PARECE" in conv)
+
+    check("hay comprobacion numerica del catalogo y del acomodo",
+          "El acomodo del acero"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+    check("y la vuelta completa Excel a catalogo esta probada",
+          "La vuelta completa: Excel -> CSV -> catalogo"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+
+    # ------------------------------------------------------------------
+    # El fallo que vio el usuario: MoveToTop abandonaba la via buena
+    # ------------------------------------------------------------------
+    # AutoCAD rechazo la llamada por estar ocupado (RPC_E_CALL_REJECTED) y la cascada
+    # paso a las otras dos vias, que en AutoCAD 2026 fallan siempre por el tipo del
+    # arreglo. El usuario veia tres fallos y el diagnostico culpaba al arreglo.
+    arreglos = leer(ruta("client/src/CadLink.Cad/AcadArreglos.cs"))
+    conexion = leer(ruta("client/src/CadLink.Cad/AcadConnection.cs"))
+
+    check("se puede saber si AutoCAD estaba ocupado",
+          "public static bool EstaOcupado(Exception ex)" in conexion)
+    check("los arreglos reintentan LA MISMA via cuando esta ocupado",
+          "AcadConnection.EstaOcupado(ex)" in arreglos
+          and "intento < IntentosPorOcupado" in arreglos)
+    check("y solo pasan a la siguiente via si el error es otro",
+          "return Surtio(via);" in arreglos)
+    check("con la misma paciencia que el resto de las llamadas",
+          "IntentosPorOcupado = 12" in arreglos and "EsperaMs = 250" in arreglos)
+
+    # Y el orden de dibujo, que es estetico, ya no se anuncia como que el dibujo
+    # puede estar incompleto.
+    seccion = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+    alzado = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
+
+    check("el reordenado de la seccion se reporta como nota",
+          "private bool ConArregloParaOrdenar(" in seccion
+          and 'ConArregloParaOrdenar("MoveToTop", objetos,' in seccion
+          and 'ConArregloParaOrdenar("MoveToBottom", objetos,' in seccion)
+    check("no queda ningun MoveTo reportado como fallo en la seccion",
+          'ConArregloDeEntidades("MoveTo' not in seccion)
+    check("y el del alzado tambien va como nota",
+          "private void FalloDeOrden(" in alzado
+          and "FalloDeOrden, Nota);" in alzado)
+    # El texto va partido en dos renglones de codigo, asi que se busca por trozos y no
+    # por la frase entera: buscarla completa fallaba por el salto de linea del fuente,
+    # que es justo el tipo de comprobacion fragil que no hay que escribir.
+    check("la nota dice que el dibujo esta completo",
+          "no se pudo reordenar" in seccion and "El dibujo está " in seccion
+          and "no se pudo reordenar" in alzado and "El alzado está " in alzado)
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -66,55 +66,79 @@ internal static class AcadArreglos
             return true;
         }
 
-        // 1) Arreglo TIPADO con AcadEntity: SAFEARRAY de VT_DISPATCH
-        var tipado = AcadInterop.ArregloTipado(entidades);
-        if (tipado is not null)
+        // Cada vía se intenta VARIAS VECES si el error es «AutoCAD ocupado».
+        //
+        // Sin esto, un rechazo pasajero hacía abandonar la vía buena y pasar a las
+        // siguientes, que en AutoCAD 2026 fallan siempre por el tipo del arreglo. El
+        // usuario veía tres fallos seguidos —el primero RPC_E_CALL_REJECTED y los otros
+        // dos «Invalid object array»— y el diagnóstico apuntaba al arreglo cuando el
+        // problema era que AutoCAD estaba a media faena.
+        //
+        // Devuelve true si la llamada pasó -o si ya había surtido efecto-, y false si hay
+        // que probar la vía siguiente.
+        bool Intentar(Func<object> construir, string via, string exito)
         {
-            try
+            for (var intento = 1; intento <= IntentosPorOcupado; intento++)
             {
-                llamada(tipado);
-                nota("Arreglos de entidades: se usa el tipo AcadEntity de la interop.");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                fallo(operacion + " [AcadEntity tipado]", ex);
-
-                if (Surtio("el arreglo tipado"))
+                try
                 {
+                    llamada(construir());
+                    nota(exito);
                     return true;
                 }
+                catch (Exception ex) when (AcadConnection.EstaOcupado(ex)
+                                          && intento < IntentosPorOcupado)
+                {
+                    // Ocupado: se espera y se reintenta LA MISMA vía. No se registra
+                    // como fallo, porque no lo es todavía.
+                    Thread.Sleep(EsperaMs);
+                }
+                catch (Exception ex)
+                {
+                    fallo($"{operacion} [{via}]", ex);
+                    return Surtio(via);
+                }
             }
+
+            return false;
+        }
+
+        // 1) Arreglo TIPADO con AcadEntity: SAFEARRAY de VT_DISPATCH
+        var tipado = AcadInterop.ArregloTipado(entidades);
+
+        if (tipado is not null
+            && Intentar(
+                () => tipado,
+                "AcadEntity tipado",
+                "Arreglos de entidades: se usa el tipo AcadEntity de la interop."))
+        {
+            return true;
         }
 
         // 2) VT_DISPATCH elemento a elemento
-        try
+        if (Intentar(
+                () => entidades.Select(e => (object)new DispatchWrapper(e)).ToArray(),
+                "DispatchWrapper",
+                operacion + ": funcionó con DispatchWrapper."))
         {
-            llamada(entidades.Select(e => (object)new DispatchWrapper(e)).ToArray());
-            nota(operacion + ": funcionó con DispatchWrapper.");
             return true;
-        }
-        catch (Exception ex)
-        {
-            fallo(operacion + " [DispatchWrapper]", ex);
-
-            if (Surtio("DispatchWrapper"))
-            {
-                return true;
-            }
         }
 
         // 3) El arreglo tal cual
-        try
-        {
-            llamada(entidades.ToArray());
-            nota(operacion + ": funcionó pasando el arreglo sin envolver.");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            fallo(operacion + " [arreglo directo]", ex);
-            return false;
-        }
+        return Intentar(
+            () => entidades.ToArray(),
+            "arreglo directo",
+            operacion + ": funcionó pasando el arreglo sin envolver.");
     }
+
+    /// <summary>Cuántas veces se reintenta una vía cuando AutoCAD está ocupado.</summary>
+    /// <remarks>
+    /// Los mismos doce intentos cada 250 ms que usa <see cref="AcadConnection.Retry{T}"/>:
+    /// tres segundos de paciencia, que es lo que tarda AutoCAD en soltar un comando a
+    /// medias o en acabar de regenerar un dibujo grande.
+    /// </remarks>
+    private const int IntentosPorOcupado = 12;
+
+    /// <summary>Espera entre reintentos, en milisegundos.</summary>
+    private const int EsperaMs = 250;
 }

@@ -195,8 +195,23 @@ public sealed class PerfilAceroRow : Row
             Set(ref _familia, (value ?? string.Empty).Trim().ToUpperInvariant());
             Raise(nameof(PerfilRotulo));
             Raise(nameof(FaltanDatos));
+
+            // Al cambiar de familia cambia la lista de perfiles que se ofrece, que es lo
+            // que hace que no haya que teclear las medidas.
+            Raise(nameof(PerfilesDeLaFamilia));
         }
     }
+
+    /// <summary>
+    /// Los perfiles del catálogo de <b>esta</b> familia, para el desplegable de la celda.
+    /// </summary>
+    /// <remarks>
+    /// Es una propiedad de la FILA y no una lista de la columna porque cada fila puede ser
+    /// de una familia distinta: la lista de la celda depende de lo que diga su propio
+    /// renglón. Una lista por columna solo podría ofrecer todos los perfiles de todas las
+    /// familias mezclados, que es justo lo que hace elegir mal.
+    /// </remarks>
+    public string[] PerfilesDeLaFamilia => CatalogoPerfiles.NombresDe(_familia);
 
     /// <summary>
     /// Nombre de catálogo del perfil, tal como se captura.
@@ -221,7 +236,59 @@ public sealed class PerfilAceroRow : Row
             }
 
             Raise(nameof(PerfilRotulo));
+
+            // Y si el perfil está en el catálogo, sus medidas se traen solas.
+            TraerDelCatalogo();
         }
+    }
+
+    /// <summary>
+    /// Si el perfil está en el catálogo, copia sus medidas a la fila.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que evita el error de captura: elegir <c>W12X30</c> de la lista trae su
+    /// peralte, su ancho y sus dos espesores, en lugar de teclear cuatro números que nadie
+    /// va a revisar.
+    /// </para>
+    /// <para>
+    /// <b>Solo escribe lo que la familia usa.</b> Al traer un OC no se toca el ancho ni el
+    /// espesor de patín, porque un tubo redondo no los tiene y dejar ahí los números del
+    /// perfil anterior confundiría; se ponen en cero, que es como la columna «Falta» sabe
+    /// que no aplican.
+    /// </para>
+    /// <para>
+    /// Y si el perfil <b>no</b> está en el catálogo no se borra nada: quien escribe un
+    /// perfil a mano es porque va a capturar sus medidas a mano, y limpiárselas seria
+    /// pelearse con él.
+    /// </para>
+    /// </remarks>
+    private void TraerDelCatalogo()
+    {
+        var c = CatalogoPerfiles.Buscar(_familia, _perfil);
+
+        if (c is null)
+        {
+            return;
+        }
+
+        _peralteCm = c.PeralteCm;
+        _anchoCm = c.AnchoCm;
+        _espesorAlmaCm = c.EspesorAlmaCm;
+        _espesorPatinCm = c.EspesorPatinCm;
+        _labioCm = c.LabioCm;
+        _radioCm = c.RadioCm;
+
+        // Se avisa de las seis a la vez, con los campos ya puestos: si se usaran las
+        // propiedades una por una, cada asignación dispararía su propio aviso y la columna
+        // «Falta» se calcularía seis veces con la fila a medio llenar.
+        Raise(nameof(PeralteCm));
+        Raise(nameof(AnchoCm));
+        Raise(nameof(EspesorAlmaCm));
+        Raise(nameof(EspesorPatinCm));
+        Raise(nameof(LabioCm));
+        Raise(nameof(RadioCm));
+        Raise(nameof(FaltanDatos));
     }
 
     /// <summary>Identificador de la sección. Es el nombre del bloque en AutoCAD.</summary>

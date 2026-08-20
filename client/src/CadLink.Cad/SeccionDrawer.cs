@@ -367,6 +367,49 @@ public sealed partial class SeccionDrawer
         return AcadArreglos.Llamar(operacion, entidades, llamada, Fallo, Nota);
     }
 
+    /// <summary>
+    /// Igual, pero para el <b>orden de dibujo</b>: lo que falle va como NOTA, no como
+    /// fallo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El orden de dibujo es estético: cambia qué queda encima de qué, no qué hay en el
+    /// plano. Reportarlo como fallo hacía que el resumen avisara de que «el dibujo puede
+    /// estar incompleto» cuando estaba entero, y eso es peor que no avisar: enseña al
+    /// usuario a desconfiar de un mensaje que casi siempre es falsa alarma, y el día que
+    /// falte algo de verdad no lo va a creer.
+    /// </para>
+    /// <para>
+    /// La nota sí dice qué se perdió, porque tiene consecuencia visible: sin reordenar, el
+    /// rayado puede tapar una varilla o el rótulo quedar debajo del acero.
+    /// </para>
+    /// </remarks>
+    private bool ConArregloParaOrdenar(
+        string operacion, IReadOnlyList<object> entidades, Action<object> llamada)
+    {
+        var reportado = false;
+
+        var ok = AcadArreglos.Llamar(
+            operacion, entidades, llamada,
+            (op, ex) =>
+            {
+                if (reportado)
+                {
+                    return;
+                }
+
+                reportado = true;
+
+                Nota(
+                    $"{op}: no se pudo reordenar ({ex.GetType().Name}). El dibujo está " +
+                    "completo; lo único que puede pasar es que algo quede tapado por " +
+                    "encima, como el rayado sobre una varilla.");
+            },
+            Nota);
+
+        return ok;
+    }
+
 
     /// <summary>Registra un fallo tolerado, sin repetir el mismo mensaje.</summary>
     private void Fallo(string operacion, Exception ex)
@@ -1490,7 +1533,7 @@ public sealed partial class SeccionDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                ConArregloDeEntidades("MoveToTop", objetos,
+                ConArregloParaOrdenar("MoveToTop", objetos,
                     arr => { tabla.MoveToTop(arr); });
             });
         }
@@ -1566,7 +1609,7 @@ public sealed partial class SeccionDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                ConArregloDeEntidades("MoveToBottom", objetos,
+                ConArregloParaOrdenar("MoveToBottom", objetos,
                     arr => { tabla.MoveToBottom(arr); });
             });
         }
@@ -2801,7 +2844,7 @@ public sealed partial class SeccionDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                ConArregloDeEntidades(
+                ConArregloParaOrdenar(
                     alFondo ? "MoveToBottom en el bloque" : "MoveToTop en el bloque",
                     objetos,
                     arr =>
