@@ -3538,8 +3538,13 @@ def v19_circular_y_ui() -> None:
         check("el hueco sale del cruce real de las dos circunferencias",
               "(rZunInt * rZunInt)) / (2 * rPaso)" in c3
               and "Math.Sqrt(disc)" in c3)
-        check("y deja margen para que el corte no quede pegado al acero",
-              "(Pi / 180)" in c3)
+        # SIN margen: las dos curvas son el mismo acero —el zuncho que entra en el
+        # doblez— asi que tienen que TOCARSE. El grado de margen que hubo aqui son 3.5 mm
+        # al radio del zuncho, y lo que se veia es que la linea no llegaba al gancho.
+        check("el arco arranca EN el cruce, sin margen, para que toque la curva",
+              "return Math.Atan2(Math.Sqrt(disc), a);" in c3)
+        check("y ya no queda el grado de margen",
+              "+ (Pi / 180)" not in c3)
 
     # El cuadro de notas es una capa sobre la vista previa: tapaba el dibujo.
     check("el cuadro de notas se oculta cuando no hay nada que decir",

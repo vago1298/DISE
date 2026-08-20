@@ -709,8 +709,15 @@ public sealed partial class SeccionDrawer
             return 0.12;
         }
 
-        // Un grado de margen, para que el corte no quede pegado al acero del doblez.
-        return Math.Atan2(Math.Sqrt(disc), a) + (Pi / 180);
+        // SIN MARGEN: el arco tiene que arrancar EXACTAMENTE en el cruce, o sea tocando la
+        // curva del doblez.
+        //
+        // Aquí había un grado de margen «para que el corte no quede pegado al acero», y era
+        // un error de criterio: al radio del zuncho ese grado son 3.5 mm de hueco entre la
+        // curva del gancho y el arranque de la línea, y lo que se ve es que la línea no
+        // llega. Aquí no hay nada de lo que separarse —las dos curvas son el mismo acero,
+        // el zuncho que entra en el doblez— así que tienen que tocarse.
+        return Math.Atan2(Math.Sqrt(disc), a);
     }
 
     /// <returns>
