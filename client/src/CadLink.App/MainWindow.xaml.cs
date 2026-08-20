@@ -327,6 +327,13 @@ public partial class MainWindow : Window
     {
         var puedeDibujar = _license.HasFeature("export-dxf");
         ExportButton.IsEnabled = puedeDibujar;
+        AlzadosButton.IsEnabled = puedeDibujar;
+
+        // La planta se dibuja con el MISMO permiso que las secciones y los alzados:
+        // es generar dibujo. Dejarla habilitada en la version de prueba seria una
+        // puerta abierta al modulo que se cobra.
+        PlantaCadButton.IsEnabled = puedeDibujar;
+
         ExportHintText.Text = puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
             : "La generación de dibujos no está incluida en la versión de prueba.";
@@ -442,6 +449,93 @@ public partial class MainWindow : Window
         _datos = new DatosProyecto();
         Enlazar();
         StatusText.Text = "Datos borrados.";
+    }
+
+    // ======================================================================
+    // Barra de arriba: nuevo, salir, acerca de
+    // ======================================================================
+
+    /// <summary>
+    /// Empieza un trabajo en blanco: secciones, juego de planos y solapa.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nuevo no es lo mismo que «Limpiar todo».</b> Limpiar borra la tabla de
+    /// secciones y deja el resto como estaba; Nuevo deja la ventana como recién
+    /// abierta, incluido el juego de planos, la solapa y —esto es lo importante— la
+    /// ruta del archivo. Si no se olvidara la ruta, el primer Ctrl+G del trabajo
+    /// nuevo sobreescribiría en silencio el .clk anterior.
+    /// </remarks>
+    private void OnNuevoTrabajo(object sender, ExecutedRoutedEventArgs e)
+    {
+        var confirmar = MessageBox.Show(
+            "Se empezará un trabajo en blanco y se perderá lo que no esté guardado.\n\n" +
+            "¿Continuar?",
+            AppInfo.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (confirmar != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var estaba = _listo;
+        _listo = false;
+
+        try
+        {
+            _datos = new DatosProyecto();
+            _juego.Planos.Clear();
+
+            _juego.Solapa.Calculista = string.Empty;
+            _juego.Solapa.Propietario = string.Empty;
+            _juego.Solapa.Ubicacion = string.Empty;
+            _juego.Solapa.Obra = string.Empty;
+            _juego.Solapa.Dibujo = string.Empty;
+            _juego.Solapa.Fecha = DateTime.Today;
+
+            CalculistaBox.Text = string.Empty;
+            PropietarioBox.Text = string.Empty;
+            UbicacionBox.Text = string.Empty;
+            ObraBox.Text = string.Empty;
+            DibujoBox.Text = string.Empty;
+            FechaPicker.SelectedDate = DateTime.Today;
+
+            _modeloEtabs = null;
+            _vista.Modelo = null;
+            _vista.Reiniciar();
+            NivelPlantaCombo.Items.Clear();
+
+            // La ruta se suelta A PROPOSITO: ver el comentario de arriba.
+            _archivoActual = string.Empty;
+            ArchivoText.Text = "Trabajo nuevo, sin guardar";
+
+            Enlazar();
+        }
+        finally
+        {
+            _listo = estaba;
+        }
+
+        ResumenPlanos();
+        PlantasResumenText.Text = string.Empty;
+        RedibujarVistas();
+        StatusText.Text = "Trabajo nuevo.";
+    }
+
+    private void OnSalir(object sender, RoutedEventArgs e) => Close();
+
+    private void OnAcercaDe(object sender, RoutedEventArgs e)
+    {
+        var empresa = string.IsNullOrWhiteSpace(AppInfo.CompanyName)
+            ? string.Empty
+            : Environment.NewLine + AppInfo.CompanyName;
+
+        MessageBox.Show(
+            $"{AppInfo.ProductName} v{AppInfo.Version}{empresa}" +
+            Environment.NewLine + Environment.NewLine +
+            _license.StatusLine +
+            Environment.NewLine + Environment.NewLine +
+            "Soporte: " + AppInfo.SupportEmail,
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // ======================================================================
@@ -758,18 +852,28 @@ public partial class MainWindow : Window
     /// <summary>Archivo abierto, para que «Guardar» no vuelva a preguntar.</summary>
     private string _archivoActual = string.Empty;
 
-    private void OnGuardarTrabajo(object sender, RoutedEventArgs e)
+    // Los tres de abajo se disparan desde la barra de arriba, el menu Archivo y el
+    // teclado. Por eso van como Executed de un ApplicationCommand y no como Click:
+    // asi el atajo, el menu y el boton comparten UNA sola ruta de codigo, y no hay
+    // forma de que uno guarde y otro no. Su firma pide ExecutedRoutedEventArgs.
+    private void OnGuardarTrabajo(object sender, ExecutedRoutedEventArgs e) => Guardar();
+
+    private void OnGuardarComo(object sender, ExecutedRoutedEventArgs e) => GuardarComo();
+
+    private void OnAbrirTrabajo(object sender, ExecutedRoutedEventArgs e) => AbrirTrabajo();
+
+    private void Guardar()
     {
         if (string.IsNullOrWhiteSpace(_archivoActual))
         {
-            OnGuardarComo(sender, e);
+            GuardarComo();
             return;
         }
 
         GuardarEn(_archivoActual);
     }
 
-    private void OnGuardarComo(object sender, RoutedEventArgs e)
+    private void GuardarComo()
     {
         var dialogo = new Microsoft.Win32.SaveFileDialog
         {
@@ -808,7 +912,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnAbrirTrabajo(object sender, RoutedEventArgs e)
+    private void AbrirTrabajo()
     {
         var dialogo = new OpenFileDialog
         {
@@ -1165,6 +1269,247 @@ public partial class MainWindow : Window
         // cambiaría en silencio lo que se ve en la pestaña de ETABS.
         RestaurarFiltrosDelVisor();
     }
+
+    // ======================================================================
+    // Dibujar la planta en AutoCAD
+    // ======================================================================
+
+    /// <summary>
+    /// Manda a AutoCAD la planta que se está viendo en esta pestaña.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo que se dibuja es <b>exactamente lo que se ve</b>: el nivel elegido en la
+    /// lista y los tipos de elemento marcados en las casillas de esta pestaña, no las
+    /// del visor de ETABS. Es la razón de que el botón viva aquí y no en la pestaña
+    /// de AutoCAD: si estuviera allá, habría que ir y volver para saber qué se va a
+    /// dibujar.
+    /// </para>
+    /// <para>
+    /// El modelo se lee UNA vez, con «Leer plantas de ETABS», y este botón trabaja
+    /// sobre lo ya leído. Así se puede dibujar nivel por nivel sin volver a
+    /// interrogar a ETABS, que en un modelo grande es la parte lenta.
+    /// </para>
+    /// </remarks>
+    private void OnDibujarPlantaCad(object sender, RoutedEventArgs e)
+    {
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (_modeloEtabs is null)
+        {
+            MessageBox.Show(
+                "Todavía no hay ningún modelo leído.\n\n" +
+                "Pulsa primero «Leer plantas de ETABS», con ETABS abierto y el modelo " +
+                "cargado.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var planta = ArmarPlanta(_modeloEtabs);
+
+        if (planta.Elementos.Count == 0)
+        {
+            MessageBox.Show(
+                "Con el nivel y los filtros actuales no queda ningún elemento que " +
+                "dibujar.\n\n" +
+                "Revisa la lista de niveles y las casillas de «Mostrar».",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new PlantaDrawer(doc);
+            var r = dibujante.Dibujar(planta);
+
+            AcadConnection.Retry(() => { app.ZoomExtents(); });
+
+            var fallos = dibujante.Fallos;
+
+            StatusText.Text =
+                $"Planta dibujada en AutoCAD: {r.Total} elemento(s) del nivel " +
+                $"{(string.IsNullOrWhiteSpace(planta.Nivel) ? "(todos)" : planta.Nivel)}.";
+
+            PlanoHintText.Text =
+                "Última planta dibujada: " + r +
+                ". Quedó repartida en las capas PLANTA-COLUMNAS, PLANTA-TRABES, " +
+                "PLANTA-MUROS, PLANTA-LOSAS, PLANTA-EJES y PLANTA-TEXTOS, en metros.";
+
+            if (fallos.Count == 0)
+            {
+                MessageBox.Show(
+                    $"Listo.\n\n{r}\n\n" +
+                    "Cada tipo de elemento quedó en su propia capa, así que puedes " +
+                    "apagar lo que no te interese y seguir trabajando encima.",
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                // Los avisos NO se callan: casi siempre son medidas que el modelo no
+                // entregó, y eso hay que saberlo ANTES de acotar el plano.
+                var detalle = string.Join(
+                    Environment.NewLine, fallos.Take(25).Select(f => "  - " + f));
+
+                if (fallos.Count > 25)
+                {
+                    detalle += Environment.NewLine +
+                               $"  ... y {fallos.Count - 25} aviso(s) más.";
+                }
+
+                PlanoHintText.Text +=
+                    Environment.NewLine + Environment.NewLine +
+                    $"AVISOS ({fallos.Count}):" + Environment.NewLine + detalle;
+
+                MessageBox.Show(
+                    $"{r}\n\nHubo {fallos.Count} aviso(s) que se toleraron:\n\n" + detalle,
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (AcadNotAvailableException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("No se pudo dibujar la planta:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>
+    /// Traduce el modelo de ETABS a lo que entiende el dibujante de plantas.
+    /// </summary>
+    /// <remarks>
+    /// Esta traducción vive aquí, en la ventana, y no en CadLink.Cad: el dibujante no
+    /// referencia a CadLink.Etabs a propósito, igual que no conoce la cuadrícula de
+    /// las secciones. Un solo sitio traduce y el dibujante se puede alimentar mañana
+    /// de otra fuente sin tocarlo.
+    /// </remarks>
+    private PlantaCad ArmarPlanta(ModeloEtabs modelo)
+    {
+        var nivel = NivelElegido;
+
+        var p = new PlantaCad
+        {
+            Nivel = nivel ?? string.Empty,
+            Modelo = modelo.Archivo,
+            ConRotulos = true
+        };
+
+        foreach (var el in modelo.Elementos)
+        {
+            // El MISMO filtro por nivel que usa el lienzo de esta pestaña
+            if (!string.IsNullOrWhiteSpace(nivel) &&
+                !string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!VisibleEnElPlano(el.Clase))
+            {
+                continue;
+            }
+
+            var e = new ElementoPlanta
+            {
+                Clase = ClasePlantaDe(el.Clase),
+                Etiqueta = el.Etiqueta,
+                Seccion = el.Seccion,
+                X1 = el.X1, Y1 = el.Y1,
+                X2 = el.X2, Y2 = el.Y2,
+                AnchoM = el.AnchoM,
+                PeralteM = el.PeralteM
+            };
+
+            foreach (var v in el.Vertices)
+            {
+                e.Vertices.Add((v.X, v.Y));
+            }
+
+            p.Elementos.Add(e);
+        }
+
+        // El texto se dimensiona respecto al TAMAÑO DE LA PLANTA, no a un valor fijo:
+        // 25 cm de letra se lee bien en una planta de 20 m y es ilegible en una de
+        // 200. Se toma el lado mayor y se le saca una milésima parte, acotado entre
+        // 5 cm y 60 cm para que nunca salga un texto absurdo.
+        p.AlturaTexto = AlturaDeTexto(p);
+
+        return p;
+    }
+
+    private static double AlturaDeTexto(PlantaCad p)
+    {
+        double xMin = double.MaxValue, xMax = double.MinValue;
+        double yMin = double.MaxValue, yMax = double.MinValue;
+
+        void Medir(double x, double y)
+        {
+            xMin = Math.Min(xMin, x); xMax = Math.Max(xMax, x);
+            yMin = Math.Min(yMin, y); yMax = Math.Max(yMax, y);
+        }
+
+        foreach (var el in p.Elementos)
+        {
+            if (el.Vertices.Count >= 3)
+            {
+                foreach (var v in el.Vertices)
+                {
+                    Medir(v.X, v.Y);
+                }
+            }
+            else
+            {
+                Medir(el.X1, el.Y1);
+                Medir(el.X2, el.Y2);
+            }
+        }
+
+        if (xMax <= xMin && yMax <= yMin)
+        {
+            return 0.25;
+        }
+
+        var lado = Math.Max(xMax - xMin, yMax - yMin);
+        return Math.Clamp(lado / 100.0, 0.05, 0.60);
+    }
+
+    private bool VisibleEnElPlano(ClaseElemento c) => c switch
+    {
+        ClaseElemento.Columna => VerColumnasPlanoChk.IsChecked == true,
+        ClaseElemento.Trabe => VerTrabesPlanoChk.IsChecked == true,
+        ClaseElemento.Muro => VerMurosPlanoChk.IsChecked == true,
+        ClaseElemento.Losa => VerLosasPlanoChk.IsChecked == true,
+
+        // Las diagonales no tienen casilla en esta pestaña porque en planta se
+        // proyectan como una línea suelta que no dice nada. Por eso tampoco se
+        // dibujan: el plano saldría con líneas sin explicación.
+        _ => false
+    };
+
+    private static ClasePlanta ClasePlantaDe(ClaseElemento c) => c switch
+    {
+        ClaseElemento.Columna => ClasePlanta.Columna,
+        ClaseElemento.Trabe => ClasePlanta.Trabe,
+        ClaseElemento.Muro => ClasePlanta.Muro,
+        ClaseElemento.Losa => ClasePlanta.Losa,
+        _ => ClasePlanta.Diagonal
+    };
 
     private void RestaurarFiltrosDelVisor()
     {
