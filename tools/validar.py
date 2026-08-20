@@ -5469,13 +5469,40 @@ def v21_separacion_y_acero() -> None:
     check("un perfil que no esta en el catalogo no borra lo capturado",
           "if (c is null)" in perfil_row)
 
-    # El CSV que se entrega tiene que explicarse solo y advertir de la semilla.
+    # El CSV que se entrega tiene que explicarse solo.
     check("el csv explica como se escribe cada renglon",
           "familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio" in csv)
     check("dice que las medidas van en centimetros",
           "TODAS LAS MEDIDAS EN CENTIMETROS" in csv)
-    check("y advierte de que la semilla hay que cotejarla",
-          "SEMILLA" in csv.upper() and "cotejarlas" in csv)
+
+    # Y ya no es la semilla de cuatro: es el catalogo del IMCA del usuario.
+    n_perfiles = len([l for l in csv.splitlines()
+                      if l.strip() and not l.startswith("#") and l.count(";") >= 6])
+
+    check("el catalogo trae los perfiles del IMCA, no la semilla",
+          n_perfiles > 1000, f"solo {n_perfiles}")
+    check("y dice de donde salio",
+          "Generado del manual IMCA" in csv)
+
+    for familia in ("IR", "OR", "OC", "CF"):
+        check(f"el catalogo trae perfiles {familia}",
+              f"\n{familia};" in csv)
+
+    # El convertidor del formato del IMCA, que no es una hoja normal: cada familia usa
+    # otras columnas y las unidades cambian de una a otra.
+    imca = leer(ruta("tools/catalogo_imca.py"))
+
+    check("hay convertidor para el formato del IMCA",
+          "def filas_del_libro(ruta)" in imca)
+    check("mapea las familias del IMCA a las cuatro formas",
+          '"HSS": "OR"' in imca and '"PIPE": "OC"' in imca and '"W": "IR"' in imca)
+    check("y deja fuera, con motivo, las que no se saben dibujar",
+          "SIN_FORMA" in imca and '"WT"' in imca and '"L"' in imca)
+    check("coteja las medidas contra los nominales en pulgadas de la hoja",
+          "MM_POR_PULGADA" in imca and "pero su nominal" in imca)
+    check("y caza los errores de dedo por proporcion imposible",
+          "mas de la sexta parte" in imca
+          and "W - 36'' x 442.16 lb/ft" in imca)
     check("el csv se copia junto al ejecutable",
           "perfiles-acero.csv" in leer(ruta("client/src/CadLink.App/CadLink.App.csproj")))
 

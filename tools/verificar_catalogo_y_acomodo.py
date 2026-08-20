@@ -118,33 +118,46 @@ print("=" * 78)
 with open("client/src/CadLink.App/perfiles-acero.csv", encoding="utf-8") as f:
     entregado = leer_catalogo(f.readlines())
 
+porfam = {}
+for p in entregado:
+    porfam[p["familia"]] = porfam.get(p["familia"], 0) + 1
+
 print(f"\n    del archivo entregado salen {len(entregado)} perfiles: "
-      + ", ".join(f"{p['nombre']} ({p['familia']})" for p in entregado))
+      + ", ".join(f"{n} {f}" for f, n in sorted(porfam.items())))
 
-check("el catalogo que se entrega se lee", len(entregado) == 4,
+# Ya no es la semilla de cuatro: es el catalogo del IMCA. No se fija el numero exacto
+# a proposito -crecera cuando se añadan familias- pero si que sea un catalogo de verdad
+# y que las cuatro familias esten.
+check("el catalogo que se entrega se lee", len(entregado) > 500,
       f"salieron {len(entregado)}")
-check("y trae uno de cada familia",
-      {p["familia"] for p in entregado} == set(FAMILIAS))
+check("y trae las cuatro familias", set(porfam) == set(FAMILIAS), str(sorted(porfam)))
 
-# Las medidas del IR de la semilla, que son las que llegan a la fila al elegirlo.
-ir = next((p for p in entregado if p["familia"] == "IR"), None)
-check("el IR de la semilla trae sus cuatro medidas",
-      ir is not None and ir["peralte"] > 0 and ir["ancho"] > 0
-      and ir["e_alma"] > 0 and ir["e_patin"] > 0,
-      str(ir))
+# Los IR traen sus cuatro medidas: sin el espesor de patin no se puede dibujar el perfil.
+irs = [p for p in entregado if p["familia"] == "IR"]
+sin_medidas = [p["nombre"] for p in irs
+               if not (p["peralte"] > 0 and p["ancho"] > 0
+                       and p["e_alma"] > 0 and p["e_patin"] > 0)]
 
-# El OC no lleva ancho ni espesor de patin: es redondo y su pared es una sola.
-oc = next((p for p in entregado if p["familia"] == "OC"), None)
-check("el OC no trae ancho ni espesor de patin",
-      oc is not None and oc["ancho"] == 0 and oc["e_patin"] == 0, str(oc))
+check("todos los IR traen sus cuatro medidas", not sin_medidas,
+      f"{len(sin_medidas)} sin completar: {sin_medidas[:3]}")
 
-# El CF es el unico que trae labio y radio.
-cf = next((p for p in entregado if p["familia"] == "CF"), None)
-check("solo el CF trae labio y radio",
-      cf is not None and cf["labio"] > 0 and cf["radio"] > 0
-      and all(p["labio"] == 0 and p["radio"] == 0
-              for p in entregado if p["familia"] != "CF"),
-      str(cf))
+# El OC es redondo: no puede traer ancho ni espesor de patin, porque no los tiene.
+ocs = [p for p in entregado if p["familia"] == "OC"]
+con_sobras = [p["nombre"] for p in ocs if p["ancho"] or p["e_patin"]]
+
+check("ningun OC trae ancho ni espesor de patin", not con_sobras,
+      f"{len(con_sobras)}: {con_sobras[:3]}")
+
+# El labio y el radio son SOLO del CF.
+cfs = [p for p in entregado if p["familia"] == "CF"]
+sin_labio = [p["nombre"] for p in cfs if not (p["labio"] > 0 and p["radio"] > 0)]
+otros_con_labio = [p["nombre"] for p in entregado
+                   if p["familia"] != "CF" and (p["labio"] or p["radio"])]
+
+check("todos los CF traen labio y radio", not sin_labio,
+      f"{len(sin_labio)}: {sin_labio[:3]}")
+check("y ninguna otra familia los trae", not otros_con_labio,
+      f"{len(otros_con_labio)}: {otros_con_labio[:3]}")
 
 # ---- Lo que el usuario le va a echar de verdad ----
 print("\n" + "-" * 78)

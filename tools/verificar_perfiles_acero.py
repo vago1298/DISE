@@ -574,6 +574,302 @@ for nombre, h, b, t, lip, ri in CASOS_CF:
           "; ".join(malas_e))
 
 
+
+
+
+# ===========================================================================
+#  EL CATALOGO COMPLETO, PERFIL POR PERFIL
+# ===========================================================================
+#
+# Lo anterior comprueba las FORMULAS con perfiles escogidos a mano. Esto comprueba
+# los DATOS: los mil y pico perfiles del catalogo, uno por uno, con las mismas reglas
+# del programa y con la geometria de dibujo de verdad.
+#
+# Hace falta porque un catalogo es una lista larga hecha por personas, y basta una
+# celda con un digito de mas para que un perfil se dibuje como un borron. Ya paso: el
+# W 36'' x 442.16 traia el alma en 346 mm en vez de 34.6, entre un vecino de 31 y otro
+# de 38.1. Aqui se caza cualquiera igual.
+#
+# Se comprueba, para cada perfil del catalogo:
+#
+#   1. Que el programa lo ACEPTARIA: las mismas reglas de PerfilAceroRow.FaltanDatos.
+#   2. Que sus proporciones son POSIBLES: ningun perfil laminado tiene el alma mas
+#      gruesa que la sexta parte de su peralte.
+#   3. Que su geometria de dibujo NO DEGENERA: el area del contorno sale positiva, los
+#      radios recortados siguen cabiendo y el hueco interior del tubo existe.
+
+print("\n" + "=" * 78)
+print(" El catalogo completo, perfil por perfil")
+print("=" * 78)
+
+RUTA_CATALOGO = "client/src/CadLink.App/perfiles-acero.csv"
+
+
+def leer_catalogo_csv(ruta):
+    """El mismo formato que lee CatalogoPerfiles: ocho campos por renglon."""
+    perfiles = []
+
+    with open(ruta, encoding="utf-8") as f:
+        for cruda in f:
+            linea = cruda.strip()
+
+            if not linea or linea.startswith("#"):
+                continue
+
+            campos = linea.split(";" if ";" in linea else ",")
+
+            if len(campos) < 3:
+                continue
+
+            def num(i):
+                if i >= len(campos) or not campos[i].strip():
+                    return 0.0
+                try:
+                    return float(campos[i].strip().replace(",", "."))
+                except ValueError:
+                    return 0.0
+
+            perfiles.append({
+                "familia": campos[0].strip().upper(),
+                "nombre": campos[1].strip(),
+                "peralte": num(2),
+                "ancho": num(3),
+                "e_alma": num(4),
+                "e_patin": num(5),
+                "labio": num(6),
+                "radio": num(7),
+            })
+
+    return perfiles
+
+
+def falta_algo(p):
+    """Port de PerfilAceroRow.FaltanDatos: lo que el programa exige para dibujar."""
+    f = p["familia"]
+    faltan = []
+
+    if p["peralte"] <= 0:
+        faltan.append("diametro" if f == "OC" else "peralte")
+
+    if p["e_alma"] <= 0:
+        faltan.append("e alma" if f == "IR" else "espesor")
+
+    if f != "OC" and p["ancho"] <= 0:
+        faltan.append("ancho")
+
+    if f == "IR" and p["e_patin"] <= 0:
+        faltan.append("e patin")
+
+    if f == "CF" and p["labio"] <= 0:
+        faltan.append("labio")
+
+    if faltan:
+        return ", ".join(faltan)
+
+    if f == "IR":
+        if 2 * p["e_patin"] >= p["peralte"]:
+            return "los dos patines no caben en el peralte"
+        if p["e_alma"] >= p["ancho"]:
+            return "el alma es mas ancha que el patin"
+
+    if f == "OR" and 2 * p["e_alma"] >= min(p["peralte"], p["ancho"]):
+        return "la pared no deja hueco interior"
+
+    if f == "OC" and 2 * p["e_alma"] >= p["peralte"]:
+        return "la pared no deja hueco interior"
+
+    if f == "CF":
+        if 2 * p["e_alma"] >= p["peralte"]:
+            return "los dos patines no caben en el peralte"
+        if p["labio"] <= p["e_alma"]:
+            return "el labio no llega ni al espesor"
+
+    return ""
+
+
+def proporcion_imposible(p):
+    """Proporciones que ningun perfil real tiene. Caza los errores de dedo."""
+    f = p["familia"]
+
+    if f == "IR":
+        if p["e_alma"] > p["peralte"] / 6:
+            return (f"alma {p['e_alma']:.2f} cm en peralte {p['peralte']:.2f} cm "
+                    "(mas de 1/6)")
+        if p["e_patin"] > p["peralte"] / 3:
+            return (f"patin {p['e_patin']:.2f} cm en peralte {p['peralte']:.2f} cm "
+                    "(mas de 1/3)")
+        if p["e_alma"] > p["ancho"] / 2:
+            return f"alma {p['e_alma']:.2f} pasa de medio patin {p['ancho']:.2f}"
+
+    if f in ("OR", "OC"):
+        menor = p["peralte"] if f == "OC" else min(p["peralte"], p["ancho"])
+
+        if p["e_alma"] > menor / 4:
+            return f"pared {p['e_alma']:.2f} en lado {menor:.2f} (mas de 1/4)"
+
+    if f == "CF":
+        if p["e_alma"] > p["peralte"] / 10:
+            return f"lamina {p['e_alma']:.3f} en peralte {p['peralte']:.2f} (mas de 1/10)"
+        if p["labio"] > p["peralte"] / 2:
+            return f"labio {p['labio']:.2f} pasa de medio peralte {p['peralte']:.2f}"
+
+    return ""
+
+
+def dibujo_degenera(p):
+    """Si la geometria de dibujo sale mal: area negativa, radios que no caben…"""
+    f = p["familia"]
+    h, b, t, tf = p["peralte"], p["ancho"], p["e_alma"], p["e_patin"]
+
+    if f == "IR":
+        pts = perfil_ir(0, 0, h, b, t, tf)
+        area = area_poligono(pts)
+        esperada = 2 * b * tf + (h - 2 * tf) * t
+
+        if area <= 0 or abs(area - esperada) > 1e-9:
+            return f"el area del contorno ({area:.4f}) no es la del perfil ({esperada:.4f})"
+
+    elif f == "OR":
+        bb, hh = min(b, h), max(b, h)
+        r_out, r_in = radios_or(bb, hh, t)
+
+        if r_out > min(bb, hh) / 2 + 1e-12:
+            return "el radio exterior no cabe"
+
+        if r_in is None:
+            return "no queda hueco interior"
+
+        if r_in > min(bb - 2 * t, hh - 2 * t) / 2 + 1e-12:
+            return "el radio interior no cabe en el hueco"
+
+        area = (area_rect_redondeado(bb, hh, r_out)
+                - area_rect_redondeado(bb - 2 * t, hh - 2 * t, r_in))
+
+        if area <= 0:
+            return f"la pared sale con area {area:.4f}"
+
+    elif f == "OC":
+        r_ext = h / 2
+        r_int = r_ext - t
+
+        if r_int <= 0:
+            return "la pared se come el radio: saldria macizo"
+
+        if math.pi * (r_ext ** 2 - r_int ** 2) <= 0:
+            return "la corona sale con area negativa"
+
+    elif f == "CF":
+        _, _, _, r_ext, r_int = radios_cf(h, b, t, p["labio"], p["radio"])
+
+        if r_ext > min(b / 2, min(p["labio"], h / 2)) + 1e-12:
+            return "el radio exterior no cabe"
+
+        if r_int < 0:
+            return "el radio interior sale negativo"
+
+        pts, bulges, centros, _, _ = perfil_cf(0, 0, h, b, t, p["labio"], p["radio"], False)
+
+        if bulges:
+            malos = [i for i, v in bulges.items() if abs(abs(v) - BULGE_90) > 1e-9]
+
+            if malos:
+                return f"los dobleces {malos} no son arcos de 90 grados"
+
+            for idx, (centro, r) in centros.items():
+                ok, detalle = es_filete(
+                    centro, pts[idx], pts[(idx + 1) % len(pts)],
+                    pts[(idx - 1) % len(pts)], pts[(idx + 2) % len(pts)], r, tol=1e-9)
+
+                if not ok:
+                    return f"el doblez {idx} no es un filete: {detalle}"
+
+    return ""
+
+
+catalogo = leer_catalogo_csv(RUTA_CATALOGO)
+
+print(f"\n    el catalogo trae {len(catalogo)} perfiles")
+
+porfam = {}
+for p in catalogo:
+    porfam[p["familia"]] = porfam.get(p["familia"], 0) + 1
+
+for fam in sorted(porfam):
+    print(f"       {fam}: {porfam[fam]}")
+
+check("el catalogo tiene perfiles de las cuatro familias",
+      set(porfam) == {"IR", "OR", "OC", "CF"}, str(sorted(porfam)))
+
+check("y son muchos, no la semilla de cuatro", len(catalogo) > 500,
+      f"solo {len(catalogo)}")
+
+# ---- 1. Que el programa los aceptaria ----
+rechazados = [(p["familia"], p["nombre"], falta_algo(p))
+              for p in catalogo if falta_algo(p)]
+
+print(f"\n    perfiles que el programa rechazaria: {len(rechazados)}")
+
+for fam, nombre, motivo in rechazados[:10]:
+    print(f"       {fam} {nombre}: {motivo}")
+
+check("el programa aceptaria TODOS los perfiles del catalogo", not rechazados,
+      "; ".join(f"{n}: {m}" for _, n, m in rechazados[:5]))
+
+# ---- 2. Que sus proporciones son posibles ----
+imposibles = [(p["nombre"], proporcion_imposible(p))
+              for p in catalogo if proporcion_imposible(p)]
+
+print(f"    perfiles con proporciones imposibles: {len(imposibles)}")
+
+for nombre, motivo in imposibles[:10]:
+    print(f"       {nombre}: {motivo}")
+
+check("ningun perfil tiene proporciones imposibles", not imposibles,
+      "; ".join(f"{n}: {m}" for n, m in imposibles[:5]))
+
+# El error real que traia la hoja: tiene que estar FUERA del catalogo.
+w36 = [p for p in catalogo if "442" in p["nombre"] and "36" in p["nombre"]]
+
+check("el W 36'' x 442.16, que traia el alma mal en la hoja, no entro al catalogo",
+      not w36,
+      f"entro con alma {w36[0]['e_alma']} cm" if w36 else "")
+
+# ---- 3. Que la geometria de dibujo no degenera ----
+degenerados = [(p["nombre"], dibujo_degenera(p))
+               for p in catalogo if dibujo_degenera(p)]
+
+print(f"    perfiles cuyo dibujo degenera: {len(degenerados)}")
+
+for nombre, motivo in degenerados[:10]:
+    print(f"       {nombre}: {motivo}")
+
+check("el dibujo de todos los perfiles del catalogo sale bien", not degenerados,
+      "; ".join(f"{n}: {m}" for n, m in degenerados[:5]))
+
+# ---- Y los rangos, que es la ultima red contra un error de unidades ----
+print("\n    rangos por familia, en centimetros:")
+
+for fam in ("IR", "OR", "OC", "CF"):
+    de_esta = [p for p in catalogo if p["familia"] == fam]
+
+    if not de_esta:
+        continue
+
+    per = [p["peralte"] for p in de_esta]
+    esp = [p["e_alma"] for p in de_esta]
+
+    print(f"       {fam}: peralte de {min(per):6.2f} a {max(per):6.2f}   "
+          f"espesor de {min(esp):5.3f} a {max(esp):5.3f}")
+
+    # Un peralte de 3 mm o de 5 m serian un error de unidades de diez o cien veces.
+    check(f"los peraltes de {fam} son de tamaño de perfil, no de otra unidad",
+          min(per) > 2 and max(per) < 300,
+          f"de {min(per)} a {max(per)} cm")
+
+    check(f"los espesores de {fam} tambien",
+          min(esp) > 0.05 and max(esp) < 10,
+          f"de {min(esp)} a {max(esp)} cm")
+
 print("\n" + "=" * 78)
 if fallos:
     print(f" {len(fallos)} PROBLEMA(S):")
@@ -581,11 +877,6 @@ if fallos:
         print("   - " + f)
 else:
     print(" Todo correcto.")
-
-if avisos:
-    print(f"\n {len(avisos)} AVISO(S), que no son fallos:")
-    for a in avisos:
-        print("   - " + a)
 print("=" * 78)
 
 raise SystemExit(1 if fallos else 0)
