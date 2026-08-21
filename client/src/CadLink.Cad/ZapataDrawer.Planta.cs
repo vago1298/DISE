@@ -21,8 +21,6 @@ public sealed partial class ZapataDrawer
 
     private const double PlantaCotaOffsetDado = 0.1;
 
-    /// <summary>Segundo nivel a la derecha: el largo de la zapata, por fuera del del dado.</summary>
-    private const double PlantaCotaOffsetLargo = 0.22;
     private const double PlantaTituloOffset = 0.24;
     private const double PlantaEscalaOffset = 0.33;
     private const double PlantaMinBarra = 0.03;
@@ -275,20 +273,22 @@ public sealed partial class ZapataDrawer
         r.Cotas += Cota(xIzq, yBot - PlantaCotaOffset, xDer, yBot - PlantaCotaOffset,
             xCen, yBot - PlantaCotaOffset, false, false);
 
-        // El largo del dado a la derecha, y el de la zapata en un segundo nivel: las dos
-        // colgadas del paño derecho, que es el punto del que se mueve todo el dibujo.
+        // El largo del DADO a la derecha, a 0.10; el de la ZAPATA va a la IZQUIERDA, a 0.12,
+        // que es como lo pone la macro. Ponerlos los dos a la derecha fue idea mía y dejaba dos
+        // cotas verticales una encima de la otra.
         r.Cotas += Cota(xDer + PlantaCotaOffsetDado, dy1, xDer + PlantaCotaOffsetDado, dy2,
             xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, false);
 
-        r.Cotas += Cota(xDer + PlantaCotaOffsetLargo, yBot, xDer + PlantaCotaOffsetLargo, yTop,
-            xDer + PlantaCotaOffsetLargo, yCen, true, false);
+        r.Cotas += Cota(xIzq - PlantaCotaOffset, yBot, xIzq - PlantaCotaOffset, yTop,
+            xIzq - PlantaCotaOffset, yCen, true, false);
 
-        // Y los dos renglones del rótulo, colgados del mismo punto inferior derecho.
-        Texto(xDer, yBot - PlantaTituloOffset, AltoTitulo,
-            $"VISTA EN PLANTA \"{z.Id}\"", CapaRotulos, alineacion: Alineacion.Derecha);
-        Texto(xDer, yBot - PlantaEscalaOffset, AltoEscala,
+        // Y los dos renglones del rótulo, CENTRADOS en el eje de la planta y a 0.24 y 0.33,
+        // como la macro.
+        Texto(xCen, yBot - PlantaTituloOffset, AltoTitulo,
+            $"VISTA EN PLANTA \"{z.Id}\"", CapaRotulos, alineacion: Alineacion.Centro);
+        Texto(xCen, yBot - PlantaEscalaOffset, AltoEscala,
             $"Rec. {rec * 100:0.#} cm    Escala 1:10", CapaRotulos,
-            alineacion: Alineacion.Derecha);
+            alineacion: Alineacion.Centro);
     }
 
     /// <summary>
@@ -1657,16 +1657,18 @@ public sealed partial class ZapataDrawer
 
     /// <summary>De dónde se cuelga un texto de una línea.</summary>
     /// <remarks>
-    /// <b>Derecha</b> es la que usan los rótulos de la zapata: el extremo derecho del renglón
-    /// queda fijo en el paño derecho del dibujo y el texto crece hacia la izquierda, sobre su
-    /// propia zapata. Centrado, un título largo se sale por los dos lados y se mete en la zapata
-    /// de al lado.
+    /// Son los dos casos del <c>centrado As Boolean</c> de <c>AgregarTexto</c> en las macros:
+    /// <b>Centro</b> para los títulos y los rótulos de las varillas —el punto que se pasa es el
+    /// eje del dibujo y el renglón crece parejo hacia los dos lados—, e <b>Izquierda</b> para
+    /// los textos que van pegados a algo, como el del hueco del cimiento.
+    /// No hay <c>Derecha</c>: alinear los rótulos al paño derecho fue un invento mío del turno
+    /// pasado y lo que consiguió fue que el título de una zapata angosta se saliera por el otro
+    /// lado. Las macros centran, y centrado se queda.
     /// </remarks>
     private enum Alineacion
     {
         Izquierda,
-        Centro,
-        Derecha
+        Centro
     }
 
     /// <summary>Un texto de una línea. Port de <c>AgregarTexto</c>, con su alineación.</summary>
@@ -1685,12 +1687,12 @@ public sealed partial class ZapataDrawer
                 dynamic t = _cont.AddText(texto, new[] { x, y, 0d }, alto);
                 t.Layer = capa;
 
-                if (alineacion != Alineacion.Izquierda)
+                if (alineacion == Alineacion.Centro)
                 {
                     try
                     {
-                        // 4 = acAlignmentMiddle (centrado), 2 = acAlignmentRight.
-                        t.HorizontalAlignment = alineacion == Alineacion.Centro ? 4 : 2;
+                        // 4 = acAlignmentMiddle, que es el centrado que usa la macro.
+                        t.HorizontalAlignment = 4;
                         t.VerticalAlignment = 2;
                         t.TextAlignmentPoint = new[] { x, y, 0d };
                     }

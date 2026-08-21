@@ -4159,22 +4159,30 @@ def v19_circular_y_ui() -> None:
     # LO QUE SE PIDIO: cotas y rotulos colgados del PUNTO INFERIOR DERECHO de la zapata, para
     # que viajen con ella. Y el hueco de 80 cm de la fila queda a su derecha, que es donde
     # caben.
-    check("las cotas verticales se cuelgan del paño derecho",
-          "CotasVerticales(xExtremoDer, yZapBot, yZapTop, yTerreno, r);" in zap_drw
-          and "var x1 = xDer + CotaOffsetVert1;" in zap_drw
-          and "var x2 = xDer + CotaOffsetVert2;" in zap_drw)
-    check("y los tres renglones del rotulo, tambien",
-          "Texto(xExtremoDer, yZapBot - RotuloTituloOffset" in zap_drw
-          and "alineacion: Alineacion.Derecha" in zap_drw)
-    check("hay alineacion de texto de verdad, no un booleano",
+    # LAS COTAS Y LOS ROTULOS, DONDE LOS PONE LA MACRO. Moverlos fue idea mia y fue peor.
+    check("las cotas verticales van a la izquierda, a 0.08 y 0.16 de xBase",
+          "CotasVerticales(xBase, yZapBot, yZapTop, yTerreno, r);" in zap_drw
+          and "var x1 = xBase - CotaOffsetVert1;" in zap_drw
+          and "var x2 = xBase - CotaOffsetVert2;" in zap_drw)
+    check("y los tres renglones del rotulo van CENTRADOS en el eje",
+          "Texto(xCentro, yZapBot - RotuloTituloOffset" in zap_drw
+          and "alineacion: Alineacion.Centro" in zap_drw)
+    check("y queda escrito que alinearlos a la derecha fue un error mio",
+          "fue una idea mía" in zap_drw)
+    check("la alineacion de texto es la de la macro: centrado o pegado a la izquierda",
           "private enum Alineacion" in zap_pla
-          and "alineacion == Alineacion.Centro ? 4 : 2" in zap_pla)
-    check("y queda escrito por que centrado no servia",
-          "se sale por los dos lados" in zap_pla)
-    check("la planta cuelga sus cotas y su rotulo del mismo punto",
-          "PlantaCotaOffsetLargo" in zap_pla
-          and "Texto(xDer, yBot - PlantaTituloOffset" in zap_pla
-          and "xDer + PlantaCotaOffsetLargo, yBot" in zap_pla)
+          and "if (alineacion == Alineacion.Centro)" in zap_pla
+          and "t.HorizontalAlignment = 4;" in zap_pla)
+    check("y ya no queda una alineacion a la derecha que la macro no tiene",
+          "Alineacion.Derecha" not in zap_pla
+          and "Alineacion.Derecha" not in zap_drw)
+    check("la planta acota el largo de la zapata a la izquierda y el del dado a la derecha",
+          "PlantaCotaOffsetLargo" not in zap_pla
+          and "Cota(xIzq - PlantaCotaOffset, yBot" in zap_pla
+          and "Cota(xDer + PlantaCotaOffsetDado, dy1" in zap_pla)
+    check("y su rotulo va centrado, como la macro",
+          "Texto(xCen, yBot - PlantaTituloOffset" in zap_pla
+          and "Texto(xCen, yBot - PlantaEscalaOffset" in zap_pla)
 
     check("las cotas de la elevacion son las de la macro",
           "CotaOffsetCadena = 0.14" in zap_drw
