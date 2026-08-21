@@ -4221,10 +4221,11 @@ def v19_circular_y_ui() -> None:
           and "var x1 = xBase - CotaOffsetVert1;" in zap_drw
           and "var x2 = xBase - CotaOffsetVert2;" in zap_drw)
     check("y los tres renglones del rotulo van CENTRADOS en el eje",
-          "Texto(xCentro, yZapBot - RotuloTituloOffset" in zap_drw
+          "Texto(xCentro, yTitulo," in zap_drw
           and "alineacion: Alineacion.Centro" in zap_drw)
     check("y queda escrito que alinearlos a la derecha fue un error mio",
-          "fue una idea mía" in zap_drw)
+          "fue un invento mío" in zap_pla
+          and "fue idea mía" in zap_pla)
     check("la alineacion de texto es la de la macro: centrado o pegado a la izquierda",
           "private enum Alineacion" in zap_pla
           and "if (alineacion == Alineacion.Centro)" in zap_pla
@@ -4237,8 +4238,8 @@ def v19_circular_y_ui() -> None:
           and "Cota(xIzq - PlantaCotaOffset, yBot" in zap_pla
           and "Cota(xDer + PlantaCotaOffsetDado, dy1" in zap_pla)
     check("y su rotulo va centrado, como la macro",
-          "Texto(xCen, yBot - PlantaTituloOffset" in zap_pla
-          and "Texto(xCen, yBot - PlantaEscalaOffset" in zap_pla)
+          "Texto(xCen, yTitulo, TrazoZapata.AltoQueQuepa(" in zap_pla
+          and "Texto(xCen, yEscala, TrazoZapata.AltoQueQuepa(" in zap_pla)
 
     check("las cotas de la elevacion son las de la macro",
           "CotaOffsetCadena = 0.14" in zap_drw
@@ -4251,10 +4252,32 @@ def v19_circular_y_ui() -> None:
           and "d.TextMovement = 0;" in zap_pla)
     check("y la total arranca del fondo de la plantilla",
           "yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor" in zap_drw)
-    check("los rotulos van a sus offsets de siempre",
-          "RotuloTituloOffset = 0.32" in zap_drw
-          and "RotuloSubtituloOffset = 0.41" in zap_drw
-          and "RotuloEscalaOffset = 0.49" in zap_drw)
+    # ---- EL ROTULO, EN SU PROPIO RENGLON Y ALINEADO SIEMPRE ----
+    # LO QUE SE PIDIO: bajar el titulo, dibujarlo APARTE del dibujo con los mismos 0.8 de la
+    # fila (X = -0.8) y que todos queden en la misma linea.
+    check("el rotulo se baja a su propio renglon, a los 0.8 de la fila",
+          "public const double RotuloSeparacion = SeparacionIzquierda;" in trazo_zap
+          and "public static double YRotulo(double yFondoDibujo, int renglon)" in trazo_zap)
+    check("y ya no cuelga a 32 cm del fondo, encima del dibujo",
+          "RotuloTituloOffset = 0.32" not in zap_drw
+          and "RotuloSubtituloOffset = 0.41" not in zap_drw
+          and "PlantaTituloOffset = 0.24" not in zap_pla)
+    check("los saltos entre renglones si son los de la macro",
+          "RotuloSalto1 = 0.09" in trazo_zap
+          and "RotuloSalto2 = 0.17" in trazo_zap)
+    check("el renglon se mide desde el fondo de la plantilla, que es fijo para todas",
+          "TrazoZapata.YRotulo(a.YPlantillaBot, 0)" in zap_drw
+          and "TrazoZapata.YRotulo(a.YPlantillaBot, 2)" in zap_drw)
+    check("y el titulo se encoge si no cabe en su hueco, en vez de meterse en el vecino",
+          "public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;"
+          in trazo_zap
+          and "public static double AltoQueQuepa(" in trazo_zap
+          and "TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo)" in zap_drw)
+    check("la planta usa el MISMO renglon, asi que las dos vistas quedan alineadas",
+          "TrazoZapata.YRotulo(yBot, 0)" in zap_pla
+          and "TrazoZapata.YRotulo(yBot, 2)" in zap_pla)
+    check("y queda escrito por que se bajo",
+          "cae sobre el dibujo" in zap_drw)
     check("y el titulo dice CENTRAL o DE LINDERO, como la macro",
           '"ZAPATA AISLADA DE LINDERO' in zap_drw
           and '"ZAPATA AISLADA CENTRAL' in zap_drw)
@@ -4281,7 +4304,7 @@ def v19_circular_y_ui() -> None:
           "IdDado = SoloElId(IdDado)" in zap_row)
     check("la planta lleva sus cotas y su titulo",
           "PlantaCotaOffset = 0.12" in zap_pla
-          and "PlantaTituloOffset = 0.24" in zap_pla
+          and "TrazoZapata.YRotulo(yBot, 0)" in zap_pla
           and '"VISTA EN PLANTA' in zap_pla)
 
     # El armado de la COLUMNA sale de su seccion, no se vuelve a capturar.
@@ -4386,8 +4409,8 @@ def v19_circular_y_ui() -> None:
     # LAS COTAS DE LA PLANTA SON LAS DE LA MACRO. El turno pasado las cambie a cadena y
     # total abajo y estuvo MAL: en la planta ya estaban en orden.
     check("la planta acota el dado arriba y la zapata abajo, como la macro",
-          "PlantaTituloOffset = 0.24;" in zap_pla
-          and "PlantaEscalaOffset = 0.33;" in zap_pla
+          "PlantaCotaOffset = 0.12;" in zap_pla
+          and "PlantaCotaOffsetDado = 0.1;" in zap_pla
           and "PlantaCotaNivel2" not in zap_pla
           and "yTop + PlantaCotaOffsetDado" in zap_pla)
     check("y queda escrito que cambiarlas fue un error",

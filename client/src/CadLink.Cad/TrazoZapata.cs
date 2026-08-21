@@ -463,6 +463,85 @@ public static class TrazoZapata
             yZapBot - PlantillaEspesor, yPlanta);
     }
 
+    // ======================================================================
+    // EL RENGLÓN DE LOS RÓTULOS
+    // ======================================================================
+
+    /// <summary>
+    /// Lo que se BAJA el rótulo por debajo del dibujo: los mismos <b>0.8</b> que separan una
+    /// zapata de la siguiente, ahora hacia abajo.
+    /// </summary>
+    /// <remarks>
+    /// El rótulo NO se cuelga del fondo de la zapata a 32 cm como en la macro: ahí caía sobre el
+    /// dibujo. Se va a su propio renglón, 80 cm por debajo del punto más bajo de la elevación
+    /// —el fondo de la plantilla—, y como ese fondo es el mismo para todas las zapatas
+    /// (<see cref="YBaseElevacion"/> es fijo), <b>todos los rótulos quedan alineados siempre</b>,
+    /// midan lo que midan las zapatas.
+    /// </remarks>
+    public const double RotuloSeparacion = SeparacionIzquierda;
+
+    /// <summary>Del título al segundo renglón. Es el salto de la macro: 0.41 − 0.32.</summary>
+    public const double RotuloSalto1 = 0.09;
+
+    /// <summary>Del título al tercero. El de la macro: 0.49 − 0.32.</summary>
+    public const double RotuloSalto2 = 0.17;
+
+    /// <summary>
+    /// La Y de un renglón del rótulo: 0 = título, 1 = subtítulo, 2 = recubrimiento y escala.
+    /// </summary>
+    /// <param name="yFondoDibujo">
+    /// El punto más bajo del dibujo al que pertenece el rótulo: el fondo de la plantilla en el
+    /// corte y el paño inferior en la planta.
+    /// </param>
+    public static double YRotulo(double yFondoDibujo, int renglon)
+    {
+        var y = yFondoDibujo - RotuloSeparacion;
+
+        return renglon switch
+        {
+            0 => y,
+            1 => y - RotuloSalto1,
+            _ => y - RotuloSalto2
+        };
+    }
+
+    /// <summary>
+    /// El ancho del que dispone un rótulo: el de su zapata más el hueco de 80 cm que la fila
+    /// deja a su izquierda.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que le toca a cada dibujo en la fila —<c>X = −0.8</c>—, así que un rótulo que quepa
+    /// aquí no puede meterse en el de la zapata de al lado.
+    /// </remarks>
+    public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;
+
+    /// <summary>
+    /// El alto con el que un texto de una línea <b>cabe</b> en el ancho disponible.
+    /// </summary>
+    /// <remarks>
+    /// Devuelve <paramref name="altoMaximo"/> si ya cabe, y si no lo baja en proporción. Es la
+    /// misma cuenta con la que la macro encoge el texto de la plantilla y el ID del dado, con su
+    /// factor de 0.62 de ancho de letra: sin esto, «ZAPATA AISLADA DE LINDERO "ZE-1"» mide 1.3 m
+    /// a 7 cm de alto y se mete en el dibujo vecino aunque esté en su propio renglón.
+    /// </remarks>
+    public static double AltoQueQuepa(
+        int letras, double altoMaximo, double anchoDisponible, double factorLetra = 0.62)
+    {
+        if (letras <= 0 || altoMaximo <= 0 || anchoDisponible <= 0)
+        {
+            return altoMaximo;
+        }
+
+        var anchoTexto = letras * altoMaximo * factorLetra;
+
+        if (anchoTexto <= anchoDisponible)
+        {
+            return altoMaximo;
+        }
+
+        return altoMaximo * anchoDisponible / anchoTexto;
+    }
+
     /// <summary>
     /// Port de <c>YBasePlanta</c> de la macro central: la planta colgada del rótulo.
     /// </summary>

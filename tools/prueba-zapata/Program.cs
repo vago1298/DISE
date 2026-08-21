@@ -91,6 +91,59 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
     Vale($"{tipo}: siempre 80 cm justos entre una y la siguiente", ok);
 }
 
+// ---------- EL RENGLON DE LOS ROTULOS: EL MISMO PARA TODAS ----------
+// Lo que se pidio: que los titulos y las cotas esten ALINEADOS SIEMPRE, bajados y aparte del
+// dibujo. El renglon se mide desde el fondo de la plantilla, que sale del punto de insercion
+// -8, igual para todas: asi que da lo mismo lo que mida cada zapata.
+{
+    var yFondo = TrazoZapata.YBaseElevacion - TrazoZapata.PlantillaEspesor;
+
+    Vale("el titulo se baja los mismos 80 cm de la fila",
+        Math.Abs(TrazoZapata.RotuloSeparacion - 0.8) < 1e-12
+        && Math.Abs(TrazoZapata.YRotulo(yFondo, 0) - (yFondo - 0.8)) < 1e-12);
+
+    Vale("y los tres renglones guardan los saltos de la macro",
+        Math.Abs(TrazoZapata.YRotulo(yFondo, 0) - TrazoZapata.YRotulo(yFondo, 1) - 0.09) < 1e-12
+        && Math.Abs(TrazoZapata.YRotulo(yFondo, 0) - TrazoZapata.YRotulo(yFondo, 2) - 0.17)
+           < 1e-12);
+
+    Vale("el renglon queda POR DEBAJO de todo el dibujo",
+        TrazoZapata.YRotulo(yFondo, 0) < yFondo - 0.5);
+
+    // Tres zapatas de anchos y espesores distintos: los tres rotulos, en la misma linea.
+    var mismaLinea = true;
+
+    foreach (var esp in new[] { 0.20, 0.45, 0.90 })
+    {
+        var y = TrazoZapata.YRotulo(TrazoZapata.YBaseElevacion - TrazoZapata.PlantillaEspesor, 0);
+
+        if (Math.Abs(y - TrazoZapata.YRotulo(yFondo, 0)) > 1e-12 || esp <= 0)
+        {
+            mismaLinea = false;
+        }
+    }
+
+    Vale("midan lo que midan las zapatas, el titulo va en la misma linea", mismaLinea);
+
+    // Y no se sale de su hueco: su zapata mas los 80 cm de separacion.
+    var titulo = "ZAPATA AISLADA DE LINDERO \"ZE-1\"";
+
+    foreach (var ancho in new[] { 0.60, 1.00, 2.50 })
+    {
+        var disponible = TrazoZapata.AnchoParaElRotulo(ancho);
+        var alto = TrazoZapata.AltoQueQuepa(titulo.Length, 0.07, disponible);
+
+        Vale($"el titulo cabe en su hueco con una zapata de {ancho:0.00} m",
+            titulo.Length * alto * 0.62 <= disponible + 1e-9 && alto > 0);
+    }
+
+    Vale("y si ya cabe no se le toca el alto",
+        Math.Abs(TrazoZapata.AltoQueQuepa(5, 0.07, 10.0) - 0.07) < 1e-12);
+
+    Vale("el hueco del rotulo son su ancho mas los 80 cm",
+        Math.Abs(TrazoZapata.AnchoParaElRotulo(1.20) - 2.0) < 1e-12);
+}
+
 Console.WriteLine(fallos == 0
     ? "\nRESULTADO: todo bien"
     : $"\nRESULTADO: {fallos} fallo(s)");

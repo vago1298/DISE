@@ -91,12 +91,12 @@ public sealed partial class ZapataDrawer
     private const double CotaOffsetCadena = 0.14;
     private const double CotaOffsetTotal = 0.22;
     private const double CotaDoblezOffset = 0.06;
-    private const double RotuloTituloOffset = 0.32;
-    private const double RotuloSubtituloOffset = 0.41;
 
-    /// <summary><c>ROTULO_ESCALA_OFFSET</c>. De este renglón cuelga la planta.</summary>
-    private const double RotuloEscalaOffset = 0.49;
-
+    // Los offsets de rótulo de la macro -0.32, 0.41 y 0.49 desde el fondo de la zapata- YA NO
+    // ESTÁN: a esa distancia el rótulo cae sobre el dibujo y sobre las cotas de anchos. Ahora el
+    // renglón lo da TrazoZapata.YRotulo, 80 cm por debajo del fondo de la plantilla, igual para
+    // todas las zapatas. Los saltos entre los tres renglones sí son los de la macro
+    // (TrazoZapata.RotuloSalto1 y RotuloSalto2).
     private const double AltoTitulo = 0.07;
     private const double AltoSubtitulo = 0.05;
     private const double AltoEscala = 0.04;
@@ -611,20 +611,34 @@ public sealed partial class ZapataDrawer
             ? $"ZAPATA AISLADA DE LINDERO \"{z.Id}\""
             : $"ZAPATA AISLADA CENTRAL \"{z.Id}\"";
 
-        // LOS TRES RENGLONES VAN CENTRADOS EN EL EJE DE LA ZAPATA, a 0.32, 0.41 y 0.49 por
-        // debajo de su fondo. Es lo que hacen las dos macros -AgregarTexto ... centrado = True
-        // en xCentro- y por eso se vuelve a esto: alinearlos a la derecha fue una idea mía y lo
-        // que consiguió fue que el título de una zapata angosta se saliera por el otro lado.
-        Texto(xCentro, yZapBot - RotuloTituloOffset, AltoTitulo, titulo, CapaRotulos,
-            alineacion: Alineacion.Centro);
-        Texto(xCentro, yZapBot - RotuloSubtituloOffset, AltoSubtitulo, "ELEVACION",
-            CapaRotulos, alineacion: Alineacion.Centro);
+        // EL RÓTULO SE BAJA A SU PROPIO RENGLÓN, APARTE DEL DIBUJO: 80 cm —los mismos 0.8 de la
+        // fila, X = −0.8— por debajo del fondo de la plantilla, que es el punto más bajo de la
+        // elevación. A 32 cm, como en la macro, caía sobre el dibujo y sobre las cotas de anchos.
+        //
+        // Y COMO ESE FONDO ES EL MISMO PARA TODAS LAS ZAPATAS (el punto de inserción −8 es fijo),
+        // los tres renglones quedan EN LA MISMA LÍNEA para todas, midan lo que midan: es lo que
+        // se pidió, que estén alineados siempre. Van centrados en el eje de su zapata, como la
+        // macro, y si el renglón no cabe en el ancho que le toca —su zapata más los 80 cm— se le
+        // baja el alto en vez de dejarlo meterse en el rótulo de la de al lado.
+        var yTitulo = TrazoZapata.YRotulo(a.YPlantillaBot, 0);
+        var ySubtitulo = TrazoZapata.YRotulo(a.YPlantillaBot, 1);
+        var yEscala = TrazoZapata.YRotulo(a.YPlantillaBot, 2);
+        var anchoRotulo = TrazoZapata.AnchoParaElRotulo(anchoZapata);
+
+        Texto(xCentro, yTitulo,
+            TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
+            titulo, CapaRotulos, alineacion: Alineacion.Centro);
+
+        Texto(xCentro, ySubtitulo,
+            TrazoZapata.AltoQueQuepa("ELEVACION".Length, AltoSubtitulo, anchoRotulo),
+            "ELEVACION", CapaRotulos, alineacion: Alineacion.Centro);
 
         var fc = string.IsNullOrWhiteSpace(z.Fc) ? string.Empty : $"    f'c = {z.Fc.Trim()} kg/cm\u00B2";
+        var escala = $"Rec. {z.RecM * 100:0.#} cm{fc}    Escala 1:10";
 
-        Texto(xCentro, yZapBot - RotuloEscalaOffset, AltoEscala,
-            $"Rec. {z.RecM * 100:0.#} cm{fc}    Escala 1:10", CapaRotulos,
-            alineacion: Alineacion.Centro);
+        Texto(xCentro, yEscala,
+            TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
+            escala, CapaRotulos, alineacion: Alineacion.Centro);
 
         // ---------- La planta ----------
         Planta(z, a, r);

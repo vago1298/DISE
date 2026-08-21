@@ -21,8 +21,8 @@ public sealed partial class ZapataDrawer
 
     private const double PlantaCotaOffsetDado = 0.1;
 
-    private const double PlantaTituloOffset = 0.24;
-    private const double PlantaEscalaOffset = 0.33;
+    // PLANTA_TITULO_OFFSET (0.24) y PLANTA_ESCALA_OFFSET (0.33) tampoco están: el rótulo de la
+    // planta usa el mismo renglón propio que el del corte, TrazoZapata.YRotulo.
     private const double PlantaMinBarra = 0.03;
     private const double PlantaMinSeg = 0.004;
     private const double PlantaHuecoMargen = 0.003;
@@ -282,13 +282,22 @@ public sealed partial class ZapataDrawer
         r.Cotas += Cota(xIzq - PlantaCotaOffset, yBot, xIzq - PlantaCotaOffset, yTop,
             xIzq - PlantaCotaOffset, yCen, true, false);
 
-        // Y los dos renglones del rótulo, CENTRADOS en el eje de la planta y a 0.24 y 0.33,
-        // como la macro.
-        Texto(xCen, yBot - PlantaTituloOffset, AltoTitulo,
-            $"VISTA EN PLANTA \"{z.Id}\"", CapaRotulos, alineacion: Alineacion.Centro);
-        Texto(xCen, yBot - PlantaEscalaOffset, AltoEscala,
-            $"Rec. {rec * 100:0.#} cm    Escala 1:10", CapaRotulos,
-            alineacion: Alineacion.Centro);
+        // Y los dos renglones del rótulo, EN SU PROPIO RENGLÓN igual que en el corte: 80 cm por
+        // debajo del paño inferior de la planta, centrados en su eje y encogidos si no caben en
+        // el ancho que les toca. Como todas las plantas arrancan en −15, los rótulos de todas
+        // quedan en la misma línea.
+        var yTitulo = TrazoZapata.YRotulo(yBot, 0);
+        var yEscala = TrazoZapata.YRotulo(yBot, 2);
+        var anchoRotulo = TrazoZapata.AnchoParaElRotulo(ancho);
+
+        var titulo = $"VISTA EN PLANTA \"{z.Id}\"";
+        var escala = $"Rec. {rec * 100:0.#} cm    Escala 1:10";
+
+        Texto(xCen, yTitulo, TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
+            titulo, CapaRotulos, alineacion: Alineacion.Centro);
+
+        Texto(xCen, yEscala, TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
+            escala, CapaRotulos, alineacion: Alineacion.Centro);
     }
 
     /// <summary>
