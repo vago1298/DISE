@@ -109,6 +109,24 @@ public sealed class ZapataCad
 
     /// <summary>Largo del gancho de arranque, en metros. La macro lo fija en 0.12.</summary>
     public double GanchoM { get; init; } = 0.12;
+
+    /// <summary>
+    /// ID del <b>dado</b> que va encima, que es el nombre de su bloque. <c>N7</c>.
+    /// </summary>
+    /// <remarks>
+    /// No es un dato de geometría: es el nombre con el que el dibujante <b>busca el bloque</b> del
+    /// dado en el dibujo para insertarlo en la planta, en lugar de volver a dibujarlo. Va aquí, y
+    /// no como parámetro aparte del dibujante, porque cada zapata lleva el suyo.
+    /// </remarks>
+    public string IdDado { get; init; } = string.Empty;
+
+    /// <summary>Resistencia del concreto, tal como se capturó, para el rótulo.</summary>
+    /// <remarks>
+    /// Se lleva como <b>texto</b> a propósito: en la celda se escriben cosas como «250» y
+    /// «f'c=250 kg/cm²», y lo que va al rótulo es lo que el usuario escribió. Convertirlo a número
+    /// solo serviría para tener que volver a inventar cómo se escribe.
+    /// </remarks>
+    public string Fc { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -652,5 +670,81 @@ public static class TrazoZapata
         var xCen = xBase + (z.AnchoM / 2);
 
         return (xCen - (wDado / 2), y1, xCen + (wDado / 2), y2);
+    }
+
+    /// <summary>
+    /// La separación de una celda de texto, <b>en metros</b>. Vacía, cero o ilegible cae en
+    /// <paramref name="porOmisionM"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Vive aquí, junto a la geometría, porque la leen <b>dos</b> sitios: la vista previa y el
+    /// dibujante de AutoCAD. Con una copia en cada lado, el día que uno aprenda a leer «@20» o
+    /// las comas decimales y el otro no, la previa enseñaría una malla y el plano saldría con
+    /// otra. Es el mismo motivo por el que el acomodo también está aquí y no en la ventana.
+    /// </para>
+    /// <para>
+    /// Se tolera lo que la gente escribe de verdad en una celda: «20», «20 cm», «@20», «20,5» y
+    /// los espacios de sobra. Si de la celda sale un número que no es positivo, se devuelve el
+    /// valor por omisión: dibujar con separación cero sería un ciclo infinito de varillas.
+    /// </para>
+    /// </remarks>
+    public static double SeparacionM(string? texto, double porOmisionM = 0.12)
+    {
+        var t = (texto ?? string.Empty)
+            .Replace("cm", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("@", string.Empty, StringComparison.Ordinal)
+            .Replace(',', '.')
+            .Trim();
+
+        return double.TryParse(
+            t, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0
+            ? v / 100.0
+            : porOmisionM;
+    }
+
+    /// <summary>
+    /// Los tres tramos de una celda de estribos del tipo <c>9-18-9</c>, <b>en centímetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Devuelve siempre tres valores. Con una sola separación —«15»— el segundo y el tercero
+    /// salen en cero, que es lo que <see cref="CentrosEstribos"/> entiende como «separación
+    /// única de punta a punta». Con dos, el tercero queda en cero.
+    /// </para>
+    /// <para>
+    /// Si el primer tramo no se puede leer se devuelve <paramref name="porOmisionCm"/> en él:
+    /// un dado sin estribos no es un dibujo incompleto, es un dibujo <b>equivocado</b>, así que
+    /// se dibuja con una separación razonable y quien llama lo avisa.
+    /// </para>
+    /// </remarks>
+    public static double[] TramosCm(string? texto, double porOmisionCm = 15)
+    {
+        var partes = (texto ?? string.Empty)
+            .Replace("cm", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("@", string.Empty, StringComparison.Ordinal)
+            .Split('-');
+
+        var salida = new double[3];
+
+        for (var i = 0; i < 3; i++)
+        {
+            salida[i] = i < partes.Length
+                && double.TryParse(
+                    partes[i].Trim().Replace(',', '.'),
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var v)
+                && v > 0
+                    ? v
+                    : 0;
+        }
+
+        if (salida[0] <= 0)
+        {
+            salida[0] = porOmisionCm;
+        }
+
+        return salida;
     }
 }

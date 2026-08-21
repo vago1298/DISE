@@ -371,6 +371,11 @@ public sealed class ZapataAisladaRow : Row
         VarDadoSup = VarDadoSup,
         VarDadoInf = VarDadoInf,
         NIntDado = NIntDado,
-        VarIntDado = VarIntDado
+        VarIntDado = VarIntDado,
+
+        // El ID del dado se manda LIMPIO: en la celda puede haber quedado «D-1 (concreto)»
+        // porque la lista muestra la hoja de la que viene, y el nombre del bloque es «D-1».
+        IdDado = SoloElId(IdDado),
+        Fc = Fc
     };
 }

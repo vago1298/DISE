@@ -274,18 +274,68 @@ public partial class MainWindow
     /// </remarks>
     private void OnRevisarZapatas(object sender, RoutedEventArgs e)
     {
-        if (_datos.ZapatasAisladas.Count == 0)
+        if (!HayZapatas())
         {
-            MessageBox.Show(
-                "No hay ninguna zapata capturada.", AppInfo.ProductName,
-                MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var problemas = new List<string>();
+        RevisarZapatas(out var problemas, out var acomodo);
+
+        var texto = problemas.Count == 0
+            ? "Las zapatas están completas."
+            : $"Hay {problemas.Count} cosa(s) que corregir:\n\n"
+              + string.Join("\n", problemas);
+
+        if (acomodo.Count > 0)
+        {
+            texto += "\n\nDonde se va a dibujar cada una:\n" + string.Join("\n", acomodo);
+        }
+
+        texto += "\n\nSi está todo bien, «Dibujar zapatas en AutoCAD» las pone en el dibujo "
+                 + "abierto, en estas mismas posiciones.";
+
+        MessageBox.Show(
+            texto, AppInfo.ProductName, MessageBoxButton.OK,
+            problemas.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    /// <summary>¿Hay algo que revisar o dibujar? Si no, lo dice y devuelve <c>false</c>.</summary>
+    private bool HayZapatas()
+    {
+        if (_datos.ZapatasAisladas.Count > 0)
+        {
+            return true;
+        }
+
+        MessageBox.Show(
+            "No hay ninguna zapata capturada.", AppInfo.ProductName,
+            MessageBoxButton.OK, MessageBoxImage.Information);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Revisa las zapatas capturadas. <c>true</c> si no hay nada que corregir.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está separada del botón porque la usan <b>los dos</b>: el de revisar, que enseña el
+    /// resultado, y el de dibujar, que se niega a dibujar si hay algo mal. Con la revisión metida
+    /// dentro del botón de revisar, el de dibujar tendría su propia copia —siempre más pobre— y
+    /// acabaría mandando a AutoCAD zapatas que la otra pantalla ya decía que estaban mal.
+    /// </para>
+    /// <para>
+    /// <paramref name="acomodo"/> sale aparte porque no son problemas: es dónde va a quedar cada
+    /// zapata, que es lo que hay que poder leer antes de dibujar.
+    /// </para>
+    /// </remarks>
+    private bool RevisarZapatas(out List<string> problemas, out List<string> acomodo)
+    {
+        problemas = new List<string>();
+        acomodo = new List<string>();
+
         var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var columnasUsadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var acomodo = new List<string>();
 
         var anchos = _datos.ZapatasAisladas.Select(r => r.AnchoM).ToList();
 
@@ -362,39 +412,144 @@ public partial class MainWindow
                 $"x de {a.XBase:N2} a {a.XDer:N2} m,  planta en y = {a.YPlanta:N2} m");
         }
 
-        var texto = problemas.Count == 0
-            ? "Las zapatas están completas."
-            : $"Hay {problemas.Count} cosa(s) que corregir:\n\n"
-              + string.Join("\n", problemas);
-
-        if (acomodo.Count > 0)
-        {
-            texto += "\n\nDonde se va a dibujar cada una:\n" + string.Join("\n", acomodo);
-        }
-
-        texto += "\n\nEl dibujo en AutoCAD de las zapatas es el paso siguiente; la vista "
-                 + "previa de abajo ya muestra la geometría y el acomodo de tus macros.";
-
-        MessageBox.Show(
-            texto, AppInfo.ProductName, MessageBoxButton.OK,
-            problemas.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        return problemas.Count == 0;
     }
 
     /// <summary>
-    /// El botón de dibujar. Está <b>deshabilitado</b> hasta que exista el dibujante.
+    /// El botón <b>«Dibujar zapatas en AutoCAD»</b>: manda al dibujo las zapatas capturadas.
     /// </summary>
     /// <remarks>
-    /// El manejador existe para que el botón esté puesto y se vea qué va a hacer, pero el botón
-    /// arranca apagado: un botón que se puede pulsar y no dibuja enseña a desconfiar de los
-    /// botones. Lo que falta es el <c>ZapataDrawer</c> —bloques por ID, cotas, rótulos con
-    /// leader, plantilla, terreno y rellenos—, que usará el mismo <see cref="TrazoZapata"/> que
-    /// ya usa la vista previa.
+    /// <para>
+    /// Hace lo mismo que el botón de las secciones y en el mismo orden, porque es el mismo trabajo
+    /// y conviene que se comporte igual: <b>revisar</b> primero —y negarse si hay algo mal, en
+    /// lugar de dibujar una zapata a medias que luego hay que borrar a mano—, <b>engancharse</b> a
+    /// la sesión de AutoCAD que ya esté abierta, dibujar, encuadrar y <b>contar lo que salió</b>,
+    /// incluidos los fallos tolerados.
+    /// </para>
+    /// <para>
+    /// <b>No arranca AutoCAD</b> (<c>launchIfMissing: false</c>): abrirlo tarda un minuto y
+    /// consume una licencia de red. Si no está abierto se dice, y lo abre quien decide.
+    /// </para>
+    /// <para>
+    /// <b>El acomodo lo decide el dibujante</b>, que lo pide a <see cref="TrazoZapata.XBase"/>.
+    /// Aquí no se calcula ninguna posición: si esta pantalla eligiera dónde van, sería un tercer
+    /// sitio con una opinión sobre el acomodo, además de la vista previa y de la revisión.
+    /// </para>
+    /// <para>
+    /// El catálogo de varillas se le <b>pasa</b> al dibujante: la tabla de diámetros vive en
+    /// <see cref="Varilla"/>, en la ventana, y así el plano y la vista previa dibujan la misma
+    /// varilla del #4 sin tener dos tablas que se puedan desincronizar.
+    /// </para>
     /// </remarks>
-    private void OnExportZapatas(object sender, RoutedEventArgs e) =>
-        MessageBox.Show(
-            "El dibujante de zapatas todavía no está. Lo que ya está portado es la geometría "
-            + "y el acomodo de tus dos macros, y se puede revisar en la vista previa.",
-            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+    private void OnExportZapatas(object sender, RoutedEventArgs e)
+    {
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!HayZapatas())
+        {
+            return;
+        }
+
+        if (!RevisarZapatas(out var problemas, out _))
+        {
+            MessageBox.Show(
+                "Corrige esto antes de dibujar las zapatas:\n\n" + string.Join("\n", problemas),
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new ZapataDrawer(doc, DiametroCmDeVarilla);
+
+            var zapatas = _datos.ZapatasAisladas.Select(f => f.AFormatoCad()).ToList();
+
+            var r = dibujante.DibujarTodas(zapatas);
+
+            AcadConnection.Retry(() => { app.ZoomExtents(); });
+
+            var resumen =
+                "Listo.\n\n" + r + "\n\n" +
+                $"Dados insertados como bloque: {r.DadosInsertados}\n" +
+                $"Dados dibujados como rectángulo por no estar su bloque: {r.DadosDeRespaldo}\n\n" +
+                "Cada zapata quedó con su corte y su planta, en las posiciones de tus macros.";
+
+            var fallos = dibujante.Fallos;
+
+            if (fallos.Count == 0)
+            {
+                StatusText.Text = $"Dibujadas {r.Zapatas} zapata(s) en AutoCAD.";
+
+                MostrarNotas(dibujante.Notas.Count == 0
+                    ? string.Empty
+                    : "Notas del último dibujo:" + Environment.NewLine +
+                      string.Join(Environment.NewLine,
+                          dibujante.Notas.Select(n => "  - " + n)));
+
+                MessageBox.Show(resumen, AppInfo.ProductName,
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
+
+                StatusText.Text =
+                    $"Dibujadas {r.Zapatas} zapata(s), con {fallos.Count} aviso(s). " +
+                    "Ver el detalle bajo la vista previa.";
+
+                MostrarNotas(
+                    "AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
+                    Environment.NewLine + detalle);
+
+                MessageBox.Show(
+                    resumen + "\n\n" +
+                    "PERO hubo " + fallos.Count + " fallo(s) que se toleraron, así que el " +
+                    "dibujo puede estar incompleto:\n\n" + detalle +
+                    "\n\nEste mismo texto queda bajo la vista previa.",
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (AcadNotAvailableException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (AcadBusyException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "Error al dibujar las zapatas en AutoCAD:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>El diámetro de una varilla en cm, o 0 si la celda está vacía o no se reconoce.</summary>
+    /// <remarks>
+    /// Es el puente entre el catálogo de la ventana y el dibujante, que está en la biblioteca de
+    /// AutoCAD y no puede ver los modelos de la interfaz. Devuelve 0 en lugar de un diámetro
+    /// inventado: quien dibuja ya sabe qué hacer con un 0 —no dibujar esa parrilla y avisar—, y
+    /// eso es mejor que sacar un plano con una varilla que nadie pidió.
+    /// </remarks>
+    private static double DiametroCmDeVarilla(string? clave) =>
+        Varilla.TryDiametroCm(clave, out var cm) ? cm : 0;
 
     // ======================================================================
     // Vista previa: elevación y planta
@@ -418,9 +573,11 @@ public partial class MainWindow
     /// hueco del dado y las dos mallas.
     /// </para>
     /// <para>
-    /// <b>Lo que todavía no está</b> —y conviene que se vea escrito— son las cotas, los rótulos
-    /// con leader y los rellenos de la macro. La vista previa enseña la <i>geometría</i>, que es
-    /// lo que se revisa antes de dibujar; los rótulos se revisan en el plano.
+    /// <b>Lo que todavía no está</b> —y conviene que se vea escrito— son los rellenos de concreto
+    /// y de terreno, y los rótulos con leader: eso <b>sí</b> lo dibuja
+    /// <see cref="ZapataDrawer"/> en AutoCAD, pero aquí taparían el acero en un cuadro de pocos
+    /// centímetros. La vista previa enseña la <i>geometría</i> y las <i>cotas</i>, que es lo que
+    /// se revisa antes de dibujar; el aspecto se revisa en el plano.
     /// </para>
     /// </remarks>
     private void DibujarVistaPreviaZapata()
@@ -609,30 +766,12 @@ public partial class MainWindow
         ZapataCad z, TrazoZapata.Acomodo a,
         Func<double, double> px, Func<double, double> py, Brush trazo)
     {
-        var partes = (z.SepEstriboDado ?? string.Empty)
-            .Replace("cm", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Split('-');
-
-        double Sep(int i) =>
-            i < partes.Length
-            && double.TryParse(
-                partes[i].Trim().Replace(',', '.'),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var v)
-                ? v
-                : 0;
-
-        var s1 = Sep(0);
-
-        if (s1 <= 0)
-        {
-            s1 = 15;
-        }
-
-        var largo = z.ProfundidadM;
+        // Los tres tramos los lee TrazoZapata, que es quien los lee tambien al dibujar: asi la
+        // previa reparte los estribos igual que el plano.
+        var tramos = TrazoZapata.TramosCm(z.SepEstriboDado);
 
         var centros = TrazoZapata.CentrosEstribos(
-            largo, s1, Sep(1), Sep(2),
+            z.ProfundidadM, tramos[0], tramos[1], tramos[2],
             TrazoZapata.EstriboRetiroBorde, TrazoZapata.EstriboRetiroBorde);
 
         if (centros.Length == 0)
@@ -867,19 +1006,12 @@ public partial class MainWindow
     }
 
     /// <summary>La separación de una celda de texto, en metros. Vacía o cero cae en 12 cm.</summary>
-    private static double LeerSeparacionM(string? texto)
-    {
-        var t = (texto ?? string.Empty)
-            .Replace("cm", string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace(',', '.')
-            .Trim();
-
-        return double.TryParse(
-            t, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0
-            ? v / 100.0
-            : 0.12;
-    }
+    /// <remarks>
+    /// No lee la celda por su cuenta: se lo pide a <see cref="TrazoZapata.SeparacionM"/>, que es
+    /// el mismo lector que usa el dibujante de AutoCAD. Con un lector aquí y otro allá, una celda
+    /// escrita «@20» podría salir de 20 cm en la previa y de 12 en el plano.
+    /// </remarks>
+    private static double LeerSeparacionM(string? texto) => TrazoZapata.SeparacionM(texto);
 
     private void Recta(double x1, double y1, double x2, double y2, Brush trazo, double grosor) =>
         ZapataPreviewCanvas.Children.Add(new Line

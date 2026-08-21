@@ -195,7 +195,7 @@ public sealed class SeccionConcretoRow : Row
 
     private double _recubrimientoCm = 4;
     private string _estribo = "#3";
-    private string _separacionCm = "10-15-20";
+    private string _separacionCm = "10-20-10";
     private string _estriboDiamante = string.Empty;
     private string _diamEstriboDiamante = string.Empty;
     // 5 cm es la longitud usual del gancho sísmico. Antes estaba en 1 cm y el
@@ -551,20 +551,26 @@ public sealed class SeccionConcretoRow : Row
     /// <para>
     /// El orden no es alfabético, es de uso: primero las de tres tramos —confinamiento en
     /// los extremos y el centro más abierto, que es el caso normal de una trabe o una
-    /// columna—, luego las de dos y al final las de separación única.
+    /// columna— de la más cerrada a la más abierta, y al final las de separación única
+    /// (15 y 20 cm), que son las que se usan en parrillas y mallas de zapata.
+    /// </para>
+    /// <para>
+    /// La lista se dejó corta a propósito: solo las cinco de tres tramos que se repiten
+    /// en casi todos los planos más las dos únicas. Cualquier otra —"5-10-15", "10-20",
+    /// "30"— se teclea a mano en la celda; se guarda igual porque la columna es de texto
+    /// libre. Esta misma lista alimenta el desplegable de Secciones de Concreto y el de
+    /// Zapatas Aisladas, así que cambiarla aquí las cambia en las dos hojas.
     /// </para>
     /// </remarks>
     public static readonly string[] SeparacionesUsuales =
     {
         "6-12-6",
-        "7-14-4",
-        "10-15-20",
+        "7-14-7",
+        "8-16-8",
+        "9-18-9",
         "10-20-10",
-        "5-10-15",
-        "10-20",
         "15",
-        "20",
-        "30"
+        "20"
     };
 
     /// <summary>
@@ -885,7 +891,7 @@ public sealed class DatosProyecto
             NEsqInf = 3, DiamEsqInf = "#8",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 1, DiamInter = "#3",
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-15-20",
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20-10",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
             GanchoCm = 5, Fc = "250", Escala = "25"
         });
@@ -1044,7 +1050,7 @@ public sealed class DatosProyecto
             IdColumna = "C-1", IdDado = "D-1",
             AnchoDadoCm = 50, AnchoColumnaCm = 40,
             VarDadoSup = "#5", VarDadoInf = "#5", NIntDado = 1, VarIntDado = "#4",
-            EstriboDado = "#3", SepEstriboDado = "10-15-20",
+            EstriboDado = "#3", SepEstriboDado = "9-18-9",
             Fc = "250"
         });
 

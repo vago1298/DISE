@@ -3808,12 +3808,19 @@ def v19_circular_y_ui() -> None:
           and "private void OnRevisarZapatas(" in zap_cb)
     check("y dice donde se va a dibujar cada una",
           "Donde se va a dibujar cada una" in zap_cb)
-    check("el boton de dibujar esta puesto pero apagado, y dice por que",
-          'x:Name="DibujarZapatasButton"' in xaml
-          and 'IsEnabled="False"' in xaml
-          and "el dibujante de zapatas es el paso siguiente" in xaml)
-    check("y queda escrito que un boton que no dibuja seria peor",
-          "enseña a desconfiar de los" in zap_cb)
+    # LO QUE SE PIDIO: «HABILITA EL BOTON DE DIBUJAR ZAPATAS AISLADAS». Ya no esta apagado
+    # y ya no avisa de que el dibujante falta: existe.
+    m_boton = re.search(r'<Button x:Name="DibujarZapatasButton".*?/>', xaml, re.S)
+
+    check("el boton de dibujar zapatas esta puesto y ENCENDIDO",
+          m_boton is not None and 'IsEnabled="False"' not in m_boton.group(0))
+    check("y ya no dice que el dibujante es el paso siguiente",
+          "el dibujante de zapatas es el paso siguiente" not in xaml
+          and "El dibujante de zapatas todavía no está" not in zap_cb)
+    check("y su globo dice lo que hace de verdad",
+          m_boton is not None
+          and "su corte y su planta" in m_boton.group(0)
+          and "no dibuja si falta algo" in m_boton.group(0))
 
     # El tipo y el desplanta van por PLANTILLA con ComboBox editable enlazado por Text.
     # Con SelectedItemBinding y la lista llenada desde el code-behind, el enlace pisaba el
@@ -3843,7 +3850,109 @@ def v19_circular_y_ui() -> None:
           and "EnlazarZapatas();" in codigo
           and "EngancharVistaPreviaZapata();" in codigo)
     check("y se dice lo que a la vista previa le falta todavia",
-          "Lo que todavía no está" in zap_cb and "las cotas" in zap_cb)
+          "Lo que todavía no está" in zap_cb and "los rellenos de concreto" in zap_cb)
+
+    # ------------------------------------------------------------------
+    # EL DIBUJANTE DE ZAPATAS EN AUTOCAD
+    # ------------------------------------------------------------------
+    # Lo que se pidio: habilitar el boton. Un boton encendido con un dibujante a medias
+    # seria peor que el boton apagado, asi que aqui se comprueba el dibujante entero.
+    zap_drw = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+
+    check("existe el dibujante de zapatas",
+          "public sealed class ZapataDrawer" in zap_drw)
+    check("y toda su geometria sale de TrazoZapata, como la vista previa",
+          "TrazoZapata.Colocar(z, xBase)" in zap_drw
+          and "TrazoZapata.XBase(z.Tipo, anchos, i)" in zap_drw
+          and "TrazoZapata.ParrillaEnAlzado(" in zap_drw
+          and "TrazoZapata.CentrosEstribos(" in zap_drw
+          and "TrazoZapata.HuecoDelDado(z, a.XBase, yBot)" in zap_drw
+          and "TrazoZapata.Posiciones(" in zap_drw)
+    check("y no recalcula el acomodo por su cuenta",
+          "SeparacionCentral" not in zap_drw and "LinderoXBase" not in zap_drw)
+
+    # El acero de las dos hojas se lee con el MISMO lector, para que la previa y el plano
+    # repartan igual: si cada uno leyera la celda, «@20» podria salir de 20 en una y de 12
+    # en el otro.
+    check("la separacion y los tramos se leen en un solo sitio",
+          "public static double SeparacionM(" in trazo_zap
+          and "public static double[] TramosCm(" in trazo_zap
+          and "TrazoZapata.SeparacionM(texto)" in zap_cb
+          and "TrazoZapata.TramosCm(z.SepEstriboDado)" in zap_cb
+          and "TrazoZapata.TramosCm(z.SepEstriboDado)" in zap_drw)
+
+    # Enlace tardio, como el resto de los dibujantes: ni una referencia a Autodesk.
+    check("habla con AutoCAD por COM y tolera fallos",
+          "private readonly dynamic _doc;" in zap_drw
+          and "AcadConnection.Retry" in zap_drw
+          and "public IReadOnlyList<string> Fallos => _log;" in zap_drw)
+
+    # Las capas de las macros.
+    for capa in ("CONCRETO", "ESTRIBOS", "ROTULOS", "COTAS", "TERRENO_LINEA",
+                 "TERRENO_HATCH", "PLANTILLA", "BLOQUE_DADO"):
+        check(f"usa la capa {capa} de la macro", f'"{capa}"' in zap_drw)
+
+    check("y el estilo de cota es el mismo de las secciones",
+          '"COTA_ESTRUCTURAL"' in zap_drw and '"SECCIONES"' in zap_drw)
+
+    # El corte, pieza por pieza.
+    check("el corte dibuja plantilla, zapata, dado y terreno",
+          "var plantilla = Rectangulo(a.XBase, a.YPlantillaBot, a.XDer, a.YZapBot" in zap_drw
+          and "private void RellenoDeTerreno(" in zap_drw
+          and "a.XDadoIzq, a.YZapTop, a.XDadoDer, a.YDadoTop" in zap_drw)
+    check("la columna se dibuja cortada, con su linea de rotura",
+          "private void ColumnaCortada(" in zap_drw
+          and "private void LineaDeRotura(" in zap_drw
+          and "AlturaColumna = 0.8 * 8.0 / 9.0" in zap_drw)
+    check("los estribos del dado van en capsula",
+          "private void Capsula(" in zap_drw
+          and "TrazoZapata.Sobresalir(centros)" in zap_drw
+          and "TrazoZapata.QuitarPrimeros(centros, z.DobleParrilla ? 2 : 1)" in zap_drw)
+    check("las parrillas llevan gancho y sus transversales de punta",
+          "TrazoZapata.GanchoParrilla" in zap_drw
+          and "private object? Circulo(" in zap_drw
+          and "RellenarVarillas" in zap_drw)
+    check("el corte se acota como la macro, en cadena y con las verticales",
+          "private void CotasDelCorte(" in zap_drw
+          and "private int Cota(" in zap_drw
+          and "AddDimAligned" in zap_drw)
+    check("y el rotulo cuelga de donde la planta lo espera",
+          "TrazoZapata.RotuloEscalaOffset" in zap_drw)
+
+    # La planta.
+    check("la planta recorta la malla en el hueco del dado",
+          "private void Malla(" in zap_drw
+          and "if (y > hy1 && y < hy2)" in zap_drw
+          and "if (x > hx1 && x < hx2)" in zap_drw)
+    check("el dado se INSERTA como bloque, buscandolo por su ID",
+          "private bool InsertarBloque(" in zap_drw
+          and "_doc.Blocks.Item(nombre)" in zap_drw
+          and "InsertBlock" in zap_drw)
+    check("y si el bloque no esta, se pone un rectangulo Y SE AVISA",
+          "_dadosQueFaltan" in zap_drw
+          and "no está en el dibujo" in zap_drw)
+    check("el ID del dado viaja limpio, sin la hoja entre parentesis",
+          "IdDado = SoloElId(IdDado)" in zap_row)
+
+    # El boton: revisa, se engancha a la sesion abierta y cuenta lo que salio.
+    check("el boton de dibujar revisa ANTES de dibujar",
+          "if (!RevisarZapatas(out var problemas, out _))" in zap_cb
+          and "Corrige esto antes de dibujar las zapatas" in zap_cb)
+    check("la revision esta en un solo sitio para los dos botones",
+          "private bool RevisarZapatas(out List<string> problemas, out List<string> acomodo)"
+          in zap_cb
+          and "RevisarZapatas(out var problemas, out var acomodo);" in zap_cb)
+    check("no arranca AutoCAD, se engancha al que ya este abierto",
+          "AcadConnection.Connect(launchIfMissing: false)" in zap_cb
+          and "new ZapataDrawer(doc, DiametroCmDeVarilla)" in zap_cb)
+    check("y el catalogo de varillas se PASA, no se copia",
+          "private static double DiametroCmDeVarilla(string? clave)" in zap_cb
+          and "private readonly Func<string?, double> _diametroCm;" in zap_drw
+          and "DiametrosCm" not in zap_drw)
+    check("los fallos tolerados y las notas se muestran",
+          "dibujante.Fallos" in zap_cb
+          and "MostrarNotas(" in zap_cb
+          and "PERO hubo " in zap_cb)
 
     # ------------------------------------------------------------------
     # DESHACER (Ctrl+Z)
@@ -4124,6 +4233,27 @@ def v19_circular_y_ui() -> None:
           "return 1;" in prueba)
     check("y se explica por que no es un port de Python",
           "no es un\n// port" in prueba or "no es un port" in prueba.replace("\n// ", " "))
+
+    # La hermana: los lectores de celda de la zapata. Los usan LOS DOS -la vista previa y
+    # el dibujante de AutoCAD-, asi que un fallo ahi saca un plano distinto de lo revisado.
+    prueba_zap = leer(ruta("tools/prueba-zapata/Program.cs"))
+
+    check("hay una prueba ejecutable de los lectores de celda de la zapata",
+          "using CadLink.Cad;" in prueba_zap
+          and "TrazoZapata.SeparacionM(" in prueba_zap
+          and "TrazoZapata.TramosCm(" in prueba_zap)
+    check("comprueba lo que la gente escribe de verdad en una celda",
+          '"20 cm"' in prueba_zap and '"@15"' in prueba_zap and '"12,5"' in prueba_zap)
+    check("y que una celda vacia o en cero NO se lee como separacion cero",
+          '"0"' in prueba_zap and "no cero" in prueba_zap)
+    check("y que las siete separaciones de la lista corta reparten estribos",
+          '"6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"' in prueba_zap
+          and "en orden y dentro" in prueba_zap)
+    check("y que el acomodo de las dos macros no se movio",
+          "central: la segunda a 1 m de la primera" in prueba_zap
+          and "lindero: la primera en x=-3" in prueba_zap)
+    check("y devuelve 1 si algo falla, igual que la del diamante",
+          "return fallos == 0 ? 0 : 1;" in prueba_zap)
 
     # Y el muestreo, que fue el que fallo: el radio con SIGNO en lugar de un apaño.
     check("el muestreo saca el centro del arco con el radio con signo",
@@ -5986,8 +6116,38 @@ def v21_separacion_y_acero() -> None:
     check("las separaciones usuales viven en un solo sitio",
           "public static readonly string[] SeparacionesUsuales" in filas)
 
-    for sep in ("6-12-6", "7-14-4", "15"):
+    # LO QUE SE PIDIO: la lista corta. Solo las cinco de tres tramos que se repiten en
+    # casi todos los planos, mas las dos unicas de 15 y 20 cm que se usan en parrillas y
+    # mallas de zapata. Las demas se teclean a mano, que es lo que la celda permite.
+    for sep in ("6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"):
         check(f"esta la separacion {sep}", f'"{sep}"' in filas)
+
+    m_seps = re.search(
+        r"public static readonly string\[\] SeparacionesUsuales\s*=\s*\{(.*?)\};",
+        filas, re.S)
+
+    check("la lista de separaciones no trae nada mas",
+          m_seps is not None
+          and sorted(re.findall(r'"([^"]+)"', m_seps.group(1)))
+          == sorted(["6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"]))
+
+    # Las que se quitaron. Se comprueba que NO esten en la lista, no que no esten en el
+    # archivo: «10-15-20» sigue apareciendo en los comentarios como ejemplo del formato de
+    # varios tramos, y eso esta bien.
+    for sep in ("7-14-4", "10-15-20", "5-10-15", "10-20", "30"):
+        check(f"y ya no ofrece {sep}, que se teclea a mano",
+              m_seps is not None and f'"{sep}"' not in m_seps.group(1))
+
+    check("y queda escrito que la lista se dejo corta a proposito",
+          "La lista se dejó corta a propósito" in filas
+          and "se teclea a mano en la celda" in filas)
+
+    # La misma lista alimenta las dos hojas: la de concreto y la de zapatas. Es un solo
+    # static, asi que recortarlo las recorta las dos, que es lo que se pidio.
+    check("la lista es la misma en las dos hojas",
+          xaml.count(
+              'ItemsSource="{Binding Source={x:Static '
+              'models:SeccionConcretoRow.SeparacionesUsuales}}"') >= 2)
 
     # La celda es un combo EDITABLE enlazado por Text. Con SelectedItemBinding, que es
     # lo que usan las demas columnas de lista, el texto que se teclea a mano no llega a

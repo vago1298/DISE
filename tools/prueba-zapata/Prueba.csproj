@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de los lectores de celda de la zapata.
+
+       Es la hermana de prueba-trazo-diamante y existe por el mismo motivo: los
+       verificar_*.py comprueban el calculo PORTANDOLO a Python, y un port correcto
+       conviviendo con un C# equivocado da todo en verde. Aqui se ejecuta el
+       CadLink.Cad compilado.
+
+       Lo que prueba son las dos piezas que leen lo que el usuario escribe en una
+       celda -TrazoZapata.SeparacionM y TrazoZapata.TramosCm- porque son las que la
+       vista previa y el dibujante de AutoCAD usan LAS DOS. Si una celda escrita
+       «@20» se leyera distinto en cada lado, la previa ensenaria una malla y el
+       plano saldria con otra, que es justo lo que estas dos funciones existen para
+       evitar.
+
+       Tambien comprueba que las siete separaciones de la lista corta -las que
+       quedaron en el desplegable- reparten estribos de verdad en un dado normal:
+       una lista que ofrece un valor con el que no cabe ningun estribo seria peor
+       que no ofrecerlo.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-zapata
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla, asi que sirve para un script. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-zapata</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>
