@@ -38,6 +38,22 @@
     <None Update="cadlink.config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!-- El catalogo de perfiles de acero, tambien SUELTO: el usuario tiene que
+         poder crecerlo con su propia lista de perfiles sin esperar una version
+         nueva del programa. Si el archivo se borra, el programa abre igual con
+         una semilla de cuatro perfiles. -->
+    <None Update="perfiles-acero.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+    <!-- El catalogo de ACEROS, tambien suelto y por el mismo motivo: trae el Fy,
+         el Fu y en que secciones se hace cada acero, y eso cambia con las normas
+         y con lo que surta el proveedor. Se genera de docs/ACEROS.xlsx con
+         tools/catalogo_aceros.py, pero se puede editar con el Bloc de notas. -->
+    <None Update="aceros.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

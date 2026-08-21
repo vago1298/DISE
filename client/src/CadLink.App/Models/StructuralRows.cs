@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using CadLink.Cad;
 
 namespace CadLink.App.Models;
 
@@ -58,20 +59,53 @@ public abstract class Row : INotifyPropertyChanged
 /// </remarks>
 public static class Varilla
 {
-    /// <summary>Diámetros nominales en centímetros.</summary>
+    /// <summary>
+    /// Diámetros nominales en centímetros: <b>n octavos de pulgada</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Estos números estaban redondeados y uno de ellos estaba mal.</b> Salió al
+    /// comparar el port con la macro de alzados, cuya tabla <c>RebarDiaM</c> es más
+    /// precisa que la que tenía aquí:
+    /// </para>
+    /// <list type="table">
+    ///   <item><term>#2</term><description>0.60 aquí, 0.64 en la macro, 0.635 el nominal. El área salía <b>12.1 % baja</b>.</description></item>
+    ///   <item><term>#6</term><description>1.90 aquí, 1.905 el nominal. Área 1.0 % baja.</description></item>
+    ///   <item><term>#10</term><description>3.20 aquí, 3.175 el nominal. Área 1.3 % <b>alta</b>.</description></item>
+    ///   <item><term>#12</term><description>3.80 aquí, 3.81 el nominal. Área 0.5 % baja.</description></item>
+    /// </list>
+    /// <para>
+    /// Un 12 % de menos en el área de un #2 no es un detalle de dibujo: se propaga a
+    /// <c>AreaAceroCm2</c> y a la cuantía, y una cuantía baja es del lado
+    /// <b>inseguro</b>, porque hace pasar por bueno un armado que no llega al mínimo.
+    /// </para>
+    /// <para>
+    /// Así que la tabla se pone en el valor <b>exacto</b>: la varilla del número
+    /// <c>n</c> mide <c>n/8</c> de pulgada, y una pulgada son 25.4 mm exactos. No se
+    /// redondea nada, y la comprobación está en
+    /// <c>tools/verificar_diametros_varilla.py</c>.
+    /// </para>
+    /// </remarks>
     public static readonly IReadOnlyDictionary<string, double> DiametrosCm =
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
         {
-            ["#2"] = 0.60,
-            ["#2.5"] = 0.80,
-            ["#3"] = 0.95,
-            ["#4"] = 1.27,
-            ["#5"] = 1.59,
-            ["#6"] = 1.90,
-            ["#8"] = 2.54,
-            ["#10"] = 3.20,
-            ["#12"] = 3.80
+            ["#2"] = 0.635,       // 2/8"
+            ["#2.5"] = 0.79375,   // 2.5/8"
+            ["#3"] = 0.9525,      // 3/8"
+            ["#4"] = 1.27,        // 4/8"
+            ["#5"] = 1.5875,      // 5/8"
+            ["#6"] = 1.905,       // 6/8"
+            ["#8"] = 2.54,        // 8/8"
+            ["#10"] = 3.175,      // 10/8"
+            ["#12"] = 3.81        // 12/8"
         };
+
+    /// <summary>Diámetro nominal exacto de la varilla número <paramref name="n"/>.</summary>
+    /// <remarks>
+    /// Existe para que la tabla se pueda comprobar contra la fórmula en lugar de
+    /// contra otra tabla escrita a mano, que es como se colaron los redondeos.
+    /// </remarks>
+    public static double NominalCm(double n) => n / 8.0 * 2.54;
 
     /// <summary>
     /// Lleva cualquier variante de captura a la forma canónica <c>#N</c>.
@@ -150,9 +184,18 @@ public sealed class SeccionConcretoRow : Row
     private int _nInter;
     private string _diamInter = string.Empty;
 
+    // ---------------- Sección circular ----------------
+    // Va POR FILA, no por corrida: en un mismo juego de planos conviven columnas
+    // rectangulares y circulares, y el usuario pidió expresamente que solo la
+    // sección que él marque salga redonda.
+    private string _circular = string.Empty;
+    private int _nVarTotal;
+    private string _diamVarTotal = string.Empty;
+    private string _zunchoHelicoidal = string.Empty;
+
     private double _recubrimientoCm = 4;
     private string _estribo = "#3";
-    private string _separacionCm = "10-15-20";
+    private string _separacionCm = "10-20-10";
     private string _estriboDiamante = string.Empty;
     private string _diamEstriboDiamante = string.Empty;
     // 5 cm es la longitud usual del gancho sísmico. Antes estaba en 1 cm y el
@@ -177,7 +220,168 @@ public sealed class SeccionConcretoRow : Row
         {
             Set(ref _elemento, value);
             AplicarFcPorOmision();
+            AplicarPrefijoDeId();
+
+            // El Elemento decide la FORMA: al pasar de COLUMNA a COLUMNA CIRCULAR
+            // cambia todo lo que depende de ella, y la cuadricula y la vista previa
+            // tienen que enterarse.
+            Raise(nameof(EsCircular));
+            Raise(nameof(ElementoRotulo));
+            Raise(nameof(DiametroCm));
+
+            // Al cambiar el elemento cambia el prefijo, y con el la parte editable.
+            Raise(nameof(PrefijoId));
+            Raise(nameof(NumeroId));
         }
+    }
+
+    // ==================================================================
+    //  Prefijo del ID según el elemento
+    // ==================================================================
+
+    /// <summary>
+    /// Prefijo de ID que le toca a cada elemento, y <c>null</c> si no le toca ninguno.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son los mismos prefijos que <c>MainWindow.TipoDe</c> ya reconoce para adivinar el
+    /// tipo cuando el elemento viene en blanco, así que esto no inventa una convención
+    /// nueva: la <b>completa sola</b> en lugar de esperar a que el usuario se la sepa de
+    /// memoria.
+    /// </para>
+    /// <para>
+    /// <b>OTRO no lleva prefijo</b> a propósito: es la fila donde el usuario pone lo que
+    /// quiera, y ahí el ID también es suyo.
+    /// </para>
+    /// </remarks>
+    public static string? PrefijoDeId(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim().ToUpperInvariant();
+
+        return e switch
+        {
+            // Las dos columnas comparten prefijo: en el plano las dos son COLUMNA, y la
+            // forma no cambia como se numeran.
+            "COLUMNA" => "C-",
+            "COLUMNA CIRCULAR" => "C-",
+            // Los dos dados comparten prefijo, por lo mismo que las dos columnas.
+            "DADO" => "D-",
+            "DADO CIRCULAR" => "D-",
+            "CASTILLO" => "K-",
+            "TRABE" => "T-",
+            "CONTRATRABE" => "CT-",
+            "CABEZAL" => "CA-",
+            "CADENA DE CERRAMIENTO" => "CC-",
+            "CADENA DE DESPLANTE" => "CD-",
+            _ => null
+        };
+    }
+
+    /// <summary>Todos los prefijos conocidos, del más largo al más corto.</summary>
+    /// <remarks>
+    /// El orden importa: al reconocer el prefijo de un ID hay que probar <c>CT-</c> antes
+    /// que <c>C-</c>, o «CT-3» se leería como una columna llamada «T-3».
+    /// </remarks>
+    private static readonly string[] Prefijos =
+        { "CT-", "CC-", "CD-", "CA-", "C-", "D-", "K-", "T-" };
+
+    /// <summary>
+    /// Pone en el ID el prefijo del elemento, <b>conservando el número</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Al elegir TRABE el ID pasa a <c>T-</c> y el usuario escribe el número. Si ya había
+    /// un número, se conserva: de <c>T-101</c> a COLUMNA sale <c>C-101</c>, no
+    /// <c>C-</c> vacío. Es lo que espera quien se equivocó de elemento y lo corrige.
+    /// </para>
+    /// <para>
+    /// <b>Un ID que no sigue la convención NO se toca.</b> Si el usuario escribió
+    /// «MÉNSULA-3» o «EJE 4», eso es suyo y cambiar el elemento no puede borrárselo: solo
+    /// se reescribe cuando el ID está vacío o cuando empieza por uno de los prefijos
+    /// conocidos, que es la señal de que lo puso este mismo mecanismo.
+    /// </para>
+    /// </remarks>
+    private void AplicarPrefijoDeId()
+    {
+        var prefijo = PrefijoDeId(_elemento);
+
+        if (prefijo is null)
+        {
+            // OTRO y cualquier nombre escrito a mano: el ID se queda como esté.
+            return;
+        }
+
+        var actual = (_id ?? string.Empty).Trim();
+
+        if (actual.Length == 0)
+        {
+            Id = prefijo;
+            return;
+        }
+
+        // ¿Empieza por un prefijo conocido? Entonces se cambia el prefijo y se conserva
+        // lo que venía detrás.
+        foreach (var p in Prefijos)
+        {
+            if (!actual.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var resto = actual[p.Length..];
+
+            if (!string.Equals(p, prefijo, StringComparison.OrdinalIgnoreCase))
+            {
+                Id = prefijo + resto;
+            }
+
+            return;
+        }
+
+        // No sigue la convención: es un ID del usuario y no se toca.
+    }
+
+    /// <summary>
+    /// El <b>prefijo</b> del ID de esta fila, o cadena vacía si no le toca ninguno.
+    /// </summary>
+    /// <remarks>
+    /// Es de solo lectura y se muestra fijo al editar la celda del ID, para que el
+    /// usuario no pueda romper la nomenclatura sin querer.
+    /// </remarks>
+    public string PrefijoId => PrefijoDeId(_elemento) ?? string.Empty;
+
+    /// <summary>
+    /// La <b>parte editable</b> del ID: el número, sin el prefijo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El usuario pidió que al editar la celda del ID solo se toque el número: si la
+    /// trabe es <c>T-01</c>, editar debe cambiar el <c>01</c> por el <c>02</c> y no dejar
+    /// borrar el <c>T-</c>. Eso se resuelve <b>separando el dato</b>, no intentando
+    /// controlar el cursor dentro de la celda: la plantilla de edición pinta el prefijo
+    /// como texto fijo y engancha el cuadro de escritura aquí.
+    /// </para>
+    /// <para>
+    /// <b>Y el caso OTRO sale gratis</b>, que es lo bonito de plantearlo así. En OTRO no
+    /// hay prefijo, así que <see cref="PrefijoId"/> es la cadena vacía, esta propiedad
+    /// vale el ID entero y al escribirla se escribe el ID entero. O sea que el mismo
+    /// mecanismo da «solo el número» en los elementos con nomenclatura y «todo editable»
+    /// en OTRO, sin una sola condición de por medio.
+    /// </para>
+    /// </remarks>
+    public string NumeroId
+    {
+        get
+        {
+            var id = _id ?? string.Empty;
+            var p = PrefijoId;
+
+            return p.Length > 0 && id.StartsWith(p, StringComparison.OrdinalIgnoreCase)
+                ? id[p.Length..]
+                : id;
+        }
+
+        set => Id = PrefijoId + (value ?? string.Empty);
     }
 
     /// <summary>
@@ -229,7 +433,19 @@ public sealed class SeccionConcretoRow : Row
     }
 
     /// <summary>Columna B: identificador. <b>Es el nombre del bloque de AutoCAD.</b></summary>
-    public string Id { get => _id; set => Set(ref _id, value); }
+    public string Id
+    {
+        get => _id;
+        set
+        {
+            Set(ref _id, value);
+
+            // La celda del ID se pinta con el prefijo aparte del numero, asi que las dos
+            // partes tienen que enterarse de que el ID cambio.
+            Raise(nameof(PrefijoId));
+            Raise(nameof(NumeroId));
+        }
+    }
 
     /// <summary>Columna C.</summary>
     public double BaseCm { get => _baseCm; set => Set(ref _baseCm, value); }
@@ -266,6 +482,245 @@ public sealed class SeccionConcretoRow : Row
 
     /// <summary>Columna N.</summary>
     public string DiamInter { get => _diamInter; set => Set(ref _diamInter, value); }
+
+    // ==================================================================
+    // Sección circular
+    // ==================================================================
+
+    /// <summary>Nombre del elemento cuando es una columna redonda.</summary>
+    /// <remarks>
+    /// La forma se elige en la columna <b>Elemento</b>, no en una casilla aparte. Es
+    /// una decisión del usuario y tiene sentido: una columna circular <i>es</i> otro
+    /// tipo de elemento, no una columna normal con una opción marcada, y así la lista
+    /// desplegable de Elemento muestra de una vez todo lo que se puede capturar.
+    /// </remarks>
+    public const string ElementoColumnaCircular = "COLUMNA CIRCULAR";
+
+    /// <summary>Dado de desplante <b>redondo</b>: el que desplanta una columna circular.</summary>
+    /// <remarks>
+    /// Es al DADO lo que <see cref="ElementoColumnaCircular"/> es a la COLUMNA: solo cambia la
+    /// FORMA de la sección, que pasa a ser un círculo con su zuncho y sus varillas repartidas
+    /// en el círculo de paso. En el plano se rotula <b>DADO</b>, igual que el cuadrado, porque
+    /// lo que distingue a uno de otro es su dibujo y su cota de diámetro, no el nombre.
+    /// </remarks>
+    public const string ElementoDadoCircular = "DADO CIRCULAR";
+
+    /// <summary>Dado de desplante rectangular.</summary>
+    public const string ElementoDado = "DADO";
+
+    /// <summary>Nombre con el que se <b>rotula</b> una columna, redonda o no.</summary>
+    public const string ElementoColumna = "COLUMNA";
+
+    /// <summary>Cabezal de pilas o de pilotes.</summary>
+    /// <remarks>
+    /// Lleva alzado <b>horizontal</b>: es una pieza tendida, como una trabe, no un
+    /// elemento vertical. Ver <c>MainWindow.TipoDe</c>.
+    /// </remarks>
+    public const string ElementoCabezal = "CABEZAL";
+
+    /// <summary>
+    /// <b>OTRO</b>: cualquier elemento que no esté en la lista.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está en el desplegable como recordatorio de que la casilla <b>se puede
+    /// escribir</b>: el combo de Elemento es editable, así que en vez de elegir OTRO se
+    /// puede teclear directamente el nombre que se quiera —«MÉNSULA», «VIGA DE
+    /// TRANSFERENCIA», lo que sea— y ese nombre es el que sale en el rótulo del plano.
+    /// </para>
+    /// <para>
+    /// Un elemento escrito a mano <b>no lleva alzado</b> a menos que su ID empiece por
+    /// el prefijo de un tipo conocido (<c>C-</c>, <c>T-</c>, <c>D-</c>, <c>CT-</c>),
+    /// porque el programa no puede adivinar si es una pieza tendida o de pie. Sí lleva
+    /// sección, con su armado y su rótulo.
+    /// </para>
+    /// </remarks>
+    public const string ElementoOtro = "OTRO";
+
+    /// <summary>
+    /// Las separaciones de estribos que se usan a diario, para el desplegable.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son <b>sugerencias, no una lista cerrada</b>: la celda sigue siendo de texto libre
+    /// y se puede teclear cualquier otra. Por eso el combo de esa columna va con
+    /// <c>IsEditable</c> y enlazado por <c>Text</c> y no por <c>SelectedItem</c>: con
+    /// <c>SelectedItem</c>, lo que se teclea a mano no llega a la propiedad y se perdería
+    /// al salir de la celda.
+    /// </para>
+    /// <para>
+    /// El orden no es alfabético, es de uso: primero las de tres tramos —confinamiento en
+    /// los extremos y el centro más abierto, que es el caso normal de una trabe o una
+    /// columna— de la más cerrada a la más abierta, y al final las de separación única
+    /// (15 y 20 cm), que son las que se usan en parrillas y mallas de zapata.
+    /// </para>
+    /// <para>
+    /// La lista se dejó corta a propósito: solo las cinco de tres tramos que se repiten
+    /// en casi todos los planos más las dos únicas. Cualquier otra —"5-10-15", "10-20",
+    /// "30"— se teclea a mano en la celda; se guarda igual porque la columna es de texto
+    /// libre. Esta misma lista alimenta el desplegable de Secciones de Concreto y el de
+    /// Zapatas Aisladas, así que cambiarla aquí las cambia en las dos hojas.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] SeparacionesUsuales =
+    {
+        "6-12-6",
+        "7-14-7",
+        "8-16-8",
+        "9-18-9",
+        "10-20-10",
+        "15",
+        "20"
+    };
+
+    /// <summary>
+    /// Columna heredada: <c>SI</c> marcaba la sección como redonda.
+    /// </summary>
+    /// <remarks>
+    /// <b>Ya no se captura.</b> La forma se elige en <see cref="Elemento"/>, poniendo
+    /// «COLUMNA CIRCULAR». Esta propiedad se conserva <b>solo</b> para que un archivo
+    /// <c>.clk</c> guardado con la versión anterior siga abriendo con sus columnas
+    /// redondas intactas; por eso <see cref="EsCircular"/> la sigue mirando.
+    /// </remarks>
+    public string Circular
+    {
+        get => _circular;
+        set
+        {
+            Set(ref _circular, value);
+
+            // El armado se lee de otras columnas segun la forma, así que al cambiar
+            // la forma hay que reavisar de las calculadas. Set() ya lo hace, pero
+            // tambien cambia EsCircular y DiametroCm, que la cuadricula usa para
+            // atenuar las columnas que dejan de aplicar.
+            Raise(nameof(EsCircular));
+            Raise(nameof(DiametroCm));
+        }
+    }
+
+    /// <summary>¿Esta sección es circular?</summary>
+    /// <remarks>
+    /// Manda el <b>Elemento</b>. La columna <see cref="Circular"/> se sigue mirando
+    /// para no romper los <c>.clk</c> guardados antes de que la forma se eligiera
+    /// desde el Elemento; un archivo viejo no tiene «COLUMNA CIRCULAR» en ninguna
+    /// fila y sin esto sus columnas redondas volverían a salir cuadradas.
+    /// </remarks>
+    public bool EsCircular =>
+        EsElementoCircular(_elemento)
+        || (_circular ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>¿Esta sección lleva estribo diamante?</summary>
+    /// <remarks>
+    /// La columna R dice <c>SI</c>, y la sección tiene que ser <b>rectangular</b>: en una
+    /// redonda no hay rombo que dibujar, y la macro ignoraba la columna R en ese caso. Es la
+    /// misma regla que aplica el dibujante al armar el <c>SeccionCad</c>; está aquí para que
+    /// la vista previa no tenga que repetirla y para que las dos no puedan discrepar.
+    /// </remarks>
+    public bool LlevaDiamante =>
+        !EsCircular
+        && (_estriboDiamante ?? string.Empty).Trim()
+            .Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>¿El nombre del elemento es el de una columna redonda?</summary>
+    public static bool EsElementoCircular(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim();
+
+        // Las DOS formas redondas: la columna y el dado. Sin el dado, un «DADO CIRCULAR»
+        // se dibujaria como un rectangulo con estribos rectangulares, o sea NO se
+        // dibujaria lo que se pidio.
+        return e.Equals(ElementoColumnaCircular, StringComparison.OrdinalIgnoreCase)
+               || e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Nombre del elemento <b>tal como debe aparecer en el plano</b>.
+    /// </summary>
+    /// <remarks>
+    /// Una columna redonda se rotula <b>COLUMNA</b>, igual que una cuadrada. Lo pidió
+    /// el usuario y es lo correcto: en el plano lo que distingue a una de otra es su
+    /// dibujo y su cota de diámetro, no el nombre. Escribir «COLUMNA CIRCULAR» en el
+    /// rótulo sería redundante, y además rompería la nomenclatura del juego de planos.
+    /// <para>
+    /// «COLUMNA CIRCULAR» es solo el nombre de <b>captura</b>, el que se elige en la
+    /// cuadrícula para decidir la forma.
+    /// </para>
+    /// </remarks>
+    public string ElementoRotulo
+    {
+        get
+        {
+            var e = (_elemento ?? string.Empty).Trim();
+
+            // Cada forma redonda se rotula con el nombre de SU pieza: la columna redonda
+            // como COLUMNA y el dado redondo como DADO. Rotular el dado como «COLUMNA»
+            // -que es lo que pasaba con el atajo de antes- pondria en el plano una pieza
+            // que no es la que se dibujo.
+            if (e.Equals(ElementoColumnaCircular, StringComparison.OrdinalIgnoreCase))
+            {
+                return ElementoColumna;
+            }
+
+            if (e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase))
+            {
+                return ElementoDado;
+            }
+
+            return _elemento ?? string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Diámetro de la sección circular, en cm. Es la <b>base</b>.
+    /// </summary>
+    /// <remarks>
+    /// No se agrega una columna nueva para el diámetro: en una sección redonda la
+    /// base ES el diámetro, y tener dos casillas para el mismo número es la forma
+    /// segura de que un día no coincidan. La altura se ignora, y
+    /// <c>Revisar</c> lo avisa si trae un valor distinto.
+    /// </remarks>
+    public double DiametroCm => BaseCm;
+
+    /// <summary>
+    /// Varillas <b>totales</b> del círculo, no por lecho.
+    /// </summary>
+    /// <remarks>
+    /// En una columna redonda no hay lecho superior ni inferior: el acero se reparte
+    /// en un solo círculo de paso. Pedirlo por lechos obligaría al usuario a hacer
+    /// una división mental que además no tiene una respuesta única.
+    /// </remarks>
+    public int NVarTotal { get => _nVarTotal; set => Set(ref _nVarTotal, value); }
+
+    /// <summary>Diámetro de las varillas del círculo. Si va vacío se toma la F.</summary>
+    public string DiamVarTotal { get => _diamVarTotal; set => Set(ref _diamVarTotal, value); }
+
+    /// <summary>Diámetro efectivo de las varillas del círculo.</summary>
+    public string DiamVarTotalEfectivo =>
+        string.IsNullOrWhiteSpace(DiamVarTotal) ? DiamEsqSup : DiamVarTotal;
+
+    /// <summary>
+    /// <c>SI</c> = el zuncho sube en <b>hélice</b>; vacío = anillos sueltos.
+    /// </summary>
+    /// <remarks>
+    /// Lo decide el usuario y no el programa, porque son dos formas de armar
+    /// distintas y las dos son correctas: la hélice se arma de una pieza continua y
+    /// el anillo se corta y se amarra uno por uno. Solo cambia el alzado; en la
+    /// sección las dos se ven igual, como un anillo.
+    /// </remarks>
+    public string ZunchoHelicoidal
+    {
+        get => _zunchoHelicoidal;
+        set
+        {
+            Set(ref _zunchoHelicoidal, value);
+            Raise(nameof(EsZunchoHelicoidal));
+        }
+    }
+
+    /// <summary>¿El zuncho sube en hélice?</summary>
+    public bool EsZunchoHelicoidal =>
+        (_zunchoHelicoidal ?? string.Empty).Trim()
+            .Equals("SI", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Columna O.</summary>
     public double RecubrimientoCm { get => _recubrimientoCm; set => Set(ref _recubrimientoCm, value); }
@@ -333,8 +788,18 @@ public sealed class SeccionConcretoRow : Row
     public string DiamIntInfEfectivo =>
         string.IsNullOrWhiteSpace(DiamIntInf) ? DiamEsqInfEfectivo : DiamIntInf;
 
-    /// <summary>Total de varillas longitudinales. Las laterales cuentan por los dos lados.</summary>
-    public int TotalVarillas => NEsqSup + NIntSup + NEsqInf + NIntInf + (2 * NInter);
+    /// <summary>
+    /// Total de varillas longitudinales.
+    /// </summary>
+    /// <remarks>
+    /// En la sección <b>circular</b> es el conteo total y ya está: no se suma nada,
+    /// porque no hay lechos. En la rectangular se suman los cuatro grupos y las
+    /// laterales cuentan por los dos lados.
+    /// </remarks>
+    public int TotalVarillas =>
+        EsCircular
+            ? NVarTotal
+            : NEsqSup + NIntSup + NEsqInf + NIntInf + (2 * NInter);
 
     /// <summary>
     /// Área total de acero longitudinal, en cm². No la calcula la macro, pero es
@@ -342,29 +807,51 @@ public sealed class SeccionConcretoRow : Row
     /// </summary>
     public double AreaAceroCm2 =>
         Math.Round(
-            (NEsqSup * Varilla.AreaCm2(DiamEsqSup)) +
-            (NIntSup * Varilla.AreaCm2(DiamIntSupEfectivo)) +
-            (NEsqInf * Varilla.AreaCm2(DiamEsqInfEfectivo)) +
-            (NIntInf * Varilla.AreaCm2(DiamIntInfEfectivo)) +
-            (2 * NInter * Varilla.AreaCm2(DiamInter)),
+            EsCircular
+                ? NVarTotal * Varilla.AreaCm2(DiamVarTotalEfectivo)
+                : (NEsqSup * Varilla.AreaCm2(DiamEsqSup)) +
+                  (NIntSup * Varilla.AreaCm2(DiamIntSupEfectivo)) +
+                  (NEsqInf * Varilla.AreaCm2(DiamEsqInfEfectivo)) +
+                  (NIntInf * Varilla.AreaCm2(DiamIntInfEfectivo)) +
+                  (2 * NInter * Varilla.AreaCm2(DiamInter)),
             2);
+
+    /// <summary>
+    /// Área bruta de concreto, en cm². Depende de la forma.
+    /// </summary>
+    /// <remarks>
+    /// Existe aparte de la cuantía porque es el número que se equivoca solo: usar
+    /// <c>base × altura</c> en una sección redonda da un área un 27 % mayor que la
+    /// real (<c>D²</c> contra <c>πD²/4</c>) y por tanto una cuantía un 27 % MENOR
+    /// que la verdadera. Una cuantía subestimada es del lado inseguro: hace pasar
+    /// por bueno un armado que no llega al mínimo.
+    /// </remarks>
+    public double AreaBrutaCm2 =>
+        EsCircular
+            ? Math.PI * DiametroCm * DiametroCm / 4.0
+            : BaseCm * AlturaCm;
 
     /// <summary>
     /// Cuantía de acero longitudinal en porcentaje del área bruta.
     /// Es la comprobación inmediata contra los mínimos y máximos de la norma.
     /// </summary>
     public double CuantiaPorcentaje =>
-        BaseCm <= 0 || AlturaCm <= 0
+        AreaBrutaCm2 <= 0
             ? 0
-            : Math.Round(AreaAceroCm2 / (BaseCm * AlturaCm) * 100.0, 3);
+            : Math.Round(AreaAceroCm2 / AreaBrutaCm2 * 100.0, 3);
 
     protected override void RaiseCalculadas()
     {
         Raise(nameof(DiamIntSupEfectivo));
         Raise(nameof(DiamEsqInfEfectivo));
         Raise(nameof(DiamIntInfEfectivo));
+        Raise(nameof(DiamVarTotalEfectivo));
+        Raise(nameof(EsCircular));
+        Raise(nameof(DiametroCm));
+        Raise(nameof(EsZunchoHelicoidal));
         Raise(nameof(TotalVarillas));
         Raise(nameof(AreaAceroCm2));
+        Raise(nameof(AreaBrutaCm2));
         Raise(nameof(CuantiaPorcentaje));
     }
 }
@@ -376,6 +863,17 @@ public sealed class SeccionConcretoRow : Row
 public sealed class DatosProyecto
 {
     public ObservableCollection<SeccionConcretoRow> SeccionesConcreto { get; } = new();
+
+    /// <summary>Las secciones de acero: perfiles IR, OR, OC y CF.</summary>
+    public ObservableCollection<PerfilAceroRow> SeccionesAcero { get; } = new();
+
+    /// <summary>Las zapatas aisladas: centrales y de lindero, en una sola tabla.</summary>
+    /// <remarks>
+    /// Una tabla y no dos porque las dos macros leen <b>las mismas filas</b>: la de lindero es
+    /// la misma hoja corrida diecisiete columnas. Lo que cambia es el acomodo y dónde va el
+    /// dado, y eso lo dice la columna de tipo.
+    /// </remarks>
+    public ObservableCollection<ZapataAisladaRow> ZapatasAisladas { get; } = new();
 
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     public static DatosProyecto CrearEjemplo()
@@ -393,7 +891,7 @@ public sealed class DatosProyecto
             NEsqInf = 3, DiamEsqInf = "#8",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 1, DiamInter = "#3",
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-15-20",
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20-10",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
             GanchoCm = 5, Fc = "250", Escala = "25"
         });
@@ -412,6 +910,23 @@ public sealed class DatosProyecto
             GanchoCm = 5, Fc = "250", Escala = "20"
         });
 
+        // Columna REDONDA, para que el ejemplo muestre las dos formas. La base es el
+        // diametro y el armado se captura como TOTAL, no por lechos.
+        d.SeccionesConcreto.Add(new SeccionConcretoRow
+        {
+            // La forma la manda el Elemento. En el plano se rotula «COLUMNA».
+            // La constante va CUALIFICADA: este metodo vive en DatosProyecto, no en
+            // SeccionConcretoRow, asi que sin el nombre de la clase delante no esta
+            // en ambito. Es el CS0103 que rompio la compilacion.
+            Elemento = SeccionConcretoRow.ElementoColumnaCircular, Id = "C-2",
+            BaseCm = 50, AlturaCm = 50,
+            NVarTotal = 8, DiamVarTotal = "#8",
+            ZunchoHelicoidal = "SI",
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20",
+            GanchoCm = 5, Fc = "250", Escala = "20",
+            LongitudM = 3
+        });
+
         d.SeccionesConcreto.Add(new SeccionConcretoRow
         {
             Elemento = "CASTILLO", Id = "K-1",
@@ -424,6 +939,133 @@ public sealed class DatosProyecto
             RecubrimientoCm = 2, Estribo = "#2", SeparacionCm = "20",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
             GanchoCm = 5, Fc = "200", Escala = "10"
+        });
+
+        // ---------- Secciones de acero, UNA DE CADA FAMILIA ----------
+        //
+        // Son doce, una por familia, y eso es a propósito: entre las doce se dibujan las
+        // NUEVE formas distintas, así que el ejemplo enseña de una vez todo lo que la hoja
+        // sabe hacer. Y de paso enseña lo que no se ve mirando una sola fila: que la IR, la
+        // IS, la IC y la S se dibujan iguales y solo se distinguen por el color y el nombre.
+        //
+        // Los nombres son las DESIGNACIONES DEL MANUAL IMCA, tal como salen en el
+        // desplegable, no versiones abreviadas: así, al abrir la celda «Perfil», el que ya
+        // está puesto aparece marcado en la lista. Y las medidas son las del catálogo, no
+        // números inventados: se pueden cotejar contra la tabla de perfiles.
+
+        void Acero(
+            string familia, string perfil, string id, string elemento, string acero,
+            double peralte, double ancho = 0, double eAlma = 0, double ePatin = 0,
+            double labio = 0, double radio = 0, double anchoMenor = 0,
+            string clasificacion = "")
+        {
+            d.SeccionesAcero.Add(new PerfilAceroRow
+            {
+                Familia = familia, Perfil = perfil, Id = id,
+                Elemento = elemento, Clasificacion = clasificacion, Acero = acero,
+                PeralteCm = peralte, AnchoCm = ancho,
+                EspesorAlmaCm = eAlma, EspesorPatinCm = ePatin,
+                LabioCm = labio, RadioCm = radio, AnchoMenorCm = anchoMenor
+            });
+        }
+
+        // EL ACERO DE CADA FILA ES UNO QUE EL MANUAL DA COMO DISPONIBLE EN ESA FAMILIA,
+        // y no el mismo para todas. No es un detalle: la tabla marca en rojo la fila cuando
+        // el acero no se hace en el perfil, así que un ejemplo con aceros mal puestos
+        // arrancaría con media hoja en rojo y enseñaría a ignorar el rojo.
+        //
+        // De ahí que el monten y la zeta lleven A-1008 —son lámina rolada en frío, y el
+        // A-36 no se hace en lámina—, el tubo rectangular lleve A-500 Gr. B' —el Gr. B sin
+        // apóstrofo es el tubo redondo, con otro Fy— y el tensor de redondo macizo lleve
+        // A-572 Gr. 50.
+        //
+        // Forma I: cuatro familias que se dibujan igual.
+        Acero(FamiliaPerfil.Ir, "W - 12'' x 30.04 lb/ft", "V-1",
+              PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA992,
+              31.3, 16.6, 0.67, 1.12, clasificacion: "PRINCIPAL");
+
+        Acero(FamiliaPerfil.Is, "IS - 150 mm x 9.5 mm / 450 mm x 6.4 mm", "VA-1",
+              PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA572,
+              46.9, 15.0, 0.64, 0.95, clasificacion: "PRINCIPAL");
+
+        Acero(FamiliaPerfil.Ic, "IC - 16 '' x 52.14 lb/ft", "CA-1",
+              PerfilAceroRow.ElementoColumna, PerfilAceroRow.AceroA572,
+              39.9, 14.0, 0.64, 0.88);
+
+        Acero(FamiliaPerfil.S, "S - 10'' x 25.4 lb/ft", "V-2",
+              PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA36,
+              25.4, 11.8, 0.79, 1.25, clasificacion: "SECUNDARIA");
+
+        // Te y canal laminada.
+        Acero(FamiliaPerfil.Wt, "WT - 8'' x 13.0 lb/ft", "CS-1",
+              "PUNTAL", PerfilAceroRow.AceroA572,
+              19.9, 14.0, 0.64, 0.88);
+
+        Acero(FamiliaPerfil.C, "C - 8'' x 12.0 lb/ft", "AT-1",
+              "ATIESADOR", PerfilAceroRow.AceroA36,
+              20.3, 5.7, 0.56, 0.99);
+
+        // Formados en frío. El monten es el larguero de cubierta y la zeta su alternativa:
+        // la zeta lleva el patín angosto, que es lo que permite traslaparlas en el apoyo.
+        Acero(FamiliaPerfil.Cf, "CF - 6\" x 2\" x #14", "MO-1",
+              "MONTEN", PerfilAceroRow.AceroA1008,
+              15.24, 5.08, 0.19, labio: 1.52, radio: 0.24);
+
+        Acero(FamiliaPerfil.Zf, "ZF - 8\" x 2 3/8\" x #14", "LG-1",
+              "LARGUERO", PerfilAceroRow.AceroA1008,
+              20.32, 6.03, 0.19, radio: 0.476, anchoMenor: 5.4);
+
+        // Ángulo: sus dos alas y su espesor, que es lo único que da el manual.
+        Acero(FamiliaPerfil.L, "L - 3'' x 1/4''", "DG-1",
+              "DIAGONAL", PerfilAceroRow.AceroA36,
+              7.62, 7.62, 0.635);
+
+        // Tubos y redondo macizo.
+        Acero(FamiliaPerfil.Or, "HSS - 6\" x 1/4\"", "C-1",
+              PerfilAceroRow.ElementoColumna, PerfilAceroRow.AceroA500Bp,
+              15.2, 15.2, 0.64);
+
+        Acero(FamiliaPerfil.Oc, "PIPE - 4.02 in x 0.19 in", "PT-1",
+              "PUNTAL", PerfilAceroRow.AceroA53B,
+              10.2, eAlma: 0.48);
+
+        Acero(FamiliaPerfil.Os, "OS - 3/4\"", "TN-1",
+              PerfilAceroRow.ElementoTensor, PerfilAceroRow.AceroA572,
+              1.91);
+
+        // ---------- Zapatas aisladas: una de cada tipo ----------
+        //
+        // Una CENTRAL con doble parrilla y una de LINDERO con una sola, que es el caso
+        // corriente de cada una. Con las dos en el ejemplo se ve de una vez lo que cambia
+        // entre ellas: el dado centrado contra el dado pegado al paño, y el acomodo, que
+        // en la central crece a la derecha y en el lindero a la izquierda.
+        d.ZapatasAisladas.Add(new ZapataAisladaRow
+        {
+            Tipo = ZapataCad.Central, Id = "Z-1",
+            AnchoM = 1.6, LargoM = 1.6, ProfundidadM = 1.2, EspesorM = 0.3,
+            DobleParrilla = "SI",
+            VarInf = "#4", SepInf = "15", VarInfTrans = "#4", SepInfTrans = "15",
+            VarSup = "#4", SepSup = "20", VarSupTrans = "#4", SepSupTrans = "20",
+            TipoColumna = ZapataAisladaRow.TipoColumnaConcreto,
+            IdColumna = "C-1", IdDado = "D-1",
+            AnchoDadoCm = 50, AnchoColumnaCm = 40,
+            VarDadoSup = "#5", VarDadoInf = "#5", NIntDado = 1, VarIntDado = "#4",
+            EstriboDado = "#3", SepEstriboDado = "9-18-9",
+            Fc = "250"
+        });
+
+        d.ZapatasAisladas.Add(new ZapataAisladaRow
+        {
+            Tipo = ZapataCad.Lindero, Id = "ZL-1",
+            AnchoM = 1.4, LargoM = 1.8, ProfundidadM = 1.2, EspesorM = 0.3,
+            DobleParrilla = "NO",
+            VarInf = "#4", SepInf = "15", VarInfTrans = "#4", SepInfTrans = "15",
+            TipoColumna = ZapataAisladaRow.TipoColumnaConcreto,
+            IdColumna = "C-3", IdDado = "D-3",
+            AnchoDadoCm = 45, AnchoColumnaCm = 35,
+            VarDadoSup = "#5", VarDadoInf = "#5",
+            EstriboDado = "#3", SepEstriboDado = "15",
+            Fc = "250"
         });
 
         return d;

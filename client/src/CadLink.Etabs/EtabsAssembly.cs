@@ -37,9 +37,35 @@ namespace CadLink.Etabs;
 /// </remarks>
 public static class EtabsAssembly
 {
-    private const string NombreDll = "ETABSv1.dll";
+    /// <summary>
+    /// La librería que hay que buscar, según el programa de CSI.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Esto era el fallo de fondo al leer SAP2000.</b> El ProgID de SAP2000 se
+    /// encontraba —la bitácora decía <c>Objeto activo 'CSI.SAP2000.API.SapObject':
+    /// encontrado</c>— pero luego no se podía sacar el <c>SapModel</c>, y el motivo era
+    /// que la librería cargada seguía siendo <c>ETABSv1.dll</c>. Los tipos con los que se
+    /// hace el enlace temprano (<c>cOAPI</c>, <c>cSapModel</c>) salen de esa librería, y
+    /// los de ETABS <b>no casan</b> con el objeto COM de SAP2000: de ahí los
+    /// <c>Object does not match target type</c> y el delator
+    /// <c>Object of type 'System.Int32' cannot be converted to type
+    /// 'ETABSv1.eSlabTypeX'</c>.
+    /// </para>
+    /// <para>
+    /// O sea que no basta cambiar el ProgID: hay que cargar <b>la librería del programa
+    /// al que se habla</b>, y buscarla en SU carpeta de instalación.
+    /// </para>
+    /// </remarks>
+    public static bool ParaSap2000 { get; set; }
+
+    private static string NombreDll => ParaSap2000 ? "SAP2000v1.dll" : "ETABSv1.dll";
+
+    /// <summary>Trozo del nombre de la carpeta de instalación que hay que buscar.</summary>
+    private static string CarpetaClave => ParaSap2000 ? "sap2000" : "etabs";
 
     private static Assembly? _cargado;
+    private static bool _cargadoParaSap;
     private static string _rutaCargada = string.Empty;
 
     /// <summary>Ruta indicada a mano en la configuración. Tiene prioridad.</summary>
@@ -56,10 +82,16 @@ public static class EtabsAssembly
     /// </summary>
     public static Assembly? Cargar()
     {
-        if (_cargado is not null)
+        // La cache se lleva TAMBIEN el programa: si no, leer ETABS y despues SAP2000 en
+        // la misma sesion devolvia la libreria de ETABS la segunda vez, que es justo el
+        // fallo que se estaba arreglando.
+        if (_cargado is not null && _cargadoParaSap == ParaSap2000)
         {
             return _cargado;
         }
+
+        _cargado = null;
+        _rutaCargada = string.Empty;
 
         foreach (var ruta in Candidatas())
         {
@@ -71,8 +103,10 @@ public static class EtabsAssembly
                 }
 
                 _cargado = Assembly.LoadFrom(ruta);
+                _cargadoParaSap = ParaSap2000;
                 _rutaCargada = ruta;
-                Bitacora.Add($"Librería de ETABS cargada: {ruta}");
+                Bitacora.Add(
+                    $"Librería de {(ParaSap2000 ? "SAP2000" : "ETABS")} cargada: {ruta}");
                 return _cargado;
             }
             catch (Exception ex)
@@ -197,7 +231,7 @@ public static class EtabsAssembly
             var u = Unica(Path.Combine(carpeta, NombreDll));
             if (u is not null)
             {
-                Bitacora.Add($"Carpeta del ETABS en ejecución: {carpeta}");
+                Bitacora.Add($"Carpeta de {(ParaSap2000 ? "SAP2000" : "ETABS")} en ejecución: {carpeta}");
                 yield return u;
             }
         }
@@ -262,7 +296,10 @@ public static class EtabsAssembly
         {
             try
             {
-                if (!p.ProcessName.Contains("etabs", StringComparison.OrdinalIgnoreCase))
+                // OJO: el nombre del proceso tambien depende del programa. Buscando
+                // siempre 'etabs' nunca se daba con la carpeta de SAP2000, y encima se
+                // ofrecia la de ETABS como candidata.
+                if (!p.ProcessName.Contains(CarpetaClave, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -344,7 +381,7 @@ public static class EtabsAssembly
                 subcarpetas = Directory
                     .GetDirectories(raiz)
                     .Where(d => Path.GetFileName(d)
-                        .Contains("etabs", StringComparison.OrdinalIgnoreCase))
+                        .Contains(CarpetaClave, StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
@@ -362,7 +399,8 @@ public static class EtabsAssembly
 
     /// <summary>Mensaje para el usuario cuando no se encuentra la librería.</summary>
     public static string MensajeNoEncontrada() =>
-        "No encontré la librería de la API de ETABS (" + NombreDll + ").\n\n" +
+        "No encontré la librería de la API de " +
+        (ParaSap2000 ? "SAP2000" : "ETABS") + " (" + NombreDll + ").\n\n" +
         "Es la misma que tu macro de Excel tiene como referencia. Sin ella no se\n" +
         "puede leer el modelo: la API de ETABS no se deja usar a ciegas.\n\n" +
         "Busqué:\n" +

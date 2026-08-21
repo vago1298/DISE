@@ -141,4 +141,45 @@ public sealed class SeccionCad
 
     /// <summary>Estilo de dibujo. Equivale a la celda AC de la hoja.</summary>
     public ModoSeccion Modo { get; set; } = ModoSeccion.Tipo2Rellena;
+
+    // ==================================================================
+    // Sección circular
+    // ==================================================================
+
+    /// <summary>Esta sección se dibuja redonda.</summary>
+    /// <remarks>
+    /// Es por sección y no por corrida: en un mismo plano conviven columnas
+    /// rectangulares y circulares.
+    /// </remarks>
+    public bool Circular { get; set; }
+
+    /// <summary>
+    /// Diámetro de la sección circular, en cm.
+    /// </summary>
+    /// <remarks>
+    /// Es <see cref="BaseCm"/>. Se expone con su propio nombre porque en el código
+    /// del dibujo circular «base» no significa nada y llamarlo así invita a
+    /// equivocarse con el radio.
+    /// </remarks>
+    public double DiametroCm => BaseCm;
+
+    /// <summary>Radio de la sección circular, en cm.</summary>
+    public double RadioCm => BaseCm / 2.0;
+
+    /// <summary>
+    /// Varillas <b>totales</b> del círculo. No hay lechos en una sección redonda.
+    /// </summary>
+    public int NVarTotal { get; set; }
+
+    /// <summary>Varilla del círculo.</summary>
+    public VarCad VarTotal { get; set; }
+
+    /// <summary>
+    /// El zuncho sube en <b>hélice</b> en lugar de ser anillos sueltos.
+    /// </summary>
+    /// <remarks>
+    /// Solo cambia el <b>alzado</b>. En la sección las dos formas se ven idénticas,
+    /// como un anillo, porque un corte de una hélice ES un anillo.
+    /// </remarks>
+    public bool ZunchoHelicoidal { get; set; }
 }

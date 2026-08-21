@@ -308,7 +308,21 @@ def v6_handlers() -> None:
         cb = x + ".cs"
         if not os.path.exists(cb):
             continue
-        codigo = leer(cb)
+
+        # El code-behind puede estar repartido en VARIOS archivos parciales, y hay que
+        # leerlos todos. Antes solo se leia MainWindow.xaml.cs, asi que un handler que
+        # viviera en MainWindow.Acero.cs se reportaba como inexistente: la comprobacion
+        # daba un falso positivo justo cuando el code-behind se parte para no crecer sin
+        # freno, que es lo que se quiere que se pueda hacer.
+        base = os.path.basename(x)[: -len(".xaml")]
+        carpeta = os.path.dirname(x)
+
+        codigo = "\n".join(
+            leer(os.path.join(carpeta, f))
+            for f in sorted(os.listdir(carpeta))
+            if f.endswith(".cs") and (f == base + ".xaml.cs" or f.startswith(base + "."))
+        )
+
         txt = leer(x)
         handlers = set()
         # 'Executed' y 'CanExecute' van en la lista igual que 'Click'. Sin ellos,
@@ -709,16 +723,55 @@ def v12_fidelidad() -> None:
     )
     check("sin la descripcion larga del estilo", "La de uso normal" not in xaml)
 
-    m = re.search(r'"COLUMNA", "DADO"(.*?)\n\s*\}', codigo, re.S)
-    lista = ('"COLUMNA", "DADO"' + m.group(1)) if m else ""
+    filas_cs = leer(ruta("client", "src", "CadLink.App", "Models", "StructuralRows.cs"))
+
+    # La lista de elementos. COLUMNA y COLUMNA CIRCULAR llegan por CONSTANTE y no
+    # como literal, porque el nombre lo comparten el desplegable, la clasificacion
+    # del tipo y el rotulo: escribirlo tres veces es como se desincroniza.
+    m = re.search(r"ColElemento\.ItemsSource = new\[\](.*?)\n\s*\};", codigo, re.S)
+    lista = m.group(1) if m else ""
     check("lista de elementos localizada", m is not None)
 
     for fuera in ["MURO", "LOSA", "DALA", "VIGA"]:
         check(f"sin {fuera} en la lista", f'"{fuera}"' not in lista)
 
-    for dentro in ["COLUMNA", "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
+    # Los que van como literal en la lista
+    # CABEZAL y OTRO se anadieron a peticion del usuario. CABEZAL lleva alzado
+    # horizontal, porque es una pieza tendida; OTRO es el recordatorio de que la casilla
+    # admite un nombre escrito a mano.
+    check("la lista incluye CABEZAL", "ElementoCabezal" in codigo)
+    check("y OTRO", "ElementoOtro" in codigo)
+    # El CABEZAL NO lleva alzado. Estuvo un rato devolviendo Trabe, y el usuario lo
+    # quito: un cabezal se documenta con su seccion y su armado, no con un alzado de
+    # estribos por zonas L/4-L/2-L/4, que es lo que dibuja el alzado de trabe.
+    check("el CABEZAL no lleva alzado",
+          "if (e == SeccionConcretoRow.ElementoCabezal)" not in codigo)
+    check("y queda dicho por que, para que nadie lo vuelva a anadir",
+          "CABEZAL y cualquier otro elemento: sin alzado" in codigo)
+
+    for dentro in ["CASTILLO", "TRABE", "CONTRATRABE",
                    "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"]:
         check(f"con {dentro} en la lista", f'"{dentro}"' in lista)
+
+    # Y los CUATRO que van por constante: las dos columnas y los dos dados. Cada pareja es
+    # la misma pieza con dos formas, y la constante es la que las mantiene juntas.
+    check("con COLUMNA en la lista",
+          "SeccionConcretoRow.ElementoColumna," in lista)
+    check("con COLUMNA CIRCULAR en la lista",
+          "SeccionConcretoRow.ElementoColumnaCircular" in lista)
+    check("con DADO en la lista",
+          "SeccionConcretoRow.ElementoDado," in lista)
+    check("con DADO CIRCULAR en la lista",
+          "SeccionConcretoRow.ElementoDadoCircular" in lista)
+
+    # Las constantes tienen que valer lo que se espera: si alguien cambiara
+    # ElementoColumnaCircular por otra cosa, TipoDe dejaria de reconocerla y la
+    # columna redonda se quedaria sin alzado.
+    check('ElementoColumna vale "COLUMNA"',
+          re.search(r'ElementoColumna\s*=\s*"COLUMNA"\s*;', filas_cs) is not None)
+    check('ElementoColumnaCircular vale "COLUMNA CIRCULAR"',
+          re.search(r'ElementoColumnaCircular\s*=\s*"COLUMNA CIRCULAR"\s*;',
+                    filas_cs) is not None)
 
     # La fila de ejemplo no puede usar un nombre que no lleva alzado, o el usuario
     # abre el programa, pulsa Generar alzados y no sale nada.
@@ -1016,9 +1069,13 @@ def v12_fidelidad() -> None:
         and "MoveToBottom(objetos.ToArray()" not in drawer
         and "MoveToTop(objetos.ToArray()" not in drawer,
     )
-    n_arr = len(re.findall(r"ConArregloDeEntidades\(", drawer))
+    # Se cuentan LOS DOS envoltorios. Son el mismo mecanismo con distinto reporte:
+    # ConArregloParaOrdenar es el de las llamadas de ORDEN DE DIBUJO, que al fallar
+    # dejan nota en lugar de fallo porque son esteticas. Contando solo el primero, el
+    # dia que una llamada paso al otro envoltorio esta comprobacion se cayo sola.
+    n_arr = len(re.findall(r"ConArreglo(?:DeEntidades|ParaOrdenar)\(", drawer))
     check(
-        "las 6 llamadas con arreglo pasan por el envoltorio",
+        "las 6 llamadas con arreglo pasan por alguno de los dos envoltorios",
         n_arr >= 6,
         f"solo {n_arr}",
     )
@@ -1115,13 +1172,18 @@ def v12_fidelidad() -> None:
         "los dos contornos del diamante son islas del hatch",
         "_diamExt is not null" in drawer and "_diamInt is not null" in drawer,
     )
+    # La cinta y la eleccion de varillas ya no viven en el dibujante: se sacaron a
+    # TrazoDiamante para que la VISTA PREVIA use exactamente la misma geometria. El
+    # dibujante las llama, asi que estas dos protecciones se comprueban donde estan.
+    trazo_dia_ = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+
     check(
         "el radio se protege contra tangente inexistente",
-        "Math.Clamp(cc, -0.999999, 0.999999)" in dia,
+        "Math.Clamp(cc, -0.999999, 0.999999)" in trazo_dia_,
     )
     check(
         "dos circulos coincidentes no producen NaN",
-        re.search(r"if \(d < 1e-7\)\s*\{\s*return null;", dia) is not None,
+        re.search(r"if \(d < 1e-7\)\s*\{\s*return null;", trazo_dia_) is not None,
     )
     check("relleno solido del diamante en tipo rellena", 'ColorRellenoEstribo)' in dia)
     check(
@@ -2096,9 +2158,14 @@ def v16_extruida_piers() -> None:
     check("existe la colocacion como aritmetica aparte",
           "public static class AlzadoLayout" in lay)
 
+    # El aire sobre las secciones NO es una constante de la macro: alli el valor es
+    # una cota absoluta de 2 m desde el origen. Aqui es una separacion RELATIVA a la
+    # seccion mas alta, y por eso se puede apretar a 1 m sin que nada se encime.
+    check("el aire sobre las secciones es de 1 m",
+          re.search(r"AireSobreSecciones = 1\.0\s*;", lay) is not None)
+
     # Las constantes de la macro, con su valor exacto.
     for nombre, valor in [
-        ("YBloques", "2.0"),
         ("SepSecciones", "0.6"),
         ("MargenCol", "0.4"),
         ("SepCaras", "0.3"),
@@ -2119,7 +2186,47 @@ def v16_extruida_piers() -> None:
     check("el alzado inserta el bloque de la seccion",
           "public SeccionPuesta? InsertarSeccion(" in alz2)
     check("y se llama al dibujar el elemento",
-          "InsertarSeccion(a.Id, xSec, AlzadoLayout.YBloques)" in alz2)
+          "InsertarSeccion(a.Id, xSec, y)" in alz2)
+
+    # ------------------------------------------------------------------
+    # La Y de la fila es RELATIVA a la seccion mas alta, no la cota fija
+    # ------------------------------------------------------------------
+    # La macro pone todo en Y=2 (su Y_BLOQUES). Con una contratrabe alta, la
+    # seccion invade la fila de alzados. Se comprueba que ya no sea una constante.
+    check("la Y de la fila se calcula, no es una constante",
+          "public static double YArranque(" in lay)
+
+    m_ya = re.search(r"public static double YArranque\(.*?\n    \}", lay, re.S)
+    check("se puede leer YArranque", m_ya is not None)
+    if m_ya:
+        cuerpo = m_ya.group(0)
+        # El aire son SIEMPRE 2 m sobre la mas alta. Un max() contra 2 haria que
+        # con secciones bajitas se quedara en 2, que NO es lo que se pidio.
+        check("el aire se suma al alto de la seccion",
+              "altoMaximoSeccion + AireSobreSecciones" in cuerpo)
+        check("y no se recorta con un maximo contra la cota fija",
+              "Math.Max" not in cuerpo)
+
+    check("el dibujante expone el alto de la seccion mas alta",
+          "public double AltoMaximoSeccion" in alz2)
+    check("y la Y de la fila sale de ahi",
+          "AlzadoLayout.YArranque(AltoMaximoSeccion)" in alz2)
+
+    cod_win = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    check("la ventana calcula el alto maximo y lo pasa",
+          "AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)" in cod_win)
+
+    m_am = re.search(
+        r"private double AltoMaximoDeLasSecciones\(.*?\n    \}", cod_win, re.S)
+    check("se puede leer AltoMaximoDeLasSecciones", m_am is not None)
+    if m_am:
+        # En circular el alto del dibujo es el DIAMETRO. Con AlturaCm, una columna
+        # redonda contaria 0 y la fila de alzados se le echaria encima.
+        check("en circular cuenta el diametro y no la altura",
+              "s.EsCircular ? s.DiametroCm : s.AlturaCm" in m_am.group(0))
+
+    check("hay comprobacion numerica de la Y de los alzados",
+          os.path.exists(ruta("tools/verificar_y_alzados.py")))
     check("la seccion se rotula CORTE A-A'",
           "CORTE A-A'" in alz2 and "private void RotuloCorte(" in alz2)
 
@@ -2166,17 +2273,25 @@ def v16_extruida_piers() -> None:
 
         # En la columna el alzado va ENCIMA de la seccion: arranca en su paño
         # superior mas SEP_SEC_ALZ.
+        # Y ademas se le abre el aire del rotulo, que ahora va debajo del bloque
+        # insertado y choca con la seccion si solo se deja SEP_SEC_ALZ.
         check("en la columna el alzado arranca sobre la seccion",
-              "var y1 = topeSeccion + SepSecAlz;" in cuerpo and "YAlzado = y1," in cuerpo)
+              "topeSeccion + SepSecAlz + AireRotuloAlzado" in cuerpo
+              and "YAlzado = y1," in cuerpo)
 
-        # La segunda cara, a SEP_CARAS del paño superior de la primera.
-        check("la segunda cara va a SEP_CARAS de la primera",
-              "y1 + largo + SepCaras" in cuerpo)
+        # La segunda cara, encima de la primera y con sitio para SU rotulo.
+        check("la segunda cara sale del calculo unico del layout",
+              "YSegundaCara(y1, largo)" in cuerpo)
 
         # En la trabe el alzado va a la DERECHA de la seccion, y los dos apoyados.
         check("en la trabe el alzado va al lado de la seccion",
               "XAlzado = x0 + anchoSeccion + SepSecAlz," in cuerpo)
-        check("y los dos apoyados en Y_BLOQUES", "YAlzado = YBloques," in cuerpo)
+        # Apoyados en la Y de la FILA, que llega como parametro. Antes era la
+        # constante YBloques, o sea la cota fija de la macro.
+        check("y los dos apoyados en la Y de la fila",
+              "YAlzado = yArranque," in cuerpo)
+        check("la Y de la fila llega como parametro y no como constante",
+              "double yArranque)" in lay)
 
         # Los dos avances, cada uno con sus terminos.
         check("el avance de la columna es blockWidth + alzadoWidth + SEP_SECCIONES",
@@ -2189,17 +2304,335 @@ def v16_extruida_piers() -> None:
     check("XSeccion abre el margen solo en la columna",
           "vertical ? x0 + MargenCol : x0" in lay)
 
+    # ------------------------------------------------------------------
+    # Hueco para el rotulo del alzado, que ahora va FUERA del bloque
+    # ------------------------------------------------------------------
+    # El rotulo cuelga debajo del bloque insertado. En el alzado vertical debajo esta
+    # la seccion, y en la segunda cara de una columna rectangular esta el alzado de la
+    # primera: sin abrir hueco, el rotulo cae dentro de uno o de otro.
+    # 0.19: el hueco sobre la seccion carga DOS cosas, la cota de la base del bloque y el
+    # CORTE A-A' encima de ella. Valio 0.46 mientras el rotulo colgaba del pie del alzado,
+    # bajo a 0.10 al mover el rotulo bajo el bloque de la SECCION, y ha vuelto a subir a
+    # 0.19 al aparecer la cota, que empuja el CORTE de 15 a 24 cm.
+    check("hay una constante para el aire sobre la seccion",
+          "public const double AireRotuloAlzado = 0.19;" in lay)
+    check("y la cuenta del aire es la del CORTE A-A' y su cota",
+          "CORTE A-A'" in lay and "AltoCotaCorte" in lay)
+
+    check("la segunda cara tiene su calculo en el layout",
+          "public static double YSegundaCara(" in lay)
+    check("y ese calculo suma SEP_CARAS mas el aire del rotulo",
+          "yPrimera + largo + SepCaras + AireRotuloAlzado" in lay)
+
+    # Estaba escrito DOS veces: en el layout y a mano en DibujarVertical con un 0.3
+    # literal. Coincidian por suerte, y al abrir el hueco habrian dejado de coincidir.
+    check("DibujarVertical usa el calculo del layout y no un literal",
+          "AlzadoLayout.YSegundaCara(y, largo)" in alz2)
+    check("y ya no queda el 0.3 escrito a mano",
+          "var y2 = y + largo + 0.3;" not in alz2)
+
     # El rotulo se LLAMA, no solo se declara: renombrar el metodo dejaba pasar el
     # check anterior porque el texto seguia en el archivo.
     check("el CORTE A-A' se dibuja de verdad",
-          "RotuloCorte(x + (ancho / 2), y + alto);" in alz2)
+          "RotuloCorte(x + (ancho / 2), y + alto + (AltoCotaCorte * _f));" in alz2)
+
+    # ------------------------------------------------------------------
+    # EL BLOQUE DE SECCION INSERTADO SE ACOTA
+    # ------------------------------------------------------------------
+    # Esto faltaba, y faltaba por algo que no se ve: la seccion de concreto SI se acota
+    # cuando se dibuja en su propia hoja, pero esas cotas NO ENTRAN AL BLOQUE, porque
+    # SeccionDrawer.Bloquear se salta a proposito todo lo que este en las capas COTAS y
+    # ROTULOS. Asi que al insertar el mismo bloque como CORTE A-A' junto a su alzado,
+    # llegaba sin una sola cota: se veia la seccion pero no cuanto medía, con el alzado al
+    # lado completamente acotado.
+    check("las cotas y el rotulado NO entran al bloque de la seccion",
+          'string.Equals(capa, "COTAS", StringComparison.OrdinalIgnoreCase)'
+          in leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs")))
+
+    check("por eso el alzado acota el bloque insertado",
+          "private void CotasDelCorte(" in alz2
+          and "CotasDelCorte(x, y, ancho, alto);" in alz2)
+
+    check("y acota su CAJA REAL, no las medidas capturadas",
+          "var caja = Caja(br);" in alz2 and "mx[0] - mn[0]" in alz2)
+
+    check("la base va arriba y la altura a la derecha, como en la macro",
+          "x + (ancho / 2), y + alto + off" in alz2
+          and "x + ancho + off, y + (alto / 2)" in alz2)
+
+    # Con el texto VACIO, o sea con el numero que mide AutoCAD: las demas cotas del
+    # alzado llevan TextOverride con rotulos de armado, que es otra cosa.
+    m_cotas_corte = re.search(
+        r"private void CotasDelCorte\(.*?\n    \}", alz2, re.S)
+
+    check("se puede leer CotasDelCorte", m_cotas_corte is not None)
+
+    if m_cotas_corte:
+        cuerpo = m_cotas_corte.group(0)
+
+        check("las dos cotas del corte muestran el numero medido, no un rotulo",
+              cuerpo.count("string.Empty") == 2)
+        check("y una va girada, que es la de la altura",
+              cuerpo.count("true);") == 1 and cuerpo.count("false);") == 1)
+        check("un bloque sin caja no se acota",
+              "if (ancho <= 0 || alto <= 0)" in cuerpo)
 
     check("hay comprobacion de la colocacion contra el VBA",
           os.path.exists(ruta("tools/verificar_layout_alzados.py")))
 
+    check("y de que la cota del corte cabe debajo del CORTE A-A'",
+          "la cota de la base cabe por debajo del CORTE"
+          in leer(ruta("tools/verificar_layout_alzados.py")))
+
     # ------------------------------------------------------------------
     # 0b. Modulo nuevo: dibujar planos estructurales
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # SAP2000: el MISMO lector, con otro ProgID
+    # ------------------------------------------------------------------
+    # CSI comparte la OAPI entre ETABS y SAP2000 —misma interfaz cOAPI, mismo SapModel y
+    # mismas llamadas para pisos, marcos y areas— asi que no hace falta un lector aparte:
+    # basta decirle a la conexion a quien buscar.
+    conx = leer(ruta("client/src/CadLink.Etabs/EtabsConnection.cs"))
+
+    check("la conexion sabe a que programa de CSI va",
+          "public enum ProgramaCsi" in conx and "public ProgramaCsi Destino" in conx)
+    check("y el ProgID sale del destino, no de una constante fija",
+          "private string ProgIdApp => Destino == ProgramaCsi.Sap2000" in conx)
+    check("el ProgID de SAP2000 es SapObject, que es el que se escribe mal de memoria",
+          '"CSI.SAP2000.API.SapObject"' in conx)
+    check("y los Helper de SAP2000 tambien se prueban",
+          '"SAP2000v1.Helper"' in conx)
+    check("ya no queda el ProgID de ETABS escrito como constante unica",
+          "private const string ProgIdEtabs" not in conx)
+
+    # Los mensajes no pueden decir ETABS cuando se pidio SAP2000.
+    check("los mensajes dicen a que programa se intento conectar",
+          "NombreDelDestino" in conx)
+
+    # Y NINGUNO puede decir ETABS a mano: el usuario pulso «Leer modelo de SAP2000» y le
+    # salio «No se pudo leer ETABS», que es lo que reporto.
+    sueltos = [l.strip() for l in conx.splitlines()
+               if ("_bitacora.Add" in l or "EtabsException(" in l)
+               and "ETABS" in l and "NombreDelDestino" not in l
+               and "MensajeNoEncontrada" not in l]
+    check("ningun mensaje dice ETABS a mano", not sueltos,
+          f"{len(sueltos)}: " + "; ".join(sueltos[:2]))
+
+    # ------------------------------------------------------------------
+    # LO DE FONDO: la libreria tiene que ser la del programa
+    # ------------------------------------------------------------------
+    # El ProgID de SAP2000 SI se encontraba —la bitacora decia «Objeto activo
+    # 'CSI.SAP2000.API.SapObject': encontrado»— pero luego no se podia sacar el SapModel,
+    # porque la libreria cargada seguia siendo ETABSv1.dll y los tipos del enlace temprano
+    # (cOAPI, cSapModel) salen de ella. El delator era el error
+    # «Object of type 'System.Int32' cannot be converted to type 'ETABSv1.eSlabTypeX'».
+    asmb = leer(ruta("client/src/CadLink.Etabs/EtabsAssembly.cs"))
+
+    check("la libreria que se busca depende del programa",
+          "public static bool ParaSap2000" in asmb
+          and 'ParaSap2000 ? "SAP2000v1.dll" : "ETABSv1.dll"' in asmb)
+    check("y tambien la carpeta donde se busca",
+          'ParaSap2000 ? "sap2000" : "etabs"' in asmb)
+    check("ya no queda el nombre de la dll como constante unica",
+          'private const string NombreDll' not in asmb)
+
+    # La cache tiene que distinguir el programa, o leer ETABS y despues SAP2000 en la
+    # misma sesion devolveria la libreria de ETABS la segunda vez.
+    check("la cache de la libreria distingue el programa",
+          "_cargadoParaSap == ParaSap2000" in asmb
+          and "_cargadoParaSap = ParaSap2000;" in asmb)
+
+    # EL FALLO GRANDE: el nombre del TIPO Helper lleva el prefijo del ensamblado, y en la
+    # libreria de SAP2000 ese prefijo es SAP2000v1, no ETABSv1. Pidiendolo en duro
+    # devolvia null, la via del Helper se caia, y todo terminaba en el respaldo fallando
+    # con «Object does not match target type».
+    check("el prefijo de los tipos depende del programa",
+          'PrefijoTipos => Destino == ProgramaCsi.Sap2000 ? "SAP2000v1" : "ETABSv1"' in conx)
+    check("y el Helper se pide con ese prefijo, no en duro",
+          'asm.GetType(PrefijoTipos + ".Helper")' in conx)
+    check("ya no se pide el tipo de ETABS en duro",
+          'GetType("ETABSv1.Helper")' not in conx)
+
+    # El nombre del PROCESO tambien depende del programa: buscando siempre 'etabs' nunca
+    # se daba con la carpeta de SAP2000, y encima se ofrecia la de ETABS como candidata.
+    check("el proceso que se busca depende del programa",
+          'p.ProcessName.Contains(CarpetaClave' in asmb)
+    check("y en la conexion tambien",
+          'EtabsAssembly.ParaSap2000 ? "sap2000" : "etabs"' in conx)
+
+    # Ningun literal de ETABS puede decidir NADA: si queda uno, con SAP2000 se va por el
+    # camino de ETABS y el usuario ve «no se pudo leer ETABS», que es lo que reporto.
+    for arch, texto in (("EtabsAssembly", asmb), ("EtabsConnection", conx)):
+        duros = [l.strip() for l in texto.splitlines()
+                 if ('"etabs' in l.lower() or '"ETABS' in l)
+                 and "ParaSap2000 ?" not in l
+                 and "Destino == ProgramaCsi" not in l
+                 and "NombreDelDestino" not in l
+                 and 'ETABSv1.Helper", "CSI.ETABS' not in l
+                 and not l.startswith("///")]
+        check(f"{arch}: ningun literal de ETABS decide el comportamiento",
+              not duros, f"{len(duros)}: " + "; ".join(duros[:2]))
+
+    # ------------------------------------------------------------------
+    # SAP2000 leia 0 frames y 0 areas: GetLabelNameList es de ETABS
+    # ------------------------------------------------------------------
+    # Devuelve nombre + etiqueta + piso de una vez, y la etiqueta y el piso son conceptos
+    # de ETABS. SAP2000 no tiene ese metodo, asi que el lector se rendia y devolvia cero
+    # aunque el modelo tuviera cientos de barras. Los PUNTOS si se leian porque usan
+    # GetNameList, que es el comun: 232 puntos y 0 frames era la pista.
+    lect = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+
+    check("hay respaldo para la lista de nombres",
+          "private static (string[] Nombres, string[] Etiquetas, string[] Niveles) "
+          "ListaDeNombres(" in lect)
+
+    m_ln = re.search(r"ListaDeNombres\(\s*object\? obj.*?\n    \}", lect, re.S)
+    check("se puede leer ListaDeNombres", m_ln is not None)
+    if m_ln:
+        cuerpo = m_ln.group(0)
+        check("intenta primero el metodo de ETABS",
+              'Com.Call(obj, "GetLabelNameList"' in cuerpo)
+        check("y cae al comun, que es el que tiene SAP2000",
+              'Com.Call(obj, "GetNameList"' in cuerpo)
+        check("y avisa de que se leyeron sin nivel, en vez de callarlo",
+              "m.Avisos.Add(" in cuerpo)
+
+    # Los dos sitios lo usan: si uno se quedara con GetLabelNameList, SAP2000 leeria
+    # frames pero no areas, o al reves.
+    check("los frames usan el respaldo",
+          'ListaDeNombres(frameObj, m, "frames")' in lect)
+    check("y las areas tambien",
+          'ListaDeNombres(areaObj, m, "áreas")' in lect)
+    check("ya no se llama a GetLabelNameList a pelo",
+          'Com.Call(frameObj, "GetLabelNameList"' not in lect
+          and 'Com.Call(areaObj, "GetLabelNameList"' not in lect)
+
+    # Y el resumen no puede decir ETABS: el modelo puede venir de SAP2000.
+    check("el resumen no atribuye el modelo a ETABS",
+          "ETABS devolvió" not in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs")))
+
+    # Y hay que avisarle ANTES de cargar.
+    m_con = re.search(r"public void Conectar\(\).*?\n    \}", conx, re.S)
+    if m_con:
+        check("Conectar le dice a la libreria a quien se le habla",
+              "EtabsAssembly.ParaSap2000 = Destino == ProgramaCsi.Sap2000;"
+              in m_con.group(0))
+
+    # La pestaña y el boton.
+    check("la pestaña dice ETABS/SAP2000", 'Header="ETABS/SAP2000"' in xaml)
+    check("hay boton para leer el modelo de SAP2000",
+          'Click="OnImportSap2000"' in xaml)
+    check("y su manejador existe", "private void OnImportSap2000(" in codigo)
+
+    # UN solo lector para los dos, o un arreglo entraria en uno y no en el otro.
+    check("los dos botones usan el mismo lector",
+          "LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs)" in codigo
+          and "LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000)" in codigo)
+
+    # Y el modelo se VISUALIZA: es lo que pidio el usuario, no solo leerlo.
+    m_lm = re.search(r"private void LeerModeloCsi\(.*?\n    \}", codigo, re.S)
+    check("se puede leer LeerModeloCsi", m_lm is not None)
+    if m_lm:
+        cuerpo = m_lm.group(0)
+        check("el modelo leido se manda al visor",
+              "_vista.Modelo = modelo;" in cuerpo)
+        check("y se redibujan las vistas",
+              "RedibujarVistas();" in cuerpo)
+        check("y se poblan los niveles para la planta",
+              "PoblarNiveles(modelo);" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # Modelo 3D en AutoCAD
+    # ------------------------------------------------------------------
+    m3d = leer(ruta("client/src/CadLink.Cad/Modelo3dDrawer.cs"))
+
+    check("hay dibujante del modelo 3D", "public sealed class Modelo3dDrawer" in m3d)
+    check("y boton para dibujarlo", 'x:Name="Modelo3dButton"' in xaml)
+    check("y su manejador existe", "private void OnDibujar3dCad(" in codigo)
+
+    # SOLIDOS y no cajas ni lineas: un solido se puede seccionar y acotar en AutoCAD.
+    # ------------------------------------------------------------------
+    # Las tres llamadas COM que cerraban AutoCAD
+    # ------------------------------------------------------------------
+    # Ninguna de las tres la ve el compilador: todo va por dynamic. Y una de ellas no
+    # lanzaba excepcion, se llevaba AutoCAD por delante, asi que no habia forma de
+    # capturarla. Se fijan aqui por texto porque es el unico sitio donde se pueden fijar.
+
+    # 1) AddExtrudedSolid esta en el ESPACIO MODELO, no en la region.
+    check("la extrusion se pide al espacio modelo, no a la region",
+          "_ms.AddExtrudedSolid(region, largo, 0d)" in m3d)
+    check("y ya no se llama sobre la region, que no existe en la API",
+          "region.AddExtrudedSolid(" not in m3d)
+
+    # 2) EL CIERRE DE AUTOCAD: AddExtrudedSolid CONSUME la region, asi que borrarla
+    #    despues es llamar Delete() sobre un objeto COM ya destruido. Eso no lanza: mata
+    #    el proceso.
+    # Solo puede quedar UN Borrar(region): el del catch, que si es correcto, porque si la
+    # extrusion FALLA la region no se consumio y hay que limpiarla. Lo que no puede haber
+    # es uno en el camino de exito.
+    check("solo se borra la region si la extrusion FALLO",
+          m3d.count("Borrar(region);") == 1,
+          f"{m3d.count('Borrar(region);')} Borrar(region), deberia haber 1")
+
+    check("y queda escrito por que no se borra al salir bien",
+          "AddExtrudedSolid CONSUME el perfil" in m3d)
+
+    # 3) TransformBy quiere una matriz 4x4 de verdad, no un arreglo plano de 16.
+    check("la matriz de colocacion es 4x4, no un arreglo plano",
+          "private static double[,] Matriz(" in m3d)
+    check("y se construye por filas", "return new[,]" in m3d)
+
+    # Y el contorno va como polilinea LIGERA: AddRegion exige una curva cerrada y PLANA,
+    # y una ligera lo es por construccion porque solo tiene X e Y.
+    check("el contorno del perfil es una polilinea ligera y plana",
+          "_ms.AddLightWeightPolyline(pts)" in m3d)
+    check("y ya no una polilinea 3D, que AddRegion no acepta bien",
+          "Add3DPoly(" not in m3d)
+
+    check("y el perfil sale de la region de su contorno",
+          "_ms.AddRegion(" in m3d)
+
+    # La colocacion va en UNA matriz, no en giros sucesivos: una diagonal no esta en
+    # ningun plano comodo y encadenar rotaciones acumula error.
+    check("la barra se coloca con una matriz, no con giros sucesivos",
+          "solido.TransformBy(Matriz(b.P1, b.P2, largo));" in m3d)
+
+    m_mat = re.search(r"private static double\[,\] Matriz\(.*?\n    \}", m3d, re.S)
+    check("se puede leer Matriz", m_mat is not None)
+    if m_mat:
+        cuerpo = m_mat.group(0)
+        # u = Z x w, para que v quede lo mas vertical posible: es lo que hace que una
+        # viga salga con el alma de pie y no tumbada al azar.
+        check("el marco se apoya en la perpendicular comun con la vertical",
+              "var u = new[] { -w[1], w[0], 0d };" in cuerpo)
+
+        # Y el caso de la COLUMNA, que no es raro: son todas las columnas del modelo.
+        check("la barra vertical se resuelve aparte, que si no el marco se anula",
+              "if (n < 1e-9)" in cuerpo)
+        check("y se distingue si va hacia arriba o hacia abajo",
+              "w[2] > 0 ? 1d : -1d" in cuerpo)
+
+    # Si una barra no se puede extruir NO se pierde: se dibuja su eje y se dice.
+    check("una barra que no se puede extruir se dibuja como eje",
+          "if (Eje(b))" in m3d)
+    check("y se cuenta en el resumen",
+          "solo como eje" in m3d)
+
+    # Las areas no son barras con perfil: se dicen en vez de dibujarlas mal.
+    m_o3 = re.search(r"private void OnDibujar3dCad\(.*?\n    \}", codigo, re.S)
+    if m_o3:
+        cuerpo = m_o3.group(0)
+        check("las areas se cuentan aparte y no se extruyen",
+              'string.Equals(el.Forma, "AREA"' in cuerpo)
+        check("el 3D usa el MISMO contorno que la vista extruida",
+              "Perfil2D.De(" in cuerpo)
+        check("y avisa si no hay modelo leido",
+              "no hay nada que dibujar" in cuerpo)
+
+    check("hay comprobacion numerica del marco de colocacion",
+          "marco ortonormal" in leer(ruta("tools/verificar_modelo3d.py")))
+
     check("hay pestaña de planos estructurales",
           'Header="Dibujar planos estructurales"' in xaml)
     # La planta se MUEVE ahi; el 3D y la extruida se quedan en ETABS.
@@ -2294,14 +2727,19 @@ def v16_extruida_piers() -> None:
 
     # La correccion de fondo: el doblez lateral ES la varilla, no un circulo
     # ficticio puesto a su lado.
+    # Y la geometria del rombo vive en TrazoDiamante, no en el dibujante: la vista previa
+    # de la pestaña de concreto usa la MISMA, que es la unica manera de que las dos no
+    # puedan discrepar. Asi que se comprueba ahi.
+    trazo_diam = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+
     check("el doblez lateral puede ser la varilla",
-          "private List<(double X, double Y, double R)> DoblezLateral(" in diamante)
-    n_dob = len(re.findall(r"DoblezLateral\(derecha:", diamante))
+          "private static List<(double X, double Y, double R)> DoblezLateral(" in trazo_diam)
+    n_dob = len(re.findall(r"DoblezLateral\(true, cx|DoblezLateral\(false, cx", trazo_diam))
     check("los DOS dobleces usan la varilla", n_dob == 2, f"solo {n_dob}")
 
     m_dob = re.search(
-        r"private List<\(double X, double Y, double R\)> DoblezLateral\(.*?\n    \}",
-        diamante, re.S)
+        r"private static List<\(double X, double Y, double R\)> DoblezLateral\(.*?\n    \}",
+        trazo_diam, re.S)
     check("se puede leer DoblezLateral", m_dob is not None)
 
     if m_dob:
@@ -2322,12 +2760,15 @@ def v16_extruida_piers() -> None:
 
     # La red de seguridad: el doblez solo puede abrazar UNA varilla por costado, y
     # un armado con varias puede tener otra en el camino.
-    check("existe la red de seguridad", "private List<(double X, double Y, double R)> RodearLaterales(" in diamante)
-    check("y se llama", "centros = RodearLaterales(centros, dDia);" in diamante)
+    check("existe la red de seguridad",
+          "private static List<(double X, double Y, double R)> RodearLaterales("
+          in trazo_diam)
+    check("y se llama",
+          "return RodearLaterales(centros, dDia, varLat, notas);" in trazo_diam)
 
     m_rod = re.search(
-        r"private List<\(double X, double Y, double R\)> RodearLaterales\(.*?\n    \}",
-        diamante, re.S)
+        r"private static List<\(double X, double Y, double R\)> RodearLaterales\(.*?\n    \}",
+        trazo_diam, re.S)
     check("se puede leer RodearLaterales", m_rod is not None)
 
     if m_rod:
@@ -2336,7 +2777,7 @@ def v16_extruida_piers() -> None:
         check("da varias pasadas", "PasadasRodeo" in cuerpo)
         # Se mira contra las DOS fronteras de la cinta.
         check("mira las dos fronteras de la cinta",
-              "GeometriaCinta(actual, 0)" in cuerpo and "GeometriaCinta(actual, dDia)" in cuerpo)
+              "Cinta(actual, 0)" in cuerpo and "Cinta(actual, dDia)" in cuerpo)
         # Se inserta en el tramo que atraviesa y en el orden del recorrido, o la
         # cinta sale hecha un nudo.
         check("inserta en el orden del recorrido",
@@ -2349,7 +2790,7 @@ def v16_extruida_piers() -> None:
     # La distancia va al SEGMENTO, no a la recta: una varilla mas alla del extremo
     # del tramo no esta atravesada.
     m_dist = re.search(
-        r"private static double DistanciaASegmento\(.*?\n    \}", diamante, re.S)
+        r"private static double DistanciaASegmento\(.*?\n    \}", trazo_diam, re.S)
     check("se puede leer DistanciaASegmento", m_dist is not None)
     if m_dist:
         # Se acota al metodo: 'Math.Clamp' aparece en otros sitios del archivo y
@@ -2590,6 +3031,3090 @@ def v18_planta_autocad() -> None:
     check("los fallos se pueden consultar", "IReadOnlyList<string> Fallos" in dib)
 
 
+# ======================================================================
+# 19. Seccion circular, zuncho, encabezado quitado y pestañas arriba
+# ======================================================================
+def v19_circular_y_ui() -> None:
+    """La columna redonda, el zuncho helicoidal y los dos cambios de interfaz."""
+    print("\n[19] Seccion circular, zuncho y interfaz")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+    seccad = leer(ruta("client/src/CadLink.Cad/SeccionCad.cs"))
+    circ = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Circular.cs"))
+    alz = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
+
+    # ------------------------------------------------------------------
+    # El cuadro azul, fuera
+    # ------------------------------------------------------------------
+    # Se comprueba por AUSENCIA de los controles que vivian en el, no por el color:
+    # el BrandDarkBrush se sigue usando en otros sitios legitimos.
+    for nombre in ("LogoImage", "HeaderProduct", "HeaderCompany"):
+        check(f"el encabezado azul ya no tiene {nombre}",
+              f'x:Name="{nombre}"' not in xaml)
+        check(f"y el codigo ya no lo busca ({nombre})",
+              not re.search(rf"\b{nombre}\.", codigo))
+
+    # Lo unico que no estaba en otro sitio SI se conserva, en la barra de estado.
+    check("el estado de la licencia sigue estando", 'x:Name="HeaderLicense"' in xaml)
+    check("y la version tambien", 'x:Name="HeaderVersion"' in xaml)
+
+    i_lic = xaml.find('x:Name="HeaderLicense"')
+    i_tabs = xaml.find('<TabControl x:Name="Sheets"')
+    check("la licencia bajo a la barra de estado, debajo de las hojas",
+          i_lic > i_tabs, f"licencia en {i_lic}, hojas en {i_tabs}")
+
+    # El logo no se perdio: es el icono de la ventana.
+    check("el logo sigue vivo como icono de la ventana",
+          "Icon = Branding.Logo;" in codigo)
+
+    # ------------------------------------------------------------------
+    # Pestañas arriba
+    # ------------------------------------------------------------------
+    check("la tira de pestañas va arriba",
+          re.search(r'TabStripPlacement"\s+Value="Top"', tema) is not None)
+    check("y ya no abajo",
+          re.search(r'TabStripPlacement"\s+Value="Bottom"', tema) is None)
+
+    # En el template, la tira tiene que ir ANTES del contenido.
+    m_tpl = re.search(
+        r'Style x:Key="ExcelTabControlStyle".*?</Style>', tema, re.S)
+    check("se puede leer el estilo del contenedor", m_tpl is not None)
+    if m_tpl:
+        cuerpo = m_tpl.group(0)
+        i_panel = cuerpo.find("TabPanel")
+        i_cont = cuerpo.find("SelectedContent")
+        check("la tira va antes del contenido en el template",
+              0 <= i_panel < i_cont, f"tira en {i_panel}, contenido en {i_cont}")
+
+    # La pestaña se abre hacia el contenido, o sea por ABAJO.
+    m_item = re.search(r'Style x:Key="ExcelTabItemStyle".*?</Style>', tema, re.S)
+    if m_item:
+        check("la pestaña se abre hacia abajo, hacia el contenido",
+              'BorderThickness="1,1,1,0"' in m_item.group(0))
+        check("y se redondea por arriba",
+              'CornerRadius="4,4,0,0"' in m_item.group(0))
+
+    # ------------------------------------------------------------------
+    # La forma es POR FILA
+    # ------------------------------------------------------------------
+    check("la fila sabe si es circular", "public bool EsCircular" in filas)
+
+    # La FORMA se elige en la columna Elemento, no en una casilla aparte. La casilla
+    # «Circular» ya no se captura: se quito de la cuadricula.
+    check("la forma se elige en el Elemento",
+          "EsElementoCircular(_elemento)" in filas)
+    check("y ya no hay casilla Circular en la cuadricula",
+          'x:Name="ColCircular"' not in xaml)
+
+    # Pero la propiedad SIGUE existiendo, solo para que un .clk guardado antes del
+    # cambio abra con sus columnas redondas intactas. Sin esto, un trabajo viejo
+    # volveria a salir cuadrado sin avisar.
+    check("se conserva la lectura de la casilla vieja por compatibilidad",
+          "public string Circular" in filas)
+    m_ec = re.search(r"public bool EsCircular =>.*?;", filas, re.S)
+    check("se puede leer EsCircular", m_ec is not None)
+    if m_ec:
+        check("EsCircular mira el Elemento Y la casilla vieja",
+              "EsElementoCircular" in m_ec.group(0) and "_circular" in m_ec.group(0))
+
+    # El rotulo del plano dice COLUMNA en los dos casos. «COLUMNA CIRCULAR» es solo
+    # el nombre de captura.
+    check("hay nombre de rotulo aparte del de captura",
+          "public string ElementoRotulo" in filas)
+    m_er = re.search(r"public string ElementoRotulo\n    \{.*?\n    \}", filas, re.S)
+    if m_er:
+        # Cada forma redonda se rotula con el nombre de SU pieza: la columna redonda como
+        # COLUMNA y el dado redondo como DADO. Con el atajo de una linea que habia antes,
+        # el dado redondo se habria rotulado «COLUMNA» en el plano.
+        check("el rotulo de una columna redonda es COLUMNA",
+              "return ElementoColumna;" in m_er.group(0))
+        check("y el de un dado redondo es DADO",
+              "return ElementoDado;" in m_er.group(0))
+    check("y los dos mapeadores mandan el nombre de rotulo al dibujo",
+          codigo.count("Elemento = r.ElementoRotulo,") == 2,
+          f"aparece {codigo.count('Elemento = r.ElementoRotulo,')} vez/veces")
+
+    # TipoDe tiene que reconocerla, o la columna redonda se queda SIN alzado.
+    m_td = re.search(r"private static TipoElemento\? TipoDe\(.*?\n    \}", codigo, re.S)
+    check("se puede leer TipoDe", m_td is not None)
+    if m_td:
+        check("TipoDe clasifica la columna redonda como columna",
+              "ElementoColumnaCircular" in m_td.group(0))
+
+    check("y columna de zuncho helicoidal", 'x:Name="ColZuncho"' in xaml)
+
+    # ------------------------------------------------------------------
+    # Varillas TOTALES, no por lechos
+    # ------------------------------------------------------------------
+    check("hay conteo total de varillas", "public int NVarTotal" in filas)
+    check("y su diametro, que hereda si va vacio",
+          "DiamVarTotalEfectivo" in filas)
+    check("hay columna N total en la cuadricula", "Binding NVarTotal" in xaml)
+
+    # ------------------------------------------------------------------
+    # La celda del ID: prefijo fijo, solo el numero editable
+    # ------------------------------------------------------------------
+    # Al editar T-01 solo se toca el 01, y el T- no se puede borrar. NO se controla el
+    # cursor dentro de la celda —seria fragil— sino que el dato esta SEPARADO.
+    check("el prefijo del ID es de solo lectura", "public string PrefijoId =>" in filas)
+    check("y el numero es la parte editable", "public string NumeroId" in filas)
+    check("escribir el numero recompone el ID con su prefijo",
+          "set => Id = PrefijoId + (value ?? string.Empty);" in filas)
+
+    # El caso OTRO sale gratis: sin prefijo, NumeroId ES el ID entero.
+    m_num = re.search(r"public string NumeroId\s*\{.*?\n    \}", filas, re.S)
+    if m_num:
+        check("sin prefijo, la parte editable es el ID entero (el caso OTRO)",
+              "p.Length > 0 && id.StartsWith(p" in m_num.group(0))
+
+    # Y el ID avisa de las dos partes, o la celda no se refresca al cambiar el elemento.
+    check("el ID avisa de que su prefijo y su numero cambiaron",
+          "Raise(nameof(PrefijoId));" in filas and "Raise(nameof(NumeroId));" in filas)
+
+    # La celda es una plantilla: prefijo como texto fijo y cuadro solo para el numero.
+    check("la celda del ID usa plantilla, no un cuadro para todo",
+          '<DataGridTemplateColumn Header="ID"' in xaml)
+    check("el prefijo se pinta fijo en la edicion",
+          'Text="{Binding PrefijoId}"' in xaml)
+    check("y solo el numero es escribible",
+          "Text=\"{Binding NumeroId, UpdateSourceTrigger=PropertyChanged}\"" in xaml)
+    check("ya no hay un cuadro de texto para el ID completo",
+          'Binding="{Binding Id}"' not in xaml)
+
+    # ------------------------------------------------------------------
+    # La tabla se edita en TIEMPO REAL
+    # ------------------------------------------------------------------
+    # Las celdas confirmaban al SALIR, asi que la vista previa no se movia mientras se
+    # escribia. La suscripcion al PropertyChanged de cada fila ya existia; lo que faltaba
+    # era que el binding avisara en cada tecla.
+    ini_c = xaml.find('x:Name="SeccionesGrid"')
+    fin_c = xaml.find("</DataGrid.Columns>", ini_c)
+    bloque = xaml[ini_c:fin_c]
+    n_bind = len(re.findall(r'Binding="\{Binding \w+', bloque))
+    n_real = bloque.count("UpdateSourceTrigger=PropertyChanged")
+    check("las celdas de la hoja se confirman mientras se escribe",
+          n_real >= n_bind, f"{n_real} en tiempo real de {n_bind} bindings")
+    check("y la vista previa escucha la edicion de cada fila",
+          "fila.PropertyChanged += OnFilaEditada;" in codigo)
+
+    m_tv = re.search(r"public int TotalVarillas =>.*?;", filas, re.S)
+    check("se puede leer TotalVarillas", m_tv is not None)
+    if m_tv:
+        # En circular es el total y ya: sumar los lechos contaria varillas que no
+        # se dibujan.
+        check("en circular el total NO suma los lechos",
+              "EsCircular" in m_tv.group(0) and "NVarTotal" in m_tv.group(0))
+
+    # El area bruta depende de la forma. Con base x altura en una redonda la
+    # cuantia sale un 27 % baja, y una cuantia baja es del lado INSEGURO.
+    m_ab = re.search(r"public double AreaBrutaCm2 =>.*?;", filas, re.S)
+    check("el area bruta depende de la forma", m_ab is not None)
+    if m_ab:
+        check("en circular el area bruta es pi*D^2/4",
+              "Math.PI" in m_ab.group(0))
+    check("y la cuantia usa el area bruta y no base x altura",
+          "AreaAceroCm2 / AreaBrutaCm2" in filas)
+
+    # ------------------------------------------------------------------
+    # El dibujo circular vive aparte
+    # ------------------------------------------------------------------
+    check("el motor de dibujo conoce la forma", "public bool Circular" in seccad)
+    check("y el diametro y el radio", "public double DiametroCm" in seccad)
+    check("hay dibujante circular", "private int DibujarCircular(" in circ)
+    check("y se deriva a el desde Dibujar",
+          "return DibujarCircular(" in leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs")))
+
+    m_pos = re.search(
+        r"private List<\(double X, double Y\)> PosicionesCirculares\(.*?\n    \}",
+        circ, re.S)
+    check("se puede leer PosicionesCirculares", m_pos is not None)
+    if m_pos:
+        cuerpo = m_pos.group(0)
+        # El radio de paso resta el RADIO de la varilla. Ese medio diametro es el
+        # que se olvida, y olvidarlo deja la varilla mordiendo el recubrimiento.
+        check("el radio de paso resta rec, zuncho y RADIO de varilla",
+              "r - rec - dZun - (dVar / 2)" in cuerpo)
+        check("y avisa si las varillas se traslapan", "se traslapan" in cuerpo)
+
+    # El diamante no aplica a un circulo: no hay lechos ni esquinas.
+    check("el diamante se descarta en la seccion redonda",
+          "EsSi(r.EstriboDiamante) && !r.EsCircular" in codigo)
+
+    # ------------------------------------------------------------------
+    # Zuncho: helicoidal o en anillos, y lo elige el usuario
+    # ------------------------------------------------------------------
+    check("el zuncho sabe si va en helice", "public bool ZunchoHelicoidal" in seccad)
+    check("hay helice en el alzado", "private void HeliceDelZuncho(" in alz)
+    check("y se elige segun la columna del usuario",
+          "a.Circular && a.ZunchoHelicoidal" in alz)
+
+    # ------------------------------------------------------------------
+    # ZUNCHO SOLO SI SE PIDIO ZUNCHO. Sin la casilla, son ESTRIBOS.
+    # ------------------------------------------------------------------
+    # Lo que se pidio: «si no tiene activa la casilla de zunchos, colocar solo EST. como se
+    # hace normal; si la tiene activa, entonces si le pones zuncho». El DIBUJO ya era el
+    # correcto -capsulas de estribo, no una helice-, pero el ROTULO decia «Zuncho anillos
+    # #3 @ 6 cm» en un dado redondo sin la casilla, y un zuncho se pide, se dobla y se paga
+    # distinto que un estribo.
+    estribos_cs = leer(ruta("client/src/CadLink.Cad/Estribos.cs"))
+    secdrw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("la regla de zuncho-o-estribos vive en un solo sitio",
+          "public static bool EsZuncho(bool circular, bool zunchoHelicoidal) =>" in estribos_cs
+          and "circular && zunchoHelicoidal;" in estribos_cs)
+    check("y queda escrito que una redonda no lleva zuncho por ser redonda",
+          "no lleva zuncho por ser" in estribos_cs
+          and "lleva estribos normales" in estribos_cs)
+    check("el rotulo del alzado la usa",
+          "Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)" in alz)
+    check("el texto del acero transversal del alzado, tambien",
+          alz.count("Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)") >= 2)
+    check("y el rotulo de la seccion",
+          "Estribos.EsZuncho(s.Circular, s.ZunchoHelicoidal)" in secdrw)
+    check("y el titulo de la vista previa, para que pantalla y papel no se contradigan",
+          "Estribos.EsZuncho(s.EsCircular, s.EsZunchoHelicoidal)" in codigo)
+
+    # Y ya no queda ni un rotulo que llame zuncho a un estribo.
+    for texto in ('"Zuncho anillos', 'Zuncho {forma}', '"zuncho en anillos"',
+                  '? "helic." : "anillos"'):
+        check(f"ya no se rotula {texto.strip(chr(34))} sin casilla",
+              texto not in alz and texto not in secdrw and texto not in codigo)
+
+    check("sin casilla el alzado dice Est., como cualquier columna",
+          '$"Est. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"' in alz
+          and '$"Est. {clave} @ {separacionCm:0} cm"' in alz)
+    check("y la seccion dice Estr.",
+          '$"Estr. {s.Estribo.Clave} @{sep} cm"' in secdrw)
+    check("con casilla si dice zuncho, y que es helicoidal",
+          '$"Zuncho helic. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"' in alz
+          and '$"Zuncho helicoidal {s.Estribo.Clave} @{sep} cm"' in secdrw)
+    check("y el aviso del zuncho ofrece quitar el SI para tener estribos",
+          "Si lo querías con estribos normales, quita el SI" in alz)
+
+    # La helice se MUESTREA una sola vez y la comparten el dibujo del zuncho y el
+    # recorte de las varillas. Si cada uno la calculara por su cuenta, los cortes
+    # caerian donde la helice no esta dibujada.
+    m_mh = re.search(r"private Helice\? MuestrearHelice\(.*?\n    \}", alz, re.S)
+    check("la helice se muestrea aparte", m_mh is not None)
+    if m_mh:
+        cuerpo = m_mh.group(0)
+        # Se acumula la FASE para respetar las zonas L/4-L/2-L/4. Con un periodo
+        # fijo, el zuncho saldria con paso constante y la tabla no se cumpliria.
+        check("la fase se acumula con el paso de cada zona",
+              "fase += 2 * Math.PI * dx / PasoEn(" in cuerpo)
+        # El COSENO es la profundidad, y hace falta para saber cuando el zuncho pasa
+        # por DELANTE de una varilla.
+        check("se guarda el coseno de la fase, que es la profundidad",
+              "Math.Cos(fase)" in cuerpo)
+        check("hay tope de puntos por si la separacion viene mal",
+              "MaxPuntosHelice" in cuerpo)
+
+    check("la muestra se reutiliza y no se recalcula",
+          alz.count("MuestrearHelice(") == 2,
+          f"se llama {alz.count('MuestrearHelice(')} vez/veces")
+
+    # ------------------------------------------------------------------
+    # Dos formas de dibujar el zuncho, segun el modo de la seccion
+    # ------------------------------------------------------------------
+    # Una polilinea con ancho se dibuja SIEMPRE maciza: no hay version «solo
+    # contorno». Asi que la seccion sin relleno necesita otro camino, o el zuncho
+    # saldria macizo en un dibujo que va todo en contorno.
+    m_h = re.search(r"private void HeliceDelZuncho\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceDelZuncho", m_h is not None)
+    if m_h:
+        cuerpo = m_h.group(0)
+        check("el modo de la seccion decide como se dibuja el zuncho",
+              "HeliceMaciza(" in cuerpo and "HeliceEnContorno(" in cuerpo)
+
+    # El zuncho MACIZO: ancho de polilinea, no hatch. Las dos vias obvias se
+    # descartaron con numeros y no se pueden reintroducir:
+    #   1. Contorno cerrado con las dos caras radiales -> encierra area CERO,
+    #      porque donde el seno es negativo la cara exterior queda por debajo.
+    #   2. Banda por la normal -> d/2 supera el radio de curvatura en las crestas.
+    # Las dos las encontro tools/verificar_seccion_circular.py.
+    m_hm = re.search(r"private void HeliceMaciza\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceMaciza", m_hm is not None)
+    if m_hm:
+        cuerpo = m_hm.group(0)
+        check("el zuncho macizo es UNA polilinea abierta del eje",
+              "cerrada: false" in cuerpo)
+        check("el grosor va por ancho de polilinea, no por hatch",
+              "AnchoDePolilinea(pl, dZun)" in cuerpo)
+        check("y no se intenta rellenar la helice con un hatch",
+              'Hatch(bloque, "SOLID"' not in cuerpo)
+        check("en modo relleno el zuncho toma el color del estribo",
+              "ColorDelZuncho()" in cuerpo)
+        check("y se guarda la polilinea para poder repintarla",
+              "_zunchoMacizo = pl;" in cuerpo)
+
+    # El color se reaplica DESPUES de ContornosNegros, que si no lo deja negro: el
+    # zuncho macizo es una polilinea con ancho, no un hatch, y ContornosNegros repinta
+    # todo lo que no sea hatch. Era el motivo de que la helice saliera negra.
+    check("el zuncho se repinta despues de ContornosNegros",
+          "private void ColorDelZuncho(" in alz
+          and "_zunchoMacizo" in alz)
+
+    m_geo_col = re.search(r"private Geo Geometria\(.*?\n    \}", alz, re.S)
+    if m_geo_col:
+        cuerpo = m_geo_col.group(0)
+        i_negros = cuerpo.find("ContornosNegros(bloque, inicio)")
+        i_color = cuerpo.find("ColorDelZuncho()")
+        check("y el orden es ContornosNegros primero y el color despues",
+              0 <= i_negros < i_color,
+              f"ContornosNegros en {i_negros}, color en {i_color}")
+        check("el zuncho guardado se limpia en cada alzado",
+              "_zunchoMacizo = null;" in cuerpo)
+
+    # El zuncho EN CONTORNO: la silueta con el ancho de la varilla.
+    m_hc = re.search(r"private void HeliceEnContorno\(.*?\n    \}", alz, re.S)
+    check("se puede leer HeliceEnContorno", m_hc is not None)
+    if m_hc:
+        cuerpo = m_hc.group(0)
+
+        # Las amplitudes r +- d/2 NO son la silueta: las dos valen cero donde el seno
+        # vale cero, asi que el zuncho se estrangulaba a 0 mm en cada cruce por el eje,
+        # sesenta veces en una columna de 3 m. La silueta es el eje desplazado por su
+        # NORMAL, que da ancho constante d.
+        check("el contorno no usa las amplitudes r +- d/2",
+              "REje + (dZun / 2)" not in cuerpo
+              and "REje - (dZun / 2)" not in cuerpo)
+        check("el contorno desplaza el eje por su normal",
+              "var nx = -ty / m;" in cuerpo and "var ny = tx / m;" in cuerpo)
+        check("y el desplazamiento es medio diametro",
+              "var w = dZun / 2;" in cuerpo)
+        check("van abiertas, que es lo que lo hace seguro",
+              "cerrada: false" in cuerpo)
+        check("y sin ancho, para que no salgan macizas",
+              "AnchoDePolilinea" not in cuerpo)
+
+        # Desplazar por la normal riza en las crestas, porque ahi el radio de curvatura
+        # (1.2 mm) es menor que medio diametro (4.8 mm).
+        check("los rizos de las crestas se quitan",
+              "SinRizos(caraA)" in cuerpo and "SinRizos(caraB)" in cuerpo)
+
+        # Sin tapas las dos caras quedan como dos curvas sueltas que mueren en el aire.
+        check("el zuncho en contorno lleva tapas en los extremos",
+              "tapaIni" in cuerpo and "tapaFin" in cuerpo)
+        check("y las tapas se sacan de las caras SIN recortar",
+              cuerpo.find("var tapaIni") < cuerpo.find("caraA = SinRizos(caraA);"))
+
+    # SinRizos DESCARTA los puntos que retroceden, no les aplasta la X: aplastarlos
+    # mueve el punto respecto del eje y el ancho de la barra se queda en 6.3 mm de los
+    # 9.5 que deberia. Descartandolos el ancho es exacto.
+    m_sr = re.search(r"private static double\[\] SinRizos\(.*?\n    \}", alz, re.S)
+    check("se puede leer SinRizos", m_sr is not None)
+    if m_sr:
+        cuerpo = m_sr.group(0)
+        check("SinRizos descarta los puntos del rizo", "continue;" in cuerpo)
+        check("y no les aplasta la X",
+              "pts[2 * i] = pts[2 * (i - 1)];" not in cuerpo)
+        check("los extremos se conservan siempre, que llevan las tapas",
+              "salida.Add(pts[2 * (n - 1)]);" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # Las LLAMADAS del corte que se inserta junto al alzado
+    # ------------------------------------------------------------------
+    # Bloquear deja fuera las capas COTAS y ROTULOS a proposito, asi que las llamadas
+    # no viajan dentro del bloque y el corte que el alzado pone al lado llegaba pelado.
+    # NO se arregla metiendolas en el bloque —descentraria su origen y romperia el
+    # apoyado por pano inferior— sino REDIBUJANDOLAS junto al bloque insertado, igual
+    # que ya hacen el CORTE A-A' y el rotulo del alzado.
+    secdrawer = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("el corte insertado junto al alzado recupera sus llamadas",
+          "public void LlamadasJuntoAlBloque(" in circ)
+
+    # Y el bloque sigue SIN llevarlas dentro: eso no ha cambiado.
+    check("y el bloque sigue excluyendo COTAS y ROTULOS",
+          '"ROTULOS", StringComparison.OrdinalIgnoreCase' in secdrawer)
+
+    m_lb = re.search(r"public void LlamadasJuntoAlBloque\(.*?\n    \}", circ, re.S)
+    check("se puede leer LlamadasJuntoAlBloque", m_lb is not None)
+    if m_lb:
+        cuerpo = m_lb.group(0)
+
+        # Reutiliza las MISMAS llamadas que la seccion, no unas nuevas.
+        check("reutiliza los leaders de los lechos",
+              "LeadersDeLecho(s.Superior" in cuerpo
+              and "LeadersDeLecho(s.Inferior" in cuerpo)
+        check("y los de las laterales",
+              "LeaderVarilla(xIzq" in cuerpo and "LeaderVarilla(xDer" in cuerpo)
+
+        # Y las MISMAS posiciones, sacadas del calculo puro.
+        check("usa el calculo puro de posiciones, sin redibujar varillas",
+              "PosicionesDeLecho(s.Superior" in cuerpo
+              and "PosicionesLaterales(s," in cuerpo)
+
+        # El circulo va por su propio camino: alli no hay lechos.
+        check("el corte circular tiene su propio camino",
+              "LlamadasCirculoJuntoAlBloque(" in cuerpo)
+
+    # El calculo de posiciones esta SEPARADO del dibujo, o la unica forma de recuperar
+    # las posiciones seria volver a dibujar las varillas encima.
+    check("hay calculo de posiciones de lecho sin dibujo",
+          "private (double[] Esquina, double YEsquina, double[] Intermedia, "
+          "double YIntermedia,\n        double YGrupo) PosicionesDeLecho(" in secdrawer)
+    check("y de las laterales",
+          "PosicionesLaterales(" in secdrawer)
+
+    # Y el dibujo lo USA, en vez de tener su propia copia de la aritmetica.
+    m_lecho = re.search(
+        r"private \(double\[\] Esquina, double\[\] Intermedia, double Y\) Lecho\(.*?\n    \}",
+        secdrawer, re.S)
+    if m_lecho:
+        cuerpo = m_lecho.group(0)
+        check("Lecho usa el calculo puro y no repite el reparto",
+              "PosicionesDeLecho(lecho, x0, y0, b, h, rec, dEst, arriba)" in cuerpo)
+        check("y ya no calcula el paso por su cuenta",
+              "(b - (2 * off)) / (lecho.NEsquina - 1)" not in cuerpo)
+
+    # El alzado AVISA de donde dejo el bloque, y no llama al dibujante de secciones:
+    # asi no se mete aqui una dependencia de SeccionCad.
+    check("el alzado avisa de donde inserto la seccion",
+          "public Action<string, double, double>? TrasInsertarSeccion" in alz)
+    check("y avisa DESPUES de apoyar el bloque en su sitio",
+          "TrasInsertarSeccion?.Invoke(id, x, y);" in alz)
+
+    m_is = re.search(r"public SeccionPuesta\? InsertarSeccion\(.*?\n    \}", alz, re.S)
+    if m_is:
+        cuerpo = m_is.group(0)
+        i_mover = cuerpo.find("Mover(br,")
+        i_avis = cuerpo.find("TrasInsertarSeccion?.Invoke")
+        check("el aviso va despues del Mover, o la esquina no estaria en (x,y)",
+              0 <= i_mover < i_avis, f"Mover en {i_mover}, aviso en {i_avis}")
+
+    # ------------------------------------------------------------------
+    # El GANCHO SISMICO del zuncho circular
+    # ------------------------------------------------------------------
+    # Antes no existia, y el <remarks> del archivo lo justificaba diciendo que un
+    # zuncho circular no lleva gancho porque no tiene esquinas donde doblar. Es falso:
+    # lo que ancla un zuncho es el doblez a 135 grados alrededor de una VARILLA con la
+    # cola en el nucleo, y la esquina solo era donde estaba la varilla.
+    # Devuelve el angulo de la varilla del gancho, que necesita quien recorta el circulo
+    # interior del zuncho.
+    check("el zuncho circular lleva gancho sismico",
+          "private double? GanchoDelZuncho(" in circ)
+
+    check("y ya no se afirma que un zuncho circular no lleva gancho",
+          "No hay gancho sísmico en la esquina" not in circ)
+
+    m_gz = re.search(r"private double\? GanchoDelZuncho\(.*?\n    \}", circ, re.S)
+    check("se puede leer GanchoDelZuncho", m_gz is not None)
+
+    if m_gz:
+        cuerpo = m_gz.group(0)
+
+        # Reutiliza la Cola del estribo rectangular en vez de repetir la geometria.
+        check("el gancho circular reutiliza la Cola de la rectangular",
+              "Cola(contorno, quads, bx, by, rIn, rOut" in cuerpo)
+
+        # Mismo criterio de longitud que la seccion rectangular: la columna T cruda,
+        # sin el 12*db, que es regla del alzado.
+        check("usa la columna T tal cual, como la seccion rectangular",
+              "s.GanchoCm * _escala" in cuerpo)
+
+        # El doblez envuelve la VARILLA: radio interior = radio de la varilla.
+        check("el doblez envuelve la varilla, no la cara del concreto",
+              "var rIn = rVar;" in cuerpo and "var rOut = rVar + dZun;" in cuerpo)
+
+        # La cola sale del radio interior girado 45 grados, que es girar el avance 135.
+        check("la cola es el radio interior girado 45 grados",
+              "(rx - ry) * Rt2I" in cuerpo and "(rx + ry) * Rt2I" in cuerpo)
+
+        # Las normales son las perpendiculares a la cola, no constantes escritas.
+        check("las normales de arranque son perpendiculares a la cola",
+              "var n1X = -uy;" in cuerpo and "var n1Y = ux;" in cuerpo)
+
+        # LAS DOS colas siempre, igual que el estribo rectangular. Antes se dibujaba una
+        # sola en helice, con el argumento de que una espiral es una barra continua con
+        # un solo arranque. Es cierto de la barra, pero NO es el detalle que se dibuja:
+        # el remate se representa con sus dos ganchos, uno encima del otro y con el de
+        # dentro recortado, y asi se lee en tipo 1 y en tipo 2.
+        check("van las dos colas, no una",
+              "foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })" in cuerpo)
+        check("y ya no se dibuja una sola en helice",
+              "if (!s.ZunchoHelicoidal)" not in cuerpo)
+
+        # El doblez se dibuja tambien como CONTORNO, no solo como relleno: si no, en la
+        # seccion tipo 1 el gancho salia como dos colas sueltas sin nada que las uniera.
+        # El doblez se dibuja como contorno, para que salga tambien en tipo 1. Y los dos
+        # arcos NO estan en la misma situacion, que es lo que faltaba mirar:
+        #   - el INTERIOR es tangente al borde del nucleo (rPaso + rVar = rZunInt, exacto)
+        #     asi que cae entero dentro y se dibuja COMPLETO;
+        #   - el EXTERIOR llega a rZunExt, o sea que ATRAVIESA la banda del zuncho, y su
+        #     tramo de dentro es la linea que se veia cruzando y delataba que el gancho
+        #     era una pieza pegada encima. Ese tramo NO se dibuja.
+        # Los dos arcos del doblez arrancan en la TANGENCIA con la banda, no en el borde
+        # de la cola. Es lo que hace que el gancho se lea como continuacion del zuncho:
+        #   - el EXTERIOR sigue hasta hacerse tangente al pano exterior, porque
+        #     rPaso + rOut = rZunExt exacto; antes se cortaba donde entraba en la banda y
+        #     quedaba un tajo plano a media vuelta;
+        #   - y el INTERIOR se recorta SOLO por ese lado, el derecho.
+        check("el arco exterior del doblez arranca en la tangencia",
+              "Agregar(contorno, Arco(bx, by, rOut, aTangente, a1 + Pi));" in cuerpo)
+
+        # El arco INTERIOR no se dibuja: su radio es rVar y su centro es el de la varilla,
+        # o sea que es EXACTAMENTE la circunferencia de la varilla, que ya se dibuja. Y
+        # donde el doblez se corre mas alla del contorno de la varilla dejaba una linea
+        # suelta cruzando, que era la que se veia en el plano.
+        check("el arco interior del doblez no se dibuja, que es la varilla misma",
+              "Arco(bx, by, rIn," not in cuerpo)
+
+        check("la tangencia es la direccion centro->varilla",
+              "var aTangente = Math.Atan2(ry * -1, rx * -1);" in cuerpo)
+
+        check("ya no se recorta el arco contra la banda, ahora sigue hasta la tangencia",
+              "ArcoFueraDeLaBanda(" not in circ)
+
+        # Y la cola de dentro se recorta contra el circulo interior del zuncho, que es el
+        # equivalente circular del recorte contra la linea recta del estribo.
+        check("la cola se recorta contra el nucleo",
+              "CruceConElNucleo(poX, poY, ux, uy, cx, cy, rZunInt, gancho)" in cuerpo)
+
+        # La varilla elegida es la de ABAJO, porque la llamada apunta a la de arriba.
+        check("el gancho va en la varilla de abajo, lejos de la llamada",
+              "if (p.Y < barra.Y)" in cuerpo)
+
+        # Y la cola no puede pasarse del nucleo.
+        check("la cola se recorta si no cabe en el nucleo",
+              "gancho = tope;" in cuerpo)
+
+    # Se DIBUJA, no solo se declara.
+    check("el gancho del zuncho se dibuja de verdad",
+          "GanchoDelZuncho(" in circ and circ.count("GanchoDelZuncho(") >= 2)
+
+    # Va DESPUES de las varillas: se abraza a una de ellas.
+    m_dc = re.search(r"private int DibujarCircular\(.*?\n    \}", circ, re.S)
+    if m_dc:
+        cuerpo = m_dc.group(0)
+        i_var = cuerpo.find("RellenarVarillas(circulos, rellenosVarilla)")
+        i_gan = cuerpo.find("GanchoDelZuncho(")
+        check("el gancho se dibuja despues de las varillas",
+              0 <= i_var < i_gan, f"varillas en {i_var}, gancho en {i_gan}")
+
+        check("y el gancho se rellena en la seccion rellena",
+              "RellenoDelGancho(ganchoQuads, ganchoSectores)" in cuerpo)
+
+    # El relleno borra sus fronteras auxiliares, o quedarian dos contornos sueltos
+    # encima del acero.
+    m_rg = re.search(r"private void RellenoDelGancho\(.*?\n    \}", circ, re.S)
+    check("se puede leer RellenoDelGancho", m_rg is not None)
+    if m_rg:
+        cuerpo = m_rg.group(0)
+        check("el relleno del gancho borra sus fronteras auxiliares",
+              "Borrar(t);" in cuerpo)
+        check("y usa el sector anular para el doblez y el quad para la cola",
+              "SectorAnular(" in cuerpo and "PolyCerrada(" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # El circulo interior del zuncho se recorta en el gancho
+    # ------------------------------------------------------------------
+    # Es un circulo completo y se sube al frente con el resto del contorno, asi que su
+    # linea cruzaba POR ENCIMA del doblez y delataba que habia dos piezas superpuestas.
+    # Es el mismo problema que el estribo rectangular resuelve con su yTrim.
+    check("el circulo interior del zuncho se recorta en el gancho",
+          "contorno.Remove(zunInt);" in circ)
+    # LA CIRCUNFERENCIA SE BORRA DE VERDAD. Sacarla de la lista de contorno no la quita
+    # del dibujo, y eso era el fallo: en la seccion rellena dejaba una linea azul tenue
+    # cruzando por delante del hatch —azul porque se habia librado del repintado a negro—
+    # y en la de contorno, la linea entera sin recortar.
+    check("la circunferencia interior se borra, no solo se saca de la lista",
+          "zunIntPorBorrar = zunInt;" in circ
+          and "Borrar(zunIntPorBorrar);" in circ)
+
+    # Y el ORDEN es lo critico: tiene que sobrevivir al hatch de concreto, que la usa como
+    # frontera, y morir antes del repintado.
+    if m_dc:
+        cuerpo = m_dc.group(0)
+        i_gan = cuerpo.find("zunIntPorBorrar = zunInt;")
+        i_hat = cuerpo.find("ParteHatch(zunInt, circulos")
+        i_bor = cuerpo.find("Borrar(zunIntPorBorrar);")
+        i_neg = cuerpo.find("foreach (var ent in contorno)")
+
+        check("se borra DESPUES del hatch, que la necesita como frontera",
+              0 <= i_hat < i_bor,
+              f"hatch en {i_hat}, borrado en {i_bor}")
+
+        check("y ANTES del repintado, o no serviria de nada",
+              0 <= i_bor < i_neg,
+              f"borrado en {i_bor}, repintado en {i_neg}")
+
+    check("y se sustituye por un arco que se salta el gancho",
+          "Agregar(contorno, Arco(\n                    cx, cy, rZunInt," in circ)
+    check("hay cuenta del hueco que hay que saltarse",
+          "private static double HuecoDelGancho(" in circ)
+
+    # El hueco es ASIMETRICO: el circulo interior es tangente al doblez justo en el
+    # angulo de la varilla, y el doblez se corre hacia UN SOLO lado. Quitar un trozo
+    # simetrico borraba tambien la linea del lado donde no hay nada que la tape.
+    check("el hueco arranca EN la varilla y no a los dos lados",
+          "anguloGancho.Value + hueco,\n                    anguloGancho.Value));" in circ)
+    check("y ya no se usa un semiangulo simetrico",
+          "SemiAnguloDelGancho" not in circ)
+
+    m_sa = re.search(r"private static double HuecoDelGancho\(.*?\n    \}", circ, re.S)
+    if m_sa:
+        c3 = m_sa.group(0)
+        # El radio de paso se RECALCULA, no se deduce de los radios del doblez: al
+        # intentarlo se contaba dZun dos veces y el hueco salia de mas.
+        check("el hueco usa el mismo radio de paso que las varillas",
+              "var rPaso = r - rec - dZun - rVar;" in c3)
+
+        # Se resuelve la interseccion de las dos circunferencias, no se estima con un
+        # arcotangente del radio del doblez: el cruce real cae bastante antes.
+        check("el hueco sale del cruce real de las dos circunferencias",
+              "(rZunInt * rZunInt)) / (2 * rPaso)" in c3
+              and "Math.Sqrt(disc)" in c3)
+        # SIN margen: las dos curvas son el mismo acero —el zuncho que entra en el
+        # doblez— asi que tienen que TOCARSE. El grado de margen que hubo aqui son 3.5 mm
+        # al radio del zuncho, y lo que se veia es que la linea no llegaba al gancho.
+        check("el arco arranca EN el cruce, sin margen, para que toque la curva",
+              "return Math.Atan2(Math.Sqrt(disc), a);" in c3)
+        check("y ya no queda el grado de margen",
+              "+ (Pi / 180)" not in c3)
+
+    # ------------------------------------------------------------------
+    # DADO CIRCULAR
+    # ------------------------------------------------------------------
+    # Es al DADO lo que COLUMNA CIRCULAR es a la COLUMNA: solo cambia la FORMA. Y hay
+    # cuatro sitios que tienen que enterarse, no uno: la lista, la forma, el rotulo y el
+    # alzado. Con la lista sola, un DADO CIRCULAR se dibujaba como un rectangulo.
+    check("DADO CIRCULAR existe como elemento",
+          'public const string ElementoDadoCircular = "DADO CIRCULAR";' in filas
+          and 'public const string ElementoDado = "DADO";' in filas)
+    check("y esta en el desplegable, junto al dado cuadrado",
+          "SeccionConcretoRow.ElementoDado," in codigo
+          and "SeccionConcretoRow.ElementoDadoCircular," in codigo)
+    check("se dibuja REDONDO, como la columna circular",
+          "|| e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase);" in filas)
+    check("pero se rotula DADO, no COLUMNA",
+          "return ElementoDado;" in filas
+          and "Cada forma redonda se rotula con el nombre de SU pieza" in filas)
+    check("y lleva alzado vertical, como el dado cuadrado",
+          'e == "DADO" || e == SeccionConcretoRow.ElementoDadoCircular' in codigo)
+    check("y comparte el prefijo D- del ID",
+          '"DADO CIRCULAR" => "D-",' in filas)
+
+    # ------------------------------------------------------------------
+    # ZAPATAS AISLADAS: la pestaña, con las dos familias
+    # ------------------------------------------------------------------
+    trazo_zap = leer(ruta("client/src/CadLink.Cad/TrazoZapata.cs"))
+    zap_row = leer(ruta("client/src/CadLink.App/Models/ZapataAisladaRow.cs"))
+    zap_cb = leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
+
+    m_tab_zap = re.search(
+        r'<TabItem Header="Zapatas Aisladas">.*?\n            </TabItem>', xaml, re.S)
+
+    check("se puede leer la pestaña de zapatas aisladas", m_tab_zap is not None)
+
+    check("la pestaña de zapatas aisladas ya no es un aviso de pendiente",
+          m_tab_zap is not None
+          and "Modulo pendiente de portar" not in m_tab_zap.group(0))
+    check("tiene su cuadricula y su vista previa",
+          'x:Name="ZapatasGrid"' in xaml and 'x:Name="ZapataPreviewCanvas"' in xaml)
+    check("y su renglon de totales",
+          'x:Name="TotalesZapatasText"' in xaml)
+
+    # La geometria vive en CadLink.Cad, no en la vista previa: es la que va a usar tambien
+    # el dibujante de AutoCAD.
+    check("la geometria de la zapata vive fuera de la vista previa",
+          "public static class TrazoZapata" in trazo_zap
+          and "public sealed class ZapataCad" in trazo_zap)
+    check("y no sabe nada de AutoCAD ni de WPF",
+          "_ms" not in trazo_zap and "AcadConnection" not in trazo_zap
+          and "System.Windows" not in trazo_zap)
+
+    # LAS DISTANCIAS DE LAS MACROS, una por una. Son lo que se pidio: «dibujalo a la
+    # distancia que tiene las macros».
+    # LO QUE SE PIDIO: cada zapata a un metro a la IZQUIERDA del pano izquierdo de la
+    # anterior, en el corte Y en la planta -las dos usan la misma X-.
+    check("las zapatas se acomodan hacia la izquierda, 80 cm entre una y otra",
+          "public const double SeparacionIzquierda = 0.8;" in trazo_zap
+          and "x -= SeparacionIzquierda + Ancho(anchos, i);" in trazo_zap)
+    check("y el tipo ya no cambia el acomodo",
+          "El tipo ya no cambia el acomodo" in trazo_zap)
+    check("y esta comprobado con numeros, para los dos tipos",
+          "justo la separacion de 80 cm" in leer(ruta("tools/prueba-zapata/Program.cs")))
+
+    check("la separacion entre secciones es la de cada macro",
+          "public const double SeparacionCentral = 1.0;" in trazo_zap
+          and "public const double SeparacionLindero = 0.8;" in trazo_zap)
+    check("el lindero arranca en -3 y en -8, como su macro",
+          "public const double LinderoXBase = -3.0;" in trazo_zap
+          and "public const double YBaseElevacion = -8.0;" in trazo_zap)
+    # El acomodo ya NO depende del tipo: las dos familias crecen hacia la izquierda, un metro
+    # entre una y la siguiente. Antes las centrales crecian a la derecha desde cero y los
+    # linderos a la izquierda desde -3, y al mezclarlos en una hoja se encimaban.
+    check("las dos familias crecen hacia la izquierda",
+          "x -= SeparacionIzquierda + Ancho(anchos, i);" in trazo_zap
+          and "acumulado += Ancho(anchos, i) + SeparacionCentral;" not in trazo_zap)
+    # EL PUNTO DE INSERCION: el corte en -8 y la planta en -15, para las DOS familias.
+    check("la planta arranca en -15, sin depender del rotulo",
+          "var yPlanta = YPlantaLindero(yZapBot, z.LargoM);" in trazo_zap
+          and "public const double PlantaYBaseLindero = -15.0;" in trazo_zap
+          and "public const double YBaseElevacion = -8.0;" in trazo_zap)
+    check("y queda escrito por que se movian las cotas de la planta",
+          "con ella se movían sus cotas" in trazo_zap)
+    check("el calculo de la macro central se conserva, documentado",
+          "Ya no se usa para colocar la planta" in trazo_zap)
+
+    check("la planta de la central cuelga de la vista de corte",
+          "public const double PlantaOffsetY = -3.0;" in trazo_zap
+          and "var yFondoCorte = yZapBot - RotuloEscalaOffset;" in trazo_zap)
+    check("y la del lindero arranca en -15, o mas abajo si no cabe",
+          "public const double PlantaYBaseLindero = -15.0;" in trazo_zap
+          and "public const double PlantaSeparacionMin = 1.2;" in trazo_zap)
+    check("el dado va centrado en la central y al paño derecho en el lindero",
+          "xDadoDer = xDer;" in trazo_zap
+          and "xDadoIzq = xCentro - (wDado / 2);" in trazo_zap)
+    check("los estribos se reparten en zonas de 25, 50 y 25",
+          "largoInterior * 0.25" in trazo_zap and "largoInterior * 0.5" in trazo_zap)
+    check("y el dado se salta los primeros, donde esta la parrilla",
+          "QuitarPrimeros(centros, z.DobleParrilla ? 2 : 1)" in zap_cb)
+    check("la malla cierra la ultima varilla solo si cabe",
+          "PlantaFraccionCierre = 0.3" in trazo_zap
+          and "fin - ultima > sep * PlantaFraccionCierre" in trazo_zap)
+
+    # La fila: las celdas de la macro, y UNA tabla para las dos familias.
+    check("la fila de zapata trae las celdas de la macro",
+          "public sealed class ZapataAisladaRow : Row" in zap_row
+          and "<c>E4</c> / <c>V4</c>" in zap_row)
+    check("y se dice por que es UNA tabla y no dos",
+          "no dos tablas: los datos son los mismos" in zap_row
+          or "una</b> tabla con una columna de" in zap_row)
+    check("la fila sabe pasarse a datos de geometria, en un solo sitio",
+          "public ZapataCad AFormatoCad()" in zap_row
+          and "dibujarían dos zapatas distintas" in zap_row)
+    check("y dice que falta para poder dibujarla",
+          "public string Falta" in zap_row)
+
+    check("la coleccion de zapatas vive en DatosProyecto",
+          "ObservableCollection<ZapataAisladaRow> ZapatasAisladas" in filas)
+    check("y el ejemplo trae una de cada familia",
+          "Tipo = ZapataCad.Central, Id = \"Z-1\"" in filas
+          and "Tipo = ZapataCad.Lindero, Id = \"ZL-1\"" in filas)
+
+    # La vista previa: elevacion Y planta, con el acomodo real de la fila.
+    check("la vista previa de zapatas dibuja elevacion y planta",
+          "private void DibujarVistaPreviaZapata()" in zap_cb
+          and "private void DibujarPlantaPrevia(" in zap_cb)
+    check("y usa el acomodo REAL, con los anchos de todas",
+          "TrazoZapata.XBase(z.Tipo, anchos, indice < 0 ? 0 : indice)" in zap_cb
+          and "TrazoZapata.Colocar(z, xBase)" in zap_cb)
+    # LA MITAD PARA CADA VISTA. Con las dos en el mismo sistema de coordenadas -que es como
+    # estaba- la planta cuelga a 3 m de la elevacion en la central y a 15 en el lindero, asi
+    # que salian dos dibujos diminutos con un hueco enorme en medio.
+    check("cada vista tiene su mitad y su propia escala",
+          "private void DibujarElevacionPrevia(" in zap_cb
+          and "var wMitad = (ancho - (3 * gap)) / 2;" in zap_cb)
+    check("y se dice por que no van en el mismo sistema",
+          "dos dibujos diminutos con un" in zap_cb)
+
+    # LAS COTAS: las mismas que pone la macro y en el mismo sitio.
+    check("la vista previa lleva cotas",
+          "private void CotaH(" in zap_cb and "private void CotaV(" in zap_cb)
+    check("la elevacion acota los tramos, el espesor y la profundidad",
+          "CotaH(PX(a.XDadoIzq), PX(a.XDadoDer), yCad" in zap_cb
+          and "CotaV(x1, PY(a.YZapBot), PY(a.YZapTop), z.EspesorM, gris);" in zap_cb
+          and "CotaV(x2, PY(a.YPlantillaBot), PY(a.YTerreno)" in zap_cb)
+    check("y la planta acota la zapata y el dado",
+          "CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);" in zap_cb
+          and "CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala)" in zap_cb)
+    check("los numeros de las cotas van en metros con dos decimales",
+          'valorM.ToString("N2"' in zap_cb)
+
+    # EL DADO SE ELIGE DE LA HOJA DE CONCRETO, y la lista se actualiza sola.
+    check("el dado se elige de una lista",
+          "public static ObservableCollection<string> DadosDisponibles" in zap_row
+          and "ZapataAisladaRow.DadosDisponibles" in xaml)
+    check("la lista sale de los dados de la hoja de concreto",
+          "private void ActualizarDadosDisponibles()" in zap_cb
+          and ".Where(s => EsDado(s.Elemento))" in zap_cb)
+    check("y se actualiza en cada cambio de esa hoja",
+          "ActualizarListasDeZapatas();" in codigo)
+    check("se actualiza EN SITIO, no se sustituye la coleccion",
+          "sin sustituir la colección" in zap_cb
+          and "lista.Clear();" in zap_cb)
+
+    # LA COLUMNA, igual que el dado, y de las DOS hojas: una columna de acero tambien
+    # desplanta en una zapata -y es la que hace que el dado remate con placa base-, asi que
+    # ofrecer solo las de concreto dejaria la mitad del trabajo fuera de la lista.
+    check("la columna se elige de una lista",
+          "public static ObservableCollection<string> ColumnasDisponibles" in zap_row
+          and "ZapataAisladaRow.ColumnasDisponibles" in xaml)
+    check("la lista trae las columnas de las DOS hojas",
+          "private void ActualizarColumnasDisponibles()" in zap_cb
+          and "EsColumnaDeConcreto(s.Elemento)" in zap_cb
+          and "PerfilAceroRow.ElementoColumna.Equals(" in zap_cb)
+    check("y cada una dice de que hoja sale",
+          '$"{id} (concreto)"' in zap_cb and '$"{id} (acero)"' in zap_cb)
+    check("pero se guarda SOLO el ID, que es lo que va al plano",
+          "public static string SoloElId(" in zap_row
+          and "set => Set(ref _idColumna, SoloElId(value));" in zap_row)
+    check("la hoja de acero tambien refresca la lista",
+          "ActualizarListasDeZapatas();"
+          in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs")))
+
+    # Lo que se pidio de la lista: que no ofrezca dos entradas iguales. Lo que NO se pidio
+    # -y se hizo mal- era prohibir que dos zapatas usen la misma columna.
+    check("revisar avisa si la columna no esta capturada",
+          "no está capturada, ni en" in zap_cb)
+
+    # UNA MISMA COLUMNA SI PUEDE ESTAR EN VARIAS CIMENTACIONES. Lo que se captura en la
+    # hoja de secciones es el TIPO de columna -«C-01» es la de 40x40 con su armado- y ese
+    # tipo se repite en todas las zapatas donde toque. Se reportaba como error, y ademas
+    # impedia dibujar porque el boton se niega cuando hay problemas.
+    check("repetir la columna en varias zapatas YA NO es un error",
+          "Una columna se apoya en una sola zapata." not in zap_cb
+          and "ya desplanta en otra zapata" not in zap_cb)
+    check("y no puede volver a bloquear el dibujo",
+          "columnasUsadas.Add(idCol)" not in zap_cb)
+    check("en su lugar se CUENTA en cuantas zapatas esta cada columna",
+          "out List<string> columnasRepetidas" in zap_cb
+          and "desplanta en {par.Value.Count} zapatas" in zap_cb
+          and "columnasUsadas.Where(p => p.Value.Count > 1)" in zap_cb)
+    check("y se enseña diciendo que es normal, no como reproche",
+          "es normal: el ID es el TIPO de columna" in zap_cb)
+    check("y queda escrito por que era un error prohibirlo",
+          "una misma columna sí puede estar en varias cimentaciones" in zap_cb
+          and "impedía dibujar" in zap_cb)
+    check("y el XAML tampoco lo llama error",
+          "REPETIR LA MISMA COLUMNA EN VARIAS ZAPATAS NO ES UN ERROR" in xaml)
+
+    # ------------------------------------------------------------------
+    # LAS MEDIDAS SE TRAEN SOLAS DE LA SECCION ELEGIDA
+    # ------------------------------------------------------------------
+    # Lo que se pidio: «QUE CUANDO SELECCIONE LA COLUMNA EN AUTOMATICO TENGA LA MEDIDA REAL
+    # YA REFERENCIADA SIN NECESIDAD QUE YO LE MUEVA». El ID ya tiene su seccion capturada
+    # con su ancho y su recubrimiento; teclearlos otra vez era pedir dos veces el mismo dato.
+    check("al elegir la columna o el dado se traen sus medidas",
+          "private void ReferenciarMedidas(ZapataAisladaRow fila)" in zap_cb
+          and "private void ReferenciarColumna(ZapataAisladaRow fila)" in zap_cb
+          and "private void ReferenciarDado(ZapataAisladaRow fila)" in zap_cb)
+    check("y se dispara justo al cambiar el ID de la celda",
+          "e.PropertyName == nameof(ZapataAisladaRow.IdColumna)" in zap_cb
+          and "e.PropertyName == nameof(ZapataAisladaRow.IdDado)" in zap_cb)
+    check("la columna de concreto trae su base y su recubrimiento",
+          "fila.AnchoColumnaCm = col.BaseCm;" in zap_cb
+          and "fila.RecColumnaCm = col.RecubrimientoCm;" in zap_cb)
+    check("el perfil de acero trae su peralte, que es lo que se ve en el corte",
+          "perfil.PeralteCm > 0 ? perfil.PeralteCm : perfil.AnchoCm" in zap_cb)
+    check("y el TIPO de columna se pone solo, concreto o acero",
+          "fila.TipoColumna = ZapataAisladaRow.TipoColumnaConcreto;" in zap_cb
+          and "fila.TipoColumna = ZapataAisladaRow.TipoColumnaAcero;" in zap_cb)
+    check("el dado trae su ancho y su recubrimiento",
+          "fila.AnchoDadoCm = dado.BaseCm;" in zap_cb
+          and "fila.RecDadoCm = dado.RecubrimientoCm;" in zap_cb)
+
+    # Es una REFERENCIA, no una copia que envejece: si la seccion cambia, la zapata se pone
+    # al dia sola. Sin esto, cambiar la columna de 40 a 45 en su hoja dejaria las zapatas
+    # dibujandose con 40 y nada lo diria.
+    check("y si la seccion cambia despues, la zapata se pone al dia sola",
+          "ReferenciarMedidasDeTodas();" in zap_cb
+          and "private void ReferenciarMedidasDeTodas()" in zap_cb)
+    check("nunca se escribe un cero encima de un dato bueno",
+          "if (col.BaseCm > 0)" in zap_cb
+          and "if (dado.BaseCm > 0)" in zap_cb)
+    check("y queda escrito que la referencia es la seccion",
+          "Es una referencia, no una copia que se queda vieja" in zap_cb
+          and "la medida real" in zap_cb)
+    check("las celdas dicen en su globo que se llenan solas",
+          "Se llena sola con el ancho real del dado elegido" in xaml
+          and "Se llena sola con la medida real de la columna elegida" in xaml)
+
+    # Un solo sitio decide que es un dado y que es una columna.
+    check("que es un dado y que es una columna se decide en un solo sitio",
+          "private static bool EsColumnaDeConcreto(string? elemento)" in zap_cb
+          and "private static bool EsDado(string? elemento)" in zap_cb
+          and ".Where(s => EsDado(s.Elemento))" in zap_cb)
+    check("y la celda sigue siendo editable, con su lista en el XAML",
+          'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.DadosDisponibles}}"'
+          in xaml)
+
+    # Los dos botones de la hoja.
+    check("la hoja de zapatas tiene su boton de revisar, y funciona",
+          'Click="OnRevisarZapatas"' in xaml
+          and "private void OnRevisarZapatas(" in zap_cb)
+    check("y dice donde se va a dibujar cada una",
+          "Donde se va a dibujar cada una" in zap_cb)
+    # LO QUE SE PIDIO: «HABILITA EL BOTON DE DIBUJAR ZAPATAS AISLADAS». Ya no esta apagado
+    # y ya no avisa de que el dibujante falta: existe.
+    m_boton = re.search(r'<Button x:Name="DibujarZapatasButton".*?/>', xaml, re.S)
+
+    check("el boton de dibujar zapatas esta puesto y ENCENDIDO",
+          m_boton is not None and 'IsEnabled="False"' not in m_boton.group(0))
+    check("y ya no dice que el dibujante es el paso siguiente",
+          "el dibujante de zapatas es el paso siguiente" not in xaml
+          and "El dibujante de zapatas todavía no está" not in zap_cb)
+    check("y quien lo apaga ahora es la licencia, no el XAML",
+          "DibujarZapatasButton.IsEnabled = puedeDibujar;" in codigo)
+    check("y su globo dice lo que hace de verdad",
+          m_boton is not None
+          and "su corte y su planta" in m_boton.group(0)
+          and "no dibuja si falta algo" in m_boton.group(0))
+
+    # El tipo y el desplanta van por PLANTILLA con ComboBox editable enlazado por Text.
+    # Con SelectedItemBinding y la lista llenada desde el code-behind, el enlace pisaba el
+    # valor capturado: las dos zapatas del ejemplo salian «de lindero».
+    # LA SEPARACION DE ESTRIBOS SE ESCRIBE A MANO. La lista son sugerencias, no una lista
+    # cerrada, y con SelectedItemBinding lo que se teclea no llega a la propiedad: se pierde
+    # al salir de la celda. Es el mismo patron que la columna «Sep cm» del concreto.
+    check("la separacion de estribos de la zapata se puede escribir a mano",
+          'Text="{Binding SepEstriboDado, UpdateSourceTrigger=PropertyChanged}"' in xaml
+          and "ColZapSepEstribo" not in zap_cb)
+    check("y su lista sigue siendo la misma del concreto, un solo sitio",
+          'ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"'
+          in xaml)
+
+    check("el tipo de zapata se enlaza por Text, no por SelectedItem",
+          'Text="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}"' in xaml
+          and "ColTipoZapata" not in zap_cb)
+    check("y se dice por que, que es el defecto que se vio",
+          "el enlace lo PISA" in xaml)
+    check("se redibuja al cambiar de fila, de tamaño y al editar",
+          "private void EngancharVistaPreviaZapata()" in zap_cb
+          and "private void OnFilaZapataEditada(" in zap_cb)
+    check("y solo si la fila editada es la que se esta viendo",
+          "ReferenceEquals(sender, ZapatasGrid.SelectedItem)" in zap_cb)
+    check("la pestaña se llena y se enlaza al arrancar",
+          "LlenarListasZapatas();" in codigo
+          and "EnlazarZapatas();" in codigo
+          and "EngancharVistaPreviaZapata();" in codigo)
+    check("y se dice lo que a la vista previa le falta todavia",
+          "Lo que todavía no está" in zap_cb and "los rellenos de concreto" in zap_cb)
+
+    # ------------------------------------------------------------------
+    # EL DIBUJANTE DE ZAPATAS EN AUTOCAD
+    # ------------------------------------------------------------------
+    # Lo que se pidio: habilitar el boton. Un boton encendido con un dibujante a medias
+    # seria peor que el boton apagado, asi que aqui se comprueba el dibujante entero.
+    zap_drw = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+    zap_pla = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+    zap_trz = leer(ruta("client/src/CadLink.Cad/TrazoZapata.cs"))
+    zap_ui = leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
+    zap_todo = zap_drw + zap_pla
+
+    check("existe el dibujante de zapatas, en dos archivos parciales",
+          "public sealed partial class ZapataDrawer" in zap_drw
+          and "public sealed partial class ZapataDrawer" in zap_pla)
+
+    # ES UN PORT, RUTINA POR RUTINA. Cada una lleva el nombre del VBA en su comentario, que es
+    # lo que permite cotejarlas. La version anterior dibujaba «una zapata» y le faltaba casi
+    # todo: el acero del dado y de la columna, el bloque, los rotulos y el modo de relleno.
+    for vba in ("DibujarContornoZapataConDado", "DibujarPlantillaConcretoSimple",
+                "DibujarPlantillaTexto", "DibujarHatchTerreno", "DibujarHatchConcretoRect",
+                "DibujarParrillaZapata", "DibujarBarraLongitudinalUnica",
+                "DibujarGanchoContinuoLimpio", "DrawVerticalElementFromAlzados",
+                "DrawStirrupsCapsulesFront", "DibujarBarraGanchosRapido",
+                "DibujarCaraSegmentada", "DrawBarLineTrimWithOffset", "DrawTwoOffsetSegment",
+                "DibujarBreakLine", "PrepararUnionDadoColumna", "PosicionesBarrasElemento",
+                "DibujarUnionDadoColumna", "DibujarDesplazamientoVarilla",
+                "DibujarBarraVerticalBanda", "CotasAnchosZapataYDado",
+                "CotasDoblezGanchosDado", "TextoRotuloElementoVertical",
+                "RotularElementoVerticalLeader", "RotularParrillaInferiorZA",
+                "RotularParrillaSuperiorZALindero", "AgregarLeaderRecto",
+                "DibujarPlantaZapataAislada", "DibujarMallaPlanta", "EmitirBarraYConHueco",
+                "DibujarSegBandaX", "DibujarSegBandaY", "RotularMallaPlanta",
+                "DibujarBreakLineEntre", "NombreBloqueLibre", "CrearBloqueVacio",
+                "InsertarBloqueCentroide", "InsertarBloqueDerecha", "AsegurarEstiloCota",
+                "RellenarPoligonoSolido", "RellenarGanchoLSolido",
+                "RellenarGanchoParrillaSolido", "RellenarBandaSegmentada", "PuntosArco",
+                "ApplyCapsuleProtrusion", "BuildStirrupCentersUniforme", "SeparacionMinima",
+                "VarLayerName", "NormalizeDiaLabel", "DibujarCirculoRelleno",
+                "AplicarContornoVarilla", "CrearMTextoCentradoMascara", "AgregarTexto"):
+        # Algunas viven en TrazoZapata, que es la geometria compartida con la vista previa.
+        check(f"esta portada la rutina {vba}", vba in zap_todo or vba in trazo_zap)
+
+    check("y toda la geometria compartida sigue saliendo de TrazoZapata",
+          "TrazoZapata.Colocar(z, xBase)" in zap_drw
+          and "TrazoZapata.XBase(z.Tipo, anchos, i)" in zap_drw
+          and "TrazoZapata.CentrosEstribos(" in zap_drw
+          and "TrazoZapata.CentrosUniformes(" in zap_drw
+          and "TrazoZapata.HuecoDelDado(z, xIzq, yBot)" in zap_pla
+          and "TrazoZapata.Posiciones(" in zap_pla)
+
+    # EL ELEMENTO VERTICAL SE CALCULA TUMBADO Y SE ROTA 90 GRADOS, como la macro. La rotacion
+    # se aplica a cada PUNTO al dibujarlo, no recorriendo el dibujo despues.
+    check("el dado y la columna se calculan tumbados y se rotan 90 grados",
+          "private double GX(double x, double y) => _rot ? _rx0 - (y - _ry0) : x;" in zap_pla
+          and "private double GY(double x, double y) => _rot ? _ry0 + (x - _rx0) : y;" in zap_pla
+          and "private double GA(double a) => _rot ? a + (Math.PI / 2) : a;" in zap_pla)
+    check("y queda escrito que la barra superior local es el paño izquierdo global",
+          "la barra «superior» local es la del paño <b>izquierdo</b>" in zap_drw)
+
+    # EL ACERO DE ARRANQUE: es lo que faltaba por completo.
+    check("el dado y la columna llevan sus barras de arranque",
+          "private void BarraConGanchos(" in zap_drw
+          and "BarraConGanchos(xaBot, xbBar, ycSup, dSup, CapaVar(diaSup)" in zap_drw
+          and "BarraConGanchos(xaBotInf, xbBar, ycInf, dInf, CapaVar(diaInf)" in zap_drw)
+    check("con el gancho de 15 diametros abajo",
+          "TrazoZapata.FactorGanchoAbajo * dSup" in zap_drw
+          and "TrazoZapata.FactorGanchoAbajo * dInf" in zap_drw)
+    check("y con las intermedias cortadas en cada estribo",
+          "private void BarraRectaSegmentada(" in zap_drw
+          and "private void CaraSegmentada(" in zap_drw)
+    check("los ganchos del lindero doblan LOS DOS a la izquierda",
+          "ganchosAmbosIzq" in zap_drw
+          and "bendIniSup = true;" in zap_drw
+          and "bendIniInf = true;" in zap_drw)
+    check("y si las patas se alcanzarian, una se sube",
+          "private double DesfaseDeLosGanchos(" in zap_drw
+          and "(2 * dMax) + 0.005" in zap_drw)
+    # El traslape a 1:6 -RELACION_DESPLAZAMIENTO- y, si el dado es tan bajo que no caben esos
+    # seis, se AVISA en lugar de dibujar un doblez mas parado y callarlo.
+    check("el traslape va a 1:6 y se avisa si no cabe",
+          "para quedar a 1:6 y en el dado solo caben" in zap_drw
+          and "RelacionDesplazamiento" in zap_drw)
+
+    check("la union dado-columna dibuja el desplazamiento de cada barra",
+          "private Union PrepararUnion(" in zap_drw
+          and "private void DesplazamientoVarilla(" in zap_drw
+          and "RelacionDesplazamiento" in zap_drw)
+    check("y las intermedias se emparejan una a una por cercania",
+          "mejorD" in zap_drw and "usadoD[mejorD] = true;" in zap_drw)
+
+    # Estribos y parrillas.
+    check("los estribos van en capsula, con su ARCOFFSET y su protrusion",
+          "private void CapsulasDeEstribo(" in zap_drw
+          and "ArcOffset" in zap_drw
+          and "TrazoZapata.Sobresalir(centros)" in zap_drw)
+    check("el dado se salta 2 estribos en el lindero y 1 en la central",
+          "var omitirEstribos = z.DobleParrilla" in zap_drw
+          and "(lindero ? 2 : 1)" in zap_drw)
+    check("las parrillas llevan su gancho de sector anular y sus transversales",
+          "private void GanchoContinuo(" in zap_drw
+          and "radioExt = diam + (diam / 2)" in zap_drw
+          and "private void CirculoRelleno(" in zap_pla)
+
+    # EL MODO DE RELLENO (celda B3 de la macro).
+    # LO QUE SE PIDIO: el tipo de seccion ARRIBA y para TODAS, como en las secciones de
+    # concreto, no una casilla por fila.
+    check("el modo de relleno es del juego entero, no de cada zapata",
+          "public bool SeccionRellena { get; set; }" in zap_drw
+          and "_relleno = SeccionRellena;" in zap_drw
+          and "public bool Relleno" not in trazo_zap)
+    check("y lo mandan los mismos botones de la hoja de concreto",
+          'x:Name="ZapTipo1Radio"' in xaml
+          and "ElementName=Tipo1Radio" in xaml
+          and "SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena" in zap_cb)
+    check("y queda escrito por que no va por fila",
+          "no es un plano, son dos" in zap_drw)
+    check("modo 1: solido 9 + AR-CONC 0.0003 color 251",
+          "ColorSolidoRelleno = 9" in zap_drw
+          and "EscalaConcretoRelleno = 0.0003" in zap_drw
+          and "ColorPatronRelleno = 251" in zap_drw)
+    check("modo 2: el AR-CONC de siempre a 0.0005",
+          "EscalaConcretoNormal = 0.0005" in zap_drw)
+    check("los estribos rellenos van en 152 y el contorno del acero en negro",
+          "ColorEstriboRelleno = 152" in zap_drw
+          and "ColorContornoNegro = 250" in zap_drw
+          and "private void Var(object? ent)" in zap_pla)
+    check("y los rellenos solo usan figuras que AutoCAD no rechaza",
+          "private void RellenarQuad(" in zap_pla
+          and "private void RellenarTriangulo(" in zap_pla
+          and "private void RellenarCirculo(" in zap_pla
+          and "nunca rechaza" in zap_pla)
+    check("la casilla de doble parrilla es una lista de SI y NO",
+          'Text="{Binding DobleParrilla, UpdateSourceTrigger=PropertyChanged}"' in xaml
+          and 'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.SiNo}}"' in xaml)
+
+    # EL BLOQUE DE LA ZAPATA.
+    check("la elevacion se mete en un bloque con el nombre de la zapata",
+          "public bool ZapataComoBloque { get; set; } = true;" in zap_drw
+          and "CrearBloqueVacio(nombreBloque, xBase, yZapBot)" in zap_drw
+          and "CapaBloqueZapata" in zap_drw)
+    check("y el terreno, las cotas y los rotulos quedan FUERA",
+          "// ---------- El terreno: FUERA del bloque ----------" in zap_drw
+          and "_cont = _ms;" in zap_drw)
+    check("el texto de la plantilla va despues del bloque, para que no lo tape",
+          "PlantillaTexto(xBase, yZapBot" in zap_drw
+          and "el SOLID del bloque lo taparía" in zap_drw)
+
+    # El acero en su capa por diametro, como el resto del plano.
+    check("cada varilla va a su capa VAR_#n",
+          'return e.Length == 0 ? "VAR_#3" : "VAR_" + e;' in zap_pla
+          and "private void AsegurarCapaVarilla(" in zap_pla)
+
+    # Rotulos con leader.
+    check("el dado y la columna llevan rotulo con leader",
+          "private void RotuloConLeader(" in zap_drw
+          and "private void RotuloDelDado(" in zap_drw
+          and "private void RotuloDeLaColumna(" in zap_drw)
+    check("y en el lindero salen a la IZQUIERDA",
+          "LinderoRotuloElemDx" in zap_drw
+          and "a.XDadoIzq - LinderoRotuloElemDx" in zap_drw)
+    check("las parrillas tambien, con su AMBOS SENTIDOS",
+          "private void RotuloParrillaInferior(" in zap_drw
+          and "AMBOS SENTIDOS" in zap_drw)
+
+    # ---- LOS ROTULOS DE PARRILLA, EN LA POSICION DE LA MACRO ----
+    # Moverlos a ojo fue lo que los dejo encima de las cotas y del titulo. Estas comprobaciones
+    # amarran las cuentas TAL CUAL vienen en las macros, con sus sumas y restas.
+    check("el rotulo de la parrilla inferior va donde lo pone la macro",
+          "var xTexto = xBase - 0.18 + 0.272 - 0.11 + DesplazamientoParrillaInfCentrar;" in zap_drw
+          and "var yTexto = yZapBot + 0.1 + 0.4164 - 0.16;" in zap_drw)
+    check("y ya no 46 cm mas abajo, encima de las cotas y del titulo",
+          "var yTexto = yZapBot - 0.10;" not in zap_drw)
+    check("el de la parrilla superior de la CENTRAL sale del pano derecho, no fuera del dibujo",
+          "var xTexto = xBase + anchoZapata + 0.16 - 0.4302;" in zap_drw
+          and "var yTexto = yZapTop + 0.02 + 0.2908 - 0.16;" in zap_drw
+          and "xBase + anchoZapata + 0.10" not in zap_drw)
+    check("el de la parrilla superior del LINDERO va centrado sobre el lomo",
+          "var yTexto = yZapTop + LinderoRotuloSupDy;" in zap_drw
+          and "LinderoRotuloSupDy = 0.23" in zap_drw)
+    check("cuando las dos parrillas son distintas se parten en DOS rotulos",
+          "anclaje: AnclajeIzquierda" in zap_drw
+          and "anclaje: AnclajeDerecha" in zap_drw
+          and "DesplazamientoVertical" in zap_drw)
+    check("y el MText de verdad recibe ese anclaje",
+          "int anclaje = AnclajeCentro" in zap_pla
+          and "mt.AttachmentPoint = anclaje;" in zap_pla)
+    check("estan todos los desplazamientos de la macro, con su nombre",
+          "AnchoMtexto = 0.38" in zap_drw
+          and "DesplazamientoInferiorX = -0.4818" in zap_drw
+          and "DesplazamientoAmbosSentidos = -0.2" in zap_drw
+          and "DesplazamientoInferiorAdicional = 0.15" in zap_drw
+          and "DesplazamientoAmbosInferiorX = 0.09" in zap_drw
+          and "DesplazamientoYAmbosAnclaje = -0.024" in zap_drw
+          and "DesplazamientoYAmbosTexto = -0.011" in zap_drw
+          and "DesplazamientoInferiorSuperiorAdicional = 0.0988" in zap_drw
+          and "DesplazamientoParrillaInfCentrar = 0.2" in zap_drw)
+    check("en la ELEVACION el rotulo no repite el titulo de la parrilla",
+          '"PARRILLA INFERIOR", varBarra' not in zap_drw
+          and '"PARRILLA SUPERIOR", varBarra' not in zap_drw
+          and "PARRILLA INFERIOR" in zap_pla)
+    check("la punta del leader cae sobre una varilla de verdad",
+          "private static double CirculoMasCercano(" in zap_drw
+          and "xPuntaCirc = CirculoMasCercano(" in zap_drw)
+
+    # ---- EL RENGLON DE VARILLAS SUMA LAS DEL MISMO DIAMETRO ----
+    check("el rotulo del elemento suma las varillas del mismo diametro",
+          "private string TextoBarrasLongitudinales(" in zap_drw
+          and "conteos[k] += n;" in zap_drw)
+    check("y los conteos del rotulo salen de la seccion, no del dibujo",
+          "NVarDadoSup" in zap_trz
+          and "NVarIntDadoTotal" in zap_trz
+          and "private static void ConteosDelRotulo(" in zap_ui)
+    check("con la circular contando TODAS sus varillas",
+          "nInt = s.NVarTotal > 2 ? s.NVarTotal - 2 : 0;" in zap_ui
+          and "nSup = s.NEsqSup + s.NIntSup;" in zap_ui)
+    check("y sin conteos se escriben los diametros, no un total inventado",
+          "var hayConteos = nSup > 0 || nInf > 0 || nIntTotal > 0;" in zap_drw)
+    check("el leader se saca del borde de la caja del texto",
+          "private (double X1, double Y1, double X2, double Y2)? Caja(" in zap_pla
+          and "RotuloVertGapLeader" in zap_drw)
+    check("y la caja se mide por REFLEXION, no con dynamic",
+          "private (double[] Min, double[] Max)? CajaEnvolvente(object ent)" in zap_pla
+          and "ParameterModifier" in zap_pla
+          and "no se puede invocar con 'dynamic'" in zap_pla)
+
+    # Cotas: las de la macro, con sus offsets.
+    # LO QUE SE PIDIO: cotas y rotulos colgados del PUNTO INFERIOR DERECHO de la zapata, para
+    # que viajen con ella. Y el hueco de 80 cm de la fila queda a su derecha, que es donde
+    # caben.
+    # LAS COTAS Y LOS ROTULOS, DONDE LOS PONE LA MACRO. Moverlos fue idea mia y fue peor.
+    check("las cotas verticales van a la izquierda, a 0.08 y 0.16 de xBase",
+          "CotasVerticales(xBase, yZapBot, yZapTop, yTerreno, r);" in zap_drw
+          and "var x1 = xBase - CotaOffsetVert1;" in zap_drw
+          and "var x2 = xBase - CotaOffsetVert2;" in zap_drw)
+    check("y los tres renglones del rotulo van CENTRADOS en el eje",
+          "Texto(xCentro, yTitulo," in zap_drw
+          and "alineacion: Alineacion.Centro" in zap_drw)
+    check("y queda escrito que alinearlos a la derecha fue un error mio",
+          "fue un invento mío" in zap_pla
+          and "fue idea mía" in zap_pla)
+    check("la alineacion de texto es la de la macro: centrado o pegado a la izquierda",
+          "private enum Alineacion" in zap_pla
+          and "if (alineacion == Alineacion.Centro)" in zap_pla
+          and "t.HorizontalAlignment = 4;" in zap_pla)
+    check("y ya no queda una alineacion a la derecha que la macro no tiene",
+          "Alineacion.Derecha" not in zap_pla
+          and "Alineacion.Derecha" not in zap_drw)
+    check("la planta acota el largo de la zapata a la izquierda y el del dado a la derecha",
+          "PlantaCotaOffsetLargo" not in zap_pla
+          and "Cota(xIzq - PlantaCotaOffset, yBot" in zap_pla
+          and "Cota(xDer + PlantaCotaOffsetDado, dy1" in zap_pla)
+    check("y su rotulo va centrado, como la macro",
+          "Texto(xCen, yTitulo, TrazoZapata.AltoQueQuepa(" in zap_pla
+          and "Texto(xCen, yEscala, TrazoZapata.AltoQueQuepa(" in zap_pla)
+
+    check("las cotas de la elevacion son las de la macro",
+          "CotaOffsetCadena = 0.14" in zap_drw
+          and "CotaOffsetTotal = 0.22" in zap_drw
+          and "CotaOffsetVert1 = 0.08" in zap_drw
+          and "CotaOffsetVert2 = 0.16" in zap_drw)
+    check("la cota de la plantilla lleva el numero EN MEDIO",
+          "d.TextInside = true;" in zap_pla
+          and "d.ForceLineInside = true;" in zap_pla
+          and "d.TextMovement = 0;" in zap_pla)
+    check("y la total arranca del fondo de la plantilla",
+          "yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor" in zap_drw)
+    # ---- EL ROTULO, EN SU PROPIO RENGLON Y ALINEADO SIEMPRE ----
+    # LO QUE SE PIDIO: bajar el titulo, dibujarlo APARTE del dibujo con los mismos 0.8 de la
+    # fila (X = -0.8) y que todos queden en la misma linea.
+    check("el rotulo se baja a su propio renglon, a los 0.8 de la fila",
+          "public const double RotuloSeparacion = SeparacionIzquierda;" in trazo_zap
+          and "public static double YRotulo(double yFondoDibujo, int renglon)" in trazo_zap)
+    check("y ya no cuelga a 32 cm del fondo, encima del dibujo",
+          "RotuloTituloOffset = 0.32" not in zap_drw
+          and "RotuloSubtituloOffset = 0.41" not in zap_drw
+          and "PlantaTituloOffset = 0.24" not in zap_pla)
+    check("los saltos entre renglones si son los de la macro",
+          "RotuloSalto1 = 0.09" in trazo_zap
+          and "RotuloSalto2 = 0.17" in trazo_zap)
+    check("el renglon se mide desde el fondo de la plantilla, que es fijo para todas",
+          "TrazoZapata.YRotulo(a.YPlantillaBot, 0)" in zap_drw
+          and "TrazoZapata.YRotulo(a.YPlantillaBot, 2)" in zap_drw)
+    check("y el titulo se encoge si no cabe en su hueco, en vez de meterse en el vecino",
+          "public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;"
+          in trazo_zap
+          and "public static double AltoQueQuepa(" in trazo_zap
+          and "TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo)" in zap_drw)
+    check("la planta usa el MISMO renglon, asi que las dos vistas quedan alineadas",
+          "TrazoZapata.YRotulo(yBot, 0)" in zap_pla
+          and "TrazoZapata.YRotulo(yBot, 2)" in zap_pla)
+    check("y queda escrito por que se bajo",
+          "cae sobre el dibujo" in zap_drw)
+    check("y el titulo dice CENTRAL o DE LINDERO, como la macro",
+          '"ZAPATA AISLADA DE LINDERO' in zap_drw
+          and '"ZAPATA AISLADA CENTRAL' in zap_drw)
+
+    # La planta.
+    check("la planta recorta la malla en los cruces y en el hueco del dado",
+          "private void Malla(" in zap_pla
+          and "cortes.Sort(" in zap_pla
+          and "private void BarraYConHueco(" in zap_pla)
+    check("y va en dos fases: primero los rellenos y despues los contornos",
+          "for (var fase = 1; fase <= 2; fase++)" in zap_pla
+          and "if (fase == 1)" in zap_pla)
+    check("con doble parrilla lleva su linea de rotura en la diagonal",
+          "LineaDeRoturaEntre(xIzq, yBot, xDer, yTop)" in zap_pla
+          and "PlantaBreaklineColor = 250" in zap_pla)
+    check("el dado se INSERTA como bloque, y en el lindero pegado al paño derecho",
+          "private bool InsertarBloque(" in zap_pla
+          and "alinearDerechaEn" in zap_pla
+          and "ExisteBloque(nombre)" in zap_pla)
+    check("y si el bloque no esta, se pone un rectangulo Y SE AVISA",
+          "_dadosQueFaltan" in zap_pla
+          and "no está en el dibujo" in zap_pla)
+    check("el ID del dado viaja limpio, sin la hoja entre parentesis",
+          "IdDado = SoloElId(IdDado)" in zap_row)
+    check("la planta lleva sus cotas y su titulo",
+          "PlantaCotaOffset = 0.12" in zap_pla
+          and "TrazoZapata.YRotulo(yBot, 0)" in zap_pla
+          and '"VISTA EN PLANTA' in zap_pla)
+
+    # El armado de la COLUMNA sale de su seccion, no se vuelve a capturar.
+    check("el armado de la columna se trae de su seccion",
+          "fila.VarColSup = col.DiamEsqSup;" in zap_cb
+          and "fila.EstriboColumna = col.Estribo;" in zap_cb
+          and "public string VarColSup { get; init; }" in trazo_zap)
+    check("y en la columna redonda las dos caras llevan la misma varilla",
+          "var d = col.DiamVarTotalEfectivo;" in zap_cb
+          and "fila.VarColSup = d;" in zap_cb)
+
+    # ------------------------------------------------------------------
+    # DADO CIRCULAR EN PLANTA: las varillas llegan al contorno redondo
+    # ------------------------------------------------------------------
+    # Lo que se pidio. Con el hueco cuadrado, entre la circunferencia y el cuadrado quedaban
+    # cuatro esquinas de varilla que en la obra no se cortan.
+    check("el dado circular llega a la planta",
+          "public bool DadoCircular { get; init; }" in trazo_zap
+          and "fila.DadoCircular = dado.EsCircular;" in zap_cb
+          and "DadoCircular = DadoCircular," in zap_row)
+    check("y con el dado redondo el recorte es la CUERDA del circulo",
+          "private (double A, double B)? CorteDelHueco(" in zap_pla
+          and "Math.Sqrt(dentro)" in zap_pla
+          and "_huecoCircular" in zap_pla)
+    check("las dos familias de varillas usan ese corte",
+          'CorteDelHueco(y, enX: true, rX' in zap_pla
+          and 'CorteDelHueco(x, enX: false, r' in zap_pla)
+    check("y el dado redondo se dibuja redondo, con su relleno",
+          "private void HatchCirculo(" in zap_pla
+          and "Circulo(_hcx, _hcy, wDado / 2, CapaConcreto)" in zap_pla)
+    check("y queda escrito el defecto que arregla",
+          "cuatro esquinas de varilla" in trazo_zap)
+
+    # ------------------------------------------------------------------
+    # EL ARMADO DEL DADO SALE DE SU SECCION, sea redondo o cuadrado
+    # ------------------------------------------------------------------
+    # Lo que se pidio: en «Arranque 1» y «Arranque 2» van las varillas de las ESQUINAS del dado
+    # que se selecciona, el numero de intermedias tambien, y los estribos se leen del dado.
+    check("los arranques del dado se traen de su seccion",
+          "fila.VarDadoSup = dado.DiamEsqSup;" in zap_cb
+          and "fila.VarDadoInf = dado.DiamEsqInfEfectivo;" in zap_cb)
+    check("y en el dado redondo, las dos caras llevan su varilla del circulo",
+          "fila.VarDadoSup = d;" in zap_cb
+          and "dado.DiamVarTotalEfectivo" in zap_cb)
+    check("el numero de intermedias tambien sale de la seccion",
+          "fila.NIntDado = IntermediasDeLaSeccion(dado);" in zap_cb
+          and "fila.NIntDado = dado.NVarTotal > 2 ? (dado.NVarTotal - 2) / 2 : 0;" in zap_cb)
+    check("y el estribo del dado y su separacion, tambien",
+          "fila.EstriboDado = dado.Estribo;" in zap_cb
+          and "fila.SepEstriboDado = dado.SeparacionCm;" in zap_cb)
+    check("y queda escrito por que no se captura dos veces",
+          "un arranque que no existe" in zap_cb)
+
+    # Las INTERMEDIAS: de la hoja de secciones, y si «Intermedias» va en cero, de los lechos.
+    # Sin ellas no hay union de varillas, y la union desaparecia sin decir nada.
+    check("las intermedias del dado y de la columna salen de la seccion",
+          "private static int IntermediasDeLaSeccion(SeccionConcretoRow s)" in zap_cb
+          and "IntermediasDeLaSeccion(col)" in zap_cb
+          and "IntermediasDeLaSeccion(dado)" in zap_cb)
+    check("y si «Intermedias» va en cero se miran los lechos",
+          "Math.Max(s.NIntSup, s.NIntInf)" in zap_cb
+          and "private static string DiametroIntermediasDe(SeccionConcretoRow s)" in zap_cb)
+    # LA COLUMNA CIRCULAR TAMBIEN TIENE INTERMEDIAS en el alzado: de las N del circulo, dos
+    # se ven en las caras y las demas quedan en medio. Con cero, la redonda salia sin
+    # intermedias y sin union con el dado.
+    check("la columna circular lleva sus intermedias",
+          "fila.NIntColumna = col.NVarTotal > 2 ? (col.NVarTotal - 2) / 2 : 0;" in zap_cb)
+    check("y el dado circular tambien",
+          "fila.NIntDado = dado.NVarTotal > 2 ? (dado.NVarTotal - 2) / 2 : 0;" in zap_cb)
+
+    # LAS LISTAS TRAEN TODO: cuadradas, rectangulares y circulares, de concreto y de acero.
+    check("la lista de columnas trae todas las de concreto, no solo dos nombres exactos",
+          ".StartsWith(SeccionConcretoRow.ElementoColumna" in zap_cb
+          and ".StartsWith(SeccionConcretoRow.ElementoDado" in zap_cb)
+    check("y sigue trayendo las de acero",
+          "PerfilAceroRow.ElementoColumna.Equals(" in zap_cb)
+    check("y queda escrito el defecto de la lista que arregla",
+          "se quedaba fuera de la" in zap_cb
+          and "COLUMNA RECTANGULAR" in zap_cb)
+
+    # LAS CELDAS YA REFERENCIADAS SE OCULTAN: se rellenan solas desde la seccion.
+    m_zg = re.search(r'x:Name="ZapatasGrid".*?</DataGrid>', xaml, re.S)
+
+    check("se puede leer la cuadricula de zapatas", m_zg is not None)
+
+    if m_zg:
+        rejilla = m_zg.group(0)
+
+        for col in ("Arranque 1", "Arranque 2", "N int.", "Var int.", "Estribo", "Est. @ cm"):
+            i = rejilla.index(f'Header="{col}"')
+            j = rejilla.index(">", i)
+            check(f"la columna «{col}» esta oculta, porque se rellena sola",
+                  'Visibility="Collapsed"' in rejilla[i:j + 1])
+
+    check("y queda escrito por que se ocultan y no se quitan",
+          "se siguen guardando en el trabajo" in xaml)
+
+    check("y queda escrito que sin intermedias no hay union",
+          "unión de las varillas solo se dibuja" in zap_cb)
+
+    # LAS COTAS DE LA PLANTA, EN ORDEN: cadena y total abajo, largos a los lados.
+    # LAS COTAS DE LA PLANTA SON LAS DE LA MACRO. El turno pasado las cambie a cadena y
+    # total abajo y estuvo MAL: en la planta ya estaban en orden.
+    check("la planta acota el dado arriba y la zapata abajo, como la macro",
+          "PlantaCotaOffset = 0.12;" in zap_pla
+          and "PlantaCotaOffsetDado = 0.1;" in zap_pla
+          and "PlantaCotaNivel2" not in zap_pla
+          and "yTop + PlantaCotaOffsetDado" in zap_pla)
+    check("y queda escrito que cambiarlas fue un error",
+          "en la planta ya estaban en orden" in zap_pla)
+
+    # ------------------------------------------------------------------
+    # LAS PATAS DEL DADO: ADENTRO CON COLUMNA DE CONCRETO, AFUERA CON ACERO
+    # ------------------------------------------------------------------
+    check("las patas del dado doblan segun el tipo de columna",
+          "ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1" in zap_drw)
+    # LO QUE SE PIDIO: la regla es SOLO el tipo de columna, tambien en el lindero. Con
+    # concreto las DOS patas van adentro del nucleo; con acero, una adentro y otra afuera.
+    check("las dos patas van adentro con columna de concreto, tambien en el lindero",
+          "ganchosAmbosIzq: false" in zap_drw
+          and "ganchosAmbosIzq: lindero" not in zap_drw)
+    check("y queda escrito el defecto que arregla",
+          "dejaba una pata saliéndose del dado" in zap_drw)
+
+    # ------------------------------------------------------------------
+    # LAS COTAS: SUS VARIABLES ANTES DE CREAR EL ESTILO
+    # ------------------------------------------------------------------
+    # Aqui estaba el defecto de las cotas gigantes: un estilo creado sin fijar antes las
+    # variables se crea con las del dibujo -texto de 0.18 al lado de una zapata de un metro-.
+    check("las variables de cota se fijan antes de crear el estilo",
+          'Dimvar("DIMTXT", 0.025)' in zap_pla
+          and 'Dimvar("DIMASZ", 0.025)' in zap_pla
+          and 'Dimvar("DIMEXO", 0.02)' in zap_pla
+          and "estilo.CopyFrom(_doc);" in zap_pla)
+    check("y queda escrito el defecto que arregla",
+          "las cotas gigantes" in zap_pla)
+    check("las cotas van en metros con dos decimales",
+          'Dimvar("DIMLUNIT", 2)' in zap_pla and 'Dimvar("DIMDEC", 2)' in zap_pla)
+    check("y con marcas abiertas, con DIMSAH antes de DIMBLK",
+          zap_pla.index('Dimvar("DIMSAH", 0)') < zap_pla.index('Dimvar("DIMBLK", "_OPEN90")'))
+
+    # ------------------------------------------------------------------
+    # LA VISTA EN PLANTA, EN SU PROPIO BLOQUE
+    # ------------------------------------------------------------------
+    # Lo que se pidio: bloque con el dado, las varillas y el contorno; cotas y rotulos FUERA.
+    check("la planta se mete en su propio bloque",
+          '"-PLANTA"' in zap_pla
+          and "var plantaEnBloque = false;" in zap_pla
+          and "InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
+    check("y los rotulos y las cotas quedan FUERA del bloque",
+          "Se cierra el bloque: lo que sigue -cotas y rótulos- va en el MODELO." in zap_pla)
+    check("y queda escrito por que una cota no puede ir dentro",
+          "explotarlo es perder el bloque" in zap_pla)
+
+    # El orden importa: dentro del bloque solo el dibujo, y el cierre ANTES de las cotas.
+    m_pla = re.search(r"private void Planta\(ZapataCad z.*?\n    \}", zap_pla, re.S)
+
+    check("se puede leer la planta completa", m_pla is not None)
+
+    if m_pla:
+        cuerpo = m_pla.group(0)
+        i_malla = cuerpo.index("// ---------- Las mallas ----------")
+        i_cierre = cuerpo.index("// Se cierra el bloque")
+        i_cotas = cuerpo.index("// ---------- Cotas: LAS DE LA MACRO, en su sitio ----------")
+        i_rot = cuerpo.index("// ---------- Rótulos de las mallas ----------")
+
+        check("las mallas van DENTRO del bloque", i_malla < i_cierre)
+        check("las cotas, FUERA", i_cotas > i_cierre)
+        check("y los rotulos de parrilla, FUERA", i_rot > i_cierre)
+
+    # ------------------------------------------------------------------
+    # GUARDAR EL TRABAJO: TODAS LAS HOJAS
+    # ------------------------------------------------------------------
+    # Lo que se pidio: «cuando guardo trabajo solo se guardan mis secciones de concreto».
+    # El .clk guardaba una lista escrita a mano, y cuando llegaron el acero y las zapatas
+    # nadie volvio a tocarla: esas dos hojas se perdian al guardar.
+    proy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+
+    check("el trabajo guarda tambien el acero y las zapatas",
+          "public List<FilaGuardada> Acero { get; set; }" in proy
+          and "public List<FilaGuardada> Zapatas { get; set; }" in proy)
+    check("y se guardan leyendo la fila, para que una columna nueva se guarde sola",
+          "public static class FilaSerializable" in proy
+          and "public static FilaGuardada Leer(object fila)" in proy
+          and "public static void Aplicar(object fila, FilaGuardada guardada)" in proy)
+    check("solo lo capturado: nada de columnas calculadas",
+          "p.CanRead && p.CanWrite" in proy)
+    check("los numeros van en formato invariante",
+          "CultureInfo.InvariantCulture" in proy)
+    check("un archivo viejo se sigue abriendo",
+          "se ignora en silencio" in proy)
+    check("las dos hojas se recogen al guardar",
+          "FilaSerializable.Leer(a)" in codigo and "FilaSerializable.Leer(z)" in codigo)
+    check("y se vuelcan al abrir",
+          "_datos.SeccionesAcero.Clear();" in codigo
+          and "_datos.ZapatasAisladas.Clear();" in codigo
+          and "FilaSerializable.Aplicar(nueva, fila);" in codigo)
+    check("y queda escrito por que se perdian",
+          "<b>se perdían</b>" in proy and "se captura una vez" in proy)
+
+    # El boton: revisa, se engancha a la sesion abierta y cuenta lo que salio.
+    check("el boton de dibujar revisa ANTES de dibujar",
+          "if (!RevisarZapatas(out var problemas, out _, out _))" in zap_cb
+          and "Corrige esto antes de dibujar las zapatas" in zap_cb)
+    check("la revision esta en un solo sitio para los dos botones",
+          "private bool RevisarZapatas(" in zap_cb
+          and "RevisarZapatas(out var problemas, out var acomodo, out var columnasRepetidas);"
+          in zap_cb)
+    check("no arranca AutoCAD, se engancha al que ya este abierto",
+          "AcadConnection.Connect(launchIfMissing: false)" in zap_cb
+          and "new ZapataDrawer(doc, catalogoDeVarillas)" in zap_cb)
+    check("y el catalogo de varillas se PASA, no se copia",
+          "private static double DiametroCmDeVarilla(string? clave)" in zap_cb
+          and "private readonly Func<string?, double> _diametroCm;" in zap_drw
+          and "DiametrosCm" not in zap_drw)
+    check("los fallos tolerados y las notas se muestran",
+          "dibujante.Fallos" in zap_cb
+          and "MostrarNotas(" in zap_cb
+          and "PERO hubo " in zap_cb)
+
+    # ------------------------------------------------------------------
+    # DESHACER (Ctrl+Z)
+    # ------------------------------------------------------------------
+    # Lo que importa de esto no es que exista el boton: es que NO haya manera de que un
+    # cambio se quede fuera del historial. Por eso se guarda una instantanea del trabajo
+    # entero en lugar de una lista de «que cambio»: con la lista habria que interceptar
+    # cada sitio que toca los datos -las celdas de cinco cuadriculas, agregar y quitar
+    # filas, el catalogo que trae las medidas solo- y el camino que alguien agregue mañana
+    # y se olvide de registrar deja un cambio que no se puede deshacer.
+    hist = leer(ruta("client/src/CadLink.App/Models/Historial.cs"))
+
+    check("hay historial de deshacer",
+          "public sealed class Historial" in hist
+          and "public sealed class Instantanea" in hist)
+    check("la instantanea guarda el trabajo en el formato del archivo",
+          "JsonSerializer.Serialize(proyecto, Opciones)" in hist
+          and "ProyectoGuardado" in hist)
+    check("y se serializa al TOMARLA, no al deshacer",
+          "queda una copia inmutable" in hist)
+    check("las secciones de acero se clonan aparte, que el .clk no las guarda",
+          "acero.Select(p => p.Copia()).ToList()" in hist
+          and "todavía no las guarda" in hist)
+    check("el historial tiene tope",
+          "public const int MaximoPasos = 30;" in hist
+          and "_pasos.RemoveFirst();" in hist)
+    check("y no apila un paso que no cambia nada",
+          "paso.EsIgualA(_pasos.Last?.Value)" in hist)
+    check("se puede olvidar el historial, y se dice por que",
+          "public void Limpiar()" in hist
+          and "sin avisar" in hist)
+
+    perfil_row = leer(ruta("client/src/CadLink.App/Models/PerfilAceroRow.cs"))
+
+    # La fila de acero sabe copiarse, y el ORDEN de las asignaciones importa: primero el
+    # perfil -que trae las medidas del catalogo solo- y las medidas despues, o una medida
+    # ajustada a mano se perderia al deshacer.
+    check("la fila de acero sabe copiarse y compararse",
+          "public PerfilAceroRow Copia()" in perfil_row
+          and "public bool EsIgualA(PerfilAceroRow? o)" in perfil_row)
+    check("y copia el perfil ANTES de las medidas",
+          perfil_row.index("Perfil = _perfil") < perfil_row.index("c.PeralteCm = _peralteCm;"))
+    check("y se dice por que ese orden no es negociable",
+          "El orden de las asignaciones importa y no es negociable" in perfil_row)
+
+    # El enganche: un solo sitio registra, y registra el estado de ANTES.
+    check("el historial se registra donde se avisa de un cambio",
+          "RegistrarEnHistorial();" in codigo
+          and "private void RegistrarEnHistorial()" in codigo)
+    check("se apila el estado de ANTES, no el nuevo",
+          "_historial.Apilar(_estadoActual);" in codigo
+          and "_estadoActual = TomarInstantanea();" in codigo)
+    check("el propio deshacer no se apila",
+          "if (!_listo || _deshaciendo)" in codigo)
+    check("y despues de deshacer, el estado actual es el que se acaba de poner",
+          "_estadoActual = paso;" in codigo)
+
+    # Ctrl+Z DENTRO de una celda es el deshacer del cuadro de texto, y ese gana.
+    check("Ctrl+Z esta atado a la ventana",
+          '<KeyBinding Key="Z" Modifiers="Control" Command="ApplicationCommands.Undo" />'
+          in xaml
+          and 'Command="ApplicationCommands.Undo"   Executed="OnDeshacer"' in xaml)
+    check("y hay boton en la barra y renglon en el menu",
+          'x:Name="DeshacerButton"' in xaml
+          and 'Header="_Deshacer" Command="ApplicationCommands.Undo"' in xaml)
+    check("dentro de una celda gana el deshacer del cuadro de texto",
+          "Keyboard.FocusedElement is System.Windows.Controls.TextBox caja && caja.CanUndo"
+          in codigo
+          and "caja.Undo();" in codigo)
+
+    # Abrir otro trabajo, empezar de cero o cargar el ejemplo BORRAN el historial: deshacer
+    # ahi devolveria a otro trabajo, no al cambio anterior.
+    check("abrir, nuevo, limpiar y el ejemplo olvidan el historial",
+          codigo.count("OlvidarHistorial();") == 4
+          and "private void OlvidarHistorial()" in codigo,
+          f"{codigo.count('OlvidarHistorial();')} llamadas, se esperan 4")
+
+    # ------------------------------------------------------------------
+    # Las notas del ultimo dibujo, FUERA de la vista previa
+    # ------------------------------------------------------------------
+    # Estaban en una capa semitransparente pegada al borde de abajo de la vista previa, y
+    # ahi tapaban justo el rotulo de la seccion y la cota de la base. Con cuatro notas -y
+    # el interop de AutoCAD deja cuatro cada vez- se comian un tercio del cuadro.
+    check("el cuadro de notas se oculta cuando no hay nada que decir",
+          'x:Name="NotasPanel"' in xaml
+          and 'Binding="{Binding Text, ElementName=ExportHintText}"' in xaml)
+
+    check("las notas ya no van encima de la vista previa",
+          'Grid.Row="4"' in xaml
+          and '<Expander x:Name="NotasPanel" IsExpanded="False"' in xaml)
+    check("y arrancan plegadas",
+          'IsExpanded="False"' in xaml)
+
+    # Y se pliegan en CADA dibujo, no solo al arrancar: si el usuario lo dejo abierto, el
+    # dibujo siguiente no tiene por que heredar el panel abierto tapando media pestaña.
+    check("hay un solo sitio que escribe las notas",
+          "private void MostrarNotas(string texto)" in codigo
+          and "NotasPanel.IsExpanded = false;" in codigo)
+    check("y los cuatro sitios que las escriben pasan por ahi",
+          codigo.count("MostrarNotas(") == 5
+          and codigo.count("ExportHintText.Text =") == 1,
+          f"{codigo.count('MostrarNotas(')} llamadas, "
+          f"{codigo.count('ExportHintText.Text =')} asignaciones directas")
+
+    # ------------------------------------------------------------------
+    # EL GANCHO DEL ESTRIBO EN LA VISTA PREVIA
+    # ------------------------------------------------------------------
+    # El usuario lo pidio dos veces: en la vista previa se veian dos rectangulos de
+    # estribo perfectos y el gancho aparecia por primera vez en AutoCAD, que es justo el
+    # detalle que se revisa antes de mandar el plano.
+    #
+    # Lo que importa de estas comprobaciones no es que dibuje algo, es que dibuje LO MISMO
+    # que el dibujante: una vista previa con su propia geometria puede acabar enseñando un
+    # gancho que no es el que se va a dibujar.
+    check("la vista previa dibuja el gancho del estribo",
+          "private void DibujarGanchoPrevio(" in codigo
+          and "DibujarGanchoPrevio(s, de, rec, escala, PX, PY," in codigo)
+
+    m_gp = re.search(r"private void DibujarGanchoPrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarGanchoPrevio", m_gp is not None)
+
+    if m_gp:
+        gp = m_gp.group(0)
+
+        # El centro del doblez, con la MISMA cuenta del dibujante: rec + dEst + rIn de las
+        # dos caras. Un signo de mas o de menos aqui pone el gancho fuera del estribo.
+        check("el doblez se centra donde lo centra el dibujante",
+              "var bx = s.BaseCm - rec - dEst - rIn;" in gp
+              and "var by = s.AlturaCm - rec - dEst - rIn;" in gp)
+        check("y se envuelve en la varilla de la esquina superior",
+              "s.DiamEsqSup" in gp and "var rOut = rIn + dEst;" in gp)
+
+        # Media vuelta, de 315 a 135 grados: son los 135 del gancho de norma.
+        check("el doblez barre media vuelta, de 315 a 135 grados",
+              "(1.75 * Math.PI) + (k / 24.0 * Math.PI)" in gp)
+
+        # Las dos colas, cada una con sus TRES lineas, y a 225 grados.
+        check("salen dos colas hacia el nucleo",
+              "const double ux = -rt2I;" in gp and "const double uy = -rt2I;" in gp
+              and "(Nx: rt2I, Ny: -rt2I" in gp and "(Nx: -rt2I, Ny: rt2I" in gp)
+        check("y cada cola lleva sus tres lineas",
+              "(piX, piY, qiX, qiY)" in gp
+              and "(poX, poY, qoX, qoY)" in gp
+              and "(qiX, qiY, qoX, qoY)" in gp)
+
+        # El recorte de la segunda cola, con la condicion del dibujante.
+        check("la segunda cola se recorta con la condicion del dibujante",
+              "var tCruce = rOut - (Math.Sqrt(2) * rIn);" in gp
+              and "tCruce >= 0 && tCruce <= largo" in gp)
+        check("y arranca donde la cruza el estribo",
+              "poX = bx + rIn - (Math.Sqrt(2) * rOut);" in gp)
+
+        # Lo que NO se puede dibujar: sin gancho, sin estribo o sin varilla de esquina.
+        check("no se dibuja gancho donde no hay de que doblarlo",
+              "s.GanchoCm <= 0 || dEst <= 0 || rec <= 0" in gp
+              and "!Varilla.TryDiametroCm(s.DiamEsqSup, out var dSup)" in gp)
+        check("ni cuando el doblez no cabe en el nucleo",
+              "bx <= rec + dEst || by <= rec + dEst" in gp)
+
+    # ------------------------------------------------------------------
+    # EL ESTRIBO DIAMANTE EN LA VISTA PREVIA
+    # ------------------------------------------------------------------
+    # Un diamante no es un rombo: es una cinta cerrada TANGENTE a una serie de circulos.
+    # Calcularla por segunda vez en la vista previa es la manera de acabar enseñando un
+    # rombo con otro vertice, otra varilla abrazada o esquinas en pico donde el dibujo
+    # lleva dobleces redondeados. Asi que la geometria se saco a TrazoDiamante y la usan
+    # los dos.
+    trazo_dia = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+    diam = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Diamante.cs"))
+
+    check("la geometria del diamante vive fuera del dibujante",
+          "public static class TrazoDiamante" in trazo_dia
+          and "public static List<(double X, double Y, double R)>? Centros(" in trazo_dia
+          and "public static (double[] Pts, double[] Bulges)? Cinta(" in trazo_dia)
+    check("y no sabe nada de AutoCAD",
+          "_ms" not in trazo_dia and "AcadConnection" not in trazo_dia
+          and "_log" not in trazo_dia)
+    check("las notas se devuelven en lugar de escribirse en el registro",
+          "List<string>? notas" in trazo_dia and "notas?.Add(" in trazo_dia)
+
+    # El dibujante DELEGA: no le puede quedar una copia del calculo.
+    check("el dibujante usa esa geometria en lugar de la suya",
+          "TrazoDiamante.Centros(\n            x1, y1, x2, y2, dDia, _varSup, _varInf, "
+          "_varLat, notas);" in diam
+          and "TrazoDiamante.Cinta(centros, extra);" in diam)
+    check("y no le queda ninguna copia del calculo",
+          "private List<(double X, double Y, double R)> RodearLaterales(" not in diam
+          and "private List<(double X, double Y, double R)> DoblezLateral(" not in diam
+          and "var geo = GeometriaCinta(centros, extra);" in diam)
+    check("y las notas del recorrido llegan al registro",
+          "foreach (var n in notas)" in diam and "Nota(n);" in diam)
+
+    # La vista previa lo dibuja, con las DOS cintas y su gancho.
+    check("la vista previa dibuja el estribo diamante",
+          "private void DibujarDiamantePrevio(" in codigo
+          and "DibujarDiamantePrevio(s, de, rec, escala, PX, PY," in codigo)
+
+    m_dp = re.search(r"private void DibujarDiamantePrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarDiamantePrevio", m_dp is not None)
+
+    if m_dp:
+        dp = m_dp.group(0)
+
+        check("la vista previa pide el recorrido a TrazoDiamante",
+              "TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat)" in dp)
+        check("y no calcula ningun vertice del rombo por su cuenta",
+              "Math.Atan2" not in dp and "tangente" not in dp.lower())
+        check("dibuja las DOS cintas, no una linea",
+              "foreach (var extra in new[] { 0.0, dDia })" in dp
+              and "TrazoDiamante.Cinta(centros, extra)" in dp)
+        check("los arcos se muestrean, que un lienzo no tiene bulges",
+              "TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 10)" in dp)
+        check("y la cinta se cierra, que es un estribo cerrado",
+              "linea.Add(new Point(px(puntos[0].X), py(puntos[0].Y)));" in dp)
+        check("el diametro del diamante cae al del estribo si no trae el suyo",
+              "dDia = de;" in dp)
+        check("y no se dibuja donde no hay diamante",
+              "!s.LlevaDiamante || s.EsCircular" in dp)
+
+    check("si lleva diamante lo dice el modelo, no la vista previa",
+          "public bool LlevaDiamante =>" in filas)
+
+    # Las posiciones de las varillas se calculan UNA vez: las usan el pintado y el
+    # recorrido del diamante. Con dos copias, el rombo podria rodear una varilla que no
+    # es la que se ve dibujada.
+    check("las posiciones de las varillas salen de un solo sitio",
+          "private static List<(double X, double Y, double R)> PosicionesDeLecho(" in codigo
+          and "private static List<(double X, double Y, double R)> PosicionesLaterales("
+          in codigo)
+    check("y el pintado de los lechos usa esas mismas posiciones",
+          "foreach (var (x, y, r) in PosicionesDeLecho(" in codigo
+          and "foreach (var (x, y, r) in PosicionesLaterales(s, de, rec))" in codigo)
+
+    # Y el gancho del diamante, en el costado izquierdo.
+    check("la vista previa dibuja el gancho del diamante",
+          "private void DibujarGanchoDiamantePrevio(" in codigo)
+
+    m_gdp = re.search(
+        r"private void DibujarGanchoDiamantePrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarGanchoDiamantePrevio", m_gdp is not None)
+
+    if m_gdp:
+        gdp = m_gdp.group(0)
+
+        check("el gancho del diamante va en el costado izquierdo, como en el dibujo",
+              "centros.Where(v => v.X < cx)" in gdp)
+        check("y se agarra de la varilla mas centrada de ese costado",
+              "Math.Abs(v.Y - cy)" in gdp)
+        check("con sus dos colas de tres lineas",
+              "new[] { (n1X, n1Y), (n2X, n2Y) }" in gdp
+              and "(pInX, pInY, qInX, qInY)" in gdp
+              and "(qInX, qInY, qOutX, qOutY)" in gdp)
+        check("y el tope del nucleo las recorta",
+              "var tope = ((cx - piX) * ux) + ((cy - piY) * uy);" in gdp)
+
+    # ------------------------------------------------------------------
+    # Y una prueba que se EJECUTA, no que se porta
+    # ------------------------------------------------------------------
+    # Todo lo demas de este repositorio comprueba la geometria portandola a Python. Eso
+    # comprueba la GEOMETRIA, pero no lo que el codigo compilado hace: un port correcto
+    # conviviendo con un C# equivocado da todo en verde. Y aqui paso: el muestreo de los
+    # arcos calculaba mal el centro y los puntos se salian del doblez hasta 0.74 cm.
+    prueba = leer(ruta("tools/prueba-trazo-diamante/Program.cs"))
+
+    check("hay una prueba que se ejecuta contra el CadLink.Cad compilado",
+          "using CadLink.Cad;" in prueba and "static int Main()" in prueba)
+    check("comprueba que la cinta es TANGENTE a cada circulo",
+          "la cinta interior es tangente a cada circulo" in prueba
+          and "y la exterior, al circulo engrosado" in prueba)
+    check("y que el muestreo cae sobre el arco del doblez",
+          "cada punto del muestreo cae sobre el arco de su doblez" in prueba)
+    check("y que el recorrido va antihorario, que es lo que evita el nudo",
+          "el recorrido va en sentido antihorario" in prueba)
+    check("y devuelve 1 si algo falla, para poder usarla en un script",
+          "return 1;" in prueba)
+    check("y se explica por que no es un port de Python",
+          "no es un\n// port" in prueba or "no es un port" in prueba.replace("\n// ", " "))
+
+    # La hermana: los lectores de celda de la zapata. Los usan LOS DOS -la vista previa y
+    # el dibujante de AutoCAD-, asi que un fallo ahi saca un plano distinto de lo revisado.
+    prueba_zap = leer(ruta("tools/prueba-zapata/Program.cs"))
+
+    check("hay una prueba ejecutable de los lectores de celda de la zapata",
+          "using CadLink.Cad;" in prueba_zap
+          and "TrazoZapata.SeparacionM(" in prueba_zap
+          and "TrazoZapata.TramosCm(" in prueba_zap)
+    check("comprueba lo que la gente escribe de verdad en una celda",
+          '"20 cm"' in prueba_zap and '"@15"' in prueba_zap and '"12,5"' in prueba_zap)
+    check("y que una celda vacia o en cero NO se lee como separacion cero",
+          '"0"' in prueba_zap and "no cero" in prueba_zap)
+    check("y que las siete separaciones de la lista corta reparten estribos",
+          '"6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"' in prueba_zap
+          and "en orden y dentro" in prueba_zap)
+    check("y que el acomodo es el nuevo, para los dos tipos",
+          "la segunda a 80 cm a la izquierda de la primera" in prueba_zap
+          and "justo la separacion de 80 cm" in prueba_zap)
+    check("y devuelve 1 si algo falla, igual que la del diamante",
+          "return fallos == 0 ? 0 : 1;" in prueba_zap)
+
+    # ------------------------------------------------------------------
+    # LOS DOS ERRORES DE COMPILACION QUE YA HAN SALIDO DOS VECES
+    # ------------------------------------------------------------------
+    # La aplicacion es WPF y solo compila en Windows, asi que aqui no hay compilador que
+    # cace un using que falta. Se comprueba sin compilador, con una tabla de tipos.
+    usings = leer(ruta("tools/verificar_usings.py"))
+
+    check("hay un verificador de usings y de llamadas dinamicas",
+          "CS0103" in usings and "CS1976" in usings
+          and '"System.Windows.Input": [' in usings
+          and '"Cursors"' in usings)
+    check("y explica los dos errores que ya salieron, con su caso",
+          "MainWindow.Zapatas.cs" in usings
+          and "new ZapataDrawer(doc, DiametroCmDeVarilla)" in usings)
+    # Y el CS1061: un miembro que no existe pero se parece a uno que si. Es el error mas
+    # facil de cometer aqui, porque los nombres de los modelos son largos y parecidos:
+    # 'DiamEsqSupEfectivo' por 'DiamEsqSup' tumbo la compilacion del usuario.
+    check("el verificador caza un miembro que no existe pero se parece",
+          "CS1061" in usings
+          and "def revisar_miembros_que_no_existen(" in usings
+          and "_prefijo_comun(d, nombre) >= 8" in usings)
+    check("y no confunde un espacio de nombres con un miembro",
+          "ahi los puntos separan ESPACIOS DE NOMBRES" in usings)
+    check("ni un miembro de enum",
+          "es un miembro de enum, no un error" in usings)
+    check("el lecho superior no tiene «efectivo», porque no hereda de nadie",
+          "DiamEsqSupEfectivo" not in zap_cb.replace("«DiamEsqSupEfectivo»", "")
+          and "fila.VarDadoSup = dado.DiamEsqSup;" in zap_cb)
+
+    check("el archivo de zapatas ya importa System.Windows.Input",
+          "using System.Windows.Input;" in zap_cb)
+    check("y el catalogo se pasa en una variable con su tipo, no como nombre suelto",
+          "Func<string?, double> catalogoDeVarillas = DiametroCmDeVarilla;" in zap_cb
+          and "new ZapataDrawer(doc, catalogoDeVarillas)" in zap_cb)
+
+    # El hatch NO puede ser asociativo: el relleno del terreno borra su frontera.
+    check("el hatch de la zapata no es asociativo, que borraria su frontera",
+          "_cont.AddHatch(0, patron, false)" in zap_pla
+          and "no asociativo" in zap_pla)
+
+    # Y el muestreo, que fue el que fallo: el radio con SIGNO en lugar de un apaño.
+    check("el muestreo saca el centro del arco con el radio con signo",
+          "var radio = cuerda / (2 * Math.Sin(barrido / 2));" in trazo_dia
+          and "var d = radio * Math.Cos(barrido / 2);" in trazo_dia)
+    check("y se explica el error clasico que evita",
+          "salen volteados" in trazo_dia)
+
+    # Y el mismo gancho en la seccion REDONDA, que no lo tenia tampoco.
+    check("la vista previa de la redonda dibuja el gancho del zuncho",
+          "private void DibujarGanchoZunchoPrevio(" in codigo
+          and "DibujarGanchoZunchoPrevio(\n            s, cx, cy, r, rec, dZun, dVar, "
+              "rPaso, escala," in codigo)
+
+    m_gz = re.search(r"private void DibujarGanchoZunchoPrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarGanchoZunchoPrevio", m_gz is not None)
+
+    if m_gz:
+        gz = m_gz.group(0)
+
+        # LA CUENTA QUE NO PUEDE ESTAR EN COORDENADAS DE PANTALLA. El lienzo tiene la Y al
+        # reves, y ahi «girar el radio 45 grados» gira para el otro lado: el gancho saldria
+        # espejeado, apuntando al lado contrario que en AutoCAD. Por eso se calcula con la
+        # Y hacia arriba y se voltea solo al pintar.
+        check("el gancho del zuncho se calcula con la Y hacia arriba",
+              "double PX(double x) => cx + x;" in gz
+              and "double PY(double y) => cy - y;" in gz)
+
+        # La cola es el radio hacia dentro girado 45 grados, la misma formula del dibujante.
+        check("la cola es el radio interior girado 45 grados",
+              "var ux = (rx - ry) * rt2I;" in gz
+              and "var uy = (rx + ry) * rt2I;" in gz)
+        check("y las normales son sus perpendiculares",
+              "var n1X = -uy;" in gz and "var n1Y = ux;" in gz)
+
+        # De la varilla de ABAJO, para no pisarse con la llamada, que apunta a la de arriba.
+        check("se agarra de la varilla de abajo",
+              "primera || y < by" in gz)
+
+        # Del doblez, SOLO el arco exterior: el interior es la circunferencia de la varilla.
+        check("del doblez se dibuja solo el arco exterior",
+              "var aTangente = Math.Atan2(-ry, -rx);" in gz
+              and "rOut * Math.Cos(a)" in gz)
+        check("y el tope del nucleo recorta la cola",
+              "var tope = (-piX * ux) + (-piY * uy);" in gz
+              and "tope > 0 && largo > tope" in gz)
+        check("y van las dos colas, tambien en helice",
+              "new[] { (n1X, n1Y), (n2X, n2Y) }" in gz)
+
+    # ------------------------------------------------------------------
+    # El gancho sismico del DIAMANTE
+    # ------------------------------------------------------------------
+    # Un diamante es un estribo cerrado, asi que sus dos extremos se juntan y ahi van sus
+    # ganchos. En el vertice IZQUIERDO, que es donde el rectangular NO tiene el suyo —el
+    # suyo esta arriba a la derecha— para que los dos no se monten.
+    diam = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Diamante.cs"))
+
+    check("el diamante lleva gancho sismico",
+          "private void GanchoDelDiamante(" in diam)
+    check("y se dibuja de verdad",
+          "GanchoDelDiamante(s, contorno, centros, cx, cy, dDia, conFondoSolido);"
+          in diam)
+
+    m_gd = re.search(r"private void GanchoDelDiamante\(.*?\n    \}", diam, re.S)
+    check("se puede leer GanchoDelDiamante", m_gd is not None)
+    if m_gd:
+        cuerpo = m_gd.group(0)
+
+        # Va en el costado IZQUIERDO.
+        check("el gancho del diamante va en el costado izquierdo",
+              "_varLat.Where(v => v.X < cx)" in cuerpo)
+
+        # Y se engancha a la varilla que el diamante YA abraza ahi, con la misma regla que
+        # usa el vertice: si no, el gancho doblaria en un sitio y la cinta en otro.
+        check("usa la misma regla del vertice para elegir la varilla",
+              "VarillasDelCentro(delLado, cy, porY: true)" in cuerpo)
+
+        # Sin varilla no se dibuja: un gancho sismico rodea una varilla, no dobla en el aire.
+        check("sin varilla en ese costado no se dibuja gancho",
+              "no hay varillas " in cuerpo)
+
+        # El doblez envuelve la VARILLA.
+        check("el doblez envuelve la varilla",
+              "var rIn = barra.R;" in cuerpo and "var rOut = rIn + dDia;" in cuerpo)
+
+        # La cola apunta AL NUCLEO: el radio sin girar, que es la regla del estribo
+        # rectangular. Girarlo 45 grados es del zuncho circular -alli el acero llega
+        # en tangente- y aqui dejaba la cola encima de la propia diagonal del rombo.
+        check("la cola del diamante es el radio hacia el nucleo",
+              "var ux = cx - barra.X;" in cuerpo and "var uy = cy - barra.Y;" in cuerpo)
+        check("y NO se gira 45 grados, que es lo del zuncho circular",
+              "Rt2I" not in cuerpo)
+        check("y las normales son las perpendiculares a la cola",
+              "var n1X = -uy;" in cuerpo)
+
+        # REUTILIZA lo que ya existe: es el tercer sitio que usa esta geometria.
+        check("reutiliza la Cola del estribo rectangular",
+              "Cola(contorno, quads, barra.X, barra.Y, rIn, rOut" in cuerpo)
+        check("y el relleno del gancho del zuncho circular",
+              "RellenoDelGancho(quads, sectores)" in cuerpo)
+
+        # NINGUN arco del doblez se dibuja, ni el interior ni el exterior:
+        #
+        #   * el interior tiene el centro y el radio de la varilla, o sea que ES su
+        #     circunferencia, ya trazada;
+        #   * y el exterior, entre los dos puntos donde la cinta toca la varilla, ES el
+        #     borde exterior de la cinta, tambien ya trazado; y fuera de esos dos puntos
+        #     se mete DENTRO del acero de la cinta, o sea que pintaba una raya negra por
+        #     dentro del relleno. Medido: entre 0.84 y 3.63 cm de raya, segun la seccion.
+        #
+        # El gancho del estribo rectangular hace lo mismo desde el principio: tampoco
+        # traza el arco de su doblez.
+        check("no dibuja el arco interior, que es la varilla misma",
+              "Arco(barra.X, barra.Y, rIn," not in cuerpo)
+        check("ni el exterior, que es el borde de la cinta",
+              "Arco(barra.X, barra.Y, rOut" not in cuerpo)
+
+        # Del exterior si se dibuja UN pedazo, y solo ARRIBA de la varilla: el trozo del
+        # doblez que asoma del abrazo de la cinta. Arriba el acero que hay es el doblez del
+        # extremo que llega por la diagonal de abajo -la envuelve y sale como la cola de
+        # arriba-, asi que ese contorno es CURVO, no una recta. Abajo no, porque ahi el
+        # doblez es el del otro extremo, que pasa por debajo de la diagonal.
+        check("arriba de la varilla se dibuja el arco del doblez",
+              "ArcoDelDoblez(" in cuerpo)
+        check("y va del arranque de la cola a la tangencia de la cinta",
+              "a1, Math.Atan2(tang.Y - barra.Y, tang.X - barra.X));" in cuerpo)
+        check("la tangencia es el extremo del tramo que esta sobre la varilla",
+              "var tang = d1 <= d2 ? ext1 : ext2;" in cuerpo)
+
+        # PERO LAS COLAS VAN ENTERAS, con sus tres lineas cada una.
+        #
+        # Hubo una version que les quitaba la linea interior -la que nace pegada a la
+        # varilla-, con el argumento de que el doblez pasa por encima de la varilla. El
+        # usuario lo rechazo: eran DOS lineas que le faltaban al gancho, una por cola.
+        check("las colas del diamante van con sus tres lineas",
+              "sinLineaInterior" not in cuerpo)
+        check("y el doblez se rellena",
+              "sectores.Add(new[] { barra.X, barra.Y, rIn, rOut, a1, a1 + Pi });"
+              in cuerpo)
+
+        # Las dos colas NO se tratan igual: la de arriba ENTERA, porque justo en su arranque
+        # acaba el arco del doblez y las dos se empalman tangentes; la de abajo RECORTADA
+        # donde sale del acero, porque por ese lado el gancho pasa por debajo.
+        #
+        # Y la de arriba tampoco se alarga hacia atras: se probo y estaba mal por dos cosas,
+        # que el contorno de ahi es CURVO y que alargarla alargaba su relleno -Cola infla el
+        # cuadrilatero el espesor del estribo cuando le pasan otro arranque-, asi que el
+        # relleno se salia del diamante 1.87 cm. Era el «hatch que sale».
+        check("la cola de abajo se recorta donde sale del acero",
+              "SalidaDelAceroDelDiamante(" in cuerpo)
+        check("y la de arriba no, que ahi acaba el arco",
+              "if (iBarra >= 0 && !arriba && geoInt is not null)" in cuerpo)
+        check("no queda rastro del intento de alargar la cola",
+              "AlcanceConLaCinta" not in diam)
+        check("se distinguen por el lado, no por el orden",
+              "new[] { (n1X, n1Y, true), (n2X, n2Y, false) }" in cuerpo)
+        check("y las dos se le pasan a la misma Cola del rectangular",
+              "arranque is not null, arranque?.X ?? 0, arranque?.Y ?? 0" in cuerpo)
+
+        # Y LA LINEA DE LA CINTA QUE PASA ARRIBA DE LA VARILLA SE CORTA CON EL GANCHO.
+        #
+        # Es lo que se pidio: la linea interior de la cinta se abre un hueco del ancho del
+        # brazo por donde el gancho le pasa por encima, para que la diagonal no parezca
+        # cortar el gancho. Solo la de ARRIBA -n1X, n1Y-, que es el gancho que va encima; la
+        # de abajo pasa por debajo y por eso de ese lado lo que se recorta es la cola.
+        check("la linea de la cinta se corta bajo el brazo de arriba",
+              "AbrirCintaBajoLaCola(\n            centros, iBarra, n1X, n1Y," in cuerpo)
+        check("y la cinta vieja se sustituye por la abierta, no se deja las dos",
+              "Borrar(_diamInt);" in cuerpo and "_diamInt = cintaAbierta;" in cuerpo)
+        check("y se dice que el hueco es del diamante, no del gancho",
+              "no le quita ninguna línea al gancho" in cuerpo
+              and "sus tres líneas cada una" in cuerpo)
+
+        # Y la cola se recorta si no cabe en el nucleo.
+        check("la cola del diamante se recorta si no cabe",
+              "gancho = tope;" in cuerpo)
+
+    # Y la apertura esta puesta con sus cuatro piezas: el metodo, los dos recortes y la
+    # polilinea abierta. Se busca la DECLARACION, no el nombre, para no confundirla con la
+    # mencion de un comentario.
+    for pieza in ("AbrirCintaBajoLaCola", "RecorteDeLaCola", "RecorteDelDoblez",
+                  "PolilineaAbierta"):
+        check(f"esta el metodo {pieza}",
+              re.search(r"private [\w<>?,\.\(\) ]*\b" + pieza + r"\(", diam) is not None)
+
+    check("y el tope del hueco, para que una cuenta mala no borre media diagonal",
+          "FraccionMaxHuecoCinta = 0.5" in diam)
+
+    check("se dice que el hueco NO le quita lineas al gancho",
+          "Esto no le quita nada al gancho" in diam
+          and "sus <b>tres líneas</b>" in diam)
+
+    m_sal = re.search(
+        r"private static \(double X, double Y\)\? SalidaDelAceroDelDiamante\(.*?\n    \}",
+        diam, re.S)
+
+    check("se puede leer SalidaDelAceroDelDiamante", m_sal is not None)
+    if m_sal:
+        sal = m_sal.group(0)
+
+        # El borde con el que se recorta es el que DIBUJA la cinta, no una estimacion:
+        # los mismos numeros, asi que el recorte cae sobre la linea trazada.
+        check("el recorte usa el borde interior que dibuja la cinta",
+              "GeometriaCinta(centros, 0)" in cuerpo)
+        check("y no se recorta si el cruce cae fuera de la cola o del tramo",
+              "t <= 1e-12 || t >= largo || sTramo < -1e-9 || sTramo > 1 + 1e-9" in sal)
+
+    # Cada cola mira SU diagonal, y de eso se encarga una sola funcion: el recorte de una,
+    # el alargue de la otra y el hueco de la cinta preguntan los tres por el mismo lado.
+    m_tramo = re.search(
+        r"TramoDeLaCinta\(\n?.*?\n    \{.*?\n    \}", diam, re.S)
+
+    check("se puede leer TramoDeLaCinta", m_tramo is not None)
+    if m_tramo:
+        tra = m_tramo.group(0)
+
+        check("el lado se decide comparando con la normal de la cola",
+              "ladoLlega >= ladoSale" in tra)
+        check("y devuelve el vertice, que es lo que hace falta para abrir la cinta",
+              "(2 * previo) + 1" in tra and "(2 * iBarra) + 1" in tra)
+
+    check("el recorte y el arco usan el mismo tramo",
+          diam.count("TramoDeLaCinta(") >= 3)
+
+    # La Cola es UNA para los dos ganchos, el del rectangular y el del diamante, y dibuja
+    # sus TRES lineas siempre. El parametro para saltarse la interior se quito.
+    dib = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("la Cola dibuja sus tres lineas, sin excepciones",
+          "sinLineaInterior" not in dib
+          and 'Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));' in dib)
+    check("el gancho del rectangular sigue igual",
+          "Cola(contorno, quads, bx, by, rIn, rOut, Rt2I, -Rt2I, ux, uy, gancho, "
+          "false, 0, 0);" in dib)
+
+    gancho_py = leer(ruta("tools/verificar_gancho_diamante.py"))
+
+    check("hay comprobacion numerica de la direccion de la cola del diamante",
+          "Direccion de la cola del gancho del diamante" in gancho_py)
+    check("y de que ninguna linea del gancho queda dentro del acero del diamante",
+          "NINGUNA LINEA DEL GANCHO DEBE QUEDAR DENTRO DEL ACERO" in gancho_py)
+
+    # Y esa comprobacion cuenta las TRES lineas de cada cola, que es lo que se recupero:
+    # mientras porto la version que se saltaba la interior, daba OK a un gancho al que le
+    # faltaban dos lineas.
+    check("la comprobacion del gancho cuenta las tres lineas de cada cola",
+          "cada cola va con sus tres lineas" in gancho_py
+          and "es tangente a la varilla" in gancho_py)
+    check("y porta el hueco de la cinta, con sus dos recortes",
+          "def hueco_de_la_cinta(" in gancho_py
+          and "def recorte_de_la_cola(" in gancho_py
+          and "def recorte_del_doblez(" in gancho_py
+          and "FRACCION_MAX_HUECO" in gancho_py)
+
+    # Lo que de verdad prueba que el hueco esta bien: se contrasta contra un muestreo
+    # independiente del acero del gancho. Si el hueco fuera un numero inventado, dejaria
+    # fuera algo de lo que el gancho tapa, o abriria donde no tapa nada.
+    check("el hueco se contrasta contra lo que el gancho tapa de verdad",
+          "el hueco NO deja fuera nada de lo que el gancho tapa" in gancho_py
+          and "y no abre nada que el gancho no tape" in gancho_py)
+    check("y la cinta abierta conserva todos los vertices de la cerrada",
+          "no se pierde ni un vertice de la cinta" in gancho_py)
+
+    check("hay comprobacion numerica del gancho del zuncho",
+          "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
+
+    # ------------------------------------------------------------------
+    # Las varillas se recortan donde el zuncho pasa por DELANTE
+    # ------------------------------------------------------------------
+    # El zuncho cruza cada varilla dos veces por vuelta, pero solo la tapa cuando
+    # pasa por delante. Recortar en todos los cruces la partiria en el doble de
+    # trozos y dejaria huecos donde deberia verse entera.
+    check("hay calculo de los pasos del zuncho por delante",
+          "private static List<double> CrucesFrontales(" in alz)
+
+    m_cf = re.search(r"private static List<double> CrucesFrontales\(.*?\n    \}", alz, re.S)
+    check("se puede leer CrucesFrontales", m_cf is not None)
+    if m_cf:
+        cuerpo = m_cf.group(0)
+        check("se filtra por la profundidad, no por el cruce a secas",
+              "if (c > 0)" in cuerpo)
+        check("una varilla mas afuera que el zuncho no se recorta",
+              "Math.Abs(objetivo) > h.REje" in cuerpo)
+        check("el cruce se interpola dentro del tramo",
+              "d0 / (d0 - d1)" in cuerpo)
+
+    m_vc2 = re.search(r"private void VarillasCirculares\(.*?\n    \}", alz, re.S)
+    if m_vc2:
+        cuerpo = m_vc2.group(0)
+        check("con helice, los cortes salen de los pasos por delante",
+              "CrucesFrontales(helice, ys[i])" in cuerpo)
+        check("y con anillos se siguen usando sus centros",
+              "helice is null" in cuerpo and "? centros" in cuerpo)
+
+    # El helper del ancho, con su via de respaldo.
+    m_ap = re.search(r"private bool AnchoDePolilinea\(.*?\n    \}", alz, re.S)
+    check("se puede leer AnchoDePolilinea", m_ap is not None)
+    if m_ap:
+        check("se intenta ConstantWidth", "ConstantWidth = ancho" in m_ap.group(0))
+        check("y hay respaldo vertice por vertice", "SetWidth(" in m_ap.group(0))
+
+    # El color del zuncho relleno y el tope de puntos ya se comprueban arriba, en
+    # HeliceMaciza y en MuestrearHelice, que es donde viven desde que la helice se
+    # partio en tres metodos.
+
+    # Una columna redonda no tiene segunda cara: se veria igual.
+    check("la columna redonda no lleva dos alzados", "&& !a.Circular" in alz)
+
+    # Las varillas del circulo se PROYECTAN, y las parejas simetricas coinciden.
+    check("las varillas del circulo se proyectan al alzado",
+          "private void VarillasCirculares(" in alz)
+    m_vc = re.search(r"private void VarillasCirculares\(.*?\n    \}", alz, re.S)
+    if m_vc:
+        check("y se quitan las que caen una sobre otra",
+              "dVar * 0.1" in m_vc.group(0))
+
+    # ------------------------------------------------------------------
+    # La vista previa no puede mentir
+    # ------------------------------------------------------------------
+    check("la vista previa dibuja la seccion redonda",
+          "DibujarVistaPreviaCircular" in codigo)
+    m_vp = re.search(
+        r"private void DibujarVistaPreviaCircular\(.*?\n    \}", codigo, re.S)
+    if m_vp:
+        cuerpo = m_vp.group(0)
+        # Las MISMAS formulas que el dibujo de AutoCAD, o la vista previa miente.
+        check("usa el mismo radio de paso que AutoCAD",
+              "r - rec - dZun - (dVar / 2)" in cuerpo)
+        # En el lienzo la Y baja: el seno va con signo negativo o el reparto sale
+        # girado al reves respecto a AutoCAD.
+        check("compensa que la Y del lienzo baja",
+              "cy - (rPaso * Math.Sin(a))" in cuerpo)
+
+    # La capa de la varilla del circulo tiene que crearse.
+    check("se crea la capa de la varilla del circulo",
+          "Varilla.Normalizar(s.DiamVarTotalEfectivo)" in codigo)
+
+    # ------------------------------------------------------------------
+    # Revisiones propias de la forma
+    # ------------------------------------------------------------------
+    check("hay revisiones propias de la circular",
+          "private static void RevisarCircular(" in codigo)
+    check("y las rectangulares siguen aparte",
+          "private static void RevisarRectangular(" in codigo)
+
+    m_rc = re.search(
+        r"private static void RevisarCircular\(.*?\n    \}", codigo, re.S)
+    if m_rc:
+        cuerpo = m_rc.group(0)
+        check("se revisa que las varillas quepan en el perimetro",
+              "Math.Sin(Math.PI / s.NVarTotal)" in cuerpo)
+        check("y se avisa de los lechos que no se van a dibujar",
+              "capturadas por lechos" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # El .clk sigue abriendo trabajos viejos
+    # ------------------------------------------------------------------
+    proy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    for campo in ("Circular", "NVarTotal", "DiamVarTotal", "ZunchoHelicoidal"):
+        check(f"el .clk guarda {campo}", f"public string {campo}" in proy
+              or f"public int {campo}" in proy)
+
+    # ------------------------------------------------------------------
+    # Comprobaciones numericas
+    # ------------------------------------------------------------------
+    for f in ("verificar_seccion_circular.py", "verificar_diametros_varilla.py"):
+        check(f"existe {f}", os.path.exists(ruta("tools/" + f)))
+
+    # La tabla de diametros, en el nominal exacto. El #2 estaba en 0.60 y el
+    # nominal es 0.635: el area salia un 12 % baja, y una cuantia baja es del
+    # lado inseguro.
+    check("los diametros estan en el nominal exacto",
+          '["#2"] = 0.635' in filas and '["#10"] = 3.175' in filas)
+    check("y ya no en el valor redondeado",
+          '["#2"] = 0.60' not in filas and '["#10"] = 3.20' not in filas)
+    check("hay formula para comprobar la tabla",
+          "public static double NominalCm(" in filas)
+
+    check("hay documento de cotejo con la macro",
+          os.path.exists(ruta("docs/comparacion-macro-alzados.md")))
+
+    # Y el documento explica las cotas del bloque de seccion, incluido lo que NO esta
+    # bien de ellas: muestran metros, como el resto de las cotas del concreto. Un
+    # documento que solo cuenta lo que salio bien no sirve para revisar el plano.
+    cotejo_alz = leer(ruta("docs/comparacion-macro-alzados.md"))
+
+    check("el cotejo explica las cotas del bloque de seccion",
+          "El bloque de sección del alzado va acotado" in cotejo_alz
+          and "CotasDelCorte(x, y, ancho, alto)" in cotejo_alz)
+    check("y dice que van fuera del bloque, y por que",
+          "excluye las capas COTAS y" in cotejo_alz)
+    check("y que el aire sobre la seccion subio de 0.10 a 0.19",
+          "de **0.10 a 0.19**" in cotejo_alz)
+    check("y avisa de que muestran metros, como las del concreto",
+          "**Muestran metros**" in cotejo_alz and "0.30" in cotejo_alz)
+
+    # Y el del concreto explica el gancho del diamante, con las TRES cosas que se
+    # probaron y se revirtieron: es lo que evita reintentarlas.
+    doc_conc = leer(ruta("docs/macro-secciones-concreto.md"))
+
+    check("el documento del concreto explica el gancho del diamante",
+          "sus **tres líneas**" in doc_conc)
+    check("y el corte de la linea del diamante con el ancho del brazo",
+          "La línea del diamante se corta con el ancho del brazo" in doc_conc
+          and "no le quita ninguna línea al gancho" in doc_conc)
+    check("y las dos cosas que se probaron y se revirtieron",
+          "Dos cosas que se probaron y se revirtieron" in doc_conc
+          and "dos líneas que le faltaban al gancho" in doc_conc
+          and "1.87 cm" in doc_conc)
+    check("y que los ganchos ya se ven en la vista previa",
+          "Y los ganchos se ven en la vista previa" in doc_conc
+          and "el gancho sale\nespejeado" in doc_conc)
+    check("y que el rombo del diamante tambien se ve",
+          "Y el rombo también, con la geometría del dibujante" in doc_conc
+          and "un diamante **no es un rombo**" in doc_conc)
+    check("y explica la prueba que se ejecuta y lo que cazo",
+          "Una prueba que se EJECUTA, y lo que cazó" in doc_conc
+          and "hasta 0.74 cm" in doc_conc)
+
+    # Y el de acero explica el catalogo de aceros y como se actualiza, que es lo que el
+    # usuario pregunto: si tiene que volver a subir el Excel al repositorio.
+    doc_acero = leer(ruta("docs/macros-acero.md"))
+
+    check("el documento de acero explica el catalogo de aceros",
+          "su Fy y si se consigue" in doc_acero
+          and "Tres respuestas, no dos" in doc_acero)
+    check("y la traduccion de las columnas de la hoja a las familias",
+          "no es un capricho de la hoja" in doc_acero
+          and "42 ksi en redondo y 46 en rectangular" in doc_acero)
+    check("y contesta que NO hay que volver a subir el Excel",
+          "No hace falta volver a subir nada al repositorio" in doc_acero
+          and "python3 tools/catalogo_aceros.py docs/ACEROS.xlsx" in doc_acero)
+
+    # ------------------------------------------------------------------
+    # «Esa propiedad no existe» no es un fallo del dibujo
+    # ------------------------------------------------------------------
+    # Cuatro propiedades de cota no estan en todas las versiones de AutoCAD, y se
+    # contaban como fallos. El resultado era el aviso «hubo 4 fallo(s), el dibujo
+    # puede estar incompleto» en un dibujo perfecto. Un aviso que salta siempre y
+    # que no se puede atender enseña al usuario a ignorar TODOS los avisos.
+    drawer = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("se distingue una propiedad inexistente de un fallo real",
+          "private static bool EsPropiedadInexistente(" in drawer)
+
+    m_pi = re.search(r"private static bool EsPropiedadInexistente\(.*?\n    \}",
+                     drawer, re.S)
+    check("se puede leer EsPropiedadInexistente", m_pi is not None)
+    if m_pi:
+        cuerpo = m_pi.group(0)
+        # Por HRESULT y no por el texto: el mensaje viene traducido al idioma de
+        # AutoCAD, asi que buscar «Nombre desconocido» funcionaria en una
+        # instalacion y no en la siguiente.
+        check("se comprueba por HRESULT y no por el texto del mensaje",
+              "0x80020006" in cuerpo)
+        check("y se desenvuelve la excepcion de la reflexion",
+              "TargetInvocationException" in cuerpo)
+
+    m_pc = re.search(r"private void PropCota\(.*?\n    \}", drawer, re.S)
+    check("se puede leer PropCota", m_pc is not None)
+    if m_pc:
+        cuerpo = m_pc.group(0)
+        check("una propiedad que no existe va a Nota y no a Fallo",
+              "EsPropiedadInexistente(ex)" in cuerpo and "Nota(" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # Borrado de VARIOS planos
+    # ------------------------------------------------------------------
+    # SheetGridStyle pone SelectionUnit en CellOrRowHeader, y con eso la tecla Supr
+    # actua sobre la CELDA: el DataGrid no borraba ninguna fila. Hay que fijarlo en
+    # la propia cuadricula, que es donde gana al estilo.
+    m_pg = re.search(r'<DataGrid x:Name="PlanosGrid".*?>', xaml, re.S)
+    check("se puede leer la apertura del PlanosGrid", m_pg is not None)
+    if m_pg:
+        cuerpo = m_pg.group(0)
+        check("los planos se seleccionan por fila entera",
+              'SelectionUnit="FullRow"' in cuerpo)
+        check("y se pueden marcar varios", 'SelectionMode="Extended"' in cuerpo)
+        check("y se pueden borrar", 'CanUserDeleteRows="True"' in cuerpo)
+
+    m_qp = re.search(r"private void OnQuitarPlano\(.*?\n    \}", codigo, re.S)
+    check("se puede leer OnQuitarPlano", m_qp is not None)
+    if m_qp:
+        cuerpo = m_qp.group(0)
+        check("Quitar borra TODOS los planos marcados",
+              "SelectedItems" in cuerpo)
+        # La lista se copia ANTES de borrar: recorrer SelectedItems mientras se
+        # modifica salta una excepcion o deja filas sin quitar.
+        check("y la lista se copia antes de empezar a borrar",
+              ".ToList()" in cuerpo)
+
+    # ------------------------------------------------------------------
+    # La fecha, con el mes y el ano en letra
+    # ------------------------------------------------------------------
+    solapa = leer(ruta("client/src/CadLink.App/Models/Solapa.cs"))
+
+    check("la solapa da la fecha con letra", "public string FechaTexto =>" in solapa)
+    check("y tambien la larga, por si hace falta el dia",
+          "public string FechaTextoLargo =>" in solapa)
+    check("el mes va en letra", "MMMM" in solapa)
+
+    # En es-MX y no en la cultura del equipo: el plano se entrega en español pase lo
+    # que pase, y en un Windows en ingles saldria «August of 2026».
+    check("la fecha del plano no depende del idioma del equipo",
+          'GetCultureInfo("es-MX")' in solapa)
+    # Se mira el codigo SIN comentarios: el propio archivo menciona CurrentCulture en
+    # el comentario que explica por que no se usa, y buscar la palabra a pelo daba por
+    # incumplida justo la regla que el comentario documenta.
+    check("y no usa CurrentCulture para el rotulo",
+          "CurrentCulture" not in _sin_comentarios(solapa))
+
+    # El calendario se queda: sirve para elegir el dia.
+    check("el calendario sigue estando", 'x:Name="FechaPicker"' in xaml)
+    check("y al lado se ve lo que se va a imprimir",
+          'x:Name="FechaTextoLabel"' in xaml)
+    check("el texto de la fecha se refresca", "private void RefrescarFecha()" in codigo)
+
+    # Se refresca en los TRES sitios que cambian la fecha, o se quedaria con el mes
+    # anterior al abrir un trabajo o al empezar uno nuevo.
+    check("se refresca al cambiarla, al abrir y al empezar de nuevo",
+          codigo.count("RefrescarFecha();") >= 4,
+          f"se llama {codigo.count('RefrescarFecha();')} vez/veces")
+
+    # ------------------------------------------------------------------
+    # La pestaña AutoCAD, fuera; y Licencia al final
+    # ------------------------------------------------------------------
+    check("ya no hay pestaña AutoCAD", '<TabItem Header="AutoCAD">' not in xaml)
+
+    check("los avisos del dibujo siguen a mano", 'x:Name="ExportHintText"' in xaml)
+
+    # ------------------------------------------------------------------
+    # La escala de dibujo YA NO SE CAPTURA
+    # ------------------------------------------------------------------
+    # El dibujo sale siempre con la misma correspondencia, asi que la casilla solo
+    # era una forma de descuadrarlo. Vive en una constante, en un solo sitio.
+    check("la casilla de la escala de dibujo se retiro",
+          'x:Name="ScaleBox"' not in xaml)
+    check("la escala vive en una constante",
+          re.search(r"private const double EscalaDeDibujo = 0\.01\s*;", codigo) is not None)
+
+    # El valor NO puede ser 1.0 «porque es 1=1»: la correspondencia real es cm
+    # capturados a metros dibujados, y con 1.0 una columna de 50 cm saldria de 50 m.
+    m_le = re.search(r"private double LeerEscala\(\)[^\n]*", codigo)
+    check("se puede leer LeerEscala", m_le is not None)
+    if m_le:
+        check("LeerEscala devuelve la constante",
+              "EscalaDeDibujo" in m_le.group(0))
+
+    # Y lo que SOLO servia al modo DXF, que no estaba implementado, se retiro.
+    for muerto in ("OutputPathBox", "ModeComRadio", "ModeDxfRadio", "OnBrowseOutput"):
+        check(f"{muerto} se retiro del XAML", muerto not in xaml)
+        check(f"y del codigo ({muerto})", muerto not in codigo)
+
+    # Licencia, al final de la tira.
+    tabs = re.findall(r'^            <TabItem[^>]*Header="([^"]+)"', xaml, re.M)
+    check("se pudieron leer las pestañas de primer nivel", len(tabs) > 5,
+          f"{len(tabs)}")
+    if tabs:
+        check("Licencia es la ultima pestaña", tabs[-1] == "Licencia",
+              f"la ultima es '{tabs[-1]}'")
+
+    # ------------------------------------------------------------------
+    # El leader del circulo sale por la IZQUIERDA del texto
+    # ------------------------------------------------------------------
+    m_tl = re.search(r"private void TextoLeader\(.*?\n    \}", drawer, re.S)
+    check("se puede leer TextoLeader", m_tl is not None)
+    if m_tl:
+        cuerpo = m_tl.group(0)
+        # 4 = MiddleLeft (el texto crece a la derecha, la linea sale por la
+        # izquierda), 6 = MiddleRight, que es lo que quiere la llamada de lecho.
+        check("el anclaje del texto de llamada se puede elegir",
+              "haciaLaDerecha ? 4 : 6" in cuerpo)
+
+    check("la llamada del circulo pide el anclaje a la izquierda",
+          "haciaLaDerecha: true" in circ)
+
+    # ------------------------------------------------------------------
+    # El rotulo del alzado va FUERA del bloque, debajo del bloque insertado
+    # ------------------------------------------------------------------
+    # Antes se metia dentro de la definicion del bloque, y entonces se dibujaba en
+    # coordenadas del bloque: caia pegado al pie de la geometria, POR ENCIMA de las
+    # cotas que el espacio modelo pone despues, y en el alzado vertical el giro de 90
+    # grados se lo llevaba por delante. Ahora va al espacio modelo, debajo del bloque
+    # insertado y de sus cotas.
+    check("el rotulo del alzado ya no se mete en el bloque",
+          "private void RotuloDelBloque(" not in alz)
+
+    # El rotulo cuelga del bloque de la SECCION, no del alzado. Hubo dos malentendidos
+    # seguidos: primero iba DENTRO de la definicion del bloque de alzado, y despues
+    # colgado del bloque de alzado, cuando "el bloque insertado" era el de la seccion,
+    # el del CORTE A-A'. En el modulo de alzados se insertan DOS bloques.
+    check("hay rotulo del elemento en el espacio modelo",
+          "private void RotuloDelElemento(" in alz)
+    check("y ya no cuelga del alzado",
+          "RotuloDelAlzado(" not in alz)
+
+    m_rb = re.search(r"private void RotuloDelElemento\(.*?\n    \}", alz, re.S)
+    check("se puede leer RotuloDelElemento", m_rb is not None)
+    if m_rb:
+        cuerpo = m_rb.group(0)
+        check("usa los renglones comunes", "LineasDelRotulo(a)" in cuerpo)
+
+        # Centrado bajo el bloque de la seccion, colgando de su pano inferior.
+        check("se centra bajo el bloque de la seccion",
+              "xSeccion + (anchoSeccion / 2)" in cuerpo)
+        check("y cuelga de su pano inferior",
+              "yAbajo - (RotuloGap * _f)" in cuerpo)
+
+    # UNO por elemento, aunque el elemento lleve DOS alzados: el rotulo describe el
+    # elemento, no una de sus vistas. Colgado del alzado salian dos rotulos iguales.
+    check("el rotulo se dibuja una sola vez por elemento",
+          alz.count("RotuloDelElemento(a,") == 1,
+          f"{alz.count('RotuloDelElemento(a,')} llamada(s)")
+
+    m_de = re.search(r"public double DibujarElemento\(.*?\n    \}", alz, re.S)
+    if m_de:
+        cuerpo = m_de.group(0)
+        check("y se dibuja en DibujarElemento, donde se conoce la seccion",
+              "RotuloDelElemento(a, xSec, y, ancho);" in cuerpo)
+
+        # Despues de insertar la seccion: hace falta su ancho medido para centrarlo.
+        i_ins = cuerpo.find("InsertarSeccion(a.Id, xSec, y)")
+        i_rot = cuerpo.find("RotuloDelElemento(")
+        check("despues de insertar la seccion, que es de donde sale su ancho",
+              0 <= i_ins < i_rot, f"insercion en {i_ins}, rotulo en {i_rot}")
+
+    # Y los dos caminos de alzado ya NO rotulan.
+    for nombre in ("DibujarHorizontal", "DibujarVertical"):
+        m_ = re.search(rf"private double {nombre}\(.*?\n    \}}", alz, re.S)
+        if m_:
+            check(f"{nombre} ya no rotula",
+                  "RotuloDelAlzado(" not in m_.group(0)
+                  and "RotuloDelElemento(" not in m_.group(0))
+
+    # ------------------------------------------------------------------
+    # UNA sola barra arriba, no dos
+    # ------------------------------------------------------------------
+    # El menu y los botones de acceso rapido gastaban dos filas para ofrecer las
+    # mismas acciones. Ahora comparten una, y el Menu va DENTRO del Border de la
+    # barra para que los dos grupos queden en la misma linea de base.
+    m_barra = re.search(
+        r'<Border Grid\.Row="0".*?</Border>', xaml, re.S)
+    check("se puede leer la barra de arriba", m_barra is not None)
+    if m_barra:
+        cuerpo = m_barra.group(0)
+        check("el menu vive dentro de la barra", "<Menu " in cuerpo)
+        check("y los botones de guardar tambien",
+              'Command="ApplicationCommands.Save"' in cuerpo)
+        check("y el nombre del archivo abierto", 'x:Name="ArchivoText"' in cuerpo)
+
+    # El Menu no puede seguir siendo un hijo directo del Grid raiz: eso seria la
+    # segunda fila que se quito.
+    check("el menu ya no es una fila aparte",
+          re.search(r'\n        <Menu Grid\.Row=', xaml) is None)
+
+    # ------------------------------------------------------------------
+    # Las pestañas NO deben reordenarse al elegir una hoja
+    # ------------------------------------------------------------------
+    # El TabPanel de WPF mueve la fila de la pestaña seleccionada para dejarla
+    # pegada al contenido. Con 12 hojas en dos filas, eso hace que las pestañas
+    # SALTEN de sitio en cada clic. Un WrapPanel acomoda igual pero conserva el
+    # orden.
+    check("la tira de pestañas conserva el orden",
+          "<WrapPanel IsItemsHost=\"True\"" in tema)
+    check("y ya no usa el TabPanel que reordena",
+          "TabPanel IsItemsHost" not in tema)
+
+    # ------------------------------------------------------------------
+    # Paneles inmovilizados y encabezado fijo, como en Excel
+    # ------------------------------------------------------------------
+    m_grid = re.search(r'<DataGrid Grid\.Row="1" x:Name="SeccionesGrid".*?>', xaml, re.S)
+    check("se puede leer la apertura del SeccionesGrid", m_grid is not None)
+    if m_grid:
+        cuerpo = m_grid.group(0)
+        check("las primeras columnas quedan inmovilizadas",
+              'FrozenColumnCount="2"' in cuerpo)
+        check("y el encabezado lleva su propio estilo",
+              'ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"' in cuerpo)
+
+    check("existe el estilo del encabezado",
+          'x:Key="EncabezadoHojaStyle"' in tema)
+
+    # ------------------------------------------------------------------
+    # Color de celda por grupo de columnas
+    # ------------------------------------------------------------------
+    grupos = ["CeldaIdent", "CeldaGeom", "CeldaLechoSup", "CeldaLechoInf",
+              "CeldaLateral", "CeldaCircular", "CeldaEstribo", "CeldaAcabado",
+              "CeldaCalculada"]
+
+    for g in grupos:
+        check(f"existe el estilo {g}", f'x:Key="{g}"' in tema)
+        check(f"y alguna columna usa {g}",
+              f'CellStyle="{{StaticResource {g}}}"' in xaml)
+
+    # El lecho superior y el inferior tienen que ser de COLORES DISTINTOS: es el par
+    # que se confunde al capturar, y pintarlos igual no resolveria nada.
+    # Al montar el tema oscuro los fondos de celda dejaron de ser un hex escrito en el
+    # Setter y pasaron a ser una brocha de la paleta, que es lo que permite cambiarlos
+    # en caliente. Asi que hay que resolver un paso mas: del estilo a la brocha, y de la
+    # brocha a su color. Lo que se comprueba sigue siendo lo mismo.
+    def color_de_brocha(nombre):
+        m_ = re.search(
+            rf'<SolidColorBrush x:Key="{nombre}" Color="(#[0-9A-Fa-f]+)"', tema)
+        return m_.group(1) if m_ else None
+
+    def fondo_de(clave):
+        m_ = re.search(
+            rf'x:Key="{clave}".*?Property="Background" '
+            rf'Value="\{{StaticResource (\w+)\}}"',
+            tema, re.S)
+
+        if m_:
+            return color_de_brocha(m_.group(1))
+
+        # Respaldo: si alguien vuelve a poner el hex directo, tambien vale.
+        m_ = re.search(
+            rf'x:Key="{clave}".*?Property="Background" Value="(#[0-9A-Fa-f]+)"',
+            tema, re.S)
+        return m_.group(1) if m_ else None
+
+    sup, inf = fondo_de("CeldaLechoSup"), fondo_de("CeldaLechoInf")
+    check("el lecho superior y el inferior son de colores distintos",
+          sup is not None and inf is not None and sup != inf,
+          f"sup {sup}, inf {inf}")
+
+    # Heredan del DataGridCell de serie, o se pierde el resaltado de seleccion y no
+    # se ve que fila esta seleccionada.
+    check("los estilos de celda heredan del DataGridCell de serie",
+          "BasedOn=\"{StaticResource {x:Type DataGridCell}}\"" in tema)
+
+    # Todas las columnas de la hoja tienen que llevar color: una sin asignar se ve
+    # como un hueco blanco en medio de los grupos.
+    ini_cols = xaml.find('x:Name="SeccionesGrid"')
+    fin_cols = xaml.find("</DataGrid.Columns>", ini_cols)
+    bloque_cols = xaml[ini_cols:fin_cols]
+    # OJO: hay que excluir las etiquetas de PROPIEDAD como
+    # <DataGridTemplateColumn.CellTemplate>, que casan con el patron pero no son
+    # columnas. Sin el (?!\.) una columna con plantilla contaba tres veces.
+    n_cols = len(re.findall(r"<DataGrid\w*Column\b(?!\.)", bloque_cols))
+    n_estilos = len(re.findall(r'CellStyle="\{StaticResource Celda', bloque_cols))
+    check("todas las columnas de la hoja llevan color",
+          n_cols == n_estilos, f"{n_cols} columnas y {n_estilos} con estilo")
+
+    # ------------------------------------------------------------------
+    # Vista previa con fondo azul
+    # ------------------------------------------------------------------
+    # Tema claro / oscuro
+    # ------------------------------------------------------------------
+    temacs = leer(ruta("client/src/CadLink.App/Tema.cs"))
+
+    check("hay tema claro y oscuro", "public static class Tema" in temacs)
+    check("y un boton para cambiarlo", 'x:Name="TemaButton"' in xaml)
+    check("el boton vive en la barra de arriba",
+          xaml.index('x:Name="TemaButton"') < xaml.index('<TabControl'))
+    check("y su manejador existe", "private void OnCambiarTema(" in codigo)
+
+    # El cambio se hace MUTANDO el color de las brochas, no sustituyendo el diccionario:
+    # los 221 usos de la paleta son StaticResource y esos no se re-resuelven, asi que
+    # cambiar el diccionario con la ventana abierta no repinta nada.
+    check("el tema muta el color de las brochas",
+          "brocha.Color = color;" in temacs)
+    check("y no sustituye el diccionario, que no repintaria",
+          "MergedDictionaries" not in temacs)
+
+    # Las dos paletas tienen que tener LAS MISMAS claves, o al cambiar de tema quedarian
+    # colores del tema anterior mezclados.
+    m_claro = re.search(r"Claro = new\(\)\s*\{(.*?)\n    \};", temacs, re.S)
+    m_noche = re.search(r"Noche = new\(\)\s*\{(.*?)\n    \};", temacs, re.S)
+    check("se pueden leer las dos paletas",
+          m_claro is not None and m_noche is not None)
+
+    if m_claro and m_noche:
+        kc = set(re.findall(r'\["(\w+)"\]', m_claro.group(1)))
+        kn = set(re.findall(r'\["(\w+)"\]', m_noche.group(1)))
+        check("las dos paletas cubren las mismas brochas",
+              kc == kn, f"solo en claro: {kc-kn}; solo en oscuro: {kn-kc}")
+
+        # Y toda brocha de la paleta que el XAML use tiene que estar en las dos.
+        usadas = set(re.findall(r"\{StaticResource (\w+Brush)\}", xaml + tema))
+        declaradas = set(re.findall(r'<SolidColorBrush x:Key="(\w+)"', tema))
+        # Solo las que el tema declara Y el XAML usa
+        deberian = usadas & declaradas
+        # Dos grupos se quedan CLAROS en los dos temas, a proposito, asi que no estan
+        # en las paletas:
+        #
+        #   PreviewFondoBrush  el dibujo de la previa va en tinta oscura, pintada desde
+        #                      codigo; sobre fondo oscuro no se veria.
+        #   Celda*Brush        son los colores de las columnas de la hoja, la unica cosa
+        #                      que separa los 27 grupos al capturar. El usuario pidio
+        #                      expresamente conservarlos.
+        #   Fila/Acero*Brush   las marcas de la hoja de acero: el fondo suave de la fila
+        #                      cuyo acero no se hace en ese perfil, el rojo de su celda y
+        #                      el ambar del «verificar». Van con el grupo de arriba y por
+        #                      el mismo motivo: las celdas de la hoja se quedan claras en
+        #                      los dos temas, asi que la marca que va ENCIMA de ellas
+        #                      tambien tiene que quedarse clara. Una marca que cambia de
+        #                      tema sobre una celda que no lo cambia deja de contrastar.
+        aparte = ({"PreviewFondoBrush"}
+                  | {b for b in declaradas if b.startswith("Celda")}
+                  | {b for b in declaradas
+                     if b.startswith("FilaAcero") or b.startswith("Acero")})
+
+        faltan = deberian - kc - aparte
+        check("toda brocha usada esta en las paletas, salvo las que se quedan claras",
+              not faltan, f"faltan: {sorted(faltan)}")
+
+        check("la vista previa se queda clara en los dos temas a proposito",
+              "PreviewFondoBrush" not in kc and "PreviewFondoBrush" not in kn)
+
+        # Y los colores de la hoja no los toca NINGUNA de las dos paletas.
+        check("los colores de las columnas de la hoja no los cambia el tema",
+              not any(k.startswith("Celda") for k in kc | kn),
+              f"celdas en las paletas: {sorted(k for k in kc | kn if k.startswith('Celda'))}")
+
+        # Pero SI tienen que seguir declarados como brochas, o el estilo no compila.
+        check("aunque siguen siendo brochas de la paleta",
+              'x:Key="CeldaLechoSupBrush"' in tema)
+
+        # Lo que si tiene que oscurecerse es todo lo blanco del marco.
+        # La cuadricula NO entra en esta lista: va en un gris intermedio a proposito,
+        # para que el salto del marco negro a las celdas pastel no sea tan duro.
+        for clave in ("WindowBrush", "SurfaceBrush", "CardBrush", "TabStripBrush"):
+            hex_osc = re.search(rf'\["{clave}"\] = "#FF(\w{{6}})"', m_noche.group(1))
+            claro_es = int(hex_osc.group(1)[:2], 16) if hex_osc else 255
+            check(f"en oscuro {clave} es realmente NEGRO, no gris",
+                  hex_osc is not None and claro_es < 0x20,
+                  f"vale #{hex_osc.group(1) if hex_osc else '?'}")
+
+    # El azul de marca se usa como color de TEXTO en los encabezados y en el boton de
+    # guardar, asi que en oscuro tiene que ACLARARSE o desaparece.
+    if m_noche:
+        cuerpo = m_noche.group(1)
+        m_bd = re.search(r'\["BrandDarkBrush"\] = "#FF(\w{6})"', cuerpo)
+        check("en oscuro el azul de marca se aclara, porque es color de texto",
+              m_bd is not None and int(m_bd.group(1)[:2], 16) > 0x60,
+              f"vale #{m_bd.group(1) if m_bd else '?'}")
+
+        # El lecho superior contra el inferior ya se comprueba sobre el XAML, mas
+        # arriba, y con esto vale para los dos temas: si el tema no toca esos colores,
+        # basta comprobarlos una vez.
+
+    # La preferencia va en LOCALAPPDATA, no en el .clk: el tema es del usuario y de su
+    # maquina, no del trabajo. En el proyecto obligaria a subir la version del formato y
+    # abrir el archivo de un compañero te cambiaria el tema.
+    check("el tema se recuerda en la carpeta del usuario",
+          "SpecialFolder.LocalApplicationData" in temacs)
+    check("y no se guarda en el proyecto",
+          "TemaOscuro" not in leer(ruta("client/src/CadLink.App/Models/Proyecto.cs")))
+
+    # Al cambiar de tema hay que REDIBUJAR los lienzos: su contenido se pinta desde
+    # codigo, no con brochas de la paleta, asi que no se enteran solos.
+    m_oct = re.search(r"private void OnCambiarTema\(.*?\n    \}", codigo, re.S)
+    if m_oct:
+        cuerpo = m_oct.group(0)
+        check("al cambiar de tema se redibuja la vista previa",
+              "DibujarVistaPrevia()" in cuerpo)
+        check("y se actualiza el texto del boton",
+              "TemaButton.Content" in cuerpo)
+
+    # Y los colores quemados a mano salieron a la paleta, o no podrian cambiar.
+    # DynamicResource y no StaticResource: es lo que permite SUSTITUIR el recurso
+    # cuando la brocha esta congelada, que es el caso en que el tema no aplicaba.
+    check("el fondo de la ventana sale de la paleta",
+          'Background="{DynamicResource WindowBrush}"' in xaml)
+    check("y las tarjetas tambien, que estaban repetidas once veces",
+          xaml.count('Background="{DynamicResource CardBrush}"') >= 10)
+    check("las brochas del tema se referencian con DynamicResource",
+          xaml.count("{DynamicResource") > 50)
+    check("y el tema sabe sustituir la brocha si esta congelada",
+          "recursos[clave] = new SolidColorBrush(color);" in temacs)
+    check("los menus tambien siguen el tema",
+          '<Style TargetType="Menu">' in tema
+          and '<Style TargetType="MenuItem">' in tema)
+
+    # Los RadioButton de «Seccion tipo 1 / tipo 2» y los CheckBox salian con el texto
+    # NEGRO por omision de Windows, asi que en tema oscuro desaparecian.
+    check("las opciones y casillas tambien siguen el tema",
+          '<Style TargetType="RadioButton">' in tema
+          and '<Style TargetType="CheckBox">' in tema)
+
+    # Y la cuadricula va en gris INTERMEDIO, no en negro: el salto del marco negro a
+    # unas celdas pastel claras seria demasiado duro justo donde esta la vista.
+    if m_noche:
+        gris = re.search(r'\["GridRowBrush"\] = "#FF(\w{6})"', m_noche.group(1))
+        nivel = int(gris.group(1)[:2], 16) if gris else 0
+        check("la cuadricula va en un gris intermedio, no en negro",
+              gris is not None and 0x30 < nivel < 0x80,
+              f"vale #{gris.group(1) if gris else '?'}")
+    check("ya no queda el gris de tarjeta escrito a mano",
+          '#FFF3F6F9' not in xaml)
+
+    # ------------------------------------------------------------------
+    check("hay color de fondo para la vista previa",
+          'x:Key="PreviewFondoBrush"' in tema)
+    check("y el lienzo de la vista previa lo usa",
+          'x:Name="PreviewCanvas"' in xaml
+          and 'Background="{StaticResource PreviewFondoBrush}"' in xaml)
+
+    # La linea de titulo es la MISMA para las dos formas: antes la rectangular solo
+    # decia elemento e ID y la circular ademas el armado, asi que no se veian igual.
+    check("la vista previa tiene una linea de titulo comun",
+          "private static string TituloVistaPrevia(" in codigo)
+    check("y la usan las dos formas",
+          codigo.count("Etiqueta(TituloVistaPrevia(s)") == 2,
+          f"la usa {codigo.count('Etiqueta(TituloVistaPrevia(s)')} vez/veces")
+
+    # La vista previa tambien dibuja la helice, o mostraria estribos rectos donde
+    # AutoCAD va a dibujar un resorte.
+    check("la vista previa dibuja la helice",
+          "private void DibujarHelicePrevia(" in codigo)
+    check("y se elige segun el zuncho",
+          "a.Circular && a.ZunchoHelicoidal" in codigo)
+
+    # ------------------------------------------------------------------
+    # Rotulos del alzado de la columna circular
+    # ------------------------------------------------------------------
+    # Sin esto los tres textos de armado leian lechos VACIOS y salian como «---»:
+    # el alzado de la columna redonda se quedaba sin rotulo de armado.
+    check("hay texto de armado para el circulo",
+          "private static string TextoCirculo(" in alz)
+    check("y el alzado vertical lo usa", "TextoCirculo(a)" in alz)
+
+    # Y el acero transversal se llama por su nombre, pero el nombre lo decide LA CASILLA:
+    # con zuncho pedido dice «Zuncho helic.», y sin casilla «Est.», como cualquier columna.
+    check("hay texto propio del acero transversal",
+          "private static string TextoTransversal(" in alz)
+    m_tt = re.search(r"private static string TextoTransversal\(.*?\n    \}", alz, re.S)
+    if m_tt:
+        cuerpo = m_tt.group(0)
+        check("con la casilla marcada dice Zuncho helic.", '"Zuncho helic. ' in cuerpo)
+        check("y sin la casilla dice Est.", '"Est. ' in cuerpo)
+        check("y la decision no la toma el texto, la toma Estribos.EsZuncho",
+              "Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)" in cuerpo
+              and "anillos" not in cuerpo)
+
+    # Lo usan los DOS alzados, el vertical y el horizontal.
+    check("los dos alzados usan el texto transversal",
+          alz.count("TextoTransversal(a, s[i])") == 2,
+          f"lo usan {alz.count('TextoTransversal(a, s[i])')} vez/veces")
+    # Antes aqui se exigia que NO hubiera ningun «Est.» fijo en el alzado, porque la
+    # circular tenia que decir «Zuncho». Ya no aplica: sin la casilla del zuncho, la
+    # circular dice «Est.» a proposito, que es lo que se pidio. Lo que se comprueba ahora es
+    # que el texto NO se arme en dos sitios distintos, que era el defecto de fondo.
+    check("el texto del transversal se arma en un solo sitio por vista",
+          alz.count('$"Est. {clave} @ {separacionCm:0} cm"') == 1
+          and alz.count('$"Est. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"') == 1)
+
+
+# ======================================================================
+# 20. Miembros estaticos usados desde OTRA clase sin cualificar (CS0103)
+# ======================================================================
+def _pila_de_clases(texto: str) -> list[list[str]]:
+    """Para cada linea, la PILA de clases que la contienen, de fuera hacia dentro.
+
+    Se cuenta la profundidad de llaves de verdad, en lugar de suponer que la clase
+    vigente es la ultima declarada. La diferencia importa en cuanto hay una clase
+    ANIDADA: con el atajo, todo lo que viene DESPUES del cierre de la anidada se
+    atribuye a ella, y eso producia dos falsos positivos distintos que parecian no
+    tener nada que ver entre si:
+
+      - 'MargenCol' de AlzadoLayout se reportaba como usado dentro de Puesto,
+        porque Puesto se declara antes del metodo que lo usa.
+      - 'Normalizar' de VistaModelo se reportaba como no declarado, porque su
+        declaracion cae despues de un tipo anidado y se atribuia a el.
+
+    El texto tiene que venir SIN comentarios ni cadenas, o una llave dentro de una
+    cadena descuadra la cuenta.
+    """
+    salida: list[list[str]] = []
+    pila: list[tuple[str, int]] = []      # (nombre, profundidad del cuerpo)
+    profundidad = 0
+    pendiente: str | None = None          # clase declarada, cuerpo aun sin abrir
+
+    for linea in texto.split("\n"):
+        salida.append([nombre for nombre, _ in pila])
+
+        m = re.search(r"\b(?:class|struct|record|interface)\s+(\w+)", linea)
+        if m and not re.match(r"\s*(?://|\*)", linea):
+            pendiente = m.group(1)
+
+        for ch in linea:
+            if ch == "{":
+                profundidad += 1
+                if pendiente is not None:
+                    pila.append((pendiente, profundidad))
+                    pendiente = None
+            elif ch == "}":
+                while pila and pila[-1][1] == profundidad:
+                    pila.pop()
+                profundidad -= 1
+
+    return salida
+
+
+def v20_estaticos_sin_cualificar() -> None:
+    """Un `const` de otra clase usado a pelo. Rompe la compilacion.
+
+    Por que existe esta seccion: `CadLink.App` no se puede compilar en este
+    entorno, asi que un CS0103 llega hasta el usuario. Paso exactamente eso con
+    `ElementoColumnaCircular`, declarada en SeccionConcretoRow y usada a pelo
+    dentro de DatosProyecto, en el MISMO archivo, que es lo que lo hace facil de
+    pasar por alto: parece que esta en ambito y no lo esta.
+
+    La comprobacion v15 no lo caza porque solo mira identificadores en posicion de
+    ARGUMENTO de llamada, y este estaba en un inicializador de objeto.
+    """
+    print("\n[20] Miembros estaticos de otra clase, sin cualificar")
+
+    # ------------------------------------------------------------------
+    # 1. Se recogen los miembros estaticos publicos, por clase
+    # ------------------------------------------------------------------
+    # Solo const y static: los de instancia no pueden usarse sin objeto y el
+    # compilador da otro error distinto.
+    # Los estaticos PUBLICOS, que son los unicos que otra clase puede usar.
+    declarados: dict[str, str] = {}     # nombre del miembro -> clase que lo declara
+
+    # TODOS los miembros de cada clase, de cualquier visibilidad. Hace falta para
+    # descartar el falso positivo importante: que la clase que usa el nombre tenga
+    # un miembro PROPIO llamado igual. Pasa de verdad y varias veces:
+    # AppInfo y Branding tienen cada una su 'Cargar' privado, MainWindow tiene su
+    # 'Guardar', y AppConfig tiene su 'RutaLibreriaEtabs' de instancia. Sin esto la
+    # comprobacion reporta seis errores que no existen.
+    miembros_de: dict[str, set[str]] = {}
+
+    clases_por_archivo: dict[str, list[tuple[int, str]]] = {}
+
+    rutas = [p for p in archivos(".cs", "client/src") if "obj" not in p and "bin" not in p]
+
+    for p in rutas:
+        texto = _sin_comentarios(leer(p))
+        lineas = texto.split("\n")
+
+        pilas = _pila_de_clases(texto)
+        clases_por_archivo[p] = pilas
+
+        def clase_en(idx: int, ps=pilas) -> str:
+            """La clase mas interna que contiene la linea."""
+            return ps[idx][-1] if idx < len(ps) and ps[idx] else ""
+
+        for i, l in enumerate(lineas):
+            # Nombres declarados DENTRO de esta clase. Se recoge de mas a proposito:
+            # esto solo sirve para descartar falsos positivos, asi que colar algun
+            # nombre extra no hace daño y perder uno si.
+            #
+            # Hacen falta las dos formas de abajo, y las dos costaron un falso
+            # positivo antes de estar bien:
+            #
+            #   - Metodos y FUNCIONES LOCALES, a cualquier sangria. 'Leer' es una
+            #     funcion local dentro de un metodo de MainWindow, a 8 espacios, y
+            #     con un patron de solo 4 se reportaba como si fuera el 'Leer' de
+            #     EtabsReader.
+            #   - El tipo puede llevar PARENTESIS, porque puede ser una tupla.
+            #     'Normalizar' devuelve (double X, double Y, double Z) y por eso no
+            #     se recogia, aunque estuviera declarada en la misma clase parcial.
+            # Metodos y funciones locales. NO se exige emparejar el parentesis de
+            # cierre: los parametros pueden llevar parentesis anidados, como en
+            # 'Normalizar((double, double, double) v)', y con \([^)]*\) esa linea no
+            # casaba y su nombre se perdia.
+            #
+            # Para no confundir una LLAMADA con una declaracion se pide que la linea
+            # no termine en ';'. Asi 'var a = Leer(0);' queda fuera y
+            # 'double Leer(int i)' dentro.
+            # Se recogen TODOS los identificadores seguidos de '(' de la linea, no
+            # solo el primero. Con un patron de un solo nombre se capturaba el
+            # equivocado en cuanto el tipo de retorno era una TUPLA: en
+            #     private static (double X, double Y, double Z) Normalizar(...)
+            # el parentesis de la tupla hace que 'static' parezca el nombre del
+            # metodo, y 'Normalizar' no se registraba nunca.
+            #
+            # Recoger de mas es seguro para lo que esto sirve: solo se usa para
+            # descartar falsos positivos, y un nombre seguido de '(' nunca es una
+            # constante, que es la clase de error que se quiere cazar.
+            if not l.rstrip().endswith(";"):
+                for m_met in re.finditer(r"\b(\w+)\s*\(", l):
+                    if m_met.group(1) not in _NO_ES_LLAMADA:
+                        miembros_de.setdefault(clase_en(i), set()).add(m_met.group(1))
+
+            # Y TRES CLASES DE DECLARACION QUE SE ESCAPABAN, cada una con su falso
+            # positivo real detras. Las tres se registran igual que las de arriba:
+            # como nombres que en esa clase ya significan algo, para no reportarlos.
+            #
+            #   1. FUNCION LOCAL DE UNA SOLA EXPRESION. La linea
+            #          byte Canal(byte v) => (byte)Math.Clamp(...);
+            #      acaba en ';', asi que el bloque de arriba la tomaba por una LLAMADA
+            #      y no registraba 'Canal'. Luego, al existir FormaAcero.Canal, sus dos
+            #      usos de la linea siguiente se reportaban como estatico sin cualificar.
+            m_loc = re.match(
+                r"^\s*(?:static\s+)?[\w<>,?\[\]\.]+\s+(\w+)\s*\([^;]*\)\s*(?:=>|\{|$)", l)
+            if m_loc and m_loc.group(1) not in _NO_ES_LLAMADA:
+                miembros_de.setdefault(clase_en(i), set()).add(m_loc.group(1))
+
+            #   2. VARIABLE O CONSTANTE LOCAL. La linea
+            #          const double L = 26;
+            #      declara una L dentro de un metodo, y al existir FamiliaPerfil.L sus
+            #      tres usos se reportaban. Una local tapa a un estatico de otra clase
+            #      exactamente igual que un miembro propio. El 'const' va aparte del
+            #      tipo porque son TRES palabras y no dos: con un solo hueco para el
+            #      tipo, 'const double L' dejaba a 'double' de nombre y no casaba.
+            m_var = re.match(
+                r"^\s{8,}(?:(?:const|readonly|static)\s+)*"
+                r"(?:var\s+|[\w<>,?\[\]\.]+\s+)(\w+)\s*(?:=[^=>]|;)", l)
+            if m_var:
+                miembros_de.setdefault(clase_en(i), set()).add(m_var.group(1))
+
+            #   2b. EL NOMBRE DE UN TIPO ANIDADO. En
+            #          public sealed record Circulo(double Cx, double Cy, double R);
+            #      dentro de TrazoAcero, el 'Circulo' es una declaracion, no un uso, y se
+            #      reportaba contra el Circulo de Perfil2D.
+            m_tipo = re.match(
+                r"^\s+(?:public|private|protected|internal)[\w\s]*?"
+                r"\b(?:class|record|struct|interface|enum)\s+(\w+)", l)
+            if m_tipo:
+                miembros_de.setdefault(clase_en(i), set()).add(m_tipo.group(1))
+
+            #   3. PARAMETROS, incluidos los POSICIONALES DE UN RECORD, que son
+            #      propiedades. En
+            #          public sealed record PerfilCatalogo(
+            #              string Familia,
+            #              string Nombre,
+            #      cada renglon declara una, y 'Nombre' choca con el FormaAcero.Nombre;
+            #      y en
+            #          public sealed record Resumen(int Solidos, int Lineas)
+            #      los dos van en la misma linea, asi que no basta con mirar renglones
+            #      sueltos. Se recogen todas las parejas «tipo nombre» que van pegadas a
+            #      una coma o a un parentesis de cierre.
+            #      La condicion mira '(' o ')' o una coma al final porque una lista de
+            #      parametros se PARTE en varias lineas, y las de en medio no traen
+            #      ningun parentesis: el 'string Nombre,' del record de arriba y el
+            #      'double T2, double T3, string Forma, ...);' del EtabsReader son las
+            #      dos continuaciones, y las dos se escapaban con un solo '(' de guarda.
+            if "(" in l or ")" in l or l.rstrip().endswith(","):
+                for m_par in re.finditer(
+                        r"\b[\w<>,?\[\]\.]+\s+(\w+)\s*(?=[,)])", l):
+                    miembros_de.setdefault(clase_en(i), set()).add(m_par.group(1))
+
+                # Y los parametros CON VALOR POR DEFECTO, que no acaban en coma ni en
+                # parentesis sino en un '='. Es lo que tiene el record de propiedades:
+                #     public sealed record PropiedadesPerfil(
+                #         double? PesoKgM = null,
+                #         double? AreaCm2 = null,
+                # y el 'AreaCm2' se reportaba contra el AreaCm2 de la clase Varilla,
+                # siendo su propia declaracion. Se pide un tipo y un nombre separados por
+                # espacio, asi que un 'Familia = familia,' de un inicializador de objeto
+                # -que solo tiene un nombre antes del '='- no cae aqui.
+                for m_def in re.finditer(
+                        r"\b[\w<>,?\[\]\.]+\s+(\w+)\s*=\s*[^=]", l):
+                    miembros_de.setdefault(clase_en(i), set()).add(m_def.group(1))
+
+            # Propiedades y campos, a CUALQUIER sangria de 4 o mas. Con 4 exactos se
+            # perdian los de las clases anidadas, que van a 8: por eso el 'XSeccion'
+            # de AlzadoLayout.Puesto se reportaba contra el metodo estatico del mismo
+            # nombre de la clase de fuera.
+            m_prop = re.match(
+                r"^ {4,}(?:public|private|protected|internal)[^;=]*?"
+                r"\b(\w+)\s*(?:\{|=>|=|;)", l)
+            if m_prop:
+                miembros_de.setdefault(clase_en(i), set()).add(m_prop.group(1))
+
+            # Y los estaticos publicos, que son los que se pueden usar desde fuera
+            m = re.match(
+                r"\s*public\s+(?:const|static\s+readonly|static)\s+"
+                r"[\w<>,?\[\]\.]+\s+(\w+)\s*(?:=|\()", l)
+            if m:
+                declarados[m.group(1)] = clase_en(i)
+
+    check("se recogieron miembros estaticos", len(declarados) > 0,
+          f"{len(declarados)}")
+
+    # ------------------------------------------------------------------
+    # 2. Cada uso tiene que estar en su clase, o cualificado
+    # ------------------------------------------------------------------
+    problemas: list[str] = []
+    usos_revisados = 0
+
+    for p in rutas:
+        texto = _sin_comentarios(leer(p))
+        lineas = texto.split("\n")
+        pilas = clases_por_archivo[p]
+
+        for i, l in enumerate(lineas):
+            # La PILA entera, no solo la clase mas interna: desde una clase anidada
+            # se ven los miembros de la que la contiene sin cualificar nada.
+            pila = pilas[i] if i < len(pilas) else []
+
+            for miembro, duena in declarados.items():
+                # Uso, no declaracion
+                if re.search(r"^\s*public\s.*\b" + miembro + r"\b\s*(?:=|\()", l):
+                    continue
+
+                for m in re.finditer(r"(\.)?\b" + miembro + r"\b", l):
+                    if m.group(1):
+                        continue        # ya viene cualificado con algo
+
+                    if duena == "" or duena in pila:
+                        continue        # esta en su clase o en una que la contiene
+
+                    # Alguna clase del ambito tiene un miembro propio con ese
+                    # nombre: el identificador se resuelve a ESE.
+                    #
+                    # El "" del final es el ambito de FUERA de toda clase, y hacia
+                    # falta: la lista de parametros de un record se escribe ANTES de
+                    # que se abra su cuerpo, asi que sus renglones caen en ese ambito
+                    # y con la pila vacia no se consultaba nada. Por eso el
+                    # 'string Nombre,' del PerfilCatalogo se reportaba contra el
+                    # FormaAcero.Nombre, siendo su propia declaracion.
+                    if any(miembro in miembros_de.get(c, set()) for c in list(pila) + [""]):
+                        continue
+
+                    aqui = pila[-1] if pila else ""
+
+                    # Nombre de propiedad dentro de un inicializador de objeto:
+                    # 'Elemento = ...' se resuelve contra el tipo que se construye.
+                    if re.match(r"\s*" + miembro + r"\s*=[^=]", l):
+                        continue
+
+                    usos_revisados += 1
+
+                    problemas.append(
+                        f"{rel(p)}:{i+1}: '{miembro}' se declara en {duena} y se usa "
+                        f"a pelo dentro de {aqui}")
+                    break
+
+    check(f"ningun estatico de otra clase sin cualificar ({usos_revisados} usos "
+          f"sospechosos revisados)", not problemas, "; ".join(problemas[:6]))
+
+    # ------------------------------------------------------------------
+    # 3. El caso concreto que rompio la compilacion, fijado
+    # ------------------------------------------------------------------
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+
+    m_ej = re.search(r"public static DatosProyecto CrearEjemplo\(\).*?\n    \}",
+                     filas, re.S)
+    check("se puede leer CrearEjemplo", m_ej is not None)
+    if m_ej:
+        cuerpo = m_ej.group(0)
+
+        # CrearEjemplo vive en DatosProyecto, asi que las constantes de
+        # SeccionConcretoRow tienen que ir con el nombre de la clase delante.
+        for c in ("ElementoColumnaCircular", "ElementoColumna"):
+            # Vale CUALQUIER clase delante, no solo SeccionConcretoRow. Con el nombre
+            # fijo, PerfilAceroRow.ElementoColumna -que es de la hoja de acero y esta
+            # perfectamente cualificada- salia marcada como uso a pelo.
+            usos = re.findall(r"([A-Za-z_][A-Za-z0-9_]*\.)?\b" + c + r"\b", cuerpo)
+            sin_cualificar = [u for u in usos if u == ""]
+            check(f"en CrearEjemplo, {c} va cualificada",
+                  not sin_cualificar,
+                  f"{len(sin_cualificar)} uso(s) a pelo")
+
+
 def main() -> int:
     print("=" * 66)
     print(" Validaciones estaticas de CadLink")
@@ -2601,7 +6126,9 @@ def main() -> int:
               v11_visor, v12_fidelidad, v13_compilacion,
               v14_bloques_diamante_etabs, v15_cs0103,
               v16_extruida_piers, v17_guardar_y_defaults,
-              v18_planta_autocad):
+              v18_planta_autocad, v19_circular_y_ui,
+              v20_estaticos_sin_cualificar,
+              v21_separacion_y_acero):
         f()
 
     print("\n" + "=" * 66)
@@ -2769,6 +6296,16 @@ def _nombres_declarados(cuerpo: str, firma: str) -> dict[str, int]:
         linea = cuerpo[linea_ini:cuerpo.find("\n", linea_ini) if "\n" in cuerpo[linea_ini:] else len(cuerpo)]
         for d in re.finditer(r"(\w+)\s*=(?!=)", linea):
             anota(d.group(1), linea_ini + d.start(1))
+
+    # Declaraciones cuyo TIPO es generico y lleva espacios dentro de los angulos:
+    #     Func<string?, double> catalogo = MiMetodo;
+    #     Dictionary<string, List<int>> tabla = new();
+    # El patron de arriba no las pilla, porque su tipo no admite espacios, y por eso
+    # 'catalogoDeVarillas' salia como no declarado: era un falso positivo del analizador,
+    # no un error del codigo.
+    for m in re.finditer(r"^[^\S\n]*[\w\.]+\s*<[^;=\n]*?>\s+(\w+)\s*=(?!=)",
+                         cuerpo, re.M):
+        anota(m.group(1), m.start(1))
 
     # Deconstruccion de tuplas de cualquier tamaño: var (x, y, z, r)
     for m in re.finditer(r"\bvar\s*\(([^()]*)\)", cuerpo):
@@ -3154,19 +6691,1234 @@ def v17_guardar_y_defaults() -> None:
         check(f"ya no esta la casilla {campo}", f'x:Name="{campo}"' not in xaml)
 
     check("y el codigo ya no la busca", "ExcelPathBox" not in codigo)
-    check("la ruta del libro se recuerda aparte", "_rutaExcel" in codigo)
+
+    # ------------------------------------------------------------------
+    # El importador de Excel se RETIRO por completo
+    # ------------------------------------------------------------------
+    # Ofrecia un boton en la barra, otro en la hoja Proyecto y una entrada de menu, y
+    # las tres terminaban en el mismo aviso de «no esta implementado». Un boton que
+    # solo sirve para decir que no funciona hace dudar de si el problema es del
+    # programa o de la hoja de calculo.
+    for muerto in ("OnImportExcel", "OnBrowseExcel", "_rutaExcel"):
+        check(f"{muerto} se retiro del codigo", muerto not in codigo)
+        check(f"y del XAML ({muerto})", muerto not in xaml)
+
+    # Pero queda escrito QUE haria falta para portarlo de verdad.
+    check("queda apuntado como portar el importador",
+          "docs/macro-secciones-concreto.md" in codigo)
 
     # ------------------------------------------------------------------
     # Diamante: doblez sobre las DOS mas juntas si no hay una en el eje
     # ------------------------------------------------------------------
+    # El doblez vive en TrazoDiamante, con el resto de la geometria del rombo.
+    trazo_d = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+
     check("el doblez lateral admite dos varillas",
-          "private List<(double X, double Y, double R)> DoblezLateral(" in diamante)
-    check("se mide sobre la Y en los costados", "porY: true" in diamante)
-    check("VarillasDelCentro sabe medir por Y", "bool porY = false" in diamante)
+          "private static List<(double X, double Y, double R)> DoblezLateral(" in trazo_d)
+    check("se mide sobre la Y en los costados", "porY: true" in trazo_d)
+    check("VarillasDelCentro sabe medir por Y", "bool porY = false" in trazo_d)
     # Los dos costados se agregan con AddRange: si uno usara Add, una seleccion de
     # dos varillas no cabria y la lista quedaria mal.
-    n_ar = len(re.findall(r"centros\.AddRange\(DoblezLateral\(", diamante))
+    n_ar = len(re.findall(r"centros\.AddRange\(\n            DoblezLateral\(", trazo_d))
     check("los dos dobleces se agregan con AddRange", n_ar == 2, f"son {n_ar}")
+
+
+
+
+# ======================================================================
+#  [21] Separacion con lista, y el modulo de secciones de ACERO
+# ======================================================================
+def v21_separacion_y_acero() -> None:
+    print("\n[21] Separacion de estribos con lista, y secciones de acero")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    perfil_row = leer(ruta("client/src/CadLink.App/Models/PerfilAceroRow.cs"))
+    codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    acero_cb = leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs"))
+    acero_cad = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Acero.cs"))
+    perfil_cad = leer(ruta("client/src/CadLink.Cad/PerfilAceroCad.cs"))
+
+    # ------------------------------------------------------------------
+    # La separacion de estribos, con sus valores de siempre
+    # ------------------------------------------------------------------
+    check("las separaciones usuales viven en un solo sitio",
+          "public static readonly string[] SeparacionesUsuales" in filas)
+
+    # LO QUE SE PIDIO: la lista corta. Solo las cinco de tres tramos que se repiten en
+    # casi todos los planos, mas las dos unicas de 15 y 20 cm que se usan en parrillas y
+    # mallas de zapata. Las demas se teclean a mano, que es lo que la celda permite.
+    for sep in ("6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"):
+        check(f"esta la separacion {sep}", f'"{sep}"' in filas)
+
+    m_seps = re.search(
+        r"public static readonly string\[\] SeparacionesUsuales\s*=\s*\{(.*?)\};",
+        filas, re.S)
+
+    check("la lista de separaciones no trae nada mas",
+          m_seps is not None
+          and sorted(re.findall(r'"([^"]+)"', m_seps.group(1)))
+          == sorted(["6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"]))
+
+    # Las que se quitaron. Se comprueba que NO esten en la lista, no que no esten en el
+    # archivo: «10-15-20» sigue apareciendo en los comentarios como ejemplo del formato de
+    # varios tramos, y eso esta bien.
+    for sep in ("7-14-4", "10-15-20", "5-10-15", "10-20", "30"):
+        check(f"y ya no ofrece {sep}, que se teclea a mano",
+              m_seps is not None and f'"{sep}"' not in m_seps.group(1))
+
+    check("y queda escrito que la lista se dejo corta a proposito",
+          "La lista se dejó corta a propósito" in filas
+          and "se teclea a mano en la celda" in filas)
+
+    # La misma lista alimenta las dos hojas: la de concreto y la de zapatas. Es un solo
+    # static, asi que recortarlo las recorta las dos, que es lo que se pidio.
+    check("la lista es la misma en las dos hojas",
+          xaml.count(
+              'ItemsSource="{Binding Source={x:Static '
+              'models:SeccionConcretoRow.SeparacionesUsuales}}"') >= 2)
+
+    # La celda es un combo EDITABLE enlazado por Text. Con SelectedItemBinding, que es
+    # lo que usan las demas columnas de lista, el texto que se teclea a mano no llega a
+    # la propiedad y se perderia al salir de la celda.
+    check("la celda de separacion es un combo editable",
+          'ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"'
+          in xaml
+          and 'IsEditable="True"' in xaml)
+    check("y se enlaza por Text, no por SelectedItem",
+          'Text="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}"' in xaml)
+    check("ya no es una columna de texto pelada",
+          'DataGridTextColumn Header="Sep cm"' not in xaml)
+    check("el XAML declara el espacio de nombres de los modelos",
+          'xmlns:models="clr-namespace:CadLink.App.Models"' in xaml)
+
+    # ------------------------------------------------------------------
+    # Las DOCE familias de perfil y las NUEVE formas
+    # ------------------------------------------------------------------
+    # Familia y forma son dos cosas distintas, y separarlas es lo que arregla el
+    # desplegable: antes IS, IC y S se metian dentro de IR «porque son perfiles I», y la
+    # lista de la IR ofrecia 573 perfiles de cuatro nomenclaturas revueltas.
+    forma_cad = leer(ruta("client/src/CadLink.Cad/FormaAcero.cs"))
+
+    DOCE = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC", "OS")
+
+    for fam in DOCE:
+        check(f"existe la familia {fam}", f'= "{fam}";' in perfil_row)
+
+    check("las doce estan en la lista del desplegable",
+          "public static readonly string[] Todas" in perfil_row
+          and all(f in perfil_row.split("Todas =")[1].split(";")[0]
+                  for f in ("Ir", "Is", "Ic", "Wt", "Cf", "Zf", "Or", "Oc", "Os")))
+
+    # La forma vive en el proyecto de DIBUJO, no en el de la interfaz: es vocabulario
+    # del dibujante. Y las constantes de la interfaz son ALIAS de las suyas, no copias,
+    # asi que el compilador garantiza que las dos listas dicen lo mismo.
+    check("las nueve formas viven en el dibujante",
+          "public static class FormaAcero" in forma_cad)
+
+    for f in ("I", "Te", "Angulo", "Canal", "CanalConLabios", "Zeta",
+              "TuboRectangular", "TuboRedondo", "RedondoMacizo"):
+        check(f"existe la forma {f}", f"public const string {f} = " in forma_cad)
+
+    check("la interfaz usa ALIAS de esas formas, no copias de las cadenas",
+          "public const string I = FormaAcero.I;" in perfil_row
+          and "public const string Zeta = FormaAcero.Zeta;" in perfil_row)
+
+    check("cada familia sabe con que forma se dibuja",
+          "public static string DeLaFamilia(string? familia)" in perfil_row)
+
+    check("las cuatro familias de perfil I comparten la forma I",
+          "FamiliaPerfil.Ir or FamiliaPerfil.Is or FamiliaPerfil.Ic or FamiliaPerfil.S => I"
+          in perfil_row)
+
+    check("y la forma se ve en la cuadricula, para que se note que la comparten",
+          "public string FormaNombre" in perfil_row
+          and 'Binding="{Binding FormaNombre}"' in xaml)
+
+    # ------------------------------------------------------------------
+    # UNA SOLA CAPA y el rayado de cada macro: NO hay color por familia
+    # ------------------------------------------------------------------
+    # Se probo a darle una capa y un color a cada una de las doce familias, y se quito:
+    # el plano dejaba de parecerse al que ya se venia haciendo. Las cuatro familias
+    # portadas tienen cada una su propio rayado, y eso es lo que las distingue.
+    check("no queda ninguna tabla de color por familia",
+          "ColorAcero" not in forma_cad and "ColorAcero" not in acero_cad)
+
+    check("ni capas por familia: una sola PERFILES, la de las macros",
+          'CapaPerfiles = "PERFILES"' in acero_cad
+          and "Capa(CapaPerfiles, 7);" in acero_cad
+          and 'CapaBase + "-"' not in acero_cad)
+
+    check("y los objetos van por capa, no con el color pegado",
+          "c.Color = PorCapa;" in acero_cad)
+
+    # EL RAYADO DE CADA FORMA, patron por patron y color por color, es el de su macro.
+    m_rayar = re.search(r"private void RayarPerfil\(.*?\n    \}", acero_cad, re.S)
+
+    check("el rayado se decide en un solo sitio, por forma", m_rayar is not None)
+
+    if m_rayar:
+        rayar = m_rayar.group(0)
+
+        # Los pares (patron, color) de las cuatro macros, uno por uno.
+        for patron, color, de_quien in (
+                ("ANSI32", 252, "el IR"),
+                ("SOLID", 4, "el CF"), ("ANSI31", 142, "el CF"),
+                ("SOLID", 162, "el OC"), ("ANSI31", 162, "el OC"),
+                ("SOLID", 141, "el HSS grande")):
+            check(f"esta el rayado {patron} en {color}, de la macro de {de_quien}",
+                  f'"{patron}", ' in rayar and f"CapaPerfiles, {color})" in rayar)
+
+        # Las escalas, tal cual. Un rayado con separacion FIJA da la misma densidad en el
+        # papel para cualquier tamaño de perfil, que es lo que tiene que hacer.
+        for escala in ("0.0009", "0.0008", "0.002"):
+            check(f"esta la escala de rayado {escala} de su macro",
+                  f"{escala} * _f" in rayar)
+
+        check("y la del tubo cambia a las 5 pulgadas, como su macro",
+              "(menorDe5 ? 0.001 : 0.002) * _f" in rayar)
+
+        # Las cinco formas nuevas van agrupadas con la macro de su material: la te, la
+        # canal laminada y el angulo con el IR; la zeta con el CF; el macizo con el OC.
+        check("la te, la canal laminada y el angulo se rayan como el IR",
+              re.search(r"case FormaAcero\.I:\s*case FormaAcero\.Te:\s*"
+                        r"case FormaAcero\.Canal:\s*case FormaAcero\.Angulo:", rayar)
+              is not None)
+        check("la zeta se raya como el CF",
+              re.search(r"case FormaAcero\.CanalConLabios:\s*case FormaAcero\.Zeta:",
+                        rayar) is not None)
+        check("y el redondo macizo como el tubo redondo",
+              re.search(r"case FormaAcero\.TuboRedondo:\s*"
+                        r"case FormaAcero\.RedondoMacizo:", rayar) is not None)
+
+    # EL PEDIT: de las cuatro macros, solo la del IR engruesa el contorno.
+    m_pedit = re.search(r"private void PeditDeLaForma\(.*?\n    \}", acero_cad, re.S)
+
+    check("el PEDIT del contorno se decide en un solo sitio", m_pedit is not None)
+
+    if m_pedit:
+        pedit = m_pedit.group(0)
+
+        check("lo llevan las cuatro formas laminadas, como la macro del IR",
+              all(f"FormaAcero.{f}" in pedit
+                  for f in ("I", "Te", "Canal", "Angulo")))
+        check("y NO lo llevan el tubo, el redondo ni las formadas en frio",
+              not any(f"FormaAcero.{f}" in pedit
+                      for f in ("TuboRectangular", "TuboRedondo", "RedondoMacizo",
+                                "CanalConLabios", "Zeta")))
+
+    check("el ancho constante se pide solo desde ahi",
+          acero_cad.count("AnchoConstante(pl,") == 1)
+
+    # La familia se ajusta sola cuando el nombre del perfil la delata: un HSS dibujado
+    # como IR sale como un perfil I con las medidas de un tubo, y eso no se ve venir.
+    check("la familia se deduce del nombre del perfil",
+          "public static string? DelNombre(string? perfil)" in perfil_row)
+    check("y se aplica al escribir el perfil",
+          "var familia = FamiliaPerfil.DelNombre(_perfil);" in perfil_row)
+
+    # La traduccion a nomenclatura mexicana que hacen las macros al rotular.
+    check("W se rotula IR", '"IR" + s.Substring(1)' in perfil_row)
+    check("HSS se rotula OR", 'Reemplazar(s, "HSS", "OR")' in perfil_row)
+    check("PIPE se rotula OC", 'Reemplazar(s, "PIPE", "OC")' in perfil_row)
+    check("y el # del calibre se rotula CAL", 's.Replace("#", "CAL ")' in perfil_row)
+
+    # Cada familia pide unas dimensiones y no otras.
+    check("hay una columna calculada que dice que falta",
+          "public string FaltanDatos" in perfil_row)
+    # Y lo pide la FORMA, no la familia: las cuatro familias de perfil I piden las
+    # mismas cuatro medidas, asi que escribirlo por familia seria escribirlo cuatro
+    # veces y arriesgarse a que una se quede distinta.
+    check("lo que falta lo decide la forma, no la familia",
+          "var forma = Forma;" in perfil_row)
+    check("los redondos no piden ancho, que no lo tienen",
+          "if (!esRedondo && _anchoCm <= 0)" in perfil_row)
+    check("el macizo tampoco pide espesor: es una barra llena",
+          "if (forma != FormaPerfil.RedondoMacizo && _espesorAlmaCm <= 0)" in perfil_row)
+    check("el labio solo lo pide la canal con labios",
+          "forma == FormaPerfil.CanalConLabios && _labioCm <= 0" in perfil_row)
+    check("y el angulo pide sus dos alas con ese nombre",
+          '"ala larga"' in perfil_row and '"ala corta"' in perfil_row)
+
+    # El patin angosto de la zeta: la novena medida, que solo usa una familia.
+    check("la zeta tiene su patin angosto",
+          "public double AnchoMenorCm" in perfil_row)
+    check("no puede pasar del ancho, porque entonces no es el angosto",
+          "FormaPerfil.Zeta when _anchoMenorCm > _anchoCm" in perfil_row)
+    check("y en cero la zeta sale simetrica",
+          "AnchoMenorCm > 0 && AnchoMenorCm <= AnchoCm ? AnchoMenorCm : AnchoCm"
+          in perfil_cad)
+    check("su columna esta en la cuadricula",
+          'Header="Ancho 2 cm"' in xaml)
+
+    # ------------------------------------------------------------------
+    # El desplegable de elemento y la columna de clasificacion
+    # ------------------------------------------------------------------
+    for elem in ("VIGA", "COLUMNA", "TENSOR", "PUNTAL", "LARGUERO", "ATIESADOR",
+                 "MONTEN", "DIAGONAL"):
+        check(f"el elemento {elem} esta en el desplegable", f'"{elem}"' in perfil_row)
+
+    # La clasificacion se pega a CUALQUIER elemento, no solo a la viga. La macro solo lo
+    # hacia con la VIGA, y el resultado era que el usuario elegia la clasificacion, la
+    # veia en su celda y luego no aparecia en el dibujo sin que nada le dijera por que.
+    check("la clasificacion se pega a cualquier elemento",
+          "if (clasif.Length > 0 && elem.Length > 0)" in perfil_row)
+    check("y ya no se comprueba que el elemento sea VIGA para pegarla",
+          "elem == ElementoViga && clasif.Length > 0" not in perfil_row)
+    check("la columna se llama Clasificación, no «Clasif. viga»",
+          'Header="Clasificación"' in xaml and "Clasif. viga" not in xaml)
+
+    # ------------------------------------------------------------------
+    # La pestaña
+    # ------------------------------------------------------------------
+    # Se mira DENTRO de su TabItem, no en todo el XAML: las demas pestañas por portar
+    # siguen llevando su aviso de pendiente, y eso esta bien.
+    m_tab = re.search(
+        r'<TabItem Header="Secciones Acero">.*?</TabItem>', xaml, re.S)
+
+    check("se puede leer la pestaña de acero", m_tab is not None)
+
+    if m_tab:
+        tab = m_tab.group(0)
+
+        check("la pestaña de acero ya no es un aviso de pendiente",
+              "Modulo pendiente de portar" not in tab)
+        check("tiene su cuadricula", 'x:Name="AceroGrid"' in tab)
+        check("y su boton de dibujar", 'Click="OnExportAcero"' in tab)
+        check("y dice que columna usa cada familia",
+              "el peralte es el DIAMETRO" in tab)
+
+        # ---------------------------------------------------------------
+        # Las columnas de propiedades geometricas
+        # ---------------------------------------------------------------
+        # Son las 16 que trae el manual. Van al FINAL y son de solo lectura: no se
+        # capturan, salen del catalogo. Se comprueba una por una porque el que falte
+        # una no se nota mirando la tabla -las 15 que quedan se ven bien- y es justo
+        # la que hace falta para revisar un perfil.
+        propiedades = (
+            "PesoKgM", "AreaCm2", "IxCm4", "SxCm3", "ZxCm3", "RxCm",
+            "IyCm4", "SyCm3", "ZyCm3", "RyCm", "RminCm", "JCm4", "CwCm6",
+            "IxyCm4", "XbarCm", "YbarCm")
+
+        for prop in propiedades:
+            check(f"la tabla de acero trae la propiedad {prop}",
+                  f"Binding Propiedades.{prop}," in tab)
+
+        # Y todas de solo lectura: son un dato del manual, no algo que se teclee.
+        col_props = re.findall(
+            r"<DataGridTextColumn[^>]*Binding=\"\{Binding Propiedades\.[^}]*\}\""
+            r"[^/]*/>", tab)
+
+        check("las 16 columnas de propiedades estan en el XAML",
+              len(col_props) == 16, f"{len(col_props)} columnas")
+        check("y todas son de solo lectura",
+              all('IsReadOnly="True"' in c for c in col_props))
+        check("y se ven como celda calculada, no como celda que se captura",
+              all("CeldaCalculada" in c for c in col_props))
+
+        # ---------------------------------------------------------------
+        # El acero: su Fy y si se hace en ese perfil
+        # ---------------------------------------------------------------
+        # La lista de aceros eran CINCO nombres escritos en el codigo, sin mas dato que su
+        # nombre. Ahora salen del catalogo -39, con Fy, Fu y en que secciones se hace cada
+        # uno- y la tabla dice las dos cosas que hacen falta: el Fy, que es con lo que se
+        # revisa, y si ese acero se consigue en ese perfil.
+        check("la tabla de acero trae el Fy del acero",
+              'Binding="{Binding FyKgCm2, StringFormat=N0}"' in tab
+              and 'Header="Fy kg/cm²"' in tab)
+        check("y si el acero se hace en ese perfil",
+              'Binding="{Binding AceroDisponibleLeyenda}"' in tab
+              and "CeldaDisponibilidadAcero" in tab)
+        check("y las dos son de solo lectura, que salen del catalogo",
+              tab.count('Binding="{Binding FyKgCm2, StringFormat=N0}"\n'
+                        '                                                IsReadOnly="True"')
+              == 1)
+        check("el globo de la celda del acero trae su detalle",
+              "Value=\"{Binding AceroDetalle}\"" in tab)
+
+        # ---------------------------------------------------------------
+        # La vista previa de la forma
+        # ---------------------------------------------------------------
+        # Lo mismo que en concreto: la tabla dice numeros y el perfil se dibuja con
+        # una FORMA, asi que un espesor mal capturado no se ve en la tabla y si en el
+        # dibujo.
+        check("la pestaña de acero tiene su vista previa",
+              'x:Name="AceroPreviewCanvas"' in tab)
+        check("y la vista previa recorta lo que se sale",
+              re.search(r'x:Name="AceroPreviewCanvas".*?ClipToBounds="True"',
+                        tab, re.S) is not None)
+        check("y la tabla dejo su renglon para que quepa",
+              'x:Name="AceroGrid" Grid.Row="1"' in tab
+              and 'Grid.Row="2" Height="240"' in tab)
+
+    # La fila se marca cuando el acero no se hace en ese perfil, que es lo que se pidio.
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("la fila de acero se marca cuando el acero no se hace en ese perfil",
+          'RowStyle="{StaticResource FilaAceroStyle}"' in xaml
+          and '<Style x:Key="FilaAceroStyle" TargetType="DataGridRow"' in tema
+          and 'Binding="{Binding AceroNoDisponible}" Value="True"' in tema)
+
+    # Y el «verificar» NO se marca en rojo. Es la decision que importa de las tres
+    # respuestas: pintar de rojo un acero que si se puede pedir hace cambiar de acero sin
+    # necesidad, y darlo por bueno en silencio deja creyendo que ya se confirmo.
+    check("el «verificar» va en ambar, no en rojo",
+          'Binding="{Binding AceroPorVerificar}" Value="True"' in tema
+          and "AceroVerificarBrush" in tema)
+    check("y solo el «no se hace» pinta la fila",
+          tema.count('Binding="{Binding AceroNoDisponible}" Value="True"') == 2)
+
+    aceros_cs = leer(ruta("client/src/CadLink.App/Models/CatalogoAceros.cs"))
+
+    check("hay un catalogo de aceros que se lee de un archivo",
+          'public const string Archivo = "aceros.csv";' in aceros_cs
+          and "public static List<AceroCatalogo> Leer(" in aceros_cs)
+    check("y el archivo va suelto junto al ejecutable, como el de perfiles",
+          "<None Update=\"aceros.csv\">" in leer(
+              ruta("client/src/CadLink.App/CadLink.App.csproj")))
+    check("el desplegable sale del catalogo, no de una lista escrita a mano",
+          "public static string[] Aceros => CatalogoAceros.Nombres;" in perfil_row)
+
+    # LAS TRES RESPUESTAS, y que la de «no se sabe» no es «no».
+    check("la disponibilidad tiene tres respuestas",
+          'public const string Si = "SI";' in aceros_cs
+          and 'public const string Verificar = "VERIFICAR";' in aceros_cs
+          and 'public const string No = "NO";' in aceros_cs)
+    check("una familia que el catalogo no menciona contesta VERIFICAR, no NO",
+          "? v : Verificar;" in aceros_cs)
+    check("y un acero que no esta en el catalogo tampoco marca la fila",
+          "?? AceroCatalogo.Verificar;" in perfil_row)
+
+    # EL APOSTROFO DEL A-500. Es la unica diferencia entre dos aceros DISTINTOS: el
+    # Gr. B es el tubo redondo, con Fy 2955, y el Gr. B' el rectangular, con 3235. Si la
+    # comparacion lo tirara junto con los guiones y los espacios, el programa daria un Fy
+    # equivocado en un 9 % sin decir nada.
+    check("la busqueda de acero ignora guiones y espacios",
+          "char.IsLetterOrDigit(c) || c == '\\''" in aceros_cs)
+    check("pero NO el apostrofo, que distingue dos aceros",
+          "el apóstrofo da un Fy equivocado en un 9 %" in aceros_cs
+          or "perder el apóstrofo da un Fy equivocado" in aceros_cs)
+    check("y una designacion vieja se guarda como la escribe el catalogo",
+          "public static string ComoEnElCatalogo(" in aceros_cs
+          and "Set(ref _acero, CatalogoAceros.ComoEnElCatalogo(value));" in perfil_row)
+
+    # DOS sitios avisan de la disponibilidad, y hacen falta los dos: el acero y la
+    # FAMILIA. Al cambiar de familia cambia la respuesta aunque el acero sea el mismo -un
+    # A-36 se consigue en canal y no en monten-, y sin ese aviso la fila se quedaba con la
+    # marca de la familia anterior, que es peor que no tener marca.
+    check("cambiar de familia vuelve a preguntar por la disponibilidad",
+          "private void RaiseDelAcero()" in perfil_row
+          and perfil_row.count("RaiseDelAcero();") == 2,
+          f"{perfil_row.count('RaiseDelAcero();')} llamadas")
+
+    # El renglon de totales dice cuantas filas estan marcadas y de donde salio el catalogo.
+    check("los totales dicen cuantas filas llevan un acero que no se hace",
+          "con un acero que no se hace en ese perfil" in acero_cb)
+    check("y de donde salio el catalogo de aceros",
+          "CatalogoAceros.Origen" in acero_cb)
+
+    # El generador y su comprobacion.
+    gen_aceros = leer(ruta("tools/catalogo_aceros.py"))
+
+    check("hay un generador del catalogo de aceros",
+          "COLUMNA_DE_FAMILIA" in gen_aceros)
+    check("que traduce las columnas de la hoja a las familias de CadLink",
+          '("IR", "W")' in gen_aceros
+          and '("OC", "PIPE")' in gen_aceros
+          and '("OR", "HSS")' in gen_aceros)
+    check("y lee los encabezados en lugar de suponer las letras",
+          "def encabezados(filas)" in gen_aceros
+          and "Se LEE, no se supone" in gen_aceros)
+    check("y avisa de lo que la hoja trae raro, sin corregirlo",
+          "def revisar(aceros)" in gen_aceros
+          and "Se AVISA, no se corrige" in gen_aceros)
+
+    check("hay comprobacion numerica del catalogo de aceros",
+          "El CSV contra la hoja de la que sale"
+          in leer(ruta("tools/verificar_catalogo_aceros.py")))
+    check("que comprueba que el CSV esta al dia con la hoja",
+          "y los mismos datos, acero por acero"
+          in leer(ruta("tools/verificar_catalogo_aceros.py")))
+    check("y que el ejemplo del programa no arranca con filas marcadas",
+          "ninguna fila del ejemplo arranca marcada en rojo"
+          in leer(ruta("tools/verificar_catalogo_aceros.py")))
+
+    check("el catalogo de aceros esta generado y trae los 39",
+          len([l for l in leer(ruta("client/src/CadLink.App/aceros.csv")).splitlines()
+               if l.strip() and not l.startswith("#")]) == 39)
+    check("y la hoja de la que sale esta en el repositorio",
+          os.path.exists(ruta("docs/ACEROS.xlsx")))
+
+    check("la vista previa de acero se engancha al arrancar",
+          "private void EngancharVistaPreviaAcero()" in acero_cb
+          and "EngancharVistaPreviaAcero();" in codigo)
+    check("existe el dibujo de la vista previa de acero",
+          "private void DibujarVistaPreviaAcero()" in acero_cb)
+    check("se redibuja al cambiar de fila y al cambiar de tamaño",
+          "AceroGrid.SelectionChanged += (_, _) => DibujarVistaPreviaAcero();" in acero_cb
+          and "AceroPreviewCanvas.SizeChanged += (_, _) => DibujarVistaPreviaAcero();"
+          in acero_cb)
+
+    # EN TIEMPO REAL: al editar una celda se vuelve a dibujar, pero SOLO si la fila
+    # editada es la que se esta viendo. Sin esa condicion, editar una fila de arriba
+    # cambiaba el dibujo de la de abajo.
+    m_edit = re.search(
+        r"private void OnFilaAceroEditada\(.*?\n    \}", acero_cb, re.S)
+
+    check("se puede leer OnFilaAceroEditada", m_edit is not None)
+
+    if m_edit:
+        edicion = m_edit.group(0)
+
+        check("editar una celda redibuja la vista previa",
+              "DibujarVistaPreviaAcero();" in edicion)
+        check("y solo si la fila editada es la que se esta viendo",
+              "ReferenceEquals(sender, AceroGrid.SelectedItem)" in edicion)
+
+    # La geometria NO se calcula aqui: sale de TrazoAcero, que es el mismo calculo que
+    # usa el dibujante de AutoCAD. Una vista previa con su propia cuenta puede acabar
+    # enseñando algo distinto de lo que se dibuja, que es justo lo que no puede hacer.
+    check("la vista previa usa la geometria del dibujante",
+          "TrazoAcero.De(" in acero_cb and "TrazoAcero.Muestrear(" in acero_cb)
+    check("y no se calcula ningun vertice a mano en la vista previa",
+          "Math.Cos(" not in acero_cb and "Math.Tan(" not in acero_cb)
+
+    # El hueco del tubo tiene que ser HUECO, no del color del fondo: si se pinta del
+    # color del fondo, al cambiar el tema deja de ser hueco y se ve el relleno.
+    check("el hueco del tubo es hueco de verdad",
+          "new GeometryGroup { FillRule = FillRule.EvenOdd }" in acero_cb)
+
+    # EL CS0104 QUE ROMPIO LA COMPILACION EN WINDOWS.
+    #
+    # La figura se creaba con «new Path», y este proyecto tiene System.IO como using
+    # GLOBAL -esta en el .csproj- ademas de System.Windows.Shapes en el archivo. Los dos
+    # definen un Path, asi que el nombre a secas es ambiguo y el proyecto NO compilaba.
+    # Aqui no se ve, porque el analisis sintactico no resuelve tipos.
+    check("la figura de la vista previa usa el alias, no «Path» a secas",
+          "using FormaPath = System.Windows.Shapes.Path;" in acero_cb
+          and "AceroPreviewCanvas.Children.Add(new FormaPath" in acero_cb
+          and "new Path\n" not in acero_cb)
+    check("y se dice por que hace falta el alias",
+          "referencia ambigua" in acero_cb and "using GLOBAL" in acero_cb)
+
+    # Y hay un script que lo caza, para no volver a enterarse al compilar en Windows.
+    ambig = leer(ruta("tools/verificar_ambiguedades.py"))
+
+    check("hay comprobacion de nombres ambiguos sin compilar",
+          "Nombres ambiguos: los CS0104" in ambig)
+    check("lee los using globales del csproj, no los supone",
+          "def globales_del_csproj(" in ambig
+          and "<Using\\s+Include=\"([^\"]+)\"" in ambig)
+    check("y sabe que en WPF System.IO NO es implicito",
+          "es_wpf" in ambig and "IMPLICITOS_BIBLIOTECA" in ambig)
+    check("no confunde un comentario con un uso",
+          "def sin_comentarios_ni_textos(" in ambig
+          and "def sin_directivas_using(" in ambig)
+    check("y el detector se prueba contra el error de verdad",
+          "caza el «new Path» que rompio la compilacion" in ambig)
+
+    # Y cuando no se puede dibujar se DICE por que, en vez de dejar el cuadro vacio.
+    check("la vista previa avisa cuando no puede dibujar",
+          "private void AvisoVistaAcero(string texto)" in acero_cb
+          and "Selecciona un perfil de la tabla" in acero_cb
+          and "No se puede dibujar todavía: falta" in acero_cb)
+
+    for col in ("ColFamilia", "ColElementoAcero", "ColClasificacion", "ColAcero"):
+        check(f"la columna {col} esta en el XAML", f'x:Name="{col}"' in xaml)
+        check(f"y su lista se llena en el code-behind ({col})",
+              f"{col}.ItemsSource" in acero_cb)
+
+    # Las dos llamadas van DENTRO de las de concreto, no en el constructor: Enlazar se
+    # vuelve a llamar al cargar el ejemplo, al borrar todo y al empezar de nuevo, y en
+    # esos casos _datos es otro objeto.
+    check("las listas de acero se llenan con las demas",
+          "LlenarListasAcero();" in codigo)
+    check("y la cuadricula se enlaza dentro de Enlazar",
+          "EnlazarAcero();" in codigo)
+
+    m_enlazar = re.search(r"private void Enlazar\(\).*?\n    \}", codigo, re.S)
+    check("se puede leer Enlazar", m_enlazar is not None)
+    if m_enlazar:
+        check("EnlazarAcero se llama desde Enlazar",
+              "EnlazarAcero();" in m_enlazar.group(0))
+
+    check("la coleccion de acero vive en DatosProyecto",
+          "ObservableCollection<PerfilAceroRow> SeccionesAcero" in filas)
+
+    # El ejemplo trae UNA DE CADA FAMILIA, y entre las doce se dibujan las nueve formas:
+    # asi se ve de una vez todo lo que la hoja sabe hacer, y sobre todo se ve lo que no se
+    # nota mirando una fila sola, que es que la IR, la IS, la IC y la S se dibujan iguales.
+    m_ejemplo = re.search(
+        r"Secciones de acero, UNA DE CADA FAMILIA.*?return d;", filas, re.S)
+
+    check("el ejemplo trae secciones de acero", m_ejemplo is not None)
+
+    if m_ejemplo:
+        ejemplo = m_ejemplo.group(0)
+
+        for familia in ("Ir", "Is", "Ic", "S", "Wt", "C", "Cf", "Zf", "L", "Or",
+                        "Oc", "Os"):
+            check(f"el ejemplo trae una seccion de la familia {familia.upper()}",
+                  f"FamiliaPerfil.{familia}," in ejemplo)
+
+        # Y con los NOMBRES DEL MANUAL, no abreviados: si no, el perfil del ejemplo no
+        # aparece marcado en el desplegable y parece escrito a mano.
+        # El patron tiene que aceptar COMILLAS ESCAPADAS dentro de la cadena: los nombres
+        # del IMCA llevan pulgadas -«CF - 6" x 2" x #14»- y en C# eso se escribe con \".
+        # Con un [^"]* pelado, el nombre se cortaba en la primera pulgada y salia 'CF - 6\'.
+        nombres_ejemplo = [
+            m.group(1).replace('\\"', '"')
+            for m in re.finditer(
+                r'Acero\(FamiliaPerfil\.\w+, "((?:[^"\\]|\\.)*)"', ejemplo)]
+
+        csv_ejemplo = leer(ruta("client/src/CadLink.App/perfiles-acero.csv"))
+
+        fuera_del_catalogo = [n for n in nombres_ejemplo if n not in csv_ejemplo]
+
+        check("los doce perfiles del ejemplo estan en el catalogo",
+              len(nombres_ejemplo) == 12 and not fuera_del_catalogo,
+              f"{len(nombres_ejemplo)} nombres, fuera: {fuera_del_catalogo}")
+
+        # Los dos elementos nuevos se usan en el ejemplo, para que se vean sin buscarlos.
+        check("el ejemplo usa MONTEN y DIAGONAL",
+              '"MONTEN"' in ejemplo and '"DIAGONAL"' in ejemplo)
+
+        # Y la clasificacion en un elemento que no es VIGA, que es lo que la macro no
+        # dejaba hacer... aunque aqui va en vigas, asi que se comprueba lo otro: que la
+        # zeta del ejemplo trae su patin angosto, que es la medida que solo ella usa.
+        check("la zeta del ejemplo trae su patin angosto",
+              "anchoMenor: 5.4" in ejemplo)
+
+    # Antes de dibujar se revisa lo que NO se puede dibujar.
+    check("la hoja de acero se revisa antes de dibujar",
+          "private bool RevisarAcero(out List<string> problemas)" in acero_cb)
+    check("se revisan los ID repetidos, que son el nombre del bloque",
+          "está repetido" in acero_cb)
+
+    # ------------------------------------------------------------------
+    # El dibujante
+    # ------------------------------------------------------------------
+    check("el dibujante de acero es parte de SeccionDrawer",
+          "public sealed partial class SeccionDrawer" in acero_cad)
+    check("y por eso reusa el Hatch, la cota y el bloque del concreto",
+          "Hatch(" in acero_cad and "FormatearCota(" in acero_cad
+          and "Bloquear(p.Id, inicio, fin, destino);" in acero_cad)
+
+    check("existe DibujarAcero", "public int DibujarAcero(" in acero_cad)
+    check("se dibuja por FORMA, no por familia",
+          all(f"case FormaAcero.{f}:" in acero_cad
+              for f in ("I", "Te", "Canal", "CanalConLabios", "Zeta", "Angulo",
+                        "TuboRectangular", "TuboRedondo", "RedondoMacizo")))
+    check("una forma desconocida se avisa, no se dibuja mal",
+          "no se reconoce" in acero_cad
+          and "FormaAcero.Todas.Contains(p.Forma)" in acero_cad)
+
+    # ------------------------------------------------------------------
+    # LA GEOMETRIA VIVE APARTE, EN TrazoAcero
+    # ------------------------------------------------------------------
+    # Y no es orden por el orden: es lo que hace que la VISTA PREVIA de la pantalla y el
+    # dibujo de AutoCAD salgan del MISMO calculo. Con los vertices dentro del dibujante, la
+    # vista previa tendria que repetirlos, y una vista previa que calcula la forma por su
+    # cuenta puede acabar enseñando algo distinto de lo que se dibuja.
+    trazo = leer(ruta("client/src/CadLink.Cad/TrazoAcero.cs"))
+
+    check("la geometria de los perfiles vive en TrazoAcero",
+          "public static class TrazoAcero" in trazo
+          and "public static Trazo? De(" in trazo)
+
+    # Las siete formas poligonales, cada una con su funcion de vertices.
+    for metodo in ("PerfilI", "PerfilTe", "PerfilCanal", "PerfilAngulo", "PerfilCf",
+                   "PerfilZeta", "TuboRectangular"):
+        check(f"TrazoAcero sabe hacer {metodo}",
+              f"{metodo}(" in trazo and f"private static " in trazo)
+
+    check("y las dos redondas salen como circunferencias",
+          "CircExterior: new Circulo(" in trazo)
+
+    check("el dibujante ya NO tiene vertices: se los pide a TrazoAcero",
+          "TrazoAcero.De(p, x, yAbajo, _escala, espejo)" in acero_cad
+          and "private void Trazar(TrazoAcero.Trazo trazo" in acero_cad)
+
+    check("y no queda ninguna funcion de vertices en el dibujante",
+          not any(f"private void {m}(" in acero_cad
+                  for m in ("PerfilI", "PerfilTe", "PerfilCanal", "PerfilAngulo",
+                            "PerfilCf", "PerfilZeta", "PerfilOr", "PerfilOc",
+                            "PerfilOs")))
+
+    # El hueco del tubo es una ISLA del rayado, no un agujero: en AutoCAD un hatch con isla
+    # deja sin rellenar lo que la isla encierra, que es lo que hace que un tubo se vea tubo.
+    check("el hueco del tubo entra como isla del rayado",
+          "interior is null ? null : new List<object> { interior }" in acero_cad)
+
+    # El DTO no interpreta nada: llega todo resuelto.
+    check("el DTO lleva el ancho que ocupa el dibujo",
+          "public double AnchoDibujoCm" in perfil_cad)
+    check("y sabe que la zeta ocupa sus dos patines menos el alma",
+          "FormaAcero.Zeta => AnchoCm + PatinAngostoCm - EspesorCm" in perfil_cad)
+
+    # Las nueve formas se rayan por el mismo camino, que es el que decide el rayado de
+    # cada una: nadie llama a Hatch por su cuenta con colores escritos a mano.
+    check("las nueve formas se rayan por el mismo camino",
+          acero_cad.count("RayarPerfil(") >= 3)
+
+    # El corte de las cinco pulgadas es de la macro del HSS, y SOLO la afecta a ella.
+    check("el corte de las 5 pulgadas es solo del tubo rectangular",
+          "PeralteLimitePulg - 0.01" in acero_cad
+          and acero_cad.count("menorDe5") >= 3)
+    check("el tubo chico lleva el fondo cian de su macro",
+          "FondoDelHatch(trama, 4);" in acero_cad)
+
+    # ------------------------------------------------------------------
+    # El aparato de la cota, PROPORCIONAL AL PERFIL
+    # ------------------------------------------------------------------
+    # El catalogo va de un redondo de 0.64 cm a una IS de 190. Con el aparato fijo que
+    # venia del concreto -flecha de 2 cm- una cota sobre un angulo de 1.9 cm es mas
+    # grande que el perfil y tapa lo que mide.
+    check("el aparato de la cota se ajusta al tamaño del perfil",
+          "private void PrepararAcero(PerfilAceroCad p)" in acero_cad
+          and "var referencia = p.PeralteCm * _escala;" in acero_cad)
+
+    for campo, divisor in (("_gapAcero", "5"), ("_flechaAcero", "15"),
+                           ("_textoCotaAcero", "10"), ("_extOffsetAcero", "15"),
+                           ("_extExtiendeAcero", "8")):
+        check(f"{campo} sale del peralte entre {divisor}",
+              f"{campo} = Acotar(referencia / {divisor}," in acero_cad)
+
+    check("y esos valores se le ponen a cada cota por encima de los del concreto",
+          'PropCota((object)cota, "ArrowheadSize", _flechaAcero);' in acero_cad
+          and 'PropCota((object)cota, "TextHeight", _textoCotaAcero);' in acero_cad)
+
+    # LA SEPARACION DEL RAYADO NO SE TOCA: es la fija de cada macro. Un patron de
+    # sombreado con separacion fija da la MISMA densidad en el papel para cualquier
+    # tamaño de perfil, que es justo lo que tiene que hacer; ligarlo al peralte deja los
+    # grandes con el rayado abierto y los chicos con el rayado cerrado.
+    check("el aparato de la cota no toca la separacion del rayado",
+          "_escalaHatchAcero" not in acero_cad)
+
+    check("hay comprobacion numerica del aparato de la cota",
+          "El aparato de la cota, proporcional al perfil"
+          in leer(ruta("tools/verificar_perfiles_acero.py")))
+
+    # NINGUNA COTA PUEDE LLEVAR SU TEXTO POR DEBAJO DE LA BASE DEL PERFIL, porque ahi va
+    # el rotulo: cuatro renglones centrados y de hasta un metro de ancho. Un numero ahi
+    # acaba encima de su primer renglon, y a la escala de un plano las dos cosas se
+    # confunden. Las cotas que lo necesitan llevan el texto DENTRO del hueco del perfil
+    # -el de la canal, la escuadra del angulo, el lado libre de la zeta-, que esta vacio.
+    debajo = [m for m in re.findall(r"\b(?:y0|yBase|cy) - gap\b", acero_cad)]
+
+    check("ninguna cota de acero pone su texto debajo de la base, donde va el rotulo",
+          not debajo, f"{len(debajo)} sitio(s)")
+
+    check("y el rotulo si va debajo, separado con el mismo gap",
+          "RotuloAcero(p, centro, yAbajo - _gapAcero);" in acero_cad)
+
+    # El color de fondo de un hatch no es un numero, es un objeto que hay que pedir por
+    # su ProgID con la version pegada.
+    check("el fondo del hatch prueba varias versiones de AutoCAD",
+          '"AutoCAD.AcCmColor." + v' in acero_cad)
+
+    # Los radios del CF se recortan a lo que cabe, como en la macro.
+    check("el radio exterior del CF se recorta",
+          "Math.Min(ri, Math.Min(b / 2, Math.Min(lip, h / 2)))" in trazo)
+    check("y el interior es la mitad, recortada por su cuenta",
+          "Math.Min(ri / 2, rIntMax)" in trazo)
+
+    # El peralte del OR es el lado mayor: un tubo capturado al reves es el mismo tubo. Y
+    # ahora eso lo dice EL HUECO tambien, no solo el trazo: antes el trazo se volteaba y
+    # el hueco no, asi que un tubo capturado al reves se dibujaba estrecho dentro de un
+    # hueco ancho y dejaba un agujero en la fila.
+    check("el peralte del tubo rectangular es el lado mayor",
+          "FormaAcero.TuboRectangular && AnchoCm > 0" in perfil_cad
+          and "Math.Max(PeralteCm, AnchoCm)" in perfil_cad)
+    check("y su ancho de hueco es el lado menor",
+          "FormaAcero.TuboRectangular when AnchoCm > 0 => Math.Min(PeralteCm, AnchoCm)"
+          in perfil_cad)
+
+    # ------------------------------------------------------------------
+    # La zeta: sus dos dobleces son arcos CONCENTRICOS
+    # ------------------------------------------------------------------
+    # Una zeta es una lamina de espesor unico doblada dos veces, asi que en cada doblez
+    # la cara de dentro y la de fuera son dos arcos separados exactamente el espesor. Y
+    # los dos centros interiores caen a DISTINTO lado del alma, porque los dos patines
+    # salen a lados contrarios: con los dos al mismo lado -que es como estaba- el
+    # contorno de abajo se devolvia sobre si mismo y el rayado salia por fuera.
+    check("el radio interior de la zeta es el exterior menos el espesor",
+          "var rInt = Math.Max(0, rExt - t);" in trazo)
+    check("y sus dos dobleces interiores van a distinto lado del alma",
+          "X(xAlmaDer + rInt), yt - t - rInt, 3, 4" in trazo
+          and "X(xAlmaIzq - rInt), y0 + t + rInt, 9, 10" in trazo)
+    check("hay comprobacion de que el contorno de la zeta no se cruza",
+          "def se_cruza(pts" in leer(ruta("tools/verificar_perfiles_acero.py")))
+    check("y de que sus arcos son concentricos",
+          "son concentricos" in leer(ruta("tools/verificar_perfiles_acero.py")))
+
+    # LO QUE MAS IMPORTA DE LAS COTAS: el factor de escala lineal. El dibujo esta en
+    # metros, asi que sin el la cota de un peralte de 30 cm diria «0.30» en un plano
+    # rotulado «Acot. cm». Las cuatro macros lo fijan en 100, que es 1/escala.
+    check("las cotas de acero llevan el factor de escala lineal",
+          'PropCota((object)cota, "LinearScaleFactor", 1 / _escala);' in acero_cad)
+
+    # Y el CF se dibuja con UNA polilinea, no con el contorno mas otra igual para el
+    # hatch, que es lo que hacia la macro. Ahora el trazo con dobleces esta compartido
+    # con la zeta, que es la otra forma que lleva radios.
+    check("las formas con dobleces se trazan con una sola polilinea",
+          "PolilineaConBulges(c.Puntos, lista, CapaPerfiles)" in acero_cad)
+    check("el bulge sale del barrido real, asi el espejo se resuelve solo",
+          "public static double BulgeDesdeCentro(" in trazo)
+
+
+
+    # Ninguna forma puede acabar en la capa ESTRIBOS: PolyCerrada la tiene escrita a
+    # mano, asi que el acero usa Polilinea, que si respeta la capa que se le da.
+    check("ninguna forma de acero pasa por PolyCerrada, que fija la capa ESTRIBOS",
+          "PolyCerrada(" not in acero_cad)
+
+    perfiles_py = leer(ruta("tools/verificar_perfiles_acero.py"))
+
+    check("hay comprobacion numerica de las nueve formas",
+          all(t in perfiles_py for t in ("CF: la canal formada en frio", "WT: la te",
+                                         "C: la canal laminada", "L: el angulo",
+                                         "ZF: la zeta", "OS: el redondo macizo")))
+
+    # Y el acomodo se prueba con el CATALOGO ENTERO, que es la hoja mas grande que se
+    # puede pedir: 1617 secciones, ni una pisando a la de abajo. La separacion y el
+    # origen los LEE del codigo, asi que cambiar la constante y no el script se nota.
+    check("el acomodo se comprueba con el catalogo entero",
+          "El acomodo: una seccion por renglon, con el CATALOGO ENTERO" in perfiles_py
+          and "ninguna de las 1617 secciones se pisa con la de abajo" in perfiles_py)
+    check("y la separacion y el origen se leen del codigo, no se copian",
+          "const double SeparacionEntreSeccionesCm = (-?[\\d.]+);" in perfiles_py
+          and "const double OrigenAceroCm = (-?[\\d.]+);" in perfiles_py)
+    check("ya no queda ninguna banda por familia en la comprobacion",
+          "SEPARACION_BANDAS" not in perfiles_py
+          and "bandas_calculadas" not in perfiles_py)
+
+    # Y una vista de las nueve, porque las comprobaciones numericas dicen si la geometria
+    # se sostiene pero no si el perfil se PARECE a lo que tiene que parecer: un area
+    # correcta y un contorno limpio son compatibles con una te dibujada boca abajo.
+    vista = leer(ruta("tools/vista_formas_acero.py"))
+
+    check("hay una vista de las nueve formas que se puede mirar sin AutoCAD",
+          "def puntos_con_arcos(" in vista)
+    check("la vista NO copia la geometria: la importa de donde se verifica",
+          "verificar_perfiles_acero.py" in vista
+          and "def perfil_zeta" not in vista)
+    check("y no se dibuja si la geometria no pasa sus comprobaciones",
+          "raise SystemExit(1) from e" in vista)
+    check("el svg esta generado y es de verdad un svg",
+          leer(ruta("docs/formas-acero.svg")).startswith("<svg"))
+    check("y la revision de las macros lleva al svg",
+          "formas-acero.svg" in leer(ruta("docs/macros-acero.md")))
+
+    # ------------------------------------------------------------------
+    # El acero se dibuja A LA IZQUIERDA del origen, desde -0.6
+    # ------------------------------------------------------------------
+    # Es el xDerechaActual = -0.6 de las macros. Y no es solo acomodo: el concreto
+    # crece hacia la derecha desde donde acabe lo que ya haya, asi que con el acero
+    # en el semiplano negativo las dos hojas no se pisan nunca.
+    check("el acero empieza en -60 cm, el -0.6 de las macros",
+          "OrigenAceroCm = -60" in acero_cb)
+    check("y crece hacia la izquierda",
+          "var xIzquierda = xDerecha - (perfil.AnchoDibujoCm * escala);" in acero_cb)
+    check("ya no arranca donde acabe el concreto",
+          "dibujante.PosicionInicialX()" not in acero_cb)
+
+    # TODAS LAS SECCIONES EN LA MISMA X, una por renglon.
+    #
+    # Las macros ponian los perfiles de una familia uno al lado del otro hacia la
+    # izquierda. Con los nombres del catalogo IMCA eso no se sostiene: el rotulo va
+    # centrado debajo de cada seccion y mide casi un metro, asi que los rotulos se
+    # pisaban aunque los perfiles no se tocaran.
+    check("la x de la derecha se fija en el origen para CADA seccion",
+          acero_cb.count("var xDerecha = OrigenAceroCm * escala;") == 1
+          and re.search(r"foreach \(var fila in grupo\)(.|\n)*?"
+                        r"var xDerecha = OrigenAceroCm \* escala;", acero_cb) is not None)
+
+    check("ya no se avanza en x de una seccion a la siguiente",
+          "xDerecha = xIzquierda - aire" not in acero_cb)
+
+    check("y ya no hay aire horizontal por familia",
+          "AireDeLaFamiliaCm" not in acero_cb)
+
+    # El hueco se avanza tambien para los saltados: si no, al redibujar una hoja con
+    # dos perfiles ya hechos, los otros dos caerian justo encima de ellos.
+    m_export = re.search(
+        r"private void OnExportAcero\(.*?\n    \}", acero_cb, re.S)
+
+    check("se puede leer OnExportAcero", m_export is not None)
+    if m_export:
+        cuerpo_exp = m_export.group(0)
+
+        check("el RENGLON se avanza siempre, tambien para las saltadas",
+              "yCm += perfil.AltoDibujoCm + SeparacionEntreSeccionesCm;" in cuerpo_exp
+              and cuerpo_exp.count("yCm +=") == 1)
+        check("y el saltado solo se descuenta del conteo",
+              "if (dibujante.Saltadas.Count == saltadasAntes)" in cuerpo_exp)
+
+        # CADA FAMILIA EN SU BANDA. Las cuatro macros arrancan en la misma x, asi que lo
+        # unico que evita que se encimen es la Y: baseY 0 el IR, 2.0 el OR, 3.5 el CF y
+        # 5.0 el OC. Sin esto, las cuatro familias caian una encima de otra.
+        check("se agrupa por familia para recorrerlas juntas",
+              "GroupBy(f => f.Familia)" in cuerpo_exp)
+        check("y cada seccion se dibuja a la altura de su renglon",
+              "DibujarAcero(perfil, xIzquierda, yCm * escala)" in cuerpo_exp)
+
+        # CADA SECCION EN SU RENGLON, y el siguiente 70 cm por encima de la CIMA de esta.
+        # Antes eran cuatro alturas fijas por familia venidas de las macros, y los
+        # perfiles de una familia iban en fila hacia la izquierda.
+        check("la primera arranca en cero, como la macro del IR",
+              "var yCm = 0.0;" in cuerpo_exp)
+        check("y se acumula el alto DIBUJADO, no el peralte capturado",
+              "perfil.AltoDibujoCm + SeparacionEntreSeccionesCm" in cuerpo_exp)
+
+    # UNA SOLA separacion para las doce familias, en lugar de un aire por familia. Es lo
+    # que se gana al apilarlas: ya no hay que darle a cada una su propio hueco segun lo
+    # ancho que sea su rotulo, porque no hay nada al lado con lo que chocar.
+    check("la separacion entre secciones es de 70 cm",
+          "SeparacionEntreSeccionesCm = 70" in acero_cb)
+
+    check("y ya no queda tabla de alturas de banda ni aire por familia",
+          "BandaDeLaFamiliaCm" not in acero_cb
+          and "TechoDeLaBandaCm" not in acero_cb
+          and "MargenDeBandaCm" not in acero_cb
+          and "AireDeLaFamiliaCm" not in acero_cb)
+
+    check("el acomodo vertical se comprueba con el catalogo de verdad",
+          "el caso peor: la seccion mas alta de cada familia".lower()
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")).lower())
+
+    check("y se comprueba que entre seccion y seccion quedan los 70 cm",
+          "y entre ellas quedan los"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+
+    check("las familias se recorren en el orden de la lista, no en el de captura",
+          "OrderBy(g => OrdenDeLaFamilia(g.Key))" in acero_cb)
+
+    # La altura de cada seccion ya no se puede consultar en una tabla, asi que el programa
+    # tiene que decir donde quedo cada familia: es la unica manera de saber donde buscar.
+    check("se dice a que altura quedo cada familia",
+          "bandas.Add(" in acero_cb and "una por renglón" in acero_cb)
+
+    # ------------------------------------------------------------------
+    # El catalogo de perfiles: las medidas NO se teclean
+    # ------------------------------------------------------------------
+    catalogo = leer(ruta("client/src/CadLink.App/Models/CatalogoPerfiles.cs"))
+    csv = leer(ruta("client/src/CadLink.App/perfiles-acero.csv"))
+
+    check("existe el catalogo de perfiles",
+          "public static class CatalogoPerfiles" in catalogo)
+    check("es un archivo de datos, no una tabla dentro del programa",
+          'public const string Archivo = "perfiles-acero.csv";' in catalogo)
+    check("y se busca en tres sitios",
+          "AppContext.BaseDirectory" in catalogo
+          and "Directory.GetCurrentDirectory()" in catalogo
+          and "LocalApplicationData" in catalogo)
+    check("si no aparece, queda una semilla y el programa abre igual",
+          "Semilla.ToList()" in catalogo)
+    check("y se dice de donde salio el catalogo",
+          "public static string Origen" in catalogo
+          and "CatalogoPerfiles.Origen" in acero_cb)
+
+    # El lector tiene que tragarse lo que salga de un Excel.
+    check("el lector acepta punto y coma o coma de separador",
+          "linea.Contains(';') ? ';' : ','" in catalogo)
+    check("y punto o coma de decimal",
+          "Replace(',', '.')" in catalogo)
+    check("se salta comentarios y lineas en blanco",
+          "linea.StartsWith('#')" in catalogo)
+    check("una cabecera exportada se salta sola",
+          "Numero(campos, 2) <= 0" in catalogo)
+    check("y una familia vacia se deduce del nombre",
+          "FamiliaPerfil.DelNombre(nombre)" in catalogo)
+
+    # La lista del desplegable es de la FILA, porque cada fila puede ser de otra
+    # familia. Una lista por columna solo podria ofrecerlas todas mezcladas.
+    check("cada fila ofrece los perfiles de SU familia",
+          "public string[] PerfilesDeLaFamilia" in perfil_row)
+    check("y la celda de perfil se enlaza a esa lista",
+          'ItemsSource="{Binding PerfilesDeLaFamilia}"' in xaml)
+    check("al cambiar de familia se refresca la lista",
+          "Raise(nameof(PerfilesDeLaFamilia));" in perfil_row)
+
+    # Y al elegir un perfil del catalogo se traen sus medidas.
+    check("elegir un perfil trae sus medidas",
+          "private void TraerDelCatalogo()" in perfil_row
+          and "TraerDelCatalogo();" in perfil_row)
+    check("se avisa de las seis medidas juntas, no una por una",
+          "Raise(nameof(PeralteCm));" in perfil_row
+          and "Raise(nameof(RadioCm));" in perfil_row)
+    check("un perfil que no esta en el catalogo no borra lo capturado",
+          "if (c is null)" in perfil_row)
+
+    # El CSV que se entrega tiene que explicarse solo.
+    check("el csv explica como se escribe cada renglon",
+          "familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio" in csv)
+    check("dice que las medidas van en centimetros",
+          "TODAS LAS MEDIDAS EN CENTIMETROS" in csv)
+
+    # Y ya no es la semilla de cuatro: es el catalogo del IMCA del usuario.
+    n_perfiles = len([l for l in csv.splitlines()
+                      if l.strip() and not l.startswith("#") and l.count(";") >= 6])
+
+    check("el catalogo trae los perfiles del IMCA, no la semilla",
+          n_perfiles > 1000, f"solo {n_perfiles}")
+    check("y dice de donde salio",
+          "Generado del manual IMCA" in csv)
+
+    for familia in DOCE:
+        check(f"el catalogo trae perfiles {familia}",
+              f"\n{familia};" in csv)
+
+    # La familia IR trae SOLO las W. Es lo que estaba mal: IS, IC y S se metian dentro
+    # de IR «porque son perfiles I» y su desplegable ofrecia 573 perfiles de cuatro
+    # nomenclaturas revueltas, en el que habia que ir sorteando para encontrar una W.
+    irs = [l for l in csv.splitlines() if l.startswith("IR;")]
+    irs_ajenos = [l for l in irs if not l.split(";")[1].strip().upper().startswith("W")]
+
+    check("la familia IR trae solo perfiles W", irs and not irs_ajenos,
+          f"{len(irs_ajenos)} ajenos: {irs_ajenos[:2]}")
+
+    check("el csv explica la novena columna, la de la zeta",
+          "solo la ZF" in csv and "ancho2" in csv)
+
+    # La lista del desplegable NO se ordena alfabeticamente. El manual trae cada familia
+    # por peralte creciente y dentro de cada peralte por peso, que es como se busca:
+    # primero el peralte que cabe y luego se sube de peso hasta que resista. Ordenar por
+    # texto pone la de 10" entre la de 1" y la de 12" y deja la lista inservible.
+    check("la lista del desplegable conserva el orden del manual",
+          "OrderBy(n => n, StringComparer.OrdinalIgnoreCase)" not in catalogo
+          and "No se ordena alfabéticamente" in catalogo)
+
+    # El convertidor del formato del IMCA, que no es una hoja normal: cada familia usa
+    # otras columnas y las unidades cambian de una a otra.
+    imca = leer(ruta("tools/catalogo_imca.py"))
+
+    check("hay convertidor para el formato del IMCA",
+          "def filas_del_libro(ruta)" in imca)
+    check("mapea las familias del IMCA a las de CadLink",
+          '"HSS": "OR"' in imca and '"PIPE": "OC"' in imca and '"W": "IR"' in imca)
+
+    # YA NO DEJA NINGUNA FAMILIA FUERA. Antes las cinco que no se sabian dibujar -te,
+    # angulo, canal laminada, zeta y redondo macizo- se contaban y se descartaban: 499
+    # perfiles del manual que el programa no podia ofrecer.
+    check("ya no hay familias descartadas por no saber dibujarlas",
+          "SIN_FORMA" not in imca)
+    check("las doce familias del manual se convierten",
+          all(f'"{f}"' in imca for f in ("WT", "L", "C", "ZF", "OS", "IS", "IC", "S")))
+    check("y cada una dice con que forma se dibuja",
+          "FORMAS = {" in imca and '"redondo macizo"' in imca)
+
+    # Las medidas del angulo NO estan en la hoja: las 144 filas de la familia L tienen
+    # todas las columnas de geometria en '-'. Hay que leerlas de la designacion.
+    check("el angulo lee sus medidas del NOMBRE, porque la hoja no le da ninguna",
+          "def medidas_del_angulo(designacion)" in imca
+          and "todas las columnas de geometria en '-'" in imca)
+    check("y entiende tanto las alas iguales como las desiguales",
+          "if len(valores) == 2:" in imca and "elif len(valores) == 3:" in imca)
+
+    # El redondo macizo trae su diametro en dos columnas y en DOS UNIDADES distintas.
+    check("el redondo macizo toma el diametro de la columna en milimetros",
+          "esta familia esta en CENTIMETROS" in imca
+          and "peralte = numero(c.get(6))" in imca)
+
+    # La zeta trae los dos patines de distinto ancho, y no es una errata.
+    check("la zeta convierte sus DOS anchos de patin",
+          "ancho2 = numero(c.get(8))" in imca)
+    check("y el CSV lleva su novena columna",
+          "familia;nombre;peralte;ancho;e_alma;e_patin;labio;radio;ancho2" in imca)
+    check("coteja las medidas contra los nominales en pulgadas de la hoja",
+          "MM_POR_PULGADA" in imca and "pero su nominal" in imca)
+    check("y caza los errores de dedo por proporcion imposible",
+          "mas de la sexta parte" in imca
+          and "W - 36'' x 442.16 lb/ft" in imca)
+    check("el csv se copia junto al ejecutable",
+          "perfiles-acero.csv" in leer(ruta("client/src/CadLink.App/CadLink.App.csproj")))
+
+    # Y la herramienta que convierte la hoja de perfiles del usuario en ese CSV. Va
+    # como script aparte y no dentro del programa a proposito: el catalogo se escribe
+    # una vez y se lee mil, asi que no hay por que arrastrar un lector de xlsx en el
+    # ejecutable para algo que se hace el dia que cambia la lista.
+    conv = leer(ruta("tools/catalogo_desde_excel.py"))
+
+    check("hay herramienta para convertir la hoja de Excel",
+          "def filas_de_xlsx(ruta)" in conv)
+    check("lee el xlsx sin bibliotecas de fuera",
+          "import zipfile" in conv and "openpyxl" not in conv)
+    check("encuentra los encabezados aunque haya titulos arriba",
+          "mapear_encabezados(fila)" in conv)
+    check("reconoce los nombres de columna de los catalogos",
+          '"tw"' in conv and '"bf"' in conv and '"tf"' in conv)
+    check("y si la hoja viene en milimetros avisa, no convierte solo",
+          "--mm" in conv and "convertir por si mismo lo que PARECE" in conv)
+
+    # ------------------------------------------------------------------
+    # Los DOS estilos de texto de las macros de acero
+    # ------------------------------------------------------------------
+    # Las cuatro macros crean el estilo ACERO y se lo ponen a cada cota; los rotulos
+    # van con SECCIONES. El port usaba el de los rotulos para todo, asi que las cotas
+    # salian con otra letra y otra altura de las que dicen las macros.
+    check("se crea el estilo de texto ACERO de las cotas",
+          "private void AsegurarEstiloAcero()" in acero_cad
+          and 'EstiloTextoAcero = "ACERO"' in acero_cad)
+    check("y se crea junto con el de los rotulos",
+          "AsegurarEstiloTexto();" in acero_cad and "AsegurarEstiloAcero();" in acero_cad)
+    check("cada cota de acero lleva ese estilo",
+          'PropCota((object)cota, "TextStyle", EstiloTextoAcero);' in acero_cad)
+
+    # La altura ya no es el 0.015 fijo de las macros, es proporcional al perfil, y para
+    # uno de 30 cm da EXACTAMENTE ese 0.015. Lo comprueba numericamente
+    # verificar_perfiles_acero.py; aqui solo que el tope de arriba sea ese.
+    check("el tope de la altura de cota sigue siendo el 0.015 de las macros",
+          "_textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm);" in acero_cad)
+    check("hay comprobacion de que un perfil de 30 cm sale como antes",
+          "un perfil de 30 cm sale con el" in leer(
+              ruta("tools/verificar_perfiles_acero.py")))
+
+    # La altura del estilo va en CERO. Un estilo con altura fija manda sobre la del
+    # texto, y las cuatro macros le fijan la altura a cada cota por objeto: con el
+    # 0.015 que pone la IR en el estilo, esas asignaciones no harian nada.
+    check("el estilo ACERO va con altura variable",
+          "estilo.Height = 0d;" in acero_cad)
+
+    # ------------------------------------------------------------------
+    # El rotulo: su altura y su ancho salen de UNA regla, no de cuatro numeros
+    # ------------------------------------------------------------------
+    # Las cuatro macros ponian cuatro alturas a mano -0.03 el IR, 0.022 el CF, 0.02 el
+    # OC- y solo la del OR tenia una regla: 0.02 si su primer numero no pasaba de 6 y
+    # 0.03 si si. Esa es la unica de las cuatro con un motivo -el rotulo se centra bajo
+    # el perfil, asi que en uno chico un texto grande sobresale- y es la que se
+    # generalizo. Da los mismos numeros donde ellas los daban; lo comprueba
+    # verificar_perfiles_acero.py con los cuatro casos.
+    check("la altura del rotulo sale del peralte",
+          "public double AlturaRotuloCm => Math.Clamp(PeralteCm / 10, 2.0, 3.0);"
+          in perfil_cad)
+    check("y el ancho de la caja, del renglon mas largo",
+          "public double AnchoRotuloCm" in perfil_cad
+          and "Math.Max(70, masLargo * AlturaRotuloCm * 0.6)" in perfil_cad)
+    check("ya no hay anchos de caja escritos por familia",
+          '"OC" ? 2.5 : 0.7' not in acero_cad)
+    check("los renglones del rotulo se arman en un solo sitio",
+          "public IReadOnlyList<string> LineasRotulo" in perfil_cad
+          and "string.Join(\"\\\\P\", p.LineasRotulo)" in acero_cad)
+
+    # Y EL AIRE ENTRE SECCIONES LO MANDA EL ROTULO cuando es mas ancho que el perfil.
+    # Un renglon como «PERFIL: IS - 225 mm x 12.7 mm / 750 mm x 9.5 mm» mide casi un
+    # metro y el perfil que rotula, 22 cm: con el aire de la macro, dos secciones asi
+    # quedan separadas pero sus rotulos se pisan.
+    # El ancho del rotulo ya no decide ningun aire horizontal -no hay nada al lado con lo
+    # que chocar-, pero si decide el ancho de su caja, que es lo que evita que un nombre de
+    # cuarenta y seis caracteres se parta en tres renglones.
+    check("el ancho de la caja del rotulo sale de su renglon mas largo",
+          "masLargo * AlturaRotuloCm * 0.6" in perfil_cad)
+    check("hay comprobacion de que el nombre mas largo del IMCA no se parte",
+          "sin partirlo" in leer(ruta("tools/verificar_perfiles_acero.py")))
+
+    # ------------------------------------------------------------------
+    # La auditoria de las cuatro macros, escrita
+    # ------------------------------------------------------------------
+    audit = leer(ruta("docs/macros-acero.md"))
+
+    check("esta escrita la revision de las cuatro macros", len(audit) > 3000)
+    check("dice que hace cada una", "Qué hace cada macro" in audit)
+    check("y que se repite en las cuatro", "se repite, literalmente" in audit)
+    check("apunta las contradicciones que traen",
+          "se contradicen en cómo es ese estilo" in audit
+          and "El rayado del OC es invisible" in audit)
+    check("cuenta las cinco formas que no tenian macro",
+          "Las cinco formas que no tenían macro" in audit
+          and all(f in audit for f in ("WT", "ZF", "OS", "`L`", "`C`")))
+    check("explica que familia y forma son dos cosas distintas",
+          "Familia y forma son dos cosas distintas" in audit)
+    check("y por que el aparato de la cota tiene que ser proporcional",
+          "proporcional al peralte" in audit and "0.64 cm" in audit)
+    check("y por que el rayado, en cambio, NO se liga al peralte",
+          "misma densidad en el papel" in audit)
+    check("explica el acomodo de una seccion por renglon",
+          "El acomodo: una sección por renglón, 70 cm entre ellas" in audit
+          and "borde derecho en `x = −0.6`" in audit
+          and "SeparacionEntreSeccionesCm = 70" in audit)
+    check("y por que las bandas por familia estaban mal",
+          "también estaba mal" in audit
+          and "los rótulos se pisaban" in audit)
+    check("y cuenta las constantes que se fueron con las bandas",
+          all(c in audit for c in ("AireDeLaFamiliaCm", "BandaDeLaFamiliaCm",
+                                   "TechoDeLaBandaCm", "MargenDeBandaCm")))
+
+    check("explica las 16 propiedades del manual",
+          "Las propiedades geométricas del manual" in audit
+          and all(p in audit for p in ("PesoKgM", "AreaCm2", "IxCm4", "SxCm3",
+                                       "ZxCm3", "RxCm", "IyCm4", "SyCm3",
+                                       "ZyCm3", "RyCm", "RminCm", "JCm4",
+                                       "CwCm6", "IxyCm4", "XbarCm", "YbarCm")))
+    check("y que null no es cero",
+          "`null` no es cero" in audit and "se queda **vacía**" in audit)
+    check("y avisa de los 56 perfiles que no cuadran",
+          "**56**" in audit and "erratas de la hoja" in audit)
+    check("y de los valores de diseño del CF y del ZF",
+          "`Idx` y `Sxe`" in audit and "ancho efectivo" in audit)
+    check("y de la pared de diseño de los tubos",
+          "FACTOR_PARED_DISEÑO" in audit)
+
+    check("explica que la geometria vive en un solo sitio",
+          "la geometría, en un solo sitio" in audit
+          and "TrazoAcero.De(p, x, yAbajo, escala," in audit)
+    check("y por que la vista previa no calcula la forma por su cuenta",
+          "puede acabar\nenseñando algo **distinto** de lo que se dibuja" in audit)
+    check("y por que el hueco del tubo es EvenOdd",
+          "FillRule = EvenOdd" in audit and "hueco de verdad" in audit)
+
+    check("y lo que sigue faltando",
+          "Lo que sigue faltando" in audit and "acuerdo entre alma y patín" in audit)
+
+    check("hay comprobacion numerica del catalogo y del acomodo",
+          "El acomodo del acero"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+    check("y del acomodo vertical de las secciones",
+          "TODAS las secciones se alinean con su borde derecho en x = -0.6"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+    check("y la vuelta completa Excel a catalogo esta probada",
+          "La vuelta completa: Excel -> CSV -> catalogo"
+          in leer(ruta("tools/verificar_catalogo_y_acomodo.py")))
+
+    # ------------------------------------------------------------------
+    # El fallo que vio el usuario: MoveToTop abandonaba la via buena
+    # ------------------------------------------------------------------
+    # AutoCAD rechazo la llamada por estar ocupado (RPC_E_CALL_REJECTED) y la cascada
+    # paso a las otras dos vias, que en AutoCAD 2026 fallan siempre por el tipo del
+    # arreglo. El usuario veia tres fallos y el diagnostico culpaba al arreglo.
+    arreglos = leer(ruta("client/src/CadLink.Cad/AcadArreglos.cs"))
+    conexion = leer(ruta("client/src/CadLink.Cad/AcadConnection.cs"))
+
+    check("se puede saber si AutoCAD estaba ocupado",
+          "public static bool EstaOcupado(Exception ex)" in conexion)
+    check("los arreglos reintentan LA MISMA via cuando esta ocupado",
+          "AcadConnection.EstaOcupado(ex)" in arreglos
+          and "intento < IntentosPorOcupado" in arreglos)
+    check("y solo pasan a la siguiente via si el error es otro",
+          "return Surtio(via);" in arreglos)
+    check("con la misma paciencia que el resto de las llamadas",
+          "IntentosPorOcupado = 12" in arreglos and "EsperaMs = 250" in arreglos)
+
+    # Y el orden de dibujo, que es estetico, ya no se anuncia como que el dibujo
+    # puede estar incompleto.
+    seccion = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+    alzado = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
+
+    check("el reordenado de la seccion se reporta como nota",
+          "private bool ConArregloParaOrdenar(" in seccion
+          and 'ConArregloParaOrdenar("MoveToTop", objetos,' in seccion
+          and 'ConArregloParaOrdenar("MoveToBottom", objetos,' in seccion)
+    check("no queda ningun MoveTo reportado como fallo en la seccion",
+          'ConArregloDeEntidades("MoveTo' not in seccion)
+    check("y el del alzado tambien va como nota",
+          "private void FalloDeOrden(" in alzado
+          and "FalloDeOrden, Nota);" in alzado)
+    # El texto va partido en dos renglones de codigo, asi que se busca por trozos y no
+    # por la frase entera: buscarla completa fallaba por el salto de linea del fuente,
+    # que es justo el tipo de comprobacion fragil que no hay que escribir.
+    check("la nota dice que el dibujo esta completo",
+          "no se pudo reordenar" in seccion and "El dibujo está " in seccion
+          and "no se pudo reordenar" in alzado and "El alzado está " in alzado)
 
 if __name__ == "__main__":
     sys.exit(main())

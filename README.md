@@ -52,11 +52,24 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | Validación de conectividad y vista previa del unifilar | ✅ Completo |
 | Columnas calculadas (kVA, corriente, ampacidad total) | ✅ Completo |
 | Conexión a AutoCAD por COM (`AcadConnection`) | ✅ Completo |
-| Barra de guardar y menú arriba, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
+| **Una sola barra arriba**: menú y botones en la misma fila, con Ctrl+G / Ctrl+A / Ctrl+N | ✅ Completo |
+| **Tema claro u oscuro**, con botón en la barra y recordado entre sesiones | ✅ Completo |
 | Dibujar la planta estructural en AutoCAD (`PlantaDrawer`) | ✅ Completo |
-| **Importar desde Excel** | ⛔ Pendiente — aquí va la lógica de tus macros |
+| **Columna circular**, elegida en la columna *Elemento* | ✅ Completo |
+| **Zuncho helicoidal o en anillos**, a elección del usuario | ✅ Completo |
+| **Gancho sísmico del zuncho** a 135° sobre una varilla, con la cola en el núcleo | ✅ Completo |
+| **El corte insertado junto al alzado lleva sus llamadas de varillas** | ✅ Completo |
+| Alzados y bloques a **1 m** sobre la sección más alta | ✅ Completo |
+| Vista previa con fondo azul, igual para las dos formas | ✅ Completo |
+| **Rótulo del alzado debajo del bloque insertado y de sus cotas** | ✅ Completo |
+| Zuncho en contorno o macizo según el estilo de la sección | ✅ Completo |
+| Zuncho en contorno **con el ancho de la varilla** y sin picos en las crestas | ✅ Completo |
+| Varillas recortadas donde el zuncho pasa por delante | ✅ Completo |
+| Hoja con paneles inmovilizados y color por grupo de columnas | ✅ Completo |
+| **Importar desde Excel** | ⛔ Retirado de la interfaz — ver `docs/macro-secciones-concreto.md` §1 |
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
-| **Lectura de ETABS (CSI OAPI)** | ⛔ Pendiente |
+| **Lectura de ETABS (CSI OAPI)** | ✅ Completo — `EtabsConnection` por ProgID `CSI.ETABS.API.ETABSObject` |
+| **Lectura de SAP2000** | 🚧 En proceso — CSI comparte la OAPI, así que es el mismo lector con otro ProgID |
 
 Los pendientes están marcados en el código con el comentario
 `PENDIENTE DE IMPLEMENTAR`.
@@ -70,6 +83,13 @@ del port**, incluyendo los errores detectados en el código actual:
 |---|---|---|
 | `SECCIONES ESTRUCTURALES COTAS Y ROTULOS V3` | ~2.500 | [`docs/macro-secciones-concreto.md`](docs/macro-secciones-concreto.md) |
 | `PLANOS ESTRUCTURALES` (v50) | ~5.000 | [`docs/macro-plantas-etabs.md`](docs/macro-plantas-etabs.md) |
+| `ALZADOS V2` | ~1.900 | [`docs/comparacion-macro-alzados.md`](docs/comparacion-macro-alzados.md) — **cotejo rutina por rutina contra el código real** |
+
+> ⚠️ **El cotejo de `ALZADOS V2` encontró un defecto numérico en el port.** La tabla
+> de diámetros de varilla estaba redondeada y el `#2` estaba mal: 0.60 cm en lugar
+> de 0.635, lo que daba un **área un 12 % baja** y con ella una cuantía baja, que es
+> del lado inseguro. Corregido al nominal exacto (`n/8` de pulgada). Detalle en
+> [`docs/comparacion-macro-alzados.md`](docs/comparacion-macro-alzados.md) §1.
 
 **Decisión de arquitectura:** el motor de dibujo va por **COM**, no por plugin
 nativo. Razones y consecuencias en
@@ -90,6 +110,18 @@ nativo. Razones y consecuencias en
 > que un compilador no ve. Aun así, **espera tener que corregir algún detalle menor
 > de `CadLink.App` la primera vez que compiles en Windows**: un error de nombre o de
 > tipo en ese proyecto no lo caza nada de lo anterior.
+>
+> Y ya pasó una vez, así que queda escrito: `MainWindow.Acero.cs` escribía `new Path`
+> para la figura de la vista previa de acero, y en Windows eso es
+> `error CS0104: 'Path' es una referencia ambigua` —`System.Windows.Shapes.Path` contra
+> `System.IO.Path`, que este proyecto trae como *using* global—. El análisis sintáctico
+> no lo ve, porque para verlo hay que resolver los tipos de verdad. Se arregló con los
+> alias `Path` y `FormaPath`, y se escribió
+> [`tools/verificar_ambiguedades.py`](tools/verificar_ambiguedades.py), que recorre los
+> cuatro proyectos, calcula qué *namespaces* tiene a la vista cada archivo —incluidos los
+> globales del `.csproj`— y falla si alguno escribe a secas un nombre que está definido en
+> dos de ellos sin alias que lo resuelva. El propio script se prueba contra el código tal
+> como estaba cuando no compilaba.
 >
 > El servidor en Python sí fue verificado con Python 3.11.
 
@@ -243,9 +275,10 @@ servidor recibirá una **licencia de prueba de 30 días**.
 
 ### A. Prueba gratuita (comportamiento por defecto)
 
-Ya lo viste en el paso 3. Nota que la pestaña **AutoCAD** tiene el botón de
-generar dibujo deshabilitado: la prueba no incluye exportación. Eso se configura
-en `server/app/tokens.py`, función `features_for`.
+Ya lo viste en el paso 3. Nota que en la pestaña **Secciones Concreto** los botones
+de *Generar dibujo* y *Generar alzados* están deshabilitados, igual que el de
+*Dibujar en AutoCAD*: la prueba no incluye exportación. Eso se configura en
+`server/app/tokens.py`, función `features_for`.
 
 ### B. Licencia interna gratuita (PCs de tus trabajadores)
 
@@ -415,22 +448,58 @@ cadlink/
 
 ## Las pestañas
 
-Están en la parte inferior de la ventana, como las hojas de Excel:
+Están **arriba**, debajo de la barra única que lleva el menú y los botones de guardar
+en la misma fila:
 
 | Hoja | Qué hace |
 |---|---|
-| **Proyecto** | Datos generales, selección del archivo de Excel, norma aplicable |
-| **Buses** | Barras y nodos, con las coordenadas X/Y que definen su posición en el dibujo |
-| **Transformadores** | Capacidad, tensiones, impedancia. Corriente nominal calculada |
-| **Cables** | Calibre, longitud, conductores por fase. Ampacidad total calculada |
-| **Cargas** | Cuadro de cargas con kVA, corriente y totales con factor de potencia resultante |
-| **Unifilar** | Vista previa del diagrama antes de generar el DWG |
-| **AutoCAD** | Generación del dibujo, en modo DXF o COM sobre la sesión abierta |
-| **ETAP** | Conexión con etapAPI |
+| **Proyecto** | Solapa de los planos y juego de planos con su numeración |
+| **Secciones Concreto** | La tabla principal. Genera secciones y alzados, con vista previa |
+| **Secciones Acero** | Pendiente de portar |
+| **Zapatas Corridas** | Pendiente de portar |
+| **Zapatas Aisladas** | Pendiente de portar |
+| **Muros de Contención** | Pendiente de portar |
+| **Placa Base** | Pendiente de portar |
+| **Conexiones** | Pendiente de portar |
+| **ETABS** | Conexión por la CSI OAPI, lectura del modelo y de los piers, visor 3D y extruido |
+| **Dibujar planos estructurales** | La planta por nivel, y el botón *Dibujar en AutoCAD* |
 | **Licencia** | Tipo, vigencia, módulos habilitados, huella del equipo, revalidar |
 
 Las columnas calculadas son de solo lectura y se actualizan al instante, igual
 que una fórmula de Excel.
+
+### La columna circular
+
+La forma se elige en la columna **Elemento**: hay `COLUMNA` y `COLUMNA CIRCULAR`.
+Solo la fila puesta como circular se dibuja redonda; las demás no cambian.
+
+> En el plano las dos se rotulan **COLUMNA**. «COLUMNA CIRCULAR» es solo el nombre
+> de captura: en el dibujo lo que distingue a una de otra es su forma y su cota de
+> diámetro, no el texto del rótulo.
+
+Su armado se captura en tres columnas:
+
+| Columna | Qué hace |
+|---|---|
+| **N total** | Varillas **totales** del círculo. En una sección redonda no hay lechos |
+| **Var total** | Su diámetro. Si va vacía hereda el de *Var esq sup* |
+| **Zuncho helic.** | `SI` = el zuncho sube en hélice; vacío = anillos sueltos |
+
+En una fila circular la columna **Base cm** es el **diámetro** y la altura se
+ignora; *Revisar datos* lo avisa si traen valores distintos. El estribo diamante
+no aplica: es un rombo entre las varillas de dos lechos y en un círculo no hay
+lechos.
+
+### Ayudas de captura de la hoja
+
+- **Paneles inmovilizados.** *Elemento* e *ID* se quedan pegados a la izquierda al
+  desplazarse por las 27 columnas, y el encabezado no se va al bajar.
+- **Color por grupo.** Identificación, geometría, lecho superior, lecho inferior,
+  laterales, círculo, estribos, acabado y calculadas llevan cada uno su tono. El
+  lecho superior y el inferior son de colores **distintos** a propósito: es el par
+  que se confunde al capturar.
+- Las columnas **calculadas** van en gris y cursiva, para que se vea que ahí no se
+  escribe.
 
 ---
 

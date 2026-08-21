@@ -137,7 +137,10 @@ public static class EtabsReader
         object? story = Com.TryGet(cx.SapModel, "Story");
         if (story is null)
         {
-            m.Avisos.Add("Esta versión de ETABS no expone el objeto Story.");
+            // SAP2000 NO tiene pisos: es lo normal, no un defecto de version.
+            m.Avisos.Add(
+                "El modelo no expone el objeto Story, así que no hay niveles. En "
+                + "SAP2000 es lo normal: los pisos son un concepto de ETABS.");
             return;
         }
 
@@ -210,11 +213,7 @@ public static class EtabsReader
 
         try
         {
-            object?[] a = { 0, null, null, null };
-            Com.Call(frameObj, "GetLabelNameList", a, 0, 1, 2, 3);
-            nombres = Com.AsStrings(a[1]);
-            etiquetas = Com.AsStrings(a[2]);
-            niveles = Com.AsStrings(a[3]);
+            (nombres, etiquetas, niveles) = ListaDeNombres(frameObj, m, "frames");
             m.Frames = nombres.Length;
         }
         catch (Exception ex) when (EsFalloCom(ex))
@@ -223,7 +222,7 @@ public static class EtabsReader
             return;
         }
 
-        var cacheSecciones = new Dictionary<string, (double T2, double T3, string Forma)>(
+        var cacheSecciones = new Dictionary<string, Dims>(
             StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < nombres.Length; i++)
@@ -296,6 +295,12 @@ public static class EtabsReader
                 var dims = DimensionesSeccion(propFrame, seccion, cacheSecciones, m);
                 e.Forma = dims.Forma;
 
+                // Los espesores, que son lo que permite dibujar el perfil de verdad en
+                // lugar de una caja.
+                e.PatinM = dims.Patin;
+                e.AlmaM = dims.Alma;
+                e.ParedM = dims.Pared;
+
                 // En la columna el ancho se mide sobre el eje 3, al contrario que
                 // en la viga. Es la misma regla de la macro.
                 if (e.Clase == ClaseElemento.Columna)
@@ -318,9 +323,9 @@ public static class EtabsReader
     /// Dimensiones de una sección, probando cada forma en cascada, igual que
     /// <c>DimsDeSeccion</c> de la macro.
     /// </summary>
-    private static (double T2, double T3, string Forma) DimensionesSeccion(
+    private static Dims DimensionesSeccion(
         object propFrame, string seccion,
-        Dictionary<string, (double T2, double T3, string Forma)> cache,
+        Dictionary<string, Dims> cache,
         ModeloEtabs m)
     {
         if (cache.TryGetValue(seccion, out var guardada))
@@ -328,12 +333,12 @@ public static class EtabsReader
             return guardada;
         }
 
-        var r = LeerRectangulo(propFrame, seccion)
-                ?? LeerCirculo(propFrame, seccion)
-                ?? LeerPerfilI(propFrame, seccion)
-                ?? (0, 0, "RECT");
+        // Se PREGUNTA la forma en vez de tantear. Antes se probaba rectángulo, círculo y
+        // perfil I por turnos, y todo lo demás —ángulos, tubos, canales, que es de lo que
+        // está hecha una armadura metálica— caía al respaldo y salía como caja.
+        var r = PorForma(propFrame, seccion) ?? new Dims(0, 0, "RECT", 0, 0, 0);
 
-        if (r.Item1 == 0 && r.Item2 == 0)
+        if (r.T2 == 0 && r.T3 == 0)
         {
             m.Avisos.Add($"Sin dimensiones para la sección '{seccion}'.");
         }
@@ -342,7 +347,7 @@ public static class EtabsReader
         return r;
     }
 
-    private static (double, double, string)? LeerRectangulo(object propFrame, string seccion)
+    private static Dims? LeerRectangulo(object propFrame, string seccion)
     {
         try
         {
@@ -354,7 +359,7 @@ public static class EtabsReader
 
             var t3 = Convert.ToDouble(a[3]);
             var t2 = Convert.ToDouble(a[4]);
-            return t2 > 0 && t3 > 0 ? (t2, t3, "RECT") : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "RECT", 0, 0, 0) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -362,7 +367,7 @@ public static class EtabsReader
         }
     }
 
-    private static (double, double, string)? LeerCirculo(object propFrame, string seccion)
+    private static Dims? LeerCirculo(object propFrame, string seccion)
     {
         try
         {
@@ -373,7 +378,7 @@ public static class EtabsReader
             }
 
             var d = Convert.ToDouble(a[3]);
-            return d > 0 ? (d, d, "CIRC") : null;
+            return d > 0 ? new Dims(d, d, "CIRC", 0, 0, 0) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -381,7 +386,7 @@ public static class EtabsReader
         }
     }
 
-    private static (double, double, string)? LeerPerfilI(object propFrame, string seccion)
+    private static Dims? LeerPerfilI(object propFrame, string seccion)
     {
         try
         {
@@ -399,7 +404,13 @@ public static class EtabsReader
 
             var t3 = Convert.ToDouble(a[3]);
             var t2 = Convert.ToDouble(a[4]);
-            return t2 > 0 && t3 > 0 ? (t2, t3, "I") : null;
+
+            // a[5] y a[6] son el patin y el alma: ya venian por referencia, solo que no
+            // se guardaban, y son justo lo que hace falta para dibujar la I.
+            var tf = Convert.ToDouble(a[5]);
+            var tw = Convert.ToDouble(a[6]);
+
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "I", tf, tw, 0) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -433,11 +444,7 @@ public static class EtabsReader
 
         try
         {
-            object?[] a = { 0, null, null, null };
-            Com.Call(areaObj, "GetLabelNameList", a, 0, 1, 2, 3);
-            nombres = Com.AsStrings(a[1]);
-            etiquetas = Com.AsStrings(a[2]);
-            niveles = Com.AsStrings(a[3]);
+            (nombres, etiquetas, niveles) = ListaDeNombres(areaObj, m, "áreas");
             m.Areas = nombres.Length;
         }
         catch (Exception ex) when (EsFalloCom(ex))
@@ -607,4 +614,284 @@ public static class EtabsReader
             or NullReferenceException
             or FormatException
             or OverflowException;
+    /// <summary>
+    /// La lista de nombres de un objeto del modelo, con sus etiquetas y niveles si los hay.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí se separan ETABS y SAP2000, y era el motivo de que SAP2000 leyera 0 frames
+    /// y 0 áreas.</b> Se usaba <c>GetLabelNameList</c>, que devuelve nombre + etiqueta +
+    /// piso de una vez. Pero eso es de <b>ETABS</b>: la etiqueta y el piso son conceptos
+    /// suyos, y SAP2000 no tiene ese método. Al fallar, el lector se rendía y devolvía
+    /// cero, aunque el modelo tuviera cientos de barras.
+    /// </para>
+    /// <para>
+    /// SAP2000 sí tiene <c>GetNameList</c>, que devuelve solo los nombres. Es el mismo
+    /// que ya se usaba para los puntos, <b>y por eso los puntos sí se leían</b>: 232
+    /// puntos y 0 frames en el mismo modelo era la pista de que el problema no era la
+    /// conexión sino el método.
+    /// </para>
+    /// <para>
+    /// Que el nivel quede vacío no se calla: significa que el modelo se ve en 3D pero no
+    /// se agrupa por pisos, y eso se avisa.
+    /// </para>
+    /// </remarks>
+    private static (string[] Nombres, string[] Etiquetas, string[] Niveles) ListaDeNombres(
+        object? obj, ModeloEtabs m, string queEs)
+    {
+        if (obj is null)
+        {
+            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        // 1) El camino de ETABS: nombre, etiqueta y piso de una vez.
+        try
+        {
+            object?[] a = { 0, null, null, null };
+            Com.Call(obj, "GetLabelNameList", a, 0, 1, 2, 3);
+
+            return (Com.AsStrings(a[1]), Com.AsStrings(a[2]), Com.AsStrings(a[3]));
+        }
+        catch (Exception)
+        {
+            // No está: casi seguro que es SAP2000. Se sigue por el camino común.
+        }
+
+        // 2) El camino común, que es el que tiene SAP2000.
+        object?[] b = { 0, null };
+        Com.Call(obj, "GetNameList", b, 0, 1);
+
+        var nombres = Com.AsStrings(b[1]);
+        var vacios = new string[nombres.Length];
+
+        for (var i = 0; i < vacios.Length; i++)
+        {
+            vacios[i] = string.Empty;
+        }
+
+        m.Avisos.Add(
+            $"Los {queEs} se leyeron sin etiqueta ni nivel: este modelo no expone " +
+            "'GetLabelNameList', que es de ETABS. Se ven en 3D, pero no se agrupan " +
+            "por piso.");
+
+        return (nombres, vacios, vacios);
+    }
+
+    /// <summary>
+    /// Dimensiones de una sección de barra, con lo que hace falta para dibujar su perfil.
+    /// </summary>
+    /// <param name="T2">Peralte, en metros.</param>
+    /// <param name="T3">Ancho, en metros.</param>
+    /// <param name="Forma">RECT, CIRC, I, C, L, TUBO o CAJON.</param>
+    /// <param name="Patin">Espesor del patín. Cero si la forma no lo tiene.</param>
+    /// <param name="Alma">Espesor del alma. Cero si la forma no lo tiene.</param>
+    /// <param name="Pared">Espesor de pared de un tubo o cajón.</param>
+    private sealed record Dims(
+        double T2, double T3, string Forma, double Patin, double Alma, double Pared);
+
+    /// <summary>
+    /// Pregunta a SAP2000 <b>qué forma es</b> y llama al lector que le toca.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GetTypeOAPI</c> devuelve el tipo de sección, así que no hay que ir probando
+    /// getters a ver cuál responde. El tanteo tenía dos problemas: gastaba una llamada COM
+    /// por intento fallido, y sobre todo <b>solo cubría tres formas</b>. Una armadura
+    /// metálica está hecha de ángulos, tubos y canales, y todos ellos caían al respaldo y
+    /// se dibujaban como una caja.
+    /// </para>
+    /// <para>
+    /// Si <c>GetTypeOAPI</c> no está —versiones viejas— se cae al tanteo de siempre, que
+    /// para rectángulo, círculo y I sigue funcionando.
+    /// </para>
+    /// </remarks>
+    private static Dims? PorForma(object propFrame, string seccion)
+    {
+        var tipo = -1;
+
+        try
+        {
+            object?[] a = { seccion, 0 };
+
+            if (Com.CallRet(propFrame, "GetTypeOAPI", a, 1) == 0)
+            {
+                tipo = Convert.ToInt32(a[1]);
+            }
+        }
+        catch (Exception)
+        {
+            tipo = -1;
+        }
+
+        // Los valores del enum eFramePropType de CSI. Solo se listan los que se dibujan;
+        // el resto cae al tanteo.
+        var porTipo = tipo switch
+        {
+            1 => LeerPerfilI(propFrame, seccion),      // SECTION_I
+            2 => LeerCanal(propFrame, seccion),        // SECTION_CHANNEL
+            3 => LeerTe(propFrame, seccion),           // SECTION_T
+            4 => LeerAngulo(propFrame, seccion),       // SECTION_ANGLE
+            6 => LeerCajon(propFrame, seccion),        // SECTION_BOX
+            7 => LeerTubo(propFrame, seccion),         // SECTION_PIPE
+            8 => LeerRectangulo(propFrame, seccion),   // SECTION_RECTANGULAR
+            9 => LeerCirculo(propFrame, seccion),      // SECTION_CIRCLE
+            _ => null
+        };
+
+        if (porTipo is not null)
+        {
+            return porTipo;
+        }
+
+        // Respaldo: el tanteo de siempre.
+        return LeerRectangulo(propFrame, seccion)
+               ?? LeerCirculo(propFrame, seccion)
+               ?? LeerPerfilI(propFrame, seccion)
+               ?? LeerTubo(propFrame, seccion)
+               ?? LeerCajon(propFrame, seccion)
+               ?? LeerAngulo(propFrame, seccion)
+               ?? LeerCanal(propFrame, seccion);
+    }
+
+    /// <summary>Tubo redondo: <c>GetPipe(Name, File, Mat, T3, Tw, ...)</c>.</summary>
+    private static Dims? LeerTubo(object propFrame, string seccion)
+    {
+        try
+        {
+            object?[] a =
+            {
+                seccion, string.Empty, string.Empty, 0d, 0d, 0, string.Empty, string.Empty
+            };
+
+            if (Com.CallRet(propFrame, "GetPipe", a, 1, 2, 3, 4, 5, 6, 7) != 0)
+            {
+                return null;
+            }
+
+            var d = Convert.ToDouble(a[3]);
+            var tw = Convert.ToDouble(a[4]);
+
+            return d > 0 ? new Dims(d, d, "TUBO", 0, 0, tw) : null;
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Cajón: <c>GetTube(Name, File, Mat, T3, T2, Tf, Tw, ...)</c>.</summary>
+    private static Dims? LeerCajon(object propFrame, string seccion)
+    {
+        try
+        {
+            object?[] a =
+            {
+                seccion, string.Empty, string.Empty, 0d, 0d, 0d, 0d, 0, string.Empty,
+                string.Empty
+            };
+
+            if (Com.CallRet(propFrame, "GetTube", a, 1, 2, 3, 4, 5, 6, 7, 8, 9) != 0)
+            {
+                return null;
+            }
+
+            var t3 = Convert.ToDouble(a[3]);
+            var t2 = Convert.ToDouble(a[4]);
+            var tf = Convert.ToDouble(a[5]);
+
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "CAJON", 0, 0, tf) : null;
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Ángulo: <c>GetAngle(Name, File, Mat, T3, T2, Tf, Tw, ...)</c>.</summary>
+    private static Dims? LeerAngulo(object propFrame, string seccion)
+    {
+        try
+        {
+            object?[] a =
+            {
+                seccion, string.Empty, string.Empty, 0d, 0d, 0d, 0d, 0, string.Empty,
+                string.Empty
+            };
+
+            if (Com.CallRet(propFrame, "GetAngle", a, 1, 2, 3, 4, 5, 6, 7, 8, 9) != 0)
+            {
+                return null;
+            }
+
+            var t3 = Convert.ToDouble(a[3]);
+            var t2 = Convert.ToDouble(a[4]);
+            var tf = Convert.ToDouble(a[5]);
+            var tw = Convert.ToDouble(a[6]);
+
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "L", tf, tw, 0) : null;
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Canal: <c>GetChannel(Name, File, Mat, T3, T2, Tf, Tw, ...)</c>.</summary>
+    private static Dims? LeerCanal(object propFrame, string seccion)
+    {
+        try
+        {
+            object?[] a =
+            {
+                seccion, string.Empty, string.Empty, 0d, 0d, 0d, 0d, 0, string.Empty,
+                string.Empty
+            };
+
+            if (Com.CallRet(propFrame, "GetChannel", a, 1, 2, 3, 4, 5, 6, 7, 8, 9) != 0)
+            {
+                return null;
+            }
+
+            var t3 = Convert.ToDouble(a[3]);
+            var t2 = Convert.ToDouble(a[4]);
+            var tf = Convert.ToDouble(a[5]);
+            var tw = Convert.ToDouble(a[6]);
+
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "C", tf, tw, 0) : null;
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Te: <c>GetTee(Name, File, Mat, T3, T2, Tf, Tw, ...)</c>.</summary>
+    private static Dims? LeerTe(object propFrame, string seccion)
+    {
+        try
+        {
+            object?[] a =
+            {
+                seccion, string.Empty, string.Empty, 0d, 0d, 0d, 0d, 0, string.Empty,
+                string.Empty
+            };
+
+            if (Com.CallRet(propFrame, "GetTee", a, 1, 2, 3, 4, 5, 6, 7, 8, 9) != 0)
+            {
+                return null;
+            }
+
+            var t3 = Convert.ToDouble(a[3]);
+            var t2 = Convert.ToDouble(a[4]);
+            var tf = Convert.ToDouble(a[5]);
+            var tw = Convert.ToDouble(a[6]);
+
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "T", tf, tw, 0) : null;
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return null;
+        }
+    }
+
 }

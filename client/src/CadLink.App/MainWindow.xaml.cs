@@ -41,35 +41,42 @@ public partial class MainWindow : Window
 
         InitializeComponent();
 
-        LogoImage.Source = Branding.Logo;
+        // El logo ya no se pinta en un encabezado propio: es el ICONO de la ventana,
+        // que es donde Windows lo muestra sin gastar alto de la hoja.
         Icon = Branding.Logo;
 
         LlenarListas();
 
-        HeaderProduct.Text = AppInfo.ProductName;
         HeaderVersion.Text = "v" + AppInfo.Version;
 
-        // Con el nombre de empresa vacío se oculta el renglón entero, para que no
-        // quede un hueco ni un guion suelto en el título.
+        // El nombre del producto y la empresa van SOLO en la barra de titulo. Antes
+        // se repetian en el encabezado azul, que es lo que se quito.
         var empresa = AppInfo.CompanyName;
         var hayEmpresa = !string.IsNullOrWhiteSpace(empresa);
-
-        HeaderCompany.Text = hayEmpresa ? empresa : string.Empty;
-        HeaderCompany.Visibility = hayEmpresa ? Visibility.Visible : Visibility.Collapsed;
 
         Title = hayEmpresa
             ? $"{AppInfo.ProductName} — {empresa}"
             : AppInfo.ProductName;
 
-        OutputPathBox.Text = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "secciones.dxf");
-
         Enlazar();
         AplicarLicencia(license);
 
+        // El tema que el usuario dejó puesto la última vez. Va AQUÍ, en el
+        // constructor, y no en el Loaded: WPF no dibuja nada hasta que el
+        // constructor termina, así que la ventana ya aparece con su tema y no se ve
+        // el parpadeo de claro a oscuro.
+        Tema.Cargar();
+        TemaButton.Content = Tema.TextoDelBoton;
+
         PreviewCanvas.SizeChanged += (_, _) => DibujarVistaPrevia();
         SeccionesGrid.SelectionChanged += OnSeccionSeleccionada;
+
+        // Lo mismo para la hoja de acero. Va aquí, junto a lo del concreto, porque las dos
+        // vistas previas se enganchan UNA VEZ en el arranque: Enlazar se vuelve a llamar al
+        // cargar el ejemplo y al empezar de nuevo, y suscribirse ahí dejaría el mismo evento
+        // enganchado cinco veces.
+        EngancharVistaPreviaAcero();
+        EngancharVistaPreviaZapata();
 
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
@@ -140,8 +147,24 @@ public partial class MainWindow : Window
         {
             // COLUMNA y DADO van juntos porque son los dos verticales, y son los
             // dos que llevan alzado vertical.
-            "COLUMNA", "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
-            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"
+            //
+            // COLUMNA CIRCULAR va justo despues de COLUMNA: es donde se elige la
+            // FORMA. En el plano las dos se rotulan «COLUMNA», ver
+            // SeccionConcretoRow.ElementoRotulo.
+            SeccionConcretoRow.ElementoColumna,
+            SeccionConcretoRow.ElementoColumnaCircular,
+            // Y los dos dados, con la misma idea: DADO CIRCULAR va justo despues de
+            // DADO porque es donde se elige la FORMA. Los dos se rotulan «DADO».
+            SeccionConcretoRow.ElementoDado,
+            SeccionConcretoRow.ElementoDadoCircular,
+            "CASTILLO", "TRABE", "CONTRATRABE",
+            SeccionConcretoRow.ElementoCabezal,
+            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE",
+
+            // OTRO va AL FINAL, y es un recordatorio de que la casilla se puede
+            // escribir: el combo es editable, asi que se puede teclear cualquier nombre
+            // y ese es el que sale en el rotulo. Ver SeccionConcretoRow.ElementoOtro.
+            SeccionConcretoRow.ElementoOtro
         };
 
         ColVarEsqSup.ItemsSource = diametros;
@@ -154,6 +177,16 @@ public partial class MainWindow : Window
         ColVarDiamante.ItemsSource = opcionales;
 
         ColDiamante.ItemsSource = new[] { string.Empty, "SI" };
+
+        // Seccion circular. La FORMA se elige en ColElemento, no aqui: lo unico que
+        // se captura es su armado. «Var total» es opcional porque si va vacia hereda
+        // el diametro de la columna F, igual que los demas diametros de la hoja.
+        ColZuncho.ItemsSource = new[] { string.Empty, "SI" };
+        ColVarTotal.ItemsSource = opcionales;
+
+        // Y las de la hoja de acero, que viven en MainWindow.Acero.cs.
+        LlenarListasAcero();
+        LlenarListasZapatas();
     }
 
     private void Enlazar()
@@ -199,6 +232,13 @@ public partial class MainWindow : Window
             SeccionesGrid.SelectedIndex = 0;
         }
 
+        // La hoja de acero se enlaza AQUI, dentro de Enlazar, y no en el constructor:
+        // Enlazar se vuelve a llamar al cargar el ejemplo, al borrar todo y al empezar un
+        // trabajo nuevo, y en esos tres casos _datos es OTRO objeto. Enlazando el acero
+        // aparte, su cuadricula seguiria mostrando la coleccion del proyecto anterior.
+        EnlazarAcero();
+        EnlazarZapatas();
+
         DatosCambiaron();
     }
 
@@ -227,9 +267,138 @@ public partial class MainWindow : Window
 
     private void DatosCambiaron()
     {
+        RegistrarEnHistorial();
+
+        // Las listas de la hoja de zapatas —los dados y las columnas— salen de ESTA hoja,
+        // así que se refrescan aquí: al agregar, borrar o renombrar uno, el desplegable se
+        // entera solo. Las columnas de acero avisan por su lado, desde su propia hoja.
+        ActualizarListasDeZapatas();
+
         ActualizarContadores();
         ActualizarTotales();
         DibujarVistaPrevia();
+    }
+
+    // ======================================================================
+    // DESHACER (Ctrl+Z)
+    // ======================================================================
+
+    private readonly Historial _historial = new();
+
+    /// <summary>El trabajo tal como quedó después del último cambio.</summary>
+    /// <remarks>
+    /// Es la pieza que hace que esto funcione sin interceptar cada sitio que toca los datos: se
+    /// guarda cómo quedó todo, y cuando llega el cambio SIGUIENTE, lo que se apila es este
+    /// estado —el de antes—, no el nuevo. Sin él habría que acordarse de tomar la instantánea
+    /// antes de cada cambio, en cada uno de los caminos que los producen.
+    /// </remarks>
+    private Instantanea? _estadoActual;
+
+    /// <summary>Si se está deshaciendo, para no apilar el propio deshacer.</summary>
+    private bool _deshaciendo;
+
+    private void RegistrarEnHistorial()
+    {
+        // Al arrancar, mientras se enlazan las cuadrículas, no hay nada que deshacer todavía.
+        if (!_listo || _deshaciendo)
+        {
+            return;
+        }
+
+        if (_estadoActual is not null)
+        {
+            _historial.Apilar(_estadoActual);
+        }
+
+        _estadoActual = TomarInstantanea();
+        ActualizarBotonDeshacer();
+    }
+
+    private Instantanea TomarInstantanea() =>
+        new(ArmarProyecto(), _datos.SeccionesAcero);
+
+    private void ActualizarBotonDeshacer()
+    {
+        DeshacerButton.IsEnabled = _historial.Puede;
+
+        DeshacerButton.ToolTip = _historial.Puede
+            ? $"Deshace el último cambio (Ctrl+Z). Hay {_historial.Cuantos} paso(s) guardados."
+            : "No hay nada que deshacer.";
+    }
+
+    /// <summary>
+    /// Deshace el último cambio. También responde a <b>Ctrl+Z</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Si el cursor está dentro de una celda, gana la celda.</b> Ahí Ctrl+Z es el deshacer
+    /// del cuadro de texto —letra por letra, mientras se escribe— y es lo que cualquiera
+    /// espera: quitarle al usuario el deshacer de lo que está tecleando para deshacerle en su
+    /// lugar la fila anterior sería una sorpresa desagradable. El historial del trabajo entra
+    /// cuando la celda ya no tiene nada que deshacer.
+    /// </para>
+    /// </remarks>
+    private void OnDeshacer(object sender, RoutedEventArgs e)
+    {
+        if (Keyboard.FocusedElement is System.Windows.Controls.TextBox caja && caja.CanUndo)
+        {
+            caja.Undo();
+            return;
+        }
+
+        var paso = _historial.Deshacer();
+
+        if (paso is null)
+        {
+            StatusText.Text = "No hay nada que deshacer.";
+            return;
+        }
+
+        _deshaciendo = true;
+
+        try
+        {
+            AplicarProyecto(paso.Proyecto);
+
+            // Las secciones de acero van aparte porque el archivo .clk todavía no las guarda.
+            _datos.SeccionesAcero.Clear();
+
+            foreach (var p in paso.Acero)
+            {
+                _datos.SeccionesAcero.Add(p);
+            }
+        }
+        finally
+        {
+            _deshaciendo = false;
+        }
+
+        // El estado actual pasa a ser el que se acaba de poner, no el que había: si no, el
+        // siguiente cambio apilaría otra vez el estado deshecho y Ctrl+Z se quedaría dando
+        // vueltas entre dos estados sin avanzar hacia atrás.
+        _estadoActual = paso;
+
+        ActualizarBotonDeshacer();
+        ActualizarTotalesAcero();
+        DibujarVistaPreviaAcero();
+
+        StatusText.Text = _historial.Puede
+            ? $"Se deshizo el último cambio. Quedan {_historial.Cuantos} paso(s) atrás."
+            : "Se deshizo el último cambio. Ya no queda nada que deshacer.";
+    }
+
+    /// <summary>
+    /// Borra el historial: al abrir otro trabajo, al empezar de cero o al cargar el ejemplo.
+    /// </summary>
+    /// <remarks>
+    /// Deshacer después de abrir otro archivo devolvería al trabajo anterior sin avisar, y el
+    /// usuario creería que le deshicieron un cambio cuando lo que le cambió fue el archivo.
+    /// </remarks>
+    private void OlvidarHistorial()
+    {
+        _historial.Limpiar();
+        _estadoActual = _listo ? TomarInstantanea() : null;
+        ActualizarBotonDeshacer();
     }
 
     private void ActualizarContadores() =>
@@ -334,9 +503,15 @@ public partial class MainWindow : Window
         // puerta abierta al modulo que se cobra.
         PlantaCadButton.IsEnabled = puedeDibujar;
 
-        ExportHintText.Text = puedeDibujar
+        // Las zapatas, igual. El boton nacia apagado en el XAML porque el dibujante no
+        // existia; ahora existe, asi que quien decide si esta encendido es la LICENCIA y no
+        // el XAML. Sin esta linea, el unico boton de dibujo de la aplicacion que se puede
+        // pulsar en la version de prueba seria este.
+        DibujarZapatasButton.IsEnabled = puedeDibujar;
+
+        MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
-            : "La generación de dibujos no está incluida en la versión de prueba.";
+            : "La generación de dibujos no está incluida en la versión de prueba.");
 
         var puedeEtabs = _license.HasFeature("etabs");
         EtabsTab.IsEnabled = puedeEtabs;
@@ -344,6 +519,36 @@ public partial class MainWindow : Window
         {
             EtabsStatusText.Text = "El módulo de ETABS no está incluido en tu licencia.";
         }
+    }
+
+    /// <summary>
+    /// Pone las notas del último dibujo, y deja el panel <b>plegado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las notas vivían encima de la vista previa, en una capa semitransparente pegada al
+    /// borde de abajo, y ahí <b>tapaban el dibujo</b> justo donde va el rótulo de la sección
+    /// y la cota de la base. Ahora van debajo, en su propio renglón y dentro de un
+    /// <c>Expander</c>: si no hay nada que decir no ocupan ni un píxel —la visibilidad la
+    /// manda el propio texto, con un disparador en el XAML— y si hay algo se ve una línea que
+    /// se abre al tocarla.
+    /// </para>
+    /// <para>
+    /// <b>Y se pliega en cada dibujo</b>, no solo al arrancar. Si el usuario lo dejó abierto
+    /// para leer las notas de un dibujo, el siguiente no tiene por qué heredar el panel
+    /// abierto tapando media pestaña: las notas nuevas se anuncian con la línea de la
+    /// cabecera, que es donde se enteró la primera vez.
+    /// </para>
+    /// <para>
+    /// Los cuatro sitios que escriben notas pasan por aquí, que es el motivo de que exista:
+    /// con la asignación repetida cuatro veces, plegar el panel había que acordarse de
+    /// hacerlo en los cuatro.
+    /// </para>
+    /// </remarks>
+    private void MostrarNotas(string texto)
+    {
+        ExportHintText.Text = texto;
+        NotasPanel.IsExpanded = false;
     }
 
     private async void OnRevalidate(object sender, RoutedEventArgs e)
@@ -391,48 +596,26 @@ public partial class MainWindow : Window
     // Proyecto
     // ======================================================================
 
-    private void OnBrowseExcel(object sender, RoutedEventArgs e)
-    {
-        var dialogo = new OpenFileDialog
-        {
-            Title = "Selecciona el libro de Excel",
-            Filter = "Libros de Excel (*.xlsx;*.xlsm)|*.xlsx;*.xlsm|Todos los archivos (*.*)|*.*"
-        };
-
-        if (dialogo.ShowDialog(this) == true)
-        {
-            // La casilla de la ruta ya no esta en la interfaz: los datos del
-            // proyecto los lleva la solapa. La ruta se recuerda aqui.
-            _rutaExcel = dialogo.FileName;
-            StatusText.Text = "Libro seleccionado: " + Path.GetFileName(dialogo.FileName);
-        }
-    }
-
-    private void OnImportExcel(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(_rutaExcel))
-        {
-            MessageBox.Show("Selecciona primero el libro de Excel.",
-                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        // ================== PENDIENTE DE IMPLEMENTAR ==================
-        // Leer la hoja "Secciones Estructurales Concreto" con ClosedXML,
-        // columnas A a V mas AC, segun docs/macro-secciones-concreto.md
-        // seccion 1, y llenar _datos.SeccionesConcreto.
-        // ==============================================================
-
-        MessageBox.Show(
-            "El importador de Excel todavía no está implementado.\n\n" +
-            "Es el siguiente paso: leer la hoja de secciones con sus columnas A a V.",
-            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
-    }
+    // El importador de Excel SE RETIRO. Ofrecia un boton en la barra, otro en la hoja
+    // Proyecto y una entrada de menu, y las tres terminaban en el mismo aviso de «no
+    // esta implementado». Un boton que solo sirve para decir que no funciona estorba
+    // mas de lo que ayuda: ocupa sitio en la barra y hace dudar de si el problema es
+    // del programa o de la hoja de calculo.
+    //
+    // Cuando se porte de verdad, lo que hace falta esta escrito en
+    // docs/macro-secciones-concreto.md seccion 1: leer la hoja «Secciones
+    // Estructurales Concreto» con ClosedXML, columnas A a V mas AC, y llenar
+    // _datos.SeccionesConcreto.
 
     private void OnLoadSample(object sender, RoutedEventArgs e)
     {
         _datos = DatosProyecto.CrearEjemplo();
         Enlazar();
+
+        // El historial se olvida: deshacer aquí devolvería al trabajo de antes del ejemplo,
+        // que no es «el último cambio» sino otro trabajo.
+        OlvidarHistorial();
+
         StatusText.Text = "Ejemplo cargado.";
     }
 
@@ -448,6 +631,7 @@ public partial class MainWindow : Window
 
         _datos = new DatosProyecto();
         Enlazar();
+        OlvidarHistorial();
         StatusText.Text = "Datos borrados.";
     }
 
@@ -498,6 +682,7 @@ public partial class MainWindow : Window
             ObraBox.Text = string.Empty;
             DibujoBox.Text = string.Empty;
             FechaPicker.SelectedDate = DateTime.Today;
+            RefrescarFecha();
 
             _modeloEtabs = null;
             _vista.Modelo = null;
@@ -518,6 +703,7 @@ public partial class MainWindow : Window
         ResumenPlanos();
         PlantasResumenText.Text = string.Empty;
         RedibujarVistas();
+        OlvidarHistorial();
         StatusText.Text = "Trabajo nuevo.";
     }
 
@@ -612,14 +798,45 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnImportEtabs(object sender, RoutedEventArgs e)
+    private void OnImportEtabs(object sender, RoutedEventArgs e) =>
+        LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs);
+
+    /// <summary>Lee el modelo abierto en <b>SAP2000</b>.</summary>
+    /// <remarks>
+    /// Es el mismo lector que el de ETABS, y no es un atajo: CSI comparte la OAPI entre
+    /// los dos programas —la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las
+    /// mismas llamadas para pisos, marcos y áreas— así que lo único que cambia es el
+    /// ProgID con el que se pide el objeto activo. Ver
+    /// <c>EtabsConnection.ProgramaCsi</c>.
+    /// </remarks>
+    private void OnImportSap2000(object sender, RoutedEventArgs e) =>
+        LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000);
+
+    /// <summary>
+    /// Lee el modelo abierto en el programa de CSI que se le diga, y lo <b>visualiza</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está en un solo sitio para los dos programas porque el cuerpo era idéntico salvo
+    /// el destino: duplicarlo garantizaba que un arreglo entrara en uno y no en el otro.
+    /// </para>
+    /// <para>
+    /// La visualización no hay que añadirla: al dejar el modelo en <c>_vista.Modelo</c> y
+    /// llamar a <c>RedibujarVistas</c>, el visor 3D, la vista extruida y la planta se
+    /// pintan igual que con ETABS, porque todos trabajan sobre el mismo
+    /// <c>ModeloEtabs</c>.
+    /// </para>
+    /// </remarks>
+    private void LeerModeloCsi(EtabsConnection.ProgramaCsi destino)
     {
         try
         {
             Cursor = Cursors.Wait;
-            EtabsStatusText.Text = "Leyendo el modelo…";
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = destino };
+
+            EtabsStatusText.Text = $"Leyendo el modelo de {cx.NombreDelDestino}…";
+
             cx.Conectar();
 
             var modelo = EtabsReader.Leer(cx);
@@ -628,7 +845,8 @@ public partial class MainWindow : Window
             EtabsGrid.ItemsSource = modelo.Elementos;
             EtabsStatusText.Text = modelo.Resumen();
             StatusText.Text =
-                $"Modelo leído: {modelo.Elementos.Count} elementos en {modelo.Niveles.Count} nivel(es).";
+                $"Modelo de {cx.NombreDelDestino} leído: {modelo.Elementos.Count} " +
+                $"elementos en {modelo.Niveles.Count} nivel(es).";
 
             // El visor se alimenta del mismo modelo que la cuadrícula
             _vista.Modelo = modelo;
@@ -681,11 +899,34 @@ public partial class MainWindow : Window
 
             var dibujante = new AlzadoDrawer(doc, escala)
             {
-                EscalaHatch = LeerEscalaHatch()
+                EscalaHatch = LeerEscalaHatch(),
+
+                // Los bloques y los alzados van 2 m por ENCIMA de la seccion mas
+                // alta, no en la cota fija Y=2 de la macro. Con una contratrabe o un
+                // muro altos, la cota fija dejaba la seccion invadiendo la fila de
+                // alzados.
+                AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)
             };
 
             // Capas de varilla, estilos de texto y de cota: los mismos de la sección
-            new SeccionDrawer(doc, escala).AsegurarCapas(ClavesDeVarillaUsadas());
+            var secciones = new SeccionDrawer(doc, escala);
+            secciones.AsegurarCapas(ClavesDeVarillaUsadas());
+
+            // Las llamadas de las varillas NO viajan dentro del bloque de la sección:
+            // Bloquear deja fuera las capas COTAS y ROTULOS a propósito, así que el
+            // corte que se inserta junto al alzado llegaba sin ellas. Se rehacen aquí,
+            // cuando el alzado avisa de dónde dejó el bloque.
+            dibujante.TrasInsertarSeccion = (id, xs, ys) =>
+            {
+                var fila = _datos.SeccionesConcreto.FirstOrDefault(
+                    f => string.Equals((f.Id ?? string.Empty).Trim(), id,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (fila is not null)
+                {
+                    secciones.LlamadasJuntoAlBloque(AFormatoCad(fila), xs, ys);
+                }
+            };
 
             // Y la capa ALZADOS, que solo usa el alzado
             dibujante.AsegurarCapas();
@@ -742,9 +983,9 @@ public partial class MainWindow : Window
             {
                 var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
 
-                ExportHintText.Text =
+                MostrarNotas(
                     "AVISOS DEL ULTIMO ALZADO (" + fallos.Count + "):" +
-                    Environment.NewLine + detalle;
+                    Environment.NewLine + detalle);
 
                 MessageBox.Show(
                     $"{dibujados} alzado(s) dibujados, pero hubo {fallos.Count} fallo(s) " +
@@ -930,6 +1171,9 @@ public partial class MainWindow : Window
         {
             AplicarProyecto(ArchivoProyecto.Leer(dialogo.FileName));
 
+            // Se abrió OTRO trabajo: lo de antes ya no es «el último cambio».
+            OlvidarHistorial();
+
             _archivoActual = dialogo.FileName;
             ArchivoText.Text = "Abierto: " + Path.GetFileName(dialogo.FileName);
             StatusText.Text = $"Trabajo abierto: {Path.GetFileName(dialogo.FileName)}.";
@@ -980,6 +1224,9 @@ public partial class MainWindow : Window
                 NEsqInf = s.NEsqInf, DiamEsqInf = s.DiamEsqInf,
                 NIntInf = s.NIntInf, DiamIntInf = s.DiamIntInf,
                 NInter = s.NInter, DiamInter = s.DiamInter,
+                Circular = s.Circular,
+                NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
+                ZunchoHelicoidal = s.ZunchoHelicoidal,
                 RecubrimientoCm = s.RecubrimientoCm,
                 Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                 EstriboDiamante = s.EstriboDiamante,
@@ -987,6 +1234,20 @@ public partial class MainWindow : Window
                 GanchoCm = s.GanchoCm, Fc = s.Fc, Escala = s.Escala,
                 LongitudM = s.LongitudM
             });
+        }
+
+        // LAS OTRAS DOS HOJAS. Antes no se guardaban: «guardar trabajo» escribía solo el
+        // concreto y el acero y las zapatas se perdían. Van como filas genéricas -pares de
+        // nombre y valor- para que una columna nueva se guarde sola el día que se agregue,
+        // que es exactamente lo que no pasó cuando llegaron estas dos hojas.
+        foreach (var a in _datos.SeccionesAcero)
+        {
+            p.Acero.Add(FilaSerializable.Leer(a));
+        }
+
+        foreach (var z in _datos.ZapatasAisladas)
+        {
+            p.Zapatas.Add(FilaSerializable.Leer(z));
         }
 
         return p;
@@ -1020,6 +1281,7 @@ public partial class MainWindow : Window
             ObraBox.Text = p.Obra;
             DibujoBox.Text = p.Dibujo;
             FechaPicker.SelectedDate = p.Fecha;
+            RefrescarFecha();
             EscalaSolapaBox.Text = p.Escala;
 
             HatchScaleBox.Text = p.EscalaHatch.ToString(
@@ -1045,6 +1307,9 @@ public partial class MainWindow : Window
                     NEsqInf = s.NEsqInf, DiamEsqInf = s.DiamEsqInf,
                     NIntInf = s.NIntInf, DiamIntInf = s.DiamIntInf,
                     NInter = s.NInter, DiamInter = s.DiamInter,
+                    Circular = s.Circular,
+                    NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
+                    ZunchoHelicoidal = s.ZunchoHelicoidal,
                     RecubrimientoCm = s.RecubrimientoCm,
                     Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                     EstriboDiamante = s.EstriboDiamante,
@@ -1057,6 +1322,26 @@ public partial class MainWindow : Window
                     Fc = s.Fc,
                     Escala = s.Escala, LongitudM = s.LongitudM
                 });
+            }
+
+            // ---- Secciones Acero ----
+            _datos.SeccionesAcero.Clear();
+
+            foreach (var fila in p.Acero)
+            {
+                var nueva = new PerfilAceroRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.SeccionesAcero.Add(nueva);
+            }
+
+            // ---- Zapatas Aisladas ----
+            _datos.ZapatasAisladas.Clear();
+
+            foreach (var fila in p.Zapatas)
+            {
+                var nueva = new ZapataAisladaRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.ZapatasAisladas.Add(nueva);
             }
         }
         finally
@@ -1077,9 +1362,6 @@ public partial class MainWindow : Window
     // ======================================================================
 
     private readonly JuegoDePlanos _juego = new();
-
-    /// <summary>Libro de Excel elegido. Ya no hay casilla para el en la interfaz.</summary>
-    private string _rutaExcel = string.Empty;
 
     /// <summary>
     /// Enlaza la solapa y el juego de planos. Se llama una vez, al arrancar.
@@ -1114,7 +1396,11 @@ public partial class MainWindow : Window
             {
                 _juego.Solapa.Fecha = FechaPicker.SelectedDate.Value;
             }
+
+            RefrescarFecha();
         };
+
+        RefrescarFecha();
 
         AcotacionCombo.SelectionChanged += (_, _) =>
         {
@@ -1126,6 +1412,16 @@ public partial class MainWindow : Window
 
         ResumenPlanos();
     }
+
+    /// <summary>
+    /// Pone al día el texto de la fecha: el mes y el año con letra.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que se rotula en la solapa, así que se muestra al lado del calendario
+    /// para que se vea <b>lo que va a salir impreso</b> y no solo lo que se capturó.
+    /// </remarks>
+    private void RefrescarFecha() =>
+        FechaTextoLabel.Text = _juego.Solapa.FechaTexto;
 
     private void ResumenPlanos()
     {
@@ -1144,12 +1440,40 @@ public partial class MainWindow : Window
         PlanosGrid.ScrollIntoView(p);
     }
 
+    /// <summary>
+    /// Quita del juego <b>todos</b> los planos seleccionados.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Antes quitaba solo <c>SelectedItem</c>, o sea uno, aunque hubiera diez
+    /// marcados. Con la cuadrícula ya en modo <c>Extended</c> se pueden marcar varios,
+    /// así que el botón tiene que quitarlos todos o quedaría prometiendo algo que no
+    /// hace.
+    /// </para>
+    /// <para>
+    /// La lista de seleccionados se copia ANTES de empezar a borrar. Si se recorriera
+    /// <c>SelectedItems</c> directamente, cada borrado la modificaría mientras se está
+    /// recorriendo y saltaría una excepción o se quedarían filas sin quitar.
+    /// </para>
+    /// </remarks>
     private void OnQuitarPlano(object sender, RoutedEventArgs e)
     {
-        if (PlanosGrid.SelectedItem is PlanoRow p)
+        var marcados = PlanosGrid.SelectedItems.OfType<PlanoRow>().ToList();
+
+        if (marcados.Count == 0)
+        {
+            StatusText.Text = "Marca en la tabla los planos que quieres quitar.";
+            return;
+        }
+
+        foreach (var p in marcados)
         {
             _juego.Planos.Remove(p);
         }
+
+        StatusText.Text = marcados.Count == 1
+            ? "Se quitó 1 plano del juego."
+            : $"Se quitaron {marcados.Count} planos del juego.";
     }
 
     private void OnSubirPlano(object sender, RoutedEventArgs e) => MoverPlano(-1);
@@ -1389,6 +1713,41 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Arrow;
         }
+    }
+
+    /// <summary>
+    /// Alto de la sección más alta, en metros de dibujo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que decide dónde arranca la fila de alzados: van
+    /// <see cref="AlzadoLayout.AireSobreSecciones"/> metros por encima de esto.
+    /// </para>
+    /// <para>
+    /// Se calcula de los DATOS y no midiendo los bloques en AutoCAD, y es a propósito.
+    /// Medir los bloques parece más fiel —«la sección más alta dibujada»— pero tiene
+    /// dos problemas: hay que insertar cada bloque para poder medirlo, y si el usuario
+    /// dibuja los alzados sin haber dibujado antes las secciones no habría nada que
+    /// medir y la fila se iría a la cota mínima. Con los datos, el resultado es el
+    /// mismo y es <b>determinista</b>: la altura del dibujo de una sección es su
+    /// peralte por la escala, y en una circular su diámetro.
+    /// </para>
+    /// </remarks>
+    private double AltoMaximoDeLasSecciones(double escala)
+    {
+        var maximo = 0d;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            // En la circular la altura no se usa: el alto del dibujo es el DIAMETRO,
+            // que se captura en la base. Tomar AlturaCm dejaria una columna redonda
+            // de 50 cm contando como 0 y la fila de alzados se le echaria encima.
+            var altoCm = s.EsCircular ? s.DiametroCm : s.AlturaCm;
+
+            maximo = Math.Max(maximo, altoCm * escala);
+        }
+
+        return maximo;
     }
 
     /// <summary>
@@ -1719,20 +2078,6 @@ public partial class MainWindow : Window
     // AutoCAD
     // ======================================================================
 
-    private void OnBrowseOutput(object sender, RoutedEventArgs e)
-    {
-        var dialogo = new SaveFileDialog
-        {
-            Title = "Archivo de salida",
-            Filter = "Archivos DXF (*.dxf)|*.dxf|Dibujos de AutoCAD (*.dwg)|*.dwg",
-            FileName = Path.GetFileName(OutputPathBox.Text)
-        };
-
-        if (dialogo.ShowDialog(this) == true)
-        {
-            OutputPathBox.Text = dialogo.FileName;
-        }
-    }
 
     private void OnExport(object sender, RoutedEventArgs e)
     {
@@ -1752,15 +2097,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (ModeDxfRadio.IsChecked == true)
-        {
-            MessageBox.Show(
-                "La escritura directa de DXF todavía no está implementada.\n\n" +
-                "Usa la primera opción, dibujar en la sesión abierta de AutoCAD.",
-                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
+        // Ya no hay que elegir modo: se dibuja SIEMPRE por COM sobre la sesion
+        // abierta de AutoCAD. La otra opcion de la pestaña que se quito era escribir
+        // un DXF, y no estaba implementada: lo unico que hacia era ofrecerse y
+        // despues avisar de que no funcionaba.
         try
         {
             Cursor = Cursors.Wait;
@@ -1880,11 +2220,11 @@ public partial class MainWindow : Window
 
                 // Las notas informativas quedan a mano, pero NO interrumpen: el
                 // dibujo salió bien y no hay nada que el usuario deba atender.
-                ExportHintText.Text = dibujante.Notas.Count == 0
+                MostrarNotas(dibujante.Notas.Count == 0
                     ? string.Empty
-                    : "Notas del ultimo dibujo:" + Environment.NewLine +
+                    : "Notas del último dibujo:" + Environment.NewLine +
                       string.Join(Environment.NewLine,
-                          dibujante.Notas.Select(n => "  - " + n));
+                          dibujante.Notas.Select(n => "  - " + n)));
 
                 MessageBox.Show(resumen, AppInfo.ProductName,
                     MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1895,17 +2235,17 @@ public partial class MainWindow : Window
 
                 StatusText.Text =
                     $"Dibujadas {dibujadas} sección(es), " +
-                    $"con {fallos.Count} aviso(s). Ver la pestaña AutoCAD.";
+                    $"con {fallos.Count} aviso(s). Ver el detalle bajo la vista previa.";
 
-                ExportHintText.Text =
+                MostrarNotas(
                     "AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
-                    Environment.NewLine + detalle;
+                    Environment.NewLine + detalle);
 
                 MessageBox.Show(
                     resumen + "\n\n" +
                     "PERO hubo " + fallos.Count + " fallo(s) que se toleraron, " +
                     "así que el dibujo puede estar incompleto:\n\n" + detalle +
-                    "\n\nEste mismo texto queda en la pestaña AutoCAD.",
+                    "\n\nEste mismo texto queda bajo la vista previa.",
                     AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
@@ -1932,22 +2272,29 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Escala de captura a unidades de dibujo. 0.01 = cm a metros.</summary>
-    private double LeerEscala()
-    {
-        if (double.TryParse(ScaleBox.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out var v)
-            && v > 0)
-        {
-            return v;
-        }
+    /// <summary>
+    /// Escala del dibujo: <b>cuánto mide en AutoCAD un centímetro capturado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Ya no se captura en la interfaz. La casilla que había solo servía para
+    /// descuadrar el dibujo: el juego de planos se dibuja siempre con la misma
+    /// correspondencia, así que exponerla era ofrecer una forma de romperlo sin ganar
+    /// nada.
+    /// </para>
+    /// <para>
+    /// <b>El valor NO cambia: sigue siendo 0.01.</b> Es la misma correspondencia de la
+    /// macro —se captura en centímetros y se dibuja en metros— y es la que produce la
+    /// geometría que ya estás obteniendo. Ponerlo en 1.0 «porque es 1=1» multiplicaría
+    /// todo el dibujo por cien: una columna de 50 cm saldría de 50 m.
+    /// </para>
+    /// <para>
+    /// Si algún día hiciera falta otra escala, este es el único sitio que se toca.
+    /// </para>
+    /// </remarks>
+    private const double EscalaDeDibujo = 0.01;
 
-        if (double.TryParse(ScaleBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out v)
-            && v > 0)
-        {
-            return v;
-        }
-
-        return 0.01;
-    }
+    private double LeerEscala() => EscalaDeDibujo;
 
     /// <summary>Claves de varilla presentes en la captura, para crear solo esas capas.</summary>
     private IEnumerable<string> ClavesDeVarillaUsadas()
@@ -1961,6 +2308,11 @@ public partial class MainWindow : Window
             yield return Varilla.Normalizar(s.DiamIntInfEfectivo);
             yield return Varilla.Normalizar(s.DiamInter);
             yield return Varilla.Normalizar(s.DiamEstriboDiamante);
+
+            // La varilla del circulo. Sin esto, la capa VAR_#8 de una columna redonda
+            // no se crearia y sus varillas saldrian en la capa activa del dibujo, con
+            // otro color y sin poder apagarlas por separado.
+            yield return Varilla.Normalizar(s.DiamVarTotalEfectivo);
         }
     }
 
@@ -1983,7 +2335,8 @@ public partial class MainWindow : Window
         return new SeccionCad
         {
             Modo = ModoElegido,
-            Elemento = r.Elemento,
+            // El nombre que va al PLANO: una columna redonda se rotula COLUMNA.
+            Elemento = r.ElementoRotulo,
             Id = r.Id,
             BaseCm = r.BaseCm,
             AlturaCm = r.AlturaCm,
@@ -2013,13 +2366,22 @@ public partial class MainWindow : Window
             // Columna R de la hoja: la macro compara contra "SI" en mayusculas y
             // sin espacios. Aqui se acepta cualquier variante razonable para que
             // "Si", "sí" o "X" no dejen de dibujar el diamante en silencio.
-            Diamante = EsSi(r.EstriboDiamante),
+            //
+            // Y NO en la seccion redonda: el diamante es un rombo entre las varillas
+            // de dos lechos, y en un circulo no hay lechos ni esquinas donde apoyarlo.
+            Diamante = EsSi(r.EstriboDiamante) && !r.EsCircular,
 
             // Columna S. Vacia = se usa la varilla del estribo principal.
             EstriboDiamanteVar = V(
                 string.IsNullOrWhiteSpace(r.DiamEstriboDiamante)
                     ? r.Estribo
-                    : r.DiamEstriboDiamante)
+                    : r.DiamEstriboDiamante),
+
+            // ---------- Seccion circular ----------
+            Circular = r.EsCircular,
+            NVarTotal = r.NVarTotal,
+            VarTotal = V(r.DiamVarTotalEfectivo),
+            ZunchoHelicoidal = r.EsZunchoHelicoidal
         };
     }
 
@@ -2035,7 +2397,14 @@ public partial class MainWindow : Window
 
         // Con diamante, el alzado se dibuja con el diámetro del DIAMANTE, no con el
         // del estribo principal. Es lo que hace la macro al reasignar estrDia.
-        var diamante = EsSi(r.EstriboDiamante);
+        //
+        // Pero el diamante NO aplica a una sección redonda: es un rombo entre las
+        // varillas de dos lechos, y en un círculo no hay lechos. Se descarta AQUI, en
+        // una sola variable, para que no se cuele por dos caminos: si se dejara el
+        // 'diamante' crudo, el zuncho de la columna redonda se dibujaría con el
+        // diámetro del diamante y nadie entendería por qué.
+        var diamante = EsSi(r.EstriboDiamante) && !r.EsCircular;
+
         var varDiamante = V(
             string.IsNullOrWhiteSpace(r.DiamEstriboDiamante) ? r.Estribo : r.DiamEstriboDiamante);
 
@@ -2043,7 +2412,8 @@ public partial class MainWindow : Window
         {
             Tipo = TipoDe(r.Elemento, r.Id) ?? TipoElemento.Trabe,
             Modo = ModoElegido,
-            Elemento = r.Elemento,
+            // El nombre que va al PLANO: una columna redonda se rotula COLUMNA.
+            Elemento = r.ElementoRotulo,
             Id = r.Id,
             BaseCm = r.BaseCm,
             AlturaCm = r.AlturaCm,
@@ -2072,8 +2442,15 @@ public partial class MainWindow : Window
             Fc = r.Fc,
             Escala = r.Escala,
             Separacion = r.SeparacionCm,
+
             Diamante = diamante,
-            EstriboDiamanteVar = varDiamante
+            EstriboDiamanteVar = varDiamante,
+
+            // ---------- Seccion circular ----------
+            Circular = r.EsCircular,
+            NVarTotal = r.NVarTotal,
+            VarTotal = V(r.DiamVarTotalEfectivo),
+            ZunchoHelicoidal = r.EsZunchoHelicoidal
         };
     }
 
@@ -2107,12 +2484,20 @@ public partial class MainWindow : Window
             return TipoElemento.Contratrabe;
         }
 
-        if (e == "COLUMNA" || i.StartsWith("C-", StringComparison.Ordinal))
+        // «COLUMNA» y «COLUMNA CIRCULAR» son las dos columnas: las dos llevan alzado
+        // VERTICAL y las dos se rotulan COLUMNA. Con la comparacion exacta que habia
+        // antes, una columna redonda caia al final del metodo y se quedaba SIN alzado
+        // salvo que su ID empezara por C-.
+        if (e == "COLUMNA" || e == SeccionConcretoRow.ElementoColumnaCircular
+            || i.StartsWith("C-", StringComparison.Ordinal))
         {
             return TipoElemento.Columna;
         }
 
-        if (e == "DADO" || i.StartsWith("D-", StringComparison.Ordinal))
+        // Los DOS dados llevan alzado vertical, igual que las dos columnas. Sin el
+        // redondo, un DADO CIRCULAR se quedaba sin alzado salvo que su ID empezara por D-.
+        if (e == "DADO" || e == SeccionConcretoRow.ElementoDadoCircular
+            || i.StartsWith("D-", StringComparison.Ordinal))
         {
             return TipoElemento.Dado;
         }
@@ -2122,7 +2507,12 @@ public partial class MainWindow : Window
             return TipoElemento.Trabe;
         }
 
-        // Castillos, cadenas y cualquier otro elemento: sin alzado.
+        // Castillos, cadenas, CABEZAL y cualquier otro elemento: sin alzado.
+        //
+        // El CABEZAL estuvo un rato devolviendo Trabe, por la idea de que al ser una
+        // pieza tendida le tocaba alzado horizontal. El usuario lo quito: un cabezal se
+        // documenta con su seccion y su armado, no con un alzado de estribos por zonas
+        // L/4-L/2-L/4, que es lo que dibuja el alzado de trabe y no describe un cabezal.
         return null;
     }
 
@@ -2227,11 +2617,6 @@ public partial class MainWindow : Window
                 problemas.Add($"• El ID '{s.Id}' está repetido. Cada bloque necesita un nombre único.");
             }
 
-            if (s.BaseCm <= 0 || s.AlturaCm <= 0)
-            {
-                problemas.Add($"• {etiqueta}: base y altura deben ser mayores que cero.");
-            }
-
             if (s.RecubrimientoCm < 0)
             {
                 problemas.Add($"• {etiqueta}: el recubrimiento no puede ser negativo.");
@@ -2239,37 +2624,162 @@ public partial class MainWindow : Window
 
             RevisarDiametro(problemas, etiqueta, "estribo", s.Estribo, obligatorio: true);
 
-            RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
-            RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
-            RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
-            RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
-            RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
-
-            if (string.Equals(s.EstriboDiamante.Trim(), "SI", StringComparison.OrdinalIgnoreCase))
+            if (s.EsCircular)
             {
-                var d = string.IsNullOrWhiteSpace(s.DiamEstriboDiamante)
-                    ? s.Estribo
-                    : s.DiamEstriboDiamante;
-                RevisarDiametro(problemas, etiqueta, "estribo diamante", d, obligatorio: true);
+                RevisarCircular(problemas, etiqueta, s);
             }
-
-            // El acero debe caber: dos varillas de esquina mas los estribos
-            if (Varilla.TryDiametroCm(s.Estribo, out var de) &&
-                Varilla.TryDiametroCm(s.DiamEsqSup, out var dv) &&
-                s.BaseCm > 0)
+            else
             {
-                var necesario = (2 * s.RecubrimientoCm) + (2 * de) + (2 * dv);
-                if (necesario >= s.BaseCm)
-                {
-                    problemas.Add(
-                        $"• {etiqueta}: con recubrimiento {s.RecubrimientoCm:N1} cm, estribo " +
-                        $"{Varilla.Normalizar(s.Estribo)} y varilla {Varilla.Normalizar(s.DiamEsqSup)} " +
-                        $"se necesitan {necesario:N1} cm y la base es de {s.BaseCm:N1} cm.");
-                }
+                RevisarRectangular(problemas, etiqueta, s);
             }
         }
 
         return problemas.Count == 0;
+    }
+
+    /// <summary>Revisiones propias de la sección rectangular.</summary>
+    private static void RevisarRectangular(
+        List<string> problemas, string etiqueta, SeccionConcretoRow s)
+    {
+        if (s.BaseCm <= 0 || s.AlturaCm <= 0)
+        {
+            problemas.Add($"• {etiqueta}: base y altura deben ser mayores que cero.");
+        }
+
+        RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
+        RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
+        RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
+        RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
+        RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
+
+        if (string.Equals(s.EstriboDiamante.Trim(), "SI", StringComparison.OrdinalIgnoreCase))
+        {
+            var d = string.IsNullOrWhiteSpace(s.DiamEstriboDiamante)
+                ? s.Estribo
+                : s.DiamEstriboDiamante;
+            RevisarDiametro(problemas, etiqueta, "estribo diamante", d, obligatorio: true);
+        }
+
+        // El acero debe caber: dos varillas de esquina mas los estribos
+        if (Varilla.TryDiametroCm(s.Estribo, out var de) &&
+            Varilla.TryDiametroCm(s.DiamEsqSup, out var dv) &&
+            s.BaseCm > 0)
+        {
+            var necesario = (2 * s.RecubrimientoCm) + (2 * de) + (2 * dv);
+            if (necesario >= s.BaseCm)
+            {
+                problemas.Add(
+                    $"• {etiqueta}: con recubrimiento {s.RecubrimientoCm:N1} cm, estribo " +
+                    $"{Varilla.Normalizar(s.Estribo)} y varilla {Varilla.Normalizar(s.DiamEsqSup)} " +
+                    $"se necesitan {necesario:N1} cm y la base es de {s.BaseCm:N1} cm.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Revisiones propias de la sección circular.
+    /// </summary>
+    /// <remarks>
+    /// Son OTRAS, no las mismas con un aviso: en una sección redonda no hay lechos
+    /// que revisar, la altura no significa nada, y en cambio aparece una comprobación
+    /// que la rectangular no necesita —que las varillas quepan en el perímetro del
+    /// círculo de paso—, que es el error de captura típico de una columna redonda.
+    /// </remarks>
+    private static void RevisarCircular(
+        List<string> problemas, string etiqueta, SeccionConcretoRow s)
+    {
+        if (s.DiametroCm <= 0)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, así que la base es el DIÁMETRO y tiene " +
+                "que ser mayor que cero.");
+            return;
+        }
+
+        // La altura no se usa. Si trae algo distinto del diámetro, es que el usuario
+        // cree que sirve para algo: mejor decirlo que dibujar callando.
+        if (s.AlturaCm > 0 && Math.Abs(s.AlturaCm - s.DiametroCm) > 0.01)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, así que la altura ({s.AlturaCm:N1} cm) se " +
+                $"ignora y se usa la base como diámetro ({s.DiametroCm:N1} cm). " +
+                "Pon el mismo valor en las dos, o deja la altura en cero.");
+        }
+
+        if (s.NVarTotal <= 0)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, así que el armado se captura en «N total» " +
+                "y no por lechos. Falta el número de varillas.");
+        }
+
+        RevisarDiametro(problemas, etiqueta, "varilla del círculo",
+            s.DiamVarTotalEfectivo, obligatorio: s.NVarTotal > 0);
+
+        // Con menos de 3 varillas no hay círculo de acero que confine nada, y el
+        // dibujo saldría como dos o una varilla suelta en el aire.
+        if (s.NVarTotal is > 0 and < 3)
+        {
+            problemas.Add(
+                $"• {etiqueta}: {s.NVarTotal} varilla(s) en una columna redonda no " +
+                "forman un círculo. El mínimo práctico es 3, y lo habitual son 6 u 8.");
+        }
+
+        // Los lechos capturados NO se dibujan en una sección circular. Es el error
+        // que se comete al marcar «Circular» sobre una fila que ya estaba llena.
+        var enLechos = s.NEsqSup + s.NIntSup + s.NEsqInf + s.NIntInf + s.NInter;
+        if (enLechos > 0)
+        {
+            problemas.Add(
+                $"• {etiqueta}: es circular, pero tiene {enLechos} varilla(s) " +
+                "capturadas por lechos. Esas NO se dibujan: en una sección redonda " +
+                "solo se usa «N total». Vacía los lechos o quita el «SI» de Circular.");
+        }
+
+        // Que las varillas quepan en el perímetro del círculo de paso. Es la
+        // comprobación que de verdad hace falta aquí: con 12 varillas del #10 en una
+        // columna de 30 cm el acero se traslapa, y en el dibujo salen las varillas
+        // pisándose unas a otras sin ningún aviso.
+        if (Varilla.TryDiametroCm(s.Estribo, out var dEst) &&
+            Varilla.TryDiametroCm(s.DiamVarTotalEfectivo, out var dVar) &&
+            s.NVarTotal >= 3)
+        {
+            // Radio del círculo donde van los centros de las varillas
+            var rPaso = (s.DiametroCm / 2.0) - s.RecubrimientoCm - dEst - (dVar / 2.0);
+
+            if (rPaso <= 0)
+            {
+                problemas.Add(
+                    $"• {etiqueta}: con diámetro {s.DiametroCm:N1} cm, recubrimiento " +
+                    $"{s.RecubrimientoCm:N1} cm y zuncho {Varilla.Normalizar(s.Estribo)} " +
+                    "no queda sitio para ninguna varilla.");
+            }
+            else
+            {
+                // Separación libre entre varillas contiguas, medida sobre la cuerda
+                var cuerda = 2 * rPaso * Math.Sin(Math.PI / s.NVarTotal);
+                var libre = cuerda - dVar;
+
+                if (libre < 0)
+                {
+                    problemas.Add(
+                        $"• {etiqueta}: {s.NVarTotal} varillas " +
+                        $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)} no caben en el " +
+                        $"círculo: se traslaparían {-libre:N1} cm. Baja el número o el " +
+                        "calibre, o sube el diámetro de la columna.");
+                }
+                else if (libre < dVar)
+                {
+                    // El mínimo normativo habitual es la mayor de 1.5·db y 4 cm. Se
+                    // avisa con db para no atarse a una norma concreta.
+                    problemas.Add(
+                        $"• {etiqueta}: {s.NVarTotal} varillas " +
+                        $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)} quedan a " +
+                        $"{libre:N1} cm libres entre sí, menos de un diámetro " +
+                        $"({dVar:N1} cm). Revísalo contra la separación mínima de tu norma.");
+                }
+            }
+        }
     }
 
     private static void RevisarLecho(
@@ -2322,6 +2832,16 @@ public partial class MainWindow : Window
 
         if (ancho < 60 || alto < 60)
         {
+            return;
+        }
+
+        // La seccion redonda se previsualiza aparte, con su propia geometria. Si
+        // cayera en el camino de abajo se veria como un rectangulo con estribo
+        // rectangular, o sea NO se veria lo que se va a dibujar, que es justo para lo
+        // que sirve una vista previa.
+        if (s is not null && s.EsCircular)
+        {
+            DibujarVistaPreviaCircular(s, ancho, alto);
             return;
         }
 
@@ -2412,39 +2932,479 @@ public partial class MainWindow : Window
             }
         }
 
+        // EL GANCHO SÍSMICO DEL ESTRIBO, que es lo que faltaba.
+        //
+        // Va antes de los lechos para que la varilla de la esquina quede ENCIMA de su
+        // doblez, igual que en AutoCAD: el gancho se dobla alrededor de esa varilla, así
+        // que la varilla tapa la parte del doblez que le pasa por debajo.
+        DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
+
         // Lechos
         DibujarLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec, escala, PX, PY, arriba: true, intermedio: false);
         DibujarLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec, escala, PX, PY, arriba: true, intermedio: true);
         DibujarLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec, escala, PX, PY, arriba: false, intermedio: false);
         DibujarLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec, escala, PX, PY, arriba: false, intermedio: true);
 
-        // Varillas laterales, a los dos lados
-        if (s.NInter > 0 && Varilla.TryDiametroCm(s.DiamInter, out var dl))
+        // Varillas laterales, a los dos lados. Las posiciones salen del mismo sitio que las
+        // usa el diamante para rodearlas: si se calcularan dos veces, el rombo podría
+        // acabar rodeando una varilla que no es la que se ve dibujada.
+        foreach (var (x, y, r) in PosicionesLaterales(s, de, rec))
         {
-            Varilla.TryDiametroCm(s.DiamEsqSup, out var dsup);
-            Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dinf);
-
-            var offSup = rec + de + (dsup / 2);
-            var offInf = rec + de + (dinf / 2);
-            var hueco = s.AlturaCm - offSup - offInf;
-            var paso = s.NInter > 1 ? hueco / (s.NInter + 1) : hueco / 2;
-            var offLado = rec + de + (dl / 2);
-
-            for (var k = 1; k <= s.NInter; k++)
-            {
-                var y = offInf + (k * paso);
-                Barra(PX(offLado), PY(y), dl * escala / 2);
-                Barra(PX(s.BaseCm - offLado), PY(y), dl * escala / 2);
-            }
+            Barra(PX(x), PY(y), r * escala);
         }
+
+        // EL ESTRIBO DIAMANTE, encima de las varillas.
+        //
+        // Va al final y por encima, igual que en AutoCAD, donde las dos cintas se suben al
+        // frente con AlFrente: el diamante es lo último que se arma y pasa por delante de
+        // las varillas que abraza.
+        DibujarDiamantePrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
 
         // Cotas de referencia
         Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
         Etiqueta($"{s.AlturaCm:N0} cm", x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
-        Etiqueta($"{s.Elemento}  {s.Id}", 14, 26);
+
+        // La MISMA linea de titulo que la circular: elemento, ID y resumen del
+        // armado. Antes la rectangular solo decia elemento e ID, asi que las dos
+        // formas no se veian igual.
+        Etiqueta(TituloVistaPrevia(s), 14, 26);
 
         // El alzado va a la derecha de la sección, en el espacio que sobra
         DibujarAlzadoPrevio(s, x0 + (s.BaseCm * escala) + 70, alto);
+    }
+
+    /// <summary>
+    /// Vista previa de la sección <b>circular</b>.
+    /// </summary>
+    /// <remarks>
+    /// Usa las MISMAS fórmulas que <c>SeccionDrawer.Circular</c>: el radio de paso
+    /// resta recubrimiento, diámetro del zuncho y <b>radio</b> de la varilla, y el
+    /// reparto arranca arriba y gira en sentido antihorario. Tienen que coincidir, o
+    /// la vista previa estaría mintiendo, que es peor que no tenerla.
+    /// </remarks>
+    private void DibujarVistaPreviaCircular(SeccionConcretoRow s, double ancho, double alto)
+    {
+        if (s.DiametroCm <= 0)
+        {
+            PreviewCanvas.Children.Add(new TextBlock
+            {
+                Text = "La sección es circular: pon el diámetro en la columna «Base cm».",
+                Foreground = Brushes.Gray,
+                FontSize = 12,
+                Margin = new Thickness(14, 34, 0, 0)
+            });
+            return;
+        }
+
+        const double margen = 34;
+
+        // Se reserva la mitad derecha para el alzado, igual que en la rectangular
+        var escala = Math.Min((ancho * 0.45) / s.DiametroCm, (alto - (2 * margen)) / s.DiametroCm);
+
+        if (escala <= 0 || double.IsInfinity(escala))
+        {
+            return;
+        }
+
+        var r = s.DiametroCm * escala / 2;
+        var cx = margen + r;
+        var cy = alto / 2;
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
+        var negro = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
+
+        var conFondoSolido = ModoElegido == ModoSeccion.Tipo2Rellena;
+
+        var relleno = conFondoSolido
+            ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC))
+            : Brushes.White;
+
+        // ---------- Concreto ----------
+        PreviewCanvas.Children.Add(Circunferencia(cx, cy, r, azul, 1.6, relleno));
+
+        var rec = s.RecubrimientoCm * escala;
+        Varilla.TryDiametroCm(s.Estribo, out var deCm);
+        var dZun = deCm * escala;
+
+        // ---------- Zuncho ----------
+        var rZunExt = r - rec;
+        var rZunInt = rZunExt - dZun;
+
+        if (rZunInt > 0)
+        {
+            var trazo = conFondoSolido ? negro : gris;
+
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunExt, trazo, 1.4, null));
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunInt, trazo, 1.0, null));
+        }
+
+        // ---------- Varillas ----------
+        Varilla.TryDiametroCm(s.DiamVarTotalEfectivo, out var dVarCm);
+        var dVar = dVarCm * escala;
+        var rPaso = r - rec - dZun - (dVar / 2);
+
+        if (s.NVarTotal > 0 && rPaso > 0 && dVar > 0)
+        {
+            for (var i = 0; i < s.NVarTotal; i++)
+            {
+                // Arriba y antihorario. En el lienzo la Y baja, asi que el seno va
+                // con signo NEGATIVO: sin eso el reparto sale girado al reves y no
+                // coincidiria con el de AutoCAD.
+                var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
+
+                Barra(cx + (rPaso * Math.Cos(a)), cy - (rPaso * Math.Sin(a)), dVar / 2);
+            }
+        }
+
+        // ---------- El gancho sísmico del zuncho ----------
+        // Va DESPUÉS de las varillas, al contrario que en la rectangular. Ahí el doblez
+        // pasa por detrás de la varilla de la esquina; aquí el que se dibuja es solo el
+        // arco EXTERIOR del doblez, que va por delante, corrido hasta hacerse tangente al
+        // paño del zuncho. Es lo que hace que el gancho se lea como continuación del
+        // zuncho y no como una pieza pegada encima.
+        DibujarGanchoZunchoPrevio(
+            s, cx, cy, r, rec, dZun, dVar, rPaso, escala,
+            conFondoSolido ? negro : gris);
+
+        // ---------- Etiquetas ----------
+        Etiqueta($"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
+        Etiqueta(TituloVistaPrevia(s), 14, 26);
+
+        DibujarAlzadoPrevio(s, cx + r + 70, alto);
+    }
+
+    /// <summary>
+    /// El <b>gancho sísmico del zuncho</b> en la vista previa de la sección circular.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Misma geometría que <c>SeccionDrawer.GanchoDelZuncho</c>, y las mismas cuatro
+    /// decisiones que allí están razonadas:
+    /// </para>
+    /// <list type="number">
+    /// <item>Se agarra de la varilla <b>de abajo</b>, para no pisarse con la llamada de
+    /// varillas, que apunta a la de arriba.</item>
+    /// <item>La cola es el radio <b>hacia dentro girado 45°</b>, que es lo que hace los 135°
+    /// del gancho de norma; las dos normales de arranque son sus perpendiculares. No se
+    /// escriben a mano como en la rectangular porque aquí la varilla puede estar en
+    /// cualquier ángulo.</item>
+    /// <item>Del doblez se dibuja <b>solo el arco exterior</b>: el interior tiene el radio de
+    /// la varilla y su mismo centro, o sea que <i>es</i> la circunferencia de la varilla, que
+    /// ya está dibujada.</item>
+    /// <item>Y ese arco arranca en la <b>tangencia</b> con el paño exterior del zuncho —que
+    /// cae exactamente en la dirección centro → varilla, porque <c>rPaso + rOut = r − rec</c>—
+    /// en lugar de donde entra en la banda.</item>
+    /// </list>
+    /// <para>
+    /// <b>Las cuentas van en el sistema del DIBUJO, con la Y hacia arriba</b>, y la vuelta al
+    /// lienzo se hace solo al pintar cada punto. No es un capricho: el lienzo tiene la Y al
+    /// revés, y ahí «girar el radio 45°» gira para el otro lado, así que el gancho saldría
+    /// espejeado —sigue siendo de 135°, pero apuntando al lado contrario que en AutoCAD—.
+    /// Una vista previa que enseña el gancho del otro lado es exactamente lo que no puede
+    /// hacer.
+    /// </para>
+    /// </remarks>
+    /// <param name="escala">Píxeles por centímetro, para el largo del gancho.</param>
+    private void DibujarGanchoZunchoPrevio(
+        SeccionConcretoRow s, double cx, double cy, double r, double rec,
+        double dZun, double dVar, double rPaso, double escala, Brush trazo)
+    {
+        var rZunInt = r - rec - dZun;
+
+        if (s.GanchoCm <= 0 || dZun <= 0 || dVar <= 0 || rPaso <= 0 || rZunInt <= 0
+            || s.NVarTotal <= 0)
+        {
+            return;
+        }
+
+        // Del sistema del dibujo —centro de la sección en el origen, Y hacia arriba— al
+        // lienzo. Todo lo de abajo está en el primero.
+        double PX(double x) => cx + x;
+        double PY(double y) => cy - y;
+
+        // La varilla de ABAJO de las que se reparten. El reparto arranca arriba y gira
+        // antihorario, igual que el del dibujante y que el de las varillas de más arriba.
+        double bx = 0, by = 0;
+        var primera = true;
+
+        for (var i = 0; i < s.NVarTotal; i++)
+        {
+            var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
+
+            var x = rPaso * Math.Cos(a);
+            var y = rPaso * Math.Sin(a);
+
+            if (primera || y < by)
+            {
+                bx = x;
+                by = y;
+                primera = false;
+            }
+        }
+
+        // El radio HACIA DENTRO, normalizado. El centro es el origen, así que es −(bx, by).
+        var rl = Math.Sqrt((bx * bx) + (by * by));
+
+        if (rl < 1e-9)
+        {
+            return;
+        }
+
+        var rx = -bx / rl;
+        var ry = -by / rl;
+
+        const double rt2I = 0.707106781186547;
+
+        // La cola: el radio interior girado 45°. Y las normales, sus perpendiculares.
+        var ux = (rx - ry) * rt2I;
+        var uy = (rx + ry) * rt2I;
+
+        var n1X = -uy;
+        var n1Y = ux;
+        var n2X = uy;
+        var n2Y = -ux;
+
+        var rIn = dVar / 2;
+        var rOut = rIn + dZun;
+
+        var largo = s.GanchoCm * escala;
+
+        // El tope del núcleo, igual que en el dibujante: la proyección del vector
+        // arranque → centro sobre la propia cola. Más allá de ahí la punta ya se está
+        // alejando del eje por el otro lado.
+        var piX = bx + (rIn * n1X);
+        var piY = by + (rIn * n1Y);
+
+        var tope = (-piX * ux) + (-piY * uy);
+
+        if (tope > 0 && largo > tope)
+        {
+            largo = tope;
+        }
+
+        if (largo <= 0)
+        {
+            return;
+        }
+
+        // ---------- El arco exterior del doblez ----------
+        // De la tangencia con el paño del zuncho al arranque de la segunda cola. La
+        // tangencia cae en la dirección centro → varilla, que es la contraria al radio
+        // interior.
+        var aTangente = Math.Atan2(-ry, -rx);
+        var a1 = Math.Atan2(n1Y, n1X);
+
+        var barrido = a1 + Math.PI - aTangente;
+
+        while (barrido < 0)
+        {
+            barrido += 2 * Math.PI;
+        }
+
+        var arco = new PointCollection();
+
+        for (var k = 0; k <= 28; k++)
+        {
+            var a = aTangente + (k / 28.0 * barrido);
+
+            arco.Add(new Point(
+                PX(bx + (rOut * Math.Cos(a))), PY(by + (rOut * Math.Sin(a)))));
+        }
+
+        PreviewCanvas.Children.Add(new Polyline
+        {
+            Points = arco,
+            Stroke = trazo,
+            StrokeThickness = 1.2
+        });
+
+        // ---------- Las dos colas ----------
+        // Las DOS, también en hélice: el remate de un zuncho se representa con sus dos
+        // ganchos, uno encima del otro, sea espiral o anillo.
+        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
+        {
+            var pInX = bx + (rIn * nx);
+            var pInY = by + (rIn * ny);
+            var pOutX = bx + (rOut * nx);
+            var pOutY = by + (rOut * ny);
+
+            var qInX = pInX + (largo * ux);
+            var qInY = pInY + (largo * uy);
+            var qOutX = pOutX + (largo * ux);
+            var qOutY = pOutY + (largo * uy);
+
+            foreach (var (x1, y1, x2, y2) in new[]
+            {
+                (pInX, pInY, qInX, qInY),
+                (pOutX, pOutY, qOutX, qOutY),
+                (qInX, qInY, qOutX, qOutY)
+            })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = PX(x1), Y1 = PY(y1),
+                    X2 = PX(x2), Y2 = PY(y2),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Línea de título de la vista previa: elemento, ID y resumen del armado.
+    /// </summary>
+    /// <remarks>
+    /// Es la <b>misma</b> para las dos formas, y por eso vive aquí en lugar de estar
+    /// escrita dos veces. Se muestra el nombre de <b>captura</b> —«COLUMNA
+    /// CIRCULAR»— y no el de rótulo, porque en la pantalla lo que se quiere confirmar
+    /// es que la fila está capturada como se pretende; en el plano sí sale «COLUMNA».
+    /// </remarks>
+    private static string TituloVistaPrevia(SeccionConcretoRow s)
+    {
+        var cabeza = $"{s.Elemento}  {s.Id}";
+
+        if (s.EsCircular)
+        {
+            // Zuncho solo si se pidio zuncho: sin la casilla son ESTRIBOS. Misma regla que
+            // el plano -Estribos.EsZuncho-, para que la pantalla y el papel no se
+            // contradigan.
+            var transversal = Estribos.EsZuncho(s.EsCircular, s.EsZunchoHelicoidal)
+                ? "zuncho helicoidal"
+                : "estribos";
+
+            return $"{cabeza}   ({s.NVarTotal} vars. " +
+                   $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)}, {transversal})";
+        }
+
+        var total = s.TotalVarillas;
+        var estribo = Varilla.Normalizar(s.Estribo);
+
+        return total > 0
+            ? $"{cabeza}   ({total} vars., estribo {estribo})"
+            : $"{cabeza}   (estribo {estribo})";
+    }
+
+    /// <summary>
+    /// El zuncho helicoidal en el alzado de la vista previa.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Usa la <b>misma</b> geometría que <c>AlzadoDrawer.HeliceDelZuncho</c>: la
+    /// proyección de una hélice es un seno de amplitud igual al radio del zuncho, y la
+    /// fase se acumula con el paso de cada zona L/4-L/2-L/4 en lugar de con un periodo
+    /// fijo. Si aquí se dibujara un seno de paso constante, la vista previa no
+    /// mostraría el cierre del zuncho en los extremos, que es justo lo que se quiere
+    /// comprobar antes de mandar el dibujo.
+    /// </para>
+    /// <para>
+    /// Se dibujan las <b>dos caras</b> de la barra, con amplitudes <c>r ± d/2</c> y la
+    /// misma fase, para que se vea con su grosor real y no como una línea.
+    /// </para>
+    /// </remarks>
+    private void DibujarHelicePrevia(
+        AlzadoCad a, double izquierda, double top, double w, double h,
+        double rec, double dEst, Brush brocha)
+    {
+        if (w <= 0 || h <= 0 || dEst <= 0)
+        {
+            return;
+        }
+
+        var yMedio = top + (h / 2);
+        var rExt = (h / 2) - rec;
+        var rEje = rExt - (dEst / 2);
+
+        if (rEje <= 0)
+        {
+            return;
+        }
+
+        // Separaciones en metros, y de ahí a píxeles del lienzo
+        var s = a.SeparacionesCm;
+        var esc = w / (a.LongitudM > 0 ? a.LongitudM : 3.0);
+
+        double PasoPx(int i)
+        {
+            var cm = i < s.Length && s[i] > 0 ? s[i] : 15;
+            return cm / 100.0 * esc;
+        }
+
+        var p1 = PasoPx(0);
+        var p2 = PasoPx(1);
+        var p3 = PasoPx(2);
+
+        if (p1 <= 0 || p2 <= 0 || p3 <= 0)
+        {
+            return;
+        }
+
+        var z1 = izquierda + (w * 0.25);
+        var z2 = izquierda + (w * 0.75);
+
+        double PasoEn(double x) => x < z1 ? p1 : x < z2 ? p2 : p3;
+
+        var vueltas = ((z1 - izquierda) / p1) + ((z2 - z1) / p2)
+                      + ((izquierda + w - z2) / p3);
+
+        if (vueltas <= 0)
+        {
+            return;
+        }
+
+        // 12 puntos por vuelta bastan en pantalla: el lienzo tiene unos pocos
+        // cientos de píxeles y más puntos no se distinguen.
+        var n = Math.Clamp((int)Math.Ceiling(vueltas * 12), 8, 1200);
+        var dx = w / n;
+
+        var caraExt = new PointCollection();
+        var caraInt = new PointCollection();
+
+        var fase = 0d;
+
+        for (var i = 0; i <= n; i++)
+        {
+            var x = izquierda + (i * dx);
+
+            if (i > 0)
+            {
+                fase += 2 * Math.PI * dx / PasoEn(x - (dx / 2));
+            }
+
+            var sen = Math.Sin(fase);
+
+            caraExt.Add(new Point(x, yMedio + ((rEje + (dEst / 2)) * sen)));
+            caraInt.Add(new Point(x, yMedio + ((rEje - (dEst / 2)) * sen)));
+        }
+
+        foreach (var cara in new[] { caraExt, caraInt })
+        {
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = cara,
+                Stroke = brocha,
+                StrokeThickness = 0.9
+            });
+        }
+    }
+
+    /// <summary>Una circunferencia en el lienzo de la vista previa.</summary>
+    private static System.Windows.Shapes.Ellipse Circunferencia(
+        double cx, double cy, double r, Brush trazo, double grosor, Brush? relleno)
+    {
+        var e = new System.Windows.Shapes.Ellipse
+        {
+            Width = 2 * r,
+            Height = 2 * r,
+            Stroke = trazo,
+            StrokeThickness = grosor,
+            Fill = relleno
+        };
+
+        Canvas.SetLeft(e, cx - r);
+        Canvas.SetTop(e, cy - r);
+        return e;
     }
 
     /// <summary>
@@ -2525,24 +3485,35 @@ public partial class MainWindow : Window
 
         var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
 
-        foreach (var c in centros)
+        if (a.Circular && a.ZunchoHelicoidal)
         {
-            var xc = izquierda + (c * esc);
-
-            // La cápsula: rectángulo con las puntas redondeadas
-            PreviewCanvas.Children.Add(new Rectangle
+            // El zuncho helicoidal NO son capsulas repetidas: es una sola pieza que
+            // sube en helice. Dibujarlo como estribos sueltos aqui haria que la vista
+            // previa mostrara una cosa y AutoCAD otra, que es lo peor que puede hacer
+            // una vista previa.
+            DibujarHelicePrevia(a, izquierda, top, w, h, rec, dEst, brochaEst);
+        }
+        else
+        {
+            foreach (var c in centros)
             {
-                Width = Math.Max(dEst, 1.5),
-                Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
-                RadiusX = dEst / 2,
-                RadiusY = dEst / 2,
-                Stroke = brochaEst,
-                StrokeThickness = 0.7,
-                Fill = a.Modo == ModoSeccion.Tipo2Rellena
-                    ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
-                    : null,
-                Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
-            });
+                var xc = izquierda + (c * esc);
+
+                // La cápsula: rectángulo con las puntas redondeadas
+                PreviewCanvas.Children.Add(new Rectangle
+                {
+                    Width = Math.Max(dEst, 1.5),
+                    Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
+                    RadiusX = dEst / 2,
+                    RadiusY = dEst / 2,
+                    Stroke = brochaEst,
+                    StrokeThickness = 0.7,
+                    Fill = a.Modo == ModoSeccion.Tipo2Rellena
+                        ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
+                        : null,
+                    Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
+                });
+            }
         }
 
         // ---------- Varillas, con su GANCHO SISMICO ----------
@@ -2635,47 +3606,514 @@ public partial class MainWindow : Window
         double escala, Func<double, double> px, Func<double, double> py,
         bool arriba, bool intermedio)
     {
-        if (cantidad <= 0 || !Varilla.TryDiametroCm(diametro, out var d))
+        foreach (var (x, y, r) in PosicionesDeLecho(s, cantidad, diametro, de, rec, arriba,
+                                                   intermedio))
         {
-            return;
+            Barra(px(x), py(y), r * escala);
+        }
+    }
+
+    /// <summary>
+    /// Dónde van las varillas de un lecho, en <b>centímetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está separado del dibujo porque lo necesitan <b>dos</b> cosas: pintar las varillas y
+    /// armar el recorrido del <b>estribo diamante</b>, que se abraza a las varillas
+    /// centrales. Con el reparto escrito dentro del pintado, la vista previa tendría que
+    /// calcularlo dos veces y el diamante podría acabar abrazando una varilla que no es la
+    /// que se ve dibujada.
+    /// </para>
+    /// <para>
+    /// Es el mismo reparto del dibujante: el lecho <b>de esquina</b> va de paño a paño y el
+    /// <b>intermedio</b> queda ENTRE las de esquina, con un paso más.
+    /// </para>
+    /// </remarks>
+    private static List<(double X, double Y, double R)> PosicionesDeLecho(
+        SeccionConcretoRow s, int cantidad, string diametro, double de, double rec,
+        bool arriba, bool intermedio)
+    {
+        var salida = new List<(double X, double Y, double R)>();
+
+        if (cantidad <= 0 || !Varilla.TryDiametroCm(diametro, out var d) || d <= 0)
+        {
+            return salida;
         }
 
         var off = rec + de + (d / 2);
         var y = arriba ? s.AlturaCm - off : off;
-        var r = d * escala / 2;
+        var r = d / 2;
+
+        if (cantidad == 1)
+        {
+            salida.Add((s.BaseCm / 2, y, r));
+            return salida;
+        }
 
         if (!intermedio)
         {
             // Lecho de esquina: repartido de off a base menos off
-            if (cantidad == 1)
-            {
-                Barra(px(s.BaseCm / 2), py(y), r);
-                return;
-            }
-
             var paso = (s.BaseCm - (2 * off)) / (cantidad - 1);
+
             for (var i = 0; i < cantidad; i++)
             {
-                Barra(px(off + (i * paso)), py(y), r);
+                salida.Add((off + (i * paso), y, r));
             }
 
-            return;
+            return salida;
         }
 
         // Lecho intermedio: queda ENTRE las de esquina
-        var xIni = off;
-        var xFin = s.BaseCm - off;
+        var p = (s.BaseCm - (2 * off)) / (cantidad + 1);
 
-        if (cantidad == 1)
+        for (var i = 1; i <= cantidad; i++)
         {
-            Barra(px(s.BaseCm / 2), py(y), r);
+            salida.Add((off + (i * p), y, r));
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Dónde van las varillas <b>laterales</b>, en centímetros. A los dos costados.
+    /// </summary>
+    /// <remarks>
+    /// Mismo reparto que el dibujante: el hueco es lo que queda entre los dos lechos, y con
+    /// una sola varilla va a media altura. Hacen falta aquí porque el diamante <b>rodea</b>
+    /// las laterales que le quedan en el camino y <b>dobla</b> sobre la más centrada de cada
+    /// costado, así que sin ellas el rombo saldría distinto del que dibuja AutoCAD.
+    /// </remarks>
+    private static List<(double X, double Y, double R)> PosicionesLaterales(
+        SeccionConcretoRow s, double de, double rec)
+    {
+        var salida = new List<(double X, double Y, double R)>();
+
+        if (s.NInter <= 0 || !Varilla.TryDiametroCm(s.DiamInter, out var dl) || dl <= 0)
+        {
+            return salida;
+        }
+
+        Varilla.TryDiametroCm(s.DiamEsqSup, out var dsup);
+        Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dinf);
+
+        var offSup = rec + de + (dsup / 2);
+        var offInf = rec + de + (dinf / 2);
+        var hueco = s.AlturaCm - offSup - offInf;
+
+        if (hueco <= 0)
+        {
+            return salida;
+        }
+
+        var paso = s.NInter > 1 ? hueco / (s.NInter + 1) : hueco / 2;
+        var offLado = rec + de + (dl / 2);
+
+        for (var k = 1; k <= s.NInter; k++)
+        {
+            var y = offInf + (k * paso);
+
+            salida.Add((offLado, y, dl / 2));
+            salida.Add((s.BaseCm - offLado, y, dl / 2));
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// El <b>estribo diamante</b> en la vista previa, con su gancho.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>La geometría no se calcula aquí.</b> Sale de <see cref="TrazoDiamante"/>, que es la
+    /// misma clase que usa el dibujante de AutoCAD: el recorrido de círculos que abraza —con
+    /// sus dobleces laterales, la regla de una o dos varillas por vértice y las laterales que
+    /// hay que rodear— y las dos cintas tangentes a ellos.
+    /// </para>
+    /// <para>
+    /// Es la razón de que esa clase exista. Un diamante no es un rombo: es una cinta tangente
+    /// a una serie de círculos, y calcularla por segunda vez aquí es la manera de acabar
+    /// enseñando un rombo con otro vértice, otra varilla abrazada o esquinas en pico donde el
+    /// dibujo lleva dobleces redondeados.
+    /// </para>
+    /// <para>
+    /// Los arcos de los dobleces se muestrean en tramos rectos —<c>TrazoDiamante.Muestrear</c>—
+    /// porque un lienzo de WPF no tiene <i>bulges</i>.
+    /// </para>
+    /// </remarks>
+    private void DibujarDiamantePrevio(
+        SeccionConcretoRow s, double de, double rec, double escala,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        if (!s.LlevaDiamante || s.EsCircular)
+        {
             return;
         }
 
-        var p = (xFin - xIni) / (cantidad + 1);
-        for (var i = 1; i <= cantidad; i++)
+        // El diámetro del diamante: el suyo si lo trae, y si no el del estribo principal.
+        // Es lo que hace el dibujante al reasignar estrDia.
+        if (!Varilla.TryDiametroCm(s.DiamEstriboDiamante, out var dDia) || dDia <= 0)
         {
-            Barra(px(xIni + (i * p)), py(y), r);
+            dDia = de;
+        }
+
+        if (dDia <= 0 || rec <= 0)
+        {
+            return;
+        }
+
+        // El núcleo, ya descontado el recubrimiento.
+        var x1 = rec;
+        var y1 = rec;
+        var x2 = s.BaseCm - rec;
+        var y2 = s.AlturaCm - rec;
+
+        var varSup = new List<(double X, double Y, double R)>();
+        varSup.AddRange(PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
+                                         arriba: true, intermedio: false));
+        varSup.AddRange(PosicionesDeLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec,
+                                         arriba: true, intermedio: true));
+
+        var varInf = new List<(double X, double Y, double R)>();
+        varInf.AddRange(PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
+                                         arriba: false, intermedio: false));
+        varInf.AddRange(PosicionesDeLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec,
+                                         arriba: false, intermedio: true));
+
+        var varLat = PosicionesLaterales(s, de, rec);
+
+        var centros = TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat);
+
+        if (centros is null)
+        {
+            return;
+        }
+
+        // Las DOS cintas, como en el dibujo: la interior y la exterior separadas el
+        // diámetro del diamante. Con una sola se vería una línea, no una varilla.
+        foreach (var extra in new[] { 0.0, dDia })
+        {
+            var geo = TrazoDiamante.Cinta(centros, extra);
+
+            if (geo is null)
+            {
+                continue;
+            }
+
+            var puntos = TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 10);
+
+            if (puntos.Count < 3)
+            {
+                continue;
+            }
+
+            var linea = new PointCollection();
+
+            foreach (var (x, y) in puntos)
+            {
+                linea.Add(new Point(px(x), py(y)));
+            }
+
+            // Cerrada: la cinta del diamante es un estribo cerrado.
+            linea.Add(new Point(px(puntos[0].X), py(puntos[0].Y)));
+
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = linea,
+                Stroke = trazo,
+                StrokeThickness = 1.1
+            });
+        }
+
+        DibujarGanchoDiamantePrevio(s, centros, dDia, px, py, trazo);
+    }
+
+    /// <summary>
+    /// El <b>gancho del diamante</b> en la vista previa: doblez sobre una varilla del
+    /// costado izquierdo y dos colas hacia el centro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Misma geometría que <c>SeccionDrawer.GanchoDelDiamante</c>, y las mismas dos
+    /// decisiones que allí están razonadas:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>va en el costado <b>izquierdo</b>, que es donde el estribo rectangular
+    /// <i>no</i> tiene el suyo —el suyo está arriba a la derecha—, para que los dos no se
+    /// monten;</item>
+    /// <item>y se agarra de la varilla lateral <b>más centrada</b>, que es la que el
+    /// diamante ya está abrazando: el gancho remata donde el estribo dobla.</item>
+    /// </list>
+    /// <para>
+    /// Las dos colas van con sus <b>tres líneas</b> cada una, y apuntan al centro de la
+    /// sección, que es la dirección del gancho: hacia el núcleo.
+    /// </para>
+    /// </remarks>
+    private void DibujarGanchoDiamantePrevio(
+        SeccionConcretoRow s, List<(double X, double Y, double R)> centros, double dDia,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        if (s.GanchoCm <= 0 || centros.Count == 0)
+        {
+            return;
+        }
+
+        var cx = s.BaseCm / 2;
+        var cy = s.AlturaCm / 2;
+
+        // La varilla del costado IZQUIERDO más centrada de las que el diamante abraza.
+        var izquierda = centros.Where(v => v.X < cx).ToList();
+
+        if (izquierda.Count == 0)
+        {
+            return;
+        }
+
+        var barra = izquierda[0];
+        var mejor = Math.Abs(barra.Y - cy);
+
+        foreach (var v in izquierda)
+        {
+            var d = Math.Abs(v.Y - cy);
+
+            if (d < mejor)
+            {
+                mejor = d;
+                barra = v;
+            }
+        }
+
+        var rIn = barra.R;
+        var rOut = rIn + dDia;
+
+        // La cola apunta al centro de la sección.
+        var ux = cx - barra.X;
+        var uy = cy - barra.Y;
+        var ul = Math.Sqrt((ux * ux) + (uy * uy));
+
+        if (ul < 1e-9)
+        {
+            return;
+        }
+
+        ux /= ul;
+        uy /= ul;
+
+        // Las dos normales de arranque: las perpendiculares a la cola.
+        var n1X = -uy;
+        var n1Y = ux;
+        var n2X = uy;
+        var n2Y = -ux;
+
+        var largo = s.GanchoCm;
+
+        // El tope hacia el núcleo, igual que en el dibujante: más allá de ahí la punta ya
+        // se está alejando del eje por el otro lado.
+        var piX = barra.X + (rIn * n1X);
+        var piY = barra.Y + (rIn * n1Y);
+
+        var tope = ((cx - piX) * ux) + ((cy - piY) * uy);
+
+        if (tope > 0 && largo > tope)
+        {
+            largo = tope;
+        }
+
+        if (largo <= 0)
+        {
+            return;
+        }
+
+        // El doblez: media corona del lado OPUESTO a las colas, o sea rodeando la cara de
+        // atrás de la varilla. Se dibuja su arco exterior, que es el contorno que asoma.
+        var a1 = Math.Atan2(n1Y, n1X);
+
+        var arco = new PointCollection();
+
+        for (var k = 0; k <= 24; k++)
+        {
+            var a = a1 + (k / 24.0 * Math.PI);
+
+            arco.Add(new Point(
+                px(barra.X + (rOut * Math.Cos(a))), py(barra.Y + (rOut * Math.Sin(a)))));
+        }
+
+        PreviewCanvas.Children.Add(new Polyline
+        {
+            Points = arco,
+            Stroke = trazo,
+            StrokeThickness = 1.1
+        });
+
+        // Las dos colas, con sus tres líneas cada una.
+        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
+        {
+            var pInX = barra.X + (rIn * nx);
+            var pInY = barra.Y + (rIn * ny);
+            var pOutX = barra.X + (rOut * nx);
+            var pOutY = barra.Y + (rOut * ny);
+
+            var qInX = pInX + (largo * ux);
+            var qInY = pInY + (largo * uy);
+            var qOutX = pOutX + (largo * ux);
+            var qOutY = pOutY + (largo * uy);
+
+            foreach (var (x1, y1, x2, y2) in new[]
+            {
+                (pInX, pInY, qInX, qInY),
+                (pOutX, pOutY, qOutX, qOutY),
+                (qInX, qInY, qOutX, qOutY)
+            })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(x1), Y1 = py(y1),
+                    X2 = px(x2), Y2 = py(y2),
+                    Stroke = trazo,
+                    StrokeThickness = 1.1
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// El <b>gancho sísmico</b> del estribo en la vista previa, en la esquina superior
+    /// derecha.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Es la misma geometría que dibuja AutoCAD</b>, sacada de <c>SeccionDrawer.Ganchos</c>
+    /// y de la <c>Cola</c> que usan los dos ganchos —el del estribo y el del diamante—:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>el doblez se envuelve alrededor de la varilla de la esquina, con centro a
+    /// <c>rec + dEst + rIn</c> de las dos caras, y barre <b>media vuelta</b>, de 315° a
+    /// 135°, que es lo que da el gancho de 135° de norma;</item>
+    /// <item>del doblez salen <b>dos colas</b> hacia el núcleo, a 225°, cada una con sus
+    /// <b>tres líneas</b>: la interior, la exterior y la punta que las une;</item>
+    /// <item>y la segunda cola se <b>recorta</b> donde la cruza el estribo, con la misma
+    /// condición del dibujante: solo si el cruce cae dentro del largo del gancho.</item>
+    /// </list>
+    /// <para>
+    /// <b>Por qué importa que se vea.</b> El gancho es lo primero que revisa quien firma el
+    /// plano —que exista, que sea de 135° y que quepa dentro de la sección— y era justo lo
+    /// que la vista previa no enseñaba: se veían dos rectángulos de estribo perfectos y el
+    /// gancho aparecía por primera vez en AutoCAD.
+    /// </para>
+    /// <para>
+    /// Los arcos se muestrean en tramos rectos en lugar de usar un <c>ArcSegment</c>. A este
+    /// tamaño la diferencia no se ve, y un muestreo no puede equivocarse de sentido de
+    /// barrido, que es el error clásico del arco de WPF: sale el arco complementario y el
+    /// gancho apunta para el otro lado.
+    /// </para>
+    /// </remarks>
+    private void DibujarGanchoPrevio(
+        SeccionConcretoRow s, double dEst, double rec, double escala,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        // Sin gancho no hay nada que dibujar, y sin estribo tampoco: el doblez se apoya en
+        // el espesor del estribo.
+        if (s.GanchoCm <= 0 || dEst <= 0 || rec <= 0)
+        {
+            return;
+        }
+
+        // El doblez envuelve la varilla de la ESQUINA SUPERIOR, que es la del lecho
+        // superior de esquina. Si no hay varilla ahí, el gancho no tiene alrededor de qué
+        // doblarse y el dibujante tampoco lo dibuja.
+        if (!Varilla.TryDiametroCm(s.DiamEsqSup, out var dSup) || dSup <= 0)
+        {
+            return;
+        }
+
+        var rIn = dSup / 2;
+        var rOut = rIn + dEst;
+
+        var bx = s.BaseCm - rec - dEst - rIn;
+        var by = s.AlturaCm - rec - dEst - rIn;
+
+        // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
+        // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.
+        if (bx <= rec + dEst || by <= rec + dEst)
+        {
+            return;
+        }
+
+        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
+        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
+        foreach (var r in new[] { rIn, rOut })
+        {
+            var puntos = new PointCollection();
+
+            for (var k = 0; k <= 24; k++)
+            {
+                var a = (1.75 * Math.PI) + (k / 24.0 * Math.PI);
+
+                puntos.Add(new Point(
+                    px(bx + (r * Math.Cos(a))), py(by + (r * Math.Sin(a)))));
+            }
+
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = puntos,
+                Stroke = trazo,
+                StrokeThickness = 1.2
+            });
+        }
+
+        // Las dos colas, hacia el núcleo. Rt2I es cos(45°): la dirección es 225°.
+        const double rt2I = 0.707106781186547;
+        const double ux = -rt2I;
+        const double uy = -rt2I;
+
+        var largo = s.GanchoCm;
+
+        // El recorte de la segunda cola, con la condición del dibujante: el cruce con el
+        // estribo tiene que caer DENTRO del largo del gancho. Si el gancho es corto, no
+        // llega a cruzarlo y no hay nada que recortar.
+        var tCruce = rOut - (Math.Sqrt(2) * rIn);
+        var recortar = tCruce >= 0 && tCruce <= largo;
+
+        var colas = new[]
+        {
+            (Nx: rt2I, Ny: -rt2I, Recortar: false),
+            (Nx: -rt2I, Ny: rt2I, Recortar: recortar)
+        };
+
+        foreach (var (nx, ny, recorta) in colas)
+        {
+            var piX = bx + (rIn * nx);
+            var piY = by + (rIn * ny);
+            var poX = bx + (rOut * nx);
+            var poY = by + (rOut * ny);
+
+            // La cola recortada arranca donde la cruza el estribo, no en la perpendicular.
+            if (recorta)
+            {
+                poX = bx + rIn - (Math.Sqrt(2) * rOut);
+                poY = by + rIn;
+            }
+
+            var qiX = piX + (largo * ux);
+            var qiY = piY + (largo * uy);
+            var qoX = poX + (largo * ux);
+            var qoY = poY + (largo * uy);
+
+            // Las TRES líneas de la cola: interior, exterior y la punta que las cierra.
+            foreach (var (ax, ay, bx2, by2) in new[]
+            {
+                (piX, piY, qiX, qiY),
+                (poX, poY, qoX, qoY),
+                (qiX, qiY, qoX, qoY)
+            })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(ax), Y1 = py(ay),
+                    X2 = px(bx2), Y2 = py(by2),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+            }
         }
     }
 
@@ -2816,4 +4254,140 @@ public partial class MainWindow : Window
         Canvas.SetTop(t, top);
         PreviewCanvas.Children.Add(t);
     }
+
+    // ==================================================================
+    //  Tema claro / oscuro
+    // ==================================================================
+
+    /// <summary>Cambia entre el tema claro y el oscuro.</summary>
+    /// <remarks>
+    /// <para>
+    /// El cambio en sí lo hace <see cref="Tema.Alternar"/>, mutando el color de las
+    /// brochas de la paleta: eso repinta solo todo lo que las use, que es casi toda la
+    /// ventana. Aquí solo quedan las dos cosas que <b>no</b> se enteran por su cuenta.
+    /// </para>
+    /// <para>
+    /// <b>La vista previa</b>, porque su contenido no son controles con brochas de la
+    /// paleta: se dibuja desde código sobre un <c>Canvas</c>, y solo se rehace al
+    /// cambiar de tamaño. Sin volver a llamarla, el dibujo se quedaría con los colores
+    /// del tema anterior hasta que el usuario moviera la ventana.
+    /// </para>
+    /// <para>
+    /// <b>Y el texto del propio botón</b>, que dice a dónde se va, no dónde se está.
+    /// </para>
+    /// </remarks>
+    private void OnCambiarTema(object sender, RoutedEventArgs e)
+    {
+        Tema.Alternar();
+
+        TemaButton.Content = Tema.TextoDelBoton;
+
+        // Los lienzos que se pintan a mano, no por estilo.
+        DibujarVistaPrevia();
+        RedibujarVistas();
+    }
+    /// <summary>Dibuja el modelo completo en 3D en AutoCAD.</summary>
+    /// <remarks>
+    /// <para>
+    /// Cada barra va como un <b>sólido</b> con su perfil real, no como una caja ni como una
+    /// línea: es lo que permite después seccionarlo, medirlo y acotarlo en AutoCAD, que es
+    /// para lo que sirve tener el modelo ahí.
+    /// </para>
+    /// <para>
+    /// El contorno de cada sección sale de <c>Perfil2D</c>, el mismo que usa la vista
+    /// extruida de esta ventana. Comparten la geometría a propósito: con una copia cada uno,
+    /// el visor y el dibujo acabarían mostrando perfiles distintos.
+    /// </para>
+    /// <para>
+    /// <b>Las áreas no se extruyen aquí.</b> Un muro o una losa no es una barra con perfil:
+    /// es una superficie, y su sólido se construye de otra forma. Se dicen cuántas se
+    /// quedaron fuera en lugar de dibujarlas mal.
+    /// </para>
+    /// </remarks>
+    private void OnDibujar3dCad(object sender, RoutedEventArgs e)
+    {
+        if (_modeloEtabs is null || _modeloEtabs.Elementos.Count == 0)
+        {
+            EtabsStatusText.Text =
+                "Primero lee el modelo de ETABS o de SAP2000: no hay nada que dibujar.";
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new Modelo3dDrawer(doc);
+            dibujante.AsegurarCapas();
+
+            var barras = new List<Modelo3dDrawer.Barra>();
+            var areas = 0;
+
+            foreach (var el in _modeloEtabs.Elementos)
+            {
+                // Las areas no son barras: no tienen perfil que extruir.
+                if (string.Equals(el.Forma, "AREA", StringComparison.OrdinalIgnoreCase))
+                {
+                    areas++;
+                    continue;
+                }
+
+                var c = Perfil2D.De(
+                    el.Forma, el.AnchoM, el.PeralteM, el.PatinM, el.AlmaM, el.ParedM);
+
+                barras.Add(new Modelo3dDrawer.Barra
+                {
+                    P1 = new[] { el.X1, el.Y1, el.Z1 },
+                    P2 = new[] { el.X2, el.Y2, el.Z2 },
+                    PerfilX = c.X,
+                    PerfilY = c.Y,
+                    Capa = CapaDe(el.Clase),
+                    Id = el.Etiqueta
+                });
+            }
+
+            var r = dibujante.Dibujar(barras);
+
+            var notas = dibujante.Notas.ToList();
+
+            if (areas > 0)
+            {
+                notas.Add(
+                    $"{areas} área(s) —muros y losas— no se extruyeron: no son barras con "
+                    + "perfil.");
+            }
+
+            EtabsStatusText.Text =
+                $"Modelo 3D dibujado en AutoCAD: {r}."
+                + (notas.Count > 0
+                    ? Environment.NewLine + Environment.NewLine
+                      + string.Join(Environment.NewLine, notas.Select(n => "  - " + n))
+                    : string.Empty);
+
+            StatusText.Text = $"Modelo 3D en AutoCAD: {r}.";
+        }
+        catch (Exception ex)
+        {
+            EtabsStatusText.Text = "No se pudo dibujar el modelo en 3D.\n\n" + ex.Message;
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>La capa del modelo 3D que le toca a cada tipo de elemento.</summary>
+    private static string CapaDe(ClaseElemento clase) => clase switch
+    {
+        ClaseElemento.Columna => "MODELO3D-COLUMNAS",
+        ClaseElemento.Trabe => "MODELO3D-TRABES",
+        ClaseElemento.Diagonal => "MODELO3D-DIAGONALES",
+        ClaseElemento.Muro => "MODELO3D-MUROS",
+        ClaseElemento.Losa => "MODELO3D-LOSAS",
+        _ => "MODELO3D"
+    };
+
 }

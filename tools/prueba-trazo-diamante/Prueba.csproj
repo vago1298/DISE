@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de la geometria del diamante.
+
+       Es la unica pieza de este repositorio que se ejecuta contra el CadLink.Cad
+       compilado en lugar de portarlo a Python. Los verificar_*.py comprueban la
+       geometria portando el calculo, que esta bien para la geometria pero NO
+       comprueba lo que el codigo compilado hace: un port correcto conviviendo con
+       un C# equivocado da todo en verde.
+
+       Aqui se cazo un error de verdad. El muestreo de los arcos de la cinta
+       -TrazoDiamante.Muestrear, el que la vista previa usa para pintar los
+       dobleces- calculaba el centro del arco con el radio en valor absoluto y un
+       apaño para el lado. Los puntos se salian del doblez hasta 0.74 cm y el rombo
+       de la vista previa habria salido con los dobleces deformados. Ahora el peor
+       punto se sale 4e-15 cm.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-trazo-diamante
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla, asi que sirve para un script. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-trazo-diamante</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

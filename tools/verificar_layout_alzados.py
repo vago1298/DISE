@@ -21,6 +21,35 @@ SCALE_ELEVATION = 0.01
 
 ANCHO_COTAS_VERTICAL = DIM_OFF_3 + ROTULO_OFF_COL + 0.1
 
+# ---- Constante que NO viene del VBA ----
+#
+# En la macro el rotulo del alzado va dentro del bloque, asi que no hay que reservarle
+# sitio. Aqui va FUERA, colgando debajo del bloque insertado, y en el alzado vertical
+# debajo esta la seccion. Con solo SEP_SEC_ALZ (20 cm) el rotulo caia encima de ella,
+# asi que se abre este aire de mas.
+#
+# Ojo: esto hace que la Y del alzado vertical YA NO coincida con la del VBA, y es a
+# proposito. La X si tiene que seguir coincidiendo clavada.
+AIRE_ROTULO_ALZADO = 0.19
+
+# LAS COTAS DEL BLOQUE DE SECCION INSERTADO, que antes no existian.
+#
+# La seccion de concreto SI se acota cuando se dibuja en su propia hoja, pero esas cotas
+# NO ENTRAN AL BLOQUE: SeccionDrawer.Bloquear se salta a proposito todo lo que este en
+# las capas COTAS y ROTULOS. Asi que al insertar el mismo bloque como CORTE A-A' junto a
+# su alzado, llegaba SIN NINGUNA COTA: se veia la seccion pero no cuanto medía, con el
+# alzado al lado completamente acotado.
+#
+# Ahora se acota su caja real: la base 6 cm por encima de su pano y la altura 6 cm a su
+# derecha. Eso ocupa la banda donde vivia el CORTE A-A', que sube de 15 a 24 cm.
+SEP_COTA_CORTE = 0.06
+ALTO_COTA_CORTE = 0.09
+
+# El CORTE A-A' que AlzadoDrawer.RotuloCorte pone sobre el pano superior de la seccion.
+# Es lo UNICO que carga ese hueco: el rotulo del elemento cuelga del bloque de la
+# seccion, por DEBAJO, no del pie del alzado.
+CORTE_OFF = 0.15 + ALTO_COTA_CORTE
+
 fallos = []
 
 
@@ -106,12 +135,14 @@ def cs_colocar(x0, vertical, ancho_sec, tope_sec, largo, dos_caras):
     if vertical:
         x_sec = x0 + MARGEN_COL
         x_alz = x_sec + ancho_sec
-        y1 = tope_sec + SEP_SEC_ALZ
+        # + AIRE_ROTULO_ALZADO: hueco para el rotulo, que va debajo del bloque
+        y1 = tope_sec + SEP_SEC_ALZ + AIRE_ROTULO_ALZADO
         return {
             "x_sec": x_sec,
             "x_alz": x_alz,
             "y_alz": y1,
-            "y_alz2": (y1 + largo + SEP_CARAS) if dos_caras else None,
+            # YSegundaCara: la segunda cara tambien lleva rotulo debajo
+            "y_alz2": (y1 + largo + SEP_CARAS + AIRE_ROTULO_ALZADO) if dos_caras else None,
             "x_sig": x_sec + ancho_sec + ANCHO_COTAS_VERTICAL + SEP_SECCIONES,
         }
     return {
@@ -170,11 +201,32 @@ for n, fila in enumerate(FILAS, 1):
     print(f"\n  fila {n} ({len(fila)} elementos)")
 
     for i, (pv, pk) in enumerate(zip(v, k)):
+        # La X tiene que coincidir CLAVADA con el VBA.
         iguales = all(
             (pv[key] is None and pk[key] is None) or
             (pv[key] is not None and pk[key] is not None and abs(pv[key] - pk[key]) < 1e-12)
-            for key in ("x_sec", "x_alz", "y_alz", "y_alz2", "x_sig")
+            for key in ("x_sec", "x_alz", "x_sig")
         )
+
+        # La Y se aparta a proposito, y SOLO en el alzado vertical, por el hueco del
+        # rotulo. Se comprueba que se aparte EXACTAMENTE lo previsto: asi el desvio
+        # queda fijado y un cambio accidental se nota igual que antes.
+        if fila[i]["vertical"]:
+            desvio_y = AIRE_ROTULO_ALZADO
+            # La segunda cara acumula dos aires: el de su propio rotulo y el que ya
+            # llevaba la primera cara debajo.
+            desvio_y2 = 2 * AIRE_ROTULO_ALZADO
+        else:
+            desvio_y = 0.0
+            desvio_y2 = 0.0
+
+        iguales = iguales and abs((pk["y_alz"] - pv["y_alz"]) - desvio_y) < 1e-12
+
+        if pv["y_alz2"] is None or pk["y_alz2"] is None:
+            iguales = iguales and pv["y_alz2"] is None and pk["y_alz2"] is None
+        else:
+            iguales = iguales and abs((pk["y_alz2"] - pv["y_alz2"]) - desvio_y2) < 1e-12
+
         marca = "  " if iguales else "!!"
         if not iguales:
             difs += 1
@@ -189,6 +241,18 @@ for n, fila in enumerate(FILAS, 1):
 
 check("la colocacion coincide con el VBA en todas las filas", difs == 0,
       f"{difs} elementos distintos")
+
+# El hueco del rotulo se abre SOLO en el vertical: en la trabe el rotulo cae en la
+# banda que ya deja AIRE_SOBRE_SECCIONES y no hace falta tocar nada.
+sin_desvio = []
+for fila in FILAS:
+    for el, pv, pk in zip(fila, vba_fila(fila), cs_fila(fila)):
+        if not el["vertical"] and abs(pk["y_alz"] - pv["y_alz"]) > 1e-12:
+            sin_desvio.append((pv["y_alz"], pk["y_alz"]))
+
+check("en la trabe la Y sigue siendo la del VBA, sin aire de rotulo",
+      not sin_desvio,
+      "; ".join(f"VBA {a:.3f} vs C# {b:.3f}" for a, b in sin_desvio))
 
 # ---- Comprobaciones de la fisica del plano ----
 print()
@@ -241,10 +305,77 @@ c = dict(vertical=True, ancho_sec=0.40, alto_sec=0.40, largo=3.0, dos_caras=True
 p = cs_colocar(0.0, **{k2: c[k2] for k2 in ("vertical", "ancho_sec", "largo", "dos_caras")},
                tope_sec=Y_BLOQUES + c["alto_sec"])
 check("en la columna el alzado arranca encima del pano superior de la seccion",
-      abs(p["y_alz"] - (Y_BLOQUES + c["alto_sec"] + SEP_SEC_ALZ)) < 1e-12,
+      abs(p["y_alz"]
+          - (Y_BLOQUES + c["alto_sec"] + SEP_SEC_ALZ + AIRE_ROTULO_ALZADO)) < 1e-12,
       f"y={p['y_alz']:.4f}")
-check("y la segunda cara, a SEP_CARAS de la primera",
-      abs(p["y_alz2"] - (p["y_alz"] + c["largo"] + SEP_CARAS)) < 1e-12)
+check("y la segunda cara, a SEP_CARAS de la primera mas el aire del rotulo",
+      abs(p["y_alz2"]
+          - (p["y_alz"] + c["largo"] + SEP_CARAS + AIRE_ROTULO_ALZADO)) < 1e-12)
+
+# Y que el hueco alcance de verdad para el rotulo mas largo que puede salir: nueve
+# renglones de 2.5 mm con el interlineado por omision de un MText de AutoCAD.
+H_TX_ROTULO = 0.025
+INTERLINEADO = 1.6667
+ROTULO_GAP = 0.05
+
+alto_rotulo = H_TX_ROTULO * (1 + INTERLINEADO * (9 - 1))
+
+# 1) El hueco sobre la seccion tiene que alcanzar para la COTA DE LA BASE y para el
+#    CORTE A-A' que va encima de ella, en ese orden.
+hueco_corte = SEP_SEC_ALZ + AIRE_ROTULO_ALZADO
+alto_texto_corte = 0.025          # la altura del AddText del CORTE A-A'
+
+print(f"  hueco entre la seccion y el alzado = {hueco_corte:.4f} m")
+print(f"  la cota de la base del bloque esta a {SEP_COTA_CORTE:.4f} m del pano")
+print(f"  y el CORTE A-A' esta a {CORTE_OFF:.4f} m")
+
+check("la cota de la base cabe por debajo del CORTE A-A'",
+      SEP_COTA_CORTE < CORTE_OFF,
+      f"cota en {SEP_COTA_CORTE:.4f}, CORTE en {CORTE_OFF:.4f}")
+
+check("el hueco sobre la seccion alcanza para la cota y para el CORTE A-A'",
+      hueco_corte > CORTE_OFF + alto_texto_corte,
+      f"hueco {hueco_corte:.4f}, el CORTE acaba en "
+      f"{CORTE_OFF + alto_texto_corte:.4f}")
+
+# Y que quede AIRE de verdad, no que quepa justo: antes del cambio sobraban 12.5 cm
+# entre el CORTE y el pie del alzado, y hay que seguir teniendo del orden de eso. Es lo
+# que obligo a subir AIRE_ROTULO_ALZADO de 10 a 19 cm: con los 10 de antes, la cota nueva
+# dejaba el rotulo a 3.5 cm del alzado.
+aire_sobre_corte = hueco_corte - CORTE_OFF - alto_texto_corte
+
+print(f"  quedan {aire_sobre_corte:.4f} m de aire entre el CORTE A-A' y el pie del alzado")
+
+check("y queda aire de sobra, no justo", aire_sobre_corte > 0.10,
+      f"solo {aire_sobre_corte:.4f} m")
+
+check("con el aire de 0.10 que habia antes NO cabria la cota nueva",
+      (SEP_SEC_ALZ + 0.10) - CORTE_OFF - alto_texto_corte < 0.05,
+      f"quedarian {(SEP_SEC_ALZ + 0.10) - CORTE_OFF - alto_texto_corte:.4f} m")
+
+# 2) El rotulo del elemento cuelga del bloque de la SECCION, hacia ABAJO, asi que lo
+#    que tiene que esquivar es la FILA DE SECCIONES, no el alzado.
+#
+#    Y aqui esta el motivo de que el aire volviera a bajar: mientras el rotulo colgaba
+#    del pie del alzado hacian falta 46 cm de hueco, y eso dejaba media banda vacia
+#    entre las dos filas.
+AIRE_SOBRE_SECCIONES = 1.0
+alto_sec = 0.60                       # la seccion mas alta de la fila de abajo
+y_fila = alto_sec + AIRE_SOBRE_SECCIONES
+
+pie_rotulo = y_fila - ROTULO_GAP - alto_rotulo
+print(f"  la fila de alzados arranca en y = {y_fila:.4f}")
+print(f"  el rotulo cuelga de ahi y baja hasta y = {pie_rotulo:.4f}")
+print(f"  la fila de secciones llega a y = {alto_sec:.4f}")
+
+check("el rotulo del elemento no alcanza la fila de secciones",
+      pie_rotulo > alto_sec,
+      f"baja a {pie_rotulo:.4f} y la seccion llega a {alto_sec:.4f}")
+
+# 3) Con el aire viejo el hueco sobre la seccion era absurdo para lo que carga.
+check("con el aire viejo de 0.46 el hueco sobraba",
+      (SEP_SEC_ALZ + 0.46) - CORTE_OFF > 1.5 * CORTE_OFF,
+      f"sobraban {(SEP_SEC_ALZ + 0.46) - CORTE_OFF:.4f} m sobre el CORTE")
 check("la columna abre MARGEN_COL antes de su seccion",
       abs(p["x_sec"] - MARGEN_COL) < 1e-12)
 

@@ -326,4 +326,33 @@ public static class Estribos
 
         return Math.Max(valor, 0.2);
     }
+
+    /// <summary>
+    /// ¿El acero transversal de este elemento es un <b>zuncho</b>, o son <b>estribos</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La regla es la casilla, y solo la casilla: <b>una sección redonda no lleva zuncho por ser
+    /// redonda</b>. Lleva zuncho si se pidió zuncho —la columna «Zuncho helic.» con un SI—, y si
+    /// no, lleva estribos normales: anillos cerrados con su gancho, que es como se arma la
+    /// mayoría de las columnas y de los dados redondos.
+    /// </para>
+    /// <para>
+    /// Antes esto se decidía con <c>Circular</c> a secas, y el resultado era que un dado redondo
+    /// sin la casilla marcada salía rotulado «Zuncho anillos #3 @ 6 cm». <b>El dibujo estaba
+    /// bien</b> —eran cápsulas de estribo, no una hélice—, pero el rótulo le decía al fierrero
+    /// otra cosa: un zuncho se pide, se dobla y se paga distinto que un estribo. Con la casilla
+    /// marcada sí es un zuncho, y entonces el rótulo tiene que decirlo.
+    /// </para>
+    /// <para>
+    /// Vive aquí, y no repetida en cada rótulo, porque la deciden <b>cuatro</b> sitios: el
+    /// rótulo del alzado, el texto del acero transversal del alzado, el rótulo de la sección y el
+    /// título de la vista previa. Con la regla copiada cuatro veces, arreglar uno dejaba los
+    /// otros tres diciendo lo contrario.
+    /// </para>
+    /// </remarks>
+    /// <param name="circular">Si la sección es redonda.</param>
+    /// <param name="zunchoHelicoidal">Si se marcó la casilla del zuncho.</param>
+    public static bool EsZuncho(bool circular, bool zunchoHelicoidal) =>
+        circular && zunchoHelicoidal;
 }

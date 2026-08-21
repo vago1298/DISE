@@ -18,6 +18,11 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#FFFFC72C" />
 
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF" />
+
+    <!-- Fondo de la vista previa. Azul CLARO: el dibujo va en tinta oscura sobre
+         concreto claro, asi que un azul fuerte dejaria las varillas, las cotas y
+         el rayado del concreto sin contraste. -->
+    <SolidColorBrush x:Key="PreviewFondoBrush" Color="#FFE8F1FA" />
     <SolidColorBrush x:Key="TabStripBrush" Color="#FFE9EDF1" />
     <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF3F5F7" />
     <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE1E7EC" />
@@ -28,9 +33,106 @@
     <SolidColorBrush x:Key="WarningBrush" Color="#FFB8860B" />
     <SolidColorBrush x:Key="SuccessBrush" Color="#FF1E7E34" />
 
+    <!-- ===================== Paleta, segunda parte =====================
+         Estas brochas se anadieron al montar el tema oscuro. Antes cada uno de
+         estos colores estaba QUEMADO A MANO en el sitio donde se usaba, y el
+         #FFF3F6F9 de las tarjetas estaba repetido ONCE VECES. Mientras el
+         programa fue solo claro eso no molestaba; con dos temas es imposible,
+         porque un literal no puede cambiar de valor.
+
+         El tema se cambia MUTANDO EL COLOR de estas brochas, no sustituyendo el
+         diccionario. Ver Tema.cs, que explica por que. -->
+
+    <!-- Fondo de la ventana -->
+    <SolidColorBrush x:Key="WindowBrush" Color="#FFF7F9FB" />
+
+    <!-- Tarjetas: las cabeceras de cada hoja -->
+    <SolidColorBrush x:Key="CardBrush" Color="#FFF3F6F9" />
+
+    <!-- Barra de totales, debajo de la cuadricula -->
+    <SolidColorBrush x:Key="TotalesBrush" Color="#FFEDF3F8" />
+
+    <!-- Cuadricula: filas, alternas y lineas -->
+    <SolidColorBrush x:Key="GridRowBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="GridAltRowBrush" Color="#FFF8FAFB" />
+    <SolidColorBrush x:Key="GridLineBrush" Color="#FFE3E8ED" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#FFD6DEE6" />
+
+    <!-- Aviso amarillo de la barra de notificaciones -->
+    <SolidColorBrush x:Key="NoticeFondoBrush" Color="#FFFFF4CE" />
+    <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE0C36A" />
+    <SolidColorBrush x:Key="NoticeTextoBrush" Color="#FF7A5B00" />
+
+    <!-- Botones -->
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="#FFB6C2CC" />
+    <SolidColorBrush x:Key="ToolbarPressedBrush" Color="#FFD2DAE1" />
+
+    <!-- ===================== Colores de celda =====================
+         Sacados a brochas por lo mismo: en tema oscuro estos nueve pasteles
+         sobre blanco no se leen. Los estilos de celda de mas abajo los usan en
+         lugar de llevar el hex escrito. -->
+    <SolidColorBrush x:Key="CeldaIdentBrush" Color="#FFDCE7F3" />
+    <SolidColorBrush x:Key="CeldaGeomBrush" Color="#FFE6F2E1" />
+    <SolidColorBrush x:Key="CeldaLechoSupBrush" Color="#FFDCEEF6" />
+    <SolidColorBrush x:Key="CeldaLechoInfBrush" Color="#FFEFE8F6" />
+    <SolidColorBrush x:Key="CeldaLateralBrush" Color="#FFFBF2D9" />
+    <SolidColorBrush x:Key="CeldaCircularBrush" Color="#FFFBE4DE" />
+    <SolidColorBrush x:Key="CeldaEstriboBrush" Color="#FFE9EEF2" />
+    <SolidColorBrush x:Key="CeldaAcabadoBrush" Color="#FFF4F1E8" />
+    <SolidColorBrush x:Key="CeldaCalculadaBrush" Color="#FFEDEDED" />
+
+    <!-- ===== La fila de acero cuando el acero no se hace en ese perfil =====
+         Tres brochas, no una, porque hay que decir tres cosas distintas:
+
+           * FilaAceroNoDisponibleBrush  el fondo de TODA la fila, muy suave: es
+             un aviso, no un error, y la fila se tiene que seguir leyendo.
+           * AceroNoSeHaceBrush          la celda de disponibilidad, en rojo de
+             verdad con texto blanco. Esta es la que dice QUE pasa, y va fuerte
+             porque es la unica que lo dice.
+           * AceroVerificarBrush         ambar: puede conseguirse, hay que
+             confirmarlo. NO es rojo, y esa diferencia importa: pintar de rojo un
+             acero que si se puede pedir hace cambiar de acero sin necesidad. -->
+    <SolidColorBrush x:Key="FilaAceroNoDisponibleBrush" Color="#FFFBE3E3" />
+    <SolidColorBrush x:Key="AceroNoSeHaceBrush" Color="#FFC62828" />
+    <SolidColorBrush x:Key="AceroVerificarBrush" Color="#FFFFF1CC" />
+    <SolidColorBrush x:Key="AceroVerificarTextoBrush" Color="#FF8A5A00" />
+
+    <!-- ===================== Menú =====================
+         Sin estos dos estilos el menú se queda con los colores por omisión de
+         Windows —fondo claro y texto negro— y en tema oscuro era lo único que
+         seguía saliendo blanco. Van SIN x:Key a propósito: así se aplican a
+         todos los Menu y MenuItem de la ventana sin tener que tocarlos uno a uno. -->
+    <Style TargetType="Menu">
+        <Setter Property="Background" Value="{DynamicResource TabStripBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <!-- ===================== Casillas y opciones =====================
+         Los RadioButton de «Sección tipo 1 / tipo 2» y los CheckBox salían con el
+         texto NEGRO por omisión de Windows, así que en tema oscuro desaparecían
+         sobre el fondo. Con la ventana clara no se notaba porque el negro es el
+         color que tocaba. Van sin x:Key para que apliquen a todos. -->
+    <Style TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
+    <!-- Y las etiquetas, por lo mismo. -->
+    <Style TargetType="Label">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+
     <!-- ===================== Pestaña individual ===================== -->
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Padding" Value="14,7" />
         <Setter Property="Margin" Value="0,0,2,0" />
@@ -39,11 +141,14 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
                     <Grid>
+                        <!-- Pestaña de tira SUPERIOR: el borde se abre por abajo,
+                             hacia el contenido, y las esquinas se redondean arriba.
+                             Cuando la tira estaba abajo era al contrario. -->
                         <Border x:Name="Bg"
-                                Background="{StaticResource TabInactiveBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1,0,1,1"
-                                CornerRadius="0,0,4,4">
+                                Background="{DynamicResource TabInactiveBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1,1,1,0"
+                                CornerRadius="4,4,0,0">
                             <ContentPresenter x:Name="Label"
                                               ContentSource="Header"
                                               Margin="{TemplateBinding Padding}"
@@ -52,22 +157,22 @@
                                               RecognizesAccessKey="True" />
                         </Border>
 
-                        <!-- Barra de acento inferior, como el subrayado de la hoja
-                             activa en Excel. Oculta salvo en la pestaña seleccionada. -->
+                        <!-- Barra de acento, arriba: es el borde que marca la hoja
+                             activa. Oculta salvo en la pestaña seleccionada. -->
                         <Border x:Name="Accent"
                                 Height="3"
-                                VerticalAlignment="Bottom"
-                                Background="{StaticResource BrandBrush}"
-                                CornerRadius="0,0,4,4"
+                                VerticalAlignment="Top"
+                                Background="{DynamicResource BrandBrush}"
+                                CornerRadius="4,4,0,0"
                                 Visibility="Collapsed" />
                     </Grid>
 
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource SurfaceBrush}" />
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceBrush}" />
                             <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
                             <Setter Property="FontWeight" Value="SemiBold" />
-                            <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
                             <Setter Property="Panel.ZIndex" Value="10" />
                         </Trigger>
 
@@ -76,11 +181,11 @@
                                 <Condition Property="IsSelected" Value="False" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource TabHoverBrush}" />
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource TabHoverBrush}" />
                         </MultiTrigger>
 
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                             <Setter Property="Opacity" Value="0.55" />
                             <Setter Property="Cursor" Value="No" />
                         </Trigger>
@@ -92,8 +197,12 @@
 
     <!-- ===================== Contenedor de pestañas ===================== -->
     <Style x:Key="ExcelTabControlStyle" TargetType="TabControl">
-        <Setter Property="TabStripPlacement" Value="Bottom" />
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <!-- ARRIBA, no abajo. Las hojas al estilo de Excel llevan la tira abajo,
+             pero aqui hay 12 pestañas y con la tira abajo el usuario tenia que ir a
+             buscarlas al pie de la ventana, lejos del menu y de la barra de
+             herramientas con las que se combinan. -->
+        <Setter Property="TabStripPlacement" Value="Top" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource ExcelTabItemStyle}" />
         <Setter Property="Template">
@@ -101,24 +210,42 @@
                 <ControlTemplate TargetType="TabControl">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <!-- Contenido de la hoja activa -->
-                        <Border Grid.Row="0"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="0,0,0,1">
-                            <ContentPresenter ContentSource="SelectedContent" />
+                        <!-- Franja de pestañas.
+                             ==============================================================
+                             OJO: aquí NO va un TabPanel, y es a propósito.
+
+                             El TabPanel de WPF, cuando las pestañas no caben en una fila,
+                             REORDENA las filas para dejar la de la pestaña seleccionada
+                             pegada al contenido. El resultado es que las pestañas SALTAN de
+                             sitio cada vez que eliges una: pulsas «Placa Base» en la fila de
+                             arriba y de pronto aparece abajo, con todo lo demás movido. Con
+                             12 hojas eso pasa constantemente y obliga a buscar la pestaña
+                             otra vez después de cada clic.
+
+                             Un WrapPanel acomoda las pestañas en varias filas igual que el
+                             TabPanel, pero conserva el ORDEN: cada hoja se queda siempre en
+                             el mismo sitio, que es lo que se espera de una barra de
+                             pestañas y lo que pidió el usuario.
+
+                             Lo que se pierde es el efecto de «fila pegada al contenido». No
+                             es un problema: la pestaña activa ya se distingue por su fondo
+                             blanco, su barra de acento y su texto en negrita.
+                             ============================================================== -->
+                        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}" Padding="6,4,6,0">
+                            <WrapPanel IsItemsHost="True" Orientation="Horizontal" />
                         </Border>
 
-                        <!-- Franja de pestañas. TabPanel acomoda las pestañas en varias
-                             filas si no caben en el ancho de la ventana. Va directo en el
-                             Border: envolverlo en un ScrollViewer complica la localización
-                             del panel anfitrión de los elementos. -->
-                        <Border Grid.Row="1" Background="{StaticResource TabStripBrush}" Padding="6,3,6,4">
-                            <prim:TabPanel IsItemsHost="True" />
+                        <!-- Contenido de la hoja activa. El borde va ARRIBA, contra la
+                             tira, para que la hoja activa se lea unida a su pestaña. -->
+                        <Border Grid.Row="1"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="0,1,0,0">
+                            <ContentPresenter ContentSource="SelectedContent" />
                         </Border>
                     </Grid>
                 </ControlTemplate>
@@ -130,19 +257,19 @@
     <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="17" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="Margin" Value="0,0,0,3" />
     </Style>
 
     <Style x:Key="ModuleSubtitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
         <Setter Property="Margin" Value="0,0,0,14" />
     </Style>
 
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource BrandBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BrandBrush}" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="14,7" />
@@ -160,10 +287,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandDarkBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandDarkBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="#FFB6C2CC" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DisabledTextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -172,7 +299,7 @@
     </Style>
 
     <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-        <Setter Property="Background" Value="#FF6B7A88" />
+        <Setter Property="Background" Value="{DynamicResource MutedTextBrush}" />
     </Style>
 
     <!-- Celda con lista desplegable, como la validación de datos de Excel.
@@ -198,14 +325,151 @@
         <Setter Property="CanUserDeleteRows" Value="True" />
         <Setter Property="HeadersVisibility" Value="All" />
         <Setter Property="GridLinesVisibility" Value="All" />
-        <Setter Property="HorizontalGridLinesBrush" Value="#FFE3E8ED" />
-        <Setter Property="VerticalGridLinesBrush" Value="#FFE3E8ED" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="RowBackground" Value="White" />
-        <Setter Property="AlternatingRowBackground" Value="#FFF8FAFB" />
+        <Setter Property="RowBackground" Value="{DynamicResource GridRowBrush}" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource GridAltRowBrush}" />
         <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
         <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!-- ==================================================================
+         Colores de celda por grupo de columnas
+         ==================================================================
+         Con 27 columnas seguidas, todas del mismo color, es muy facil escribir
+         el armado del lecho inferior en el del superior: las cabeceras se
+         parecen y no hay nada que separe un grupo del siguiente. Los colores
+         hacen ese trabajo, igual que en la hoja de Excel original.
+
+         Los tonos van MUY suaves a proposito: tienen que separar grupos sin
+         competir con la seleccion de fila ni con el texto.
+
+         Cada estilo hereda del DataGridCell de serie, asi que el resaltado de
+         seleccion sigue funcionando: el trigger IsSelected del estilo base gana
+         al Setter de fondo. Sin el BasedOn se perderia el resaltado y no se
+         veria que fila esta seleccionada. -->
+
+    <Style x:Key="CeldaBase" TargetType="DataGridCell"
+           BasedOn="{StaticResource {x:Type DataGridCell}}">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="4,2" />
+    </Style>
+
+    <!-- Identificacion: que elemento es y como se llama su bloque -->
+    <Style x:Key="CeldaIdent" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaIdentBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- Geometria: base y altura -->
+    <Style x:Key="CeldaGeom" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaGeomBrush}" />
+    </Style>
+
+    <!-- Lecho superior -->
+    <Style x:Key="CeldaLechoSup" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaLechoSupBrush}" />
+    </Style>
+
+    <!-- Lecho inferior. Distinto del superior, que es justo el par que se
+         confunde al capturar. -->
+    <Style x:Key="CeldaLechoInf" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaLechoInfBrush}" />
+    </Style>
+
+    <!-- Varillas laterales -->
+    <Style x:Key="CeldaLateral" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaLateralBrush}" />
+    </Style>
+
+    <!-- Seccion circular: armado del circulo y forma del zuncho -->
+    <Style x:Key="CeldaCircular" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaCircularBrush}" />
+    </Style>
+
+    <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
+    <Style x:Key="CeldaEstribo" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaEstriboBrush}" />
+    </Style>
+
+    <!-- Acabado: gancho, f'c, escala, longitud -->
+    <Style x:Key="CeldaAcabado" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
+    </Style>
+
+    <!-- Calculadas: de solo lectura. Van en gris y en cursiva para que se vea de
+         un golpe que ahi no se escribe. -->
+    <Style x:Key="CeldaCalculada" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
+        <Setter Property="FontStyle" Value="Italic" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+
+    <!-- ==================================================================
+         La fila de acero: marcada cuando el acero no se hace en ese perfil
+         ==================================================================
+         El manual dice, acero por acero, en qué secciones se consigue. Un A-36
+         en un monten no existe —la lámina rolada en frío no se hace en A-36— y
+         eso no se ve mirando la fila: los dos son valores válidos por separado.
+
+         Así que la fila se marca. El fondo va MUY suave, porque es un aviso y no
+         un error: el dibujo se puede generar igual, lo que hace falta es que el
+         calculista lo vea antes de mandar el plano.
+
+         Se pone TAMBIÉN el ToolTip en la fila, con el detalle: qué acero es, su
+         Fy y su Fu, para no tener que ir a buscarlo a otra parte. -->
+    <Style x:Key="FilaAceroStyle" TargetType="DataGridRow"
+           BasedOn="{StaticResource {x:Type DataGridRow}}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AceroNoDisponible}" Value="True">
+                <Setter Property="Background"
+                        Value="{StaticResource FilaAceroNoDisponibleBrush}" />
+                <Setter Property="ToolTip"
+                        Value="{Binding AceroDetalle}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- La celda que DICE qué pasa. Es la que va fuerte, y la única.
+
+         Va con su propio estilo y no con el color de la fila porque el fondo de
+         la fila puede perder contra el AlternatingRowBackground de la
+         cuadrícula, según la versión de WPF. Esta celda no depende de eso: su
+         color es suyo, así que el aviso se ve siempre. -->
+    <Style x:Key="CeldaDisponibilidadAcero" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="FontSize" Value="11" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AceroNoDisponible}" Value="True">
+                <Setter Property="Background" Value="{StaticResource AceroNoSeHaceBrush}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding AceroPorVerificar}" Value="True">
+                <Setter Property="Background" Value="{StaticResource AceroVerificarBrush}" />
+                <Setter Property="Foreground"
+                        Value="{StaticResource AceroVerificarTextoBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Encabezado de la hoja: se queda fijo arriba y con aire suficiente para
+         que los nombres de dos palabras se lean. -->
+    <Style x:Key="EncabezadoHojaStyle" TargetType="DataGridColumnHeader">
+        <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Padding" Value="6,6" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
     <!-- ==================================================================
@@ -218,7 +482,7 @@
          alto de la ventana. -->
     <Style x:Key="ToolbarButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="Margin" Value="0,0,2,0" />
@@ -235,13 +499,13 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource TabHoverBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#FFD2DAE1" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarPressedBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -254,14 +518,14 @@
          un golpe de vista sin romper la barra. -->
     <Style x:Key="ToolbarPrimaryButtonStyle" TargetType="Button"
            BasedOn="{StaticResource ToolbarButtonStyle}">
-        <Setter Property="Foreground" Value="{StaticResource BrandDarkBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <!-- Separador vertical de la barra, para agrupar acciones -->
     <Style x:Key="ToolbarSeparatorStyle" TargetType="Border">
         <Setter Property="Width" Value="1" />
-        <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
         <Setter Property="Margin" Value="7,5,7,5" />
     </Style>
 

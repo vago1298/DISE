@@ -367,6 +367,49 @@ public sealed partial class SeccionDrawer
         return AcadArreglos.Llamar(operacion, entidades, llamada, Fallo, Nota);
     }
 
+    /// <summary>
+    /// Igual, pero para el <b>orden de dibujo</b>: lo que falle va como NOTA, no como
+    /// fallo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El orden de dibujo es estético: cambia qué queda encima de qué, no qué hay en el
+    /// plano. Reportarlo como fallo hacía que el resumen avisara de que «el dibujo puede
+    /// estar incompleto» cuando estaba entero, y eso es peor que no avisar: enseña al
+    /// usuario a desconfiar de un mensaje que casi siempre es falsa alarma, y el día que
+    /// falte algo de verdad no lo va a creer.
+    /// </para>
+    /// <para>
+    /// La nota sí dice qué se perdió, porque tiene consecuencia visible: sin reordenar, el
+    /// rayado puede tapar una varilla o el rótulo quedar debajo del acero.
+    /// </para>
+    /// </remarks>
+    private bool ConArregloParaOrdenar(
+        string operacion, IReadOnlyList<object> entidades, Action<object> llamada)
+    {
+        var reportado = false;
+
+        var ok = AcadArreglos.Llamar(
+            operacion, entidades, llamada,
+            (op, ex) =>
+            {
+                if (reportado)
+                {
+                    return;
+                }
+
+                reportado = true;
+
+                Nota(
+                    $"{op}: no se pudo reordenar ({ex.GetType().Name}). El dibujo está " +
+                    "completo; lo único que puede pasar es que algo quede tapado por " +
+                    "encima, como el rayado sobre una varilla.");
+            },
+            Nota);
+
+        return ok;
+    }
+
 
     /// <summary>Registra un fallo tolerado, sin repetir el mismo mensaje.</summary>
     private void Fallo(string operacion, Exception ex)
@@ -704,8 +747,76 @@ public sealed partial class SeccionDrawer
         }
         catch (Exception ex)
         {
+            // ------------------------------------------------------------------
+            // «Esa propiedad no existe» NO es un fallo del dibujo
+            // ------------------------------------------------------------------
+            // Las propiedades de cota no son las mismas en todas las versiones de
+            // AutoCAD. Cuatro de las que pide la macro —ExtensionLineOffset,
+            // ExtensionLineExtend, ExtLineFixedLen y ExtLineFixedLenSuppress— no
+            // están en algunas, y el enlace tardío responde con
+            // DISP_E_UNKNOWNNAME (0x80020006).
+            //
+            // Eso se estaba contando como fallo, y el resultado era que al terminar
+            // de dibujar salía «PERO hubo 4 fallo(s) que se toleraron, así que el
+            // dibujo puede estar incompleto» en un dibujo que estaba perfecto. Un
+            // aviso que se dispara siempre y que no hay forma de atender enseña al
+            // usuario a ignorar los avisos, y entonces los de verdad tampoco se
+            // leen.
+            //
+            // Son propiedades de PRESENTACIÓN: afinan cuánto sobresale la línea de
+            // extensión. Sin ellas la cota sale igual de correcta, solo con el
+            // remate por omisión de la versión. Así que se registran como NOTA.
+            if (EsPropiedadInexistente(ex))
+            {
+                Nota(
+                    $"Esta versión de AutoCAD no tiene la propiedad de cota " +
+                    $"'{propiedad}', así que se dejó su valor por omisión. Es un " +
+                    "detalle de presentación de la línea de extensión: las cotas " +
+                    "salen bien.");
+
+                return;
+            }
+
             Fallo($"Cota: propiedad {propiedad}", ex);
         }
+    }
+
+    /// <summary>
+    /// ¿El error es «esa propiedad no existe» y no un fallo de verdad?
+    /// </summary>
+    /// <remarks>
+    /// Se comprueba por <b>HRESULT</b> y no por el texto del mensaje: el mensaje
+    /// viene traducido al idioma de AutoCAD —«Nombre desconocido» en español,
+    /// «Unknown name» en inglés— así que buscar en el texto funcionaría en una
+    /// instalación y no en la siguiente.
+    /// <para>
+    /// <c>DISP_E_UNKNOWNNAME</c> es el error del enlace tardío cuando el objeto COM
+    /// no expone ese nombre. <c>DISP_E_MEMBERNOTFOUND</c> es su equivalente cuando
+    /// el nombre se resuelve pero no como miembro asignable.
+    /// </para>
+    /// </remarks>
+    private static bool EsPropiedadInexistente(Exception ex)
+    {
+        const uint DispUnknownName = 0x80020006;      // DISP_E_UNKNOWNNAME
+        const uint DispMemberNotFound = 0x80020003;   // DISP_E_MEMBERNOTFOUND
+
+        var e = ex;
+
+        // El InvokeMember envuelve la excepción de COM, así que hay que desenvolverla
+        // o el HRESULT que se leería sería el del envoltorio.
+        while (e is TargetInvocationException && e.InnerException is not null)
+        {
+            e = e.InnerException;
+        }
+
+        if (e is COMException com)
+        {
+            var h = (uint)com.HResult;
+            return h == DispUnknownName || h == DispMemberNotFound;
+        }
+
+        // Sin COM por medio, la reflexión avisa así de que el miembro no está.
+        return e is MissingMemberException;
     }
 
     /// <summary>Aplica a una cota el estilo, la capa y los ajustes de la macro.</summary>
@@ -839,6 +950,18 @@ public sealed partial class SeccionDrawer
             ModoSeccion.Tipo2Rellena => true,
             _ => true
         };
+
+        // ---------- La seccion REDONDA se va por su propio camino ----------
+        // No es una variante del rectangulo con un radio: no tiene esquinas, no tiene
+        // lechos, el acero transversal es un zuncho y no un estribo, y el hatch se
+        // recorta contra coronas y no contra rectangulos redondeados. Intentar que
+        // una sola rutina hiciera las dos formas llenaria de 'if (circular)' cada
+        // una de las veinte etapas del dibujo rectangular, que es codigo ya probado
+        // y no hay ninguna razon para arriesgarlo.
+        if (s.Circular)
+        {
+            return DibujarCircular(s, xIzquierda, yAbajo, inicio, destino, conFondoSolido);
+        }
 
         var b = s.BaseCm * _escala;
         var h = s.AlturaCm * _escala;
@@ -1410,7 +1533,7 @@ public sealed partial class SeccionDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                ConArregloDeEntidades("MoveToTop", objetos,
+                ConArregloParaOrdenar("MoveToTop", objetos,
                     arr => { tabla.MoveToTop(arr); });
             });
         }
@@ -1486,7 +1609,7 @@ public sealed partial class SeccionDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                ConArregloDeEntidades("MoveToBottom", objetos,
+                ConArregloParaOrdenar("MoveToBottom", objetos,
                     arr => { tabla.MoveToBottom(arr); });
             });
         }
@@ -1622,6 +1745,12 @@ public sealed partial class SeccionDrawer
             poY = yIni;
         }
 
+        // Las TRES líneas de la cola, siempre: la cara que da a la varilla, la de fuera y
+        // la punta que las cierra.
+        //
+        // Hubo un parámetro para saltarse la primera, que usaba el gancho del diamante. Se
+        // quitó a pedido del usuario: eran las dos líneas que le faltaban al gancho del
+        // diamante, una por cola. La cola de un gancho tiene sus tres líneas y punto.
         Agregar(contorno, Linea(piX, piY, qiX, qiY, "ESTRIBOS"));
         Agregar(contorno, Linea(poX, poY, qoX, qoY, "ESTRIBOS"));
         Agregar(contorno, Linea(qiX, qiY, qoX, qoY, "ESTRIBOS"));
@@ -1678,16 +1807,63 @@ public sealed partial class SeccionDrawer
         List<object> circulos, LechoCad lecho, SeccionCad s,
         double x0, double y0, double b, double h, double rec, double dEst, bool arriba)
     {
+        var p = PosicionesDeLecho(lecho, x0, y0, b, h, rec, dEst, arriba);
+
+        foreach (var x in p.Esquina)
+        {
+            var rr = lecho.Esquina.Cm * _escala / 2;
+            Agregar(circulos, Varilla(x, p.YEsquina, rr, lecho.Esquina.Clave));
+            (arriba ? _varSup : _varInf).Add((x, p.YEsquina, rr));
+        }
+
+        foreach (var x in p.Intermedia)
+        {
+            var rr = lecho.Intermedia.Cm * _escala / 2;
+            Agregar(circulos, Varilla(x, p.YIntermedia, rr, lecho.Intermedia.Clave));
+            (arriba ? _varSup : _varInf).Add((x, p.YIntermedia, rr));
+        }
+
+        return (p.Esquina, p.Intermedia, p.YGrupo);
+    }
+
+    /// <summary>
+    /// <b>Dónde</b> van las varillas de un lecho, sin dibujar nada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está separado del dibujo porque hace falta <b>dos veces</b>: al dibujar la
+    /// sección, y otra vez al rehacer sus llamadas junto al bloque que el alzado
+    /// inserta a su lado. Ver <see cref="LlamadasJuntoAlBloque"/>. Antes el cálculo
+    /// estaba dentro de <see cref="Lecho"/>, mezclado con la creación de los círculos,
+    /// así que la única forma de recuperar las posiciones era dibujar las varillas otra
+    /// vez encima.
+    /// </para>
+    /// <para>
+    /// Devuelve <b>las dos Y</b> además de la del grupo. Cuando la varilla de esquina y
+    /// la intermedia son de distinto diámetro, sus centros no están a la misma altura
+    /// —el reparto es desde la cara, así que media diferencia de diámetro las
+    /// separa— y para dibujarlas hace falta cada una. <c>YGrupo</c> es la que usan las
+    /// llamadas, y es la de las intermedias cuando existen, igual que en la macro, donde
+    /// <c>ySup</c> termina valiendo la de la última fila dibujada.
+    /// </para>
+    /// </remarks>
+    private (double[] Esquina, double YEsquina, double[] Intermedia, double YIntermedia,
+        double YGrupo) PosicionesDeLecho(
+        LechoCad lecho,
+        double x0, double y0, double b, double h, double rec, double dEst, bool arriba)
+    {
         var xsEsquina = Array.Empty<double>();
         var xsIntermedia = Array.Empty<double>();
+        var yEsquina = 0d;
+        var yIntermedia = 0d;
         var yGrupo = 0d;
 
         if (lecho.NEsquina > 0 && lecho.Esquina.Existe)
         {
             var d = lecho.Esquina.Cm * _escala;
             var off = rec + dEst + (d / 2);
-            var y = arriba ? y0 + h - off : y0 + off;
-            yGrupo = y;
+            yEsquina = arriba ? y0 + h - off : y0 + off;
+            yGrupo = yEsquina;
 
             var xs = new List<double>();
 
@@ -1704,12 +1880,6 @@ public sealed partial class SeccionDrawer
                 }
             }
 
-            foreach (var x in xs)
-            {
-                Agregar(circulos, Varilla(x, y, d / 2, lecho.Esquina.Clave));
-                (arriba ? _varSup : _varInf).Add((x, y, d / 2));
-            }
-
             xsEsquina = xs.ToArray();
         }
 
@@ -1717,13 +1887,8 @@ public sealed partial class SeccionDrawer
         {
             var d = lecho.Intermedia.Cm * _escala;
             var off = rec + dEst + (d / 2);
-            var y = arriba ? y0 + h - off : y0 + off;
-
-            // Se queda la Y de las intermedias cuando existen, igual que la macro,
-            // donde 'ySup' termina valiendo la de la última fila dibujada. Con el
-            // mismo diámetro las dos filas están a la misma altura, así que solo
-            // cambia algo cuando los diámetros difieren.
-            yGrupo = y;
+            yIntermedia = arriba ? y0 + h - off : y0 + off;
+            yGrupo = yIntermedia;
 
             var xs = new List<double>();
 
@@ -1742,16 +1907,42 @@ public sealed partial class SeccionDrawer
                 }
             }
 
-            foreach (var x in xs)
-            {
-                Agregar(circulos, Varilla(x, y, d / 2, lecho.Intermedia.Clave));
-                (arriba ? _varSup : _varInf).Add((x, y, d / 2));
-            }
-
             xsIntermedia = xs.ToArray();
         }
 
-        return (xsEsquina, xsIntermedia, yGrupo);
+        return (xsEsquina, yEsquina, xsIntermedia, yIntermedia, yGrupo);
+    }
+
+    /// <summary>
+    /// <b>Dónde</b> van las varillas laterales, sin dibujar nada.
+    /// </summary>
+    /// <remarks>Separado de <see cref="Laterales"/> por lo mismo que
+    /// <see cref="PosicionesDeLecho"/>.</remarks>
+    private List<(double XIzq, double XDer, double Y)> PosicionesLaterales(
+        SeccionCad s, double x0, double y0, double b, double h,
+        double rec, double dEst, double dSup, double dInf)
+    {
+        var salida = new List<(double XIzq, double XDer, double Y)>();
+
+        if (s.NLateral <= 0 || !s.Lateral.Existe)
+        {
+            return salida;
+        }
+
+        var d = s.Lateral.Cm * _escala;
+        var offSup = rec + dEst + (dSup / 2);
+        var offInf = rec + dEst + (dInf / 2);
+        var offLado = rec + dEst + (d / 2);
+
+        var hueco = h - offSup - offInf;
+        var paso = s.NLateral > 1 ? hueco / (s.NLateral + 1) : hueco / 2;
+
+        for (var i = 1; i <= s.NLateral; i++)
+        {
+            salida.Add((x0 + offLado, x0 + b - offLado, y0 + offInf + (i * paso)));
+        }
+
+        return salida;
     }
 
     /// <summary>
@@ -1808,20 +1999,10 @@ public sealed partial class SeccionDrawer
         }
 
         var d = s.Lateral.Cm * _escala;
-        var offSup = rec + dEst + (dSup / 2);
-        var offInf = rec + dEst + (dInf / 2);
-        var offLado = rec + dEst + (d / 2);
 
-        var hueco = h - offSup - offInf;
-        var paso = s.NLateral > 1 ? hueco / (s.NLateral + 1) : hueco / 2;
-
-        for (var i = 1; i <= s.NLateral; i++)
+        foreach (var (xIzq, xDer, y) in
+                 PosicionesLaterales(s, x0, y0, b, h, rec, dEst, dSup, dInf))
         {
-            var y = y0 + offInf + (i * paso);
-
-            var xIzq = x0 + offLado;
-            var xDer = x0 + b - offLado;
-
             Agregar(circulos, Varilla(xIzq, y, d / 2, s.Lateral.Clave));
             Agregar(circulos, Varilla(xDer, y, d / 2, s.Lateral.Clave));
 
@@ -2015,7 +2196,21 @@ public sealed partial class SeccionDrawer
         }
     }
 
-    private void TextoLeader(double x, double y, string texto)
+    /// <param name="haciaLaDerecha">
+    /// El texto crece hacia la <b>derecha</b> del punto, así que la línea de llamada
+    /// sale por su lado <b>izquierdo</b>.
+    /// </param>
+    /// <remarks>
+    /// El anclaje por omisión es <c>MiddleRight</c>, que es el
+    /// <c>ATTACH_MIDDLE_RIGHT</c> de la macro y lo correcto en las llamadas de lecho:
+    /// ahí el texto va a la izquierda de la sección y la línea entra por su derecha.
+    /// <para>
+    /// En la llamada del círculo hace falta lo contrario. Con el anclaje a la derecha
+    /// el texto se extendía hacia la izquierda y la línea salía pegada a su última
+    /// letra, que es el defecto que se veía en el plano.
+    /// </para>
+    /// </remarks>
+    private void TextoLeader(double x, double y, string texto, bool haciaLaDerecha = false)
     {
         try
         {
@@ -2023,7 +2218,9 @@ public sealed partial class SeccionDrawer
             {
                 dynamic mt = _ms.AddMText(new[] { x, y, 0d }, 1.0 * _f, texto);
                 mt.Height = AlturaTextoLeader * _f;
-                mt.AttachmentPoint = 6;   // acAttachmentPointMiddleRight
+
+                // 4 = acAttachmentPointMiddleLeft, 6 = acAttachmentPointMiddleRight
+                mt.AttachmentPoint = haciaLaDerecha ? 4 : 6;
                 mt.InsertionPoint = new[] { x, y, 0d };
                 mt.Layer = "ROTULOS";
                 mt.Color = PorCapa;
@@ -2139,13 +2336,23 @@ public sealed partial class SeccionDrawer
 
         if (s.Estribo.Existe)
         {
-            lineas.Add($"Estr. {s.Estribo.Clave} @{sep} cm");
+            // Zuncho o estribos: lo decide LA CASILLA, no que la seccion sea redonda.
+            // Un zuncho y un estribo se piden, se doblan y se colocan distinto, asi que
+            // el rotulo tiene que decir cual es; pero una columna redonda sin la casilla
+            // marcada lleva ESTRIBOS, y antes se rotulaba «Zuncho en anillos». La regla
+            // esta en Estribos.EsZuncho, que es el mismo sitio que usa el alzado.
+            lineas.Add(Estribos.EsZuncho(s.Circular, s.ZunchoHelicoidal)
+                ? $"Zuncho helicoidal {s.Estribo.Clave} @{sep} cm"
+                : $"Estr. {s.Estribo.Clave} @{sep} cm");
         }
 
         // Renglón del estribo diamante, con la MISMA separación que el principal.
         // Faltaba: el diamante se dibujaba pero no se rotulaba, así que el plano no
         // decía qué varilla llevaba.
-        if (s.Diamante)
+        //
+        // En la seccion circular no aplica: el diamante es un rombo entre las
+        // varillas de dos lechos, y en un circulo no hay lechos ni esquinas.
+        if (s.Diamante && !s.Circular)
         {
             var clave = s.EstriboDiamanteVar.Existe
                 ? s.EstriboDiamanteVar.Clave
@@ -2241,11 +2448,21 @@ public sealed partial class SeccionDrawer
             d[v.Clave] = d.TryGetValue(v.Clave, out var actual) ? actual + n : n;
         }
 
-        Sumar(s.Superior.Esquina, s.Superior.NEsquina);
-        Sumar(s.Superior.Intermedia, s.Superior.NIntermedia);
-        Sumar(s.Inferior.Esquina, s.Inferior.NEsquina);
-        Sumar(s.Inferior.Intermedia, s.Inferior.NIntermedia);
-        Sumar(s.Lateral, s.NLateral * 2);
+        if (s.Circular)
+        {
+            // En la seccion redonda hay UN solo grupo: el circulo de varillas. Sumar
+            // aqui los lechos dejaria el rotulo diciendo varillas que no se
+            // dibujaron, porque el dibujo circular no los usa.
+            Sumar(s.VarTotal, s.NVarTotal);
+        }
+        else
+        {
+            Sumar(s.Superior.Esquina, s.Superior.NEsquina);
+            Sumar(s.Superior.Intermedia, s.Superior.NIntermedia);
+            Sumar(s.Inferior.Esquina, s.Inferior.NEsquina);
+            Sumar(s.Inferior.Intermedia, s.Inferior.NIntermedia);
+            Sumar(s.Lateral, s.NLateral * 2);
+        }
 
         return d.OrderByDescending(p => Numero(p.Key));
 
@@ -2620,7 +2837,7 @@ public sealed partial class SeccionDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                ConArregloDeEntidades(
+                ConArregloParaOrdenar(
                     alFondo ? "MoveToBottom en el bloque" : "MoveToTop en el bloque",
                     objetos,
                     arr =>
