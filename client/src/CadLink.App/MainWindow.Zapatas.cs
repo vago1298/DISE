@@ -318,6 +318,28 @@ public partial class MainWindow
             }
 
             fila.TipoColumna = ZapataAisladaRow.TipoColumnaConcreto;
+
+            // Y su ARMADO, que es lo que el dibujante necesita para el arranque de la columna
+            // encima del dado. En la macro esto se capturaba otra vez en la hoja de la zapata;
+            // aquí sale de la sección, que es donde ya estaba.
+            if (col.EsCircular)
+            {
+                // En la redonda no hay lechos: las dos caras del alzado llevan la misma varilla.
+                fila.VarColSup = col.DiamVarTotalEfectivo;
+                fila.VarColInf = col.DiamVarTotalEfectivo;
+                fila.NIntColumna = 0;
+                fila.VarIntColumna = string.Empty;
+            }
+            else
+            {
+                fila.VarColSup = col.DiamEsqSup;
+                fila.VarColInf = col.DiamEsqInf;
+                fila.NIntColumna = col.NInter;
+                fila.VarIntColumna = col.DiamInter;
+            }
+
+            fila.EstriboColumna = col.Estribo;
+            fila.SepEstriboColumna = col.SeparacionCm;
             return;
         }
 

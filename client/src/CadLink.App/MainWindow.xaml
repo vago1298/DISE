@@ -1075,8 +1075,53 @@
                                                 Width="80" CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- Parrilla inferior -->
-                            <DataGridTextColumn Header="Doble parrilla" Binding="{Binding DobleParrilla, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="95" CellStyle="{StaticResource CeldaEstribo}" />
+                            <!-- DOBLE PARRILLA Y RELLENO: dos casillas de SI o NO.
+                                 Van con lista porque escribirlas a mano se presta a que un «SÍ»
+                                 con acento o una «S» dejen la zapata con una sola parrilla sin
+                                 que nada lo diga: la celda se lee buscando «SI» al principio.
+                                 El combo va EDITABLE y enlazado por Text, como el resto de esta
+                                 hoja, para que lo teclado tambien llegue a la propiedad. -->
+                            <DataGridTemplateColumn Header="Doble parrilla" Width="95"
+                                                    CellStyle="{StaticResource CeldaEstribo}"
+                                                    SortMemberPath="DobleParrilla">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DobleParrilla}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.SiNo}}"
+                                                  Text="{Binding DobleParrilla, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="SI: dos parrillas, con su linea de rotura en la planta.&#10;NO: una sola parrilla, la inferior." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Relleno" Width="80"
+                                                    CellStyle="{StaticResource CeldaEstribo}"
+                                                    SortMemberPath="Relleno">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Relleno}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.SiNo}}"
+                                                  Text="{Binding Relleno, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Es la celda B3 de tu macro.&#10;SI: seccion rellena -fondo solido, rayado fino, varillas rellenas y estribos en 152-.&#10;NO: como siempre, rayado AR-CONC y todo por capa." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridComboBoxColumn x:Name="ColZapVarInf" Header="Var inf."
                                                     SelectedItemBinding="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}" Width="75"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"

@@ -61,6 +61,17 @@ public sealed class ZapataAisladaRow : Row
 
     private string _fc = "250";
 
+    private string _relleno = "NO";
+
+    // Armado de la COLUMNA. No se captura: se trae de la seccion de la columna elegida, que es
+    // donde ya estaba. La macro lo lee de sus propias celdas (J5, J6, K5, L5, O4, O5).
+    private string _varColSup = string.Empty;
+    private string _varColInf = string.Empty;
+    private int _nIntColumna;
+    private string _varIntColumna = string.Empty;
+    private string _estriboColumna = string.Empty;
+    private string _sepEstriboColumna = string.Empty;
+
     /// <summary>La columna que desplanta es de concreto: lleva su arranque y su alzado.</summary>
     public const string TipoColumnaConcreto = "COLUMNA DE CONCRETO";
 
@@ -74,6 +85,17 @@ public sealed class ZapataAisladaRow : Row
 
     /// <summary>Lo que ofrece el desplegable de tipo de columna.</summary>
     public static readonly string[] TiposColumna = { TipoColumnaConcreto, TipoColumnaAcero };
+
+    /// <summary>
+    /// Lo que ofrecen los desplegables de <b>SI</b> y <b>NO</b>: doble parrilla y relleno.
+    /// </summary>
+    /// <remarks>
+    /// Son dos casillas de sí o no, y hasta ahora se escribían a mano. Escribir «SÍ» con acento,
+    /// «S» o «X» dejaba la zapata con una sola parrilla sin que nada lo dijera: la celda se lee
+    /// buscando «SI» al principio. Con la lista ya no hay forma de equivocarse, y se sigue
+    /// pudiendo teclear.
+    /// </remarks>
+    public static readonly string[] SiNo = { "SI", "NO" };
 
     /// <summary>
     /// Los <b>dados capturados en la hoja de concreto</b>, para elegirlos de una lista.
@@ -289,6 +311,49 @@ public sealed class ZapataAisladaRow : Row
     /// <summary>f'c del concreto. <c>H10</c> / <c>Y10</c>.</summary>
     public string Fc { get => _fc; set => Set(ref _fc, value); }
 
+    /// <summary>
+    /// La sección se dibuja <b>rellena</b>. Es la celda <c>B3</c> / <c>S3</c> de la macro.
+    /// </summary>
+    /// <remarks>
+    /// <c>SI</c> es el modo 1 de la macro —fondo sólido, rayado fino, varillas rellenas con el
+    /// color de su capa y estribos en 152— y <c>NO</c> es el modo 2, el de siempre. Se captura por
+    /// zapata porque así lo hace la macro: en un mismo plano hay secciones que se entregan
+    /// rellenas y otras sobre las que se sigue trabajando.
+    /// </remarks>
+    public string Relleno { get => _relleno; set { Set(ref _relleno, value); Raise(nameof(EsRelleno)); } }
+
+    /// <summary>¿La sección va rellena?</summary>
+    public bool EsRelleno =>
+        (_relleno ?? string.Empty).Trim().StartsWith("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Varilla de una cara de la columna, traída de su sección.</summary>
+    /// <remarks>
+    /// Estas seis propiedades <b>no se capturan</b>: las llena la ventana desde la sección de la
+    /// columna elegida en «ID col.». Son las que el dibujante necesita para el arranque de la
+    /// columna encima del dado, y pedirlas otra vez en esta hoja sería pedir dos veces el mismo
+    /// dato: la macro las lee de sus celdas porque allí no hay una hoja de secciones que consultar.
+    /// </remarks>
+    public string VarColSup { get => _varColSup; set => Set(ref _varColSup, value); }
+
+    /// <summary>La de la otra cara de la columna.</summary>
+    public string VarColInf { get => _varColInf; set => Set(ref _varColInf, value); }
+
+    /// <summary>Cuántas intermedias lleva la columna.</summary>
+    public int NIntColumna { get => _nIntColumna; set => Set(ref _nIntColumna, value); }
+
+    /// <summary>Diámetro de las intermedias de la columna.</summary>
+    public string VarIntColumna { get => _varIntColumna; set => Set(ref _varIntColumna, value); }
+
+    /// <summary>Estribo de la columna.</summary>
+    public string EstriboColumna { get => _estriboColumna; set => Set(ref _estriboColumna, value); }
+
+    /// <summary>Separación de los estribos de la columna.</summary>
+    public string SepEstriboColumna
+    {
+        get => _sepEstriboColumna;
+        set => Set(ref _sepEstriboColumna, value);
+    }
+
     /// <summary>Resumen de la fila, para el renglón de totales y el título de la vista previa.</summary>
     public string Resumen
     {
@@ -376,6 +441,16 @@ public sealed class ZapataAisladaRow : Row
         // El ID del dado se manda LIMPIO: en la celda puede haber quedado «D-1 (concreto)»
         // porque la lista muestra la hoja de la que viene, y el nombre del bloque es «D-1».
         IdDado = SoloElId(IdDado),
-        Fc = Fc
+        Fc = Fc,
+
+        // El modo de relleno y el armado de la COLUMNA, que viene de su seccion.
+        Relleno = EsRelleno,
+        IdColumna = SoloElId(IdColumna),
+        VarColSup = VarColSup,
+        VarColInf = VarColInf,
+        NIntColumna = NIntColumna,
+        VarIntColumna = VarIntColumna,
+        EstriboColumna = EstriboColumna,
+        SepEstriboColumna = SepEstriboColumna
     };
 }

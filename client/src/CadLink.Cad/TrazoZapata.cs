@@ -120,6 +120,44 @@ public sealed class ZapataCad
     /// </remarks>
     public string IdDado { get; init; } = string.Empty;
 
+    /// <summary>
+    /// La sección va <b>rellena</b>: es la celda <c>B3</c>/<c>S3</c> de la macro.
+    /// </summary>
+    /// <remarks>
+    /// Con <c>true</c> —el modo 1— la sección se rellena entera: fondo SOLID color 9, el AR-CONC a
+    /// 0.0003 en color 251, las varillas rellenas con el color de su capa y su contorno en negro,
+    /// y los estribos en color 152. Con <c>false</c> —el modo 2— se deja como siempre, con el
+    /// AR-CONC a 0.0005 y todo por capa. No es un adorno: el plano relleno es el que se entrega y
+    /// el hueco es el que se sigue trabajando.
+    /// </remarks>
+    public bool Relleno { get; init; }
+
+    /// <summary>ID de la columna que desplanta, para su rótulo. <c>H5</c> / <c>Y5</c>.</summary>
+    public string IdColumna { get; init; } = string.Empty;
+
+    /// <summary>Varilla de una cara de la columna. <c>J5</c> / <c>AA5</c>.</summary>
+    /// <remarks>
+    /// La macro lee el armado de la columna de sus propias celdas. Aquí sale de la <b>sección</b>
+    /// de la columna elegida en la hoja de concreto, que es el mismo dato en el sitio donde ya
+    /// estaba capturado: así el arranque que se dibuja en la zapata es el de la columna de verdad.
+    /// </remarks>
+    public string VarColSup { get; init; } = string.Empty;
+
+    /// <summary>La de la otra cara. <c>J6</c> / <c>AA6</c>.</summary>
+    public string VarColInf { get; init; } = string.Empty;
+
+    /// <summary>Cuántas intermedias lleva la columna. <c>K5</c> / <c>AB5</c>.</summary>
+    public int NIntColumna { get; init; }
+
+    /// <summary>Diámetro de las intermedias de la columna. <c>L5</c> / <c>AC5</c>.</summary>
+    public string VarIntColumna { get; init; } = string.Empty;
+
+    /// <summary>Estribo de la columna. <c>O4</c> / <c>AF4</c>.</summary>
+    public string EstriboColumna { get; init; } = string.Empty;
+
+    /// <summary>Su separación. <c>O5</c> / <c>AF5</c>.</summary>
+    public string SepEstriboColumna { get; init; } = string.Empty;
+
     /// <summary>Resistencia del concreto, tal como se capturó, para el rótulo.</summary>
     /// <remarks>
     /// Se lleva como <b>texto</b> a propósito: en la celda se escriben cosas como «250» y
@@ -574,6 +612,94 @@ public static class TrazoZapata
         }
 
         return centros.ToArray();
+    }
+
+    /// <summary>
+    /// Igual que la anterior, con el <c>forzarEstriboFin</c> de la macro.
+    /// </summary>
+    /// <remarks>
+    /// Port de <c>BuildStirrupCenters</c> con <c>forzarEstriboFin = True</c>: pone un estribo
+    /// <b>justo en el tope</b> del dado, y para hacerle sitio quita los que quedaran a menos del
+    /// 60 % de la separación mínima. Es lo que la macro usa cuando encima del dado va una columna
+    /// de concreto: sin ese estribo, la última varilla del dado se queda sin confinar.
+    /// </remarks>
+    public static double[] CentrosEstribos(
+        double largo, double s1Cm, double s2Cm, double s3Cm, double offIni, double offFin,
+        bool forzarFin)
+    {
+        var centros = CentrosEstribos(largo, s1Cm, s2Cm, s3Cm, offIni, offFin).ToList();
+
+        if (!forzarFin)
+        {
+            return centros.ToArray();
+        }
+
+        var fin = largo - offFin;
+        var minima = SepEstriboMinima * 0.6;
+
+        while (centros.Count > 0 && fin - centros[^1] < minima)
+        {
+            centros.RemoveAt(centros.Count - 1);
+        }
+
+        centros.Add(fin);
+
+        return centros.ToArray();
+    }
+
+    /// <summary>
+    /// Port de <c>BuildStirrupCentersUniforme</c>: separación única de punta a punta.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que usa la <b>columna</b>: no se reparte en tres zonas, se pone un estribo cada
+    /// separación desde el retiro inicial. Y la separación es la <b>más cerrada</b> de la celda
+    /// (<see cref="SeparacionMinimaCm"/>): en el tramo de columna que se dibuja —80 cm justo
+    /// encima del dado— se está en zona de confinamiento, así que la macro no abre el paso.
+    /// </remarks>
+    public static double[] CentrosUniformes(
+        double largo, double sepCm, double offIni, double offFin)
+    {
+        var salida = new List<double>();
+
+        var ini = offIni;
+        var fin = largo - offFin;
+
+        var sep = Math.Max(sepCm / 100.0, SepEstriboMinima);
+
+        if (fin <= ini)
+        {
+            return salida.ToArray();
+        }
+
+        var p = ini;
+
+        while (p <= fin + 1e-4)
+        {
+            if (salida.Count == 0 || Math.Abs(salida[^1] - p) > 1e-4)
+            {
+                salida.Add(p);
+            }
+
+            p += sep;
+        }
+
+        return salida.ToArray();
+    }
+
+    /// <summary>Port de <c>SeparacionMinima</c>: la más cerrada de los tres tramos.</summary>
+    public static double SeparacionMinimaCm(double[] tramos)
+    {
+        var min = 0.0;
+
+        foreach (var t in tramos)
+        {
+            if (t > 0 && (min == 0 || t < min))
+            {
+                min = t;
+            }
+        }
+
+        return min <= 0 ? 12 : min;
     }
 
     /// <summary>

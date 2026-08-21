@@ -3969,90 +3969,209 @@ def v19_circular_y_ui() -> None:
     # Lo que se pidio: habilitar el boton. Un boton encendido con un dibujante a medias
     # seria peor que el boton apagado, asi que aqui se comprueba el dibujante entero.
     zap_drw = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+    zap_pla = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+    zap_todo = zap_drw + zap_pla
 
-    check("existe el dibujante de zapatas",
-          "public sealed class ZapataDrawer" in zap_drw)
-    check("y toda su geometria sale de TrazoZapata, como la vista previa",
+    check("existe el dibujante de zapatas, en dos archivos parciales",
+          "public sealed partial class ZapataDrawer" in zap_drw
+          and "public sealed partial class ZapataDrawer" in zap_pla)
+
+    # ES UN PORT, RUTINA POR RUTINA. Cada una lleva el nombre del VBA en su comentario, que es
+    # lo que permite cotejarlas. La version anterior dibujaba «una zapata» y le faltaba casi
+    # todo: el acero del dado y de la columna, el bloque, los rotulos y el modo de relleno.
+    for vba in ("DibujarContornoZapataConDado", "DibujarPlantillaConcretoSimple",
+                "DibujarPlantillaTexto", "DibujarHatchTerreno", "DibujarHatchConcretoRect",
+                "DibujarParrillaZapata", "DibujarBarraLongitudinalUnica",
+                "DibujarGanchoContinuoLimpio", "DrawVerticalElementFromAlzados",
+                "DrawStirrupsCapsulesFront", "DibujarBarraGanchosRapido",
+                "DibujarCaraSegmentada", "DrawBarLineTrimWithOffset", "DrawTwoOffsetSegment",
+                "DibujarBreakLine", "PrepararUnionDadoColumna", "PosicionesBarrasElemento",
+                "DibujarUnionDadoColumna", "DibujarDesplazamientoVarilla",
+                "DibujarBarraVerticalBanda", "CotasAnchosZapataYDado",
+                "CotasDoblezGanchosDado", "TextoRotuloElementoVertical",
+                "RotularElementoVerticalLeader", "RotularParrillaInferiorZA",
+                "RotularParrillaSuperiorZALindero", "AgregarLeaderRecto",
+                "DibujarPlantaZapataAislada", "DibujarMallaPlanta", "EmitirBarraYConHueco",
+                "DibujarSegBandaX", "DibujarSegBandaY", "RotularMallaPlanta",
+                "DibujarBreakLineEntre", "NombreBloqueLibre", "CrearBloqueVacio",
+                "InsertarBloqueCentroide", "InsertarBloqueDerecha", "AsegurarEstiloCota",
+                "RellenarPoligonoSolido", "RellenarGanchoLSolido",
+                "RellenarGanchoParrillaSolido", "RellenarBandaSegmentada", "PuntosArco",
+                "ApplyCapsuleProtrusion", "BuildStirrupCentersUniforme", "SeparacionMinima",
+                "VarLayerName", "NormalizeDiaLabel", "DibujarCirculoRelleno",
+                "AplicarContornoVarilla", "CrearMTextoCentradoMascara", "AgregarTexto"):
+        # Algunas viven en TrazoZapata, que es la geometria compartida con la vista previa.
+        check(f"esta portada la rutina {vba}", vba in zap_todo or vba in trazo_zap)
+
+    check("y toda la geometria compartida sigue saliendo de TrazoZapata",
           "TrazoZapata.Colocar(z, xBase)" in zap_drw
           and "TrazoZapata.XBase(z.Tipo, anchos, i)" in zap_drw
-          and "TrazoZapata.ParrillaEnAlzado(" in zap_drw
           and "TrazoZapata.CentrosEstribos(" in zap_drw
-          and "TrazoZapata.HuecoDelDado(z, a.XBase, yBot)" in zap_drw
-          and "TrazoZapata.Posiciones(" in zap_drw)
-    check("y no recalcula el acomodo por su cuenta",
-          "SeparacionCentral" not in zap_drw and "LinderoXBase" not in zap_drw)
+          and "TrazoZapata.CentrosUniformes(" in zap_drw
+          and "TrazoZapata.HuecoDelDado(z, xIzq, yBot)" in zap_pla
+          and "TrazoZapata.Posiciones(" in zap_pla)
 
-    # El acero de las dos hojas se lee con el MISMO lector, para que la previa y el plano
-    # repartan igual: si cada uno leyera la celda, «@20» podria salir de 20 en una y de 12
-    # en el otro.
-    check("la separacion y los tramos se leen en un solo sitio",
-          "public static double SeparacionM(" in trazo_zap
-          and "public static double[] TramosCm(" in trazo_zap
-          and "TrazoZapata.SeparacionM(texto)" in zap_cb
-          and "TrazoZapata.TramosCm(z.SepEstriboDado)" in zap_cb
-          and "TrazoZapata.TramosCm(z.SepEstriboDado)" in zap_drw)
+    # EL ELEMENTO VERTICAL SE CALCULA TUMBADO Y SE ROTA 90 GRADOS, como la macro. La rotacion
+    # se aplica a cada PUNTO al dibujarlo, no recorriendo el dibujo despues.
+    check("el dado y la columna se calculan tumbados y se rotan 90 grados",
+          "private double GX(double x, double y) => _rot ? _rx0 - (y - _ry0) : x;" in zap_pla
+          and "private double GY(double x, double y) => _rot ? _ry0 + (x - _rx0) : y;" in zap_pla
+          and "private double GA(double a) => _rot ? a + (Math.PI / 2) : a;" in zap_pla)
+    check("y queda escrito que la barra superior local es el paño izquierdo global",
+          "la barra «superior» local es la del paño <b>izquierdo</b>" in zap_drw)
 
-    # Enlace tardio, como el resto de los dibujantes: ni una referencia a Autodesk.
-    check("habla con AutoCAD por COM y tolera fallos",
-          "private readonly dynamic _doc;" in zap_drw
-          and "AcadConnection.Retry" in zap_drw
-          and "public IReadOnlyList<string> Fallos => _log;" in zap_drw)
+    # EL ACERO DE ARRANQUE: es lo que faltaba por completo.
+    check("el dado y la columna llevan sus barras de arranque",
+          "private void BarraConGanchos(" in zap_drw
+          and "BarraConGanchos(xaBot, xbBar, ycSup, dSup, CapaVar(diaSup)" in zap_drw
+          and "BarraConGanchos(xaBotInf, xbBar, ycInf, dInf, CapaVar(diaInf)" in zap_drw)
+    check("con el gancho de 15 diametros abajo",
+          "TrazoZapata.FactorGanchoAbajo * dSup" in zap_drw
+          and "TrazoZapata.FactorGanchoAbajo * dInf" in zap_drw)
+    check("y con las intermedias cortadas en cada estribo",
+          "private void BarraRectaSegmentada(" in zap_drw
+          and "private void CaraSegmentada(" in zap_drw)
+    check("los ganchos del lindero doblan LOS DOS a la izquierda",
+          "ganchosAmbosIzq" in zap_drw
+          and "bendIniSup = true;" in zap_drw
+          and "bendIniInf = true;" in zap_drw)
+    check("y si las patas se alcanzarian, una se sube",
+          "private double DesfaseDeLosGanchos(" in zap_drw
+          and "(2 * dMax) + 0.005" in zap_drw)
+    check("la union dado-columna dibuja el desplazamiento de cada barra",
+          "private Union PrepararUnion(" in zap_drw
+          and "private void DesplazamientoVarilla(" in zap_drw
+          and "RelacionDesplazamiento" in zap_drw)
+    check("y las intermedias se emparejan una a una por cercania",
+          "mejorD" in zap_drw and "usadoD[mejorD] = true;" in zap_drw)
 
-    # Las capas de las macros.
-    for capa in ("CONCRETO", "ESTRIBOS", "ROTULOS", "COTAS", "TERRENO_LINEA",
-                 "TERRENO_HATCH", "PLANTILLA", "BLOQUE_DADO"):
-        check(f"usa la capa {capa} de la macro", f'"{capa}"' in zap_drw)
+    # Estribos y parrillas.
+    check("los estribos van en capsula, con su ARCOFFSET y su protrusion",
+          "private void CapsulasDeEstribo(" in zap_drw
+          and "ArcOffset" in zap_drw
+          and "TrazoZapata.Sobresalir(centros)" in zap_drw)
+    check("el dado se salta 2 estribos en el lindero y 1 en la central",
+          "var omitirEstribos = z.DobleParrilla" in zap_drw
+          and "(lindero ? 2 : 1)" in zap_drw)
+    check("las parrillas llevan su gancho de sector anular y sus transversales",
+          "private void GanchoContinuo(" in zap_drw
+          and "radioExt = diam + (diam / 2)" in zap_drw
+          and "private void CirculoRelleno(" in zap_pla)
 
-    check("y el estilo de cota es el mismo de las secciones",
-          '"COTA_ESTRUCTURAL"' in zap_drw and '"SECCIONES"' in zap_drw)
+    # EL MODO DE RELLENO (celda B3 de la macro).
+    check("el modo de relleno de la macro esta portado",
+          "public bool Relleno { get; init; }" in trazo_zap
+          and "_relleno = z.Relleno;" in zap_drw)
+    check("modo 1: solido 9 + AR-CONC 0.0003 color 251",
+          "ColorSolidoRelleno = 9" in zap_drw
+          and "EscalaConcretoRelleno = 0.0003" in zap_drw
+          and "ColorPatronRelleno = 251" in zap_drw)
+    check("modo 2: el AR-CONC de siempre a 0.0005",
+          "EscalaConcretoNormal = 0.0005" in zap_drw)
+    check("los estribos rellenos van en 152 y el contorno del acero en negro",
+          "ColorEstriboRelleno = 152" in zap_drw
+          and "ColorContornoNegro = 250" in zap_drw
+          and "private void Var(object? ent)" in zap_pla)
+    check("y los rellenos solo usan figuras que AutoCAD no rechaza",
+          "private void RellenarQuad(" in zap_pla
+          and "private void RellenarTriangulo(" in zap_pla
+          and "private void RellenarCirculo(" in zap_pla
+          and "nunca rechaza" in zap_pla)
+    check("la celda del relleno es una lista de SI y NO",
+          "public static readonly string[] SiNo = { \"SI\", \"NO\" };" in zap_row
+          and 'Text="{Binding Relleno, UpdateSourceTrigger=PropertyChanged}"' in xaml)
+    check("y la de doble parrilla tambien",
+          'Text="{Binding DobleParrilla, UpdateSourceTrigger=PropertyChanged}"' in xaml
+          and 'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.SiNo}}"' in xaml)
 
-    # El corte, pieza por pieza.
-    check("el corte dibuja plantilla, zapata, dado y terreno",
-          "var plantilla = Rectangulo(a.XBase, a.YPlantillaBot, a.XDer, a.YZapBot" in zap_drw
-          and "private void RellenoDeTerreno(" in zap_drw
-          and "a.XDadoIzq, a.YZapTop, a.XDadoDer, a.YDadoTop" in zap_drw)
-    check("la columna se dibuja cortada, con su linea de rotura",
-          "private void ColumnaCortada(" in zap_drw
-          and "private void LineaDeRotura(" in zap_drw
-          and "AlturaColumna = 0.8 * 8.0 / 9.0" in zap_drw)
-    check("los estribos del dado van en capsula",
-          "private void Capsula(" in zap_drw
-          and "TrazoZapata.Sobresalir(centros)" in zap_drw
-          and "TrazoZapata.QuitarPrimeros(centros, z.DobleParrilla ? 2 : 1)" in zap_drw)
-    check("las parrillas llevan gancho y sus transversales de punta",
-          "TrazoZapata.GanchoParrilla" in zap_drw
-          and "private object? Circulo(" in zap_drw
-          and "RellenarVarillas" in zap_drw)
-    check("el corte se acota como la macro, en cadena y con las verticales",
-          "private void CotasDelCorte(" in zap_drw
-          and "private int Cota(" in zap_drw
-          and "AddDimAligned" in zap_drw)
-    check("y el rotulo cuelga de donde la planta lo espera",
-          "TrazoZapata.RotuloEscalaOffset" in zap_drw)
+    # EL BLOQUE DE LA ZAPATA.
+    check("la elevacion se mete en un bloque con el nombre de la zapata",
+          "public bool ZapataComoBloque { get; set; } = true;" in zap_drw
+          and "CrearBloqueVacio(nombreBloque, xBase, yZapBot)" in zap_drw
+          and "CapaBloqueZapata" in zap_drw)
+    check("y el terreno, las cotas y los rotulos quedan FUERA",
+          "// ---------- El terreno: FUERA del bloque ----------" in zap_drw
+          and "_cont = _ms;" in zap_drw)
+    check("el texto de la plantilla va despues del bloque, para que no lo tape",
+          "PlantillaTexto(xBase, yZapBot" in zap_drw
+          and "el SOLID del bloque lo taparía" in zap_drw)
 
-    # Lo que NO se dibuja se DICE, con nombre y apellido, en las notas del dibujo. Los
-    # arranques del dado -J7, J8, K7, L7 de la macro- se capturan y llegan al dibujante,
-    # pero su gancho, su lado de doblez y su traslape son reglas que no se adivinan.
-    check("los arranques del dado que no se dibujan se avisan",
-          "private void AvisarDeLosArranques(" in zap_drw
-          and "TODAVÍA NO SE DIBUJAN" in zap_drw)
-    check("y queda escrito por que no se dibujan a ojo",
-          "que un fierrero armaría mal" in zap_drw)
+    # El acero en su capa por diametro, como el resto del plano.
+    check("cada varilla va a su capa VAR_#n",
+          'return e.Length == 0 ? "VAR_#3" : "VAR_" + e;' in zap_pla
+          and "private void AsegurarCapaVarilla(" in zap_pla)
+
+    # Rotulos con leader.
+    check("el dado y la columna llevan rotulo con leader",
+          "private void RotuloConLeader(" in zap_drw
+          and "private void RotuloDelDado(" in zap_drw
+          and "private void RotuloDeLaColumna(" in zap_drw)
+    check("y en el lindero salen a la IZQUIERDA",
+          "LinderoRotuloElemDx" in zap_drw
+          and "a.XDadoIzq - LinderoRotuloElemDx" in zap_drw)
+    check("las parrillas tambien, con su AMBOS SENTIDOS",
+          "private void RotuloParrillaInferior(" in zap_drw
+          and "AMBOS SENTIDOS" in zap_drw)
+    check("el leader se saca del borde de la caja del texto",
+          "private (double X1, double Y1, double X2, double Y2)? Caja(" in zap_pla
+          and "RotuloVertGapLeader" in zap_drw)
+    check("y la caja se mide por REFLEXION, no con dynamic",
+          "private (double[] Min, double[] Max)? CajaEnvolvente(object ent)" in zap_pla
+          and "ParameterModifier" in zap_pla
+          and "no se puede invocar con 'dynamic'" in zap_pla)
+
+    # Cotas: las de la macro, con sus offsets.
+    check("las cotas de la elevacion son las de la macro",
+          "CotaOffsetCadena = 0.14" in zap_drw
+          and "CotaOffsetTotal = 0.22" in zap_drw
+          and "CotaOffsetVert1 = 0.08" in zap_drw
+          and "CotaOffsetVert2 = 0.16" in zap_drw)
+    check("la cota de la plantilla lleva el numero EN MEDIO",
+          "d.TextInside = true;" in zap_pla
+          and "d.ForceLineInside = true;" in zap_pla
+          and "d.TextMovement = 0;" in zap_pla)
+    check("y la total arranca del fondo de la plantilla",
+          "yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor" in zap_drw)
+    check("los rotulos van a sus offsets de siempre",
+          "RotuloTituloOffset = 0.32" in zap_drw
+          and "RotuloSubtituloOffset = 0.41" in zap_drw
+          and "RotuloEscalaOffset = 0.49" in zap_drw)
+    check("y el titulo dice CENTRAL o DE LINDERO, como la macro",
+          '"ZAPATA AISLADA DE LINDERO' in zap_drw
+          and '"ZAPATA AISLADA CENTRAL' in zap_drw)
 
     # La planta.
-    check("la planta recorta la malla en el hueco del dado",
-          "private void Malla(" in zap_drw
-          and "if (y > hy1 && y < hy2)" in zap_drw
-          and "if (x > hx1 && x < hx2)" in zap_drw)
-    check("el dado se INSERTA como bloque, buscandolo por su ID",
-          "private bool InsertarBloque(" in zap_drw
-          and "_doc.Blocks.Item(nombre)" in zap_drw
-          and "InsertBlock" in zap_drw)
+    check("la planta recorta la malla en los cruces y en el hueco del dado",
+          "private void Malla(" in zap_pla
+          and "cortes.Sort(" in zap_pla
+          and "private void BarraYConHueco(" in zap_pla)
+    check("y va en dos fases: primero los rellenos y despues los contornos",
+          "for (var fase = 1; fase <= 2; fase++)" in zap_pla
+          and "if (fase == 1)" in zap_pla)
+    check("con doble parrilla lleva su linea de rotura en la diagonal",
+          "LineaDeRoturaEntre(xIzq, yBot, xDer, yTop)" in zap_pla
+          and "PlantaBreaklineColor = 250" in zap_pla)
+    check("el dado se INSERTA como bloque, y en el lindero pegado al paño derecho",
+          "private bool InsertarBloque(" in zap_pla
+          and "alinearDerechaEn" in zap_pla
+          and "ExisteBloque(nombre)" in zap_pla)
     check("y si el bloque no esta, se pone un rectangulo Y SE AVISA",
-          "_dadosQueFaltan" in zap_drw
-          and "no está en el dibujo" in zap_drw)
+          "_dadosQueFaltan" in zap_pla
+          and "no está en el dibujo" in zap_pla)
     check("el ID del dado viaja limpio, sin la hoja entre parentesis",
           "IdDado = SoloElId(IdDado)" in zap_row)
+    check("la planta lleva sus cotas y su titulo",
+          "PlantaCotaOffset = 0.12" in zap_pla
+          and "PlantaTituloOffset = 0.24" in zap_pla
+          and '"VISTA EN PLANTA' in zap_pla)
+
+    # El armado de la COLUMNA sale de su seccion, no se vuelve a capturar.
+    check("el armado de la columna se trae de su seccion",
+          "fila.VarColSup = col.DiamEsqSup;" in zap_cb
+          and "fila.EstriboColumna = col.Estribo;" in zap_cb
+          and "public string VarColSup { get; init; }" in trazo_zap)
+    check("y en la columna redonda las dos caras llevan la misma varilla",
+          "fila.VarColSup = col.DiamVarTotalEfectivo;" in zap_cb)
 
     # El boton: revisa, se engancha a la sesion abierta y cuenta lo que salio.
     check("el boton de dibujar revisa ANTES de dibujar",
@@ -4396,9 +4515,9 @@ def v19_circular_y_ui() -> None:
           and "new ZapataDrawer(doc, catalogoDeVarillas)" in zap_cb)
 
     # El hatch NO puede ser asociativo: el relleno del terreno borra su frontera.
-    check("el hatch de la zapata no es asociativo, que borraria el relleno",
-          "_ms.AddHatch(0, patron, false)" in zap_drw
-          and "borra su" in zap_drw)
+    check("el hatch de la zapata no es asociativo, que borraria su frontera",
+          "_cont.AddHatch(0, patron, false)" in zap_pla
+          and "no asociativo" in zap_pla)
 
     # Y el muestreo, que fue el que fallo: el radio con SIGNO en lugar de un apaño.
     check("el muestreo saca el centro del arco con el radio con signo",
