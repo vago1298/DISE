@@ -19,15 +19,9 @@ public sealed partial class ZapataDrawer
 {
     private const double PlantaCotaOffset = 0.12;
 
-    /// <summary>Segundo nivel de cota de la planta: donde va el TOTAL, debajo de la cadena.</summary>
-    private const double PlantaCotaNivel2 = 0.1;
-
     private const double PlantaCotaOffsetDado = 0.1;
-
-    // El título y la escala bajan lo que ocupa el segundo nivel de cota: con los valores de la
-    // macra -0.24 y 0.33- el total quedaba escrito encima del título.
-    private const double PlantaTituloOffset = 0.24 + PlantaCotaNivel2;
-    private const double PlantaEscalaOffset = 0.33 + PlantaCotaNivel2;
+    private const double PlantaTituloOffset = 0.24;
+    private const double PlantaEscalaOffset = 0.33;
     private const double PlantaMinBarra = 0.03;
     private const double PlantaMinSeg = 0.004;
     private const double PlantaHuecoMargen = 0.003;
@@ -264,31 +258,22 @@ public sealed partial class ZapataDrawer
                 xIzq + (ancho * 0.9), yBot + (largo * 0.14));
         }
 
-        // ---------- Cotas: EN ORDEN, cada una en su nivel ----------
-        // Abajo, dos niveles como en el corte: la CADENA -vuelo, dado, vuelo- y debajo el TOTAL.
-        // A la izquierda, el largo de la zapata; a la derecha, el del dado. Antes el ancho del
-        // dado iba arriba y el del paño abajo, y las dos medidas del mismo ancho quedaban una a
-        // cada lado del dibujo: para comprobar que sumaban había que rodear la planta.
-        var yCad = yBot - PlantaCotaOffset;
-        var yTot = yBot - PlantaCotaOffset - PlantaCotaNivel2;
+        // ---------- Cotas: LAS DE LA MACRO, en su sitio ----------
+        // El ancho del DADO arriba, el de la zapata abajo, el largo de la zapata a la izquierda
+        // y el del dado a la derecha. Cada medida por fuera del paño que le toca y ninguna
+        // encima del dibujo.
+        //
+        // El turno pasado las puse en cadena y total abajo, como en el corte, y estuvo mal:
+        // en la planta ya estaban en orden y lo unico que hizo fue amontonar tres medidas
+        // debajo del paño y dejar el total encima del titulo. Se vuelve a lo de la macro.
+        r.Cotas += Cota(dx1, yTop + PlantaCotaOffsetDado, dx2, yTop + PlantaCotaOffsetDado,
+            (dx1 + dx2) / 2, yTop + PlantaCotaOffsetDado, false, false);
 
-        if (dx1 > xIzq + 0.001)
-        {
-            r.Cotas += Cota(xIzq, yCad, dx1, yCad, (xIzq + dx1) / 2, yCad, false, true);
-        }
+        r.Cotas += Cota(xIzq, yBot - PlantaCotaOffset, xDer, yBot - PlantaCotaOffset,
+            xCen, yBot - PlantaCotaOffset, false, false);
 
-        r.Cotas += Cota(dx1, yCad, dx2, yCad, (dx1 + dx2) / 2, yCad, false, true);
-
-        if (xDer > dx2 + 0.001)
-        {
-            r.Cotas += Cota(dx2, yCad, xDer, yCad, (dx2 + xDer) / 2, yCad, false, true);
-        }
-
-        r.Cotas += Cota(xIzq, yTot, xDer, yTot, xCen, yTot, false, false);
-
-        // El largo del dado, a la derecha y por fuera del paño.
         r.Cotas += Cota(xDer + PlantaCotaOffsetDado, dy1, xDer + PlantaCotaOffsetDado, dy2,
-            xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, true);
+            xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, false);
 
         // El largo de la zapata, a la izquierda.
         r.Cotas += Cota(xIzq - PlantaCotaOffset, yBot, xIzq - PlantaCotaOffset, yTop,

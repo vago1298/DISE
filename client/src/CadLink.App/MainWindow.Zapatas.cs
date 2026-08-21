@@ -324,11 +324,18 @@ public partial class MainWindow
             // aquí sale de la sección, que es donde ya estaba.
             if (col.EsCircular)
             {
-                // En la redonda no hay lechos: las dos caras del alzado llevan la misma varilla.
-                fila.VarColSup = col.DiamVarTotalEfectivo;
-                fila.VarColInf = col.DiamVarTotalEfectivo;
-                fila.NIntColumna = 0;
-                fila.VarIntColumna = string.Empty;
+                // En la redonda no hay lechos: las dos caras del alzado llevan la misma varilla
+                // del círculo. Y SÍ tiene intermedias: de las N repartidas en la circunferencia,
+                // dos son las que se ven en las caras y las demás quedan en medio, la mitad por
+                // cara. Ponerlas en cero dejaba la columna redonda sin varillas intermedias y,
+                // con ellas, sin unión con el dado: la unión solo se dibuja si los dos elementos
+                // las tienen.
+                var d = col.DiamVarTotalEfectivo;
+
+                fila.VarColSup = d;
+                fila.VarColInf = d;
+                fila.NIntColumna = col.NVarTotal > 2 ? (col.NVarTotal - 2) / 2 : 0;
+                fila.VarIntColumna = d;
             }
             else
             {
@@ -485,21 +492,24 @@ public partial class MainWindow
         return s.DiamEsqSup;
     }
 
-    private static bool EsColumnaDeConcreto(string? elemento)
-    {
-        var e = (elemento ?? string.Empty).Trim();
+    /// <summary>
+    /// ¿La sección es una <b>columna</b> de concreto? Cuadrada, rectangular o circular.
+    /// </summary>
+    /// <remarks>
+    /// Se mira si el elemento <b>empieza</b> por «COLUMNA» y no si es igual a uno de los dos
+    /// nombres exactos. Es lo que hace que en la lista de «ID col.» salgan <b>todas</b>: una
+    /// columna capturada como «COLUMNA RECTANGULAR» o «COLUMNA CUADRADA» se quedaba fuera de la
+    /// lista sin que nada lo dijera, y el usuario tenía que teclear el ID a mano —y entonces la
+    /// revisión le decía que esa columna no estaba capturada, que era mentira—.
+    /// </remarks>
+    private static bool EsColumnaDeConcreto(string? elemento) =>
+        (elemento ?? string.Empty).Trim()
+        .StartsWith(SeccionConcretoRow.ElementoColumna, StringComparison.OrdinalIgnoreCase);
 
-        return SeccionConcretoRow.ElementoColumna.Equals(e, StringComparison.OrdinalIgnoreCase)
-            || SeccionConcretoRow.ElementoColumnaCircular.Equals(e, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool EsDado(string? elemento)
-    {
-        var e = (elemento ?? string.Empty).Trim();
-
-        return SeccionConcretoRow.ElementoDado.Equals(e, StringComparison.OrdinalIgnoreCase)
-            || SeccionConcretoRow.ElementoDadoCircular.Equals(e, StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>¿Es un <b>dado</b>? Cuadrado, rectangular o circular, por lo mismo.</summary>
+    private static bool EsDado(string? elemento) =>
+        (elemento ?? string.Empty).Trim()
+        .StartsWith(SeccionConcretoRow.ElementoDado, StringComparison.OrdinalIgnoreCase);
 
     private void ActualizarTotalesZapatas()
     {

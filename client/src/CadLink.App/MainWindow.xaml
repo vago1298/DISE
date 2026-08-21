@@ -1283,25 +1283,37 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
+                            <!-- ARRANQUE Y ESTRIBOS DEL DADO: OCULTOS.
+                                 Ya no se capturan: salen de la seccion del dado elegido en «ID
+                                 dado» -sus varillas de esquina, sus intermedias y su estribo-.
+                                 Se quedan en el modelo, y se siguen guardando en el trabajo,
+                                 pero no se muestran: una celda que se rellena sola y que se
+                                 puede escribir encima es una invitacion a que el plano diga una
+                                 cosa y la seccion otra. Para cambiarlas se cambia la seccion. -->
                             <!-- Arranque del dado -->
                             <DataGridComboBoxColumn x:Name="ColZapVarDadoSup" Header="Arranque 1"
                                                     SelectedItemBinding="{Binding VarDadoSup, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLateral}" />
+                                                    CellStyle="{StaticResource CeldaLateral}" 
+                                                Visibility="Collapsed"/>
                             <DataGridComboBoxColumn x:Name="ColZapVarDadoInf" Header="Arranque 2"
                                                     SelectedItemBinding="{Binding VarDadoInf, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLateral}" />
+                                                    CellStyle="{StaticResource CeldaLateral}" 
+                                                Visibility="Collapsed"/>
                             <DataGridTextColumn Header="N int." Binding="{Binding NIntDado, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaLateral}" />
+                                                Width="60" CellStyle="{StaticResource CeldaLateral}" 
+                                                Visibility="Collapsed"/>
                             <DataGridComboBoxColumn x:Name="ColZapVarIntDado" Header="Var int."
                                                     SelectedItemBinding="{Binding VarIntDado, UpdateSourceTrigger=PropertyChanged}" Width="75"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLateral}" />
+                                                    CellStyle="{StaticResource CeldaLateral}" 
+                                                Visibility="Collapsed"/>
                             <DataGridComboBoxColumn x:Name="ColZapEstribo" Header="Estribo"
                                                     SelectedItemBinding="{Binding EstriboDado, UpdateSourceTrigger=PropertyChanged}" Width="75"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaEstribo}" />
+                                                    CellStyle="{StaticResource CeldaEstribo}" 
+                                                    Visibility="Collapsed"/>
                             <!-- LA SEPARACION DE ESTRIBOS SE PUEDE ESCRIBIR A MANO.
                                  La lista son sugerencias, no una lista cerrada: se puede
                                  teclear «6-12-6», «15» o lo que haga falta.
@@ -1313,7 +1325,8 @@
                                  columna «Sep cm» de la hoja de concreto. -->
                             <DataGridTemplateColumn Header="Est. @ cm" Width="95"
                                                     CellStyle="{StaticResource CeldaEstribo}"
-                                                    SortMemberPath="SepEstriboDado">
+                                                    SortMemberPath="SepEstriboDado"
+                                                    Visibility="Collapsed">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding SepEstriboDado}"

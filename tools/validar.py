@@ -3823,7 +3823,7 @@ def v19_circular_y_ui() -> None:
           and "ZapataAisladaRow.DadosDisponibles" in xaml)
     check("la lista sale de los dados de la hoja de concreto",
           "private void ActualizarDadosDisponibles()" in zap_cb
-          and "SeccionConcretoRow.ElementoDadoCircular.Equals(" in zap_cb)
+          and ".Where(s => EsDado(s.Elemento))" in zap_cb)
     check("y se actualiza en cada cambio de esa hoja",
           "ActualizarListasDeZapatas();" in codigo)
     check("se actualiza EN SITIO, no se sustituye la coleccion",
@@ -3838,7 +3838,7 @@ def v19_circular_y_ui() -> None:
           and "ZapataAisladaRow.ColumnasDisponibles" in xaml)
     check("la lista trae las columnas de las DOS hojas",
           "private void ActualizarColumnasDisponibles()" in zap_cb
-          and "SeccionConcretoRow.ElementoColumnaCircular.Equals(" in zap_cb
+          and "EsColumnaDeConcreto(s.Elemento)" in zap_cb
           and "PerfilAceroRow.ElementoColumna.Equals(" in zap_cb)
     check("y cada una dice de que hoja sale",
           '$"{id} (concreto)"' in zap_cb and '$"{id} (acero)"' in zap_cb)
@@ -4191,7 +4191,8 @@ def v19_circular_y_ui() -> None:
           and "fila.EstriboColumna = col.Estribo;" in zap_cb
           and "public string VarColSup { get; init; }" in trazo_zap)
     check("y en la columna redonda las dos caras llevan la misma varilla",
-          "fila.VarColSup = col.DiamVarTotalEfectivo;" in zap_cb)
+          "var d = col.DiamVarTotalEfectivo;" in zap_cb
+          and "fila.VarColSup = d;" in zap_cb)
 
     # ------------------------------------------------------------------
     # DADO CIRCULAR EN PLANTA: las varillas llegan al contorno redondo
@@ -4244,19 +4245,54 @@ def v19_circular_y_ui() -> None:
     check("y si «Intermedias» va en cero se miran los lechos",
           "Math.Max(s.NIntSup, s.NIntInf)" in zap_cb
           and "private static string DiametroIntermediasDe(SeccionConcretoRow s)" in zap_cb)
+    # LA COLUMNA CIRCULAR TAMBIEN TIENE INTERMEDIAS en el alzado: de las N del circulo, dos
+    # se ven en las caras y las demas quedan en medio. Con cero, la redonda salia sin
+    # intermedias y sin union con el dado.
+    check("la columna circular lleva sus intermedias",
+          "fila.NIntColumna = col.NVarTotal > 2 ? (col.NVarTotal - 2) / 2 : 0;" in zap_cb)
+    check("y el dado circular tambien",
+          "fila.NIntDado = dado.NVarTotal > 2 ? (dado.NVarTotal - 2) / 2 : 0;" in zap_cb)
+
+    # LAS LISTAS TRAEN TODO: cuadradas, rectangulares y circulares, de concreto y de acero.
+    check("la lista de columnas trae todas las de concreto, no solo dos nombres exactos",
+          ".StartsWith(SeccionConcretoRow.ElementoColumna" in zap_cb
+          and ".StartsWith(SeccionConcretoRow.ElementoDado" in zap_cb)
+    check("y sigue trayendo las de acero",
+          "PerfilAceroRow.ElementoColumna.Equals(" in zap_cb)
+    check("y queda escrito el defecto de la lista que arregla",
+          "se quedaba fuera de la" in zap_cb
+          and "COLUMNA RECTANGULAR" in zap_cb)
+
+    # LAS CELDAS YA REFERENCIADAS SE OCULTAN: se rellenan solas desde la seccion.
+    m_zg = re.search(r'x:Name="ZapatasGrid".*?</DataGrid>', xaml, re.S)
+
+    check("se puede leer la cuadricula de zapatas", m_zg is not None)
+
+    if m_zg:
+        rejilla = m_zg.group(0)
+
+        for col in ("Arranque 1", "Arranque 2", "N int.", "Var int.", "Estribo", "Est. @ cm"):
+            i = rejilla.index(f'Header="{col}"')
+            j = rejilla.index(">", i)
+            check(f"la columna «{col}» esta oculta, porque se rellena sola",
+                  'Visibility="Collapsed"' in rejilla[i:j + 1])
+
+    check("y queda escrito por que se ocultan y no se quitan",
+          "se siguen guardando en el trabajo" in xaml)
+
     check("y queda escrito que sin intermedias no hay union",
           "unión de las varillas solo se dibuja" in zap_cb)
 
     # LAS COTAS DE LA PLANTA, EN ORDEN: cadena y total abajo, largos a los lados.
-    check("la planta acota en cadena y con su total, en dos niveles",
-          "PlantaCotaNivel2" in zap_pla
-          and "var yCad = yBot - PlantaCotaOffset;" in zap_pla
-          and "var yTot = yBot - PlantaCotaOffset - PlantaCotaNivel2;" in zap_pla)
-    check("y el titulo baja lo que ocupa el segundo nivel",
-          "PlantaTituloOffset = 0.24 + PlantaCotaNivel2" in zap_pla
-          and "PlantaEscalaOffset = 0.33 + PlantaCotaNivel2" in zap_pla)
-    check("y queda escrito por que no van una a cada lado del dibujo",
-          "había que rodear la planta" in zap_pla)
+    # LAS COTAS DE LA PLANTA SON LAS DE LA MACRO. El turno pasado las cambie a cadena y
+    # total abajo y estuvo MAL: en la planta ya estaban en orden.
+    check("la planta acota como la macro: dado arriba, zapata abajo, largos a los lados",
+          "PlantaTituloOffset = 0.24;" in zap_pla
+          and "PlantaEscalaOffset = 0.33;" in zap_pla
+          and "PlantaCotaNivel2" not in zap_pla
+          and "yTop + PlantaCotaOffsetDado" in zap_pla)
+    check("y queda escrito que cambiarlas fue un error",
+          "en la planta ya estaban en orden" in zap_pla)
 
     # ------------------------------------------------------------------
     # LAS PATAS DEL DADO: ADENTRO CON COLUMNA DE CONCRETO, AFUERA CON ACERO
@@ -4310,7 +4346,7 @@ def v19_circular_y_ui() -> None:
         cuerpo = m_pla.group(0)
         i_malla = cuerpo.index("// ---------- Las mallas ----------")
         i_cierre = cuerpo.index("// Se cierra el bloque")
-        i_cotas = cuerpo.index("// ---------- Cotas: EN ORDEN, cada una en su nivel ----------")
+        i_cotas = cuerpo.index("// ---------- Cotas: LAS DE LA MACRO, en su sitio ----------")
         i_rot = cuerpo.index("// ---------- Rótulos de las mallas ----------")
 
         check("las mallas van DENTRO del bloque", i_malla < i_cierre)
