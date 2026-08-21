@@ -74,7 +74,7 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         Math.Abs(TrazoZapata.XBase(tipo, anchos, 2) - (-(0.8 + 2.0) - (0.8 + 1.0))) < 1e-12);
 
     // Y NINGUNA se encima con la anterior: entre el pano derecho de una y el izquierdo de la
-    // otra hay un metro justo.
+    // otra hay justo la separacion de 80 cm.
     var ok = true;
 
     for (var i = 1; i < anchos.Length; i++)
@@ -82,7 +82,7 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         var izqAnterior = TrazoZapata.XBase(tipo, anchos, i - 1);
         var derActual = TrazoZapata.XBase(tipo, anchos, i) + anchos[i];
 
-        if (Math.Abs((izqAnterior - derActual) - 1.0) > 1e-12)
+        if (Math.Abs((izqAnterior - derActual) - 0.8) > 1e-12)
         {
             ok = false;
         }

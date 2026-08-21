@@ -3737,8 +3737,7 @@ def v19_circular_y_ui() -> None:
     check("y el tipo ya no cambia el acomodo",
           "El tipo ya no cambia el acomodo" in trazo_zap)
     check("y esta comprobado con numeros, para los dos tipos",
-          "siempre 80 cm justos entre una y la siguiente" in leer(
-              ruta("tools/prueba-zapata/Program.cs")))
+          "justo la separacion de 80 cm" in leer(ruta("tools/prueba-zapata/Program.cs")))
 
     check("la separacion entre secciones es la de cada macro",
           "public const double SeparacionCentral = 1.0;" in trazo_zap
@@ -4171,7 +4170,7 @@ def v19_circular_y_ui() -> None:
           "private enum Alineacion" in zap_pla
           and "alineacion == Alineacion.Centro ? 4 : 2" in zap_pla)
     check("y queda escrito por que centrado no servia",
-          "se mete en la zapata de al lado" in zap_pla)
+          "se sale por los dos lados" in zap_pla)
     check("la planta cuelga sus cotas y su rotulo del mismo punto",
           "PlantaCotaOffsetLargo" in zap_pla
           and "Texto(xDer, yBot - PlantaTituloOffset" in zap_pla
@@ -4736,7 +4735,7 @@ def v19_circular_y_ui() -> None:
           and "en orden y dentro" in prueba_zap)
     check("y que el acomodo es el nuevo, para los dos tipos",
           "la segunda a 80 cm a la izquierda de la primera" in prueba_zap
-          and "siempre 80 cm justos entre una y la siguiente" in prueba_zap)
+          and "justo la separacion de 80 cm" in prueba_zap)
     check("y devuelve 1 si algo falla, igual que la del diamante",
           "return fallos == 0 ? 0 : 1;" in prueba_zap)
 
