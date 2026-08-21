@@ -38,8 +38,9 @@ public partial class MainWindow
         var opcionales = new List<string> { string.Empty };
         opcionales.AddRange(diametros);
 
-        ColTipoZapata.ItemsSource = ZapataAisladaRow.Tipos;
-        ColZapTipoColumna.ItemsSource = ZapataAisladaRow.TiposColumna;
+        // El TIPO y el DESPLANTA no se llenan aqui: su lista va en el XAML, en la
+        // plantilla de la celda. Es el patron de la hoja de concreto, y es lo que evita
+        // que el enlace pise el valor capturado cuando la lista llega tarde.
 
         ColZapVarInf.ItemsSource = diametros;
         ColZapVarInfT.ItemsSource = diametros;
@@ -54,6 +55,56 @@ public partial class MainWindow
         ColZapVarIntDado.ItemsSource = opcionales;
 
         ColZapSepEstribo.ItemsSource = SeccionConcretoRow.SeparacionesUsuales;
+    }
+
+    /// <summary>
+    /// Rellena la lista de <b>dados disponibles</b> con los capturados en la hoja de concreto.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se llama desde <c>DatosCambiaron</c>, o sea en <b>cada</b> cambio de la hoja de concreto:
+    /// así la casilla de la zapata ofrece los dados que existen ahora, no los de hace un rato.
+    /// Es lo mismo que hace el renglón de totales, y por el mismo motivo.
+    /// </para>
+    /// <para>
+    /// <b>Se actualiza en su sitio, no se sustituye la colección.</b> La lista de la celda está
+    /// declarada en el XAML y apunta a esa colección: cambiándola por otra, el desplegable se
+    /// quedaría mirando la vieja y no volvería a enterarse de nada.
+    /// </para>
+    /// <para>
+    /// Entran los dos dados, el cuadrado y el redondo: la forma la decide la sección, y la
+    /// zapata lo único que necesita es su ID para insertarlo como bloque.
+    /// </para>
+    /// </remarks>
+    private void ActualizarDadosDisponibles()
+    {
+        var dados = _datos.SeccionesConcreto
+            .Where(s =>
+                SeccionConcretoRow.ElementoDado.Equals(
+                    (s.Elemento ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase)
+                || SeccionConcretoRow.ElementoDadoCircular.Equals(
+                    (s.Elemento ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase))
+            .Select(s => (s.Id ?? string.Empty).Trim())
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var lista = ZapataAisladaRow.DadosDisponibles;
+
+        // Si no cambió nada no se toca: cada cambio de la colección hace que las celdas
+        // abiertas se vuelvan a armar, y eso se ve como un parpadeo al escribir.
+        if (lista.Count == dados.Count
+            && !lista.Where((v, i) => !string.Equals(v, dados[i], StringComparison.Ordinal)).Any())
+        {
+            return;
+        }
+
+        lista.Clear();
+
+        foreach (var id in dados)
+        {
+            lista.Add(id);
+        }
     }
 
     /// <summary>Enlaza la cuadrícula de zapatas y engancha su vista previa.</summary>
@@ -91,6 +142,7 @@ public partial class MainWindow
         }
 
         ActualizarTotalesZapatas();
+        ActualizarDadosDisponibles();
     }
 
     /// <summary>Engancha la vista previa: se redibuja al cambiar de fila y de tamaño.</summary>
@@ -130,6 +182,121 @@ public partial class MainWindow
     }
 
     // ======================================================================
+    // Los dos botones de la hoja
+    // ======================================================================
+
+    /// <summary>
+    /// Revisa la hoja de zapatas y dice, zapata por zapata, <b>dónde se va a dibujar</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Dos cosas, y las dos hacen falta antes de generar un plano: lo que <b>falta</b> por
+    /// capturar, y el <b>acomodo</b> —en qué x cae cada zapata y en qué y cae su planta—, que es
+    /// justo lo que no se puede adivinar mirando la tabla porque depende del tipo y de los anchos
+    /// de las que van antes.
+    /// </para>
+    /// <para>
+    /// Los ID repetidos se avisan porque el ID es el <b>nombre del bloque</b> en AutoCAD: dos
+    /// zapatas con el mismo ID se pelean por el mismo bloque.
+    /// </para>
+    /// </remarks>
+    private void OnRevisarZapatas(object sender, RoutedEventArgs e)
+    {
+        if (_datos.ZapatasAisladas.Count == 0)
+        {
+            MessageBox.Show(
+                "No hay ninguna zapata capturada.", AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var problemas = new List<string>();
+        var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var acomodo = new List<string>();
+
+        var anchos = _datos.ZapatasAisladas.Select(r => r.AnchoM).ToList();
+
+        for (var i = 0; i < _datos.ZapatasAisladas.Count; i++)
+        {
+            var fila = _datos.ZapatasAisladas[i];
+            var donde = $"Fila {i + 1}";
+
+            var id = (fila.Id ?? string.Empty).Trim();
+
+            if (id.Length == 0)
+            {
+                problemas.Add($"{donde}: falta el ID. Es el nombre del bloque en AutoCAD.");
+            }
+            else if (!vistos.Add(id))
+            {
+                problemas.Add(
+                    $"{donde}: el ID «{id}» está repetido. Cada zapata necesita el suyo, " +
+                    "porque el ID es el nombre del bloque.");
+            }
+
+            var falta = fila.Falta;
+
+            if (falta.Length > 0)
+            {
+                problemas.Add($"{donde} ({id}): falta {falta}.");
+                continue;
+            }
+
+            // El dado se busca por su ID entre las secciones de concreto: si no está, la
+            // macro no encuentra el bloque y la zapata sale sin dado.
+            var idDado = (fila.IdDado ?? string.Empty).Trim();
+
+            if (idDado.Length > 0 && !ZapataAisladaRow.DadosDisponibles.Contains(idDado))
+            {
+                problemas.Add(
+                    $"{donde} ({id}): el dado «{idDado}» no está capturado en «Secciones " +
+                    "Concreto», así que no habrá bloque que insertar. Captúralo ahí como " +
+                    "DADO o DADO CIRCULAR, o elige uno de la lista.");
+            }
+
+            var z = fila.AFormatoCad();
+            var a = TrazoZapata.Colocar(z, TrazoZapata.XBase(z.Tipo, anchos, i));
+
+            acomodo.Add(
+                $"  {id}  ({(fila.EsLindero ? "lindero" : "central")}):  " +
+                $"x de {a.XBase:N2} a {a.XDer:N2} m,  planta en y = {a.YPlanta:N2} m");
+        }
+
+        var texto = problemas.Count == 0
+            ? "Las zapatas están completas."
+            : $"Hay {problemas.Count} cosa(s) que corregir:\n\n"
+              + string.Join("\n", problemas);
+
+        if (acomodo.Count > 0)
+        {
+            texto += "\n\nDonde se va a dibujar cada una:\n" + string.Join("\n", acomodo);
+        }
+
+        texto += "\n\nEl dibujo en AutoCAD de las zapatas es el paso siguiente; la vista "
+                 + "previa de abajo ya muestra la geometría y el acomodo de tus macros.";
+
+        MessageBox.Show(
+            texto, AppInfo.ProductName, MessageBoxButton.OK,
+            problemas.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// El botón de dibujar. Está <b>deshabilitado</b> hasta que exista el dibujante.
+    /// </summary>
+    /// <remarks>
+    /// El manejador existe para que el botón esté puesto y se vea qué va a hacer, pero el botón
+    /// arranca apagado: un botón que se puede pulsar y no dibuja enseña a desconfiar de los
+    /// botones. Lo que falta es el <c>ZapataDrawer</c> —bloques por ID, cotas, rótulos con
+    /// leader, plantilla, terreno y rellenos—, que usará el mismo <see cref="TrazoZapata"/> que
+    /// ya usa la vista previa.
+    /// </remarks>
+    private void OnExportZapatas(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(
+            "El dibujante de zapatas todavía no está. Lo que ya está portado es la geometría "
+            + "y el acomodo de tus dos macros, y se puede revisar en la vista previa.",
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+
+    // ======================================================================
     // Vista previa: elevación y planta
     // ======================================================================
 
@@ -163,7 +330,7 @@ public partial class MainWindow
         var ancho = ZapataPreviewCanvas.ActualWidth;
         var alto = ZapataPreviewCanvas.ActualHeight;
 
-        if (ancho < 80 || alto < 80)
+        if (ancho < 120 || alto < 120)
         {
             return;
         }
@@ -184,66 +351,108 @@ public partial class MainWindow
 
         var z = fila.AFormatoCad();
 
-        // El acomodo REAL de esta fila, con los anchos de todas: es lo que decide en qué x cae.
+        // El acomodo REAL de esta fila, con los anchos de todas: es lo que decide en qué x cae
+        // y de dónde cuelga su planta, que es parte de lo que hay que revisar.
         var anchos = _datos.ZapatasAisladas.Select(r => r.AnchoM).ToList();
         var indice = _datos.ZapatasAisladas.IndexOf(fila);
 
         var xBase = TrazoZapata.XBase(z.Tipo, anchos, indice < 0 ? 0 : indice);
         var a = TrazoZapata.Colocar(z, xBase);
 
-        // ---------- Escala: tienen que caber la elevación Y la planta ----------
-        var yMin = a.YPlanta;
-        var yMax = Math.Max(a.YTerreno, a.YDadoTop + (z.ColumnaDeConcreto ? 0.8 : 0));
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
 
-        var xMin = Math.Min(a.XBase, a.XBase);
-        var xMax = a.XDer;
+        // ---------- LA MITAD PARA CADA VISTA ----------
+        //
+        // Antes las dos vistas iban en el MISMO sistema de coordenadas, y eso no se podía
+        // usar: la planta cuelga a tres metros de la elevación en la central y a quince en el
+        // lindero, así que al meter las dos en el cuadro salían dos dibujos diminutos con un
+        // hueco enorme en medio. Ahora cada vista tiene su MITAD y su propia escala, con lo
+        // que las dos salen del tamaño del cuadro. La distancia entre ellas se dice con
+        // números, en el renglón de abajo, que es donde se puede leer.
+        var gap = 18.0;
+        var arriba = 44.0;
+        var abajo = 34.0;
 
-        const double margen = 26;
+        var wMitad = (ancho - (3 * gap)) / 2;
+        var hUtil = alto - arriba - abajo;
 
-        var escala = Math.Min(
-            (ancho - (2 * margen)) / Math.Max(xMax - xMin, 0.01),
-            (alto - (2 * margen)) / Math.Max(yMax - yMin, 0.01));
+        if (wMitad < 60 || hUtil < 60)
+        {
+            AvisoZapata("Agranda la ventana para ver la zapata dibujada.");
+            return;
+        }
+
+        DibujarElevacionPrevia(z, a, fila, gap, arriba, wMitad, hUtil, azul, gris);
+        DibujarPlantaPrevia(z, a, gap + wMitad + gap, arriba, wMitad, hUtil, azul, gris);
+
+        // ---------- Título y el dato del acomodo ----------
+        var titulo = z.Tipo == ZapataCad.Lindero
+            ? $"ZAPATA AISLADA DE LINDERO \"{fila.Id}\""
+            : $"ZAPATA AISLADA CENTRAL \"{fila.Id}\"";
+
+        EtiquetaZapata($"{titulo}    ·    {fila.Resumen}", 12, 24, 12, azul, true);
+
+        var dado = string.IsNullOrWhiteSpace(fila.IdDado) ? "sin dado" : $"dado \"{fila.IdDado}\"";
+
+        EtiquetaZapata(
+            $"Se dibuja en x = {a.XBase:N2} m    ·    la planta cae en y = {a.YPlanta:N2} m"
+            + $"    ·    {dado}",
+            12, alto - 20, 10.5, gris);
+    }
+
+    /// <summary>La <b>elevación</b>, en su mitad del cuadro y con sus cotas.</summary>
+    /// <remarks>
+    /// Se dibuja de abajo arriba, como se arma: la plantilla de concreto simple, la zapata, el
+    /// dado, la columna cuando es de concreto, el nivel del terreno, los estribos del dado y las
+    /// parrillas con sus ganchos y sus varillas transversales vistas de punta.
+    /// </remarks>
+    private void DibujarElevacionPrevia(
+        ZapataCad z, TrazoZapata.Acomodo a, ZapataAisladaRow fila,
+        double left, double top, double w, double h, Brush azul, Brush gris)
+    {
+        // Lo que tiene que caber: de la plantilla al terreno, o a la punta de la columna.
+        var yMin = a.YPlantillaBot;
+        var yMax = Math.Max(a.YTerreno, a.YDadoTop + (z.ColumnaDeConcreto ? 0.8 * (8.0 / 9.0) : 0));
+
+        // Aire para las cotas: dos renglones abajo, dos a la izquierda y uno arriba.
+        const double aireCota = 0.34;
+
+        var anchoModelo = z.AnchoM + (2 * aireCota);
+        var altoModelo = (yMax - yMin) + (2 * aireCota);
+
+        var escala = Math.Min(w / anchoModelo, h / altoModelo);
 
         if (escala <= 0 || double.IsInfinity(escala))
         {
             return;
         }
 
-        var dx = margen - (xMin * escala);
-        var dy = alto - margen + (yMin * escala);
+        // Centrado en su mitad.
+        var dx = left + ((w - (anchoModelo * escala)) / 2) + (aireCota * escala) - (a.XBase * escala);
+        var dy = top + ((h - (altoModelo * escala)) / 2) + ((altoModelo - aireCota) * escala)
+                 + (yMin * escala);
 
         double PX(double x) => dx + (x * escala);
         double PY(double y) => dy - (y * escala);
 
-        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
-        var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
         var tierra = new SolidColorBrush(Color.FromRgb(0xA9, 0x8A, 0x6A));
 
-        // ---------- Terreno ----------
-        Recta(PX(a.XBase) - 12, PY(a.YTerreno), PX(a.XDer) + 12, PY(a.YTerreno), tierra, 1.2);
+        Recta(PX(a.XBase) - 10, PY(a.YTerreno), PX(a.XDer) + 10, PY(a.YTerreno), tierra, 1.2);
 
-        // ---------- Plantilla de concreto simple ----------
         Contorno(PX(a.XBase), PY(a.YZapBot), PX(a.XDer), PY(a.YPlantillaBot), gris, 1.0);
-
-        // ---------- Zapata ----------
         Contorno(PX(a.XBase), PY(a.YZapTop), PX(a.XDer), PY(a.YZapBot), azul, 1.6);
-
-        // ---------- Dado ----------
         Contorno(PX(a.XDadoIzq), PY(a.YDadoTop), PX(a.XDadoDer), PY(a.YZapTop), azul, 1.4);
 
-        // ---------- Columna, solo si es de concreto ----------
         if (z.ColumnaDeConcreto)
         {
-            // La macro dibuja 0.8 m de columna y le corta los 8/9, para que se lea que sigue.
             var yTope = a.YDadoTop + (0.8 * (8.0 / 9.0));
 
             Contorno(PX(a.XColIzq), PY(yTope), PX(a.XColDer), PY(a.YDadoTop), azul, 1.4);
         }
 
-        // ---------- Estribos del dado ----------
         DibujarEstribosDadoPrevio(z, a, PX, PY, gris);
 
-        // ---------- Parrillas ----------
         DibujarParrillaPrevia(z, a, PX, PY, superior: false);
 
         if (z.DobleParrilla && !string.IsNullOrWhiteSpace(z.VarSup))
@@ -251,22 +460,42 @@ public partial class MainWindow
             DibujarParrillaPrevia(z, a, PX, PY, superior: true);
         }
 
-        // ---------- Planta ----------
-        DibujarPlantaPrevia(z, a, PX, PY, azul, gris);
+        // ---------- COTAS ----------
+        // Las mismas que pone la macro, y en el mismo sitio: el ancho del dado y los tramos
+        // de la zapata abajo, y las verticales a la izquierda, escalonadas para que no se
+        // monten. La de la plantilla lleva su número EN MEDIO, que es lo que la macro
+        // resuelve con DIMTIX en una cota de 5 cm.
+        var yCad = PY(a.YZapBot) + (0.14 * escala);
+        var yTot = PY(a.YZapBot) + (0.24 * escala);
 
-        // ---------- Etiquetas ----------
-        var titulo = z.Tipo == ZapataCad.Lindero
-            ? $"ZAPATA AISLADA DE LINDERO \"{fila.Id}\""
-            : $"ZAPATA AISLADA CENTRAL \"{fila.Id}\"";
+        if (a.XDadoIzq > a.XBase + 0.001)
+        {
+            CotaH(PX(a.XBase), PX(a.XDadoIzq), yCad, a.XDadoIzq - a.XBase, gris);
+        }
 
-        EtiquetaZapata($"{titulo}    ·    {fila.Resumen}", 12, 26, 12, azul, true);
+        CotaH(PX(a.XDadoIzq), PX(a.XDadoDer), yCad, a.XDadoDer - a.XDadoIzq, gris);
 
-        EtiquetaZapata("ELEVACIÓN", PX(a.XBase), PY(a.YZapBot) + 6, 10.5, gris);
-        EtiquetaZapata("PLANTA", PX(a.XBase), PY(a.YPlanta + z.LargoM) + 6, 10.5, gris);
+        if (a.XDer > a.XDadoDer + 0.001)
+        {
+            CotaH(PX(a.XDadoDer), PX(a.XDer), yCad, a.XDer - a.XDadoDer, gris);
+        }
+
+        CotaH(PX(a.XBase), PX(a.XDer), yTot, z.AnchoM, gris);
+
+        var x1 = PX(a.XBase) - (0.08 * escala);
+        var x2 = PX(a.XBase) - (0.20 * escala);
+
+        CotaV(x1, PY(a.YPlantillaBot), PY(a.YZapBot), TrazoZapata.PlantillaEspesor, gris);
+        CotaV(x1, PY(a.YZapBot), PY(a.YZapTop), z.EspesorM, gris);
+        CotaV(x1, PY(a.YZapTop), PY(a.YTerreno), a.YTerreno - a.YZapTop, gris);
+        CotaV(x2, PY(a.YPlantillaBot), PY(a.YTerreno), a.YTerreno - a.YPlantillaBot, gris);
+
+        EtiquetaZapata("ELEVACIÓN", left, PY(a.YPlantillaBot) + (0.30 * escala), 10.5, gris);
+
+        var fc = string.IsNullOrWhiteSpace(fila.Fc) ? string.Empty : $"    ·    f'c = {fila.Fc}";
 
         EtiquetaZapata(
-            $"x = {a.XBase:N2} m    ·    planta en y = {a.YPlanta:N2} m",
-            12, alto - 20, 10.5, gris);
+            $"Rec. 5 cm{fc}", left, PY(a.YPlantillaBot) + (0.30 * escala) + 15, 10, gris);
     }
 
     /// <summary>Los estribos del dado, en las posiciones que reparte la macro.</summary>
@@ -394,36 +623,110 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>La vista en planta: el paño, el hueco del dado y las dos mallas.</summary>
+    /// <summary>La <b>planta</b>, en su mitad del cuadro y con sus cotas.</summary>
+    /// <remarks>
+    /// El paño de la zapata, el hueco del dado —centrado o pegado al paño derecho, según el
+    /// tipo, igual que en la elevación— y las dos mallas. Con doble parrilla va además la línea
+    /// de rotura de la diagonal, que es lo que separa una parrilla de la otra en el plano.
+    /// </remarks>
     private void DibujarPlantaPrevia(
         ZapataCad z, TrazoZapata.Acomodo a,
-        Func<double, double> px, Func<double, double> py, Brush azul, Brush gris)
+        double left, double top, double w, double h, Brush azul, Brush gris)
     {
         var yBot = a.YPlanta;
         var yTop = a.YPlanta + z.LargoM;
 
-        Contorno(px(a.XBase), py(yTop), px(a.XDer), py(yBot), azul, 1.6);
+        const double aireCota = 0.30;
+
+        var anchoModelo = z.AnchoM + (2 * aireCota);
+        var altoModelo = z.LargoM + (2 * aireCota);
+
+        var escala = Math.Min(w / anchoModelo, h / altoModelo);
+
+        if (escala <= 0 || double.IsInfinity(escala))
+        {
+            return;
+        }
+
+        var dx = left + ((w - (anchoModelo * escala)) / 2) + (aireCota * escala) - (a.XBase * escala);
+        var dy = top + ((h - (altoModelo * escala)) / 2) + ((altoModelo - aireCota) * escala)
+                 + (yBot * escala);
+
+        double PX(double x) => dx + (x * escala);
+        double PY(double y) => dy - (y * escala);
+
+        Contorno(PX(a.XBase), PY(yTop), PX(a.XDer), PY(yBot), azul, 1.6);
 
         var (hx1, hy1, hx2, hy2) = TrazoZapata.HuecoDelDado(z, a.XBase, yBot);
-
-        Contorno(px(hx1), py(hy2), px(hx2), py(hy1), azul, 1.2);
 
         var rojo = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
         var rosa = new SolidColorBrush(Color.FromRgb(0xE0, 0x8B, 0x7F));
 
-        // Las dos mallas: la inferior en rojo y la superior en un rojo más claro, para que se
-        // distingan. En el plano lo que las separa es la línea de rotura de la diagonal.
-        DibujarMallaPrevia(z, a, px, py, yBot, yTop, z.VarInf, z.SepInf, z.VarInfTrans,
+        DibujarMallaPrevia(z, a, PX, PY, yBot, yTop, z.VarInf, z.SepInf, z.VarInfTrans,
             z.SepInfTrans, rojo);
 
         if (z.DobleParrilla && !string.IsNullOrWhiteSpace(z.VarSup))
         {
-            DibujarMallaPrevia(z, a, px, py, yBot, yTop, z.VarSup, z.SepSup, z.VarSupTrans,
+            DibujarMallaPrevia(z, a, PX, PY, yBot, yTop, z.VarSup, z.SepSup, z.VarSupTrans,
                 z.SepSupTrans, rosa);
 
-            // La línea de rotura de la diagonal, que es lo que separa las dos parrillas.
-            Recta(px(a.XBase), py(yBot), px(a.XDer), py(yTop), gris, 0.8);
+            Recta(PX(a.XBase), PY(yBot), PX(a.XDer), PY(yTop), gris, 0.8);
         }
+
+        // El dado va encima de la malla, como en el dibujo: es lo que se ve en planta.
+        Contorno(PX(hx1), PY(hy2), PX(hx2), PY(hy1), azul, 1.3);
+
+        // ---------- COTAS ----------
+        // Las de la macro: el ancho abajo, el largo a la izquierda y las dos del dado
+        // -su ancho arriba y su largo a la derecha-, que ahí miden exactamente el bloque.
+        CotaH(PX(a.XBase), PX(a.XDer), PY(yBot) + (0.12 * escala), z.AnchoM, gris);
+        CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);
+
+        CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala), hx2 - hx1, gris);
+        CotaV(PX(a.XDer) + (0.10 * escala), PY(hy1), PY(hy2), hy2 - hy1, gris);
+
+        EtiquetaZapata("PLANTA", left, PY(yBot) + (0.26 * escala), 10.5, gris);
+        EtiquetaZapata("Escala 1:10", left, PY(yBot) + (0.26 * escala) + 15, 10, gris);
+    }
+
+    /// <summary>Una cota <b>horizontal</b>: su línea, sus dos topes y su número.</summary>
+    /// <remarks>
+    /// Es una cota de vista previa, no la de AutoCAD: línea con topes y el número encima. Lo que
+    /// importa aquí es <b>qué se mide</b> —los mismos tramos que acota la macro— porque es lo que
+    /// se revisa antes de mandar el dibujo; el aparato de la cota lo pone AutoCAD con el estilo
+    /// COTA_ESTRUCTURAL. Y el número va en <b>metros con dos decimales</b>, como el plano.
+    /// </remarks>
+    private void CotaH(double x1, double x2, double y, double valorM, Brush trazo)
+    {
+        if (Math.Abs(x2 - x1) < 6)
+        {
+            return;
+        }
+
+        Recta(x1, y, x2, y, trazo, 0.8);
+        Recta(x1, y - 4, x1, y + 4, trazo, 0.8);
+        Recta(x2, y - 4, x2, y + 4, trazo, 0.8);
+
+        var texto = valorM.ToString("N2", System.Globalization.CultureInfo.CurrentCulture);
+
+        EtiquetaZapata(texto, ((x1 + x2) / 2) - 12, y - 15, 10, trazo);
+    }
+
+    /// <summary>Una cota <b>vertical</b>.</summary>
+    private void CotaV(double x, double y1, double y2, double valorM, Brush trazo)
+    {
+        if (Math.Abs(y2 - y1) < 6)
+        {
+            return;
+        }
+
+        Recta(x, y1, x, y2, trazo, 0.8);
+        Recta(x - 4, y1, x + 4, y1, trazo, 0.8);
+        Recta(x - 4, y2, x + 4, y2, trazo, 0.8);
+
+        var texto = valorM.ToString("N2", System.Globalization.CultureInfo.CurrentCulture);
+
+        EtiquetaZapata(texto, x - 26, ((y1 + y2) / 2) - 7, 10, trazo);
     }
 
     private void DibujarMallaPrevia(

@@ -3738,8 +3738,65 @@ def v19_circular_y_ui() -> None:
     check("y usa el acomodo REAL, con los anchos de todas",
           "TrazoZapata.XBase(z.Tipo, anchos, indice < 0 ? 0 : indice)" in zap_cb
           and "TrazoZapata.Colocar(z, xBase)" in zap_cb)
-    check("las dos vistas van a la misma escala",
-          "tienen que caber la elevación Y la planta" in zap_cb)
+    # LA MITAD PARA CADA VISTA. Con las dos en el mismo sistema de coordenadas -que es como
+    # estaba- la planta cuelga a 3 m de la elevacion en la central y a 15 en el lindero, asi
+    # que salian dos dibujos diminutos con un hueco enorme en medio.
+    check("cada vista tiene su mitad y su propia escala",
+          "private void DibujarElevacionPrevia(" in zap_cb
+          and "var wMitad = (ancho - (3 * gap)) / 2;" in zap_cb)
+    check("y se dice por que no van en el mismo sistema",
+          "dos dibujos diminutos con un" in zap_cb)
+
+    # LAS COTAS: las mismas que pone la macro y en el mismo sitio.
+    check("la vista previa lleva cotas",
+          "private void CotaH(" in zap_cb and "private void CotaV(" in zap_cb)
+    check("la elevacion acota los tramos, el espesor y la profundidad",
+          "CotaH(PX(a.XDadoIzq), PX(a.XDadoDer), yCad" in zap_cb
+          and "CotaV(x1, PY(a.YZapBot), PY(a.YZapTop), z.EspesorM, gris);" in zap_cb
+          and "CotaV(x2, PY(a.YPlantillaBot), PY(a.YTerreno)" in zap_cb)
+    check("y la planta acota la zapata y el dado",
+          "CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);" in zap_cb
+          and "CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala)" in zap_cb)
+    check("los numeros de las cotas van en metros con dos decimales",
+          'valorM.ToString("N2"' in zap_cb)
+
+    # EL DADO SE ELIGE DE LA HOJA DE CONCRETO, y la lista se actualiza sola.
+    check("el dado se elige de una lista",
+          "public static ObservableCollection<string> DadosDisponibles" in zap_row
+          and "ZapataAisladaRow.DadosDisponibles" in xaml)
+    check("la lista sale de los dados de la hoja de concreto",
+          "private void ActualizarDadosDisponibles()" in zap_cb
+          and "SeccionConcretoRow.ElementoDadoCircular.Equals(" in zap_cb)
+    check("y se actualiza en cada cambio de esa hoja",
+          "ActualizarDadosDisponibles();" in codigo)
+    check("se actualiza EN SITIO, no se sustituye la coleccion",
+          "no se sustituye la colección" in zap_cb
+          and "lista.Clear();" in zap_cb)
+    check("y la celda sigue siendo editable, con su lista en el XAML",
+          'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.DadosDisponibles}}"'
+          in xaml)
+
+    # Los dos botones de la hoja.
+    check("la hoja de zapatas tiene su boton de revisar, y funciona",
+          'Click="OnRevisarZapatas"' in xaml
+          and "private void OnRevisarZapatas(" in zap_cb)
+    check("y dice donde se va a dibujar cada una",
+          "Donde se va a dibujar cada una" in zap_cb)
+    check("el boton de dibujar esta puesto pero apagado, y dice por que",
+          'x:Name="DibujarZapatasButton"' in xaml
+          and 'IsEnabled="False"' in xaml
+          and "el dibujante de zapatas es el paso siguiente" in xaml)
+    check("y queda escrito que un boton que no dibuja seria peor",
+          "enseña a desconfiar de los" in zap_cb)
+
+    # El tipo y el desplanta van por PLANTILLA con ComboBox editable enlazado por Text.
+    # Con SelectedItemBinding y la lista llenada desde el code-behind, el enlace pisaba el
+    # valor capturado: las dos zapatas del ejemplo salian «de lindero».
+    check("el tipo de zapata se enlaza por Text, no por SelectedItem",
+          'Text="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}"' in xaml
+          and "ColTipoZapata" not in zap_cb)
+    check("y se dice por que, que es el defecto que se vio",
+          "el enlace lo PISA" in xaml)
     check("se redibuja al cambiar de fila, de tamaño y al editar",
           "private void EngancharVistaPreviaZapata()" in zap_cb
           and "private void OnFilaZapataEditada(" in zap_cb)

@@ -998,6 +998,29 @@
                         <TextBlock Text="Zapatas aisladas" Style="{StaticResource ModuleTitleStyle}" />
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Las columnas son las celdas de tus dos macros. La de TIPO decide todo lo que cambia entre ellas: la CENTRAL lleva el dado centrado y las secciones crecen a la derecha; la de LINDERO lleva el dado pegado al paño derecho -ese es el lindero- y crecen a la izquierda." />
+
+                        <!-- Los dos botones de la hoja.
+
+                             «Revisar» funciona: comprueba las filas y dice, zapata por
+                             zapata, en que x se va a dibujar y donde cae su planta.
+
+                             «Dibujar en AutoCAD» va DESHABILITADO a proposito, y su globo
+                             dice por que: el dibujante de zapatas es lo siguiente. Un boton
+                             que se puede pulsar y no dibuja es peor que un boton apagado
+                             que dice lo que falta. -->
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
+                            <Button Content="Revisar zapatas"
+                                    Style="{StaticResource ToolbarButtonStyle}"
+                                    Click="OnRevisarZapatas"
+                                    ToolTip="Comprueba las filas y dice donde se va a dibujar cada zapata." />
+
+                            <Button x:Name="DibujarZapatasButton"
+                                    Content="Dibujar zapatas en AutoCAD"
+                                    Style="{StaticResource ToolbarPrimaryButtonStyle}"
+                                    Click="OnExportZapatas" IsEnabled="False"
+                                    Margin="8,0,0,0"
+                                    ToolTip="Todavia no: el dibujante de zapatas es el paso siguiente.&#10;La geometria y el acomodo ya estan portados -son los de tus macros- y se pueden revisar en la vista previa de abajo." />
+                        </StackPanel>
                     </StackPanel>
 
                     <DataGrid x:Name="ZapatasGrid" Grid.Row="1"
@@ -1008,10 +1031,36 @@
                               ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
                         <DataGrid.Columns>
                             <!-- Identificacion -->
-                            <DataGridComboBoxColumn x:Name="ColTipoZapata" Header="Tipo"
-                                                    SelectedItemBinding="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}" Width="90"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaIdent}" />
+                            <!-- EL TIPO va con el patron de la hoja de concreto: plantilla
+                                 con un ComboBox EDITABLE enlazado por Text, y la lista
+                                 puesta en el XAML desde la propia clase.
+
+                                 Con SelectedItemBinding y la lista llenada desde el
+                                 code-behind pasaba esto: si la columna recibe su
+                                 ItemsSource cuando las filas ya estan enlazadas, la celda
+                                 no encuentra su valor en la lista y el enlace lo PISA. Las
+                                 dos zapatas del ejemplo salian «de lindero» aunque una
+                                 estaba capturada como central. -->
+                            <DataGridTemplateColumn Header="Tipo" Width="95"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="Tipo">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Tipo}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.Tipos}}"
+                                                  Text="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="CENTRAL: el dado va centrado y las secciones crecen a la derecha.&#10;LINDERO: el dado va pegado al paño derecho y crecen a la izquierda." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="70" CellStyle="{StaticResource CeldaIdent}" />
 
@@ -1057,12 +1106,57 @@
 
                             <!-- Dado y columna. El ancho va en CENTIMETROS, como en la
                                  macro: ahi se multiplican por SCALEELEVATION al dibujar. -->
-                            <DataGridComboBoxColumn x:Name="ColZapTipoColumna" Header="Desplanta"
-                                                    SelectedItemBinding="{Binding TipoColumna, UpdateSourceTrigger=PropertyChanged}" Width="150"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="ID dado" Binding="{Binding IdDado, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="70" CellStyle="{StaticResource CeldaIdent}" />
+                            <DataGridTemplateColumn Header="Desplanta" Width="155"
+                                                    CellStyle="{StaticResource CeldaAcabado}"
+                                                    SortMemberPath="TipoColumna">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding TipoColumna}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.TiposColumna}}"
+                                                  Text="{Binding TipoColumna, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="De concreto: se dibuja la columna encima del dado y los ganchos de arranque doblan hacia adentro.&#10;De acero: no hay columna de concreto, y los ganchos doblan hacia afuera." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <!-- EL DADO SE ELIGE DE LA HOJA DE CONCRETO.
+                                 El dado no es un dato suelto: es una seccion de concreto
+                                 con su armado y su forma, y la macro la inserta en la
+                                 zapata como BLOQUE, buscandola por su ID. La lista se
+                                 llena sola con los dados capturados -DADO y DADO
+                                 CIRCULAR- y se actualiza al agregar o borrar uno, porque
+                                 la coleccion es observable.
+
+                                 Sigue siendo editable: se puede escribir un ID que
+                                 todavia no este capturado, porque el orden en que se
+                                 llenan las hojas es del usuario. -->
+                            <DataGridTemplateColumn Header="ID dado" Width="90"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="IdDado">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IdDado}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.DadosDisponibles}}"
+                                                  Text="{Binding IdDado, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;La zapata inserta ese dado como bloque, buscandolo por su ID." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="75" CellStyle="{StaticResource CeldaLateral}" />
                             <DataGridTextColumn Header="ID col." Binding="{Binding IdColumna, UpdateSourceTrigger=PropertyChanged}"

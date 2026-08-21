@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CadLink.Cad;
 
 namespace CadLink.App.Models;
@@ -73,6 +74,31 @@ public sealed class ZapataAisladaRow : Row
 
     /// <summary>Lo que ofrece el desplegable de tipo de columna.</summary>
     public static readonly string[] TiposColumna = { TipoColumnaConcreto, TipoColumnaAcero };
+
+    /// <summary>
+    /// Los <b>dados capturados en la hoja de concreto</b>, para elegirlos de una lista.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El dado de una zapata no es un dato suelto: es una <b>sección de concreto</b> que se
+    /// captura en su hoja —con su armado, su estribo y su forma, cuadrada o redonda— y que la
+    /// macro inserta en la zapata <b>como bloque, buscándolo por su ID</b>. Así que la casilla
+    /// ofrece los dados que ya existen en lugar de pedir que se teclee un ID a ciegas: si el ID
+    /// no coincide con ninguna sección, el bloque no se encuentra y la zapata sale sin dado.
+    /// </para>
+    /// <para>
+    /// <b>Es una colección estática y observable</b>, y las dos cosas por el mismo motivo: la
+    /// lista de la celda se declara en el XAML —es el patrón que funciona en esta hoja— así que
+    /// necesita <i>un</i> origen al que apuntar; y siendo observable, la celda se actualiza sola
+    /// cuando se agrega o se borra un dado en la hoja de concreto, sin que nadie tenga que
+    /// acordarse de refrescar el desplegable. La rellena la ventana en cada cambio.
+    /// </para>
+    /// <para>
+    /// La celda sigue siendo <b>editable</b>: se puede escribir un ID que todavía no esté
+    /// capturado, porque el orden en que se llenan las hojas es del usuario, no del programa.
+    /// </para>
+    /// </remarks>
+    public static ObservableCollection<string> DadosDisponibles { get; } = new();
 
     /// <summary>Los dos tipos de zapata, que salen de <see cref="ZapataCad"/>.</summary>
     /// <remarks>

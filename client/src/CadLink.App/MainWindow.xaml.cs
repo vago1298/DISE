@@ -268,6 +268,11 @@ public partial class MainWindow : Window
     private void DatosCambiaron()
     {
         RegistrarEnHistorial();
+
+        // La lista de dados de la hoja de zapatas sale de ESTA hoja, así que se refresca
+        // aquí: al agregar, borrar o renombrar un dado, el desplegable se entera solo.
+        ActualizarDadosDisponibles();
+
         ActualizarContadores();
         ActualizarTotales();
         DibujarVistaPrevia();
