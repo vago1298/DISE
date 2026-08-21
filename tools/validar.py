@@ -4265,6 +4265,28 @@ def v19_circular_y_ui() -> None:
           and "CotaOffsetTotal = 0.22" in zap_drw
           and "CotaOffsetVert1 = 0.08" in zap_drw
           and "CotaOffsetVert2 = 0.16" in zap_drw)
+    # LO QUE SE PIDIO: "solo quiero que las cotas esten en su lugar, no que esten en medio de los
+    # dibujos". Las de los 15 diametros de las patas del gancho iban PEGADAS A LA PATA, a 6 cm,
+    # y la pata esta DENTRO del dado: la cota caia sobre el concreto, la parrilla y los estribos.
+    check("las cotas de las patas del gancho bajan a su propio renglon, fuera del dibujo",
+          "CotaOffsetGanchoIzq = 0.30" in zap_drw
+          and "CotaOffsetGanchoDer = 0.38" in zap_drw
+          and "CotaDoblezOffset" not in zap_drw)
+    check("y la linea de cota va por debajo del desplante, no a la altura de la pata",
+          "var yFilaIzq = yZapBot - CotaOffsetGanchoIzq;" in zap_drw
+          and "var yFilaDer = yZapBot - CotaOffsetGanchoDer;" in zap_drw
+          and "yPataSup - offset" not in zap_drw
+          and "yPataInf + offset" not in zap_drw)
+    check("se sigue midiendo lo mismo: el arranque y la punta de cada pata",
+          "Cota(xIzq2, yPataSup, xIzq1, yPataSup" in zap_drw
+          and "Cota(xDer2, yPataInf, xDer1, yPataInf" in zap_drw)
+    check("y queda escrito por que se movieron",
+          "no que estén en medio de" in zap_drw)
+    # Las dos van en renglones distintos porque las patas se cruzan por el centro del dado y en
+    # el mismo renglon los dos numeros se montarian.
+    check("las dos patas van en renglones distintos, para que no se monten",
+          "CotaOffsetGanchoDer = 0.38" in zap_drw
+          and "los dos números se" in zap_drw)
     check("la cota de la plantilla lleva el numero EN MEDIO",
           "d.TextInside = true;" in zap_pla
           and "d.ForceLineInside = true;" in zap_pla

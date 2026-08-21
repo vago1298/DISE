@@ -90,7 +90,34 @@ public sealed partial class ZapataDrawer
     private const double CotaOffsetVert2 = 0.16;
     private const double CotaOffsetCadena = 0.14;
     private const double CotaOffsetTotal = 0.22;
-    private const double CotaDoblezOffset = 0.06;
+
+    /// <summary>Renglón de la cota de la pata del gancho del paño izquierdo.</summary>
+    /// <remarks>
+    /// <para>
+    /// LO QUE SE PIDIÓ: <i>«solo quiero que las cotas estén en su lugar, no que estén en medio de
+    /// los dibujos»</i>.
+    /// </para>
+    /// <para>
+    /// La macro pone estas dos cotas <b>pegadas a la pata</b>, a 6 cm de ella
+    /// (<c>CotasDoblezGanchosDado ..., 0.06, ...</c>). Y la pata está DENTRO del dado, a la altura
+    /// del lomo de la zapata, así que la cota cae sobre el concreto, sobre la parrilla y sobre los
+    /// estribos: es la que se veía atravesada en medio del dibujo.
+    /// </para>
+    /// <para>
+    /// Ahora las dos bajan a su propio renglón, por debajo de la cota total, y las líneas de
+    /// extensión suben hasta la pata. Se sigue midiendo <b>lo mismo</b> —los 15 diámetros, entre
+    /// los mismos dos puntos— y se lee sin nada encima, que es como se acota en un plano.
+    /// </para>
+    /// </remarks>
+    private const double CotaOffsetGanchoIzq = 0.30;
+
+    /// <summary>Renglón de la del paño derecho, 8 cm por debajo de la otra.</summary>
+    /// <remarks>
+    /// En dos renglones y no en uno porque las dos patas se solapan en X —arrancan de paños
+    /// opuestos y se cruzan por el centro del dado—, y en el mismo renglón los dos números se
+    /// montarían uno sobre otro. Los 8 cm son el salto que ya usan la cadena y el total.
+    /// </remarks>
+    private const double CotaOffsetGanchoDer = 0.38;
 
     // Los offsets de rótulo de la macro -0.32, 0.41 y 0.49 desde el fondo de la zapata- YA NO
     // ESTÁN: a esa distancia el rótulo cae sobre el dibujo y sobre las cotas de anchos. Ahora el
@@ -581,7 +608,7 @@ public sealed partial class ZapataDrawer
         var desfaseInf = DesfaseDeLosGanchos(z, dSupDado, dInfDado, dMaxDado, recDadoM);
 
         CotasDoblezGanchos(a.XDadoIzq, a.XDadoDer, yZapBot, recDadoM, subirGanchoDado,
-            dSupDado, dInfDado, CotaDoblezOffset, !z.ColumnaDeConcreto, desfaseInf,
+            dSupDado, dInfDado, !z.ColumnaDeConcreto, desfaseInf,
             ambosIzquierda: false, r);
 
         // ---------- Rótulos de las parrillas ----------
@@ -1928,10 +1955,20 @@ public sealed partial class ZapataDrawer
             true, false);
     }
 
-    /// <summary>Port de <c>CotasDoblezGanchosDado</c>: los 15 diámetros de cada pata.</summary>
+    /// <summary>
+    /// Port de <c>CotasDoblezGanchosDado</c>: los 15 diámetros de cada pata, <b>acotados por
+    /// debajo del dibujo</b>.
+    /// </summary>
+    /// <remarks>
+    /// Se mide lo mismo que en la macro y entre los mismos dos puntos —el arranque de la pata y su
+    /// punta—, pero la línea de cota ya no va pegada a la pata, dentro del dado, sino en su propio
+    /// renglón por debajo de la cota total: <see cref="CotaOffsetGanchoIzq"/> y
+    /// <see cref="CotaOffsetGanchoDer"/>. Las líneas de extensión suben solas hasta la pata, así
+    /// que se sigue viendo qué se está midiendo.
+    /// </remarks>
     private void CotasDoblezGanchos(
         double xDadoIzq, double xDadoDer, double yZapBot, double recDadoM, double subirGanchos,
-        double dSup, double dInf, double offset, bool haciaAfuera, double desfaseInf,
+        double dSup, double dInf, bool haciaAfuera, double desfaseInf,
         bool ambosIzquierda, Resumen r)
     {
         var yPataSup = yZapBot + recDadoM + subirGanchos + (dSup / 2);
@@ -1959,10 +1996,15 @@ public sealed partial class ZapataDrawer
             xDer2 = xDer1 - (TrazoZapata.FactorGanchoAbajo * dInf);
         }
 
+        // Los dos renglones, POR DEBAJO del dibujo. Lo medido no cambia: los puntos siguen siendo
+        // el arranque y la punta de cada pata, a su altura real dentro del dado.
+        var yFilaIzq = yZapBot - CotaOffsetGanchoIzq;
+        var yFilaDer = yZapBot - CotaOffsetGanchoDer;
+
         r.Cotas += Cota(xIzq2, yPataSup, xIzq1, yPataSup, (xIzq2 + xIzq1) / 2,
-            yPataSup - offset, false, false);
+            yFilaIzq, false, false);
         r.Cotas += Cota(xDer2, yPataInf, xDer1, yPataInf, (xDer2 + xDer1) / 2,
-            yPataInf + offset, false, false);
+            yFilaDer, false, false);
     }
 
     /// <summary>Port de <c>TextoRotuloElementoVertical</c>: el rótulo del dado o de la columna.</summary>
