@@ -240,8 +240,46 @@ la Y está invertida, y ahí «girar el radio 45°» gira para el otro lado: el 
 espejeado —sigue siendo de 135°, pero apuntando al lado contrario que en AutoCAD—, que es
 exactamente lo que una vista previa no puede hacer.
 
-Lo que **sigue faltando** en la vista previa es el rombo del estribo diamante, que necesita la
-cinta tangente a N círculos. Mientras no esté, el gancho del diamante solo se ve en AutoCAD.
+#### Y el rombo también, con la geometría del dibujante
+
+El estribo diamante se ve en la vista previa con sus **dos cintas** y su gancho. Y no se
+calcula ahí: la geometría se sacó a **`CadLink.Cad/TrazoDiamante.cs`**, que no sabe nada de
+AutoCAD ni de WPF, y la usan los dos —el dibujante y la vista previa—.
+
+Es la misma decisión que `TrazoAcero`, y por el mismo motivo: un diamante **no es un rombo**,
+es una cinta cerrada tangente a una serie de círculos, con la regla de una o dos varillas por
+vértice y con las laterales que hay que rodear. Calcular eso por segunda vez en la vista previa
+es la manera de acabar enseñando un rombo con otro vértice, otra varilla abrazada, o esquinas
+en pico donde el dibujo lleva dobleces redondeados.
+
+Lo que se movió: `Centros` —el recorrido—, `Cinta` —la tangente, que era `GeometriaCinta`—,
+`DoblezLateral`, `RodearLaterales`, `VarillasDelCentro` y los dos helpers de distancia. El
+dibujante los llama; no le quedó ninguna copia. Y como `TrazoDiamante` no puede escribir en el
+registro del dibujante, las dos notas que da —cuántas varillas laterales acabó rodeando, y si
+no pudo— las **devuelve** en una lista.
+
+Lo nuevo es `Muestrear`, que convierte los *bulges* de la cinta en puntos, porque un lienzo de
+WPF no dibuja arcos con bulges.
+
+#### Una prueba que se EJECUTA, y lo que cazó
+
+`tools/prueba-trazo-diamante` es un programa que corre contra el `CadLink.Cad` **compilado**,
+en lugar de portar el cálculo a Python como el resto de las comprobaciones de este repositorio.
+Se corre en Windows con `dotnet run` y devuelve 1 si algo falla.
+
+Hacía falta, y se vio enseguida. Los `verificar_*.py` comprueban la **geometría**, pero no lo
+que el código compilado hace: un port correcto conviviendo con un C# equivocado da todo en
+verde. Y `Muestrear` estaba equivocado: calculaba el centro del arco con el radio en valor
+absoluto y un apaño para decidir de qué lado de la cuerda cae, así que los puntos se salían del
+doblez **hasta 0.74 cm** y el rombo de la vista previa habría salido con los dobleces
+deformados. Con el radio y la distancia **con signo** —`cuerda / (2·sen(θ/2))` y
+`radio·cos(θ/2)`— el lado sale solo, porque el coseno ya cambia de signo pasada la media vuelta.
+El peor punto se sale ahora **4·10⁻¹⁵ cm**.
+
+La prueba comprueba, con una columna de 40×40 armada como la del ejemplo: que el recorrido va
+antihorario —lo que evita que la cinta salga hecha un nudo—, que abraza las cuatro varillas
+centrales, que las dos cintas son **tangentes** a cada círculo al bit, que el muestreo conserva
+todos los vértices y que cada punto que añade cae sobre el arco de su doblez.
 
 `tools/verificar_gancho_diamante.py` lo comprueba con números: las seis líneas —tres por
 cola—, que la interior sale tangente a la varilla, que lo que el acero dobla es lo que

@@ -16,15 +16,6 @@ namespace CadLink.Cad;
 /// </remarks>
 public sealed partial class SeccionDrawer
 {
-    /// <summary>Radio del doblez de la esquina, como fracción del diámetro.</summary>
-    private const double DiaFactorRadioEsquina = 0.5;
-
-    /// <summary>Tolerancia para dar una varilla por «centrada», en radios.</summary>
-    private const double DiaTolCentroFactor = 0.5;
-
-    /// <summary>Holgura entre el diamante y la varilla que abraza.</summary>
-    private const double DiaHolguraGancho = 0.0;
-
     /// <summary>Contornos del diamante de la sección en curso, para las islas.</summary>
     private object? _diamExt;
     private object? _diamInt;
@@ -66,74 +57,33 @@ public sealed partial class SeccionDrawer
         var cx = (x1 + x2) / 2;
         var cy = (y1 + y2) / 2;
 
-        // ---------- Radios de los dobleces laterales ----------
-        var rEsqInt = DiaFactorRadioEsquina * dDia;
-        if (rEsqInt < dDia * 0.25)
+        // ---------- El recorrido de círculos que abraza ----------
+        // La geometría vive en TrazoDiamante, que no sabe de AutoCAD: los radios de los
+        // dobleces, a qué varillas se abraza cada vértice y las laterales que hay que
+        // rodear. Está fuera de aquí porque la VISTA PREVIA de la pestaña de concreto
+        // necesita exactamente el mismo recorrido, y dos copias de un cálculo acaban
+        // enseñando dos diamantes distintos.
+        // Las notas se le pasan en una lista, porque TrazoDiamante no puede escribir en el
+        // registro del dibujante: no sabe que existe. Y hay dos que hay que decir —cuántas
+        // varillas laterales acabó rodeando, y si no pudo—, así que se recogen y se pasan
+        // al registro con Nota, que es la que quita las repetidas.
+        var notas = new List<string>();
+
+        var centros = TrazoDiamante.Centros(
+            x1, y1, x2, y2, dDia, _varSup, _varInf, _varLat, notas);
+
+        foreach (var n in notas)
         {
-            rEsqInt = dDia * 0.25;
+            Nota(n);
         }
 
-        var rEsqExt = rEsqInt + dDia;
-
-        // En una sección estrecha el doblez no puede ser mayor que la sección:
-        // se recorta, pero solo si queda un radio con sentido.
-        var rMaxLat = 0.35 * (x2 - x1);
-        if (rEsqExt > rMaxLat && rMaxLat > dDia * 1.3)
+        if (centros is null)
         {
-            rEsqExt = rMaxLat;
-            rEsqInt = rEsqExt - dDia;
-        }
-
-        // ---------- A qué varillas se abraza ----------
-        var selSup = VarillasDelCentro(_varSup, cx);
-        var selInf = VarillasDelCentro(_varInf, cx);
-
-        // Orden del recorrido: derecha, arriba, izquierda, abajo. Tiene que ser
-        // ANTIHORARIO y sin cruces, o la cinta sale hecha un nudo.
-        var centros = new List<(double X, double Y, double R)>();
-        centros.AddRange(DoblezLateral(derecha: true, cx, cy, x1, x2, rEsqExt, rEsqInt));
-
-        if (selSup.Count == 0)
-        {
-            centros.Add((cx, y2 - rEsqExt, rEsqInt));
-        }
-        else if (selSup.Count == 1)
-        {
-            centros.Add(ConHolgura(selSup[0]));
-        }
-        else
-        {
-            // Arriba se recorre de derecha a izquierda
-            var (a, bb) = selSup[0].X > selSup[1].X ? (selSup[0], selSup[1]) : (selSup[1], selSup[0]);
-            centros.Add(ConHolgura(a));
-            centros.Add(ConHolgura(bb));
-        }
-
-        centros.AddRange(DoblezLateral(derecha: false, cx, cy, x1, x2, rEsqExt, rEsqInt));
-
-        if (selInf.Count == 0)
-        {
-            centros.Add((cx, y1 + rEsqExt, rEsqInt));
-        }
-        else if (selInf.Count == 1)
-        {
-            centros.Add(ConHolgura(selInf[0]));
-        }
-        else
-        {
-            // Abajo se recorre de izquierda a derecha, para cerrar el circuito
-            var (a, bb) = selInf[0].X < selInf[1].X ? (selInf[0], selInf[1]) : (selInf[1], selInf[0]);
-            centros.Add(ConHolgura(a));
-            centros.Add(ConHolgura(bb));
-        }
-
-        if (centros.Count < 3)
-        {
+            _log.Add(
+                "Estribo diamante: no se pudo armar el recorrido de círculos del rombo. " +
+                $"Núcleo de {(x2 - x1) / _escala:0.#} x {(y2 - y1) / _escala:0.#} cm.");
             return;
         }
-
-        // ---------- Que la cinta rodee las varillas laterales ----------
-        centros = RodearLaterales(centros, dDia);
 
         // ---------- Las dos cintas ----------
         var interior = CintaTangente(centros, 0);
@@ -548,499 +498,37 @@ public sealed partial class SeccionDrawer
         return union;
     }
 
-    private static (double X, double Y, double R) ConHolgura((double X, double Y, double R) v) =>
-        (v.X, v.Y, v.R + DiaHolguraGancho);
+
+
 
     /// <summary>
-    /// El doblez de un costado: la <b>varilla lateral</b> si la hay, o un círculo
-    /// ficticio si no.
+    /// Elige las varillas de un lecho a las que se abraza el diamante. Vive en
+    /// <see cref="TrazoDiamante.VarillasDelCentro"/>.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Esto es la corrección de fondo, y no está en la macro.</b> Allí el doblez
-    /// lateral es siempre un círculo ficticio colocado a
-    /// <c>rEsqExt</c> del paño, sin mirar si en ese sitio hay una varilla. Y en un
-    /// armado normal la hay: la varilla lateral va justo ahí, a media altura del
-    /// costado. El resultado era que la cinta pasaba <b>por encima de la varilla</b>,
-    /// y en el dibujo la diagonal del diamante la cortaba por la mitad.
-    /// </para>
-    /// <para>
-    /// La solución no es esquivarla: es <b>abrazarla</b>. El doblez del diamante tiene
-    /// que doblar sobre esa varilla, que es lo que se hace en obra y lo que pidió el
-    /// usuario: que siga su circunferencia. Así que si hay una varilla lateral en ese
-    /// costado, ella <i>es</i> el doblez, con su radio real.
-    /// </para>
-    /// <para>
-    /// Se toma la más cercana a media altura porque es la que marca el vértice del
-    /// rombo. Las demás varillas del costado, si la cinta las cruzara al ir de este
-    /// doblez a la varilla central, las recoge después
-    /// <see cref="RodearLaterales"/>.
-    /// </para>
-    /// </remarks>
-    private List<(double X, double Y, double R)> DoblezLateral(
-        bool derecha, double cx, double cy, double x1, double x2,
-        double rEsqExt, double rEsqInt)
-    {
-        var ficticio = new List<(double X, double Y, double R)>
-        {
-            derecha ? (x2 - rEsqExt, cy, rEsqInt) : (x1 + rEsqExt, cy, rEsqInt)
-        };
-
-        // Las varillas de ESE costado, y de ese costado solo: mezclarlas haría que el
-        // doblez de la derecha se fuera a abrazar una varilla de la izquierda.
-        var delLado = _varLat
-            .Where(v => derecha ? v.X > cx : v.X < cx)
-            .ToList();
-
-        if (delLado.Count == 0)
-        {
-            return ficticio;
-        }
-
-        // ------------------------------------------------------------------
-        // Una varilla si hay alguna en el eje; DOS si el eje cae entre dos.
-        // ------------------------------------------------------------------
-        // Es la misma regla que ya se usaba arriba y abajo (VarillasDelCentro), y
-        // ahora también a los lados. Con un número PAR de varillas laterales no hay
-        // ninguna a media altura, y forzar el doblez sobre la más cercana dejaba el
-        // vértice del rombo descentrado y la otra varilla fuera, atravesada por la
-        // cinta. Doblando sobre las dos más juntas el vértice sale plano y centrado,
-        // que es como se arma.
-        //
-        // El recorrido tiene que seguir siendo antihorario, así que en el costado
-        // DERECHO se va de abajo hacia arriba y en el IZQUIERDO al contrario.
-        var seleccion = VarillasDelCentro(
-            delLado.Select(v => (v.X, Y: v.Y, v.R)).ToList(),
-            cy,
-            porY: true);
-
-        if (seleccion.Count == 0)
-        {
-            return ficticio;
-        }
-
-        var orden = derecha
-            ? seleccion.OrderBy(v => v.Y).ToList()
-            : seleccion.OrderByDescending(v => v.Y).ToList();
-
-        return orden.Select(ConHolgura).ToList();
-    }
-
-    /// <summary>Cuántas pasadas se dan buscando varillas que la cinta atraviese.</summary>
-    /// <remarks>
-    /// Hacen falta varias porque rodear una varilla <b>empuja la cinta hacia fuera</b>
-    /// en ese tramo, y la cinta empujada puede acabar cruzando otra varilla que antes
-    /// no tocaba. Con una sola pasada quedarían cruces. El tope existe para que un
-    /// caso raro no se quede dando vueltas: tres pasadas resuelven cualquier armado
-    /// real, porque cada costado no lleva más de dos o tres varillas laterales.
-    /// </remarks>
-    private const int PasadasRodeo = 4;
-
-    /// <summary>
-    /// Mete en el recorrido de la cinta las varillas laterales que atravesaría.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Esto no está en la macro.</b> Ahí la cinta va del doblez lateral a la
-    /// varilla central en línea recta, y si por ese camino hay una varilla lateral, le
-    /// pasa por encima: en el dibujo la diagonal del diamante corta la varilla por la
-    /// mitad. En obra eso no puede ser, porque el estribo no atraviesa el acero: lo
-    /// rodea.
-    /// </para>
-    /// <para>
-    /// La corrección es tratar esas varillas como <b>un círculo más del recorrido</b>.
-    /// La cinta ya sabe abrazar una serie de círculos con dobleces redondeados —es
-    /// para lo que existe—, así que basta insertarlas en el sitio correcto del
-    /// recorrido y sale sola tangente a ellas.
-    /// </para>
-    /// <para>
-    /// El orden importa y no es negociable: el recorrido tiene que seguir siendo
-    /// antihorario y sin cruces, o la cinta sale hecha un nudo. Cada varilla se
-    /// inserta <b>en el tramo que atraviesa</b> y, si hay varias en el mismo tramo, en
-    /// el orden en que se las encuentra al recorrerlo.
-    /// </para>
-    /// <para>
-    /// Si al final la cinta no se puede construir, se devuelve el recorrido de
-    /// partida. Es mejor un diamante que cruza una varilla —lo que hacía antes— que
-    /// ningún diamante.
-    /// </para>
-    /// </remarks>
-    private List<(double X, double Y, double R)> RodearLaterales(
-        List<(double X, double Y, double R)> centros, double dDia)
-    {
-        if (_varLat.Count == 0)
-        {
-            return centros;
-        }
-
-        var actual = centros;
-
-        // Las que ya están en el recorrido no se vuelven a meter.
-        var puestas = new List<(double X, double Y, double R)>();
-
-        for (var pasada = 0; pasada < PasadasRodeo; pasada++)
-        {
-            var interior = GeometriaCinta(actual, 0);
-            var exterior = GeometriaCinta(actual, dDia);
-
-            if (interior is null || exterior is null)
-            {
-                break;
-            }
-
-            var siguiente = new List<(double X, double Y, double R)>();
-            var metidas = 0;
-
-            for (var i = 0; i < actual.Count; i++)
-            {
-                siguiente.Add(actual[i]);
-
-                var j = (i + 1) % actual.Count;
-
-                // Tramo recto que sale del círculo i y llega al i+1, por dentro y
-                // por fuera de la cinta.
-                var (ai, bi) = TramoRecto(interior.Value.Pts, i, j);
-                var (ae, be) = TramoRecto(exterior.Value.Pts, i, j);
-
-                var candidatas = new List<(double T, (double X, double Y, double R) V)>();
-
-                foreach (var v in _varLat)
-                {
-                    if (YaEsta(v, actual) || YaEsta(v, puestas))
-                    {
-                        continue;
-                    }
-
-                    // Se mira contra las DOS fronteras: la cinta atraviesa la varilla
-                    // tanto si la corta su borde interior como el exterior.
-                    if (DistanciaASegmento(v, ai, bi) >= v.R &&
-                        DistanciaASegmento(v, ae, be) >= v.R)
-                    {
-                        continue;
-                    }
-
-                    candidatas.Add((Avance(v, ai, bi), v));
-                }
-
-                // En el orden en que se encuentran al recorrer el tramo.
-                foreach (var (_, v) in candidatas.OrderBy(c => c.T))
-                {
-                    siguiente.Add(ConHolgura(v));
-                    puestas.Add(v);
-                    metidas++;
-                }
-            }
-
-            if (metidas == 0)
-            {
-                // Ninguna varilla queda atravesada: ya está bien.
-                return actual;
-            }
-
-            actual = siguiente;
-        }
-
-        // Se comprueba que el recorrido nuevo dé una cinta válida ANTES de quedárselo.
-        if (GeometriaCinta(actual, 0) is null || GeometriaCinta(actual, dDia) is null)
-        {
-            Nota(
-                "Estribo diamante: no se pudo hacer que rodeara las varillas " +
-                "laterales, así que se dibuja como en la macro, cruzándolas.");
-
-            return centros;
-        }
-
-        if (actual.Count > centros.Count)
-        {
-            Nota(
-                $"Estribo diamante: rodea {actual.Count - centros.Count} varilla(s) " +
-                "lateral(es) que quedaban en su camino. Esto no lo hace la macro: ahí " +
-                "el diamante las atraviesa.");
-        }
-
-        return actual;
-    }
-
-    /// <summary>Extremos del tramo recto que va del círculo <paramref name="i"/> al <paramref name="j"/>.</summary>
-    /// <remarks>
-    /// Los vértices van de dos en dos por círculo: el primero es donde <b>llega</b> la
-    /// tangente anterior y el segundo donde <b>sale</b> la siguiente. Así que el tramo
-    /// recto va del segundo vértice del círculo i al primero del j.
-    /// </remarks>
-    private static ((double X, double Y) A, (double X, double Y) B) TramoRecto(
-        double[] pts, int i, int j)
-    {
-        return ((pts[(4 * i) + 2], pts[(4 * i) + 3]),
-                (pts[4 * j], pts[(4 * j) + 1]));
-    }
-
-    private static bool YaEsta(
-        (double X, double Y, double R) v, List<(double X, double Y, double R)> lista)
-    {
-        // Se compara por posición y no por identidad: el recorrido guarda copias con
-        // la holgura ya sumada al radio, así que el radio no sirve para comparar.
-        return lista.Any(c => Math.Abs(c.X - v.X) < 1e-9 && Math.Abs(c.Y - v.Y) < 1e-9);
-    }
-
-    /// <summary>Distancia del centro de una varilla a un segmento.</summary>
-    private static double DistanciaASegmento(
-        (double X, double Y, double R) v, (double X, double Y) a, (double X, double Y) b)
-    {
-        var dx = b.X - a.X;
-        var dy = b.Y - a.Y;
-        var largo2 = (dx * dx) + (dy * dy);
-
-        if (largo2 < 1e-18)
-        {
-            return Math.Sqrt(((v.X - a.X) * (v.X - a.X)) + ((v.Y - a.Y) * (v.Y - a.Y)));
-        }
-
-        // Se recorta al segmento: sin el Clamp se mediría a la RECTA, y una varilla
-        // que está más allá del extremo del tramo saldría como atravesada.
-        var t = Math.Clamp((((v.X - a.X) * dx) + ((v.Y - a.Y) * dy)) / largo2, 0, 1);
-
-        var px = a.X + (t * dx);
-        var py = a.Y + (t * dy);
-
-        return Math.Sqrt(((v.X - px) * (v.X - px)) + ((v.Y - py) * (v.Y - py)));
-    }
-
-    /// <summary>Cuánto se ha avanzado por el tramo, de 0 en A a 1 en B.</summary>
-    private static double Avance(
-        (double X, double Y, double R) v, (double X, double Y) a, (double X, double Y) b)
-    {
-        var dx = b.X - a.X;
-        var dy = b.Y - a.Y;
-        var largo2 = (dx * dx) + (dy * dy);
-
-        return largo2 < 1e-18
-            ? 0
-            : (((v.X - a.X) * dx) + ((v.Y - a.Y) * dy)) / largo2;
-    }
-
-    /// <summary>
-    /// Elige las varillas de un lecho a las que se abraza el diamante.
-    /// </summary>
-    /// <remarks>
-    /// Port de <c>SeleccionaVarillasCentro</c>. Si hay una varilla prácticamente en
-    /// el eje, el diamante se abraza a <b>esa sola</b> y el vértice queda en punta.
-    /// Si el eje cae entre dos, se abraza a <b>las dos</b> y el vértice sale plano,
-    /// que es lo correcto cuando el número de varillas es par.
-    /// </remarks>
-    /// <param name="porY">
-    /// Mide sobre la Y en lugar de la X. Sirve para los costados, donde las varillas
-    /// se reparten en vertical y el eje que importa es el horizontal.
-    /// </param>
     private static List<(double X, double Y, double R)> VarillasDelCentro(
-        List<(double X, double Y, double R)> varillas, double cx, bool porY = false)
-    {
-        var vacio = new List<(double X, double Y, double R)>();
-
-        if (varillas.Count == 0)
-        {
-            return vacio;
-        }
-
-        double Coord((double X, double Y, double R) v) => porY ? v.Y : v.X;
-
-        // La más cercana al eje
-        var mejor = 0;
-        var dMejor = double.MaxValue;
-
-        for (var i = 0; i < varillas.Count; i++)
-        {
-            var d = Math.Abs(Coord(varillas[i]) - cx);
-            if (d < dMejor)
-            {
-                dMejor = d;
-                mejor = i;
-            }
-        }
-
-        var tol = Math.Max(DiaTolCentroFactor * varillas[mejor].R, 1e-6);
-
-        if (dMejor <= tol)
-        {
-            return new List<(double X, double Y, double R)> { varillas[mejor] };
-        }
-
-        // El eje cae entre dos: se toman la más cercana por cada lado.
-        //
-        // OJO CON EL 'Coord'. Aquí estaba el defecto que reportó el usuario: este
-        // bloque leía 'varillas[i].X' a pelo, en lugar de la coordenada que toca. En
-        // los lechos de arriba y abajo da igual, porque ahí el eje ES la X. Pero en
-        // los COSTADOS se llama con porY: true y las varillas se reparten en
-        // vertical: todas tienen prácticamente la misma X, así que comparar la X
-        // contra una 'cx' que en realidad era la Y del centro no separaba nada.
-        // Resultado: en un costado con número PAR de varillas —ninguna a media
-        // altura— no se encontraba pareja y el doblez se iba al círculo ficticio o a
-        // una sola varilla descentrada, con la otra atravesada por la cinta. Con
-        // Coord() la regla de «las dos más centradas» vale igual para arriba, abajo,
-        // izquierda y derecha.
-        var izq = -1;
-        var der = -1;
-        var dIzq = double.MaxValue;
-        var dDer = double.MaxValue;
-
-        for (var i = 0; i < varillas.Count; i++)
-        {
-            var c = Coord(varillas[i]);
-
-            if (c < cx)
-            {
-                if (cx - c < dIzq)
-                {
-                    dIzq = cx - c;
-                    izq = i;
-                }
-            }
-            else if (c - cx < dDer)
-            {
-                dDer = c - cx;
-                der = i;
-            }
-        }
-
-        if (izq >= 0 && der >= 0)
-        {
-            return new List<(double X, double Y, double R)> { varillas[izq], varillas[der] };
-        }
-
-        var uno = izq >= 0 ? izq : der;
-        return uno >= 0
-            ? new List<(double X, double Y, double R)> { varillas[uno] }
-            : vacio;
-    }
+        List<(double X, double Y, double R)> varillas, double cx, bool porY = false) =>
+        TrazoDiamante.VarillasDelCentro(varillas, cx, porY);
 
     /// <summary>
-    /// Cinta cerrada <b>tangente</b> a una serie de círculos, con los dobleces
-    /// redondeados.
-    /// </summary>
-    /// <param name="centros">Círculos a abrazar, en orden antihorario.</param>
-    /// <param name="extra">
-    /// Cuánto engrosar cada radio. Con <c>0</c> sale la cinta interior; con el
-    /// diámetro del estribo, la exterior.
-    /// </param>
-    /// <remarks>
-    /// Port de <c>CrearCintaConFillet</c>. La geometría, para cada par de círculos
-    /// consecutivos:
-    /// <list type="number">
-    ///   <item>
-    ///     Se busca la <b>tangente exterior común</b>. Su dirección normal se
-    ///     obtiene girando el vector que une los centros un ángulo cuyo coseno es
-    ///     <c>(r1 - r2) / d</c>: así la recta toca ambos círculos aunque tengan
-    ///     radios distintos, que es el caso cuando el diamante abraza una varilla
-    ///     del #3 y un doblez lateral de otro tamaño.
-    ///   </item>
-    ///   <item>
-    ///     Cada círculo aporta <b>dos vértices</b>, donde llega la tangente
-    ///     anterior y donde sale la siguiente, unidos por un arco. El arco se
-    ///     expresa como <i>bulge</i> de la polilínea: <c>tan(barrido / 4)</c>.
-    ///   </item>
-    /// </list>
-    /// </remarks>
-    /// <summary>
-    /// Vértices y curvaturas de la cinta, <b>solo el cálculo</b>, sin dibujar nada.
+    /// Vértices y curvaturas de la cinta. <b>El cálculo vive en
+    /// <see cref="TrazoDiamante.Cinta"/></b>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Está separado del dibujo porque lo necesitan <b>dos</b> sitios: el que dibuja
-    /// la cinta y el que recorta el estribo por debajo de ella. Y tienen que usar
-    /// exactamente los mismos números, o el corte no caería sobre la línea dibujada
-    /// sino un poco antes o un poco después, que es justo el defecto que se estaba
-    /// arreglando.
+    /// Se quedó aquí como atajo porque lo llaman cinco sitios de este archivo —la cinta, el
+    /// recorte del estribo, el hueco bajo el gancho, la salida del acero y el arco del
+    /// doblez— y todos tienen que usar exactamente los mismos números, o el corte no caería
+    /// sobre la línea dibujada.
     /// </para>
     /// <para>
-    /// Los puntos salen en orden, dos por círculo: donde llega la tangente anterior y
-    /// donde sale la siguiente. El arreglo son parejas X,Y seguidas.
+    /// El cálculo se sacó a <see cref="TrazoDiamante"/> porque ahora lo necesita también la
+    /// <b>vista previa</b> de la pestaña de concreto, que no puede tener su propia copia:
+    /// dos copias de una geometría acaban enseñando dos diamantes distintos.
     /// </para>
     /// </remarks>
     private static (double[] Pts, double[] Bulges)? GeometriaCinta(
-        List<(double X, double Y, double R)> centros, double extra)
-    {
-        var n = centros.Count;
-        if (n < 3)
-        {
-            return null;
-        }
-
-        var r = new double[n];
-        for (var i = 0; i < n; i++)
-        {
-            r[i] = centros[i].R + extra;
-            if (r[i] <= 0)
-            {
-                return null;
-            }
-        }
-
-        // Normal de la tangente que sale del círculo i hacia el i+1
-        var mx = new double[n];
-        var my = new double[n];
-
-        for (var i = 0; i < n; i++)
-        {
-            var j = (i + 1) % n;
-
-            var dx = centros[j].X - centros[i].X;
-            var dy = centros[j].Y - centros[i].Y;
-            var d = Math.Sqrt((dx * dx) + (dy * dy));
-
-            // Dos círculos en el mismo sitio: no hay tangente que valga
-            if (d < 1e-7)
-            {
-                return null;
-            }
-
-            var ux = dx / d;
-            var uy = dy / d;
-
-            var cc = (r[i] - r[j]) / d;
-
-            // Si un círculo cabe dentro del otro no existe tangente exterior. Se
-            // recorta en lugar de propagar un NaN, que dibujaría basura.
-            cc = Math.Clamp(cc, -0.999999, 0.999999);
-
-            var ss = Math.Sqrt(1 - (cc * cc));
-
-            mx[i] = (cc * ux) + (ss * uy);
-            my[i] = (cc * uy) - (ss * ux);
-        }
-
-        // Dos vértices por círculo: llegada de la tangente previa y salida de la
-        // siguiente. El bulge del arco va en el índice par.
-        var pts = new double[4 * n];
-        var bulges = new double[2 * n];
-
-        for (var i = 0; i < n; i++)
-        {
-            var previo = (i + n - 1) % n;
-
-            pts[(4 * i) + 0] = centros[i].X + (r[i] * mx[previo]);
-            pts[(4 * i) + 1] = centros[i].Y + (r[i] * my[previo]);
-            pts[(4 * i) + 2] = centros[i].X + (r[i] * mx[i]);
-            pts[(4 * i) + 3] = centros[i].Y + (r[i] * my[i]);
-
-            var aEntra = Math.Atan2(my[previo], mx[previo]);
-            var aSale = Math.Atan2(my[i], mx[i]);
-
-            var barrido = aSale - aEntra;
-            while (barrido < 0)
-            {
-                barrido += 2 * Pi;
-            }
-
-            while (barrido >= 2 * Pi)
-            {
-                barrido -= 2 * Pi;
-            }
-
-            bulges[2 * i] = Math.Tan(barrido / 4);
-            bulges[(2 * i) + 1] = 0;
-        }
-
-        return (pts, bulges);
-    }
+        List<(double X, double Y, double R)> centros, double extra) =>
+        TrazoDiamante.Cinta(centros, extra);
 
     private object? CintaTangente(List<(double X, double Y, double R)> centros, double extra)
     {

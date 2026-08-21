@@ -2756,25 +2756,20 @@ public partial class MainWindow : Window
         DibujarLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec, escala, PX, PY, arriba: false, intermedio: false);
         DibujarLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec, escala, PX, PY, arriba: false, intermedio: true);
 
-        // Varillas laterales, a los dos lados
-        if (s.NInter > 0 && Varilla.TryDiametroCm(s.DiamInter, out var dl))
+        // Varillas laterales, a los dos lados. Las posiciones salen del mismo sitio que las
+        // usa el diamante para rodearlas: si se calcularan dos veces, el rombo podría
+        // acabar rodeando una varilla que no es la que se ve dibujada.
+        foreach (var (x, y, r) in PosicionesLaterales(s, de, rec))
         {
-            Varilla.TryDiametroCm(s.DiamEsqSup, out var dsup);
-            Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dinf);
-
-            var offSup = rec + de + (dsup / 2);
-            var offInf = rec + de + (dinf / 2);
-            var hueco = s.AlturaCm - offSup - offInf;
-            var paso = s.NInter > 1 ? hueco / (s.NInter + 1) : hueco / 2;
-            var offLado = rec + de + (dl / 2);
-
-            for (var k = 1; k <= s.NInter; k++)
-            {
-                var y = offInf + (k * paso);
-                Barra(PX(offLado), PY(y), dl * escala / 2);
-                Barra(PX(s.BaseCm - offLado), PY(y), dl * escala / 2);
-            }
+            Barra(PX(x), PY(y), r * escala);
         }
+
+        // EL ESTRIBO DIAMANTE, encima de las varillas.
+        //
+        // Va al final y por encima, igual que en AutoCAD, donde las dos cintas se suben al
+        // frente con AlFrente: el diamante es lo último que se arma y pasa por delante de
+        // las varillas que abraza.
+        DibujarDiamantePrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
 
         // Cotas de referencia
         Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
@@ -3417,47 +3412,372 @@ public partial class MainWindow : Window
         double escala, Func<double, double> px, Func<double, double> py,
         bool arriba, bool intermedio)
     {
-        if (cantidad <= 0 || !Varilla.TryDiametroCm(diametro, out var d))
+        foreach (var (x, y, r) in PosicionesDeLecho(s, cantidad, diametro, de, rec, arriba,
+                                                   intermedio))
         {
-            return;
+            Barra(px(x), py(y), r * escala);
+        }
+    }
+
+    /// <summary>
+    /// Dónde van las varillas de un lecho, en <b>centímetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Está separado del dibujo porque lo necesitan <b>dos</b> cosas: pintar las varillas y
+    /// armar el recorrido del <b>estribo diamante</b>, que se abraza a las varillas
+    /// centrales. Con el reparto escrito dentro del pintado, la vista previa tendría que
+    /// calcularlo dos veces y el diamante podría acabar abrazando una varilla que no es la
+    /// que se ve dibujada.
+    /// </para>
+    /// <para>
+    /// Es el mismo reparto del dibujante: el lecho <b>de esquina</b> va de paño a paño y el
+    /// <b>intermedio</b> queda ENTRE las de esquina, con un paso más.
+    /// </para>
+    /// </remarks>
+    private static List<(double X, double Y, double R)> PosicionesDeLecho(
+        SeccionConcretoRow s, int cantidad, string diametro, double de, double rec,
+        bool arriba, bool intermedio)
+    {
+        var salida = new List<(double X, double Y, double R)>();
+
+        if (cantidad <= 0 || !Varilla.TryDiametroCm(diametro, out var d) || d <= 0)
+        {
+            return salida;
         }
 
         var off = rec + de + (d / 2);
         var y = arriba ? s.AlturaCm - off : off;
-        var r = d * escala / 2;
+        var r = d / 2;
+
+        if (cantidad == 1)
+        {
+            salida.Add((s.BaseCm / 2, y, r));
+            return salida;
+        }
 
         if (!intermedio)
         {
             // Lecho de esquina: repartido de off a base menos off
-            if (cantidad == 1)
-            {
-                Barra(px(s.BaseCm / 2), py(y), r);
-                return;
-            }
-
             var paso = (s.BaseCm - (2 * off)) / (cantidad - 1);
+
             for (var i = 0; i < cantidad; i++)
             {
-                Barra(px(off + (i * paso)), py(y), r);
+                salida.Add((off + (i * paso), y, r));
             }
 
-            return;
+            return salida;
         }
 
         // Lecho intermedio: queda ENTRE las de esquina
-        var xIni = off;
-        var xFin = s.BaseCm - off;
+        var p = (s.BaseCm - (2 * off)) / (cantidad + 1);
 
-        if (cantidad == 1)
+        for (var i = 1; i <= cantidad; i++)
         {
-            Barra(px(s.BaseCm / 2), py(y), r);
+            salida.Add((off + (i * p), y, r));
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Dónde van las varillas <b>laterales</b>, en centímetros. A los dos costados.
+    /// </summary>
+    /// <remarks>
+    /// Mismo reparto que el dibujante: el hueco es lo que queda entre los dos lechos, y con
+    /// una sola varilla va a media altura. Hacen falta aquí porque el diamante <b>rodea</b>
+    /// las laterales que le quedan en el camino y <b>dobla</b> sobre la más centrada de cada
+    /// costado, así que sin ellas el rombo saldría distinto del que dibuja AutoCAD.
+    /// </remarks>
+    private static List<(double X, double Y, double R)> PosicionesLaterales(
+        SeccionConcretoRow s, double de, double rec)
+    {
+        var salida = new List<(double X, double Y, double R)>();
+
+        if (s.NInter <= 0 || !Varilla.TryDiametroCm(s.DiamInter, out var dl) || dl <= 0)
+        {
+            return salida;
+        }
+
+        Varilla.TryDiametroCm(s.DiamEsqSup, out var dsup);
+        Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dinf);
+
+        var offSup = rec + de + (dsup / 2);
+        var offInf = rec + de + (dinf / 2);
+        var hueco = s.AlturaCm - offSup - offInf;
+
+        if (hueco <= 0)
+        {
+            return salida;
+        }
+
+        var paso = s.NInter > 1 ? hueco / (s.NInter + 1) : hueco / 2;
+        var offLado = rec + de + (dl / 2);
+
+        for (var k = 1; k <= s.NInter; k++)
+        {
+            var y = offInf + (k * paso);
+
+            salida.Add((offLado, y, dl / 2));
+            salida.Add((s.BaseCm - offLado, y, dl / 2));
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// El <b>estribo diamante</b> en la vista previa, con su gancho.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>La geometría no se calcula aquí.</b> Sale de <see cref="TrazoDiamante"/>, que es la
+    /// misma clase que usa el dibujante de AutoCAD: el recorrido de círculos que abraza —con
+    /// sus dobleces laterales, la regla de una o dos varillas por vértice y las laterales que
+    /// hay que rodear— y las dos cintas tangentes a ellos.
+    /// </para>
+    /// <para>
+    /// Es la razón de que esa clase exista. Un diamante no es un rombo: es una cinta tangente
+    /// a una serie de círculos, y calcularla por segunda vez aquí es la manera de acabar
+    /// enseñando un rombo con otro vértice, otra varilla abrazada o esquinas en pico donde el
+    /// dibujo lleva dobleces redondeados.
+    /// </para>
+    /// <para>
+    /// Los arcos de los dobleces se muestrean en tramos rectos —<c>TrazoDiamante.Muestrear</c>—
+    /// porque un lienzo de WPF no tiene <i>bulges</i>.
+    /// </para>
+    /// </remarks>
+    private void DibujarDiamantePrevio(
+        SeccionConcretoRow s, double de, double rec, double escala,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        if (!s.LlevaDiamante || s.EsCircular)
+        {
             return;
         }
 
-        var p = (xFin - xIni) / (cantidad + 1);
-        for (var i = 1; i <= cantidad; i++)
+        // El diámetro del diamante: el suyo si lo trae, y si no el del estribo principal.
+        // Es lo que hace el dibujante al reasignar estrDia.
+        if (!Varilla.TryDiametroCm(s.DiamEstriboDiamante, out var dDia) || dDia <= 0)
         {
-            Barra(px(xIni + (i * p)), py(y), r);
+            dDia = de;
+        }
+
+        if (dDia <= 0 || rec <= 0)
+        {
+            return;
+        }
+
+        // El núcleo, ya descontado el recubrimiento.
+        var x1 = rec;
+        var y1 = rec;
+        var x2 = s.BaseCm - rec;
+        var y2 = s.AlturaCm - rec;
+
+        var varSup = new List<(double X, double Y, double R)>();
+        varSup.AddRange(PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
+                                         arriba: true, intermedio: false));
+        varSup.AddRange(PosicionesDeLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec,
+                                         arriba: true, intermedio: true));
+
+        var varInf = new List<(double X, double Y, double R)>();
+        varInf.AddRange(PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
+                                         arriba: false, intermedio: false));
+        varInf.AddRange(PosicionesDeLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec,
+                                         arriba: false, intermedio: true));
+
+        var varLat = PosicionesLaterales(s, de, rec);
+
+        var centros = TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat);
+
+        if (centros is null)
+        {
+            return;
+        }
+
+        // Las DOS cintas, como en el dibujo: la interior y la exterior separadas el
+        // diámetro del diamante. Con una sola se vería una línea, no una varilla.
+        foreach (var extra in new[] { 0.0, dDia })
+        {
+            var geo = TrazoDiamante.Cinta(centros, extra);
+
+            if (geo is null)
+            {
+                continue;
+            }
+
+            var puntos = TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 10);
+
+            if (puntos.Count < 3)
+            {
+                continue;
+            }
+
+            var linea = new PointCollection();
+
+            foreach (var (x, y) in puntos)
+            {
+                linea.Add(new Point(px(x), py(y)));
+            }
+
+            // Cerrada: la cinta del diamante es un estribo cerrado.
+            linea.Add(new Point(px(puntos[0].X), py(puntos[0].Y)));
+
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = linea,
+                Stroke = trazo,
+                StrokeThickness = 1.1
+            });
+        }
+
+        DibujarGanchoDiamantePrevio(s, centros, dDia, px, py, trazo);
+    }
+
+    /// <summary>
+    /// El <b>gancho del diamante</b> en la vista previa: doblez sobre una varilla del
+    /// costado izquierdo y dos colas hacia el centro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Misma geometría que <c>SeccionDrawer.GanchoDelDiamante</c>, y las mismas dos
+    /// decisiones que allí están razonadas:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>va en el costado <b>izquierdo</b>, que es donde el estribo rectangular
+    /// <i>no</i> tiene el suyo —el suyo está arriba a la derecha—, para que los dos no se
+    /// monten;</item>
+    /// <item>y se agarra de la varilla lateral <b>más centrada</b>, que es la que el
+    /// diamante ya está abrazando: el gancho remata donde el estribo dobla.</item>
+    /// </list>
+    /// <para>
+    /// Las dos colas van con sus <b>tres líneas</b> cada una, y apuntan al centro de la
+    /// sección, que es la dirección del gancho: hacia el núcleo.
+    /// </para>
+    /// </remarks>
+    private void DibujarGanchoDiamantePrevio(
+        SeccionConcretoRow s, List<(double X, double Y, double R)> centros, double dDia,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        if (s.GanchoCm <= 0 || centros.Count == 0)
+        {
+            return;
+        }
+
+        var cx = s.BaseCm / 2;
+        var cy = s.AlturaCm / 2;
+
+        // La varilla del costado IZQUIERDO más centrada de las que el diamante abraza.
+        var izquierda = centros.Where(v => v.X < cx).ToList();
+
+        if (izquierda.Count == 0)
+        {
+            return;
+        }
+
+        var barra = izquierda[0];
+        var mejor = Math.Abs(barra.Y - cy);
+
+        foreach (var v in izquierda)
+        {
+            var d = Math.Abs(v.Y - cy);
+
+            if (d < mejor)
+            {
+                mejor = d;
+                barra = v;
+            }
+        }
+
+        var rIn = barra.R;
+        var rOut = rIn + dDia;
+
+        // La cola apunta al centro de la sección.
+        var ux = cx - barra.X;
+        var uy = cy - barra.Y;
+        var ul = Math.Sqrt((ux * ux) + (uy * uy));
+
+        if (ul < 1e-9)
+        {
+            return;
+        }
+
+        ux /= ul;
+        uy /= ul;
+
+        // Las dos normales de arranque: las perpendiculares a la cola.
+        var n1X = -uy;
+        var n1Y = ux;
+        var n2X = uy;
+        var n2Y = -ux;
+
+        var largo = s.GanchoCm;
+
+        // El tope hacia el núcleo, igual que en el dibujante: más allá de ahí la punta ya
+        // se está alejando del eje por el otro lado.
+        var piX = barra.X + (rIn * n1X);
+        var piY = barra.Y + (rIn * n1Y);
+
+        var tope = ((cx - piX) * ux) + ((cy - piY) * uy);
+
+        if (tope > 0 && largo > tope)
+        {
+            largo = tope;
+        }
+
+        if (largo <= 0)
+        {
+            return;
+        }
+
+        // El doblez: media corona del lado OPUESTO a las colas, o sea rodeando la cara de
+        // atrás de la varilla. Se dibuja su arco exterior, que es el contorno que asoma.
+        var a1 = Math.Atan2(n1Y, n1X);
+
+        var arco = new PointCollection();
+
+        for (var k = 0; k <= 24; k++)
+        {
+            var a = a1 + (k / 24.0 * Math.PI);
+
+            arco.Add(new Point(
+                px(barra.X + (rOut * Math.Cos(a))), py(barra.Y + (rOut * Math.Sin(a)))));
+        }
+
+        PreviewCanvas.Children.Add(new Polyline
+        {
+            Points = arco,
+            Stroke = trazo,
+            StrokeThickness = 1.1
+        });
+
+        // Las dos colas, con sus tres líneas cada una.
+        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
+        {
+            var pInX = barra.X + (rIn * nx);
+            var pInY = barra.Y + (rIn * ny);
+            var pOutX = barra.X + (rOut * nx);
+            var pOutY = barra.Y + (rOut * ny);
+
+            var qInX = pInX + (largo * ux);
+            var qInY = pInY + (largo * uy);
+            var qOutX = pOutX + (largo * ux);
+            var qOutY = pOutY + (largo * uy);
+
+            foreach (var (x1, y1, x2, y2) in new[]
+            {
+                (pInX, pInY, qInX, qInY),
+                (pOutX, pOutY, qOutX, qOutY),
+                (qInX, qInY, qOutX, qOutY)
+            })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(x1), Y1 = py(y1),
+                    X2 = px(x2), Y2 = py(y2),
+                    Stroke = trazo,
+                    StrokeThickness = 1.1
+                });
+            }
         }
     }
 

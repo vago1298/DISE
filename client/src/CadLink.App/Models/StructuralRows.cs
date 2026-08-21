@@ -588,6 +588,18 @@ public sealed class SeccionConcretoRow : Row
         EsElementoCircular(_elemento)
         || (_circular ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>¿Esta sección lleva estribo diamante?</summary>
+    /// <remarks>
+    /// La columna R dice <c>SI</c>, y la sección tiene que ser <b>rectangular</b>: en una
+    /// redonda no hay rombo que dibujar, y la macro ignoraba la columna R en ese caso. Es la
+    /// misma regla que aplica el dibujante al armar el <c>SeccionCad</c>; está aquí para que
+    /// la vista previa no tenga que repetirla y para que las dos no puedan discrepar.
+    /// </remarks>
+    public bool LlevaDiamante =>
+        !EsCircular
+        && (_estriboDiamante ?? string.Empty).Trim()
+            .Equals("SI", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>¿El nombre del elemento es el de una columna redonda?</summary>
     public static bool EsElementoCircular(string? elemento)
     {

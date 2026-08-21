@@ -1167,13 +1167,18 @@ def v12_fidelidad() -> None:
         "los dos contornos del diamante son islas del hatch",
         "_diamExt is not null" in drawer and "_diamInt is not null" in drawer,
     )
+    # La cinta y la eleccion de varillas ya no viven en el dibujante: se sacaron a
+    # TrazoDiamante para que la VISTA PREVIA use exactamente la misma geometria. El
+    # dibujante las llama, asi que estas dos protecciones se comprueban donde estan.
+    trazo_dia_ = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+
     check(
         "el radio se protege contra tangente inexistente",
-        "Math.Clamp(cc, -0.999999, 0.999999)" in dia,
+        "Math.Clamp(cc, -0.999999, 0.999999)" in trazo_dia_,
     )
     check(
         "dos circulos coincidentes no producen NaN",
-        re.search(r"if \(d < 1e-7\)\s*\{\s*return null;", dia) is not None,
+        re.search(r"if \(d < 1e-7\)\s*\{\s*return null;", trazo_dia_) is not None,
     )
     check("relleno solido del diamante en tipo rellena", 'ColorRellenoEstribo)' in dia)
     check(
@@ -2717,14 +2722,19 @@ def v16_extruida_piers() -> None:
 
     # La correccion de fondo: el doblez lateral ES la varilla, no un circulo
     # ficticio puesto a su lado.
+    # Y la geometria del rombo vive en TrazoDiamante, no en el dibujante: la vista previa
+    # de la pestaña de concreto usa la MISMA, que es la unica manera de que las dos no
+    # puedan discrepar. Asi que se comprueba ahi.
+    trazo_diam = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+
     check("el doblez lateral puede ser la varilla",
-          "private List<(double X, double Y, double R)> DoblezLateral(" in diamante)
-    n_dob = len(re.findall(r"DoblezLateral\(derecha:", diamante))
+          "private static List<(double X, double Y, double R)> DoblezLateral(" in trazo_diam)
+    n_dob = len(re.findall(r"DoblezLateral\(true, cx|DoblezLateral\(false, cx", trazo_diam))
     check("los DOS dobleces usan la varilla", n_dob == 2, f"solo {n_dob}")
 
     m_dob = re.search(
-        r"private List<\(double X, double Y, double R\)> DoblezLateral\(.*?\n    \}",
-        diamante, re.S)
+        r"private static List<\(double X, double Y, double R\)> DoblezLateral\(.*?\n    \}",
+        trazo_diam, re.S)
     check("se puede leer DoblezLateral", m_dob is not None)
 
     if m_dob:
@@ -2745,12 +2755,15 @@ def v16_extruida_piers() -> None:
 
     # La red de seguridad: el doblez solo puede abrazar UNA varilla por costado, y
     # un armado con varias puede tener otra en el camino.
-    check("existe la red de seguridad", "private List<(double X, double Y, double R)> RodearLaterales(" in diamante)
-    check("y se llama", "centros = RodearLaterales(centros, dDia);" in diamante)
+    check("existe la red de seguridad",
+          "private static List<(double X, double Y, double R)> RodearLaterales("
+          in trazo_diam)
+    check("y se llama",
+          "return RodearLaterales(centros, dDia, varLat, notas);" in trazo_diam)
 
     m_rod = re.search(
-        r"private List<\(double X, double Y, double R\)> RodearLaterales\(.*?\n    \}",
-        diamante, re.S)
+        r"private static List<\(double X, double Y, double R\)> RodearLaterales\(.*?\n    \}",
+        trazo_diam, re.S)
     check("se puede leer RodearLaterales", m_rod is not None)
 
     if m_rod:
@@ -2759,7 +2772,7 @@ def v16_extruida_piers() -> None:
         check("da varias pasadas", "PasadasRodeo" in cuerpo)
         # Se mira contra las DOS fronteras de la cinta.
         check("mira las dos fronteras de la cinta",
-              "GeometriaCinta(actual, 0)" in cuerpo and "GeometriaCinta(actual, dDia)" in cuerpo)
+              "Cinta(actual, 0)" in cuerpo and "Cinta(actual, dDia)" in cuerpo)
         # Se inserta en el tramo que atraviesa y en el orden del recorrido, o la
         # cinta sale hecha un nudo.
         check("inserta en el orden del recorrido",
@@ -2772,7 +2785,7 @@ def v16_extruida_piers() -> None:
     # La distancia va al SEGMENTO, no a la recta: una varilla mas alla del extremo
     # del tramo no esta atravesada.
     m_dist = re.search(
-        r"private static double DistanciaASegmento\(.*?\n    \}", diamante, re.S)
+        r"private static double DistanciaASegmento\(.*?\n    \}", trazo_diam, re.S)
     check("se puede leer DistanciaASegmento", m_dist is not None)
     if m_dist:
         # Se acota al metodo: 'Math.Clamp' aparece en otros sitios del archivo y
@@ -3693,6 +3706,134 @@ def v19_circular_y_ui() -> None:
         check("ni cuando el doblez no cabe en el nucleo",
               "bx <= rec + dEst || by <= rec + dEst" in gp)
 
+    # ------------------------------------------------------------------
+    # EL ESTRIBO DIAMANTE EN LA VISTA PREVIA
+    # ------------------------------------------------------------------
+    # Un diamante no es un rombo: es una cinta cerrada TANGENTE a una serie de circulos.
+    # Calcularla por segunda vez en la vista previa es la manera de acabar enseñando un
+    # rombo con otro vertice, otra varilla abrazada o esquinas en pico donde el dibujo
+    # lleva dobleces redondeados. Asi que la geometria se saco a TrazoDiamante y la usan
+    # los dos.
+    trazo_dia = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+    diam = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Diamante.cs"))
+
+    check("la geometria del diamante vive fuera del dibujante",
+          "public static class TrazoDiamante" in trazo_dia
+          and "public static List<(double X, double Y, double R)>? Centros(" in trazo_dia
+          and "public static (double[] Pts, double[] Bulges)? Cinta(" in trazo_dia)
+    check("y no sabe nada de AutoCAD",
+          "_ms" not in trazo_dia and "AcadConnection" not in trazo_dia
+          and "_log" not in trazo_dia)
+    check("las notas se devuelven en lugar de escribirse en el registro",
+          "List<string>? notas" in trazo_dia and "notas?.Add(" in trazo_dia)
+
+    # El dibujante DELEGA: no le puede quedar una copia del calculo.
+    check("el dibujante usa esa geometria en lugar de la suya",
+          "TrazoDiamante.Centros(\n            x1, y1, x2, y2, dDia, _varSup, _varInf, "
+          "_varLat, notas);" in diam
+          and "TrazoDiamante.Cinta(centros, extra);" in diam)
+    check("y no le queda ninguna copia del calculo",
+          "private List<(double X, double Y, double R)> RodearLaterales(" not in diam
+          and "private List<(double X, double Y, double R)> DoblezLateral(" not in diam
+          and "var geo = GeometriaCinta(centros, extra);" in diam)
+    check("y las notas del recorrido llegan al registro",
+          "foreach (var n in notas)" in diam and "Nota(n);" in diam)
+
+    # La vista previa lo dibuja, con las DOS cintas y su gancho.
+    check("la vista previa dibuja el estribo diamante",
+          "private void DibujarDiamantePrevio(" in codigo
+          and "DibujarDiamantePrevio(s, de, rec, escala, PX, PY," in codigo)
+
+    m_dp = re.search(r"private void DibujarDiamantePrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarDiamantePrevio", m_dp is not None)
+
+    if m_dp:
+        dp = m_dp.group(0)
+
+        check("la vista previa pide el recorrido a TrazoDiamante",
+              "TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat)" in dp)
+        check("y no calcula ningun vertice del rombo por su cuenta",
+              "Math.Atan2" not in dp and "tangente" not in dp.lower())
+        check("dibuja las DOS cintas, no una linea",
+              "foreach (var extra in new[] { 0.0, dDia })" in dp
+              and "TrazoDiamante.Cinta(centros, extra)" in dp)
+        check("los arcos se muestrean, que un lienzo no tiene bulges",
+              "TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 10)" in dp)
+        check("y la cinta se cierra, que es un estribo cerrado",
+              "linea.Add(new Point(px(puntos[0].X), py(puntos[0].Y)));" in dp)
+        check("el diametro del diamante cae al del estribo si no trae el suyo",
+              "dDia = de;" in dp)
+        check("y no se dibuja donde no hay diamante",
+              "!s.LlevaDiamante || s.EsCircular" in dp)
+
+    check("si lleva diamante lo dice el modelo, no la vista previa",
+          "public bool LlevaDiamante =>" in filas)
+
+    # Las posiciones de las varillas se calculan UNA vez: las usan el pintado y el
+    # recorrido del diamante. Con dos copias, el rombo podria rodear una varilla que no
+    # es la que se ve dibujada.
+    check("las posiciones de las varillas salen de un solo sitio",
+          "private static List<(double X, double Y, double R)> PosicionesDeLecho(" in codigo
+          and "private static List<(double X, double Y, double R)> PosicionesLaterales("
+          in codigo)
+    check("y el pintado de los lechos usa esas mismas posiciones",
+          "foreach (var (x, y, r) in PosicionesDeLecho(" in codigo
+          and "foreach (var (x, y, r) in PosicionesLaterales(s, de, rec))" in codigo)
+
+    # Y el gancho del diamante, en el costado izquierdo.
+    check("la vista previa dibuja el gancho del diamante",
+          "private void DibujarGanchoDiamantePrevio(" in codigo)
+
+    m_gdp = re.search(
+        r"private void DibujarGanchoDiamantePrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarGanchoDiamantePrevio", m_gdp is not None)
+
+    if m_gdp:
+        gdp = m_gdp.group(0)
+
+        check("el gancho del diamante va en el costado izquierdo, como en el dibujo",
+              "centros.Where(v => v.X < cx)" in gdp)
+        check("y se agarra de la varilla mas centrada de ese costado",
+              "Math.Abs(v.Y - cy)" in gdp)
+        check("con sus dos colas de tres lineas",
+              "new[] { (n1X, n1Y), (n2X, n2Y) }" in gdp
+              and "(pInX, pInY, qInX, qInY)" in gdp
+              and "(qInX, qInY, qOutX, qOutY)" in gdp)
+        check("y el tope del nucleo las recorta",
+              "var tope = ((cx - piX) * ux) + ((cy - piY) * uy);" in gdp)
+
+    # ------------------------------------------------------------------
+    # Y una prueba que se EJECUTA, no que se porta
+    # ------------------------------------------------------------------
+    # Todo lo demas de este repositorio comprueba la geometria portandola a Python. Eso
+    # comprueba la GEOMETRIA, pero no lo que el codigo compilado hace: un port correcto
+    # conviviendo con un C# equivocado da todo en verde. Y aqui paso: el muestreo de los
+    # arcos calculaba mal el centro y los puntos se salian del doblez hasta 0.74 cm.
+    prueba = leer(ruta("tools/prueba-trazo-diamante/Program.cs"))
+
+    check("hay una prueba que se ejecuta contra el CadLink.Cad compilado",
+          "using CadLink.Cad;" in prueba and "static int Main()" in prueba)
+    check("comprueba que la cinta es TANGENTE a cada circulo",
+          "la cinta interior es tangente a cada circulo" in prueba
+          and "y la exterior, al circulo engrosado" in prueba)
+    check("y que el muestreo cae sobre el arco del doblez",
+          "cada punto del muestreo cae sobre el arco de su doblez" in prueba)
+    check("y que el recorrido va antihorario, que es lo que evita el nudo",
+          "el recorrido va en sentido antihorario" in prueba)
+    check("y devuelve 1 si algo falla, para poder usarla en un script",
+          "return 1;" in prueba)
+    check("y se explica por que no es un port de Python",
+          "no es un\n// port" in prueba or "no es un port" in prueba.replace("\n// ", " "))
+
+    # Y el muestreo, que fue el que fallo: el radio con SIGNO en lugar de un apaño.
+    check("el muestreo saca el centro del arco con el radio con signo",
+          "var radio = cuerda / (2 * Math.Sin(barrido / 2));" in trazo_dia
+          and "var d = radio * Math.Cos(barrido / 2);" in trazo_dia)
+    check("y se explica el error clasico que evita",
+          "salen volteados" in trazo_dia)
+
     # Y el mismo gancho en la seccion REDONDA, que no lo tenia tampoco.
     check("la vista previa de la redonda dibuja el gancho del zuncho",
           "private void DibujarGanchoZunchoPrevio(" in codigo
@@ -4098,8 +4239,12 @@ def v19_circular_y_ui() -> None:
     check("y que los ganchos ya se ven en la vista previa",
           "Y los ganchos se ven en la vista previa" in doc_conc
           and "el gancho sale\nespejeado" in doc_conc)
-    check("y dice lo que a la vista previa le sigue faltando",
-          "sigue faltando** en la vista previa es el rombo" in doc_conc)
+    check("y que el rombo del diamante tambien se ve",
+          "Y el rombo también, con la geometría del dibujante" in doc_conc
+          and "un diamante **no es un rombo**" in doc_conc)
+    check("y explica la prueba que se ejecuta y lo que cazo",
+          "Una prueba que se EJECUTA, y lo que cazó" in doc_conc
+          and "hasta 0.74 cm" in doc_conc)
 
     # Y el de acero explica el catalogo de aceros y como se actualiza, que es lo que el
     # usuario pregunto: si tiene que volver a subir el Excel al repositorio.
@@ -5508,13 +5653,16 @@ def v17_guardar_y_defaults() -> None:
     # ------------------------------------------------------------------
     # Diamante: doblez sobre las DOS mas juntas si no hay una en el eje
     # ------------------------------------------------------------------
+    # El doblez vive en TrazoDiamante, con el resto de la geometria del rombo.
+    trazo_d = leer(ruta("client/src/CadLink.Cad/TrazoDiamante.cs"))
+
     check("el doblez lateral admite dos varillas",
-          "private List<(double X, double Y, double R)> DoblezLateral(" in diamante)
-    check("se mide sobre la Y en los costados", "porY: true" in diamante)
-    check("VarillasDelCentro sabe medir por Y", "bool porY = false" in diamante)
+          "private static List<(double X, double Y, double R)> DoblezLateral(" in trazo_d)
+    check("se mide sobre la Y en los costados", "porY: true" in trazo_d)
+    check("VarillasDelCentro sabe medir por Y", "bool porY = false" in trazo_d)
     # Los dos costados se agregan con AddRange: si uno usara Add, una seleccion de
     # dos varillas no cabria y la lista quedaria mal.
-    n_ar = len(re.findall(r"centros\.AddRange\(DoblezLateral\(", diamante))
+    n_ar = len(re.findall(r"centros\.AddRange\(\n            DoblezLateral\(", trazo_d))
     check("los dos dobleces se agregan con AddRange", n_ar == 2, f"son {n_ar}")
 
 
