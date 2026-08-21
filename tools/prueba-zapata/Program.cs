@@ -114,37 +114,53 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 
 // ---------- EL RENGLON DE LOS ROTULOS: EL MISMO PARA TODAS ----------
 // Lo que se pidio: que los titulos y las cotas esten ALINEADOS SIEMPRE, bajados y aparte del
-// dibujo. El renglon se mide desde el fondo de la plantilla, que sale del punto de insercion
-// -8, igual para todas: asi que da lo mismo lo que mida cada zapata.
+// dibujo. Y TODO cuelga de la MISMA esquina, la inferior derecha: las cotas y los tres
+// renglones del rotulo. Como el desplante es el punto de insercion -8, igual para todas, los
+// rotulos de todas quedan en la misma linea midan lo que midan.
 {
-    var yFondo = TrazoZapata.YBaseElevacion - TrazoZapata.PlantillaEspesor;
+    var yEsquina = TrazoZapata.YBaseElevacion;
 
-    Vale("el titulo se baja los mismos 80 cm de la fila",
-        Math.Abs(TrazoZapata.RotuloSeparacion - 0.8) < 1e-12
-        && Math.Abs(TrazoZapata.YRotulo(yFondo, 0) - (yFondo - 0.8)) < 1e-12);
+    // El orden saliendo del dibujo hacia abajo: cadena, total, las dos patas y el rotulo.
+    Vale("la anotacion sale en orden, sin que dos cosas compartan renglon",
+        TrazoZapata.AnotacionCadena < TrazoZapata.AnotacionTotal
+        && TrazoZapata.AnotacionTotal < TrazoZapata.AnotacionGanchoIzq
+        && TrazoZapata.AnotacionGanchoIzq < TrazoZapata.AnotacionGanchoDer
+        && TrazoZapata.AnotacionGanchoDer < TrazoZapata.AnotacionRotulo);
+
+    Vale("el rotulo queda por debajo de la ultima cota, con aire de sobra",
+        TrazoZapata.AnotacionRotulo - TrazoZapata.AnotacionGanchoDer >= 0.1);
+
+    Vale("el titulo cuelga del desplante, a 0.52",
+        Math.Abs(TrazoZapata.YRotulo(yEsquina, 0) - (yEsquina - 0.52)) < 1e-12);
 
     Vale("y los tres renglones guardan los saltos de la macro",
-        Math.Abs(TrazoZapata.YRotulo(yFondo, 0) - TrazoZapata.YRotulo(yFondo, 1) - 0.09) < 1e-12
-        && Math.Abs(TrazoZapata.YRotulo(yFondo, 0) - TrazoZapata.YRotulo(yFondo, 2) - 0.17)
+        Math.Abs(TrazoZapata.YRotulo(yEsquina, 0) - TrazoZapata.YRotulo(yEsquina, 1) - 0.09)
+            < 1e-12
+        && Math.Abs(TrazoZapata.YRotulo(yEsquina, 0) - TrazoZapata.YRotulo(yEsquina, 2) - 0.17)
            < 1e-12);
 
-    Vale("el renglon queda POR DEBAJO de todo el dibujo",
-        TrazoZapata.YRotulo(yFondo, 0) < yFondo - 0.5);
-
-    // Tres zapatas de anchos y espesores distintos: los tres rotulos, en la misma linea.
+    // El renglon del rotulo NO depende del espesor ni del ancho: solo del desplante, que es el
+    // mismo para todas. Antes se medía desde el fondo de la plantilla y cada zapata lo bajaba
+    // por su cuenta.
     var mismaLinea = true;
 
     foreach (var esp in new[] { 0.20, 0.45, 0.90 })
     {
-        var y = TrazoZapata.YRotulo(TrazoZapata.YBaseElevacion - TrazoZapata.PlantillaEspesor, 0);
+        // El espesor cambia el lomo, no el desplante: el renglon tiene que salir identico.
+        var y = TrazoZapata.YRotulo(yEsquina, 0);
 
-        if (Math.Abs(y - TrazoZapata.YRotulo(yFondo, 0)) > 1e-12 || esp <= 0)
+        if (Math.Abs(y - TrazoZapata.YRotulo(yEsquina, 0)) > 1e-12 || esp <= 0)
         {
             mismaLinea = false;
         }
     }
 
     Vale("midan lo que midan las zapatas, el titulo va en la misma linea", mismaLinea);
+
+    // La planta cuelga de SU esquina, con los renglones de la macro.
+    Vale("el rotulo de la planta va a 0.24 y 0.33 de su pano inferior",
+        Math.Abs(TrazoZapata.YRotuloPlanta(-15.0, 0) - (-15.0 - 0.24)) < 1e-12
+        && Math.Abs(TrazoZapata.YRotuloPlanta(-15.0, 2) - (-15.0 - 0.33)) < 1e-12);
 
     // Y no se sale de su hueco: su zapata mas los 80 cm de separacion.
     var titulo = "ZAPATA AISLADA DE LINDERO \"ZE-1\"";

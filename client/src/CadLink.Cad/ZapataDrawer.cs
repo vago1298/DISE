@@ -85,11 +85,16 @@ public sealed partial class ZapataDrawer
     /// <summary>Gancho de las parrillas de la zapata: la macro pasa 0.03.</summary>
     private const double GanchoParrilla = 0.03;
 
-    // Cotas y rótulos
-    private const double CotaOffsetVert1 = 0.08;
-    private const double CotaOffsetVert2 = 0.16;
-    private const double CotaOffsetCadena = 0.14;
-    private const double CotaOffsetTotal = 0.22;
+    // ---- Cotas y rótulos: TODO cuelga de la ESQUINA INFERIOR DERECHA ----
+    //
+    // Las distancias viven en TrazoZapata, en un solo bloque y medidas todas a esa esquina, para
+    // que no vuelva a pasar lo de antes: tres anclas distintas -paño izquierdo, desplante y fondo
+    // de la plantilla- y el rótulo además centrado en el eje. Con eso, cambiar el ancho de una
+    // zapata movía cada anotación en una dirección distinta.
+    private const double CotaOffsetVert1 = TrazoZapata.AnotacionCotaVert1;
+    private const double CotaOffsetVert2 = TrazoZapata.AnotacionCotaVert2;
+    private const double CotaOffsetCadena = TrazoZapata.AnotacionCadena;
+    private const double CotaOffsetTotal = TrazoZapata.AnotacionTotal;
 
     /// <summary>Renglón de la cota de la pata del gancho del paño izquierdo.</summary>
     /// <remarks>
@@ -109,7 +114,7 @@ public sealed partial class ZapataDrawer
     /// los mismos dos puntos— y se lee sin nada encima, que es como se acota en un plano.
     /// </para>
     /// </remarks>
-    private const double CotaOffsetGanchoIzq = 0.30;
+    private const double CotaOffsetGanchoIzq = TrazoZapata.AnotacionGanchoIzq;
 
     /// <summary>Renglón de la del paño derecho, 8 cm por debajo de la otra.</summary>
     /// <remarks>
@@ -117,7 +122,7 @@ public sealed partial class ZapataDrawer
     /// opuestos y se cruzan por el centro del dado—, y en el mismo renglón los dos números se
     /// montarían uno sobre otro. Los 8 cm son el salto que ya usan la cadena y el total.
     /// </remarks>
-    private const double CotaOffsetGanchoDer = 0.38;
+    private const double CotaOffsetGanchoDer = TrazoZapata.AnotacionGanchoDer;
 
     // Los offsets de rótulo de la macro -0.32, 0.41 y 0.49 desde el fondo de la zapata- YA NO
     // ESTÁN: a esa distancia el rótulo cae sobre el dibujo y sobre las cotas de anchos. Ahora el
@@ -631,41 +636,46 @@ public sealed partial class ZapataDrawer
 
         // ---------- Cotas de anchos y verticales ----------
         CotasAnchos(xBase, xExtremoDer, a.XDadoIzq, a.XDadoDer, yZapBot, r);
-        CotasVerticales(xBase, yZapBot, yZapTop, yTerreno, r);
+        CotasVerticales(xExtremoDer, yZapBot, yZapTop, yTerreno, r);
 
         // ---------- Rótulo de la sección ----------
         var titulo = lindero
             ? $"ZAPATA AISLADA DE LINDERO \"{z.Id}\""
             : $"ZAPATA AISLADA CENTRAL \"{z.Id}\"";
 
-        // EL RÓTULO SE BAJA A SU PROPIO RENGLÓN, APARTE DEL DIBUJO: 80 cm —los mismos 0.8 de la
-        // fila, X = −0.8— por debajo del fondo de la plantilla, que es el punto más bajo de la
-        // elevación. A 32 cm, como en la macro, caía sobre el dibujo y sobre las cotas de anchos.
+        // EL RÓTULO CUELGA DE LA ESQUINA INFERIOR DERECHA, IGUAL QUE LAS COTAS, Y VA ALINEADO A
+        // ESE MISMO PAÑO. Es lo que se pidió: un solo punto de anclaje, para que la anotación
+        // entera se mueva con él.
         //
-        // Y COMO ESE FONDO ES EL MISMO PARA TODAS LAS ZAPATAS (el punto de inserción −8 es fijo),
-        // los tres renglones quedan EN LA MISMA LÍNEA para todas, midan lo que midan: es lo que
-        // se pidió, que estén alineados siempre. Van centrados en el eje de su zapata, como la
-        // macro, y si el renglón no cabe en el ancho que le toca —su zapata más los 80 cm— se le
-        // baja el alto en vez de dejarlo meterse en el rótulo de la de al lado.
-        var yTitulo = TrazoZapata.YRotulo(a.YPlantillaBot, 0);
-        var ySubtitulo = TrazoZapata.YRotulo(a.YPlantillaBot, 1);
-        var yEscala = TrazoZapata.YRotulo(a.YPlantillaBot, 2);
+        // Los tres renglones van a 0.52, 0.61 y 0.69 del desplante —14 cm por debajo de la última
+        // cota, la de la pata del gancho— y su borde DERECHO cae justo en el paño derecho de la
+        // zapata. Alineado a la derecha y no centrado por una razón de aritmética: crece hacia la
+        // izquierda, y a la izquierda cada zapata tiene su propio ancho más el hueco de 80 cm de
+        // la fila, así que el rótulo se queda siempre dentro de lo que le toca. Centrado, la mitad
+        // del texto se iba hacia la derecha, invadía a la zapata vecina y los dos títulos se leían
+        // uno encima del otro.
+        //
+        // Si aun así no cabe en su hueco —una zapata muy angosta con un ID muy largo— se le baja
+        // el alto, en vez de dejarlo meterse en el rótulo de al lado.
+        var yTitulo = TrazoZapata.YRotulo(yZapBot, 0);
+        var ySubtitulo = TrazoZapata.YRotulo(yZapBot, 1);
+        var yEscala = TrazoZapata.YRotulo(yZapBot, 2);
         var anchoRotulo = TrazoZapata.AnchoParaElRotulo(anchoZapata);
 
-        Texto(xCentro, yTitulo,
+        Texto(xExtremoDer, yTitulo,
             TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
-            titulo, CapaRotulos, alineacion: Alineacion.Centro);
+            titulo, CapaRotulos, alineacion: Alineacion.Derecha);
 
-        Texto(xCentro, ySubtitulo,
+        Texto(xExtremoDer, ySubtitulo,
             TrazoZapata.AltoQueQuepa("ELEVACION".Length, AltoSubtitulo, anchoRotulo),
-            "ELEVACION", CapaRotulos, alineacion: Alineacion.Centro);
+            "ELEVACION", CapaRotulos, alineacion: Alineacion.Derecha);
 
         var fc = string.IsNullOrWhiteSpace(z.Fc) ? string.Empty : $"    f'c = {z.Fc.Trim()} kg/cm\u00B2";
         var escala = $"Rec. {z.RecM * 100:0.#} cm{fc}    Escala 1:10";
 
-        Texto(xCentro, yEscala,
+        Texto(xExtremoDer, yEscala,
             TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
-            escala, CapaRotulos, alineacion: Alineacion.Centro);
+            escala, CapaRotulos, alineacion: Alineacion.Derecha);
 
         // ---------- La planta ----------
         Planta(z, a, r);
@@ -1931,15 +1941,13 @@ public sealed partial class ZapataDrawer
     /// no del de la zapata, que es lo que hay que replantear en obra.
     /// </remarks>
     private void CotasVerticales(
-        double xBase, double yZapBot, double yZapTop, double yTerreno, Resumen r)
+        double xDer, double yZapBot, double yZapTop, double yTerreno, Resumen r)
     {
-        // A LA IZQUIERDA DEL PAÑO IZQUIERDO, a 0.08 y 0.16, que es donde las pone la macro
-        // (COTA_OFFSET_VERT_1 y _2 medidos desde xBase). El turno pasado las pasé al paño
-        // derecho por mi cuenta y ahí es donde empezaron a estorbar: con la fila creciendo
-        // hacia la izquierda, el hueco de 80 cm queda a la IZQUIERDA de cada zapata, que es
-        // justo donde la macro ya las tenía.
-        var x1 = xBase - CotaOffsetVert1;
-        var x2 = xBase - CotaOffsetVert2;
+        // A LA DERECHA DEL PAÑO DERECHO, a 0.08 y 0.16 de la ESQUINA INFERIOR DERECHA, que es de
+        // donde cuelga toda la anotación de la zapata. La macro las pone a la izquierda, medidas
+        // desde xBase, y eso hacía que las cotas se movieran con un paño y el rótulo con otro.
+        var x1 = xDer + CotaOffsetVert1;
+        var x2 = xDer + CotaOffsetVert2;
         var yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor;
 
         r.Cotas += Cota(x1, yPlantillaBot, x1, yZapBot, x1, (yPlantillaBot + yZapBot) / 2,

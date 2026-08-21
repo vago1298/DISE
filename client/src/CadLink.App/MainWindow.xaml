@@ -1040,14 +1040,20 @@
                         </Border>
 
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
+                            <!-- LOS MISMOS ESTILOS QUE LAS SECCIONES DE CONCRETO Y DE ACERO:
+                                 SecondaryButtonStyle para revisar y PrimaryButtonStyle -con su
+                                 color de marca- para dibujar. Antes llevaban los estilos planos
+                                 de la barra de herramientas, sin fondo, y el boton de dibujar de
+                                 esta pestana no se veia como el de las otras dos aunque haga
+                                 exactamente lo mismo. -->
                             <Button Content="Revisar zapatas"
-                                    Style="{StaticResource ToolbarButtonStyle}"
+                                    Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnRevisarZapatas"
                                     ToolTip="Comprueba las filas y dice donde se va a dibujar cada zapata." />
 
                             <Button x:Name="DibujarZapatasButton"
                                     Content="Dibujar zapatas en AutoCAD"
-                                    Style="{StaticResource ToolbarPrimaryButtonStyle}"
+                                    Style="{StaticResource PrimaryButtonStyle}"
                                     Click="OnExportZapatas"
                                     Margin="8,0,0,0"
                                     ToolTip="Dibuja cada zapata en el AutoCAD que ya tengas abierto: su corte y su planta, en las posiciones de tus macros.&#10;Revisa primero y no dibuja si falta algo. El dado se inserta como bloque buscandolo por su ID." />

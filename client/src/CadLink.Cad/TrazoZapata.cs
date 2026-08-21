@@ -498,21 +498,59 @@ public static class TrazoZapata
     }
 
     // ======================================================================
-    // EL RENGLÓN DE LOS RÓTULOS
+    // LA ANOTACIÓN: TODA CUELGA DE LA ESQUINA INFERIOR DERECHA
     // ======================================================================
+    //
+    // LO QUE SE PIDIO, TEXTUAL: «necesito que se alineen con la esquina inferior derecha para que
+    // siempre se muevan con ese», «siempre lo pones mas abajo y a la izquierda de las cotas».
+    //
+    // Asi que hay UN SOLO punto de anclaje para todo lo que se escribe alrededor del dibujo -las
+    // cotas verticales, la cadena de anchos, el total, las patas de los ganchos y los tres
+    // renglones del rotulo-: la ESQUINA INFERIOR DERECHA de la zapata, (xDer, yZapBot).
+    //
+    // Antes cada cosa colgaba de un punto distinto: las verticales del paño izquierdo, la cadena
+    // del desplante y el rotulo del fondo de la plantilla, y encima centrado en el eje. Con tres
+    // anclas distintas, cambiar el ancho o el espesor de una zapata movia cada anotacion en una
+    // direccion diferente, y de ahi que el rotulo apareciera «mas abajo y a la izquierda» de sus
+    // cotas. Con un solo ancla, todo se mueve junto y no hay nada que volver a acomodar.
+    //
+    // Los numeros de abajo son distancias A ESA ESQUINA, en el orden en el que salen del dibujo:
+    // hacia la derecha las verticales, y hacia abajo la cadena, el total, las patas y el rotulo.
+
+    /// <summary>Cotas verticales, primera línea: a la <b>derecha</b> del paño derecho.</summary>
+    public const double AnotacionCotaVert1 = 0.08;
+
+    /// <summary>Cotas verticales, la del total. Los mismos 0.08 de salto.</summary>
+    public const double AnotacionCotaVert2 = 0.16;
+
+    /// <summary>Cadena de anchos, por debajo del desplante.</summary>
+    public const double AnotacionCadena = 0.14;
+
+    /// <summary>Cota del ancho total.</summary>
+    public const double AnotacionTotal = 0.22;
+
+    /// <summary>Pata del gancho del paño izquierdo.</summary>
+    public const double AnotacionGanchoIzq = 0.30;
+
+    /// <summary>Pata del gancho del paño derecho.</summary>
+    public const double AnotacionGanchoDer = 0.38;
 
     /// <summary>
-    /// Lo que se BAJA el rótulo por debajo del dibujo: los mismos <b>0.8</b> que separan una
-    /// zapata de la siguiente, ahora hacia abajo.
+    /// Primer renglón del rótulo: 14 cm por debajo de la última cota.
     /// </summary>
     /// <remarks>
-    /// El rótulo NO se cuelga del fondo de la zapata a 32 cm como en la macro: ahí caía sobre el
-    /// dibujo. Se va a su propio renglón, 80 cm por debajo del punto más bajo de la elevación
-    /// —el fondo de la plantilla—, y como ese fondo es el mismo para todas las zapatas
-    /// (<see cref="YBaseElevacion"/> es fijo), <b>todos los rótulos quedan alineados siempre</b>,
-    /// midan lo que midan las zapatas.
+    /// <para>
+    /// <b>0.38 de la última cota + 0.14 de aire = 0.52.</b> El rótulo tiene que ir por debajo de
+    /// las cotas —no hay otro sitio: arriba está el dibujo—, pero cuelga de la <b>misma</b> esquina
+    /// que ellas y va alineado a su <b>paño derecho</b>, así que se mueve con ellas y no se
+    /// desplaza a la izquierda cuando cambia el ancho.
+    /// </para>
+    /// <para>
+    /// Los 0.8 por debajo del fondo de la plantilla que se usaban antes ya no están: dejaban el
+    /// rótulo 33 cm más abajo de lo necesario, y medidos desde otro punto que las cotas.
+    /// </para>
     /// </remarks>
-    public const double RotuloSeparacion = SeparacionIzquierda;
+    public const double AnotacionRotulo = 0.52;
 
     /// <summary>Del título al segundo renglón. Es el salto de la macro: 0.41 − 0.32.</summary>
     public const double RotuloSalto1 = 0.09;
@@ -521,15 +559,12 @@ public static class TrazoZapata
     public const double RotuloSalto2 = 0.17;
 
     /// <summary>
-    /// La Y de un renglón del rótulo: 0 = título, 1 = subtítulo, 2 = recubrimiento y escala.
+    /// La Y de un renglón del rótulo del <b>corte</b>: 0 = título, 1 = subtítulo, 2 = escala.
     /// </summary>
-    /// <param name="yFondoDibujo">
-    /// El punto más bajo del dibujo al que pertenece el rótulo: el fondo de la plantilla en el
-    /// corte y el paño inferior en la planta.
-    /// </param>
-    public static double YRotulo(double yFondoDibujo, int renglon)
+    /// <param name="yZapBot">El desplante: la Y de la esquina inferior derecha.</param>
+    public static double YRotulo(double yZapBot, int renglon)
     {
-        var y = yFondoDibujo - RotuloSeparacion;
+        var y = yZapBot - AnotacionRotulo;
 
         return renglon switch
         {
@@ -538,6 +573,21 @@ public static class TrazoZapata
             _ => y - RotuloSalto2
         };
     }
+
+    /// <summary>Los dos renglones del rótulo de la <b>planta</b>, con los saltos de la macro.</summary>
+    /// <remarks>
+    /// La planta cuelga de <b>su</b> esquina inferior derecha, y ahí abajo solo tiene la cota del
+    /// ancho, a 0.12, así que el rótulo cabe a los 0.24 y 0.33 de la macro sin bajarlo más.
+    /// </remarks>
+    /// <param name="yBot">Paño inferior de la planta.</param>
+    public static double YRotuloPlanta(double yBot, int renglon) =>
+        renglon == 0 ? yBot - PlantaTituloOffset : yBot - PlantaEscalaOffset;
+
+    /// <summary>Renglón del título de la planta, el de la macro.</summary>
+    public const double PlantaTituloOffset = 0.24;
+
+    /// <summary>Renglón de la escala de la planta.</summary>
+    public const double PlantaEscalaOffset = 0.33;
 
     /// <summary>
     /// El ancho del que dispone un rótulo: el de su zapata más el hueco de 80 cm que la fila

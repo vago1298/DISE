@@ -17,12 +17,21 @@ namespace CadLink.Cad;
 /// </remarks>
 public sealed partial class ZapataDrawer
 {
+    /// <summary>Cota del ancho, por debajo del paño inferior de la planta.</summary>
     private const double PlantaCotaOffset = 0.12;
 
+    /// <summary>Cota del dado, a la derecha del paño derecho.</summary>
     private const double PlantaCotaOffsetDado = 0.1;
 
-    // PLANTA_TITULO_OFFSET (0.24) y PLANTA_ESCALA_OFFSET (0.33) tampoco están: el rótulo de la
-    // planta usa el mismo renglón propio que el del corte, TrazoZapata.YRotulo.
+    /// <summary>
+    /// Cota del largo de la zapata, en la segunda línea a la derecha.
+    /// </summary>
+    /// <remarks>
+    /// La macro la pone a la IZQUIERDA, a 0.12 del paño izquierdo. Aquí sale por la derecha, como
+    /// todo lo demás: la planta cuelga de su esquina inferior derecha igual que el corte, así que
+    /// sus cotas se mueven juntas. Los 0.20 son para no montarse con la del dado, que va a 0.10.
+    /// </remarks>
+    private const double PlantaCotaOffsetLargo = 0.2;
     private const double PlantaMinBarra = 0.03;
     private const double PlantaMinSeg = 0.004;
     private const double PlantaHuecoMargen = 0.003;
@@ -259,45 +268,48 @@ public sealed partial class ZapataDrawer
                 xIzq + (ancho * 0.9), yBot + (largo * 0.14));
         }
 
-        // ---------- Cotas: LAS DE LA MACRO, en su sitio ----------
-        // El ancho del DADO arriba, el de la zapata abajo, el largo de la zapata a la izquierda
-        // y el del dado a la derecha. Cada medida por fuera del paño que le toca y ninguna
-        // encima del dibujo.
+        // ---------- Cotas: colgadas de la ESQUINA INFERIOR DERECHA ----------
+        // El ancho del dado arriba, el de la zapata abajo, y los dos largos —el del dado y el de
+        // la zapata— a la DERECHA, en dos líneas. Cada medida por fuera del paño que le toca y
+        // ninguna encima del dibujo.
         //
-        // El turno pasado las puse en cadena y total abajo, como en el corte, y estuvo mal:
-        // en la planta ya estaban en orden y lo unico que hizo fue amontonar tres medidas
-        // debajo del paño y dejar el total encima del titulo. Se vuelve a lo de la macro.
+        // Es la misma regla del corte y por el mismo motivo: un solo punto de anclaje, para que al
+        // cambiar el ancho o el largo de una zapata no se vaya cada anotación por su lado.
         r.Cotas += Cota(dx1, yTop + PlantaCotaOffsetDado, dx2, yTop + PlantaCotaOffsetDado,
             (dx1 + dx2) / 2, yTop + PlantaCotaOffsetDado, false, false);
 
         r.Cotas += Cota(xIzq, yBot - PlantaCotaOffset, xDer, yBot - PlantaCotaOffset,
             xCen, yBot - PlantaCotaOffset, false, false);
 
-        // El largo del DADO a la derecha, a 0.10; el de la ZAPATA va a la IZQUIERDA, a 0.12,
-        // que es como lo pone la macro. Ponerlos los dos a la derecha fue idea mía y dejaba dos
-        // cotas verticales una encima de la otra.
+        // El largo del DADO a la derecha, en la primera línea, a 0.10.
+        // Los dos largos salen ahora por la derecha, pero en LÍNEAS DISTINTAS: un turno atrás los
+        // puse los dos a 0.10 y quedaron una cota encima de la otra. Con 0.10 y 0.20 se leen las
+        // dos y las dos cuelgan de la misma esquina.
         r.Cotas += Cota(xDer + PlantaCotaOffsetDado, dy1, xDer + PlantaCotaOffsetDado, dy2,
             xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, false);
 
-        r.Cotas += Cota(xIzq - PlantaCotaOffset, yBot, xIzq - PlantaCotaOffset, yTop,
-            xIzq - PlantaCotaOffset, yCen, true, false);
+        // El largo de la zapata TAMBIÉN a la derecha, en la segunda línea: la planta cuelga de su
+        // esquina inferior derecha igual que el corte, así que sus cotas salen todas por el mismo
+        // lado y se mueven juntas. A 0.20 para no montarse con la del dado, que va a 0.10.
+        r.Cotas += Cota(xDer + PlantaCotaOffsetLargo, yBot, xDer + PlantaCotaOffsetLargo, yTop,
+            xDer + PlantaCotaOffsetLargo, yCen, true, false);
 
-        // Y los dos renglones del rótulo, EN SU PROPIO RENGLÓN igual que en el corte: 80 cm por
-        // debajo del paño inferior de la planta, centrados en su eje y encogidos si no caben en
-        // el ancho que les toca. Como todas las plantas arrancan en −15, los rótulos de todas
-        // quedan en la misma línea.
-        var yTitulo = TrazoZapata.YRotulo(yBot, 0);
-        var yEscala = TrazoZapata.YRotulo(yBot, 2);
+        // Y los dos renglones del rótulo, colgados de esa MISMA esquina y alineados a su paño
+        // derecho, como en el corte. Aquí caben a los 0.24 y 0.33 de la macro porque debajo de la
+        // planta solo está la cota del ancho. Como todas las plantas arrancan en −15, los rótulos
+        // de todas quedan en la misma línea.
+        var yTitulo = TrazoZapata.YRotuloPlanta(yBot, 0);
+        var yEscala = TrazoZapata.YRotuloPlanta(yBot, 2);
         var anchoRotulo = TrazoZapata.AnchoParaElRotulo(ancho);
 
         var titulo = $"VISTA EN PLANTA \"{z.Id}\"";
         var escala = $"Rec. {rec * 100:0.#} cm    Escala 1:10";
 
-        Texto(xCen, yTitulo, TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
-            titulo, CapaRotulos, alineacion: Alineacion.Centro);
+        Texto(xDer, yTitulo, TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
+            titulo, CapaRotulos, alineacion: Alineacion.Derecha);
 
-        Texto(xCen, yEscala, TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
-            escala, CapaRotulos, alineacion: Alineacion.Centro);
+        Texto(xDer, yEscala, TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
+            escala, CapaRotulos, alineacion: Alineacion.Derecha);
     }
 
     /// <summary>
@@ -1677,7 +1689,17 @@ public sealed partial class ZapataDrawer
     private enum Alineacion
     {
         Izquierda,
-        Centro
+        Centro,
+
+        /// <summary>
+        /// El texto termina en el punto que se le da y crece hacia la <b>izquierda</b>.
+        /// </summary>
+        /// <remarks>
+        /// La usan los tres renglones del rótulo, para que su borde derecho caiga en el paño
+        /// derecho de la zapata: es la esquina de la que cuelga toda la anotación. Centrado, el
+        /// texto se salía por la derecha e invadía a la zapata vecina.
+        /// </remarks>
+        Derecha
     }
 
     /// <summary>Un texto de una línea. Port de <c>AgregarTexto</c>, con su alineación.</summary>
@@ -1696,12 +1718,14 @@ public sealed partial class ZapataDrawer
                 dynamic t = _cont.AddText(texto, new[] { x, y, 0d }, alto);
                 t.Layer = capa;
 
-                if (alineacion == Alineacion.Centro)
+                if (alineacion != Alineacion.Izquierda)
                 {
                     try
                     {
-                        // 4 = acAlignmentMiddle, que es el centrado que usa la macro.
-                        t.HorizontalAlignment = 4;
+                        // 4 = acAlignmentMiddle, el centrado que usa la macro.
+                        // 2 = acAlignmentRight: el texto TERMINA en el punto y crece hacia la
+                        //     izquierda. Es el de los rótulos, que se alinean con el paño derecho.
+                        t.HorizontalAlignment = alineacion == Alineacion.Centro ? 4 : 2;
                         t.VerticalAlignment = 2;
                         t.TextAlignmentPoint = new[] { x, y, 0d };
                     }
