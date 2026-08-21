@@ -1114,12 +1114,11 @@ public partial class MainWindow
 
         CotaH(PX(a.XBase), PX(a.XDer), yTot, z.AnchoM, gris);
 
-        // A LA DERECHA DEL PAÑO DERECHO, con las mismas distancias que usa el dibujante: toda la
-        // anotación de la zapata cuelga de su esquina inferior derecha. La previa tiene que
-        // enseñar lo que va a salir en AutoCAD, así que estas dos X salen de TrazoZapata y no de
-        // números escritos aquí.
-        var x1 = PX(a.XDer) + (TrazoZapata.AnotacionCotaVert1 * escala);
-        var x2 = PX(a.XDer) + (TrazoZapata.AnotacionCotaVert2 * escala);
+        // A LA IZQUIERDA DEL PAÑO IZQUIERDO, pegadas a la cimentación, con las mismas distancias
+        // que usa el dibujante. La previa tiene que enseñar lo que va a salir en AutoCAD, así que
+        // estas dos X salen de TrazoZapata y no de números escritos aquí.
+        var x1 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert1 * escala);
+        var x2 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert2 * escala);
 
         CotaV(x1, PY(a.YPlantillaBot), PY(a.YZapBot), TrazoZapata.PlantillaEspesor, gris);
         CotaV(x1, PY(a.YZapBot), PY(a.YZapTop), z.EspesorM, gris);
@@ -1295,14 +1294,13 @@ public partial class MainWindow
         Contorno(PX(hx1), PY(hy2), PX(hx2), PY(hy1), azul, 1.3);
 
         // ---------- COTAS ----------
-        // Como en el dibujo: el ancho abajo, el ancho del dado arriba, y los dos largos —el del
-        // dado y el de la zapata— a la DERECHA, en dos líneas, colgados de la esquina inferior
-        // derecha de la planta.
+        // Las de la macro, como en el dibujo: el ancho abajo, el largo a la izquierda, y las dos
+        // del dado -su ancho arriba y su largo a la derecha-, que ahí miden exactamente el bloque.
         CotaH(PX(a.XBase), PX(a.XDer), PY(yBot) + (0.12 * escala), z.AnchoM, gris);
+        CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);
 
         CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala), hx2 - hx1, gris);
         CotaV(PX(a.XDer) + (0.10 * escala), PY(hy1), PY(hy2), hy2 - hy1, gris);
-        CotaV(PX(a.XDer) + (0.20 * escala), PY(yBot), PY(yTop), z.LargoM, gris);
 
         EtiquetaZapata("PLANTA", left, PY(yBot) + (0.26 * escala), 10.5, gris);
         EtiquetaZapata("Escala 1:10", left, PY(yBot) + (0.26 * escala) + 15, 10, gris);

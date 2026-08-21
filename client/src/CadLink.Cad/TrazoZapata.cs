@@ -498,61 +498,49 @@ public static class TrazoZapata
     }
 
     // ======================================================================
-    // LA ANOTACIÓN: TODA CUELGA DE LA ESQUINA INFERIOR DERECHA
+    // LA ANOTACIÓN: LA DE LAS MACROS, SIN INVENTOS
     // ======================================================================
     //
-    // LO QUE SE PIDIO, TEXTUAL: «necesito que se alineen con la esquina inferior derecha para que
-    // siempre se muevan con ese», «siempre lo pones mas abajo y a la izquierda de las cotas».
+    // Estas seis distancias son las de <c>ZAPATA AISLADA CENTRAL V2</c> y <c>LINDERO V1</c>, con
+    // el nombre que tenían allí, y van pegadas a la SECCIÓN DE CIMENTACIÓN: las verticales a la
+    // izquierda del paño izquierdo, la cadena y el total justo por debajo del desplante, y las
+    // patas de los ganchos a 6 cm de la pata.
     //
-    // Asi que hay UN SOLO punto de anclaje para todo lo que se escribe alrededor del dibujo -las
-    // cotas verticales, la cadena de anchos, el total, las patas de los ganchos y los tres
-    // renglones del rotulo-: la ESQUINA INFERIOR DERECHA de la zapata, (xDer, yZapBot).
+    // NO SE MUEVEN DE AHÍ. Se probaron dos veces otras posiciones —las verticales al paño derecho
+    // y el rótulo bajado a su propio renglón— y las dos veces salió peor: las cotas se despegaban
+    // de la cimentación y acababan a la altura del dado, lejos de lo que miden.
     //
-    // Antes cada cosa colgaba de un punto distinto: las verticales del paño izquierdo, la cadena
-    // del desplante y el rotulo del fondo de la plantilla, y encima centrado en el eje. Con tres
-    // anclas distintas, cambiar el ancho o el espesor de una zapata movia cada anotacion en una
-    // direccion diferente, y de ahi que el rotulo apareciera «mas abajo y a la izquierda» de sus
-    // cotas. Con un solo ancla, todo se mueve junto y no hay nada que volver a acomodar.
-    //
-    // Los numeros de abajo son distancias A ESA ESQUINA, en el orden en el que salen del dibujo:
-    // hacia la derecha las verticales, y hacia abajo la cadena, el total, las patas y el rotulo.
+    // El encimado de los rótulos, que es lo que se quería arreglar moviéndolos, NO era un problema
+    // de posición: era el ANCHO DE LETRA con el que se decide si el título cabe. Ver
+    // <see cref="FactorLetraTitulo"/>.
 
-    /// <summary>Cotas verticales, primera línea: a la <b>derecha</b> del paño derecho.</summary>
+    /// <summary>Cotas verticales, primera línea: a la <b>izquierda</b> del paño izquierdo.</summary>
+    /// <remarks><c>COTA_OFFSET_VERT_1</c>.</remarks>
     public const double AnotacionCotaVert1 = 0.08;
 
-    /// <summary>Cotas verticales, la del total. Los mismos 0.08 de salto.</summary>
+    /// <summary>Cotas verticales, la del total. <c>COTA_OFFSET_VERT_2</c>.</summary>
     public const double AnotacionCotaVert2 = 0.16;
 
-    /// <summary>Cadena de anchos, por debajo del desplante.</summary>
+    /// <summary>Cadena de anchos, por debajo del desplante. <c>COTA_OFFSET_CADENA</c>.</summary>
     public const double AnotacionCadena = 0.14;
 
-    /// <summary>Cota del ancho total.</summary>
+    /// <summary>Cota del ancho total. <c>COTA_OFFSET_TOTAL</c>.</summary>
     public const double AnotacionTotal = 0.22;
 
-    /// <summary>Pata del gancho del paño izquierdo.</summary>
-    public const double AnotacionGanchoIzq = 0.30;
-
-    /// <summary>Pata del gancho del paño derecho.</summary>
-    public const double AnotacionGanchoDer = 0.38;
-
     /// <summary>
-    /// Primer renglón del rótulo: 14 cm por debajo de la última cota.
+    /// Separación de la cota de la pata del gancho respecto de la pata que mide.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>0.38 de la última cota + 0.14 de aire = 0.52.</b> El rótulo tiene que ir por debajo de
-    /// las cotas —no hay otro sitio: arriba está el dibujo—, pero cuelga de la <b>misma</b> esquina
-    /// que ellas y va alineado a su <b>paño derecho</b>, así que se mueve con ellas y no se
-    /// desplaza a la izquierda cuando cambia el ancho.
-    /// </para>
-    /// <para>
-    /// Los 0.8 por debajo del fondo de la plantilla que se usaban antes ya no están: dejaban el
-    /// rótulo 33 cm más abajo de lo necesario, y medidos desde otro punto que las cotas.
-    /// </para>
+    /// Los 6 cm con los que la macro llama a <c>CotasDoblezGanchosDado</c>. Queda dentro del
+    /// dado, que es donde está lo que se mide: una cota de 19 cm sacada medio metro más abajo, con
+    /// sus líneas de extensión cruzando la zapata entera, se lee peor, no mejor.
     /// </remarks>
-    public const double AnotacionRotulo = 0.52;
+    public const double AnotacionGancho = 0.06;
 
-    /// <summary>Del título al segundo renglón. Es el salto de la macro: 0.41 − 0.32.</summary>
+    /// <summary>Primer renglón del rótulo: <c>ROTULO_TITULO_OFFSET</c>.</summary>
+    public const double AnotacionRotulo = 0.32;
+
+    /// <summary>Del título al segundo renglón. El salto de la macro: 0.41 − 0.32.</summary>
     public const double RotuloSalto1 = 0.09;
 
     /// <summary>Del título al tercero. El de la macro: 0.49 − 0.32.</summary>
@@ -561,7 +549,11 @@ public static class TrazoZapata
     /// <summary>
     /// La Y de un renglón del rótulo del <b>corte</b>: 0 = título, 1 = subtítulo, 2 = escala.
     /// </summary>
-    /// <param name="yZapBot">El desplante: la Y de la esquina inferior derecha.</param>
+    /// <remarks>
+    /// Los 0.32, 0.41 y 0.49 de la macro, medidos <b>desde el desplante</b>. El rótulo va
+    /// <b>centrado</b> en el eje de la zapata, también como la macro.
+    /// </remarks>
+    /// <param name="yZapBot">El desplante de la zapata.</param>
     public static double YRotulo(double yZapBot, int renglon)
     {
         var y = yZapBot - AnotacionRotulo;
@@ -598,6 +590,26 @@ public static class TrazoZapata
     /// aquí no puede meterse en el de la zapata de al lado.
     /// </remarks>
     public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;
+
+    /// <summary>
+    /// Ancho de letra del <b>rótulo</b>, en fracción de su alto: <b>1.0</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// AQUÍ ESTABA EL ENCIMADO DE LOS TÍTULOS, y no en dónde iba el rótulo. Se venía usando el
+    /// <b>0.62</b> con el que la macro estima el texto de la plantilla, y con ese número
+    /// <c>ZAPATA AISLADA DE LINDERO "ZE-1"</c> —32 letras a 7 cm— «medía» 1.39 m, cabía en el
+    /// hueco de 1.80 y no se encogía nunca. En el dibujo, con el estilo de texto que se usa, ese
+    /// mismo título mide <b>2.2 m</b>: 0.98 del alto por letra. Los dos títulos se pasaban 40 cm
+    /// cada uno y se leían uno sobre el otro.
+    /// </para>
+    /// <para>
+    /// Con 1.0 la cuenta queda del lado seguro y el título se encoge —a 5.6 cm en una zapata de
+    /// 1.00 m— en lugar de meterse en el de al lado. El 0.62 se conserva donde lo usa la macro:
+    /// el texto de la plantilla y el ID del dado, que van dentro de una caja que ella misma midió.
+    /// </para>
+    /// </remarks>
+    public const double FactorLetraTitulo = 1.0;
 
     /// <summary>
     /// El alto con el que un texto de una línea <b>cabe</b> en el ancho disponible.

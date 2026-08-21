@@ -120,18 +120,21 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 {
     var yEsquina = TrazoZapata.YBaseElevacion;
 
-    // El orden saliendo del dibujo hacia abajo: cadena, total, las dos patas y el rotulo.
+    // El orden saliendo del dibujo hacia abajo: cadena, total y el rotulo. Las cotas de las patas
+    // no entran aqui: van pegadas a su pata, DENTRO del dado, como en la macro.
     Vale("la anotacion sale en orden, sin que dos cosas compartan renglon",
         TrazoZapata.AnotacionCadena < TrazoZapata.AnotacionTotal
-        && TrazoZapata.AnotacionTotal < TrazoZapata.AnotacionGanchoIzq
-        && TrazoZapata.AnotacionGanchoIzq < TrazoZapata.AnotacionGanchoDer
-        && TrazoZapata.AnotacionGanchoDer < TrazoZapata.AnotacionRotulo);
+        && TrazoZapata.AnotacionTotal < TrazoZapata.AnotacionRotulo);
 
-    Vale("el rotulo queda por debajo de la ultima cota, con aire de sobra",
-        TrazoZapata.AnotacionRotulo - TrazoZapata.AnotacionGanchoDer >= 0.1);
+    Vale("el rotulo queda por debajo de la cota total, con aire",
+        TrazoZapata.AnotacionRotulo - TrazoZapata.AnotacionTotal >= 0.08);
 
-    Vale("el titulo cuelga del desplante, a 0.52",
-        Math.Abs(TrazoZapata.YRotulo(yEsquina, 0) - (yEsquina - 0.52)) < 1e-12);
+    Vale("el titulo cuelga del desplante, a los 0.32 de la macro",
+        Math.Abs(TrazoZapata.YRotulo(yEsquina, 0) - (yEsquina - 0.32)) < 1e-12);
+
+    Vale("y los otros dos renglones caen en el 0.41 y el 0.49 de la macro",
+        Math.Abs(TrazoZapata.YRotulo(yEsquina, 1) - (yEsquina - 0.41)) < 1e-12
+        && Math.Abs(TrazoZapata.YRotulo(yEsquina, 2) - (yEsquina - 0.49)) < 1e-12);
 
     Vale("y los tres renglones guardan los saltos de la macro",
         Math.Abs(TrazoZapata.YRotulo(yEsquina, 0) - TrazoZapata.YRotulo(yEsquina, 1) - 0.09)
@@ -162,17 +165,36 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         Math.Abs(TrazoZapata.YRotuloPlanta(-15.0, 0) - (-15.0 - 0.24)) < 1e-12
         && Math.Abs(TrazoZapata.YRotuloPlanta(-15.0, 2) - (-15.0 - 0.33)) < 1e-12);
 
-    // Y no se sale de su hueco: su zapata mas los 80 cm de separacion.
+    // Y NO SE SALE DE SU HUECO -su zapata mas los 80 cm de la fila-, medido con el ancho de letra
+    // REAL del dibujo. Esto es lo que fallaba: con el 0.62 de la macro el titulo nunca se encogia,
+    // en el dibujo medía 2.2 m y los dos titulos se leian uno encima del otro.
     var titulo = "ZAPATA AISLADA DE LINDERO \"ZE-1\"";
+    var f = TrazoZapata.FactorLetraTitulo;
+
+    Vale("el ancho de letra del titulo es el del dibujo, no el 0.62 de la plantilla",
+        f >= 0.95);
 
     foreach (var ancho in new[] { 0.60, 1.00, 2.50 })
     {
         var disponible = TrazoZapata.AnchoParaElRotulo(ancho);
-        var alto = TrazoZapata.AltoQueQuepa(titulo.Length, 0.07, disponible);
+        var alto = TrazoZapata.AltoQueQuepa(titulo.Length, 0.07, disponible, f);
 
         Vale($"el titulo cabe en su hueco con una zapata de {ancho:0.00} m",
-            titulo.Length * alto * 0.62 <= disponible + 1e-9 && alto > 0);
+            titulo.Length * alto * f <= disponible + 1e-9 && alto > 0);
+
+        // Y con el hueco medido asi, DOS titulos seguidos no se tocan: cada uno mide como mucho
+        // su hueco, y de un eje al siguiente hay ese mismo hueco.
+        var mitad = titulo.Length * alto * f / 2;
+
+        Vale($"y no alcanza al de la zapata de al lado con {ancho:0.00} m",
+            2 * mitad <= TrazoZapata.SeparacionIzquierda + ancho + 1e-9);
     }
+
+    // Con el 0.62 viejo, la comprobacion de arriba NO pasaba: se deja escrito el numero.
+    Vale("(control) con el 0.62 el titulo se pasaba de su hueco en una zapata de 1.00 m",
+        titulo.Length * TrazoZapata.AltoQueQuepa(titulo.Length, 0.07,
+            TrazoZapata.AnchoParaElRotulo(1.00), 0.62) * f
+        > TrazoZapata.AnchoParaElRotulo(1.00) + 1e-9);
 
     Vale("y si ya cabe no se le toca el alto",
         Math.Abs(TrazoZapata.AltoQueQuepa(5, 0.07, 10.0) - 0.07) < 1e-12);

@@ -3839,15 +3839,15 @@ def v19_circular_y_ui() -> None:
           "CotaH(PX(a.XDadoIzq), PX(a.XDadoDer), yCad" in zap_cb
           and "CotaV(x1, PY(a.YZapBot), PY(a.YZapTop), z.EspesorM, gris);" in zap_cb
           and "CotaV(x2, PY(a.YPlantillaBot), PY(a.YTerreno)" in zap_cb)
-    check("y la planta acota la zapata y el dado, los dos largos por la derecha",
-          "CotaV(PX(a.XDer) + (0.20 * escala), PY(yBot), PY(yTop), z.LargoM, gris);" in zap_cb
+    check("y la planta acota la zapata y el dado",
+          "CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);" in zap_cb
           and "CotaV(PX(a.XDer) + (0.10 * escala), PY(hy1), PY(hy2)" in zap_cb
           and "CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala)" in zap_cb)
-    # La previa tiene que ensenar lo que va a salir: las verticales de la elevacion salen por la
-    # DERECHA y con las mismas distancias que usa el dibujante, tomadas de TrazoZapata.
-    check("la previa saca las verticales por la derecha, con las distancias del dibujante",
-          "var x1 = PX(a.XDer) + (TrazoZapata.AnotacionCotaVert1 * escala);" in zap_cb
-          and "var x2 = PX(a.XDer) + (TrazoZapata.AnotacionCotaVert2 * escala);" in zap_cb)
+    # La previa tiene que ensenar lo que va a salir: las verticales de la elevacion van a la
+    # IZQUIERDA, pegadas a la cimentacion, y con las mismas distancias que usa el dibujante.
+    check("la previa saca las verticales a la izquierda, con las distancias del dibujante",
+          "var x1 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert1 * escala);" in zap_cb
+          and "var x2 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert2 * escala);" in zap_cb)
     # Y EL BOTON DE DIBUJAR, con el color de los de concreto y acero: PrimaryButtonStyle.
     check("el boton de dibujar zapatas lleva el color de los otros dos",
           'x:Name="DibujarZapatasButton"' in xaml
@@ -4245,31 +4245,33 @@ def v19_circular_y_ui() -> None:
 
     # Cotas y rotulos: TODO colgado de la ESQUINA INFERIOR DERECHA, que es lo que se pidio, para
     # que la anotacion entera viaje con la zapata y no se descuelgue cada parte por su lado.
-    check("la anotacion se pide desde la esquina inferior derecha, y asi esta",
-          "CotasVerticales(xExtremoDer, yZapBot, yZapTop, yTerreno, r);" in zap_drw
-          and "var x1 = xDer + CotaOffsetVert1;" in zap_drw)
-    check("y los tres renglones del rotulo se alinean con ese pano derecho",
-          "Texto(xExtremoDer, yTitulo," in zap_drw
-          and "alineacion: Alineacion.Derecha" in zap_drw)
-    check("hay tres alineaciones de texto: izquierda, centro y DERECHA",
+    # LO QUE SE PIDIO, TEXTUAL: "que tan dificil es hacer que las cotas esten a la altura de la
+    # seccion de cimentacion, si estas tomando en cuenta mis macros ahi no me hacia eso".
+    # Las cotas verticales van A LA IZQUIERDA del pano izquierdo, pegadas a la cimentacion, y el
+    # rotulo CENTRADO a 0.32 / 0.41 / 0.49 del desplante. Las dos cosas, como las macros.
+    check("las cotas verticales van a la izquierda, pegadas a la cimentacion",
+          "CotasVerticales(xBase, yZapBot, yZapTop, yTerreno, r);" in zap_drw
+          and "var x1 = xBase - CotaOffsetVert1;" in zap_drw
+          and "var x2 = xBase - CotaOffsetVert2;" in zap_drw
+          and "xDer + CotaOffsetVert1" not in zap_drw)
+    check("y los tres renglones del rotulo van CENTRADOS en el eje",
+          "Texto(xCentro, yTitulo," in zap_drw
+          and "alineacion: Alineacion.Centro" in zap_drw)
+    check("la alineacion de texto es la de la macro: centrado o pegado a la izquierda",
           "private enum Alineacion" in zap_pla
-          and "Derecha" in zap_pla
-          and "if (alineacion != Alineacion.Izquierda)" in zap_pla
-          and "alineacion == Alineacion.Centro ? 4 : 2" in zap_pla)
-    # La derecha es la de los rotulos: el texto TERMINA en el pano derecho y crece hacia la
-    # izquierda, que es donde cada zapata tiene su ancho mas el hueco de 80 cm de la fila.
-    check("y la de la derecha existe porque el rotulo se alinea con el pano derecho",
-          "Alineacion.Derecha" in zap_drw
-          and "Alineacion.Derecha" in zap_pla)
-    check("en la planta los dos largos salen por la DERECHA, en lineas distintas",
-          "PlantaCotaOffsetLargo = 0.2" in zap_pla
-          and "Cota(xDer + PlantaCotaOffsetLargo, yBot" in zap_pla
-          and "Cota(xDer + PlantaCotaOffsetDado, dy1" in zap_pla
-          and "Cota(xIzq - PlantaCotaOffset, yBot" not in zap_pla)
-    check("y su rotulo se alinea con ese mismo pano derecho",
-          "Texto(xDer, yTitulo" in zap_pla
-          and "Texto(xDer, yEscala" in zap_pla
-          and "alineacion: Alineacion.Derecha" in zap_pla)
+          and "if (alineacion == Alineacion.Centro)" in zap_pla
+          and "t.HorizontalAlignment = 4;" in zap_pla)
+    check("y ya no queda una alineacion a la derecha que la macro no tiene",
+          "Alineacion.Derecha" not in zap_pla
+          and "Alineacion.Derecha" not in zap_drw)
+    check("la planta acota el largo de la zapata a la izquierda y el del dado a la derecha",
+          "PlantaCotaOffsetLargo = 0.12" in zap_pla
+          and "Cota(xIzq - PlantaCotaOffsetLargo, yBot" in zap_pla
+          and "Cota(xDer + PlantaCotaOffsetDado, dy1" in zap_pla)
+    check("y su rotulo va centrado, como la macro",
+          "Texto(xCen, yTitulo," in zap_pla
+          and "Texto(xCen, yEscala," in zap_pla
+          and "alineacion: Alineacion.Centro" in zap_pla)
 
     check("las cotas de la elevacion son las de la macro",
           "AnotacionCadena = 0.14" in trazo_zap
@@ -4279,25 +4281,16 @@ def v19_circular_y_ui() -> None:
     # LO QUE SE PIDIO: "solo quiero que las cotas esten en su lugar, no que esten en medio de los
     # dibujos". Las de los 15 diametros de las patas del gancho iban PEGADAS A LA PATA, a 6 cm,
     # y la pata esta DENTRO del dado: la cota caia sobre el concreto, la parrilla y los estribos.
-    check("las cotas de las patas del gancho bajan a su propio renglon, fuera del dibujo",
-          "AnotacionGanchoIzq = 0.30" in trazo_zap
-          and "AnotacionGanchoDer = 0.38" in trazo_zap
-          and "CotaDoblezOffset" not in zap_drw)
-    check("y la linea de cota va por debajo del desplante, no a la altura de la pata",
-          "var yFilaIzq = yZapBot - CotaOffsetGanchoIzq;" in zap_drw
-          and "var yFilaDer = yZapBot - CotaOffsetGanchoDer;" in zap_drw
-          and "yPataSup - offset" not in zap_drw
-          and "yPataInf + offset" not in zap_drw)
-    check("se sigue midiendo lo mismo: el arranque y la punta de cada pata",
+    check("las cotas de las patas del gancho van a 6 cm de su pata, como la macro",
+          "AnotacionGancho = 0.06" in trazo_zap
+          and "CotaDoblezOffset = TrazoZapata.AnotacionGancho" in zap_drw
+          and "yPataSup - offset" in zap_drw
+          and "yPataInf + offset" in zap_drw)
+    check("se mide el arranque y la punta de cada pata",
           "Cota(xIzq2, yPataSup, xIzq1, yPataSup" in zap_drw
           and "Cota(xDer2, yPataInf, xDer1, yPataInf" in zap_drw)
-    check("y queda escrito por que se movieron",
-          "no que estén en medio de" in zap_drw)
-    # Las dos van en renglones distintos porque las patas se cruzan por el centro del dado y en
-    # el mismo renglon los dos numeros se montarian.
-    check("las dos patas van en renglones distintos, para que no se monten",
-          "AnotacionGanchoDer = 0.38" in trazo_zap
-          and "los dos números se" in zap_drw)
+    check("y queda escrito que bajarlas a un renglon propio salio peor",
+          "renglón propio" in zap_drw)
     check("la cota de la plantilla lleva el numero EN MEDIO",
           "d.TextInside = true;" in zap_pla
           and "d.ForceLineInside = true;" in zap_pla
@@ -4310,50 +4303,47 @@ def v19_circular_y_ui() -> None:
     # Antes habia TRES anclas -pano izquierdo para las verticales, desplante para la cadena y
     # fondo de la plantilla para el rotulo, y encima centrado en el eje-, asi que al cambiar el
     # ancho de una zapata cada anotacion se movia en una direccion distinta.
-    check("las distancias de la anotacion viven juntas y medidas a la misma esquina",
+    check("las distancias de la anotacion son las de las macros, y viven juntas",
           "AnotacionCotaVert1 = 0.08" in trazo_zap
           and "AnotacionCotaVert2 = 0.16" in trazo_zap
           and "AnotacionCadena = 0.14" in trazo_zap
           and "AnotacionTotal = 0.22" in trazo_zap
-          and "AnotacionGanchoIzq = 0.30" in trazo_zap
-          and "AnotacionGanchoDer = 0.38" in trazo_zap
-          and "AnotacionRotulo = 0.52" in trazo_zap)
+          and "AnotacionGancho = 0.06" in trazo_zap
+          and "AnotacionRotulo = 0.32" in trazo_zap)
     check("y el dibujante las toma de ahi, sin volver a escribir los numeros",
           "CotaOffsetVert1 = TrazoZapata.AnotacionCotaVert1" in zap_drw
           and "CotaOffsetCadena = TrazoZapata.AnotacionCadena" in zap_drw
-          and "CotaOffsetGanchoIzq = TrazoZapata.AnotacionGanchoIzq" in zap_drw)
-    check("las cotas verticales salen por la DERECHA del pano derecho",
-          "var x1 = xDer + CotaOffsetVert1;" in zap_drw
-          and "var x2 = xDer + CotaOffsetVert2;" in zap_drw
-          and "var x1 = xBase - CotaOffsetVert1;" not in zap_drw)
-    check("el rotulo cuelga del DESPLANTE, no del fondo de la plantilla",
+          and "CotaDoblezOffset = TrazoZapata.AnotacionGancho" in zap_drw)
+    check("el rotulo cuelga del DESPLANTE, a los 0.32 de la macro",
           "public static double YRotulo(double yZapBot, int renglon)" in trazo_zap
           and "TrazoZapata.YRotulo(yZapBot, 0)" in zap_drw
           and "TrazoZapata.YRotulo(a.YPlantillaBot, 0)" not in zap_drw
           and "RotuloSeparacion" not in trazo_zap)
-    check("y va alineado al pano derecho, no centrado en el eje",
-          "Texto(xExtremoDer, yTitulo" in zap_drw
-          and "Texto(xExtremoDer, ySubtitulo" in zap_drw
-          and "Texto(xExtremoDer, yEscala" in zap_drw
-          and "Texto(xCentro, yTitulo" not in zap_drw)
-    check("los tres renglones caen por debajo de la ultima cota, no encima de ella",
-          0.52 > 0.38 and 0.52 - 0.38 > 0.1)
     check("los saltos entre renglones si son los de la macro",
           "RotuloSalto1 = 0.09" in trazo_zap
           and "RotuloSalto2 = 0.17" in trazo_zap)
+    # AQUI ESTABA EL ENCIMADO: no en la posicion del rotulo, sino en el ancho de letra con el que
+    # se decide si cabe. Con el 0.62 de la macro el titulo "medía" 1.39 m y nunca se encogia; en el
+    # dibujo mide 2.2 m y se salia 40 cm por cada lado, encima del titulo de al lado.
+    check("el titulo se mide con el ancho de letra REAL del dibujo, no con el 0.62",
+          "public const double FactorLetraTitulo = 1.0;" in trazo_zap
+          and "TrazoZapata.FactorLetraTitulo" in zap_drw
+          and "TrazoZapata.FactorLetraTitulo" in zap_pla)
+    check("y queda escrito que ahi estaba el encimado",
+          "AQUÍ ESTABA EL ENCIMADO" in trazo_zap)
     check("y el titulo se encoge si no cabe en su hueco, en vez de meterse en el vecino",
           "public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;"
           in trazo_zap
           and "public static double AltoQueQuepa(" in trazo_zap
-          and "TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo)" in zap_drw)
+          and "TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo," in zap_drw)
     check("la planta usa su propia esquina, con los renglones de la macro",
           "public static double YRotuloPlanta(double yBot, int renglon)" in trazo_zap
           and "PlantaTituloOffset = 0.24" in trazo_zap
           and "PlantaEscalaOffset = 0.33" in trazo_zap
           and "TrazoZapata.YRotuloPlanta(yBot, 0)" in zap_pla)
-    check("y queda escrito por que hay una sola ancla",
-          "ESQUINA INFERIOR DERECHA" in trazo_zap
-          and "siempre se muevan con ese" in trazo_zap)
+    check("y queda escrito que las cotas NO se mueven de donde las pone la macro",
+          "NO SE MUEVEN DE AHÍ" in trazo_zap
+          and "a la altura del dado" in trazo_zap)
     check("y el titulo dice CENTRAL o DE LINDERO, como la macro",
           '"ZAPATA AISLADA DE LINDERO' in zap_drw
           and '"ZAPATA AISLADA CENTRAL' in zap_drw)
@@ -4489,8 +4479,8 @@ def v19_circular_y_ui() -> None:
           and "PlantaCotaOffsetDado = 0.1;" in zap_pla
           and "PlantaCotaNivel2" not in zap_pla
           and "yTop + PlantaCotaOffsetDado" in zap_pla)
-    check("y queda escrito por que los dos largos van en lineas distintas",
-          "una cota encima de la otra" in zap_pla)
+    check("y queda escrito por que cada largo va por su lado",
+          "Los dos por el mismo lado se montaban" in zap_pla)
 
     # ------------------------------------------------------------------
     # LAS PATAS DEL DADO: ADENTRO CON COLUMNA DE CONCRETO, AFUERA CON ACERO
@@ -4544,8 +4534,7 @@ def v19_circular_y_ui() -> None:
         cuerpo = m_pla.group(0)
         i_malla = cuerpo.index("// ---------- Las mallas ----------")
         i_cierre = cuerpo.index("// Se cierra el bloque")
-        i_cotas = cuerpo.index(
-            "// ---------- Cotas: colgadas de la ESQUINA INFERIOR DERECHA ----------")
+        i_cotas = cuerpo.index("// ---------- Cotas: LAS DE LA MACRO, en su sitio ----------")
         i_rot = cuerpo.index("// ---------- Rótulos de las mallas ----------")
 
         check("las mallas van DENTRO del bloque", i_malla < i_cierre)
