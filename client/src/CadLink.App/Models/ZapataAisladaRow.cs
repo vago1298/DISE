@@ -100,6 +100,32 @@ public sealed class ZapataAisladaRow : Row
     /// </remarks>
     public static ObservableCollection<string> DadosDisponibles { get; } = new();
 
+    /// <summary>
+    /// Las <b>columnas capturadas</b>, de concreto y de acero, para elegirlas de una lista.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo mismo que con el dado, y por el mismo motivo: la columna que desplanta en la zapata es
+    /// una que ya está capturada en otra hoja, y lo que la identifica en el plano es su <b>ID</b>.
+    /// Tecleándolo a mano hay dos maneras de equivocarse y ninguna se ve: escribirlo distinto
+    /// —«C-1» y «C1» son la misma columna para el calculista y dos distintas para el programa— o
+    /// repetirlo, y dos zapatas apuntando a la misma columna es un error de plano.
+    /// </para>
+    /// <para>
+    /// <b>Entran las de las dos hojas</b>: las secciones de concreto cuyo elemento es COLUMNA o
+    /// COLUMNA CIRCULAR, y los perfiles de acero cuyo elemento es COLUMNA. Las dos pueden
+    /// desplantar en una zapata —de hecho la columna de acero es la que hace que el dado remate
+    /// con placa base y que sus ganchos de arranque doblen hacia afuera— así que ofrecer solo las
+    /// de concreto dejaría la mitad del trabajo fuera de la lista.
+    /// </para>
+    /// <para>
+    /// Y va marcado de dónde sale cada una, porque el ID no lo dice: el desplegable muestra
+    /// «C-1 (concreto)» o «C-4 (acero)», y lo que se guarda es solo el ID. Ver
+    /// <see cref="SoloElId"/>.
+    /// </para>
+    /// </remarks>
+    public static ObservableCollection<string> ColumnasDisponibles { get; } = new();
+
     /// <summary>Los dos tipos de zapata, que salen de <see cref="ZapataCad"/>.</summary>
     /// <remarks>
     /// La lista sale de la clase de geometría a propósito: es la que decide qué hace cada tipo,
@@ -201,7 +227,31 @@ public sealed class ZapataAisladaRow : Row
         (_tipoColumna ?? string.Empty).IndexOf("CONCRETO", StringComparison.OrdinalIgnoreCase) >= 0;
 
     /// <summary>ID de la columna. <c>H5</c> / <c>Y5</c>.</summary>
-    public string IdColumna { get => _idColumna; set => Set(ref _idColumna, value); }
+    /// <remarks>
+    /// Al asignarlo se guarda <b>solo el ID</b>: el desplegable muestra de qué hoja sale cada
+    /// columna —«C-1 (concreto)»— y esa aclaración es para quien elige, no para el plano. Si se
+    /// guardara tal cual, el rótulo diría «COLUMNA "C-1 (concreto)"».
+    /// </remarks>
+    public string IdColumna
+    {
+        get => _idColumna;
+        set => Set(ref _idColumna, SoloElId(value));
+    }
+
+    /// <summary>Quita la aclaración de la hoja que lleva cada entrada del desplegable.</summary>
+    /// <remarks>
+    /// Se corta en el primer paréntesis. Un ID con paréntesis dentro no existe: en los planos son
+    /// del tipo <c>C-1</c>, <c>CA-2</c>, y el paréntesis es justo lo que se agrega aquí para
+    /// decir de dónde viene.
+    /// </remarks>
+    public static string SoloElId(string? texto)
+    {
+        var t = (texto ?? string.Empty).Trim();
+
+        var p = t.IndexOf('(');
+
+        return p < 0 ? t : t[..p].Trim();
+    }
 
     /// <summary>ID del dado. <c>H7</c> / <c>Y7</c>. Es el nombre del bloque que se inserta.</summary>
     public string IdDado { get => _idDado; set => Set(ref _idDado, value); }

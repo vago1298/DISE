@@ -1159,8 +1159,35 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="75" CellStyle="{StaticResource CeldaLateral}" />
-                            <DataGridTextColumn Header="ID col." Binding="{Binding IdColumna, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="70" CellStyle="{StaticResource CeldaIdent}" />
+                            <!-- LA COLUMNA SE ELIGE DE LAS DOS HOJAS.
+                                 La lista trae las columnas capturadas en «Secciones
+                                 Concreto» -COLUMNA y COLUMNA CIRCULAR- y las de «Secciones
+                                 Acero» cuyo elemento es COLUMNA, marcadas con su hoja para
+                                 poder distinguirlas. Se guarda solo el ID.
+
+                                 Es para no teclearlo: escribirlo distinto -«C-1» y «C1»- o
+                                 repetirlo en dos zapatas son dos errores que no se ven
+                                 mirando la tabla. «Revisar zapatas» avisa de los dos. -->
+                            <DataGridTemplateColumn Header="ID col." Width="95"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="IdColumna">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IdColumna}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.ColumnasDisponibles}}"
+                                                  Text="{Binding IdColumna, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Las columnas capturadas en «Secciones Concreto» y en «Secciones Acero».&#10;Se guarda solo el ID; la hoja va entre parentesis para poder distinguirlas." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Col. cm" Binding="{Binding AnchoColumnaCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="75" CellStyle="{StaticResource CeldaLateral}" />
                             <DataGridTextColumn Header="Rec. dado cm" Binding="{Binding RecDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
@@ -1185,10 +1212,35 @@
                                                     SelectedItemBinding="{Binding EstriboDado, UpdateSourceTrigger=PropertyChanged}" Width="75"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
-                            <DataGridComboBoxColumn x:Name="ColZapSepEstribo" Header="Est. @ cm"
-                                                    SelectedItemBinding="{Binding SepEstriboDado, UpdateSourceTrigger=PropertyChanged}" Width="90"
-                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaEstribo}" />
+                            <!-- LA SEPARACION DE ESTRIBOS SE PUEDE ESCRIBIR A MANO.
+                                 La lista son sugerencias, no una lista cerrada: se puede
+                                 teclear «6-12-6», «15» o lo que haga falta.
+
+                                 Va con plantilla y ComboBox EDITABLE enlazado por Text, no
+                                 con SelectedItemBinding, porque con SelectedItem lo que se
+                                 teclea no llega a la propiedad y se pierde al salir de la
+                                 celda. Es el mismo patron -y el mismo motivo- que la
+                                 columna «Sep cm» de la hoja de concreto. -->
+                            <DataGridTemplateColumn Header="Est. @ cm" Width="95"
+                                                    CellStyle="{StaticResource CeldaEstribo}"
+                                                    SortMemberPath="SepEstriboDado">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SepEstriboDado}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"
+                                                  Text="{Binding SepEstriboDado, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Elige una de la lista o escribe la que necesites, por ejemplo 10-15-20 o 15.&#10;Con tres tramos, el dado se reparte 25 % - 50 % - 25 %: confinamiento, centro y confinamiento." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
 
                             <DataGridTextColumn Header="f'c" Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="60" CellStyle="{StaticResource CeldaAcabado}" />

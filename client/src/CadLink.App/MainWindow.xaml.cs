@@ -269,9 +269,10 @@ public partial class MainWindow : Window
     {
         RegistrarEnHistorial();
 
-        // La lista de dados de la hoja de zapatas sale de ESTA hoja, así que se refresca
-        // aquí: al agregar, borrar o renombrar un dado, el desplegable se entera solo.
-        ActualizarDadosDisponibles();
+        // Las listas de la hoja de zapatas —los dados y las columnas— salen de ESTA hoja,
+        // así que se refrescan aquí: al agregar, borrar o renombrar uno, el desplegable se
+        // entera solo. Las columnas de acero avisan por su lado, desde su propia hoja.
+        ActualizarListasDeZapatas();
 
         ActualizarContadores();
         ActualizarTotales();

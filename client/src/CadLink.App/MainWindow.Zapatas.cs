@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Collections.ObjectModel;
 using CadLink.App.Models;
 using CadLink.Cad;
 
@@ -54,11 +55,13 @@ public partial class MainWindow
         ColZapVarSupT.ItemsSource = opcionales;
         ColZapVarIntDado.ItemsSource = opcionales;
 
-        ColZapSepEstribo.ItemsSource = SeccionConcretoRow.SeparacionesUsuales;
+        // La separacion de estribos NO se llena aqui: su lista va en el XAML, en la
+        // plantilla de la celda, porque esa casilla se puede ESCRIBIR A MANO. Con
+        // SelectedItemBinding lo que se teclea no llega a la propiedad.
     }
 
     /// <summary>
-    /// Rellena la lista de <b>dados disponibles</b> con los capturados en la hoja de concreto.
+    /// Rellena las listas de la hoja de zapatas: los <b>dados</b> y las <b>columnas</b>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -76,6 +79,12 @@ public partial class MainWindow
     /// zapata lo único que necesita es su ID para insertarlo como bloque.
     /// </para>
     /// </remarks>
+    private void ActualizarListasDeZapatas()
+    {
+        ActualizarDadosDisponibles();
+        ActualizarColumnasDisponibles();
+    }
+
     private void ActualizarDadosDisponibles()
     {
         var dados = _datos.SeccionesConcreto
@@ -89,21 +98,84 @@ public partial class MainWindow
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var lista = ZapataAisladaRow.DadosDisponibles;
+        Refrescar(ZapataAisladaRow.DadosDisponibles, dados);
+    }
 
-        // Si no cambió nada no se toca: cada cambio de la colección hace que las celdas
-        // abiertas se vuelvan a armar, y eso se ve como un parpadeo al escribir.
-        if (lista.Count == dados.Count
-            && !lista.Where((v, i) => !string.Equals(v, dados[i], StringComparison.Ordinal)).Any())
+    /// <summary>
+    /// Rellena la lista de <b>columnas</b> con las de las dos hojas: concreto y acero.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cada entrada lleva su hoja entre paréntesis —«C-1 (concreto)», «C-4 (acero)»— porque el ID
+    /// no lo dice y hace falta para elegir: una columna de acero en la zapata cambia el dibujo
+    /// del dado. Lo que se guarda en la celda es <b>solo el ID</b>, que es lo que va al plano y lo
+    /// que la macro busca.
+    /// </para>
+    /// <para>
+    /// <b>Los ID repetidos entre las dos hojas se marcan.</b> Si hay una columna de concreto y un
+    /// perfil de acero con el mismo ID, el desplegable muestra las dos y con su hoja al lado: eso
+    /// ya es un error de captura —dos columnas distintas con el mismo nombre en el plano— y
+    /// esconderlo eligiendo una sola dejaría al usuario sin saber que existe.
+    /// </para>
+    /// </remarks>
+    private void ActualizarColumnasDisponibles()
+    {
+        var columnas = new List<string>();
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            var elem = (s.Elemento ?? string.Empty).Trim();
+
+            var esColumna =
+                SeccionConcretoRow.ElementoColumna.Equals(elem, StringComparison.OrdinalIgnoreCase)
+                || SeccionConcretoRow.ElementoColumnaCircular.Equals(
+                    elem, StringComparison.OrdinalIgnoreCase);
+
+            var id = (s.Id ?? string.Empty).Trim();
+
+            if (esColumna && id.Length > 0)
+            {
+                columnas.Add($"{id} (concreto)");
+            }
+        }
+
+        foreach (var p in _datos.SeccionesAcero)
+        {
+            var elem = (p.Elemento ?? string.Empty).Trim();
+            var id = (p.Id ?? string.Empty).Trim();
+
+            if (PerfilAceroRow.ElementoColumna.Equals(elem, StringComparison.OrdinalIgnoreCase)
+                && id.Length > 0)
+            {
+                columnas.Add($"{id} (acero)");
+            }
+        }
+
+        Refrescar(ZapataAisladaRow.ColumnasDisponibles, columnas);
+    }
+
+    /// <summary>
+    /// Pone la lista al día <b>en su sitio</b>, sin sustituir la colección.
+    /// </summary>
+    /// <remarks>
+    /// Las dos cosas importan. <b>En su sitio</b> porque el desplegable de la celda apunta a esa
+    /// colección desde el XAML: cambiándola por otra, se quedaría mirando la vieja. Y <b>solo si
+    /// cambió</b> porque cada cambio de la colección hace que las celdas abiertas se vuelvan a
+    /// armar, y eso se ve como un parpadeo mientras se escribe.
+    /// </remarks>
+    private static void Refrescar(ObservableCollection<string> lista, List<string> nuevos)
+    {
+        if (lista.Count == nuevos.Count
+            && !lista.Where((v, i) => !string.Equals(v, nuevos[i], StringComparison.Ordinal)).Any())
         {
             return;
         }
 
         lista.Clear();
 
-        foreach (var id in dados)
+        foreach (var v in nuevos)
         {
-            lista.Add(id);
+            lista.Add(v);
         }
     }
 
@@ -142,7 +214,7 @@ public partial class MainWindow
         }
 
         ActualizarTotalesZapatas();
-        ActualizarDadosDisponibles();
+        ActualizarListasDeZapatas();
     }
 
     /// <summary>Engancha la vista previa: se redibuja al cambiar de fila y de tamaño.</summary>
@@ -212,6 +284,7 @@ public partial class MainWindow
 
         var problemas = new List<string>();
         var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var columnasUsadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var acomodo = new List<string>();
 
         var anchos = _datos.ZapatasAisladas.Select(r => r.AnchoM).ToList();
@@ -252,6 +325,33 @@ public partial class MainWindow
                     $"{donde} ({id}): el dado «{idDado}» no está capturado en «Secciones " +
                     "Concreto», así que no habrá bloque que insertar. Captúralo ahí como " +
                     "DADO o DADO CIRCULAR, o elige uno de la lista.");
+            }
+
+            // La columna, igual que el dado: se elige de las dos hojas. Y NO puede repetirse,
+            // porque una columna desplanta en UNA zapata: dos zapatas apuntando a la misma
+            // columna es un error de plano, no una opción.
+            var idCol = ZapataAisladaRow.SoloElId(fila.IdColumna);
+
+            if (idCol.Length > 0)
+            {
+                var estaCapturada = ZapataAisladaRow.ColumnasDisponibles
+                    .Any(c => ZapataAisladaRow.SoloElId(c)
+                        .Equals(idCol, StringComparison.OrdinalIgnoreCase));
+
+                if (!estaCapturada)
+                {
+                    problemas.Add(
+                        $"{donde} ({id}): la columna «{idCol}» no está capturada, ni en " +
+                        "«Secciones Concreto» ni en «Secciones Acero». Captúrala ahí o elige " +
+                        "una de la lista.");
+                }
+
+                if (!columnasUsadas.Add(idCol))
+                {
+                    problemas.Add(
+                        $"{donde} ({id}): la columna «{idCol}» ya desplanta en otra zapata. " +
+                        "Una columna se apoya en una sola zapata.");
+                }
             }
 
             var z = fila.AFormatoCad();

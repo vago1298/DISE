@@ -202,6 +202,11 @@ public partial class MainWindow
         texto += $"   ·   aceros: {CatalogoAceros.Todos.Count} de " + CatalogoAceros.Origen;
 
         TotalesAceroText.Text = texto;
+
+        // Y las listas de la hoja de zapatas, porque las columnas DE ACERO entran en el
+        // desplegable de columna de la zapata. Va aquí porque este método se llama en cada
+        // cambio de esta hoja: al agregar, quitar o renombrar un perfil.
+        ActualizarListasDeZapatas();
     }
 
     // ======================================================================

@@ -3768,10 +3768,36 @@ def v19_circular_y_ui() -> None:
           "private void ActualizarDadosDisponibles()" in zap_cb
           and "SeccionConcretoRow.ElementoDadoCircular.Equals(" in zap_cb)
     check("y se actualiza en cada cambio de esa hoja",
-          "ActualizarDadosDisponibles();" in codigo)
+          "ActualizarListasDeZapatas();" in codigo)
     check("se actualiza EN SITIO, no se sustituye la coleccion",
-          "no se sustituye la colección" in zap_cb
+          "sin sustituir la colección" in zap_cb
           and "lista.Clear();" in zap_cb)
+
+    # LA COLUMNA, igual que el dado, y de las DOS hojas: una columna de acero tambien
+    # desplanta en una zapata -y es la que hace que el dado remate con placa base-, asi que
+    # ofrecer solo las de concreto dejaria la mitad del trabajo fuera de la lista.
+    check("la columna se elige de una lista",
+          "public static ObservableCollection<string> ColumnasDisponibles" in zap_row
+          and "ZapataAisladaRow.ColumnasDisponibles" in xaml)
+    check("la lista trae las columnas de las DOS hojas",
+          "private void ActualizarColumnasDisponibles()" in zap_cb
+          and "SeccionConcretoRow.ElementoColumnaCircular.Equals(" in zap_cb
+          and "PerfilAceroRow.ElementoColumna.Equals(" in zap_cb)
+    check("y cada una dice de que hoja sale",
+          '$"{id} (concreto)"' in zap_cb and '$"{id} (acero)"' in zap_cb)
+    check("pero se guarda SOLO el ID, que es lo que va al plano",
+          "public static string SoloElId(" in zap_row
+          and "set => Set(ref _idColumna, SoloElId(value));" in zap_row)
+    check("la hoja de acero tambien refresca la lista",
+          "ActualizarListasDeZapatas();"
+          in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs")))
+
+    # LO QUE SE PIDIO: que no se repitan. Una columna desplanta en UNA zapata.
+    check("revisar avisa si la columna no esta capturada",
+          "no está capturada, ni en" in zap_cb)
+    check("y si la misma columna ya desplanta en otra zapata",
+          "columnasUsadas.Add(idCol)" in zap_cb
+          and "Una columna se apoya en una sola zapata." in zap_cb)
     check("y la celda sigue siendo editable, con su lista en el XAML",
           'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.DadosDisponibles}}"'
           in xaml)
@@ -3792,6 +3818,16 @@ def v19_circular_y_ui() -> None:
     # El tipo y el desplanta van por PLANTILLA con ComboBox editable enlazado por Text.
     # Con SelectedItemBinding y la lista llenada desde el code-behind, el enlace pisaba el
     # valor capturado: las dos zapatas del ejemplo salian «de lindero».
+    # LA SEPARACION DE ESTRIBOS SE ESCRIBE A MANO. La lista son sugerencias, no una lista
+    # cerrada, y con SelectedItemBinding lo que se teclea no llega a la propiedad: se pierde
+    # al salir de la celda. Es el mismo patron que la columna «Sep cm» del concreto.
+    check("la separacion de estribos de la zapata se puede escribir a mano",
+          'Text="{Binding SepEstriboDado, UpdateSourceTrigger=PropertyChanged}"' in xaml
+          and "ColZapSepEstribo" not in zap_cb)
+    check("y su lista sigue siendo la misma del concreto, un solo sitio",
+          'ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"'
+          in xaml)
+
     check("el tipo de zapata se enlaza por Text, no por SelectedItem",
           'Text="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}"' in xaml
           and "ColTipoZapata" not in zap_cb)
