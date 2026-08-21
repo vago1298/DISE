@@ -220,6 +220,17 @@ public static class TrazoZapata
     /// <summary>Cuánto baja la planta respecto de la vista de corte, en la central.</summary>
     public const double PlantaOffsetY = -3.0;
 
+    /// <summary>
+    /// Separación entre una zapata y la siguiente, en metros, medida <b>a la izquierda</b>.
+    /// </summary>
+    /// <remarks>
+    /// Cada zapata se acomoda con su paño derecho a un metro del paño <b>izquierdo</b> de la
+    /// anterior, y eso vale igual para el corte y para la planta —las dos usan esta X—, así que
+    /// las dos vistas de una zapata quedan siempre en la misma vertical. Un metro es lo que dejan
+    /// las macros entre secciones y lo que cabe para las cotas y los rótulos de en medio.
+    /// </remarks>
+    public const double SeparacionIzquierda = 1.0;
+
     /// <summary>Y de arranque de la planta en el lindero.</summary>
     public const double PlantaYBaseLindero = -15.0;
 
@@ -276,31 +287,21 @@ public static class TrazoZapata
     /// <param name="indice">Cuál de ellas.</param>
     public static double XBase(string tipo, IReadOnlyList<double> anchos, int indice)
     {
-        if (indice <= 0)
+        // La PRIMERA en cero, y cada siguiente un metro a la IZQUIERDA del paño izquierdo de la
+        // anterior. El tipo ya no cambia el acomodo: sea central o de lindero, la fila crece
+        // hacia la izquierda, que es como se pidió y como se lee un juego de zapatas puesto en
+        // hilera. Antes las centrales crecían a la derecha desde cero y los linderos a la
+        // izquierda desde −3, y al mezclar los dos tipos en una misma hoja se encimaban.
+        var x = 0.0;
+
+        for (var i = 1; i <= indice; i++)
         {
-            return EsLindero(tipo) ? LinderoXBase : 0.0;
+            x -= SeparacionIzquierda + Ancho(anchos, i);
         }
 
-        if (EsLindero(tipo))
-        {
-            var x = LinderoXBase;
+        _ = tipo;
 
-            for (var i = 1; i <= indice; i++)
-            {
-                x -= SeparacionLindero + Ancho(anchos, i);
-            }
-
-            return x;
-        }
-
-        var acumulado = 0.0;
-
-        for (var i = 0; i < indice; i++)
-        {
-            acumulado += Ancho(anchos, i) + SeparacionCentral;
-        }
-
-        return acumulado;
+        return x;
     }
 
     /// <summary>Si el tipo es el de lindero.</summary>

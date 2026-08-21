@@ -3729,15 +3729,29 @@ def v19_circular_y_ui() -> None:
 
     # LAS DISTANCIAS DE LAS MACROS, una por una. Son lo que se pidio: «dibujalo a la
     # distancia que tiene las macros».
+    # LO QUE SE PIDIO: cada zapata a un metro a la IZQUIERDA del pano izquierdo de la
+    # anterior, en el corte Y en la planta -las dos usan la misma X-.
+    check("las zapatas se acomodan hacia la izquierda, un metro entre una y otra",
+          "public const double SeparacionIzquierda = 1.0;" in trazo_zap
+          and "x -= SeparacionIzquierda + Ancho(anchos, i);" in trazo_zap)
+    check("y el tipo ya no cambia el acomodo",
+          "El tipo ya no cambia el acomodo" in trazo_zap)
+    check("y esta comprobado con numeros, para los dos tipos",
+          "siempre un metro justo entre una y la siguiente" in leer(
+              ruta("tools/prueba-zapata/Program.cs")))
+
     check("la separacion entre secciones es la de cada macro",
           "public const double SeparacionCentral = 1.0;" in trazo_zap
           and "public const double SeparacionLindero = 0.8;" in trazo_zap)
     check("el lindero arranca en -3 y en -8, como su macro",
           "public const double LinderoXBase = -3.0;" in trazo_zap
           and "public const double YBaseElevacion = -8.0;" in trazo_zap)
-    check("la central crece a la derecha y el lindero a la izquierda",
-          "acumulado += Ancho(anchos, i) + SeparacionCentral;" in trazo_zap
-          and "x -= SeparacionLindero + Ancho(anchos, i);" in trazo_zap)
+    # El acomodo ya NO depende del tipo: las dos familias crecen hacia la izquierda, un metro
+    # entre una y la siguiente. Antes las centrales crecian a la derecha desde cero y los
+    # linderos a la izquierda desde -3, y al mezclarlos en una hoja se encimaban.
+    check("las dos familias crecen hacia la izquierda",
+          "x -= SeparacionIzquierda + Ancho(anchos, i);" in trazo_zap
+          and "acumulado += Ancho(anchos, i) + SeparacionCentral;" not in trazo_zap)
     check("la planta de la central cuelga de la vista de corte",
           "public const double PlantaOffsetY = -3.0;" in trazo_zap
           and "var yFondoCorte = yZapBot - RotuloEscalaOffset;" in trazo_zap)
@@ -4213,7 +4227,7 @@ def v19_circular_y_ui() -> None:
           "fila.VarDadoSup = d;" in zap_cb
           and "dado.DiamVarTotalEfectivo" in zap_cb)
     check("el numero de intermedias tambien sale de la seccion",
-          "fila.NIntDado = dado.NInter;" in zap_cb
+          "fila.NIntDado = IntermediasDeLaSeccion(dado);" in zap_cb
           and "fila.NIntDado = dado.NVarTotal > 2 ? (dado.NVarTotal - 2) / 2 : 0;" in zap_cb)
     check("y el estribo del dado y su separacion, tambien",
           "fila.EstriboDado = dado.Estribo;" in zap_cb
@@ -4221,13 +4235,41 @@ def v19_circular_y_ui() -> None:
     check("y queda escrito por que no se captura dos veces",
           "un arranque que no existe" in zap_cb)
 
+    # Las INTERMEDIAS: de la hoja de secciones, y si «Intermedias» va en cero, de los lechos.
+    # Sin ellas no hay union de varillas, y la union desaparecia sin decir nada.
+    check("las intermedias del dado y de la columna salen de la seccion",
+          "private static int IntermediasDeLaSeccion(SeccionConcretoRow s)" in zap_cb
+          and "IntermediasDeLaSeccion(col)" in zap_cb
+          and "IntermediasDeLaSeccion(dado)" in zap_cb)
+    check("y si «Intermedias» va en cero se miran los lechos",
+          "Math.Max(s.NIntSup, s.NIntInf)" in zap_cb
+          and "private static string DiametroIntermediasDe(SeccionConcretoRow s)" in zap_cb)
+    check("y queda escrito que sin intermedias no hay union",
+          "unión de las varillas solo se dibuja" in zap_cb)
+
+    # LAS COTAS DE LA PLANTA, EN ORDEN: cadena y total abajo, largos a los lados.
+    check("la planta acota en cadena y con su total, en dos niveles",
+          "PlantaCotaNivel2" in zap_pla
+          and "var yCad = yBot - PlantaCotaOffset;" in zap_pla
+          and "var yTot = yBot - PlantaCotaOffset - PlantaCotaNivel2;" in zap_pla)
+    check("y el titulo baja lo que ocupa el segundo nivel",
+          "PlantaTituloOffset = 0.24 + PlantaCotaNivel2" in zap_pla
+          and "PlantaEscalaOffset = 0.33 + PlantaCotaNivel2" in zap_pla)
+    check("y queda escrito por que no van una a cada lado del dibujo",
+          "había que rodear la planta" in zap_pla)
+
     # ------------------------------------------------------------------
     # LAS PATAS DEL DADO: ADENTRO CON COLUMNA DE CONCRETO, AFUERA CON ACERO
     # ------------------------------------------------------------------
     check("las patas del dado doblan segun el tipo de columna",
           "ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1" in zap_drw)
-    check("y en el lindero las dos doblan a la izquierda, por el paño del lindero",
-          "ganchosAmbosIzq: lindero" in zap_drw)
+    # LO QUE SE PIDIO: la regla es SOLO el tipo de columna, tambien en el lindero. Con
+    # concreto las DOS patas van adentro del nucleo; con acero, una adentro y otra afuera.
+    check("las dos patas van adentro con columna de concreto, tambien en el lindero",
+          "ganchosAmbosIzq: false" in zap_drw
+          and "ganchosAmbosIzq: lindero" not in zap_drw)
+    check("y queda escrito el defecto que arregla",
+          "dejaba una pata saliéndose del dado" in zap_drw)
 
     # ------------------------------------------------------------------
     # LAS COTAS: SUS VARIABLES ANTES DE CREAR EL ESTILO
@@ -4268,11 +4310,11 @@ def v19_circular_y_ui() -> None:
         cuerpo = m_pla.group(0)
         i_malla = cuerpo.index("// ---------- Las mallas ----------")
         i_cierre = cuerpo.index("// Se cierra el bloque")
-        i_cotas = cuerpo.index("// ---------- Cotas del dado ----------")
+        i_cotas = cuerpo.index("// ---------- Cotas: EN ORDEN, cada una en su nivel ----------")
         i_rot = cuerpo.index("// ---------- Rótulos de las mallas ----------")
 
         check("las mallas van DENTRO del bloque", i_malla < i_cierre)
-        check("las cotas del dado, FUERA", i_cotas > i_cierre)
+        check("las cotas, FUERA", i_cotas > i_cierre)
         check("y los rotulos de parrilla, FUERA", i_rot > i_cierre)
 
     # ------------------------------------------------------------------
@@ -4620,9 +4662,9 @@ def v19_circular_y_ui() -> None:
     check("y que las siete separaciones de la lista corta reparten estribos",
           '"6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"' in prueba_zap
           and "en orden y dentro" in prueba_zap)
-    check("y que el acomodo de las dos macros no se movio",
-          "central: la segunda a 1 m de la primera" in prueba_zap
-          and "lindero: la primera en x=-3" in prueba_zap)
+    check("y que el acomodo es el nuevo, para los dos tipos",
+          "la segunda a 1 m a la izquierda de la primera" in prueba_zap
+          and "siempre un metro justo entre una y la siguiente" in prueba_zap)
     check("y devuelve 1 si algo falla, igual que la del diamante",
           "return fallos == 0 ? 0 : 1;" in prueba_zap)
 

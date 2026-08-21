@@ -484,7 +484,12 @@ public sealed partial class ZapataDrawer
             estrOmitirIni: omitirEstribos, omitGanchoIni: false,
             omitGanchoFin: union.Activa, ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1,
             recorteBarrasFin: recorteDado, offEstribosFin: offEstFinDado,
-            estribosAlTope: z.ColumnaDeConcreto, ganchosAmbosIzq: lindero);
+            // ganchosAmbosIzq va SIEMPRE en false, también en el lindero. La regla es el TIPO
+            // DE COLUMNA y nada más: con columna de concreto las dos patas doblan hacia ADENTRO
+            // del núcleo -que es donde hay concreto que las reciba- y con columna de acero una
+            // adentro y otra afuera. La macro V1 del lindero las mandaba las dos a la izquierda
+            // por el paño del lindero, y eso dejaba una pata saliéndose del dado.
+            estribosAlTope: z.ColumnaDeConcreto, ganchosAmbosIzq: false);
 
         if (z.ColumnaDeConcreto)
         {
@@ -531,10 +536,11 @@ public sealed partial class ZapataDrawer
         }
 
         // ---------- Cotas de los dobleces del gancho de arranque ----------
-        var desfaseInf = DesfaseDeLosGanchos(z, lindero, dSupDado, dInfDado, dMaxDado, recDadoM);
+        var desfaseInf = DesfaseDeLosGanchos(z, dSupDado, dInfDado, dMaxDado, recDadoM);
 
         CotasDoblezGanchos(a.XDadoIzq, a.XDadoDer, yZapBot, recDadoM, subirGanchoDado,
-            dSupDado, dInfDado, CotaDoblezOffset, !z.ColumnaDeConcreto, desfaseInf, lindero, r);
+            dSupDado, dInfDado, CotaDoblezOffset, !z.ColumnaDeConcreto, desfaseInf,
+            ambosIzquierda: false, r);
 
         // ---------- Rótulos de las parrillas ----------
         RotuloParrillaInferior(xBase, yZapBot, anchoZapata, rec,
@@ -585,17 +591,10 @@ public sealed partial class ZapataDrawer
     /// caben. En el lindero las dos doblan al mismo lado, así que la regla es la otra.
     /// </remarks>
     private double DesfaseDeLosGanchos(
-        ZapataCad z, bool lindero, double dSup, double dInf, double dMax, double recDadoM)
+        ZapataCad z, double dSup, double dInf, double dMax, double recDadoM)
     {
         var w = z.AnchoDadoCm * TrazoZapata.EscalaElevacion;
         var interior = w - (2 * recDadoM);
-
-        if (lindero)
-        {
-            var hook = TrazoZapata.FactorGanchoAbajo * dInf;
-
-            return hook > interior - dMax - 0.005 ? (2 * dMax) + 0.005 : 0;
-        }
 
         if (!z.ColumnaDeConcreto)
         {
@@ -789,6 +788,9 @@ public sealed partial class ZapataDrawer
             bool bendIniSup;
             bool bendIniInf;
 
+            // LA REGLA, en una línea: con columna de CONCRETO las dos patas doblan hacia
+            // adentro del núcleo (gIniAfuera = false → la del paño izquierdo dobla a la derecha y
+            // la del derecho a la izquierda); con columna de ACERO, una adentro y otra afuera.
             if (ganchosAmbosIzq)
             {
                 bendIniSup = true;

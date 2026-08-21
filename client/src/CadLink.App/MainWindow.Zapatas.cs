@@ -333,9 +333,9 @@ public partial class MainWindow
             else
             {
                 fila.VarColSup = col.DiamEsqSup;
-                fila.VarColInf = col.DiamEsqInf;
-                fila.NIntColumna = col.NInter;
-                fila.VarIntColumna = col.DiamInter;
+                fila.VarColInf = col.DiamEsqInfEfectivo;
+                fila.NIntColumna = IntermediasDeLaSeccion(col);
+                fila.VarIntColumna = DiametroIntermediasDe(col);
             }
 
             fila.EstriboColumna = col.Estribo;
@@ -428,8 +428,8 @@ public partial class MainWindow
             // efectivo, que cae en el superior cuando la celda va vacía.
             fila.VarDadoSup = dado.DiamEsqSup;
             fila.VarDadoInf = dado.DiamEsqInfEfectivo;
-            fila.NIntDado = dado.NInter;
-            fila.VarIntDado = dado.DiamInter;
+            fila.NIntDado = IntermediasDeLaSeccion(dado);
+            fila.VarIntDado = DiametroIntermediasDe(dado);
         }
 
         if (!string.IsNullOrWhiteSpace(dado.Estribo))
@@ -441,6 +441,48 @@ public partial class MainWindow
         {
             fila.SepEstriboDado = dado.SeparacionCm;
         }
+    }
+
+    /// <summary>
+    /// Cuántas varillas <b>intermedias</b> se ven en el alzado de una sección.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son las «Intermedias» de la hoja —<c>NInter</c>—, la columna pensada para las varillas
+    /// laterales: las que en el alzado quedan entre las dos de las esquinas.
+    /// </para>
+    /// <para>
+    /// <b>Y si esa celda va en cero, se miran los lechos.</b> Mucha gente captura las intermedias
+    /// de una columna en «N int sup» y «N int inf» en lugar de en «Intermedias», y con
+    /// <c>NInter</c> a secas el dado y la columna salían sin intermedias y —peor— <b>sin
+    /// unión</b>: la unión de las varillas solo se dibuja cuando los dos elementos tienen
+    /// intermedias, así que el detalle de los dobleces desaparecía sin que nada lo dijera. Se toma
+    /// el mayor de los dos lechos, que es cuántas se ven de canto en el alzado.
+    /// </para>
+    /// </remarks>
+    private static int IntermediasDeLaSeccion(SeccionConcretoRow s) =>
+        s.NInter > 0 ? s.NInter : Math.Max(s.NIntSup, s.NIntInf);
+
+    /// <summary>El diámetro de esas intermedias, con la misma regla.</summary>
+    private static string DiametroIntermediasDe(SeccionConcretoRow s)
+    {
+        if (s.NInter > 0 && !string.IsNullOrWhiteSpace(s.DiamInter))
+        {
+            return s.DiamInter;
+        }
+
+        if (s.NIntSup >= s.NIntInf && !string.IsNullOrWhiteSpace(s.DiamIntSupEfectivo))
+        {
+            return s.DiamIntSupEfectivo;
+        }
+
+        if (!string.IsNullOrWhiteSpace(s.DiamIntInfEfectivo))
+        {
+            return s.DiamIntInfEfectivo;
+        }
+
+        // Sin diámetro propio, la intermedia se arma con la varilla de la esquina.
+        return s.DiamEsqSup;
     }
 
     private static bool EsColumnaDeConcreto(string? elemento)

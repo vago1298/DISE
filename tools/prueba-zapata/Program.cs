@@ -55,13 +55,41 @@ foreach (var sep in new[] { "6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", 
         c.Length > 2 && ordenados && c[0] >= 0 && c[^1] <= 1.20 + 1e-9);
 }
 
-// ---------- El acomodo de las dos macros sigue igual ----------
-var anchos = new[] { 1.5, 2.0 };
-Vale("central: la primera en x=0", Math.Abs(TrazoZapata.XBase("CENTRAL", anchos, 0)) < 1e-12);
-Vale("central: la segunda a 1 m de la primera",
-    Math.Abs(TrazoZapata.XBase("CENTRAL", anchos, 1) - (1.5 + 1.0)) < 1e-12);
-Vale("lindero: la primera en x=-3",
-    Math.Abs(TrazoZapata.XBase("LINDERO", anchos, 0) + 3.0) < 1e-12);
+// ---------- EL ACOMODO: cada zapata a 1 m a la IZQUIERDA de la anterior ----------
+// Vale igual para la central y para el lindero, y las dos vistas -corte y planta- usan esta
+// misma X, asi que quedan en la misma vertical.
+var anchos = new[] { 1.5, 2.0, 1.0 };
+
+foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
+{
+    Vale($"{tipo}: la primera en x = 0",
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 0)) < 1e-12);
+
+    // La segunda: su pano derecho a 1 m del pano izquierdo de la primera, o sea su pano
+    // izquierdo en -(1 + su ancho).
+    Vale($"{tipo}: la segunda a 1 m a la izquierda de la primera",
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 1) - (-(1.0 + 2.0))) < 1e-12);
+
+    Vale($"{tipo}: la tercera, otro metro mas a la izquierda",
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 2) - (-(1.0 + 2.0) - (1.0 + 1.0))) < 1e-12);
+
+    // Y NINGUNA se encima con la anterior: entre el pano derecho de una y el izquierdo de la
+    // otra hay un metro justo.
+    var ok = true;
+
+    for (var i = 1; i < anchos.Length; i++)
+    {
+        var izqAnterior = TrazoZapata.XBase(tipo, anchos, i - 1);
+        var derActual = TrazoZapata.XBase(tipo, anchos, i) + anchos[i];
+
+        if (Math.Abs((izqAnterior - derActual) - 1.0) > 1e-12)
+        {
+            ok = false;
+        }
+    }
+
+    Vale($"{tipo}: siempre un metro justo entre una y la siguiente", ok);
+}
 
 Console.WriteLine(fallos == 0
     ? "\nRESULTADO: todo bien"
