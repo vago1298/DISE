@@ -423,7 +423,10 @@ public partial class MainWindow
         }
         else
         {
-            fila.VarDadoSup = dado.DiamEsqSupEfectivo;
+            // El lecho SUPERIOR es la base de la que heredan los demas -no hay
+            // «DiamEsqSupEfectivo» porque no hereda de nadie- y el inferior sí tiene su
+            // efectivo, que cae en el superior cuando la celda va vacía.
+            fila.VarDadoSup = dado.DiamEsqSup;
             fila.VarDadoInf = dado.DiamEsqInfEfectivo;
             fila.NIntDado = dado.NInter;
             fila.VarIntDado = dado.DiamInter;

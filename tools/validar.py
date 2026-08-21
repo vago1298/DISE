@@ -4207,7 +4207,7 @@ def v19_circular_y_ui() -> None:
     # Lo que se pidio: en «Arranque 1» y «Arranque 2» van las varillas de las ESQUINAS del dado
     # que se selecciona, el numero de intermedias tambien, y los estribos se leen del dado.
     check("los arranques del dado se traen de su seccion",
-          "fila.VarDadoSup = dado.DiamEsqSupEfectivo;" in zap_cb
+          "fila.VarDadoSup = dado.DiamEsqSup;" in zap_cb
           and "fila.VarDadoInf = dado.DiamEsqInfEfectivo;" in zap_cb)
     check("y en el dado redondo, las dos caras llevan su varilla del circulo",
           "fila.VarDadoSup = d;" in zap_cb
@@ -4640,6 +4640,21 @@ def v19_circular_y_ui() -> None:
     check("y explica los dos errores que ya salieron, con su caso",
           "MainWindow.Zapatas.cs" in usings
           and "new ZapataDrawer(doc, DiametroCmDeVarilla)" in usings)
+    # Y el CS1061: un miembro que no existe pero se parece a uno que si. Es el error mas
+    # facil de cometer aqui, porque los nombres de los modelos son largos y parecidos:
+    # 'DiamEsqSupEfectivo' por 'DiamEsqSup' tumbo la compilacion del usuario.
+    check("el verificador caza un miembro que no existe pero se parece",
+          "CS1061" in usings
+          and "def revisar_miembros_que_no_existen(" in usings
+          and "_prefijo_comun(d, nombre) >= 8" in usings)
+    check("y no confunde un espacio de nombres con un miembro",
+          "ahi los puntos separan ESPACIOS DE NOMBRES" in usings)
+    check("ni un miembro de enum",
+          "es un miembro de enum, no un error" in usings)
+    check("el lecho superior no tiene «efectivo», porque no hereda de nadie",
+          "DiamEsqSupEfectivo" not in zap_cb.replace("«DiamEsqSupEfectivo»", "")
+          and "fila.VarDadoSup = dado.DiamEsqSup;" in zap_cb)
+
     check("el archivo de zapatas ya importa System.Windows.Input",
           "using System.Windows.Input;" in zap_cb)
     check("y el catalogo se pasa en una variable con su tipo, no como nombre suelto",

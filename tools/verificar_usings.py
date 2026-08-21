@@ -26,6 +26,13 @@ solo aparecen al compilar en Windows, donde estan las bibliotecas de WPF:
      elemento de la celda, con ElementStyle. Esto NO lo caza validar.py, que solo
      comprueba que el XAML sea XML bien formado, y en Windows tumba la compilacion.
 
+  4) CS1061 «X no contiene una definicion para Y»
+     Un miembro que NO EXISTE pero que se parece a uno que si. Paso con
+     'dado.DiamEsqSupEfectivo': lo que existe es 'DiamEsqSup' -el lecho superior es la
+     base y no hereda de nadie, asi que no tiene «efectivo»- y 'DiamEsqInfEfectivo'.
+     Este es el error mas facil de cometer del proyecto, porque los nombres de los
+     modelos son largos y parecidos entre si.
+
 POR QUE ESTO EXISTE
     La aplicacion es WPF y solo compila en Windows. Aqui se comprueba lo que se pueda
     SIN compilador: los usings que hacen falta y los grupos de metodos en llamadas
@@ -307,6 +314,126 @@ def revisar_columnas_de_datagrid(ruta, xaml):
             )
 
 
+# ----------------------------------------------------------------------
+# Miembros de la BCL, de WPF y de la interop de AutoCAD que se usan por su nombre y NO
+# estan declarados en el proyecto. No hace falta que este la lista entera: solo los que
+# se parecen a algo nuestro, que son los que darian un falso positivo.
+# ----------------------------------------------------------------------
+AJENOS = {
+    "BackgroundScaleFactor", "UseBackgroundColor", "BackgroundColor", "BackgroundFill",
+    "AttachmentPoint", "InsertionPoint", "ParagraphAlignment", "TextAlignmentPoint",
+    "HorizontalAlignment", "VerticalAlignment", "VerticalContentAlignment",
+    "EntityTransparency", "ConstantWidth", "PatternScale", "HatchStyle", "StyleName",
+    "TextInsideAlign", "TextOutsideAlign", "ForceLineInside", "TextMovement",
+    "TextRotation", "TextPosition", "TextOverride", "TextInside", "ActiveDimStyle",
+    "GetBoundingBox", "AppendOuterLoop", "AddLightWeightPolyline", "AddDimAligned",
+    "InsertBlock", "SetVariable", "GetVariable", "ZoomExtents", "ActiveDocument",
+    "ModelSpace", "TextStyles", "DimStyles", "Linetypes", "Layers", "Blocks",
+    "SelectedItem", "SelectedIndex", "SelectedItems", "SelectedDate", "SelectedValue",
+    "ItemsSource", "IsDropDownOpen", "IsExpanded", "IsChecked", "IsEnabled",
+    "InvokeMember", "GetProperties", "GetIndexParameters", "PropertyType",
+    "ToUpperInvariant", "ToLowerInvariant", "InvariantCulture", "CurrentCulture",
+    "OrdinalIgnoreCase", "StringComparison", "NumberStyles", "PropertyChanged",
+    "PropertyName", "ContainsKey", "TryGetValue", "FirstOrDefault", "ElementAt",
+    "SetDatabaseDefaults", "TrueColor", "ObjectName", "StartPoint", "EndPoint",
+    "AddMText", "AddText", "AddHatch", "AddCircle", "AddLine", "AddArc", "Evaluate",
+    "SetFont", "CopyFrom", "Regen", "Update", "Delete", "Move", "Rotate", "Explode",
+    "ScreenUpdating", "ShowDialog", "InitializeComponent", "Children", "Content",
+    "MessageBoxButton", "MessageBoxImage", "MessageBoxResult", "RoutedEventArgs",
+    "NewItems", "OldItems", "SelectionChanged", "SizeChanged", "ActualWidth",
+    "ActualHeight", "StrokeThickness", "StrokeDashArray", "SolidColorBrush",
+    "FontFamily", "FontWeight", "FontStyle", "TextAlignment", "TextWrapping",
+    "HasFeature", "SetLeft", "SetTop", "SetZIndex", "GetTempPath", "GetFileName",
+    "GetFileNameWithoutExtension", "GetDirectoryName", "GetFullPath", "WriteAllText",
+    "ReadAllText", "WriteAllBytes", "ReadAllBytes", "AppendAllText", "CreateDirectory",
+    "SerializeToUtf8Bytes", "Deserialize", "Serialize", "PropertyNamingPolicy",
+    "WriteIndented", "DefaultIgnoreCondition", "AllowTrailingCommas",
+    "PropertyChangedEventArgs", "PropertyChangedEventHandler", "CancelEventArgs",
+    "NotifyCollectionChangedEventArgs", "DataGridCellEditEndingEventArgs",
+}
+
+
+def _prefijo_comun(a, b):
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def revisar_miembros_que_no_existen(rutas):
+    """
+    Un miembro que no existe en el proyecto pero se parece MUCHO a uno que si.
+
+    Solo se avisa cuando el nombre comparte al menos 8 caracteres de principio con un
+    miembro declarado. Con menos, un miembro de la BCL o de la interop de AutoCAD que
+    no este en la lista de arriba daria un aviso falso, y un verificador que avisa de
+    lo que esta bien se deja de leer.
+    """
+    global comprobaciones
+
+    declarados = set()
+    textos = {}
+
+    for ruta in rutas:
+        with open(ruta, encoding="utf-8") as fh:
+            t = sin_comentarios_ni_textos(fh.read())
+
+        # Fuera los 'using' y el 'namespace': ahi los puntos separan ESPACIOS DE NOMBRES
+        # -System.Diagnostics, CadLink.Licensing- y no miembros de nada.
+        t = re.sub(r"^\s*(?:global\s+)?using[^\n;]*;", " ", t, flags=re.M)
+        t = re.sub(r"^\s*namespace[^\n;{]*[;{]", " ", t, flags=re.M)
+
+        textos[ruta] = t
+
+        for m in re.finditer(
+            r"\b(?:public|private|protected|internal)\s+"
+            r"(?:static\s+|readonly\s+|const\s+|virtual\s+|override\s+|sealed\s+|"
+            r"abstract\s+|partial\s+|new\s+|required\s+|async\s+)*"
+            r"[\w<>,?\[\]\.\(\) ]+?\s+(\w+)\s*(?:=>|=|;|\{|\()",
+            t,
+        ):
+            declarados.add(m.group(1))
+
+        # Nombres de las columnas del XAML y demas identificadores de la clase.
+        for m in re.finditer(r"\b_(\w+)\b", t):
+            declarados.add("_" + m.group(1))
+
+        # Los miembros de un ENUM no llevan modificador de acceso, asi que el patron de
+        # arriba no los ve: 'ClasePlanta.Diagonal' es un miembro de enum, no un error.
+        for m in re.finditer(r"\benum\s+\w+[^{]*\{([^}]*)\}", t, re.S):
+            for id_ in re.findall(r"[A-Za-z_]\w*", m.group(1)):
+                declarados.add(id_)
+
+    largos = [d for d in declarados if len(d) >= 8]
+
+    for ruta, t in textos.items():
+        for m in re.finditer(r"\.\s*([A-Z][A-Za-z0-9]{7,})\b(?!\s*\()", t):
+            nombre = m.group(1)
+
+            if nombre in declarados or nombre in AJENOS:
+                continue
+
+            comprobaciones += 1
+
+            parecidos = [
+                d for d in largos
+                if d != nombre and _prefijo_comun(d, nombre) >= 8
+            ]
+
+            if not parecidos:
+                continue
+
+            linea = t[: m.start()].count("\n") + 1
+
+            fallos.append(
+                f"{os.path.basename(ruta)}({linea}): '{nombre}' no esta declarado en el "
+                f"proyecto y se parece a {', '.join(sorted(parecidos)[:3])}. Es el "
+                "CS1061: revisa el nombre del miembro."
+            )
+
+
 def main():
     if not os.path.isdir(APP):
         print(f"No encuentro {APP}")
@@ -330,6 +457,17 @@ def main():
 
         revisar_usings(ruta, codigo)
         revisar_grupos_de_metodos(ruta, codigo)
+
+    # Los miembros se revisan contra TODO el cliente: los modelos y la biblioteca de
+    # AutoCAD estan en otras carpetas y son justo donde viven los nombres largos.
+    cliente = sorted(
+        os.path.join(dir_, f)
+        for dir_, _, fs in os.walk(os.path.join(RAIZ, "client", "src"))
+        for f in fs
+        if f.endswith(".cs") and "obj" not in dir_ and "bin" not in dir_
+    )
+
+    revisar_miembros_que_no_existen(cliente)
 
     xamls = sorted(
         os.path.join(dir_, f)
