@@ -621,6 +621,70 @@ public sealed class PerfilAceroRow : Row
         }
     }
 
+    /// <summary>
+    /// Una copia de esta fila, para el <b>historial de deshacer</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>El orden de las asignaciones importa y no es negociable.</b> Primero la familia y el
+    /// perfil, y las medidas <i>después</i>: escribir el perfil trae las medidas del catálogo
+    /// solo —es lo que evita teclear cuatro números por fila—, así que asignándolas antes las
+    /// pisaría el catálogo y una medida que el usuario había ajustado a mano se perdería al
+    /// deshacer, que es justo lo contrario de lo que un deshacer tiene que hacer.
+    /// </para>
+    /// <para>
+    /// Las propiedades geométricas no se copian: son del catálogo, no de la fila, y las trae el
+    /// propio perfil al asignarlo.
+    /// </para>
+    /// </remarks>
+    public PerfilAceroRow Copia()
+    {
+        var c = new PerfilAceroRow
+        {
+            Familia = _familia,
+            Perfil = _perfil
+        };
+
+        // Y ahora las medidas, que pueden estar ajustadas a mano.
+        c.Id = _id;
+        c.Elemento = _elemento;
+        c.Clasificacion = _clasificacion;
+        c.Acero = _acero;
+        c.Doble = _doble;
+        c.PeralteCm = _peralteCm;
+        c.AnchoCm = _anchoCm;
+        c.EspesorAlmaCm = _espesorAlmaCm;
+        c.EspesorPatinCm = _espesorPatinCm;
+        c.LabioCm = _labioCm;
+        c.RadioCm = _radioCm;
+        c.AnchoMenorCm = _anchoMenorCm;
+
+        return c;
+    }
+
+    /// <summary>Si esta fila guarda lo mismo que la otra.</summary>
+    /// <remarks>
+    /// Se compara lo que se <b>captura</b>, no lo calculado: dos filas con la misma familia,
+    /// perfil y medidas son la misma fila, y su forma, su rótulo y sus propiedades salen de
+    /// ahí. Sirve para que el historial no apile un paso donde no cambió nada.
+    /// </remarks>
+    public bool EsIgualA(PerfilAceroRow? o) =>
+        o is not null
+        && _familia == o._familia
+        && _perfil == o._perfil
+        && _id == o._id
+        && _elemento == o._elemento
+        && _clasificacion == o._clasificacion
+        && _acero == o._acero
+        && _doble == o._doble
+        && Math.Abs(_peralteCm - o._peralteCm) < 1e-9
+        && Math.Abs(_anchoCm - o._anchoCm) < 1e-9
+        && Math.Abs(_espesorAlmaCm - o._espesorAlmaCm) < 1e-9
+        && Math.Abs(_espesorPatinCm - o._espesorPatinCm) < 1e-9
+        && Math.Abs(_labioCm - o._labioCm) < 1e-9
+        && Math.Abs(_radioCm - o._radioCm) < 1e-9
+        && Math.Abs(_anchoMenorCm - o._anchoMenorCm) < 1e-9;
+
     /// <summary>El acero del catálogo que corresponde a esta fila, si está.</summary>
     public AceroCatalogo? AceroInfo => CatalogoAceros.Buscar(_acero);
 

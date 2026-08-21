@@ -260,9 +260,132 @@ public partial class MainWindow : Window
 
     private void DatosCambiaron()
     {
+        RegistrarEnHistorial();
         ActualizarContadores();
         ActualizarTotales();
         DibujarVistaPrevia();
+    }
+
+    // ======================================================================
+    // DESHACER (Ctrl+Z)
+    // ======================================================================
+
+    private readonly Historial _historial = new();
+
+    /// <summary>El trabajo tal como quedó después del último cambio.</summary>
+    /// <remarks>
+    /// Es la pieza que hace que esto funcione sin interceptar cada sitio que toca los datos: se
+    /// guarda cómo quedó todo, y cuando llega el cambio SIGUIENTE, lo que se apila es este
+    /// estado —el de antes—, no el nuevo. Sin él habría que acordarse de tomar la instantánea
+    /// antes de cada cambio, en cada uno de los caminos que los producen.
+    /// </remarks>
+    private Instantanea? _estadoActual;
+
+    /// <summary>Si se está deshaciendo, para no apilar el propio deshacer.</summary>
+    private bool _deshaciendo;
+
+    private void RegistrarEnHistorial()
+    {
+        // Al arrancar, mientras se enlazan las cuadrículas, no hay nada que deshacer todavía.
+        if (!_listo || _deshaciendo)
+        {
+            return;
+        }
+
+        if (_estadoActual is not null)
+        {
+            _historial.Apilar(_estadoActual);
+        }
+
+        _estadoActual = TomarInstantanea();
+        ActualizarBotonDeshacer();
+    }
+
+    private Instantanea TomarInstantanea() =>
+        new(ArmarProyecto(), _datos.SeccionesAcero);
+
+    private void ActualizarBotonDeshacer()
+    {
+        DeshacerButton.IsEnabled = _historial.Puede;
+
+        DeshacerButton.ToolTip = _historial.Puede
+            ? $"Deshace el último cambio (Ctrl+Z). Hay {_historial.Cuantos} paso(s) guardados."
+            : "No hay nada que deshacer.";
+    }
+
+    /// <summary>
+    /// Deshace el último cambio. También responde a <b>Ctrl+Z</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Si el cursor está dentro de una celda, gana la celda.</b> Ahí Ctrl+Z es el deshacer
+    /// del cuadro de texto —letra por letra, mientras se escribe— y es lo que cualquiera
+    /// espera: quitarle al usuario el deshacer de lo que está tecleando para deshacerle en su
+    /// lugar la fila anterior sería una sorpresa desagradable. El historial del trabajo entra
+    /// cuando la celda ya no tiene nada que deshacer.
+    /// </para>
+    /// </remarks>
+    private void OnDeshacer(object sender, RoutedEventArgs e)
+    {
+        if (Keyboard.FocusedElement is System.Windows.Controls.TextBox caja && caja.CanUndo)
+        {
+            caja.Undo();
+            return;
+        }
+
+        var paso = _historial.Deshacer();
+
+        if (paso is null)
+        {
+            StatusText.Text = "No hay nada que deshacer.";
+            return;
+        }
+
+        _deshaciendo = true;
+
+        try
+        {
+            AplicarProyecto(paso.Proyecto);
+
+            // Las secciones de acero van aparte porque el archivo .clk todavía no las guarda.
+            _datos.SeccionesAcero.Clear();
+
+            foreach (var p in paso.Acero)
+            {
+                _datos.SeccionesAcero.Add(p);
+            }
+        }
+        finally
+        {
+            _deshaciendo = false;
+        }
+
+        // El estado actual pasa a ser el que se acaba de poner, no el que había: si no, el
+        // siguiente cambio apilaría otra vez el estado deshecho y Ctrl+Z se quedaría dando
+        // vueltas entre dos estados sin avanzar hacia atrás.
+        _estadoActual = paso;
+
+        ActualizarBotonDeshacer();
+        ActualizarTotalesAcero();
+        DibujarVistaPreviaAcero();
+
+        StatusText.Text = _historial.Puede
+            ? $"Se deshizo el último cambio. Quedan {_historial.Cuantos} paso(s) atrás."
+            : "Se deshizo el último cambio. Ya no queda nada que deshacer.";
+    }
+
+    /// <summary>
+    /// Borra el historial: al abrir otro trabajo, al empezar de cero o al cargar el ejemplo.
+    /// </summary>
+    /// <remarks>
+    /// Deshacer después de abrir otro archivo devolvería al trabajo anterior sin avisar, y el
+    /// usuario creería que le deshicieron un cambio cuando lo que le cambió fue el archivo.
+    /// </remarks>
+    private void OlvidarHistorial()
+    {
+        _historial.Limpiar();
+        _estadoActual = _listo ? TomarInstantanea() : null;
+        ActualizarBotonDeshacer();
     }
 
     private void ActualizarContadores() =>
@@ -469,6 +592,11 @@ public partial class MainWindow : Window
     {
         _datos = DatosProyecto.CrearEjemplo();
         Enlazar();
+
+        // El historial se olvida: deshacer aquí devolvería al trabajo de antes del ejemplo,
+        // que no es «el último cambio» sino otro trabajo.
+        OlvidarHistorial();
+
         StatusText.Text = "Ejemplo cargado.";
     }
 
@@ -484,6 +612,7 @@ public partial class MainWindow : Window
 
         _datos = new DatosProyecto();
         Enlazar();
+        OlvidarHistorial();
         StatusText.Text = "Datos borrados.";
     }
 
@@ -555,6 +684,7 @@ public partial class MainWindow : Window
         ResumenPlanos();
         PlantasResumenText.Text = string.Empty;
         RedibujarVistas();
+        OlvidarHistorial();
         StatusText.Text = "Trabajo nuevo.";
     }
 
@@ -1021,6 +1151,9 @@ public partial class MainWindow : Window
         try
         {
             AplicarProyecto(ArchivoProyecto.Leer(dialogo.FileName));
+
+            // Se abrió OTRO trabajo: lo de antes ya no es «el último cambio».
+            OlvidarHistorial();
 
             _archivoActual = dialogo.FileName;
             ArchivoText.Text = "Abierto: " + Path.GetFileName(dialogo.FileName);

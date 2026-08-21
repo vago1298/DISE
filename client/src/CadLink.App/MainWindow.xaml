@@ -12,6 +12,12 @@
          pero no existian: escribir Ctrl+G no hacia nada. -->
     <Window.InputBindings>
         <KeyBinding Key="N" Modifiers="Control" Command="ApplicationCommands.New" />
+
+        <!-- DESHACER. El manejador mira primero si el cursor esta dentro de una
+             celda: ahi Ctrl+Z es el deshacer del cuadro de texto, letra por letra,
+             y ese gana. El historial del trabajo entra cuando la celda ya no tiene
+             nada que deshacer. Ver OnDeshacer. -->
+        <KeyBinding Key="Z" Modifiers="Control" Command="ApplicationCommands.Undo" />
         <KeyBinding Key="G" Modifiers="Control" Command="ApplicationCommands.Save" />
         <KeyBinding Key="S" Modifiers="Control" Command="ApplicationCommands.Save" />
         <KeyBinding Key="G" Modifiers="Control+Shift" Command="ApplicationCommands.SaveAs" />
@@ -25,6 +31,7 @@
         <CommandBinding Command="ApplicationCommands.Save"   Executed="OnGuardarTrabajo" />
         <CommandBinding Command="ApplicationCommands.SaveAs" Executed="OnGuardarComo" />
         <CommandBinding Command="ApplicationCommands.Open"   Executed="OnAbrirTrabajo" />
+        <CommandBinding Command="ApplicationCommands.Undo"   Executed="OnDeshacer" />
     </Window.CommandBindings>
 
     <Grid>
@@ -67,6 +74,9 @@
                           InputGestureText="Ctrl+G" />
                 <MenuItem Header="Guardar _como..." Command="ApplicationCommands.SaveAs"
                           InputGestureText="Ctrl+Mayus+G" />
+                <Separator />
+                <MenuItem Header="_Deshacer" Command="ApplicationCommands.Undo"
+                          InputGestureText="Ctrl+Z" />
                 <Separator />
                 <MenuItem Header="Cargar _ejemplo" Click="OnLoadSample" />
                 <MenuItem Header="_Limpiar todo" Click="OnClearAll" />
@@ -116,6 +126,16 @@
                     <Button Content="Guardar como..." Style="{StaticResource ToolbarButtonStyle}"
                             Command="ApplicationCommands.SaveAs"
                             ToolTip="Guarda con otro nombre (Ctrl+Mayus+G)." />
+
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <!-- DESHACER. Arranca apagado porque al abrir el programa no hay
+                         nada que deshacer; lo enciende ActualizarBotonDeshacer en
+                         cuanto hay un paso guardado, y su globo dice cuantos hay. -->
+                    <Button x:Name="DeshacerButton" Content="Deshacer"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Click="OnDeshacer" IsEnabled="False"
+                            ToolTip="No hay nada que deshacer." />
 
                     <Border Style="{StaticResource ToolbarSeparatorStyle}" />
 

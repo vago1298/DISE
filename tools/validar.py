@@ -3624,6 +3624,82 @@ def v19_circular_y_ui() -> None:
               "+ (Pi / 180)" not in c3)
 
     # ------------------------------------------------------------------
+    # DESHACER (Ctrl+Z)
+    # ------------------------------------------------------------------
+    # Lo que importa de esto no es que exista el boton: es que NO haya manera de que un
+    # cambio se quede fuera del historial. Por eso se guarda una instantanea del trabajo
+    # entero en lugar de una lista de «que cambio»: con la lista habria que interceptar
+    # cada sitio que toca los datos -las celdas de cinco cuadriculas, agregar y quitar
+    # filas, el catalogo que trae las medidas solo- y el camino que alguien agregue mañana
+    # y se olvide de registrar deja un cambio que no se puede deshacer.
+    hist = leer(ruta("client/src/CadLink.App/Models/Historial.cs"))
+
+    check("hay historial de deshacer",
+          "public sealed class Historial" in hist
+          and "public sealed class Instantanea" in hist)
+    check("la instantanea guarda el trabajo en el formato del archivo",
+          "JsonSerializer.Serialize(proyecto, Opciones)" in hist
+          and "ProyectoGuardado" in hist)
+    check("y se serializa al TOMARLA, no al deshacer",
+          "queda una copia inmutable" in hist)
+    check("las secciones de acero se clonan aparte, que el .clk no las guarda",
+          "acero.Select(p => p.Copia()).ToList()" in hist
+          and "todavía no las guarda" in hist)
+    check("el historial tiene tope",
+          "public const int MaximoPasos = 30;" in hist
+          and "_pasos.RemoveFirst();" in hist)
+    check("y no apila un paso que no cambia nada",
+          "paso.EsIgualA(_pasos.Last?.Value)" in hist)
+    check("se puede olvidar el historial, y se dice por que",
+          "public void Limpiar()" in hist
+          and "sin avisar" in hist)
+
+    perfil_row = leer(ruta("client/src/CadLink.App/Models/PerfilAceroRow.cs"))
+
+    # La fila de acero sabe copiarse, y el ORDEN de las asignaciones importa: primero el
+    # perfil -que trae las medidas del catalogo solo- y las medidas despues, o una medida
+    # ajustada a mano se perderia al deshacer.
+    check("la fila de acero sabe copiarse y compararse",
+          "public PerfilAceroRow Copia()" in perfil_row
+          and "public bool EsIgualA(PerfilAceroRow? o)" in perfil_row)
+    check("y copia el perfil ANTES de las medidas",
+          perfil_row.index("Perfil = _perfil") < perfil_row.index("c.PeralteCm = _peralteCm;"))
+    check("y se dice por que ese orden no es negociable",
+          "El orden de las asignaciones importa y no es negociable" in perfil_row)
+
+    # El enganche: un solo sitio registra, y registra el estado de ANTES.
+    check("el historial se registra donde se avisa de un cambio",
+          "RegistrarEnHistorial();" in codigo
+          and "private void RegistrarEnHistorial()" in codigo)
+    check("se apila el estado de ANTES, no el nuevo",
+          "_historial.Apilar(_estadoActual);" in codigo
+          and "_estadoActual = TomarInstantanea();" in codigo)
+    check("el propio deshacer no se apila",
+          "if (!_listo || _deshaciendo)" in codigo)
+    check("y despues de deshacer, el estado actual es el que se acaba de poner",
+          "_estadoActual = paso;" in codigo)
+
+    # Ctrl+Z DENTRO de una celda es el deshacer del cuadro de texto, y ese gana.
+    check("Ctrl+Z esta atado a la ventana",
+          '<KeyBinding Key="Z" Modifiers="Control" Command="ApplicationCommands.Undo" />'
+          in xaml
+          and 'Command="ApplicationCommands.Undo"   Executed="OnDeshacer"' in xaml)
+    check("y hay boton en la barra y renglon en el menu",
+          'x:Name="DeshacerButton"' in xaml
+          and 'Header="_Deshacer" Command="ApplicationCommands.Undo"' in xaml)
+    check("dentro de una celda gana el deshacer del cuadro de texto",
+          "Keyboard.FocusedElement is System.Windows.Controls.TextBox caja && caja.CanUndo"
+          in codigo
+          and "caja.Undo();" in codigo)
+
+    # Abrir otro trabajo, empezar de cero o cargar el ejemplo BORRAN el historial: deshacer
+    # ahi devolveria a otro trabajo, no al cambio anterior.
+    check("abrir, nuevo, limpiar y el ejemplo olvidan el historial",
+          codigo.count("OlvidarHistorial();") == 4
+          and "private void OlvidarHistorial()" in codigo,
+          f"{codigo.count('OlvidarHistorial();')} llamadas, se esperan 4")
+
+    # ------------------------------------------------------------------
     # Las notas del ultimo dibujo, FUERA de la vista previa
     # ------------------------------------------------------------------
     # Estaban en una capa semitransparente pegada al borde de abajo de la vista previa, y
