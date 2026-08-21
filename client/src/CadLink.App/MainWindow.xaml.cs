@@ -503,6 +503,12 @@ public partial class MainWindow : Window
         // puerta abierta al modulo que se cobra.
         PlantaCadButton.IsEnabled = puedeDibujar;
 
+        // Las zapatas, igual. El boton nacia apagado en el XAML porque el dibujante no
+        // existia; ahora existe, asi que quien decide si esta encendido es la LICENCIA y no
+        // el XAML. Sin esta linea, el unico boton de dibujo de la aplicacion que se puede
+        // pulsar en la version de prueba seria este.
+        DibujarZapatasButton.IsEnabled = puedeDibujar;
+
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
             : "La generación de dibujos no está incluida en la versión de prueba.");

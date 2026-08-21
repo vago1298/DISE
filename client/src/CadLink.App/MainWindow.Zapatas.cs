@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Collections.ObjectModel;
@@ -470,7 +471,14 @@ public partial class MainWindow
             dynamic app = AcadConnection.Connect(launchIfMissing: false);
             dynamic doc = AcadConnection.GetOrCreateDocument(app);
 
-            var dibujante = new ZapataDrawer(doc, DiametroCmDeVarilla);
+            // El catalogo va en una VARIABLE con su tipo, no como nombre de metodo suelto.
+            // 'doc' es dynamic, asi que esta construccion se resuelve en tiempo de ejecucion, y
+            // a una llamada dinamica no se le puede pasar un grupo de metodos: el compilador la
+            // rechaza con CS1976 porque no sabria cual de las sobrecargas convertir ni a que
+            // delegado. Con la variable ya es un Func<string?, double> y no hay nada que adivinar.
+            Func<string?, double> catalogoDeVarillas = DiametroCmDeVarilla;
+
+            var dibujante = new ZapataDrawer(doc, catalogoDeVarillas);
 
             var zapatas = _datos.ZapatasAisladas.Select(f => f.AFormatoCad()).ToList();
 

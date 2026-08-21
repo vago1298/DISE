@@ -309,7 +309,7 @@ public sealed class ZapataDrawer
         EstribosDelDado(z, a, r);
 
         // ---------- Cotas y rótulos ----------
-        CotasDelCorte(z, a, r);
+        CotasDelCorte(a, r);
         RotuloDelCorte(z, a);
     }
 
@@ -329,13 +329,15 @@ public sealed class ZapataDrawer
             return;
         }
 
-        var paños = new (double X1, double X2)[]
+        // Sin la eñe en el nombre: el codigo se compila en Windows con otra pagina de
+        // codigos y un identificador acentuado es un riesgo que no aporta nada.
+        var panos = new (double X1, double X2)[]
         {
             (a.XBase, a.XDadoIzq),
             (a.XDadoDer, a.XDer)
         };
 
-        foreach (var (x1, x2) in paños)
+        foreach (var (x1, x2) in panos)
         {
             if (x2 <= x1 + 1e-6)
             {
@@ -572,7 +574,7 @@ public sealed class ZapataDrawer
     /// fuera con una flecha, y en un plano de zapata eso queda encima de la propia plantilla.
     /// </para>
     /// </remarks>
-    private void CotasDelCorte(ZapataCad z, TrazoZapata.Acomodo a, Resumen r)
+    private void CotasDelCorte(TrazoZapata.Acomodo a, Resumen r)
     {
         var yCad = a.YZapBot - (0.14 * _f);
         var yTot = a.YZapBot - (0.24 * _f);
@@ -612,8 +614,6 @@ public sealed class ZapataDrawer
 
         r.Cotas += Cota(a.XBase, a.YPlantillaBot, a.XBase, a.YTerreno,
             x2, (a.YPlantillaBot + a.YTerreno) / 2, vertical: true, dentro: false);
-
-        _ = z;
     }
 
     /// <summary>El rótulo del corte: el nombre de la zapata y su renglón de datos.</summary>
@@ -912,9 +912,11 @@ public sealed class ZapataDrawer
         Dimvar("DIMDEC", 2);
         Dimvar("DIMZIN", 0);
 
-        // Marcas abiertas en lugar de flechas rellenas, como la macro.
-        Dimvar("DIMBLK", "_OPEN90");
+        // Marcas abiertas en lugar de flechas rellenas, como la macro. DIMSAH va PRIMERO: dice
+        // que las dos puntas usan el mismo bloque, y con DIMSAH en 1 la asignacion de DIMBLK se
+        // rechaza. Al reves salia un aviso por cada dibujo para algo que no fallaba de verdad.
         Dimvar("DIMSAH", 0);
+        Dimvar("DIMBLK", "_OPEN90");
 
         try
         {
@@ -1109,7 +1111,11 @@ public sealed class ZapataDrawer
         {
             return AcadConnection.Retry<object?>(() =>
             {
-                dynamic h = _ms.AddHatch(0, patron, true);
+                // NO asociativo -el 'false'-, y es importante: el relleno del terreno borra su
+                // frontera en cuanto esta rellenado, porque esa frontera coincide con lineas que
+                // ya estan dibujadas. Un hatch asociativo se iria con ella. Es tambien lo que
+                // hacen los dibujantes de secciones y de alzados.
+                dynamic h = _ms.AddHatch(0, patron, false);
                 h.HatchStyle = 0;
 
                 var ok = AcadArreglos.Llamar(

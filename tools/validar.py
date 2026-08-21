@@ -3817,6 +3817,8 @@ def v19_circular_y_ui() -> None:
     check("y ya no dice que el dibujante es el paso siguiente",
           "el dibujante de zapatas es el paso siguiente" not in xaml
           and "El dibujante de zapatas todavía no está" not in zap_cb)
+    check("y quien lo apaga ahora es la licencia, no el XAML",
+          "DibujarZapatasButton.IsEnabled = puedeDibujar;" in codigo)
     check("y su globo dice lo que hace de verdad",
           m_boton is not None
           and "su corte y su planta" in m_boton.group(0)
@@ -3944,7 +3946,7 @@ def v19_circular_y_ui() -> None:
           and "RevisarZapatas(out var problemas, out var acomodo);" in zap_cb)
     check("no arranca AutoCAD, se engancha al que ya este abierto",
           "AcadConnection.Connect(launchIfMissing: false)" in zap_cb
-          and "new ZapataDrawer(doc, DiametroCmDeVarilla)" in zap_cb)
+          and "new ZapataDrawer(doc, catalogoDeVarillas)" in zap_cb)
     check("y el catalogo de varillas se PASA, no se copia",
           "private static double DiametroCmDeVarilla(string? clave)" in zap_cb
           and "private readonly Func<string?, double> _diametroCm;" in zap_drw
@@ -4254,6 +4256,31 @@ def v19_circular_y_ui() -> None:
           and "lindero: la primera en x=-3" in prueba_zap)
     check("y devuelve 1 si algo falla, igual que la del diamante",
           "return fallos == 0 ? 0 : 1;" in prueba_zap)
+
+    # ------------------------------------------------------------------
+    # LOS DOS ERRORES DE COMPILACION QUE YA HAN SALIDO DOS VECES
+    # ------------------------------------------------------------------
+    # La aplicacion es WPF y solo compila en Windows, asi que aqui no hay compilador que
+    # cace un using que falta. Se comprueba sin compilador, con una tabla de tipos.
+    usings = leer(ruta("tools/verificar_usings.py"))
+
+    check("hay un verificador de usings y de llamadas dinamicas",
+          "CS0103" in usings and "CS1976" in usings
+          and '"System.Windows.Input": [' in usings
+          and '"Cursors"' in usings)
+    check("y explica los dos errores que ya salieron, con su caso",
+          "MainWindow.Zapatas.cs" in usings
+          and "new ZapataDrawer(doc, DiametroCmDeVarilla)" in usings)
+    check("el archivo de zapatas ya importa System.Windows.Input",
+          "using System.Windows.Input;" in zap_cb)
+    check("y el catalogo se pasa en una variable con su tipo, no como nombre suelto",
+          "Func<string?, double> catalogoDeVarillas = DiametroCmDeVarilla;" in zap_cb
+          and "new ZapataDrawer(doc, catalogoDeVarillas)" in zap_cb)
+
+    # El hatch NO puede ser asociativo: el relleno del terreno borra su frontera.
+    check("el hatch de la zapata no es asociativo, que borraria el relleno",
+          "_ms.AddHatch(0, patron, false)" in zap_drw
+          and "borra su" in zap_drw)
 
     # Y el muestreo, que fue el que fallo: el radio con SIGNO en lugar de un apaño.
     check("el muestreo saca el centro del arco con el radio con signo",
@@ -5677,6 +5704,16 @@ def _nombres_declarados(cuerpo: str, firma: str) -> dict[str, int]:
         linea = cuerpo[linea_ini:cuerpo.find("\n", linea_ini) if "\n" in cuerpo[linea_ini:] else len(cuerpo)]
         for d in re.finditer(r"(\w+)\s*=(?!=)", linea):
             anota(d.group(1), linea_ini + d.start(1))
+
+    # Declaraciones cuyo TIPO es generico y lleva espacios dentro de los angulos:
+    #     Func<string?, double> catalogo = MiMetodo;
+    #     Dictionary<string, List<int>> tabla = new();
+    # El patron de arriba no las pilla, porque su tipo no admite espacios, y por eso
+    # 'catalogoDeVarillas' salia como no declarado: era un falso positivo del analizador,
+    # no un error del codigo.
+    for m in re.finditer(r"^[^\S\n]*[\w\.]+\s*<[^;=\n]*?>\s+(\w+)\s*=(?!=)",
+                         cuerpo, re.M):
+        anota(m.group(1), m.start(1))
 
     # Deconstruccion de tuplas de cualquier tamaño: var (x, y, z, r)
     for m in re.finditer(r"\bvar\s*\(([^()]*)\)", cuerpo):
