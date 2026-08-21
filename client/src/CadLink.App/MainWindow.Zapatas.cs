@@ -387,6 +387,10 @@ public partial class MainWindow
             return;
         }
 
+        // La FORMA del dado: en la planta decide si las mallas se cortan en un cuadrado o en la
+        // circunferencia. Es dato de la sección, no de la zapata.
+        fila.DadoCircular = dado.EsCircular;
+
         if (dado.BaseCm > 0)
         {
             fila.AnchoDadoCm = dado.BaseCm;
@@ -694,7 +698,12 @@ public partial class MainWindow
             // delegado. Con la variable ya es un Func<string?, double> y no hay nada que adivinar.
             Func<string?, double> catalogoDeVarillas = DiametroCmDeVarilla;
 
-            var dibujante = new ZapataDrawer(doc, catalogoDeVarillas);
+            var dibujante = new ZapataDrawer(doc, catalogoDeVarillas)
+            {
+                // El tipo de sección es del JUEGO, no de cada zapata: sale de los mismos botones
+                // de arriba que mandan en las secciones de concreto.
+                SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena
+            };
 
             var zapatas = _datos.ZapatasAisladas.Select(f => f.AFormatoCad()).ToList();
 

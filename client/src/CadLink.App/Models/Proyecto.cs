@@ -2,6 +2,11 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+// Reflection y Globalization: la fila generica se lee por sus propiedades y sus numeros van
+// en formato invariante, para que un trabajo guardado con coma decimal se abra donde hay punto.
+using System.Globalization;
+using System.Reflection;
+
 namespace CadLink.App.Models;
 
 /// <summary>
@@ -52,6 +57,17 @@ public sealed class ProyectoGuardado
     // ---- Contenido ----
     public List<PlanoGuardado> Planos { get; set; } = new();
     public List<SeccionGuardada> Secciones { get; set; } = new();
+
+    /// <summary>Las filas de <b>Secciones Acero</b>.</summary>
+    /// <remarks>
+    /// Se agregan al final y vacías por omisión, igual que se hizo con la sección circular: un
+    /// <c>.clk</c> guardado antes de que existieran estas hojas se sigue abriendo, y sale sin
+    /// ellas, que es lo que tenía.
+    /// </remarks>
+    public List<FilaGuardada> Acero { get; set; } = new();
+
+    /// <summary>Las filas de <b>Zapatas Aisladas</b>.</summary>
+    public List<FilaGuardada> Zapatas { get; set; } = new();
 }
 
 public sealed class PlanoGuardado
@@ -186,4 +202,132 @@ public static class ArchivoProyecto
 
         return p;
     }
+}
+
+
+/// <summary>
+/// Un renglón de una hoja <b>cualquiera</b>, guardado como pares de nombre y valor.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Por qué esto existe.</b> Las secciones de concreto se guardan con su propia clase, campo
+/// por campo, y eso funcionó mientras hubo una sola hoja. Cuando llegaron la de <b>acero</b> y la
+/// de <b>zapatas aisladas</b>, nadie volvió a tocar el archivo del proyecto: guardar el trabajo
+/// escribía solo el concreto y las otras dos hojas <b>se perdían</b> —y con ellas se perdía el
+/// trabajo de verdad, porque una zapata se captura una vez—. El defecto no era una línea mal
+/// puesta: era que el formato obligaba a acordarse de una lista por cada columna nueva.
+/// </para>
+/// <para>
+/// Aquí se guarda lo que el renglón <b>tiene escrito</b>, leyendo sus propiedades: así una columna
+/// nueva se guarda sola el día que se agregue, que es justo lo que no pasó. Solo entran las
+/// propiedades <b>que se pueden escribir</b> y de tipo simple: las calculadas —«Falta», «Resumen»,
+/// los totales— no se guardan, porque se recalculan al abrir y guardarlas sería duplicar la verdad.
+/// </para>
+/// <para>
+/// Los números van en formato <b>invariante</b>, con punto decimal. Un archivo guardado en una
+/// máquina con coma decimal se abre igual en otra con punto, que es como se pasan los trabajos
+/// entre dos computadoras.
+/// </para>
+/// </remarks>
+public sealed class FilaGuardada
+{
+    public Dictionary<string, string> Valores { get; set; } = new();
+}
+
+/// <summary>Lee y escribe una fila cualquiera como pares de nombre y valor.</summary>
+public static class FilaSerializable
+{
+    /// <summary>Recoge lo que la fila tiene escrito.</summary>
+    public static FilaGuardada Leer(object fila)
+    {
+        var salida = new FilaGuardada();
+
+        foreach (var p in Propiedades(fila.GetType()))
+        {
+            var v = p.GetValue(fila);
+
+            if (v is null)
+            {
+                continue;
+            }
+
+            salida.Valores[p.Name] = v switch
+            {
+                double d => d.ToString("R", CultureInfo.InvariantCulture),
+                int i => i.ToString(CultureInfo.InvariantCulture),
+                bool b => b ? "true" : "false",
+                _ => v.ToString() ?? string.Empty
+            };
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Vuelca los valores guardados en una fila nueva.
+    /// </summary>
+    /// <remarks>
+    /// Lo que no se reconozca <b>se ignora en silencio</b>, y es a propósito: un archivo guardado
+    /// con una versión que tenía una columna que ya no existe se sigue abriendo, y una columna
+    /// nueva que el archivo no traiga se queda con su valor por omisión. Es lo que permite abrir
+    /// trabajos viejos sin convertirlos.
+    /// </remarks>
+    public static void Aplicar(object fila, FilaGuardada guardada)
+    {
+        var mapa = Propiedades(fila.GetType())
+            .ToDictionary(p => p.Name, p => p, StringComparer.Ordinal);
+
+        foreach (var (nombre, texto) in guardada.Valores)
+        {
+            if (!mapa.TryGetValue(nombre, out var p))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (p.PropertyType == typeof(string))
+                {
+                    p.SetValue(fila, texto);
+                }
+                else if (p.PropertyType == typeof(double))
+                {
+                    if (double.TryParse(texto, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out var d))
+                    {
+                        p.SetValue(fila, d);
+                    }
+                }
+                else if (p.PropertyType == typeof(int))
+                {
+                    if (int.TryParse(texto, NumberStyles.Integer,
+                            CultureInfo.InvariantCulture, out var i))
+                    {
+                        p.SetValue(fila, i);
+                    }
+                }
+                else if (p.PropertyType == typeof(bool))
+                {
+                    if (bool.TryParse(texto, out var b))
+                    {
+                        p.SetValue(fila, b);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Un valor que la fila rechaza no puede tumbar la apertura del trabajo.
+            }
+        }
+    }
+
+    /// <summary>Las propiedades que se guardan: de instancia, escribibles y de tipo simple.</summary>
+    private static IEnumerable<PropertyInfo> Propiedades(Type tipo) =>
+        tipo.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)
+            .Where(p => p.PropertyType == typeof(string)
+                        || p.PropertyType == typeof(double)
+                        || p.PropertyType == typeof(int)
+                        || p.PropertyType == typeof(bool))
+            .OrderBy(p => p.Name, StringComparer.Ordinal);
 }

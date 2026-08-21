@@ -121,16 +121,15 @@ public sealed class ZapataCad
     public string IdDado { get; init; } = string.Empty;
 
     /// <summary>
-    /// La sección va <b>rellena</b>: es la celda <c>B3</c>/<c>S3</c> de la macro.
+    /// El dado que va encima es <b>circular</b>.
     /// </summary>
     /// <remarks>
-    /// Con <c>true</c> —el modo 1— la sección se rellena entera: fondo SOLID color 9, el AR-CONC a
-    /// 0.0003 en color 251, las varillas rellenas con el color de su capa y su contorno en negro,
-    /// y los estribos en color 152. Con <c>false</c> —el modo 2— se deja como siempre, con el
-    /// AR-CONC a 0.0005 y todo por capa. No es un adorno: el plano relleno es el que se entrega y
-    /// el hueco es el que se sigue trabajando.
+    /// Cambia la planta: el hueco del dado deja de ser un cuadrado y las varillas de las dos
+    /// mallas llegan <b>hasta el contorno circular</b>, cada una a su corte. Con el hueco
+    /// cuadrado, entre la circunferencia y el cuadrado quedaban cuatro esquinas de varilla que en
+    /// la obra no se cortan, y el plano decía que sí.
     /// </remarks>
-    public bool Relleno { get; init; }
+    public bool DadoCircular { get; init; }
 
     /// <summary>ID de la columna que desplanta, para su rótulo. <c>H5</c> / <c>Y5</c>.</summary>
     public string IdColumna { get; init; } = string.Empty;

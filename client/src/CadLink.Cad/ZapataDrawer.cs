@@ -176,6 +176,25 @@ public sealed partial class ZapataDrawer
         _ = AcadInterop.TipoEntidad;
     }
 
+    /// <summary>
+    /// Dibujar <b>todas</b> las secciones rellenas: es el «tipo 2» de la hoja.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la celda <c>B3</c>/<c>S3</c> de la macro, pero <b>una sola vez para el juego entero</b> y
+    /// no por zapata. Va aquí y no en <see cref="ZapataCad"/> a propósito: el tipo de sección es
+    /// una decisión de <b>presentación del plano</b> —o se entrega relleno o se sigue
+    /// trabajando— y tenerla en cada renglón invitaba a un plano con la mitad de las zapatas
+    /// rellenas y la otra mitad no, que no es un plano, son dos.
+    /// </para>
+    /// <para>
+    /// Con <c>true</c>: fondo SOLID color 9, AR-CONC a 0.0003 en color 251, las varillas rellenas
+    /// con el color de su capa y su contorno en negro, y los estribos en 152. Con <c>false</c>: el
+    /// AR-CONC a 0.0005 y todo por capa.
+    /// </para>
+    /// </remarks>
+    public bool SeccionRellena { get; set; }
+
     /// <summary>Meter la elevación en un bloque con el nombre de la zapata.</summary>
     /// <remarks><c>ZAPATA_COMO_BLOQUE</c>. En <c>false</c> se dibuja directo en el modelo.</remarks>
     public bool ZapataComoBloque { get; set; } = true;
@@ -287,7 +306,7 @@ public sealed partial class ZapataDrawer
     /// </remarks>
     private void Dibujar(ZapataCad z, double xBase, Resumen r)
     {
-        _relleno = z.Relleno;
+        _relleno = SeccionRellena;
 
         if (_relleno)
         {

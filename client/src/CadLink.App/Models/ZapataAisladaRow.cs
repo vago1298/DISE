@@ -61,7 +61,7 @@ public sealed class ZapataAisladaRow : Row
 
     private string _fc = "250";
 
-    private string _relleno = "NO";
+    private bool _dadoCircular;
 
     // Armado de la COLUMNA. No se captura: se trae de la seccion de la columna elegida, que es
     // donde ya estaba. La macro lo lee de sus propias celdas (J5, J6, K5, L5, O4, O5).
@@ -312,19 +312,14 @@ public sealed class ZapataAisladaRow : Row
     public string Fc { get => _fc; set => Set(ref _fc, value); }
 
     /// <summary>
-    /// La sección se dibuja <b>rellena</b>. Es la celda <c>B3</c> / <c>S3</c> de la macro.
+    /// El dado elegido es <b>circular</b>. No se captura: sale de su sección.
     /// </summary>
     /// <remarks>
-    /// <c>SI</c> es el modo 1 de la macro —fondo sólido, rayado fino, varillas rellenas con el
-    /// color de su capa y estribos en 152— y <c>NO</c> es el modo 2, el de siempre. Se captura por
-    /// zapata porque así lo hace la macro: en un mismo plano hay secciones que se entregan
-    /// rellenas y otras sobre las que se sigue trabajando.
+    /// En la planta cambia el recorte de las mallas: con el dado redondo las varillas llegan hasta
+    /// la circunferencia y no hasta un cuadrado. Se llena al elegir el dado, igual que su ancho y
+    /// su recubrimiento.
     /// </remarks>
-    public string Relleno { get => _relleno; set { Set(ref _relleno, value); Raise(nameof(EsRelleno)); } }
-
-    /// <summary>¿La sección va rellena?</summary>
-    public bool EsRelleno =>
-        (_relleno ?? string.Empty).Trim().StartsWith("SI", StringComparison.OrdinalIgnoreCase);
+    public bool DadoCircular { get => _dadoCircular; set => Set(ref _dadoCircular, value); }
 
     /// <summary>Varilla de una cara de la columna, traída de su sección.</summary>
     /// <remarks>
@@ -443,8 +438,9 @@ public sealed class ZapataAisladaRow : Row
         IdDado = SoloElId(IdDado),
         Fc = Fc,
 
-        // El modo de relleno y el armado de la COLUMNA, que viene de su seccion.
-        Relleno = EsRelleno,
+        // La forma del dado y el armado de la COLUMNA, que vienen de sus secciones. El modo de
+        // relleno ya NO viaja por fila: es del juego entero y lo pone el dibujante.
+        DadoCircular = DadoCircular,
         IdColumna = SoloElId(IdColumna),
         VarColSup = VarColSup,
         VarColInf = VarColInf,

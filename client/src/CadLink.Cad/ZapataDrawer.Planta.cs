@@ -35,6 +35,15 @@ public sealed partial class ZapataDrawer
     private const double PlantaRotSupFx = 0.33;
     private const double PlantaRotSupFy = 0.72;
 
+    // ------------------------------------------------------------------
+    // El hueco del dado en la planta. Cuadrado o CIRCULAR: con el dado redondo, las varillas
+    // de la malla tienen que llegar hasta la circunferencia, cada una a su corte.
+    // ------------------------------------------------------------------
+    private bool _huecoCircular;
+    private double _hcx;
+    private double _hcy;
+    private double _hr;
+
     /// <summary>
     /// Port de <c>DibujarPlantaZapataAislada</c> / <c>DibujarPlantaZapataLindero</c>.
     /// </summary>
@@ -85,6 +94,14 @@ public sealed partial class ZapataDrawer
 
         var (dx1, dy1, dx2, dy2) = TrazoZapata.HuecoDelDado(z, xIzq, yBot);
 
+        // El hueco de recorte: círculo si el dado es redondo, rectángulo si no. El margen es el
+        // mismo PLANTA_HUECO_MARGEN de la macro: el recorte va un pelo por fuera del dado para
+        // que la varilla no acabe pegada al contorno.
+        _huecoCircular = z.DadoCircular && wDado > 0;
+        _hcx = (dx1 + dx2) / 2;
+        _hcy = yCen;
+        _hr = (wDado / 2) + PlantaHuecoMargen;
+
         var insertado = false;
         var id = (z.IdDado ?? string.Empty).Trim();
 
@@ -104,8 +121,18 @@ public sealed partial class ZapataDrawer
         {
             if (wDado > 0)
             {
-                HatchConcreto(dx1, dy1, dx2 - dx1, dy2 - dy1, CapaConcreto);
-                Rectangulo(dx1, dy1, dx2, dy2, CapaConcreto);
+                if (z.DadoCircular)
+                {
+                    // El dado redondo se dibuja redondo, y su relleno también: es lo que se ve en
+                    // el plano y es el contorno hasta el que llegan las varillas.
+                    HatchCirculo(_hcx, _hcy, wDado / 2, CapaConcreto);
+                    Circulo(_hcx, _hcy, wDado / 2, CapaConcreto);
+                }
+                else
+                {
+                    HatchConcreto(dx1, dy1, dx2 - dx1, dy2 - dy1, CapaConcreto);
+                    Rectangulo(dx1, dy1, dx2, dy2, CapaConcreto);
+                }
 
                 if (id.Length > 0)
                 {
@@ -346,9 +373,14 @@ public sealed partial class ZapataDrawer
                 cortes.Add((x - rY, x + rY));
             }
 
-            if (hayHueco && y + rX > hy1 && y - rX < hy2)
+            if (hayHueco || _huecoCircular)
             {
-                cortes.Add((hx1, hx2));
+                var corte = CorteDelHueco(y, enX: true, rX, hx1, hy1, hx2, hy2);
+
+                if (corte is not null)
+                {
+                    cortes.Add(corte.Value);
+                }
             }
 
             cortes.Sort((p, q) => p.A.CompareTo(q.A));
@@ -417,20 +449,22 @@ public sealed partial class ZapataDrawer
             return;
         }
 
-        var hayHueco = hx2 > hx1 && hy2 > hy1
-                       && x + r > hx1 && x - r < hx2
-                       && yTopEf > hy1 && yBotEf < hy2;
+        // El corte de ESTA varilla: la cuerda del círculo a su X, o el rectángulo del hueco.
+        var corte = CorteDelHueco(x, enX: false, r, hx1, hy1, hx2, hy2);
 
-        if (!hayHueco)
+        if (corte is null || yTopEf <= corte.Value.A || yBotEf >= corte.Value.B)
         {
             SegBandaY(x, ya, yb, r, capa, cortaAb, cortaAr, xIzq, yBot, ancho, largo,
                 !cortaAb, !cortaAr, fase);
             return;
         }
 
+        var cy1 = corte.Value.A;
+        var cy2 = corte.Value.B;
+
         // Tramo por debajo del hueco.
         var y1 = yBotEf;
-        var y2 = Math.Min(yTopEf, hy1);
+        var y2 = Math.Min(yTopEf, cy1);
 
         if (y2 - y1 > PlantaMinSeg)
         {
@@ -447,7 +481,7 @@ public sealed partial class ZapataDrawer
         }
 
         // Tramo por arriba del hueco.
-        y1 = Math.Max(yBotEf, hy2);
+        y1 = Math.Max(yBotEf, cy2);
         y2 = yTopEf;
 
         if (y2 - y1 > PlantaMinSeg)
@@ -463,6 +497,54 @@ public sealed partial class ZapataDrawer
             SegBandaY(x, y1, y2, r, capa, cAb, cAr, xIzq, yBot, ancho, largo,
                 tapAb, tapAr, fase);
         }
+    }
+
+    /// <summary>
+    /// El tramo que el hueco del dado le come a una varilla, o <c>null</c> si no la toca.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con el dado <b>cuadrado</b> el corte es el rectángulo del hueco, igual para todas las
+    /// varillas que lo cruzan. Con el dado <b>redondo</b> cada varilla tiene <b>su</b> corte: la
+    /// media cuerda de la circunferencia a su altura, <c>√(r² − d²)</c>. Eso es lo que hace que
+    /// las varillas lleguen hasta el contorno circular y no se queden todas en el mismo cuadrado.
+    /// </para>
+    /// <para>
+    /// Se tiene en cuenta el <b>radio de la propia varilla</b>: la que solo roza la circunferencia
+    /// con el canto no se corta, porque en la obra pasa por fuera.
+    /// </para>
+    /// </remarks>
+    private (double A, double B)? CorteDelHueco(
+        double coordenada, bool enX, double rBar,
+        double hx1, double hy1, double hx2, double hy2)
+    {
+        if (_huecoCircular)
+        {
+            var d = coordenada - (enX ? _hcy : _hcx);
+            var dentro = (_hr * _hr) - (d * d);
+
+            if (dentro <= 0)
+            {
+                return null;
+            }
+
+            var media = Math.Sqrt(dentro);
+            var centro = enX ? _hcx : _hcy;
+
+            return (centro - media, centro + media);
+        }
+
+        if (hx2 <= hx1 || hy2 <= hy1)
+        {
+            return null;
+        }
+
+        if (enX)
+        {
+            return coordenada + rBar > hy1 && coordenada - rBar < hy2 ? (hx1, hx2) : null;
+        }
+
+        return coordenada + rBar > hx1 && coordenada - rBar < hx2 ? (hy1, hy2) : null;
     }
 
     /// <summary>Port de <c>DibujarSegBandaX</c>: un tramo de varilla en X, con sus dos caras.</summary>
@@ -1098,6 +1180,44 @@ public sealed partial class ZapataDrawer
         Borrar(borde);
 
         return h1;
+    }
+
+    /// <summary>Rellena un círculo con el patrón del concreto, según el modo.</summary>
+    private void HatchCirculo(double cx, double cy, double radio, string capa)
+    {
+        if (radio <= 0)
+        {
+            return;
+        }
+
+        if (_relleno)
+        {
+            RellenarCirculo(cx, cy, radio, capa, ColorSolidoRelleno);
+            HatchCirculoPatron(cx, cy, radio, capa, EscalaConcretoRelleno, ColorPatronRelleno);
+            return;
+        }
+
+        HatchCirculoPatron(cx, cy, radio, capa, EscalaConcretoNormal, 0);
+    }
+
+    private void HatchCirculoPatron(
+        double cx, double cy, double radio, string capa, double escala, int colorAci)
+    {
+        var borde = Circulo(cx, cy, radio, capa);
+
+        if (borde is null)
+        {
+            return;
+        }
+
+        var h = Hatch(borde, PatronConcreto, escala, capa, colorAci);
+
+        if (h is null)
+        {
+            _ = Hatch(borde, PatronRespaldo, escala, capa, colorAci);
+        }
+
+        // El círculo del borde SÍ se queda: es el contorno del dado en planta.
     }
 
     private object? Hatch(object borde, string patron, double escala, string capa, int colorAci)

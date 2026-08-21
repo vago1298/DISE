@@ -4059,9 +4059,18 @@ def v19_circular_y_ui() -> None:
           and "private void CirculoRelleno(" in zap_pla)
 
     # EL MODO DE RELLENO (celda B3 de la macro).
-    check("el modo de relleno de la macro esta portado",
-          "public bool Relleno { get; init; }" in trazo_zap
-          and "_relleno = z.Relleno;" in zap_drw)
+    # LO QUE SE PIDIO: el tipo de seccion ARRIBA y para TODAS, como en las secciones de
+    # concreto, no una casilla por fila.
+    check("el modo de relleno es del juego entero, no de cada zapata",
+          "public bool SeccionRellena { get; set; }" in zap_drw
+          and "_relleno = SeccionRellena;" in zap_drw
+          and "public bool Relleno" not in trazo_zap)
+    check("y lo mandan los mismos botones de la hoja de concreto",
+          'x:Name="ZapTipo1Radio"' in xaml
+          and "ElementName=Tipo1Radio" in xaml
+          and "SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena" in zap_cb)
+    check("y queda escrito por que no va por fila",
+          "no es un plano, son dos" in zap_drw)
     check("modo 1: solido 9 + AR-CONC 0.0003 color 251",
           "ColorSolidoRelleno = 9" in zap_drw
           and "EscalaConcretoRelleno = 0.0003" in zap_drw
@@ -4077,10 +4086,7 @@ def v19_circular_y_ui() -> None:
           and "private void RellenarTriangulo(" in zap_pla
           and "private void RellenarCirculo(" in zap_pla
           and "nunca rechaza" in zap_pla)
-    check("la celda del relleno es una lista de SI y NO",
-          "public static readonly string[] SiNo = { \"SI\", \"NO\" };" in zap_row
-          and 'Text="{Binding Relleno, UpdateSourceTrigger=PropertyChanged}"' in xaml)
-    check("y la de doble parrilla tambien",
+    check("la casilla de doble parrilla es una lista de SI y NO",
           'Text="{Binding DobleParrilla, UpdateSourceTrigger=PropertyChanged}"' in xaml
           and 'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.SiNo}}"' in xaml)
 
@@ -4172,6 +4178,58 @@ def v19_circular_y_ui() -> None:
           and "public string VarColSup { get; init; }" in trazo_zap)
     check("y en la columna redonda las dos caras llevan la misma varilla",
           "fila.VarColSup = col.DiamVarTotalEfectivo;" in zap_cb)
+
+    # ------------------------------------------------------------------
+    # DADO CIRCULAR EN PLANTA: las varillas llegan al contorno redondo
+    # ------------------------------------------------------------------
+    # Lo que se pidio. Con el hueco cuadrado, entre la circunferencia y el cuadrado quedaban
+    # cuatro esquinas de varilla que en la obra no se cortan.
+    check("el dado circular llega a la planta",
+          "public bool DadoCircular { get; init; }" in trazo_zap
+          and "fila.DadoCircular = dado.EsCircular;" in zap_cb
+          and "DadoCircular = DadoCircular," in zap_row)
+    check("y con el dado redondo el recorte es la CUERDA del circulo",
+          "private (double A, double B)? CorteDelHueco(" in zap_pla
+          and "Math.Sqrt(dentro)" in zap_pla
+          and "_huecoCircular" in zap_pla)
+    check("las dos familias de varillas usan ese corte",
+          'CorteDelHueco(y, enX: true, rX' in zap_pla
+          and 'CorteDelHueco(x, enX: false, r' in zap_pla)
+    check("y el dado redondo se dibuja redondo, con su relleno",
+          "private void HatchCirculo(" in zap_pla
+          and "Circulo(_hcx, _hcy, wDado / 2, CapaConcreto)" in zap_pla)
+    check("y queda escrito el defecto que arregla",
+          "cuatro esquinas de varilla" in trazo_zap)
+
+    # ------------------------------------------------------------------
+    # GUARDAR EL TRABAJO: TODAS LAS HOJAS
+    # ------------------------------------------------------------------
+    # Lo que se pidio: «cuando guardo trabajo solo se guardan mis secciones de concreto».
+    # El .clk guardaba una lista escrita a mano, y cuando llegaron el acero y las zapatas
+    # nadie volvio a tocarla: esas dos hojas se perdian al guardar.
+    proy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+
+    check("el trabajo guarda tambien el acero y las zapatas",
+          "public List<FilaGuardada> Acero { get; set; }" in proy
+          and "public List<FilaGuardada> Zapatas { get; set; }" in proy)
+    check("y se guardan leyendo la fila, para que una columna nueva se guarde sola",
+          "public static class FilaSerializable" in proy
+          and "public static FilaGuardada Leer(object fila)" in proy
+          and "public static void Aplicar(object fila, FilaGuardada guardada)" in proy)
+    check("solo lo capturado: nada de columnas calculadas",
+          "p.CanRead && p.CanWrite" in proy)
+    check("los numeros van en formato invariante",
+          "CultureInfo.InvariantCulture" in proy)
+    check("un archivo viejo se sigue abriendo",
+          "se ignora en silencio" in proy)
+    check("las dos hojas se recogen al guardar",
+          "FilaSerializable.Leer(a)" in codigo and "FilaSerializable.Leer(z)" in codigo)
+    check("y se vuelcan al abrir",
+          "_datos.SeccionesAcero.Clear();" in codigo
+          and "_datos.ZapatasAisladas.Clear();" in codigo
+          and "FilaSerializable.Aplicar(nueva, fila);" in codigo)
+    check("y queda escrito por que se perdian",
+          "<b>se perdían</b>" in proy and "se captura una vez" in proy)
 
     # El boton: revisa, se engancha a la sesion abierta y cuenta lo que salio.
     check("el boton de dibujar revisa ANTES de dibujar",

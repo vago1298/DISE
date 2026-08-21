@@ -1236,6 +1236,20 @@ public partial class MainWindow : Window
             });
         }
 
+        // LAS OTRAS DOS HOJAS. Antes no se guardaban: «guardar trabajo» escribía solo el
+        // concreto y el acero y las zapatas se perdían. Van como filas genéricas -pares de
+        // nombre y valor- para que una columna nueva se guarde sola el día que se agregue,
+        // que es exactamente lo que no pasó cuando llegaron estas dos hojas.
+        foreach (var a in _datos.SeccionesAcero)
+        {
+            p.Acero.Add(FilaSerializable.Leer(a));
+        }
+
+        foreach (var z in _datos.ZapatasAisladas)
+        {
+            p.Zapatas.Add(FilaSerializable.Leer(z));
+        }
+
         return p;
     }
 
@@ -1308,6 +1322,26 @@ public partial class MainWindow : Window
                     Fc = s.Fc,
                     Escala = s.Escala, LongitudM = s.LongitudM
                 });
+            }
+
+            // ---- Secciones Acero ----
+            _datos.SeccionesAcero.Clear();
+
+            foreach (var fila in p.Acero)
+            {
+                var nueva = new PerfilAceroRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.SeccionesAcero.Add(nueva);
+            }
+
+            // ---- Zapatas Aisladas ----
+            _datos.ZapatasAisladas.Clear();
+
+            foreach (var fila in p.Zapatas)
+            {
+                var nueva = new ZapataAisladaRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.ZapatasAisladas.Add(nueva);
             }
         }
         finally
