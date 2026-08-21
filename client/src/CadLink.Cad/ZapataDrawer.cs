@@ -571,7 +571,9 @@ public sealed partial class ZapataDrawer
 
         if (usaBloque)
         {
-            if (InsertarBloque(nombreBloque, xBase, yZapBot, CapaBloqueZapata))
+            // En su sitio y sin recolocar: el bloque se creó con su punto base en (xBase, yZapBot)
+            // y su geometría está en coordenadas absolutas.
+            if (InsertarBloquePropio(nombreBloque, xBase, yZapBot, CapaBloqueZapata))
             {
                 r.Bloques++;
             }

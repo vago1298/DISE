@@ -4516,10 +4516,29 @@ def v19_circular_y_ui() -> None:
     # LA VISTA EN PLANTA, EN SU PROPIO BLOQUE
     # ------------------------------------------------------------------
     # Lo que se pidio: bloque con el dado, las varillas y el contorno; cotas y rotulos FUERA.
+    # AQUI ESTABA EL DESFASE DE TODO EL DIBUJO, y es lo que hacia que las cotas se vieran
+    # despegadas de la cimentacion: la seccion y la planta se insertaban con la rutina que
+    # RECOLOCA el bloque por el centro de su caja -la del dado, que viene de otro dibujo-, y eso
+    # arrastraba la geometria 88 cm hacia abajo y 50 cm a la izquierda. Las cotas y los rotulos,
+    # que van fuera del bloque, se quedaban en su sitio.
+    check("los bloques PROPIOS se insertan en su sitio, sin recolocar",
+          "private bool InsertarBloquePropio(" in zap_pla
+          and "InsertarBloquePropio(nombreBloque, xBase, yZapBot, CapaBloqueZapata)" in zap_drw
+          and "InsertarBloquePropio(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
+    check("y la seccion ya no pasa por la rutina del centroide",
+          "InsertarBloque(nombreBloque" not in zap_drw
+          and "InsertarBloque(nombrePlanta" not in zap_pla)
+    check("el recolocado por centroide queda SOLO para el bloque del dado",
+          "InsertarBloque(id, (dx1 + dx2) / 2, yCen, CapaBloqueDado" in zap_pla
+          and "Solo para el bloque del DADO" in zap_pla)
+    check("y queda escrita la cuenta del desfase que producia",
+          "AQUÍ ESTABA EL DESFASE DE TODO EL DIBUJO" in zap_pla
+          and "bajaba 88 cm" in zap_pla)
+
     check("la planta se mete en su propio bloque",
           '"-PLANTA"' in zap_pla
           and "var plantaEnBloque = false;" in zap_pla
-          and "InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
+          and "InsertarBloquePropio(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
     check("y los rotulos y las cotas quedan FUERA del bloque",
           "Se cierra el bloque: lo que sigue -cotas y rótulos- va en el MODELO." in zap_pla)
     check("y queda escrito por que una cota no puede ir dentro",

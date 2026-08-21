@@ -235,7 +235,7 @@ public sealed partial class ZapataDrawer
         // ------------------------------------------------------------------
         _cont = _ms;
 
-        if (plantaEnBloque && InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata))
+        if (plantaEnBloque && InsertarBloquePropio(nombrePlanta, xIzq, yBot, CapaBloqueZapata))
         {
             r.Bloques++;
         }
@@ -1899,8 +1899,65 @@ public sealed partial class ZapataDrawer
     }
 
     /// <summary>
-    /// Inserta un bloque que ya exista. Con <paramref name="alinearDerechaEn"/> lo pega a esa X.
+    /// Inserta un bloque <b>propio</b> —de los que crea este dibujante— en su sitio, sin tocarlo.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// AQUÍ ESTABA EL DESFASE DE TODO EL DIBUJO. La sección y la planta se estaban insertando con
+    /// <see cref="InsertarBloque"/>, que <b>recoloca el bloque por el centro de su caja</b>. Esa
+    /// rutina es para el bloque del <b>dado</b>, que viene de otro dibujo y cuyo punto base no se
+    /// conoce; aplicada a un bloque propio arrastra el dibujo entero.
+    /// </para>
+    /// <para>
+    /// La cuenta, con una zapata de 1.00 × 0.30 y 1.05 de desplante: la elevación va de
+    /// <c>y = −8.05</c> —el fondo de la plantilla— a <c>−6.2</c>, así que el centro de su caja está
+    /// en <c>−7.12</c>; al forzar ese centro al punto de inserción <c>−8.00</c>, la geometría
+    /// <b>bajaba 88 cm</b>. En X, con el centro en <c>xBase + 0.5</c>, se corría <b>50 cm a la
+    /// izquierda</b>. Las cotas y los rótulos, que se dibujan fuera del bloque, se quedaban en su
+    /// sitio: de ahí que salieran despegados de la cimentación, y de ahí el «las cotas no están a
+    /// la altura de la sección».
+    /// </para>
+    /// <para>
+    /// Un bloque propio no necesita nada de eso: se crea con su punto base en <c>(x, y)</c> y su
+    /// geometría se dibuja dentro en coordenadas <b>absolutas</b>, así que insertándolo en ese
+    /// mismo punto cae exactamente donde se dibujó. Es lo que hacen las dos macros.
+    /// </para>
+    /// </remarks>
+    private bool InsertarBloquePropio(string nombre, double x, double y, string capa)
+    {
+        if (!ExisteBloque(nombre))
+        {
+            return false;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic r = _cont.InsertBlock(new[] { x, y, 0d }, nombre, 1d, 1d, 1d, 0d);
+                r.Layer = capa;
+                r.Update();
+            });
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Insertar el bloque '{nombre}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Inserta un bloque <b>ajeno</b> que ya exista en el dibujo, recolocándolo por el centro de su
+    /// caja. Con <paramref name="alinearDerechaEn"/> lo pega a esa X.
+    /// </summary>
+    /// <remarks>
+    /// <b>Solo para el bloque del DADO</b>, que lo dibujó alguien más y cuyo punto base puede estar
+    /// en cualquier parte. Para los bloques propios —la sección y la planta— va
+    /// <see cref="InsertarBloquePropio"/>: recolocar uno de esos por su centro mueve el dibujo
+    /// entero y lo despega de sus cotas.
+    /// </remarks>
     /// <remarks>
     /// Port de <c>InsertarBloqueCentroide</c> y de <c>InsertarBloqueDerecha</c>: se inserta, se
     /// mide su caja y se <b>recoloca</b>, porque el punto de inserción de un bloque no tiene por
