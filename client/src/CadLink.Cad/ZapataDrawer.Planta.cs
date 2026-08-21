@@ -1714,7 +1714,8 @@ public sealed partial class ZapataDrawer
 
     /// <summary>Port de <c>CrearMTextoCentradoMascara</c> y de <c>CrearMText</c>.</summary>
     private object? Mtexto(
-        double x, double y, string texto, double alto, string capa, bool conFondo)
+        double x, double y, string texto, double alto, string capa, bool conFondo,
+        int anclaje = AnclajeCentro)
     {
         if (string.IsNullOrWhiteSpace(texto) || alto <= 0)
         {
@@ -1732,7 +1733,11 @@ public sealed partial class ZapataDrawer
                 try
                 {
                     mt.Width = 0;
-                    mt.AttachmentPoint = 5;   // MiddleCenter
+
+                    // 4 = MiddleLeft (crece a la derecha), 5 = MiddleCenter,
+                    // 6 = MiddleRight (crece a la izquierda). Es el mismo juego de anclajes
+                    // con el que las macros reparten los rótulos de las dos parrillas.
+                    mt.AttachmentPoint = anclaje;
                     mt.InsertionPoint = new[] { x, y, 0d };
                 }
                 catch (Exception)

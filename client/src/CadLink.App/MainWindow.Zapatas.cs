@@ -345,6 +345,13 @@ public partial class MainWindow
                 fila.VarIntColumna = DiametroIntermediasDe(col);
             }
 
+            // Los conteos del RÓTULO valen igual para la redonda y para la cuadrada, así que van
+            // fuera del if: los reparte ConteosDelRotulo según la forma.
+            ConteosDelRotulo(col, out var nSupCol, out var nInfCol, out var nIntCol);
+            fila.NVarColSup = nSupCol;
+            fila.NVarColInf = nInfCol;
+            fila.NVarIntColumnaTotal = nIntCol;
+
             fila.EstriboColumna = col.Estribo;
             fila.SepEstriboColumna = col.SeparacionCm;
             return;
@@ -439,6 +446,14 @@ public partial class MainWindow
             fila.VarIntDado = DiametroIntermediasDe(dado);
         }
 
+        // Y los conteos del RÓTULO, que no son los que se dibujan: en el alzado va una varilla
+        // por paño, pero el rótulo dice cuántas hay de verdad («16 VAR #4», no «VAR #4 + 7 VAR
+        // #4»). Son los conteos Z7 / Z8 / K7 de la macro, sacados de la sección.
+        ConteosDelRotulo(dado, out var nSupDado, out var nInfDado, out var nIntDado);
+        fila.NVarDadoSup = nSupDado;
+        fila.NVarDadoInf = nInfDado;
+        fila.NVarIntDadoTotal = nIntDado;
+
         if (!string.IsNullOrWhiteSpace(dado.Estribo))
         {
             fila.EstriboDado = dado.Estribo;
@@ -469,6 +484,40 @@ public partial class MainWindow
     /// </remarks>
     private static int IntermediasDeLaSeccion(SeccionConcretoRow s) =>
         s.NInter > 0 ? s.NInter : Math.Max(s.NIntSup, s.NIntInf);
+
+    /// <summary>
+    /// Los tres conteos que van en el <b>rótulo</b> de un dado o de una columna: paño superior,
+    /// paño inferior e intermedias.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son los conteos que la macro leía de la hoja de la zapata (<c>Z7</c>, <c>Z8</c>, <c>K7</c>)
+    /// y aquí salen de la sección, que es donde ya están capturados. <b>No son los que se
+    /// dibujan</b>: en el alzado se ve una varilla por paño, pero el rótulo tiene que decir
+    /// cuántas hay en la sección completa.
+    /// </para>
+    /// <para>
+    /// Los tres suman <see cref="SeccionConcretoRow.TotalVarillas"/>: en la cuadrada, el lecho de
+    /// arriba entero, el de abajo entero y los laterales de los dos costados; en la circular, las
+    /// dos que se ven en los paños y todas las demás como intermedias. Así el rótulo dice «16 VAR
+    /// #4» en un dado redondo de 16 varillas y no un total inventado.
+    /// </para>
+    /// </remarks>
+    private static void ConteosDelRotulo(
+        SeccionConcretoRow s, out int nSup, out int nInf, out int nInt)
+    {
+        if (s.EsCircular)
+        {
+            nSup = s.NVarTotal > 0 ? 1 : 0;
+            nInf = s.NVarTotal > 1 ? 1 : 0;
+            nInt = s.NVarTotal > 2 ? s.NVarTotal - 2 : 0;
+            return;
+        }
+
+        nSup = s.NEsqSup + s.NIntSup;
+        nInf = s.NEsqInf + s.NIntInf;
+        nInt = 2 * s.NInter;
+    }
 
     /// <summary>El diámetro de esas intermedias, con la misma regla.</summary>
     private static string DiametroIntermediasDe(SeccionConcretoRow s)

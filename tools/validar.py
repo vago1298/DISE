@@ -3993,6 +3993,8 @@ def v19_circular_y_ui() -> None:
     # seria peor que el boton apagado, asi que aqui se comprueba el dibujante entero.
     zap_drw = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
     zap_pla = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+    zap_trz = leer(ruta("client/src/CadLink.Cad/TrazoZapata.cs"))
+    zap_ui = leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
     zap_todo = zap_drw + zap_pla
 
     check("existe el dibujante de zapatas, en dos archivos parciales",
@@ -4147,6 +4149,60 @@ def v19_circular_y_ui() -> None:
     check("las parrillas tambien, con su AMBOS SENTIDOS",
           "private void RotuloParrillaInferior(" in zap_drw
           and "AMBOS SENTIDOS" in zap_drw)
+
+    # ---- LOS ROTULOS DE PARRILLA, EN LA POSICION DE LA MACRO ----
+    # Moverlos a ojo fue lo que los dejo encima de las cotas y del titulo. Estas comprobaciones
+    # amarran las cuentas TAL CUAL vienen en las macros, con sus sumas y restas.
+    check("el rotulo de la parrilla inferior va donde lo pone la macro",
+          "var xTexto = xBase - 0.18 + 0.272 - 0.11 + DesplazamientoParrillaInfCentrar;" in zap_drw
+          and "var yTexto = yZapBot + 0.1 + 0.4164 - 0.16;" in zap_drw)
+    check("y ya no 46 cm mas abajo, encima de las cotas y del titulo",
+          "var yTexto = yZapBot - 0.10;" not in zap_drw)
+    check("el de la parrilla superior de la CENTRAL sale del pano derecho, no fuera del dibujo",
+          "var xTexto = xBase + anchoZapata + 0.16 - 0.4302;" in zap_drw
+          and "var yTexto = yZapTop + 0.02 + 0.2908 - 0.16;" in zap_drw
+          and "xBase + anchoZapata + 0.10" not in zap_drw)
+    check("el de la parrilla superior del LINDERO va centrado sobre el lomo",
+          "var yTexto = yZapTop + LinderoRotuloSupDy;" in zap_drw
+          and "LinderoRotuloSupDy = 0.23" in zap_drw)
+    check("cuando las dos parrillas son distintas se parten en DOS rotulos",
+          "anclaje: AnclajeIzquierda" in zap_drw
+          and "anclaje: AnclajeDerecha" in zap_drw
+          and "DesplazamientoVertical" in zap_drw)
+    check("y el MText de verdad recibe ese anclaje",
+          "int anclaje = AnclajeCentro" in zap_pla
+          and "mt.AttachmentPoint = anclaje;" in zap_pla)
+    check("estan todos los desplazamientos de la macro, con su nombre",
+          "AnchoMtexto = 0.38" in zap_drw
+          and "DesplazamientoInferiorX = -0.4818" in zap_drw
+          and "DesplazamientoAmbosSentidos = -0.2" in zap_drw
+          and "DesplazamientoInferiorAdicional = 0.15" in zap_drw
+          and "DesplazamientoAmbosInferiorX = 0.09" in zap_drw
+          and "DesplazamientoYAmbosAnclaje = -0.024" in zap_drw
+          and "DesplazamientoYAmbosTexto = -0.011" in zap_drw
+          and "DesplazamientoInferiorSuperiorAdicional = 0.0988" in zap_drw
+          and "DesplazamientoParrillaInfCentrar = 0.2" in zap_drw)
+    check("en la ELEVACION el rotulo no repite el titulo de la parrilla",
+          '"PARRILLA INFERIOR", varBarra' not in zap_drw
+          and '"PARRILLA SUPERIOR", varBarra' not in zap_drw
+          and "PARRILLA INFERIOR" in zap_pla)
+    check("la punta del leader cae sobre una varilla de verdad",
+          "private static double CirculoMasCercano(" in zap_drw
+          and "xPuntaCirc = CirculoMasCercano(" in zap_drw)
+
+    # ---- EL RENGLON DE VARILLAS SUMA LAS DEL MISMO DIAMETRO ----
+    check("el rotulo del elemento suma las varillas del mismo diametro",
+          "private string TextoBarrasLongitudinales(" in zap_drw
+          and "conteos[k] += n;" in zap_drw)
+    check("y los conteos del rotulo salen de la seccion, no del dibujo",
+          "NVarDadoSup" in zap_trz
+          and "NVarIntDadoTotal" in zap_trz
+          and "private static void ConteosDelRotulo(" in zap_ui)
+    check("con la circular contando TODAS sus varillas",
+          "nInt = s.NVarTotal > 2 ? s.NVarTotal - 2 : 0;" in zap_ui
+          and "nSup = s.NEsqSup + s.NIntSup;" in zap_ui)
+    check("y sin conteos se escriben los diametros, no un total inventado",
+          "var hayConteos = nSup > 0 || nInf > 0 || nIntTotal > 0;" in zap_drw)
     check("el leader se saca del borde de la caja del texto",
           "private (double X1, double Y1, double X2, double Y2)? Caja(" in zap_pla
           and "RotuloVertGapLeader" in zap_drw)

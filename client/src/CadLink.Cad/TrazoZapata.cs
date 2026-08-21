@@ -107,6 +107,32 @@ public sealed class ZapataCad
     /// <summary>Diámetro de las intermedias del dado. <c>L7</c>.</summary>
     public string VarIntDado { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Cuántas varillas <b>representa</b> la del paño superior del dado, para el rótulo.
+    /// <c>Z7</c> / <c>I7</c>.
+    /// </summary>
+    /// <remarks>
+    /// En el alzado se dibuja UNA varilla por paño, pero el rótulo tiene que decir cuántas hay de
+    /// verdad: son los conteos <c>Z7</c> y <c>Z8</c> que la macro lee de la hoja. Aquí salen de la
+    /// sección del dado —lecho superior completo, lecho inferior completo y laterales—, así que
+    /// <c>NVarDadoSup + NVarDadoInf + NVarIntDadoTotal</c> es el total de varillas de la sección.
+    /// En cero, el rótulo escribe los diámetros sin conteo, como antes.
+    /// </remarks>
+    public int NVarDadoSup { get; init; }
+
+    /// <summary>Las del otro paño. <c>Z8</c> / <c>I8</c>.</summary>
+    public int NVarDadoInf { get; init; }
+
+    /// <summary>
+    /// Cuántas intermedias tiene el dado <b>en total</b> (las dos caras), para el rótulo.
+    /// </summary>
+    /// <remarks>
+    /// No es <see cref="NIntDado"/>: ese es cuántas se <b>dibujan</b> por cara en el alzado. En
+    /// una sección cuadrada son los laterales de los dos costados y en una circular todas las que
+    /// no son las dos de los paños.
+    /// </remarks>
+    public int NVarIntDadoTotal { get; init; }
+
     /// <summary>Largo del gancho de arranque, en metros. La macro lo fija en 0.12.</summary>
     public double GanchoM { get; init; } = 0.12;
 
@@ -150,6 +176,15 @@ public sealed class ZapataCad
 
     /// <summary>Diámetro de las intermedias de la columna. <c>L5</c> / <c>AC5</c>.</summary>
     public string VarIntColumna { get; init; } = string.Empty;
+
+    /// <summary>Cuántas varillas representa la del paño superior de la columna. <c>Z5</c>.</summary>
+    public int NVarColSup { get; init; }
+
+    /// <summary>Las del otro paño. <c>Z6</c>.</summary>
+    public int NVarColInf { get; init; }
+
+    /// <summary>Las intermedias de la columna en total, para el rótulo.</summary>
+    public int NVarIntColumnaTotal { get; init; }
 
     /// <summary>Estribo de la columna. <c>O4</c> / <c>AF4</c>.</summary>
     public string EstriboColumna { get; init; } = string.Empty;

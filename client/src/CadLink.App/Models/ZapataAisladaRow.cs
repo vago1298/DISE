@@ -54,6 +54,12 @@ public sealed class ZapataAisladaRow : Row
     private string _varDadoSup = "#4";
     private string _varDadoInf = "#4";
     private int _nIntDado;
+    private int _nVarDadoSup;
+    private int _nVarDadoInf;
+    private int _nVarIntDadoTotal;
+    private int _nVarColSup;
+    private int _nVarColInf;
+    private int _nVarIntColumnaTotal;
     private string _varIntDado = string.Empty;
 
     private string _estriboDado = "#3";
@@ -302,6 +308,27 @@ public sealed class ZapataAisladaRow : Row
     /// <summary>Diámetro de las intermedias. <c>L7</c> / <c>AC7</c>.</summary>
     public string VarIntDado { get => _varIntDado; set => Set(ref _varIntDado, value); }
 
+    /// <summary>
+    /// Cuántas varillas hay <b>de verdad</b> en el paño superior del dado, solo para el rótulo.
+    /// </summary>
+    /// <remarks>
+    /// No se captura: sale de la sección del dado al referenciarla, igual que su ancho y su
+    /// armado. En el alzado se dibuja una varilla por paño, pero el rótulo tiene que decir
+    /// cuántas son —es el conteo <c>Z7</c> de la macro—, y sumado con el otro paño y con las
+    /// intermedias da el total de varillas de la sección.
+    /// </remarks>
+    public int NVarDadoSup { get => _nVarDadoSup; set => Set(ref _nVarDadoSup, value); }
+
+    /// <summary>Las del otro paño del dado. <c>Z8</c>.</summary>
+    public int NVarDadoInf { get => _nVarDadoInf; set => Set(ref _nVarDadoInf, value); }
+
+    /// <summary>Las intermedias del dado en total (las dos caras), para el rótulo.</summary>
+    public int NVarIntDadoTotal
+    {
+        get => _nVarIntDadoTotal;
+        set => Set(ref _nVarIntDadoTotal, value);
+    }
+
     /// <summary>Estribo del dado. <c>O7</c> / <c>AF7</c>.</summary>
     public string EstriboDado { get => _estriboDado; set => Set(ref _estriboDado, value); }
 
@@ -338,6 +365,19 @@ public sealed class ZapataAisladaRow : Row
 
     /// <summary>Diámetro de las intermedias de la columna.</summary>
     public string VarIntColumna { get => _varIntColumna; set => Set(ref _varIntColumna, value); }
+
+    /// <summary>Cuántas varillas hay en el paño superior de la columna, para el rótulo.</summary>
+    public int NVarColSup { get => _nVarColSup; set => Set(ref _nVarColSup, value); }
+
+    /// <summary>Las del otro paño de la columna.</summary>
+    public int NVarColInf { get => _nVarColInf; set => Set(ref _nVarColInf, value); }
+
+    /// <summary>Las intermedias de la columna en total, para el rótulo.</summary>
+    public int NVarIntColumnaTotal
+    {
+        get => _nVarIntColumnaTotal;
+        set => Set(ref _nVarIntColumnaTotal, value);
+    }
 
     /// <summary>Estribo de la columna.</summary>
     public string EstriboColumna { get => _estriboColumna; set => Set(ref _estriboColumna, value); }
@@ -432,6 +472,9 @@ public sealed class ZapataAisladaRow : Row
         VarDadoInf = VarDadoInf,
         NIntDado = NIntDado,
         VarIntDado = VarIntDado,
+        NVarDadoSup = NVarDadoSup,
+        NVarDadoInf = NVarDadoInf,
+        NVarIntDadoTotal = NVarIntDadoTotal,
 
         // El ID del dado se manda LIMPIO: en la celda puede haber quedado «D-1 (concreto)»
         // porque la lista muestra la hoja de la que viene, y el nombre del bloque es «D-1».
@@ -446,6 +489,9 @@ public sealed class ZapataAisladaRow : Row
         VarColInf = VarColInf,
         NIntColumna = NIntColumna,
         VarIntColumna = VarIntColumna,
+        NVarColSup = NVarColSup,
+        NVarColInf = NVarColInf,
+        NVarIntColumnaTotal = NVarIntColumnaTotal,
         EstriboColumna = EstriboColumna,
         SepEstriboColumna = SepEstriboColumna
     };

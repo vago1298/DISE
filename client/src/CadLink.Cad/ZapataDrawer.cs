@@ -107,6 +107,34 @@ public sealed partial class ZapataDrawer
     private const double AnchoFlecha = 0.0042;
     private const double RotuloVertGapLeader = 0.06;
 
+    // ---- LOS DESPLAZAMIENTOS DE LOS RÓTULOS DE PARRILLA, TAL CUAL LAS MACROS ----
+    // Son números que el usuario ajustó a mano en AutoCAD hasta que los rótulos quedaron en su
+    // sitio, así que se copian con su nombre y su valor y no se «redondean».
+    private const double AnchoMtexto = 0.38;                            // ANCHO_MTEXT
+    private const double DesplazamientoVertical = 0.0175;
+    private const double DesplazamientoInferiorX = -0.4818;
+    private const double DesplazamientoAmbosSentidos = -0.2;
+    private const double DesplazamientoInferiorAdicional = 0.15;
+    private const double DesplazamientoAmbosInferiorX = 0.09;
+    private const double DesplazamientoYAmbosAnclaje = -0.024;
+    private const double DesplazamientoYAmbosTexto = -0.011;
+    private const double DesplazamientoInferiorSuperiorAdicional = 0.0988;
+    private const double DesplazamientoParrillaInfCentrar = 0.2;
+    private const double SeparacionPuntasParrillaInf = 0.15;
+    private const double FraccionMaxPuntaBarraInf = 0.32;
+    private const double SeparacionMinPuntas = 0.06;
+
+    // Rótulo de la parrilla superior en el LINDERO: centrado sobre el lomo de la zapata.
+    private const double LinderoRotuloSupDy = 0.23;                     // LINDERO_ROTULO_SUP_DY
+    private const double LinderoRotSupFxBarra = 0.32;
+    private const double LinderoRotSupFxCirc = 0.66;
+    private const double LinderoRotSupGapX = 0.03;
+
+    // Anclajes de MText de AutoCAD: 4 = MiddleLeft, 5 = MiddleCenter, 6 = MiddleRight.
+    private const int AnclajeIzquierda = 4;
+    private const int AnclajeCentro = 5;
+    private const int AnclajeDerecha = 6;
+
     /// <summary><c>LINDERO_ROTULO_ELEM_DX</c>: en el lindero los rótulos van a la izquierda.</summary>
     private const double LinderoRotuloElemDx = 0.3;
 
@@ -1923,10 +1951,10 @@ public sealed partial class ZapataDrawer
             yPataInf + offset, false, false);
     }
 
-    /// <summary>Port de <c>TextoRotuloElementoVertical</c>.</summary>
+    /// <summary>Port de <c>TextoRotuloElementoVertical</c>: el rótulo del dado o de la columna.</summary>
     private string TextoElemento(
         string elemento, string? id, string? diaSup, string? diaInf, int nInt, string? diaInt,
-        string? estrDia, string? sep)
+        string? estrDia, string? sep, int nSup, int nInf, int nIntTotal)
     {
         var titulo = elemento.ToUpperInvariant();
 
@@ -1937,26 +1965,12 @@ public sealed partial class ZapataDrawer
 
         var lineas = new List<string> { titulo };
 
-        var barras = new List<string>();
+        var barras = TextoBarrasLongitudinales(
+            nSup, diaSup, nInf, diaInf, nIntTotal, nInt, diaInt);
 
-        if (!string.IsNullOrWhiteSpace(diaSup))
+        if (barras.Length > 0)
         {
-            barras.Add($"VAR {Etiqueta(diaSup)}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(diaInf) && !MismoDiametro(diaSup, diaInf))
-        {
-            barras.Add($"VAR {Etiqueta(diaInf)}");
-        }
-
-        if (nInt > 0 && !string.IsNullOrWhiteSpace(diaInt))
-        {
-            barras.Add($"{nInt} VAR {Etiqueta(diaInt)}");
-        }
-
-        if (barras.Count > 0)
-        {
-            lineas.Add(string.Join(" + ", barras));
+            lineas.Add(barras);
         }
 
         if (!string.IsNullOrWhiteSpace(estrDia))
@@ -1974,6 +1988,85 @@ public sealed partial class ZapataDrawer
         return string.Join("\n", lineas);
     }
 
+    /// <summary>
+    /// Port de <c>TextoBarrasLongitudinales</c>: el renglón de varillas del rótulo,
+    /// <b>sumando las que son del mismo diámetro</b>.
+    /// </summary>
+    /// <remarks>
+    /// Esto es lo que hacía la macro y lo que a mí me faltaba: yo escribía «VAR #4 + 7 VAR #4»
+    /// —el primer término sin conteo y los dos sin juntarse—, y lo que debe decir es
+    /// «16 VAR #4». La macro mete los tres términos (paño superior, paño inferior e intermedias)
+    /// en una lista, y cuando dos caen en el mismo diámetro suma sus conteos en un solo término.
+    /// </remarks>
+    private string TextoBarrasLongitudinales(
+        int nSup, string? diaSup, int nInf, string? diaInf,
+        int nIntTotal, int nIntDibujadas, string? diaInt)
+    {
+        // Si no hay conteos —una fila vieja, guardada antes de que se referenciaran— se escriben
+        // los diámetros sin número, que es lo que se hacía hasta ahora: mejor eso que un rótulo
+        // vacío o un conteo inventado.
+        var hayConteos = nSup > 0 || nInf > 0 || nIntTotal > 0;
+
+        if (!hayConteos)
+        {
+            var sinConteo = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(diaSup))
+            {
+                sinConteo.Add($"VAR {Etiqueta(diaSup)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(diaInf) && !MismoDiametro(diaSup, diaInf))
+            {
+                sinConteo.Add($"VAR {Etiqueta(diaInf)}");
+            }
+
+            if (nIntDibujadas > 0 && !string.IsNullOrWhiteSpace(diaInt))
+            {
+                sinConteo.Add($"{nIntDibujadas} VAR {Etiqueta(diaInt)}");
+            }
+
+            return string.Join(" + ", sinConteo);
+        }
+
+        var etiquetas = new List<string>();
+        var conteos = new List<int>();
+
+        void Agregar(int n, string? clave)
+        {
+            var tag = Etiqueta(clave);
+
+            if (n <= 0 || tag.Length == 0)
+            {
+                return;
+            }
+
+            var k = etiquetas.IndexOf(tag);
+
+            if (k >= 0)
+            {
+                conteos[k] += n;
+                return;
+            }
+
+            etiquetas.Add(tag);
+            conteos.Add(n);
+        }
+
+        Agregar(nSup, diaSup);
+        Agregar(nInf, diaInf);
+        Agregar(nIntTotal, diaInt);
+
+        var terminos = new List<string>();
+
+        for (var i = 0; i < etiquetas.Count; i++)
+        {
+            terminos.Add($"{conteos[i]} VAR {etiquetas[i]}");
+        }
+
+        return string.Join(" + ", terminos);
+    }
+
     private void RotuloDelDado(ZapataCad z, TrazoZapata.Acomodo a, bool lindero)
     {
         if (a.YDadoTop <= a.YZapTop + 0.02)
@@ -1984,7 +2077,8 @@ public sealed partial class ZapataDrawer
         var y = (a.YZapTop + a.YDadoTop) / 2;
 
         var texto = TextoElemento("DADO", z.IdDado, z.VarDadoSup, z.VarDadoInf,
-            z.NIntDado, z.VarIntDado, z.EstriboDado, z.SepEstriboDado);
+            z.NIntDado, z.VarIntDado, z.EstriboDado, z.SepEstriboDado,
+            z.NVarDadoSup, z.NVarDadoInf, z.NVarIntDadoTotal);
 
         if (lindero)
         {
@@ -2002,7 +2096,8 @@ public sealed partial class ZapataDrawer
         var y = a.YDadoTop + (AlturaColumnaRep * ColumnaFraccionCorte / 2);
 
         var texto = TextoElemento("COLUMNA", z.IdColumna, z.VarColSup, z.VarColInf,
-            z.NIntColumna, z.VarIntColumna, z.EstriboColumna, z.SepEstriboColumna);
+            z.NIntColumna, z.VarIntColumna, z.EstriboColumna, z.SepEstriboColumna,
+            z.NVarColSup, z.NVarColInf, z.NVarIntColumnaTotal);
 
         if (lindero)
         {
@@ -2070,7 +2165,20 @@ public sealed partial class ZapataDrawer
         Leader(xPunta, yPunta, xAnclaje, yTexto);
     }
 
-    /// <summary>Port de <c>RotularParrillaInferiorZA</c>, con sus dos leaders.</summary>
+    /// <summary>
+    /// Port de <c>RotularParrillaInferiorZA</c>: los rótulos de la parrilla de abajo.
+    /// </summary>
+    /// <remarks>
+    /// LA POSICIÓN ES LA DE LA MACRO, con sus sumas y restas tal cual:
+    /// <c>xTexto = (xBase - 0.18) + 0.272 - 0.11 + 0.2</c> y
+    /// <c>yTexto = (yZapBot + 0.1) + 0.4164 - 0.16</c>. Se ven raras porque salieron de mover el
+    /// rótulo a mano en AutoCAD hasta dejarlo en su sitio, pero es justo lo que hay que copiar:
+    /// el turno pasado yo lo puse en <c>yZapBot - 0.10</c>, o sea 46 cm más abajo, y ahí es donde
+    /// se le encimaba a la cota de la cadena (0.14), a la del total (0.22) y al título (0.32).
+    /// Y va <b>sin el renglón «PARRILLA INFERIOR»</b>: en la elevación las dos macros solo
+    /// escriben la varilla y su separación —el título únicamente aparece en la planta—, y ese
+    /// renglón de más era lo que ensanchaba el rótulo hasta chocar con el de al lado.
+    /// </remarks>
     private void RotuloParrillaInferior(
         double xBase, double yZapBot, double anchoZapata, double rec,
         string? varBarra, string? sepBarra, string? varCirc, string? sepCirc)
@@ -2092,32 +2200,98 @@ public sealed partial class ZapataDrawer
         var xCaraDer = xBase + anchoZapata - rec;
         var xCircIzq = xCaraIzq + (dBarra / 2) + (dCirc / 2);
 
+        // Las dos puntas: la del círculo en la segunda varilla transversal y la de la barra un
+        // poco más adentro, sin pasarse del 32 % del ancho ni pegarse a la otra punta.
         var xPuntaCirc = xCircIzq + sepCircM;
-        var xPuntaBarra = Math.Clamp(
-            xPuntaCirc + 0.15,
-            xPuntaCirc + 0.06,
-            xCaraIzq + ((xCaraDer - xCaraIzq) * 0.32));
+        var xPuntaBarra = xPuntaCirc + SeparacionPuntasParrillaInf;
+        var xPuntaBarraMax = xCaraIzq + ((xCaraDer - xCaraIzq) * FraccionMaxPuntaBarraInf);
+        var xPuntaBarraMin = xPuntaCirc + SeparacionMinPuntas;
 
-        var texto = TextoDeParrilla("PARRILLA INFERIOR", varBarra, sepBarra, varCirc, sepCirc,
-            "INFERIOR", "SUPERIOR");
+        if (xPuntaBarra > xPuntaBarraMax)
+        {
+            xPuntaBarra = xPuntaBarraMax;
+        }
 
-        var xTexto = xBase + 0.18;
-        var yTexto = yZapBot - 0.10;
+        if (xPuntaBarra < xPuntaBarraMin)
+        {
+            xPuntaBarra = xPuntaBarraMin;
+        }
 
-        var mt = Mtexto(xTexto, yTexto, texto, AltoMtexto, CapaRotulos, conFondo: true);
+        var xTexto = xBase - 0.18 + 0.272 - 0.11 + DesplazamientoParrillaInfCentrar;
+        var yTexto = yZapBot + 0.1 + 0.4164 - 0.16;
 
-        if (mt is null)
+        var textoBarra = VarSep(varBarra, sepBarra, "INFERIOR");
+        var textoCirc = VarSep(varCirc, sepCirc, "SUPERIOR");
+
+        if (textoBarra.Length == 0 && textoCirc.Length == 0)
         {
             return;
         }
 
-        var caja = Caja(mt);
+        if (ParrillasIguales(varBarra, sepBarra, varCirc, sepCirc))
+        {
+            // Un solo rótulo centrado, con los dos leaders colgados de sus costados.
+            var xCentroMt = xTexto + (AnchoMtexto / 2)
+                            + DesplazamientoAmbosSentidos + DesplazamientoAmbosInferiorX;
+            var yAmbos = yTexto + DesplazamientoYAmbosTexto;
 
-        Leader(xPuntaCirc, yCirc, caja?.X1 ?? xTexto, yTexto);
-        Leader(xPuntaBarra, yBarra, caja?.X2 ?? xTexto, yTexto);
+            var mtAmbos = Mtexto(xCentroMt, yAmbos, TextoAmbosSentidos(varBarra, sepBarra),
+                AltoMtexto, CapaRotulos, conFondo: true, anclaje: AnclajeCentro);
+
+            if (mtAmbos is null)
+            {
+                return;
+            }
+
+            var cajaAmbos = Caja(mtAmbos);
+            var yAnclaje = yAmbos + DesplazamientoYAmbosAnclaje;
+
+            Leader(xPuntaCirc, yCirc, cajaAmbos?.X1 ?? xCentroMt, yAnclaje);
+            Leader(xPuntaBarra, yBarra, cajaAmbos?.X2 ?? xCentroMt, yAnclaje);
+
+            return;
+        }
+
+        // Dos rótulos: el de la parrilla de arriba un renglón más alto y creciendo a la derecha,
+        // el de la de abajo un renglón más bajo y creciendo a la izquierda.
+        var ySuperior = yTexto + DesplazamientoVertical;
+        var yInferior = yTexto - DesplazamientoVertical;
+        var xTextoDer = xTexto + AnchoMtexto
+                        + DesplazamientoInferiorX + DesplazamientoInferiorAdicional;
+
+        if (textoCirc.Length > 0)
+        {
+            var mtCirc = Mtexto(xTexto, ySuperior, textoCirc, AltoMtexto, CapaRotulos,
+                conFondo: true, anclaje: AnclajeIzquierda);
+
+            if (mtCirc is not null)
+            {
+                Leader(xPuntaCirc, yCirc, Caja(mtCirc)?.X1 ?? xTexto, ySuperior);
+            }
+        }
+
+        if (textoBarra.Length > 0)
+        {
+            var mtBarra = Mtexto(xTextoDer, yInferior, textoBarra, AltoMtexto, CapaRotulos,
+                conFondo: true, anclaje: AnclajeDerecha);
+
+            if (mtBarra is not null)
+            {
+                Leader(xPuntaBarra, yBarra, Caja(mtBarra)?.X2 ?? xTextoDer, yInferior);
+            }
+        }
     }
 
-    /// <summary>El rótulo de la parrilla superior de la central: sale a la derecha.</summary>
+    /// <summary>
+    /// Port de <c>RotularParrillaSuperiorZA</c> de la macro CENTRAL: el rótulo sale del paño
+    /// derecho de la zapata, arriba del lomo.
+    /// </summary>
+    /// <remarks>
+    /// Otra vez los números de la macro: <c>xTexto = xBase + ancho + 0.16 - 0.4302</c> y
+    /// <c>yTexto = yZapTop + 0.02 + 0.2908 - 0.16</c>. Mi versión anterior lo ponía en
+    /// <c>xBase + ancho + 0.10</c>, es decir 37 cm más a la derecha, fuera del dibujo y encima de
+    /// la zapata siguiente.
+    /// </remarks>
     private void RotuloParrillaSuperiorCentral(
         double xBase, double yZapBot, double anchoZapata, double espZapata, double rec,
         string? varBarra, string? sepBarra, string? varCirc, string? sepCirc)
@@ -2138,31 +2312,71 @@ public sealed partial class ZapataDrawer
         var xCircDer = xCaraDer - (dBarra / 2) - (dCirc / 2);
         var xPuntaBarra = xBase + anchoZapata - 0.18;
 
-        var texto = TextoDeParrilla("PARRILLA SUPERIOR", varBarra, sepBarra, varCirc, sepCirc,
-            "SUPERIOR", "INFERIOR");
+        var xTexto = xBase + anchoZapata + 0.16 - 0.4302;
+        var yTexto = yZapTop + 0.02 + 0.2908 - 0.16;
 
-        var mt = Mtexto(xBase + anchoZapata + 0.10, yZapTop + 0.16, texto, AltoMtexto,
-            CapaRotulos, conFondo: true);
+        var textoBarra = VarSep(varBarra, sepBarra, "SUPERIOR");
+        var textoCirc = VarSep(varCirc, sepCirc, "INFERIOR");
 
-        if (mt is null)
+        if (textoBarra.Length == 0 && textoCirc.Length == 0)
         {
             return;
         }
 
-        var caja = Caja(mt);
-        var x = caja?.X1 ?? xBase + anchoZapata;
+        if (ParrillasIguales(varBarra, sepBarra, varCirc, sepCirc))
+        {
+            var xCentroMt = xTexto + (AnchoMtexto / 2) + DesplazamientoAmbosSentidos;
+            var yAmbos = yTexto + DesplazamientoYAmbosTexto;
 
-        Leader(xPuntaBarra, yBarra, x, yZapTop + 0.16);
-        Leader(xCircDer, yCirc, x, yZapTop + 0.16);
+            var mtAmbos = Mtexto(xCentroMt, yAmbos, TextoAmbosSentidos(varBarra, sepBarra),
+                AltoMtexto, CapaRotulos, conFondo: true, anclaje: AnclajeCentro);
+
+            if (mtAmbos is null)
+            {
+                return;
+            }
+
+            var cajaAmbos = Caja(mtAmbos);
+            var yAnclaje = yAmbos + DesplazamientoYAmbosAnclaje;
+
+            Leader(xPuntaBarra, yBarra, cajaAmbos?.X1 ?? xCentroMt, yAnclaje);
+            Leader(xCircDer, yCirc, cajaAmbos?.X2 ?? xCentroMt, yAnclaje);
+
+            return;
+        }
+
+        var ySuperior = yTexto + DesplazamientoVertical;
+        var yInferior = yTexto - DesplazamientoVertical;
+        var xTextoDer = xTexto + AnchoMtexto
+                        + DesplazamientoInferiorX + DesplazamientoInferiorSuperiorAdicional;
+
+        if (textoBarra.Length > 0)
+        {
+            var mtBarra = Mtexto(xTexto, ySuperior, textoBarra, AltoMtexto, CapaRotulos,
+                conFondo: true, anclaje: AnclajeIzquierda);
+
+            if (mtBarra is not null)
+            {
+                Leader(xPuntaBarra, yBarra, Caja(mtBarra)?.X1 ?? xTexto, ySuperior);
+            }
+        }
+
+        if (textoCirc.Length > 0)
+        {
+            var mtCirc = Mtexto(xTextoDer, yInferior, textoCirc, AltoMtexto, CapaRotulos,
+                conFondo: true, anclaje: AnclajeDerecha);
+
+            if (mtCirc is not null)
+            {
+                Leader(xCircDer, yCirc, Caja(mtCirc)?.X2 ?? xTextoDer, yInferior);
+            }
+        }
     }
 
     /// <summary>
-    /// Port de <c>RotularParrillaSuperiorZALindero</c>: va <b>centrado</b> sobre la zapata.
+    /// Port de <c>RotularParrillaSuperiorZALindero</c>: en el lindero va <b>centrado</b> sobre el
+    /// lomo de la zapata, porque el rótulo del dado ya ocupa la izquierda.
     /// </summary>
-    /// <remarks>
-    /// En el lindero el rótulo del dado ya ocupa la izquierda, así que el de la parrilla superior
-    /// se centra sobre el lomo: es lo que evita el amontonamiento que tenía la macro V1.
-    /// </remarks>
     private void RotuloParrillaSuperiorLindero(
         double xBase, double yZapBot, double anchoZapata, double espZapata, double rec,
         string? varBarra, string? sepBarra, string? varCirc, string? sepCirc)
@@ -2175,60 +2389,114 @@ public sealed partial class ZapataDrawer
         }
 
         var dCirc = Diam(varCirc);
+        var sepCircM = TrazoZapata.SeparacionM(sepCirc);
         var yZapTop = yZapBot + espZapata;
         var yBarra = yZapTop - rec - (dBarra / 2);
         var yCirc = yBarra - (dBarra / 2) - (dCirc / 2);
 
+        var xCircIzq = xBase + rec + (dBarra / 2) + (dCirc / 2);
+        var xCircDer = xBase + anchoZapata - rec - (dBarra / 2) - (dCirc / 2);
+
         var xCentro = xBase + (anchoZapata / 2);
-        var yTexto = yZapTop + 0.23;
+        var yTexto = yZapTop + LinderoRotuloSupDy;
 
-        var texto = TextoDeParrilla("PARRILLA SUPERIOR", varBarra, sepBarra, varCirc, sepCirc,
-            "SUPERIOR", "INFERIOR");
+        // La punta de la barra a la izquierda del eje y la del círculo a la derecha, para que los
+        // dos leaders no se crucen. La del círculo se pega a UNA VARILLA DE VERDAD, no a un punto
+        // cualquiera: es lo que hace CirculoMasCercano en la macro.
+        var xPuntaBarra = xBase + (anchoZapata * LinderoRotSupFxBarra);
+        var xPuntaCirc = CirculoMasCercano(
+            xCircIzq, xCircDer, sepCircM, xBase + (anchoZapata * LinderoRotSupFxCirc));
 
-        var mt = Mtexto(xCentro, yTexto, texto, AltoMtexto, CapaRotulos, conFondo: true);
+        var textoBarra = VarSep(varBarra, sepBarra, "SUPERIOR");
+        var textoCirc = VarSep(varCirc, sepCirc, "INFERIOR");
 
-        if (mt is null)
+        if (textoBarra.Length == 0 && textoCirc.Length == 0)
         {
             return;
         }
 
-        var caja = Caja(mt);
+        if (ParrillasIguales(varBarra, sepBarra, varCirc, sepCirc))
+        {
+            var mtAmbos = Mtexto(xCentro, yTexto, TextoAmbosSentidos(varBarra, sepBarra),
+                AltoMtexto, CapaRotulos, conFondo: true, anclaje: AnclajeCentro);
 
-        Leader(xBase + (anchoZapata * 0.32), yBarra, caja?.X1 ?? xCentro, yTexto);
-        Leader(xBase + (anchoZapata * 0.66), yCirc, caja?.X2 ?? xCentro, yTexto);
+            if (mtAmbos is null)
+            {
+                return;
+            }
+
+            var cajaAmbos = Caja(mtAmbos);
+            var yAnclaje = yTexto + DesplazamientoYAmbosAnclaje;
+
+            Leader(xPuntaBarra, yBarra, cajaAmbos?.X1 ?? xCentro, yAnclaje);
+            Leader(xPuntaCirc, yCirc, cajaAmbos?.X2 ?? xCentro, yAnclaje);
+
+            return;
+        }
+
+        var ySuperior = yTexto + DesplazamientoVertical;
+        var yInferior = yTexto - DesplazamientoVertical;
+
+        if (textoBarra.Length > 0)
+        {
+            // Crece hacia la izquierda desde el eje.
+            var mtBarra = Mtexto(xCentro - LinderoRotSupGapX, ySuperior, textoBarra, AltoMtexto,
+                CapaRotulos, conFondo: true, anclaje: AnclajeDerecha);
+
+            if (mtBarra is not null)
+            {
+                Leader(xPuntaBarra, yBarra, Caja(mtBarra)?.X1 ?? xCentro, ySuperior);
+            }
+        }
+
+        if (textoCirc.Length > 0)
+        {
+            // Y este hacia la derecha.
+            var mtCirc = Mtexto(xCentro + LinderoRotSupGapX, yInferior, textoCirc, AltoMtexto,
+                CapaRotulos, conFondo: true, anclaje: AnclajeIzquierda);
+
+            if (mtCirc is not null)
+            {
+                Leader(xPuntaCirc, yCirc, Caja(mtCirc)?.X2 ?? xCentro, yInferior);
+            }
+        }
     }
 
-    /// <summary>Port de <c>TextoVarSep</c>, con el «AMBOS SENTIDOS» de la macro.</summary>
-    private string TextoDeParrilla(
-        string titulo, string? varBarra, string? sepBarra, string? varCirc, string? sepCirc,
-        string sufijoBarra, string sufijoCirc)
+    /// <summary>
+    /// Port de <c>CirculoMasCercano</c>: el centro de la varilla transversal más cercana a
+    /// <paramref name="xObjetivo"/>, para que la flecha del leader caiga sobre una varilla.
+    /// </summary>
+    private static double CirculoMasCercano(
+        double xIni, double xFin, double sep, double xObjetivo)
     {
-        var iguales = MismoDiametro(varBarra, varCirc)
-                      && TrazoZapata.SeparacionM(sepBarra, -1)
-                         == TrazoZapata.SeparacionM(sepCirc, -2);
-
-        if (iguales)
+        if (sep <= 0 || xFin <= xIni)
         {
-            return $"{titulo}\n{VarSep(varBarra, sepBarra, string.Empty)}\nAMBOS SENTIDOS";
+            return xObjetivo;
         }
 
-        var lineas = new List<string> { titulo };
+        var k = (long)((xObjetivo - xIni) / sep);
 
-        var a = VarSep(varBarra, sepBarra, sufijoBarra);
-        var b = VarSep(varCirc, sepCirc, sufijoCirc);
-
-        if (a.Length > 0)
+        if (k < 0)
         {
-            lineas.Add(a);
+            k = 0;
         }
 
-        if (b.Length > 0)
-        {
-            lineas.Add(b);
-        }
+        var x = xIni + (k * sep);
 
-        return string.Join("\n", lineas);
+        return x > xFin ? xFin : x;
     }
+
+    /// <summary>
+    /// Las dos parrillas son la misma varilla a la misma separación (el «AMBOS SENTIDOS»).
+    /// </summary>
+    private bool ParrillasIguales(
+        string? varBarra, string? sepBarra, string? varCirc, string? sepCirc)
+        => MismoDiametro(varBarra, varCirc)
+           && TrazoZapata.SeparacionM(sepBarra, -1) == TrazoZapata.SeparacionM(sepCirc, -2);
+
+    /// <summary>El texto de las dos parrillas cuando son iguales.</summary>
+    private string TextoAmbosSentidos(string? varBarra, string? sepBarra)
+        => $"{VarSep(varBarra, sepBarra, string.Empty)}\nAMBOS SENTIDOS";
 
     private string VarSep(string? clave, string? sep, string sufijo)
     {
