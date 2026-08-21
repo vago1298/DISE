@@ -67,11 +67,11 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 
     // La segunda: su pano derecho a 1 m del pano izquierdo de la primera, o sea su pano
     // izquierdo en -(1 + su ancho).
-    Vale($"{tipo}: la segunda a 1 m a la izquierda de la primera",
-        Math.Abs(TrazoZapata.XBase(tipo, anchos, 1) - (-(1.0 + 2.0))) < 1e-12);
+    Vale($"{tipo}: la segunda a 80 cm a la izquierda de la primera",
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 1) - (-(0.8 + 2.0))) < 1e-12);
 
-    Vale($"{tipo}: la tercera, otro metro mas a la izquierda",
-        Math.Abs(TrazoZapata.XBase(tipo, anchos, 2) - (-(1.0 + 2.0) - (1.0 + 1.0))) < 1e-12);
+    Vale($"{tipo}: la tercera, otros 80 cm mas a la izquierda",
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 2) - (-(0.8 + 2.0) - (0.8 + 1.0))) < 1e-12);
 
     // Y NINGUNA se encima con la anterior: entre el pano derecho de una y el izquierdo de la
     // otra hay un metro justo.
@@ -88,7 +88,7 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         }
     }
 
-    Vale($"{tipo}: siempre un metro justo entre una y la siguiente", ok);
+    Vale($"{tipo}: siempre 80 cm justos entre una y la siguiente", ok);
 }
 
 Console.WriteLine(fallos == 0

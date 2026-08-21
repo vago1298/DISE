@@ -226,10 +226,11 @@ public static class TrazoZapata
     /// <remarks>
     /// Cada zapata se acomoda con su paño derecho a un metro del paño <b>izquierdo</b> de la
     /// anterior, y eso vale igual para el corte y para la planta —las dos usan esta X—, así que
-    /// las dos vistas de una zapata quedan siempre en la misma vertical. Un metro es lo que dejan
-    /// las macros entre secciones y lo que cabe para las cotas y los rótulos de en medio.
+    /// las dos vistas de una zapata quedan siempre en la misma vertical. Son <b>80 cm</b>, la
+    /// <c>SEPARACION_SECCIONES</c> de la macro del lindero, y ese hueco es donde caben las cotas
+    /// verticales y los rótulos de la zapata de la izquierda, que se cuelgan de su paño derecho.
     /// </remarks>
-    public const double SeparacionIzquierda = 1.0;
+    public const double SeparacionIzquierda = 0.8;
 
     /// <summary>Y de arranque de la planta en el lindero.</summary>
     public const double PlantaYBaseLindero = -15.0;

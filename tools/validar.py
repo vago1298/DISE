@@ -3731,13 +3731,13 @@ def v19_circular_y_ui() -> None:
     # distancia que tiene las macros».
     # LO QUE SE PIDIO: cada zapata a un metro a la IZQUIERDA del pano izquierdo de la
     # anterior, en el corte Y en la planta -las dos usan la misma X-.
-    check("las zapatas se acomodan hacia la izquierda, un metro entre una y otra",
-          "public const double SeparacionIzquierda = 1.0;" in trazo_zap
+    check("las zapatas se acomodan hacia la izquierda, 80 cm entre una y otra",
+          "public const double SeparacionIzquierda = 0.8;" in trazo_zap
           and "x -= SeparacionIzquierda + Ancho(anchos, i);" in trazo_zap)
     check("y el tipo ya no cambia el acomodo",
           "El tipo ya no cambia el acomodo" in trazo_zap)
     check("y esta comprobado con numeros, para los dos tipos",
-          "siempre un metro justo entre una y la siguiente" in leer(
+          "siempre 80 cm justos entre una y la siguiente" in leer(
               ruta("tools/prueba-zapata/Program.cs")))
 
     check("la separacion entre secciones es la de cada macro",
@@ -4157,6 +4157,26 @@ def v19_circular_y_ui() -> None:
           and "no se puede invocar con 'dynamic'" in zap_pla)
 
     # Cotas: las de la macro, con sus offsets.
+    # LO QUE SE PIDIO: cotas y rotulos colgados del PUNTO INFERIOR DERECHO de la zapata, para
+    # que viajen con ella. Y el hueco de 80 cm de la fila queda a su derecha, que es donde
+    # caben.
+    check("las cotas verticales se cuelgan del paño derecho",
+          "CotasVerticales(xExtremoDer, yZapBot, yZapTop, yTerreno, r);" in zap_drw
+          and "var x1 = xDer + CotaOffsetVert1;" in zap_drw
+          and "var x2 = xDer + CotaOffsetVert2;" in zap_drw)
+    check("y los tres renglones del rotulo, tambien",
+          "Texto(xExtremoDer, yZapBot - RotuloTituloOffset" in zap_drw
+          and "alineacion: Alineacion.Derecha" in zap_drw)
+    check("hay alineacion de texto de verdad, no un booleano",
+          "private enum Alineacion" in zap_pla
+          and "alineacion == Alineacion.Centro ? 4 : 2" in zap_pla)
+    check("y queda escrito por que centrado no servia",
+          "se mete en la zapata de al lado" in zap_pla)
+    check("la planta cuelga sus cotas y su rotulo del mismo punto",
+          "PlantaCotaOffsetLargo" in zap_pla
+          and "Texto(xDer, yBot - PlantaTituloOffset" in zap_pla
+          and "xDer + PlantaCotaOffsetLargo, yBot" in zap_pla)
+
     check("las cotas de la elevacion son las de la macro",
           "CotaOffsetCadena = 0.14" in zap_drw
           and "CotaOffsetTotal = 0.22" in zap_drw
@@ -4302,7 +4322,7 @@ def v19_circular_y_ui() -> None:
     # LAS COTAS DE LA PLANTA, EN ORDEN: cadena y total abajo, largos a los lados.
     # LAS COTAS DE LA PLANTA SON LAS DE LA MACRO. El turno pasado las cambie a cadena y
     # total abajo y estuvo MAL: en la planta ya estaban en orden.
-    check("la planta acota como la macro: dado arriba, zapata abajo, largos a los lados",
+    check("la planta acota el dado arriba y la zapata abajo, como la macro",
           "PlantaTituloOffset = 0.24;" in zap_pla
           and "PlantaEscalaOffset = 0.33;" in zap_pla
           and "PlantaCotaNivel2" not in zap_pla
@@ -4715,8 +4735,8 @@ def v19_circular_y_ui() -> None:
           '"6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"' in prueba_zap
           and "en orden y dentro" in prueba_zap)
     check("y que el acomodo es el nuevo, para los dos tipos",
-          "la segunda a 1 m a la izquierda de la primera" in prueba_zap
-          and "siempre un metro justo entre una y la siguiente" in prueba_zap)
+          "la segunda a 80 cm a la izquierda de la primera" in prueba_zap
+          and "siempre 80 cm justos entre una y la siguiente" in prueba_zap)
     check("y devuelve 1 si algo falla, igual que la del diamante",
           "return fallos == 0 ? 0 : 1;" in prueba_zap)
 

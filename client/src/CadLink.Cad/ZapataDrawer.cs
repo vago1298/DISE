@@ -371,7 +371,8 @@ public sealed partial class ZapataDrawer
 
         HatchTerreno(xBase, xExtremoDer, a.XDadoIzq, a.XDadoDer, yZapTop, yTerreno);
         Linea(xBase - TerrenoVuelo, yTerreno, xExtremoDer + TerrenoVuelo, yTerreno, CapaTerreno);
-        Texto(xBase, yTerreno + 0.03, AltoTerreno, "Nivel del terreno", CapaRotulos, centrado: false);
+        Texto(xBase, yTerreno + 0.03, AltoTerreno, "Nivel del terreno", CapaRotulos,
+            alineacion: Alineacion.Izquierda);
 
         _cont = antes;
 
@@ -575,21 +576,27 @@ public sealed partial class ZapataDrawer
 
         // ---------- Cotas de anchos y verticales ----------
         CotasAnchos(xBase, xExtremoDer, a.XDadoIzq, a.XDadoDer, yZapBot, r);
-        CotasVerticales(xBase, yZapBot, yZapTop, yTerreno, r);
+        CotasVerticales(xExtremoDer, yZapBot, yZapTop, yTerreno, r);
 
         // ---------- Rótulo de la sección ----------
         var titulo = lindero
             ? $"ZAPATA AISLADA DE LINDERO \"{z.Id}\""
             : $"ZAPATA AISLADA CENTRAL \"{z.Id}\"";
 
-        Texto(xCentro, yZapBot - RotuloTituloOffset, AltoTitulo, titulo, CapaRotulos, centrado: true);
-        Texto(xCentro, yZapBot - RotuloSubtituloOffset, AltoSubtitulo, "ELEVACION", CapaRotulos,
-            centrado: true);
+        // LOS TRES RENGLONES DEL RÓTULO SE CUELGAN DEL PUNTO INFERIOR DERECHO de la zapata y
+        // crecen hacia la izquierda, sobre su propio dibujo. Centrados en el eje —como estaban—
+        // un título largo se salía por los dos lados y se metía en la zapata de al lado; con el
+        // extremo derecho fijo, cada rótulo se queda con su zapata y se mueve con ella.
+        Texto(xExtremoDer, yZapBot - RotuloTituloOffset, AltoTitulo, titulo, CapaRotulos,
+            alineacion: Alineacion.Derecha);
+        Texto(xExtremoDer, yZapBot - RotuloSubtituloOffset, AltoSubtitulo, "ELEVACION",
+            CapaRotulos, alineacion: Alineacion.Derecha);
 
         var fc = string.IsNullOrWhiteSpace(z.Fc) ? string.Empty : $"    f'c = {z.Fc.Trim()} kg/cm\u00B2";
 
-        Texto(xCentro, yZapBot - RotuloEscalaOffset, AltoEscala,
-            $"Rec. {z.RecM * 100:0.#} cm{fc}    Escala 1:10", CapaRotulos, centrado: true);
+        Texto(xExtremoDer, yZapBot - RotuloEscalaOffset, AltoEscala,
+            $"Rec. {z.RecM * 100:0.#} cm{fc}    Escala 1:10", CapaRotulos,
+            alineacion: Alineacion.Derecha);
 
         // ---------- La planta ----------
         Planta(z, a, r);
@@ -1855,10 +1862,15 @@ public sealed partial class ZapataDrawer
     /// no del de la zapata, que es lo que hay que replantear en obra.
     /// </remarks>
     private void CotasVerticales(
-        double xBase, double yZapBot, double yZapTop, double yTerreno, Resumen r)
+        double xDer, double yZapBot, double yZapTop, double yTerreno, Resumen r)
     {
-        var x1 = xBase - CotaOffsetVert1;
-        var x2 = xBase - CotaOffsetVert2;
+        // Colgadas del PAÑO DERECHO y hacia la derecha, no del izquierdo: es el hueco de 80 cm
+        // que la fila deja entre una zapata y la anterior, y así las cotas viajan con SU zapata y
+        // no se meten en la de al lado. En la macro iban a la izquierda porque las centrales
+        // crecían hacia la derecha; con la fila creciendo a la izquierda, ese lado ya está
+        // ocupado por la zapata siguiente.
+        var x1 = xDer + CotaOffsetVert1;
+        var x2 = xDer + CotaOffsetVert2;
         var yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor;
 
         r.Cotas += Cota(x1, yPlantillaBot, x1, yZapBot, x1, (yPlantillaBot + yZapBot) / 2,
