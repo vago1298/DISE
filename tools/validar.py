@@ -4202,6 +4202,80 @@ def v19_circular_y_ui() -> None:
           "cuatro esquinas de varilla" in trazo_zap)
 
     # ------------------------------------------------------------------
+    # EL ARMADO DEL DADO SALE DE SU SECCION, sea redondo o cuadrado
+    # ------------------------------------------------------------------
+    # Lo que se pidio: en «Arranque 1» y «Arranque 2» van las varillas de las ESQUINAS del dado
+    # que se selecciona, el numero de intermedias tambien, y los estribos se leen del dado.
+    check("los arranques del dado se traen de su seccion",
+          "fila.VarDadoSup = dado.DiamEsqSupEfectivo;" in zap_cb
+          and "fila.VarDadoInf = dado.DiamEsqInfEfectivo;" in zap_cb)
+    check("y en el dado redondo, las dos caras llevan su varilla del circulo",
+          "fila.VarDadoSup = d;" in zap_cb
+          and "dado.DiamVarTotalEfectivo" in zap_cb)
+    check("el numero de intermedias tambien sale de la seccion",
+          "fila.NIntDado = dado.NInter;" in zap_cb
+          and "fila.NIntDado = dado.NVarTotal > 2 ? (dado.NVarTotal - 2) / 2 : 0;" in zap_cb)
+    check("y el estribo del dado y su separacion, tambien",
+          "fila.EstriboDado = dado.Estribo;" in zap_cb
+          and "fila.SepEstriboDado = dado.SeparacionCm;" in zap_cb)
+    check("y queda escrito por que no se captura dos veces",
+          "un arranque que no existe" in zap_cb)
+
+    # ------------------------------------------------------------------
+    # LAS PATAS DEL DADO: ADENTRO CON COLUMNA DE CONCRETO, AFUERA CON ACERO
+    # ------------------------------------------------------------------
+    check("las patas del dado doblan segun el tipo de columna",
+          "ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1" in zap_drw)
+    check("y en el lindero las dos doblan a la izquierda, por el paño del lindero",
+          "ganchosAmbosIzq: lindero" in zap_drw)
+
+    # ------------------------------------------------------------------
+    # LAS COTAS: SUS VARIABLES ANTES DE CREAR EL ESTILO
+    # ------------------------------------------------------------------
+    # Aqui estaba el defecto de las cotas gigantes: un estilo creado sin fijar antes las
+    # variables se crea con las del dibujo -texto de 0.18 al lado de una zapata de un metro-.
+    check("las variables de cota se fijan antes de crear el estilo",
+          'Dimvar("DIMTXT", 0.025)' in zap_pla
+          and 'Dimvar("DIMASZ", 0.025)' in zap_pla
+          and 'Dimvar("DIMEXO", 0.02)' in zap_pla
+          and "estilo.CopyFrom(_doc);" in zap_pla)
+    check("y queda escrito el defecto que arregla",
+          "las cotas gigantes" in zap_pla)
+    check("las cotas van en metros con dos decimales",
+          'Dimvar("DIMLUNIT", 2)' in zap_pla and 'Dimvar("DIMDEC", 2)' in zap_pla)
+    check("y con marcas abiertas, con DIMSAH antes de DIMBLK",
+          zap_pla.index('Dimvar("DIMSAH", 0)') < zap_pla.index('Dimvar("DIMBLK", "_OPEN90")'))
+
+    # ------------------------------------------------------------------
+    # LA VISTA EN PLANTA, EN SU PROPIO BLOQUE
+    # ------------------------------------------------------------------
+    # Lo que se pidio: bloque con el dado, las varillas y el contorno; cotas y rotulos FUERA.
+    check("la planta se mete en su propio bloque",
+          '"-PLANTA"' in zap_pla
+          and "var plantaEnBloque = false;" in zap_pla
+          and "InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
+    check("y los rotulos y las cotas quedan FUERA del bloque",
+          "Se cierra el bloque: lo que sigue -cotas y rótulos- va en el MODELO." in zap_pla)
+    check("y queda escrito por que una cota no puede ir dentro",
+          "explotarlo es perder el bloque" in zap_pla)
+
+    # El orden importa: dentro del bloque solo el dibujo, y el cierre ANTES de las cotas.
+    m_pla = re.search(r"private void Planta\(ZapataCad z.*?\n    \}", zap_pla, re.S)
+
+    check("se puede leer la planta completa", m_pla is not None)
+
+    if m_pla:
+        cuerpo = m_pla.group(0)
+        i_malla = cuerpo.index("// ---------- Las mallas ----------")
+        i_cierre = cuerpo.index("// Se cierra el bloque")
+        i_cotas = cuerpo.index("// ---------- Cotas del dado ----------")
+        i_rot = cuerpo.index("// ---------- Rótulos de las mallas ----------")
+
+        check("las mallas van DENTRO del bloque", i_malla < i_cierre)
+        check("las cotas del dado, FUERA", i_cotas > i_cierre)
+        check("y los rotulos de parrilla, FUERA", i_rot > i_cierre)
+
+    # ------------------------------------------------------------------
     # GUARDAR EL TRABAJO: TODAS LAS HOJAS
     # ------------------------------------------------------------------
     # Lo que se pidio: «cuando guardo trabajo solo se guardan mis secciones de concreto».

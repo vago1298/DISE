@@ -400,6 +400,44 @@ public partial class MainWindow
         {
             fila.RecDadoCm = dado.RecubrimientoCm;
         }
+
+        // ---- Y SU ARMADO ----
+        // Los arranques son las varillas de las ESQUINAS del dado, las intermedias son sus
+        // intermedias y los estribos son los suyos. Todo sale de su sección, sea redondo o
+        // cuadrado. Volver a capturarlo aquí era pedir dos veces el mismo dato, y de los dos
+        // sitios el segundo es el que se equivoca: un dado armado con el #5 y apuntado con el
+        // #4 en la zapata sale con un arranque que no existe y nada en la tabla lo delata.
+        if (dado.EsCircular)
+        {
+            // En la redonda no hay lechos: las dos caras del alzado llevan la misma varilla, y
+            // las intermedias del alzado son las que quedan entre las dos esquinas.
+            var d = dado.DiamVarTotalEfectivo;
+
+            fila.VarDadoSup = d;
+            fila.VarDadoInf = d;
+
+            // De las N varillas repartidas en el círculo, dos son las que se ven en las caras
+            // del alzado; las demás quedan en medio, y de ellas se ven la mitad por cara.
+            fila.NIntDado = dado.NVarTotal > 2 ? (dado.NVarTotal - 2) / 2 : 0;
+            fila.VarIntDado = d;
+        }
+        else
+        {
+            fila.VarDadoSup = dado.DiamEsqSupEfectivo;
+            fila.VarDadoInf = dado.DiamEsqInfEfectivo;
+            fila.NIntDado = dado.NInter;
+            fila.VarIntDado = dado.DiamInter;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dado.Estribo))
+        {
+            fila.EstriboDado = dado.Estribo;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dado.SeparacionCm))
+        {
+            fila.SepEstriboDado = dado.SeparacionCm;
+        }
     }
 
     private static bool EsColumnaDeConcreto(string? elemento)

@@ -81,6 +81,32 @@ public sealed partial class ZapataDrawer
 
         var hayDoble = z.DobleParrilla && Diam(z.VarSup) > 0;
 
+        // ------------------------------------------------------------------
+        // LA PLANTA VA EN SU PROPIO BLOQUE, y dentro va solo el DIBUJO: el paño de la zapata,
+        // sus varillas y el dado. Los rótulos y las cotas se quedan FUERA, en el modelo.
+        //
+        // Es lo que se pidió y es lo correcto: la planta se mueve, se copia y se inserta de una
+        // pieza en el juego de planos, mientras que una cota tiene que poder editarse y seguir
+        // midiendo, y un rótulo tiene que poder moverse solo. Metidos en el bloque habría que
+        // explotarlo para tocar una cota, y explotarlo es perder el bloque.
+        // ------------------------------------------------------------------
+        var nombrePlanta = string.Empty;
+        var plantaEnBloque = false;
+
+        if (ZapataComoBloque)
+        {
+            nombrePlanta = NombreBloqueLibre(
+                (z.Id ?? string.Empty).Trim().Length == 0 ? "PLANTA" : z.Id!.Trim() + "-PLANTA");
+
+            var blk = CrearBloqueVacio(nombrePlanta, xIzq, yBot);
+
+            if (blk is not null)
+            {
+                _cont = blk;
+                plantaEnBloque = true;
+            }
+        }
+
         // El concreto de la planta solo se rellena en modo 1, igual que la macro.
         if (_relleno)
         {
@@ -169,12 +195,6 @@ public sealed partial class ZapataDrawer
         var hy1 = dy1 - PlantaHuecoMargen;
         var hy2 = dy2 + PlantaHuecoMargen;
 
-        // ---------- Cotas del dado ----------
-        r.Cotas += Cota(dx1, yTop + PlantaCotaOffsetDado, dx2, yTop + PlantaCotaOffsetDado,
-            (dx1 + dx2) / 2, yTop + PlantaCotaOffsetDado, false, false);
-        r.Cotas += Cota(xDer + PlantaCotaOffsetDado, dy1, xDer + PlantaCotaOffsetDado, dy2,
-            xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, false);
-
         // ---------- Las mallas ----------
         if (hayDoble)
         {
@@ -198,6 +218,16 @@ public sealed partial class ZapataDrawer
                     z.SepInfTrans, ladoInferior: true, conDiagonal: false,
                     hx1, hy1, hx2, hy2, fase);
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Se cierra el bloque: lo que sigue -cotas y rótulos- va en el MODELO.
+        // ------------------------------------------------------------------
+        _cont = _ms;
+
+        if (plantaEnBloque && InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata))
+        {
+            r.Bloques++;
         }
 
         // ---------- Rótulos de las mallas ----------
@@ -226,6 +256,12 @@ public sealed partial class ZapataDrawer
                 xIzq + (ancho * 0.86), yBot + (largo * 0.28),
                 xIzq + (ancho * 0.9), yBot + (largo * 0.14));
         }
+
+        // ---------- Cotas del dado ----------
+        r.Cotas += Cota(dx1, yTop + PlantaCotaOffsetDado, dx2, yTop + PlantaCotaOffsetDado,
+            (dx1 + dx2) / 2, yTop + PlantaCotaOffsetDado, false, false);
+        r.Cotas += Cota(xDer + PlantaCotaOffsetDado, dy1, xDer + PlantaCotaOffsetDado, dy2,
+            xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, false);
 
         // ---------- Cotas generales y rótulo ----------
         r.Cotas += Cota(xIzq, yBot - PlantaCotaOffset, xDer, yBot - PlantaCotaOffset,
@@ -976,9 +1012,44 @@ public sealed partial class ZapataDrawer
         }
     }
 
-    /// <summary>Port de <c>AsegurarEstiloCota</c>: siempre <c>COTA_ESTRUCTURAL</c>.</summary>
+    /// <summary>
+    /// Port de <c>AsegurarEstiloCota</c>, con las <b>variables de cota</b> antes de crearlo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí estaba el defecto de las cotas gigantes.</b> Al reescribir el dibujante dejé solo
+    /// la parte que busca o crea el estilo <c>COTA_ESTRUCTURAL</c>, y un estilo que se crea sin
+    /// más se crea con las variables <b>que tenga el dibujo</b>: en un plano nuevo eso es texto
+    /// de 0.18 y flechas de 0.18, o sea 18 cm de texto al lado de una zapata de un metro. Las
+    /// cotas salían enormes y descuadradas, y no era que estuvieran mal medidas.
+    /// </para>
+    /// <para>
+    /// Se fijan primero las variables y <b>después</b> se crea el estilo, porque el estilo copia
+    /// el estado del documento. Al revés no sirve de nada. Los valores son los de un plano a
+    /// <b>1:10</b>, que es la escala en la que se dibuja la zapata.
+    /// </para>
+    /// </remarks>
     private void AsegurarEstiloCota()
     {
+        // Geometría de la cota.
+        Dimvar("DIMSCALE", 1d);
+        Dimvar("DIMTXT", 0.025);      // alto del número
+        Dimvar("DIMASZ", 0.025);      // tamaño de la marca
+        Dimvar("DIMEXO", 0.02);       // separación de la pieza
+        Dimvar("DIMEXE", 0.035);      // remate de la línea de extensión
+        Dimvar("DIMGAP", 0.008);      // hueco alrededor del número
+        Dimvar("DIMDLE", 0d);
+
+        // Metros con dos decimales, que es como se lee un plano de cimentación.
+        Dimvar("DIMLUNIT", 2);
+        Dimvar("DIMDEC", 2);
+        Dimvar("DIMZIN", 0);
+
+        // Marcas abiertas en lugar de flechas rellenas. DIMSAH va primero: dice que las dos
+        // puntas usan el mismo bloque, y con DIMSAH en 1 la asignación de DIMBLK se rechaza.
+        Dimvar("DIMSAH", 0);
+        Dimvar("DIMBLK", "_OPEN90");
+
         try
         {
             AcadConnection.Retry(() =>
@@ -995,6 +1066,10 @@ public sealed partial class ZapataDrawer
                     estilo = estilos.Add(EstiloCota);
                 }
 
+                // CopyFrom copia el estado ACTUAL del documento, que es el que se acaba de
+                // fijar. Es lo que hace que el estilo tenga las medidas del plano y no las de
+                // fábrica, tanto si ya existía como si se acaba de crear.
+                estilo.CopyFrom(_doc);
                 _doc.ActiveDimStyle = estilo;
             });
         }
@@ -1002,6 +1077,24 @@ public sealed partial class ZapataDrawer
         {
             Nota($"No se pudo dejar activo el estilo de cota '{EstiloCota}'; las cotas de la "
                  + "zapata usan el estilo activo del dibujo.");
+        }
+    }
+
+    /// <summary>Fija una variable de cota, tolerando que esta versión no la acepte.</summary>
+    /// <remarks>
+    /// El cuerpo va entre llaves a propósito: con una expresión, al ser <c>_doc</c> dinámico, la
+    /// lambda podría resolverse al <c>Retry&lt;T&gt;</c> genérico.
+    /// </remarks>
+    private void Dimvar(string nombre, object valor)
+    {
+        try
+        {
+            AcadConnection.Retry(() => { _doc.SetVariable(nombre, valor); });
+        }
+        catch (Exception)
+        {
+            Nota($"La variable de cota {nombre} no aceptó '{valor}'; esa cota sale con lo que "
+                 + "tenga el dibujo.");
         }
     }
 
