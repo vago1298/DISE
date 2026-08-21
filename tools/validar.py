@@ -3752,6 +3752,16 @@ def v19_circular_y_ui() -> None:
     check("las dos familias crecen hacia la izquierda",
           "x -= SeparacionIzquierda + Ancho(anchos, i);" in trazo_zap
           and "acumulado += Ancho(anchos, i) + SeparacionCentral;" not in trazo_zap)
+    # EL PUNTO DE INSERCION: el corte en -8 y la planta en -15, para las DOS familias.
+    check("la planta arranca en -15, sin depender del rotulo",
+          "var yPlanta = YPlantaLindero(yZapBot, z.LargoM);" in trazo_zap
+          and "public const double PlantaYBaseLindero = -15.0;" in trazo_zap
+          and "public const double YBaseElevacion = -8.0;" in trazo_zap)
+    check("y queda escrito por que se movian las cotas de la planta",
+          "con ella se movían sus cotas" in trazo_zap)
+    check("el calculo de la macro central se conserva, documentado",
+          "Ya no se usa para colocar la planta" in trazo_zap)
+
     check("la planta de la central cuelga de la vista de corte",
           "public const double PlantaOffsetY = -3.0;" in trazo_zap
           and "var yFondoCorte = yZapBot - RotuloEscalaOffset;" in trazo_zap)
@@ -4052,6 +4062,12 @@ def v19_circular_y_ui() -> None:
     check("y si las patas se alcanzarian, una se sube",
           "private double DesfaseDeLosGanchos(" in zap_drw
           and "(2 * dMax) + 0.005" in zap_drw)
+    # El traslape a 1:6 -RELACION_DESPLAZAMIENTO- y, si el dado es tan bajo que no caben esos
+    # seis, se AVISA en lugar de dibujar un doblez mas parado y callarlo.
+    check("el traslape va a 1:6 y se avisa si no cabe",
+          "para quedar a 1:6 y en el dado solo caben" in zap_drw
+          and "RelacionDesplazamiento" in zap_drw)
+
     check("la union dado-columna dibuja el desplazamiento de cada barra",
           "private Union PrepararUnion(" in zap_drw
           and "private void DesplazamientoVarilla(" in zap_drw

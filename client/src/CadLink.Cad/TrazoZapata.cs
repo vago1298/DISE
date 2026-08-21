@@ -414,9 +414,12 @@ public static class TrazoZapata
             xColDer = xCentro + (wCol / 2);
         }
 
-        var yPlanta = EsLindero(z.Tipo)
-            ? YPlantaLindero(yZapBot, z.LargoM)
-            : YPlantaCentral(yZapBot, z.LargoM);
+        // LA PLANTA ARRANCA EN −15, SIEMPRE. No depende del tipo ni de dónde acabe el rótulo:
+        // el punto de inserción del juego es (x, −8) para el corte y (x, −15) para la planta, y
+        // el corte y la planta de una zapata comparten la X. Colgar la planta del renglón más
+        // bajo del rótulo —lo que hacía la macro central— movía la planta cada vez que el rótulo
+        // cambiaba de alto, y con ella se movían sus cotas: es lo que se veía descuadrado.
+        var yPlanta = YPlantaLindero(yZapBot, z.LargoM);
 
         return new Acomodo(
             xBase, xDer, yZapBot, yZapTop, yTerreno, yDadoTop,
@@ -424,7 +427,14 @@ public static class TrazoZapata
             yZapBot - PlantillaEspesor, yPlanta);
     }
 
-    /// <summary>Port de <c>YBasePlanta</c>: la planta cuelga de la vista de corte.</summary>
+    /// <summary>
+    /// Port de <c>YBasePlanta</c> de la macro central: la planta colgada del rótulo.
+    /// </summary>
+    /// <remarks>
+    /// <b>Ya no se usa para colocar la planta</b> —ahora todas arrancan en −15, como el lindero—
+    /// y se conserva porque es el cálculo de la macro central y permite comparar: colgar la
+    /// planta del renglón más bajo del rótulo la movía cada vez que el rótulo cambiaba de alto.
+    /// </remarks>
     public static double YPlantaCentral(double yZapBot, double largoM)
     {
         var yFondoCorte = yZapBot - RotuloEscalaOffset;

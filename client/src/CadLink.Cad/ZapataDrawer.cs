@@ -445,6 +445,19 @@ public sealed partial class ZapataDrawer
         if (union.Activa)
         {
             recorteDado = Math.Max((yDadoTop - recDadoM) - yZonaBot, 0);
+
+            // EL TRASLAPE VA A 1:6 —la RELACION_DESPLAZAMIENTO de la macro—: la zona de dobleces
+            // mide seis veces lo que la barra se corre de lado. Si el dado es tan bajo que no
+            // caben esos seis, la zona se recorta y el doblez sale MAS PARADO que 1:6, así que se
+            // dice: un doblez más parado de lo que manda el reglamento no se arregla dibujándolo
+            // bonito, se arregla subiendo el dado o bajando el desplazamiento.
+            if (union.Alto > hZona + 1e-6)
+            {
+                Nota($"Zapata '{z.Id}': el traslape del dado con la columna necesita "
+                     + $"{union.Alto:0.###} m para quedar a 1:6 y en el dado solo caben "
+                     + $"{hZona:0.###} m, así que el doblez queda más parado. Sube el dado o "
+                     + "reduce la diferencia entre el ancho del dado y el de la columna.");
+            }
         }
 
         // offEstribosFin del dado: con columna de concreto, 2 cm; con columna de acero hay que
