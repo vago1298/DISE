@@ -3233,10 +3233,15 @@ public partial class MainWindow : Window
 
         if (s.EsCircular)
         {
-            var zuncho = s.EsZunchoHelicoidal ? "zuncho helicoidal" : "zuncho en anillos";
+            // Zuncho solo si se pidio zuncho: sin la casilla son ESTRIBOS. Misma regla que
+            // el plano -Estribos.EsZuncho-, para que la pantalla y el papel no se
+            // contradigan.
+            var transversal = Estribos.EsZuncho(s.EsCircular, s.EsZunchoHelicoidal)
+                ? "zuncho helicoidal"
+                : "estribos";
 
             return $"{cabeza}   ({s.NVarTotal} vars. " +
-                   $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)}, {zuncho})";
+                   $"{Varilla.Normalizar(s.DiamVarTotalEfectivo)}, {transversal})";
         }
 
         var total = s.TotalVarillas;

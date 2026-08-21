@@ -2336,18 +2336,14 @@ public sealed partial class SeccionDrawer
 
         if (s.Estribo.Existe)
         {
-            // En la seccion redonda el acero transversal NO es un estribo: es un
-            // zuncho, y ademas hay que decir si sube en helice o son anillos, porque
-            // son dos formas de armar distintas y el fierrero necesita saber cual.
-            if (s.Circular)
-            {
-                var forma = s.ZunchoHelicoidal ? "helicoidal" : "en anillos";
-                lineas.Add($"Zuncho {forma} {s.Estribo.Clave} @{sep} cm");
-            }
-            else
-            {
-                lineas.Add($"Estr. {s.Estribo.Clave} @{sep} cm");
-            }
+            // Zuncho o estribos: lo decide LA CASILLA, no que la seccion sea redonda.
+            // Un zuncho y un estribo se piden, se doblan y se colocan distinto, asi que
+            // el rotulo tiene que decir cual es; pero una columna redonda sin la casilla
+            // marcada lleva ESTRIBOS, y antes se rotulaba «Zuncho en anillos». La regla
+            // esta en Estribos.EsZuncho, que es el mismo sitio que usa el alzado.
+            lineas.Add(Estribos.EsZuncho(s.Circular, s.ZunchoHelicoidal)
+                ? $"Zuncho helicoidal {s.Estribo.Clave} @{sep} cm"
+                : $"Estr. {s.Estribo.Clave} @{sep} cm");
         }
 
         // Renglón del estribo diamante, con la MISMA separación que el principal.

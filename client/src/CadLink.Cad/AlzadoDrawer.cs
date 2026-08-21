@@ -838,9 +838,10 @@ public sealed class AlzadoDrawer
                 ? a.SeparacionesCm[0].ToString("0", CultureInfo.InvariantCulture)
                 : a.Separacion.Trim();
 
-            lineas.Add(a.Circular
-                ? $"Zuncho {(a.ZunchoHelicoidal ? "helic." : "anillos")} " +
-                  $"{Etiqueta(a.Estribo.Clave)} @ {sep} cm"
+            // Zuncho SOLO si se pidio zuncho. Sin la casilla son estribos, y se rotulan
+            // «Est.» como en cualquier columna: ver Estribos.EsZuncho.
+            lineas.Add(Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)
+                ? $"Zuncho helic. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"
                 : $"Est. {Etiqueta(a.Estribo.Clave)} @ {sep} cm");
         }
 
@@ -1376,7 +1377,7 @@ public sealed class AlzadoDrawer
             $"Alzado '{a.Id}': zuncho HELICOIDAL de {dZun / _escala:0.##} cm, " +
             $"{vueltas:0.#} vuelta(s) con paso " +
             $"{p1 / _escala:0.#}-{p2 / _escala:0.#}-{p3 / _escala:0.#} cm. " +
-            "Si lo querías en anillos, quita el SI de la columna «Zuncho helic.».");
+            "Si lo querías con estribos normales, quita el SI de la columna «Zuncho helic.».");
     }
 
     /// <summary>
@@ -2636,27 +2637,29 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>
-    /// Texto del acero transversal: <b>estribo</b> en la rectangular y <b>zuncho</b>
-    /// en la circular.
+    /// Texto del acero transversal: <b>zuncho</b> solo si se pidió zuncho, y si no,
+    /// <b>estribos</b>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// No es un detalle de redacción. Un estribo y un zuncho se piden, se doblan y se
-    /// colocan distinto, y en la circular además hay que decir si sube en hélice o son
-    /// anillos: es lo que el fierrero necesita para armarlo. Con el texto «Est. #3 @ 10
-    /// cm» en una columna redonda, el plano no dice cuál de las dos cosas es.
+    /// colocan distinto, así que el rótulo tiene que decir cuál de los dos es.
+    /// </para>
+    /// <para>
+    /// Y lo decide <b>la casilla</b>, no la forma de la sección. Antes bastaba con que
+    /// fuera redonda para rotular «Zuncho anillos», y eso estaba mal: una columna o un
+    /// dado redondos sin la casilla marcada llevan <b>estribos</b> —anillos cerrados con
+    /// su gancho—, que es como se arman casi todos. La regla está en
+    /// <see cref="Estribos.EsZuncho"/>, en un solo sitio.
+    /// </para>
     /// </remarks>
     private static string TextoTransversal(AlzadoCad a, double separacionCm)
     {
         var clave = a.Estribo.Clave;
 
-        if (!a.Circular)
-        {
-            return $"Est. {clave} @ {separacionCm:0} cm";
-        }
-
-        var forma = a.ZunchoHelicoidal ? "helic." : "anillos";
-
-        return $"Zuncho {forma} {clave} @ {separacionCm:0} cm";
+        return Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)
+            ? $"Zuncho helic. {clave} @ {separacionCm:0} cm"
+            : $"Est. {clave} @ {separacionCm:0} cm";
     }
 
     private static string TextoSimple(int n, VarCad v, string posicion)

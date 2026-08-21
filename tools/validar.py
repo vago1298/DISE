@@ -3251,6 +3251,49 @@ def v19_circular_y_ui() -> None:
     check("y se elige segun la columna del usuario",
           "a.Circular && a.ZunchoHelicoidal" in alz)
 
+    # ------------------------------------------------------------------
+    # ZUNCHO SOLO SI SE PIDIO ZUNCHO. Sin la casilla, son ESTRIBOS.
+    # ------------------------------------------------------------------
+    # Lo que se pidio: «si no tiene activa la casilla de zunchos, colocar solo EST. como se
+    # hace normal; si la tiene activa, entonces si le pones zuncho». El DIBUJO ya era el
+    # correcto -capsulas de estribo, no una helice-, pero el ROTULO decia «Zuncho anillos
+    # #3 @ 6 cm» en un dado redondo sin la casilla, y un zuncho se pide, se dobla y se paga
+    # distinto que un estribo.
+    estribos_cs = leer(ruta("client/src/CadLink.Cad/Estribos.cs"))
+    secdrw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("la regla de zuncho-o-estribos vive en un solo sitio",
+          "public static bool EsZuncho(bool circular, bool zunchoHelicoidal) =>" in estribos_cs
+          and "circular && zunchoHelicoidal;" in estribos_cs)
+    check("y queda escrito que una redonda no lleva zuncho por ser redonda",
+          "no lleva zuncho por ser" in estribos_cs
+          and "lleva estribos normales" in estribos_cs)
+    check("el rotulo del alzado la usa",
+          "Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)" in alz)
+    check("el texto del acero transversal del alzado, tambien",
+          alz.count("Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)") >= 2)
+    check("y el rotulo de la seccion",
+          "Estribos.EsZuncho(s.Circular, s.ZunchoHelicoidal)" in secdrw)
+    check("y el titulo de la vista previa, para que pantalla y papel no se contradigan",
+          "Estribos.EsZuncho(s.EsCircular, s.EsZunchoHelicoidal)" in codigo)
+
+    # Y ya no queda ni un rotulo que llame zuncho a un estribo.
+    for texto in ('"Zuncho anillos', 'Zuncho {forma}', '"zuncho en anillos"',
+                  '? "helic." : "anillos"'):
+        check(f"ya no se rotula {texto.strip(chr(34))} sin casilla",
+              texto not in alz and texto not in secdrw and texto not in codigo)
+
+    check("sin casilla el alzado dice Est., como cualquier columna",
+          '$"Est. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"' in alz
+          and '$"Est. {clave} @ {separacionCm:0} cm"' in alz)
+    check("y la seccion dice Estr.",
+          '$"Estr. {s.Estribo.Clave} @{sep} cm"' in secdrw)
+    check("con casilla si dice zuncho, y que es helicoidal",
+          '$"Zuncho helic. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"' in alz
+          and '$"Zuncho helicoidal {s.Estribo.Clave} @{sep} cm"' in secdrw)
+    check("y el aviso del zuncho ofrece quitar el SI para tener estribos",
+          "Si lo querías con estribos normales, quita el SI" in alz)
+
     # La helice se MUESTREA una sola vez y la comparten el dibujo del zuncho y el
     # recorte de las varillas. Si cada uno la calculara por su cuenta, los cortes
     # caerian donde la helice no esta dibujada.
@@ -5279,22 +5322,30 @@ def v19_circular_y_ui() -> None:
           "private static string TextoCirculo(" in alz)
     check("y el alzado vertical lo usa", "TextoCirculo(a)" in alz)
 
-    # Y el acero transversal se llama por su nombre: zuncho, no estribo.
+    # Y el acero transversal se llama por su nombre, pero el nombre lo decide LA CASILLA:
+    # con zuncho pedido dice «Zuncho helic.», y sin casilla «Est.», como cualquier columna.
     check("hay texto propio del acero transversal",
           "private static string TextoTransversal(" in alz)
     m_tt = re.search(r"private static string TextoTransversal\(.*?\n    \}", alz, re.S)
     if m_tt:
         cuerpo = m_tt.group(0)
-        check("en la circular dice Zuncho y no Est.", '"Zuncho ' in cuerpo)
-        check("y distingue helice de anillos",
-              "helic." in cuerpo and "anillos" in cuerpo)
+        check("con la casilla marcada dice Zuncho helic.", '"Zuncho helic. ' in cuerpo)
+        check("y sin la casilla dice Est.", '"Est. ' in cuerpo)
+        check("y la decision no la toma el texto, la toma Estribos.EsZuncho",
+              "Estribos.EsZuncho(a.Circular, a.ZunchoHelicoidal)" in cuerpo
+              and "anillos" not in cuerpo)
 
     # Lo usan los DOS alzados, el vertical y el horizontal.
     check("los dos alzados usan el texto transversal",
           alz.count("TextoTransversal(a, s[i])") == 2,
           f"lo usan {alz.count('TextoTransversal(a, s[i])')} vez/veces")
-    check("y ya no queda el texto fijo de estribo",
-          'Est. {a.Estribo.Clave} @' not in alz)
+    # Antes aqui se exigia que NO hubiera ningun «Est.» fijo en el alzado, porque la
+    # circular tenia que decir «Zuncho». Ya no aplica: sin la casilla del zuncho, la
+    # circular dice «Est.» a proposito, que es lo que se pidio. Lo que se comprueba ahora es
+    # que el texto NO se arme en dos sitios distintos, que era el defecto de fondo.
+    check("el texto del transversal se arma en un solo sitio por vista",
+          alz.count('$"Est. {clave} @ {separacionCm:0} cm"') == 1
+          and alz.count('$"Est. {Etiqueta(a.Estribo.Clave)} @ {sep} cm"') == 1)
 
 
 # ======================================================================

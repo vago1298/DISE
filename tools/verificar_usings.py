@@ -19,6 +19,13 @@ solo aparecen al compilar en Windows, donde estan las bibliotecas de WPF:
      metodos a un delegado. Se arregla metiendo el metodo en una variable con su tipo:
      'Func<string?, double> f = DiametroCmDeVarilla;'.
 
+  3) MC3072 «la propiedad 'X' no existe en el espacio de nombres XML ...»
+     Una propiedad puesta en una COLUMNA de DataGrid que la columna no tiene. Paso con
+     ToolTip="..." en un DataGridTextColumn: una columna de DataGrid no es un control
+     -no hereda de FrameworkElement-, asi que no tiene ToolTip. El globo va en el
+     elemento de la celda, con ElementStyle. Esto NO lo caza validar.py, que solo
+     comprueba que el XAML sea XML bien formado, y en Windows tumba la compilacion.
+
 POR QUE ESTO EXISTE
     La aplicacion es WPF y solo compila en Windows. Aqui se comprueba lo que se pueda
     SIN compilador: los usings que hacen falta y los grupos de metodos en llamadas
@@ -150,6 +157,34 @@ def espacios_importados(codigo):
     return nombres, alias
 
 
+# ----------------------------------------------------------------------
+# Lo que SI acepta una columna de DataGrid. Una columna no es un control: no tiene
+# ToolTip, ni Margin, ni Padding, ni IsEnabled, ni Style. Lo que se le pone de mas no
+# falla en tiempo de ejecucion: falla al COMPILAR, con MC3072.
+# ----------------------------------------------------------------------
+COLUMNA_COMUN = {
+    "Header", "HeaderStyle", "HeaderStringFormat", "HeaderTemplate",
+    "HeaderTemplateSelector", "Width", "MinWidth", "MaxWidth", "CanUserSort",
+    "CanUserResize", "CanUserReorder", "DisplayIndex", "IsReadOnly", "SortMemberPath",
+    "SortDirection", "Visibility", "CellStyle", "ClipboardContentBinding",
+    "DragIndicatorStyle", "Foreground", "Background", "FontFamily", "FontSize",
+    "FontStyle", "FontWeight", "x:Name", "x:Uid",
+}
+
+COLUMNA_PROPIA = {
+    "DataGridTextColumn": {"Binding", "ElementStyle", "EditingElementStyle"},
+    "DataGridCheckBoxColumn": {
+        "Binding", "ElementStyle", "EditingElementStyle", "IsThreeState"},
+    "DataGridHyperlinkColumn": {
+        "Binding", "ElementStyle", "EditingElementStyle", "ContentBinding", "TargetName"},
+    "DataGridComboBoxColumn": {
+        "ElementStyle", "EditingElementStyle", "ItemsSource", "SelectedItemBinding",
+        "SelectedValueBinding", "SelectedValuePath", "DisplayMemberPath", "TextBinding"},
+    "DataGridTemplateColumn": {
+        "CellTemplate", "CellTemplateSelector", "CellEditingTemplate",
+        "CellEditingTemplateSelector"},
+}
+
 fallos = []
 comprobaciones = 0
 
@@ -238,6 +273,40 @@ def revisar_grupos_de_metodos(ruta, codigo):
                 )
 
 
+def revisar_columnas_de_datagrid(ruta, xaml):
+    """Ninguna columna de DataGrid con una propiedad que las columnas no tienen."""
+    global comprobaciones
+
+    for m in re.finditer(r"<(DataGrid\w*Column)\b((?:[^>\"]|\"[^\"]*\")*?)/?>", xaml, re.S):
+        tipo = m.group(1)
+
+        if tipo not in COLUMNA_PROPIA:
+            continue
+
+        validas = COLUMNA_COMUN | COLUMNA_PROPIA[tipo]
+
+        for atr in re.finditer(r'([\w:.]+)\s*=\s*"', m.group(2)):
+            nombre = atr.group(1)
+
+            # 'DataGridTextColumn.ElementStyle' y demas propiedades escritas con su
+            # tipo delante son validas: se comprueba la parte de despues del punto.
+            corto = nombre.split(".")[-1] if "." in nombre and ":" not in nombre else nombre
+
+            comprobaciones += 1
+
+            if corto in validas or nombre in validas:
+                continue
+
+            linea = xaml[: m.start()].count("\n") + 1
+
+            fallos.append(
+                f"{os.path.basename(ruta)}({linea}): {tipo} lleva '{nombre}', y una "
+                "columna de DataGrid no tiene esa propiedad: no es un control. Es el "
+                "MC3072. Si es un globo o un margen, va en el elemento de la celda, "
+                "con ElementStyle o CellStyle."
+            )
+
+
 def main():
     if not os.path.isdir(APP):
         print(f"No encuentro {APP}")
@@ -262,7 +331,19 @@ def main():
         revisar_usings(ruta, codigo)
         revisar_grupos_de_metodos(ruta, codigo)
 
-    print(f" {len(archivos)} archivo(s) revisados, {comprobaciones} uso(s) comprobados.")
+    xamls = sorted(
+        os.path.join(dir_, f)
+        for dir_, _, fs in os.walk(APP)
+        for f in fs
+        if f.endswith(".xaml") and "obj" not in dir_ and "bin" not in dir_
+    )
+
+    for ruta in xamls:
+        with open(ruta, encoding="utf-8") as fh:
+            revisar_columnas_de_datagrid(ruta, fh.read())
+
+    print(f" {len(archivos)} archivo(s) de codigo y {len(xamls)} de XAML revisados, "
+          f"{comprobaciones} uso(s) comprobados.")
     print()
 
     if fallos:
@@ -276,8 +357,9 @@ def main():
         return 1
 
     print("=" * 78)
-    print(" Todo correcto: cada tipo tiene su using y ninguna llamada dinamica")
-    print(" recibe un nombre de metodo suelto.")
+    print(" Todo correcto: cada tipo tiene su using, ninguna llamada dinamica recibe")
+    print(" un nombre de metodo suelto y ninguna columna de DataGrid lleva una")
+    print(" propiedad que no tiene.")
     print("=" * 78)
 
     return 0

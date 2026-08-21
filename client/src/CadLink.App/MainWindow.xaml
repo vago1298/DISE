@@ -1162,8 +1162,18 @@
                                  editable para un caso a mano, pero lo escrito a mano no gana
                                  contra la seccion: la referencia es la seccion. -->
                             <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaLateral}"
-                                                ToolTip="Se llena sola con el ancho real del dado elegido en «ID dado»." />
+                                                Width="75" CellStyle="{StaticResource CeldaLateral}">
+                                <!-- El globo va en ElementStyle y NO como ToolTip de la
+                                     columna: una columna de DataGrid no es un control, no
+                                     tiene ToolTip, y ponerselo es el error MC3072. Lo que
+                                     tiene globo es el TextBlock de la celda. -->
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Se llena sola con el ancho real del dado elegido en «ID dado»." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <!-- LA COLUMNA SE ELIGE DE LAS DOS HOJAS.
                                  La lista trae las columnas capturadas en «Secciones
                                  Concreto» -COLUMNA y COLUMNA CIRCULAR- y las de «Secciones
@@ -1199,11 +1209,23 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Col. cm" Binding="{Binding AnchoColumnaCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaLateral}"
-                                                ToolTip="Se llena sola con la medida real de la columna elegida en «ID col.»:&#10;la base de la seccion de concreto, o el peralte del perfil de acero." />
+                                                Width="75" CellStyle="{StaticResource CeldaLateral}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Se llena sola con la medida real de la columna elegida en «ID col.»:&#10;la base de la seccion de concreto, o el peralte del perfil de acero." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Rec. dado cm" Binding="{Binding RecDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="95" CellStyle="{StaticResource CeldaLateral}"
-                                                ToolTip="Se llena solo con el recubrimiento de la seccion del dado elegido." />
+                                                Width="95" CellStyle="{StaticResource CeldaLateral}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Se llena solo con el recubrimiento de la seccion del dado elegido." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
                             <!-- Arranque del dado -->
                             <DataGridComboBoxColumn x:Name="ColZapVarDadoSup" Header="Arranque 1"
