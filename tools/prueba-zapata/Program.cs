@@ -55,23 +55,31 @@ foreach (var sep in new[] { "6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", 
         c.Length > 2 && ordenados && c[0] >= 0 && c[^1] <= 1.20 + 1e-9);
 }
 
-// ---------- EL ACOMODO: cada zapata a 1 m a la IZQUIERDA de la anterior ----------
-// Vale igual para la central y para el lindero, y las dos vistas -corte y planta- usan esta
-// misma X, asi que quedan en la misma vertical.
+// ---------- EL ACOMODO: la fila EMPIEZA EN X = -0.8 y crece a la IZQUIERDA ----------
+// Lo que se pidio: "empezar en x = -0.8", "no lo dibujes a partir del centro". La primera
+// zapata queda con su pano DERECHO en -0.8, asi que la fila entera vive en x <= -0.8 y nada
+// toca el origen. Vale igual para la central y para el lindero, y las dos vistas -corte y
+// planta- usan esta misma X, asi que quedan en la misma vertical.
 var anchos = new[] { 1.5, 2.0, 1.0 };
 
 foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 {
-    Vale($"{tipo}: la primera en x = 0",
-        Math.Abs(TrazoZapata.XBase(tipo, anchos, 0)) < 1e-12);
+    Vale($"{tipo}: la fila empieza en x = -0.8, no en el origen",
+        Math.Abs(TrazoZapata.XArranque - (-0.8)) < 1e-12
+        && Math.Abs(TrazoZapata.XBase(tipo, anchos, 0) - (-0.8 - 1.5)) < 1e-12);
 
-    // La segunda: su pano derecho a 1 m del pano izquierdo de la primera, o sea su pano
-    // izquierdo en -(1 + su ancho).
+    // El pano DERECHO de la primera es el que se coloca en -0.8.
+    Vale($"{tipo}: el pano derecho de la primera cae justo en -0.8",
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 0) + anchos[0] - (-0.8)) < 1e-12);
+
+    // La segunda: su pano derecho a 80 cm del pano izquierdo de la primera, o sea su pano
+    // izquierdo 80 cm mas su propio ancho a la izquierda.
     Vale($"{tipo}: la segunda a 80 cm a la izquierda de la primera",
-        Math.Abs(TrazoZapata.XBase(tipo, anchos, 1) - (-(0.8 + 2.0))) < 1e-12);
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 1) - (-0.8 - 1.5 - (0.8 + 2.0))) < 1e-12);
 
     Vale($"{tipo}: la tercera, otros 80 cm mas a la izquierda",
-        Math.Abs(TrazoZapata.XBase(tipo, anchos, 2) - (-(0.8 + 2.0) - (0.8 + 1.0))) < 1e-12);
+        Math.Abs(TrazoZapata.XBase(tipo, anchos, 2)
+                 - (-0.8 - 1.5 - (0.8 + 2.0) - (0.8 + 1.0))) < 1e-12);
 
     // Y NINGUNA se encima con la anterior: entre el pano derecho de una y el izquierdo de la
     // otra hay justo la separacion de 80 cm.
@@ -89,6 +97,19 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
     }
 
     Vale($"{tipo}: siempre 80 cm justos entre una y la siguiente", ok);
+
+    // Y NINGUNA pasa del arranque de la fila: eso es "no dibujar a partir del centro".
+    var fuera = false;
+
+    for (var i = 0; i < anchos.Length; i++)
+    {
+        if (TrazoZapata.XBase(tipo, anchos, i) + anchos[i] > TrazoZapata.XDerechaDeLaFila + 1e-12)
+        {
+            fuera = true;
+        }
+    }
+
+    Vale($"{tipo}: ninguna zapata pasa de x = -0.8 ni toca el origen", !fuera);
 }
 
 // ---------- EL RENGLON DE LOS ROTULOS: EL MISMO PARA TODAS ----------

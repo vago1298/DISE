@@ -302,33 +302,58 @@ public static class TrazoZapata
     // ======================================================================
 
     /// <summary>
+    /// Donde <b>empieza</b> la fila: el paño <b>derecho</b> de la primera zapata, en
+    /// <c>x = −0.8</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// LO QUE SE PIDIÓ: <i>«empezar en x = −0.8»</i>, <i>«no lo dibujes a partir del centro»</i>.
+    /// Antes la primera zapata se colocaba con su paño izquierdo <b>en el origen</b> y de ahí
+    /// crecía hacia la izquierda, así que el dibujo arrancaba encima del <c>0,0</c> y se metía en
+    /// la zona donde viven las secciones y los alzados.
+    /// </para>
+    /// <para>
+    /// Son los mismos <see cref="SeparacionIzquierda"/> = 0.8 que separan una zapata de la
+    /// siguiente: el origen se trata como si fuera una zapata más, así que el hueco antes del
+    /// dibujo es igual al que hay entre dos zapatas. Con esto la fila entera queda en
+    /// <c>x ≤ −0.8</c> y nada toca el origen.
+    /// </para>
+    /// <para>
+    /// Si algún día se quiere que sea el paño <b>izquierdo</b> el que arranque en −0.8, y no el
+    /// derecho, se le quita el <c>− Ancho(anchos, 0)</c> a <see cref="XBase"/>: es el único
+    /// sitio donde se decide.
+    /// </para>
+    /// </remarks>
+    public const double XArranque = -SeparacionIzquierda;
+
+    /// <summary>
     /// El <b>paño izquierdo</b> de la zapata número <paramref name="indice"/>, en metros.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Aquí está la diferencia de acomodo entre las dos macros, y es de sentido, no de número:
+    /// La fila <b>empieza en <see cref="XArranque"/> = −0.8</b> y crece hacia la <b>izquierda</b>:
+    /// la primera zapata queda con su paño derecho ahí, y cada siguiente a 0.8 del paño izquierdo
+    /// de la anterior.
+    /// </para>
+    /// <para>
+    /// Dos detalles que se ven poco y se notan mucho:
     /// </para>
     /// <list type="bullet">
-    /// <item>La <b>central</b> arranca en 0 y crece hacia la derecha: cada zapata se pone a un
-    /// metro del borde derecho de la anterior. La macro lo hace acumulando
-    /// <c>xBase = xBase + anchoZapata + SEPARACION_SECCIONES</c>, así que el sitio de una
-    /// depende de los anchos de <b>todas</b> las de antes.</item>
-    /// <item>La de <b>lindero</b> arranca en −3 y crece hacia la izquierda: se le resta la
-    /// separación y el ancho de la zapata que se va a dibujar. Ojo con el detalle: se resta el
-    /// ancho de la <b>nueva</b>, no el de la anterior, porque lo que se coloca es su paño
-    /// izquierdo.</item>
+    /// <item>Lo que se coloca es el <b>paño izquierdo</b>, así que se resta el ancho de la zapata
+    /// <b>nueva</b>, no el de la anterior. Restar el que no toca es lo que dejaba la zapata ancha
+    /// montada sobre la angosta.</item>
+    /// <item>El tipo ya no cambia el acomodo. Las dos familias crecen hacia la izquierda.
+    /// Antes las centrales crecían a la derecha desde cero y los linderos a la izquierda desde
+    /// −3, como en cada macro, y al mezclar los dos tipos en una misma hoja se encimaban.</item>
     /// </list>
     /// </remarks>
     /// <param name="anchos">Los anchos, en metros, en el orden de la tabla.</param>
     /// <param name="indice">Cuál de ellas.</param>
     public static double XBase(string tipo, IReadOnlyList<double> anchos, int indice)
     {
-        // La PRIMERA en cero, y cada siguiente un metro a la IZQUIERDA del paño izquierdo de la
-        // anterior. El tipo ya no cambia el acomodo: sea central o de lindero, la fila crece
-        // hacia la izquierda, que es como se pidió y como se lee un juego de zapatas puesto en
-        // hilera. Antes las centrales crecían a la derecha desde cero y los linderos a la
-        // izquierda desde −3, y al mezclar los dos tipos en una misma hoja se encimaban.
-        var x = 0.0;
+        // La PRIMERA con su paño DERECHO en -0.8 -por eso se le resta su propio ancho-, y cada
+        // siguiente a 0.8 del paño izquierdo de la anterior.
+        var x = XArranque - Ancho(anchos, 0);
 
         for (var i = 1; i <= indice; i++)
         {
@@ -339,6 +364,15 @@ public static class TrazoZapata
 
         return x;
     }
+
+    /// <summary>
+    /// El punto más a la <b>derecha</b> que ocupa la fila de zapatas: <see cref="XArranque"/>.
+    /// </summary>
+    /// <remarks>
+    /// Existe para poder comprobar de un tiro que ninguna zapata pasa de aquí, que es la forma
+    /// corta de decir «no arranca en el centro».
+    /// </remarks>
+    public static double XDerechaDeLaFila => XArranque;
 
     /// <summary>Si el tipo es el de lindero.</summary>
     public static bool EsLindero(string? tipo) =>

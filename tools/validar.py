@@ -3739,6 +3739,25 @@ def v19_circular_y_ui() -> None:
     check("y esta comprobado con numeros, para los dos tipos",
           "justo la separacion de 80 cm" in leer(ruta("tools/prueba-zapata/Program.cs")))
 
+    # LO QUE SE PIDIO: "empezar en x = -0.8", "no lo dibujes a partir del centro". La fila ya no
+    # arranca en el origen: la primera zapata queda con su pano DERECHO en -0.8, los mismos 0.8
+    # que separan una zapata de la siguiente, y de ahi crece hacia la izquierda.
+    check("la fila empieza en x = -0.8 y no en el origen",
+          "public const double XArranque = -SeparacionIzquierda;" in trazo_zap
+          and "var x = XArranque - Ancho(anchos, 0);" in trazo_zap
+          and "var x = 0.0;" not in trazo_zap)
+    check("se coloca el pano DERECHO de la primera, por eso se resta su ancho",
+          "La PRIMERA con su paño DERECHO en -0.8" in trazo_zap)
+    check("y se puede preguntar hasta donde llega la fila por la derecha",
+          "public static double XDerechaDeLaFila => XArranque;" in trazo_zap)
+    check("queda escrito por que se movio, y como volver atras",
+          "empezar en x = −0.8" in trazo_zap
+          and "no lo dibujes a partir del centro" in trazo_zap
+          and "se le quita el <c>− Ancho(anchos, 0)</c>" in trazo_zap)
+    check("y esta comprobado con numeros que ninguna zapata toca el origen",
+          "ninguna zapata pasa de x = -0.8 ni toca el origen"
+          in leer(ruta("tools/prueba-zapata/Program.cs")))
+
     check("la separacion entre secciones es la de cada macro",
           "public const double SeparacionCentral = 1.0;" in trazo_zap
           and "public const double SeparacionLindero = 0.8;" in trazo_zap)
