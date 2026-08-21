@@ -76,6 +76,7 @@ public partial class MainWindow : Window
         // cargar el ejemplo y al empezar de nuevo, y suscribirse ahí dejaría el mismo evento
         // enganchado cinco veces.
         EngancharVistaPreviaAcero();
+        EngancharVistaPreviaZapata();
 
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
@@ -152,7 +153,11 @@ public partial class MainWindow : Window
             // SeccionConcretoRow.ElementoRotulo.
             SeccionConcretoRow.ElementoColumna,
             SeccionConcretoRow.ElementoColumnaCircular,
-            "DADO", "CASTILLO", "TRABE", "CONTRATRABE",
+            // Y los dos dados, con la misma idea: DADO CIRCULAR va justo despues de
+            // DADO porque es donde se elige la FORMA. Los dos se rotulan «DADO».
+            SeccionConcretoRow.ElementoDado,
+            SeccionConcretoRow.ElementoDadoCircular,
+            "CASTILLO", "TRABE", "CONTRATRABE",
             SeccionConcretoRow.ElementoCabezal,
             "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE",
 
@@ -181,6 +186,7 @@ public partial class MainWindow : Window
 
         // Y las de la hoja de acero, que viven en MainWindow.Acero.cs.
         LlenarListasAcero();
+        LlenarListasZapatas();
     }
 
     private void Enlazar()
@@ -231,6 +237,7 @@ public partial class MainWindow : Window
         // trabajo nuevo, y en esos tres casos _datos es OTRO objeto. Enlazando el acero
         // aparte, su cuadricula seguiria mostrando la coleccion del proyecto anterior.
         EnlazarAcero();
+        EnlazarZapatas();
 
         DatosCambiaron();
     }
@@ -2441,7 +2448,10 @@ public partial class MainWindow : Window
             return TipoElemento.Columna;
         }
 
-        if (e == "DADO" || i.StartsWith("D-", StringComparison.Ordinal))
+        // Los DOS dados llevan alzado vertical, igual que las dos columnas. Sin el
+        // redondo, un DADO CIRCULAR se quedaba sin alzado salvo que su ID empezara por D-.
+        if (e == "DADO" || e == SeccionConcretoRow.ElementoDadoCircular
+            || i.StartsWith("D-", StringComparison.Ordinal))
         {
             return TipoElemento.Dado;
         }

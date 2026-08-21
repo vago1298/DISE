@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using CadLink.Cad;
 
 namespace CadLink.App.Models;
 
@@ -263,7 +264,9 @@ public sealed class SeccionConcretoRow : Row
             // forma no cambia como se numeran.
             "COLUMNA" => "C-",
             "COLUMNA CIRCULAR" => "C-",
+            // Los dos dados comparten prefijo, por lo mismo que las dos columnas.
             "DADO" => "D-",
+            "DADO CIRCULAR" => "D-",
             "CASTILLO" => "K-",
             "TRABE" => "T-",
             "CONTRATRABE" => "CT-",
@@ -493,6 +496,18 @@ public sealed class SeccionConcretoRow : Row
     /// </remarks>
     public const string ElementoColumnaCircular = "COLUMNA CIRCULAR";
 
+    /// <summary>Dado de desplante <b>redondo</b>: el que desplanta una columna circular.</summary>
+    /// <remarks>
+    /// Es al DADO lo que <see cref="ElementoColumnaCircular"/> es a la COLUMNA: solo cambia la
+    /// FORMA de la sección, que pasa a ser un círculo con su zuncho y sus varillas repartidas
+    /// en el círculo de paso. En el plano se rotula <b>DADO</b>, igual que el cuadrado, porque
+    /// lo que distingue a uno de otro es su dibujo y su cota de diámetro, no el nombre.
+    /// </remarks>
+    public const string ElementoDadoCircular = "DADO CIRCULAR";
+
+    /// <summary>Dado de desplante rectangular.</summary>
+    public const string ElementoDado = "DADO";
+
     /// <summary>Nombre con el que se <b>rotula</b> una columna, redonda o no.</summary>
     public const string ElementoColumna = "COLUMNA";
 
@@ -605,7 +620,11 @@ public sealed class SeccionConcretoRow : Row
     {
         var e = (elemento ?? string.Empty).Trim();
 
-        return e.Equals(ElementoColumnaCircular, StringComparison.OrdinalIgnoreCase);
+        // Las DOS formas redondas: la columna y el dado. Sin el dado, un «DADO CIRCULAR»
+        // se dibujaria como un rectangulo con estribos rectangulares, o sea NO se
+        // dibujaria lo que se pidio.
+        return e.Equals(ElementoColumnaCircular, StringComparison.OrdinalIgnoreCase)
+               || e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -621,8 +640,29 @@ public sealed class SeccionConcretoRow : Row
     /// cuadrícula para decidir la forma.
     /// </para>
     /// </remarks>
-    public string ElementoRotulo =>
-        EsElementoCircular(_elemento) ? ElementoColumna : _elemento;
+    public string ElementoRotulo
+    {
+        get
+        {
+            var e = (_elemento ?? string.Empty).Trim();
+
+            // Cada forma redonda se rotula con el nombre de SU pieza: la columna redonda
+            // como COLUMNA y el dado redondo como DADO. Rotular el dado como «COLUMNA»
+            // -que es lo que pasaba con el atajo de antes- pondria en el plano una pieza
+            // que no es la que se dibujo.
+            if (e.Equals(ElementoColumnaCircular, StringComparison.OrdinalIgnoreCase))
+            {
+                return ElementoColumna;
+            }
+
+            if (e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase))
+            {
+                return ElementoDado;
+            }
+
+            return _elemento ?? string.Empty;
+        }
+    }
 
     /// <summary>
     /// Diámetro de la sección circular, en cm. Es la <b>base</b>.
@@ -821,6 +861,14 @@ public sealed class DatosProyecto
     /// <summary>Las secciones de acero: perfiles IR, OR, OC y CF.</summary>
     public ObservableCollection<PerfilAceroRow> SeccionesAcero { get; } = new();
 
+    /// <summary>Las zapatas aisladas: centrales y de lindero, en una sola tabla.</summary>
+    /// <remarks>
+    /// Una tabla y no dos porque las dos macros leen <b>las mismas filas</b>: la de lindero es
+    /// la misma hoja corrida diecisiete columnas. Lo que cambia es el acomodo y dónde va el
+    /// dado, y eso lo dice la columna de tipo.
+    /// </remarks>
+    public ObservableCollection<ZapataAisladaRow> ZapatasAisladas { get; } = new();
+
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     public static DatosProyecto CrearEjemplo()
     {
@@ -978,6 +1026,41 @@ public sealed class DatosProyecto
         Acero(FamiliaPerfil.Os, "OS - 3/4\"", "TN-1",
               PerfilAceroRow.ElementoTensor, PerfilAceroRow.AceroA572,
               1.91);
+
+        // ---------- Zapatas aisladas: una de cada tipo ----------
+        //
+        // Una CENTRAL con doble parrilla y una de LINDERO con una sola, que es el caso
+        // corriente de cada una. Con las dos en el ejemplo se ve de una vez lo que cambia
+        // entre ellas: el dado centrado contra el dado pegado al paño, y el acomodo, que
+        // en la central crece a la derecha y en el lindero a la izquierda.
+        d.ZapatasAisladas.Add(new ZapataAisladaRow
+        {
+            Tipo = ZapataCad.Central, Id = "Z-1",
+            AnchoM = 1.6, LargoM = 1.6, ProfundidadM = 1.2, EspesorM = 0.3,
+            DobleParrilla = "SI",
+            VarInf = "#4", SepInf = "15", VarInfTrans = "#4", SepInfTrans = "15",
+            VarSup = "#4", SepSup = "20", VarSupTrans = "#4", SepSupTrans = "20",
+            TipoColumna = ZapataAisladaRow.TipoColumnaConcreto,
+            IdColumna = "C-1", IdDado = "D-1",
+            AnchoDadoCm = 50, AnchoColumnaCm = 40,
+            VarDadoSup = "#5", VarDadoInf = "#5", NIntDado = 1, VarIntDado = "#4",
+            EstriboDado = "#3", SepEstriboDado = "10-15-20",
+            Fc = "250"
+        });
+
+        d.ZapatasAisladas.Add(new ZapataAisladaRow
+        {
+            Tipo = ZapataCad.Lindero, Id = "ZL-1",
+            AnchoM = 1.4, LargoM = 1.8, ProfundidadM = 1.2, EspesorM = 0.3,
+            DobleParrilla = "NO",
+            VarInf = "#4", SepInf = "15", VarInfTrans = "#4", SepInfTrans = "15",
+            TipoColumna = ZapataAisladaRow.TipoColumnaConcreto,
+            IdColumna = "C-3", IdDado = "D-3",
+            AnchoDadoCm = 45, AnchoColumnaCm = 35,
+            VarDadoSup = "#5", VarDadoInf = "#5",
+            EstriboDado = "#3", SepEstriboDado = "15",
+            Fc = "250"
+        });
 
         return d;
     }

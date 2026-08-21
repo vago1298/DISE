@@ -749,15 +749,20 @@ def v12_fidelidad() -> None:
     check("y queda dicho por que, para que nadie lo vuelva a anadir",
           "CABEZAL y cualquier otro elemento: sin alzado" in codigo)
 
-    for dentro in ["DADO", "CASTILLO", "TRABE", "CONTRATRABE",
+    for dentro in ["CASTILLO", "TRABE", "CONTRATRABE",
                    "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE"]:
         check(f"con {dentro} en la lista", f'"{dentro}"' in lista)
 
-    # Y los dos que van por constante
+    # Y los CUATRO que van por constante: las dos columnas y los dos dados. Cada pareja es
+    # la misma pieza con dos formas, y la constante es la que las mantiene juntas.
     check("con COLUMNA en la lista",
           "SeccionConcretoRow.ElementoColumna," in lista)
     check("con COLUMNA CIRCULAR en la lista",
           "SeccionConcretoRow.ElementoColumnaCircular" in lista)
+    check("con DADO en la lista",
+          "SeccionConcretoRow.ElementoDado," in lista)
+    check("con DADO CIRCULAR en la lista",
+          "SeccionConcretoRow.ElementoDadoCircular" in lista)
 
     # Las constantes tienen que valer lo que se espera: si alguien cambiara
     # ElementoColumnaCircular por otra cosa, TipoDe dejaria de reconocerla y la
@@ -3118,11 +3123,16 @@ def v19_circular_y_ui() -> None:
     # El rotulo del plano dice COLUMNA en los dos casos. «COLUMNA CIRCULAR» es solo
     # el nombre de captura.
     check("hay nombre de rotulo aparte del de captura",
-          "public string ElementoRotulo =>" in filas)
-    m_er = re.search(r"public string ElementoRotulo =>.*?;", filas, re.S)
+          "public string ElementoRotulo" in filas)
+    m_er = re.search(r"public string ElementoRotulo\n    \{.*?\n    \}", filas, re.S)
     if m_er:
+        # Cada forma redonda se rotula con el nombre de SU pieza: la columna redonda como
+        # COLUMNA y el dado redondo como DADO. Con el atajo de una linea que habia antes,
+        # el dado redondo se habria rotulado «COLUMNA» en el plano.
         check("el rotulo de una columna redonda es COLUMNA",
-              "ElementoColumna :" in m_er.group(0))
+              "return ElementoColumna;" in m_er.group(0))
+        check("y el de un dado redondo es DADO",
+              "return ElementoDado;" in m_er.group(0))
     check("y los dos mapeadores mandan el nombre de rotulo al dibujo",
           codigo.count("Elemento = r.ElementoRotulo,") == 2,
           f"aparece {codigo.count('Elemento = r.ElementoRotulo,')} vez/veces")
@@ -3622,6 +3632,125 @@ def v19_circular_y_ui() -> None:
               "return Math.Atan2(Math.Sqrt(disc), a);" in c3)
         check("y ya no queda el grado de margen",
               "+ (Pi / 180)" not in c3)
+
+    # ------------------------------------------------------------------
+    # DADO CIRCULAR
+    # ------------------------------------------------------------------
+    # Es al DADO lo que COLUMNA CIRCULAR es a la COLUMNA: solo cambia la FORMA. Y hay
+    # cuatro sitios que tienen que enterarse, no uno: la lista, la forma, el rotulo y el
+    # alzado. Con la lista sola, un DADO CIRCULAR se dibujaba como un rectangulo.
+    check("DADO CIRCULAR existe como elemento",
+          'public const string ElementoDadoCircular = "DADO CIRCULAR";' in filas
+          and 'public const string ElementoDado = "DADO";' in filas)
+    check("y esta en el desplegable, junto al dado cuadrado",
+          "SeccionConcretoRow.ElementoDado," in codigo
+          and "SeccionConcretoRow.ElementoDadoCircular," in codigo)
+    check("se dibuja REDONDO, como la columna circular",
+          "|| e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase);" in filas)
+    check("pero se rotula DADO, no COLUMNA",
+          "return ElementoDado;" in filas
+          and "Cada forma redonda se rotula con el nombre de SU pieza" in filas)
+    check("y lleva alzado vertical, como el dado cuadrado",
+          'e == "DADO" || e == SeccionConcretoRow.ElementoDadoCircular' in codigo)
+    check("y comparte el prefijo D- del ID",
+          '"DADO CIRCULAR" => "D-",' in filas)
+
+    # ------------------------------------------------------------------
+    # ZAPATAS AISLADAS: la pestaña, con las dos familias
+    # ------------------------------------------------------------------
+    trazo_zap = leer(ruta("client/src/CadLink.Cad/TrazoZapata.cs"))
+    zap_row = leer(ruta("client/src/CadLink.App/Models/ZapataAisladaRow.cs"))
+    zap_cb = leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
+
+    m_tab_zap = re.search(
+        r'<TabItem Header="Zapatas Aisladas">.*?\n            </TabItem>', xaml, re.S)
+
+    check("se puede leer la pestaña de zapatas aisladas", m_tab_zap is not None)
+
+    check("la pestaña de zapatas aisladas ya no es un aviso de pendiente",
+          m_tab_zap is not None
+          and "Modulo pendiente de portar" not in m_tab_zap.group(0))
+    check("tiene su cuadricula y su vista previa",
+          'x:Name="ZapatasGrid"' in xaml and 'x:Name="ZapataPreviewCanvas"' in xaml)
+    check("y su renglon de totales",
+          'x:Name="TotalesZapatasText"' in xaml)
+
+    # La geometria vive en CadLink.Cad, no en la vista previa: es la que va a usar tambien
+    # el dibujante de AutoCAD.
+    check("la geometria de la zapata vive fuera de la vista previa",
+          "public static class TrazoZapata" in trazo_zap
+          and "public sealed class ZapataCad" in trazo_zap)
+    check("y no sabe nada de AutoCAD ni de WPF",
+          "_ms" not in trazo_zap and "AcadConnection" not in trazo_zap
+          and "System.Windows" not in trazo_zap)
+
+    # LAS DISTANCIAS DE LAS MACROS, una por una. Son lo que se pidio: «dibujalo a la
+    # distancia que tiene las macros».
+    check("la separacion entre secciones es la de cada macro",
+          "public const double SeparacionCentral = 1.0;" in trazo_zap
+          and "public const double SeparacionLindero = 0.8;" in trazo_zap)
+    check("el lindero arranca en -3 y en -8, como su macro",
+          "public const double LinderoXBase = -3.0;" in trazo_zap
+          and "public const double YBaseElevacion = -8.0;" in trazo_zap)
+    check("la central crece a la derecha y el lindero a la izquierda",
+          "acumulado += Ancho(anchos, i) + SeparacionCentral;" in trazo_zap
+          and "x -= SeparacionLindero + Ancho(anchos, i);" in trazo_zap)
+    check("la planta de la central cuelga de la vista de corte",
+          "public const double PlantaOffsetY = -3.0;" in trazo_zap
+          and "var yFondoCorte = yZapBot - RotuloEscalaOffset;" in trazo_zap)
+    check("y la del lindero arranca en -15, o mas abajo si no cabe",
+          "public const double PlantaYBaseLindero = -15.0;" in trazo_zap
+          and "public const double PlantaSeparacionMin = 1.2;" in trazo_zap)
+    check("el dado va centrado en la central y al paño derecho en el lindero",
+          "xDadoDer = xDer;" in trazo_zap
+          and "xDadoIzq = xCentro - (wDado / 2);" in trazo_zap)
+    check("los estribos se reparten en zonas de 25, 50 y 25",
+          "largoInterior * 0.25" in trazo_zap and "largoInterior * 0.5" in trazo_zap)
+    check("y el dado se salta los primeros, donde esta la parrilla",
+          "QuitarPrimeros(centros, z.DobleParrilla ? 2 : 1)" in zap_cb)
+    check("la malla cierra la ultima varilla solo si cabe",
+          "PlantaFraccionCierre = 0.3" in trazo_zap
+          and "fin - ultima > sep * PlantaFraccionCierre" in trazo_zap)
+
+    # La fila: las celdas de la macro, y UNA tabla para las dos familias.
+    check("la fila de zapata trae las celdas de la macro",
+          "public sealed class ZapataAisladaRow : Row" in zap_row
+          and "<c>E4</c> / <c>V4</c>" in zap_row)
+    check("y se dice por que es UNA tabla y no dos",
+          "no dos tablas: los datos son los mismos" in zap_row
+          or "una</b> tabla con una columna de" in zap_row)
+    check("la fila sabe pasarse a datos de geometria, en un solo sitio",
+          "public ZapataCad AFormatoCad()" in zap_row
+          and "dibujarían dos zapatas distintas" in zap_row)
+    check("y dice que falta para poder dibujarla",
+          "public string Falta" in zap_row)
+
+    check("la coleccion de zapatas vive en DatosProyecto",
+          "ObservableCollection<ZapataAisladaRow> ZapatasAisladas" in filas)
+    check("y el ejemplo trae una de cada familia",
+          "Tipo = ZapataCad.Central, Id = \"Z-1\"" in filas
+          and "Tipo = ZapataCad.Lindero, Id = \"ZL-1\"" in filas)
+
+    # La vista previa: elevacion Y planta, con el acomodo real de la fila.
+    check("la vista previa de zapatas dibuja elevacion y planta",
+          "private void DibujarVistaPreviaZapata()" in zap_cb
+          and "private void DibujarPlantaPrevia(" in zap_cb)
+    check("y usa el acomodo REAL, con los anchos de todas",
+          "TrazoZapata.XBase(z.Tipo, anchos, indice < 0 ? 0 : indice)" in zap_cb
+          and "TrazoZapata.Colocar(z, xBase)" in zap_cb)
+    check("las dos vistas van a la misma escala",
+          "tienen que caber la elevación Y la planta" in zap_cb)
+    check("se redibuja al cambiar de fila, de tamaño y al editar",
+          "private void EngancharVistaPreviaZapata()" in zap_cb
+          and "private void OnFilaZapataEditada(" in zap_cb)
+    check("y solo si la fila editada es la que se esta viendo",
+          "ReferenceEquals(sender, ZapatasGrid.SelectedItem)" in zap_cb)
+    check("la pestaña se llena y se enlaza al arrancar",
+          "LlenarListasZapatas();" in codigo
+          and "EnlazarZapatas();" in codigo
+          and "EngancharVistaPreviaZapata();" in codigo)
+    check("y se dice lo que a la vista previa le falta todavia",
+          "Lo que todavía no está" in zap_cb and "las cotas" in zap_cb)
 
     # ------------------------------------------------------------------
     # DESHACER (Ctrl+Z)
