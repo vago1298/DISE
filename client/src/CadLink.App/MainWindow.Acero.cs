@@ -177,11 +177,29 @@ public partial class MainWindow
                      "(no están en el catálogo)";
         }
 
+        // Cuántas filas llevan un acero que NO se hace en su perfil.
+        //
+        // Va en los totales además de en su columna por el mismo motivo que lo anterior: con
+        // veinte filas, la marca de una que quedó fuera de pantalla no se ve. Y no bloquea el
+        // dibujo, porque el perfil se dibuja igual: es el proveedor el que no lo va a surtir.
+        var noDisponibles = _datos.SeccionesAcero.Count(p => p.AceroNoDisponible);
+
+        if (noDisponibles > 0)
+        {
+            texto += $"   ·   {noDisponibles} con un acero que no se hace en ese perfil " +
+                     "(fila marcada)";
+        }
+
         // De dónde salió el catálogo, porque es la diferencia entre elegir el perfil de una
         // lista y teclear sus medidas: si dice «semilla», el archivo no se encontró y la
         // lista solo trae doce perfiles, y encima sin propiedades.
         texto += $"   ·   catálogo: {CatalogoPerfiles.Todos.Count} perfil(es) de " +
                  CatalogoPerfiles.Origen;
+
+        // Y el de aceros, por lo mismo: con la semilla hay cinco aceros y ninguno sabe en
+        // qué secciones se hace, así que la columna «¿Se hace?» diría «Verificar» en todo y
+        // el usuario tiene que saber por qué.
+        texto += $"   ·   aceros: {CatalogoAceros.Todos.Count} de " + CatalogoAceros.Origen;
 
         TotalesAceroText.Text = texto;
     }

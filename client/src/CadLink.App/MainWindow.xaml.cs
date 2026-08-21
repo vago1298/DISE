@@ -367,9 +367,9 @@ public partial class MainWindow : Window
         // puerta abierta al modulo que se cobra.
         PlantaCadButton.IsEnabled = puedeDibujar;
 
-        ExportHintText.Text = puedeDibujar
+        MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
-            : "La generación de dibujos no está incluida en la versión de prueba.";
+            : "La generación de dibujos no está incluida en la versión de prueba.");
 
         var puedeEtabs = _license.HasFeature("etabs");
         EtabsTab.IsEnabled = puedeEtabs;
@@ -377,6 +377,36 @@ public partial class MainWindow : Window
         {
             EtabsStatusText.Text = "El módulo de ETABS no está incluido en tu licencia.";
         }
+    }
+
+    /// <summary>
+    /// Pone las notas del último dibujo, y deja el panel <b>plegado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las notas vivían encima de la vista previa, en una capa semitransparente pegada al
+    /// borde de abajo, y ahí <b>tapaban el dibujo</b> justo donde va el rótulo de la sección
+    /// y la cota de la base. Ahora van debajo, en su propio renglón y dentro de un
+    /// <c>Expander</c>: si no hay nada que decir no ocupan ni un píxel —la visibilidad la
+    /// manda el propio texto, con un disparador en el XAML— y si hay algo se ve una línea que
+    /// se abre al tocarla.
+    /// </para>
+    /// <para>
+    /// <b>Y se pliega en cada dibujo</b>, no solo al arrancar. Si el usuario lo dejó abierto
+    /// para leer las notas de un dibujo, el siguiente no tiene por qué heredar el panel
+    /// abierto tapando media pestaña: las notas nuevas se anuncian con la línea de la
+    /// cabecera, que es donde se enteró la primera vez.
+    /// </para>
+    /// <para>
+    /// Los cuatro sitios que escriben notas pasan por aquí, que es el motivo de que exista:
+    /// con la asignación repetida cuatro veces, plegar el panel había que acordarse de
+    /// hacerlo en los cuatro.
+    /// </para>
+    /// </remarks>
+    private void MostrarNotas(string texto)
+    {
+        ExportHintText.Text = texto;
+        NotasPanel.IsExpanded = false;
     }
 
     private async void OnRevalidate(object sender, RoutedEventArgs e)
@@ -804,9 +834,9 @@ public partial class MainWindow : Window
             {
                 var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
 
-                ExportHintText.Text =
+                MostrarNotas(
                     "AVISOS DEL ULTIMO ALZADO (" + fallos.Count + "):" +
-                    Environment.NewLine + detalle;
+                    Environment.NewLine + detalle);
 
                 MessageBox.Show(
                     $"{dibujados} alzado(s) dibujados, pero hubo {fallos.Count} fallo(s) " +
@@ -2004,11 +2034,11 @@ public partial class MainWindow : Window
 
                 // Las notas informativas quedan a mano, pero NO interrumpen: el
                 // dibujo salió bien y no hay nada que el usuario deba atender.
-                ExportHintText.Text = dibujante.Notas.Count == 0
+                MostrarNotas(dibujante.Notas.Count == 0
                     ? string.Empty
-                    : "Notas del ultimo dibujo:" + Environment.NewLine +
+                    : "Notas del último dibujo:" + Environment.NewLine +
                       string.Join(Environment.NewLine,
-                          dibujante.Notas.Select(n => "  - " + n));
+                          dibujante.Notas.Select(n => "  - " + n)));
 
                 MessageBox.Show(resumen, AppInfo.ProductName,
                     MessageBoxButton.OK, MessageBoxImage.Information);
@@ -2021,9 +2051,9 @@ public partial class MainWindow : Window
                     $"Dibujadas {dibujadas} sección(es), " +
                     $"con {fallos.Count} aviso(s). Ver el detalle bajo la vista previa.";
 
-                ExportHintText.Text =
+                MostrarNotas(
                     "AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
-                    Environment.NewLine + detalle;
+                    Environment.NewLine + detalle);
 
                 MessageBox.Show(
                     resumen + "\n\n" +
@@ -2713,6 +2743,13 @@ public partial class MainWindow : Window
             }
         }
 
+        // EL GANCHO SÍSMICO DEL ESTRIBO, que es lo que faltaba.
+        //
+        // Va antes de los lechos para que la varilla de la esquina quede ENCIMA de su
+        // doblez, igual que en AutoCAD: el gancho se dobla alrededor de esa varilla, así
+        // que la varilla tapa la parte del doblez que le pasa por debajo.
+        DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
+
         // Lechos
         DibujarLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec, escala, PX, PY, arriba: true, intermedio: false);
         DibujarLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec, escala, PX, PY, arriba: true, intermedio: true);
@@ -2836,11 +2873,199 @@ public partial class MainWindow : Window
             }
         }
 
+        // ---------- El gancho sísmico del zuncho ----------
+        // Va DESPUÉS de las varillas, al contrario que en la rectangular. Ahí el doblez
+        // pasa por detrás de la varilla de la esquina; aquí el que se dibuja es solo el
+        // arco EXTERIOR del doblez, que va por delante, corrido hasta hacerse tangente al
+        // paño del zuncho. Es lo que hace que el gancho se lea como continuación del
+        // zuncho y no como una pieza pegada encima.
+        DibujarGanchoZunchoPrevio(
+            s, cx, cy, r, rec, dZun, dVar, rPaso, escala,
+            conFondoSolido ? negro : gris);
+
         // ---------- Etiquetas ----------
         Etiqueta($"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
         Etiqueta(TituloVistaPrevia(s), 14, 26);
 
         DibujarAlzadoPrevio(s, cx + r + 70, alto);
+    }
+
+    /// <summary>
+    /// El <b>gancho sísmico del zuncho</b> en la vista previa de la sección circular.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Misma geometría que <c>SeccionDrawer.GanchoDelZuncho</c>, y las mismas cuatro
+    /// decisiones que allí están razonadas:
+    /// </para>
+    /// <list type="number">
+    /// <item>Se agarra de la varilla <b>de abajo</b>, para no pisarse con la llamada de
+    /// varillas, que apunta a la de arriba.</item>
+    /// <item>La cola es el radio <b>hacia dentro girado 45°</b>, que es lo que hace los 135°
+    /// del gancho de norma; las dos normales de arranque son sus perpendiculares. No se
+    /// escriben a mano como en la rectangular porque aquí la varilla puede estar en
+    /// cualquier ángulo.</item>
+    /// <item>Del doblez se dibuja <b>solo el arco exterior</b>: el interior tiene el radio de
+    /// la varilla y su mismo centro, o sea que <i>es</i> la circunferencia de la varilla, que
+    /// ya está dibujada.</item>
+    /// <item>Y ese arco arranca en la <b>tangencia</b> con el paño exterior del zuncho —que
+    /// cae exactamente en la dirección centro → varilla, porque <c>rPaso + rOut = r − rec</c>—
+    /// en lugar de donde entra en la banda.</item>
+    /// </list>
+    /// <para>
+    /// <b>Las cuentas van en el sistema del DIBUJO, con la Y hacia arriba</b>, y la vuelta al
+    /// lienzo se hace solo al pintar cada punto. No es un capricho: el lienzo tiene la Y al
+    /// revés, y ahí «girar el radio 45°» gira para el otro lado, así que el gancho saldría
+    /// espejeado —sigue siendo de 135°, pero apuntando al lado contrario que en AutoCAD—.
+    /// Una vista previa que enseña el gancho del otro lado es exactamente lo que no puede
+    /// hacer.
+    /// </para>
+    /// </remarks>
+    /// <param name="escala">Píxeles por centímetro, para el largo del gancho.</param>
+    private void DibujarGanchoZunchoPrevio(
+        SeccionConcretoRow s, double cx, double cy, double r, double rec,
+        double dZun, double dVar, double rPaso, double escala, Brush trazo)
+    {
+        var rZunInt = r - rec - dZun;
+
+        if (s.GanchoCm <= 0 || dZun <= 0 || dVar <= 0 || rPaso <= 0 || rZunInt <= 0
+            || s.NVarTotal <= 0)
+        {
+            return;
+        }
+
+        // Del sistema del dibujo —centro de la sección en el origen, Y hacia arriba— al
+        // lienzo. Todo lo de abajo está en el primero.
+        double PX(double x) => cx + x;
+        double PY(double y) => cy - y;
+
+        // La varilla de ABAJO de las que se reparten. El reparto arranca arriba y gira
+        // antihorario, igual que el del dibujante y que el de las varillas de más arriba.
+        double bx = 0, by = 0;
+        var primera = true;
+
+        for (var i = 0; i < s.NVarTotal; i++)
+        {
+            var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
+
+            var x = rPaso * Math.Cos(a);
+            var y = rPaso * Math.Sin(a);
+
+            if (primera || y < by)
+            {
+                bx = x;
+                by = y;
+                primera = false;
+            }
+        }
+
+        // El radio HACIA DENTRO, normalizado. El centro es el origen, así que es −(bx, by).
+        var rl = Math.Sqrt((bx * bx) + (by * by));
+
+        if (rl < 1e-9)
+        {
+            return;
+        }
+
+        var rx = -bx / rl;
+        var ry = -by / rl;
+
+        const double rt2I = 0.707106781186547;
+
+        // La cola: el radio interior girado 45°. Y las normales, sus perpendiculares.
+        var ux = (rx - ry) * rt2I;
+        var uy = (rx + ry) * rt2I;
+
+        var n1X = -uy;
+        var n1Y = ux;
+        var n2X = uy;
+        var n2Y = -ux;
+
+        var rIn = dVar / 2;
+        var rOut = rIn + dZun;
+
+        var largo = s.GanchoCm * escala;
+
+        // El tope del núcleo, igual que en el dibujante: la proyección del vector
+        // arranque → centro sobre la propia cola. Más allá de ahí la punta ya se está
+        // alejando del eje por el otro lado.
+        var piX = bx + (rIn * n1X);
+        var piY = by + (rIn * n1Y);
+
+        var tope = (-piX * ux) + (-piY * uy);
+
+        if (tope > 0 && largo > tope)
+        {
+            largo = tope;
+        }
+
+        if (largo <= 0)
+        {
+            return;
+        }
+
+        // ---------- El arco exterior del doblez ----------
+        // De la tangencia con el paño del zuncho al arranque de la segunda cola. La
+        // tangencia cae en la dirección centro → varilla, que es la contraria al radio
+        // interior.
+        var aTangente = Math.Atan2(-ry, -rx);
+        var a1 = Math.Atan2(n1Y, n1X);
+
+        var barrido = a1 + Math.PI - aTangente;
+
+        while (barrido < 0)
+        {
+            barrido += 2 * Math.PI;
+        }
+
+        var arco = new PointCollection();
+
+        for (var k = 0; k <= 28; k++)
+        {
+            var a = aTangente + (k / 28.0 * barrido);
+
+            arco.Add(new Point(
+                PX(bx + (rOut * Math.Cos(a))), PY(by + (rOut * Math.Sin(a)))));
+        }
+
+        PreviewCanvas.Children.Add(new Polyline
+        {
+            Points = arco,
+            Stroke = trazo,
+            StrokeThickness = 1.2
+        });
+
+        // ---------- Las dos colas ----------
+        // Las DOS, también en hélice: el remate de un zuncho se representa con sus dos
+        // ganchos, uno encima del otro, sea espiral o anillo.
+        foreach (var (nx, ny) in new[] { (n1X, n1Y), (n2X, n2Y) })
+        {
+            var pInX = bx + (rIn * nx);
+            var pInY = by + (rIn * ny);
+            var pOutX = bx + (rOut * nx);
+            var pOutY = by + (rOut * ny);
+
+            var qInX = pInX + (largo * ux);
+            var qInY = pInY + (largo * uy);
+            var qOutX = pOutX + (largo * ux);
+            var qOutY = pOutY + (largo * uy);
+
+            foreach (var (x1, y1, x2, y2) in new[]
+            {
+                (pInX, pInY, qInX, qInY),
+                (pOutX, pOutY, qOutX, qOutY),
+                (qInX, qInY, qOutX, qOutY)
+            })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = PX(x1), Y1 = PY(y1),
+                    X2 = PX(x2), Y2 = PY(y2),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+            }
+        }
     }
 
     /// <summary>
@@ -3233,6 +3458,148 @@ public partial class MainWindow : Window
         for (var i = 1; i <= cantidad; i++)
         {
             Barra(px(xIni + (i * p)), py(y), r);
+        }
+    }
+
+    /// <summary>
+    /// El <b>gancho sísmico</b> del estribo en la vista previa, en la esquina superior
+    /// derecha.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Es la misma geometría que dibuja AutoCAD</b>, sacada de <c>SeccionDrawer.Ganchos</c>
+    /// y de la <c>Cola</c> que usan los dos ganchos —el del estribo y el del diamante—:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>el doblez se envuelve alrededor de la varilla de la esquina, con centro a
+    /// <c>rec + dEst + rIn</c> de las dos caras, y barre <b>media vuelta</b>, de 315° a
+    /// 135°, que es lo que da el gancho de 135° de norma;</item>
+    /// <item>del doblez salen <b>dos colas</b> hacia el núcleo, a 225°, cada una con sus
+    /// <b>tres líneas</b>: la interior, la exterior y la punta que las une;</item>
+    /// <item>y la segunda cola se <b>recorta</b> donde la cruza el estribo, con la misma
+    /// condición del dibujante: solo si el cruce cae dentro del largo del gancho.</item>
+    /// </list>
+    /// <para>
+    /// <b>Por qué importa que se vea.</b> El gancho es lo primero que revisa quien firma el
+    /// plano —que exista, que sea de 135° y que quepa dentro de la sección— y era justo lo
+    /// que la vista previa no enseñaba: se veían dos rectángulos de estribo perfectos y el
+    /// gancho aparecía por primera vez en AutoCAD.
+    /// </para>
+    /// <para>
+    /// Los arcos se muestrean en tramos rectos en lugar de usar un <c>ArcSegment</c>. A este
+    /// tamaño la diferencia no se ve, y un muestreo no puede equivocarse de sentido de
+    /// barrido, que es el error clásico del arco de WPF: sale el arco complementario y el
+    /// gancho apunta para el otro lado.
+    /// </para>
+    /// </remarks>
+    private void DibujarGanchoPrevio(
+        SeccionConcretoRow s, double dEst, double rec, double escala,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        // Sin gancho no hay nada que dibujar, y sin estribo tampoco: el doblez se apoya en
+        // el espesor del estribo.
+        if (s.GanchoCm <= 0 || dEst <= 0 || rec <= 0)
+        {
+            return;
+        }
+
+        // El doblez envuelve la varilla de la ESQUINA SUPERIOR, que es la del lecho
+        // superior de esquina. Si no hay varilla ahí, el gancho no tiene alrededor de qué
+        // doblarse y el dibujante tampoco lo dibuja.
+        if (!Varilla.TryDiametroCm(s.DiamEsqSup, out var dSup) || dSup <= 0)
+        {
+            return;
+        }
+
+        var rIn = dSup / 2;
+        var rOut = rIn + dEst;
+
+        var bx = s.BaseCm - rec - dEst - rIn;
+        var by = s.AlturaCm - rec - dEst - rIn;
+
+        // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
+        // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.
+        if (bx <= rec + dEst || by <= rec + dEst)
+        {
+            return;
+        }
+
+        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
+        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
+        foreach (var r in new[] { rIn, rOut })
+        {
+            var puntos = new PointCollection();
+
+            for (var k = 0; k <= 24; k++)
+            {
+                var a = (1.75 * Math.PI) + (k / 24.0 * Math.PI);
+
+                puntos.Add(new Point(
+                    px(bx + (r * Math.Cos(a))), py(by + (r * Math.Sin(a)))));
+            }
+
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = puntos,
+                Stroke = trazo,
+                StrokeThickness = 1.2
+            });
+        }
+
+        // Las dos colas, hacia el núcleo. Rt2I es cos(45°): la dirección es 225°.
+        const double rt2I = 0.707106781186547;
+        const double ux = -rt2I;
+        const double uy = -rt2I;
+
+        var largo = s.GanchoCm;
+
+        // El recorte de la segunda cola, con la condición del dibujante: el cruce con el
+        // estribo tiene que caer DENTRO del largo del gancho. Si el gancho es corto, no
+        // llega a cruzarlo y no hay nada que recortar.
+        var tCruce = rOut - (Math.Sqrt(2) * rIn);
+        var recortar = tCruce >= 0 && tCruce <= largo;
+
+        var colas = new[]
+        {
+            (Nx: rt2I, Ny: -rt2I, Recortar: false),
+            (Nx: -rt2I, Ny: rt2I, Recortar: recortar)
+        };
+
+        foreach (var (nx, ny, recorta) in colas)
+        {
+            var piX = bx + (rIn * nx);
+            var piY = by + (rIn * ny);
+            var poX = bx + (rOut * nx);
+            var poY = by + (rOut * ny);
+
+            // La cola recortada arranca donde la cruza el estribo, no en la perpendicular.
+            if (recorta)
+            {
+                poX = bx + rIn - (Math.Sqrt(2) * rOut);
+                poY = by + rIn;
+            }
+
+            var qiX = piX + (largo * ux);
+            var qiY = piY + (largo * uy);
+            var qoX = poX + (largo * ux);
+            var qoY = poY + (largo * uy);
+
+            // Las TRES líneas de la cola: interior, exterior y la punta que las cierra.
+            foreach (var (ax, ay, bx2, by2) in new[]
+            {
+                (piX, piY, qiX, qiY),
+                (poX, poY, qoX, qoY),
+                (qiX, qiY, qoX, qoY)
+            })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(ax), Y1 = py(ay),
+                    X2 = px(bx2), Y2 = py(by2),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+            }
         }
     }
 

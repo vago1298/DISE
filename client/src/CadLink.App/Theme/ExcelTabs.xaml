@@ -81,6 +81,22 @@
     <SolidColorBrush x:Key="CeldaAcabadoBrush" Color="#FFF4F1E8" />
     <SolidColorBrush x:Key="CeldaCalculadaBrush" Color="#FFEDEDED" />
 
+    <!-- ===== La fila de acero cuando el acero no se hace en ese perfil =====
+         Tres brochas, no una, porque hay que decir tres cosas distintas:
+
+           * FilaAceroNoDisponibleBrush  el fondo de TODA la fila, muy suave: es
+             un aviso, no un error, y la fila se tiene que seguir leyendo.
+           * AceroNoSeHaceBrush          la celda de disponibilidad, en rojo de
+             verdad con texto blanco. Esta es la que dice QUE pasa, y va fuerte
+             porque es la unica que lo dice.
+           * AceroVerificarBrush         ambar: puede conseguirse, hay que
+             confirmarlo. NO es rojo, y esa diferencia importa: pintar de rojo un
+             acero que si se puede pedir hace cambiar de acero sin necesidad. -->
+    <SolidColorBrush x:Key="FilaAceroNoDisponibleBrush" Color="#FFFBE3E3" />
+    <SolidColorBrush x:Key="AceroNoSeHaceBrush" Color="#FFC62828" />
+    <SolidColorBrush x:Key="AceroVerificarBrush" Color="#FFFFF1CC" />
+    <SolidColorBrush x:Key="AceroVerificarTextoBrush" Color="#FF8A5A00" />
+
     <!-- ===================== Menú =====================
          Sin estos dos estilos el menú se queda con los colores por omisión de
          Windows —fondo claro y texto negro— y en tema oscuro era lo único que
@@ -389,6 +405,57 @@
         <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
         <Setter Property="FontStyle" Value="Italic" />
         <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+
+    <!-- ==================================================================
+         La fila de acero: marcada cuando el acero no se hace en ese perfil
+         ==================================================================
+         El manual dice, acero por acero, en qué secciones se consigue. Un A-36
+         en un monten no existe —la lámina rolada en frío no se hace en A-36— y
+         eso no se ve mirando la fila: los dos son valores válidos por separado.
+
+         Así que la fila se marca. El fondo va MUY suave, porque es un aviso y no
+         un error: el dibujo se puede generar igual, lo que hace falta es que el
+         calculista lo vea antes de mandar el plano.
+
+         Se pone TAMBIÉN el ToolTip en la fila, con el detalle: qué acero es, su
+         Fy y su Fu, para no tener que ir a buscarlo a otra parte. -->
+    <Style x:Key="FilaAceroStyle" TargetType="DataGridRow"
+           BasedOn="{StaticResource {x:Type DataGridRow}}">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AceroNoDisponible}" Value="True">
+                <Setter Property="Background"
+                        Value="{StaticResource FilaAceroNoDisponibleBrush}" />
+                <Setter Property="ToolTip"
+                        Value="{Binding AceroDetalle}" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- La celda que DICE qué pasa. Es la que va fuerte, y la única.
+
+         Va con su propio estilo y no con el color de la fila porque el fondo de
+         la fila puede perder contra el AlternatingRowBackground de la
+         cuadrícula, según la versión de WPF. Esta celda no depende de eso: su
+         color es suyo, así que el aviso se ve siempre. -->
+    <Style x:Key="CeldaDisponibilidadAcero" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="FontSize" Value="11" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding AceroNoDisponible}" Value="True">
+                <Setter Property="Background" Value="{StaticResource AceroNoSeHaceBrush}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding AceroPorVerificar}" Value="True">
+                <Setter Property="Background" Value="{StaticResource AceroVerificarBrush}" />
+                <Setter Property="Foreground"
+                        Value="{StaticResource AceroVerificarTextoBrush}" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Encabezado de la hoja: se queda fijo arriba y con aire suficiente para

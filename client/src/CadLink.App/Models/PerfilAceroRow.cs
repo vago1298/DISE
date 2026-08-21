@@ -332,20 +332,36 @@ public sealed class PerfilAceroRow : Row
     /// <inheritdoc cref="ElementoViga"/>
     public const string ElementoTensor = "TENSOR";
 
-    /// <summary>Los aceros que salen en el rótulo. Es texto libre, no una lista cerrada.</summary>
+    // LAS DESIGNACIONES VAN COMO LAS ESCRIBE EL CATÁLOGO —«A-572-Gr. 50», no
+    // «A-572 GR. 50»—, porque el desplegable se llena del catálogo y una designación que no
+    // esté en la lista sale con la celda en blanco. Un proyecto viejo guardado con la
+    // escritura de antes se sigue leyendo igual: el ajustador de la celda la reconoce y la
+    // guarda con la escritura del catálogo.
+
+    /// <summary>El acero al carbón de siempre, el más disponible.</summary>
     public const string AceroA36 = "A-36";
 
-    /// <inheritdoc cref="AceroA36"/>
-    public const string AceroA572 = "A-572 GR. 50";
+    /// <summary>El de alta resistencia y baja aleación más usado.</summary>
+    public const string AceroA572 = "A-572-Gr. 50";
 
     /// <summary>El de los perfiles I laminados de hoy.</summary>
     public const string AceroA992 = "A-992";
 
-    /// <summary>El de los tubos estructurales rectangulares.</summary>
-    public const string AceroA500B = "A-500 GR. B";
+    /// <summary>
+    /// El de los tubos estructurales <b>rectangulares</b>.
+    /// </summary>
+    /// <remarks>
+    /// Lleva apóstrofo, y no es un adorno: en el manual el <c>A-500-Gr. B</c> es el tubo
+    /// <b>redondo</b>, con Fy 2955 kg/cm², y el <c>A-500-Gr. B'</c> el <b>rectangular</b>,
+    /// con Fy 3235. Es la misma norma con dos Fy según la forma del tubo —42 y 46 ksi—.
+    /// </remarks>
+    public const string AceroA500Bp = "A-500-Gr. B'";
 
-    /// <summary>El de los tubos redondos.</summary>
-    public const string AceroA53B = "A-53 GR. B";
+    /// <summary>El de los tubos redondos de conducción, el <c>PIPE</c>.</summary>
+    public const string AceroA53B = "A-53-Gr. B";
+
+    /// <summary>El de la lámina rolada en frío: la canal con labios y la zeta.</summary>
+    public const string AceroA1008 = "A-1008-Gr. 50";
 
     /// <summary>
     /// Los elementos del desplegable.
@@ -363,10 +379,21 @@ public sealed class PerfilAceroRow : Row
     };
 
     /// <summary>
-    /// Los aceros del desplegable, cada uno junto a la familia que lo usa.
+    /// Los aceros del desplegable: <b>los del catálogo</b>, no una lista escrita aquí.
     /// </summary>
-    public static readonly string[] Aceros =
-        { AceroA36, AceroA572, AceroA992, AceroA500B, AceroA53B };
+    /// <remarks>
+    /// <para>
+    /// Antes eran cinco, escritos a mano y sin más dato que su nombre. Ahora salen de
+    /// <c>aceros.csv</c> —treinta y nueve, con su Fy, su Fu y en qué secciones se hace cada
+    /// uno—, y por lo mismo que los perfiles: una lista dentro del programa envejece con la
+    /// norma y solo se puede corregir recompilando.
+    /// </para>
+    /// <para>
+    /// Es una <b>propiedad</b> y no un campo <c>readonly</c> para que recargar el catálogo se
+    /// note: con un campo, la lista se congelaba en el primer arranque.
+    /// </para>
+    /// </remarks>
+    public static string[] Aceros => CatalogoAceros.Nombres;
 
     /// <summary>
     /// Clasificación del elemento, que en el rótulo va pegada a su nombre.
@@ -406,6 +433,11 @@ public sealed class PerfilAceroRow : Row
             // Al cambiar de familia cambia la lista de perfiles que se ofrece, que es lo
             // que hace que no haya que teclear las medidas.
             Raise(nameof(PerfilesDeLaFamilia));
+
+            // Y cambia la RESPUESTA de la disponibilidad, aunque el acero sea el mismo: un
+            // A-36 se consigue en canal y no en monten. Sin esto, cambiar de familia dejaba
+            // la marca de la familia anterior, que es peor que no tener marca.
+            RaiseDelAcero();
         }
     }
 
@@ -569,8 +601,78 @@ public sealed class PerfilAceroRow : Row
         }
     }
 
-    /// <summary>Tipo de acero, para el renglón «ACERO …» del rótulo.</summary>
-    public string Acero { get => _acero; set => Set(ref _acero, value); }
+    /// <summary>
+    /// Tipo de acero, para el renglón «ACERO …» del rótulo y para el Fy de la tabla.
+    /// </summary>
+    /// <remarks>
+    /// Al asignarlo se guarda <b>con la escritura del catálogo</b> si el acero está en él,
+    /// así que «A-572 GR. 50» —como se escribía antes— se guarda como «A-572-Gr. 50» y el
+    /// desplegable lo muestra marcado. Si no está en el catálogo se guarda tal cual: la
+    /// celda sigue siendo texto libre, porque nadie tiene por qué esperar a que se actualice
+    /// el archivo para rotular un acero que ya compró.
+    /// </remarks>
+    public string Acero
+    {
+        get => _acero;
+        set
+        {
+            Set(ref _acero, CatalogoAceros.ComoEnElCatalogo(value));
+            RaiseDelAcero();
+        }
+    }
+
+    /// <summary>El acero del catálogo que corresponde a esta fila, si está.</summary>
+    public AceroCatalogo? AceroInfo => CatalogoAceros.Buscar(_acero);
+
+    /// <summary>Fy del acero, en kg/cm². Vacío si el acero no está en el catálogo.</summary>
+    public double? FyKgCm2 => AceroInfo?.FyKgCm2;
+
+    /// <summary>Fu del acero, en kg/cm². No se muestra en la tabla: va en la ayuda.</summary>
+    public double? FuKgCm2 => AceroInfo?.FuKgCm2;
+
+    /// <summary>
+    /// Si este acero se consigue en <b>esta</b> familia de perfil: <c>SI</c>,
+    /// <c>VERIFICAR</c> o <c>NO</c>.
+    /// </summary>
+    /// <remarks>
+    /// Un acero que no está en el catálogo contesta <c>VERIFICAR</c>, no <c>NO</c>: se
+    /// escribió a mano y el programa no tiene de dónde saberlo. Marcar en rojo un acero
+    /// solo por no estar en el archivo sería inventarse una respuesta.
+    /// </remarks>
+    public string DisponibilidadAcero =>
+        AceroInfo?.DisponibleEn(_familia) ?? AceroCatalogo.Verificar;
+
+    /// <summary>Lo que se lee en la celda de disponibilidad.</summary>
+    public string AceroDisponibleLeyenda =>
+        AceroInfo?.LeyendaEn(_familia) ?? "Fuera del catálogo";
+
+    /// <summary>Si el manual dice que este acero <b>no se hace</b> en esta familia.</summary>
+    /// <remarks>
+    /// Es lo que pinta la fila en rojo. Y es lo único que la pinta: el «verificar» se queda
+    /// en su celda, porque un aviso que sale en la mitad de las filas no se lee.
+    /// </remarks>
+    public bool AceroNoDisponible => DisponibilidadAcero == AceroCatalogo.No;
+
+    /// <summary>Si hay que confirmarlo con el proveedor.</summary>
+    public bool AceroPorVerificar => DisponibilidadAcero == AceroCatalogo.Verificar;
+
+    /// <summary>El acero con sus dos esfuerzos y su norma mexicana, para el globo de ayuda.</summary>
+    public string AceroDetalle => AceroInfo?.Detalle
+        ?? $"{_acero}\nNo está en el catálogo de aceros, así que no se puede decir su Fy "
+           + "ni si se consigue en este perfil.";
+
+    /// <summary>Avisa de todo lo que depende del acero y de la familia a la vez.</summary>
+    private void RaiseDelAcero()
+    {
+        Raise(nameof(AceroInfo));
+        Raise(nameof(FyKgCm2));
+        Raise(nameof(FuKgCm2));
+        Raise(nameof(DisponibilidadAcero));
+        Raise(nameof(AceroDisponibleLeyenda));
+        Raise(nameof(AceroNoDisponible));
+        Raise(nameof(AceroPorVerificar));
+        Raise(nameof(AceroDetalle));
+    }
 
     /// <summary>
     /// Perfil <b>doble</b>: dos perfiles juntos, como en la columna «SI» de la macro.

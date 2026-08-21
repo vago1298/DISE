@@ -3610,10 +3610,130 @@ def v19_circular_y_ui() -> None:
         check("y ya no queda el grado de margen",
               "+ (Pi / 180)" not in c3)
 
-    # El cuadro de notas es una capa sobre la vista previa: tapaba el dibujo.
+    # ------------------------------------------------------------------
+    # Las notas del ultimo dibujo, FUERA de la vista previa
+    # ------------------------------------------------------------------
+    # Estaban en una capa semitransparente pegada al borde de abajo de la vista previa, y
+    # ahi tapaban justo el rotulo de la seccion y la cota de la base. Con cuatro notas -y
+    # el interop de AutoCAD deja cuatro cada vez- se comian un tercio del cuadro.
     check("el cuadro de notas se oculta cuando no hay nada que decir",
           'x:Name="NotasPanel"' in xaml
           and 'Binding="{Binding Text, ElementName=ExportHintText}"' in xaml)
+
+    check("las notas ya no van encima de la vista previa",
+          'Grid.Row="4"' in xaml
+          and '<Expander x:Name="NotasPanel" IsExpanded="False"' in xaml)
+    check("y arrancan plegadas",
+          'IsExpanded="False"' in xaml)
+
+    # Y se pliegan en CADA dibujo, no solo al arrancar: si el usuario lo dejo abierto, el
+    # dibujo siguiente no tiene por que heredar el panel abierto tapando media pestaña.
+    check("hay un solo sitio que escribe las notas",
+          "private void MostrarNotas(string texto)" in codigo
+          and "NotasPanel.IsExpanded = false;" in codigo)
+    check("y los cuatro sitios que las escriben pasan por ahi",
+          codigo.count("MostrarNotas(") == 5
+          and codigo.count("ExportHintText.Text =") == 1,
+          f"{codigo.count('MostrarNotas(')} llamadas, "
+          f"{codigo.count('ExportHintText.Text =')} asignaciones directas")
+
+    # ------------------------------------------------------------------
+    # EL GANCHO DEL ESTRIBO EN LA VISTA PREVIA
+    # ------------------------------------------------------------------
+    # El usuario lo pidio dos veces: en la vista previa se veian dos rectangulos de
+    # estribo perfectos y el gancho aparecia por primera vez en AutoCAD, que es justo el
+    # detalle que se revisa antes de mandar el plano.
+    #
+    # Lo que importa de estas comprobaciones no es que dibuje algo, es que dibuje LO MISMO
+    # que el dibujante: una vista previa con su propia geometria puede acabar enseñando un
+    # gancho que no es el que se va a dibujar.
+    check("la vista previa dibuja el gancho del estribo",
+          "private void DibujarGanchoPrevio(" in codigo
+          and "DibujarGanchoPrevio(s, de, rec, escala, PX, PY," in codigo)
+
+    m_gp = re.search(r"private void DibujarGanchoPrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarGanchoPrevio", m_gp is not None)
+
+    if m_gp:
+        gp = m_gp.group(0)
+
+        # El centro del doblez, con la MISMA cuenta del dibujante: rec + dEst + rIn de las
+        # dos caras. Un signo de mas o de menos aqui pone el gancho fuera del estribo.
+        check("el doblez se centra donde lo centra el dibujante",
+              "var bx = s.BaseCm - rec - dEst - rIn;" in gp
+              and "var by = s.AlturaCm - rec - dEst - rIn;" in gp)
+        check("y se envuelve en la varilla de la esquina superior",
+              "s.DiamEsqSup" in gp and "var rOut = rIn + dEst;" in gp)
+
+        # Media vuelta, de 315 a 135 grados: son los 135 del gancho de norma.
+        check("el doblez barre media vuelta, de 315 a 135 grados",
+              "(1.75 * Math.PI) + (k / 24.0 * Math.PI)" in gp)
+
+        # Las dos colas, cada una con sus TRES lineas, y a 225 grados.
+        check("salen dos colas hacia el nucleo",
+              "const double ux = -rt2I;" in gp and "const double uy = -rt2I;" in gp
+              and "(Nx: rt2I, Ny: -rt2I" in gp and "(Nx: -rt2I, Ny: rt2I" in gp)
+        check("y cada cola lleva sus tres lineas",
+              "(piX, piY, qiX, qiY)" in gp
+              and "(poX, poY, qoX, qoY)" in gp
+              and "(qiX, qiY, qoX, qoY)" in gp)
+
+        # El recorte de la segunda cola, con la condicion del dibujante.
+        check("la segunda cola se recorta con la condicion del dibujante",
+              "var tCruce = rOut - (Math.Sqrt(2) * rIn);" in gp
+              and "tCruce >= 0 && tCruce <= largo" in gp)
+        check("y arranca donde la cruza el estribo",
+              "poX = bx + rIn - (Math.Sqrt(2) * rOut);" in gp)
+
+        # Lo que NO se puede dibujar: sin gancho, sin estribo o sin varilla de esquina.
+        check("no se dibuja gancho donde no hay de que doblarlo",
+              "s.GanchoCm <= 0 || dEst <= 0 || rec <= 0" in gp
+              and "!Varilla.TryDiametroCm(s.DiamEsqSup, out var dSup)" in gp)
+        check("ni cuando el doblez no cabe en el nucleo",
+              "bx <= rec + dEst || by <= rec + dEst" in gp)
+
+    # Y el mismo gancho en la seccion REDONDA, que no lo tenia tampoco.
+    check("la vista previa de la redonda dibuja el gancho del zuncho",
+          "private void DibujarGanchoZunchoPrevio(" in codigo
+          and "DibujarGanchoZunchoPrevio(\n            s, cx, cy, r, rec, dZun, dVar, "
+              "rPaso, escala," in codigo)
+
+    m_gz = re.search(r"private void DibujarGanchoZunchoPrevio\(.*?\n    \}", codigo, re.S)
+
+    check("se puede leer DibujarGanchoZunchoPrevio", m_gz is not None)
+
+    if m_gz:
+        gz = m_gz.group(0)
+
+        # LA CUENTA QUE NO PUEDE ESTAR EN COORDENADAS DE PANTALLA. El lienzo tiene la Y al
+        # reves, y ahi «girar el radio 45 grados» gira para el otro lado: el gancho saldria
+        # espejeado, apuntando al lado contrario que en AutoCAD. Por eso se calcula con la
+        # Y hacia arriba y se voltea solo al pintar.
+        check("el gancho del zuncho se calcula con la Y hacia arriba",
+              "double PX(double x) => cx + x;" in gz
+              and "double PY(double y) => cy - y;" in gz)
+
+        # La cola es el radio hacia dentro girado 45 grados, la misma formula del dibujante.
+        check("la cola es el radio interior girado 45 grados",
+              "var ux = (rx - ry) * rt2I;" in gz
+              and "var uy = (rx + ry) * rt2I;" in gz)
+        check("y las normales son sus perpendiculares",
+              "var n1X = -uy;" in gz and "var n1Y = ux;" in gz)
+
+        # De la varilla de ABAJO, para no pisarse con la llamada, que apunta a la de arriba.
+        check("se agarra de la varilla de abajo",
+              "primera || y < by" in gz)
+
+        # Del doblez, SOLO el arco exterior: el interior es la circunferencia de la varilla.
+        check("del doblez se dibuja solo el arco exterior",
+              "var aTangente = Math.Atan2(-ry, -rx);" in gz
+              and "rOut * Math.Cos(a)" in gz)
+        check("y el tope del nucleo recorta la cola",
+              "var tope = (-piX * ux) + (-piY * uy);" in gz
+              and "tope > 0 && largo > tope" in gz)
+        check("y van las dos colas, tambien en helice",
+              "new[] { (n1X, n1Y), (n2X, n2Y) }" in gz)
 
     # ------------------------------------------------------------------
     # El gancho sismico del DIAMANTE
@@ -3725,33 +3845,38 @@ def v19_circular_y_ui() -> None:
         check("y las dos se le pasan a la misma Cola del rectangular",
               "arranque is not null, arranque?.X ?? 0, arranque?.Y ?? 0" in cuerpo)
 
-        # Y LA CINTA DEL DIAMANTE SE DEJA ENTERA.
+        # Y LA LINEA DE LA CINTA QUE PASA ARRIBA DE LA VARILLA SE CORTA CON EL GANCHO.
         #
-        # Hubo una version que le abria un hueco a la linea interior por donde el brazo del
-        # gancho le pasa por encima, para que en el plano no pareciera que la diagonal
-        # cortaba el gancho. El usuario la rechazo: al estribo no le falta ningun tramo.
-        check("la cinta del diamante se deja entera",
-              "AbrirCintaBajoLaCola(" not in cuerpo)
+        # Es lo que se pidio: la linea interior de la cinta se abre un hueco del ancho del
+        # brazo por donde el gancho le pasa por encima, para que la diagonal no parezca
+        # cortar el gancho. Solo la de ARRIBA -n1X, n1Y-, que es el gancho que va encima; la
+        # de abajo pasa por debajo y por eso de ese lado lo que se recorta es la cola.
+        check("la linea de la cinta se corta bajo el brazo de arriba",
+              "AbrirCintaBajoLaCola(\n            centros, iBarra, n1X, n1Y," in cuerpo)
+        check("y la cinta vieja se sustituye por la abierta, no se deja las dos",
+              "Borrar(_diamInt);" in cuerpo and "_diamInt = cintaAbierta;" in cuerpo)
+        check("y se dice que el hueco es del diamante, no del gancho",
+              "no le quita ninguna línea al gancho" in cuerpo
+              and "sus tres líneas cada una" in cuerpo)
 
         # Y la cola se recorta si no cabe en el nucleo.
         check("la cola del diamante se recorta si no cabe",
               "gancho = tope;" in cuerpo)
 
-    # Y no queda NADA de la apertura: ni el metodo, ni sus dos recortes, ni la polilinea
-    # abierta, ni su tope. Codigo muerto en un archivo que se lee es peor que no tenerlo.
-    # Se busca la DECLARACION, no el nombre: el comentario que explica por que se quito
-    # menciona el metodo, y tiene que poder hacerlo.
-    for muerto in ("AbrirCintaBajoLaCola", "RecorteDeLaCola", "RecorteDelDoblez",
-                   "PolilineaAbierta"):
-        check(f"no queda el metodo {muerto}",
-              not re.search(r"private [\w<>?,\.\( ]*\b" + muerto + r"\(", diam))
+    # Y la apertura esta puesta con sus cuatro piezas: el metodo, los dos recortes y la
+    # polilinea abierta. Se busca la DECLARACION, no el nombre, para no confundirla con la
+    # mencion de un comentario.
+    for pieza in ("AbrirCintaBajoLaCola", "RecorteDeLaCola", "RecorteDelDoblez",
+                  "PolilineaAbierta"):
+        check(f"esta el metodo {pieza}",
+              re.search(r"private [\w<>?,\.\(\) ]*\b" + pieza + r"\(", diam) is not None)
 
-    check("ni el tope del hueco que ya no se abre",
-          "FraccionMaxHuecoCinta" not in diam)
+    check("y el tope del hueco, para que una cuenta mala no borre media diagonal",
+          "FraccionMaxHuecoCinta = 0.5" in diam)
 
-    check("y se dice por que se quito, no se borra en silencio",
-          "LA CINTA DEL DIAMANTE SE DEJA ENTERA" in diam
-          and "a pedido del usuario" in diam)
+    check("se dice que el hueco NO le quita lineas al gancho",
+          "Esto no le quita nada al gancho" in diam
+          and "sus <b>tres líneas</b>" in diam)
 
     m_sal = re.search(
         r"private static \(double X, double Y\)\? SalidaDelAceroDelDiamante\(.*?\n    \}",
@@ -3809,13 +3934,20 @@ def v19_circular_y_ui() -> None:
     check("la comprobacion del gancho cuenta las tres lineas de cada cola",
           "cada cola va con sus tres lineas" in gancho_py
           and "es tangente a la varilla" in gancho_py)
-    check("y ya no porta el hueco de la cinta, que no se abre",
-          "hueco_de_la_cinta" not in gancho_py
-          and "def recorte_de_la_cola(" not in gancho_py
-          and "FRACCION_MAX_HUECO" not in gancho_py)
-    check("lo que el brazo tapa de la cinta se informa, no se exige",
-          "ESTO SE INFORMA, NO SE EXIGE" in gancho_py
-          and "la cinta se deja ENTERA" in gancho_py)
+    check("y porta el hueco de la cinta, con sus dos recortes",
+          "def hueco_de_la_cinta(" in gancho_py
+          and "def recorte_de_la_cola(" in gancho_py
+          and "def recorte_del_doblez(" in gancho_py
+          and "FRACCION_MAX_HUECO" in gancho_py)
+
+    # Lo que de verdad prueba que el hueco esta bien: se contrasta contra un muestreo
+    # independiente del acero del gancho. Si el hueco fuera un numero inventado, dejaria
+    # fuera algo de lo que el gancho tapa, o abriria donde no tapa nada.
+    check("el hueco se contrasta contra lo que el gancho tapa de verdad",
+          "el hueco NO deja fuera nada de lo que el gancho tapa" in gancho_py
+          and "y no abre nada que el gancho no tape" in gancho_py)
+    check("y la cinta abierta conserva todos los vertices de la cerrada",
+          "no se pierde ni un vertice de la cinta" in gancho_py)
 
     check("hay comprobacion numerica del gancho del zuncho",
           "Gancho sismico del zuncho" in leer(ruta("tools/verificar_seccion_circular.py")))
@@ -3955,12 +4087,33 @@ def v19_circular_y_ui() -> None:
     doc_conc = leer(ruta("docs/macro-secciones-concreto.md"))
 
     check("el documento del concreto explica el gancho del diamante",
-          "las dos colas enteras y la cinta entera" in doc_conc
-          and "sus **tres líneas**" in doc_conc)
-    check("y las tres cosas que se probaron y se revirtieron",
-          "las tres se revirtieron" in doc_conc
+          "sus **tres líneas**" in doc_conc)
+    check("y el corte de la linea del diamante con el ancho del brazo",
+          "La línea del diamante se corta con el ancho del brazo" in doc_conc
+          and "no le quita ninguna línea al gancho" in doc_conc)
+    check("y las dos cosas que se probaron y se revirtieron",
+          "Dos cosas que se probaron y se revirtieron" in doc_conc
           and "dos líneas que le faltaban al gancho" in doc_conc
           and "1.87 cm" in doc_conc)
+    check("y que los ganchos ya se ven en la vista previa",
+          "Y los ganchos se ven en la vista previa" in doc_conc
+          and "el gancho sale\nespejeado" in doc_conc)
+    check("y dice lo que a la vista previa le sigue faltando",
+          "sigue faltando** en la vista previa es el rombo" in doc_conc)
+
+    # Y el de acero explica el catalogo de aceros y como se actualiza, que es lo que el
+    # usuario pregunto: si tiene que volver a subir el Excel al repositorio.
+    doc_acero = leer(ruta("docs/macros-acero.md"))
+
+    check("el documento de acero explica el catalogo de aceros",
+          "su Fy y si se consigue" in doc_acero
+          and "Tres respuestas, no dos" in doc_acero)
+    check("y la traduccion de las columnas de la hoja a las familias",
+          "no es un capricho de la hoja" in doc_acero
+          and "42 ksi en redondo y 46 en rectangular" in doc_acero)
+    check("y contesta que NO hay que volver a subir el Excel",
+          "No hace falta volver a subir nada al repositorio" in doc_acero
+          and "python3 tools/catalogo_aceros.py docs/ACEROS.xlsx" in doc_acero)
 
     # ------------------------------------------------------------------
     # «Esa propiedad no existe» no es un fallo del dibujo
@@ -4319,7 +4472,17 @@ def v19_circular_y_ui() -> None:
         #   Celda*Brush        son los colores de las columnas de la hoja, la unica cosa
         #                      que separa los 27 grupos al capturar. El usuario pidio
         #                      expresamente conservarlos.
-        aparte = {"PreviewFondoBrush"} | {b for b in declaradas if b.startswith("Celda")}
+        #   Fila/Acero*Brush   las marcas de la hoja de acero: el fondo suave de la fila
+        #                      cuyo acero no se hace en ese perfil, el rojo de su celda y
+        #                      el ambar del «verificar». Van con el grupo de arriba y por
+        #                      el mismo motivo: las celdas de la hoja se quedan claras en
+        #                      los dos temas, asi que la marca que va ENCIMA de ellas
+        #                      tambien tiene que quedarse clara. Una marca que cambia de
+        #                      tema sobre una celda que no lo cambia deja de contrastar.
+        aparte = ({"PreviewFondoBrush"}
+                  | {b for b in declaradas if b.startswith("Celda")}
+                  | {b for b in declaradas
+                     if b.startswith("FilaAcero") or b.startswith("Acero")})
 
         faltan = deberian - kc - aparte
         check("toda brocha usada esta en las paletas, salvo las que se quedan claras",
@@ -5619,6 +5782,26 @@ def v21_separacion_y_acero() -> None:
               all("CeldaCalculada" in c for c in col_props))
 
         # ---------------------------------------------------------------
+        # El acero: su Fy y si se hace en ese perfil
+        # ---------------------------------------------------------------
+        # La lista de aceros eran CINCO nombres escritos en el codigo, sin mas dato que su
+        # nombre. Ahora salen del catalogo -39, con Fy, Fu y en que secciones se hace cada
+        # uno- y la tabla dice las dos cosas que hacen falta: el Fy, que es con lo que se
+        # revisa, y si ese acero se consigue en ese perfil.
+        check("la tabla de acero trae el Fy del acero",
+              'Binding="{Binding FyKgCm2, StringFormat=N0}"' in tab
+              and 'Header="Fy kg/cm²"' in tab)
+        check("y si el acero se hace en ese perfil",
+              'Binding="{Binding AceroDisponibleLeyenda}"' in tab
+              and "CeldaDisponibilidadAcero" in tab)
+        check("y las dos son de solo lectura, que salen del catalogo",
+              tab.count('Binding="{Binding FyKgCm2, StringFormat=N0}"\n'
+                        '                                                IsReadOnly="True"')
+              == 1)
+        check("el globo de la celda del acero trae su detalle",
+              "Value=\"{Binding AceroDetalle}\"" in tab)
+
+        # ---------------------------------------------------------------
         # La vista previa de la forma
         # ---------------------------------------------------------------
         # Lo mismo que en concreto: la tabla dice numeros y el perfil se dibuja con
@@ -5632,6 +5815,104 @@ def v21_separacion_y_acero() -> None:
         check("y la tabla dejo su renglon para que quepa",
               'x:Name="AceroGrid" Grid.Row="1"' in tab
               and 'Grid.Row="2" Height="240"' in tab)
+
+    # La fila se marca cuando el acero no se hace en ese perfil, que es lo que se pidio.
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("la fila de acero se marca cuando el acero no se hace en ese perfil",
+          'RowStyle="{StaticResource FilaAceroStyle}"' in xaml
+          and '<Style x:Key="FilaAceroStyle" TargetType="DataGridRow"' in tema
+          and 'Binding="{Binding AceroNoDisponible}" Value="True"' in tema)
+
+    # Y el «verificar» NO se marca en rojo. Es la decision que importa de las tres
+    # respuestas: pintar de rojo un acero que si se puede pedir hace cambiar de acero sin
+    # necesidad, y darlo por bueno en silencio deja creyendo que ya se confirmo.
+    check("el «verificar» va en ambar, no en rojo",
+          'Binding="{Binding AceroPorVerificar}" Value="True"' in tema
+          and "AceroVerificarBrush" in tema)
+    check("y solo el «no se hace» pinta la fila",
+          tema.count('Binding="{Binding AceroNoDisponible}" Value="True"') == 2)
+
+    aceros_cs = leer(ruta("client/src/CadLink.App/Models/CatalogoAceros.cs"))
+
+    check("hay un catalogo de aceros que se lee de un archivo",
+          'public const string Archivo = "aceros.csv";' in aceros_cs
+          and "public static List<AceroCatalogo> Leer(" in aceros_cs)
+    check("y el archivo va suelto junto al ejecutable, como el de perfiles",
+          "<None Update=\"aceros.csv\">" in leer(
+              ruta("client/src/CadLink.App/CadLink.App.csproj")))
+    check("el desplegable sale del catalogo, no de una lista escrita a mano",
+          "public static string[] Aceros => CatalogoAceros.Nombres;" in perfil_row)
+
+    # LAS TRES RESPUESTAS, y que la de «no se sabe» no es «no».
+    check("la disponibilidad tiene tres respuestas",
+          'public const string Si = "SI";' in aceros_cs
+          and 'public const string Verificar = "VERIFICAR";' in aceros_cs
+          and 'public const string No = "NO";' in aceros_cs)
+    check("una familia que el catalogo no menciona contesta VERIFICAR, no NO",
+          "? v : Verificar;" in aceros_cs)
+    check("y un acero que no esta en el catalogo tampoco marca la fila",
+          "?? AceroCatalogo.Verificar;" in perfil_row)
+
+    # EL APOSTROFO DEL A-500. Es la unica diferencia entre dos aceros DISTINTOS: el
+    # Gr. B es el tubo redondo, con Fy 2955, y el Gr. B' el rectangular, con 3235. Si la
+    # comparacion lo tirara junto con los guiones y los espacios, el programa daria un Fy
+    # equivocado en un 9 % sin decir nada.
+    check("la busqueda de acero ignora guiones y espacios",
+          "char.IsLetterOrDigit(c) || c == '\\''" in aceros_cs)
+    check("pero NO el apostrofo, que distingue dos aceros",
+          "el apóstrofo da un Fy equivocado en un 9 %" in aceros_cs
+          or "perder el apóstrofo da un Fy equivocado" in aceros_cs)
+    check("y una designacion vieja se guarda como la escribe el catalogo",
+          "public static string ComoEnElCatalogo(" in aceros_cs
+          and "Set(ref _acero, CatalogoAceros.ComoEnElCatalogo(value));" in perfil_row)
+
+    # DOS sitios avisan de la disponibilidad, y hacen falta los dos: el acero y la
+    # FAMILIA. Al cambiar de familia cambia la respuesta aunque el acero sea el mismo -un
+    # A-36 se consigue en canal y no en monten-, y sin ese aviso la fila se quedaba con la
+    # marca de la familia anterior, que es peor que no tener marca.
+    check("cambiar de familia vuelve a preguntar por la disponibilidad",
+          "private void RaiseDelAcero()" in perfil_row
+          and perfil_row.count("RaiseDelAcero();") == 2,
+          f"{perfil_row.count('RaiseDelAcero();')} llamadas")
+
+    # El renglon de totales dice cuantas filas estan marcadas y de donde salio el catalogo.
+    check("los totales dicen cuantas filas llevan un acero que no se hace",
+          "con un acero que no se hace en ese perfil" in acero_cb)
+    check("y de donde salio el catalogo de aceros",
+          "CatalogoAceros.Origen" in acero_cb)
+
+    # El generador y su comprobacion.
+    gen_aceros = leer(ruta("tools/catalogo_aceros.py"))
+
+    check("hay un generador del catalogo de aceros",
+          "COLUMNA_DE_FAMILIA" in gen_aceros)
+    check("que traduce las columnas de la hoja a las familias de CadLink",
+          '("IR", "W")' in gen_aceros
+          and '("OC", "PIPE")' in gen_aceros
+          and '("OR", "HSS")' in gen_aceros)
+    check("y lee los encabezados en lugar de suponer las letras",
+          "def encabezados(filas)" in gen_aceros
+          and "Se LEE, no se supone" in gen_aceros)
+    check("y avisa de lo que la hoja trae raro, sin corregirlo",
+          "def revisar(aceros)" in gen_aceros
+          and "Se AVISA, no se corrige" in gen_aceros)
+
+    check("hay comprobacion numerica del catalogo de aceros",
+          "El CSV contra la hoja de la que sale"
+          in leer(ruta("tools/verificar_catalogo_aceros.py")))
+    check("que comprueba que el CSV esta al dia con la hoja",
+          "y los mismos datos, acero por acero"
+          in leer(ruta("tools/verificar_catalogo_aceros.py")))
+    check("y que el ejemplo del programa no arranca con filas marcadas",
+          "ninguna fila del ejemplo arranca marcada en rojo"
+          in leer(ruta("tools/verificar_catalogo_aceros.py")))
+
+    check("el catalogo de aceros esta generado y trae los 39",
+          len([l for l in leer(ruta("client/src/CadLink.App/aceros.csv")).splitlines()
+               if l.strip() and not l.startswith("#")]) == 39)
+    check("y la hoja de la que sale esta en el repositorio",
+          os.path.exists(ruta("docs/ACEROS.xlsx")))
 
     check("la vista previa de acero se engancha al arrancar",
           "private void EngancharVistaPreviaAcero()" in acero_cb

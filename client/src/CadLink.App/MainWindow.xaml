@@ -291,6 +291,14 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="230" />
+
+                        <!-- Las notas del ultimo dibujo. Estaban ENCIMA de la vista
+                             previa, en una capa semitransparente pegada abajo, y
+                             tapaban justo la parte del dibujo donde va el rotulo.
+                             Ahora van en su propio renglon, DEBAJO, y plegadas: si
+                             no hay notas no ocupan nada, y si las hay se ve una
+                             linea que se abre al tocarla. -->
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
@@ -576,41 +584,61 @@
                                        VerticalAlignment="Top" HorizontalAlignment="Left"
                                        Foreground="{DynamicResource BrandDarkBrush}" />
 
-                            <!-- Notas y avisos del ultimo dibujo. Vivian en la pestaña
-                                 AutoCAD, que se quito; van aqui porque es donde esta el
-                                 boton que los produce. Solo se ve cuando hay algo que
-                                 decir: el codigo lo deja vacio si el dibujo salio limpio. -->
-                            <!-- OCULTO de entrada. Es una capa por ENCIMA de la vista
-                                 previa, y con el fondo semitransparente tapaba el dibujo
-                                 justo por abajo. Solo aparece si el ultimo dibujo dejo
-                                 algo que decir; lo enciende y lo apaga MostrarNotas. -->
-                            <Border x:Name="NotasPanel"
-                                    VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
-                                    Background="#CCFFFFFF" Padding="8,4" Margin="1"
-                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
-                                <!-- La visibilidad la manda el TEXTO, con un disparador,
-                                     y no una linea de codigo: hay CUATRO sitios que
-                                     escriben estas notas, y con un Visibility puesto a
-                                     mano habria que acordarse de apagarlo en los cuatro.
-                                     Asi el cuadro aparece y desaparece solo. -->
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                        <Style.Triggers>
-                                            <DataTrigger Value=""
-                                                         Binding="{Binding Text, ElementName=ExportHintText}">
-                                                <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <ScrollViewer MaxHeight="72" VerticalScrollBarVisibility="Auto">
-                                    <TextBlock x:Name="ExportHintText" FontSize="10.5"
-                                               TextWrapping="Wrap"
-                                               Foreground="{DynamicResource MutedTextBrush}" />
-                                </ScrollViewer>
-                            </Border>
                         </Grid>
+                    </Border>
+
+                    <!-- ===== NOTAS Y AVISOS DEL ULTIMO DIBUJO =====
+
+                         FUERA DE LA VISTA PREVIA, y plegadas.
+
+                         Estaban encima del dibujo, en una capa semitransparente
+                         pegada al borde de abajo, y ahi tapaban justo lo que hay que
+                         mirar: el rotulo de la seccion y la cota de la base. Con
+                         cuatro o cinco notas -y el interop de AutoCAD deja cuatro
+                         cada vez- se comian un tercio del cuadro.
+
+                         Ahora van en su propio renglon, debajo, dentro de un
+                         Expander PLEGADO: cuando hay notas se ve una sola linea que
+                         se abre al tocarla, y cuando no hay no se ve nada. La vista
+                         previa ya no se tapa nunca.
+
+                         Se pliega SOLA cada vez que se dibuja -MostrarNotas la
+                         cierra-, para que un dibujo nuevo no herede el panel abierto
+                         del anterior. -->
+                    <Border Grid.Row="4" Margin="0,8,0,0"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1">
+                        <!-- La visibilidad la manda el TEXTO, con un disparador, y no
+                             una linea de codigo: hay CUATRO sitios que escriben estas
+                             notas, y con un Visibility puesto a mano habria que
+                             acordarse de apagarlo en los cuatro. Asi aparece y
+                             desaparece solo. -->
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Value=""
+                                                 Binding="{Binding Text, ElementName=ExportHintText}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+
+                        <Expander x:Name="NotasPanel" IsExpanded="False" Padding="6,2"
+                                  Foreground="{DynamicResource MutedTextBrush}">
+                            <Expander.Header>
+                                <TextBlock Text="Notas y avisos del último dibujo"
+                                           FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+                            </Expander.Header>
+                            <ScrollViewer MaxHeight="110" VerticalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="ExportHintText" FontSize="10.5"
+                                           TextWrapping="Wrap" Margin="4,2,4,6"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
+                            </ScrollViewer>
+                        </Expander>
                     </Border>
                 </Grid>
             </TabItem>
@@ -668,6 +696,7 @@
                               FrozenColumnCount="3"
                               HeadersVisibility="All"
                               EnableRowVirtualization="True"
+                              RowStyle="{StaticResource FilaAceroStyle}"
                               ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
                         <DataGrid.Columns>
                             <DataGridComboBoxColumn x:Name="ColFamilia" Header="Familia"
@@ -749,10 +778,44 @@
 
                             <DataGridCheckBoxColumn Header="Doble" Binding="{Binding Doble, UpdateSourceTrigger=PropertyChanged}" Width="60"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
+                            <!-- El acero: la lista sale del catalogo aceros.csv, que trae
+                                 los 39 del manual con su Fy, su Fu y en que secciones se
+                                 hace cada uno. Antes eran cinco escritos en el codigo.
+
+                                 El globo de ayuda de la celda trae el detalle -Fy y Fu en
+                                 kg/cm2 y en MPa, y la norma mexicana equivalente- para no
+                                 tener que ir a buscarlo a la hoja. -->
                             <DataGridComboBoxColumn x:Name="ColAcero" Header="Acero"
-                                                    SelectedItemBinding="{Binding Acero, UpdateSourceTrigger=PropertyChanged}" Width="115"
+                                                    SelectedItemBinding="{Binding Acero, UpdateSourceTrigger=PropertyChanged}" Width="135"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                                                    CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridComboBoxColumn.ElementStyle>
+                                    <Style TargetType="ComboBox">
+                                        <Setter Property="ToolTip" Value="{Binding AceroDetalle}" />
+                                    </Style>
+                                </DataGridComboBoxColumn.ElementStyle>
+                            </DataGridComboBoxColumn>
+
+                            <!-- El Fy del acero, que es el dato con el que se revisa. Sale
+                                 del catalogo, asi que es de solo lectura: se elige el acero,
+                                 no se teclea su esfuerzo. -->
+                            <DataGridTextColumn Header="Fy kg/cm²"
+                                                Binding="{Binding FyKgCm2, StringFormat=N0}"
+                                                IsReadOnly="True" Width="80"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <!-- Y SI ESE ACERO SE CONSIGUE EN ESE PERFIL, que es lo que no
+                                 se ve mirando la fila: un A-36 en un monten no existe -la
+                                 lamina rolada en frio no se hace en A-36- y los dos valores
+                                 son validos por separado.
+
+                                 Tres respuestas, no dos: «Si», «Verificar» -puede pedirse,
+                                 confirmalo- y «No se hace», que es la unica que pinta la
+                                 fila. Ver CeldaDisponibilidadAcero. -->
+                            <DataGridTextColumn Header="¿Se hace?"
+                                                Binding="{Binding AceroDisponibleLeyenda}"
+                                                IsReadOnly="True" Width="90"
+                                                CellStyle="{StaticResource CeldaDisponibilidadAcero}" />
 
                             <!-- Calculadas. «Forma» es lo que se va a dibujar, y esta aqui
                                  para que se vea que cuatro familias distintas (IR, IS, IC y

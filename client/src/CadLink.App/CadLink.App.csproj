@@ -46,6 +46,14 @@
     <None Update="perfiles-acero.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!-- El catalogo de ACEROS, tambien suelto y por el mismo motivo: trae el Fy,
+         el Fu y en que secciones se hace cada acero, y eso cambia con las normas
+         y con lo que surta el proveedor. Se genera de docs/ACEROS.xlsx con
+         tools/catalogo_aceros.py, pero se puede editar con el Bloc de notas. -->
+    <None Update="aceros.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

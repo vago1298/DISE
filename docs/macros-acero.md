@@ -381,7 +381,97 @@ dibujar lo **dice** —qué medida falta— en vez de dejar el cuadro en blanco.
 
 ---
 
-## 11. Lo que sigue faltando
+## 11. El acero de cada perfil: su Fy y si se consigue
+
+La celda «Acero» ofrecía **cinco** nombres escritos en el código, sin más dato que el nombre.
+Ahora sale del catálogo `aceros.csv`, que trae los **39** de la hoja `ACEROS.xlsx` con:
+
+- **Fy** y **Fu**, en kg/cm² y en MPa,
+- la **norma mexicana** equivalente (NMX),
+- el **grupo** —al carbón, alta resistencia y baja aleación, resistente a corrosión,
+  templado y revenido—,
+- y **en qué secciones se hace cada uno**, columna por columna.
+
+En la tabla se ven dos cosas nuevas, no más: el **Fy** —que es el dato con el que se
+revisa— y **si ese acero se hace en ese perfil**. El resto está en el globo de ayuda de la
+celda del acero, para no meter cinco columnas que casi nunca se miran.
+
+### Las columnas de la hoja no son las familias de CadLink
+
+Y traducirlas mal no se ve, porque el resultado sigue pareciendo un dato válido:
+
+| Hoja | CadLink | |
+|---|---|---|
+| `W` | `IR` | el perfil I laminado |
+| `IS`, `IC`, `S`, `WT`, `C`, `L`, `CF`, `ZF` | igual | |
+| `PIPE` | `OC` | el tubo **redondo** |
+| `HSS` | `OR` | el tubo **rectangular** |
+| `OS` | `OS` | el redondo macizo |
+| `PLACA` | — | no es un perfil: CadLink no dibuja placas |
+
+**La diferencia entre `PIPE` y `HSS` no es un capricho de la hoja**, y se ve en el A-500: el
+`Gr. B` trae 2955 kg/cm² en la columna `PIPE` y el `Gr. B'` trae 3235 en la de `HSS`. Es la
+misma norma con dos Fy según la forma del tubo —42 ksi en redondo y 46 en rectangular—, así
+que cambiar una columna por la otra da un Fy equivocado en un 9 %.
+
+Por eso el **apóstrofo cuenta** al buscar el acero. La comparación ignora guiones, espacios y
+mayúsculas —«A-572 GR. 50» y «A-572-Gr. 50» son el mismo— pero no el apóstrofo, que aquí
+distingue dos aceros de verdad.
+
+### Tres respuestas, no dos
+
+| | |
+|---|---|
+| **Sí** | se consigue en esa sección |
+| **Verificar** | puede pedirse; confírmalo con tu proveedor |
+| **No se hace** | esa sección no se lamina en ese acero |
+
+**Solo «no se hace» marca la fila.** El «verificar» se queda en su celda, en ámbar, y esa
+diferencia es la que importa: pintar de rojo un acero que sí se puede pedir hace cambiar de
+acero sin necesidad, y dar por bueno en silencio uno que hay que confirmar deja al calculista
+creyendo que ya está confirmado.
+
+Y hay dos casos que **no** marcan la fila, a propósito: un acero que no está en el catálogo
+—se escribió a mano, y el programa no tiene de dónde saberlo— y una familia de la que el
+archivo no dice nada. Los dos contestan «verificar». Marcar en rojo por falta de dato sería
+afirmar algo que nadie escribió.
+
+Esto ya encontró algo: el ejemplo del programa traía el **monten y el larguero en A-36**, y
+la lámina rolada en frío no se hace en A-36 —es A-1008 o A-1011—; y el **tubo rectangular en
+A-500 Gr. B**, que es el redondo. Las doce filas del ejemplo llevan ahora un acero que su
+familia sí usa, y `tools/verificar_catalogo_aceros.py` lo comprueba fila por fila: un ejemplo
+que arranca con media hoja marcada enseña a ignorar la marca.
+
+### Si cambias la hoja de aceros
+
+**No hace falta volver a subir nada al repositorio, y no hace falta recompilar.** Hay dos
+caminos, y el segundo es el corto:
+
+1. **Editar `aceros.csv`**, que va suelto junto al ejecutable —igual que
+   `perfiles-acero.csv`—. Se abre con el Bloc de notas o con Excel, se guarda, se vuelve a
+   abrir CadLink y los cambios están. Es un archivo de texto con punto y coma: una línea por
+   acero, y la primera parte del archivo explica las columnas.
+2. **Editar `ACEROS.xlsx` y volver a generar el CSV**, que es lo que conviene si el cambio es
+   grande:
+
+```bash
+python3 tools/catalogo_aceros.py docs/ACEROS.xlsx > client/src/CadLink.App/aceros.csv
+```
+
+El generador **no corrige nada**: comprueba que Fu sea mayor que Fy, que las dos unidades de
+cada esfuerzo digan lo mismo y que ningún Fy esté fuera de lo creíble, y **avisa** de lo que
+no cuadra con nombre y números. De la hoja de hoy sale un aviso: el `A-572-Gr. 65` trae
+`Fu = 5265 kg/cm²` y `550 MPa`, y 550 MPa son 5608 —probablemente sea 5625, que es lo que da
+el grado—. Es una celda de la hoja, y ahí hay que arreglarla.
+
+Si el archivo se pierde, el programa abre igual con una semilla de cinco aceros. Su
+disponibilidad va **vacía** a propósito: la semilla existe para que el desplegable no
+arranque en blanco, no para opinar sobre qué se consigue, así que contesta «verificar» a todo,
+que es la verdad cuando el catálogo no está. El renglón de totales dice de dónde salió.
+
+---
+
+## 12. Lo que sigue faltando
 
 Nada del catálogo IMCA: las doce familias de la hoja se dibujan. Lo que queda son cosas de
 detalle que el manual no da o que a escala de plano no se verían:

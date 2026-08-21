@@ -991,10 +991,11 @@ print(f"    arco metido en el acero: de {min(arco_metido):.2f} a "
 #      salia del diamante 1.87 cm. Era el «hatch que sale». Se mide aqui, en el apartado
 #      1b, con las dos versiones.
 #
-#   2. ABRIRLE UN HUECO a la linea interior de la cinta por donde el brazo le pasa por
-#      encima, para que la diagonal no pareciera cortar el gancho. El usuario la rechazo:
-#      al estribo no le falta ningun tramo. La cinta va ENTERA y el gancho se dibuja
-#      encima, que para eso se ordena el dibujo.
+# Y una cosa que SI se hace, que es la que se pidio despues: ABRIRLE UN HUECO a la linea
+# interior de la cinta por donde el brazo le pasa por encima. Sin el hueco, la diagonal del
+# rombo parece cortar el gancho en lugar de pasarle por debajo. OJO: el hueco NO le quita
+# ninguna linea al gancho -las dos colas siguen con sus tres-, se lo abre a la linea del
+# DIAMANTE, y del ancho del brazo.
 #
 # Lo que queda comprobado aqui, con la misma geometria con la que se dibuja la cinta:
 #
@@ -1003,15 +1004,97 @@ print(f"    arco metido en el acero: de {min(arco_metido):.2f} a "
 #   * que lo que el acero DOBLA es lo que ENVUELVE, que es lo que demuestra que ese arco
 #     es el doblez de verdad y no un adorno;
 #   * que el relleno de la cola no se sale, y que alargando la cola SI se salia;
-#   * cuanto tapa el brazo de la linea interior de la cinta, que se INFORMA y no se
-#     exige: es lo que se resolveria abriendo el hueco, y se dejo sin abrir a proposito.
+#   * que el hueco de la cinta empieza en una cara del brazo y acaba en la otra, que es
+#     pequeno -unos milimetros sobre una diagonal de decenas de cm- y que es EXACTAMENTE
+#     lo que el gancho tapa, contrastado contra un muestreo independiente;
+#   * y que la cinta que se vuelve a montar conserva TODOS los vertices de la de antes.
 
 print("\n" + "=" * 78)
 print(" El brazo de arriba contra la cinta")
 print("=" * 78)
 
-# Lo que el brazo tapa de la linea interior, por armado. Se informa al final.
-tapado_por_el_brazo = []
+
+FRACCION_MAX_HUECO = 0.5          # el mismo tope que el C#
+LARGO_MIN = 0.0005 * 100          # LargoMinTramo, en cm
+
+
+def recorte_de_la_cola(a, b, c, nn, u, r_in, r_out, largo):
+    """Port de RecorteDeLaCola: el tramo contra el rectangulo de la cola."""
+    p_in = (c[0] + r_in * nn[0], c[1] + r_in * nn[1])
+    p_out = (c[0] + r_out * nn[0], c[1] + r_out * nn[1])
+    p_fin = (p_in[0] + largo * u[0], p_in[1] + largo * u[1])
+
+    lados = [
+        (-nn[0], -nn[1], -(p_in[0] * nn[0] + p_in[1] * nn[1])),
+        (nn[0], nn[1], p_out[0] * nn[0] + p_out[1] * nn[1]),
+        (-u[0], -u[1], -(p_in[0] * u[0] + p_in[1] * u[1])),
+        (u[0], u[1], p_fin[0] * u[0] + p_fin[1] * u[1]),
+    ]
+
+    s0, s1 = 0.0, 1.0
+
+    for (lx, ly, tope) in lados:
+        pa = a[0] * lx + a[1] * ly - tope
+        pb = b[0] * lx + b[1] * ly - tope
+        de = pb - pa
+
+        if abs(de) < 1e-15:
+            if pa > 0:
+                return None
+            continue
+
+        corte = -pa / de
+
+        if de > 0:
+            s1 = min(s1, corte)
+        else:
+            s0 = max(s0, corte)
+
+        if s0 >= s1:
+            return None
+
+    return (s0, s1)
+
+
+def recorte_del_doblez(a, b, c, u, r_out):
+    """Port de RecorteDelDoblez: el tramo contra la media corona del doblez."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    largo2 = dx * dx + dy * dy
+
+    if largo2 < 1e-18:
+        return None
+
+    fx, fy = a[0] - c[0], a[1] - c[1]
+    bb = 2 * (fx * dx + fy * dy)
+    cc = fx * fx + fy * fy - r_out * r_out
+    disc = bb * bb - 4 * largo2 * cc
+
+    if disc <= 0:
+        return None
+
+    raiz = math.sqrt(disc)
+    s0 = max(0.0, (-bb - raiz) / (2 * largo2))
+    s1 = min(1.0, (-bb + raiz) / (2 * largo2))
+
+    if s0 >= s1:
+        return None
+
+    pa = fx * u[0] + fy * u[1]
+    pb = (b[0] - c[0]) * u[0] + (b[1] - c[1]) * u[1]
+    de = pb - pa
+
+    if abs(de) < 1e-15:
+        if pa > 0:
+            return None
+    else:
+        corte = -pa / de
+
+        if de > 0:
+            s1 = min(s1, corte)
+        else:
+            s0 = max(s0, corte)
+
+    return (s0, s1) if s0 < s1 else None
 
 
 def en_el_gancho(p, c, nn, u, r_in, r_out, largo):
@@ -1034,6 +1117,36 @@ def en_el_gancho(p, c, nn, u, r_in, r_out, largo):
 
     return (r_in - 1e-12 <= cara <= r_out + 1e-12
             and -1e-12 <= largo_u <= largo + 1e-12)
+
+
+def hueco_de_la_cinta(centros, i_barra, nn, u, r_in, r_out, largo):
+    """Port de AbrirCintaBajoLaCola: el hueco, union de las dos piezas."""
+    pts = geometria_cinta(centros, 0)
+
+    if pts is None:
+        return None
+
+    a, b, vertice_a = tramo_de_la_cinta(pts, centros, i_barra, nn)
+    c = centros[i_barra]
+
+    p1 = recorte_de_la_cola(a, b, c, nn, u, r_in, r_out, largo)
+    p2 = recorte_del_doblez(a, b, c, u, r_out)
+
+    if p1 is None and p2 is None:
+        return None
+
+    s0 = min(x[0] for x in (p1, p2) if x is not None)
+    s1 = max(x[1] for x in (p1, p2) if x is not None)
+
+    largo_tramo = math.hypot(b[0] - a[0], b[1] - a[1])
+
+    if largo_tramo < 1e-9 or (s1 - s0) * largo_tramo < LARGO_MIN:
+        return None
+
+    if s1 - s0 > FRACCION_MAX_HUECO:
+        return None
+
+    return pts, a, b, vertice_a, s0, s1, largo_tramo
 
 
 for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
@@ -1206,43 +1319,95 @@ for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
     check(f"'{nombre}': y alargando hacia atras SI se salia (era el hatch mal)",
           antes > 0.2, f"solo {antes:.5f} cm")
 
-    # ---- 2. Cuanto tapa el brazo de la linea interior de la cinta ----
-    #
-    # ESTO SE INFORMA, NO SE EXIGE. Es el tramo de la linea interior del diamante que
-    # queda por debajo del acero del gancho, o sea justo lo que se resolveria abriendo el
-    # hueco. Se dejo SIN abrir a pedido del usuario: al estribo no le falta ningun tramo,
-    # y lo que hace que se lea bien es el orden de dibujo, que pone el gancho encima.
-    #
-    # Se mide con en_el_gancho, que pregunta punto a punto si el acero del gancho -su
-    # doblez o su cola- esta ahi. Se guarda para dar el rango al final.
-    pts_int2 = geometria_cinta(centros, 0)
-    a, bb, _ = tramo_de_la_cinta(pts_int2, centros, i_barra, n1)
+    # ---- 2. El hueco de la linea interior, del ancho del brazo ----
+    hue = hueco_de_la_cinta(centros, i_barra, n1, u, r_in, r_out, largo)
 
-    largo_tramo = math.hypot(bb[0] - a[0], bb[1] - a[1])
-    pasos = 4000
-    tapados = 0
+    check(f"'{nombre}': la cinta se abre bajo el brazo de arriba", hue is not None)
 
-    for k in range(pasos + 1):
-        s = k / pasos
-        p = (a[0] + s * (bb[0] - a[0]), a[1] + s * (bb[1] - a[1]))
+    if hue is not None:
+        pts_int, a, bb, vertice_a, s0, s1, largo_tramo = hue
 
-        if en_el_gancho(p, barra, n1, u, r_in, r_out, largo):
-            tapados += 1
+        g0 = (a[0] + s0 * (bb[0] - a[0]), a[1] + s0 * (bb[1] - a[1]))
+        g1 = (a[0] + s1 * (bb[0] - a[0]), a[1] + s1 * (bb[1] - a[1]))
 
-    tapa_cm = largo_tramo * tapados / pasos
+        ancho = (s1 - s0) * largo_tramo
 
-    print(f"    el brazo de arriba tapa {tapa_cm:.4f} cm de la linea interior, sobre una "
-          f"diagonal de {largo_tramo:.2f} cm ({100 * tapados / pasos:.1f} %)")
-    print("    (la cinta se deja ENTERA: el gancho va dibujado encima)")
+        print(f"    hueco de {ancho:.4f} cm sobre una diagonal de {largo_tramo:.2f} cm "
+              f"({100 * (s1 - s0):.1f} %)")
 
-    tapado_por_el_brazo.append((nombre, tapa_cm, 100 * tapados / pasos))
+        check(f"'{nombre}': el hueco es pequeno, no se come la diagonal",
+              (s1 - s0) <= FRACCION_MAX_HUECO,
+              f"{100 * (s1 - s0):.1f} %")
+        check(f"'{nombre}': y mas ancho que el minimo dibujable",
+              ancho > LARGO_MIN, f"{ancho:.6f} cm")
 
-    # ---- 3. Y la cinta que se dibuja es la CERRADA, con sus vertices de siempre ----
-    # Es lo que garantiza que no falta ningun tramo: dos vertices por varilla, ni uno mas
-    # -los dos que agregaba el hueco- ni uno menos.
-    check(f"'{nombre}': la cinta lleva sus dos vertices por varilla, ni uno mas",
-          len(pts_int2) == 2 * (2 * len(centros)),
-          f"{len(pts_int2) // 2} vertices para {len(centros)} varillas")
+        # ---- Lo que de verdad importa: el hueco es EXACTAMENTE lo que el gancho tapa ----
+        # Se muestrea el tramo y se pregunta punto a punto si cae en el acero del gancho,
+        # con una funcion escrita aparte de las formulas del recorte. Si las dos cosas
+        # coinciden, las formulas describen el dibujo.
+        pasos = 4000
+        dentro_fuera_hueco = 0
+        fuera_dentro_hueco = 0
+        tapados = 0
+
+        for k in range(pasos + 1):
+            s = k / pasos
+            p = (a[0] + s * (bb[0] - a[0]), a[1] + s * (bb[1] - a[1]))
+
+            tapa = en_el_gancho(p, barra, n1, u, r_in, r_out, largo)
+            en_hueco = s0 - 1.0 / pasos <= s <= s1 + 1.0 / pasos
+
+            if tapa:
+                tapados += 1
+
+                if not en_hueco:
+                    dentro_fuera_hueco += 1
+            elif s0 + 1.0 / pasos <= s <= s1 - 1.0 / pasos:
+                fuera_dentro_hueco += 1
+
+        print(f"    de {pasos} muestras del tramo, el gancho tapa {tapados}; "
+              f"fuera del hueco quedan {dentro_fuera_hueco}, "
+              f"de mas se abren {fuera_dentro_hueco}")
+
+        check(f"'{nombre}': el hueco NO deja fuera nada de lo que el gancho tapa",
+              dentro_fuera_hueco == 0, f"{dentro_fuera_hueco} muestras")
+        check(f"'{nombre}': y no abre nada que el gancho no tape",
+              fuera_dentro_hueco == 0, f"{fuera_dentro_hueco} muestras")
+        check(f"'{nombre}': el gancho tapa algo de este tramo, o no habria que abrir nada",
+              tapados > 0)
+
+        # ---- 3. La cinta que se vuelve a montar conserva TODOS los vertices ----
+        m = 2 * len(centros)
+        bulges_int = []
+
+        # Se recalculan los bulges igual que GeometriaCinta, para compararlos.
+        for i in range(len(centros)):
+            bulges_int.append(None)      # el del arco, se rellena abajo
+            bulges_int.append(0.0)
+
+        # Los vertices de la cinta nueva, en el orden en que los pone el C#.
+        nuevos = [g1]
+        for k in range(1, m + 1):
+            v = (vertice_a + k) % m
+            nuevos.append((pts_int[2 * v], pts_int[2 * v + 1]))
+        nuevos.append(g0)
+
+        check(f"'{nombre}': la cinta abierta tiene los vertices de la cerrada, mas dos",
+              len(nuevos) == m + 2, f"{len(nuevos)} en vez de {m + 2}")
+
+        originales = {(round(pts_int[2 * v], 12), round(pts_int[2 * v + 1], 12))
+                      for v in range(m)}
+        puestos = {(round(p[0], 12), round(p[1], 12)) for p in nuevos[1:-1]}
+
+        check(f"'{nombre}': no se pierde ni un vertice de la cinta",
+              originales == puestos,
+              f"faltan {len(originales - puestos)}, sobran {len(puestos - originales)}")
+
+        # Y la cinta abierta empieza y acaba EN el hueco, no en otro sitio.
+        check(f"'{nombre}': la cinta abierta empieza donde acaba el hueco",
+              math.hypot(nuevos[0][0] - g1[0], nuevos[0][1] - g1[1]) < 1e-12)
+        check(f"'{nombre}': y acaba donde el hueco empieza",
+              math.hypot(nuevos[-1][0] - g0[0], nuevos[-1][1] - g0[1]) < 1e-12)
 
     # ---- 4. La de ABAJO se sigue recortando, no se alarga ----
     p_out2 = (barra[0] + r_out * n2[0], barra[1] + r_out * n2[1])
@@ -1253,18 +1418,6 @@ for nombre, b, h, rec, est, var, n_lat, gancho_cm in CASOS_LINEAS:
 
     check(f"'{nombre}': la cola de abajo no se alarga, se deja como estaba",
           True if sal is None else sal[1] > 0)
-
-# Y el rango de lo que el brazo tapa de la linea interior, en los armados probados. Es un
-# dato para saber de que tamaño es la cosa que se decidio NO tocar: unos milimetros sobre
-# una diagonal de decenas de centimetros, y por debajo del gancho, que va encima.
-if tapado_por_el_brazo:
-    peor = max(tapado_por_el_brazo, key=lambda x: x[1])
-    menor = min(tapado_por_el_brazo, key=lambda x: x[1])
-
-    print(f"\n    el brazo tapa de la linea interior entre {menor[1]:.2f} cm "
-          f"({menor[2]:.1f} %, {menor[0]}) y {peor[1]:.2f} cm "
-          f"({peor[2]:.1f} %, {peor[0]})")
-    print("    la cinta se deja entera: eso es lo que se pidio, y el gancho va encima")
 
 print("\n" + "=" * 78)
 if fallos:

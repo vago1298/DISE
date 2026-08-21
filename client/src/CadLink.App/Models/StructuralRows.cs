@@ -903,7 +903,17 @@ public sealed class DatosProyecto
             });
         }
 
-        // Forma I: cuatro familias que se dibujan igual y llevan cuatro colores.
+        // EL ACERO DE CADA FILA ES UNO QUE EL MANUAL DA COMO DISPONIBLE EN ESA FAMILIA,
+        // y no el mismo para todas. No es un detalle: la tabla marca en rojo la fila cuando
+        // el acero no se hace en el perfil, así que un ejemplo con aceros mal puestos
+        // arrancaría con media hoja en rojo y enseñaría a ignorar el rojo.
+        //
+        // De ahí que el monten y la zeta lleven A-1008 —son lámina rolada en frío, y el
+        // A-36 no se hace en lámina—, el tubo rectangular lleve A-500 Gr. B' —el Gr. B sin
+        // apóstrofo es el tubo redondo, con otro Fy— y el tensor de redondo macizo lleve
+        // A-572 Gr. 50.
+        //
+        // Forma I: cuatro familias que se dibujan igual.
         Acero(FamiliaPerfil.Ir, "W - 12'' x 30.04 lb/ft", "V-1",
               PerfilAceroRow.ElementoViga, PerfilAceroRow.AceroA992,
               31.3, 16.6, 0.67, 1.12, clasificacion: "PRINCIPAL");
@@ -922,7 +932,7 @@ public sealed class DatosProyecto
 
         // Te y canal laminada.
         Acero(FamiliaPerfil.Wt, "WT - 8'' x 13.0 lb/ft", "CS-1",
-              "PUNTAL", PerfilAceroRow.AceroA992,
+              "PUNTAL", PerfilAceroRow.AceroA572,
               19.9, 14.0, 0.64, 0.88);
 
         Acero(FamiliaPerfil.C, "C - 8'' x 12.0 lb/ft", "AT-1",
@@ -932,11 +942,11 @@ public sealed class DatosProyecto
         // Formados en frío. El monten es el larguero de cubierta y la zeta su alternativa:
         // la zeta lleva el patín angosto, que es lo que permite traslaparlas en el apoyo.
         Acero(FamiliaPerfil.Cf, "CF - 6\" x 2\" x #14", "MO-1",
-              "MONTEN", PerfilAceroRow.AceroA36,
+              "MONTEN", PerfilAceroRow.AceroA1008,
               15.24, 5.08, 0.19, labio: 1.52, radio: 0.24);
 
         Acero(FamiliaPerfil.Zf, "ZF - 8\" x 2 3/8\" x #14", "LG-1",
-              "LARGUERO", PerfilAceroRow.AceroA36,
+              "LARGUERO", PerfilAceroRow.AceroA1008,
               20.32, 6.03, 0.19, radio: 0.476, anchoMenor: 5.4);
 
         // Ángulo: sus dos alas y su espesor, que es lo único que da el manual.
@@ -946,7 +956,7 @@ public sealed class DatosProyecto
 
         // Tubos y redondo macizo.
         Acero(FamiliaPerfil.Or, "HSS - 6\" x 1/4\"", "C-1",
-              PerfilAceroRow.ElementoColumna, PerfilAceroRow.AceroA500B,
+              PerfilAceroRow.ElementoColumna, PerfilAceroRow.AceroA500Bp,
               15.2, 15.2, 0.64);
 
         Acero(FamiliaPerfil.Oc, "PIPE - 4.02 in x 0.19 in", "PT-1",
@@ -954,7 +964,7 @@ public sealed class DatosProyecto
               10.2, eAlma: 0.48);
 
         Acero(FamiliaPerfil.Os, "OS - 3/4\"", "TN-1",
-              PerfilAceroRow.ElementoTensor, PerfilAceroRow.AceroA36,
+              PerfilAceroRow.ElementoTensor, PerfilAceroRow.AceroA572,
               1.91);
 
         return d;

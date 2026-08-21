@@ -165,7 +165,7 @@ Después se **recorta** el estribo principal que quede bajo la banda del diamant
 (`TrimEstriboBajoDiamante`) y los tramos verticales de los leaders
 (`TrimVerticalesEnDiamante`).
 
-#### El gancho del diamante: las dos colas enteras y la cinta entera
+#### El gancho del diamante: las dos colas enteras
 
 El gancho del diamante sale de una de las varillas centrales y tiene **dos colas**, una a
 cada lado del radio hacia el centro de la sección. Cada cola es un rectángulo largo, y va
@@ -178,17 +178,38 @@ por la diagonal de abajo, la envuelve y sale como la cola de arriba. Ese arco se
 en el trozo que asoma del abrazo de la cinta (`ArcoDelDoblez`), porque el resto ya lo traza
 el borde de la propia cinta.
 
-Se probaron tres cosas y **las tres se revirtieron**, así que quedan escritas para no
-reintentarlas:
+#### La línea del diamante se corta con el ancho del brazo
+
+El brazo de arriba pasa **por encima** de la diagonal del rombo. Pero la línea interior de
+la cinta estaba dibujada de punta a punta, así que atravesaba el brazo por dentro y en el
+plano parecía que la diagonal **cortaba el gancho** en lugar de pasarle por debajo.
+
+Así que se le abre un hueco del ancho del brazo (`AbrirCintaBajoLaCola`). Y hay que decir
+qué **no** es esto, porque suena a lo contrario: no le quita ninguna línea al gancho —las
+dos colas siguen con sus tres—, el hueco es de la línea del **diamante**, que es la que
+pasa por debajo. Solo la de arriba: la cola de abajo pasa por debajo de la cinta, y por ese
+lado lo que se recorta es la cola.
+
+El hueco no se estima, se **recorta**: el tramo recto de la cinta contra el rectángulo de la
+cola (cuatro semiplanos) y contra la media corona del doblez. Las dos piezas se tocan en la
+perpendicular a la varilla, así que su unión es un hueco seguido. Hacen falta las dos: con
+solo la cola quedaba un rabito de línea justo encima de la varilla, y en una columna alta
+—diagonal muy empinada— la cola no llega a cruzar el tramo y no se abría nada aunque el
+doblez lo tapara. Sale del orden de **1.8 cm sobre una diagonal de 16**, un 11 %; si la
+cuenta diera más del 50 % no se abre nada y se avisa, para que un error no borre media
+diagonal.
+
+Como no se puede borrarle un trozo a una polilínea, se monta otra **abierta**: empieza donde
+acaba el hueco, da la vuelta entera por los mismos vértices —con sus mismos bulges, así que
+los dobleces no se tocan— y termina donde el hueco empieza. La vieja se borra al final, no
+antes, porque hacía de isla del relleno.
+
+#### Dos cosas que se probaron y se revirtieron
 
 1. **Quitar la línea interior de cada cola**, con el argumento de que su sitio lo cubre la
    circunferencia de la varilla. Eran **dos líneas que le faltaban al gancho**, una por
    cola, y sin ellas el rectángulo de la cola no cierra. Se restauraron.
-2. **Abrirle un hueco a la línea interior de la cinta** por donde la cola le pasa por
-   encima, para que la diagonal no pareciera cortar el gancho. Al estribo no le falta ningún
-   tramo: la cinta va **entera** y el gancho se lee encima porque el dibujo se ordena. Se
-   borró el método y sus dos recortes en lugar de dejarlos inalcanzables.
-3. **Alargar la cola de arriba hacia atrás** hasta el borde de la cinta, para que no naciera
+2. **Alargar la cola de arriba hacia atrás** hasta el borde de la cinta, para que no naciera
    «en el aire». `Cola` engorda su cuadrilátero de relleno el espesor del estribo cuando le
    pasan un arranque distinto del natural, así que el alargue se sumaba al inflado y el
    hatch se salía del diamante **1.87 cm**. Era el «hatch que sale».
@@ -197,12 +218,37 @@ Lo que sí se recorta es la cola de **abajo**, donde sale del acero de la cinta
 (`SalidaDelAceroDelDiamante`), porque por ese lado el gancho pasa por debajo. La de arriba
 no, que justo en su arranque acaba el arco del doblez y las dos empalman tangentes.
 
+#### Y los ganchos se ven en la vista previa
+
+Hasta ahora la vista previa dibujaba dos rectángulos de estribo perfectos y **el gancho
+aparecía por primera vez en AutoCAD**, que es justo al revés de lo que sirve: que exista, que
+sea de 135° y que quepa dentro de la sección es lo primero que se revisa antes de mandar el
+plano.
+
+Ahora se dibuja, con la misma geometría del dibujante y en las dos formas de sección:
+
+- En la **rectangular**, el doblez de la esquina superior derecha —centro a `rec + dEst + rIn`
+  de las dos caras, media vuelta de 315° a 135°— y sus dos colas hacia el núcleo a 225°, cada
+  una con sus tres líneas, con el recorte de la segunda cuando el estribo la cruza.
+- En la **circular**, el gancho sobre la varilla de abajo: la cola es el radio hacia dentro
+  girado 45° —que es lo que hace los 135°— y del doblez se dibuja solo el arco exterior, desde
+  la tangencia con el paño del zuncho, porque el interior *es* la circunferencia de la varilla.
+
+Un detalle que costó y conviene dejar escrito: **las cuentas van con la Y hacia arriba**, como
+el dibujo, y la vuelta al lienzo se hace solo al pintar cada punto. En coordenadas de pantalla
+la Y está invertida, y ahí «girar el radio 45°» gira para el otro lado: el gancho sale
+espejeado —sigue siendo de 135°, pero apuntando al lado contrario que en AutoCAD—, que es
+exactamente lo que una vista previa no puede hacer.
+
+Lo que **sigue faltando** en la vista previa es el rombo del estribo diamante, que necesita la
+cinta tangente a N círculos. Mientras no esté, el gancho del diamante solo se ve en AutoCAD.
+
 `tools/verificar_gancho_diamante.py` lo comprueba con números: las seis líneas —tres por
 cola—, que la interior sale tangente a la varilla, que lo que el acero dobla es lo que
-envuelve, que el relleno no se sale y que alargando la cola sí se salía. Y **informa**, sin
-exigir nada, cuánto tapa el brazo de arriba de la línea interior de la cinta: unos
-milímetros sobre una diagonal de decenas de centímetros. Es justo lo que se resolvería
-abriendo el hueco, y se dejó sin abrir a propósito.
+envuelve, que el relleno no se sale y que alargando la cola sí se salía. Y del hueco: que
+empieza en una cara del brazo y acaba en la otra, que es **exactamente** lo que el gancho
+tapa —contrastado punto a punto contra un muestreo escrito aparte de las fórmulas del
+recorte— y que la cinta abierta conserva todos los vértices de la cerrada.
 
 ---
 
