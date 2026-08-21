@@ -308,9 +308,52 @@ public sealed class ZapataDrawer
 
         EstribosDelDado(z, a, r);
 
+        AvisarDeLosArranques(z);
+
         // ---------- Cotas y rótulos ----------
         CotasDelCorte(a, r);
         RotuloDelCorte(z, a);
+    }
+
+    /// <summary>
+    /// Dice, con nombre y apellido, que los <b>arranques del dado</b> todavía no se dibujan.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las celdas «Arranque 1», «Arranque 2», «N int.» y «Var int.» —<c>J7</c>, <c>J8</c>,
+    /// <c>K7</c> y <c>L7</c> de la macro— se capturan, se guardan y llegan hasta aquí dentro de
+    /// <see cref="ZapataCad"/>, pero el corte todavía no dibuja esas varillas verticales.
+    /// </para>
+    /// <para>
+    /// <b>Y se avisa en lugar de dibujarlas a ojo.</b> El arranque no es una raya: su gancho de
+    /// abajo mide <see cref="TrazoZapata.FactorGanchoAbajo"/> diámetros, dobla hacia dentro o
+    /// hacia afuera según la columna sea de concreto o de acero, y arriba tiene que traslaparse
+    /// con la columna. Inventarme esas tres reglas produciría un plano que <i>parece</i> completo
+    /// y que un fierrero armaría mal, que es mucho peor que un plano al que le falta algo y lo
+    /// dice. Cuando esté el fragmento de la macro que las dibuja, se portan igual que todo lo
+    /// demás: la geometría a <see cref="TrazoZapata"/> y de ahí la usan el plano y la vista previa.
+    /// </para>
+    /// </remarks>
+    private void AvisarDeLosArranques(ZapataCad z)
+    {
+        var tiene =
+            !string.IsNullOrWhiteSpace(z.VarDadoSup)
+            || !string.IsNullOrWhiteSpace(z.VarDadoInf)
+            || (z.NIntDado > 0 && !string.IsNullOrWhiteSpace(z.VarIntDado));
+
+        if (!tiene)
+        {
+            return;
+        }
+
+        Nota(
+            $"Zapata '{z.Id}': los ARRANQUES del dado están capturados "
+            + $"(«{z.VarDadoSup}» / «{z.VarDadoInf}»"
+            + (z.NIntDado > 0 ? $", {z.NIntDado} intermedia(s) «{z.VarIntDado}»" : string.Empty)
+            + ") pero TODAVÍA NO SE DIBUJAN: el corte lleva el concreto, las parrillas y los "
+            + "estribos del dado. Su gancho de abajo, su lado de doblez y su traslape con la "
+            + "columna son tres reglas de tu macro que no se van a adivinar; dibújalos a mano o "
+            + "pásame ese trozo de la macro y se portan.");
     }
 
     /// <summary>El relleno de tierra a los lados del dado, entre la zapata y el desplante.</summary>

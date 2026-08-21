@@ -1153,21 +1153,31 @@
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.DadosDisponibles}}"
                                                   Text="{Binding IdDado, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;La zapata inserta ese dado como bloque, buscandolo por su ID." />
+                                                  ToolTip="Los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;La zapata inserta ese dado como bloque, buscandolo por su ID.&#10;Al elegirlo, «Dado cm» y «Rec. dado cm» se llenan solos con las medidas reales de esa seccion." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
+                            <!-- SE LLENA SOLA con el ancho de la seccion del dado elegido, y se
+                                 vuelve a poner al dia si esa seccion cambia. Sigue siendo
+                                 editable para un caso a mano, pero lo escrito a mano no gana
+                                 contra la seccion: la referencia es la seccion. -->
                             <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaLateral}" />
+                                                Width="75" CellStyle="{StaticResource CeldaLateral}"
+                                                ToolTip="Se llena sola con el ancho real del dado elegido en «ID dado»." />
                             <!-- LA COLUMNA SE ELIGE DE LAS DOS HOJAS.
                                  La lista trae las columnas capturadas en «Secciones
                                  Concreto» -COLUMNA y COLUMNA CIRCULAR- y las de «Secciones
                                  Acero» cuyo elemento es COLUMNA, marcadas con su hoja para
                                  poder distinguirlas. Se guarda solo el ID.
 
-                                 Es para no teclearlo: escribirlo distinto -«C-1» y «C1»- o
-                                 repetirlo en dos zapatas son dos errores que no se ven
-                                 mirando la tabla. «Revisar zapatas» avisa de los dos. -->
+                                 Es para no teclearlo: escribirlo distinto -«C-1» y «C1»- es un
+                                 error que no se ve mirando la tabla, y ademas al elegirla de la
+                                 lista se traen SOLAS su medida, su recubrimiento y su tipo.
+
+                                 REPETIR LA MISMA COLUMNA EN VARIAS ZAPATAS NO ES UN ERROR: lo
+                                 que se captura en «Secciones» es el TIPO de columna, y el mismo
+                                 tipo desplanta en todas las cimentaciones donde toque.
+                                 «Revisar zapatas» lo cuenta, no lo reprocha. -->
                             <DataGridTemplateColumn Header="ID col." Width="95"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="IdColumna">
@@ -1184,14 +1194,16 @@
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.ColumnasDisponibles}}"
                                                   Text="{Binding IdColumna, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Las columnas capturadas en «Secciones Concreto» y en «Secciones Acero».&#10;Se guarda solo el ID; la hoja va entre parentesis para poder distinguirlas." />
+                                                  ToolTip="Las columnas capturadas en «Secciones Concreto» y en «Secciones Acero».&#10;Se guarda solo el ID; la hoja va entre parentesis para poder distinguirlas.&#10;Al elegirla, «Col. cm», el recubrimiento y el TIPO -concreto o acero- se llenan solos con los de esa seccion.&#10;La misma columna puede estar en varias zapatas: el ID es el TIPO de columna." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Col. cm" Binding="{Binding AnchoColumnaCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaLateral}" />
+                                                Width="75" CellStyle="{StaticResource CeldaLateral}"
+                                                ToolTip="Se llena sola con la medida real de la columna elegida en «ID col.»:&#10;la base de la seccion de concreto, o el peralte del perfil de acero." />
                             <DataGridTextColumn Header="Rec. dado cm" Binding="{Binding RecDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="95" CellStyle="{StaticResource CeldaLateral}" />
+                                                Width="95" CellStyle="{StaticResource CeldaLateral}"
+                                                ToolTip="Se llena solo con el recubrimiento de la seccion del dado elegido." />
 
                             <!-- Arranque del dado -->
                             <DataGridComboBoxColumn x:Name="ColZapVarDadoSup" Header="Arranque 1"

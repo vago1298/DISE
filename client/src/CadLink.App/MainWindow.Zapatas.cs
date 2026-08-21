@@ -84,16 +84,17 @@ public partial class MainWindow
     {
         ActualizarDadosDisponibles();
         ActualizarColumnasDisponibles();
+
+        // Y las MEDIDAS de lo elegido, no solo las listas: si la columna crece en su hoja, la
+        // zapata que la usa se pone al día sola. Es lo que hace que la medida sea una referencia
+        // y no una copia que envejece.
+        ReferenciarMedidasDeTodas();
     }
 
     private void ActualizarDadosDisponibles()
     {
         var dados = _datos.SeccionesConcreto
-            .Where(s =>
-                SeccionConcretoRow.ElementoDado.Equals(
-                    (s.Elemento ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase)
-                || SeccionConcretoRow.ElementoDadoCircular.Equals(
-                    (s.Elemento ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(s => EsDado(s.Elemento))
             .Select(s => (s.Id ?? string.Empty).Trim())
             .Where(id => id.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -125,16 +126,9 @@ public partial class MainWindow
 
         foreach (var s in _datos.SeccionesConcreto)
         {
-            var elem = (s.Elemento ?? string.Empty).Trim();
-
-            var esColumna =
-                SeccionConcretoRow.ElementoColumna.Equals(elem, StringComparison.OrdinalIgnoreCase)
-                || SeccionConcretoRow.ElementoColumnaCircular.Equals(
-                    elem, StringComparison.OrdinalIgnoreCase);
-
             var id = (s.Id ?? string.Empty).Trim();
 
-            if (esColumna && id.Length > 0)
+            if (EsColumnaDeConcreto(s.Elemento) && id.Length > 0)
             {
                 columnas.Add($"{id} (concreto)");
             }
@@ -227,6 +221,15 @@ public partial class MainWindow
 
     private void OnFilaZapataEditada(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // Al ELEGIR la columna o el dado, sus medidas se traen solas de su hoja: no hay que
+        // teclear otra vez el ancho ni el recubrimiento de algo que ya está capturado.
+        if (sender is ZapataAisladaRow fila
+            && (e.PropertyName == nameof(ZapataAisladaRow.IdColumna)
+                || e.PropertyName == nameof(ZapataAisladaRow.IdDado)))
+        {
+            ReferenciarMedidas(fila);
+        }
+
         ActualizarTotalesZapatas();
 
         // Solo se redibuja si la fila editada es la que se está viendo. Sin esta condición,
@@ -235,6 +238,158 @@ public partial class MainWindow
         {
             DibujarVistaPreviaZapata();
         }
+    }
+
+    /// <summary>
+    /// Trae de su hoja las <b>medidas reales</b> de la columna y del dado elegidos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo que se elige en la celda es un <b>ID</b>, y ese ID ya tiene su sección capturada con su
+    /// ancho y su recubrimiento. Volver a teclearlos aquí era pedir dos veces el mismo dato, y de
+    /// los dos sitios el segundo es el que se equivoca: una columna de 40 cm apuntada como de 30
+    /// en la zapata sale con el dado descuadrado y no hay nada en la tabla que lo delate.
+    /// </para>
+    /// <para>
+    /// <b>Es una referencia, no una copia que se queda vieja.</b> Se vuelve a traer al elegir el
+    /// ID y también cada vez que cambia la hoja de secciones —desde
+    /// <see cref="ActualizarListasDeZapatas"/>—, así que si la columna crece de 40 a 45 cm en su
+    /// hoja, las zapatas que la usan se ponen al día solas. Eso es lo que se pidió: la medida real
+    /// ya referenciada, sin tener que ir a moverla.
+    /// </para>
+    /// <para>
+    /// Las celdas siguen siendo editables, y a propósito: se puede querer dibujar un caso a mano.
+    /// Pero lo escrito a mano <b>no se guarda contra</b> la sección: la siguiente vez que esa
+    /// sección cambie, la medida vuelve a ser la de verdad. Si hace falta otro ancho de manera
+    /// permanente, lo que se captura es otra sección.
+    /// </para>
+    /// <para>
+    /// Nunca se escribe un cero: si la sección no tiene la medida capturada, se deja lo que
+    /// hubiera. Traer un cero borraría un dato bueno para poner uno que no existe.
+    /// </para>
+    /// </remarks>
+    private void ReferenciarMedidas(ZapataAisladaRow fila)
+    {
+        ReferenciarColumna(fila);
+        ReferenciarDado(fila);
+    }
+
+    /// <summary>Pone al día las medidas referenciadas de TODAS las filas.</summary>
+    private void ReferenciarMedidasDeTodas()
+    {
+        foreach (var fila in _datos.ZapatasAisladas)
+        {
+            ReferenciarMedidas(fila);
+        }
+    }
+
+    /// <summary>El ancho y el recubrimiento de la columna elegida, de la hoja donde esté.</summary>
+    /// <remarks>
+    /// Se busca primero en concreto y después en acero, y <b>el tipo de columna se pone solo</b>
+    /// con lo que se encuentre: es el dato que decide si en el corte se dibuja columna encima del
+    /// dado y hacia dónde doblan los ganchos de arranque, y tenerlo que marcar a mano después de
+    /// haber elegido un perfil de acero es una forma de equivocarse gratis.
+    /// </remarks>
+    private void ReferenciarColumna(ZapataAisladaRow fila)
+    {
+        var idCol = ZapataAisladaRow.SoloElId(fila.IdColumna);
+
+        if (idCol.Length == 0)
+        {
+            return;
+        }
+
+        var col = _datos.SeccionesConcreto.FirstOrDefault(s =>
+            EsColumnaDeConcreto(s.Elemento)
+            && ZapataAisladaRow.SoloElId(s.Id).Equals(idCol, StringComparison.OrdinalIgnoreCase));
+
+        if (col is not null)
+        {
+            // El ancho es la BASE de la sección, y en la circular la base ES el diámetro
+            // (SeccionConcretoRow.DiametroCm => BaseCm), así que sirve para las dos.
+            if (col.BaseCm > 0)
+            {
+                fila.AnchoColumnaCm = col.BaseCm;
+            }
+
+            if (col.RecubrimientoCm > 0)
+            {
+                fila.RecColumnaCm = col.RecubrimientoCm;
+            }
+
+            fila.TipoColumna = ZapataAisladaRow.TipoColumnaConcreto;
+            return;
+        }
+
+        var perfil = _datos.SeccionesAcero.FirstOrDefault(p =>
+            PerfilAceroRow.ElementoColumna.Equals(
+                (p.Elemento ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase)
+            && ZapataAisladaRow.SoloElId(p.Id).Equals(idCol, StringComparison.OrdinalIgnoreCase));
+
+        if (perfil is null)
+        {
+            // No está en ninguna hoja: no se toca nada. De eso ya avisa «Revisar zapatas», que
+            // es donde se leen los problemas; aquí solo se copian medidas.
+            return;
+        }
+
+        // De un perfil se toma el PERALTE, que es la medida que se ve en el corte de la zapata:
+        // la columna se dibuja de canto, igual que la sección. Si no está capturado se usa el
+        // ancho del patín, que es lo único que queda.
+        var ancho = perfil.PeralteCm > 0 ? perfil.PeralteCm : perfil.AnchoCm;
+
+        if (ancho > 0)
+        {
+            fila.AnchoColumnaCm = ancho;
+        }
+
+        fila.TipoColumna = ZapataAisladaRow.TipoColumnaAcero;
+    }
+
+    /// <summary>El ancho y el recubrimiento del dado elegido, de la hoja de concreto.</summary>
+    private void ReferenciarDado(ZapataAisladaRow fila)
+    {
+        var idDado = ZapataAisladaRow.SoloElId(fila.IdDado);
+
+        if (idDado.Length == 0)
+        {
+            return;
+        }
+
+        var dado = _datos.SeccionesConcreto.FirstOrDefault(s =>
+            EsDado(s.Elemento)
+            && ZapataAisladaRow.SoloElId(s.Id).Equals(idDado, StringComparison.OrdinalIgnoreCase));
+
+        if (dado is null)
+        {
+            return;
+        }
+
+        if (dado.BaseCm > 0)
+        {
+            fila.AnchoDadoCm = dado.BaseCm;
+        }
+
+        if (dado.RecubrimientoCm > 0)
+        {
+            fila.RecDadoCm = dado.RecubrimientoCm;
+        }
+    }
+
+    private static bool EsColumnaDeConcreto(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim();
+
+        return SeccionConcretoRow.ElementoColumna.Equals(e, StringComparison.OrdinalIgnoreCase)
+            || SeccionConcretoRow.ElementoColumnaCircular.Equals(e, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool EsDado(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim();
+
+        return SeccionConcretoRow.ElementoDado.Equals(e, StringComparison.OrdinalIgnoreCase)
+            || SeccionConcretoRow.ElementoDadoCircular.Equals(e, StringComparison.OrdinalIgnoreCase);
     }
 
     private void ActualizarTotalesZapatas()
@@ -280,7 +435,7 @@ public partial class MainWindow
             return;
         }
 
-        RevisarZapatas(out var problemas, out var acomodo);
+        RevisarZapatas(out var problemas, out var acomodo, out var columnasRepetidas);
 
         var texto = problemas.Count == 0
             ? "Las zapatas están completas."
@@ -290,6 +445,16 @@ public partial class MainWindow
         if (acomodo.Count > 0)
         {
             texto += "\n\nDonde se va a dibujar cada una:\n" + string.Join("\n", acomodo);
+        }
+
+        // Se DICE, no se reprocha: una columna en varias zapatas es lo normal, porque el ID es
+        // el tipo de columna. Se enseña para que una repeticion por descuido se vea, no para
+        // que haya que arreglarla.
+        if (columnasRepetidas.Count > 0)
+        {
+            texto += "\n\nColumnas que se repiten (es normal: el ID es el TIPO de columna, "
+                     + "y el mismo tipo desplanta en varias zapatas):\n"
+                     + string.Join("\n", columnasRepetidas);
         }
 
         texto += "\n\nSi está todo bien, «Dibujar zapatas en AutoCAD» las pone en el dibujo "
@@ -329,14 +494,26 @@ public partial class MainWindow
     /// <paramref name="acomodo"/> sale aparte porque no son problemas: es dónde va a quedar cada
     /// zapata, que es lo que hay que poder leer antes de dibujar.
     /// </para>
+    /// <para>
+    /// <paramref name="columnasRepetidas"/> tampoco son problemas, y merece decirse por qué:
+    /// <b>una misma columna sí puede estar en varias cimentaciones</b>. Lo que se captura en la
+    /// hoja de secciones es el <b>tipo</b> de columna —«C-01» es la de 40×40 con su armado—, y
+    /// ese tipo se repite en todas las zapatas donde toque. Esto se estaba reportando como error
+    /// y, peor, <b>impedía dibujar</b>. Ahora solo se cuenta y se enseña.
+    /// </para>
     /// </remarks>
-    private bool RevisarZapatas(out List<string> problemas, out List<string> acomodo)
+    private bool RevisarZapatas(
+        out List<string> problemas, out List<string> acomodo, out List<string> columnasRepetidas)
     {
         problemas = new List<string>();
         acomodo = new List<string>();
+        columnasRepetidas = new List<string>();
 
         var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var columnasUsadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // La misma columna PUEDE estar en varias zapatas, asi que esto no es una lista de
+        // culpables: es un recuento, para poder decirlo. Ver el comentario de abajo.
+        var columnasUsadas = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         var anchos = _datos.ZapatasAisladas.Select(r => r.AnchoM).ToList();
 
@@ -378,9 +555,18 @@ public partial class MainWindow
                     "DADO o DADO CIRCULAR, o elige uno de la lista.");
             }
 
-            // La columna, igual que el dado: se elige de las dos hojas. Y NO puede repetirse,
-            // porque una columna desplanta en UNA zapata: dos zapatas apuntando a la misma
-            // columna es un error de plano, no una opción.
+            // La columna, igual que el dado: se elige de las dos hojas.
+            //
+            // Y REPETIRLA NO ES UN ERROR. Lo que se captura en «Secciones» no es una columna
+            // del plano, es un TIPO de columna: «C-01» es la columna de 40x40 con su armado, y
+            // esa misma columna se repite en todas las cimentaciones donde toque. En un plano
+            // normal la mayoria de las zapatas comparten dos o tres tipos de columna; una
+            // columna por zapata seria una hoja de secciones con cincuenta columnas iguales.
+            //
+            // Esto estaba mal: se reportaba como error que dos zapatas usaran la misma columna
+            // y ademas IMPEDIA dibujar, porque el boton se niega cuando hay problemas. Se cambio
+            // por un RECUENTO, que es lo unico que hacia falta: decir en cuantas zapatas esta
+            // cada columna, para que una repeticion que NO fuera intencionada se vea.
             var idCol = ZapataAisladaRow.SoloElId(fila.IdColumna);
 
             if (idCol.Length > 0)
@@ -397,12 +583,13 @@ public partial class MainWindow
                         "una de la lista.");
                 }
 
-                if (!columnasUsadas.Add(idCol))
+                if (!columnasUsadas.TryGetValue(idCol, out var enQueZapatas))
                 {
-                    problemas.Add(
-                        $"{donde} ({id}): la columna «{idCol}» ya desplanta en otra zapata. " +
-                        "Una columna se apoya en una sola zapata.");
+                    enQueZapatas = new List<string>();
+                    columnasUsadas[idCol] = enQueZapatas;
                 }
+
+                enQueZapatas.Add(id.Length > 0 ? id : donde);
             }
 
             var z = fila.AFormatoCad();
@@ -411,6 +598,13 @@ public partial class MainWindow
             acomodo.Add(
                 $"  {id}  ({(fila.EsLindero ? "lindero" : "central")}):  " +
                 $"x de {a.XBase:N2} a {a.XDer:N2} m,  planta en y = {a.YPlanta:N2} m");
+        }
+
+        foreach (var par in columnasUsadas.Where(p => p.Value.Count > 1))
+        {
+            columnasRepetidas.Add(
+                $"  {par.Key}  desplanta en {par.Value.Count} zapatas:  " +
+                string.Join(", ", par.Value));
         }
 
         return problemas.Count == 0;
@@ -456,7 +650,7 @@ public partial class MainWindow
             return;
         }
 
-        if (!RevisarZapatas(out var problemas, out _))
+        if (!RevisarZapatas(out var problemas, out _, out _))
         {
             MessageBox.Show(
                 "Corrige esto antes de dibujar las zapatas:\n\n" + string.Join("\n", problemas),

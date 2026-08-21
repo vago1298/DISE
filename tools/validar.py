@@ -3792,12 +3792,78 @@ def v19_circular_y_ui() -> None:
           "ActualizarListasDeZapatas();"
           in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs")))
 
-    # LO QUE SE PIDIO: que no se repitan. Una columna desplanta en UNA zapata.
+    # Lo que se pidio de la lista: que no ofrezca dos entradas iguales. Lo que NO se pidio
+    # -y se hizo mal- era prohibir que dos zapatas usen la misma columna.
     check("revisar avisa si la columna no esta capturada",
           "no está capturada, ni en" in zap_cb)
-    check("y si la misma columna ya desplanta en otra zapata",
-          "columnasUsadas.Add(idCol)" in zap_cb
-          and "Una columna se apoya en una sola zapata." in zap_cb)
+
+    # UNA MISMA COLUMNA SI PUEDE ESTAR EN VARIAS CIMENTACIONES. Lo que se captura en la
+    # hoja de secciones es el TIPO de columna -«C-01» es la de 40x40 con su armado- y ese
+    # tipo se repite en todas las zapatas donde toque. Se reportaba como error, y ademas
+    # impedia dibujar porque el boton se niega cuando hay problemas.
+    check("repetir la columna en varias zapatas YA NO es un error",
+          "Una columna se apoya en una sola zapata." not in zap_cb
+          and "ya desplanta en otra zapata" not in zap_cb)
+    check("y no puede volver a bloquear el dibujo",
+          "columnasUsadas.Add(idCol)" not in zap_cb)
+    check("en su lugar se CUENTA en cuantas zapatas esta cada columna",
+          "out List<string> columnasRepetidas" in zap_cb
+          and "desplanta en {par.Value.Count} zapatas" in zap_cb
+          and "columnasUsadas.Where(p => p.Value.Count > 1)" in zap_cb)
+    check("y se enseña diciendo que es normal, no como reproche",
+          "es normal: el ID es el TIPO de columna" in zap_cb)
+    check("y queda escrito por que era un error prohibirlo",
+          "una misma columna sí puede estar en varias cimentaciones" in zap_cb
+          and "impedía dibujar" in zap_cb)
+    check("y el XAML tampoco lo llama error",
+          "REPETIR LA MISMA COLUMNA EN VARIAS ZAPATAS NO ES UN ERROR" in xaml)
+
+    # ------------------------------------------------------------------
+    # LAS MEDIDAS SE TRAEN SOLAS DE LA SECCION ELEGIDA
+    # ------------------------------------------------------------------
+    # Lo que se pidio: «QUE CUANDO SELECCIONE LA COLUMNA EN AUTOMATICO TENGA LA MEDIDA REAL
+    # YA REFERENCIADA SIN NECESIDAD QUE YO LE MUEVA». El ID ya tiene su seccion capturada
+    # con su ancho y su recubrimiento; teclearlos otra vez era pedir dos veces el mismo dato.
+    check("al elegir la columna o el dado se traen sus medidas",
+          "private void ReferenciarMedidas(ZapataAisladaRow fila)" in zap_cb
+          and "private void ReferenciarColumna(ZapataAisladaRow fila)" in zap_cb
+          and "private void ReferenciarDado(ZapataAisladaRow fila)" in zap_cb)
+    check("y se dispara justo al cambiar el ID de la celda",
+          "e.PropertyName == nameof(ZapataAisladaRow.IdColumna)" in zap_cb
+          and "e.PropertyName == nameof(ZapataAisladaRow.IdDado)" in zap_cb)
+    check("la columna de concreto trae su base y su recubrimiento",
+          "fila.AnchoColumnaCm = col.BaseCm;" in zap_cb
+          and "fila.RecColumnaCm = col.RecubrimientoCm;" in zap_cb)
+    check("el perfil de acero trae su peralte, que es lo que se ve en el corte",
+          "perfil.PeralteCm > 0 ? perfil.PeralteCm : perfil.AnchoCm" in zap_cb)
+    check("y el TIPO de columna se pone solo, concreto o acero",
+          "fila.TipoColumna = ZapataAisladaRow.TipoColumnaConcreto;" in zap_cb
+          and "fila.TipoColumna = ZapataAisladaRow.TipoColumnaAcero;" in zap_cb)
+    check("el dado trae su ancho y su recubrimiento",
+          "fila.AnchoDadoCm = dado.BaseCm;" in zap_cb
+          and "fila.RecDadoCm = dado.RecubrimientoCm;" in zap_cb)
+
+    # Es una REFERENCIA, no una copia que envejece: si la seccion cambia, la zapata se pone
+    # al dia sola. Sin esto, cambiar la columna de 40 a 45 en su hoja dejaria las zapatas
+    # dibujandose con 40 y nada lo diria.
+    check("y si la seccion cambia despues, la zapata se pone al dia sola",
+          "ReferenciarMedidasDeTodas();" in zap_cb
+          and "private void ReferenciarMedidasDeTodas()" in zap_cb)
+    check("nunca se escribe un cero encima de un dato bueno",
+          "if (col.BaseCm > 0)" in zap_cb
+          and "if (dado.BaseCm > 0)" in zap_cb)
+    check("y queda escrito que la referencia es la seccion",
+          "Es una referencia, no una copia que se queda vieja" in zap_cb
+          and "la medida real" in zap_cb)
+    check("las celdas dicen en su globo que se llenan solas",
+          "Se llena sola con el ancho real del dado elegido" in xaml
+          and "Se llena sola con la medida real de la columna elegida" in xaml)
+
+    # Un solo sitio decide que es un dado y que es una columna.
+    check("que es un dado y que es una columna se decide en un solo sitio",
+          "private static bool EsColumnaDeConcreto(string? elemento)" in zap_cb
+          and "private static bool EsDado(string? elemento)" in zap_cb
+          and ".Where(s => EsDado(s.Elemento))" in zap_cb)
     check("y la celda sigue siendo editable, con su lista en el XAML",
           'ItemsSource="{Binding Source={x:Static models:ZapataAisladaRow.DadosDisponibles}}"'
           in xaml)
@@ -3921,6 +3987,15 @@ def v19_circular_y_ui() -> None:
     check("y el rotulo cuelga de donde la planta lo espera",
           "TrazoZapata.RotuloEscalaOffset" in zap_drw)
 
+    # Lo que NO se dibuja se DICE, con nombre y apellido, en las notas del dibujo. Los
+    # arranques del dado -J7, J8, K7, L7 de la macro- se capturan y llegan al dibujante,
+    # pero su gancho, su lado de doblez y su traslape son reglas que no se adivinan.
+    check("los arranques del dado que no se dibujan se avisan",
+          "private void AvisarDeLosArranques(" in zap_drw
+          and "TODAVÍA NO SE DIBUJAN" in zap_drw)
+    check("y queda escrito por que no se dibujan a ojo",
+          "que un fierrero armaría mal" in zap_drw)
+
     # La planta.
     check("la planta recorta la malla en el hueco del dado",
           "private void Malla(" in zap_drw
@@ -3938,12 +4013,12 @@ def v19_circular_y_ui() -> None:
 
     # El boton: revisa, se engancha a la sesion abierta y cuenta lo que salio.
     check("el boton de dibujar revisa ANTES de dibujar",
-          "if (!RevisarZapatas(out var problemas, out _))" in zap_cb
+          "if (!RevisarZapatas(out var problemas, out _, out _))" in zap_cb
           and "Corrige esto antes de dibujar las zapatas" in zap_cb)
     check("la revision esta en un solo sitio para los dos botones",
-          "private bool RevisarZapatas(out List<string> problemas, out List<string> acomodo)"
-          in zap_cb
-          and "RevisarZapatas(out var problemas, out var acomodo);" in zap_cb)
+          "private bool RevisarZapatas(" in zap_cb
+          and "RevisarZapatas(out var problemas, out var acomodo, out var columnasRepetidas);"
+          in zap_cb)
     check("no arranca AutoCAD, se engancha al que ya este abierto",
           "AcadConnection.Connect(launchIfMissing: false)" in zap_cb
           and "new ZapataDrawer(doc, catalogoDeVarillas)" in zap_cb)
