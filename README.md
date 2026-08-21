@@ -111,6 +111,18 @@ nativo. Razones y consecuencias en
 > de `CadLink.App` la primera vez que compiles en Windows**: un error de nombre o de
 > tipo en ese proyecto no lo caza nada de lo anterior.
 >
+> Y ya pasó una vez, así que queda escrito: `MainWindow.Acero.cs` escribía `new Path`
+> para la figura de la vista previa de acero, y en Windows eso es
+> `error CS0104: 'Path' es una referencia ambigua` —`System.Windows.Shapes.Path` contra
+> `System.IO.Path`, que este proyecto trae como *using* global—. El análisis sintáctico
+> no lo ve, porque para verlo hay que resolver los tipos de verdad. Se arregló con los
+> alias `Path` y `FormaPath`, y se escribió
+> [`tools/verificar_ambiguedades.py`](tools/verificar_ambiguedades.py), que recorre los
+> cuatro proyectos, calcula qué *namespaces* tiene a la vista cada archivo —incluidos los
+> globales del `.csproj`— y falla si alguno escribe a secas un nombre que está definido en
+> dos de ellos sin alias que lo resuelva. El propio script se prueba contra el código tal
+> como estaba cuando no compilaba.
+>
 > El servidor en Python sí fue verificado con Python 3.11.
 
 ---

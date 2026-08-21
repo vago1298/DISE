@@ -5672,6 +5672,35 @@ def v21_separacion_y_acero() -> None:
     check("el hueco del tubo es hueco de verdad",
           "new GeometryGroup { FillRule = FillRule.EvenOdd }" in acero_cb)
 
+    # EL CS0104 QUE ROMPIO LA COMPILACION EN WINDOWS.
+    #
+    # La figura se creaba con «new Path», y este proyecto tiene System.IO como using
+    # GLOBAL -esta en el .csproj- ademas de System.Windows.Shapes en el archivo. Los dos
+    # definen un Path, asi que el nombre a secas es ambiguo y el proyecto NO compilaba.
+    # Aqui no se ve, porque el analisis sintactico no resuelve tipos.
+    check("la figura de la vista previa usa el alias, no «Path» a secas",
+          "using FormaPath = System.Windows.Shapes.Path;" in acero_cb
+          and "AceroPreviewCanvas.Children.Add(new FormaPath" in acero_cb
+          and "new Path\n" not in acero_cb)
+    check("y se dice por que hace falta el alias",
+          "referencia ambigua" in acero_cb and "using GLOBAL" in acero_cb)
+
+    # Y hay un script que lo caza, para no volver a enterarse al compilar en Windows.
+    ambig = leer(ruta("tools/verificar_ambiguedades.py"))
+
+    check("hay comprobacion de nombres ambiguos sin compilar",
+          "Nombres ambiguos: los CS0104" in ambig)
+    check("lee los using globales del csproj, no los supone",
+          "def globales_del_csproj(" in ambig
+          and "<Using\\s+Include=\"([^\"]+)\"" in ambig)
+    check("y sabe que en WPF System.IO NO es implicito",
+          "es_wpf" in ambig and "IMPLICITOS_BIBLIOTECA" in ambig)
+    check("no confunde un comentario con un uso",
+          "def sin_comentarios_ni_textos(" in ambig
+          and "def sin_directivas_using(" in ambig)
+    check("y el detector se prueba contra el error de verdad",
+          "caza el «new Path» que rompio la compilacion" in ambig)
+
     # Y cuando no se puede dibujar se DICE por que, en vez de dejar el cuadro vacio.
     check("la vista previa avisa cuando no puede dibujar",
           "private void AvisoVistaAcero(string texto)" in acero_cb

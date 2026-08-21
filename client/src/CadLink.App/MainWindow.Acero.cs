@@ -5,6 +5,14 @@ using System.Windows.Shapes;
 using CadLink.App.Models;
 using CadLink.Cad;
 
+// System.Windows.Shapes define un tipo llamado Path, y el proyecto trae System.IO como
+// using GLOBAL -esta en el .csproj-, que define otro. Con las dos cosas en el mismo
+// archivo, escribir «Path» a secas es un CS0104: referencia ambigua. Los alias dicen cual
+// es cual, igual que en MainWindow.xaml.cs: 'Path' es el de archivos y 'FormaPath' es la
+// figura de WPF con la que se pinta la vista previa.
+using Path = System.IO.Path;
+using FormaPath = System.Windows.Shapes.Path;
+
 namespace CadLink.App;
 
 /// <summary>
@@ -290,7 +298,7 @@ public partial class MainWindow
 
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
 
-        AceroPreviewCanvas.Children.Add(new Path
+        AceroPreviewCanvas.Children.Add(new FormaPath
         {
             Data = figuras,
 
