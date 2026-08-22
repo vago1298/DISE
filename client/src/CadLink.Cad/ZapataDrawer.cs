@@ -385,9 +385,22 @@ public sealed partial class ZapataDrawer
 
         var dSupDado = Diam(z.VarDadoSup);
         var dInfDado = Diam(z.VarDadoInf);
-        var dIntDado = Diam(z.VarIntDado);
         var dEstDado = Diam(z.EstriboDado);
         var dMaxDado = Math.Max(dSupDado, dInfDado);
+
+        // SI NO SE DIJO EL DIÁMETRO DE LAS INTERMEDIAS, SE USA EL DE LAS DE ESQUINA. Es el respaldo
+        // de la macro, y FALTABA:
+        //     If Len(NormalizeDiaLabel(txtIntDado)) = 0 Then txtIntDado = txtAA7
+        // Sin él, una sección que declara intermedias pero no su diámetro —pasa cuando las lleva en
+        // los lechos y no en la casilla de intermedias— deja el dado SIN VARILLAS INTERIORES: el
+        // conteo dice que hay, el diámetro sale 0 y no se dibuja ninguna. Y el rótulo también las
+        // perdía, porque se arma con el mismo dato.
+        var diaIntDado = Diam(z.VarIntDado) > 0 ? z.VarIntDado : z.VarDadoSup;
+        var dIntDado = Diam(diaIntDado);
+
+        // El mismo respaldo para la columna:
+        //     If Len(NormalizeDiaLabel(txtIntCol)) = 0 Then txtIntCol = txtAA5
+        var diaIntCol = Diam(z.VarIntColumna) > 0 ? z.VarIntColumna : z.VarColSup;
 
         var dSupCol = Diam(z.VarColSup);
         var dInfCol = Diam(z.VarColInf);
@@ -472,7 +485,7 @@ public sealed partial class ZapataDrawer
         var union = PrepararUnion(
             barrasDado, barrasCol,
             dSupDado, dInfDado, dIntDado,
-            z.VarDadoSup, z.VarDadoInf, z.VarIntDado,
+            z.VarDadoSup, z.VarDadoInf, diaIntDado,
             esquinasIguales, intermediasIguales);
 
         // EL DOBLEZ VA A 1:6 Y NO SE NEGOCIA. Lo resuelve TrazoZapata.Desplazamiento: el alto es
@@ -557,7 +570,7 @@ public sealed partial class ZapataDrawer
             x0: a.XDadoDer, y0: yZapBot, largo: alturaDadoRep,
             anchoCm: z.AnchoDadoCm, recCm: z.RecDadoCm,
             diaSup: z.VarDadoSup, diaInf: z.VarDadoInf,
-            nInt: z.NIntDado, diaInt: z.VarIntDado,
+            nInt: z.NIntDado, diaInt: diaIntDado,
             estrDia: z.EstriboDado, espStr: z.SepEstriboDado,
             gancho: GanchoRemate, esDado: true, subirGanchos: subirGanchoDado,
             gancho12D: true, recorteConcIni: z.EspesorM, fracCorte: 0,
@@ -569,7 +582,11 @@ public sealed partial class ZapataDrawer
             // del núcleo -que es donde hay concreto que las reciba- y con columna de acero una
             // adentro y otra afuera. La macro V1 del lindero las mandaba las dos a la izquierda
             // por el paño del lindero, y eso dejaba una pata saliéndose del dado.
-            estribosAlTope: z.ColumnaDeConcreto, ganchosAmbosIzq: false);
+            estribosAlTope: z.ColumnaDeConcreto, ganchosAmbosIzq: false,
+            // CON UNIÓN, LAS VARILLAS DEL DADO ACABAN EXACTAMENTE DONDE ARRANCAN LOS DOBLECES.
+            // No basta con pedir el recorte: por debajo se le restan holguras y márgenes y quedaba
+            // un tramo recto asomando justo donde empieza el 1:6.
+            topeBarras: aplicarUnion ? yZonaBot : null);
 
         if (z.ColumnaDeConcreto)
         {
@@ -577,7 +594,7 @@ public sealed partial class ZapataDrawer
                 x0: a.XColDer, y0: yDadoTop, largo: AlturaColumnaRep,
                 anchoCm: z.AnchoColumnaCm, recCm: z.RecColumnaCm,
                 diaSup: z.VarColSup, diaInf: z.VarColInf,
-                nInt: z.NIntColumna, diaInt: z.VarIntColumna,
+                nInt: z.NIntColumna, diaInt: diaIntCol,
                 estrDia: z.EstriboColumna, espStr: z.SepEstriboColumna,
                 gancho: GanchoRemate, esDado: false, subirGanchos: 0,
                 gancho12D: false, recorteConcIni: 0, fracCorte: ColumnaFraccionCorte,
@@ -626,11 +643,11 @@ public sealed partial class ZapataDrawer
         PlantillaTexto(xBase, yZapBot, anchoZapata, TrazoZapata.PlantillaEspesor);
 
         // ---------- Rótulos con leader del dado y de la columna ----------
-        RotuloDelDado(z, a, lindero);
+        RotuloDelDado(z, a, lindero, diaIntDado);
 
         if (z.ColumnaDeConcreto)
         {
-            RotuloDeLaColumna(z, a, lindero);
+            RotuloDeLaColumna(z, a, lindero, diaIntCol);
         }
 
         // ---------- Cotas de los dobleces del gancho de arranque ----------
@@ -757,7 +774,8 @@ public sealed partial class ZapataDrawer
         string? estrDia, string? espStr, double gancho, bool esDado, double subirGanchos,
         bool gancho12D, double recorteConcIni, double fracCorte,
         int estrOmitirIni, bool omitGanchoIni, bool omitGanchoFin, int ganchoIniAfuera,
-        double recorteBarrasFin, double offEstribosFin, bool estribosAlTope, bool ganchosAmbosIzq)
+        double recorteBarrasFin, double offEstribosFin, bool estribosAlTope, bool ganchosAmbosIzq,
+        double? topeBarras = null)
     {
         var w = anchoCm * TrazoZapata.EscalaElevacion;
         var recM = recCm * TrazoZapata.EscalaElevacion;
@@ -908,6 +926,15 @@ public sealed partial class ZapataDrawer
                     var maximo = Math.Max(xb - (xaBot + 0.02), 0);
                     xbBar = xb - Math.Min(recorteBarrasFin, maximo);
                 }
+
+                // Y SI SE PIDIÓ UN TOPE EXACTO, MANDA ESE. Es el caso del dado cuando lleva la zona
+                // de dobleces: sus varillas tienen que acabar JUSTO donde arrancan los dobleces, sin
+                // los 2 cm de margen ni las holguras del gancho que se aplican más abajo. Cualquier
+                // milímetro de más es un tramo recto asomando por debajo del 1:6.
+                if (topeBarras is { } tope)
+                {
+                    xbBar = x0 + (tope - y0);
+                }
             }
 
             var gAbSup = gancho12D ? TrazoZapata.FactorGanchoAbajo * dSup : gancho;
@@ -998,7 +1025,7 @@ public sealed partial class ZapataDrawer
                     xaInt = xaIntBase + dMaxCara + HolguraIntermediasGancho;
                 }
 
-                if (!hayCorte && !omitGanchoFin)
+                if (!hayCorte && !omitGanchoFin && topeBarras is null)
                 {
                     xbInt = xbBar - dMaxCara - HolguraIntermediasGancho;
                 }
@@ -2242,7 +2269,10 @@ public sealed partial class ZapataDrawer
         return string.Join(" + ", terminos);
     }
 
-    private void RotuloDelDado(ZapataCad z, TrazoZapata.Acomodo a, bool lindero)
+    /// <param name="diaInt">
+    /// Diámetro de las intermedias <b>ya resuelto</b>, con el respaldo de la macro aplicado.
+    /// </param>
+    private void RotuloDelDado(ZapataCad z, TrazoZapata.Acomodo a, bool lindero, string? diaInt)
     {
         if (a.YDadoTop <= a.YZapTop + 0.02)
         {
@@ -2251,8 +2281,10 @@ public sealed partial class ZapataDrawer
 
         var y = (a.YZapTop + a.YDadoTop) / 2;
 
+        // Con el mismo respaldo de diámetro que el dibujo, para que el rótulo no diga una cosa y el
+        // dibujo otra.
         var texto = TextoElemento("DADO", z.IdDado, z.VarDadoSup, z.VarDadoInf,
-            z.NIntDado, z.VarIntDado, z.EstriboDado, z.SepEstriboDado,
+            z.NIntDado, diaInt, z.EstriboDado, z.SepEstriboDado,
             z.NVarDadoSup, z.NVarDadoInf, z.NVarIntDadoTotal);
 
         if (lindero)
@@ -2266,12 +2298,14 @@ public sealed partial class ZapataDrawer
         }
     }
 
-    private void RotuloDeLaColumna(ZapataCad z, TrazoZapata.Acomodo a, bool lindero)
+    /// <param name="diaInt">Diámetro de las intermedias ya resuelto.</param>
+    private void RotuloDeLaColumna(
+        ZapataCad z, TrazoZapata.Acomodo a, bool lindero, string? diaInt)
     {
         var y = a.YDadoTop + (AlturaColumnaRep * ColumnaFraccionCorte / 2);
 
         var texto = TextoElemento("COLUMNA", z.IdColumna, z.VarColSup, z.VarColInf,
-            z.NIntColumna, z.VarIntColumna, z.EstriboColumna, z.SepEstriboColumna,
+            z.NIntColumna, diaInt, z.EstriboColumna, z.SepEstriboColumna,
             z.NVarColSup, z.NVarColInf, z.NVarIntColumnaTotal);
 
         if (lindero)

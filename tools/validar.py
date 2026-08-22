@@ -4434,6 +4434,28 @@ def v19_circular_y_ui() -> None:
     # LA OTRA FUENTE DE VARILLAS DUPLICADAS: el recorte que se DESCARTABA. Si no dejaba 2 cm de
     # barra, ElementoVertical lo ignoraba y dibujaba la varilla completa; con el recorte de la zona
     # de dobleces, eso es la varilla entera MAS su doblez encima.
+    # EL DADO SIN VARILLAS INTERIORES: la macro tiene un respaldo que faltaba. Si no se dijo el
+    # diametro de las intermedias, se usa el de las de esquina:
+    #     If Len(NormalizeDiaLabel(txtIntDado)) = 0 Then txtIntDado = txtAA7
+    # Sin el, una seccion que declara intermedias pero no su diametro deja el dado sin ninguna.
+    check("si falta el diametro de las intermedias, se usa el de las de esquina",
+          "var diaIntDado = Diam(z.VarIntDado) > 0 ? z.VarIntDado : z.VarDadoSup;" in zap_drw
+          and "var diaIntCol = Diam(z.VarIntColumna) > 0 ? z.VarIntColumna : z.VarColSup;"
+          in zap_drw
+          and "SIN VARILLAS INTERIORES" in zap_drw)
+    check("y el rotulo usa el MISMO diametro que el dibujo",
+          "RotuloDelDado(z, a, lindero, diaIntDado);" in zap_drw
+          and "RotuloDeLaColumna(z, a, lindero, diaIntCol);" in zap_drw
+          and "z.NIntDado, diaInt, z.EstriboDado" in zap_drw)
+    # NI UN TRAMO RECTO DONDE ARRANCA EL 1:6: con union, las varillas del dado acaban EXACTAMENTE
+    # en yZonaBot. Pedir el recorte no bastaba: por debajo se le restan holguras y margenes.
+    check("con union, las varillas del dado acaban justo donde arrancan los dobleces",
+          "topeBarras: aplicarUnion ? yZonaBot : null);" in zap_drw
+          and "xbBar = x0 + (tope - y0);" in zap_drw
+          and "if (!hayCorte && !omitGanchoFin && topeBarras is null)" in zap_drw)
+    check("y queda escrito que un milimetro de mas es un tramo recto asomando",
+          "es un tramo recto asomando por debajo del 1:6" in zap_drw)
+
     check("el recorte de las varillas se aplica siempre, recortado si hace falta",
           "var maximo = Math.Max(xb - (xaBot + 0.02), 0);" in zap_drw
           and "xbBar = xb - Math.Min(recorteBarrasFin, maximo);" in zap_drw
