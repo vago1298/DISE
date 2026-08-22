@@ -129,7 +129,7 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         var yColTope = yDadoTop + 0.71; // lo que se dibuja de columna
 
         // Caso normal: cabe en el dado y el doblez acaba justo en la junta.
-        var t1 = TrazoZapata.Desplazamiento(0.06, yZapTop, yDadoTop, 0.05, yColTope);
+        var t1 = TrazoZapata.Desplazamiento(0.06, yZapTop, yDadoTop, 0.05);
 
         Vale("cabe en el dado: el doblez mide 6 veces el corrimiento",
             t1.Cabe && Math.Abs(t1.Alto - (6 * 0.06)) < 1e-12);
@@ -137,32 +137,56 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         Vale("y la pendiente es 1:6 exacta",
             Math.Abs((t1.YDiagTop - t1.YZonaBot) / 0.06 - 6.0) < 1e-9);
 
-        Vale("y acaba en la junta, sin cruzarla",
-            !t1.CruzaLaJunta && Math.Abs(t1.YDiagTop - yDadoTop) < 1e-12);
+        Vale("y acaba EN la junta, no por encima",
+            Math.Abs(t1.YDiagTop - yDadoTop) < 1e-12);
 
-        // Corrimiento grande: no cabe bajo la junta, asi que el doblez TERMINA EN LA COLUMNA y
-        // sigue siendo 1:6. Antes se recortaba el alto y salia mas parado.
-        var t2 = TrazoZapata.Desplazamiento(0.12, yZapTop, yDadoTop, 0.05, yColTope);
+        Vale("y le queda tramo recto sobre la zapata",
+            t1.YZonaBot >= yZapTop + TrazoZapata.MinBarraRectaDado - 1e-12);
 
-        Vale("no cabe en el dado: el doblez sigue midiendo 6 veces el corrimiento",
-            t2.Cabe && Math.Abs(t2.Alto - (6 * 0.12)) < 1e-12);
+        // Corrimiento chico: el doblez no arranca dentro del recubrimiento del tope, asi que acaba
+        // POR DEBAJO de la junta. Tambien correcto, y sigue siendo 1:6.
+        var tChico = TrazoZapata.Desplazamiento(0.004, yZapTop, yDadoTop, 0.05);
 
-        Vale("y la pendiente sigue siendo 1:6, no se recorta",
-            Math.Abs((t2.YDiagTop - t2.YZonaBot) / 0.12 - 6.0) < 1e-9);
+        Vale("un corrimiento chico da un doblez corto, por debajo de la junta",
+            tChico.Cabe
+            && Math.Abs((tChico.YDiagTop - tChico.YZonaBot) / 0.004 - 6.0) < 1e-9
+            && tChico.YDiagTop <= yDadoTop + 1e-12);
 
-        Vale("y se avisa que termina dentro de la columna",
-            t2.CruzaLaJunta && t2.YDiagTop > yDadoTop);
+        // Corrimiento grande: NO cabe entre el tramo recto y la junta, asi que NO se dibuja. Antes
+        // se recortaba el alto -y salia mas parado- o se dejaba pasar a la columna, y ahi arriba ya
+        // estan las varillas de la columna: se veian DUPLICADAS.
+        var t2 = TrazoZapata.Desplazamiento(0.12, yZapTop, yDadoTop, 0.05);
 
-        Vale("le queda tramo recto sobre la zapata",
-            t2.YZonaBot >= yZapTop + TrazoZapata.MinBarraRectaDado - 1e-12);
+        Vale("un corrimiento que no cabe en el dado NO se dibuja", !t2.Cabe);
 
-        // Y si no alcanza ni con la columna: NO se dibuja, en vez de pararlo.
-        var t3 = TrazoZapata.Desplazamiento(0.12, yZapTop, yDadoTop, 0.05, yDadoTop + 0.05);
+        Vale("y el alto que habria pedido se sigue informando, para el aviso",
+            Math.Abs(t2.Alto - (6 * 0.12)) < 1e-12);
 
-        Vale("si no cabe ni en la columna, no se dibuja el doblez", !t3.Cabe);
+        // NINGUN caso puede acabar por encima de la junta: ahi empiezan las varillas de la columna.
+        var ningunoSePasa = true;
+
+        for (var dx = 0.0; dx <= 0.12001; dx += 0.002)
+        {
+            var tr = TrazoZapata.Desplazamiento(dx, yZapTop, yDadoTop, 0.05);
+
+            if (tr.Cabe && tr.YDiagTop > yDadoTop + 1e-9)
+            {
+                ningunoSePasa = false;
+            }
+
+            // Y el que se dibuja, SIEMPRE a 1:6.
+            if (tr.Cabe && Math.Abs((tr.YDiagTop - tr.YZonaBot) / dx - 6.0) > 1e-6)
+            {
+                ningunoSePasa = false;
+            }
+        }
+
+        Vale("ningun doblez se pasa de la junta ni deja de ser 1:6", ningunoSePasa);
 
         Vale("sin corrimiento no hay doblez",
-            !TrazoZapata.Desplazamiento(0, yZapTop, yDadoTop, 0.05, yColTope).Cabe);
+            !TrazoZapata.Desplazamiento(0, yZapTop, yDadoTop, 0.05).Cabe);
+
+        _ = yColTope;
 
         Vale("el corrimiento maximo que se dobla son 12 cm, como la macro",
             Math.Abs(TrazoZapata.DesplazamientoMax - 0.12) < 1e-12

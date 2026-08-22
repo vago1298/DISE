@@ -476,20 +476,27 @@ public sealed partial class ZapataDrawer
         //
         // Antes el alto se recortaba a lo que quedaba libre en el dado, y el doblez salía más
         // parado que el detalle: en el dibujo que se revisó, 1:3.
-        var yColTope = yDadoTop + (AlturaColumnaRep * ColumnaFraccionCorte);
-
-        var trans = TrazoZapata.Desplazamiento(union.DxMax, yZapTop, yDadoTop, recDadoM, yColTope);
+        var trans = TrazoZapata.Desplazamiento(union.DxMax, yZapTop, yDadoTop, recDadoM);
 
         var yZonaBot = trans.Cabe ? trans.YZonaBot : yDadoTop - recDadoM;
         var yDiagTop = trans.Cabe ? trans.YDiagTop : yDadoTop;
 
-        // La varilla sigue vertical un recubrimiento por encima de donde acaba el doblez, para que
-        // se vea que entra en la columna.
-        var yZonaTop = Math.Min(Math.Max(yDadoTop, yDiagTop) + recColM, yColTope);
+        // La varilla se mete un recubrimiento en la columna, para que se vea la continuidad. Es el
+        // yZonaTop de la macro y NO más: por encima de ahí las varillas son las de la columna, que
+        // dibuja su propio elemento. Pasarse de ese punto es dibujar dos veces la misma varilla.
+        var yZonaTop = yDadoTop + recColM;
 
-        // Se dibuja la transición solo si el doblez cabe a 1:6. Si no, las varillas del dado se
-        // quedan rectas y su gancho de remate se conserva, como cuando no hay unión.
-        var aplicarUnion = union.Activa && trans.Cabe;
+        // Se dibuja la transición solo si el doblez cabe a 1:6 DENTRO del dado. Si no, las varillas
+        // del dado se quedan rectas y su gancho de remate se conserva, como cuando no hay unión.
+        //
+        // Y una condición más, que es la que evitaba el dibujo duplicado: al dado se le recortan
+        // las varillas justo en yZonaBot para que la unión siga desde ahí. Si ese recorte fuera tan
+        // grande que no dejara barra donde recortar, ElementoVertical lo IGNORA y dibuja la varilla
+        // completa; entonces la unión la volvía a dibujar encima y salían las dos.
+        var topeBarrasDado = yDadoTop - recDadoM;
+        var recorteCabe = yZonaBot > yZapBot + subirGanchoDado + 0.02;
+
+        var aplicarUnion = union.Activa && trans.Cabe && recorteCabe;
 
         var recorteDado = 0.0;
 
@@ -497,24 +504,17 @@ public sealed partial class ZapataDrawer
         {
             recorteDado = Math.Max((yDadoTop - recDadoM) - yZonaBot, 0);
 
-            // El doblez SÍ sale a 1:6; lo único que se avisa es que tuvo que acabar dentro de la
-            // columna porque el dado no daba altura. Es correcto —la varilla es la misma y sigue
-            // hacia arriba— pero conviene saberlo al revisar el plano.
-            if (trans.CruzaLaJunta)
-            {
-                Nota($"Zapata '{z.Id}': el desplazamiento de {union.DxMax:0.###} m necesita "
-                     + $"{trans.Alto:0.###} m a 1:6 y el dado no los tiene, así que el doblez "
-                     + "termina dentro de la columna. Se mantiene el 1:6 del detalle.");
-            }
         }
-        else if (union.Activa && !trans.Cabe)
+        else if (union.Activa)
         {
-            // Ni con la columna alcanza: las varillas del dado se quedan RECTAS. Es mejor eso que
-            // dibujar un doblez más parado que el detalle y que alguien lo arme así en obra.
+            // No cabe: las varillas del dado se quedan RECTAS y la columna se traslapa aparte. Es
+            // mejor eso que un doblez más parado que el detalle, o metido encima de las varillas de
+            // la columna, que alguien podría armar así en obra.
             Nota($"Zapata '{z.Id}': el desplazamiento de {union.DxMax:0.###} m pediría "
-                 + $"{trans.Alto:0.###} m de doblez a 1:6 y no caben ni en el dado ni en la "
-                 + "columna, así que las varillas del dado se dejan rectas y la columna se "
-                 + "traslapa aparte. Sube el dado o acerca los anchos.");
+                 + $"{trans.Alto:0.###} m de doblez a 1:6 y en el dado solo hay "
+                 + $"{Math.Max(topeBarrasDado - (yZapBot + z.EspesorM + TrazoZapata.MinBarraRectaDado), 0):0.###} m, "
+                 + "así que las varillas del dado se dejan rectas y la columna se traslapa "
+                 + "aparte. Sube el dado o acerca los anchos del dado y de la columna.");
         }
 
         // offEstribosFin del dado: con columna de concreto, 2 cm; con columna de acero hay que
@@ -1604,62 +1604,28 @@ public sealed partial class ZapataDrawer
         u.Dobleces.Add((xEsqIzqD, xEsqIzqC, dSupD, CapaVar(diaSupD)));
         u.Dobleces.Add((xEsqDerD, xEsqDerC, dInfD, CapaVar(diaInfD)));
 
-        var usadoD = new bool[xIntD.Count];
-        var usadoC = new bool[xIntC.Count];
+        // EMPAREJADO EN ORDEN, NO POR CERCANÍA. Las dos listas se ordenan y se emparejan la 1ª con
+        // la 1ª, la 2ª con la 2ª: así el orden se conserva y DOS BARRAS NO PUEDEN CRUZARSE, porque
+        // para cruzarse tendrían que cambiar de orden entre el dado y la columna.
+        //
+        // El emparejado por cercanía —el de la macro y el que estaba aquí— elige en cada vuelta el
+        // mejor par disponible, y eso SÍ cruza: si la 1ª del dado queda más cerca de la 2ª de la
+        // columna, se lleva esa, y a la 2ª del dado le toca la 1ª. Es lo que se veía en el dibujo,
+        // dos aspas en el arranque del dado.
+        var ordD = xIntD.OrderBy(x => x).ToList();
+        var ordC = xIntC.OrderBy(x => x).ToList();
 
-        if (intermediasIguales && xIntD.Count > 0 && xIntC.Count > 0)
+        var pares = intermediasIguales ? Math.Min(ordD.Count, ordC.Count) : 0;
+
+        for (var k = 0; k < pares; k++)
         {
-            var pares = Math.Min(xIntD.Count, xIntC.Count);
-
-            for (var p = 0; p < pares; p++)
-            {
-                var mejorD = -1;
-                var mejorC = -1;
-                var mejor = double.MaxValue;
-
-                for (var k = 0; k < xIntD.Count; k++)
-                {
-                    if (usadoD[k])
-                    {
-                        continue;
-                    }
-
-                    for (var j = 0; j < xIntC.Count; j++)
-                    {
-                        if (usadoC[j])
-                        {
-                            continue;
-                        }
-
-                        var d = Math.Abs(xIntD[k] - xIntC[j]);
-
-                        if (d < mejor)
-                        {
-                            mejor = d;
-                            mejorD = k;
-                            mejorC = j;
-                        }
-                    }
-                }
-
-                if (mejorD < 0)
-                {
-                    break;
-                }
-
-                usadoD[mejorD] = true;
-                usadoC[mejorC] = true;
-
-                u.Dobleces.Add((xIntD[mejorD], xIntC[mejorC], dIntD, CapaVar(diaIntD)));
-            }
+            u.Dobleces.Add((ordD[k], ordC[k], dIntD, CapaVar(diaIntD)));
         }
 
-        for (var k = 0; k < xIntD.Count; k++)
+        // Las del dado que se quedaron sin pareja siguen RECTAS hasta el tope del dado.
+        for (var k = pares; k < ordD.Count; k++)
         {
-            if (!usadoD[k])
-            {
-                u.Rectas.Add((xIntD[k], dIntD, CapaVar(diaIntD)));
-            }
+            u.Rectas.Add((ordD[k], dIntD, CapaVar(diaIntD)));
         }
 
         u.DxMax = u.Dobleces.Count == 0
@@ -1686,13 +1652,39 @@ public sealed partial class ZapataDrawer
             ? TrazoZapata.BarrasCirculares(xCaraDer, w, recM, dEstriboM, dSup, nTotal)
             : TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);
 
-    /// <summary>Port de <c>DibujarUnionDadoColumna</c>.</summary>
+    /// <summary>
+    /// Port de <c>DibujarUnionDadoColumna</c>: cada varilla con <b>su</b> doblez a 1:6.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// CADA VARILLA SE CORRE LO SUYO, Y SOLO LO SUYO. El doblez de una varilla mide seis veces
+    /// <b>su</b> corrimiento, no seis veces el de la que más se corre: una que se mueve 2 cm lleva
+    /// 12 cm de doblez y el resto de su largo va recto.
+    /// </para>
+    /// <para>
+    /// Antes todas arrancaban el doblez en el mismo punto, el de la que más se corría, así que las
+    /// siete varillas del dado salían inclinadas de arriba abajo y el dado parecía un abanico. En
+    /// el plano de la macro se ven <b>rectas</b>, con el corrimiento en un tramo corto.
+    /// </para>
+    /// <para>
+    /// Lo que sí comparten todas es <b>dónde acaba</b> el doblez: en la junta con la columna, como
+    /// se arma en obra. Los dobleces de un nudo van al mismo nivel.
+    /// </para>
+    /// </remarks>
+    /// <param name="yZonaBot">Desde donde el dibujante de la unión se hace cargo de la varilla.</param>
+    /// <param name="yDiagTop">Donde acaban TODOS los dobleces.</param>
+    /// <param name="yZonaTop">Hasta donde sigue la varilla, ya dentro de la columna.</param>
+    /// <param name="yTopRectas">Tope de las que no tienen pareja y siguen rectas.</param>
     private void DibujarUnion(
-        Union u, double yZonaBot, double yJunta, double yZonaTop, double yTopRectas)
+        Union u, double yZonaBot, double yDiagTop, double yZonaTop, double yTopRectas)
     {
         foreach (var (x1, x2, dia, capa) in u.Dobleces)
         {
-            DesplazamientoVarilla(x1, x2, yZonaBot, yJunta, yZonaTop, dia, capa);
+            // El doblez de ESTA varilla: seis veces su propio corrimiento, acabando en yDiagTop.
+            var alto = TrazoZapata.RelacionDesplazamiento * Math.Abs(x2 - x1);
+            var yDiagBot = Math.Max(yDiagTop - alto, yZonaBot);
+
+            DesplazamientoVarilla(x1, x2, yZonaBot, yDiagBot, yDiagTop, yZonaTop, dia, capa);
         }
 
         foreach (var (x, dia, capa) in u.Rectas)
@@ -1701,9 +1693,18 @@ public sealed partial class ZapataDrawer
         }
     }
 
-    /// <summary>Port de <c>DibujarDesplazamientoVarilla</c>: la barra que se corre y sigue.</summary>
+    /// <summary>
+    /// Port de <c>DibujarDesplazamientoVarilla</c>: recta, el doblez a 1:6, y recta otra vez.
+    /// </summary>
+    /// <remarks>
+    /// Tres tramos, que es como se dobla una varilla de verdad: sube derecha hasta
+    /// <paramref name="yDiagBot"/>, se corre de lado hasta <paramref name="yDiagTop"/> —ahí está el
+    /// 1:6— y sigue derecha hasta arriba. Con <c>yDiagBot == yBot</c> no hay primer tramo, y con
+    /// <c>x1 == x2</c> sale una varilla recta, que es lo correcto cuando no hay nada que correr.
+    /// </remarks>
     private void DesplazamientoVarilla(
-        double x1, double x2, double yBot, double yDiagTop, double yTop, double dia, string capa)
+        double x1, double x2, double yBot, double yDiagBot, double yDiagTop, double yTop,
+        double dia, string capa)
     {
         if (dia <= 0 || yTop <= yBot)
         {
@@ -1713,18 +1714,38 @@ public sealed partial class ZapataDrawer
         AsegurarCapaVarilla(capa);
 
         var r = dia / 2;
-        var yt = Math.Clamp(yDiagTop, yBot, yTop);
+
+        var yd1 = Math.Clamp(yDiagBot, yBot, yTop);
+        var yd2 = Math.Clamp(yDiagTop, yd1, yTop);
 
         if (_relleno)
         {
-            RellenarQuad(x1 - r, yBot, x2 - r, yt, x2 + r, yt, x1 + r, yBot, capa, 0);
-            RellenarQuad(x2 - r, yt, x2 - r, yTop, x2 + r, yTop, x2 + r, yt, capa, 0);
+            if (yd1 > yBot)
+            {
+                RellenarQuad(x1 - r, yBot, x1 - r, yd1, x1 + r, yd1, x1 + r, yBot, capa, 0);
+            }
+
+            if (yd2 > yd1)
+            {
+                RellenarQuad(x1 - r, yd1, x2 - r, yd2, x2 + r, yd2, x1 + r, yd1, capa, 0);
+            }
+
+            if (yTop > yd2)
+            {
+                RellenarQuad(x2 - r, yd2, x2 - r, yTop, x2 + r, yTop, x2 + r, yd2, capa, 0);
+            }
         }
 
         foreach (var s in new[] { -1.0, 1.0 })
         {
             Var(Polilinea(
-                new[] { x1 + (s * r), yBot, x2 + (s * r), yt, x2 + (s * r), yTop },
+                new[]
+                {
+                    x1 + (s * r), yBot,
+                    x1 + (s * r), yd1,
+                    x2 + (s * r), yd2,
+                    x2 + (s * r), yTop
+                },
                 capa, cerrada: false));
         }
     }

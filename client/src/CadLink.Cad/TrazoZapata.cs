@@ -341,13 +341,8 @@ public static class TrazoZapata
     /// <param name="YZonaBot">Donde arranca el doblez.</param>
     /// <param name="YDiagTop">Donde acaba el doblez y la varilla sigue vertical.</param>
     /// <param name="Alto">Lo que mide el doblez: seis veces el corrimiento.</param>
-    /// <param name="CruzaLaJunta">
-    /// El doblez acaba <b>por encima</b> del tope del dado, ya dentro de la columna. Pasa cuando el
-    /// dado no es lo bastante alto, y es la salida correcta: la varilla es la misma y sigue hacia
-    /// arriba, así que el doblez puede terminar en la columna sin dejar de ser 1:6.
-    /// </param>
     public readonly record struct Transicion(
-        bool Cabe, double YZonaBot, double YDiagTop, double Alto, bool CruzaLaJunta);
+        bool Cabe, double YZonaBot, double YDiagTop, double Alto);
 
     /// <summary>
     /// Resuelve el doblez de la transición <b>siempre a 1:6</b>.
@@ -361,31 +356,34 @@ public static class TrazoZapata
     /// había salido con un doblez que no es el que se especifica.
     /// </para>
     /// <para>
-    /// Ahora el alto es intocable: seis veces el corrimiento. Lo que se mueve es <b>dónde</b> se
-    /// pone ese doblez, en este orden:
+    /// Ahora el alto es intocable: seis veces el corrimiento. Y el doblez <b>acaba en la junta</b> y
+    /// vive DENTRO del dado, como en la macro. No se le deja pasar al otro lado por dos razones:
     /// </para>
-    /// <list type="number">
-    ///   <item>Lo normal: acaba justo en el tope del dado y arranca 6·dx más abajo.</item>
-    ///   <item>Si arrancaría por debajo del tramo recto mínimo, se sube el arranque y el doblez
-    ///   <b>acaba dentro de la columna</b>. Sigue siendo 1:6.</item>
-    ///   <item>Si ni con la columna alcanza, no se dibuja: las varillas del dado se quedan rectas
-    ///   y se avisa. Un doblez más parado que el detalle no es un dibujo, es un error.</item>
+    /// <list type="bullet">
+    ///   <item>Arriba de la junta ya están las varillas de la columna, que las dibuja su propio
+    ///   elemento; un doblez que siga hacia arriba pasa por encima de ellas y en el plano se ven
+    ///   <b>varillas duplicadas</b>.</item>
+    ///   <item>El doblez de un nudo se hace por debajo de la junta. Es lo que dice el detalle.</item>
     /// </list>
+    /// <para>
+    /// Si 6·dx no cabe entre el tramo recto mínimo y la junta, <b>no se dibuja</b>: las varillas del
+    /// dado se quedan rectas y se avisa. Un doblez más parado que el detalle, o metido en la
+    /// columna encima de sus varillas, no es un dibujo: es un error.
+    /// </para>
     /// </remarks>
     /// <param name="dxMax">El corrimiento más grande de todas las varillas emparejadas.</param>
     /// <param name="yZapTop">Lomo de la zapata.</param>
     /// <param name="yDadoTop">Tope del dado, que es la junta con la columna.</param>
     /// <param name="recDadoM">Recubrimiento del dado.</param>
-    /// <param name="yColTope">Hasta dónde llega la columna dibujada.</param>
     public static Transicion Desplazamiento(
-        double dxMax, double yZapTop, double yDadoTop, double recDadoM, double yColTope)
+        double dxMax, double yZapTop, double yDadoTop, double recDadoM)
     {
         var alto = RelacionDesplazamiento * Math.Abs(dxMax);
 
         if (alto <= 1e-9)
         {
             // Las varillas caen en la misma X: no hay nada que correr y no hay doblez.
-            return new Transicion(false, yDadoTop, yDadoTop, 0, false);
+            return new Transicion(false, yDadoTop, yDadoTop, 0);
         }
 
         var piso = yZapTop + MinBarraRectaDado;
@@ -394,24 +392,20 @@ public static class TrazoZapata
         var yDiagTop = yDadoTop;
         var yZonaBot = yDadoTop - alto;
 
-        // El doblez no puede arrancar dentro del recubrimiento del tope del dado.
+        // Un doblez chico no arranca dentro del recubrimiento del tope: se baja el arranque al
+        // techo y el doblez acaba por debajo de la junta, que también es correcto.
         if (yZonaBot > techo)
         {
             yZonaBot = techo;
             yDiagTop = techo + alto;
         }
 
-        // Ni por debajo del tramo recto que se le deja sobre la zapata.
-        if (yZonaBot < piso)
-        {
-            yZonaBot = piso;
-            yDiagTop = piso + alto;
-        }
+        // Y tiene que caber por encima del tramo recto que se le deja sobre la zapata.
+        var cabe = yZonaBot >= piso - 1e-9
+                   && yZonaBot < yDiagTop - 1e-9
+                   && yDiagTop <= yDadoTop + 1e-9;
 
-        var cruza = yDiagTop > yDadoTop + 1e-9;
-        var cabe = yZonaBot < yDiagTop - 1e-9 && yDiagTop <= yColTope + 1e-9;
-
-        return new Transicion(cabe, yZonaBot, yDiagTop, alto, cruza);
+        return new Transicion(cabe, yZonaBot, yDiagTop, alto);
     }
 
     /// <summary>

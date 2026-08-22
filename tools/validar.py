@@ -4097,17 +4097,21 @@ def v19_circular_y_ui() -> None:
           and "(2 * dMax) + 0.005" in zap_drw)
     # El traslape a 1:6 -RELACION_DESPLAZAMIENTO- y, si el dado es tan bajo que no caben esos
     # seis, se AVISA en lugar de dibujar un doblez mas parado y callarlo.
-    check("el traslape va a 1:6 SIEMPRE, y se avisa donde acabo el doblez",
+    check("el traslape va a 1:6 SIEMPRE, o no se dibuja",
           "TrazoZapata.Desplazamiento(union.DxMax" in zap_drw
-          and "Se mantiene el 1:6 del detalle." in zap_drw
+          and "pediría " in zap_drw
+          and "de doblez a 1:6 y en el dado solo hay " in zap_drw
           and "RelacionDesplazamiento" in trazo_zap)
 
     check("la union dado-columna dibuja el desplazamiento de cada barra",
           "private Union PrepararUnion(" in zap_drw
           and "private void DesplazamientoVarilla(" in zap_drw
           and "RelacionDesplazamiento" in zap_drw)
-    check("y las intermedias se emparejan una a una por cercania",
-          "mejorD" in zap_drw and "usadoD[mejorD] = true;" in zap_drw)
+    # EN ORDEN, no por cercania: el de cercania -el de la macro- cruza dos barras cuando la
+    # primera del dado queda mas cerca de la segunda de la columna.
+    check("y las intermedias se emparejan EN ORDEN, para que no se cruzen",
+          "var pares = intermediasIguales ? Math.Min(ordD.Count, ordC.Count) : 0;" in zap_drw
+          and "mejorD" not in zap_drw)
 
     # Estribos y parrillas.
     check("los estribos van en capsula, con su ARCOFFSET y su protrusion",
@@ -4356,13 +4360,39 @@ def v19_circular_y_ui() -> None:
           "var hZona = Math.Min(union.Alto, hMaxZona);" not in zap_drw
           and "public double Alto { get; set; }" not in zap_drw
           and "public double DxMax { get; set; }" in zap_drw)
-    check("si no cabe en el dado, el doblez acaba dentro de la COLUMNA y sigue a 1:6",
-          "CruzaLaJunta" in trazo_zap
-          and "yDiagTop = piso + alto;" in trazo_zap
-          and "termina dentro de la columna" in zap_drw)
-    check("y si no cabe ni ahi, las varillas se dejan RECTAS y se avisa",
-          "var aplicarUnion = union.Activa && trans.Cabe;" in zap_drw
-          and "se dejan rectas y la columna se " in zap_drw)
+    # Y EL DOBLEZ VIVE DENTRO DEL DADO: si se le deja pasar la junta, arriba ya estan las varillas
+    # de la columna y en el plano se ven DUPLICADAS. Es lo que se reporto: "las varillas las
+    # duplicas".
+    check("el doblez acaba en la junta y no la pasa",
+          "&& yDiagTop <= yDadoTop + 1e-9;" in trazo_zap
+          and "CruzaLaJunta" not in trazo_zap
+          and "varillas duplicadas" in trazo_zap)
+    check("y la union no sube mas alla del recubrimiento de la columna",
+          "var yZonaTop = yDadoTop + recColM;" in zap_drw
+          and "dibujar dos veces la misma varilla" in zap_drw)
+    check("si el doblez no cabe, las varillas se dejan RECTAS y se avisa",
+          "var aplicarUnion = union.Activa && trans.Cabe && recorteCabe;" in zap_drw
+          and "se dejan rectas y la columna se traslapa" in zap_drw)
+    # La otra mitad del duplicado: al dado se le recortan las varillas en yZonaBot para que la
+    # union siga desde ahi, y ElementoVertical IGNORA un recorte que no deje barra. Si se ignora y
+    # la union dibuja igual, salen las dos.
+    check("y no se dibuja la union si el recorte del dado no se puede aplicar",
+          "var recorteCabe = yZonaBot > yZapBot + subirGanchoDado + 0.02;" in zap_drw
+          and "ElementoVertical lo IGNORA" in zap_drw)
+    check("cada varilla se corre LO SUYO: su doblez son 6 veces su propio corrimiento",
+          "var alto = TrazoZapata.RelacionDesplazamiento * Math.Abs(x2 - x1);" in zap_drw
+          and "var yDiagBot = Math.Max(yDiagTop - alto, yZonaBot);" in zap_drw
+          and "CADA VARILLA SE CORRE LO SUYO" in zap_drw)
+    check("y la varilla va recta, doblez, recta: tres tramos",
+          "double x1, double x2, double yBot, double yDiagBot, double yDiagTop, double yTop,"
+          in zap_drw
+          and "x1 + (s * r), yd1," in zap_drw
+          and "x2 + (s * r), yd2," in zap_drw)
+    # LAS BARRAS NO PUEDEN CRUZARSE: emparejado EN ORDEN, no por cercania.
+    check("las varillas se emparejan en orden, asi que no pueden cruzarse",
+          "var ordD = xIntD.OrderBy(x => x).ToList();" in zap_drw
+          and "u.Dobleces.Add((ordD[k], ordC[k], dIntD, CapaVar(diaIntD)));" in zap_drw
+          and "DOS BARRAS NO PUEDEN CRUZARSE" in zap_drw)
     check("el corrimiento maximo que se dobla son los 12 cm de la macro",
           "public const double DesplazamientoMax = 0.12;" in trazo_zap
           and "TrazoZapata.DesplazamientoMax" in zap_drw)
@@ -4389,7 +4419,7 @@ def v19_circular_y_ui() -> None:
     check("y esta comprobado con numeros, con dado y columna redondos",
           "redondo: los extremos caen en la circunferencia del armado"
           in leer(ruta("tools/prueba-zapata/Program.cs"))
-          and "y la pendiente sigue siendo 1:6, no se recorta"
+          and "ningun doblez se pasa de la junta ni deja de ser 1:6"
           in leer(ruta("tools/prueba-zapata/Program.cs")))
 
     check("y queda escrito que las cotas NO se mueven de donde las pone la macro",
