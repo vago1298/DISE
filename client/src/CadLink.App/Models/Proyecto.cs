@@ -54,6 +54,16 @@ public sealed class ProyectoGuardado
     public double EscalaHatch { get; set; } = 0.0003;
     public int ModoSeccion { get; set; } = 1;
 
+    /// <summary>
+    /// Doblez del gancho de arranque de las zapatas, en <b>diámetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es del juego entero, como el modo de sección, así que se guarda aquí y no por fila. Por
+    /// omisión los <b>15</b> de la macro: un <c>.clk</c> guardado antes de que existiera esta
+    /// casilla se abre con los 15 que tenía, que es lo que se dibujó cuando se guardó.
+    /// </remarks>
+    public double GanchoZapatasDiametros { get; set; } = 15.0;
+
     // ---- Contenido ----
     public List<PlanoGuardado> Planos { get; set; } = new();
     public List<SeccionGuardada> Secciones { get; set; } = new();

@@ -293,8 +293,39 @@ public static class TrazoZapata
     /// <summary>Largo del gancho de las parrillas, en metros. La macro pasa 0.03.</summary>
     public const double GanchoParrilla = 0.03;
 
-    /// <summary>Factor del gancho de arranque del dado: <c>FACTOR_GANCHO_ABAJO</c>.</summary>
+    /// <summary>
+    /// Factor del gancho de arranque del dado, en <b>diámetros</b>: <c>FACTOR_GANCHO_ABAJO</c>.
+    /// </summary>
+    /// <remarks>
+    /// Los <b>15 diámetros</b> de la macro, y es solo el valor <b>por omisión</b>: la hoja de
+    /// zapatas lleva una casilla para cambiarlo —40 diámetros, los que hagan falta— y ese valor
+    /// manda en el dibujo y en las cotas. Ver <see cref="FactorGanchoValido"/>.
+    /// </remarks>
     public const double FactorGanchoAbajo = 15.0;
+
+    /// <summary>Mínimo admitido para el doblez, en diámetros.</summary>
+    /// <remarks>
+    /// Por debajo de 6 diámetros no es una pata de anclaje: es el propio radio de doblado. Se pone
+    /// un mínimo para que una casilla en blanco o un 0 no dejen el dibujo sin patas.
+    /// </remarks>
+    public const double FactorGanchoMinimo = 6.0;
+
+    /// <summary>Máximo admitido, para que un dedo de más no dibuje una pata de dos metros.</summary>
+    public const double FactorGanchoMaximo = 80.0;
+
+    /// <summary>
+    /// El factor del doblez que se va a usar de verdad, ya validado.
+    /// </summary>
+    /// <remarks>
+    /// Vive aquí, y no en la ventana, porque lo tienen que usar los dos: el dibujante de AutoCAD y
+    /// la vista previa. Si cada uno validara por su cuenta, con una casilla vacía la previa
+    /// enseñaría una pata y el plano saldría con otra.
+    /// </remarks>
+    /// <param name="diametros">Lo que se capturó en la casilla. 0 o vacío = el de la macro.</param>
+    public static double FactorGanchoValido(double diametros) =>
+        diametros <= 0
+            ? FactorGanchoAbajo
+            : Math.Clamp(diametros, FactorGanchoMinimo, FactorGanchoMaximo);
 
     /// <summary>Separación mínima de estribos, en metros.</summary>
     public const double SepEstriboMinima = 0.05;

@@ -245,6 +245,26 @@ public sealed partial class ZapataDrawer
     /// </remarks>
     public bool SeccionRellena { get; set; }
 
+    /// <summary>
+    /// Largo del doblez del gancho de arranque, en <b>diámetros</b>. Por omisión, los 15 de la macro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es una decisión del juego entero, no de cada zapata: se captura una vez en la hoja y vale
+    /// para todas. Con 40, la pata de una varilla del #4 pasa de 19 a 51 cm, y el dibujo <b>y su
+    /// cota</b> salen con ese valor: los dos lo leen de aquí, así que no puede pasar que la cota
+    /// diga una cosa y la pata mida otra.
+    /// </para>
+    /// <para>
+    /// Se valida con <see cref="TrazoZapata.FactorGanchoValido"/>, que es quien decide qué hacer
+    /// con una casilla vacía o con un valor imposible.
+    /// </para>
+    /// </remarks>
+    public double FactorGanchoDiametros { get; set; } = TrazoZapata.FactorGanchoAbajo;
+
+    /// <summary>El factor ya validado, que es el que se usa al dibujar.</summary>
+    private double FactorGancho => TrazoZapata.FactorGanchoValido(FactorGanchoDiametros);
+
     /// <summary>Meter la elevación en un bloque con el nombre de la zapata.</summary>
     /// <remarks><c>ZAPATA_COMO_BLOQUE</c>. En <c>false</c> se dibuja directo en el modelo.</remarks>
     public bool ZapataComoBloque { get; set; } = true;
@@ -753,7 +773,7 @@ public sealed partial class ZapataDrawer
             return 0;
         }
 
-        var suma = (TrazoZapata.FactorGanchoAbajo * dSup) + (TrazoZapata.FactorGanchoAbajo * dInf);
+        var suma = (FactorGancho * dSup) + (FactorGancho * dInf);
 
         return suma > interior - 0.02 ? (2 * dMax) + 0.005 : 0;
     }
@@ -950,8 +970,8 @@ public sealed partial class ZapataDrawer
                 }
             }
 
-            var gAbSup = gancho12D ? TrazoZapata.FactorGanchoAbajo * dSup : gancho;
-            var gAbInf = gancho12D ? TrazoZapata.FactorGanchoAbajo * dInf : gancho;
+            var gAbSup = gancho12D ? FactorGancho * dSup : gancho;
+            var gAbInf = gancho12D ? FactorGancho * dInf : gancho;
 
             // Hacia dónde dobla cada gancho de arranque. bendUp local = izquierda global.
             bool bendIniSup;
@@ -2289,18 +2309,18 @@ public sealed partial class ZapataDrawer
 
         if (ambosIzquierda)
         {
-            xIzq2 = xIzq1 - (TrazoZapata.FactorGanchoAbajo * dSup);
-            xDer2 = xDer1 - (TrazoZapata.FactorGanchoAbajo * dInf);
+            xIzq2 = xIzq1 - (FactorGancho * dSup);
+            xDer2 = xDer1 - (FactorGancho * dInf);
         }
         else if (haciaAfuera)
         {
-            xIzq2 = xIzq1 - (TrazoZapata.FactorGanchoAbajo * dSup);
-            xDer2 = xDer1 + (TrazoZapata.FactorGanchoAbajo * dInf);
+            xIzq2 = xIzq1 - (FactorGancho * dSup);
+            xDer2 = xDer1 + (FactorGancho * dInf);
         }
         else
         {
-            xIzq2 = xIzq1 + (TrazoZapata.FactorGanchoAbajo * dSup);
-            xDer2 = xDer1 - (TrazoZapata.FactorGanchoAbajo * dInf);
+            xIzq2 = xIzq1 + (FactorGancho * dSup);
+            xDer2 = xDer1 - (FactorGancho * dInf);
         }
 
         r.Cotas += Cota(xIzq2, yPataSup, xIzq1, yPataSup, (xIzq2 + xIzq1) / 2,

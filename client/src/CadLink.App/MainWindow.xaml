@@ -1039,6 +1039,35 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- EL DOBLEZ DEL GANCHO DE ARRANQUE, EN DIAMETROS, PARA TODAS LAS ZAPATAS.
+                             La macro lo trae fijo en 15 diametros; aqui se puede cambiar -40, o los
+                             que haga falta- y con ese valor salen el dibujo Y SUS COTAS.
+
+                             Va arriba y no como columna de la tabla por lo mismo que el estilo de
+                             seccion: es una decision del juego entero. Media pata a 15 diametros y
+                             la otra media a 40 no es un plano, es un error de armado. -->
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Doblez del gancho de arranque:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,10,0"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <TextBox x:Name="ZapGanchoDiametrosBox" Width="60" Text="15"
+                                         VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                         TextAlignment="Center" FontSize="12" Padding="4,3"
+                                         TextChanged="OnGanchoZapataCambio"
+                                         ToolTip="Largo de la pata del gancho de arranque del dado, en diametros de la varilla.&#10;La macro usa 15. Con 40, una varilla del #4 pasa de 19 a 51 cm.&#10;Vale para TODAS las zapatas, y las cotas salen con este mismo valor." />
+
+                                <TextBlock Text="diametros" FontSize="12" VerticalAlignment="Center"
+                                           Margin="8,0,0,0" />
+
+                                <TextBlock x:Name="ZapGanchoHintText" FontSize="11" Opacity="0.75"
+                                           VerticalAlignment="Center" Margin="18,0,0,0" />
+                            </StackPanel>
+                        </Border>
+
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
                             <!-- LOS MISMOS ESTILOS QUE LAS SECCIONES DE CONCRETO Y DE ACERO:
                                  SecondaryButtonStyle para revisar y PrimaryButtonStyle -con su

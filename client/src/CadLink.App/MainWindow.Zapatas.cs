@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -89,6 +91,60 @@ public partial class MainWindow
         // zapata que la usa se pone al día sola. Es lo que hace que la medida sea una referencia
         // y no una copia que envejece.
         ReferenciarMedidasDeTodas();
+    }
+
+    /// <summary>
+    /// El doblez del gancho de arranque que se capturó, en <b>diámetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// Lo que se lee de la casilla, sin validar: de eso se encarga
+    /// <see cref="TrazoZapata.FactorGanchoValido"/>, que es el mismo para el dibujo y para la vista
+    /// previa. Si la casilla está vacía o trae algo que no es número, se devuelve 0 y esa función
+    /// resuelve con los 15 de la macro.
+    /// </remarks>
+    private double FactorGanchoElegido =>
+        double.TryParse(
+            (ZapGanchoDiametrosBox?.Text ?? string.Empty).Trim().Replace(',', '.'),
+            NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
+            ? v
+            : 0;
+
+    /// <summary>
+    /// La casilla del doblez cambió: se avisa de lo que significa y se redibuja la previa.
+    /// </summary>
+    /// <remarks>
+    /// El aviso dice el largo <b>en centímetros</b> para una varilla del #4, que es lo que se
+    /// entiende de un tirón: «40 diámetros = 51 cm en una #4». Y dice si el valor se ajustó, porque
+    /// un 0 escrito por error saldría dibujado como 15 y sin avisar nadie lo notaría.
+    /// </remarks>
+    private void OnGanchoZapataCambio(object sender, TextChangedEventArgs e)
+    {
+        if (!_listo || ZapGanchoHintText is null)
+        {
+            return;
+        }
+
+        var pedido = FactorGanchoElegido;
+        var usado = TrazoZapata.FactorGanchoValido(pedido);
+
+        // El #4 como referencia: es la varilla con la que se arma casi todo dado.
+        var enCm = usado * DiametroCmDeVarilla("#4");
+
+        var texto = $"{usado:0.#} diámetros = {enCm:0.#} cm en una varilla del #4.";
+
+        if (pedido <= 0)
+        {
+            texto += "  (la casilla está vacía: se usan los 15 de la macro)";
+        }
+        else if (Math.Abs(pedido - usado) > 1e-9)
+        {
+            texto += $"  (se pidió {pedido:0.#} y se ajustó al rango "
+                     + $"{TrazoZapata.FactorGanchoMinimo:0.#}–{TrazoZapata.FactorGanchoMaximo:0.#})";
+        }
+
+        ZapGanchoHintText.Text = texto;
+
+        DibujarVistaPreviaZapata();
     }
 
     private void ActualizarDadosDisponibles()
@@ -849,7 +905,12 @@ public partial class MainWindow
             {
                 // El tipo de sección es del JUEGO, no de cada zapata: sale de los mismos botones
                 // de arriba que mandan en las secciones de concreto.
-                SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena
+                SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena,
+
+                // El doblez del gancho de arranque, en diámetros, también del JUEGO: la casilla de
+                // arriba. El dibujante lo valida por su cuenta, así que aquí se pasa tal cual se
+                // capturó.
+                FactorGanchoDiametros = FactorGanchoElegido
             };
 
             var zapatas = _datos.ZapatasAisladas.Select(f => f.AFormatoCad()).ToList();

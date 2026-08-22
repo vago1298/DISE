@@ -4094,9 +4094,38 @@ def v19_circular_y_ui() -> None:
           "private void BarraConGanchos(" in zap_drw
           and "BarraConGanchos(xaBot, xbBar, ycSup, dSup, CapaVar(diaSup)" in zap_drw
           and "BarraConGanchos(xaBotInf, xbBar, ycInf, dInf, CapaVar(diaInf)" in zap_drw)
-    check("con el gancho de 15 diametros abajo",
-          "TrazoZapata.FactorGanchoAbajo * dSup" in zap_drw
-          and "TrazoZapata.FactorGanchoAbajo * dInf" in zap_drw)
+    # EL DOBLEZ, EN DIAMETROS Y CAMBIABLE PARA TODAS. La macro lo trae fijo en 15; la hoja lleva una
+    # casilla para poner 40 -o los que hagan falta- y con ese valor salen el dibujo Y SUS COTAS.
+    check("el gancho de arranque se mide en diametros y sale de un solo sitio",
+          "FactorGancho * dSup" in zap_drw
+          and "FactorGancho * dInf" in zap_drw
+          and "public double FactorGanchoDiametros { get; set; }" in zap_drw
+          and "private double FactorGancho => TrazoZapata.FactorGanchoValido(FactorGanchoDiametros);"
+          in zap_drw)
+    check("los 15 de la macro quedan como valor por omision, no como unico",
+          "public const double FactorGanchoAbajo = 15.0;" in trazo_zap
+          and "public static double FactorGanchoValido(double diametros)" in trazo_zap
+          and "FactorGanchoMinimo = 6.0" in trazo_zap
+          and "FactorGanchoMaximo = 80.0" in trazo_zap)
+    check("y las COTAS del doblez usan el mismo factor que el dibujo",
+          "xIzq2 = xIzq1 - (FactorGancho * dSup);" in zap_drw
+          and "xDer2 = xDer1 + (FactorGancho * dInf);" in zap_drw)
+    check("la casilla esta en la hoja de zapatas, no por fila",
+          'x:Name="ZapGanchoDiametrosBox"' in xaml
+          and "Doblez del gancho de arranque:" in xaml
+          and "es una decision del juego entero" in xaml.lower()
+             or "decision del juego entero" in xaml)
+    check("lo que se captura llega al dibujante",
+          "FactorGanchoDiametros = FactorGanchoElegido" in zap_cb
+          and "private double FactorGanchoElegido =>" in zap_cb)
+    check("y se guarda en el trabajo, con los 15 por omision para un archivo viejo",
+          "public double GanchoZapatasDiametros { get; set; } = 15.0;"
+          in leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+          and "GanchoZapatasDiametros = FactorGanchoElegido" in codigo
+          and "FactorGanchoValido(p.GanchoZapatasDiametros)" in codigo)
+    check("la casilla dice lo que significa, en centimetros de una #4",
+          "diámetros = " in zap_cb
+          and 'DiametroCmDeVarilla("#4")' in zap_cb)
     check("y con las intermedias cortadas en cada estribo",
           "private void BarraRectaSegmentada(" in zap_drw
           and "private void CaraSegmentada(" in zap_drw)

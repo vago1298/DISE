@@ -1214,7 +1214,11 @@ public partial class MainWindow : Window
             Acotacion = _juego.Solapa.Acotacion,
             EscalaDibujo = LeerEscala(),
             EscalaHatch = LeerEscalaHatch(),
-            ModoSeccion = (int)ModoElegido
+            ModoSeccion = (int)ModoElegido,
+
+            // El doblez del gancho de las zapatas es del juego, igual que el modo de sección: se
+            // guarda con él y no con cada zapata.
+            GanchoZapatasDiametros = FactorGanchoElegido
         };
 
         foreach (var pl in _juego.Planos)
@@ -1298,6 +1302,12 @@ public partial class MainWindow : Window
 
             HatchScaleBox.Text = p.EscalaHatch.ToString(
                 "0.######", CultureInfo.InvariantCulture);
+
+            // El doblez del gancho de las zapatas. Un .clk de antes de esta casilla trae el 15 por
+            // omisión, que es con el que se dibujó cuando se guardó.
+            ZapGanchoDiametrosBox.Text = TrazoZapata
+                .FactorGanchoValido(p.GanchoZapatasDiametros)
+                .ToString("0.#", CultureInfo.InvariantCulture);
 
             _juego.Planos.Clear();
 
