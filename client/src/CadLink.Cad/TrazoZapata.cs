@@ -453,13 +453,19 @@ public static class TrazoZapata
     }
 
     /// <summary>
-    /// Varillas de un elemento <b>circular</b>, proyectadas como se ven en el alzado.
+    /// Varillas de un elemento <b>circular</b>, proyectadas como se verían en el alzado.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// NUEVO: la macro no tiene el caso redondo —sus dos hojas capturan base y altura— así que se
-    /// arma con la misma idea que la rectangular, que es lo que se pidió: en el alzado no se ve la
-    /// planta, se ve la <b>proyección</b> de las varillas sobre el diámetro horizontal.
+    /// ⚠️ <b>Todavía no la usa el dibujante</b>, y es a propósito: el alzado reparte las varillas de
+    /// un elemento redondo a lo ancho, igual que en el cuadrado, así que si la unión partiera de
+    /// estas posiciones los dobleces no arrancarían encima de las varillas dibujadas. Las dos cosas
+    /// tienen que cambiar a la vez. Queda aquí, con su cuenta comprobada, para ese paso.
+    /// </para>
+    /// <para>
+    /// La macro no tiene el caso redondo —sus dos hojas capturan base y altura—, así que esto se
+    /// arma con la misma idea que la rectangular: en el alzado no se ve la planta, se ve la
+    /// <b>proyección</b> de las varillas sobre el diámetro horizontal.
     /// </para>
     /// <para>
     /// Las <c>n</c> varillas van repartidas en la circunferencia de radio

@@ -4379,15 +4379,9 @@ def v19_circular_y_ui() -> None:
     check("y no se dibuja la union si el recorte del dado no se puede aplicar",
           "var recorteCabe = yZonaBot > yZapBot + subirGanchoDado + 0.02;" in zap_drw
           and "ElementoVertical lo IGNORA" in zap_drw)
-    check("cada varilla se corre LO SUYO: su doblez son 6 veces su propio corrimiento",
-          "var alto = TrazoZapata.RelacionDesplazamiento * Math.Abs(x2 - x1);" in zap_drw
-          and "var yDiagBot = Math.Max(yDiagTop - alto, yZonaBot);" in zap_drw
-          and "CADA VARILLA SE CORRE LO SUYO" in zap_drw)
-    check("y la varilla va recta, doblez, recta: tres tramos",
-          "double x1, double x2, double yBot, double yDiagBot, double yDiagTop, double yTop,"
-          in zap_drw
-          and "x1 + (s * r), yd1," in zap_drw
-          and "x2 + (s * r), yd2," in zap_drw)
+    check("la varilla se dibuja sin vertices de longitud cero",
+          "if (yd1 > yBot + 1e-9)" in zap_drw
+          and "if (yTop > yd2 + 1e-9)" in zap_drw)
     # LAS BARRAS NO PUEDEN CRUZARSE: emparejado EN ORDEN, no por cercania.
     check("las varillas se emparejan en orden, asi que no pueden cruzarse",
           "var ordD = xIntD.OrderBy(x => x).ToList();" in zap_drw
@@ -4407,11 +4401,23 @@ def v19_circular_y_ui() -> None:
     check("y dos varillas simetricas se ven como UNA en el alzado",
           "xs.Any(v => Math.Abs(v - x) < tol)" in trazo_zap
           and "en el alzado son una sola" in trazo_zap)
-    check("el dibujante elige la forma en un solo sitio",
+    # LA UNION PARTE DE DONDE EL ALZADO DIBUJA LAS VARILLAS, no de otra cuenta: si no, los dobleces
+    # no arrancan encima de las varillas y se ven despegados.
+    check("la union usa las mismas posiciones que dibuja el alzado",
           "private static TrazoZapata.BarrasElemento BarrasDelElemento(" in zap_drw
-          and "circular" in zap_drw
-          and "TrazoZapata.BarrasCirculares(" in zap_drw
-          and "TrazoZapata.BarrasRectangulares(" in zap_drw)
+          and "TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);" in zap_drw
+          and "TrazoZapata.BarrasCirculares(" not in zap_drw
+          and "no arrancarían encima de las varillas" in zap_drw)
+    check("y la proyeccion del redondo queda lista, marcada como pendiente de enganchar",
+          "Todavía no la usa el dibujante" in trazo_zap)
+    # EL TEOREMA: UNA zona para todas. El 1:6 fija su ALTO con la varilla que mas se corre; las
+    # demas salen mas tendidas y el nudo se ve PAREJO.
+    check("hay UNA zona de doblez y la comparten todas las varillas",
+          "EL TEOREMA" in zap_drw
+          and "DesplazamientoVarilla(x1, x2, yZonaBot, yZonaBot, yDiagTop, yZonaTop, dia, capa);"
+          in zap_drw)
+    check("y queda escrito por que no se le da a cada varilla su propio doblez",
+          "deja cada quiebre a una altura distinta" in zap_drw)
     check("la forma de la columna viaja desde su seccion, como la del dado",
           "public bool ColumnaCircular { get; init; }" in trazo_zap
           and "fila.ColumnaCircular = col.EsCircular;" in zap_cb

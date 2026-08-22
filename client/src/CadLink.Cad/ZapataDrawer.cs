@@ -452,17 +452,12 @@ public sealed partial class ZapataDrawer
 
         var intermediasIguales = z.NIntDado > 0 && z.NIntColumna > 0;
 
-        // Las varillas de cada elemento, redondo o cuadrado. En el redondo lo que se ve en el
-        // alzado es la PROYECCIÓN de las varillas de la circunferencia, no un reparto a lo ancho.
+        // Las varillas de cada elemento, en las MISMAS posiciones en las que el alzado las dibuja.
         var barrasDado = BarrasDelElemento(
-            a.XDadoDer, a.XDadoDer - a.XDadoIzq, recDadoM, dSupDado, dInfDado, z.NIntDado,
-            z.DadoCircular, dEstDado,
-            z.NVarDadoSup + z.NVarDadoInf + z.NVarIntDadoTotal);
+            a.XDadoDer, a.XDadoDer - a.XDadoIzq, recDadoM, dSupDado, dInfDado, z.NIntDado);
 
         var barrasCol = BarrasDelElemento(
-            a.XColDer, a.XColDer - a.XColIzq, recColM, dSupCol, dInfCol, z.NIntColumna,
-            z.ColumnaCircular, Diam(z.EstriboColumna),
-            z.NVarColSup + z.NVarColInf + z.NVarIntColumnaTotal);
+            a.XColDer, a.XColDer - a.XColIzq, recColM, dSupCol, dInfCol, z.NIntColumna);
 
         var union = PrepararUnion(
             barrasDado, barrasCol,
@@ -1638,41 +1633,62 @@ public sealed partial class ZapataDrawer
     }
 
     /// <summary>
-    /// Las varillas de un elemento vertical, redondo o cuadrado, como se ven en el alzado.
+    /// Las varillas de un elemento vertical, <b>donde el alzado las dibuja</b>.
     /// </summary>
     /// <remarks>
-    /// El único sitio donde se decide si un elemento se reparte a lo ancho de su cara o en su
-    /// circunferencia. La cuenta está en <see cref="TrazoZapata"/>, que se puede comprobar sin
-    /// AutoCAD.
+    /// <para>
+    /// Redondo o cuadrado, se usa el <b>mismo</b> reparto que <see cref="ElementoVertical"/>: las
+    /// dos de los paños y las intermedias repartidas entre ellas. Y tiene que ser el mismo, porque
+    /// si la unión partiera de otras posiciones —por ejemplo de la proyección real de las varillas
+    /// de un círculo— los dobleces <b>no arrancarían encima de las varillas</b> que ya están
+    /// dibujadas: se verían despegados.
+    /// </para>
+    /// <para>
+    /// Con esto el caso que se pidió sale solo: dado y columna circulares con las <b>mismas</b>
+    /// varillas dan el mismo número de posiciones en los dos, se emparejan una a una en orden, y
+    /// cada una se corre en proporción a su sitio. Todas cruzan la misma zona, así que el nudo se ve
+    /// <b>parejo</b>.
+    /// </para>
+    /// <para>
+    /// Cuando el alzado dibuje las varillas de un elemento redondo en su <b>proyección real</b> —hoy
+    /// las reparte a lo ancho, como en el cuadrado— hay que cambiar las dos cosas a la vez, aquí y
+    /// en <see cref="ElementoVertical"/>, o volverán a no coincidir.
+    /// </para>
     /// </remarks>
     private static TrazoZapata.BarrasElemento BarrasDelElemento(
-        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt,
-        bool circular, double dEstriboM, int nTotal) =>
-        circular
-            ? TrazoZapata.BarrasCirculares(xCaraDer, w, recM, dEstriboM, dSup, nTotal)
-            : TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);
+        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt) =>
+        TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);
 
     /// <summary>
     /// Port de <c>DibujarUnionDadoColumna</c>: cada varilla con <b>su</b> doblez a 1:6.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// CADA VARILLA SE CORRE LO SUYO, Y SOLO LO SUYO. El doblez de una varilla mide seis veces
-    /// <b>su</b> corrimiento, no seis veces el de la que más se corre: una que se mueve 2 cm lleva
-    /// 12 cm de doblez y el resto de su largo va recto.
+    /// EL TEOREMA: <b>hay UNA zona de doblez y la comparten todas las varillas</b>. Empieza en
+    /// <paramref name="yZonaBot"/> y acaba en la junta, y cada varilla la cruza entera, desde donde
+    /// está en el dado hasta donde le toca en la columna.
     /// </para>
     /// <para>
-    /// Antes todas arrancaban el doblez en el mismo punto, el de la que más se corría, así que las
-    /// siete varillas del dado salían inclinadas de arriba abajo y el dado parecía un abanico. En
-    /// el plano de la macro se ven <b>rectas</b>, con el corrimiento en un tramo corto.
+    /// El 1:6 no se aplica varilla por varilla: fija el <b>alto de la zona</b>, y lo fija la que más
+    /// se corre. Esa sale exactamente a 1:6 y todas las demás, que se corren menos en la misma
+    /// altura, salen <b>más tendidas</b> —1:8, 1:12— que es del lado seguro. Por eso el nudo se ve
+    /// <b>parejo</b>: las varillas quedan paralelas y sin quiebres.
     /// </para>
     /// <para>
-    /// Lo que sí comparten todas es <b>dónde acaba</b> el doblez: en la junta con la columna, como
-    /// se arma en obra. Los dobleces de un nudo van al mismo nivel.
+    /// Darle a cada varilla su propio doblez corto de 6·dx —que fue mi turno anterior— cumple el
+    /// 1:6 en cada una por separado, pero deja cada quiebre a una altura distinta y el arranque sale
+    /// desparejo, con unas varillas rectas y otras torcidas. No es lo que hace la macro ni lo que se
+    /// arma en obra: los dobleces de un nudo se hacen todos en la misma zona.
+    /// </para>
+    /// <para>
+    /// Se ve mejor con el caso que lo destapó: dado y columna <b>circulares con las mismas
+    /// varillas</b>. Cada una se corre lo que dice su posición en el círculo —la del paño casi nada,
+    /// la del otro extremo el doble— y con la zona compartida todas cruzan en paralelo, que es
+    /// exactamente el plano de la macro.
     /// </para>
     /// </remarks>
-    /// <param name="yZonaBot">Desde donde el dibujante de la unión se hace cargo de la varilla.</param>
-    /// <param name="yDiagTop">Donde acaban TODOS los dobleces.</param>
+    /// <param name="yZonaBot">Donde arranca la zona de doblez, la misma para todas.</param>
+    /// <param name="yDiagTop">Donde acaba, en la junta con la columna.</param>
     /// <param name="yZonaTop">Hasta donde sigue la varilla, ya dentro de la columna.</param>
     /// <param name="yTopRectas">Tope de las que no tienen pareja y siguen rectas.</param>
     private void DibujarUnion(
@@ -1680,11 +1696,9 @@ public sealed partial class ZapataDrawer
     {
         foreach (var (x1, x2, dia, capa) in u.Dobleces)
         {
-            // El doblez de ESTA varilla: seis veces su propio corrimiento, acabando en yDiagTop.
-            var alto = TrazoZapata.RelacionDesplazamiento * Math.Abs(x2 - x1);
-            var yDiagBot = Math.Max(yDiagTop - alto, yZonaBot);
-
-            DesplazamientoVarilla(x1, x2, yZonaBot, yDiagBot, yDiagTop, yZonaTop, dia, capa);
+            // La zona es la MISMA para todas: de yZonaBot a yDiagTop. La que más se corre va a 1:6
+            // y las otras, más tendidas.
+            DesplazamientoVarilla(x1, x2, yZonaBot, yZonaBot, yDiagTop, yZonaTop, dia, capa);
         }
 
         foreach (var (x, dia, capa) in u.Rectas)
@@ -1697,9 +1711,11 @@ public sealed partial class ZapataDrawer
     /// Port de <c>DibujarDesplazamientoVarilla</c>: recta, el doblez a 1:6, y recta otra vez.
     /// </summary>
     /// <remarks>
-    /// Tres tramos, que es como se dobla una varilla de verdad: sube derecha hasta
-    /// <paramref name="yDiagBot"/>, se corre de lado hasta <paramref name="yDiagTop"/> —ahí está el
-    /// 1:6— y sigue derecha hasta arriba. Con <c>yDiagBot == yBot</c> no hay primer tramo, y con
+    /// Hasta tres tramos: sube derecha hasta <paramref name="yDiagBot"/>, se corre de lado hasta
+    /// <paramref name="yDiagTop"/> y sigue derecha hasta arriba. La unión la llama con
+    /// <c>yDiagBot == yBot</c>, así que el primer tramo <b>no existe</b> y la varilla es diagonal
+    /// desde el arranque de la zona, como en la macro; el parámetro se conserva porque el tramo
+    /// recto de abajo sí hace falta si algún día se acota el doblez por otra regla. Con
     /// <c>x1 == x2</c> sale una varilla recta, que es lo correcto cuando no hay nada que correr.
     /// </remarks>
     private void DesplazamientoVarilla(
@@ -1738,15 +1754,26 @@ public sealed partial class ZapataDrawer
 
         foreach (var s in new[] { -1.0, 1.0 })
         {
-            Var(Polilinea(
-                new[]
-                {
-                    x1 + (s * r), yBot,
-                    x1 + (s * r), yd1,
-                    x2 + (s * r), yd2,
-                    x2 + (s * r), yTop
-                },
-                capa, cerrada: false));
+            var pts = new List<double> { x1 + (s * r), yBot };
+
+            // El vértice del arranque solo se pone si hay tramo recto abajo: repetir el punto
+            // dejaría un segmento de longitud cero en la polilínea.
+            if (yd1 > yBot + 1e-9)
+            {
+                pts.Add(x1 + (s * r));
+                pts.Add(yd1);
+            }
+
+            pts.Add(x2 + (s * r));
+            pts.Add(yd2);
+
+            if (yTop > yd2 + 1e-9)
+            {
+                pts.Add(x2 + (s * r));
+                pts.Add(yTop);
+            }
+
+            Var(Polilinea(pts.ToArray(), capa, cerrada: false));
         }
     }
 
