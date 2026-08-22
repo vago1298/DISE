@@ -566,6 +566,10 @@ public sealed partial class ZapataDrawer
             ? (lindero ? 2 : 1)
             : 1;
 
+        // Dónde empieza el acero del dado, para poder barrer después SOLO lo que se dibuje de aquí
+        // en adelante: la parrilla de la zapata también está en capas VAR_ y no se toca.
+        var idxAntesDado = CuentaDelContenedor();
+
         r.Estribos += ElementoVertical(
             x0: a.XDadoDer, y0: yZapBot, largo: alturaDadoRep,
             anchoCm: z.AnchoDadoCm, recCm: z.RecDadoCm,
@@ -605,6 +609,15 @@ public sealed partial class ZapataDrawer
 
             if (aplicarUnion)
             {
+                // PRIMERO SE BARRE LA ZONA y después se dibujan los dobleces, igual que el VBA: así
+                // no queda ni un tramo recto de las varillas del dado dentro del 1:6, venga de la
+                // holgura que venga.
+                if (idxAntesDado >= 0)
+                {
+                    RecortarVerticalesEnLaZona(
+                        idxAntesDado, yZonaBot, yZonaTop, a.XDadoIzq, a.XDadoDer);
+                }
+
                 // El doblez acaba en yDiagTop -el 1:6- y de ahí la varilla sigue vertical.
                 DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop);
 
@@ -1853,6 +1866,149 @@ public sealed partial class ZapataDrawer
             Var(Polilinea(pts.ToArray(), capa, cerrada: false));
         }
     }
+
+    /// <summary>
+    /// Port de <c>RecortarVerticalesZonaDobleces</c>: <b>limpia la zona de dobleces</b> antes de
+    /// dibujar la transición.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ESTA RUTINA FALTABA, y es la que cierra el problema de las varillas rectas dentro del
+    /// 1:6. El dado dibuja sus varillas y se les pide que acaben en el arranque de la zona, pero
+    /// ese recorte pasa por media docena de holguras y márgenes —el gancho, el remate, los 2 cm
+    /// mínimos— y cualquiera de ellos deja un pedazo asomando. La macro no confía en el recorte:
+    /// después de dibujar el dado <b>barre la zona</b> y quita lo que haya quedado dentro.
+    /// </para>
+    /// <para>
+    /// Se llama <b>antes</b> de dibujar los dobleces, igual que en el VBA, así que lo único que
+    /// puede encontrar son restos: las varillas de la transición todavía no existen.
+    /// </para>
+    /// <para>
+    /// Lo que barre son las capas <c>VAR_*</c> dentro de los paños del dado. Los estribos —capa
+    /// <c>ESTRIBOS</c>— no se tocan: esos SÍ van en la zona, son los que amarran el nudo. Y de cada
+    /// resto: si empieza dentro de la zona se borra entero, y si viene de más abajo se recorta al
+    /// arranque de la zona, que es donde tiene que acabar.
+    /// </para>
+    /// </remarks>
+    /// <param name="desde">Índice del contenedor antes de dibujar el dado.</param>
+    private void RecortarVerticalesEnLaZona(
+        int desde, double yZonaBot, double yZonaTop, double xIzq, double xDer)
+    {
+        if (yZonaTop <= yZonaBot + TrimTolVertical)
+        {
+            return;
+        }
+
+        var restos = new List<(object Ent, bool EsLinea, double[] Min, double[] Max, string Capa)>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                restos.Clear();
+
+                var total = (int)((dynamic)_cont).Count;
+
+                for (var i = Math.Max(desde, 0); i < total; i++)
+                {
+                    dynamic ent = ((dynamic)_cont).Item(i);
+
+                    string capa = ent.Layer;
+
+                    if (!capa.StartsWith("VAR_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string tipo = ent.ObjectName;
+
+                    var esLinea = tipo.Contains("Line", StringComparison.OrdinalIgnoreCase);
+                    var esRelleno = tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase);
+
+                    if (!esLinea && !esRelleno)
+                    {
+                        continue;
+                    }
+
+                    var caja = CajaEnvolvente((object)ent);
+
+                    if (caja is null)
+                    {
+                        continue;
+                    }
+
+                    restos.Add(((object)ent, esLinea, caja.Value.Min, caja.Value.Max, capa));
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Barrer la zona de dobleces", ex);
+            return;
+        }
+
+        var borradas = 0;
+
+        foreach (var (ent, esLinea, mn, mx, capa) in restos)
+        {
+            var xm = (mn[0] + mx[0]) / 2;
+
+            // Solo lo que está dentro de los paños del dado.
+            if (xm < xIzq - 0.02 || xm > xDer + 0.02)
+            {
+                continue;
+            }
+
+            // Y solo lo que se mete en la zona.
+            if (mx[1] <= yZonaBot + TrimTolVertical || mn[1] >= yZonaTop - TrimTolVertical)
+            {
+                continue;
+            }
+
+            var desdeAbajo = mn[1] < yZonaBot - TrimTolVertical;
+
+            Borrar(ent);
+            borradas++;
+
+            if (!desdeAbajo)
+            {
+                continue;
+            }
+
+            // Venía de más abajo: se rehace solo el tramo que queda por debajo de la zona.
+            if (esLinea)
+            {
+                Var(Linea(xm, mn[1], xm, yZonaBot, capa));
+            }
+            else if (_relleno)
+            {
+                RellenarQuad(mn[0], mn[1], mx[0], mn[1], mx[0], yZonaBot, mn[0], yZonaBot, capa, 0);
+            }
+        }
+
+        if (borradas > 0)
+        {
+            Nota($"Zona de dobleces: se quitaron {borradas} resto(s) de varilla que quedaban "
+                 + "dentro del 1:6.");
+        }
+    }
+
+    /// <summary>Cuántas entidades tiene el contenedor en curso.</summary>
+    private int CuentaDelContenedor()
+    {
+        try
+        {
+            return AcadConnection.Retry(() => (int)((dynamic)_cont).Count);
+        }
+        catch (Exception ex)
+        {
+            Nota("No se pudo contar el contenido del bloque de la zapata: " + ex.Message);
+            return -1;
+        }
+    }
+
+    /// <summary>Tolerancia para decidir si una varilla se mete en la zona: <c>TRIM_TOL_VERTICAL</c>.</summary>
+    private const double TrimTolVertical = 0.0006;
 
     /// <summary>Apunta una entidad para reordenarla después, si se creó.</summary>
     private static void Apuntar(List<object> lista, object? ent)

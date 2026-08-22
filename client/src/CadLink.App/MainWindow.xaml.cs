@@ -259,6 +259,18 @@ public partial class MainWindow : Window
 
         ActualizarTotales();
 
+        // LAS LISTAS DE LA HOJA DE ZAPATAS SE REFRESCAN TAMBIÉN AL EDITAR UNA FILA, no solo al
+        // agregarla o borrarla. Aquí estaba el defecto de «no me aparece el dado que tengo»: al
+        // agregar la fila su ID está vacío, y el ID y el elemento se escriben DESPUÉS —editando—,
+        // así que la lista se armaba con la fila en blanco y no volvía a mirarla. El dado existía
+        // en su hoja y el desplegable de la zapata no lo ofrecía.
+        //
+        // Va sin filtrar por propiedad a propósito: el ID y el elemento deciden si entra en la
+        // lista, y la base, el recubrimiento y el armado deciden las medidas que la zapata trae
+        // por referencia. Filtrar por nombre de propiedad es la clase de lista que se queda corta
+        // en cuanto se agrega una columna.
+        ActualizarListasDeZapatas();
+
         if (ReferenceEquals(sender, Seleccionada))
         {
             DibujarVistaPrevia();

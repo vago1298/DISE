@@ -112,6 +112,11 @@ public partial class MainWindow
 
         ActualizarTotalesAcero();
 
+        // Lo mismo que en la hoja de concreto: las columnas de ACERO también entran en la lista de
+        // la zapata, y el ID se escribe editando la fila, no al crearla. Sin esto, un perfil recién
+        // capturado no aparecía en el desplegable de «ID col.».
+        ActualizarListasDeZapatas();
+
         // Y la vista previa, EN CADA CELDA QUE SE EDITA.
         //
         // Va aquí y no en el SelectionChanged de la cuadrícula porque lo que hace útil una

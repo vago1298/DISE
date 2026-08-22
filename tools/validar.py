@@ -3867,6 +3867,18 @@ def v19_circular_y_ui() -> None:
           and ".Where(s => EsDado(s.Elemento))" in zap_cb)
     check("y se actualiza en cada cambio de esa hoja",
           "ActualizarListasDeZapatas();" in codigo)
+    # LO QUE SE REPORTO: "en la seccion de dado no me aparece el que tengo". La lista se refrescaba
+    # al AGREGAR o BORRAR una fila, pero no al EDITARLA, y el ID y el elemento se escriben editando:
+    # la lista se armaba con la fila en blanco y no volvia a mirarla.
+    check("la lista se refresca tambien al EDITAR una fila, no solo al agregarla",
+          "ActualizarListasDeZapatas();" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+          .split("private void OnFilaEditada")[1].split("private void DatosCambiaron")[0])
+    check("y lo mismo en la hoja de acero, que tambien aporta columnas",
+          "ActualizarListasDeZapatas();" in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs"))
+          .split("private void OnFilaAceroEditada")[1].split("private void")[0])
+    check("queda escrito el defecto que arregla",
+          "no me aparece el dado que tengo" in leer(
+              ruta("client/src/CadLink.App/MainWindow.xaml.cs")))
     check("se actualiza EN SITIO, no se sustituye la coleccion",
           "sin sustituir la colección" in zap_cb
           and "lista.Clear();" in zap_cb)
@@ -4464,6 +4476,28 @@ def v19_circular_y_ui() -> None:
           "var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;" in zap_drw)
     # LOS ESTRIBOS, AL FRENTE: se dibujan antes que las varillas y en la zona de dobleces quedaban
     # tapados. Es el draw order > bring to front de AutoCAD.
+    # LA ZONA SE BARRE ANTES DE DIBUJAR LOS DOBLECES: es el port de RecortarVerticalesZonaDobleces,
+    # que FALTABA. El recorte de las varillas del dado pasa por media docena de holguras y cualquiera
+    # deja un pedazo asomando dentro del 1:6; la macro no confia en el recorte, barre la zona.
+    check("la zona de dobleces se barre antes de dibujar la transicion",
+          "private void RecortarVerticalesEnLaZona(" in zap_drw
+          and "RecortarVerticalesEnLaZona(\n                        idxAntesDado" in zap_drw
+          and "ESTA RUTINA FALTABA" in zap_drw)
+    check("solo barre las capas VAR_ dentro de los panos del dado",
+          'capa.StartsWith("VAR_", StringComparison.OrdinalIgnoreCase)' in zap_drw
+          and "xm < xIzq - 0.02 || xm > xDer + 0.02" in zap_drw)
+    check("los estribos NO se barren: esos si van en la zona",
+          "Los estribos —capa" in zap_drw
+          and "no se tocan" in zap_drw)
+    check("lo que venia de mas abajo se recorta, no se pierde",
+          "var desdeAbajo = mn[1] < yZonaBot - TrimTolVertical;" in zap_drw
+          and "Var(Linea(xm, mn[1], xm, yZonaBot, capa));" in zap_drw)
+    check("y se cuenta lo que se quito, para que se sepa",
+          "se quitaron {borradas} resto(s) de varilla" in zap_drw)
+    check("se barre solo desde donde empieza el acero del dado",
+          "var idxAntesDado = CuentaDelContenedor();" in zap_drw
+          and "private int CuentaDelContenedor()" in zap_drw)
+
     check("los estribos se suben al frente al final",
           "private void AlFrente(object cont, List<object> objetos)" in zap_drw
           and "tabla.MoveToTop(arr)" in zap_drw
