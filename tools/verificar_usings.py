@@ -406,6 +406,17 @@ def revisar_miembros_que_no_existen(rutas):
             for id_ in re.findall(r"[A-Za-z_]\w*", m.group(1)):
                 declarados.add(id_)
 
+        # Los parametros POSICIONALES de un record tampoco llevan modificador, y sin
+        # embargo son propiedades publicas: 'Parrilla(double[] Circulos)' declara
+        # .Circulos. Sin esto, el dia que aparecio 'CirculosDelMuro' el verificador
+        # senalo el .Circulos de la parrilla como si no existiera, que es justo el
+        # aviso falso que hace que un verificador se deje de leer.
+        for m in re.finditer(r"\brecord\s+(?:struct\s+|class\s+)?\w+\s*\(([^)]*)\)", t):
+            for parte in m.group(1).split(","):
+                ids = re.findall(r"[A-Za-z_]\w*", parte)
+                if ids:
+                    declarados.add(ids[-1])
+
     largos = [d for d in declarados if len(d) >= 8]
 
     for ruta, t in textos.items():

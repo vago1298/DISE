@@ -321,26 +321,36 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 // tools/verificar_zapatas_corridas.py
 // ======================================================================
 //
-// El verificar_*.py rehace las cuentas de las macros EN PYTHON, y un port de Python
-// correcto conviviendo con un C# equivocado da todo en verde. Los numeros que se
-// esperan aqui son los que salen de ese port, calculados a mano, y lo que se ejecuta
-// es el CadLink.Cad de verdad: si los dos coinciden, coinciden con la macro.
+// El verificar_*.py rehace las cuentas de las macros EN PYTHON, y un port de
+// Python correcto conviviendo con un C# equivocado da todo en verde. Aqui se
+// ejecuta el CadLink.Cad de verdad, con los numeros sacados a mano del VBA.
 {
     Console.WriteLine("\n---------- Zapatas corridas ----------");
 
-    // ---------- El acomodo de las dos filas ----------
-    Vale("la central arranca en 0 y crece a la derecha",
-        TrazoZapataCorrida.XBase("CENTRAL", 0) == 0
-        && TrazoZapataCorrida.XBase("CENTRAL", 1) == 2
-        && TrazoZapataCorrida.XBase("CENTRAL", 3) == 6);
+    var d4 = 0.0127;    // #4
+    var d3 = 0.009525;  // #3, que es el desplazamiento que sale de la celda de sep. horizontal
 
-    Vale("el lindero arranca en -2 y crece a la izquierda",
-        TrazoZapataCorrida.XBase("LINDERO", 0) == -2
-        && TrazoZapataCorrida.XBase("LINDERO", 1) == -4
-        && TrazoZapataCorrida.XBase("LINDERO", 3) == -8);
+    // ---------- El acomodo: la seccion va CENTRADA en su offset ----------
+    Vale("los offsets de la central son 0, 2, 4",
+        TrazoZapataCorrida.OffsetX("CENTRAL", 0) == 0
+        && TrazoZapataCorrida.OffsetX("CENTRAL", 1) == 2
+        && TrazoZapataCorrida.OffsetX("CENTRAL", 2) == 4);
+
+    Vale("y los del lindero -2, -4, -6",
+        TrazoZapataCorrida.OffsetX("LINDERO", 0) == -2
+        && TrazoZapataCorrida.OffsetX("LINDERO", 1) == -4
+        && TrazoZapataCorrida.OffsetX("LINDERO", 2) == -6);
+
+    // EL ERROR QUE SE CORRIGIO: xBase = offsetX - ancho/2, no offsetX
+    Vale("la primera central de 1 m arranca en -0.5, no en 0",
+        Math.Abs(TrazoZapataCorrida.XBase("CENTRAL", 0, 1.00) - (-0.5)) < 1e-12);
+
+    Vale("el primer lindero de 1.2 m arranca en -2.6",
+        Math.Abs(TrazoZapataCorrida.XBase("LINDERO", 0, 1.20) - (-2.6)) < 1e-12);
 
     Vale("un indice negativo no manda la seccion a otro lado",
-        TrazoZapataCorrida.XBase("CENTRAL", -5) == 0);
+        TrazoZapataCorrida.XBase("CENTRAL", -5, 1.00)
+        == TrazoZapataCorrida.XBase("CENTRAL", 0, 1.00));
 
     // ---------- Las alturas: el terreno manda ----------
     var zc = new ZapataCorridaCad
@@ -352,28 +362,25 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         EspesorMuroCm = 20,
     };
 
-    var ac = TrazoZapataCorrida.Colocar(zc, 0);
+    var ac = TrazoZapataCorrida.Colocar(zc, TrazoZapataCorrida.XBase(zc.Tipo, 0, zc.AnchoM));
 
     Vale("el desplante cuelga del terreno: -3.5 - 1.5 = -5",
         Math.Abs(ac.YZapBot - (-5.0)) < 1e-12);
     Vale("el lomo queda en -4.75", Math.Abs(ac.YZapTop - (-4.75)) < 1e-12);
-    Vale("la plantilla acaba en -5.05", Math.Abs(ac.YPlantillaBot - (-5.05)) < 1e-12);
+    Vale("el yBase de la macro -fondo de la plantilla- queda en -5.05",
+        Math.Abs(ac.YPlantillaBot - (-5.05)) < 1e-12);
     Vale("el terreno se queda en -3.5", Math.Abs(ac.YTerreno - (-3.5)) < 1e-12);
+    Vale("y el eje de la seccion ES su offset", Math.Abs(ac.XCentro) < 1e-12);
 
-    var zHonda = new ZapataCorridaCad
-    {
-        Tipo = ZapataCorridaCad.Central,
-        AnchoM = 1.00,
-        ProfundidadM = 2.50,
-        EspesorM = 0.25,
-    };
+    var zHonda = new ZapataCorridaCad { AnchoM = 1.00, ProfundidadM = 2.50, EspesorM = 0.25 };
 
     Vale("dos zapatas con desplantes distintos comparten el nivel de terreno",
         Math.Abs(TrazoZapataCorrida.Colocar(zHonda, 0).YTerreno - ac.YTerreno) < 1e-12);
 
     // ---------- Donde va el muro ----------
-    Vale("en la central el muro va centrado: 0.40 a 0.60",
-        Math.Abs(ac.XMuroIzq - 0.40) < 1e-12 && Math.Abs(ac.XMuroDer - 0.60) < 1e-12);
+    Vale("en la central el muro va centrado en el eje",
+        Math.Abs(ac.XMuroIzq - (ac.XCentro - 0.10)) < 1e-12
+        && Math.Abs(ac.XMuroDer - (ac.XCentro + 0.10)) < 1e-12);
 
     var zl = new ZapataCorridaCad
     {
@@ -384,119 +391,243 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         EspesorMuroCm = 20,
     };
 
-    var al = TrazoZapataCorrida.Colocar(zl, 0);
+    var al = TrazoZapataCorrida.Colocar(zl, TrazoZapataCorrida.XBase(zl.Tipo, 0, zl.AnchoM));
 
     Vale("en el lindero el pano derecho del muro ES el de la zapata",
         Math.Abs(al.XMuroDer - al.XDer) < 1e-12
-        && Math.Abs(al.XMuroIzq - 0.80) < 1e-12);
+        && Math.Abs(al.XMuroIzq - (al.XDer - 0.20)) < 1e-12);
+
+    Vale("y su eje NO es el de la zapata",
+        Math.Abs(al.XCentroMuro - al.XCentro) > 0.3);
 
     var zSinMuro = new ZapataCorridaCad { AnchoM = 1.00, EspesorMuroCm = 0 };
+    var aSin = TrazoZapataCorrida.Colocar(zSinMuro, 0);
 
     Vale("sin espesor capturado el muro sale de 15 cm",
-        Math.Abs(TrazoZapataCorrida.Colocar(zSinMuro, 0).XMuroDer
-                 - TrazoZapataCorrida.Colocar(zSinMuro, 0).XMuroIzq - 0.15) < 1e-12);
+        Math.Abs(aSin.XMuroDer - aSin.XMuroIzq - 0.15) < 1e-12);
 
+    // Las macros NO recortan un muro mas ancho que la zapata
     var zGordo = new ZapataCorridaCad { AnchoM = 0.40, EspesorMuroCm = 60 };
     var ag = TrazoZapataCorrida.Colocar(zGordo, 0);
 
-    Vale("un muro mas ancho que la zapata se recorta a sus panos",
-        Math.Abs(ag.XMuroIzq) < 1e-12 && Math.Abs(ag.XMuroDer - 0.40) < 1e-12);
+    Vale("un muro mas ancho que la zapata NO se recorta, como en la macro",
+        ag.XMuroIzq < ag.XBase && ag.XMuroDer > ag.XDer);
+
+    // ---------- El muro se apoya en la contratrabe ----------
+    var muroSinCT = TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop - 0.5, ac.YTerreno);
+
+    Vale("una contratrabe por debajo del lomo no baja el arranque del muro",
+        Math.Abs(muroSinCT.YBase - ac.YZapTop) < 1e-12);
+
+    var muroCT = TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop + 0.3, ac.YTerreno);
+
+    Vale("y con contratrabe el muro arranca de su lomo",
+        Math.Abs(muroCT.YBase - (ac.YZapTop + 0.3)) < 1e-12);
+
+    Vale("un tope por debajo del arranque no dibuja el muro al reves",
+        TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, -9.0).YTope >= ac.YZapTop);
 
     // ---------- El muro de enrase ----------
-    foreach (var hueco in new[] { 0.18, 0.27, 0.40, 0.55, 0.73, 1.00, 1.37 })
+    foreach (var hueco in new[] { 0.03, 0.18, 0.27, 0.40, 0.55, 0.73, 1.00, 1.37 })
     {
-        var e = TrazoZapataCorrida.MuroDeEnrase(0, hueco);
+        var e = TrazoZapataCorrida.MuroDeEnrase(0, 0.15, 0, hueco);
         var tope = e.YBases[^1] + e.AltoPieza;
 
         Vale($"el enrase de {hueco:0.00} m cierra exacto contra la cadena",
             e.Piezas > 0 && Math.Abs(tope - hueco) < 1e-9);
 
         Vale($"y su pieza sale cerca de los 8 cm ({hueco:0.00} m)",
-            e.AltoPieza > 0.04 && e.AltoPieza < 0.135);
+            e.AltoPieza > 0.02 && e.AltoPieza < 0.135);
     }
 
-    var eMejor = TrazoZapataCorrida.MuroDeEnrase(0, 0.55);
+    var eMejor = TrazoZapataCorrida.MuroDeEnrase(0, 0.15, 0, 0.55);
 
-    // 6 piezas de 8.33 cm y 5 juntas: 6 x 0.083333 + 5 x 0.01 = 0.55 exactos. Con 7 la
-    // pieza baja a 7 cm y con 5 sube a 10.2, asi que las dos se alejan mas de los 8.
+    // 6 piezas de 8.33 cm y 5 juntas: 6 x 0.083333 + 5 x 0.01 = 0.55 exactos
     Vale("con 55 cm de hueco salen 6 piezas de 8.33 cm",
         eMejor.Piezas == 6 && Math.Abs(eMejor.AltoPieza - (0.5 / 6)) < 1e-9
         && Math.Abs((6 * eMejor.AltoPieza) + (5 * 0.01) - 0.55) < 1e-9);
 
-    foreach (var hueco in new[] { 0.0, -0.30, 0.005, 0.01 })
+    // El minimo de las macros: If altEnrase > 0.02
+    foreach (var hueco in new[] { 0.0, -0.30, 0.005, 0.01, 0.02 })
     {
-        Vale($"con hueco {hueco:0.000} no se dibuja enrase",
-            TrazoZapataCorrida.MuroDeEnrase(0, hueco).Piezas == 0);
+        Vale($"con hueco {hueco:0.000} no hay enrase (minimo 2 cm)",
+            TrazoZapataCorrida.MuroDeEnrase(0, 0.15, 0, hueco).Piezas == 0);
     }
 
-    var eBajo = TrazoZapataCorrida.MuroDeEnrase(-5.0, -4.5);
+    Vale("y con 2.1 cm si lo hay",
+        TrazoZapataCorrida.MuroDeEnrase(0, 0.15, 0, 0.021).Piezas > 0);
 
-    Vale("el enrase arranca de donde se le diga, no de cero",
-        eBajo.Piezas > 0 && Math.Abs(eBajo.YBases[0] - (-5.0)) < 1e-12);
+    Vale("sin ancho no hay enrase",
+        TrazoZapataCorrida.MuroDeEnrase(0, 0, 0, 0.50).Piezas == 0);
 
-    // ---------- El acero vertical del muro ----------
-    var diam = 0.0127;  // #4
-    var muroC = TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, -3.6);
-    var vc = TrazoZapataCorrida.VerticalesDelMuro(ac, muroC, true, diam, 0.05, 0);
+    var eBajo = TrazoZapataCorrida.MuroDeEnrase(-0.2, 0.15, -5.0, -4.5);
 
-    Vale("con doble parrilla salen dos barras, una por pano",
-        vc.X.Length == 2
-        && Math.Abs(vc.X[0] - (ac.XMuroIzq + 0.05 + (diam / 2))) < 1e-12
-        && Math.Abs(vc.X[1] - (ac.XMuroDer - 0.05 - (diam / 2))) < 1e-12);
+    Vale("el enrase arranca y se enrasa donde se le diga -la caja de la cadena-",
+        eBajo.Piezas > 0 && Math.Abs(eBajo.YBases[0] - (-5.0)) < 1e-12
+        && Math.Abs(eBajo.XIzq - (-0.2)) < 1e-12 && Math.Abs(eBajo.Ancho - 0.15) < 1e-12);
 
-    Vale("en la central las dos patas se miran",
-        vc.Sentido[0] == 1 && vc.Sentido[1] == -1);
+    // ---------- Los ejes del acero del muro ----------
+    var ejes = TrazoZapataCorrida.EjesDelAcero(muroCT, true);
 
-    Vale("la pata son 15 diametros por omision",
-        Math.Abs(vc.Doblez - (15 * diam)) < 1e-12);
-
-    Vale("con 40 en la casilla la pata es de 40 diametros",
-        Math.Abs(TrazoZapataCorrida.VerticalesDelMuro(
-            ac, muroC, true, diam, 0.05, 40).Doblez - (40 * diam)) < 1e-12);
-
-    Vale("un 2 se sube al minimo de 6 y un 500 se baja al maximo de 80",
-        Math.Abs(TrazoZapataCorrida.VerticalesDelMuro(
-            ac, muroC, true, diam, 0.05, 2).Doblez - (6 * diam)) < 1e-12
-        && Math.Abs(TrazoZapataCorrida.VerticalesDelMuro(
-            ac, muroC, true, diam, 0.05, 500).Doblez - (80 * diam)) < 1e-12);
-
-    var muroL = TrazoZapataCorrida.ColocarMuro(al, al.YZapTop, -3.6);
-    var vl = TrazoZapataCorrida.VerticalesDelMuro(al, muroL, true, diam, 0.05, 0);
-
-    Vale("en el lindero las dos patas doblan hacia el eje, lejos del lindero",
-        vl.Sentido[0] == -1 && vl.Sentido[1] == -1);
-
-    Vale("la barra arranca dentro de la zapata, sobre su recubrimiento",
-        Math.Abs(vc.YBase - (ac.YZapBot + 0.05 + (diam / 2))) < 1e-12);
+    Vale("los ejes del acero van a 5 cm CLAVADOS del pano",
+        ejes.Doble
+        && Math.Abs(ejes.X1 - (muroCT.XIzq + 0.05)) < 1e-12
+        && Math.Abs(ejes.X2 - (muroCT.XDer - 0.05)) < 1e-12);
 
     var zFino = new ZapataCorridaCad { AnchoM = 1.00, EspesorMuroCm = 8 };
     var aFino = TrazoZapataCorrida.Colocar(zFino, 0);
-    var mFino = TrazoZapataCorrida.ColocarMuro(aFino, aFino.YZapTop, -3.6);
+    var mFino = TrazoZapataCorrida.ColocarMuro(aFino, aFino.YZapTop, aFino.YTerreno);
+    var ejesFino = TrazoZapataCorrida.EjesDelAcero(mFino, true);
 
-    Vale("un muro de 8 cm lleva una sola barra, al eje",
-        TrazoZapataCorrida.VerticalesDelMuro(aFino, mFino, true, diam, 0.05, 0).X.Length == 1);
+    Vale("un muro de 8 cm no admite doble parrilla y el acero va al eje",
+        !ejesFino.Doble && Math.Abs(ejesFino.X1 - mFino.XCentro) < 1e-12);
 
-    // ---------- Las horizontales del muro ----------
-    var hs = TrazoZapataCorrida.HorizontalesDelMuro(muroC, 0.20);
+    Vale("con una sola parrilla el acero va al eje DEL MURO",
+        Math.Abs(TrazoZapataCorrida.EjesDelAcero(muroCT, false).X1 - muroCT.XCentro) < 1e-12);
 
-    Vale("las horizontales se reparten dentro del muro",
-        hs.Length > 0 && hs[0] > muroC.YBase && hs[^1] < muroC.YTope);
+    // ---------- Los circulos del muro ----------
+    var ys = TrazoZapataCorrida.CirculosDelMuro(muroCT, ac.YTerreno, d4, 0.20);
 
-    Vale("la primera no cae encima del doblez del arranque",
-        hs.Length > 0 && Math.Abs(hs[0] - (muroC.YBase + 0.10)) < 1e-12);
+    Vale("los circulos arrancan a medio diametro del arranque del muro",
+        ys.Length > 0 && Math.Abs(ys[0] - (muroCT.YBase + (d4 / 2))) < 1e-12);
 
-    Vale("un muro de alto cero no lleva horizontales",
-        TrazoZapataCorrida.HorizontalesDelMuro(
-            TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, ac.YZapTop), 0.20).Length == 0);
+    Vale("se reparten con la separacion VERTICAL",
+        ys.Length < 2 || Math.Abs(ys[1] - ys[0] - 0.20) < 1e-12);
 
-    Vale("y un tope por debajo del arranque no dibuja el muro al reves",
-        TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, -9.0).YTope >= ac.YZapTop);
+    Vale("y ninguno llega a la linea del terreno",
+        ys.All(y => y < ac.YTerreno - (d4 / 2) + 1e-9));
+
+    Vale("un muro de alto cero no lleva circulos",
+        TrazoZapataCorrida.CirculosDelMuro(
+            TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, ac.YZapTop),
+            ac.YZapTop, d4, 0.20).Length == 0);
+
+    // ---------- La Y de la pata: por encima de la parrilla inferior ----------
+    var pInf = TrazoZapataCorrida.ParrillaEnAlzado(ac, zc.EspesorM, 0.05, d4, d4, 0.20, false);
+
+    var yPataCentral = TrazoZapataCorrida.YDeLaPata(
+        pInf.YBarra, d4, pInf.YCirculos, d4, d4, false);
+    var yPataLindero = TrazoZapataCorrida.YDeLaPata(
+        pInf.YBarra, d4, pInf.YCirculos, d4, d4, true);
+
+    Vale("la pata cae por encima de la transversal de la parrilla",
+        yPataCentral > pInf.YCirculos + (d4 / 2) - 1e-9);
+
+    Vale("y el lindero le suma 3 mm de holgura",
+        Math.Abs(yPataLindero - yPataCentral - 0.003) < 1e-12);
+
+    // ---------- Las patas de la CENTRAL: cada una hacia SU lado ----------
+    var vc = TrazoZapataCorrida.VerticalesCentral(
+        ejes, ac.YTerreno, yPataCentral, d4, d3, 0);
+
+    Vale("en la central salen dos varillas", vc.Length == 2);
+
+    Vale("la izquierda dobla a la IZQUIERDA y la derecha a la DERECHA",
+        vc[0].Sentido == -1 && vc[1].Sentido == 1);
+
+    Vale("las dos a la MISMA altura",
+        Math.Abs(vc[0].YEsquina - vc[1].YEsquina) < 1e-12);
+
+    Vale("la pata son 15 diametros por omision",
+        Math.Abs(Math.Abs(vc[0].XFinDoblez - vc[0].X) - (15 * d4)) < 1e-12
+        && Math.Abs(Math.Abs(vc[1].XFinDoblez - vc[1].X) - (15 * d4)) < 1e-12);
+
+    Vale("la varilla se corre el desplazamiento respecto del eje del acero",
+        Math.Abs(vc[0].X - (ejes.X1 + d3)) < 1e-12
+        && Math.Abs(vc[1].X - (ejes.X2 - d3)) < 1e-12);
+
+    Vale("y llega hasta la linea del terreno",
+        Math.Abs(vc[0].YTop - ac.YTerreno) < 1e-12);
+
+    var vc1 = TrazoZapataCorrida.VerticalesCentral(
+        TrazoZapataCorrida.EjesDelAcero(muroCT, false), ac.YTerreno, yPataCentral, d4, d3, 0);
+
+    Vale("con una sola parrilla dobla a la izquierda",
+        vc1.Length == 1 && vc1[0].Sentido == -1);
+
+    foreach (var (cap, diametros) in new[] { (0.0, 15.0), (40.0, 40.0), (2.0, 6.0), (500.0, 80.0) })
+    {
+        var v = TrazoZapataCorrida.VerticalesCentral(
+            ejes, ac.YTerreno, yPataCentral, d4, d3, cap);
+
+        Vale($"con {cap:0} en la casilla la pata es de {diametros:0} diametros",
+            Math.Abs(Math.Abs(v[0].XFinDoblez - v[0].X) - (diametros * d4)) < 1e-12);
+    }
+
+    // ---------- Las patas del LINDERO: las dos a la izquierda, a dos alturas ----------
+    var muroL = TrazoZapataCorrida.ColocarMuro(al, al.YZapTop, al.YTerreno);
+    var ejesL = TrazoZapataCorrida.EjesDelAcero(muroL, true);
+    var pInfL = TrazoZapataCorrida.ParrillaEnAlzado(al, zl.EspesorM, 0.05, d4, d4, 0.20, false);
+    var yPataL = TrazoZapataCorrida.YDeLaPata(pInfL.YBarra, d4, pInfL.YCirculos, d4, d4, true);
+
+    var vl = TrazoZapataCorrida.VerticalesLindero(al, ejesL, yPataL, d4, d3, 0.05, 0);
+
+    Vale("en el lindero las dos patas doblan a la IZQUIERDA",
+        vl.Length == 2 && vl[0].Sentido == -1 && vl[1].Sentido == -1);
+
+    Vale("la del pano DERECHO lleva el doblez bajo",
+        vl[0].X > vl[1].X && vl[0].YEsquina < vl[1].YEsquina);
+
+    Vale("las dos alturas se separan lo que manda la macro",
+        Math.Abs(vl[1].YEsquina - vl[0].YEsquina
+                 - TrazoZapataCorrida.SepDeLosDobleces(al, yPataL, d4, 0.05)) < 1e-12);
+
+    Vale("el doblez de arriba no pasa el recubrimiento del lomo",
+        vl[1].YEsquina <= al.YZapTop - 0.05 - (d4 / 2) + 1e-9);
+
+    Vale("ninguna pata se sale del concreto de la zapata",
+        vl.All(v => v.XFinDoblez >= al.XBase + 0.05 + (d4 / 2) - 1e-9));
+
+    // Zapata angosta y 60 diametros: la pata se recorta al recubrimiento
+    var zAng = new ZapataCorridaCad
+    {
+        Tipo = ZapataCorridaCad.Lindero,
+        AnchoM = 0.35,
+        ProfundidadM = 1.50,
+        EspesorM = 0.25,
+        EspesorMuroCm = 15,
+    };
+
+    var aAng = TrazoZapataCorrida.Colocar(zAng, TrazoZapataCorrida.XBase(zAng.Tipo, 0, zAng.AnchoM));
+    var mAng = TrazoZapataCorrida.ColocarMuro(aAng, aAng.YZapTop, aAng.YTerreno);
+    var d6 = 0.01905;
+    var pAng = TrazoZapataCorrida.ParrillaEnAlzado(aAng, zAng.EspesorM, 0.05, d6, d6, 0.20, false);
+    var yPataAng = TrazoZapataCorrida.YDeLaPata(pAng.YBarra, d6, pAng.YCirculos, d6, d6, true);
+
+    var vAng = TrazoZapataCorrida.VerticalesLindero(
+        aAng, TrazoZapataCorrida.EjesDelAcero(mAng, true), yPataAng, d6, d3, 0.05, 60);
+
+    Vale("con una zapata angosta y 60 diametros la pata se recorta al recubrimiento",
+        vAng.All(v => v.XFinDoblez >= aAng.XBase + 0.05 + (d6 / 2) - 1e-9));
+
+    // Zapata delgada: la separacion se aprieta, con minimo 2.5 diametros
+    var zDelg = new ZapataCorridaCad
+    {
+        Tipo = ZapataCorridaCad.Lindero,
+        AnchoM = 1.00,
+        ProfundidadM = 1.50,
+        EspesorM = 0.12,
+        EspesorMuroCm = 20,
+    };
+
+    var aDelg = TrazoZapataCorrida.Colocar(zDelg, 0);
+    var pDelg = TrazoZapataCorrida.ParrillaEnAlzado(aDelg, zDelg.EspesorM, 0.05, d4, d4, 0.20, false);
+    var yPataDelg = TrazoZapataCorrida.YDeLaPata(pDelg.YBarra, d4, pDelg.YCirculos, d4, d4, true);
+
+    Vale("en una zapata delgada la separacion se aprieta, con minimo 2.5 diametros",
+        TrazoZapataCorrida.SepDeLosDobleces(aDelg, yPataDelg, d4, 0.05) >= 2.5 * d4 - 1e-9);
 
     // ---------- El rotulo ----------
     Vale("los tres renglones del rotulo se miden desde el fondo de la plantilla",
         Math.Abs(TrazoZapataCorrida.YRotulo(-5.0, 0) - (-5.30)) < 1e-12
         && Math.Abs(TrazoZapataCorrida.YRotulo(-5.0, 1) - (-5.39)) < 1e-12
         && Math.Abs(TrazoZapataCorrida.YRotulo(-5.0, 2) - (-5.47)) < 1e-12);
+
+    var (xNivel, yNivel) = TrazoZapataCorrida.PosicionTextoNivel(ac);
+
+    Vale("el texto del nivel conserva la resta de la macro",
+        Math.Abs(xNivel - (ac.XCentro + 0.35 - 0.313)) < 1e-12
+        && Math.Abs(yNivel - (ac.YTerreno + (0.025 / 2) + 0.035)) < 1e-12);
 
     // ---------- Los titulos, que NO son iguales en las dos macros ----------
     Vale("el titulo del lindero no dice «corrida», como en su macro",
@@ -507,16 +638,16 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         && !ZapataCorridaCad.HayBloque(null) && ZapataCorridaCad.HayBloque("CT-1"));
 
     // ---------- La parrilla es la MISMA rutina que la de las aisladas ----------
-    var pc = TrazoZapataCorrida.ParrillaEnAlzado(ac, zc.EspesorM, 0.05, diam, diam, 0.20, false);
     var pa = TrazoZapata.ParrillaEnAlzado(
-        ac.XBase, ac.YZapBot, zc.AnchoM, zc.EspesorM, 0.05, diam, diam, 0.20, false);
+        ac.XBase, ac.YZapBot, zc.AnchoM, zc.EspesorM, 0.05, d4, d4, 0.20, false);
 
     Vale("la parrilla de la corrida sale identica a la de la aislada",
-        Math.Abs(pc.YBarra - pa.YBarra) < 1e-12
-        && Math.Abs(pc.XCaraIzq - pa.XCaraIzq) < 1e-12
-        && Math.Abs(pc.XCaraDer - pa.XCaraDer) < 1e-12
-        && pc.Circulos.Length == pa.Circulos.Length);
+        Math.Abs(pInf.YBarra - pa.YBarra) < 1e-12
+        && Math.Abs(pInf.XCaraIzq - pa.XCaraIzq) < 1e-12
+        && Math.Abs(pInf.XCaraDer - pa.XCaraDer) < 1e-12
+        && pInf.Circulos.Length == pa.Circulos.Length);
 }
+
 
 Console.WriteLine(fallos == 0
     ? "\nRESULTADO: todo bien"

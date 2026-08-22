@@ -4,108 +4,151 @@ Las dos macros, lado a lado, con su estado en el port. Se escribe **antes** de
 dibujar nada en AutoCAD: es lo que ya evitó, en las aisladas, portar a ciegas y
 descubrir después que faltaba media rutina.
 
-Estados: **Sí** portado · **Falta** pendiente · **Confirmar** portado con el
-valor de la macro pero con el uso exacto por verificar contra el fuente
+Estados: **Sí** portado · **Falta** pendiente · **N/A** no aplica
 
 ---
 
-## 1. Lo que comparten las dos macros
+## 1. Lo que se corrigió al leer el fuente
 
-Son la misma macro con dos decisiones cambiadas. Todo esto es idéntico:
+Este documento y el port se escribieron primero **de memoria**, y al comparar
+contra el VBA salieron **cinco errores**. Se dejan escritos porque son
+exactamente los que la comprobación de ahora vigila:
+
+| Se había puesto | Lo que dicen las macros |
+|---|---|
+| `xBase = offsetX` | `xBase = offsetX - anchoZapata / 2`: la sección va **centrada** en su offset. Media zapata corrida por sección, y el rótulo —que se centra en el eje— descuadrado |
+| El muro se recortaba al paño de la zapata | **No se recorta.** Un muro más ancho que la zapata se dibuja saliéndose, y así se ve el dato mal capturado |
+| Acero del muro a `rec + diámetro / 2` | `offsetMuro = 0.05`: **5 cm clavados** al eje de la varilla |
+| Las patas doblaban «hacia el eje de la zapata» | La **central** dobla cada una hacia **su** lado; el **lindero** dobla las dos a la izquierda y a **dos alturas distintas** |
+| El enrase se dibujaba con cualquier hueco | `If altEnrase > 0.02`: por debajo de 2 cm no hay enrase |
+
+## 2. Lo que comparten las dos macros
 
 | Qué | Valor | Estado |
 |---|---|---|
 | Nivel de terreno natural | `yNivTerr = −3.5` | Sí |
-| Desplante | `yZapBot = yNivTerr − profundidad` | Sí |
-| Plantilla de concreto simple | 5 cm bajo el desplante | Sí |
-| Recubrimiento de parrillas | 5 cm | Sí |
-| Paso entre secciones | 2 m fijos, no «ancho + holgura» | Sí |
-| Parrilla inferior y superior | la misma rutina que las aisladas | Sí |
-| Muro de enrase | piezas de ≈8 cm, junta 1 cm, desfase 1 cm por lado | Sí |
-| Búsqueda del reparto del enrase | de 1 a 50 piezas, la más cerca de 8 cm | Sí |
-| Doblez del acero del muro | 15 diámetros | Sí |
-| Contratrabe y cadena de desplante | por **bloque**, no se redibujan | Falta (COM) |
-| Cotas | `0.13`, `0.075`, `0.1445`, `0.0585` | Confirmar |
-| Rótulo | tres renglones a `0.25`, `0.34`, `0.42` | Confirmar |
-| Relleno del concreto | SOLID 9 + `AR-CONC` 251 a escala `0.0003` | Sí |
-| Relleno del enrase | pieza SOLID 253, junta SOLID 252 | Sí |
+| `yBase` de la macro | el **fondo de la plantilla**: `yNivTerr − profundidad − 0.05` | Sí |
+| Plantilla de concreto simple | 5 cm, con su texto a f'c 100 kg/cm² | Sí |
+| Recubrimiento | 5 cm | Sí |
+| Paso entre secciones | 2 m **fijos**, con la zapata centrada en cada offset | Sí |
+| Parrillas | la misma rutina que las aisladas: gancho 3 cm, círculos con tolerancia del 20 % | Sí |
+| Muro de enrase | piezas de ≈8 cm, junta 1 cm, desfase 1 cm, de 1 a 50 piezas, mínimo 2 cm de hueco | Sí |
+| Ancho del enrase | el de la **caja de la cadena de desplante**, no el del muro | Sí |
+| Contratrabe y cadena | por **bloque**; la contratrabe se inserta **antes** y su huella manda en el hatch y en la línea superior de la zapata | Falta (COM) |
+| Acero del muro de concreto | ejes a 5 cm del paño, círculos con la separación **vertical**, uno menos de los que caben | Sí |
+| Doblez del muro | 15 diámetros | Sí |
+| Cotas | `0.13` ancho total, `0.075` anchos parciales, `0.1445` altura total, `0.0585` alturas parciales | Sí |
+| Rótulo | `0.25` título (0.07), `0.34` ELEVACION (0.05), `0.42` f'c + Rec. + Escala (0.04) | Sí |
+| Texto «Nivel del terreno» | `xCentro + 0.35 − 0.313`, alto 0.025 | Sí |
+| Relleno del concreto (B3 = 1) | SOLID 9 + `AR-CONC` 251 a `0.0003` | Sí |
+| Sin relleno (B3 = 2) | `AR-CONC` a `0.0005` en zapata y plantilla, y a **`0.05`** en el muro | Sí |
+| Relleno del enrase | pieza SOLID 253, junta SOLID 252, contornos en negro y al frente | Sí |
+| Terreno | `EARTH` a `0.01`, transparencia 45, capa gris RGB 135,135,135 | Falta (COM) |
 
-## 2. Lo que las separa
-
-Solo dos cosas. Todo lo demás que parece distinto es la misma cuenta escrita en
-otras celdas.
+## 3. Lo que las separa
 
 | Decisión | Central | Lindero |
 |---|---|---|
-| Acomodo de la fila | `offsetX = i · 2`, hacia la **derecha** desde 0 | `offsetX = −2 − i · 2`, hacia la **izquierda** |
-| Posición del muro | **centrado**: `xCentro − espesor / 2` | pegado al **paño derecho**: `xMuroDer = xBase + ancho` |
-| Nombre del bloque | el ID tal cual | `ZAPATA_LINDERO_` + ID |
+| Acomodo de la fila | `offsetX = i · 2`, a la **derecha** desde 0 | `offsetX = −2 − i · 2`, a la **izquierda** |
+| Posición del muro | **centrado** en el eje | pegado al **paño derecho**: `xMuroR = xBase + ancho` |
+| Eje del acero con una parrilla | el eje de la zapata, que coincide con el del muro | el eje **del muro**, que no es el de la zapata |
+| Patas del muro de concreto | cada una hacia **su** lado, a la **misma** altura | las dos a la **izquierda**, a **dos alturas**: la del paño derecho abajo y la del izquierdo `4Ø` (mín. 5 cm) más arriba |
+| Recorte de la pata | no lo hace | al recubrimiento del paño izquierdo de la zapata |
+| Holgura sobre la parrilla | ninguna | 3 mm |
+| Cota de la pata | 4.5 cm sobre su eje | 2.2 cm la de arriba y 45 % de la separación la de abajo |
+| Cotas parciales de ancho | **tres** tramos | **dos**: la contratrabe llega al paño derecho |
+| Nombre del bloque | el ID tal cual, con `-ZAP` si choca con la contratrabe o la cadena | `ZAPATA_LINDERO_` + ID |
 | Título del rótulo | `ZAPATA CORRIDA CENTRAL "Z-1"` | `ZAPATA DE LINDERO "Z-1"` — sin la palabra «corrida», así está en su macro |
+| Celda B3 | se lee **una vez** y vale para todo | por sección, heredando la B3 si está vacía |
+| Hatch de terreno | por bandas, rodeando cada obstáculo | dos rectángulos, a los lados del muro |
+| Rótulos de parrilla | con leader de landing | leader **recto** con flecha sólida dibujada |
 
-Que las filas crezcan en sentidos contrarios no es un detalle estético: es lo que
-permite que las dos familias convivan en el mismo dibujo sin encimarse.
+Que las filas crezcan en sentidos contrarios no es estético: es lo que permite
+que las dos familias convivan en el mismo dibujo sin encimarse.
 
-## 3. Celdas que lee cada una
+## 4. Celdas que lee cada una
 
-Mismo dato, distinta columna. Están anotadas una por una en
-`ZapataCorridaCad.cs`, primero la central y después la de lindero.
+Cada zapata ocupa **16 renglones** (`filaBase = 4 + n · 16`), y el ID vacío es
+la señal de parar. Están anotadas una por una en `ZapataCorridaCad.cs`.
 
 | Dato | Central | Lindero | Estado |
 |---|---|---|---|
+| ID del elemento | `G1`, `G17`, … | `P1`, `P17`, … | Sí |
+| Modo de relleno | `B3` | `B3`, `B19`, … | Sí |
 | Ancho, profundidad, espesor | `E4`, `E5`, `E6` | `O4`, `O5`, `O6` | Sí |
 | Parrilla inferior: varilla y separación | `C8`, `E8` | `C8`, `O8` | Sí |
 | Parrilla inferior transversal | `C10`, `E10` | `C10`, `O10` | Sí |
 | Doble parrilla | `H8` | `R8` | Sí |
-| Parrilla superior y su transversal | `C12`, `E12`, `C14`, `E14` | `O12`, `O14` | Sí |
+| Parrilla superior y su transversal | `C12`, `E12`, `C14`, `E14` | `C12`, `O12`, `C14`, `O14` | Sí |
 | Tipo de muro | `H4` | `R4` | Sí |
-| Espesor del muro, en **cm** | `H9` concreto, `G7` mampostería | igual | Sí |
-| Muro: doble parrilla, varilla, separaciones | `H10`, `H11`, `H12`, `H13` | `R10`–`R13` | Sí |
-| Bloque de contratrabe | `H6` | `R6` | Sí (dato) |
-| Bloque de cadena de desplante | `H5` | `R5` | Sí (dato) |
+| Cadena de desplante | `H5` | `R5` | Sí |
+| Contratrabe | `H6` | `R6` | Sí |
+| Espesor del muro, en **cm** | `H9` concreto · `G7` mampostería | `R9` · `P7` | Sí |
+| Muro: doble parrilla | `H10` | `R10` | Sí |
+| Muro: varilla | `H11` concreto · `H10` mampostería | `R11` · `R10` | Sí |
+| Muro: separación horizontal | `H12` · `H11` | `R12` · `R11` | Sí |
+| Muro: separación vertical | `H13` · `H12` | `R13` · `R12` | Sí |
 | f'c | `J8` | `T8` | Sí |
 
-Las medidas de la zapata están en **metros** y los espesores de muro en
-**centímetros** —la macro los divide entre 100—, y esa distinción se conserva a
-propósito: es la que evita que un muro de 15 cm salga de 15 m.
+**Con mampostería las tres celdas del acero suben un renglón**, porque no hay
+casilla de doble parrilla. Es la única trampa de la lectura, y leerla mal saca
+la varilla del muro de la casilla de al lado.
 
-## 4. El muro de enrase, que es la única cuenta con truco
+Las medidas de la zapata están en **metros** y los espesores de muro en
+**centímetros** —la macro los divide entre 100—, y esa distinción se conserva:
+es la que evita que un muro de 15 cm salga de 15 m.
+
+## 5. Las dos cuentas con truco
+
+### El reparto del muro de enrase
 
 No dibuja piezas de alto fijo. Busca en cuántas piezas iguales cabe el hueco
 para que cada una salga lo más cerca posible de los 8 cm de una pieza real:
 
 ```
+si (yCadenaFondo − yContratrabeLomo) <= 0.02  ->  no hay enrase
 para n = 1 … 50:
-    alto = (hueco − (n − 1) · junta) / n      junta = 1 cm
+    alto = (hueco − (n − 1) · 0.01) / n
     gana el n con |alto − 0.08| más chico y alto > 0
 ```
 
-Así el enrase remata justo contra la cadena de desplante, sin media pieza al
-final. Si el hueco no da ni para una pieza —la contratrabe llega hasta la
-cadena—, no hay enrase y no se dibuja: cero piezas, no una pieza aplastada.
+Así el enrase remata justo contra la cadena, sin media pieza al final. Con 55 cm
+de hueco salen **6 piezas de 8.33 cm** y 5 juntas, que suman los 55 exactos.
 
-## 5. Estado del port, archivo por archivo
+### Los círculos del muro de concreto
+
+Son las varillas que en el corte se ven de punta, y las reparte la separación
+**vertical**. La macro cuenta cuántas caben desde `yMuroBot + Ø/2` hasta
+`yNivTerr − Ø/2` y dibuja **una menos**: la de más caía encima de la línea del
+nivel de terreno.
+
+## 6. Estado del port, archivo por archivo
 
 | Archivo | Qué es | Estado |
 |---|---|---|
 | `CadLink.Cad/ZapataCorridaCad.cs` | los datos de la hoja, con las celdas de las dos macros anotadas | Sí |
-| `CadLink.Cad/TrazoZapataCorrida.cs` | la geometría pura: acomodo, alturas, muro, enrase, acero del muro, cotas, rótulo | Sí |
-| `tools/verificar_zapatas_corridas.py` | los números del port contra los de las macros | Sí |
+| `CadLink.Cad/TrazoZapataCorrida.cs` | la geometría pura: acomodo, alturas, muro, enrase, acero del muro, cotas y rótulo | Sí |
+| `tools/verificar_zapatas_corridas.py` | las cuentas rehechas, número a número | Sí |
+| `tools/prueba-zapata` | los mismos números **ejecutando el C# compilado** | Sí |
+| `tools/validar.py` bloque `[22]` | que el port no se salga de las macros ni duplique lo de las aisladas | Sí |
 | `CadLink.Cad/ZapataCorridaDrawer.cs` | el dibujante COM | Falta |
 | `CadLink.App` hoja «Zapatas Corridas» | la hoja de captura y la vista previa | Falta |
 
-## 6. Lo que falta confirmar contra el fuente
+## 7. Lo que queda para el dibujante
 
-Se anota aquí y no se esconde en un comentario: portar con un número correcto en
-el sitio equivocado es peor que dejarlo pendiente.
+No es geometría: es todo lo que necesita el dibujo abierto, y por eso no vive en
+`TrazoZapataCorrida`.
 
-1. **El uso exacto de los cuatro offsets de cota.** Los valores son los de las
-   macros; qué cota cuelga de cada uno se verifica al escribir el dibujante,
-   comparando contra un plano ya dibujado con la macro.
-2. **Qué separación del muro es la horizontal y qué la vertical.** `H12` y `H13`
-   se llaman «separación horizontal» y «separación vertical», y en el corte
-   transversal solo se ve una de las dos: la de las varillas que salen de punta.
-   El port las recibe por parámetro y con nombre explícito, así que corregir la
-   asignación es cambiar una línea en el dibujante, no la geometría.
-3. **Hacia dónde dobla la barra vertical del muro.** El port la dobla hacia el
-   eje de la zapata —el único lado donde hay concreto para anclar— y en el
-   lindero eso deja las dos patas hacia la izquierda, lejos del lindero.
+1. **Los bloques.** Contratrabe alineada por su esquina —inferior derecha en el
+   lindero, centro inferior en la central— y cadena de desplante por la
+   superior. La caja de los dos manda en el hatch, en el hueco de la línea
+   superior de la zapata y en el ancho del enrase.
+2. **El hatch de terreno.** La central lo parte en bandas horizontales para
+   rodear cada obstáculo y le abre un hueco por cada rótulo; el lindero dibuja
+   dos rectángulos a los lados del muro.
+3. **Los leaders y los rótulos de parrilla**, con su cola dibujada al final para
+   que queden al frente del hatch y del bloque.
+4. **El orden de dibujo** de los contornos del enrase, con `ACAD_SORTENTS`,
+   igual que ya se hace con los estribos de las aisladas.
+5. **El corte de las varillas del muro** en cada cruce con el acero de la
+   zapata, que en la central se hace con oclusores y en el lindero no.

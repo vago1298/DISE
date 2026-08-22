@@ -6370,6 +6370,19 @@ def v20_estaticos_sin_cualificar() -> None:
     problemas: list[str] = []
     usos_revisados = 0
 
+    # Los tres patrones de cada miembro se compilan UNA vez, no en cada renglon.
+    # Con mas de 500 miembros declarados el cache de re se invalida y Python los
+    # recompilaba linea por linea: la comprobacion se quedaba colgada minutos y
+    # parecia un cuelgue del validador. Es el MISMO patron, solo compilado antes.
+    patrones = {
+        miembro: (
+            re.compile(r"^\s*public\s.*\b" + miembro + r"\b\s*(?:=|\()"),
+            re.compile(r"(\.)?\b" + miembro + r"\b"),
+            re.compile(r"\s*" + miembro + r"\s*=[^=]"),
+        )
+        for miembro in declarados
+    }
+
     for p in rutas:
         texto = _sin_comentarios(leer(p))
         lineas = texto.split("\n")
@@ -6381,11 +6394,17 @@ def v20_estaticos_sin_cualificar() -> None:
             pila = pilas[i] if i < len(pilas) else []
 
             for miembro, duena in declarados.items():
-                # Uso, no declaracion
-                if re.search(r"^\s*public\s.*\b" + miembro + r"\b\s*(?:=|\()", l):
+                # Atajo: sin el nombre escrito tal cual, ningun patron puede casar.
+                if miembro not in l:
                     continue
 
-                for m in re.finditer(r"(\.)?\b" + miembro + r"\b", l):
+                pat_decl, pat_uso, pat_init = patrones[miembro]
+
+                # Uso, no declaracion
+                if pat_decl.search(l):
+                    continue
+
+                for m in pat_uso.finditer(l):
                     if m.group(1):
                         continue        # ya viene cualificado con algo
 
@@ -6408,7 +6427,7 @@ def v20_estaticos_sin_cualificar() -> None:
 
                     # Nombre de propiedad dentro de un inicializador de objeto:
                     # 'Elemento = ...' se resuelve contra el tipo que se construye.
-                    if re.match(r"\s*" + miembro + r"\s*=[^=]", l):
+                    if pat_init.match(l):
                         continue
 
                     usos_revisados += 1
@@ -8279,37 +8298,55 @@ def v22_zapatas_corridas() -> None:
     # Los niveles de las dos familias son CONTRARIOS y no se mezclan
     # ------------------------------------------------------------------
     # La corrida cuelga del terreno -yNivTerr = -3.5- y la aislada tiene el
-    # fondo fijo en -8. Si una de las dos tomara el numero de la otra, dos
-    # zapatas con desplantes distintos saldrian con el terreno a dos alturas.
+    # fondo fijo en -8. Si una tomara el numero de la otra, dos zapatas con
+    # desplantes distintos saldrian con el terreno a dos alturas.
     check("la corrida cuelga del terreno en -3.5",
           "public const double YNivelTerreno = -3.5;" in trazo)
-    # El nombre de la constante de las aisladas SI aparece en el comentario -se cita
-    # a proposito, para que se lea que las dos reglas son contrarias-, asi que lo que
-    # se vigila es que no se USE: que el -8 no entre en ninguna cuenta de la corrida.
+    # El nombre de la constante de las aisladas SI aparece en el comentario -se
+    # cita a proposito-, asi que lo que se vigila es que no se USE.
     check("y no se trae el fondo fijo de las aisladas",
           "-8.0" not in _sin_comentarios(trazo)
           and "YBaseElevacion" not in _sin_comentarios(trazo))
     check("las aisladas conservan el suyo",
           "public const double YBaseElevacion = -8.0;" in aislada)
     check("y queda escrito que las dos familias no lo comparten",
-          "no</b> comparten este número" in trazo)
+          "comparten este número" in trazo)
 
     # ------------------------------------------------------------------
-    # El acomodo de las dos filas, en sentidos contrarios
+    # EL ERROR QUE SE CORRIGIO: la seccion va CENTRADA en su offset
     # ------------------------------------------------------------------
+    # Las dos macros hacen xBase = offsetX - anchoZapata / 2. La primera
+    # version del port arrancaba en el propio offset y corria media zapata
+    # por seccion, con el rotulo -que va centrado en el eje- descuadrado.
+    check("xBase resta media zapata al offset",
+          "OffsetX(tipo, indice) - (anchoM / 2)" in trazo)
     check("el paso entre secciones son los 2 m de las macros",
           "public const double SeparacionSecciones = 2.0;" in trazo)
     check("el lindero arranca en -2",
-          "public const double LinderoXPrimera = -2.0;" in trazo)
+          "public const double LinderoPrimerOffset = -2.0;" in trazo)
     check("y crece al lado contrario que la central",
-          "LinderoXPrimera - (i * SeparacionSecciones)" in trazo
+          "LinderoPrimerOffset - (i * SeparacionSecciones)" in trazo
           and "i * SeparacionSecciones" in trazo)
+    check("un indice negativo no manda la seccion a otro lado",
+          "Math.Max(indice, 0)" in trazo)
+
+    # ------------------------------------------------------------------
+    # El muro
+    # ------------------------------------------------------------------
+    # Las macros NO recortan el muro al pano de la zapata. Recortarlo esconde
+    # un espesor mal capturado en lugar de ensenarlo en el dibujo.
+    check("el muro no se recorta al pano de la zapata",
+          "las macros no lo recortan" in trazo
+          and "Math.Min(xMuroDer" not in trazo)
+    check("el muro se apoya en la contratrabe cuando la hay",
+          "Math.Max(yContratrabeTop, a.YZapTop)" in trazo)
+    check("y nunca sale de alto negativo", "Math.Max(yTope, yBase)" in trazo)
 
     # ------------------------------------------------------------------
     # El muro de enrase: la unica cuenta con truco
     # ------------------------------------------------------------------
     for nombre, valor in (("EnraseAltoObjetivo", "0.08"), ("EnraseJunta", "0.01"),
-                          ("EnraseDesfaseLado", "0.01")):
+                          ("EnraseDesfaseLado", "0.01"), ("EnraseAltoMinimo", "0.02")):
         check(f"el enrase trae su {nombre} = {valor}",
               f"public const double {nombre} = {valor};" in trazo)
 
@@ -8320,8 +8357,65 @@ def v22_zapatas_corridas() -> None:
     check("y gana el reparto mas cercano a los 8 cm",
           "Math.Abs(alto - EnraseAltoObjetivo)" in trazo
           and "error < mejorError" in trazo)
-    check("un hueco que no da ni para una pieza no dibuja enrase",
-          "hueco <= EnraseJunta" in trazo)
+    check("con menos de 2 cm de hueco no se dibuja enrase",
+          "hueco <= EnraseAltoMinimo" in trazo)
+    check("y la hilada se enrasa con la caja de la cadena",
+          "public static Enrase MuroDeEnrase(double xIzq, double ancho," in trazo
+          and "de la caja de la cadena" in trazo)
+
+    # ------------------------------------------------------------------
+    # El acero del muro de concreto
+    # ------------------------------------------------------------------
+    # Los 5 cm son AL EJE de la varilla, no "recubrimiento + medio diametro":
+    # asi esta en las dos macros, y cambiarlo mueve el acero de todos los muros.
+    check("los ejes del acero van a 5 cm del pano",
+          "public const double MuroRetiroAcero = 0.05;" in trazo
+          and "m.XIzq + MuroRetiroAcero" in trazo)
+    check("un muro delgado pierde la doble parrilla en lugar de cruzar el acero",
+          "return new EjesAcero(m.XCentro, m.XCentro, false);" in trazo)
+    check("los circulos se reparten con la separacion VERTICAL",
+          "double[] CirculosDelMuro(Muro m, double yTerreno, double diam, double sepVertM)"
+          in trazo)
+    check("y se dibuja uno menos de los que caben, como la macro",
+          "var aDibujar = caben - 1;" in trazo)
+    check("la pata queda por encima de la parrilla inferior",
+          "public static double YDeLaPata(" in trazo)
+
+    # LAS DOS MACROS DOBLAN DISTINTO, y esa es la diferencia que se porto mal
+    # la primera vez: no es "hacia el eje de la zapata".
+    check("la central dobla cada varilla hacia SU lado",
+          "VarillaMuro[] VerticalesCentral(" in trazo
+          and "new VarillaMuro(xIzq, yTerreno, yPata, xIzq - doblez, -1)" in trazo
+          and "new VarillaMuro(xDer, yTerreno, yPata, xDer + doblez, 1)" in trazo)
+    check("el lindero dobla las dos a la izquierda",
+          "VarillaMuro[] VerticalesLindero(" in trazo
+          and "yPata, XFin(xDer), -1)" in trazo
+          and "yPata + sep, XFin(xIzq), -1)" in trazo)
+    check("y a dos alturas distintas, con su separacion ajustada",
+          "public static double SepDeLosDobleces(" in trazo
+          and "LinderoSepDoblecesFactorMin" in trazo)
+    check("la pata del lindero se recorta al recubrimiento de la zapata",
+          "var xLimIzq = a.XBase + rec + (diamMuro / 2);" in trazo)
+    check("el doblez usa el validador de las aisladas, no una copia",
+          "TrazoZapata.FactorGanchoValido(factorDoblez)" in trazo)
+    check("y los 15 diametros son los mismos que los del dado",
+          "FactorDoblezMuro = TrazoZapata.FactorGanchoAbajo" in trazo)
+
+    # ------------------------------------------------------------------
+    # La anotacion: cada offset con el nombre de lo que mide
+    # ------------------------------------------------------------------
+    for nombre, valor in (("CotaAnchoTotal", "0.13"), ("CotaAnchosParciales", "0.075"),
+                          ("CotaAlturaTotal", "0.1445"),
+                          ("CotaAlturasParciales", "0.0585"),
+                          ("RotuloOffset", "0.25"), ("RotuloSalto1", "0.34"),
+                          ("RotuloSalto2", "0.42")):
+        check(f"la distancia {nombre} vale {valor}",
+              f"public const double {nombre} = {valor};" in trazo)
+
+    check("el rotulo se mide desde el fondo de la plantilla",
+          "var yFondo = yZapBot - PlantillaEspesor;" in trazo)
+    check("y el texto del nivel conserva la resta de la macro",
+          "a.XCentro + 0.35 - 0.313" in trazo)
 
     # ------------------------------------------------------------------
     # Lo que ya existia NO se vuelve a escribir
@@ -8329,25 +8423,24 @@ def v22_zapatas_corridas() -> None:
     check("las parrillas se delegan en la rutina de las aisladas",
           "TrazoZapata.ParrillaEnAlzado(" in trazo
           and "TrazoZapata.Parrilla ParrillaEnAlzado" in trazo)
-    check("el doblez usa el validador de las aisladas, no una copia",
-          "TrazoZapata.FactorGanchoValido(factorDoblez)" in trazo)
     check("y no hay constantes de gancho duplicadas",
-          "FactorGanchoAbajo" not in trazo and "FactorGanchoMaximo" not in trazo)
-
-    # El muro no puede quedar al reves ni la fila arrancar en un indice negativo.
-    check("un muro nunca sale de alto negativo", "Math.Max(yTope, yBase)" in trazo)
-    check("un indice negativo no manda la seccion a otro lado",
-          "Math.Max(indice, 0)" in trazo)
+          "FactorGanchoMinimo" not in trazo and "FactorGanchoMaximo" not in trazo)
 
     # ------------------------------------------------------------------
     # Los datos de la hoja
     # ------------------------------------------------------------------
     check("los datos traen anotadas las celdas de LAS DOS macros",
-          "<c>E4</c> / <c>O4</c>" in datos and "<c>E5</c> / <c>O5</c>" in datos)
+          "<c>E4</c> / <c>O4</c>" in datos and "<c>H4</c> / <c>R4</c>" in datos)
+    check("el espesor del muro apunta a su celda segun el tipo de muro",
+          "<c>H9</c> / <c>R9</c>" in datos and "<c>G7</c> / <c>P7</c>" in datos)
+    check("y queda avisado que con mamposteria el acero sube un renglon",
+          "suben un renglón" in datos)
     check("el espesor del muro esta en cm y se pasa a metros",
           "EspesorMuroCm / 100.0" in datos)
     check("con la celda vacia el muro sale de 15 cm",
           "EspesorMuroCm > 0 ? EspesorMuroCm / 100.0 : 0.15" in datos)
+    check("cada zapata ocupa 16 renglones de la hoja",
+          "<b>16 renglones</b>" in datos)
     check("un bloque capturado como 0 no cuenta como bloque",
           "public static bool HayBloque(string? id)" in datos
           and 't != "0"' in datos)
@@ -8361,8 +8454,8 @@ def v22_zapatas_corridas() -> None:
           "# Inventario de `ZAPATA CORRIDA CENTRAL V2`" in doc)
     check("y dice que el dibujante COM todavia falta",
           "ZapataCorridaDrawer" in doc and "Falta" in doc)
-    check("y deja por escrito lo que falta confirmar contra el fuente",
-          "Lo que falta confirmar contra el fuente" in doc)
+    check("y deja por escrito los errores que cazo la comprobacion",
+          "Lo que se corrigió al leer el fuente" in doc)
 
 if __name__ == "__main__":
     sys.exit(main())

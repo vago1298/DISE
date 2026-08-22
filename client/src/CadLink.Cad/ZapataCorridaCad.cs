@@ -43,8 +43,13 @@ public sealed class ZapataCorridaCad
 
     /// <summary>Nombre de la zapata: el ID del elemento. <c>G1</c> / <c>P1</c>.</summary>
     /// <remarks>
-    /// Es también el <b>nombre del bloque</b>: la central lo usa tal cual y la de lindero le pone
-    /// delante <c>ZAPATA_LINDERO_</c>.
+    /// Se lee en <c>G1</c> / <c>P1</c> —y en <c>G17</c>, <c>G33</c>… porque cada zapata ocupa
+    /// <b>16 renglones</b>—, y una celda vacía es la señal de que ya no hay más zapatas.
+    /// </para>
+    /// <para>
+    /// Es también el <b>nombre del bloque</b>: la central lo usa tal cual, y le pega
+    /// <c>-ZAP</c> detrás si choca con el nombre de la contratrabe o de la cadena; la de lindero le
+    /// pone delante <c>ZAPATA_LINDERO_</c>.
     /// </remarks>
     public string Id { get; init; } = string.Empty;
 
@@ -114,25 +119,64 @@ public sealed class ZapataCorridaCad
     /// <summary><b>MAMPOSTERIA</b> o <b>CONCRETO</b>. <c>H4</c> / <c>R4</c>.</summary>
     public string TipoMuro { get; init; } = MuroMamposteria;
 
-    /// <summary>Espesor del muro, en centímetros. <c>H9</c> en concreto, <c>G7</c> en mampostería.</summary>
-    /// <remarks>Si no se captura, las macros usan <b>15 cm</b>.</remarks>
+    /// <summary>
+    /// Espesor del muro, en centímetros. Con concreto <c>H9</c> / <c>R9</c>; con mampostería
+    /// <c>G7</c> / <c>P7</c>.
+    /// </summary>
+    /// <remarks>
+    /// No es la misma celda en los dos casos, y no es un despiste de las macros: el espesor del
+    /// muro de mampostería lo pone el block —10, 12, 15— y vive en su propio bloque de celdas, en
+    /// otra columna. Si no se captura, las dos macros usan <b>15 cm</b>.
+    /// </remarks>
     public double EspesorMuroCm { get; init; } = 15;
 
     /// <summary>El muro de concreto lleva <b>doble parrilla</b>. <c>H10</c> / <c>R10</c>.</summary>
+    /// <remarks>La mampostería no lo pregunta: las macros la fijan en <c>NO</c>.</remarks>
     public bool MuroDobleParrilla { get; init; }
 
-    /// <summary>Varilla del muro. <c>H11</c> / <c>R11</c>.</summary>
+    /// <summary>
+    /// Varilla del muro. Con concreto <c>H11</c> / <c>R11</c>; con mampostería <c>H10</c> /
+    /// <c>R10</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Con mampostería las tres celdas del acero suben un renglón</b>, porque no hay celda de
+    /// doble parrilla. Es la única trampa de la lectura de la hoja, y leerla mal saca la varilla del
+    /// muro de la casilla de al lado.
+    /// </remarks>
     public string VarMuro { get; init; } = string.Empty;
 
-    /// <summary>Separación horizontal del muro. <c>H12</c> / <c>R12</c>.</summary>
+    /// <summary>
+    /// Separación <b>horizontal</b>. Con concreto <c>H12</c> / <c>R12</c>; con mampostería
+    /// <c>H11</c> / <c>R11</c>.
+    /// </summary>
+    /// <remarks>
+    /// En el corte transversal <b>no se ve</b>: es la separación de las varillas verticales medida
+    /// a lo largo del muro, y en la sección solo entra en el rótulo. Las macros la usan además, sin
+    /// decirlo, para el pequeño desplazamiento de la varilla vertical respecto del eje del acero.
+    /// </remarks>
     public string SepMuroHoriz { get; init; } = string.Empty;
 
-    /// <summary>Separación vertical del muro. <c>H13</c> / <c>R13</c>.</summary>
+    /// <summary>
+    /// Separación <b>vertical</b>. Con concreto <c>H13</c> / <c>R13</c>; con mampostería
+    /// <c>H12</c> / <c>R12</c>.
+    /// </summary>
+    /// <remarks>
+    /// Esta <b>sí</b> se ve: es la que reparte hacia arriba las varillas que en el corte salen de
+    /// punta, o sea los círculos del muro. Ver
+    /// <see cref="TrazoZapataCorrida.CirculosDelMuro"/>.
+    /// </remarks>
     public string SepMuroVert { get; init; } = string.Empty;
 
     // ----------------------------------------------------------------- el dibujo ----
 
-    /// <summary>Estilo de dibujo, el de la celda B3 del juego.</summary>
+    /// <summary>Estilo de dibujo: la celda <b>B3</b>. 1 = rellena, 2 = tal cual.</summary>
+    /// <remarks>
+    /// Las dos macros no la leen igual: la central lee <b>B3 una sola vez</b> y vale para todo el
+    /// dibujo, y la de lindero busca la de cada zapata —B3, B19, B35…— y, si está vacía,
+    /// <b>hereda la B3</b>. La segunda es la buena: con poner 1 en B3 se rellenan todas, y una
+    /// sección se puede sacar distinta escribiendo su propio valor. Por eso el port la trae por
+    /// zapata en las dos.
+    /// </remarks>
     public ModoSeccion Modo { get; init; } = ModoSeccion.Tipo1SinRelleno;
 
     /// <summary>La zapata es de lindero.</summary>
