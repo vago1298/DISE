@@ -316,6 +316,208 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
         Math.Abs(TrazoZapata.AnchoParaElRotulo(1.20) - 2.0) < 1e-12);
 }
 
+// ======================================================================
+// ZAPATAS CORRIDAS: el C# compilado contra los mismos numeros que comprueba
+// tools/verificar_zapatas_corridas.py
+// ======================================================================
+//
+// El verificar_*.py rehace las cuentas de las macros EN PYTHON, y un port de Python
+// correcto conviviendo con un C# equivocado da todo en verde. Los numeros que se
+// esperan aqui son los que salen de ese port, calculados a mano, y lo que se ejecuta
+// es el CadLink.Cad de verdad: si los dos coinciden, coinciden con la macro.
+{
+    Console.WriteLine("\n---------- Zapatas corridas ----------");
+
+    // ---------- El acomodo de las dos filas ----------
+    Vale("la central arranca en 0 y crece a la derecha",
+        TrazoZapataCorrida.XBase("CENTRAL", 0) == 0
+        && TrazoZapataCorrida.XBase("CENTRAL", 1) == 2
+        && TrazoZapataCorrida.XBase("CENTRAL", 3) == 6);
+
+    Vale("el lindero arranca en -2 y crece a la izquierda",
+        TrazoZapataCorrida.XBase("LINDERO", 0) == -2
+        && TrazoZapataCorrida.XBase("LINDERO", 1) == -4
+        && TrazoZapataCorrida.XBase("LINDERO", 3) == -8);
+
+    Vale("un indice negativo no manda la seccion a otro lado",
+        TrazoZapataCorrida.XBase("CENTRAL", -5) == 0);
+
+    // ---------- Las alturas: el terreno manda ----------
+    var zc = new ZapataCorridaCad
+    {
+        Tipo = ZapataCorridaCad.Central,
+        AnchoM = 1.00,
+        ProfundidadM = 1.50,
+        EspesorM = 0.25,
+        EspesorMuroCm = 20,
+    };
+
+    var ac = TrazoZapataCorrida.Colocar(zc, 0);
+
+    Vale("el desplante cuelga del terreno: -3.5 - 1.5 = -5",
+        Math.Abs(ac.YZapBot - (-5.0)) < 1e-12);
+    Vale("el lomo queda en -4.75", Math.Abs(ac.YZapTop - (-4.75)) < 1e-12);
+    Vale("la plantilla acaba en -5.05", Math.Abs(ac.YPlantillaBot - (-5.05)) < 1e-12);
+    Vale("el terreno se queda en -3.5", Math.Abs(ac.YTerreno - (-3.5)) < 1e-12);
+
+    var zHonda = new ZapataCorridaCad
+    {
+        Tipo = ZapataCorridaCad.Central,
+        AnchoM = 1.00,
+        ProfundidadM = 2.50,
+        EspesorM = 0.25,
+    };
+
+    Vale("dos zapatas con desplantes distintos comparten el nivel de terreno",
+        Math.Abs(TrazoZapataCorrida.Colocar(zHonda, 0).YTerreno - ac.YTerreno) < 1e-12);
+
+    // ---------- Donde va el muro ----------
+    Vale("en la central el muro va centrado: 0.40 a 0.60",
+        Math.Abs(ac.XMuroIzq - 0.40) < 1e-12 && Math.Abs(ac.XMuroDer - 0.60) < 1e-12);
+
+    var zl = new ZapataCorridaCad
+    {
+        Tipo = ZapataCorridaCad.Lindero,
+        AnchoM = 1.00,
+        ProfundidadM = 1.50,
+        EspesorM = 0.25,
+        EspesorMuroCm = 20,
+    };
+
+    var al = TrazoZapataCorrida.Colocar(zl, 0);
+
+    Vale("en el lindero el pano derecho del muro ES el de la zapata",
+        Math.Abs(al.XMuroDer - al.XDer) < 1e-12
+        && Math.Abs(al.XMuroIzq - 0.80) < 1e-12);
+
+    var zSinMuro = new ZapataCorridaCad { AnchoM = 1.00, EspesorMuroCm = 0 };
+
+    Vale("sin espesor capturado el muro sale de 15 cm",
+        Math.Abs(TrazoZapataCorrida.Colocar(zSinMuro, 0).XMuroDer
+                 - TrazoZapataCorrida.Colocar(zSinMuro, 0).XMuroIzq - 0.15) < 1e-12);
+
+    var zGordo = new ZapataCorridaCad { AnchoM = 0.40, EspesorMuroCm = 60 };
+    var ag = TrazoZapataCorrida.Colocar(zGordo, 0);
+
+    Vale("un muro mas ancho que la zapata se recorta a sus panos",
+        Math.Abs(ag.XMuroIzq) < 1e-12 && Math.Abs(ag.XMuroDer - 0.40) < 1e-12);
+
+    // ---------- El muro de enrase ----------
+    foreach (var hueco in new[] { 0.18, 0.27, 0.40, 0.55, 0.73, 1.00, 1.37 })
+    {
+        var e = TrazoZapataCorrida.MuroDeEnrase(0, hueco);
+        var tope = e.YBases[^1] + e.AltoPieza;
+
+        Vale($"el enrase de {hueco:0.00} m cierra exacto contra la cadena",
+            e.Piezas > 0 && Math.Abs(tope - hueco) < 1e-9);
+
+        Vale($"y su pieza sale cerca de los 8 cm ({hueco:0.00} m)",
+            e.AltoPieza > 0.04 && e.AltoPieza < 0.135);
+    }
+
+    var eMejor = TrazoZapataCorrida.MuroDeEnrase(0, 0.55);
+
+    // 6 piezas de 8.33 cm y 5 juntas: 6 x 0.083333 + 5 x 0.01 = 0.55 exactos. Con 7 la
+    // pieza baja a 7 cm y con 5 sube a 10.2, asi que las dos se alejan mas de los 8.
+    Vale("con 55 cm de hueco salen 6 piezas de 8.33 cm",
+        eMejor.Piezas == 6 && Math.Abs(eMejor.AltoPieza - (0.5 / 6)) < 1e-9
+        && Math.Abs((6 * eMejor.AltoPieza) + (5 * 0.01) - 0.55) < 1e-9);
+
+    foreach (var hueco in new[] { 0.0, -0.30, 0.005, 0.01 })
+    {
+        Vale($"con hueco {hueco:0.000} no se dibuja enrase",
+            TrazoZapataCorrida.MuroDeEnrase(0, hueco).Piezas == 0);
+    }
+
+    var eBajo = TrazoZapataCorrida.MuroDeEnrase(-5.0, -4.5);
+
+    Vale("el enrase arranca de donde se le diga, no de cero",
+        eBajo.Piezas > 0 && Math.Abs(eBajo.YBases[0] - (-5.0)) < 1e-12);
+
+    // ---------- El acero vertical del muro ----------
+    var diam = 0.0127;  // #4
+    var muroC = TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, -3.6);
+    var vc = TrazoZapataCorrida.VerticalesDelMuro(ac, muroC, true, diam, 0.05, 0);
+
+    Vale("con doble parrilla salen dos barras, una por pano",
+        vc.X.Length == 2
+        && Math.Abs(vc.X[0] - (ac.XMuroIzq + 0.05 + (diam / 2))) < 1e-12
+        && Math.Abs(vc.X[1] - (ac.XMuroDer - 0.05 - (diam / 2))) < 1e-12);
+
+    Vale("en la central las dos patas se miran",
+        vc.Sentido[0] == 1 && vc.Sentido[1] == -1);
+
+    Vale("la pata son 15 diametros por omision",
+        Math.Abs(vc.Doblez - (15 * diam)) < 1e-12);
+
+    Vale("con 40 en la casilla la pata es de 40 diametros",
+        Math.Abs(TrazoZapataCorrida.VerticalesDelMuro(
+            ac, muroC, true, diam, 0.05, 40).Doblez - (40 * diam)) < 1e-12);
+
+    Vale("un 2 se sube al minimo de 6 y un 500 se baja al maximo de 80",
+        Math.Abs(TrazoZapataCorrida.VerticalesDelMuro(
+            ac, muroC, true, diam, 0.05, 2).Doblez - (6 * diam)) < 1e-12
+        && Math.Abs(TrazoZapataCorrida.VerticalesDelMuro(
+            ac, muroC, true, diam, 0.05, 500).Doblez - (80 * diam)) < 1e-12);
+
+    var muroL = TrazoZapataCorrida.ColocarMuro(al, al.YZapTop, -3.6);
+    var vl = TrazoZapataCorrida.VerticalesDelMuro(al, muroL, true, diam, 0.05, 0);
+
+    Vale("en el lindero las dos patas doblan hacia el eje, lejos del lindero",
+        vl.Sentido[0] == -1 && vl.Sentido[1] == -1);
+
+    Vale("la barra arranca dentro de la zapata, sobre su recubrimiento",
+        Math.Abs(vc.YBase - (ac.YZapBot + 0.05 + (diam / 2))) < 1e-12);
+
+    var zFino = new ZapataCorridaCad { AnchoM = 1.00, EspesorMuroCm = 8 };
+    var aFino = TrazoZapataCorrida.Colocar(zFino, 0);
+    var mFino = TrazoZapataCorrida.ColocarMuro(aFino, aFino.YZapTop, -3.6);
+
+    Vale("un muro de 8 cm lleva una sola barra, al eje",
+        TrazoZapataCorrida.VerticalesDelMuro(aFino, mFino, true, diam, 0.05, 0).X.Length == 1);
+
+    // ---------- Las horizontales del muro ----------
+    var hs = TrazoZapataCorrida.HorizontalesDelMuro(muroC, 0.20);
+
+    Vale("las horizontales se reparten dentro del muro",
+        hs.Length > 0 && hs[0] > muroC.YBase && hs[^1] < muroC.YTope);
+
+    Vale("la primera no cae encima del doblez del arranque",
+        hs.Length > 0 && Math.Abs(hs[0] - (muroC.YBase + 0.10)) < 1e-12);
+
+    Vale("un muro de alto cero no lleva horizontales",
+        TrazoZapataCorrida.HorizontalesDelMuro(
+            TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, ac.YZapTop), 0.20).Length == 0);
+
+    Vale("y un tope por debajo del arranque no dibuja el muro al reves",
+        TrazoZapataCorrida.ColocarMuro(ac, ac.YZapTop, -9.0).YTope >= ac.YZapTop);
+
+    // ---------- El rotulo ----------
+    Vale("los tres renglones del rotulo se miden desde el fondo de la plantilla",
+        Math.Abs(TrazoZapataCorrida.YRotulo(-5.0, 0) - (-5.30)) < 1e-12
+        && Math.Abs(TrazoZapataCorrida.YRotulo(-5.0, 1) - (-5.39)) < 1e-12
+        && Math.Abs(TrazoZapataCorrida.YRotulo(-5.0, 2) - (-5.47)) < 1e-12);
+
+    // ---------- Los titulos, que NO son iguales en las dos macros ----------
+    Vale("el titulo del lindero no dice «corrida», como en su macro",
+        zl.TipoTexto == "ZAPATA DE LINDERO" && zc.TipoTexto == "ZAPATA CORRIDA CENTRAL");
+
+    Vale("un bloque capturado como «0» no cuenta como bloque",
+        !ZapataCorridaCad.HayBloque("0") && !ZapataCorridaCad.HayBloque("")
+        && !ZapataCorridaCad.HayBloque(null) && ZapataCorridaCad.HayBloque("CT-1"));
+
+    // ---------- La parrilla es la MISMA rutina que la de las aisladas ----------
+    var pc = TrazoZapataCorrida.ParrillaEnAlzado(ac, zc.EspesorM, 0.05, diam, diam, 0.20, false);
+    var pa = TrazoZapata.ParrillaEnAlzado(
+        ac.XBase, ac.YZapBot, zc.AnchoM, zc.EspesorM, 0.05, diam, diam, 0.20, false);
+
+    Vale("la parrilla de la corrida sale identica a la de la aislada",
+        Math.Abs(pc.YBarra - pa.YBarra) < 1e-12
+        && Math.Abs(pc.XCaraIzq - pa.XCaraIzq) < 1e-12
+        && Math.Abs(pc.XCaraDer - pa.XCaraDer) < 1e-12
+        && pc.Circulos.Length == pa.Circulos.Length);
+}
+
 Console.WriteLine(fallos == 0
     ? "\nRESULTADO: todo bien"
     : $"\nRESULTADO: {fallos} fallo(s)");

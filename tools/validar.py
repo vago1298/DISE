@@ -6458,7 +6458,8 @@ def main() -> int:
               v16_extruida_piers, v17_guardar_y_defaults,
               v18_planta_autocad, v19_circular_y_ui,
               v20_estaticos_sin_cualificar,
-              v21_separacion_y_acero):
+              v21_separacion_y_acero,
+              v22_zapatas_corridas):
         f()
 
     print("\n" + "=" * 66)
@@ -8249,6 +8250,119 @@ def v21_separacion_y_acero() -> None:
     check("la nota dice que el dibujo esta completo",
           "no se pudo reordenar" in seccion and "El dibujo está " in seccion
           and "no se pudo reordenar" in alzado and "El alzado está " in alzado)
+
+
+
+# ======================================================================
+# 22. Las dos macros de ZAPATA CORRIDA
+#
+#     Lo que se vigila aqui no es que el codigo compile -eso lo hace el
+#     compilador- sino que el port siga siendo UN port: que las corridas no
+#     se lleven una copia de lo que ya calculan las aisladas, y que no se
+#     mezclen los niveles de las dos familias, que son contrarios.
+#
+#     Los numeros, uno por uno, se comprueban EJECUTANDO el codigo en
+#     tools/verificar_zapatas_corridas.py y en tools/prueba-zapata.
+# ======================================================================
+def v22_zapatas_corridas() -> None:
+    print("\n[22] Zapatas corridas: las dos macros")
+
+    trazo = leer(ruta("client/src/CadLink.Cad/TrazoZapataCorrida.cs"))
+    datos = leer(ruta("client/src/CadLink.Cad/ZapataCorridaCad.cs"))
+    aislada = leer(ruta("client/src/CadLink.Cad/TrazoZapata.cs"))
+    doc = leer(ruta("docs/macro-zapatas-corridas.md"))
+
+    check("la geometria de la corrida existe y es una clase estatica",
+          "public static class TrazoZapataCorrida" in trazo)
+
+    # ------------------------------------------------------------------
+    # Los niveles de las dos familias son CONTRARIOS y no se mezclan
+    # ------------------------------------------------------------------
+    # La corrida cuelga del terreno -yNivTerr = -3.5- y la aislada tiene el
+    # fondo fijo en -8. Si una de las dos tomara el numero de la otra, dos
+    # zapatas con desplantes distintos saldrian con el terreno a dos alturas.
+    check("la corrida cuelga del terreno en -3.5",
+          "public const double YNivelTerreno = -3.5;" in trazo)
+    # El nombre de la constante de las aisladas SI aparece en el comentario -se cita
+    # a proposito, para que se lea que las dos reglas son contrarias-, asi que lo que
+    # se vigila es que no se USE: que el -8 no entre en ninguna cuenta de la corrida.
+    check("y no se trae el fondo fijo de las aisladas",
+          "-8.0" not in _sin_comentarios(trazo)
+          and "YBaseElevacion" not in _sin_comentarios(trazo))
+    check("las aisladas conservan el suyo",
+          "public const double YBaseElevacion = -8.0;" in aislada)
+    check("y queda escrito que las dos familias no lo comparten",
+          "no</b> comparten este número" in trazo)
+
+    # ------------------------------------------------------------------
+    # El acomodo de las dos filas, en sentidos contrarios
+    # ------------------------------------------------------------------
+    check("el paso entre secciones son los 2 m de las macros",
+          "public const double SeparacionSecciones = 2.0;" in trazo)
+    check("el lindero arranca en -2",
+          "public const double LinderoXPrimera = -2.0;" in trazo)
+    check("y crece al lado contrario que la central",
+          "LinderoXPrimera - (i * SeparacionSecciones)" in trazo
+          and "i * SeparacionSecciones" in trazo)
+
+    # ------------------------------------------------------------------
+    # El muro de enrase: la unica cuenta con truco
+    # ------------------------------------------------------------------
+    for nombre, valor in (("EnraseAltoObjetivo", "0.08"), ("EnraseJunta", "0.01"),
+                          ("EnraseDesfaseLado", "0.01")):
+        check(f"el enrase trae su {nombre} = {valor}",
+              f"public const double {nombre} = {valor};" in trazo)
+
+    check("el reparto se busca hasta 50 piezas",
+          "public const int EnraseMaxPiezas = 50;" in trazo)
+    check("con n piezas hay n-1 juntas, no n",
+          "(hueco - ((n - 1) * EnraseJunta)) / n" in trazo)
+    check("y gana el reparto mas cercano a los 8 cm",
+          "Math.Abs(alto - EnraseAltoObjetivo)" in trazo
+          and "error < mejorError" in trazo)
+    check("un hueco que no da ni para una pieza no dibuja enrase",
+          "hueco <= EnraseJunta" in trazo)
+
+    # ------------------------------------------------------------------
+    # Lo que ya existia NO se vuelve a escribir
+    # ------------------------------------------------------------------
+    check("las parrillas se delegan en la rutina de las aisladas",
+          "TrazoZapata.ParrillaEnAlzado(" in trazo
+          and "TrazoZapata.Parrilla ParrillaEnAlzado" in trazo)
+    check("el doblez usa el validador de las aisladas, no una copia",
+          "TrazoZapata.FactorGanchoValido(factorDoblez)" in trazo)
+    check("y no hay constantes de gancho duplicadas",
+          "FactorGanchoAbajo" not in trazo and "FactorGanchoMaximo" not in trazo)
+
+    # El muro no puede quedar al reves ni la fila arrancar en un indice negativo.
+    check("un muro nunca sale de alto negativo", "Math.Max(yTope, yBase)" in trazo)
+    check("un indice negativo no manda la seccion a otro lado",
+          "Math.Max(indice, 0)" in trazo)
+
+    # ------------------------------------------------------------------
+    # Los datos de la hoja
+    # ------------------------------------------------------------------
+    check("los datos traen anotadas las celdas de LAS DOS macros",
+          "<c>E4</c> / <c>O4</c>" in datos and "<c>E5</c> / <c>O5</c>" in datos)
+    check("el espesor del muro esta en cm y se pasa a metros",
+          "EspesorMuroCm / 100.0" in datos)
+    check("con la celda vacia el muro sale de 15 cm",
+          "EspesorMuroCm > 0 ? EspesorMuroCm / 100.0 : 0.15" in datos)
+    check("un bloque capturado como 0 no cuenta como bloque",
+          "public static bool HayBloque(string? id)" in datos
+          and 't != "0"' in datos)
+    check("el titulo del lindero no dice «corrida», como en su macro",
+          '"ZAPATA DE LINDERO"' in datos and '"ZAPATA CORRIDA CENTRAL"' in datos)
+
+    # ------------------------------------------------------------------
+    # El inventario, que es lo que dice que falta
+    # ------------------------------------------------------------------
+    check("el inventario de las dos macros esta escrito",
+          "# Inventario de `ZAPATA CORRIDA CENTRAL V2`" in doc)
+    check("y dice que el dibujante COM todavia falta",
+          "ZapataCorridaDrawer" in doc and "Falta" in doc)
+    check("y deja por escrito lo que falta confirmar contra el fuente",
+          "Lo que falta confirmar contra el fuente" in doc)
 
 if __name__ == "__main__":
     sys.exit(main())
