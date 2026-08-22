@@ -4097,9 +4097,10 @@ def v19_circular_y_ui() -> None:
           and "(2 * dMax) + 0.005" in zap_drw)
     # El traslape a 1:6 -RELACION_DESPLAZAMIENTO- y, si el dado es tan bajo que no caben esos
     # seis, se AVISA en lugar de dibujar un doblez mas parado y callarlo.
-    check("el traslape va a 1:6 y se avisa si no cabe",
-          "para quedar a 1:6 y en el dado solo caben" in zap_drw
-          and "RelacionDesplazamiento" in zap_drw)
+    check("el traslape va a 1:6 SIEMPRE, y se avisa donde acabo el doblez",
+          "TrazoZapata.Desplazamiento(union.DxMax" in zap_drw
+          and "Se mantiene el 1:6 del detalle." in zap_drw
+          and "RelacionDesplazamiento" in trazo_zap)
 
     check("la union dado-columna dibuja el desplazamiento de cada barra",
           "private Union PrepararUnion(" in zap_drw
@@ -4341,6 +4342,56 @@ def v19_circular_y_ui() -> None:
           and "PlantaTituloOffset = 0.24" in trazo_zap
           and "PlantaEscalaOffset = 0.33" in trazo_zap
           and "TrazoZapata.YRotuloPlanta(yBot, 0)" in zap_pla)
+    # ------------------------------------------------------------------
+    # LA TRANSICION DADO -> COLUMNA: DESPLAZAMIENTO DE VARILLA A 1:6
+    # ------------------------------------------------------------------
+    # El detalle del usuario: "DESPLAZAMIENTO DE VARILLA EN COLUMNA O TRABE, RELACION 1:6".
+    # El alto del doblez se calculaba a 1:6 y DESPUES se recortaba a lo que quedaba libre en el
+    # dado, asi que en un dado bajo el doblez salia mas parado que el detalle.
+    check("el doblez de la transicion se resuelve en un solo sitio, a 1:6",
+          "public const double RelacionDesplazamiento = 6.0;" in trazo_zap
+          and "public static Transicion Desplazamiento(" in trazo_zap
+          and "var alto = RelacionDesplazamiento * Math.Abs(dxMax);" in trazo_zap)
+    check("y el alto ya NO se recorta a lo que quede libre en el dado",
+          "var hZona = Math.Min(union.Alto, hMaxZona);" not in zap_drw
+          and "public double Alto { get; set; }" not in zap_drw
+          and "public double DxMax { get; set; }" in zap_drw)
+    check("si no cabe en el dado, el doblez acaba dentro de la COLUMNA y sigue a 1:6",
+          "CruzaLaJunta" in trazo_zap
+          and "yDiagTop = piso + alto;" in trazo_zap
+          and "termina dentro de la columna" in zap_drw)
+    check("y si no cabe ni ahi, las varillas se dejan RECTAS y se avisa",
+          "var aplicarUnion = union.Activa && trans.Cabe;" in zap_drw
+          and "se dejan rectas y la columna se " in zap_drw)
+    check("el corrimiento maximo que se dobla son los 12 cm de la macro",
+          "public const double DesplazamientoMax = 0.12;" in trazo_zap
+          and "TrazoZapata.DesplazamientoMax" in zap_drw)
+    check("y el doblez se dibuja hasta donde dice el 1:6, no hasta la junta",
+          "DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop" in zap_drw)
+
+    # LO QUE NO TRAEN LAS MACROS: el caso REDONDO. Se arma con la misma idea que el cuadrado.
+    check("las varillas de un elemento redondo se proyectan sobre su diametro",
+          "public static BarrasElemento BarrasCirculares(" in trazo_zap
+          and "radio * Math.Cos(ang)" in trazo_zap
+          and "(Math.PI / 2) + (2 * Math.PI * k / nTotal)" in trazo_zap)
+    check("y dos varillas simetricas se ven como UNA en el alzado",
+          "xs.Any(v => Math.Abs(v - x) < tol)" in trazo_zap
+          and "en el alzado son una sola" in trazo_zap)
+    check("el dibujante elige la forma en un solo sitio",
+          "private static TrazoZapata.BarrasElemento BarrasDelElemento(" in zap_drw
+          and "circular" in zap_drw
+          and "TrazoZapata.BarrasCirculares(" in zap_drw
+          and "TrazoZapata.BarrasRectangulares(" in zap_drw)
+    check("la forma de la columna viaja desde su seccion, como la del dado",
+          "public bool ColumnaCircular { get; init; }" in trazo_zap
+          and "fila.ColumnaCircular = col.EsCircular;" in zap_cb
+          and "ColumnaCircular = ColumnaCircular," in zap_row)
+    check("y esta comprobado con numeros, con dado y columna redondos",
+          "redondo: los extremos caen en la circunferencia del armado"
+          in leer(ruta("tools/prueba-zapata/Program.cs"))
+          and "y la pendiente sigue siendo 1:6, no se recorta"
+          in leer(ruta("tools/prueba-zapata/Program.cs")))
+
     check("y queda escrito que las cotas NO se mueven de donde las pone la macro",
           "NO SE MUEVEN DE AHÍ" in trazo_zap
           and "a la altura del dado" in trazo_zap)

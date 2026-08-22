@@ -120,6 +120,95 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 {
     var yEsquina = TrazoZapata.YBaseElevacion;
 
+    // ---------- LA TRANSICION DADO -> COLUMNA: SIEMPRE 1:6 ----------
+    // El detalle del usuario: DESPLAZAMIENTO DE VARILLA EN COLUMNA O TRABE, RELACION 1:6. El alto
+    // del doblez es intocable -seis veces el corrimiento-; lo que se acomoda es DONDE queda.
+    {
+        var yZapTop = -8.0 + 0.30;      // lomo de la zapata
+        var yDadoTop = -8.0 + 1.05;     // tope del dado
+        var yColTope = yDadoTop + 0.71; // lo que se dibuja de columna
+
+        // Caso normal: cabe en el dado y el doblez acaba justo en la junta.
+        var t1 = TrazoZapata.Desplazamiento(0.06, yZapTop, yDadoTop, 0.05, yColTope);
+
+        Vale("cabe en el dado: el doblez mide 6 veces el corrimiento",
+            t1.Cabe && Math.Abs(t1.Alto - (6 * 0.06)) < 1e-12);
+
+        Vale("y la pendiente es 1:6 exacta",
+            Math.Abs((t1.YDiagTop - t1.YZonaBot) / 0.06 - 6.0) < 1e-9);
+
+        Vale("y acaba en la junta, sin cruzarla",
+            !t1.CruzaLaJunta && Math.Abs(t1.YDiagTop - yDadoTop) < 1e-12);
+
+        // Corrimiento grande: no cabe bajo la junta, asi que el doblez TERMINA EN LA COLUMNA y
+        // sigue siendo 1:6. Antes se recortaba el alto y salia mas parado.
+        var t2 = TrazoZapata.Desplazamiento(0.12, yZapTop, yDadoTop, 0.05, yColTope);
+
+        Vale("no cabe en el dado: el doblez sigue midiendo 6 veces el corrimiento",
+            t2.Cabe && Math.Abs(t2.Alto - (6 * 0.12)) < 1e-12);
+
+        Vale("y la pendiente sigue siendo 1:6, no se recorta",
+            Math.Abs((t2.YDiagTop - t2.YZonaBot) / 0.12 - 6.0) < 1e-9);
+
+        Vale("y se avisa que termina dentro de la columna",
+            t2.CruzaLaJunta && t2.YDiagTop > yDadoTop);
+
+        Vale("le queda tramo recto sobre la zapata",
+            t2.YZonaBot >= yZapTop + TrazoZapata.MinBarraRectaDado - 1e-12);
+
+        // Y si no alcanza ni con la columna: NO se dibuja, en vez de pararlo.
+        var t3 = TrazoZapata.Desplazamiento(0.12, yZapTop, yDadoTop, 0.05, yDadoTop + 0.05);
+
+        Vale("si no cabe ni en la columna, no se dibuja el doblez", !t3.Cabe);
+
+        Vale("sin corrimiento no hay doblez",
+            !TrazoZapata.Desplazamiento(0, yZapTop, yDadoTop, 0.05, yColTope).Cabe);
+
+        Vale("el corrimiento maximo que se dobla son 12 cm, como la macro",
+            Math.Abs(TrazoZapata.DesplazamientoMax - 0.12) < 1e-12
+            && Math.Abs(TrazoZapata.RelacionDesplazamiento - 6.0) < 1e-12);
+    }
+
+    // ---------- LAS VARILLAS DE CADA ELEMENTO, REDONDO O CUADRADO ----------
+    {
+        // Cuadrado: las dos de los paños y las intermedias repartidas.
+        var rect = TrazoZapata.BarrasRectangulares(0.0, 0.40, 0.05, 0.0127, 0.0127, 2);
+
+        Vale("cuadrado: las dos de los paños caen a rec + medio diametro",
+            Math.Abs(rect.Der - (-(0.05 + 0.00635))) < 1e-9
+            && Math.Abs(rect.Izq - (-(0.40 - 0.05 - 0.00635))) < 1e-9);
+
+        Vale("y las intermedias van entre ellas, sin salirse",
+            rect.Intermedias.Count == 2
+            && rect.Intermedias.All(x => x > rect.Izq && x < rect.Der));
+
+        // Redondo: proyeccion de las varillas de la circunferencia sobre el diametro.
+        var circ = TrazoZapata.BarrasCirculares(0.0, 0.40, 0.05, 0.0095, 0.0127, 8);
+        var radio = (0.40 / 2) - 0.05 - 0.0095 - (0.0127 / 2);
+
+        Vale("redondo: los extremos caen en la circunferencia del armado",
+            Math.Abs(circ.Der - (-0.20 + radio)) < 1e-9
+            && Math.Abs(circ.Izq - (-0.20 - radio)) < 1e-9);
+
+        // Con 8 varillas empezando arriba: -R, -0.707R, 0, +0.707R, +R -> 5 posiciones distintas.
+        Vale("y las simetricas se ven como UNA sola varilla en el alzado",
+            circ.Intermedias.Count == 3);
+
+        Vale("las intermedias del redondo van ordenadas y dentro de los extremos",
+            circ.Intermedias.All(x => x > circ.Izq && x < circ.Der)
+            && circ.Intermedias.Zip(circ.Intermedias.Skip(1)).All(p => p.First < p.Second));
+
+        // Un redondo y un cuadrado del MISMO ancho: los extremos del redondo quedan por dentro,
+        // que es lo que hace que el corrimiento con el dado sea distinto y haya que calcularlo.
+        Vale("el redondo mete sus varillas por dentro del cuadrado del mismo ancho",
+            circ.Izq > rect.Izq && circ.Der < rect.Der);
+
+        // Sin sitio para el armado no se inventa nada: se responde como un cuadrado.
+        var chico = TrazoZapata.BarrasCirculares(0.0, 0.10, 0.05, 0.0095, 0.0127, 6);
+
+        Vale("un redondo sin sitio no revienta", chico.Intermedias.Count == 0);
+    }
+
     // El orden saliendo del dibujo hacia abajo: cadena, total y el rotulo. Las cotas de las patas
     // no entran aqui: van pegadas a su pata, DENTRO del dado, como en la macro.
     Vale("la anotacion sale en orden, sin que dos cosas compartan renglon",

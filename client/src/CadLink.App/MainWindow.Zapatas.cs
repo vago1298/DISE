@@ -319,6 +319,11 @@ public partial class MainWindow
 
             fila.TipoColumna = ZapataAisladaRow.TipoColumnaConcreto;
 
+            // La FORMA, igual que con el dado: la necesita la transición dado -> columna, porque
+            // en la redonda las varillas van en la circunferencia y lo que se ve en el alzado es
+            // su proyección.
+            fila.ColumnaCircular = col.EsCircular;
+
             // Y su ARMADO, que es lo que el dibujante necesita para el arranque de la columna
             // encima del dado. En la macro esto se capturaba otra vez en la hoja de la zapata;
             // aquí sale de la sección, que es donde ya estaba.

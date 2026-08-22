@@ -452,53 +452,69 @@ public sealed partial class ZapataDrawer
 
         var intermediasIguales = z.NIntDado > 0 && z.NIntColumna > 0;
 
-        var union = PrepararUnion(
+        // Las varillas de cada elemento, redondo o cuadrado. En el redondo lo que se ve en el
+        // alzado es la PROYECCIÓN de las varillas de la circunferencia, no un reparto a lo ancho.
+        var barrasDado = BarrasDelElemento(
             a.XDadoDer, a.XDadoDer - a.XDadoIzq, recDadoM, dSupDado, dInfDado, z.NIntDado,
-            z.VarIntDado, dIntDado, z.VarDadoSup, z.VarDadoInf,
+            z.DadoCircular, dEstDado,
+            z.NVarDadoSup + z.NVarDadoInf + z.NVarIntDadoTotal);
+
+        var barrasCol = BarrasDelElemento(
             a.XColDer, a.XColDer - a.XColIzq, recColM, dSupCol, dInfCol, z.NIntColumna,
+            z.ColumnaCircular, Diam(z.EstriboColumna),
+            z.NVarColSup + z.NVarColInf + z.NVarIntColumnaTotal);
+
+        var union = PrepararUnion(
+            barrasDado, barrasCol,
+            dSupDado, dInfDado, dIntDado,
+            z.VarDadoSup, z.VarDadoInf, z.VarIntDado,
             esquinasIguales, intermediasIguales);
 
-        // Alto de la zona de dobleces, recortado para que quede barra recta en el dado.
-        var hMaxZona = (yDadoTop - recDadoM) - (yZapTop + MinBarraRectaDado);
+        // EL DOBLEZ VA A 1:6 Y NO SE NEGOCIA. Lo resuelve TrazoZapata.Desplazamiento: el alto es
+        // seis veces el corrimiento y lo que se acomoda es DÓNDE queda ese doblez. Si no cabe en el
+        // dado, acaba dentro de la columna; y si no cabe ni así, no se dibuja y se avisa.
+        //
+        // Antes el alto se recortaba a lo que quedaba libre en el dado, y el doblez salía más
+        // parado que el detalle: en el dibujo que se revisó, 1:3.
+        var yColTope = yDadoTop + (AlturaColumnaRep * ColumnaFraccionCorte);
 
-        if (hMaxZona < 0)
-        {
-            hMaxZona = 0;
-        }
+        var trans = TrazoZapata.Desplazamiento(union.DxMax, yZapTop, yDadoTop, recDadoM, yColTope);
 
-        var hZona = Math.Min(union.Alto, hMaxZona);
+        var yZonaBot = trans.Cabe ? trans.YZonaBot : yDadoTop - recDadoM;
+        var yDiagTop = trans.Cabe ? trans.YDiagTop : yDadoTop;
 
-        if (hZona < 0)
-        {
-            hZona = 0;
-        }
+        // La varilla sigue vertical un recubrimiento por encima de donde acaba el doblez, para que
+        // se vea que entra en la columna.
+        var yZonaTop = Math.Min(Math.Max(yDadoTop, yDiagTop) + recColM, yColTope);
 
-        var yZonaTop = yDadoTop + recColM;
-        var yZonaBot = yDadoTop - hZona;
-
-        if (yZonaBot > yDadoTop - recDadoM)
-        {
-            yZonaBot = yDadoTop - recDadoM;
-        }
+        // Se dibuja la transición solo si el doblez cabe a 1:6. Si no, las varillas del dado se
+        // quedan rectas y su gancho de remate se conserva, como cuando no hay unión.
+        var aplicarUnion = union.Activa && trans.Cabe;
 
         var recorteDado = 0.0;
 
-        if (union.Activa)
+        if (aplicarUnion)
         {
             recorteDado = Math.Max((yDadoTop - recDadoM) - yZonaBot, 0);
 
-            // EL TRASLAPE VA A 1:6 —la RELACION_DESPLAZAMIENTO de la macro—: la zona de dobleces
-            // mide seis veces lo que la barra se corre de lado. Si el dado es tan bajo que no
-            // caben esos seis, la zona se recorta y el doblez sale MAS PARADO que 1:6, así que se
-            // dice: un doblez más parado de lo que manda el reglamento no se arregla dibujándolo
-            // bonito, se arregla subiendo el dado o bajando el desplazamiento.
-            if (union.Alto > hZona + 1e-6)
+            // El doblez SÍ sale a 1:6; lo único que se avisa es que tuvo que acabar dentro de la
+            // columna porque el dado no daba altura. Es correcto —la varilla es la misma y sigue
+            // hacia arriba— pero conviene saberlo al revisar el plano.
+            if (trans.CruzaLaJunta)
             {
-                Nota($"Zapata '{z.Id}': el traslape del dado con la columna necesita "
-                     + $"{union.Alto:0.###} m para quedar a 1:6 y en el dado solo caben "
-                     + $"{hZona:0.###} m, así que el doblez queda más parado. Sube el dado o "
-                     + "reduce la diferencia entre el ancho del dado y el de la columna.");
+                Nota($"Zapata '{z.Id}': el desplazamiento de {union.DxMax:0.###} m necesita "
+                     + $"{trans.Alto:0.###} m a 1:6 y el dado no los tiene, así que el doblez "
+                     + "termina dentro de la columna. Se mantiene el 1:6 del detalle.");
             }
+        }
+        else if (union.Activa && !trans.Cabe)
+        {
+            // Ni con la columna alcanza: las varillas del dado se quedan RECTAS. Es mejor eso que
+            // dibujar un doblez más parado que el detalle y que alguien lo arme así en obra.
+            Nota($"Zapata '{z.Id}': el desplazamiento de {union.DxMax:0.###} m pediría "
+                 + $"{trans.Alto:0.###} m de doblez a 1:6 y no caben ni en el dado ni en la "
+                 + "columna, así que las varillas del dado se dejan rectas y la columna se "
+                 + "traslapa aparte. Sube el dado o acerca los anchos.");
         }
 
         // offEstribosFin del dado: con columna de concreto, 2 cm; con columna de acero hay que
@@ -536,7 +552,7 @@ public sealed partial class ZapataDrawer
             gancho: GanchoRemate, esDado: true, subirGanchos: subirGanchoDado,
             gancho12D: true, recorteConcIni: z.EspesorM, fracCorte: 0,
             estrOmitirIni: omitirEstribos, omitGanchoIni: false,
-            omitGanchoFin: union.Activa, ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1,
+            omitGanchoFin: aplicarUnion, ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1,
             recorteBarrasFin: recorteDado, offEstribosFin: offEstFinDado,
             // ganchosAmbosIzq va SIEMPRE en false, también en el lindero. La regla es el TIPO
             // DE COLUMNA y nada más: con columna de concreto las dos patas doblan hacia ADENTRO
@@ -555,14 +571,15 @@ public sealed partial class ZapataDrawer
                 estrDia: z.EstriboColumna, espStr: z.SepEstriboColumna,
                 gancho: GanchoRemate, esDado: false, subirGanchos: 0,
                 gancho12D: false, recorteConcIni: 0, fracCorte: ColumnaFraccionCorte,
-                estrOmitirIni: -1, omitGanchoIni: union.Activa,
+                estrOmitirIni: -1, omitGanchoIni: aplicarUnion,
                 omitGanchoFin: false, ganchoIniAfuera: -1,
                 recorteBarrasFin: 0, offEstribosFin: -1,
                 estribosAlTope: false, ganchosAmbosIzq: false);
 
-            if (union.Activa)
+            if (aplicarUnion)
             {
-                DibujarUnion(union, yZonaBot, yDadoTop, yZonaTop, yDadoTop - recDadoM);
+                // El doblez acaba en yDiagTop -el 1:6- y de ahí la varilla sigue vertical.
+                DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop, yDadoTop - recDadoM);
             }
         }
 
@@ -1528,7 +1545,18 @@ public sealed partial class ZapataDrawer
     private sealed class Union
     {
         public bool Activa { get; set; }
-        public double Alto { get; set; }
+
+        /// <summary>
+        /// El corrimiento más grande de todas las varillas emparejadas.
+        /// </summary>
+        /// <remarks>
+        /// Se guarda el corrimiento y <b>no</b> el alto del doblez: el alto lo resuelve
+        /// <see cref="TrazoZapata.Desplazamiento"/> a 1:6, y así no hay dos sitios donde se pueda
+        /// recortar. Antes se guardaba el alto ya calculado y después se recortaba aquí, que es
+        /// como el doblez acababa más parado que el detalle.
+        /// </remarks>
+        public double DxMax { get; set; }
+
         public List<(double X1, double X2, double Dia, string Capa)> Dobleces { get; } = new();
         public List<(double X, double Dia, string Capa)> Rectas { get; } = new();
     }
@@ -1547,9 +1575,9 @@ public sealed partial class ZapataDrawer
     /// </para>
     /// </remarks>
     private Union PrepararUnion(
-        double xDadoCaraDer, double wDado, double recDadoM, double dSupD, double dInfD,
-        int nIntD, string? diaIntD, double dIntD, string? diaSupD, string? diaInfD,
-        double xColCaraDer, double wCol, double recColM, double dSupC, double dInfC, int nIntC,
+        TrazoZapata.BarrasElemento dado, TrazoZapata.BarrasElemento columna,
+        double dSupD, double dInfD, double dIntD,
+        string? diaSupD, string? diaInfD, string? diaIntD,
         bool esquinasIguales, bool intermediasIguales)
     {
         var u = new Union();
@@ -1559,13 +1587,16 @@ public sealed partial class ZapataDrawer
             return u;
         }
 
-        var (xEsqIzqD, xEsqDerD, xIntD) =
-            PosicionesBarras(xDadoCaraDer, wDado, recDadoM, dSupD, dInfD, nIntD);
-        var (xEsqIzqC, xEsqDerC, xIntC) =
-            PosicionesBarras(xColCaraDer, wCol, recColM, dSupC, dInfC, nIntC);
+        var xEsqIzqD = dado.Izq;
+        var xEsqDerD = dado.Der;
+        var xIntD = dado.Intermedias;
 
-        if (Math.Abs(xEsqIzqC - xEsqIzqD) > DesplazamientoMax
-            || Math.Abs(xEsqDerC - xEsqDerD) > DesplazamientoMax)
+        var xEsqIzqC = columna.Izq;
+        var xEsqDerC = columna.Der;
+        var xIntC = columna.Intermedias;
+
+        if (Math.Abs(xEsqIzqC - xEsqIzqD) > TrazoZapata.DesplazamientoMax
+            || Math.Abs(xEsqDerC - xEsqDerD) > TrazoZapata.DesplazamientoMax)
         {
             return u;
         }
@@ -1631,47 +1662,29 @@ public sealed partial class ZapataDrawer
             }
         }
 
-        var dxMax = u.Dobleces.Count == 0
+        u.DxMax = u.Dobleces.Count == 0
             ? 0
             : u.Dobleces.Max(d => Math.Abs(d.X2 - d.X1));
 
-        u.Alto = RelacionDesplazamiento * dxMax;
         u.Activa = true;
 
         return u;
     }
 
-    /// <summary>Port de <c>PosicionesBarrasElemento</c>, ya en coordenadas globales.</summary>
-    private static (double Izq, double Der, List<double> Intermedias) PosicionesBarras(
-        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt)
-    {
-        var izq = xCaraDer - (w - recM - (dSup / 2));
-        var der = xCaraDer - (recM + (dInf / 2));
-
-        var lista = new List<double>();
-
-        if (nInt <= 0)
-        {
-            return (izq, der, lista);
-        }
-
-        var yBot = recM + dInf;
-        var yTop = w - recM - dSup;
-
-        if (yTop <= yBot)
-        {
-            return (izq, der, lista);
-        }
-
-        var paso = (yTop - yBot) / (nInt + 1);
-
-        for (var k = 1; k <= nInt; k++)
-        {
-            lista.Add(xCaraDer - (yBot + (paso * k)));
-        }
-
-        return (izq, der, lista);
-    }
+    /// <summary>
+    /// Las varillas de un elemento vertical, redondo o cuadrado, como se ven en el alzado.
+    /// </summary>
+    /// <remarks>
+    /// El único sitio donde se decide si un elemento se reparte a lo ancho de su cara o en su
+    /// circunferencia. La cuenta está en <see cref="TrazoZapata"/>, que se puede comprobar sin
+    /// AutoCAD.
+    /// </remarks>
+    private static TrazoZapata.BarrasElemento BarrasDelElemento(
+        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt,
+        bool circular, double dEstriboM, int nTotal) =>
+        circular
+            ? TrazoZapata.BarrasCirculares(xCaraDer, w, recM, dEstriboM, dSup, nTotal)
+            : TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);
 
     /// <summary>Port de <c>DibujarUnionDadoColumna</c>.</summary>
     private void DibujarUnion(

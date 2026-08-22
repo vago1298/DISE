@@ -157,6 +157,17 @@ public sealed class ZapataCad
     /// </remarks>
     public bool DadoCircular { get; init; }
 
+    /// <summary>
+    /// La columna que desplanta es <b>circular</b>.
+    /// </summary>
+    /// <remarks>
+    /// Igual que <see cref="DadoCircular"/>, sale de su sección y no se captura. Se usa en la
+    /// <b>transición dado → columna</b>: en un elemento redondo las varillas no están repartidas a
+    /// lo ancho de una cara, sino en la circunferencia, y lo que se ve en el alzado es su
+    /// proyección. Emparejarlas como si fuera rectangular sacaba barras cruzadas.
+    /// </remarks>
+    public bool ColumnaCircular { get; init; }
+
     /// <summary>ID de la columna que desplanta, para su rótulo. <c>H5</c> / <c>Y5</c>.</summary>
     public string IdColumna { get; init; } = string.Empty;
 
@@ -296,6 +307,219 @@ public static class TrazoZapata
 
     /// <summary>Cierre de la última varilla de la malla: <c>PLANTA_FRACCION_CIERRE</c>.</summary>
     public const double PlantaFraccionCierre = 0.3;
+
+    // ======================================================================
+    // LA TRANSICIÓN DADO → COLUMNA: DESPLAZAMIENTO DE VARILLA A 1:6
+    // ======================================================================
+    //
+    // Es el detalle DESPLAZAMIENTO DE VARILLA EN COLUMNA O TRABE, RELACION 1:6: la varilla del
+    // dado se corre de lado para caer en la posición que le toca en la columna, y ese corrimiento
+    // se reparte en SEIS veces su longitud. La macro lo tiene en RELACION_DESPLAZAMIENTO = 6.
+
+    /// <summary>Uno de lado por <b>seis</b> de largo. <c>RELACION_DESPLAZAMIENTO</c>.</summary>
+    public const double RelacionDesplazamiento = 6.0;
+
+    /// <summary>
+    /// Corrimiento máximo que se resuelve doblando la misma varilla.
+    /// </summary>
+    /// <remarks>
+    /// <c>DESPLAZAMIENTO_MAX</c>. Por encima de 12 cm ya no es una varilla que se corre: son dos
+    /// varillas distintas y lo que va es un traslape, que es otro detalle. La macro se sale de la
+    /// rutina y deja las barras rectas.
+    /// </remarks>
+    public const double DesplazamientoMax = 0.12;
+
+    /// <summary>Tramo recto que se le deja a la varilla del dado antes del doblez.</summary>
+    /// <remarks><c>MIN_BARRA_RECTA_DADO</c>, medido desde el lomo de la zapata.</remarks>
+    public const double MinBarraRectaDado = 0.15;
+
+    /// <summary>Dónde va el doblez de la transición, ya resuelto a 1:6.</summary>
+    /// <param name="Cabe">
+    /// Se puede dibujar. Si es <c>false</c> las varillas del dado siguen <b>rectas</b>: es mejor
+    /// eso que un doblez más parado que el detalle.
+    /// </param>
+    /// <param name="YZonaBot">Donde arranca el doblez.</param>
+    /// <param name="YDiagTop">Donde acaba el doblez y la varilla sigue vertical.</param>
+    /// <param name="Alto">Lo que mide el doblez: seis veces el corrimiento.</param>
+    /// <param name="CruzaLaJunta">
+    /// El doblez acaba <b>por encima</b> del tope del dado, ya dentro de la columna. Pasa cuando el
+    /// dado no es lo bastante alto, y es la salida correcta: la varilla es la misma y sigue hacia
+    /// arriba, así que el doblez puede terminar en la columna sin dejar de ser 1:6.
+    /// </param>
+    public readonly record struct Transicion(
+        bool Cabe, double YZonaBot, double YDiagTop, double Alto, bool CruzaLaJunta);
+
+    /// <summary>
+    /// Resuelve el doblez de la transición <b>siempre a 1:6</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ESTO ES LO QUE ESTABA MAL. El alto del doblez se calculaba a 1:6 y después se
+    /// <b>recortaba</b> a lo que quedaba libre en el dado, así que en un dado bajo el mismo
+    /// corrimiento se repartía en menos altura y el doblez salía <b>más parado</b> que el detalle
+    /// —hasta 1:3 en el dibujo que se revisó—. El aviso decía «sube el dado», pero el plano ya
+    /// había salido con un doblez que no es el que se especifica.
+    /// </para>
+    /// <para>
+    /// Ahora el alto es intocable: seis veces el corrimiento. Lo que se mueve es <b>dónde</b> se
+    /// pone ese doblez, en este orden:
+    /// </para>
+    /// <list type="number">
+    ///   <item>Lo normal: acaba justo en el tope del dado y arranca 6·dx más abajo.</item>
+    ///   <item>Si arrancaría por debajo del tramo recto mínimo, se sube el arranque y el doblez
+    ///   <b>acaba dentro de la columna</b>. Sigue siendo 1:6.</item>
+    ///   <item>Si ni con la columna alcanza, no se dibuja: las varillas del dado se quedan rectas
+    ///   y se avisa. Un doblez más parado que el detalle no es un dibujo, es un error.</item>
+    /// </list>
+    /// </remarks>
+    /// <param name="dxMax">El corrimiento más grande de todas las varillas emparejadas.</param>
+    /// <param name="yZapTop">Lomo de la zapata.</param>
+    /// <param name="yDadoTop">Tope del dado, que es la junta con la columna.</param>
+    /// <param name="recDadoM">Recubrimiento del dado.</param>
+    /// <param name="yColTope">Hasta dónde llega la columna dibujada.</param>
+    public static Transicion Desplazamiento(
+        double dxMax, double yZapTop, double yDadoTop, double recDadoM, double yColTope)
+    {
+        var alto = RelacionDesplazamiento * Math.Abs(dxMax);
+
+        if (alto <= 1e-9)
+        {
+            // Las varillas caen en la misma X: no hay nada que correr y no hay doblez.
+            return new Transicion(false, yDadoTop, yDadoTop, 0, false);
+        }
+
+        var piso = yZapTop + MinBarraRectaDado;
+        var techo = yDadoTop - recDadoM;
+
+        var yDiagTop = yDadoTop;
+        var yZonaBot = yDadoTop - alto;
+
+        // El doblez no puede arrancar dentro del recubrimiento del tope del dado.
+        if (yZonaBot > techo)
+        {
+            yZonaBot = techo;
+            yDiagTop = techo + alto;
+        }
+
+        // Ni por debajo del tramo recto que se le deja sobre la zapata.
+        if (yZonaBot < piso)
+        {
+            yZonaBot = piso;
+            yDiagTop = piso + alto;
+        }
+
+        var cruza = yDiagTop > yDadoTop + 1e-9;
+        var cabe = yZonaBot < yDiagTop - 1e-9 && yDiagTop <= yColTope + 1e-9;
+
+        return new Transicion(cabe, yZonaBot, yDiagTop, alto, cruza);
+    }
+
+    /// <summary>
+    /// Las varillas de una cara del elemento vertical, en X, como se ven en el alzado.
+    /// </summary>
+    /// <param name="Izq">La del paño izquierdo.</param>
+    /// <param name="Der">La del paño derecho.</param>
+    /// <param name="Intermedias">Las de en medio, de izquierda a derecha.</param>
+    public readonly record struct BarrasElemento(
+        double Izq, double Der, IReadOnlyList<double> Intermedias);
+
+    /// <summary>
+    /// Varillas de un elemento <b>rectangular</b>. Port de <c>PosicionesBarrasElemento</c>.
+    /// </summary>
+    /// <param name="xCaraDer">Paño derecho del elemento.</param>
+    public static BarrasElemento BarrasRectangulares(
+        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt)
+    {
+        var izq = xCaraDer - (w - recM - (dSup / 2));
+        var der = xCaraDer - (recM + (dInf / 2));
+
+        var lista = new List<double>();
+
+        if (nInt <= 0)
+        {
+            return new BarrasElemento(izq, der, lista);
+        }
+
+        var desde = recM + dInf;
+        var hasta = w - recM - dSup;
+
+        if (hasta <= desde)
+        {
+            return new BarrasElemento(izq, der, lista);
+        }
+
+        var paso = (hasta - desde) / (nInt + 1);
+
+        for (var k = 1; k <= nInt; k++)
+        {
+            lista.Add(xCaraDer - (desde + (paso * k)));
+        }
+
+        return new BarrasElemento(izq, der, lista);
+    }
+
+    /// <summary>
+    /// Varillas de un elemento <b>circular</b>, proyectadas como se ven en el alzado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// NUEVO: la macro no tiene el caso redondo —sus dos hojas capturan base y altura— así que se
+    /// arma con la misma idea que la rectangular, que es lo que se pidió: en el alzado no se ve la
+    /// planta, se ve la <b>proyección</b> de las varillas sobre el diámetro horizontal.
+    /// </para>
+    /// <para>
+    /// Las <c>n</c> varillas van repartidas en la circunferencia de radio
+    /// <c>D/2 − rec − dEstribo − dBarra/2</c>, empezando arriba. Su proyección en X es
+    /// <c>cx + R·cos θ</c>, así que dos varillas simétricas respecto del eje vertical caen en la
+    /// <b>misma</b> X y en el alzado son una sola: se agrupan con una tolerancia de medio diámetro,
+    /// porque dibujar dos varillas encimadas y emparejarlas por separado con la columna es
+    /// exactamente lo que hacía que salieran barras cruzadas.
+    /// </para>
+    /// <para>
+    /// Las dos de los extremos son las de los paños —las que en la rectangular son las de
+    /// esquina— y las demás quedan como intermedias.
+    /// </para>
+    /// </remarks>
+    /// <param name="xCaraDer">Paño derecho, que en el redondo es el borde del círculo.</param>
+    /// <param name="diametroM">Diámetro del elemento.</param>
+    /// <param name="nTotal">Cuántas varillas lleva en total la circunferencia.</param>
+    public static BarrasElemento BarrasCirculares(
+        double xCaraDer, double diametroM, double recM, double dEstriboM, double dBarraM,
+        int nTotal)
+    {
+        var cx = xCaraDer - (diametroM / 2);
+        var radio = (diametroM / 2) - recM - dEstriboM - (dBarraM / 2);
+
+        if (radio <= 0 || nTotal < 2)
+        {
+            // Sin sitio o sin varillas: se responde como si fuera un rectángulo de ese ancho, que
+            // deja las dos de los paños y ninguna intermedia.
+            return BarrasRectangulares(xCaraDer, diametroM, recM, dBarraM, dBarraM, 0);
+        }
+
+        var xs = new List<double>();
+        var tol = Math.Max(dBarraM / 2, 1e-4);
+
+        for (var k = 0; k < nTotal; k++)
+        {
+            // Se empieza ARRIBA, como se reparte una columna redonda en obra.
+            var ang = (Math.PI / 2) + (2 * Math.PI * k / nTotal);
+            var x = cx + (radio * Math.Cos(ang));
+
+            if (!xs.Any(v => Math.Abs(v - x) < tol))
+            {
+                xs.Add(x);
+            }
+        }
+
+        xs.Sort();
+
+        var izq = xs[0];
+        var der = xs[^1];
+        var medias = xs.Count > 2 ? xs.GetRange(1, xs.Count - 2) : new List<double>();
+
+        return new BarrasElemento(izq, der, medias);
+    }
 
     // ======================================================================
     // El acomodo
