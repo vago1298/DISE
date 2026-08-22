@@ -574,7 +574,14 @@ public sealed partial class ZapataDrawer
             if (aplicarUnion)
             {
                 // El doblez acaba en yDiagTop -el 1:6- y de ahí la varilla sigue vertical.
-                DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop, yDadoTop - recDadoM);
+                DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop);
+
+                if (union.SinPareja > 0)
+                {
+                    Nota($"Zapata '{z.Id}': {union.SinPareja} varilla(s) del dado no tienen pareja "
+                         + "en la columna, así que no llevan doblez y acaban en el dado. Si tienen "
+                         + "que subir, dale a la columna las mismas varillas intermedias.");
+                }
             }
         }
 
@@ -1553,7 +1560,16 @@ public sealed partial class ZapataDrawer
         public double DxMax { get; set; }
 
         public List<(double X1, double X2, double Dia, string Capa)> Dobleces { get; } = new();
-        public List<(double X, double Dia, string Capa)> Rectas { get; } = new();
+
+        /// <summary>
+        /// Cuántas varillas del dado se quedaron <b>sin pareja</b> en la columna.
+        /// </summary>
+        /// <remarks>
+        /// Solo para avisar. Antes se dibujaban rectas hasta el tope del dado —así lo hace la
+        /// macro— y en el plano quedaban unos tramos de varilla que no van a ningún lado, entre
+        /// los dobleces. Ya no se dibujan: la varilla acaba donde el dado la corta.
+        /// </remarks>
+        public int SinPareja { get; set; }
     }
 
     /// <summary>Port de <c>PrepararUnionDadoColumna</c>.</summary>
@@ -1617,11 +1633,10 @@ public sealed partial class ZapataDrawer
             u.Dobleces.Add((ordD[k], ordC[k], dIntD, CapaVar(diaIntD)));
         }
 
-        // Las del dado que se quedaron sin pareja siguen RECTAS hasta el tope del dado.
-        for (var k = pares; k < ordD.Count; k++)
-        {
-            u.Rectas.Add((ordD[k], dIntD, CapaVar(diaIntD)));
-        }
+        // Las del dado que se quedaron sin pareja NO SE DIBUJAN en la zona: acaban donde el dado
+        // las corta. La macro las seguía recta hasta el tope del dado y eso dejaba, entre los
+        // dobleces, tramos de varilla que no van a ningún lado.
+        u.SinPareja = Math.Max(ordD.Count - pares, 0);
 
         u.DxMax = u.Dobleces.Count == 0
             ? 0
@@ -1690,20 +1705,16 @@ public sealed partial class ZapataDrawer
     /// <param name="yZonaBot">Donde arranca la zona de doblez, la misma para todas.</param>
     /// <param name="yDiagTop">Donde acaba, en la junta con la columna.</param>
     /// <param name="yZonaTop">Hasta donde sigue la varilla, ya dentro de la columna.</param>
-    /// <param name="yTopRectas">Tope de las que no tienen pareja y siguen rectas.</param>
-    private void DibujarUnion(
-        Union u, double yZonaBot, double yDiagTop, double yZonaTop, double yTopRectas)
+    private void DibujarUnion(Union u, double yZonaBot, double yDiagTop, double yZonaTop)
     {
+        // EN LA ZONA SOLO VAN LOS DOBLECES. Las varillas del dado que no tienen pareja en la
+        // columna ya no se dibujan aquí: la macro las seguía rectas hasta el tope del dado y en el
+        // plano quedaban tramos de varilla entre los dobleces que no van a ningún lado.
         foreach (var (x1, x2, dia, capa) in u.Dobleces)
         {
             // La zona es la MISMA para todas: de yZonaBot a yDiagTop. La que más se corre va a 1:6
             // y las otras, más tendidas.
             DesplazamientoVarilla(x1, x2, yZonaBot, yZonaBot, yDiagTop, yZonaTop, dia, capa);
-        }
-
-        foreach (var (x, dia, capa) in u.Rectas)
-        {
-            BarraVerticalBanda(x, yZonaBot, yTopRectas, dia, capa, false, true);
         }
     }
 
@@ -1777,38 +1788,10 @@ public sealed partial class ZapataDrawer
         }
     }
 
-    /// <summary>Port de <c>DibujarBarraVerticalBanda</c>.</summary>
-    private void BarraVerticalBanda(
-        double x, double yBot, double yTop, double dia, string capa,
-        bool taparAbajo, bool taparArriba)
-    {
-        if (dia <= 0 || yTop <= yBot)
-        {
-            return;
-        }
-
-        AsegurarCapaVarilla(capa);
-
-        var r = dia / 2;
-
-        if (_relleno)
-        {
-            RellenarQuad(x - r, yBot, x + r, yBot, x + r, yTop, x - r, yTop, capa, 0);
-        }
-
-        Var(Linea(x - r, yBot, x - r, yTop, capa));
-        Var(Linea(x + r, yBot, x + r, yTop, capa));
-
-        if (taparAbajo)
-        {
-            Var(Linea(x - r, yBot, x + r, yBot, capa));
-        }
-
-        if (taparArriba)
-        {
-            Var(Linea(x - r, yTop, x + r, yTop, capa));
-        }
-    }
+    // El port de DibujarBarraVerticalBanda YA NO ESTÁ. Era la varilla recta que la macro dibujaba
+    // en la zona de dobleces para las del dado sin pareja en la columna, y en el plano quedaban
+    // tramos de varilla entre los dobleces que no van a ningún lado. Se quitó el dibujo y con él su
+    // única rutina, en lugar de dejarla sin usar: una rutina que no se llama vuelve sola.
 
     // ======================================================================
     // Concreto, plantilla y terreno

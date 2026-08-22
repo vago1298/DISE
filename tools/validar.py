@@ -4416,6 +4416,21 @@ def v19_circular_y_ui() -> None:
           "EL TEOREMA" in zap_drw
           and "DesplazamientoVarilla(x1, x2, yZonaBot, yZonaBot, yDiagTop, yZonaTop, dia, capa);"
           in zap_drw)
+    # LO QUE SE PIDIO: "esos tramos de varilla recta que no van a ningun lado, esas ya no van".
+    # Eran las varillas del dado sin pareja en la columna, que la macro seguia rectas hasta el tope
+    # del dado y quedaban entre los dobleces.
+    check("en la zona de doblez SOLO van los dobleces",
+          "EN LA ZONA SOLO VAN LOS DOBLECES" in zap_drw
+          and "private void DibujarUnion(Union u, double yZonaBot, double yDiagTop, "
+              "double yZonaTop)" in zap_drw
+          and "u.Rectas" not in zap_drw)
+    check("y la rutina de la varilla recta se quito, no se dejo sin usar",
+          "private void BarraVerticalBanda(" not in zap_drw
+          and "El port de DibujarBarraVerticalBanda YA NO ESTÁ" in zap_drw)
+    check("las que se quedan sin pareja se cuentan y se avisan",
+          "public int SinPareja { get; set; }" in zap_drw
+          and "u.SinPareja = Math.Max(ordD.Count - pares, 0);" in zap_drw
+          and "no tienen pareja " in zap_drw)
     check("y queda escrito por que no se le da a cada varilla su propio doblez",
           "deja cada quiebre a una altura distinta" in zap_drw)
     check("la forma de la columna viaja desde su seccion, como la del dado",
