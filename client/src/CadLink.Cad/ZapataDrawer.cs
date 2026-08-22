@@ -201,6 +201,16 @@ public sealed partial class ZapataDrawer
     /// <summary>Modo de relleno de la sección en curso: la celda B3 de la macro.</summary>
     private bool _relleno;
 
+    /// <summary>
+    /// Los estribos de la zapata en curso, para subirlos al frente al final.
+    /// </summary>
+    /// <remarks>
+    /// El estribo se dibuja antes que las varillas longitudinales, así que sin esto queda por debajo
+    /// de ellas y en la zona de dobleces —donde todo se cruza— desaparece. Se sube con la tabla
+    /// <c>ACAD_SORTENTS</c>, el mismo <i>bring to front</i> que se usa a mano en AutoCAD.
+    /// </remarks>
+    private readonly List<object> _estribos = new();
+
     // Rotación de 90° del elemento vertical.
     private bool _rot;
     private double _rx0;
@@ -489,7 +499,12 @@ public sealed partial class ZapataDrawer
         // grande que no dejara barra donde recortar, ElementoVertical lo IGNORA y dibuja la varilla
         // completa; entonces la unión la volvía a dibujar encima y salían las dos.
         var topeBarrasDado = yDadoTop - recDadoM;
-        var recorteCabe = yZonaBot > yZapBot + subirGanchoDado + 0.02;
+
+        // La misma cuenta que hace ElementoVertical para decidir hasta dónde puede recortar: el
+        // arranque de la varilla del dado es el desplante + su recubrimiento + lo que se le sube el
+        // gancho, y hay que dejarle 2 cm. Le faltaba el recubrimiento y por eso había un margen en
+        // el que la unión se dibujaba pero el recorte no llegaba a aplicarse.
+        var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;
 
         var aplicarUnion = union.Activa && trans.Cabe && recorteCabe;
 
@@ -576,6 +591,7 @@ public sealed partial class ZapataDrawer
                 // El doblez acaba en yDiagTop -el 1:6- y de ahí la varilla sigue vertical.
                 DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop);
 
+
                 if (union.SinPareja > 0)
                 {
                     Nota($"Zapata '{z.Id}': {union.SinPareja} varilla(s) del dado no tienen pareja "
@@ -584,6 +600,13 @@ public sealed partial class ZapataDrawer
                 }
             }
         }
+
+        // ---------- LOS ESTRIBOS, AL FRENTE ----------
+        // Lo último de la geometría, y por eso va aquí y no junto a donde se dibujan: el orden lo
+        // decide el final, cuando ya están todas las varillas. Es el «draw order → bring to front»
+        // de AutoCAD, con la misma tabla ACAD_SORTENTS que usa el alzado.
+        AlFrente(_cont, _estribos);
+        _estribos.Clear();
 
         // ---------- Se inserta el bloque de la zapata ----------
         _cont = _ms;
@@ -873,9 +896,17 @@ public sealed partial class ZapataDrawer
             {
                 xbBar = xb;
 
-                if (recorteBarrasFin > 0 && xb - recorteBarrasFin > xaBot + 0.02)
+                // EL RECORTE SE APLICA SIEMPRE, RECORTADO SI HACE FALTA, PERO NUNCA SE IGNORA.
+                // Antes, si el recorte no dejaba al menos 2 cm de barra, se descartaba entero y la
+                // varilla salía COMPLETA. Y cuando el recorte viene de la zona de dobleces, eso
+                // significa la varilla completa MÁS el doblez encima: la misma varilla dos veces.
+                // Ahora, si no cabe entero, se aplica lo que quepa; y si no cabe nada, el que pidió
+                // el recorte se enterará porque la barra llega hasta arriba, no porque aparezca
+                // duplicada.
+                if (recorteBarrasFin > 0)
                 {
-                    xbBar = xb - recorteBarrasFin;
+                    var maximo = Math.Max(xb - (xaBot + 0.02), 0);
+                    xbBar = xb - Math.Min(recorteBarrasFin, maximo);
                 }
             }
 
@@ -1068,6 +1099,14 @@ public sealed partial class ZapataDrawer
                 Negro(a1);
                 Negro(a2);
             }
+
+            // Se apuntan para subirlos al frente al final. El estribo es lo que amarra el nudo y en
+            // el plano tiene que leerse por encima de las varillas: se dibuja antes que ellas, así
+            // que sin esto queda tapado justo donde más se cruzan, en la zona de dobleces.
+            Apuntar(_estribos, e1);
+            Apuntar(_estribos, e2);
+            Apuntar(_estribos, a1);
+            Apuntar(_estribos, a2);
         }
     }
 
@@ -1785,6 +1824,64 @@ public sealed partial class ZapataDrawer
             }
 
             Var(Polilinea(pts.ToArray(), capa, cerrada: false));
+        }
+    }
+
+    /// <summary>Apunta una entidad para reordenarla después, si se creó.</summary>
+    private static void Apuntar(List<object> lista, object? ent)
+    {
+        if (ent is not null)
+        {
+            lista.Add(ent);
+        }
+    }
+
+    /// <summary>
+    /// Sube entidades al frente: el <b>bring to front</b> de AutoCAD.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con la tabla <c>ACAD_SORTENTS</c> del contenedor, igual que
+    /// <c>AlzadoDrawer.AlFrente</c>. Funciona dentro de un bloque porque la tabla vive en el
+    /// diccionario de extensión del bloque, no en el del modelo.
+    /// </para>
+    /// <para>
+    /// Las llamadas van por <see cref="AcadArreglos"/>: <c>MoveToTop</c> recibe un arreglo de
+    /// entidades y esa es una de las llamadas que revienta con <c>dynamic</c> si no se le pasa el
+    /// arreglo con el tipo que espera.
+    /// </para>
+    /// </remarks>
+    private void AlFrente(object cont, List<object> objetos)
+    {
+        if (objetos.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic dict = ((dynamic)cont).GetExtensionDictionary;
+                dynamic tabla;
+
+                try
+                {
+                    tabla = dict.GetObject("ACAD_SORTENTS");
+                }
+                catch (Exception)
+                {
+                    tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
+                }
+
+                AcadArreglos.Llamar("MoveToTop de la zapata", objetos,
+                    arr => { tabla.MoveToTop(arr); },
+                    (op, ex) => Fallo(op, ex), Nota);
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Orden de dibujo de la zapata", ex);
         }
     }
 

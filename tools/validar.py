@@ -4377,8 +4377,8 @@ def v19_circular_y_ui() -> None:
     # union siga desde ahi, y ElementoVertical IGNORA un recorte que no deje barra. Si se ignora y
     # la union dibuja igual, salen las dos.
     check("y no se dibuja la union si el recorte del dado no se puede aplicar",
-          "var recorteCabe = yZonaBot > yZapBot + subirGanchoDado + 0.02;" in zap_drw
-          and "ElementoVertical lo IGNORA" in zap_drw)
+          "var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;" in zap_drw
+          and "el recorte no llegaba a aplicarse" in zap_drw)
     check("la varilla se dibuja sin vertices de longitud cero",
           "if (yd1 > yBot + 1e-9)" in zap_drw
           and "if (yTop > yd2 + 1e-9)" in zap_drw)
@@ -4431,6 +4431,29 @@ def v19_circular_y_ui() -> None:
           "public int SinPareja { get; set; }" in zap_drw
           and "u.SinPareja = Math.Max(ordD.Count - pares, 0);" in zap_drw
           and "no tienen pareja " in zap_drw)
+    # LA OTRA FUENTE DE VARILLAS DUPLICADAS: el recorte que se DESCARTABA. Si no dejaba 2 cm de
+    # barra, ElementoVertical lo ignoraba y dibujaba la varilla completa; con el recorte de la zona
+    # de dobleces, eso es la varilla entera MAS su doblez encima.
+    check("el recorte de las varillas se aplica siempre, recortado si hace falta",
+          "var maximo = Math.Max(xb - (xaBot + 0.02), 0);" in zap_drw
+          and "xbBar = xb - Math.Min(recorteBarrasFin, maximo);" in zap_drw
+          and "NUNCA SE IGNORA" in zap_drw)
+    check("y la union comprueba el recorte con la MISMA cuenta, recubrimiento incluido",
+          "var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;" in zap_drw)
+    # LOS ESTRIBOS, AL FRENTE: se dibujan antes que las varillas y en la zona de dobleces quedaban
+    # tapados. Es el draw order > bring to front de AutoCAD.
+    check("los estribos se suben al frente al final",
+          "private void AlFrente(object cont, List<object> objetos)" in zap_drw
+          and "tabla.MoveToTop(arr)" in zap_drw
+          and "AlFrente(_cont, _estribos);" in zap_drw)
+    check("se apuntan al dibujarlos, con sus dos caras y sus dos puntas",
+          "Apuntar(_estribos, e1);" in zap_drw
+          and "Apuntar(_estribos, a2);" in zap_drw
+          and "private readonly List<object> _estribos = new();" in zap_drw)
+    check("y la lista se vacia en cada zapata, para no arrastrar la anterior",
+          "_estribos.Clear();" in zap_drw)
+    check("el reordenado va por AcadArreglos, que es el que sabe pasar el arreglo",
+          'AcadArreglos.Llamar("MoveToTop de la zapata"' in zap_drw)
     check("y queda escrito por que no se le da a cada varilla su propio doblez",
           "deja cada quiebre a una altura distinta" in zap_drw)
     check("la forma de la columna viaja desde su seccion, como la del dado",
