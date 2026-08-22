@@ -972,16 +972,334 @@
 
             <!-- ===== Zapatas corridas ===== -->
             <TabItem Header="Zapatas Corridas">
-                <StackPanel Margin="22">
-                    <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}" />
-                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                               Text="Cimentacion continua, con su armado longitudinal y transversal." />
-                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="300" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}" />
+                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
+                                   Text="Las columnas son las celdas de tus dos macros de zapata corrida. La de TIPO decide lo que cambia entre ellas: la CENTRAL lleva el muro centrado y las secciones crecen a la derecha; la de LINDERO lleva el muro pegado al paño derecho y crecen a la izquierda, y ahi las patas del acero del muro doblan las dos a la izquierda y a dos alturas, porque por la derecha esta el lindero." />
+
+                        <!-- EL ESTILO DE DIBUJO ES DEL JUEGO ENTERO, igual que en las
+                             aisladas: son los MISMOS botones de la hoja de concreto,
+                             atados por ElementName. La celda B3 de tus macros. -->
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,14,0"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <RadioButton x:Name="ZapCorTipo1Radio" GroupName="TipoSeccionZapataCorrida"
+                                             VerticalAlignment="Center" Margin="0,0,22,0"
+                                             IsChecked="{Binding IsChecked, ElementName=Tipo1Radio, Mode=TwoWay}">
+                                    <TextBlock Text="Seccion tipo 1 - no rellena" FontWeight="SemiBold" FontSize="12" />
+                                </RadioButton>
+
+                                <RadioButton x:Name="ZapCorTipo2Radio" GroupName="TipoSeccionZapataCorrida"
+                                             VerticalAlignment="Center"
+                                             IsChecked="{Binding IsChecked, ElementName=Tipo2Radio, Mode=TwoWay}">
+                                    <TextBlock Text="Seccion tipo 2 - rellena" FontWeight="SemiBold" FontSize="12" />
+                                </RadioButton>
+
+                                <TextBlock Text="Con relleno, el muro de enrase sale con sus blocks en solido y sus juntas en otro color, como en tu macro."
+                                           FontSize="11" Opacity="0.75" VerticalAlignment="Center"
+                                           Margin="18,0,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- EL DOBLEZ DEL ACERO DEL MURO, EN DIAMETROS.
+                             Tus dos macros lo traen fijo en 15 (FACTOR_DOBLES_MURO), y es el
+                             MISMO criterio que el gancho de arranque del dado en las aisladas.
+                             Por eso se lee de la MISMA casilla: media obra a 15 diametros y la
+                             otra media a 40 no es un plano, es un error de armado. -->
+                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Doblez del acero del muro:" FontWeight="SemiBold" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,10,0"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <TextBlock x:Name="ZapCorGanchoText" FontSize="12" VerticalAlignment="Center" />
+
+                                <TextBlock Text="Se toma de la casilla de la hoja de zapatas aisladas: es el mismo doblez para toda la obra."
+                                           FontSize="11" Opacity="0.75" VerticalAlignment="Center"
+                                           Margin="18,0,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,8">
+                            <Button Content="Revisar zapatas corridas"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnRevisarZapatasCorridas"
+                                    ToolTip="Comprueba las filas y dice donde se va a dibujar cada zapata corrida." />
+
+                            <Button x:Name="DibujarZapatasCorridasButton"
+                                    Content="Dibujar zapatas corridas en AutoCAD"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnExportZapatasCorridas"
+                                    Margin="8,0,0,0"
+                                    ToolTip="Dibuja cada zapata corrida en el AutoCAD que ya tengas abierto, en las posiciones de tus macros.&#10;La contratrabe y la cadena de desplante se insertan como bloque buscandolas por su ID." />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <DataGrid x:Name="ZapatasCorridasGrid" Grid.Row="1"
+                              Style="{StaticResource SheetGridStyle}"
+                              SelectionUnit="FullRow"
+                              FrozenColumnCount="2"
+                              HeadersVisibility="All"
+                              ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
+                        <DataGrid.Columns>
+                            <!-- Identificacion. El TIPO va con el patron de esta hoja:
+                                 plantilla con ComboBox EDITABLE enlazado por Text y la lista
+                                 puesta desde la propia clase con x:Static. Con
+                                 SelectedItemBinding y la lista llegando desde el code-behind,
+                                 el enlace PISA el valor capturado. -->
+                            <DataGridTemplateColumn Header="Tipo" Width="95"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="Tipo">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Tipo}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.Tipos}}"
+                                                  Text="{Binding Tipo, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="CENTRAL: el muro va centrado y las secciones crecen a la derecha.&#10;LINDERO: el muro va pegado al paño derecho y crecen a la izquierda." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="70" CellStyle="{StaticResource CeldaIdent}" />
+
+                            <!-- Geometria de la zapata, EN METROS como en la macro -->
+                            <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="80" CellStyle="{StaticResource CeldaGeom}" />
+
+                            <!-- Parrillas de la zapata -->
+                            <DataGridTemplateColumn Header="Doble parrilla" Width="95"
+                                                    CellStyle="{StaticResource CeldaEstribo}"
+                                                    SortMemberPath="DobleParrilla">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DobleParrilla}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.SiNo}}"
+                                                  Text="{Binding DobleParrilla, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="SI: dos parrillas. NO: una sola, la inferior." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridComboBoxColumn x:Name="ColZapCorVarInf" Header="Var inf."
+                                                    SelectedItemBinding="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoInf}" />
+                            <DataGridTextColumn Header="@ cm" Binding="{Binding SepInf, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
+                            <DataGridComboBoxColumn x:Name="ColZapCorVarInfT" Header="Var inf. trans."
+                                                    SelectedItemBinding="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}" Width="100"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoInf}" />
+                            <DataGridTextColumn Header="@ cm" Binding="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
+
+                            <DataGridComboBoxColumn x:Name="ColZapCorVarSup" Header="Var sup."
+                                                    SelectedItemBinding="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoSup}" />
+                            <DataGridTextColumn Header="@ cm" Binding="{Binding SepSup, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="60" CellStyle="{StaticResource CeldaLechoSup}" />
+                            <DataGridComboBoxColumn x:Name="ColZapCorVarSupT" Header="Var sup. trans."
+                                                    SelectedItemBinding="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}" Width="100"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLechoSup}" />
+                            <DataGridTextColumn Header="@ cm" Binding="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="60" CellStyle="{StaticResource CeldaLechoSup}" />
+
+                            <!-- El muro. El espesor va en CENTIMETROS, como en la hoja:
+                                 la macro lo divide entre 100 al dibujar. -->
+                            <DataGridTemplateColumn Header="Muro" Width="130"
+                                                    CellStyle="{StaticResource CeldaAcabado}"
+                                                    SortMemberPath="TipoMuro">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding TipoMuro}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.TiposDeMuro}}"
+                                                  Text="{Binding TipoMuro, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="MAMPOSTERIA: lleva muro de enrase de block y cadena de desplante.&#10;CONCRETO: lleva su acero vertical con doblez y sus varillas de punta." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- El ToolTip de una columna de texto va en su ElementStyle:
+                                 una columna no es un control y ponerselo directo da el
+                                 error de compilacion MC3072. -->
+                            <DataGridTextColumn Header="e muro cm"
+                                                Binding="{Binding EspesorMuroCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="85" CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Espesor del muro en CENTIMETROS. En blanco o 0, la macro usa 15." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTemplateColumn Header="Muro doble parr." Width="110"
+                                                    CellStyle="{StaticResource CeldaLateral}"
+                                                    SortMemberPath="MuroDobleParrilla">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding MuroDobleParrilla}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.SiNo}}"
+                                                  Text="{Binding MuroDobleParrilla, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Solo para muro de CONCRETO: acero en los dos paños, a 5 cm de cada uno.&#10;Si el muro es tan delgado que no caben los dos, la macro lo pone al centro." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridComboBoxColumn x:Name="ColZapCorVarMuro" Header="Var muro"
+                                                    SelectedItemBinding="{Binding VarMuro, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                    EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaLateral}" />
+                            <DataGridTextColumn Header="@ horiz cm" Binding="{Binding SepMuroHoriz, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="90" CellStyle="{StaticResource CeldaLateral}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Separacion HORIZONTAL. En el corte no se ve: solo entra en el rotulo." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="@ vert cm" Binding="{Binding SepMuroVert, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="90" CellStyle="{StaticResource CeldaLateral}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Separacion VERTICAL: es la que reparte hacia arriba las varillas que salen de punta." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- Contratrabe y cadena: se INSERTAN COMO BLOQUE buscandolas
+                                 por su ID, asi que la lista ofrece las que ya estan
+                                 capturadas en la hoja de concreto. La celda sigue siendo
+                                 editable: el bloque puede estar en el dibujo sin estar
+                                 capturado, y eso es corriente en un plano empezado. -->
+                            <DataGridTemplateColumn Header="Contratrabe" Width="115"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="IdContratrabe">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IdContratrabe}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.ContratrabesDisponibles}}"
+                                                  Text="{Binding IdContratrabe, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="ID del bloque de la contratrabe. Vacio = la zapata no lleva.&#10;Su caja manda en el hatch de la zapata, en el hueco de su linea superior y en el tope del muro de enrase." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Cadena despl." Width="115"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="IdCadena">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IdCadena}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.CadenasDisponibles}}"
+                                                  Text="{Binding IdCadena, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="ID del bloque de la cadena de desplante, solo con muro de mamposteria.&#10;Su fondo es el tope del muro de enrase y su ancho es el que se enrasa." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTextColumn Header="f'c" Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}"
+                                                Width="70" CellStyle="{StaticResource CeldaAcabado}" />
+
+                            <DataGridTextColumn Header="Falta" Binding="{Binding Falta}"
+                                                Width="220" IsReadOnly="True"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Grid.Row="2" Margin="0,10,0,0"
+                            Background="{StaticResource PreviewFondoBrush}"
+                            BorderBrush="{DynamicResource BrandBrush}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Canvas x:Name="ZapataCorridaPreviewCanvas"
+                                    Background="{StaticResource PreviewFondoBrush}"
+                                    ClipToBounds="True" />
+                            <TextBlock Text="Vista previa de la zapata corrida seleccionada"
+                                       FontSize="10.5" Margin="8,6,0,0"
+                                       VerticalAlignment="Top" HorizontalAlignment="Left"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                        </Grid>
                     </Border>
-                </StackPanel>
+
+                    <Border Grid.Row="3" Background="{DynamicResource TotalesBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1,0,1,1" Padding="12,7">
+                        <TextBlock x:Name="TotalesZapatasCorridasText" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrandDarkBrush}" />
+                    </Border>
+                </Grid>
             </TabItem>
 
             <!-- ===== Zapatas aisladas ===== -->

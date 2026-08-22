@@ -78,6 +78,15 @@ public sealed class ProyectoGuardado
 
     /// <summary>Las filas de <b>Zapatas Aisladas</b>.</summary>
     public List<FilaGuardada> Zapatas { get; set; } = new();
+
+    /// <summary>Las filas de la hoja de <b>zapatas corridas</b>.</summary>
+    /// <remarks>
+    /// En su propia lista y no revueltas con las aisladas: son otra hoja, con otras columnas y
+    /// otro dibujante. Van con el mismo mecanismo genérico —<see cref="FilaSerializable"/>—, así
+    /// que una columna nueva de esta hoja se guarda sola. Un <c>.clk</c> de antes de esta hoja
+    /// llega sin la clave y la lista queda vacía, que es lo correcto: no había zapatas corridas.
+    /// </remarks>
+    public List<FilaGuardada> ZapatasCorridas { get; set; } = new();
 }
 
 public sealed class PlanoGuardado

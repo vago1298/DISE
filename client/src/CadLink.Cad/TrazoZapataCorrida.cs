@@ -369,6 +369,29 @@ public static class TrazoZapataCorrida
     /// </remarks>
     public const double MuroRetiroAcero = 0.05;
 
+    /// <summary>
+    /// Lo que se corre la varilla vertical respecto del eje del acero, en metros.
+    /// </summary>
+    /// <remarks>
+    /// Sale de una rareza de las dos macros que se porta <b>tal cual</b>: el desplazamiento lo
+    /// calculan con <c>DiametroVarilla(varMuroHoriz)</c>, o sea le pasan a la tabla de diámetros
+    /// la celda de la <b>separación</b> horizontal. Una celda que dice «20» no es ninguna varilla,
+    /// así que la tabla cae en su valor por omisión —el del <b>#3</b>, 0.009525 m— y ese es el
+    /// desplazamiento que sale en el plano. Se conserva porque es lo que está dibujado en las obras
+    /// ya entregadas; si algún día se captura ahí una varilla de verdad, sale su diámetro, como en
+    /// la macro.
+    /// </remarks>
+    public const double MuroDesplazamientoPorOmision = 0.009525;
+
+    /// <summary>
+    /// El desplazamiento de la varilla del muro: lo que salga de la celda, o el del <b>#3</b>.
+    /// </summary>
+    /// <param name="diamDeLaCeldaM">
+    /// Lo que la tabla de diámetros devuelve para la celda de separación horizontal, en metros.
+    /// </param>
+    public static double DesplazamientoDelMuro(double diamDeLaCeldaM) =>
+        diamDeLaCeldaM > 0 ? diamDeLaCeldaM : MuroDesplazamientoPorOmision;
+
     /// <summary>Los ejes verticales donde va el acero del muro.</summary>
     /// <param name="X1">Paño izquierdo, o el eje del muro si va una sola parrilla.</param>
     /// <param name="X2">Paño derecho, o el eje del muro si va una sola parrilla.</param>

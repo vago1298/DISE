@@ -77,6 +77,7 @@ public partial class MainWindow : Window
         // enganchado cinco veces.
         EngancharVistaPreviaAcero();
         EngancharVistaPreviaZapata();
+        EngancharVistaPreviaZapataCorrida();
 
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
@@ -187,6 +188,7 @@ public partial class MainWindow : Window
         // Y las de la hoja de acero, que viven en MainWindow.Acero.cs.
         LlenarListasAcero();
         LlenarListasZapatas();
+        LlenarListasZapatasCorridas();
     }
 
     private void Enlazar()
@@ -238,6 +240,7 @@ public partial class MainWindow : Window
         // aparte, su cuadricula seguiria mostrando la coleccion del proyecto anterior.
         EnlazarAcero();
         EnlazarZapatas();
+        EnlazarZapatasCorridas();
 
         DatosCambiaron();
     }
@@ -285,6 +288,10 @@ public partial class MainWindow : Window
         // así que se refrescan aquí: al agregar, borrar o renombrar uno, el desplegable se
         // entera solo. Las columnas de acero avisan por su lado, desde su propia hoja.
         ActualizarListasDeZapatas();
+
+        // Y las de la hoja de zapatas corridas: la contratrabe y la cadena de desplante también
+        // se capturan en la hoja de concreto y también se insertan como bloque por su ID.
+        ActualizarListasDeZapatasCorridas();
 
         ActualizarContadores();
         ActualizarTotales();
@@ -520,6 +527,9 @@ public partial class MainWindow : Window
         // el XAML. Sin esta linea, el unico boton de dibujo de la aplicacion que se puede
         // pulsar en la version de prueba seria este.
         DibujarZapatasButton.IsEnabled = puedeDibujar;
+
+        // Y las corridas, por lo mismo.
+        DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;
 
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
@@ -1266,6 +1276,11 @@ public partial class MainWindow : Window
             p.Zapatas.Add(FilaSerializable.Leer(z));
         }
 
+        foreach (var z in _datos.ZapatasCorridas)
+        {
+            p.ZapatasCorridas.Add(FilaSerializable.Leer(z));
+        }
+
         return p;
     }
 
@@ -1308,6 +1323,10 @@ public partial class MainWindow : Window
             ZapGanchoDiametrosBox.Text = TrazoZapata
                 .FactorGanchoValido(p.GanchoZapatasDiametros)
                 .ToString("0.#", CultureInfo.InvariantCulture);
+
+            // El rótulo de la hoja de corridas lee esa misma casilla, y aquí estamos con
+            // _listo en false, así que su TextChanged no va a saltar: se pone al día a mano.
+            ActualizarGanchoDeCorridas();
 
             _juego.Planos.Clear();
 
@@ -1364,6 +1383,16 @@ public partial class MainWindow : Window
                 var nueva = new ZapataAisladaRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.ZapatasAisladas.Add(nueva);
+            }
+
+            // ---- Zapatas Corridas ----
+            _datos.ZapatasCorridas.Clear();
+
+            foreach (var fila in p.ZapatasCorridas)
+            {
+                var nueva = new ZapataCorridaRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.ZapatasCorridas.Add(nueva);
             }
         }
         finally

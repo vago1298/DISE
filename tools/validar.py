@@ -6478,7 +6478,8 @@ def main() -> int:
               v18_planta_autocad, v19_circular_y_ui,
               v20_estaticos_sin_cualificar,
               v21_separacion_y_acero,
-              v22_zapatas_corridas):
+              v22_zapatas_corridas,
+              v23_hoja_zapatas_corridas):
         f()
 
     print("\n" + "=" * 66)
@@ -8452,10 +8453,178 @@ def v22_zapatas_corridas() -> None:
     # ------------------------------------------------------------------
     check("el inventario de las dos macros esta escrito",
           "# Inventario de `ZAPATA CORRIDA CENTRAL V2`" in doc)
-    check("y dice que el dibujante COM todavia falta",
-          "ZapataCorridaDrawer" in doc and "Falta" in doc)
+    # El inventario tiene que seguir el paso del port: cuando el dibujante no existia
+    # decia «Falta», y ahora tiene que decir cual es su archivo. Un inventario que se
+    # queda viejo es peor que no tenerlo, porque se lee y se cree.
+    check("el inventario apunta al dibujante que existe de verdad",
+          "ZapataDrawer.Corrida.cs" in doc)
+    check("y a la hoja de captura",
+          "pestaña «Zapatas Corridas»" in doc)
     check("y deja por escrito los errores que cazo la comprobacion",
           "Lo que se corrigió al leer el fuente" in doc)
+
+
+# ======================================================================
+# 23. La HOJA de zapatas corridas: la pestana, el modelo y el dibujante
+#
+#     Esta hoja no se puede compilar en el entorno donde se escribio -la
+#     aplicacion es WPF y aqui no hay Windows-, asi que estas
+#     comprobaciones son la unica red: que la pestana ya no sea un
+#     marcador, que cada nombre del XAML exista en el codigo, que la fila
+#     se guarde en el .clk y que el dibujante este enganchado.
+# ======================================================================
+def v23_hoja_zapatas_corridas() -> None:
+    print("\n[23] La hoja de zapatas corridas")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    hoja = leer(ruta("client/src/CadLink.App/MainWindow.ZapatasCorridas.cs"))
+    fila = leer(ruta("client/src/CadLink.App/Models/ZapataCorridaRow.cs"))
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    ventana = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    zapatas = leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
+    proyecto = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    drawer = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Corrida.cs"))
+
+    # ------------------------------------------------------------------
+    # La pestana ya NO es un marcador
+    # ------------------------------------------------------------------
+    # Se mira SOLO el trozo de esta pestana: los otros modulos que faltan
+    # -muros de contencion, placa base, conexiones- siguen siendo marcadores a
+    # proposito, y buscar el texto en todo el XAML los daba por rotos.
+    i_tab = xaml.index('<TabItem Header="Zapatas Corridas">')
+    pestana = xaml[i_tab:xaml.index("</TabItem>", i_tab)]
+
+    check("la pestana ya no es un marcador",
+          "Modulo pendiente de portar" not in pestana)
+    check("y trae su cuadricula, su vista previa y sus totales",
+          'x:Name="ZapatasCorridasGrid"' in xaml
+          and 'x:Name="ZapataCorridaPreviewCanvas"' in xaml
+          and 'x:Name="TotalesZapatasCorridasText"' in xaml)
+    check("con los dos botones de siempre y sus estilos",
+          'Click="OnRevisarZapatasCorridas"' in xaml
+          and 'Style="{StaticResource SecondaryButtonStyle}"' in xaml
+          and 'x:Name="DibujarZapatasCorridasButton"' in xaml
+          and 'Click="OnExportZapatasCorridas"' in xaml)
+
+    # El estilo de dibujo es del JUEGO: los radios van atados a los de concreto.
+    check("el estilo de dibujo esta atado a los botones de la hoja de concreto",
+          'x:Name="ZapCorTipo1Radio"' in xaml
+          and "IsChecked=\"{Binding IsChecked, ElementName=Tipo1Radio, Mode=TwoWay}\"" in xaml)
+
+    # ------------------------------------------------------------------
+    # Cada nombre del XAML existe en el codigo, y al contrario
+    # ------------------------------------------------------------------
+    for nombre in ("ColZapCorVarInf", "ColZapCorVarInfT", "ColZapCorVarSup",
+                   "ColZapCorVarSupT", "ColZapCorVarMuro"):
+        check(f"la columna {nombre} esta en el XAML y se llena en el codigo",
+              f'x:Name="{nombre}"' in xaml and f"{nombre}.ItemsSource" in hoja)
+
+    check("el rotulo del doblez del muro se rellena desde el codigo",
+          'x:Name="ZapCorGanchoText"' in xaml and "ZapCorGanchoText.Text" in hoja)
+
+    for manejador in ("OnRevisarZapatasCorridas", "OnExportZapatasCorridas"):
+        check(f"el manejador {manejador} existe",
+              f"private void {manejador}(object sender, RoutedEventArgs e)" in hoja)
+
+    # ------------------------------------------------------------------
+    # Las celdas que se pueden ESCRIBIR van por Text, no por SelectedItem
+    # ------------------------------------------------------------------
+    # Es el bug que dejaba las zapatas «de lindero»: con SelectedItemBinding y la
+    # lista llegando tarde, el enlace pisa el valor capturado.
+    for prop, lista in (("Tipo", "ZapataCorridaRow.Tipos"),
+                        ("TipoMuro", "ZapataCorridaRow.TiposDeMuro"),
+                        ("DobleParrilla", "ZapataCorridaRow.SiNo"),
+                        ("MuroDobleParrilla", "ZapataCorridaRow.SiNo"),
+                        ("IdContratrabe", "ZapataCorridaRow.ContratrabesDisponibles"),
+                        ("IdCadena", "ZapataCorridaRow.CadenasDisponibles")):
+        check(f"la celda de {prop} es un combo editable enlazado por Text",
+              f"models:{lista}" in xaml
+              and f'Text="{{Binding {prop}, UpdateSourceTrigger=PropertyChanged}}"' in xaml)
+
+    # ------------------------------------------------------------------
+    # El modelo de fila
+    # ------------------------------------------------------------------
+    check("la fila existe y hereda de Row",
+          "public sealed class ZapataCorridaRow : Row" in fila)
+    check("y convierte a geometria en UN solo sitio",
+          "public ZapataCorridaCad AFormatoCad()" in fila)
+    check("las listas de bloques son estaticas y observables",
+          "public static ObservableCollection<string> ContratrabesDisponibles" in fila
+          and "public static ObservableCollection<string> CadenasDisponibles" in fila)
+    check("el recubrimiento sale de la geometria, no de una casilla",
+          "public double RecM => TrazoZapataCorrida.RecPorOmision;" in fila)
+    check("la columna «Falta» avisa de la varilla del muro de concreto",
+          "la varilla del muro de concreto" in fila)
+    check("la coleccion viva esta en los datos del proyecto",
+          "public ObservableCollection<ZapataCorridaRow> ZapatasCorridas" in filas)
+    check("y el ejemplo trae una de cada tipo",
+          "ZapataCorridaCad.Central, Id = \"ZC-1\"" in filas
+          and "ZapataCorridaCad.Lindero, Id = \"ZCL-1\"" in filas)
+    check("con la contratrabe y la cadena que usan, capturadas en concreto",
+          'Elemento = "CONTRATRABE", Id = "CT-1"' in filas
+          and 'Elemento = "CADENA DE DESPLANTE", Id = "CD-1"' in filas)
+
+    # ------------------------------------------------------------------
+    # Los enganches de la ventana
+    # ------------------------------------------------------------------
+    check("las listas se llenan al arrancar",
+          "LlenarListasZapatasCorridas();" in ventana)
+    check("la cuadricula se enlaza con el resto",
+          "EnlazarZapatasCorridas();" in ventana)
+    check("la vista previa se engancha UNA vez, en el constructor",
+          ventana.count("EngancharVistaPreviaZapataCorrida();") == 1)
+    check("el boton lo enciende la LICENCIA, no el XAML",
+          "DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;" in ventana)
+    check("las listas de bloques se refrescan cuando cambia la hoja de concreto",
+          "ActualizarListasDeZapatasCorridas();" in ventana)
+
+    # El doblez es UNO para toda la obra: la casilla de las aisladas manda aqui.
+    check("el doblez del muro sale de la casilla de las aisladas",
+          "ActualizarGanchoDeCorridas();" in zapatas
+          and "DibujarVistaPreviaZapataCorrida();" in zapatas)
+
+    # ------------------------------------------------------------------
+    # Se guarda en el .clk
+    # ------------------------------------------------------------------
+    check("el proyecto guarda las zapatas corridas en su propia lista",
+          "public List<FilaGuardada> ZapatasCorridas" in proyecto)
+    check("se escriben al guardar",
+          "p.ZapatasCorridas.Add(FilaSerializable.Leer(z));" in ventana)
+    check("y se leen al abrir",
+          "_datos.ZapatasCorridas.Clear();" in ventana
+          and "foreach (var fila in p.ZapatasCorridas)" in ventana)
+
+    # ------------------------------------------------------------------
+    # El dibujante
+    # ------------------------------------------------------------------
+    check("el dibujante de corridas es un parcial del de zapatas",
+          "public sealed partial class ZapataDrawer" in drawer)
+    check("y no duplica las primitivas de AutoCAD",
+          "private object? Linea(" not in drawer
+          and "private object? HatchRect(" not in drawer
+          and "AcadConnection.Retry" in drawer)
+    check("su punto de entrada devuelve un resumen propio",
+          "public ResumenCorrida DibujarCorridas(" in drawer
+          and "public sealed class ResumenCorrida" in drawer)
+    check("cada familia lleva su propio indice de acomodo",
+          "var indice = lindero ? iLindero++ : iCentral++;" in drawer)
+    check("un fallo en una zapata no aborta el juego",
+          'Fallo($"Zapata corrida \'{z.Id}\'", ex);' in drawer)
+    check("la contratrabe se inserta ANTES de dibujar la zapata",
+          drawer.index("InsertarBloqueApoyado(") < drawer.index("HatchConcreto(xBase"))
+    check("la geometria sale de TrazoZapataCorrida y no se recalcula",
+          "TrazoZapataCorrida.Colocar(" in drawer
+          and "TrazoZapataCorrida.MuroDeEnrase(" in drawer
+          and "TrazoZapataCorrida.EjesDelAcero(" in drawer
+          and "TrazoZapataCorrida.CirculosDelMuro(" in drawer)
+    check("el enrase pinta primero los rellenos y luego los contornos",
+          drawer.index("Pasada 1: los rellenos") < drawer.index("Pasada 2: los contornos"))
+    check("y manda sus contornos al frente cuando va relleno",
+          "AlFrente(_cont, contornos);" in drawer)
+    check("el titulo del lindero sale de la clase de datos, con su texto de macro",
+          "z.TipoTexto" in drawer)
+    check("la hoja llama al dibujante",
+          "dibujante.DibujarCorridas(zapatas)" in hoja)
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -131,10 +131,35 @@ nivel de terreno.
 | `tools/verificar_zapatas_corridas.py` | las cuentas rehechas, número a número | Sí |
 | `tools/prueba-zapata` | los mismos números **ejecutando el C# compilado** | Sí |
 | `tools/validar.py` bloque `[22]` | que el port no se salga de las macros ni duplique lo de las aisladas | Sí |
-| `CadLink.Cad/ZapataCorridaDrawer.cs` | el dibujante COM | Falta |
-| `CadLink.App` hoja «Zapatas Corridas» | la hoja de captura y la vista previa | Falta |
+| `CadLink.Cad/ZapataDrawer.Corrida.cs` | el dibujante COM, como parcial de `ZapataDrawer` | Sí |
+| `CadLink.App/Models/ZapataCorridaRow.cs` | la fila de la hoja, con sus listas y su `AFormatoCad()` | Sí |
+| `CadLink.App` pestaña «Zapatas Corridas» | la hoja de captura, los dos botones y la vista previa | Sí |
+| `tools/validar.py` bloque `[23]` | que la pestaña, el modelo, el guardado y el dibujante estén enganchados | Sí |
 
-## 7. Lo que queda para el dibujante
+El dibujante va como **parcial de `ZapataDrawer`** y no como clase aparte: las corridas
+necesitan lo mismo que las aisladas para hablar con AutoCAD —líneas, hatches, cotas, textos,
+el reintento cuando el programa está ocupado, el bloque propio, el orden de dibujo—, y eso son
+ochocientas líneas de COM ya probadas contra el AutoCAD del usuario. Lo propio de esta hoja
+—acomodo, contratrabe y cadena como bloque, muro de enrase, muro de concreto con su acero,
+terreno y anotación— vive solo en ese archivo.
+
+## 7. Lo que la hoja hace distinto de las macros, a propósito
+
+Tres cosas, y las tres son mejoras que no cambian el dibujo:
+
+1. **El estilo de dibujo y el doblez del acero del muro son del juego entero**, no de cada
+   sección: los radios están atados a los de la hoja de concreto y el doblez se lee de la
+   casilla de la hoja de aisladas. En las macros, la central lee `B3` una vez y la de lindero
+   la lee por sección heredando `B3`; el criterio de la de lindero es el bueno y es el que
+   quedó. Media obra a 15 diámetros y la otra media a 40 no es un plano.
+2. **La contratrabe y la cadena se eligen de una lista** con las que ya están capturadas en la
+   hoja de concreto, en lugar de teclear el ID a ciegas. La celda sigue siendo editable: el
+   bloque puede existir en el dibujo sin estar en la hoja, y eso es corriente.
+3. **La columna «Falta» avisa de dos cosas que las macros no comprueban**: la varilla de la
+   parrilla superior cuando se pidió doble parrilla, y la del muro de concreto. Las macros
+   dibujan y dejan el muro sin acero sin decir nada.
+
+## 8. Lo que queda para el dibujante
 
 No es geometría: es todo lo que necesita el dibujo abierto, y por eso no vive en
 `TrazoZapataCorrida`.

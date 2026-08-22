@@ -875,6 +875,14 @@ public sealed class DatosProyecto
     /// </remarks>
     public ObservableCollection<ZapataAisladaRow> ZapatasAisladas { get; } = new();
 
+    /// <summary>Las zapatas corridas: centrales y de lindero, también en una sola tabla.</summary>
+    /// <remarks>
+    /// Por lo mismo que las aisladas: las dos macros de corrida leen <b>las mismas celdas</b> en
+    /// columnas distintas, y lo que cambia —el acomodo, dónde va el muro y cómo arranca su acero—
+    /// lo dice la columna de tipo.
+    /// </remarks>
+    public ObservableCollection<ZapataCorridaRow> ZapatasCorridas { get; } = new();
+
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     public static DatosProyecto CrearEjemplo()
     {
@@ -937,6 +945,37 @@ public sealed class DatosProyecto
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 0, DiamInter = string.Empty,
             RecubrimientoCm = 2, Estribo = "#2", SeparacionCm = "20",
+            EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
+            GanchoCm = 5, Fc = "200", Escala = "10"
+        });
+
+        // Estas dos son las que usan las ZAPATAS CORRIDAS del ejemplo: las dos macros las
+        // insertan como BLOQUE buscándolas por su ID, así que tienen que existir aquí para
+        // que la hoja de corridas arranque sin avisos y se vea de una vez cómo se enlazan.
+        d.SeccionesConcreto.Add(new SeccionConcretoRow
+        {
+            Elemento = "CONTRATRABE", Id = "CT-1",
+            BaseCm = 20, AlturaCm = 40,
+            NEsqSup = 2, DiamEsqSup = "#4",
+            NIntSup = 0, DiamIntSup = string.Empty,
+            NEsqInf = 2, DiamEsqInf = "#4",
+            NIntInf = 0, DiamIntInf = string.Empty,
+            NInter = 0, DiamInter = string.Empty,
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "9-18-9",
+            EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
+            GanchoCm = 5, Fc = "250", Escala = "10"
+        });
+
+        d.SeccionesConcreto.Add(new SeccionConcretoRow
+        {
+            Elemento = "CADENA DE DESPLANTE", Id = "CD-1",
+            BaseCm = 15, AlturaCm = 20,
+            NEsqSup = 2, DiamEsqSup = "#3",
+            NIntSup = 0, DiamIntSup = string.Empty,
+            NEsqInf = 2, DiamEsqInf = "#3",
+            NIntInf = 0, DiamIntInf = string.Empty,
+            NInter = 0, DiamInter = string.Empty,
+            RecubrimientoCm = 3, Estribo = "#2", SeparacionCm = "20",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
             GanchoCm = 5, Fc = "200", Escala = "10"
         });
@@ -1065,6 +1104,41 @@ public sealed class DatosProyecto
             AnchoDadoCm = 45, AnchoColumnaCm = 35,
             VarDadoSup = "#5", VarDadoInf = "#5",
             EstriboDado = "#3", SepEstriboDado = "15",
+            Fc = "250"
+        });
+
+        // ---------- Zapatas corridas: una de cada tipo ----------
+        //
+        // Una CENTRAL con muro de mampostería —el caso corriente: lleva cadena de desplante y
+        // muro de enrase de block— y una de LINDERO con muro de concreto y doble parrilla, que
+        // es donde se ve lo que las separa: en la central cada pata del muro dobla hacia su
+        // lado, y en el lindero las dos doblan a la izquierda y a dos alturas, porque por la
+        // derecha está el lindero.
+        d.ZapatasCorridas.Add(new ZapataCorridaRow
+        {
+            Tipo = ZapataCorridaCad.Central, Id = "ZC-1",
+            AnchoM = 0.8, ProfundidadM = 1.0, EspesorM = 0.2,
+            DobleParrilla = "NO",
+            VarInf = "#4", SepInf = "20", VarInfTrans = "#3", SepInfTrans = "20",
+            TipoMuro = ZapataCorridaCad.MuroMamposteria,
+            EspesorMuroCm = 15,
+            IdCadena = "CD-1", IdContratrabe = string.Empty,
+            VarMuro = "#3", SepMuroHoriz = "20", SepMuroVert = "20",
+            Fc = "250"
+        });
+
+        d.ZapatasCorridas.Add(new ZapataCorridaRow
+        {
+            Tipo = ZapataCorridaCad.Lindero, Id = "ZCL-1",
+            AnchoM = 1.0, ProfundidadM = 1.2, EspesorM = 0.25,
+            DobleParrilla = "SI",
+            VarInf = "#4", SepInf = "15", VarInfTrans = "#4", SepInfTrans = "20",
+            VarSup = "#4", SepSup = "20", VarSupTrans = "#4", SepSupTrans = "20",
+            TipoMuro = ZapataCorridaCad.MuroConcreto,
+            EspesorMuroCm = 20,
+            MuroDobleParrilla = "SI",
+            VarMuro = "#4", SepMuroHoriz = "20", SepMuroVert = "20",
+            IdContratrabe = "CT-1",
             Fc = "250"
         });
 

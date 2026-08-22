@@ -145,6 +145,12 @@ public partial class MainWindow
         ZapGanchoHintText.Text = texto;
 
         DibujarVistaPreviaZapata();
+
+        // La hoja de corridas usa ESTE mismo valor para el doblez del acero del muro, así que su
+        // rótulo y su vista previa se ponen al día aquí: si no, la otra pestaña seguiría
+        // enseñando el doblez viejo y el plano saldría con el nuevo.
+        ActualizarGanchoDeCorridas();
+        DibujarVistaPreviaZapataCorrida();
     }
 
     private void ActualizarDadosDisponibles()
