@@ -3833,6 +3833,41 @@ def v19_circular_y_ui() -> None:
           "dos dibujos diminutos con un" in zap_cb)
 
     # LAS COTAS: las mismas que pone la macro y en el mismo sitio.
+    # LA PREVIA, CON RELLENOS Y COLORES: estaba a puro contorno y se veia vacia. Los colores son
+    # los mismos papeles del plano, uno por cosa, y las texturas son el AR-CONC y el EARTH reducidos
+    # a un mosaico que se lee en unos centimetros.
+    check("la previa lleva rellenos de concreto, plantilla y terreno",
+          "private static readonly Brush PincelConcreto" in zap_cb
+          and "private static readonly Brush PincelPlantilla" in zap_cb
+          and "private static readonly Brush PincelTerreno" in zap_cb
+          and "private static Brush Textura(" in zap_cb)
+    check("las texturas se congelan, que la previa se redibuja en cada tecla",
+          "pincel.Freeze();" in zap_cb
+          and "TileMode = TileMode.Tile" in zap_cb)
+    check("el terreno solo va a los lados del dado y por encima del lomo",
+          "Relleno(PX(a.XBase), PY(a.YTerreno), PX(a.XDadoIzq), PY(a.YZapTop), PincelTerreno);"
+          in zap_cb
+          and "Relleno(PX(a.XDadoDer), PY(a.YTerreno), PX(a.XDer), PY(a.YZapTop), PincelTerreno);"
+          in zap_cb)
+    check("los rellenos van ANTES del acero, para no taparlo",
+          zap_cb.index("LOS RELLENOS, primero") < zap_cb.index("EL ACERO"))
+    check("la previa dibuja las longitudinales del dado con su pata",
+          "private void DibujarLongitudinalesPrevias(" in zap_cb
+          and "TrazoZapata.BarrasRectangulares(" in zap_cb
+          and "var largo = factor * Math.Max(dSup, dInf);" in zap_cb)
+    check("y la pata usa los diametros de la casilla, no los 15 fijos",
+          "var factor = TrazoZapata.FactorGanchoValido(FactorGanchoElegido);" in zap_cb)
+    check("y la transicion 1:6 sale de la misma cuenta que el dibujante",
+          "TrazoZapata.Desplazamiento(dxMax, a.YZapTop, a.YDadoTop, recDado)" in zap_cb
+          and "dxMax <= TrazoZapata.DesplazamientoMax" in zap_cb)
+    check("hay leyenda de colores en el cuadro",
+          "private void LeyendaZapata(" in zap_cb
+          and "LeyendaZapata(" in zap_cb
+          and '"transición 1:6"' in zap_cb)
+    check("y el dado de la planta lleva su relleno y su ID",
+          "Relleno(PX(hx1), PY(hy2), PX(hx2), PY(hy1), PincelConcreto);" in zap_cb
+          and "var idDado = (z.IdDado ?? string.Empty).Trim();" in zap_cb)
+
     check("la vista previa lleva cotas",
           "private void CotaH(" in zap_cb and "private void CotaV(" in zap_cb)
     check("la elevacion acota los tramos, el espesor y la profundidad",
