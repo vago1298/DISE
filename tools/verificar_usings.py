@@ -210,7 +210,20 @@ def revisar_usings(ruta, codigo):
             usado = re.search(
                 r"(?<![\w.])" + tipo + r"\s*\.\s*\w"
                 r"|new\s+" + tipo + r"\s*[({]"
-                r"|<\s*" + tipo + r"\s*[,>]",
+                r"|<\s*" + tipo + r"\s*[,>]"
+
+                # EL TIPO GENERICO, ESCRITO EN UNA DECLARACION.
+                # Esto FALTABA, y por faltar dejo pasar un error de compilacion hasta
+                # Windows: 'public static ObservableCollection<string> X { get; } = new();'
+                # no es 'Tipo.Miembro' ni 'new Tipo(...)' -el 'new()' no repite el tipo- ni
+                # el tipo DENTRO de otro generico, asi que ninguno de los tres patrones de
+                # arriba lo veia. Es justo como se declara una lista observable, o sea el
+                # caso mas corriente que hay.
+                r"|(?<![\w.])" + tipo + r"\s*<"
+
+                # Y el tipo a secas en una declaracion: 'StringBuilder sb = new();',
+                # 'CultureInfo? c;', 'Process p, q;'. Mismo motivo.
+                r"|(?<![\w.])" + tipo + r"\??\s+\w+\s*(?:=|;|\)|,)",
                 limpio,
             )
 
