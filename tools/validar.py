@@ -8522,6 +8522,33 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el rotulo del doblez del muro se rellena desde el codigo",
           'x:Name="ZapCorGanchoText"' in xaml and "ZapCorGanchoText.Text" in hoja)
 
+    # ------------------------------------------------------------------
+    # Las casillas que solo aplican con un tipo de muro
+    # ------------------------------------------------------------------
+    # Una zapata con muro de MAMPOSTERIA no tiene armado de muro y una de
+    # CONCRETO no lleva cadena de desplante: sus macros ni las leen. Las celdas
+    # se apagan solas con IsEnabled enlazado a la fila, sin una linea de codigo.
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("existe el estilo de celda que solo aplica con mamposteria",
+          'x:Key="CeldaSoloMamposteria"' in tema
+          and '<Setter Property="IsEnabled" Value="{Binding MuroEsMamposteria}" />' in tema)
+    check("y el que solo aplica con concreto",
+          'x:Key="CeldaSoloConcreto"' in tema
+          and '<Setter Property="IsEnabled" Value="{Binding MuroEsConcreto}" />' in tema)
+    check("los dos se ven apagados, no solo intocables",
+          tema.count('<Trigger Property="IsEnabled" Value="False">') >= 2)
+
+    check("la cadena de desplante se apaga con muro de concreto",
+          pestana.count("CeldaSoloMamposteria") == 1)
+    check("y las cuatro casillas del armado del muro con mamposteria",
+          pestana.count("CeldaSoloConcreto") == 4)
+
+    # La fila tiene que AVISAR de los dos cambios para que la celda se entere.
+    check("la fila avisa cuando cambia el tipo de muro",
+          "Raise(nameof(MuroEsConcreto));" in fila
+          and "Raise(nameof(MuroEsMamposteria));" in fila)
+
     for manejador in ("OnRevisarZapatasCorridas", "OnExportZapatasCorridas"):
         check(f"el manejador {manejador} existe",
               f"private void {manejador}(object sender, RoutedEventArgs e)" in hoja)
@@ -8612,6 +8639,15 @@ def v23_hoja_zapatas_corridas() -> None:
           'Fallo($"Zapata corrida \'{z.Id}\'", ex);' in drawer)
     check("la contratrabe se inserta ANTES de dibujar la zapata",
           drawer.index("InsertarBloqueApoyado(") < drawer.index("HatchConcreto(xBase"))
+
+    # EL ERROR QUE SE CORRIGIO: se estaba apoyando en el LOMO de la zapata y salia
+    # flotando encima. Las dos macros la apoyan en yZapBot, que es el pano de arriba
+    # de la plantilla: arranca del desplante y atraviesa el espesor, y de ahi sale
+    # que la linea superior de la zapata se interrumpa.
+    check("y se apoya en el pano de arriba de la plantilla",
+          "lindero ? a.XDer : a.XCentro, a.YZapBot, lindero);" in drawer)
+    check("la vista previa la apoya en el mismo sitio",
+          "a.YZapBot + TrazoZapataCorrida.ContratrabeAltoPorOmision" in hoja)
     check("la geometria sale de TrazoZapataCorrida y no se recalcula",
           "TrazoZapataCorrida.Colocar(" in drawer
           and "TrazoZapataCorrida.MuroDeEnrase(" in drawer

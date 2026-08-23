@@ -389,6 +389,41 @@
         <Setter Property="Background" Value="{StaticResource CeldaCircularBrush}" />
     </Style>
 
+    <!-- ==============================================================
+         CELDAS QUE SOLO APLICAN CON UN TIPO DE MURO
+         (hoja de zapatas corridas)
+
+         Una zapata con muro de MAMPOSTERIA no tiene armado de muro, y una
+         con muro de CONCRETO no lleva cadena de desplante: sus macros ni
+         las leen. Dejar la casilla escribible invita a capturar un dato
+         que el dibujo va a ignorar, y despues a no entender por que no
+         sale en el plano.
+
+         Se apaga con IsEnabled enlazado a la propia fila -el DataContext
+         de una celda ES su fila-, asi que la casilla se enciende y se
+         apaga sola al cambiar el tipo de muro, sin una linea de codigo.
+         La opacidad es para que se vea apagada y no solo intocable.
+         ============================================================== -->
+    <Style x:Key="CeldaSoloMamposteria" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaIdent}">
+        <Setter Property="IsEnabled" Value="{Binding MuroEsMamposteria}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CeldaSoloConcreto" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaLateral}">
+        <Setter Property="IsEnabled" Value="{Binding MuroEsConcreto}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
     <Style x:Key="CeldaEstribo" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaEstriboBrush}" />

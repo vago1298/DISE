@@ -230,6 +230,16 @@ public sealed partial class ZapataDrawer
         // Se inserta antes de dibujar la zapata porque su caja decide tres cosas: dónde NO va el
         // hatch de concreto, dónde se interrumpe la línea superior de la zapata, y de dónde
         // arranca el muro. Es el mismo orden de las dos macros.
+        //
+        // SE APOYA EN yZapBot, QUE ES EL PAÑO DE ARRIBA DE LA PLANTILLA. Aquí estaba un error del
+        // port: se estaba apoyando en el LOMO de la zapata, y así la contratrabe salía flotando
+        // encima en lugar de arrancar del desplante y atravesar el espesor. Las dos macros lo
+        // dicen igual —la central con
+        //     InsertarBloqueAlineado ..., xCentro, yZapBot, True
+        // y la de lindero con
+        //     InsertarBloqueCT_EsquinaInferiorDerecha ..., xBase + anchoZapata, yZapBot
+        // — y de ahí sale que la contratrabe se cuele por dentro de la zapata, que es lo que hace
+        // que su línea superior se interrumpa.
         var xCtIzq = a.XMuroIzq;
         var xCtDer = a.XMuroDer;
         var yCtTop = a.YZapTop + TrazoZapataCorrida.ContratrabeAltoPorOmision;
@@ -237,11 +247,11 @@ public sealed partial class ZapataDrawer
 
         if (z.HayContratrabe)
         {
-            // Central: centrada en el eje y apoyada en el lomo. Lindero: por su esquina inferior
-            // DERECHA, que es el paño del lindero.
+            // Central: centrada en el eje. Lindero: por su esquina inferior DERECHA, que es el
+            // paño del lindero. Las dos, apoyadas en el paño de arriba de la plantilla.
             var caja = InsertarBloqueApoyado(
                 z.IdContratrabe, CapaConcreto,
-                lindero ? a.XDer : a.XCentro, a.YZapTop, lindero);
+                lindero ? a.XDer : a.XCentro, a.YZapBot, lindero);
 
             if (caja is not null)
             {

@@ -652,17 +652,18 @@ public partial class MainWindow
 
         // ---------- El muro ----------
         //
-        // Arranca del lomo de la contratrabe cuando la hay. Aquí no se puede leer su caja -no hay
-        // AutoCAD-, así que se usa el alto por omisión de las macros, el mismo que ellas suponen
-        // cuando el bloque no aparece.
+        // La contratrabe se apoya en el PAÑO DE ARRIBA DE LA PLANTILLA —el fondo de la zapata—,
+        // como en las dos macros: arranca del desplante y atraviesa el espesor. Aquí no se puede
+        // leer su caja, que vive en el dibujo de AutoCAD, así que se usa el alto por omisión de
+        // las macros, el mismo que ellas suponen cuando el bloque no aparece.
         var yCT = fila.HayContratrabe
-            ? a.YZapTop + TrazoZapataCorrida.ContratrabeAltoPorOmision
+            ? a.YZapBot + TrazoZapataCorrida.ContratrabeAltoPorOmision
             : a.YZapTop;
 
         if (fila.HayContratrabe)
         {
-            RellenoCorrida(PX(a.XMuroIzq), PY(yCT), PX(a.XMuroDer), PY(a.YZapTop), PincelConcreto);
-            ContornoCorrida(PX(a.XMuroIzq), PY(yCT), PX(a.XMuroDer), PY(a.YZapTop), azul, 1.0);
+            RellenoCorrida(PX(a.XMuroIzq), PY(yCT), PX(a.XMuroDer), PY(a.YZapBot), PincelConcreto);
+            ContornoCorrida(PX(a.XMuroIzq), PY(yCT), PX(a.XMuroDer), PY(a.YZapBot), azul, 1.0);
 
             TextoCorrida("CT", PX(a.XCentroMuro) - 8, PY(yCT) + 2, 9, azul);
         }

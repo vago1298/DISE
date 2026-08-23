@@ -21,6 +21,7 @@ exactamente los que la comprobación de ahora vigila:
 | Acero del muro a `rec + diámetro / 2` | `offsetMuro = 0.05`: **5 cm clavados** al eje de la varilla |
 | Las patas doblaban «hacia el eje de la zapata» | La **central** dobla cada una hacia **su** lado; el **lindero** dobla las dos a la izquierda y a **dos alturas distintas** |
 | El enrase se dibujaba con cualquier hueco | `If altEnrase > 0.02`: por debajo de 2 cm no hay enrase |
+| La contratrabe se apoyaba en el **lomo** de la zapata, y salía flotando encima | Se apoya en **`yZapBot`**, el paño de arriba de la plantilla: arranca del desplante y atraviesa el espesor. De ahí sale que la línea superior de la zapata se interrumpa |
 
 ## 2. Lo que comparten las dos macros
 
@@ -34,7 +35,9 @@ exactamente los que la comprobación de ahora vigila:
 | Parrillas | la misma rutina que las aisladas: gancho 3 cm, círculos con tolerancia del 20 % | Sí |
 | Muro de enrase | piezas de ≈8 cm, junta 1 cm, desfase 1 cm, de 1 a 50 piezas, mínimo 2 cm de hueco | Sí |
 | Ancho del enrase | el de la **caja de la cadena de desplante**, no el del muro | Sí |
-| Contratrabe y cadena | por **bloque**; la contratrabe se inserta **antes** y su huella manda en el hatch y en la línea superior de la zapata | Falta (COM) |
+| Contratrabe y cadena | por **bloque**; la contratrabe se inserta **antes** y su huella manda en el hatch y en la línea superior de la zapata | Sí |
+| Apoyo de la contratrabe | en **`yZapBot`**, el paño de arriba de la plantilla: arranca del desplante y atraviesa el espesor | Sí |
+| Apoyo de la cadena | **colgada** del nivel de terreno, por su cara de arriba | Sí |
 | Acero del muro de concreto | ejes a 5 cm del paño, círculos con la separación **vertical**, uno menos de los que caben | Sí |
 | Doblez del muro | 15 diámetros | Sí |
 | Cotas | `0.13` ancho total, `0.075` anchos parciales, `0.1445` altura total, `0.0585` alturas parciales | Sí |
@@ -145,7 +148,14 @@ terreno y anotación— vive solo en ese archivo.
 
 ## 7. Lo que la hoja hace distinto de las macros, a propósito
 
-Tres cosas, y las tres son mejoras que no cambian el dibujo:
+Cinco cosas, y ninguna cambia el dibujo:
+
+0. **Las casillas que no aplican se apagan.** Con muro de **mampostería** se apagan las
+   cuatro del armado del muro; con muro de **concreto** se apaga la de la cadena de
+   desplante. Las macros leen esas celdas y luego no las usan, así que dejarlas
+   escribibles invita a capturar un dato que el plano ignora —y después a no entender por
+   qué no sale—. Se apagan solas, con `IsEnabled` enlazado a la fila.
+
 
 1. **El estilo de dibujo y el doblez del acero del muro son del juego entero**, no de cada
    sección: los radios están atados a los de la hoja de concreto y el doblez se lee de la

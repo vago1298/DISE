@@ -1179,7 +1179,7 @@
                             </DataGridTextColumn>
 
                             <DataGridTemplateColumn Header="Muro doble parr." Width="110"
-                                                    CellStyle="{StaticResource CeldaLateral}"
+                                                    CellStyle="{StaticResource CeldaSoloConcreto}"
                                                     SortMemberPath="MuroDobleParrilla">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -1202,22 +1202,22 @@
                             <DataGridComboBoxColumn x:Name="ColZapCorVarMuro" Header="Var muro"
                                                     SelectedItemBinding="{Binding VarMuro, UpdateSourceTrigger=PropertyChanged}" Width="85"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLateral}" />
+                                                    CellStyle="{StaticResource CeldaSoloConcreto}" />
                             <DataGridTextColumn Header="@ horiz cm" Binding="{Binding SepMuroHoriz, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="90" CellStyle="{StaticResource CeldaLateral}">
+                                                Width="90" CellStyle="{StaticResource CeldaSoloConcreto}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Separacion HORIZONTAL. En el corte no se ve: solo entra en el rotulo." />
+                                                Value="Separacion HORIZONTAL. En el corte no se ve: solo entra en el rotulo.&#10;Solo con muro de concreto: con mamposteria la casilla se apaga." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
                             <DataGridTextColumn Header="@ vert cm" Binding="{Binding SepMuroVert, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="90" CellStyle="{StaticResource CeldaLateral}">
+                                                Width="90" CellStyle="{StaticResource CeldaSoloConcreto}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Separacion VERTICAL: es la que reparte hacia arriba las varillas que salen de punta." />
+                                                Value="Separacion VERTICAL: es la que reparte hacia arriba las varillas que salen de punta.&#10;Solo con muro de concreto: con mamposteria la casilla se apaga." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
@@ -1243,13 +1243,13 @@
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.ContratrabesDisponibles}}"
                                                   Text="{Binding IdContratrabe, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="ID del bloque de la contratrabe. Vacio = la zapata no lleva.&#10;Su caja manda en el hatch de la zapata, en el hueco de su linea superior y en el tope del muro de enrase." />
+                                                  ToolTip="ID del bloque de la contratrabe. Vacio = la zapata no lleva.&#10;Se apoya en el pano de arriba de la plantilla, como en tus macros: arranca del desplante y atraviesa el espesor.&#10;Su caja manda en el hatch de la zapata, en el hueco de su linea superior y en el tope del muro de enrase." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Cadena despl." Width="115"
-                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    CellStyle="{StaticResource CeldaSoloMamposteria}"
                                                     SortMemberPath="IdCadena">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -1264,7 +1264,7 @@
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:ZapataCorridaRow.CadenasDisponibles}}"
                                                   Text="{Binding IdCadena, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="ID del bloque de la cadena de desplante, solo con muro de mamposteria.&#10;Su fondo es el tope del muro de enrase y su ancho es el que se enrasa." />
+                                                  ToolTip="ID del bloque de la cadena de desplante. Solo con muro de mamposteria: con concreto la casilla se apaga.&#10;Su fondo es el tope del muro de enrase y su ancho es el que se enrasa." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
