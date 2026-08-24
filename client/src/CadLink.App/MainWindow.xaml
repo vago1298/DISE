@@ -2014,9 +2014,25 @@
                                    ToolTip="La planta del modelo de ETABS, nivel por nivel. Es el punto de partida del plano estructural." />
 
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
-                            <Button Content="Leer plantas de ETABS" Style="{StaticResource PrimaryButtonStyle}"
+                            <!-- LA MISMA CASILLA DE LA PESTAÑA DE ETABS, aqui tambien.
+                                 No es otra opcion aparte: las dos casillas son LA MISMA,
+                                 atadas con un enlace de dos vias, asi que se cambie en la
+                                 pestaña que sea, el programa elegido es uno solo y los
+                                 botones de las dos pestañas le hablan al mismo. -->
+                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="ProgramaCsiPlanosCombo" Width="120"
+                                      VerticalAlignment="Center" Margin="0,0,12,0"
+                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
+                                      ToolTip="De donde se leen las plantas: de ETABS o de SAP2000.&#10;Es la misma casilla de la pestaña ETABS/SAP2000.">
+                                <ComboBoxItem Content="ETABS" />
+                                <ComboBoxItem Content="SAP2000" />
+                            </ComboBox>
+
+                            <Button x:Name="LeerPlantasButton" Content="Leer plantas de ETABS"
+                                    Style="{StaticResource PrimaryButtonStyle}"
                                     Click="OnLeerPlantas"
-                                    ToolTip="Lee el modelo de ETABS y arma la lista de niveles con sus plantas." />
+                                    ToolTip="Lee el modelo del programa de la casilla y arma la lista de niveles con sus plantas." />
 
                             <!-- El boton de dibujar vive junto a la planta que dibuja:
                                  lo que se manda a AutoCAD es EXACTAMENTE el nivel y los

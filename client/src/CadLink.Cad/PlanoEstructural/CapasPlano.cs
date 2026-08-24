@@ -1,0 +1,235 @@
+namespace CadLink.Cad.PlanoEstructural;
+
+/// <summary>
+/// Las capas del plano estructural, <b>las de la macro y con sus colores</b>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Es la suma de <c>DefinirCapas</c> —las diez capas por tipo de elemento— y de las que
+/// <c>CrearCapas</c> agrega aparte: texto, título, ejes, burbujas, armado de losa,
+/// mampostería, cadena de desplante, piers, losacero y cotas.
+/// </para>
+/// <para>
+/// <b>Ningún color se inventa ni se cambia.</b> Los que en la macro están escritos en el
+/// código —MURO 6, COLUMNA 1, TRABE 3, CONTRATRABE 2, LOSA 8, DIAGONAL 30, OTROS 7,
+/// TEXTO 7— están aquí con ese número; los que salen de la hoja CONFIG se leen de la hoja
+/// —<c>COLOR_CASTILLO</c>, <c>COLOR_DALA</c>, <c>COLOR_ACERO</c>, <c>COLOR_ARMADO_LOSA</c>,
+/// <c>COLOR_MAMPOSTERIA</c>, <c>COLOR_CADENA_DESPLANTE</c>, <c>COLOR_PIERS</c>,
+/// <c>COLOR_LOSACERO</c>, <c>COLOR_COTAS</c>, <c>COLOR_EJES</c>,
+/// <c>COLOR_BURBUJA_EJES</c>, <c>COLOR_EJES_TEXTO</c>, <c>COLOR_TITULO</c>— con los mismos
+/// topes que <c>LeerConfig</c>: fuera del 1 al 255 se regresa al valor de la macro.
+/// </para>
+/// <para>
+/// <b>El prefijo.</b> Todas llevan el <c>PREFIJO_CAPAS</c> —<c>E-</c>— menos una: la de los
+/// <b>piers</b>, que en la macro es <c>PIERS</c> a secas. Ese detalle importa porque
+/// <c>BorrarCapasGeneradas</c> borra por prefijo y tiene que acordarse de PIERS aparte.
+/// </para>
+/// </remarks>
+public sealed class CapasPlano
+{
+    /// <summary>Una capa: su nombre completo, su color y su tipo de línea.</summary>
+    /// <param name="Tipo">
+    /// El tipo de elemento que va en ella —MURO, COLUMNA, CASTILLO…— o cadena vacía si es
+    /// una capa de servicio, como las de texto o las de ejes.
+    /// </param>
+    /// <param name="Nombre">El nombre completo, ya con el prefijo.</param>
+    /// <param name="Color">El índice de color de AutoCAD, el de la macro.</param>
+    /// <param name="TipoDeLinea">El tipo de línea, o vacío para no tocar el del dibujo.</param>
+    public sealed record Capa(string Tipo, string Nombre, int Color, string TipoDeLinea);
+
+    private readonly ConfigPlano _cfg;
+
+    /// <summary>El <c>PREFIJO_CAPAS</c> de la hoja: <c>E-</c>.</summary>
+    public string Prefijo { get; }
+
+    /// <summary>La tabla completa, en el orden en que la macro crea las capas.</summary>
+    public IReadOnlyList<Capa> Todas { get; }
+
+    public CapasPlano(ConfigPlano cfg)
+    {
+        _cfg = cfg;
+        Prefijo = cfg.Texto("PREFIJO_CAPAS", "E-");
+
+        var t = new List<Capa>();
+
+        // ---- DefinirCapas: una capa por tipo de elemento ----------------------------
+        // Los colores que aquí van escritos son los de la macro, no una preferencia:
+        // en DefinirCapas están así, con el número a la vista.
+        t.Add(PorTipo("MURO", 6));
+        t.Add(PorTipo("COLUMNA", 1));
+        t.Add(PorTipo("CASTILLO", Color("COLOR_CASTILLO", 1)));
+        t.Add(PorTipo("TRABE", 3, cfg.Texto("LINETYPE_TRABE", "PHANTOM2")));
+        t.Add(PorTipo("CONTRATRABE", 2));
+        t.Add(PorTipo("DALA", Color("COLOR_DALA", 12)));
+        t.Add(PorTipo("LOSA", 8));
+        t.Add(PorTipo("DIAGONAL", 30));
+        t.Add(PorTipo("OTROS", 7));
+
+        // El ACERO se define en DefinirCapas sin tipo de línea, pero CrearCapas se lo
+        // pone después con LINETYPE_ACERO —vacío por omisión, o sea «no toques la que ya
+        // tenga el dibujo»—. Aquí va una sola vez, ya con ese dato.
+        t.Add(PorTipo("ACERO", Color("COLOR_ACERO", 130), cfg.Texto("LINETYPE_ACERO")));
+
+        // ---- CrearCapas: las de servicio -------------------------------------------
+        t.Add(Servicio("TEXTO", 7));
+        t.Add(Servicio("TITULO", Color("COLOR_TITULO", 7, minimo: 0)));
+        t.Add(Servicio("EJES", Color("COLOR_EJES", 8), cfg.Texto("LINETYPE_EJES", "DASHDOT")));
+        t.Add(Servicio("EJES-BURBUJA", Color("COLOR_BURBUJA_EJES", 4)));
+        t.Add(Servicio("EJES-TEXTO", Color("COLOR_EJES_TEXTO", 6)));
+        t.Add(Servicio("ARMADO LOSA", Color("COLOR_ARMADO_LOSA", 142)));
+        t.Add(Servicio("MAMPOSTERIA", Color("COLOR_MAMPOSTERIA", 30)));
+
+        // La cadena de desplante de la planta de cimentación. Va SIN tipo de línea a
+        // propósito: en ese nivel nunca se usa la punteada de «cadena sin muro abajo».
+        t.Add(new Capa(string.Empty, CapaCadenaDesplante, Color("COLOR_CADENA_DESPLANTE", 1),
+                       string.Empty));
+
+        // Y la de los piers, la única sin prefijo.
+        t.Add(new Capa(string.Empty, CapaPiers, Color("COLOR_PIERS", 7), string.Empty));
+
+        t.Add(Servicio("LOSACERO", Color("COLOR_LOSACERO", 6)));
+        t.Add(Servicio("COTAS", Color("COLOR_COTAS", 8)));
+
+        Todas = t;
+    }
+
+    private Capa PorTipo(string tipo, int color, string tipoDeLinea = "") =>
+        new(tipo, Prefijo + tipo, color, tipoDeLinea);
+
+    private Capa Servicio(string nombre, int color, string tipoDeLinea = "") =>
+        new(string.Empty, Prefijo + nombre, color, tipoDeLinea);
+
+    /// <summary>
+    /// Un color de la hoja, con el tope de <c>LeerConfig</c>: fuera de rango se regresa al
+    /// de la macro.
+    /// </summary>
+    /// <remarks>
+    /// El mínimo es 1 en todos menos en <c>COLOR_TITULO</c>, que acepta el 0 porque ahí el
+    /// 0 significa «negro de verdad», el que la macro pone con <c>trueColor</c>.
+    /// </remarks>
+    private int Color(string parametro, int omision, int minimo = 1)
+    {
+        var c = (int)_cfg.Numero(parametro, omision);
+        return c < minimo || c > 255 ? omision : c;
+    }
+
+    /// <summary>
+    /// Nombre completo de la capa de la cadena de desplante: <c>E-CADENA DESPLANTE</c>.
+    /// </summary>
+    /// <remarks>
+    /// Se le pone el prefijo <b>solo si no lo trae ya</b>, igual que
+    /// <c>CapaCadenaDesplante</c> de la macro: así el usuario puede escribir en la hoja
+    /// <c>CADENA DESPLANTE</c> o <c>E-CADENA DESPLANTE</c> y las dos formas valen.
+    /// </remarks>
+    public string CapaCadenaDesplante
+    {
+        get
+        {
+            var s = _cfg.Texto("CAPA_CADENA_DESPLANTE", "CADENA DESPLANTE");
+            if (s.Length == 0)
+            {
+                s = "CADENA DESPLANTE";
+            }
+
+            if (Prefijo.Length > 0 &&
+                !s.StartsWith(Prefijo, StringComparison.OrdinalIgnoreCase))
+            {
+                s = Prefijo + s;
+            }
+
+            return s;
+        }
+    }
+
+    /// <summary>La capa del pier de los muros: <c>PIERS</c>, sin prefijo.</summary>
+    public string CapaPiers
+    {
+        get
+        {
+            var s = _cfg.Texto("CAPA_PIERS", "PIERS");
+            return s.Length == 0 ? "PIERS" : s;
+        }
+    }
+
+    /// <summary>
+    /// La capa que le toca a un tipo de elemento; <c>E-OTROS</c> si no está en la tabla.
+    /// </summary>
+    /// <remarks>Es el <c>CapaDeTipo</c> de la macro, con la misma salida por omisión.</remarks>
+    public string CapaDeTipo(string tipo)
+    {
+        foreach (var c in Todas)
+        {
+            if (c.Tipo.Length > 0 && string.Equals(c.Tipo, tipo, StringComparison.OrdinalIgnoreCase))
+            {
+                return c.Nombre;
+            }
+        }
+
+        return Prefijo + "OTROS";
+    }
+
+    /// <summary>
+    /// Las capas que van <b>encima de todo</b> al terminar el dibujo, ya con su prefijo.
+    /// </summary>
+    /// <remarks>
+    /// Es <c>ListaDeCapasAlFrente</c>: <c>CAPAS_AL_FRENTE</c> es una lista separada por
+    /// comas —DALA, CADENA DESPLANTE, TRABE y ACERO— y a cada nombre se le pone el prefijo
+    /// si no lo trae. Si la lista se queda vacía, la macro deja al menos <c>DALA</c>.
+    /// </remarks>
+    public IReadOnlyList<string> CapasAlFrente()
+    {
+        var lista = _cfg.Texto("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO");
+        var salida = new List<string>();
+
+        foreach (var pieza in lista.Split(','))
+        {
+            var s = pieza.Trim().ToUpperInvariant();
+            if (s.Length == 0)
+            {
+                continue;
+            }
+
+            if (Prefijo.Length > 0 &&
+                !s.StartsWith(Prefijo.ToUpperInvariant(), StringComparison.Ordinal))
+            {
+                s = Prefijo.ToUpperInvariant() + s;
+            }
+
+            salida.Add(s);
+        }
+
+        if (salida.Count == 0)
+        {
+            salida.Add(Prefijo.ToUpperInvariant() + "DALA");
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// ¿Esta capa la generó el plano? Es la regla de <c>BorrarCapasGeneradas</c>.
+    /// </summary>
+    /// <remarks>
+    /// Todo lo que lleve el prefijo, más <c>PIERS</c> y la de la cadena de desplante, que
+    /// pueden no llevarlo. <b>Ojo:</b> la macro borra por capa y eso se lleva de paso lo
+    /// que el usuario haya puesto a mano ahí; cuando se porte el borrado hay que marcar lo
+    /// generado con XData propio, como dice <c>docs/macro-plantas-etabs.md</c> §5.4.
+    /// </remarks>
+    public bool EsCapaGenerada(string capa)
+    {
+        var l = capa.Trim().ToUpperInvariant();
+        if (l.Length == 0)
+        {
+            return false;
+        }
+
+        if (Prefijo.Length > 0 &&
+            l.StartsWith(Prefijo.ToUpperInvariant(), StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return l == CapaPiers.ToUpperInvariant()
+            || l == CapaCadenaDesplante.ToUpperInvariant();
+    }
+}

@@ -1010,13 +1010,28 @@
          paso de «primero selecciono, luego edito» de una columna normal: dentro
          de una celda de plantilla no hay modo edicion, la celda ES el control. -->
     <Style x:Key="ComboSubCeldaStyle" TargetType="ComboBox">
-        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="1,0" />
         <Setter Property="FontSize" Value="11.5" />
         <Setter Property="VerticalAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+
+        <!-- EL NUMERO DE VARILLA, CON LA MISMA TINTA QUE LOS DEMAS DATOS.
+             Con el Foreground de la lista a secas salia GRIS, porque el estilo de
+             ComboBox de Windows pinta el valor elegido con su propia plantilla y
+             ahi el Foreground del control no siempre llega. Puesto en la plantilla
+             del renglon si manda: la misma tinta de la cuadricula, la que usan la
+             separacion en cm y el resto de la hoja. -->
+        <Setter Property="ItemTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               Foreground="{DynamicResource GridTextBrush}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Casilla de escribir de una sub-casilla: la separacion en cm -->

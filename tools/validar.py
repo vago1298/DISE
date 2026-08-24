@@ -2539,6 +2539,17 @@ def v16_extruida_piers() -> None:
           and 'Click="OnImportEtabs"' not in xaml
           and "private void OnImportSap2000(" not in codigo)
 
+    # LA MISMA CASILLA EN LA PESTAÑA DE PLANOS. Se pidio poder elegir ahi tambien de que
+    # programa se leen las plantas. NO es otra opcion aparte: las dos casillas van atadas
+    # con un enlace de dos vias, asi que el programa elegido sigue siendo UNO.
+    check("la pestaña de planos tiene su casilla, atada a la de ETABS",
+          'x:Name="ProgramaCsiPlanosCombo"' in xaml
+          and 'SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"'
+              in xaml)
+    check("y su boton dice de que programa lee las plantas",
+          'x:Name="LeerPlantasButton"' in xaml
+          and 'LeerPlantasButton.Content = $"Leer plantas de {NombreDestinoCsi}"' in codigo)
+
     # EL DESTINO SALE DE LA CASILLA, EN UN SOLO SITIO, y manda para TODA la pestaña:
     # probar la conexion, leer el modelo, leer los piers y armar los planos. Si una
     # conexion se abriera sin destino, ese boton le hablaria a ETABS con la casilla en
@@ -2557,6 +2568,123 @@ def v16_extruida_piers() -> None:
     check("y los mensajes no atribuyen a ETABS lo que pudo salir de SAP2000",
           '$"{cx.NombreDelDestino} conectado."' in codigo
           and 'StatusText.Text = "ETABS conectado.";' not in codigo)
+
+    # ------------------------------------------------------------------
+    # ETAPA 1 DEL PORT DE LA MACRO DE PLANOS ESTRUCTURALES: LA HOJA CONFIG
+    # ------------------------------------------------------------------
+    # La macro guarda sus ~260 parametros en la hoja CONFIG, que ella misma crea con
+    # CrearHojaConfig. Aqui esa hoja es una tabla en el codigo, renglon por renglon y con
+    # su descripcion, y de ella cuelga TODO lo que se dibuje despues: capas, colores,
+    # estilos de texto, patrones de hatch, separaciones, cotas y ejes.
+    cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+    capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+
+    check("la hoja CONFIG de la macro esta portada, con sus 261 renglones",
+          cfgp.count("        P(") == 261)
+    check("y con los numeros de version de la macro",
+          "public const double VersionConfig = 29;" in cfgp
+          and "public const double VersionParche = 50;" in cfgp)
+
+    # La lectura tipada, con las MISMAS reglas: CfgS recorta, CfgT no -y eso importa,
+    # porque los espacios de LOSA_TEXTO_2 son los que dejan el hueco del numero-, CfgD
+    # acepta la coma decimal y CfgB entiende SI, TRUE, VERDADERO, 1, X y YES.
+    check("la lectura tipada respeta las reglas de CfgS / CfgT / CfgD / CfgB",
+          "public string Texto(" in cfgp
+          and "public string TextoTalCual(" in cfgp
+          and "public double Numero(" in cfgp
+          and "public bool Bandera(" in cfgp
+          and '"SI" or "SÍ" or "TRUE" or "VERDADERO" or "1" or "X" or "YES" => true' in cfgp
+          and '"NO" or "FALSE" or "FALSO" or "0" => false' in cfgp)
+
+    # Los renglones que mas se han peleado, con el valor exacto de su macro.
+    for par, valor in (("VERSION_CONFIG", "29"), ("VERSION_PARCHE", "50"),
+                       ("PREFIJO_CAPAS", "E-"), ("ALTURA_TEXTO", "0.12"),
+                       ("OFFSET_Y_INICIAL", "15"), ("SEPARACION_ENTRE_PLANTAS", "5"),
+                       ("SEC_ALTURA", "0.12"), ("CADENA_TEXTO_ALTURA", "0.09"),
+                       ("LOSA_TEXTO_ALTURA", "0.072"), ("LOSA_HATCH_ESCALA", "0.0475"),
+                       ("LOSACERO_HATCH_ESCALA", "0.02"),
+                       ("LOSACERO_FRANJA_ANCHO_M", "0.15"),
+                       ("COTAS_SEPARACION", "0.75"), ("COTAS_SEPARACION_TOTAL", "1.17"),
+                       ("EJES_INICIO_BURBUJA_M", "2"), ("PANO_SOLAPE_CM", "0"),
+                       ("PANO_BUSCA_CM", "150"), ("PANO_ALARGAR_MAX_CM", "150"),
+                       ("COTA_EXT_LINE_EXT", "0"), ("COTA_EXT_LINE_OFFSET", "0.5"),
+                       ("COTA_PRECISION", "3"), ("MALLA_SEP_CM", "15"),
+                       ("COLOR_ACERO", "130"), ("COLOR_ARMADO_LOSA", "142"),
+                       ("COLOR_CASTILLO", "1"), ("COLOR_DALA", "12")):
+        check(f"CONFIG: {par} = {valor}",
+              f'P("{par}", "{valor}", ' in cfgp)
+
+    # Y los textos: los estilos, los patrones y las plantillas, sin traducir.
+    for par, valor in (("PANO_ALMA_W_MODO", "ALMA"), ("ESTILO_COTA", "COTA_DIM"),
+                       ("ESTILO_TEXTO_COTA", "COTA"),
+                       ("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES"),
+                       ("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS"),
+                       ("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS"),
+                       ("ROTULO_ESTILO_TEXTO", "HAETTENSCHWEILER"),
+                       ("LOSA_HATCH_PATRON", "ANSI37"),
+                       ("LOSACERO_HATCH_PATRON", "FLEX"),
+                       ("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C"),
+                       ("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100"),
+                       ("LINETYPE_EJES", "DASHDOT"), ("LINETYPE_TRABE", "PHANTOM2"),
+                       ("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO"),
+                       ("CIMENTACION_STORIES", "BASE,CIMENTACION,FOUNDATION"),
+                       ("CAPA_CADENA_DESPLANTE", "CADENA DESPLANTE"),
+                       ("CAPA_PIERS", "PIERS")):
+        check(f"CONFIG: {par} = {valor}",
+              f'P("{par}", "{valor}", ' in cfgp)
+
+    # El titulo lleva DOS espacios y el renglon 2 del rotulo de la losa lleva SIETE
+    # adelante: son el dato, no un descuido, y recortarlos cambia el dibujo.
+    check("el titulo conserva sus dos espacios",
+          'P("ROTULO_TITULO", "PLANTA  ESTRUCTURAL", ' in cfgp)
+    check("y el rotulo de la losa sus espacios de adelante",
+          'P("LOSA_TEXTO_2", "       cm de espesor", ' in cfgp)
+
+    # ------------------------------------------------------------------
+    # LAS CAPAS DEL PLANO, CON LOS COLORES DE LA MACRO
+    # ------------------------------------------------------------------
+    # «NO MODIFIQUES NINGUNA CAPA NI NINGUN COLOR»: los que la macro lleva escritos en el
+    # codigo van aqui con ese numero, y los que salen de la hoja se leen de la hoja.
+    for capa, color in (("MURO", "6"), ("COLUMNA", "1"), ("CONTRATRABE", "2"),
+                        ("LOSA", "8"), ("DIAGONAL", "30"), ("OTROS", "7")):
+        check(f"capa E-{capa} color {color}",
+              f'PorTipo("{capa}", {color})' in capp)
+
+    check("la trabe va en color 3 con PHANTOM2",
+          'PorTipo("TRABE", 3, cfg.Texto("LINETYPE_TRABE", "PHANTOM2"))' in capp)
+    check("y el castillo, la dala y el acero toman su color de la hoja",
+          'PorTipo("CASTILLO", Color("COLOR_CASTILLO", 1))' in capp
+          and 'PorTipo("DALA", Color("COLOR_DALA", 12))' in capp
+          and 'Color("COLOR_ACERO", 130)' in capp)
+    check("las capas de servicio, igual que en CrearCapas",
+          'Servicio("TEXTO", 7)' in capp
+          and 'Servicio("TITULO", Color("COLOR_TITULO", 7, minimo: 0))' in capp
+          and 'Servicio("EJES", Color("COLOR_EJES", 8), cfg.Texto("LINETYPE_EJES", "DASHDOT"))' in capp
+          and 'Servicio("EJES-BURBUJA", Color("COLOR_BURBUJA_EJES", 4))' in capp
+          and 'Servicio("EJES-TEXTO", Color("COLOR_EJES_TEXTO", 6))' in capp
+          and 'Servicio("ARMADO LOSA", Color("COLOR_ARMADO_LOSA", 142))' in capp
+          and 'Servicio("MAMPOSTERIA", Color("COLOR_MAMPOSTERIA", 30))' in capp
+          and 'Servicio("LOSACERO", Color("COLOR_LOSACERO", 6))' in capp
+          and 'Servicio("COTAS", Color("COLOR_COTAS", 8))' in capp)
+    check("la de los piers es la unica SIN prefijo, como en la macro",
+          "public string CapaPiers" in capp
+          and 'new Capa(string.Empty, CapaPiers, Color("COLOR_PIERS", 7), string.Empty)' in capp)
+    check("un color fuera de rango se regresa al de la macro, no a blanco",
+          "return c < minimo || c > 255 ? omision : c;" in capp)
+    check("y estan CapaDeTipo, CapasAlFrente y el reconocimiento de lo generado",
+          "public string CapaDeTipo(" in capp
+          and "public IReadOnlyList<string> CapasAlFrente()" in capp
+          and "public bool EsCapaGenerada(" in capp)
+
+    # La prueba EJECUTABLE de las dos piezas: se corre el C# compilado, no un port.
+    pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
+    check("hay prueba ejecutable de la hoja CONFIG y de las capas",
+          "using CadLink.Cad.PlanoEstructural;" in pr
+          and "261, ConfigPlano.PorOmision.Count" in pr
+          and 'Igual("son las 21 capas", 21, capas.Todas.Count)' in pr
+          and "return fallos == 0 ? 0 : 1;" in pr)
+    check("y su proyecto apunta al CadLink.Cad de verdad",
+          "CadLink.Cad.csproj" in leer(ruta("tools/prueba-config-plano/Prueba.csproj")))
 
     # Y el modelo se VISUALIZA: es lo que pidio el usuario, no solo leerlo.
     m_lm = re.search(r"private void LeerModeloCsi\(.*?\n    \}", codigo, re.S)
@@ -9238,6 +9366,16 @@ def v24_rediseno() -> None:
           and xaml.count('HeaderStyle="{StaticResource CabeceraParrillaStyle}"') == 4)
     check("y la cabecera respeta la alineacion de su contenido",
           'HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"' in tema)
+
+    # EL NUMERO DE VARILLA, CON LA TINTA DE LA CUADRICULA Y NO EN GRIS. El Foreground del
+    # ComboBox no basta: el estilo de Windows pinta el valor elegido con su plantilla y ahi
+    # el color del control no siempre llega. Puesto en la plantilla del renglon si manda.
+    check("el numero de varilla se ve con la tinta de la cuadricula, no en gris",
+          'x:Key="ComboSubCeldaStyle"' in tema
+          and '<Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />' in tema
+          and '<Setter Property="ItemTemplate">' in tema
+          and tema.count('<TextBlock Text="{Binding}"\n                               '
+                         'Foreground="{DynamicResource GridTextBrush}" />') == 1)
 
     # Las cuatro casillas y los cuatro nombres, con el MISMO reparto de ancho en
     # estrella: asi siguen cuadrados aunque se cambie el ancho de la columna.

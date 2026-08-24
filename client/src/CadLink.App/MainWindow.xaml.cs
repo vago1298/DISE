@@ -868,6 +868,14 @@ public partial class MainWindow : Window
         {
             LeerModeloCsiButton.Content = $"Leer modelo de {NombreDestinoCsi}";
         }
+
+        // El de la pestaña de planos, igual: la casilla de allá es la MISMA de aquí
+        // —van atadas por el XAML—, así que el botón de leer plantas también dice a
+        // quién le va a leer.
+        if (LeerPlantasButton is not null)
+        {
+            LeerPlantasButton.Content = $"Leer plantas de {NombreDestinoCsi}";
+        }
     }
 
     /// <summary>Lee el modelo del programa que diga la casilla.</summary>
