@@ -1026,11 +1026,17 @@
                                            VerticalAlignment="Center" Margin="0,0,10,0"
                                            Foreground="{DynamicResource BrandDarkBrush}" />
 
-                                <TextBlock x:Name="ZapCorGanchoText" FontSize="12" VerticalAlignment="Center" />
+                                <TextBox x:Name="ZapCorGanchoBox" Width="60" Text="15"
+                                         VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                         TextAlignment="Center" FontSize="12" Padding="4,3"
+                                         TextChanged="OnGanchoCorridaCambio"
+                                         ToolTip="Largo del doblez del acero del muro, en diametros de la varilla.&#10;Tus macros usan 15. Es el MISMO valor que la hoja de zapatas aisladas: se cambia aqui o alla, y las dos hojas quedan iguales." />
 
-                                <TextBlock Text="Se toma de la casilla de la hoja de zapatas aisladas: es el mismo doblez para toda la obra."
-                                           FontSize="11" Opacity="0.75" VerticalAlignment="Center"
-                                           Margin="18,0,0,0" />
+                                <TextBlock Text="diametros" FontSize="12" VerticalAlignment="Center"
+                                           Margin="8,0,0,0" />
+
+                                <TextBlock x:Name="ZapCorGanchoText" FontSize="11" Opacity="0.8"
+                                           VerticalAlignment="Center" Margin="18,0,0,0" />
                             </StackPanel>
                         </Border>
 

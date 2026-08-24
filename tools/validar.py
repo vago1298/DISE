@@ -8611,7 +8611,18 @@ def v23_hoja_zapatas_corridas() -> None:
           "ActualizarListasDeZapatasCorridas();" in ventana)
 
     # El doblez es UNO para toda la obra: la casilla de las aisladas manda aqui.
-    check("el doblez del muro sale de la casilla de las aisladas",
+    # EL DOBLEZ SE PUEDE CAMBIAR EN LAS DOS HOJAS, y es UN valor: el de la obra.
+    # Cada casilla escribe en la otra, con una bandera que corta el ciclo -sin ella,
+    # escribir en una disparaba el evento de la otra sin fin y el cursor saltaba-.
+    check("la hoja de corridas tiene su propia casilla de doblez",
+          'x:Name="ZapCorGanchoBox"' in xaml
+          and 'TextChanged="OnGanchoCorridaCambio"' in xaml
+          and "private void OnGanchoCorridaCambio(" in hoja)
+    check("y escribe en la casilla del juego, que es la que manda",
+          "ZapGanchoDiametrosBox.Text = ZapCorGanchoBox.Text;" in hoja)
+    check("con la bandera que evita el ciclo entre las dos casillas",
+          "_sincronizandoGancho" in hoja)
+    check("la casilla de las aisladas sigue poniendo al dia la otra hoja",
           "ActualizarGanchoDeCorridas();" in zapatas
           and "DibujarVistaPreviaZapataCorrida();" in zapatas)
 
@@ -8673,10 +8684,26 @@ def v23_hoja_zapatas_corridas() -> None:
     # Faltaban: la seccion salia con sus cotas pero muda. Los de PARRILLA son los
     # mismos de las aisladas -las cuatro macros arman el texto igual-, asi que se
     # REUTILIZAN; los otros cuatro son propios de esta hoja.
-    check("los rotulos de parrilla se reutilizan, no se reescriben",
-          "RotuloParrillaInferior(xBase, a.YZapBot, ancho, rec," in drawer
-          and "RotuloParrillaSuperiorLindero(" in drawer
-          and "RotuloParrillaSuperiorCentral(" in drawer)
+    # LOS ROTULOS DE PARRILLA SON PROPIOS DE ESTA HOJA, y no los de las aisladas:
+    # en una zapata corrida la varilla de canto es la de FLEXION y las de punta las
+    # de TEMPERATURA, y no hacen el mismo trabajo. Un solo rotulo de «AMBOS
+    # SENTIDOS» deja al armador sin saber cual es cual.
+    check("cada parrilla lleva sus DOS rotulos, flexion y temperatura",
+          "private void RotulosDeParrillaCorrida(" in drawer
+          and "FLEXIÓN: la varilla de canto, a la mitad del tramo izquierdo" in drawer
+          and "TEMPERATURA: la de punta, a la mitad del lado derecho" in drawer)
+    check("el de flexion cae a la mitad del tramo izquierdo",
+          "var xFlexion = a.XBase + (ancho / 4);" in drawer)
+    check("y el de temperatura a la mitad del lado derecho",
+          "var xObjetivo = a.XBase + (3 * ancho / 4);" in drawer)
+    check("los dos textos llevan la C de corrugada",
+          'return superior ? texto + " SUPERIOR" : texto;' in drawer
+          and '$"VAR {etiqueta}C @ {SepTexto(sep)} cm"' in drawer)
+    check("la flecha de temperatura se pega a una varilla de verdad",
+          "private static double CirculoMasCercano(" in drawer)
+    check("el leader sale de EN MEDIO del renglon",
+          "private void RotuloConLeaderVertical(" in drawer
+          and "El leader arranca del borde de ABAJO del renglón, en su punto medio." in drawer)
 
     for rotulo in ("RotuloDelEnrase", "RotuloDeLaContratrabe",
                    "RotuloDeLaCadena", "RotuloDelMuroDeConcreto"):
@@ -8722,10 +8749,36 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el relleno toma el color de la capa de la varilla",
           '"SOLID", 1, string.Empty, 256);' in drawer)
 
+    # EL CODO TAMBIEN SE RELLENA. Faltaba, y se veia: el tramo recto y la pata
+    # salian macizos y la esquina hueca, con el rayado del concreto por dentro.
+    check("el codo de la varilla se rellena, no solo el tramo recto y la pata",
+          "private void RellenarCodoDeVarilla(" in drawer
+          and "RellenarCodoDeVarilla(cxOut, cyOut, rOut, cxIn, cyIn, rIn, s, capa);" in drawer)
+    check("y se rellena siguiendo sus dos arcos, que NO son concentricos",
+          "no son concéntricos" in drawer
+          and "for (var i = segmentos; i >= 0; i--)" in drawer)
+    check("el contorno y el relleno del codo usan los mismos angulos",
+          "private static double AnguloCodo(" in drawer
+          and drawer.count("AnguloCodo(s") >= 2)
+
+    # La contratrabe: la flecha a su esquina superior derecha.
+    check("la flecha de la contratrabe va a su esquina superior derecha",
+          "var xPunta = xCtDer;" in drawer and "var yPunta = yCtTop;" in drawer)
+    check("y su rotulo se cuelga del lado donde hay sitio",
+          "xCtIzq - RotuloContratrabeDx" in drawer
+          and "xCtDer + RotuloContratrabeDx" in drawer)
+
+    # La cadena: el texto SIEMPRE despegado de su pano.
+    check("el rotulo de la cadena se despega 5 cm de su pano",
+          "private const double RotuloCadenaSeparacion = 0.05;" in drawer
+          and "var xIns = xCadIzq - RotuloCadenaSeparacion;" in drawer)
+
     # El codo se dibuja con ARCOS, y con los radios de CADA macro.
     check("el codo de la pata se dibuja con sus dos arcos",
-          "Var(Arco(cxIn, cyIn, rIn, a0, a1, capa));" in drawer
-          and "Var(Arco(cxOut, cyOut, rOut, a0, a1, capa));" in drawer)
+          "Var(Arco(cxIn, cyIn, rIn, AnguloCodo(s, false), AnguloCodo(s, true), capa));"
+          in drawer
+          and "Var(Arco(cxOut, cyOut, rOut, AnguloCodo(s, false), AnguloCodo(s, true), capa));"
+          in drawer)
     check("con los radios propios de cada macro",
           "var rIn = lindero ? diam : diam / 4;" in drawer
           and "var rOut = lindero ? 2 * diam : diam / 2;" in drawer)
@@ -8744,8 +8797,9 @@ def v23_hoja_zapatas_corridas() -> None:
     check("las puntas de los leaders se recortan al llegar a la contratrabe",
           "double? xTopePuntas = null)" in aislada_drawer
           and "if (xTopePuntas is not null)" in aislada_drawer)
-    check("y la corrida pasa ese tope cuando la contratrabe cruza la zapata",
-          "double? topePuntas = ctCruza ? xCtIzq - 0.02 : null;" in drawer)
+    check("y la punta de la flecha se queda entre las caras de su acero",
+          "xFlexion = Math.Clamp(xFlexion, p.XCaraIzq + (diam / 2), p.XCaraDer - (diam / 2));"
+          in drawer)
     check("las aisladas no lo pasan, asi que siguen igual",
           "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);" in aislada_drawer)
 
@@ -8877,6 +8931,19 @@ def v24_rediseno() -> None:
           m_grid is not None
           and "{DynamicResource GridTextBrush}" in m_grid.group(0)
           and '"Foreground" Value="{DynamicResource TextBrush}"' not in m_grid.group(0))
+
+    # 1 bis) LAS LISTAS DESPLEGABLES. Mismo caso que las tablas: la ventanita de la
+    #    lista la pinta WPF con fondo CLARO, y sus renglones heredaban el color de
+    #    texto del tema. En oscuro «CENTRAL» y «LINDERO» quedaban en letra clara
+    #    sobre fondo claro: la lista se veia vacia.
+    check("los renglones de las listas llevan su fondo y su tinta",
+          '<Style TargetType="ComboBoxItem">' in tema
+          and '<Setter Property="Background" Value="{DynamicResource GridRowBrush}" />' in tema
+          and '<Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />' in tema)
+    check("y se resaltan con el azul del programa",
+          'Value="{DynamicResource SelectionBrush}" />' in tema)
+    check("las listas normales, igual",
+          '<Style TargetType="ListBoxItem">' in tema)
 
     # 2) El MENU lo pintaba WINDOWS: su Popup salia con marco claro -la linea
     #    blanca- porque un Background en el MenuItem no alcanza para el marco.

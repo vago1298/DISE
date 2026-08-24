@@ -191,15 +191,86 @@ public partial class MainWindow
     /// </remarks>
     private void ActualizarGanchoDeCorridas()
     {
-        var usado = TrazoZapata.FactorGanchoValido(FactorGanchoElegido);
+        var pedido = FactorGanchoElegido;
+        var usado = TrazoZapata.FactorGanchoValido(pedido);
+
+        // La casilla de esta hoja se pone al día con el valor del juego, sin disparar su propio
+        // TextChanged: si se reescribiera siempre, cada tecla en la otra hoja movería el cursor.
+        var texto = usado.ToString("0.#", CultureInfo.InvariantCulture);
+
+        if (ZapCorGanchoBox is not null && ZapCorGanchoBox.Text.Trim() != texto)
+        {
+            _sincronizandoGancho = true;
+
+            try
+            {
+                ZapCorGanchoBox.Text = texto;
+            }
+            finally
+            {
+                _sincronizandoGancho = false;
+            }
+        }
 
         // Con el #4, que es la varilla corriente del muro, para que el número se pueda comparar
         // con lo que se ve en el plano.
-        var cm = usado * 1.27;
+        var cm = usado * DiametroCmDeVarilla("#4");
 
-        ZapCorGanchoText.Text =
-            $"{usado.ToString("0.#", CultureInfo.CurrentCulture)} diámetros"
-            + $"   =   {cm.ToString("N1", CultureInfo.CurrentCulture)} cm en una varilla del #4";
+        var hint = $"= {cm.ToString("N1", CultureInfo.CurrentCulture)} cm en una varilla del #4";
+
+        if (pedido <= 0)
+        {
+            hint += "   (vacío: se usan los 15 de la macro)";
+        }
+        else if (Math.Abs(pedido - usado) > 1e-9)
+        {
+            hint += $"   (se pidió {pedido.ToString("0.#", CultureInfo.CurrentCulture)} y se "
+                    + $"ajustó al rango {TrazoZapata.FactorGanchoMinimo:0.#}–"
+                    + $"{TrazoZapata.FactorGanchoMaximo:0.#})";
+        }
+
+        ZapCorGanchoText.Text = hint;
+    }
+
+    /// <summary>Está copiándose el valor del doblez de una hoja a la otra.</summary>
+    /// <remarks>
+    /// El doblez es <b>uno</b> para toda la obra y vive en dos casillas —una por hoja—, así que
+    /// cada una tiene que escribir en la otra. Sin esta bandera, esa escritura dispara el
+    /// <c>TextChanged</c> de la otra, que vuelve a escribir en la primera: un ciclo sin fin en el
+    /// que además el cursor salta mientras se teclea.
+    /// </remarks>
+    private bool _sincronizandoGancho;
+
+    /// <summary>
+    /// La casilla del doblez de <b>esta</b> hoja: escribe el valor del juego.
+    /// </summary>
+    /// <remarks>
+    /// El valor no es de la hoja de corridas ni de la de aisladas: es de la <b>obra</b>. Se puede
+    /// cambiar en cualquiera de las dos y la otra se pone al día, porque media obra a 15 diámetros
+    /// y la otra media a 40 no es un plano, es un error de armado.
+    /// </remarks>
+    private void OnGanchoCorridaCambio(object sender, TextChangedEventArgs e)
+    {
+        if (!_listo || _sincronizandoGancho || ZapGanchoDiametrosBox is null)
+        {
+            return;
+        }
+
+        // Se copia a la casilla de la hoja de aisladas, que es la que manda en el dibujante. Su
+        // TextChanged hace el resto: valida, actualiza los dos rótulos y redibuja las dos previas.
+        _sincronizandoGancho = true;
+
+        try
+        {
+            ZapGanchoDiametrosBox.Text = ZapCorGanchoBox.Text;
+        }
+        finally
+        {
+            _sincronizandoGancho = false;
+        }
+
+        ActualizarGanchoDeCorridas();
+        DibujarVistaPreviaZapataCorrida();
     }
 
     // ======================================================================

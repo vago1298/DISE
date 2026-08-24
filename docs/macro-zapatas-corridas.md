@@ -173,14 +173,26 @@ Cinco cosas, y ninguna cambia el dibujo:
 
 | Rótulo | Central | Lindero | Estado |
 |---|---|---|---|
-| Parrillas | mismo texto y mismas distancias que las aisladas | igual, con la franja recortada por la contratrabe | Sí |
+| Parrilla de flexión | flecha **a la mitad del tramo izquierdo** de la varilla horizontal de abajo, texto `VAR #4C @ 20 cm` | igual, con la franja recortada por la contratrabe | Sí |
+| Parrilla de temperatura | flecha al círculo más cercano a **¾ del lado derecho** de la sección, mismo texto con «C» | igual | Sí |
 | Muro de enrase | por la **derecha** de la hilada, a 10 cm | por la **izquierda**, a 30 cm, con el leader desde el borde derecho del rótulo | Sí |
-| Contratrabe | `xCentro − 0.62`, 30 cm sobre su centro | `xCentroMuro − 0.75`, 14 cm sobre su lomo y punta 4 cm por debajo | Sí |
-| Cadena de desplante | `xCentro − 0.78`, a su altura | `xCentroMuro − 0.85` | Sí |
+| Contratrabe | flecha a su **esquina superior derecha**; el rótulo se cuelga del lado donde hay sitio | igual | Sí |
+| Cadena de desplante | texto **siempre despegado 5 cm** de su paño | igual | Sí |
 | Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
 | Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
 | Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
+
+**La «C» del armado y el leader quebrado.** El número de varilla de las dos parrillas de la
+corrida lleva una **«C»** detrás —`VAR #4C @ 20 cm`—, para distinguir en el plano el acero de la
+corrida del de las aisladas. El leader sale recto desde el medio del rótulo y, cuando la punta
+queda a la derecha del texto, quiebra a la derecha en vez de cruzarlo.
+
+**El codo del acero del muro se rellena.** Con sección rellena, la varilla del muro de concreto
+va maciza de punta a punta: círculos, tramo recto, pata **y codo**. El codo se rellena siguiendo
+sus **dos arcos**, que no son concéntricos porque cada macro le da su radio a la cara de dentro y
+a la de fuera —la central `Ø/4` y `Ø/2`, el lindero `Ø` y `2Ø`—; un sector anular concéntrico no
+casaría con el contorno.
 
 **Dos decisiones que conviene saber.** El hatch de terreno de la central abre una
 **isla** por cada rótulo; aquí no se abren islas porque los MText llevan máscara de fondo, que

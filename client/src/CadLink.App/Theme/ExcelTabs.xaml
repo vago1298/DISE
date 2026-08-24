@@ -362,6 +362,65 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="Padding" Value="6,4" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+    </Style>
+
+    <!-- ==================================================================
+         LO QUE HAY DENTRO DE UNA LISTA DESPLEGABLE
+         ==================================================================
+         Segundo error del tema oscuro, y hermano del de las tablas: la
+         ventanita que se abre al pulsar una celda de lista la pinta WPF con
+         fondo CLARO, pero sus renglones heredaban el color de texto del tema.
+         En oscuro eso dejaba «CENTRAL» y «LINDERO» en letra clara sobre fondo
+         claro: la lista se veia vacia y solo aparecia el renglon por el que
+         pasaba el raton.
+
+         Aqui el renglon lleva su fondo y su tinta, los dos FIJOS y de la misma
+         familia que la cuadricula, asi que la lista se lee igual en los dos
+         temas. Vale para las listas de las tablas y para las de los
+         formularios -las unidades, la escala-, que son el mismo control. -->
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Background" Value="{DynamicResource GridRowBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}"
+                            CornerRadius="3"
+                            Margin="2,1"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource SelectionBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource SelectionBrush}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource DisabledTextBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Y lo mismo para las listas normales, que usan ListBoxItem -->
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource GridRowBrush}" />
+        <Setter Property="Padding" Value="8,5" />
     </Style>
 
     <Style TargetType="RadioButton">
