@@ -951,29 +951,90 @@
 
          El nombre de la columna sale de {Binding}: en una cabecera de DataGrid el
          DataContext de la plantilla ES el Header. -->
-    <DataTemplate x:Key="CabeceraParrillaInferior">
+    <!-- La banda: SIEMPRE de 350 px -el ancho de las cuatro columnas del grupo,
+         115 + 60 + 115 + 60- y corrida con un Margin NEGATIVO hasta el arranque
+         del grupo. El margen negativo es lo que de verdad mueve el texto: con
+         HorizontalAlignment no basta, porque cuando el hijo pide mas ancho del
+         que hay en su sitio, WPF ignora la alineacion y lo arranca en el borde
+         izquierdo. Ese fue el primer intento, y por eso la banda no se veia.
+
+         Los numeros del margen son el arranque de cada columna dentro del grupo
+         -0, 115, 175 y 290- mas los 8 px de padding de la cabecera. -->
+    <Style x:Key="BandaParrillaStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Width" Value="350" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="Opacity" Value="0.9" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandBrush}" />
+    </Style>
+
+    <!-- La banda va en las CUATRO cabeceras del grupo, y las cuatro la pintan en
+         el MISMO sitio. Suena raro, y es a proposito: si nada recorta, las cuatro
+         caen una encima de otra y se lee una sola banda; y si la cuadricula
+         recorta cada cabecera a su ancho -que es lo que pasa cuando hay columnas
+         congeladas-, cada una pinta su trozo y entre las cuatro se lee la banda
+         completa. De las dos maneras sale bien. -->
+    <DataTemplate x:Key="CabeceraParrillaInf1">
         <StackPanel>
-            <TextBlock Text="PARRILLA INFERIOR" FontSize="9" FontWeight="Bold"
-                       Width="350" HorizontalAlignment="Right" TextAlignment="Center"
-                       Opacity="0.9" Foreground="{DynamicResource BrandBrush}" />
+            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-8,0,0,0" />
             <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
         </StackPanel>
     </DataTemplate>
 
-    <DataTemplate x:Key="CabeceraParrillaSuperior">
+    <DataTemplate x:Key="CabeceraParrillaInf2">
         <StackPanel>
-            <TextBlock Text="PARRILLA SUPERIOR" FontSize="9" FontWeight="Bold"
-                       Width="350" HorizontalAlignment="Right" TextAlignment="Center"
-                       Opacity="0.9" Foreground="{DynamicResource BrandBrush}" />
+            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-123,0,0,0" />
             <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
         </StackPanel>
     </DataTemplate>
 
-    <!-- Las otras tres columnas del grupo: el hueco de la banda, para que el
-         nombre quede a la misma altura que en la de la banda. -->
-    <DataTemplate x:Key="CabeceraParrillaSigue">
+    <DataTemplate x:Key="CabeceraParrillaInf3">
         <StackPanel>
-            <TextBlock Text=" " FontSize="9" FontWeight="Bold" />
+            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-183,0,0,0" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraParrillaInf4">
+        <StackPanel>
+            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-298,0,0,0" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraParrillaSup1">
+        <StackPanel>
+            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-8,0,0,0" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraParrillaSup2">
+        <StackPanel>
+            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-123,0,0,0" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraParrillaSup3">
+        <StackPanel>
+            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-183,0,0,0" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraParrillaSup4">
+        <StackPanel>
+            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
+                       Margin="-298,0,0,0" />
             <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
         </StackPanel>
     </DataTemplate>

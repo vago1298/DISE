@@ -650,6 +650,51 @@ public static class TrazoZapataCorrida
     }
 
     /// <summary>
+    /// La X del círculo para que quede <b>tangente</b> a la varilla vertical de su eje.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las dos van sobre el mismo eje de acero, pero la vertical se corre de él lo que manda la
+    /// macro —el <see cref="DesplazamientoDelMuro"/>—, así que dibujar el círculo en el eje pelado
+    /// lo mete <b>dentro</b> de la vertical: en el plano se veía la varilla vertical atravesada por
+    /// el círculo. Se pidió que se toquen y no se monten.
+    /// </para>
+    /// <para>
+    /// El círculo se aparta <b>al lado contrario</b> del que se corrió la vertical, que es donde
+    /// tiene sitio: hacia el paño. Y se queda dentro del muro, para que no asome por la cara.
+    /// </para>
+    /// <para>
+    /// Vive aquí, con la geometría, porque la usan los dos: el dibujante y la vista previa. Cada uno
+    /// con su copia era la forma segura de que dejaran de coincidir.
+    /// </para>
+    /// </remarks>
+    public static double TangenteALaVertical(
+        double xEje, VarillaMuro[] barras, double diamCirculo, double diamVertical, Muro m)
+    {
+        if (barras.Length == 0)
+        {
+            return xEje;
+        }
+
+        // La vertical de ESTE eje: la más cercana.
+        var cerca = barras[0];
+
+        foreach (var b in barras)
+        {
+            if (Math.Abs(b.X - xEje) < Math.Abs(cerca.X - xEje))
+            {
+                cerca = b;
+            }
+        }
+
+        var sep = (diamCirculo + diamVertical) / 2;
+
+        var x = xEje <= cerca.X ? cerca.X - sep : cerca.X + sep;
+
+        return Math.Clamp(x, m.XIzq + (diamCirculo / 2), m.XDer - (diamCirculo / 2));
+    }
+
+    /// <summary>
     /// La separación entre los dos dobleces del lindero, ya ajustada a lo que cabe.
     /// </summary>
     public static double SepDeLosDobleces(

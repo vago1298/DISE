@@ -146,6 +146,20 @@ public sealed class ZapataCorridaCad
     public string VarMuro { get; init; } = string.Empty;
 
     /// <summary>
+    /// Varilla <b>vertical</b> del muro: la que arranca de la zapata con su pata.
+    /// </summary>
+    /// <remarks>
+    /// En la hoja de las macros el muro lleva <b>una sola</b> casilla de varilla y las dos
+    /// direcciones la comparten; se pidió poder elegir las dos. Vacía = se usa
+    /// <see cref="VarMuro"/>, que es como se portaba antes, así que una hoja vieja dibuja igual.
+    /// </remarks>
+    public string VarMuroVert { get; init; } = string.Empty;
+
+    /// <summary>La clave de la varilla vertical de verdad: la suya, o la horizontal si no hay.</summary>
+    public string VarMuroVertical =>
+        string.IsNullOrWhiteSpace(VarMuroVert) ? VarMuro : VarMuroVert;
+
+    /// <summary>
     /// Separación <b>horizontal</b>. Con concreto <c>H12</c> / <c>R12</c>; con mampostería
     /// <c>H11</c> / <c>R11</c>.
     /// </summary>

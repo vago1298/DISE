@@ -742,9 +742,13 @@ public sealed partial class ZapataDrawer
 
         r.MurosDeConcreto++;
 
-        var diamMuro = Diam(z.VarMuro);
+        // LAS DOS VARILLAS DEL MURO: la HORIZONTAL —la que en el corte se ve de punta, un círculo— y
+        // la VERTICAL, la que arranca de la zapata con su pata. En la hoja de las macros las dos
+        // comparten una casilla; se pidió poder elegirlas por separado, y si la vertical se deja
+        // vacía se usa la horizontal, que es como se portaba antes.
+        var diamHoriz = Diam(z.VarMuro);
 
-        if (diamMuro <= 0)
+        if (diamHoriz <= 0)
         {
             Nota($"Zapata corrida '{z.Id}': el muro de concreto no tiene varilla capturada, así "
                  + "que sale sin acero.");
@@ -752,9 +756,18 @@ public sealed partial class ZapataDrawer
                 Array.Empty<TrazoZapataCorrida.VarillaMuro>(), 0);
         }
 
+        var diamVert = Diam(z.VarMuroVertical);
+
+        if (diamVert <= 0)
+        {
+            diamVert = diamHoriz;
+        }
+
         var capa = CapaVar(z.VarMuro);
+        var capaVert = CapaVar(z.VarMuroVertical);
 
         AsegurarCapaVarilla(capa);
+        AsegurarCapaVarilla(capaVert);
 
         var ejes = TrazoZapataCorrida.EjesDelAcero(m, z.MuroDobleParrilla);
 
@@ -764,60 +777,80 @@ public sealed partial class ZapataDrawer
                  + "para doble parrilla, así que el acero va al centro. Es lo que hace la macro.");
         }
 
-        // ---------- Las varillas que se ven de punta ----------
-        var ys = TrazoZapataCorrida.CirculosDelMuro(
-            m, a.YTerreno, diamMuro, TrazoZapata.SeparacionM(z.SepMuroVert));
+        // ---------- EL ACERO VERTICAL, PRIMERO: LOS CÍRCULOS SE APOYAN EN ÉL ----------
+        //
+        // Se calcula antes de dibujar nada porque los círculos —las varillas horizontales— tienen
+        // que quedar TANGENTES a estas, y para eso hay que saber dónde están.
+        var barras = Array.Empty<TrazoZapataCorrida.VarillaMuro>();
 
-        foreach (var y in ys)
-        {
-            HatchCirculoVarilla(ejes.X1, y, diamMuro / 2, capa);
-
-            if (ejes.Doble)
-            {
-                HatchCirculoVarilla(ejes.X2, y, diamMuro / 2, capa);
-            }
-        }
-
-        // ---------- El acero vertical con su pata ----------
         var diamInf = Diam(z.VarInf);
-        var diamInfT = Diam(z.VarInfTrans);
 
         if (diamInf <= 0)
         {
             Nota($"Zapata corrida '{z.Id}': sin la varilla de la parrilla inferior no se puede "
                  + "colocar el arranque del muro, así que no lleva patas.");
-            return (m, ejes, Array.Empty<TrazoZapataCorrida.VarillaMuro>(), diamMuro);
         }
-
-        if (diamInfT <= 0)
+        else
         {
-            diamInfT = diamInf;
+            var diamInfT = Diam(z.VarInfTrans);
+
+            if (diamInfT <= 0)
+            {
+                diamInfT = diamInf;
+            }
+
+            var p = TrazoZapataCorrida.ParrillaEnAlzado(
+                a, z.EspesorM, rec, diamInf, diamInfT,
+                TrazoZapata.SeparacionM(z.SepInfTrans), superior: false);
+
+            var yPata = TrazoZapataCorrida.YDeLaPata(
+                p.YBarra, diamInf, p.YCirculos, diamInfT, diamVert, lindero);
+
+            var desplazamiento = TrazoZapataCorrida.DesplazamientoDelMuro(Diam(z.SepMuroHoriz));
+
+            barras = lindero
+                ? TrazoZapataCorrida.VerticalesLindero(
+                    a, ejes, yPata, diamVert, desplazamiento, rec, FactorGanchoDiametros)
+                : TrazoZapataCorrida.VerticalesCentral(
+                    ejes, a.YTerreno, yPata, diamVert, desplazamiento, FactorGanchoDiametros);
         }
 
-        var p = TrazoZapataCorrida.ParrillaEnAlzado(
-            a, z.EspesorM, rec, diamInf, diamInfT,
-            TrazoZapata.SeparacionM(z.SepInfTrans), superior: false);
+        // ---------- LAS VARILLAS QUE SE VEN DE PUNTA, TANGENTES A LAS VERTICALES ----------
+        //
+        // Iban en el eje del acero y las verticales van corridas de ese eje lo que manda la macro,
+        // así que el círculo caía DENTRO de la varilla vertical: en el plano se veía la vertical
+        // atravesada por el círculo. Se pidió que se toquen y no se monten, así que el círculo se
+        // aparta hasta quedar tangente por el lado del paño, que es donde tiene sitio.
+        var ys = TrazoZapataCorrida.CirculosDelMuro(
+            m, a.YTerreno, diamHoriz, TrazoZapata.SeparacionM(z.SepMuroVert));
 
-        var yPata = TrazoZapataCorrida.YDeLaPata(
-            p.YBarra, diamInf, p.YCirculos, diamInfT, diamMuro, lindero);
+        var xc1 = TrazoZapataCorrida.TangenteALaVertical(
+            ejes.X1, barras, diamHoriz, diamVert, m);
 
-        var desplazamiento = TrazoZapataCorrida.DesplazamientoDelMuro(Diam(z.SepMuroHoriz));
+        var xc2 = ejes.Doble
+            ? TrazoZapataCorrida.TangenteALaVertical(ejes.X2, barras, diamHoriz, diamVert, m)
+            : xc1;
 
-        var barras = lindero
-            ? TrazoZapataCorrida.VerticalesLindero(
-                a, ejes, yPata, diamMuro, desplazamiento, rec, FactorGanchoDiametros)
-            : TrazoZapataCorrida.VerticalesCentral(
-                ejes, a.YTerreno, yPata, diamMuro, desplazamiento, FactorGanchoDiametros);
+        foreach (var y in ys)
+        {
+            HatchCirculoVarilla(xc1, y, diamHoriz / 2, capa);
 
+            if (ejes.Doble)
+            {
+                HatchCirculoVarilla(xc2, y, diamHoriz / 2, capa);
+            }
+        }
+
+        // ---------- Y las verticales, con su pata ----------
         foreach (var b in barras)
         {
-            VarillaDelMuro(b, diamMuro, capa, lindero);
+            VarillaDelMuro(b, diamVert, capaVert, lindero);
         }
 
         // Las COTAS de las patas NO se dibujan aquí: irían dentro del bloque de la zapata, y en
         // las dos macros van al espacio modelo —la central llama a AcotarDoblesMuro con acMsp—.
         // Se devuelven las barras y las acota quien ya cerró el bloque.
-        return (m, ejes, barras, diamMuro);
+        return (m, ejes, barras, diamVert);
     }
 
     /// <summary>
@@ -1758,6 +1791,17 @@ public sealed partial class ZapataDrawer
     private const double RotuloMuroSeparacion = 0.06;
 
     /// <summary>
+    /// En el lindero, <b>10 cm</b> del paño izquierdo del muro.
+    /// </summary>
+    /// <remarks>
+    /// Se pidió así, y con el ancla a la derecha: en el lindero ese renglón es de cuatro o cinco
+    /// líneas y va pegado a un muro que puede ser de 15 cm o de 40, así que se mide desde su paño
+    /// —no desde el eje— y crece hacia el terreno. Con 6 cm todavía se le veía el aire justo, y el
+    /// muro es lo único que hay a su derecha.
+    /// </remarks>
+    private const double RotuloMuroSeparacionLindero = 0.10;
+
+    /// <summary>
     /// El rótulo del <b>muro de enrase</b>, con su leader al paño de la hilada.
     /// </summary>
     /// <remarks>
@@ -1865,15 +1909,19 @@ public sealed partial class ZapataDrawer
         // VERT.», sin número, y eso deja al armador leyendo el del renglón de arriba: se pidió
         // ponerlo también aquí. Y si el muro va con la misma separación en los dos sentidos, se
         // escribe una sola vez con AMBOS SENTIDOS, como en las parrillas.
-        var varilla = $"VAR {Etiqueta(z.VarMuro)}C";
+        var varHoriz = $"VAR {Etiqueta(z.VarMuro)}C";
+        var varVert = $"VAR {Etiqueta(z.VarMuroVertical)}C";
 
-        var mismaSeparacion = SepTexto(z.SepMuroHoriz)
-            .Equals(SepTexto(z.SepMuroVert), StringComparison.OrdinalIgnoreCase);
+        // Un solo renglón solo si coinciden LA VARILLA Y LA SEPARACIÓN: con dos varillas distintas
+        // a los mismos 20 cm, «AMBOS SENTIDOS» dejaría una de las dos sin especificar.
+        var mismoArmado = varHoriz.Equals(varVert, StringComparison.OrdinalIgnoreCase)
+            && SepTexto(z.SepMuroHoriz)
+                .Equals(SepTexto(z.SepMuroVert), StringComparison.OrdinalIgnoreCase);
 
-        var armado = mismaSeparacion
-            ? $"{varilla} @ {SepTexto(z.SepMuroHoriz)} cm {SufijoAmbosSentidos}"
-            : $"{varilla} @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.\n"
-              + $"{varilla} @ {SepTexto(z.SepMuroVert)} cm VERT.";
+        var armado = mismoArmado
+            ? $"{varHoriz} @ {SepTexto(z.SepMuroHoriz)} cm {SufijoAmbosSentidos}"
+            : $"{varHoriz} @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.\n"
+              + $"{varVert} @ {SepTexto(z.SepMuroVert)} cm VERT.";
 
         var texto =
             $"MURO DE CONCRETO e={espesorCm:0.#} cm\n"
@@ -1885,14 +1933,18 @@ public sealed partial class ZapataDrawer
         // muro ancho casi encima. Medido desde el paño, la separación es la misma con cualquier
         // espesor. El lindero se queda como su macro, colgado por la izquierda, porque a su derecha
         // está la colindancia.
+        // EN EL LINDERO, 10 CM DEL PAÑO IZQUIERDO Y ANCLADO A LA DERECHA. Aquí estaba el error que
+        // se reportó: el renglón iba CENTRADO en ese punto, así que media caja de texto —12 cm— se
+        // metía dentro del muro. Anclado a la derecha crece hacia la izquierda, hacia el terreno, y
+        // con los 10 cm queda despegado del paño con cualquier espesor de muro.
         var xTexto = lindero
-            ? m.XIzq - RotuloMuroSeparacion
+            ? m.XIzq - RotuloMuroSeparacionLindero
             : m.XDer + RotuloMuroSeparacion;
 
         var yTexto = a.YTerreno - 0.1;
 
         var ancho = lindero ? AnchoRotuloMuroLindero : AnchoRotuloMuroCentral;
-        var anclaje = lindero ? AnclajeCentro : AnclajeIzquierda;
+        var anclaje = lindero ? AnclajeDerecha : AnclajeIzquierda;
 
         MtextoAncho(xTexto, yTexto, texto, ancho, anclaje);
 

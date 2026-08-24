@@ -48,6 +48,9 @@ public partial class MainWindow
         ColZapCorVarInfT.ItemsSource = diametros;
         ColZapCorVarMuro.ItemsSource = diametros;
 
+        // La vertical del muro es OPCIONAL: en blanco se usa la horizontal, como antes.
+        ColZapCorVarMuroVert.ItemsSource = opcionales;
+
         // Las de la parrilla superior son opcionales: con una sola parrilla se dejan en blanco.
         ColZapCorVarSup.ItemsSource = opcionales;
         ColZapCorVarSupT.ItemsSource = opcionales;
@@ -797,62 +800,80 @@ public partial class MainWindow
         RellenoCorrida(px(m.XIzq), py(m.YTope), px(m.XDer), py(m.YBase), PincelConcreto);
         ContornoCorrida(px(m.XIzq), py(m.YTope), px(m.XDer), py(m.YBase), azul, 1.2);
 
-        var diamMuro = DiametroMDeVarillaCorrida(z.VarMuro);
+        // LAS DOS VARILLAS DEL MURO, como en el plano: la horizontal es la que se ve de punta y la
+        // vertical la que arranca de la zapata con su pata. Vacía la vertical, se usa la horizontal.
+        var diamHoriz = DiametroMDeVarillaCorrida(z.VarMuro);
 
-        if (diamMuro <= 0)
+        if (diamHoriz <= 0)
         {
             return;
+        }
+
+        var diamVert = DiametroMDeVarillaCorrida(z.VarMuroVertical);
+
+        if (diamVert <= 0)
+        {
+            diamVert = diamHoriz;
         }
 
         var acero = new SolidColorBrush(Color.FromRgb(0x0E, 0x6E, 0xA8));
 
         var ejes = TrazoZapataCorrida.EjesDelAcero(m, z.MuroDobleParrilla);
 
-        // Los círculos: las varillas que salen de punta, repartidas con la separación VERTICAL.
-        var ys = TrazoZapataCorrida.CirculosDelMuro(
-            m, a.YTerreno, diamMuro, TrazoZapata.SeparacionM(z.SepMuroVert));
-
-        var r = Math.Max(diamMuro / 2 * (px(1) - px(0)), 1.2);
-
         // Solo se colorean con la sección RELLENA, igual que en el plano: en modo normal la
         // varilla va hueca y el rayado del concreto se ve por detrás.
         var rellenas = ModoElegido == ModoSeccion.Tipo2Rellena;
 
-        foreach (var y in ys)
-        {
-            CirculoCorrida(px(ejes.X1), py(y), r, acero, rellenas);
+        // Las verticales PRIMERO, porque los círculos se apoyan en ellas para quedar tangentes.
+        // La parrilla inferior manda en la altura del doblez, así que se calcula con la misma
+        // rutina que el dibujante.
+        var barras = Array.Empty<TrazoZapataCorrida.VarillaMuro>();
 
-            if (ejes.Doble)
-            {
-                CirculoCorrida(px(ejes.X2), py(y), r, acero, rellenas);
-            }
-        }
-
-        // Las varillas verticales con su pata. La parrilla inferior manda en la altura del
-        // doblez, así que se calcula con la misma rutina que el dibujante.
         var diamInf = DiametroMDeVarillaCorrida(z.VarInf);
         var diamInfT = DiametroMDeVarillaCorrida(z.VarInfTrans);
 
-        if (diamInf <= 0 || diamInfT <= 0)
+        if (diamInf > 0 && diamInfT > 0)
         {
-            return;
+            var p = TrazoZapataCorrida.ParrillaEnAlzado(
+                a, z.EspesorM, z.RecM, diamInf, diamInfT,
+                TrazoZapata.SeparacionM(z.SepInfTrans), false);
+
+            var yPata = TrazoZapataCorrida.YDeLaPata(
+                p.YBarra, diamInf, p.YCirculos, diamInfT, diamVert, fila.EsLindero);
+
+            var desp = TrazoZapataCorrida.DesplazamientoDelMuro(
+                DiametroMDeVarillaCorrida(z.SepMuroHoriz));
+
+            barras = fila.EsLindero
+                ? TrazoZapataCorrida.VerticalesLindero(
+                    a, ejes, yPata, diamVert, desp, z.RecM, FactorGanchoElegido)
+                : TrazoZapataCorrida.VerticalesCentral(
+                    ejes, a.YTerreno, yPata, diamVert, desp, FactorGanchoElegido);
         }
 
-        var p = TrazoZapataCorrida.ParrillaEnAlzado(
-            a, z.EspesorM, z.RecM, diamInf, diamInfT,
-            TrazoZapata.SeparacionM(z.SepInfTrans), false);
+        // Los círculos: las varillas que salen de punta, repartidas con la separación VERTICAL y
+        // TANGENTES a la vertical de su eje, como en el plano.
+        var ys = TrazoZapataCorrida.CirculosDelMuro(
+            m, a.YTerreno, diamHoriz, TrazoZapata.SeparacionM(z.SepMuroVert));
 
-        var yPata = TrazoZapataCorrida.YDeLaPata(
-            p.YBarra, diamInf, p.YCirculos, diamInfT, diamMuro, fila.EsLindero);
+        var xc1 = TrazoZapataCorrida.TangenteALaVertical(
+            ejes.X1, barras, diamHoriz, diamVert, m);
 
-        var desp = TrazoZapataCorrida.DesplazamientoDelMuro(
-            DiametroMDeVarillaCorrida(z.SepMuroHoriz));
+        var xc2 = ejes.Doble
+            ? TrazoZapataCorrida.TangenteALaVertical(ejes.X2, barras, diamHoriz, diamVert, m)
+            : xc1;
 
-        var barras = fila.EsLindero
-            ? TrazoZapataCorrida.VerticalesLindero(
-                a, ejes, yPata, diamMuro, desp, z.RecM, FactorGanchoElegido)
-            : TrazoZapataCorrida.VerticalesCentral(
-                ejes, a.YTerreno, yPata, diamMuro, desp, FactorGanchoElegido);
+        var r = Math.Max(diamHoriz / 2 * (px(1) - px(0)), 1.2);
+
+        foreach (var y in ys)
+        {
+            CirculoCorrida(px(xc1), py(y), r, acero, rellenas);
+
+            if (ejes.Doble)
+            {
+                CirculoCorrida(px(xc2), py(y), r, acero, rellenas);
+            }
+        }
 
         foreach (var b in barras)
         {

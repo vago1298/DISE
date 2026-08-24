@@ -46,6 +46,7 @@ public sealed class ZapataCorridaRow : Row
 
     private string _muroDobleParrilla = "NO";
     private string _varMuro = "#3";
+    private string _varMuroVert = "#3";
     private string _sepMuroHoriz = "20";
     private string _sepMuroVert = "20";
 
@@ -287,6 +288,27 @@ public sealed class ZapataCorridaRow : Row
     /// </remarks>
     public string SepMuroVert { get => _sepMuroVert; set => Set(ref _sepMuroVert, value); }
 
+    /// <summary>
+    /// Varilla <b>vertical</b> del muro de concreto, la de las patas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En la hoja de las macros el muro lleva <b>una sola</b> casilla de varilla y las dos
+    /// direcciones la comparten. Se pidió poder elegir las dos, y tiene sentido: la vertical es la
+    /// que arranca de la zapata con su pata y la horizontal la que la amarra, y no siempre son del
+    /// mismo número.
+    /// </para>
+    /// <para>
+    /// Vacía = se usa la <see cref="VarMuro"/>, que es como se portaba antes. Así una hoja vieja
+    /// —o una fila a medio capturar— sigue dibujando lo mismo.
+    /// </para>
+    /// </remarks>
+    public string VarMuroVert
+    {
+        get => _varMuroVert;
+        set { Set(ref _varMuroVert, value); Raise(nameof(Falta)); }
+    }
+
     /// <summary>ID del bloque de la <b>contratrabe</b>. <c>H6</c> / <c>R6</c>.</summary>
     /// <remarks>
     /// Se guarda <b>solo el ID</b>: el desplegable puede mostrar de qué hoja sale y esa
@@ -410,6 +432,7 @@ public sealed class ZapataCorridaRow : Row
         EspesorMuroCm = EspesorMuroCm,
         MuroDobleParrilla = EsMuroDobleParrilla,
         VarMuro = VarMuro,
+        VarMuroVert = VarMuroVert,
         SepMuroHoriz = SepMuroHoriz,
         SepMuroVert = SepMuroVert
 

@@ -351,3 +351,26 @@ renglones, y su plantilla lleva `ClipToBounds="False"` para que el desbordamient
 Y las **cuatro casillas de la parrilla superior se apagan** cuando la fila no lleva doble parrilla,
 con el mismo criterio que las del armado del muro: una celda que el dibujo no va a leer no se deja
 escribir, porque capturar ahí un dato y no verlo en el plano es media hora buscando el error.
+
+
+## 12. Las dos varillas del muro de concreto
+
+En la hoja de las macros el muro lleva **una sola** casilla de varilla y las dos direcciones la
+comparten. Se pidió poder elegir las dos, y tiene sentido: la **vertical** es la que arranca de la
+zapata con su pata y la **horizontal** la que la amarra, y no siempre son del mismo número.
+
+| Columna | Qué es en el corte |
+|---|---|
+| `Var muro horiz.` | la que se ve **de punta**, un círculo, repartida hacia arriba con la separación vertical |
+| `Var muro vert.` | la que sube por el muro y baja a la zapata **con su pata** |
+
+La vertical **vacía = se usa la horizontal**, que es como se portaba antes, así que un `.clk` viejo
+—o una fila a medio capturar— dibuja exactamente lo mismo. El rótulo escribe las dos con su número, y
+solo las junta en un renglón de `AMBOS SENTIDOS` cuando coinciden **la varilla y la separación**.
+
+**Y los círculos quedan tangentes a la vertical.** Las dos van sobre el mismo eje de acero, pero la
+vertical se corre de ese eje lo que manda la macro, así que dibujar el círculo en el eje pelado lo
+mete **dentro** de la varilla vertical: en el plano se veía la vertical atravesada por el círculo. El
+círculo se aparta al lado contrario —hacia el paño, que es donde tiene sitio— hasta que se tocan sin
+montarse, y se queda dentro del muro para no asomar por la cara. La cuenta vive en
+`TrazoZapataCorrida.TangenteALaVertical`, así que el dibujo y la vista previa la comparten.

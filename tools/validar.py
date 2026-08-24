@@ -8593,8 +8593,10 @@ def v23_hoja_zapatas_corridas() -> None:
 
     check("la cadena de desplante se apaga con muro de concreto",
           pestana.count("CeldaSoloMamposteria") == 1)
-    check("y las cuatro casillas del armado del muro con mamposteria",
-          pestana.count("CeldaSoloConcreto") == 4)
+    # Cinco desde que el muro tiene DOS varillas -la horizontal y la vertical-: la de
+    # doble parrilla del muro, las dos varillas y las dos separaciones.
+    check("y las cinco casillas del armado del muro con mamposteria",
+          pestana.count("CeldaSoloConcreto") == 5)
 
     # La fila tiene que AVISAR de los dos cambios para que la celda se entere.
     check("la fila avisa cuando cambia el tipo de muro",
@@ -8933,12 +8935,60 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el rotulo del muro dice HORIZ. y VERT. como en la macro",
           "cm HORIZ." in drawer and "cm VERT." in drawer)
     check("y su varilla lleva la C de corrugada, como las de parrilla",
-          'var varilla = $"VAR {Etiqueta(z.VarMuro)}C";' in drawer)
+          'var varHoriz = $"VAR {Etiqueta(z.VarMuro)}C";' in drawer
+          and 'var varVert = $"VAR {Etiqueta(z.VarMuroVertical)}C";' in drawer)
     check("las dos varillas del muro llevan su numero, tambien la vertical",
-          '$"{varilla} @ {SepTexto(z.SepMuroVert)} cm VERT.";' in drawer)
-    check("y con la misma separacion en los dos sentidos se escribe una sola vez",
-          "var mismaSeparacion = SepTexto(z.SepMuroHoriz)" in drawer
-          and f'cm {{SufijoAmbosSentidos}}"' in drawer)
+          '$"{varVert} @ {SepTexto(z.SepMuroVert)} cm VERT.";' in drawer)
+    check("y con el mismo armado en los dos sentidos se escribe una sola vez",
+          "var mismoArmado = varHoriz.Equals(varVert, StringComparison.OrdinalIgnoreCase)"
+          in drawer
+          and "cm {SufijoAmbosSentidos}\"" in drawer)
+
+    # DOS VARILLAS PARA EL MURO: la horizontal -la que se ve de punta- y la vertical, la
+    # que arranca de la zapata con su pata. En la hoja de las macros hay UNA sola
+    # casilla; se pidio poder elegir las dos. Vacia la vertical, se usa la horizontal.
+    check("el muro tiene su varilla vertical, aparte de la horizontal",
+          "public string VarMuroVert { get; init; }" in leer(
+              ruta("client/src/CadLink.Cad/ZapataCorridaCad.cs"))
+          and "public string VarMuroVertical =>" in leer(
+              ruta("client/src/CadLink.Cad/ZapataCorridaCad.cs"))
+          and "public string VarMuroVert" in leer(
+              ruta("client/src/CadLink.App/Models/ZapataCorridaRow.cs")))
+    check("y la hoja la deja elegir, con su columna propia",
+          'x:Name="ColZapCorVarMuroVert"' in xaml
+          and 'Header="Var muro horiz."' in xaml
+          and 'Header="Var muro vert."' in xaml
+          and "ColZapCorVarMuroVert.ItemsSource = opcionales;" in hoja)
+    check("el dibujo usa la vertical para las patas y la horizontal para los circulos",
+          "var diamHoriz = Diam(z.VarMuro);" in drawer
+          and "var diamVert = Diam(z.VarMuroVertical);" in drawer
+          and "VarillaDelMuro(b, diamVert, capaVert, lindero);" in drawer
+          and "HatchCirculoVarilla(xc1, y, diamHoriz / 2, capa);" in drawer)
+
+    # LOS CIRCULOS, TANGENTES A LAS VERTICALES. Iban en el eje del acero y las
+    # verticales van corridas de ese eje, asi que el circulo caia DENTRO de la vertical.
+    trazo_cor = leer(ruta("client/src/CadLink.Cad/TrazoZapataCorrida.cs"))
+
+    check("los circulos del muro quedan tangentes a la varilla vertical",
+          "public static double TangenteALaVertical(" in trazo_cor
+          and "var sep = (diamCirculo + diamVertical) / 2;" in trazo_cor
+          and "var x = xEje <= cerca.X ? cerca.X - sep : cerca.X + sep;" in trazo_cor)
+    check("y se queda dentro del muro, para no asomar por la cara",
+          "return Math.Clamp(x, m.XIzq + (diamCirculo / 2), m.XDer - (diamCirculo / 2));"
+          in trazo_cor)
+    check("la geometria es UNA, compartida por el dibujante y la previa",
+          "TrazoZapataCorrida.TangenteALaVertical(" in drawer
+          and "TrazoZapataCorrida.TangenteALaVertical(" in hoja)
+    check("las verticales se calculan ANTES de los circulos, que se apoyan en ellas",
+          drawer.index("var barras = Array.Empty<TrazoZapataCorrida.VarillaMuro>();")
+          < drawer.index("var ys = TrazoZapataCorrida.CirculosDelMuro("))
+
+    # EL ROTULO DEL MURO DEL LINDERO: 10 cm del pano IZQUIERDO y anclado a la DERECHA.
+    # Iba CENTRADO en ese punto, asi que media caja de texto se metia dentro del muro.
+    check("el rotulo del muro del lindero se despega 10 cm y crece hacia el terreno",
+          "private const double RotuloMuroSeparacionLindero = 0.10;" in drawer
+          and "? m.XIzq - RotuloMuroSeparacionLindero" in drawer
+          and "var anclaje = lindero ? AnclajeDerecha : AnclajeIzquierda;" in drawer)
     check("la flecha del muro de concreto va a su pano, no a su eje",
           "var xPunta = lindero ? m.XIzq : m.XDer;" in drawer)
     check("y la del muro de enrase, igual",
@@ -9052,7 +9102,7 @@ def v23_hoja_zapatas_corridas() -> None:
     # La previa dice la verdad: colorea solo si el juego va relleno.
     check("la vista previa colorea el acero del muro solo con la seccion rellena",
           "var rellenas = ModoElegido == ModoSeccion.Tipo2Rellena;" in hoja
-          and "CirculoCorrida(px(ejes.X1), py(y), r, acero, rellenas);" in hoja)
+          and "CirculoCorrida(px(xc1), py(y), r, acero, rellenas);" in hoja)
 
 
 # ======================================================================
@@ -9119,18 +9169,35 @@ def v24_rediseno() -> None:
     # La cuadricula de WPF no junta columnas bajo un titulo, asi que la banda va en la
     # cabecera de la PRIMERA columna del grupo y las otras tres llevan el renglon de
     # arriba en blanco, para que los nombres queden a la misma altura.
-    for plantilla in ("CabeceraParrillaInferior", "CabeceraParrillaSuperior",
-                      "CabeceraParrillaSigue"):
+    # LA BANDA ABARCA LAS CUATRO COLUMNAS DEL GRUPO: se pinta de 350 px -el ancho de
+    # las cuatro- y se corre con un Margin NEGATIVO hasta el arranque del grupo. El
+    # margen negativo es lo que mueve el texto de verdad: con HorizontalAlignment no
+    # basta, porque cuando el hijo pide mas ancho del que hay en su sitio WPF ignora la
+    # alineacion. Y va en las CUATRO cabeceras, las cuatro pintandola en el mismo
+    # sitio: si nada recorta se superponen y se lee una sola, y si la cuadricula
+    # recorta cada cabecera a su ancho, cada una pinta su trozo.
+    for plantilla in ("CabeceraParrillaInf1", "CabeceraParrillaInf2",
+                      "CabeceraParrillaInf3", "CabeceraParrillaInf4",
+                      "CabeceraParrillaSup1", "CabeceraParrillaSup2",
+                      "CabeceraParrillaSup3", "CabeceraParrillaSup4"):
         check(f"existe la plantilla de cabecera {plantilla}",
               f'x:Key="{plantilla}"' in tema)
 
     check("la banda dice de que parrilla es cada grupo",
-          '<TextBlock Text="PARRILLA INFERIOR" FontSize="9" FontWeight="Bold"' in tema
-          and '<TextBlock Text="PARRILLA SUPERIOR" FontSize="9" FontWeight="Bold"' in tema)
-    check("y las dos hojas la usan, una banda por grupo y por hoja",
-          xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaInferior}"') == 2
-          and xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"') == 2
-          and xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaSigue}"') == 12)
+          tema.count('<TextBlock Text="PARRILLA INFERIOR" '
+                     'Style="{StaticResource BandaParrillaStyle}"') == 4
+          and tema.count('<TextBlock Text="PARRILLA SUPERIOR" '
+                         'Style="{StaticResource BandaParrillaStyle}"') == 4)
+    check("y mide el ancho de las cuatro columnas del grupo",
+          'x:Key="BandaParrillaStyle"' in tema
+          and '<Setter Property="Width" Value="350" />' in tema)
+    check("cada cabecera la corre con su margen negativo, hasta el arranque del grupo",
+          all(f'Margin="{m},0,0,0"' in tema for m in ("-8", "-123", "-183", "-298")))
+    check("y las dos hojas la usan, en las cuatro columnas de sus dos grupos",
+          all(xaml.count(f'HeaderTemplate="{{StaticResource CabeceraParrilla{t}}}"') == 2
+              for t in ("Inf1", "Inf2", "Inf3", "Inf4",
+                        "Sup1", "Sup2", "Sup3", "Sup4"))
+          and "CabeceraParrillaSigue" not in xaml)
 
     # LOS NOMBRES DE COLUMNA, los que se pidieron: dicen el LECHO y el TRABAJO de cada
     # varilla, y coinciden con lo que sale rotulado en el plano.
