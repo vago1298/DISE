@@ -5994,8 +5994,15 @@ def v19_circular_y_ui() -> None:
         #                      los dos temas, asi que la marca que va ENCIMA de ellas
         #                      tambien tiene que quedarse clara. Una marca que cambia de
         #                      tema sobre una celda que no lo cambia deja de contrastar.
+        #   Lista*Brush        la ventanita de una lista desplegable se queda clara en
+        #                      los dos temas, por lo mismo que la cuadricula: es donde
+        #                      se elige un dato, no parte del marco. Se les dio brocha
+        #                      propia porque antes tomaban GridRowBrush -que SI cambia
+        #                      con el tema- y en oscuro la letra se leia casi negra
+        #                      sobre gris oscuro.
         aparte = ({"PreviewFondoBrush"}
                   | {b for b in declaradas if b.startswith("Celda")}
+                  | {b for b in declaradas if b.startswith("Lista")}
                   | {b for b in declaradas
                      if b.startswith("FilaAcero") or b.startswith("Acero")})
 
@@ -8689,21 +8696,54 @@ def v23_hoja_zapatas_corridas() -> None:
     # de TEMPERATURA, y no hacen el mismo trabajo. Un solo rotulo de «AMBOS
     # SENTIDOS» deja al armador sin saber cual es cual.
     check("cada parrilla lleva sus DOS rotulos, flexion y temperatura",
-          "private void RotulosDeParrillaCorrida(" in drawer
+          "private HuellaRotulos RotulosDeParrillaCorrida(" in drawer
           and "FLEXIÓN: la varilla de canto, a la mitad del tramo izquierdo" in drawer
           and "TEMPERATURA: la de punta, a la mitad del lado derecho" in drawer)
     check("el de flexion cae a la mitad del tramo izquierdo",
-          "var xFlexion = a.XBase + (ancho / 4);" in drawer)
+          "CarrilLibre(a.XBase + (ancho / 4), estorbo, haciaDerecha: false)" in drawer)
     check("y el de temperatura a la mitad del lado derecho",
-          "var xObjetivo = a.XBase + (3 * ancho / 4);" in drawer)
+          "CirculoLibre(p.Circulos, a.XBase + (3 * ancho / 4), abajo.Der)" in drawer)
     check("los dos textos llevan la C de corrugada",
-          'return superior ? texto + " SUPERIOR" : texto;' in drawer
-          and '$"VAR {etiqueta}C @ {SepTexto(sep)} cm"' in drawer)
+          '$"VAR {etiqueta}C @ {SepTexto(sep)} cm {sufijo}"' in drawer)
     check("la flecha de temperatura se pega a una varilla de verdad",
           "private static double CirculoMasCercano(" in drawer)
     check("el leader sale de EN MEDIO del renglon",
-          "private void RotuloConLeaderVertical(" in drawer
+          "private (double X1, double Y1, double X2, double Y2)? RotuloDeParrilla(" in drawer
           and "El leader arranca del borde de ABAJO del renglón, en su punto medio." in drawer)
+
+    # EL TEXTO DE CADA VARILLA DICE SU LECHO, y cuando los dos sentidos llevan lo
+    # mismo se rotula una sola vez. Se pidio asi.
+    check("la varilla de flexion dice INFERIOR y la de temperatura SUPERIOR",
+          'private const string SufijoLechoInferior = "INFERIOR";' in drawer
+          and 'private const string SufijoLechoSuperior = "SUPERIOR";' in drawer
+          and "TextoParrillaCorrida(varBarra, sepBarra, SufijoLechoInferior)" in drawer
+          and "TextoParrillaCorrida(varCirc, sepCirc, SufijoLechoSuperior)" in drawer)
+    check("con el mismo armado en los dos sentidos sale un solo rotulo",
+          'private const string SufijoAmbosSentidos = "AMBOS SENTIDOS";' in drawer
+          and "if (MismoArmado(varBarra, sepBarra, varCirc, sepCirc))" in drawer
+          and "TextoParrillaCorrida(varBarra, sepBarra, SufijoAmbosSentidos)" in drawer)
+    check("y para eso tienen que coincidir la varilla Y la separacion",
+          "private bool MismoArmado(" in drawer
+          and "SepTexto(sepA).Equals(SepTexto(sepB), StringComparison.OrdinalIgnoreCase)"
+          in drawer)
+
+    # EL RENGLON SE MIDE DESDE EL LOMO DEL CONCRETO, NO DESDE LA VARILLA: asi nunca
+    # cae dentro de la seccion, con el espesor que sea, y con doble parrilla se sube
+    # solo. Era el error que se veia con zapatas de 50 cm.
+    check("el rotulo de parrilla sube 10 cm sobre el lomo de la zapata",
+          "private const double RotuloParrillaDy = 0.10;" in drawer
+          and "var yTexto = a.YZapTop + RotuloParrillaDy;" in drawer)
+    check("y con doble parrilla el de arriba se sube por encima del de abajo",
+          "private readonly record struct HuellaRotulos(" in drawer
+          and "yTexto = Math.Max(yTexto, techo + RotuloParrillaAire + AltoMtexto);" in drawer
+          and "abajo: huellaInf);" in drawer)
+    check("los dos leaders bajan por carriles distintos, para no cruzarse",
+          "private static double CarrilLibre(" in drawer
+          and "Leader(xCarril, yPunta, xCarril, ySalida);" in drawer)
+    check("y la parrilla de abajo escribe primero, para que la de arriba la esquive",
+          "var huellaInf = RotulosDeParrillaCorrida(" in drawer
+          and drawer.index("var huellaInf = RotulosDeParrillaCorrida(")
+          < drawer.index("abajo: huellaInf);"))
 
     for rotulo in ("RotuloDelEnrase", "RotuloDeLaContratrabe",
                    "RotuloDeLaCadena", "RotuloDelMuroDeConcreto"):
@@ -8767,6 +8807,28 @@ def v23_hoja_zapatas_corridas() -> None:
     check("y su rotulo se cuelga del lado donde hay sitio",
           "xCtIzq - RotuloContratrabeDx" in drawer
           and "xCtDer + RotuloContratrabeDx" in drawer)
+    check("y se corre 6 cm a la izquierda, para pegarlo mas al bloque",
+          "private const double RotuloContratrabeCorrimiento = 0.06;" in drawer
+          and ") - RotuloContratrabeCorrimiento;" in drawer)
+
+    # EL TERRENO SE CIÑE A LO QUE SOBRESALE. Antes era un pano recto por lado, y la
+    # contratrabe -que es mas ancha que el muro- salia metida en la tierra.
+    check("el terreno de la corrida se ciñe a la forma de cada pieza",
+          "private void HatchTerrenoCorrida(" in drawer
+          and "private readonly record struct ObstaculoTerreno(" in drawer)
+    check("y se le pasan las cuatro piezas que pueden sobresalir",
+          drawer.count("obstaculos.Add(new ObstaculoTerreno(") == 4)
+    check("las bandas se cosen en un solo contorno por lado",
+          "private void HatchEscaleraTerreno(" in drawer
+          and "HatchPoligono(pts.ToArray(), CapaTerrenoHatch," in drawer)
+    check("y ese hatch de contorno libre existe en el dibujante",
+          "private object? HatchPoligono(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs")))
+    check("una banda sin pieza hereda el pano de su vecina",
+          "izq[i] = izq[i - 1];" in drawer and "izq[i] = izq[i + 1];" in drawer)
+    check("y sin ninguna pieza el terreno vuelve a ser un rectangulo",
+          "// Ninguna pieza en toda la altura: el terreno es un rectángulo de lado a lado."
+          in drawer)
 
     # La cadena: el texto SIEMPRE despegado de su pano.
     check("el rotulo de la cadena se despega 5 cm de su pano",
@@ -8798,7 +8860,7 @@ def v23_hoja_zapatas_corridas() -> None:
           "double? xTopePuntas = null)" in aislada_drawer
           and "if (xTopePuntas is not null)" in aislada_drawer)
     check("y la punta de la flecha se queda entre las caras de su acero",
-          "xFlexion = Math.Clamp(xFlexion, p.XCaraIzq + (diam / 2), p.XCaraDer - (diam / 2));"
+          "return Math.Clamp(x, p.XCaraIzq + (diam / 2), p.XCaraDer - (diam / 2));"
           in drawer)
     check("las aisladas no lo pasan, asi que siguen igual",
           "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);" in aislada_drawer)
@@ -8932,18 +8994,36 @@ def v24_rediseno() -> None:
           and "{DynamicResource GridTextBrush}" in m_grid.group(0)
           and '"Foreground" Value="{DynamicResource TextBrush}"' not in m_grid.group(0))
 
-    # 1 bis) LAS LISTAS DESPLEGABLES. Mismo caso que las tablas: la ventanita de la
-    #    lista la pinta WPF con fondo CLARO, y sus renglones heredaban el color de
-    #    texto del tema. En oscuro «CENTRAL» y «LINDERO» quedaban en letra clara
-    #    sobre fondo claro: la lista se veia vacia.
-    check("los renglones de las listas llevan su fondo y su tinta",
+    # 1 bis) LAS LISTAS DESPLEGABLES. Mismo caso que las tablas, y con una vuelta de
+    #    tuerca: los renglones se pintaban con GridRowBrush creyendo que era fija, y NO
+    #    lo es -en oscuro se va a un gris #4A4A4A-. Con la tinta casi negra encima, la
+    #    letra se leia «un poco oscura». Ahora las listas llevan sus CUATRO brochas
+    #    propias, que no estan en ninguna paleta y por tanto no las toca el tema.
+    check("los renglones de las listas llevan su fondo y su tinta, fijos",
           '<Style TargetType="ComboBoxItem">' in tema
-          and '<Setter Property="Background" Value="{DynamicResource GridRowBrush}" />' in tema
-          and '<Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />' in tema)
-    check("y se resaltan con el azul del programa",
-          'Value="{DynamicResource SelectionBrush}" />' in tema)
+          and '<Setter Property="Background" Value="{StaticResource ListaFondoBrush}" />' in tema
+          and '<Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />' in tema)
+    check("y esas brochas de lista no las cambia ningun tema",
+          all(f'x:Key="{b}"' in tema for b in
+              ("ListaFondoBrush", "ListaTextoBrush", "ListaResalteBrush", "ListaApagadaBrush"))
+          and all(f'["{b}"]' not in temacs for b in
+                  ("ListaFondoBrush", "ListaTextoBrush", "ListaResalteBrush",
+                   "ListaApagadaBrush")))
+    check("y se resaltan con un azul que se lee sobre el papel claro",
+          'Value="{StaticResource ListaResalteBrush}" />' in tema)
     check("las listas normales, igual",
           '<Style TargetType="ListBoxItem">' in tema)
+
+    # 1 ter) LA CELDA DE LISTA SIN EDITAR. Le faltaba estilo, asi que se dibujaba con
+    #    el ComboBox general: en oscuro el valor de la celda -«CENTRAL»- salia en
+    #    letra clara sobre el color claro de la columna.
+    check("la celda de lista tiene estilo tambien cuando NO se esta editando",
+          '<Style x:Key="ComboCeldaMuestra" TargetType="ComboBox">' in tema
+          and '<Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />' in tema)
+    check("y todas las columnas de lista lo usan",
+          xaml.count('ElementStyle="{StaticResource ComboCeldaMuestra}"')
+          == xaml.count('EditingElementStyle="{StaticResource ComboCeldaEdicion}"') - 1
+          and 'BasedOn="{StaticResource ComboCeldaMuestra}"' in xaml)
 
     # 2) El MENU lo pintaba WINDOWS: su Popup salia con marco claro -la linea
     #    blanca- porque un Background en el MenuItem no alcanza para el marco.

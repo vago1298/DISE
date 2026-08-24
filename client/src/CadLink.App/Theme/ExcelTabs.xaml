@@ -87,6 +87,25 @@
          la fila. La superficie de trabajo lleva su propia tinta. -->
     <SolidColorBrush x:Key="GridTextBrush" Color="#FF11202D" />
 
+    <!-- ===== TINTA Y FONDO DE LAS LISTAS DESPLEGABLES =====
+         Estas cuatro son las UNICAS del archivo que no estan en Tema.cs, y es a
+         proposito: son FIJAS de verdad.
+
+         Aqui estuvo el ultimo error del tema oscuro. Los renglones de las listas
+         se pintaban con GridRowBrush y se escribian con GridTextBrush, con la
+         idea de que las dos eran fijas. GridTextBrush si lo es; GridRowBrush NO
+         -en oscuro se cambia a un gris #4A4A4A-, asi que en oscuro quedaba tinta
+         casi negra sobre gris oscuro: la letra se leia «un poco oscura», que es
+         justo lo que se reporto. El renglon resaltado era peor todavia, porque
+         SelectionBrush tambien se oscurece.
+
+         Con estas cuatro, la ventanita de una lista se ve IGUAL en los dos temas:
+         papel claro, tinta oscura y resalte azul claro. -->
+    <SolidColorBrush x:Key="ListaFondoBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="ListaTextoBrush" Color="#FF11202D" />
+    <SolidColorBrush x:Key="ListaResalteBrush" Color="#FFD6E8F7" />
+    <SolidColorBrush x:Key="ListaApagadaBrush" Color="#FF8A97A4" />
+
     <!-- ===== Seleccion, foco y sombra =====
          Tres brochas del rediseno. Antes la fila seleccionada se pintaba con el azul
          del sistema -que no es el azul del programa- y no habia ni foco ni sombra:
@@ -380,8 +399,8 @@
          temas. Vale para las listas de las tablas y para las de los
          formularios -las unidades, la escala-, que son el mismo control. -->
     <Style TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="{DynamicResource GridRowBrush}" />
-        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="Background" Value="{StaticResource ListaFondoBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Padding" Value="8,5" />
@@ -391,24 +410,24 @@
                     <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
                             Padding="{TemplateBinding Padding}"
-                            CornerRadius="3"
-                            Margin="2,1"
+                            CornerRadius="0"
+                            Margin="0"
                             SnapsToDevicePixels="True">
                         <ContentPresenter VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource SelectionBrush}" />
+                                    Value="{StaticResource ListaResalteBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource SelectionBrush}" />
+                                    Value="{StaticResource ListaResalteBrush}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground"
-                                    Value="{DynamicResource DisabledTextBrush}" />
+                                    Value="{StaticResource ListaApagadaBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -416,10 +435,13 @@
         </Setter>
     </Style>
 
-    <!-- Y lo mismo para las listas normales, que usan ListBoxItem -->
+    <!-- Y lo mismo para las listas normales, que usan ListBoxItem.
+         El Margin va a cero adrede: con margen se veia por los bordes el fondo de
+         la ventanita, que lo pinta Windows, y en oscuro eso dejaba un cerco negro
+         alrededor de cada renglon. -->
     <Style TargetType="ListBoxItem">
-        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
-        <Setter Property="Background" Value="{DynamicResource GridRowBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="Background" Value="{StaticResource ListaFondoBrush}" />
         <Setter Property="Padding" Value="8,5" />
     </Style>
 
@@ -732,6 +754,21 @@
     <Style x:Key="ComboCeldaEdicion" TargetType="ComboBox">
         <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
         <Setter Property="IsDropDownOpen" Value="True" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- LA MISMA CELDA DE LISTA, PERO SIN EDITAR.
+         Es la que se ve el 99 % del tiempo, y le faltaba estilo: sin el, la celda
+         se dibujaba con el estilo general de ComboBox, cuyo Foreground es el del
+         tema. En oscuro eso ponia el valor de la celda -«CENTRAL»- en letra clara
+         sobre el color claro de la celda, y solo se leia al entrar en edicion.
+         Aqui la tinta es la fija de la cuadricula, y el fondo transparente para
+         que se vea el color de la columna en lugar del marco de un control. -->
+    <Style x:Key="ComboCeldaMuestra" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="2,0" />
         <Setter Property="VerticalContentAlignment" Value="Center" />

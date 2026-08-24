@@ -1305,6 +1305,47 @@ public sealed partial class ZapataDrawer
         return h1;
     }
 
+    /// <summary>Lo mismo que <see cref="HatchRect"/>, pero con un contorno de cualquier forma.</summary>
+    /// <remarks>
+    /// Hace falta para el terreno de las zapatas corridas: ahí el relleno no es un rectángulo, sino
+    /// una <b>escalera</b> que se ceñe a la contratrabe y al muro, que no tienen el mismo ancho. Con
+    /// dos rectángulos apilados el patrón se cortaría en la junta, porque cada hatch arranca su
+    /// rayado por su cuenta; con un contorno solo, el rayado es continuo.
+    /// </remarks>
+    private object? HatchPoligono(
+        double[] puntos, string capa,
+        string patron, double escala, string transparencia, int colorAci)
+    {
+        if (puntos.Length < 6)
+        {
+            return null;
+        }
+
+        var borde = Polilinea(puntos, capa, cerrada: true);
+
+        if (borde is null)
+        {
+            return null;
+        }
+
+        var h1 = Hatch(borde, patron, escala, capa, colorAci);
+
+        if (h1 is null && !patron.Equals("SOLID", StringComparison.OrdinalIgnoreCase))
+        {
+            Nota($"El patrón '{patron}' no se pudo usar; se rellenó con '{PatronRespaldo}'.");
+            h1 = Hatch(borde, PatronRespaldo, escala, capa, colorAci);
+        }
+
+        if (transparencia.Length > 0)
+        {
+            Transparencia(h1, transparencia);
+        }
+
+        Borrar(borde);
+
+        return h1;
+    }
+
     /// <summary>Rellena un círculo con el patrón del concreto, según el modo.</summary>
     private void HatchCirculo(double cx, double cy, double radio, string capa)
     {

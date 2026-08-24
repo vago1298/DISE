@@ -173,20 +173,34 @@ Cinco cosas, y ninguna cambia el dibujo:
 
 | Rótulo | Central | Lindero | Estado |
 |---|---|---|---|
-| Parrilla de flexión | flecha **a la mitad del tramo izquierdo** de la varilla horizontal de abajo, texto `VAR #4C @ 20 cm` | igual, con la franja recortada por la contratrabe | Sí |
-| Parrilla de temperatura | flecha al círculo más cercano a **¾ del lado derecho** de la sección, mismo texto con «C» | igual | Sí |
+| Parrilla de flexión | flecha **a la mitad del tramo izquierdo** de la varilla horizontal de abajo, texto `VAR #4C @ 20 cm INFERIOR` | igual, con la franja recortada por la contratrabe | Sí |
+| Parrilla de temperatura | flecha al círculo más cercano a **¾ del lado derecho** de la sección, texto `VAR #3C @ 20 cm SUPERIOR` | igual | Sí |
 | Muro de enrase | por la **derecha** de la hilada, a 10 cm | por la **izquierda**, a 30 cm, con el leader desde el borde derecho del rótulo | Sí |
-| Contratrabe | flecha a su **esquina superior derecha**; el rótulo se cuelga del lado donde hay sitio | igual | Sí |
+| Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | igual | Sí |
 | Cadena de desplante | texto **siempre despegado 5 cm** de su paño | igual | Sí |
 | Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
 | Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
 | Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
 
-**La «C» del armado y el leader quebrado.** El número de varilla de las dos parrillas de la
-corrida lleva una **«C»** detrás —`VAR #4C @ 20 cm`—, para distinguir en el plano el acero de la
-corrida del de las aisladas. El leader sale recto desde el medio del rótulo y, cuando la punta
-queda a la derecha del texto, quiebra a la derecha en vez de cruzarlo.
+**La «C» del armado y el lecho de cada varilla.** El número de varilla lleva una **«C»** detrás
+—`VAR #4C @ 20 cm`—, y detrás va la palabra del **lecho**: la de flexión está abajo, así que dice
+`INFERIOR`, y la de temperatura se apoya encima de ella y dice `SUPERIOR`. Cuando los dos sentidos
+llevan **la misma varilla y la misma separación** sobra rotularlos dos veces: sale un solo renglón
+con `AMBOS SENTIDOS`, en el tramo izquierdo y con la flecha en la varilla de flexión.
+
+**El renglón se mide desde el lomo del concreto, no desde la varilla.** Sube **10 cm** sobre el
+paño de arriba de la zapata, y eso arregla dos cosas de golpe: el texto **nunca cae dentro de la
+sección** —con la medida vieja, una zapata de 50 cm de espesor dejaba el rótulo de la parrilla
+inferior enterrado en el rayado del concreto— y con **doble parrilla** se sube solo, porque el acero
+de arriba también está por debajo de ese paño.
+
+**Con doble parrilla, cada renglón en su carril.** La parrilla de abajo escribe primero y devuelve
+la caja de sus renglones; la de arriba se coloca **por encima** de ella y corre su carril a un lado,
+de modo que los cuatro leaders bajan **verticales y paralelos**. Dos paralelas no se cruzan, que es
+la forma más simple de cumplir lo que se pidió: la flecha de flexión se pega a cualquier punto de su
+varilla —es una línea continua— y la de temperatura salta a la primera varilla de punta que quede
+libre del renglón de abajo.
 
 **El codo del acero del muro se rellena.** Con sección rellena, la varilla del muro de concreto
 va maciza de punta a punta: círculos, tramo recto, pata **y codo**. El codo se rellena siguiendo
@@ -209,9 +223,14 @@ No es geometría: es todo lo que necesita el dibujo abierto, y por eso no vive e
    lindero, centro inferior en la central— y cadena de desplante por la
    superior. La caja de los dos manda en el hatch, en el hueco de la línea
    superior de la zapata y en el ancho del enrase.
-2. **El hatch de terreno.** La central lo parte en bandas horizontales para
-   rodear cada obstáculo y le abre un hueco por cada rótulo; el lindero dibuja
-   dos rectángulos a los lados del muro.
+2. **El hatch de terreno, ceñido a lo que sobresale.** La altura entre el lomo de
+   la zapata y el nivel de terreno se parte en **bandas** por cada arranque y
+   cada remate de pieza —contratrabe, muro de concreto, hilada de enrase y
+   cadena—, y en cada banda la tierra se detiene en el paño de la pieza **más
+   ancha a esa altura**. Así el borde sale en **escalera** y se ajusta solo: si la
+   contratrabe sobresale del muro, la tierra se retira en su banda y vuelve a
+   cerrarse encima. Las bandas se cosen en **un solo contorno por lado** y no en
+   un hatch por banda, porque dos hatches apilados cortan el rayado en la junta.
 3. **Los leaders y los rótulos de parrilla**, con su cola dibujada al final para
    que queden al frente del hatch y del bloque.
 4. **El orden de dibujo** de los contornos del enrase, con `ACAD_SORTENTS`,
