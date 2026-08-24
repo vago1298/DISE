@@ -970,8 +970,9 @@ public sealed partial class ZapataDrawer
             (CapaConcreto, CapasCad.ColorDeCapa(CapaConcreto)),
             (CapaEstribos, CapasCad.ColorDeCapa(CapaEstribos)),
             (CapaCotas, 0),
-            (CapaRotulos, 3),
-            (CapaLeader, 3),
+            // Los leaders van en ROTULOS, la misma capa del texto: CapaLeader ES CapaRotulos, así
+            // que no hay una segunda entrada que crear.
+            (CapaRotulos, CapasCad.ColorDeCapa(CapaTextos)),
             (CapaTerreno, 140),
             (CapaTerrenoHatch, 8),
             (CapaPlantilla, 8),

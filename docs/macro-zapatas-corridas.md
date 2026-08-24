@@ -173,11 +173,11 @@ Cinco cosas, y ninguna cambia el dibujo:
 
 | Rótulo | Central | Lindero | Estado |
 |---|---|---|---|
-| Parrilla | **un rótulo por parrilla**, con su cabecera y sus dos flechas: la de abajo a la izquierda y la de arriba a la derecha | reparto por tipo de varilla, apilado | Sí |
-| Muro de enrase | **siempre a la derecha** de la hilada, a 6 cm de su paño, con la flecha **en el paño** | igual | Sí |
-| Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | igual | Sí |
+| Parrilla | **un rótulo por parrilla**, con su cabecera y sus dos flechas: la de abajo a la izquierda y la de arriba a la derecha | los dos en el **volado izquierdo**, uno en cada mitad | Sí |
+| Muro de enrase | a **6 cm del paño derecho**, con la flecha en ese paño | a **6 cm del paño izquierdo**, con la flecha en ese paño | Sí |
+| Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | flecha a su **esquina superior izquierda**, con el renglón a 6 cm de ese paño | Sí |
 | Cadena de desplante | texto **siempre despegado 5 cm** de su paño, en 26 cm de ancho | igual | Sí |
-| Muro de concreto | **siempre a 6 cm** del paño derecho, en 25 cm de ancho, con la «C» y el número en las dos varillas, y la flecha **en el paño** | por la izquierda, como su macro | Sí |
+| Muro de concreto | a **6 cm del paño derecho**, en 25 cm de ancho, con la «C» y el número en las dos varillas, y la flecha en el paño | a **6 cm del paño izquierdo** | Sí |
 | Nivel del terreno | a la **izquierda**, arrancando en el paño izquierdo de la zapata | igual | Sí |
 | Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
 | Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
@@ -257,9 +257,16 @@ renglón** y ningún leader tiene que cruzar por encima de otro.
 
 Antes se repartían por tipo de varilla —flexión a la izquierda y temperatura a la derecha, los dos
 lechos apilados en cada lado—, y con la contratrabe de 30 en una zapata de 80 no queda hueco para dos
-carriles: el leader del renglón de arriba acababa atravesando el de abajo. El **lindero** conserva ese
-reparto, porque su muro está pegado al paño derecho y el lado derecho no existe; y con **una sola
-parrilla** también, que es como se aprobó.
+carriles: el leader del renglón de arriba acababa atravesando el de abajo.
+
+En el **lindero** el muro está pegado al paño **derecho** —a su derecha está la colindancia—, así que
+no hay «lado derecho» donde colgar nada: todo el hueco está a la izquierda. Ahí el volado izquierdo se
+parte en **dos mitades**, la parrilla de abajo en la de la izquierda y la de arriba en la de la
+derecha, y cada rótulo señala varillas de **su** mitad. Con una sola parrilla, un rótulo centrado en
+todo el volado. Los tres rótulos que se cuelgan de ese mismo lado —muro de concreto, muro de enrase y
+contratrabe— se despegan **6 cm de su propio paño**, así que quedan alineados en cascada, y la flecha
+de la contratrabe va a su esquina superior **izquierda**: apuntando a la derecha, la línea cruzaba el
+bloque de lado a lado.
 
 **El codo del acero del muro se rellena.** Con sección rellena, la varilla del muro de concreto
 va maciza de punta a punta: círculos, tramo recto, pata **y codo**. El codo se rellena siguiendo
@@ -333,10 +340,13 @@ El nombre dice el **lecho** y el **trabajo** de cada varilla, que es como sale r
 en la parrilla de abajo la de flexión va en el lecho inferior y la de temperatura se apoya encima; en
 la de arriba es al revés, porque la de flexión se amarra por el lomo.
 
-La cuadrícula de WPF no sabe juntar columnas bajo un título, así que la **banda** va en la cabecera de
-la primera columna de cada grupo y las otras tres llevan el renglón de arriba en blanco: con eso los
-nombres de columna quedan todos a la misma altura y se lee de un golpe dónde empieza cada parrilla. La
-cabecera pasó de 32 a 40 px para que quepan los dos renglones.
+La cuadrícula de WPF no sabe juntar columnas bajo un título: no hay cabeceras combinadas. Así que la
+**banda** se pinta con el ancho de las cuatro columnas del grupo —350 px— desde la cabecera de la
+**última**, y se desborda hacia la izquierda por encima de las otras tres, que llevan el renglón de
+arriba en blanco. Tiene que salir de la última y no de la primera por el orden de pintado: las
+cabeceras se dibujan de izquierda a derecha, así que una banda que saliera de la primera quedaría
+tapada por el fondo de las siguientes. La cabecera pasó de 32 a 40 px para que quepan los dos
+renglones, y su plantilla lleva `ClipToBounds="False"` para que el desbordamiento se vea.
 
 Y las **cuatro casillas de la parrilla superior se apagan** cuando la fila no lleva doble parrilla,
 con el mismo criterio que las del armado del muro: una celda que el dibujo no va a leer no se deja

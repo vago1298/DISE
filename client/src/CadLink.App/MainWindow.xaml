@@ -1129,7 +1129,7 @@
                                  salen rotuladas en el plano: en la parrilla de abajo la de flexion
                                  va en el lecho inferior y la de temperatura se apoya encima. -->
                             <DataGridComboBoxColumn x:Name="ColZapCorVarInf" Header="Var Inf. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
                                                     SelectedItemBinding="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
@@ -1141,7 +1141,9 @@
                                                     SelectedItemBinding="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
+                            <!-- La ULTIMA del grupo lleva la banda, que se desborda hacia la
+                                 izquierda por encima de las otras tres: ver CabeceraParrillaInferior -->
+                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
                                                 Binding="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
 
@@ -1149,7 +1151,7 @@
                                  ahi las palabras del lecho van al REVES, porque la de flexion se
                                  amarra por el lomo y la de temperatura queda debajo. -->
                             <DataGridComboBoxColumn x:Name="ColZapCorVarSup" Header="Var Sup. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
                                                     SelectedItemBinding="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
@@ -1161,7 +1163,8 @@
                                                     SelectedItemBinding="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
+                            <!-- Y la ultima de la parrilla superior, igual -->
+                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
                                                 Binding="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="60" CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
 
@@ -1508,7 +1511,7 @@
                             <!-- LAS CUATRO DE LA PARRILLA INFERIOR, con los mismos nombres que en
                                  la hoja de corridas: el lecho y el trabajo de cada varilla. -->
                             <DataGridComboBoxColumn x:Name="ColZapVarInf" Header="Var Inf. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
                                                     SelectedItemBinding="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
@@ -1520,13 +1523,15 @@
                                                     SelectedItemBinding="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
+                            <!-- La ULTIMA del grupo lleva la banda, que se desborda hacia la
+                                 izquierda por encima de las otras tres: ver CabeceraParrillaInferior -->
+                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
                                                 Binding="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
 
                             <!-- Y las cuatro de la PARRILLA SUPERIOR, apagadas cuando no la hay -->
                             <DataGridComboBoxColumn x:Name="ColZapVarSup" Header="Var Sup. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
                                                     SelectedItemBinding="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
@@ -1538,7 +1543,8 @@
                                                     SelectedItemBinding="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSigue}"
+                            <!-- Y la ultima de la parrilla superior, igual -->
+                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
                                                 Binding="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
                                                 Width="60" CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
 

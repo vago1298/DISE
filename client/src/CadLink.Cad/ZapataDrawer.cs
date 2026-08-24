@@ -174,8 +174,20 @@ public sealed partial class ZapataDrawer
     private const string CapaConcreto = "CONCRETO";
     private const string CapaEstribos = "ESTRIBOS";
     private const string CapaRotulos = "ROTULOS";
+
+    /// <summary>La capa <c>TEXTOS</c> de la macro: de ella sale el color de los rótulos.</summary>
+    private const string CapaTextos = "TEXTOS";
     private const string CapaCotas = "COTAS";
-    private const string CapaLeader = "LEADER";
+    /// <summary>
+    /// La capa de los leaders: <b>la misma que la de los rótulos</b>.
+    /// </summary>
+    /// <remarks>
+    /// Se pidió expresamente, y para las dos hojas: aisladas y corridas. Tenía capa propia
+    /// —<c>LEADER</c>—, y eso obliga a apagar dos capas para quitar la anotación de un plano, y a
+    /// acordarse de que la línea y el texto que la acompaña viven en sitios distintos. La flecha es
+    /// parte del rótulo, así que va con él.
+    /// </remarks>
+    private const string CapaLeader = CapaRotulos;
     private const string CapaTerreno = "TERRENO_LINEA";
     private const string CapaTerrenoHatch = "TERRENO_HATCH";
     private const string CapaPlantilla = "PLANTILLA";

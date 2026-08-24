@@ -932,22 +932,30 @@
     </Style>
 
     <!-- ==================================================================
-         LA BANDA DE CABECERA DE CADA PARRILLA
+         LA BANDA DE CABECERA DE CADA PARRILLA, ABARCANDO SUS 4 COLUMNAS
          ==================================================================
-         La cuadricula de WPF no sabe juntar varias columnas bajo un titulo, asi
-         que la banda se pone en la cabecera de la PRIMERA columna de cada grupo
-         y las otras tres llevan la misma cabecera con el renglon de arriba en
-         blanco. Con eso los nombres de columna quedan todos a la misma altura y
-         se lee de un golpe donde empieza cada parrilla.
+         La cuadricula de WPF no sabe juntar varias columnas bajo un titulo: no
+         hay cabeceras combinadas. Asi que la banda se pinta ANCHA -el ancho de
+         las cuatro columnas del grupo- desde la cabecera de la ULTIMA, y se
+         desborda hacia la izquierda por encima de las otras tres.
 
-         El nombre de la columna sale de {Binding}: en una cabecera de DataGrid,
-         el DataContext de la plantilla ES el Header, asi que la misma plantilla
-         sirve para las cuatro columnas del grupo. -->
+         Tiene que ser la ULTIMA y no la primera por el orden de pintado: las
+         cabeceras se dibujan de izquierda a derecha, asi que una banda que sale
+         de la primera columna quedaria TAPADA por el fondo de las siguientes.
+         Saliendo de la ultima, se pinta encima de las tres anteriores.
+
+         Con HorizontalAlignment Right y el ancho del grupo, el borde derecho de
+         la banda cae en su columna y el texto -centrado- queda en el medio del
+         grupo. Los 350 son 115 + 60 + 115 + 60, los anchos de las cuatro
+         columnas; si se cambian, hay que cambiar este numero.
+
+         El nombre de la columna sale de {Binding}: en una cabecera de DataGrid el
+         DataContext de la plantilla ES el Header. -->
     <DataTemplate x:Key="CabeceraParrillaInferior">
         <StackPanel>
             <TextBlock Text="PARRILLA INFERIOR" FontSize="9" FontWeight="Bold"
-                       HorizontalAlignment="Center" Opacity="0.9"
-                       Foreground="{DynamicResource BrandBrush}" />
+                       Width="350" HorizontalAlignment="Right" TextAlignment="Center"
+                       Opacity="0.9" Foreground="{DynamicResource BrandBrush}" />
             <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
         </StackPanel>
     </DataTemplate>
@@ -955,14 +963,14 @@
     <DataTemplate x:Key="CabeceraParrillaSuperior">
         <StackPanel>
             <TextBlock Text="PARRILLA SUPERIOR" FontSize="9" FontWeight="Bold"
-                       HorizontalAlignment="Center" Opacity="0.9"
-                       Foreground="{DynamicResource BrandBrush}" />
+                       Width="350" HorizontalAlignment="Right" TextAlignment="Center"
+                       Opacity="0.9" Foreground="{DynamicResource BrandBrush}" />
             <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
         </StackPanel>
     </DataTemplate>
 
-    <!-- El resto de las columnas del grupo: el hueco de la banda, para que el
-         nombre quede a la misma altura que en la primera. -->
+    <!-- Las otras tres columnas del grupo: el hueco de la banda, para que el
+         nombre quede a la misma altura que en la de la banda. -->
     <DataTemplate x:Key="CabeceraParrillaSigue">
         <StackPanel>
             <TextBlock Text=" " FontSize="9" FontWeight="Bold" />
@@ -1054,7 +1062,10 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="DataGridColumnHeader">
-                    <Grid>
+                    <!-- ClipToBounds en False a proposito: es lo que deja que la banda
+                         de «PARRILLA INFERIOR» se desborde de su columna y se lea
+                         encima de las tres de al lado. -->
+                    <Grid ClipToBounds="False">
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="0,0,1,0">

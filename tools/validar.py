@@ -8728,59 +8728,68 @@ def v23_hoja_zapatas_corridas() -> None:
     # ------------------------------------------------------------------
     # LOS ROTULOS Y LOS LEADERS DE LAS MACROS DE CORRIDA
     # ------------------------------------------------------------------
-    # Faltaban: la seccion salia con sus cotas pero muda. Los de PARRILLA son los
-    # mismos de las aisladas -las cuatro macros arman el texto igual-, asi que se
-    # REUTILIZAN; los otros cuatro son propios de esta hoja.
-    # LOS ROTULOS DE PARRILLA SON PROPIOS DE ESTA HOJA, y no los de las aisladas:
-    # en una zapata corrida la varilla de canto es la de FLEXION y las de punta las
-    # de TEMPERATURA, y no hacen el mismo trabajo. Un solo rotulo de «AMBOS
-    # SENTIDOS» deja al armador sin saber cual es cual.
-    check("cada parrilla lleva sus DOS rotulos, flexion y temperatura",
-          "private HuellaRotulos RotulosDeParrillaCorrida(" in drawer
-          and "FLEXIÓN: la varilla de canto, a la mitad del tramo izquierdo" in drawer
-          and "TEMPERATURA: la de punta, a la mitad del lado derecho" in drawer)
-    # «CADA LADO» ES EL VOLADO LIBRE, no la cuarta parte del ancho: con la
-    # contratrabe de 30 en una zapata de 80, la cuarta parte caia a 20 cm del pano y
-    # el renglon se metia DENTRO del bloque de la contratrabe.
-    check("el de flexion cae a la mitad del lado izquierdo libre",
-          "private static double MitadDelLado(" in drawer
-          and "MitadDelLado(xTopeIzq, a.XBase, haciaDerecha: false), estorbo," in drawer)
-    check("y el de temperatura a la mitad del lado derecho",
-          "MitadDelLado(xTopeDer, a.XDer, haciaDerecha: true)," in drawer)
-    check("ninguno de los dos se mete en el bloque del centro",
-          "private static double LimiteDelRotulo(" in drawer
-          and "xTope + RotuloParrillaHolgura + (AnchoRotuloParrilla / 2)" in drawer
-          and "xTope - RotuloParrillaHolgura - (AnchoRotuloParrilla / 2);" in drawer)
+    # UN ROTULO POR PARRILLA, y el mismo para las dos hojas: su cabecera, sus dos
+    # varillas con su lecho y dos flechas, una a la varilla de canto y otra a la de
+    # punta. Lo que cambia es DONDE se cuelga, y eso lo decide el que dibuja.
+    check("hay un rotulo por parrilla, con su cabecera y sus dos flechas",
+          "private void RotuloDeParrillaCompleto(" in drawer
+          and "La varilla de flexión: por la IZQUIERDA" in drawer
+          and "Y la de temperatura: por la DERECHA" in drawer)
+    check("las dos varillas de esa parrilla van en el MISMO mtext",
+          'texto += "\\n" + segundo;' in drawer)
     check("y el tope es la contratrabe cuando sobresale, y el muro cuando no",
           "var xTopeIzq = Math.Min(a.XMuroIzq, hayCt ? xCtIzq : a.XMuroIzq);" in drawer
           and "var xTopeDer = Math.Max(a.XMuroDer, hayCt ? xCtDer : a.XMuroDer);" in drawer)
 
-    # EL ROTULO ES UN MTEXT DE DOS RENGLONES: en una sola linea medía 30 cm y no cabe
-    # en el volado.
+    # LA CENTRAL: uno en cada volado, la de abajo a la izquierda y la de arriba a la
+    # derecha. «Cada lado» es el volado LIBRE -del pano de la zapata al pano de la
+    # contratrabe- y no la cuarta parte del ancho: con la contratrabe de 30 en una
+    # zapata de 80, la cuarta parte caia a 20 cm del pano y el renglon se metia dentro
+    # del bloque.
+    check("la central cuelga uno en cada volado, el de abajo a la izquierda",
+          "private static double MitadDelLado(" in drawer
+          and "MitadDelLado(xTopeIzq, a.XBase, haciaDerecha: false),\n"
+          "                a.XBase, xTopeIzq, xTopeIzq, xTopeDer);" in drawer
+          and "MitadDelLado(xTopeDer, a.XDer, haciaDerecha: true),\n"
+          "                    xTopeDer, a.XDer, xTopeIzq, xTopeDer);" in drawer)
+    check("y ninguno se mete en el bloque del centro",
+          "private static double LimiteDelRotulo(" in drawer
+          and "xTope + RotuloParrillaHolgura + (AnchoRotuloParrilla / 2)" in drawer
+          and "xTope - RotuloParrillaHolgura - (AnchoRotuloParrilla / 2);" in drawer)
+
+    # EL LINDERO: LOS DOS EN EL VOLADO IZQUIERDO, UNO EN CADA MITAD. Ahi el muro esta
+    # pegado al pano DERECHO -a su derecha esta la colindancia-, asi que no hay «lado
+    # derecho» donde colgar nada y todo el hueco esta a la izquierda.
+    check("el lindero cuelga los dos en el volado izquierdo, uno en cada mitad",
+          "EL LINDERO: LOS DOS RÓTULOS EN EL VOLADO IZQUIERDO, UNO EN CADA MITAD." in drawer
+          and "var xMedio = (a.XBase + xTopeIzq) / 2;" in drawer
+          and "(a.XBase + xMedio) / 2, a.XBase, xMedio, xTopeIzq, xTopeDer);" in drawer
+          and "(xMedio + xTopeIzq) / 2, xMedio, xTopeIzq, xTopeIzq, xTopeDer);" in drawer)
+    check("y con una sola parrilla, uno centrado en todo el volado",
+          "(a.XBase + xTopeIzq) / 2, a.XBase, xTopeIzq, xTopeIzq, xTopeDer);" in drawer)
+    check("cada rotulo señala varillas de SU franja, no las del otro",
+          "private void RotuloDeParrillaCompleto(" in drawer
+          and "var xMin = Math.Max(xFranjaMin, p.XCaraIzq + (diam / 2));" in drawer
+          and "var xMax = Math.Min(xFranjaMax, p.XCaraDer - (diam / 2));" in drawer)
+
+    # Y NO QUEDA NADA DEL REPARTO VIEJO por tipo de varilla -flexion a un lado y
+    # temperatura al otro, apilados-: se cambio por el rotulo por parrilla en las DOS
+    # hojas, asi que su codigo se fue.
+    check("el reparto viejo por tipo de varilla ya no esta",
+          "RotulosDeParrillaCorrida" not in drawer
+          and "HuellaRotulos" not in drawer
+          and "CarrilDeFlexion" not in drawer
+          and "CarrilLibre" not in drawer)
+
+    # EL ROTULO ES UN MTEXT DE VARIOS RENGLONES: en una sola linea medía 30 cm y no
+    # cabe en el volado.
     check("los dos textos llevan la C de corrugada, y en dos renglones",
           '$"VAR {etiqueta}C @ {SepTexto(sep)} cm\\n{sufijo}"' in drawer)
     check("el rotulo de parrilla se escribe con ancho de renglon",
           "private const double AnchoRotuloParrilla = 0.22;" in drawer
-          and "MtextoAncho(xCarril, yTexto, texto, AnchoRotuloParrilla, AnclajeCentro);" in drawer)
+          and "MtextoAncho(xTexto, yTexto, texto, AnchoRotuloParrilla, AnclajeCentro);" in drawer)
     check("la flecha de temperatura se pega a una varilla de verdad",
           "private static double CirculoMasCercano(" in drawer)
-    check("el leader sale de EN MEDIO del renglon",
-          "private (double X1, double Y1, double X2, double Y2)? RotuloDeParrilla(" in drawer
-          and "El leader arranca del borde de ABAJO del renglón, en su punto medio." in drawer)
-
-    # LA CENTRAL CON DOBLE PARRILLA: UN ROTULO POR PARRILLA, UNO EN CADA LADO. Se
-    # pidio asi para que ningun leader tenga que cruzar por encima de otro renglon: la
-    # de abajo a la izquierda, la de arriba a la derecha, las dos a la misma altura.
-    check("la central pone un rotulo por parrilla, con su cabecera y sus dos flechas",
-          "private void RotuloDeParrillaCompleto(" in drawer
-          and "if (!lindero)" in drawer)
-    check("la de abajo a la izquierda y la de arriba a la derecha",
-          "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans, superior: false,\n"
-          "                aLaDerecha: false, xTopeIzq, xTopeDer);" in drawer
-          and "z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, superior: true,\n"
-          "                    aLaDerecha: true, xTopeIzq, xTopeDer);" in drawer)
-    check("las dos varillas de esa parrilla van en el MISMO mtext",
-          'texto += "\\n" + segundo;' in drawer)
 
     # LA CABECERA, ARRIBA DE TODO: de que parrilla se habla. Se pidio, y hace falta en
     # cuanto hay dos, porque la palabra del lecho dice en que cama va cada varilla
@@ -8837,23 +8846,23 @@ def v23_hoja_zapatas_corridas() -> None:
           and "var xTemp = CirculoEnLaFranja(p.Circulos, x2, xMin, xMax);" in drawer)
     check("y ninguna se mete debajo de la contratrabe para llegar",
           "private static double CirculoEnLaFranja(" in drawer
-          and "var xMin = Math.Max(aLaDerecha ? xTopeDer : a.XBase, p.XCaraIzq + (diam / 2));"
-          in drawer
-          and "var xMax = Math.Min(aLaDerecha ? a.XDer : xTopeIzq, p.XCaraDer - (diam / 2));"
-          in drawer)
+          and "private static double FueraDelBloque(" in drawer)
     # LOS LEADERS AL FRENTE -bring to front-, que es lo que se pidio: la diagonal cruza
     # por detras del propio bloque de texto, y la mascara del MText la borraba.
     check("los leaders se suben al frente, para que se vean enteros",
           "if (lineas.Count > 0)" in drawer
           and "AlFrente(_cont, lineas);" in drawer
           and "private void EncimaDelLeader(" not in drawer)
-    # El LINDERO se queda con el reparto por tipo de varilla: su muro esta pegado al
-    # pano derecho, asi que ahi no hay «lado derecho» donde colgar nada. Se pidio
-    # aplicar el cambio SOLO a la central.
-    check("el lindero sigue con el reparto por tipo de varilla",
-          "var huellaInf = RotulosDeParrillaCorrida(" in drawer
-          and "else\n        {\n            var huellaInf = RotulosDeParrillaCorrida(" in drawer)
 
+    # Y VIVEN EN LA CAPA DE LOS ROTULOS, no en una propia: se pidio para las dos hojas.
+    # Con capa aparte hay que apagar dos capas para quitar la anotacion de un plano.
+    zap_base = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+    zap_planta = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+
+    check("los leaders van en la capa de los rotulos, en las dos hojas",
+          "private const string CapaLeader = CapaRotulos;" in zap_base
+          and "(CapaRotulos, CapasCad.ColorDeCapa(CapaTextos))," in zap_planta
+          and '"LEADER"' not in zap_base)
     # EL TEXTO DE CADA VARILLA DICE SU LECHO, y cuando los dos sentidos llevan lo
     # mismo se rotula una sola vez. Se pidio asi.
     # Y LA PALABRA SE VOLTEA EN LA PARRILLA DE ARRIBA: ahi la de flexion se amarra
@@ -8861,13 +8870,13 @@ def v23_hoja_zapatas_corridas() -> None:
     check("la varilla de flexion dice INFERIOR y la de temperatura SUPERIOR",
           'private const string SufijoLechoInferior = "INFERIOR";' in drawer
           and 'private const string SufijoLechoSuperior = "SUPERIOR";' in drawer
-          and "varBarra, sepBarra, superior ? SufijoLechoSuperior : SufijoLechoInferior))"
+          and "varBarra, sepBarra, superior ? SufijoLechoSuperior : SufijoLechoInferior);"
           in drawer
-          and "varCirc, sepCirc, superior ? SufijoLechoInferior : SufijoLechoSuperior))"
+          and "varCirc, sepCirc, superior ? SufijoLechoInferior : SufijoLechoSuperior);"
           in drawer)
     check("con el mismo armado en los dos sentidos sale un solo rotulo",
           'private const string SufijoAmbosSentidos = "AMBOS SENTIDOS";' in drawer
-          and "if (MismoArmado(varBarra, sepBarra, varCirc, sepCirc))" in drawer
+          and "var unSoloArmado = MismoArmado(varBarra, sepBarra, varCirc, sepCirc);" in drawer
           and "TextoParrillaCorrida(varBarra, sepBarra, SufijoAmbosSentidos)" in drawer)
     check("y para eso tienen que coincidir la varilla Y la separacion",
           "private bool MismoArmado(" in drawer
@@ -8880,28 +8889,23 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el rotulo de parrilla sube 10 cm sobre el lomo de la zapata",
           "private const double RotuloParrillaDy = 0.10;" in drawer
           and "var yTexto = a.YZapTop + RotuloParrillaDy;" in drawer)
-    check("y con doble parrilla el de arriba se sube por encima del de abajo",
-          "private readonly record struct HuellaRotulos(" in drawer
-          and "yTexto = Math.Max(yTexto, techo + RotuloParrillaAire + AltoMtexto);" in drawer
-          and "abajo: huellaInf, xTopeIzq, xTopeDer);" in drawer)
-
-    # EL ENRASE Y EL MURO DE CONCRETO, DESPEGADOS 6 CM DE SU PANO. Los dos se pidieron
-    # medidos desde el pano y no desde el eje de la seccion: asi la separacion es la
-    # misma con cualquier espesor.
-    check("el rotulo del enrase va siempre a la derecha de la hilada, a 6 cm",
+    # EL ENRASE Y EL MURO DE CONCRETO, DESPEGADOS 6 CM DE SU PANO, Y POR EL LADO DONDE
+    # HAY HUECO: la central por la derecha y el lindero por la IZQUIERDA, donde a la
+    # derecha esta la colindancia. Medido desde el pano y no desde el eje de la
+    # seccion, la separacion es la misma con cualquier espesor.
+    check("el rotulo del enrase va a 6 cm del pano, y por el lado con hueco",
           "private const double RotuloEnraseSeparacion = 0.06;" in drawer
-          and "var xTexto = e.XIzq + e.Ancho + RotuloEnraseSeparacion;" in drawer
+          and "var xPano = lindero ? e.XIzq : e.XIzq + e.Ancho;" in drawer
+          and "? xPano - RotuloEnraseSeparacion" in drawer
+          and ": xPano + RotuloEnraseSeparacion;" in drawer
           and "e.XIzq - 0.3" not in drawer)
-    check("y el del muro de concreto de la central, a 6 cm de su pano",
+    check("y el del muro de concreto, igual, a 6 cm de su pano en las dos hojas",
           "private const double RotuloMuroSeparacion = 0.06;" in drawer
-          and ": m.XDer + RotuloMuroSeparacion;" in drawer)
-    check("los dos leaders bajan por carriles distintos, para no cruzarse",
-          "private static double CarrilLibre(" in drawer
-          and "Leader(xCarril, yPunta, xCarril, ySalida);" in drawer)
-    check("y la parrilla de abajo escribe primero, para que la de arriba la esquive",
-          "var huellaInf = RotulosDeParrillaCorrida(" in drawer
-          and drawer.index("var huellaInf = RotulosDeParrillaCorrida(")
-          < drawer.index("abajo: huellaInf, xTopeIzq, xTopeDer);"))
+          and "? m.XIzq - RotuloMuroSeparacion" in drawer
+          and ": m.XDer + RotuloMuroSeparacion;" in drawer
+          and "m.XIzq - 0.27" not in drawer)
+    check("en el lindero los tres rotulos de ese lado se despegan lo mismo",
+          "? xCtIzq - RotuloMuroSeparacion" in drawer)
 
     for rotulo in ("RotuloDelEnrase", "RotuloDeLaContratrabe",
                    "RotuloDeLaCadena", "RotuloDelMuroDeConcreto"):
@@ -8938,7 +8942,7 @@ def v23_hoja_zapatas_corridas() -> None:
     check("la flecha del muro de concreto va a su pano, no a su eje",
           "var xPunta = lindero ? m.XIzq : m.XDer;" in drawer)
     check("y la del muro de enrase, igual",
-          "var xPano = e.XIzq + e.Ancho;" in drawer
+          "var xPano = lindero ? e.XIzq : e.XIzq + e.Ancho;" in drawer
           and "Leader(xPano, yCentro, xTexto, yTexto);" in drawer)
     check("y el ultimo renglon dice donde va el acero",
           '"DOBLE PARRILLA" : "PARRILLA AL CENTRO"' in drawer)
@@ -8979,14 +8983,17 @@ def v23_hoja_zapatas_corridas() -> None:
           os.path.exists(ruta("tools/verificar_codo_muro.py")))
 
     # La contratrabe: la flecha a su esquina superior derecha.
-    check("la flecha de la contratrabe va a su esquina superior derecha",
-          "var xPunta = xCtDer;" in drawer and "var yPunta = yCtTop;" in drawer)
+    # La flecha, a la esquina superior del lado por el que se cuelga el rotulo: la
+    # derecha en la central y la IZQUIERDA en el lindero, donde el texto va a ese lado
+    # y apuntando a la derecha la linea cruzaba el bloque de lado a lado.
+    check("la flecha de la contratrabe va a su esquina superior, la del lado del rotulo",
+          "var xPunta = lindero ? xCtIzq : xCtDer;" in drawer
+          and "var yPunta = yCtTop;" in drawer)
     check("y su rotulo se cuelga del lado donde hay sitio",
-          "xCtIzq - RotuloContratrabeDx" in drawer
-          and "xCtDer + RotuloContratrabeDx" in drawer)
-    check("y se corre 6 cm a la izquierda, para pegarlo mas al bloque",
-          "private const double RotuloContratrabeCorrimiento = 0.06;" in drawer
-          and ") - RotuloContratrabeCorrimiento;" in drawer)
+          "? xCtIzq - RotuloMuroSeparacion" in drawer
+          and "xCtDer + RotuloContratrabeDx - RotuloContratrabeCorrimiento;" in drawer)
+    check("y en la central se corre 6 cm a la izquierda, para pegarlo mas al bloque",
+          "private const double RotuloContratrabeCorrimiento = 0.06;" in drawer)
 
     # EL TERRENO SE CIÑE A LO QUE SOBRESALE. Antes era un pano recto por lado, y la
     # contratrabe -que es mas ancha que el muro- salia metida en la tierra.
@@ -9037,8 +9044,8 @@ def v23_hoja_zapatas_corridas() -> None:
           "double? xTopePuntas = null)" in aislada_drawer
           and "if (xTopePuntas is not null)" in aislada_drawer)
     check("y la punta de la flecha se queda entre las caras de su acero",
-          "return Math.Clamp(x, p.XCaraIzq + (diam / 2), p.XCaraDer - (diam / 2));"
-          in drawer)
+          "var xMin = Math.Max(xFranjaMin, p.XCaraIzq + (diam / 2));" in drawer
+          and "var xMax = Math.Min(xFranjaMax, p.XCaraDer - (diam / 2));" in drawer)
     check("las aisladas no lo pasan, asi que siguen igual",
           "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);" in aislada_drawer)
 
