@@ -730,13 +730,17 @@ public partial class MainWindow
 
         var r = Math.Max(diamMuro / 2 * (px(1) - px(0)), 1.2);
 
+        // Solo se colorean con la sección RELLENA, igual que en el plano: en modo normal la
+        // varilla va hueca y el rayado del concreto se ve por detrás.
+        var rellenas = ModoElegido == ModoSeccion.Tipo2Rellena;
+
         foreach (var y in ys)
         {
-            CirculoCorrida(px(ejes.X1), py(y), r, acero);
+            CirculoCorrida(px(ejes.X1), py(y), r, acero, rellenas);
 
             if (ejes.Doble)
             {
-                CirculoCorrida(px(ejes.X2), py(y), r, acero);
+                CirculoCorrida(px(ejes.X2), py(y), r, acero, rellenas);
             }
         }
 
@@ -933,11 +937,13 @@ public partial class MainWindow
         ZapataCorridaPreviewCanvas.Children.Add(r);
     }
 
-    private void CirculoCorrida(double cx, double cy, double radio, Brush relleno)
+    private void CirculoCorrida(double cx, double cy, double radio, Brush trazo, bool relleno = true)
     {
         var d = Math.Max(radio * 2, 2.0);
 
-        var c = new Ellipse { Width = d, Height = d, Fill = relleno };
+        var c = relleno
+            ? new Ellipse { Width = d, Height = d, Fill = trazo }
+            : new Ellipse { Width = d, Height = d, Stroke = trazo, StrokeThickness = 1.1 };
 
         System.Windows.Controls.Canvas.SetLeft(c, cx - (d / 2));
         System.Windows.Controls.Canvas.SetTop(c, cy - (d / 2));

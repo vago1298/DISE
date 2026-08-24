@@ -66,6 +66,7 @@ public static class Tema
 
         ["BorderBrush"] = "#FFD7DFE9",
         ["TextBrush"] = "#FF11202D",
+        ["GridTextBrush"] = "#FF11202D",
         ["MutedTextBrush"] = "#FF64748B",
         ["DisabledTextBrush"] = "#FFA7B3C0",
         ["ToolbarPressedBrush"] = "#FFD5DFEA",
@@ -148,6 +149,7 @@ public static class Tema
 
         ["BorderBrush"] = "#FF334155",
         ["TextBrush"] = "#FFE6EDF5",
+        ["GridTextBrush"] = "#FF11202D",
         ["MutedTextBrush"] = "#FF94A6B8",
         ["DisabledTextBrush"] = "#FF5A6B7C",
         ["ToolbarPressedBrush"] = "#FF2A3745",

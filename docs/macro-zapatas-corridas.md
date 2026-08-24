@@ -169,7 +169,26 @@ Cinco cosas, y ninguna cambia el dibujo:
    parrilla superior cuando se pidió doble parrilla, y la del muro de concreto. Las macros
    dibujan y dejan el muro sin acero sin decir nada.
 
-## 8. Lo que queda para el dibujante
+## 8. Los rótulos con leader, uno por uno
+
+| Rótulo | Central | Lindero | Estado |
+|---|---|---|---|
+| Parrillas | mismo texto y mismas distancias que las aisladas | igual, con la franja recortada por la contratrabe | Sí |
+| Muro de enrase | por la **derecha** de la hilada, a 10 cm | por la **izquierda**, a 30 cm, con el leader desde el borde derecho del rótulo | Sí |
+| Contratrabe | `xCentro − 0.62`, 30 cm sobre su centro | `xCentroMuro − 0.75`, 14 cm sobre su lomo y punta 4 cm por debajo | Sí |
+| Cadena de desplante | `xCentro − 0.78`, a su altura | `xCentroMuro − 0.85` | Sí |
+| Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
+| Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
+| Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
+| Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
+
+**Dos decisiones que conviene saber.** El hatch de terreno de la central abre una
+**isla** por cada rótulo; aquí no se abren islas porque los MText llevan máscara de fondo, que
+tapa igual y no depende de recalcular el hatch cuando un rótulo se mueve. Y las **cotas de las
+patas** del muro se dibujan fuera del bloque, como en las macros: dentro quedarían pegadas a la
+geometría y no se podrían mover en el plano.
+
+## 9. Lo que queda para el dibujante
 
 No es geometría: es todo lo que necesita el dibujo abierto, y por eso no vive en
 `TrazoZapataCorrida`.

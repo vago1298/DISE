@@ -196,9 +196,8 @@
             <TabItem Header="Proyecto">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22">
-                        <TextBlock Text="Datos del proyecto" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Los datos del juego de planos y su solapa." />
+                        <TextBlock Text="Datos del proyecto" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Los datos del juego de planos y su solapa." />
 
                         <!-- ===== Datos de la SOLAPA (el cuadro de rotulos) ===== -->
                         <TextBlock Text="Solapa de los planos" FontWeight="SemiBold" FontSize="12.5"
@@ -328,9 +327,8 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <TextBlock Text="Secciones estructurales de concreto" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Las columnas ID, base, altura, lechos, estribo y gancho son las mismas de tu hoja. Las tres ultimas son calculadas: total de varillas, area de acero y cuantia." />
+                        <TextBlock Text="Secciones estructurales de concreto" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Las columnas ID, base, altura, lechos, estribo y gancho son las mismas de tu hoja. Las tres ultimas son calculadas: total de varillas, area de acero y cuantia." />
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
@@ -679,9 +677,8 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Las doce familias del manual IMCA en una sola tabla. Elige la familia y la celda Perfil te ofrece SOLO los perfiles de esa familia: la IR trae las W, y la IS, la IC y la S tienen cada una su propia lista. Al elegir un perfil sus medidas se traen solas, y cada familia usa las columnas que necesita y deja las demas en blanco." />
+                        <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Las doce familias del manual IMCA en una sola tabla. Elige la familia y la celda Perfil te ofrece SOLO los perfiles de esa familia: la IR trae las W, y la IS, la IC y la S tienen cada una su propia lista. Al elegir un perfil sus medidas se traen solas, y cada familia usa las columnas que necesita y deja las demas en blanco." />
 
                         <Border Style="{StaticResource TarjetaStyle}"
                                 Padding="12,9" Margin="0,0,0,10"
@@ -984,9 +981,8 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Las columnas son las celdas de tus dos macros de zapata corrida. La de TIPO decide lo que cambia entre ellas: la CENTRAL lleva el muro centrado y las secciones crecen a la derecha; la de LINDERO lleva el muro pegado al paño derecho y crecen a la izquierda, y ahi las patas del acero del muro doblan las dos a la izquierda y a dos alturas, porque por la derecha esta el lindero." />
+                        <TextBlock Text="Zapatas corridas" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Las columnas son las celdas de tus dos macros de zapata corrida. La de TIPO decide lo que cambia entre ellas: la CENTRAL lleva el muro centrado y las secciones crecen a la derecha; la de LINDERO lleva el muro pegado al paño derecho y crecen a la izquierda, y ahi las patas del acero del muro doblan las dos a la izquierda y a dos alturas, porque por la derecha esta el lindero." />
 
                         <!-- EL ESTILO DE DIBUJO ES DEL JUEGO ENTERO, igual que en las
                              aisladas: son los MISMOS botones de la hoja de concreto,
@@ -1312,9 +1308,8 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0">
-                        <TextBlock Text="Zapatas aisladas" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Las columnas son las celdas de tus dos macros. La de TIPO decide todo lo que cambia entre ellas: la CENTRAL lleva el dado centrado y las secciones crecen a la derecha; la de LINDERO lleva el dado pegado al paño derecho -ese es el lindero- y crecen a la izquierda." />
+                        <TextBlock Text="Zapatas aisladas" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Las columnas son las celdas de tus dos macros. La de TIPO decide todo lo que cambia entre ellas: la CENTRAL lleva el dado centrado y las secciones crecen a la derecha; la de LINDERO lleva el dado pegado al paño derecho -ese es el lindero- y crecen a la izquierda." />
 
                         <!-- Los dos botones de la hoja.
 
@@ -1739,9 +1734,8 @@
             <!-- ===== Muros de contencion ===== -->
             <TabItem Header="Muros de Contencion">
                 <StackPanel Margin="22">
-                    <TextBlock Text="Muros de contencion" Style="{StaticResource ModuleTitleStyle}" />
-                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                               Text="Seccion del muro, talon, punta y su armado." />
+                    <TextBlock Text="Muros de contencion" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Seccion del muro, talon, punta y su armado." />
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
@@ -1753,9 +1747,8 @@
             <!-- ===== Placa base ===== -->
             <TabItem Header="Placa Base">
                 <StackPanel Margin="22">
-                    <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}" />
-                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                               Text="Placa, anclas, atiesadores y su detalle de montaje." />
+                    <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Placa, anclas, atiesadores y su detalle de montaje." />
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
@@ -1767,9 +1760,8 @@
             <!-- ===== Conexiones ===== -->
             <TabItem Header="Conexiones">
                 <StackPanel Margin="22">
-                    <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}" />
-                    <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                               Text="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
+                    <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
@@ -1782,9 +1774,8 @@
             <TabItem x:Name="EtabsTab" Header="ETABS/SAP2000">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22">
-                        <TextBlock Text="Lectura del modelo de ETABS" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
+                        <TextBlock Text="Lectura del modelo de ETABS" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
 
                         <Border Style="{StaticResource TarjetaStyle}"
                                 Padding="16"
@@ -1964,9 +1955,8 @@
             <TabItem Header="Dibujar planos estructurales">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22">
-                        <TextBlock Text="Dibujar planos estructurales" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="La planta del modelo de ETABS, nivel por nivel. Es el punto de partida del plano estructural." />
+                        <TextBlock Text="Dibujar planos estructurales" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="La planta del modelo de ETABS, nivel por nivel. Es el punto de partida del plano estructural." />
 
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
                             <Button Content="Leer plantas de ETABS" Style="{StaticResource PrimaryButtonStyle}"
@@ -2045,9 +2035,8 @@
             <TabItem Header="Licencia">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22" MaxWidth="760" HorizontalAlignment="Left">
-                        <TextBlock Text="Estado de la licencia" Style="{StaticResource ModuleTitleStyle}" />
-                        <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
-                                   Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
+                        <TextBlock Text="Estado de la licencia" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
 
                         <Border Style="{StaticResource TarjetaStyle}"
                                 Padding="16" Margin="0,0,0,16">

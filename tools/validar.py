@@ -8708,6 +8708,52 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el rotulo del enrase es el texto de la macro",
           '"MURO DE ENRASE DE BLOCK DE CEMENTO"' in drawer)
 
+    # ------------------------------------------------------------------
+    # EL ACERO DEL MURO: relleno SOLO con la seccion rellena
+    # ------------------------------------------------------------------
+    # Se pidio expresamente, y coincide con las macros: el relleno de varilla es
+    # cosa del B3 = 1. En modo normal la varilla va hueca y el rayado del
+    # concreto se sigue viendo por detras.
+    check("las varillas de punta del muro solo se rellenan con la seccion rellena",
+          "if (_relleno)\n        {\n            RellenarCirculo(" in drawer)
+    check("y el tramo recto y la pata, tambien",
+          "RellenarTramoDeVarilla(" in drawer
+          and drawer.index("if (_relleno)") < drawer.index("RellenarTramoDeVarilla("))
+    check("el relleno toma el color de la capa de la varilla",
+          '"SOLID", 1, string.Empty, 256);' in drawer)
+
+    # El codo se dibuja con ARCOS, y con los radios de CADA macro.
+    check("el codo de la pata se dibuja con sus dos arcos",
+          "Var(Arco(cxIn, cyIn, rIn, a0, a1, capa));" in drawer
+          and "Var(Arco(cxOut, cyOut, rOut, a0, a1, capa));" in drawer)
+    check("con los radios propios de cada macro",
+          "var rIn = lindero ? diam : diam / 4;" in drawer
+          and "var rOut = lindero ? 2 * diam : diam / 2;" in drawer)
+
+    # Las cotas de las patas van FUERA del bloque, como en las macros.
+    check("las cotas de las patas se dibujan fuera del bloque",
+          "private void CotasDeLasPatasDelMuro(" in drawer
+          and drawer.index("_cont = _ms;") < drawer.index("CotasDeLasPatasDelMuro(a, lindero"))
+    check("y en el lindero cada pata lleva su propio offset",
+          "sep * TrazoZapataCorrida.CotaDoblezLinderoFraccion" in drawer)
+
+    # Ninguna flecha de rotulo entra en la huella de la contratrabe: es el recorte
+    # de franja de las dos macros de corrida -«zonaR = xCTL - 0.02»-.
+    aislada_drawer = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+
+    check("las puntas de los leaders se recortan al llegar a la contratrabe",
+          "double? xTopePuntas = null)" in aislada_drawer
+          and "if (xTopePuntas is not null)" in aislada_drawer)
+    check("y la corrida pasa ese tope cuando la contratrabe cruza la zapata",
+          "double? topePuntas = ctCruza ? xCtIzq - 0.02 : null;" in drawer)
+    check("las aisladas no lo pasan, asi que siguen igual",
+          "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);" in aislada_drawer)
+
+    # La previa dice la verdad: colorea solo si el juego va relleno.
+    check("la vista previa colorea el acero del muro solo con la seccion rellena",
+          "var rellenas = ModoElegido == ModoSeccion.Tipo2Rellena;" in hoja
+          and "CirculoCorrida(px(ejes.X1), py(y), r, acero, rellenas);" in hoja)
+
 
 # ======================================================================
 # 24. EL REDISENO DE LA INTERFAZ
@@ -8810,6 +8856,61 @@ def v24_rediseno() -> None:
     # Si una brocha nueva no esta en los dos diccionarios, al cambiar de tema se
     # queda con el color del otro: es como se ve un boton azul claro sobre fondo
     # negro. Se comprueba que las tres esten DOS veces, una por tema.
+    # ------------------------------------------------------------------
+    # LOS DOS ERRORES DEL REDISENO EN TEMA OSCURO
+    # ------------------------------------------------------------------
+    # 1) La CUADRICULA se queda clara en los dos temas -sus pasteles de columna
+    #    son la referencia del usuario-, asi que su texto NO puede seguir al
+    #    TextBrush: en oscuro salia claro sobre celda clara y solo se leia la
+    #    fila seleccionada.
+    check("la cuadricula tiene su propia tinta, oscura en los dos temas",
+          'x:Key="GridTextBrush"' in tema
+          and temacs.count('["GridTextBrush"]') == 2)
+    check("y la usan la cuadricula, sus celdas y sus combos",
+          tema.count("{DynamicResource GridTextBrush}") >= 4)
+    # Se mira DENTRO del estilo de la cuadricula: los TextBox y ComboBox de
+    # formulario si tienen que seguir al tema -viven sobre las tarjetas, que se
+    # oscurecen-, asi que buscar la cadena en todo el archivo daba un falso fallo.
+    m_grid = re.search(r'Style x:Key="SheetGridStyle".*?</Style>', tema, re.S)
+
+    check("el estilo de la cuadricula usa la tinta propia y no la del tema",
+          m_grid is not None
+          and "{DynamicResource GridTextBrush}" in m_grid.group(0)
+          and '"Foreground" Value="{DynamicResource TextBrush}"' not in m_grid.group(0))
+
+    # 2) El MENU lo pintaba WINDOWS: su Popup salia con marco claro -la linea
+    #    blanca- porque un Background en el MenuItem no alcanza para el marco.
+    check("el menu tiene plantilla propia, con su marco y su sombra",
+          'x:Key="MenuTituloTemplate"' in tema
+          and 'x:Key="MenuOpcionTemplate"' in tema
+          and 'x:Key="MenuSubmenuTemplate"' in tema)
+    check("y estan los CUATRO roles, o el que falte vuelve al de Windows",
+          all(f'<Trigger Property="Role" Value="{rol}">' in tema
+              for rol in ("TopLevelHeader", "TopLevelItem",
+                          "SubmenuHeader", "SubmenuItem")))
+    check("el marco del menu sale de la paleta",
+          'Background="{DynamicResource SurfaceBrush}"' in tema
+          and 'BorderBrush="{DynamicResource BorderBrush}"' in tema)
+    check("los atajos del menu se siguen viendo",
+          'Text="{TemplateBinding InputGestureText}"' in tema)
+    check("y la rayita que separa grupos tambien es nuestra",
+          '<Style TargetType="Separator">' in tema)
+
+    # ------------------------------------------------------------------
+    # EL ESPACIO DE LAS HOJAS
+    # ------------------------------------------------------------------
+    # La descripcion de cada hoja se comia 40 px de alto en once pestanas. Se
+    # paso al GLOBO del titulo: sigue estando, pero no ocupa.
+    check("las hojas ya no llevan la descripcion al inicio",
+          xaml.count('Style="{StaticResource ModuleSubtitleStyle}"') <= 2)
+    check("y la explicacion sigue accesible en el globo del titulo",
+          xaml.count('Style="{StaticResource ModuleTitleStyle}"\n'
+                     '                                   ToolTip="') >= 8)
+
+    # El alto de fila se queda en 26, como se pidio.
+    check("el alto de fila sigue en 26",
+          '<Setter Property="RowHeight" Value="26" />' in tema)
+
     for brocha in ("SelectionBrush", "FocoBrush", "SombraBrush"):
         check(f"{brocha} esta en los dos temas",
               temacs.count(f'["{brocha}"]') == 2)

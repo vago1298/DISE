@@ -2566,7 +2566,8 @@ public sealed partial class ZapataDrawer
     /// </remarks>
     private void RotuloParrillaInferior(
         double xBase, double yZapBot, double anchoZapata, double rec,
-        string? varBarra, string? sepBarra, string? varCirc, string? sepCirc)
+        string? varBarra, string? sepBarra, string? varCirc, string? sepCirc,
+        double? xTopePuntas = null)
     {
         var dBarra = Diam(varBarra);
 
@@ -2600,6 +2601,26 @@ public sealed partial class ZapataDrawer
         if (xPuntaBarra < xPuntaBarraMin)
         {
             xPuntaBarra = xPuntaBarraMin;
+        }
+
+        // EL TOPE DE LA CONTRATRABE. Lo usa la zapata CORRIDA: su macro recorta la franja de los
+        // rotulos con
+        //     If hayCT Then If zonaR > xCTL - 0.02 Then zonaR = xCTL - 0.02
+        // para que ninguna flecha acabe debajo de la contratrabe, donde no se ve a que varilla
+        // apunta. Las aisladas no lo pasan y siguen igual que siempre.
+        if (xTopePuntas is not null)
+        {
+            var tope = xTopePuntas.Value;
+
+            if (xPuntaBarra > tope)
+            {
+                xPuntaBarra = tope;
+            }
+
+            if (xPuntaCirc > tope)
+            {
+                xPuntaCirc = tope;
+            }
         }
 
         var xTexto = xBase - 0.18 + 0.272 - 0.11 + DesplazamientoParrillaInfCentrar;

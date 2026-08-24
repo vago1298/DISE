@@ -79,6 +79,14 @@
     <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE6C97A" />
     <SolidColorBrush x:Key="NoticeTextoBrush" Color="#FF7A5B00" />
 
+    <!-- ===== TINTA DE LA CUADRICULA =====
+         Oscura en los DOS temas, porque la cuadricula se queda clara en los dos.
+         Este fue un error del rediseno: al dar Foreground a la ventana y a la
+         cuadricula con el TextBrush del tema, en oscuro las letras de las tablas
+         se volvieron claras sobre celdas claras y solo se veian al seleccionar
+         la fila. La superficie de trabajo lleva su propia tinta. -->
+    <SolidColorBrush x:Key="GridTextBrush" Color="#FF11202D" />
+
     <!-- ===== Seleccion, foco y sombra =====
          Tres brochas del rediseno. Antes la fila seleccionada se pintaba con el azul
          del sistema -que no es el azul del programa- y no habia ni foco ni sombra:
@@ -131,11 +139,196 @@
     <Style TargetType="Menu">
         <Setter Property="Background" Value="{DynamicResource TabStripBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
     </Style>
 
+    <!-- ==================================================================
+         EL MENU, CON PLANTILLA PROPIA
+         ==================================================================
+         Dar Background y Foreground al MenuItem NO alcanzaba: la ventanita
+         que se abre al pulsar «Archivo» es un Popup, y su marco lo pintaba
+         WINDOWS con SystemColors. En tema oscuro eso dejaba una LINEA BLANCA
+         alrededor del menu -y un borde claro que no era de ningun tema-,
+         que es justo lo que se ve en la captura.
+
+         Con plantilla propia el marco es un Border nuestro, con las brochas
+         de la paleta, asi que sigue al tema como todo lo demas. Se escriben
+         los CUATRO roles porque un MenuItem cambia de plantilla segun donde
+         viva -barra o submenu- y si falta uno, ese vuelve al de Windows.
+         ================================================================== -->
+
+    <!-- Los titulos de la barra: «Archivo», «Dibujar», «ETABS», «Ayuda» -->
+    <ControlTemplate x:Key="MenuTituloTemplate" TargetType="MenuItem">
+        <Grid>
+            <Border x:Name="Bd"
+                    Background="Transparent"
+                    CornerRadius="{StaticResource RadioChico}"
+                    Padding="10,5">
+                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                  VerticalAlignment="Center" />
+            </Border>
+
+            <Popup x:Name="PART_Popup"
+                   AllowsTransparency="True"
+                   Placement="Bottom"
+                   VerticalOffset="2"
+                   IsOpen="{TemplateBinding IsSubmenuOpen}"
+                   Focusable="False"
+                   PopupAnimation="Fade">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource RadioBoton}"
+                        Padding="4"
+                        Margin="0,0,8,8"
+                        SnapsToDevicePixels="True">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
+                                          Opacity="0.28" Color="#FF000000" />
+                    </Border.Effect>
+                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsSubmenuOpen" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarPressedBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <!-- Cada opcion del menu, con su atajo a la derecha -->
+    <ControlTemplate x:Key="MenuOpcionTemplate" TargetType="MenuItem">
+        <Border x:Name="Bd"
+                Background="Transparent"
+                CornerRadius="{StaticResource RadioChico}"
+                Padding="10,6"
+                Margin="1,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ContentPresenter Grid.Column="0" ContentSource="Header"
+                                  RecognizesAccessKey="True"
+                                  VerticalAlignment="Center" />
+
+                <!-- El atajo, en gris y separado: es informacion de apoyo -->
+                <TextBlock Grid.Column="1"
+                           Text="{TemplateBinding InputGestureText}"
+                           Margin="22,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+            </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <!-- Una opcion que ABRE otro submenu -->
+    <ControlTemplate x:Key="MenuSubmenuTemplate" TargetType="MenuItem">
+        <Grid>
+            <Border x:Name="Bd"
+                    Background="Transparent"
+                    CornerRadius="{StaticResource RadioChico}"
+                    Padding="10,6"
+                    Margin="1,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ContentPresenter Grid.Column="0" ContentSource="Header"
+                                      RecognizesAccessKey="True"
+                                      VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1" Text="›" Margin="18,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource MutedTextBrush}" />
+                </Grid>
+            </Border>
+
+            <Popup x:Name="PART_Popup"
+                   AllowsTransparency="True"
+                   Placement="Right"
+                   HorizontalOffset="-2"
+                   IsOpen="{TemplateBinding IsSubmenuOpen}"
+                   Focusable="False"
+                   PopupAnimation="Fade">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource RadioBoton}"
+                        Padding="4"
+                        Margin="0,0,8,8"
+                        SnapsToDevicePixels="True">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
+                                          Opacity="0.28" Color="#FF000000" />
+                    </Border.Effect>
+                    <StackPanel IsItemsHost="True" />
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
     <Style TargetType="MenuItem">
-        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Template" Value="{StaticResource MenuOpcionTemplate}" />
+        <Style.Triggers>
+            <Trigger Property="Role" Value="TopLevelHeader">
+                <Setter Property="Template" Value="{StaticResource MenuTituloTemplate}" />
+            </Trigger>
+            <Trigger Property="Role" Value="TopLevelItem">
+                <Setter Property="Template" Value="{StaticResource MenuTituloTemplate}" />
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuHeader">
+                <Setter Property="Template" Value="{StaticResource MenuSubmenuTemplate}" />
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuItem">
+                <Setter Property="Template" Value="{StaticResource MenuOpcionTemplate}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- La rayita que separa grupos de opciones. Sin estilo tambien la pintaba
+         Windows, y en oscuro salia blanca. -->
+    <Style TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Margin="8,4"
+                            Background="{DynamicResource BorderBrush}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===================== Casillas y opciones =====================
@@ -478,6 +671,7 @@
          IsDropDownOpen en True hace que la lista se abra en cuanto la celda entra
          en edición, en lugar de exigir un segundo clic en la flechita. -->
     <Style x:Key="ComboCeldaEdicion" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
         <Setter Property="IsDropDownOpen" Value="True" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="2,0" />
@@ -487,6 +681,7 @@
     <Style x:Key="ComboCeldaLectura" TargetType="TextBlock">
         <Setter Property="Padding" Value="4,3" />
         <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
     </Style>
 
     <!-- Cuadrícula con aire de hoja de cálculo: encabezados grises, líneas suaves,
@@ -513,7 +708,7 @@
         <Setter Property="RowHeight" Value="26" />
         <Setter Property="ColumnHeaderHeight" Value="32" />
         <Setter Property="RowHeaderWidth" Value="22" />
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -540,6 +735,7 @@
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="6,3" />
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
 
         <!-- LA SELECCION, CON EL AZUL DEL PROGRAMA.
              Antes la pintaba Windows con su azul de sistema, que tapaba el color del
@@ -549,7 +745,7 @@
         <Style.Triggers>
             <Trigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
             </Trigger>
         </Style.Triggers>
     </Style>

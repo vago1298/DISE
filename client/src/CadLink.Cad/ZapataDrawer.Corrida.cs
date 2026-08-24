@@ -341,6 +341,8 @@ public sealed partial class ZapataDrawer
         TrazoZapataCorrida.Muro? muroConcreto = null;
         TrazoZapataCorrida.EjesAcero ejesMuro = default;
         TrazoZapataCorrida.Enrase? enrase = null;
+        var barrasMuro = Array.Empty<TrazoZapataCorrida.VarillaMuro>();
+        var diamBarrasMuro = 0.0;
 
         if (z.MuroEsConcreto)
         {
@@ -350,6 +352,8 @@ public sealed partial class ZapataDrawer
             {
                 muroConcreto = hecho.Value.Muro;
                 ejesMuro = hecho.Value.Ejes;
+                barrasMuro = hecho.Value.Barras;
+                diamBarrasMuro = hecho.Value.DiamMuro;
             }
         }
         else
@@ -424,8 +428,13 @@ public sealed partial class ZapataDrawer
         // INFERIOR cuando no— y los cuelgan de las mismas distancias. Por eso se llaman las
         // rutinas que ya estaban y no se escriben otras: un rótulo con dos versiones acaba con dos
         // planos distintos.
+        // El TOPE de las flechas: si hay contratrabe, ninguna punta entra en su huella. Es el
+        // recorte de franja de las dos macros de corrida —«zonaR = xCTL − 0.02»—, y hace falta
+        // porque una flecha debajo de la contratrabe no dice a qué varilla apunta.
+        double? topePuntas = ctCruza ? xCtIzq - 0.02 : null;
+
         RotuloParrillaInferior(xBase, a.YZapBot, ancho, rec,
-            z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);
+            z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans, topePuntas);
 
         if (z.DobleParrilla && Diam(z.VarSup) > 0)
         {
@@ -461,6 +470,9 @@ public sealed partial class ZapataDrawer
         {
             RotuloDelMuroDeConcreto(z, a, lindero, muroConcreto.Value, ejesMuro);
         }
+
+        // Las cotas de las patas del muro, ya fuera del bloque.
+        CotasDeLasPatasDelMuro(a, lindero, barrasMuro, diamBarrasMuro, rec, r);
 
         // ---------- Las cotas y el rótulo ----------
         CotasDeLaCorrida(z, a, hayCt, xCtIzq, xCtDer, lindero, r);
@@ -632,7 +644,10 @@ public sealed partial class ZapataDrawer
     /// diferencia la resuelve <see cref="TrazoZapataCorrida"/>, no este método.
     /// </para>
     /// </remarks>
-    private (TrazoZapataCorrida.Muro Muro, TrazoZapataCorrida.EjesAcero Ejes)? MuroDeConcreto(
+    private (TrazoZapataCorrida.Muro Muro,
+             TrazoZapataCorrida.EjesAcero Ejes,
+             TrazoZapataCorrida.VarillaMuro[] Barras,
+             double DiamMuro)? MuroDeConcreto(
         ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a, bool lindero,
         double rec, double yContratrabeTop, ResumenCorrida r)
     {
@@ -671,7 +686,8 @@ public sealed partial class ZapataDrawer
         {
             Nota($"Zapata corrida '{z.Id}': el muro de concreto no tiene varilla capturada, así "
                  + "que sale sin acero.");
-            return (m, TrazoZapataCorrida.EjesDelAcero(m, z.MuroDobleParrilla));
+            return (m, TrazoZapataCorrida.EjesDelAcero(m, z.MuroDobleParrilla),
+                Array.Empty<TrazoZapataCorrida.VarillaMuro>(), 0);
         }
 
         var capa = CapaVar(z.VarMuro);
@@ -708,7 +724,7 @@ public sealed partial class ZapataDrawer
         {
             Nota($"Zapata corrida '{z.Id}': sin la varilla de la parrilla inferior no se puede "
                  + "colocar el arranque del muro, así que no lleva patas.");
-            return (m, ejes);
+            return (m, ejes, Array.Empty<TrazoZapataCorrida.VarillaMuro>(), diamMuro);
         }
 
         if (diamInfT <= 0)
@@ -733,24 +749,13 @@ public sealed partial class ZapataDrawer
 
         foreach (var b in barras)
         {
-            VarillaDelMuro(b, diamMuro, capa);
-
-            // La cota de la pata, como en las macros: fuera del bloque no, que estas van con el
-            // acero, pero SÍ con su offset propio de cada macro.
-            var offset = lindero
-                ? TrazoZapataCorrida.CotaDoblezLindero
-                : TrazoZapataCorrida.CotaDoblezCentral;
-
-            var xIzq = Math.Min(b.X, b.XFinDoblez);
-            var xDer = Math.Max(b.X, b.XFinDoblez);
-
-            r.Cotas += Cota(
-                xIzq, b.YEsquina + (diamMuro / 2), xDer, b.YEsquina + (diamMuro / 2),
-                (xIzq + xDer) / 2, b.YEsquina + (diamMuro / 2) + offset,
-                vertical: false, dentro: false);
+            VarillaDelMuro(b, diamMuro, capa, lindero);
         }
 
-        return (m, ejes);
+        // Las COTAS de las patas NO se dibujan aquí: irían dentro del bloque de la zapata, y en
+        // las dos macros van al espacio modelo —la central llama a AcotarDoblesMuro con acMsp—.
+        // Se devuelven las barras y las acota quien ya cerró el bloque.
+        return (m, ejes, barras, diamMuro);
     }
 
     /// <summary>
@@ -761,25 +766,81 @@ public sealed partial class ZapataDrawer
     /// hacen las dos macros: en una sección a escala 1:10 una varilla del #4 se ve, y el armador
     /// distingue el arranque del muro del acero de la parrilla por su grosor.
     /// </remarks>
-    private void VarillaDelMuro(TrazoZapataCorrida.VarillaMuro b, double diam, string capa)
+    private void VarillaDelMuro(
+        TrazoZapataCorrida.VarillaMuro b, double diam, string capa, bool lindero)
     {
         var mitad = diam / 2;
         var xFin = b.XFinDoblez;
+        var s = b.Sentido;
 
-        // Las dos caras del tramo recto NO acaban a la misma altura, y ahí está el truco de que
-        // la ele se lea como una varilla doblada y no como dos piezas cruzadas: la cara del lado
-        // hacia donde dobla —la de dentro del codo— baja hasta el borde de arriba de la pata, y la
-        // de fuera baja hasta el borde de abajo, un diámetro más.
-        var xDentro = b.X + (b.Sentido * mitad);
-        var xFuera = b.X - (b.Sentido * mitad);
+        // LOS RADIOS DEL CODO NO SON LOS MISMOS EN LAS DOS MACROS, y de ahí sale que el doblez del
+        // lindero se vea más abierto: la central usa radio interior de medio diámetro y exterior
+        // de uno —r = Ø/2, rIn = r/2, rOut = r—, y la de lindero interior de un diámetro y
+        // exterior de dos. Se respetan los dos.
+        var rIn = lindero ? diam : diam / 4;
+        var rOut = lindero ? 2 * diam : diam / 2;
 
-        Var(Linea(xDentro, b.YTop, xDentro, b.YEsquina + mitad, capa));
-        Var(Linea(xFuera, b.YTop, xFuera, b.YEsquina - mitad, capa));
+        // Los centros de los dos arcos, tal como los calculan las macros.
+        var cxIn = b.X + (s * (mitad + rIn));
+        var cyIn = b.YEsquina + mitad + rIn;
 
-        // La pata: sus dos caras, arrancando cada una de la vertical que le toca, y su remate.
-        Var(Linea(xDentro, b.YEsquina + mitad, xFin, b.YEsquina + mitad, capa));
-        Var(Linea(xFuera, b.YEsquina - mitad, xFin, b.YEsquina - mitad, capa));
+        var cxOut = b.X - (s * (mitad - rOut));
+        var cyOut = b.YEsquina - mitad + rOut;
+
+        // Las caras del tramo recto acaban donde empieza cada arco, no a la misma altura: es lo
+        // que hace que la ele se lea como una varilla doblada y no como dos piezas cruzadas.
+        var xDentro = b.X + (s * mitad);
+        var xFuera = b.X - (s * mitad);
+
+        // En modo RELLENO, el interior de la varilla se pinta con el color de su capa. En modo
+        // normal NO: la macro solo rellena con B3 = 1, y una varilla maciza sobre el hatch del
+        // concreto tapa el rayado.
+        if (_relleno)
+        {
+            RellenarTramoDeVarilla(
+                Math.Min(xFuera, xDentro), Math.Max(xFuera, xDentro),
+                cyIn, b.YTop, capa);
+
+            RellenarTramoDeVarilla(
+                Math.Min(xFin, cxIn), Math.Max(xFin, cxIn),
+                b.YEsquina - mitad, b.YEsquina + mitad, capa);
+        }
+
+        Var(Linea(xDentro, b.YTop, xDentro, cyIn, capa));
+        Var(Linea(xFuera, b.YTop, xFuera, cyOut, capa));
+
+        // El codo: los dos arcos de 90°. Con el sentido a la izquierda van del tercer al cuarto
+        // cuadrante, y a la derecha del segundo al tercero, que es lo que hacen las macros.
+        var a0 = s < 0 ? 3 * Math.PI / 2 : Math.PI;
+        var a1 = s < 0 ? 2 * Math.PI : 3 * Math.PI / 2;
+
+        Var(Arco(cxIn, cyIn, rIn, a0, a1, capa));
+        Var(Arco(cxOut, cyOut, rOut, a0, a1, capa));
+
+        // La pata: sus dos caras, cada una desde el final de su arco, y su remate.
+        Var(Linea(cxIn, b.YEsquina + mitad, xFin, b.YEsquina + mitad, capa));
+        Var(Linea(cxOut, b.YEsquina - mitad, xFin, b.YEsquina - mitad, capa));
         Var(Linea(xFin, b.YEsquina - mitad, xFin, b.YEsquina + mitad, capa));
+    }
+
+    /// <summary>Rellena un tramo de varilla con el color de su capa.</summary>
+    /// <remarks>
+    /// El <c>256</c> es el <b>ByLayer</b> de AutoCAD: el relleno toma el color de la capa de la
+    /// varilla —<c>VAR_#4</c>— en lugar de uno escrito aquí, que es lo que permite apagar un
+    /// diámetro entero desde el administrador de capas y que el relleno se vaya con él.
+    /// </remarks>
+    private void RellenarTramoDeVarilla(
+        double xIzq, double xDer, double yBot, double yTop, string capa)
+    {
+        var w = xDer - xIzq;
+        var h = yTop - yBot;
+
+        if (w <= 0 || h <= 0)
+        {
+            return;
+        }
+
+        HatchRect(xIzq, yBot, w, h, capa, "SOLID", 1, string.Empty, 256);
     }
 
     /// <summary>Una varilla vista de punta, rellena con el color de su capa.</summary>
@@ -794,7 +855,13 @@ public sealed partial class ZapataDrawer
 
         Var(c);
 
-        RellenarCirculo(cx, cy, radio, capa, 256);
+        // El relleno, SOLO con la seccion rellena. Se pidio expresamente, y coincide con lo que
+        // hacen las macros con B3 = 1: en modo normal la varilla va hueca, con su contorno, y el
+        // rayado del concreto se sigue viendo por detras.
+        if (_relleno)
+        {
+            RellenarCirculo(cx, cy, radio, capa, 256);
+        }
     }
 
     // ======================================================================
@@ -1218,6 +1285,61 @@ public sealed partial class ZapataDrawer
         r.Cotas += Cota(
             xParcial, yFondo, xParcial, a.YZapBot, xParcial, (yFondo + a.YZapBot) / 2,
             vertical: true, dentro: true);
+    }
+
+    /// <summary>
+    /// Las cotas de las <b>patas</b> del muro de concreto, ya fuera del bloque.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Van aquí y no junto al acero porque en las dos macros se dibujan en el <b>espacio
+    /// modelo</b>: la central llama a <c>AcotarDoblesMuro acMsp, …</c> y la de lindero acota desde
+    /// <c>DibujarVarillaVerticalConDoblezIzq</c>, que también recibe <c>acMsp</c>. Dentro del
+    /// bloque quedarían pegadas a la geometría y no se podrían mover en el plano.
+    /// </para>
+    /// <para>
+    /// <b>El offset no es el mismo para las dos patas del lindero.</b> La de abajo se acota a un
+    /// 45 % de la separación entre dobleces y la de arriba a 2.2 cm: si las dos llevaran el mismo,
+    /// los dos números saldrían uno encima del otro, que es justo lo que la macro evita separando
+    /// los dobleces. La central acota las suyas a 4.5 cm, las dos a la misma altura, porque están
+    /// a lados contrarios.
+    /// </para>
+    /// </remarks>
+    private void CotasDeLasPatasDelMuro(
+        TrazoZapataCorrida.Acomodo a, bool lindero,
+        TrazoZapataCorrida.VarillaMuro[] barras, double diamMuro, double rec, ResumenCorrida r)
+    {
+        if (barras.Length == 0 || diamMuro <= 0)
+        {
+            return;
+        }
+
+        // La separación con la que se repartieron los dos dobleces del lindero: la misma cuenta
+        // que hizo la geometría, para que la cota de abajo caiga a su 45 %.
+        var sep = lindero
+            ? TrazoZapataCorrida.SepDeLosDobleces(a, barras[0].YEsquina, diamMuro, rec)
+            : 0;
+
+        for (var i = 0; i < barras.Length; i++)
+        {
+            var b = barras[i];
+
+            var offset = lindero
+                ? (i == 0
+                    ? sep * TrazoZapataCorrida.CotaDoblezLinderoFraccion
+                    : TrazoZapataCorrida.CotaDoblezLindero)
+                : TrazoZapataCorrida.CotaDoblezCentral;
+
+            var xIzq = Math.Min(b.X, b.XFinDoblez);
+            var xDer = Math.Max(b.X, b.XFinDoblez);
+
+            var yCota = b.YEsquina + (diamMuro / 2);
+
+            r.Cotas += Cota(
+                xIzq, yCota, xDer, yCota,
+                (xIzq + xDer) / 2, yCota + offset,
+                vertical: false, dentro: false);
+        }
     }
 
     /// <summary>Los tres renglones del rótulo, centrados en el eje de la sección.</summary>
