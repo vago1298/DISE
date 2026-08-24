@@ -103,9 +103,10 @@ Console.WriteLine("=============================================================
 var m = new ModeloEtabs();
 
 void Agrega(ClaseElemento c, string story, string sec, double ancho, double peralte,
-            string forma = "RECT", string notas = "", double patin = 0, double alma = 0)
+            string forma = "RECT", string notas = "", double patin = 0, double alma = 0,
+            string material = "", double largo = 0, double lado = 0, double alto = 0)
 {
-    m.Elementos.Add(new ElementoEtabs
+    var e = new ElementoEtabs
     {
         Clase = c,
         Story = story,
@@ -115,24 +116,61 @@ void Agrega(ClaseElemento c, string story, string sec, double ancho, double pera
         Forma = forma,
         Notas = notas,
         PatinM = patin,
-        AlmaM = alma
-    });
+        AlmaM = alma,
+        Material = material
+    };
+
+    // Una barra con largo: se pone el otro extremo a esa distancia en X.
+    if (largo > 0)
+    {
+        e.X2 = largo;
+    }
+
+    // Un paño: cuadrado de «lado» en planta si es losa, o vertical de «lado» x «alto»
+    // si es muro. Así el área sale de la geometría, como en el modelo de verdad.
+    if (lado > 0)
+    {
+        if (alto > 0)
+        {
+            e.Vertices3D.Add((0, 0, 0));
+            e.Vertices3D.Add((lado, 0, 0));
+            e.Vertices3D.Add((lado, 0, alto));
+            e.Vertices3D.Add((0, 0, alto));
+            e.X2 = lado;
+        }
+        else
+        {
+            e.Vertices3D.Add((0, 0, 0));
+            e.Vertices3D.Add((lado, 0, 0));
+            e.Vertices3D.Add((lado, lado, 0));
+            e.Vertices3D.Add((0, lado, 0));
+        }
+
+        foreach (var v in e.Vertices3D)
+        {
+            e.Vertices.Add((v.X, v.Y));
+        }
+    }
+
+    m.Elementos.Add(e);
 }
 
 // Ojo: en la COLUMNA el lector guarda AnchoM = T3 y PeralteM = T2, al revés que en la
 // viga. Es la regla de la macro y la tabla tiene que deshacerla.
-Agrega(ClaseElemento.Columna, "Story1", "K 15X15", 0.15, 0.15);
-Agrega(ClaseElemento.Columna, "Story1", "K 15X15", 0.15, 0.15);
-Agrega(ClaseElemento.Columna, "Story2", "K 15X15", 0.15, 0.15);
-Agrega(ClaseElemento.Columna, "Story1", "C 30X60", 0.30, 0.60);
-Agrega(ClaseElemento.Trabe, "Story1", "CC 15X25", 0.15, 0.25);
-Agrega(ClaseElemento.Trabe, "Story1", "T 15X30", 0.15, 0.30);
-Agrega(ClaseElemento.Trabe, "Story1", "IPR 10X4", 0.10, 0.35, "I", string.Empty, 0.008, 0.006);
+Agrega(ClaseElemento.Columna, "Story1", "K 15X15", 0.15, 0.15, material: "CONC", largo: 3);
+Agrega(ClaseElemento.Columna, "Story1", "K 15X15", 0.15, 0.15, material: "CONC", largo: 3);
+Agrega(ClaseElemento.Columna, "Story2", "K 15X15", 0.15, 0.15, material: "CONC", largo: 3);
+Agrega(ClaseElemento.Columna, "Story1", "C 30X60", 0.30, 0.60, material: "CONC", largo: 3);
+Agrega(ClaseElemento.Trabe, "Story1", "CC 15X25", 0.15, 0.25, material: "CONC", largo: 4);
+Agrega(ClaseElemento.Trabe, "Story1", "T 15X30", 0.15, 0.30, material: "CONC", largo: 5);
+Agrega(ClaseElemento.Trabe, "Story1", "IPR 10X4", 0.10, 0.35, "I", string.Empty, 0.008, 0.006,
+       material: "A992Fy50", largo: 6);
 Agrega(ClaseElemento.Muro, "Story1", "W2", 0.15, 0, "AREA",
-       "MURO TABICON 2 APLANADOS 15 CM");
+       "MURO TABICON 2 APLANADOS 15 CM", material: "MUR-TABICON", lado: 4, alto: 2.5);
 Agrega(ClaseElemento.Muro, "Story2", "W2", 0.15, 0, "AREA",
-       "MURO TABICON 2 APLANADOS 15 CM");
-Agrega(ClaseElemento.Losa, "Story1", "LOSA AZOTEA", 0.10, 0, "AREA");
+       "MURO TABICON 2 APLANADOS 15 CM", material: "MUR-TABICON", lado: 4, alto: 2.5);
+Agrega(ClaseElemento.Losa, "Story1", "LOSA AZOTEA", 0.10, 0, "AREA", material: "CONC",
+       lado: 5);
 
 var t = SeccionesModelo.Construir(m);
 
@@ -167,10 +205,36 @@ Igual("con su patín en cm", 0.8, ipr.PatinCm);
 Igual("y su alma", 0.6, ipr.AlmaCm);
 
 var muro = t.First(f => f.Tipo == "MURO");
-Igual("el muro trae su material de las notas", "MAMPOSTERIA", muro.Material);
+// El muro dice las dos cosas: lo que la macro clasifica y el nombre del material del
+// modelo, que es con lo que se comprueba. Si coincidieran, saldría solo una.
+Igual("el muro trae su material de las notas y el del modelo",
+      "MAMPOSTERIA (MUR-TABICON)", muro.Material);
 Igual("en el muro no hay peralte", null, muro.PeralteCm);
 Igual("y el espesor va en la columna del ancho", 15d, muro.AnchoCm);
 Igual("y cuenta los dos paños", 2, muro.Cantidad);
+
+Console.WriteLine();
+Console.WriteLine(" LO QUE HAY DE CADA COSA: longitudes de los frames y areas de los shell");
+
+Igual("el castillo suma sus 3 x 3.00 m", 9d, cast.LongitudTotalM);
+Igual("y no tiene area, que es una barra", null, cast.AreaTotalM2);
+
+var cc = t.First(f => f.Seccion == "CC 15X25");
+Igual("la cadena, sus 4.00 m", 4d, cc.LongitudTotalM);
+
+Igual("el muro suma el area de sus DOS paños de 4.00 x 2.50", 20d, muro.AreaTotalM2);
+Igual("y no tiene longitud, que es un paño", null, muro.LongitudTotalM);
+
+var losa = t.First(f => f.Tipo == "LOSA");
+Igual("la losa de 5.00 x 5.00 son 25 m2", 25d, losa.AreaTotalM2);
+
+Console.WriteLine();
+Console.WriteLine(" EL MATERIAL, EN TODOS Y NO SOLO EN LOS MUROS");
+
+Igual("el castillo trae el material del modelo", "CONC", cast.Material);
+Igual("la viga de acero, el suyo", "A992Fy50", ipr.Material);
+Igual("y el muro dice las dos cosas cuando no coinciden",
+      "MAMPOSTERIA (MUR-TABICON)", muro.Material);
 
 var sinLosas = SeccionesModelo.Construir(m, new SeccionesModelo.Opciones(IncluyeLosas: false));
 Check("con TABLA_INCLUYE_LOSAS en NO, las losas no salen",

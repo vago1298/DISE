@@ -28,6 +28,18 @@ public partial class MainWindow : Window
     private LicenseInfo _license;
     private DatosProyecto _datos = DatosProyecto.CrearEjemplo();
     private ModeloEtabs? _modeloEtabs;
+
+    /// <summary>
+    /// De <b>qué programa</b> es el modelo que está en <see cref="_modeloEtabs"/>.
+    /// </summary>
+    /// <remarks>
+    /// Hace falta porque los dos programas dan un <c>ModeloEtabs</c> igualito y, sin
+    /// guardar de dónde salió, con la casilla en SAP2000 se seguía enseñando la tabla de
+    /// ETABS sin avisar. Con esto la tabla se vacía cuando dejan de coincidir y el botón
+    /// vuelve a leer en lugar de reaprovechar lo que hay.
+    /// </remarks>
+    private EtabsConnection.ProgramaCsi? _destinoLeido;
+
     private readonly VistaModelo _vista = new();
     private Point _arrastreDesde;
     private bool _girando;
@@ -881,6 +893,39 @@ public partial class MainWindow : Window
         {
             LeerSeccionesModeloButton.Content = $"Leer secciones de {NombreDestinoCsi}";
         }
+
+        // ==============================================================================
+        //  Y LA TABLA NO SE QUEDA CON LOS DATOS DEL OTRO PROGRAMA.
+        //  Se pidió esto: con la tabla llena de ETABS y la casilla en SAP2000, lo que se
+        //  estaba viendo era del programa que NO decía la casilla, y no había forma de
+        //  saberlo. Ahora la tabla se vacía en cuanto la casilla deja de coincidir con el
+        //  modelo que está en memoria, y el aviso dice qué hay que pulsar.
+        // ==============================================================================
+        SincronizarSeccionesConLaCasilla();
+    }
+
+    /// <summary>
+    /// Vacía la tabla de secciones si el modelo que hay en memoria es del otro programa.
+    /// </summary>
+    private void SincronizarSeccionesConLaCasilla()
+    {
+        if (SeccionesModeloGrid is null || SeccionesModeloResumenText is null)
+        {
+            return;
+        }
+
+        if (_modeloEtabs is not null && _destinoLeido == DestinoCsi)
+        {
+            return;
+        }
+
+        SeccionesModeloGrid.ItemsSource = null;
+        SeccionesModeloResumenText.Text =
+            $"Pulsa «Leer secciones de {NombreDestinoCsi}»: " +
+            (_modeloEtabs is null
+                ? "todavía no hay ningún modelo leído."
+                : $"lo que había era del modelo de " +
+                  $"{(_destinoLeido == EtabsConnection.ProgramaCsi.Sap2000 ? "SAP2000" : "ETABS")}.");
     }
 
     /// <summary>Lee el modelo del programa que diga la casilla.</summary>
@@ -916,6 +961,7 @@ public partial class MainWindow : Window
 
             var modelo = EtabsReader.Leer(cx);
             _modeloEtabs = modelo;
+            _destinoLeido = destino;
 
             EtabsGrid.ItemsSource = modelo.Elementos;
             EtabsStatusText.Text = modelo.Resumen();
@@ -973,10 +1019,15 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnLeerSeccionesModelo(object sender, RoutedEventArgs e)
     {
-        if (_modeloEtabs is not null && _modeloEtabs.Elementos.Count > 0)
+        // Se reaprovecha el modelo en memoria SOLO si es del programa que dice la casilla.
+        // Si la casilla cambió, hay que leer otra vez: son dos modelos distintos.
+        if (_modeloEtabs is not null && _modeloEtabs.Elementos.Count > 0 &&
+            _destinoLeido == DestinoCsi)
         {
             LlenarSeccionesModelo(_modeloEtabs);
-            StatusText.Text = "Tabla de secciones armada con el modelo que ya estaba leído.";
+            StatusText.Text =
+                $"Tabla de secciones armada con el modelo de {NombreDestinoCsi} que ya " +
+                "estaba leído.";
             return;
         }
 
@@ -1715,6 +1766,7 @@ public partial class MainWindow : Window
 
             var modelo = EtabsReader.Leer(cx);
             _modeloEtabs = modelo;
+            _destinoLeido = DestinoCsi;
             _vista.Modelo = modelo;
             _vista.Reiniciar();
             PoblarNiveles(modelo);
@@ -1827,14 +1879,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        var planta = ArmarPlanta(_modeloEtabs);
+        // ==============================================================================
+        //  DE UN JALÓN, TODAS LAS PLANTAS: es como se usa y como lo hace la macro.
+        //  La casilla «Solo el nivel elegido» está para cuando se quiere una sola.
+        // ==============================================================================
+        var soloUna = SoloNivelElegidoChk?.IsChecked == true;
 
-        if (planta.Elementos.Count == 0)
+        var plantas = soloUna
+            ? new List<PlantaCad> { ArmarPlanta(_modeloEtabs) }
+            : ArmarTodasLasPlantas(_modeloEtabs);
+
+        if (plantas.Sum(p => p.Elementos.Count) == 0)
         {
             MessageBox.Show(
-                "Con el nivel y los filtros actuales no queda ningún elemento que " +
-                "dibujar.\n\n" +
-                "Revisa la lista de niveles y las casillas de «Mostrar».",
+                soloUna
+                    ? "Con el nivel y los filtros actuales no queda ningún elemento que " +
+                      "dibujar.\n\nRevisa la lista de niveles y las casillas de «Mostrar»."
+                    : "Con los filtros actuales no queda ningún elemento que dibujar.\n\n" +
+                      "Revisa las casillas de «Mostrar».",
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -1847,20 +1909,24 @@ public partial class MainWindow : Window
             dynamic doc = AcadConnection.GetOrCreateDocument(app);
 
             var dibujante = new PlantaDrawer(doc);
-            var r = dibujante.Dibujar(planta);
+            var r = dibujante.DibujarTodas(plantas);
 
             AcadConnection.Retry(() => { app.ZoomExtents(); });
 
             var fallos = dibujante.Fallos;
 
-            StatusText.Text =
-                $"Planta dibujada en AutoCAD: {r.Total} elemento(s) del nivel " +
-                $"{(string.IsNullOrWhiteSpace(planta.Nivel) ? "(todos)" : planta.Nivel)}.";
+            var cuales = plantas.Count == 1
+                ? $"del nivel {(string.IsNullOrWhiteSpace(plantas[0].Nivel) ? "(todos)" : plantas[0].Nivel)}"
+                : $"en {plantas.Count} plantas ({string.Join(", ", plantas.Select(p => p.Nivel))})";
+
+            StatusText.Text = $"Dibujado en AutoCAD: {r.Total} elemento(s) {cuales}.";
 
             PlanoHintText.Text =
-                "Última planta dibujada: " + r +
-                ". Quedó repartida en las capas PLANTA-COLUMNAS, PLANTA-TRABES, " +
-                "PLANTA-MUROS, PLANTA-LOSAS, PLANTA-EJES y PLANTA-TEXTOS, en metros.";
+                $"Última pasada: {r} en {plantas.Count} planta(s), de un jalón y repartidas " +
+                "a la derecha. Quedaron en LAS CAPAS DE LA MACRO —E-CASTILLO, E-COLUMNA, " +
+                "E-DALA, E-TRABE, E-CONTRATRABE, E-MURO, E-LOSA, E-ACERO, E-EJES, E-TEXTO " +
+                "y E-TITULO— cada una con su color, en metros. Faltan los ejes con " +
+                "burbujas, las cotas y el armado de losa: ese es el dibujante nuevo.";
 
             if (fallos.Count == 0)
             {
@@ -1952,9 +2018,9 @@ public partial class MainWindow : Window
     /// las secciones. Un solo sitio traduce y el dibujante se puede alimentar mañana
     /// de otra fuente sin tocarlo.
     /// </remarks>
-    private PlantaCad ArmarPlanta(ModeloEtabs modelo)
+    private PlantaCad ArmarPlanta(ModeloEtabs modelo, string? nivelPedido = null)
     {
-        var nivel = NivelElegido;
+        var nivel = nivelPedido ?? NivelElegido;
 
         var p = new PlantaCad
         {
@@ -1977,9 +2043,17 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            // El TIPO se clasifica con la regla de la macro -ClasificaTipo- porque es lo
+            // que decide la CAPA: castillo y columna no van a la misma, ni dala y trabe.
+            // Y la FORMA, para que un perfil de acero se vaya a E-ACERO.
+            var t2 = el.Clase == ClaseElemento.Columna ? el.PeralteM : el.AnchoM;
+            var t3 = el.Clase == ClaseElemento.Columna ? el.AnchoM : el.PeralteM;
+
             var e = new ElementoPlanta
             {
                 Clase = ClasePlantaDe(el.Clase),
+                Tipo = SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3),
+                Forma = el.Forma,
                 Etiqueta = el.Etiqueta,
                 Seccion = el.Seccion,
                 X1 = el.X1, Y1 = el.Y1,
@@ -2003,6 +2077,49 @@ public partial class MainWindow : Window
         p.AlturaTexto = AlturaDeTexto(p);
 
         return p;
+    }
+
+    /// <summary>
+    /// Una planta <b>por nivel</b>, en el orden en que la macro las reparte.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ORDEN_NIVELES = ASC</c>, así que primero el nivel más bajo: el juego se lee de
+    /// izquierda a derecha empezando por la cimentación, como se arma un juego de planos.
+    /// </para>
+    /// <para>
+    /// Los niveles <b>sin elementos</b> se saltan, igual que hace <c>HayElementosEn</c>: un
+    /// hueco en la fila de plantas por un nivel vacío se ve como un error de dibujo.
+    /// </para>
+    /// <para>
+    /// La altura de texto es la MISMA para todas —la que sale de la planta más grande— para
+    /// que el juego se vea de una pieza y no con una letra por planta.
+    /// </para>
+    /// </remarks>
+    private List<PlantaCad> ArmarTodasLasPlantas(ModeloEtabs modelo)
+    {
+        var plantas = new List<PlantaCad>();
+
+        foreach (var n in modelo.Niveles.OrderBy(n => n.ElevacionM))
+        {
+            var p = ArmarPlanta(modelo, n.Nombre);
+
+            if (p.Elementos.Count > 0)
+            {
+                plantas.Add(p);
+            }
+        }
+
+        if (plantas.Count > 1)
+        {
+            var altura = plantas.Max(p => p.AlturaTexto);
+            foreach (var p in plantas)
+            {
+                p.AlturaTexto = altura;
+            }
+        }
+
+        return plantas;
     }
 
     private static double AlturaDeTexto(PlantaCad p)

@@ -28,6 +28,28 @@ public sealed class ElementoPlanta
     /// <summary>Nombre de la sección. Se rotula debajo de la etiqueta.</summary>
     public string Seccion { get; set; } = string.Empty;
 
+    /// <summary>
+    /// El <b>tipo</b> de la macro: CASTILLO, COLUMNA, DALA, TRABE, CONTRATRABE, DIAGONAL,
+    /// MURO o LOSA.
+    /// </summary>
+    /// <remarks>
+    /// Es más fino que <see cref="Clase"/> y hace falta para la <b>capa</b>: la macro manda
+    /// el castillo a <c>E-CASTILLO</c> y la columna a <c>E-COLUMNA</c>, la dala a
+    /// <c>E-DALA</c> y la trabe a <c>E-TRABE</c>, cada una con su color. Lo clasifica la
+    /// ventana con <c>SeccionesModelo.ClasificaTipo</c>, que es el <c>ClasificaTipo</c> de
+    /// la macro; si llega en blanco, el dibujante lo deduce de la clase.
+    /// </remarks>
+    public string Tipo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// La forma de la sección: RECT, CIRC, I, TUBO, PIPE, C, T, L, AREA.
+    /// </summary>
+    /// <remarks>
+    /// Se usa para una sola cosa, pero importante: un perfil de acero va a la capa
+    /// <c>E-ACERO</c>, como en la macro, en lugar de a la de su tipo.
+    /// </remarks>
+    public string Forma { get; set; } = "RECT";
+
     public double X1 { get; set; }
     public double Y1 { get; set; }
     public double X2 { get; set; }

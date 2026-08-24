@@ -207,6 +207,19 @@ public sealed class CapasPlano
     }
 
     /// <summary>
+    /// ¿Es un perfil de acero? Es el <c>EsPerfilAcero</c> de la macro, y decide una cosa:
+    /// que el elemento se vaya a la capa <c>E-ACERO</c> en lugar de a la de su tipo.
+    /// </summary>
+    /// <remarks>
+    /// Está aquí y también en <c>CadLink.Etabs.SeccionesModelo</c>, y el duplicado es a
+    /// propósito: los dos proyectos son independientes —ninguno referencia al otro— y este
+    /// es el único sitio del dibujante donde hace falta. Son seis nombres de forma; darles
+    /// un proyecto común para compartirlos costaría más de lo que ahorra.
+    /// </remarks>
+    public static bool EsPerfilAcero(string forma) =>
+        forma is "I" or "TUBO" or "CAJON" or "PIPE" or "C" or "T" or "L";
+
+    /// <summary>
     /// ¿Esta capa la generó el plano? Es la regla de <c>BorrarCapasGeneradas</c>.
     /// </summary>
     /// <remarks>

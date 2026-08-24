@@ -48,24 +48,49 @@ public sealed class PlantaDrawer
 {
     private const int PorCapa = 256;
 
-    // Capas de la planta. El prefijo las deja juntas en el administrador de capas y
-    // evita pisar una capa del usuario que se llamara "MUROS" o "LOSAS".
-    private const string CapaColumnas = "PLANTA-COLUMNAS";
-    private const string CapaTrabes = "PLANTA-TRABES";
-    private const string CapaMuros = "PLANTA-MUROS";
-    private const string CapaLosas = "PLANTA-LOSAS";
-    private const string CapaEjes = "PLANTA-EJES";
-    private const string CapaTextos = "PLANTA-TEXTOS";
-    private const string CapaRotulo = "PLANTA-ROTULO";
+    // ==================================================================================
+    //  LAS CAPAS SON LAS DE LA MACRO, NO UNAS PROPIAS
+    // ==================================================================================
+    //  Antes esto tenía sus propias capas —PLANTA-COLUMNAS, PLANTA-TRABES…— con sus
+    //  propios colores, así que el plano salía en unas capas que no eran las suyas y no
+    //  encajaba con nada de lo que ya tiene dibujado.
+    //
+    //  Ahora salen de CapasPlano, que es la tabla de DefinirCapas + CrearCapas: E-CASTILLO,
+    //  E-COLUMNA, E-DALA, E-TRABE, E-CONTRATRABE, E-MURO, E-LOSA, E-ACERO, E-EJES, E-TEXTO
+    //  y E-TITULO, cada una con SU color. Y la capa de cada elemento se elige como en su
+    //  DibujarElemento: por el TIPO —que distingue castillo de columna y dala de trabe— y,
+    //  si es un perfil de acero, E-ACERO.
+    // ==================================================================================
+    private readonly PlanoEstructural.ConfigPlano _cfg = new();
+    private readonly PlanoEstructural.CapasPlano _capas;
 
-    // Colores ACI. Los mismos criterios del visor en pantalla, para que el plano se
-    // parezca a la vista previa y nadie se pregunte si dibujó otra cosa.
-    private const int ColorColumna = 1;    // rojo
-    private const int ColorTrabe = 5;      // azul
-    private const int ColorMuro = 3;       // verde
-    private const int ColorLosa = 8;       // gris
-    private const int ColorEje = 253;      // gris claro
-    private const int ColorTexto = 7;      // blanco/negro segun el fondo
+    private string CapaEjes => _capas.Prefijo + "EJES";
+    private string CapaTextos => _capas.Prefijo + "TEXTO";
+    private string CapaRotulo => _capas.Prefijo + "TITULO";
+
+    /// <summary>
+    /// La capa que le toca a un elemento: la de su TIPO, o la del acero si es un perfil.
+    /// </summary>
+    private string CapaDe(ElementoPlanta el)
+    {
+        if (PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma))
+        {
+            return _capas.CapaDeTipo("ACERO");
+        }
+
+        var tipo = string.IsNullOrWhiteSpace(el.Tipo)
+            ? el.Clase switch
+            {
+                ClasePlanta.Columna => "COLUMNA",
+                ClasePlanta.Trabe => "TRABE",
+                ClasePlanta.Muro => "MURO",
+                ClasePlanta.Losa => "LOSA",
+                _ => "DIAGONAL"
+            }
+            : el.Tipo;
+
+        return _capas.CapaDeTipo(tipo);
+    }
 
     private const string EstiloTexto = "SECCIONES";
 
@@ -92,6 +117,7 @@ public sealed class PlantaDrawer
     public PlantaDrawer(dynamic doc)
     {
         _doc = doc;
+        _capas = new PlanoEstructural.CapasPlano(_cfg);
         _ms = AcadConnection.Retry(() => doc.ModelSpace);
 
         // Se toca una vez para que la interop quede cargada antes del primer dibujo,
@@ -159,7 +185,7 @@ public sealed class PlantaDrawer
 
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Muro))
         {
-            if (Barra(el, x0, y0, CapaMuros,
+            if (Barra(el, x0, y0, CapaDe(el),
                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false))
             {
                 r.Muros++;
@@ -168,7 +194,7 @@ public sealed class PlantaDrawer
 
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Trabe))
         {
-            if (Barra(el, x0, y0, CapaTrabes,
+            if (Barra(el, x0, y0, CapaDe(el),
                      Espesor(el, AnchoTrabePorOmision, "trabe"), conEje: true))
             {
                 r.Trabes++;
@@ -210,6 +236,122 @@ public sealed class PlantaDrawer
         return r;
     }
 
+    /// <summary>
+    /// Dibuja <b>TODAS las plantas de un jalón</b>, una al lado de otra, como la macro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es como se usa de verdad: un edificio son cinco o seis plantas y se quieren las seis
+    /// en el dibujo, no una y volver a pulsar. La macro las reparte con estas reglas, que
+    /// son las que se siguen aquí:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     El <b>orden</b> lo dice <c>ORDEN_NIVELES</c>: <c>ASC</c> —el de omisión— pone
+    ///     primero el nivel más bajo, así que el juego se lee de izquierda a derecha
+    ///     empezando por la cimentación.
+    ///   </item>
+    ///   <item>
+    ///     El <b>paso</b> horizontal es el ancho de la planta más
+    ///     <c>SEPARACION_ENTRE_PLANTAS</c> —5 m—, y es el <b>mismo para todas</b>: se toma
+    ///     el rectángulo que las envuelve a todas, no el de cada una, para que queden
+    ///     alineadas y a la misma distancia. Con el ancho de cada una, dos plantas
+    ///     distintas quedarían descuadradas.
+    ///   </item>
+    ///   <item>
+    ///     Todas arrancan en la misma Y, la de <c>OFFSET_Y_INICIAL</c> —15—, así que los
+    ///     rótulos quedan en línea.
+    ///   </item>
+    ///   <item>
+    ///     Y <c>PLANTAS_POR_FILA</c> —100— es cuántas caben en una fila antes de bajar a la
+    ///     siguiente. Con 100 es lo mismo que decir «todas en una fila».
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Lo que <b>todavía no</b> hace, y es lo que falta para que salga igual que la suya:
+    /// los ejes con burbujas y las cotas en los cuatro lados, los bloques de sección
+    /// rellenos, el armado de losa y el rótulo de dos renglones con su tipografía. Eso es el
+    /// dibujante nuevo, etapas 3 y 4 de <c>docs/plan-port-planos-estructurales.md</c>.
+    /// </para>
+    /// </remarks>
+    /// <param name="plantas">Una por nivel, ya filtradas.</param>
+    public Resumen DibujarTodas(IReadOnlyList<PlantaCad> plantas)
+    {
+        var total = new Resumen();
+
+        if (plantas.Count == 0)
+        {
+            return total;
+        }
+
+        AsegurarCapas();
+        AsegurarEstiloTexto();
+
+        // El rectángulo que envuelve a TODAS: el paso tiene que ser uno solo.
+        double xMin = double.MaxValue, xMax = double.MinValue;
+        double yMin = double.MaxValue, yMax = double.MinValue;
+
+        foreach (var p in plantas)
+        {
+            foreach (var el in p.Elementos)
+            {
+                if (el.Vertices.Count > 0)
+                {
+                    foreach (var v in el.Vertices)
+                    {
+                        xMin = Math.Min(xMin, v.X); xMax = Math.Max(xMax, v.X);
+                        yMin = Math.Min(yMin, v.Y); yMax = Math.Max(yMax, v.Y);
+                    }
+                }
+
+                xMin = Math.Min(xMin, Math.Min(el.X1, el.X2));
+                xMax = Math.Max(xMax, Math.Max(el.X1, el.X2));
+                yMin = Math.Min(yMin, Math.Min(el.Y1, el.Y2));
+                yMax = Math.Max(yMax, Math.Max(el.Y1, el.Y2));
+            }
+        }
+
+        if (xMax <= xMin)
+        {
+            xMax = xMin + 1;
+        }
+
+        if (yMax <= yMin)
+        {
+            yMax = yMin + 1;
+        }
+
+        var hueco = _cfg.Numero("SEPARACION_ENTRE_PLANTAS", 5);
+        var offsetY = _cfg.Numero("OFFSET_Y_INICIAL", 15);
+        var porFila = (int)_cfg.Numero("PLANTAS_POR_FILA", 100);
+
+        if (porFila < 1)
+        {
+            porFila = 1;
+        }
+
+        var pasoX = (xMax - xMin) + hueco;
+
+        // Y el vertical, con aire para el rótulo de la planta, que va debajo.
+        var pasoY = (yMax - yMin) + hueco + (4 * plantas[0].AlturaTexto);
+
+        for (var i = 0; i < plantas.Count; i++)
+        {
+            var dx = (i % porFila * pasoX) - xMin;
+            var dy = (-(i / porFila) * pasoY) - yMin + offsetY;
+
+            var r = Dibujar(plantas[i], dx, dy);
+
+            total.Columnas += r.Columnas;
+            total.Trabes += r.Trabes;
+            total.Muros += r.Muros;
+            total.Losas += r.Losas;
+            total.Diagonales += r.Diagonales;
+        }
+
+        return total;
+    }
+
     // ==================================================================
     // Cada tipo de elemento
     // ==================================================================
@@ -230,9 +372,9 @@ public sealed class PlantaDrawer
 
             var m = 0.10;
             var ok1 = Linea(el.X1 + x0 - m, el.Y1 + y0, el.X1 + x0 + m, el.Y1 + y0,
-                            CapaColumnas) is not null;
+                            CapaDe(el)) is not null;
             var ok2 = Linea(el.X1 + x0, el.Y1 + y0 - m, el.X1 + x0, el.Y1 + y0 + m,
-                            CapaColumnas) is not null;
+                            CapaDe(el)) is not null;
             return ok1 || ok2;
         }
 
@@ -247,7 +389,7 @@ public sealed class PlantaDrawer
                 cx + (b / 2), cy + (h / 2),
                 cx - (b / 2), cy + (h / 2)
             },
-            CapaColumnas);
+            CapaDe(el));
 
         if (pl is null)
         {
@@ -256,8 +398,8 @@ public sealed class PlantaDrawer
 
         // Las diagonales del recuadro: es la marca de «columna» en un plano
         // estructural, y distingue de un dado o de un hueco a simple vista.
-        Linea(cx - (b / 2), cy - (h / 2), cx + (b / 2), cy + (h / 2), CapaColumnas);
-        Linea(cx - (b / 2), cy + (h / 2), cx + (b / 2), cy - (h / 2), CapaColumnas);
+        Linea(cx - (b / 2), cy - (h / 2), cx + (b / 2), cy + (h / 2), CapaDe(el));
+        Linea(cx - (b / 2), cy + (h / 2), cx + (b / 2), cy - (h / 2), CapaDe(el));
 
         return true;
     }
@@ -333,49 +475,48 @@ public sealed class PlantaDrawer
             pts[(2 * i) + 1] = el.Vertices[i].Y + y0;
         }
 
-        return PolilineaCerrada(pts, CapaLosas) is not null;
+        return PolilineaCerrada(pts, CapaDe(el)) is not null;
     }
 
-    /// <summary>Etiqueta y sección del elemento, en el centro de su eje.</summary>
+    /// <summary>
+    /// El rótulo del elemento, <b>donde lo pone la macro</b> y no todos en el centro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Esto es lo que hacía que la planta se leyera como un borrón: todos los rótulos iban
+    /// horizontales y al centro del elemento, así que en cada nudo caían encima el de la
+    /// columna y el de las cuatro trabes que llegan, y salía «CCK15X2515X25» pisado.
+    /// </para>
+    /// <para>
+    /// La macro los reparte, y por eso su plano se lee:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Columna o castillo</b>: en la <b>esquina superior derecha</b> de la sección,
+    ///     separado <c>COLUMNA_TEXTO_SEPARACION_CM</c> —2 cm— y horizontal. Ahí no hay
+    ///     nada más, porque el nudo lo ocupa la propia columna.
+    ///   </item>
+    ///   <item>
+    ///     <b>Trabe, cadena o viga</b>: al centro y <b>girado a lo largo de la barra</b>,
+    ///     con el ángulo llevado al rango de −90° a 90° para que nunca salga de cabeza.
+    ///   </item>
+    ///   <item>
+    ///     <b>Muro</b>: su pier, girado como el muro y <b>corrido al lado</b> medio espesor
+    ///     más <c>PIER_SEPARACION_CM</c>, para que no caiga sobre las dos líneas del paño.
+    ///   </item>
+    ///   <item><b>Losa</b>: al centro del paño, horizontal.</item>
+    /// </list>
+    /// </remarks>
     private void Rotulo(ElementoPlanta el, double x0, double y0, double altura)
     {
-        if (string.IsNullOrWhiteSpace(el.Etiqueta) && string.IsNullOrWhiteSpace(el.Seccion))
-        {
-            return;
-        }
-
-        var (cx, cy) = CentroDe(el, x0, y0);
-
-        // ==============================================================================
-        //  QUÉ SE ROTULA: LO QUE DICE LA HOJA CONFIG DE LA MACRO
-        // ==============================================================================
-        //  Antes salían la ETIQUETA y la SECCIÓN de todos los elementos, uno encima de
-        //  otro: en una planta con 30 columnas, 43 trabes y 31 muros el dibujo se volvía
-        //  ilegible, con los textos pisándose.
-        //
-        //  La macro rotula MUCHO menos, y por eso su plano se lee:
-        //
-        //      ETIQUETA_ID_COLUMNAS  = NO    ->  de la columna, solo la SECCIÓN
-        //      ETIQUETA_SEC_COLUMNAS = SI
-        //      ETIQUETA_ID_TRABES    = NO    ->  de la trabe, solo la SECCIÓN
-        //      ETIQUETA_SEC_TRABES   = SI
-        //
-        //  y del MURO solo su PIER —la etiqueta—, nunca la propiedad, que es la que
-        //  llenaba la planta de «MURO TABICON 2 APLANADOS 15 CM» repetido 31 veces.
-        //
-        //  Esto es un arreglo del dibujante de hoy, para que mientras se porta el de la
-        //  macro el plano se pueda leer. El acomodo fino de cada rótulo —al costado de la
-        //  trabe, en la esquina de la columna, al centro de la cadena— viene con él.
-        // ==============================================================================
+        // QUÉ se rotula: lo que dice la hoja CONFIG. ETIQUETA_ID_COLUMNAS y
+        // ETIQUETA_ID_TRABES están en NO, así que de la columna y de la trabe va SOLO la
+        // sección; del muro, solo su PIER —no la propiedad, que es la que repetía «MURO
+        // TABICON 2 APLANADOS 15 CM» en los 31 muros—; y de la losa, su propiedad.
         var texto = el.Clase switch
         {
-            // El muro: su PIER, y nada más. Si no tiene pier asignado, no se rotula.
             ClasePlanta.Muro => el.Etiqueta,
-
-            // La losa: su nombre de propiedad, que es lo que dice de qué losa se trata.
             ClasePlanta.Losa => el.Seccion,
-
-            // Columnas, trabes y diagonales: la SECCIÓN, sin el ID.
             _ => string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion
         };
 
@@ -384,7 +525,66 @@ public sealed class PlantaDrawer
             return;
         }
 
-        Mtexto(cx, cy, texto, altura, CapaTextos);
+        var (cx, cy) = CentroDe(el, x0, y0);
+
+        // ---- COLUMNA Y CASTILLO: esquina superior derecha ---------------------------
+        if (el.Clase == ClasePlanta.Columna)
+        {
+            var b = el.AnchoM > LargoMinimo ? el.AnchoM : 0.15;
+            var h = el.PeralteM > LargoMinimo ? el.PeralteM : b;
+            var gap = _cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM", 2) / 100;
+
+            Mtexto(cx + (b / 2) + gap + (altura * 2), cy + (h / 2) + gap + (altura / 2),
+                   texto, altura, CapaTextos);
+            return;
+        }
+
+        // ---- LOSA: al centro del paño ------------------------------------------------
+        if (el.Clase == ClasePlanta.Losa)
+        {
+            Mtexto(cx, cy, texto, altura, CapaTextos);
+            return;
+        }
+
+        // ---- TRABE, CADENA, VIGA Y MURO: a lo largo de la barra ----------------------
+        var dx = el.X2 - el.X1;
+        var dy = el.Y2 - el.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < LargoMinimo)
+        {
+            Mtexto(cx, cy, texto, altura, CapaTextos);
+            return;
+        }
+
+        var ang = Math.Atan2(dy, dx) * 180 / Math.PI;
+
+        // El mismo apaño de la macro: un texto a 135° se lee de cabeza, así que el ángulo
+        // se lleva al rango de −90° a 90°.
+        if (ang > 90)
+        {
+            ang -= 180;
+        }
+        else if (ang <= -90)
+        {
+            ang += 180;
+        }
+
+        var px = cx;
+        var py = cy;
+
+        if (el.Clase == ClasePlanta.Muro)
+        {
+            // Corrido al lado, en la perpendicular al muro: medio espesor más la
+            // separación de la hoja, más media letra para que no roce la línea.
+            var esp = el.AnchoM > LargoMinimo ? el.AnchoM : 0.15;
+            var d = (esp / 2) + (_cfg.Numero("PIER_SEPARACION_CM", 6) / 100) + (altura * 0.7);
+
+            px += -dy / largo * d;
+            py += dx / largo * d;
+        }
+
+        Mtexto(px, py, texto, altura, CapaTextos, ang);
     }
 
     /// <summary>
@@ -456,45 +656,96 @@ public sealed class PlantaDrawer
     // Primitivas de AutoCAD
     // ==================================================================
 
-    /// <summary>Crea las capas de la planta si no existen. Nunca cambia las que ya hay.</summary>
+    /// <summary>
+    /// Crea las capas de la macro con <b>su</b> color y <b>su</b> tipo de línea.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son las 21 de <c>CapasPlano</c>, y el color se <b>pone siempre</b>, exista la capa o
+    /// no: es lo que hace <c>AsegurarCapa</c> en la macro —<c>Layers.Add</c> devuelve la que
+    /// ya está y le asigna el color igual— y es lo que hace falta para que el plano se vea
+    /// como el suyo aunque el dibujo traiga esas capas de otro sitio con otro color.
+    /// </para>
+    /// <para>
+    /// El tipo de línea se carga de <c>acad.lin</c> y, si no está, se deja la que tenga: la
+    /// capa E-TRABE sin PHANTOM2 se ve continua, que es un detalle; una capa que no se pudo
+    /// crear serían elementos perdidos.
+    /// </para>
+    /// </remarks>
     public void AsegurarCapas()
     {
-        var capas = new (string Nombre, int Color)[]
-        {
-            (CapaColumnas, ColorColumna),
-            (CapaTrabes, ColorTrabe),
-            (CapaMuros, ColorMuro),
-            (CapaLosas, ColorLosa),
-            (CapaEjes, ColorEje),
-            (CapaTextos, ColorTexto),
-            (CapaRotulo, ColorTexto)
-        };
-
-        foreach (var (nombre, color) in capas)
+        foreach (var capa in _capas.Todas)
         {
             try
             {
                 AcadConnection.Retry(() =>
                 {
                     dynamic todas = _doc.Layers;
+                    dynamic lay;
 
                     try
                     {
-                        // Si ya existe se deja EXACTAMENTE como está: puede que el
-                        // usuario le haya puesto su color y su grosor de pluma.
-                        _ = todas.Item(nombre);
+                        lay = todas.Item(capa.Nombre);
                     }
                     catch (Exception)
                     {
-                        dynamic nueva = todas.Add(nombre);
-                        nueva.Color = color;
+                        lay = todas.Add(capa.Nombre);
+                    }
+
+                    lay.Color = capa.Color;
+
+                    if (capa.TipoDeLinea.Length > 0 && AsegurarTipoDeLinea(capa.TipoDeLinea))
+                    {
+                        try
+                        {
+                            lay.Linetype = capa.TipoDeLinea;
+                        }
+                        catch (Exception)
+                        {
+                            // La capa se queda con la línea que tenga: es cosmético.
+                        }
                     }
                 });
             }
             catch (Exception ex)
             {
-                Fallo($"Crear la capa '{nombre}'", ex);
+                Fallo($"Crear la capa '{capa.Nombre}'", ex);
             }
+        }
+    }
+
+    /// <summary>Carga un tipo de línea si no está en el dibujo.</summary>
+    private bool AsegurarTipoDeLinea(string nombre)
+    {
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                try
+                {
+                    _ = _doc.Linetypes.Item(nombre);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        _doc.Linetypes.Load(nombre, "acad.lin");
+                        return true;
+                    }
+                    catch (Exception)
+                    {
+                        _doc.Linetypes.Load(nombre, "acadiso.lin");
+                        return true;
+                    }
+                }
+            });
+        }
+        catch (Exception)
+        {
+            Nota($"No se pudo cargar el tipo de línea '{nombre}'; la capa se queda con la " +
+                 "que tenga.");
+            return false;
         }
     }
 
@@ -577,7 +828,8 @@ public sealed class PlantaDrawer
     }
 
     private object? Mtexto(
-        double x, double y, string texto, double altura, string capa)
+        double x, double y, string texto, double altura, string capa,
+        double giroGrados = 0)
     {
         if (string.IsNullOrWhiteSpace(texto) || altura <= 0)
         {
@@ -590,6 +842,22 @@ public sealed class PlantaDrawer
             {
                 dynamic mt = _ms.AddMText(new[] { x, y, 0d }, 0d, texto);
                 mt.Height = altura;
+
+                // El GIRO va antes de fijar el punto de anclaje: así el texto queda
+                // centrado sobre el punto ya girado. Es lo que deja el rótulo de la trabe
+                // LEÍDO A LO LARGO de la trabe, como en la macro, en lugar de horizontal y
+                // encimado con el de la columna del nudo.
+                if (Math.Abs(giroGrados) > 1e-9)
+                {
+                    try
+                    {
+                        mt.Rotation = giroGrados * Math.PI / 180;
+                    }
+                    catch (Exception)
+                    {
+                        // Sin giro se lee igual, solo que horizontal.
+                    }
+                }
 
                 // 5 = MiddleCenter. Centrado sobre el punto, que es el centro del
                 // elemento: así el rótulo no se va hacia un lado en una trabe corta.

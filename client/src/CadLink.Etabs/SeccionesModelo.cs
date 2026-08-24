@@ -78,6 +78,30 @@ public static class SeccionesModelo
         /// <summary>Cuántos elementos del modelo la usan.</summary>
         public int Cantidad { get; set; }
 
+        /// <summary>
+        /// Longitud TOTAL de los elementos tipo <b>frame</b> con esa sección, en metros.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Es la suma del largo REAL de cada barra —en tres dimensiones—, no de su
+        /// proyección en planta: en una diagonal o en una rampa las dos cosas no son lo
+        /// mismo, y lo que se compra es el largo real.
+        /// </para>
+        /// <para>
+        /// En muros y losas va en blanco: ahí lo que se mide es el área.
+        /// </para>
+        /// </remarks>
+        public double? LongitudTotalM { get; set; }
+
+        /// <summary>
+        /// Área TOTAL de los <b>shell</b> —muros y losas— con esa propiedad, en m².
+        /// </summary>
+        /// <remarks>
+        /// Es el área del paño de verdad, la del plano del elemento. En un muro, que es
+        /// vertical, el área en planta sería cero: ver <c>ElementoEtabs.AreaM2</c>.
+        /// </remarks>
+        public double? AreaTotalM2 { get; set; }
+
         /// <summary>En qué niveles aparece, separados por coma.</summary>
         public string Niveles { get; set; } = string.Empty;
     }
@@ -122,9 +146,7 @@ public static class SeccionesModelo
                     Tipo = tipo,
                     Seccion = seccion,
                     Forma = e.Forma + (EsPerfilAcero(e.Forma) ? " (ACERO)" : string.Empty),
-                    Material = e.Clase == ClaseElemento.Muro
-                        ? MaterialDeMuro(e.Seccion, e.Notas, op)
-                        : string.Empty,
+                    Material = Material(e, op),
 
                     // En muros y losas no hay peralte: lo que se reporta es el ESPESOR, y
                     // va en la columna del ancho. Es como lo escribe la macro.
@@ -139,6 +161,17 @@ public static class SeccionesModelo
             }
 
             fila.Cantidad++;
+
+            // Los frames suman LARGO y los shell suman AREA. Un elemento no puede aportar
+            // a las dos: o es una barra o es un paño.
+            if (esMuroOLosa)
+            {
+                fila.AreaTotalM2 = Math.Round((fila.AreaTotalM2 ?? 0) + e.AreaM2, 3);
+            }
+            else
+            {
+                fila.LongitudTotalM = Math.Round((fila.LongitudTotalM ?? 0) + e.LargoM, 3);
+            }
 
             var story = e.Story.Trim();
             if (story.Length > 0 && !niveles[fila].Contains(story, StringComparer.OrdinalIgnoreCase))
@@ -157,6 +190,48 @@ public static class SeccionesModelo
             .OrderBy(f => OrdenDeTipo(f.Tipo))
             .ThenBy(f => f.Seccion, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// El material que se muestra: el <b>nombre del material</b> del modelo y, en los
+    /// muros, además de qué están hechos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Antes esta columna solo se llenaba en los muros de mampostería, y en todo lo demás
+    /// salía en blanco aunque el modelo <b>sí</b> trae el dato: el material de la propiedad
+    /// —CONC, A992Fy50— lo devuelve la misma llamada que da las medidas, y se estaba
+    /// tirando.
+    /// </para>
+    /// <para>
+    /// En un muro se muestran las dos cosas cuando no dicen lo mismo:
+    /// <c>MAMPOSTERIA (MUR-TABICON)</c>. La clasificación de la macro es la que manda para
+    /// dibujar, y el nombre del material es el que permite comprobarla contra el modelo.
+    /// </para>
+    /// </remarks>
+    private static string Material(ElementoEtabs e, Opciones op)
+    {
+        var delModelo = e.Material.Trim();
+
+        if (e.Clase != ClaseElemento.Muro)
+        {
+            return delModelo;
+        }
+
+        var clasificado = MaterialDeMuro(e.Seccion, e.Notas, op);
+
+        if (clasificado.Length == 0)
+        {
+            return delModelo;
+        }
+
+        if (delModelo.Length == 0 ||
+            EtabsReader.Normalizar(delModelo) == EtabsReader.Normalizar(clasificado))
+        {
+            return clasificado;
+        }
+
+        return $"{clasificado} ({delModelo})";
     }
 
     /// <summary>Centímetros con un decimal, o <c>null</c> si no hay dato.</summary>
@@ -260,8 +335,12 @@ public static class SeccionesModelo
     }
 
     /// <summary>¿Es un perfil de acero? Es el <c>EsPerfilAcero</c> de la macro.</summary>
+    /// <remarks>
+    /// El <c>CAJON</c> entra también: en la macro es la forma <c>TUBO</c> —el
+    /// <c>GetTube</c>— y va a la capa del acero como cualquier otro perfil.
+    /// </remarks>
     public static bool EsPerfilAcero(string forma) =>
-        forma is "I" or "TUBO" or "PIPE" or "C" or "T" or "L";
+        forma is "I" or "TUBO" or "CAJON" or "PIPE" or "C" or "T" or "L";
 
     /// <summary>El orden en que la macro ordena los tipos en la hoja SECCIONES.</summary>
     public static int OrdenDeTipo(string tipo) => tipo switch

@@ -2634,6 +2634,50 @@ def v16_extruida_piers() -> None:
           and 'LeerSeccionesModeloButton.Content = $"Leer secciones de {NombreDestinoCsi}"'
               in codigo)
 
+    # LA TABLA CAMBIA CON LA CASILLA. Con datos de ETABS y la casilla en SAP2000 se estaba
+    # viendo la tabla del programa que NO decia la casilla, y sin avisar.
+    check("se recuerda de que programa es el modelo que hay en memoria",
+          "private EtabsConnection.ProgramaCsi? _destinoLeido;" in codigo
+          and codigo.count("_destinoLeido = ") >= 2)
+    check("la tabla se vacia cuando la casilla deja de coincidir",
+          "private void SincronizarSeccionesConLaCasilla()" in codigo
+          and "SeccionesModeloGrid.ItemsSource = null;" in codigo
+          and "SincronizarSeccionesConLaCasilla();" in codigo)
+    check("y el boton vuelve a LEER en vez de reaprovechar lo del otro programa",
+          "_destinoLeido == DestinoCsi)" in codigo)
+
+    # LO QUE HAY DE CADA COSA: longitud de los frames y area de los shell.
+    check("la tabla trae la longitud total de los frames",
+          "public double? LongitudTotalM { get; set; }" in secs
+          and "fila.LongitudTotalM = Math.Round((fila.LongitudTotalM ?? 0) + e.LargoM, 3);" in secs
+          and 'Header="LONGITUD TOTAL (m)"' in xaml)
+    check("y el area total de los muros y las losas",
+          "public double? AreaTotalM2 { get; set; }" in secs
+          and "fila.AreaTotalM2 = Math.Round((fila.AreaTotalM2 ?? 0) + e.AreaM2, 3);" in secs
+          and 'Header="AREA TOTAL (m²)"' in xaml)
+    # El area es la del PAÑO, no la de su proyeccion en planta: un muro es vertical y en
+    # planta mediria cero.
+    check("el area es la del paño de verdad, con el metodo de Newell",
+          "public double AreaM2" in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+          and "nx += (a.Y - b.Y) * (a.Z + b.Z);"
+              in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs")))
+
+    # EL MATERIAL, EN TODOS. Lo devuelve la misma llamada que las medidas y se estaba
+    # tirando: por eso la columna salia en blanco en todo menos en los muros.
+    check("el material de la propiedad se guarda",
+          "public string Material { get; set; }"
+              in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+          and "e.Material = dims.Material;" in lect
+          and "e.Material = prop.Material;" in lect
+          and "private static string Material(object?[] a)" in lect)
+    check("y en el muro se ven las dos cosas: la clasificada y la del modelo",
+          "private static string Material(ElementoEtabs e, Opciones op)" in secs
+          and 'return $"{clasificado} ({delModelo})";' in secs)
+
+    # Y fuera el texto que no hacia falta encima de la tabla.
+    check("la tabla ya no lleva la tarjeta de explicacion",
+          "Que es esta tabla" not in xaml)
+
     # Y su prueba ejecutable.
     prs = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
     check("hay prueba ejecutable de la tabla de secciones",
@@ -3189,7 +3233,15 @@ def v18_planta_autocad() -> None:
               'HasFeature("export-dxf")' in cuerpo)
         check("no se dibuja sin modelo leido", "_modeloEtabs is null" in cuerpo)
         check("se avisa si no queda nada que dibujar",
-              "planta.Elementos.Count == 0" in cuerpo)
+              "plantas.Sum(p => p.Elementos.Count) == 0" in cuerpo)
+        # DE UN JALON TODAS LAS PLANTAS, que es como lo hace la macro. La casilla es para
+        # cuando se quiere revisar una sola.
+        check("se dibujan TODAS las plantas, no solo la del nivel elegido",
+              "ArmarTodasLasPlantas(_modeloEtabs)" in cuerpo
+              and "dibujante.DibujarTodas(plantas)" in cuerpo)
+        check("y hay casilla para dibujar solo una",
+              'x:Name="SoloNivelElegidoChk"' in xaml
+              and "SoloNivelElegidoChk?.IsChecked == true" in cuerpo)
         check("se tolera que AutoCAD no este abierto",
               "AcadNotAvailableException" in cuerpo)
         check("y el cursor de espera se repone siempre",
@@ -3216,18 +3268,66 @@ def v18_planta_autocad() -> None:
               "CadLink.Etabs" not in limpio and "ClaseElemento" not in limpio)
     check("la ventana es la que traduce", "ClasePlantaDe" in codigo)
 
-    # Una capa por tipo de elemento: es lo que se usa para trabajar encima.
-    for capa in ("PLANTA-COLUMNAS", "PLANTA-TRABES", "PLANTA-MUROS",
-                 "PLANTA-LOSAS", "PLANTA-EJES", "PLANTA-TEXTOS"):
-        check(f"hay capa {capa}", f'"{capa}"' in dib)
+    # LAS CAPAS SON LAS DE LA MACRO, no unas propias: antes eran PLANTA-COLUMNAS,
+    # PLANTA-TRABES... con sus propios colores, y el plano salia en capas que no eran las
+    # suyas. Ahora salen de CapasPlano -E-CASTILLO, E-COLUMNA, E-DALA, E-TRABE...- y la de
+    # cada elemento se elige por su TIPO, como en su DibujarElemento.
+    check("las capas ya no son unas propias",
+          all(v not in dib for v in ('"PLANTA-COLUMNAS"', '"PLANTA-TRABES"',
+                                     '"PLANTA-MUROS"', '"PLANTA-LOSAS"')))
+    check("y salen de la tabla de la macro",
+          "PlanoEstructural.CapasPlano _capas" in dib
+          and "_capas.CapaDeTipo(tipo)" in dib
+          and '_capas.Prefijo + "TEXTO"' in dib
+          and '_capas.Prefijo + "TITULO"' in dib)
+    check("un perfil de acero va a la capa del acero",
+          "PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma)" in dib
+          and '_capas.CapaDeTipo("ACERO")' in dib)
+    check("el tipo lo clasifica la ventana con la regla de la macro",
+          "SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3)" in codigo
+          and "public string Tipo { get; set; }" in dto)
 
-    # Las capas que ya existen se dejan como estan: pueden llevar el color y la
-    # pluma que les puso el usuario.
+    # El color se PONE, exista la capa o no: es lo que hace AsegurarCapa en la macro, y es
+    # lo que permite que el plano se vea igual aunque el dibujo traiga esas capas de otro
+    # sitio con otro color.
     m_cap = re.search(r"public void AsegurarCapas\(\).*?\n    \}", dib, re.S)
     check("se puede leer AsegurarCapas", m_cap is not None)
     if m_cap:
-        check("una capa que ya existe no se toca",
-              "todas.Item(nombre)" in m_cap.group(0))
+        check("se crean las 21 capas de la macro, con su color",
+              "foreach (var capa in _capas.Todas)" in m_cap.group(0)
+              and "lay.Color = capa.Color;" in m_cap.group(0))
+        check("y con su tipo de linea",
+              "AsegurarTipoDeLinea(capa.TipoDeLinea)" in m_cap.group(0))
+
+    # DIBUJAR TODAS LAS PLANTAS DE UN JALON, con la separacion de la hoja CONFIG.
+    m_todas = re.search(r"public Resumen DibujarTodas\(.*?\n    \}", dib, re.S)
+    check("se puede leer DibujarTodas", m_todas is not None)
+    if m_todas:
+        cuerpo = m_todas.group(0)
+        check("el paso sale de SEPARACION_ENTRE_PLANTAS",
+              '_cfg.Numero("SEPARACION_ENTRE_PLANTAS", 5)' in cuerpo)
+        check("arrancan en OFFSET_Y_INICIAL",
+              '_cfg.Numero("OFFSET_Y_INICIAL", 15)' in cuerpo)
+        check("y caben PLANTAS_POR_FILA en cada fila",
+              '_cfg.Numero("PLANTAS_POR_FILA", 100)' in cuerpo)
+        check("el paso es el MISMO para todas, del rectangulo que las envuelve",
+              "foreach (var p in plantas)" in cuerpo and "var pasoX = (xMax - xMin) + hueco;" in cuerpo)
+    check("y las plantas van del nivel mas bajo al mas alto, como ORDEN_NIVELES = ASC",
+          "modelo.Niveles.OrderBy(n => n.ElevacionM)" in codigo)
+
+    # LOS ROTULOS, DONDE LOS PONE LA MACRO: la columna en la esquina superior derecha y la
+    # trabe girada a lo largo de la barra. Todos al centro y horizontales era lo que
+    # convertia cada nudo en un borron.
+    check("el rotulo de la columna va a la esquina, con su separacion",
+          '_cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM", 2)' in dib)
+    check("el de la trabe va girado a lo largo de la barra",
+          "var ang = Math.Atan2(dy, dx) * 180 / Math.PI;" in dib
+          and "ang -= 180;" in dib and "ang += 180;" in dib
+          and "Mtexto(px, py, texto, altura, CapaTextos, ang);" in dib)
+    check("y el del muro corrido al lado con PIER_SEPARACION_CM",
+          '_cfg.Numero("PIER_SEPARACION_CM", 6)' in dib)
+    check("el MText acepta giro",
+          "double giroGrados = 0)" in dib and "mt.Rotation = giroGrados * Math.PI / 180;" in dib)
 
     # Las losas ANTES que trabes y columnas: en AutoCAD el orden de creacion es el
     # orden de dibujo, asi que si se dibujaran al final taparian el resto.
@@ -3285,7 +3385,7 @@ def v18_planta_autocad() -> None:
         check("del muro solo se rotula su PIER",
               "ClasePlanta.Muro => el.Etiqueta," in cuerpo)
         check("y de columnas y trabes solo la SECCION, sin el ID",
-              "ETIQUETA_ID_COLUMNAS  = NO" in cuerpo
+              "ETIQUETA_ID_COLUMNAS y" in cuerpo
               and 'string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion' in cuerpo
               and '$"{el.Etiqueta}\\P{el.Seccion}"' not in cuerpo)
 

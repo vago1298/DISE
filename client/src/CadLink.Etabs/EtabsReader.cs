@@ -294,6 +294,7 @@ public static class EtabsReader
             {
                 var dims = DimensionesSeccion(propFrame, seccion, cacheSecciones, m);
                 e.Forma = dims.Forma;
+                e.Material = dims.Material;
 
                 // Los espesores, que son lo que permite dibujar el perfil de verdad en
                 // lugar de una caja.
@@ -359,7 +360,7 @@ public static class EtabsReader
 
             var t3 = Convert.ToDouble(a[3]);
             var t2 = Convert.ToDouble(a[4]);
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "RECT", 0, 0, 0) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "RECT", 0, 0, 0, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -378,7 +379,7 @@ public static class EtabsReader
             }
 
             var d = Convert.ToDouble(a[3]);
-            return d > 0 ? new Dims(d, d, "CIRC", 0, 0, 0) : null;
+            return d > 0 ? new Dims(d, d, "CIRC", 0, 0, 0, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -410,7 +411,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "I", tf, tw, 0) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "I", tf, tw, 0, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -454,7 +455,8 @@ public static class EtabsReader
         }
 
         var cachePropiedad =
-            new Dictionary<string, (double EspesorM, string Notas)>(StringComparer.OrdinalIgnoreCase);
+            new Dictionary<string, (double EspesorM, string Notas, string Material)>(
+                StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < nombres.Length; i++)
         {
@@ -548,6 +550,7 @@ public static class EtabsReader
                 var prop = Propiedad(propArea, seccion, esVertical, cachePropiedad);
                 e.AnchoM = prop.EspesorM;
                 e.Notas = prop.Notas;
+                e.Material = prop.Material;
             }
 
             m.Elementos.Add(e);
@@ -573,9 +576,9 @@ public static class EtabsReader
     /// con 31 muros salían 31 avisos.
     /// </para>
     /// </remarks>
-    private static (double EspesorM, string Notas) Propiedad(
+    private static (double EspesorM, string Notas, string Material) Propiedad(
         object propArea, string seccion, bool esMuro,
-        Dictionary<string, (double EspesorM, string Notas)> cache)
+        Dictionary<string, (double EspesorM, string Notas, string Material)> cache)
     {
         if (cache.TryGetValue(seccion, out var ya))
         {
@@ -585,6 +588,7 @@ public static class EtabsReader
         var metodo = esMuro ? "GetWall" : "GetSlab";
         var valor = 0d;
         var notas = string.Empty;
+        var material = string.Empty;
 
         try
         {
@@ -593,9 +597,12 @@ public static class EtabsReader
             {
                 valor = Convert.ToDouble(a[4]);
 
+                // Aquí el MatProp va en la posición 3, no en la 2: la firma de GetWall y
+                // GetSlab lleva antes el tipo y el comportamiento del shell.
+                material = (a[3]?.ToString() ?? string.Empty).Trim();
+
                 // notas + material, como los junta la macro: nts & " " & mat
-                notas = ((a[6]?.ToString() ?? string.Empty) + " " +
-                         (a[3]?.ToString() ?? string.Empty)).Trim();
+                notas = ((a[6]?.ToString() ?? string.Empty) + " " + material).Trim();
             }
         }
         catch (Exception ex) when (EsFalloCom(ex))
@@ -615,7 +622,7 @@ public static class EtabsReader
             }
         }
 
-        var r = (valor, notas);
+        var r = (valor, notas, material);
         cache[seccion] = r;
         return r;
     }
@@ -784,8 +791,13 @@ public static class EtabsReader
     /// <param name="Patin">Espesor del patín. Cero si la forma no lo tiene.</param>
     /// <param name="Alma">Espesor del alma. Cero si la forma no lo tiene.</param>
     /// <param name="Pared">Espesor de pared de un tubo o cajón.</param>
+    /// <param name="Material">
+    /// El material que la propiedad tiene asignado en el modelo: CONC, A992Fy50, el que
+    /// sea. Lo devuelve la misma llamada que las medidas, y antes se tiraba.
+    /// </param>
     private sealed record Dims(
-        double T2, double T3, string Forma, double Patin, double Alma, double Pared);
+        double T2, double T3, string Forma, double Patin, double Alma, double Pared,
+        string Material = "");
 
     /// <summary>
     /// Pregunta a SAP2000 <b>qué forma es</b> y llama al lector que le toca.
@@ -803,6 +815,13 @@ public static class EtabsReader
     /// para rectángulo, círculo y I sigue funcionando.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// El <b>material</b> de la propiedad: la posición 2 del arreglo de la llamada, que en
+    /// todos los <c>Get…</c> de sección es <c>MatProp</c>.
+    /// </summary>
+    private static string Material(object?[] a) =>
+        a.Length > 2 ? (a[2]?.ToString() ?? string.Empty).Trim() : string.Empty;
+
     private static Dims? PorForma(object propFrame, string seccion)
     {
         var tipo = -1;
@@ -869,7 +888,7 @@ public static class EtabsReader
             var d = Convert.ToDouble(a[3]);
             var tw = Convert.ToDouble(a[4]);
 
-            return d > 0 ? new Dims(d, d, "TUBO", 0, 0, tw) : null;
+            return d > 0 ? new Dims(d, d, "TUBO", 0, 0, tw, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -897,7 +916,7 @@ public static class EtabsReader
             var t2 = Convert.ToDouble(a[4]);
             var tf = Convert.ToDouble(a[5]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "CAJON", 0, 0, tf) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "CAJON", 0, 0, tf, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -926,7 +945,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "L", tf, tw, 0) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "L", tf, tw, 0, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -955,7 +974,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "C", tf, tw, 0) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "C", tf, tw, 0, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -984,7 +1003,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "T", tf, tw, 0) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "T", tf, tw, 0, Material(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {

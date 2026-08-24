@@ -60,6 +60,18 @@ public sealed class ElementoEtabs
     /// <summary>RECT, CIRC, I, TUBO, PIPE, C, T, L.</summary>
     public string Forma { get; set; } = "RECT";
 
+    /// <summary>
+    /// El <b>material</b> que la propiedad de ETABS o de SAP2000 tiene asignado:
+    /// <c>CONC</c>, <c>A992Fy50</c>, <c>MAMPOSTERIA</c>, lo que sea.
+    /// </summary>
+    /// <remarks>
+    /// Lo devuelve la misma llamada que da las medidas —<c>GetRectangle</c>,
+    /// <c>GetISection</c>, <c>GetWall</c>…— en el parámetro <c>MatProp</c>, y antes se
+    /// tiraba. Es el dato que hacía que la columna MATERIAL de la tabla de secciones
+    /// saliera en blanco en todo menos en los muros de mampostería.
+    /// </remarks>
+    public string Material { get; set; } = string.Empty;
+
     /// <summary>Espesor del patín, en metros. Solo en perfiles I, C y T.</summary>
     /// <remarks>
     /// Hace falta para dibujar el perfil DE VERDAD. Con solo el ancho y el peralte lo
@@ -88,6 +100,49 @@ public sealed class ElementoEtabs
 
     public double LargoM =>
         Math.Sqrt(((X2 - X1) * (X2 - X1)) + ((Y2 - Y1) * (Y2 - Y1)) + ((Z2 - Z1) * (Z2 - Z1)));
+
+    /// <summary>
+    /// Área del paño en m², la de verdad: la del <b>plano del elemento</b>, no su
+    /// proyección en planta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se calcula con el método de Newell: la suma de los productos cruzados de los
+    /// vértices consecutivos da un vector perpendicular al polígono cuya longitud es el
+    /// doble del área. Sirve para las losas y para los muros con la misma fórmula, y eso
+    /// es lo importante: un <b>muro es vertical</b>, así que su proyección en planta es una
+    /// línea de área cero, y la fórmula del área en planta —la de siempre, con las X y las
+    /// Y— daría 0 en los 31 muros del modelo.
+    /// </para>
+    /// <para>
+    /// Vale para cualquier polígono plano, cóncavo incluido, y no depende de en qué orden
+    /// vengan los vértices porque se toma el valor absoluto.
+    /// </para>
+    /// </remarks>
+    public double AreaM2
+    {
+        get
+        {
+            if (Vertices3D.Count < 3)
+            {
+                return 0;
+            }
+
+            double nx = 0, ny = 0, nz = 0;
+
+            for (var i = 0; i < Vertices3D.Count; i++)
+            {
+                var a = Vertices3D[i];
+                var b = Vertices3D[(i + 1) % Vertices3D.Count];
+
+                nx += (a.Y - b.Y) * (a.Z + b.Z);
+                ny += (a.Z - b.Z) * (a.X + b.X);
+                nz += (a.X - b.X) * (a.Y + b.Y);
+            }
+
+            return Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz)) / 2;
+        }
+    }
 
     /// <summary>Descripción corta para mostrar en una cuadrícula.</summary>
     public string Dimensiones =>
