@@ -6,7 +6,13 @@
         Width="1240" Height="760"
         MinWidth="960" MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource WindowBrush}">
+        Background="{DynamicResource WindowBrush}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True"
+        FontFamily="{StaticResource FuenteUI}"
+        FontSize="12.5"
+        Foreground="{DynamicResource TextBrush}">
 
     <!-- Los atajos de siempre. Estaban prometidos en los ToolTip de los botones
          pero no existian: escribir Ctrl+G no hacia nada. -->
@@ -328,8 +334,8 @@
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,9" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
@@ -555,17 +561,17 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="2" Background="{DynamicResource TotalesBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1,0,1,1" Padding="12,7">
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="2"
+                            >
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock x:Name="TotalesText" Grid.Column="0" FontSize="12" FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                            <TextBlock x:Name="TotalesText" Grid.Column="0"
+                                       Style="{StaticResource TextoTotalesStyle}"
+                                       VerticalAlignment="Center" />
 
                             <!-- El boton de dibujar vive aqui, junto a la tabla que
                                  dibuja, y no en una pestaña aparte. -->
@@ -592,9 +598,8 @@
                          Es un azul CLARO a proposito: el dibujo va en tinta oscura
                          sobre concreto claro, asi que un azul fuerte dejaria las
                          varillas y las cotas sin contraste. -->
-                    <Border Grid.Row="3" Background="{StaticResource PreviewFondoBrush}"
-                            BorderBrush="{DynamicResource BrandBrush}"
-                            BorderThickness="1" Margin="0,10,0,0">
+                    <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="3"
+                            >
                         <Grid>
                             <Canvas x:Name="PreviewCanvas"
                                     Background="{StaticResource PreviewFondoBrush}"
@@ -678,8 +683,8 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Las doce familias del manual IMCA en una sola tabla. Elige la familia y la celda Perfil te ofrece SOLO los perfiles de esa familia: la IR trae las W, y la IS, la IC y la S tienen cada una su propia lista. Al elegir un perfil sus medidas se traen solas, y cada familia usa las columnas que necesita y deja las demas en blanco." />
 
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,10"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,9" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -930,10 +935,8 @@
                          el dibujante de AutoCAD. Una vista previa que calcula la forma por
                          su cuenta puede acabar enseñando algo distinto de lo que se
                          dibuja, que es justo lo que no puede hacer. -->
-                    <Border Grid.Row="2" Height="240"
-                            Background="{StaticResource PreviewFondoBrush}"
-                            BorderBrush="{DynamicResource BrandBrush}"
-                            BorderThickness="1" Margin="0,10,0,0">
+                    <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="2" Height="240"
+                            >
                         <Grid>
                             <Canvas x:Name="AceroPreviewCanvas"
                                     Background="{StaticResource PreviewFondoBrush}"
@@ -945,17 +948,17 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="3" Background="{DynamicResource TotalesBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1,0,1,1" Padding="12,7">
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="3"
+                            >
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock x:Name="TotalesAceroText" Grid.Column="0" FontSize="12" FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                            <TextBlock x:Name="TotalesAceroText" Grid.Column="0"
+                                       Style="{StaticResource TextoTotalesStyle}"
+                                       VerticalAlignment="Center" />
 
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
                                 <CheckBox x:Name="RedibujarAceroChk" VerticalAlignment="Center"
@@ -988,8 +991,8 @@
                         <!-- EL ESTILO DE DIBUJO ES DEL JUEGO ENTERO, igual que en las
                              aisladas: son los MISMOS botones de la hoja de concreto,
                              atados por ElementName. La celda B3 de tus macros. -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,9" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
@@ -1019,8 +1022,8 @@
                              MISMO criterio que el gancho de arranque del dado en las aisladas.
                              Por eso se lee de la MISMA casilla: media obra a 15 diametros y la
                              otra media a 40 no es un plano, es un error de armado. -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,9" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Doblez del acero del muro:" FontWeight="SemiBold" FontSize="12"
@@ -1278,10 +1281,8 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="2" Margin="0,10,0,0"
-                            Background="{StaticResource PreviewFondoBrush}"
-                            BorderBrush="{DynamicResource BrandBrush}"
-                            BorderThickness="1">
+                    <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="2"
+                            >
                         <Grid>
                             <Canvas x:Name="ZapataCorridaPreviewCanvas"
                                     Background="{StaticResource PreviewFondoBrush}"
@@ -1293,11 +1294,9 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="3" Background="{DynamicResource TotalesBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1,0,1,1" Padding="12,7">
-                        <TextBlock x:Name="TotalesZapatasCorridasText" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource BrandDarkBrush}" />
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="3"
+                            >
+                        <TextBlock x:Name="TotalesZapatasCorridasText" Style="{StaticResource TextoTotalesStyle}" />
                     </Border>
                 </Grid>
             </TabItem>
@@ -1331,8 +1330,8 @@
                              con un enlace por ElementName, asi que el tipo de seccion es UNA
                              decision para el juego entero y no puede quedar la mitad del plano
                              relleno y la otra mitad no. Por eso no va como columna de la tabla. -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,9" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
@@ -1364,8 +1363,8 @@
                              Va arriba y no como columna de la tabla por lo mismo que el estilo de
                              seccion: es una decision del juego entero. Media pata a 15 diametros y
                              la otra media a 40 no es un plano, es un error de armado. -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,9" Margin="0,0,0,8"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,9" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Doblez del gancho de arranque:" FontWeight="SemiBold" FontSize="12"
@@ -1717,10 +1716,8 @@
 
                          La geometria sale de TrazoZapata, que es la misma clase que va a
                          usar el dibujante de AutoCAD. -->
-                    <Border Grid.Row="2" Margin="0,10,0,0"
-                            Background="{StaticResource PreviewFondoBrush}"
-                            BorderBrush="{DynamicResource BrandBrush}"
-                            BorderThickness="1">
+                    <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="2"
+                            >
                         <Grid>
                             <Canvas x:Name="ZapataPreviewCanvas"
                                     Background="{StaticResource PreviewFondoBrush}"
@@ -1732,11 +1729,9 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="3" Background="{DynamicResource TotalesBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1,0,1,1" Padding="12,7">
-                        <TextBlock x:Name="TotalesZapatasText" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource BrandDarkBrush}" />
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="3"
+                            >
+                        <TextBlock x:Name="TotalesZapatasText" Style="{StaticResource TextoTotalesStyle}" />
                     </Border>
                 </Grid>
             </TabItem>
@@ -1747,8 +1742,8 @@
                     <TextBlock Text="Muros de contencion" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Seccion del muro, talon, punta y su armado." />
-                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                    <Border Style="{StaticResource TarjetaStyle}"
+                            Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
@@ -1761,8 +1756,8 @@
                     <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Placa, anclas, atiesadores y su detalle de montaje." />
-                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                    <Border Style="{StaticResource TarjetaStyle}"
+                            Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
@@ -1775,8 +1770,8 @@
                     <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}" />
                     <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                Text="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
-                    <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1" CornerRadius="4" Padding="16" MaxWidth="700" HorizontalAlignment="Left">
+                    <Border Style="{StaticResource TarjetaStyle}"
+                            Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
                                    Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
                     </Border>
@@ -1791,8 +1786,8 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
 
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="16"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="16"
                                 MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,16">
                             <StackPanel>
                                 <TextBlock Text="Antes de conectar" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" />
@@ -1826,8 +1821,8 @@
                                    Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
 
                         <!-- Filtros por tipo de elemento, comunes a las dos vistas -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,8"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,8" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
@@ -1999,8 +1994,8 @@
                         </StackPanel>
 
                         <!-- Los mismos filtros por tipo de elemento que el visor 3D -->
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,0,0,10"
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,8" Margin="0,0,0,10"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
@@ -2054,8 +2049,8 @@
                         <TextBlock Style="{StaticResource ModuleSubtitleStyle}"
                                    Text="Informacion que soporte puede pedirte para resolver cualquier problema de activacion." />
 
-                        <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="4" Padding="16" Margin="0,0,0,16">
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="16" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="190" />

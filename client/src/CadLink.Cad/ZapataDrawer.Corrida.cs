@@ -338,9 +338,19 @@ public sealed partial class ZapataDrawer
         var xCadDer = a.XMuroDer;
         var hayCadena = false;
 
+        TrazoZapataCorrida.Muro? muroConcreto = null;
+        TrazoZapataCorrida.EjesAcero ejesMuro = default;
+        TrazoZapataCorrida.Enrase? enrase = null;
+
         if (z.MuroEsConcreto)
         {
-            MuroDeConcreto(z, a, lindero, rec, hayCt ? yCtTop : a.YZapTop, r);
+            var hecho = MuroDeConcreto(z, a, lindero, rec, hayCt ? yCtTop : a.YZapTop, r);
+
+            if (hecho is not null)
+            {
+                muroConcreto = hecho.Value.Muro;
+                ejesMuro = hecho.Value.Ejes;
+            }
         }
         else
         {
@@ -374,7 +384,8 @@ public sealed partial class ZapataDrawer
                 yCadenaBot = a.YTerreno - TrazoZapataCorrida.CadenaAltoPorOmision;
             }
 
-            MuroDeEnrase(z, a, hayCt ? yCtTop : a.YZapTop, yCadenaBot, xCadIzq, xCadDer, r);
+            enrase = MuroDeEnrase(
+                z, a, hayCt ? yCtTop : a.YZapTop, yCadenaBot, xCadIzq, xCadDer, r);
         }
 
         // ---------- Se inserta el bloque de la zapata ----------
@@ -405,6 +416,51 @@ public sealed partial class ZapataDrawer
 
         Mtexto(xNivel, yNivel, TextoNivelTerreno,
             TrazoZapataCorrida.AltoTextoNivel, CapaRotulos, conFondo: true);
+
+        // ---------- LOS RÓTULOS DE LAS PARRILLAS, CON SUS LEADERS ----------
+        //
+        // Son los MISMOS que las aisladas: las cuatro macros arman el texto igual —«VAR #4 @ 15 cm
+        // / AMBOS SENTIDOS» cuando las dos varillas coinciden, y dos renglones de SUPERIOR e
+        // INFERIOR cuando no— y los cuelgan de las mismas distancias. Por eso se llaman las
+        // rutinas que ya estaban y no se escriben otras: un rótulo con dos versiones acaba con dos
+        // planos distintos.
+        RotuloParrillaInferior(xBase, a.YZapBot, ancho, rec,
+            z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);
+
+        if (z.DobleParrilla && Diam(z.VarSup) > 0)
+        {
+            if (lindero)
+            {
+                RotuloParrillaSuperiorLindero(xBase, a.YZapBot, ancho, z.EspesorM, rec,
+                    z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans);
+            }
+            else
+            {
+                RotuloParrillaSuperiorCentral(xBase, a.YZapBot, ancho, z.EspesorM, rec,
+                    z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans);
+            }
+        }
+
+        // ---------- LOS RÓTULOS PROPIOS DE ESTA HOJA ----------
+        if (hayCt)
+        {
+            RotuloDeLaContratrabe(z, a, lindero, xCtIzq, xCtDer, a.YZapBot, yCtTop);
+        }
+
+        if (enrase is not null && enrase.Value.Piezas > 0)
+        {
+            RotuloDelEnrase(a, lindero, enrase.Value);
+        }
+
+        if (hayCadena)
+        {
+            RotuloDeLaCadena(z, a, lindero, xCadIzq, xCadDer, yCadenaBot);
+        }
+
+        if (muroConcreto is not null)
+        {
+            RotuloDelMuroDeConcreto(z, a, lindero, muroConcreto.Value, ejesMuro);
+        }
 
         // ---------- Las cotas y el rótulo ----------
         CotasDeLaCorrida(z, a, hayCt, xCtIzq, xCtDer, lindero, r);
@@ -470,7 +526,7 @@ public sealed partial class ZapataDrawer
     /// dibuja dentro de un bloque, y el orden de dibujo no viaja con el bloque; el de creación sí.
     /// </para>
     /// </remarks>
-    private void MuroDeEnrase(
+    private TrazoZapataCorrida.Enrase? MuroDeEnrase(
         ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a,
         double yBase, double yTope, double xCadIzq, double xCadDer, ResumenCorrida r)
     {
@@ -495,7 +551,7 @@ public sealed partial class ZapataDrawer
                      + "dibujar el muro de enrase.");
             }
 
-            return;
+            return null;
         }
 
         var contornos = new List<object>();
@@ -556,6 +612,8 @@ public sealed partial class ZapataDrawer
         {
             AlFrente(_cont, contornos);
         }
+
+        return e;
     }
 
     // ======================================================================
@@ -574,7 +632,7 @@ public sealed partial class ZapataDrawer
     /// diferencia la resuelve <see cref="TrazoZapataCorrida"/>, no este método.
     /// </para>
     /// </remarks>
-    private void MuroDeConcreto(
+    private (TrazoZapataCorrida.Muro Muro, TrazoZapataCorrida.EjesAcero Ejes)? MuroDeConcreto(
         ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a, bool lindero,
         double rec, double yContratrabeTop, ResumenCorrida r)
     {
@@ -586,7 +644,7 @@ public sealed partial class ZapataDrawer
         {
             Nota($"Zapata corrida '{z.Id}': el muro de concreto sale de altura cero o negativa "
                  + "—la contratrabe llega al nivel de terreno—, así que no se dibujó.");
-            return;
+            return null;
         }
 
         var ancho = m.XDer - m.XIzq;
@@ -613,7 +671,7 @@ public sealed partial class ZapataDrawer
         {
             Nota($"Zapata corrida '{z.Id}': el muro de concreto no tiene varilla capturada, así "
                  + "que sale sin acero.");
-            return;
+            return (m, TrazoZapataCorrida.EjesDelAcero(m, z.MuroDobleParrilla));
         }
 
         var capa = CapaVar(z.VarMuro);
@@ -650,7 +708,7 @@ public sealed partial class ZapataDrawer
         {
             Nota($"Zapata corrida '{z.Id}': sin la varilla de la parrilla inferior no se puede "
                  + "colocar el arranque del muro, así que no lleva patas.");
-            return;
+            return (m, ejes);
         }
 
         if (diamInfT <= 0)
@@ -691,6 +749,8 @@ public sealed partial class ZapataDrawer
                 (xIzq + xDer) / 2, b.YEsquina + (diamMuro / 2) + offset,
                 vertical: false, dentro: false);
         }
+
+        return (m, ejes);
     }
 
     /// <summary>
@@ -839,6 +899,239 @@ public sealed partial class ZapataDrawer
     // ======================================================================
     // La anotación
     // ======================================================================
+
+    // ======================================================================
+    // LOS RÓTULOS CON LEADER DE ESTA HOJA
+    // ======================================================================
+    //
+    // Los cuatro que las macros de corrida tienen y las de aislada no: el muro de enrase, la
+    // contratrabe, la cadena de desplante y el muro de concreto. Cada uno con las distancias de
+    // SU macro, que no son las mismas en la central y en la de lindero: en la central los rótulos
+    // salen hacia la izquierda del eje —hay sitio, la fila crece a la derecha— y en la de lindero
+    // se cuelgan del paño del muro, porque a su derecha está el lindero y a su izquierda va la
+    // siguiente zapata.
+
+    /// <summary>Anchos de renglón de cada rótulo, en metros. Los de las macros.</summary>
+    private const double AnchoRotuloEnrase = 0.26;          // ANCHO_MTEXT_ENRASE
+    private const double AnchoRotuloContratrabe = 0.23;     // anchoCT
+    private const double AnchoRotuloCadena = 0.32;          // anchoCad
+    private const double AnchoRotuloMuroCentral = 0.32;     // ANCHO_MTEXT_MURO_CONC
+    private const double AnchoRotuloMuroLindero = 0.25;     // anchoMTextMuro del lindero
+
+    /// <summary>Texto del rótulo del muro de enrase, palabra por palabra.</summary>
+    private const string TextoRotuloEnrase = "MURO DE ENRASE DE BLOCK DE CEMENTO";
+
+    /// <summary>
+    /// El rótulo del <b>muro de enrase</b>, con su leader al centro de la hilada.
+    /// </summary>
+    /// <remarks>
+    /// La central lo saca por la <b>derecha</b> de la hilada, a 10 cm, y el lindero por la
+    /// <b>izquierda</b>, a 30 cm: en el lindero la hilada está pegada al paño derecho de la zapata
+    /// y por ese lado no hay dónde poner un renglón.
+    /// </remarks>
+    private void RotuloDelEnrase(
+        TrazoZapataCorrida.Acomodo a, bool lindero, TrazoZapataCorrida.Enrase e)
+    {
+        var yTop = e.YBases[^1] + e.AltoPieza;
+        var yBot = e.YBases[0];
+
+        var xCentro = e.XIzq + (e.Ancho / 2);
+        var yCentro = (yBot + yTop) / 2;
+
+        var yTexto = yTop - 0.08;
+
+        if (lindero)
+        {
+            var xTexto = e.XIzq - 0.3;
+
+            var mt = MtextoAncho(xTexto, yTexto, TextoRotuloEnrase, AnchoRotuloEnrase,
+                AnclajeCentro);
+
+            // El leader sale del borde DERECHO del rótulo, que es el lado que mira al muro.
+            var caja = Caja(mt);
+
+            Leader(xCentro, yCentro,
+                caja?.X2 ?? xTexto,
+                caja is null ? yTexto : (caja.Value.Y1 + caja.Value.Y2) / 2);
+
+            return;
+        }
+
+        var xTextoCentral = e.XIzq + e.Ancho + 0.1;
+
+        MtextoAncho(xTextoCentral, yTexto, TextoRotuloEnrase, AnchoRotuloEnrase, AnclajeIzquierda);
+
+        Leader(xCentro, yCentro, xTextoCentral, yTexto);
+    }
+
+    /// <summary>El rótulo de la <b>contratrabe</b>, con su leader.</summary>
+    /// <remarks>
+    /// Central: <c>xCentro − 0.62</c> y 30 cm por encima del centro de la contratrabe, con la
+    /// punta en su centro. Lindero: <c>xCentroMuro − 0.75</c> y 14 cm por encima de su lomo, con la
+    /// punta 4 cm por debajo del lomo —así la flecha entra en la contratrabe y no en el muro—.
+    /// </remarks>
+    private void RotuloDeLaContratrabe(
+        ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a, bool lindero,
+        double xCtIzq, double xCtDer, double yCtBot, double yCtTop)
+    {
+        var texto = $"CONTRATRABE \"{(z.IdContratrabe ?? string.Empty).Trim()}\"";
+
+        var xCentroCt = (xCtIzq + xCtDer) / 2;
+        var yCentroCt = (yCtBot + yCtTop) / 2;
+
+        var xTexto = lindero
+            ? a.XCentroMuro - 0.75
+            : a.XCentro - 0.62;
+
+        var yTexto = lindero
+            ? yCtTop + 0.14
+            : yCentroCt + 0.3;
+
+        // El anclaje va a la DERECHA del renglón —crece hacia la izquierda—, así que el punto de
+        // inserción es el borde derecho: xTexto + su ancho.
+        var xIns = xTexto + AnchoRotuloContratrabe;
+
+        MtextoAncho(xIns, yTexto, texto, AnchoRotuloContratrabe, AnclajeDerecha);
+
+        var yPunta = lindero ? yCtTop - 0.04 : yCentroCt;
+
+        Leader(xCentroCt, yPunta, xIns, yTexto);
+    }
+
+    /// <summary>El rótulo de la <b>cadena de desplante</b>, con su leader.</summary>
+    private void RotuloDeLaCadena(
+        ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a, bool lindero,
+        double xCadIzq, double xCadDer, double yCadBot)
+    {
+        var texto = $"CADENA DE DESPLANTE \"{(z.IdCadena ?? string.Empty).Trim()}\"";
+
+        var xCentroCad = (xCadIzq + xCadDer) / 2;
+        var yCentroCad = (yCadBot + a.YTerreno) / 2;
+
+        var xTexto = lindero
+            ? a.XCentroMuro - 0.85
+            : a.XCentro - 0.78;
+
+        var xIns = xTexto + AnchoRotuloCadena;
+
+        MtextoAncho(xIns, yCentroCad, texto, AnchoRotuloCadena, AnclajeDerecha);
+
+        Leader(xCentroCad, yCentroCad, xIns, yCentroCad);
+    }
+
+    /// <summary>
+    /// El rótulo del <b>muro de concreto</b>: cuatro renglones con su espesor y su armado.
+    /// </summary>
+    /// <remarks>
+    /// El texto es el de las macros, con sus abreviaturas y su punto final: <c>HORIZ.</c> y
+    /// <c>VERT.</c>, y el último renglón dice si el acero va en los dos paños o al centro. La
+    /// punta del leader se pega a la <b>varilla</b> —la del paño derecho si hay dos— a un 55 % de
+    /// la altura del muro, que es donde no choca con los círculos.
+    /// </remarks>
+    private void RotuloDelMuroDeConcreto(
+        ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a, bool lindero,
+        TrazoZapataCorrida.Muro m, TrazoZapataCorrida.EjesAcero ejes)
+    {
+        var espesorCm = (m.XDer - m.XIzq) * 100;
+
+        var texto =
+            $"MURO DE CONCRETO e={espesorCm:0.#} cm\n"
+            + $"VAR {Etiqueta(z.VarMuro)} @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.\n"
+            + $"Y @ {SepTexto(z.SepMuroVert)} cm VERT.\n"
+            + (ejes.Doble ? "DOBLE PARRILLA" : "PARRILLA AL CENTRO");
+
+        var xTexto = lindero
+            ? m.XIzq - 0.27
+            : m.XDer + 0.12 - 0.05;
+
+        var yTexto = a.YTerreno - 0.1;
+
+        var ancho = lindero ? AnchoRotuloMuroLindero : AnchoRotuloMuroCentral;
+        var anclaje = lindero ? AnclajeCentro : AnclajeIzquierda;
+
+        MtextoAncho(xTexto, yTexto, texto, ancho, anclaje);
+
+        var xPunta = ejes.Doble ? ejes.X2 : ejes.X1;
+        var yPunta = m.YBase + ((m.YTope - m.YBase) * 0.55);
+
+        Leader(xPunta, yPunta, xTexto, yTexto);
+    }
+
+    /// <summary>
+    /// Un <b>MText con ancho de renglón</b>, para los rótulos que se parten en varias líneas.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Mtexto"/> pone <c>Width = 0</c>, que es lo que hace falta para un rótulo de una
+    /// línea: así no se corta nunca. Pero los cuatro rótulos de esta hoja llevan ancho en las
+    /// macros —<c>MURO DE ENRASE DE BLOCK DE CEMENTO</c> en 26 cm son tres renglones— y sin él
+    /// saldrían en una tira larguísima que cruza la zapata de al lado.
+    /// </remarks>
+    private object? MtextoAncho(
+        double x, double y, string texto, double ancho, int anclaje)
+    {
+        if (string.IsNullOrWhiteSpace(texto) || ancho <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return AcadConnection.Retry<object?>(() =>
+            {
+                dynamic mt = _cont.AddMText(new[] { x, y, 0d }, ancho, texto);
+                mt.Layer = CapaRotulos;
+                mt.Height = AltoMtexto;
+
+                try
+                {
+                    mt.Width = ancho;
+                    mt.AttachmentPoint = anclaje;
+                    mt.InsertionPoint = new[] { x, y, 0d };
+                }
+                catch (Exception)
+                {
+                    // Sin anclaje el rótulo queda corrido, pero está.
+                }
+
+                try
+                {
+                    // La máscara de fondo es lo que evita que el hatch del terreno se lea por
+                    // detrás de las letras. Es el ConfigurarFondoMText de las macros.
+                    mt.BackgroundFill = true;
+                    mt.BackgroundScaleFactor = 1.15;
+                    mt.UseBackgroundColor = true;
+                    mt.BackgroundColor = 7;
+                }
+                catch (Exception)
+                {
+                    // Presentación: si no se puede, el texto queda igual.
+                }
+
+                mt.Update();
+
+                return (object?)mt;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Rótulo de la zapata corrida", ex);
+            return null;
+        }
+    }
+
+    /// <summary>La separación tal como la escriben las macros en el rótulo: sin decimales de más.</summary>
+    /// <remarks>
+    /// Port de <c>LimpiarSeparacion</c>: de la celda sale el número y se escribe entero cuando lo
+    /// es —«20», no «20.0»—, porque es lo que dice el plano.
+    /// </remarks>
+    private static string SepTexto(string? celda)
+    {
+        var m = TrazoZapata.SeparacionM(celda, 0) * 100;
+
+        return m <= 0
+            ? (celda ?? string.Empty).Trim()
+            : m.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     /// <summary>El texto de la plantilla, centrado en su franja.</summary>
     /// <remarks>

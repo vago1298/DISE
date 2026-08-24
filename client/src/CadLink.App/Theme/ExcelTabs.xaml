@@ -9,13 +9,29 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework">
 
+    <!-- ===================== Tipografia y medidas =====================
+         El rediseno empieza aqui: antes cada estilo llevaba su tamano y su radio
+         escritos a mano, asi que la ventana tenia botones de radio 3, pestanas de
+         radio 4 y tarjetas de radio 4, con seis tamanos de letra sin relacion entre
+         si. Con la escala en un solo sitio, todo el programa respira igual.
+
+         La fuente es la de Windows 11 con la de siempre como respaldo: si el equipo
+         no tiene la Variable, cae en Segoe UI y no en la fuente por omision de WPF,
+         que es de los noventa. -->
+    <FontFamily x:Key="FuenteUI">Segoe UI Variable Text, Segoe UI, Segoe UI Emoji</FontFamily>
+
+    <CornerRadius x:Key="RadioChico">4</CornerRadius>
+    <CornerRadius x:Key="RadioBoton">6</CornerRadius>
+    <CornerRadius x:Key="RadioTarjeta">8</CornerRadius>
+    <CornerRadius x:Key="RadioPestana">7,7,0,0</CornerRadius>
+
     <!-- ===================== Paleta ===================== -->
-    <Color x:Key="BrandDarkColor">#FF0B3D6B</Color>
-    <Color x:Key="BrandColor">#FF1776BF</Color>
+    <Color x:Key="BrandDarkColor">#FF0A2F4C</Color>
+    <Color x:Key="BrandColor">#FF15679F</Color>
 
     <SolidColorBrush x:Key="BrandDarkBrush" Color="{StaticResource BrandDarkColor}" />
     <SolidColorBrush x:Key="BrandBrush" Color="{StaticResource BrandColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#FFFFC72C" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FFF2A32C" />
 
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF" />
 
@@ -23,15 +39,15 @@
          concreto claro, asi que un azul fuerte dejaria las varillas, las cotas y
          el rayado del concreto sin contraste. -->
     <SolidColorBrush x:Key="PreviewFondoBrush" Color="#FFE8F1FA" />
-    <SolidColorBrush x:Key="TabStripBrush" Color="#FFE9EDF1" />
-    <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF3F5F7" />
-    <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE1E7EC" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#FFC9D2DA" />
-    <SolidColorBrush x:Key="TextBrush" Color="#FF1F2933" />
-    <SolidColorBrush x:Key="MutedTextBrush" Color="#FF6B7A88" />
+    <SolidColorBrush x:Key="TabStripBrush" Color="#FFE8EEF5" />
+    <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF5F8FB" />
+    <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE0E8F1" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#FFD7DFE9" />
+    <SolidColorBrush x:Key="TextBrush" Color="#FF11202D" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#FF64748B" />
     <SolidColorBrush x:Key="DangerBrush" Color="#FFC0392B" />
-    <SolidColorBrush x:Key="WarningBrush" Color="#FFB8860B" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="#FF1E7E34" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFB07908" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF1B7A33" />
 
     <!-- ===================== Paleta, segunda parte =====================
          Estas brochas se anadieron al montar el tema oscuro. Antes cada uno de
@@ -44,28 +60,38 @@
          diccionario. Ver Tema.cs, que explica por que. -->
 
     <!-- Fondo de la ventana -->
-    <SolidColorBrush x:Key="WindowBrush" Color="#FFF7F9FB" />
+    <SolidColorBrush x:Key="WindowBrush" Color="#FFF2F5F9" />
 
     <!-- Tarjetas: las cabeceras de cada hoja -->
-    <SolidColorBrush x:Key="CardBrush" Color="#FFF3F6F9" />
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFAFCFE" />
 
     <!-- Barra de totales, debajo de la cuadricula -->
-    <SolidColorBrush x:Key="TotalesBrush" Color="#FFEDF3F8" />
+    <SolidColorBrush x:Key="TotalesBrush" Color="#FFEEF3F9" />
 
     <!-- Cuadricula: filas, alternas y lineas -->
     <SolidColorBrush x:Key="GridRowBrush" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="GridAltRowBrush" Color="#FFF8FAFB" />
-    <SolidColorBrush x:Key="GridLineBrush" Color="#FFE3E8ED" />
-    <SolidColorBrush x:Key="HeaderBrush" Color="#FFD6DEE6" />
+    <SolidColorBrush x:Key="GridAltRowBrush" Color="#FFF8FBFD" />
+    <SolidColorBrush x:Key="GridLineBrush" Color="#FFE6EDF4" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#FFE5ECF4" />
 
     <!-- Aviso amarillo de la barra de notificaciones -->
-    <SolidColorBrush x:Key="NoticeFondoBrush" Color="#FFFFF4CE" />
-    <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE0C36A" />
+    <SolidColorBrush x:Key="NoticeFondoBrush" Color="#FFFFF6DC" />
+    <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE6C97A" />
     <SolidColorBrush x:Key="NoticeTextoBrush" Color="#FF7A5B00" />
 
+    <!-- ===== Seleccion, foco y sombra =====
+         Tres brochas del rediseno. Antes la fila seleccionada se pintaba con el azul
+         del sistema -que no es el azul del programa- y no habia ni foco ni sombra:
+         todo era plano y con el mismo borde gris.
+         Van en la paleta y no escritas en el estilo por lo mismo que las demas: el
+         tema oscuro tiene que poder cambiarlas. Ver Tema.cs. -->
+    <SolidColorBrush x:Key="SelectionBrush" Color="#FFD6E8F7" />
+    <SolidColorBrush x:Key="FocoBrush" Color="#FF15679F" />
+    <SolidColorBrush x:Key="SombraBrush" Color="#FF0A2F4C" />
+
     <!-- Botones -->
-    <SolidColorBrush x:Key="DisabledTextBrush" Color="#FFB6C2CC" />
-    <SolidColorBrush x:Key="ToolbarPressedBrush" Color="#FFD2DAE1" />
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="#FFA7B3C0" />
+    <SolidColorBrush x:Key="ToolbarPressedBrush" Color="#FFD5DFEA" />
 
     <!-- ===================== Colores de celda =====================
          Sacados a brochas por lo mismo: en tema oscuro estos nueve pasteles
@@ -117,6 +143,34 @@
          texto NEGRO por omisión de Windows, así que en tema oscuro desaparecían
          sobre el fondo. Con la ventana clara no se notaba porque el negro es el
          color que tocaba. Van sin x:Key para que apliquen a todos. -->
+    <Style TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="5,3" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource BrandBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource FocoBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource WindowBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
     <Style TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
@@ -133,10 +187,12 @@
     <!-- ===================== Pestaña individual ===================== -->
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Padding" Value="14,7" />
-        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="Padding" Value="17,9" />
+        <Setter Property="Margin" Value="0,0,3,0" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
@@ -148,7 +204,7 @@
                                 Background="{DynamicResource TabInactiveBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1,1,1,0"
-                                CornerRadius="4,4,0,0">
+                                CornerRadius="{StaticResource RadioPestana}">
                             <ContentPresenter x:Name="Label"
                                               ContentSource="Header"
                                               Margin="{TemplateBinding Padding}"
@@ -163,13 +219,19 @@
                                 Height="3"
                                 VerticalAlignment="Top"
                                 Background="{DynamicResource BrandBrush}"
-                                CornerRadius="4,4,0,0"
+                                CornerRadius="{StaticResource RadioPestana}"
                                 Visibility="Collapsed" />
                     </Grid>
 
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                            <Setter TargetName="Bg" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="6" ShadowDepth="0"
+                                                      Opacity="0.16" Color="#FF0A2F4C" />
+                                </Setter.Value>
+                            </Setter>
                             <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                             <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
@@ -235,7 +297,7 @@
                              es un problema: la pestaña activa ya se distingue por su fondo
                              blanco, su barra de acento y su texto en negrita.
                              ============================================================== -->
-                        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}" Padding="6,4,6,0">
+                        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}" Padding="10,7,10,0">
                             <WrapPanel IsItemsHost="True" Orientation="Horizontal" />
                         </Border>
 
@@ -255,42 +317,106 @@
 
     <!-- ===================== Estilos auxiliares ===================== -->
     <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="17" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="19" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
-        <Setter Property="Margin" Value="0,0,0,3" />
+        <Setter Property="Margin" Value="0,2,0,2" />
     </Style>
 
+    <!-- El subtitulo explica la hoja, asi que se lee de verdad: se le puso
+         interlineado y un ancho maximo. Un parrafo de 1800 px de ancho no se lee,
+         se salta. -->
     <Style x:Key="ModuleSubtitleStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
-        <Setter Property="Margin" Value="0,0,0,14" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="MaxWidth" Value="1120" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
+    <!-- ===================== Botones =====================
+         El PRIMARIO es el que dibuja: fondo de marca, sombra baja para que se
+         levante del fondo y radio de 6. El SECUNDARIO ya no es un boton gris
+         solido -competia con el primario y la hoja acababa con dos botones
+         igual de fuertes-: ahora es de CONTORNO, que es lo que se espera de una
+         accion que no es la principal.
+
+         Los dos crecen a 32 px de alto minimo: es la altura comoda para el raton
+         y la que hace que la fila de botones se lea como una sola pieza. -->
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource BrandBrush}" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="Padding" Value="16,8" />
         <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd"
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="3"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid>
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect x:Name="Sombra" BlurRadius="8" ShadowDepth="1"
+                                                  Direction="270" Opacity="0.20"
+                                                  Color="#FF0A2F4C" />
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextBlock.FontWeight="{TemplateBinding FontWeight}" />
+                        </Border>
+
+                        <!-- Anillo de FOCO por teclado. Sin esto, quien navega con
+                             Tab no sabe en que boton esta. -->
+                        <Border x:Name="Foco"
+                                BorderBrush="{DynamicResource FocoBrush}"
+                                BorderThickness="2"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Margin="-3"
+                                Visibility="Collapsed" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandDarkBrush}" />
                         </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandDarkBrush}" />
+                            <Setter TargetName="Bd" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="0" ShadowDepth="0" Opacity="0" />
+                                </Setter.Value>
+                            </Setter>
+                            <Setter TargetName="Bd" Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="1" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Foco" Property="Visibility" Value="Visible" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DisabledTextBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                            <Setter Property="Cursor" Value="No" />
+                            <Setter TargetName="Bd" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="0" ShadowDepth="0" Opacity="0" />
+                                </Setter.Value>
+                            </Setter>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -298,8 +424,54 @@
         </Setter>
     </Style>
 
-    <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-        <Setter Property="Background" Value="{DynamicResource MutedTextBrush}" />
+    <!-- El de CONTORNO: la accion de apoyo -revisar, comprobar- con el mismo
+         tamano que el primario pero sin peso visual. -->
+    <Style x:Key="SecondaryButtonStyle" TargetType="Button"
+           BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <Border x:Name="Foco"
+                                BorderBrush="{DynamicResource FocoBrush}"
+                                BorderThickness="2"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Margin="-3"
+                                Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BrandBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarPressedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Foco" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource WindowBrush}" />
+                            <Setter Property="Cursor" Value="No" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Celda con lista desplegable, como la validación de datos de Excel.
@@ -332,7 +504,19 @@
         <Setter Property="RowBackground" Value="{DynamicResource GridRowBrush}" />
         <Setter Property="AlternatingRowBackground" Value="{DynamicResource GridAltRowBrush}" />
         <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12" />
+
+        <!-- Aire dentro de la cuadricula: 26 px de fila y 32 de encabezado. Con las
+             filas apretadas de antes, veinte renglones de captura se leian como un
+             muro de numeros. -->
+        <Setter Property="RowHeight" Value="26" />
+        <Setter Property="ColumnHeaderHeight" Value="32" />
+        <Setter Property="RowHeaderWidth" Value="22" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <!-- ==================================================================
@@ -354,7 +538,20 @@
     <Style x:Key="CeldaBase" TargetType="DataGridCell"
            BasedOn="{StaticResource {x:Type DataGridCell}}">
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+
+        <!-- LA SELECCION, CON EL AZUL DEL PROGRAMA.
+             Antes la pintaba Windows con su azul de sistema, que tapaba el color del
+             grupo de columnas y dejaba el texto en blanco sobre un fondo que no es de
+             aqui. Ahora es un azul claro de la propia paleta: se ve que la fila esta
+             elegida y se sigue leyendo el dato. -->
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Identificacion: que elemento es y como se llama su bloque -->
@@ -498,13 +695,46 @@
     <Style x:Key="EncabezadoHojaStyle" TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="Padding" Value="6,6" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="Padding" Value="8,7" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridColumnHeader">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="0,0,1,0">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+
+                        <!-- La LINEA DE MARCA que cierra la cabecera por abajo. Es
+                             lo que separa de un golpe de vista los titulos de los
+                             datos: antes la cabecera y la primera fila se tocaban
+                             con la misma linea gris que el resto de la cuadricula. -->
+                        <Border Height="2" VerticalAlignment="Bottom"
+                                Background="{DynamicResource BrandBrush}"
+                                Opacity="0.55" />
+
+                        <Thumb x:Name="PART_RightHeaderGripper"
+                               HorizontalAlignment="Right"
+                               Width="6" Cursor="SizeWE" Opacity="0">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="Thumb">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ==================================================================
@@ -519,8 +749,9 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Padding" Value="11,6" />
         <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -528,7 +759,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="3"
+                            CornerRadius="{StaticResource RadioChico}"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -555,6 +786,64 @@
            BasedOn="{StaticResource ToolbarButtonStyle}">
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- ==================================================================
+         LAS TRES PIEZAS DEL REDISENO QUE ANTES SE ESCRIBIAN A MANO
+         ==================================================================
+         Las tarjetas de cabecera, el marco de la vista previa y la barra de
+         totales estaban puestos Border por Border en cada hoja, con su fondo,
+         su borde y su radio repetidos DOCENAS de veces y no siempre iguales:
+         habia tarjetas de radio 4 y de radio 0, y marcos de previa con borde
+         azul de 1 px pegado al dibujo.
+
+         Ahora son tres estilos. Cambiar el aire de todas las hojas es cambiar
+         estos tres sitios, y ninguna hoja se puede quedar descolgada. -->
+
+    <!-- Tarjeta: la caja donde vive cada grupo de ajustes de una hoja -->
+    <Style x:Key="TarjetaStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadioTarjeta}" />
+        <Setter Property="Padding" Value="14,11" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Marco de la vista previa: el dibujo va sobre papel claro, con el marco
+         redondeado y sin el borde de color, que competia con las cotas. -->
+    <Style x:Key="MarcoPreviaStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource PreviewFondoBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadioTarjeta}" />
+        <Setter Property="Margin" Value="0,10,0,0" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="1" Direction="270"
+                                  Opacity="0.10" Color="#FF0A2F4C" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Barra de totales: cierra la cuadricula por abajo -->
+    <Style x:Key="BarraTotalesStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource TotalesBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1,0,1,1" />
+        <Setter Property="CornerRadius" Value="0,0,6,6" />
+        <Setter Property="Padding" Value="13,8" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- El texto de la barra de totales -->
+    <Style x:Key="TextoTotalesStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
     </Style>
 
     <!-- Separador vertical de la barra, para agrupar acciones -->

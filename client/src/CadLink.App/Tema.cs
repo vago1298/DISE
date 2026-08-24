@@ -55,38 +55,41 @@ public static class Tema
     /// </remarks>
     private static readonly Dictionary<string, string> Claro = new()
     {
-        ["WindowBrush"] = "#FFF7F9FB",
+        ["WindowBrush"] = "#FFF2F5F9",
         ["SurfaceBrush"] = "#FFFFFFFF",
-        ["CardBrush"] = "#FFF3F6F9",
-        ["TotalesBrush"] = "#FFEDF3F8",
+        ["CardBrush"] = "#FFFAFCFE",
+        ["TotalesBrush"] = "#FFEEF3F9",
 
-        ["TabStripBrush"] = "#FFE9EDF1",
-        ["TabInactiveBrush"] = "#FFF3F5F7",
-        ["TabHoverBrush"] = "#FFE1E7EC",
+        ["TabStripBrush"] = "#FFE8EEF5",
+        ["TabInactiveBrush"] = "#FFF5F8FB",
+        ["TabHoverBrush"] = "#FFE0E8F1",
 
-        ["BorderBrush"] = "#FFC9D2DA",
-        ["TextBrush"] = "#FF1F2933",
-        ["MutedTextBrush"] = "#FF6B7A88",
-        ["DisabledTextBrush"] = "#FFB6C2CC",
-        ["ToolbarPressedBrush"] = "#FFD2DAE1",
+        ["BorderBrush"] = "#FFD7DFE9",
+        ["TextBrush"] = "#FF11202D",
+        ["MutedTextBrush"] = "#FF64748B",
+        ["DisabledTextBrush"] = "#FFA7B3C0",
+        ["ToolbarPressedBrush"] = "#FFD5DFEA",
 
-        ["BrandBrush"] = "#FF1776BF",
-        ["BrandDarkBrush"] = "#FF0B3D6B",
-        ["AccentBrush"] = "#FFFFC72C",
+        ["SelectionBrush"] = "#FFD6E8F7",
+        ["FocoBrush"] = "#FF15679F",
+        ["SombraBrush"] = "#FF0A2F4C",
+
+        ["BrandBrush"] = "#FF15679F",
+        ["BrandDarkBrush"] = "#FF0A2F4C",
+        ["AccentBrush"] = "#FFF2A32C",
 
         ["DangerBrush"] = "#FFC0392B",
-        ["WarningBrush"] = "#FFB8860B",
-        ["SuccessBrush"] = "#FF1E7E34",
+        ["WarningBrush"] = "#FFB07908",
+        ["SuccessBrush"] = "#FF1B7A33",
 
         ["GridRowBrush"] = "#FFFFFFFF",
-        ["GridAltRowBrush"] = "#FFF8FAFB",
-        ["GridLineBrush"] = "#FFE3E8ED",
-        ["HeaderBrush"] = "#FFD6DEE6",
+        ["GridAltRowBrush"] = "#FFF8FBFD",
+        ["GridLineBrush"] = "#FFE6EDF4",
+        ["HeaderBrush"] = "#FFE5ECF4",
 
-        ["NoticeFondoBrush"] = "#FFFFF4CE",
-        ["NoticeBordeBrush"] = "#FFE0C36A",
+        ["NoticeFondoBrush"] = "#FFFFF6DC",
+        ["NoticeBordeBrush"] = "#FFE6C97A",
         ["NoticeTextoBrush"] = "#FF7A5B00",
-
     };
 
     /// <summary>
@@ -134,26 +137,28 @@ public static class Tema
     /// </remarks>
     private static readonly Dictionary<string, string> Noche = new()
     {
-        ["WindowBrush"] = "#FF000000",
-        ["SurfaceBrush"] = "#FF0D0D0D",
-        ["CardBrush"] = "#FF161616",
-        ["TotalesBrush"] = "#FF0D0D0D",
+        ["WindowBrush"] = "#FF0B0F14",
+        ["SurfaceBrush"] = "#FF121820",
+        ["CardBrush"] = "#FF19212B",
+        ["TotalesBrush"] = "#FF121820",
 
-        ["TabStripBrush"] = "#FF0A0A0A",
-        ["TabInactiveBrush"] = "#FF161616",
-        ["TabHoverBrush"] = "#FF242424",
+        ["TabStripBrush"] = "#FF0E141B",
+        ["TabInactiveBrush"] = "#FF19212B",
+        ["TabHoverBrush"] = "#FF243040",
 
-        ["BorderBrush"] = "#FF3A3A3A",
-        ["TextBrush"] = "#FFE6EBF0",
-        ["MutedTextBrush"] = "#FF95A3B0",
-        ["DisabledTextBrush"] = "#FF5A6672",
-        ["ToolbarPressedBrush"] = "#FF2A2A2A",
+        ["BorderBrush"] = "#FF334155",
+        ["TextBrush"] = "#FFE6EDF5",
+        ["MutedTextBrush"] = "#FF94A6B8",
+        ["DisabledTextBrush"] = "#FF5A6B7C",
+        ["ToolbarPressedBrush"] = "#FF2A3745",
+
+        ["SelectionBrush"] = "#FF2C4A63",
+        ["FocoBrush"] = "#FF3B9BE0",
+        ["SombraBrush"] = "#FF000000",
 
         ["BrandBrush"] = "#FF3B9BE0",
-
-        // Se ACLARA: es color de TEXTO en los encabezados y en el boton de guardar.
         ["BrandDarkBrush"] = "#FF8FC5EC",
-        ["AccentBrush"] = "#FFFFC72C",
+        ["AccentBrush"] = "#FFF5B133",
 
         ["DangerBrush"] = "#FFE45A4A",
         ["WarningBrush"] = "#FFE0A82E",
@@ -167,7 +172,6 @@ public static class Tema
         ["NoticeFondoBrush"] = "#FF3A3320",
         ["NoticeBordeBrush"] = "#FF7A6A32",
         ["NoticeTextoBrush"] = "#FFF0DFA0",
-
     };
 
     /// <summary>Pone el tema pedido, repintando en caliente.</summary>

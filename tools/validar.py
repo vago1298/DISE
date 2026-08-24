@@ -3095,7 +3095,8 @@ def v19_circular_y_ui() -> None:
         check("la pestaña se abre hacia abajo, hacia el contenido",
               'BorderThickness="1,1,1,0"' in m_item.group(0))
         check("y se redondea por arriba",
-              'CornerRadius="4,4,0,0"' in m_item.group(0))
+              'CornerRadius="{StaticResource RadioPestana}"' in m_item.group(0)
+              and "<CornerRadius x:Key=\"RadioPestana\">7,7,0,0</CornerRadius>" in tema)
 
     # ------------------------------------------------------------------
     # La forma es POR FILA
@@ -6060,15 +6061,18 @@ def v19_circular_y_ui() -> None:
     # cuando la brocha esta congelada, que es el caso en que el tema no aplicaba.
     check("el fondo de la ventana sale de la paleta",
           'Background="{DynamicResource WindowBrush}"' in xaml)
-    check("y las tarjetas tambien, que estaban repetidas once veces",
-          xaml.count('Background="{DynamicResource CardBrush}"') >= 10)
-    check("las brochas del tema se referencian con DynamicResource",
-          xaml.count("{DynamicResource") > 50)
-    check("y el tema sabe sustituir la brocha si esta congelada",
-          "recursos[clave] = new SolidColorBrush(color);" in temacs)
-    check("los menus tambien siguen el tema",
-          '<Style TargetType="Menu">' in tema
-          and '<Style TargetType="MenuItem">' in tema)
+    # LAS TARJETAS YA NO LLEVAN SU PINTA ESCRITA. Antes cada Border repetia fondo,
+    # borde, grosor y radio -y no siempre iguales: habia tarjetas de radio 4 y de
+    # radio 0-. Ahora hay UN estilo, asi que lo que se comprueba es que el estilo
+    # saque el color de la paleta y que las hojas lo usen, no que el hex este
+    # repetido trece veces.
+    check("las tarjetas salen de un solo estilo",
+          'x:Key="TarjetaStyle"' in tema
+          and '<Setter Property="Background" Value="{DynamicResource CardBrush}" />' in tema)
+    check("y todas las hojas lo usan",
+          xaml.count('Style="{StaticResource TarjetaStyle}"') >= 10)
+    check("ninguna tarjeta se quedo con la pinta escrita a mano",
+          'Background="{DynamicResource CardBrush}" BorderBrush=' not in xaml)
 
     # Los RadioButton de «Seccion tipo 1 / tipo 2» y los CheckBox salian con el texto
     # NEGRO por omision de Windows, asi que en tema oscuro desaparecian.
@@ -6479,7 +6483,8 @@ def main() -> int:
               v20_estaticos_sin_cualificar,
               v21_separacion_y_acero,
               v22_zapatas_corridas,
-              v23_hoja_zapatas_corridas):
+              v23_hoja_zapatas_corridas,
+              v24_rediseno):
         f()
 
     print("\n" + "=" * 66)
@@ -8661,6 +8666,155 @@ def v23_hoja_zapatas_corridas() -> None:
           "z.TipoTexto" in drawer)
     check("la hoja llama al dibujante",
           "dibujante.DibujarCorridas(zapatas)" in hoja)
+
+    # ------------------------------------------------------------------
+    # LOS ROTULOS Y LOS LEADERS DE LAS MACROS DE CORRIDA
+    # ------------------------------------------------------------------
+    # Faltaban: la seccion salia con sus cotas pero muda. Los de PARRILLA son los
+    # mismos de las aisladas -las cuatro macros arman el texto igual-, asi que se
+    # REUTILIZAN; los otros cuatro son propios de esta hoja.
+    check("los rotulos de parrilla se reutilizan, no se reescriben",
+          "RotuloParrillaInferior(xBase, a.YZapBot, ancho, rec," in drawer
+          and "RotuloParrillaSuperiorLindero(" in drawer
+          and "RotuloParrillaSuperiorCentral(" in drawer)
+
+    for rotulo in ("RotuloDelEnrase", "RotuloDeLaContratrabe",
+                   "RotuloDeLaCadena", "RotuloDelMuroDeConcreto"):
+        check(f"esta el rotulo {rotulo}", f"private void {rotulo}(" in drawer)
+
+    check("y los cuatro se cuelgan con leader",
+          drawer.count("Leader(") >= 4)
+
+    # Los anchos de renglon son los de las macros, y el MText los respeta: con
+    # Width = 0 el rotulo del enrase saldria en una tira que cruza la zapata de al lado.
+    for nombre, valor in (("AnchoRotuloEnrase", "0.26"),
+                          ("AnchoRotuloContratrabe", "0.23"),
+                          ("AnchoRotuloCadena", "0.32"),
+                          ("AnchoRotuloMuroCentral", "0.32"),
+                          ("AnchoRotuloMuroLindero", "0.25")):
+        check(f"el ancho {nombre} vale {valor}",
+              f"private const double {nombre} = {valor};" in drawer)
+
+    check("el MText de esta hoja respeta el ancho de renglon",
+          "private object? MtextoAncho(" in drawer and "mt.Width = ancho;" in drawer)
+    check("y lleva mascara de fondo, para que el terreno no se lea por detras",
+          "mt.BackgroundFill = true;" in drawer)
+
+    # El texto del muro de concreto es el de la macro, con sus abreviaturas.
+    check("el rotulo del muro dice HORIZ. y VERT. como en la macro",
+          "cm HORIZ." in drawer and "cm VERT." in drawer)
+    check("y el ultimo renglon dice donde va el acero",
+          '"DOBLE PARRILLA" : "PARRILLA AL CENTRO"' in drawer)
+    check("el rotulo del enrase es el texto de la macro",
+          '"MURO DE ENRASE DE BLOCK DE CEMENTO"' in drawer)
+
+
+# ======================================================================
+# 24. EL REDISENO DE LA INTERFAZ
+#
+#     Lo que se vigila no es el gusto -eso no se comprueba- sino que el
+#     rediseno siga siendo UN SISTEMA y no una capa de pintura: una escala
+#     de radios y una fuente en un solo sitio, los tres Border repetidos
+#     convertidos en estilos, y sobre todo QUE NO SE HAYA PERDIDO NADA por
+#     el camino. Se pidio expresamente que las vistas previas y los botones
+#     que uno puede modificar siguieran ahi.
+# ======================================================================
+def v24_rediseno() -> None:
+    print("\n[24] El rediseno de la interfaz")
+
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    temacs = leer(ruta("client/src/CadLink.App/Tema.cs"))
+
+    # ------------------------------------------------------------------
+    # La escala: una fuente y cuatro radios, en un solo sitio
+    # ------------------------------------------------------------------
+    check("la fuente de la interfaz vive en la paleta",
+          '<FontFamily x:Key="FuenteUI">' in tema
+          and "Segoe UI Variable Text" in tema)
+
+    for radio, valor in (("RadioChico", "4"), ("RadioBoton", "6"),
+                         ("RadioTarjeta", "8"), ("RadioPestana", "7,7,0,0")):
+        check(f"esta el radio {radio} = {valor}",
+              f'<CornerRadius x:Key="{radio}">{valor}</CornerRadius>' in tema)
+
+    check("y los estilos usan la escala, no numeros suyos",
+          tema.count("{StaticResource RadioBoton}") >= 2
+          and tema.count("{StaticResource RadioTarjeta}") >= 2)
+
+    # ------------------------------------------------------------------
+    # Los botones
+    # ------------------------------------------------------------------
+    check("el boton principal tiene sombra y foco por teclado",
+          "DropShadowEffect" in tema
+          and 'x:Name="Foco"' in tema
+          and 'Property="IsKeyboardFocused" Value="True"' in tema)
+    check("y se hunde al pulsarlo",
+          '<TranslateTransform Y="1" />' in tema)
+    check("el secundario es de contorno, no otro boton solido",
+          'x:Key="SecondaryButtonStyle"' in tema
+          and '<Setter Property="BorderThickness" Value="1" />' in tema
+          and '<Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />' in tema)
+    check("los dos son igual de altos, para que la fila se lea como una pieza",
+          '<Setter Property="MinHeight" Value="32" />' in tema)
+
+    # ------------------------------------------------------------------
+    # La cuadricula
+    # ------------------------------------------------------------------
+    check("la cuadricula tiene aire: fila de 26 y cabecera de 32",
+          '<Setter Property="RowHeight" Value="26" />' in tema
+          and '<Setter Property="ColumnHeaderHeight" Value="32" />' in tema)
+    check("la seleccion usa el azul del programa y no el del sistema",
+          '<Setter Property="Background" Value="{DynamicResource SelectionBrush}" />' in tema)
+    check("y la cabecera se cierra con la linea de marca",
+          "La LINEA DE MARCA que cierra la cabecera" in tema)
+
+    # ------------------------------------------------------------------
+    # Las tres piezas que antes se escribian Border por Border
+    # ------------------------------------------------------------------
+    for estilo in ("TarjetaStyle", "MarcoPreviaStyle", "BarraTotalesStyle",
+                   "TextoTotalesStyle"):
+        check(f"existe el estilo {estilo}", f'x:Key="{estilo}"' in tema)
+
+    check("los marcos de vista previa usan su estilo",
+          xaml.count('Style="{StaticResource MarcoPreviaStyle}"') >= 4)
+    check("las barras de totales tambien",
+          xaml.count('Style="{StaticResource BarraTotalesStyle}"') >= 4)
+
+    # ------------------------------------------------------------------
+    # NO SE PERDIO NADA: las previas y los botones siguen ahi
+    # ------------------------------------------------------------------
+    # Es la condicion que se puso al pedir el rediseno, y la que un cambio de
+    # estilos puede romper sin que nadie lo note hasta abrir la ventana.
+    for lienzo in ("PreviewCanvas", "AceroPreviewCanvas",
+                   "ZapataPreviewCanvas", "ZapataCorridaPreviewCanvas"):
+        check(f"sigue el lienzo {lienzo}", f'x:Name="{lienzo}"' in xaml)
+
+    check("los cuatro lienzos siguen sobre papel claro",
+          xaml.count('Background="{StaticResource PreviewFondoBrush}"') >= 4)
+
+    for boton in ("DibujarZapatasButton", "DibujarZapatasCorridasButton",
+                  "TemaButton"):
+        check(f"sigue el boton {boton}", f'x:Name="{boton}"' in xaml)
+
+    for handler in ("OnExportZapatas", "OnExportZapatasCorridas",
+                    "OnRevisarZapatas", "OnRevisarZapatasCorridas"):
+        check(f"sigue enganchado {handler}", f'Click="{handler}"' in xaml)
+
+    check("siguen los radios de estilo de seccion de las tres hojas",
+          xaml.count('GroupName="TipoSeccion') >= 3)
+
+    # ------------------------------------------------------------------
+    # El tema oscuro sabe de las brochas nuevas
+    # ------------------------------------------------------------------
+    # Si una brocha nueva no esta en los dos diccionarios, al cambiar de tema se
+    # queda con el color del otro: es como se ve un boton azul claro sobre fondo
+    # negro. Se comprueba que las tres esten DOS veces, una por tema.
+    for brocha in ("SelectionBrush", "FocoBrush", "SombraBrush"):
+        check(f"{brocha} esta en los dos temas",
+              temacs.count(f'["{brocha}"]') == 2)
+        check(f"y {brocha} esta declarada en la paleta",
+              f'x:Key="{brocha}"' in tema)
 
 if __name__ == "__main__":
     sys.exit(main())
