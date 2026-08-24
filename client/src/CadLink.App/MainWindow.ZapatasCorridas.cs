@@ -189,16 +189,28 @@ public partial class MainWindow
     /// macros el criterio es el de los 15 diámetros y una obra no lleva dos. Se enseña para que no
     /// haya que ir a la otra pestaña a comprobarlo.
     /// </remarks>
-    private void ActualizarGanchoDeCorridas()
+    /// <param name="sincronizarCasilla">
+    /// <c>false</c> cuando el cambio viene de <b>esta misma casilla</b>.
+    /// <para>
+    /// Aquí estaba el error que se reportó —«no me deja poner el número que yo quiera»—: la casilla
+    /// se reescribía con el valor <b>ya validado</b> en cada pulsación, así que al teclear un
+    /// <c>2</c> para escribir <c>20</c> el <c>2</c> se convertía en el <c>6</c> del mínimo y no
+    /// había manera de llegar al <c>20</c>. Tampoco se podía dejar vacía: el hueco se rellenaba con
+    /// un <c>15</c>. Mientras se teclea <b>no</b> se toca el texto; la validación sigue estando,
+    /// pero solo en el aviso de debajo y en el dibujo.
+    /// </para>
+    /// </param>
+    private void ActualizarGanchoDeCorridas(bool sincronizarCasilla = true)
     {
         var pedido = FactorGanchoElegido;
         var usado = TrazoZapata.FactorGanchoValido(pedido);
 
-        // La casilla de esta hoja se pone al día con el valor del juego, sin disparar su propio
-        // TextChanged: si se reescribiera siempre, cada tecla en la otra hoja movería el cursor.
-        var texto = usado.ToString("0.#", CultureInfo.InvariantCulture);
+        // La casilla de esta hoja se pone al día con lo que se haya TECLEADO en la otra —no con el
+        // valor validado—, y sin disparar su propio TextChanged: si se reescribiera siempre, cada
+        // tecla en la otra hoja movería el cursor.
+        var texto = (ZapGanchoDiametrosBox?.Text ?? string.Empty).Trim();
 
-        if (ZapCorGanchoBox is not null && ZapCorGanchoBox.Text.Trim() != texto)
+        if (sincronizarCasilla && ZapCorGanchoBox is not null && ZapCorGanchoBox.Text.Trim() != texto)
         {
             _sincronizandoGancho = true;
 
@@ -269,7 +281,8 @@ public partial class MainWindow
             _sincronizandoGancho = false;
         }
 
-        ActualizarGanchoDeCorridas();
+        // SIN reescribir esta casilla: se está teclando en ella.
+        ActualizarGanchoDeCorridas(sincronizarCasilla: false);
         DibujarVistaPreviaZapataCorrida();
     }
 

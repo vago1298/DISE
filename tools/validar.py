@@ -8785,20 +8785,26 @@ def v23_hoja_zapatas_corridas() -> None:
     # del renglon de la palabra -el que dice INFERIOR, SUPERIOR o AMBOS SENTIDOS- y
     # de ahi la linea va en diagonal a la varilla. Se pidio asi para que se vea de
     # que renglon sale cada una.
-    check("cada flecha sale de SU renglon, con la cola horizontal",
-          "private void LeaderQuebrado(" in leer(
-              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
-          and "LeaderQuebrado(xFlexion, p.YBarra, xCodo, yFila1, xSalida, yFila1);" in drawer
-          and "LeaderQuebrado(xTemp, p.YCirculos, xCodo, yFila2, xSalida, yFila2);" in drawer)
-    check("el renglon del que sale es el de la palabra, el segundo de cada varilla",
-          "var yFila1 = yTop - (1.5 * alto);" in drawer
+    check("cada flecha arranca en la altura de SU renglon",
+          "Leader(xFlexion, p.YBarra, x1, yFila1);" in drawer
+          and "Leader(xTemp, p.YCirculos, x2, yFila2);" in drawer
+          and "var yFila1 = yTop - (1.5 * alto);" in drawer
           and "var yFila2 = yTop - (3.5 * alto);" in drawer)
-    check("y las dos salen por el lado que mira a la seccion",
-          "var xSalida = aLaDerecha ? x1 : x2;" in drawer
-          and "var sentidoCola = aLaDerecha ? -1 : 1;" in drawer)
-    check("las dos flechas se separan, para que las lineas no se solapen",
-          "private const double RotuloParrillaFlecha1 = 0.05;" in drawer
-          and "private const double RotuloParrillaFlecha2 = 0.14;" in drawer)
+    check("y cada una sale por su lado: flexion por la izquierda, temperatura por la derecha",
+          "La varilla de flexión: por la IZQUIERDA" in drawer
+          and "Y la de temperatura: por la DERECHA" in drawer)
+    check("las dos señalan la varilla mas cercana que tienen",
+          "var xFlexion = Math.Clamp(x1, xMin, xMax);" in drawer
+          and "var xTemp = CirculoEnLaFranja(p.Circulos, x2, xMin, xMax);" in drawer)
+    check("y ninguna se mete debajo de la contratrabe para llegar",
+          "private static double CirculoEnLaFranja(" in drawer
+          and "var xMin = Math.Max(aLaDerecha ? xTopeDer : a.XBase, p.XCaraIzq + (diam / 2));"
+          in drawer
+          and "var xMax = Math.Min(aLaDerecha ? a.XDer : xTopeIzq, p.XCaraDer - (diam / 2));"
+          in drawer)
+    check("el rotulo se sube al frente, para que su mascara corte la linea y no al reves",
+          "private void EncimaDelLeader(" in drawer
+          and "AlFrente(_cont, new List<object> { mt });" in drawer)
     check("el lindero y la parrilla sola siguen con el reparto por tipo de varilla",
           "var huellaInf = RotulosDeParrillaCorrida(" in drawer
           and "else\n        {\n            var huellaInf = RotulosDeParrillaCorrida(" in drawer)

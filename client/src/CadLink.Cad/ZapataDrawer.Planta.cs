@@ -1867,31 +1867,6 @@ public sealed partial class ZapataDrawer
         Flecha(xPunta, yPunta, xAnclaje, yAnclaje);
     }
 
-    /// <summary>
-    /// Un leader <b>quebrado</b>: una cola corta desde el rótulo y de ahí, recta, a la punta.
-    /// </summary>
-    /// <remarks>
-    /// Es el leader de toda la vida de AutoCAD: la <b>cola</b> sale horizontal del renglón —así se
-    /// ve de qué renglón sale, que es lo que se pidió— y el tramo largo va en diagonal hasta la
-    /// flecha. Con un solo tramo, un rótulo de cuatro renglones no puede señalar dos varillas sin
-    /// que las dos líneas parezcan salir del mismo sitio.
-    /// </remarks>
-    private void LeaderQuebrado(
-        double xPunta, double yPunta, double xCodo, double yCodo,
-        double xAnclaje, double yAnclaje)
-    {
-        Linea(xAnclaje, yAnclaje, xCodo, yCodo, CapaLeader);
-
-        if (Math.Abs(xPunta - xCodo) + Math.Abs(yPunta - yCodo) <= 1e-6)
-        {
-            return;
-        }
-
-        Linea(xCodo, yCodo, xPunta, yPunta, CapaLeader);
-
-        Flecha(xPunta, yPunta, xCodo, yCodo);
-    }
-
     /// <summary>La punta de flecha rellena, apuntando a <c>(xPunta, yPunta)</c>.</summary>
     private void Flecha(double xPunta, double yPunta, double xDesde, double yDesde)
     {

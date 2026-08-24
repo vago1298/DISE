@@ -185,12 +185,19 @@ Cinco cosas, y ninguna cambia el dibujo:
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
 | Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
 
-**Cada leader sale de su renglón.** El rótulo de la parrilla lleva cuatro renglones —dos por
-varilla—, y cada flecha sale del renglón de **su palabra**: el que dice `INFERIOR`, `SUPERIOR` o
-`AMBOS SENTIDOS`. La línea es un leader **quebrado**: una cola horizontal de 3 cm desde el borde del
-renglón, por el lado que mira a la sección, y de ahí recta en diagonal hasta la varilla. Las dos
-flechas se adentran distinto —5 cm la de flexión y 14 la de temperatura— para que las dos líneas se
-separen en abanico y no se solapen.
+**Cada leader sale de su renglón, y cada uno por su lado.** El rótulo de la parrilla lleva cuatro
+renglones —dos por varilla—, y cada flecha arranca a la altura del renglón de **su palabra**: el que
+dice `INFERIOR`, `SUPERIOR` o `AMBOS SENTIDOS`. La de **flexión** sale por el borde **izquierdo** y
+la de **temperatura** por el **derecho**, así que las dos líneas se abren en lugar de cruzarse. Y
+cada una se pega a la varilla que tiene **debajo**: la de flexión al punto de la barra más cercano a
+su borde —es una línea continua, sirve cualquier punto— y la de temperatura a la varilla de punta más
+cercana a su borde.
+
+Las dos flechas se quedan dentro de una **franja**: el volado de ese lado, y siempre entre las caras
+del acero. Fuera de ella la punta acabaría debajo de la contratrabe y la línea cruzaría el bloque
+para llegar. Y como el rótulo es casi tan ancho como el volado, el rótulo se sube **al frente** al
+final: su máscara de fondo corta la línea donde la cruza, en lugar de que la línea se dibuje encima
+de las letras.
 
 **Dos renglones, no uno.** El rótulo de parrilla es un **MText de 22 cm de ancho**: la varilla en el
 primer renglón y su palabra en el segundo. En una sola línea medía 30 cm, y en una zapata de 80 con

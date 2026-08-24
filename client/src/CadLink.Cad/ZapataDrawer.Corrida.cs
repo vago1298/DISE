@@ -1380,14 +1380,7 @@ public sealed partial class ZapataDrawer
     /// </summary>
     private const double RotuloParrillaHolgura = 0.02;
 
-    /// <summary>Largo de la <b>cola</b> horizontal con la que cada leader sale de su renglón.</summary>
-    private const double RotuloParrillaCola = 0.03;
 
-    /// <summary>Lo que se adentra la flecha de la varilla de flexión, contada desde la cola.</summary>
-    private const double RotuloParrillaFlecha1 = 0.05;
-
-    /// <summary>Y la de temperatura, más adentro, para que las dos líneas se separen.</summary>
-    private const double RotuloParrillaFlecha2 = 0.14;
 
     /// <summary>Dónde quedaron los renglones de una parrilla, para que la de arriba los esquive.</summary>
     /// <remarks>
@@ -1595,47 +1588,120 @@ public sealed partial class ZapataDrawer
         var yBot = caja?.Y1 ?? (yTexto - AltoMtexto);
         var yTop = caja?.Y2 ?? (yTexto + AltoMtexto);
 
-        // ---------- CADA LEADER SALE DE SU RENGLÓN ----------
+        // ---------- CADA LEADER SALE DE SU RENGLÓN, Y CADA UNO POR SU LADO ----------
         //
         // El renglón del que sale es el de la PALABRA —el que dice INFERIOR, SUPERIOR o AMBOS
-        // SENTIDOS—, que es el segundo de cada varilla. Se pidió así, y es lo que hace que un
-        // rótulo de cuatro renglones se lea sin dudas: la línea de arriba sale del par de arriba y
-        // la de abajo del par de abajo, en lugar de salir las dos del borde inferior del bloque.
+        // SENTIDOS—, que es el segundo de cada varilla.
+        //
+        // Y SALEN POR LADOS CONTRARIOS: la de flexión por la IZQUIERDA y la de temperatura por la
+        // DERECHA. Antes las dos salían por el lado que mira a la sección y las dos se iban al
+        // centro, así que se cruzaban en el camino y acababan señalando una varilla lejana pasando
+        // por delante de otras. Saliendo cada una por su lado, las dos líneas se abren en lugar de
+        // cruzarse, y cada una se pega a la varilla que tiene DEBAJO.
         var renglones = segundo.Length > 0 ? 4 : 2;
         var alto = (yTop - yBot) / renglones;
 
-        // El lado por el que salen: el que mira a la sección.
-        var xSalida = aLaDerecha ? x1 : x2;
-        var sentidoCola = aLaDerecha ? -1 : 1;
+        // La franja en la que puede caer una flecha: el volado de ESTE lado, y dentro de las caras
+        // del acero. Fuera de ella la flecha se metería debajo de la contratrabe o se saldría de la
+        // zapata, y la línea cruzaría el bloque para llegar.
+        var xMin = Math.Max(aLaDerecha ? xTopeDer : a.XBase, p.XCaraIzq + (diam / 2));
+        var xMax = Math.Min(aLaDerecha ? a.XDer : xTopeIzq, p.XCaraDer - (diam / 2));
 
-        var xCodo = xSalida + (sentidoCola * RotuloParrillaCola);
+        if (xMax < xMin)
+        {
+            (xMin, xMax) = (xMax, xMin);
+        }
 
-        // ---------- La varilla de flexión ----------
-        var xFlexion = Math.Clamp(
-            xCodo + (sentidoCola * RotuloParrillaFlecha1),
-            p.XCaraIzq + (diam / 2),
-            p.XCaraDer - (diam / 2));
+        // ---------- La varilla de flexión: por la IZQUIERDA ----------
+        //
+        // Es una línea continua, así que la más cercana es la que pasa justo debajo del borde
+        // izquierdo del renglón. Si ese borde se sale de la franja —el rótulo es casi tan ancho como
+        // el volado—, la flecha se queda en el extremo de la franja.
+        var xFlexion = Math.Clamp(x1, xMin, xMax);
 
         var yFila1 = yTop - (1.5 * alto);
 
-        LeaderQuebrado(xFlexion, p.YBarra, xCodo, yFila1, xSalida, yFila1);
+        Leader(xFlexion, p.YBarra, x1, yFila1);
 
         if (segundo.Length == 0)
         {
+            EncimaDelLeader(mt);
             return;
         }
 
-        // ---------- Y la de temperatura, desde el renglón de abajo ----------
-        var xTemp = CirculoMasCercano(p.Circulos, xCodo + (sentidoCola * RotuloParrillaFlecha2));
+        // ---------- Y la de temperatura: por la DERECHA ----------
+        //
+        // La varilla de punta más cercana al borde derecho de su renglón, de las que caen en la
+        // franja. Así una línea baja por el lado izquierdo del rótulo y la otra por el derecho: se
+        // abren en lugar de cruzarse, y ninguna se va a buscar una varilla lejana.
+        var xTemp = CirculoEnLaFranja(p.Circulos, x2, xMin, xMax);
 
-        if (double.IsNaN(xTemp))
+        if (!double.IsNaN(xTemp))
         {
-            return;
+            var yFila2 = yTop - (3.5 * alto);
+
+            Leader(xTemp, p.YCirculos, x2, yFila2);
         }
 
-        var yFila2 = yTop - (3.5 * alto);
+        EncimaDelLeader(mt);
+    }
 
-        LeaderQuebrado(xTemp, p.YCirculos, xCodo, yFila2, xSalida, yFila2);
+    /// <summary>
+    /// Sube el rótulo por encima de sus leaders, para que su máscara los tape.
+    /// </summary>
+    /// <remarks>
+    /// Los dos leaders salen de renglones distintos y bajan a varillas distintas, así que alguno
+    /// pasa por detrás del propio bloque de texto —el rótulo es casi tan ancho como el volado y no
+    /// hay hueco a los lados—. Con el rótulo al frente, su máscara de fondo <b>corta</b> la línea
+    /// donde la cruza y en el plano se lee lo que se pidió: una línea que sale del renglón. Sin
+    /// esto, la línea se dibujaría <b>encima</b> de las letras.
+    /// </remarks>
+    private void EncimaDelLeader(object? mt)
+    {
+        if (mt is not null)
+        {
+            AlFrente(_cont, new List<object> { mt });
+        }
+    }
+
+    /// <summary>
+    /// La varilla de punta más cercana a una X, <b>de las que caen dentro de la franja</b>.
+    /// </summary>
+    /// <remarks>
+    /// La franja es el volado de ese lado. Fuera de ella la flecha acabaría debajo de la
+    /// contratrabe, y la línea tendría que cruzar el bloque para llegar. Si ninguna varilla cae
+    /// dentro —una zapata angosta con una separación muy grande— se vuelve a la más cercana de
+    /// todas, que es mejor que no rotular.
+    /// </remarks>
+    private static double CirculoEnLaFranja(double[] circulos, double x, double xMin, double xMax)
+    {
+        var cuantas = 0;
+
+        foreach (var c in circulos)
+        {
+            if (c >= xMin && c <= xMax)
+            {
+                cuantas++;
+            }
+        }
+
+        if (cuantas == 0)
+        {
+            return CirculoMasCercano(circulos, x);
+        }
+
+        var solo = new double[cuantas];
+        var i = 0;
+
+        foreach (var c in circulos)
+        {
+            if (c >= xMin && c <= xMax)
+            {
+                solo[i++] = c;
+            }
+        }
+
+        return CirculoMasCercano(solo, x);
     }
 
     /// <summary>Palabra del acero que va en el lecho de <b>abajo</b>: el de flexión.</summary>
