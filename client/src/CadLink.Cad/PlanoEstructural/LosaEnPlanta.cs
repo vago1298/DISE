@@ -301,6 +301,149 @@ public static class LosaEnPlanta
     }
 
     /// <summary>
+    /// La <b>bayoneta</b> del armado: la varilla con sus dos quiebres, vista en planta.
+    /// </summary>
+    /// <param name="quiebre">
+    /// A qué fracción del claro quiebra: <c>ARMADO_LOSA_BAYONETA_QUIEBRE</c>, 0.2 = a L/5 de
+    /// cada apoyo, que es donde el momento cambia de signo.
+    /// </param>
+    /// <param name="salto">
+    /// Cuánto salta de lado en el quiebre, en metros: <c>ARMADO_LOSA_BAYONETA_SALTO_CM</c>.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Es la <b>polilínea de seis vértices con quiebres a 45°</b> de la macro, y es el armado
+    /// que va en un tablero apoyado: la varilla corre abajo en el centro del claro, sube en
+    /// los tercios y remata arriba sobre los apoyos, que es donde el momento es negativo. En
+    /// planta ese cambio de nivel se dibuja como un <b>salto de lado</b>, que es el símbolo
+    /// con el que se lee en obra.
+    /// </para>
+    /// <para>
+    /// Va <b>una por dirección</b>, por el centro del tablero. Esto sustituye a la rejilla de
+    /// varillas: la parrilla en todos los tableros llenaba el plano de rejilla azul y tapaba
+    /// las cadenas, que es justo lo que no se quería. La parrilla sigue disponible con
+    /// <c>ARMADO_LOSA_PARRILLA</c> en SI, para quien la prefiera.
+    /// </para>
+    /// <para>
+    /// Los quiebres a 45° salen de que el salto es el mismo en las dos direcciones: se avanza
+    /// <paramref name="salto"/> a lo largo y <paramref name="salto"/> de lado.
+    /// </para>
+    /// </remarks>
+    public static List<List<(double X, double Y)>> Bayonetas(
+        IReadOnlyList<(double X, double Y)> vertices,
+        double quiebre = 0.2,
+        double salto = 0.08,
+        bool dosDirecciones = true)
+    {
+        var salida = new List<List<(double X, double Y)>>();
+
+        if (vertices.Count < 3)
+        {
+            return salida;
+        }
+
+        var xMin = vertices.Min(v => v.X);
+        var xMax = vertices.Max(v => v.X);
+        var yMin = vertices.Min(v => v.Y);
+        var yMax = vertices.Max(v => v.Y);
+
+        var ancho = xMax - xMin;
+        var alto = yMax - yMin;
+
+        if (ancho <= Nada || alto <= Nada)
+        {
+            return salida;
+        }
+
+        if (quiebre is <= 0 or >= 0.5)
+        {
+            quiebre = 0.2;
+        }
+
+        var corta = ancho <= alto;
+
+        // La que va en el sentido CORTO lleva el acero principal, así que si solo va una, es
+        // esa. La barra se coloca por el centro del tablero en la otra dirección.
+        if (dosDirecciones || corta)
+        {
+            var y = (yMin + yMax) / 2;
+            salida.Add(Una(xMin, xMax, y, quiebre, salto, true));
+        }
+
+        if (dosDirecciones || !corta)
+        {
+            var x = (xMin + xMax) / 2;
+            salida.Add(Una(yMin, yMax, x, quiebre, salto, false));
+        }
+
+        return salida;
+
+        static List<(double X, double Y)> Una(
+            double desde, double hasta, double centro, double quiebre, double salto, bool enX)
+        {
+            var largo = hasta - desde;
+            var a = desde + (largo * quiebre);
+            var b = hasta - (largo * quiebre);
+
+            // El salto no puede comerse el tramo central: en un tablero chico se recorta.
+            var s = Math.Min(salto, (b - a) / 4);
+
+            if (s < 0)
+            {
+                s = 0;
+            }
+
+            var pts = new List<(double L, double T)>
+            {
+                (desde, 0),
+                (a - s, 0),
+                (a, s),
+                (b, s),
+                (b + s, 0),
+                (hasta, 0)
+            };
+
+            return pts
+                .Select(p => enX
+                    ? (X: p.L, Y: centro + p.T)
+                    : (X: centro + p.T, Y: p.L))
+                .ToList();
+        }
+    }
+
+    /// <summary>
+    /// ¿La nota o la sección de la losa dicen que es un <b>voladizo</b>?
+    /// </summary>
+    /// <remarks>
+    /// Se pidió tal cual: el achurado <c>ANSI37</c> va <b>solo</b> en las losas cuya etiqueta
+    /// de nota diga <c>VOLADO</c>. Y es lo correcto en un modelo real: el ingeniero sabe cuál
+    /// es el volado y lo escribe en la propiedad, mientras que deducirlo contando lados
+    /// apoyados se equivoca en cuanto una cadena viene partida en el modelo.
+    /// </remarks>
+    public static bool DiceVolado(string? notas, string? seccion, string palabras)
+    {
+        var texto = ((notas ?? string.Empty) + " " + (seccion ?? string.Empty))
+            .ToUpperInvariant();
+
+        if (texto.Trim().Length == 0)
+        {
+            return false;
+        }
+
+        foreach (var palabra in palabras.Split(','))
+        {
+            var p = palabra.Trim().ToUpperInvariant();
+
+            if (p.Length > 0 && texto.Contains(p, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Los trozos de un tramo que quedan <b>fuera</b> de los muros y las cadenas.
     /// </summary>
     /// <remarks>

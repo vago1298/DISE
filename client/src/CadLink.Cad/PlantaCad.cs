@@ -132,6 +132,18 @@ public sealed class ElementoPlanta
     /// </remarks>
     public string Material { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Las <b>notas</b> de la propiedad en el modelo, tal como vienen.
+    /// </summary>
+    /// <remarks>
+    /// De aquí sale una decisión que se pidió explícita: el achurado <c>ANSI37</c> va
+    /// <b>solo</b> en las losas cuya nota dice <c>VOLADO</c>. Reconocer el voladizo por la
+    /// nota y no por la geometría es lo correcto en un modelo real: el ingeniero <b>sabe</b>
+    /// cuál es el volado y lo escribe, mientras que contar lados apoyados se equivoca en
+    /// cuanto una cadena está partida en el modelo.
+    /// </remarks>
+    public string Notas { get; set; } = string.Empty;
+
     /// <summary>Contorno del paño, para las losas.</summary>
     public List<(double X, double Y)> Vertices { get; } = new();
 

@@ -2712,8 +2712,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con once renglones añadidos",
-          cfgp.count("        P(") == 272
+    check("la hoja CONFIG de la macro esta portada, con diecisiete renglones añadidos",
+          cfgp.count("        P(") == 278
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -2723,7 +2723,11 @@ def v16_extruida_piers() -> None:
           and 'P("APAGAR_CAPA_LOSA", "SI",' in cfgp
           and 'P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",' in cfgp
           and 'P("VIGAS_CORTAR_EN_CRUCES", "SI",' in cfgp
-          and 'P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",' in cfgp)
+          and 'P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",' in cfgp
+          and 'P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO",' in cfgp
+          and 'P("VOLADO_POR_NOTA", "SI",' in cfgp
+          and 'P("ARMADO_LOSA_BAYONETA", "SI",' in cfgp
+          and 'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -2824,7 +2828,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "272, ConfigPlano.PorOmision.Count" in pr
+          and "278, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3668,6 +3672,65 @@ def v18_planta_autocad() -> None:
           '_cfg.Bandera("MALLA_AL_PANO", true)' in dib
           and "LosaEnPlanta.TramosFuera(b, huellas, minTramo)" in dib)
     # EL VOLADIZO: su hatch, su capa propia, y E-LOSA apagada.
+    # EL VOLADO SE RECONOCE POR SU NOTA, no por la geometria: se pidio que el ANSI37 salga
+    # SOLO en las losas cuya etiqueta de nota diga VOLADO. Contar lados apoyados se equivoca
+    # en cuanto una cadena viene partida en el modelo, y el achurado aparecia donde no va.
+    check("el volado se reconoce por su NOTA",
+          "public static bool DiceVolado(" in los
+          and '_cfg.Bandera("VOLADO_POR_NOTA", true)' in dib
+          and '_cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER")' in dib
+          and "public string Notas { get; set; }" in dto
+          and "Notas = el.Notas," in codigo)
+    check("y el color de E-VOLADO es el 252",
+          'P("COLOR_VOLADO", "252",' in cfgp
+          and 'Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"))' in pr)
+
+    # EN EL TABLERO APOYADO VA LA BAYONETA, no la rejilla: la parrilla en todos los tableros
+    # llenaba el plano de rejilla azul y tapaba las cadenas.
+    check("en el tablero apoyado va la bayoneta, con sus seis vertices y sus quiebres a 45",
+          "public static List<List<(double X, double Y)>> Bayonetas(" in los
+          and '_cfg.Bandera("ARMADO_LOSA_BAYONETA", true)' in dib
+          and '_cfg.Numero("ARMADO_LOSA_BAYONETA_QUIEBRE", 0.2)' in dib
+          and "private object? PolilineaAbierta(" in dib)
+    check("y la rejilla se queda apagada, disponible pero no puesta",
+          'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
+          and '_cfg.Bandera("ARMADO_LOSA_PARRILLA", false)' in dib)
+    check("hay prueba ejecutable de la bayoneta y del volado por nota",
+          "cada una con SEIS vertices, como en la macro" in pre
+          and "una losa cuya NOTA dice VOLADO es volado" in pre
+          and "una losa de azotea normal NO es volado" in pre)
+
+    # EL ROTULO DE LA LOSA, LOS CUATRO RENGLONES DE LA HOJA. Antes se rotulaba el nombre de
+    # la propiedad de ETABS, que en el plano no dice nada.
+    check("la losa se rotula con los cuatro renglones de la hoja",
+          "private string RotuloDeLosa(" in dib
+          and '_cfg.TextoTalCual($"LOSA_TEXTO_{i}")' in dib
+          and 'r.Replace("%U", uso).Replace("%E", espesor)' in dib
+          and "private string UsoDeLaLosa(" in dib)
+
+    # LAS LINEAS DE E-ACERO, CONTINUAS: en la hoja de la macro ese renglon va vacio -no
+    # toques la linea que tenga el dibujo- y por eso salian a trazos.
+    check("las lineas de E-ACERO son continuas",
+          'P("LINETYPE_ACERO", "Continuous",' in cfgp
+          and 'Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"))' in pr)
+
+    # Y LA OTRA MITAD DEL ORDEN DE DIBUJO: la losa y su armado AL FONDO, mas un REGEN. Sin el
+    # regen, AutoCAD puede seguir mostrando el orden viejo y eso se ve igual que si no se
+    # hubiera aplicado.
+    check("la losa y su armado se mandan al fondo",
+          "private void BajarCapas(" in mac
+          and "private bool MoverAlFondo(" in mac
+          and "tabla.MoveToBottom(" in mac
+          and "public IReadOnlyList<string> CapasAlFondo()" in capp
+          and "BajarCapas(_capas.CapasAlFondo());" in mac)
+    check("el DRAWORDER por comando sirve para los dos lados",
+          'private bool DrawOrderPorComando(string capa, bool alFrente = true)' in mac
+          and 'var donde = alFrente ? "_F" : "_B";' in mac)
+    check("y al final se regenera, para que el orden nuevo se vea",
+          "private void Regenerar()" in mac
+          and "_doc.Regen(1)" in mac
+          and "Regenerar();" in mac)
+
     check("el voladizo lleva su hatch en su propia capa",
           "private bool HatchDeLosa(" in mac
           and '_cfg.Texto("LOSA_HATCH_PATRON", "ANSI37")' in mac

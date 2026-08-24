@@ -179,6 +179,18 @@ public sealed class CapasPlano
     /// encendida</b>, que es la que interesa ver. Apagada y no congelada, para que el usuario
     /// la encienda con un clic sin regenerar.
     /// </remarks>
+    /// <summary>
+    /// Las capas que se mandan al <b>fondo</b>: la losa, su armado y el voladizo.
+    /// </summary>
+    /// <remarks>
+    /// Es la otra mitad del orden de dibujo, y la que faltaba: da igual cuántas veces se suba
+    /// la cadena al frente si el achurado del voladizo y la rejilla del armado se dibujaron
+    /// después. <b>Bajar lo de abajo</b> es tan válido como subir lo de arriba, y haciendo las
+    /// dos cosas el resultado se ve aunque una de ellas no llegue a aplicarse.
+    /// </remarks>
+    public IReadOnlyList<string> CapasAlFondo() =>
+        ListaConPrefijo(_cfg.Texto("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO"));
+
     public IReadOnlyList<string> CapasApagadas() =>
         _cfg.Bandera("APAGAR_CAPA_LOSA", true)
             ? new[] { CapaDeTipo("LOSA") }

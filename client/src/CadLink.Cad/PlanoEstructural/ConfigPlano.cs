@@ -406,6 +406,16 @@ public sealed class ConfigPlano
         P("ARMADO_LOSA_MARGEN_CM", "0", "Margen del armado contra el borde"),
         P("ARMADO_LOSA_ESCALA_VARILLA", "1", "Multiplica el grosor de la varilla"),
         P("ARMADO_LOSA_FILETE", "SI", "SI = redondear los quiebres de la bayoneta"),
+
+        // AÑADIDOS: cual de los dos armados se dibuja. La PARRILLA en NO porque llenaba de
+        // rejilla todos los tableros, y lo que va en un tablero apoyado es la BAYONETA.
+        P("ARMADO_LOSA_BAYONETA", "SI",
+          "<<< SI = EN EL TABLERO APOYADO VA LA BAYONETA (la varilla con sus quiebres)"),
+        P("ARMADO_LOSA_PARRILLA", "NO",
+          "NO = sin rejilla de varillas en los tableros (llena el plano)"),
+        P("ARMADO_LOSA_BAYONETA_QUIEBRE", "0.2",
+          "Fraccion del claro donde quiebra la bayoneta (0.2 = a L/5 de cada apoyo)"),
+        P("ARMADO_LOSA_BAYONETA_SALTO_CM", "8", "Cuanto salta la bayoneta en el quiebre"),
         P("ARMADO_LOSA_LADO_MIN_CM", "50", "Tableros mas chicos no se arman"),
         P("ARMADO_LOSA_TEXTO", "SI", "Rotular seccion y espesor de la losa"),
         P("COLOR_ARMADO_LOSA", "142", "Color de la capa E-ARMADO LOSA"),
@@ -473,7 +483,13 @@ public sealed class ConfigPlano
         // en la capa del armado; se pidió que el volado tenga CAPA PROPIA, que la de la losa
         // se APAGUE y que el contorno no se meta dentro del muro ni de la cadena.
         P("CAPA_VOLADO", "VOLADO", "CAPA DE LA LOSA EN VOLADIZO (con prefijo: E-VOLADO)"),
-        P("COLOR_VOLADO", "4", "Color de la capa E-VOLADO"),
+
+        // EL HATCH DEL VOLADO VA POR LA NOTA, no por la geometria: se pidio expresamente que
+        // el ANSI37 salga SOLO en las losas cuya nota o seccion diga VOLADO. Las palabras son
+        // las de LOSA_PALABRAS_VOLADO, que ya venia en la hoja.
+        P("VOLADO_POR_NOTA", "SI",
+          "<<< SI = EL VOLADO SE RECONOCE POR SU NOTA; NO = por sus lados apoyados"),
+        P("COLOR_VOLADO", "252", "COLOR DE LA CAPA E-VOLADO (252, como se pidio)"),
         P("APAGAR_CAPA_LOSA", "SI",
           "SI = la capa E-LOSA se deja APAGADA y E-VOLADO encendida"),
         P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",
@@ -514,6 +530,11 @@ public sealed class ConfigPlano
         // como en la macro.
         P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",
           "CAPAS DE TEXTO ENCIMA DE TODO, DESPUES DE LA GEOMETRIA (PIERS va sin prefijo)"),
+
+        // AÑADIDO: la otra mitad del orden de dibujo. La losa y su armado, AL FONDO. Da igual
+        // cuantas veces se suba la cadena si el achurado y la rejilla se dibujaron despues.
+        P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO",
+          "CAPAS QUE SE MANDAN AL FONDO ANTES DE SUBIR LAS DE ARRIBA"),
         P("PONER_SORTENTS_127", "SI", "SI = SORTENTS = 127 para que se respete el draw order"),
 
         // AÑADIDO: el respaldo del orden de dibujo. Si la tabla ACAD_SORTENTS no se deja
@@ -556,7 +577,7 @@ public sealed class ConfigPlano
         P("COLOR_DALA", "12", "Color de E-DALA (12)"),
         P("COLOR_ACERO", "130", "<<< COLOR DE LA CAPA E-ACERO (130)"),
         P("ACERO_LINEA_BYLAYER", "SI", "<<< SI = LAS VIGAS DE ACERO CON TIPO DE LINEA BYLAYER (manda la capa)"),
-        P("LINETYPE_ACERO", "", "Tipo de linea de la capa E-ACERO (vacio = no tocar la del dibujo)"),
+        P("LINETYPE_ACERO", "Continuous", "<<< LAS LINEAS DE E-ACERO, CONTINUAS (se pidio asi)"),
         P("LINETYPE_TRABE", "PHANTOM2", "Tipo de linea de E-TRABE"),
         P("ESCALA_TIPOLINEA", "0", "0 = no tocar el LTSCALE"),
         P("TABLA_DE_SECCIONES", "SI", "SI = escribir la hoja SECCIONES"),

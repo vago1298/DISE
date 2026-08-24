@@ -2172,6 +2172,10 @@ public partial class MainWindow : Window
                 ? SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)
                 : string.Empty,
 
+            // LAS NOTAS DE LA PROPIEDAD, tal como vienen del modelo: de ahí sale si la losa
+            // es un VOLADIZO, que es lo que decide su capa y su achurado.
+            Notas = el.Notas,
+
             X1 = el.X1, Y1 = el.Y1,
             X2 = el.X2, Y2 = el.Y2,
             AnchoM = el.AnchoM,

@@ -44,8 +44,8 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-// 272 y no los 261 de CrearHojaConfig: se añadieron ONCE renglones que no están en su
-// hoja, y todos porque se pidieron:
+// 278 y no los 261 de CrearHojaConfig: se añadieron DIECISIETE renglones que no están en
+// su hoja, y todos porque se pidieron:
 //   AIRE_SOBRE_LO_DIBUJADO_M        la planta se pone encima de lo que ya haya dibujado
 //   CAPAS_TEXTO_AL_FRENTE           los rótulos, encima de todo, en una segunda pasada
 //   CAPA_DALA                       la capa de las dalas se llama E-CADENA
@@ -56,8 +56,14 @@ var cfg = new ConfigPlano();
 //   LOSA_CONTORNO_FUERA_DE_MUROS    sin línea de losa por dentro del muro ni de la cadena
 //   VIGAS_CORTAR_EN_CRUCES          la viga muere en la cara de la que cruza
 //   CIMENTACION_SIN_MUROS_SIN_COLUMNAS   sin muros, sin castillos en la base
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los once que se añadieron",
-      272, ConfigPlano.PorOmision.Count);
+//   CAPAS_AL_FONDO                  la losa y su armado, al fondo del orden de dibujo
+//   VOLADO_POR_NOTA                 el volado se reconoce por su NOTA, no por la geometría
+//   ARMADO_LOSA_BAYONETA            en el tablero apoyado va la bayoneta...
+//   ARMADO_LOSA_PARRILLA            ...y NO la rejilla, que llenaba el plano
+//   ARMADO_LOSA_BAYONETA_QUIEBRE    dónde quiebra: a L/5 de cada apoyo
+//   ARMADO_LOSA_BAYONETA_SALTO_CM   cuánto salta en el quiebre
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los diecisiete que se añadieron",
+      278, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -135,6 +141,13 @@ Igual("LOSA_HATCH_ANGULO", 45d, cfg.Numero("LOSA_HATCH_ANGULO"));
 Igual("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100", cfg.Texto("CADENA_SIN_MURO_LINETYPE"));
 Igual("CADENA_SIN_MURO_CUBRE", 0.5, cfg.Numero("CADENA_SIN_MURO_CUBRE"));
 Igual("PANO_BUSCA_CM", 150d, cfg.Numero("PANO_BUSCA_CM"));
+Igual("PALABRAS del volado", "VOLADO,VOLADIZO,VOLADA,CANTILEVER",
+      cfg.Texto("LOSA_PALABRAS_VOLADO"));
+Igual("ARMADO_LOSA_BAYONETA_QUIEBRE", 0.2, cfg.Numero("ARMADO_LOSA_BAYONETA_QUIEBRE"));
+Igual("ARMADO_LOSA_BAYONETA_SALTO_CM", 8d, cfg.Numero("ARMADO_LOSA_BAYONETA_SALTO_CM"));
+Check("el volado se reconoce por su NOTA y en el tablero va la BAYONETA, no la rejilla",
+      cfg.Bandera("VOLADO_POR_NOTA") && cfg.Bandera("ARMADO_LOSA_BAYONETA")
+      && !cfg.Bandera("ARMADO_LOSA_PARRILLA", true));
 Check("el volado en su capa, la losa apagada, el contorno fuera de los muros, las vigas " +
       "cortadas en los cruces y, sin muros, sin castillos en la base",
       cfg.Bandera("APAGAR_CAPA_LOSA") && cfg.Bandera("LOSA_CONTORNO_FUERA_DE_MUROS")
@@ -198,7 +211,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 272 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 278 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -254,7 +267,7 @@ Igual("E-LOSACERO", 6, ColorDe("E-LOSACERO"));
 Igual("E-COTAS", 8, ColorDe("E-COTAS"));
 // LA LOSA EN VOLADIZO, EN SU CAPA: es la 22, y la de la losa se queda APAGADA para que
 // se vean los voladizos sin el contorno de todos los paños.
-Igual("E-VOLADO, la de la losa en voladizo", 4, ColorDe("E-VOLADO"));
+Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"));
 Igual("son las 22 capas", 22, capas.Todas.Count);
 Igual("y la que se apaga es la de la losa", "E-LOSA",
       string.Join(", ", capas.CapasApagadas()));
@@ -262,7 +275,10 @@ Igual("y la que se apaga es la de la losa", "E-LOSA",
 Console.WriteLine();
 Igual("la trabe lleva PHANTOM2", "PHANTOM2", LineaDe("E-TRABE"));
 Igual("los ejes, DASHDOT", "DASHDOT", LineaDe("E-EJES"));
-Igual("y la del acero no se toca (LINETYPE_ACERO vacío)", string.Empty, LineaDe("E-ACERO"));
+// LAS LINEAS DE E-ACERO, CONTINUAS: se pidió así. En la hoja de la macro este renglón va
+// vacío -«no toques la que tenga el dibujo»- y por eso las vigas de acero salían a trazos
+// cuando la capa ya venía con otra línea de un dibujo anterior.
+Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"));
 Igual("la cadena de desplante va SIN tipo de línea, nunca punteada",
       string.Empty, LineaDe("E-CADENA DESPLANTE"));
 
@@ -278,6 +294,11 @@ Igual("las capas al frente son las cuatro de la hoja",
 // Y LOS TEXTOS APARTE, para subirlos en una SEGUNDA pasada: así los rótulos quedan
 // siempre encima de la geometría y no según el orden en que los halle el recorrido.
 // PIERS va SIN prefijo, como en la macro: con E-PIERS los piers se quedaban fuera.
+// LA OTRA MITAD DEL ORDEN DE DIBUJO: la losa y su armado, AL FONDO. Da igual cuantas
+// veces se suba la cadena si el achurado y la rejilla se dibujaron despues.
+Igual("las capas al fondo", "E-LOSA, E-ARMADO LOSA, E-VOLADO, E-LOSACERO",
+      string.Join(", ", capas.CapasAlFondo()));
+
 Igual("los textos van en su propia lista, y PIERS sin prefijo",
       "E-TEXTO, PIERS", string.Join(", ", capas.CapasDeTextoAlFrente()));
 

@@ -883,12 +883,26 @@ public sealed partial class PlantaDrawer
             pts[(2 * i) + 1] = el.Vertices[i].Y + y0;
         }
 
-        var volada = LosaEnPlanta.EsVolada(
-            el.Vertices, huellas, _cfg.Numero("LOSA_APOYO_CUBRE", 0.7));
+        // ==============================================================================
+        //  ¿ES UN VOLADIZO? LO DICE SU NOTA, NO LA GEOMETRÍA
+        // ==============================================================================
+        //  Se pidió tal cual: el ANSI37 va SOLO en las losas cuya etiqueta de nota diga
+        //  VOLADO. Y es lo correcto en un modelo real: el ingeniero sabe cuál es el volado y
+        //  lo escribe en la propiedad, mientras que contar lados apoyados se equivoca en
+        //  cuanto una cadena viene partida en el modelo, y entonces el achurado aparece donde
+        //  no va y falta donde sí.
+        //
+        //  La cuenta por geometría se queda disponible con VOLADO_POR_NOTA en NO.
+        var volada = _cfg.Bandera("VOLADO_POR_NOTA", true)
+            ? LosaEnPlanta.DiceVolado(
+                el.Notas, el.Seccion,
+                _cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER"))
+            : LosaEnPlanta.EsVolada(
+                el.Vertices, huellas, _cfg.Numero("LOSA_APOYO_CUBRE", 0.7));
 
         var capa = volada ? _capas.CapaVolado : CapaDe(el);
 
-        // ---- EL HATCH DEL VOLADIZO ---------------------------------------------------
+        // ---- EL HATCH, SOLO EN EL VOLADIZO -------------------------------------------
         if (volada && _cfg.Bandera("LOSA_HATCH", true))
         {
             HatchDeLosa(pts, capa);
@@ -981,6 +995,44 @@ public sealed partial class PlantaDrawer
             return;
         }
 
+        var capaArmado = _capas.Prefijo + "ARMADO LOSA";
+
+        // ==============================================================================
+        //  LA BAYONETA: EL ARMADO DEL TABLERO APOYADO
+        // ==============================================================================
+        //  Es la varilla con sus dos quiebres a 45°, una por dirección y por el centro del
+        //  tablero. Sustituye a la rejilla: la parrilla en TODOS los tableros llenaba el plano
+        //  de rejilla y tapaba las cadenas, que es justo lo que no se quería. La parrilla
+        //  sigue ahí, con ARMADO_LOSA_PARRILLA en SI, para quien la prefiera.
+        if (_cfg.Bandera("ARMADO_LOSA_BAYONETA", true))
+        {
+            var bayonetas = LosaEnPlanta.Bayonetas(
+                el.Vertices,
+                _cfg.Numero("ARMADO_LOSA_BAYONETA_QUIEBRE", 0.2),
+                _cfg.Numero("ARMADO_LOSA_BAYONETA_SALTO_CM", 8) / 100,
+                _cfg.Bandera("ARMADO_LOSA_DOS_DIRECCIONES", true));
+
+            foreach (var b in bayonetas)
+            {
+                var puntos = new double[b.Count * 2];
+
+                for (var i = 0; i < b.Count; i++)
+                {
+                    puntos[2 * i] = b[i].X + x0;
+                    puntos[(2 * i) + 1] = b[i].Y + y0;
+                }
+
+                PolilineaAbierta(puntos, capaArmado);
+            }
+
+            _armadas++;
+        }
+
+        if (!_cfg.Bandera("ARMADO_LOSA_PARRILLA", false))
+        {
+            return;
+        }
+
         var sep = _cfg.Numero("MALLA_SEP_CM", 15) / 100;
 
         var barras = LosaEnPlanta.Parrilla(
@@ -996,7 +1048,6 @@ public sealed partial class PlantaDrawer
             return;
         }
 
-        var capa = _capas.Prefijo + "ARMADO LOSA";
         var alPano = _cfg.Bandera("MALLA_AL_PANO", true) && huellas.Count > 0;
         var minTramo = _cfg.Numero("MALLA_SEGMENTO_MIN_CM", 15) / 100;
 
@@ -1004,7 +1055,7 @@ public sealed partial class PlantaDrawer
         {
             if (!alPano)
             {
-                Linea(b.X1 + x0, b.Y1 + y0, b.X2 + x0, b.Y2 + y0, capa);
+                Linea(b.X1 + x0, b.Y1 + y0, b.X2 + x0, b.Y2 + y0, capaArmado);
                 continue;
             }
 
@@ -1012,11 +1063,35 @@ public sealed partial class PlantaDrawer
             // se dibuja solo el trozo del claro.
             foreach (var t in LosaEnPlanta.TramosFuera(b, huellas, minTramo))
             {
-                Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capa);
+                Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capaArmado);
             }
         }
+    }
 
-        _armadas++;
+    /// <summary>Una polilínea <b>abierta</b>: la bayoneta del armado.</summary>
+    private object? PolilineaAbierta(double[] puntos, string capa)
+    {
+        if (puntos.Length < 4)
+        {
+            return null;
+        }
+
+        try
+        {
+            return AcadConnection.Retry<object?>(() =>
+            {
+                dynamic p = _ms.AddLightWeightPolyline(puntos);
+                p.Closed = false;
+                p.Layer = capa;
+                p.Color = PorCapa;
+                return (object?)p;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Armado de la losa en la capa '{capa}'", ex);
+            return null;
+        }
     }
 
     /// <summary>Cuántos paños se armaron, para el resumen.</summary>
@@ -1067,7 +1142,7 @@ public sealed partial class PlantaDrawer
         var texto = el.Clase switch
         {
             ClasePlanta.Muro => PierDelMuro(el),
-            ClasePlanta.Losa => el.Seccion,
+            ClasePlanta.Losa => RotuloDeLosa(el),
             _ => string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion
         };
 
@@ -1164,6 +1239,103 @@ public sealed partial class PlantaDrawer
         var fondo = esCadena && _cfg.Bandera("CADENA_TEXTO_FONDO", true);
 
         Mtexto(cx, cy, texto, altTrabe, CapaTextos, ang, estilo, fondo);
+    }
+
+    /// <summary>
+    /// El rótulo de la losa: los <b>cuatro renglones</b> de la hoja, no el nombre de la
+    /// sección.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <c>LOSA_TEXTO_1</c> a <c>LOSA_TEXTO_4</c>: «Losa de AZOTEA / cm de espesor / Var. #
+    /// @ cm. / Ambos sentidos». Antes se rotulaba el nombre de la propiedad de ETABS, que en
+    /// el plano no dice nada; esto es lo que se lee en obra.
+    /// </para>
+    /// <para>
+    /// Los renglones se toman <b>tal cual</b>, con sus espacios: los de
+    /// <c>LOSA_TEXTO_2</c> —«       cm de espesor»— son el hueco donde va el número, y
+    /// recortarlos dejaría el rótulo pegado a la izquierda. Es el mismo criterio de
+    /// <c>CfgT</c> en la macro.
+    /// </para>
+    /// <para>
+    /// <c>%U</c> se cambia por el uso —AZOTEA o ENTREPISO, según las palabras de la hoja— y
+    /// <c>%E</c> por el espesor real en centímetros, si el modelo lo dio.
+    /// </para>
+    /// </remarks>
+    private string RotuloDeLosa(ElementoPlanta el)
+    {
+        if (!_cfg.Bandera("ARMADO_LOSA_TEXTO", true))
+        {
+            return string.Empty;
+        }
+
+        var renglones = new List<string>();
+
+        for (var i = 1; i <= 4; i++)
+        {
+            var linea = _cfg.TextoTalCual($"LOSA_TEXTO_{i}");
+
+            if (linea.Trim().Length > 0)
+            {
+                renglones.Add(linea);
+            }
+        }
+
+        if (renglones.Count == 0)
+        {
+            return string.IsNullOrWhiteSpace(el.Seccion) ? string.Empty : el.Seccion;
+        }
+
+        var uso = UsoDeLaLosa(el);
+        var espesor = el.AnchoM > LargoMinimo
+            ? (el.AnchoM * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
+
+        // \P es el salto de renglón de un MTEXT.
+        return string.Join(
+            "\\P",
+            renglones.Select(r => r.Replace("%U", uso).Replace("%E", espesor)));
+    }
+
+    /// <summary>
+    /// De qué es la losa: <c>AZOTEA</c> o <c>ENTREPISO</c>, por las palabras de la hoja.
+    /// </summary>
+    /// <remarks>
+    /// Se miran la sección y las notas; si ninguna dice nada, se usa
+    /// <c>LOSA_USO_POR_OMISION</c>. La azotea se comprueba <b>primero</b> porque una sección
+    /// llamada «LOSA AZOTEA SLAB» contiene las dos palabras y lo que manda es la azotea.
+    /// </remarks>
+    private string UsoDeLaLosa(ElementoPlanta el)
+    {
+        var texto = ((el.Seccion ?? string.Empty) + " " + (el.Notas ?? string.Empty))
+            .ToUpperInvariant();
+
+        if (Contiene(_cfg.Texto("LOSA_PALABRAS_AZOTEA", "AZOTEA,CUBIERTA,TECHO,ROOF")))
+        {
+            return "AZOTEA";
+        }
+
+        if (Contiene(_cfg.Texto("LOSA_PALABRAS_ENTREPISO", "ENTREPISO,PISO,FLOOR,SLAB")))
+        {
+            return "ENTREPISO";
+        }
+
+        return _cfg.Texto("LOSA_USO_POR_OMISION", "ENTREPISO").ToUpperInvariant();
+
+        bool Contiene(string palabras)
+        {
+            foreach (var palabra in palabras.Split(','))
+            {
+                var p = palabra.Trim().ToUpperInvariant();
+
+                if (p.Length > 0 && texto.Contains(p, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>

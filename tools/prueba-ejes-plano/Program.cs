@@ -654,6 +654,46 @@ Check("ninguna varilla de la L se sale del pano",
       enL.All(b => b.X1 <= 2.0001 || Math.Max(b.Y1, b.Y2) <= 2.0001));
 
 Console.WriteLine();
+Console.WriteLine(" La bayoneta, y el volado que se reconoce por su NOTA");
+
+// LA BAYONETA: la varilla con sus dos quiebres a 45 grados, una por direccion y por el
+// centro del tablero. Sustituye a la rejilla, que llenaba todos los tableros.
+var bayonetas = LosaEnPlanta.Bayonetas(chico, 0.2, 0.08);
+
+Igual("van dos bayonetas, una por direccion", 2, bayonetas.Count);
+Igual("cada una con SEIS vertices, como en la macro", 6, bayonetas[0].Count);
+
+// La primera va en el sentido X, por el centro del tablero -y = 1-, y cruza de lado a lado.
+Cerca("arranca en el borde del tablero", 0, bayonetas[0][0].X, 1e-12);
+Cerca("y termina en el otro", 3, bayonetas[0][5].X, 1e-12);
+Cerca("por el centro del claro", 1, bayonetas[0][0].Y, 1e-12);
+// El quiebre a L/5 = 0.6, con salto de 8 cm: sube a y = 1.08 entre 0.6 y 2.4.
+Cerca("quiebra a un quinto del claro", 0.6, bayonetas[0][2].X, 1e-12);
+Cerca("y ahi salta los 8 cm", 1.08, bayonetas[0][2].Y, 1e-12);
+Cerca("el tramo central va corrido a esa altura", 2.4, bayonetas[0][3].X, 1e-12);
+Cerca("y baja antes del apoyo", 1, bayonetas[0][5].Y, 1e-12);
+// A 45 grados: se avanza lo mismo a lo largo que de lado.
+Cerca("el quiebre es a 45 grados", 0.08,
+      bayonetas[0][2].X - bayonetas[0][1].X, 1e-12);
+
+Igual("en una sola direccion va una", 1,
+      LosaEnPlanta.Bayonetas(chico, 0.2, 0.08, dosDirecciones: false).Count);
+
+// EL VOLADO, POR SU NOTA. Es lo que se pidio: el ANSI37 solo donde la nota diga VOLADO.
+const string palabrasVolado = "VOLADO,VOLADIZO,VOLADA,CANTILEVER";
+
+Check("una losa cuya NOTA dice VOLADO es volado",
+      LosaEnPlanta.DiceVolado("LOSA EN VOLADO", "L10", palabrasVolado));
+Check("y tambien si lo dice su seccion",
+      LosaEnPlanta.DiceVolado("", "LOSA VOLADIZO 10", palabrasVolado));
+Check("no importan las mayusculas",
+      LosaEnPlanta.DiceVolado("losa volada de acceso", "", palabrasVolado));
+Check("una losa de azotea normal NO es volado",
+      !LosaEnPlanta.DiceVolado("LOSA DE AZOTEA", "LOSA 10", palabrasVolado));
+Check("y sin nota ni seccion, tampoco",
+      !LosaEnPlanta.DiceVolado(null, null, palabrasVolado));
+
+Console.WriteLine();
 Console.WriteLine(" El contorno, solo por fuera del muro o la cadena");
 
 // Un lado de losa que corre sobre una cadena: por dentro de la cadena NO se dibuja.

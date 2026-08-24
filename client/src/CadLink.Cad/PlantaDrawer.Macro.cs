@@ -768,12 +768,103 @@ public sealed partial class PlantaDrawer
             }
         }
 
-        // PRIMERO LA GEOMETRÍA Y DESPUÉS LOS TEXTOS, en dos pasadas: el segundo MoveToTop
-        // deja lo suyo encima del primero, así que los rótulos quedan SIEMPRE arriba. En una
-        // sola pasada el orden entre unos y otros lo decidía el recorrido del dibujo, y un
-        // rótulo tapado por una parrilla o por un muro no se lee.
+        // ==============================================================================
+        //  POR LOS DOS LADOS, Y LUEGO UN REGEN
+        // ==============================================================================
+        //  Se pidió tres veces que las líneas de E-CADENA y de E-ACERO quedaran al frente, así
+        //  que aquí se hace todo lo que se puede hacer:
+        //
+        //   1. La LOSA Y SU ARMADO al FONDO. Es la otra mitad del problema y la que faltaba:
+        //      da igual cuántas veces se suba la cadena si el achurado y la rejilla de la losa
+        //      se dibujaron después. Mandando la losa atrás, el resultado se ve aunque la
+        //      subida al frente no llegue a aplicarse.
+        //   2. La GEOMETRÍA al frente y, encima, los TEXTOS, en dos pasadas: cada MoveToTop
+        //      deja lo suyo sobre lo anterior.
+        //   3. Un REGEN. Sin él, AutoCAD puede seguir mostrando el orden viejo en pantalla
+        //      aunque en el dibujo ya esté cambiado, y eso se ve exactamente igual que si el
+        //      orden no se hubiera aplicado.
+        BajarCapas(_capas.CapasAlFondo());
+
         SubirCapas(_capas.CapasAlFrente());
         SubirCapas(_capas.CapasDeTextoAlFrente());
+
+        Regenerar();
+    }
+
+    /// <summary>Manda al <b>fondo</b> las capas de la losa y su armado.</summary>
+    /// <remarks>
+    /// Con <c>MoveToBottom</c> y, de respaldo, el <c>DRAWORDER → Back</c> por comando. Es lo
+    /// que garantiza que el achurado del voladizo y la rejilla del armado no tapen las
+    /// cadenas: <b>bajar lo de abajo</b> es tan válido como subir lo de arriba, y las dos
+    /// cosas juntas no se estorban.
+    /// </remarks>
+    private void BajarCapas(IReadOnlyList<string> capas)
+    {
+        if (capas.Count == 0)
+        {
+            return;
+        }
+
+        var porCapa = EntidadesPorCapa(capas);
+
+        foreach (var capa in capas)
+        {
+            if (porCapa[capa].Count == 0)
+            {
+                continue;
+            }
+
+            if (!MoverAlFondo(porCapa[capa]))
+            {
+                DrawOrderPorComando(capa, alFrente: false);
+            }
+        }
+    }
+
+    private bool MoverAlFondo(List<object> entidades)
+    {
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                dynamic tabla = TablaDeOrden();
+                tabla.MoveToBottom(entidades.ToArray());
+                return true;
+            });
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Regenera el dibujo para que el orden nuevo <b>se vea</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es el paso que faltaba. El orden de dibujo puede quedar bien guardado en el dibujo y
+    /// seguir viéndose el viejo en pantalla hasta que algo obliga a regenerar, y desde fuera
+    /// eso es indistinguible de que el orden no se haya aplicado.
+    /// </remarks>
+    private void Regenerar()
+    {
+        try
+        {
+            // 1 = acAllViewports.
+            AcadConnection.Retry(() => { _doc.Regen(1); });
+        }
+        catch (Exception)
+        {
+            try
+            {
+                AcadConnection.Retry(() => { _doc.SendCommand("_.regen\n"); });
+            }
+            catch (Exception)
+            {
+                Nota("No se pudo regenerar el dibujo. Si el orden de dibujo no se ve como " +
+                     "debe, escribe REGEN en AutoCAD.");
+            }
+        }
     }
 
     /// <summary>
@@ -833,6 +924,44 @@ public sealed partial class PlantaDrawer
             return;
         }
 
+        var porCapa = EntidadesPorCapa(capas);
+
+        foreach (var capa in capas)
+        {
+            var lista = porCapa[capa];
+
+            if (lista.Count == 0)
+            {
+                continue;
+            }
+
+            // LAS DOS COSAS, no una o la otra. Se pidió tres veces que E-CADENA y E-ACERO
+            // salieran al frente de verdad, así que además de la tabla de orden de dibujo se
+            // manda el DRAWORDER → Front, que es el que se usa a mano y el que no falla.
+            // Hacer las dos no cuesta nada: el resultado final es el mismo estado.
+            var conTabla = MoverAlFrente(lista);
+            var conComando = DrawOrderPorComando(capa);
+
+            if (conTabla || conComando)
+            {
+                _alFrente += lista.Count;
+                continue;
+            }
+
+            Nota($"No se pudo subir al frente la capa {capa} ({lista.Count} objeto(s)). " +
+                 "Hazlo a mano con DRAWORDER → Bring to Front.");
+        }
+    }
+
+    /// <summary>
+    /// Recorre el dibujo <b>una vez</b> y reparte las entidades de esas capas.
+    /// </summary>
+    /// <remarks>
+    /// Una sola vuelta y no una por capa: recorrer el espacio modelo son miles de saltos por
+    /// COM y es la parte lenta de todo esto.
+    /// </remarks>
+    private Dictionary<string, List<object>> EntidadesPorCapa(IReadOnlyList<string> capas)
+    {
         var porCapa = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var capa in capas)
@@ -867,33 +996,23 @@ public sealed partial class PlantaDrawer
         catch (Exception ex)
         {
             Fallo("Recorrer el dibujo para el orden de dibujo", ex);
-            return;
         }
 
-        foreach (var capa in capas)
+        return porCapa;
+    }
+
+    /// <summary>La tabla de orden de dibujo del espacio modelo, creándola si no está.</summary>
+    private dynamic TablaDeOrden()
+    {
+        dynamic dict = _ms.GetExtensionDictionary;
+
+        try
         {
-            var lista = porCapa[capa];
-
-            if (lista.Count == 0)
-            {
-                continue;
-            }
-
-            // LAS DOS COSAS, no una o la otra. Se pidió tres veces que E-CADENA y E-ACERO
-            // salieran al frente de verdad, así que además de la tabla de orden de dibujo se
-            // manda el DRAWORDER → Front, que es el que se usa a mano y el que no falla.
-            // Hacer las dos no cuesta nada: el resultado final es el mismo estado.
-            var conTabla = MoverAlFrente(lista);
-            var conComando = DrawOrderPorComando(capa);
-
-            if (conTabla || conComando)
-            {
-                _alFrente += lista.Count;
-                continue;
-            }
-
-            Nota($"No se pudo subir al frente la capa {capa} ({lista.Count} objeto(s)). " +
-                 "Hazlo a mano con DRAWORDER → Bring to Front.");
+            return dict.GetObject("ACAD_SORTENTS");
+        }
+        catch (Exception)
+        {
+            return dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
         }
     }
 
@@ -907,18 +1026,7 @@ public sealed partial class PlantaDrawer
         {
             return AcadConnection.Retry(() =>
             {
-                dynamic dict = _ms.GetExtensionDictionary;
-                dynamic tabla;
-
-                try
-                {
-                    tabla = dict.GetObject("ACAD_SORTENTS");
-                }
-                catch (Exception)
-                {
-                    tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
-                }
-
+                dynamic tabla = TablaDeOrden();
                 tabla.MoveToTop(entidades.ToArray());
                 return true;
             });
@@ -947,16 +1055,19 @@ public sealed partial class PlantaDrawer
     /// esté en las presentaciones, y ahí el comando falla.
     /// </para>
     /// </remarks>
-    private bool DrawOrderPorComando(string capa)
+    private bool DrawOrderPorComando(string capa, bool alFrente = true)
     {
         if (!_cfg.Bandera("DRAWORDER_POR_COMANDO", true) || capa.Contains('"'))
         {
             return false;
         }
 
+        // _F = Front, _B = Back. Con el guion bajo delante para que valga en cualquier idioma.
+        var donde = alFrente ? "_F" : "_B";
+
         var lisp =
             "(if (setq ss_clk (ssget \"_X\" '((8 . \"" + capa + "\") (410 . \"Model\")))) " +
-            "(command \"_.draworder\" ss_clk \"\" \"_F\"))\n";
+            "(command \"_.draworder\" ss_clk \"\" \"" + donde + "\"))\n";
 
         try
         {
