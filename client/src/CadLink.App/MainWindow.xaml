@@ -122,20 +122,14 @@
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal"
                             VerticalAlignment="Center">
-                    <Button Content="Nuevo" Style="{StaticResource ToolbarButtonStyle}"
-                            Command="ApplicationCommands.New"
-                            ToolTip="Empieza un trabajo en blanco (Ctrl+N)." />
-                    <Button Content="Abrir" Style="{StaticResource ToolbarButtonStyle}"
-                            Command="ApplicationCommands.Open"
-                            ToolTip="Abre un archivo .clk guardado antes (Ctrl+A)." />
-                    <Button Content="Guardar" Style="{StaticResource ToolbarPrimaryButtonStyle}"
-                            Command="ApplicationCommands.Save"
-                            ToolTip="Guarda todo lo capturado en un archivo .clk (Ctrl+G)." />
-                    <Button Content="Guardar como..." Style="{StaticResource ToolbarButtonStyle}"
-                            Command="ApplicationCommands.SaveAs"
-                            ToolTip="Guarda con otro nombre (Ctrl+Mayus+G)." />
+                    <!-- NUEVO, ABRIR, GUARDAR Y GUARDAR COMO NO ESTAN AQUI.
+                         Se pidio quitarlos de la barra: viven en el menu Archivo, con su
+                         atajo -Ctrl+N, Ctrl+A, Ctrl+G, Ctrl+Mayus+G-, que es donde se
+                         buscan y como se usan de verdad. Repetirlos aqui gastaba el ancho
+                         de la barra en cuatro botones que ya estaban en el menu.
 
-                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+                         Los comandos siguen siendo los mismos -ApplicationCommands- asi
+                         que los atajos de teclado funcionan igual, esten o no los botones. -->
 
                     <!-- DESHACER. Arranca apagado porque al abrir el programa no hay
                          nada que deshacer; lo enciende ActualizarBotonDeshacer en
@@ -693,22 +687,6 @@
                                     <TextBlock FontSize="11.5" VerticalAlignment="Center"
                                                Foreground="{DynamicResource MutedTextBrush}"
                                                Text="IR, IS, IC y S: perfil I  |  WT: te  |  C: canal laminada  |  CF: canal con labios (monten)  |  ZF: zeta  |  L: angulo  |  OR: tubo rectangular  |  OC: tubo redondo  |  OS: redondo macizo" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Que columna usa cada una:" FontWeight="SemiBold" FontSize="12"
-                                               VerticalAlignment="Center" Margin="0,0,14,0"
-                                               Foreground="{DynamicResource BrandDarkBrush}" />
-                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Text="I, te y canal: peralte, ancho, e alma, e patin  |  L: el peralte es el ALA LARGA y el ancho la CORTA  |  OR: peralte, ancho, e pared  |  OC y OS: el peralte es el DIAMETRO  |  CF: ademas labio y radio  |  ZF: ademas ancho 2 y radio" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Al final de la tabla:" FontWeight="SemiBold" FontSize="12"
-                                               VerticalAlignment="Center" Margin="0,0,14,0"
-                                               Foreground="{DynamicResource BrandDarkBrush}" />
-                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Text="las 16 propiedades geometricas del manual (peso, area, Ix, Sx, Zx, rx, Iy, Sy, Zy, ry, rmin, J, Cw, Ixy, x barra, y barra). Son de solo lectura y una celda VACIA quiere decir que el manual no da esa propiedad para esa familia, no que valga cero." />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

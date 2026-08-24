@@ -3312,8 +3312,18 @@ def v18_planta_autocad() -> None:
               '_cfg.Numero("PLANTAS_POR_FILA", 100)' in cuerpo)
         check("el paso es el MISMO para todas, del rectangulo que las envuelve",
               "foreach (var p in plantas)" in cuerpo and "var pasoX = (xMax - xMin) + hueco;" in cuerpo)
-    check("y las plantas van del nivel mas bajo al mas alto, como ORDEN_NIVELES = ASC",
-          "modelo.Niveles.OrderBy(n => n.ElevacionM)" in codigo)
+    # LA BASE TAMBIEN SE DIBUJA. GetStories NO devuelve el nivel base, pero el modelo si
+    # tiene elementos con Story = «Base» -las cadenas de desplante-, asi que los niveles se
+    # sacan de los ELEMENTOS, como StoriesDesdeElementos de la macro.
+    mod = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    check("los niveles que se dibujan salen de los elementos, asi entra la BASE",
+          "public List<NivelEtabs> NivelesConElementos(bool ascendente = true)" in mod
+          and "e.Clase != ClaseElemento.Losa" in mod
+          and "modelo.NivelesConElementos(ascendente: true)" in codigo)
+    check("y la lista de la pestaña tambien la trae",
+          "modelo.NivelesConElementos(ascendente: false)" in codigo)
+    check("las plantas van del nivel mas bajo al mas alto, como ORDEN_NIVELES = ASC",
+          "salida.OrderBy(n => n.ElevacionM).ToList()" in mod)
 
     # LOS ROTULOS, DONDE LOS PONE LA MACRO: la columna en la esquina superior derecha y la
     # trabe girada a lo largo de la barra. Todos al centro y horizontales era lo que
@@ -4528,7 +4538,20 @@ def v19_circular_y_ui() -> None:
           and "private void CaraSegmentada(" in zap_drw)
     check("los ganchos del lindero doblan LOS DOS a la izquierda",
           "ganchosAmbosIzq" in zap_drw
-          and "bendIniSup = true;" in zap_drw
+          and "bendIniSup = true;" in zap_drw)
+
+    # EL GANCHO DE REMATE -el de ARRIBA- DOBLA HACIA ADENTRO EN LAS DOS BARRAS. Antes las
+    # dos doblaban al mismo lado y la del paño DERECHO se salia del dado; un gancho fuera
+    # del paño se queda en el recubrimiento y no ancla nada. Da igual si la columna es de
+    # concreto o de acero: eso cambia el pie de abajo, no el remate.
+    # OJO: el elemento vertical se dibuja GIRADO, asi que bendUp en locales es la izquierda
+    # en globales; por eso la barra izquierda va con false y la derecha con true.
+    check("el gancho de remate de la barra izquierda dobla hacia el nucleo",
+          "hookIniSup, bendIniSup, hookFinSup, false, false, false);" in zap_drw)
+    check("y el de la derecha tambien, hacia el otro lado",
+          "hookIniInf, bendIniInf, hookFinInf, true, true, false);" in zap_drw)
+    check("con su explicacion, que es facil de confundir",
+          "bendUp en LOCALES es la IZQUIERDA en globales" in zap_drw
           and "bendIniInf = true;" in zap_drw)
     check("y si las patas se alcanzarian, una se sube",
           "private double DesfaseDeLosGanchos(" in zap_drw
@@ -7742,8 +7765,15 @@ def v21_separacion_y_acero() -> None:
               "Modulo pendiente de portar" not in tab)
         check("tiene su cuadricula", 'x:Name="AceroGrid"' in tab)
         check("y su boton de dibujar", 'Click="OnExportAcero"' in tab)
-        check("y dice que columna usa cada familia",
-              "el peralte es el DIAMETRO" in tab)
+        # De la tarjeta de ayuda queda UN solo renglon -el de las familias-, que es el que
+        # de verdad hace falta: los otros dos explicaban lo que ya dice cada columna y se
+        # comian el alto de la tabla. Lo que decian vive ahora en el globo del titulo.
+        check("y dice que familias hay",
+              'Text="Las doce familias:"' in tab
+              and "OC: tubo redondo" in tab)
+        check("la ayuda larga se queda en el globo del titulo, no encima de la tabla",
+              "Que columna usa cada una" not in tab
+              and "cada familia usa las columnas que necesita" in tab)
 
         # ---------------------------------------------------------------
         # Las columnas de propiedades geometricas
@@ -9656,6 +9686,31 @@ def v24_rediseno() -> None:
     for estilo in ("TarjetaStyle", "MarcoPreviaStyle", "BarraTotalesStyle",
                    "TextoTotalesStyle"):
         check(f"existe el estilo {estilo}", f'x:Key="{estilo}"' in tema)
+
+    # LA BARRA DE ARRIBA, SIN NUEVO / ABRIR / GUARDAR / GUARDAR COMO: se pidio dejarlos
+    # solo en el menu Archivo, donde estan con su atajo. Los comandos siguen siendo los
+    # mismos -ApplicationCommands- asi que los atajos funcionan igual.
+    check("la barra ya no repite los botones de archivo",
+          'Content="Nuevo" Style="{StaticResource ToolbarButtonStyle}"' not in xaml
+          and 'Content="Abrir" Style="{StaticResource ToolbarButtonStyle}"' not in xaml
+          and 'Content="Guardar" Style="{StaticResource ToolbarPrimaryButtonStyle}"' not in xaml
+          and 'Content="Guardar como..."' not in xaml)
+    check("pero siguen en el menu Archivo, con su atajo",
+          all(f'Command="ApplicationCommands.{c}"' in xaml
+              for c in ("New", "Open", "Save", "SaveAs"))
+          and 'InputGestureText="Ctrl+N"' in xaml
+          and 'InputGestureText="Ctrl+Mayus+G"' in xaml)
+    check("y lo que se usa de verdad sigue en la barra",
+          'x:Name="DeshacerButton"' in xaml
+          and 'Click="OnValidate"' in xaml
+          and 'x:Name="TemaButton"' in xaml)
+
+    # Y la tarjeta de la hoja de acero, con UN solo renglon: los otros dos ocupaban alto de
+    # la tabla para explicar lo que ya dice cada columna.
+    check("la tarjeta de la hoja de acero deja un solo renglon",
+          'Text="Las doce familias:"' in xaml
+          and "Que columna usa cada una" not in xaml
+          and "Al final de la tabla" not in xaml)
 
     check("los marcos de vista previa usan su estilo",
           xaml.count('Style="{StaticResource MarcoPreviaStyle}"') >= 4)

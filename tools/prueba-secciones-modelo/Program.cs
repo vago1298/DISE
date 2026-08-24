@@ -253,6 +253,49 @@ Igual("una sección sin nombre se muestra como (sin nombre)", "(sin nombre)",
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LOS NIVELES QUE SE DIBUJAN, CON LA BASE   (StoriesDesdeElementos)");
+Console.WriteLine("=====================================================================");
+
+// El caso real: la API devuelve Story1 y Story2, pero NO la Base, y en el modelo hay
+// cadenas de desplante con Story = «Base». Antes esa planta no se dibujaba nunca.
+var conBase = new ModeloEtabs();
+conBase.Niveles.Add(new NivelEtabs { Nombre = "Story1", ElevacionM = 2.7 });
+conBase.Niveles.Add(new NivelEtabs { Nombre = "Story2", ElevacionM = 5.4 });
+conBase.Niveles.Add(new NivelEtabs { Nombre = "Story3", ElevacionM = 8.1 });   // sin elementos
+
+conBase.Elementos.Add(new ElementoEtabs
+{
+    Clase = ClaseElemento.Trabe, Story = "Base", Seccion = "CD 15X25",
+    Z1 = -0.30, Z2 = -0.30
+});
+conBase.Elementos.Add(new ElementoEtabs
+{
+    Clase = ClaseElemento.Trabe, Story = "Story2", Seccion = "T 15X30", Z1 = 5.4, Z2 = 5.4
+});
+conBase.Elementos.Add(new ElementoEtabs
+{
+    Clase = ClaseElemento.Columna, Story = "Story1", Seccion = "K 15X15", Z1 = 0, Z2 = 2.7
+});
+
+var niveles = conBase.NivelesConElementos();
+
+Igual("la BASE entra aunque la API no la devuelva, y va primero",
+      "Base, Story1, Story2", string.Join(", ", niveles.Select(n => n.Nombre)));
+Igual("su cota sale de sus propios elementos", -0.30, niveles[0].ElevacionM);
+Igual("los niveles SIN elementos se quedan fuera", 3, niveles.Count);
+Igual("y al revés, para la lista de elegir a mano", "Story2, Story1, Base",
+      string.Join(", ", conBase.NivelesConElementos(ascendente: false).Select(n => n.Nombre)));
+
+var soloBase = new ModeloEtabs();
+soloBase.Elementos.Add(new ElementoEtabs
+{
+    Clase = ClaseElemento.Trabe, Story = "Base", Seccion = "CD 15X25"
+});
+Igual("un modelo que solo tiene la base también se dibuja", 1,
+      soloBase.NivelesConElementos().Count);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");
 Console.WriteLine("=====================================================================");
 return fallos == 0 ? 0 : 1;

@@ -1050,13 +1050,32 @@ public sealed partial class ZapataDrawer
                 }
             }
 
-            // Barra del paño izquierdo global.
+            // ======================================================================
+            //  EL GANCHO DE REMATE, EL DE ARRIBA: LAS DOS BARRAS DOBLAN HACIA ADENTRO
+            // ======================================================================
+            //  Aquí estaba el error que se veía en el plano: las dos barras remataban con
+            //  el gancho doblado hacia el MISMO lado —bendUpDer en false, que en locales es
+            //  hacia la derecha global—, así que la del paño IZQUIERDO doblaba hacia dentro
+            //  del núcleo, bien, y la del paño DERECHO se salía del dado.
+            //
+            //  Un gancho de remate se mete SIEMPRE hacia el núcleo: es donde tiene concreto
+            //  que lo confine. Fuera del paño se queda en el recubrimiento, y ahí no ancla
+            //  nada. Así que la barra izquierda dobla a la derecha —false— y la derecha a la
+            //  izquierda —true—, y da igual si la columna es de concreto o de acero: eso
+            //  cambia el pie de abajo, no el remate de arriba.
+            //
+            //  Recordatorio, que es fácil de confundir: el elemento vertical se dibuja
+            //  girado, así que bendUp en LOCALES es la IZQUIERDA en globales.
+            // ======================================================================
+
+            // Barra del paño izquierdo global: remata hacia la derecha, hacia el núcleo.
             BarraConGanchos(xaBot, xbBar, ycSup, dSup, CapaVar(diaSup), centros, dE,
                 hookIniSup, bendIniSup, hookFinSup, false, false, false);
 
-            // Barra del paño derecho global (en el lindero, el lindero).
+            // Barra del paño derecho global (en el lindero, la del lindero): remata hacia la
+            // izquierda, que también es hacia el núcleo.
             BarraConGanchos(xaBotInf, xbBar, ycInf, dInf, CapaVar(diaInf), centros, dE,
-                hookIniInf, bendIniInf, hookFinInf, false, true, false);
+                hookIniInf, bendIniInf, hookFinInf, true, true, false);
 
             // Intermedias: rectas, cortadas en cada estribo.
             if (nInt > 0 && dInt > 0)

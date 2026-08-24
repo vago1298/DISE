@@ -187,6 +187,72 @@ public sealed class ModeloEtabs
 
     public int Contar(ClaseElemento c) => Elementos.Count(e => e.Clase == c);
 
+    /// <summary>
+    /// Los niveles <b>que tienen elementos</b>, ordenados por su elevación.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el <c>StoriesDesdeElementos</c> + <c>OrdenarStories</c> de la macro, y hace falta
+    /// por una razón concreta: <b>la BASE</b>. La lista de pisos que devuelve la API
+    /// —<c>GetStories</c>— <b>no incluye el nivel base</b>, pero en el modelo sí hay
+    /// elementos con <c>Story = "Base"</c>: las cadenas de desplante de la cimentación. Con
+    /// la lista de la API a secas, esa planta no se dibujaba nunca.
+    /// </para>
+    /// <para>
+    /// La elevación sale de la lista de la API cuando el nivel está ahí, y si no —la base—
+    /// se toma la <b>Z más alta de sus elementos que no sean losa</b>, que es exactamente lo
+    /// que hace la macro. Así la base queda en su sitio, debajo de todo.
+    /// </para>
+    /// <para>
+    /// Los niveles que están en la lista de la API pero <b>sin un solo elemento</b> se
+    /// quedan fuera: un hueco en la fila de plantas se ve como un error de dibujo.
+    /// </para>
+    /// </remarks>
+    /// <param name="ascendente">
+    /// <c>true</c> —el <c>ORDEN_NIVELES = ASC</c> de la hoja CONFIG— pone primero el nivel
+    /// más bajo, o sea la cimentación.
+    /// </param>
+    public List<NivelEtabs> NivelesConElementos(bool ascendente = true)
+    {
+        var nombres = Elementos
+            .Select(e => e.Story.Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var salida = new List<NivelEtabs>();
+
+        foreach (var nombre in nombres)
+        {
+            var dela = Niveles.FirstOrDefault(
+                n => string.Equals(n.Nombre, nombre, StringComparison.OrdinalIgnoreCase));
+
+            if (dela is not null)
+            {
+                salida.Add(dela);
+                continue;
+            }
+
+            // No está en la lista de la API: es la BASE, o un nivel que la API no expuso.
+            // Su cota es la Z más alta de sus elementos, sin contar las losas.
+            var zs = Elementos
+                .Where(e => string.Equals(e.Story.Trim(), nombre, StringComparison.OrdinalIgnoreCase)
+                            && e.Clase != ClaseElemento.Losa)
+                .Select(e => Math.Max(e.Z1, e.Z2))
+                .ToList();
+
+            salida.Add(new NivelEtabs
+            {
+                Nombre = nombre,
+                ElevacionM = zs.Count > 0 ? zs.Max() : 0
+            });
+        }
+
+        return ascendente
+            ? salida.OrderBy(n => n.ElevacionM).ToList()
+            : salida.OrderByDescending(n => n.ElevacionM).ToList();
+    }
+
     /// <summary>Resumen para mostrarle al usuario.</summary>
     public string Resumen()
     {

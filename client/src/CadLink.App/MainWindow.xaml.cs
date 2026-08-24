@@ -1231,14 +1231,17 @@ public partial class MainWindow : Window
         NivelPlantaCombo.Items.Clear();
         NivelPlantaCombo.Items.Add("(todos los niveles)");
 
-        // Se toman los niveles del modelo y, además, los que aparecen asignados a
-        // los elementos: si el modelo no expone el objeto Story, la lista de
-        // niveles llega vacía y sin esto la vista en planta quedaría inservible.
-        var nombres = modelo.Niveles
+        // LOS NIVELES QUE TIENEN ELEMENTOS, de arriba abajo: la BASE incluida.
+        // GetStories no devuelve el nivel base, así que con la lista de la API a secas la
+        // planta de cimentación no aparecía ni en esta lista ni en el dibujo, aunque el
+        // modelo tenga ahí las cadenas de desplante. NivelesConElementos los saca de los
+        // propios elementos, como StoriesDesdeElementos de la macro.
+        //
+        // Aquí van del más alto al más bajo porque es una lista para elegir a mano y lo que
+        // se suele mirar es el nivel de arriba; en el DIBUJO van al revés, ascendente, que
+        // es el ORDEN_NIVELES de la hoja.
+        var nombres = modelo.NivelesConElementos(ascendente: false)
             .Select(n => n.Nombre)
-            .Concat(modelo.Elementos.Select(el => el.Story))
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         foreach (var n in nombres)
@@ -2100,7 +2103,10 @@ public partial class MainWindow : Window
     {
         var plantas = new List<PlantaCad>();
 
-        foreach (var n in modelo.Niveles.OrderBy(n => n.ElevacionM))
+        // Los niveles CON ELEMENTOS y no la lista de la API: es la única forma de que la
+        // BASE entre, porque GetStories no la devuelve y en el modelo sí hay elementos con
+        // Story = «Base» —las cadenas de desplante—. Ver ModeloEtabs.NivelesConElementos.
+        foreach (var n in modelo.NivelesConElementos(ascendente: true))
         {
             var p = ArmarPlanta(modelo, n.Nombre);
 
