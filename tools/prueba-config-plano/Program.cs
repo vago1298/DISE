@@ -44,7 +44,11 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-Igual("la hoja trae los 261 renglones de CrearHojaConfig", 261, ConfigPlano.PorOmision.Count);
+// 262 y no los 261 de CrearHojaConfig: se añadió AIRE_SOBRE_LO_DIBUJADO_M, que no está
+// en su hoja. La macro siempre arranca en OFFSET_Y_INICIAL, así que dibujar dos veces
+// encimaba las plantas; con este, el juego se pone por encima de lo que ya haya.
+Igual("la hoja trae los renglones de CrearHojaConfig, mas el que se añadio",
+      262, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -69,7 +73,9 @@ Igual("FACTOR_UNIDADES", 1d, cfg.Numero("FACTOR_UNIDADES"));
 Igual("PREFIJO_CAPAS", "E-", cfg.Texto("PREFIJO_CAPAS"));
 Igual("ALTURA_TEXTO", 0.12, cfg.Numero("ALTURA_TEXTO"));
 Igual("OFFSET_Y_INICIAL", 15d, cfg.Numero("OFFSET_Y_INICIAL"));
-Igual("SEPARACION_ENTRE_PLANTAS", 5d, cfg.Numero("SEPARACION_ENTRE_PLANTAS"));
+// 10.00 y no los 5.00 de la hoja: se pidió expresamente.
+Igual("SEPARACION_ENTRE_PLANTAS", 10d, cfg.Numero("SEPARACION_ENTRE_PLANTAS"));
+Igual("AIRE_SOBRE_LO_DIBUJADO_M", 5d, cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M"));
 Igual("MALLA_SEP_CM", 15d, cfg.Numero("MALLA_SEP_CM"));
 Igual("SEC_ALTURA", 0.12, cfg.Numero("SEC_ALTURA"));
 Igual("CADENA_TEXTO_ALTURA", 0.09, cfg.Numero("CADENA_TEXTO_ALTURA"));
@@ -152,7 +158,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 261 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 262 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

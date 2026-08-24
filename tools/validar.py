@@ -2625,6 +2625,18 @@ def v16_extruida_piers() -> None:
           and "private void LlenarSeccionesModelo(ModeloEtabs modelo)" in codigo
           and "SeccionesModelo.Construir(modelo)" in codigo
           and codigo.count("LlenarSeccionesModelo(modelo);") == 2)
+    # TOTALES O INDIVIDUALES: la tabla de elementos que estaba debajo del visor 3D se movio
+    # a esta pestaña, y se ve UNA de las dos, no las dos a la vez.
+    check("la tabla de elementos vive ahora en la pestaña de secciones",
+          'x:Name="ElementosTitulo"' in xaml
+          and 'x:Name="AlternarSeccionesButton"' in xaml
+          and 'Click="OnAlternarSeccionesModelo"' in xaml)
+    check("y el boton cambia entre las dos, sin verlas dobles",
+          "private void OnAlternarSeccionesModelo(" in codigo
+          and "SeccionesModeloGrid.Visibility = aIndividuales" in codigo
+          and 'AlternarSeccionesButton.Content = aIndividuales ? "Ver totales" : "Ver individuales";'
+              in codigo)
+
     check("y se puede copiar a Excel con tabuladores",
           'Click="OnCopiarSeccionesModelo"' in xaml
           and "private void OnCopiarSeccionesModelo(" in codigo
@@ -2696,8 +2708,12 @@ def v16_extruida_piers() -> None:
     cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
     capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
 
-    check("la hoja CONFIG de la macro esta portada, con sus 261 renglones",
-          cfgp.count("        P(") == 261)
+    # 262 y no los 261 de CrearHojaConfig: se añadio AIRE_SOBRE_LO_DIBUJADO_M, que NO esta
+    # en su hoja. La macro arranca siempre en OFFSET_Y_INICIAL, asi que dibujar dos veces
+    # encimaba las plantas; con este, el juego se pone por encima de lo que ya haya dibujado.
+    check("la hoja CONFIG de la macro esta portada, con un renglon añadido",
+          cfgp.count("        P(") == 262
+          and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -2716,8 +2732,9 @@ def v16_extruida_piers() -> None:
     # Los renglones que mas se han peleado, con el valor exacto de su macro.
     for par, valor in (("VERSION_CONFIG", "29"), ("VERSION_PARCHE", "50"),
                        ("PREFIJO_CAPAS", "E-"), ("ALTURA_TEXTO", "0.12"),
-                       ("OFFSET_Y_INICIAL", "15"), ("SEPARACION_ENTRE_PLANTAS", "5"),
+                       ("OFFSET_Y_INICIAL", "15"),
                        ("SEC_ALTURA", "0.12"), ("CADENA_TEXTO_ALTURA", "0.09"),
+                       ("SEPARACION_ENTRE_PLANTAS", "10"),
                        ("LOSA_TEXTO_ALTURA", "0.072"), ("LOSA_HATCH_ESCALA", "0.0475"),
                        ("LOSACERO_HATCH_ESCALA", "0.02"),
                        ("LOSACERO_FRANJA_ANCHO_M", "0.15"),
@@ -2797,7 +2814,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "261, ConfigPlano.PorOmision.Count" in pr
+          and "262, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 21 capas", 21, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3252,6 +3269,7 @@ def v18_planta_autocad() -> None:
     # ------------------------------------------------------------------
     dib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
     dto = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+    mac = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
 
     check("existe PlantaDrawer", "class PlantaDrawer" in dib)
     check("existe el DTO PlantaCad", "class PlantaCad" in dto)
@@ -3304,10 +3322,16 @@ def v18_planta_autocad() -> None:
     check("se puede leer DibujarTodas", m_todas is not None)
     if m_todas:
         cuerpo = m_todas.group(0)
-        check("el paso sale de SEPARACION_ENTRE_PLANTAS",
-              '_cfg.Numero("SEPARACION_ENTRE_PLANTAS", 5)' in cuerpo)
-        check("arrancan en OFFSET_Y_INICIAL",
-              '_cfg.Numero("OFFSET_Y_INICIAL", 15)' in cuerpo)
+        check("el paso sale de SEPARACION_ENTRE_PLANTAS, que ahora son 10.00",
+              '_cfg.Numero("SEPARACION_ENTRE_PLANTAS", 10)' in cuerpo)
+        # Y el juego se pone POR ENCIMA de lo que ya este dibujado, no a una altura fija:
+        # asi dibujar dos veces no encima las plantas. Con el dibujo vacio, al origen.
+        check("el juego se coloca por encima de lo ya dibujado",
+              '_cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M", 5)' in cuerpo
+              and "var tope = TopeDeLoDibujado();" in cuerpo
+              and "tope is { } t ? t + aire : 0" in cuerpo)
+        check("y se mide lo que hay en el dibujo para saber donde acaba",
+              "internal double? TopeDeLoDibujado()" in mac)
         check("y caben PLANTAS_POR_FILA en cada fila",
               '_cfg.Numero("PLANTAS_POR_FILA", 100)' in cuerpo)
         check("el paso es el MISMO para todas, del rectangulo que las envuelve",
@@ -3332,7 +3356,6 @@ def v18_planta_autocad() -> None:
     # dibujante -EjesPlano y RotuloPlanta, sin COM- para poder comprobarla sin AutoCAD.
     ejp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/EjesPlano.cs"))
     rtp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/RotuloPlanta.cs"))
-    mac = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
 
     check("la cuenta de los ejes y las cotas esta portada",
           "public double SaleEjes()" in ejp
@@ -3397,6 +3420,13 @@ def v18_planta_autocad() -> None:
           "private void CotaAlineada(" in mac
           and '_capas.Prefijo + "COTAS"' in mac
           and "_ms.AddDimAligned(" in mac)
+    # EL PUNTO DECIMAL, POR OBJETO. En el estilo -DIMDSEP- no basta: en un AutoCAD en
+    # español gana la configuracion regional y las cotas salen con coma. La macro lo pone en
+    # CADA cota, y eso es lo que hay que hacer.
+    check("cada cota lleva su separador decimal, para que sea PUNTO y no coma",
+          "d.DecimalSeparator = sepDecimal;" in mac
+          and '_cfg.Texto("COTA_SEPARADOR_DECIMAL", ".")' in mac)
+
     check("la cota total lleva su linea de extension corta, para no tocar la burbuja",
           '_cfg.Numero("COTA_TOTAL_EXT_LINE_EXT", 0)' in mac
           and "c.EsTotal ? extTotal : -1" in mac)
@@ -3434,6 +3464,35 @@ def v18_planta_autocad() -> None:
     # xrefs, campos y anotaciones asociativas.
     check("y no se recurre a copiar y borrar, que cambia los handles",
           "RecrearAlFrente" not in mac)
+
+    # LAS COLUMNAS, COMO BLOQUE Y RELLENAS. El bloque se llama como la SECCION, que es lo
+    # que permite cambiar de golpe las 30 columnas de una seccion con un BLOCKREPLACE; y el
+    # giro va en la INSERCION, que es lo que hace que el reemplazo conserve la orientacion.
+    check("la columna se inserta como bloque",
+          "private bool ColumnaComoBloque(" in mac
+          and "_ms.InsertBlock(" in mac
+          and "ColumnaComoBloque(el, cx, cy, b, h)" in dib)
+    check("el bloque se llama como la seccion",
+          '_cfg.Bandera("BLOQUE_NOMBRE_SECCION", true)' in mac
+          and "internal static string LimpiaNombreDeBloque(string s)" in mac)
+    check("el giro va en la insercion, no en la geometria",
+          '_cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS", 0)' in mac)
+    check("y va RELLENA, con el color de la hoja",
+          '_cfg.Bandera("RELLENAR_COLUMNAS", true)' in mac
+          and 'blk.AddHatch(0, "SOLID", true, 0)' in mac
+          and '_cfg.Numero("COLOR_RELLENO_BLOQUE", 2)' in mac)
+    check("un bloque que ya existe se respeta salvo que la hoja diga lo contrario",
+          '_cfg.Bandera("REDEFINIR_BLOQUES", true)' in mac)
+    check("y si algo falla se dibuja la seccion suelta, no se pierde la columna",
+          "if (ColumnaComoBloque(el, cx, cy, b, h))" in dib)
+
+    # LEER LOS EJES NO PUEDE TIRAR LA LECTURA. Se probo con Com.Get y rompio SAP2000: al
+    # pedir «GridSys» salta una excepcion propia -no un fallo de COM- que subia y se llevaba
+    # el modelo completo. Los ejes son opcionales: si no se leen, se deducen.
+    lect_gs = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("pedir la cuadricula no puede tirar la lectura del modelo",
+          'gridSys = Com.TryGet(cx.SapModel, "GridSys");' in lect_gs
+          and 'Com.Get(cx.SapModel, "GridSys")' not in lect_gs)
 
     # LOS EJES DEL MODELO, con su respaldo: GetGridSys_2 no esta en todas las versiones.
     lect_ej = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))

@@ -269,6 +269,14 @@ public sealed class ConfigPlano
     {
         P("VERSION_CONFIG", "29", "NO BORRAR: version de esta hoja CONFIG"),
         P("OFFSET_Y_INICIAL", "15", "LA PLANTA SE DIBUJA A PARTIR DE ESTA Y DEL ORIGEN"),
+
+        // AÑADIDO, no está en la hoja de la macro. Allá la planta arranca siempre en la Y
+        // de OFFSET_Y_INICIAL, así que dibujar dos veces encima del mismo plano las
+        // encimaba. Aquí se mira QUÉ HAY YA DIBUJADO y la planta se pone este aire por
+        // encima de lo más alto; si el dibujo está vacío, va al origen.
+        P("AIRE_SOBRE_LO_DIBUJADO_M", "5",
+          "La planta se dibuja a esta altura por encima de lo mas alto que ya haya en el " +
+          "dibujo. Si el dibujo esta vacio, en el origen"),
         P("FACTOR_UNIDADES", "1", "ETABS se lee en metros. 1 = dibujar en m, 100 = en cm"),
         P("PREFIJO_CAPAS", "E-", "Prefijo de las capas creadas"),
         P("ALTURA_TEXTO", "0.12", "Altura de las etiquetas"),
@@ -300,7 +308,9 @@ public sealed class ConfigPlano
         P("IGNORAR_LOSA_ESCALERA", "SI", "SI = las losas de escalera NO se dibujan"),
         P("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", "Palabras que identifican escaleras"),
         P("PLANTAS_POR_FILA", "100", "100 = todas en una fila hacia la derecha"),
-        P("SEPARACION_ENTRE_PLANTAS", "5", "5.00 m A LA DERECHA ENTRE PLANTAS (v36)"),
+        // 10.00 y no los 5.00 de la hoja: se pidió expresamente, y con 5 las burbujas y las
+        // cotas de una planta quedaban a un palmo de las de la siguiente.
+        P("SEPARACION_ENTRE_PLANTAS", "10", "10.00 m A LA DERECHA ENTRE PLANTAS"),
         P("SEPARACION_CUENTA_EJES", "SI", "SI = la separacion cuenta ejes, burbujas y cotas"),
         P("ORDEN_NIVELES", "ASC", "ASC = Story1 primero (izquierda a derecha)"),
         P("MARGEN", "3", "Margen del titulo de la planta"),

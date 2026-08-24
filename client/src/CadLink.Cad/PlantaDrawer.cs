@@ -339,9 +339,23 @@ public sealed partial class PlantaDrawer
             yMax = yMin + 1;
         }
 
-        var hueco = _cfg.Numero("SEPARACION_ENTRE_PLANTAS", 5);
-        var offsetY = _cfg.Numero("OFFSET_Y_INICIAL", 15);
+        var hueco = _cfg.Numero("SEPARACION_ENTRE_PLANTAS", 10);
         var porFila = (int)_cfg.Numero("PLANTAS_POR_FILA", 100);
+
+        // ==============================================================================
+        //  DÓNDE SE PONE EL JUEGO: POR ENCIMA DE LO QUE YA ESTÉ DIBUJADO
+        // ==============================================================================
+        //  La macro arranca siempre en la Y de OFFSET_Y_INICIAL, y eso está bien cuando se
+        //  dibuja en un archivo nuevo. Pero al dibujar sobre un plano que ya tiene cosas
+        //  —o al dibujar dos veces— las plantas caían encima de lo anterior.
+        //
+        //  Así que se mira qué hay ya en el dibujo y el juego se coloca AIRE_SOBRE_LO_
+        //  DIBUJADO_M por encima de lo más alto que haya, sea de concreto, de acero o una
+        //  anotación. Si el dibujo está vacío, va al ORIGEN.
+        // ==============================================================================
+        var aire = _cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M", 5);
+        var tope = TopeDeLoDibujado();
+        var offsetY = tope is { } t ? t + aire : 0;
 
         if (porFila < 1)
         {
@@ -449,6 +463,14 @@ public sealed partial class PlantaDrawer
 
         var cx = el.X1 + x0;
         var cy = el.Y1 + y0;
+
+        // PRIMERO, COMO BLOQUE Y RELLENA, que es como lo hace la macro: el bloque se llama
+        // como la sección, así que con un BLOCKREPLACE se cambian de golpe todas las
+        // columnas de esa sección por el detalle bueno. Si no se puede, se dibuja suelta.
+        if (ColumnaComoBloque(el, cx, cy, b, h))
+        {
+            return true;
+        }
 
         var pl = PolilineaCerrada(
             new[]

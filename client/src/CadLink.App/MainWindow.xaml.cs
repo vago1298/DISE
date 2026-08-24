@@ -1012,6 +1012,37 @@ public partial class MainWindow : Window
             $"de {modelo.Elementos.Count} elementos del modelo.";
     }
 
+    /// <summary>
+    /// Cambia entre <b>totales</b> por sección e <b>individuales</b> por elemento.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las dos tablas salen del mismo modelo y dicen lo mismo a dos niveles de detalle: la
+    /// de arriba, una línea por sección con cuántas hay, su longitud o su área y en qué
+    /// niveles; la de abajo, una línea por elemento con su etiqueta y su largo. Enseñar las
+    /// dos a la vez era ver doble, así que se ve <b>la que se pida</b>.
+    /// </para>
+    /// <para>
+    /// El botón dice <b>a dónde se va</b>, no dónde se está: es lo que espera quien pulsa un
+    /// botón, y es el mismo criterio que el de cambiar de tema.
+    /// </para>
+    /// </remarks>
+    private void OnAlternarSeccionesModelo(object sender, RoutedEventArgs e)
+    {
+        var aIndividuales = SeccionesModeloGrid.Visibility == Visibility.Visible;
+
+        SeccionesModeloGrid.Visibility = aIndividuales ? Visibility.Collapsed : Visibility.Visible;
+
+        EtabsGrid.Visibility = aIndividuales ? Visibility.Visible : Visibility.Collapsed;
+        ElementosTitulo.Visibility = EtabsGrid.Visibility;
+
+        AlternarSeccionesButton.Content = aIndividuales ? "Ver totales" : "Ver individuales";
+
+        StatusText.Text = aIndividuales
+            ? "Secciones del modelo: una línea por elemento."
+            : "Secciones del modelo: los totales por sección.";
+    }
+
     /// <summary>Lee el modelo y arma la tabla de secciones.</summary>
     /// <remarks>
     /// Si el modelo ya se leyó, no se vuelve a leer: se arma la tabla con el que hay. Leer

@@ -211,13 +211,28 @@ public static class EtabsReader
     /// </remarks>
     private static void LeerEjes(EtabsConnection cx, ModeloEtabs m)
     {
-        object gridSys;
+        // ==============================================================================
+        //  AQUI NO SE PUEDE TIRAR LA LECTURA ENTERA. Se probó con Com.Get y con el filtro
+        //  de fallos de COM, y ROMPIÓ SAP2000: al pedir «GridSys» salta una excepción propia
+        //  —«devolvió vacío al pedir GridSys»— que no es un fallo de COM, así que subía y se
+        //  llevaba por delante el modelo completo. El usuario veía «No se pudo leer el
+        //  modelo» con SAP2000 y el de ETABS sí.
+        //
+        //  Los ejes son OPCIONALES: si no se pueden leer se deducen de las columnas y los
+        //  muros. Así que aquí se traga CUALQUIER excepción, y punto.
+        // ==============================================================================
+        object? gridSys;
 
         try
         {
-            gridSys = Com.Get(cx.SapModel, "GridSys");
+            gridSys = Com.TryGet(cx.SapModel, "GridSys");
         }
-        catch (Exception ex) when (EsFalloCom(ex))
+        catch (Exception)
+        {
+            gridSys = null;
+        }
+
+        if (gridSys is null)
         {
             return;
         }
@@ -236,7 +251,7 @@ public static class EtabsReader
                 }
             }
         }
-        catch (Exception ex) when (EsFalloCom(ex))
+        catch (Exception)
         {
             // Se prueba igual con el nombre de omisión: algunos modelos responden.
         }
@@ -278,9 +293,10 @@ public static class EtabsReader
                 m.Ejes = ejes;
             }
         }
-        catch (Exception ex) when (EsFalloCom(ex))
+        catch (Exception)
         {
-            // Esta versión no tiene GetGridSys_2: se deducen de la geometría.
+            // Esta versión no tiene GetGridSys_2, o la cuadrícula está definida de otra
+            // forma: se deducen de la geometría y el plano sale con sus ejes igual.
         }
 
         static void Cargar(List<EjesModelo.Eje> destino, string[] ids, double[] ords)

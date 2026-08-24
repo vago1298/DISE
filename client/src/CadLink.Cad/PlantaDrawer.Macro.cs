@@ -655,6 +655,318 @@ public sealed partial class PlantaDrawer
     private int _alFrente;
 
     // =================================================================================
+    //  LAS COLUMNAS Y LOS CASTILLOS, COMO BLOQUE Y RELLENOS
+    // =================================================================================
+
+    /// <summary>
+    /// Inserta la sección de una columna como <b>bloque</b>, con su relleno.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que hace <c>DibujarElemento</c> con los elementos verticales, y tiene dos
+    /// motivos de peso, los dos de la macro:
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     <b>El bloque se llama como la sección de ETABS</b> —<c>BLOQUE_NOMBRE_SECCION</c>—,
+    ///     así que con un <c>BLOCKREPLACE</c> se cambian de golpe las 30 columnas de una
+    ///     sección por el detalle bueno, con sus varillas y sus estribos. Eso es imposible
+    ///     con 30 rectángulos sueltos.
+    ///   </item>
+    ///   <item>
+    ///     <b>El giro va en la INSERCIÓN</b> y no en la geometría del bloque, que es lo que
+    ///     hace que el reemplazo conserve la orientación de cada columna.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// El relleno es un hatch <c>SOLID</c> de color <c>COLOR_RELLENO_BLOQUE</c> —el 2,
+    /// amarillo— dentro del bloque, no por objeto: así se mueve con él y no hay que volver a
+    /// achurar nada.
+    /// </para>
+    /// <para>
+    /// Si algo falla —una versión que no deje crear bloques, un nombre imposible— se
+    /// devuelve <c>false</c> y quien llama dibuja la sección suelta de siempre. El plano
+    /// nunca se queda sin la columna.
+    /// </para>
+    /// </remarks>
+    private bool ColumnaComoBloque(ElementoPlanta el, double cx, double cy, double b, double h)
+    {
+        if (!_cfg.Bandera("COLUMNAS_COMO_BLOQUE", true))
+        {
+            return false;
+        }
+
+        var nombre = NombreDelBloque(el, b, h);
+
+        if (nombre.Length == 0)
+        {
+            return false;
+        }
+
+        if (!AsegurarBloqueDeSeccion(nombre, b, h, el.Forma))
+        {
+            return false;
+        }
+
+        var giro = _cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS", 0) * Math.PI / 180;
+
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                dynamic ins = _ms.InsertBlock(new[] { cx, cy, 0d }, nombre, 1d, 1d, 1d, giro);
+                ins.Layer = CapaDe(el);
+                return true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Insertar el bloque '{nombre}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// El nombre del bloque: el de la <b>sección</b>, o el tipo con sus medidas.
+    /// </summary>
+    /// <remarks>
+    /// Sin sufijo de rotación —<c>BLOQUE_SUFIJO_ROTACION</c> está en NO—, así que hay
+    /// <b>una sola definición por sección</b> y el reemplazo se hace una vez. El giro va en
+    /// la inserción.
+    /// </remarks>
+    private string NombreDelBloque(ElementoPlanta el, double b, double h)
+    {
+        var pref = _cfg.Texto("BLOQUE_PREFIJO");
+
+        if (_cfg.Bandera("BLOQUE_NOMBRE_SECCION", true))
+        {
+            var s = LimpiaNombreDeBloque(el.Seccion);
+
+            if (s.Length == 0)
+            {
+                s = LimpiaNombreDeBloque(
+                    $"{Tipo(el)}-{b * 100:0}X{h * 100:0}");
+            }
+
+            return s.Length == 0 ? string.Empty : pref + s;
+        }
+
+        return LimpiaNombreDeBloque(
+            $"{_capas.Prefijo}{Tipo(el)}-{el.Forma}-{b * 100:0}X{h * 100:0}");
+
+        static string Tipo(ElementoPlanta e) =>
+            e.Tipo.Length > 0 ? e.Tipo : "COLUMNA";
+    }
+
+    /// <summary>
+    /// Quita del nombre lo que AutoCAD no admite en un bloque: es
+    /// <c>LimpiaNombreBloque</c>.
+    /// </summary>
+    /// <remarks>
+    /// Se <b>sustituye</b> por un guion bajo en lugar de borrarse, como en la macro: dos
+    /// secciones que solo se distinguieran por un carácter prohibido no pueden acabar con el
+    /// mismo nombre de bloque.
+    /// </remarks>
+    internal static string LimpiaNombreDeBloque(string s)
+    {
+        const string malos = "<>/\\\":;?*|,=`";
+
+        var sb = new System.Text.StringBuilder();
+
+        foreach (var ch in s.Trim())
+        {
+            sb.Append(malos.Contains(ch) || ch < 32 ? '_' : ch);
+        }
+
+        var salida = sb.ToString().Trim();
+
+        return salida.Length > 200 ? salida[..200] : salida;
+    }
+
+    /// <summary>
+    /// Crea la definición del bloque de una sección, con su relleno.
+    /// </summary>
+    /// <remarks>
+    /// Si el bloque <b>ya existe</b> se respeta, salvo que <c>REDEFINIR_BLOQUES</c> esté en
+    /// SI: entonces se vacía y se vuelve a armar. Es la diferencia entre conservar el detalle
+    /// que el usuario ya cambió a mano y actualizar el dibujo con las medidas nuevas, y la
+    /// hoja es la que decide.
+    /// </remarks>
+    private bool AsegurarBloqueDeSeccion(string nombre, double b, double h, string forma)
+    {
+        if (_bloquesListos.Contains(nombre))
+        {
+            return true;
+        }
+
+        try
+        {
+            var ok = AcadConnection.Retry(() =>
+            {
+                dynamic bloques = _doc.Blocks;
+                dynamic blk;
+                var existia = true;
+
+                try
+                {
+                    blk = bloques.Item(nombre);
+                }
+                catch (Exception)
+                {
+                    existia = false;
+                    blk = bloques.Add(new[] { 0d, 0d, 0d }, nombre);
+                }
+
+                if (existia)
+                {
+                    if (!_cfg.Bandera("REDEFINIR_BLOQUES", true))
+                    {
+                        return true;
+                    }
+
+                    // Se vacía de atrás hacia adelante: borrar por índice hacia adelante
+                    // recoloca los que quedan y se saltarían la mitad.
+                    for (var i = (int)blk.Count - 1; i >= 0; i--)
+                    {
+                        try
+                        {
+                            blk.Item(i).Delete();
+                        }
+                        catch (Exception)
+                        {
+                            // Una entidad que no se deja borrar no impide rearmar el resto.
+                        }
+                    }
+                }
+
+                dynamic? contorno = null;
+
+                if (string.Equals(forma, "CIRC", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(forma, "PIPE", StringComparison.OrdinalIgnoreCase))
+                {
+                    contorno = blk.AddCircle(new[] { 0d, 0d, 0d }, b / 2);
+                }
+                else
+                {
+                    contorno = blk.AddLightWeightPolyline(new[]
+                    {
+                        -b / 2, -h / 2,
+                        b / 2, -h / 2,
+                        b / 2, h / 2,
+                        -b / 2, h / 2
+                    });
+
+                    contorno.Closed = true;
+                }
+
+                contorno.Layer = "0";
+
+                // EL RELLENO, DENTRO DEL BLOQUE Y CON SU COLOR PROPIO: color 2 por omisión,
+                // que es el amarillo de la macro. No va BYLAYER a propósito, porque el
+                // bloque se inserta en la capa del tipo de elemento y el relleno tiene que
+                // verse igual en todas.
+                if (_cfg.Bandera("RELLENAR_COLUMNAS", true))
+                {
+                    try
+                    {
+                        dynamic ht = blk.AddHatch(0, "SOLID", true, 0);
+                        ht.AppendOuterLoop(new[] { contorno });
+                        ht.Evaluate();
+                        ht.Layer = "0";
+
+                        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
+
+                        if (color is > 0 and < 256)
+                        {
+                            ht.Color = color;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        Nota($"No se pudo rellenar el bloque '{nombre}': queda con su " +
+                             "contorno, sin achurado.");
+                    }
+                }
+
+                return true;
+            });
+
+            if (ok)
+            {
+                _bloquesListos.Add(nombre);
+            }
+
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Crear el bloque de la sección '{nombre}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>Bloques ya armados en esta pasada, para no rehacerlos por cada columna.</summary>
+    private readonly HashSet<string> _bloquesListos = new(StringComparer.OrdinalIgnoreCase);
+
+    // =================================================================================
+    //  QUÉ HAY YA DIBUJADO
+    // =================================================================================
+
+    /// <summary>
+    /// La <b>Y más alta</b> de lo que ya está dibujado, o <c>null</c> si el dibujo está
+    /// vacío.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se recorre el espacio modelo midiendo la caja de cada entidad. Es la forma de poner
+    /// el juego de plantas <b>encima</b> de lo que haya —sea de concreto, de acero o una
+    /// anotación— en lugar de a una altura fija, que es lo que hacía que al dibujar dos veces
+    /// la segunda pasada cayera sobre la primera.
+    /// </para>
+    /// <para>
+    /// Una entidad que no se pueda medir se salta y no cuenta: hay objetos —una capa
+    /// congelada, un bloque anónimo— que no devuelven caja, y por uno de esos no vale la pena
+    /// renunciar a colocar bien el dibujo. Si <b>ninguna</b> se puede medir, es como si el
+    /// dibujo estuviera vacío y el juego va al origen.
+    /// </para>
+    /// </remarks>
+    internal double? TopeDeLoDibujado()
+    {
+        try
+        {
+            return AcadConnection.Retry<double?>(() =>
+            {
+                double? maximo = null;
+
+                foreach (var ent in _ms)
+                {
+                    var caja = CajaEnvolvente(ent);
+
+                    if (caja is not { } c)
+                    {
+                        continue;
+                    }
+
+                    var y = c.Max[1];
+
+                    if (maximo is null || y > maximo)
+                    {
+                        maximo = y;
+                    }
+                }
+
+                return maximo;
+            });
+        }
+        catch (Exception)
+        {
+            // Si no se puede recorrer el dibujo, se arranca en el origen: es lo mismo que
+            // pasa con un dibujo vacío y no hay nada que se pueda encimar.
+            return null;
+        }
+    }
+
+    // =================================================================================
     //  PRIMITIVAS QUE SOLO USA ESTA PARTE
     // =================================================================================
 
@@ -941,6 +1253,30 @@ public sealed partial class PlantaDrawer
                     catch (Exception)
                     {
                         // Sale con el estilo activo.
+                    }
+                }
+
+                // ==================================================================
+                //  EL SEPARADOR DECIMAL, POR OBJETO: PUNTO Y NO COMA
+                // ==================================================================
+                //  Ponerlo en el estilo —DIMDSEP— no basta, y por eso las cotas salían
+                //  con coma: en un AutoCAD en español la coma es la de la CONFIGURACIÓN
+                //  REGIONAL y gana al estilo en cuanto la cota se regenera.
+                //
+                //  La macro lo pone en CADA cota —d.DecimalSeparator = gCotaSep— y es lo
+                //  que hay que hacer: así 3.45 sale con punto en cualquier equipo.
+                var sepDecimal = _cfg.Texto("COTA_SEPARADOR_DECIMAL", ".");
+
+                if (sepDecimal.Length > 0)
+                {
+                    try
+                    {
+                        d.DecimalSeparator = sepDecimal;
+                    }
+                    catch (Exception)
+                    {
+                        Nota("Tu AutoCAD no aceptó el separador decimal por objeto; si las " +
+                             "cotas salen con coma, cambia DIMDSEP a 46 en el dibujo.");
                     }
                 }
 
