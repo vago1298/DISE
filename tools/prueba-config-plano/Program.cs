@@ -44,11 +44,12 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-// 262 y no los 261 de CrearHojaConfig: se añadió AIRE_SOBRE_LO_DIBUJADO_M, que no está
-// en su hoja. La macro siempre arranca en OFFSET_Y_INICIAL, así que dibujar dos veces
-// encimaba las plantas; con este, el juego se pone por encima de lo que ya haya.
-Igual("la hoja trae los renglones de CrearHojaConfig, mas el que se añadio",
-      262, ConfigPlano.PorOmision.Count);
+// 263 y no los 261 de CrearHojaConfig: se añadieron DOS renglones que no están en su
+// hoja. AIRE_SOBRE_LO_DIBUJADO_M —la macro siempre arranca en OFFSET_Y_INICIAL, así que
+// dibujar dos veces encimaba las plantas— y CAPAS_TEXTO_AL_FRENTE, que sube los rótulos
+// encima de todo en una segunda pasada del orden de dibujo.
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los dos que se añadieron",
+      263, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -176,7 +177,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 262 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 263 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -243,6 +244,21 @@ Igual("y lo que no está en la tabla, a E-OTROS", "E-OTROS", capas.CapaDeTipo("L
 Igual("las capas al frente son las cuatro de la hoja",
       "E-DALA, E-CADENA DESPLANTE, E-TRABE, E-ACERO",
       string.Join(", ", capas.CapasAlFrente()));
+
+// Y LOS TEXTOS APARTE, para subirlos en una SEGUNDA pasada: así los rótulos quedan
+// siempre encima de la geometría y no según el orden en que los halle el recorrido.
+// PIERS va SIN prefijo, como en la macro: con E-PIERS los piers se quedaban fuera.
+Igual("los textos van en su propia lista, y PIERS sin prefijo",
+      "E-TEXTO, PIERS", string.Join(", ", capas.CapasDeTextoAlFrente()));
+
+var otrosTextos = new ConfigPlano();
+otrosTextos.Aplicar(new Dictionary<string, string>
+{
+    ["CAPAS_TEXTO_AL_FRENTE"] = "TEXTO, E-TITULO ,PIERS,TEXTO"
+});
+Igual("se admite escribirlas con o sin prefijo, y no se repiten",
+      "E-TEXTO, E-TITULO, PIERS",
+      string.Join(", ", new CapasPlano(otrosTextos).CapasDeTextoAlFrente()));
 
 Check("se reconoce lo generado por el plano",
       capas.EsCapaGenerada("E-LOSA") && capas.EsCapaGenerada("e-armado losa")

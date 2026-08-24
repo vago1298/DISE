@@ -178,29 +178,71 @@ public sealed class CapasPlano
     /// </remarks>
     public IReadOnlyList<string> CapasAlFrente()
     {
-        var lista = _cfg.Texto("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO");
+        var salida = ListaConPrefijo(
+            _cfg.Texto("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO"));
+
+        if (salida.Count == 0)
+        {
+            salida.Add(Prefijo.ToUpperInvariant() + "DALA");
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Las capas de <b>TEXTO</b> que van encima de todo, <i>después</i> de la geometría.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Van en una lista aparte, y en una <b>segunda pasada</b> del orden de dibujo, porque el
+    /// orden importa: si los rótulos se subieran junto con las trabes y las dalas, unas veces
+    /// quedarían encima y otras debajo, según en qué orden los encontrara el recorrido del
+    /// dibujo. Subiendo primero la geometría y luego los textos, los textos quedan
+    /// <b>siempre</b> arriba, que es lo que se pidió: los rótulos se leen aunque les pase por
+    /// debajo un muro o una parrilla.
+    /// </para>
+    /// <para>
+    /// <c>PIERS</c> se queda <b>sin prefijo</b>, como en la macro: es la única capa generada
+    /// que no lo lleva, y ponerle <c>E-</c> dejaba los piers fuera del orden de dibujo sin
+    /// que se notara por qué.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> CapasDeTextoAlFrente() =>
+        ListaConPrefijo(_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS"));
+
+    /// <summary>
+    /// Parte una lista de la hoja por comas y le pone el prefijo a lo que le toca.
+    /// </summary>
+    /// <remarks>
+    /// La excepción es la capa de los <b>piers</b>: se escribe tal cual, porque en la macro
+    /// es <c>PIERS</c> a secas. Lo mismo valdría para cualquier otro nombre que el usuario ya
+    /// escriba con su prefijo.
+    /// </remarks>
+    private List<string> ListaConPrefijo(string lista)
+    {
         var salida = new List<string>();
+        var piers = CapaPiers.Trim().ToUpperInvariant();
+        var pref = Prefijo.ToUpperInvariant();
 
         foreach (var pieza in lista.Split(','))
         {
             var s = pieza.Trim().ToUpperInvariant();
+
             if (s.Length == 0)
             {
                 continue;
             }
 
-            if (Prefijo.Length > 0 &&
-                !s.StartsWith(Prefijo.ToUpperInvariant(), StringComparison.Ordinal))
+            if (pref.Length > 0 && s != piers &&
+                !s.StartsWith(pref, StringComparison.Ordinal))
             {
-                s = Prefijo.ToUpperInvariant() + s;
+                s = pref + s;
             }
 
-            salida.Add(s);
-        }
-
-        if (salida.Count == 0)
-        {
-            salida.Add(Prefijo.ToUpperInvariant() + "DALA");
+            if (!salida.Contains(s))
+            {
+                salida.Add(s);
+            }
         }
 
         return salida;

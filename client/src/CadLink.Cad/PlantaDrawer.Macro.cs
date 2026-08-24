@@ -591,13 +591,6 @@ public sealed partial class PlantaDrawer
             return;
         }
 
-        var capas = _capas.CapasAlFrente();
-
-        if (capas.Count == 0)
-        {
-            return;
-        }
-
         if (_cfg.Bandera("PONER_SORTENTS_127", true))
         {
             try
@@ -608,6 +601,24 @@ public sealed partial class PlantaDrawer
             {
                 // Sin SORTENTS el orden se guarda igual; solo puede no verse en pantalla.
             }
+        }
+
+        // PRIMERO LA GEOMETRÍA Y DESPUÉS LOS TEXTOS, en dos pasadas: el segundo MoveToTop
+        // deja lo suyo encima del primero, así que los rótulos quedan SIEMPRE arriba. En una
+        // sola pasada el orden entre unos y otros lo decidía el recorrido del dibujo, y un
+        // rótulo tapado por una parrilla o por un muro no se lee.
+        SubirCapas(_capas.CapasAlFrente());
+        SubirCapas(_capas.CapasDeTextoAlFrente());
+    }
+
+    /// <summary>
+    /// Sube al frente todo lo que esté en estas capas, con la tabla de orden de dibujo.
+    /// </summary>
+    private void SubirCapas(IReadOnlyList<string> capas)
+    {
+        if (capas.Count == 0)
+        {
+            return;
         }
 
         try
@@ -653,7 +664,7 @@ public sealed partial class PlantaDrawer
                 }
 
                 tabla.MoveToTop(lista.ToArray());
-                _alFrente = lista.Count;
+                _alFrente += lista.Count;
             });
         }
         catch (Exception)
@@ -715,7 +726,7 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        if (!AsegurarBloqueDeSeccion(nombre, b, h, el.Forma))
+        if (!AsegurarBloqueDeSeccion(nombre, el, b, h))
         {
             return false;
         }
@@ -828,8 +839,11 @@ public sealed partial class PlantaDrawer
     /// que el usuario ya cambió a mano y actualizar el dibujo con las medidas nuevas, y la
     /// hoja es la que decide.
     /// </remarks>
-    private bool AsegurarBloqueDeSeccion(string nombre, double b, double h, string forma)
+    private bool AsegurarBloqueDeSeccion(
+        string nombre, ElementoPlanta el, double b, double h)
     {
+        var forma = el.Forma;
+
         if (_bloquesListos.Contains(nombre))
         {
             return true;
@@ -875,24 +889,53 @@ public sealed partial class PlantaDrawer
                     }
                 }
 
-                dynamic? contorno = null;
+                // ==========================================================================
+                //  LA GEOMETRÍA DEL BLOQUE: LA SECCIÓN COMO ES, NO UNA CAJA
+                // ==========================================================================
+                //  La I con sus dos patines y su alma, la canal con el alma a un lado, el
+                //  ángulo con sus dos alas, el cajón con su hueco y el tubo con sus dos
+                //  circunferencias. Antes todo lo que no era redondo salía como rectángulo,
+                //  así que una IR de 25×15 y un cajón de 25×15 se dibujaban igual y en el
+                //  plano no había forma de distinguir el acero del concreto.
+                //
+                //  Va DERECHA —sin girar— porque el giro es de la inserción: así hay una
+                //  sola definición por sección y el BLOCKREPLACE conserva la orientación.
+                dynamic? contorno;
+                dynamic? hueco = null;
 
-                if (string.Equals(forma, "CIRC", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(forma, "PIPE", StringComparison.OrdinalIgnoreCase))
+                if (SeccionEnPlanta.EsRedonda(forma))
                 {
                     contorno = blk.AddCircle(new[] { 0d, 0d, 0d }, b / 2);
+
+                    var ri = SeccionEnPlanta.RadioInterior(forma, b, el.ParedM);
+
+                    if (ri > 0)
+                    {
+                        hueco = blk.AddCircle(new[] { 0d, 0d, 0d }, ri);
+                        hueco.Layer = "0";
+                    }
                 }
                 else
                 {
-                    contorno = blk.AddLightWeightPolyline(new[]
-                    {
-                        -b / 2, -h / 2,
-                        b / 2, -h / 2,
-                        b / 2, h / 2,
-                        -b / 2, h / 2
-                    });
+                    var pts = SeccionEnPlanta.Contorno(
+                        forma, b, h, el.PatinM, el.AlmaM, el.ParedM);
 
+                    if (pts.Length < 6)
+                    {
+                        return false;
+                    }
+
+                    contorno = blk.AddLightWeightPolyline(pts);
                     contorno.Closed = true;
+
+                    var dentro = SeccionEnPlanta.Hueco(forma, b, h, el.ParedM);
+
+                    if (dentro.Length >= 6)
+                    {
+                        hueco = blk.AddLightWeightPolyline(dentro);
+                        hueco.Closed = true;
+                        hueco.Layer = "0";
+                    }
                 }
 
                 contorno.Layer = "0";
@@ -901,9 +944,12 @@ public sealed partial class PlantaDrawer
                 // que es el amarillo de la macro. No va BYLAYER a propósito, porque el
                 // bloque se inserta en la capa del tipo de elemento y el relleno tiene que
                 // verse igual en todas.
+                //
+                //  Y una sección HUECA no se rellena: un tubo pintado de amarillo macizo se
+                //  lee como una placa, que es justo lo que no es. Se achura con su hueco.
                 if (_cfg.Bandera("RELLENAR_COLUMNAS", true))
                 {
-                    RellenarDentroDelBloque(blk, contorno, nombre, b, h, forma);
+                    RellenarDentroDelBloque(blk, contorno, hueco, nombre, el, b, h);
                 }
 
                 return true;
@@ -948,19 +994,31 @@ public sealed partial class PlantaDrawer
     /// </para>
     /// </remarks>
     private void RellenarDentroDelBloque(
-        dynamic blk, dynamic contorno, string nombre, double b, double h, string forma)
+        dynamic blk, dynamic contorno, dynamic? hueco, string nombre,
+        ElementoPlanta el, double b, double h)
     {
-        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
-
-        if (color is <= 0 or > 255)
-        {
-            color = 2;
-        }
+        var color = ColorDelRelleno();
 
         try
         {
             dynamic ht = blk.AddHatch(0, "SOLID", true, 0);
             ht.AppendOuterLoop(new[] { contorno });
+
+            // El hueco, como lazo INTERIOR: el achurado lo deja vacío en lugar de pintarlo,
+            // y así se ve que es un tubo y no una placa.
+            if (hueco is not null)
+            {
+                try
+                {
+                    ht.AppendInnerLoop(new[] { hueco });
+                }
+                catch (Exception)
+                {
+                    // Sin el lazo interior el tubo sale macizo. Se ve el contorno del hueco
+                    // por encima, así que el plano sigue diciendo la verdad.
+                }
+            }
+
             ht.Evaluate();
             ht.Layer = "0";
             ht.Color = color;
@@ -968,37 +1026,45 @@ public sealed partial class PlantaDrawer
         }
         catch (Exception)
         {
-            // Al respaldo: el SOLID.
+            // Al respaldo: las piezas macizas de las que está hecha la sección.
         }
 
-        var redonda = string.Equals(forma, "CIRC", StringComparison.OrdinalIgnoreCase) ||
-                      string.Equals(forma, "PIPE", StringComparison.OrdinalIgnoreCase);
+        // EL RESPALDO. Un SOLID solo cubre un cuadrilátero CONVEXO, y una I no lo es, así que
+        // la sección se rellena con sus piezas: los dos patines y el alma, las cuatro paredes
+        // del cajón, las dos alas del ángulo. Con las redondas no hay nada que hacer.
+        var piezas = SeccionEnPlanta.RectangulosDeRelleno(
+            el.Forma, b, h, el.PatinM, el.AlmaM, el.ParedM);
 
-        if (redonda)
+        if (piezas.Count == 0)
         {
-            Nota($"No se pudo rellenar el bloque redondo '{nombre}': queda con su " +
-                 "contorno. Achúralo con SOLID si lo necesitas relleno.");
+            Nota($"No se pudo rellenar el bloque '{nombre}': queda con su contorno. " +
+                 "Achúralo con SOLID si lo necesitas relleno.");
             return;
         }
 
-        try
+        foreach (var r in piezas)
         {
-            // Los cuatro puntos de un SOLID NO van en orden alrededor: el tercero y el
-            // cuarto van cruzados —abajo-izquierda, abajo-derecha, arriba-izquierda,
-            // arriba-derecha—. En orden circular saldría un moño en lugar de un rectángulo.
-            dynamic sol = blk.AddSolid(
-                new[] { -b / 2, -h / 2, 0d },
-                new[] { b / 2, -h / 2, 0d },
-                new[] { -b / 2, h / 2, 0d },
-                new[] { b / 2, h / 2, 0d });
+            try
+            {
+                // Los cuatro puntos de un SOLID NO van en orden alrededor: el tercero y el
+                // cuarto van cruzados —abajo-izquierda, abajo-derecha, arriba-izquierda,
+                // arriba-derecha—. En orden circular saldría un moño en lugar de un
+                // rectángulo.
+                dynamic sol = blk.AddSolid(
+                    new[] { r[0], r[1], 0d },
+                    new[] { r[2], r[1], 0d },
+                    new[] { r[0], r[3], 0d },
+                    new[] { r[2], r[3], 0d });
 
-            sol.Layer = "0";
-            sol.Color = color;
-        }
-        catch (Exception)
-        {
-            Nota($"No se pudo rellenar el bloque '{nombre}': queda con su contorno, sin " +
-                 "achurado.");
+                sol.Layer = "0";
+                sol.Color = color;
+            }
+            catch (Exception)
+            {
+                Nota($"No se pudo rellenar el bloque '{nombre}': queda con su contorno, sin " +
+                     "achurado.");
+                return;
+            }
         }
     }
 

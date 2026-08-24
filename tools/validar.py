@@ -2708,12 +2708,14 @@ def v16_extruida_piers() -> None:
     cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
     capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
 
-    # 262 y no los 261 de CrearHojaConfig: se añadio AIRE_SOBRE_LO_DIBUJADO_M, que NO esta
-    # en su hoja. La macro arranca siempre en OFFSET_Y_INICIAL, asi que dibujar dos veces
-    # encimaba las plantas; con este, el juego se pone por encima de lo que ya haya dibujado.
-    check("la hoja CONFIG de la macro esta portada, con un renglon añadido",
-          cfgp.count("        P(") == 262
-          and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp)
+    # 263 y no los 261 de CrearHojaConfig: se añadieron DOS renglones que NO estan en su
+    # hoja. AIRE_SOBRE_LO_DIBUJADO_M -la macro arranca siempre en OFFSET_Y_INICIAL, asi que
+    # dibujar dos veces encimaba las plantas- y CAPAS_TEXTO_AL_FRENTE, que sube los rotulos
+    # encima de todo en una SEGUNDA pasada del orden de dibujo.
+    check("la hoja CONFIG de la macro esta portada, con dos renglones añadidos",
+          cfgp.count("        P(") == 263
+          and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
+          and 'P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -2814,7 +2816,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "262, ConfigPlano.PorOmision.Count" in pr
+          and "263, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 21 capas", 21, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3273,6 +3275,10 @@ def v18_planta_autocad() -> None:
     # La prueba ejecutable de la etapa 4. Se lee AQUI, antes del primer uso: dejarla mas
     # abajo ya reventó dos veces con UnboundLocalError.
     pre = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+    # Y las capas y la prueba de la hoja CONFIG. Se vuelven a leer AQUI a proposito: las de
+    # mas arriba son locales de otra comprobacion y no llegan hasta aqui.
+    capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+    pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
 
     check("existe PlantaDrawer", "class PlantaDrawer" in dib)
     check("existe el DTO PlantaCad", "class PlantaCad" in dto)
@@ -3472,6 +3478,95 @@ def v18_planta_autocad() -> None:
     check("y no se recurre a copiar y borrar, que cambia los handles",
           "RecrearAlFrente" not in mac)
 
+    # ------------------------------------------------------------------
+    # LOS ROTULOS, ENCIMA DE TODO: DOS PASADAS DEL ORDEN DE DIBUJO
+    # ------------------------------------------------------------------
+    #  En una sola pasada el orden entre la geometria y los textos lo decidia el recorrido
+    #  del dibujo, asi que unas veces el rotulo quedaba encima y otras debajo. Subiendo
+    #  primero la geometria y DESPUES los textos, los textos quedan siempre arriba.
+    check("los rotulos se suben al frente en una segunda pasada, despues de la geometria",
+          "private void SubirCapas(" in mac
+          and "SubirCapas(_capas.CapasAlFrente());" in mac
+          and "SubirCapas(_capas.CapasDeTextoAlFrente());" in mac
+          and mac.find("SubirCapas(_capas.CapasAlFrente());")
+              < mac.find("SubirCapas(_capas.CapasDeTextoAlFrente());"))
+    check("las capas de texto salen de la hoja, con PIERS sin prefijo",
+          "public IReadOnlyList<string> CapasDeTextoAlFrente()" in capp
+          and '_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS")' in capp
+          and "s != piers &&" in capp)
+    check("y la prueba comprueba que PIERS no se convierte en E-PIERS",
+          '"E-TEXTO, PIERS", string.Join(", ", capas.CapasDeTextoAlFrente())' in pr)
+
+    # ------------------------------------------------------------------
+    # EL ANCHO DEL MTEXT, AUTOMATICO
+    # ------------------------------------------------------------------
+    #  Width = 0 es «sin ancho definido»: la caja sigue al texto. Hace falta porque al
+    #  centrar se centra LA CAJA, y con una caja mas ancha que el texto el rotulo se veia
+    #  gordo y corrido respecto a la trabe. Con respaldo: medir el texto ya dibujado.
+    check("el ancho del MTEXT es automatico",
+          "private void AnchoAutomatico(" in dib
+          and "((dynamic)mt).Width = 0d;" in dib
+          and "AnchoAutomatico(mt, texto, altura);" in dib)
+    check("y si la version no acepta el 0, se mide el texto y se le da su ancho",
+          "var caja = CajaEnvolvente(mt);" in dib
+          and "((dynamic)mt).Width = medido + (altura * 0.1);" in dib)
+    # El anclaje va DESPUES del ancho: cambiar la caja mueve el texto.
+    check("el anclaje se pone despues del ancho",
+          dib.find("AnchoAutomatico(mt, texto, altura);")
+          < dib.find("mt.AttachmentPoint = anclaje;"))
+
+    # ------------------------------------------------------------------
+    # LA SECCION DE ACERO, DIBUJADA COMO ES
+    # ------------------------------------------------------------------
+    #  Antes TODO lo que no era redondo salia como rectangulo, asi que una IR de 25x15 y un
+    #  cajon de 25x15 se dibujaban igual: en el plano no habia forma de distinguir el acero
+    #  del concreto. Ahora se traza el perfil con sus espesores.
+    sec = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/SeccionEnPlanta.cs"))
+    check("hay geometria de perfiles para la planta",
+          "public static class SeccionEnPlanta" in sec
+          and "public static double[] Contorno(" in sec
+          and "private static double[] PerfilI(" in sec
+          and "private static double[] Canal(" in sec
+          and "private static double[] Te(" in sec
+          and "private static double[] Angulo(" in sec)
+    check("el cajon y el tubo llevan su hueco",
+          "public static double[] Hueco(" in sec
+          and "public static double RadioInterior(" in sec
+          and "ht.AppendInnerLoop(" in dib
+          and "ht.AppendInnerLoop(" in mac)
+    # SIN ESPESORES NO HAY PERFIL: mejor una caja honesta que una I inventada, que se
+    # acotaria mal.
+    check("sin espesores se cae al rectangulo, no se inventa el perfil",
+          "return Rectangulo(b, h);" in sec
+          and "private static bool Valen(" in sec)
+    check("el perfil se usa en el bloque y en el camino suelto",
+          "SeccionEnPlanta.Contorno(\n                        forma, b, h, el.PatinM, el.AlmaM, el.ParedM)" in mac
+          and "SeccionEnPlanta.Contorno(el.Forma, b, h, el.PatinM, el.AlmaM, el.ParedM)" in dib)
+    check("los espesores llegan del modelo hasta el dibujante",
+          "public double PatinM { get; set; }" in dto
+          and "public double AlmaM { get; set; }" in dto
+          and "public double ParedM { get; set; }" in dto
+          and "PatinM = el.PatinM," in codigo
+          and "AlmaM = el.AlmaM," in codigo
+          and "ParedM = el.ParedM" in codigo)
+    # Un SOLID solo cubre un cuadrilatero CONVEXO, y una I no lo es: el relleno de respaldo
+    # va por las PIEZAS de la seccion -los dos patines y el alma-.
+    check("el relleno de respaldo va por las piezas de la seccion",
+          "public static List<double[]> RectangulosDeRelleno(" in sec
+          and "SeccionEnPlanta.RectangulosDeRelleno(" in dib
+          and "SeccionEnPlanta.RectangulosDeRelleno(" in mac
+          and "private void SolidoGirado(" in dib)
+    # En un perfil no van las diagonales: la forma ya dice lo que es, y taparian el alma.
+    check("un perfil de acero no lleva las diagonales de la columna",
+          "if (!PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma))" in dib)
+    check("la redonda se dibuja con circunferencias, no con un poligono",
+          "private bool SeccionRedonda(" in dib
+          and "SeccionEnPlanta.EsRedonda(el.Forma)" in dib)
+    check("hay prueba ejecutable del perfil de acero",
+          'SeccionEnPlanta.Contorno("I", bI, hI, tfI, twI)' in pre
+          and "su area es la de dos patines y un alma" in pre
+          and "y sus areas suman la del perfil" in pre)
+
     # LAS COLUMNAS, COMO BLOQUE Y RELLENAS. El bloque se llama como la SECCION, que es lo
     # que permite cambiar de golpe las 30 columnas de una seccion con un BLOCKREPLACE; y el
     # giro va en la INSERCION, que es lo que hace que el reemplazo conserve la orientacion.
@@ -3494,7 +3589,8 @@ def v18_planta_autocad() -> None:
     check("y va RELLENA, con el color de la hoja",
           '_cfg.Bandera("RELLENAR_COLUMNAS", true)' in mac
           and 'blk.AddHatch(0, "SOLID", true, 0)' in mac
-          and '_cfg.Numero("COLOR_RELLENO_BLOQUE", 2)' in mac)
+          and "var color = ColorDelRelleno();" in mac
+          and '_cfg.Numero("COLOR_RELLENO_BLOQUE", 2)' in dib)
     # EL RESPALDO CON SOLID: un AddHatch dentro de una DEFINICION de bloque falla en varias
     # versiones -el achurado quiere un contorno que ya este en la base de datos- y la columna
     # se quedaba hueca. Un SOLID de cuatro puntos siempre se puede crear.
@@ -3505,14 +3601,15 @@ def v18_planta_autocad() -> None:
           and "_ms.AddSolid(" in dib)
     # Los cuatro puntos de un SOLID van CRUZADOS: en orden circular sale un monio.
     check("los cuatro puntos del SOLID van cruzados, no en orden circular",
-          "new[] { -b / 2, h / 2, 0d },\n                new[] { b / 2, h / 2, 0d })" in mac)
+          "new[] { r[0], r[3], 0d },\n                    new[] { r[2], r[3], 0d })" in mac
+          and "new[] { p[6], p[7], 0d },\n                    new[] { p[4], p[5], 0d })" in dib)
     # LA SECCION SUELTA, IGUAL DE FIEL: girada y rellena. Antes este camino dibujaba un
     # rectangulo derecho y hueco, asi que cuando el bloque fallaba el plano salia sin
     # orientacion y sin relleno, y sin decir por que.
     check("el camino sin bloque tambien sale girado y relleno",
           "public static double[] EsquinasGiradas(" in dib
-          and "var esquinas = EsquinasGiradas(cx, cy, b, h, el.AnguloGrados);" in dib
-          and "RellenarEnPlanta(pl, esquinas, CapaDe(el));" in dib)
+          and "SeccionEnPlanta.Colocar(local, cx, cy, el.AnguloGrados)" in dib
+          and "RellenarEnPlanta(pl, plHueco, el, cx, cy, b, h, capa);" in dib)
     check("hay prueba ejecutable del giro de la seccion",
           "PlantaDrawer.EsquinasGiradas(0, 0, 0.20, 0.60, 90)" in pre
           and "a 90 grados mide 0.60 de ancho" in pre)
@@ -3577,7 +3674,7 @@ def v18_planta_autocad() -> None:
     #       Ahora se CREA el que falte, que es lo que pidio el usuario.
     check("el MTEXT se crea con ancho, nunca con 0",
           "_ms.AddMText(new[] { x, y, 0d }, ancho, texto)" in dib
-          and "var ancho = Math.Max(1, letras) * altura * 1.4;" in dib)
+          and "var ancho = Math.Max(1, letras) * altura * 0.62;" in dib)
     check("el estilo del rotulo se crea si el dibujo no lo tiene",
           "private void AsegurarEstiloDeTexto(string nombre)" in dib
           and "AsegurarEstiloDeTexto(nombreEstilo);" in dib

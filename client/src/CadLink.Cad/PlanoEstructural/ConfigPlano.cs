@@ -480,6 +480,13 @@ public sealed class ConfigPlano
         P("LOSA_HATCH_AL_PANO", "SI", "SI = EL HATCH LLEGA AL PANO DE LA CADENA, NO A LA MITAD"),
         P("TRAER_AL_FRENTE", "SI", "SI = subir CAPAS_AL_FRENTE encima de todo (Bring to Front)"),
         P("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO", "<<< CAPAS ENCIMA DE TODO (incluye ACERO: las vigas de acero al frente)"),
+
+        // AÑADIDO, no está en la hoja de la macro. Los ROTULOS tienen que quedar encima de
+        // todo, y en una SEGUNDA pasada del orden de dibujo: subidos junto con las trabes y
+        // las dalas, unas veces quedaban encima y otras debajo. PIERS va sin el prefijo E-,
+        // como en la macro.
+        P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",
+          "CAPAS DE TEXTO ENCIMA DE TODO, DESPUES DE LA GEOMETRIA (PIERS va sin prefijo)"),
         P("PONER_SORTENTS_127", "SI", "SI = SORTENTS = 127 para que se respete el draw order"),
         P("CADENA_SIN_TAPA", "SI", "SI = las cadenas sin tapadera en los extremos"),
         P("TRABE_SIN_TAPA", "SI", "SI = TODAS LAS TRABES SIN TAPADERA (solo las 2 lineas)"),

@@ -289,6 +289,127 @@ Cerca("y una dibujada de derecha a izquierda, 0", 0, PlantaDrawer.AnguloLegible(
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LA SECCION DE ACERO, DIBUJADA COMO ES");
+Console.WriteLine("=====================================================================");
+
+// El area de un poligono por la formula del zapatero: sirve para comprobar que el
+// contorno es el que toca sin escribir los 24 numeros de la I a mano.
+static double Area(double[] p)
+{
+    double a = 0;
+    var n = p.Length / 2;
+
+    for (var i = 0; i < n; i++)
+    {
+        var j = (i + 1) % n;
+        a += (p[2 * i] * p[(2 * j) + 1]) - (p[2 * j] * p[(2 * i) + 1]);
+    }
+
+    return Math.Abs(a) / 2;
+}
+
+static double Ancho(double[] p) =>
+    p.Where((_, i) => i % 2 == 0).Max() - p.Where((_, i) => i % 2 == 0).Min();
+
+static double Alto(double[] p) =>
+    p.Where((_, i) => i % 2 == 1).Max() - p.Where((_, i) => i % 2 == 1).Min();
+
+// Una IR de 25 de peralte por 15 de patin, patin de 1 cm y alma de 0.6 cm.
+const double bI = 0.25, hI = 0.15, tfI = 0.01, twI = 0.006;
+var perfilI = SeccionEnPlanta.Contorno("I", bI, hI, tfI, twI);
+
+Igual("la I tiene 12 vertices", 24, perfilI.Length);
+Cerca("y mide el peralte de la seccion", bI, Ancho(perfilI), 1e-12);
+Cerca("y el ancho del patin", hI, Alto(perfilI), 1e-12);
+// Area = los dos patines mas el alma entre ellos.
+Cerca("su area es la de dos patines y un alma",
+      (2 * tfI * hI) + ((bI - (2 * tfI)) * twI), Area(perfilI), 1e-12);
+
+var canal = SeccionEnPlanta.Contorno("C", 0.20, 0.08, 0.01, 0.006);
+Igual("la canal tiene 8 vertices", 16, canal.Length);
+Cerca("y su area es el alma mas los dos patines",
+      (0.20 * 0.006) + (2 * 0.01 * (0.08 - 0.006)), Area(canal), 1e-12);
+
+var te = SeccionEnPlanta.Contorno("T", 0.20, 0.10, 0.012, 0.008);
+Igual("la te tiene 8 vertices", 16, te.Length);
+Cerca("y su area es el patin mas el alma",
+      (0.012 * 0.10) + ((0.20 - 0.012) * 0.008), Area(te), 1e-12);
+
+// El angulo: cada ala con SU espesor. Tw es el de la pierna que mide T3 -la X-.
+var angulo = SeccionEnPlanta.Contorno("L", 0.10, 0.075, 0.008, 0.006);
+Igual("el angulo tiene 6 vertices", 12, angulo.Length);
+Cerca("y su area es la de sus dos alas",
+      (0.10 * 0.006) + (0.008 * (0.075 - 0.006)), Area(angulo), 1e-12);
+
+// SIN ESPESORES NO HAY PERFIL: se cae al rectangulo, que es honesto. Una I inventada
+// con espesores a ojo se acotaria mal.
+Igual("sin espesores, la I se dibuja como caja",
+      8, SeccionEnPlanta.Contorno("I", 0.25, 0.15, 0, 0).Length);
+Igual("y con un patin que se come media seccion, tambien",
+      8, SeccionEnPlanta.Contorno("I", 0.25, 0.15, 0.20, 0.006).Length);
+Igual("el RECT de siempre sigue siendo un rectangulo",
+      8, SeccionEnPlanta.Contorno("RECT", 0.20, 0.60, 0, 0).Length);
+Igual("y una forma que no se reconoce, tambien",
+      8, SeccionEnPlanta.Contorno("LO_QUE_SEA", 0.20, 0.60, 0.01, 0.01).Length);
+
+Console.WriteLine();
+Console.WriteLine(" El cajon y el tubo, con su hueco");
+
+var cajon = SeccionEnPlanta.Contorno("CAJON", 0.20, 0.20, 0, 0, 0.008);
+var dentro = SeccionEnPlanta.Hueco("CAJON", 0.20, 0.20, 0.008);
+
+Igual("el cajon es el rectangulo de fuera", 8, cajon.Length);
+Igual("y su hueco, otro rectangulo", 8, dentro.Length);
+Cerca("el hueco mide la seccion menos dos paredes", 0.20 - 0.016, Ancho(dentro), 1e-12);
+Igual("una seccion maciza no tiene hueco",
+      0, SeccionEnPlanta.Hueco("RECT", 0.20, 0.20, 0.008).Length);
+
+Check("el tubo y el circulo son redondos",
+      SeccionEnPlanta.EsRedonda("TUBO") && SeccionEnPlanta.EsRedonda("CIRC")
+      && !SeccionEnPlanta.EsRedonda("I"));
+Igual("una redonda no da contorno de poligono",
+      0, SeccionEnPlanta.Contorno("TUBO", 0.20, 0.20, 0, 0, 0.006).Length);
+Cerca("el radio interior del tubo es el de fuera menos la pared", 0.094,
+      SeccionEnPlanta.RadioInterior("TUBO", 0.20, 0.006), 1e-12);
+Cerca("y una circular maciza no tiene radio interior", 0,
+      SeccionEnPlanta.RadioInterior("CIRC", 0.20, 0.006));
+
+Console.WriteLine();
+Console.WriteLine(" El relleno de respaldo: las piezas de la seccion");
+
+// Un SOLID solo cubre un cuadrilatero CONVEXO, y una I no lo es: se rellena con sus
+// piezas. La suma de sus areas tiene que ser la del perfil.
+var piezasI = SeccionEnPlanta.RectangulosDeRelleno("I", bI, hI, tfI, twI);
+Igual("la I se rellena con tres piezas", 3, piezasI.Count);
+Cerca("y sus areas suman la del perfil", Area(perfilI),
+      piezasI.Sum(r => Math.Abs((r[2] - r[0]) * (r[3] - r[1]))), 1e-12);
+
+var piezasCajon = SeccionEnPlanta.RectangulosDeRelleno("CAJON", 0.20, 0.20, 0, 0, 0.008);
+Igual("el cajon, con sus cuatro paredes", 4, piezasCajon.Count);
+Cerca("y sin pisar el hueco", Area(cajon) - Area(dentro),
+      piezasCajon.Sum(r => Math.Abs((r[2] - r[0]) * (r[3] - r[1]))), 1e-12);
+
+Igual("una redonda no tiene piezas: se queda con su achurado",
+      0, SeccionEnPlanta.RectangulosDeRelleno("TUBO", 0.20, 0.20, 0, 0, 0.006).Count);
+Igual("y una caja es una sola pieza",
+      1, SeccionEnPlanta.RectangulosDeRelleno("RECT", 0.20, 0.60, 0, 0).Count);
+
+Console.WriteLine();
+Console.WriteLine(" Colocar: girar sobre el nudo y llevar a su sitio");
+
+var colocada = SeccionEnPlanta.Colocar(perfilI, 5, 3, 90);
+Cerca("girada 90 grados, el peralte pasa a la Y", bI, Alto(colocada), 1e-12);
+Cerca("y el patin a la X", hI, Ancho(colocada), 1e-12);
+Cerca("el area no cambia al girar", Area(perfilI), Area(colocada), 1e-12);
+Cerca("y queda centrada en el nudo, en X", 5,
+      (colocada.Where((_, i) => i % 2 == 0).Max() +
+       colocada.Where((_, i) => i % 2 == 0).Min()) / 2, 1e-12);
+Cerca("y en Y", 3,
+      (colocada.Where((_, i) => i % 2 == 1).Max() +
+       colocada.Where((_, i) => i % 2 == 1).Min()) / 2, 1e-12);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ROTULO DE LA PLANTA");
 Console.WriteLine("=====================================================================");
 

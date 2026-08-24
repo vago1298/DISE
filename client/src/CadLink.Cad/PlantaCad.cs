@@ -83,6 +83,25 @@ public sealed class ElementoPlanta
     /// <summary>Peralte de la sección en metros.</summary>
     public double PeralteM { get; set; }
 
+    /// <summary>Espesor del <b>patín</b> del perfil —el <c>Tf</c> de ETABS—, en metros.</summary>
+    /// <remarks>
+    /// Con este y con <see cref="AlmaM"/> la sección de acero se dibuja <b>como es</b>: la I
+    /// con sus dos patines y su alma, la canal con el alma a un lado, el ángulo con sus dos
+    /// alas. Sin ellos no hay más remedio que la caja, y una IR de 25×15 y un cajón de 25×15
+    /// se veían iguales en el plano.
+    /// </remarks>
+    public double PatinM { get; set; }
+
+    /// <summary>Espesor del <b>alma</b> —el <c>Tw</c>—, en metros.</summary>
+    public double AlmaM { get; set; }
+
+    /// <summary>Espesor de la <b>pared</b> del cajón o del tubo, en metros.</summary>
+    /// <remarks>
+    /// Es lo que le da su hueco: un cajón dibujado macizo parece una placa, y en un plano
+    /// estructural eso es un dato equivocado, no un detalle de dibujo.
+    /// </remarks>
+    public double ParedM { get; set; }
+
     /// <summary>
     /// De qué es el muro: <c>MAMPOSTERIA</c> o <c>CONCRETO</c>, si el modelo lo dice.
     /// </summary>

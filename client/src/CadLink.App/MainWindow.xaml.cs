@@ -2110,7 +2110,14 @@ public partial class MainWindow : Window
                 X1 = el.X1, Y1 = el.Y1,
                 X2 = el.X2, Y2 = el.Y2,
                 AnchoM = el.AnchoM,
-                PeralteM = el.PeralteM
+                PeralteM = el.PeralteM,
+
+                // LOS ESPESORES DEL PERFIL. Son los que permiten dibujar la sección de acero
+                // como es —la I con sus patines, el cajón con su hueco— en lugar de una caja
+                // en la que no se distingue una IR de un tubo. El lector ya los trae.
+                PatinM = el.PatinM,
+                AlmaM = el.AlmaM,
+                ParedM = el.ParedM
             };
 
             foreach (var v in el.Vertices)

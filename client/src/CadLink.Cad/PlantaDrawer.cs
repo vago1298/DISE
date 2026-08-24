@@ -1,3 +1,5 @@
+using CadLink.Cad.PlanoEstructural;
+
 namespace CadLink.Cad;
 
 /// <summary>
@@ -393,8 +395,14 @@ public sealed partial class PlantaDrawer
 
         if (_alFrente > 0)
         {
-            Nota($"{_alFrente} objeto(s) subidos al frente " +
-                 $"({string.Join(" + ", _capas.CapasAlFrente())}).");
+            // Las de geometría y, encima de ellas, las de texto: son dos pasadas y las dos
+            // cuentan en el total.
+            var alFrente = _capas.CapasAlFrente()
+                .Concat(_capas.CapasDeTextoAlFrente())
+                .ToList();
+
+            Nota($"{_alFrente} objeto(s) subidos al frente ({string.Join(" + ", alFrente)}), " +
+                 "los rótulos por encima de todo lo demás.");
         }
 
         return total;
@@ -478,28 +486,95 @@ public sealed partial class PlantaDrawer
         }
 
         // ---- EL CAMINO SIN BLOQUE: LA SECCIÓN SUELTA, PERO IGUAL DE FIEL -------------
-        //  Girada como en el modelo y rellena, exactamente como el bloque. Antes este
-        //  camino dibujaba un rectángulo derecho y hueco, así que cuando el bloque no se
-        //  podía crear el plano salía sin orientación y sin relleno sin decir por qué.
-        var esquinas = EsquinasGiradas(cx, cy, b, h, el.AnguloGrados);
+        //  Girada como en el modelo, con SU FORMA y rellena, exactamente como el bloque.
+        //  Antes este camino dibujaba un rectángulo derecho y hueco, así que cuando el
+        //  bloque no se podía crear el plano salía sin orientación y sin relleno sin decir
+        //  por qué.
+        var capa = CapaDe(el);
 
-        var pl = PolilineaCerrada(esquinas, CapaDe(el));
+        // La REDONDA no es un polígono: es su circunferencia y, si es tubo, la de dentro.
+        if (SeccionEnPlanta.EsRedonda(el.Forma))
+        {
+            return SeccionRedonda(el, cx, cy, b, capa);
+        }
+
+        var local = SeccionEnPlanta.Contorno(el.Forma, b, h, el.PatinM, el.AlmaM, el.ParedM);
+
+        if (local.Length < 6)
+        {
+            return false;
+        }
+
+        var puntos = SeccionEnPlanta.Colocar(local, cx, cy, el.AnguloGrados);
+
+        var pl = PolilineaCerrada(puntos, capa);
 
         if (pl is null)
         {
             return false;
         }
 
-        if (_cfg.Bandera("RELLENAR_COLUMNAS", true))
+        // El hueco del cajón: su contorno interior, en la misma capa. Sin él parecería una
+        // placa maciza, que es un dato equivocado.
+        var hueco = SeccionEnPlanta.Hueco(el.Forma, b, h, el.ParedM);
+        object? plHueco = null;
+
+        if (hueco.Length >= 6)
         {
-            RellenarEnPlanta(pl, esquinas, CapaDe(el));
+            plHueco = PolilineaCerrada(
+                SeccionEnPlanta.Colocar(hueco, cx, cy, el.AnguloGrados), capa);
         }
 
-        // Las diagonales del recuadro: es la marca de «columna» en un plano
-        // estructural, y distingue de un dado o de un hueco a simple vista. Van entre las
-        // esquinas GIRADAS, así que siguen la sección.
-        Linea(esquinas[0], esquinas[1], esquinas[4], esquinas[5], CapaDe(el));
-        Linea(esquinas[6], esquinas[7], esquinas[2], esquinas[3], CapaDe(el));
+        if (_cfg.Bandera("RELLENAR_COLUMNAS", true))
+        {
+            RellenarEnPlanta(pl, plHueco, el, cx, cy, b, h, capa);
+        }
+
+        // Las diagonales del recuadro: es la marca de «columna» en un plano estructural, y
+        // distingue de un dado o de un hueco a simple vista. Solo en las macizas de
+        // concreto: en un perfil de acero la forma ya dice lo que es, y las diagonales
+        // taparían el alma y los patines.
+        if (!PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma))
+        {
+            var esquinas = EsquinasGiradas(cx, cy, b, h, el.AnguloGrados);
+
+            Linea(esquinas[0], esquinas[1], esquinas[4], esquinas[5], capa);
+            Linea(esquinas[6], esquinas[7], esquinas[2], esquinas[3], capa);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// La sección <b>redonda</b>: su circunferencia y, si es tubo, la del hueco.
+    /// </summary>
+    /// <remarks>
+    /// Se trata aparte porque no hay polilínea que la describa: una columna circular dibujada
+    /// como polígono se ve poligonal al acercar el zoom, y las cotas al centro no cuadran. El
+    /// giro no le hace nada —un círculo girado es el mismo círculo—, así que aquí no se aplica.
+    /// </remarks>
+    private bool SeccionRedonda(ElementoPlanta el, double cx, double cy, double b, string capa)
+    {
+        var fuera = Circulo(cx, cy, b / 2, capa);
+
+        if (fuera is null)
+        {
+            return false;
+        }
+
+        var ri = SeccionEnPlanta.RadioInterior(el.Forma, b, el.ParedM);
+
+        if (ri > 0)
+        {
+            Circulo(cx, cy, ri, capa);
+        }
+
+        // Un tubo hueco no se rellena de amarillo: se vería macizo, que es justo lo que no
+        // es. La circular maciza sí.
+        if (_cfg.Bandera("RELLENAR_COLUMNAS", true) && ri <= 0)
+        {
+            RellenarEnPlanta(fuera, null, el, cx, cy, b, b, capa);
+        }
 
         return true;
     }
@@ -539,14 +614,11 @@ public sealed partial class PlantaDrawer
     /// cuatro puntos, que nunca falla. El color va por objeto para que se vea igual en
     /// cualquiera de las capas de columna.
     /// </remarks>
-    private void RellenarEnPlanta(object contorno, double[] esquinas, string capa)
+    private void RellenarEnPlanta(
+        object contorno, object? hueco, ElementoPlanta el,
+        double cx, double cy, double b, double h, string capa)
     {
-        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
-
-        if (color is <= 0 or > 255)
-        {
-            color = 2;
-        }
+        var color = ColorDelRelleno();
 
         try
         {
@@ -554,6 +626,21 @@ public sealed partial class PlantaDrawer
             {
                 dynamic ht = _ms.AddHatch(0, "SOLID", true, 0);
                 ht.AppendOuterLoop(new[] { contorno });
+
+                // El hueco del cajón, como lazo INTERIOR: así el achurado deja el hueco
+                // vacío en lugar de pintarlo, que es lo que hace que se vea que es un tubo.
+                if (hueco is not null)
+                {
+                    try
+                    {
+                        ht.AppendInnerLoop(new[] { hueco });
+                    }
+                    catch (Exception)
+                    {
+                        // Sin el lazo interior sale macizo: se avisa más abajo.
+                    }
+                }
+
                 ht.Evaluate();
                 ht.Layer = capa;
                 ht.Color = color;
@@ -563,25 +650,72 @@ public sealed partial class PlantaDrawer
         }
         catch (Exception)
         {
-            // Al respaldo.
+            // Al respaldo: las piezas macizas de las que está hecha la sección.
         }
 
-        if (esquinas.Length < 8)
+        // EL RESPALDO. Un SOLID solo cubre un cuadrilátero convexo, y una I no lo es, así
+        // que la sección se rellena con las PIEZAS de las que está hecha: los dos patines y
+        // el alma, las cuatro paredes del cajón, las dos alas del ángulo. Es lo que salva el
+        // relleno cuando el achurado no se deja crear.
+        var piezas = SeccionEnPlanta.RectangulosDeRelleno(
+            el.Forma, b, h, el.PatinM, el.AlmaM, el.ParedM);
+
+        if (piezas.Count == 0)
+        {
+            Nota($"La sección '{el.Seccion}' quedó con su contorno pero sin relleno: " +
+                 "achúrala con SOLID si la quieres rellena.");
+            return;
+        }
+
+        foreach (var r in piezas)
+        {
+            SolidoGirado(r, cx, cy, el.AnguloGrados, capa, color);
+        }
+    }
+
+    /// <summary>El color del relleno de la hoja, acotado: el 2, amarillo, por omisión.</summary>
+    private int ColorDelRelleno()
+    {
+        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
+
+        return color is <= 0 or > 255 ? 2 : color;
+    }
+
+    /// <summary>
+    /// Un <c>SOLID</c> a partir de un rectángulo en coordenadas de la sección, ya girado.
+    /// </summary>
+    /// <remarks>
+    /// Los cuatro puntos de un SOLID <b>no van en orden alrededor</b>: el tercero y el cuarto
+    /// van cruzados. En orden circular sale un moño en lugar de un rectángulo, y es un error
+    /// que solo se ve al imprimir.
+    /// </remarks>
+    private void SolidoGirado(
+        double[] rect, double cx, double cy, double grados, string capa, int color)
+    {
+        if (rect.Length < 4)
         {
             return;
         }
+
+        var p = SeccionEnPlanta.Colocar(
+            new[]
+            {
+                rect[0], rect[1],
+                rect[2], rect[1],
+                rect[2], rect[3],
+                rect[0], rect[3]
+            },
+            cx, cy, grados);
 
         try
         {
             AcadConnection.Retry(() =>
             {
-                // Cruzados el tercero y el cuarto: en orden circular un SOLID sale hecho un
-                // moño.
                 dynamic sol = _ms.AddSolid(
-                    new[] { esquinas[0], esquinas[1], 0d },
-                    new[] { esquinas[2], esquinas[3], 0d },
-                    new[] { esquinas[6], esquinas[7], 0d },
-                    new[] { esquinas[4], esquinas[5], 0d });
+                    new[] { p[0], p[1], 0d },
+                    new[] { p[2], p[3], 0d },
+                    new[] { p[6], p[7], 0d },
+                    new[] { p[4], p[5], 0d });
 
                 sol.Layer = capa;
                 sol.Color = color;
@@ -1194,10 +1328,17 @@ public sealed partial class PlantaDrawer
     /// </param>
     /// <remarks>
     /// <para>
-    /// El MTEXT se crea con un <b>ancho holgado</b> y no con 0. Es el detalle que hacía que
-    /// el rótulo no apareciera: con ancho 0 hay versiones de AutoCAD que crean el objeto y
-    /// no lo muestran, y además <c>AttachmentPoint</c> necesita una caja con ancho para
-    /// centrar. El ancho se calcula del propio texto, así que no parte renglones.
+    /// <b>El ancho es automático.</b> El MTEXT se crea con un ancho de arranque —con 0 hay
+    /// versiones de AutoCAD que crean el objeto y no lo muestran— y acto seguido se le pone
+    /// <c>Width = 0</c>, que en AutoCAD significa «sin ancho definido»: la caja se ajusta al
+    /// texto y no parte renglones. Es lo que hay que hacer, porque una caja más ancha que el
+    /// texto se nota: al centrar por <c>AttachmentPoint</c> se centra <b>la caja</b>, así que
+    /// el rótulo se veía gordo y descentrado respecto a la trabe.
+    /// </para>
+    /// <para>
+    /// Si esa versión no acepta el 0, se <b>mide</b> el texto ya dibujado y se le da su ancho
+    /// exacto, que es lo mismo por otro camino. Y el anclaje y el punto de inserción se
+    /// vuelven a poner <b>después</b> de cambiar el ancho: cambiar la caja mueve el texto.
     /// </para>
     /// <para>
     /// El orden importa: <b>estilo, luego altura</b>. Si el estilo trae altura fija —los de
@@ -1220,9 +1361,12 @@ public sealed partial class PlantaDrawer
         // rótulo sale con la letra que pide la hoja aunque el dibujo venga en blanco.
         AsegurarEstiloDeTexto(nombreEstilo);
 
-        // El ancho de la caja: el largo del renglón más largo, con holgura. Nunca 0.
+        // El ancho de ARRANQUE, solo para que el objeto nazca visible. Enseguida se pone en
+        // automático; y si no se puede, este es el que queda, así que se calcula ajustado al
+        // texto —0.62 de la altura por letra, que es lo que mide una Bahnschrift— y no
+        // holgado, para que el rótulo no salga gordo.
         var letras = texto.Split('\n', '\r').Max(s => s.Length);
-        var ancho = Math.Max(1, letras) * altura * 1.4;
+        var ancho = Math.Max(1, letras) * altura * 0.62;
 
         try
         {
@@ -1249,6 +1393,17 @@ public sealed partial class PlantaDrawer
                     // El estilo trae altura fija: manda él, que es lo que quiere la macro.
                 }
 
+                // ==================================================================
+                //  EL ANCHO, AUTOMÁTICO
+                // ==================================================================
+                //  Width = 0 es «sin ancho definido»: la caja se ajusta al texto. Es lo que
+                //  hay que hacer, porque al centrar se centra LA CAJA, y con una caja más
+                //  ancha que el texto el rótulo se veía gordo y corrido respecto a la trabe.
+                //
+                //  Si esta versión no acepta el 0, se MIDE el texto ya dibujado y se le da
+                //  su ancho exacto: el mismo resultado por otro camino.
+                AnchoAutomatico(mt, texto, altura);
+
                 // El GIRO va antes de fijar el punto de anclaje: así el texto queda
                 // centrado sobre el punto ya girado. Es lo que deja el rótulo de la trabe
                 // LEÍDO A LO LARGO de la trabe, como en la macro, en lugar de horizontal y
@@ -1265,6 +1420,8 @@ public sealed partial class PlantaDrawer
                     }
                 }
 
+                // El anclaje y el punto, DESPUÉS del ancho: cambiar la caja mueve el texto,
+                // así que ponerlos antes lo dejaría corrido justo lo que la caja cambió.
                 try
                 {
                     mt.AttachmentPoint = anclaje;
@@ -1301,6 +1458,70 @@ public sealed partial class PlantaDrawer
         {
             Fallo("Rótulo de la planta", ex);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Deja el MTEXT con el ancho <b>ajustado al texto</b>, no con una caja de más.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Primero por las buenas: <c>Width = 0</c>, que en AutoCAD es «sin ancho definido» y
+    /// deja que la caja siga al texto. Se comprueba que de verdad se quedó en 0, porque hay
+    /// versiones que aceptan la asignación y la ignoran.
+    /// </para>
+    /// <para>
+    /// Y si no, por las malas: se <b>mide</b> la caja del texto ya dibujado y se le da ese
+    /// ancho más un pelo. Medir es la única forma de saber lo que ocupa —depende de la
+    /// fuente—, y es lo que hace la macro para centrar su rótulo. Si tampoco se puede medir
+    /// se deja el ancho de arranque, que ya venía calculado a la medida del texto.
+    /// </para>
+    /// </remarks>
+    private void AnchoAutomatico(object? mt, string texto, double altura)
+    {
+        if (mt is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ((dynamic)mt).Width = 0d;
+
+            if (Convert.ToDouble(((dynamic)mt).Width) <= 1e-9)
+            {
+                return;
+            }
+        }
+        catch (Exception)
+        {
+            // Esta versión no admite el ancho libre: se mide.
+        }
+
+        var caja = CajaEnvolvente(mt);
+
+        if (caja is not { } c)
+        {
+            return;
+        }
+
+        var medido = c.Max[0] - c.Min[0];
+
+        if (medido <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            // Un pelo de más —una décima de letra— para que el último carácter no se parta
+            // por un redondeo de la medida.
+            ((dynamic)mt).Width = medido + (altura * 0.1);
+        }
+        catch (Exception)
+        {
+            Nota($"No se pudo ajustar el ancho del rótulo «{texto}»; queda con el ancho " +
+                 "calculado, que puede verse algo holgado.");
         }
     }
 
