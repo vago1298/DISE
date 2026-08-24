@@ -1867,6 +1867,33 @@ public sealed partial class ZapataDrawer
         Flecha(xPunta, yPunta, xAnclaje, yAnclaje);
     }
 
+    /// <summary>
+    /// Un leader <b>quebrado</b>: la cola que sale del renglón y, de ahí, la diagonal a la punta.
+    /// </summary>
+    /// <remarks>
+    /// Es el leader de las macros: la <b>cola</b> sale horizontal del renglón —así se ve de qué
+    /// renglón arranca— y el tramo largo va en diagonal hasta la flecha. Con un solo tramo, la línea
+    /// salía casi a plomo y no se distinguía de dónde venía; con el quiebre se lee de un tirón.
+    /// </remarks>
+    private void LeaderQuebrado(
+        double xPunta, double yPunta, double xCodo, double yCodo,
+        double xAnclaje, double yAnclaje)
+    {
+        if (Math.Abs(xCodo - xAnclaje) + Math.Abs(yCodo - yAnclaje) > 1e-6)
+        {
+            Linea(xAnclaje, yAnclaje, xCodo, yCodo, CapaLeader);
+        }
+
+        if (Math.Abs(xPunta - xCodo) + Math.Abs(yPunta - yCodo) <= 1e-6)
+        {
+            return;
+        }
+
+        Linea(xCodo, yCodo, xPunta, yPunta, CapaLeader);
+
+        Flecha(xPunta, yPunta, xCodo, yCodo);
+    }
+
     /// <summary>La punta de flecha rellena, apuntando a <c>(xPunta, yPunta)</c>.</summary>
     private void Flecha(double xPunta, double yPunta, double xDesde, double yDesde)
     {

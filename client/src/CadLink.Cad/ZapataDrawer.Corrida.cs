@@ -470,23 +470,26 @@ public sealed partial class ZapataDrawer
 
         var dosParrillas = z.DobleParrilla && Diam(z.VarSup) > 0;
 
-        if (dosParrillas && !lindero)
+        if (!lindero)
         {
-            // CENTRAL CON DOBLE PARRILLA: UN RÓTULO POR PARRILLA, UNO EN CADA LADO.
+            // LA CENTRAL: UN RÓTULO POR PARRILLA, CON SU CABECERA Y SUS DOS FLECHAS.
             //
             // La de abajo a la izquierda y la de arriba a la derecha, las dos a la misma altura. Es
             // lo que se pidió, y es lo que hace que NINGÚN leader pase por encima de otro renglón:
-            // antes los cuatro rótulos se repartían por tipo de varilla —flexión a la izquierda y
-            // temperatura a la derecha—, así que cada lado llevaba dos apilados y el de arriba
-            // tenía que bajar su línea esquivando al de abajo. Con un rótulo por lado no hay nada
-            // que esquivar.
+            // antes los rótulos se repartían por tipo de varilla —flexión a la izquierda y
+            // temperatura a la derecha—, así que con doble parrilla cada lado llevaba dos apilados y
+            // el de arriba tenía que bajar su línea esquivando al de abajo. Con un rótulo por lado
+            // no hay nada que esquivar.
             RotuloDeParrillaCompleto(
                 z, a, rec, z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans, superior: false,
                 aLaDerecha: false, xTopeIzq, xTopeDer);
 
-            RotuloDeParrillaCompleto(
-                z, a, rec, z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, superior: true,
-                aLaDerecha: true, xTopeIzq, xTopeDer);
+            if (dosParrillas)
+            {
+                RotuloDeParrillaCompleto(
+                    z, a, rec, z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, superior: true,
+                    aLaDerecha: true, xTopeIzq, xTopeDer);
+            }
         }
         else
         {
@@ -1357,6 +1360,16 @@ public sealed partial class ZapataDrawer
     private const double RotuloParrillaAire = 0.03;
 
     /// <summary>
+    /// Largo de la <b>cola</b> con la que cada leader sale de su renglón: 3 cm.
+    /// </summary>
+    /// <remarks>
+    /// Es el tramo horizontal del quiebre. Sin él la línea arranca en el borde del texto y baja casi
+    /// a plomo, y no se ve de qué renglón sale; con él, la cola marca el renglón y la diagonal hace
+    /// el resto del camino.
+    /// </remarks>
+    private const double RotuloParrillaCola = 0.03;
+
+    /// <summary>
     /// Ancho de renglón del rótulo de parrilla: <b>22 cm</b>, o sea <b>dos renglones</b>.
     /// </summary>
     /// <remarks>
@@ -1572,6 +1585,12 @@ public sealed partial class ZapataDrawer
             texto += "\n" + segundo;
         }
 
+        // LA CABECERA, ARRIBA DE TODO: de qué parrilla se está hablando. Se pidió, y hace falta en
+        // cuanto hay dos: la palabra del lecho —INFERIOR, SUPERIOR— dice en qué cama va cada
+        // varilla DENTRO de su parrilla, no de qué parrilla es, y sin cabecera los dos rótulos de
+        // una sección con doble parrilla se parecen demasiado.
+        texto = (superior ? CabeceraParrillaSuperior : CabeceraParrillaInferior) + "\n" + texto;
+
         // ---------- Dónde se cuelga ----------
         var xTexto = aLaDerecha
             ? MitadDelLado(xTopeDer, a.XDer, haciaDerecha: true)
@@ -1591,14 +1610,15 @@ public sealed partial class ZapataDrawer
         // ---------- CADA LEADER SALE DE SU RENGLÓN, Y CADA UNO POR SU LADO ----------
         //
         // El renglón del que sale es el de la PALABRA —el que dice INFERIOR, SUPERIOR o AMBOS
-        // SENTIDOS—, que es el segundo de cada varilla.
+        // SENTIDOS—, que es el segundo de cada varilla; contando la cabecera, el tercero y el
+        // quinto del bloque. Con un solo armado los dos salen del mismo, que es el único que hay.
         //
         // Y SALEN POR LADOS CONTRARIOS: la de flexión por la IZQUIERDA y la de temperatura por la
         // DERECHA. Antes las dos salían por el lado que mira a la sección y las dos se iban al
         // centro, así que se cruzaban en el camino y acababan señalando una varilla lejana pasando
         // por delante de otras. Saliendo cada una por su lado, las dos líneas se abren en lugar de
         // cruzarse, y cada una se pega a la varilla que tiene DEBAJO.
-        var renglones = segundo.Length > 0 ? 4 : 2;
+        var renglones = segundo.Length > 0 ? 5 : 3;
         var alto = (yTop - yBot) / renglones;
 
         // La franja en la que puede caer una flecha: el volado de ESTE lado, y dentro de las caras
@@ -1617,33 +1637,57 @@ public sealed partial class ZapataDrawer
         // Es una línea continua, así que la más cercana es la que pasa justo debajo del borde
         // izquierdo del renglón. Si ese borde se sale de la franja —el rótulo es casi tan ancho como
         // el volado—, la flecha se queda en el extremo de la franja.
+        //
+        // Y LA LÍNEA VA QUEBRADA: primero la cola horizontal, que sale del renglón, y de ahí en
+        // diagonal a la varilla. Recta desde el renglón salía casi a plomo y no se veía de dónde
+        // arrancaba; con el quiebre se lee igual que en las macros.
         var xFlexion = Math.Clamp(x1, xMin, xMax);
 
-        var yFila1 = yTop - (1.5 * alto);
+        var yFila1 = yTop - (2.5 * alto);
 
-        Leader(xFlexion, p.YBarra, x1, yFila1);
+        var xColaIzq = FueraDelBloque(x1 - RotuloParrillaCola, xTopeIzq, xTopeDer);
 
-        if (segundo.Length == 0)
-        {
-            EncimaDelLeader(mt);
-            return;
-        }
+        LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, x1, yFila1);
 
         // ---------- Y la de temperatura: por la DERECHA ----------
         //
         // La varilla de punta más cercana al borde derecho de su renglón, de las que caen en la
         // franja. Así una línea baja por el lado izquierdo del rótulo y la otra por el derecho: se
         // abren en lugar de cruzarse, y ninguna se va a buscar una varilla lejana.
+        //
+        // Sale TAMBIÉN con un solo armado: son dos varillas, una de canto y otra de punta, y las dos
+        // se señalan aunque el renglón que las describe sea el mismo. Es lo que hacen las macros.
         var xTemp = CirculoEnLaFranja(p.Circulos, x2, xMin, xMax);
 
         if (!double.IsNaN(xTemp))
         {
-            var yFila2 = yTop - (3.5 * alto);
+            var yFila2 = segundo.Length > 0 ? yTop - (4.5 * alto) : yFila1;
 
-            Leader(xTemp, p.YCirculos, x2, yFila2);
+            var xColaDer = FueraDelBloque(x2 + RotuloParrillaCola, xTopeIzq, xTopeDer);
+
+            LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, x2, yFila2);
         }
 
         EncimaDelLeader(mt);
+    }
+
+    /// <summary>
+    /// Saca una X de la franja del muro y la contratrabe, por el lado que tenga más cerca.
+    /// </summary>
+    /// <remarks>
+    /// Es para el codo de la cola del leader. Una cola que acabe encima del bloque de la contratrabe
+    /// se lee como una raya suelta sobre el concreto; corrida al paño, se lee como lo que es. Fuera
+    /// de la zapata sí puede acabar —ahí solo hay tierra— y eso es lo que le da largo al quiebre
+    /// cuando el rótulo es casi tan ancho como el volado.
+    /// </remarks>
+    private static double FueraDelBloque(double x, double xTopeIzq, double xTopeDer)
+    {
+        if (x <= xTopeIzq || x >= xTopeDer)
+        {
+            return x;
+        }
+
+        return x - xTopeIzq < xTopeDer - x ? xTopeIzq : xTopeDer;
     }
 
     /// <summary>
@@ -1703,6 +1747,12 @@ public sealed partial class ZapataDrawer
 
         return CirculoMasCercano(solo, x);
     }
+
+    /// <summary>Cabecera del rótulo de la parrilla de abajo, en su primer renglón.</summary>
+    private const string CabeceraParrillaInferior = "PARRILLA INFERIOR";
+
+    /// <summary>Y la de la de arriba.</summary>
+    private const string CabeceraParrillaSuperior = "PARRILLA SUPERIOR";
 
     /// <summary>Palabra del acero que va en el lecho de <b>abajo</b>: el de flexión.</summary>
     private const string SufijoLechoInferior = "INFERIOR";

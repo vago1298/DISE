@@ -8771,25 +8771,51 @@ def v23_hoja_zapatas_corridas() -> None:
     # LA CENTRAL CON DOBLE PARRILLA: UN ROTULO POR PARRILLA, UNO EN CADA LADO. Se
     # pidio asi para que ningun leader tenga que cruzar por encima de otro renglon: la
     # de abajo a la izquierda, la de arriba a la derecha, las dos a la misma altura.
-    check("con doble parrilla la central pone un rotulo por parrilla",
+    check("la central pone un rotulo por parrilla, con su cabecera y sus dos flechas",
           "private void RotuloDeParrillaCompleto(" in drawer
-          and "if (dosParrillas && !lindero)" in drawer)
+          and "if (!lindero)" in drawer)
     check("la de abajo a la izquierda y la de arriba a la derecha",
           "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans, superior: false,\n"
           "                aLaDerecha: false, xTopeIzq, xTopeDer);" in drawer
           and "z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, superior: true,\n"
-          "                aLaDerecha: true, xTopeIzq, xTopeDer);" in drawer)
+          "                    aLaDerecha: true, xTopeIzq, xTopeDer);" in drawer)
     check("las dos varillas de esa parrilla van en el MISMO mtext",
           'texto += "\\n" + segundo;' in drawer)
+
+    # LA CABECERA, ARRIBA DE TODO: de que parrilla se habla. Se pidio, y hace falta en
+    # cuanto hay dos, porque la palabra del lecho dice en que cama va cada varilla
+    # DENTRO de su parrilla, no de que parrilla es.
+    check("el rotulo dice de que parrilla es, en su primer renglon",
+          'private const string CabeceraParrillaInferior = "PARRILLA INFERIOR";' in drawer
+          and 'private const string CabeceraParrillaSuperior = "PARRILLA SUPERIOR";' in drawer
+          and "texto = (superior ? CabeceraParrillaSuperior : CabeceraParrillaInferior)"
+          in drawer)
+    check("y los renglones se cuentan con ella, para que el leader salga del que toca",
+          "var renglones = segundo.Length > 0 ? 5 : 3;" in drawer)
     # CADA FLECHA SALE DE SU RENGLON, y con leader QUEBRADO: la cola horizontal sale
     # del renglon de la palabra -el que dice INFERIOR, SUPERIOR o AMBOS SENTIDOS- y
     # de ahi la linea va en diagonal a la varilla. Se pidio asi para que se vea de
     # que renglon sale cada una.
     check("cada flecha arranca en la altura de SU renglon",
-          "Leader(xFlexion, p.YBarra, x1, yFila1);" in drawer
-          and "Leader(xTemp, p.YCirculos, x2, yFila2);" in drawer
-          and "var yFila1 = yTop - (1.5 * alto);" in drawer
-          and "var yFila2 = yTop - (3.5 * alto);" in drawer)
+          "var yFila1 = yTop - (2.5 * alto);" in drawer
+          and "var yFila2 = segundo.Length > 0 ? yTop - (4.5 * alto) : yFila1;" in drawer)
+
+    # Y CON QUIEBRE: cola horizontal desde el renglon y de ahi la diagonal. Recta salia
+    # casi a plomo y no se veia de donde arrancaba.
+    check("y la linea va quebrada: cola horizontal y luego la diagonal",
+          "private void LeaderQuebrado(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+          and "LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, x1, yFila1);" in drawer
+          and "LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, x2, yFila2);" in drawer)
+    check("la cola sale por lados contrarios, y no acaba encima de la contratrabe",
+          "var xColaIzq = FueraDelBloque(x1 - RotuloParrillaCola, xTopeIzq, xTopeDer);" in drawer
+          and "var xColaDer = FueraDelBloque(x2 + RotuloParrillaCola, xTopeIzq, xTopeDer);"
+          in drawer
+          and "private static double FueraDelBloque(" in drawer)
+    check("con un solo armado salen las dos flechas igual, como en las macros",
+          "Sale TAMBIÉN con un solo armado" in drawer
+          and drawer.index("var xTemp = CirculoEnLaFranja(")
+          > drawer.index("LeaderQuebrado(xFlexion,"))
     check("y cada una sale por su lado: flexion por la izquierda, temperatura por la derecha",
           "La varilla de flexión: por la IZQUIERDA" in drawer
           and "Y la de temperatura: por la DERECHA" in drawer)
@@ -8805,7 +8831,10 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el rotulo se sube al frente, para que su mascara corte la linea y no al reves",
           "private void EncimaDelLeader(" in drawer
           and "AlFrente(_cont, new List<object> { mt });" in drawer)
-    check("el lindero y la parrilla sola siguen con el reparto por tipo de varilla",
+    # El LINDERO se queda con el reparto por tipo de varilla: su muro esta pegado al
+    # pano derecho, asi que ahi no hay «lado derecho» donde colgar nada. Se pidio
+    # aplicar el cambio SOLO a la central.
+    check("el lindero sigue con el reparto por tipo de varilla",
           "var huellaInf = RotulosDeParrillaCorrida(" in drawer
           and "else\n        {\n            var huellaInf = RotulosDeParrillaCorrida(" in drawer)
 

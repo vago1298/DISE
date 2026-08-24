@@ -173,8 +173,7 @@ Cinco cosas, y ninguna cambia el dibujo:
 
 | Rótulo | Central | Lindero | Estado |
 |---|---|---|---|
-| Parrilla, con doble parrilla | **un rótulo por parrilla**: la de abajo a la izquierda y la de arriba a la derecha, las dos varillas en el mismo MText | reparto por tipo de varilla, apilado | Sí |
-| Parrilla, con una sola | flexión a la **mitad del lado izquierdo libre**, temperatura a la del **derecho** | igual, con la franja recortada por la contratrabe | Sí |
+| Parrilla | **un rótulo por parrilla**, con su cabecera y sus dos flechas: la de abajo a la izquierda y la de arriba a la derecha | reparto por tipo de varilla, apilado | Sí |
 | Muro de enrase | **siempre a la derecha** de la hilada, a 6 cm de su paño, con la flecha **en el paño** | igual | Sí |
 | Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | igual | Sí |
 | Cadena de desplante | texto **siempre despegado 5 cm** de su paño, en 26 cm de ancho | igual | Sí |
@@ -185,13 +184,31 @@ Cinco cosas, y ninguna cambia el dibujo:
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
 | Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
 
-**Cada leader sale de su renglón, y cada uno por su lado.** El rótulo de la parrilla lleva cuatro
-renglones —dos por varilla—, y cada flecha arranca a la altura del renglón de **su palabra**: el que
-dice `INFERIOR`, `SUPERIOR` o `AMBOS SENTIDOS`. La de **flexión** sale por el borde **izquierdo** y
-la de **temperatura** por el **derecho**, así que las dos líneas se abren en lugar de cruzarse. Y
-cada una se pega a la varilla que tiene **debajo**: la de flexión al punto de la barra más cercano a
-su borde —es una línea continua, sirve cualquier punto— y la de temperatura a la varilla de punta más
-cercana a su borde.
+**Cabecera arriba de todo.** El primer renglón dice de qué parrilla se está hablando —`PARRILLA
+INFERIOR` o `PARRILLA SUPERIOR`—, y debajo van las varillas. Hace falta en cuanto hay dos: la palabra
+del lecho dice en qué cama va cada varilla **dentro** de su parrilla, no de qué parrilla es.
+
+```
+PARRILLA INFERIOR            PARRILLA INFERIOR
+VAR #4C @ 20 cm              VAR #3C @ 20 cm
+INFERIOR                     AMBOS SENTIDOS
+VAR #3C @ 15 cm
+SUPERIOR
+```
+
+**Cada leader sale de su renglón, con quiebre y cada uno por su lado.** Cada flecha arranca a la
+altura del renglón de **su palabra** —el que dice `INFERIOR`, `SUPERIOR` o `AMBOS SENTIDOS`— con una
+**cola horizontal de 3 cm** y de ahí en diagonal hasta la varilla. Sin la cola la línea salía del
+borde del texto y bajaba casi a plomo, y no se veía de dónde arrancaba. La de **flexión** sale por el
+borde **izquierdo** y la de **temperatura** por el **derecho**, así que las dos líneas se abren en
+lugar de cruzarse. Y cada una se pega a la varilla que tiene **debajo**: la de flexión al punto de la
+barra más cercano a su borde —es una línea continua, sirve cualquier punto— y la de temperatura a la
+varilla de punta más cercana. Con un solo armado salen **las dos** igual: son dos varillas, una de
+canto y otra de punta, y las dos se señalan aunque el renglón que las describe sea el mismo.
+
+La cola nunca acaba encima del bloque de la contratrabe: si cae dentro de su ancho se corre al paño
+más cercano. Fuera de la zapata sí puede acabar, porque ahí solo hay tierra, y eso es lo que le da
+largo al quiebre cuando el rótulo es casi tan ancho como el volado.
 
 Las dos flechas se quedan dentro de una **franja**: el volado de ese lado, y siempre entre las caras
 del acero. Fuera de ella la punta acabaría debajo de la contratrabe y la línea cruzaría el bloque
