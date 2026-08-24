@@ -173,21 +173,35 @@ Cinco cosas, y ninguna cambia el dibujo:
 
 | Rótulo | Central | Lindero | Estado |
 |---|---|---|---|
-| Parrilla de flexión | flecha **a la mitad del tramo izquierdo** de la varilla horizontal de abajo, texto `VAR #4C @ 20 cm INFERIOR` | igual, con la franja recortada por la contratrabe | Sí |
-| Parrilla de temperatura | flecha al círculo más cercano a **¾ del lado derecho** de la sección, texto `VAR #3C @ 20 cm SUPERIOR` | igual | Sí |
-| Muro de enrase | por la **derecha** de la hilada, a 10 cm | por la **izquierda**, a 30 cm, con el leader desde el borde derecho del rótulo | Sí |
+| Parrilla de flexión | MText de dos renglones a la **mitad del lado izquierdo libre**, flecha en la varilla horizontal | igual, con la franja recortada por la contratrabe | Sí |
+| Parrilla de temperatura | igual a la **mitad del lado derecho**, flecha en la varilla de punta que quede libre | igual | Sí |
+| Muro de enrase | **siempre a la derecha** de la hilada, a 6 cm de su paño | igual | Sí |
 | Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | igual | Sí |
-| Cadena de desplante | texto **siempre despegado 5 cm** de su paño | igual | Sí |
+| Cadena de desplante | texto **siempre despegado 5 cm** de su paño, en 26 cm de ancho | igual | Sí |
+| Muro de concreto | **siempre a 6 cm** del paño derecho del muro | por la izquierda, como su macro | Sí |
 | Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
 | Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
 | Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
 
+**Dos renglones, no uno.** El rótulo de parrilla es un **MText de 22 cm de ancho**: la varilla en el
+primer renglón y su palabra en el segundo. En una sola línea medía 30 cm, y en una zapata de 80 con
+una contratrabe de 30 no cabe en el volado: el renglón de la parrilla de abajo acababa **dentro** del
+bloque de la contratrabe. El corte va escrito con un salto de línea y no se deja al reparto
+automático, para que la palabra caiga siempre abajo aunque el número de varilla cambie de largo.
+
 **La «C» del armado y el lecho de cada varilla.** El número de varilla lleva una **«C»** detrás
-—`VAR #4C @ 20 cm`—, y detrás va la palabra del **lecho**: la de flexión está abajo, así que dice
-`INFERIOR`, y la de temperatura se apoya encima de ella y dice `SUPERIOR`. Cuando los dos sentidos
-llevan **la misma varilla y la misma separación** sobra rotularlos dos veces: sale un solo renglón
-con `AMBOS SENTIDOS`, en el tramo izquierdo y con la flecha en la varilla de flexión.
+—`VAR #4C @ 20 cm`—, y en el segundo renglón va la palabra del **lecho**. En la parrilla de abajo la
+de flexión se apoya en el recubrimiento y la de temperatura descansa encima, así que dicen
+`INFERIOR` y `SUPERIOR`; en la parrilla de arriba es **al revés**, porque ahí la de flexión se amarra
+por el lomo. Cuando los dos sentidos llevan **la misma varilla y la misma separación** sobra
+rotularlos dos veces: sale un solo renglón con `AMBOS SENTIDOS` en la segunda línea, en el lado
+izquierdo y con la flecha en la varilla de flexión.
+
+**«Cada lado» es el volado libre.** El renglón se centra en la mitad del tramo que va del paño de la
+zapata al paño de lo que hay en medio —la contratrabe si sobresale, y si no el muro—, no en la cuarta
+parte del ancho. Y si el volado es más estrecho que el propio renglón, el rótulo se corre hacia
+fuera hasta que quepa: antes se sale de la zapata que taparse con la contratrabe.
 
 **El renglón se mide desde el lomo del concreto, no desde la varilla.** Sube **10 cm** sobre el
 paño de arriba de la zapata, y eso arregla dos cosas de golpe: el texto **nunca cae dentro de la

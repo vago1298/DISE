@@ -460,15 +460,20 @@ public sealed partial class ZapataDrawer
         // recibe y se acomoda con ella: se sube por encima del texto y corre su carril a un lado,
         // que es lo que impide que con doble parrilla los cuatro rótulos y sus cuatro leaders se
         // monten unos sobre otros.
+        // Y los dos topes: el paño de lo que hay en medio a la altura de los rótulos, que es la
+        // contratrabe cuando sobresale y el muro cuando no. De ahí sale «la mitad de cada lado».
+        var xTopeIzq = Math.Min(a.XMuroIzq, hayCt ? xCtIzq : a.XMuroIzq);
+        var xTopeDer = Math.Max(a.XMuroDer, hayCt ? xCtDer : a.XMuroDer);
+
         var huellaInf = RotulosDeParrillaCorrida(
             z, a, rec, z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans, superior: false,
-            abajo: default);
+            abajo: default, xTopeIzq, xTopeDer);
 
         if (z.DobleParrilla && Diam(z.VarSup) > 0)
         {
             RotulosDeParrillaCorrida(
                 z, a, rec, z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, superior: true,
-                abajo: huellaInf);
+                abajo: huellaInf, xTopeIzq, xTopeDer);
         }
 
         // ---------- LOS RÓTULOS PROPIOS DE ESTA HOJA ----------
@@ -1275,7 +1280,7 @@ public sealed partial class ZapataDrawer
     /// <summary>Anchos de renglón de cada rótulo, en metros. Los de las macros.</summary>
     private const double AnchoRotuloEnrase = 0.26;          // ANCHO_MTEXT_ENRASE
     private const double AnchoRotuloContratrabe = 0.23;     // anchoCT
-    private const double AnchoRotuloCadena = 0.32;          // anchoCad
+    private const double AnchoRotuloCadena = 0.26;          // anchoCad, pedido a 26 cm
     private const double AnchoRotuloMuroCentral = 0.32;     // ANCHO_MTEXT_MURO_CONC
     private const double AnchoRotuloMuroLindero = 0.25;     // anchoMTextMuro del lindero
 
@@ -1327,6 +1332,24 @@ public sealed partial class ZapataDrawer
     private const double RotuloParrillaAire = 0.03;
 
     /// <summary>
+    /// Ancho de renglón del rótulo de parrilla: <b>22 cm</b>, o sea <b>dos renglones</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En una sola línea el rótulo salía de 30 cm —<c>VAR #4C @ 20 cm INFERIOR</c>— y en una zapata
+    /// de 80 con la contratrabe de 30 no cabe: el renglón de la parrilla de abajo se metía dentro
+    /// del bloque de la contratrabe. Con el ancho puesto es un <b>MText de dos renglones</b>, la
+    /// varilla arriba y su palabra debajo, y ocupa la mitad de largo.
+    /// </para>
+    /// <para>
+    /// El corte no se deja al reparto automático: va escrito con un salto de línea, para que la
+    /// palabra del lecho —o el <c>AMBOS SENTIDOS</c>— caiga <b>siempre</b> en el segundo renglón y
+    /// no según lo que mida el número de varilla.
+    /// </para>
+    /// </remarks>
+    private const double AnchoRotuloParrilla = 0.22;
+
+    /// <summary>
     /// Holgura que se le deja al leader de la parrilla superior para pasar por fuera del rótulo de
     /// la inferior.
     /// </summary>
@@ -1372,7 +1395,7 @@ public sealed partial class ZapataDrawer
     private HuellaRotulos RotulosDeParrillaCorrida(
         ZapataCorridaCad z, TrazoZapataCorrida.Acomodo a, double rec,
         string? varBarra, string? sepBarra, string? varCirc, string? sepCirc, bool superior,
-        HuellaRotulos abajo)
+        HuellaRotulos abajo, double xTopeIzq, double xTopeDer)
     {
         var diam = Diam(varBarra);
 
@@ -1415,7 +1438,7 @@ public sealed partial class ZapataDrawer
         // la flecha en la varilla de flexión, que es la que se puede señalar sin ambigüedad.
         if (MismoArmado(varBarra, sepBarra, varCirc, sepCirc))
         {
-            var xUno = CarrilDeFlexion(a, p, ancho, diam, abajo.Izq);
+            var xUno = CarrilDeFlexion(a, p, diam, xTopeIzq, abajo.Izq);
 
             var cajaUno = RotuloDeParrilla(
                 xUno, p.YBarra, yTexto,
@@ -1425,14 +1448,22 @@ public sealed partial class ZapataDrawer
         }
 
         // ---------- FLEXIÓN: la varilla de canto, a la mitad del tramo izquierdo ----------
-        var xFlexion = CarrilDeFlexion(a, p, ancho, diam, abajo.Izq);
-
+        //
+        // LA PALABRA DEL LECHO SE VOLTEA EN LA PARRILLA DE ARRIBA. En la de abajo la varilla de
+        // flexión es la que se apoya en el recubrimiento y la de temperatura descansa encima; en la
+        // de arriba es al revés, porque la de flexión se amarra por el lomo. Se pidió expresamente,
+        // y así cada renglón dice el lecho en el que de verdad va su varilla.
         var cajaIzq = RotuloDeParrilla(
-            xFlexion, p.YBarra, yTexto,
-            TextoParrillaCorrida(varBarra, sepBarra, SufijoLechoInferior));
+            CarrilDeFlexion(a, p, diam, xTopeIzq, abajo.Izq), p.YBarra, yTexto,
+            TextoParrillaCorrida(
+                varBarra, sepBarra, superior ? SufijoLechoSuperior : SufijoLechoInferior));
 
         // ---------- TEMPERATURA: la de punta, a la mitad del lado derecho ----------
-        var xTemp = CirculoLibre(p.Circulos, a.XBase + (3 * ancho / 4), abajo.Der);
+        var xTemp = CirculoLibre(
+            p.Circulos,
+            MitadDelLado(xTopeDer, a.XDer, haciaDerecha: true),
+            abajo.Der,
+            LimiteDelRotulo(xTopeDer, haciaDerecha: true));
 
         if (double.IsNaN(xTemp))
         {
@@ -1441,7 +1472,8 @@ public sealed partial class ZapataDrawer
 
         var cajaDer = RotuloDeParrilla(
             xTemp, p.YCirculos, yTexto,
-            TextoParrillaCorrida(varCirc, sepCirc, SufijoLechoSuperior));
+            TextoParrillaCorrida(
+                varCirc, sepCirc, superior ? SufijoLechoInferior : SufijoLechoSuperior));
 
         return new HuellaRotulos(cajaIzq, cajaDer);
     }
@@ -1470,7 +1502,9 @@ public sealed partial class ZapataDrawer
             return string.Empty;
         }
 
-        return $"VAR {etiqueta}C @ {SepTexto(sep)} cm {sufijo}";
+        // El salto de línea va ESCRITO: la palabra del lecho -o el «AMBOS SENTIDOS»- cae siempre
+        // en el segundo renglón, y no donde la deje el reparto automático del ancho.
+        return $"VAR {etiqueta}C @ {SepTexto(sep)} cm\n{sufijo}";
     }
 
     /// <summary>¿Los dos sentidos de una parrilla llevan el mismo armado?</summary>
@@ -1497,19 +1531,45 @@ public sealed partial class ZapataDrawer
     /// El carril por el que baja el leader de la varilla de <b>flexión</b>.
     /// </summary>
     /// <remarks>
-    /// A la mitad del tramo izquierdo, corrido a la <b>izquierda</b> si por ahí ya pasa el rótulo
-    /// de la parrilla de abajo, y con la punta siempre entre las dos caras de la barra: la varilla
-    /// de flexión es una línea continua, así que la flecha se puede pegar a cualquier punto de
-    /// ella y el leader se queda vertical, sin cruzar nada.
+    /// A la mitad del lado izquierdo <b>libre</b>, corrido a la izquierda si por ahí ya pasa el
+    /// rótulo de la parrilla de abajo, y con la punta siempre entre las dos caras de la barra: la
+    /// varilla de flexión es una línea continua, así que la flecha se puede pegar a cualquier punto
+    /// de ella y el leader se queda vertical, sin cruzar nada.
     /// </remarks>
     private static double CarrilDeFlexion(
-        TrazoZapataCorrida.Acomodo a, TrazoZapata.Parrilla p, double ancho, double diam,
+        TrazoZapataCorrida.Acomodo a, TrazoZapata.Parrilla p, double diam, double xTopeIzq,
         (double X1, double Y1, double X2, double Y2)? estorbo)
     {
-        var x = CarrilLibre(a.XBase + (ancho / 4), estorbo, haciaDerecha: false);
+        var x = CarrilLibre(
+            MitadDelLado(xTopeIzq, a.XBase, haciaDerecha: false), estorbo, haciaDerecha: false);
 
         return Math.Clamp(x, p.XCaraIzq + (diam / 2), p.XCaraDer - (diam / 2));
     }
+
+    /// <summary>
+    /// El centro del renglón: <b>a la mitad del lado libre</b>, y sin tocar el bloque del centro.
+    /// </summary>
+    /// <remarks>
+    /// «Cada lado» es el tramo que va del paño de la zapata al paño de lo que hay en medio —la
+    /// contratrabe si sobresale, y si no el muro—, no la cuarta parte del ancho. Con la contratrabe
+    /// de 30 en una zapata de 80, la cuarta parte del ancho caía a 20 cm del paño y el renglón se
+    /// metía en el bloque; la mitad del lado libre cae a 12.5 y queda centrado en el volado, que es
+    /// lo que se pidió. Y si el volado es más estrecho que el propio renglón, se corre hacia fuera
+    /// hasta que quepa: antes se sale de la zapata que taparse con la contratrabe.
+    /// </remarks>
+    private static double MitadDelLado(double xTope, double xExtremo, bool haciaDerecha)
+    {
+        var medio = (xTope + xExtremo) / 2;
+        var limite = LimiteDelRotulo(xTope, haciaDerecha);
+
+        return haciaDerecha ? Math.Max(medio, limite) : Math.Min(medio, limite);
+    }
+
+    /// <summary>Lo más cerca del bloque que puede ir el centro del renglón sin tocarlo.</summary>
+    private static double LimiteDelRotulo(double xTope, bool haciaDerecha) =>
+        haciaDerecha
+            ? xTope + RotuloParrillaHolgura + (AnchoRotuloParrilla / 2)
+            : xTope - RotuloParrillaHolgura - (AnchoRotuloParrilla / 2);
 
     /// <summary>Corre una X hasta salirse de la caja que le estorba, por el lado que se pida.</summary>
     private static double CarrilLibre(
@@ -1539,14 +1599,14 @@ public sealed partial class ZapataDrawer
     /// ninguna se vuelve a la más cercana, que es mejor que no rotular.
     /// </remarks>
     private static double CirculoLibre(
-        double[] circulos, double x, (double X1, double Y1, double X2, double Y2)? estorbo)
+        double[] circulos, double x, (double X1, double Y1, double X2, double Y2)? estorbo,
+        double xMinimo)
     {
-        if (estorbo is null)
-        {
-            return CirculoMasCercano(circulos, x);
-        }
-
-        var limite = estorbo.Value.X2 + RotuloParrillaHolgura;
+        // Dos condiciones, y la segunda vale también sin parrilla debajo: la varilla tiene que
+        // estar lo bastante a la derecha para que el renglón no se meta en la contratrabe.
+        var limite = estorbo is null
+            ? xMinimo
+            : Math.Max(xMinimo, estorbo.Value.X2 + RotuloParrillaHolgura);
 
         var libres = 0;
 
@@ -1621,8 +1681,8 @@ public sealed partial class ZapataDrawer
             return null;
         }
 
-        var mt = Mtexto(xCarril, yTexto, texto, AltoMtexto, CapaRotulos,
-            conFondo: true, anclaje: AnclajeCentro);
+        // Con ancho de renglón, que es lo que lo parte en dos líneas y lo deja corto.
+        var mt = MtextoAncho(xCarril, yTexto, texto, AnchoRotuloParrilla, AnclajeCentro);
 
         var caja = Caja(mt);
 
@@ -1634,13 +1694,25 @@ public sealed partial class ZapataDrawer
         return caja;
     }
 
+    /// <summary>Lo que se despega del muro de enrase su rótulo, siempre por la derecha.</summary>
+    /// <remarks>
+    /// Se pidió <b>6 cm y siempre a la derecha</b> de la hilada. Antes eran 10 cm en la central y,
+    /// en el lindero, 30 cm por la <b>izquierda</b> —que es lo que hace su macro, porque a la
+    /// derecha del lindero está la colindancia—. Ahora los dos lo sacan por el mismo lado y a la
+    /// misma distancia; si en el lindero ese renglón acaba estorbando a la sección de al lado, es
+    /// una línea volver a colgarlo por la izquierda.
+    /// </remarks>
+    private const double RotuloEnraseSeparacion = 0.06;
+
+    /// <summary>Y lo que se despega del muro de concreto el suyo, en la central: 6 cm.</summary>
+    private const double RotuloMuroSeparacion = 0.06;
+
     /// <summary>
     /// El rótulo del <b>muro de enrase</b>, con su leader al centro de la hilada.
     /// </summary>
     /// <remarks>
-    /// La central lo saca por la <b>derecha</b> de la hilada, a 10 cm, y el lindero por la
-    /// <b>izquierda</b>, a 30 cm: en el lindero la hilada está pegada al paño derecho de la zapata
-    /// y por ese lado no hay dónde poner un renglón.
+    /// Siempre por la <b>derecha</b> de la hilada y despegado
+    /// <see cref="RotuloEnraseSeparacion"/>, en la central y en el lindero.
     /// </remarks>
     private void RotuloDelEnrase(
         TrazoZapataCorrida.Acomodo a, bool lindero, TrazoZapataCorrida.Enrase e)
@@ -1653,28 +1725,14 @@ public sealed partial class ZapataDrawer
 
         var yTexto = yTop - 0.08;
 
-        if (lindero)
-        {
-            var xTexto = e.XIzq - 0.3;
+        // SIEMPRE A LA DERECHA DE LA HILADA, Y A 6 CM DE SU PAÑO. Se mide desde el paño derecho del
+        // enrase y no desde el eje de la sección, así que la separación es la misma con una hilada
+        // de 15 cm y con una de 40, y el renglón nunca acaba tocando el block.
+        var xTexto = e.XIzq + e.Ancho + RotuloEnraseSeparacion;
 
-            var mt = MtextoAncho(xTexto, yTexto, TextoRotuloEnrase, AnchoRotuloEnrase,
-                AnclajeCentro);
+        MtextoAncho(xTexto, yTexto, TextoRotuloEnrase, AnchoRotuloEnrase, AnclajeIzquierda);
 
-            // El leader sale del borde DERECHO del rótulo, que es el lado que mira al muro.
-            var caja = Caja(mt);
-
-            Leader(xCentro, yCentro,
-                caja?.X2 ?? xTexto,
-                caja is null ? yTexto : (caja.Value.Y1 + caja.Value.Y2) / 2);
-
-            return;
-        }
-
-        var xTextoCentral = e.XIzq + e.Ancho + 0.1;
-
-        MtextoAncho(xTextoCentral, yTexto, TextoRotuloEnrase, AnchoRotuloEnrase, AnclajeIzquierda);
-
-        Leader(xCentro, yCentro, xTextoCentral, yTexto);
+        Leader(xCentro, yCentro, xTexto, yTexto);
     }
 
     /// <summary>El rótulo de la <b>contratrabe</b>, con su leader.</summary>
@@ -1753,9 +1811,14 @@ public sealed partial class ZapataDrawer
             + $"Y @ {SepTexto(z.SepMuroVert)} cm VERT.\n"
             + (ejes.Doble ? "DOBLE PARRILLA" : "PARRILLA AL CENTRO");
 
+        // EN LA CENTRAL, SIEMPRE 6 CM DEL PAÑO DEL MURO. Se pidió así: antes eran 7 cm heredados de
+        // la macro —«+0.12 − 0.05»—, que con el muro estrecho dejaban el renglón despegado y con el
+        // muro ancho casi encima. Medido desde el paño, la separación es la misma con cualquier
+        // espesor. El lindero se queda como su macro, colgado por la izquierda, porque a su derecha
+        // está la colindancia.
         var xTexto = lindero
             ? m.XIzq - 0.27
-            : m.XDer + 0.12 - 0.05;
+            : m.XDer + RotuloMuroSeparacion;
 
         var yTexto = a.YTerreno - 0.1;
 
