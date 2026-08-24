@@ -625,8 +625,11 @@ foreach (var tipo in new[] { "CENTRAL", "LINDERO" })
 
     var (xNivel, yNivel) = TrazoZapataCorrida.PosicionTextoNivel(ac);
 
-    Vale("el texto del nivel conserva la resta de la macro",
-        Math.Abs(xNivel - (ac.XCentro + 0.35 - 0.313)) < 1e-12
+    // EL TEXTO DEL NIVEL, A LA IZQUIERDA: arranca en el paño izquierdo de la zapata y
+    // crece hacia la derecha. Antes iba centrado con la resta de la macro
+    // -«xCentro + 0.35 - 0.313»-, que lo dejaba encima del muro.
+    Vale("el texto del nivel arranca en el pano izquierdo, y a la altura de la macro",
+        Math.Abs(xNivel - ac.XBase) < 1e-12
         && Math.Abs(yNivel - (ac.YTerreno + (0.025 / 2) + 0.035)) < 1e-12);
 
     // ---------- Los titulos, que NO son iguales en las dos macros ----------

@@ -772,14 +772,22 @@ public static class TrazoZapataCorrida
     }
 
     /// <summary>
-    /// Dónde va el texto «Nivel del terreno»: a <c>0.037</c> del eje y un poco arriba de la línea.
+    /// Dónde va el texto «Nivel del terreno»: <b>a la izquierda</b>, encima de su línea.
     /// </summary>
     /// <remarks>
-    /// La macro lo escribe como <c>xCentro + 0.35 − 0.313</c>, y se conserva la resta: es una
-    /// posición que se ajustó a mano sobre el dibujo, y redondearla a 0.04 mueve el texto.
+    /// <para>
+    /// Arranca en el <b>paño izquierdo</b> de la zapata y crece hacia la derecha —se escribe con
+    /// anclaje a la izquierda—, que es donde se pidió y donde está en el plano de referencia. Antes
+    /// se centraba a <c>xCentro + 0.35 − 0.313</c>, la resta de la macro: eso lo dejaba encima del
+    /// muro, y en una zapata angosta el renglón acababa tapando el arranque del muro de enrase.
+    /// </para>
+    /// <para>
+    /// La altura no cambia: la misma de la macro, poco más de 3 cm por encima de la línea de
+    /// terreno.
+    /// </para>
     /// </remarks>
     public static (double X, double Y) PosicionTextoNivel(Acomodo a) =>
-        (a.XCentro + 0.35 - 0.313, a.YTerreno + (AltoTextoNivel / 2) + 0.035);
+        (a.XBase, a.YTerreno + (AltoTextoNivel / 2) + 0.035);
 
     // ======================================================================
     // Los rellenos: colores y escalas

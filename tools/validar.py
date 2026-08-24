@@ -8460,8 +8460,15 @@ def v22_zapatas_corridas() -> None:
 
     check("el rotulo se mide desde el fondo de la plantilla",
           "var yFondo = yZapBot - PlantillaEspesor;" in trazo)
-    check("y el texto del nivel conserva la resta de la macro",
-          "a.XCentro + 0.35 - 0.313" in trazo)
+    # EL TEXTO DEL NIVEL, A LA IZQUIERDA. Se pidio asi, y con anclaje a la
+    # izquierda: la resta de la macro -«xCentro + 0.35 - 0.313»- lo dejaba centrado
+    # encima del muro, y en una zapata angosta tapaba el arranque del enrase.
+    check("el texto del nivel arranca en el pano izquierdo de la zapata",
+          "(a.XBase, a.YTerreno + (AltoTextoNivel / 2) + 0.035);" in trazo
+          and "a.XCentro + 0.35 - 0.313" not in trazo)
+    check("y se escribe anclado a la izquierda, para que crezca hacia dentro",
+          "anclaje: AnclajeIzquierda);" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Corrida.cs")))
 
     # ------------------------------------------------------------------
     # Lo que ya existia NO se vuelve a escribir
@@ -8774,9 +8781,24 @@ def v23_hoja_zapatas_corridas() -> None:
           "                aLaDerecha: true, xTopeIzq, xTopeDer);" in drawer)
     check("las dos varillas de esa parrilla van en el MISMO mtext",
           'texto += "\\n" + segundo;' in drawer)
-    check("y sus dos flechas salen de cuartos distintos del renglon",
-          "x1 + ((x2 - x1) / 4)" in drawer
-          and "CirculoMasCercano(p.Circulos, x1 + (3 * (x2 - x1) / 4));" in drawer)
+    # CADA FLECHA SALE DE SU RENGLON, y con leader QUEBRADO: la cola horizontal sale
+    # del renglon de la palabra -el que dice INFERIOR, SUPERIOR o AMBOS SENTIDOS- y
+    # de ahi la linea va en diagonal a la varilla. Se pidio asi para que se vea de
+    # que renglon sale cada una.
+    check("cada flecha sale de SU renglon, con la cola horizontal",
+          "private void LeaderQuebrado(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+          and "LeaderQuebrado(xFlexion, p.YBarra, xCodo, yFila1, xSalida, yFila1);" in drawer
+          and "LeaderQuebrado(xTemp, p.YCirculos, xCodo, yFila2, xSalida, yFila2);" in drawer)
+    check("el renglon del que sale es el de la palabra, el segundo de cada varilla",
+          "var yFila1 = yTop - (1.5 * alto);" in drawer
+          and "var yFila2 = yTop - (3.5 * alto);" in drawer)
+    check("y las dos salen por el lado que mira a la seccion",
+          "var xSalida = aLaDerecha ? x1 : x2;" in drawer
+          and "var sentidoCola = aLaDerecha ? -1 : 1;" in drawer)
+    check("las dos flechas se separan, para que las lineas no se solapen",
+          "private const double RotuloParrillaFlecha1 = 0.05;" in drawer
+          and "private const double RotuloParrillaFlecha2 = 0.14;" in drawer)
     check("el lindero y la parrilla sola siguen con el reparto por tipo de varilla",
           "var huellaInf = RotulosDeParrillaCorrida(" in drawer
           and "else\n        {\n            var huellaInf = RotulosDeParrillaCorrida(" in drawer)
@@ -8856,7 +8878,17 @@ def v23_hoja_zapatas_corridas() -> None:
     check("el rotulo del muro dice HORIZ. y VERT. como en la macro",
           "cm HORIZ." in drawer and "cm VERT." in drawer)
     check("y su varilla lleva la C de corrugada, como las de parrilla",
-          '$"VAR {Etiqueta(z.VarMuro)}C @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.' in drawer)
+          'var varilla = $"VAR {Etiqueta(z.VarMuro)}C";' in drawer)
+    check("las dos varillas del muro llevan su numero, tambien la vertical",
+          '$"{varilla} @ {SepTexto(z.SepMuroVert)} cm VERT.";' in drawer)
+    check("y con la misma separacion en los dos sentidos se escribe una sola vez",
+          "var mismaSeparacion = SepTexto(z.SepMuroHoriz)" in drawer
+          and f'cm {{SufijoAmbosSentidos}}"' in drawer)
+    check("la flecha del muro de concreto va a su pano, no a su eje",
+          "var xPunta = lindero ? m.XIzq : m.XDer;" in drawer)
+    check("y la del muro de enrase, igual",
+          "var xPano = e.XIzq + e.Ancho;" in drawer
+          and "Leader(xPano, yCentro, xTexto, yTexto);" in drawer)
     check("y el ultimo renglon dice donde va el acero",
           '"DOBLE PARRILLA" : "PARRILLA AL CENTRO"' in drawer)
     check("el rotulo del enrase es el texto de la macro",
@@ -8870,23 +8902,30 @@ def v23_hoja_zapatas_corridas() -> None:
     # concreto se sigue viendo por detras.
     check("las varillas de punta del muro solo se rellenan con la seccion rellena",
           "if (_relleno)\n        {\n            RellenarCirculo(" in drawer)
-    check("y el tramo recto y la pata, tambien",
-          "RellenarTramoDeVarilla(" in drawer
-          and drawer.index("if (_relleno)") < drawer.index("RellenarTramoDeVarilla("))
+    check("y el tramo recto, el codo y la pata, tambien",
+          "RellenarVarillaDelMuro(" in drawer
+          and drawer.index("if (_relleno)") < drawer.index("RellenarVarillaDelMuro("))
     check("el relleno toma el color de la capa de la varilla",
-          '"SOLID", 1, string.Empty, 256);' in drawer)
+          '_ = Hatch(borde, "SOLID", 1, capa, 256);' in drawer)
 
-    # EL CODO TAMBIEN SE RELLENA. Faltaba, y se veia: el tramo recto y la pata
-    # salian macizos y la esquina hueca, con el rayado del concreto por dentro.
-    check("el codo de la varilla se rellena, no solo el tramo recto y la pata",
-          "private void RellenarCodoDeVarilla(" in drawer
-          and "RellenarCodoDeVarilla(cxOut, cyOut, rOut, cxIn, cyIn, rIn, s, capa);" in drawer)
-    check("y se rellena siguiendo sus dos arcos, que NO son concentricos",
-          "no son concéntricos" in drawer
-          and "for (var i = segmentos; i >= 0; i--)" in drawer)
+    # LA VARILLA SE RELLENA DE UNA VEZ, con su contorno completo. Antes eran tres
+    # trozos -tramo recto, pata y codo- y entre ellos quedaban dos CUNAS sin pintar
+    # en la esquina: se veia un triangulo del color del concreto dentro del doblez.
+    check("la varilla se rellena con un solo contorno, no en tres trozos",
+          "private void RellenarVarillaDelMuro(" in drawer
+          and "RellenarTramoDeVarilla(" not in drawer
+          and "RellenarCodoDeVarilla(" not in drawer)
+    check("y ese contorno recorre las dos caras, los dos arcos y la punta",
+          "La cara de DENTRO" in drawer and "El arco INTERIOR" in drawer
+          and "El arco EXTERIOR" in drawer and "la cara de FUERA" in drawer)
+    check("los extremos del barrido se toman por lo que son, no por su numero",
+          "var angRecto = AnguloCodo(sentido, sentido < 0);" in drawer
+          and "var angPata = AnguloCodo(sentido, sentido > 0);" in drawer)
     check("el contorno y el relleno del codo usan los mismos angulos",
           "private static double AnguloCodo(" in drawer
           and drawer.count("AnguloCodo(s") >= 2)
+    check("y la geometria de ese contorno se comprueba aparte",
+          os.path.exists(ruta("tools/verificar_codo_muro.py")))
 
     # La contratrabe: la flecha a su esquina superior derecha.
     check("la flecha de la contratrabe va a su esquina superior derecha",

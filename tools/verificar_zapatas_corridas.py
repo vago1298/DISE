@@ -584,8 +584,13 @@ def v8_anotacion():
     check("los altos de letra bajan de titulo a escala",
           const(t, "RotuloAltoTitulo") > const(t, "RotuloAltoElevacion")
           > const(t, "RotuloAltoEscala"))
-    check("el texto del nivel conserva la resta de la macro",
-          "a.XCentro + 0.35 - 0.313" in t)
+    # El texto del nivel, A LA IZQUIERDA: arranca en el pano izquierdo de la zapata.
+    # La resta de la macro -«xCentro + 0.35 - 0.313»- lo dejaba centrado encima del
+    # muro, y se pidio moverlo.
+    check("el texto del nivel arranca en el pano izquierdo de la zapata",
+          "(a.XBase, a.YTerreno + (AltoTextoNivel / 2) + 0.035);" in t)
+    check("y conserva la altura de la macro sobre la linea de terreno",
+          "+ (AltoTextoNivel / 2) + 0.035" in t)
 
 
 def v9_sin_duplicar():

@@ -444,8 +444,11 @@ public sealed partial class ZapataDrawer
         // ---------- El rótulo del nivel de terreno ----------
         var (xNivel, yNivel) = TrazoZapataCorrida.PosicionTextoNivel(a);
 
+        // Anclado a la IZQUIERDA: la posición es el paño izquierdo de la zapata y el renglón crece
+        // hacia la derecha, así que el texto queda dentro del dibujo y no a caballo del paño.
         Mtexto(xNivel, yNivel, TextoNivelTerreno,
-            TrazoZapataCorrida.AltoTextoNivel, CapaRotulos, conFondo: true);
+            TrazoZapataCorrida.AltoTextoNivel, CapaRotulos, conFondo: true,
+            anclaje: AnclajeIzquierda);
 
         // ---------- LOS RÓTULOS DE LAS PARRILLAS, CON SUS LEADERS ----------
         //
@@ -846,19 +849,10 @@ public sealed partial class ZapataDrawer
         // concreto tapa el rayado.
         if (_relleno)
         {
-            RellenarTramoDeVarilla(
-                Math.Min(xFuera, xDentro), Math.Max(xFuera, xDentro),
-                cyIn, b.YTop, capa);
-
-            RellenarTramoDeVarilla(
-                Math.Min(xFin, cxIn), Math.Max(xFin, cxIn),
-                b.YEsquina - mitad, b.YEsquina + mitad, capa);
-
-            // Y EL CODO. Faltaba, y se veía: el tramo recto y la pata salían macizos y la
-            // esquina hueca, con el rayado del concreto por dentro de la varilla. Es la zona
-            // curva, así que no se puede rellenar con un rectángulo: se aproxima el sector entre
-            // los dos arcos, que es lo que hace la macro de lindero con RellenarCodoVarilla.
-            RellenarCodoDeVarilla(cxOut, cyOut, rOut, cxIn, cyIn, rIn, s, capa);
+            RellenarVarillaDelMuro(
+                xDentro, xFuera, b.YTop, xFin,
+                b.YEsquina - mitad, b.YEsquina + mitad,
+                cxIn, cyIn, rIn, cxOut, cyOut, rOut, s, capa);
         }
 
         Var(Linea(xDentro, b.YTop, xDentro, cyIn, capa));
@@ -889,25 +883,33 @@ public sealed partial class ZapataDrawer
             : (cierre ? 3 * Math.PI / 2 : Math.PI);
 
     /// <summary>
-    /// Rellena el <b>codo</b> de una varilla: la zona entre sus dos arcos.
+    /// Rellena la varilla del muro <b>de una vez</b>: su contorno completo, en un solo polígono.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// No se puede rellenar con un rectángulo —es una esquina curva— ni con un sector anular
-    /// —los dos arcos <b>no son concéntricos</b>, y eso es de las macros: la cara de dentro del
-    /// codo tiene su centro y su radio, y la de fuera los suyos—. Así que se sigue la frontera de
-    /// verdad: el arco exterior de ida y el interior de vuelta, con lo que el relleno cae
-    /// exactamente donde está la varilla dibujada.
+    /// <b>Por qué de una vez y no por trozos.</b> Antes se rellenaba en tres: el tramo recto, la
+    /// pata y el codo. Los tres cerraban por donde no debían —el del codo cerraba en diagonal, de
+    /// una tangencia a la otra— y entre ellos quedaban dos <b>cuñas</b> sin pintar justo en la
+    /// esquina, que es lo que se veía: la varilla maciza con un triángulo del color del concreto
+    /// metido en el doblez.
     /// </para>
     /// <para>
-    /// Diez segmentos por arco. A escala 1:10, un codo de una varilla del #4 mide 3 mm en el
-    /// papel: con diez tramos la curva ya no se distingue de un arco, y el hatch entra sin
-    /// rechazos.
+    /// La forma buena es la que ya se dibuja con líneas y arcos, así que el relleno recorre
+    /// <b>ese mismo contorno</b>: baja por la cara de dentro, gira por el arco interior, sigue por
+    /// la cara de dentro de la pata, remata en su punta, vuelve por la cara de fuera de la pata,
+    /// gira por el arco exterior y sube por la cara de fuera. Un contorno, un hatch y ni una
+    /// costura.
+    /// </para>
+    /// <para>
+    /// Diez segmentos por arco. A escala 1:10, el codo de una varilla del #4 mide 3 mm en el papel:
+    /// con diez tramos la curva ya no se distingue de un arco, y el hatch entra sin rechazos.
     /// </para>
     /// </remarks>
-    private void RellenarCodoDeVarilla(
-        double cxOut, double cyOut, double rOut,
+    private void RellenarVarillaDelMuro(
+        double xDentro, double xFuera, double yTop, double xFin,
+        double yPataBot, double yPataTop,
         double cxIn, double cyIn, double rIn,
+        double cxOut, double cyOut, double rOut,
         int sentido, string capa)
     {
         const int segmentos = 10;
@@ -917,26 +919,46 @@ public sealed partial class ZapataDrawer
             return;
         }
 
-        var a0 = AnguloCodo(sentido, false);
-        var a1 = AnguloCodo(sentido, true);
+        // Los dos extremos del barrido, por lo que son y no por su número: doblando a la izquierda
+        // el arco arranca en la pata y cierra en el tramo recto, y doblando a la derecha al revés.
+        // Recorrer siempre «de a0 a a1» dejaba el contorno cruzado en uno de los dos sentidos.
+        var angRecto = AnguloCodo(sentido, sentido < 0);
+        var angPata = AnguloCodo(sentido, sentido > 0);
 
-        var pts = new List<double>();
+        var pts = new List<double>
+        {
+            // La cara de DENTRO, de arriba abajo, hasta la tangencia con el arco interior.
+            xDentro, yTop,
+            xDentro, cyIn,
+        };
 
+        // El arco INTERIOR, de la tangencia con el tramo recto a la tangencia con la pata.
         for (var i = 0; i <= segmentos; i++)
         {
-            var a = a0 + ((a1 - a0) * i / segmentos);
+            var ang = angRecto + ((angPata - angRecto) * i / segmentos);
 
-            pts.Add(cxOut + (rOut * Math.Cos(a)));
-            pts.Add(cyOut + (rOut * Math.Sin(a)));
+            pts.Add(cxIn + (rIn * Math.Cos(ang)));
+            pts.Add(cyIn + (rIn * Math.Sin(ang)));
         }
 
-        for (var i = segmentos; i >= 0; i--)
+        // La pata: cara de dentro, remate de la punta y cara de fuera.
+        pts.Add(xFin);
+        pts.Add(yPataTop);
+        pts.Add(xFin);
+        pts.Add(yPataBot);
+
+        // El arco EXTERIOR, de vuelta desde la pata hasta la tangencia con el tramo recto.
+        for (var i = 0; i <= segmentos; i++)
         {
-            var a = a0 + ((a1 - a0) * i / segmentos);
+            var ang = angPata + ((angRecto - angPata) * i / segmentos);
 
-            pts.Add(cxIn + (rIn * Math.Cos(a)));
-            pts.Add(cyIn + (rIn * Math.Sin(a)));
+            pts.Add(cxOut + (rOut * Math.Cos(ang)));
+            pts.Add(cyOut + (rOut * Math.Sin(ang)));
         }
+
+        // Y la cara de FUERA, de vuelta arriba.
+        pts.Add(xFuera);
+        pts.Add(yTop);
 
         var borde = Polilinea(pts.ToArray(), capa, cerrada: true);
 
@@ -1143,26 +1165,6 @@ public sealed partial class ZapataDrawer
 
         HatchPoligono(pts.ToArray(), CapaTerrenoHatch,
             PatronTerreno, EscalaTerreno, TranspTerreno, 0);
-    }
-
-    /// <summary>Rellena un tramo de varilla con el color de su capa.</summary>
-    /// <remarks>
-    /// El <c>256</c> es el <b>ByLayer</b> de AutoCAD: el relleno toma el color de la capa de la
-    /// varilla —<c>VAR_#4</c>— en lugar de uno escrito aquí, que es lo que permite apagar un
-    /// diámetro entero desde el administrador de capas y que el relleno se vaya con él.
-    /// </remarks>
-    private void RellenarTramoDeVarilla(
-        double xIzq, double xDer, double yBot, double yTop, string capa)
-    {
-        var w = xDer - xIzq;
-        var h = yTop - yBot;
-
-        if (w <= 0 || h <= 0)
-        {
-            return;
-        }
-
-        HatchRect(xIzq, yBot, w, h, capa, "SOLID", 1, string.Empty, 256);
     }
 
     /// <summary>Una varilla vista de punta, rellena con el color de su capa.</summary>
@@ -1378,6 +1380,15 @@ public sealed partial class ZapataDrawer
     /// </summary>
     private const double RotuloParrillaHolgura = 0.02;
 
+    /// <summary>Largo de la <b>cola</b> horizontal con la que cada leader sale de su renglón.</summary>
+    private const double RotuloParrillaCola = 0.03;
+
+    /// <summary>Lo que se adentra la flecha de la varilla de flexión, contada desde la cola.</summary>
+    private const double RotuloParrillaFlecha1 = 0.05;
+
+    /// <summary>Y la de temperatura, más adentro, para que las dos líneas se separen.</summary>
+    private const double RotuloParrillaFlecha2 = 0.14;
+
     /// <summary>Dónde quedaron los renglones de una parrilla, para que la de arriba los esquive.</summary>
     /// <remarks>
     /// La parrilla superior no puede colocarse a ciegas: necesita saber qué caja ocupa cada renglón
@@ -1581,27 +1592,50 @@ public sealed partial class ZapataDrawer
 
         var x1 = caja?.X1 ?? (xTexto - (AnchoRotuloParrilla / 2));
         var x2 = caja?.X2 ?? (xTexto + (AnchoRotuloParrilla / 2));
-        var ySalida = caja?.Y1 ?? yTexto;
+        var yBot = caja?.Y1 ?? (yTexto - AltoMtexto);
+        var yTop = caja?.Y2 ?? (yTexto + AltoMtexto);
 
-        // ---------- Las flechas ----------
+        // ---------- CADA LEADER SALE DE SU RENGLÓN ----------
+        //
+        // El renglón del que sale es el de la PALABRA —el que dice INFERIOR, SUPERIOR o AMBOS
+        // SENTIDOS—, que es el segundo de cada varilla. Se pidió así, y es lo que hace que un
+        // rótulo de cuatro renglones se lea sin dudas: la línea de arriba sale del par de arriba y
+        // la de abajo del par de abajo, en lugar de salir las dos del borde inferior del bloque.
+        var renglones = segundo.Length > 0 ? 4 : 2;
+        var alto = (yTop - yBot) / renglones;
+
+        // El lado por el que salen: el que mira a la sección.
+        var xSalida = aLaDerecha ? x1 : x2;
+        var sentidoCola = aLaDerecha ? -1 : 1;
+
+        var xCodo = xSalida + (sentidoCola * RotuloParrillaCola);
+
+        // ---------- La varilla de flexión ----------
         var xFlexion = Math.Clamp(
-            segundo.Length > 0 ? x1 + ((x2 - x1) / 4) : (x1 + x2) / 2,
+            xCodo + (sentidoCola * RotuloParrillaFlecha1),
             p.XCaraIzq + (diam / 2),
             p.XCaraDer - (diam / 2));
 
-        Leader(xFlexion, p.YBarra, xFlexion, ySalida);
+        var yFila1 = yTop - (1.5 * alto);
+
+        LeaderQuebrado(xFlexion, p.YBarra, xCodo, yFila1, xSalida, yFila1);
 
         if (segundo.Length == 0)
         {
             return;
         }
 
-        var xTemp = CirculoMasCercano(p.Circulos, x1 + (3 * (x2 - x1) / 4));
+        // ---------- Y la de temperatura, desde el renglón de abajo ----------
+        var xTemp = CirculoMasCercano(p.Circulos, xCodo + (sentidoCola * RotuloParrillaFlecha2));
 
-        if (!double.IsNaN(xTemp))
+        if (double.IsNaN(xTemp))
         {
-            Leader(xTemp, p.YCirculos, xTemp, ySalida);
+            return;
         }
+
+        var yFila2 = yTop - (3.5 * alto);
+
+        LeaderQuebrado(xTemp, p.YCirculos, xCodo, yFila2, xSalida, yFila2);
     }
 
     /// <summary>Palabra del acero que va en el lecho de <b>abajo</b>: el de flexión.</summary>
@@ -1846,7 +1880,10 @@ public sealed partial class ZapataDrawer
         var yTop = e.YBases[^1] + e.AltoPieza;
         var yBot = e.YBases[0];
 
-        var xCentro = e.XIzq + (e.Ancho / 2);
+        // LA FLECHA, AL PAÑO DE LA HILADA Y NO A SU CENTRO. Igual que en el muro de concreto: en el
+        // centro la punta cae sobre una pieza y no se distingue de una junta; contra el paño derecho
+        // —el que mira al rótulo— se ve que señala el muro entero.
+        var xPano = e.XIzq + e.Ancho;
         var yCentro = (yBot + yTop) / 2;
 
         var yTexto = yTop - 0.08;
@@ -1858,7 +1895,7 @@ public sealed partial class ZapataDrawer
 
         MtextoAncho(xTexto, yTexto, TextoRotuloEnrase, AnchoRotuloEnrase, AnclajeIzquierda);
 
-        Leader(xCentro, yCentro, xTexto, yTexto);
+        Leader(xPano, yCentro, xTexto, yTexto);
     }
 
     /// <summary>El rótulo de la <b>contratrabe</b>, con su leader.</summary>
@@ -1931,12 +1968,23 @@ public sealed partial class ZapataDrawer
     {
         var espesorCm = (m.XDer - m.XIzq) * 100;
 
-        // La varilla lleva la C de corrugada detrás del número, igual que en los rótulos de
-        // parrilla: «VAR #4C @ 20 cm HORIZ.». Se pidió expresamente.
+        // LAS DOS VARILLAS, CADA UNA CON SU NÚMERO. La macro escribe la vertical como «Y @ 20 cm
+        // VERT.», sin número, y eso deja al armador leyendo el del renglón de arriba: se pidió
+        // ponerlo también aquí. Y si el muro va con la misma separación en los dos sentidos, se
+        // escribe una sola vez con AMBOS SENTIDOS, como en las parrillas.
+        var varilla = $"VAR {Etiqueta(z.VarMuro)}C";
+
+        var mismaSeparacion = SepTexto(z.SepMuroHoriz)
+            .Equals(SepTexto(z.SepMuroVert), StringComparison.OrdinalIgnoreCase);
+
+        var armado = mismaSeparacion
+            ? $"{varilla} @ {SepTexto(z.SepMuroHoriz)} cm {SufijoAmbosSentidos}"
+            : $"{varilla} @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.\n"
+              + $"{varilla} @ {SepTexto(z.SepMuroVert)} cm VERT.";
+
         var texto =
             $"MURO DE CONCRETO e={espesorCm:0.#} cm\n"
-            + $"VAR {Etiqueta(z.VarMuro)}C @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.\n"
-            + $"Y @ {SepTexto(z.SepMuroVert)} cm VERT.\n"
+            + armado + "\n"
             + (ejes.Doble ? "DOBLE PARRILLA" : "PARRILLA AL CENTRO");
 
         // EN LA CENTRAL, SIEMPRE 6 CM DEL PAÑO DEL MURO. Se pidió así: antes eran 7 cm heredados de
@@ -1955,7 +2003,11 @@ public sealed partial class ZapataDrawer
 
         MtextoAncho(xTexto, yTexto, texto, ancho, anclaje);
 
-        var xPunta = ejes.Doble ? ejes.X2 : ejes.X1;
+        // LA FLECHA VA AL PAÑO DEL MURO, NO A SU CENTRO. Apuntaba a la varilla vertical —el eje del
+        // acero—, y ahí la punta se pierde entre el rayado del concreto y la propia varilla: contra
+        // el paño se ve de una vez qué elemento se está rotulando. Al paño del lado por el que se
+        // cuelga el rótulo, que es el que tiene enfrente.
+        var xPunta = lindero ? m.XIzq : m.XDer;
         var yPunta = m.YBase + ((m.YTope - m.YBase) * 0.55);
 
         Leader(xPunta, yPunta, xTexto, yTexto);

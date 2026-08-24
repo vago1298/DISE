@@ -175,14 +175,22 @@ Cinco cosas, y ninguna cambia el dibujo:
 |---|---|---|---|
 | Parrilla, con doble parrilla | **un rótulo por parrilla**: la de abajo a la izquierda y la de arriba a la derecha, las dos varillas en el mismo MText | reparto por tipo de varilla, apilado | Sí |
 | Parrilla, con una sola | flexión a la **mitad del lado izquierdo libre**, temperatura a la del **derecho** | igual, con la franja recortada por la contratrabe | Sí |
-| Muro de enrase | **siempre a la derecha** de la hilada, a 6 cm de su paño | igual | Sí |
+| Muro de enrase | **siempre a la derecha** de la hilada, a 6 cm de su paño, con la flecha **en el paño** | igual | Sí |
 | Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | igual | Sí |
 | Cadena de desplante | texto **siempre despegado 5 cm** de su paño, en 26 cm de ancho | igual | Sí |
-| Muro de concreto | **siempre a 6 cm** del paño derecho del muro, en 25 cm de ancho y con la «C» en su varilla | por la izquierda, como su macro | Sí |
+| Muro de concreto | **siempre a 6 cm** del paño derecho, en 25 cm de ancho, con la «C» y el número en las dos varillas, y la flecha **en el paño** | por la izquierda, como su macro | Sí |
+| Nivel del terreno | a la **izquierda**, arrancando en el paño izquierdo de la zapata | igual | Sí |
 | Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
 | Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
 | Máscara de fondo | todos los MText, para que el terreno no se lea por detrás | igual | Sí |
+
+**Cada leader sale de su renglón.** El rótulo de la parrilla lleva cuatro renglones —dos por
+varilla—, y cada flecha sale del renglón de **su palabra**: el que dice `INFERIOR`, `SUPERIOR` o
+`AMBOS SENTIDOS`. La línea es un leader **quebrado**: una cola horizontal de 3 cm desde el borde del
+renglón, por el lado que mira a la sección, y de ahí recta en diagonal hasta la varilla. Las dos
+flechas se adentran distinto —5 cm la de flexión y 14 la de temperatura— para que las dos líneas se
+separen en abanico y no se solapen.
 
 **Dos renglones, no uno.** El rótulo de parrilla es un **MText de 22 cm de ancho**: la varilla en el
 primer renglón y su palabra en el segundo. En una sola línea medía 30 cm, y en una zapata de 80 con
