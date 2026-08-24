@@ -1360,14 +1360,15 @@ public sealed partial class ZapataDrawer
     private const double RotuloParrillaAire = 0.03;
 
     /// <summary>
-    /// Largo de la <b>cola</b> con la que cada leader sale de su renglón: 3 cm.
+    /// Largo de la <b>cola</b> con la que cada leader sale de su renglón: 6 cm.
     /// </summary>
     /// <remarks>
     /// Es el tramo horizontal del quiebre. Sin él la línea arranca en el borde del texto y baja casi
     /// a plomo, y no se ve de qué renglón sale; con él, la cola marca el renglón y la diagonal hace
-    /// el resto del camino.
+    /// el resto del camino. Empezó en 3 cm y se pidió más larga: con 3 la cola casi no se veía al
+    /// lado de un bloque de cinco renglones.
     /// </remarks>
-    private const double RotuloParrillaCola = 0.03;
+    private const double RotuloParrillaCola = 0.06;
 
     /// <summary>
     /// Ancho de renglón del rótulo de parrilla: <b>22 cm</b>, o sea <b>dos renglones</b>.
@@ -1641,13 +1642,25 @@ public sealed partial class ZapataDrawer
         // Y LA LÍNEA VA QUEBRADA: primero la cola horizontal, que sale del renglón, y de ahí en
         // diagonal a la varilla. Recta desde el renglón salía casi a plomo y no se veía de dónde
         // arrancaba; con el quiebre se lee igual que en las macros.
+        //
+        // LA COLA ARRANCA EN LA PALABRA, no en el borde del bloque: los renglones van centrados, así
+        // que entre el final de INFERIOR y el borde hay aire, y la cola que salía del borde parecía
+        // suelta. Se mide el renglón y se arranca justo donde acaba la palabra.
+        var palabra1 = unSoloArmado
+            ? SufijoAmbosSentidos
+            : (superior ? SufijoLechoSuperior : SufijoLechoInferior);
+
+        var mitad1 = AnchoDeRenglon(palabra1) / 2;
+
         var xFlexion = Math.Clamp(x1, xMin, xMax);
 
         var yFila1 = yTop - (2.5 * alto);
 
-        var xColaIzq = FueraDelBloque(x1 - RotuloParrillaCola, xTopeIzq, xTopeDer);
+        var xPalabraIzq = xTexto - mitad1;
 
-        LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, x1, yFila1);
+        var xColaIzq = FueraDelBloque(xPalabraIzq - RotuloParrillaCola, xTopeIzq, xTopeDer);
+
+        var lineas = LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, xPalabraIzq, yFila1);
 
         // ---------- Y la de temperatura: por la DERECHA ----------
         //
@@ -1663,12 +1676,27 @@ public sealed partial class ZapataDrawer
         {
             var yFila2 = segundo.Length > 0 ? yTop - (4.5 * alto) : yFila1;
 
-            var xColaDer = FueraDelBloque(x2 + RotuloParrillaCola, xTopeIzq, xTopeDer);
+            var palabra2 = unSoloArmado
+                ? SufijoAmbosSentidos
+                : (superior ? SufijoLechoInferior : SufijoLechoSuperior);
 
-            LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, x2, yFila2);
+            var xPalabraDer = xTexto + (AnchoDeRenglon(palabra2) / 2);
+
+            var xColaDer = FueraDelBloque(
+                xPalabraDer + RotuloParrillaCola, xTopeIzq, xTopeDer);
+
+            lineas.AddRange(
+                LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, xPalabraDer, yFila2));
         }
 
-        EncimaDelLeader(mt);
+        // LOS LEADERS, AL FRENTE. Se pidió expresamente, y es lo que hace que se vean enteros: la
+        // diagonal cruza por detrás del propio bloque de texto —el rótulo es casi tan ancho como el
+        // volado— y la máscara de fondo del MText la borraba. Al frente, la línea se lee de la
+        // palabra a la varilla sin cortes.
+        if (lineas.Count > 0)
+        {
+            AlFrente(_cont, lineas);
+        }
     }
 
     /// <summary>
@@ -1688,24 +1716,6 @@ public sealed partial class ZapataDrawer
         }
 
         return x - xTopeIzq < xTopeDer - x ? xTopeIzq : xTopeDer;
-    }
-
-    /// <summary>
-    /// Sube el rótulo por encima de sus leaders, para que su máscara los tape.
-    /// </summary>
-    /// <remarks>
-    /// Los dos leaders salen de renglones distintos y bajan a varillas distintas, así que alguno
-    /// pasa por detrás del propio bloque de texto —el rótulo es casi tan ancho como el volado y no
-    /// hay hueco a los lados—. Con el rótulo al frente, su máscara de fondo <b>corta</b> la línea
-    /// donde la cruza y en el plano se lee lo que se pidió: una línea que sale del renglón. Sin
-    /// esto, la línea se dibujaría <b>encima</b> de las letras.
-    /// </remarks>
-    private void EncimaDelLeader(object? mt)
-    {
-        if (mt is not null)
-        {
-            AlFrente(_cont, new List<object> { mt });
-        }
     }
 
     /// <summary>

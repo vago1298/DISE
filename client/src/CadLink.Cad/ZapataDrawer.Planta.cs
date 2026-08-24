@@ -1875,35 +1875,82 @@ public sealed partial class ZapataDrawer
     /// renglón arranca— y el tramo largo va en diagonal hasta la flecha. Con un solo tramo, la línea
     /// salía casi a plomo y no se distinguía de dónde venía; con el quiebre se lee de un tirón.
     /// </remarks>
-    private void LeaderQuebrado(
+    /// <returns>Las entidades creadas, para poder subirlas al frente.</returns>
+    private List<object> LeaderQuebrado(
         double xPunta, double yPunta, double xCodo, double yCodo,
         double xAnclaje, double yAnclaje)
     {
+        var creadas = new List<object>();
+
         if (Math.Abs(xCodo - xAnclaje) + Math.Abs(yCodo - yAnclaje) > 1e-6)
         {
-            Linea(xAnclaje, yAnclaje, xCodo, yCodo, CapaLeader);
+            var cola = Linea(xAnclaje, yAnclaje, xCodo, yCodo, CapaLeader);
+
+            if (cola is not null)
+            {
+                creadas.Add(cola);
+            }
         }
 
         if (Math.Abs(xPunta - xCodo) + Math.Abs(yPunta - yCodo) <= 1e-6)
         {
-            return;
+            return creadas;
         }
 
-        Linea(xCodo, yCodo, xPunta, yPunta, CapaLeader);
+        var tramo = Linea(xCodo, yCodo, xPunta, yPunta, CapaLeader);
 
-        Flecha(xPunta, yPunta, xCodo, yCodo);
+        if (tramo is not null)
+        {
+            creadas.Add(tramo);
+        }
+
+        creadas.AddRange(Flecha(xPunta, yPunta, xCodo, yCodo));
+
+        return creadas;
+    }
+
+    /// <summary>
+    /// Lo que mide de ancho un renglón, medido de verdad y no estimado.
+    /// </summary>
+    /// <remarks>
+    /// Los renglones de un MText van <b>centrados</b> en su ancho de columna, así que el borde del
+    /// bloque no dice dónde acaba la palabra: entre el final de <c>INFERIOR</c> y el borde puede
+    /// haber 6 cm de aire, y el leader que arrancaba en el borde parecía suelto. Con la medida real
+    /// se puede pegar la cola al final de la palabra.
+    /// <para>
+    /// Se mide creando el renglón, midiéndolo y borrándolo. Es lo único fiable: el ancho de un texto
+    /// depende del estilo, de la fuente y de si AutoCAD la sustituyó.
+    /// </para>
+    /// </remarks>
+    private double AnchoDeRenglon(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return 0;
+        }
+
+        var mt = Mtexto(0, 0, texto, AltoMtexto, CapaRotulos, conFondo: false);
+
+        var caja = Caja(mt);
+
+        Borrar(mt);
+
+        return caja is null ? 0 : caja.Value.X2 - caja.Value.X1;
     }
 
     /// <summary>La punta de flecha rellena, apuntando a <c>(xPunta, yPunta)</c>.</summary>
-    private void Flecha(double xPunta, double yPunta, double xDesde, double yDesde)
+    /// <returns>Las entidades creadas, para poder subirlas al frente.</returns>
+    private List<object> Flecha(double xPunta, double yPunta, double xDesde, double yDesde)
     {
+        var creadas = new List<object>();
+
         var dx = xPunta - xDesde;
         var dy = yPunta - yDesde;
         var l = Math.Sqrt((dx * dx) + (dy * dy));
 
         if (l <= 1e-6)
         {
-            return;
+            return creadas;
         }
 
         var ux = dx / l;
@@ -1926,8 +1973,17 @@ public sealed partial class ZapataDrawer
         if (borde is not null)
         {
             // La flecha SÍ conserva su frontera: es parte del dibujo, no un borde temporal.
-            _ = Hatch(borde, "SOLID", 1, CapaLeader, 0);
+            creadas.Add(borde);
+
+            var relleno = Hatch(borde, "SOLID", 1, CapaLeader, 0);
+
+            if (relleno is not null)
+            {
+                creadas.Add(relleno);
+            }
         }
+
+        return creadas;
     }
 
     // ======================================================================

@@ -196,19 +196,26 @@ VAR #3C @ 15 cm
 SUPERIOR
 ```
 
-**Cada leader sale de su renglón, con quiebre y cada uno por su lado.** Cada flecha arranca a la
-altura del renglón de **su palabra** —el que dice `INFERIOR`, `SUPERIOR` o `AMBOS SENTIDOS`— con una
-**cola horizontal de 3 cm** y de ahí en diagonal hasta la varilla. Sin la cola la línea salía del
-borde del texto y bajaba casi a plomo, y no se veía de dónde arrancaba. La de **flexión** sale por el
-borde **izquierdo** y la de **temperatura** por el **derecho**, así que las dos líneas se abren en
-lugar de cruzarse. Y cada una se pega a la varilla que tiene **debajo**: la de flexión al punto de la
-barra más cercano a su borde —es una línea continua, sirve cualquier punto— y la de temperatura a la
-varilla de punta más cercana. Con un solo armado salen **las dos** igual: son dos varillas, una de
-canto y otra de punta, y las dos se señalan aunque el renglón que las describe sea el mismo.
+**Cada leader sale de su palabra, con quiebre y cada uno por su lado.** Cada flecha arranca **donde
+acaba la palabra** de su renglón —el que dice `INFERIOR`, `SUPERIOR` o `AMBOS SENTIDOS`— con una
+**cola horizontal de 6 cm** y de ahí en diagonal hasta la varilla. Los renglones de un MText van
+**centrados** en su ancho de columna, así que el borde del bloque no dice dónde acaba la palabra:
+entre el final de `INFERIOR` y el borde puede haber 6 cm de aire, y la cola que arrancaba en el borde
+parecía suelta. Así que el renglón se **mide** —se crea, se mide y se borra— y la cola se pega al
+final de la palabra.
+
+La de **flexión** sale por el borde **izquierdo** y la de **temperatura** por el **derecho**, así que
+las dos líneas se abren en lugar de cruzarse. Y cada una se pega a la varilla que tiene **debajo**: la
+de flexión al punto de la barra más cercano —es una línea continua, sirve cualquier punto— y la de
+temperatura a la varilla de punta más cercana. Con un solo armado salen **las dos** igual: son dos
+varillas, una de canto y otra de punta, y las dos se señalan aunque el renglón que las describe sea el
+mismo.
 
 La cola nunca acaba encima del bloque de la contratrabe: si cae dentro de su ancho se corre al paño
 más cercano. Fuera de la zapata sí puede acabar, porque ahí solo hay tierra, y eso es lo que le da
-largo al quiebre cuando el rótulo es casi tan ancho como el volado.
+largo al quiebre cuando el rótulo es casi tan ancho como el volado. Y los leaders se suben **al
+frente** —el *bring to front* de AutoCAD— porque la diagonal cruza por detrás del propio bloque de
+texto y la máscara de fondo del MText la borraba a la mitad.
 
 Las dos flechas se quedan dentro de una **franja**: el volado de ese lado, y siempre entre las caras
 del acero. Fuera de ella la punta acabaría debajo de la contratrabe y la línea cruzaría el bloque
@@ -311,3 +318,26 @@ lugar del 160. Para estas doce capas el color se **fuerza** aunque la capa ya ex
 hace `CrearCapa` en el módulo de la macro y lo que mantiene el juego de planos de una pieza. Las
 capas que no están en la tabla —`COTAS`, `ROTULOS`, `TERRENO`, `PLANTILLA`, las de bloque— solo se
 pintan al crearlas, y si ya están se dejan como las tenga el usuario.
+
+
+## 11. Las ocho columnas de parrilla de la hoja
+
+Las mismas en la hoja de **corridas** y en la de **aisladas**, y con la banda de arriba diciendo de
+qué parrilla es cada grupo:
+
+| PARRILLA INFERIOR | | | | PARRILLA SUPERIOR | | | |
+|---|---|---|---|---|---|---|---|
+| `Var Inf. Flexión` | `@ cm` | `Var. Sup. Temp.` | `@ cm` | `Var Sup. Flexión` | `@ cm` | `Var. Inf. Temp.` | `@ cm` |
+
+El nombre dice el **lecho** y el **trabajo** de cada varilla, que es como sale rotulada en el plano:
+en la parrilla de abajo la de flexión va en el lecho inferior y la de temperatura se apoya encima; en
+la de arriba es al revés, porque la de flexión se amarra por el lomo.
+
+La cuadrícula de WPF no sabe juntar columnas bajo un título, así que la **banda** va en la cabecera de
+la primera columna de cada grupo y las otras tres llevan el renglón de arriba en blanco: con eso los
+nombres de columna quedan todos a la misma altura y se lee de un golpe dónde empieza cada parrilla. La
+cabecera pasó de 32 a 40 px para que quepan los dos renglones.
+
+Y las **cuatro casillas de la parrilla superior se apagan** cuando la fila no lleva doble parrilla,
+con el mismo criterio que las del armado del muro: una celda que el dibujo no va a leer no se deja
+escribir, porque capturar ahí un dato y no verlo en el plano es media hora buscando el error.

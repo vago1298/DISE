@@ -802,7 +802,10 @@
              filas apretadas de antes, veinte renglones de captura se leian como un
              muro de numeros. -->
         <Setter Property="RowHeight" Value="26" />
-        <Setter Property="ColumnHeaderHeight" Value="32" />
+        <!-- 40 y no 32: las columnas de parrilla llevan cabecera de DOS renglones
+             -la banda que dice de que parrilla son y el nombre de la columna-, y
+             con 32 el segundo renglon se cortaba. -->
+        <Setter Property="ColumnHeaderHeight" Value="40" />
         <Setter Property="RowHeaderWidth" Value="22" />
         <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
@@ -912,6 +915,60 @@
             </Trigger>
         </Style.Triggers>
     </Style>
+
+    <!-- LAS CUATRO CASILLAS DE LA PARRILLA SUPERIOR, APAGADAS SI NO HAY DOBLE PARRILLA.
+         Mismo criterio que las del muro: una celda que el dibujo no va a leer no se
+         deja escribir, porque capturar ahi un dato y no verlo en el plano es media
+         hora buscando el error. Vale para la hoja de corridas y para la de aisladas:
+         las dos filas tienen EsDobleParrilla. -->
+    <Style x:Key="CeldaSoloDobleParrilla" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaLechoSup}">
+        <Setter Property="IsEnabled" Value="{Binding EsDobleParrilla}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ==================================================================
+         LA BANDA DE CABECERA DE CADA PARRILLA
+         ==================================================================
+         La cuadricula de WPF no sabe juntar varias columnas bajo un titulo, asi
+         que la banda se pone en la cabecera de la PRIMERA columna de cada grupo
+         y las otras tres llevan la misma cabecera con el renglon de arriba en
+         blanco. Con eso los nombres de columna quedan todos a la misma altura y
+         se lee de un golpe donde empieza cada parrilla.
+
+         El nombre de la columna sale de {Binding}: en una cabecera de DataGrid,
+         el DataContext de la plantilla ES el Header, asi que la misma plantilla
+         sirve para las cuatro columnas del grupo. -->
+    <DataTemplate x:Key="CabeceraParrillaInferior">
+        <StackPanel>
+            <TextBlock Text="PARRILLA INFERIOR" FontSize="9" FontWeight="Bold"
+                       HorizontalAlignment="Center" Opacity="0.9"
+                       Foreground="{DynamicResource BrandBrush}" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraParrillaSuperior">
+        <StackPanel>
+            <TextBlock Text="PARRILLA SUPERIOR" FontSize="9" FontWeight="Bold"
+                       HorizontalAlignment="Center" Opacity="0.9"
+                       Foreground="{DynamicResource BrandBrush}" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
+
+    <!-- El resto de las columnas del grupo: el hueco de la banda, para que el
+         nombre quede a la misma altura que en la primera. -->
+    <DataTemplate x:Key="CabeceraParrillaSigue">
+        <StackPanel>
+            <TextBlock Text=" " FontSize="9" FontWeight="Bold" />
+            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
+        </StackPanel>
+    </DataTemplate>
 
     <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
     <Style x:Key="CeldaEstribo" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">

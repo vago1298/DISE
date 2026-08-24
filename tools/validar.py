@@ -8803,15 +8803,28 @@ def v23_hoja_zapatas_corridas() -> None:
     # Y CON QUIEBRE: cola horizontal desde el renglon y de ahi la diagonal. Recta salia
     # casi a plomo y no se veia de donde arrancaba.
     check("y la linea va quebrada: cola horizontal y luego la diagonal",
-          "private void LeaderQuebrado(" in leer(
+          "private List<object> LeaderQuebrado(" in leer(
               ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
-          and "LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, x1, yFila1);" in drawer
-          and "LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, x2, yFila2);" in drawer)
-    check("la cola sale por lados contrarios, y no acaba encima de la contratrabe",
-          "var xColaIzq = FueraDelBloque(x1 - RotuloParrillaCola, xTopeIzq, xTopeDer);" in drawer
-          and "var xColaDer = FueraDelBloque(x2 + RotuloParrillaCola, xTopeIzq, xTopeDer);"
+          and "LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, xPalabraIzq, yFila1);"
           in drawer
+          and "LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, xPalabraDer, yFila2));"
+          in drawer)
+    check("la cola sale por lados contrarios, y no acaba encima de la contratrabe",
+          "var xColaIzq = FueraDelBloque(xPalabraIzq - RotuloParrillaCola, xTopeIzq, xTopeDer);"
+          in drawer
+          and "xPalabraDer + RotuloParrillaCola, xTopeIzq, xTopeDer);" in drawer
           and "private static double FueraDelBloque(" in drawer)
+
+    # LA COLA ARRANCA EN LA PALABRA, no en el borde del bloque: los renglones van
+    # CENTRADOS, asi que entre el final de «INFERIOR» y el borde hay aire y la cola
+    # parecia suelta. Se mide el renglon de verdad, creandolo y borrandolo.
+    check("la cola arranca donde acaba la palabra, medida de verdad",
+          "private double AnchoDeRenglon(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+          and "var xPalabraIzq = xTexto - mitad1;" in drawer
+          and "var xPalabraDer = xTexto + (AnchoDeRenglon(palabra2) / 2);" in drawer)
+    check("y la cola mide 6 cm, no 3",
+          "private const double RotuloParrillaCola = 0.06;" in drawer)
     check("con un solo armado salen las dos flechas igual, como en las macros",
           "Sale TAMBIÉN con un solo armado" in drawer
           and drawer.index("var xTemp = CirculoEnLaFranja(")
@@ -8828,9 +8841,12 @@ def v23_hoja_zapatas_corridas() -> None:
           in drawer
           and "var xMax = Math.Min(aLaDerecha ? a.XDer : xTopeIzq, p.XCaraDer - (diam / 2));"
           in drawer)
-    check("el rotulo se sube al frente, para que su mascara corte la linea y no al reves",
-          "private void EncimaDelLeader(" in drawer
-          and "AlFrente(_cont, new List<object> { mt });" in drawer)
+    # LOS LEADERS AL FRENTE -bring to front-, que es lo que se pidio: la diagonal cruza
+    # por detras del propio bloque de texto, y la mascara del MText la borraba.
+    check("los leaders se suben al frente, para que se vean enteros",
+          "if (lineas.Count > 0)" in drawer
+          and "AlFrente(_cont, lineas);" in drawer
+          and "private void EncimaDelLeader(" not in drawer)
     # El LINDERO se queda con el reparto por tipo de varilla: su muro esta pegado al
     # pano derecho, asi que ahi no hay «lado derecho» donde colgar nada. Se pidio
     # aplicar el cambio SOLO a la central.
@@ -9084,9 +9100,53 @@ def v24_rediseno() -> None:
     # ------------------------------------------------------------------
     # La cuadricula
     # ------------------------------------------------------------------
-    check("la cuadricula tiene aire: fila de 26 y cabecera de 32",
+    # La cabecera pasa de 32 a 40: las columnas de parrilla llevan DOS renglones -la
+    # banda de la parrilla y el nombre de la columna- y con 32 el segundo se cortaba.
+    check("la cuadricula tiene aire: fila de 26 y cabecera de 40",
           '<Setter Property="RowHeight" Value="26" />' in tema
-          and '<Setter Property="ColumnHeaderHeight" Value="32" />' in tema)
+          and '<Setter Property="ColumnHeaderHeight" Value="40" />' in tema)
+
+    # ------------------------------------------------------------------
+    # LA BANDA DE CABECERA DE CADA PARRILLA, en las DOS hojas de zapatas
+    # ------------------------------------------------------------------
+    # La cuadricula de WPF no junta columnas bajo un titulo, asi que la banda va en la
+    # cabecera de la PRIMERA columna del grupo y las otras tres llevan el renglon de
+    # arriba en blanco, para que los nombres queden a la misma altura.
+    for plantilla in ("CabeceraParrillaInferior", "CabeceraParrillaSuperior",
+                      "CabeceraParrillaSigue"):
+        check(f"existe la plantilla de cabecera {plantilla}",
+              f'x:Key="{plantilla}"' in tema)
+
+    check("la banda dice de que parrilla es cada grupo",
+          '<TextBlock Text="PARRILLA INFERIOR" FontSize="9" FontWeight="Bold"' in tema
+          and '<TextBlock Text="PARRILLA SUPERIOR" FontSize="9" FontWeight="Bold"' in tema)
+    check("y las dos hojas la usan, una banda por grupo y por hoja",
+          xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaInferior}"') == 2
+          and xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"') == 2
+          and xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaSigue}"') == 12)
+
+    # LOS NOMBRES DE COLUMNA, los que se pidieron: dicen el LECHO y el TRABAJO de cada
+    # varilla, y coinciden con lo que sale rotulado en el plano.
+    for nombre in ('Header="Var Inf. Flexión"', 'Header="Var. Sup. Temp."',
+                   'Header="Var Sup. Flexión"', 'Header="Var. Inf. Temp."'):
+        check(f"las dos hojas tienen la columna {nombre.split('=')[1]}",
+              xaml.count(nombre) == 2)
+
+    check("y no queda ningun nombre viejo de columna de parrilla",
+          'Header="Var inf."' not in xaml
+          and 'Header="Var sup."' not in xaml
+          and 'Header="Var inf. trans."' not in xaml
+          and 'Header="Var sup. trans."' not in xaml)
+
+    # LAS CASILLAS DE LA PARRILLA SUPERIOR, APAGADAS SI NO HAY DOBLE PARRILLA. Cuatro
+    # columnas por hoja, y las dos filas tienen EsDobleParrilla.
+    check("las casillas de la parrilla superior se apagan sin doble parrilla",
+          'x:Key="CeldaSoloDobleParrilla"' in tema
+          and '<Setter Property="IsEnabled" Value="{Binding EsDobleParrilla}" />' in tema
+          and xaml.count('CellStyle="{StaticResource CeldaSoloDobleParrilla}"') == 8)
+    check("y la fila avisa del cambio, para que se enciendan al poner SI",
+          all("Raise(nameof(EsDobleParrilla));" in leer(ruta(f"client/src/CadLink.App/Models/{m}"))
+              for m in ("ZapataCorridaRow.cs", "ZapataAisladaRow.cs")))
     check("la seleccion usa el azul del programa y no el del sistema",
           '<Setter Property="Background" Value="{DynamicResource SelectionBrush}" />' in tema)
     check("y la cabecera se cierra con la linea de marca",
