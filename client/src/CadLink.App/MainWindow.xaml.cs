@@ -876,6 +876,11 @@ public partial class MainWindow : Window
         {
             LeerPlantasButton.Content = $"Leer plantas de {NombreDestinoCsi}";
         }
+
+        if (LeerSeccionesModeloButton is not null)
+        {
+            LeerSeccionesModeloButton.Content = $"Leer secciones de {NombreDestinoCsi}";
+        }
     }
 
     /// <summary>Lee el modelo del programa que diga la casilla.</summary>
@@ -923,6 +928,10 @@ public partial class MainWindow : Window
             _vista.Reiniciar();
             PoblarNiveles(modelo);
             RedibujarVistas();
+
+            // Y la tabla de secciones del modelo, que sale del mismo modelo: así está
+            // puesta sin que haya que volver a leer nada.
+            LlenarSeccionesModelo(modelo);
         }
         catch (EtabsException ex)
         {
@@ -932,6 +941,88 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Arrow;
         }
+    }
+
+    // ======================================================================
+    // SECCIONES DEL MODELO: la hoja SECCIONES de la macro
+    // ======================================================================
+
+    /// <summary>
+    /// Llena la tabla de secciones usadas en el modelo.
+    /// </summary>
+    /// <remarks>
+    /// La tabla la arma <c>SeccionesModelo.Construir</c>, que es el port de
+    /// <c>VolcarSecciones</c>: mismos tipos, mismo orden y mismas columnas. Aquí solo se
+    /// pone en la cuadrícula y se cuenta lo que salió.
+    /// </remarks>
+    private void LlenarSeccionesModelo(ModeloEtabs modelo)
+    {
+        var filas = SeccionesModelo.Construir(modelo);
+        SeccionesModeloGrid.ItemsSource = filas;
+
+        var tipos = filas.Select(f => f.Tipo).Distinct().Count();
+        SeccionesModeloResumenText.Text =
+            $"{filas.Count} sección(es) distinta(s) en {tipos} tipo(s) de elemento, " +
+            $"de {modelo.Elementos.Count} elementos del modelo.";
+    }
+
+    /// <summary>Lee el modelo y arma la tabla de secciones.</summary>
+    /// <remarks>
+    /// Si el modelo ya se leyó, no se vuelve a leer: se arma la tabla con el que hay. Leer
+    /// otra vez tarda y no cambia nada mientras no se toque el modelo en ETABS.
+    /// </remarks>
+    private void OnLeerSeccionesModelo(object sender, RoutedEventArgs e)
+    {
+        if (_modeloEtabs is not null && _modeloEtabs.Elementos.Count > 0)
+        {
+            LlenarSeccionesModelo(_modeloEtabs);
+            StatusText.Text = "Tabla de secciones armada con el modelo que ya estaba leído.";
+            return;
+        }
+
+        LeerModeloCsi(DestinoCsi);
+    }
+
+    /// <summary>
+    /// Copia la tabla al portapapeles con tabuladores, para pegarla en Excel.
+    /// </summary>
+    /// <remarks>
+    /// Con tabuladores y no con comas a propósito: los nombres de sección y la lista de
+    /// niveles llevan comas dentro, y pegado como CSV se partiría en columnas que no son.
+    /// </remarks>
+    private void OnCopiarSeccionesModelo(object sender, RoutedEventArgs e)
+    {
+        if (SeccionesModeloGrid.ItemsSource is not IEnumerable<SeccionesModelo.Fila> filas)
+        {
+            StatusText.Text = "Todavía no hay tabla de secciones: lee el modelo primero.";
+            return;
+        }
+
+        var s = new System.Text.StringBuilder();
+        s.AppendLine("TIPO\tSECCION DE ETABS\tFORMA\tMATERIAL\tT3 PERALTE (cm)\t" +
+                     "T2 ANCHO / ESPESOR (cm)\tTF (cm)\tTW (cm)\tCANTIDAD\tNIVELES");
+
+        foreach (var f in filas)
+        {
+            s.AppendLine(string.Join('\t',
+                f.Tipo, f.Seccion, f.Forma, f.Material,
+                Num(f.PeralteCm), Num(f.AnchoCm), Num(f.PatinCm), Num(f.AlmaCm),
+                f.Cantidad.ToString(), f.Niveles));
+        }
+
+        try
+        {
+            Clipboard.SetText(s.ToString());
+            StatusText.Text = "Tabla de secciones copiada: pégala en Excel.";
+        }
+        catch (Exception ex)
+        {
+            // El portapapeles lo puede tener tomado otro programa; no es para tirar la app.
+            StatusText.Text = "No se pudo copiar al portapapeles: " + ex.Message;
+        }
+
+        static string Num(double? v) =>
+            v is null ? string.Empty : v.Value.ToString("0.##");
     }
 
     /// <summary>
@@ -1628,6 +1719,9 @@ public partial class MainWindow : Window
             _vista.Reiniciar();
             PoblarNiveles(modelo);
             DibujarPlanta();
+
+            // Del mismo modelo sale la tabla de secciones, así que se llena de una vez.
+            LlenarSeccionesModelo(modelo);
 
             // Un plano por nivel, del más alto al más bajo, que es el orden en que se
             // arma un juego de planos estructurales.

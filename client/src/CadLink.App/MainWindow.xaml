@@ -1811,6 +1811,183 @@
                 </StackPanel>
             </TabItem>
 
+            <!-- ===== Dibujar planos estructurales ===== -->
+            <TabItem Header="Dibujar planos estructurales">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Dibujar planos estructurales" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="La planta del modelo de ETABS, nivel por nivel. Es el punto de partida del plano estructural." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+                            <!-- LA MISMA CASILLA DE LA PESTAÑA DE ETABS, aqui tambien.
+                                 No es otra opcion aparte: las dos casillas son LA MISMA,
+                                 atadas con un enlace de dos vias, asi que se cambie en la
+                                 pestaña que sea, el programa elegido es uno solo y los
+                                 botones de las dos pestañas le hablan al mismo. -->
+                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="ProgramaCsiPlanosCombo" Width="120"
+                                      VerticalAlignment="Center" Margin="0,0,12,0"
+                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
+                                      ToolTip="De donde se leen las plantas: de ETABS o de SAP2000.&#10;Es la misma casilla de la pestaña ETABS/SAP2000.">
+                                <ComboBoxItem Content="ETABS" />
+                                <ComboBoxItem Content="SAP2000" />
+                            </ComboBox>
+
+                            <Button x:Name="LeerPlantasButton" Content="Leer plantas de ETABS"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnLeerPlantas"
+                                    ToolTip="Lee el modelo del programa de la casilla y arma la lista de niveles con sus plantas." />
+
+                            <!-- El boton de dibujar vive junto a la planta que dibuja:
+                                 lo que se manda a AutoCAD es EXACTAMENTE el nivel y los
+                                 filtros que se estan viendo aqui abajo. -->
+                            <!-- El modelo COMPLETO en 3D, cada barra con su perfil real
+                                 extruido. Va aqui, al lado del de la planta, porque los
+                                 dos salen del mismo modelo leido. -->
+                            <Button x:Name="Modelo3dButton" Content="Dibujar en 3D"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnDibujar3dCad"
+                                    ToolTip="Dibuja todo el modelo en 3D en AutoCAD, cada barra con su perfil real como sólido." />
+
+                            <Button x:Name="PlantaCadButton" Content="Dibujar en AutoCAD"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnDibujarPlantaCad"
+                                    ToolTip="Dibuja en AutoCAD la planta del nivel elegido, con los filtros de arriba.&#10;Requiere AutoCAD abierto." />
+
+                            <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
+                        </StackPanel>
+
+                        <!-- Los mismos filtros por tipo de elemento que el visor 3D -->
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="12,8" Margin="0,0,0,10"
+                                HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
+                                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <CheckBox x:Name="VerColumnasPlanoChk" Content="Columnas" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
+                                <CheckBox x:Name="VerTrabesPlanoChk" Content="Trabes" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
+                                <CheckBox x:Name="VerMurosPlanoChk" Content="Muros" IsChecked="True"
+                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
+                                <CheckBox x:Name="VerLosasPlanoChk" Content="Losas" IsChecked="True"
+                                          VerticalAlignment="Center" Click="OnFiltroPlanoCambiado" />
+                            </StackPanel>
+                        </Border>
+
+<StackPanel Margin="10">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="Nivel:" FontWeight="SemiBold" FontSize="11.5"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <ComboBox x:Name="NivelPlantaCombo" Width="190"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="OnNivelPlantaCambiado" />
+                                        <TextBlock Text="Rueda para zoom. Boton derecho para mover."
+                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                                    </StackPanel>
+
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+                                        <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
+                                                Background="{DynamicResource SurfaceBrush}"
+                                                MouseRightButtonDown="OnVistaMouseDown"
+                                                MouseMove="OnVistaMouseMove"
+                                                MouseRightButtonUp="OnVistaMouseUp"
+                                                MouseLeave="OnVistaMouseUp"
+                                                MouseWheel="OnVistaWheel" />
+                                    </Border>
+                                </StackPanel>
+                        <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}"
+                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== Secciones del modelo (la hoja SECCIONES de la macro) ===== -->
+            <TabItem Header="Secciones modelo">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Es la hoja SECCIONES de tu macro: que secciones de ETABS o de SAP2000 se estan usando de verdad, cuantas veces y en que niveles." />
+
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="16" MaxWidth="900" HorizontalAlignment="Left" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Que es esta tabla" FontWeight="SemiBold" FontSize="12.5"
+                                           Margin="0,0,0,6" />
+                                <TextBlock TextWrapping="Wrap" FontSize="12"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           Text="El INVENTARIO del modelo, con las mismas columnas y el mismo orden que la hoja SECCIONES de la macro: por tipo de elemento -castillos, columnas, dalas, trabes, contratrabes, diagonales, muros y losas- y dentro de cada tipo por nombre de seccion.&#x0a;Sirve para ver de un golpe si quedo una seccion de prueba suelta, si hay dos que hacen lo mismo, o si falta capturar alguna en las hojas de concreto y de acero." />
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <!-- La misma casilla de las otras dos pestañas: la lectura es
+                                 una sola y el programa elegido tambien. -->
+                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="ProgramaCsiSeccionesCombo" Width="120"
+                                      VerticalAlignment="Center" Margin="0,0,12,0"
+                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
+                                      ToolTip="De donde se lee el modelo. Es la misma casilla de la pestaña ETABS/SAP2000.">
+                                <ComboBoxItem Content="ETABS" />
+                                <ComboBoxItem Content="SAP2000" />
+                            </ComboBox>
+
+                            <Button x:Name="LeerSeccionesModeloButton" Content="Leer secciones de ETABS"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnLeerSeccionesModelo"
+                                    ToolTip="Lee el modelo del programa de la casilla y arma la tabla.&#10;Si el modelo ya se leyo, la tabla se llena sola." />
+
+                            <Button Content="Copiar la tabla" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnCopiarSeccionesModelo"
+                                    ToolTip="Copia la tabla al portapapeles, con tabuladores, para pegarla en Excel." />
+
+                            <TextBlock x:Name="SeccionesModeloResumenText" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="14,0,0,0"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                        </StackPanel>
+
+                        <!-- Los nombres de columna son los de la hoja SECCIONES, tal cual -->
+                        <DataGrid x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
+                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
+                                  IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                                  MinHeight="320" MaxHeight="520">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="110"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+                                <DataGridTextColumn Header="SECCION DE ETABS" Binding="{Binding Seccion}"
+                                                    Width="260" CellStyle="{StaticResource CeldaIdent}" />
+                                <DataGridTextColumn Header="FORMA" Binding="{Binding Forma}" Width="110"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="MATERIAL" Binding="{Binding Material}" Width="120"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="T3 PERALTE (cm)"
+                                                    Binding="{Binding PeralteCm, StringFormat=N1}"
+                                                    Width="115" CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="T2 ANCHO / ESPESOR (cm)"
+                                                    Binding="{Binding AnchoCm, StringFormat=N1}"
+                                                    Width="160" CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="TF (cm)"
+                                                    Binding="{Binding PatinCm, StringFormat=N2}"
+                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
+                                <DataGridTextColumn Header="TW (cm)"
+                                                    Binding="{Binding AlmaCm, StringFormat=N2}"
+                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
+                                <DataGridTextColumn Header="CANTIDAD" Binding="{Binding Cantidad}"
+                                                    Width="90" CellStyle="{StaticResource CeldaAcabado}" />
+                                <DataGridTextColumn Header="NIVELES" Binding="{Binding Niveles}"
+                                                    Width="*" CellStyle="{StaticResource CeldaAcabado}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- ===== ETABS ===== -->
             <TabItem x:Name="EtabsTab" Header="ETABS/SAP2000">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -2006,101 +2183,6 @@
 
 
 
-            <!-- ===== Dibujar planos estructurales ===== -->
-            <TabItem Header="Dibujar planos estructurales">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
-                        <TextBlock Text="Dibujar planos estructurales" Style="{StaticResource ModuleTitleStyle}"
-                                   ToolTip="La planta del modelo de ETABS, nivel por nivel. Es el punto de partida del plano estructural." />
-
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
-                            <!-- LA MISMA CASILLA DE LA PESTAÑA DE ETABS, aqui tambien.
-                                 No es otra opcion aparte: las dos casillas son LA MISMA,
-                                 atadas con un enlace de dos vias, asi que se cambie en la
-                                 pestaña que sea, el programa elegido es uno solo y los
-                                 botones de las dos pestañas le hablan al mismo. -->
-                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
-                                       VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <ComboBox x:Name="ProgramaCsiPlanosCombo" Width="120"
-                                      VerticalAlignment="Center" Margin="0,0,12,0"
-                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
-                                      ToolTip="De donde se leen las plantas: de ETABS o de SAP2000.&#10;Es la misma casilla de la pestaña ETABS/SAP2000.">
-                                <ComboBoxItem Content="ETABS" />
-                                <ComboBoxItem Content="SAP2000" />
-                            </ComboBox>
-
-                            <Button x:Name="LeerPlantasButton" Content="Leer plantas de ETABS"
-                                    Style="{StaticResource PrimaryButtonStyle}"
-                                    Click="OnLeerPlantas"
-                                    ToolTip="Lee el modelo del programa de la casilla y arma la lista de niveles con sus plantas." />
-
-                            <!-- El boton de dibujar vive junto a la planta que dibuja:
-                                 lo que se manda a AutoCAD es EXACTAMENTE el nivel y los
-                                 filtros que se estan viendo aqui abajo. -->
-                            <!-- El modelo COMPLETO en 3D, cada barra con su perfil real
-                                 extruido. Va aqui, al lado del de la planta, porque los
-                                 dos salen del mismo modelo leido. -->
-                            <Button x:Name="Modelo3dButton" Content="Dibujar en 3D"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnDibujar3dCad"
-                                    ToolTip="Dibuja todo el modelo en 3D en AutoCAD, cada barra con su perfil real como sólido." />
-
-                            <Button x:Name="PlantaCadButton" Content="Dibujar en AutoCAD"
-                                    Style="{StaticResource PrimaryButtonStyle}"
-                                    Click="OnDibujarPlantaCad"
-                                    ToolTip="Dibuja en AutoCAD la planta del nivel elegido, con los filtros de arriba.&#10;Requiere AutoCAD abierto." />
-
-                            <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
-                                       Margin="14,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
-                        </StackPanel>
-
-                        <!-- Los mismos filtros por tipo de elemento que el visor 3D -->
-                        <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="12,8" Margin="0,0,0,10"
-                                HorizontalAlignment="Left">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
-                                           VerticalAlignment="Center" Margin="0,0,12,0" />
-                                <CheckBox x:Name="VerColumnasPlanoChk" Content="Columnas" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
-                                <CheckBox x:Name="VerTrabesPlanoChk" Content="Trabes" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
-                                <CheckBox x:Name="VerMurosPlanoChk" Content="Muros" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
-                                <CheckBox x:Name="VerLosasPlanoChk" Content="Losas" IsChecked="True"
-                                          VerticalAlignment="Center" Click="OnFiltroPlanoCambiado" />
-                            </StackPanel>
-                        </Border>
-
-<StackPanel Margin="10">
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <TextBlock Text="Nivel:" FontWeight="SemiBold" FontSize="11.5"
-                                                   VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <ComboBox x:Name="NivelPlantaCombo" Width="190"
-                                                  VerticalAlignment="Center"
-                                                  SelectionChanged="OnNivelPlantaCambiado" />
-                                        <TextBlock Text="Rueda para zoom. Boton derecho para mover."
-                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
-                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
-                                    </StackPanel>
-
-                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
-                                        <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                MouseRightButtonDown="OnVistaMouseDown"
-                                                MouseMove="OnVistaMouseMove"
-                                                MouseRightButtonUp="OnVistaMouseUp"
-                                                MouseLeave="OnVistaMouseUp"
-                                                MouseWheel="OnVistaWheel" />
-                                    </Border>
-                                </StackPanel>
-                        <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}"
-                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
 
             <!-- ===== Licencia ===== -->
             <TabItem Header="Licencia">

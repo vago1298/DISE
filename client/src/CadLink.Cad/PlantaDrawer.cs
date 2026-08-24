@@ -203,6 +203,10 @@ public sealed class PlantaDrawer
 
         TituloDeLaPlanta(p, x0, y0);
 
+        // UN solo renglón con los que se dibujaron con el espesor de omisión, en lugar de
+        // uno por elemento.
+        ResumirEspesores();
+
         return r;
     }
 
@@ -342,12 +346,44 @@ public sealed class PlantaDrawer
 
         var (cx, cy) = CentroDe(el, x0, y0);
 
-        var texto = string.IsNullOrWhiteSpace(el.Seccion)
-            ? el.Etiqueta
-            : $"{el.Etiqueta}\\P{el.Seccion}";
+        // ==============================================================================
+        //  QUÉ SE ROTULA: LO QUE DICE LA HOJA CONFIG DE LA MACRO
+        // ==============================================================================
+        //  Antes salían la ETIQUETA y la SECCIÓN de todos los elementos, uno encima de
+        //  otro: en una planta con 30 columnas, 43 trabes y 31 muros el dibujo se volvía
+        //  ilegible, con los textos pisándose.
+        //
+        //  La macro rotula MUCHO menos, y por eso su plano se lee:
+        //
+        //      ETIQUETA_ID_COLUMNAS  = NO    ->  de la columna, solo la SECCIÓN
+        //      ETIQUETA_SEC_COLUMNAS = SI
+        //      ETIQUETA_ID_TRABES    = NO    ->  de la trabe, solo la SECCIÓN
+        //      ETIQUETA_SEC_TRABES   = SI
+        //
+        //  y del MURO solo su PIER —la etiqueta—, nunca la propiedad, que es la que
+        //  llenaba la planta de «MURO TABICON 2 APLANADOS 15 CM» repetido 31 veces.
+        //
+        //  Esto es un arreglo del dibujante de hoy, para que mientras se porta el de la
+        //  macro el plano se pueda leer. El acomodo fino de cada rótulo —al costado de la
+        //  trabe, en la esquina de la columna, al centro de la cadena— viene con él.
+        // ==============================================================================
+        var texto = el.Clase switch
+        {
+            // El muro: su PIER, y nada más. Si no tiene pier asignado, no se rotula.
+            ClasePlanta.Muro => el.Etiqueta,
 
-        // MText y no Text: el salto de línea \P deja la etiqueta arriba y la sección
-        // debajo, que es como se rotula, y con una sola entidad que se mueve entera.
+            // La losa: su nombre de propiedad, que es lo que dice de qué losa se trata.
+            ClasePlanta.Losa => el.Seccion,
+
+            // Columnas, trabes y diagonales: la SECCIÓN, sin el ID.
+            _ => string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion
+        };
+
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return;
+        }
+
         Mtexto(cx, cy, texto, altura, CapaTextos);
     }
 
@@ -640,8 +676,22 @@ public sealed class PlantaDrawer
     }
 
     /// <summary>
-    /// Espesor a usar, con aviso cuando el modelo no lo dio.
+    /// Espesor a usar cuando el modelo no lo dio: el de omisión, <b>sin dar lata</b>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Antes salía un aviso <b>por elemento</b>, y en un modelo con 31 muros de tabicón el
+    /// resumen eran 31 renglones diciendo lo mismo. La macro no avisa de esto: si
+    /// <c>GetWall</c> no da el espesor, <c>PropiedadDeMuro</c> lo saca del nombre y, si de
+    /// ahí tampoco sale, usa <c>ESPESOR_MURO_CM</c> —15 cm— y sigue dibujando sin decir
+    /// nada.
+    /// </para>
+    /// <para>
+    /// Aquí se hace igual, pero se <b>cuentan</b> y al final se pone <b>un solo</b> renglón
+    /// con el total. El dato interesa —un muro dibujado a 15 cm que en realidad mide 20 no
+    /// se puede acotar— pero interesa una vez, no treinta y una.
+    /// </para>
+    /// </remarks>
     private double Espesor(ElementoPlanta el, double porOmision, string que)
     {
         if (el.AnchoM > LargoMinimo)
@@ -649,10 +699,29 @@ public sealed class PlantaDrawer
             return el.AnchoM;
         }
 
-        _log.Add(
-            $"{que} '{el.Etiqueta}' ({el.Seccion}): el modelo no dio su ancho, " +
-            $"se dibujó con {porOmision * 100:0} cm. Revísalo antes de acotar.");
-
+        _sinEspesor++;
+        _espesorOmision = porOmision;
         return porOmision;
+    }
+
+    /// <summary>Cuántos elementos se dibujaron con el espesor de omisión.</summary>
+    private int _sinEspesor;
+
+    private double _espesorOmision;
+
+    /// <summary>
+    /// El renglón único del resumen. Se llama al terminar de dibujar la planta.
+    /// </summary>
+    internal void ResumirEspesores()
+    {
+        if (_sinEspesor == 0)
+        {
+            return;
+        }
+
+        Nota($"{_sinEspesor} elemento(s) sin espesor en el modelo: se dibujaron con " +
+             $"{_espesorOmision * 100:0} cm, como hace la macro. Revísalos antes de acotar.");
+
+        _sinEspesor = 0;
     }
 }

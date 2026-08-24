@@ -2570,6 +2570,79 @@ def v16_extruida_piers() -> None:
           and 'StatusText.Text = "ETABS conectado.";' not in codigo)
 
     # ------------------------------------------------------------------
+    # EL ORDEN DE LAS PESTAÑAS Y LA DE SECCIONES DEL MODELO
+    # ------------------------------------------------------------------
+    # Se pidio: la de dibujar planos ANTES, la de ETABS/SAP2000 de PENULTIMA -o sea, justo
+    # antes de la de Licencia- y una nueva con las secciones que se usan en el modelo.
+    # Solo las pestañas de PRIMER nivel: dentro de la de ETABS hay otro TabControl -las
+    # vistas 3D y extruida- y sus pestañas no cuentan aqui. Se distinguen por la sangria.
+    orden = [m.group(1) for m in
+             re.finditer(r'\n            <TabItem[^>]*?Header="([^"]+)"', xaml)]
+    for cabecera in ("Dibujar planos estructurales", "Secciones modelo",
+                     "ETABS/SAP2000", "Licencia"):
+        check(f"existe la pestaña {cabecera}", cabecera in orden)
+
+    if all(c in orden for c in ("Dibujar planos estructurales", "Secciones modelo",
+                                "ETABS/SAP2000", "Licencia")):
+        check("los planos van antes que ETABS/SAP2000",
+              orden.index("Dibujar planos estructurales") < orden.index("ETABS/SAP2000"))
+        check("ETABS/SAP2000 es la PENULTIMA, antes de Licencia",
+              orden.index("ETABS/SAP2000") == orden.index("Licencia") - 1)
+        check("y la de secciones del modelo queda entre las dos",
+              orden.index("Dibujar planos estructurales")
+              < orden.index("Secciones modelo") < orden.index("ETABS/SAP2000"))
+
+    # LA TABLA DE SECCIONES DEL MODELO: es la hoja SECCIONES de la macro, con sus mismas
+    # columnas, su mismo orden por tipo y su mismo criterio de clasificacion.
+    secs = leer(ruta("client/src/CadLink.Etabs/SeccionesModelo.cs"))
+
+    check("la hoja SECCIONES esta portada",
+          "public static class SeccionesModelo" in secs
+          and "public static List<Fila> Construir(" in secs
+          and "public static string ClasificaTipo(" in secs
+          and "public static string MaterialDeMuro(" in secs
+          and "public static int OrdenDeTipo(" in secs)
+
+    check("con los umbrales de la hoja CONFIG",
+          "double CastilloLadoMaxCm = 20" in secs
+          and "double DalaPeralteMaxCm = 25" in secs
+          and '"TABIQUE,TABICON,BLOCK,BLOQUE,MAMPOSTERIA,LADRILLO,ADOBE"' in secs
+          and '"CONCRETO,CONCRETE,C.A.,REFORZADO"' in secs)
+
+    check("y con el orden de tipos de la macro",
+          all(f'"{t}" => {n}' in secs for t, n in
+              (("CASTILLO", 1), ("COLUMNA", 2), ("DALA", 3), ("TRABE", 4),
+               ("CONTRATRABE", 5), ("DIAGONAL", 6), ("MURO", 7), ("LOSA", 8))))
+
+    # Las diez columnas de la hoja, con su nombre tal cual.
+    for col in ("TIPO", "SECCION DE ETABS", "FORMA", "MATERIAL", "T3 PERALTE (cm)",
+                "T2 ANCHO / ESPESOR (cm)", "TF (cm)", "TW (cm)", "CANTIDAD", "NIVELES"):
+        check(f"la tabla tiene la columna {col}",
+              f'Header="{col}"' in xaml)
+
+    check("la cuadricula se llena con el modelo que se leyo, sin volver a leer",
+          'x:Name="SeccionesModeloGrid"' in xaml
+          and "private void LlenarSeccionesModelo(ModeloEtabs modelo)" in codigo
+          and "SeccionesModelo.Construir(modelo)" in codigo
+          and codigo.count("LlenarSeccionesModelo(modelo);") == 2)
+    check("y se puede copiar a Excel con tabuladores",
+          'Click="OnCopiarSeccionesModelo"' in xaml
+          and "private void OnCopiarSeccionesModelo(" in codigo
+          and "Clipboard.SetText(" in codigo)
+    check("su boton tambien dice de que programa lee",
+          'x:Name="LeerSeccionesModeloButton"' in xaml
+          and 'LeerSeccionesModeloButton.Content = $"Leer secciones de {NombreDestinoCsi}"'
+              in codigo)
+
+    # Y su prueba ejecutable.
+    prs = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
+    check("hay prueba ejecutable de la tabla de secciones",
+          "using CadLink.Etabs;" in prs
+          and "SeccionesModelo.Construir(m)" in prs
+          and "EtabsReader.EspesorDesdeNombre" in prs
+          and "return fallos == 0 ? 0 : 1;" in prs)
+
+    # ------------------------------------------------------------------
     # ETAPA 1 DEL PORT DE LA MACRO DE PLANOS ESTRUCTURALES: LA HOJA CONFIG
     # ------------------------------------------------------------------
     # La macro guarda sus ~260 parametros en la hoja CONFIG, que ella misma crea con
@@ -3178,11 +3251,43 @@ def v18_planta_autocad() -> None:
         check("y un elemento de largo nulo no se dibuja",
               "largo < LargoMinimo" in cuerpo)
 
-    # Lo que el modelo no dio se AVISA, no se calla: hay que saberlo antes de acotar.
+    # Lo que el modelo no dio se avisa UNA VEZ, con el total, no una por elemento: con 31
+    # muros de tabicon el resumen eran 31 renglones diciendo lo mismo. La macro no avisa de
+    # esto: saca el espesor del NOMBRE de la propiedad y, si de ahi tampoco sale, usa
+    # ESPESOR_MURO_CM y sigue.
     m_esp = re.search(r"private double Espesor\(.*?\n    \}", dib, re.S)
     check("se puede leer Espesor", m_esp is not None)
     if m_esp:
-        check("una medida que falta se avisa", "_log.Add(" in m_esp.group(0))
+        check("una medida que falta NO suelta un aviso por elemento",
+              "_log.Add(" not in m_esp.group(0)
+              and "_sinEspesor++;" in m_esp.group(0))
+    check("se cuentan y se avisan de golpe, con el total",
+          "internal void ResumirEspesores()" in dib
+          and "elemento(s) sin espesor en el modelo" in dib
+          and "ResumirEspesores();" in dib)
+
+    # Y el espesor se busca antes en el NOMBRE de la propiedad, como DimsDesdeNombre.
+    lect = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("el espesor se saca del nombre de la propiedad antes de rendirse",
+          "public static double EspesorDesdeNombre(string nombre)" in lect
+          and "var delNombre = EspesorDesdeNombre(seccion);" in lect
+          and "if (delNombre > 0 && delNombre < 1)" in lect)
+    check("y se leen las NOTAS de la propiedad, que es de donde sale el material",
+          "public string Notas { get; set; }" in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+          and "e.Notas = prop.Notas;" in lect)
+
+    # LOS ROTULOS DE LA PLANTA, COMO LOS PIDE LA HOJA CONFIG: sin los ID, que es lo que
+    # llenaba el dibujo de textos encimados.
+    m_rot = re.search(r"private void Rotulo\(.*?\n    \}", dib, re.S)
+    check("se puede leer Rotulo", m_rot is not None)
+    if m_rot:
+        cuerpo = m_rot.group(0)
+        check("del muro solo se rotula su PIER",
+              "ClasePlanta.Muro => el.Etiqueta," in cuerpo)
+        check("y de columnas y trabes solo la SECCION, sin el ID",
+              "ETIQUETA_ID_COLUMNAS  = NO" in cuerpo
+              and 'string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion' in cuerpo
+              and '$"{el.Etiqueta}\\P{el.Seccion}"' not in cuerpo)
 
     check("los fallos se pueden consultar", "IReadOnlyList<string> Fallos" in dib)
 

@@ -1032,6 +1032,70 @@
                 </DataTemplate>
             </Setter.Value>
         </Setter>
+
+        <!-- ==============================================================
+             Y LA CASILLA, DEL COLOR DE SU COLUMNA
+             ==============================================================
+             Este es el motivo de verdad de que las dos casillas de varilla se
+             vieran GRISES y las de «@ cm» no: el ComboBox de serie NO usa el
+             Background que se le pone. Su plantilla pinta el fondo con los
+             pinceles del tema de Windows -un gris claro fijo- y ese gris tapaba
+             el color de la parrilla; el TextBox de al lado si respeta el suyo, y
+             por eso ahi si se veia el color.
+
+             Asi que la casilla lleva SU PROPIA plantilla, la minima que hace
+             falta: fondo transparente -para que se vea el color de la celda-, el
+             valor elegido, la flechita y la lista. Nada de marcos ni degradados:
+             dentro de una cuadricula tipo Excel, una casilla de lista se lee por
+             la flecha, no por el recuadro. -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid Background="Transparent">
+                        <!-- El boton que abre la lista ocupa la celda entera: asi se
+                             despliega pulsando en cualquier parte de la casilla y no
+                             solo en la flechita. -->
+                        <ToggleButton Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen,
+                                                  RelativeSource={RelativeSource TemplatedParent},
+                                                  Mode=TwoWay}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border Background="Transparent" BorderThickness="0">
+                                        <Path HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              Margin="0,0,5,0" Data="M 0,0 L 7,0 L 3.5,4 Z"
+                                              Fill="{DynamicResource MutedTextBrush}" />
+                                    </Border>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <!-- El valor elegido. IsHitTestVisible en False para que el clic
+                             llegue al boton de arriba y la lista se abra igual. -->
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center"
+                                          IsHitTestVisible="False"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+
+                        <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                               IsOpen="{TemplateBinding IsDropDownOpen}" Focusable="False">
+                            <Border MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" SnapsToDevicePixels="True">
+                                <ScrollViewer>
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Casilla de escribir de una sub-casilla: la separacion en cm -->

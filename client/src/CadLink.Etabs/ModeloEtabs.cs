@@ -33,6 +33,17 @@ public sealed class ElementoEtabs
     /// <summary>Nombre de la sección o propiedad asignada.</summary>
     public string Seccion { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Las <b>notas</b> de la propiedad de ETABS, con su material pegado detrás.
+    /// </summary>
+    /// <remarks>
+    /// Es de donde la macro saca dos cosas que no están en ningún otro sitio: el
+    /// <b>material del muro</b> —busca las palabras de <c>PALABRAS_MAMPOSTERIA</c> y
+    /// <c>PALABRAS_CONCRETO</c> en las notas y en el nombre— y el <b>calibre</b> de la
+    /// losacero, que es el último número de las notas.
+    /// </remarks>
+    public string Notas { get; set; } = string.Empty;
+
     public double X1 { get; set; }
     public double Y1 { get; set; }
     public double Z1 { get; set; }

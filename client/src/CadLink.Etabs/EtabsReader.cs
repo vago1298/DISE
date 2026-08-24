@@ -453,7 +453,8 @@ public static class EtabsReader
             return;
         }
 
-        var cacheEspesor = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var cachePropiedad =
+            new Dictionary<string, (double EspesorM, string Notas)>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < nombres.Length; i++)
         {
@@ -544,23 +545,46 @@ public static class EtabsReader
 
             if (propArea is not null && seccion.Length > 0)
             {
-                e.AnchoM = Espesor(propArea, seccion, esVertical, cacheEspesor);
+                var prop = Propiedad(propArea, seccion, esVertical, cachePropiedad);
+                e.AnchoM = prop.EspesorM;
+                e.Notas = prop.Notas;
             }
 
             m.Elementos.Add(e);
         }
     }
 
-    private static double Espesor(
-        object propArea, string seccion, bool esMuro, Dictionary<string, double> cache)
+    /// <summary>
+    /// El <b>espesor y las notas</b> de una propiedad de área, como los lee la macro en
+    /// <c>PropiedadDeMuro</c> y <c>PropiedadDeLosa</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las <b>notas</b> hacen falta y no son un extra: son de donde la macro saca el
+    /// material del muro —las palabras de <c>PALABRAS_MAMPOSTERIA</c> y
+    /// <c>PALABRAS_CONCRETO</c> se buscan en las notas y en el nombre— y el <b>calibre</b>
+    /// de la losacero. Sin ellas, un muro de tabicón no se puede distinguir de uno de
+    /// concreto.
+    /// </para>
+    /// <para>
+    /// <b>Y si la API no da el espesor</b>, se saca del NOMBRE, que es lo que hace la
+    /// macro con <c>DimsDesdeNombre</c>: en una propiedad que se llama «MURO 20 CM» el
+    /// espesor está a la vista. Antes se caía directo al valor de omisión y en un modelo
+    /// con 31 muros salían 31 avisos.
+    /// </para>
+    /// </remarks>
+    private static (double EspesorM, string Notas) Propiedad(
+        object propArea, string seccion, bool esMuro,
+        Dictionary<string, (double EspesorM, string Notas)> cache)
     {
-        if (cache.TryGetValue(seccion, out var e))
+        if (cache.TryGetValue(seccion, out var ya))
         {
-            return e;
+            return ya;
         }
 
         var metodo = esMuro ? "GetWall" : "GetSlab";
         var valor = 0d;
+        var notas = string.Empty;
 
         try
         {
@@ -568,6 +592,10 @@ public static class EtabsReader
             if (Com.CallRet(propArea, metodo, a, 1, 2, 3, 4, 5, 6, 7) == 0)
             {
                 valor = Convert.ToDouble(a[4]);
+
+                // notas + material, como los junta la macro: nts & " " & mat
+                notas = ((a[6]?.ToString() ?? string.Empty) + " " +
+                         (a[3]?.ToString() ?? string.Empty)).Trim();
             }
         }
         catch (Exception ex) when (EsFalloCom(ex))
@@ -575,8 +603,78 @@ public static class EtabsReader
             valor = 0;
         }
 
-        cache[seccion] = valor;
-        return valor;
+        // El respaldo de la macro: el espesor que traiga el NOMBRE de la propiedad, y solo
+        // si sale un valor con sentido —menos de un metro—. Si no, se queda en 0 y el
+        // dibujante aplica ESPESOR_MURO_CM.
+        if (valor <= 0)
+        {
+            var delNombre = EspesorDesdeNombre(seccion);
+            if (delNombre > 0 && delNombre < 1)
+            {
+                valor = delNombre;
+            }
+        }
+
+        var r = (valor, notas);
+        cache[seccion] = r;
+        return r;
+    }
+
+    /// <summary>
+    /// El espesor que trae el <b>nombre</b> de la propiedad, en metros. Es el
+    /// <c>DimsDesdeNombre</c> de la macro.
+    /// </summary>
+    /// <remarks>
+    /// Con la misma cuenta, hasta en lo raro: si el nombre trae una <c>X</c> se toman los
+    /// dos números que la rodean —<c>30X60</c>—, y si no, <b>todas</b> las cifras del texto
+    /// seguidas, y el resultado se divide entre 100. Así «MURO 20 CM» da 0.20, y
+    /// «MURO TABICON 2 APLANADOS 15 CM» da 2.15, que al pasar del metro se descarta y deja
+    /// el valor de omisión. Suena tosco y lo es, pero es <b>exactamente</b> lo que hace la
+    /// macro, y cambiarlo aquí haría que el plano saliera distinto del suyo.
+    /// </remarks>
+    public static double EspesorDesdeNombre(string nombre)
+    {
+        var t = Normalizar(nombre);
+        var x = t.IndexOf('X', StringComparison.Ordinal);
+
+        if (x < 1)
+        {
+            var todas = new string(t.Where(c => char.IsAsciiDigit(c) || c == '.').ToArray());
+            return Valor(todas) / 100;
+        }
+
+        var izq = string.Empty;
+        for (var i = x - 1; i >= 0; i--)
+        {
+            if (!char.IsAsciiDigit(t[i]) && t[i] != '.')
+            {
+                break;
+            }
+
+            izq = t[i] + izq;
+        }
+
+        return Valor(izq) / 100;
+
+        static double Valor(string s) =>
+            double.TryParse(s.Trim('.'), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var v)
+                ? v
+                : 0;
+    }
+
+    /// <summary>
+    /// Deja el texto en mayúsculas, sin acentos y solo con letras, cifras y punto. Es el
+    /// <c>Norm</c> de la macro, y es la base de todas sus comparaciones por palabra.
+    /// </summary>
+    public static string Normalizar(string s)
+    {
+        var t = s.ToUpperInvariant().Trim()
+            .Replace('Á', 'A').Replace('É', 'E').Replace('Í', 'I')
+            .Replace('Ó', 'O').Replace('Ú', 'U').Replace('Ñ', 'N');
+
+        return new string(t.Where(c => (c >= 'A' && c <= 'Z') || char.IsAsciiDigit(c) || c == '.')
+                           .ToArray());
     }
 
     private static (int A, int B) MasSeparados(List<(double X, double Y, double Z)> p)
