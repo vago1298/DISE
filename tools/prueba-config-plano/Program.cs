@@ -44,12 +44,15 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-// 263 y no los 261 de CrearHojaConfig: se añadieron DOS renglones que no están en su
-// hoja. AIRE_SOBRE_LO_DIBUJADO_M —la macro siempre arranca en OFFSET_Y_INICIAL, así que
-// dibujar dos veces encimaba las plantas— y CAPAS_TEXTO_AL_FRENTE, que sube los rótulos
-// encima de todo en una segunda pasada del orden de dibujo.
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los dos que se añadieron",
-      263, ConfigPlano.PorOmision.Count);
+// 266 y no los 261 de CrearHojaConfig: se añadieron CINCO renglones que no están en su
+// hoja, y todos porque se pidieron:
+//   AIRE_SOBRE_LO_DIBUJADO_M   la planta se pone encima de lo que ya haya dibujado
+//   CAPAS_TEXTO_AL_FRENTE      los rótulos, encima de todo, en una segunda pasada
+//   CAPA_DALA                  la capa de las dalas se llama E-CADENA
+//   DRAWORDER_POR_COMANDO      respaldo del orden de dibujo, con el DRAWORDER de verdad
+//   LINEAS_AL_PANO             las líneas mueren en el paño del castillo, no en su eje
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cinco que se añadieron",
+      266, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -177,7 +180,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 263 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 266 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -211,7 +214,11 @@ Igual("E-COLUMNA", 1, ColorDe("E-COLUMNA"));
 Igual("E-CASTILLO", 1, ColorDe("E-CASTILLO"));
 Igual("E-TRABE", 3, ColorDe("E-TRABE"));
 Igual("E-CONTRATRABE", 2, ColorDe("E-CONTRATRABE"));
-Igual("E-DALA", 12, ColorDe("E-DALA"));
+// LA DALA SE LLAMA E-CADENA. El tipo sigue siendo DALA -es lo que devuelve
+// ClasificaTipo- pero la capa lleva el nombre de la pieza en obra.
+Igual("E-CADENA, la de las dalas", 12, ColorDe("E-CADENA"));
+Igual("y ya no se llama E-DALA", -1, ColorDe("E-DALA"));
+Igual("aunque el tipo DALA siga yendo a ella", "E-CADENA", capas.CapaDeTipo("DALA"));
 Igual("E-LOSA", 8, ColorDe("E-LOSA"));
 Igual("E-DIAGONAL", 30, ColorDe("E-DIAGONAL"));
 Igual("E-OTROS", 7, ColorDe("E-OTROS"));
@@ -242,7 +249,7 @@ Igual("el castillo a la suya", "E-CASTILLO", capas.CapaDeTipo("CASTILLO"));
 Igual("y lo que no está en la tabla, a E-OTROS", "E-OTROS", capas.CapaDeTipo("LO QUE SEA"));
 
 Igual("las capas al frente son las cuatro de la hoja",
-      "E-DALA, E-CADENA DESPLANTE, E-TRABE, E-ACERO",
+      "E-CADENA, E-CADENA DESPLANTE, E-TRABE, E-ACERO",
       string.Join(", ", capas.CapasAlFrente()));
 
 // Y LOS TEXTOS APARTE, para subirlos en una SEGUNDA pasada: así los rótulos quedan

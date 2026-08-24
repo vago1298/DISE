@@ -272,7 +272,55 @@ public static class EtabsReader
             };
 
             if (Com.CallRet(gridSys, "GetGridSys_2", a,
-                            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14) != 0)
+                            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14) == 0)
+            {
+                var ejes = new EjesModelo
+                {
+                    OrigenX = Convert.ToDouble(a[1]),
+                    OrigenY = Convert.ToDouble(a[2]),
+                    RotacionGrados = Convert.ToDouble(a[3]),
+                    Origen = $"cuadrícula del modelo «{nombre}»"
+                };
+
+                Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]));
+                Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[10]));
+
+                if (ejes.Hay)
+                {
+                    m.Ejes = ejes;
+                    return;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Esta versión no tiene GetGridSys_2: se prueba la de SAP2000.
+        }
+
+        // ==============================================================================
+        //  Y AHORA LA DE SAP2000, QUE ES OTRA FUNCIÓN
+        // ==============================================================================
+        //  GetGridSys_2 es de ETABS. SAP2000 tiene su cuadrícula en GetGridSysCartesian, que
+        //  además trae los ejes en Z. Sin esta segunda pasada, en SAP2000 NUNCA se leía la
+        //  cuadrícula del modelo y el plano salía con ejes DEDUCIDOS: uno por cada quiebre de
+        //  muro, o sea muchos más de los que el modelo tiene.
+        //
+        //  El usuario lo dijo tal cual: en SAP hay que respetar los ejes que trae el modelo y
+        //  no poner de más.
+        try
+        {
+            // nombre, Xo, Yo, Rz, cuántos en X, en Y y en Z, y luego los arreglos de IDs,
+            // ordenadas, visibles y burbujas de las tres direcciones.
+            object?[] a =
+            {
+                nombre, 0d, 0d, 0d, 0, 0, 0,
+                null, null, null, null, null, null,
+                null, null, null, null, null, null
+            };
+
+            if (Com.CallRet(gridSys, "GetGridSysCartesian", a,
+                            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                            13, 14, 15, 16, 17, 18) != 0)
             {
                 return;
             }
@@ -285,8 +333,10 @@ public static class EtabsReader
                 Origen = $"cuadrícula del modelo «{nombre}»"
             };
 
-            Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]));
-            Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[10]));
+            // Los IDs van en 7, 8 y 9 —X, Y y Z— y las ordenadas en 10, 11 y 12. La de Z no
+            // se usa: son los niveles, y esos ya se leen aparte.
+            Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[10]));
+            Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[11]));
 
             if (ejes.Hay)
             {
@@ -295,8 +345,8 @@ public static class EtabsReader
         }
         catch (Exception)
         {
-            // Esta versión no tiene GetGridSys_2, o la cuadrícula está definida de otra
-            // forma: se deducen de la geometría y el plano sale con sus ejes igual.
+            // Ni una ni otra: la cuadrícula está definida de otra forma. Se deducen de las
+            // columnas y el plano sale con sus ejes igual.
         }
 
         static void Cargar(List<EjesModelo.Eje> destino, string[] ids, double[] ords)

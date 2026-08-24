@@ -410,6 +410,147 @@ Cerca("y en Y", 3,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LAS LINEAS MUEREN EN EL PANO DEL CASTILLO, NO EN SU EJE");
+Console.WriteLine("=====================================================================");
+
+var pano = new PanoDeApoyo(cfg);
+
+// Dos castillos de 15 x 15 en (0,0) y en (5,0), y un muro de eje a eje entre ellos, que es
+// como lo entrega el modelo.
+static ElementoPlanta Castillo(double x, double y, double b, double h, double giro = 0) =>
+    new()
+    {
+        Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Forma = "RECT",
+        X1 = x, Y1 = y, X2 = x, Y2 = y,
+        AnchoM = b, PeralteM = h, AnguloGrados = giro
+    };
+
+var castillos = new List<ElementoPlanta>
+{
+    Castillo(0, 0, 0.15, 0.15),
+    Castillo(5, 0, 0.15, 0.15)
+};
+
+var muro = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 5, Y2 = 0, AnchoM = 0.15
+};
+
+var t1 = pano.Recortar(muro, castillos);
+
+Cerca("el muro arranca en el pano del castillo, no en su eje", 0.075, t1.X1, 1e-12);
+Cerca("y termina en el pano del otro", 4.925, t1.X2, 1e-12);
+Cerca("sin moverse de su linea", 0, t1.Y1);
+Cerca("asi que mide el claro entre castillos", 4.85, t1.Largo, 1e-12);
+
+// EL MURO QUE QUEDO CORTO EN EL MODELO: la misma cuenta lo ALARGA hasta el pano, que es la
+// otra mitad del asunto. Sin esto queda un hueco entre el muro y el castillo.
+var muroCorto = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, X1 = 0.40, Y1 = 0, X2 = 4.60, Y2 = 0, AnchoM = 0.15
+};
+
+var t2 = pano.Recortar(muroCorto, castillos);
+
+Cerca("el muro corto se alarga hasta el pano", 0.075, t2.X1, 1e-12);
+Cerca("y por el otro lado tambien", 4.925, t2.X2, 1e-12);
+
+// UN CASTILLO INTERMEDIO NO RECORTA NADA: si contara, un muro largo con un castillo a un
+// metro de la punta se quedaria cortado por la mitad.
+var enMedio = new List<ElementoPlanta> { Castillo(1, 0, 0.15, 0.15) };
+var t3 = pano.Recortar(
+    new ElementoPlanta { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 6, Y2 = 0 },
+    enMedio);
+
+Cerca("un castillo por el que el muro pasa de largo no lo recorta", 0, t3.X1);
+Cerca("ni por el otro extremo", 6, t3.X2);
+
+// El castillo GIRADO: el pano se mide sobre la seccion girada, no sobre la caja.
+var girado = new List<ElementoPlanta> { Castillo(0, 0, 0.20, 0.20, 45) };
+var t4 = pano.Recortar(
+    new ElementoPlanta { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 4, Y2 = 0 },
+    girado);
+
+// A 45 grados, la esquina queda a 0.10*raiz(2) del centro sobre el eje X.
+Cerca("en un castillo girado 45 el pano queda en la esquina", 0.10 * Math.Sqrt(2),
+      t4.X1, 1e-12);
+
+// La columna REDONDA, por su circunferencia.
+var redonda = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Columna, Forma = "CIRC", X1 = 0, Y1 = 0, X2 = 0, Y2 = 0,
+        AnchoM = 0.30, PeralteM = 0.30
+    }
+};
+Cerca("en una columna redonda, al radio", 0.15,
+      pano.Recortar(
+          new ElementoPlanta { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 4, Y2 = 0 },
+          redonda).X1, 1e-12);
+
+Console.WriteLine();
+Console.WriteLine(" La columna W: entre los patines llega al alma; por el patin, a su cara");
+
+var columnaW = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Forma = "I",
+    X1 = 0, Y1 = 0, X2 = 0, Y2 = 0,
+    AnchoM = 0.25, PeralteM = 0.15, PatinM = 0.01, AlmaM = 0.006
+};
+
+// El muro que llega POR EL PATIN -a lo largo del peralte- sale por la cara de fuera del
+// patin: el rayo recorre el alma y sigue por el patin, que es material seguido.
+Cerca("por el patin, al pano del patin", 0.125,
+      PanoDeApoyo.SalidaDelMaterial(columnaW, 0, 0, 1, 0) ?? -99, 1e-12);
+
+// El que ENTRA ENTRE LOS PATINES se para en la CARA DEL ALMA, que es lo primero que
+// encuentra. Es el caso fino que la macro trata aparte con PANO_ALMA_W.
+Cerca("entre los patines, a la cara del alma", 0.003,
+      PanoDeApoyo.SalidaDelMaterial(columnaW, 0, 0, 0, 1) ?? -99, 1e-12);
+
+// Con PANO_ALMA_W en NO se mide por la caja que envuelve al perfil: punta del patin.
+Cerca("y con PANO_ALMA_W en NO, a la punta del patin", 0.075,
+      PanoDeApoyo.SalidaDelMaterial(columnaW, 0, 0, 0, 1, porPiezas: false) ?? -99, 1e-12);
+
+Console.WriteLine();
+Console.WriteLine(" Los topes, para que un dato raro no se coma el muro");
+
+// Un muro de 30 cm entre dos castillos de 60: el recorte se pasaria del 40 % por lado, asi
+// que se deja como estaba. Mejor un muro que llega al eje que un muro que desaparece.
+var grandes = new List<ElementoPlanta>
+{
+    Castillo(0, 0, 0.60, 0.60), Castillo(0.30, 0, 0.60, 0.60)
+};
+var t5 = pano.Recortar(
+    new ElementoPlanta { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 0.30, Y2 = 0 },
+    grandes);
+Cerca("un muro muy corto entre castillos grandes se deja como estaba", 0, t5.X1);
+Cerca("y su otro extremo tambien", 0.30, t5.X2, 1e-12);
+
+// Y el muro que quedo corto de MAS de 1.50 m no se estira: eso ya no es un muro corto.
+var muyCorto = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, X1 = 2, Y1 = 0, X2 = 3, Y2 = 0, AnchoM = 0.15
+};
+Cerca("un hueco de mas de 1.50 m no se estira", 2,
+      pano.Recortar(muyCorto, castillos).X1);
+
+Cerca("el radio de busqueda son los 1.50 m de la hoja", 1.5, pano.RadioBusqueda);
+Cerca("el solape es 0: la linea termina EXACTAMENTE en el pano", 0, pano.Solape);
+
+var sinPanoCfg = new ConfigPlano();
+sinPanoCfg.Aplicar(new Dictionary<string, string> { ["LINEAS_AL_PANO"] = "NO" });
+Cerca("con LINEAS_AL_PANO en NO, las lineas vuelven al eje", 0,
+      new PanoDeApoyo(sinPanoCfg).Recortar(muro, castillos).X1);
+
+var conSolape = new ConfigPlano();
+conSolape.Aplicar(new Dictionary<string, string> { ["PANO_SOLAPE_CM"] = "1" });
+Cerca("y con solape de 1 cm, la linea se mete ese centimetro", 0.065,
+      new PanoDeApoyo(conSolape).Recortar(muro, castillos).X1, 1e-12);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ROTULO DE LA PLANTA");
 Console.WriteLine("=====================================================================");
 

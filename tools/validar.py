@@ -2708,14 +2708,17 @@ def v16_extruida_piers() -> None:
     cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
     capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
 
-    # 263 y no los 261 de CrearHojaConfig: se añadieron DOS renglones que NO estan en su
-    # hoja. AIRE_SOBRE_LO_DIBUJADO_M -la macro arranca siempre en OFFSET_Y_INICIAL, asi que
-    # dibujar dos veces encimaba las plantas- y CAPAS_TEXTO_AL_FRENTE, que sube los rotulos
-    # encima de todo en una SEGUNDA pasada del orden de dibujo.
-    check("la hoja CONFIG de la macro esta portada, con dos renglones añadidos",
-          cfgp.count("        P(") == 263
+    # 266 y no los 261 de CrearHojaConfig: se añadieron CINCO renglones que NO estan en su
+    # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
+    # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
+    # comando y el ajuste de las lineas al pano del castillo.
+    check("la hoja CONFIG de la macro esta portada, con cinco renglones añadidos",
+          cfgp.count("        P(") == 266
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
-          and 'P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",' in cfgp)
+          and 'P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",' in cfgp
+          and 'P("CAPA_DALA", "CADENA",' in cfgp
+          and 'P("DRAWORDER_POR_COMANDO", "SI",' in cfgp
+          and 'P("LINEAS_AL_PANO", "SI",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -2762,7 +2765,7 @@ def v16_extruida_piers() -> None:
                        ("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C"),
                        ("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100"),
                        ("LINETYPE_EJES", "DASHDOT"), ("LINETYPE_TRABE", "PHANTOM2"),
-                       ("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO"),
+                       ("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO"),
                        ("CIMENTACION_STORIES", "BASE,CIMENTACION,FOUNDATION"),
                        ("CAPA_CADENA_DESPLANTE", "CADENA DESPLANTE"),
                        ("CAPA_PIERS", "PIERS")):
@@ -2790,7 +2793,7 @@ def v16_extruida_piers() -> None:
           'PorTipo("TRABE", 3, cfg.Texto("LINETYPE_TRABE", "PHANTOM2"))' in capp)
     check("y el castillo, la dala y el acero toman su color de la hoja",
           'PorTipo("CASTILLO", Color("COLOR_CASTILLO", 1))' in capp
-          and 'PorTipo("DALA", Color("COLOR_DALA", 12))' in capp
+          and 'Capa("DALA", Prefijo + _cfg.Texto("CAPA_DALA", "CADENA")' in capp
           and 'Color("COLOR_ACERO", 130)' in capp)
     check("las capas de servicio, igual que en CrearCapas",
           'Servicio("TEXTO", 7)' in capp
@@ -2816,7 +2819,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "263, ConfigPlano.PorOmision.Count" in pr
+          and "266, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 21 capas", 21, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3278,6 +3281,7 @@ def v18_planta_autocad() -> None:
     # Y las capas y la prueba de la hoja CONFIG. Se vuelven a leer AQUI a proposito: las de
     # mas arriba son locales de otra comprobacion y no llegan hasta aqui.
     capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+    cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
 
     check("existe PlantaDrawer", "class PlantaDrawer" in dib)
@@ -3496,6 +3500,86 @@ def v18_planta_autocad() -> None:
           and "s != piers &&" in capp)
     check("y la prueba comprueba que PIERS no se convierte en E-PIERS",
           '"E-TEXTO, PIERS", string.Join(", ", capas.CapasDeTextoAlFrente())' in pr)
+
+    # CAPA POR CAPA Y EN SU ORDEN, no todas de golpe: cada MoveToTop deja lo suyo encima de
+    # lo anterior. Con una sola llamada, el orden entre ellas lo decidia el recorrido del
+    # dibujo, y era el motivo de que E-CADENA y E-ACERO siguieran saliendo tapadas.
+    check("cada capa se sube por separado y en el orden de la hoja",
+          "private bool MoverAlFrente(" in mac
+          and "foreach (var capa in capas)" in mac
+          and "porCapa[capa]" in mac)
+    # Y con RESPALDO: el DRAWORDER de verdad, por comando, para cuando la tabla de orden no
+    # se deja usar. Los nombres van con _ delante para que funcione en cualquier idioma.
+    check("hay respaldo con el DRAWORDER de verdad",
+          "private bool DrawOrderPorComando(" in mac
+          and "_.draworder" in mac
+          and "(410 . " in mac
+          and "_doc.SendCommand(lisp)" in mac
+          and '_cfg.Bandera("DRAWORDER_POR_COMANDO", true)' in mac)
+    # LA CAPA DE LAS DALAS SE LLAMA E-CADENA, y CAPAS_AL_FRENTE tiene que decir CADENA o no
+    # se subiria: es el nombre de la capa lo que se compara.
+    check("la capa de las dalas se llama E-CADENA",
+          'P("CAPA_DALA", "CADENA",' in cfgp
+          and 'P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO"' in cfgp
+          and 'CapaDeTipo("DALA")' in capp)
+
+    # ------------------------------------------------------------------
+    # LAS LINEAS MUEREN EN EL PANO DEL CASTILLO, NO EN SU EJE
+    # ------------------------------------------------------------------
+    #  En el modelo el muro llega al NUDO -al centro del castillo-, y dibujado asi sus dos
+    #  lineas cruzan la seccion de la columna. En obra el muro EMPIEZA en el pano.
+    pan = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/PanoDeApoyo.cs"))
+    check("existe la cuenta del ajuste al pano",
+          "public sealed class PanoDeApoyo" in pan
+          and "public Tramo Recortar(" in pan
+          and "public static double? SalidaDelMaterial(" in pan
+          and '_cfg.Bandera("LINEAS_AL_PANO", true)' in pan)
+    check("con los numeros de la hoja: busqueda, solape, alargue y tope",
+          '_cfg.Numero("PANO_BUSCA_CM", 150)' in pan
+          and '_cfg.Numero("PANO_SOLAPE_CM", 0)' in pan
+          and '_cfg.Numero("PANO_ALARGAR_MAX_CM", 150)' in pan
+          and '_cfg.Numero("PANO_RECORTE_MAX", 0.4)' in pan)
+    # LA MISMA CUENTA ALARGA el muro que quedo corto en el modelo: el recorte sale negativo.
+    # Es el detalle elegante de la macro y la mitad que se olvida.
+    check("y la misma cuenta alarga el muro que quedo corto",
+          "El apoyo queda <b>detrás</b>" in pan or "queda DETRÁS" in pan)
+    check("el muro y la trabe se dibujan sobre el tramo llevado al pano",
+          "var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();" in dib
+          and "var tramo = Pano.Recortar(el, apoyos);" in dib
+          and "Pano.Recortar(el, apoyos))" in dib
+          and "PanoDeApoyo.Tramo? tramo = null" in dib)
+    # Un castillo INTERMEDIO no recorta nada: si contara, un muro largo con un castillo a un
+    # metro de la punta se quedaria cortado por la mitad.
+    check("un castillo intermedio no recorta el muro",
+          "es un castillo intermedio" in pan)
+    check("hay prueba ejecutable del ajuste al pano",
+          "el muro arranca en el pano del castillo, no en su eje" in pre
+          and "el muro corto se alarga hasta el pano" in pre
+          and "entre los patines, a la cara del alma" in pre
+          and "un castillo por el que el muro pasa de largo no lo recorta" in pre)
+
+    # LA MAMPOSTERIA SE DESPEGA DEL CASTILLO 5 cm, y solo si el muro llega a 1 m: por debajo
+    # de eso los dos huecos se comerian la linea y quedaria un rayon suelto en medio.
+    check("la linea de mamposteria se mide desde el pano y se despega 5 cm",
+          "PanoDeApoyo.Tramo? tramo = null)" in mac
+          and "LineaDeMamposteria(el, x0, y0, tramo);" in dib
+          and "if (gap > 0 && largo >= minimo)" in mac)
+
+    # ------------------------------------------------------------------
+    # LOS EJES DE SAP2000: LOS DEL MODELO, NI UNO DE MAS
+    # ------------------------------------------------------------------
+    #  GetGridSys_2 es de ETABS; SAP2000 tiene su cuadricula en GetGridSysCartesian. Sin esa
+    #  segunda pasada, en SAP2000 los ejes NUNCA salian del modelo: se deducian, y salia una
+    #  burbuja por cada quiebre de muro. Y cada eje de mas se acota.
+    lect_sap = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("en SAP2000 la cuadricula se lee con GetGridSysCartesian",
+          'Com.CallRet(gridSys, "GetGridSysCartesian"' in lect_sap
+          and 'Com.CallRet(gridSys, "GetGridSys_2"' in lect_sap)
+    ejm = leer(ruta("client/src/CadLink.Etabs/EjesModelo.cs"))
+    check("y si hay que deducirlos, solo de las columnas: no de cada quiebre de muro",
+          "if (e.Clase != ClaseElemento.Columna)" in ejm
+          and "var conColumnas = xs.Count >= 2 || ys.Count >= 2;" in ejm
+          and '"deducida de las columnas del modelo"' in ejm)
 
     # ------------------------------------------------------------------
     # EL ANCHO DEL MTEXT, AUTOMATICO
@@ -7397,6 +7481,9 @@ _DECLARA = [
     # out var x / is Tipo x
     r"\bout\s+(?:var|[\w<>,?\[\]\.]+)\s+(\w+)",
     r"\bis\s+(?:not\s+)?[\w<>,?\[\]\.]+\s+(\w+)\b",
+    # is { } x  /  is { Prop: 1 } x  -> el patron de propiedades TAMBIEN declara. Sin
+    # esto, 'if (t is { } c) lista.Add(c);' se reportaba como un CS0103 que no existe.
+    r"\bis\s+(?:not\s+)?\{[^{}]*\}\s+(\w+)\b",
     # lambdas: x => ...   y   (x, y) => ...
     r"\(?\s*\b(\w+)\s*\)?\s*=>",
     r"\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*=>",

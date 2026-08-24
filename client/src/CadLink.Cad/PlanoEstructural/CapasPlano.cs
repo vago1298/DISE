@@ -60,7 +60,12 @@ public sealed class CapasPlano
         t.Add(PorTipo("CASTILLO", Color("COLOR_CASTILLO", 1)));
         t.Add(PorTipo("TRABE", 3, cfg.Texto("LINETYPE_TRABE", "PHANTOM2")));
         t.Add(PorTipo("CONTRATRABE", 2));
-        t.Add(PorTipo("DALA", Color("COLOR_DALA", 12)));
+        // LA DALA SE LLAMA E-CADENA. El tipo sigue siendo DALA —es lo que devuelve
+        // ClasificaTipo y lo que dice la hoja CONFIG— pero la CAPA se llama como se le llama
+        // en obra a la pieza: cadena. Se pidió expresamente, y el nombre se puede volver a
+        // cambiar desde la hoja con CAPA_DALA sin tocar el código.
+        t.Add(new Capa("DALA", Prefijo + _cfg.Texto("CAPA_DALA", "CADENA"),
+                       Color("COLOR_DALA", 12), string.Empty));
         t.Add(PorTipo("LOSA", 8));
         t.Add(PorTipo("DIAGONAL", 30));
         t.Add(PorTipo("OTROS", 7));
@@ -183,7 +188,8 @@ public sealed class CapasPlano
 
         if (salida.Count == 0)
         {
-            salida.Add(Prefijo.ToUpperInvariant() + "DALA");
+            // El respaldo de la macro: al menos la de las dalas, que ahora se llama E-CADENA.
+            salida.Add(CapaDeTipo("DALA").ToUpperInvariant());
         }
 
         return salida;

@@ -292,6 +292,11 @@ public sealed class ConfigPlano
         P("ETIQUETA_TRABES_PREFIJO_SECCION", "T", "Solo vigas cuya seccion empieza asi"),
         P("ALTURA_TEXTO_SECCION", "0", "0 = automatica (0.8 de ALTURA_TEXTO)"),
         P("PIER_SEPARACION_CM", "6", "Separacion extra del PIER"),
+
+        // AÑADIDO, no está en la hoja de la macro: allá la capa de las dalas es E-DALA a
+        // secas. Se pidió que se llame E-CADENA, que es como se le llama a la pieza en obra.
+        // El TIPO sigue siendo DALA; esto solo cambia el nombre de la capa.
+        P("CAPA_DALA", "CADENA", "NOMBRE DE LA CAPA DE LAS DALAS (con prefijo: E-CADENA)"),
         P("DOBLE_LINEA", "SI", "Muros y trabes a espesor real"),
         P("RELLENAR_COLUMNAS", "SI", "Achurado solido en columnas y perfiles"),
         P("COLOR_RELLENO_BLOQUE", "2", "COLOR DEL RELLENO DE COLUMNAS Y CASTILLOS (2 = amarillo)"),
@@ -471,6 +476,12 @@ public sealed class ConfigPlano
         P("ROTULO_SEPARACION_EJES", "0.5", "AIRE ENTRE LOS EJES DE ABAJO Y EL ROTULO (m)"),
         P("PANO_ALARGAR_MAX_CM", "150", "<<< CUANTO SE ALARGA LA VIGA QUE QUEDO CORTA EN EL MODELO (1.50 m)"),
         P("PANO_BUSCA_CM", "150", "<<< Radio de busqueda del elemento al que hay que llegar (1.50 m)"),
+
+        // AÑADIDO: el interruptor de todo el ajuste al paño. En NO, las lineas del muro y de
+        // la trabe llegan al EJE del castillo, como salian antes.
+        P("LINEAS_AL_PANO", "SI",
+          "SI = LAS LINEAS DEL MURO Y DE LA TRABE MUEREN EN EL PANO DEL CASTILLO, COLUMNA O " +
+          "PERFIL, no en su eje"),
         P("BURBUJA_CRUZ_4_LINEAS", "SI", "SI = 4 RAYITAS EN LA BURBUJA, TODAS DE SU COLOR"),
         P("EJES_RECORTE_M", "0", "0 = no se le quita nada al eje por la derecha ni por abajo"),
         P("CADENA_SIN_MURO_MARCAR", "SI", "SI = cadena sin muro de piso a techo con otra linea"),
@@ -479,7 +490,9 @@ public sealed class ConfigPlano
         P("CADENA_SIN_MURO_CUBRE", "0.5", "Fraccion con muro abajo para NO marcarla"),
         P("LOSA_HATCH_AL_PANO", "SI", "SI = EL HATCH LLEGA AL PANO DE LA CADENA, NO A LA MITAD"),
         P("TRAER_AL_FRENTE", "SI", "SI = subir CAPAS_AL_FRENTE encima de todo (Bring to Front)"),
-        P("CAPAS_AL_FRENTE", "DALA,CADENA DESPLANTE,TRABE,ACERO", "<<< CAPAS ENCIMA DE TODO (incluye ACERO: las vigas de acero al frente)"),
+        // CADENA y no DALA: la capa de las dalas se llama E-CADENA —ver CAPA_DALA—, así que
+        // aquí tiene que ir con ese nombre o no se subiría al frente.
+        P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO", "<<< CAPAS ENCIMA DE TODO (incluye ACERO: las vigas de acero al frente)"),
 
         // AÑADIDO, no está en la hoja de la macro. Los ROTULOS tienen que quedar encima de
         // todo, y en una SEGUNDA pasada del orden de dibujo: subidos junto con las trabes y
@@ -488,6 +501,11 @@ public sealed class ConfigPlano
         P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",
           "CAPAS DE TEXTO ENCIMA DE TODO, DESPUES DE LA GEOMETRIA (PIERS va sin prefijo)"),
         P("PONER_SORTENTS_127", "SI", "SI = SORTENTS = 127 para que se respete el draw order"),
+
+        // AÑADIDO: el respaldo del orden de dibujo. Si la tabla ACAD_SORTENTS no se deja
+        // usar, se manda el DRAWORDER de verdad -el mismo que se usa a mano- por comando.
+        P("DRAWORDER_POR_COMANDO", "SI",
+          "SI = si la tabla de orden no se deja, se manda DRAWORDER -> Front por comando"),
         P("CADENA_SIN_TAPA", "SI", "SI = las cadenas sin tapadera en los extremos"),
         P("TRABE_SIN_TAPA", "SI", "SI = TODAS LAS TRABES SIN TAPADERA (solo las 2 lineas)"),
         P("ARMADO_PANO_PRIMERO", "SI", "SI = en las losas de borde el armado termina en el pano INTERIOR"),

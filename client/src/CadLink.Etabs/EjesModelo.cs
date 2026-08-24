@@ -60,26 +60,58 @@ public sealed class EjesModelo
     /// </remarks>
     public static EjesModelo DesdeGeometria(ModeloEtabs modelo, double tolM = 0.05)
     {
+        // ==============================================================================
+        //  PRIMERO SOLO LAS COLUMNAS, Y SIN PASARSE
+        // ==============================================================================
+        //  Antes se metían también los DOS extremos de cada muro, y en un modelo de SAP2000
+        //  —donde los muros vienen partidos en muchos tramos— salía una burbuja en cada
+        //  quiebre: veinte ejes donde el modelo tiene cinco. Y los ejes de más no son un
+        //  adorno: cada uno se acota, así que el plano se llenaba de cotas inventadas.
+        //
+        //  Un eje estructural pasa por los APOYOS, así que se deducen de las columnas y los
+        //  castillos. Los muros solo entran si no hay columnas suficientes para formar una
+        //  cuadrícula, que es el caso del modelo hecho solo con muros de mampostería.
         var xs = new List<double>();
         var ys = new List<double>();
 
         foreach (var e in modelo.Elementos)
         {
-            if (e.Clase is not (ClaseElemento.Columna or ClaseElemento.Muro))
+            if (e.Clase != ClaseElemento.Columna)
             {
                 continue;
             }
 
             Agregar(xs, e.X1, tolM);
-            Agregar(xs, e.X2, tolM);
             Agregar(ys, e.Y1, tolM);
-            Agregar(ys, e.Y2, tolM);
+        }
+
+        var conColumnas = xs.Count >= 2 || ys.Count >= 2;
+
+        if (!conColumnas)
+        {
+            foreach (var e in modelo.Elementos)
+            {
+                if (e.Clase != ClaseElemento.Muro)
+                {
+                    continue;
+                }
+
+                Agregar(xs, e.X1, tolM);
+                Agregar(xs, e.X2, tolM);
+                Agregar(ys, e.Y1, tolM);
+                Agregar(ys, e.Y2, tolM);
+            }
         }
 
         xs.Sort();
         ys.Sort();
 
-        var ejes = new EjesModelo { Origen = "deducida de la geometría" };
+        var ejes = new EjesModelo
+        {
+            Origen = conColumnas
+                ? "deducida de las columnas del modelo"
+                : "deducida de la geometría"
+        };
 
         for (var i = 0; i < xs.Count; i++)
         {

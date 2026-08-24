@@ -66,6 +66,11 @@ public sealed partial class PlantaDrawer
     private readonly PlanoEstructural.ConfigPlano _cfg = new();
     private readonly PlanoEstructural.CapasPlano _capas;
 
+    /// <summary>La cuenta del ajuste al paño de los castillos y las columnas.</summary>
+    private PanoDeApoyo Pano => _pano ??= new PanoDeApoyo(_cfg);
+
+    private PanoDeApoyo? _pano;
+
     private string CapaEjes => _capas.Prefijo + "EJES";
     private string CapaTextos => _capas.Prefijo + "TEXTO";
     private string CapaRotulo => _capas.Prefijo + "TITULO";
@@ -189,24 +194,39 @@ public sealed partial class PlantaDrawer
             }
         }
 
+        // ==============================================================================
+        //  LAS LÍNEAS MUEREN EN EL PAÑO, NO EN EL EJE
+        // ==============================================================================
+        //  En el modelo el muro llega al NUDO —al centro del castillo— porque ahí es donde se
+        //  une el elemento. Dibujado así, sus dos líneas se meten dentro de la sección de la
+        //  columna y la cruzan, y en obra el muro no está ahí: empieza en el PAÑO.
+        //
+        //  Los apoyos son las columnas y los castillos de ESTA planta, sean de concreto o
+        //  perfiles de acero. La misma cuenta ALARGA el muro que en el modelo quedó corto.
+        var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();
+
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Muro))
         {
+            var tramo = Pano.Recortar(el, apoyos);
+
             if (Barra(el, x0, y0, CapaDe(el),
-                     Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false))
+                     Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo))
             {
                 r.Muros++;
 
                 // Y si es de BLOCK, su polilínea ancha al centro: es la marca de
                 // mampostería, y es lo que distingue de un golpe de vista un muro de block
-                // de uno de concreto.
-                LineaDeMamposteria(el, x0, y0);
+                // de uno de concreto. Va sobre el tramo YA recortado, así que su separación
+                // se mide desde el paño del castillo y no desde el eje.
+                LineaDeMamposteria(el, x0, y0, tramo);
             }
         }
 
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Trabe))
         {
             if (Barra(el, x0, y0, CapaDe(el),
-                     Espesor(el, AnchoTrabePorOmision, "trabe"), conEje: true))
+                     Espesor(el, AnchoTrabePorOmision, "trabe"), conEje: true,
+                     Pano.Recortar(el, apoyos)))
             {
                 r.Trabes++;
             }
@@ -739,10 +759,14 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private bool Barra(
         ElementoPlanta el, double x0, double y0, string capa,
-        double ancho, bool conEje)
+        double ancho, bool conEje, PanoDeApoyo.Tramo? tramo = null)
     {
-        var dx = el.X2 - el.X1;
-        var dy = el.Y2 - el.Y1;
+        // El tramo YA llevado a los paños, si quien llama lo calculó. Sin él, el elemento tal
+        // como viene del modelo: de eje a eje.
+        var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
+
+        var dx = t.X2 - t.X1;
+        var dy = t.Y2 - t.Y1;
         var largo = Math.Sqrt((dx * dx) + (dy * dy));
 
         if (largo < LargoMinimo)
@@ -751,10 +775,10 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        var ax = el.X1 + x0;
-        var ay = el.Y1 + y0;
-        var bx = el.X2 + x0;
-        var by = el.Y2 + y0;
+        var ax = t.X1 + x0;
+        var ay = t.Y1 + y0;
+        var bx = t.X2 + x0;
+        var by = t.Y2 + y0;
 
         // Normal unitaria al eje
         var nx = -dy / largo * (ancho / 2);

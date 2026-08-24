@@ -516,7 +516,8 @@ public sealed partial class PlantaDrawer
     /// corto los dos huecos se comerían la línea entera.
     /// </para>
     /// </remarks>
-    private bool LineaDeMamposteria(ElementoPlanta el, double x0, double y0)
+    private bool LineaDeMamposteria(
+        ElementoPlanta el, double x0, double y0, PanoDeApoyo.Tramo? tramo = null)
     {
         if (!_cfg.Bandera("MAMPOSTERIA_LINEA", true))
         {
@@ -528,8 +529,13 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        var dx = el.X2 - el.X1;
-        var dy = el.Y2 - el.Y1;
+        // EL TRAMO YA RECORTADO AL PAÑO. Importa: si se midiera sobre el muro de eje a eje,
+        // los 5 cm de separación se comerían dentro del castillo y la polilínea seguiría
+        // saliendo de él.
+        var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
+
+        var dx = t.X2 - t.X1;
+        var dy = t.Y2 - t.Y1;
         var largo = Math.Sqrt((dx * dx) + (dy * dy));
 
         if (largo < LargoMinimo)
@@ -547,12 +553,22 @@ public sealed partial class PlantaDrawer
         var gap = _cfg.Numero("MAMPOSTERIA_GAP_M", 0.05);
         var minimo = _cfg.Numero("MAMPOSTERIA_GAP_LARGO_MIN_M", 1);
 
-        var ax = el.X1 + x0;
-        var ay = el.Y1 + y0;
-        var bx = el.X2 + x0;
-        var by = el.Y2 + y0;
+        var ax = t.X1 + x0;
+        var ay = t.Y1 + y0;
+        var bx = t.X2 + x0;
+        var by = t.Y2 + y0;
 
-        if (gap > 0 && largo > minimo)
+        // ==============================================================================
+        //  LA SEPARACIÓN DEL CASTILLO: 5 cm, PERO SOLO SI EL MURO LLEGA A 1 m
+        // ==============================================================================
+        //  De 1 m en adelante —IGUAL o mayor, que es como se pidió— la polilínea se despega
+        //  5 cm del paño de cada castillo, y esa holgura es lo que hace que se lea que el
+        //  block va entre castillos.
+        //
+        //  Por debajo de 1 m NO se despega, y sale del propio castillo: en un muro de 60 cm
+        //  los dos huecos de 5 cm se comerían un sexto de la línea y quedaría un rayón suelto
+        //  en medio, que no se entiende.
+        if (gap > 0 && largo >= minimo)
         {
             ax += dx / largo * gap;
             ay += dy / largo * gap;
@@ -612,8 +628,21 @@ public sealed partial class PlantaDrawer
     }
 
     /// <summary>
-    /// Sube al frente todo lo que esté en estas capas, con la tabla de orden de dibujo.
+    /// Sube al frente lo que esté en estas capas, <b>una capa a la vez y en su orden</b>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Capa por capa y no todas de golpe, y en el orden en que vienen en la hoja: cada
+    /// <c>MoveToTop</c> deja lo suyo por encima de lo anterior, así que <b>la última de la
+    /// lista queda arriba</b>. Con una sola llamada para todas, el orden entre ellas lo
+    /// decidía el recorrido del dibujo, y era el motivo de que las líneas de E-CADENA y de
+    /// E-ACERO siguieran saliendo tapadas por el relleno de las columnas.
+    /// </para>
+    /// <para>
+    /// El dibujo se recorre <b>una sola vez</b> repartiendo las entidades por capa: recorrerlo
+    /// por cada capa serían seis vueltas por COM sobre miles de objetos, que es lo caro.
+    /// </para>
+    /// </remarks>
     private void SubirCapas(IReadOnlyList<string> capas)
     {
         if (capas.Count == 0)
@@ -621,36 +650,73 @@ public sealed partial class PlantaDrawer
             return;
         }
 
+        var porCapa = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var capa in capas)
+        {
+            porCapa[capa] = new List<object>();
+        }
+
         try
         {
             AcadConnection.Retry(() =>
             {
-                var lista = new List<object>();
-
                 foreach (var ent in _ms)
                 {
                     string capa;
 
                     try
                     {
-                        capa = ((dynamic)ent).Layer?.ToString()?.ToUpperInvariant() ?? string.Empty;
+                        capa = ((dynamic)ent).Layer?.ToString() ?? string.Empty;
                     }
                     catch (Exception)
                     {
                         continue;
                     }
 
-                    if (capa.Length > 0 && capas.Contains(capa))
+                    if (capa.Length > 0 && porCapa.TryGetValue(capa, out var lista))
                     {
                         lista.Add(ent);
                     }
                 }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Recorrer el dibujo para el orden de dibujo", ex);
+            return;
+        }
 
-                if (lista.Count == 0)
-                {
-                    return;
-                }
+        foreach (var capa in capas)
+        {
+            var lista = porCapa[capa];
 
+            if (lista.Count == 0)
+            {
+                continue;
+            }
+
+            if (MoverAlFrente(lista) || DrawOrderPorComando(capa))
+            {
+                _alFrente += lista.Count;
+                continue;
+            }
+
+            Nota($"No se pudo subir al frente la capa {capa} ({lista.Count} objeto(s)). " +
+                 "Hazlo a mano con DRAWORDER → Bring to Front.");
+        }
+    }
+
+    /// <summary>
+    /// <c>MoveToTop</c> con la tabla de orden de dibujo del espacio modelo.
+    /// </summary>
+    /// <returns><c>false</c> si esta versión no deja usarla; entonces se prueba por comando.</returns>
+    private bool MoverAlFrente(List<object> entidades)
+    {
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
                 dynamic dict = _ms.GetExtensionDictionary;
                 dynamic tabla;
 
@@ -663,14 +729,53 @@ public sealed partial class PlantaDrawer
                     tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
                 }
 
-                tabla.MoveToTop(lista.ToArray());
-                _alFrente += lista.Count;
+                tabla.MoveToTop(entidades.ToArray());
+                return true;
             });
         }
         catch (Exception)
         {
-            Nota($"No se pudieron subir al frente las capas {string.Join(" + ", capas)}. " +
-                 "Hazlo a mano con DRAWORDER (Bring to Front) si hace falta.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// El respaldo: <b>DRAWORDER de verdad</b>, el mismo que se usa a mano.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se manda una expresión de LISP que selecciona la capa entera en el espacio modelo y le
+    /// pasa <c>DRAWORDER → Front</c>. Es la red de seguridad para cuando la tabla
+    /// <c>ACAD_SORTENTS</c> no está disponible o no admite el arreglo de entidades: es la
+    /// única forma de conseguir el mismo resultado sin tocar los objetos, y no les cambia el
+    /// handle, así que no rompe xrefs ni anotaciones asociativas.
+    /// </para>
+    /// <para>
+    /// Los nombres de orden van con <c>_</c> delante —<c>_.draworder</c>, <c>_F</c>— para que
+    /// funcione igual en un AutoCAD en español que en uno en inglés. Y el filtro
+    /// <c>(410 . "Model")</c> es necesario: sin él la selección se llevaría también lo que
+    /// esté en las presentaciones, y ahí el comando falla.
+    /// </para>
+    /// </remarks>
+    private bool DrawOrderPorComando(string capa)
+    {
+        if (!_cfg.Bandera("DRAWORDER_POR_COMANDO", true) || capa.Contains('"'))
+        {
+            return false;
+        }
+
+        var lisp =
+            "(if (setq ss_clk (ssget \"_X\" '((8 . \"" + capa + "\") (410 . \"Model\")))) " +
+            "(command \"_.draworder\" ss_clk \"\" \"_F\"))\n";
+
+        try
+        {
+            AcadConnection.Retry(() => { _doc.SendCommand(lisp); });
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
