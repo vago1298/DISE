@@ -4252,6 +4252,39 @@ def v19_circular_y_ui() -> None:
           'return e.Length == 0 ? "VAR_#3" : "VAR_" + e;' in zap_pla
           and "private void AsegurarCapaVarilla(" in zap_pla)
 
+    # ------------------------------------------------------------------
+    # LOS COLORES DE CAPA DE LA MACRO, EN UN SOLO SITIO
+    # ------------------------------------------------------------------
+    # Se reporto que una varilla del #5 salia BLANCA: la tabla de colores estaba
+    # escrita solo en el dibujante de secciones, asi que el de zapatas creaba
+    # VAR_#5 sin color y AutoCAD la dejaba en el 7. Ahora la tabla es de todos y el
+    # color se FUERZA para las capas de la macro, como hace su CrearCapa.
+    capas_cad = leer(ruta("client/src/CadLink.Cad/CapasCad.cs"))
+
+    for capa, color in (("VAR_#2", 150), ("VAR_#2.5", 6), ("VAR_#3", 132),
+                        ("VAR_#4", 142), ("VAR_#5", 160), ("VAR_#6", 4),
+                        ("VAR_#8", 1), ("VAR_#10", 6), ("VAR_#12", 15),
+                        ("TEXTOS", 3), ("CONCRETO", 8), ("ESTRIBOS", 150)):
+        check(f"la capa {capa} lleva el color {color} de la macro",
+              f'["{capa}"] = {color},' in capas_cad)
+
+    check("la tabla de colores es una sola, y la usan los tres dibujantes",
+          "CapasCad.ColorDeCapa(" in zap_pla
+          and "CapasCad.ColorDeVarilla(" in leer(
+              ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+          and "CapasCad.ColorDeCapa(capa)" in leer(
+              ruta("client/src/CadLink.Cad/AlzadoDrawer.cs")))
+    check("la capa de varilla de la zapata se crea CON su color",
+          "CrearCapa(capa, CapasCad.ColorDeCapa(capa), forzarColor: true);" in zap_pla)
+    check("y a las capas de la macro se les pone su color aunque ya existan",
+          "private void CrearCapa(string nombre, int color, bool forzarColor)" in zap_pla
+          and "if (color > 0 && (nueva || forzarColor))" in zap_pla
+          and "forzarColor: CapasCad.EsDeLaMacro(nombre));" in zap_pla)
+    check("un diametro que no este en la tabla se queda sin color, no en blanco",
+          "public const int SinColor = -1;" in capas_cad
+          and "if (color != CapasCad.SinColor)" in leer(
+              ruta("client/src/CadLink.Cad/SeccionDrawer.cs")))
+
     # Rotulos con leader.
     check("el dado y la columna llevan rotulo con leader",
           "private void RotuloConLeader(" in zap_drw
@@ -8728,6 +8761,26 @@ def v23_hoja_zapatas_corridas() -> None:
           "private (double X1, double Y1, double X2, double Y2)? RotuloDeParrilla(" in drawer
           and "El leader arranca del borde de ABAJO del renglón, en su punto medio." in drawer)
 
+    # LA CENTRAL CON DOBLE PARRILLA: UN ROTULO POR PARRILLA, UNO EN CADA LADO. Se
+    # pidio asi para que ningun leader tenga que cruzar por encima de otro renglon: la
+    # de abajo a la izquierda, la de arriba a la derecha, las dos a la misma altura.
+    check("con doble parrilla la central pone un rotulo por parrilla",
+          "private void RotuloDeParrillaCompleto(" in drawer
+          and "if (dosParrillas && !lindero)" in drawer)
+    check("la de abajo a la izquierda y la de arriba a la derecha",
+          "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans, superior: false,\n"
+          "                aLaDerecha: false, xTopeIzq, xTopeDer);" in drawer
+          and "z.VarSup, z.SepSup, z.VarSupTrans, z.SepSupTrans, superior: true,\n"
+          "                aLaDerecha: true, xTopeIzq, xTopeDer);" in drawer)
+    check("las dos varillas de esa parrilla van en el MISMO mtext",
+          'texto += "\\n" + segundo;' in drawer)
+    check("y sus dos flechas salen de cuartos distintos del renglon",
+          "x1 + ((x2 - x1) / 4)" in drawer
+          and "CirculoMasCercano(p.Circulos, x1 + (3 * (x2 - x1) / 4));" in drawer)
+    check("el lindero y la parrilla sola siguen con el reparto por tipo de varilla",
+          "var huellaInf = RotulosDeParrillaCorrida(" in drawer
+          and "else\n        {\n            var huellaInf = RotulosDeParrillaCorrida(" in drawer)
+
     # EL TEXTO DE CADA VARILLA DICE SU LECHO, y cuando los dos sentidos llevan lo
     # mismo se rotula una sola vez. Se pidio asi.
     # Y LA PALABRA SE VOLTEA EN LA PARRILLA DE ARRIBA: ahi la de flexion se amarra
@@ -8789,7 +8842,7 @@ def v23_hoja_zapatas_corridas() -> None:
     for nombre, valor in (("AnchoRotuloEnrase", "0.26"),
                           ("AnchoRotuloContratrabe", "0.23"),
                           ("AnchoRotuloCadena", "0.26"),
-                          ("AnchoRotuloMuroCentral", "0.32"),
+                          ("AnchoRotuloMuroCentral", "0.25"),
                           ("AnchoRotuloMuroLindero", "0.25")):
         check(f"el ancho {nombre} vale {valor}",
               f"private const double {nombre} = {valor};" in drawer)
@@ -8802,6 +8855,8 @@ def v23_hoja_zapatas_corridas() -> None:
     # El texto del muro de concreto es el de la macro, con sus abreviaturas.
     check("el rotulo del muro dice HORIZ. y VERT. como en la macro",
           "cm HORIZ." in drawer and "cm VERT." in drawer)
+    check("y su varilla lleva la C de corrugada, como las de parrilla",
+          '$"VAR {Etiqueta(z.VarMuro)}C @ {SepTexto(z.SepMuroHoriz)} cm HORIZ.' in drawer)
     check("y el ultimo renglon dice donde va el acero",
           '"DOBLE PARRILLA" : "PARRILLA AL CENTRO"' in drawer)
     check("el rotulo del enrase es el texto de la macro",

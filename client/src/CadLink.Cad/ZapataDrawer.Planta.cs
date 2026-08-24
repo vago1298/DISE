@@ -913,6 +913,15 @@ public sealed partial class ZapataDrawer
         return e.Length == 0 ? "VAR_#3" : "VAR_" + e;
     }
 
+    /// <summary>
+    /// Crea la capa de un diámetro con <b>el color que le da la macro</b>.
+    /// </summary>
+    /// <remarks>
+    /// Aquí estaba el error que se reportó: la capa se creaba <b>sin color</b>, así que al capturar
+    /// una varilla del #5 AutoCAD dejaba <c>VAR_#5</c> en blanco en lugar del <b>160</b> de la
+    /// macro. El color sale de <see cref="CapasCad"/>, la misma tabla que usa el dibujante de
+    /// secciones, y se le pone aunque la capa ya exista.
+    /// </remarks>
     private void AsegurarCapaVarilla(string capa)
     {
         if (!_capas.Add(capa))
@@ -920,26 +929,7 @@ public sealed partial class ZapataDrawer
             return;
         }
 
-        try
-        {
-            AcadConnection.Retry(() =>
-            {
-                dynamic todas = _doc.Layers;
-
-                try
-                {
-                    _ = todas.Item(capa);
-                }
-                catch (Exception)
-                {
-                    _ = todas.Add(capa);
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            Fallo($"Crear la capa '{capa}'", ex);
-        }
+        CrearCapa(capa, CapasCad.ColorDeCapa(capa), forzarColor: true);
     }
 
     /// <summary>
@@ -964,13 +954,21 @@ public sealed partial class ZapataDrawer
     // Primitivas de AutoCAD
     // ======================================================================
 
-    /// <summary>Crea las capas de la macro si no existen. Nunca cambia las que ya hay.</summary>
+    /// <summary>
+    /// Crea las capas que usa la zapata, con <b>los colores de la macro</b>.
+    /// </summary>
+    /// <remarks>
+    /// Las que están en la tabla de la macro —<c>CONCRETO</c>, <c>ESTRIBOS</c>, <c>TEXTOS</c> y las
+    /// nueve de varilla— llevan su color <b>siempre</b>, existan ya o no: son los colores del juego
+    /// de planos. Las demás —cotas, terreno, plantilla, los bloques— solo se pintan al crearlas, y
+    /// si ya están se dejan como el usuario las tenga. Ver <see cref="CapasCad"/>.
+    /// </remarks>
     public void AsegurarCapasBase()
     {
         var capas = new (string Nombre, int Color)[]
         {
-            (CapaConcreto, 0),
-            (CapaEstribos, 0),
+            (CapaConcreto, CapasCad.ColorDeCapa(CapaConcreto)),
+            (CapaEstribos, CapasCad.ColorDeCapa(CapaEstribos)),
             (CapaCotas, 0),
             (CapaRotulos, 3),
             (CapaLeader, 3),
@@ -988,32 +986,48 @@ public sealed partial class ZapataDrawer
                 continue;
             }
 
-            try
+            CrearCapa(nombre, color, forzarColor: CapasCad.EsDeLaMacro(nombre));
+        }
+    }
+
+    /// <summary>
+    /// Crea una capa —o la encuentra— y le pone su color.
+    /// </summary>
+    /// <param name="nombre">Nombre de la capa.</param>
+    /// <param name="color">Color ACI, o cero o menos para no tocarlo.</param>
+    /// <param name="forzarColor">
+    /// <c>true</c> para pintarla aunque ya exista, que es lo que hace <c>CrearCapa</c> en la macro y
+    /// lo que necesitan las capas de su tabla; <c>false</c> para pintarla solo al crearla.
+    /// </param>
+    private void CrearCapa(string nombre, int color, bool forzarColor)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
             {
-                AcadConnection.Retry(() =>
+                dynamic todas = _doc.Layers;
+                dynamic capa;
+                var nueva = false;
+
+                try
                 {
-                    dynamic todas = _doc.Layers;
+                    capa = todas.Item(nombre);
+                }
+                catch (Exception)
+                {
+                    capa = todas.Add(nombre);
+                    nueva = true;
+                }
 
-                    try
-                    {
-                        // Si ya existe se deja como está: son las capas del usuario.
-                        _ = todas.Item(nombre);
-                    }
-                    catch (Exception)
-                    {
-                        dynamic nueva = todas.Add(nombre);
-
-                        if (color > 0)
-                        {
-                            nueva.Color = color;
-                        }
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                Fallo($"Crear la capa '{nombre}'", ex);
-            }
+                if (color > 0 && (nueva || forzarColor))
+                {
+                    capa.Color = color;
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Crear la capa '{nombre}'", ex);
         }
     }
 

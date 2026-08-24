@@ -173,12 +173,12 @@ Cinco cosas, y ninguna cambia el dibujo:
 
 | Rótulo | Central | Lindero | Estado |
 |---|---|---|---|
-| Parrilla de flexión | MText de dos renglones a la **mitad del lado izquierdo libre**, flecha en la varilla horizontal | igual, con la franja recortada por la contratrabe | Sí |
-| Parrilla de temperatura | igual a la **mitad del lado derecho**, flecha en la varilla de punta que quede libre | igual | Sí |
+| Parrilla, con doble parrilla | **un rótulo por parrilla**: la de abajo a la izquierda y la de arriba a la derecha, las dos varillas en el mismo MText | reparto por tipo de varilla, apilado | Sí |
+| Parrilla, con una sola | flexión a la **mitad del lado izquierdo libre**, temperatura a la del **derecho** | igual, con la franja recortada por la contratrabe | Sí |
 | Muro de enrase | **siempre a la derecha** de la hilada, a 6 cm de su paño | igual | Sí |
 | Contratrabe | flecha a su **esquina superior derecha**, con el renglón corrido 6 cm a la izquierda | igual | Sí |
 | Cadena de desplante | texto **siempre despegado 5 cm** de su paño, en 26 cm de ancho | igual | Sí |
-| Muro de concreto | **siempre a 6 cm** del paño derecho del muro | por la izquierda, como su macro | Sí |
+| Muro de concreto | **siempre a 6 cm** del paño derecho del muro, en 25 cm de ancho y con la «C» en su varilla | por la izquierda, como su macro | Sí |
 | Muro de concreto | `xMuroDer + 0.12 − 0.05`, ancho 0.32, anclado a la izquierda | `xMuroIzq − 0.27`, ancho 0.25, centrado | Sí |
 | Punta del leader del muro | la varilla del paño derecho si hay dos, al 55 % de la altura | igual | Sí |
 | Cota de la pata | 4.5 cm sobre su eje, las dos iguales | 45 % de la separación la de abajo, 2.2 cm la de arriba | Sí |
@@ -209,12 +209,18 @@ sección** —con la medida vieja, una zapata de 50 cm de espesor dejaba el rót
 inferior enterrado en el rayado del concreto— y con **doble parrilla** se sube solo, porque el acero
 de arriba también está por debajo de ese paño.
 
-**Con doble parrilla, cada renglón en su carril.** La parrilla de abajo escribe primero y devuelve
-la caja de sus renglones; la de arriba se coloca **por encima** de ella y corre su carril a un lado,
-de modo que los cuatro leaders bajan **verticales y paralelos**. Dos paralelas no se cruzan, que es
-la forma más simple de cumplir lo que se pidió: la flecha de flexión se pega a cualquier punto de su
-varilla —es una línea continua— y la de temperatura salta a la primera varilla de punta que quede
-libre del renglón de abajo.
+**Con doble parrilla, un rótulo por parrilla y uno en cada lado.** En la **central**, la parrilla de
+abajo se rotula a la **izquierda** y la de arriba a la **derecha**, las dos a la misma altura y con
+sus **dos varillas en el mismo MText**. De ese rótulo salen dos flechas, una del cuarto izquierdo de
+su borde inferior y otra del cuarto derecho: la primera a la varilla de flexión —una línea continua,
+sirve cualquier punto— y la segunda a la varilla de punta más cercana. Así cada lado lleva **un solo
+renglón** y ningún leader tiene que cruzar por encima de otro.
+
+Antes se repartían por tipo de varilla —flexión a la izquierda y temperatura a la derecha, los dos
+lechos apilados en cada lado—, y con la contratrabe de 30 en una zapata de 80 no queda hueco para dos
+carriles: el leader del renglón de arriba acababa atravesando el de abajo. El **lindero** conserva ese
+reparto, porque su muro está pegado al paño derecho y el lado derecho no existe; y con **una sola
+parrilla** también, que es como se aprobó.
 
 **El codo del acero del muro se rellena.** Con sección rellena, la varilla del muro de concreto
 va maciza de punta a punta: círculos, tramo recto, pata **y codo**. El codo se rellena siguiendo
@@ -251,3 +257,25 @@ No es geometría: es todo lo que necesita el dibujo abierto, y por eso no vive e
    igual que ya se hace con los estribos de las aisladas.
 5. **El corte de las varillas del muro** en cada cruce con el acero de la
    zapata, que en la central se hace con oclusores y en el lindero no.
+
+
+## 10. Los colores de capa, que son de la macro
+
+La lista de `CrearCapa` de la macro de sección estructural vive ahora en un solo sitio,
+`CapasCad.cs`, y la usan los tres dibujantes —secciones, alzados y zapatas—:
+
+| Capa | ACI | | Capa | ACI |
+|---|---|---|---|---|
+| `VAR_#2` | 150 | | `VAR_#8` | 1 |
+| `VAR_#2.5` | 6 | | `VAR_#10` | 6 |
+| `VAR_#3` | 132 | | `VAR_#12` | 15 |
+| `VAR_#4` | 142 | | `TEXTOS` | 3 |
+| `VAR_#5` | 160 | | `CONCRETO` | 8 |
+| `VAR_#6` | 4 | | `ESTRIBOS` | 150 |
+
+Estaba escrita **solo** en el dibujante de secciones, así que el de zapatas creaba `VAR_#5`
+**sin color** y AutoCAD la dejaba en blanco: se capturaba una varilla del #5 y salía blanca en
+lugar del 160. Para estas doce capas el color se **fuerza** aunque la capa ya exista, que es lo que
+hace `CrearCapa` en el módulo de la macro y lo que mantiene el juego de planos de una pieza. Las
+capas que no están en la tabla —`COTAS`, `ROTULOS`, `TERRENO`, `PLANTILLA`, las de bloque— solo se
+pintan al crearlas, y si ya están se dejan como las tenga el usuario.

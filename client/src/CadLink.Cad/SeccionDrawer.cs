@@ -460,23 +460,26 @@ public sealed partial class SeccionDrawer
 
     public void AsegurarCapas(IEnumerable<string> clavesDeVarilla)
     {
-        Capa("CONCRETO", 8);
-        Capa("ESTRIBOS", 150);
-        Capa("TEXTOS", 3);
-        Capa("ROTULOS", 3);
+        Capa("CONCRETO", CapasCad.ColorDeCapa("CONCRETO"));
+        Capa("ESTRIBOS", CapasCad.ColorDeCapa("ESTRIBOS"));
+        Capa("TEXTOS", CapasCad.ColorDeCapa("TEXTOS"));
+        Capa("ROTULOS", CapasCad.ColorDeCapa("TEXTOS"));
         Capa("COTAS", 253);
 
-        var colores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["#2"] = 150, ["#2.5"] = 6, ["#3"] = 132, ["#4"] = 142, ["#5"] = 160,
-            ["#6"] = 4, ["#8"] = 1, ["#10"] = 6, ["#12"] = 15
-        };
-
+        // La tabla de colores vive en CapasCad, compartida con los demás dibujantes: estaba escrita
+        // solo aquí, y por eso el de zapatas creaba VAR_#5 en blanco.
         foreach (var clave in clavesDeVarilla.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (!string.IsNullOrWhiteSpace(clave))
+            if (string.IsNullOrWhiteSpace(clave))
             {
-                Capa("VAR_" + clave, colores.TryGetValue(clave, out var c) ? c : 7);
+                continue;
+            }
+
+            var color = CapasCad.ColorDeVarilla(clave);
+
+            if (color != CapasCad.SinColor)
+            {
+                Capa(CapasCad.PrefijoVarilla + clave, color);
             }
         }
 
