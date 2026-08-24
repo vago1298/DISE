@@ -61,6 +61,26 @@ public sealed class ElementoEtabs
     public string Forma { get; set; } = "RECT";
 
     /// <summary>
+    /// El <b>giro del eje local 2</b> de la sección, en grados. Solo en marcos.
+    /// </summary>
+    /// <remarks>
+    /// Es el ángulo que devuelve <c>GetLocalAxes</c>, y es <b>lo que decide cómo se ve la
+    /// columna en planta</b>: una columna de 20×60 girada 90° es una de 60×20. Sin este dato
+    /// todas salían derechas y el plano no coincidía con el modelo.
+    /// </remarks>
+    public double AnguloGrados { get; set; }
+
+    /// <summary>
+    /// La etiqueta de <b>PIER</b> del muro: <c>M1</c>, <c>M2X</c>… Vacío si no tiene.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que la macro rotula en el muro —no el nombre de la propiedad, que es lo que
+    /// llenaba la planta de «MURO TABICON 2 APLANADOS 15 CM» repetido—. Un muro sin pier
+    /// asignado no se rotula, igual que allá.
+    /// </remarks>
+    public string Pier { get; set; } = string.Empty;
+
+    /// <summary>
     /// El <b>material</b> que la propiedad de ETABS o de SAP2000 tiene asignado:
     /// <c>CONC</c>, <c>A992Fy50</c>, <c>MAMPOSTERIA</c>, lo que sea.
     /// </summary>

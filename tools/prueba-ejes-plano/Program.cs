@@ -1,3 +1,4 @@
+using CadLink.Cad;
 using CadLink.Cad.PlanoEstructural;
 
 // =====================================================================================
@@ -183,6 +184,108 @@ Igual("y ninguna sin BURBUJA_CRUZ", 0,
 // hacia arriba- esa rayita baja.
 Cerca("la rayita de fuera arranca en la orilla del círculo", -0.35, rayitas[0].Y1);
 Cerca("y llega a 0.35 + 0.315", -0.665, rayitas[0].Y2);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL PRIMER Y EL ULTIMO EJE, AL PANO EXTERIOR DEL MURO");
+Console.WriteLine("=====================================================================");
+
+// Una planta de 10 x 8 con muros de 15 cm en las cuatro orillas, una trabe de 30 cm sobre
+// el eje B -el de en medio- y otra trabe de 40 cm encimada al muro del eje C.
+var muros = new List<ElementoPlanta>
+{
+    // Los tres verticales: A (x=0), C (x=10) y uno interior en B (x=5) que es TRABE
+    new() { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 0, Y2 = 8, AnchoM = 0.15 },
+    new() { Clase = ClasePlanta.Muro, X1 = 10, Y1 = 0, X2 = 10, Y2 = 8, AnchoM = 0.15 },
+    new() { Clase = ClasePlanta.Trabe, X1 = 10, Y1 = 0, X2 = 10, Y2 = 8, AnchoM = 0.40 },
+    new() { Clase = ClasePlanta.Trabe, X1 = 5, Y1 = 0, X2 = 5, Y2 = 8, AnchoM = 0.30 },
+
+    // Y los horizontales: 1 (y=0) con muro de 20, 2 (y=8) solo con una trabe de 25
+    new() { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 10, Y2 = 0, AnchoM = 0.20 },
+    new() { Clase = ClasePlanta.Trabe, X1 = 0, Y1 = 8, X2 = 10, Y2 = 8, AnchoM = 0.25 }
+};
+
+var ejesX = new List<(string Id, double Ordenada)> { ("A", 0), ("B", 5), ("C", 10) };
+var ejesY = new List<(string Id, double Ordenada)> { ("1", 0), ("2", 8) };
+
+var alPanoX = ejes.AlPanoExterior(ejesX, verticales: true, muros);
+
+Cerca("el eje A se corre medio espesor a la IZQUIERDA", -0.075, alPanoX[0].Ordenada);
+Cerca("el B, el de en medio, NO se mueve", 5, alPanoX[1].Ordenada);
+Cerca("y el C, medio espesor a la DERECHA", 10.075, alPanoX[2].Ordenada);
+Igual("los nombres de las burbujas se conservan", "A", alPanoX[0].Id);
+
+// MANDA EL MURO: sobre el eje C hay un muro de 15 y una trabe de 40, y el paño lo tiene
+// que dar el MURO -0.075-, no la trabe -0.20-. Es lo que se ve en el plano.
+Check("sobre el eje C manda el muro y no la trabe de 40",
+      Math.Abs(alPanoX[2].Ordenada - 10.075) < 1e-9);
+
+Cerca("y medio ancho sobre el eje C es el del muro", 0.075,
+      ejes.MedioAnchoSobreEje(10, vertical: true, muros));
+
+// La lista que llega NO se toca: dibujar dos veces no corre los ejes dos veces.
+Cerca("la lista original se queda intacta", 0, ejesX[0].Ordenada);
+
+var alPanoY = ejes.AlPanoExterior(ejesY, verticales: false, muros);
+
+Cerca("el eje 1 baja medio muro de 20", -0.10, alPanoY[0].Ordenada);
+// En el eje 2 no hay muro, solo una trabe: se usa la trabe, que es el respaldo.
+Cerca("el eje 2 sube medio ancho de la trabe, que es lo unico que hay", 8.125,
+      alPanoY[1].Ordenada);
+
+// Un muro que solo CRUZA el eje no cuenta: si contara, el eje se correria por un pano
+// que no existe.
+var cruzando = new List<ElementoPlanta>
+{
+    new() { Clase = ClasePlanta.Muro, X1 = 0, Y1 = 4, X2 = 10, Y2 = 4, AnchoM = 0.30 }
+};
+Cerca("un muro perpendicular que cruza el eje no da pano", 0,
+      ejes.MedioAnchoSobreEje(0, vertical: true, cruzando));
+
+var sinPano = new ConfigPlano();
+sinPano.Aplicar(new Dictionary<string, string> { ["EJES_EXTREMOS_AL_PANO"] = "NO" });
+Cerca("con EJES_EXTREMOS_AL_PANO en NO nada se mueve", 0,
+      new EjesPlano(sinPano).AlPanoExterior(ejesX, true, muros)[0].Ordenada);
+
+Cerca("la tolerancia son los 25 cm de la hoja", 0.25, ejes.ToleranciaPano);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" LA SECCION DE LA COLUMNA, GIRADA COMO EN EL MODELO");
+Console.WriteLine("=====================================================================");
+
+// Sin giro: las cuatro esquinas de una 20 x 60 centrada en el origen.
+var derecha = PlantaDrawer.EsquinasGiradas(0, 0, 0.20, 0.60, 0);
+Cerca("sin giro, la primera esquina es (-0.10, -0.30)", -0.10, derecha[0]);
+Cerca("y su Y", -0.30, derecha[1]);
+
+// A 90 grados la 20 x 60 se ve como una 60 x 20, que es lo que ensena ETABS.
+var girada = PlantaDrawer.EsquinasGiradas(0, 0, 0.20, 0.60, 90);
+var anchoGirado = girada.Where((_, i) => i % 2 == 0).Max() -
+                  girada.Where((_, i) => i % 2 == 0).Min();
+var altoGirado = girada.Where((_, i) => i % 2 == 1).Max() -
+                 girada.Where((_, i) => i % 2 == 1).Min();
+
+Cerca("a 90 grados mide 0.60 de ancho", 0.60, anchoGirado, 1e-9);
+Cerca("y 0.20 de alto", 0.20, altoGirado, 1e-9);
+
+// El centro no se mueve: la columna gira sobre su nudo.
+Cerca("el centro sigue en el nudo, en X", 0,
+      girada.Where((_, i) => i % 2 == 0).Sum() / 4, 1e-9);
+Cerca("y en Y", 0, girada.Where((_, i) => i % 2 == 1).Sum() / 4, 1e-9);
+
+var movida = PlantaDrawer.EsquinasGiradas(3, 7, 0.30, 0.30, 45);
+Cerca("una girada 45 sigue centrada en su nudo, en X", 3,
+      movida.Where((_, i) => i % 2 == 0).Sum() / 4, 1e-9);
+Cerca("y en Y", 7, movida.Where((_, i) => i % 2 == 1).Sum() / 4, 1e-9);
+
+Console.WriteLine();
+Console.WriteLine(" El angulo del rotulo, que nunca se lee de cabeza");
+
+Cerca("una trabe horizontal, 0", 0, PlantaDrawer.AnguloLegible(1, 0));
+Cerca("una vertical, 90", 90, PlantaDrawer.AnguloLegible(0, 1));
+Cerca("a 135 se rota a -45", -45, PlantaDrawer.AnguloLegible(-1, 1), 1e-9);
+Cerca("y una dibujada de derecha a izquierda, 0", 0, PlantaDrawer.AnguloLegible(-1, 0));
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");

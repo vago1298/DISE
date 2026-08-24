@@ -315,14 +315,26 @@ public sealed partial class PlantaDrawer
         var capaBur = _capas.Prefijo + "EJES-BURBUJA";
         var capaTxt = _capas.Prefijo + "EJES-TEXTO";
 
+        // ==============================================================================
+        //  EL PRIMER Y EL ÚLTIMO EJE, AL PAÑO EXTERIOR DEL MURO
+        // ==============================================================================
+        //  Los de en medio se quedan en su eje —una cota interior se da eje a eje— y solo
+        //  los dos de orilla de cada dirección se corren medio espesor hacia afuera, hasta
+        //  el paño del muro que llevan. Es AjustarEjesExtremosAlPano.
+        //
+        //  Se trabaja con COPIAS: si se tocara la lista de la planta, dibujarla dos veces
+        //  correría los ejes dos veces y la cota total crecería sola.
+        var ejesX = Ejes.AlPanoExterior(p.EjesX, verticales: true, p.Elementos);
+        var ejesY = Ejes.AlPanoExterior(p.EjesY, verticales: false, p.Elementos);
+
         // El rectángulo, estirado hasta los ejes que se salgan de lo dibujado.
-        foreach (var (_, o) in p.EjesX)
+        foreach (var (_, o) in ejesX)
         {
             xMin = Math.Min(xMin, o);
             xMax = Math.Max(xMax, o);
         }
 
-        foreach (var (_, o) in p.EjesY)
+        foreach (var (_, o) in ejesY)
         {
             yMin = Math.Min(yMin, o);
             yMax = Math.Max(yMax, o);
@@ -331,7 +343,7 @@ public sealed partial class PlantaDrawer
         var escalaLt = _cfg.Numero("EJES_ESCALA_TIPOLINEA", 1);
 
         // ---- los verticales -------------------------------------------------------
-        foreach (var e in Ejes.Verticales(p.EjesX, yMin, yMax))
+        foreach (var e in Ejes.Verticales(ejesX, yMin, yMax))
         {
             var x = e.Ordenada + dx;
             LineaDeEje(x, e.Desde + dy, x, e.Hasta + dy, capaLinea, escalaLt);
@@ -342,7 +354,7 @@ public sealed partial class PlantaDrawer
         }
 
         // ---- los horizontales -----------------------------------------------------
-        foreach (var e in Ejes.Horizontales(p.EjesY, xMin, xMax))
+        foreach (var e in Ejes.Horizontales(ejesY, xMin, xMax))
         {
             var y = e.Ordenada + dy;
             LineaDeEje(e.Desde + dx, y, e.Hasta + dx, y, capaLinea, escalaLt);
@@ -353,8 +365,8 @@ public sealed partial class PlantaDrawer
 
         // ---- y las cotas ----------------------------------------------------------
         var cotas = Ejes.Cotas(
-            p.EjesX.Select(e => e.Ordenada).ToList(),
-            p.EjesY.Select(e => e.Ordenada).ToList(),
+            ejesX.Select(e => e.Ordenada).ToList(),
+            ejesY.Select(e => e.Ordenada).ToList(),
             xMin, yMin, xMax, yMax);
 
         var capaCotas = _capas.Prefijo + "COTAS";
@@ -708,7 +720,18 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        var giro = _cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS", 0) * Math.PI / 180;
+        // ==============================================================================
+        //  EL GIRO: EL DEL MODELO, NO CERO
+        // ==============================================================================
+        //  Es lo que hacía que todas las columnas salieran derechas y el plano no coincidiera
+        //  con ETABS: una columna de 20×60 girada 90° es, en planta, una de 60×20. El ángulo
+        //  es el del eje local 2 que da GetLocalAxes, y va en la INSERCIÓN, no en la
+        //  geometría del bloque, así que un BLOCKREPLACE conserva la orientación de cada una.
+        //
+        //  BLOQUE_ROTACION_EXTRA_GRADOS se suma encima, para el caso en que el detalle que el
+        //  usuario mete en el bloque venga dibujado de lado.
+        var grados = el.AnguloGrados + _cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS", 0);
+        var giro = grados * Math.PI / 180;
 
         try
         {
@@ -716,6 +739,19 @@ public sealed partial class PlantaDrawer
             {
                 dynamic ins = _ms.InsertBlock(new[] { cx, cy, 0d }, nombre, 1d, 1d, 1d, giro);
                 ins.Layer = CapaDe(el);
+
+                // POR CAPA, y no un color propio: el relleno amarillo va DENTRO del bloque
+                // con su color fijo, y el contorno tiene que salir del color de la capa del
+                // tipo —E-COLUMNA, E-CASTILLO, E-ACERO— como el resto del plano.
+                try
+                {
+                    ins.Color = PorCapa;
+                }
+                catch (Exception)
+                {
+                    // Se queda con el que traiga: es cosmético.
+                }
+
                 return true;
             });
         }
@@ -867,25 +903,7 @@ public sealed partial class PlantaDrawer
                 // verse igual en todas.
                 if (_cfg.Bandera("RELLENAR_COLUMNAS", true))
                 {
-                    try
-                    {
-                        dynamic ht = blk.AddHatch(0, "SOLID", true, 0);
-                        ht.AppendOuterLoop(new[] { contorno });
-                        ht.Evaluate();
-                        ht.Layer = "0";
-
-                        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
-
-                        if (color is > 0 and < 256)
-                        {
-                            ht.Color = color;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        Nota($"No se pudo rellenar el bloque '{nombre}': queda con su " +
-                             "contorno, sin achurado.");
-                    }
+                    RellenarDentroDelBloque(blk, contorno, nombre, b, h, forma);
                 }
 
                 return true;
@@ -907,6 +925,82 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Bloques ya armados en esta pasada, para no rehacerlos por cada columna.</summary>
     private readonly HashSet<string> _bloquesListos = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// El <b>relleno amarillo</b> dentro del bloque: achurado y, si no se deja, un SOLID.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El color va <b>por objeto</b> —el 2 de <c>COLOR_RELLENO_BLOQUE</c>— y no por capa,
+    /// porque el bloque se inserta en la capa del tipo de elemento y el relleno tiene que
+    /// verse amarillo en todas: en E-COLUMNA, en E-CASTILLO y en E-ACERO.
+    /// </para>
+    /// <para>
+    /// El <b>respaldo con SOLID</b> es lo que arregla que las columnas salieran huecas. Un
+    /// <c>AddHatch</c> dentro de una <i>definición de bloque</i> falla en varias versiones
+    /// —el achurado quiere un contorno que ya esté en la base de datos y ahí todavía se está
+    /// armando— y se quedaba solo el contorno. Un SOLID de cuatro puntos siempre se puede
+    /// crear, se mueve con el bloque y se imprime relleno igual.
+    /// </para>
+    /// <para>
+    /// En una sección <b>redonda</b> no hay SOLID que valga, así que si el achurado falla se
+    /// avisa: es el único caso que puede quedar hueco.
+    /// </para>
+    /// </remarks>
+    private void RellenarDentroDelBloque(
+        dynamic blk, dynamic contorno, string nombre, double b, double h, string forma)
+    {
+        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
+
+        if (color is <= 0 or > 255)
+        {
+            color = 2;
+        }
+
+        try
+        {
+            dynamic ht = blk.AddHatch(0, "SOLID", true, 0);
+            ht.AppendOuterLoop(new[] { contorno });
+            ht.Evaluate();
+            ht.Layer = "0";
+            ht.Color = color;
+            return;
+        }
+        catch (Exception)
+        {
+            // Al respaldo: el SOLID.
+        }
+
+        var redonda = string.Equals(forma, "CIRC", StringComparison.OrdinalIgnoreCase) ||
+                      string.Equals(forma, "PIPE", StringComparison.OrdinalIgnoreCase);
+
+        if (redonda)
+        {
+            Nota($"No se pudo rellenar el bloque redondo '{nombre}': queda con su " +
+                 "contorno. Achúralo con SOLID si lo necesitas relleno.");
+            return;
+        }
+
+        try
+        {
+            // Los cuatro puntos de un SOLID NO van en orden alrededor: el tercero y el
+            // cuarto van cruzados —abajo-izquierda, abajo-derecha, arriba-izquierda,
+            // arriba-derecha—. En orden circular saldría un moño en lugar de un rectángulo.
+            dynamic sol = blk.AddSolid(
+                new[] { -b / 2, -h / 2, 0d },
+                new[] { b / 2, -h / 2, 0d },
+                new[] { -b / 2, h / 2, 0d },
+                new[] { b / 2, h / 2, 0d });
+
+            sol.Layer = "0";
+            sol.Color = color;
+        }
+        catch (Exception)
+        {
+            Nota($"No se pudo rellenar el bloque '{nombre}': queda con su contorno, sin " +
+                 "achurado.");
+        }
+    }
 
     // =================================================================================
     //  QUÉ HAY YA DIBUJADO

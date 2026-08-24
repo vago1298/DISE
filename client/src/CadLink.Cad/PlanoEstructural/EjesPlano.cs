@@ -375,5 +375,176 @@ public sealed class EjesPlano
         return anillo > 0 ? anillo * 1.2 : RadioBurbuja * 1.1;
     }
 
+    // =================================================================================
+    //  EL PRIMER Y EL ÚLTIMO EJE, AL PAÑO EXTERIOR DEL MURO
+    // =================================================================================
+
+    /// <summary>¿Se corren los ejes de orilla al paño? Es <c>EJES_EXTREMOS_AL_PANO</c>.</summary>
+    public bool ExtremosAlPano => _cfg.Bandera("EJES_EXTREMOS_AL_PANO", true);
+
+    /// <summary>
+    /// Holgura para dar por bueno que un muro <b>corre sobre</b> un eje, en metros.
+    /// </summary>
+    /// <remarks>
+    /// <c>EJES_PANO_TOL_CM</c> son 25 cm, y son necesarios: en ETABS el muro se modela en su
+    /// eje medio, pero un muro de fachada se suele dibujar con su paño interior en el eje de
+    /// la cuadrícula, así que su línea media queda a un palmo del eje. Con una tolerancia
+    /// pequeña no se encontraría ningún muro y los ejes se quedarían sin correr.
+    /// </remarks>
+    public double ToleranciaPano => _cfg.Numero("EJES_PANO_TOL_CM", 25) / 100;
+
+    /// <summary>
+    /// Corre el <b>primer y el último</b> eje al <b>paño exterior</b> del muro que lleven.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <c>AjustarEjesExtremosAlPano</c>. En un plano de arquitectura las cotas de orilla
+    /// se dan <b>al paño</b> —es lo que se replantea en obra, el borde de la construcción—
+    /// mientras que las interiores se dan <b>eje a eje</b>. Así que solo se mueven el
+    /// primero y el último de cada dirección: los de en medio se quedan en su eje.
+    /// </para>
+    /// <para>
+    /// Lo que se mueve es el eje <b>completo</b>: su línea, sus dos burbujas y las cotas que
+    /// arrancan de él, porque todo eso se calcula después a partir de esta ordenada. Y se
+    /// devuelve una <b>lista nueva</b>, no se toca la que llega: dibujar dos veces la misma
+    /// planta correría los ejes dos veces.
+    /// </para>
+    /// <para>
+    /// Si sobre el eje no hay ningún muro ni ninguna trabe, se queda donde estaba. Un eje
+    /// corrido «por si acaso» descuadraría la cota total.
+    /// </para>
+    /// </remarks>
+    /// <param name="verticales">
+    /// <c>true</c> = los ejes de las letras, los que van en X y se mueven a izquierda y
+    /// derecha; <c>false</c> = los de los números.
+    /// </param>
+    public List<(string Id, double Ordenada)> AlPanoExterior(
+        IReadOnlyList<(string Id, double Ordenada)> ejes,
+        bool verticales,
+        IReadOnlyList<ElementoPlanta> elementos)
+    {
+        var salida = ejes.ToList();
+
+        if (!ExtremosAlPano || salida.Count < 2 || elementos.Count == 0)
+        {
+            return salida;
+        }
+
+        // Cuáles son los de orilla: se buscan por su coordenada y no por su posición en la
+        // lista, porque la cuadrícula puede llegar sin ordenar.
+        var iMin = 0;
+        var iMax = 0;
+
+        for (var i = 1; i < salida.Count; i++)
+        {
+            if (salida[i].Ordenada < salida[iMin].Ordenada)
+            {
+                iMin = i;
+            }
+
+            if (salida[i].Ordenada > salida[iMax].Ordenada)
+            {
+                iMax = i;
+            }
+        }
+
+        if (iMin == iMax)
+        {
+            return salida;
+        }
+
+        var medioMin = MedioAnchoSobreEje(salida[iMin].Ordenada, verticales, elementos);
+        var medioMax = MedioAnchoSobreEje(salida[iMax].Ordenada, verticales, elementos);
+
+        if (medioMin > 0)
+        {
+            salida[iMin] = (salida[iMin].Id, salida[iMin].Ordenada - medioMin);
+        }
+
+        if (medioMax > 0)
+        {
+            salida[iMax] = (salida[iMax].Id, salida[iMax].Ordenada + medioMax);
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// <b>Medio ancho</b> del elemento más grueso que corre sobre un eje, en metros.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <c>MedioAnchoSobreEje</c>, y tiene dos reglas de la macro que importan:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Manda el muro sobre la trabe.</b> Si por el eje van las dos cosas —lo normal:
+    ///     una cadena de cerramiento sobre el muro de block—, el paño lo da el MURO, que es
+    ///     el que se ve en el plano y el que se replantea. La trabe solo se usa cuando no
+    ///     hay muro.
+    ///   </item>
+    ///   <item>
+    ///     Entre varios muros sobre el mismo eje se toma el <b>más grueso</b>: la cota tiene
+    ///     que llegar al paño más saliente, no a uno cualquiera.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// El elemento tiene que <b>correr a lo largo</b> del eje, no cruzarlo: se comprueba que
+    /// sus dos extremos estén sobre él y que tenga largo en la otra dirección. Sin eso, un
+    /// muro perpendicular que pasa por el eje daría un paño que no existe.
+    /// </para>
+    /// </remarks>
+    public double MedioAnchoSobreEje(
+        double ordenada, bool vertical, IReadOnlyList<ElementoPlanta> elementos)
+    {
+        var tol = ToleranciaPano;
+
+        if (tol <= 0)
+        {
+            tol = 0.25;
+        }
+
+        double deMuro = 0;
+        double deTrabe = 0;
+
+        foreach (var el in elementos)
+        {
+            if (el.Clase != ClasePlanta.Muro && el.Clase != ClasePlanta.Trabe)
+            {
+                continue;
+            }
+
+            // Sobre el eje con sus DOS extremos, y con largo en la otra dirección: así un
+            // muro que solo lo cruza no cuenta.
+            var sobre = vertical
+                ? Math.Abs(el.X1 - ordenada) <= tol && Math.Abs(el.X2 - ordenada) <= tol &&
+                  Math.Abs(el.Y2 - el.Y1) > tol
+                : Math.Abs(el.Y1 - ordenada) <= tol && Math.Abs(el.Y2 - ordenada) <= tol &&
+                  Math.Abs(el.X2 - el.X1) > tol;
+
+            if (!sobre)
+            {
+                continue;
+            }
+
+            var ancho = el.AnchoM > 0
+                ? el.AnchoM
+                : el.Clase == ClasePlanta.Muro
+                    ? _cfg.Numero("ESPESOR_MURO_CM", 15) / 100
+                    : 0.20;
+
+            if (el.Clase == ClasePlanta.Muro)
+            {
+                deMuro = Math.Max(deMuro, ancho / 2);
+            }
+            else
+            {
+                deTrabe = Math.Max(deTrabe, ancho / 2);
+            }
+        }
+
+        return deMuro > 0 ? deMuro : deTrabe;
+    }
+
     private static double Positivo(double v, double omision) => v > 0 ? v : omision;
 }

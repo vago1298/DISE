@@ -417,6 +417,23 @@ public static class EtabsReader
                 e.Clase = ClaseElemento.Diagonal;
             }
 
+            // EL GIRO DE LA SECCION. Es lo que hace que una columna de 20x60 se vea de
+            // 20x60 y no de 60x20, y con el se inserta el bloque en la orientación que
+            // tiene en el modelo. La macro lo lee igual, con GetLocalAxes.
+            try
+            {
+                object?[] a = { nombre, 0d, false };
+
+                if (Com.CallRet(frameObj, "GetLocalAxes", a, 1, 2) == 0)
+                {
+                    e.AnguloGrados = Convert.ToDouble(a[1]);
+                }
+            }
+            catch (Exception ex) when (EsFalloCom(ex))
+            {
+                // Sin ángulo la sección sale derecha, como antes.
+            }
+
             if (propFrame is not null && seccion.Length > 0)
             {
                 var dims = DimensionesSeccion(propFrame, seccion, cacheSecciones, m);
@@ -643,11 +660,42 @@ public static class EtabsReader
             var zMax = coords.Max(c => c.Z);
             var esVertical = zMax - zMin > 0.05;   // mismo criterio de la macro
 
+            // EL PIER DEL MURO. Es lo que se rotula en el plano, y por eso se pide aquí y
+            // no en una pasada aparte: la macro hace lo mismo y usa el pier COMO etiqueta
+            // del muro. Un muro sin pier no lleva rótulo, que es mejor que rotular el
+            // nombre de la propiedad 31 veces.
+            var pier = string.Empty;
+
+            if (esVertical)
+            {
+                try
+                {
+                    object?[] a = { nombre, string.Empty };
+                    Com.Call(areaObj, "GetPier", a, 1);
+                    pier = a[1]?.ToString()?.Trim() ?? string.Empty;
+
+                    if (pier.Equals("NONE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pier = string.Empty;
+                    }
+                }
+                catch (Exception ex) when (EsFalloCom(ex))
+                {
+                    // Un modelo sin piers asignados: el muro se queda sin rótulo.
+                }
+            }
+
             var e = new ElementoEtabs
             {
                 Clase = esVertical ? ClaseElemento.Muro : ClaseElemento.Losa,
                 Story = i < niveles.Length ? niveles[i] : string.Empty,
-                Etiqueta = i < etiquetas.Length && etiquetas[i].Length > 0 ? etiquetas[i] : nombre,
+
+                // En el MURO la etiqueta ES el pier, como en la macro. En la losa, la suya.
+                Etiqueta = esVertical
+                    ? pier
+                    : (i < etiquetas.Length && etiquetas[i].Length > 0 ? etiquetas[i] : nombre),
+
+                Pier = pier,
                 Seccion = seccion,
                 Forma = "AREA"
             };

@@ -29,6 +29,28 @@ public sealed class ElementoPlanta
     public string Seccion { get; set; } = string.Empty;
 
     /// <summary>
+    /// La etiqueta de <b>PIER</b> del muro: <c>M1</c>, <c>M2X</c>… Vacío si no tiene.
+    /// </summary>
+    /// <remarks>
+    /// Es <b>lo único</b> que la macro rotula en un muro, y va en su capa aparte
+    /// —<c>PIERS</c>—. El nombre de la propiedad no se rotula a propósito: era lo que
+    /// llenaba la planta de «MURO TABICON 2 APLANADOS 15 CM» repetido en los 31 muros.
+    /// Un muro sin pier asignado se queda sin rótulo, igual que allá.
+    /// </remarks>
+    public string Pier { get; set; } = string.Empty;
+
+    /// <summary>
+    /// El <b>giro de la sección</b> en planta, en grados. Solo en columnas y castillos.
+    /// </summary>
+    /// <remarks>
+    /// Es el ángulo del eje local 2 que da <c>GetLocalAxes</c>, y es lo que hace que una
+    /// columna de 20×60 girada 90° se vea de 60×20 en el plano, como se ve en ETABS. Va a
+    /// la <b>inserción del bloque</b>, no a su geometría: así el bloque de la sección es
+    /// uno solo y un <c>BLOCKREPLACE</c> conserva la orientación de cada columna.
+    /// </remarks>
+    public double AnguloGrados { get; set; }
+
+    /// <summary>
     /// El <b>tipo</b> de la macro: CASTILLO, COLUMNA, DALA, TRABE, CONTRATRABE, DIAGONAL,
     /// MURO o LOSA.
     /// </summary>

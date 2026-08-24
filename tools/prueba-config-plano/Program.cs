@@ -72,7 +72,9 @@ Console.WriteLine(" Los valores que mandan el dibujo");
 Igual("FACTOR_UNIDADES", 1d, cfg.Numero("FACTOR_UNIDADES"));
 Igual("PREFIJO_CAPAS", "E-", cfg.Texto("PREFIJO_CAPAS"));
 Igual("ALTURA_TEXTO", 0.12, cfg.Numero("ALTURA_TEXTO"));
-Igual("OFFSET_Y_INICIAL", 15d, cfg.Numero("OFFSET_Y_INICIAL"));
+// 25 y no los 15 de la hoja: se pidió expresamente que, con el dibujo vacío, el juego
+// arranque a Y = 25 en lugar de pegado al origen.
+Igual("OFFSET_Y_INICIAL", 25d, cfg.Numero("OFFSET_Y_INICIAL"));
 // 10.00 y no los 5.00 de la hoja: se pidió expresamente.
 Igual("SEPARACION_ENTRE_PLANTAS", 10d, cfg.Numero("SEPARACION_ENTRE_PLANTAS"));
 Igual("AIRE_SOBRE_LO_DIBUJADO_M", 5d, cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M"));
@@ -108,6 +110,22 @@ Igual("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C",
       cfg.Texto("LOSACERO_TEXTO_PLANTILLA"));
 Igual("ROTULO_TITULO con sus DOS espacios", "PLANTA  ESTRUCTURAL", cfg.Texto("ROTULO_TITULO"));
 Igual("CIMENTACION_STORIES", "BASE,CIMENTACION,FOUNDATION", cfg.Texto("CIMENTACION_STORIES"));
+
+// Lo que manda los rótulos, los ejes de orilla y el bloque de la sección: son los cinco
+// arreglos de esta pasada y conviene tener los valores escritos.
+Igual("CAPA_PIERS, sin prefijo", "PIERS", cfg.Texto("CAPA_PIERS"));
+Igual("COLOR_PIERS", 7d, cfg.Numero("COLOR_PIERS"));
+Igual("PIER_SEPARACION_CM", 6d, cfg.Numero("PIER_SEPARACION_CM"));
+Igual("COLUMNA_TEXTO_SEPARACION_CM", 2d, cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM"));
+Igual("COLOR_RELLENO_BLOQUE, el amarillo", 2d, cfg.Numero("COLOR_RELLENO_BLOQUE"));
+Igual("BLOQUE_ROTACION_EXTRA_GRADOS", 0d, cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS"));
+Igual("EJES_PANO_TOL_CM", 25d, cfg.Numero("EJES_PANO_TOL_CM"));
+Igual("MAMPOSTERIA_ANCHO", 0.06, cfg.Numero("MAMPOSTERIA_ANCHO"));
+Igual("ESPESOR_MURO_CM", 15d, cfg.Numero("ESPESOR_MURO_CM"));
+Check("los ejes de orilla van al paño y el rótulo de la cadena lleva fondo",
+      cfg.Bandera("EJES_EXTREMOS_AL_PANO") && cfg.Bandera("CADENA_TEXTO_FONDO")
+      && cfg.Bandera("CADENA_TEXTO_MTEXT") && cfg.Bandera("RELLENAR_COLUMNAS")
+      && cfg.Bandera("COLUMNAS_COMO_BLOQUE"));
 
 Console.WriteLine();
 Console.WriteLine(" Las banderas: SI / NO");

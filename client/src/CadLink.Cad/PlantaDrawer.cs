@@ -247,9 +247,10 @@ public sealed partial class PlantaDrawer
         // Y el rótulo de dos renglones, debajo de los ejes de abajo.
         RotuloDeLaPlanta(p, x0, y0, caja.XMin, caja.YMin, caja.XMax);
 
-        // UN solo renglón con los que se dibujaron con el espesor de omisión, en lugar de
-        // uno por elemento.
+        // UN solo renglón con los que se dibujaron con el espesor de omisión, y otro con
+        // los muros que se quedaron sin pier, en lugar de uno por elemento.
         ResumirEspesores();
+        ResumirPiers();
 
         return r;
     }
@@ -271,14 +272,14 @@ public sealed partial class PlantaDrawer
     ///   </item>
     ///   <item>
     ///     El <b>paso</b> horizontal es el ancho de la planta más
-    ///     <c>SEPARACION_ENTRE_PLANTAS</c> —5 m—, y es el <b>mismo para todas</b>: se toma
+    ///     <c>SEPARACION_ENTRE_PLANTAS</c> —10 m—, y es el <b>mismo para todas</b>: se toma
     ///     el rectángulo que las envuelve a todas, no el de cada una, para que queden
     ///     alineadas y a la misma distancia. Con el ancho de cada una, dos plantas
     ///     distintas quedarían descuadradas.
     ///   </item>
     ///   <item>
-    ///     Todas arrancan en la misma Y, la de <c>OFFSET_Y_INICIAL</c> —15—, así que los
-    ///     rótulos quedan en línea.
+    ///     Todas arrancan en la misma Y —la de <c>OFFSET_Y_INICIAL</c>, 25, si el dibujo
+    ///     está vacío, o encima de lo que ya haya—, así que los rótulos quedan en línea.
     ///   </item>
     ///   <item>
     ///     Y <c>PLANTAS_POR_FILA</c> —100— es cuántas caben en una fila antes de bajar a la
@@ -351,11 +352,15 @@ public sealed partial class PlantaDrawer
         //
         //  Así que se mira qué hay ya en el dibujo y el juego se coloca AIRE_SOBRE_LO_
         //  DIBUJADO_M por encima de lo más alto que haya, sea de concreto, de acero o una
-        //  anotación. Si el dibujo está vacío, va al ORIGEN.
+        //  anotación.
+        //
+        //  Y si el dibujo está VACÍO, a la Y de OFFSET_Y_INICIAL —25—, no al origen: el
+        //  rótulo de la planta va DEBAJO de las burbujas y de las cotas, así que pegado al
+        //  origen se saldría por abajo, a la zona de los negativos.
         // ==============================================================================
         var aire = _cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M", 5);
         var tope = TopeDeLoDibujado();
-        var offsetY = tope is { } t ? t + aire : 0;
+        var offsetY = tope is { } t ? t + aire : _cfg.Numero("OFFSET_Y_INICIAL", 25);
 
         if (porFila < 1)
         {
@@ -472,27 +477,120 @@ public sealed partial class PlantaDrawer
             return true;
         }
 
-        var pl = PolilineaCerrada(
-            new[]
-            {
-                cx - (b / 2), cy - (h / 2),
-                cx + (b / 2), cy - (h / 2),
-                cx + (b / 2), cy + (h / 2),
-                cx - (b / 2), cy + (h / 2)
-            },
-            CapaDe(el));
+        // ---- EL CAMINO SIN BLOQUE: LA SECCIÓN SUELTA, PERO IGUAL DE FIEL -------------
+        //  Girada como en el modelo y rellena, exactamente como el bloque. Antes este
+        //  camino dibujaba un rectángulo derecho y hueco, así que cuando el bloque no se
+        //  podía crear el plano salía sin orientación y sin relleno sin decir por qué.
+        var esquinas = EsquinasGiradas(cx, cy, b, h, el.AnguloGrados);
+
+        var pl = PolilineaCerrada(esquinas, CapaDe(el));
 
         if (pl is null)
         {
             return false;
         }
 
+        if (_cfg.Bandera("RELLENAR_COLUMNAS", true))
+        {
+            RellenarEnPlanta(pl, esquinas, CapaDe(el));
+        }
+
         // Las diagonales del recuadro: es la marca de «columna» en un plano
-        // estructural, y distingue de un dado o de un hueco a simple vista.
-        Linea(cx - (b / 2), cy - (h / 2), cx + (b / 2), cy + (h / 2), CapaDe(el));
-        Linea(cx - (b / 2), cy + (h / 2), cx + (b / 2), cy - (h / 2), CapaDe(el));
+        // estructural, y distingue de un dado o de un hueco a simple vista. Van entre las
+        // esquinas GIRADAS, así que siguen la sección.
+        Linea(esquinas[0], esquinas[1], esquinas[4], esquinas[5], CapaDe(el));
+        Linea(esquinas[6], esquinas[7], esquinas[2], esquinas[3], CapaDe(el));
 
         return true;
+    }
+
+    /// <summary>
+    /// Las cuatro esquinas de una sección <b>ya girada</b>, en el orden de la polilínea.
+    /// </summary>
+    /// <remarks>
+    /// El giro se hace alrededor del <b>centro</b> de la sección, que es el nudo: es donde
+    /// gira de verdad una columna en ETABS. Girar respecto a una esquina la movería de sitio.
+    /// </remarks>
+    public static double[] EsquinasGiradas(
+        double cx, double cy, double b, double h, double grados)
+    {
+        var a = grados * Math.PI / 180;
+        var ca = Math.Cos(a);
+        var sa = Math.Sin(a);
+
+        var mb = b / 2;
+        var mh = h / 2;
+
+        return new[]
+        {
+            cx + (-mb * ca) - (-mh * sa), cy + (-mb * sa) + (-mh * ca),
+            cx + (mb * ca) - (-mh * sa), cy + (mb * sa) + (-mh * ca),
+            cx + (mb * ca) - (mh * sa), cy + (mb * sa) + (mh * ca),
+            cx + (-mb * ca) - (mh * sa), cy + (-mb * sa) + (mh * ca)
+        };
+    }
+
+    /// <summary>
+    /// Rellena una sección dibujada <b>en el plano</b>, no dentro de un bloque.
+    /// </summary>
+    /// <remarks>
+    /// Mismo criterio que el relleno del bloque: achurado <c>SOLID</c> del color de
+    /// <c>COLOR_RELLENO_BLOQUE</c> —el 2, amarillo— y, si el achurado no se deja, un SOLID de
+    /// cuatro puntos, que nunca falla. El color va por objeto para que se vea igual en
+    /// cualquiera de las capas de columna.
+    /// </remarks>
+    private void RellenarEnPlanta(object contorno, double[] esquinas, string capa)
+    {
+        var color = (int)_cfg.Numero("COLOR_RELLENO_BLOQUE", 2);
+
+        if (color is <= 0 or > 255)
+        {
+            color = 2;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic ht = _ms.AddHatch(0, "SOLID", true, 0);
+                ht.AppendOuterLoop(new[] { contorno });
+                ht.Evaluate();
+                ht.Layer = capa;
+                ht.Color = color;
+            });
+
+            return;
+        }
+        catch (Exception)
+        {
+            // Al respaldo.
+        }
+
+        if (esquinas.Length < 8)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                // Cruzados el tercero y el cuarto: en orden circular un SOLID sale hecho un
+                // moño.
+                dynamic sol = _ms.AddSolid(
+                    new[] { esquinas[0], esquinas[1], 0d },
+                    new[] { esquinas[2], esquinas[3], 0d },
+                    new[] { esquinas[6], esquinas[7], 0d },
+                    new[] { esquinas[4], esquinas[5], 0d });
+
+                sol.Layer = capa;
+                sol.Color = color;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Rellenar la sección de una columna", ex);
+        }
     }
 
     /// <summary>
@@ -600,40 +698,69 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private void Rotulo(ElementoPlanta el, double x0, double y0, double altura)
     {
+        // El interruptor general de la hoja: DIBUJAR_ETIQUETAS en NO deja la planta muda,
+        // que es como se entrega cuando el rotulado se hace aparte.
+        if (!_cfg.Bandera("DIBUJAR_ETIQUETAS", true))
+        {
+            return;
+        }
+
         // QUÉ se rotula: lo que dice la hoja CONFIG. ETIQUETA_ID_COLUMNAS y
         // ETIQUETA_ID_TRABES están en NO, así que de la columna y de la trabe va SOLO la
         // sección; del muro, solo su PIER —no la propiedad, que es la que repetía «MURO
         // TABICON 2 APLANADOS 15 CM» en los 31 muros—; y de la losa, su propiedad.
         var texto = el.Clase switch
         {
-            ClasePlanta.Muro => el.Etiqueta,
+            ClasePlanta.Muro => PierDelMuro(el),
             ClasePlanta.Losa => el.Seccion,
             _ => string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion
         };
 
         if (string.IsNullOrWhiteSpace(texto))
         {
+            // UN MURO SIN PIER NO SE ROTULA, pero se cuenta: así el resumen dice por qué
+            // faltan rótulos en lugar de dejar pensando que se perdieron. Pasa en los
+            // modelos de SAP2000, donde los piers no existen, y en los de ETABS a los que
+            // no se les asignó ninguno.
+            if (el.Clase == ClasePlanta.Muro)
+            {
+                _sinPier++;
+            }
+
             return;
         }
 
         var (cx, cy) = CentroDe(el, x0, y0);
 
         // ---- COLUMNA Y CASTILLO: esquina superior derecha ---------------------------
+        //  Con el estilo TEXTO_SECCIONES y anclado por su esquina INFERIOR IZQUIERDA
+        //  —la alineación 12 de la macro—, así que el texto crece hacia arriba y hacia la
+        //  derecha y nunca se mete sobre la sección.
         if (el.Clase == ClasePlanta.Columna)
         {
             var b = el.AnchoM > LargoMinimo ? el.AnchoM : 0.15;
             var h = el.PeralteM > LargoMinimo ? el.PeralteM : b;
             var gap = _cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM", 2) / 100;
 
-            Mtexto(cx + (b / 2) + gap + (altura * 2), cy + (h / 2) + gap + (altura / 2),
-                   texto, altura, CapaTextos);
+            // La esquina de la sección YA GIRADA: en una columna a 30° la esquina no está
+            // en (b/2, h/2). Se toma la caja que la envuelve, que es lo que se ve.
+            var a = el.AnguloGrados * Math.PI / 180;
+            var ca = Math.Abs(Math.Cos(a));
+            var sa = Math.Abs(Math.Sin(a));
+
+            var medioX = (b / 2 * ca) + (h / 2 * sa);
+            var medioY = (b / 2 * sa) + (h / 2 * ca);
+
+            Mtexto(cx + medioX + gap, cy + medioY + gap, texto, AlturaSecciones(altura),
+                   CapaTextos, 0, EstiloSecciones, false, 7);
             return;
         }
 
         // ---- LOSA: al centro del paño ------------------------------------------------
         if (el.Clase == ClasePlanta.Losa)
         {
-            Mtexto(cx, cy, texto, altura, CapaTextos);
+            Mtexto(cx, cy, texto, AlturaLosas(altura), CapaTextos, 0, EstiloLosas,
+                   _cfg.Bandera("LOSA_TEXTO_FONDO", true));
             return;
         }
 
@@ -644,14 +771,92 @@ public sealed partial class PlantaDrawer
 
         if (largo < LargoMinimo)
         {
-            Mtexto(cx, cy, texto, altura, CapaTextos);
+            Mtexto(cx, cy, texto, AlturaSecciones(altura), CapaTextos, 0, EstiloSecciones);
             return;
         }
 
+        var ang = AnguloLegible(dx, dy);
+
+        // ---- EL MURO: SU PIER, EN LA CAPA PIERS -------------------------------------
+        //  Va corrido al lado del muro, no encima, y en su propia capa —PIERS, sin el
+        //  prefijo E-, igual que la macro— para poder apagar todos los piers de un clic
+        //  sin apagar los rótulos de las secciones.
+        if (el.Clase == ClasePlanta.Muro)
+        {
+            var esp = el.AnchoM > LargoMinimo ? el.AnchoM : EspesorMuroPorOmision;
+            var hPier = AlturaSecciones(altura);
+
+            // De qué se separa: de lo más ancho que corra sobre el muro. Su espesor, la
+            // línea de mampostería que va a su centro, o la cadena que lo tapa. Si solo
+            // se contara el espesor, el pier caería sobre la polilínea de block.
+            var medio = Math.Max(esp / 2, _cfg.Numero("MAMPOSTERIA_ANCHO", 0.06) / 2);
+
+            var d = medio + (_cfg.Numero("PIER_SEPARACION_CM", 6) / 100) + (hPier * 0.7);
+
+            Mtexto(cx + (-dy / largo * d), cy + (dx / largo * d), texto, hPier,
+                   _capas.CapaPiers, ang, EstiloSecciones);
+            return;
+        }
+
+        // ---- LA TRABE Y LA CADENA: MTEXT CENTRADO, GIRADO Y CON FONDO ----------------
+        //  Centrado JUSTO EN MEDIO de la barra —TRABE_ROTULO_CENTRADO en SI—, no corrido a
+        //  un lado, y con el fondo opaco puesto: es lo que deja leer la sección encima de
+        //  las dos líneas del muro sin cortarlas (CADENA_CORTA_LINEA en NO).
+        var esCadena = EsCadena(el);
+
+        var altTrabe = esCadena ? AlturaCadenas(altura) : AlturaSecciones(altura);
+        var estilo = esCadena ? EstiloCadenas : EstiloSecciones;
+        var fondo = esCadena && _cfg.Bandera("CADENA_TEXTO_FONDO", true);
+
+        Mtexto(cx, cy, texto, altTrabe, CapaTextos, ang, estilo, fondo);
+    }
+
+    /// <summary>
+    /// El pier del muro, y <b>nada más</b>: si no tiene pier, no se rotula.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que pidió el usuario y lo que hace la macro. Antes se caía a la etiqueta del
+    /// muro —el nombre de su propiedad— y la planta salía con «MURO TABICON 2 APLANADOS 15
+    /// CM» escrito 31 veces. Se acepta la etiqueta <b>solo</b> si el lector ya puso ahí el
+    /// pier, que es lo que hace con los muros de ETABS y de SAP2000.
+    /// </remarks>
+    private static string PierDelMuro(ElementoPlanta el) =>
+        !string.IsNullOrWhiteSpace(el.Pier) ? el.Pier.Trim() : string.Empty;
+
+    /// <summary>
+    /// ¿Es una <b>cadena de cerramiento</b>? Lo dice el prefijo de su sección.
+    /// </summary>
+    /// <remarks>
+    /// <c>CADENA_PREFIJO_SECCION</c> es <c>CC</c>, así que <c>CC15X20</c> es cadena y
+    /// <c>T30X60</c> no. También cuenta el tipo si la clasificación ya lo dijo. Importa
+    /// porque la cadena lleva <b>otro estilo y otra altura</b> —TEXTO_CADENAS, 0.09— y el
+    /// fondo opaco puesto.
+    /// </remarks>
+    private bool EsCadena(ElementoPlanta el)
+    {
+        if (el.Tipo.Contains("CADENA", StringComparison.OrdinalIgnoreCase) ||
+            el.Tipo.Contains("DALA", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var pref = _cfg.Texto("CADENA_PREFIJO_SECCION", "CC");
+
+        return pref.Length > 0 && !string.IsNullOrWhiteSpace(el.Seccion) &&
+               el.Seccion.TrimStart().StartsWith(pref, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// El ángulo de un rótulo que se lee <b>a lo largo</b> de la barra, sin quedar de cabeza.
+    /// </summary>
+    /// <remarks>
+    /// Es el apaño de la macro: un texto a 135° se lee del revés, así que el ángulo se lleva
+    /// al rango de −90° a 90°. Un plano no se gira más de un cuarto de vuelta para leerlo.
+    /// </remarks>
+    public static double AnguloLegible(double dx, double dy)
+    {
         var ang = Math.Atan2(dy, dx) * 180 / Math.PI;
 
-        // El mismo apaño de la macro: un texto a 135° se lee de cabeza, así que el ángulo
-        // se lleva al rango de −90° a 90°.
         if (ang > 90)
         {
             ang -= 180;
@@ -661,21 +866,73 @@ public sealed partial class PlantaDrawer
             ang += 180;
         }
 
-        var px = cx;
-        var py = cy;
+        return ang;
+    }
 
-        if (el.Clase == ClasePlanta.Muro)
+    private string EstiloSecciones => _cfg.Texto("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES");
+
+    private string EstiloCadenas => _cfg.Bandera("CADENA_USAR_ESTILO", true)
+        ? _cfg.Texto("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS")
+        : EstiloSecciones;
+
+    private string EstiloLosas => _cfg.Bandera("LOSA_USAR_ESTILO", true)
+        ? _cfg.Texto("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS")
+        : EstiloSecciones;
+
+    /// <summary>
+    /// La altura del rótulo de una sección: la de la hoja, no una calculada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Va con la altura FIJA de la hoja —<c>SEC_ALTURA</c>, 0.12— porque es la del estilo
+    /// <c>TEXTO_SECCIONES</c>, y un MTEXT <b>obedece al estilo</b> cuando este trae altura
+    /// fija: pedirle otra no serviría de nada y el plano saldría con dos criterios.
+    /// </para>
+    /// <para>
+    /// El valor calculado a partir del tamaño de la planta se usa solo como respaldo, si
+    /// alguien pone la altura de la hoja en 0.
+    /// </para>
+    /// </remarks>
+    private double AlturaSecciones(double respaldo)
+    {
+        var h = _cfg.Numero("SEC_ALTURA", 0.12);
+
+        if (h > 0)
         {
-            // Corrido al lado, en la perpendicular al muro: medio espesor más la
-            // separación de la hoja, más media letra para que no roce la línea.
-            var esp = el.AnchoM > LargoMinimo ? el.AnchoM : 0.15;
-            var d = (esp / 2) + (_cfg.Numero("PIER_SEPARACION_CM", 6) / 100) + (altura * 0.7);
-
-            px += -dy / largo * d;
-            py += dx / largo * d;
+            return h;
         }
 
-        Mtexto(px, py, texto, altura, CapaTextos, ang);
+        h = _cfg.Numero("ALTURA_TEXTO_SECCION", 0);
+
+        return h > 0 ? h : respaldo;
+    }
+
+    private double AlturaCadenas(double respaldo)
+    {
+        var h = _cfg.Numero("CADENA_TEXTO_ALTURA", 0.09);
+
+        if (h > 0)
+        {
+            return h;
+        }
+
+        var factor = _cfg.Numero("CADENA_TEXTO_FACTOR", 0.5);
+
+        return factor > 0 ? AlturaSecciones(respaldo) * factor : respaldo;
+    }
+
+    private double AlturaLosas(double respaldo)
+    {
+        var h = _cfg.Numero("LOSA_TEXTO_ALTURA", 0.072);
+
+        if (h > 0)
+        {
+            return h;
+        }
+
+        var factor = _cfg.Numero("LOSA_TEXTO_FACTOR", 0.5);
+
+        return factor > 0 ? AlturaSecciones(respaldo) * factor : respaldo;
     }
 
     /// <summary>
@@ -918,21 +1175,79 @@ public sealed partial class PlantaDrawer
         }
     }
 
+    /// <summary>
+    /// Un <b>MTEXT</b>, con su estilo, su giro, su anclaje y —si se pide— su fondo opaco.
+    /// </summary>
+    /// <param name="estilo">
+    /// El estilo de texto. En blanco = el de las secciones. <b>Si no está en el dibujo se
+    /// crea</b>: es lo que hacía que los rótulos no salieran con la letra de la macro en un
+    /// dibujo que no la tuviera.
+    /// </param>
+    /// <param name="conFondo">
+    /// <c>true</c> = <c>BackgroundFill</c>, el fondo opaco que <b>borra lo que tenga
+    /// atrás</b>. Es lo que en la macro deja leer el rótulo de la cadena encima de las dos
+    /// líneas del muro sin tener que cortarlas (<c>CADENA_CORTA_LINEA</c> = NO).
+    /// </param>
+    /// <param name="anclaje">
+    /// El <c>AttachmentPoint</c>: 5 = MiddleCenter —centrado, el de las trabes—, 7 =
+    /// BottomLeft —el de la esquina de la columna, que es la alineación 12 de la macro—.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// El MTEXT se crea con un <b>ancho holgado</b> y no con 0. Es el detalle que hacía que
+    /// el rótulo no apareciera: con ancho 0 hay versiones de AutoCAD que crean el objeto y
+    /// no lo muestran, y además <c>AttachmentPoint</c> necesita una caja con ancho para
+    /// centrar. El ancho se calcula del propio texto, así que no parte renglones.
+    /// </para>
+    /// <para>
+    /// El orden importa: <b>estilo, luego altura</b>. Si el estilo trae altura fija —los de
+    /// la macro la traen— manda el estilo y la asignación se ignora; al revés, la altura se
+    /// perdería siempre.
+    /// </para>
+    /// </remarks>
     private object? Mtexto(
         double x, double y, string texto, double altura, string capa,
-        double giroGrados = 0)
+        double giroGrados = 0, string estilo = "", bool conFondo = false, int anclaje = 5)
     {
         if (string.IsNullOrWhiteSpace(texto) || altura <= 0)
         {
             return null;
         }
 
+        var nombreEstilo = estilo.Length > 0 ? estilo : EstiloTexto;
+
+        // ANTES de crear el texto: si el estilo no está en el dibujo, se crea. Así el
+        // rótulo sale con la letra que pide la hoja aunque el dibujo venga en blanco.
+        AsegurarEstiloDeTexto(nombreEstilo);
+
+        // El ancho de la caja: el largo del renglón más largo, con holgura. Nunca 0.
+        var letras = texto.Split('\n', '\r').Max(s => s.Length);
+        var ancho = Math.Max(1, letras) * altura * 1.4;
+
         try
         {
             return AcadConnection.Retry<object?>(() =>
             {
-                dynamic mt = _ms.AddMText(new[] { x, y, 0d }, 0d, texto);
-                mt.Height = altura;
+                dynamic mt = _ms.AddMText(new[] { x, y, 0d }, ancho, texto);
+
+                try
+                {
+                    mt.StyleName = nombreEstilo;
+                }
+                catch (Exception)
+                {
+                    // Sin el estilo, el texto sale con el del dibujo. No es motivo
+                    // para perder el rótulo.
+                }
+
+                try
+                {
+                    mt.Height = altura;
+                }
+                catch (Exception)
+                {
+                    // El estilo trae altura fija: manda él, que es lo que quiere la macro.
+                }
 
                 // El GIRO va antes de fijar el punto de anclaje: así el texto queda
                 // centrado sobre el punto ya girado. Es lo que deja el rótulo de la trabe
@@ -950,11 +1265,9 @@ public sealed partial class PlantaDrawer
                     }
                 }
 
-                // 5 = MiddleCenter. Centrado sobre el punto, que es el centro del
-                // elemento: así el rótulo no se va hacia un lado en una trabe corta.
                 try
                 {
-                    mt.AttachmentPoint = 5;
+                    mt.AttachmentPoint = anclaje;
                     mt.InsertionPoint = new[] { x, y, 0d };
                 }
                 catch (Exception)
@@ -964,14 +1277,19 @@ public sealed partial class PlantaDrawer
                     // corrido, pero está.
                 }
 
-                try
+                if (conFondo)
                 {
-                    mt.StyleName = EstiloTexto;
-                }
-                catch (Exception)
-                {
-                    // Sin el estilo, el texto sale con el del dibujo. No es motivo
-                    // para perder el rótulo.
+                    try
+                    {
+                        // El fondo del DIBUJO, que es el que tapa sin pintar un color: es
+                        // el «SI = con FONDO, borra lo que tenga atras» de la hoja.
+                        mt.BackgroundFill = true;
+                    }
+                    catch (Exception)
+                    {
+                        Nota("Tu AutoCAD no aceptó el fondo opaco de los rótulos; si alguno " +
+                             "se lee mal encima del muro, ponle máscara a mano.");
+                    }
                 }
 
                 mt.Layer = capa;
@@ -985,6 +1303,90 @@ public sealed partial class PlantaDrawer
             return null;
         }
     }
+
+    /// <summary>
+    /// Se asegura de que un estilo de texto <b>exista</b>, y si no, lo crea.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los cuatro estilos de la macro los crea <c>AsegurarEstilosDeLaMacro</c> al empezar a
+    /// dibujar, con su fuente y su altura. Esto es la red de seguridad para cualquier otro
+    /// —uno escrito a mano en la hoja CONFIG, por ejemplo—: se crea con la fuente que le
+    /// toque según su nombre, o con Arial y altura libre si no se reconoce.
+    /// </para>
+    /// <para>
+    /// Se recuerda lo ya visto para no interrogar al dibujo por cada rótulo: en una planta
+    /// con 300 elementos serían 300 vueltas por COM, que es la parte lenta.
+    /// </para>
+    /// </remarks>
+    private void AsegurarEstiloDeTexto(string nombre)
+    {
+        if (nombre.Length == 0 || !_estilosVistos.Add(nombre))
+        {
+            return;
+        }
+
+        var existe = false;
+
+        try
+        {
+            existe = AcadConnection.Retry(() =>
+            {
+                try
+                {
+                    _ = _doc.TextStyles.Item(nombre);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // Si no se puede preguntar, se intenta crear: crear uno que ya está no rompe.
+        }
+
+        if (existe)
+        {
+            return;
+        }
+
+        // La fuente que le toca por nombre. Es la de la hoja para los estilos de la macro,
+        // y Arial con altura libre para cualquier otro.
+        if (string.Equals(nombre, _cfg.Texto("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES"),
+                          StringComparison.OrdinalIgnoreCase))
+        {
+            EstiloDeTexto(nombre,
+                          _cfg.Texto("SEC_NOMBRE_FUENTE", "Bahnschrift"),
+                          _cfg.Texto("SEC_FUENTE", "bahnschrift.ttf"),
+                          _cfg.Numero("SEC_ALTURA", 0.12), false);
+        }
+        else if (string.Equals(nombre, _cfg.Texto("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS"),
+                               StringComparison.OrdinalIgnoreCase))
+        {
+            EstiloDeTexto(nombre,
+                          _cfg.Texto("CADENA_NOMBRE_FUENTE", "Bahnschrift"),
+                          _cfg.Texto("CADENA_FUENTE", "bahnschrift.ttf"),
+                          _cfg.Numero("CADENA_TEXTO_ALTURA", 0.09), false);
+        }
+        else if (string.Equals(nombre, _cfg.Texto("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS"),
+                               StringComparison.OrdinalIgnoreCase))
+        {
+            EstiloDeTexto(nombre,
+                          _cfg.Texto("LOSA_NOMBRE_FUENTE", "Bahnschrift"),
+                          _cfg.Texto("LOSA_FUENTE", "bahnschrift.ttf"),
+                          _cfg.Numero("LOSA_TEXTO_ALTURA", 0.072), false);
+        }
+        else
+        {
+            EstiloDeTexto(nombre, "Arial", "arial.ttf", 0, false);
+        }
+    }
+
+    /// <summary>Estilos por los que ya se preguntó, para no repetir la vuelta por COM.</summary>
+    private readonly HashSet<string> _estilosVistos = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Pone la línea a trazos, cargando el tipo de línea si hace falta.
@@ -1068,6 +1470,9 @@ public sealed partial class PlantaDrawer
 
     private double _espesorOmision;
 
+    /// <summary>Cuántos muros llegaron sin pier, y por tanto sin rótulo.</summary>
+    private int _sinPier;
+
     /// <summary>
     /// El renglón único del resumen. Se llama al terminar de dibujar la planta.
     /// </summary>
@@ -1082,5 +1487,28 @@ public sealed partial class PlantaDrawer
              $"{_espesorOmision * 100:0} cm, como hace la macro. Revísalos antes de acotar.");
 
         _sinEspesor = 0;
+    }
+
+    /// <summary>
+    /// El renglón de los muros que se quedaron sin rótulo por no tener pier.
+    /// </summary>
+    /// <remarks>
+    /// En el muro se rotula <b>el pier y nada más</b>, que es lo que hace la macro. Así que
+    /// si el modelo no los tiene asignados —en SAP2000 los piers no existen— los muros salen
+    /// sin rótulo, y eso hay que decirlo una vez: es una decisión del modelo, no un fallo del
+    /// dibujo.
+    /// </remarks>
+    internal void ResumirPiers()
+    {
+        if (_sinPier == 0)
+        {
+            return;
+        }
+
+        Nota($"{_sinPier} muro(s) sin PIER asignado en el modelo: se dibujaron sin rótulo, " +
+             "porque en el muro se rotula el pier y no el nombre de su propiedad. Asígnales " +
+             "un pier en el modelo si los quieres rotulados.");
+
+        _sinPier = 0;
     }
 }

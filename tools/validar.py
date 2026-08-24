@@ -2732,7 +2732,7 @@ def v16_extruida_piers() -> None:
     # Los renglones que mas se han peleado, con el valor exacto de su macro.
     for par, valor in (("VERSION_CONFIG", "29"), ("VERSION_PARCHE", "50"),
                        ("PREFIJO_CAPAS", "E-"), ("ALTURA_TEXTO", "0.12"),
-                       ("OFFSET_Y_INICIAL", "15"),
+                       ("OFFSET_Y_INICIAL", "25"),
                        ("SEC_ALTURA", "0.12"), ("CADENA_TEXTO_ALTURA", "0.09"),
                        ("SEPARACION_ENTRE_PLANTAS", "10"),
                        ("LOSA_TEXTO_ALTURA", "0.072"), ("LOSA_HATCH_ESCALA", "0.0475"),
@@ -3270,6 +3270,9 @@ def v18_planta_autocad() -> None:
     dib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
     dto = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
     mac = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
+    # La prueba ejecutable de la etapa 4. Se lee AQUI, antes del primer uso: dejarla mas
+    # abajo ya reventó dos veces con UnboundLocalError.
+    pre = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
 
     check("existe PlantaDrawer", "class PlantaDrawer" in dib)
     check("existe el DTO PlantaCad", "class PlantaCad" in dto)
@@ -3328,8 +3331,12 @@ def v18_planta_autocad() -> None:
         # asi dibujar dos veces no encima las plantas. Con el dibujo vacio, al origen.
         check("el juego se coloca por encima de lo ya dibujado",
               '_cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M", 5)' in cuerpo
-              and "var tope = TopeDeLoDibujado();" in cuerpo
-              and "tope is { } t ? t + aire : 0" in cuerpo)
+              and "var tope = TopeDeLoDibujado();" in cuerpo)
+        # Y CON EL DIBUJO VACIO, A LA Y DE OFFSET_Y_INICIAL -25-, no al origen: el rotulo
+        # de la planta va DEBAJO de las burbujas y de las cotas, asi que pegado al origen se
+        # salia por abajo, a la zona de los negativos.
+        check("y con el dibujo vacio arranca en OFFSET_Y_INICIAL, que son 25",
+              'tope is { } t ? t + aire : _cfg.Numero("OFFSET_Y_INICIAL", 25)' in cuerpo)
         check("y se mide lo que hay en el dibujo para saber donde acaba",
               "internal double? TopeDeLoDibujado()" in mac)
         check("y caben PLANTAS_POR_FILA en cada fila",
@@ -3477,10 +3484,38 @@ def v18_planta_autocad() -> None:
           and "internal static string LimpiaNombreDeBloque(string s)" in mac)
     check("el giro va en la insercion, no en la geometria",
           '_cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS", 0)' in mac)
+    # EL GIRO ES EL DEL MODELO. Con 0 todas las columnas salian derechas y una 20x60 girada
+    # 90 grados se veia de 20x60 en lugar de 60x20: el plano no coincidia con ETABS.
+    check("y el giro es el del modelo, no cero",
+          "var grados = el.AnguloGrados + _cfg.Numero(\"BLOQUE_ROTACION_EXTRA_GRADOS\", 0);"
+          in mac
+          and "public double AnguloGrados { get; set; }" in dto
+          and "AnguloGrados = el.AnguloGrados," in codigo)
     check("y va RELLENA, con el color de la hoja",
           '_cfg.Bandera("RELLENAR_COLUMNAS", true)' in mac
           and 'blk.AddHatch(0, "SOLID", true, 0)' in mac
           and '_cfg.Numero("COLOR_RELLENO_BLOQUE", 2)' in mac)
+    # EL RESPALDO CON SOLID: un AddHatch dentro de una DEFINICION de bloque falla en varias
+    # versiones -el achurado quiere un contorno que ya este en la base de datos- y la columna
+    # se quedaba hueca. Un SOLID de cuatro puntos siempre se puede crear.
+    check("si el achurado no se deja, el relleno va con un SOLID",
+          "private void RellenarDentroDelBloque(" in mac
+          and "blk.AddSolid(" in mac
+          and "private void RellenarEnPlanta(" in dib
+          and "_ms.AddSolid(" in dib)
+    # Los cuatro puntos de un SOLID van CRUZADOS: en orden circular sale un monio.
+    check("los cuatro puntos del SOLID van cruzados, no en orden circular",
+          "new[] { -b / 2, h / 2, 0d },\n                new[] { b / 2, h / 2, 0d })" in mac)
+    # LA SECCION SUELTA, IGUAL DE FIEL: girada y rellena. Antes este camino dibujaba un
+    # rectangulo derecho y hueco, asi que cuando el bloque fallaba el plano salia sin
+    # orientacion y sin relleno, y sin decir por que.
+    check("el camino sin bloque tambien sale girado y relleno",
+          "public static double[] EsquinasGiradas(" in dib
+          and "var esquinas = EsquinasGiradas(cx, cy, b, h, el.AnguloGrados);" in dib
+          and "RellenarEnPlanta(pl, esquinas, CapaDe(el));" in dib)
+    check("hay prueba ejecutable del giro de la seccion",
+          "PlantaDrawer.EsquinasGiradas(0, 0, 0.20, 0.60, 90)" in pre
+          and "a 90 grados mide 0.60 de ancho" in pre)
     check("un bloque que ya existe se respeta salvo que la hoja diga lo contrario",
           '_cfg.Bandera("REDEFINIR_BLOQUES", true)' in mac)
     check("y si algo falla se dibuja la seccion suelta, no se pierde la columna",
@@ -3507,8 +3542,7 @@ def v18_planta_autocad() -> None:
           "public static string Letra(int i)" in leer(
               ruta("client/src/CadLink.Etabs/EjesModelo.cs")))
 
-    # Y su prueba ejecutable.
-    pre = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+    # Y su prueba ejecutable, leída más arriba.
     check("hay prueba ejecutable de los ejes, las cotas y el rotulo",
           "using CadLink.Cad.PlanoEstructural;" in pre
           and "ejes.SaleEjes()" in pre
@@ -3524,13 +3558,88 @@ def v18_planta_autocad() -> None:
     check("el rotulo de la columna va a la esquina, con su separacion",
           '_cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM", 2)' in dib)
     check("el de la trabe va girado a lo largo de la barra",
-          "var ang = Math.Atan2(dy, dx) * 180 / Math.PI;" in dib
+          "public static double AnguloLegible(double dx, double dy)" in dib
           and "ang -= 180;" in dib and "ang += 180;" in dib
-          and "Mtexto(px, py, texto, altura, CapaTextos, ang);" in dib)
+          and "var ang = AnguloLegible(dx, dy);" in dib)
     check("y el del muro corrido al lado con PIER_SEPARACION_CM",
           '_cfg.Numero("PIER_SEPARACION_CM", 6)' in dib)
     check("el MText acepta giro",
-          "double giroGrados = 0)" in dib and "mt.Rotation = giroGrados * Math.PI / 180;" in dib)
+          "double giroGrados = 0," in dib
+          and "mt.Rotation = giroGrados * Math.PI / 180;" in dib)
+
+    # ------------------------------------------------------------------
+    # EL MTEXT DE VERDAD: CON SU ESTILO, SU ANCHO Y SU FONDO
+    # ------------------------------------------------------------------
+    #  Los rotulos no aparecian. Dos motivos, los dos aqui:
+    #    1) el MTEXT se creaba con ancho 0, y con ancho 0 hay versiones que crean el objeto
+    #       y no lo muestran; ademas AttachmentPoint necesita caja con ancho para centrar.
+    #    2) el estilo se asignaba y, si no existia en el dibujo, se perdia en silencio.
+    #       Ahora se CREA el que falte, que es lo que pidio el usuario.
+    check("el MTEXT se crea con ancho, nunca con 0",
+          "_ms.AddMText(new[] { x, y, 0d }, ancho, texto)" in dib
+          and "var ancho = Math.Max(1, letras) * altura * 1.4;" in dib)
+    check("el estilo del rotulo se crea si el dibujo no lo tiene",
+          "private void AsegurarEstiloDeTexto(string nombre)" in dib
+          and "AsegurarEstiloDeTexto(nombreEstilo);" in dib
+          and "_estilosVistos" in dib)
+    check("y el estilo va ANTES de la altura, porque el de la macro trae altura fija",
+          dib.find("mt.StyleName = nombreEstilo;") < dib.find("mt.Height = altura;"))
+    check("el rotulo de la cadena lleva FONDO opaco, como en la macro",
+          "mt.BackgroundFill = true;" in dib
+          and '_cfg.Bandera("CADENA_TEXTO_FONDO", true)' in dib)
+    check("cada familia de rotulos va con SU estilo y SU altura de la hoja",
+          '_cfg.Texto("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES")' in dib
+          and '_cfg.Texto("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS")' in dib
+          and '_cfg.Texto("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS")' in dib
+          and "private double AlturaSecciones(double respaldo)" in dib
+          and "private double AlturaCadenas(double respaldo)" in dib
+          and "private double AlturaLosas(double respaldo)" in dib)
+    # La columna se ancla por su esquina INFERIOR IZQUIERDA -la alineacion 12 de la macro-,
+    # asi el texto crece hacia arriba y a la derecha y no se mete sobre la seccion.
+    check("el rotulo de la columna se ancla por su esquina, no centrado",
+          "int anclaje = 5)" in dib and "mt.AttachmentPoint = anclaje;" in dib
+          and "EstiloSecciones, false, 7)" in dib)
+
+    # ------------------------------------------------------------------
+    # EL MURO SE ROTULA CON SU PIER, EN LA CAPA PIERS
+    # ------------------------------------------------------------------
+    #  Antes se caia a la etiqueta -el nombre de la propiedad- y la planta salia con
+    #  «MURO TABICON 2 APLANADOS 15 CM» escrito 31 veces. Si no hay pier, no hay rotulo.
+    check("el muro se rotula con su PIER y nada mas",
+          "ClasePlanta.Muro => PierDelMuro(el)," in dib
+          and "private static string PierDelMuro(ElementoPlanta el)" in dib
+          and "public string Pier { get; set; }" in dto)
+    check("y el pier va en la capa PIERS, no en la de los textos",
+          "_capas.CapaPiers, ang, EstiloSecciones);" in dib)
+    check("el pier llega desde la ventana",
+          "Pier = el.Pier," in codigo)
+
+    # ------------------------------------------------------------------
+    # EL PRIMER Y EL ULTIMO EJE, AL PANO EXTERIOR DEL MURO
+    # ------------------------------------------------------------------
+    #  Solo esos dos de cada direccion: las cotas de orilla se dan al pano -es lo que se
+    #  replantea- y las interiores eje a eje. Y manda el MURO sobre la trabe.
+    check("los ejes de orilla se corren al pano exterior del muro",
+          "public List<(string Id, double Ordenada)> AlPanoExterior(" in ejp
+          and "public double MedioAnchoSobreEje(" in ejp
+          and '_cfg.Bandera("EJES_EXTREMOS_AL_PANO", true)' in ejp
+          and '_cfg.Numero("EJES_PANO_TOL_CM", 25)' in ejp)
+    check("manda el muro sobre la trabe",
+          "return deMuro > 0 ? deMuro : deTrabe;" in ejp)
+    check("y el dibujante los usa para la linea, las burbujas Y las cotas",
+          "Ejes.AlPanoExterior(p.EjesX, verticales: true, p.Elementos)" in mac
+          and "Ejes.AlPanoExterior(p.EjesY, verticales: false, p.Elementos)" in mac
+          and "Ejes.Verticales(ejesX, yMin, yMax)" in mac
+          and "Ejes.Horizontales(ejesY, xMin, xMax)" in mac
+          and "ejesX.Select(e => e.Ordenada).ToList()" in mac)
+    # Con COPIAS y no sobre la lista de la planta: dibujar dos veces correria los ejes dos
+    # veces y la cota total creceria sola.
+    check("se trabaja con copias, no se toca la cuadricula de la planta",
+          "var salida = ejes.ToList();" in ejp)
+    check("hay prueba ejecutable de los ejes al pano",
+          "el eje A se corre medio espesor a la IZQUIERDA" in pre
+          and "sobre el eje C manda el muro y no la trabe de 40" in pre
+          and "un muro perpendicular que cruza el eje no da pano" in pre)
 
     # Las losas ANTES que trabes y columnas: en AutoCAD el orden de creacion es el
     # orden de dibujo, asi que si se dibujaran al final taparian el resto.
@@ -3586,7 +3695,7 @@ def v18_planta_autocad() -> None:
     if m_rot:
         cuerpo = m_rot.group(0)
         check("del muro solo se rotula su PIER",
-              "ClasePlanta.Muro => el.Etiqueta," in cuerpo)
+              "ClasePlanta.Muro => PierDelMuro(el)," in cuerpo)
         check("y de columnas y trabes solo la SECCION, sin el ID",
               "ETIQUETA_ID_COLUMNAS y" in cuerpo
               and 'string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion' in cuerpo

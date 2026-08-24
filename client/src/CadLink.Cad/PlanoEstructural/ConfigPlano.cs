@@ -268,7 +268,10 @@ public sealed class ConfigPlano
     public static readonly IReadOnlyList<Renglon> PorOmision = new[]
     {
         P("VERSION_CONFIG", "29", "NO BORRAR: version de esta hoja CONFIG"),
-        P("OFFSET_Y_INICIAL", "15", "LA PLANTA SE DIBUJA A PARTIR DE ESTA Y DEL ORIGEN"),
+        // 25 y no los 15 de la hoja: se pidió expresamente que el juego arranque en Y = 25
+        // cuando el dibujo está vacío, en lugar de pegado al origen. Con 15 el rótulo de la
+        // planta —que va DEBAJO de las burbujas y las cotas— se salía por abajo del origen.
+        P("OFFSET_Y_INICIAL", "25", "LA PLANTA SE DIBUJA A PARTIR DE ESTA Y DEL ORIGEN"),
 
         // AÑADIDO, no está en la hoja de la macro. Allá la planta arranca siempre en la Y
         // de OFFSET_Y_INICIAL, así que dibujar dos veces encima del mismo plano las

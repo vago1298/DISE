@@ -2093,6 +2093,13 @@ public partial class MainWindow : Window
                 Etiqueta = el.Etiqueta,
                 Seccion = el.Seccion,
 
+                // EL PIER DEL MURO, que es lo único que la macro rotula ahí, y el GIRO de
+                // la sección, que es lo que orienta el bloque de la columna como está en
+                // ETABS. Sin estos dos, los muros salían rotulados con el nombre de su
+                // propiedad y todas las columnas derechas.
+                Pier = el.Pier,
+                AnguloGrados = el.AnguloGrados,
+
                 // De qué es el muro: lo clasifica la regla de la macro con las palabras de
                 // PALABRAS_MAMPOSTERIA y PALABRAS_CONCRETO. Es lo que decide si lleva la
                 // polilínea ancha de block al centro.

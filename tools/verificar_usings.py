@@ -349,6 +349,11 @@ AJENOS = {
     "OrdinalIgnoreCase", "StringComparison", "NumberStyles", "PropertyChanged",
     "PropertyName", "ContainsKey", "TryGetValue", "FirstOrDefault", "ElementAt",
     "SetDatabaseDefaults", "TrueColor", "ObjectName", "StartPoint", "EndPoint",
+    # De la COTA de AutoCAD, por objeto. ExtensionLineExtend se parece a «Extension» de
+    # este proyecto y se reportaba como CS1061 sin serlo: es una propiedad de AcadDimension
+    # y el objeto es dynamic.
+    "ExtensionLineExtend", "DecimalSeparator", "ArrowheadSize", "TextHeight",
+    "LinetypeScale", "AddSolid", "MoveToTop", "GetExtensionDictionary",
     "AddMText", "AddText", "AddHatch", "AddCircle", "AddLine", "AddArc", "Evaluate",
     "SetFont", "CopyFrom", "Regen", "Update", "Delete", "Move", "Rotate", "Explode",
     "ScreenUpdating", "ShowDialog", "InitializeComponent", "Children", "Content",
