@@ -183,31 +183,51 @@ public sealed partial class PlantaDrawer
         // COTA_DIM. Sin ellos las cotas saldrían con la letra de fábrica de AutoCAD.
         AsegurarEstilosDeLaMacro();
 
+        // ==============================================================================
+        //  LO QUE HAY QUE SABER ANTES DE DIBUJAR NADA
+        // ==============================================================================
+        //  Los APOYOS —las columnas y los castillos— y las HUELLAS de las barras: el
+        //  rectángulo que cada muro, trabe o cadena ocupa en planta. De ahí salen tres cosas
+        //  que se ven en el plano:
+        //    · las líneas del muro mueren en el PAÑO del castillo y no en su eje;
+        //    · una VIGA muere en la cara de la viga que cruza, en lugar de pasarle por
+        //      encima y dejar una reja de líneas cruzadas en cada nudo;
+        //    · el CONTORNO de la losa no se dibuja por dentro del muro ni de la cadena, y
+        //      los lados apoyados dicen si el paño está VOLADO.
+        var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();
+
+        var huellas = new List<ElementoPlanta>();
+
+        foreach (var el in p.Elementos)
+        {
+            if (el.Clase is not (ClasePlanta.Muro or ClasePlanta.Trabe))
+            {
+                continue;
+            }
+
+            var anchoHuella = el.AnchoM > LargoMinimo
+                ? el.AnchoM
+                : el.Clase == ClasePlanta.Muro ? EspesorMuroPorOmision : AnchoTrabePorOmision;
+
+            huellas.Add(PanoDeApoyo.Huella(el, anchoHuella));
+        }
+
+        var cruces = _cfg.Bandera("VIGAS_CORTAR_EN_CRUCES", true) ? huellas : null;
+
         // Las losas PRIMERO, para que las trabes y las columnas queden encima. En
         // AutoCAD el orden de creación es el orden de dibujo, así que basta con
         // dibujarlas antes; no hace falta tocar el DrawOrder.
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Losa))
         {
-            if (Losa(el, x0, y0))
+            if (Losa(el, x0, y0, huellas))
             {
                 r.Losas++;
             }
         }
 
-        // ==============================================================================
-        //  LAS LÍNEAS MUEREN EN EL PAÑO, NO EN EL EJE
-        // ==============================================================================
-        //  En el modelo el muro llega al NUDO —al centro del castillo— porque ahí es donde se
-        //  une el elemento. Dibujado así, sus dos líneas se meten dentro de la sección de la
-        //  columna y la cruzan, y en obra el muro no está ahí: empieza en el PAÑO.
-        //
-        //  Los apoyos son las columnas y los castillos de ESTA planta, sean de concreto o
-        //  perfiles de acero. La misma cuenta ALARGA el muro que en el modelo quedó corto.
-        var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();
-
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Muro))
         {
-            var tramo = Pano.Recortar(el, apoyos);
+            var tramo = Pano.Recortar(el, apoyos, cruces);
 
             if (Barra(el, x0, y0, CapaDe(el),
                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo))
@@ -224,9 +244,14 @@ public sealed partial class PlantaDrawer
 
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Trabe))
         {
+            // LA CADENA SIN MURO DE PISO A TECHO VA CON OTRA LÍNEA. Es MarcarCadenasSinMuro:
+            // una cadena de cerramiento que no lleva su muro completo debajo se marca con
+            // ACAD_ISO02W100 para que se vea de un golpe; con muro completo, línea normal.
+            var punteada = LineaDeCadenaSinMuro(el, p);
+
             if (Barra(el, x0, y0, CapaDe(el),
                      Espesor(el, AnchoTrabePorOmision, "trabe"), conEje: true,
-                     Pano.Recortar(el, apoyos)))
+                     Pano.Recortar(el, apoyos, cruces), punteada))
             {
                 r.Trabes++;
             }
@@ -412,6 +437,15 @@ public sealed partial class PlantaDrawer
         // CAPAS_AL_FRENTE encima de lo demás. Antes de terminar no serviría, porque cada
         // planta nueva se dibujaría después.
         TraerCapasAlFrente();
+
+        // Y la capa de las losas apagada, con la de los voladizos encendida.
+        ApagarCapasDeLosa();
+
+        if (_volados > 0 || _armadas > 0)
+        {
+            Nota($"{_volados} paño(s) en voladizo, achurados en {_capas.CapaVolado}, y " +
+                 $"{_armadas} tablero(s) con su parrilla de armado.");
+        }
 
         if (_alFrente > 0)
         {
@@ -759,7 +793,8 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private bool Barra(
         ElementoPlanta el, double x0, double y0, string capa,
-        double ancho, bool conEje, PanoDeApoyo.Tramo? tramo = null)
+        double ancho, bool conEje, PanoDeApoyo.Tramo? tramo = null,
+        (string Tipo, double Escala)? tipoLinea = null)
     {
         // El tramo YA llevado a los paños, si quien llama lo calculó. Sin él, el elemento tal
         // como viene del modelo: de eje a eje.
@@ -792,6 +827,14 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
+        // LA CADENA SIN MURO COMPLETO VA CON OTRA LÍNEA, por objeto y no por capa: en la
+        // misma capa E-CADENA conviven las que llevan muro —continuas— y las que no.
+        if (tipoLinea is { } lt)
+        {
+            PonerTipoDeLinea(p1, lt.Tipo, lt.Escala);
+            PonerTipoDeLinea(p2, lt.Tipo, lt.Escala);
+        }
+
         // El eje, en su capa aparte: es lo que se acota y lo que se congela cuando
         // el plano se llena. Va a trazos, como marca la convención.
         if (conEje)
@@ -803,8 +846,26 @@ public sealed partial class PlantaDrawer
         return true;
     }
 
-    /// <summary>La losa: el contorno del paño, cerrado y sin relleno.</summary>
-    private bool Losa(ElementoPlanta el, double x0, double y0)
+    /// <summary>
+    /// La losa: su contorno, su <b>armado</b> y —si está volada— su <b>hatch</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo primero es decidir si el paño está <b>volado</b>, porque de eso depende todo lo
+    /// demás: un voladizo lleva su hatch y va en la capa <c>E-VOLADO</c> —la que se queda
+    /// encendida cuando <c>E-LOSA</c> se apaga—, y un tablero apoyado lleva su parrilla de
+    /// armado en <c>E-ARMADO LOSA</c>.
+    /// </para>
+    /// <para>
+    /// Y el contorno se dibuja <b>solo por fuera del muro y de la cadena</b>. Donde la losa
+    /// apoya, su paño y el del muro son la misma línea, así que dibujarlo dejaría una raya en
+    /// medio del muro que se lee como una junta que no existe. Para el hatch sí se usa el
+    /// contorno completo —un achurado necesita un contorno cerrado—, y la polilínea que sirve
+    /// de molde se borra después.
+    /// </para>
+    /// </remarks>
+    private bool Losa(ElementoPlanta el, double x0, double y0,
+                      IReadOnlyList<ElementoPlanta> huellas)
     {
         if (el.Vertices.Count < 3)
         {
@@ -822,8 +883,144 @@ public sealed partial class PlantaDrawer
             pts[(2 * i) + 1] = el.Vertices[i].Y + y0;
         }
 
-        return PolilineaCerrada(pts, CapaDe(el)) is not null;
+        var volada = LosaEnPlanta.EsVolada(
+            el.Vertices, huellas, _cfg.Numero("LOSA_APOYO_CUBRE", 0.7));
+
+        var capa = volada ? _capas.CapaVolado : CapaDe(el);
+
+        // ---- EL HATCH DEL VOLADIZO ---------------------------------------------------
+        if (volada && _cfg.Bandera("LOSA_HATCH", true))
+        {
+            HatchDeLosa(pts, capa);
+            _volados++;
+        }
+
+        // ---- EL CONTORNO, SOLO POR FUERA DEL MURO Y DE LA CADENA ---------------------
+        var fuera = _cfg.Bandera("LOSA_CONTORNO_FUERA_DE_MUROS", true) && huellas.Count > 0;
+
+        var algo = false;
+
+        if (fuera)
+        {
+            foreach (var lado in LosaEnPlanta.Lados(el.Vertices))
+            {
+                foreach (var t in LosaEnPlanta.TramosFuera(lado, huellas))
+                {
+                    algo |= Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capa) is not null;
+                }
+            }
+
+            // Un paño que queda ENTERO por dentro de los muros no tiene contorno que
+            // dibujar, y eso no es un fallo: es una losa entre dos cadenas pegadas.
+            if (!algo)
+            {
+                algo = true;
+            }
+        }
+        else
+        {
+            algo = PolilineaCerrada(pts, capa) is not null;
+        }
+
+        // ---- Y EL ARMADO, en el tablero apoyado --------------------------------------
+        if (!volada)
+        {
+            ArmadoDeLosa(el, x0, y0, huellas);
+        }
+
+        return algo;
     }
+
+    /// <summary>Cuántos paños salieron volados, para el resumen.</summary>
+    private int _volados;
+
+    /// <summary>
+    /// La <b>parrilla</b> del armado de la losa, recortada al paño.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las varillas van en las dos direcciones a <c>MALLA_SEP_CM</c>, recortadas al contorno
+    /// real del paño —no a su rectángulo envolvente— y <b>ajustadas al paño del muro</b>
+    /// (<c>MALLA_AL_PANO</c>), así que empiezan y acaban donde empieza el claro y no se meten
+    /// dentro de la cadena.
+    /// </para>
+    /// <para>
+    /// Los filtros son los de la hoja, y son los que evitan armar lo que no se arma: una losa
+    /// más delgada que <c>ARMADO_LOSA_ESPESOR_MIN_CM</c> —un firme— y un tablero de menos de
+    /// <c>ARMADO_LOSA_LADO_MIN_CM</c> por lado no llevan parrilla.
+    /// </para>
+    /// <para>
+    /// Falta la <b>bayoneta</b> de la macro —la polilínea de 6 vértices con sus quiebres a 45°
+    /// y sus bastones a L/4— para el tablero apoyado en sus cuatro lados. Esto es la parrilla,
+    /// que es el otro armado que ella dibuja.
+    /// </para>
+    /// </remarks>
+    private void ArmadoDeLosa(
+        ElementoPlanta el, double x0, double y0, IReadOnlyList<ElementoPlanta> huellas)
+    {
+        if (!_cfg.Bandera("DIBUJAR_ARMADO_LOSA", true))
+        {
+            return;
+        }
+
+        // Una losa muy delgada es un firme: no se arma con parrilla.
+        var espesorMin = _cfg.Numero("ARMADO_LOSA_ESPESOR_MIN_CM", 8) / 100;
+
+        if (el.AnchoM > LargoMinimo && el.AnchoM < espesorMin)
+        {
+            return;
+        }
+
+        var ladoMin = _cfg.Numero("ARMADO_LOSA_LADO_MIN_CM", 50) / 100;
+
+        var ancho = el.Vertices.Max(v => v.X) - el.Vertices.Min(v => v.X);
+        var alto = el.Vertices.Max(v => v.Y) - el.Vertices.Min(v => v.Y);
+
+        if (ancho < ladoMin || alto < ladoMin)
+        {
+            return;
+        }
+
+        var sep = _cfg.Numero("MALLA_SEP_CM", 15) / 100;
+
+        var barras = LosaEnPlanta.Parrilla(
+            el.Vertices,
+            sep,
+            _cfg.Numero("ARMADO_LOSA_MARGEN_CM", 0) / 100,
+            _cfg.Bandera("ARMADO_LOSA_DOS_DIRECCIONES", true),
+            (int)_cfg.Numero("MALLA_MAX_LINEAS", 200),
+            _cfg.Numero("MALLA_SEGMENTO_MIN_CM", 15) / 100);
+
+        if (barras.Count == 0)
+        {
+            return;
+        }
+
+        var capa = _capas.Prefijo + "ARMADO LOSA";
+        var alPano = _cfg.Bandera("MALLA_AL_PANO", true) && huellas.Count > 0;
+        var minTramo = _cfg.Numero("MALLA_SEGMENTO_MIN_CM", 15) / 100;
+
+        foreach (var b in barras)
+        {
+            if (!alPano)
+            {
+                Linea(b.X1 + x0, b.Y1 + y0, b.X2 + x0, b.Y2 + y0, capa);
+                continue;
+            }
+
+            // Ajustada al paño: la varilla se parte donde entra en el muro o en la cadena y
+            // se dibuja solo el trozo del claro.
+            foreach (var t in LosaEnPlanta.TramosFuera(b, huellas, minTramo))
+            {
+                Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capa);
+            }
+        }
+
+        _armadas++;
+    }
+
+    /// <summary>Cuántos paños se armaron, para el resumen.</summary>
+    private int _armadas;
 
     /// <summary>
     /// El rótulo del elemento, <b>donde lo pone la macro</b> y no todos en el centro.
@@ -1632,6 +1829,40 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Estilos por los que ya se preguntó, para no repetir la vuelta por COM.</summary>
     private readonly HashSet<string> _estilosVistos = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Le pone a una entidad un tipo de línea <b>por objeto</b>, con su escala.
+    /// </summary>
+    /// <remarks>
+    /// Por objeto y no por capa a propósito: en <c>E-CADENA</c> conviven las cadenas que
+    /// llevan muro completo —continuas— y las que no —<c>ACAD_ISO02W100</c>—, así que la capa
+    /// no puede decidirlo. La escala también va por objeto porque un tipo de línea pensado
+    /// para milímetros necesita 0.01 en un dibujo en metros.
+    /// </remarks>
+    private void PonerTipoDeLinea(object? ent, string tipo, double escala)
+    {
+        if (ent is null || tipo.Length == 0 || !AsegurarTipoDeLinea(tipo))
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                ((dynamic)ent).Linetype = tipo;
+
+                if (escala > 0)
+                {
+                    ((dynamic)ent).LinetypeScale = escala;
+                }
+            });
+        }
+        catch (Exception)
+        {
+            Nota($"No se pudo poner el tipo de línea '{tipo}'; esa cadena queda continua.");
+        }
+    }
 
     /// <summary>
     /// Pone la línea a trazos, cargando el tipo de línea si hace falta.

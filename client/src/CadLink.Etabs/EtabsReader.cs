@@ -48,6 +48,21 @@ public static class EtabsReader
         LeerAreas(cx, m, puntos);
         LeerEjes(cx, m);
 
+        // ==============================================================================
+        //  SI NO HAY PISOS, LOS NIVELES SALEN DE LA ALTURA EN Z
+        // ==============================================================================
+        //  SAP2000 no tiene stories: son un concepto de ETABS. Sin esto, un modelo de SAP
+        //  llegaba con TODOS los elementos en un solo nivel sin nombre, así que el juego de
+        //  plantas era una sola planta con el edificio entero encimado.
+        //
+        //  Va DESPUÉS de leer los elementos porque se deduce de sus cotas, y cada elemento se
+        //  queda con el nombre del nivel que le toca, así que de aquí para adelante todo
+        //  —plantas, filtros, rótulos— funciona igual que con ETABS.
+        if (m.Niveles.Count == 0)
+        {
+            m.NivelesDesdeZ();
+        }
+
         // El detalle REAL de cada miembro se adjunta siempre que algo saliera mal.
         // Los avisos por sí solos ("no se pudieron leer los puntos") no distinguen
         // un ETABS sin modelo de un miembro que no se encuentra, y esa diferencia es

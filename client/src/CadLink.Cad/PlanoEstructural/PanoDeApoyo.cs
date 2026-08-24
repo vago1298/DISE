@@ -123,11 +123,21 @@ public sealed class PanoDeApoyo
     /// tiene largo— se devuelve el tramo <b>tal como llegó</b>. Recortar mal un muro se ve
     /// mucho más que no recortarlo.
     /// </remarks>
-    public Tramo Recortar(ElementoPlanta el, IReadOnlyList<ElementoPlanta> apoyos)
+    /// <param name="cruces">
+    /// Las <b>huellas de las otras barras</b> —vigas, cadenas, muros—, hechas con
+    /// <see cref="Huella"/>. Son las que hacen que una <b>viga muera en la cara de la viga
+    /// que cruza</b> en lugar de pasarle por encima, que es lo que se veía como una reja de
+    /// líneas cruzadas en cada nudo. Se miran <b>después</b> de las columnas: si el extremo
+    /// muere en un castillo, manda el castillo.
+    /// </param>
+    public Tramo Recortar(
+        ElementoPlanta el,
+        IReadOnlyList<ElementoPlanta> apoyos,
+        IReadOnlyList<ElementoPlanta>? cruces = null)
     {
         var tal = new Tramo(el.X1, el.Y1, el.X2, el.Y2);
 
-        if (!Activo || apoyos.Count == 0)
+        if (!Activo || (apoyos.Count == 0 && (cruces is null || cruces.Count == 0)))
         {
             return tal;
         }
@@ -144,8 +154,8 @@ public sealed class PanoDeApoyo
 
         // Cada extremo mira hacia ADENTRO del muro: el rayo sale del extremo y recorre el
         // muro, así que lo que encuentra es el paño por el que el muro sale de la columna.
-        var ta = Avance(el.X1, el.Y1, ux, uy, apoyos, largo);
-        var tb = Avance(el.X2, el.Y2, -ux, -uy, apoyos, largo);
+        var ta = Avance(el, el.X1, el.Y1, ux, uy, apoyos, cruces, largo);
+        var tb = Avance(el, el.X2, el.Y2, -ux, -uy, apoyos, cruces, largo);
 
         var nuevo = new Tramo(
             el.X1 + (ux * ta), el.Y1 + (uy * ta),
@@ -160,17 +170,15 @@ public sealed class PanoDeApoyo
     /// Cuánto hay que mover un extremo: positivo recorta, negativo alarga.
     /// </summary>
     private double Avance(
-        double px, double py, double dx, double dy,
-        IReadOnlyList<ElementoPlanta> apoyos, double largo)
+        ElementoPlanta el, double px, double py, double dx, double dy,
+        IReadOnlyList<ElementoPlanta> apoyos, IReadOnlyList<ElementoPlanta>? cruces,
+        double largo)
     {
-        var apoyo = MasCercano(px, py, apoyos);
+        // PRIMERO LAS COLUMNAS: si el extremo muere en un castillo, manda el castillo. Solo
+        // si ahí no hay nada se mira la viga o el muro que cruza.
+        var t = MejorSalida(px, py, dx, dy, apoyos, null);
 
-        if (apoyo is null)
-        {
-            return 0;
-        }
-
-        var t = SalidaDelMaterial(apoyo, px, py, dx, dy, HastaElAlma);
+        t ??= MejorSalida(px, py, dx, dy, cruces, el);
 
         if (t is not { } avance)
         {
@@ -194,33 +202,90 @@ public sealed class PanoDeApoyo
         return -avance > AlargarMax ? 0 : avance;
     }
 
-    /// <summary>La columna o el castillo <b>más cercano</b> al extremo, dentro del radio.</summary>
-    private ElementoPlanta? MasCercano(
-        double px, double py, IReadOnlyList<ElementoPlanta> apoyos)
+    /// <summary>
+    /// El paño <b>más cercano</b> al extremo entre todos los candidatos.
+    /// </summary>
+    /// <param name="propio">
+    /// El elemento que se está recortando, cuando los candidatos son huellas de otras barras.
+    /// Sirve para dos descartes imprescindibles: no medirse contra <b>sí mismo</b>, y no
+    /// medirse contra una barra <b>paralela</b>. Sin el segundo, dos muros seguidos en línea
+    /// se recortarían el uno al otro medio muro, porque el extremo de cada uno cae dentro de
+    /// la huella del vecino.
+    /// </param>
+    /// <remarks>
+    /// Se elige por la <b>distancia al paño</b> —el menor <c>|t|</c>— y no por la distancia al
+    /// centro del candidato: la huella de una viga de seis metros tiene su centro lejísimos
+    /// del nudo, así que por centro nunca se elegiría. Y se descarta lo que quede a más de
+    /// <see cref="RadioBusqueda"/>, que es el filtro de la macro.
+    /// </remarks>
+    private double? MejorSalida(
+        double px, double py, double dx, double dy,
+        IReadOnlyList<ElementoPlanta>? candidatos, ElementoPlanta? propio)
     {
-        ElementoPlanta? mejor = null;
-        var mejorD = double.MaxValue;
+        if (candidatos is null || candidatos.Count == 0)
+        {
+            return null;
+        }
+
+        double? mejor = null;
         var radio = RadioBusqueda;
 
-        foreach (var a in apoyos)
+        foreach (var c in candidatos)
         {
-            if (a.Clase != ClasePlanta.Columna)
+            if (c.Clase != ClasePlanta.Columna)
             {
                 continue;
             }
 
-            var dx = a.X1 - px;
-            var dy = a.Y1 - py;
-            var d = Math.Sqrt((dx * dx) + (dy * dy));
-
-            if (d <= radio && d < mejorD)
+            if (propio is not null && !EsTransversal(propio, c))
             {
-                mejorD = d;
-                mejor = a;
+                continue;
+            }
+
+            var t = SalidaDelMaterial(c, px, py, dx, dy, HastaElAlma);
+
+            if (t is not { } v || Math.Abs(v) > radio)
+            {
+                continue;
+            }
+
+            if (mejor is null || Math.Abs(v) < Math.Abs(mejor.Value))
+            {
+                mejor = v;
             }
         }
 
         return mejor;
+    }
+
+    /// <summary>
+    /// ¿La huella <b>cruza</b> al elemento, o va en su misma dirección?
+    /// </summary>
+    /// <remarks>
+    /// Solo se recorta contra lo que cruza. Dos barras en línea —dos tramos del mismo muro,
+    /// una cadena partida en el modelo— no se recortan entre sí: se tocan por la punta, y
+    /// medirlas una contra otra dejaría cada tramo la mitad. El corte es a 20°, que distingue
+    /// de sobra un cruce de una continuación, incluso con ejes inclinados.
+    /// </remarks>
+    private static bool EsTransversal(ElementoPlanta el, ElementoPlanta huella)
+    {
+        var dx = el.X2 - el.X1;
+        var dy = el.Y2 - el.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < Nada)
+        {
+            return false;
+        }
+
+        var a = huella.AnguloGrados * Math.PI / 180;
+        var hx = Math.Cos(a);
+        var hy = Math.Sin(a);
+
+        // El seno del ángulo entre las dos direcciones, con el producto cruzado.
+        var seno = Math.Abs(((dx / largo) * hy) - ((dy / largo) * hx));
+
+        return seno > 0.342;   // sen 20°
     }
 
     /// <summary>
@@ -262,12 +327,58 @@ public sealed class PanoDeApoyo
     public static double? SalidaDelMaterial(
         ElementoPlanta apoyo, double px, double py, double dx, double dy, bool porPiezas = true)
     {
+        var unidos = Intervalos(apoyo, px, py, dx, dy, porPiezas);
+
+        if (unidos.Count == 0)
+        {
+            return null;
+        }
+
+        // 1) El extremo está DENTRO: se sale por el final de ese tramo.
+        foreach (var t in unidos)
+        {
+            if (t.A <= 1e-9 && t.B >= -1e-9)
+            {
+                return t.B;
+            }
+        }
+
+        // 2) El apoyo queda DETRÁS: se alarga hasta su cara, la más cercana al extremo.
+        double? atras = null;
+
+        foreach (var t in unidos)
+        {
+            if (t.B < 0 && (atras is null || t.B > atras))
+            {
+                atras = t.B;
+            }
+        }
+
+        // 3) Y si queda delante, no se toca: es un castillo intermedio.
+        return atras;
+    }
+
+    /// <summary>
+    /// Los tramos —ya unidos— en que un rayo va <b>por dentro del material</b> de un apoyo.
+    /// </summary>
+    /// <remarks>
+    /// Es la cuenta que comparten el ajuste al paño y el recorte del contorno de la losa: uno
+    /// pregunta por dónde <b>sale</b> y el otro por qué trozos <b>quitar</b>. Los tramos se
+    /// unen cuando se tocan, que es lo que hace que el alma y el patín de una W cuenten como
+    /// una sola pieza de acero y no como dos.
+    /// </remarks>
+    public static List<(double A, double B)> Intervalos(
+        ElementoPlanta apoyo, double px, double py, double dx, double dy,
+        bool porPiezas = true)
+    {
+        var vacio = new List<(double A, double B)>();
+
         var b = apoyo.AnchoM;
         var h = apoyo.PeralteM;
 
         if (b <= Nada || h <= Nada)
         {
-            return null;
+            return vacio;
         }
 
         // Al sistema de la sección: el giro de la columna se deshace, y así todo se mide con
@@ -324,7 +435,7 @@ public sealed class PanoDeApoyo
 
         if (tramos.Count == 0)
         {
-            return null;
+            return vacio;
         }
 
         // Se unen los que se tocan: el alma y el patín comparten su cara, y si no se unieran
@@ -347,28 +458,43 @@ public sealed class PanoDeApoyo
             }
         }
 
-        // 1) El extremo está DENTRO: se sale por el final de ese tramo.
-        foreach (var t in unidos)
+        return unidos;
+    }
+
+    /// <summary>
+    /// La <b>huella</b> de una barra —muro, trabe o cadena— como si fuera una sección.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el truco que permite tratar de una sola forma los dos recortes que hacen falta: un
+    /// muro que muere en un castillo y una <b>viga que muere en otra viga</b>. La barra se
+    /// convierte en un rectángulo largo —su largo por su ancho, girado en su dirección— y a
+    /// partir de ahí es la misma cuenta del rayo.
+    /// </para>
+    /// <para>
+    /// Se devuelve como <see cref="ElementoPlanta"/> de clase columna para poder reusar la
+    /// cuenta tal cual. No se dibuja: solo se mide con ella.
+    /// </para>
+    /// </remarks>
+    public static ElementoPlanta Huella(ElementoPlanta barra, double ancho)
+    {
+        var dx = barra.X2 - barra.X1;
+        var dy = barra.Y2 - barra.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        return new ElementoPlanta
         {
-            if (t.A <= 1e-9 && t.B >= -1e-9)
-            {
-                return t.B;
-            }
-        }
-
-        // 2) El apoyo queda DETRÁS: se alarga hasta su cara, la más cercana al extremo.
-        double? atras = null;
-
-        foreach (var t in unidos)
-        {
-            if (t.B < 0 && (atras is null || t.B > atras))
-            {
-                atras = t.B;
-            }
-        }
-
-        // 3) Y si queda delante, no se toca: es un castillo intermedio.
-        return atras;
+            Clase = ClasePlanta.Columna,
+            Forma = "RECT",
+            Etiqueta = barra.Etiqueta,
+            X1 = (barra.X1 + barra.X2) / 2,
+            Y1 = (barra.Y1 + barra.Y2) / 2,
+            X2 = (barra.X1 + barra.X2) / 2,
+            Y2 = (barra.Y1 + barra.Y2) / 2,
+            AnchoM = largo,
+            PeralteM = ancho,
+            AnguloGrados = largo < 1e-9 ? 0 : Math.Atan2(dy, dx) * 180 / Math.PI
+        };
     }
 
     /// <summary>

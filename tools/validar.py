@@ -2712,13 +2712,18 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cinco renglones añadidos",
-          cfgp.count("        P(") == 266
+    check("la hoja CONFIG de la macro esta portada, con once renglones añadidos",
+          cfgp.count("        P(") == 272
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
           and 'P("DRAWORDER_POR_COMANDO", "SI",' in cfgp
-          and 'P("LINEAS_AL_PANO", "SI",' in cfgp)
+          and 'P("LINEAS_AL_PANO", "SI",' in cfgp
+          and 'P("CAPA_VOLADO", "VOLADO",' in cfgp
+          and 'P("APAGAR_CAPA_LOSA", "SI",' in cfgp
+          and 'P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",' in cfgp
+          and 'P("VIGAS_CORTAR_EN_CRUCES", "SI",' in cfgp
+          and 'P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -2819,8 +2824,8 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "266, ConfigPlano.PorOmision.Count" in pr
-          and 'Igual("son las 21 capas", 21, capas.Todas.Count)' in pr
+          and "272, ConfigPlano.PorOmision.Count" in pr
+          and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
           "CadLink.Cad.csproj" in leer(ruta("tools/prueba-config-plano/Prueba.csproj")))
@@ -3324,7 +3329,7 @@ def v18_planta_autocad() -> None:
     m_cap = re.search(r"public void AsegurarCapas\(\).*?\n    \}", dib, re.S)
     check("se puede leer AsegurarCapas", m_cap is not None)
     if m_cap:
-        check("se crean las 21 capas de la macro, con su color",
+        check("se crean las 22 capas de la macro, con su color",
               "foreach (var capa in _capas.Todas)" in m_cap.group(0)
               and "lay.Color = capa.Color;" in m_cap.group(0))
         check("y con su tipo de linea",
@@ -3545,8 +3550,8 @@ def v18_planta_autocad() -> None:
           "El apoyo queda <b>detrás</b>" in pan or "queda DETRÁS" in pan)
     check("el muro y la trabe se dibujan sobre el tramo llevado al pano",
           "var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();" in dib
-          and "var tramo = Pano.Recortar(el, apoyos);" in dib
-          and "Pano.Recortar(el, apoyos))" in dib
+          and "var tramo = Pano.Recortar(el, apoyos, cruces);" in dib
+          and "Pano.Recortar(el, apoyos, cruces), punteada))" in dib
           and "PanoDeApoyo.Tramo? tramo = null" in dib)
     # Un castillo INTERMEDIO no recorta nada: si contara, un muro largo con un castillo a un
     # metro de la punta se quedaria cortado por la mitad.
@@ -3580,6 +3585,134 @@ def v18_planta_autocad() -> None:
           "if (e.Clase != ClaseElemento.Columna)" in ejm
           and "var conColumnas = xs.Count >= 2 || ys.Count >= 2;" in ejm
           and '"deducida de las columnas del modelo"' in ejm)
+
+    # ------------------------------------------------------------------
+    # SAP2000 NO TIENE PISOS: LOS NIVELES SALEN DE LA Z
+    # ------------------------------------------------------------------
+    #  Los stories son de ETABS. Sin esto, un modelo de SAP llegaba con TODOS los elementos
+    #  en un solo nivel sin nombre y el juego de plantas era UNA planta con el edificio
+    #  entero encimado. Cada elemento va al nivel de su cota mas ALTA, que es la regla de
+    #  ETABS: una columna del suelo al primer piso pertenece al piso de arriba.
+    mod_z = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    check("sin pisos, los niveles se deducen de la altura en Z",
+          "public void NivelesDesdeZ(" in mod_z
+          and "e.Story = nivel.Nombre;" in mod_z
+          and "if (m.Niveles.Count == 0)" in lect_sap
+          and "m.NivelesDesdeZ();" in lect_sap)
+    check("y el mas bajo es la BASE, donde van las cadenas de desplante",
+          'var nombre = i == 0 && cotas.Count > 1 ? "Base" : $"N{i}";' in mod_z)
+
+    # ------------------------------------------------------------------
+    # LA CADENA SIN MURO DE PISO A TECHO, A TRAZOS
+    # ------------------------------------------------------------------
+    #  Es MarcarCadenasSinMuro: la cadena que no lleva su muro completo debajo sale con
+    #  ACAD_ISO02W100, y con muro completo va normal. En la CIMENTACION todas continuas
+    #  -CIMENTACION_SIN_PUNTEADA-, porque una cadena de desplante no lleva muro por
+    #  definicion y saldrian TODAS punteadas.
+    check("la cadena sin muro de piso a techo va con ACAD_ISO02W100",
+          "private (string Tipo, double Escala)? LineaDeCadenaSinMuro(" in mac
+          and '_cfg.Texto("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100")' in mac
+          and "if (el.MuroDePisoATecho)" in mac
+          and "public bool MuroDePisoATecho { get; set; }" in dto)
+    check("en la cimentacion, todas continuas",
+          '_cfg.Bandera("CIMENTACION_SIN_PUNTEADA", true) && Rot.EsCimentacion(p.Nivel)' in mac)
+    check("y el tipo de linea va POR OBJETO, no por capa",
+          "private void PonerTipoDeLinea(" in dib
+          and "PonerTipoDeLinea(p1, lt.Tipo, lt.Escala);" in dib)
+    # El dato lo calcula la VENTANA: hay que mirar el nivel de abajo del modelo, y el
+    # dibujante solo ve una planta.
+    check("y quien sabe si hay muro completo es el modelo, no el dibujante",
+          "public bool MuroDePisoATechoBajo(" in mod_z
+          and "MuroDePisoATecho = el.Clase == ClaseElemento.Trabe" in codigo)
+
+    # ------------------------------------------------------------------
+    # LA VIGA MUERE EN LA CARA DE LA VIGA QUE CRUZA
+    # ------------------------------------------------------------------
+    #  Es la imagen 2 del usuario: en cada nudo las lineas se cortan, no se cruzan. Se hace
+    #  con la HUELLA de la otra barra -un rectangulo largo- y la misma cuenta del rayo.
+    check("la viga se corta contra la huella de la que cruza",
+          "public static ElementoPlanta Huella(" in pan
+          and "PanoDeApoyo.Huella(el, anchoHuella)" in dib
+          and '_cfg.Bandera("VIGAS_CORTAR_EN_CRUCES", true)' in dib)
+    # Y SOLO contra lo que CRUZA: dos tramos del mismo muro en linea se tocan por la punta,
+    # y medirlos uno contra otro dejaria cada tramo la mitad.
+    check("y solo contra lo que cruza, no contra lo que sigue en linea",
+          "private static bool EsTransversal(" in pan
+          and "seno > 0.342" in pan)
+
+    # ------------------------------------------------------------------
+    # LA LOSA: ARMADO, VOLADO Y CONTORNO
+    # ------------------------------------------------------------------
+    los = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/LosaEnPlanta.cs"))
+    check("hay cuenta de apoyos, volado y parrilla de la losa",
+          "public static class LosaEnPlanta" in los
+          and "public static bool EsVolada(" in los
+          and "public static List<Segmento> Parrilla(" in los
+          and "public static double FraccionApoyada(" in los)
+    # LA UNION Y NO LA SUMA: dos cadenas traslapadas cubren su tramo una sola vez.
+    check("los apoyos se miden por UNION de tramos, no sumando",
+          "public static List<(double A, double B)> Unidos(" in los
+          and "return Unidos(tramos).Sum(t => t.B - t.A) / largo;" in los)
+    # LA REGLA SEMIABIERTA de la macro: un vertice sobre la linea cuenta UNA vez. Sin ella
+    # las parejas se descuadran y media parrilla sale fuera de la losa.
+    check("la parrilla se recorta al contorno con la regla semiabierta",
+          "public static List<(double A, double B)> Cortes(" in los
+          and "if (!((ca <= c && cb > c) || (cb <= c && ca > c)))" in los)
+    check("el armado sale con los numeros de la hoja",
+          "private void ArmadoDeLosa(" in dib
+          and '_cfg.Numero("MALLA_SEP_CM", 15)' in dib
+          and '_cfg.Bandera("DIBUJAR_ARMADO_LOSA", true)' in dib
+          and '_cfg.Numero("ARMADO_LOSA_ESPESOR_MIN_CM", 8)' in dib
+          and '_cfg.Numero("MALLA_MAX_LINEAS", 200)' in dib)
+    check("y ajustado al pano: la varilla no se mete en la cadena",
+          '_cfg.Bandera("MALLA_AL_PANO", true)' in dib
+          and "LosaEnPlanta.TramosFuera(b, huellas, minTramo)" in dib)
+    # EL VOLADIZO: su hatch, su capa propia, y E-LOSA apagada.
+    check("el voladizo lleva su hatch en su propia capa",
+          "private bool HatchDeLosa(" in mac
+          and '_cfg.Texto("LOSA_HATCH_PATRON", "ANSI37")' in mac
+          and "_capas.CapaVolado" in dib
+          and "public string CapaVolado" in capp)
+    check("el molde del hatch se borra, que para eso va no asociativo",
+          "_ms.AddHatch(0, patron, false)" in mac
+          and "molde.Delete();" in mac)
+    check("E-LOSA se queda apagada y E-VOLADO encendida",
+          "private void ApagarCapasDeLosa()" in mac
+          and "lay.LayerOn = false;" in mac
+          and "public IReadOnlyList<string> CapasApagadas()" in capp
+          and "ApagarCapasDeLosa();" in dib)
+    # EL CONTORNO, SOLO POR FUERA: donde la losa apoya, su pano y el del muro son la misma
+    # linea, y dibujarla deja una raya en medio del muro que se lee como una junta.
+    check("el contorno de la losa no se dibuja dentro del muro ni de la cadena",
+          "public static List<Segmento> TramosFuera(" in los
+          and '_cfg.Bandera("LOSA_CONTORNO_FUERA_DE_MUROS", true)' in dib
+          and "LosaEnPlanta.Lados(el.Vertices)" in dib)
+    check("hay prueba ejecutable de la losa",
+          "y el pano SI esta volado" in pre
+          and "dos cadenas traslapadas cubren el lado una sola vez" in pre
+          and "en la vertical del quiebre, UN tramo y no dos" in pre
+          and "un lado entero dentro del muro no se dibuja" in pre)
+
+    # ------------------------------------------------------------------
+    # EN LA BASE, LOS ARRANQUES DE CASTILLOS
+    # ------------------------------------------------------------------
+    #  En el modelo la columna que va del suelo al primer piso pertenece al piso de ARRIBA,
+    #  asi que la planta de cimentacion salia sin un solo arranque. Y con la regla que se
+    #  pidio: sin muros que arranquen ahi, no se dibuja ninguno.
+    check("en la cimentacion se traen los arranques que desplantan en la base",
+          "private void AgregarArranquesDeCimentacion(" in codigo
+          and '_cfg is not None' not in codigo
+          and 'CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true)' in codigo
+          and 'CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20)' in codigo)
+    check("y sin muros, sin castillos",
+          'CfgPlano.Bandera("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", true)' in codigo
+          and "var hayMuros = p.Elementos.Any(e => e.Clase == ClasePlanta.Muro)" in codigo)
+    # La traduccion del elemento en UN solo sitio: hace falta dos veces -al recorrer el
+    # nivel y al traer los arranques- y duplicarla era garantia de que a uno le faltara un
+    # dato.
+    check("la traduccion del elemento esta en un solo metodo",
+          "private ElementoPlanta ComoElementoDePlanta(" in codigo
+          and codigo.count("p.Elementos.Add(ComoElementoDePlanta(el, modelo));") == 2)
 
     # ------------------------------------------------------------------
     # EL ANCHO DEL MTEXT, AUTOMATICO
@@ -3828,8 +3961,8 @@ def v18_planta_autocad() -> None:
     check("se puede leer Dibujar", m_dib is not None)
     if m_dib:
         cuerpo = m_dib.group(0)
-        i_losa = cuerpo.find("ClasePlanta.Losa")
-        i_col = cuerpo.find("ClasePlanta.Columna")
+        i_losa = cuerpo.find("Losa(el, x0, y0, huellas)")
+        i_col = cuerpo.find("Columna(el, x0, y0)")
         check("las losas se dibujan antes que las columnas",
               0 <= i_losa < i_col, f"losa en {i_losa}, columna en {i_col}")
 

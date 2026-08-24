@@ -580,6 +580,155 @@ public sealed partial class PlantaDrawer
     }
 
     // =================================================================================
+    //  EL HATCH DE LA LOSA EN VOLADIZO
+    // =================================================================================
+
+    /// <summary>
+    /// El achurado del voladizo: <c>ANSI37</c> a 45°, en la capa <c>E-VOLADO</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la marca de la losa volada, y con <c>LOSA_HATCH_SOLO_VOLADO</c> es la <b>única</b>
+    /// que la lleva: así el voladizo se ve de un golpe entre veinte tableros. El patrón, la
+    /// escala y el ángulo salen de la hoja —<c>ANSI37</c>, 0.0475 y 45°—, y esa escala tan
+    /// pequeña es la que corresponde a un dibujo en metros.
+    /// </para>
+    /// <para>
+    /// El molde se <b>borra</b>. Un achurado necesita un contorno cerrado para nacer, pero el
+    /// contorno de la losa se dibuja aparte y solo por fuera de los muros, así que la
+    /// polilínea que sirvió de molde se elimina y el hatch se queda solo. Por eso se crea
+    /// <b>no asociativo</b>: uno asociativo desaparecería con su contorno.
+    /// </para>
+    /// </remarks>
+    private bool HatchDeLosa(double[] puntos, string capa)
+    {
+        if (puntos.Length < 6)
+        {
+            return false;
+        }
+
+        var patron = _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37");
+
+        if (patron.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                dynamic molde = _ms.AddLightWeightPolyline(puntos);
+                molde.Closed = true;
+                molde.Layer = capa;
+
+                var hecho = false;
+
+                try
+                {
+                    // NO asociativo: el molde se va a borrar.
+                    dynamic ht = _ms.AddHatch(0, patron, false);
+                    ht.AppendOuterLoop(new[] { (object)molde });
+                    ht.PatternScale = _cfg.Numero("LOSA_HATCH_ESCALA", 0.0475);
+                    ht.PatternAngle = _cfg.Numero("LOSA_HATCH_ANGULO", 45) * Math.PI / 180;
+                    ht.Evaluate();
+                    ht.Layer = capa;
+                    ht.Color = PorCapa;
+                    hecho = true;
+                }
+                catch (Exception)
+                {
+                    Nota($"No se pudo achurar el voladizo con el patrón '{patron}': " +
+                         "revisa que esté en tu acad.pat. Queda con su contorno.");
+                }
+
+                try
+                {
+                    molde.Delete();
+                }
+                catch (Exception)
+                {
+                    // Si no se deja borrar, se queda una polilínea de más en la capa del
+                    // volado: se ve casi igual y no vale la pena perder el achurado.
+                }
+
+                return hecho;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Achurar la losa en voladizo", ex);
+            return false;
+        }
+    }
+
+    // =================================================================================
+    //  LA CADENA SIN MURO DE PISO A TECHO
+    // =================================================================================
+
+    /// <summary>
+    /// El tipo de línea de una cadena <b>sin su muro completo</b>, o <c>null</c> si va normal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <c>MarcarCadenasSinMuro</c>. Una cadena de cerramiento que no lleva debajo un muro
+    /// de piso a techo —porque ahí hay un vano, una ventana corrida o simplemente no se
+    /// modeló— se dibuja con <c>ACAD_ISO02W100</c>, y con muro completo va con la línea
+    /// normal. Es información de obra: esa cadena no tiene sobre qué apoyarse en todo su
+    /// tramo.
+    /// </para>
+    /// <para>
+    /// <b>En la cimentación, nunca.</b> Ahí todas las cadenas de desplante van con línea
+    /// continua —<c>CIMENTACION_SIN_PUNTEADA</c>—, y con razón: una cadena de desplante no
+    /// lleva muro debajo por definición, así que marcarlas saldrían TODAS punteadas y el
+    /// aviso dejaría de significar nada.
+    /// </para>
+    /// <para>
+    /// La escala del tipo de línea en 0 se calcula: 0.01, que es la que hace que un
+    /// ACAD_ISO02W100 —pensado para milímetros— se vea a trazos en un dibujo en metros. Con
+    /// escala 1 se vería continuo y el aviso se perdería.
+    /// </para>
+    /// </remarks>
+    private (string Tipo, double Escala)? LineaDeCadenaSinMuro(ElementoPlanta el, PlantaCad p)
+    {
+        if (!_cfg.Bandera("CADENA_SIN_MURO_MARCAR", true))
+        {
+            return null;
+        }
+
+        // En la cimentación, todas continuas.
+        if (_cfg.Bandera("CIMENTACION_SIN_PUNTEADA", true) && Rot.EsCimentacion(p.Nivel))
+        {
+            return null;
+        }
+
+        // Solo las cadenas y las dalas: una trabe de entrepiso no lleva muro debajo y no
+        // tiene por qué marcarse.
+        if (!EsCadena(el))
+        {
+            return null;
+        }
+
+        // Con muro completo, línea normal. El dato lo trae la ventana, que es la que puede
+        // mirar el nivel de abajo del modelo.
+        if (el.MuroDePisoATecho)
+        {
+            return null;
+        }
+
+        var tipo = _cfg.Texto("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100");
+
+        if (tipo.Length == 0)
+        {
+            return null;
+        }
+
+        var escala = _cfg.Numero("CADENA_SIN_MURO_LTSCALE", 0);
+
+        return (tipo, escala > 0 ? escala : 0.01);
+    }
+
+    // =================================================================================
     //  ORDEN DE DIBUJO: LAS CAPAS QUE VAN ENCIMA DE TODO
     // =================================================================================
 
@@ -625,6 +774,40 @@ public sealed partial class PlantaDrawer
         // rótulo tapado por una parrilla o por un muro no se lee.
         SubirCapas(_capas.CapasAlFrente());
         SubirCapas(_capas.CapasDeTextoAlFrente());
+    }
+
+    /// <summary>
+    /// Deja apagada la capa <c>E-LOSA</c> y encendida <c>E-VOLADO</c>.
+    /// </summary>
+    /// <remarks>
+    /// Se pidió así, y tiene sentido de uso: el contorno de todos los paños llena el plano y
+    /// estorba para revisar, mientras que los <b>voladizos</b> son justo lo que hay que ver.
+    /// Se <b>apaga</b>, no se congela: encenderla nuevamente es un clic y no obliga a
+    /// regenerar. Y se hace al final, cuando ya está todo dibujado, porque en una capa apagada
+    /// se puede dibujar igual.
+    /// </remarks>
+    private void ApagarCapasDeLosa()
+    {
+        foreach (var capa in _capas.CapasApagadas())
+        {
+            try
+            {
+                AcadConnection.Retry(() =>
+                {
+                    dynamic lay = _doc.Layers.Item(capa);
+                    lay.LayerOn = false;
+                });
+
+                Nota($"La capa {capa} se dejó APAGADA y {_capas.CapaVolado} encendida: " +
+                     "así se ven los voladizos sin el contorno de todos los paños. " +
+                     "Enciéndela cuando la necesites.");
+            }
+            catch (Exception)
+            {
+                // Si no se deja apagar, el plano sale con los contornos a la vista: es
+                // cosmético y se arregla con un clic.
+            }
+        }
     }
 
     /// <summary>
@@ -696,7 +879,14 @@ public sealed partial class PlantaDrawer
                 continue;
             }
 
-            if (MoverAlFrente(lista) || DrawOrderPorComando(capa))
+            // LAS DOS COSAS, no una o la otra. Se pidió tres veces que E-CADENA y E-ACERO
+            // salieran al frente de verdad, así que además de la tabla de orden de dibujo se
+            // manda el DRAWORDER → Front, que es el que se usa a mano y el que no falla.
+            // Hacer las dos no cuesta nada: el resultado final es el mismo estado.
+            var conTabla = MoverAlFrente(lista);
+            var conComando = DrawOrderPorComando(capa);
+
+            if (conTabla || conComando)
             {
                 _alFrente += lista.Count;
                 continue;

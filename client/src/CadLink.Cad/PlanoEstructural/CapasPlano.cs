@@ -92,6 +92,11 @@ public sealed class CapasPlano
         // Y la de los piers, la única sin prefijo.
         t.Add(new Capa(string.Empty, CapaPiers, Color("COLOR_PIERS", 7), string.Empty));
 
+        // LA LOSA EN VOLADIZO, EN SU PROPIA CAPA. En la macro el volado va en la capa del
+        // armado; aquí se pidió aparte —E-VOLADO— para poder apagar E-LOSA y quedarse solo
+        // con los volados, que es lo que se revisa en obra.
+        t.Add(new Capa(string.Empty, CapaVolado, Color("COLOR_VOLADO", 4), string.Empty));
+
         t.Add(Servicio("LOSACERO", Color("COLOR_LOSACERO", 6)));
         t.Add(Servicio("COTAS", Color("COLOR_COTAS", 8)));
 
@@ -145,6 +150,39 @@ public sealed class CapasPlano
             return s;
         }
     }
+
+    /// <summary>La capa de la losa en voladizo: <c>E-VOLADO</c>.</summary>
+    public string CapaVolado
+    {
+        get
+        {
+            var s = _cfg.Texto("CAPA_VOLADO", "VOLADO");
+
+            if (s.Length == 0)
+            {
+                s = "VOLADO";
+            }
+
+            return Prefijo.Length > 0 &&
+                   !s.StartsWith(Prefijo, StringComparison.OrdinalIgnoreCase)
+                ? Prefijo + s
+                : s;
+        }
+    }
+
+    /// <summary>
+    /// Las capas que se dejan <b>apagadas</b> al terminar el dibujo.
+    /// </summary>
+    /// <remarks>
+    /// Solo <c>E-LOSA</c>, y con <c>APAGAR_CAPA_LOSA</c>. Se pidió así: el contorno de todos
+    /// los paños llena el plano y estorba para revisar, mientras que <b>E-VOLADO se queda
+    /// encendida</b>, que es la que interesa ver. Apagada y no congelada, para que el usuario
+    /// la encienda con un clic sin regenerar.
+    /// </remarks>
+    public IReadOnlyList<string> CapasApagadas() =>
+        _cfg.Bandera("APAGAR_CAPA_LOSA", true)
+            ? new[] { CapaDeTipo("LOSA") }
+            : Array.Empty<string>();
 
     /// <summary>La capa del pier de los muros: <c>PIERS</c>, sin prefijo.</summary>
     public string CapaPiers

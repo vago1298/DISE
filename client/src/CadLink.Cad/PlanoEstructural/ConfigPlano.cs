@@ -468,6 +468,20 @@ public sealed class ConfigPlano
         P("MAMPOSTERIA_GAP_M", "0.05", "SEPARACION DE LA POLILINEA AL INICIO Y FIN DEL MURO"),
         P("MAMPOSTERIA_GAP_LARGO_MIN_M", "1", "SOLO SI EL MURO MIDE MAS QUE ESTO"),
         P("LOSA_HATCH_SOLO_VOLADO", "SI", "SI = EL HATCH VA SOLO EN LA LOSA VOLADA"),
+
+        // AÑADIDOS de la losa en voladizo y del contorno. La macro dibuja el hatch del volado
+        // en la capa del armado; se pidió que el volado tenga CAPA PROPIA, que la de la losa
+        // se APAGUE y que el contorno no se meta dentro del muro ni de la cadena.
+        P("CAPA_VOLADO", "VOLADO", "CAPA DE LA LOSA EN VOLADIZO (con prefijo: E-VOLADO)"),
+        P("COLOR_VOLADO", "4", "Color de la capa E-VOLADO"),
+        P("APAGAR_CAPA_LOSA", "SI",
+          "SI = la capa E-LOSA se deja APAGADA y E-VOLADO encendida"),
+        P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",
+          "SI = el contorno de la losa NO se dibuja dentro del muro ni de la cadena"),
+        P("VIGAS_CORTAR_EN_CRUCES", "SI",
+          "SI = la viga muere en la CARA de la viga que cruza, no le pasa por encima"),
+        P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",
+          "SI = en la base, sin muros no se dibujan columnas ni castillos"),
         P("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER", "PALABRAS DE LAS NOTAS = LOSA VOLADA"),
         P("PANO_SOLAPE_CM", "0", "<<< 0 = LA LINEA TERMINA EXACTAMENTE EN EL PANO DEL ELEMENTO"),
         P("PANO_ALMA_W_MODO", "ALMA", "<<< COLUMNA W: entra entre patines -> CARA DEL ALMA; por el patin -> al CENTRO.  (ALMA / CENTRO / PATIN)"),

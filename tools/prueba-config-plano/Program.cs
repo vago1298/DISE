@@ -44,15 +44,20 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-// 266 y no los 261 de CrearHojaConfig: se añadieron CINCO renglones que no están en su
+// 272 y no los 261 de CrearHojaConfig: se añadieron ONCE renglones que no están en su
 // hoja, y todos porque se pidieron:
-//   AIRE_SOBRE_LO_DIBUJADO_M   la planta se pone encima de lo que ya haya dibujado
-//   CAPAS_TEXTO_AL_FRENTE      los rótulos, encima de todo, en una segunda pasada
-//   CAPA_DALA                  la capa de las dalas se llama E-CADENA
-//   DRAWORDER_POR_COMANDO      respaldo del orden de dibujo, con el DRAWORDER de verdad
-//   LINEAS_AL_PANO             las líneas mueren en el paño del castillo, no en su eje
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cinco que se añadieron",
-      266, ConfigPlano.PorOmision.Count);
+//   AIRE_SOBRE_LO_DIBUJADO_M        la planta se pone encima de lo que ya haya dibujado
+//   CAPAS_TEXTO_AL_FRENTE           los rótulos, encima de todo, en una segunda pasada
+//   CAPA_DALA                       la capa de las dalas se llama E-CADENA
+//   DRAWORDER_POR_COMANDO           respaldo del orden de dibujo, con el DRAWORDER de verdad
+//   LINEAS_AL_PANO                  las líneas mueren en el paño del castillo, no en su eje
+//   CAPA_VOLADO / COLOR_VOLADO      la losa en voladizo, en su capa propia
+//   APAGAR_CAPA_LOSA                E-LOSA apagada y E-VOLADO encendida
+//   LOSA_CONTORNO_FUERA_DE_MUROS    sin línea de losa por dentro del muro ni de la cadena
+//   VIGAS_CORTAR_EN_CRUCES          la viga muere en la cara de la que cruza
+//   CIMENTACION_SIN_MUROS_SIN_COLUMNAS   sin muros, sin castillos en la base
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los once que se añadieron",
+      272, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -124,6 +129,19 @@ Igual("COLUMNA_TEXTO_SEPARACION_CM", 2d, cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM
 Igual("COLOR_RELLENO_BLOQUE, el amarillo", 2d, cfg.Numero("COLOR_RELLENO_BLOQUE"));
 Igual("BLOQUE_ROTACION_EXTRA_GRADOS", 0d, cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS"));
 Igual("EJES_PANO_TOL_CM", 25d, cfg.Numero("EJES_PANO_TOL_CM"));
+Igual("LOSA_APOYO_CUBRE", 0.7, cfg.Numero("LOSA_APOYO_CUBRE"));
+Igual("LOSA_HATCH_PATRON del volado", "ANSI37", cfg.Texto("LOSA_HATCH_PATRON"));
+Igual("LOSA_HATCH_ANGULO", 45d, cfg.Numero("LOSA_HATCH_ANGULO"));
+Igual("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100", cfg.Texto("CADENA_SIN_MURO_LINETYPE"));
+Igual("CADENA_SIN_MURO_CUBRE", 0.5, cfg.Numero("CADENA_SIN_MURO_CUBRE"));
+Igual("PANO_BUSCA_CM", 150d, cfg.Numero("PANO_BUSCA_CM"));
+Check("el volado en su capa, la losa apagada, el contorno fuera de los muros, las vigas " +
+      "cortadas en los cruces y, sin muros, sin castillos en la base",
+      cfg.Bandera("APAGAR_CAPA_LOSA") && cfg.Bandera("LOSA_CONTORNO_FUERA_DE_MUROS")
+      && cfg.Bandera("VIGAS_CORTAR_EN_CRUCES") && cfg.Bandera("LOSA_HATCH_SOLO_VOLADO")
+      && cfg.Bandera("CIMENTACION_SIN_MUROS_SIN_COLUMNAS")
+      && cfg.Bandera("CADENA_SIN_MURO_MARCAR") && cfg.Bandera("CIMENTACION_SIN_PUNTEADA")
+      && cfg.Bandera("LINEAS_AL_PANO") && cfg.Bandera("DIBUJAR_ARMADO_LOSA"));
 Igual("MAMPOSTERIA_ANCHO", 0.06, cfg.Numero("MAMPOSTERIA_ANCHO"));
 Igual("ESPESOR_MURO_CM", 15d, cfg.Numero("ESPESOR_MURO_CM"));
 Check("los ejes de orilla van al paño y el rótulo de la cadena lleva fondo",
@@ -180,7 +198,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 266 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 272 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -234,7 +252,12 @@ Igual("E-CADENA DESPLANTE", 1, ColorDe("E-CADENA DESPLANTE"));
 Igual("PIERS, sin prefijo", 7, ColorDe("PIERS"));
 Igual("E-LOSACERO", 6, ColorDe("E-LOSACERO"));
 Igual("E-COTAS", 8, ColorDe("E-COTAS"));
-Igual("son las 21 capas", 21, capas.Todas.Count);
+// LA LOSA EN VOLADIZO, EN SU CAPA: es la 22, y la de la losa se queda APAGADA para que
+// se vean los voladizos sin el contorno de todos los paños.
+Igual("E-VOLADO, la de la losa en voladizo", 4, ColorDe("E-VOLADO"));
+Igual("son las 22 capas", 22, capas.Todas.Count);
+Igual("y la que se apaga es la de la losa", "E-LOSA",
+      string.Join(", ", capas.CapasApagadas()));
 
 Console.WriteLine();
 Igual("la trabe lleva PHANTOM2", "PHANTOM2", LineaDe("E-TRABE"));

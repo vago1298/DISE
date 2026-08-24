@@ -551,6 +551,132 @@ Cerca("y con solape de 1 cm, la linea se mete ese centimetro", 0.065,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LA LOSA: APOYOS, VOLADO, PARRILLA Y CONTORNO");
+Console.WriteLine("=====================================================================");
+
+// Un tablero de 5 x 4 con cadenas de 15 cm en sus cuatro lados.
+var tablero = new List<(double X, double Y)> { (0, 0), (5, 0), (5, 4), (0, 4) };
+
+static ElementoPlanta Cadena(double x1, double y1, double x2, double y2, double b = 0.15) =>
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            Clase = ClasePlanta.Trabe, Tipo = "DALA",
+            X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, AnchoM = b
+        },
+        b);
+
+var cuatroLados = new List<ElementoPlanta>
+{
+    Cadena(0, 0, 5, 0), Cadena(5, 0, 5, 4), Cadena(5, 4, 0, 4), Cadena(0, 4, 0, 0)
+};
+
+Igual("un tablero de cuatro esquinas tiene cuatro lados", 4,
+      LosaEnPlanta.Lados(tablero).Count);
+
+var apoyados = LosaEnPlanta.LadosApoyados(tablero, cuatroLados);
+Igual("y con cadena en las cuatro, los cuatro apoyados", 4, apoyados.Count(a => a));
+Check("asi que NO esta volado",
+      !LosaEnPlanta.EsVolada(tablero, cuatroLados));
+
+// UN SOLO LADO APOYADO = VOLADO. Es la regla del calculo: trabaja en cantilever y su
+// acero va ARRIBA, asi que en el plano lleva su hatch y su capa propia.
+var unLado = new List<ElementoPlanta> { Cadena(0, 0, 5, 0) };
+Igual("con una sola cadena, un lado apoyado", 1,
+      LosaEnPlanta.LadosApoyados(tablero, unLado).Count(a => a));
+Check("y el pano SI esta volado", LosaEnPlanta.EsVolada(tablero, unLado));
+Check("un pano sin ningun apoyo tambien se marca volado",
+      LosaEnPlanta.EsVolada(tablero, new List<ElementoPlanta>()));
+
+// LA UNION Y NO LA SUMA: dos cadenas que se traslapan cubren su tramo UNA vez. Si se
+// sumaran, un lado con dos cadenitas encimadas pasaria del 100 %.
+var traslapadas = new List<ElementoPlanta> { Cadena(0, 0, 3, 0), Cadena(2, 0, 5, 0) };
+Cerca("dos cadenas traslapadas cubren el lado una sola vez", 1.0,
+      LosaEnPlanta.FraccionApoyada(LosaEnPlanta.Lados(tablero)[0], traslapadas), 1e-9);
+
+// Media cadena, medio lado. Con LOSA_APOYO_CUBRE = 0.7 ese lado NO cuenta como apoyado.
+Cerca("media cadena apoya medio lado", 0.5,
+      LosaEnPlanta.FraccionApoyada(
+          LosaEnPlanta.Lados(tablero)[0],
+          new List<ElementoPlanta> { Cadena(0, 0, 2.5, 0) }), 1e-9);
+
+Console.WriteLine();
+Console.WriteLine(" La parrilla del armado, recortada al pano");
+
+// Un tablero de 3 x 2 con varillas a 50 cm: 5 en un sentido -x = 0.5 a 2.5- y 3 en el
+// otro -y = 0.5, 1.0, 1.5-.
+var chico = new List<(double X, double Y)> { (0, 0), (3, 0), (3, 2), (0, 2) };
+var parrilla = LosaEnPlanta.Parrilla(chico, 0.5, minTramo: 0.05);
+
+Igual("la parrilla de un tablero de 3 x 2 a 50 cm lleva 8 varillas", 8, parrilla.Count);
+Cerca("las de un sentido miden el ancho del tablero", 2,
+      parrilla.Where(b => Math.Abs(b.X1 - b.X2) < 1e-9).Max(b => b.Largo), 1e-9);
+Cerca("y las del otro, el largo", 3,
+      parrilla.Where(b => Math.Abs(b.Y1 - b.Y2) < 1e-9).Max(b => b.Largo), 1e-9);
+
+Igual("en una sola direccion va la mitad", 3,
+      LosaEnPlanta.Parrilla(chico, 0.5, dosDirecciones: false, minTramo: 0.05).Count);
+Igual("y el tope de MALLA_MAX_LINEAS se respeta", 2 * 2,
+      LosaEnPlanta.Parrilla(chico, 0.5, maxLineas: 2, minTramo: 0.05).Count);
+
+// LA REGLA SEMIABIERTA: un vertice que cae JUSTO en la linea de la parrilla cuenta UNA
+// vez. Sin eso, las parejas se descuadran a partir de ese vertice y media parrilla sale
+// fuera de la losa. Se prueba con una L, que es donde se nota.
+var ele = new List<(double X, double Y)>
+{
+    (0, 0), (4, 0), (4, 2), (2, 2), (2, 4), (0, 4)
+};
+
+// x = 2 es justo la vertical del quiebre. La regla semiabierta cuenta el vertice UNA
+// vez, asi que ahi la losa va de y = 0 a y = 2 -la pierna de arriba empieza a la
+// izquierda de esa linea-. Es el comportamiento que se quiere: si el vertice contara dos
+// veces, las parejas se descuadrarian y la varilla saldria hasta y = 4 por un sitio donde
+// no hay losa.
+var enLaEsquina = LosaEnPlanta.Cortes(ele, 2, true);
+Igual("en la vertical del quiebre, UN tramo y no dos", 1, enLaEsquina.Count);
+Cerca("que arranca en 0", 0, enLaEsquina[0].A, 1e-9);
+Cerca("y llega al quiebre, no mas alla", 2, enLaEsquina[0].B, 1e-9);
+
+// Y a la IZQUIERDA del quiebre la losa llega hasta arriba, a y = 4.
+var antesDelQuiebre = LosaEnPlanta.Cortes(ele, 1, true);
+Igual("a la izquierda del quiebre, un tramo", 1, antesDelQuiebre.Count);
+Cerca("que llega hasta arriba", 4, antesDelQuiebre[0].B, 1e-9);
+
+// A la derecha del quiebre la losa solo llega a y = 2.
+var pasadoElQuiebre = LosaEnPlanta.Cortes(ele, 3, true);
+Igual("pasado el quiebre, tambien un tramo", 1, pasadoElQuiebre.Count);
+Cerca("pero solo hasta 2", 2, pasadoElQuiebre[0].B, 1e-9);
+
+// Todas las varillas de la L caen DENTRO de la losa: ninguna se sale de y > 2 a la
+// derecha de x = 2.
+var enL = LosaEnPlanta.Parrilla(ele, 0.5, minTramo: 0.05);
+Check("ninguna varilla de la L se sale del pano",
+      enL.All(b => b.X1 <= 2.0001 || Math.Max(b.Y1, b.Y2) <= 2.0001));
+
+Console.WriteLine();
+Console.WriteLine(" El contorno, solo por fuera del muro o la cadena");
+
+// Un lado de losa que corre sobre una cadena: por dentro de la cadena NO se dibuja.
+var sobreLaCadena = new LosaEnPlanta.Segmento(0, 0, 5, 0);
+var fueraDeTodo = LosaEnPlanta.TramosFuera(
+    sobreLaCadena, new List<ElementoPlanta> { Cadena(1, 0, 4, 0) });
+
+Igual("el lado se parte en dos: antes y despues de la cadena", 2, fueraDeTodo.Count);
+Cerca("el primero llega al pano de la cadena", 1, fueraDeTodo[0].X2, 1e-9);
+Cerca("y el segundo arranca en el otro pano", 4, fueraDeTodo[1].X1, 1e-9);
+
+// Un lado que va ENTERO por dentro del muro no se dibuja: ahi la losa apoya, y una linea
+// en medio del muro se lee como una junta que no existe.
+Igual("un lado entero dentro del muro no se dibuja", 0,
+      LosaEnPlanta.TramosFuera(
+          new LosaEnPlanta.Segmento(1, 0, 4, 0),
+          new List<ElementoPlanta> { Cadena(0, 0, 5, 0) }).Count);
+
+Igual("y sin muros, el lado va completo", 1,
+      LosaEnPlanta.TramosFuera(sobreLaCadena, new List<ElementoPlanta>()).Count);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ROTULO DE LA PLANTA");
 Console.WriteLine("=====================================================================");
 

@@ -2046,6 +2046,154 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// La hoja CONFIG del plano, para las decisiones que se toman <b>al armar</b> la planta.
+    /// </summary>
+    /// <remarks>
+    /// El dibujante tiene la suya, y esto no la duplica: son los mismos valores de omisión
+    /// leídos del mismo sitio. Aquí hace falta porque hay dos preguntas que solo se pueden
+    /// contestar con el MODELO delante —qué columnas desplantan en la base y si una cadena
+    /// lleva muro de piso a techo— y esas se resuelven antes de dibujar.
+    /// </remarks>
+    private CadLink.Cad.PlanoEstructural.ConfigPlano CfgPlano { get; } = new();
+
+    /// <summary>¿Este nivel es la cimentación? Es la regla de <c>CIMENTACION_STORIES</c>.</summary>
+    private bool EsNivelDeCimentacion(string? nivel) =>
+        !string.IsNullOrWhiteSpace(nivel) &&
+        new CadLink.Cad.PlanoEstructural.RotuloPlanta(CfgPlano).EsCimentacion(nivel);
+
+    /// <summary>
+    /// Trae a la planta de cimentación los <b>arranques</b> de castillos y columnas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son las columnas de <b>cualquier</b> nivel cuyo extremo de abajo esté a la cota de la
+    /// base, con la holgura de <c>CIMENTACION_COLUMNA_TOL_CM</c>. En el modelo esas columnas
+    /// pertenecen al piso de arriba, así que sin esto la planta de cimentación salía sin un
+    /// solo arranque, y el arranque de los castillos es lo primero que se replantea.
+    /// </para>
+    /// <para>
+    /// <b>Y solo si hay muros que arranquen ahí</b>, que es como se pidió: en una cimentación
+    /// sin mampostería no se dibujan castillos ni columnas. Cuentan como muros los del propio
+    /// nivel y los que <b>desplantan</b> en él —los del piso de arriba que nacen en la base—,
+    /// que son los que llevan esos castillos.
+    /// </para>
+    /// </remarks>
+    private void AgregarArranquesDeCimentacion(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    {
+        var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20) / 100;
+
+        // La cota de la base: la del nivel, o la más baja del modelo si no se conoce.
+        var zBase = modelo.Niveles
+            .Where(n => string.Equals(n.Nombre, nivel, StringComparison.OrdinalIgnoreCase))
+            .Select(n => n.ElevacionM)
+            .DefaultIfEmpty(modelo.Elementos.Count == 0
+                ? 0
+                : modelo.Elementos.Min(e => Math.Min(e.Z1, e.Z2)))
+            .First();
+
+        // ¿HAY MUROS QUE ARRANQUEN EN LA BASE? Si no, no se dibuja ningún castillo.
+        var hayMuros = p.Elementos.Any(e => e.Clase == ClasePlanta.Muro) ||
+                       modelo.Elementos.Any(
+                           e => e.Clase == ClaseElemento.Muro &&
+                                Math.Abs(Math.Min(e.Z1, e.Z2) - zBase) <= tol);
+
+        if (!hayMuros && CfgPlano.Bandera("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", true))
+        {
+            return;
+        }
+
+        foreach (var el in modelo.Elementos)
+        {
+            if (el.Clase != ClaseElemento.Columna)
+            {
+                continue;
+            }
+
+            // Que DESPLANTE en la base, y que no esté ya en la planta.
+            if (Math.Abs(Math.Min(el.Z1, el.Z2) - zBase) > tol)
+            {
+                continue;
+            }
+
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            p.Elementos.Add(ComoElementoDePlanta(el, modelo));
+        }
+    }
+
+    /// <summary>
+    /// Traduce un elemento del modelo al elemento de la planta que dibuja CadLink.Cad.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Esta traducción vive aquí a propósito —CadLink.Cad no referencia a CadLink.Etabs— y
+    /// está en un método propio porque hace falta <b>dos veces</b>: al recorrer los elementos
+    /// del nivel y al traer los arranques de castillos a la planta de cimentación. Con el
+    /// bloque duplicado, cualquier dato nuevo se quedaba fuera en uno de los dos sitios.
+    /// </para>
+    /// </remarks>
+    private ElementoPlanta ComoElementoDePlanta(ElementoEtabs el, ModeloEtabs modelo)
+    {
+        // El TIPO se clasifica con la regla de la macro -ClasificaTipo- porque es lo
+        // que decide la CAPA: castillo y columna no van a la misma, ni dala y trabe.
+        // Y la FORMA, para que un perfil de acero se vaya a E-ACERO.
+        var t2 = el.Clase == ClaseElemento.Columna ? el.PeralteM : el.AnchoM;
+        var t3 = el.Clase == ClaseElemento.Columna ? el.AnchoM : el.PeralteM;
+
+        var e = new ElementoPlanta
+        {
+            Clase = ClasePlantaDe(el.Clase),
+            Tipo = SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3),
+            Forma = el.Forma,
+            Etiqueta = el.Etiqueta,
+            Seccion = el.Seccion,
+
+            // EL PIER DEL MURO, que es lo único que la macro rotula ahí, y el GIRO de
+            // la sección, que es lo que orienta el bloque de la columna como está en
+            // ETABS. Sin estos dos, los muros salían rotulados con el nombre de su
+            // propiedad y todas las columnas derechas.
+            Pier = el.Pier,
+            AnguloGrados = el.AnguloGrados,
+
+            // ¿ESTA CADENA LLEVA MURO DE PISO A TECHO DEBAJO? Solo se pregunta por las
+            // cadenas: la respuesta decide si su línea sale a trazos —ACAD_ISO02W100— o
+            // normal, y hay que mirar el nivel de abajo del modelo, que es algo que el
+            // dibujante no puede hacer porque solo ve una planta.
+            MuroDePisoATecho = el.Clase == ClaseElemento.Trabe
+                               && modelo.MuroDePisoATechoBajo(el),
+
+            // De qué es el muro: lo clasifica la regla de la macro con las palabras de
+            // PALABRAS_MAMPOSTERIA y PALABRAS_CONCRETO. Es lo que decide si lleva la
+            // polilínea ancha de block al centro.
+            Material = el.Clase == ClaseElemento.Muro
+                ? SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)
+                : string.Empty,
+
+            X1 = el.X1, Y1 = el.Y1,
+            X2 = el.X2, Y2 = el.Y2,
+            AnchoM = el.AnchoM,
+            PeralteM = el.PeralteM,
+
+            // LOS ESPESORES DEL PERFIL. Son los que permiten dibujar la sección de acero
+            // como es —la I con sus patines, el cajón con su hueco— en lugar de una caja
+            // en la que no se distingue una IR de un tubo. El lector ya los trae.
+            PatinM = el.PatinM,
+            AlmaM = el.AlmaM,
+            ParedM = el.ParedM
+        };
+
+        foreach (var v in el.Vertices)
+        {
+            e.Vertices.Add((v.X, v.Y));
+        }
+
+        return e;
+    }
+
+    /// <summary>
     /// Traduce el modelo de ETABS a lo que entiende el dibujante de plantas.
     /// </summary>
     /// <remarks>
@@ -2079,53 +2227,25 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            // El TIPO se clasifica con la regla de la macro -ClasificaTipo- porque es lo
-            // que decide la CAPA: castillo y columna no van a la misma, ni dala y trabe.
-            // Y la FORMA, para que un perfil de acero se vaya a E-ACERO.
-            var t2 = el.Clase == ClaseElemento.Columna ? el.PeralteM : el.AnchoM;
-            var t3 = el.Clase == ClaseElemento.Columna ? el.AnchoM : el.PeralteM;
+            p.Elementos.Add(ComoElementoDePlanta(el, modelo));
+        }
 
-            var e = new ElementoPlanta
-            {
-                Clase = ClasePlantaDe(el.Clase),
-                Tipo = SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3),
-                Forma = el.Forma,
-                Etiqueta = el.Etiqueta,
-                Seccion = el.Seccion,
-
-                // EL PIER DEL MURO, que es lo único que la macro rotula ahí, y el GIRO de
-                // la sección, que es lo que orienta el bloque de la columna como está en
-                // ETABS. Sin estos dos, los muros salían rotulados con el nombre de su
-                // propiedad y todas las columnas derechas.
-                Pier = el.Pier,
-                AnguloGrados = el.AnguloGrados,
-
-                // De qué es el muro: lo clasifica la regla de la macro con las palabras de
-                // PALABRAS_MAMPOSTERIA y PALABRAS_CONCRETO. Es lo que decide si lleva la
-                // polilínea ancha de block al centro.
-                Material = el.Clase == ClaseElemento.Muro
-                    ? SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)
-                    : string.Empty,
-
-                X1 = el.X1, Y1 = el.Y1,
-                X2 = el.X2, Y2 = el.Y2,
-                AnchoM = el.AnchoM,
-                PeralteM = el.PeralteM,
-
-                // LOS ESPESORES DEL PERFIL. Son los que permiten dibujar la sección de acero
-                // como es —la I con sus patines, el cajón con su hueco— en lugar de una caja
-                // en la que no se distingue una IR de un tubo. El lector ya los trae.
-                PatinM = el.PatinM,
-                AlmaM = el.AlmaM,
-                ParedM = el.ParedM
-            };
-
-            foreach (var v in el.Vertices)
-            {
-                e.Vertices.Add((v.X, v.Y));
-            }
-
-            p.Elementos.Add(e);
+        // ==============================================================================
+        //  EN LA CIMENTACIÓN, LOS ARRANQUES DE CASTILLOS Y COLUMNAS
+        // ==============================================================================
+        //  En el modelo la columna que va del suelo al primer piso pertenece al piso de
+        //  ARRIBA, así que en la planta de cimentación no salía ninguna y el plano no decía
+        //  dónde arrancan los castillos, que es justo lo que se replantea primero.
+        //
+        //  Es CIMENTACION_DIBUJA_COLUMNAS: se traen las columnas de cualquier nivel que
+        //  DESPLANTEN en la base, con la holgura en Z de la hoja.
+        //
+        //  Y con la regla que se pidió: SI NO HAY MUROS que arranquen ahí, no se dibuja
+        //  ninguna. Un juego de cimentación sin mampostería no lleva castillos, y sacarlos
+        //  «por si acaso» llena el plano de secciones que no se van a construir.
+        if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
+        {
+            AgregarArranquesDeCimentacion(modelo, p, nivel);
         }
 
         // ==============================================================================

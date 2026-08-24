@@ -95,6 +95,25 @@ public sealed class ElementoPlanta
     /// <summary>Espesor del <b>alma</b> —el <c>Tw</c>—, en metros.</summary>
     public double AlmaM { get; set; }
 
+    /// <summary>
+    /// ¿Esta cadena lleva debajo un <b>muro de piso a techo</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Decide una cosa que se ve en el plano: la cadena de cerramiento que <b>no</b> lleva su
+    /// muro completo se dibuja con <c>ACAD_ISO02W100</c> —a trazos— y la que sí, con línea
+    /// normal. Es información de obra: esa cadena no tiene sobre qué apoyarse en todo su
+    /// tramo, porque ahí hay un vano o una ventana corrida.
+    /// </para>
+    /// <para>
+    /// Lo calcula la <b>ventana</b>, no el dibujante, y no es un capricho: hay que mirar el
+    /// nivel de <i>abajo</i> del modelo para saber si el muro sube de piso a techo, y el
+    /// dibujante solo ve una planta. En una planta sin cadenas, o en la cimentación, el valor
+    /// no se usa.
+    /// </para>
+    /// </remarks>
+    public bool MuroDePisoATecho { get; set; }
+
     /// <summary>Espesor de la <b>pared</b> del cajón o del tubo, en metros.</summary>
     /// <remarks>
     /// Es lo que le da su hueco: un cajón dibujado macizo parece una placa, y en un plano

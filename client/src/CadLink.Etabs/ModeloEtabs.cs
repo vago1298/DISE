@@ -282,6 +282,231 @@ public sealed class ModeloEtabs
             : salida.OrderByDescending(n => n.ElevacionM).ToList();
     }
 
+    /// <summary>
+    /// Reparte los elementos en niveles <b>por su cota Z</b>, para SAP2000.
+    /// </summary>
+    /// <param name="tolM">
+    /// Dos cotas más juntas que esto son el mismo nivel. 20 cm es lo razonable: un nudo
+    /// modelado dos centímetros más abajo no es otro piso, y dos niveles reales nunca están a
+    /// menos de un palmo.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>SAP2000 no tiene pisos</b>: los <i>stories</i> son un concepto de ETABS. Así que en
+    /// SAP el modelo llegaba con todos los elementos en un solo nivel sin nombre, y el juego de
+    /// plantas salía de una sola planta con el edificio entero encimado. Aquí los niveles se
+    /// deducen de <b>la altura en Z</b>, que es como se leen esos modelos a mano.
+    /// </para>
+    /// <para>
+    /// Cada elemento va al nivel de su <b>cota más alta</b>, y eso es lo que hace que
+    /// coincida con ETABS: allá una columna que va del suelo al primer piso pertenece al
+    /// piso de <i>arriba</i>, no al de abajo. Con la misma regla, las cadenas de desplante
+    /// —que están abajo del todo— caen en su propio nivel, y ese es la <b>BASE</b>.
+    /// </para>
+    /// <para>
+    /// Los nombres se ponen como los de ETABS —<c>BASE</c>, <c>N1</c>, <c>N2</c>…— y no con la
+    /// cota, a propósito: así el rótulo de la planta sigue diciendo CIMENTACION, PLANTA BAJA y
+    /// PRIMER NIVEL sin tener que tratar SAP como un caso aparte.
+    /// </para>
+    /// </remarks>
+    public void NivelesDesdeZ(double tolM = 0.20)
+    {
+        if (Elementos.Count == 0)
+        {
+            return;
+        }
+
+        // La cota de cada elemento: la más alta que tenga.
+        static double Cota(ElementoEtabs e) =>
+            e.Vertices3D.Count > 0
+                ? e.Vertices3D.Max(v => v.Z)
+                : Math.Max(e.Z1, e.Z2);
+
+        var cotas = new List<double>();
+
+        foreach (var e in Elementos)
+        {
+            var z = Cota(e);
+
+            if (!cotas.Any(c => Math.Abs(c - z) <= tolM))
+            {
+                cotas.Add(z);
+            }
+        }
+
+        if (cotas.Count == 0)
+        {
+            return;
+        }
+
+        cotas.Sort();
+
+        Niveles.Clear();
+
+        for (var i = 0; i < cotas.Count; i++)
+        {
+            // El más bajo es la BASE —ahí están las cadenas de desplante—, pero solo si hay
+            // más de uno: en un modelo de un solo nivel, ese nivel no es una cimentación.
+            var nombre = i == 0 && cotas.Count > 1 ? "Base" : $"N{i}";
+
+            Niveles.Add(new NivelEtabs
+            {
+                Nombre = nombre,
+                ElevacionM = cotas[i],
+                AlturaM = i == 0 ? 0 : cotas[i] - cotas[i - 1]
+            });
+        }
+
+        foreach (var e in Elementos)
+        {
+            var z = Cota(e);
+
+            var nivel = Niveles
+                .OrderBy(n => Math.Abs(n.ElevacionM - z))
+                .First();
+
+            e.Story = nivel.Nombre;
+        }
+
+        Avisos.Add(
+            $"El modelo no trae pisos —en SAP2000 es lo normal—, así que los {Niveles.Count} " +
+            "niveles se deducen de la altura en Z: " +
+            string.Join(", ", Niveles.Select(n => $"{n.Nombre} a {n.ElevacionM:0.00} m")) + ".");
+    }
+
+    /// <summary>
+    /// ¿Esta cadena lleva debajo un <b>muro de piso a techo</b>?
+    /// </summary>
+    /// <param name="cadena">La cadena o dala de cerramiento.</param>
+    /// <param name="cubre">
+    /// Fracción de la cadena que tiene que llevar muro para darla por buena:
+    /// <c>CADENA_SIN_MURO_CUBRE</c>, 0.5.
+    /// </param>
+    /// <param name="tolM">Holgura perpendicular y en Z, en metros.</param>
+    /// <remarks>
+    /// <para>
+    /// Es <c>MarcarCadenasSinMuro</c>, y de esto depende cómo se dibuja: la cadena que
+    /// <b>no</b> lleva su muro completo sale a trazos —<c>ACAD_ISO02W100</c>— y la que sí, con
+    /// línea normal. Vive aquí y no en el dibujante porque hay que mirar <b>el nivel de
+    /// abajo</b> del modelo, y el dibujante solo ve una planta.
+    /// </para>
+    /// <para>
+    /// Un muro cuenta si está <b>debajo</b> de la cadena —su cota alta llega a la de la
+    /// cadena—, si corre <b>a lo largo</b> de ella y si es de <b>piso a techo</b>: su altura
+    /// tiene que ser al menos el 80 % de lo que hay entre los dos niveles. Un antepecho de
+    /// ventana de 90 cm no sostiene una cadena de cerramiento, y por eso no vale.
+    /// </para>
+    /// </remarks>
+    public bool MuroDePisoATechoBajo(
+        ElementoEtabs cadena, double cubre = 0.5, double tolM = 0.25)
+    {
+        var dx = cadena.X2 - cadena.X1;
+        var dy = cadena.Y2 - cadena.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 1e-4)
+        {
+            return false;
+        }
+
+        var zCadena = Math.Max(cadena.Z1, cadena.Z2);
+
+        // La altura del nivel de la cadena, para saber qué es «de piso a techo».
+        var altura = Niveles
+            .Where(n => Math.Abs(n.ElevacionM - zCadena) <= tolM)
+            .Select(n => n.AlturaM)
+            .FirstOrDefault();
+
+        var ux = dx / largo;
+        var uy = dy / largo;
+
+        var tramos = new List<(double A, double B)>();
+
+        foreach (var m in Elementos)
+        {
+            if (m.Clase != ClaseElemento.Muro)
+            {
+                continue;
+            }
+
+            var zAlta = m.Vertices3D.Count > 0
+                ? m.Vertices3D.Max(v => v.Z)
+                : Math.Max(m.Z1, m.Z2);
+
+            var zBaja = m.Vertices3D.Count > 0
+                ? m.Vertices3D.Min(v => v.Z)
+                : Math.Min(m.Z1, m.Z2);
+
+            // Debajo de la cadena, tocándola.
+            if (Math.Abs(zAlta - zCadena) > tolM)
+            {
+                continue;
+            }
+
+            // De piso a techo: al menos el 80 % de la altura del nivel. Sin altura conocida
+            // se acepta, que es lo prudente: es lo normal en un modelo sin pisos.
+            if (altura > 0.1 && zAlta - zBaja < altura * 0.8)
+            {
+                continue;
+            }
+
+            // Y a lo largo de la cadena: se proyectan sus dos extremos y se comprueba que no
+            // se salga de lado más de la holgura.
+            var (a, da) = Proyecta(m.X1, m.Y1);
+            var (b, db) = Proyecta(m.X2, m.Y2);
+
+            if (da > tolM || db > tolM)
+            {
+                continue;
+            }
+
+            var t1 = Math.Max(0, Math.Min(a, b));
+            var t2 = Math.Min(largo, Math.Max(a, b));
+
+            if (t2 > t1)
+            {
+                tramos.Add((t1, t2));
+            }
+        }
+
+        if (tramos.Count == 0)
+        {
+            return false;
+        }
+
+        // La UNIÓN, no la suma: dos muros que se traslapan en un nudo cubren su tramo una
+        // sola vez, y sumándolos se pasaría del 100 %.
+        tramos.Sort((p, q) => p.A.CompareTo(q.A));
+
+        var unidos = new List<(double A, double B)> { tramos[0] };
+
+        foreach (var t in tramos.Skip(1))
+        {
+            var ultimo = unidos[^1];
+
+            if (t.A <= ultimo.B + 1e-9)
+            {
+                unidos[^1] = (ultimo.A, Math.Max(ultimo.B, t.B));
+            }
+            else
+            {
+                unidos.Add(t);
+            }
+        }
+
+        return unidos.Sum(t => t.B - t.A) / largo >= cubre;
+
+        (double T, double D) Proyecta(double x, double y)
+        {
+            var vx = x - cadena.X1;
+            var vy = y - cadena.Y1;
+
+            var t = (vx * ux) + (vy * uy);
+
+            return (t, Math.Abs((vx * uy) - (vy * ux)));
+        }
+    }
+
     /// <summary>Resumen para mostrarle al usuario.</summary>
     public string Resumen()
     {
