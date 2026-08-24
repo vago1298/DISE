@@ -1926,10 +1926,12 @@ public partial class MainWindow : Window
 
             PlanoHintText.Text =
                 $"Última pasada: {r} en {plantas.Count} planta(s), de un jalón y repartidas " +
-                "a la derecha. Quedaron en LAS CAPAS DE LA MACRO —E-CASTILLO, E-COLUMNA, " +
-                "E-DALA, E-TRABE, E-CONTRATRABE, E-MURO, E-LOSA, E-ACERO, E-EJES, E-TEXTO " +
-                "y E-TITULO— cada una con su color, en metros. Faltan los ejes con " +
-                "burbujas, las cotas y el armado de losa: ese es el dibujante nuevo.";
+                "a la derecha, con sus EJES —burbujas en los cuatro lados—, sus COTAS " +
+                "—cadena eje a eje a 0.75 y ancho total a 1.17, en los cuatro lados—, la " +
+                "línea de mampostería de los muros de block y el rótulo de dos renglones " +
+                "con el nombre del nivel y la escala. Todo en LAS CAPAS DE LA MACRO, cada " +
+                "una con su color, y con las de CAPAS_AL_FRENTE encima. Falta el armado de " +
+                "losa y los bloques de sección rellenos.";
 
             if (fallos.Count == 0)
             {
@@ -2059,6 +2061,14 @@ public partial class MainWindow : Window
                 Forma = el.Forma,
                 Etiqueta = el.Etiqueta,
                 Seccion = el.Seccion,
+
+                // De qué es el muro: lo clasifica la regla de la macro con las palabras de
+                // PALABRAS_MAMPOSTERIA y PALABRAS_CONCRETO. Es lo que decide si lleva la
+                // polilínea ancha de block al centro.
+                Material = el.Clase == ClaseElemento.Muro
+                    ? SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)
+                    : string.Empty,
+
                 X1 = el.X1, Y1 = el.Y1,
                 X2 = el.X2, Y2 = el.Y2,
                 AnchoM = el.AnchoM,
@@ -2071,6 +2081,25 @@ public partial class MainWindow : Window
             }
 
             p.Elementos.Add(e);
+        }
+
+        // ==============================================================================
+        //  LOS EJES DE LA CUADRÍCULA
+        // ==============================================================================
+        //  Son los MISMOS para todas las plantas —la cuadrícula es del edificio, no de un
+        //  nivel—, así que se ponen en cada una tal cual. Salen del modelo si el programa
+        //  los dio y, si no, se DEDUCEN de las columnas y los muros, que es el respaldo de
+        //  la macro: GetGridSys_2 no existe en todas las versiones de ETABS.
+        var ejes = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        foreach (var e in ejes.X)
+        {
+            p.EjesX.Add((e.Id, e.Ordenada));
+        }
+
+        foreach (var e in ejes.Y)
+        {
+            p.EjesY.Add((e.Id, e.Ordenada));
         }
 
         // El texto se dimensiona respecto al TAMAÑO DE LA PLANTA, no a un valor fijo:

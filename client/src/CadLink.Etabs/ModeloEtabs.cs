@@ -179,6 +179,15 @@ public sealed class ModeloEtabs
     /// <summary>Avisos no fatales: cosas que no se pudieron leer.</summary>
     public List<string> Avisos { get; } = new();
 
+    /// <summary>
+    /// La <b>cuadrícula de ejes</b>, si el programa la dio; nulo si no se pudo leer.
+    /// </summary>
+    /// <remarks>
+    /// En nulo <b>no</b> significa «sin ejes»: quien dibuja los deduce de las columnas y los
+    /// muros con <see cref="EjesModelo.DesdeGeometria"/>, que es el respaldo de la macro.
+    /// </remarks>
+    public EjesModelo? Ejes { get; set; }
+
     public int Puntos { get; set; }
 
     public int Frames { get; set; }

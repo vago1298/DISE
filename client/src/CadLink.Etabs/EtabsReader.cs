@@ -46,6 +46,7 @@ public static class EtabsReader
         LeerNiveles(cx, m);
         LeerFrames(cx, m, puntos);
         LeerAreas(cx, m, puntos);
+        LeerEjes(cx, m);
 
         // El detalle REAL de cada miembro se adjunta siempre que algo saliera mal.
         // Los avisos por sí solos ("no se pudieron leer los puntos") no distinguen
@@ -184,6 +185,116 @@ public static class EtabsReader
                     AlturaM = i < alt.Length ? alt[i] : 0
                 });
             }
+        }
+    }
+
+    // ==================================================================
+    // La cuadricula de ejes
+    // ==================================================================
+
+    /// <summary>
+    /// La <b>cuadrícula</b> del modelo, la que lleva burbuja y cota en el plano.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <c>LeerEjes</c> de la macro: se pide el primer sistema de cuadrícula y se leen sus
+    /// ordenadas en X y en Y con <c>GetGridSys_2</c>.
+    /// </para>
+    /// <para>
+    /// <b>Todo va envuelto y sin dar guerra si falla</b>, y no por prudencia excesiva:
+    /// <c>GetGridSys_2</c> no existe en todas las versiones —la macro lleva un comentario
+    /// avisando de que hay que comentar esa línea si el ETABS del cliente no lo tiene— y en
+    /// SAP2000 la cuadrícula puede estar definida de otra manera. Si no se puede leer, se
+    /// deja en nulo y quien dibuja usa <c>EjesModelo.DesdeGeometria</c>, que deduce los ejes
+    /// de las columnas y los muros. El plano sale con ejes de las dos formas.
+    /// </para>
+    /// </remarks>
+    private static void LeerEjes(EtabsConnection cx, ModeloEtabs m)
+    {
+        object gridSys;
+
+        try
+        {
+            gridSys = Com.Get(cx.SapModel, "GridSys");
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return;
+        }
+
+        var nombre = string.Empty;
+
+        try
+        {
+            object?[] a = { 0, null };
+            if (Com.CallRet(gridSys, "GetNameList", a, 0, 1) == 0)
+            {
+                var nombres = Com.AsStrings(a[1]);
+                if (nombres.Length > 0)
+                {
+                    nombre = nombres[0];
+                }
+            }
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            // Se prueba igual con el nombre de omisión: algunos modelos responden.
+        }
+
+        if (nombre.Length == 0)
+        {
+            nombre = "G1";
+        }
+
+        try
+        {
+            // La firma es larga: nombre, origen X, origen Y, giro, tipo, cuántos en X,
+            // cuántos en Y, y luego los arreglos de IDs, ordenadas, visibles y burbujas.
+            object?[] a =
+            {
+                nombre, 0d, 0d, 0d, string.Empty, 0, 0,
+                null, null, null, null, null, null, null, null
+            };
+
+            if (Com.CallRet(gridSys, "GetGridSys_2", a,
+                            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14) != 0)
+            {
+                return;
+            }
+
+            var ejes = new EjesModelo
+            {
+                OrigenX = Convert.ToDouble(a[1]),
+                OrigenY = Convert.ToDouble(a[2]),
+                RotacionGrados = Convert.ToDouble(a[3]),
+                Origen = $"cuadrícula del modelo «{nombre}»"
+            };
+
+            Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]));
+            Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[10]));
+
+            if (ejes.Hay)
+            {
+                m.Ejes = ejes;
+            }
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            // Esta versión no tiene GetGridSys_2: se deducen de la geometría.
+        }
+
+        static void Cargar(List<EjesModelo.Eje> destino, string[] ids, double[] ords)
+        {
+            for (var i = 0; i < ords.Length; i++)
+            {
+                var id = i < ids.Length && ids[i].Trim().Length > 0
+                    ? ids[i].Trim()
+                    : (i + 1).ToString();
+
+                destino.Add(new EjesModelo.Eje(id, ords[i]));
+            }
+
+            destino.Sort((p, q) => p.Ordenada.CompareTo(q.Ordenada));
         }
     }
 

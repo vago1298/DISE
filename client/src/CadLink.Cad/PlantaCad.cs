@@ -61,6 +61,17 @@ public sealed class ElementoPlanta
     /// <summary>Peralte de la sección en metros.</summary>
     public double PeralteM { get; set; }
 
+    /// <summary>
+    /// De qué es el muro: <c>MAMPOSTERIA</c> o <c>CONCRETO</c>, si el modelo lo dice.
+    /// </summary>
+    /// <remarks>
+    /// Decide una cosa que se ve mucho en el plano: <b>la línea de mampostería</b>, la
+    /// polilínea ancha que la macro dibuja al centro del muro de block y no en el de
+    /// concreto. Lo clasifica la ventana con la regla de la macro
+    /// —<c>PALABRAS_MAMPOSTERIA</c>— porque es la que tiene las notas del modelo.
+    /// </remarks>
+    public string Material { get; set; } = string.Empty;
+
     /// <summary>Contorno del paño, para las losas.</summary>
     public List<(double X, double Y)> Vertices { get; } = new();
 
@@ -93,4 +104,16 @@ public sealed class PlantaCad
 
     /// <summary>¿Se rotula cada elemento con su etiqueta y su sección?</summary>
     public bool ConRotulos { get; set; } = true;
+
+    /// <summary>
+    /// Los ejes <b>verticales</b> de la cuadrícula: nombre y X, de izquierda a derecha.
+    /// </summary>
+    /// <remarks>
+    /// Salen de la cuadrícula del modelo o, si el programa no la da, deducidos de las
+    /// columnas y los muros. Vacío significa «esta planta va sin ejes».
+    /// </remarks>
+    public List<(string Id, double Ordenada)> EjesX { get; } = new();
+
+    /// <summary>Los <b>horizontales</b>: nombre y Y, de abajo arriba.</summary>
+    public List<(string Id, double Ordenada)> EjesY { get; } = new();
 }

@@ -3325,6 +3325,140 @@ def v18_planta_autocad() -> None:
     check("las plantas van del nivel mas bajo al mas alto, como ORDEN_NIVELES = ASC",
           "salida.OrderBy(n => n.ElevacionM).ToList()" in mod)
 
+    # ------------------------------------------------------------------
+    # ETAPA 4: EJES CON BURBUJAS, COTAS, ESTILOS Y ROTULO DE LA PLANTA
+    # ------------------------------------------------------------------
+    # Es lo que convierte un dibujo de elementos en un PLANO. La cuenta va aparte del
+    # dibujante -EjesPlano y RotuloPlanta, sin COM- para poder comprobarla sin AutoCAD.
+    ejp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/EjesPlano.cs"))
+    rtp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/RotuloPlanta.cs"))
+    mac = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
+
+    check("la cuenta de los ejes y las cotas esta portada",
+          "public double SaleEjes()" in ejp
+          and "public double SaleEjesCorto()" in ejp
+          and "public double AbajoDeEjes(bool hayEjes)" in ejp
+          and "public List<Cota> Cotas(" in ejp
+          and "public List<EjeColocado> Verticales(" in ejp
+          and "public List<EjeColocado> Horizontales(" in ejp)
+
+    # LOS DOS NUMEROS QUE MAS SE HAN PELEADO EN LA MACRO, y que son INDEPENDIENTES:
+    # EJES_INICIO_BURBUJA_M manda las burbujas y COTAS_SEPARACION_TOTAL manda la cota.
+    check("las burbujas las manda EJES_INICIO_BURBUJA_M, y solo eso",
+          '_cfg.Numero("EJES_INICIO_BURBUJA_M", 2)' in ejp
+          and "if (inicio > 0)" in ejp)
+    check("y las cotas, COTAS_SEPARACION y COTAS_SEPARACION_TOTAL",
+          '_cfg.Numero("COTAS_SEPARACION", 0.75)' in ejp
+          and '_cfg.Numero("COTAS_SEPARACION_TOTAL", 1.17)' in ejp)
+    check("los cuatro lados se prenden por separado",
+          all(f'_cfg.Bandera("COTAS_{lado}", true)' in ejp
+              for lado in ("ARRIBA", "ABAJO", "IZQUIERDA", "DERECHA")))
+    check("la cota total necesita 3 ejes: con 2 seria la misma linea dos veces",
+          "ejes.Count >= 3" in ejp)
+    check("la burbuja lleva su anillo y sus rayitas, 3 o 4",
+          "public double RadioAnillo()" in ejp
+          and '_cfg.Bandera("BURBUJA_CRUZ_4_LINEAS", true)' in ejp)
+
+    # EL ROTULO: CIMENTACION en la base y PLANTA BAJA en Story1, no «STORY1».
+    check("el rotulo de la planta esta portado",
+          "public string RenglonDelNivel(string story)" in rtp
+          and "public bool EsCimentacion(string story)" in rtp
+          and "public static int NumeroDeStory(string story)" in rtp)
+    check("la base se rotula CIMENTACION",
+          '_cfg.Texto("ROTULO_NOMBRE_CIMENTACION", "CIMENTACION")' in rtp)
+    check("y el nombre del nivel sale de ROTULO_NIVELES",
+          '_cfg.Texto("ROTULO_NIVELES")' in rtp)
+    check("la comparacion de la base es EXACTA, para que Basement no cuente",
+          "if (p.Length > 0 && t == p)" in rtp)
+
+    # EL DIBUJO: estilos, ejes, cotas, rotulo, mamposteria y draw order.
+    check("se crean los estilos de la macro",
+          "private void AsegurarEstilosDeLaMacro()" in mac
+          and '_cfg.Texto("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES")' in mac
+          and '_cfg.Texto("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS")' in mac
+          and '_cfg.Texto("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS")' in mac
+          and '_cfg.Texto("ESTILO_TEXTO_COTA", "COTA")' in mac)
+    check("el de las cotas va en NEGRITA, que solo se puede pedir por el nombre de fuente",
+          '_cfg.Bandera("COTA_NEGRITA", true)' in mac
+          and "est.SetFont(fuente, negrita, false, 0, 0);" in mac)
+    check("y el estilo de cota se arma con las variables DIM y CopyFrom",
+          "private void EstiloDeCota()" in mac
+          and 'V("DIMTXSTY"' in mac and 'V("DIMEXE"' in mac and 'V("DIMDSEP"' in mac
+          and "est.CopyFrom(_doc);" in mac)
+
+    check("se dibujan los ejes con sus burbujas",
+          "private void DibujarEjesDeLaPlanta(" in mac
+          and "private void Burbuja(" in mac
+          and '_capas.Prefijo + "EJES-BURBUJA"' in mac
+          and '_capas.Prefijo + "EJES-TEXTO"' in mac)
+    check("las rayitas van en la capa de la burbuja, no en la de los ejes",
+          "Linea(x1, y1, x2, y2, capaBur);" in mac)
+    check("y las cotas, en la capa de cotas y con su estilo",
+          "private void CotaAlineada(" in mac
+          and '_capas.Prefijo + "COTAS"' in mac
+          and "_ms.AddDimAligned(" in mac)
+    check("la cota total lleva su linea de extension corta, para no tocar la burbuja",
+          '_cfg.Numero("COTA_TOTAL_EXT_LINE_EXT", 0)' in mac
+          and "c.EsTotal ? extTotal : -1" in mac)
+
+    check("el rotulo de dos renglones se dibuja debajo de los ejes",
+          "private void RotuloDeLaPlanta(" in mac
+          and "Ejes.AbajoDeEjes(hayEjes)" in mac
+          and "Rot.SeparacionEjes" in mac)
+    check("y se MIDE para poder centrarlo, como hace la macro",
+          "private double AnchoDeTexto(" in mac
+          and "GetBoundingBox" in mac
+          and "MoverTexto(t1, x0, y0);" in mac)
+    # GetBoundingBox NO se puede llamar con dynamic: devuelve por referencia. Ya se
+    # aprendio dos veces en este proyecto, asi que aqui va por reflexion desde el principio.
+    check("la medida va por reflexion y no con dynamic",
+          "System.Reflection.ParameterModifier(2)" in mac
+          and "InvokeMember(" in mac)
+
+    check("el muro de block lleva su polilinea ancha",
+          "private bool LineaDeMamposteria(" in mac
+          and '_cfg.Numero("MAMPOSTERIA_ANCHO", 0.06)' in mac
+          and '_cfg.Numero("MAMPOSTERIA_GAP_M", 0.05)' in mac
+          and '_capas.Prefijo + "MAMPOSTERIA"' in mac)
+    check("y el material del muro llega desde la ventana, con la regla de la macro",
+          "public string Material { get; set; }" in dto
+          and "SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)" in codigo)
+
+    check("las capas de CAPAS_AL_FRENTE se suben al frente al terminar",
+          "private void TraerCapasAlFrente()" in mac
+          and 'dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable")' in mac
+          and "tabla.MoveToTop(" in mac
+          and '_doc.SetVariable("SORTENTS", 127)' in mac
+          and "TraerCapasAlFrente();" in dib)
+    # El respaldo de la macro -copiar y borrar- NO se porta: cambia los handles y rompe
+    # xrefs, campos y anotaciones asociativas.
+    check("y no se recurre a copiar y borrar, que cambia los handles",
+          "RecrearAlFrente" not in mac)
+
+    # LOS EJES DEL MODELO, con su respaldo: GetGridSys_2 no esta en todas las versiones.
+    lect_ej = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("la cuadricula se lee del modelo",
+          "private static void LeerEjes(EtabsConnection cx, ModeloEtabs m)" in lect_ej
+          and '"GetGridSys_2"' in lect_ej)
+    check("y si no se puede, se deduce de las columnas y los muros",
+          "public static EjesModelo DesdeGeometria(" in leer(
+              ruta("client/src/CadLink.Etabs/EjesModelo.cs"))
+          and "EjesModelo.DesdeGeometria(modelo)" in codigo)
+    check("los verticales se numeran y los horizontales se letran",
+          "public static string Letra(int i)" in leer(
+              ruta("client/src/CadLink.Etabs/EjesModelo.cs")))
+
+    # Y su prueba ejecutable.
+    pre = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+    check("hay prueba ejecutable de los ejes, las cotas y el rotulo",
+          "using CadLink.Cad.PlanoEstructural;" in pre
+          and "ejes.SaleEjes()" in pre
+          and "ejes.Cotas(" in pre
+          and "rot.NombreDeNivel(" in pre
+          and "return fallos == 0 ? 0 : 1;" in pre)
+    check("y comprueba que mover las cotas NO mueve las burbujas",
+          "mover la cota total NO mueve las burbujas" in pre)
+
     # LOS ROTULOS, DONDE LOS PONE LA MACRO: la columna en la esquina superior derecha y la
     # trabe girada a lo largo de la barra. Todos al centro y horizontales era lo que
     # convertia cada nudo en un borron.

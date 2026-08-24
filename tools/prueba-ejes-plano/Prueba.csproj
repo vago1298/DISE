@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de la etapa 4: donde van los ejes, las burbujas, las cotas y el
+       rotulo de la planta.
+
+       Todo eso es aritmetica y reglas de la hoja CONFIG, sin AutoCAD, asi que se puede
+       comprobar aqui contra los numeros de la macro. Lo que necesita COM -dibujar el
+       circulo, la cota, el texto- se queda en PlantaDrawer.Macro.cs.
+
+           cd tools/prueba-ejes-plano
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-ejes-plano</AssemblyName>
+
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -44,7 +44,7 @@ namespace CadLink.Cad;
 /// sirve para varias versiones de AutoCAD.
 /// </para>
 /// </remarks>
-public sealed class PlantaDrawer
+public sealed partial class PlantaDrawer
 {
     private const int PorCapa = 256;
 
@@ -172,6 +172,10 @@ public sealed class PlantaDrawer
         AsegurarCapas();
         AsegurarEstiloTexto();
 
+        // Los estilos de la macro: TEXTO_SECCIONES, TEXTO_CADENAS, TEXTO_LOSAS, COTA y
+        // COTA_DIM. Sin ellos las cotas saldrían con la letra de fábrica de AutoCAD.
+        AsegurarEstilosDeLaMacro();
+
         // Las losas PRIMERO, para que las trabes y las columnas queden encima. En
         // AutoCAD el orden de creación es el orden de dibujo, así que basta con
         // dibujarlas antes; no hace falta tocar el DrawOrder.
@@ -189,6 +193,11 @@ public sealed class PlantaDrawer
                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false))
             {
                 r.Muros++;
+
+                // Y si es de BLOCK, su polilínea ancha al centro: es la marca de
+                // mampostería, y es lo que distingue de un golpe de vista un muro de block
+                // de uno de concreto.
+                LineaDeMamposteria(el, x0, y0);
             }
         }
 
@@ -227,7 +236,16 @@ public sealed class PlantaDrawer
             }
         }
 
-        TituloDeLaPlanta(p, x0, y0);
+        // ---- LO QUE CONVIERTE EL DIBUJO EN UN PLANO -------------------------------
+        // El rectángulo de lo dibujado: lo piden los ejes, las cotas y el rótulo, y se
+        // calcula UNA vez.
+        var caja = Envolvente(p);
+
+        // Los ejes con sus burbujas y las cotas en los cuatro lados.
+        DibujarEjesDeLaPlanta(p, x0, y0, caja.XMin, caja.YMin, caja.XMax, caja.YMax);
+
+        // Y el rótulo de dos renglones, debajo de los ejes de abajo.
+        RotuloDeLaPlanta(p, x0, y0, caja.XMin, caja.YMin, caja.XMax);
 
         // UN solo renglón con los que se dibujaron con el espesor de omisión, en lugar de
         // uno por elemento.
@@ -349,7 +367,58 @@ public sealed class PlantaDrawer
             total.Diagonales += r.Diagonales;
         }
 
+        // AL FINAL DE TODO, cuando ya está dibujado el juego entero: las capas de
+        // CAPAS_AL_FRENTE encima de lo demás. Antes de terminar no serviría, porque cada
+        // planta nueva se dibujaría después.
+        TraerCapasAlFrente();
+
+        if (_alFrente > 0)
+        {
+            Nota($"{_alFrente} objeto(s) subidos al frente " +
+                 $"({string.Join(" + ", _capas.CapasAlFrente())}).");
+        }
+
         return total;
+    }
+
+    /// <summary>El rectángulo que envuelve lo dibujado de una planta.</summary>
+    /// <remarks>
+    /// Cuenta los vértices de los paños y los dos extremos de las barras. Si la planta
+    /// llegara vacía devuelve un cuadrado de 1 m: así lo que venga detrás —los ejes, el
+    /// rótulo— no tiene que comprobar nada.
+    /// </remarks>
+    private static (double XMin, double YMin, double XMax, double YMax) Envolvente(PlantaCad p)
+    {
+        double xMin = double.MaxValue, xMax = double.MinValue;
+        double yMin = double.MaxValue, yMax = double.MinValue;
+
+        foreach (var el in p.Elementos)
+        {
+            foreach (var v in el.Vertices)
+            {
+                xMin = Math.Min(xMin, v.X); xMax = Math.Max(xMax, v.X);
+                yMin = Math.Min(yMin, v.Y); yMax = Math.Max(yMax, v.Y);
+            }
+
+            xMin = Math.Min(xMin, Math.Min(el.X1, el.X2));
+            xMax = Math.Max(xMax, Math.Max(el.X1, el.X2));
+            yMin = Math.Min(yMin, Math.Min(el.Y1, el.Y2));
+            yMax = Math.Max(yMax, Math.Max(el.Y1, el.Y2));
+        }
+
+        if (xMax <= xMin)
+        {
+            xMin = 0;
+            xMax = 1;
+        }
+
+        if (yMax <= yMin)
+        {
+            yMin = 0;
+            yMax = 1;
+        }
+
+        return (xMin, yMin, xMax, yMax);
     }
 
     // ==================================================================

@@ -42,11 +42,33 @@ el nuevo dibuje lo mismo**.
 |---|---|---|---|
 | 2 | Los parámetros resueltos: `LeerConfig` entero —las ~200 variables `g*` con su escalado por `FACTOR_UNIDADES`, sus `/100` de centímetros y sus topes— | `ParametrosPlano.cs` | Prueba ejecutable: cada variable contra el valor que le sale a la macro con la hoja de omisión, y contra los topes en los casos raros (0, negativo, fuera de rango) |
 | 3 | Capa 2: clasificación y geometría. Es **la mitad del código y no toca ni ETABS ni AutoCAD**: `ClasificaTipo`, `MarcarMurosTapados`, `ClasificarAlturaMuros`, `MarcarCadenasSinMuro`, `ClasificarApoyoLosas`, `RecortarAlPano`, `PanoRect`, `PanoCirculo`, `PanoColumnaW`, `EjesLocalesFrame`, `ContornoLosaAlPano`, `LongitudUnion`, `CortesEnX/Y`, `AjustePano`, `DeltaPano` | `PlanoEstructural/` | Volcado con las mismas 35 columnas de `MODELO_ETABS`, comparado **celda por celda** contra el de la macro sobre el mismo modelo |
-| 4 | Capa 3: el dibujo. Elementos y bloques de sección, armado de losa con bayoneta, parrilla recortada al contorno, hatch `ANSI37`, franjas `FLEX` de losacero con su rótulo de calibre, mampostería, rótulos de cadenas, ejes con burbujas, cotas en los cuatro lados, título y `ACAD_SORTENTS` al frente | `PlanoEstructuralDrawer.cs` | Conteo de entidades por capa y comparación visual sobre el mismo modelo |
+| 4 | Capa 3: el dibujo. **Ya está**: ejes con burbujas, cotas en los cuatro lados, estilos de texto y de cota, rótulo de dos renglones, línea de mampostería y `ACAD_SORTENTS` al frente. **Falta**: armado de losa con bayoneta, parrilla recortada al contorno, hatch `ANSI37`, franjas `FLEX` de losacero con su rótulo de calibre, bloques de sección rellenos y rótulos de cadenas al centro | `PlantaDrawer.Macro.cs` + `PlanoEstructural/` | `tools/prueba-ejes-plano` para la cuenta, y conteo de entidades por capa y comparación visual para el dibujo |
 
-### Lo que ya hace el dibujante de hoy, mientras llega el nuevo
+### Etapa 4, primera entrega: lo que ya hace que sea un plano
 
-No es el port, pero es lo que se puede usar entretanto:
+- **Ejes con burbujas en los cuatro lados**. La línea de cada eje termina justo donde
+  arranca su burbuja, a `EJES_INICIO_BURBUJA_M` = 2.00 m de la planta; burbuja doble
+  —anillo a 0.82— con sus 4 rayitas, en `E-EJES-BURBUJA`, y el nombre en
+  `E-EJES-TEXTO`. La cuadrícula sale del modelo y, si el programa no la da —`GetGridSys_2`
+  no está en todas las versiones—, se **deduce de las columnas y los muros**.
+- **Cotas en los cuatro lados**: cadena eje a eje a 0.75 y ancho total a 1.17, en
+  `E-COTAS`, con el estilo `COTA_DIM` armado desde las variables `DIM*` de la hoja. La
+  cota total lleva la línea de extensión corta para no tocar la burbuja.
+- **Los dos números siguen siendo independientes**, como en la macro: mover
+  `COTAS_SEPARACION_TOTAL` no mueve las burbujas ni al revés. Está comprobado en
+  `tools/prueba-ejes-plano`.
+- **Los estilos**: `TEXTO_SECCIONES` (0.12), `TEXTO_CADENAS` (0.09), `TEXTO_LOSAS`
+  (0.072), `COTA` en Century Gothic **negrita** y `HAETTENSCHWEILER` para el rótulo.
+- **Rótulo de dos renglones** debajo de los ejes de abajo: `PLANTA  ESTRUCTURAL` y, a la
+  derecha, el nivel con su escala —`CIMENTACION` en la base, `PLANTA BAJA` en Story1— con
+  su línea entre los dos. Se **mide** el título para centrarlo, como hace la macro.
+- **Línea de mampostería**: la polilínea ancha de 6 cm al centro del muro de block, con
+  su hueco de 5 cm en los extremos si el muro pasa de 1 m.
+- **Orden de dibujo**: `SORTENTS = 127` y las capas de `CAPAS_AL_FRENTE` arriba de todo
+  con `ACAD_SORTENTS.MoveToTop`. El respaldo de la macro —copiar y borrar— **no** se
+  porta: cambia los handles y rompe xrefs y campos.
+
+### Y lo que ya hacía, de la entrega anterior:
 
 - **Todas las plantas de un jalón**, una al lado de otra, del nivel más bajo al más
   alto, con `SEPARACION_ENTRE_PLANTAS`, `OFFSET_Y_INICIAL` y `PLANTAS_POR_FILA` de la
