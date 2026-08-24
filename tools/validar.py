@@ -2519,16 +2519,44 @@ def v16_extruida_piers() -> None:
               "EtabsAssembly.ParaSap2000 = Destino == ProgramaCsi.Sap2000;"
               in m_con.group(0))
 
-    # La pestaña y el boton.
+    # La pestaña y LA CASILLA. Se pidio elegir el programa en una casilla, no con un
+    # boton por programa: con dos botones era facil pulsar el que no tocaba.
     check("la pestaña dice ETABS/SAP2000", 'Header="ETABS/SAP2000"' in xaml)
-    check("hay boton para leer el modelo de SAP2000",
-          'Click="OnImportSap2000"' in xaml)
-    check("y su manejador existe", "private void OnImportSap2000(" in codigo)
+    check("hay una casilla para elegir el programa, con los dos",
+          'x:Name="ProgramaCsiCombo"' in xaml
+          and '<ComboBoxItem Content="ETABS" />' in xaml
+          and '<ComboBoxItem Content="SAP2000" />' in xaml
+          and 'SelectionChanged="OnProgramaCsiCambiado"' in xaml)
+    check("y sus manejadores existen",
+          "private void OnProgramaCsiCambiado(" in codigo
+          and "private void OnImportModeloCsi(" in codigo)
+    check("el boton de leer dice a que programa apunta",
+          'x:Name="LeerModeloCsiButton"' in xaml
+          and 'Click="OnImportModeloCsi"' in xaml
+          and 'LeerModeloCsiButton.Content = $"Leer modelo de {NombreDestinoCsi}"' in codigo)
+    check("ya no hay un boton por programa",
+          'Click="OnImportSap2000"' not in xaml
+          and 'Click="OnImportEtabs"' not in xaml
+          and "private void OnImportSap2000(" not in codigo)
+
+    # EL DESTINO SALE DE LA CASILLA, EN UN SOLO SITIO, y manda para TODA la pestaña:
+    # probar la conexion, leer el modelo, leer los piers y armar los planos. Si una
+    # conexion se abriera sin destino, ese boton le hablaria a ETABS con la casilla en
+    # SAP2000, que es justo el error que se pidio quitar.
+    check("el destino sale de la casilla, en un solo sitio",
+          "private EtabsConnection.ProgramaCsi DestinoCsi =>" in codigo
+          and "ProgramaCsiCombo?.SelectedIndex == 1" in codigo)
+    check("y todas las conexiones de la ventana lo respetan",
+          codigo.count("new EtabsConnection { Destino = DestinoCsi }") == 3
+          and "new EtabsConnection()" not in codigo)
 
     # UN solo lector para los dos, o un arreglo entraria en uno y no en el otro.
-    check("los dos botones usan el mismo lector",
-          "LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs)" in codigo
-          and "LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000)" in codigo)
+    check("hay un solo lector para los dos programas",
+          codigo.count("private void LeerModeloCsi(") == 1
+          and "LeerModeloCsi(DestinoCsi);" in codigo)
+    check("y los mensajes no atribuyen a ETABS lo que pudo salir de SAP2000",
+          '$"{cx.NombreDelDestino} conectado."' in codigo
+          and 'StatusText.Text = "ETABS conectado.";' not in codigo)
 
     # Y el modelo se VISUALIZA: es lo que pidio el usuario, no solo leerlo.
     m_lm = re.search(r"private void LeerModeloCsi\(.*?\n    \}", codigo, re.S)
@@ -8566,8 +8594,10 @@ def v23_hoja_zapatas_corridas() -> None:
     # ------------------------------------------------------------------
     # Cada nombre del XAML existe en el codigo, y al contrario
     # ------------------------------------------------------------------
-    for nombre in ("ColZapCorVarInf", "ColZapCorVarInfT", "ColZapCorVarSup",
-                   "ColZapCorVarSupT", "ColZapCorVarMuro"):
+    # Las de las parrillas ya no salen aqui: son DOS columnas de plantilla -una por
+    # parrilla- y su lista va en el XAML con x:Static, porque una celda de plantilla no
+    # tiene x:Name al que agarrarse.
+    for nombre in ("ColZapCorVarMuro", "ColZapCorVarMuroVert"):
         check(f"la columna {nombre} esta en el XAML y se llena en el codigo",
               f'x:Name="{nombre}"' in xaml and f"{nombre}.ItemsSource" in hoja)
 
@@ -9164,60 +9194,111 @@ def v24_rediseno() -> None:
           and '<Setter Property="ColumnHeaderHeight" Value="40" />' in tema)
 
     # ------------------------------------------------------------------
-    # LA BANDA DE CABECERA DE CADA PARRILLA, en las DOS hojas de zapatas
+    # LA CABECERA COMBINADA DE CADA PARRILLA, en las DOS hojas de zapatas
     # ------------------------------------------------------------------
-    # La cuadricula de WPF no junta columnas bajo un titulo, asi que la banda va en la
-    # cabecera de la PRIMERA columna del grupo y las otras tres llevan el renglon de
-    # arriba en blanco, para que los nombres queden a la misma altura.
-    # LA BANDA ABARCA LAS CUATRO COLUMNAS DEL GRUPO: se pinta de 350 px -el ancho de
-    # las cuatro- y se corre con un Margin NEGATIVO hasta el arranque del grupo. El
-    # margen negativo es lo que mueve el texto de verdad: con HorizontalAlignment no
-    # basta, porque cuando el hijo pide mas ancho del que hay en su sitio WPF ignora la
-    # alineacion. Y va en las CUATRO cabeceras, las cuatro pintandola en el mismo
-    # sitio: si nada recorta se superponen y se lee una sola, y si la cuadricula
-    # recorta cada cabecera a su ancho, cada una pinta su trozo.
-    for plantilla in ("CabeceraParrillaInf1", "CabeceraParrillaInf2",
-                      "CabeceraParrillaInf3", "CabeceraParrillaInf4",
-                      "CabeceraParrillaSup1", "CabeceraParrillaSup2",
-                      "CabeceraParrillaSup3", "CabeceraParrillaSup4"):
-        check(f"existe la plantilla de cabecera {plantilla}",
+    # WPF no tiene cabeceras combinadas y recorta cada cabecera a SU columna, asi que
+    # con las cuatro columnas de antes el titulo salia en trozos: «PARRILL», «IFERIOR».
+    # Ahora cada parrilla es UNA sola columna de plantilla de 350 px -115 + 60 + 115 +
+    # 60- que se parte en cuatro por dentro: arriba la banda entera y el renglon de los
+    # cuatro nombres, y abajo las cuatro casillas de captura.
+    for plantilla in ("CabeceraParrillaInferior", "CabeceraParrillaSuperior",
+                      "CeldasParrillaInferior", "CeldasParrillaSuperior"):
+        check(f"existe la plantilla de parrilla {plantilla}",
               f'x:Key="{plantilla}"' in tema)
 
-    check("la banda dice de que parrilla es cada grupo",
-          tema.count('<TextBlock Text="PARRILLA INFERIOR" '
-                     'Style="{StaticResource BandaParrillaStyle}"') == 4
-          and tema.count('<TextBlock Text="PARRILLA SUPERIOR" '
-                         'Style="{StaticResource BandaParrillaStyle}"') == 4)
-    check("y mide el ancho de las cuatro columnas del grupo",
+    check("las dos hojas usan las DOS columnas de parrilla, con su cabecera y sus celdas",
+          xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaInferior}"') == 2
+          and xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"') == 2
+          and xaml.count('CellTemplate="{StaticResource CeldasParrillaInferior}"') == 2
+          and xaml.count('CellTemplate="{StaticResource CeldasParrillaSuperior}"') == 2)
+
+    check("el titulo de cada grupo es el Header de SU columna, una por parrilla y hoja",
+          xaml.count('<DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="350"') == 2
+          and xaml.count('<DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="350"') == 2)
+
+    check("y la banda lo pinta centrado sobre las cuatro casillas",
           'x:Key="BandaParrillaStyle"' in tema
-          and '<Setter Property="Width" Value="350" />' in tema)
-    check("cada cabecera la corre con su margen negativo, hasta el arranque del grupo",
-          all(f'Margin="{m},0,0,0"' in tema for m in ("-8", "-123", "-183", "-298")))
-    check("y las dos hojas la usan, en las cuatro columnas de sus dos grupos",
-          all(xaml.count(f'HeaderTemplate="{{StaticResource CabeceraParrilla{t}}}"') == 2
-              for t in ("Inf1", "Inf2", "Inf3", "Inf4",
-                        "Sup1", "Sup2", "Sup3", "Sup4"))
-          and "CabeceraParrillaSigue" not in xaml)
+          and tema.count('<TextBlock Text="{Binding}" '
+                         'Style="{StaticResource BandaParrillaStyle}" />') == 2)
+
+    check("no queda nada de los dos intentos que fallaron",
+          all(f'x:Key="CabeceraParrilla{t}"' not in tema
+              for t in ("Inf1", "Inf2", "Inf3", "Inf4", "Sup1", "Sup2", "Sup3", "Sup4"))
+          and '<Setter Property="Width" Value="350" />' not in tema
+          and 'Margin="-298,0,0,0"' not in tema)
+
+    # La cabecera de parrilla va SIN relleno y ESTIRADA, y el ContentPresenter de la
+    # cabecera respeta esa alineacion en lugar de centrar a la fuerza: si no, la
+    # cabecera se encoge a lo que mide su texto y los cuatro nombres no caen encima de
+    # sus cuatro casillas.
+    check("la cabecera de parrilla va sin relleno y estirada",
+          'x:Key="CabeceraParrillaStyle"' in tema
+          and 'BasedOn="{StaticResource EncabezadoHojaStyle}"' in tema
+          and '<Setter Property="HorizontalContentAlignment" Value="Stretch" />' in tema
+          and xaml.count('HeaderStyle="{StaticResource CabeceraParrillaStyle}"') == 4)
+    check("y la cabecera respeta la alineacion de su contenido",
+          'HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"' in tema)
+
+    # Las cuatro casillas y los cuatro nombres, con el MISMO reparto de ancho en
+    # estrella: asi siguen cuadrados aunque se cambie el ancho de la columna.
+    check("los cuatro nombres y las cuatro casillas llevan el mismo reparto de ancho",
+          tema.count('<ColumnDefinition Width="115*" />') == 8
+          and tema.count('<ColumnDefinition Width="60*" />') == 8)
 
     # LOS NOMBRES DE COLUMNA, los que se pidieron: dicen el LECHO y el TRABAJO de cada
-    # varilla, y coinciden con lo que sale rotulado en el plano.
-    for nombre in ('Header="Var Inf. Flexión"', 'Header="Var. Sup. Temp."',
-                   'Header="Var Sup. Flexión"', 'Header="Var. Inf. Temp."'):
-        check(f"las dos hojas tienen la columna {nombre.split('=')[1]}",
-              xaml.count(nombre) == 2)
+    # varilla, y coinciden con lo que sale rotulado en el plano. Van UNA vez, en la
+    # plantilla, porque las dos hojas usan la misma.
+    for nombre in ("Var Inf. Flexión", "Var. Sup. Temp.",
+                   "Var Sup. Flexión", "Var. Inf. Temp."):
+        check(f"la plantilla tiene el nombre {nombre}",
+              tema.count(f'Text="{nombre}"') == 1)
+
+    check('y las cuatro casillas de separacion dicen «@ cm»',
+          tema.count('Text="@ cm"') == 4)
 
     check("y no queda ningun nombre viejo de columna de parrilla",
           'Header="Var inf."' not in xaml
           and 'Header="Var sup."' not in xaml
           and 'Header="Var inf. trans."' not in xaml
-          and 'Header="Var sup. trans."' not in xaml)
+          and 'Header="Var sup. trans."' not in xaml
+          and 'Header="Var Inf. Flexión"' not in xaml)
 
-    # LAS CASILLAS DE LA PARRILLA SUPERIOR, APAGADAS SI NO HAY DOBLE PARRILLA. Cuatro
-    # columnas por hoja, y las dos filas tienen EsDobleParrilla.
+    # LAS LISTAS DE LAS SUB-CASILLAS. Una celda de plantilla no tiene x:Name -se crea
+    # una por fila-, asi que los numeros de varilla se atacan con x:Static, y salen de
+    # la MISMA tabla de diametros: Varilla.DiametrosCm.
+    modelos = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    check("los numeros de varilla se pueden atacar desde el XAML",
+          "public static readonly string[] Diametros = DiametrosCm.Keys.ToArray();" in modelos
+          and "public static readonly string[] DiametrosOpcionales =" in modelos
+          and "new[] { string.Empty }.Concat(Diametros).ToArray();" in modelos)
+    check("la parrilla inferior las pide obligatorias y la superior opcionales",
+          tema.count('{Binding Source={x:Static models:Varilla.Diametros}}') == 2
+          and tema.count('{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}') == 2)
+    check("y ya no se rellenan por codigo, que con la columna de plantilla no se puede",
+          all(f"{c}.ItemsSource" not in leer(ruta(f"client/src/CadLink.App/{f}"))
+              for f, cs in (("MainWindow.ZapatasCorridas.cs",
+                             ("ColZapCorVarInf", "ColZapCorVarInfT",
+                              "ColZapCorVarSup", "ColZapCorVarSupT")),
+                            ("MainWindow.Zapatas.cs",
+                             ("ColZapVarInf", "ColZapVarInfT",
+                              "ColZapVarSup", "ColZapVarSupT")))
+              for c in cs))
+
+    # Las cuatro casillas de captura de cada parrilla, con su enlace
+    for prop in ("VarInf", "SepInf", "VarInfTrans", "SepInfTrans",
+                 "VarSup", "SepSup", "VarSupTrans", "SepSupTrans"):
+        check(f"la casilla de {prop} esta enlazada",
+              f'{prop}, UpdateSourceTrigger=PropertyChanged}}' in tema)
+
+    # LAS CASILLAS DE LA PARRILLA SUPERIOR, APAGADAS SI NO HAY DOBLE PARRILLA. Ahora es
+    # UNA columna por hoja, y al apagar la celda se apagan sus cuatro casillas de dentro,
+    # porque IsEnabled baja por el arbol. Las dos filas tienen EsDobleParrilla.
     check("las casillas de la parrilla superior se apagan sin doble parrilla",
           'x:Key="CeldaSoloDobleParrilla"' in tema
           and '<Setter Property="IsEnabled" Value="{Binding EsDobleParrilla}" />' in tema
-          and xaml.count('CellStyle="{StaticResource CeldaSoloDobleParrilla}"') == 8)
+          and 'x:Key="CeldaParrillaSup"' in tema
+          and 'BasedOn="{StaticResource CeldaSoloDobleParrilla}"' in tema
+          and xaml.count('CellStyle="{StaticResource CeldaParrillaSup}"') == 2)
     check("y la fila avisa del cambio, para que se enciendan al poner SI",
           all("Raise(nameof(EsDobleParrilla));" in leer(ruta(f"client/src/CadLink.App/Models/{m}"))
               for m in ("ZapataCorridaRow.cs", "ZapataAisladaRow.cs")))

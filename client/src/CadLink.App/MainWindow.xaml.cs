@@ -756,16 +756,18 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Wait;
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
             EtabsStatusText.Text =
                 "Conexión correcta.\n\n" +
                 $"Programa : {cx.Programa}\n" +
                 $"Modelo   : {cx.Modelo}\n\n" +
-                "Ya puedes pulsar 'Leer modelo'.";
+                $"Ya puedes pulsar 'Leer modelo de {cx.NombreDelDestino}'.";
 
-            StatusText.Text = "ETABS conectado.";
+            // El nombre sale de la CONEXION y no escrito a mano: la casilla pudo decir
+            // SAP2000, y un mensaje que diga ETABS en ese caso es un error a la vista.
+            StatusText.Text = $"{cx.NombreDelDestino} conectado.";
         }
         catch (EtabsException ex)
         {
@@ -791,7 +793,7 @@ public partial class MainWindow : Window
             Cursor = Cursors.Wait;
             EtabsStatusText.Text = "Leyendo los piers de los muros…";
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
             var piers = EtabsPiers.Leer(cx);
@@ -820,19 +822,57 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnImportEtabs(object sender, RoutedEventArgs e) =>
-        LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs);
-
-    /// <summary>Lee el modelo abierto en <b>SAP2000</b>.</summary>
+    /// <summary>
+    /// <b>De dónde se lee</b>: lo que diga la casilla de la pestaña, ETABS o SAP2000.
+    /// </summary>
     /// <remarks>
-    /// Es el mismo lector que el de ETABS, y no es un atajo: CSI comparte la OAPI entre
-    /// los dos programas —la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las
+    /// <para>
+    /// Está en <b>un solo sitio</b> a propósito: lo usan la prueba de conexión, la
+    /// lectura del modelo, la de los piers y el armado de los planos, y así no hay
+    /// manera de que un botón se quede hablándole a ETABS cuando la casilla dice
+    /// SAP2000.
+    /// </para>
+    /// <para>
+    /// El lector es el mismo para los dos, y no es un atajo: CSI comparte la OAPI entre
+    /// ETABS y SAP2000 —la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las
     /// mismas llamadas para pisos, marcos y áreas— así que lo único que cambia es el
-    /// ProgID con el que se pide el objeto activo. Ver
+    /// ProgID con el que se pide el objeto activo y la librería que se carga. Ver
     /// <c>EtabsConnection.ProgramaCsi</c>.
+    /// </para>
+    /// <para>
+    /// Se lee con <c>?.</c> porque el constructor de la ventana llama a rutinas que
+    /// preguntan por el destino <b>antes</b> de que el XAML haya creado la casilla; sin
+    /// casilla todavía, el destino es ETABS.
+    /// </para>
     /// </remarks>
-    private void OnImportSap2000(object sender, RoutedEventArgs e) =>
-        LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000);
+    private EtabsConnection.ProgramaCsi DestinoCsi =>
+        ProgramaCsiCombo?.SelectedIndex == 1
+            ? EtabsConnection.ProgramaCsi.Sap2000
+            : EtabsConnection.ProgramaCsi.Etabs;
+
+    /// <summary>Nombre del programa elegido, para los mensajes.</summary>
+    private string NombreDestinoCsi =>
+        DestinoCsi == EtabsConnection.ProgramaCsi.Sap2000 ? "SAP2000" : "ETABS";
+
+    /// <summary>
+    /// Al cambiar la casilla, el botón de leer dice a quién se le va a leer.
+    /// </summary>
+    /// <remarks>
+    /// Es la única forma de que se vea que la casilla surtió efecto: si el botón siguiera
+    /// diciendo «Leer modelo» a secas, no habría manera de saber a qué programa apunta
+    /// sin pulsarlo.
+    /// </remarks>
+    private void OnProgramaCsiCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        if (LeerModeloCsiButton is not null)
+        {
+            LeerModeloCsiButton.Content = $"Leer modelo de {NombreDestinoCsi}";
+        }
+    }
+
+    /// <summary>Lee el modelo del programa que diga la casilla.</summary>
+    private void OnImportModeloCsi(object sender, RoutedEventArgs e) =>
+        LeerModeloCsi(DestinoCsi);
 
     /// <summary>
     /// Lee el modelo abierto en el programa de CSI que se le diga, y lo <b>visualiza</b>.
@@ -1571,7 +1611,7 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Wait;
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
             var modelo = EtabsReader.Leer(cx);

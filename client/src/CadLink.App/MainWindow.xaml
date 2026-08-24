@@ -98,9 +98,11 @@
                 <MenuItem Header="Dibujar la _planta en AutoCAD" Click="OnDibujarPlantaCad" />
             </MenuItem>
 
-            <MenuItem Header="_ETABS">
+            <!-- El menu no dice de que programa lee: eso lo manda la casilla de la
+                 pestaña, y desde el menu se lee del que este elegido ahi. -->
+            <MenuItem Header="_ETABS / SAP2000">
                 <MenuItem Header="_Probar conexion" Click="OnTestEtabs" />
-                <MenuItem Header="_Leer modelo" Click="OnImportEtabs" />
+                <MenuItem Header="_Leer modelo" Click="OnImportModeloCsi" />
                 <MenuItem Header="Leer _plantas" Click="OnLeerPlantas" />
                 <MenuItem Header="Leer piers de _muros" Click="OnLeerPiers" />
             </MenuItem>
@@ -1124,50 +1126,43 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- LAS CUATRO DE LA PARRILLA INFERIOR.
+                            <!-- LA PARRILLA INFERIOR: UNA SOLA COLUMNA CON SUS CUATRO CASILLAS.
+                                 Es una columna de PLANTILLA y no cuatro columnas porque asi el
+                                 titulo «PARRILLA INFERIOR» abarca de verdad las cuatro: WPF no
+                                 tiene cabeceras combinadas, y con cuatro columnas cada cabecera
+                                 se recorta a la suya y del titulo solo se leian trozos.
+
+                                 La cabecera lleva dos renglones -la banda y los cuatro nombres- y
+                                 la celda las cuatro casillas: dos listas de numero de varilla y
+                                 dos de separacion en cm. Todo eso esta en Theme/ExcelTabs.xaml,
+                                 en CabeceraParrillaInferior y CeldasParrillaInferior, y lo usan
+                                 IGUAL las dos hojas de zapatas.
+
+                                 Los 350 son 115 + 60 + 115 + 60, los anchos de las cuatro
+                                 casillas de dentro.
+
                                  El nombre dice el LECHO y el TRABAJO de cada varilla, que es como
                                  salen rotuladas en el plano: en la parrilla de abajo la de flexion
                                  va en el lecho inferior y la de temperatura se apoya encima. -->
-                            <DataGridComboBoxColumn x:Name="ColZapCorVarInf" Header="Var Inf. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaInf1}"
-                                                    SelectedItemBinding="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaInf2}"
-                                                Binding="{Binding SepInf, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridComboBoxColumn x:Name="ColZapCorVarInfT" Header="Var. Sup. Temp."
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaInf3}"
-                                                    SelectedItemBinding="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <!-- La ULTIMA del grupo lleva la banda, que se desborda hacia la
-                                 izquierda por encima de las otras tres: ver CabeceraParrillaInferior -->
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaInf4}"
-                                                Binding="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
+                            <DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="350"
+                                                    HeaderStyle="{StaticResource CabeceraParrillaStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
+                                                    CellTemplate="{StaticResource CeldasParrillaInferior}"
+                                                    CellStyle="{StaticResource CeldaParrillaInf}"
+                                                    CanUserSort="False" />
 
-                            <!-- Y LAS CUATRO DE LA PARRILLA SUPERIOR, apagadas cuando no la hay:
-                                 ahi las palabras del lecho van al REVES, porque la de flexion se
+                            <!-- Y LA PARRILLA SUPERIOR, apagada cuando no la hay: eso lo hace el
+                                 CellStyle, que mira EsDobleParrilla y al apagar la celda apaga
+                                 sus cuatro casillas de dentro.
+
+                                 Ahi las palabras del lecho van al REVES, porque la de flexion se
                                  amarra por el lomo y la de temperatura queda debajo. -->
-                            <DataGridComboBoxColumn x:Name="ColZapCorVarSup" Header="Var Sup. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaSup1}"
-                                                    SelectedItemBinding="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSup2}"
-                                                Binding="{Binding SepSup, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <DataGridComboBoxColumn x:Name="ColZapCorVarSupT" Header="Var. Inf. Temp."
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaSup3}"
-                                                    SelectedItemBinding="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <!-- Y la ultima de la parrilla superior, igual -->
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSup4}"
-                                                Binding="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-
+                            <DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="350"
+                                                    HeaderStyle="{StaticResource CabeceraParrillaStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
+                                                    CellTemplate="{StaticResource CeldasParrillaSuperior}"
+                                                    CellStyle="{StaticResource CeldaParrillaSup}"
+                                                    CanUserSort="False" />
                             <!-- El muro. El espesor va en CENTIMETROS, como en la hoja:
                                  la macro lo divide entre 100 al dibujar. -->
                             <DataGridTemplateColumn Header="Muro" Width="130"
@@ -1516,46 +1511,43 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- LAS CUATRO DE LA PARRILLA INFERIOR, con los mismos nombres que en
-                                 la hoja de corridas: el lecho y el trabajo de cada varilla. -->
-                            <DataGridComboBoxColumn x:Name="ColZapVarInf" Header="Var Inf. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaInf1}"
-                                                    SelectedItemBinding="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaInf2}"
-                                                Binding="{Binding SepInf, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridComboBoxColumn x:Name="ColZapVarInfT" Header="Var. Sup. Temp."
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaInf3}"
-                                                    SelectedItemBinding="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <!-- La ULTIMA del grupo lleva la banda, que se desborda hacia la
-                                 izquierda por encima de las otras tres: ver CabeceraParrillaInferior -->
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaInf4}"
-                                                Binding="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaLechoInf}" />
+                            <!-- LA PARRILLA INFERIOR: UNA SOLA COLUMNA CON SUS CUATRO CASILLAS.
+                                 Es una columna de PLANTILLA y no cuatro columnas porque asi el
+                                 titulo «PARRILLA INFERIOR» abarca de verdad las cuatro: WPF no
+                                 tiene cabeceras combinadas, y con cuatro columnas cada cabecera
+                                 se recorta a la suya y del titulo solo se leian trozos.
 
-                            <!-- Y las cuatro de la PARRILLA SUPERIOR, apagadas cuando no la hay -->
-                            <DataGridComboBoxColumn x:Name="ColZapVarSup" Header="Var Sup. Flexión"
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaSup1}"
-                                                    SelectedItemBinding="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSup2}"
-                                                Binding="{Binding SepSup, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <DataGridComboBoxColumn x:Name="ColZapVarSupT" Header="Var. Inf. Temp."
-                                                    HeaderTemplate="{StaticResource CabeceraParrillaSup3}"
-                                                    SelectedItemBinding="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}" Width="115"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
-                            <!-- Y la ultima de la parrilla superior, igual -->
-                            <DataGridTextColumn Header="@ cm" HeaderTemplate="{StaticResource CabeceraParrillaSup4}"
-                                                Binding="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaSoloDobleParrilla}" />
+                                 La cabecera lleva dos renglones -la banda y los cuatro nombres- y
+                                 la celda las cuatro casillas: dos listas de numero de varilla y
+                                 dos de separacion en cm. Todo eso esta en Theme/ExcelTabs.xaml,
+                                 en CabeceraParrillaInferior y CeldasParrillaInferior, y lo usan
+                                 IGUAL las dos hojas de zapatas.
 
+                                 Los 350 son 115 + 60 + 115 + 60, los anchos de las cuatro
+                                 casillas de dentro.
+
+                                 El nombre dice el LECHO y el TRABAJO de cada varilla, que es como
+                                 salen rotuladas en el plano: en la parrilla de abajo la de flexion
+                                 va en el lecho inferior y la de temperatura se apoya encima. -->
+                            <DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="350"
+                                                    HeaderStyle="{StaticResource CabeceraParrillaStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
+                                                    CellTemplate="{StaticResource CeldasParrillaInferior}"
+                                                    CellStyle="{StaticResource CeldaParrillaInf}"
+                                                    CanUserSort="False" />
+
+                            <!-- Y LA PARRILLA SUPERIOR, apagada cuando no la hay: eso lo hace el
+                                 CellStyle, que mira EsDobleParrilla y al apagar la celda apaga
+                                 sus cuatro casillas de dentro.
+
+                                 Ahi las palabras del lecho van al REVES, porque la de flexion se
+                                 amarra por el lomo y la de temperatura queda debajo. -->
+                            <DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="350"
+                                                    HeaderStyle="{StaticResource CabeceraParrillaStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
+                                                    CellTemplate="{StaticResource CeldasParrillaSuperior}"
+                                                    CellStyle="{StaticResource CeldaParrillaSup}"
+                                                    CanUserSort="False" />
                             <!-- Dado y columna. El ancho va en CENTIMETROS, como en la
                                  macro: ahi se multiplican por SCALEELEVATION al dibujar. -->
                             <DataGridTemplateColumn Header="Desplanta" Width="155"
@@ -1837,16 +1829,30 @@
                         </Border>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <!-- LA CASILLA DEL PROGRAMA: de aqui sale a quien se le habla, y
+                                 manda para TODO lo de esta pestaña -probar la conexion, leer
+                                 el modelo, leer los piers y armar los planos-. Antes habia un
+                                 boton por programa y era facil pulsar el que no tocaba.
+
+                                 Es una sola casilla porque el lector es UNO: CSI comparte la
+                                 OAPI entre ETABS y SAP2000 -la misma cOAPI, el mismo SapModel
+                                 y las mismas llamadas- y lo que cambia es el ProgID con el que
+                                 se pide el objeto activo y la libreria que se carga. -->
+                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="ProgramaCsiCombo" Width="120" SelectedIndex="0"
+                                      VerticalAlignment="Center" Margin="0,0,12,0"
+                                      SelectionChanged="OnProgramaCsiCambiado"
+                                      ToolTip="De donde se lee el modelo: de ETABS o de SAP2000.&#10;Vale para todos los botones de esta pestaña.">
+                                <ComboBoxItem Content="ETABS" />
+                                <ComboBoxItem Content="SAP2000" />
+                            </ComboBox>
+
                             <Button Content="Probar conexion" Style="{StaticResource PrimaryButtonStyle}" Click="OnTestEtabs" />
-                            <Button Content="Leer modelo de ETABS" Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnImportEtabs"
-                                    ToolTip="Lee el modelo abierto en ETABS y lo muestra en el visor." />
-                            <!-- El mismo lector: CSI comparte la OAPI entre ETABS y
-                                 SAP2000, y lo unico que cambia es el ProgID con el que se
-                                 pide el objeto activo. -->
-                            <Button Content="Leer modelo de SAP2000" Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnImportSap2000"
-                                    ToolTip="Lee el modelo abierto en SAP2000 y lo muestra en el visor." />
+                            <Button x:Name="LeerModeloCsiButton" Content="Leer modelo de ETABS"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnImportModeloCsi"
+                                    ToolTip="Lee el modelo abierto en el programa de la casilla y lo muestra en el visor." />
                             <Button Content="Leer piers de muros" Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnLeerPiers"
                                     ToolTip="Lee las etiquetas de pier de los muros y sus medidas por nivel.&#10;En ETABS se asignan con Assign &gt; Shell &gt; Pier Label." />

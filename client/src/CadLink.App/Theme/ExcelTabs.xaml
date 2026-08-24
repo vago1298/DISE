@@ -7,7 +7,8 @@
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework">
+                    xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+                    xmlns:models="clr-namespace:CadLink.App.Models">
 
     <!-- ===================== Tipografia y medidas =====================
          El rediseno empieza aqui: antes cada estilo llevaba su tamano y su radio
@@ -932,112 +933,275 @@
     </Style>
 
     <!-- ==================================================================
-         LA BANDA DE CABECERA DE CADA PARRILLA, ABARCANDO SUS 4 COLUMNAS
+         LAS DOS COLUMNAS DE PARRILLA, CON SU CABECERA COMBINADA
          ==================================================================
-         La cuadricula de WPF no sabe juntar varias columnas bajo un titulo: no
-         hay cabeceras combinadas. Asi que la banda se pinta ANCHA -el ancho de
-         las cuatro columnas del grupo- desde la cabecera de la ULTIMA, y se
-         desborda hacia la izquierda por encima de las otras tres.
+         Aqui hay UNA columna de cuadricula por parrilla -no cuatro-, y las
+         cuatro casillas se dibujan DENTRO de ella. Es la unica forma de que el
+         titulo «PARRILLA INFERIOR» abarque de verdad las cuatro: si son cuatro
+         columnas de la cuadricula, no hay manera, porque WPF no tiene cabeceras
+         combinadas y cada cabecera se recorta a su propia columna. Se intento
+         de las dos maneras que parecian salir mas baratas y las dos fallaron:
 
-         Tiene que ser la ULTIMA y no la primera por el orden de pintado: las
-         cabeceras se dibujan de izquierda a derecha, asi que una banda que sale
-         de la primera columna quedaria TAPADA por el fondo de las siguientes.
-         Saliendo de la ultima, se pinta encima de las tres anteriores.
+           1. La banda ancha en la cabecera de una sola columna, desbordandose
+              sobre las de al lado. La cuadricula la recortaba a su columna y se
+              leian trozos: «PARRILL», «IFERIOR».
+           2. La misma banda repetida en las cuatro cabeceras con un margen
+              negativo distinto en cada una. Lo mismo: cada cabecera recorta.
 
-         Con HorizontalAlignment Right y el ancho del grupo, el borde derecho de
-         la banda cae en su columna y el texto -centrado- queda en el medio del
-         grupo. Los 350 son 115 + 60 + 115 + 60, los anchos de las cuatro
-         columnas; si se cambian, hay que cambiar este numero.
+         Asi que la columna es de PLANTILLA y ella misma se parte en cuatro:
 
-         El nombre de la columna sale de {Binding}: en una cabecera de DataGrid el
-         DataContext de la plantilla ES el Header. -->
-    <!-- La banda: SIEMPRE de 350 px -el ancho de las cuatro columnas del grupo,
-         115 + 60 + 115 + 60- y corrida con un Margin NEGATIVO hasta el arranque
-         del grupo. El margen negativo es lo que de verdad mueve el texto: con
-         HorizontalAlignment no basta, porque cuando el hijo pide mas ancho del
-         que hay en su sitio, WPF ignora la alineacion y lo arranca en el borde
-         izquierdo. Ese fue el primer intento, y por eso la banda no se veia.
+           - la cabecera lleva DOS renglones: la banda, entera, de lado a lado,
+             y debajo los cuatro nombres;
+           - la celda lleva las cuatro casillas de captura, con su linea entre
+             ellas para que se sigan viendo y contando como cuatro.
 
-         Los numeros del margen son el arranque de cada columna dentro del grupo
-         -0, 115, 175 y 290- mas los 8 px de padding de la cabecera. -->
+         Los repartos de ancho -115, 60, 115, 60- son los mismos arriba y abajo,
+         y van en ESTRELLA, no en pixeles: asi los nombres siguen cuadrados con
+         sus casillas aunque se cambie el ancho de la columna.
+
+         La contrapartida de la columna de plantilla es que su lista desplegable
+         ya no se puede rellenar por codigo -no hay un x:Name al que agarrarse,
+         se crea una celda por fila-, y por eso los numeros de varilla se atacan
+         con x:Static desde el XAML: models:Varilla.Diametros. -->
+
+    <!-- La banda: el titulo de la parrilla, centrado sobre las cuatro casillas -->
     <Style x:Key="BandaParrillaStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="9" />
         <Setter Property="FontWeight" Value="Bold" />
-        <Setter Property="Width" Value="350" />
         <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="Opacity" Value="0.9" />
+        <Setter Property="Margin" Value="0,1,0,1" />
         <Setter Property="Foreground" Value="{DynamicResource BrandBrush}" />
     </Style>
 
-    <!-- La banda va en las CUATRO cabeceras del grupo, y las cuatro la pintan en
-         el MISMO sitio. Suena raro, y es a proposito: si nada recorta, las cuatro
-         caen una encima de otra y se lee una sola banda; y si la cuadricula
-         recorta cada cabecera a su ancho -que es lo que pasa cuando hay columnas
-         congeladas-, cada una pinta su trozo y entre las cuatro se lee la banda
-         completa. De las dos maneras sale bien. -->
-    <DataTemplate x:Key="CabeceraParrillaInf1">
-        <StackPanel>
-            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-8,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
+    <!-- Cada uno de los cuatro nombres del segundo renglon. Recortados con
+         puntos suspensivos: «Var. Sup. Temp.» roza el ancho de su casilla y es
+         mejor que se recorte a que empuje a las otras tres. -->
+    <Style x:Key="NombreSubColumnaStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="Padding" Value="2,0" />
+    </Style>
+
+    <!-- La cabecera de la columna de parrilla va SIN relleno, y su estilo esta
+         mas abajo, pegado al de las demas cabeceras: CabeceraParrillaStyle. Un
+         StaticResource tiene que estar declarado ANTES de usarse, y ese hereda
+         de EncabezadoHojaStyle. -->
+
+    <!-- La linea que separa las cuatro casillas dentro de la celda, del mismo
+         gris que la cuadricula: sin ella la columna de parrilla se leeria como
+         una sola casilla larga. -->
+    <Style x:Key="SubCeldaParrillaStyle" TargetType="Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,1,0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- Y la ultima, que no lleva linea: la pone la cuadricula -->
+    <Style x:Key="SubCeldaParrillaFinStyle" TargetType="Border"
+           BasedOn="{StaticResource SubCeldaParrillaStyle}">
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Lista desplegable de una sub-casilla. Va SIEMPRE desplegable, sin el
+         paso de «primero selecciono, luego edito» de una columna normal: dentro
+         de una celda de plantilla no hay modo edicion, la celda ES el control. -->
+    <Style x:Key="ComboSubCeldaStyle" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="1,0" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- Casilla de escribir de una sub-casilla: la separacion en cm -->
+    <Style x:Key="TextoSubCeldaStyle" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- ============ LA CABECERA DE LA PARRILLA INFERIOR ============
+         El texto de la banda sale de {Binding}: en la cabecera de una cuadricula
+         el DataContext de la plantilla ES el Header, asi que la misma plantilla
+         sirve para las DOS hojas -corridas y aisladas- y el titulo se escribe una
+         sola vez, en la columna. -->
+    <DataTemplate x:Key="CabeceraParrillaInferior">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- LA CELDA COMBINADA: una sola, de lado a lado de las cuatro -->
+            <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaParrillaStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Var Inf. Flexión"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="2" Text="Var. Sup. Temp."
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="3" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
     </DataTemplate>
 
-    <DataTemplate x:Key="CabeceraParrillaInf2">
-        <StackPanel>
-            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-123,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
+    <!-- ============ LA CABECERA DE LA PARRILLA SUPERIOR ============
+         Los nombres van al REVES a proposito: en la parrilla de arriba la varilla
+         de flexion se amarra por el lomo -queda en el lecho superior- y la de
+         temperatura queda debajo. Es lo mismo que sale rotulado en el plano. -->
+    <DataTemplate x:Key="CabeceraParrillaSuperior">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaParrillaStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Var Sup. Flexión"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="2" Text="Var. Inf. Temp."
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="3" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
     </DataTemplate>
 
-    <DataTemplate x:Key="CabeceraParrillaInf3">
-        <StackPanel>
-            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-183,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
+    <!-- ============ LAS CUATRO CASILLAS DE LA PARRILLA INFERIOR ============
+         Las propiedades se llaman igual en la fila de corridas y en la de
+         aisladas -VarInf, SepInf, VarInfTrans, SepInfTrans-, asi que la misma
+         plantilla vale para las dos hojas. -->
+    <DataTemplate x:Key="CeldasParrillaInferior">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
+                          SelectedItem="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de FLEXION de la parrilla inferior: la que va abajo, en el lecho." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepInf, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de flexion." />
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
+                          SelectedItem="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de TEMPERATURA de la parrilla inferior: se apoya encima de la de flexion." />
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de temperatura." />
+            </Border>
+        </Grid>
     </DataTemplate>
 
-    <DataTemplate x:Key="CabeceraParrillaInf4">
-        <StackPanel>
-            <TextBlock Text="PARRILLA INFERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-298,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
+    <!-- ============ LAS CUATRO DE LA PARRILLA SUPERIOR ============
+         Las listas son las OPCIONALES -con el blanco delante-: sin doble parrilla
+         estas cuatro se quedan vacias. Que se puedan apagar lo hace el CellStyle
+         de la columna, que mira EsDobleParrilla: al apagar la celda se apagan sus
+         cuatro controles de dentro, porque IsEnabled baja por el arbol. -->
+    <DataTemplate x:Key="CeldasParrillaSuperior">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de FLEXION de la parrilla superior: la que se amarra por el lomo." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepSup, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de flexion de arriba." />
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de TEMPERATURA de la parrilla superior: queda debajo de la de flexion." />
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de temperatura de arriba." />
+            </Border>
+        </Grid>
     </DataTemplate>
 
-    <DataTemplate x:Key="CabeceraParrillaSup1">
-        <StackPanel>
-            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-8,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
-    </DataTemplate>
+    <!-- Las dos celdas de parrilla van SIN relleno, por lo mismo que la cabecera:
+         las cuatro casillas de dentro tienen que cuadrar con los cuatro nombres
+         de arriba, y 6 px de relleno las correrian. -->
+    <Style x:Key="CeldaParrillaInf" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaLechoInf}">
+        <Setter Property="Padding" Value="0" />
+    </Style>
 
-    <DataTemplate x:Key="CabeceraParrillaSup2">
-        <StackPanel>
-            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-123,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
-    </DataTemplate>
-
-    <DataTemplate x:Key="CabeceraParrillaSup3">
-        <StackPanel>
-            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-183,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
-    </DataTemplate>
-
-    <DataTemplate x:Key="CabeceraParrillaSup4">
-        <StackPanel>
-            <TextBlock Text="PARRILLA SUPERIOR" Style="{StaticResource BandaParrillaStyle}"
-                       Margin="-298,0,0,0" />
-            <TextBlock Text="{Binding}" HorizontalAlignment="Center" />
-        </StackPanel>
-    </DataTemplate>
+    <!-- La de arriba hereda de CeldaSoloDobleParrilla, que es la que la apaga
+         cuando la zapata lleva una sola parrilla. -->
+    <Style x:Key="CeldaParrillaSup" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaSoloDobleParrilla}">
+        <Setter Property="Padding" Value="0" />
+    </Style>
 
     <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
     <Style x:Key="CeldaEstribo" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
@@ -1123,16 +1287,20 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="DataGridColumnHeader">
-                    <!-- ClipToBounds en False a proposito: es lo que deja que la banda
-                         de «PARRILLA INFERIOR» se desborde de su columna y se lea
-                         encima de las tres de al lado. -->
-                    <Grid ClipToBounds="False">
+                    <Grid>
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="0,0,1,0">
+                            <!-- La alineacion del contenido NO va escrita a mano: sale de
+                                 la propia cabecera. Las normales la traen en Center, y la
+                                 de las columnas de parrilla en Stretch, que es lo que deja
+                                 que la banda de «PARRILLA INFERIOR» y el renglon de los
+                                 cuatro nombres ocupen la columna entera. Con Center escrito
+                                 aqui, la cabecera de parrilla se encogia a lo que medía su
+                                 texto y los nombres no cuadraban con sus casillas. -->
                             <ContentPresenter Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center" />
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
 
                         <!-- La LINEA DE MARCA que cierra la cabecera por abajo. Es
@@ -1156,6 +1324,19 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- LA CABECERA DE LAS DOS COLUMNAS DE PARRILLA.
+         Igual que las demas pero SIN relleno y estirada: dentro lleva la banda con
+         el nombre de la parrilla y, debajo, los cuatro nombres de casilla, y esos
+         cuatro tienen que caer justo encima de las cuatro casillas de captura. Con
+         los 8 px de relleno de una cabecera normal, el renglon de nombres quedaba
+         corrido respecto a las casillas. -->
+    <Style x:Key="CabeceraParrillaStyle" TargetType="DataGridColumnHeader"
+           BasedOn="{StaticResource EncabezadoHojaStyle}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
     </Style>
 
     <!-- ==================================================================

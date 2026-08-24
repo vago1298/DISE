@@ -154,6 +154,31 @@ public static class Varilla
 
     /// <summary>Lista de claves válidas, para mostrarla en los mensajes de error.</summary>
     public static string ClavesValidas => string.Join(", ", DiametrosCm.Keys);
+
+    /// <summary>
+    /// Los números de varilla, en orden, para las listas desplegables del XAML.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe porque una lista de una <b>celda de plantilla</b> no se puede rellenar por
+    /// código como las de <c>DataGridComboBoxColumn</c>: la celda no tiene
+    /// <c>x:Name</c>, se crea una por fila. Se ataca desde el XAML con
+    /// <c>{Binding Source={x:Static models:Varilla.Diametros}}</c>.
+    /// </para>
+    /// <para>
+    /// Sale de <see cref="DiametrosCm"/>, así que hay <b>una sola</b> tabla de
+    /// diámetros y añadir una varilla la deja en las dos partes.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] Diametros = DiametrosCm.Keys.ToArray();
+
+    /// <summary>
+    /// Los mismos números, con el <b>blanco</b> delante: es la lista de las casillas
+    /// que se pueden dejar vacías —las de la parrilla superior cuando no hay doble
+    /// parrilla, o la vertical del muro, que en blanco copia la horizontal—.
+    /// </summary>
+    public static readonly string[] DiametrosOpcionales =
+        new[] { string.Empty }.Concat(Diametros).ToArray();
 }
 
 /// <summary>

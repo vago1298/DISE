@@ -44,16 +44,16 @@ public partial class MainWindow
         var opcionales = new List<string> { string.Empty };
         opcionales.AddRange(diametros);
 
-        ColZapCorVarInf.ItemsSource = diametros;
-        ColZapCorVarInfT.ItemsSource = diametros;
+        // LAS OCHO DE LAS PARRILLAS NO SE LLENAN AQUI: cada parrilla es ya UNA sola
+        // columna de plantilla con sus cuatro casillas dentro -es la unica forma de que
+        // el titulo «PARRILLA INFERIOR» abarque las cuatro-, y una celda de plantilla no
+        // tiene x:Name: se crea una por fila. Su lista sale del XAML con x:Static, de
+        // Varilla.Diametros y Varilla.DiametrosOpcionales.
+
         ColZapCorVarMuro.ItemsSource = diametros;
 
         // La vertical del muro es OPCIONAL: en blanco se usa la horizontal, como antes.
         ColZapCorVarMuroVert.ItemsSource = opcionales;
-
-        // Las de la parrilla superior son opcionales: con una sola parrilla se dejan en blanco.
-        ColZapCorVarSup.ItemsSource = opcionales;
-        ColZapCorVarSupT.ItemsSource = opcionales;
     }
 
     /// <summary>

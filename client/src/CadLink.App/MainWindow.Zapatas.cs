@@ -46,16 +46,18 @@ public partial class MainWindow
         // plantilla de la celda. Es el patron de la hoja de concreto, y es lo que evita
         // que el enlace pise el valor capturado cuando la lista llega tarde.
 
-        ColZapVarInf.ItemsSource = diametros;
-        ColZapVarInfT.ItemsSource = diametros;
+        // LAS OCHO DE LAS PARRILLAS TAMPOCO SE LLENAN AQUI: las dos parrillas son ya
+        // UNA columna de plantilla cada una -para que el titulo «PARRILLA INFERIOR»
+        // abarque sus cuatro casillas-, y una celda de plantilla no tiene x:Name al
+        // que agarrarse: se crea una por fila. Su lista sale del XAML con x:Static,
+        // de Varilla.Diametros y Varilla.DiametrosOpcionales, que es la MISMA tabla
+        // de diametros que se usa aqui.
+
         ColZapVarDadoSup.ItemsSource = diametros;
         ColZapVarDadoInf.ItemsSource = diametros;
         ColZapEstribo.ItemsSource = diametros;
 
-        // Las de la parrilla superior y la intermedia del dado son opcionales: con una sola
-        // parrilla o sin intermedias se dejan en blanco.
-        ColZapVarSup.ItemsSource = opcionales;
-        ColZapVarSupT.ItemsSource = opcionales;
+        // La intermedia del dado es opcional: sin intermedias se deja en blanco.
         ColZapVarIntDado.ItemsSource = opcionales;
 
         // La separacion de estribos NO se llena aqui: su lista va en el XAML, en la
