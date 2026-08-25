@@ -225,19 +225,58 @@ public sealed partial class PlantaDrawer
             }
         }
 
+        // ==============================================================================
+        //  EL MURO QUE VA DEBAJO DE UNA CADENA NO SE DIBUJA
+        // ==============================================================================
+        //  Es MarcarMurosTapados. En el modelo el muro y su cadena de cerramiento ocupan LA
+        //  MISMA LÍNEA en planta —la cadena corre encima del muro, de castillo a castillo—,
+        //  así que dibujando los dos el plano sale con dos parejas de líneas pegadas: eso
+        //  era la raya de más a cada lado de cada cadena.
+        //
+        //  Se borran las líneas del muro tapado y SOLO se dejan las de los muros que NO
+        //  llevan cadena, que son los que hay que ver.
+        var ocultarTapados = _cfg.Bandera("OCULTAR_MURO_BAJO_CADENA", true);
+        var incluirTrabes = _cfg.Bandera("CADENA_INCLUYE_TRABES", false);
+        var tolCadena = _cfg.Numero("TOLERANCIA_CADENA_CM", 10) / 100;
+        var traslapeMin = _cfg.Numero("TRASLAPE_MINIMO", 0.8);
+
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Muro))
         {
             var tramo = Pano.Recortar(el, apoyos, cruces);
 
-            if (Barra(el, x0, y0, CapaDe(el),
-                     Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo))
-            {
-                r.Muros++;
+            var bajoCadena = MuroBajoCadena.Como(
+                el, p.Elementos, incluirTrabes, tolCadena, traslapeMin);
 
-                // Y si es de BLOCK, su polilínea ancha al centro: es la marca de
-                // mampostería, y es lo que distingue de un golpe de vista un muro de block
-                // de uno de concreto. Va sobre el tramo YA recortado, así que su separación
-                // se mide desde el paño del castillo y no desde el eje.
+            // El ancho de la cadena que lo tapa, para que el rótulo del PIER se separe de
+            // ella y no le caiga encima. Es el eTapaB de la macro.
+            _anchoDeLaCadena[el] = bajoCadena.AnchoCadena;
+
+            var tapado = ocultarTapados && bajoCadena.Tapado;
+
+            if (tapado)
+            {
+                _tapados++;
+            }
+
+            // La geometría solo si NO está tapado; el muro cuenta igual en el resumen,
+            // porque está en el modelo y su mampostería y su pier sí se dibujan.
+            if (!tapado)
+            {
+                Barra(el, x0, y0, CapaDe(el),
+                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo);
+            }
+
+            r.Muros++;
+
+            // Y si es de BLOCK, su polilínea ancha al centro: es la marca de
+            // mampostería, y es lo que distingue de un golpe de vista un muro de block
+            // de uno de concreto. Va sobre el tramo YA recortado, así que su separación
+            // se mide desde el paño del castillo y no desde el eje.
+            //
+            // SE DIBUJA AUNQUE EL MURO ESTÉ TAPADO —MAMPOSTERIA_AUNQUE_TAPADO—: si
+            // desapareciera con el muro, el plano no diría de qué es la pared.
+            if (!tapado || _cfg.Bandera("MAMPOSTERIA_AUNQUE_TAPADO", true))
+            {
                 LineaDeMamposteria(el, x0, y0, tramo);
             }
         }
@@ -441,10 +480,18 @@ public sealed partial class PlantaDrawer
         // Y la capa de las losas apagada, con la de los voladizos encendida.
         ApagarCapasDeLosa();
 
-        if (_volados > 0 || _armadas > 0)
+        if (_volados > 0 || _armadas > 0 || _losacero > 0)
         {
-            Nota($"{_volados} paño(s) en voladizo, achurados en {_capas.CapaVolado}, y " +
-                 $"{_armadas} tablero(s) con su parrilla de armado.");
+            Nota($"{_volados} paño(s) en voladizo achurados en {_capas.CapaVolado}, " +
+                 $"{_armadas} tablero(s) armados y {_losacero} de losacero " +
+                 $"({_franjas} franja(s)).");
+        }
+
+        if (_tapados > 0)
+        {
+            Nota($"{_tapados} muro(s) no se dibujaron porque su cadena los tapa " +
+                 "(OCULTAR_MURO_BAJO_CADENA). Los muros SIN cadena sí salen, que son los " +
+                 "que hay que revisar; su línea de mampostería se dibuja en todos.");
         }
 
         if (_alFrente > 0)
@@ -1470,9 +1517,15 @@ public sealed partial class PlantaDrawer
             var hPier = AlturaSecciones(altura);
 
             // De qué se separa: de lo más ancho que corra sobre el muro. Su espesor, la
-            // línea de mampostería que va a su centro, o la cadena que lo tapa. Si solo
-            // se contara el espesor, el pier caería sobre la polilínea de block.
+            // línea de mampostería que va a su centro, o LA CADENA QUE LO TAPA. Si solo
+            // se contara el espesor, en un muro de 15 con una cadena de 25 el pier caería
+            // encima de la cadena. Es el eTapaB de la macro.
             var medio = Math.Max(esp / 2, _cfg.Numero("MAMPOSTERIA_ANCHO", 0.06) / 2);
+
+            if (_anchoDeLaCadena.TryGetValue(el, out var anchoCadena) && anchoCadena > 0)
+            {
+                medio = Math.Max(medio, anchoCadena / 2);
+            }
 
             var d = medio + (_cfg.Numero("PIER_SEPARACION_CM", 6) / 100) + (hPier * 0.7);
 
@@ -1560,6 +1613,24 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private string UsoDeLaLosa(ElementoPlanta el)
     {
+        // ==============================================================================
+        //  EL NOMBRE DE LA SECCIÓN DE ETABS, SIN LA PALABRA «LOSA»
+        // ==============================================================================
+        //  Se pidió así: el rótulo dice lo que la sección se llama en el programa, quitándole
+        //  la palabra LOSA porque el renglón ya la trae —«Losa de %U»—. Con una sección
+        //  llamada «LOSA VOLADO» sale «Losa de VOLADO», y con «Losa AZOTEA», «Losa de
+        //  AZOTEA», que es justo lo que se ve en su plano.
+        //
+        //  Y es mejor que la lista de palabras: sirve para cualquier nombre que use —MARQUESINA,
+        //  PATIO, TAPANCO— sin tener que apuntarlo en la hoja. Las palabras se quedan como
+        //  respaldo para cuando la sección no dice nada aprovechable.
+        var deLaSeccion = SinLaPalabraLosa(el.Seccion);
+
+        if (deLaSeccion.Length > 0)
+        {
+            return deLaSeccion;
+        }
+
         var texto = ((el.Seccion ?? string.Empty) + " " + (el.Notas ?? string.Empty))
             .ToUpperInvariant();
 
@@ -1589,6 +1660,45 @@ public sealed partial class PlantaDrawer
 
             return false;
         }
+    }
+
+    /// <summary>
+    /// El nombre de la sección <b>sin la palabra LOSA</b> y en mayúsculas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// «LOSA VOLADO» → <c>VOLADO</c>; «Losa de azotea» → <c>AZOTEA</c>. Se quitan también
+    /// <c>SLAB</c> y <c>DECK</c>, que es como ETABS llama a lo mismo, y las palabras de relleno
+    /// —<c>DE</c>, <c>DEL</c>— que dejarían el rótulo diciendo «Losa de DE AZOTEA».
+    /// </para>
+    /// <para>
+    /// Si de la sección no queda nada —se llama «LOSA» a secas, o «SLAB1»— se devuelve vacío y
+    /// manda la lista de palabras de la hoja. Un rótulo que dijera «Losa de 1» sería peor que
+    /// el de omisión.
+    /// </para>
+    /// </remarks>
+    public static string SinLaPalabraLosa(string? seccion)
+    {
+        if (string.IsNullOrWhiteSpace(seccion))
+        {
+            return string.Empty;
+        }
+
+        var fuera = new[] { "LOSA", "LOSAS", "SLAB", "DECK", "DE", "DEL", "LA" };
+
+        var piezas = seccion
+            .ToUpperInvariant()
+            .Split(new[] { ' ', '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(p => !fuera.Contains(p))
+            .ToList();
+
+        // Un nombre que solo deja números —«SLAB 10»— no dice nada en el rótulo.
+        if (piezas.Count == 0 || piezas.All(p => p.All(c => char.IsAsciiDigit(c) || c == ',')))
+        {
+            return string.Empty;
+        }
+
+        return string.Join(" ", piezas);
     }
 
     /// <summary>
@@ -2373,6 +2483,19 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Cuántos muros llegaron sin pier, y por tanto sin rótulo.</summary>
     private int _sinPier;
+
+    /// <summary>Cuántos muros no se dibujaron porque su cadena los tapa.</summary>
+    private int _tapados;
+
+    /// <summary>
+    /// El ancho de la cadena que tapa cada muro: el <c>eTapaB</c> de la macro.
+    /// </summary>
+    /// <remarks>
+    /// Se guarda al dibujar el muro y se usa al rotular su pier, que va después. Es un
+    /// diccionario por elemento y no un campo del DTO a propósito: es un dato del
+    /// <b>dibujo</b> —depende de qué más haya en la planta— y no del modelo.
+    /// </remarks>
+    private readonly Dictionary<ElementoPlanta, double> _anchoDeLaCadena = new();
 
     /// <summary>
     /// El renglón único del resumen. Se llama al terminar de dibujar la planta.

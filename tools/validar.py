@@ -3817,6 +3817,56 @@ def v18_planta_autocad() -> None:
           and "un lado entero dentro del muro no se dibuja" in pre)
 
     # ------------------------------------------------------------------
+    # EL MURO BAJO LA CADENA NO SE DIBUJA
+    # ------------------------------------------------------------------
+    #  Es MarcarMurosTapados. En el modelo el muro y su cadena de cerramiento ocupan LA MISMA
+    #  linea en planta, asi que dibujando los dos salen DOS parejas de lineas pegadas: eso
+    #  era la raya de mas a cada lado de cada cadena. Se dejan SOLO los muros SIN cadena, que
+    #  son los que hay que revisar.
+    mbc = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/MuroBajoCadena.cs"))
+    check("el muro que va debajo de una cadena no se dibuja",
+          "public static class MuroBajoCadena" in mbc
+          and "public static Estado Como(" in mbc
+          and '_cfg.Bandera("OCULTAR_MURO_BAJO_CADENA", true)' in dib
+          and "MuroBajoCadena.Como(" in dib
+          and "if (!tapado)" in dib)
+    check("con los numeros de la hoja: traslape, tolerancia y que las trabes no cuentan",
+          '_cfg.Numero("TRASLAPE_MINIMO", 0.8)' in dib
+          and '_cfg.Numero("TOLERANCIA_CADENA_CM", 10)' in dib
+          and '_cfg.Bandera("CADENA_INCLUYE_TRABES", false)' in dib
+          and "public static bool EsCadena(" in mbc)
+    # LA COBERTURA POR UNION, no sumando: dos cadenas traslapadas cubren su tramo una vez.
+    check("la cobertura se mide por union de tramos",
+          "LosaEnPlanta.Unidos(tramos).Sum(t => t.B - t.A) / largo" in mbc)
+    # Y LA MAMPOSTERIA SE QUEDA aunque el muro no se dibuje: es la marca de que ahi va block.
+    check("la linea de mamposteria se dibuja aunque el muro este tapado",
+          '_cfg.Bandera("MAMPOSTERIA_AUNQUE_TAPADO", true)' in dib)
+    # El ancho de la cadena que lo tapa -el eTapaB de la macro- separa el rotulo del pier.
+    check("el pier se separa de la cadena que tapa al muro",
+          "_anchoDeLaCadena" in dib
+          and "public readonly record struct Estado(bool Tapado, double Cobertura, double AnchoCadena)"
+              in mbc)
+    check("hay prueba ejecutable del muro tapado",
+          "el muro con su cadena encima queda TAPADO" in pre
+          and "un muro SIN cadena no esta tapado" in pre
+          and "una TRABE no tapa el muro por omision" in pre)
+
+    # ------------------------------------------------------------------
+    # EL NOMBRE DE LA LOSA: EL DE LA SECCION, SIN LA PALABRA «LOSA»
+    # ------------------------------------------------------------------
+    #  El renglon ya dice «Losa de», asi que la seccion «LOSA VOLADO» se rotula «Losa de
+    #  VOLADO». Sirve para cualquier nombre que use, sin apuntarlo en la hoja.
+    check("el rotulo de la losa toma el nombre de la seccion sin la palabra LOSA",
+          "public static string SinLaPalabraLosa(" in dib
+          and "var deLaSeccion = SinLaPalabraLosa(el.Seccion);" in dib)
+    check("y si de la seccion no queda nada, mandan las palabras de la hoja",
+          '_cfg.Texto("LOSA_PALABRAS_AZOTEA", "AZOTEA,CUBIERTA,TECHO,ROOF")' in dib
+          and '_cfg.Texto("LOSA_USO_POR_OMISION", "ENTREPISO")' in dib)
+    check("hay prueba ejecutable del nombre de la losa",
+          '«LOSA VOLADO» se rotula VOLADO' in pre
+          and 'ni «SLAB 10»' in pre)
+
+    # ------------------------------------------------------------------
     # EN LA BASE, LOS ARRANQUES DE CASTILLOS
     # ------------------------------------------------------------------
     #  En el modelo la columna que va del suelo al primer piso pertenece al piso de ARRIBA,

@@ -741,6 +741,88 @@ Check("y sin nota ni seccion, tampoco",
       !LosaEnPlanta.DiceVolado(null, null, palabrasVolado));
 
 Console.WriteLine();
+Console.WriteLine(" El muro que va debajo de una cadena no se dibuja");
+
+// Un muro de 5 m con su cadena de cerramiento encima, de castillo a castillo: en el modelo
+// los dos ocupan la MISMA linea en planta, asi que dibujando ambos salen dos parejas de
+// lineas pegadas. Eso es lo que se ve como una raya de mas a cada lado de la cadena.
+var muroConCadena = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, X1 = 0, Y1 = 0, X2 = 5, Y2 = 0, AnchoM = 0.15
+};
+
+static ElementoPlanta Dala(double x1, double y1, double x2, double y2, double b = 0.25) =>
+    new()
+    {
+        Clase = ClasePlanta.Trabe, Tipo = "DALA", Seccion = "CC15X25",
+        X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, AnchoM = b
+    };
+
+var conCadena = new List<ElementoPlanta> { muroConCadena, Dala(0, 0, 5, 0) };
+var tapado = MuroBajoCadena.Como(muroConCadena, conCadena);
+
+Check("el muro con su cadena encima queda TAPADO", tapado.Tapado);
+Cerca("cubierto al 100 %", 1.0, tapado.Cobertura, 1e-9);
+Cerca("y se recuerda el ancho de la cadena, para separar el pier", 0.25,
+      tapado.AnchoCadena, 1e-12);
+
+// EL MURO SIN CADENA SI SE DIBUJA: es el que hay que revisar.
+var muroSolo = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, X1 = 0, Y1 = 3, X2 = 5, Y2 = 3, AnchoM = 0.15
+};
+Check("un muro SIN cadena no esta tapado",
+      !MuroBajoCadena.Como(muroSolo, new List<ElementoPlanta> { muroSolo, Dala(0, 0, 5, 0) })
+        .Tapado);
+
+// Media cadena no tapa: con TRASLAPE_MINIMO = 0.8 hace falta el 80 % del largo.
+var mitad = MuroBajoCadena.Como(
+    muroConCadena, new List<ElementoPlanta> { muroConCadena, Dala(0, 0, 2.5, 0) });
+Cerca("media cadena cubre la mitad", 0.5, mitad.Cobertura, 1e-9);
+Check("y con la mitad NO se da por tapado", !mitad.Tapado);
+
+// LA UNION Y NO LA SUMA: dos cadenas traslapadas cubren su tramo una sola vez.
+var dosCadenas = MuroBajoCadena.Como(
+    muroConCadena,
+    new List<ElementoPlanta> { muroConCadena, Dala(0, 0, 3, 0), Dala(2, 0, 5, 0) });
+Cerca("dos cadenas traslapadas cubren el muro una sola vez", 1.0,
+      dosCadenas.Cobertura, 1e-9);
+
+// Una cadena PERPENDICULAR no tapa nada, y una TRABE tampoco -salvo que se pida-.
+Check("una cadena perpendicular no tapa el muro",
+      !MuroBajoCadena.Como(
+          muroConCadena,
+          new List<ElementoPlanta> { muroConCadena, Dala(2.5, -2, 2.5, 2) }).Tapado);
+
+var trabe = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 0, Y1 = 0, X2 = 5, Y2 = 0, AnchoM = 0.30
+};
+Check("una TRABE no tapa el muro por omision",
+      !MuroBajoCadena.Como(muroConCadena, new List<ElementoPlanta> { muroConCadena, trabe })
+        .Tapado);
+Check("pero si CADENA_INCLUYE_TRABES esta en SI, si",
+      MuroBajoCadena.Como(
+          muroConCadena, new List<ElementoPlanta> { muroConCadena, trabe },
+          incluirTrabes: true).Tapado);
+
+Console.WriteLine();
+Console.WriteLine(" El nombre de la losa: el de la seccion, sin la palabra LOSA");
+
+Igual("«LOSA VOLADO» se rotula VOLADO", "VOLADO",
+      PlantaDrawer.SinLaPalabraLosa("LOSA VOLADO"));
+Igual("«Losa de AZOTEA» se rotula AZOTEA", "AZOTEA",
+      PlantaDrawer.SinLaPalabraLosa("Losa de AZOTEA"));
+Igual("«LOSA ENTREPISO» se rotula ENTREPISO", "ENTREPISO",
+      PlantaDrawer.SinLaPalabraLosa("LOSA ENTREPISO"));
+Igual("y se conserva lo que diga, sea lo que sea", "MARQUESINA",
+      PlantaDrawer.SinLaPalabraLosa("Losa Marquesina"));
+// Si de la seccion no queda nada aprovechable, manda la lista de palabras de la hoja.
+Igual("«LOSA» a secas no dice nada", "", PlantaDrawer.SinLaPalabraLosa("LOSA"));
+Igual("ni «SLAB 10»", "", PlantaDrawer.SinLaPalabraLosa("SLAB 10"));
+Igual("ni una seccion vacia", "", PlantaDrawer.SinLaPalabraLosa(null));
+
+Console.WriteLine();
 Console.WriteLine(" El contorno, solo por fuera del muro o la cadena");
 
 // Un lado de losa que corre sobre una cadena: por dentro de la cadena NO se dibuja.
