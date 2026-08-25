@@ -58,7 +58,12 @@ public sealed class EjesModelo
     /// <c>A, B, C…</c>, que es la convención y lo que hace la macro.
     /// </para>
     /// </remarks>
-    public static EjesModelo DesdeGeometria(ModeloEtabs modelo, double tolM = 0.05)
+    /// <remarks>
+    /// La tolerancia son <b>25 cm</b> y no 5: dos columnas que en el modelo están a diez
+    /// centímetros no son dos ejes, son la misma alineación con un nudo movido. Con 5 cm
+    /// salían veintiséis letras en un modelo que tiene seis ejes.
+    /// </remarks>
+    public static EjesModelo DesdeGeometria(ModeloEtabs modelo, double tolM = 0.25)
     {
         // ==============================================================================
         //  PRIMERO SOLO LAS COLUMNAS, Y SIN PASARSE

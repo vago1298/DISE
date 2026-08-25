@@ -2803,12 +2803,17 @@ def v16_extruida_piers() -> None:
           and "private void OnImportSap2000(" not in codigo)
 
     # LA MISMA CASILLA EN LA PESTAÑA DE PLANOS. Se pidio poder elegir ahi tambien de que
-    # programa se leen las plantas. NO es otra opcion aparte: las dos casillas van atadas
-    # con un enlace de dos vias, asi que el programa elegido sigue siendo UNO.
-    check("la pestaña de planos tiene su casilla, atada a la de ETABS",
+    # programa se leen las plantas, y NO es otra opcion aparte: el programa elegido es UNO.
+    #
+    # Lo que cambio es COMO se mantienen iguales. Iban atadas con un enlace del XAML
+    # -SelectedIndex por ElementName, de dos vias- y desde que la casilla de la lectura del
+    # modelo vive dentro del panel PLEGADO, ese enlace dejo de servir: la casilla que aun no
+    # tenia seleccion escribia su -1 en la otra y las dos se quedaban EN BLANCO, asi que no se
+    # veia en que programa se estaba trabajando. Ahora se igualan en el code-behind.
+    check("la pestaña de planos tiene su casilla, igualada a la del modelo",
           'x:Name="ProgramaCsiPlanosCombo"' in xaml
-          and 'SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"'
-              in xaml)
+          and "ElementName=ProgramaCsiCombo" not in xaml
+          and "ProgramaCsiCombo, ProgramaCsiPlanosCombo, ProgramaCsiSeccionesCombo" in codigo)
     check("y su boton dice de que programa lee las plantas",
           'x:Name="LeerPlantasButton"' in xaml
           and 'LeerPlantasButton.Content = $"Leer plantas de {NombreDestinoCsi}"' in codigo)
@@ -4963,6 +4968,46 @@ def v18_planta_autocad() -> None:
           and '"TRUE" or "YES" or "SI"' in lec)
     check("y se avisa de cuantos ejes se saltaron por estar ocultos",
           "OCULTOS en el modelo y no se " in lec)
+    # ------------------------------------------------------------------
+    # EL SISTEMA DE EJES DE SAP2000 SE LLAMA «GLOBAL», NO «G1»
+    # ------------------------------------------------------------------
+    #  Aqui estaba el motivo de que en SAP salieran ejes DEDUCIDOS -16 numeros y 26 letras- en
+    #  lugar de los que tiene el modelo: si GetNameList no respondia, se probaba «G1», que es
+    #  el nombre de omision de ETABS. Con el nombre equivocado la llamada devuelve error y no
+    #  hay ejes, aunque esten ahi. Ahora se prueban TODOS los que de el modelo y detras los
+    #  tres de convencion: GLOBAL -SAP2000-, G1 -ETABS- y el vacio -el sistema activo-.
+    check("se prueban todos los nombres del sistema de ejes, GLOBAL incluido",
+          'new[] { "GLOBAL", "G1", string.Empty }' in lec
+          and "foreach (var nombre in nombres)" in lec
+          and "private static bool LeerCuadricula(" in lec)
+    # Y SE DICE DE DONDE SALIERON: leidos del modelo o deducidos. Sin eso, un plano con ejes de
+    # mas no se distingue de un modelo con ejes de mas.
+    check("y se dice si los ejes se leyeron o se dedujeron",
+          "Ejes leídos del modelo: sistema" in lec
+          and "los ejes se DEDUCEN de la geometría" in lec)
+    # LA DEDUCCION, CON 25 CM DE TOLERANCIA: dos columnas a diez centimetros no son dos ejes,
+    # son la misma alineacion con un nudo movido.
+    ejm = leer(ruta("client/src/CadLink.Etabs/EjesModelo.cs"))
+    check("la deduccion agrupa con 25 cm, no con 5",
+          "double tolM = 0.25" in ejm)
+
+    # ------------------------------------------------------------------
+    # LAS TRES CASILLAS DEL PROGRAMA, IGUALADAS A MANO
+    # ------------------------------------------------------------------
+    #  Iban atadas con un enlace del XAML -SelectedIndex por ElementName, de dos vias- y desde
+    #  que la casilla de la lectura del modelo vive dentro del panel PLEGADO, ese enlace dejo de
+    #  servir: la casilla sin seleccion escribia su -1 en la otra y las dos se quedaban EN
+    #  BLANCO. Por eso no se veia en que programa se estaba trabajando.
+    xaml_prog = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    cod_prog = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+
+    check("las casillas del programa ya no dependen del enlace del XAML",
+          "ElementName=ProgramaCsiCombo" not in xaml_prog
+          and xaml_prog.count('SelectionChanged="OnProgramaCsiCambiado"') == 3)
+    check("y se igualan las tres a mano, con guarda contra el rebote",
+          "ProgramaCsiCombo, ProgramaCsiPlanosCombo, ProgramaCsiSeccionesCombo" in cod_prog
+          and "if (!_igualandoPrograma && sender is ComboBox tocada" in cod_prog
+          and "private bool _igualandoPrograma;" in cod_prog)
     # Y SIN EJE ELEGIDO NO HAY CORTE, PERO SE DICE: salir en silencio es indistinguible de que
     # el corte falle.
     check("sin eje elegido se dice por que no hubo corte",

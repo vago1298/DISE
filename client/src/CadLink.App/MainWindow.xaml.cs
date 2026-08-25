@@ -881,6 +881,47 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnProgramaCsiCambiado(object sender, SelectionChangedEventArgs e)
     {
+        // ==============================================================================
+        //  LAS DOS CASILLAS DEL PROGRAMA, IGUALADAS A MANO
+        // ==============================================================================
+        //  Antes iban atadas con un enlace del XAML —SelectedIndex por ElementName, de dos
+        //  vías— y desde que la casilla de la lectura del modelo vive dentro del panel
+        //  PLEGADO, ese enlace dejó de servir: la casilla que todavía no tenía selección
+        //  escribía su −1 en la otra y las dos se quedaban EN BLANCO. Por eso no se veía en
+        //  qué programa se estaba trabajando.
+        //
+        //  Igualarlas aquí es explícito y no depende del orden en que WPF cargue los
+        //  controles ni de que el panel esté abierto. La guarda evita el rebote: sin ella,
+        //  cada casilla dispararía el evento de la otra sin parar.
+        if (!_igualandoPrograma && sender is ComboBox tocada && tocada.SelectedIndex >= 0)
+        {
+            _igualandoPrograma = true;
+
+            try
+            {
+                // Las TRES casillas del programa: la de la lectura del modelo, la de planos y
+                // la de las secciones. Todas dicen lo mismo, siempre, porque el programa
+                // elegido es UNO: lo que cambia es desde dónde se pulsa.
+                foreach (var otra in new[]
+                         {
+                             ProgramaCsiCombo, ProgramaCsiPlanosCombo, ProgramaCsiSeccionesCombo
+                         })
+                {
+                    if (otra is not null && !ReferenceEquals(otra, tocada)
+                        && otra.SelectedIndex != tocada.SelectedIndex)
+                    {
+                        otra.SelectedIndex = tocada.SelectedIndex;
+                    }
+                }
+            }
+            finally
+            {
+                // En un finally: si la bandera se queda puesta, las casillas dejan de
+                // sincronizarse y no hay forma de saber por qué.
+                _igualandoPrograma = false;
+            }
+        }
+
         if (LeerModeloCsiButton is not null)
         {
             LeerModeloCsiButton.Content = $"Leer modelo de {NombreDestinoCsi}";
@@ -908,6 +949,9 @@ public partial class MainWindow : Window
         // ==============================================================================
         SincronizarSeccionesConLaCasilla();
     }
+
+    /// <summary>Se están igualando las dos casillas del programa: no hay que reaccionar.</summary>
+    private bool _igualandoPrograma;
 
     /// <summary>
     /// Vacía la tabla de secciones si el modelo que hay en memoria es del otro programa.

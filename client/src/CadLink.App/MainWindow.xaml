@@ -1804,9 +1804,19 @@
                                  botones de las dos pestañas le hablan al mismo. -->
                             <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <!-- SIN ENLACE AL OTRO COMBO, y a proposito: el enlace por
+                                 ElementName apuntaba a la casilla que ahora vive DENTRO del
+                                 panel plegado de la lectura del modelo, y con TwoWay lo que
+                                 pasaba es que la casilla vacia -sin seleccion todavia-
+                                 escribia su -1 en la otra y las dos se quedaban en blanco.
+                                 De ahi que no se viera en que programa se esta trabajando.
+                                 Ahora arranca en ETABS y las dos se sincronizan en el
+                                 code-behind, que es explicito y no depende del orden en que
+                                 WPF cargue los controles ni de que el panel este abierto. -->
                             <ComboBox x:Name="ProgramaCsiPlanosCombo" Width="120"
                                       VerticalAlignment="Center" Margin="0,0,12,0"
-                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
+                                      SelectedIndex="0"
+                                      SelectionChanged="OnProgramaCsiCambiado"
                                       ToolTip="De donde se leen las plantas: de ETABS o de SAP2000.&#10;Es la misma casilla de la pestaña ETABS/SAP2000.">
                                 <ComboBoxItem Content="ETABS" />
                                 <ComboBoxItem Content="SAP2000" />
@@ -2154,9 +2164,12 @@
                                  una sola y el programa elegido tambien. -->
                             <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
                                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <!-- Igual que la de planos: sin enlace al combo del panel
+                                 plegado, que dejaba las tres casillas en blanco. -->
                             <ComboBox x:Name="ProgramaCsiSeccionesCombo" Width="120"
                                       VerticalAlignment="Center" Margin="0,0,12,0"
-                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
+                                      SelectedIndex="0"
+                                      SelectionChanged="OnProgramaCsiCambiado"
                                       ToolTip="De donde se lee el modelo. Es la misma casilla de la pestaña ETABS/SAP2000.">
                                 <ComboBoxItem Content="ETABS" />
                                 <ComboBoxItem Content="SAP2000" />

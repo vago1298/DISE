@@ -252,29 +252,70 @@ public static class EtabsReader
             return;
         }
 
-        var nombre = string.Empty;
+        // ==============================================================================
+        //  TODOS LOS NOMBRES POSIBLES, Y NO SOLO EL PRIMERO
+        // ==============================================================================
+        //  Aquí estaba el motivo de que en SAP2000 salieran ejes DEDUCIDOS —16 números y 26
+        //  letras— en lugar de los 3 y 6 que tiene el modelo: la cuadrícula no se leía y se
+        //  caía al respaldo por geometría.
+        //
+        //  El sistema de ejes de SAP2000 se llama «GLOBAL», y aquí, si GetNameList no
+        //  respondía, se probaba «G1», que es el nombre de omisión de ETABS. Con el nombre
+        //  equivocado la llamada devuelve error y no hay ejes, aunque estén ahí.
+        //
+        //  Así que se prueban TODOS los nombres que dé el modelo y, detrás, los tres que se
+        //  usan por convención: GLOBAL —SAP2000—, G1 —ETABS— y el vacío, que en algunas
+        //  versiones significa «el sistema activo».
+        var nombres = new List<string>();
 
         try
         {
             object?[] a = { 0, null };
             if (Com.CallRet(gridSys, "GetNameList", a, 0, 1) == 0)
             {
-                var nombres = Com.AsStrings(a[1]);
-                if (nombres.Length > 0)
-                {
-                    nombre = nombres[0];
-                }
+                nombres.AddRange(
+                    Com.AsStrings(a[1]).Where(n => n.Trim().Length > 0).Select(n => n.Trim()));
             }
         }
         catch (Exception)
         {
-            // Se prueba igual con el nombre de omisión: algunos modelos responden.
+            // Sin lista se prueban los de convención, que es lo que hay.
         }
 
-        if (nombre.Length == 0)
+        foreach (var porOmision in new[] { "GLOBAL", "G1", string.Empty })
         {
-            nombre = "G1";
+            if (!nombres.Contains(porOmision, StringComparer.OrdinalIgnoreCase))
+            {
+                nombres.Add(porOmision);
+            }
         }
+
+        foreach (var nombre in nombres)
+        {
+            if (LeerCuadricula(gridSys, m, nombre))
+            {
+                return;
+            }
+        }
+
+        m.Avisos.Add(
+            "No se pudo leer la cuadrícula del modelo —se probó con " +
+            string.Join(", ", nombres.Select(n => n.Length == 0 ? "(sistema activo)" : n)) +
+            "—, así que los ejes se DEDUCEN de la geometría y saldrán más de los que tiene " +
+            "el modelo.");
+    }
+
+    /// <summary>
+    /// Intenta leer la cuadrícula de <b>un</b> sistema de ejes, con las dos firmas.
+    /// </summary>
+    /// <remarks>
+    /// <c>GetGridSys_2</c> es la de ETABS y <c>GetGridSysCartesian</c> la de SAP2000, que
+    /// además trae los ejes en Z. Se prueban las dos con el mismo nombre porque lo que cambia
+    /// entre versiones no es solo el programa: hay versiones de ETABS que solo tienen la
+    /// segunda.
+    /// </remarks>
+    private static bool LeerCuadricula(object gridSys, ModeloEtabs m, string nombre)
+    {
 
         try
         {
@@ -304,7 +345,12 @@ public static class EtabsReader
                 if (ejes.Hay)
                 {
                     m.Ejes = ejes;
-                    return;
+
+                    m.Avisos.Add(
+                        $"Ejes leídos del modelo: sistema «{nombre}», " +
+                        $"{ejes.X.Count} en X y {ejes.Y.Count} en Y.");
+
+                    return true;
                 }
             }
         }
@@ -338,7 +384,7 @@ public static class EtabsReader
                             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                             13, 14, 15, 16, 17, 18) != 0)
             {
-                return;
+                return false;
             }
 
             var ejes = new EjesModelo
@@ -364,13 +410,21 @@ public static class EtabsReader
             if (ejes.Hay)
             {
                 m.Ejes = ejes;
+
+                m.Avisos.Add(
+                    $"Ejes leídos del modelo: sistema «{nombre}», " +
+                    $"{ejes.X.Count} en X y {ejes.Y.Count} en Y.");
+
+                return true;
             }
         }
         catch (Exception)
         {
-            // Ni una ni otra: la cuadrícula está definida de otra forma. Se deducen de las
-            // columnas y el plano sale con sus ejes igual.
+            // Ni una ni otra con este nombre: se prueba el siguiente y, si ninguno responde,
+            // se deducen de las columnas y el plano sale con sus ejes igual.
         }
+
+        return false;
 
         static void Cargar(
             List<EjesModelo.Eje> destino, string[] ids, double[] ords,
