@@ -716,6 +716,38 @@ def v11_visor() -> None:
           "const double Radio = 9;" in t
           and "Fill = RellenoBurbuja" in t
           and "StrokeDashArray = trazos" in t)
+    # LAS COTAS: un eje sin cota no dice nada, lo que se replantea son las DISTANCIAS. Van
+    # del lado contrario a las burbujas -abajo y a la derecha- para que no se estorben.
+    check("los ejes se acotan, con la parcial y la total",
+          "private static void AcotarEjes(" in t
+          and "AcotarEjes(lienzo, ejesX, ejesY, aPantalla, arriba, abajo);" in t
+          and 'v.ToString("0.000"' in t
+          and "if (orden.Count > 2)" in t)
+    # EL NUMERO SOLO SI CABE: con la vista alejada dos ejes pueden quedar a diez pixeles y
+    # los rotulos se encimarian hasta ser ilegibles. La linea de cota siempre se dibuja.
+    check("el numero de la cota se escribe solo si cabe",
+          "Math.Abs(x2 - x1) > texto.Length * 5.6" in t
+          and "Math.Abs(y2 - y1) > 13" in t
+          and "if (!cabe)" in t)
+    # Y HAY SITIO PARA TODO ESO: sin ampliar el margen, burbujas y cotas quedaban cortadas
+    # contra el borde del lienzo.
+    check("el margen del lienzo deja sitio a burbujas y cotas",
+          "private const double Margen = 52;" in t)
+
+    # ------------------------------------------------------------------
+    # MOVER LA PLANTA CON EL RATON
+    # ------------------------------------------------------------------
+    #  Aqui estaba el «solo me deja hacer zoom»: mover era SOLO con el boton derecho, y en la
+    #  planta el izquierdo no hacia nada -no hay nada que girar-, asi que quien arrastraba con
+    #  el izquierdo, que es lo natural, no veia respuesta.
+    check("en la planta el boton izquierdo tambien mueve",
+          "var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);" in codigo_planos
+          and "_girando = e.ChangedButton == MouseButton.Left && !esPlanta;" in codigo_planos
+          and "|| (esPlanta && e.ChangedButton == MouseButton.Left);" in codigo_planos)
+    check("y el lienzo de la planta escucha el boton izquierdo",
+          'MouseLeftButtonDown="OnVistaMouseDown"' in tx_planos
+          and 'MouseLeftButtonUp="OnVistaMouseUp"' in tx_planos)
+
     # Y SE PUEDE APAGAR: en un modelo con muchos ejes la cuadricula tapa lo que se mira.
     check("los ejes se pueden apagar con su casilla",
           "public bool VerEjes { get; set; } = true;" in t
@@ -3276,8 +3308,13 @@ def v16_extruida_piers() -> None:
           "_vista.DibujarExtruido(ExtruidaCanvas);" in codigo)
     m_gira = re.search(r"_girando = e\.ChangedButton.*?;", codigo, re.S)
     check("se puede leer la condicion de giro", m_gira is not None)
+    # EL GIRO SE DEFINE POR EXCLUSION desde que la planta usa el boton izquierdo para
+    # MOVER: gira todo lo que NO es la planta, y la extruida entra ahi. Antes la condicion
+    # nombraba los dos lienzos de volumen; ahora nombra al que se queda fuera.
     check("se puede girar la vista extruida",
-          m_gira is not None and "ExtruidaCanvas" in m_gira.group(0))
+          m_gira is not None
+          and "!esPlanta" in m_gira.group(0)
+          and "var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);" in codigo)
 
     # La camara es UNA, compartida. Duplicar la proyeccion acaba con una vista
     # espejeada respecto a la otra.

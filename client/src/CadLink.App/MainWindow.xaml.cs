@@ -2495,10 +2495,22 @@ public partial class MainWindow : Window
         _arrastreDesde = e.GetPosition(lienzo);
 
         // Girar tiene sentido en las dos vistas de volumen; en planta, no.
-        _girando = e.ChangedButton == MouseButton.Left
-                   && (ReferenceEquals(lienzo, Vista3DCanvas)
-                       || ReferenceEquals(lienzo, ExtruidaCanvas));
-        _moviendo = e.ChangedButton == MouseButton.Right;
+        var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);
+
+        _girando = e.ChangedButton == MouseButton.Left && !esPlanta;
+
+        // ==============================================================================
+        //  EN PLANTA, EL BOTÓN IZQUIERDO TAMBIÉN MUEVE
+        // ==============================================================================
+        //  Aquí estaba el problema de «solo me deja hacer zoom»: mover era SOLO con el
+        //  botón derecho, y en la planta el izquierdo no hacía nada —no hay nada que girar—,
+        //  así que quien arrastraba con el izquierdo, que es lo natural, no veía respuesta y
+        //  parecía que la vista estuviera clavada.
+        //
+        //  En las vistas de volumen se queda como estaba: el izquierdo gira y el derecho
+        //  mueve, que es lo que hace ETABS.
+        _moviendo = e.ChangedButton == MouseButton.Right
+                    || (esPlanta && e.ChangedButton == MouseButton.Left);
 
         if (_girando || _moviendo)
         {

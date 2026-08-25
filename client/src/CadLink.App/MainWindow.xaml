@@ -1877,10 +1877,17 @@
 
                                     <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                             CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+                                        <!-- Arrastrar con el boton IZQUIERDO o con el
+                                             DERECHO mueve la planta; la rueda hace zoom.
+                                             El izquierdo hace falta: es el que se usa por
+                                             instinto, y sin el parecia que la vista
+                                             estuviera clavada. -->
                                         <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
                                                 Background="{DynamicResource SurfaceBrush}"
+                                                MouseLeftButtonDown="OnVistaMouseDown"
                                                 MouseRightButtonDown="OnVistaMouseDown"
                                                 MouseMove="OnVistaMouseMove"
+                                                MouseLeftButtonUp="OnVistaMouseUp"
                                                 MouseRightButtonUp="OnVistaMouseUp"
                                                 MouseLeave="OnVistaMouseUp"
                                                 MouseWheel="OnVistaWheel" />

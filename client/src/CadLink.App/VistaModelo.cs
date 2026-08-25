@@ -27,7 +27,13 @@ namespace CadLink.App;
 public sealed partial class VistaModelo
 {
     /// <summary>Margen en píxeles entre el dibujo y el borde del lienzo.</summary>
-    private const double Margen = 26;
+    /// <remarks>
+    /// Son 52 y no 26 porque la planta ya no es solo la estructura: arriba y a la izquierda
+    /// van las <b>burbujas</b> de los ejes y abajo y a la derecha las <b>cotas</b>, y sin
+    /// reservarles sitio quedarían cortadas contra el borde del lienzo. Es lo mismo que hace
+    /// el plano, que separa los ejes de lo dibujado antes de acotar.
+    /// </remarks>
+    private const double Margen = 52;
 
     private static readonly Brush ColorColumna = Pincel(0x1F, 0x6F, 0xB2);
     private static readonly Brush ColorTrabe = Pincel(0x1D, 0x8A, 0x4E);
@@ -49,6 +55,8 @@ public sealed partial class VistaModelo
     private static readonly Brush RellenoBurbuja = Pincel(0xFF, 0xFF, 0xFF);
 
     private static readonly Brush ColorEjeTexto = Pincel(0x60, 0x6A, 0x74);
+
+    private static readonly Brush ColorCota = Pincel(0x8A, 0x93, 0x9C);
 
     private static SolidColorBrush Pincel(byte r, byte g, byte b, byte a = 0xFF) =>
         new(Color.FromArgb(a, r, g, b));
@@ -815,6 +823,168 @@ public sealed partial class VistaModelo
 
             Linea(arriba.X - Sale, y, abajo.X + Sale, y);
             Burbuja(arriba.X - Sale - Radio, y, id);
+        }
+
+        // ==============================================================================
+        //  Y LAS COTAS, QUE ES PARA LO QUE SIRVE UNA CUADRÍCULA
+        // ==============================================================================
+        //  Un eje sin cota no dice nada: lo que se replantea en obra son las DISTANCIAS
+        //  entre ejes, y comprobarlas antes de mandar el plano es justo lo que se viene a
+        //  hacer a esta pantalla.
+        //
+        //  Van del lado CONTRARIO a las burbujas —abajo las de los verticales y a la
+        //  derecha las de los horizontales— para que no se estorben: las burbujas están
+        //  arriba y a la izquierda. En el plano de AutoCAD van en los cuatro lados porque
+        //  ahí hay papel para todo; aquí hay 430 píxeles de alto.
+        AcotarEjes(lienzo, ejesX, ejesY, aPantalla, arriba, abajo);
+    }
+
+    /// <summary>
+    /// Las <b>cotas</b> entre ejes consecutivos, y la total.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En <b>metros con tres decimales</b>, como las del plano, porque una cota de
+    /// replanteo se lee al milímetro.
+    /// </para>
+    /// <para>
+    /// El número se escribe <b>solo si cabe</b>. Con la vista alejada, dos ejes pueden
+    /// quedar a diez píxeles uno de otro y ahí los rótulos se encimarían hasta ser
+    /// ilegibles: es mejor ver la línea de cota sin número —y acercarse para leerlo— que un
+    /// borrón de cifras superpuestas. La línea siempre se dibuja.
+    /// </para>
+    /// </remarks>
+    private static void AcotarEjes(
+        Canvas lienzo,
+        List<(string Id, double Ordenada)> ejesX,
+        List<(string Id, double Ordenada)> ejesY,
+        Func<double, double, Point> aPantalla,
+        Point arriba, Point abajo)
+    {
+        // A qué distancia de lo dibujado va la fila de cotas, y cuánto más abajo la total.
+        const double Sale = 20;
+        const double Salto = 15;
+
+        string Metros(double v) =>
+            v.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+        void Raya(double x1, double y1, double x2, double y2)
+        {
+            lienzo.Children.Add(new Line
+            {
+                X1 = x1, Y1 = y1, X2 = x2, Y2 = y2,
+                Stroke = ColorCota,
+                StrokeThickness = 0.8
+            });
+        }
+
+        // La rayita oblicua de los extremos, la de toda la vida en un plano de obra.
+        void Tick(double x, double y)
+        {
+            Raya(x - 3, y + 3, x + 3, y - 3);
+        }
+
+        void Numero(double cx, double cy, string texto, bool cabe, double anchoCaja)
+        {
+            // Si no cabe, no se escribe: vale más la línea de cota limpia que un borrón.
+            if (!cabe)
+            {
+                return;
+            }
+
+            var t = new TextBlock
+            {
+                Text = texto,
+                FontSize = 9,
+                Foreground = ColorEjeTexto,
+                TextAlignment = TextAlignment.Center,
+                Width = anchoCaja
+            };
+
+            Canvas.SetLeft(t, cx - (anchoCaja / 2));
+            Canvas.SetTop(t, cy);
+            lienzo.Children.Add(t);
+        }
+
+        // ---- las de los ejes verticales, abajo -------------------------------------
+        if (ejesX.Count >= 2)
+        {
+            var orden = ejesX.OrderBy(e => e.Ordenada).ToList();
+            var y = abajo.Y + Sale;
+
+            for (var i = 0; i + 1 < orden.Count; i++)
+            {
+                var x1 = aPantalla(orden[i].Ordenada, 0).X;
+                var x2 = aPantalla(orden[i + 1].Ordenada, 0).X;
+
+                Raya(x1, y, x2, y);
+                Tick(x1, y);
+                Tick(x2, y);
+
+                var texto = Metros(orden[i + 1].Ordenada - orden[i].Ordenada);
+
+                // En horizontal manda el ANCHO del texto: 5.6 px por carácter a 9 puntos.
+                Numero((x1 + x2) / 2, y - 13, texto,
+                       Math.Abs(x2 - x1) > texto.Length * 5.6, Math.Abs(x2 - x1));
+            }
+
+            // LA TOTAL, un renglón más abajo. Solo con tres ejes o más: con dos sería la
+            // misma cota escrita dos veces.
+            if (orden.Count > 2)
+            {
+                var xa = aPantalla(orden[0].Ordenada, 0).X;
+                var xb = aPantalla(orden[^1].Ordenada, 0).X;
+                var yt = y + Salto;
+
+                Raya(xa, yt, xb, yt);
+                Tick(xa, yt);
+                Tick(xb, yt);
+
+                var total = Metros(orden[^1].Ordenada - orden[0].Ordenada);
+
+                Numero((xa + xb) / 2, yt - 13, total,
+                       Math.Abs(xb - xa) > total.Length * 5.6, Math.Abs(xb - xa));
+            }
+        }
+
+        // ---- las de los ejes horizontales, a la derecha ----------------------------
+        if (ejesY.Count >= 2)
+        {
+            var orden = ejesY.OrderBy(e => e.Ordenada).ToList();
+            var x = abajo.X + Sale;
+
+            for (var i = 0; i + 1 < orden.Count; i++)
+            {
+                var y1 = aPantalla(0, orden[i].Ordenada).Y;
+                var y2 = aPantalla(0, orden[i + 1].Ordenada).Y;
+
+                Raya(x, y1, x, y2);
+                Tick(x, y1);
+                Tick(x, y2);
+
+                // El número va al lado, horizontal: girarlo se lee peor en pantalla y
+                // obliga a una transformación que aquí no aporta nada.
+                // En vertical el texto va horizontal, asi que lo que manda es el ALTO
+                // del renglon: por debajo de 13 px dos cotas seguidas se encimarian.
+                Numero(x + 22, ((y1 + y2) / 2) - 6,
+                       Metros(orden[i + 1].Ordenada - orden[i].Ordenada),
+                       Math.Abs(y2 - y1) > 13, 40);
+            }
+
+            if (orden.Count > 2)
+            {
+                var ya = aPantalla(0, orden[0].Ordenada).Y;
+                var yb = aPantalla(0, orden[^1].Ordenada).Y;
+                var xt = x + Salto;
+
+                Raya(xt, ya, xt, yb);
+                Tick(xt, ya);
+                Tick(xt, yb);
+
+                Numero(xt + 22, ((ya + yb) / 2) - 6,
+                       Metros(orden[^1].Ordenada - orden[0].Ordenada),
+                       Math.Abs(yb - ya) > 13, 40);
+            }
         }
     }
 
