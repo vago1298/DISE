@@ -648,9 +648,30 @@ def v11_visor() -> None:
     check("y comparte la geometria con el dibujante de AutoCAD, no una copia",
           "SeccionEnPlanta.EsRedonda(el.Forma)" in t
           and "el.PatinM, el.AlmaM, el.ParedM" in t)
-    check("la trabe se dibuja con su ancho real, no con una linea fija",
+    # EL GROSOR REAL, que es lo que se pidio: la trabe salia como una linea de 1.4 px pase lo
+    # que pase -una de 15 y otra de 35 se veian iguales- y el muro como un trazo con un
+    # minimo de 2.2 px, que a poco zoom lo engorda y a mucho zoom lo adelgaza. Ahora se
+    # dibuja la HUELLA en metros del modelo, asi que el grosor de la pantalla es el de verdad
+    # a la escala del momento.
+    check("la trabe y el muro se dibujan con su grosor real, no con una linea fija",
           "private void DibujarBarraEnPlanta(" in t
-          and "DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, el.AnchoM)" in t)
+          and "DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, anchoReal)" in t
+          and "var anchoReal = AnchoEnPlanta(el);" in t
+          and "ClaseElemento.Muro => RellenoMuro," in t)
+    # Y CON EL MISMO RESPALDO QUE EL DIBUJANTE cuando ETABS no da la medida: si la vista
+    # previa dibujara un pelo donde el plano va a dibujar 15 cm, estaria mintiendo.
+    dib_esp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    check("y con los mismos valores de omision que el dibujante",
+          "private static double AnchoEnPlanta(" in t
+          and "private const double EspesorMuroPorOmision = 0.15;" in t
+          and "private const double AnchoTrabePorOmision = 0.20;" in t
+          and "private const double EspesorMuroPorOmision = 0.15;" in dib_esp
+          and "private const double AnchoTrabePorOmision = 0.20;" in dib_esp)
+    # Y el pelo solo cuando la huella no llegaria a un pixel: ahi el grosor no se puede
+    # representar y lo que importa es que el elemento no desaparezca.
+    check("con el zoom muy lejos queda una linea de un pelo, no un grosor inventado",
+          "if (anchoReal * escala >= 1.2)" in t
+          and "Math.Max(2.2, el.AnchoM * escala)" not in t)
     # Y EL ORDEN DE PINTADO: ahora que las piezas van rellenas, una trabe ancha podia tapar
     # la seccion de la columna, que es justo lo que se viene a comprobar aqui.
     check("el orden de pintado deja la columna al frente",

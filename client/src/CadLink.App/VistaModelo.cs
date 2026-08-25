@@ -478,21 +478,30 @@ public sealed partial class VistaModelo
             }
 
             // ==========================================================================
-            //  LA TRABE, CON SU ANCHO DE VERDAD Y EN SU SITIO
+            //  LA TRABE Y EL MURO, CON SU GROSOR DE VERDAD
             // ==========================================================================
-            //  Antes era una línea de 1.4 píxeles pase lo que pase, así que la
-            //  previsualización no decía ni de qué ancho es la trabe ni por dónde pasa su
-            //  paño: dos trabes de 15 y de 35 se veían iguales. Ahora se dibuja su HUELLA
-            //  EN PLANTA —el rectángulo de largo por ancho— que es lo que se va a ver en el
-            //  plano, y así la vista previa sirve para lo que tiene que servir: comprobar
-            //  antes de dibujar que las piezas están donde deben.
+            //  Se pidió tal cual, y era lo que faltaba: la trabe salía como una línea de
+            //  1.4 píxeles pase lo que pase —una de 15 y otra de 35 se veían iguales— y el
+            //  muro como un trazo grueso con un mínimo de 2.2 píxeles, que a poco zoom
+            //  engorda el muro y a mucho zoom lo adelgaza. Ninguna de las dos cosas dice
+            //  por dónde pasan los PAÑOS, que es lo que se viene a comprobar aquí.
             //
-            //  El ancho es el AnchoM, que en una trabe es el t2 de ETABS —la dimensión
-            //  horizontal—; el peralte es vertical y en planta no se ve.
-            if (el.Clase != ClaseElemento.Muro && el.AnchoM > 0.01
-                && el.AnchoM * escala > 3)
+            //  Ahora se dibuja la HUELLA EN PLANTA de la pieza: el rectángulo de largo por
+            //  ancho, en metros del modelo, proyectado como todo lo demás. Así el grosor de
+            //  la pantalla es el grosor de verdad a la escala del momento, y crece y decrece
+            //  con el zoom igual que la planta.
+            //
+            //  El ancho es el AnchoM —en una trabe es el t2 de ETABS, la dimensión
+            //  horizontal; el peralte es vertical y en planta no se ve—, y si el modelo no
+            //  lo dio se usa el MISMO valor de omisión que usará el dibujante.
+            var anchoReal = AnchoEnPlanta(el);
+
+            // Con el zoom muy lejos la huella mediría menos de un píxel y no se vería: ahí
+            // se dibuja una línea de un pelo, que es lo honesto —a esa escala el grosor no
+            // se puede representar— y así el elemento no desaparece del dibujo.
+            if (anchoReal * escala >= 1.2)
             {
-                DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, el.AnchoM);
+                DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, anchoReal);
                 continue;
             }
 
@@ -503,10 +512,7 @@ public sealed partial class VistaModelo
             {
                 X1 = p1.X, Y1 = p1.Y, X2 = p2.X, Y2 = p2.Y,
                 Stroke = el.Clase == ClaseElemento.Muro ? ColorMuro : Color3D(el.Clase),
-                // El muro se dibuja con su espesor real cuando se conoce
-                StrokeThickness = el.Clase == ClaseElemento.Muro
-                    ? Math.Max(2.2, el.AnchoM * escala)
-                    : 1.4,
+                StrokeThickness = 1.2,
                 ToolTip = Etiqueta(el)
             });
         }
@@ -634,6 +640,36 @@ public sealed partial class VistaModelo
     }
 
     /// <summary>
+    /// El ancho en planta que le toca a la pieza, con el <b>mismo</b> respaldo del dibujante.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cuando ETABS no da la medida —pasa con las propiedades de mampostería y con las
+    /// secciones que el lector no puede desglosar— el dibujante de planos no se queda de
+    /// brazos cruzados: usa <c>ESPESOR_MURO_CM</c>, 15 cm, en el muro y 20 cm en la trabe, y
+    /// sigue dibujando. Aquí se usan <b>los mismos dos números</b>, y por el mismo motivo:
+    /// si la vista previa dibujara un pelo donde el plano va a dibujar 15 cm, la vista previa
+    /// estaría mintiendo.
+    /// </para>
+    /// <para>
+    /// Están escritos aquí como constantes en vez de leerse de la hoja porque el visor no
+    /// tiene por qué depender de la configuración del plano: son el respaldo del respaldo, y
+    /// lo que importa es que coincidan con <c>PlantaDrawer</c>.
+    /// </para>
+    /// </remarks>
+    private static double AnchoEnPlanta(ElementoEtabs el) =>
+        el.AnchoM > 0.01
+            ? el.AnchoM
+            : el.Clase == ClaseElemento.Muro
+                ? EspesorMuroPorOmision
+                : AnchoTrabePorOmision;
+
+    /// <summary>Los mismos valores de omisión que <c>PlantaDrawer</c>, en metros.</summary>
+    private const double EspesorMuroPorOmision = 0.15;
+
+    private const double AnchoTrabePorOmision = 0.20;
+
+    /// <summary>
     /// La <b>huella en planta</b> de una barra: su largo por su ancho, en su sitio.
     /// </summary>
     /// <remarks>
@@ -659,9 +695,14 @@ public sealed partial class VistaModelo
 
         var poly = new Polygon
         {
-            Stroke = Color3D(el.Clase),
+            Stroke = el.Clase == ClaseElemento.Muro ? ColorMuro : Color3D(el.Clase),
             StrokeThickness = 0.9,
-            Fill = el.Clase == ClaseElemento.Trabe ? RellenoTrabe : RellenoDiagonal,
+            Fill = el.Clase switch
+            {
+                ClaseElemento.Muro => RellenoMuro,
+                ClaseElemento.Trabe => RellenoTrabe,
+                _ => RellenoDiagonal
+            },
             ToolTip = Etiqueta(el)
         };
 
