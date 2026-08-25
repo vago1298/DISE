@@ -192,6 +192,36 @@ public sealed partial class VistaModelo
         n1 = Escalar(n1, 1 / l1);
         var n2 = Normalizar(Cruz(eje, n1));
 
+        // ==============================================================================
+        //  EL GIRO DE LOS EJES LOCALES, QUE TAMBIÉN FALTABA AQUÍ
+        // ==============================================================================
+        //  El triedro de arriba sale solo de la geometría del eje, así que todas las
+        //  columnas quedaban alineadas con la X y la Y globales: una columna de 20×60
+        //  girada 90° se veía de 20×60 derecha, igual que pasaba en la planta.
+        //
+        //  El ángulo de GetLocalAxes es un giro de los ejes 2 y 3 ALREDEDOR DEL EJE 1, o
+        //  sea alrededor del eje de la barra, así que se aplica aquí a las dos
+        //  perpendiculares y el prisma sale orientado como en el modelo.
+        if (Math.Abs(el.AnguloGrados) > 1e-9)
+        {
+            var a = el.AnguloGrados * Math.PI / 180;
+            var ca = Math.Cos(a);
+            var sa = Math.Sin(a);
+
+            var g1 = (
+                (n1.Item1 * ca) + (n2.Item1 * sa),
+                (n1.Item2 * ca) + (n2.Item2 * sa),
+                (n1.Item3 * ca) + (n2.Item3 * sa));
+
+            var g2 = (
+                (n2.Item1 * ca) - (n1.Item1 * sa),
+                (n2.Item2 * ca) - (n1.Item2 * sa),
+                (n2.Item3 * ca) - (n1.Item3 * sa));
+
+            n1 = g1;
+            n2 = g2;
+        }
+
         var b = el.AnchoM > 0.01 ? el.AnchoM : 0.12;
         var d = el.PeralteM > 0.01 ? el.PeralteM : 0.12;
 

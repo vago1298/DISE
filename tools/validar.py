@@ -632,6 +632,47 @@ def v11_visor() -> None:
         re.search(r"\(h / 2\) - \(\(y - cy\) \* escala\)", t) is not None,
     )
 
+    # ------------------------------------------------------------------
+    # LA PREVISUALIZACION, CON LA ORIENTACION Y LA POSICION DE VERDAD
+    # ------------------------------------------------------------------
+    #  Se pidio expresamente: la vista previa tiene que ensenar lo que se va a dibujar. Antes
+    #  la columna era un Rectangle de WPF -y un Rectangle NO GIRA, esta alineado a los ejes
+    #  del lienzo-, asi que una columna de 20x60 girada 90 grados se veia de 20x60 derecha, y
+    #  la trabe era una linea de 1.4 pixeles pase lo que pase: dos trabes de 15 y de 35 se
+    #  veian iguales.
+    check("la columna de la vista previa se dibuja con su seccion girada",
+          "SeccionEnPlanta.Contorno(" in t
+          and "SeccionEnPlanta.Colocar(" in t
+          and "el.AnguloGrados" in t
+          and "using CadLink.Cad.PlanoEstructural;" in t)
+    check("y comparte la geometria con el dibujante de AutoCAD, no una copia",
+          "SeccionEnPlanta.EsRedonda(el.Forma)" in t
+          and "el.PatinM, el.AlmaM, el.ParedM" in t)
+    check("la trabe se dibuja con su ancho real, no con una linea fija",
+          "private void DibujarBarraEnPlanta(" in t
+          and "DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, el.AnchoM)" in t)
+    # Y EL ORDEN DE PINTADO: ahora que las piezas van rellenas, una trabe ancha podia tapar
+    # la seccion de la columna, que es justo lo que se viene a comprobar aqui.
+    check("el orden de pintado deja la columna al frente",
+          "static int Capa(ElementoEtabs el) => el.Clase switch" in t
+          and "ClaseElemento.Columna => 3," in t)
+    # LA MARCA MINIMA solo cuando la seccion no se puede dibujar: sin medidas o con el zoom
+    # tan lejos que mide menos de tres pixeles. Lo que no puede hacer es fingir un tamano.
+    check("sin medidas queda una marca, y se dice que es una marca",
+          "private static void MarcaDeColumna(" in t)
+    # LA EXTRUIDA TAMBIEN: su triedro salia solo de la geometria del eje, asi que todas las
+    # columnas quedaban alineadas con la X y la Y globales.
+    ext = leer(ruta("client", "src", "CadLink.App", "VistaModelo.Extruida.cs"))
+    check("la vista extruida gira el prisma con los ejes locales",
+          "Math.Abs(el.AnguloGrados) > 1e-9" in ext
+          and "(n1.Item1 * ca) + (n2.Item1 * sa)" in ext
+          and "(n2.Item1 * ca) - (n1.Item1 * sa)" in ext)
+    # LA POSICION viene sola: el visor lee el MISMO ModeloEtabs al que el lector ya le
+    # aplico el punto de insercion, asi que la vista previa y el plano coinciden.
+    check("y la posicion sale del modelo ya corregido, sin recalcularla aparte",
+          "GetInsertionPoint" not in t
+          and "e.X1 +=" not in t)
+
     # Los lienzos necesitan Background para recibir el mouse
     x = ruta("client", "src", "CadLink.App", "MainWindow.xaml")
     tx = leer(x)

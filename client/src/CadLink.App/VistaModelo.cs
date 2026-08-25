@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using CadLink.Cad.PlanoEstructural;
 using CadLink.Etabs;
 
 namespace CadLink.App;
@@ -34,6 +35,12 @@ public sealed partial class VistaModelo
     private static readonly Brush ColorMuro = Pincel(0x6B, 0x7A, 0x89);
     private static readonly Brush ColorLosa = Pincel(0xB0, 0xBE, 0xC5);
     private static readonly Brush RellenoLosa = Pincel(0xB0, 0xBE, 0xC5, 0x38);
+
+    // Los rellenos de las secciones en planta. Van translúcidos a propósito: así se ve por
+    // debajo la losa y se nota dónde se cruzan dos piezas.
+    private static readonly Brush RellenoColumna = Pincel(0x1F, 0x6F, 0xB2, 0x40);
+    private static readonly Brush RellenoTrabe = Pincel(0x1D, 0x8A, 0x4E, 0x33);
+    private static readonly Brush RellenoDiagonal = Pincel(0x8E, 0x44, 0xAD, 0x33);
     private static readonly Brush RellenoMuro = Pincel(0x6B, 0x7A, 0x89, 0x55);
     private static readonly Brush ColorEje = Pincel(0xB0, 0xB0, 0xB0);
 
@@ -429,8 +436,20 @@ public sealed partial class VistaModelo
             (w / 2) + ((x - cx) * escala) + PanX,
             (h / 2) - ((y - cy) * escala) + PanY);
 
-        // Las losas van primero, para que queden debajo de trabes y columnas
-        foreach (var el in elementos.OrderBy(el => el.Clase == ClaseElemento.Losa ? 0 : 1))
+        // EL ORDEN DE PINTADO, de atrás hacia adelante: losa, muro, trabe y columna. Ahora
+        // que las piezas se dibujan con su huella real y rellenas, el orden importa: con
+        // todo al mismo nivel una trabe ancha podía tapar la sección de la columna, que es
+        // justo lo que se viene a comprobar en la vista previa. Es el mismo criterio del
+        // plano, donde las secciones quedan al frente.
+        static int Capa(ElementoEtabs el) => el.Clase switch
+        {
+            ClaseElemento.Losa => 0,
+            ClaseElemento.Muro => 1,
+            ClaseElemento.Columna => 3,
+            _ => 2
+        };
+
+        foreach (var el in elementos.OrderBy(Capa))
         {
             if (el.Clase == ClaseElemento.Losa && el.Vertices.Count >= 3)
             {
@@ -451,10 +470,29 @@ public sealed partial class VistaModelo
                 continue;
             }
 
-            // La columna es un punto en planta: se dibuja su sección real
+            // La columna es un punto en planta: se dibuja su sección real, GIRADA
             if (el.Clase == ClaseElemento.Columna)
             {
                 DibujarColumnaEnPlanta(lienzo, el, APantallaPlanta, escala);
+                continue;
+            }
+
+            // ==========================================================================
+            //  LA TRABE, CON SU ANCHO DE VERDAD Y EN SU SITIO
+            // ==========================================================================
+            //  Antes era una línea de 1.4 píxeles pase lo que pase, así que la
+            //  previsualización no decía ni de qué ancho es la trabe ni por dónde pasa su
+            //  paño: dos trabes de 15 y de 35 se veían iguales. Ahora se dibuja su HUELLA
+            //  EN PLANTA —el rectángulo de largo por ancho— que es lo que se va a ver en el
+            //  plano, y así la vista previa sirve para lo que tiene que servir: comprobar
+            //  antes de dibujar que las piezas están donde deben.
+            //
+            //  El ancho es el AnchoM, que en una trabe es el t2 de ETABS —la dimensión
+            //  horizontal—; el peralte es vertical y en planta no se ve.
+            if (el.Clase != ClaseElemento.Muro && el.AnchoM > 0.01
+                && el.AnchoM * escala > 3)
+            {
+                DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, el.AnchoM);
                 continue;
             }
 
@@ -476,33 +514,163 @@ public sealed partial class VistaModelo
         Leyenda(lienzo, elementos.Count, nivel);
     }
 
-    /// <summary>La columna en planta: su sección, a escala, centrada en el eje.</summary>
+    /// <summary>
+    /// La columna en planta: su <b>sección de verdad</b>, girada como en el modelo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Antes era un <c>Rectangle</c> de WPF, y un <c>Rectangle</c> <b>no gira</b>: está
+    /// alineado a los ejes del lienzo. Así que una columna de 20×60 girada 90° se veía de
+    /// 20×60 derecha —justo lo contrario de lo que dice el modelo— y la previsualización no
+    /// coincidía con el plano que después sale en AutoCAD.
+    /// </para>
+    /// <para>
+    /// Ahora se usa el <b>mismo</b> par de funciones que el dibujante de AutoCAD:
+    /// <c>SeccionEnPlanta.Contorno</c> da el perfil real de la forma —I, C, T, L, cajón o
+    /// rectángulo— y <c>SeccionEnPlanta.Colocar</c> lo gira con <c>AnguloGrados</c> y lo
+    /// centra en el nudo. Al compartir la geometría, lo que se ve en la vista previa es lo
+    /// que se va a dibujar, y no una aproximación parecida.
+    /// </para>
+    /// <para>
+    /// El giro se calcula en <b>coordenadas del modelo</b> y solo después se proyecta cada
+    /// vértice a pantalla, que es lo que hace que el sentido del giro salga bien sin tener
+    /// que cambiarle el signo: la inversión de la Y ya está metida en la proyección.
+    /// </para>
+    /// </remarks>
     private static void DibujarColumnaEnPlanta(
         Canvas lienzo, ElementoEtabs el, Func<double, double, Point> aPantalla, double escala)
     {
-        var c = aPantalla(el.X1, el.Y1);
+        var b = el.AnchoM;
+        var h = el.PeralteM;
 
-        var bx = el.AnchoM > 0 ? el.AnchoM * escala : 7;
-        var by = el.PeralteM > 0 ? el.PeralteM * escala : 7;
-
-        // Por debajo de unos pocos píxeles la sección no se distingue; se dibuja
-        // un mínimo para que la columna siga siendo visible al alejar el zoom.
-        bx = Math.Max(bx, 4);
-        by = Math.Max(by, 4);
-
-        var r = new Rectangle
+        // Sin medidas no se puede dibujar la sección: se deja la marca mínima de siempre,
+        // que al menos dice que ahí hay una columna.
+        if (b <= 0.01 || h <= 0.01 || b * escala < 3 || h * escala < 3)
         {
-            Width = bx,
-            Height = by,
+            MarcaDeColumna(lienzo, el, aPantalla);
+            return;
+        }
+
+        // La sección REDONDA se dibuja redonda: un círculo girado sigue siendo el mismo
+        // círculo, así que aquí el ángulo no hace falta.
+        if (SeccionEnPlanta.EsRedonda(el.Forma))
+        {
+            var centro = aPantalla(el.X1, el.Y1);
+            var d = b * escala;
+
+            var elipse = new Ellipse
+            {
+                Width = d,
+                Height = d,
+                Stroke = ColorColumna,
+                StrokeThickness = 1.1,
+                Fill = RellenoColumna,
+                ToolTip = Etiqueta(el)
+            };
+
+            Canvas.SetLeft(elipse, centro.X - (d / 2));
+            Canvas.SetTop(elipse, centro.Y - (d / 2));
+            lienzo.Children.Add(elipse);
+            return;
+        }
+
+        // El contorno de la forma, centrado en el origen, y luego girado y llevado al nudo.
+        // Son las MISMAS funciones del dibujante de AutoCAD.
+        var contorno = SeccionEnPlanta.Contorno(
+            el.Forma, b, h, el.PatinM, el.AlmaM, el.ParedM);
+
+        // Una forma que no da contorno —o que lo da incompleto— se queda con la marca: es
+        // mejor un cuadradito honesto que un polígono de dos puntos, que no se ve.
+        if (contorno.Length < 6)
+        {
+            MarcaDeColumna(lienzo, el, aPantalla);
+            return;
+        }
+
+        var puesto = SeccionEnPlanta.Colocar(
+            contorno, el.X1, el.Y1, el.AnguloGrados);
+
+        var poly = new Polygon
+        {
             Stroke = ColorColumna,
             StrokeThickness = 1.1,
-            Fill = Pincel(0x1F, 0x6F, 0xB2, 0x40),
+            Fill = RellenoColumna,
             ToolTip = Etiqueta(el)
         };
 
-        Canvas.SetLeft(r, c.X - (bx / 2));
-        Canvas.SetTop(r, c.Y - (by / 2));
+        for (var i = 0; i + 1 < puesto.Length; i += 2)
+        {
+            poly.Points.Add(aPantalla(puesto[i], puesto[i + 1]));
+        }
+
+        lienzo.Children.Add(poly);
+    }
+
+    /// <summary>La marca mínima de una columna: cuando su sección no se puede dibujar.</summary>
+    /// <remarks>
+    /// Pasa en dos casos: que el modelo no diera las medidas de la sección, o que el zoom
+    /// esté tan lejos que la sección mida menos de tres píxeles. En los dos, un cuadradito
+    /// fijo es mejor que nada, porque dice que <b>ahí hay una columna</b>; lo que no puede
+    /// hacer es pretender que ese tamaño significa algo.
+    /// </remarks>
+    private static void MarcaDeColumna(
+        Canvas lienzo, ElementoEtabs el, Func<double, double, Point> aPantalla)
+    {
+        var c = aPantalla(el.X1, el.Y1);
+
+        var r = new Rectangle
+        {
+            Width = 5,
+            Height = 5,
+            Stroke = ColorColumna,
+            StrokeThickness = 1.1,
+            Fill = RellenoColumna,
+            ToolTip = Etiqueta(el)
+        };
+
+        Canvas.SetLeft(r, c.X - 2.5);
+        Canvas.SetTop(r, c.Y - 2.5);
         lienzo.Children.Add(r);
+    }
+
+    /// <summary>
+    /// La <b>huella en planta</b> de una barra: su largo por su ancho, en su sitio.
+    /// </summary>
+    /// <remarks>
+    /// El rectángulo se construye a partir de la dirección de la propia barra, así que sale
+    /// bien en cualquier orientación —también en las trabes en diagonal— y sin depender del
+    /// giro de los ejes locales: en una trabe el ancho se mide perpendicular a su eje.
+    /// </remarks>
+    private void DibujarBarraEnPlanta(
+        Canvas lienzo, ElementoEtabs el, Func<double, double, Point> aPantalla, double ancho)
+    {
+        var dx = el.X2 - el.X1;
+        var dy = el.Y2 - el.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 1e-9)
+        {
+            return;
+        }
+
+        // La perpendicular unitaria, que es por donde se abre el ancho.
+        var nx = -dy / largo * (ancho / 2);
+        var ny = dx / largo * (ancho / 2);
+
+        var poly = new Polygon
+        {
+            Stroke = Color3D(el.Clase),
+            StrokeThickness = 0.9,
+            Fill = el.Clase == ClaseElemento.Trabe ? RellenoTrabe : RellenoDiagonal,
+            ToolTip = Etiqueta(el)
+        };
+
+        poly.Points.Add(aPantalla(el.X1 + nx, el.Y1 + ny));
+        poly.Points.Add(aPantalla(el.X2 + nx, el.Y2 + ny));
+        poly.Points.Add(aPantalla(el.X2 - nx, el.Y2 - ny));
+        poly.Points.Add(aPantalla(el.X1 - nx, el.Y1 - ny));
+
+        lienzo.Children.Add(poly);
     }
 
     // ==================================================================
