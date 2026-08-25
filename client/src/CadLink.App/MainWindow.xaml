@@ -1860,6 +1860,16 @@
                                           VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroPlanoCambiado" />
                                 <CheckBox x:Name="VerEjesPlanoChk" Content="Ejes" IsChecked="True"
                                           VerticalAlignment="Center" Click="OnFiltroPlanoCambiado" />
+
+                                <!-- EL CORTE SE ELIGE TAMBIEN AQUI, que es donde se manda a
+                                     dibujar: tener que ir a la otra pestaña para escoger el
+                                     eje y volver a esta para dibujarlo es un viaje que no
+                                     hace falta. Las dos listas van sincronizadas. -->
+                                <TextBlock Text="Corte por el eje:" FontSize="11.5" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="18,0,6,0" />
+                                <ComboBox x:Name="CortePlanoCombo" Width="150"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="OnCorteEjeCambiado" />
                             </StackPanel>
                         </Border>
 
@@ -1900,135 +1910,6 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- ===== Secciones del modelo (la hoja SECCIONES de la macro) ===== -->
-            <TabItem Header="Secciones modelo">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
-                        <TextBlock Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
-                                   ToolTip="Es la hoja SECCIONES de tu macro: que secciones de ETABS o de SAP2000 se estan usando de verdad, cuantas veces y en que niveles." />
-
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <!-- La misma casilla de las otras dos pestañas: la lectura es
-                                 una sola y el programa elegido tambien. -->
-                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
-                                       VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <ComboBox x:Name="ProgramaCsiSeccionesCombo" Width="120"
-                                      VerticalAlignment="Center" Margin="0,0,12,0"
-                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
-                                      ToolTip="De donde se lee el modelo. Es la misma casilla de la pestaña ETABS/SAP2000.">
-                                <ComboBoxItem Content="ETABS" />
-                                <ComboBoxItem Content="SAP2000" />
-                            </ComboBox>
-
-                            <Button x:Name="LeerSeccionesModeloButton" Content="Leer secciones de ETABS"
-                                    Style="{StaticResource PrimaryButtonStyle}"
-                                    Click="OnLeerSeccionesModelo"
-                                    ToolTip="Lee el modelo del programa de la casilla y arma la tabla.&#10;Si el modelo ya se leyo, la tabla se llena sola." />
-
-                            <Button Content="Copiar la tabla" Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnCopiarSeccionesModelo"
-                                    ToolTip="Copia la tabla al portapapeles, con tabuladores, para pegarla en Excel." />
-
-                            <!-- TOTALES O INDIVIDUALES: las dos tablas salen del MISMO
-                                 modelo y dicen lo mismo a dos niveles de detalle, asi que
-                                 no se ensenan las dos a la vez -eso era ver doble-, sino
-                                 la que se pida. El boton dice A DONDE se va, que es lo que
-                                 espera quien lo pulsa. -->
-                            <Button x:Name="AlternarSeccionesButton" Content="Ver individuales"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnAlternarSeccionesModelo"
-                                    ToolTip="TOTALES: una linea por seccion, con cuantas hay, su longitud o su area y en que niveles.&#10;INDIVIDUALES: una linea por elemento del modelo, con su etiqueta y su largo." />
-
-                            <TextBlock x:Name="SeccionesModeloResumenText" FontSize="11.5"
-                                       VerticalAlignment="Center" Margin="14,0,0,0"
-                                       Foreground="{DynamicResource MutedTextBrush}" />
-                        </StackPanel>
-
-                        <!-- Los nombres de columna son los de la hoja SECCIONES, tal cual -->
-                        <DataGrid x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
-                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
-                                  IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
-                                  MinHeight="320" MaxHeight="520">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="110"
-                                                    CellStyle="{StaticResource CeldaIdent}" />
-                                <DataGridTextColumn Header="SECCION DE ETABS" Binding="{Binding Seccion}"
-                                                    Width="260" CellStyle="{StaticResource CeldaIdent}" />
-                                <DataGridTextColumn Header="FORMA" Binding="{Binding Forma}" Width="110"
-                                                    CellStyle="{StaticResource CeldaGeom}" />
-                                <DataGridTextColumn Header="MATERIAL" Binding="{Binding Material}" Width="120"
-                                                    CellStyle="{StaticResource CeldaGeom}" />
-                                <DataGridTextColumn Header="T3 PERALTE (cm)"
-                                                    Binding="{Binding PeralteCm, StringFormat=N1}"
-                                                    Width="115" CellStyle="{StaticResource CeldaGeom}" />
-                                <DataGridTextColumn Header="T2 ANCHO / ESPESOR (cm)"
-                                                    Binding="{Binding AnchoCm, StringFormat=N1}"
-                                                    Width="160" CellStyle="{StaticResource CeldaGeom}" />
-                                <DataGridTextColumn Header="TF (cm)"
-                                                    Binding="{Binding PatinCm, StringFormat=N2}"
-                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
-                                <DataGridTextColumn Header="TW (cm)"
-                                                    Binding="{Binding AlmaCm, StringFormat=N2}"
-                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
-                                <DataGridTextColumn Header="CANTIDAD" Binding="{Binding Cantidad}"
-                                                    Width="90" CellStyle="{StaticResource CeldaAcabado}" />
-
-                                <!-- LO QUE HAY DE CADA COSA. Un frame se mide por su LARGO
-                                     y un shell por su AREA, asi que cada renglon llena una
-                                     de las dos y la otra se queda en blanco. -->
-                                <DataGridTextColumn Header="LONGITUD TOTAL (m)"
-                                                    Binding="{Binding LongitudTotalM, StringFormat=N2}"
-                                                    Width="140" CellStyle="{StaticResource CeldaLechoInf}">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="ToolTip"
-                                                    Value="Suma del largo REAL de las barras con esa seccion, en tres dimensiones.&#10;En muros y losas va en blanco: ahi se mide el area." />
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-
-                                <DataGridTextColumn Header="AREA TOTAL (m²)"
-                                                    Binding="{Binding AreaTotalM2, StringFormat=N2}"
-                                                    Width="130" CellStyle="{StaticResource CeldaLechoSup}">
-                                    <DataGridTextColumn.ElementStyle>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="ToolTip"
-                                                    Value="Suma del area del paño de los shell -muros y losas- con esa propiedad.&#10;Es el area del plano del elemento: en un muro, que es vertical, el area en planta seria cero." />
-                                        </Style>
-                                    </DataGridTextColumn.ElementStyle>
-                                </DataGridTextColumn>
-                                <DataGridTextColumn Header="NIVELES" Binding="{Binding Niveles}"
-                                                    Width="*" CellStyle="{StaticResource CeldaAcabado}" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-
-                        <!-- LA MISMA TABLA QUE ESTABA DEBAJO DEL VISOR 3D, movida aqui: es
-                             el detalle -una linea por elemento- de lo que la de arriba
-                             resume por seccion. Arranca oculta y la ensena el boton. -->
-                        <TextBlock x:Name="ElementosTitulo" Visibility="Collapsed"
-                                   Text="Elementos del modelo, uno por uno" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
-
-                        <DataGrid x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
-                                  Visibility="Collapsed"
-                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
-                                  MinHeight="320" MaxHeight="520" IsReadOnly="True" CanUserAddRows="False"
-                                  CanUserDeleteRows="False">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="95" />
-                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="110" />
-                                <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="110" />
-                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
-                                <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="130" />
-                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="90" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- ===== ETABS ===== -->
             <TabItem x:Name="EtabsTab" Header="ETABS/SAP2000">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22">
@@ -2220,6 +2101,137 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+
+            <!-- ===== Secciones del modelo (la hoja SECCIONES de la macro) ===== -->
+            <TabItem Header="Secciones modelo">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Es la hoja SECCIONES de tu macro: que secciones de ETABS o de SAP2000 se estan usando de verdad, cuantas veces y en que niveles." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <!-- La misma casilla de las otras dos pestañas: la lectura es
+                                 una sola y el programa elegido tambien. -->
+                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="ProgramaCsiSeccionesCombo" Width="120"
+                                      VerticalAlignment="Center" Margin="0,0,12,0"
+                                      SelectedIndex="{Binding SelectedIndex, ElementName=ProgramaCsiCombo, Mode=TwoWay}"
+                                      ToolTip="De donde se lee el modelo. Es la misma casilla de la pestaña ETABS/SAP2000.">
+                                <ComboBoxItem Content="ETABS" />
+                                <ComboBoxItem Content="SAP2000" />
+                            </ComboBox>
+
+                            <Button x:Name="LeerSeccionesModeloButton" Content="Leer secciones de ETABS"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnLeerSeccionesModelo"
+                                    ToolTip="Lee el modelo del programa de la casilla y arma la tabla.&#10;Si el modelo ya se leyo, la tabla se llena sola." />
+
+                            <Button Content="Copiar la tabla" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnCopiarSeccionesModelo"
+                                    ToolTip="Copia la tabla al portapapeles, con tabuladores, para pegarla en Excel." />
+
+                            <!-- TOTALES O INDIVIDUALES: las dos tablas salen del MISMO
+                                 modelo y dicen lo mismo a dos niveles de detalle, asi que
+                                 no se ensenan las dos a la vez -eso era ver doble-, sino
+                                 la que se pida. El boton dice A DONDE se va, que es lo que
+                                 espera quien lo pulsa. -->
+                            <Button x:Name="AlternarSeccionesButton" Content="Ver individuales"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnAlternarSeccionesModelo"
+                                    ToolTip="TOTALES: una linea por seccion, con cuantas hay, su longitud o su area y en que niveles.&#10;INDIVIDUALES: una linea por elemento del modelo, con su etiqueta y su largo." />
+
+                            <TextBlock x:Name="SeccionesModeloResumenText" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="14,0,0,0"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                        </StackPanel>
+
+                        <!-- Los nombres de columna son los de la hoja SECCIONES, tal cual -->
+                        <DataGrid x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
+                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
+                                  IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                                  MinHeight="320" MaxHeight="520">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="110"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+                                <DataGridTextColumn Header="SECCION DE ETABS" Binding="{Binding Seccion}"
+                                                    Width="260" CellStyle="{StaticResource CeldaIdent}" />
+                                <DataGridTextColumn Header="FORMA" Binding="{Binding Forma}" Width="110"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="MATERIAL" Binding="{Binding Material}" Width="120"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="T3 PERALTE (cm)"
+                                                    Binding="{Binding PeralteCm, StringFormat=N1}"
+                                                    Width="115" CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="T2 ANCHO / ESPESOR (cm)"
+                                                    Binding="{Binding AnchoCm, StringFormat=N1}"
+                                                    Width="160" CellStyle="{StaticResource CeldaGeom}" />
+                                <DataGridTextColumn Header="TF (cm)"
+                                                    Binding="{Binding PatinCm, StringFormat=N2}"
+                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
+                                <DataGridTextColumn Header="TW (cm)"
+                                                    Binding="{Binding AlmaCm, StringFormat=N2}"
+                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
+                                <DataGridTextColumn Header="CANTIDAD" Binding="{Binding Cantidad}"
+                                                    Width="90" CellStyle="{StaticResource CeldaAcabado}" />
+
+                                <!-- LO QUE HAY DE CADA COSA. Un frame se mide por su LARGO
+                                     y un shell por su AREA, asi que cada renglon llena una
+                                     de las dos y la otra se queda en blanco. -->
+                                <DataGridTextColumn Header="LONGITUD TOTAL (m)"
+                                                    Binding="{Binding LongitudTotalM, StringFormat=N2}"
+                                                    Width="140" CellStyle="{StaticResource CeldaLechoInf}">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip"
+                                                    Value="Suma del largo REAL de las barras con esa seccion, en tres dimensiones.&#10;En muros y losas va en blanco: ahi se mide el area." />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTextColumn Header="AREA TOTAL (m²)"
+                                                    Binding="{Binding AreaTotalM2, StringFormat=N2}"
+                                                    Width="130" CellStyle="{StaticResource CeldaLechoSup}">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip"
+                                                    Value="Suma del area del paño de los shell -muros y losas- con esa propiedad.&#10;Es el area del plano del elemento: en un muro, que es vertical, el area en planta seria cero." />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="NIVELES" Binding="{Binding Niveles}"
+                                                    Width="*" CellStyle="{StaticResource CeldaAcabado}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- LA MISMA TABLA QUE ESTABA DEBAJO DEL VISOR 3D, movida aqui: es
+                             el detalle -una linea por elemento- de lo que la de arriba
+                             resume por seccion. Arranca oculta y la ensena el boton. -->
+                        <TextBlock x:Name="ElementosTitulo" Visibility="Collapsed"
+                                   Text="Elementos del modelo, uno por uno" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                        <DataGrid x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
+                                  Visibility="Collapsed"
+                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
+                                  MinHeight="320" MaxHeight="520" IsReadOnly="True" CanUserAddRows="False"
+                                  CanUserDeleteRows="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="95" />
+                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="110" />
+                                <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="110" />
+                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
+                                <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="130" />
+                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="90" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== ETABS ===== -->
+            
 
 
 

@@ -1021,9 +1021,14 @@ public sealed partial class PlantaDrawer
                     contorno = null;
                 }
 
-                _log.Add(
-                    $"Volado '{el.Etiqueta}': {tramos} tramo(s) de contorno por fuera de " +
-                    $"muros y cadenas, achurado {(conHatch ? "puesto" : "NO puesto")}.");
+                // ESTO ES UNA NOTA, NO UN FALLO. Iba a _log, que es la lista de lo que se
+                // toleró, así que el diálogo del final decía «hubo 2 avisos que se
+                // toleraron» y los enseñaba con su triángulo amarillo... para contar que
+                // todo había ido BIEN —«achurado puesto»—. Un aviso que no avisa de nada
+                // enseña a desconfiar de los avisos, y el día que falte algo de verdad no se
+                // va a creer. Va a las notas, que es donde se cuenta lo que se hizo.
+                Nota($"Volado '{el.Etiqueta}': {tramos} tramo(s) de contorno por fuera de " +
+                     $"muros y cadenas, achurado {(conHatch ? "puesto" : "NO puesto")}.");
             }
 
             // ==========================================================================

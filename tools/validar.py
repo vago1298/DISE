@@ -773,6 +773,23 @@ def v11_visor() -> None:
           and 'MouseLeftButtonUp="OnVistaMouseUp"' in tx_planos)
 
     # Y SE PUEDE APAGAR: en un modelo con muchos ejes la cuadricula tapa lo que se mira.
+    # EL CORTE SE ELIGE EN LAS DOS PESTAÑAS: en el visor se busca y en la de planos se
+    # dibuja, asi que tener que ir a la otra para escoger el eje y volver es un viaje que no
+    # hace falta. Las dos listas llevan lo mismo y en el mismo orden, asi que igualarlas es
+    # copiar el indice -por nombre o por ordenada aparecerian diferencias por redondeo-.
+    check("el corte se elige tambien en la pestaña de planos",
+          'x:Name="CortePlanoCombo"' in tx_planos
+          and tx_planos.count('SelectionChanged="OnCorteEjeCambiado"') == 2
+          and "var listas = new[] { CorteEjeCombo, CortePlanoCombo };" in codigo_planos
+          and "private void IgualarLaOtraListaDeCortes(" in codigo_planos)
+    # Y CON GUARDA: sin ella, sincronizar una lista dispara el evento de la otra, que vuelve a
+    # sincronizar la primera. El finally tambien importa: si la bandera se queda puesta, el
+    # desplegable deja de responder y no hay forma de saber por que.
+    check("y sincronizarlas no se muerde la cola",
+          "if (!_listo || _sincronizandoCortes)" in codigo_planos
+          and "_sincronizandoCortes = true;" in codigo_planos
+          and "finally" in codigo_planos)
+
     check("los ejes se pueden apagar con su casilla",
           "public bool VerEjes { get; set; } = true;" in t
           and "if (!VerEjes || Modelo is null)" in t
@@ -784,6 +801,14 @@ def v11_visor() -> None:
     check("y la posicion sale del modelo ya corregido, sin recalcularla aparte",
           "GetInsertionPoint" not in t
           and "e.X1 +=" not in t)
+
+    # LA PESTAÑA DEL MODELO, AL LADO DE LA DE PLANOS. Se trabaja con las dos a la vez -se
+    # lee el modelo, se mira, se dibuja- y estaban en filas distintas del TabControl.
+    orden = re.findall(r'<TabItem[^>]*Header="([^"]+)"', tx_planos)
+    check("la pestaña de ETABS/SAP2000 va junto a la de planos",
+          "Dibujar planos estructurales" in orden
+          and "ETABS/SAP2000" in orden
+          and orden.index("ETABS/SAP2000") == orden.index("Dibujar planos estructurales") + 1)
 
     # Los lienzos necesitan Background para recibir el mouse
     x = ruta("client", "src", "CadLink.App", "MainWindow.xaml")
@@ -2725,8 +2750,10 @@ def v16_extruida_piers() -> None:
     # ------------------------------------------------------------------
     # EL ORDEN DE LAS PESTAÑAS Y LA DE SECCIONES DEL MODELO
     # ------------------------------------------------------------------
-    # Se pidio: la de dibujar planos ANTES, la de ETABS/SAP2000 de PENULTIMA -o sea, justo
-    # antes de la de Licencia- y una nueva con las secciones que se usan en el modelo.
+    # EL ORDEN CAMBIO A PETICION: la de ETABS/SAP2000 estaba de PENULTIMA -justo antes de
+    # Licencia- y se pidio moverla JUNTO A la de dibujar planos, porque se trabaja con las dos
+    # a la vez: se lee el modelo, se mira en el visor y se dibuja. Estando en filas distintas
+    # del TabControl, cada vuelta eran dos clics y un salto de fila.
     # Solo las pestañas de PRIMER nivel: dentro de la de ETABS hay otro TabControl -las
     # vistas 3D y extruida- y sus pestañas no cuentan aqui. Se distinguen por la sangria.
     orden = [m.group(1) for m in
@@ -2739,11 +2766,13 @@ def v16_extruida_piers() -> None:
                                 "ETABS/SAP2000", "Licencia")):
         check("los planos van antes que ETABS/SAP2000",
               orden.index("Dibujar planos estructurales") < orden.index("ETABS/SAP2000"))
-        check("ETABS/SAP2000 es la PENULTIMA, antes de Licencia",
-              orden.index("ETABS/SAP2000") == orden.index("Licencia") - 1)
-        check("y la de secciones del modelo queda entre las dos",
-              orden.index("Dibujar planos estructurales")
-              < orden.index("Secciones modelo") < orden.index("ETABS/SAP2000"))
+        check("ETABS/SAP2000 va JUSTO DESPUES de la de planos",
+              orden.index("ETABS/SAP2000")
+              == orden.index("Dibujar planos estructurales") + 1)
+        check("y la de secciones del modelo queda despues de las dos",
+              orden.index("ETABS/SAP2000") < orden.index("Secciones modelo"))
+        check("Licencia se queda de ultima",
+              orden.index("Licencia") == len(orden) - 1)
 
     # LA TABLA DE SECCIONES DEL MODELO: es la hoja SECCIONES de la macro, con sus mismas
     # columnas, su mismo orden por tipo y su mismo criterio de clasificacion.

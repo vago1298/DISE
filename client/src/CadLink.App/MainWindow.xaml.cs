@@ -1374,26 +1374,41 @@ public partial class MainWindow : Window
     /// </remarks>
     private void PoblarCortes(ModeloEtabs modelo)
     {
-        CorteEjeCombo.Items.Clear();
-        CorteEjeCombo.Items.Add("(sin corte)");
+        // LAS DOS LISTAS, la del visor y la de la pestaña de planos, con lo MISMO y en el
+        // mismo orden: así sincronizarlas es copiar el índice y no hay que buscar nada.
+        var listas = new[] { CorteEjeCombo, CortePlanoCombo };
+
+        foreach (var lista in listas)
+        {
+            lista.Items.Clear();
+            lista.Items.Add("(sin corte)");
+        }
 
         var ejes = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        var cortes = new List<Corte>();
 
         foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
                      ejes.X.Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
         {
-            CorteEjeCombo.Items.Add(
-                new Corte($"Eje {e.Id}  (X)", e.Id, true, e.Ordenada));
+            cortes.Add(new Corte($"Eje {e.Id}  (X)", e.Id, true, e.Ordenada));
         }
 
         foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
                      ejes.Y.Select(y => (y.Id, y.Ordenada)).ToList(), 0.01))
         {
-            CorteEjeCombo.Items.Add(
-                new Corte($"Eje {e.Id}  (Y)", e.Id, false, e.Ordenada));
+            cortes.Add(new Corte($"Eje {e.Id}  (Y)", e.Id, false, e.Ordenada));
         }
 
-        CorteEjeCombo.SelectedIndex = 0;
+        foreach (var lista in listas)
+        {
+            foreach (var c in cortes)
+            {
+                lista.Items.Add(c);
+            }
+
+            lista.SelectedIndex = 0;
+        }
     }
 
     /// <summary>
@@ -1407,12 +1422,21 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnCorteEjeCambiado(object sender, SelectionChangedEventArgs e)
     {
-        if (!_listo)
+        // Sin esto, sincronizar una lista dispararía el evento de la otra, que volvería a
+        // sincronizar la primera: dos pestañas mirándose la una a la otra sin parar.
+        if (!_listo || _sincronizandoCortes)
         {
             return;
         }
 
-        if (CorteEjeCombo.SelectedItem is not Corte corte)
+        // El corte se elige en DOS sitios —el visor y la pestaña de planos— porque en el
+        // visor se busca y en la de planos se dibuja. Manda la lista que se acaba de tocar,
+        // y la otra se pone igual.
+        var lista = sender as ComboBox ?? CorteEjeCombo;
+
+        IgualarLaOtraListaDeCortes(lista);
+
+        if (lista.SelectedItem is not Corte corte)
         {
             _vista.SinCorte();
             RedibujarVistas();
@@ -1432,6 +1456,41 @@ public partial class MainWindow : Window
 
         RedibujarVistas();
     }
+
+    /// <summary>
+    /// Deja la <b>otra</b> lista de cortes en lo mismo que la que se acaba de tocar.
+    /// </summary>
+    /// <remarks>
+    /// Las dos listas se llenan con los mismos renglones y en el mismo orden, así que igualar
+    /// es copiar el índice: no hay que buscar por nombre ni comparar ordenadas, que es donde
+    /// aparecerían las diferencias por redondeo.
+    /// </remarks>
+    private void IgualarLaOtraListaDeCortes(ComboBox tocada)
+    {
+        var otra = ReferenceEquals(tocada, CorteEjeCombo) ? CortePlanoCombo : CorteEjeCombo;
+
+        if (otra.SelectedIndex == tocada.SelectedIndex
+            || tocada.SelectedIndex >= otra.Items.Count)
+        {
+            return;
+        }
+
+        _sincronizandoCortes = true;
+
+        try
+        {
+            otra.SelectedIndex = tocada.SelectedIndex;
+        }
+        finally
+        {
+            // En un finally a propósito: si esto se queda en true por una excepción, el
+            // desplegable del corte deja de responder y no hay forma de saber por qué.
+            _sincronizandoCortes = false;
+        }
+    }
+
+    /// <summary>Se está igualando una lista con la otra: no hay que reaccionar al evento.</summary>
+    private bool _sincronizandoCortes;
 
     /// <summary>Nivel elegido, o <c>null</c> cuando están seleccionados todos.</summary>
     private string? NivelElegido =>
