@@ -811,7 +811,7 @@ def v11_visor() -> None:
           "Dibujar planos estructurales" in orden
           and "ETABS/SAP2000" not in orden
           and "Vista en planta y cortes" in tx_planos
-          and '<StackPanel Grid.Column="1" Margin="8,0,0,0">' in tx_planos)
+          and 'Grid.Row="2" Grid.Column="1"' in tx_planos)
 
     # Los lienzos necesitan Background para recibir el mouse
     x = ruta("client", "src", "CadLink.App", "MainWindow.xaml")
@@ -2716,10 +2716,32 @@ def v16_extruida_piers() -> None:
     # LAS DOS VISTAS, UNA A CADA LADO: planta y cortes a la izquierda, 3D a la derecha, al
     # 50% cada una, que es como se pidio.
     check("la planta va a la izquierda y el 3D a la derecha",
-          '<StackPanel Grid.Column="0" Margin="0,0,8,0">' in xaml
-          and '<StackPanel Grid.Column="1" Margin="8,0,0,0">' in xaml
+          'Grid.Row="2" Grid.Column="0"' in xaml
+          and 'Grid.Row="2" Grid.Column="1"' in xaml
           and "Vista en planta y cortes" in xaml
           and xaml.index('Vista en planta y cortes') < xaml.index('Vista del modelo'))
+    # LAS DOS VISTAS AL MISMO NIVEL. Con dos StackPanel sueltos, cada lienzo empezaba donde
+    # acabara lo que tuviera encima: la derecha llevaba una barra mas -dentro de su pestaña- y
+    # el modelo salia medio renglon mas abajo que la planta. Con UNA rejilla de tres filas
+    # -titulo, barra y lienzo- la altura de cada fila es la del cel mas alto, asi que los dos
+    # lienzos arrancan en la misma linea pase lo que pase con las barras.
+    check("las dos vistas quedan al mismo nivel, no disparejas",
+          xaml.count("<RowDefinition Height=\"Auto\" />") >= 3
+          and 'Grid.Row="1" Grid.Column="0"' in xaml
+          and 'Grid.Row="1" Grid.Column="1"' in xaml
+          and 'Grid.Row="0" Grid.Column="0"' in xaml)
+    # Y LOS TRES LIENZOS, DEL MISMO ALTO: con alturas distintas, aunque arranquen juntos,
+    # acabarian en sitios distintos.
+    alturas = re.findall(r'x:Name="(?:PlantaCanvas|Vista3DCanvas|ExtruidaCanvas)"[^>]*?Height="(\d+)"',
+                         xaml, re.S)
+    check("y los tres lienzos miden lo mismo de alto",
+          len(alturas) == 3 and len(set(alturas)) == 1,
+          f"alturas: {alturas}")
+    # LA BARRA DE LAS VISTAS, UNA SOLA: era la misma dentro de cada pestaña, y duplicada solo
+    # servia para bajar el lienzo y para que las dos pudieran quedar descuadradas.
+    check("la barra de las vistas es una, fuera de las pestañas",
+          xaml.count('Tag="ISO"') == 1
+          and xaml.count('Tag="ENCUADRAR"') == 1)
     check("hay una casilla para elegir el programa, con los dos",
           'x:Name="ProgramaCsiCombo"' in xaml
           and '<ComboBoxItem Content="ETABS" />' in xaml

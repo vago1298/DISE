@@ -1884,168 +1884,173 @@
                              Las dos columnas al 50%: las dos vistas son igual de
                              importantes, y con una mas ancha que la otra la estrecha deja
                              de servir para mirar. -->
+                        <!-- ==========================================================
+                             EL VISUALIZADOR: LAS DOS VISTAS, A LA MISMA ALTURA
+                             ==========================================================
+                             A la IZQUIERDA la planta y sus cortes, a la DERECHA el 3D, y
+                             las dos AL MISMO NIVEL. Antes cada columna era un StackPanel
+                             suelto, asi que cada lienzo empezaba donde acabara lo que
+                             tuviera encima: la derecha llevaba una barra mas -la de las
+                             vistas, dentro de su pestaña- y el modelo salia medio
+                             renglon mas abajo que la planta.
+
+                             Ahora es UNA rejilla de tres filas: titulo, barra y lienzo.
+                             La altura de cada fila es la del cel mas alto de las dos
+                             columnas, asi que los dos lienzos arrancan EXACTAMENTE en la
+                             misma linea, pase lo que pase con las barras.
+
+                             Y la barra de las vistas es UNA, fuera de las pestañas: era
+                             la misma en las dos -Isometrica, Frente, Lado, Planta- asi
+                             que tenerla duplicada dentro de cada una solo servia para
+                             bajar el lienzo y para que las dos pudieran quedar
+                             descuadradas. -->
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                            <!-- IZQUIERDA: la planta y los cortes -->
-                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <TextBlock Text="Vista en planta y cortes" FontWeight="SemiBold" FontSize="12.5"
-                                           Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <TextBlock Text="Nivel:" FontWeight="SemiBold" FontSize="11.5"
-                                                   VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <ComboBox x:Name="NivelPlantaCombo" Width="190"
-                                                  VerticalAlignment="Center"
-                                                  SelectionChanged="OnNivelPlantaCambiado" />
-                                        <TextBlock Text="Rueda para zoom. Boton derecho para mover."
-                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
-                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
-                                    </StackPanel>
+                            <!-- IZQUIERDA: titulo, barra del nivel y la planta -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Vista en planta y cortes"
+                                       FontWeight="SemiBold" FontSize="12.5" Margin="0,0,8,6"
+                                       VerticalAlignment="Bottom"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
 
-                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
-                                        <!-- Arrastrar con el boton IZQUIERDO o con el
-                                             DERECHO mueve la planta; la rueda hace zoom.
-                                             El izquierdo hace falta: es el que se usa por
-                                             instinto, y sin el parecia que la vista
-                                             estuviera clavada. -->
-                                        <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                MouseLeftButtonDown="OnVistaMouseDown"
-                                                MouseRightButtonDown="OnVistaMouseDown"
-                                                MouseMove="OnVistaMouseMove"
-                                                MouseLeftButtonUp="OnVistaMouseUp"
-                                                MouseRightButtonUp="OnVistaMouseUp"
-                                                MouseLeave="OnVistaMouseUp"
-                                                MouseWheel="OnVistaWheel" />
-                                    </Border>
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,8,8"
+                                        VerticalAlignment="Bottom">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="Nivel:" FontWeight="SemiBold" FontSize="11.5"
+                                VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox x:Name="NivelPlantaCombo" Width="190"
+                                VerticalAlignment="Center"
+                                SelectionChanged="OnNivelPlantaCambiado" />
+                                <TextBlock Text="Rueda para zoom. Boton derecho para mover."
+                                FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
+                                VerticalAlignment="Center" Margin="14,0,0,0" />
                                 </StackPanel>
                             </StackPanel>
 
-                            <!-- DERECHA: el modelo en 3D -->
-                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
-<!-- ===== Visor del modelo: 3D y planta ===== -->
-                        <TextBlock Text="Vista del modelo" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+                            <ContentControl Grid.Row="2" Grid.Column="0" Margin="0,0,8,0">
+                                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+                                <!-- Arrastrar con el boton IZQUIERDO o con el
+                                DERECHO mueve la planta; la rueda hace zoom.
+                                El izquierdo hace falta: es el que se usa por
+                                instinto, y sin el parecia que la vista
+                                estuviera clavada. -->
+                                <Canvas x:Name="PlantaCanvas" Height="430" ClipToBounds="True"
+                                Background="{DynamicResource SurfaceBrush}"
+                                MouseLeftButtonDown="OnVistaMouseDown"
+                                MouseRightButtonDown="OnVistaMouseDown"
+                                MouseMove="OnVistaMouseMove"
+                                MouseLeftButtonUp="OnVistaMouseUp"
+                                MouseRightButtonUp="OnVistaMouseUp"
+                                MouseLeave="OnVistaMouseUp"
+                                MouseWheel="OnVistaWheel" />
+                                </Border>
+                            </ContentControl>
 
-                        <!-- Filtros por tipo de elemento, comunes a las dos vistas -->
-                        <Border Style="{StaticResource TarjetaStyle}"
+                            <!-- DERECHA: titulo, filtros y barra de vistas, y el modelo -->
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Vista del modelo"
+                                       FontWeight="SemiBold" FontSize="12.5" Margin="8,0,0,6"
+                                       VerticalAlignment="Bottom"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
+
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,0,8"
+                                        VerticalAlignment="Bottom">
+                                <!-- Filtros por tipo de elemento, comunes a las dos vistas -->
+                                <Border Style="{StaticResource TarjetaStyle}"
                                 Padding="12,8" Margin="0,0,0,8"
                                 HorizontalAlignment="Left">
-                            <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Mostrar:" FontWeight="SemiBold" FontSize="11.5"
-                                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                                VerticalAlignment="Center" Margin="0,0,12,0" />
                                 <CheckBox x:Name="VerColumnasChk" Content="Columnas" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
                                 <CheckBox x:Name="VerTrabesChk" Content="Trabes" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
                                 <CheckBox x:Name="VerDiagonalesChk" Content="Diagonales" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
                                 <CheckBox x:Name="VerMurosChk" Content="Muros" IsChecked="True"
-                                          VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
+                                VerticalAlignment="Center" Margin="0,0,12,0" Click="OnFiltroVistaCambiado" />
                                 <CheckBox x:Name="VerLosasChk" Content="Losas" IsChecked="True"
-                                          VerticalAlignment="Center" Click="OnFiltroVistaCambiado" />
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Sin MaxWidth ni HorizontalAlignment: la vista del modelo
-                             ocupa TODO el ancho disponible. Con el MaxWidth de 980 que
-                             tenia antes, en una pantalla ancha quedaba un vacio a la
-                             derecha y el modelo se veia apretado sin motivo. -->
-                        <TabControl x:Name="VistaTabs" Margin="0,0,0,16"
-                                    HorizontalAlignment="Stretch"
-                                    SelectionChanged="OnVistaTabCambiada">
-
-                            <!-- ===== 3D ===== -->
-                            <TabItem Header="Vista 3D">
-                                <StackPanel Margin="10">
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <Button Content="Isometrica" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="ISO" Click="OnVistaPreset" />
-                                        <Button Content="Frente (XZ)" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="FRENTE" Click="OnVistaPreset" />
-                                        <Button Content="Lado (YZ)" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="LADO" Click="OnVistaPreset" />
-                                        <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="PLANTA" Click="OnVistaPreset" />
-                                        <TextBlock Text="Arrastra para girar. Rueda para zoom. Boton derecho para mover."
-                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
-                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
-                                    </StackPanel>
-
-                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
-                                        <!-- El Background es imprescindible: sin el, el Canvas no
-                                             recibe los eventos del mouse. -->
-                                        <Canvas x:Name="Vista3DCanvas" Height="430" ClipToBounds="True"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                MouseLeftButtonDown="OnVistaMouseDown"
-                                                MouseRightButtonDown="OnVistaMouseDown"
-                                                MouseMove="OnVistaMouseMove"
-                                                MouseLeftButtonUp="OnVistaMouseUp"
-                                                MouseRightButtonUp="OnVistaMouseUp"
-                                                MouseLeave="OnVistaMouseUp"
-                                                MouseWheel="OnVistaWheel" />
-                                    </Border>
+                                VerticalAlignment="Center" Click="OnFiltroVistaCambiado" />
                                 </StackPanel>
-                            </TabItem>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button Content="Isometrica" Style="{StaticResource SecondaryButtonStyle}"
+                                Tag="ISO" Click="OnVistaPreset" />
+                                <Button Content="Frente (XZ)" Style="{StaticResource SecondaryButtonStyle}"
+                                Tag="FRENTE" Click="OnVistaPreset" />
+                                <Button Content="Lado (YZ)" Style="{StaticResource SecondaryButtonStyle}"
+                                Tag="LADO" Click="OnVistaPreset" />
+                                <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
+                                Tag="PLANTA" Click="OnVistaPreset" />
 
-                            <!-- ===== Extruida ===== -->
-                            <TabItem Header="Vista extruida">
-                                <StackPanel Margin="10">
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <Button Content="Isometrica" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="ISO" Click="OnVistaPreset" />
-                                        <Button Content="Frente (XZ)" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="FRENTE" Click="OnVistaPreset" />
-                                        <Button Content="Lado (YZ)" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="LADO" Click="OnVistaPreset" />
-                                        <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="PLANTA" Click="OnVistaPreset" />
+                                <!-- Encuadrar deja el zoom y el desplazamiento como
+                                al principio SIN tocar el giro: es la salida
+                                cuando uno se pierde arrastrando. -->
+                                <Button Content="Encuadrar" Style="{StaticResource SecondaryButtonStyle}"
+                                Tag="ENCUADRAR" Click="OnVistaPreset" />
 
-                                        <!-- Encuadrar deja el zoom y el desplazamiento como
-                                             al principio SIN tocar el giro: es la salida
-                                             cuando uno se pierde arrastrando. -->
-                                        <Button Content="Encuadrar" Style="{StaticResource SecondaryButtonStyle}"
-                                                Tag="ENCUADRAR" Click="OnVistaPreset" />
-
-                                        <!-- EL CORTE POR UN EJE es un alzado: se ve solo lo
-                                             que hay sobre ese eje. En isometrica un edificio
-                                             de muros es una maraña; cortado se entiende. -->
-                                        <TextBlock Text="Corte:" FontSize="11.5" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" Margin="14,0,6,0" />
-                                        <ComboBox x:Name="CorteEjeCombo" Width="150"
-                                                  VerticalAlignment="Center"
-                                                  SelectionChanged="OnCorteEjeCambiado" />
-                                        <TextBlock Text="Cada elemento con su seccion real y sombreado. Arrastra con el boton izquierdo para girar, con el derecho para mover, y la rueda hace zoom."
-                                                   FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
-                                                   VerticalAlignment="Center" Margin="14,0,0,0"
-                                                   TextWrapping="Wrap" MaxWidth="320" />
-                                    </StackPanel>
-
-                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                            CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
-                                        <Canvas x:Name="ExtruidaCanvas" Height="430" ClipToBounds="True"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                MouseLeftButtonDown="OnVistaMouseDown"
-                                                MouseRightButtonDown="OnVistaMouseDown"
-                                                MouseMove="OnVistaMouseMove"
-                                                MouseLeftButtonUp="OnVistaMouseUp"
-                                                MouseRightButtonUp="OnVistaMouseUp"
-                                                MouseLeave="OnVistaMouseUp"
-                                                MouseWheel="OnVistaWheel" />
-                                    </Border>
+                                <!-- EL CORTE POR UN EJE es un alzado: se ve solo lo
+                                que hay sobre ese eje. En isometrica un edificio
+                                de muros es una maraña; cortado se entiende. -->
+                                <TextBlock Text="Corte:" FontSize="11.5" FontWeight="SemiBold"
+                                VerticalAlignment="Center" Margin="14,0,6,0" />
+                                <ComboBox x:Name="CorteEjeCombo" Width="150"
+                                VerticalAlignment="Center"
+                                SelectionChanged="OnCorteEjeCambiado" />
+                                <TextBlock Text="Cada elemento con su seccion real y sombreado. Arrastra con el boton izquierdo para girar, con el derecho para mover, y la rueda hace zoom."
+                                FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
+                                VerticalAlignment="Center" Margin="14,0,0,0"
+                                TextWrapping="Wrap" MaxWidth="320" />
                                 </StackPanel>
-                            </TabItem>
-
-                        </TabControl>
-
-                        
                             </StackPanel>
+
+                            <TabControl x:Name="VistaTabs" Grid.Row="2" Grid.Column="1"
+                                        Margin="8,0,0,0" HorizontalAlignment="Stretch"
+                                        SelectionChanged="OnVistaTabCambiada">
+
+                                <!-- Dentro de cada pestaña solo va SU LIENZO: los botones
+                                     son los mismos para las dos y viven arriba. -->
+                                <TabItem Header="Vista 3D">
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+                                    <!-- El Background es imprescindible: sin el, el Canvas no
+                                    recibe los eventos del mouse. -->
+                                    <Canvas x:Name="Vista3DCanvas" Height="430" ClipToBounds="True"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    MouseLeftButtonDown="OnVistaMouseDown"
+                                    MouseRightButtonDown="OnVistaMouseDown"
+                                    MouseMove="OnVistaMouseMove"
+                                    MouseLeftButtonUp="OnVistaMouseUp"
+                                    MouseRightButtonUp="OnVistaMouseUp"
+                                    MouseLeave="OnVistaMouseUp"
+                                    MouseWheel="OnVistaWheel" />
+                                    </Border>
+                                </TabItem>
+
+                                <TabItem Header="Vista extruida">
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+                                    <Canvas x:Name="ExtruidaCanvas" Height="430" ClipToBounds="True"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    MouseLeftButtonDown="OnVistaMouseDown"
+                                    MouseRightButtonDown="OnVistaMouseDown"
+                                    MouseMove="OnVistaMouseMove"
+                                    MouseLeftButtonUp="OnVistaMouseUp"
+                                    MouseRightButtonUp="OnVistaMouseUp"
+                                    MouseLeave="OnVistaMouseUp"
+                                    MouseWheel="OnVistaWheel" />
+                                    </Border>
+                                </TabItem>
+                            </TabControl>
                         </Grid>
 
                         <!-- La lectura del modelo y sus tablas: PLEGADAS, porque se usan una
