@@ -2951,8 +2951,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con veintiocho renglones añadidos",
-          cfgp.count("        P(") == 289
+    check("la hoja CONFIG de la macro esta portada, con veintinueve renglones añadidos",
+          cfgp.count("        P(") == 290
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3069,7 +3069,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "289, ConfigPlano.PorOmision.Count" in pr
+          and "290, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4173,10 +4173,10 @@ def v18_planta_autocad() -> None:
     # que se creia el achurado puesto, se saltaba el respaldo y el voladizo se quedaba SIN
     # NADA: rotulo sobre una losa sin achurar, que es lo que se veia.
     check("el -HATCH por comando se comprueba, no se da por bueno",
-          "private bool SeCreoUnHatch(" in mac
+          "private object? HatchRecienCreado(" in mac
           and "private int CuantosObjetos(" in mac
           and 'tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase)' in mac
-          and "if (!SeCreoUnHatch(antes))" in mac)
+          and "if (hecho is null)" in mac)
     # Y EL HATCH ASOCIATIVO NO PUEDE PERDER SU MOLDE: se le quita la asociatividad antes de
     # borrarlo, y si AutoCAD no deja, el molde SE QUEDA. Antes que un voladizo sin achurar,
     # una linea de mas por dentro del muro.
@@ -4268,15 +4268,31 @@ def v18_planta_autocad() -> None:
     # en un tablero de 6 x 12 m son mas de dos mil lineas y no se ve un rayado, se ve una
     # MANCHA GRIS uniforme, y en el color 252 parece una sombra. La escala se saca al reves,
     # de la separacion que se quiere ver.
-    check("el achurado del volado se ve, no sale como una mancha gris",
-          'P("LOSA_HATCH_ESCALA_AUTO", "SI",' in cfgp
-          and 'P("LOSA_HATCH_SEPARACION_CM", "25",' in cfgp
-          and "public static double EscalaDeHatch(" in dib
-          and "separacionM > 0.005 ? separacionM / 0.125 : escalaHoja;" in dib
+    # LA ESCALA Y EL COLOR LOS DIO EL USUARIO: escala 0.0475 -la de la macro- y color 142. El
+    # automatico de la escala se queda disponible pero APAGADO: manda el valor de la macro.
+    # Y el color va POR OBJETO, porque los dos datos conviven asi: la capa E-VOLADO en 252
+    # -el gris del contorno- y el rayado en 142. Por capa habria que elegir uno de los dos.
+    check("el achurado va con la escala de la macro y en color 142",
+          'P("LOSA_HATCH_ESCALA", "0.0475"' in cfgp
+          and 'P("LOSA_HATCH_ESCALA_AUTO", "NO",' in cfgp
+          and 'P("LOSA_HATCH_COLOR", "142",' in cfgp
+          and "private int ColorDelAchurado()" in mac
+          and "h.Color = ColorDelAchurado();" in mac
           and "EscalaDelHatchDeLosa()," in dib)
-    check("hay prueba ejecutable de la escala del achurado",
-          "para ver 25 cm de separacion, escala 2" in pre
-          and "con la escala de la macro las lineas quedan a 5.9 mm" in pre)
+    # El automatico se queda, por si algun dia se dibuja en otras unidades.
+    check("y el automatico de la escala sigue disponible",
+          "public static double EscalaDeHatch(" in dib
+          and "separacionM > 0.005 ? separacionM / 0.125 : escalaHoja;" in dib
+          and 'P("LOSA_HATCH_SEPARACION_CM", "25",' in cfgp)
+    # EL COLOR TAMBIEN EN LAS OTRAS DOS VIAS: el comando lo crea por capa, asi que se le pone
+    # despues; y las rayitas del ultimo recurso tienen que verse igual que el hatch.
+    check("el color 142 se pone en las tres vias del achurado",
+          "((dynamic)hecho).Color = ColorDelAchurado();" in mac
+          and "((dynamic)raya).Color = ColorDelAchurado();" in mac)
+    check("hay prueba ejecutable de la escala y del color del achurado",
+          "la escala del ANSI37 es la de la macro" in pre
+          and "el color del achurado es el 142, por objeto" in pre
+          and "y el automatico va apagado" in pre)
     # LAS NOTAS SON DE LA PROPIEDAD, no del paño: si el volado comparte seccion con el
     # entrepiso, TODOS los paños de esa seccion salen achurados. Eso se arregla en ETABS, no
     # aqui, y sin la nota no habia manera de verlo.

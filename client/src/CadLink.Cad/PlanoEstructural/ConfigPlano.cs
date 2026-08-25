@@ -421,6 +421,15 @@ public sealed class ConfigPlano
         P("LOSA_HATCH_PATRON", "ANSI37", "PATRON DEL HATCH DE LA LOSA"),
         P("LOSA_HATCH_ESCALA", "0.0475", "ESCALA DE ESE HATCH (la de la macro)"),
 
+        // EL COLOR DEL ACHURADO, POR OBJETO: el 142, que es el que se pidió y el mismo del
+        // armado de la losa. Va por OBJETO y no por capa a propósito, porque la capa
+        // E-VOLADO se pidió en 252 —el gris del contorno— y el achurado tiene que verse: con
+        // los dos datos juntos, el borde del voladizo va en 252 y su rayado en 142.
+        //
+        //   0 = por capa, que era como estaba antes.
+        P("LOSA_HATCH_COLOR", "142",
+          "<<< COLOR DEL ACHURADO DE LA LOSA, POR OBJETO (142; 0 = el de la capa)"),
+
         // AÑADIDO, Y ES LO QUE HACÍA QUE EL ACHURADO SE VIERA COMO UNA MANCHA GRIS.
         //
         //   El ANSI37 tiene sus líneas a 0.125 de unidad. Con la escala de la macro, 0.0475,
@@ -432,8 +441,13 @@ public sealed class ConfigPlano
         //   Con LOSA_HATCH_ESCALA_AUTO la escala se calcula de la separación que se quiera
         //   ver: escala = separacion / 0.125. Con 25 cm sale escala 2, y entonces sí se
         //   distingue el rayado a 45 grados, que es lo que tiene que verse.
-        P("LOSA_HATCH_ESCALA_AUTO", "SI",
-          "<<< SI = LA ESCALA SE SACA DE LOSA_HATCH_SEPARACION_CM (asi el achurado SE VE)"),
+        //   Y VA EN **NO**, porque la escala buena es la de la macro: 0.0475. Se pidió ese
+        //   valor y ese valor manda. El automático se queda por si algún día se dibuja en
+        //   otras unidades, pero apagado: el achurado que se veía como una mancha gris no era
+        //   por la escala, era porque el color 252 sobre fondo oscuro no se ve —ahora va en
+        //   142— y porque el hatch no llegaba a crearse.
+        P("LOSA_HATCH_ESCALA_AUTO", "NO",
+          "NO = manda LOSA_HATCH_ESCALA, la escala de la macro (0.0475)"),
         P("LOSA_HATCH_SEPARACION_CM", "25",
           "<<< SEPARACION REAL ENTRE LINEAS DEL ACHURADO, EN CM (25 = se ve bien a 1/75)"),
         P("LOSA_HATCH_ANGULO", "45", "ANGULO DEL HATCH (45 grados)"),

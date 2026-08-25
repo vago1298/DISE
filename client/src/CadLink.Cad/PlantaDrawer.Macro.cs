@@ -743,7 +743,10 @@ public sealed partial class PlantaDrawer
                     h.PatternAngle = anguloGrados * Math.PI / 180;
                     h.Evaluate();
                     h.Layer = capa;
-                    h.Color = PorCapa;
+
+                    // EL COLOR, POR OBJETO: el 142 que se pidió. La capa se queda con el suyo
+                    // para el contorno del voladizo.
+                    h.Color = ColorDelAchurado();
                 });
 
                 // ======================================================================
@@ -868,7 +871,9 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        if (!SeCreoUnHatch(antes))
+        var hecho = HatchRecienCreado(antes);
+
+        if (hecho is null)
         {
             Nota($"El comando -HATCH no dejó ningún achurado ('{patron}'). Puede que ese " +
                  "patrón no esté en tu acad.pat.");
@@ -876,10 +881,42 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
+        // El comando lo crea con el color de la capa, así que el 142 se le pone aquí.
+        try
+        {
+            AcadConnection.Retry(() => { ((dynamic)hecho).Color = ColorDelAchurado(); });
+        }
+        catch (Exception)
+        {
+            // Sin el color se ve igual de gris que la capa, pero el achurado está.
+        }
+
         Nota($"El achurado '{patron}' se puso con el comando -HATCH: la API de esta " +
              "versión de AutoCAD no lo aceptó, pero el hatch es de verdad.");
 
         return true;
+    }
+
+    /// <summary>
+    /// El color del achurado de la losa: <b>por objeto</b>, el 142.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Va por objeto y no por capa porque los dos datos que se pidieron conviven así: la capa
+    /// <c>E-VOLADO</c> en <b>252</b> —el gris del contorno— y el rayado en <b>142</b>. Con el
+    /// achurado por capa habría que elegir uno de los dos.
+    /// </para>
+    /// <para>
+    /// Con <c>LOSA_HATCH_COLOR</c> en 0 se vuelve al color de la capa, que es como estaba.
+    /// </para>
+    /// </remarks>
+    private int ColorDelAchurado()
+    {
+        var c = (int)_cfg.Numero("LOSA_HATCH_COLOR", 142);
+
+        // Fuera del rango de la paleta no se toca el color: mejor por capa que un color que
+        // AutoCAD no acepta y que tira la creación del hatch.
+        return c is > 0 and <= 255 ? c : PorCapa;
     }
 
     /// <summary>Cuántos objetos hay en el espacio modelo, o <c>-1</c> si no se puede saber.</summary>
@@ -905,36 +942,44 @@ public sealed partial class PlantaDrawer
     /// vale más creerse el comando que descartarlo y rayar a mano encima de un achurado que
     /// sí estaba.
     /// </remarks>
-    private bool SeCreoUnHatch(int antes)
+    private object? HatchRecienCreado(int antes)
     {
-        if (antes < 0)
-        {
-            return true;
-        }
-
         try
         {
-            return AcadConnection.Retry(() =>
+            return AcadConnection.Retry<object?>(() =>
             {
                 var ahora = (int)_ms.Count;
 
-                if (ahora <= antes)
+                if (antes >= 0 && ahora <= antes)
                 {
-                    return false;
+                    return null;
                 }
 
-                var ultimo = _ms.Item(ahora - 1);
+                if (ahora <= 0)
+                {
+                    return null;
+                }
+
+                var ultimo = (object)_ms.Item(ahora - 1);
                 var tipo = (string)(((dynamic)ultimo).ObjectName ?? string.Empty);
 
-                return tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase);
+                return tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase)
+                    ? ultimo
+                    : null;
             });
         }
         catch (Exception)
         {
-            // Si no se puede preguntar, se cree al comando: es lo menos malo.
-            return true;
+            // Si no se puede preguntar no se puede comprobar, y descartar el achurado
+            // llevaría a rayar a mano ENCIMA de uno que sí estaba. Se cree al comando.
+            return NoSePudoComprobar;
         }
     }
+
+    /// <summary>
+    /// Marca de «no se pudo comprobar»: se da el achurado por bueno sin poder mirarlo.
+    /// </summary>
+    private static readonly object NoSePudoComprobar = new();
 
     /// <summary>
     /// El achurado del voladizo se quedó <b>asociado</b> a su molde, así que el molde no se
@@ -968,9 +1013,14 @@ public sealed partial class PlantaDrawer
         // la hoja sale la misma que dibujaría AutoCAD.
         var sep = (escala > 0 ? escala : 0.0475) * 0.125;
 
-        if (sep < 0.002)
+        // SUELO DE 2 CM, y aquí sí hace falta: con la escala de la macro la separación del
+        // patrón son 6 mm, y eso son miles de líneas en un tablero grande. Un HATCH de verdad
+        // a 6 mm lo dibuja AutoCAD sin sudar porque es UN objeto; imitarlo con líneas sueltas
+        // es otra cosa. Como esto es solo el último recurso, 2 cm se imprime parecido y no
+        // arrodilla el dibujo.
+        if (sep < 0.02)
         {
-            sep = 0.002;
+            sep = 0.02;
         }
 
         var a = -anguloGrados * Math.PI / 180;
@@ -1006,8 +1056,21 @@ public sealed partial class PlantaDrawer
                 var bx = (q * ca) + (y * sa);
                 var by = (-q * sa) + (y * ca);
 
-                if (Linea(ax + x0, ay + y0, bx + x0, by + y0, capa) is not null)
+                var raya = Linea(ax + x0, ay + y0, bx + x0, by + y0, capa);
+
+                if (raya is not null)
                 {
+                    // Del mismo color que llevaría el achurado de verdad: si estas rayitas
+                    // salen, tienen que verse igual que el hatch al que sustituyen.
+                    try
+                    {
+                        ((dynamic)raya).Color = ColorDelAchurado();
+                    }
+                    catch (Exception)
+                    {
+                        // Se queda con el color de la capa. Es un respaldo del respaldo.
+                    }
+
                     hechas++;
                 }
             }

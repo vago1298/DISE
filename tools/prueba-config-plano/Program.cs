@@ -69,8 +69,9 @@ var cfg = new ConfigPlano();
 //   VOLADO_TEXTO_1                  «Losa de VOLADO» en el primer renglón de su rótulo
 //   CORTE_DIBUJAR / CORTE_SEPARACION_M / CORTE_ESPESOR_CM / CORTE_ROTULO /
 //   CORTE_ROTULO_ABAJO_M / CORTE_NIVEL_VUELA_M      el corte por un eje, al lado de la planta
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los veintiocho que se añadieron",
-      289, ConfigPlano.PorOmision.Count);
+//   LOSA_HATCH_COLOR                el achurado en 142, por objeto, como se pidio
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los veintinueve que se añadieron",
+      290, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -221,7 +222,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 289 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 290 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

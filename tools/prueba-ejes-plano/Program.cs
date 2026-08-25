@@ -491,6 +491,15 @@ Console.WriteLine("=============================================================
 Cerca("con la escala de la macro las lineas quedan a 5.9 mm", 0.0059375,
       0.0475 * 0.125, 1e-9);
 
+// LA ESCALA QUE MANDA ES LA DE LA MACRO: 0.0475, y el automatico va APAGADO. Lo que hacia
+// que el achurado no se viera no era la escala -era el color 252 sobre fondo oscuro y que el
+// hatch no llegaba a crearse-.
+Cerca("la escala del ANSI37 es la de la macro", 0.0475,
+      cfg.Numero("LOSA_HATCH_ESCALA", 0));
+Check("y el automatico va apagado", !cfg.Bandera("LOSA_HATCH_ESCALA_AUTO", true));
+Cerca("el color del achurado es el 142, por objeto", 142,
+      cfg.Numero("LOSA_HATCH_COLOR", 0));
+
 // Al reves: de la separacion que se quiere VER se saca la escala.
 Cerca("para ver 25 cm de separacion, escala 2", 2.0,
       PlantaDrawer.EscalaDeHatch(0.25, 0.0475));
@@ -499,7 +508,9 @@ Cerca("y una separacion sin sentido regresa a la de la macro", 0.0475,
       PlantaDrawer.EscalaDeHatch(0, 0.0475));
 
 Cerca("la hoja pide 25 cm", 25, cfg.Numero("LOSA_HATCH_SEPARACION_CM", 0));
-Check("y el automatico viene encendido", cfg.Bandera("LOSA_HATCH_ESCALA_AUTO", false));
+Check("el automatico esta disponible pero apagado",
+      !cfg.Bandera("LOSA_HATCH_ESCALA_AUTO", false)
+      && ConfigPlano.PorOmision.Any(r => r.Parametro == "LOSA_HATCH_ESCALA_AUTO"));
 Igual("el patron sigue siendo el ANSI37 de la macro", "ANSI37",
       cfg.Texto("LOSA_HATCH_PATRON", ""));
 Cerca("y el angulo, 45 grados", 45, cfg.Numero("LOSA_HATCH_ANGULO", 0));
