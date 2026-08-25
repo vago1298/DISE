@@ -439,6 +439,20 @@ public sealed class ConfigPlano
         P("LOSA_HATCH_ANGULO", "45", "ANGULO DEL HATCH (45 grados)"),
         P("LOSA_TEXTO_BLOQUE", "SI", "SI = MTEXT dentro de un BLOQUE por uso de losa"),
         P("LOSA_TEXTO_BLOQUE_PREFIJO", "TEXTO LOSA ", "Prefijo del nombre de esos bloques"),
+
+        // AÑADIDO: EL CORTE POR UN EJE, dibujado al lado de la planta. Se pidió que se
+        // dibuje el que se haya elegido en la pestaña del modelo, a 10 m de la planta.
+        // Juntos se leen: la planta da los espesores y las distancias entre ejes, y el
+        // corte, las alturas que la planta no puede dar.
+        P("CORTE_DIBUJAR", "SI",
+          "<<< SI = SE DIBUJA EL CORTE ELEGIDO AL LADO DE LA PLANTA ESTRUCTURAL"),
+        P("CORTE_SEPARACION_M", "10",
+          "<<< A CUANTOS METROS DE LA PLANTA SE PONE EL CORTE (a su derecha)"),
+        P("CORTE_ESPESOR_CM", "60",
+          "REBANADA QUE ENTRA EN EL CORTE: 0 dejaria el corte vacio en un modelo real"),
+        P("CORTE_ROTULO", "CORTE  POR  EL  EJE  %E", "Rotulo del corte (%E = nombre del eje)"),
+        P("CORTE_ROTULO_ABAJO_M", "1.2", "Cuanto baja el rotulo del corte"),
+        P("CORTE_NIVEL_VUELA_M", "0.6", "Cuanto sale la linea de nivel por los lados"),
         P("LOSA_TEXTO_REDEFINIR", "SI", "SI = VOLVER A ARMAR EL BLOQUE (hace falta para ver la altura nueva; ponlo en NO cuando ya te guste)"),
         P("LOSA_PALABRAS_AZOTEA", "AZOTEA,CUBIERTA,TECHO,ROOF", "Palabras de la seccion = AZOTEA"),
         P("LOSA_PALABRAS_ENTREPISO", "ENTREPISO,PISO,FLOOR,SLAB", "Palabras de la seccion = ENTREPISO"),
@@ -607,7 +621,7 @@ public sealed class ConfigPlano
         // renglón: «Losa VOLADO», con el nombre que salga de la sección o de las notas de
         // ETABS. Es un renglón aparte del LOSA_TEXTO_1 de la macro —«Losa de %U»— porque ahí
         // se quiere sin el «de».
-        P("VOLADO_TEXTO_1", "Losa %U",
+        P("VOLADO_TEXTO_1", "Losa de %U",
           "<<< PRIMER RENGLON DE LA LOSA DE VOLADO (%U = lo que diga su nota: VOLADO)"),
         P("LOSA_TEXTO_FONDO", "SI", "SI = hueco en el hatch atras del texto"),
         P("LOSA_TEXTO_COLOR", "0", "0 = el color de la capa"),

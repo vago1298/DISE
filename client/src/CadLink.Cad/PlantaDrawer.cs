@@ -1009,7 +1009,13 @@ public sealed partial class PlantaDrawer
                 // tramos de fuera; si no se dibujó ninguno —un paño metido entre dos cadenas
                 // pegadas— se deja el molde, porque si no el achurado se quedaría sin ningún
                 // borde y el paño no se entendería.
-                if (tramos > 0)
+                //
+                //  Y NO SE BORRA si el achurado se quedó ATADO a él. Es el caso raro en que
+                //  AutoCAD crea el hatch asociativo y no deja quitarle la asociatividad:
+                //  borrar el molde se llevaría el achurado por delante, y entonces el rótulo
+                //  aparece sobre una losa sin achurar. Antes que eso, una línea de más por
+                //  dentro del muro.
+                if (tramos > 0 && !HatchAtadoAlMolde)
                 {
                     Borrar(molde);
                     contorno = null;
@@ -1641,11 +1647,25 @@ public sealed partial class PlantaDrawer
             return;
         }
 
-        // ---- LOSA: al centro del paño ------------------------------------------------
+        // ---- LOSA: al centro del paño, y DENTRO DE UN BLOQUE -------------------------
+        //  Se pidió, y es la misma idea que ya se aplica a las secciones de columna: cada
+        //  losa DISTINTA lleva su bloque —ROTULO-LOSA-VOLADO, ROTULO-LOSA-AZOTEA…—, así que
+        //  cambiando el bloque una vez se cambian de golpe los veinte rótulos de esa losa.
+        //  Escribir «Var. # 3/8 @ 20 cm.» en veinte MTEXT sueltos es veinte veces el mismo
+        //  trabajo y diecinueve ocasiones de que uno quede distinto.
         if (el.Clase == ClasePlanta.Losa)
         {
-            Mtexto(cx, cy, texto, AlturaLosas(altura), CapaTextos, 0, EstiloLosas,
-                   _cfg.Bandera("LOSA_TEXTO_FONDO", true));
+            var alturaLosa = AlturaLosas(altura);
+
+            if (!RotuloDeLosaComoBloque(el, cx, cy, texto, alturaLosa))
+            {
+                // Si el bloque no se puede crear —una versión que no deje, un nombre
+                // imposible— el rótulo se escribe suelto, como siempre. El plano nunca se
+                // queda sin el texto de la losa.
+                Mtexto(cx, cy, texto, alturaLosa, CapaTextos, 0, EstiloLosas,
+                       _cfg.Bandera("LOSA_TEXTO_FONDO", true));
+            }
+
             return;
         }
 
@@ -2351,12 +2371,20 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private object? Mtexto(
         double x, double y, string texto, double altura, string capa,
-        double giroGrados = 0, string estilo = "", bool conFondo = false, int anclaje = 5)
+        double giroGrados = 0, string estilo = "", bool conFondo = false, int anclaje = 5,
+        object? dentroDe = null)
     {
         if (string.IsNullOrWhiteSpace(texto) || altura <= 0)
         {
             return null;
         }
+
+        // EL DUEÑO del texto: el espacio modelo, o un BLOQUE cuando el rótulo de la losa se
+        // mete en uno. Es un parámetro y no un método aparte a propósito: el MTEXT de un
+        // bloque tiene que nacer con el mismo estilo, el mismo ancho automático, el mismo
+        // anclaje y el mismo fondo que el de fuera, y duplicar todo eso terminaría con dos
+        // rótulos que se ven distinto.
+        dynamic duenio = dentroDe ?? _ms;
 
         var nombreEstilo = estilo.Length > 0 ? estilo : EstiloTexto;
 
@@ -2375,7 +2403,7 @@ public sealed partial class PlantaDrawer
         {
             return AcadConnection.Retry<object?>(() =>
             {
-                dynamic mt = _ms.AddMText(new[] { x, y, 0d }, ancho, texto);
+                dynamic mt = duenio.AddMText(new[] { x, y, 0d }, ancho, texto);
 
                 try
                 {

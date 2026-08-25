@@ -2922,8 +2922,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con veintidos renglones añadidos",
-          cfgp.count("        P(") == 283
+    check("la hoja CONFIG de la macro esta portada, con veintiocho renglones añadidos",
+          cfgp.count("        P(") == 289
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3040,7 +3040,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "283, ConfigPlano.PorOmision.Count" in pr
+          and "289, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4022,8 +4022,8 @@ def v18_planta_autocad() -> None:
     # La palabra sale de las NOTAS de la propiedad de la losa en ETABS -ahi la escribe el
     # ingeniero- y solo si las notas no dicen nada, del nombre de la seccion. Es la MISMA
     # palabra que decide el achurado, asi que rotulo y ANSI37 no se contradicen nunca.
-    check("el volado se rotula con su nombre en el primer renglon",
-          'P("VOLADO_TEXTO_1", "Losa %U",' in cfgp
+    check("el volado se rotula «Losa de VOLADO» en el primer renglon",
+          'P("VOLADO_TEXTO_1", "Losa de %U",' in cfgp
           and 'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp
           and '_cfg.TextoTalCual("VOLADO_TEXTO_1")' in dib
           and "public static string ArmarRotuloDeLosa(" in dib
@@ -4139,6 +4139,91 @@ def v18_planta_autocad() -> None:
           and "(handent" in mac
           and "hpassoc" in mac
           and "clayer" in mac)
+    # EL COMANDO NO PUEDE DARSE POR BUENO SIN MIRAR. SendCommand no falla cuando el comando
+    # de dentro se aborta -otro orden de preguntas, un patron que no esta en el acad.pat-, asi
+    # que se creia el achurado puesto, se saltaba el respaldo y el voladizo se quedaba SIN
+    # NADA: rotulo sobre una losa sin achurar, que es lo que se veia.
+    check("el -HATCH por comando se comprueba, no se da por bueno",
+          "private bool SeCreoUnHatch(" in mac
+          and "private int CuantosObjetos(" in mac
+          and 'tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase)' in mac
+          and "if (!SeCreoUnHatch(antes))" in mac)
+    # Y EL HATCH ASOCIATIVO NO PUEDE PERDER SU MOLDE: se le quita la asociatividad antes de
+    # borrarlo, y si AutoCAD no deja, el molde SE QUEDA. Antes que un voladizo sin achurar,
+    # una linea de mas por dentro del muro.
+    check("al hatch asociativo se le quita la asociatividad antes de borrar el molde",
+          "h.AssociativeHatch = false;" in mac
+          and "private bool HatchAtadoAlMolde" in mac
+          and "if (tramos > 0 && !HatchAtadoAlMolde)" in dib)
+
+    # EL MTEXT DE LA LOSA, DENTRO DE UN BLOQUE, y uno por losa DISTINTA: cambiando el bloque
+    # una vez se cambian los veinte rotulos de esa losa. Con veinte MTEXT sueltos hay que
+    # escribirlo veinte veces y hay diecinueve ocasiones de que uno quede distinto.
+    check("el rotulo de la losa va dentro de un bloque, uno por losa distinta",
+          'P("LOSA_TEXTO_BLOQUE", "SI",' in cfgp
+          and "private bool RotuloDeLosaComoBloque(" in mac
+          and "private bool AsegurarBloqueDeRotulo(" in mac
+          and "_bloquesDeRotulo" in mac
+          and "if (!RotuloDeLosaComoBloque(el, cx, cy, texto, alturaLosa))" in dib)
+    # CON EL PREFIJO DE LA MACRO -«TEXTO LOSA »- y no con uno nuevo: el bloque tiene que
+    # llamarse como alla.
+    check("y con el prefijo de la macro, no con uno inventado",
+          '_cfg.Texto("LOSA_TEXTO_BLOQUE_PREFIJO", "TEXTO LOSA ")' in mac)
+    # EL MISMO Mtexto de siempre, solo que dentro del bloque: duplicar la logica del estilo,
+    # el ancho automatico y el fondo terminaria con dos rotulos que se ven distinto.
+    check("el texto del bloque lo crea el mismo Mtexto, con un dueño distinto",
+          "object? dentroDe = null)" in dib
+          and "dynamic duenio = dentroDe ?? _ms;" in dib
+          and "duenio.AddMText(" in dib)
+
+    # ------------------------------------------------------------------
+    # EL CORTE POR UN EJE, DIBUJADO AL LADO DE LA PLANTA
+    # ------------------------------------------------------------------
+    #  Se pidio: que se dibuje el corte ELEGIDO, a 10 m de la planta estructural. Juntos se
+    #  leen: la planta da los espesores y las distancias entre ejes, y el corte las alturas.
+    corte = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CorteEnAlzado.cs"))
+    cortedib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
+
+    check("la geometria del corte esta aparte y es comprobable sin AutoCAD",
+          "public static class CorteEnAlzado" in corte
+          and "public static bool Entra(" in corte
+          and "public static List<Pieza> Piezas(" in corte)
+    check("el corte se dibuja al lado de la planta, a la separacion de la hoja",
+          'P("CORTE_SEPARACION_M", "10",' in cfgp
+          and 'P("CORTE_DIBUJAR", "SI",' in cfgp
+          and "public int DibujarCorte(" in cortedib
+          and '_cfg.Numero("CORTE_SEPARACION_M", 10)' in cortedib)
+    # CADA TIPO SE VE DE UNA FORMA, y es lo que hace que un corte se entienda: la columna de
+    # nudo a nudo, la trabe que corre a lo largo entera y con su peralte, la que cruza solo de
+    # canto, y el muro como el paño que es.
+    check("cada pieza del corte se ve como toca",
+          "La <b>trabe o cadena que corre A LO LARGO</b>" in corte
+          and "var deCanto = largo <=" in corte
+          and "el.Clase == ClasePlanta.Muro" in corte)
+    # LAS COTAS DE NIVEL: sin ellas un corte es un monton de rectangulos.
+    check("el corte lleva sus lineas de nivel y su rotulo",
+          "private void DibujarNivelesDelCorte(" in cortedib
+          and "private void RotularElCorte(" in cortedib
+          and 'P("CORTE_ROTULO", "CORTE  POR  EL  EJE  %E"' in cfgp)
+    # LAS MISMAS CAPAS que la planta: asi apagar E-MURO apaga el muro en los dos dibujos.
+    check("el corte usa las capas de la planta, no unas propias",
+          'ClasePlanta.Muro => _capas.CapaDeTipo("MURO"),' in cortedib)
+    # LA Z LLEGA HASTA EL DTO: en planta no se usa, pero un corte es un alzado.
+    check("el elemento lleva su cota para el corte",
+          "public double Z1 { get; set; }" in dto
+          and "Z1 = el.Z1," in codigo)
+    # Y SE DIBUJA EL QUE ESTE ELEGIDO, con TODOS los niveles: un corte atraviesa el edificio.
+    check("se dibuja el corte elegido, con todos los niveles",
+          "private int DibujarCorteElegido(" in codigo.replace("DibujarElCorteElegido", "DibujarCorteElegido")
+          and "Eje = _vista.CorteEje," in codigo
+          and "foreach (var el in _modeloEtabs.Elementos)" in codigo
+          and "dibujante.DibujarCorte(c, 0, 0)" in codigo)
+    check("hay prueba ejecutable del corte",
+          "del corte salen TRES piezas" in pre
+          and "la trabe que corre por el eje se ve ENTERA: 4 m" in pre
+          and "la que cruza se ve solo de canto" in pre
+          and "con espesor 0 se usa el minimo, no se queda vacio" in pre)
+
     check("y las rayitas quedan como ULTIMO recurso, avisando de que no son un hatch",
           "eso NO es un hatch" in mac
           and "private int RayarAMano(" in mac)
@@ -4446,8 +4531,11 @@ def v18_planta_autocad() -> None:
     #    2) el estilo se asignaba y, si no existia en el dibujo, se perdia en silencio.
     #       Ahora se CREA el que falte, que es lo que pidio el usuario.
     check("el MTEXT se crea con ancho, nunca con 0",
-          "_ms.AddMText(new[] { x, y, 0d }, ancho, texto)" in dib
+          "duenio.AddMText(new[] { x, y, 0d }, ancho, texto)" in dib
           and "var ancho = Math.Max(1, letras) * altura * 0.62;" in dib)
+    # EL DUEÑO por omision es el espacio modelo; solo el rotulo de la losa pasa un BLOQUE.
+    check("y su dueño por omision sigue siendo el espacio modelo",
+          "dynamic duenio = dentroDe ?? _ms;" in dib)
     check("el estilo del rotulo se crea si el dibujo no lo tiene",
           "private void AsegurarEstiloDeTexto(string nombre)" in dib
           and "AsegurarEstiloDeTexto(nombreEstilo);" in dib
@@ -4467,7 +4555,7 @@ def v18_planta_autocad() -> None:
     # La columna se ancla por su esquina INFERIOR IZQUIERDA -la alineacion 12 de la macro-,
     # asi el texto crece hacia arriba y a la derecha y no se mete sobre la seccion.
     check("el rotulo de la columna se ancla por su esquina, no centrado",
-          "int anclaje = 5)" in dib and "mt.AttachmentPoint = anclaje;" in dib
+          "int anclaje = 5," in dib and "mt.AttachmentPoint = anclaje;" in dib
           and "EstiloSecciones, false, 7)" in dib)
 
     # ------------------------------------------------------------------
@@ -6567,8 +6655,8 @@ def v19_circular_y_ui() -> None:
     check("hay un solo sitio que escribe las notas",
           "private void MostrarNotas(string texto)" in codigo
           and "NotasPanel.IsExpanded = false;" in codigo)
-    check("y los cuatro sitios que las escriben pasan por ahi",
-          codigo.count("MostrarNotas(") == 5
+    check("y los sitios que las escriben pasan por ahi",
+          codigo.count("MostrarNotas(") == 6
           and codigo.count("ExportHintText.Text =") == 1,
           f"{codigo.count('MostrarNotas(')} llamadas, "
           f"{codigo.count('ExportHintText.Text =')} asignaciones directas")

@@ -1287,6 +1287,63 @@ public partial class MainWindow : Window
         NivelPlantaCombo.SelectedIndex = nombres.Count > 0 ? 1 : 0;
     }
 
+    /// <summary>
+    /// Dibuja en AutoCAD el <b>corte elegido</b> en la pestaña del modelo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se dibuja el que esté seleccionado y ninguno más: el corte que se está mirando es el
+    /// que se quiere en el plano. Sin corte elegido no se dibuja nada, que es lo que tiene que
+    /// pasar —un corte de más en el plano es un dibujo que alguien tiene que borrar—.
+    /// </para>
+    /// <para>
+    /// El corte lleva los elementos de <b>todos los niveles</b>, no los del nivel elegido: un
+    /// corte atraviesa el edificio de la cimentación a la azotea, y es justo para eso.
+    /// </para>
+    /// </remarks>
+    /// <returns>Cuántas piezas se dibujaron; 0 si no había corte que dibujar.</returns>
+    private int DibujarElCorteElegido(PlantaDrawer dibujante)
+    {
+        if (_modeloEtabs is null
+            || _vista.CorteEje.Length == 0
+            || !CfgPlano.Bandera("CORTE_DIBUJAR", true))
+        {
+            return 0;
+        }
+
+        var c = new CorteCad
+        {
+            Eje = _vista.CorteEje,
+            EnX = _vista.CorteEnX,
+            Ordenada = _vista.CorteOrdenada,
+            EspesorM = CfgPlano.Numero("CORTE_ESPESOR_CM", 60) / 100,
+            Modelo = _modeloEtabs.Archivo,
+            AlturaTexto = 0.25
+        };
+
+        // TODOS los niveles: es un corte, no una planta.
+        foreach (var el in _modeloEtabs.Elementos)
+        {
+            c.Elementos.Add(ComoElementoDePlanta(el, _modeloEtabs));
+        }
+
+        foreach (var n in _modeloEtabs.NivelesConElementos())
+        {
+            c.Niveles.Add((n.Nombre, n.ElevacionM));
+        }
+
+        try
+        {
+            return dibujante.DibujarCorte(c, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            // Que falle el corte no puede tirar el plano, que ya está dibujado.
+            MostrarNotas($"La planta se dibujó, pero el corte no: {ex.Message}");
+            return 0;
+        }
+    }
+
     // ======================================================================
     // EL CORTE POR UN EJE, en las vistas de volumen
     // ======================================================================
@@ -2045,6 +2102,15 @@ public partial class MainWindow : Window
             var dibujante = new PlantaDrawer(doc);
             var r = dibujante.DibujarTodas(plantas);
 
+            // ==============================================================================
+            //  Y EL CORTE ELEGIDO, AL LADO DE LA PLANTA
+            // ==============================================================================
+            //  Se pidió: que se dibuje el corte que esté seleccionado en la pestaña del
+            //  modelo, a 10 m de la planta. Juntos se leen, y separados no: la planta da los
+            //  espesores y las distancias entre ejes, y el corte da las alturas, que la
+            //  planta no puede dar.
+            var piezasDelCorte = DibujarElCorteElegido(dibujante);
+
             AcadConnection.Retry(() => { app.ZoomExtents(); });
 
             var fallos = dibujante.Fallos;
@@ -2053,7 +2119,11 @@ public partial class MainWindow : Window
                 ? $"del nivel {(string.IsNullOrWhiteSpace(plantas[0].Nivel) ? "(todos)" : plantas[0].Nivel)}"
                 : $"en {plantas.Count} plantas ({string.Join(", ", plantas.Select(p => p.Nivel))})";
 
-            StatusText.Text = $"Dibujado en AutoCAD: {r.Total} elemento(s) {cuales}.";
+            StatusText.Text = $"Dibujado en AutoCAD: {r.Total} elemento(s) {cuales}" +
+                              (piezasDelCorte > 0
+                                  ? $", y el corte por el eje {_vista.CorteEje} " +
+                                    $"con {piezasDelCorte} pieza(s)."
+                                  : ".");
 
             PlanoHintText.Text =
                 $"Última pasada: {r} en {plantas.Count} planta(s), de un jalón y repartidas " +
@@ -2275,6 +2345,11 @@ public partial class MainWindow : Window
             // LAS NOTAS DE LA PROPIEDAD, tal como vienen del modelo: de ahí sale si la losa
             // es un VOLADIZO, que es lo que decide su capa y su achurado.
             Notas = el.Notas,
+
+            // LAS COTAS. En planta no se usan, pero el CORTE por un eje es un alzado y ahí la
+            // altura es la mitad del dibujo: sin la Z, una columna no tiene de dónde a dónde.
+            Z1 = el.Z1,
+            Z2 = el.Z2,
 
             X1 = el.X1, Y1 = el.Y1,
             X2 = el.X2, Y2 = el.Y2,

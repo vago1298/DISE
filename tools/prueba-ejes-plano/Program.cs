@@ -363,6 +363,123 @@ Igual("de «LOSA VOLADO» el nombre seria VOLADO", "VOLADO",
 Check("y ese nombre se reconoce como volado, asi que el rotulo se acorta",
       LosaEnPlanta.DiceVolado(PlantaDrawer.SinLaPalabraLosa("LOSA VOLADO"), null, palabras));
 
+// EL PRIMER RENGLON DEL VOLADO LLEVA EL «de»: «Losa de VOLADO», como se pidio.
+Igual("el primer renglon del volado es «Losa de %U»", "Losa de %U",
+      cfg.TextoTalCual("VOLADO_TEXTO_1"));
+Igual("y con la palabra del modelo queda «Losa de VOLADO»",
+      "Losa de VOLADO",
+      PlantaDrawer.ArmarRotuloDeLosa(
+          new[] { cfg.TextoTalCual("VOLADO_TEXTO_1"), "  %E  cm de espesor", "", "" },
+          soloArmado: true, "VOLADO", "10"));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL CORTE POR UN EJE: EL ALZADO DEL MODELO");
+Console.WriteLine("=====================================================================");
+
+// Un modelo de juguete: una columna de 15x15 que sube 2.7 m sobre el eje X = 5, una
+// trabe que corre A LO LARGO del corte y otra que lo CRUZA.
+var enElEje = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Columna, Etiqueta = "K1", Seccion = "K 15X15",
+        X1 = 5, Y1 = 0, X2 = 5, Y2 = 0, Z1 = 0, Z2 = 2.7,
+        AnchoM = 0.15, PeralteM = 0.15
+    },
+    new()
+    {
+        // A lo largo del corte: va en Y, y el corte es por un eje en X.
+        Clase = ClasePlanta.Trabe, Etiqueta = "T1", Seccion = "CC 15X25",
+        X1 = 5, Y1 = 0, X2 = 5, Y2 = 4, Z1 = 2.7, Z2 = 2.7,
+        AnchoM = 0.15, PeralteM = 0.25
+    },
+    new()
+    {
+        // Cruza el corte: va en X, asi que solo asoma de canto.
+        Clase = ClasePlanta.Trabe, Etiqueta = "T2", Seccion = "CC 15X25",
+        X1 = 4, Y1 = 2, X2 = 6, Y2 = 2, Z1 = 2.7, Z2 = 2.7,
+        AnchoM = 0.15, PeralteM = 0.25
+    },
+    new()
+    {
+        // Y una que no toca el corte: esta a 10 m.
+        Clase = ClasePlanta.Trabe, Etiqueta = "T3", Seccion = "CC 15X25",
+        X1 = 15, Y1 = 0, X2 = 15, Y2 = 4, Z1 = 2.7, Z2 = 2.7,
+        AnchoM = 0.15, PeralteM = 0.25
+    }
+};
+
+Check("la columna del eje entra en el corte",
+      CorteEnAlzado.Entra(enElEje[0], enX: true, ordenada: 5, espesorM: 0.6));
+Check("la trabe que corre por el eje, tambien",
+      CorteEnAlzado.Entra(enElEje[1], enX: true, ordenada: 5, espesorM: 0.6));
+Check("la que lo CRUZA tambien entra: en el corte se ve su costado",
+      CorteEnAlzado.Entra(enElEje[2], enX: true, ordenada: 5, espesorM: 0.6));
+Check("y la que esta a diez metros, no",
+      !CorteEnAlzado.Entra(enElEje[3], enX: true, ordenada: 5, espesorM: 0.6));
+
+var piezas = CorteEnAlzado.Piezas(enElEje, enX: true, ordenada: 5, espesorM: 0.6);
+
+Igual("del corte salen TRES piezas", 3, piezas.Count);
+
+var col = piezas.First(p => p.Etiqueta == "K1");
+Cerca("la columna se ve de nudo a nudo: 2.7 m de alto", 2.7, col.Alto);
+Cerca("y del ancho de su seccion", 0.15, col.Ancho);
+Cerca("arrancando en su cota", 0, col.Z);
+
+var aLoLargo = piezas.First(p => p.Etiqueta == "T1");
+Cerca("la trabe que corre por el eje se ve ENTERA: 4 m", 4, aLoLargo.Ancho);
+Cerca("con su peralte", 0.25, aLoLargo.Alto);
+// Cuelga DEBAJO de la cota de su eje, que es donde esta el concreto.
+Cerca("y colgando debajo de su eje", 2.7 - 0.25, aLoLargo.Z);
+
+var deCanto = piezas.First(p => p.Etiqueta == "T2");
+Cerca("la que cruza se ve solo de canto", 0.15, deCanto.Ancho);
+Cerca("con su peralte igual", 0.25, deCanto.Alto);
+
+// UN MURO se ve como el paño que es: de su cota mas baja a la mas alta.
+var muroDelCorte = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Etiqueta = "M1", Seccion = "MURO 15",
+    X1 = 5, Y1 = 0, X2 = 5, Y2 = 3, Z1 = 0, Z2 = 2.7, AnchoM = 0.15
+};
+
+var pMuro = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { muroDelCorte }, enX: true, ordenada: 5, espesorM: 0.6);
+
+Igual("el muro da una pieza", 1, pMuro.Count);
+Cerca("de 3 m de largo", 3, pMuro[0].Ancho);
+Cerca("y 2.7 de alto", 2.7, pMuro[0].Alto);
+
+// LA LOSA no da pieza: en un corte se ve como una linea, y esa la pone el dibujante
+// junto a la cota del nivel.
+var losa = new ElementoPlanta { Clase = ClasePlanta.Losa, Etiqueta = "L1" };
+losa.Vertices.Add((4, 0));
+losa.Vertices.Add((6, 0));
+losa.Vertices.Add((6, 4));
+losa.Vertices.Add((4, 4));
+
+Igual("la losa no da pieza en el corte", 0,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { losa }, enX: true, ordenada: 5, espesorM: 0.6).Count);
+
+// LA REBANADA NO PUEDE SER CERO: en un modelo real el muro se modela en su linea media y
+// el eje pasa por su paño, asi que un corte de espesor cero se quedaria vacio.
+Check("con espesor 0 se usa el minimo, no se queda vacio",
+      CorteEnAlzado.Entra(
+          new ElementoPlanta
+          {
+              Clase = ClasePlanta.Columna, X1 = 5.02, Y1 = 0, X2 = 5.02, Y2 = 0,
+              Z1 = 0, Z2 = 2.7, AnchoM = 0.15, PeralteM = 0.15
+          },
+          enX: true, ordenada: 5, espesorM: 0));
+
+// Y LA HOJA trae el corte a 10 m de la planta, como se pidio.
+Cerca("el corte va a 10 m de la planta", 10, cfg.Numero("CORTE_SEPARACION_M", 0));
+Check("y se dibuja por omision", cfg.Bandera("CORTE_DIBUJAR", false));
+Igual("con su rotulo", "CORTE  POR  EL  EJE  %E", cfg.TextoTalCual("CORTE_ROTULO"));
+
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
 Console.WriteLine(" LA ESCALA DEL ACHURADO, LA QUE LO DEJA VISIBLE");

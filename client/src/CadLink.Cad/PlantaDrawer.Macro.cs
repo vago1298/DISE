@@ -746,6 +746,34 @@ public sealed partial class PlantaDrawer
                     h.Color = PorCapa;
                 });
 
+                // ======================================================================
+                //  Y SE LE QUITA LA ASOCIATIVIDAD, QUE ES POR LO QUE DESAPARECÍA
+                // ======================================================================
+                //  Aquí estaba el achurado que se ponía y luego no estaba. El segundo
+                //  intento crea el hatch ASOCIADO a su contorno —es la forma que acepta esa
+                //  versión de AutoCAD— y el molde se borra justo después, porque la línea del
+                //  volado solo va por fuera de los muros. Un hatch asociativo al que le
+                //  quitan el contorno se puede ir con él, y entonces el rótulo aparecía en
+                //  una losa sin achurar: exactamente lo que se veía.
+                //
+                //  Con AssociativeHatch en false el achurado se queda huérfano a propósito,
+                //  que es lo que se quiere: ya nació con la forma buena y no tiene que
+                //  seguir a nadie.
+                if (asociativo)
+                {
+                    try
+                    {
+                        AcadConnection.Retry(() => { h.AssociativeHatch = false; });
+                    }
+                    catch (Exception ex)
+                    {
+                        // Si no se deja, se avisa y NO se borra el molde: mejor una línea de
+                        // más por dentro del muro que un voladizo sin marcar.
+                        Fallo($"Quitar la asociatividad del hatch '{patron}'", ex);
+                        _hatchAsociativo = true;
+                    }
+                }
+
                 return true;
             }
             catch (Exception ex)
@@ -817,21 +845,105 @@ public sealed partial class PlantaDrawer
             "\" \"_s\" e_clk \"\" \"\") " +
             "(setvar \"clayer\" lay_clk) (setvar \"hpassoc\" asoc_clk)))\n";
 
+        // ==================================================================================
+        //  SE CUENTA ANTES, PARA PODER COMPROBAR DESPUÉS
+        // ==================================================================================
+        //  SendCommand NO falla cuando el comando de dentro se aborta: si la conversación del
+        //  -HATCH no le cuadra a esta versión —otro orden de preguntas, un patrón que no está
+        //  en el acad.pat—, AutoCAD cancela el comando y COM devuelve como si todo hubiera
+        //  ido bien. Dando eso por bueno, se creía que el achurado estaba puesto, se saltaba
+        //  el respaldo de las rayitas y el voladizo se quedaba SIN NADA.
+        //
+        //  Así que se comprueba: cuántos objetos había antes, cuántos después, y si el último
+        //  es de verdad un HATCH.
+        var antes = CuantosObjetos();
+
         try
         {
             AcadConnection.Retry(() => { _doc.SendCommand(lisp); });
-
-            Nota($"El achurado '{patron}' se puso con el comando -HATCH: la API de esta " +
-                 "versión de AutoCAD no lo aceptó, pero el hatch es de verdad.");
-
-            return true;
         }
         catch (Exception ex)
         {
             Fallo($"-HATCH '{patron}' por comando", ex);
             return false;
         }
+
+        if (!SeCreoUnHatch(antes))
+        {
+            Nota($"El comando -HATCH no dejó ningún achurado ('{patron}'). Puede que ese " +
+                 "patrón no esté en tu acad.pat.");
+
+            return false;
+        }
+
+        Nota($"El achurado '{patron}' se puso con el comando -HATCH: la API de esta " +
+             "versión de AutoCAD no lo aceptó, pero el hatch es de verdad.");
+
+        return true;
     }
+
+    /// <summary>Cuántos objetos hay en el espacio modelo, o <c>-1</c> si no se puede saber.</summary>
+    private int CuantosObjetos()
+    {
+        try
+        {
+            return AcadConnection.Retry(() => (int)_ms.Count);
+        }
+        catch (Exception)
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// ¿El comando dejó de verdad un <b>HATCH</b> nuevo?
+    /// </summary>
+    /// <remarks>
+    /// Se compara la cuenta de objetos y se mira el <b>tipo del último</b>: con que haya
+    /// crecido no basta, porque el comando podría haber dejado cualquier otra cosa. Si no se
+    /// pudo contar antes —<c>-1</c>— se da por bueno: no hay con qué comparar, y en ese caso
+    /// vale más creerse el comando que descartarlo y rayar a mano encima de un achurado que
+    /// sí estaba.
+    /// </remarks>
+    private bool SeCreoUnHatch(int antes)
+    {
+        if (antes < 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                var ahora = (int)_ms.Count;
+
+                if (ahora <= antes)
+                {
+                    return false;
+                }
+
+                var ultimo = _ms.Item(ahora - 1);
+                var tipo = (string)(((dynamic)ultimo).ObjectName ?? string.Empty);
+
+                return tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase);
+            });
+        }
+        catch (Exception)
+        {
+            // Si no se puede preguntar, se cree al comando: es lo menos malo.
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// El achurado del voladizo se quedó <b>asociado</b> a su molde, así que el molde no se
+    /// puede borrar: se lo llevaría por delante.
+    /// </summary>
+    private bool _hatchAsociativo;
+
+    /// <summary>Lo mismo, para quien dibuja la losa.</summary>
+    private bool HatchAtadoAlMolde => _hatchAsociativo;
 
     /// <summary>
     /// Raya un paño con <b>líneas paralelas</b>, recortadas a su contorno real.
@@ -1653,6 +1765,200 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Bloques ya armados en esta pasada, para no rehacerlos por cada columna.</summary>
     private readonly HashSet<string> _bloquesListos = new(StringComparer.OrdinalIgnoreCase);
+
+    // =================================================================================
+    //  EL RÓTULO DE LA LOSA, DENTRO DE UN BLOQUE
+    // =================================================================================
+
+    /// <summary>
+    /// Mete el rótulo de la losa en un <b>bloque</b> y lo inserta en el paño.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió, y es la misma idea que ya se usa con las secciones de columna: <b>una losa
+    /// distinta, un bloque distinto</b>. Cambiando el bloque una vez —para poner la varilla
+    /// de verdad, «Var. # 3/8 @ 20 cm.»— se cambian de golpe los veinte rótulos de esa losa.
+    /// Con veinte MTEXT sueltos hay que escribirlo veinte veces, y hay diecinueve ocasiones
+    /// de que uno quede distinto de los demás.
+    /// </para>
+    /// <para>
+    /// El bloque se llama por el <b>uso de la losa</b> —<c>ROTULO-LOSA-VOLADO</c>,
+    /// <c>ROTULO-LOSA-AZOTEA</c>—, que es lo que lo hace reconocible en la lista de bloques
+    /// de AutoCAD. Y si dos losas del mismo uso llevan <b>texto distinto</b> —distinto
+    /// espesor, por ejemplo— se les da bloque aparte con un sufijo, porque un bloque no puede
+    /// decir dos cosas a la vez.
+    /// </para>
+    /// <para>
+    /// Dentro del bloque el texto va en la capa <c>0</c>: así el rótulo toma la capa donde se
+    /// inserte el bloque —E-TEXTO— y no se queda clavado en una capa suya.
+    /// </para>
+    /// </remarks>
+    private bool RotuloDeLosaComoBloque(
+        ElementoPlanta el, double cx, double cy, string texto, double altura)
+    {
+        if (!_cfg.Bandera("LOSA_TEXTO_BLOQUE", true) || altura <= 0)
+        {
+            return false;
+        }
+
+        var nombre = NombreDelBloqueDeRotulo(el, texto);
+
+        if (nombre.Length == 0 || !AsegurarBloqueDeRotulo(nombre, texto, altura))
+        {
+            return false;
+        }
+
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                // Escala 1 en los tres ejes y sin giro: el rótulo de la losa se lee
+                // horizontal, como en la macro.
+                dynamic ins = _ms.InsertBlock(
+                    new[] { cx, cy, 0d }, nombre, 1d, 1d, 1d, 0d);
+
+                ins.Layer = CapaTextos;
+                ins.Color = PorCapa;
+                return true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Insertar el bloque del rótulo '{nombre}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// El nombre del bloque del rótulo: uno por <b>losa distinta</b>.
+    /// </summary>
+    /// <remarks>
+    /// Sale de <c>LOSA_TEXTO_BLOQUE_NOMBRE</c> con <c>%U</c> cambiado por el uso de la losa,
+    /// y se limpia de todo lo que AutoCAD no admite en un nombre de bloque. Si ese nombre ya
+    /// está tomado por <b>otro texto</b>, se numera: dos losas de azotea con espesores
+    /// distintos son dos rótulos distintos y no pueden compartir bloque.
+    /// </remarks>
+    private string NombreDelBloqueDeRotulo(ElementoPlanta el, string texto)
+    {
+        // El mismo texto siempre da el mismo bloque, aunque venga de otro paño.
+        if (_bloquesDeRotulo.TryGetValue(texto, out var ya))
+        {
+            return ya;
+        }
+
+        // EL PREFIJO ES EL DE LA MACRO —«TEXTO LOSA »— y el nombre se completa con el uso:
+        // «TEXTO LOSA VOLADO», «TEXTO LOSA AZOTEA». Se usa esa clave y no una nueva porque ya
+        // venía en su hoja CONFIG.
+        var prefijo = _cfg.Texto("LOSA_TEXTO_BLOQUE_PREFIJO", "TEXTO LOSA ");
+        var uso = UsoDeLaLosa(el);
+
+        var limpio = LimpiarNombreDeBloque(prefijo + (uso.Length > 0 ? uso : "LOSA"));
+
+        if (limpio.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        // Si el nombre ya lo usa otro texto, se numera hasta encontrar uno libre.
+        var nombre = limpio;
+        var n = 2;
+
+        while (_bloquesDeRotulo.ContainsValue(nombre))
+        {
+            nombre = $"{limpio}-{n}";
+            n++;
+        }
+
+        _bloquesDeRotulo[texto] = nombre;
+        return nombre;
+    }
+
+    /// <summary>
+    /// Deja el nombre <b>válido para AutoCAD</b>: sin los caracteres que no admite.
+    /// </summary>
+    /// <remarks>
+    /// AutoCAD no acepta <c>&lt; &gt; / \ " : ; ? * | , = `</c> en el nombre de un bloque, y
+    /// un nombre inválido no da un bloque raro: da un error y el rótulo se pierde. Los
+    /// <b>espacios sí</b> se quedan —AutoCAD los admite y el prefijo de la macro los lleva—:
+    /// solo se recortan los de los extremos.
+    /// </remarks>
+    private static string LimpiarNombreDeBloque(string nombre)
+    {
+        var malos = "<>/\\\":;?*|,=`".ToCharArray();
+        var sb = new System.Text.StringBuilder();
+
+        foreach (var c in (nombre ?? string.Empty).Trim())
+        {
+            if (Array.IndexOf(malos, c) < 0)
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Crea el bloque del rótulo si no está, con el <b>MTEXT dentro</b>.
+    /// </summary>
+    /// <remarks>
+    /// El texto se centra en el origen del bloque —anclaje 5, el del medio— para que al
+    /// insertarlo en el centro del paño quede centrado de verdad. Y con el mismo estilo, la
+    /// misma altura, el mismo ancho automático y el mismo fondo que llevaría suelto: es el
+    /// propio <c>Mtexto</c> el que lo crea, solo que dentro del bloque.
+    /// </remarks>
+    private bool AsegurarBloqueDeRotulo(string nombre, string texto, double altura)
+    {
+        if (_bloquesListos.Contains(nombre))
+        {
+            return true;
+        }
+
+        try
+        {
+            var ok = AcadConnection.Retry(() =>
+            {
+                dynamic bloques = _doc.Blocks;
+                dynamic blk;
+
+                try
+                {
+                    blk = bloques.Item(nombre);
+                }
+                catch (Exception)
+                {
+                    blk = bloques.Add(new[] { 0d, 0d, 0d }, nombre);
+                }
+
+                return (object)blk;
+            });
+
+            // El MTEXT, dentro del bloque y en la capa 0: así toma la capa del insert.
+            var mt = Mtexto(0, 0, texto, altura, "0", 0, EstiloLosas,
+                            _cfg.Bandera("LOSA_TEXTO_FONDO", true), 5, ok);
+
+            if (mt is null)
+            {
+                return false;
+            }
+
+            _bloquesListos.Add(nombre);
+            _rotulosEnBloque++;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Crear el bloque del rótulo '{nombre}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>Texto del rótulo → nombre de su bloque. Una losa distinta, un bloque.</summary>
+    private readonly Dictionary<string, string> _bloquesDeRotulo =
+        new(StringComparer.Ordinal);
+
+    /// <summary>Cuántos bloques de rótulo se crearon, para el resumen.</summary>
+    private int _rotulosEnBloque;
 
     /// <summary>
     /// El <b>relleno amarillo</b> dentro del bloque: achurado y, si no se deja, un SOLID.

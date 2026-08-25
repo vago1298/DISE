@@ -77,6 +77,18 @@ public sealed class ElementoPlanta
     public double X2 { get; set; }
     public double Y2 { get; set; }
 
+    /// <summary>
+    /// Las <b>cotas</b> de los dos extremos, en metros. Solo hacen falta en el CORTE.
+    /// </summary>
+    /// <remarks>
+    /// En planta la Z no se usa —para eso es una planta— pero un corte por un eje es un
+    /// alzado, y ahí la altura es la mitad del dibujo: sin la Z, una columna no tiene de
+    /// dónde a dónde y un muro no tiene alto. Llegan del modelo tal cual, sin tocar.
+    /// </remarks>
+    public double Z1 { get; set; }
+
+    public double Z2 { get; set; }
+
     /// <summary>Ancho de la sección en metros: el espesor en un muro.</summary>
     public double AnchoM { get; set; }
 
@@ -155,6 +167,48 @@ public sealed class ElementoPlanta
 /// <summary>
 /// Todo lo que hace falta para dibujar una planta en AutoCAD.
 /// </summary>
+/// <summary>
+/// Lo que hace falta para dibujar un <b>corte por un eje</b>: el alzado del modelo.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Va aparte de <see cref="PlantaCad"/> porque un corte no es de un nivel: <b>atraviesa el
+/// edificio entero</b>, así que lleva los elementos de todos los niveles con su cota. Es la
+/// diferencia de fondo entre una planta y un alzado.
+/// </para>
+/// <para>
+/// Se dibuja al lado de la planta estructural, a la distancia que diga
+/// <c>CORTE_SEPARACION_M</c>, para que los dos dibujos se lean juntos: el corte dice las
+/// alturas que la planta no puede decir.
+/// </para>
+/// </remarks>
+public sealed class CorteCad
+{
+    /// <summary>Nombre del eje del corte: lo que dice su burbuja.</summary>
+    public string Eje { get; set; } = string.Empty;
+
+    /// <summary><c>true</c> si el corte va por un eje de los que corren en X.</summary>
+    public bool EnX { get; set; }
+
+    /// <summary>Coordenada del eje del corte, en metros.</summary>
+    public double Ordenada { get; set; }
+
+    /// <summary>Espesor de la rebanada que entra en el corte, en metros.</summary>
+    public double EspesorM { get; set; } = 0.6;
+
+    /// <summary>Nombre del modelo, para el rótulo.</summary>
+    public string Modelo { get; set; } = string.Empty;
+
+    /// <summary>Los elementos de TODOS los niveles, con su cota.</summary>
+    public List<ElementoPlanta> Elementos { get; } = new();
+
+    /// <summary>Los niveles con su cota, para rotularlos en el corte.</summary>
+    public List<(string Nombre, double Z)> Niveles { get; } = new();
+
+    /// <summary>Altura del texto de los rótulos, en metros.</summary>
+    public double AlturaTexto { get; set; } = 0.25;
+}
+
 public sealed class PlantaCad
 {
     /// <summary>Nombre del nivel, tal como lo llama el modelo.</summary>
