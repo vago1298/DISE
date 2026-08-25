@@ -27,13 +27,27 @@ namespace CadLink.App;
 public sealed partial class VistaModelo
 {
     /// <summary>Margen en píxeles entre el dibujo y el borde del lienzo.</summary>
+    private const double Margen = 26;
+
+    /// <summary>
+    /// Margen del lado <b>anotado</b>: arriba y a la izquierda, donde van cotas y burbujas.
+    /// </summary>
     /// <remarks>
-    /// Son 52 y no 26 porque la planta ya no es solo la estructura: arriba y a la izquierda
-    /// van las <b>burbujas</b> de los ejes y abajo y a la derecha las <b>cotas</b>, y sin
-    /// reservarles sitio quedarían cortadas contra el borde del lienzo. Es lo mismo que hace
-    /// el plano, que separa los ejes de lo dibujado antes de acotar.
+    /// <para>
+    /// Se pidió que las cotas vayan <b>solo arriba y a la izquierda</b>, así que solo esos
+    /// dos lados necesitan sitio, y necesitan bastante: contando desde el dibujo hacia
+    /// afuera van la cota parcial, la cota total y por último la burbuja del eje. Los otros
+    /// dos lados se quedan con un margen de cortesía.
+    /// </para>
+    /// <para>
+    /// Por eso los márgenes son <b>asimétricos</b>: reservar 78 píxeles en los cuatro lados
+    /// para usar dos sería regalar un tercio del lienzo.
+    /// </para>
     /// </remarks>
-    private const double Margen = 52;
+    private const double MargenAnotado = 78;
+
+    /// <summary>Margen de los lados sin anotaciones: abajo y a la derecha.</summary>
+    private const double MargenLibre = 18;
 
     private static readonly Brush ColorColumna = Pincel(0x1F, 0x6F, 0xB2);
     private static readonly Brush ColorTrabe = Pincel(0x1D, 0x8A, 0x4E);
@@ -470,16 +484,23 @@ public sealed partial class VistaModelo
         if (xMax - xMin < 1e-6) { xMin -= 1; xMax += 1; }
         if (yMax - yMin < 1e-6) { yMin -= 1; yMax += 1; }
 
-        var escala = Math.Min((w - (2 * Margen)) / (xMax - xMin),
-                              (h - (2 * Margen)) / (yMax - yMin)) * Zoom;
+        // El hueco util es el lienzo menos los dos margenes, que NO son iguales: arriba y a
+        // la izquierda hay que dejar sitio para las cotas y las burbujas.
+        var escala = Math.Min((w - MargenAnotado - MargenLibre) / (xMax - xMin),
+                              (h - MargenAnotado - MargenLibre) / (yMax - yMin)) * Zoom;
 
         var cx = (xMin + xMax) / 2;
         var cy = (yMin + yMax) / 2;
 
+        // Y el dibujo se centra en ese hueco, no en el lienzo: de ahi el desplazamiento de
+        // media diferencia de margenes, que lo corre hacia el lado libre.
+        var centroX = (w + MargenAnotado - MargenLibre) / 2;
+        var centroY = (h + MargenAnotado - MargenLibre) / 2;
+
         // La Y del modelo sube y la del lienzo baja, así que se invierte
         Point APantallaPlanta(double x, double y) => new(
-            (w / 2) + ((x - cx) * escala) + PanX,
-            (h / 2) - ((y - cy) * escala) + PanY);
+            centroX + ((x - cx) * escala) + PanX,
+            centroY - ((y - cy) * escala) + PanY);
 
         // EL ORDEN DE PINTADO, de atrás hacia adelante: losa, muro, trabe y columna. Ahora
         // que las piezas se dibujan con su huella real y rellenas, el orden importa: con
@@ -754,9 +775,20 @@ public sealed partial class VistaModelo
         var arriba = aPantalla(xMin, yMax);
         var abajo = aPantalla(xMax, yMin);
 
-        // Cuánto se sale la línea del eje por fuera de lo dibujado, y dónde va la burbuja.
-        const double Sale = 12;
+        // ==============================================================================
+        //  EL REPARTO DEL MARGEN, DESDE EL DIBUJO HACIA AFUERA
+        // ==============================================================================
+        //  Se pidió que las cotas vayan SOLO arriba y a la izquierda, así que en esos dos
+        //  lados se apilan tres cosas y el orden es el del plano de obra:
+        //
+        //        dibujo | 22 cota parcial | 40 cota total | 58 burbuja
+        //
+        //  La burbuja va la ÚLTIMA, la más afuera. Antes estaba pegada al dibujo y las cotas
+        //  iban por el otro lado; ahora que comparten lado, si la burbuja se quedara dentro
+        //  las líneas de cota le pasarían por encima.
+        const double Sale = 10;
         const double Radio = 9;
+        const double SaleBurbuja = 58;
 
         var trazos = new DoubleCollection { 8, 4, 2, 4 };
 
@@ -808,12 +840,14 @@ public sealed partial class VistaModelo
         }
 
         // ---- los verticales, con su burbuja arriba ---------------------------------
+        //  La LÍNEA del eje sí llega hasta la burbuja: es lo que la ata a su eje y lo que
+        //  hace que se lea de un golpe cuál es cuál.
         foreach (var (id, o) in ejesX)
         {
             var x = aPantalla(o, yMin).X;
 
-            Linea(x, arriba.Y - Sale, x, abajo.Y + Sale);
-            Burbuja(x, arriba.Y - Sale - Radio, id);
+            Linea(x, arriba.Y - SaleBurbuja + Radio, x, abajo.Y + Sale);
+            Burbuja(x, arriba.Y - SaleBurbuja, id);
         }
 
         // ---- los horizontales, con su burbuja a la izquierda -----------------------
@@ -821,8 +855,8 @@ public sealed partial class VistaModelo
         {
             var y = aPantalla(xMin, o).Y;
 
-            Linea(arriba.X - Sale, y, abajo.X + Sale, y);
-            Burbuja(arriba.X - Sale - Radio, y, id);
+            Linea(arriba.X - SaleBurbuja + Radio, y, abajo.X + Sale, y);
+            Burbuja(arriba.X - SaleBurbuja, y, id);
         }
 
         // ==============================================================================
@@ -832,10 +866,10 @@ public sealed partial class VistaModelo
         //  entre ejes, y comprobarlas antes de mandar el plano es justo lo que se viene a
         //  hacer a esta pantalla.
         //
-        //  Van del lado CONTRARIO a las burbujas —abajo las de los verticales y a la
-        //  derecha las de los horizontales— para que no se estorben: las burbujas están
-        //  arriba y a la izquierda. En el plano de AutoCAD van en los cuatro lados porque
-        //  ahí hay papel para todo; aquí hay 430 píxeles de alto.
+        //  Van ARRIBA las de los ejes verticales y a la IZQUIERDA las de los horizontales,
+        //  que es como se pidió y como se lee un plano: las cotas de un lado y el dibujo
+        //  libre por el otro. Comparten lado con las burbujas, y por eso la burbuja se fue
+        //  más afuera: primero la cota parcial, luego la total y al final la burbuja.
         AcotarEjes(lienzo, ejesX, ejesY, aPantalla, arriba, abajo);
     }
 
@@ -861,9 +895,10 @@ public sealed partial class VistaModelo
         Func<double, double, Point> aPantalla,
         Point arriba, Point abajo)
     {
-        // A qué distancia de lo dibujado va la fila de cotas, y cuánto más abajo la total.
-        const double Sale = 20;
-        const double Salto = 15;
+        // Las mismas distancias del reparto del margen: la parcial a 22 del dibujo y la
+        // total a 40. La burbuja va después, a 58.
+        const double Parcial = 22;
+        const double Total = 40;
 
         string Metros(double v) =>
             v.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
@@ -884,10 +919,12 @@ public sealed partial class VistaModelo
             Raya(x - 3, y + 3, x + 3, y - 3);
         }
 
-        void Numero(double cx, double cy, string texto, bool cabe, double anchoCaja)
+        // El número de una cota HORIZONTAL: encima de su línea, centrado en el claro.
+        void NumeroArriba(double cx, double y, string texto, double hueco)
         {
-            // Si no cabe, no se escribe: vale más la línea de cota limpia que un borrón.
-            if (!cabe)
+            // 5.6 píxeles por carácter a 9 puntos. Si no cabe, no se escribe: vale más la
+            // línea de cota limpia que un borrón de cifras encimadas.
+            if (hueco < texto.Length * 5.6)
             {
                 return;
             }
@@ -898,19 +935,52 @@ public sealed partial class VistaModelo
                 FontSize = 9,
                 Foreground = ColorEjeTexto,
                 TextAlignment = TextAlignment.Center,
-                Width = anchoCaja
+                Width = hueco
             };
 
-            Canvas.SetLeft(t, cx - (anchoCaja / 2));
-            Canvas.SetTop(t, cy);
+            Canvas.SetLeft(t, cx - (hueco / 2));
+            Canvas.SetTop(t, y - 13);
             lienzo.Children.Add(t);
         }
 
-        // ---- las de los ejes verticales, abajo -------------------------------------
+        // El número de una cota VERTICAL: GIRADO, centrado sobre su línea.
+        //
+        //  Girarlo es lo correcto aquí y no un adorno: en un plano las cotas verticales se
+        //  leen de abajo arriba, y además el número cabe donde no cabría en horizontal —a la
+        //  izquierda solo hay 18 píxeles entre la cota parcial y la total—.
+        //
+        //  Con RotateTransform(-90) y el origen en la esquina, la caja de W x H pasa a ocupar
+        //  H de ancho y W de alto CRECIENDO HACIA ARRIBA, así que para centrarla en la cota
+        //  se la coloca media caja más abajo y medio renglón a la izquierda.
+        void NumeroAlLado(double x, double cy, string texto, double hueco)
+        {
+            // Aquí lo que limita es el ALTO del renglón, no el ancho del texto: por debajo
+            // de 13 píxeles dos cotas seguidas se encimarían.
+            if (hueco < 13)
+            {
+                return;
+            }
+
+            var t = new TextBlock
+            {
+                Text = texto,
+                FontSize = 9,
+                Foreground = ColorEjeTexto,
+                TextAlignment = TextAlignment.Center,
+                Width = hueco,
+                RenderTransform = new RotateTransform(-90)
+            };
+
+            Canvas.SetLeft(t, x - 13);
+            Canvas.SetTop(t, cy + (hueco / 2));
+            lienzo.Children.Add(t);
+        }
+
+        // ---- las de los ejes verticales, ARRIBA ------------------------------------
         if (ejesX.Count >= 2)
         {
             var orden = ejesX.OrderBy(e => e.Ordenada).ToList();
-            var y = abajo.Y + Sale;
+            var y = arriba.Y - Parcial;
 
             for (var i = 0; i + 1 < orden.Count; i++)
             {
@@ -921,37 +991,34 @@ public sealed partial class VistaModelo
                 Tick(x1, y);
                 Tick(x2, y);
 
-                var texto = Metros(orden[i + 1].Ordenada - orden[i].Ordenada);
-
-                // En horizontal manda el ANCHO del texto: 5.6 px por carácter a 9 puntos.
-                Numero((x1 + x2) / 2, y - 13, texto,
-                       Math.Abs(x2 - x1) > texto.Length * 5.6, Math.Abs(x2 - x1));
+                NumeroArriba((x1 + x2) / 2, y,
+                             Metros(orden[i + 1].Ordenada - orden[i].Ordenada),
+                             Math.Abs(x2 - x1));
             }
 
-            // LA TOTAL, un renglón más abajo. Solo con tres ejes o más: con dos sería la
+            // LA TOTAL, un renglón más afuera. Solo con tres ejes o más: con dos sería la
             // misma cota escrita dos veces.
             if (orden.Count > 2)
             {
                 var xa = aPantalla(orden[0].Ordenada, 0).X;
                 var xb = aPantalla(orden[^1].Ordenada, 0).X;
-                var yt = y + Salto;
+                var yt = arriba.Y - Total;
 
                 Raya(xa, yt, xb, yt);
                 Tick(xa, yt);
                 Tick(xb, yt);
 
-                var total = Metros(orden[^1].Ordenada - orden[0].Ordenada);
-
-                Numero((xa + xb) / 2, yt - 13, total,
-                       Math.Abs(xb - xa) > total.Length * 5.6, Math.Abs(xb - xa));
+                NumeroArriba((xa + xb) / 2, yt,
+                             Metros(orden[^1].Ordenada - orden[0].Ordenada),
+                             Math.Abs(xb - xa));
             }
         }
 
-        // ---- las de los ejes horizontales, a la derecha ----------------------------
+        // ---- las de los ejes horizontales, a la IZQUIERDA --------------------------
         if (ejesY.Count >= 2)
         {
             var orden = ejesY.OrderBy(e => e.Ordenada).ToList();
-            var x = abajo.X + Sale;
+            var x = arriba.X - Parcial;
 
             for (var i = 0; i + 1 < orden.Count; i++)
             {
@@ -962,28 +1029,24 @@ public sealed partial class VistaModelo
                 Tick(x, y1);
                 Tick(x, y2);
 
-                // El número va al lado, horizontal: girarlo se lee peor en pantalla y
-                // obliga a una transformación que aquí no aporta nada.
-                // En vertical el texto va horizontal, asi que lo que manda es el ALTO
-                // del renglon: por debajo de 13 px dos cotas seguidas se encimarian.
-                Numero(x + 22, ((y1 + y2) / 2) - 6,
-                       Metros(orden[i + 1].Ordenada - orden[i].Ordenada),
-                       Math.Abs(y2 - y1) > 13, 40);
+                NumeroAlLado(x, (y1 + y2) / 2,
+                             Metros(orden[i + 1].Ordenada - orden[i].Ordenada),
+                             Math.Abs(y2 - y1));
             }
 
             if (orden.Count > 2)
             {
                 var ya = aPantalla(0, orden[0].Ordenada).Y;
                 var yb = aPantalla(0, orden[^1].Ordenada).Y;
-                var xt = x + Salto;
+                var xt = arriba.X - Total;
 
                 Raya(xt, ya, xt, yb);
                 Tick(xt, ya);
                 Tick(xt, yb);
 
-                Numero(xt + 22, ((ya + yb) / 2) - 6,
-                       Metros(orden[^1].Ordenada - orden[0].Ordenada),
-                       Math.Abs(yb - ya) > 13, 40);
+                NumeroAlLado(xt, (ya + yb) / 2,
+                             Metros(orden[^1].Ordenada - orden[0].Ordenada),
+                             Math.Abs(yb - ya));
             }
         }
     }

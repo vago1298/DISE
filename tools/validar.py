@@ -629,9 +629,17 @@ def v11_visor() -> None:
 
     # La vista en planta dedicada invierte la Y, porque la del lienzo crece
     # hacia abajo y la del modelo hacia arriba
+    # La Y del modelo sube y la del lienzo baja. La formula ya no arranca de h/2 sino del
+    # CENTRO DEL HUECO UTIL, porque los margenes son asimetricos: arriba y a la izquierda hay
+    # que dejar sitio para las cotas y las burbujas. Lo que no cambia es el signo.
     check(
         "la planta invierte la Y",
-        re.search(r"\(h / 2\) - \(\(y - cy\) \* escala\)", t) is not None,
+        re.search(r"centroY - \(\(y - cy\) \* escala\)", t) is not None,
+    )
+    check(
+        "y se centra en el hueco util, no en el lienzo",
+        "var centroX = (w + MargenAnotado - MargenLibre) / 2;" in t
+        and "var centroY = (h + MargenAnotado - MargenLibre) / 2;" in t,
     )
 
     # ------------------------------------------------------------------
@@ -726,13 +734,29 @@ def v11_visor() -> None:
     # EL NUMERO SOLO SI CABE: con la vista alejada dos ejes pueden quedar a diez pixeles y
     # los rotulos se encimarian hasta ser ilegibles. La linea de cota siempre se dibuja.
     check("el numero de la cota se escribe solo si cabe",
-          "Math.Abs(x2 - x1) > texto.Length * 5.6" in t
-          and "Math.Abs(y2 - y1) > 13" in t
-          and "if (!cabe)" in t)
+          "void NumeroArriba(" in t
+          and "void NumeroAlLado(" in t
+          and "if (hueco < texto.Length * 5.6)" in t
+          and "if (hueco < 13)" in t)
+    # LA COTA VERTICAL VA GIRADA: en un plano se lee de abajo arriba, y ademas a la izquierda
+    # solo hay 18 px entre la cota parcial y la total, donde el numero en horizontal no cabe.
+    check("la cota vertical lleva su numero girado",
+          "RenderTransform = new RotateTransform(-90)" in t)
     # Y HAY SITIO PARA TODO ESO: sin ampliar el margen, burbujas y cotas quedaban cortadas
     # contra el borde del lienzo.
     check("el margen del lienzo deja sitio a burbujas y cotas",
-          "private const double Margen = 52;" in t)
+          "private const double MargenAnotado = 78;" in t
+          and "private const double MargenLibre = 18;" in t)
+    # Y LAS COTAS, ARRIBA Y A LA IZQUIERDA NADA MAS, que es como se pidio. Comparten lado con
+    # las burbujas, asi que la burbuja se va la mas afuera: parcial 22, total 40, burbuja 58.
+    check("las cotas van arriba y a la izquierda, con la burbuja por fuera",
+          "const double Parcial = 22;" in t
+          and "const double Total = 40;" in t
+          and "const double SaleBurbuja = 58;" in t
+          and "var y = arriba.Y - Parcial;" in t
+          and "var x = arriba.X - Parcial;" in t
+          and "Burbuja(x, arriba.Y - SaleBurbuja, id);" in t
+          and "Burbuja(arriba.X - SaleBurbuja, y, id);" in t)
 
     # ------------------------------------------------------------------
     # MOVER LA PLANTA CON EL RATON
