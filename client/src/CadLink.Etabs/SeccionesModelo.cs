@@ -124,7 +124,10 @@ public static class SeccionesModelo
             var t2 = e.Clase == ClaseElemento.Columna ? e.PeralteM : e.AnchoM;
             var t3 = e.Clase == ClaseElemento.Columna ? e.AnchoM : e.PeralteM;
 
-            var tipo = ClasificaTipo(e.Clase, e.Seccion, t2, t3, op);
+            // LAS NOTAS DE LA PROPIEDAD MANDAN sobre el nombre y sobre las medidas: es donde
+            // el ingeniero escribe lo que la pieza ES. Con «K 15X23.5» y CASTILLO en sus
+            // notas, la tabla dice CASTILLO, que es lo que se pidió.
+            var tipo = ClasificaTipo(e.Clase, e.Seccion, t2, t3, op, e.Notas);
             if (tipo == "LOSA" && !op.IncluyeLosas)
             {
                 continue;
@@ -250,9 +253,32 @@ public static class SeccionesModelo
     /// </remarks>
     public static string ClasificaTipo(
         ClaseElemento clase, string seccion, double anchoT2M, double peralteT3M,
-        Opciones? op = null)
+        Opciones? op = null, string notas = "")
     {
         op ??= new Opciones();
+
+        // ==============================================================================
+        //  PRIMERO, LO QUE DIGAN LAS NOTAS DE LA PROPIEDAD
+        // ==============================================================================
+        //  Es la respuesta a «¿cómo puedo hacer que los clasifiques como tipos?»: SÍ, con las
+        //  NOTAS de la propiedad, y es la mejor forma que hay. Si en las notas de «K 15X23.5»
+        //  se escribe CASTILLO, sale CASTILLO, y no hay más que discutir.
+        //
+        //  Por qué manda sobre todo lo demás: el nombre de la sección lo pone el que modela y
+        //  cambia de obra en obra, y las medidas se equivocan en los casos de frontera —una
+        //  columna de 15×23.5 mide más de 20 cm de un lado, así que por medidas sale COLUMNA
+        //  aunque en obra sea un castillo, que es exactamente lo que se veía en la tabla—.
+        //  Las notas son el único sitio donde el ingeniero dice lo que la pieza ES.
+        //
+        //  Y no hace falta escribir nada más: basta la palabra. Lo que no diga nada se sigue
+        //  clasificando como antes, por el nombre y por las medidas.
+        var deLasNotas = TipoDeLasNotas(notas);
+
+        if (deLasNotas.Length > 0)
+        {
+            return deLasNotas;
+        }
+
         var t = EtabsReader.Normalizar(seccion);
 
         if (clase == ClaseElemento.Columna)
@@ -291,6 +317,63 @@ public static class SeccionesModelo
             ClaseElemento.Muro => "MURO",
             _ => "LOSA"
         };
+    }
+
+    /// <summary>
+    /// El <b>tipo</b> que digan las notas de la propiedad, o vacío si no dicen nada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las palabras que se reconocen son las del propio nombre del tipo —<c>CASTILLO</c>,
+    /// <c>COLUMNA</c>, <c>TRABE</c>, <c>DALA</c>, <c>MURO</c>, <c>LOSA</c>…— más los sinónimos
+    /// de obra que se usan aquí: <c>CADENA</c> por dala, <c>CERRAMIENTO</c> también, y
+    /// <c>VIGA</c> por trabe.
+    /// </para>
+    /// <para>
+    /// El orden importa y no es alfabético: <b>lo más específico primero</b>. Una nota que diga
+    /// «CONTRATRABE» contiene la palabra TRABE, así que si se preguntara por TRABE antes,
+    /// todas las contratrabes saldrían mal clasificadas. Igual pasa con CASTILLO y COLUMNA en
+    /// una nota como «CASTILLO AHOGADO EN COLUMNA».
+    /// </para>
+    /// </remarks>
+    public static string TipoDeLasNotas(string notas)
+    {
+        var t = EtabsReader.Normalizar(notas);
+
+        if (t.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        // De lo más específico a lo más general. Cada renglón: la palabra que se busca y el
+        // tipo que sale.
+        var palabras = new (string Palabra, string Tipo)[]
+        {
+            ("CONTRATRABE", "CONTRATRABE"),
+            ("CASTILLO", "CASTILLO"),
+            ("DALA", "DALA"),
+            ("CADENA", "DALA"),
+            ("CERRAMIENTO", "DALA"),
+            ("COLUMNA", "COLUMNA"),
+            ("TRABE", "TRABE"),
+            ("VIGA", "TRABE"),
+            ("DIAGONAL", "DIAGONAL"),
+            ("CONTRAVIENTO", "DIAGONAL"),
+            ("ZAPATA", "ZAPATA"),
+            ("MURO", "MURO"),
+            ("LOSACERO", "LOSACERO"),
+            ("LOSA", "LOSA")
+        };
+
+        foreach (var (palabra, tipo) in palabras)
+        {
+            if (t.Contains(palabra, StringComparison.Ordinal))
+            {
+                return tipo;
+            }
+        }
+
+        return string.Empty;
     }
 
     /// <summary>

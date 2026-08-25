@@ -744,6 +744,27 @@ public sealed partial class PlantaDrawer
                     h.Evaluate();
                     h.Layer = capa;
 
+                    // ==================================================================
+                    //  EL ORIGEN DEL PATRÓN, EL MISMO PARA TODOS
+                    // ==================================================================
+                    //  Es la otra mitad de «que se vea como un solo paño». Cada hatch nace con
+                    //  su origen donde le toca, así que dos voladizos pegados tenían el rayado
+                    //  DESFASADO: aunque se quite la raya del medio, la junta se sigue viendo
+                    //  porque las líneas de uno no continúan en el otro.
+                    //
+                    //  Con el mismo origen —el del dibujo— la retícula es una sola y los dos
+                    //  paños se leen como uno. Va después de Evaluate, que es cuando el hatch
+                    //  ya tiene su patrón puesto.
+                    try
+                    {
+                        h.Origin = new[] { 0d, 0d };
+                    }
+                    catch (Exception)
+                    {
+                        // Alguna versión no deja mover el origen: se ve la junta, pero el
+                        // achurado está.
+                    }
+
                     // EL COLOR, POR OBJETO: el 142 que se pidió. La capa se queda con el suyo
                     // para el contorno del voladizo.
                     h.Color = ColorDelAchurado();

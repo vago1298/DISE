@@ -214,6 +214,27 @@ public sealed partial class PlantaDrawer
 
         var cruces = _cfg.Bandera("VIGAS_CORTAR_EN_CRUCES", true) ? huellas : null;
 
+        // ==============================================================================
+        //  TODOS LOS VOLADIZOS DE LA PLANTA, ANTES DE DIBUJAR EL PRIMERO
+        // ==============================================================================
+        //  Hace falta conocerlos TODOS de antemano para no dibujar la orilla que dos
+        //  voladizos pegados comparten. Si se fueran descubriendo por el camino, la primera
+        //  losa dibujaría su raya —porque aún no sabe de la segunda— y la segunda ya no:
+        //  quedaría media junta, que es peor que la junta entera.
+        _voladosDeLaPlanta.Clear();
+
+        var palabrasVolado = PalabrasDeVolado();
+
+        foreach (var el in p.Elementos)
+        {
+            if (el.Clase == ClasePlanta.Losa
+                && el.Vertices.Count >= 3
+                && LosaEnPlanta.DiceVolado(el.Notas, el.Seccion, palabrasVolado))
+            {
+                _voladosDeLaPlanta.Add((ClaveDelPano(el), el.Vertices));
+            }
+        }
+
         // Las losas PRIMERO, para que las trabes y las columnas queden encima. En
         // AutoCAD el orden de creación es el orden de dibujo, así que basta con
         // dibujarlas antes; no hace falta tocar el DrawOrder.
@@ -969,7 +990,26 @@ public sealed partial class PlantaDrawer
         //  asociativo: uno asociativo se rehace al borrar su contorno.
         if (volada)
         {
-            var molde = PolilineaCerrada(pts, capa);
+            // ==========================================================================
+            //  EL MOLDE, METIDO HASTA EL PAÑO DEL MURO
+            // ==========================================================================
+            //  En el modelo la losa llega al EJE del muro, porque ahí están los nudos. Pero el
+            //  concreto de la losa no llega al eje: llega al PAÑO, y medio espesor antes ya es
+            //  muro. Achurando con el contorno del modelo, el rayado se metía por dentro de la
+            //  cadena, que es lo que se pidió quitar.
+            var alPano = _cfg.Bandera("LOSA_HATCH_AL_PANO", true) && huellas.Count > 0
+                ? PanoDeLosa.AlPano(el.Vertices, huellas)
+                : el.Vertices;
+
+            var ptsMolde = new double[alPano.Count * 2];
+
+            for (var i = 0; i < alPano.Count; i++)
+            {
+                ptsMolde[2 * i] = alPano[i].X + x0;
+                ptsMolde[(2 * i) + 1] = alPano[i].Y + y0;
+            }
+
+            var molde = PolilineaCerrada(ptsMolde, capa);
             var conHatch = false;
 
             if (_cfg.Bandera("LOSA_HATCH", true))
@@ -981,7 +1021,7 @@ public sealed partial class PlantaDrawer
                                       _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37"),
                                       EscalaDelHatchDeLosa(),
                                       _cfg.Numero("LOSA_HATCH_ANGULO", 45),
-                                      el.Vertices, x0, y0);
+                                      alPano, x0, y0);
             }
 
             // ---- Y LA LÍNEA, SOLO EL CONTORNO EXTERIOR -------------------------------
@@ -994,10 +1034,31 @@ public sealed partial class PlantaDrawer
             {
                 var tramos = 0;
 
+                // ======================================================================
+                //  DOS VOLADIZOS PEGADOS SON UN SOLO PAÑO
+                // ======================================================================
+                //  Se pidió: que cuando haya varias losas de volado juntas se vea UN
+                //  perímetro y no las divisiones entre ellas. Esa raya del medio es la orilla
+                //  que las dos losas comparten, y en la obra NO EXISTE: el concreto es
+                //  continuo, y quien lee el plano entiende una junta que nadie va a construir.
+                //
+                //  Casi siempre son una losa partida en dos por un eje, porque en el modelo
+                //  hace falta el nudo. El plano no tiene por qué heredar esa partición.
+                var vecinas = _cfg.Bandera("VOLADO_SIN_DIVISIONES", true)
+                    ? OtrosVolados(el)
+                    : new List<IReadOnlyList<(double X, double Y)>>();
+
                 foreach (var lado in LosaEnPlanta.Lados(el.Vertices))
                 {
                     foreach (var t in LosaEnPlanta.TramosFuera(lado, huellas))
                     {
+                        // El tramo que comparte con otro voladizo no se dibuja: es interior
+                        // al paño de los dos juntos.
+                        if (vecinas.Count > 0 && PanoDeLosa.ContornoCompartido(t, vecinas))
+                        {
+                            continue;
+                        }
+
                         if (Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capa) is not null)
                         {
                             tramos++;
@@ -1215,6 +1276,46 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Secciones ya avisadas: la nota del voladizo va una vez, no una por paño.</summary>
     private readonly HashSet<string> _voladosAvisados = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Los contornos de los <b>otros</b> voladizos de la planta que se está dibujando.
+    /// </summary>
+    /// <remarks>
+    /// Hacen falta para no dibujar la orilla que un voladizo comparte con otro. Se guardan al
+    /// empezar la planta —no se van buscando por cada paño— porque hay que conocerlos TODOS
+    /// antes de dibujar el primero: si se fueran descubriendo por el camino, la primera losa
+    /// dibujaría su raya y la segunda ya no, y quedaría media junta.
+    /// </remarks>
+    private readonly List<(string Clave, IReadOnlyList<(double X, double Y)> Vertices)>
+        _voladosDeLaPlanta = new();
+
+    /// <summary>Los contornos de los demás voladizos, sin contar el que se está dibujando.</summary>
+    private List<IReadOnlyList<(double X, double Y)>> OtrosVolados(ElementoPlanta el)
+    {
+        var clave = ClaveDelPano(el);
+
+        return _voladosDeLaPlanta
+            .Where(v => !string.Equals(v.Clave, clave, StringComparison.Ordinal))
+            .Select(v => v.Vertices)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Una <b>clave</b> para reconocer el paño: su etiqueta y su primer vértice.
+    /// </summary>
+    /// <remarks>
+    /// La etiqueta sola no basta —hay modelos donde dos paños la repiten— y el vértice solo,
+    /// tampoco. Juntos identifican el paño sin tener que guardar una referencia, que es lo que
+    /// permite comparar contra la lista sin excluirse a sí mismo por error.
+    /// </remarks>
+    private static string ClaveDelPano(ElementoPlanta el)
+    {
+        var v = el.Vertices.Count > 0 ? el.Vertices[0] : (X: el.X1, Y: el.Y1);
+
+        return string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{el.Etiqueta}|{v.X:0.###}|{v.Y:0.###}");
+    }
 
     /// <summary>
     /// La escala <b>de verdad</b> del achurado de la losa, la que lo deja <b>visible</b>.

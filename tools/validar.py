@@ -2951,8 +2951,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con veintinueve renglones añadidos",
-          cfgp.count("        P(") == 290
+    check("la hoja CONFIG de la macro esta portada, con treinta renglones añadidos",
+          cfgp.count("        P(") == 291
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -2968,7 +2968,8 @@ def v16_extruida_piers() -> None:
           and 'P("ARMADO_LOSA_BAYONETA", "SI",' in cfgp
           and 'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
           and 'P("EJES_UNIR_TOL_CM", "1",' in cfgp
-          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp)
+          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "NO",' in cfgp
+          and 'P("VOLADO_SIN_DIVISIONES", "SI",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -3069,7 +3070,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "290, ConfigPlano.PorOmision.Count" in pr
+          and "291, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4051,12 +4052,19 @@ def v18_planta_autocad() -> None:
     # La palabra sale de las NOTAS de la propiedad de la losa en ETABS -ahi la escribe el
     # ingeniero- y solo si las notas no dicen nada, del nombre de la seccion. Es la MISMA
     # palabra que decide el achurado, asi que rotulo y ANSI37 no se contradicen nunca.
-    check("el volado se rotula «Losa de VOLADO» en el primer renglon",
+    # EL ROTULO DEL VOLADO LLEVA LOS CUATRO RENGLONES: se pidio el espesor en el segundo y la
+    # varilla en el tercero. La bandera de saltarse el espesor se queda en la hoja -en NO-
+    # porque el mecanismo sirve, pero por omision no se salta nada.
+    check("el volado se rotula «Losa de VOLADO» y con los cuatro renglones",
           'P("VOLADO_TEXTO_1", "Losa de %U",' in cfgp
-          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp
+          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "NO",' in cfgp
           and '_cfg.TextoTalCual("VOLADO_TEXTO_1")' in dib
           and "public static string ArmarRotuloDeLosa(" in dib
           and "if (soloArmado && i == 2)" in dib)
+    check("hay prueba ejecutable de los cuatro renglones del volado",
+          "el volado lleva CUATRO renglones" in pre
+          and "el segundo, el espesor" in pre
+          and "el tercero, la varilla" in pre)
     check("y la palabra del volado sale de las NOTAS primero",
           "public static string PalabraVolado(" in los
           and "foreach (var donde in new[] { notas, seccion })" in los
@@ -4310,8 +4318,87 @@ def v18_planta_autocad() -> None:
     check("si el patron no se puede aplicar, el volado se raya a mano",
           "private int RayarAMano(" in mac
           and "IReadOnlyList<(double X, double Y)>? paraRayar = null," in mac
-          and "el.Vertices, x0, y0);" in dib
+          and "alPano, x0, y0);" in dib
           and "LosaEnPlanta.Cortes(girado, y, false)" in mac)
+
+    # ------------------------------------------------------------------
+    # EL HATCH HASTA EL PAÑO, Y VARIOS VOLADOS COMO UN SOLO PAÑO
+    # ------------------------------------------------------------------
+    #  En el modelo la losa llega al EJE del muro, porque ahi estan los nudos. Pero el concreto
+    #  de la losa llega al PAÑO: medio espesor antes ya es muro, y el rayado se metia por dentro
+    #  de la cadena.
+    pano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/PanoDeLosa.cs"))
+
+    check("el molde del achurado se mete hasta el pano del muro",
+          "public static List<(double X, double Y)> AlPano(" in pano
+          and "public static double MedioAnchoDelMuro(" in pano
+          and '_cfg.Bandera("LOSA_HATCH_AL_PANO", true) && huellas.Count > 0' in dib
+          and "PanoDeLosa.AlPano(el.Vertices, huellas)" in dib)
+    # LAS ESQUINAS SE RECALCULAN CORTANDO los lados movidos: moviendo los vertices uno a uno,
+    # un lado con muro y otro sin muro dejarian la esquina abierta o cruzada.
+    check("y las esquinas se recalculan cortando los lados, no moviendo vertices",
+          "private static (double X, double Y)? Cruce(" in pano
+          and "var corte = Cruce(r, s);" in pano)
+    # Y UN MURO PERPENDICULAR QUE SOLO TOCA LA ORILLA NO CUENTA: no esta debajo de esa orilla.
+    check("un muro perpendicular no mete el pano",
+          'Math.Abs((hx * dx) + (hy * dy)) < 0.98' in pano)
+
+    #  DOS VOLADIZOS PEGADOS SON UN SOLO PAÑO: la raya del medio es la orilla que comparten, y
+    #  en la obra no existe -el concreto es continuo-. Casi siempre es una losa partida en dos
+    #  por un eje, porque en el modelo hace falta el nudo.
+    check("varios volados juntos se dibujan con un solo perimetro",
+          'P("VOLADO_SIN_DIVISIONES", "SI",' in cfgp
+          and "public static bool ContornoCompartido(" in pano
+          and "PanoDeLosa.ContornoCompartido(t, vecinas)" in dib
+          and "private List<IReadOnlyList<(double X, double Y)>> OtrosVolados(" in dib)
+    # SE RECONOCEN TODOS ANTES DE DIBUJAR EL PRIMERO: descubriendolos por el camino, la primera
+    # losa dibujaria su raya -aun no sabe de la segunda- y la segunda ya no. Media junta.
+    check("y se conocen todos antes de dibujar el primero",
+          "_voladosDeLaPlanta.Clear();" in dib
+          and "_voladosDeLaPlanta.Add((ClaveDelPano(el), el.Vertices));" in dib)
+    # LA OTRA MITAD: el ORIGEN del patron, el mismo para todos, o la junta se sigue viendo
+    # porque las lineas de un pano no continuan en el otro.
+    check("el patron arranca del mismo origen en todos los paños",
+          "h.Origin = new[] { 0d, 0d };" in mac)
+    check("hay prueba ejecutable del pano y de los volados pegados",
+          "la cadena de 15 mete el pano 7.5 cm" in pre
+          and "una cadena perpendicular no mete el pano" in pre
+          and "la orilla compartida con el otro volado se reconoce" in pre
+          and "se reconoce por la orilla, no por los vertices" in pre)
+
+    # ------------------------------------------------------------------
+    # EL TIPO DE LA TABLA, POR LAS NOTAS DE LA PROPIEDAD
+    # ------------------------------------------------------------------
+    #  Es lo que se pidio y la respuesta a «como puedo hacer que los clasifiques como tipos»:
+    #  con las NOTAS. El nombre de la seccion cambia de obra en obra y las medidas se equivocan
+    #  en los casos de frontera -una de 15x23.5 pasa de 20 cm, asi que por medidas sale COLUMNA
+    #  aunque en obra sea un castillo-. Las notas son el unico sitio donde se dice lo que ES.
+    secs_tipo = leer(ruta("client/src/CadLink.Etabs/SeccionesModelo.cs"))
+    lec_tipo = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+
+    check("el tipo sale de las notas de la propiedad",
+          "public static string TipoDeLasNotas(" in secs_tipo
+          and "var deLasNotas = TipoDeLasNotas(notas);" in secs_tipo
+          and "ClasificaTipo(e.Clase, e.Seccion, t2, t3, op, e.Notas)" in secs_tipo)
+    # EL ORDEN NO ES ALFABETICO, es de lo mas especifico a lo mas general: «CONTRATRABE»
+    # contiene TRABE, y «CASTILLO AHOGADO EN COLUMNA» contiene las dos.
+    check("y lo mas especifico se pregunta primero",
+          '("CONTRATRABE", "CONTRATRABE"),' in secs_tipo
+          and secs_tipo.index('("CASTILLO", "CASTILLO")')
+          < secs_tipo.index('("COLUMNA", "COLUMNA")'))
+    # Y LAS NOTAS DE LOS MARCOS, QUE NO SE LEIAN: solo se leian las de muros y losas.
+    check("las notas de las secciones de marco ya se leen",
+          "private static string NotasDe(object?[] a) =>" in lec_tipo
+          and "Material(a), NotasDe(a)) : null;" in lec_tipo
+          and "e.Notas = dims.Notas;" in lec_tipo)
+    # La prueba de las secciones vive en su propio archivo; aqui se relee, porque las
+    # variables de arriba son de otra funcion.
+    prs_tipo = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
+
+    check("hay prueba ejecutable del tipo por notas",
+          "CASTILLO en las notas manda" in prs_tipo
+          and "CONTRATRABE no se confunde con TRABE" in prs_tipo
+          and "por medidas, la de 15x23.5 sale COLUMNA" in prs_tipo)
     check("E-LOSA se queda apagada y E-VOLADO encendida",
           "private void ApagarCapasDeLosa()" in mac
           and "lay.LayerOn = false;" in mac

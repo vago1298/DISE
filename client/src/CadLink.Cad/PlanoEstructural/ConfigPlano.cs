@@ -542,6 +542,12 @@ public sealed class ConfigPlano
         P("VOLADO_CONTORNO_FUERA_DE_MUROS", "SI",
           "<<< SI = LA LINEA DEL VOLADO ES SOLO EL CONTORNO EXTERIOR, NO TOCA CADENA NI MURO"),
 
+        // DOS VOLADIZOS PEGADOS SON UN SOLO PAÑO. La raya del medio es la orilla que las dos
+        // losas comparten, y en la obra no existe: el concreto es continuo. Casi siempre son
+        // una losa partida en dos por un eje, porque en el modelo hace falta el nudo.
+        P("VOLADO_SIN_DIVISIONES", "SI",
+          "<<< SI = VARIOS VOLADOS JUNTOS SE DIBUJAN CON UN SOLO PERIMETRO, SIN LA RAYA DEL MEDIO"),
+
         // EL TERCER INTENTO DEL ACHURADO: el comando -HATCH de AutoCAD. Lo que sale por aquí
         // es un HATCH auténtico, con su patrón, no una imitación con líneas.
         P("LOSA_HATCH_POR_COMANDO", "SI",
@@ -628,8 +634,16 @@ public sealed class ConfigPlano
         //         Ambos sentidos
         // o sea los renglones 3 y 4; los renglones 1 y 2 —"Losa de ..." y el espesor— no se
         // escriben. En las demás losas (ENTREPISO, AZOTEA, etc.) el rótulo sigue completo.
-        P("VOLADO_ROTULO_SOLO_ARMADO", "SI",
-          "<<< SI = EN LA LOSA DE VOLADO EL ROTULO NO LLEVA EL RENGLON DEL ESPESOR"),
+        // EN **NO**: se pidió que el rótulo del volado lleve TAMBIÉN el renglón del espesor,
+        // en el segundo, y que la varilla baje al tercero. O sea los cuatro renglones, con el
+        // primero suyo —«Losa de VOLADO»—:
+        //
+        //         Losa de VOLADO
+        //                cm de espesor
+        //         Var. #      @      cm.
+        //         Ambos sentidos
+        P("VOLADO_ROTULO_SOLO_ARMADO", "NO",
+          "NO = el rotulo del volado lleva los CUATRO renglones, con el espesor en el 2o"),
 
         // EL PRIMER RENGLÓN DEL VOLADO. Se pidió que el nombre SÍ vaya, y en el primer
         // renglón: «Losa VOLADO», con el nombre que salga de la sección o de las notas de

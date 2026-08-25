@@ -296,6 +296,45 @@ Igual("un modelo que solo tiene la base también se dibuja", 1,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL TIPO, POR LAS NOTAS DE LA PROPIEDAD");
+Console.WriteLine("=====================================================================");
+
+// Es la respuesta a «como puedo hacer que los clasifiques como tipos»: con las NOTAS de
+// la propiedad. Si en las notas dice CASTILLO, es CASTILLO, y no hay mas que discutir.
+Igual("CASTILLO en las notas manda", "CASTILLO",
+      SeccionesModelo.TipoDeLasNotas("CASTILLO"));
+Igual("COLUMNA en las notas manda", "COLUMNA",
+      SeccionesModelo.TipoDeLasNotas("columna de concreto"));
+Igual("TRABE en las notas manda", "TRABE", SeccionesModelo.TipoDeLasNotas("TRABE"));
+Igual("CADENA es DALA, que es como lo llama la macro", "DALA",
+      SeccionesModelo.TipoDeLasNotas("CADENA DE CERRAMIENTO"));
+Igual("y sin notas no dice nada", "", SeccionesModelo.TipoDeLasNotas(""));
+
+// EL ORDEN IMPORTA, y no es alfabetico: lo mas especifico primero. «CONTRATRABE»
+// contiene la palabra TRABE, asi que preguntando por TRABE antes, todas las
+// contratrabes saldrian mal.
+Igual("CONTRATRABE no se confunde con TRABE", "CONTRATRABE",
+      SeccionesModelo.TipoDeLasNotas("CONTRATRABE DE LIGA"));
+Igual("ni CASTILLO con COLUMNA", "CASTILLO",
+      SeccionesModelo.TipoDeLasNotas("CASTILLO AHOGADO EN COLUMNA"));
+
+// Y ASI SE ARREGLA EL CASO DE LA TABLA: «K 15X23.5» mide mas de 20 cm de un lado, asi
+// que POR MEDIDAS sale COLUMNA aunque en obra sea un castillo.
+Igual("por medidas, la de 15x23.5 sale COLUMNA", "COLUMNA",
+      SeccionesModelo.ClasificaTipo(ClaseElemento.Columna, "K 15X23.5", 0.15, 0.235));
+Igual("y con CASTILLO en sus notas, CASTILLO", "CASTILLO",
+      SeccionesModelo.ClasificaTipo(
+          ClaseElemento.Columna, "K 15X23.5", 0.15, 0.235, null, "CASTILLO"));
+
+// Lo que las notas no digan se sigue clasificando como antes.
+Igual("sin notas, la de 15x15 sigue siendo CASTILLO por medidas", "CASTILLO",
+      SeccionesModelo.ClasificaTipo(ClaseElemento.Columna, "K 15X15", 0.15, 0.15, null, ""));
+Igual("y una nota que no habla de tipos no estorba", "COLUMNA",
+      SeccionesModelo.ClasificaTipo(
+          ClaseElemento.Columna, "C 30X60", 0.30, 0.60, null, "f'c = 250"));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL PUNTO DE INSERCION: POR ESTO LA BARRA APARECE MOVIDA");
 Console.WriteLine("=====================================================================");
 

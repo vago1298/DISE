@@ -354,7 +354,10 @@ Check("y la seccion LOSA VOLADO tambien",
       LosaEnPlanta.DiceVolado(null, "LOSA VOLADO", palabras));
 Check("una losa de ENTREPISO no",
       !LosaEnPlanta.DiceVolado("ENTREPISO", "LOSA ENTREPISO", palabras));
-Check("la bandera viene en SI", cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", false));
+// LA BANDERA VA EN **NO**: se pidio que el rotulo del volado lleve tambien el renglon del
+// espesor, en el segundo, y la varilla en el tercero. O sea los cuatro renglones.
+Check("el rotulo del volado NO se salta ningun renglon",
+      !cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true));
 
 // Y EL NOMBRE «VOLADO» NO SE ESCRIBE NUNCA: el nombre que se iba a poner sale de la
 // seccion, asi que si esa seccion dice VOLADO el rotulo se acorta antes de escribirlo.
@@ -371,6 +374,95 @@ Igual("y con la palabra del modelo queda «Losa de VOLADO»",
       PlantaDrawer.ArmarRotuloDeLosa(
           new[] { cfg.TextoTalCual("VOLADO_TEXTO_1"), "  %E  cm de espesor", "", "" },
           soloArmado: true, "VOLADO", "10"));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL PAÑO DE LA LOSA Y LOS VOLADOS PEGADOS");
+Console.WriteLine("=====================================================================");
+
+// Una losa de 4x3 con una cadena de 15 cm debajo de su orilla de abajo -y = 0-. El
+// concreto de la losa no llega al EJE de la cadena: llega a su PAÑO, medio espesor
+// mas adentro.
+var losaCuadro = new List<(double X, double Y)> { (0, 0), (4, 0), (4, 3), (0, 3) };
+
+var cadenaAbajo = new List<ElementoPlanta>
+{
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            Clase = ClasePlanta.Trabe, X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, AnchoM = 0.15
+        },
+        0.15)
+};
+
+Cerca("la cadena de 15 mete el pano 7.5 cm", 0.075,
+      PanoDeLosa.MedioAnchoDelMuro((0, 0), (4, 0), cadenaAbajo));
+Cerca("y un lado sin cadena no se mete nada", 0,
+      PanoDeLosa.MedioAnchoDelMuro((0, 3), (4, 3), cadenaAbajo));
+
+var panoLosa = PanoDeLosa.AlPano(losaCuadro, cadenaAbajo);
+
+Igual("el pano tiene los mismos cuatro vertices", 4, panoLosa.Count);
+Cerca("la orilla con cadena sube al pano: y = 0.075", 0.075, panoLosa.Min(v => v.Y));
+Cerca("la de arriba se queda donde estaba", 3, panoLosa.Max(v => v.Y));
+Cerca("y los lados sin cadena no se mueven, en X", 0, panoLosa.Min(v => v.X));
+Cerca("ni el otro", 4, panoLosa.Max(v => v.X));
+
+// UNA CADENA PERPENDICULAR que solo toca la orilla NO mete el pano: no esta debajo de
+// esa orilla.
+var cadenaCruza = new List<ElementoPlanta>
+{
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            Clase = ClasePlanta.Trabe, X1 = 2, Y1 = -1, X2 = 2, Y2 = 4, AnchoM = 0.15
+        },
+        0.15)
+};
+
+Cerca("una cadena perpendicular no mete el pano", 0,
+      PanoDeLosa.MedioAnchoDelMuro((0, 0), (4, 0), cadenaCruza));
+
+// DOS VOLADOS PEGADOS: la orilla que comparten no se dibuja, para que se vea un solo
+// perimetro. Es casi siempre una losa partida en dos por un eje.
+var vecina = new List<(double X, double Y)> { (4, 0), (8, 0), (8, 3), (4, 3) };
+var vecinas = new List<IReadOnlyList<(double X, double Y)>> { vecina };
+
+Check("la orilla compartida con el otro volado se reconoce",
+      PanoDeLosa.ContornoCompartido(new LosaEnPlanta.Segmento(4, 0, 4, 3), vecinas));
+Check("y la del borde libre, no",
+      !PanoDeLosa.ContornoCompartido(new LosaEnPlanta.Segmento(0, 0, 0, 3), vecinas));
+// Aunque los vertices no coincidan: la vecina puede estar partida de otra forma.
+Check("se reconoce por la orilla, no por los vertices",
+      PanoDeLosa.ContornoCompartido(new LosaEnPlanta.Segmento(4, 0.5, 4, 2), vecinas));
+Check("sin vecinas no hay nada compartido",
+      !PanoDeLosa.ContornoCompartido(
+          new LosaEnPlanta.Segmento(4, 0, 4, 3),
+          new List<IReadOnlyList<(double X, double Y)>>()));
+
+Check("la hoja pide un solo perimetro", cfg.Bandera("VOLADO_SIN_DIVISIONES", false));
+Check("y el hatch al pano", cfg.Bandera("LOSA_HATCH_AL_PANO", false));
+
+// EL ROTULO DEL VOLADO LLEVA LOS CUATRO RENGLONES: se pidio el espesor en el segundo y
+// la varilla en el tercero.
+Check("el volado ya no se salta el renglon del espesor",
+      !cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true));
+
+var rotuloVolado = PlantaDrawer.ArmarRotuloDeLosa(
+    new[]
+    {
+        cfg.TextoTalCual("VOLADO_TEXTO_1"),
+        "       cm de espesor",
+        "Var. #      @               cm.",
+        "Ambos sentidos"
+    },
+    soloArmado: false, "VOLADO", "10");
+
+Igual("el volado lleva CUATRO renglones", 4, rotuloVolado.Split("\\P").Length);
+Check("el primero es «Losa de VOLADO»", rotuloVolado.StartsWith("Losa de VOLADO"));
+Check("el segundo, el espesor", rotuloVolado.Split("\\P")[1].Contains("cm de espesor"));
+Check("el tercero, la varilla", rotuloVolado.Split("\\P")[2].Contains("Var. #"));
+Igual("y el cuarto, los sentidos", "Ambos sentidos", rotuloVolado.Split("\\P")[3]);
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");

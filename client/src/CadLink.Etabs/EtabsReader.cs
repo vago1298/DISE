@@ -545,6 +545,11 @@ public static class EtabsReader
                 e.AlmaM = dims.Alma;
                 e.ParedM = dims.Pared;
 
+                // LAS NOTAS DE LA PROPIEDAD, que antes se tiraban en las columnas y las
+                // trabes. Son las que dicen si «K 15X23.5» es un CASTILLO o una COLUMNA, y
+                // eso no se puede sacar del nombre ni de las medidas sin equivocarse.
+                e.Notas = dims.Notas;
+
                 // En la columna el ancho se mide sobre el eje 3, al contrario que
                 // en la viga. Es la misma regla de la macro.
                 if (e.Clase == ClaseElemento.Columna)
@@ -754,7 +759,7 @@ public static class EtabsReader
 
             var t3 = Convert.ToDouble(a[3]);
             var t2 = Convert.ToDouble(a[4]);
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "RECT", 0, 0, 0, Material(a)) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "RECT", 0, 0, 0, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -773,7 +778,7 @@ public static class EtabsReader
             }
 
             var d = Convert.ToDouble(a[3]);
-            return d > 0 ? new Dims(d, d, "CIRC", 0, 0, 0, Material(a)) : null;
+            return d > 0 ? new Dims(d, d, "CIRC", 0, 0, 0, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -805,7 +810,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "I", tf, tw, 0, Material(a)) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "I", tf, tw, 0, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -1257,7 +1262,7 @@ public static class EtabsReader
     /// </param>
     private sealed record Dims(
         double T2, double T3, string Forma, double Patin, double Alma, double Pared,
-        string Material = "");
+        string Material = "", string Notas = "");
 
     /// <summary>
     /// Pregunta a SAP2000 <b>qué forma es</b> y llama al lector que le toca.
@@ -1281,6 +1286,27 @@ public static class EtabsReader
     /// </summary>
     private static string Material(object?[] a) =>
         a.Length > 2 ? (a[2]?.ToString() ?? string.Empty).Trim() : string.Empty;
+
+    /// <summary>
+    /// Las <b>notas</b> de la propiedad de sección: el penúltimo dato de la llamada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Todos los <c>Get…</c> de sección de CSI terminan igual: <c>…, Color, Notes, GUID</c>.
+    /// Así que las notas son la penúltima posición del arreglo, y con eso se leen sin tener
+    /// que conocer la firma de cada forma.
+    /// </para>
+    /// <para>
+    /// Y hacen falta: es donde el ingeniero escribe <b>qué es</b> la pieza —CASTILLO, COLUMNA,
+    /// TRABE— y eso es lo que se pidió para clasificar la tabla de secciones. El nombre de la
+    /// sección cambia de obra en obra y las medidas se equivocan en los casos de frontera
+    /// —una de 15×23.5 pasa de 20 cm y por medidas sale COLUMNA aunque en obra sea un
+    /// castillo—. Antes solo se leían las notas de los MUROS y las LOSAS; las de las columnas
+    /// y las trabes se tiraban.
+    /// </para>
+    /// </remarks>
+    private static string NotasDe(object?[] a) =>
+        a.Length > 2 ? (a[^2]?.ToString() ?? string.Empty).Trim() : string.Empty;
 
     private static Dims? PorForma(object propFrame, string seccion)
     {
@@ -1348,7 +1374,7 @@ public static class EtabsReader
             var d = Convert.ToDouble(a[3]);
             var tw = Convert.ToDouble(a[4]);
 
-            return d > 0 ? new Dims(d, d, "TUBO", 0, 0, tw, Material(a)) : null;
+            return d > 0 ? new Dims(d, d, "TUBO", 0, 0, tw, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -1376,7 +1402,7 @@ public static class EtabsReader
             var t2 = Convert.ToDouble(a[4]);
             var tf = Convert.ToDouble(a[5]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "CAJON", 0, 0, tf, Material(a)) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "CAJON", 0, 0, tf, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -1405,7 +1431,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "L", tf, tw, 0, Material(a)) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "L", tf, tw, 0, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -1434,7 +1460,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "C", tf, tw, 0, Material(a)) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "C", tf, tw, 0, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
@@ -1463,7 +1489,7 @@ public static class EtabsReader
             var tf = Convert.ToDouble(a[5]);
             var tw = Convert.ToDouble(a[6]);
 
-            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "T", tf, tw, 0, Material(a)) : null;
+            return t2 > 0 && t3 > 0 ? new Dims(t2, t3, "T", tf, tw, 0, Material(a), NotasDe(a)) : null;
         }
         catch (Exception ex) when (EsFalloCom(ex))
         {
