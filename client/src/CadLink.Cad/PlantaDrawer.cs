@@ -902,11 +902,40 @@ public sealed partial class PlantaDrawer
 
         var capa = volada ? _capas.CapaVolado : CapaDe(el);
 
-        // ---- EL HATCH, SOLO EN EL VOLADIZO -------------------------------------------
-        if (volada && _cfg.Bandera("LOSA_HATCH", true))
+        // ==============================================================================
+        //  EL VOLADIZO: SU CONTORNO **SÍ** SE QUEDA, Y COMPLETO
+        // ==============================================================================
+        //  En un voladizo el contorno es el BORDE LIBRE de la losa —lo que en obra se
+        //  cimbra— así que se dibuja entero en E-VOLADO y no se recorta contra los muros:
+        //  esa línea es justo la que hay que ver, y es la que faltaba.
+        //
+        //  La misma polilínea sirve de contorno Y de molde del achurado, así que no hay que
+        //  crear una auxiliar para borrarla después.
+        if (volada)
         {
-            HatchDeLosa(pts, capa);
+            var contorno = PolilineaCerrada(pts, capa);
+
+            if (_cfg.Bandera("LOSA_HATCH", true))
+            {
+                HatchSobre(contorno, capa,
+                           _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37"),
+                           _cfg.Numero("LOSA_HATCH_ESCALA", 0.0475),
+                           _cfg.Numero("LOSA_HATCH_ANGULO", 45));
+            }
+
             _volados++;
+            return contorno is not null;
+        }
+
+        // ---- LA LOSACERO: FRANJAS CON HATCH FLEX, NO ARMADO DE CONCRETO ---------------
+        //  Donde hay vigas de acero la losa es LOSACERO, y no lleva parrilla ni bayoneta:
+        //  lleva las franjas de la lámina y su rótulo con el calibre.
+        if (_cfg.Bandera("LOSACERO_FRANJAS", true) &&
+            LosaEnPlanta.DiceLosacero(
+                el.Etiqueta, el.Notas, el.Seccion,
+                _cfg.Texto("LOSACERO_PALABRAS", "LOSACERO,DECK,STEEL DECK,LAMINA ACANALADA")))
+        {
+            return Losacero(el, x0, y0);
         }
 
         // ---- EL CONTORNO, SOLO POR FUERA DEL MURO Y DE LA CADENA ---------------------
@@ -937,13 +966,122 @@ public sealed partial class PlantaDrawer
         }
 
         // ---- Y EL ARMADO, en el tablero apoyado --------------------------------------
-        if (!volada)
-        {
-            ArmadoDeLosa(el, x0, y0, huellas);
-        }
+        ArmadoDeLosa(el, x0, y0, huellas);
 
         return algo;
     }
+
+    /// <summary>
+    /// La <b>losacero</b>: sus franjas con hatch <c>FLEX</c> y su rótulo con el calibre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <c>FranjasLosacero</c> + <c>RotuloLosacero</c>. Una losacero <b>no lleva armado de
+    /// concreto</b> —ni parrilla ni bayoneta—: lleva la lámina, y en el plano eso son franjas
+    /// en el sentido corto con el patrón <c>FLEX</c>, más el rótulo <c>LOSACERO IMSA CALIBRE
+    /// 24</c>, donde el calibre sale de las notas de la sección de ETABS.
+    /// </para>
+    /// <para>
+    /// Todo va en la capa <c>E-LOSACERO</c>, y el rótulo en la de textos con fondo opaco para
+    /// que tape el achurado.
+    /// </para>
+    /// </remarks>
+    private bool Losacero(ElementoPlanta el, double x0, double y0)
+    {
+        var capa = _capas.Prefijo + "LOSACERO";
+
+        var franjas = LosaEnPlanta.Franjas(
+            el.Vertices,
+            _cfg.Numero("LOSACERO_FRANJA_ANCHO_M", 0.15),
+            _cfg.Numero("LOSACERO_FRANJA_SEP_M", 0.8),
+            _cfg.Numero("LOSACERO_FRANJA_LARGO_MIN_M", 0.3));
+
+        var ancho = _cfg.Numero("LOSACERO_FRANJA_ANCHO_M", 0.15);
+        var patron = _cfg.Texto("LOSACERO_HATCH_PATRON", "FLEX");
+        var escala = _cfg.Numero("LOSACERO_HATCH_ESCALA", 0.02);
+        var dejarContorno = _cfg.Bandera("LOSACERO_FRANJA_CONTORNO", true);
+
+        var hechas = 0;
+
+        foreach (var f in franjas)
+        {
+            var horizontal = Math.Abs(f.Y2 - f.Y1) < LargoMinimo;
+
+            // El rectángulo de la franja, del ancho de la lámina.
+            var pts = horizontal
+                ? new[]
+                {
+                    f.X1 + x0, f.Y1 + y0 - (ancho / 2),
+                    f.X2 + x0, f.Y2 + y0 - (ancho / 2),
+                    f.X2 + x0, f.Y2 + y0 + (ancho / 2),
+                    f.X1 + x0, f.Y1 + y0 + (ancho / 2)
+                }
+                : new[]
+                {
+                    f.X1 + x0 - (ancho / 2), f.Y1 + y0,
+                    f.X1 + x0 + (ancho / 2), f.Y1 + y0,
+                    f.X2 + x0 + (ancho / 2), f.Y2 + y0,
+                    f.X2 + x0 - (ancho / 2), f.Y2 + y0
+                };
+
+            var molde = PolilineaCerrada(pts, capa);
+
+            if (molde is null)
+            {
+                continue;
+            }
+
+            // El achurado va con el ángulo de la franja: 0 si corre en X, 90 si en Y.
+            HatchSobre(molde, capa, patron, escala, horizontal ? 0 : 90);
+
+            if (!dejarContorno)
+            {
+                Borrar(molde);
+            }
+
+            hechas++;
+        }
+
+        _losacero++;
+        _franjas += hechas;
+
+        // ---- EL RÓTULO, con el calibre de las notas ---------------------------------
+        if (_cfg.Bandera("LOSACERO_TEXTO", true))
+        {
+            var calibre = LosaEnPlanta.Calibre(el.Notas);
+
+            if (calibre.Length == 0)
+            {
+                calibre = LosaEnPlanta.Calibre(el.Seccion + " " + el.Etiqueta);
+            }
+
+            if (calibre.Length == 0)
+            {
+                calibre = _cfg.Texto("LOSACERO_CALIBRE_OMISION", "24");
+            }
+
+            var texto = _cfg.Texto("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C")
+                .Replace("%C", calibre)
+                .Replace("%S", el.Seccion)
+                .Replace("%E", (el.AnchoM * 100).ToString(
+                    "0.#", System.Globalization.CultureInfo.InvariantCulture));
+
+            var cx = ((el.Vertices.Min(v => v.X) + el.Vertices.Max(v => v.X)) / 2) + x0;
+            var cy = ((el.Vertices.Min(v => v.Y) + el.Vertices.Max(v => v.Y)) / 2) + y0;
+
+            var alt = _cfg.Numero("LOSACERO_TEXTO_ALTURA", 0);
+
+            Mtexto(cx, cy, texto, alt > 0 ? alt : AlturaLosas(0.072), CapaTextos, 0,
+                   EstiloLosas, _cfg.Bandera("LOSACERO_TEXTO_FONDO", true));
+        }
+
+        return hechas > 0;
+    }
+
+    /// <summary>Cuántas losaceros y cuántas franjas se dibujaron, para el resumen.</summary>
+    private int _losacero;
+
+    private int _franjas;
 
     /// <summary>Cuántos paños salieron volados, para el resumen.</summary>
     private int _volados;
@@ -998,31 +1136,46 @@ public sealed partial class PlantaDrawer
         var capaArmado = _capas.Prefijo + "ARMADO LOSA";
 
         // ==============================================================================
-        //  LA BAYONETA: EL ARMADO DEL TABLERO APOYADO
+        //  EL ARMADO DEL TABLERO: BAYONETA, BASTONES Y CORRIDA
         // ==============================================================================
-        //  Es la varilla con sus dos quiebres a 45°, una por dirección y por el centro del
-        //  tablero. Sustituye a la rejilla: la parrilla en TODOS los tableros llenaba el plano
-        //  de rejilla y tapaba las cadenas, que es justo lo que no se quería. La parrilla
-        //  sigue ahí, con ARMADO_LOSA_PARRILLA en SI, para quien la prefiera.
+        //  Es ArmadoDireccionX / ArmadoDireccionY con sus medidas: la bayoneta de seis
+        //  vértices con sus quiebres a 45°, los dos bastones de L/4 con su rayita, y la
+        //  corrida de lado a lado. Cada varilla, en DOBLE LÍNEA.
+        //
+        //  El armado se mide sobre el tablero YA LLEVADO AL PAÑO de sus apoyos —es
+        //  ARMADO_AL_PANO_CADENA— para que la varilla empiece donde empieza el claro.
         if (_cfg.Bandera("ARMADO_LOSA_BAYONETA", true))
         {
-            var bayonetas = LosaEnPlanta.Bayonetas(
-                el.Vertices,
-                _cfg.Numero("ARMADO_LOSA_BAYONETA_QUIEBRE", 0.2),
-                _cfg.Numero("ARMADO_LOSA_BAYONETA_SALTO_CM", 8) / 100,
-                _cfg.Bandera("ARMADO_LOSA_DOS_DIRECCIONES", true));
+            var margen = _cfg.Numero("ARMADO_LOSA_MARGEN_CM", 0) / 100;
 
-            foreach (var b in bayonetas)
+            var ax0 = el.Vertices.Min(v => v.X) + margen;
+            var ax1 = el.Vertices.Max(v => v.X) - margen;
+            var ay0 = el.Vertices.Min(v => v.Y) + margen;
+            var ay1 = el.Vertices.Max(v => v.Y) - margen;
+
+            // AL PAÑO: cada borde se mete medio ancho del apoyo que corre sobre él.
+            if (_cfg.Bandera("ARMADO_AL_PANO_CADENA", true) && huellas.Count > 0)
             {
-                var puntos = new double[b.Count * 2];
+                var lados = LosaEnPlanta.Lados(el.Vertices);
 
-                for (var i = 0; i < b.Count; i++)
-                {
-                    puntos[2 * i] = b[i].X + x0;
-                    puntos[(2 * i) + 1] = b[i].Y + y0;
-                }
+                ax0 += MedioApoyo(lados, huellas, true, false);
+                ax1 -= MedioApoyo(lados, huellas, true, true);
+                ay0 += MedioApoyo(lados, huellas, false, false);
+                ay1 -= MedioApoyo(lados, huellas, false, true);
+            }
 
-                PolilineaAbierta(puntos, capaArmado);
+            var escalaVar = _cfg.Numero("ARMADO_LOSA_ESCALA_VARILLA", 1);
+
+            var trazos = LosaEnPlanta.ArmadoDeTablero(
+                ax0, ay0, ax1, ay1,
+                _cfg.Bandera("ARMADO_LOSA_DOS_DIRECCIONES", true),
+                escalaVar);
+
+            var medio = LosaEnPlanta.MedioDiametroDeVarilla(escalaVar);
+
+            foreach (var t in trazos)
+            {
+                DibujarTrazoDeArmado(t, x0, y0, medio, capaArmado);
             }
 
             _armadas++;
@@ -1066,6 +1219,106 @@ public sealed partial class PlantaDrawer
                 Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capaArmado);
             }
         }
+    }
+
+    /// <summary>
+    /// Dibuja un trazo del armado: en <b>doble línea</b> si es una varilla.
+    /// </summary>
+    /// <remarks>
+    /// La macro dibuja el eje y le hace <c>Offset(±d/2)</c>, con respaldo de copiar y mover.
+    /// Aquí se dibujan directamente las dos líneas, desplazadas en la perpendicular al
+    /// sentido de la varilla: es el mismo resultado y no depende de que <c>Offset</c>
+    /// responda por COM, que es de las llamadas que más fallan.
+    /// </remarks>
+    private void DibujarTrazoDeArmado(
+        LosaEnPlanta.Trazo t, double x0, double y0, double medio, string capa)
+    {
+        if (t.Puntos.Count < 2)
+        {
+            return;
+        }
+
+        if (!t.Doble || medio <= 0)
+        {
+            Puntos(t.Puntos, 0, 0);
+            return;
+        }
+
+        // La varilla corre en X: sus dos líneas se separan en Y, y al revés.
+        var dx = t.EnX ? 0 : medio;
+        var dy = t.EnX ? medio : 0;
+
+        Puntos(t.Puntos, dx, dy);
+        Puntos(t.Puntos, -dx, -dy);
+
+        void Puntos(List<(double X, double Y)> ps, double ox, double oy)
+        {
+            var arr = new double[ps.Count * 2];
+
+            for (var i = 0; i < ps.Count; i++)
+            {
+                arr[2 * i] = ps[i].X + x0 + ox;
+                arr[(2 * i) + 1] = ps[i].Y + y0 + oy;
+            }
+
+            PolilineaAbierta(arr, capa);
+        }
+    }
+
+    /// <summary>
+    /// <b>Medio ancho</b> del apoyo que corre sobre el lado de ese borde del tablero.
+    /// </summary>
+    /// <remarks>
+    /// Es <c>AnchoApoyoEnLado</c> / 2, el corrimiento con el que el armado llega al paño de
+    /// la cadena en lugar de a su eje. Se busca el lado del tablero que va en esa dirección y
+    /// en esa orilla, y se mide el apoyo más ancho que corra sobre él.
+    /// </remarks>
+    private static double MedioApoyo(
+        List<LosaEnPlanta.Segmento> lados, IReadOnlyList<ElementoPlanta> huellas,
+        bool enX, bool laMayor)
+    {
+        // El borde que toca: el lado de X mínima o máxima si se pide en X, y el de Y si no.
+        LosaEnPlanta.Segmento? mejor = null;
+        var mejorC = laMayor ? double.MinValue : double.MaxValue;
+
+        foreach (var l in lados)
+        {
+            // Un lado sirve si es PERPENDICULAR a la dirección que se ajusta.
+            var esPerpendicular = enX
+                ? Math.Abs(l.X2 - l.X1) < 1e-6
+                : Math.Abs(l.Y2 - l.Y1) < 1e-6;
+
+            if (!esPerpendicular)
+            {
+                continue;
+            }
+
+            var c = enX ? l.X1 : l.Y1;
+
+            if (laMayor ? c > mejorC : c < mejorC)
+            {
+                mejorC = c;
+                mejor = l;
+            }
+        }
+
+        if (mejor is not { } lado)
+        {
+            return 0;
+        }
+
+        double ancho = 0;
+
+        foreach (var h in huellas)
+        {
+            // El apoyo tiene que correr a lo largo de ese lado: se mide su cobertura.
+            if (LosaEnPlanta.FraccionApoyada(lado, new[] { h }) >= 0.25)
+            {
+                ancho = Math.Max(ancho, h.PeralteM);
+            }
+        }
+
+        return ancho / 2;
     }
 
     /// <summary>Una polilínea <b>abierta</b>: la bayoneta del armado.</summary>

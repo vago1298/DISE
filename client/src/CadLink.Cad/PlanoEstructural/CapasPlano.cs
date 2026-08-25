@@ -262,9 +262,15 @@ public sealed class CapasPlano
     /// que no lo lleva, y ponerle <c>E-</c> dejaba los piers fuera del orden de dibujo sin
     /// que se notara por qué.
     /// </para>
+    /// <para>
+    /// <b>Va vacía por omisión</b>, y es a propósito: el MTEXT tiene que quedar encima de la
+    /// polilínea de mampostería —para eso lleva fondo— pero <b>debajo</b> de las líneas de la
+    /// cadena y del acero. Eso sale solo con el orden en que se dibuja, así que subir también
+    /// el texto lo dejaba encima de las líneas, que es lo contrario de lo que se pidió.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<string> CapasDeTextoAlFrente() =>
-        ListaConPrefijo(_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS"));
+        ListaConPrefijo(_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", string.Empty));
 
     /// <summary>
     /// Parte una lista de la hoja por comas y le pone el prefijo a lo que le toca.

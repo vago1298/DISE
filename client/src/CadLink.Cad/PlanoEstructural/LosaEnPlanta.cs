@@ -300,44 +300,179 @@ public static class LosaEnPlanta
         return salida;
     }
 
-    /// <summary>
-    /// La <b>bayoneta</b> del armado: la varilla con sus dos quiebres, vista en planta.
-    /// </summary>
-    /// <param name="quiebre">
-    /// A qué fracción del claro quiebra: <c>ARMADO_LOSA_BAYONETA_QUIEBRE</c>, 0.2 = a L/5 de
-    /// cada apoyo, que es donde el momento cambia de signo.
+    /// <summary>Un trazo del armado: sus puntos y si va en <b>doble línea</b>.</summary>
+    /// <param name="Doble">
+    /// <c>true</c> = la varilla, que se dibuja con sus <b>dos líneas</b> separadas su
+    /// diámetro, como hace <c>DobleLineaDesde</c> en la macro. <c>false</c> = una rayita
+    /// suelta, como la marca del extremo del bastón.
     /// </param>
-    /// <param name="salto">
-    /// Cuánto salta de lado en el quiebre, en metros: <c>ARMADO_LOSA_BAYONETA_SALTO_CM</c>.
+    /// <param name="EnX">La varilla corre a lo largo de X: el doble se separa en Y.</param>
+    public sealed record Trazo(List<(double X, double Y)> Puntos, bool Doble, bool EnX);
+
+    /// <summary>
+    /// El armado del <b>tablero apoyado en sus cuatro lados</b>: bayoneta, bastones y
+    /// corrida.
+    /// </summary>
+    /// <param name="escala">
+    /// <c>ARMADO_LOSA_ESCALA_VARILLA</c>: multiplica el grosor de la varilla y, con él,
+    /// todas las separaciones. En 1 salen las medidas de la macro.
     /// </param>
     /// <remarks>
     /// <para>
-    /// Es la <b>polilínea de seis vértices con quiebres a 45°</b> de la macro, y es el armado
-    /// que va en un tablero apoyado: la varilla corre abajo en el centro del claro, sube en
-    /// los tercios y remata arriba sobre los apoyos, que es donde el momento es negativo. En
-    /// planta ese cambio de nivel se dibuja como un <b>salto de lado</b>, que es el símbolo
-    /// con el que se lee en obra.
+    /// Es <c>ArmadoDireccionX</c> y <c>ArmadoDireccionY</c>, con <b>sus números</b>: varilla
+    /// de 1.57 cm, separación de la bayoneta 1.57, corrida a 3.44 y bastones a 2.87. Por
+    /// dirección salen <b>cuatro</b> trazos, que son los que se ven en su plano:
     /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     La <b>bayoneta</b>: seis vértices con sus dos quiebres a 45°. Va arriba junto a
+    ///     los apoyos y baja al centro del claro, que es donde el momento cambia de signo.
+    ///     En planta ese cambio se ve como un salto de lado, y es el símbolo con el que se
+    ///     lee en obra.
+    ///   </item>
+    ///   <item>Dos <b>bastones</b> de L/4, uno en cada apoyo, con su rayita en la punta.</item>
+    ///   <item>Y la <b>corrida</b>, de lado a lado.</item>
+    /// </list>
     /// <para>
-    /// Va <b>una por dirección</b>, por el centro del tablero. Esto sustituye a la rejilla de
-    /// varillas: la parrilla en todos los tableros llenaba el plano de rejilla azul y tapaba
-    /// las cadenas, que es justo lo que no se quería. La parrilla sigue disponible con
-    /// <c>ARMADO_LOSA_PARRILLA</c> en SI, para quien la prefiera.
-    /// </para>
-    /// <para>
-    /// Los quiebres a 45° salen de que el salto es el mismo en las dos direcciones: se avanza
-    /// <paramref name="salto"/> a lo largo y <paramref name="salto"/> de lado.
+    /// Los quiebres van <b>en pico</b> y no redondeados: la macro los filetea con radio de
+    /// 1.5 cm —<c>ARMADO_LOSA_FILETE</c>— y a la escala de un plano de planta ese redondeo
+    /// mide dos décimas de milímetro en el papel. Se deja anotado por si algún día se quiere
+    /// el <i>bulge</i>.
     /// </para>
     /// </remarks>
-    public static List<List<(double X, double Y)>> Bayonetas(
-        IReadOnlyList<(double X, double Y)> vertices,
-        double quiebre = 0.2,
-        double salto = 0.08,
-        bool dosDirecciones = true)
+    public static List<Trazo> ArmadoDeTablero(
+        double x0, double y0, double x1, double y1,
+        bool dosDirecciones = true, double escala = 1)
     {
-        var salida = new List<List<(double X, double Y)>>();
+        var salida = new List<Trazo>();
 
-        if (vertices.Count < 3)
+        if (x1 - x0 <= Nada || y1 - y0 <= Nada)
+        {
+            return salida;
+        }
+
+        if (escala <= 0)
+        {
+            escala = 1;
+        }
+
+        // Las medidas de la macro, en metros.
+        var barD = 0.0157 * escala;
+        var sepB = 0.0157 * escala;
+        var corrOff = 0.0344 * escala;
+        var bastOff = 0.0287 * escala;
+
+        EnUnaDireccion(x0, y0, x1, y1, true);
+
+        if (dosDirecciones)
+        {
+            EnUnaDireccion(y0, x0, y1, x1, false);
+        }
+
+        return salida;
+
+        // a0..a1 = a lo largo de la varilla; b0..b1 = la otra dirección.
+        void EnUnaDireccion(double a0, double b0, double a1, double b1, bool enX)
+        {
+            var largo = a1 - a0;
+
+            if (largo <= Nada)
+            {
+                return;
+            }
+
+            var medio = (b0 + b1) / 2;
+            var arriba = medio + sepB;
+            var abajo = medio - sepB;
+            var run45 = arriba - abajo;
+
+            var hApoyo = Math.Max(0, (largo / 4) - run45);
+            var hCentro = Math.Max(0, (largo / 2) - (2 * run45));
+            var hBaston = largo / 4;
+
+            var q1 = a0 + hApoyo;
+            var q2 = q1 + run45;
+            var q3 = q2 + hCentro;
+            var q4 = Math.Min(a1, q3 + run45);
+
+            // 1) LA BAYONETA, seis vértices.
+            salida.Add(Trazo6(a0, arriba, q1, arriba, q2, abajo, q3, abajo, q4, arriba,
+                              a1, arriba, enX));
+
+            // 2) LOS DOS BASTONES, con su rayita en la punta de adentro.
+            var bBaston = arriba + (barD / 2) + bastOff;
+
+            salida.Add(Recta(a0, bBaston, a0 + hBaston, bBaston, enX, true));
+            salida.Add(Recta(a1 - hBaston, bBaston, a1, bBaston, enX, true));
+
+            salida.Add(Recta(a0 + hBaston, bBaston - (barD / 2),
+                             a0 + hBaston, bBaston + (barD / 2), enX, false));
+            salida.Add(Recta(a1 - hBaston, bBaston - (barD / 2),
+                             a1 - hBaston, bBaston + (barD / 2), enX, false));
+
+            // 3) Y LA CORRIDA, de lado a lado.
+            var bCorrida = abajo - (barD / 2) - corrOff;
+
+            salida.Add(Recta(a0, bCorrida, a1, bCorrida, enX, true));
+        }
+
+        static Trazo Recta(double a1, double b1, double a2, double b2, bool enX, bool doble) =>
+            new(new List<(double X, double Y)>
+                {
+                    enX ? (a1, b1) : (b1, a1),
+                    enX ? (a2, b2) : (b2, a2)
+                },
+                doble, enX);
+
+        static Trazo Trazo6(
+            double a1, double b1, double a2, double b2, double a3, double b3,
+            double a4, double b4, double a5, double b5, double a6, double b6, bool enX)
+        {
+            var pares = new[] { (a1, b1), (a2, b2), (a3, b3), (a4, b4), (a5, b5), (a6, b6) };
+
+            return new Trazo(
+                pares.Select(p => enX ? (X: p.Item1, Y: p.Item2) : (X: p.Item2, Y: p.Item1))
+                     .ToList(),
+                true, enX);
+        }
+    }
+
+    /// <summary>
+    /// El desplazamiento de la <b>doble línea</b> de una varilla, en metros.
+    /// </summary>
+    /// <remarks>
+    /// La macro dibuja el eje de la varilla y le hace <c>Offset(±d/2)</c>; aquí se dibujan
+    /// las dos líneas directamente, que es lo mismo y no depende de que <c>Offset</c>
+    /// funcione por COM.
+    /// </remarks>
+    public static double MedioDiametroDeVarilla(double escala = 1) =>
+        0.0157 * (escala > 0 ? escala : 1) / 2;
+
+    /// <summary>
+    /// Las <b>franjas de losacero</b>: dónde va cada una y hasta dónde llega.
+    /// </summary>
+    /// <param name="ancho">Ancho de la franja: <c>LOSACERO_FRANJA_ANCHO_M</c>, 0.15.</param>
+    /// <param name="paso">De centro a centro: <c>LOSACERO_FRANJA_SEP_M</c>, 0.8.</param>
+    /// <param name="minLargo">Una franja más corta que esto no se dibuja.</param>
+    /// <remarks>
+    /// <para>
+    /// Es <c>FranjasLosacero</c>. Las franjas van en el sentido <b>corto</b> del tablero
+    /// —que es como se coloca la lámina, apoyada en el claro menor— y se reparten
+    /// <b>centradas</b> a lo largo del otro. Cada una se recorta contra el contorno real del
+    /// paño, así que en una losa en L no se salen.
+    /// </para>
+    /// <para>
+    /// Se devuelve el eje de cada franja; el ancho lo pone el dibujante al armar el
+    /// rectángulo que después se achura con <c>FLEX</c>.
+    /// </para>
+    /// </remarks>
+    public static List<Segmento> Franjas(
+        IReadOnlyList<(double X, double Y)> vertices,
+        double ancho = 0.15, double paso = 0.8, double minLargo = 0.3)
+    {
+        var salida = new List<Segmento>();
+
+        if (vertices.Count < 3 || ancho <= Nada)
         {
             return salida;
         }
@@ -347,68 +482,149 @@ public static class LosaEnPlanta
         var yMin = vertices.Min(v => v.Y);
         var yMax = vertices.Max(v => v.Y);
 
-        var ancho = xMax - xMin;
-        var alto = yMax - yMin;
+        if (paso < ancho * 1.1)
+        {
+            paso = ancho * 1.1;
+        }
 
-        if (ancho <= Nada || alto <= Nada)
+        // La franja corre en el sentido CORTO; se repiten a lo largo del otro.
+        var horizontal = (xMax - xMin) <= (yMax - yMin);
+
+        var largo = horizontal ? yMax - yMin : xMax - xMin;
+
+        if (largo < ancho)
         {
             return salida;
         }
 
-        if (quiebre is <= 0 or >= 0.5)
+        var cuantas = (int)Math.Floor((largo - ancho) / paso) + 1;
+
+        if (cuantas < 1)
         {
-            quiebre = 0.2;
+            cuantas = 1;
         }
 
-        var corta = ancho <= alto;
+        var total = ((cuantas - 1) * paso) + ancho;
+        var inicio = (horizontal ? yMin : xMin) + ((largo - total) / 2) + (ancho / 2);
 
-        // La que va en el sentido CORTO lleva el acero principal, así que si solo va una, es
-        // esa. La barra se coloca por el centro del tablero en la otra dirección.
-        if (dosDirecciones || corta)
+        for (var i = 0; i < cuantas; i++)
         {
-            var y = (yMin + yMax) / 2;
-            salida.Add(Una(xMin, xMax, y, quiebre, salto, true));
-        }
+            var c = inicio + (i * paso);
 
-        if (dosDirecciones || !corta)
-        {
-            var x = (xMin + xMax) / 2;
-            salida.Add(Una(yMin, yMax, x, quiebre, salto, false));
+            // Dónde entra y sale la franja del contorno: la línea es horizontal si la
+            // franja va en X, así que se cortan las Y.
+            foreach (var (a, b) in Cortes(vertices, c, !horizontal))
+            {
+                if (b - a < minLargo)
+                {
+                    continue;
+                }
+
+                salida.Add(horizontal
+                    ? new Segmento(a, c, b, c)
+                    : new Segmento(c, a, c, b));
+            }
         }
 
         return salida;
+    }
 
-        static List<(double X, double Y)> Una(
-            double desde, double hasta, double centro, double quiebre, double salto, bool enX)
+    /// <summary>
+    /// ¿Es una <b>losacero</b>? Lo dicen la etiqueta, las notas o la sección.
+    /// </summary>
+    /// <remarks>
+    /// Es <c>EsLosacero</c>, y mira <b>la etiqueta primero</b>, igual que allá: en un modelo
+    /// real la propiedad se llama «DECK1» y quien dice de verdad qué es son las notas o la
+    /// etiqueta que el ingeniero puso.
+    /// </remarks>
+    public static bool DiceLosacero(
+        string? etiqueta, string? notas, string? seccion, string palabras)
+    {
+        var texto = ((etiqueta ?? string.Empty) + " " + (notas ?? string.Empty) + " " +
+                     (seccion ?? string.Empty)).ToUpperInvariant();
+
+        if (texto.Trim().Length == 0)
         {
-            var largo = hasta - desde;
-            var a = desde + (largo * quiebre);
-            var b = hasta - (largo * quiebre);
+            return false;
+        }
 
-            // El salto no puede comerse el tramo central: en un tablero chico se recorta.
-            var s = Math.Min(salto, (b - a) / 4);
+        foreach (var palabra in palabras.Split(','))
+        {
+            var p = palabra.Trim().ToUpperInvariant();
 
-            if (s < 0)
+            if (p.Length > 0 && texto.Contains(p, StringComparison.Ordinal))
             {
-                s = 0;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// El <b>calibre</b> de la losacero que traen las notas: el número después de
+    /// <c>CAL</c>.
+    /// </summary>
+    /// <remarks>
+    /// Es <c>CalibreDeTexto</c>, con su misma regla: primero el número que sigue a
+    /// <c>CAL</c> —«LOSACERO CAL 24» o «CALIBRE 22»— y, si no hay ninguno, el <b>último</b>
+    /// número del texto, que es donde suele acabar el dato. Devuelve vacío si no trae
+    /// números y entonces manda <c>LOSACERO_CALIBRE_OMISION</c>.
+    /// </remarks>
+    public static string Calibre(string? texto)
+    {
+        var t = new string((texto ?? string.Empty)
+            .ToUpperInvariant()
+            .Where(c => char.IsAsciiLetterOrDigit(c) || c == '.')
+            .ToArray());
+
+        if (t.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var cal = t.IndexOf("CAL", StringComparison.Ordinal);
+
+        if (cal >= 0)
+        {
+            var n = new System.Text.StringBuilder();
+
+            for (var i = cal + 3; i < t.Length; i++)
+            {
+                if (char.IsAsciiDigit(t[i]))
+                {
+                    n.Append(t[i]);
+                }
+                else if (n.Length > 0)
+                {
+                    break;
+                }
             }
 
-            var pts = new List<(double L, double T)>
+            if (n.Length > 0)
             {
-                (desde, 0),
-                (a - s, 0),
-                (a, s),
-                (b, s),
-                (b + s, 0),
-                (hasta, 0)
-            };
-
-            return pts
-                .Select(p => enX
-                    ? (X: p.L, Y: centro + p.T)
-                    : (X: centro + p.T, Y: p.L))
-                .ToList();
+                return n.ToString();
+            }
         }
+
+        // El último número del texto.
+        var ultimo = string.Empty;
+        var actual = new System.Text.StringBuilder();
+
+        foreach (var ch in t)
+        {
+            if (char.IsAsciiDigit(ch))
+            {
+                actual.Append(ch);
+            }
+            else if (actual.Length > 0)
+            {
+                ultimo = actual.ToString();
+                actual.Clear();
+            }
+        }
+
+        return actual.Length > 0 ? actual.ToString() : ultimo;
     }
 
     /// <summary>

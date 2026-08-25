@@ -825,10 +825,45 @@ public static class EtabsReader
             return ya;
         }
 
+        // ==============================================================================
+        //  EL DECK PRIMERO, COMO EN LA MACRO
+        // ==============================================================================
+        //  Su PropiedadDeLosa prueba GetDeck ANTES de GetSlab, y el orden importa: una
+        //  losacero es un DECK y su propiedad NO responde a GetSlab, así que preguntando al
+        //  revés se quedaba sin espesor y sin notas —y sin saber que era losacero—.
+        //
+        //  Cuando es un deck se le añade la palabra DECK a las notas: es lo que después
+        //  reconoce el dibujante para poner las franjas de losacero en lugar del armado de
+        //  concreto, igual que hace EsLosacero allá con la etiqueta y las notas.
         var metodo = esMuro ? "GetWall" : "GetSlab";
         var valor = 0d;
         var notas = string.Empty;
         var material = string.Empty;
+
+        if (!esMuro)
+        {
+            try
+            {
+                object?[] d = { seccion, 0, 0, string.Empty, 0d, 0, string.Empty, string.Empty };
+
+                if (Com.CallRet(propArea, "GetDeck", d, 1, 2, 3, 4, 5, 6, 7) == 0)
+                {
+                    valor = Convert.ToDouble(d[4]);
+                    material = (d[3]?.ToString() ?? string.Empty).Trim();
+
+                    notas = ("DECK " + (d[6]?.ToString() ?? string.Empty) + " " + material)
+                        .Trim();
+
+                    var listo = (valor, notas, material);
+                    cache[seccion] = listo;
+                    return listo;
+                }
+            }
+            catch (Exception ex) when (EsFalloCom(ex))
+            {
+                // No es un deck: se sigue con GetSlab, que es el caso normal.
+            }
+        }
 
         try
         {

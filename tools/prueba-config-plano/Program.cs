@@ -44,8 +44,8 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-// 278 y no los 261 de CrearHojaConfig: se añadieron DIECISIETE renglones que no están en
-// su hoja, y todos porque se pidieron:
+// 276 y no los 261 de CrearHojaConfig: se añadieron QUINCE renglones que no están en su
+// hoja, y todos porque se pidieron:
 //   AIRE_SOBRE_LO_DIBUJADO_M        la planta se pone encima de lo que ya haya dibujado
 //   CAPAS_TEXTO_AL_FRENTE           los rótulos, encima de todo, en una segunda pasada
 //   CAPA_DALA                       la capa de las dalas se llama E-CADENA
@@ -60,10 +60,8 @@ var cfg = new ConfigPlano();
 //   VOLADO_POR_NOTA                 el volado se reconoce por su NOTA, no por la geometría
 //   ARMADO_LOSA_BAYONETA            en el tablero apoyado va la bayoneta...
 //   ARMADO_LOSA_PARRILLA            ...y NO la rejilla, que llenaba el plano
-//   ARMADO_LOSA_BAYONETA_QUIEBRE    dónde quiebra: a L/5 de cada apoyo
-//   ARMADO_LOSA_BAYONETA_SALTO_CM   cuánto salta en el quiebre
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los diecisiete que se añadieron",
-      278, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los quince que se añadieron",
+      276, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -143,8 +141,11 @@ Igual("CADENA_SIN_MURO_CUBRE", 0.5, cfg.Numero("CADENA_SIN_MURO_CUBRE"));
 Igual("PANO_BUSCA_CM", 150d, cfg.Numero("PANO_BUSCA_CM"));
 Igual("PALABRAS del volado", "VOLADO,VOLADIZO,VOLADA,CANTILEVER",
       cfg.Texto("LOSA_PALABRAS_VOLADO"));
-Igual("ARMADO_LOSA_BAYONETA_QUIEBRE", 0.2, cfg.Numero("ARMADO_LOSA_BAYONETA_QUIEBRE"));
-Igual("ARMADO_LOSA_BAYONETA_SALTO_CM", 8d, cfg.Numero("ARMADO_LOSA_BAYONETA_SALTO_CM"));
+Igual("LOSACERO_FRANJA_ANCHO_M", 0.15, cfg.Numero("LOSACERO_FRANJA_ANCHO_M"));
+Igual("LOSACERO_FRANJA_SEP_M", 0.8, cfg.Numero("LOSACERO_FRANJA_SEP_M"));
+Igual("LOSACERO_HATCH_PATRON", "FLEX", cfg.Texto("LOSACERO_HATCH_PATRON"));
+Igual("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C",
+      cfg.Texto("LOSACERO_TEXTO_PLANTILLA"));
 Check("el volado se reconoce por su NOTA y en el tablero va la BAYONETA, no la rejilla",
       cfg.Bandera("VOLADO_POR_NOTA") && cfg.Bandera("ARMADO_LOSA_BAYONETA")
       && !cfg.Bandera("ARMADO_LOSA_PARRILLA", true));
@@ -211,7 +212,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 278 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 276 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -294,13 +295,15 @@ Igual("las capas al frente son las cuatro de la hoja",
 // Y LOS TEXTOS APARTE, para subirlos en una SEGUNDA pasada: así los rótulos quedan
 // siempre encima de la geometría y no según el orden en que los halle el recorrido.
 // PIERS va SIN prefijo, como en la macro: con E-PIERS los piers se quedaban fuera.
+// EL MTEXT NO VA AL FRENTE: tiene que quedar encima de la mamposteria pero DEBAJO de las
+// lineas de la cadena y del acero, que es el orden que se pidio.
+Igual("la lista de capas de texto al frente va VACIA", "",
+      string.Join(", ", capas.CapasDeTextoAlFrente()));
+
 // LA OTRA MITAD DEL ORDEN DE DIBUJO: la losa y su armado, AL FONDO. Da igual cuantas
 // veces se suba la cadena si el achurado y la rejilla se dibujaron despues.
 Igual("las capas al fondo", "E-LOSA, E-ARMADO LOSA, E-VOLADO, E-LOSACERO",
       string.Join(", ", capas.CapasAlFondo()));
-
-Igual("los textos van en su propia lista, y PIERS sin prefijo",
-      "E-TEXTO, PIERS", string.Join(", ", capas.CapasDeTextoAlFrente()));
 
 var otrosTextos = new ConfigPlano();
 otrosTextos.Aplicar(new Dictionary<string, string>

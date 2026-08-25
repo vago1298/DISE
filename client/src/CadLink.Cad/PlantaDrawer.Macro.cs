@@ -600,16 +600,10 @@ public sealed partial class PlantaDrawer
     /// <b>no asociativo</b>: uno asociativo desaparecería con su contorno.
     /// </para>
     /// </remarks>
-    private bool HatchDeLosa(double[] puntos, string capa)
+    private bool HatchSobre(
+        object? contorno, string capa, string patron, double escala, double anguloGrados)
     {
-        if (puntos.Length < 6)
-        {
-            return false;
-        }
-
-        var patron = _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37");
-
-        if (patron.Length == 0)
+        if (contorno is null || patron.Length == 0)
         {
             return false;
         }
@@ -618,47 +612,47 @@ public sealed partial class PlantaDrawer
         {
             return AcadConnection.Retry(() =>
             {
-                dynamic molde = _ms.AddLightWeightPolyline(puntos);
-                molde.Closed = true;
-                molde.Layer = capa;
+                // NO asociativo: así el achurado sobrevive aunque el contorno se borre —el
+                // de las franjas de losacero se borra si LOSACERO_FRANJA_CONTORNO está en
+                // NO— y no se rehace solo si alguien mueve un vértice.
+                dynamic ht = _ms.AddHatch(0, patron, false);
+                ht.AppendOuterLoop(new[] { contorno });
 
-                var hecho = false;
-
-                try
+                if (escala > 0)
                 {
-                    // NO asociativo: el molde se va a borrar.
-                    dynamic ht = _ms.AddHatch(0, patron, false);
-                    ht.AppendOuterLoop(new[] { (object)molde });
-                    ht.PatternScale = _cfg.Numero("LOSA_HATCH_ESCALA", 0.0475);
-                    ht.PatternAngle = _cfg.Numero("LOSA_HATCH_ANGULO", 45) * Math.PI / 180;
-                    ht.Evaluate();
-                    ht.Layer = capa;
-                    ht.Color = PorCapa;
-                    hecho = true;
-                }
-                catch (Exception)
-                {
-                    Nota($"No se pudo achurar el voladizo con el patrón '{patron}': " +
-                         "revisa que esté en tu acad.pat. Queda con su contorno.");
+                    ht.PatternScale = escala;
                 }
 
-                try
-                {
-                    molde.Delete();
-                }
-                catch (Exception)
-                {
-                    // Si no se deja borrar, se queda una polilínea de más en la capa del
-                    // volado: se ve casi igual y no vale la pena perder el achurado.
-                }
-
-                return hecho;
+                ht.PatternAngle = anguloGrados * Math.PI / 180;
+                ht.Evaluate();
+                ht.Layer = capa;
+                ht.Color = PorCapa;
+                return true;
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Fallo("Achurar la losa en voladizo", ex);
+            Nota($"No se pudo achurar con el patrón '{patron}': revisa que esté en tu " +
+                 "acad.pat. El contorno queda dibujado igual.");
             return false;
+        }
+    }
+
+    /// <summary>Borra una entidad, si se deja.</summary>
+    private void Borrar(object? ent)
+    {
+        if (ent is null)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() => { ((dynamic)ent).Delete(); });
+        }
+        catch (Exception)
+        {
+            // Una polilínea de más no estropea el plano.
         }
     }
 
@@ -692,6 +686,19 @@ public sealed partial class PlantaDrawer
     private (string Tipo, double Escala)? LineaDeCadenaSinMuro(ElementoPlanta el, PlantaCad p)
     {
         if (!_cfg.Bandera("CADENA_SIN_MURO_MARCAR", true))
+        {
+            return null;
+        }
+
+        // ==============================================================================
+        //  LAS VIGAS DE ACERO, SIEMPRE CONTINUAS
+        // ==============================================================================
+        //  Es el arreglo de su v50, y hace falta por lo mismo que allá: una viga de acero
+        //  NUNCA lleva muro de piso a techo debajo, así que la regla de «sin muro → a
+        //  trazos» se las llevaba TODAS a la línea punteada. Con ACERO_LINEA_BYLAYER no se
+        //  les pone ningún tipo de línea por objeto: manda la capa E-ACERO, que va continua.
+        if (_cfg.Bandera("ACERO_LINEA_BYLAYER", true) &&
+            PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma))
         {
             return null;
         }
@@ -778,8 +785,11 @@ public sealed partial class PlantaDrawer
         //      da igual cuántas veces se suba la cadena si el achurado y la rejilla de la losa
         //      se dibujaron después. Mandando la losa atrás, el resultado se ve aunque la
         //      subida al frente no llegue a aplicarse.
-        //   2. La GEOMETRÍA al frente y, encima, los TEXTOS, en dos pasadas: cada MoveToTop
-        //      deja lo suyo sobre lo anterior.
+        //   2. La GEOMETRÍA al frente —y SOLO la geometría—. El MTEXT no se sube: tiene que
+        //      quedar encima de la polilínea de mampostería (para eso lleva fondo) pero
+        //      DEBAJO de las líneas de la cadena y del acero, que es el orden que se pidió.
+        //      Sale solo, porque el rótulo se dibuja después de la mampostería y las líneas
+        //      se suben al frente al final. La lista de textos va vacía en la hoja.
         //   3. Un REGEN. Sin él, AutoCAD puede seguir mostrando el orden viejo en pantalla
         //      aunque en el dibujo ya esté cambiado, y eso se ve exactamente igual que si el
         //      orden no se hubiera aplicado.

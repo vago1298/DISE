@@ -413,9 +413,6 @@ public sealed class ConfigPlano
           "<<< SI = EN EL TABLERO APOYADO VA LA BAYONETA (la varilla con sus quiebres)"),
         P("ARMADO_LOSA_PARRILLA", "NO",
           "NO = sin rejilla de varillas en los tableros (llena el plano)"),
-        P("ARMADO_LOSA_BAYONETA_QUIEBRE", "0.2",
-          "Fraccion del claro donde quiebra la bayoneta (0.2 = a L/5 de cada apoyo)"),
-        P("ARMADO_LOSA_BAYONETA_SALTO_CM", "8", "Cuanto salta la bayoneta en el quiebre"),
         P("ARMADO_LOSA_LADO_MIN_CM", "50", "Tableros mas chicos no se arman"),
         P("ARMADO_LOSA_TEXTO", "SI", "Rotular seccion y espesor de la losa"),
         P("COLOR_ARMADO_LOSA", "142", "Color de la capa E-ARMADO LOSA"),
@@ -528,8 +525,19 @@ public sealed class ConfigPlano
         // todo, y en una SEGUNDA pasada del orden de dibujo: subidos junto con las trabes y
         // las dalas, unas veces quedaban encima y otras debajo. PIERS va sin el prefijo E-,
         // como en la macro.
-        P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",
-          "CAPAS DE TEXTO ENCIMA DE TODO, DESPUES DE LA GEOMETRIA (PIERS va sin prefijo)"),
+        // VACÍO A PROPÓSITO, y esto es importante: el MTEXT NO va al frente.
+        //
+        //   El orden que se quiere, de atrás hacia adelante, es
+        //         losa y armado  ->  polilínea de MAMPOSTERÍA  ->  MTEXT  ->  LÍNEAS
+        //   o sea: el rótulo tapa la polilínea ancha del muro —para eso lleva fondo— pero
+        //   las líneas de la cadena y del acero le pasan POR ENCIMA.
+        //
+        //   Eso sale solo: el MTEXT se dibuja después de la mampostería, y al final se
+        //   suben al frente únicamente las capas de CAPAS_AL_FRENTE. Subir también el texto
+        //   —como se hacía— lo dejaba encima de las líneas, que es justo lo que no se quería.
+        //   Si alguien quiere el texto arriba de todo, aquí se escribe TEXTO,PIERS.
+        P("CAPAS_TEXTO_AL_FRENTE", "",
+          "VACIO = el MTEXT queda encima de la mamposteria pero DEBAJO de las lineas"),
 
         // AÑADIDO: la otra mitad del orden de dibujo. La losa y su armado, AL FONDO. Da igual
         // cuantas veces se suba la cadena si el achurado y la rejilla se dibujaron despues.

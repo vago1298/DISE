@@ -656,28 +656,75 @@ Check("ninguna varilla de la L se sale del pano",
 Console.WriteLine();
 Console.WriteLine(" La bayoneta, y el volado que se reconoce por su NOTA");
 
-// LA BAYONETA: la varilla con sus dos quiebres a 45 grados, una por direccion y por el
-// centro del tablero. Sustituye a la rejilla, que llenaba todos los tableros.
-var bayonetas = LosaEnPlanta.Bayonetas(chico, 0.2, 0.08);
+// EL ARMADO DEL TABLERO: bayoneta, dos bastones con su rayita, y la corrida. Son las
+// medidas de la macro: varilla de 1.57 cm, bayoneta separada 1.57, bastones a 2.87 y
+// corrida a 3.44. Por direccion salen SEIS trazos -bayoneta, 2 bastones, 2 rayitas y
+// corrida-, o sea 12 en las dos direcciones.
+var armado = LosaEnPlanta.ArmadoDeTablero(0, 0, 4, 3);
 
-Igual("van dos bayonetas, una por direccion", 2, bayonetas.Count);
-Igual("cada una con SEIS vertices, como en la macro", 6, bayonetas[0].Count);
+Igual("el armado de un tablero lleva 12 trazos en las dos direcciones", 12, armado.Count);
+Igual("y 6 si va en una sola direccion", 6,
+      LosaEnPlanta.ArmadoDeTablero(0, 0, 4, 3, dosDirecciones: false).Count);
 
-// La primera va en el sentido X, por el centro del tablero -y = 1-, y cruza de lado a lado.
-Cerca("arranca en el borde del tablero", 0, bayonetas[0][0].X, 1e-12);
-Cerca("y termina en el otro", 3, bayonetas[0][5].X, 1e-12);
-Cerca("por el centro del claro", 1, bayonetas[0][0].Y, 1e-12);
-// El quiebre a L/5 = 0.6, con salto de 8 cm: sube a y = 1.08 entre 0.6 y 2.4.
-Cerca("quiebra a un quinto del claro", 0.6, bayonetas[0][2].X, 1e-12);
-Cerca("y ahi salta los 8 cm", 1.08, bayonetas[0][2].Y, 1e-12);
-Cerca("el tramo central va corrido a esa altura", 2.4, bayonetas[0][3].X, 1e-12);
-Cerca("y baja antes del apoyo", 1, bayonetas[0][5].Y, 1e-12);
-// A 45 grados: se avanza lo mismo a lo largo que de lado.
-Cerca("el quiebre es a 45 grados", 0.08,
-      bayonetas[0][2].X - bayonetas[0][1].X, 1e-12);
+// LA BAYONETA es el primero: seis vertices, de lado a lado del tablero.
+var bay = armado[0];
+Igual("la bayoneta tiene SEIS vertices, como en la macro", 6, bay.Puntos.Count);
+Check("y va en doble linea", bay.Doble);
+Cerca("arranca en el borde del tablero", 0, bay.Puntos[0].X, 1e-12);
+Cerca("y termina en el otro", 4, bay.Puntos[5].X, 1e-12);
 
-Igual("en una sola direccion va una", 1,
-      LosaEnPlanta.Bayonetas(chico, 0.2, 0.08, dosDirecciones: false).Count);
+// Sale arriba del centro, baja al medio del claro y vuelve a subir: el salto es 2 x 1.57 cm
+// y los quiebres van a 45 grados, o sea que avanzan lo mismo a lo largo que de lado.
+Cerca("sale por encima del centro del tablero", 1.5 + 0.0157, bay.Puntos[0].Y, 1e-12);
+Cerca("baja al centro del claro", 1.5 - 0.0157, bay.Puntos[2].Y, 1e-12);
+Cerca("el quiebre es a 45 grados", 2 * 0.0157,
+      bay.Puntos[2].X - bay.Puntos[1].X, 1e-12);
+Cerca("el primer quiebre cae a un cuarto del claro", 1.0,
+      bay.Puntos[2].X, 1e-12);
+
+// LOS BASTONES: de L/4 desde cada apoyo, y por encima de la bayoneta.
+Cerca("el baston arranca en el apoyo", 0, armado[1].Puntos[0].X, 1e-12);
+Cerca("y mide un cuarto del claro", 1.0, armado[1].Puntos[1].X, 1e-12);
+Check("el baston va en doble linea", armado[1].Doble);
+Check("y su rayita de la punta, en linea sencilla", !armado[3].Doble);
+
+// LA CORRIDA: de lado a lado, por debajo del centro.
+var corrida = armado[5];
+Cerca("la corrida va de lado a lado", 0, corrida.Puntos[0].X, 1e-12);
+Cerca("hasta el otro extremo", 4, corrida.Puntos[1].X, 1e-12);
+Check("la corrida queda por debajo de la bayoneta",
+      corrida.Puntos[0].Y < bay.Puntos[2].Y);
+
+Cerca("y la doble linea se separa medio diametro", 0.0157 / 2,
+      LosaEnPlanta.MedioDiametroDeVarilla(), 1e-12);
+
+Console.WriteLine();
+Console.WriteLine(" La losacero: franjas en el sentido corto y el calibre de las notas");
+
+// Un tablero de 6 x 3: la franja va en el sentido CORTO -la Y-, y se repiten a lo largo
+// de la X cada 80 cm.
+var deck = new List<(double X, double Y)> { (0, 0), (6, 0), (6, 3), (0, 3) };
+var franjas = LosaEnPlanta.Franjas(deck);
+
+Check("caben varias franjas", franjas.Count >= 6);
+Check("y todas corren en el sentido corto",
+      franjas.All(f => Math.Abs(f.X1 - f.X2) < 1e-9));
+Cerca("cada franja cruza el claro corto", 3, franjas[0].Largo, 1e-9);
+
+// El calibre: el numero que sigue a CAL, y si no hay, el ULTIMO numero.
+Igual("LOSACERO CAL 24 da 24", "24", LosaEnPlanta.Calibre("LOSACERO CAL 24"));
+Igual("CALIBRE 22 tambien", "22", LosaEnPlanta.Calibre("Losacero calibre 22"));
+Igual("y si no dice CAL, el ultimo numero", "25", LosaEnPlanta.Calibre("DECK 25"));
+// OJO, y es el comportamiento REAL de la macro: al normalizar se quitan los espacios, asi
+// que dos numeros seguidos se pegan. «DECK 4 25» da 425, no 25. Se deja escrito.
+Igual("dos numeros con espacio se pegan, como en la macro", "425",
+      LosaEnPlanta.Calibre("DECK 4 25"));
+Igual("sin numeros, vacio", "", LosaEnPlanta.Calibre("LOSACERO IMSA"));
+
+Check("una losa que dice DECK es losacero",
+      LosaEnPlanta.DiceLosacero("L1", "DECK 4", "", "LOSACERO,DECK"));
+Check("y una de concreto no lo es",
+      !LosaEnPlanta.DiceLosacero("L2", "LOSA AZOTEA", "SLAB10", "LOSACERO,DECK"));
 
 // EL VOLADO, POR SU NOTA. Es lo que se pidio: el ANSI37 solo donde la nota diga VOLADO.
 const string palabrasVolado = "VOLADO,VOLADIZO,VOLADA,CANTILEVER";

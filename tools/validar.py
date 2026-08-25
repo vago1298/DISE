@@ -2712,10 +2712,10 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con diecisiete renglones añadidos",
-          cfgp.count("        P(") == 278
+    check("la hoja CONFIG de la macro esta portada, con quince renglones añadidos",
+          cfgp.count("        P(") == 276
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
-          and 'P("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS",' in cfgp
+          and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
           and 'P("DRAWORDER_POR_COMANDO", "SI",' in cfgp
           and 'P("LINEAS_AL_PANO", "SI",' in cfgp
@@ -2828,7 +2828,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "278, ConfigPlano.PorOmision.Count" in pr
+          and "276, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3503,12 +3503,16 @@ def v18_planta_autocad() -> None:
           and "SubirCapas(_capas.CapasDeTextoAlFrente());" in mac
           and mac.find("SubirCapas(_capas.CapasAlFrente());")
               < mac.find("SubirCapas(_capas.CapasDeTextoAlFrente());"))
-    check("las capas de texto salen de la hoja, con PIERS sin prefijo",
+    # EL MTEXT NO SE SUBE AL FRENTE, y esto es lo que se pidio: tiene que quedar ENCIMA de
+    # la polilinea de mamposteria -para eso lleva fondo- pero DEBAJO de las lineas de la
+    # cadena y del acero. Sale solo del orden en que se dibuja, asi que la lista va VACIA.
+    check("el MTEXT no se sube al frente: queda entre la mamposteria y las lineas",
           "public IReadOnlyList<string> CapasDeTextoAlFrente()" in capp
-          and '_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", "TEXTO,PIERS")' in capp
+          and '_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", string.Empty)' in capp
+          and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and "s != piers &&" in capp)
-    check("y la prueba comprueba que PIERS no se convierte en E-PIERS",
-          '"E-TEXTO, PIERS", string.Join(", ", capas.CapasDeTextoAlFrente())' in pr)
+    check("y la prueba lo comprueba",
+          'Igual("la lista de capas de texto al frente va VACIA", ""' in pr)
 
     # CAPA POR CAPA Y EN SU ORDEN, no todas de golpe: cada MoveToTop deja lo suyo encima de
     # lo anterior. Con una sola llamada, el orden entre ellas lo decidia el recorrido del
@@ -3687,16 +3691,30 @@ def v18_planta_autocad() -> None:
 
     # EN EL TABLERO APOYADO VA LA BAYONETA, no la rejilla: la parrilla en todos los tableros
     # llenaba el plano de rejilla azul y tapaba las cadenas.
-    check("en el tablero apoyado va la bayoneta, con sus seis vertices y sus quiebres a 45",
-          "public static List<List<(double X, double Y)>> Bayonetas(" in los
-          and '_cfg.Bandera("ARMADO_LOSA_BAYONETA", true)' in dib
-          and '_cfg.Numero("ARMADO_LOSA_BAYONETA_QUIEBRE", 0.2)' in dib
+    # EL ARMADO DEL TABLERO, CON LAS MEDIDAS DE LA MACRO: la bayoneta de seis vertices con
+    # sus quiebres a 45, los dos bastones de L/4 con su rayita, y la corrida. Y cada varilla
+    # en DOBLE LINEA, que es su DobleLineaDesde.
+    check("en el tablero apoyado va la bayoneta, los bastones y la corrida",
+          "public static List<Trazo> ArmadoDeTablero(" in los
+          and "var barD = 0.0157 * escala;" in los
+          and "var corrOff = 0.0344 * escala;" in los
+          and "var bastOff = 0.0287 * escala;" in los
+          and "var hBaston = largo / 4;" in los
+          and '_cfg.Bandera("ARMADO_LOSA_BAYONETA", true)' in dib)
+    check("y cada varilla va en doble linea",
+          "public static double MedioDiametroDeVarilla(" in los
+          and "private void DibujarTrazoDeArmado(" in dib
           and "private object? PolilineaAbierta(" in dib)
+    # AL PANO: el armado empieza donde empieza el claro, no en el eje de la cadena.
+    check("el armado se mide sobre el tablero llevado al pano",
+          '_cfg.Bandera("ARMADO_AL_PANO_CADENA", true)' in dib
+          and "private static double MedioApoyo(" in dib)
     check("y la rejilla se queda apagada, disponible pero no puesta",
           'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
           and '_cfg.Bandera("ARMADO_LOSA_PARRILLA", false)' in dib)
-    check("hay prueba ejecutable de la bayoneta y del volado por nota",
-          "cada una con SEIS vertices, como en la macro" in pre
+    check("hay prueba ejecutable del armado y del volado por nota",
+          "la bayoneta tiene SEIS vertices, como en la macro" in pre
+          and "la corrida va de lado a lado" in pre
           and "una losa cuya NOTA dice VOLADO es volado" in pre
           and "una losa de azotea normal NO es volado" in pre)
 
@@ -3713,6 +3731,41 @@ def v18_planta_autocad() -> None:
     check("las lineas de E-ACERO son continuas",
           'P("LINETYPE_ACERO", "Continuous",' in cfgp
           and 'Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"))' in pr)
+    # Y NUNCA A TRAZOS POR OBJETO: es el arreglo de su v50. Una viga de acero nunca lleva
+    # muro de piso a techo debajo, asi que la regla de «sin muro -> punteada» se las llevaba
+    # TODAS. Con ACERO_LINEA_BYLAYER no se les pone tipo de linea por objeto.
+    check("y una viga de acero nunca sale punteada por objeto",
+          '_cfg.Bandera("ACERO_LINEA_BYLAYER", true)' in mac
+          and "PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma)" in mac)
+
+    # ------------------------------------------------------------------
+    # DONDE HAY ACERO LA LOSA ES LOSACERO, NO CONCRETO
+    # ------------------------------------------------------------------
+    #  Una losacero NO lleva armado de concreto: lleva las franjas de la lamina con el hatch
+    #  FLEX en el sentido corto y su rotulo con el CALIBRE, que sale de las notas de la
+    #  seccion de ETABS (LOSACERO CAL 24 -> 24).
+    check("la losacero se dibuja con sus franjas de hatch FLEX",
+          "public static List<Segmento> Franjas(" in los
+          and "public static bool DiceLosacero(" in los
+          and "private bool Losacero(" in dib
+          and '_cfg.Texto("LOSACERO_HATCH_PATRON", "FLEX")' in dib
+          and '_capas.Prefijo + "LOSACERO"' in dib)
+    check("y con su rotulo, con el calibre de las notas",
+          "public static string Calibre(" in los
+          and '_cfg.Texto("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C")' in dib
+          and '_cfg.Texto("LOSACERO_CALIBRE_OMISION", "24")' in dib)
+    # El calibre: primero el numero que sigue a CAL, y si no hay, el ULTIMO del texto.
+    check("el calibre sale del numero que sigue a CAL",
+          'var cal = t.IndexOf("CAL", StringComparison.Ordinal);' in los)
+    # Y EL LECTOR TIENE QUE SABER QUE ES UN DECK: su PropiedadDeLosa prueba GetDeck ANTES de
+    # GetSlab, porque la propiedad de una losacero no responde a GetSlab.
+    check("el lector pregunta GetDeck antes de GetSlab",
+          'Com.CallRet(propArea, "GetDeck"' in lect_sap
+          and '"DECK " + (d[6]?.ToString()' in lect_sap)
+    check("hay prueba ejecutable de la losacero",
+          "una losa que dice DECK es losacero" in pre
+          and "LOSACERO CAL 24 da 24" in pre
+          and "y todas corren en el sentido corto" in pre)
 
     # Y LA OTRA MITAD DEL ORDEN DE DIBUJO: la losa y su armado AL FONDO, mas un REGEN. Sin el
     # regen, AutoCAD puede seguir mostrando el orden viejo y eso se ve igual que si no se
@@ -3732,13 +3785,20 @@ def v18_planta_autocad() -> None:
           and "Regenerar();" in mac)
 
     check("el voladizo lleva su hatch en su propia capa",
-          "private bool HatchDeLosa(" in mac
-          and '_cfg.Texto("LOSA_HATCH_PATRON", "ANSI37")' in mac
+          "private bool HatchSobre(" in mac
+          and '_cfg.Texto("LOSA_HATCH_PATRON", "ANSI37")' in dib
           and "_capas.CapaVolado" in dib
           and "public string CapaVolado" in capp)
-    check("el molde del hatch se borra, que para eso va no asociativo",
+    # LA LINEA DEL VOLADO SE QUEDA, Y COMPLETA: es el borde libre de la losa, lo que se
+    # cimbra, asi que no se recorta contra los muros. La misma polilinea es el molde del
+    # achurado, asi que no hay que crear una auxiliar para borrarla.
+    check("el contorno del voladizo se queda dibujado y completo",
+          "var contorno = PolilineaCerrada(pts, capa);" in dib
+          and "HatchSobre(contorno, capa," in dib
+          and "return contorno is not null;" in dib)
+    check("y el achurado va NO asociativo, para que sobreviva al molde",
           "_ms.AddHatch(0, patron, false)" in mac
-          and "molde.Delete();" in mac)
+          and "private void Borrar(" in mac)
     check("E-LOSA se queda apagada y E-VOLADO encendida",
           "private void ApagarCapasDeLosa()" in mac
           and "lay.LayerOn = false;" in mac
