@@ -1865,6 +1865,11 @@ public partial class MainWindow : Window
         _vista.VerLosas = VerLosasPlanoChk.IsChecked == true;
         _vista.VerDiagonales = false;
 
+        // LOS EJES son de la planta y solo de la planta: en el visor 3D la cuadrícula no
+        // aporta —se cruzaría con todo— así que esta casilla no tiene pareja allá y no hace
+        // falta restaurarla después.
+        _vista.VerEjes = VerEjesPlanoChk.IsChecked == true;
+
         _vista.DibujarPlanta(PlantaCanvas, NivelElegido);
 
         // Y se dejan como estaban, para que el visor 3D no herede estos filtros: es

@@ -603,6 +603,8 @@ def v11_visor() -> None:
     check("VistaModelo.cs presente", True)
 
     t = leer(p)
+    tx_planos = leer(ruta("client", "src", "CadLink.App", "MainWindow.xaml"))
+    codigo_planos = leer(ruta("client", "src", "CadLink.App", "MainWindow.xaml.cs"))
 
     # La fórmula correcta suma los dos términos y niega el conjunto
     formulas = re.findall(r"-\(\((\w+) \* [Cc]e\) \+ \((\w+) \* [Ss]e\)\)", t)
@@ -688,6 +690,39 @@ def v11_visor() -> None:
           "Math.Abs(el.AnguloGrados) > 1e-9" in ext
           and "(n1.Item1 * ca) + (n2.Item1 * sa)" in ext
           and "(n2.Item1 * ca) - (n1.Item1 * sa)" in ext)
+    # ------------------------------------------------------------------
+    # LA CUADRICULA DE EJES EN LA VISTA PREVIA
+    # ------------------------------------------------------------------
+    #  Se pidio. Sale del modelo si el programa la dio y, si no, se deduce de las columnas
+    #  -el mismo respaldo del plano-, y pasa por el MISMO filtro de repetidos, porque la
+    #  cuadricula de ETABS suele traer el mismo eje declarado dos veces.
+    check("la vista previa dibuja la cuadricula de ejes",
+          "private List<(string Id, double Ordenada)> EjesDeLaPlanta(" in t
+          and "private static void DibujarEjesEnPlanta(" in t
+          and "Modelo.Ejes ?? EjesModelo.DesdeGeometria(Modelo)" in t
+          and "EjesPlano.SinRepetidos(lista, 0.01)" in t)
+    # LOS EJES SE MIDEN CON LOS ELEMENTOS: un eje puede caer por fuera de lo construido -el
+    # de una fachada sin muro- y sin contarlo se dibujaria fuera del lienzo.
+    check("los ejes entran en el encuadre, para que no queden fuera del lienzo",
+          "var ejesX = EjesDeLaPlanta(true);" in t
+          and "xMin = Math.Min(xMin, o);" in t
+          and "yMax = Math.Max(yMax, o);" in t)
+    # AL FONDO, como en el plano: el eje es la referencia, no el dibujo.
+    check("y van al fondo, antes que los elementos",
+          "DibujarEjesEnPlanta(lienzo, ejesX, ejesY, APantallaPlanta" in t)
+    # LA BURBUJA EN PIXELES, no en metros: es un rotulo y tiene que leerse igual de cerca
+    # que de lejos, igual que en el plano su radio va en papel.
+    check("la burbuja del eje va en pixeles y rellena, para que se lea",
+          "const double Radio = 9;" in t
+          and "Fill = RellenoBurbuja" in t
+          and "StrokeDashArray = trazos" in t)
+    # Y SE PUEDE APAGAR: en un modelo con muchos ejes la cuadricula tapa lo que se mira.
+    check("los ejes se pueden apagar con su casilla",
+          "public bool VerEjes { get; set; } = true;" in t
+          and "if (!VerEjes || Modelo is null)" in t
+          and 'x:Name="VerEjesPlanoChk"' in tx_planos
+          and "_vista.VerEjes = VerEjesPlanoChk.IsChecked == true;" in codigo_planos)
+
     # LA POSICION viene sola: el visor lee el MISMO ModeloEtabs al que el lector ya le
     # aplico el punto de insercion, asi que la vista previa y el plano coinciden.
     check("y la posicion sale del modelo ya corregido, sin recalcularla aparte",

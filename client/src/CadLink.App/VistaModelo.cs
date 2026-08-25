@@ -44,6 +44,12 @@ public sealed partial class VistaModelo
     private static readonly Brush RellenoMuro = Pincel(0x6B, 0x7A, 0x89, 0x55);
     private static readonly Brush ColorEje = Pincel(0xB0, 0xB0, 0xB0);
 
+    // La burbuja del eje va RELLENA, y opaca: si fuera hueca, la línea a trazos del propio
+    // eje le pasaría por dentro y el nombre no se leería.
+    private static readonly Brush RellenoBurbuja = Pincel(0xFF, 0xFF, 0xFF);
+
+    private static readonly Brush ColorEjeTexto = Pincel(0x60, 0x6A, 0x74);
+
     private static SolidColorBrush Pincel(byte r, byte g, byte b, byte a = 0xFF) =>
         new(Color.FromArgb(a, r, g, b));
 
@@ -70,6 +76,16 @@ public sealed partial class VistaModelo
     public bool VerMuros { get; set; } = true;
 
     public bool VerLosas { get; set; } = true;
+
+    /// <summary>
+    /// Si la planta enseña la <b>cuadrícula de ejes</b>, con sus burbujas.
+    /// </summary>
+    /// <remarks>
+    /// Es un filtro aparte de los de tipo de elemento porque los ejes <b>no son elementos</b>:
+    /// son la referencia del replanteo. Y se puede apagar porque en un modelo con muchos ejes
+    /// la cuadrícula tapa lo que se quiere mirar.
+    /// </remarks>
+    public bool VerEjes { get; set; } = true;
 
     public void Reiniciar()
     {
@@ -420,6 +436,27 @@ public sealed partial class VistaModelo
             }
         }
 
+        // ==============================================================================
+        //  LA CUADRÍCULA DE EJES
+        // ==============================================================================
+        //  Se mide ANTES de calcular la escala, junto con los elementos, porque un eje puede
+        //  quedar por fuera de lo construido —el eje de una fachada que no lleva muro— y si
+        //  no se contara, ese eje se dibujaría fuera del lienzo.
+        var ejesX = EjesDeLaPlanta(true);
+        var ejesY = EjesDeLaPlanta(false);
+
+        foreach (var (_, o) in ejesX)
+        {
+            xMin = Math.Min(xMin, o);
+            xMax = Math.Max(xMax, o);
+        }
+
+        foreach (var (_, o) in ejesY)
+        {
+            yMin = Math.Min(yMin, o);
+            yMax = Math.Max(yMax, o);
+        }
+
         // Un nivel de una sola columna tiene extensión cero: se le da holgura
         // para no dividir por cero al calcular la escala.
         if (xMax - xMin < 1e-6) { xMin -= 1; xMax += 1; }
@@ -448,6 +485,11 @@ public sealed partial class VistaModelo
             ClaseElemento.Columna => 3,
             _ => 2
         };
+
+        // Los EJES van primero, o sea al fondo de todo: son la referencia, no el dibujo. Es
+        // el mismo orden que se pidió para el plano de AutoCAD, donde la capa de los ejes se
+        // manda al fondo.
+        DibujarEjesEnPlanta(lienzo, ejesX, ejesY, APantallaPlanta, xMin, yMin, xMax, yMax);
 
         foreach (var el in elementos.OrderBy(Capa))
         {
@@ -637,6 +679,143 @@ public sealed partial class VistaModelo
         Canvas.SetLeft(r, c.X - 2.5);
         Canvas.SetTop(r, c.Y - 2.5);
         lienzo.Children.Add(r);
+    }
+
+    /// <summary>
+    /// La cuadrícula del modelo en una dirección, ya <b>sin ejes repetidos</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sale del modelo si el programa la dio y, si no, se <b>deduce de las columnas</b>, que
+    /// es el mismo respaldo del plano: <c>GetGridSys_2</c> no existe en todas las versiones
+    /// de ETABS.
+    /// </para>
+    /// <para>
+    /// Y pasa por el mismo filtro de repetidos que el plano —<c>EjesPlano.SinRepetidos</c>,
+    /// con un centímetro de holgura—, porque la cuadrícula del modelo suele traer el mismo
+    /// eje declarado dos veces y entonces se dibujarían dos líneas y dos burbujas encima de
+    /// la otra.
+    /// </para>
+    /// </remarks>
+    /// <param name="enX"><c>true</c> = los verticales; <c>false</c> = los horizontales.</param>
+    private List<(string Id, double Ordenada)> EjesDeLaPlanta(bool enX)
+    {
+        if (!VerEjes || Modelo is null)
+        {
+            return new List<(string Id, double Ordenada)>();
+        }
+
+        var ejes = Modelo.Ejes ?? EjesModelo.DesdeGeometria(Modelo);
+        var lista = (enX ? ejes.X : ejes.Y)
+            .Select(e => (e.Id, e.Ordenada))
+            .ToList();
+
+        return EjesPlano.SinRepetidos(lista, 0.01);
+    }
+
+    /// <summary>
+    /// Dibuja la <b>cuadrícula</b>: sus líneas a trazos y una burbuja con su nombre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las líneas van en coordenadas del modelo —así se estiran con el zoom, como todo lo
+    /// demás— pero las <b>burbujas van en píxeles</b>: son un rótulo, y un rótulo tiene que
+    /// leerse igual de cerca que de lejos. Es lo mismo que hace el plano, donde la burbuja
+    /// tiene su radio en papel y no en metros.
+    /// </para>
+    /// <para>
+    /// Una burbuja por eje, del lado de arriba en los verticales y del lado izquierdo en los
+    /// horizontales. En el plano van en los cuatro lados porque ahí se acotan; aquí sobra con
+    /// una, y así la vista no se llena de círculos.
+    /// </para>
+    /// </remarks>
+    private static void DibujarEjesEnPlanta(
+        Canvas lienzo,
+        List<(string Id, double Ordenada)> ejesX,
+        List<(string Id, double Ordenada)> ejesY,
+        Func<double, double, Point> aPantalla,
+        double xMin, double yMin, double xMax, double yMax)
+    {
+        if (ejesX.Count == 0 && ejesY.Count == 0)
+        {
+            return;
+        }
+
+        // El rectángulo de lo dibujado, en píxeles. La Y está invertida, así que la esquina
+        // de arriba a la izquierda es (xMin, yMax).
+        var arriba = aPantalla(xMin, yMax);
+        var abajo = aPantalla(xMax, yMin);
+
+        // Cuánto se sale la línea del eje por fuera de lo dibujado, y dónde va la burbuja.
+        const double Sale = 12;
+        const double Radio = 9;
+
+        var trazos = new DoubleCollection { 8, 4, 2, 4 };
+
+        void Linea(double x1, double y1, double x2, double y2)
+        {
+            lienzo.Children.Add(new Line
+            {
+                X1 = x1, Y1 = y1, X2 = x2, Y2 = y2,
+                Stroke = ColorEje,
+                StrokeThickness = 0.8,
+
+                // A trazos, como el DASHDOT de la capa E-EJES del plano: así el eje no se
+                // confunde con una pieza.
+                StrokeDashArray = trazos
+            });
+        }
+
+        void Burbuja(double cx, double cy, string id)
+        {
+            var burbuja = new Ellipse
+            {
+                Width = Radio * 2,
+                Height = Radio * 2,
+                Stroke = ColorEje,
+                StrokeThickness = 0.9,
+                Fill = RellenoBurbuja
+            };
+
+            Canvas.SetLeft(burbuja, cx - Radio);
+            Canvas.SetTop(burbuja, cy - Radio);
+            lienzo.Children.Add(burbuja);
+
+            // El texto se centra a mano en un cuadro del tamaño de la burbuja: es más
+            // predecible que medir la cadena, y con uno o dos caracteres es exacto.
+            var t = new TextBlock
+            {
+                Text = id,
+                FontSize = 9.5,
+                Foreground = ColorEjeTexto,
+                TextAlignment = TextAlignment.Center,
+                Width = Radio * 2,
+                Height = Radio * 2,
+                Padding = new Thickness(0, Radio - 7, 0, 0)
+            };
+
+            Canvas.SetLeft(t, cx - Radio);
+            Canvas.SetTop(t, cy - Radio);
+            lienzo.Children.Add(t);
+        }
+
+        // ---- los verticales, con su burbuja arriba ---------------------------------
+        foreach (var (id, o) in ejesX)
+        {
+            var x = aPantalla(o, yMin).X;
+
+            Linea(x, arriba.Y - Sale, x, abajo.Y + Sale);
+            Burbuja(x, arriba.Y - Sale - Radio, id);
+        }
+
+        // ---- los horizontales, con su burbuja a la izquierda -----------------------
+        foreach (var (id, o) in ejesY)
+        {
+            var y = aPantalla(xMin, o).Y;
+
+            Linea(arriba.X - Sale, y, abajo.X + Sale, y);
+            Burbuja(arriba.X - Sale - Radio, y, id);
+        }
     }
 
     /// <summary>
