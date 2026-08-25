@@ -306,8 +306,24 @@ Igual("CASTILLO en las notas manda", "CASTILLO",
 Igual("COLUMNA en las notas manda", "COLUMNA",
       SeccionesModelo.TipoDeLasNotas("columna de concreto"));
 Igual("TRABE en las notas manda", "TRABE", SeccionesModelo.TipoDeLasNotas("TRABE"));
-Igual("CADENA es DALA, que es como lo llama la macro", "DALA",
+// LAS TRES CADENAS, CADA UNA CON SU NOMBRE: son tres cosas distintas en obra -la de
+// desplante va sobre la cimentacion, la intermedia a media altura del muro y la de
+// cerramiento arriba- y fundirlas en «DALA» es perder el dato que las distingue.
+Igual("la de CERRAMIENTO sale con su nombre", "CADENA DE CERRAMIENTO",
       SeccionesModelo.TipoDeLasNotas("CADENA DE CERRAMIENTO"));
+Igual("la de DESPLANTE, tambien", "CADENA DE DESPLANTE",
+      SeccionesModelo.TipoDeLasNotas("cadena de desplante"));
+Igual("y la INTERMEDIA", "CADENA INTERMEDIA",
+      SeccionesModelo.TipoDeLasNotas("CADENA INTERMEDIA"));
+// Y las tres van CON las dalas en el orden de la tabla: se leen juntas.
+Igual("la de cerramiento se ordena con las dalas",
+      SeccionesModelo.OrdenDeTipo("DALA"),
+      SeccionesModelo.OrdenDeTipo("CADENA DE CERRAMIENTO"));
+Igual("y la de desplante tambien",
+      SeccionesModelo.OrdenDeTipo("DALA"),
+      SeccionesModelo.OrdenDeTipo("CADENA DE DESPLANTE"));
+// Una cadena a secas, sin decir de que tipo, sigue siendo DALA.
+Igual("«CADENA» a secas es DALA", "DALA", SeccionesModelo.TipoDeLasNotas("CADENA"));
 Igual("y sin notas no dice nada", "", SeccionesModelo.TipoDeLasNotas(""));
 
 // EL ORDEN IMPORTA, y no es alfabetico: lo mas especifico primero. «CONTRATRABE»

@@ -547,6 +547,11 @@ public partial class MainWindow : Window
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
             : "La generación de dibujos no está incluida en la versión de prueba.");
 
+        // EL CANDADO DE LA LICENCIA sigue en su sitio, solo que ahora la pestaña se llama
+        // «Dibujar planos estructurales»: el módulo de ETABS se metió DENTRO de ella —el
+        // visor a la derecha y la lectura del modelo en su panel plegable— así que la que hay
+        // que apagar sin licencia es esa. El nombre EtabsTab se conserva a propósito: es lo
+        // que ata este candado a la pestaña, y renombrarlo solo obligaría a tocar dos sitios.
         var puedeEtabs = _license.HasFeature("etabs");
         EtabsTab.IsEnabled = puedeEtabs;
         if (!puedeEtabs)
@@ -2375,7 +2380,13 @@ public partial class MainWindow : Window
         var e = new ElementoPlanta
         {
             Clase = ClasePlantaDe(el.Clase),
-            Tipo = SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3),
+
+            // CON LAS NOTAS, que es lo que faltaba y por lo que las cadenas no salían como
+            // cadenas: aquí se clasificaba SIN ellas, así que una «CC 15X25» de 25 cm de
+            // peralte pasaba de los 20 del criterio por medidas y se iba a E-TRABE, aunque en
+            // sus notas dijera CADENA DE CERRAMIENTO. La tabla de secciones sí las leía; el
+            // dibujo, no, y por eso una decía una cosa y el otro otra.
+            Tipo = SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3, null, el.Notas),
             Forma = el.Forma,
             Etiqueta = el.Etiqueta,
             Seccion = el.Seccion,

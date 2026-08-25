@@ -212,6 +212,26 @@ public sealed class CapasPlano
     /// <remarks>Es el <c>CapaDeTipo</c> de la macro, con la misma salida por omisión.</remarks>
     public string CapaDeTipo(string tipo)
     {
+        // ==============================================================================
+        //  LAS TRES CADENAS VAN A LAS CAPAS DE LAS CADENAS
+        // ==============================================================================
+        //  Desde que el tipo sale de las notas de la propiedad, una cadena puede llegar aquí
+        //  como CADENA DE CERRAMIENTO, CADENA DE DESPLANTE o CADENA INTERMEDIA. Ninguno de
+        //  esos nombres es el de una capa —las capas son E-CADENA y E-CADENA DESPLANTE— así
+        //  que sin esta traducción las tres se irían a E-OTROS, que es peor que antes: se
+        //  dibujarían, pero en una capa que nadie mira.
+        //
+        //  La de DESPLANTE tiene capa propia porque en el plano de cimentación se distingue
+        //  del resto; las otras dos van a la de las cadenas, que es donde van las dalas.
+        var t = (tipo ?? string.Empty).Trim();
+
+        if (t.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase))
+        {
+            return t.Contains("DESPLANTE", StringComparison.OrdinalIgnoreCase)
+                ? CapaCadenaDesplante
+                : CapaDeTipo("DALA");
+        }
+
         foreach (var c in Todas)
         {
             if (c.Tipo.Length > 0 && string.Equals(c.Tipo, tipo, StringComparison.OrdinalIgnoreCase))

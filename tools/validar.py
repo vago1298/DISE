@@ -802,13 +802,16 @@ def v11_visor() -> None:
           "GetInsertionPoint" not in t
           and "e.X1 +=" not in t)
 
-    # LA PESTAÑA DEL MODELO, AL LADO DE LA DE PLANOS. Se trabaja con las dos a la vez -se
-    # lee el modelo, se mira, se dibuja- y estaban en filas distintas del TabControl.
+    # LA PESTAÑA DEL MODELO YA NO EXISTE: primero se movio al lado de la de planos y despues
+    # se pidio meterla DENTRO, que es donde esta. Lo que se comprueba ahora es eso: que el
+    # visor viva dentro de la pestaña de planos, con la planta a la izquierda y el 3D a la
+    # derecha, y que no haya quedado una pestaña suelta.
     orden = re.findall(r'<TabItem[^>]*Header="([^"]+)"', tx_planos)
-    check("la pestaña de ETABS/SAP2000 va junto a la de planos",
+    check("el visor del modelo vive dentro de la pestaña de planos",
           "Dibujar planos estructurales" in orden
-          and "ETABS/SAP2000" in orden
-          and orden.index("ETABS/SAP2000") == orden.index("Dibujar planos estructurales") + 1)
+          and "ETABS/SAP2000" not in orden
+          and "Vista en planta y cortes" in tx_planos
+          and '<StackPanel Grid.Column="1" Margin="8,0,0,0">' in tx_planos)
 
     # Los lienzos necesitan Background para recibir el mouse
     x = ruta("client", "src", "CadLink.App", "MainWindow.xaml")
@@ -2699,7 +2702,24 @@ def v16_extruida_piers() -> None:
 
     # La pestaña y LA CASILLA. Se pidio elegir el programa en una casilla, no con un
     # boton por programa: con dos botones era facil pulsar el que no tocaba.
-    check("la pestaña dice ETABS/SAP2000", 'Header="ETABS/SAP2000"' in xaml)
+    # YA NO HAY PESTAÑA DE ETABS: se pidio meterla DENTRO de la de planos, y ahi esta. El
+    # visor del modelo a la derecha de la planta, y la lectura del modelo -conexion, botones y
+    # tablas- en un panel plegable, porque se usa una vez al empezar y despues estorba.
+    check("el modulo de ETABS vive dentro de la pestaña de planos",
+          'Header="ETABS/SAP2000"' not in xaml
+          and 'x:Name="EtabsTab" Header="Dibujar planos estructurales"' in xaml
+          and 'Header="Lectura del modelo y tablas de elementos"' in xaml)
+    # Y EL CANDADO DE LA LICENCIA sigue atado a esa pestaña: sin licencia de ETABS no se
+    # puede usar, como antes.
+    check("y el candado de la licencia sigue en pie",
+          "EtabsTab.IsEnabled = puedeEtabs;" in codigo)
+    # LAS DOS VISTAS, UNA A CADA LADO: planta y cortes a la izquierda, 3D a la derecha, al
+    # 50% cada una, que es como se pidio.
+    check("la planta va a la izquierda y el 3D a la derecha",
+          '<StackPanel Grid.Column="0" Margin="0,0,8,0">' in xaml
+          and '<StackPanel Grid.Column="1" Margin="8,0,0,0">' in xaml
+          and "Vista en planta y cortes" in xaml
+          and xaml.index('Vista en planta y cortes') < xaml.index('Vista del modelo'))
     check("hay una casilla para elegir el programa, con los dos",
           'x:Name="ProgramaCsiCombo"' in xaml
           and '<ComboBoxItem Content="ETABS" />' in xaml
@@ -2758,19 +2778,16 @@ def v16_extruida_piers() -> None:
     # vistas 3D y extruida- y sus pestañas no cuentan aqui. Se distinguen por la sangria.
     orden = [m.group(1) for m in
              re.finditer(r'\n            <TabItem[^>]*?Header="([^"]+)"', xaml)]
-    for cabecera in ("Dibujar planos estructurales", "Secciones modelo",
-                     "ETABS/SAP2000", "Licencia"):
+    for cabecera in ("Dibujar planos estructurales", "Secciones modelo", "Licencia"):
         check(f"existe la pestaña {cabecera}", cabecera in orden)
 
+    # La de ETABS/SAP2000 YA NO ES UNA PESTAÑA: se pidio meterla dentro de la de planos.
+    check("ETABS/SAP2000 ya no es una pestaña suelta", "ETABS/SAP2000" not in orden)
+
     if all(c in orden for c in ("Dibujar planos estructurales", "Secciones modelo",
-                                "ETABS/SAP2000", "Licencia")):
-        check("los planos van antes que ETABS/SAP2000",
-              orden.index("Dibujar planos estructurales") < orden.index("ETABS/SAP2000"))
-        check("ETABS/SAP2000 va JUSTO DESPUES de la de planos",
-              orden.index("ETABS/SAP2000")
-              == orden.index("Dibujar planos estructurales") + 1)
-        check("y la de secciones del modelo queda despues de las dos",
-              orden.index("ETABS/SAP2000") < orden.index("Secciones modelo"))
+                                "Licencia")):
+        check("la de planos va antes que la de secciones del modelo",
+              orden.index("Dibujar planos estructurales") < orden.index("Secciones modelo"))
         check("Licencia se queda de ultima",
               orden.index("Licencia") == len(orden) - 1)
 
@@ -3638,12 +3655,30 @@ def v18_planta_autocad() -> None:
           and "_capas.CapaDeTipo(tipo)" in dib
           and '_capas.Prefijo + "TEXTO"' in dib
           and '_capas.Prefijo + "TITULO"' in dib)
+    prs_cad = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
+
     check("un perfil de acero va a la capa del acero",
           "PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma)" in dib
           and '_capas.CapaDeTipo("ACERO")' in dib)
-    check("el tipo lo clasifica la ventana con la regla de la macro",
-          "SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3)" in codigo
+    # EL TIPO DEL PLANO, CON LAS NOTAS. Aqui se clasificaba SIN ellas, y por eso las cadenas
+    # no salian como cadenas: una «CC 15X25» de 25 cm de peralte pasa de los 20 del criterio
+    # por medidas y se iba a E-TRABE, aunque en sus notas dijera CADENA DE CERRAMIENTO. La
+    # tabla de secciones si las leia; el dibujo, no.
+    check("el tipo lo clasifica la ventana con la regla de la macro Y las notas",
+          "SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3, null, el.Notas)"
+          in codigo
           and "public string Tipo { get; set; }" in dto)
+    # Y LAS TRES CADENAS VAN A LAS CAPAS DE LAS CADENAS: CADENA DE CERRAMIENTO no es el
+    # nombre de ninguna capa, asi que sin traducirlo se irian a E-OTROS, que es peor que
+    # antes: se dibujarian, pero en una capa que nadie mira.
+    check("las tres cadenas van a la capa de las cadenas",
+          'if (t.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase))' in capp
+          and 'CapaCadenaDesplante' in capp
+          and 'CapaDeTipo("DALA")' in capp)
+    check("hay prueba ejecutable de las tres cadenas",
+          "la de CERRAMIENTO sale con su nombre" in prs_cad
+          and "la de cerramiento se ordena con las dalas" in prs_cad
+          and "«CADENA» a secas es DALA" in prs_cad)
 
     # El color se PONE, exista la capa o no: es lo que hace AsegurarCapa en la macro, y es
     # lo que permite que el plano se vea igual aunque el dibujo traiga esas capas de otro

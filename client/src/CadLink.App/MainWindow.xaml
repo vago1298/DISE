@@ -1790,7 +1790,7 @@
             </TabItem>
 
             <!-- ===== Dibujar planos estructurales ===== -->
-            <TabItem Header="Dibujar planos estructurales">
+            <TabItem x:Name="EtabsTab" Header="Dibujar planos estructurales">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="22">
                         <TextBlock Text="Dibujar planos estructurales" Style="{StaticResource ModuleTitleStyle}"
@@ -1873,7 +1873,28 @@
                             </StackPanel>
                         </Border>
 
-<StackPanel Margin="10">
+<!-- ==========================================================
+                             EL VISUALIZADOR, EN DOS COLUMNAS
+                             ==========================================================
+                             Se pidio asi: a la IZQUIERDA la planta y sus cortes, a la
+                             DERECHA el 3D. Y tiene sentido de uso: se elige el nivel y el
+                             corte a la izquierda y se comprueba en el 3D de la derecha sin
+                             cambiar de pestaña ni perder de vista lo uno ni lo otro.
+
+                             Las dos columnas al 50%: las dos vistas son igual de
+                             importantes, y con una mas ancha que la otra la estrecha deja
+                             de servir para mirar. -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- IZQUIERDA: la planta y los cortes -->
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="Vista en planta y cortes" FontWeight="SemiBold" FontSize="12.5"
+                                           Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+                                <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                         <TextBlock Text="Nivel:" FontWeight="SemiBold" FontSize="11.5"
                                                    VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -1903,64 +1924,11 @@
                                                 MouseWheel="OnVistaWheel" />
                                     </Border>
                                 </StackPanel>
-                        <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}"
-                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <TabItem x:Name="EtabsTab" Header="ETABS/SAP2000">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
-                        <TextBlock Text="Lectura del modelo de ETABS" Style="{StaticResource ModuleTitleStyle}"
-                                   ToolTip="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
-
-                        <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="16"
-                                MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,16">
-                            <StackPanel>
-                                <TextBlock Text="Antes de conectar" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" />
-                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"
-                                           Text="1. ETABS o SAP2000 abierto, con el modelo cargado.&#x0a;2. Sin cuadros de dialogo abiertos en el programa.&#x0a;3. El modelo guardado al menos una vez." />
                             </StackPanel>
-                        </Border>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                            <!-- LA CASILLA DEL PROGRAMA: de aqui sale a quien se le habla, y
-                                 manda para TODO lo de esta pestaña -probar la conexion, leer
-                                 el modelo, leer los piers y armar los planos-. Antes habia un
-                                 boton por programa y era facil pulsar el que no tocaba.
-
-                                 Es una sola casilla porque el lector es UNO: CSI comparte la
-                                 OAPI entre ETABS y SAP2000 -la misma cOAPI, el mismo SapModel
-                                 y las mismas llamadas- y lo que cambia es el ProgID con el que
-                                 se pide el objeto activo y la libreria que se carga. -->
-                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
-                                       VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <ComboBox x:Name="ProgramaCsiCombo" Width="120" SelectedIndex="0"
-                                      VerticalAlignment="Center" Margin="0,0,12,0"
-                                      SelectionChanged="OnProgramaCsiCambiado"
-                                      ToolTip="De donde se lee el modelo: de ETABS o de SAP2000.&#10;Vale para todos los botones de esta pestaña.">
-                                <ComboBoxItem Content="ETABS" />
-                                <ComboBoxItem Content="SAP2000" />
-                            </ComboBox>
-
-                            <Button Content="Probar conexion" Style="{StaticResource PrimaryButtonStyle}" Click="OnTestEtabs" />
-                            <Button x:Name="LeerModeloCsiButton" Content="Leer modelo de ETABS"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnImportModeloCsi"
-                                    ToolTip="Lee el modelo abierto en el programa de la casilla y lo muestra en el visor." />
-                            <Button Content="Leer piers de muros" Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="OnLeerPiers"
-                                    ToolTip="Lee las etiquetas de pier de los muros y sus medidas por nivel.&#10;En ETABS se asignan con Assign &gt; Shell &gt; Pier Label." />
-                        </StackPanel>
-
-                        <TextBlock x:Name="EtabsStatusText" FontSize="12" TextWrapping="Wrap" MaxWidth="760"
-                                   FontFamily="Consolas"
-                                   Foreground="{DynamicResource TextBrush}" Margin="0,0,0,14" />
-
-                        <!-- ===== Visor del modelo: 3D y planta ===== -->
+                            <!-- DERECHA: el modelo en 3D -->
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+<!-- ===== Visor del modelo: 3D y planta ===== -->
                         <TextBlock Text="Vista del modelo" FontWeight="SemiBold" FontSize="12.5"
                                    Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
 
@@ -2076,7 +2044,65 @@
 
                         </TabControl>
 
-                        <!-- Los piers van en su propia tabla: son pier x nivel, no
+                        
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- La lectura del modelo y sus tablas: PLEGADAS, porque se usan una
+                             vez al empezar y despues estorban. Antes eran una pestaña aparte
+                             y habia que ir y volver por cada cambio. -->
+                        <Expander Header="Lectura del modelo y tablas de elementos"
+                                  FontWeight="SemiBold" Margin="0,0,0,10">
+                            <StackPanel Margin="0,10,0,0">
+                        <TextBlock Text="Lectura del modelo de ETABS" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Se conecta a la sesion abierta de ETABS por la CSI OAPI, la misma interfaz COM que usa tu macro. No se controla por red." />
+
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="16"
+                                MaxWidth="720" HorizontalAlignment="Left" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="Antes de conectar" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" />
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource MutedTextBrush}"
+                                           Text="1. ETABS o SAP2000 abierto, con el modelo cargado.&#x0a;2. Sin cuadros de dialogo abiertos en el programa.&#x0a;3. El modelo guardado al menos una vez." />
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <!-- LA CASILLA DEL PROGRAMA: de aqui sale a quien se le habla, y
+                                 manda para TODO lo de esta pestaña -probar la conexion, leer
+                                 el modelo, leer los piers y armar los planos-. Antes habia un
+                                 boton por programa y era facil pulsar el que no tocaba.
+
+                                 Es una sola casilla porque el lector es UNO: CSI comparte la
+                                 OAPI entre ETABS y SAP2000 -la misma cOAPI, el mismo SapModel
+                                 y las mismas llamadas- y lo que cambia es el ProgID con el que
+                                 se pide el objeto activo y la libreria que se carga. -->
+                            <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox x:Name="ProgramaCsiCombo" Width="120" SelectedIndex="0"
+                                      VerticalAlignment="Center" Margin="0,0,12,0"
+                                      SelectionChanged="OnProgramaCsiCambiado"
+                                      ToolTip="De donde se lee el modelo: de ETABS o de SAP2000.&#10;Vale para todos los botones de esta pestaña.">
+                                <ComboBoxItem Content="ETABS" />
+                                <ComboBoxItem Content="SAP2000" />
+                            </ComboBox>
+
+                            <Button Content="Probar conexion" Style="{StaticResource PrimaryButtonStyle}" Click="OnTestEtabs" />
+                            <Button x:Name="LeerModeloCsiButton" Content="Leer modelo de ETABS"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnImportModeloCsi"
+                                    ToolTip="Lee el modelo abierto en el programa de la casilla y lo muestra en el visor." />
+                            <Button Content="Leer piers de muros" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnLeerPiers"
+                                    ToolTip="Lee las etiquetas de pier de los muros y sus medidas por nivel.&#10;En ETABS se asignan con Assign &gt; Shell &gt; Pier Label." />
+                        </StackPanel>
+
+                        <TextBlock x:Name="EtabsStatusText" FontSize="12" TextWrapping="Wrap" MaxWidth="760"
+                                   FontFamily="Consolas"
+                                   Foreground="{DynamicResource TextBrush}" Margin="0,0,0,14" />
+
+                        
+<!-- Los piers van en su propia tabla: son pier x nivel, no
                              elementos del modelo, y mezclarlos con los elementos
                              obligaria a columnas vacias en las dos. -->
                         <TextBlock x:Name="PiersTitulo" Text="Piers de muros" FontWeight="SemiBold"
@@ -2098,9 +2124,18 @@
                                 <DataGridTextColumn Header="Paños"    Binding="{Binding Areas}" Width="70" />
                             </DataGrid.Columns>
                         </DataGrid>
+                    
+                            </StackPanel>
+                        </Expander>
+
+                        <TextBlock x:Name="PlanoHintText" FontSize="11.5" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource MutedTextBrush}"
+                                   Text="Lee el modelo en la pestaña de ETABS y la planta aparece aquí. Con «Dibujar en AutoCAD» se manda a AutoCAD el nivel elegido, tal como se ve, en metros y repartido en capas por tipo de elemento." />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+
+            
 
             <!-- ===== Secciones del modelo (la hoja SECCIONES de la macro) ===== -->
             <TabItem Header="Secciones modelo">

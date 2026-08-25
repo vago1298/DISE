@@ -351,9 +351,23 @@ public static class SeccionesModelo
         {
             ("CONTRATRABE", "CONTRATRABE"),
             ("CASTILLO", "CASTILLO"),
+
+            // LAS TRES CADENAS, CADA UNA CON SU NOMBRE. Se pidió que salgan las de
+            // CERRAMIENTO, las de DESPLANTE y las INTERMEDIAS, y son tres cosas distintas en
+            // obra: la de desplante va sobre la cimentación, la intermedia a media altura del
+            // muro y la de cerramiento arriba, cerrando. Fundirlas todas en «DALA» —como
+            // estaban— es perder el dato que las distingue, y el plano las necesita separadas:
+            // la de desplante hasta tiene su propia capa.
+            //
+            // Van ANTES que CADENA y DALA a propósito: «CADENA DE CERRAMIENTO» contiene la
+            // palabra CADENA, así que preguntando por CADENA primero, las tres saldrían DALA
+            // otra vez.
+            ("CERRAMIENTO", "CADENA DE CERRAMIENTO"),
+            ("DESPLANTE", "CADENA DE DESPLANTE"),
+            ("INTERMEDIA", "CADENA INTERMEDIA"),
+            ("INTERMEDIO", "CADENA INTERMEDIA"),
             ("DALA", "DALA"),
             ("CADENA", "DALA"),
-            ("CERRAMIENTO", "DALA"),
             ("COLUMNA", "COLUMNA"),
             ("TRABE", "TRABE"),
             ("VIGA", "TRABE"),
@@ -430,7 +444,13 @@ public static class SeccionesModelo
     {
         "CASTILLO" => 1,
         "COLUMNA" => 2,
+
+        // LAS TRES CADENAS VAN CON LAS DALAS, en el mismo puesto: son lo mismo en la tabla y
+        // se leen juntas. Dentro del puesto, la tabla las ordena por el nombre de la sección.
         "DALA" => 3,
+        "CADENA DE DESPLANTE" => 3,
+        "CADENA INTERMEDIA" => 3,
+        "CADENA DE CERRAMIENTO" => 3,
         "TRABE" => 4,
         "CONTRATRABE" => 5,
         "DIAGONAL" => 6,
