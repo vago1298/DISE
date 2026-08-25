@@ -2712,8 +2712,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con diecinueve renglones añadidos",
-          cfgp.count("        P(") == 280
+    check("la hoja CONFIG de la macro esta portada, con veintidos renglones añadidos",
+          cfgp.count("        P(") == 283
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -2830,7 +2830,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "280, ConfigPlano.PorOmision.Count" in pr
+          and "283, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3732,14 +3732,25 @@ def v18_planta_autocad() -> None:
     # rotulo debe decir unicamente «Var. # @ cm. / Ambos sentidos», o sea los renglones 3 y
     # 4, sin el «Losa de ...» ni el espesor. Se reconoce con las MISMAS palabras que el
     # achurado ANSI37, para que rotulo y hatch no discrepen nunca.
-    check("en la losa de VOLADO el rotulo solo lleva la varilla",
-          'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp
-          and '_cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true)' in dib
+    # EL VOLADO SE ROTULA «Losa VOLADO» EN EL PRIMER RENGLON, y sin el renglon del espesor.
+    # La palabra sale de las NOTAS de la propiedad de la losa en ETABS -ahi la escribe el
+    # ingeniero- y solo si las notas no dicen nada, del nombre de la seccion. Es la MISMA
+    # palabra que decide el achurado, asi que rotulo y ANSI37 no se contradicen nunca.
+    check("el volado se rotula con su nombre en el primer renglon",
+          'P("VOLADO_TEXTO_1", "Losa %U",' in cfgp
+          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp
+          and '_cfg.TextoTalCual("VOLADO_TEXTO_1")' in dib
           and "public static string ArmarRotuloDeLosa(" in dib
-          and "var primero = soloArmado ? 3 : 1;" in dib)
-    check("hay prueba ejecutable del rotulo corto del volado",
-          "el volado solo lleva DOS renglones" in pre
-          and "y son el armado y los sentidos" in pre
+          and "if (soloArmado && i == 2)" in dib)
+    check("y la palabra del volado sale de las NOTAS primero",
+          "public static string PalabraVolado(" in los
+          and "foreach (var donde in new[] { notas, seccion })" in los
+          and "LosaEnPlanta.PalabraVolado(el.Notas, el.Seccion, PalabrasDeVolado())" in dib
+          and "uso = palabraVolado;" in dib)
+    check("hay prueba ejecutable del rotulo del volado",
+          "el volado lleva TRES renglones" in pre
+          and "el nombre va en el primero, y los otros dos son el armado" in pre
+          and "la palabra sale de las NOTAS, aunque la seccion no diga nada" in pre
           and "la losa normal lleva los cuatro renglones" in pre)
 
     # LAS LINEAS DE E-ACERO, CONTINUAS: en la hoja de la macro ese renglon va vacio -no
@@ -3808,13 +3819,45 @@ def v18_planta_autocad() -> None:
     # LA LINEA DEL VOLADO SE QUEDA, Y COMPLETA: es el borde libre de la losa, lo que se
     # cimbra, asi que no se recorta contra los muros. La misma polilinea es el molde del
     # achurado, asi que no hay que crear una auxiliar para borrarla.
-    check("el contorno del voladizo se queda dibujado y completo",
-          "var contorno = PolilineaCerrada(pts, capa);" in dib
-          and "HatchSobre(contorno, capa," in dib
-          and "return contorno is not null;" in dib)
-    check("y el achurado va NO asociativo, para que sobreviva al molde",
-          "_ms.AddHatch(0, patron, false)" in mac
-          and "private void Borrar(" in mac)
+    # LA LINEA DEL VOLADO, SOLO EL CONTORNO EXTERIOR: se pidio que no toque la cadena ni el
+    # muro. La polilinea cerrada se sigue creando -un achurado necesita contorno cerrado para
+    # nacer- pero solo como MOLDE, y se borra en cuanto el hatch esta puesto.
+    check("el volado se achura con un molde y su linea es solo el contorno exterior",
+          'P("VOLADO_CONTORNO_FUERA_DE_MUROS", "SI",' in cfgp
+          and "var molde = PolilineaCerrada(pts, capa);" in dib
+          and "conHatch = HatchSobre(molde, capa," in dib
+          and '_cfg.Bandera("VOLADO_CONTORNO_FUERA_DE_MUROS", true)' in dib
+          and "LosaEnPlanta.TramosFuera(lado, huellas)" in dib
+          and "Borrar(molde);" in dib)
+    # ES UN HATCH DE VERDAD, Y POR LA VIA QUE EN ESTE MISMO PROGRAMA SI FUNCIONA. El
+    # achurado de las secciones y de las zapatas pasa el lazo por AcadArreglos -la cascada
+    # que prueba el arreglo de entidades de varias formas, escrita porque AutoCAD 2026
+    # rechaza un object[] pelado con «Invalid object array»- mientras que la planta lo pasaba
+    # directo, y con AddHatch de TRES argumentos en vez de los cuatro que usa el relleno de
+    # las columnas. Resultado: en la losa el hatch no nacia nunca y siempre acababa cayendo
+    # al respaldo de rayitas, que es lo que se veia: lineas dibujadas una por una.
+    check("el hatch de la losa se crea por la cascada de arreglos, como el de las secciones",
+          "private bool Achurar(" in mac
+          and "_ms.AddHatch(0, patron, asociativo, 0)" in mac
+          and "AcadArreglos.Llamar(" in mac
+          and "arr => { h.AppendOuterLoop(arr); }," in mac)
+    check("y se prueban las dos asociatividades antes de rendirse",
+          "foreach (var asociativo in new[] { false, true })" in mac
+          and "if (Achurar(contorno, capa, patron, escala, anguloGrados, asociativo))" in mac)
+    # Y SI LA API NO QUIERE, EL COMANDO -HATCH: lo que sale por ahi sigue siendo un HATCH
+    # autentico, con su patron, no una imitacion con lineas.
+    check("hay tercera via: el comando -HATCH, que sigue dando un hatch",
+          'P("LOSA_HATCH_POR_COMANDO", "SI",' in cfgp
+          and "private bool AchurarPorComando(" in mac
+          and "._-hatch" in mac
+          and "(handent" in mac
+          and "hpassoc" in mac
+          and "clayer" in mac)
+    check("y las rayitas quedan como ULTIMO recurso, avisando de que no son un hatch",
+          "eso NO es un hatch" in mac
+          and "private int RayarAMano(" in mac)
+    check("el achurado sigue naciendo NO asociativo primero, para sobrevivir al molde",
+          "private void Borrar(" in mac)
     # EL RESPALDO DEL ANSI37: un hatch puede fallar por tres motivos que no se ven desde
     # aqui -que el patron no este en el acad.pat del usuario, que MAXHATCH lo rechace por
     # denso, o que la version no lo acepte sobre un contorno recien hecho- y en los tres el
@@ -3844,8 +3887,8 @@ def v18_planta_autocad() -> None:
     # Y EL NOMBRE «VOLADO» NO SE ESCRIBE NUNCA, venga de las notas o del nombre de la
     # seccion: el nombre que se iba a poner sale de la seccion, asi que se comprueba tambien
     # sobre el uso ya resuelto.
-    check("el rotulo nunca puede decir «Losa de VOLADO»",
-          "|| LosaEnPlanta.DiceVolado(uso, null, PalabrasDeVolado())" in dib
+    check("y la palabra se busca tambien en el nombre ya resuelto, por si acaso",
+          "LosaEnPlanta.PalabraVolado(uso, null, PalabrasDeVolado())" in dib
           and "private string PalabrasDeVolado()" in dib)
 
     check("si el patron no se puede aplicar, el volado se raya a mano",

@@ -507,6 +507,17 @@ public sealed class ConfigPlano
           "SI = la capa E-LOSA se deja APAGADA y E-VOLADO encendida"),
         P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",
           "SI = el contorno de la losa NO se dibuja dentro del muro ni de la cadena"),
+
+        // LO MISMO PARA EL VOLADO, que antes se dibujaba completo a propósito. Se pidió que
+        // esa línea sea SOLO EL CONTORNO EXTERIOR y que no toque la cadena ni el muro. La
+        // polilínea cerrada se sigue creando, pero solo como MOLDE del achurado, y se borra.
+        P("VOLADO_CONTORNO_FUERA_DE_MUROS", "SI",
+          "<<< SI = LA LINEA DEL VOLADO ES SOLO EL CONTORNO EXTERIOR, NO TOCA CADENA NI MURO"),
+
+        // EL TERCER INTENTO DEL ACHURADO: el comando -HATCH de AutoCAD. Lo que sale por aquí
+        // es un HATCH auténtico, con su patrón, no una imitación con líneas.
+        P("LOSA_HATCH_POR_COMANDO", "SI",
+          "<<< SI = si la API no crea el hatch, se manda el comando -HATCH (sigue siendo hatch)"),
         P("VIGAS_CORTAR_EN_CRUCES", "SI",
           "SI = la viga muere en la CARA de la viga que cruza, no le pasa por encima"),
         P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",
@@ -590,7 +601,14 @@ public sealed class ConfigPlano
         // o sea los renglones 3 y 4; los renglones 1 y 2 —"Losa de ..." y el espesor— no se
         // escriben. En las demás losas (ENTREPISO, AZOTEA, etc.) el rótulo sigue completo.
         P("VOLADO_ROTULO_SOLO_ARMADO", "SI",
-          "<<< SI = EN LA LOSA DE VOLADO EL ROTULO SOLO LLEVA Var. # @ cm. / Ambos sentidos"),
+          "<<< SI = EN LA LOSA DE VOLADO EL ROTULO NO LLEVA EL RENGLON DEL ESPESOR"),
+
+        // EL PRIMER RENGLÓN DEL VOLADO. Se pidió que el nombre SÍ vaya, y en el primer
+        // renglón: «Losa VOLADO», con el nombre que salga de la sección o de las notas de
+        // ETABS. Es un renglón aparte del LOSA_TEXTO_1 de la macro —«Losa de %U»— porque ahí
+        // se quiere sin el «de».
+        P("VOLADO_TEXTO_1", "Losa %U",
+          "<<< PRIMER RENGLON DE LA LOSA DE VOLADO (%U = lo que diga su nota: VOLADO)"),
         P("LOSA_TEXTO_FONDO", "SI", "SI = hueco en el hatch atras del texto"),
         P("LOSA_TEXTO_COLOR", "0", "0 = el color de la capa"),
         P("LOSA_HATCH_OFFSET_CM", "0", "Cuanto se mete el contorno antes de achurar"),

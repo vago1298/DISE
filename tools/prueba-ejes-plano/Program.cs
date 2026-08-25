@@ -315,20 +315,41 @@ Igual("la losa normal lleva los cuatro renglones", 4,
 Check("con el uso en el primero", completo.StartsWith("Losa de ENTREPISO"));
 Check("y el espesor en el segundo", completo.Contains("10   cm de espesor"));
 
-// Lo que se pidio: en el VOLADO, solo Var. # @ cm. / Ambos sentidos.
-var rotuloCorto = PlantaDrawer.ArmarRotuloDeLosa(hoja, soloArmado: true, "VOLADO", "10");
+// EL VOLADO: su NOMBRE en el primer renglon -«Losa VOLADO»- y sin el renglon del
+// espesor. Se pidio asi, y la palabra sale de las NOTAS de la propiedad en ETABS.
+var hojaVolado = new[]
+{
+    "Losa %U",                            // VOLADO_TEXTO_1, sin el «de»
+    "  %E   cm de espesor",
+    "Var. #      @               cm.",
+    "Ambos sentidos"
+};
 
-Igual("el volado solo lleva DOS renglones", 2, rotuloCorto.Split("\\P").Length);
-Igual("y son el armado y los sentidos",
-      "Var. #      @               cm.\\PAmbos sentidos", rotuloCorto);
-Check("no dice «Losa de»", !rotuloCorto.Contains("Losa de"));
-Check("ni el espesor", !rotuloCorto.Contains("espesor"));
+var rotuloCorto = PlantaDrawer.ArmarRotuloDeLosa(
+    hojaVolado, soloArmado: true, "VOLADO", "10");
+
+Igual("el volado lleva TRES renglones", 3, rotuloCorto.Split("\\P").Length);
+Igual("el nombre va en el primero, y los otros dos son el armado",
+      "Losa VOLADO\\PVar. #      @               cm.\\PAmbos sentidos", rotuloCorto);
+Check("dice «Losa VOLADO»", rotuloCorto.StartsWith("Losa VOLADO"));
+Check("y NO lleva el renglon del espesor", !rotuloCorto.Contains("espesor"));
 
 // El volado se reconoce con las MISMAS palabras que el achurado ANSI37: si una losa sale
 // achurada, sale tambien con el rotulo corto.
 var palabras = cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER");
 
 Check("la nota VOLADO lo dice", LosaEnPlanta.DiceVolado("VOLADO", "Losa 10", palabras));
+
+// Y CUAL es la palabra, porque esa es la que se rotula. Las NOTAS primero: es donde el
+// ingeniero lo escribe -el campo de notas de la propiedad de la losa en ETABS-.
+Igual("la palabra sale de las NOTAS, aunque la seccion no diga nada", "VOLADO",
+      LosaEnPlanta.PalabraVolado("VOLADO", "LOSA 10", palabras));
+Igual("manda la nota sobre el nombre de la seccion", "VOLADIZO",
+      LosaEnPlanta.PalabraVolado("VOLADIZO", "LOSA VOLADO", palabras));
+Igual("sin notas, se usa el nombre de la seccion", "VOLADO",
+      LosaEnPlanta.PalabraVolado(null, "LOSA VOLADO", palabras));
+Igual("y una losa normal no da palabra", "",
+      LosaEnPlanta.PalabraVolado("ENTREPISO", "LOSA ENTREPISO", palabras));
 Check("y la seccion LOSA VOLADO tambien",
       LosaEnPlanta.DiceVolado(null, "LOSA VOLADO", palabras));
 Check("una losa de ENTREPISO no",

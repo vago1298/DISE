@@ -950,28 +950,74 @@ public sealed partial class PlantaDrawer
         var capa = volada ? _capas.CapaVolado : CapaDe(el);
 
         // ==============================================================================
-        //  EL VOLADIZO: SU CONTORNO **SÍ** SE QUEDA, Y COMPLETO
+        //  EL VOLADIZO: EL ACHURADO EN TODO EL PAÑO, PERO LA LÍNEA SOLO POR FUERA
         // ==============================================================================
-        //  En un voladizo el contorno es el BORDE LIBRE de la losa —lo que en obra se
-        //  cimbra— así que se dibuja entero en E-VOLADO y no se recorta contra los muros:
-        //  esa línea es justo la que hay que ver, y es la que faltaba.
+        //  Son dos cosas distintas y por eso van con dos objetos distintos:
         //
-        //  La misma polilínea sirve de contorno Y de molde del achurado, así que no hay que
-        //  crear una auxiliar para borrarla después.
+        //   * EL MOLDE es la polilínea cerrada del paño COMPLETO. Un achurado necesita un
+        //     contorno cerrado para nacer, así que el molde tiene que dar la vuelta entera,
+        //     incluso por donde la losa se apoya.
+        //
+        //   * EL CONTORNO que se queda dibujado es SOLO EL EXTERIOR: se pidió que esa línea
+        //     no toque la cadena ni el muro. Y es lo correcto en el plano: por donde la losa
+        //     apoya, su paño y el de la cadena son la MISMA línea, así que dibujarla encima
+        //     deja una raya en medio de la cadena que se lee como una junta que no existe.
+        //     El borde libre —lo que en obra se cimbra— es el único que hay que ver.
+        //
+        //  Así que se achura el molde y después el molde SE BORRA, quedando el achurado y los
+        //  tramos de contorno que caen fuera de los muros. Por eso el hatch se crea no
+        //  asociativo: uno asociativo se rehace al borrar su contorno.
         if (volada)
         {
-            var contorno = PolilineaCerrada(pts, capa);
+            var molde = PolilineaCerrada(pts, capa);
+            var conHatch = false;
 
             if (_cfg.Bandera("LOSA_HATCH", true))
             {
-                // Se le pasan los vértices para el respaldo: si el patrón no se puede
-                // aplicar, el achurado se dibuja con líneas a 45° y el voladizo queda
-                // marcado igual.
-                HatchSobre(contorno, capa,
-                           _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37"),
-                           EscalaDelHatchDeLosa(),
-                           _cfg.Numero("LOSA_HATCH_ANGULO", 45),
-                           el.Vertices, x0, y0);
+                // Se le pasan los vértices para el último recurso: si NINGUNA de las tres
+                // vías del hatch funciona, el voladizo se raya a mano antes que quedarse sin
+                // marcar —y se avisa de que eso no es un hatch—.
+                conHatch = HatchSobre(molde, capa,
+                                      _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37"),
+                                      EscalaDelHatchDeLosa(),
+                                      _cfg.Numero("LOSA_HATCH_ANGULO", 45),
+                                      el.Vertices, x0, y0);
+            }
+
+            // ---- Y LA LÍNEA, SOLO EL CONTORNO EXTERIOR -------------------------------
+            var soloFuera = _cfg.Bandera("VOLADO_CONTORNO_FUERA_DE_MUROS", true)
+                            && huellas.Count > 0;
+
+            var contorno = molde;
+
+            if (soloFuera)
+            {
+                var tramos = 0;
+
+                foreach (var lado in LosaEnPlanta.Lados(el.Vertices))
+                {
+                    foreach (var t in LosaEnPlanta.TramosFuera(lado, huellas))
+                    {
+                        if (Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capa) is not null)
+                        {
+                            tramos++;
+                        }
+                    }
+                }
+
+                // El molde ya cumplió su papel. Se borra SIEMPRE que se hayan dibujado los
+                // tramos de fuera; si no se dibujó ninguno —un paño metido entre dos cadenas
+                // pegadas— se deja el molde, porque si no el achurado se quedaría sin ningún
+                // borde y el paño no se entendería.
+                if (tramos > 0)
+                {
+                    Borrar(molde);
+                    contorno = null;
+                }
+
+                _log.Add(
+                    $"Volado '{el.Etiqueta}': {tramos} tramo(s) de contorno por fuera de " +
+                    $"muros y cadenas, achurado {(conHatch ? "puesto" : "NO puesto")}.");
             }
 
             // ==========================================================================
@@ -991,7 +1037,10 @@ public sealed partial class PlantaDrawer
             AvisarDelVolado(el);
 
             _volados++;
-            return contorno is not null;
+
+            // Se dio por dibujado si quedó el achurado o si quedó alguna línea: con el
+            // contorno recortado el molde se borra, así que ya no sirve para comprobarlo.
+            return conHatch || contorno is not null || soloFuera;
         }
 
         // ---- LA LOSACERO: FRANJAS CON HATCH FLEX, NO ARMADO DE CONCRETO ---------------
@@ -1698,21 +1747,50 @@ public sealed partial class PlantaDrawer
         //  losa sale achurada, sale también con el rótulo corto.
         var uso = UsoDeLaLosa(el);
 
-        // Y con el USO metido en la cuenta, no solo la nota y la sección. Esto cierra el
-        // último agujero: el nombre que se iba a escribir es el que sale de la sección, así
-        // que si ese nombre dice VOLADO, el rótulo se acorta ANTES de escribirlo. Dicho de
-        // otra forma: en este plano NUNCA puede salir «Losa de VOLADO», que es justo lo que
-        // se pidió, venga la palabra de las notas o del nombre de la propiedad.
-        var soloArmado =
-            _cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true)
-            && (LosaEnPlanta.DiceVolado(el.Notas, el.Seccion, PalabrasDeVolado())
-                || LosaEnPlanta.DiceVolado(uso, null, PalabrasDeVolado()));
+        // ==============================================================================
+        //  EL VOLADO: SU NOMBRE SÍ VA, Y EN EL PRIMER RENGLÓN
+        // ==============================================================================
+        //  Se pidió expresamente: el primer renglón del MTEXT dice «Losa VOLADO». La palabra
+        //  sale de las NOTAS de la propiedad de la losa en ETABS —ahí es donde el ingeniero
+        //  la escribe— y, si las notas no dicen nada, del nombre de la sección. Es la MISMA
+        //  palabra que decide el achurado, así que el rótulo y el ANSI37 nunca se
+        //  contradicen: donde dice VOLADO hay hatch, y donde hay hatch dice VOLADO.
+        //
+        //  Lo que NO lleva es el renglón del espesor. Queda:
+        //
+        //        Losa VOLADO
+        //        Var. #      @               cm.
+        //        Ambos sentidos
+        var palabraVolado =
+            LosaEnPlanta.PalabraVolado(el.Notas, el.Seccion, PalabrasDeVolado());
+
+        // El respaldo: si el nombre que se iba a escribir —el que sale de la sección— ya
+        // decía VOLADO, se trata como volado igual. Así la palabra no se cuela nunca por el
+        // renglón de la macro.
+        if (palabraVolado.Length == 0)
+        {
+            palabraVolado = LosaEnPlanta.PalabraVolado(uso, null, PalabrasDeVolado());
+        }
+
+        var esVolado = palabraVolado.Length > 0;
+
+        var soloArmado = esVolado && _cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true);
 
         var hoja = new string[4];
 
         for (var i = 1; i <= 4; i++)
         {
             hoja[i - 1] = _cfg.TextoTalCual($"LOSA_TEXTO_{i}");
+        }
+
+        if (esVolado)
+        {
+            // El primer renglón del volado es el suyo —«Losa %U»—, y el %U es la palabra que
+            // trae el modelo.
+            var primero = _cfg.TextoTalCual("VOLADO_TEXTO_1");
+
+            hoja[0] = primero.Trim().Length > 0 ? primero : hoja[0];
+            uso = palabraVolado;
         }
 
         var espesor = el.AnchoM > LargoMinimo
@@ -1747,13 +1825,17 @@ public sealed partial class PlantaDrawer
     public static string ArmarRotuloDeLosa(
         IReadOnlyList<string> hoja, bool soloArmado, string uso, string espesor)
     {
-        // En el volado se empieza en el renglón 3; en las demás losas, en el 1.
-        var primero = soloArmado ? 3 : 1;
-
         var renglones = new List<string>();
 
-        for (var i = primero; i <= Math.Min(4, hoja.Count); i++)
+        for (var i = 1; i <= Math.Min(4, hoja.Count); i++)
         {
+            // EN EL VOLADO SE SALTA EL RENGLÓN 2, el del espesor, y nada más. El 1 lleva su
+            // nombre —«Losa VOLADO»— y el 3 y el 4, la varilla y los sentidos.
+            if (soloArmado && i == 2)
+            {
+                continue;
+            }
+
             var linea = hoja[i - 1] ?? string.Empty;
 
             // Un renglón vacío en la hoja es un renglón que no se quiere: no se deja el

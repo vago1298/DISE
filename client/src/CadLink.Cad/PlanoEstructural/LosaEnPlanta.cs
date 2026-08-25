@@ -636,27 +636,49 @@ public static class LosaEnPlanta
     /// es el volado y lo escribe en la propiedad, mientras que deducirlo contando lados
     /// apoyados se equivoca en cuanto una cadena viene partida en el modelo.
     /// </remarks>
-    public static bool DiceVolado(string? notas, string? seccion, string palabras)
+    public static bool DiceVolado(string? notas, string? seccion, string palabras) =>
+        PalabraVolado(notas, seccion, palabras).Length > 0;
+
+    /// <summary>
+    /// <b>Cuál</b> es la palabra que marca el voladizo: la de las <b>notas</b> primero.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Devuelve la palabra hallada —<c>VOLADO</c>, <c>VOLADIZO</c>…— y no solo un sí o un no,
+    /// porque esa palabra es la que se <b>rotula</b>: el primer renglón del voladizo dice
+    /// «Losa VOLADO», con lo que diga el modelo.
+    /// </para>
+    /// <para>
+    /// Y se buscan <b>primero las NOTAS</b>, que es donde el ingeniero lo escribe —la
+    /// propiedad de la losa en ETABS tiene su campo de notas— y solo después el nombre de la
+    /// sección. Si las notas dicen VOLADIZO y la sección se llama «LOSA VOLADO», manda la
+    /// nota.
+    /// </para>
+    /// </remarks>
+    public static string PalabraVolado(string? notas, string? seccion, string palabras)
     {
-        var texto = ((notas ?? string.Empty) + " " + (seccion ?? string.Empty))
-            .ToUpperInvariant();
-
-        if (texto.Trim().Length == 0)
+        // Las notas primero, la sección después: el orden es el que se pidió.
+        foreach (var donde in new[] { notas, seccion })
         {
-            return false;
-        }
+            var texto = (donde ?? string.Empty).ToUpperInvariant();
 
-        foreach (var palabra in palabras.Split(','))
-        {
-            var p = palabra.Trim().ToUpperInvariant();
-
-            if (p.Length > 0 && texto.Contains(p, StringComparison.Ordinal))
+            if (texto.Trim().Length == 0)
             {
-                return true;
+                continue;
+            }
+
+            foreach (var palabra in palabras.Split(','))
+            {
+                var p = palabra.Trim().ToUpperInvariant();
+
+                if (p.Length > 0 && texto.Contains(p, StringComparison.Ordinal))
+                {
+                    return p;
+                }
             }
         }
 
-        return false;
+        return string.Empty;
     }
 
     /// <summary>

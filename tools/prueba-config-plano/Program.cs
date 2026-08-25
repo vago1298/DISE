@@ -64,8 +64,11 @@ var cfg = new ConfigPlano();
 //   VOLADO_ROTULO_SOLO_ARMADO       en el volado el rótulo solo lleva la varilla
 //   LOSA_HATCH_ESCALA_AUTO          ...y el achurado se VE, en vez de ser una mancha gris
 //   LOSA_HATCH_SEPARACION_CM        (25 cm entre líneas, de donde sale la escala)
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los diecinueve que se añadieron",
-      280, ConfigPlano.PorOmision.Count);
+//   LOSA_HATCH_POR_COMANDO          y si la API no lo crea, se manda el -HATCH de verdad
+//   VOLADO_CONTORNO_FUERA_DE_MUROS  la línea del volado, solo el contorno exterior
+//   VOLADO_TEXTO_1                  «Losa VOLADO» en el primer renglón de su rótulo
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los veintidos que se añadieron",
+      283, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -216,7 +219,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 280 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 283 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

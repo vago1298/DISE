@@ -620,48 +620,51 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        try
+        // ==================================================================================
+        //  UN HATCH DE VERDAD, Y POR LA VÍA QUE EN ESTE MISMO PROGRAMA SÍ FUNCIONA
+        // ==================================================================================
+        //  Esto era el fallo, y estaba a la vista: el achurado de las SECCIONES y el de las
+        //  ZAPATAS se crean pasando el lazo por AcadArreglos —una cascada que prueba el
+        //  arreglo de entidades de cuatro formas distintas, escrita justamente porque
+        //  AutoCAD 2026 rechaza un object[] pelado con «Invalid object array»— mientras que
+        //  aquí, en la planta, se pasaba `new[] { contorno }` directo. Resultado: en las
+        //  secciones el hatch nacía y en la losa NUNCA, así que siempre acababa cayendo al
+        //  respaldo de rayitas y lo que se veía eran líneas dibujadas una por una, no un
+        //  ANSI37.
+        //
+        //  Y con la firma COMPLETA de AddHatch, los cuatro argumentos. El relleno de las
+        //  columnas —el que sí sale— usa AddHatch(0, "SOLID", true, 0) con el cuarto
+        //  argumento; aquí se llamaba con tres y en enlace tardío eso puede fallar solo por
+        //  el número de parámetros.
+        //
+        //  Se prueba primero NO asociativo —así el achurado sobrevive aunque el molde se
+        //  borre— y luego ASOCIATIVO, que es la forma exacta con la que nacen los hatches de
+        //  las secciones en su AutoCAD. Al borrar el molde, un hatch asociativo no se va: se
+        //  queda y pierde la asociatividad.
+        foreach (var asociativo in new[] { false, true })
         {
-            var ok = AcadConnection.Retry(() =>
-            {
-                // NO asociativo: así el achurado sobrevive aunque el contorno se borre —el
-                // de las franjas de losacero se borra si LOSACERO_FRANJA_CONTORNO está en
-                // NO— y no se rehace solo si alguien mueve un vértice.
-                dynamic ht = _ms.AddHatch(0, patron, false);
-                ht.AppendOuterLoop(new[] { contorno });
-
-                if (escala > 0)
-                {
-                    ht.PatternScale = escala;
-                }
-
-                ht.PatternAngle = anguloGrados * Math.PI / 180;
-                ht.Evaluate();
-                ht.Layer = capa;
-                ht.Color = PorCapa;
-                return true;
-            });
-
-            if (ok)
+            if (Achurar(contorno, capa, patron, escala, anguloGrados, asociativo))
             {
                 return true;
             }
         }
-        catch (Exception)
+
+        // ==================================================================================
+        //  Y SI LA API NO QUIERE, EL COMANDO -HATCH, QUE SIGUE SIENDO UN HATCH
+        // ==================================================================================
+        //  Es el mismo recurso que ya se usa con el orden de dibujo: lo que la API no deja
+        //  hacer, se manda por comando. Sale un HATCH auténtico —seleccionable, editable,
+        //  con su patrón ANSI37— y no un montón de líneas.
+        if (AchurarPorComando(contorno, capa, patron, escala, anguloGrados))
         {
-            // Al respaldo: rayarlo a mano.
+            return true;
         }
 
         // ==================================================================================
-        //  EL RESPALDO: LAS RAYAS A MANO
+        //  EL ÚLTIMO RECURSO: LAS RAYAS A MANO
         // ==================================================================================
-        //  Un ANSI37 son líneas paralelas a 45°, y eso se dibuja sin depender de nada. Este
-        //  respaldo existe porque un achurado puede fallar por tres motivos que no se ven
-        //  desde aquí —que el patrón no esté en el acad.pat del usuario, que la separación
-        //  salga tan densa que AutoCAD lo rechace por MAXHATCH, o que la versión no acepte
-        //  crear el hatch sobre un contorno recién hecho— y en los tres el resultado era el
-        //  mismo: el voladizo se quedaba sin marcar y parecía que el achurado no se había
-        //  puesto nunca.
+        //  Solo si las tres vías anteriores fallaron. No es un achurado y se avisa de que no
+        //  lo es, pero es mejor que dejar el voladizo sin marcar.
         if (paraRayar is null || paraRayar.Count < 3)
         {
             Nota($"No se pudo achurar con el patrón '{patron}': revisa que esté en tu " +
@@ -671,11 +674,163 @@ public sealed partial class PlantaDrawer
 
         var rayas = RayarAMano(paraRayar, capa, escala, anguloGrados, x0, y0);
 
-        Nota($"El patrón '{patron}' no se pudo aplicar, así que el achurado se dibujó con " +
-             $"{rayas} línea(s) a {anguloGrados:0}° en la capa {capa}: se ve igual y se " +
-             "imprime igual.");
+        Nota($"OJO: el patrón '{patron}' no se pudo aplicar de NINGUNA de las tres formas " +
+             $"(API, API asociativa y comando -HATCH), así que eso NO es un hatch: son " +
+             $"{rayas} línea(s) a {anguloGrados:0}° en la capa {capa}. Revisa que ANSI37 " +
+             "esté en tu acad.pat.");
 
         return rayas > 0;
+    }
+
+    /// <summary>
+    /// Crea el hatch <b>por la API</b>, con el lazo pasado por la cascada de arreglos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La cascada es <see cref="AcadArreglos"/>, la misma que usan las secciones, las zapatas
+    /// y los alzados: prueba el arreglo de entidades <b>tipado</b> y, si esa versión de
+    /// AutoCAD no lo acepta, otras tres formas. Sin ella, en AutoCAD 2026 la llamada falla
+    /// con «Invalid object array» y el achurado no nace nunca.
+    /// </para>
+    /// <para>
+    /// El hatch vacío se <b>borra</b> si el lazo no entró: un hatch sin contorno se queda en
+    /// el dibujo como un objeto invisible que estorba al seleccionar.
+    /// </para>
+    /// </remarks>
+    private bool Achurar(
+        object? contorno, string capa, string patron, double escala, double anguloGrados,
+        bool asociativo)
+    {
+        object? ht;
+
+        try
+        {
+            // Los CUATRO argumentos: tipo de patrón, nombre, asociatividad y tipo de objeto
+            // —0 = hatch clásico, no gradiente—. Es la firma completa, la que usa el relleno
+            // de las columnas, que sí funciona.
+            ht = AcadConnection.Retry(() => (object)_ms.AddHatch(0, patron, asociativo, 0));
+        }
+        catch (Exception ex)
+        {
+            Fallo($"AddHatch '{patron}' (asociativo={asociativo})", ex);
+            return false;
+        }
+
+        if (ht is null)
+        {
+            return false;
+        }
+
+        dynamic h = ht;
+
+        var conLazo = AcadArreglos.Llamar(
+            $"AppendOuterLoop del hatch '{patron}' de la losa",
+            new[] { contorno! },
+            arr => { h.AppendOuterLoop(arr); },
+            Fallo, Nota);
+
+        if (conLazo)
+        {
+            try
+            {
+                AcadConnection.Retry(() =>
+                {
+                    if (escala > 0)
+                    {
+                        h.PatternScale = escala;
+                    }
+
+                    h.PatternAngle = anguloGrados * Math.PI / 180;
+                    h.Evaluate();
+                    h.Layer = capa;
+                    h.Color = PorCapa;
+                });
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Fallo($"Evaluate del hatch '{patron}'", ex);
+            }
+        }
+
+        Borrar(ht);
+        return false;
+    }
+
+    /// <summary>
+    /// El hatch <b>por comando</b>: <c>-HATCH → Properties → Select objects</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Mismo recurso que el <c>DRAWORDER</c> por comando: lo que la API no deja hacer, se
+    /// manda como lo mandaría una persona. Y lo que sale es un <b>HATCH auténtico</b> con su
+    /// patrón, su escala y su ángulo, no una imitación con líneas.
+    /// </para>
+    /// <para>
+    /// El molde se localiza por su <b>handle</b> —el identificador que AutoCAD le da a cada
+    /// objeto—, que es la única forma fiable de señalar una entidad desde LISP sin depender
+    /// de lo que haya seleccionado el usuario. La capa se fija antes con <c>CLAYER</c> y se
+    /// deja como estaba al terminar, y <c>HPASSOC</c> en 0 para que el achurado no se vaya
+    /// cuando se borre el molde.
+    /// </para>
+    /// </remarks>
+    private bool AchurarPorComando(
+        object? contorno, string capa, string patron, double escala, double anguloGrados)
+    {
+        if (!_cfg.Bandera("LOSA_HATCH_POR_COMANDO", true) || contorno is null)
+        {
+            return false;
+        }
+
+        string handle;
+
+        try
+        {
+            handle = AcadConnection.Retry(() => (string)((dynamic)contorno).Handle);
+        }
+        catch (Exception ex)
+        {
+            Fallo("Handle del molde del achurado", ex);
+            return false;
+        }
+
+        if (handle.Length == 0 || capa.Contains('"') || patron.Contains('"'))
+        {
+            return false;
+        }
+
+        var esc = (escala > 0 ? escala : 1)
+            .ToString("0.#####", System.Globalization.CultureInfo.InvariantCulture);
+
+        var ang = anguloGrados
+            .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+        // La conversación del -HATCH, con los modificadores en inglés —el guion bajo los
+        // hace válidos en cualquier idioma de AutoCAD—: _p = Properties, _s = Select objects.
+        var lisp =
+            "(if (setq e_clk (handent \"" + handle + "\")) (progn " +
+            "(setq lay_clk (getvar \"clayer\") asoc_clk (getvar \"hpassoc\")) " +
+            "(setvar \"hpassoc\" 0) " +
+            "(setvar \"clayer\" \"" + capa + "\") " +
+            "(command \"._-hatch\" \"_p\" \"" + patron + "\" \"" + esc + "\" \"" + ang +
+            "\" \"_s\" e_clk \"\" \"\") " +
+            "(setvar \"clayer\" lay_clk) (setvar \"hpassoc\" asoc_clk)))\n";
+
+        try
+        {
+            AcadConnection.Retry(() => { _doc.SendCommand(lisp); });
+
+            Nota($"El achurado '{patron}' se puso con el comando -HATCH: la API de esta " +
+                 "versión de AutoCAD no lo aceptó, pero el hatch es de verdad.");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"-HATCH '{patron}' por comando", ex);
+            return false;
+        }
     }
 
     /// <summary>
