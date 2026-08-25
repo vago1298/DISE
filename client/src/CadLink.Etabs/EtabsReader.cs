@@ -559,8 +559,159 @@ public static class EtabsReader
                 }
             }
 
+            // ==========================================================================
+            //  EL PUNTO DE INSERCIÓN: POR ESTO EL ELEMENTO APARECE MOVIDO
+            // ==========================================================================
+            //  Va AL FINAL, después de las dimensiones, porque el corrimiento del punto
+            //  cardinal se mide con el ancho y el peralte de la sección.
+            //
+            //  En el modelo la barra se calcula sobre la línea que une sus dos nudos, pero
+            //  la pieza que se construye —y la que hay que dibujar— está donde la ponen su
+            //  punto cardinal y sus offsets de nudo. Es el «Frame Assignment - Insertion
+            //  Point» de ETABS, y sin leerlo el plano sale con las barras en el eje del nudo
+            //  mientras que en la pantalla de ETABS se ven corridas.
+            LeerPuntoDeInsercion(frameObj, nombre, e, m);
+
             m.Elementos.Add(e);
         }
+    }
+
+    /// <summary>
+    /// Si el punto de inserción se <b>aplica</b> a la geometría. Válvula de escape.
+    /// </summary>
+    /// <remarks>
+    /// En <c>false</c> las barras se quedan en la línea de sus nudos, como salían antes de
+    /// leer el punto de inserción. Está para poder comparar los dos planos si alguna vez un
+    /// modelo trae los offsets al revés de lo esperado.
+    /// </remarks>
+    public static bool AplicarPuntosDeInsercion { get; set; } = true;
+
+    /// <summary>
+    /// Lee el <b>punto de inserción</b> del marco y <b>mueve</b> sus extremos en planta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La llamada tiene dos firmas según la versión —<c>GetInsertionPoint_1</c> en las nuevas,
+    /// con el espejo respecto del eje 3, y <c>GetInsertionPoint</c> en las viejas, sin él— así
+    /// que se prueban las dos en cascada, igual que se hace con la cuadrícula. Si ninguna
+    /// responde no pasa nada: la barra se queda en la línea de sus nudos, que es como salía
+    /// antes, y no se avisa por cada elemento.
+    /// </para>
+    /// <para>
+    /// <b>Solo se mueve en planta</b>, la Z no se toca. En planta la elevación no se ve, y
+    /// mover la de una trabe 2.5 cm podría cambiarle el nivel al que se asigna: se arreglaría
+    /// algo que no se nota y se rompería algo que sí.
+    /// </para>
+    /// </remarks>
+    private static void LeerPuntoDeInsercion(
+        object frameObj, string nombre, ElementoEtabs e, ModeloEtabs m)
+    {
+        if (!AplicarPuntosDeInsercion)
+        {
+            return;
+        }
+
+        var punto = PuntoDeInsercion.Centroide;
+        var espejo2 = false;
+        var espejo3 = false;
+        double[] offI = { 0, 0, 0 };
+        double[] offJ = { 0, 0, 0 };
+        var sistema = "Local";
+        var leido = false;
+
+        // 1) La firma nueva: nombre, punto cardinal, espejo 2, espejo 3, transformar la
+        //    rigidez, offsets de I, offsets de J y el sistema de coordenadas.
+        try
+        {
+            object?[] a =
+            {
+                nombre, 0, false, false, false, null, null, string.Empty
+            };
+
+            if (Com.CallRet(frameObj, "GetInsertionPoint_1", a, 1, 2, 3, 4, 5, 6, 7) == 0)
+            {
+                punto = Convert.ToInt32(a[1]);
+                espejo2 = Convert.ToBoolean(a[2]);
+                espejo3 = Convert.ToBoolean(a[3]);
+                offI = Com.AsDoubles(a[5]);
+                offJ = Com.AsDoubles(a[6]);
+                sistema = a[7]?.ToString() ?? "Local";
+                leido = true;
+            }
+        }
+        catch (Exception)
+        {
+            // Esta versión no la tiene: se prueba la otra firma.
+        }
+
+        // 2) La firma vieja, sin el espejo respecto del eje 3.
+        if (!leido)
+        {
+            try
+            {
+                object?[] a = { nombre, 0, false, false, null, null, string.Empty };
+
+                if (Com.CallRet(frameObj, "GetInsertionPoint", a, 1, 2, 3, 4, 5, 6) == 0)
+                {
+                    punto = Convert.ToInt32(a[1]);
+                    espejo2 = Convert.ToBoolean(a[2]);
+                    offI = Com.AsDoubles(a[4]);
+                    offJ = Com.AsDoubles(a[5]);
+                    sistema = a[6]?.ToString() ?? "Local";
+                    leido = true;
+                }
+            }
+            catch (Exception)
+            {
+                // Ni una ni otra: se queda en la línea de los nudos, como antes.
+            }
+        }
+
+        if (!leido)
+        {
+            return;
+        }
+
+        e.PuntoCardinal = punto;
+        e.Espejo2 = espejo2;
+        e.Espejo3 = espejo3;
+
+        // «Local» —o «Locales», según el idioma— significa ejes 1, 2 y 3; cualquier otra cosa
+        // es el sistema global, y entonces los offsets ya vienen en X, Y y Z.
+        var enLocales = sistema.Trim().StartsWith("Local", StringComparison.OrdinalIgnoreCase);
+
+        var vertical = e.Clase == ClaseElemento.Columna;
+
+        // t3 se mide sobre el eje local 2 y t2 sobre el 3. El lector guarda el ancho y el
+        // peralte cambiados entre columna y trabe justamente por eso, así que aquí se
+        // deshace ese cambio para volver a t3 y t2.
+        var dim2 = vertical ? e.AnchoM : e.PeralteM;    // t3
+        var dim3 = vertical ? e.PeralteM : e.AnchoM;    // t2
+
+        var (dxi, dyi) = PuntoDeInsercion.EnPlanta(
+            vertical, e.X2 - e.X1, e.Y2 - e.Y1, e.AnguloGrados,
+            offI, enLocales, punto, dim2, dim3, espejo2, espejo3);
+
+        var (dxj, dyj) = PuntoDeInsercion.EnPlanta(
+            vertical, e.X2 - e.X1, e.Y2 - e.Y1, e.AnguloGrados,
+            offJ, enLocales, punto, dim2, dim3, espejo2, espejo3);
+
+        e.MovidoXI = dxi;
+        e.MovidoYI = dyi;
+        e.MovidoXJ = dxj;
+        e.MovidoYJ = dyj;
+
+        if (!e.ConPuntoDeInsercion)
+        {
+            return;
+        }
+
+        e.X1 += dxi;
+        e.Y1 += dyi;
+        e.X2 += dxj;
+        e.Y2 += dyj;
+
+        m.ConPuntoDeInsercion++;
     }
 
     /// <summary>

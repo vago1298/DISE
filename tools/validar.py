@@ -2699,6 +2699,63 @@ def v16_extruida_piers() -> None:
           and "return fallos == 0 ? 0 : 1;" in prs)
 
     # ------------------------------------------------------------------
+    # EL PUNTO DE INSERCION DEL MARCO: POR ESTO LA BARRA APARECE MOVIDA
+    # ------------------------------------------------------------------
+    #  Es el «Assign - Frame - Insertion Point» de ETABS. En el modelo la barra se CALCULA
+    #  sobre la linea que une sus dos nudos, pero la pieza que se construye -y la que hay que
+    #  dibujar- esta donde la ponen su punto cardinal y sus offsets de nudo. Sin leerlo, el
+    #  plano sale con las barras en el eje del nudo mientras en la pantalla de ETABS se ven
+    #  corridas, y no hay forma de que cuadren.
+    ins = leer(ruta("client/src/CadLink.Etabs/PuntoDeInsercion.cs"))
+    lec_ins = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    mod_ins = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+
+    check("se lee el punto de insercion del marco, con las dos firmas de la API",
+          "GetInsertionPoint_1" in lec_ins
+          and '"GetInsertionPoint", a, 1, 2, 3, 4, 5, 6' in lec_ins
+          and "private static void LeerPuntoDeInsercion(" in lec_ins)
+    check("y hay valvula de escape para volver a la linea de los nudos",
+          "public static bool AplicarPuntosDeInsercion { get; set; } = true;" in lec_ins)
+    # LOS EJES LOCALES DE CSI, que son los que explican el signo: en la TRABE el eje 2 es
+    # vertical y el 3 horizontal -asi que el offset del 3 la mueve en planta-, y en la
+    # COLUMNA los dos son horizontales, asi que cualquier offset la mueve.
+    check("los ejes locales siguen la convencion de CSI",
+          "public static (double[] E1, double[] E2, double[] E3) Ejes(" in ins
+          and "e2c = new[] { 0d, 0d, 1d };" in ins
+          and "e3c = new[] { dy, -dx, 0d };" in ins
+          and "e2c = new[] { 1d, 0d, 0d };" in ins)
+    check("el punto cardinal corre el centro de la seccion al lado contrario",
+          "public static (double D2, double D3) PorPuntoCardinal(" in ins
+          and "var columna = (punto - 1) % 3;" in ins
+          and "var fila = (punto - 1) / 3;" in ins
+          and "if (punto < 1 || punto > 9)" in ins)
+    # t3 se mide sobre el eje 2 y t2 sobre el 3: es la misma regla que ya seguia el lector
+    # -«en la columna el ancho se mide sobre el eje 3, al contrario que en la viga»-.
+    check("las dimensiones se toman con la regla que ya usaba el lector",
+          "var dim2 = vertical ? e.AnchoM : e.PeralteM;" in lec_ins
+          and "var dim3 = vertical ? e.PeralteM : e.AnchoM;" in lec_ins)
+    # SOLO EN PLANTA: mover la Z de una trabe 2.5 cm no se ve en el plano y podria cambiarle
+    # el nivel al que se asigna.
+    check("solo se mueve la planta, la Z no se toca",
+          "public static (double Dx, double Dy) EnPlanta(" in ins
+          and "e.X1 += dxi;" in lec_ins
+          and "e.Y2 += dyj;" in lec_ins
+          and "e.Z1 +=" not in lec_ins)
+    check("el elemento guarda cuanto lo movio, para el diagnostico",
+          "public double MovidoXI { get; set; }" in mod_ins
+          and "public bool ConPuntoDeInsercion =>" in mod_ins
+          and "public int ConPuntoDeInsercion { get; set; }" in mod_ins)
+    check("y el resumen del modelo lo dice, que es donde se ve la explicacion",
+          "barra(s) van CORRIDAS respecto" in mod_ins
+          and "Puntos cardinales distintos del centroide" in mod_ins)
+    check("hay prueba ejecutable del punto de insercion",
+          "trabe en +X con offset 3 = -0.025: NO se mueve en X" in prs
+          and "y se mueve 2.5 cm en Y, que es lo que se ve corrido" in prs
+          and "el offset del eje 2 en una trabe no mueve la planta, en X" in prs
+          and "columna con el punto 1: media seccion en X" in prs
+          and "el punto 8 baja el centro medio peralte" in prs)
+
+    # ------------------------------------------------------------------
     # ETAPA 1 DEL PORT DE LA MACRO DE PLANOS ESTRUCTURALES: LA HOJA CONFIG
     # ------------------------------------------------------------------
     # La macro guarda sus ~260 parametros en la hoja CONFIG, que ella misma crea con

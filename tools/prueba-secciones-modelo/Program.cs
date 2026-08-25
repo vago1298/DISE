@@ -296,6 +296,141 @@ Igual("un modelo que solo tiene la base también se dibuja", 1,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL PUNTO DE INSERCION: POR ESTO LA BARRA APARECE MOVIDA");
+Console.WriteLine("=====================================================================");
+
+void Cerca(string que, double esperado, double real, double tol = 1e-9)
+{
+    var ok = Math.Abs(esperado - real) <= tol;
+    Console.WriteLine($"  {(ok ? "OK   " : "FALLA")} {que}" +
+                      (ok ? string.Empty : $"   esperado <{esperado}>, salio <{real}>"));
+    if (!ok)
+    {
+        fallos++;
+    }
+}
+
+// ---- LOS EJES LOCALES, que son la base de todo -----------------------------------
+// TRABE a lo largo del +X: el 1 va a lo largo, el 2 es VERTICAL (+Z) y el 3 queda
+// horizontal y perpendicular. Es la convencion de CSI, y es la que explica que en una
+// trabe el offset del eje 3 la mueva en planta y el del eje 2 solo la suba o la baje.
+var (t1, t2v, t3v) = PuntoDeInsercion.Ejes(false, 1, 0, 0);
+
+Cerca("trabe en +X: el eje 1 va a lo largo", 1, t1[0]);
+Cerca("el eje 2 es VERTICAL", 1, t2v[2]);
+Cerca("y no tiene componente en planta, en X", 0, t2v[0]);
+Cerca("ni en Y", 0, t2v[1]);
+Cerca("el eje 3 es horizontal y perpendicular: -Y", -1, t3v[1]);
+Cerca("sin componente vertical", 0, t3v[2]);
+
+// COLUMNA: el 1 hacia arriba, el 2 al +X y el 3 al +Y. Los DOS ejes de la seccion son
+// horizontales, asi que cualquier offset la mueve en planta.
+var (c1, c2v, c3v) = PuntoDeInsercion.Ejes(true, 0, 0, 0);
+
+Cerca("columna: el eje 1 va hacia arriba", 1, c1[2]);
+Cerca("el eje 2 al +X", 1, c2v[0]);
+Cerca("y el eje 3 al +Y", 1, c3v[1]);
+
+// Con giro de ejes locales, el 2 y el 3 giran alrededor del 1.
+var (_, g2, g3) = PuntoDeInsercion.Ejes(true, 0, 0, 90);
+
+Cerca("una columna girada 90: el eje 2 pasa al +Y", 1, g2[1], 1e-12);
+Cerca("y el eje 3 al -X", -1, g3[0], 1e-12);
+
+// ---- LOS OFFSETS DE NUDO, que es lo que trae el modelo ---------------------------
+// El caso de la pantalla: offsets en el eje 3 de -0.025 en los dos extremos, en LOCALES.
+var (dxTrabe, dyTrabe) = PuntoDeInsercion.EnPlanta(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0d, -0.025 }, enLocales: true,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.25, dim3: 0.15);
+
+Cerca("trabe en +X con offset 3 = -0.025: NO se mueve en X", 0, dxTrabe);
+Cerca("y se mueve 2.5 cm en Y, que es lo que se ve corrido", 0.025, dyTrabe);
+
+// El mismo offset, pero en el eje 2: en una trabe eso es VERTICAL, no se ve en planta.
+var (dx2, dy2) = PuntoDeInsercion.EnPlanta(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, -0.025, 0d }, enLocales: true,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.25, dim3: 0.15);
+
+Cerca("el offset del eje 2 en una trabe no mueve la planta, en X", 0, dx2);
+Cerca("ni en Y: solo la sube o la baja", 0, dy2);
+
+// En una COLUMNA el mismo offset SI mueve la planta: sus dos ejes son horizontales.
+var (dxCol, dyCol) = PuntoDeInsercion.EnPlanta(
+    vertical: true, ux: 0, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0.10, -0.025 }, enLocales: true,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.15, dim3: 0.15);
+
+Cerca("columna: el offset del eje 2 la mueve en X", 0.10, dxCol);
+Cerca("y el del eje 3, en Y", -0.025, dyCol);
+
+// En GLOBALES los offsets ya vienen en X, Y y Z: se toman tal cual.
+var (dxG, dyG) = PuntoDeInsercion.EnPlanta(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0.05, -0.03, 0.99 }, enLocales: false,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.25, dim3: 0.15);
+
+Cerca("en globales el offset X se toma tal cual", 0.05, dxG);
+Cerca("y el Y tambien", -0.03, dyG);
+
+// ---- EL PUNTO CARDINAL ------------------------------------------------------------
+// El 10 es el centroide, el de omision: no corre nada, y es el que trae su modelo.
+Igual("el centroide no corre la seccion", (0d, 0d),
+      PuntoDeInsercion.PorPuntoCardinal(10, 0.25, 0.15));
+Igual("ni el centro de cortante", (0d, 0d),
+      PuntoDeInsercion.PorPuntoCardinal(11, 0.25, 0.15));
+Igual("ni el centro de la cuadricula, el 5", (0d, 0d),
+      PuntoDeInsercion.PorPuntoCardinal(5, 0.25, 0.15));
+
+// El 8 es «arriba al centro»: la cara de arriba queda en la linea y el centro BAJA
+// medio peralte. Es lo tipico de una trabe a paño de losa.
+var (d2Arriba, d3Arriba) = PuntoDeInsercion.PorPuntoCardinal(8, 0.25, 0.15);
+
+Cerca("el punto 8 baja el centro medio peralte", -0.125, d2Arriba);
+Cerca("y no lo corre de lado", 0, d3Arriba);
+
+// El 1 es «abajo a la izquierda»: la esquina queda en la linea y el centro se va
+// arriba y a la derecha.
+var (d2Esq, d3Esq) = PuntoDeInsercion.PorPuntoCardinal(1, 0.25, 0.15);
+
+Cerca("el punto 1 sube el centro medio peralte", 0.125, d2Esq);
+Cerca("y lo corre medio ancho", 0.075, d3Esq);
+
+// El espejo respecto del eje 2 invierte el lado.
+var (_, d3Espejo) = PuntoDeInsercion.PorPuntoCardinal(1, 0.25, 0.15, espejo2: true);
+
+Cerca("con espejo en el eje 2 el lado se invierte", -0.075, d3Espejo);
+
+// Y en una COLUMNA el punto cardinal mueve la planta en las dos direcciones: es el
+// caso de la columna de esquina alineada al paño de la fachada.
+var (dxEsq, dyEsq) = PuntoDeInsercion.EnPlanta(
+    vertical: true, ux: 0, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0d, 0d }, enLocales: true,
+    puntoCardinal: 1, dim2: 0.30, dim3: 0.20);
+
+Cerca("columna con el punto 1: media seccion en X", 0.15, dxEsq);
+Cerca("y media en Y", 0.10, dyEsq);
+
+// Una barra sin punto de insercion no se mueve, que es el caso de casi todo el modelo.
+var (dxNada, dyNada) = PuntoDeInsercion.EnPlanta(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0d, 0d }, enLocales: true,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.25, dim3: 0.15);
+
+Cerca("sin offsets y con el centroide no se mueve nada, en X", 0, dxNada);
+Cerca("ni en Y", 0, dyNada);
+
+// Y el elemento lo dice: ConPuntoDeInsercion es lo que se mira en el diagnostico.
+var movida = new ElementoEtabs { MovidoYI = 0.025, MovidoYJ = 0.025 };
+var quieta = new ElementoEtabs();
+
+Check("la barra movida se reconoce", movida.ConPuntoDeInsercion);
+Check("y la que no se movio, tambien", !quieta.ConPuntoDeInsercion);
+Igual("el punto cardinal de omision es el centroide", 10, quieta.PuntoCardinal);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");
 Console.WriteLine("=====================================================================");
 return fallos == 0 ? 0 : 1;

@@ -105,6 +105,45 @@ public sealed class ElementoEtabs
     /// <summary>Espesor de pared, en metros. Solo en tubos y cajones.</summary>
     public double ParedM { get; set; }
 
+    /// <summary>
+    /// El <b>punto cardinal</b> del punto de inserción: 10 = centroide, el de omisión.
+    /// </summary>
+    /// <remarks>
+    /// Es el de <c>Assign → Frame → Insertion Point</c>. Dice qué punto de la sección va
+    /// sobre la línea de los nudos, así que con cualquiera que no sea el 10 —o el 11, o el
+    /// 5— la pieza real queda <b>corrida</b> respecto del eje de la cuadrícula. Se guarda
+    /// para poder decirlo en el resumen: es una de esas cosas que explican por qué el plano
+    /// no cuadra con lo que se ve en la pantalla de ETABS.
+    /// </remarks>
+    public int PuntoCardinal { get; set; } = PuntoDeInsercion.Centroide;
+
+    /// <summary>Los espejos del punto de inserción, respecto de los ejes locales 2 y 3.</summary>
+    public bool Espejo2 { get; set; }
+
+    public bool Espejo3 { get; set; }
+
+    /// <summary>
+    /// Lo que se <b>movió en planta</b> cada extremo por su punto de inserción, en metros.
+    /// </summary>
+    /// <remarks>
+    /// Ya viene aplicado a <see cref="X1"/>, <see cref="Y1"/>, <see cref="X2"/> y
+    /// <see cref="Y2"/>: esto se guarda para el diagnóstico y para las pruebas, porque si un
+    /// elemento sale donde no se espera, lo primero que hay que saber es cuánto lo movió su
+    /// punto de inserción.
+    /// </remarks>
+    public double MovidoXI { get; set; }
+
+    public double MovidoYI { get; set; }
+
+    public double MovidoXJ { get; set; }
+
+    public double MovidoYJ { get; set; }
+
+    /// <summary>¿Su punto de inserción lo movió algo en planta?</summary>
+    public bool ConPuntoDeInsercion =>
+        Math.Abs(MovidoXI) > 1e-9 || Math.Abs(MovidoYI) > 1e-9
+        || Math.Abs(MovidoXJ) > 1e-9 || Math.Abs(MovidoYJ) > 1e-9;
+
     /// <summary>Vértices en planta, solo para losas y muros.</summary>
     public List<(double X, double Y)> Vertices { get; } = new();
 
@@ -213,6 +252,16 @@ public sealed class ModeloEtabs
     public int Frames { get; set; }
 
     public int Areas { get; set; }
+
+    /// <summary>
+    /// Cuántas barras traen <b>punto de inserción</b> que las mueve en planta.
+    /// </summary>
+    /// <remarks>
+    /// Se cuenta para poder decirlo en el resumen. Es el dato que explica por qué una trabe
+    /// o una columna aparece corrida respecto del eje de la cuadrícula: no es un error del
+    /// dibujo, es que en el modelo la pieza está ahí.
+    /// </remarks>
+    public int ConPuntoDeInsercion { get; set; }
 
     public int Contar(ClaseElemento c) => Elementos.Count(e => e.Clase == c);
 
@@ -522,6 +571,33 @@ public sealed class ModeloEtabs
         s.AppendLine($"  Diagonales : {Contar(ClaseElemento.Diagonal)}");
         s.AppendLine($"  Muros      : {Contar(ClaseElemento.Muro)}");
         s.AppendLine($"  Losas      : {Contar(ClaseElemento.Losa)}");
+
+        // EL PUNTO DE INSERCIÓN, dicho aquí porque es la explicación de por qué una barra
+        // aparece corrida respecto del eje de la cuadrícula: no es el dibujo, es el modelo.
+        if (ConPuntoDeInsercion > 0)
+        {
+            var cardinales = Elementos
+                .Where(e => e.PuntoCardinal is > 0 and not PuntoDeInsercion.Centroide)
+                .Select(e => e.PuntoCardinal)
+                .Distinct()
+                .OrderBy(p => p)
+                .ToList();
+
+            s.AppendLine();
+            s.AppendLine(
+                $"Punto de inserción: {ConPuntoDeInsercion} barra(s) van CORRIDAS respecto " +
+                "del eje de sus nudos, y así se dibujan.");
+            s.AppendLine(
+                "  Es el «Assign - Frame - Insertion Point» del modelo: offsets de nudo y " +
+                "punto cardinal.");
+
+            if (cardinales.Count > 0)
+            {
+                s.AppendLine(
+                    "  Puntos cardinales distintos del centroide: " +
+                    string.Join(", ", cardinales));
+            }
+        }
 
         if (Avisos.Count > 0)
         {
