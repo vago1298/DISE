@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using CadLink.Cad;
 using CadLink.Etabs;
 
 namespace CadLink.App;
@@ -50,9 +51,21 @@ public sealed partial class VistaModelo
     private sealed class Cara
     {
         public required Point[] Pantalla { get; init; }
-        public required double Profundidad { get; init; }
-        public required Brush Relleno { get; init; }
-        public required Brush Borde { get; init; }
+
+        /// <summary>
+        /// La profundidad de CADA vértice, no la media de la cara.
+        /// </summary>
+        /// <remarks>
+        /// Es el cambio de fondo: con una sola profundidad por cara solo se puede ORDENAR, y
+        /// ordenar no resuelve dos caras que se atraviesan. Con la de cada vértice se puede
+        /// interpolar por píxel, que es lo que hace que la intersección salga exacta.
+        /// </remarks>
+        public required double[] Prof { get; init; }
+
+        public required int Relleno { get; init; }
+
+        public required int Borde { get; init; }
+
         public string? Info { get; init; }
     }
 
@@ -97,13 +110,12 @@ public sealed partial class VistaModelo
                 {
                     Pantalla = cara.Select(p => cam.APantalla(p.X, p.Y, p.Z)).ToArray(),
 
-                    // La profundidad de la cara es la media de sus vértices. Con el
-                    // vértice más lejano en su lugar, dos caras que comparten arista
-                    // se ordenarían por un empate y parpadearían al girar.
-                    Profundidad = cara.Average(p => cam.Prof(p.X, p.Y)),
+                    // La profundidad de CADA vértice: es lo que permite decidir por píxel
+                    // quién está delante en lugar de ordenar caras enteras.
+                    Prof = cara.Select(p => cam.Prof(p.X, p.Y)).ToArray(),
 
-                    Relleno = Sombra(color, brillo),
-                    Borde = Sombra(color, brillo * 0.62),
+                    Relleno = Argb(color, brillo),
+                    Borde = Argb(color, brillo * 0.62),
                     Info = Etiqueta(el)
                 });
             }
@@ -117,25 +129,50 @@ public sealed partial class VistaModelo
             return;
         }
 
-        // De lejos a cerca: 'Prof' crece hacia el fondo, así que se pinta primero el
-        // mayor. Al revés, el fondo taparía el frente y el edificio se vería del revés.
-        foreach (var cara in caras.OrderByDescending(c => c.Profundidad))
-        {
-            var poly = new Polygon
-            {
-                Fill = cara.Relleno,
-                Stroke = cara.Borde,
-                StrokeThickness = GrosorArista,
-                ToolTip = cara.Info
-            };
+        // ==============================================================================
+        //  SE PINTA CON Z-BUFFER, NO ORDENANDO CARAS
+        // ==============================================================================
+        //  Aquí estaba la losa cortada. Ordenar las caras por su profundidad MEDIA y pintarlas
+        //  de lejos a cerca —el algoritmo del pintor— falla siempre en el mismo caso: cuando
+        //  dos caras se ATRAVIESAN. Una losa y un muro que la cruza no tienen orden correcto,
+        //  porque cada uno está delante en una parte; el pintor tiene que elegir uno entero, y
+        //  de ahí que la losa se viera cortada por el muro o el muro pasándole por encima.
+        //
+        //  No era el motor de dibujo: era el método. Con Z-buffer se guarda la profundidad de
+        //  CADA PÍXEL y se pinta solo lo que está más cerca, así que la intersección sale
+        //  exacta y no hay nada que ordenar.
+        var lienzoZ = new RasterZ((int)Math.Ceiling(cam.W), (int)Math.Ceiling(cam.H));
 
-            foreach (var p in cara.Pantalla)
+        lienzoZ.Limpiar(ArgbDe(FondoDeLaExtruida));
+
+        foreach (var cara in caras)
+        {
+            // Cada cara se parte en triángulos —abanico desde el primer vértice—, que es lo
+            // que sabe pintar un rasterizador. Las caras de un prisma son planas y convexas,
+            // así que el abanico las cubre exactamente.
+            for (var i = 1; i + 1 < cara.Pantalla.Length; i++)
             {
-                poly.Points.Add(p);
+                lienzoZ.Triangulo(
+                    cara.Pantalla[0].X, cara.Pantalla[0].Y, cara.Prof[0],
+                    cara.Pantalla[i].X, cara.Pantalla[i].Y, cara.Prof[i],
+                    cara.Pantalla[i + 1].X, cara.Pantalla[i + 1].Y, cara.Prof[i + 1],
+                    cara.Relleno);
             }
 
-            lienzo.Children.Add(poly);
+            // Y sus aristas, que es lo que deja ver la forma de cada pieza. Con el sesgo del
+            // rasterizador quedan justo delante de su propia cara.
+            for (var i = 0; i < cara.Pantalla.Length; i++)
+            {
+                var j = (i + 1) % cara.Pantalla.Length;
+
+                lienzoZ.Linea(
+                    cara.Pantalla[i].X, cara.Pantalla[i].Y, cara.Prof[i],
+                    cara.Pantalla[j].X, cara.Pantalla[j].Y, cara.Prof[j],
+                    cara.Borde);
+            }
         }
+
+        MostrarRaster(lienzo, lienzoZ);
 
         DibujarTerna(lienzo, cam.W, cam.H, cam.Sa, cam.Ca, cam.Se, cam.Ce);
         Leyenda(lienzo, elementos.Count);
@@ -344,6 +381,67 @@ public sealed partial class VistaModelo
         var cos = Math.Abs((n.Item1 * Luz.X) + (n.Item2 * Luz.Y) + (n.Item3 * Luz.Z));
 
         return BrilloMin + ((1 - BrilloMin) * Math.Clamp(cos, 0, 1));
+    }
+
+    /// <summary>El color de fondo de la vista extruida.</summary>
+    /// <remarks>
+    /// Con Z-buffer el fondo hay que pintarlo: antes lo ponía el propio lienzo y ahora la
+    /// imagen lo tapa entera. Se toma el mismo tono claro de las tarjetas para que la vista no
+    /// cambie de aspecto.
+    /// </remarks>
+    private static readonly Color FondoDeLaExtruida = Color.FromRgb(0xF7, 0xF9, 0xFB);
+
+    /// <summary>El color, ya sombreado, como entero <c>0xAARRGGBB</c>.</summary>
+    private static int Argb(Color c, double brillo)
+    {
+        byte Canal(byte v) => (byte)Math.Clamp(Math.Round(v * brillo), 0, 255);
+
+        return ArgbDe(Color.FromRgb(Canal(c.R), Canal(c.G), Canal(c.B)));
+    }
+
+    private static int ArgbDe(Color c) =>
+        (0xFF << 24) | (c.R << 16) | (c.G << 8) | c.B;
+
+    /// <summary>
+    /// Vuelca el buffer del rasterizador al lienzo, como una <b>imagen</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un solo objeto en el lienzo en lugar de miles de polígonos, así que además de salir
+    /// bien, sale más rápido: WPF ya no tiene que medir, recortar y ordenar cada cara.
+    /// </para>
+    /// <para>
+    /// <c>Bgra32</c> es el formato en que un <c>int</c> de <c>0xAARRGGBB</c> se copia tal cual
+    /// en memoria en una máquina little-endian, que son todas las que corren Windows: sin
+    /// conversión y sin recorrer los píxeles otra vez.
+    /// </para>
+    /// </remarks>
+    private static void MostrarRaster(Canvas lienzo, RasterZ raster)
+    {
+        var mapa = new System.Windows.Media.Imaging.WriteableBitmap(
+            raster.Ancho, raster.Alto, 96, 96, PixelFormats.Bgra32, null);
+
+        mapa.WritePixels(
+            new Int32Rect(0, 0, raster.Ancho, raster.Alto),
+            raster.Pixeles, raster.Ancho * 4, 0);
+
+        var img = new Image
+        {
+            Source = mapa,
+            Width = raster.Ancho,
+            Height = raster.Alto,
+
+            // Sin suavizado: cada píxel del buffer es un píxel de la pantalla, que es lo que
+            // deja las aristas limpias en lugar de emborronadas.
+            SnapsToDevicePixels = true
+        };
+
+        RenderOptions.SetBitmapScalingMode(
+            img, System.Windows.Media.BitmapScalingMode.NearestNeighbor);
+
+        Canvas.SetLeft(img, 0);
+        Canvas.SetTop(img, 0);
+        lienzo.Children.Add(img);
     }
 
     private static Brush Sombra(Color c, double brillo)

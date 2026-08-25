@@ -622,10 +622,53 @@ def v11_visor() -> None:
         "; ".join(malas),
     )
 
+    # EL ORDEN DEL PINTOR se queda solo en la vista de ALAMBRE, donde no hay caras que se
+    # atraviesen. La EXTRUIDA ya no ordena: pinta con Z-BUFFER, que es lo que arregla la losa
+    # que se veia cortada por el muro -dos caras que se cruzan no tienen orden correcto,
+    # porque cada una esta delante en una parte-.
     check(
-        "orden del pintor de lejos a cerca",
+        "el alambre sigue pintando de lejos a cerca",
         "OrderByDescending" in t and re.search(r"OrderBy\(t => t\.Prof\)", t) is None,
     )
+
+    # ------------------------------------------------------------------
+    # LA EXTRUIDA, CON Z-BUFFER: LA LOSA YA NO SE VE CORTADA
+    # ------------------------------------------------------------------
+    #  No era el motor de dibujo, era el METODO: ordenar caras por su profundidad media no
+    #  puede resolver dos caras que se atraviesan. Con Z-buffer la decision se toma por PIXEL.
+    # Se releen aqui: las variables de mas abajo son de otra parte de la funcion.
+    rast = leer(ruta("client/src/CadLink.Cad/RasterZ.cs"))
+    ext_z = leer(ruta("client/src/CadLink.App/VistaModelo.Extruida.cs"))
+    pre_z = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+
+    check("hay un rasterizador con Z-buffer, y sin WPF para poder probarlo",
+          "public sealed class RasterZ" in rast
+          and "public void Triangulo(" in rast
+          and "public void Linea(" in rast
+          and "if (z >= _z[i])" in rast
+          and "using System.Windows" not in rast)
+    check("la extruida lo usa en vez de ordenar caras",
+          "var lienzoZ = new RasterZ(" in ext_z
+          and "lienzoZ.Triangulo(" in ext_z
+          and "MostrarRaster(lienzo, lienzoZ);" in ext_z
+          and "OrderByDescending" not in ext_z)
+    # LA PROFUNDIDAD, POR VERTICE: con una sola por cara solo se puede ordenar.
+    check("la cara guarda la profundidad de cada vertice",
+          "public required double[] Prof { get; init; }" in ext_z
+          and "Prof = cara.Select(p => cam.Prof(p.X, p.Y)).ToArray()," in ext_z)
+    # LAS ARISTAS, con sesgo hacia la camara: sin el, saldrian a puntos contra su propia cara.
+    check("las aristas se acercan un pelo para no pelearse con su cara",
+          "double sesgo = 0.05" in rast
+          and "z1 + ((z2 - z1) * t) - sesgo" in rast)
+    # Y SE VUELCA COMO UNA IMAGEN: un objeto en el lienzo en vez de miles de poligonos.
+    check("el resultado se vuelca como una imagen, no como miles de poligonos",
+          "WriteableBitmap(" in ext_z
+          and "PixelFormats.Bgra32" in ext_z
+          and "NearestNeighbor" in ext_z)
+    check("hay prueba ejecutable del Z-buffer",
+          "a la izquierda queda la cara que ahi esta mas cerca" in pre_z
+          and "lo de detras no tapa lo de delante aunque se pinte despues" in pre_z
+          and "un triangulo sin area no pinta" in pre_z)
 
     # La vista en planta dedicada invierte la Y, porque la del lienzo crece
     # hacia abajo y la del modelo hacia arriba
@@ -695,9 +738,9 @@ def v11_visor() -> None:
     # columnas quedaban alineadas con la X y la Y globales.
     ext = leer(ruta("client", "src", "CadLink.App", "VistaModelo.Extruida.cs"))
     check("la vista extruida gira el prisma con los ejes locales",
-          "Math.Abs(el.AnguloGrados) > 1e-9" in ext
-          and "(n1.Item1 * ca) + (n2.Item1 * sa)" in ext
-          and "(n2.Item1 * ca) - (n1.Item1 * sa)" in ext)
+          "Math.Abs(el.AnguloGrados) > 1e-9" in ext_z
+          and "(n1.Item1 * ca) + (n2.Item1 * sa)" in ext_z
+          and "(n2.Item1 * ca) - (n1.Item1 * sa)" in ext_z)
     # ------------------------------------------------------------------
     # LA CUADRICULA DE EJES EN LA VISTA PREVIA
     # ------------------------------------------------------------------
@@ -3523,10 +3566,14 @@ def v16_extruida_piers() -> None:
         check("el prisma tiene sus seis caras",
               cuerpo.count("yield return") >= 3 and "for (var i = 0; i < 4; i++)" in cuerpo)
 
-    # El pintor va por CARA, no por elemento: una trabe que cruza una columna tiene
-    # caras delante y detras de ella a la vez.
-    check("el orden del pintor es por cara",
-          "caras.OrderByDescending(c => c.Profundidad)" in ext)
+    # SE PINTA POR CARA, y ahora ni siquiera por orden: con Z-BUFFER, pixel a pixel. El
+    # orden por caras -aunque fuera por cara y no por elemento- no puede resolver dos caras
+    # que se ATRAVIESAN, y ese era el caso de la losa que se veia cortada por el muro: cada
+    # una esta delante en una parte, asi que no hay orden correcto que elegir.
+    check("la extruida pinta cara por cara, con Z-buffer",
+          "foreach (var cara in caras)" in ext
+          and "lienzoZ.Triangulo(" in ext
+          and "caras.OrderByDescending(c => c.Profundidad)" not in ext)
     # La normal por Newell, no por los tres primeros vertices (pueden ser casi
     # colineales en una losa con vertice intermedio).
     check("la normal se calcula por Newell", "NormalDe(" in ext and "a.Y - b.Y" in ext)

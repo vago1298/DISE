@@ -377,6 +377,80 @@ Igual("y con la palabra del modelo queda «Losa de VOLADO»",
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL Z-BUFFER: POR ESO LA LOSA SE VEIA CORTADA");
+Console.WriteLine("=====================================================================");
+
+// El caso que se veia en la vista extruida: DOS CARAS QUE SE ATRAVIESAN. Ordenar por la
+// profundidad MEDIA de cada cara no tiene solucion correcta, porque cada una esta delante
+// en una mitad; el algoritmo del pintor tiene que elegir una entera y de ahi que la losa
+// saliera cortada por el muro.
+var rz = new RasterZ(40, 40);
+rz.Limpiar(0);
+
+// Cara A: horizontal, inclinada en profundidad -de z=0 a la izquierda a z=20 a la derecha-.
+rz.Triangulo(0, 0, 0, 40, 0, 20, 40, 40, 20, unchecked((int)0xFFAAAAAA));
+rz.Triangulo(0, 0, 0, 40, 40, 20, 0, 40, 0, unchecked((int)0xFFAAAAAA));
+
+// Cara B: la que la cruza, inclinada al contrario -z=20 a la izquierda y z=0 a la derecha-.
+rz.Triangulo(0, 0, 20, 40, 0, 0, 40, 40, 0, unchecked((int)0xFF0000FF));
+rz.Triangulo(0, 0, 20, 40, 40, 0, 0, 40, 20, unchecked((int)0xFF0000FF));
+
+// A la IZQUIERDA gana la primera -ahi esta mas cerca- y a la DERECHA la segunda: las dos
+// se ven, cada una en su mitad, que es lo que el orden por caras no puede hacer.
+Igual("a la izquierda queda la cara que ahi esta mas cerca",
+      unchecked((int)0xFFAAAAAA), rz.PixelEn(4, 20));
+Igual("y a la derecha, la otra", unchecked((int)0xFF0000FF), rz.PixelEn(36, 20));
+
+// Y la profundidad guardada es la del que gano, no la media de nadie.
+Cerca("la profundidad del pixel es la de la cara que gano", 2, rz.ProfundidadEn(4, 20), 0.6);
+
+// LO DE SIEMPRE, comprobado: lo que esta detras NO tapa lo de delante, sin importar en
+// que orden se pinte.
+var orden = new RasterZ(10, 10);
+orden.Limpiar(0);
+orden.Triangulo(0, 0, 1, 10, 0, 1, 10, 10, 1, unchecked((int)0xFF112233));   // cerca
+orden.Triangulo(0, 0, 9, 10, 0, 9, 10, 10, 9, unchecked((int)0xFF445566));   // lejos, DESPUES
+
+Igual("lo de detras no tapa lo de delante aunque se pinte despues",
+      unchecked((int)0xFF112233), orden.PixelEn(8, 2));
+
+// Y al reves: lo de delante SI tapa lo de detras.
+var tapa = new RasterZ(10, 10);
+tapa.Limpiar(0);
+tapa.Triangulo(0, 0, 9, 10, 0, 9, 10, 10, 9, unchecked((int)0xFF445566));
+tapa.Triangulo(0, 0, 1, 10, 0, 1, 10, 10, 1, unchecked((int)0xFF112233));
+
+Igual("y lo de delante si tapa lo de detras",
+      unchecked((int)0xFF112233), tapa.PixelEn(8, 2));
+
+// El fondo se queda donde no se pinta nada.
+Igual("fuera de los triangulos queda el fondo", 0, tapa.PixelEn(1, 8));
+Cerca("y su profundidad es el infinito", RasterZ.Lejos, tapa.ProfundidadEn(1, 8), 1);
+
+// Un triangulo degenerado no revienta ni pinta nada.
+var deg = new RasterZ(8, 8);
+deg.Limpiar(7);
+deg.Triangulo(0, 0, 1, 4, 4, 1, 8, 8, 1, 99);
+Igual("un triangulo sin area no pinta", 7, deg.PixelEn(4, 4));
+
+// LAS ARISTAS quedan DELANTE de su propia cara: sin el sesgo, la mitad de sus pixeles
+// perderia el desempate contra la cara y el contorno saldria a puntos.
+var ar = new RasterZ(20, 20);
+ar.Limpiar(0);
+ar.Triangulo(0, 0, 5, 20, 0, 5, 20, 20, 5, 1000);
+ar.Linea(0, 0, 5, 20, 20, 5, 2000);
+
+Check("la arista se ve sobre su cara", ar.PixelEn(10, 10) == 2000);
+
+// Fuera del buffer no se pinta ni se cae.
+var borde = new RasterZ(5, 5);
+borde.Limpiar(0);
+borde.Triangulo(-50, -50, 1, -40, -50, 1, -40, -40, 1, 123);
+Igual("lo que cae fuera del lienzo no pinta", 0, borde.PixelEn(0, 0));
+Igual("y preguntar fuera del lienzo no revienta", 0, borde.PixelEn(99, 99));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL PAÑO DE LA LOSA Y LOS VOLADOS PEGADOS");
 Console.WriteLine("=====================================================================");
 
