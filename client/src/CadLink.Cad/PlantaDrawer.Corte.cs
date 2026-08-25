@@ -44,6 +44,14 @@ public sealed partial class PlantaDrawer
             return 0;
         }
 
+        // El castillo modelado como SHELL de muro también es un castillo aquí: en el alzado
+        // se dibuja como columna —rellena si el plano la corta— y no como el paño de un muro.
+        // Es la misma normalización que en planta, para que el corte y la planta no discutan.
+        if (_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true))
+        {
+            PlanoEstructural.CastilloDeMuro.Normalizar(c.Elementos, EspesorMuroPorOmision);
+        }
+
         var piezas = CorteEnAlzado.Piezas(c.Elementos, c.EnX, c.Ordenada, c.EspesorM);
 
         if (piezas.Count == 0)

@@ -4943,6 +4943,60 @@ def v18_planta_autocad() -> None:
     check("un castillo sin medidas cae en los 15x15 de siempre",
           "var b = el.AnchoM > 0 ? el.AnchoM : 0.15;" in ejp
           and "var h = el.PeralteM > 0 ? el.PeralteM : b;" in ejp)
+
+    # ------------------------------------------------------------------
+    # EL CASTILLO MODELADO COMO SHELL DE MURO
+    # ------------------------------------------------------------------
+    #  «Los shells de muro que tengan en property note CASTILLO igual hacerlos bloques y
+    #  rellenarlos con amarillo como un frame normal, OJO solo si dice CASTILLO». Un castillo
+    #  se puede modelar como frame de 15x15 o como shell angosto -lo que sale al dibujarlo
+    #  junto con su muro-, y dibujado como muro salia como dos rayas, sin bloque y sin
+    #  relleno: la misma cosa se veia de dos formas distintas en el plano.
+    cdm = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CastilloDeMuro.cs"))
+    dibp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    corp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
+    winp = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+
+    check("el shell de muro que dice CASTILLO se convierte en castillo",
+          "public static bool Dice(ElementoPlanta? el)" in cdm
+          and "public static ElementoPlanta Como(" in cdm
+          and "public static int Normalizar(" in cdm)
+    # SOLO SI DICE CASTILLO, y solo los MUROS: una losa o una trabe con esa nota se quedan
+    # como estan, y el NOMBRE DE LA SECCION no cuenta -se pidio la property note-.
+    check("solo los muros, y solo por el tipo o las notas",
+          "el.Clase != ClasePlanta.Muro" in cdm
+          and "return DicenLasNotas(el.Tipo, el.Notas);" in cdm
+          and "el.Seccion" not in cdm.split("public static bool Dice")[1].split("}")[0])
+    # Se dibuja por el camino de la COLUMNA, que es el del bloque con el nombre de la seccion
+    # y el relleno SOLID amarillo -COLOR_RELLENO_BLOQUE, el 2- dentro del bloque.
+    check("y se dibuja como columna, que es el camino del bloque y el relleno",
+          "Clase = ClasePlanta.Columna," in cdm
+          and 'Tipo = Palabra,' in cdm
+          and 'Forma = "RECT",' in cdm)
+    # El segmento con espesor se vuelve una SECCION EN UN PUNTO, girada: el centro es el punto
+    # medio, el ancho el largo del shell y el peralte su espesor.
+    check("el shell se vuelve una seccion en su centro, girada",
+          "AnchoM = b," in cdm
+          and "PeralteM = espesor," in cdm
+          and "AnguloGrados = largo > Nada ? Math.Atan2(dy, dx) * 180 / Math.PI : 0" in cdm)
+    check("con la bandera para apagarlo",
+          '_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)' in dibp
+          and '_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)' in corp)
+    # ANTES DE LOS APOYOS: si la conversion llegara despues, los muros moririan en el EJE de
+    # este castillo en vez de en su pano, y el contorno de la losa se le metaria por dentro.
+    check("y se convierte ANTES de calcular los apoyos y las huellas",
+          "PlanoEstructural.CastilloDeMuro.Normalizar(" in dibp
+          and dibp.index("PlanoEstructural.CastilloDeMuro.Normalizar(")
+              < dibp.index("var apoyos = p.Elementos.Where"))
+    check("el corte lo normaliza igual, para que no discuta con la planta",
+          "PlanoEstructural.CastilloDeMuro.Normalizar(c.Elementos, EspesorMuroPorOmision);"
+          in corp)
+    # LA CASILLA que le toca es la de las COLUMNAS: quien apaga los muros para ver solo la
+    # estructura de castillos los perderia todos, y en el plano ya no son muros.
+    check("en la ventana sigue a la casilla de las columnas",
+          "private bool VisibleEnElPlano(ElementoEtabs el) =>" in winp
+          and "CastilloDeMuro.DicenLasNotas(null, el.Notas)" in winp
+          and "if (!VisibleEnElPlano(el))" in winp)
     check("y el dibujante los usa para la linea, las burbujas Y las cotas",
           "Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos)" in mac
           and "Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos)" in mac

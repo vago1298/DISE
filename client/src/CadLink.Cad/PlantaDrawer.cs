@@ -184,6 +184,31 @@ public sealed partial class PlantaDrawer
         AsegurarEstilosDeLaMacro();
 
         // ==============================================================================
+        //  EL CASTILLO MODELADO COMO SHELL DE MURO, A CASTILLO
+        // ==============================================================================
+        //  Se pidió: «los shells de muro que tengan en property note CASTILLO igual hacerlos
+        //  bloques y rellenarlos con amarillo como un frame normal, OJO solo si dice CASTILLO».
+        //  Un castillo se puede modelar de las dos maneras —frame de 15×15 o shell angosto,
+        //  que es lo que sale al dibujarlo junto con su muro— y dibujados como muro salían
+        //  como dos rayas, sin bloque y sin relleno: la misma cosa se veía de dos formas.
+        //
+        //  VA AQUÍ, ANTES DE NADA, porque los apoyos y las huellas se calculan justo abajo: si
+        //  la conversión llegara después, los muros morirían en el EJE de este castillo en vez
+        //  de en su paño y el contorno de la losa se le metería por dentro.
+        if (_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true))
+        {
+            var deShell = PlanoEstructural.CastilloDeMuro.Normalizar(
+                p.Elementos, EspesorMuroPorOmision);
+
+            if (deShell > 0)
+            {
+                Nota($"{deShell} shell(s) de muro con CASTILLO en sus notas se dibujaron " +
+                     "como castillo: bloque de la sección y relleno amarillo, igual que uno " +
+                     "de frame.");
+            }
+        }
+
+        // ==============================================================================
         //  LO QUE HAY QUE SABER ANTES DE DIBUJAR NADA
         // ==============================================================================
         //  Los APOYOS —las columnas y los castillos— y las HUELLAS de las barras: el

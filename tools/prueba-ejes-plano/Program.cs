@@ -1538,6 +1538,109 @@ Igual("sin ningún número, 0", 0, RotuloPlanta.NumeroDeStory("Azotea"));
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL CASTILLO MODELADO COMO SHELL DE MURO");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «los shells de muro que tengan en property note CASTILLO igual hacerlos bloques
+// y rellenarlos con amarillo como un frame normal, OJO solo si dice CASTILLO». Un castillo se
+// puede modelar como frame de 15x15 o como shell angosto -lo que sale al dibujarlo junto con
+// su muro- y dibujado como muro salia como dos rayas, sin bloque y sin relleno.
+var shellCastillo = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "CASTILLO", Notas = "CASTILLO AHOGADO EN MURO",
+    Etiqueta = "45", Seccion = "MURO 15", X1 = 12, Y1 = 0, X2 = 12, Y2 = 0.15,
+    AnchoM = 0.15, Z1 = 0, Z2 = 2.5
+};
+
+Check("un shell de muro con CASTILLO en sus notas es un castillo",
+      CastilloDeMuro.Dice(shellCastillo));
+Check("y basta el TIPO que ya clasifico la ventana",
+      CastilloDeMuro.Dice(new ElementoPlanta { Clase = ClasePlanta.Muro, Tipo = "CASTILLO" }));
+
+// OJO SOLO SI DICE CASTILLO: un muro cualquiera sigue siendo un muro.
+Check("un muro normal NO se convierte",
+      !CastilloDeMuro.Dice(new ElementoPlanta
+      {
+          Clase = ClasePlanta.Muro, Tipo = "MURO", Notas = "MURO DE BLOCK 15", AnchoM = 0.15
+      }));
+// El NOMBRE DE LA SECCION no cuenta: se pidio la property note, y una propiedad de muro
+// llamada «MURO CON CASTILLOS 15» es un muro, no un castillo.
+Check("el nombre de la seccion no convierte a nadie",
+      !CastilloDeMuro.Dice(new ElementoPlanta
+      {
+          Clase = ClasePlanta.Muro, Tipo = "MURO", Seccion = "MURO CON CASTILLOS 15"
+      }));
+// Y solo los MUROS: una losa o una trabe con esa nota se quedan como estan.
+Check("una losa con CASTILLO en sus notas no es un castillo",
+      !CastilloDeMuro.Dice(new ElementoPlanta
+      {
+          Clase = ClasePlanta.Losa, Notas = "CASTILLO", Tipo = "LOSA"
+      }));
+
+// LA CONVERSION: el segmento con espesor se vuelve una SECCION EN UN PUNTO, girada en la
+// direccion del shell. Es la misma cuenta de PanoDeApoyo.Huella, la que ya mide panos.
+var comoCastillo = CastilloDeMuro.Como(shellCastillo, 0.15);
+
+Igual("se dibuja como COLUMNA, que es el camino del bloque y el relleno",
+      ClasePlanta.Columna, comoCastillo.Clase);
+Igual("con el tipo CASTILLO, que es lo que lo manda a la capa E-CASTILLO",
+      "CASTILLO", comoCastillo.Tipo);
+Igual("y forma RECT: la del shell es AREA, que no describe ninguna seccion",
+      "RECT", comoCastillo.Forma);
+Cerca("su centro es el punto medio del shell, en X", 12, comoCastillo.X1);
+Cerca("y en Y", 0.075, comoCastillo.Y1);
+Cerca("su ancho es el LARGO del shell", 0.15, comoCastillo.AnchoM);
+Cerca("su peralte es el ESPESOR del muro", 0.15, comoCastillo.PeralteM);
+Cerca("y su giro, la direccion del shell", 90, comoCastillo.AnguloGrados);
+Igual("la etiqueta se conserva, que es lo que se rotula", "45", comoCastillo.Etiqueta);
+Cerca("y las cotas, que es lo que el corte necesita", 2.5, comoCastillo.Z2);
+
+// Sin espesor en el modelo, el mismo respaldo que usa el dibujante para un muro.
+Cerca("sin espesor cae en el respaldo de 15 cm", 0.15,
+      CastilloDeMuro.Como(
+          new ElementoPlanta
+          {
+              Clase = ClasePlanta.Muro, Tipo = "CASTILLO", X1 = 0, Y1 = 0, X2 = 0, Y2 = 0.20
+          },
+          0.15).PeralteM);
+
+// Un shell de un solo punto no tiene direccion ni largo: sale cuadrado, en lugar de no
+// dibujarse.
+Cerca("un shell degenerado sale cuadrado del espesor", 0.15,
+      CastilloDeMuro.Como(
+          new ElementoPlanta
+          {
+              Clase = ClasePlanta.Muro, Tipo = "CASTILLO", AnchoM = 0.15
+          },
+          0.15).AnchoM);
+
+// NORMALIZAR: cambia en la lista los que dicen CASTILLO y deja el resto igual.
+var mezcla = new List<ElementoPlanta>
+{
+    shellCastillo,
+    new()
+    {
+        Clase = ClasePlanta.Muro, Tipo = "MURO", Notas = "MURO DE BLOCK",
+        X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, AnchoM = 0.15
+    }
+};
+
+Igual("de dos shells se convierte UNO", 1, CastilloDeMuro.Normalizar(mezcla, 0.15));
+Igual("el castillo queda como columna", ClasePlanta.Columna, mezcla[0].Clase);
+Igual("y el muro sigue siendo muro", ClasePlanta.Muro, mezcla[1].Clase);
+// IDEMPOTENTE: dibujar dos veces la misma planta no vuelve a convertir ni desplaza nada.
+Igual("a la segunda pasada ya no queda nada por convertir", 0,
+      CastilloDeMuro.Normalizar(mezcla, 0.15));
+// La lista que llega al metodo Como NO se toca: el visor y la tabla siguen viendo el shell.
+Igual("el elemento original se queda como muro", ClasePlanta.Muro, shellCastillo.Clase);
+
+// Y AHORA CUENTA COMO APOYO: es lo que hace que los muros mueran en su paño y que el eje de
+// orilla se corra a su paño, igual que con un castillo de frame.
+Cerca("un castillo de shell tambien corre el eje de orilla a su paño", 0.075,
+      ejes.MedioAnchoSobreEje(12, vertical: true, new List<ElementoPlanta> { mezcla[0] }));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");
 Console.WriteLine("=====================================================================");
 return fallos == 0 ? 0 : 1;

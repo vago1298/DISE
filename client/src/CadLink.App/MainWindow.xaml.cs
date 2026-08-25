@@ -2547,7 +2547,7 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (!VisibleEnElPlano(el.Clase))
+            if (!VisibleEnElPlano(el))
             {
                 continue;
             }
@@ -2682,6 +2682,22 @@ public partial class MainWindow : Window
         var lado = Math.Max(xMax - xMin, yMax - yMin);
         return Math.Clamp(lado / 100.0, 0.05, 0.60);
     }
+
+    /// <summary>
+    /// ¿Se dibuja este elemento, según las casillas de la pestaña?
+    /// </summary>
+    /// <remarks>
+    /// Se pregunta por el ELEMENTO y no solo por su clase por una razón: el castillo modelado
+    /// como <b>shell de muro</b> —el que lleva CASTILLO en las notas de su propiedad— se
+    /// dibuja como castillo, así que tiene que seguir a la casilla de las <b>columnas</b>. Con
+    /// la casilla de los muros, quien los apaga para ver solo la estructura los perdería
+    /// todos, y en el plano ya no son muros.
+    /// </remarks>
+    private bool VisibleEnElPlano(ElementoEtabs el) =>
+        (el.Clase == ClaseElemento.Muro
+         && CadLink.Cad.PlanoEstructural.CastilloDeMuro.DicenLasNotas(null, el.Notas))
+            ? VerColumnasPlanoChk.IsChecked == true
+            : VisibleEnElPlano(el.Clase);
 
     private bool VisibleEnElPlano(ClaseElemento c) => c switch
     {
