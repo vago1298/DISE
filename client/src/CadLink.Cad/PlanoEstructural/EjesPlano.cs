@@ -394,6 +394,78 @@ public sealed class EjesPlano
     public double ToleranciaPano => _cfg.Numero("EJES_PANO_TOL_CM", 25) / 100;
 
     /// <summary>
+    /// Holgura para dar dos ejes por <b>el mismo</b>: <c>EJES_UNIR_TOL_CM</c>, 1 cm.
+    /// </summary>
+    public double ToleranciaUnirEjes => _cfg.Numero("EJES_UNIR_TOL_CM", 1) / 100;
+
+    /// <summary>
+    /// Quita los ejes <b>repetidos</b>: los que están a la misma coordenada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió tal cual —«solo es una, porque en unos ejes lo duplicas»— y el que sobra no
+    /// se ve como un eje de más: se ve como una <b>línea más gruesa y más oscura</b> que las
+    /// demás, porque son dos líneas encima de la otra, con dos burbujas superpuestas y dos
+    /// cotas iguales pisándose.
+    /// </para>
+    /// <para>
+    /// Y viene del modelo, no de un fallo de aquí: en ETABS la cuadrícula suele traer el eje
+    /// <b>declarado dos veces</b> —una en el sistema principal y otra como secundario, o el
+    /// mismo eje repetido al haber copiado la planta— y <c>GetGridSys_2</c> devuelve todas
+    /// las líneas que hay declaradas, no las distintas.
+    /// </para>
+    /// <para>
+    /// Del repetido <b>se guarda el primero</b>, que es el que trae el nombre bueno: si un
+    /// eje viene como «2» y como «Grid2», la burbuja debe decir 2. Y se compara con
+    /// <see cref="ToleranciaUnirEjes"/>, 1 cm, porque dos ejes de verdad nunca están a menos
+    /// de un centímetro —serían la misma línea en el papel— pero un nudo movido por redondeo
+    /// sí puede dar 4.999 y 5.000.
+    /// </para>
+    /// </remarks>
+    public List<(string Id, double Ordenada)> SinRepetidos(
+        IReadOnlyList<(string Id, double Ordenada)> ejes)
+        => SinRepetidos(ejes, ToleranciaUnirEjes);
+
+    /// <summary>El mismo, con la holgura a mano: es el que se comprueba en las pruebas.</summary>
+    public static List<(string Id, double Ordenada)> SinRepetidos(
+        IReadOnlyList<(string Id, double Ordenada)> ejes, double tolM)
+    {
+        var salida = new List<(string Id, double Ordenada)>();
+
+        if (ejes.Count == 0)
+        {
+            return salida;
+        }
+
+        // Con holgura 0 o negativa no se une nada: se devuelve tal cual llegó.
+        if (tolM <= 0)
+        {
+            return ejes.ToList();
+        }
+
+        foreach (var eje in ejes)
+        {
+            var repetido = false;
+
+            foreach (var ya in salida)
+            {
+                if (Math.Abs(ya.Ordenada - eje.Ordenada) < tolM)
+                {
+                    repetido = true;
+                    break;
+                }
+            }
+
+            if (!repetido)
+            {
+                salida.Add(eje);
+            }
+        }
+
+        return salida;
+    }
+
+    /// <summary>
     /// Corre el <b>primer y el último</b> eje al <b>paño exterior</b> del muro que lleven.
     /// </summary>
     /// <remarks>

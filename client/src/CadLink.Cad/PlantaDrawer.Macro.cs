@@ -324,8 +324,18 @@ public sealed partial class PlantaDrawer
         //
         //  Se trabaja con COPIAS: si se tocara la lista de la planta, dibujarla dos veces
         //  correría los ejes dos veces y la cota total crecería sola.
-        var ejesX = Ejes.AlPanoExterior(p.EjesX, verticales: true, p.Elementos);
-        var ejesY = Ejes.AlPanoExterior(p.EjesY, verticales: false, p.Elementos);
+        //  Y ANTES DE TODO, FUERA LOS REPETIDOS. Se pidió que de cada eje haya UNA sola
+        //  línea: la cuadrícula de ETABS suele traer el mismo eje declarado dos veces y
+        //  entonces se dibujan dos líneas encima de la otra, dos burbujas superpuestas y dos
+        //  cotas pisándose, que es lo que se ve como un eje «más grueso» que los demás.
+        //
+        //  Va aquí, ANTES de correr los extremos al paño, porque si no el duplicado del
+        //  primer eje se quedaría sin correr y saldría una línea suelta a medio espesor.
+        var ejesX = Ejes.AlPanoExterior(
+            Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos);
+
+        var ejesY = Ejes.AlPanoExterior(
+            Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos);
 
         // El rectángulo, estirado hasta los ejes que se salgan de lo dibujado.
         foreach (var (_, o) in ejesX)
@@ -601,7 +611,9 @@ public sealed partial class PlantaDrawer
     /// </para>
     /// </remarks>
     private bool HatchSobre(
-        object? contorno, string capa, string patron, double escala, double anguloGrados)
+        object? contorno, string capa, string patron, double escala, double anguloGrados,
+        IReadOnlyList<(double X, double Y)>? paraRayar = null,
+        double x0 = 0, double y0 = 0)
     {
         if (contorno is null || patron.Length == 0)
         {
@@ -610,7 +622,7 @@ public sealed partial class PlantaDrawer
 
         try
         {
-            return AcadConnection.Retry(() =>
+            var ok = AcadConnection.Retry(() =>
             {
                 // NO asociativo: así el achurado sobrevive aunque el contorno se borre —el
                 // de las franjas de losacero se borra si LOSACERO_FRANJA_CONTORNO está en
@@ -629,13 +641,112 @@ public sealed partial class PlantaDrawer
                 ht.Color = PorCapa;
                 return true;
             });
+
+            if (ok)
+            {
+                return true;
+            }
         }
         catch (Exception)
+        {
+            // Al respaldo: rayarlo a mano.
+        }
+
+        // ==================================================================================
+        //  EL RESPALDO: LAS RAYAS A MANO
+        // ==================================================================================
+        //  Un ANSI37 son líneas paralelas a 45°, y eso se dibuja sin depender de nada. Este
+        //  respaldo existe porque un achurado puede fallar por tres motivos que no se ven
+        //  desde aquí —que el patrón no esté en el acad.pat del usuario, que la separación
+        //  salga tan densa que AutoCAD lo rechace por MAXHATCH, o que la versión no acepte
+        //  crear el hatch sobre un contorno recién hecho— y en los tres el resultado era el
+        //  mismo: el voladizo se quedaba sin marcar y parecía que el achurado no se había
+        //  puesto nunca.
+        if (paraRayar is null || paraRayar.Count < 3)
         {
             Nota($"No se pudo achurar con el patrón '{patron}': revisa que esté en tu " +
                  "acad.pat. El contorno queda dibujado igual.");
             return false;
         }
+
+        var rayas = RayarAMano(paraRayar, capa, escala, anguloGrados, x0, y0);
+
+        Nota($"El patrón '{patron}' no se pudo aplicar, así que el achurado se dibujó con " +
+             $"{rayas} línea(s) a {anguloGrados:0}° en la capa {capa}: se ve igual y se " +
+             "imprime igual.");
+
+        return rayas > 0;
+    }
+
+    /// <summary>
+    /// Raya un paño con <b>líneas paralelas</b>, recortadas a su contorno real.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el achurado hecho a mano, y usa el mismo barrido que la parrilla del armado: por
+    /// cada línea se buscan los cortes con los lados del polígono y se dibujan los tramos de
+    /// dentro. Así funciona en una losa en L igual que en un rectángulo.
+    /// </para>
+    /// <para>
+    /// Las líneas van a <b>45°</b> —el ángulo del patrón— y por eso se barre en el sistema
+    /// girado: se rota el contorno, se raya en horizontal y se giran los tramos de vuelta. Es
+    /// más corto que intersecar rectas inclinadas y no tiene casos especiales.
+    /// </para>
+    /// </remarks>
+    private int RayarAMano(
+        IReadOnlyList<(double X, double Y)> vertices, string capa,
+        double escala, double anguloGrados, double x0, double y0)
+    {
+        // La separación del patrón: la del ANSI37 es 0.125 de unidad, así que a la escala de
+        // la hoja sale la misma que dibujaría AutoCAD.
+        var sep = (escala > 0 ? escala : 0.0475) * 0.125;
+
+        if (sep < 0.002)
+        {
+            sep = 0.002;
+        }
+
+        var a = -anguloGrados * Math.PI / 180;
+        var ca = Math.Cos(a);
+        var sa = Math.Sin(a);
+
+        // El contorno, girado para poder rayar en horizontal.
+        var girado = vertices
+            .Select(v => (X: (v.X * ca) - (v.Y * sa), Y: (v.X * sa) + (v.Y * ca)))
+            .ToList();
+
+        var hechas = 0;
+
+        // Un tope de cordura: un paño enorme con separación chica son miles de líneas, y eso
+        // arrodilla a AutoCAD igual que un hatch demasiado denso.
+        var maximo = (int)_cfg.Numero("MALLA_MAX_LINEAS", 200) * 4;
+
+        var yMin = girado.Min(v => v.Y);
+        var yMax = girado.Max(v => v.Y);
+
+        for (var y = yMin + sep; y < yMax && hechas < maximo; y += sep)
+        {
+            foreach (var (p, q) in LosaEnPlanta.Cortes(girado, y, false))
+            {
+                if (q - p < sep)
+                {
+                    continue;
+                }
+
+                // De vuelta al sistema del dibujo.
+                var ax = (p * ca) + (y * sa);
+                var ay = (-p * sa) + (y * ca);
+                var bx = (q * ca) + (y * sa);
+                var by = (-q * sa) + (y * ca);
+
+                if (Linea(ax + x0, ay + y0, bx + x0, by + y0, capa) is not null)
+                {
+                    hechas++;
+                }
+            }
+        }
+
+        return hechas;
     }
 
     /// <summary>Borra una entidad, si se deja.</summary>

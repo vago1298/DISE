@@ -189,7 +189,7 @@ public sealed class CapasPlano
     /// dos cosas el resultado se ve aunque una de ellas no llegue a aplicarse.
     /// </remarks>
     public IReadOnlyList<string> CapasAlFondo() =>
-        ListaConPrefijo(_cfg.Texto("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO"));
+        ListaConPrefijo(_cfg.Texto("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"));
 
     public IReadOnlyList<string> CapasApagadas() =>
         _cfg.Bandera("APAGAR_CAPA_LOSA", true)

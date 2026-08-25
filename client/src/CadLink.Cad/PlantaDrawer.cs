@@ -964,10 +964,14 @@ public sealed partial class PlantaDrawer
 
             if (_cfg.Bandera("LOSA_HATCH", true))
             {
+                // Se le pasan los vértices para el respaldo: si el patrón no se puede
+                // aplicar, el achurado se dibuja con líneas a 45° y el voladizo queda
+                // marcado igual.
                 HatchSobre(contorno, capa,
                            _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37"),
                            _cfg.Numero("LOSA_HATCH_ESCALA", 0.0475),
-                           _cfg.Numero("LOSA_HATCH_ANGULO", 45));
+                           _cfg.Numero("LOSA_HATCH_ANGULO", 45),
+                           el.Vertices, x0, y0);
             }
 
             _volados++;
@@ -1575,21 +1579,32 @@ public sealed partial class PlantaDrawer
             return string.Empty;
         }
 
-        var renglones = new List<string>();
+        // ==============================================================================
+        //  LA LOSA DE VOLADO: EL RÓTULO SE QUEDA SOLO CON EL ARMADO
+        // ==============================================================================
+        //  Se pidió tal cual: cuando la losa diga VOLADO, el rótulo debe decir ÚNICAMENTE
+        //
+        //        Var. #      @               cm.
+        //        Ambos sentidos
+        //
+        //  o sea los renglones 3 y 4. Los dos primeros —«Losa de VOLADO» y el espesor— no se
+        //  escriben, porque en el volado lo que hay que ver es la varilla y su separación; el
+        //  nombre y el espesor ya se leen en el resto del plano.
+        //
+        //  Se reconoce por la NOTA o por la sección, con las mismas palabras que usa el
+        //  achurado —LOSA_PALABRAS_VOLADO— para que rótulo y ANSI37 nunca discrepen: si una
+        //  losa sale achurada, sale también con el rótulo corto.
+        var soloArmado =
+            _cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true)
+            && LosaEnPlanta.DiceVolado(
+                el.Notas, el.Seccion,
+                _cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER"));
+
+        var hoja = new string[4];
 
         for (var i = 1; i <= 4; i++)
         {
-            var linea = _cfg.TextoTalCual($"LOSA_TEXTO_{i}");
-
-            if (linea.Trim().Length > 0)
-            {
-                renglones.Add(linea);
-            }
-        }
-
-        if (renglones.Count == 0)
-        {
-            return string.IsNullOrWhiteSpace(el.Seccion) ? string.Empty : el.Seccion;
+            hoja[i - 1] = _cfg.TextoTalCual($"LOSA_TEXTO_{i}");
         }
 
         var uso = UsoDeLaLosa(el);
@@ -1597,10 +1612,53 @@ public sealed partial class PlantaDrawer
             ? (el.AnchoM * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
             : string.Empty;
 
+        var texto = ArmarRotuloDeLosa(hoja, soloArmado, uso, espesor);
+
+        return texto.Length > 0
+            ? texto
+            : (string.IsNullOrWhiteSpace(el.Seccion) ? string.Empty : el.Seccion);
+    }
+
+    /// <summary>
+    /// Junta los cuatro renglones del rótulo de la losa en un solo <b>MTEXT</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Aparte y <c>static</c> para poder comprobarlo sin AutoCAD —está en
+    /// <c>tools/prueba-ejes-plano</c>—, que es donde se ve de un golpe que el volado sale con
+    /// dos renglones y la losa normal con cuatro.
+    /// </para>
+    /// <para>
+    /// Con <paramref name="soloArmado"/> se salta los dos primeros renglones: es la LOSA DE
+    /// VOLADO, donde se pidió que diga únicamente «Var. # @ cm. / Ambos sentidos».
+    /// </para>
+    /// </remarks>
+    /// <param name="hoja">Los cuatro <c>LOSA_TEXTO_n</c>, tal cual, con sus espacios.</param>
+    /// <param name="soloArmado"><c>true</c> = solo los renglones 3 y 4.</param>
+    /// <param name="uso">Lo que sustituye a <c>%U</c>: AZOTEA, ENTREPISO, VOLADO…</param>
+    /// <param name="espesor">Lo que sustituye a <c>%E</c>, en centímetros.</param>
+    public static string ArmarRotuloDeLosa(
+        IReadOnlyList<string> hoja, bool soloArmado, string uso, string espesor)
+    {
+        // En el volado se empieza en el renglón 3; en las demás losas, en el 1.
+        var primero = soloArmado ? 3 : 1;
+
+        var renglones = new List<string>();
+
+        for (var i = primero; i <= Math.Min(4, hoja.Count); i++)
+        {
+            var linea = hoja[i - 1] ?? string.Empty;
+
+            // Un renglón vacío en la hoja es un renglón que no se quiere: no se deja el
+            // hueco, porque el MTEXT lo enseñaría como una línea en blanco.
+            if (linea.Trim().Length > 0)
+            {
+                renglones.Add(linea.Replace("%U", uso).Replace("%E", espesor));
+            }
+        }
+
         // \P es el salto de renglón de un MTEXT.
-        return string.Join(
-            "\\P",
-            renglones.Select(r => r.Replace("%U", uso).Replace("%E", espesor)));
+        return string.Join("\\P", renglones);
     }
 
     /// <summary>

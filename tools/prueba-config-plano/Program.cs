@@ -44,8 +44,8 @@ Console.WriteLine("=============================================================
 
 var cfg = new ConfigPlano();
 
-// 276 y no los 261 de CrearHojaConfig: se añadieron QUINCE renglones que no están en su
-// hoja, y todos porque se pidieron:
+// 278 y no los 261 de CrearHojaConfig: se añadieron DIECISIETE renglones que no están en
+// su hoja, y todos porque se pidieron:
 //   AIRE_SOBRE_LO_DIBUJADO_M        la planta se pone encima de lo que ya haya dibujado
 //   CAPAS_TEXTO_AL_FRENTE           los rótulos, encima de todo, en una segunda pasada
 //   CAPA_DALA                       la capa de las dalas se llama E-CADENA
@@ -60,8 +60,10 @@ var cfg = new ConfigPlano();
 //   VOLADO_POR_NOTA                 el volado se reconoce por su NOTA, no por la geometría
 //   ARMADO_LOSA_BAYONETA            en el tablero apoyado va la bayoneta...
 //   ARMADO_LOSA_PARRILLA            ...y NO la rejilla, que llenaba el plano
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los quince que se añadieron",
-      276, ConfigPlano.PorOmision.Count);
+//   EJES_UNIR_TOL_CM                un eje, UNA línea: fuera los ejes repetidos
+//   VOLADO_ROTULO_SOLO_ARMADO       en el volado el rótulo solo lleva la varilla
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los diecisiete que se añadieron",
+      278, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -212,7 +214,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 276 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 278 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -302,7 +304,11 @@ Igual("la lista de capas de texto al frente va VACIA", "",
 
 // LA OTRA MITAD DEL ORDEN DE DIBUJO: la losa y su armado, AL FONDO. Da igual cuantas
 // veces se suba la cadena si el achurado y la rejilla se dibujaron despues.
-Igual("las capas al fondo", "E-LOSA, E-ARMADO LOSA, E-VOLADO, E-LOSACERO",
+//
+// Y E-EJES DE ULTIMA, que es lo que se pidio: las capas se van bajando una por una, asi
+// que la ultima que se baja queda mas abajo de todas -DRAW ORDER -> SEND TO BACK-.
+Igual("las capas al fondo, con los EJES de ultima",
+      "E-LOSA, E-ARMADO LOSA, E-VOLADO, E-LOSACERO, E-EJES",
       string.Join(", ", capas.CapasAlFondo()));
 
 var otrosTextos = new ConfigPlano();

@@ -251,6 +251,92 @@ Cerca("la tolerancia son los 25 cm de la hoja", 0.25, ejes.ToleranciaPano);
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" UN EJE, UNA LINEA: LOS EJES REPETIDOS");
+Console.WriteLine("=====================================================================");
+
+// La cuadricula del modelo trae el mismo eje declarado dos veces -una en el sistema
+// principal y otra como secundario- y salian DOS lineas encima de la otra, con dos
+// burbujas superpuestas y dos cotas pisandose. En el plano eso se ve como un eje MAS
+// GRUESO que los demas, que es lo que se reporto.
+var conRepes = new List<(string Id, double Ordenada)>
+{
+    ("1", 0.0),
+    ("2", 3.0),
+    ("Grid2", 3.0),        // el mismo eje, con otro nombre
+    ("3", 3.0005),         // medio milimetro: redondeo, es el mismo
+    ("4", 6.0)
+};
+
+var unicos = EjesPlano.SinRepetidos(conRepes, 0.01);
+
+Igual("de cinco ejes declarados quedan tres distintos", 3, unicos.Count);
+Igual("del repetido se guarda el PRIMERO, que trae el nombre bueno", "2", unicos[1].Id);
+Cerca("y su ordenada", 3.0, unicos[1].Ordenada);
+Igual("el ultimo sigue estando", "4", unicos[2].Id);
+
+Cerca("la tolerancia de la hoja es 1 cm", 0.01, ejes.ToleranciaUnirEjes);
+Igual("dos ejes de verdad a 2 cm NO se unen", 2,
+      EjesPlano.SinRepetidos(
+          new List<(string, double)> { ("A", 0), ("B", 0.02) }, 0.01).Count);
+
+// Con 0 no se une nada: es la salida de emergencia si alguien tiene dos ejes pegados a
+// proposito.
+var sinUnir = new ConfigPlano();
+sinUnir.Aplicar(new Dictionary<string, string> { ["EJES_UNIR_TOL_CM"] = "0" });
+Igual("con EJES_UNIR_TOL_CM en 0 se dibujan los dos", 5,
+      new EjesPlano(sinUnir).SinRepetidos(conRepes).Count);
+
+Igual("una lista vacia no revienta", 0,
+      EjesPlano.SinRepetidos(new List<(string, double)>(), 0.01).Count);
+
+// Y la capa de los ejes se manda al FONDO -Send to Back-, de ULTIMA, que es lo que la
+// deja debajo de la losa y de su armado.
+var alFondo = new CapasPlano(cfg).CapasAlFondo();
+Check("E-EJES esta entre las capas que se mandan al fondo", alFondo.Contains("E-EJES"));
+Igual("y va de ULTIMA, asi que queda abajo de todas", "E-EJES", alFondo[alFondo.Count - 1]);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL ROTULO DE LA LOSA, Y EL CORTO DEL VOLADO");
+Console.WriteLine("=====================================================================");
+
+var hoja = new[]
+{
+    "Losa de %U",
+    "  %E   cm de espesor",
+    "Var. #      @               cm.",
+    "Ambos sentidos"
+};
+
+var completo = PlantaDrawer.ArmarRotuloDeLosa(hoja, soloArmado: false, "ENTREPISO", "10");
+
+Igual("la losa normal lleva los cuatro renglones", 4,
+      completo.Split("\\P").Length);
+Check("con el uso en el primero", completo.StartsWith("Losa de ENTREPISO"));
+Check("y el espesor en el segundo", completo.Contains("10   cm de espesor"));
+
+// Lo que se pidio: en el VOLADO, solo Var. # @ cm. / Ambos sentidos.
+var rotuloCorto = PlantaDrawer.ArmarRotuloDeLosa(hoja, soloArmado: true, "VOLADO", "10");
+
+Igual("el volado solo lleva DOS renglones", 2, rotuloCorto.Split("\\P").Length);
+Igual("y son el armado y los sentidos",
+      "Var. #      @               cm.\\PAmbos sentidos", rotuloCorto);
+Check("no dice «Losa de»", !rotuloCorto.Contains("Losa de"));
+Check("ni el espesor", !rotuloCorto.Contains("espesor"));
+
+// El volado se reconoce con las MISMAS palabras que el achurado ANSI37: si una losa sale
+// achurada, sale tambien con el rotulo corto.
+var palabras = cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER");
+
+Check("la nota VOLADO lo dice", LosaEnPlanta.DiceVolado("VOLADO", "Losa 10", palabras));
+Check("y la seccion LOSA VOLADO tambien",
+      LosaEnPlanta.DiceVolado(null, "LOSA VOLADO", palabras));
+Check("una losa de ENTREPISO no",
+      !LosaEnPlanta.DiceVolado("ENTREPISO", "LOSA ENTREPISO", palabras));
+Check("la bandera viene en SI", cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", false));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" LA SECCION DE LA COLUMNA, GIRADA COMO EN EL MODELO");
 Console.WriteLine("=====================================================================");
 

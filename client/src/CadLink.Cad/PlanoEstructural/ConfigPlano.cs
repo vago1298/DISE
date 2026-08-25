@@ -500,6 +500,12 @@ public sealed class ConfigPlano
         P("PANO_ALMA_W_MODO", "ALMA", "<<< COLUMNA W: entra entre patines -> CARA DEL ALMA; por el patin -> al CENTRO.  (ALMA / CENTRO / PATIN)"),
         P("EJES_EXTREMOS_AL_PANO", "SI", "SI = 1er Y ULTIMO EJE AL PANO EXTERIOR DEL MURO"),
         P("EJES_PANO_TOL_CM", "25", "Tolerancia para hallar el muro sobre el eje"),
+
+        // AÑADIDO: un eje, UNA línea. La cuadrícula del modelo trae ejes declarados dos
+        // veces y salían dos líneas encima de la otra —se ve como un eje más grueso—, con
+        // dos burbujas y dos cotas pisándose. 0 = no se une nada.
+        P("EJES_UNIR_TOL_CM", "1",
+          "<<< DOS EJES A MENOS DE ESTO SON EL MISMO: SE DIBUJA UNA SOLA LINEA (0 = no unir)"),
         P("ROTULO_SEPARACION_EJES", "0.5", "AIRE ENTRE LOS EJES DE ABAJO Y EL ROTULO (m)"),
         P("PANO_ALARGAR_MAX_CM", "150", "<<< CUANTO SE ALARGA LA VIGA QUE QUEDO CORTA EN EL MODELO (1.50 m)"),
         P("PANO_BUSCA_CM", "150", "<<< Radio de busqueda del elemento al que hay que llegar (1.50 m)"),
@@ -541,8 +547,12 @@ public sealed class ConfigPlano
 
         // AÑADIDO: la otra mitad del orden de dibujo. La losa y su armado, AL FONDO. Da igual
         // cuantas veces se suba la cadena si el achurado y la rejilla se dibujaron despues.
-        P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO",
-          "CAPAS QUE SE MANDAN AL FONDO ANTES DE SUBIR LAS DE ARRIBA"),
+        // EJES va AL FINAL de la lista, y el sitio importa: las capas se van bajando UNA
+        // POR UNA, así que la ÚLTIMA que se baja es la que queda más abajo de todas. Se
+        // pidió que las líneas de los ejes quedaran en DRAW ORDER -> SEND TO BACK, o sea
+        // debajo de la losa, del armado y de todo lo demás; por eso se baja de última.
+        P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES",
+          "CAPAS AL FONDO, EN ORDEN; LA ULTIMA QUEDA ABAJO DE TODAS (EJES = Send to Back)"),
         P("PONER_SORTENTS_127", "SI", "SI = SORTENTS = 127 para que se respete el draw order"),
 
         // AÑADIDO: el respaldo del orden de dibujo. Si la tabla ACAD_SORTENTS no se deja
@@ -556,6 +566,15 @@ public sealed class ConfigPlano
         P("LOSA_TEXTO_2", "       cm de espesor", "Renglon 2 (%E = espesor real)"),
         P("LOSA_TEXTO_3", "Var. #      @               cm.", "Renglon 3"),
         P("LOSA_TEXTO_4", "Ambos sentidos", "Renglon 4"),
+
+        // AÑADIDO: en la LOSA DE VOLADO el rótulo se queda SOLO con el armado. Se pidió que
+        // ahí diga únicamente
+        //         Var. #      @               cm.
+        //         Ambos sentidos
+        // o sea los renglones 3 y 4; los renglones 1 y 2 —"Losa de ..." y el espesor— no se
+        // escriben. En las demás losas (ENTREPISO, AZOTEA, etc.) el rótulo sigue completo.
+        P("VOLADO_ROTULO_SOLO_ARMADO", "SI",
+          "<<< SI = EN LA LOSA DE VOLADO EL ROTULO SOLO LLEVA Var. # @ cm. / Ambos sentidos"),
         P("LOSA_TEXTO_FONDO", "SI", "SI = hueco en el hatch atras del texto"),
         P("LOSA_TEXTO_COLOR", "0", "0 = el color de la capa"),
         P("LOSA_HATCH_OFFSET_CM", "0", "Cuanto se mete el contorno antes de achurar"),

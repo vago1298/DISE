@@ -366,8 +366,42 @@ public static class EtabsReader
 
         static void Cargar(List<EjesModelo.Eje> destino, string[] ids, double[] ords)
         {
+            // ==========================================================================
+            //  UN EJE, UNA LÍNEA: FUERA LOS REPETIDOS
+            // ==========================================================================
+            //  La cuadrícula del modelo trae, con más frecuencia de la que parece, el mismo
+            //  eje DECLARADO DOS VECES: una en el sistema principal y otra como secundario,
+            //  o repetido al haber copiado la planta. GetGridSys_2 devuelve todas las líneas
+            //  declaradas, no las distintas, así que sin este filtro se dibujan dos líneas
+            //  exactamente encima de la otra, con dos burbujas superpuestas y dos cotas
+            //  iguales. En el plano eso no se ve como un eje de más: se ve como un eje MÁS
+            //  GRUESO Y MÁS OSCURO que los demás, que es justo lo que se reportó.
+            //
+            //  Un centímetro de holgura. Dos ejes de verdad nunca están a menos de eso —en
+            //  el papel serían la misma línea— pero una ordenada guardada como 4.9999 y otra
+            //  como 5.0 sí pasan si se comparan exactas.
+            //
+            //  Se guarda el PRIMERO, que es el que trae el nombre bueno.
+            const double tol = 0.01;
+
             for (var i = 0; i < ords.Length; i++)
             {
+                var repetido = false;
+
+                foreach (var ya in destino)
+                {
+                    if (Math.Abs(ya.Ordenada - ords[i]) < tol)
+                    {
+                        repetido = true;
+                        break;
+                    }
+                }
+
+                if (repetido)
+                {
+                    continue;
+                }
+
                 var id = i < ids.Length && ids[i].Trim().Length > 0
                     ? ids[i].Trim()
                     : (i + 1).ToString();

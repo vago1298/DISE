@@ -2712,8 +2712,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con quince renglones añadidos",
-          cfgp.count("        P(") == 276
+    check("la hoja CONFIG de la macro esta portada, con diecisiete renglones añadidos",
+          cfgp.count("        P(") == 278
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -2724,10 +2724,12 @@ def v16_extruida_piers() -> None:
           and 'P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",' in cfgp
           and 'P("VIGAS_CORTAR_EN_CRUCES", "SI",' in cfgp
           and 'P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",' in cfgp
-          and 'P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO",' in cfgp
+          and 'P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"' in cfgp
           and 'P("VOLADO_POR_NOTA", "SI",' in cfgp
           and 'P("ARMADO_LOSA_BAYONETA", "SI",' in cfgp
-          and 'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp)
+          and 'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
+          and 'P("EJES_UNIR_TOL_CM", "1",' in cfgp
+          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp)
     check("y con los numeros de version de la macro",
           "public const double VersionConfig = 29;" in cfgp
           and "public const double VersionParche = 50;" in cfgp)
@@ -2828,7 +2830,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "276, ConfigPlano.PorOmision.Count" in pr
+          and "278, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3723,8 +3725,22 @@ def v18_planta_autocad() -> None:
     check("la losa se rotula con los cuatro renglones de la hoja",
           "private string RotuloDeLosa(" in dib
           and '_cfg.TextoTalCual($"LOSA_TEXTO_{i}")' in dib
-          and 'r.Replace("%U", uso).Replace("%E", espesor)' in dib
+          and 'linea.Replace("%U", uso).Replace("%E", espesor)' in dib
           and "private string UsoDeLaLosa(" in dib)
+
+    # PERO LA LOSA DE VOLADO, SOLO CON EL ARMADO. Se pidio tal cual: cuando diga VOLADO el
+    # rotulo debe decir unicamente «Var. # @ cm. / Ambos sentidos», o sea los renglones 3 y
+    # 4, sin el «Losa de ...» ni el espesor. Se reconoce con las MISMAS palabras que el
+    # achurado ANSI37, para que rotulo y hatch no discrepen nunca.
+    check("en la losa de VOLADO el rotulo solo lleva la varilla",
+          'P("VOLADO_ROTULO_SOLO_ARMADO", "SI",' in cfgp
+          and '_cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true)' in dib
+          and "public static string ArmarRotuloDeLosa(" in dib
+          and "var primero = soloArmado ? 3 : 1;" in dib)
+    check("hay prueba ejecutable del rotulo corto del volado",
+          "el volado solo lleva DOS renglones" in pre
+          and "y son el armado y los sentidos" in pre
+          and "la losa normal lleva los cuatro renglones" in pre)
 
     # LAS LINEAS DE E-ACERO, CONTINUAS: en la hoja de la macro ese renglon va vacio -no
     # toques la linea que tenga el dibujo- y por eso salian a trazos.
@@ -3799,6 +3815,16 @@ def v18_planta_autocad() -> None:
     check("y el achurado va NO asociativo, para que sobreviva al molde",
           "_ms.AddHatch(0, patron, false)" in mac
           and "private void Borrar(" in mac)
+    # EL RESPALDO DEL ANSI37: un hatch puede fallar por tres motivos que no se ven desde
+    # aqui -que el patron no este en el acad.pat del usuario, que MAXHATCH lo rechace por
+    # denso, o que la version no lo acepte sobre un contorno recien hecho- y en los tres el
+    # voladizo se quedaba SIN MARCAR. Si falla, se raya a mano: lineas a 45 grados
+    # recortadas al contorno, que se ven y se imprimen igual.
+    check("si el patron no se puede aplicar, el volado se raya a mano",
+          "private int RayarAMano(" in mac
+          and "IReadOnlyList<(double X, double Y)>? paraRayar = null," in mac
+          and "el.Vertices, x0, y0);" in dib
+          and "LosaEnPlanta.Cortes(girado, y, false)" in mac)
     check("E-LOSA se queda apagada y E-VOLADO encendida",
           "private void ApagarCapasDeLosa()" in mac
           and "lay.LayerOn = false;" in mac
@@ -4114,8 +4140,8 @@ def v18_planta_autocad() -> None:
     check("manda el muro sobre la trabe",
           "return deMuro > 0 ? deMuro : deTrabe;" in ejp)
     check("y el dibujante los usa para la linea, las burbujas Y las cotas",
-          "Ejes.AlPanoExterior(p.EjesX, verticales: true, p.Elementos)" in mac
-          and "Ejes.AlPanoExterior(p.EjesY, verticales: false, p.Elementos)" in mac
+          "Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos)" in mac
+          and "Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos)" in mac
           and "Ejes.Verticales(ejesX, yMin, yMax)" in mac
           and "Ejes.Horizontales(ejesY, xMin, xMax)" in mac
           and "ejesX.Select(e => e.Ordenada).ToList()" in mac)
@@ -4123,6 +4149,31 @@ def v18_planta_autocad() -> None:
     # veces y la cota total creceria sola.
     check("se trabaja con copias, no se toca la cuadricula de la planta",
           "var salida = ejes.ToList();" in ejp)
+    # ------------------------------------------------------------------
+    # UN EJE, UNA LINEA: FUERA LOS REPETIDOS, Y LA CAPA AL FONDO
+    # ------------------------------------------------------------------
+    #  La cuadricula del modelo trae ejes DECLARADOS DOS VECES -uno en el sistema principal
+    #  y otro como secundario- y salian dos lineas encima de la otra, dos burbujas
+    #  superpuestas y dos cotas pisandose: en el plano se ve como un eje mas grueso.
+    check("los ejes repetidos se dibujan UNA sola vez",
+          'P("EJES_UNIR_TOL_CM", "1",' in cfgp
+          and "public double ToleranciaUnirEjes" in ejp
+          and "public static List<(string Id, double Ordenada)> SinRepetidos(" in ejp
+          and "Ejes.SinRepetidos(p.EjesX)" in mac)
+    # Y tambien en el LECTOR, para que no lleguen duplicados ni al visor ni a la tabla.
+    lec = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("y el lector tampoco los mete dos veces",
+          "static void Cargar(List<EjesModelo.Eje> destino" in lec
+          and "const double tol = 0.01;" in lec)
+    # DRAW ORDER -> SEND TO BACK: la capa de los ejes se baja de ULTIMA, asi que queda
+    # debajo de la losa, del armado y de todo lo demas.
+    check("la capa de los ejes se manda al fondo, de ultima",
+          'P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"' in cfgp
+          and '"CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"' in capp)
+    check("hay prueba ejecutable de los ejes repetidos",
+          "de cinco ejes declarados quedan tres distintos" in pre
+          and "E-EJES esta entre las capas que se mandan al fondo" in pre)
+
     check("hay prueba ejecutable de los ejes al pano",
           "el eje A se corre medio espesor a la IZQUIERDA" in pre
           and "sobre el eje C manda el muro y no la trabe de 40" in pre
