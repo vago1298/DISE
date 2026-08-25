@@ -251,6 +251,123 @@ Cerca("la tolerancia son los 25 cm de la hoja", 0.25, ejes.ToleranciaPano);
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL EJE DE ORILLA CON SOLO UN CASTILLO: EL PANO DEL K 15X15");
+Console.WriteLine("=====================================================================");
+
+// LO QUE SE REPORTO: "el ultimo eje de izquierda a derecha no esta poniendo la cota a
+// pano". En el eje de orilla muchas veces NO corre ningun muro a lo largo: solo esta el
+// castillo -un K 15X15- con los muros y las cadenas LLEGANDO a el en perpendicular. Una
+// columna en planta es un PUNTO, asi que la comprobacion de los dos extremos no le servia,
+// se devolvia cero, el eje no se corria y la cota de orilla quedaba A EJE.
+var soloCastillo = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0,
+        AnchoM = 0.15, PeralteM = 0.15
+    },
+    // La cadena LLEGA al castillo en perpendicular: no corre sobre el eje, y por eso no
+    // daba pano. Sigue sin darlo, y esta bien: el pano lo da el castillo.
+    new() { Clase = ClasePlanta.Trabe, X1 = 9, Y1 = 0, X2 = 12, Y2 = 0, AnchoM = 0.15 }
+};
+
+Cerca("un castillo de 15x15 sobre el eje da su medio pano", 0.075,
+      ejes.MedioAnchoSobreEje(12, vertical: true, soloCastillo));
+
+var conCastillo = ejes.AlPanoExterior(
+    new List<(string Id, double Ordenada)> { ("10", 10.575), ("11", 12) },
+    verticales: true, soloCastillo);
+
+Cerca("y el ultimo eje SE CORRE al pano, 7.5 cm hacia afuera", 12.075,
+      conCastillo[1].Ordenada);
+Igual("con su burbuja intacta", "11", conCastillo[1].Id);
+
+// EL GIRO CUENTA: un castillo de 15x40 girado 90 grados saca pano a 20 cm del eje, no a
+// 7.5. Se mide con la caja que ENVUELVE a la seccion girada, igual que su rotulo.
+var castilloGirado = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0,
+        AnchoM = 0.15, PeralteM = 0.40, AnguloGrados = 90
+    }
+};
+Cerca("un castillo de 15x40 girado 90 da 20 cm de pano en X", 0.20,
+      ejes.MedioAnchoSobreEje(12, vertical: true, castilloGirado));
+Cerca("y el mismo, sin girar, da 7.5", 0.075,
+      ejes.MedioAnchoSobreEje(
+          12, vertical: true,
+          new List<ElementoPlanta>
+          {
+              new()
+              {
+                  Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0,
+                  AnchoM = 0.15, PeralteM = 0.40
+              }
+          }));
+
+// SIN MEDIDAS: el respaldo son los 15x15 del castillo de siempre, el mismo que en planta.
+Cerca("un castillo sin medidas cae en los 15x15 de siempre", 0.075,
+      ejes.MedioAnchoSobreEje(
+          12, vertical: true,
+          new List<ElementoPlanta>
+          {
+              new() { Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0 }
+          }));
+
+// EL ORDEN DE LA OBRA: manda el MURO, luego la TRABE, y el castillo solo cuando no hay ni
+// una ni otra. Un muro de 30 sobre el eje deja al castillo de 15 sin voz.
+var muroYCastillo = new List<ElementoPlanta>
+{
+    new() { Clase = ClasePlanta.Muro, X1 = 12, Y1 = 0, X2 = 12, Y2 = 6, AnchoM = 0.30 },
+    new()
+    {
+        Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0,
+        AnchoM = 0.15, PeralteM = 0.15
+    }
+};
+Cerca("con muro sobre el eje manda el muro, no el castillo", 0.15,
+      ejes.MedioAnchoSobreEje(12, vertical: true, muroYCastillo));
+
+var trabeYCastillo = new List<ElementoPlanta>
+{
+    new() { Clase = ClasePlanta.Trabe, X1 = 12, Y1 = 0, X2 = 12, Y2 = 6, AnchoM = 0.25 },
+    new()
+    {
+        Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0,
+        AnchoM = 0.15, PeralteM = 0.15
+    }
+};
+Cerca("y sin muro manda la trabe que corre sobre el eje", 0.125,
+      ejes.MedioAnchoSobreEje(12, vertical: true, trabeYCastillo));
+
+// UN CASTILLO QUE NO ESTA EN EL EJE no da pano: correr el eje por una columna que esta a
+// metro y medio descuadraria la cota total.
+Cerca("un castillo lejos del eje no da pano", 0,
+      ejes.MedioAnchoSobreEje(12, vertical: true,
+          new List<ElementoPlanta>
+          {
+              new()
+              {
+                  Clase = ClasePlanta.Columna, X1 = 10.5, Y1 = 0, X2 = 10.5, Y2 = 0,
+                  AnchoM = 0.15, PeralteM = 0.15
+              }
+          }));
+
+// Y en la otra direccion, el eje de los numeros: se mide el PERALTE, no el ancho.
+Cerca("en un eje horizontal el castillo mide su peralte", 0.20,
+      ejes.MedioAnchoSobreEje(0, vertical: false,
+          new List<ElementoPlanta>
+          {
+              new()
+              {
+                  Clase = ClasePlanta.Columna, X1 = 12, Y1 = 0, X2 = 12, Y2 = 0,
+                  AnchoM = 0.15, PeralteM = 0.40
+              }
+          }));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" UN EJE, UNA LINEA: LOS EJES REPETIDOS");
 Console.WriteLine("=====================================================================");
 

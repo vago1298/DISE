@@ -482,8 +482,8 @@ public sealed class EjesPlano
     /// planta correría los ejes dos veces.
     /// </para>
     /// <para>
-    /// Si sobre el eje no hay ningún muro ni ninguna trabe, se queda donde estaba. Un eje
-    /// corrido «por si acaso» descuadraría la cota total.
+    /// Si sobre el eje no hay ningún muro, ninguna trabe <b>ni ningún castillo</b>, se queda
+    /// donde estaba. Un eje corrido «por si acaso» descuadraría la cota total.
     /// </para>
     /// </remarks>
     /// <param name="verticales">
@@ -559,6 +559,14 @@ public sealed class EjesPlano
     ///     Entre varios muros sobre el mismo eje se toma el <b>más grueso</b>: la cota tiene
     ///     que llegar al paño más saliente, no a uno cualquiera.
     ///   </item>
+    ///   <item>
+    ///     <b>Y el castillo, cuando no hay nada más.</b> En el eje de orilla muchas veces no
+    ///     corre ningún muro <i>a lo largo</i>: solo está el castillo de la esquina —un
+    ///     K 15X15— con los muros y las cadenas <b>llegando</b> a él en perpendicular. Sin
+    ///     esta tercera regla ahí se devolvía cero, el eje no se corría y la cota de orilla
+    ///     se quedaba <b>a eje</b> en vez de al paño, que es justo lo que se reportó del
+    ///     último eje de la derecha.
+    ///   </item>
     /// </list>
     /// <para>
     /// El elemento tiene que <b>correr a lo largo</b> del eje, no cruzarlo: se comprueba que
@@ -578,9 +586,33 @@ public sealed class EjesPlano
 
         double deMuro = 0;
         double deTrabe = 0;
+        double deApoyo = 0;
 
         foreach (var el in elementos)
         {
+            // ==============================================================================
+            //  EL CASTILLO DEL EJE DE ORILLA
+            // ==============================================================================
+            //  Una columna o un castillo no «corre» a lo largo de nada: en planta es un punto,
+            //  así que la comprobación de los dos extremos no le sirve y quedaba fuera. Basta
+            //  con que su CENTRO caiga sobre el eje.
+            //
+            //  Y el medio ancho se mide con la caja que ENVUELVE a la sección ya girada, la
+            //  misma cuenta que coloca su rótulo: en un castillo a 30° el paño no está a b/2.
+            if (el.Clase == ClasePlanta.Columna)
+            {
+                var centro = vertical
+                    ? Math.Abs(el.X1 - ordenada) <= tol
+                    : Math.Abs(el.Y1 - ordenada) <= tol;
+
+                if (centro)
+                {
+                    deApoyo = Math.Max(deApoyo, MedioDeApoyo(el, vertical));
+                }
+
+                continue;
+            }
+
             if (el.Clase != ClasePlanta.Muro && el.Clase != ClasePlanta.Trabe)
             {
                 continue;
@@ -615,7 +647,38 @@ public sealed class EjesPlano
             }
         }
 
-        return deMuro > 0 ? deMuro : deTrabe;
+        // El orden es el de la obra: manda el MURO, luego la TRABE, y el castillo solo
+        // cuando no hay ni una ni otra corriendo sobre el eje.
+        if (deMuro > 0)
+        {
+            return deMuro;
+        }
+
+        return deTrabe > 0 ? deTrabe : deApoyo;
+    }
+
+    /// <summary>
+    /// Medio ancho de una columna o castillo <b>perpendicular al eje</b>, en metros.
+    /// </summary>
+    /// <remarks>
+    /// Se mide sobre la <b>caja que envuelve</b> a la sección ya girada, que es lo que se ve
+    /// en el plano: un castillo de 15×40 girado 90° saca paño a 20 cm del eje, no a 7.5. Es la
+    /// misma cuenta con la que se coloca su rótulo, y por eso da el mismo paño que el dibujo.
+    /// Si el modelo no trae medidas se usan los 15×15 del castillo de siempre, el mismo
+    /// respaldo que en planta.
+    /// </remarks>
+    private static double MedioDeApoyo(ElementoPlanta el, bool vertical)
+    {
+        var b = el.AnchoM > 0 ? el.AnchoM : 0.15;
+        var h = el.PeralteM > 0 ? el.PeralteM : b;
+
+        var a = el.AnguloGrados * Math.PI / 180;
+        var ca = Math.Abs(Math.Cos(a));
+        var sa = Math.Abs(Math.Sin(a));
+
+        return vertical
+            ? (b / 2 * ca) + (h / 2 * sa)
+            : (b / 2 * sa) + (h / 2 * ca);
     }
 
     private static double Positivo(double v, double omision) => v > 0 ? v : omision;

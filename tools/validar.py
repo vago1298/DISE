@@ -4914,7 +4914,35 @@ def v18_planta_autocad() -> None:
           and '_cfg.Bandera("EJES_EXTREMOS_AL_PANO", true)' in ejp
           and '_cfg.Numero("EJES_PANO_TOL_CM", 25)' in ejp)
     check("manda el muro sobre la trabe",
-          "return deMuro > 0 ? deMuro : deTrabe;" in ejp)
+          "return deTrabe > 0 ? deTrabe : deApoyo;" in ejp
+          and "if (deMuro > 0)" in ejp)
+
+    # ------------------------------------------------------------------
+    # EL EJE DE ORILLA CON SOLO UN CASTILLO
+    # ------------------------------------------------------------------
+    #  «El ultimo eje de izquierda a derecha no esta poniendo la cota a pano». En el eje de
+    #  orilla muchas veces NO corre ningun muro a lo largo: solo esta el castillo -un
+    #  K 15X15- con los muros y las cadenas LLEGANDO a el en perpendicular. Una columna en
+    #  planta es un PUNTO, asi que la comprobacion de los dos extremos no le servia, se
+    #  devolvia cero, el eje no se corria y la cota de orilla quedaba A EJE.
+    check("un castillo sobre el eje de orilla tambien da pano",
+          "if (el.Clase == ClasePlanta.Columna)" in ejp
+          and "deApoyo = Math.Max(deApoyo, MedioDeApoyo(el, vertical));" in ejp)
+    # Basta con que su CENTRO caiga sobre el eje: un punto no tiene dos extremos que mirar.
+    check("basta con que su centro caiga sobre el eje",
+          "var centro = vertical" in ejp
+          and "Math.Abs(el.X1 - ordenada) <= tol" in ejp)
+    # EL GIRO CUENTA: se mide la caja que ENVUELVE a la seccion girada, la misma cuenta con
+    # la que se coloca su rotulo, asi que da el mismo pano que el dibujo. Un 15x40 girado 90
+    # saca pano a 20 cm del eje, no a 7.5.
+    check("y su pano se mide con la seccion YA GIRADA",
+          "private static double MedioDeApoyo(ElementoPlanta el, bool vertical)" in ejp
+          and "? (b / 2 * ca) + (h / 2 * sa)" in ejp
+          and ": (b / 2 * sa) + (h / 2 * ca);" in ejp)
+    # Sin medidas, los 15x15 del castillo de siempre: el mismo respaldo que en planta.
+    check("un castillo sin medidas cae en los 15x15 de siempre",
+          "var b = el.AnchoM > 0 ? el.AnchoM : 0.15;" in ejp
+          and "var h = el.PeralteM > 0 ? el.PeralteM : b;" in ejp)
     check("y el dibujante los usa para la linea, las burbujas Y las cotas",
           "Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos)" in mac
           and "Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos)" in mac
