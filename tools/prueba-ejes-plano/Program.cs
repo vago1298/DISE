@@ -335,6 +335,37 @@ Check("una losa de ENTREPISO no",
       !LosaEnPlanta.DiceVolado("ENTREPISO", "LOSA ENTREPISO", palabras));
 Check("la bandera viene en SI", cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", false));
 
+// Y EL NOMBRE «VOLADO» NO SE ESCRIBE NUNCA: el nombre que se iba a poner sale de la
+// seccion, asi que si esa seccion dice VOLADO el rotulo se acorta antes de escribirlo.
+Igual("de «LOSA VOLADO» el nombre seria VOLADO", "VOLADO",
+      PlantaDrawer.SinLaPalabraLosa("LOSA VOLADO"));
+Check("y ese nombre se reconoce como volado, asi que el rotulo se acorta",
+      LosaEnPlanta.DiceVolado(PlantaDrawer.SinLaPalabraLosa("LOSA VOLADO"), null, palabras));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" LA ESCALA DEL ACHURADO, LA QUE LO DEJA VISIBLE");
+Console.WriteLine("=====================================================================");
+
+// El ANSI37 tiene sus lineas a 0.125 de unidad. Con la escala de la macro -0.0475- la
+// separacion real queda en 5.9 MILIMETROS: en un tablero de 6 x 12 m son mas de dos mil
+// lineas y no se ve un achurado, se ve una MANCHA GRIS uniforme. Es lo que salia.
+Cerca("con la escala de la macro las lineas quedan a 5.9 mm", 0.0059375,
+      0.0475 * 0.125, 1e-9);
+
+// Al reves: de la separacion que se quiere VER se saca la escala.
+Cerca("para ver 25 cm de separacion, escala 2", 2.0,
+      PlantaDrawer.EscalaDeHatch(0.25, 0.0475));
+Cerca("para 12.5 cm, escala 1", 1.0, PlantaDrawer.EscalaDeHatch(0.125, 0.0475));
+Cerca("y una separacion sin sentido regresa a la de la macro", 0.0475,
+      PlantaDrawer.EscalaDeHatch(0, 0.0475));
+
+Cerca("la hoja pide 25 cm", 25, cfg.Numero("LOSA_HATCH_SEPARACION_CM", 0));
+Check("y el automatico viene encendido", cfg.Bandera("LOSA_HATCH_ESCALA_AUTO", false));
+Igual("el patron sigue siendo el ANSI37 de la macro", "ANSI37",
+      cfg.Texto("LOSA_HATCH_PATRON", ""));
+Cerca("y el angulo, 45 grados", 45, cfg.Numero("LOSA_HATCH_ANGULO", 0));
+
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
 Console.WriteLine(" LA SECCION DE LA COLUMNA, GIRADA COMO EN EL MODELO");

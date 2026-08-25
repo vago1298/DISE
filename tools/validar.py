@@ -2712,8 +2712,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con diecisiete renglones añadidos",
-          cfgp.count("        P(") == 278
+    check("la hoja CONFIG de la macro esta portada, con diecinueve renglones añadidos",
+          cfgp.count("        P(") == 280
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -2830,7 +2830,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "278, ConfigPlano.PorOmision.Count" in pr
+          and "280, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3820,6 +3820,34 @@ def v18_planta_autocad() -> None:
     # denso, o que la version no lo acepte sobre un contorno recien hecho- y en los tres el
     # voladizo se quedaba SIN MARCAR. Si falla, se raya a mano: lineas a 45 grados
     # recortadas al contorno, que se ven y se imprimen igual.
+    # EL ACHURADO SE TIENE QUE VER. El ANSI37 lleva sus lineas a 0.125 de unidad, asi que
+    # con la escala literal de la macro -0.0475- la separacion real queda en 5.9 MILIMETROS:
+    # en un tablero de 6 x 12 m son mas de dos mil lineas y no se ve un rayado, se ve una
+    # MANCHA GRIS uniforme, y en el color 252 parece una sombra. La escala se saca al reves,
+    # de la separacion que se quiere ver.
+    check("el achurado del volado se ve, no sale como una mancha gris",
+          'P("LOSA_HATCH_ESCALA_AUTO", "SI",' in cfgp
+          and 'P("LOSA_HATCH_SEPARACION_CM", "25",' in cfgp
+          and "public static double EscalaDeHatch(" in dib
+          and "separacionM > 0.005 ? separacionM / 0.125 : escalaHoja;" in dib
+          and "EscalaDelHatchDeLosa()," in dib)
+    check("hay prueba ejecutable de la escala del achurado",
+          "para ver 25 cm de separacion, escala 2" in pre
+          and "con la escala de la macro las lineas quedan a 5.9 mm" in pre)
+    # LAS NOTAS SON DE LA PROPIEDAD, no del paño: si el volado comparte seccion con el
+    # entrepiso, TODOS los paños de esa seccion salen achurados. Eso se arregla en ETABS, no
+    # aqui, y sin la nota no habia manera de verlo.
+    check("se avisa de que seccion se tomo por voladizo y por que",
+          "private void AvisarDelVolado(" in dib
+          and "_voladosAvisados" in dib
+          and "dale su propia propiedad de losa en ETABS" in dib)
+    # Y EL NOMBRE «VOLADO» NO SE ESCRIBE NUNCA, venga de las notas o del nombre de la
+    # seccion: el nombre que se iba a poner sale de la seccion, asi que se comprueba tambien
+    # sobre el uso ya resuelto.
+    check("el rotulo nunca puede decir «Losa de VOLADO»",
+          "|| LosaEnPlanta.DiceVolado(uso, null, PalabrasDeVolado())" in dib
+          and "private string PalabrasDeVolado()" in dib)
+
     check("si el patron no se puede aplicar, el volado se raya a mano",
           "private int RayarAMano(" in mac
           and "IReadOnlyList<(double X, double Y)>? paraRayar = null," in mac

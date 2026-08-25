@@ -419,7 +419,23 @@ public sealed class ConfigPlano
         P("OCULTAR_CAPA_LOSA", "SI", "SI = apagar solo la capa E-LOSA"),
         P("LOSA_HATCH", "SI", "SI = en la losa de un sentido va HATCH, no varillas"),
         P("LOSA_HATCH_PATRON", "ANSI37", "PATRON DEL HATCH DE LA LOSA"),
-        P("LOSA_HATCH_ESCALA", "0.0475", "ESCALA DE ESE HATCH"),
+        P("LOSA_HATCH_ESCALA", "0.0475", "ESCALA DE ESE HATCH (la de la macro)"),
+
+        // AÑADIDO, Y ES LO QUE HACÍA QUE EL ACHURADO SE VIERA COMO UNA MANCHA GRIS.
+        //
+        //   El ANSI37 tiene sus líneas a 0.125 de unidad. Con la escala de la macro, 0.0475,
+        //   la separación real queda en 0.125 x 0.0475 = 0.0059 m, o sea SEIS MILÍMETROS.
+        //   En un tablero de 6 x 12 m eso son más de dos mil líneas, y a 1/75 quedan a
+        //   0.08 mm unas de otras: no se ve un achurado, se ve un relleno gris uniforme.
+        //   Y encima en color 252, que es gris oscuro, así que parece una sombra.
+        //
+        //   Con LOSA_HATCH_ESCALA_AUTO la escala se calcula de la separación que se quiera
+        //   ver: escala = separacion / 0.125. Con 25 cm sale escala 2, y entonces sí se
+        //   distingue el rayado a 45 grados, que es lo que tiene que verse.
+        P("LOSA_HATCH_ESCALA_AUTO", "SI",
+          "<<< SI = LA ESCALA SE SACA DE LOSA_HATCH_SEPARACION_CM (asi el achurado SE VE)"),
+        P("LOSA_HATCH_SEPARACION_CM", "25",
+          "<<< SEPARACION REAL ENTRE LINEAS DEL ACHURADO, EN CM (25 = se ve bien a 1/75)"),
         P("LOSA_HATCH_ANGULO", "45", "ANGULO DEL HATCH (45 grados)"),
         P("LOSA_TEXTO_BLOQUE", "SI", "SI = MTEXT dentro de un BLOQUE por uso de losa"),
         P("LOSA_TEXTO_BLOQUE_PREFIJO", "TEXTO LOSA ", "Prefijo del nombre de esos bloques"),

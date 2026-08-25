@@ -62,8 +62,10 @@ var cfg = new ConfigPlano();
 //   ARMADO_LOSA_PARRILLA            ...y NO la rejilla, que llenaba el plano
 //   EJES_UNIR_TOL_CM                un eje, UNA línea: fuera los ejes repetidos
 //   VOLADO_ROTULO_SOLO_ARMADO       en el volado el rótulo solo lleva la varilla
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los diecisiete que se añadieron",
-      278, ConfigPlano.PorOmision.Count);
+//   LOSA_HATCH_ESCALA_AUTO          ...y el achurado se VE, en vez de ser una mancha gris
+//   LOSA_HATCH_SEPARACION_CM        (25 cm entre líneas, de donde sale la escala)
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los diecinueve que se añadieron",
+      280, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -214,7 +216,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 278 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 280 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

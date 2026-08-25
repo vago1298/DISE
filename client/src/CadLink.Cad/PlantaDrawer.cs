@@ -969,10 +969,26 @@ public sealed partial class PlantaDrawer
                 // marcado igual.
                 HatchSobre(contorno, capa,
                            _cfg.Texto("LOSA_HATCH_PATRON", "ANSI37"),
-                           _cfg.Numero("LOSA_HATCH_ESCALA", 0.0475),
+                           EscalaDelHatchDeLosa(),
                            _cfg.Numero("LOSA_HATCH_ANGULO", 45),
                            el.Vertices, x0, y0);
             }
+
+            // ==========================================================================
+            //  Y SE DICE DE DÓNDE SALIÓ EL «VOLADO», UNA VEZ POR PROPIEDAD
+            // ==========================================================================
+            //  Porque cuando el achurado aparece donde no se espera, la causa está SIEMPRE
+            //  en el modelo y no en el dibujo, y sin esta nota no hay manera de verlo: las
+            //  NOTAS SON DE LA PROPIEDAD, no del paño. Si el voladizo y el entrepiso
+            //  comparten la misma propiedad de losa —la misma sección— y en sus notas dice
+            //  VOLADO, entonces TODOS los paños de esa sección son voladizo para el
+            //  programa, y todos salen achurados. La solución no está aquí: hay que darle al
+            //  volado su propia propiedad en ETABS.
+            //
+            //  Con la nota se lee de un golpe qué sección se tomó por voladizo y por qué
+            //  palabra, así que se ve al momento si el que sobra es un paño o toda una
+            //  sección.
+            AvisarDelVolado(el);
 
             _volados++;
             return contorno is not null;
@@ -1136,6 +1152,92 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Cuántos paños salieron volados, para el resumen.</summary>
     private int _volados;
+
+    /// <summary>Secciones ya avisadas: la nota del voladizo va una vez, no una por paño.</summary>
+    private readonly HashSet<string> _voladosAvisados = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// La escala <b>de verdad</b> del achurado de la losa, la que lo deja <b>visible</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El <c>ANSI37</c> tiene sus líneas a <c>0.125</c> de unidad, así que con la escala de la
+    /// macro —<c>0.0475</c>— la separación real queda en <b>5.9 mm</b>. En un tablero de
+    /// 6 × 12 m eso son más de dos mil líneas por dirección: no se ve un achurado, se ve un
+    /// <b>relleno gris uniforme</b>, y en el color 252 parece una sombra. Es exactamente lo
+    /// que salía.
+    /// </para>
+    /// <para>
+    /// Con <c>LOSA_HATCH_ESCALA_AUTO</c> la escala se saca al revés, de la separación que se
+    /// quiere <b>ver</b>: <c>escala = separación / 0.125</c>. Con los 25 cm de la hoja sale
+    /// escala 2 y el rayado a 45° se distingue, que es lo que tiene que verse en el plano.
+    /// </para>
+    /// <para>
+    /// El valor literal de la macro se queda a un interruptor de distancia: con
+    /// <c>LOSA_HATCH_ESCALA_AUTO</c> en NO manda <c>LOSA_HATCH_ESCALA</c> tal cual.
+    /// </para>
+    /// </remarks>
+    private double EscalaDelHatchDeLosa()
+    {
+        var deLaHoja = _cfg.Numero("LOSA_HATCH_ESCALA", 0.0475);
+
+        if (!_cfg.Bandera("LOSA_HATCH_ESCALA_AUTO", true))
+        {
+            return deLaHoja;
+        }
+
+        return EscalaDeHatch(_cfg.Numero("LOSA_HATCH_SEPARACION_CM", 25) / 100, deLaHoja);
+    }
+
+    /// <summary>
+    /// La cuenta sola: qué escala hay que darle al patrón para que sus líneas queden a
+    /// <paramref name="separacionM"/> metros.
+    /// </summary>
+    /// <remarks>
+    /// <c>static</c> y aparte para poder comprobarla sin AutoCAD. Si la separación no tiene
+    /// sentido se devuelve la de la hoja: más vale un achurado apretado que ninguno.
+    /// </remarks>
+    /// <param name="separacionM">Separación que se quiere ver, en metros.</param>
+    /// <param name="escalaHoja">La escala literal de la macro, por si hay que volver a ella.</param>
+    public static double EscalaDeHatch(double separacionM, double escalaHoja) =>
+        separacionM > 0.005 ? separacionM / 0.125 : escalaHoja;
+
+    /// <summary>
+    /// Dice en las notas <b>qué sección</b> se tomó por voladizo y <b>por qué palabra</b>.
+    /// </summary>
+    /// <remarks>
+    /// Una vez por sección, no una por paño. Y es la nota más útil de todas cuando el
+    /// achurado sale donde no se espera, porque las <b>notas son de la PROPIEDAD</b>: si el
+    /// voladizo y el entrepiso comparten la misma sección de losa y en sus notas dice VOLADO,
+    /// todos los paños de esa sección son voladizo para el programa. Eso se arregla en ETABS
+    /// —dándole al volado su propia propiedad—, no aquí, y sin esta nota no había forma de
+    /// saberlo.
+    /// </remarks>
+    private void AvisarDelVolado(ElementoPlanta el)
+    {
+        var seccion = string.IsNullOrWhiteSpace(el.Seccion) ? "(sin sección)" : el.Seccion;
+
+        if (!_voladosAvisados.Add(seccion))
+        {
+            return;
+        }
+
+        var notas = (el.Notas ?? string.Empty).Trim();
+
+        var porque = notas.Length > 0 && LosaEnPlanta.DiceVolado(
+                         notas, null, PalabrasDeVolado())
+            ? $"sus NOTAS dicen «{notas}»"
+            : "su NOMBRE de sección lo dice";
+
+        Nota($"Losa «{seccion}»: VOLADIZO porque {porque}. Va achurada en " +
+             $"{_capas.CapaVolado}, sin armado y con el rótulo corto. Ojo: las notas son de " +
+             "la PROPIEDAD, así que TODOS los paños de esta sección salen achurados; si " +
+             "alguno no es volado, dale su propia propiedad de losa en ETABS.");
+    }
+
+    /// <summary>Las palabras que marcan un voladizo: <c>LOSA_PALABRAS_VOLADO</c>.</summary>
+    private string PalabrasDeVolado() =>
+        _cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER");
 
     /// <summary>
     /// La <b>parrilla</b> del armado de la losa, recortada al paño.
@@ -1594,11 +1696,17 @@ public sealed partial class PlantaDrawer
         //  Se reconoce por la NOTA o por la sección, con las mismas palabras que usa el
         //  achurado —LOSA_PALABRAS_VOLADO— para que rótulo y ANSI37 nunca discrepen: si una
         //  losa sale achurada, sale también con el rótulo corto.
+        var uso = UsoDeLaLosa(el);
+
+        // Y con el USO metido en la cuenta, no solo la nota y la sección. Esto cierra el
+        // último agujero: el nombre que se iba a escribir es el que sale de la sección, así
+        // que si ese nombre dice VOLADO, el rótulo se acorta ANTES de escribirlo. Dicho de
+        // otra forma: en este plano NUNCA puede salir «Losa de VOLADO», que es justo lo que
+        // se pidió, venga la palabra de las notas o del nombre de la propiedad.
         var soloArmado =
             _cfg.Bandera("VOLADO_ROTULO_SOLO_ARMADO", true)
-            && LosaEnPlanta.DiceVolado(
-                el.Notas, el.Seccion,
-                _cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER"));
+            && (LosaEnPlanta.DiceVolado(el.Notas, el.Seccion, PalabrasDeVolado())
+                || LosaEnPlanta.DiceVolado(uso, null, PalabrasDeVolado()));
 
         var hoja = new string[4];
 
@@ -1607,7 +1715,6 @@ public sealed partial class PlantaDrawer
             hoja[i - 1] = _cfg.TextoTalCual($"LOSA_TEXTO_{i}");
         }
 
-        var uso = UsoDeLaLosa(el);
         var espesor = el.AnchoM > LargoMinimo
             ? (el.AnchoM * 100).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
             : string.Empty;
