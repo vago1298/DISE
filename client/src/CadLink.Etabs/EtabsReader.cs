@@ -1539,6 +1539,22 @@ public static class EtabsReader
             7 => LeerTubo(propFrame, seccion),         // SECTION_PIPE
             8 => LeerRectangulo(propFrame, seccion),   // SECTION_RECTANGULAR
             9 => LeerCirculo(propFrame, seccion),      // SECTION_CIRCLE
+
+            // ==============================================================================
+            //  LA SECCIÓN VARIABLE: SU FORMA ES LA DE SUS TRAMOS
+            // ==============================================================================
+            //  Aquí está el motivo de que en SAP2000 «las secciones salgan todas cuadradas
+            //  cuando son variables e incluso circulares». Una sección VARIABLE —non
+            //  prismatic— no tiene dimensiones propias: es una lista de tramos, cada uno con
+            //  su sección de arranque y su sección de llegada. Así que ningún GetRectangle ni
+            //  GetCircle le responde, el tipo no estaba en esta lista, y todo acababa en el
+            //  respaldo: una caja.
+            //
+            //  Lo que se hace es preguntar por sus TRAMOS y leer la sección de arranque del
+            //  primero, con la misma cascada. Si la variable va de circular a circular, sale
+            //  CIRCULAR, que es lo que se pidió.
+            14 => LeerVariable(propFrame, seccion),    // SECTION_VARIABLE (non prismatic)
+
             _ => null
         };
 
@@ -1547,14 +1563,89 @@ public static class EtabsReader
             return porTipo;
         }
 
-        // Respaldo: el tanteo de siempre.
-        return LeerRectangulo(propFrame, seccion)
+        // ==================================================================================
+        //  EL TANTEO, Y CON EL CÍRCULO POR DELANTE
+        // ==================================================================================
+        //  Solo se llega aquí si GetTypeOAPI no dijo nada, que pasa en versiones viejas y en
+        //  algunos tipos de SAP2000. Y el orden importa: el CÍRCULO va primero porque su
+        //  getter es específico —o es un círculo o falla— mientras que probar rectángulo
+        //  primero es lo que hacía que una sección redonda saliera cuadrada en cuanto
+        //  GetRectangle contestara algo.
+        //
+        //  Y la VARIABLE va antes que las demás por lo mismo: sus tramos son un dato
+        //  inequívoco, y si los tiene, ninguna otra lectura vale.
+        return LeerVariable(propFrame, seccion)
                ?? LeerCirculo(propFrame, seccion)
-               ?? LeerPerfilI(propFrame, seccion)
                ?? LeerTubo(propFrame, seccion)
+               ?? LeerRectangulo(propFrame, seccion)
+               ?? LeerPerfilI(propFrame, seccion)
                ?? LeerCajon(propFrame, seccion)
                ?? LeerAngulo(propFrame, seccion)
                ?? LeerCanal(propFrame, seccion);
+    }
+
+    /// <summary>
+    /// La sección <b>variable</b>: se lee la de <b>arranque</b> de su primer tramo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Una sección variable —<i>non prismatic</i>— no tiene medidas propias: es una lista de
+    /// tramos, y cada tramo dice con qué sección empieza, con cuál acaba y cuánto mide. Por eso
+    /// no le responde ningún <c>GetRectangle</c> ni <c>GetCircle</c>, y por eso salían todas
+    /// como cajas.
+    /// </para>
+    /// <para>
+    /// Se toma la sección de <b>arranque del primer tramo</b> y se lee con la misma cascada, así
+    /// que hereda su FORMA: una variable de circular a circular sale circular, y una de I a I
+    /// sale con su perfil. Es la elección honesta para un plano: en planta y en el corte se
+    /// dibuja una sección, y la de arranque es la que está en el nudo que se acota.
+    /// </para>
+    /// <para>
+    /// Es <b>recursivo a un nivel</b>: si la sección de arranque fuera otra variable —cosa que
+    /// SAP permite— no se sigue tirando del hilo. Con un nivel se cubre todo lo que se ve en
+    /// obra y no hay forma de entrar en un bucle.
+    /// </para>
+    /// </remarks>
+    private static Dims? LeerVariable(object propFrame, string seccion)
+    {
+        try
+        {
+            // nombre, cuántos tramos, secciones de arranque, de llegada, largos, tipo de
+            // variación en EI33 y en EI22.
+            object?[] a = { seccion, 0, null, null, null, null, null };
+
+            if (Com.CallRet(propFrame, "GetNonPrismatic", a, 1, 2, 3, 4, 5, 6) != 0)
+            {
+                return null;
+            }
+
+            var arranques = Com.AsStrings(a[2]);
+
+            if (arranques.Length == 0 || arranques[0].Trim().Length == 0)
+            {
+                return null;
+            }
+
+            var primera = arranques[0].Trim();
+
+            // Y con la cascada de formas CONCRETAS, para que herede su forma.
+            //
+            //  Aquí NO se llama a PorForma, y es a propósito: PorForma vuelve a probar la
+            //  variable, así que una sección variable cuya sección de arranque fuera otra
+            //  variable —cosa que SAP permite— entraría en un bucle sin fin y colgaría la
+            //  lectura del modelo. Con la lista de getters concretos eso no puede pasar.
+            return LeerCirculo(propFrame, primera)
+                   ?? LeerTubo(propFrame, primera)
+                   ?? LeerRectangulo(propFrame, primera)
+                   ?? LeerPerfilI(propFrame, primera)
+                   ?? LeerCajon(propFrame, primera)
+                   ?? LeerAngulo(propFrame, primera)
+                   ?? LeerCanal(propFrame, primera);
+        }
+        catch (Exception ex) when (EsFalloCom(ex))
+        {
+            return null;
+        }
     }
 
     /// <summary>Tubo redondo: <c>GetPipe(Name, File, Mat, T3, Tw, ...)</c>.</summary>

@@ -4992,6 +4992,33 @@ def v18_planta_autocad() -> None:
           "double tolM = 0.25" in ejm)
 
     # ------------------------------------------------------------------
+    # LAS SECCIONES VARIABLES Y LAS CIRCULARES DE SAP2000
+    # ------------------------------------------------------------------
+    #  «Salen todas cuadradas cuando son variables e incluso circulares». Una seccion VARIABLE
+    #  -non prismatic- no tiene medidas propias: es una lista de tramos con su seccion de
+    #  arranque y de llegada, asi que no le responde ningun GetRectangle ni GetCircle, su tipo
+    #  no estaba en la lista, y todo acababa en el respaldo: una caja.
+    check("la seccion variable se lee por sus tramos",
+          "private static Dims? LeerVariable(" in lec
+          and '"GetNonPrismatic"' in lec
+          and "14 => LeerVariable(propFrame, seccion)" in lec)
+    # HEREDA LA FORMA de su seccion de arranque: una variable de circular a circular sale
+    # CIRCULAR, que es lo que se pidio.
+    check("y hereda la forma de su seccion de arranque",
+          "LeerCirculo(propFrame, primera)" in lec
+          and "?? LeerTubo(propFrame, primera)" in lec)
+    # SIN RECURSION POSIBLE: PorForma vuelve a probar la variable, asi que una variable cuya
+    # seccion de arranque fuera otra variable colgaria la lectura del modelo.
+    check("y no puede entrar en un bucle sin fin",
+          "Aquí NO se llama a PorForma" in lec
+          and "PorForma(propFrame, primera)" not in lec)
+    # EL TANTEO, CON EL CIRCULO POR DELANTE: su getter es especifico -o es un circulo o falla-
+    # mientras que probar rectangulo primero es lo que hacia que una redonda saliera cuadrada.
+    check("en el tanteo el circulo va antes que el rectangulo",
+          lec.index("?? LeerCirculo(propFrame, seccion)")
+          < lec.index("?? LeerRectangulo(propFrame, seccion)"))
+
+    # ------------------------------------------------------------------
     # LAS TRES CASILLAS DEL PROGRAMA, IGUALADAS A MANO
     # ------------------------------------------------------------------
     #  Iban atadas con un enlace del XAML -SelectedIndex por ElementName, de dos vias- y desde
