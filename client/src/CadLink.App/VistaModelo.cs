@@ -80,7 +80,11 @@ public sealed partial class VistaModelo
 
     private static readonly Brush ColorEjeZ = Pincel(0x2A, 0x62, 0xB8);
 
-    private static readonly Brush FondoTerna = Pincel(0xFF, 0xFF, 0xFF, 0xC8);
+    // LA PLACA DE LA TERNA, TRASLUCIDA: se pidió así, y con razón. Opaca tapaba la esquina
+    // del modelo, y en una vista que se gira la esquina es justo donde uno mira para
+    // orientarse. Con 0x3C de opacidad —un 23%— se ve lo que hay debajo y los ejes se siguen
+    // leyendo, porque los colores van a plena intensidad.
+    private static readonly Brush FondoTerna = Pincel(0xFF, 0xFF, 0xFF, 0x3C);
 
     private static SolidColorBrush Pincel(byte r, byte g, byte b, byte a = 0xFF) =>
         new(Color.FromArgb(a, r, g, b));
@@ -431,14 +435,16 @@ public sealed partial class VistaModelo
         var ox = 52.0;
         var oy = h - 46;
 
-        // La placa: un círculo translúcido que despega la terna del dibujo.
+        // La placa: un círculo translúcido que despega la terna del dibujo, y SIN CONTORNO
+        // —se pidió quitarlo—: el círculo dibujado competía con los ejes y hacía parecer que
+        // la terna era un objeto del modelo. Sin la raya, la placa solo aclara el fondo lo
+        // justo para que las tres letras se lean, y los ejes se quedan con todo el
+        // protagonismo.
         var placa = new Ellipse
         {
             Width = Radio * 2,
             Height = Radio * 2,
-            Fill = FondoTerna,
-            Stroke = ColorEje,
-            StrokeThickness = 0.6
+            Fill = FondoTerna
         };
 
         Canvas.SetLeft(placa, ox - Radio);

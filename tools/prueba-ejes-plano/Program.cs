@@ -585,7 +585,9 @@ Check("la que lo CRUZA tambien entra: en el corte se ve su costado",
 Check("y la que esta a diez metros, no",
       !CorteEnAlzado.Entra(enElEje[3], enX: true, ordenada: 5, espesorM: 0.6));
 
-var piezas = CorteEnAlzado.Piezas(enElEje, enX: true, ordenada: 5, espesorM: 0.6);
+// Sin el fondo, para comprobar primero solo lo que corta.
+var piezas = CorteEnAlzado.Piezas(
+    enElEje, enX: true, ordenada: 5, espesorM: 0.6, verElFondo: false);
 
 Igual("del corte salen TRES piezas", 3, piezas.Count);
 
@@ -595,7 +597,10 @@ Cerca("y del ancho de su seccion", 0.15, col.Ancho);
 Cerca("arrancando en su cota", 0, col.Z);
 
 var aLoLargo = piezas.First(p => p.Etiqueta == "T1");
-Cerca("la trabe que corre por el eje se ve ENTERA: 4 m", 4, aLoLargo.Ancho);
+// 4 m de nudo a nudo MAS la mitad del castillo que hay en un extremo: la trabe se dibuja
+// completa, hasta la CARA de su apoyo, no hasta su eje. En el otro extremo no hay nada, asi
+// que ahi no se le suma.
+Cerca("la trabe se ve entera: 4 m mas medio castillo", 4 + 0.075, aLoLargo.Ancho);
 Cerca("con su peralte", 0.25, aLoLargo.Alto);
 // Cuelga DEBAJO de la cota de su eje, que es donde esta el concreto.
 Cerca("y colgando debajo de su eje", 2.7 - 0.25, aLoLargo.Z);
@@ -626,9 +631,90 @@ losa.Vertices.Add((6, 0));
 losa.Vertices.Add((6, 4));
 losa.Vertices.Add((4, 4));
 
-Igual("la losa no da pieza en el corte", 0,
+// LA LOSA SI SE DIBUJA: en la extruida se veia y en el plano no aparecia. En un corte es
+// una franja horizontal de su espesor, colgada de la cota de su paño, y es lo que da la
+// lectura de los entrepisos.
+losa.Z1 = 2.7;
+losa.Z2 = 2.7;
+losa.AnchoM = 0.10;
+
+var pLosa = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { losa }, enX: true, ordenada: 5, espesorM: 0.6,
+    verElFondo: false);
+
+Igual("la losa da su franja en el corte", 1, pLosa.Count);
+Cerca("del espesor de la losa", 0.10, pLosa[0].Alto);
+Cerca("colgada de la cota de su paño", 2.7 - 0.10, pLosa[0].Z);
+Cerca("y a lo largo de lo que cruza el corte", 4, pLosa[0].Ancho);
+
+// LO QUE SE VE AL FONDO tambien se dibuja: un corte es una VISTA, no solo la rebanada.
+var colDetras = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Etiqueta = "K9", Seccion = "K 15X15",
+    X1 = 9, Y1 = 0, X2 = 9, Y2 = 0, Z1 = 0, Z2 = 2.7, AnchoM = 0.15, PeralteM = 0.15
+};
+
+Check("una columna a 4 m detras del corte se ve al fondo",
+      CorteEnAlzado.AlFondo(colDetras, enX: true, ordenada: 5, espesorM: 0.6));
+Check("y una que esta DELANTE no se ve",
+      !CorteEnAlzado.AlFondo(
+          new ElementoPlanta
+          {
+              Clase = ClasePlanta.Columna, X1 = 1, Y1 = 0, X2 = 1, Y2 = 0,
+              Z1 = 0, Z2 = 2.7, AnchoM = 0.15, PeralteM = 0.15
+          },
+          enX: true, ordenada: 5, espesorM: 0.6));
+
+var conFondo = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { enElEje[0], colDetras }, enX: true, ordenada: 5,
+    espesorM: 0.6, verElFondo: true);
+
+Igual("con el fondo salen las dos columnas", 2, conFondo.Count);
+Check("la del eje va marcada como cortada", conFondo.Any(q => q.Cortada));
+Check("y la de atras como fondo", conFondo.Any(q => !q.Cortada));
+
+Igual("sin el fondo sale solo la del eje", 1,
       CorteEnAlzado.Piezas(
-          new List<ElementoPlanta> { losa }, enX: true, ordenada: 5, espesorM: 0.6).Count);
+          new List<ElementoPlanta> { enElEje[0], colDetras }, enX: true, ordenada: 5,
+          espesorM: 0.6, verElFondo: false).Count);
+
+// LA TRABE SE DIBUJA COMPLETA, no de eje a eje: el concreto llega a la CARA de sus
+// apoyos, no a su eje. A cada extremo se le suma la mitad del apoyo que hay ahi.
+var conApoyos = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Trabe, Etiqueta = "CC1", Seccion = "CC 15X25",
+        X1 = 5, Y1 = 0, X2 = 5, Y2 = 4, Z1 = 2.7, Z2 = 2.7,
+        AnchoM = 0.15, PeralteM = 0.25
+    },
+    new()
+    {
+        Clase = ClasePlanta.Columna, Etiqueta = "K1", Seccion = "K 15X15",
+        X1 = 5, Y1 = 0, X2 = 5, Y2 = 0, Z1 = 0, Z2 = 2.7,
+        AnchoM = 0.15, PeralteM = 0.15
+    },
+    new()
+    {
+        Clase = ClasePlanta.Columna, Etiqueta = "K2", Seccion = "K 20X20",
+        X1 = 5, Y1 = 4, X2 = 5, Y2 = 4, Z1 = 0, Z2 = 2.7,
+        AnchoM = 0.20, PeralteM = 0.20
+    }
+};
+
+var pTrabe = CorteEnAlzado.Piezas(
+    conApoyos, enX: true, ordenada: 5, espesorM: 0.6, verElFondo: false)
+    .First(q => q.Etiqueta == "CC1");
+
+// 4 m de eje a eje + 7.5 cm del castillo de 15 + 10 cm del de 20.
+Cerca("la trabe llega a la cara de sus dos apoyos", 4 + 0.075 + 0.10, pTrabe.Ancho);
+Cerca("y arranca media seccion antes de su nudo", -0.075, pTrabe.X);
+
+// Y en un extremo SIN apoyo no se le suma nada: ahi la trabe termina de verdad.
+Cerca("medio apoyo donde no hay nada es cero", 0,
+      CorteEnAlzado.MedioApoyoEn(conApoyos[0], enX: true, donde: 9, todos: conApoyos));
+Cerca("y donde hay un castillo de 15, 7.5 cm", 0.075,
+      CorteEnAlzado.MedioApoyoEn(conApoyos[0], enX: true, donde: 0, todos: conApoyos));
 
 // LA REBANADA NO PUEDE SER CERO: en un modelo real el muro se modela en su linea media y
 // el eje pasa por su paño, asi que un corte de espesor cero se quedaria vacio.

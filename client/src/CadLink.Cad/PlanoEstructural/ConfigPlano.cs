@@ -467,6 +467,14 @@ public sealed class ConfigPlano
         P("CORTE_ROTULO", "CORTE  POR  EL  EJE  %E", "Rotulo del corte (%E = nombre del eje)"),
         P("CORTE_ROTULO_ABAJO_M", "1.2", "Cuanto baja el rotulo del corte"),
         P("CORTE_NIVEL_VUELA_M", "0.6", "Cuanto sale la linea de nivel por los lados"),
+
+        // UN CORTE ES UNA VISTA, no solo la rebanada: se corta por el eje y se DIBUJA LO QUE
+        // QUEDA DETRAS. Con solo lo cortado, el alzado son dos columnas y una cadena en el
+        // aire; con el fondo se entiende el edificio.
+        P("CORTE_VER_EL_FONDO", "SI",
+          "<<< SI = EL CORTE DIBUJA TAMBIEN LO QUE SE VE AL FONDO, no solo lo que corta"),
+        P("CORTE_FONDO_LINETYPE", "ACAD_ISO02W100",
+          "TIPO DE LINEA DE LO QUE SE VE AL FONDO (a trazos, como en un plano de obra)"),
         P("LOSA_TEXTO_REDEFINIR", "SI", "SI = VOLVER A ARMAR EL BLOQUE (hace falta para ver la altura nueva; ponlo en NO cuando ya te guste)"),
         P("LOSA_PALABRAS_AZOTEA", "AZOTEA,CUBIERTA,TECHO,ROOF", "Palabras de la seccion = AZOTEA"),
         P("LOSA_PALABRAS_ENTREPISO", "ENTREPISO,PISO,FLOOR,SLAB", "Palabras de la seccion = ENTREPISO"),

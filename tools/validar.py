@@ -3033,8 +3033,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con treinta renglones añadidos",
-          cfgp.count("        P(") == 291
+    check("la hoja CONFIG de la macro esta portada, con treinta y tres renglones añadidos",
+          cfgp.count("        P(") == 293
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3152,7 +3152,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "291, ConfigPlano.PorOmision.Count" in pr
+          and "293, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3482,6 +3482,13 @@ def v16_extruida_piers() -> None:
     #  LA TERNA XYZ. Estaba dibujada, pero en el mismo gris claro de todo y con linea de 1.2
     #  px: sobre el fondo claro era invisible, y en una vista que se gira, no saber para donde
     #  cae la X deja al modelo sin referencia.
+    # LA PLACA DE LA TERNA, TRASLUCIDA Y SIN CONTORNO: se pidio. Opaca tapaba la esquina del
+    # modelo -que es donde uno mira para orientarse- y el circulo dibujado competia con los
+    # ejes, haciendo parecer que la terna era un objeto del modelo.
+    check("la placa de la terna es traslucida y sin contorno",
+          "Pincel(0xFF, 0xFF, 0xFF, 0x3C)" in vista
+          and "Fill = FondoTerna\n        };" in vista.replace("\r\n", "\n"))
+
     check("la terna XYZ se ve: colores, flecha y placa",
           "private static readonly Brush ColorEjeX" in vista
           and "private static readonly Brush ColorEjeZ" in vista
@@ -4339,17 +4346,23 @@ def v18_planta_autocad() -> None:
           "public static class CorteEnAlzado" in corte
           and "public static bool Entra(" in corte
           and "public static List<Pieza> Piezas(" in corte)
-    check("el corte se dibuja al lado de la planta, a la separacion de la hoja",
+    # ARRIBA DE LAS PLANTAS, a +10: las plantas se reparten a lo ANCHO -una al lado de la
+    # otra- asi que el corte a la derecha acabaria chocando con la planta siguiente en cuanto
+    # el modelo tuviera un nivel mas. Encima queda en su propia banda y se lee junto a todas.
+    check("el corte se dibuja ARRIBA de las plantas, a la separacion de la hoja",
           'P("CORTE_SEPARACION_M", "10",' in cfgp
           and 'P("CORTE_DIBUJAR", "SI",' in cfgp
           and "public int DibujarCorte(" in cortedib
-          and '_cfg.Numero("CORTE_SEPARACION_M", 10)' in cortedib)
+          and '_cfg.Numero("CORTE_SEPARACION_M", 10)' in cortedib
+          and "var cy = dy + altoPlanta + separacion;" in cortedib
+          and "var cx = dx;" in cortedib
+          and "ExtensionDeLoDibujado(c.Elementos, enY: true)" in cortedib)
     # CADA TIPO SE VE DE UNA FORMA, y es lo que hace que un corte se entienda: la columna de
     # nudo a nudo, la trabe que corre a lo largo entera y con su peralte, la que cruza solo de
     # canto, y el muro como el paño que es.
     check("cada pieza del corte se ve como toca",
           "La <b>trabe o cadena que corre A LO LARGO</b>" in corte
-          and "var deCanto = largo <=" in corte
+          and "var deCanto = largoBarra <=" in corte
           and "el.Clase == ClasePlanta.Muro" in corte)
     # LAS COTAS DE NIVEL: sin ellas un corte es un monton de rectangulos.
     check("el corte lleva sus lineas de nivel y su rotulo",
@@ -4359,6 +4372,36 @@ def v18_planta_autocad() -> None:
     # LAS MISMAS CAPAS que la planta: asi apagar E-MURO apaga el muro en los dos dibujos.
     check("el corte usa las capas de la planta, no unas propias",
           'ClasePlanta.Muro => _capas.CapaDeTipo("MURO"),' in cortedib)
+    # LA CAPA DEL ALZADO SALE DE LAS NOTAS: se pidio que una cadena de cerramiento o de
+    # desplante vaya a las capas de las cadenas y una trabe a E-TRABE. Antes la capa salia solo
+    # de la CLASE, asi que todas las barras horizontales caian en E-TRABE y el corte no
+    # coincidia con la planta.
+    check("la capa del corte sale del tipo, o sea de las notas",
+          "private string CapaDeLaPieza(CorteEnAlzado.Pieza p)" in cortedib
+          and "return _capas.CapaDeTipo(p.Tipo);" in cortedib
+          and "var capa = CapaDeLaPieza(p);" in cortedib)
+    # LA LOSA SE DIBUJA: en la extruida se veia y en el plano no aparecia porque se descartaba.
+    check("la losa da su franja en el corte",
+          "if (el.Clase == ClasePlanta.Losa)" in corte
+          and "zArriba - espesor" in corte)
+    # UN CORTE ES UNA VISTA: se dibuja tambien lo que queda DETRAS, y a trazos para no
+    # confundirlo con lo cortado.
+    check("el corte dibuja lo que se ve al fondo, y a trazos",
+          'P("CORTE_VER_EL_FONDO", "SI",' in cfgp
+          and "public static bool AlFondo(" in corte
+          and "private void ALineaDeFondo(" in cortedib
+          and "if (!p.Cortada)" in cortedib)
+    # LA TRABE, COMPLETA: el concreto llega a la CARA de sus apoyos, no a su eje. Dibujada a
+    # ejes deja un hueco en cada punta justo donde mas concreto hay.
+    check("la trabe del corte se dibuja completa, hasta la cara de sus apoyos",
+          "public static double MedioApoyoEn(" in corte
+          and "min - mediaA" in corte
+          and "largoBarra + mediaA + mediaB" in corte)
+    check("hay prueba ejecutable de la losa, el fondo y la trabe completa",
+          "la losa da su franja en el corte" in pre
+          and "una columna a 4 m detras del corte se ve al fondo" in pre
+          and "la trabe llega a la cara de sus dos apoyos" in pre
+          and "medio apoyo donde no hay nada es cero" in pre)
     # LA Z LLEGA HASTA EL DTO: en planta no se usa, pero un corte es un alzado.
     check("el elemento lleva su cota para el corte",
           "public double Z1 { get; set; }" in dto
@@ -4371,7 +4414,7 @@ def v18_planta_autocad() -> None:
           and "dibujante.DibujarCorte(c, 0, 0)" in codigo)
     check("hay prueba ejecutable del corte",
           "del corte salen TRES piezas" in pre
-          and "la trabe que corre por el eje se ve ENTERA: 4 m" in pre
+          and "la trabe se ve entera: 4 m mas medio castillo" in pre
           and "la que cruza se ve solo de canto" in pre
           and "con espesor 0 se usa el minimo, no se queda vacio" in pre)
 

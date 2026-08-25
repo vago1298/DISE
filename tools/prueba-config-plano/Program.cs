@@ -71,8 +71,10 @@ var cfg = new ConfigPlano();
 //   CORTE_ROTULO_ABAJO_M / CORTE_NIVEL_VUELA_M      el corte por un eje, al lado de la planta
 //   LOSA_HATCH_COLOR                el achurado en 142, por objeto, como se pidio
 //   VOLADO_SIN_DIVISIONES           varios volados juntos, un solo perimetro
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta que se añadieron",
-      291, ConfigPlano.PorOmision.Count);
+//   CORTE_VER_EL_FONDO              el corte dibuja lo que se ve detras, no solo la rebanada
+//   CORTE_FONDO_LINETYPE            y ese fondo va a trazos
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta y tres que se añadieron",
+      293, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -223,7 +225,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 291 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 293 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

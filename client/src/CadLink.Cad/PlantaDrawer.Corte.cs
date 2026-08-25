@@ -54,22 +54,27 @@ public sealed partial class PlantaDrawer
         }
 
         // ==============================================================================
-        //  DÓNDE SE PONE: AL LADO DE LA PLANTA, NO ENCIMA
+        //  DÓNDE SE PONE: ARRIBA DE LAS PLANTAS, A +10
         // ==============================================================================
-        //  A la derecha del ancho de la planta más la separación de la hoja. Se mide la
-        //  planta de verdad —lo que ocupan sus elementos— y no se usa un valor fijo, porque
-        //  una casa de 8 m y una nave de 60 no pueden llevar la misma separación.
-        var anchoPlanta = AnchoDeLoDibujado(c.Elementos, c.EnX);
+        //  Se pidió así, y es como se arma el juego: las plantas se reparten a lo ancho —una
+        //  al lado de la otra— así que el corte a la derecha acabaría chocando con la planta
+        //  siguiente en cuanto el modelo tuviera un nivel más. Encima queda en su propia
+        //  banda, libre, y se lee junto a todas.
+        //
+        //  Se mide el ALTO de lo dibujado y se le suma la separación de la hoja. Se mide de
+        //  verdad —lo que ocupan los elementos— y no se usa un valor fijo, porque una casa de
+        //  8 m y una nave de 60 no pueden llevar la misma separación.
+        var altoPlanta = ExtensionDeLoDibujado(c.Elementos, enY: true);
         var separacion = _cfg.Numero("CORTE_SEPARACION_M", 10);
 
-        var cx = dx + anchoPlanta + separacion;
-        var cy = dy;
+        var cx = dx;
+        var cy = dy + altoPlanta + separacion;
 
         var hechas = 0;
 
         foreach (var p in piezas)
         {
-            var capa = CapaDeLaPieza(p.Clase);
+            var capa = CapaDeLaPieza(p);
 
             var pts = new[]
             {
@@ -79,8 +84,22 @@ public sealed partial class PlantaDrawer
                 cx + p.X, cy + p.Z + p.Alto
             };
 
-            if (PolilineaCerrada(pts, capa) is not null)
+            var pl = PolilineaCerrada(pts, capa);
+
+            if (pl is not null)
             {
+                // ======================================================================
+                //  LO CORTADO CON SU LÍNEA, EL FONDO MÁS FLOJO
+                // ======================================================================
+                //  Es la convención de cualquier plano de obra, y aquí hace falta más que en
+                //  ninguna parte: sin distinguirlas, el fondo y la sección se leen igual y no
+                //  se sabe por dónde pasa el corte. Lo que se ve al fondo va a trazos, que es
+                //  como se dibuja lo que no se corta.
+                if (!p.Cortada)
+                {
+                    ALineaDeFondo(pl);
+                }
+
                 hechas++;
             }
         }
@@ -89,7 +108,7 @@ public sealed partial class PlantaDrawer
         RotularElCorte(c, cx, cy, piezas);
 
         Nota($"Corte por el eje {c.Eje} dibujado con {hechas} pieza(s), a {separacion:0.##} m " +
-             "a la derecha de la planta.");
+             "ARRIBA de la planta.");
 
         return hechas;
     }
@@ -148,12 +167,58 @@ public sealed partial class PlantaDrawer
                _capas.CapaDeTipo("TITULO"), 0, Rot.Estilo, false);
     }
 
-    /// <summary>El ancho de lo dibujado en planta, para saber dónde empieza el corte.</summary>
-    private static double AnchoDeLoDibujado(
-        IReadOnlyList<ElementoPlanta> elementos, bool enX)
+    /// <summary>
+    /// Deja una pieza como <b>fondo</b>: a trazos, para que no se confunda con lo cortado.
+    /// </summary>
+    /// <remarks>
+    /// El tipo de línea va <b>por objeto</b> y no por capa a propósito: la pieza se queda en la
+    /// capa que le toca —E-CADENA, E-TRABE, E-MURO— para que apagarla la apague también en el
+    /// corte, y lo único que cambia es cómo se dibuja. Con una capa aparte para el fondo habría
+    /// que apagar dos capas para quitar un muro.
+    /// </remarks>
+    private void ALineaDeFondo(object? pl)
+    {
+        if (pl is null)
+        {
+            return;
+        }
+
+        var tipo = _cfg.Texto("CORTE_FONDO_LINETYPE", "ACAD_ISO02W100");
+
+        if (tipo.Length == 0 || !AsegurarTipoDeLinea(tipo))
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() => { ((dynamic)pl).Linetype = tipo; });
+        }
+        catch (Exception)
+        {
+            // Sin el tipo de línea el fondo se ve continuo: se distingue peor, pero está.
+        }
+    }
+
+    /// <summary>
+    /// Cuánto ocupa lo dibujado en planta, para saber dónde empieza el corte.
+    /// </summary>
+    /// <remarks>
+    /// Con <paramref name="enY"/> se mide el ALTO, que es lo que hace falta para poner el corte
+    /// encima. Si no hay nada que medir se devuelven 10 m: es mejor separar de más que dibujar
+    /// el corte sobre la planta.
+    /// </remarks>
+    private static double ExtensionDeLoDibujado(
+        IReadOnlyList<ElementoPlanta> elementos, bool enY)
     {
         var min = double.MaxValue;
         var max = double.MinValue;
+
+        void Ver(double v)
+        {
+            min = Math.Min(min, v);
+            max = Math.Max(max, v);
+        }
 
         foreach (var el in elementos)
         {
@@ -161,14 +226,13 @@ public sealed partial class PlantaDrawer
             {
                 foreach (var (x, y) in el.Vertices)
                 {
-                    min = Math.Min(min, x);
-                    max = Math.Max(max, x);
+                    Ver(enY ? y : x);
                 }
             }
             else
             {
-                min = Math.Min(min, Math.Min(el.X1, el.X2));
-                max = Math.Max(max, Math.Max(el.X1, el.X2));
+                Ver(enY ? el.Y1 : el.X1);
+                Ver(enY ? el.Y2 : el.X2);
             }
         }
 
@@ -179,14 +243,37 @@ public sealed partial class PlantaDrawer
     /// La capa que le toca a cada pieza del corte: <b>las mismas</b> de la planta.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Compartir capas con la planta no es pereza: es lo que hace que apagar E-MURO apague el
     /// muro en los dos dibujos, y que los colores y los grosores de impresión salgan iguales
     /// en el corte y en la planta sin configurar nada dos veces.
+    /// </para>
+    /// <para>
+    /// Y la capa sale del <b>TIPO</b>, que es el que trae las <i>property notes</i>: se pidió
+    /// que en los alzados una <b>cadena de cerramiento</b> o de <b>desplante</b> vaya a las
+    /// capas de las cadenas y una <b>trabe</b> a <c>E-TRABE</c>. Antes la capa salía solo de la
+    /// CLASE, así que todas las barras horizontales del corte caían en <c>E-TRABE</c> —las
+    /// cadenas también— y el corte no coincidía con la planta, donde sí van separadas.
+    /// <c>CapaDeTipo</c> es quien sabe que CADENA DE DESPLANTE tiene capa propia.
+    /// </para>
+    /// <para>
+    /// Sin tipo se cae a la clase, que es lo que había: un modelo sin notas sigue saliendo como
+    /// antes, no se va a la capa de lo que no se sabe.
+    /// </para>
     /// </remarks>
-    private string CapaDeLaPieza(ClasePlanta clase) => clase switch
+    private string CapaDeLaPieza(CorteEnAlzado.Pieza p)
     {
-        ClasePlanta.Columna => _capas.CapaDeTipo("COLUMNA"),
-        ClasePlanta.Muro => _capas.CapaDeTipo("MURO"),
-        _ => _capas.CapaDeTipo("TRABE")
-    };
+        if (p.Tipo.Length > 0)
+        {
+            return _capas.CapaDeTipo(p.Tipo);
+        }
+
+        return p.Clase switch
+        {
+            ClasePlanta.Columna => _capas.CapaDeTipo("COLUMNA"),
+            ClasePlanta.Muro => _capas.CapaDeTipo("MURO"),
+            ClasePlanta.Losa => _capas.CapaDeTipo("LOSA"),
+            _ => _capas.CapaDeTipo("TRABE")
+        };
+    }
 }
