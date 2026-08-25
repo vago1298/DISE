@@ -54,21 +54,30 @@ public sealed partial class PlantaDrawer
         }
 
         // ==============================================================================
-        //  DÓNDE SE PONE: ARRIBA DE LAS PLANTAS, A +10
+        //  DÓNDE SE PONE: 10 UNIDADES ARRIBA DE LO QUE YA ESTÁ DIBUJADO
         // ==============================================================================
-        //  Se pidió así, y es como se arma el juego: las plantas se reparten a lo ancho —una
-        //  al lado de la otra— así que el corte a la derecha acabaría chocando con la planta
-        //  siguiente en cuanto el modelo tuviera un nivel más. Encima queda en su propia
-        //  banda, libre, y se lee junto a todas.
+        //  Esto estaba mal y salía encima de la planta. El error era de referencia: se
+        //  colocaba respecto del ORIGEN DEL MODELO —midiendo el alto de los elementos— pero
+        //  las plantas no se dibujan en el origen: DibujarTodas las reparte y las sube al
+        //  tope de lo que ya hubiera en el dibujo. Así que «alto del modelo + 10» caía justo
+        //  en medio del juego.
         //
-        //  Se mide el ALTO de lo dibujado y se le suma la separación de la hoja. Se mide de
-        //  verdad —lo que ocupan los elementos— y no se usa un valor fijo, porque una casa de
-        //  8 m y una nave de 60 no pueden llevar la misma separación.
-        var altoPlanta = ExtensionDeLoDibujado(c.Elementos, enY: true);
+        //  Se pregunta al DIBUJO: el mismo TopeDeLoDibujado que usa el reparto de las
+        //  plantas, que recorre lo que hay y devuelve su Y más alta. Diez unidades por encima
+        //  de eso es diez unidades por encima de la planta, siempre, sin depender de cuántos
+        //  niveles haya ni de dónde estuviera el modelo.
+        //
+        //  Y alineado por la IZQUIERDA con lo dibujado, para que el corte y la planta se lean
+        //  en la misma columna.
         var separacion = _cfg.Numero("CORTE_SEPARACION_M", 10);
 
-        var cx = dx;
-        var cy = dy + altoPlanta + separacion;
+        var cx = IzquierdaDeLoDibujado() ?? 0;
+        var cy = (TopeDeLoDibujado() ?? 0) + separacion;
+
+        // La pieza más baja del corte —una zapata, un desplante— se apoya en esa línea. Sin
+        // esto, un corte con cotas negativas se metería hacia abajo, otra vez sobre la planta.
+        var zBase = piezas.Min(q => q.Z);
+        cy -= zBase;
 
         var hechas = 0;
 
@@ -84,10 +93,30 @@ public sealed partial class PlantaDrawer
                 cx + p.X, cy + p.Z + p.Alto
             };
 
-            var pl = PolilineaCerrada(pts, capa);
+            // Una pieza de alto CERO es la losa cuyo espesor no dio el modelo: se dibuja
+            // como una línea a la cota de su paño, que es lo honesto —hay losa y no se sabe
+            // cuánto mide— en lugar de una franja de un espesor inventado.
+            var pl = p.Alto <= 0.001
+                ? Linea(cx + p.X, cy + p.Z, cx + p.X + p.Ancho, cy + p.Z, capa)
+                : PolilineaCerrada(pts, capa);
 
             if (pl is not null)
             {
+                // ======================================================================
+                //  LOS CASTILLOS Y LAS COLUMNAS, RELLENOS
+                // ======================================================================
+                //  Como en la planta, y por el mismo motivo: el relleno es lo que distingue de
+                //  un golpe el elemento CORTADO del que solo se ve. En un alzado, una columna
+                //  cortada se raya o se rellena; hueca se confunde con el hueco de una ventana.
+                //
+                //  Solo las CORTADAS: la que se ve al fondo no se rellena, porque no está
+                //  cortada por el plano.
+                if (p.Cortada && p.Clase == ClasePlanta.Columna
+                    && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
+                {
+                    RellenarPieza(pl, capa);
+                }
+
                 // ======================================================================
                 //  LO CORTADO CON SU LÍNEA, EL FONDO MÁS FLOJO
                 // ======================================================================
@@ -105,10 +134,12 @@ public sealed partial class PlantaDrawer
         }
 
         DibujarNivelesDelCorte(c, cx, cy, piezas);
+        DibujarEjesDelCorte(c, cx, cy, piezas);
+        AcotarElCorte(c, cx, cy, piezas);
         RotularElCorte(c, cx, cy, piezas);
 
-        Nota($"Corte por el eje {c.Eje} dibujado con {hechas} pieza(s), a {separacion:0.##} m " +
-             "ARRIBA de la planta.");
+        Nota($"Corte por el eje {c.Eje} dibujado con {hechas} pieza(s), {separacion:0.##} " +
+             "unidades ARRIBA de lo que ya había dibujado.");
 
         return hechas;
     }
@@ -149,6 +180,148 @@ public sealed partial class PlantaDrawer
         }
     }
 
+    /// <summary>
+    /// Los <b>ejes</b> del corte, con su línea y su burbuja arriba.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: el corte con sus ejes, como la planta. Y hace falta para leerlo: sin ellos, un
+    /// alzado es un dibujo bonito del que no se puede replantear nada, porque no se sabe qué
+    /// columna es cuál. Con la burbuja, cada pieza del corte se puede casar con su eje en la
+    /// planta.
+    /// </para>
+    /// <para>
+    /// Son los ejes <b>perpendiculares</b> al del corte, los que se cruzan. La línea va de
+    /// abajo del corte hasta la burbuja, y a trazos, con el mismo tipo de línea que los ejes de
+    /// la planta: es el mismo objeto del plano, así que se dibuja igual.
+    /// </para>
+    /// </remarks>
+    private void DibujarEjesDelCorte(
+        CorteCad c, double cx, double cy, List<CorteEnAlzado.Pieza> piezas)
+    {
+        if (c.Ejes.Count == 0 || !_cfg.Bandera("CORTE_CON_EJES", true))
+        {
+            return;
+        }
+
+        var zMin = piezas.Min(p => p.Z);
+        var zMax = piezas.Max(p => p.Z + p.Alto);
+
+        var capa = _capas.Prefijo + "EJES";
+        var capaBur = _capas.Prefijo + "EJES-BURBUJA";
+        var capaTxt = _capas.Prefijo + "EJES-TEXTO";
+
+        var r = Ejes.RadioBurbuja;
+        var sale = _cfg.Numero("CORTE_EJES_SALE_M", 1.2);
+        var escalaLt = _cfg.Numero("EJES_ESCALA_TIPOLINEA", 1);
+
+        foreach (var (id, o) in c.Ejes)
+        {
+            var x = cx + o;
+            var arriba = cy + zMax + sale;
+
+            LineaDeEje(x, cy + zMin - sale, x, arriba, capa, escalaLt);
+            Burbuja(x, arriba + r, id, capaBur, capaTxt, 0, 1);
+        }
+    }
+
+    /// <summary>
+    /// Las <b>cotas</b> del corte: entre ejes, la total, y las alturas de entrepiso.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió acotar los cortes, y un corte se acota en las <b>dos direcciones</b>, que es lo
+    /// que lo hace útil: en horizontal las distancias entre ejes —las mismas de la planta, que
+    /// así se pueden comprobar— y en <b>vertical las alturas</b>, que son el dato que solo el
+    /// corte puede dar. Un corte sin las alturas de entrepiso no sirve para nada.
+    /// </para>
+    /// <para>
+    /// Se usa la MISMA cota alineada que la planta —<c>CotaAlineada</c>, con el estilo
+    /// <c>COTA_DIM</c> y su separador decimal por objeto— para que las cotas del corte y las de
+    /// la planta salgan idénticas, con la misma letra y el mismo tamaño.
+    /// </para>
+    /// </remarks>
+    private void AcotarElCorte(
+        CorteCad c, double cx, double cy, List<CorteEnAlzado.Pieza> piezas)
+    {
+        if (!_cfg.Bandera("CORTE_ACOTAR", true))
+        {
+            return;
+        }
+
+        var capa = _capas.Prefijo + "COTAS";
+
+        var zMin = piezas.Min(p => p.Z);
+        var zMax = piezas.Max(p => p.Z + p.Alto);
+
+        var sep = _cfg.Numero("COTAS_SEPARACION", 0.75);
+        var sepTotal = _cfg.Numero("COTAS_SEPARACION_TOTAL", 1.17);
+
+        // ---- las horizontales, entre ejes, DEBAJO del corte ------------------------
+        var ejes = c.Ejes.OrderBy(e => e.Ordenada).ToList();
+
+        if (ejes.Count >= 2)
+        {
+            var y = cy + zMin - sep;
+
+            for (var i = 0; i + 1 < ejes.Count; i++)
+            {
+                var xa = cx + ejes[i].Ordenada;
+                var xb = cx + ejes[i + 1].Ordenada;
+
+                CotaAlineada(xa, y, xb, y, (xa + xb) / 2, y, capa, -1);
+            }
+
+            // Y LA TOTAL, más abajo. Solo con tres ejes o más: con dos sería la misma cota
+            // escrita dos veces.
+            if (ejes.Count > 2)
+            {
+                var xa = cx + ejes[0].Ordenada;
+                var xb = cx + ejes[^1].Ordenada;
+                var yt = cy + zMin - sepTotal;
+
+                CotaAlineada(xa, yt, xb, yt, (xa + xb) / 2, yt, capa, 0);
+            }
+        }
+
+        // ---- las VERTICALES: las alturas, que es lo que solo el corte dice ---------
+        var niveles = c.Niveles
+            .Select(n => n.Z)
+            .Distinct()
+            .OrderBy(z => z)
+            .ToList();
+
+        // Si el modelo no trajo niveles, se acota al menos lo que mide el corte de abajo
+        // arriba: sin ninguna cota vertical el corte no dice ni la altura del edificio.
+        if (niveles.Count < 2)
+        {
+            niveles = new List<double> { zMin, zMax };
+        }
+
+        var xCota = cx + AnchoDelCorte(piezas) + sep;
+
+        for (var i = 0; i + 1 < niveles.Count; i++)
+        {
+            var za = cy + niveles[i];
+            var zb = cy + niveles[i + 1];
+
+            CotaAlineada(xCota, za, xCota, zb, xCota, (za + zb) / 2, capa, -1);
+        }
+
+        if (niveles.Count > 2)
+        {
+            var za = cy + niveles[0];
+            var zb = cy + niveles[^1];
+            var xt = cx + AnchoDelCorte(piezas) + sepTotal;
+
+            CotaAlineada(xt, za, xt, zb, xt, (za + zb) / 2, capa, 0);
+        }
+    }
+
+    /// <summary>Lo que ocupa el corte a lo largo, para colgar las cotas verticales a su derecha.</summary>
+    private static double AnchoDelCorte(List<CorteEnAlzado.Pieza> piezas) =>
+        piezas.Max(p => p.X + p.Ancho);
+
     /// <summary>El rótulo del corte, debajo: <c>CORTE POR EL EJE 3</c>.</summary>
     private void RotularElCorte(
         CorteCad c, double cx, double cy, List<CorteEnAlzado.Pieza> piezas)
@@ -165,6 +338,106 @@ public sealed partial class PlantaDrawer
 
         Mtexto((cx + ((xMin + xMax) / 2)), cy + zMin - abajo, texto, altura,
                _capas.CapaDeTipo("TITULO"), 0, Rot.Estilo, false);
+    }
+
+    /// <summary>
+    /// Rellena una pieza del corte con el <b>SOLID</b> de la planta.
+    /// </summary>
+    /// <remarks>
+    /// El mismo achurado y el mismo color que usa la sección de la columna en la planta
+    /// —<c>COLOR_RELLENO_BLOQUE</c>—, para que las dos vistas del mismo castillo se vean
+    /// iguales. Va por la cascada de arreglos de <see cref="AcadArreglos"/>, que es la vía que
+    /// funciona en AutoCAD 2026, y si no se deja, el corte se queda con la pieza hueca: se ve
+    /// peor, pero está.
+    /// </remarks>
+    private void RellenarPieza(object? pl, string capa)
+    {
+        if (pl is null)
+        {
+            return;
+        }
+
+        object? ht;
+
+        try
+        {
+            ht = AcadConnection.Retry(() => (object)_ms.AddHatch(0, "SOLID", true, 0));
+        }
+        catch (Exception ex)
+        {
+            Fallo("Relleno de la pieza del corte", ex);
+            return;
+        }
+
+        dynamic h = ht!;
+
+        var conLazo = AcadArreglos.Llamar(
+            "AppendOuterLoop del relleno del corte",
+            new[] { pl },
+            arr => { h.AppendOuterLoop(arr); },
+            Fallo, Nota);
+
+        if (!conLazo)
+        {
+            Borrar(ht);
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                h.Evaluate();
+                h.Layer = capa;
+                h.Color = ColorDelRelleno();
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Evaluate del relleno del corte", ex);
+        }
+    }
+
+    /// <summary>
+    /// La X más a la <b>izquierda</b> de lo que ya hay dibujado, o nulo si el dibujo está vacío.
+    /// </summary>
+    /// <remarks>
+    /// Hermana de <c>TopeDeLoDibujado</c>: con las dos, el corte se coloca respecto del DIBUJO
+    /// y no respecto del origen del modelo, que es lo que lo ponía encima de la planta. Se
+    /// recorre el espacio modelo una vez y se toma la menor X de las cajas envolventes.
+    /// </remarks>
+    private double? IzquierdaDeLoDibujado()
+    {
+        try
+        {
+            return AcadConnection.Retry<double?>(() =>
+            {
+                double? minimo = null;
+
+                foreach (var ent in _ms)
+                {
+                    if (CajaEnvolvente(ent) is not { } c)
+                    {
+                        continue;
+                    }
+
+                    var x = c.Min[0];
+
+                    if (minimo is null || x < minimo)
+                    {
+                        minimo = x;
+                    }
+                }
+
+                return minimo;
+            });
+        }
+        catch (Exception)
+        {
+            // Sin poder recorrer el dibujo, el corte arranca en el origen en X: queda
+            // desalineado con la planta, pero no encima de ella, que es lo que importaba.
+            return null;
+        }
     }
 
     /// <summary>

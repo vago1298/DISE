@@ -475,6 +475,17 @@ public sealed class ConfigPlano
           "<<< SI = EL CORTE DIBUJA TAMBIEN LO QUE SE VE AL FONDO, no solo lo que corta"),
         P("CORTE_FONDO_LINETYPE", "ACAD_ISO02W100",
           "TIPO DE LINEA DE LO QUE SE VE AL FONDO (a trazos, como en un plano de obra)"),
+
+        // EL CORTE, ACOTADO Y CON SUS EJES, como la planta. Un alzado sin ejes no se puede
+        // replantear -no se sabe que columna es cual- y sin cotas verticales no dice las
+        // alturas de entrepiso, que es el dato que SOLO el corte puede dar.
+        P("CORTE_CON_EJES", "SI",
+          "<<< SI = EL CORTE LLEVA SUS EJES CON BURBUJA, como la planta"),
+        P("CORTE_ACOTAR", "SI",
+          "<<< SI = EL CORTE SE ACOTA: entre ejes, la total, y las ALTURAS de entrepiso"),
+        P("CORTE_EJES_SALE_M", "1.2", "Cuanto sale la linea de eje del corte por arriba"),
+        P("CORTE_RELLENAR_COLUMNAS", "SI",
+          "SI = las columnas y castillos CORTADOS van rellenos, como en planta"),
         P("LOSA_TEXTO_REDEFINIR", "SI", "SI = VOLVER A ARMAR EL BLOQUE (hace falta para ver la altura nueva; ponlo en NO cuando ya te guste)"),
         P("LOSA_PALABRAS_AZOTEA", "AZOTEA,CUBIERTA,TECHO,ROOF", "Palabras de la seccion = AZOTEA"),
         P("LOSA_PALABRAS_ENTREPISO", "ENTREPISO,PISO,FLOOR,SLAB", "Palabras de la seccion = ENTREPISO"),

@@ -205,6 +205,17 @@ public sealed class CorteCad
     /// <summary>Los niveles con su cota, para rotularlos en el corte.</summary>
     public List<(string Nombre, double Z)> Niveles { get; } = new();
 
+    /// <summary>
+    /// Los <b>ejes que se ven</b> en el corte, con su nombre y su coordenada.
+    /// </summary>
+    /// <remarks>
+    /// Son los <b>perpendiculares</b> al del corte: en un corte por un eje de los que van en X
+    /// se recorre la Y, así que los que se cruzan —y los que hay que acotar— son los de la Y.
+    /// Con ellos el corte lleva sus burbujas y sus cotas, igual que la planta, y las dos cosas
+    /// se pueden comparar eje por eje.
+    /// </remarks>
+    public List<(string Id, double Ordenada)> Ejes { get; } = new();
+
     /// <summary>Altura del texto de los rótulos, en metros.</summary>
     public double AlturaTexto { get; set; } = 0.25;
 }

@@ -1337,6 +1337,24 @@ public partial class MainWindow : Window
             c.Niveles.Add((n.Nombre, n.ElevacionM));
         }
 
+        // ==============================================================================
+        //  LOS EJES QUE SE VEN EN EL CORTE
+        // ==============================================================================
+        //  Los PERPENDICULARES al del corte: en un corte por un eje de los que van en X se
+        //  recorre la Y, así que los que se cruzan —y los que hay que acotar— son los de la Y.
+        //  Son los mismos ejes de la planta, sin repetidos, así que las cotas del corte y las
+        //  de la planta se pueden comparar eje por eje: si no cuadran, hay algo mal en uno de
+        //  los dos y se ve al momento.
+        var ejesModelo = _modeloEtabs.Ejes ?? EjesModelo.DesdeGeometria(_modeloEtabs);
+
+        var delCorte = _vista.CorteEnX ? ejesModelo.Y : ejesModelo.X;
+
+        foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                     delCorte.Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
+        {
+            c.Ejes.Add((e.Id, e.Ordenada));
+        }
+
         try
         {
             return dibujante.DibujarCorte(c, 0, 0);

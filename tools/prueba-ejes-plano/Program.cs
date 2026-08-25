@@ -644,6 +644,27 @@ var pLosa = CorteEnAlzado.Piezas(
 
 Igual("la losa da su franja en el corte", 1, pLosa.Count);
 Cerca("del espesor de la losa", 0.10, pLosa[0].Alto);
+
+// Y SI EL MODELO NO DIO EL ESPESOR, NO SE INVENTA: la losa sale como una LINEA -alto 0-.
+// Esto es un plano: la franja se mide y se acota, asi que un espesor puesto a dedo no es una
+// aproximacion, es un dato falso que alguien va a construir.
+var losaSinEspesor = new ElementoPlanta
+{
+    Clase = ClasePlanta.Losa, Etiqueta = "L2", Seccion = "LOSA VOLADO",
+    Z1 = 2.7, Z2 = 2.7, AnchoM = 0
+};
+losaSinEspesor.Vertices.Add((4, 0));
+losaSinEspesor.Vertices.Add((6, 0));
+losaSinEspesor.Vertices.Add((6, 4));
+losaSinEspesor.Vertices.Add((4, 4));
+
+var pSin = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { losaSinEspesor }, enX: true, ordenada: 5, espesorM: 0.6,
+    verElFondo: false);
+
+Igual("la losa sin espesor tambien sale", 1, pSin.Count);
+Cerca("pero con alto CERO: es una linea, no una franja inventada", 0, pSin[0].Alto);
+Cerca("y a la cota de su paño", 2.7, pSin[0].Z);
 Cerca("colgada de la cota de su paño", 2.7 - 0.10, pLosa[0].Z);
 Cerca("y a lo largo de lo que cruza el corte", 4, pLosa[0].Ancho);
 

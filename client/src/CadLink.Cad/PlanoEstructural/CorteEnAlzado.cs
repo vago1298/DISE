@@ -177,7 +177,18 @@ public static class CorteEnAlzado
         //  ella el alzado son dos columnas y una cadena en el aire.
         if (el.Clase == ClasePlanta.Losa)
         {
-            var espesor = el.AnchoM > Minimo ? el.AnchoM : 0.10;
+            // ==========================================================================
+            //  EL ESPESOR DE LA LOSA NO SE INVENTA
+            // ==========================================================================
+            //  Aquí había un respaldo de 10 cm y estaba mal, porque esto es un PLANO: la
+            //  franja que se dibuja se mide y se acota, así que un espesor puesto a dedo no es
+            //  una aproximación, es un dato falso que alguien va a construir.
+            //
+            //  Si el modelo no lo dio, la losa se dibuja como UNA LÍNEA —alto 0— a la cota de
+            //  su paño. La línea dice la verdad: ahí hay una losa y su espesor no se sabe. En
+            //  la vista extruida sí hay un mínimo, porque ahí no se acota nada y una losa sin
+            //  volumen no se vería; en el plano no.
+            var espesor = el.AnchoM > Minimo ? el.AnchoM : 0;
             var largo = max - min;
 
             return largo > Minimo

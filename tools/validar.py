@@ -3033,8 +3033,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con treinta y tres renglones añadidos",
-          cfgp.count("        P(") == 293
+    check("la hoja CONFIG de la macro esta portada, con treinta y siete renglones añadidos",
+          cfgp.count("        P(") == 297
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3152,7 +3152,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "293, ConfigPlano.PorOmision.Count" in pr
+          and "297, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4349,14 +4349,45 @@ def v18_planta_autocad() -> None:
     # ARRIBA DE LAS PLANTAS, a +10: las plantas se reparten a lo ANCHO -una al lado de la
     # otra- asi que el corte a la derecha acabaria chocando con la planta siguiente en cuanto
     # el modelo tuviera un nivel mas. Encima queda en su propia banda y se lee junto a todas.
-    check("el corte se dibuja ARRIBA de las plantas, a la separacion de la hoja",
+    # 10 UNIDADES ARRIBA DE LO YA DIBUJADO, y se pregunta AL DIBUJO. Antes se medía el alto de
+    # los ELEMENTOS y se sumaba desde el origen del modelo, pero las plantas no se dibujan en el
+    # origen -DibujarTodas las reparte y las sube al tope de lo que hubiera-, asi que el corte
+    # caia justo en medio del juego. Con TopeDeLoDibujado el corte queda encima siempre.
+    check("el corte se dibuja 10 unidades ARRIBA de lo ya dibujado",
           'P("CORTE_SEPARACION_M", "10",' in cfgp
           and 'P("CORTE_DIBUJAR", "SI",' in cfgp
           and "public int DibujarCorte(" in cortedib
           and '_cfg.Numero("CORTE_SEPARACION_M", 10)' in cortedib
-          and "var cy = dy + altoPlanta + separacion;" in cortedib
-          and "var cx = dx;" in cortedib
-          and "ExtensionDeLoDibujado(c.Elementos, enY: true)" in cortedib)
+          and "var cy = (TopeDeLoDibujado() ?? 0) + separacion;" in cortedib
+          and "private double? IzquierdaDeLoDibujado()" in cortedib
+          and "cy -= zBase;" in cortedib)
+    # LOS CASTILLOS, RELLENOS, como en la planta: el relleno es lo que distingue de un golpe el
+    # elemento CORTADO del que solo se ve al fondo.
+    check("las columnas cortadas del corte van rellenas",
+          'P("CORTE_RELLENAR_COLUMNAS", "SI",' in cfgp
+          and "private void RellenarPieza(" in cortedib
+          and "h.Color = ColorDelRelleno();" in cortedib
+          and "if (p.Cortada && p.Clase == ClasePlanta.Columna" in cortedib)
+    # EL ESPESOR DE LA LOSA NO SE INVENTA: esto es un plano, la franja se mide y se acota, asi
+    # que un espesor a dedo no es una aproximacion, es un dato falso. Sin el, sale una LINEA.
+    check("el espesor de la losa del corte no se inventa",
+          "var espesor = el.AnchoM > Minimo ? el.AnchoM : 0;" in corte
+          and "p.Alto <= 0.001" in cortedib)
+    # EL CORTE, CON SUS EJES Y ACOTADO: sin ejes no se sabe que columna es cual, y sin cotas
+    # verticales no dice las alturas de entrepiso, que es el dato que SOLO el corte da.
+    check("el corte lleva sus ejes con burbuja",
+          'P("CORTE_CON_EJES", "SI",' in cfgp
+          and "private void DibujarEjesDelCorte(" in cortedib
+          and "public List<(string Id, double Ordenada)> Ejes { get; } = new();" in dto
+          and "c.Ejes.Add((e.Id, e.Ordenada));" in codigo)
+    check("y se acota en las dos direcciones, con la misma cota de la planta",
+          'P("CORTE_ACOTAR", "SI",' in cfgp
+          and "private void AcotarElCorte(" in cortedib
+          and "CotaAlineada(" in cortedib
+          and "las alturas, que es lo que solo el corte dice" in cortedib)
+    # Y LOS EJES DEL CORTE SON LOS PERPENDICULARES al del corte: los que se cruzan.
+    check("los ejes del corte son los perpendiculares",
+          "_vista.CorteEnX ? ejesModelo.Y : ejesModelo.X" in codigo)
     # CADA TIPO SE VE DE UNA FORMA, y es lo que hace que un corte se entienda: la columna de
     # nudo a nudo, la trabe que corre a lo largo entera y con su peralte, la que cruza solo de
     # canto, y el muro como el paño que es.

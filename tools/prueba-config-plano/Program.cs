@@ -73,8 +73,8 @@ var cfg = new ConfigPlano();
 //   VOLADO_SIN_DIVISIONES           varios volados juntos, un solo perimetro
 //   CORTE_VER_EL_FONDO              el corte dibuja lo que se ve detras, no solo la rebanada
 //   CORTE_FONDO_LINETYPE            y ese fondo va a trazos
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta y tres que se añadieron",
-      293, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta y siete que se añadieron",
+      297, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -225,7 +225,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 293 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 297 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
