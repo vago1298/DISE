@@ -296,6 +296,19 @@ Igual("un modelo que solo tiene la base también se dibuja", 1,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL ESPESOR DE LA LOSA: EL DEL MODELO, Y SI NO, UNO CON SENTIDO");
+Console.WriteLine("=====================================================================");
+
+// El respaldo del NOMBRE de la propiedad, que es el de la macro: «LOSA 10» da 0.10.
+Cerca("«LOSA 10» da 10 cm", 0.10, EtabsReader.EspesorDesdeNombre("LOSA 10"));
+Cerca("«MURO 15 CM» da 15 cm", 0.15, EtabsReader.EspesorDesdeNombre("MURO 15 CM"));
+// Y «LOSA VOLADO» no trae numero: de ahi no sale espesor, y por eso el rotulo salia con
+// el hueco vacio y la extruida dibujaba la losa plana.
+Cerca("«LOSA VOLADO» no da espesor", 0, EtabsReader.EspesorDesdeNombre("LOSA VOLADO"));
+Cerca("ni «LOSA ENTREPISO»", 0, EtabsReader.EspesorDesdeNombre("LOSA ENTREPISO"));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL TIPO, POR LAS NOTAS DE LA PROPIEDAD");
 Console.WriteLine("=====================================================================");
 

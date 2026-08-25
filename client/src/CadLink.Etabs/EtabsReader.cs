@@ -857,6 +857,10 @@ public static class EtabsReader
             new Dictionary<string, (double EspesorM, string Notas, string Material)>(
                 StringComparer.OrdinalIgnoreCase);
 
+        // Las secciones que ya se avisaron por no traer espesor: el aviso va una vez por
+        // propiedad, no una por paño.
+        var sinEspesor = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         for (var i = 0; i < nombres.Length; i++)
         {
             var nombre = nombres[i];
@@ -981,6 +985,18 @@ public static class EtabsReader
                 e.AnchoM = prop.EspesorM;
                 e.Notas = prop.Notas;
                 e.Material = prop.Material;
+
+                // EL ESPESOR QUE NO VINO SE APUNTA, una vez por sección. Es el dato que hace
+                // que el rótulo del plano salga con el hueco vacío en «    cm de espesor» y
+                // que la vista extruida tenga que inventarse un espesor para no dibujar la
+                // losa plana. Se dice UNA vez por propiedad y no una por paño: en un modelo
+                // con 40 losas de la misma sección, 40 avisos iguales no informan, tapan.
+                if (prop.EspesorM <= 0 && sinEspesor.Add(seccion))
+                {
+                    m.Avisos.Add(
+                        $"La propiedad '{seccion}' no dio su espesor. Se dibuja con el de " +
+                        "omisión; ponlo en ETABS para que el plano lo acote de verdad.");
+                }
             }
 
             m.Elementos.Add(e);
@@ -1073,6 +1089,42 @@ public static class EtabsReader
         catch (Exception ex) when (EsFalloCom(ex))
         {
             valor = 0;
+        }
+
+        // ==============================================================================
+        //  LA LOSA ALIGERADA Y LA RETICULAR, QUE NO RESPONDEN A GetSlab
+        // ==============================================================================
+        //  Una losa nervada —ribbed— o reticular —waffle— es una propiedad de losa distinta,
+        //  y a GetSlab le devuelve espesor 0 o le falla. Aquí es donde se perdía el espesor de
+        //  las losas del modelo: sin él, el rótulo del plano sale con el hueco vacío en
+        //  «     cm de espesor» y la vista extruida dibuja la losa PLANA, como una hoja.
+        //
+        //  De las dos se toma el PERALTE TOTAL —OverallDepth—, que es el espesor con el que
+        //  se dibuja y se acota: el de la capa de compresión sola no dice lo que mide la losa.
+        if (!esMuro && valor <= 0)
+        {
+            foreach (var metodoLosa in new[] { "GetSlabRibbed", "GetSlabWaffle" })
+            {
+                try
+                {
+                    object?[] a = { seccion, 0d, 0d, 0d, 0d, 0d, 0 };
+
+                    if (Com.CallRet(propArea, metodoLosa, a, 1, 2, 3, 4, 5, 6) == 0)
+                    {
+                        var total = Convert.ToDouble(a[1]);
+
+                        if (total > 0)
+                        {
+                            valor = total;
+                            break;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    // No es de ese tipo: se prueba el siguiente y, al final, el nombre.
+                }
+            }
         }
 
         // El respaldo de la macro: el espesor que traiga el NOMBRE de la propiedad, y solo

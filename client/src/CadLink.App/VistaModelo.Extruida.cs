@@ -418,7 +418,21 @@ public sealed partial class VistaModelo
             return el.AnchoM;
         }
 
-        return el.Clase == ClaseElemento.Muro ? 0.15 : 0;
+        // ==============================================================================
+        //  Y SI EL MODELO NO DIO EL ESPESOR, TAMPOCO SE DIBUJA PLANA
+        // ==============================================================================
+        //  Se pidió el ancho real de las losas, y el real es el del modelo: eso es lo que se
+        //  dibuja siempre que esté —y ahora llega también en las losas nervadas y
+        //  reticulares, que no responden a GetSlab y por eso venían en cero—.
+        //
+        //  Cuando de verdad no está, una losa PLANA es lo peor de las tres opciones: en una
+        //  vista extruida se lee como si la losa no tuviera espesor, que es imposible. Se
+        //  dibuja con 10 cm, que es la losa más delgada que se construye, y el resumen del
+        //  modelo dice cuántas salieron así para que se pueda corregir la propiedad en ETABS.
+        //
+        //  Es el mismo criterio del muro —15 cm— y el mismo de la planta: entre callar el
+        //  dato y dibujar algo con sentido avisando, se dibuja y se avisa.
+        return el.Clase == ClaseElemento.Muro ? 0.15 : 0.10;
     }
 
     private static (double X, double Y, double Z) Normalizar((double, double, double) v)

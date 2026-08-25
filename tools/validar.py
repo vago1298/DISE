@@ -3420,11 +3420,21 @@ def v16_extruida_piers() -> None:
     check("el muro de la vista extruida siempre tiene espesor",
           "private static double EspesorDePanel(" in ext
           and "var t = EspesorDePanel(el);" in ext
-          and 'el.Clase == ClaseElemento.Muro ? 0.15 : 0;' in ext)
+          and "el.Clase == ClaseElemento.Muro ? 0.15 : 0.10;" in ext)
     # LA LOSA NO: su espesor manda en el armado y en el rotulo, asi que inventarlo seria peor
     # que dejarla plana. Que se note.
-    check("y la losa sin espesor se queda plana, a proposito",
-          "Una losa sin espesor se queda <b>plana</b>" in ext)
+    # Y LA LOSA, CON SU ESPESOR REAL: se pidio. El del modelo siempre que este -y ahora llega
+    # tambien en las nervadas y las reticulares, que no responden a GetSlab y por eso venian en
+    # cero- y, si de verdad no esta, 10 cm: una losa PLANA en una vista extruida se lee como si
+    # no tuviera espesor, que es imposible. Y se AVISA de cual salio asi.
+    check("la losa de la extruida lleva su espesor real",
+          "return el.Clase == ClaseElemento.Muro ? 0.15 : 0.10;" in ext)
+    check("el espesor se busca tambien en las losas nervadas y reticulares",
+          '"GetSlabRibbed", "GetSlabWaffle"' in lec_ins
+          and "var total = Convert.ToDouble(a[1]);" in lec_ins)
+    check("y se avisa de la propiedad que no dio su espesor, una vez por seccion",
+          "no dio su espesor" in lec_ins
+          and "sinEspesor.Add(seccion)" in lec_ins)
 
     #  LA TERNA XYZ. Estaba dibujada, pero en el mismo gris claro de todo y con linea de 1.2
     #  px: sobre el fondo claro era invisible, y en una vista que se gira, no saber para donde
