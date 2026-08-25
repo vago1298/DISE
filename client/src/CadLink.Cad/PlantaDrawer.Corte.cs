@@ -71,13 +71,24 @@ public sealed partial class PlantaDrawer
         //  en la misma columna.
         var separacion = _cfg.Numero("CORTE_SEPARACION_M", 10);
 
-        var cx = IzquierdaDeLoDibujado() ?? 0;
-        var cy = (TopeDeLoDibujado() ?? 0) + separacion;
+        //  Se toma el MAYOR de dos medidas, y las dos hacen falta:
+        //
+        //    * el TOPE DEL JUEGO que se acaba de dibujar, que se calculó con aritmética al
+        //      repartir las plantas y por tanto siempre está;
+        //    * y lo que se lee del DIBUJO, que además cubre lo que hubiera de antes.
+        //
+        //  Con solo lo leído, un fallo de COM dejaba el corte en Y = 10 mientras las plantas
+        //  estaban en Y = 40, o sea DEBAJO de la planta. Con solo lo calculado se ignoraría lo
+        //  que ya hubiera en el plano. El mayor de los dos no puede quedar debajo de ninguno.
+        var tope = Math.Max(_topeDelJuego ?? 0, TopeDeLoDibujado() ?? 0);
 
-        // La pieza más baja del corte —una zapata, un desplante— se apoya en esa línea. Sin
-        // esto, un corte con cotas negativas se metería hacia abajo, otra vez sobre la planta.
+        var cx = IzquierdaDeLoDibujado() ?? 0;
+
+        // LA BASE DEL CORTE va EXACTAMENTE a tope + separación: se le resta la cota más baja
+        // de sus piezas para que la de abajo —una zapata, un desplante con Z negativa— caiga
+        // en esa línea y no por debajo. Así el corte entero queda por encima, siempre.
         var zBase = piezas.Min(q => q.Z);
-        cy -= zBase;
+        var cy = tope + separacion - zBase;
 
         var hechas = 0;
 

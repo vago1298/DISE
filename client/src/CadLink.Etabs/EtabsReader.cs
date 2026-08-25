@@ -297,8 +297,9 @@ public static class EtabsReader
                     Origen = $"cuadrícula del modelo «{nombre}»"
                 };
 
-                Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]));
-                Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[10]));
+                // Los VISIBLES van en 11 y 12: un eje apagado en el modelo no se dibuja.
+                Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]), Banderas(a[11]), m);
+                Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[10]), Banderas(a[12]), m);
 
                 if (ejes.Hay)
                 {
@@ -348,10 +349,17 @@ public static class EtabsReader
                 Origen = $"cuadrícula del modelo «{nombre}»"
             };
 
-            // Los IDs van en 7, 8 y 9 —X, Y y Z— y las ordenadas en 10, 11 y 12. La de Z no
-            // se usa: son los niveles, y esos ya se leen aparte.
-            Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[10]));
-            Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[11]));
+            // Los IDs van en 7, 8 y 9 —X, Y y Z—, las ordenadas en 10, 11 y 12, y los
+            // VISIBLES en 13, 14 y 15. La de Z no se usa: son los niveles, y esos ya se leen
+            // aparte.
+            //
+            //  Y AQUÍ ESTABA EL PROBLEMA DE «SAP ME GENERA MÁS EJES DE LOS QUE TENGO»: se
+            //  leían TODAS las líneas de la cuadrícula, y en SAP2000 es de lo más normal tener
+            //  líneas OCULTAS —se apagan con la casilla de visibilidad en cuanto se usan para
+            //  construir algo y ya no hacen falta—. Esas líneas siguen en el modelo, así que
+            //  la API las devuelve; lo que no hay que hacer es dibujarlas.
+            Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[10]), Banderas(a[13]), m);
+            Cargar(ejes.Y, Com.AsStrings(a[8]), Com.AsDoubles(a[11]), Banderas(a[14]), m);
 
             if (ejes.Hay)
             {
@@ -364,8 +372,38 @@ public static class EtabsReader
             // columnas y el plano sale con sus ejes igual.
         }
 
-        static void Cargar(List<EjesModelo.Eje> destino, string[] ids, double[] ords)
+        static void Cargar(
+            List<EjesModelo.Eje> destino, string[] ids, double[] ords,
+            bool[] visibles, ModeloEtabs modelo)
         {
+            // ==========================================================================
+            //  LOS EJES OCULTOS DEL MODELO NO SE DIBUJAN
+            // ==========================================================================
+            //  La cuadrícula guarda TODAS las líneas que se han declarado, visibles o no, y la
+            //  API las devuelve todas. Un eje apagado en el modelo no es un eje del plano: es
+            //  una línea de apoyo que sirvió para construir y que su autor decidió esconder.
+            //
+            //  Con una salvaguarda: si el arreglo de visibles no cuadra —o dice que NINGUNO se
+            //  ve— no se filtra nada. Un plano con todos sus ejes de más es un problema; un
+            //  plano SIN ejes es peor, y ese caso no se puede distinguir de un dato mal leído.
+            var mirarVisibles = visibles.Length >= ords.Length && visibles.Any(v => v);
+            var ocultos = 0;
+
+            for (var i = 0; i < ords.Length; i++)
+            {
+                if (mirarVisibles && !visibles[i])
+                {
+                    ocultos++;
+                }
+            }
+
+            if (ocultos > 0)
+            {
+                modelo.Avisos.Add(
+                    $"{ocultos} eje(s) de la cuadrícula están OCULTOS en el modelo y no se " +
+                    "dibujan. Si los quieres en el plano, enciéndelos en el programa.");
+            }
+
             // ==========================================================================
             //  UN EJE, UNA LÍNEA: FUERA LOS REPETIDOS
             // ==========================================================================
@@ -386,6 +424,12 @@ public static class EtabsReader
 
             for (var i = 0; i < ords.Length; i++)
             {
+                // El eje apagado en el modelo se salta: no es un eje del plano.
+                if (mirarVisibles && !visibles[i])
+                {
+                    continue;
+                }
+
                 var repetido = false;
 
                 foreach (var ya in destino)
@@ -579,6 +623,57 @@ public static class EtabsReader
 
             m.Elementos.Add(e);
         }
+    }
+
+    /// <summary>
+    /// Las <b>banderas de visibilidad</b> de la cuadrícula, tal como las devuelva la API.
+    /// </summary>
+    /// <remarks>
+    /// Se toleran las tres formas en que CSI puede devolverlas —booleanos, números o textos
+    /// tipo <c>Yes</c>/<c>True</c>—, porque cambia entre versiones y entre ETABS y SAP2000. Lo
+    /// que no se puede hacer es suponer una sola forma: si la conversión falla, el eje se da
+    /// por VISIBLE, que es el lado seguro —se dibuja de más, no de menos—.
+    /// </remarks>
+    private static bool[] Banderas(object? v)
+    {
+        if (v is null)
+        {
+            return Array.Empty<bool>();
+        }
+
+        if (v is bool[] bs)
+        {
+            return bs;
+        }
+
+        if (v is not System.Collections.IEnumerable lista)
+        {
+            return Array.Empty<bool>();
+        }
+
+        var salida = new List<bool>();
+
+        foreach (var x in lista)
+        {
+            salida.Add(x switch
+            {
+                bool b => b,
+                null => true,
+                _ => Verdadero(x.ToString())
+            });
+        }
+
+        return salida.ToArray();
+    }
+
+    /// <summary>¿Ese texto dice que sí? <c>True</c>, <c>Yes</c>, <c>1</c>, <c>Si</c>…</summary>
+    private static bool Verdadero(string? t)
+    {
+        var s = (t ?? string.Empty).Trim().ToUpperInvariant();
+
+        // Vacío = visible: más vale un eje de más que un plano sin ejes.
+        return s.Length == 0
+               || s is "TRUE" or "YES" or "SI" or "SÍ" or "1" or "-1" or "VERDADERO" or "V";
     }
 
     /// <summary>

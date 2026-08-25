@@ -1309,10 +1309,24 @@ public partial class MainWindow : Window
     /// <returns>Cuántas piezas se dibujaron; 0 si no había corte que dibujar.</returns>
     private int DibujarElCorteElegido(PlantaDrawer dibujante)
     {
-        if (_modeloEtabs is null
-            || _vista.CorteEje.Length == 0
-            || !CfgPlano.Bandera("CORTE_DIBUJAR", true))
+        if (_modeloEtabs is null || !CfgPlano.Bandera("CORTE_DIBUJAR", true))
         {
+            return 0;
+        }
+
+        // ==============================================================================
+        //  SIN EJE ELEGIDO NO HAY CORTE, Y SE DICE
+        // ==============================================================================
+        //  Antes se salía en silencio, y desde fuera eso es indistinguible de que el corte
+        //  falle: se pulsa «Dibujar en AutoCAD», no aparece ningún corte y no hay manera de
+        //  saber si es que no se pidió o si es que algo se rompió.
+        if (_vista.CorteEje.Length == 0)
+        {
+            MostrarNotas(
+                "No se dibujó ningún corte porque no hay eje elegido. Elígelo en «Corte por " +
+                "el eje», arriba de la vista, y vuelve a dibujar: el corte sale 10 unidades " +
+                "encima de las plantas.");
+
             return 0;
         }
 

@@ -493,6 +493,23 @@ public sealed partial class PlantaDrawer
             total.Diagonales += r.Diagonales;
         }
 
+        // ==============================================================================
+        //  EL TOPE DEL JUEGO, CALCULADO Y NO PREGUNTADO
+        // ==============================================================================
+        //  Se apunta aquí la Y más alta a la que llegó el juego de plantas, y se calcula con
+        //  aritmética en lugar de preguntárselo a AutoCAD.
+        //
+        //  Por qué: el corte va SIEMPRE 10 unidades por encima del punto más alto del plano, y
+        //  si eso se le pregunta al dibujo —recorriendo las cajas envolventes— hay un caso en
+        //  que la pregunta no se puede responder: si esa lectura falla o devuelve vacío, lo
+        //  único que queda es el origen, y el corte se iría a Y = 10 mientras las plantas están
+        //  a Y = 40. O sea, DEBAJO de la planta, que es justo lo que no puede pasar.
+        //
+        //  Con este número el corte se coloca aunque COM no responda: se sabe dónde arrancó el
+        //  juego —offsetY—, cuánto mide de alto y cuánto le sobresalen por arriba los ejes con
+        //  sus burbujas.
+        _topeDelJuego = offsetY + (yMax - yMin) + Ejes.SaleEjes() + (2 * Ejes.RadioBurbuja);
+
         // AL FINAL DE TODO, cuando ya está dibujado el juego entero: las capas de
         // CAPAS_AL_FRENTE encima de lo demás. Antes de terminar no serviría, porque cada
         // planta nueva se dibujaría después.
@@ -1273,6 +1290,16 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Cuántos paños salieron volados, para el resumen.</summary>
     private int _volados;
+
+    /// <summary>
+    /// La Y más alta a la que llegó el juego de plantas, para colocar el corte encima.
+    /// </summary>
+    /// <remarks>
+    /// Calculada, no preguntada al dibujo: es lo que garantiza que el corte quede arriba
+    /// incluso si la lectura de las cajas envolventes falla. Nulo si aún no se ha dibujado
+    /// ninguna planta.
+    /// </remarks>
+    private double? _topeDelJuego;
 
     /// <summary>Secciones ya avisadas: la nota del voladizo va una vez, no una por paño.</summary>
     private readonly HashSet<string> _voladosAvisados = new(StringComparer.OrdinalIgnoreCase);

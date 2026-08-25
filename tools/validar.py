@@ -4358,9 +4358,15 @@ def v18_planta_autocad() -> None:
           and 'P("CORTE_DIBUJAR", "SI",' in cfgp
           and "public int DibujarCorte(" in cortedib
           and '_cfg.Numero("CORTE_SEPARACION_M", 10)' in cortedib
-          and "var cy = (TopeDeLoDibujado() ?? 0) + separacion;" in cortedib
+          and "var cy = tope + separacion - zBase;" in cortedib
           and "private double? IzquierdaDeLoDibujado()" in cortedib
-          and "cy -= zBase;" in cortedib)
+          and "Math.Max(_topeDelJuego ?? 0, TopeDeLoDibujado() ?? 0)" in cortedib)
+    # NUNCA DEBAJO, tampoco si COM no responde. El tope del juego se CALCULA al repartir las
+    # plantas, asi que siempre esta; lo leido del dibujo cubre ademas lo que hubiera de antes.
+    # Con solo lo leido, un fallo de lectura dejaba el corte en Y = 10 con las plantas en Y = 40.
+    check("el tope del juego se calcula, no solo se pregunta al dibujo",
+          "_topeDelJuego = offsetY + (yMax - yMin) + Ejes.SaleEjes()" in dib
+          and "private double? _topeDelJuego;" in dib)
     # LOS CASTILLOS, RELLENOS, como en la planta: el relleno es lo que distingue de un golpe el
     # elemento CORTADO del que solo se ve al fondo.
     check("las columnas cortadas del corte van rellenas",
@@ -4928,8 +4934,39 @@ def v18_planta_autocad() -> None:
     # Y tambien en el LECTOR, para que no lleguen duplicados ni al visor ni a la tabla.
     lec = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
     check("y el lector tampoco los mete dos veces",
-          "static void Cargar(List<EjesModelo.Eje> destino" in lec
+          "static void Cargar(" in lec
+          and "List<EjesModelo.Eje> destino," in lec
           and "const double tol = 0.01;" in lec)
+    # ------------------------------------------------------------------
+    # «EN SAP2000 ME GENERA MAS EJES DE LOS QUE TENGO»
+    # ------------------------------------------------------------------
+    #  La cuadricula guarda TODAS las lineas declaradas, visibles o no, y la API las devuelve
+    #  todas. En SAP2000 es de lo mas normal tener lineas OCULTAS -se apagan en cuanto sirvieron
+    #  para construir y ya no hacen falta-, y esas no son ejes del plano: son lineas de apoyo
+    #  que su autor decidio esconder.
+    check("los ejes OCULTOS del modelo no se dibujan",
+          "Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[10]), Banderas(a[13]), m)"
+          in lec
+          and "Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]), Banderas(a[11]), m)"
+          in lec
+          and "if (mirarVisibles && !visibles[i])" in lec)
+    # CON SALVAGUARDA: si el arreglo no cuadra o dice que NINGUNO se ve, no se filtra nada. Un
+    # plano con ejes de mas es un problema; un plano SIN ejes es peor, y ese caso no se puede
+    # distinguir de un dato mal leido.
+    check("y si el dato de visibilidad no cuadra, no se filtra nada",
+          "var mirarVisibles = visibles.Length >= ords.Length && visibles.Any(v => v);" in lec)
+    # LAS BANDERAS, en las tres formas en que CSI las puede devolver: cambia entre versiones y
+    # entre ETABS y SAP2000.
+    check("las banderas de visibilidad se leen en cualquiera de sus formas",
+          "private static bool[] Banderas(" in lec
+          and "private static bool Verdadero(" in lec
+          and '"TRUE" or "YES" or "SI"' in lec)
+    check("y se avisa de cuantos ejes se saltaron por estar ocultos",
+          "OCULTOS en el modelo y no se " in lec)
+    # Y SIN EJE ELEGIDO NO HAY CORTE, PERO SE DICE: salir en silencio es indistinguible de que
+    # el corte falle.
+    check("sin eje elegido se dice por que no hubo corte",
+          "No se dibujó ningún corte porque no hay eje elegido" in codigo)
     # DRAW ORDER -> SEND TO BACK: la capa de los ejes se baja de ULTIMA, asi que queda
     # debajo de la losa, del armado y de todo lo demas.
     check("la capa de los ejes se manda al fondo, de ultima",
@@ -6976,7 +7013,7 @@ def v19_circular_y_ui() -> None:
           "private void MostrarNotas(string texto)" in codigo
           and "NotasPanel.IsExpanded = false;" in codigo)
     check("y los sitios que las escriben pasan por ahi",
-          codigo.count("MostrarNotas(") == 6
+          codigo.count("MostrarNotas(") == 7
           and codigo.count("ExportHintText.Text =") == 1,
           f"{codigo.count('MostrarNotas(')} llamadas, "
           f"{codigo.count('ExportHintText.Text =')} asignaciones directas")
