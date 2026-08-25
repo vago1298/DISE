@@ -60,13 +60,16 @@ public sealed partial class VistaModelo
     {
         lienzo.Children.Clear();
 
-        var elementos = Elementos();
+        var elementos = Elementos(conCorte: true);
 
         if (elementos.Count == 0)
         {
             Aviso(lienzo, Modelo is null
                 ? "Lee el modelo de ETABS para verlo aquí."
-                : "El modelo no trae elementos que mostrar.");
+                : CorteEje.Length > 0
+                    ? $"El corte por el eje {CorteEje} no toca ningún elemento. Prueba con " +
+                      "otro eje o con un espesor de corte mayor."
+                    : "El modelo no trae elementos que mostrar.");
             return;
         }
 
@@ -278,7 +281,19 @@ public sealed partial class VistaModelo
         var v = el.Vertices3D.Select(p => (p.X, p.Y, p.Z)).ToList();
 
         var normal = NormalDe(v);
-        var t = el.AnchoM;
+
+        // ==============================================================================
+        //  EL MURO SIEMPRE CON ESPESOR, AUNQUE EL MODELO NO LO DIGA
+        // ==============================================================================
+        //  Se pidió, y era un caso real y frecuente: cuando GetWall no devuelve el espesor
+        //  —pasa con las propiedades de mampostería— el muro se dibujaba PLANO, como una
+        //  hoja de papel, y en la vista extruida eso es justo lo que no se quiere ver: la
+        //  gracia de la extruida es entender el volumen.
+        //
+        //  Y el plano de AutoCAD sí lo dibuja con espesor, porque allá hay un respaldo de 15
+        //  cm. Así que aquí se usa el MISMO respaldo: si las dos vistas del mismo muro no
+        //  coinciden, una de las dos está mintiendo.
+        var t = EspesorDePanel(el);
 
         if (t <= 0.01 || Norma(normal) < 1e-9)
         {
@@ -380,6 +395,31 @@ public sealed partial class VistaModelo
 
     private static double Norma((double, double, double) v) =>
         Math.Sqrt((v.Item1 * v.Item1) + (v.Item2 * v.Item2) + (v.Item3 * v.Item3));
+
+    /// <summary>
+    /// El espesor con el que se extruye un paño: el del modelo o el <b>respaldo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los 15 cm del muro son los mismos que usa <c>PlantaDrawer</c> —su
+    /// <c>ESPESOR_MURO_CM</c>— y los mismos que usa la vista en planta, para que las tres
+    /// vistas del mismo muro digan lo mismo.
+    /// </para>
+    /// <para>
+    /// La LOSA es otra cosa: su espesor manda en el armado y en el rótulo del plano, así que
+    /// inventarlo sería peor que no dibujarlo. Una losa sin espesor se queda <b>plana</b>, y
+    /// que se note.
+    /// </para>
+    /// </remarks>
+    private static double EspesorDePanel(ElementoEtabs el)
+    {
+        if (el.AnchoM > 0.01)
+        {
+            return el.AnchoM;
+        }
+
+        return el.Clase == ClaseElemento.Muro ? 0.15 : 0;
+    }
 
     private static (double X, double Y, double Z) Normalizar((double, double, double) v)
     {

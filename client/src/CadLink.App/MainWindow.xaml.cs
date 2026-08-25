@@ -973,6 +973,9 @@ public partial class MainWindow : Window
             _vista.Modelo = modelo;
             _vista.Reiniciar();
             PoblarNiveles(modelo);
+
+            // Y la lista de CORTES, que sale de los mismos ejes del modelo.
+            PoblarCortes(modelo);
             RedibujarVistas();
 
             // Y la tabla de secciones del modelo, que sale del mismo modelo: así está
@@ -1282,6 +1285,95 @@ public partial class MainWindow : Window
 
         // Arranca en el nivel más alto, que suele ser el de interés
         NivelPlantaCombo.SelectedIndex = nombres.Count > 0 ? 1 : 0;
+    }
+
+    // ======================================================================
+    // EL CORTE POR UN EJE, en las vistas de volumen
+    // ======================================================================
+
+    /// <summary>Un renglón de la lista de cortes: el eje y por dónde pasa.</summary>
+    /// <remarks>
+    /// Se guarda el objeto y no el texto porque así no hay que volver a interpretar la
+    /// cadena para saber la ordenada. El <c>ToString</c> es lo que enseña el desplegable.
+    /// </remarks>
+    private sealed record Corte(string Texto, string Id, bool EnX, double Ordenada)
+    {
+        public override string ToString() => Texto;
+    }
+
+    /// <summary>
+    /// Llena la lista de cortes con <b>los ejes del modelo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los mismos ejes que la planta y el plano: los del modelo si el programa los dio y, si
+    /// no, los deducidos de las columnas. Y pasados por el mismo filtro de repetidos, porque
+    /// dos ejes iguales darían dos cortes idénticos en la lista.
+    /// </para>
+    /// <para>
+    /// Los verticales se anuncian como <c>Eje 1 (X)</c> y los horizontales como
+    /// <c>Eje A (Y)</c>, con su letra, que es como los nombra el plano.
+    /// </para>
+    /// </remarks>
+    private void PoblarCortes(ModeloEtabs modelo)
+    {
+        CorteEjeCombo.Items.Clear();
+        CorteEjeCombo.Items.Add("(sin corte)");
+
+        var ejes = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                     ejes.X.Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
+        {
+            CorteEjeCombo.Items.Add(
+                new Corte($"Eje {e.Id}  (X)", e.Id, true, e.Ordenada));
+        }
+
+        foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                     ejes.Y.Select(y => (y.Id, y.Ordenada)).ToList(), 0.01))
+        {
+            CorteEjeCombo.Items.Add(
+                new Corte($"Eje {e.Id}  (Y)", e.Id, false, e.Ordenada));
+        }
+
+        CorteEjeCombo.SelectedIndex = 0;
+    }
+
+    /// <summary>
+    /// Al elegir un corte: se guarda y la vista se <b>pone de frente</b> a él.
+    /// </summary>
+    /// <remarks>
+    /// Orientar la cámara sola es la mitad de la gracia: un corte visto en isométrica sigue
+    /// siendo un dibujo torcido. Un corte por un eje <b>de los que van en X</b> se mira desde
+    /// el lado —el plano YZ—, y uno de los que van en Y, de frente —el plano XZ—. Después se
+    /// puede girar a mano, que para eso está el ratón.
+    /// </remarks>
+    private void OnCorteEjeCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        if (CorteEjeCombo.SelectedItem is not Corte corte)
+        {
+            _vista.SinCorte();
+            RedibujarVistas();
+            return;
+        }
+
+        _vista.CorteEje = corte.Id;
+        _vista.CorteEnX = corte.EnX;
+        _vista.CorteOrdenada = corte.Ordenada;
+
+        // De frente al corte: si el eje va en X se mira desde el lado, y al revés.
+        _vista.Azimut = corte.EnX ? 90 : 0;
+        _vista.Elevacion = 0;
+        _vista.Zoom = 1;
+        _vista.PanX = 0;
+        _vista.PanY = 0;
+
+        RedibujarVistas();
     }
 
     /// <summary>Nivel elegido, o <c>null</c> cuando están seleccionados todos.</summary>
@@ -1804,6 +1896,9 @@ public partial class MainWindow : Window
             _vista.Modelo = modelo;
             _vista.Reiniciar();
             PoblarNiveles(modelo);
+
+            // Y la lista de CORTES, que sale de los mismos ejes del modelo.
+            PoblarCortes(modelo);
             DibujarPlanta();
 
             // Del mismo modelo sale la tabla de secciones, así que se llena de una vez.
@@ -2476,6 +2571,12 @@ public partial class MainWindow : Window
                 // 90° de elevación mira desde arriba: es la planta
                 _vista.Azimut = 0;
                 _vista.Elevacion = 90;
+                break;
+
+            case "ENCUADRAR":
+                // A propósito no toca el giro: se deja la vista como está y solo se
+                // recentra. Es la salida cuando uno se pierde arrastrando, y si además le
+                // cambiara el punto de vista habría que volver a orientarse.
                 break;
         }
 

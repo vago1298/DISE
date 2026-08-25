@@ -3340,6 +3340,77 @@ def v16_extruida_piers() -> None:
           and "!esPlanta" in m_gira.group(0)
           and "var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);" in codigo)
 
+    # ------------------------------------------------------------------
+    # LA PESTAÑA DE ETABS/SAP2000: MURO CON ESPESOR, TERNA Y CORTES
+    # ------------------------------------------------------------------
+    #  EL MURO CON ESPESOR. Cuando GetWall no da el espesor -pasa con las propiedades de
+    #  mamposteria- el muro se dibujaba PLANO, como una hoja de papel, y en una vista extruida
+    #  eso es justo lo que no se quiere ver. El plano de AutoCAD si lo dibuja con espesor,
+    #  porque alla hay un respaldo de 15 cm: aqui se usa EL MISMO, o una de las dos vistas
+    #  estaria mintiendo.
+    check("el muro de la vista extruida siempre tiene espesor",
+          "private static double EspesorDePanel(" in ext
+          and "var t = EspesorDePanel(el);" in ext
+          and 'el.Clase == ClaseElemento.Muro ? 0.15 : 0;' in ext)
+    # LA LOSA NO: su espesor manda en el armado y en el rotulo, asi que inventarlo seria peor
+    # que dejarla plana. Que se note.
+    check("y la losa sin espesor se queda plana, a proposito",
+          "Una losa sin espesor se queda <b>plana</b>" in ext)
+
+    #  LA TERNA XYZ. Estaba dibujada, pero en el mismo gris claro de todo y con linea de 1.2
+    #  px: sobre el fondo claro era invisible, y en una vista que se gira, no saber para donde
+    #  cae la X deja al modelo sin referencia.
+    check("la terna XYZ se ve: colores, flecha y placa",
+          "private static readonly Brush ColorEjeX" in vista
+          and "private static readonly Brush ColorEjeZ" in vista
+          and "private static readonly Brush FondoTerna" in vista
+          and "LA PUNTA DE FLECHA" in vista
+          and 'Eje(1, 0, 0, "X", ColorEjeX);' in vista)
+    check("y usa la MISMA proyeccion que el modelo, no otra formula",
+          "var u = (x * ca) - (y * sa);" in vista
+          and "var v = -((z * ce) + (d * se));" in vista)
+
+    #  EL CORTE POR UN EJE, que es un ALZADO: se ve solo lo que hay sobre ese eje. Se resuelve
+    #  como una REBANADA, no como un plano de espesor cero, porque en un modelo real los muros
+    #  de un eje no estan todos exactamente en su ordenada -el eje pasa por el paño y el muro
+    #  se modela en su linea media- y un corte de espesor cero se quedaria vacio.
+    check("hay corte por un eje en las vistas de volumen",
+          "public string CorteEje { get; set; } = string.Empty;" in vista
+          and "public bool CorteEnX { get; set; }" in vista
+          and "public double CorteEspesorM { get; set; } = 0.6;" in vista
+          and "private bool EnElCorte(" in vista
+          and "public void SinCorte()" in vista)
+    # SE MIRA EL ELEMENTO COMPLETO, no su centro: una trabe que cruza el eje entra aunque su
+    # centro este a diez metros. Filtrando por el centro desaparecerian justo las trabes que
+    # llegan al eje del corte, que son las que se quieren ver.
+    check("el corte mira el elemento completo, no su centro",
+          "return max >= CorteOrdenada - medio && min <= CorteOrdenada + medio;" in vista)
+    # Y SOLO EN LAS VISTAS DE VOLUMEN: la planta YA es un corte horizontal.
+    check("el corte no se aplica a la planta",
+          "private List<ElementoEtabs> Elementos(bool conCorte = false)" in vista
+          and "var elementos = Elementos(conCorte: true);" in vista
+          and "var elementos = Elementos(conCorte: true);" in ext)
+    # EL CORTE SE DICE EN LA LEYENDA: deja fuera media estructura, asi que tiene que estar
+    # escrito o se mira un modelo incompleto creyendo que esta entero.
+    check("la leyenda dice por que eje va el corte",
+          "corte por el eje {CorteEje}" in vista)
+    # Y LA VISTA SE PONE DE FRENTE AL CORTE: un corte visto en isometrica sigue siendo un
+    # dibujo torcido.
+    check("al elegir el corte la vista se pone de frente",
+          "private void OnCorteEjeCambiado(" in codigo
+          and "_vista.Azimut = corte.EnX ? 90 : 0;" in codigo
+          and "private void PoblarCortes(" in codigo
+          and "PoblarCortes(modelo);" in codigo)
+    check("la lista de cortes sale de los ejes del modelo, sin repetidos",
+          "modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo)" in codigo
+          and "CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(" in codigo
+          and 'x:Name="CorteEjeCombo"' in xaml
+          and 'SelectionChanged="OnCorteEjeCambiado"' in xaml)
+    # ENCUADRAR: la salida cuando uno se pierde arrastrando. No toca el giro a proposito.
+    check("hay boton de Encuadrar que no cambia el punto de vista",
+          'Tag="ENCUADRAR"' in xaml
+          and 'case "ENCUADRAR":' in codigo)
+
     # La camara es UNA, compartida. Duplicar la proyeccion acaba con una vista
     # espejeada respecto a la otra.
     check("la camara esta extraida y compartida",

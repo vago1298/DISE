@@ -2157,9 +2157,25 @@
                                                 Tag="LADO" Click="OnVistaPreset" />
                                         <Button Content="Planta (XY)" Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="PLANTA" Click="OnVistaPreset" />
-                                        <TextBlock Text="Cada elemento con su seccion real y sombreado. Arrastra para girar."
+
+                                        <!-- Encuadrar deja el zoom y el desplazamiento como
+                                             al principio SIN tocar el giro: es la salida
+                                             cuando uno se pierde arrastrando. -->
+                                        <Button Content="Encuadrar" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="ENCUADRAR" Click="OnVistaPreset" />
+
+                                        <!-- EL CORTE POR UN EJE es un alzado: se ve solo lo
+                                             que hay sobre ese eje. En isometrica un edificio
+                                             de muros es una maraña; cortado se entiende. -->
+                                        <TextBlock Text="Corte:" FontSize="11.5" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" Margin="14,0,6,0" />
+                                        <ComboBox x:Name="CorteEjeCombo" Width="150"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="OnCorteEjeCambiado" />
+                                        <TextBlock Text="Cada elemento con su seccion real y sombreado. Arrastra con el boton izquierdo para girar, con el derecho para mover, y la rueda hace zoom."
                                                    FontSize="10.5" Foreground="{DynamicResource MutedTextBrush}"
-                                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                                                   VerticalAlignment="Center" Margin="14,0,0,0"
+                                                   TextWrapping="Wrap" MaxWidth="320" />
                                     </StackPanel>
 
                                     <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"

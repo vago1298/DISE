@@ -72,6 +72,16 @@ public sealed partial class VistaModelo
 
     private static readonly Brush ColorCota = Pincel(0x8A, 0x93, 0x9C);
 
+    // LA TERNA, con los colores de siempre: X roja, Y verde, Z azul. Es lo que usan ETABS y
+    // cualquier programa de 3D, así que no hay que explicarlo.
+    private static readonly Brush ColorEjeX = Pincel(0xC0, 0x39, 0x2B);
+
+    private static readonly Brush ColorEjeY = Pincel(0x27, 0x8A, 0x3E);
+
+    private static readonly Brush ColorEjeZ = Pincel(0x2A, 0x62, 0xB8);
+
+    private static readonly Brush FondoTerna = Pincel(0xFF, 0xFF, 0xFF, 0xC8);
+
     private static SolidColorBrush Pincel(byte r, byte g, byte b, byte a = 0xFF) =>
         new(Color.FromArgb(a, r, g, b));
 
@@ -108,6 +118,44 @@ public sealed partial class VistaModelo
     /// la cuadrícula tapa lo que se quiere mirar.
     /// </remarks>
     public bool VerEjes { get; set; } = true;
+
+    /// <summary>
+    /// El <b>eje del corte</b>: su nombre, o vacío si no hay corte. Solo en las vistas de
+    /// volumen.
+    /// </summary>
+    /// <remarks>
+    /// Un corte por un eje es un <b>alzado</b>: se ve únicamente lo que hay sobre ese eje, y
+    /// es la forma de entender un edificio que en isométrica es una maraña de muros. Se
+    /// guarda el nombre —el que dice la burbuja— para poder decirlo en la leyenda.
+    /// </remarks>
+    public string CorteEje { get; set; } = string.Empty;
+
+    /// <summary>
+    /// <c>true</c> si el corte es por un eje <b>vertical</b> —de los que van en X—.
+    /// </summary>
+    public bool CorteEnX { get; set; }
+
+    /// <summary>La coordenada del eje del corte, en metros.</summary>
+    public double CorteOrdenada { get; set; }
+
+    /// <summary>
+    /// Espesor de la <b>rebanada</b> del corte, en metros.
+    /// </summary>
+    /// <remarks>
+    /// No es cero por una razón práctica: en un modelo real los muros de un mismo eje no
+    /// están todos exactamente en su ordenada —el eje pasa por el paño y el muro se modela
+    /// en su línea media, o un nudo quedó movido— así que un corte de espesor cero se
+    /// quedaría vacío. Con 60 cm entra lo que de verdad está sobre el eje y no entra lo del
+    /// eje de al lado.
+    /// </remarks>
+    public double CorteEspesorM { get; set; } = 0.6;
+
+    /// <summary>Quita el corte y vuelve a verse el modelo completo.</summary>
+    public void SinCorte()
+    {
+        CorteEje = string.Empty;
+        CorteOrdenada = 0;
+    }
 
     public void Reiniciar()
     {
@@ -146,7 +194,7 @@ public sealed partial class VistaModelo
     {
         lienzo.Children.Clear();
 
-        var elementos = Elementos();
+        var elementos = Elementos(conCorte: true);
         if (elementos.Count == 0)
         {
             Aviso(lienzo, Modelo is null
@@ -354,15 +402,50 @@ public sealed partial class VistaModelo
         return (d1 + d2) / 2;
     }
 
-    /// <summary>Terna de ejes X, Y, Z en una esquina, como referencia de giro.</summary>
+    /// <summary>
+    /// La <b>terna XYZ</b> en una esquina: para saber dónde está el norte del modelo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió que se vea, y antes no se veía: estaba dibujada, pero en el mismo gris claro
+    /// de todo lo demás y con una línea de 1.2 píxeles, así que sobre el fondo claro de la
+    /// pestaña era invisible. En una vista que se puede girar, no saber para dónde cae la X
+    /// deja al plano sin referencia.
+    /// </para>
+    /// <para>
+    /// Ahora va con los <b>colores de siempre</b> —X roja, Y verde, Z azul, que es lo que usa
+    /// ETABS y cualquier programa de 3D—, con punta de flecha, la letra en su color y una
+    /// placa detrás para que se lea igual sobre el modelo que sobre el fondo.
+    /// </para>
+    /// <para>
+    /// Y usa la <b>misma proyección</b> que el modelo: si aquí se usara otra fórmula, la
+    /// terna indicaría un giro distinto del que se está viendo, que es peor que no ponerla.
+    /// </para>
+    /// </remarks>
     private void DibujarTerna(
         Canvas lienzo, double w, double h, double sa, double ca, double se, double ce)
     {
-        var ox = 46.0;
-        var oy = h - 40;
-        const double L = 26;
+        const double L = 34;
+        const double Radio = 46;
 
-        void Eje(double x, double y, double z, string nombre)
+        var ox = 52.0;
+        var oy = h - 46;
+
+        // La placa: un círculo translúcido que despega la terna del dibujo.
+        var placa = new Ellipse
+        {
+            Width = Radio * 2,
+            Height = Radio * 2,
+            Fill = FondoTerna,
+            Stroke = ColorEje,
+            StrokeThickness = 0.6
+        };
+
+        Canvas.SetLeft(placa, ox - Radio);
+        Canvas.SetTop(placa, oy - Radio);
+        lienzo.Children.Add(placa);
+
+        void Eje(double x, double y, double z, string nombre, Brush color)
         {
             // Misma proyección que el modelo. Si aquí se usara otra fórmula, la
             // terna indicaría un giro distinto al que se está viendo.
@@ -376,23 +459,57 @@ public sealed partial class VistaModelo
             lienzo.Children.Add(new Line
             {
                 X1 = ox, Y1 = oy, X2 = fx, Y2 = fy,
-                Stroke = ColorEje, StrokeThickness = 1.2
+                Stroke = color,
+                StrokeThickness = 2
             });
+
+            // LA PUNTA DE FLECHA, que es lo que dice el SENTIDO del eje. Sin ella, un eje
+            // que apunta hacia el observador y otro que se aleja se dibujan igual.
+            var lx = fx - ox;
+            var ly = fy - oy;
+            var largo = Math.Sqrt((lx * lx) + (ly * ly));
+
+            if (largo > 1e-6)
+            {
+                lx /= largo;
+                ly /= largo;
+
+                // La perpendicular, para abrir la flecha.
+                var px = -ly;
+                var py = lx;
+
+                var punta = new Polygon
+                {
+                    Fill = color,
+                    Stroke = color,
+                    StrokeThickness = 0.5
+                };
+
+                punta.Points.Add(new Point(fx, fy));
+                punta.Points.Add(new Point(fx - (lx * 7) + (px * 3), fy - (ly * 7) + (py * 3)));
+                punta.Points.Add(new Point(fx - (lx * 7) - (px * 3), fy - (ly * 7) - (py * 3)));
+
+                lienzo.Children.Add(punta);
+            }
 
             var t = new TextBlock
             {
                 Text = nombre,
-                FontSize = 10,
-                Foreground = ColorEje
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = color
             };
-            Canvas.SetLeft(t, fx + 2);
-            Canvas.SetTop(t, fy - 8);
+
+            // La letra, un poco más allá de la punta y en la misma dirección, para que no
+            // se monte sobre la flecha.
+            Canvas.SetLeft(t, fx + (lx * 4) - 4);
+            Canvas.SetTop(t, fy + (ly * 4) - 9);
             lienzo.Children.Add(t);
         }
 
-        Eje(1, 0, 0, "X");
-        Eje(0, 1, 0, "Y");
-        Eje(0, 0, 1, "Z");
+        Eje(1, 0, 0, "X", ColorEjeX);
+        Eje(0, 1, 0, "Y", ColorEjeY);
+        Eje(0, 0, 1, "Z", ColorEjeZ);
     }
 
     // ==================================================================
@@ -1130,10 +1247,76 @@ public sealed partial class VistaModelo
     // Auxiliares
     // ==================================================================
 
-    private List<ElementoEtabs> Elementos() =>
+    /// <summary>
+    /// Los elementos que toca dibujar: los de los filtros y, si hay, los <b>del corte</b>.
+    /// </summary>
+    /// <param name="conCorte">
+    /// <c>true</c> en las vistas de volumen, que son las que admiten corte por un eje;
+    /// <c>false</c> en la planta, donde un corte no tiene sentido —la planta YA es un corte
+    /// horizontal— y donde además se elige el nivel aparte.
+    /// </param>
+    private List<ElementoEtabs> Elementos(bool conCorte = false) =>
         Modelo is null
             ? new List<ElementoEtabs>()
-            : Modelo.Elementos.Where(el => Visible(el.Clase)).ToList();
+            : Modelo.Elementos
+                .Where(el => Visible(el.Clase) && (!conCorte || EnElCorte(el)))
+                .ToList();
+
+    /// <summary>
+    /// ¿Este elemento entra en el <b>corte</b> por el eje elegido?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un corte por un eje es lo que en obra se llama un <b>alzado</b>: se mira solo lo que
+    /// hay sobre ese eje. Aquí se resuelve como una <b>rebanada</b> de espesor
+    /// <see cref="CorteEspesorM"/> centrada en la ordenada del eje, y entra todo lo que la
+    /// toque, aunque sea de refilón.
+    /// </para>
+    /// <para>
+    /// Y se mira el elemento COMPLETO, no su centro: una trabe que cruza el eje entra,
+    /// aunque su centro esté a diez metros. Si se filtrara por el centro, en un corte por el
+    /// eje 3 desaparecerían justamente las trabes que llegan a él, que son las que se quiere
+    /// ver.
+    /// </para>
+    /// <para>
+    /// El <b>muro y la losa</b> se miran por sus vértices, por lo mismo: un muro que corre a
+    /// lo largo del eje del corte tiene que salir entero.
+    /// </para>
+    /// </remarks>
+    private bool EnElCorte(ElementoEtabs el)
+    {
+        if (CorteEje.Length == 0)
+        {
+            return true;
+        }
+
+        var medio = Math.Max(CorteEspesorM, 0.05) / 2;
+
+        double Coord(double x, double y) => CorteEnX ? x : y;
+
+        var min = double.MaxValue;
+        var max = double.MinValue;
+
+        if (el.Vertices.Count > 0)
+        {
+            foreach (var p in el.Vertices)
+            {
+                var c = Coord(p.X, p.Y);
+                min = Math.Min(min, c);
+                max = Math.Max(max, c);
+            }
+        }
+        else
+        {
+            var c1 = Coord(el.X1, el.Y1);
+            var c2 = Coord(el.X2, el.Y2);
+            min = Math.Min(c1, c2);
+            max = Math.Max(c1, c2);
+        }
+
+        // Se solapan la rebanada del corte y la extensión del elemento.
+        return max >= CorteOrdenada - medio && min <= CorteOrdenada + medio;
+    }
 
     private static string Etiqueta(ElementoEtabs el)
     {
@@ -1173,6 +1356,16 @@ public sealed partial class VistaModelo
         var texto = nivel is null
             ? $"{cuantos} elementos   ·   giro {Azimut:N0}°/{Elevacion:N0}°   ·   zoom {Zoom:N2}x"
             : $"Nivel {nivel}   ·   {cuantos} elementos   ·   zoom {Zoom:N2}x";
+
+        // Y SI HAY CORTE, SE DICE. Un corte deja fuera media estructura, así que tiene que
+        // estar escrito en la pantalla: si no, se mira un modelo incompleto creyendo que
+        // está entero, y eso es peor que no tener corte.
+        if (CorteEje.Length > 0 && nivel is null)
+        {
+            texto += $"   ·   corte por el eje {CorteEje}" +
+                     $" ({(CorteEnX ? "X" : "Y")} = {CorteOrdenada:N3} m," +
+                     $" rebanada de {CorteEspesorM * 100:N0} cm)";
+        }
 
         var t = new TextBlock
         {
