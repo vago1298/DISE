@@ -2003,6 +2003,56 @@ Check("un texto que acaba en el castillo tambien lo tapa",
 Check("un castillo de 15 no se cuela entre dos preguntas",
       CastilloDeMuro.HayCastilloDeAreaBajoElTexto(4, 0.10, 6, 0.10, dosCastillos));
 
+// LA REGLA QUE NO DEPENDE DEL TEXTO: EL CASTILLO CUBRE A LA CADENA. En el modelo la cadena llega
+// PARTIDA por sus cruces, asi que el pedazo que va sobre el castillo es una cadena propia: mide lo
+// que el castillo, su rotulo va al centro de ese pedazo -o sea justo en medio del castillo- y ahi
+// no cabe ningun nombre. Es el caso de la imagen: «CC 15X25» escrito a lo largo del K 15X80.
+var castilloDe80 = new List<ElementoPlanta> { PanelCastillo(5, 0, 5, 0.80, 0, 2.5) };
+CastilloDeMuro.Normalizar(castilloDe80, 0.15);
+
+Igual("el castillo de area mide lo que su shell", "K 15X80", castilloDe80[0].Seccion);
+
+// La cadena que corre A LO LARGO del castillo, del mismo largo que el: cubierta.
+var cadenaSobreElCastillo = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "CADENA DE CERRAMIENTO", Seccion = "CC 15X25",
+    X1 = 5, Y1 = 0, X2 = 5, Y2 = 0.80, Z1 = 2.5, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.25
+};
+Check("la cadena que va sobre el castillo no se rotula",
+      CastilloDeMuro.CubreALaBarra(cadenaSobreElCastillo, castilloDe80, 0.10));
+
+// La cadena que LLEGA DE LADO y muere en el castillo: solo lo toca, y si se rotula.
+var cadenaDeLado = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "CADENA DE CERRAMIENTO", Seccion = "CC 15X25",
+    X1 = 5, Y1 = 0.40, X2 = 8, Y2 = 0.40, Z1 = 2.5, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.25
+};
+Check("la que llega de lado si se rotula",
+      !CastilloDeMuro.CubreALaBarra(cadenaDeLado, castilloDe80, 0.10));
+
+// Y una cadena LARGA en la misma linea tampoco se calla: el castillo cubre 80 cm de sus cuatro
+// metros, y su nombre cabe de sobra fuera de el.
+var cadenaDeCuatroMetros = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "CADENA DE CERRAMIENTO", Seccion = "CC 15X25",
+    X1 = 5, Y1 = 0, X2 = 5, Y2 = 4, Z1 = 2.5, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.25
+};
+Check("una cadena de cuatro metros no se calla por 80 cm de castillo",
+      !CastilloDeMuro.CubreALaBarra(cadenaDeCuatroMetros, castilloDe80, 0.10));
+
+// Un castillo de FRAME no calla a nadie, tampoco con esta regla.
+var castilloFrameDe80 = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Seccion = "K 15X80",
+        X1 = 5, Y1 = 0.40, X2 = 5, Y2 = 0.40,
+        AnchoM = 0.80, PeralteM = 0.15, AnguloGrados = 90
+    }
+};
+Check("un castillo de frame no calla a la cadena",
+      !CastilloDeMuro.CubreALaBarra(cadenaSobreElCastillo, castilloFrameDe80, 0.10));
+
 // UN ROTULO NO ES UNA RAYA, ES UNA CAJA: alto por largo, y con el fondo opaco todavia un poco
 // mas. Un texto que pasa justo al lado del castillo lo tapa con media letra, y preguntando solo
 // por su linea del centro se escapaba. Con el alto se detecta.

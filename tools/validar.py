@@ -5253,7 +5253,34 @@ def v18_planta_autocad() -> None:
     # El ancho del texto, con la misma cuenta de omision que AnchoDeTexto: largo x altura x 0.55.
     check("midiendo el ancho del texto como el resto del dibujante",
           "var medioTexto = texto.Length * altTrabe * 0.55 / 2;" in dibp
-          and "cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea, altTrabe))" in dibp)
+          and "cx - ex, cy - ey, cx + ex, cy + ey, castillos, altTrabe))" in dibp)
+
+    # ------------------------------------------------------------------
+    # LA REGLA QUE NO DEPENDE DEL TEXTO: EL CASTILLO CUBRE A LA CADENA
+    # ------------------------------------------------------------------
+    #  En el modelo la cadena llega PARTIDA por sus cruces, asi que EL PEDAZO QUE VA SOBRE EL
+    #  CASTILLO es una cadena propia: mide lo que el castillo, su rotulo va al centro de ese
+    #  pedazo -o sea justo en medio del castillo- y ahi no cabe ningun nombre. Es el caso de la
+    #  imagen: «CC 15X25» escrito a lo largo del K 15X80, con su fondo opaco partiendo el amarillo.
+    #
+    #  Y distingue los dos casos del plano: la cadena que corre A LO LARGO del castillo queda
+    #  cubierta por el y no se rotula; la que LLEGA DE LADO y muere en el solo lo toca en su punta
+    #  -de su largo, el castillo cubre el espesor y nada mas- asi que si se rotula.
+    check("la cadena que el castillo cubre no se rotula, sin medir el texto",
+          "public static bool CubreALaBarra(" in cdm
+          and "PlanoEstructural.CastilloDeMuro.CubreALaBarra(el, castillos, tolCastillo)" in dibp
+          and "if (comun >= largo * fraccionMin)" in cdm)
+    # Con la fraccion, para que una cadena larga que solo lo topa conserve su nombre.
+    check("y solo si le cubre la mayor parte",
+          "double fraccionMin = 0.6)" in cdm)
+    # LOS CASTILLOS SE MIRAN EN LA PLANTA QUE SE ESTA DIBUJANDO, no en un campo que se llena antes:
+    # un campo es una fuente de error de mas -si el orden cambia, llega vacio y la regla no se
+    # aplica sin decir nada-. La planta siempre esta.
+    check("los castillos se miran en la planta, no en un campo",
+          "private void Rotulo(ElementoPlanta el, PlantaCad p, double x0, double y0," in dibp
+          and "var castillos = p.Elementos.Where(" in dibp
+          and "e => e.DeShell && e.Clase == ClasePlanta.Columna).ToList();" in dibp
+          and "_castillosDeArea" not in dibp)
     # Cada cinco centimetros: un castillo mide quince, asi que no se cuela entre dos preguntas.
     check("y recorriendo el texto de punta a punta",
           "var pasos = Math.Max(2, (int)Math.Ceiling(largo / 0.05));" in cdm)
@@ -5263,13 +5290,13 @@ def v18_planta_autocad() -> None:
     check("y midiendo la caja del texto, no solo su linea",
           "foreach (var lado in new[] { 0d, medioAlto, -medioAlto })" in cdm
           and "var medioAlto = altoTexto > 0 ? altoTexto * 0.65 : 0;" in cdm
-          and "cx + ex, cy + ey, _castillosDeArea, altTrabe))" in dibp)
+          and "cx + ex, cy + ey, castillos, altTrabe))" in dibp)
     # SOLO LOS DE AREA -DeShell-: en un castillo de frame el nombre de la cadena nunca ha
     # estorbado, y callarlo seria quitar un dato que si se lee.
     check("y solo con los castillos de AREA, no con los de frame",
           "public bool DeShell { get; set; }" in dtop2
           and "if (!el.DeShell || el.Clase != ClasePlanta.Columna)" in cdm
-          and "_castillosDeArea = p.Elementos.Where(e => e.DeShell).ToList();" in dibp)
+          and "if (!el.DeShell || el.Clase != ClasePlanta.Columna || el.AnchoM <= Nada)" in cdm)
     # Con el giro deshecho, como el recorte al pano: en un castillo a 45 grados la caja recta
     # diria que si donde no lo hay.
     check("midiendo contra la seccion ya girada",

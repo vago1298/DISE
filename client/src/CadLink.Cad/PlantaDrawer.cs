@@ -161,16 +161,6 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private HashSet<ElementoPlanta> _cadenasTapadas = new();
 
-    /// <summary>
-    /// Los castillos que vinieron de un <b>área</b>, para no rotular la cadena encima de ellos.
-    /// </summary>
-    /// <remarks>
-    /// Se guardan aquí porque quien rotula ve <b>un</b> elemento y no la planta entera, y para
-    /// esta pregunta hace falta mirar a los vecinos. Se llena después de convertir los shells,
-    /// que es cuando existen.
-    /// </remarks>
-    private List<ElementoPlanta> _castillosDeArea = new();
-
     /// <summary>Cuántos nombres de cadena se callaron por caer sobre un castillo de área.</summary>
     private int _rotulosSobreCastillo;
 
@@ -236,7 +226,6 @@ public sealed partial class PlantaDrawer
         // colgaría de una cuadrícula que está en otro sitio del dibujo.
         _abajoDeLosEjes = null;
         _cadenasTapadas = new HashSet<ElementoPlanta>();
-        _castillosDeArea = new List<ElementoPlanta>();
         _rotulosSobreCastillo = 0;
         _murosDeConcreto = 0;
 
@@ -277,8 +266,6 @@ public sealed partial class PlantaDrawer
                 _cfg.Bandera("SHELL_CASTILLO_AL_PANO", true)
                     ? _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100
                     : 0);
-
-            _castillosDeArea = p.Elementos.Where(e => e.DeShell).ToList();
 
             if (deShell > 0)
             {
@@ -480,7 +467,7 @@ public sealed partial class PlantaDrawer
         {
             foreach (var el in p.Elementos)
             {
-                Rotulo(el, x0, y0, p.AlturaTexto);
+                Rotulo(el, p, x0, y0, p.AlturaTexto);
             }
         }
 
@@ -1874,7 +1861,7 @@ public sealed partial class PlantaDrawer
     ///   <item><b>Losa</b>: al centro del paño, horizontal.</item>
     /// </list>
     /// </remarks>
-    private void Rotulo(ElementoPlanta el, double x0, double y0, double altura)
+    private void Rotulo(ElementoPlanta el, PlantaCad p, double x0, double y0, double altura)
     {
         // El interruptor general de la hoja: DIBUJAR_ETIQUETAS en NO deja la planta muda,
         // que es como se entrega cuando el rotulado se hace aparte.
@@ -2030,12 +2017,32 @@ public sealed partial class PlantaDrawer
         //  la cuenta que ya se usa aquí cuando AutoCAD no da la caja del texto.
         if (esCadena && !_cfg.Bandera("CADENA_ROTULO_EN_CASTILLO_AREA", false))
         {
+            // LOS CASTILLOS DE ÁREA SE MIRAN AQUÍ, EN LA PLANTA QUE SE ESTÁ DIBUJANDO. Antes se
+            // guardaban en un campo al convertirlos, y eso es una fuente de error de más: si el
+            // orden cambia, o si la conversión no pasó por ahí, el campo llega vacío y la regla
+            // no se aplica sin decir nada. La planta siempre está.
+            var castillos = p.Elementos.Where(
+                e => e.DeShell && e.Clase == ClasePlanta.Columna).ToList();
+
+            // ==========================================================================
+            //  DOS REGLAS, Y BASTA CON QUE SE CUMPLA UNA
+            // ==========================================================================
+            //  1) EL CASTILLO CUBRE A LA CADENA. En el modelo la cadena llega PARTIDA por sus
+            //     cruces, así que el pedazo que va sobre el castillo es una cadena propia que
+            //     mide lo que el castillo: su rótulo cae justo en medio de él y ahí no cabe
+            //     ningún nombre. Esta regla no depende de medir el texto, y es la que resuelve
+            //     el caso de la imagen: «CC 15X25» escrito a lo largo del K 15X80.
+            //  2) EL TEXTO LO TAPA. Para el resto: una cadena más larga cuyo nombre, por su
+            //     tamaño, acaba encima del castillo de todas formas.
+            var tolCastillo = _cfg.Numero("TOLERANCIA_CADENA_CM", 10) / 100;
+
             var medioTexto = texto.Length * altTrabe * 0.55 / 2;
             var ex = dx / largo * medioTexto;
             var ey = dy / largo * medioTexto;
 
-            if (PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaBajoElTexto(
-                    cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea, altTrabe))
+            if (PlanoEstructural.CastilloDeMuro.CubreALaBarra(el, castillos, tolCastillo)
+                || PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaBajoElTexto(
+                       cx - ex, cy - ey, cx + ex, cy + ey, castillos, altTrabe))
             {
                 _rotulosSobreCastillo++;
                 return;

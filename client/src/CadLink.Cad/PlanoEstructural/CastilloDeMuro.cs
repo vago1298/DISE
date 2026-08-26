@@ -475,6 +475,104 @@ public static class CastilloDeMuro
     }
 
     /// <summary>
+    /// ¿Va esta barra <b>por encima</b> de un castillo de área, en vez de solo topar con él?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Esta es la regla buena para «no coloques el nombre de la cadena», y no depende de medir el
+    /// texto. En el modelo la cadena llega <b>partida</b> por sus cruces, así que <b>el pedazo
+    /// que va sobre el castillo es una cadena propia</b>: mide lo que el castillo. Su rótulo va
+    /// al centro de ese pedazo, o sea justo en medio del castillo, y no hay ancho de texto que
+    /// calcular: ahí no cabe ningún nombre.
+    /// </para>
+    /// <para>
+    /// Y distingue los dos casos que se ven en el plano, que es lo que importa:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     La cadena que <b>corre a lo largo</b> del castillo —el castillo es un trozo de ese
+    ///     mismo muro— queda <b>cubierta</b> por él: esa no se rotula.
+    ///   </item>
+    ///   <item>
+    ///     La cadena que <b>llega de lado</b> y muere en el castillo solo lo toca en su punta:
+    ///     de su largo, el castillo cubre el espesor y nada más, así que <b>sí</b> se rotula, y
+    ///     su nombre queda donde siempre, a lo largo de ella.
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    /// <param name="barra">La cadena, con su geometría de planta.</param>
+    /// <param name="elementos">Los elementos de la planta, ya con los castillos convertidos.</param>
+    /// <param name="tolM">Holgura para tomarla como que va sobre la misma línea.</param>
+    /// <param name="fraccionMin">
+    /// Qué parte de la barra tiene que cubrir el castillo. Con 0.6, el pedazo que va sobre el
+    /// castillo se calla y una cadena de tres metros que solo lo topa, no.
+    /// </param>
+    public static bool CubreALaBarra(
+        ElementoPlanta barra, IEnumerable<ElementoPlanta>? elementos, double tolM,
+        double fraccionMin = 0.6)
+    {
+        if (elementos is null)
+        {
+            return false;
+        }
+
+        var dx = barra.X2 - barra.X1;
+        var dy = barra.Y2 - barra.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo <= Nada)
+        {
+            return false;
+        }
+
+        var ux = dx / largo;
+        var uy = dy / largo;
+
+        foreach (var el in elementos)
+        {
+            if (!el.DeShell || el.Clase != ClasePlanta.Columna || el.AnchoM <= Nada)
+            {
+                continue;
+            }
+
+            // El castillo, como el segmento que es: su largo va en AnchoM, con su giro.
+            var a = el.AnguloGrados * Math.PI / 180;
+            var medio = el.AnchoM / 2;
+
+            var ex = Math.Cos(a) * medio;
+            var ey = Math.Sin(a) * medio;
+
+            // ¿EN LA MISMA LÍNEA? Lo que separa al centro del castillo de la línea de la barra,
+            // medido de través, con la holgura y con el medio espesor del propio castillo: la
+            // cadena y el castillo casi nunca están dibujados exactamente al mismo eje.
+            var perp = Math.Abs((-uy * (el.X1 - barra.X1)) + (ux * (el.Y1 - barra.Y1)));
+
+            if (perp > tolM + (el.PeralteM / 2))
+            {
+                continue;
+            }
+
+            // Y CUÁNTO DE LA BARRA CUBRE, proyectando las dos puntas del castillo sobre ella.
+            var t1 = ((el.X1 - ex - barra.X1) * ux) + ((el.Y1 - ey - barra.Y1) * uy);
+            var t2 = ((el.X1 + ex - barra.X1) * ux) + ((el.Y1 + ey - barra.Y1) * uy);
+
+            if (t2 < t1)
+            {
+                (t1, t2) = (t2, t1);
+            }
+
+            var comun = Math.Min(t2, largo) - Math.Max(t1, 0);
+
+            if (comun >= largo * fraccionMin)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// ¿Pasa el <b>texto</b> de un rótulo por encima de un castillo de área?
     /// </summary>
     /// <remarks>
