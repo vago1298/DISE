@@ -48,16 +48,17 @@ public sealed class RotuloPlanta
 
     /// <summary>Aire entre los ejes de abajo y el rótulo: <c>ROTULO_SEPARACION_EJES</c>.</summary>
     /// <remarks>
-    /// <b>Cinco metros</b>, y no el 0.5 de la hoja de la macro: se pidió que el rótulo vaya
-    /// «a −5 de los ejes para que sea siempre uniforme». Con medio metro quedaba pegado a las
-    /// burbujas, y como cada planta acababa a distinta altura, en un juego de tres plantas los
-    /// tres rótulos salían escalonados.
+    /// <b>Medio metro</b>, el de la hoja de la macro. Se probó con 5 y se pidió volver a 0.50:
+    /// lo que estaba mal no era la distancia, sino <b>desde dónde</b> se medía —desde la caja de
+    /// los elementos en lugar de desde los ejes—, y por eso los rótulos de un juego de plantas
+    /// salían escalonados. Arreglado eso, medio metro deja el rótulo justo debajo de las
+    /// burbujas y a la misma altura en todas.
     /// </remarks>
     public double SeparacionEjes
     {
         get
         {
-            var s = _cfg.Numero("ROTULO_SEPARACION_EJES", 5);
+            var s = _cfg.Numero("ROTULO_SEPARACION_EJES", 0.5);
             return s < 0 ? 0 : s;
         }
     }

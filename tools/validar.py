@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y un renglones añadidos",
-          cfgp.count("        P(") == 301
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y dos renglones añadidos",
+          cfgp.count("        P(") == 302
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "301, ConfigPlano.PorOmision.Count" in pr
+          and "302, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -5141,9 +5141,68 @@ def v18_planta_autocad() -> None:
     # Se reinicia en cada planta: si se quedara el de la anterior, el rotulo de esta se colgaria
     # de una cuadricula que esta en otro sitio del dibujo.
     check("se reinicia en cada planta", "_abajoDeLosEjes = null;" in dibp)
-    check("y la distancia es 5, como se pidio",
-          '_cfg.Numero("ROTULO_SEPARACION_EJES", 5)' in rot
-          and 'P("ROTULO_SEPARACION_EJES", "5",' in cfgplano)
+    # LA DISTANCIA VUELVE A 0.50, la de la hoja de la macro: se probo con 5 y se pidio volver.
+    # Lo que estaba mal no era la distancia, sino desde donde se medía.
+    check("y la distancia es la de la macro, medio metro",
+          '_cfg.Numero("ROTULO_SEPARACION_EJES", 0.5)' in rot
+          and 'P("ROTULO_SEPARACION_EJES", "0.5",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # EL CASTILLO DE AREA, HASTA EL PANO DEL MURO QUE SE CRUZA
+    # ------------------------------------------------------------------
+    #  «Cuando sea area un castillo debes sumarle la mitad del espesor de la seccion en el lado
+    #  donde se intersecta con otro muro modelado, para que llegue al pano y no se corte antes».
+    #  En el modelo LOS MUROS SE DIBUJAN POR SU EJE, asi que el shell del castillo se traza hasta
+    #  la LINEA del muro con el que se topa: en el plano el castillo se quedaba a media pared -el
+    #  pano del muro seguia mas alla- y parecia cortado.
+    #
+    #  La cuenta no es «sumale medio espesor y ya», sino HASTA DONDE FALTA: se busca donde cruza
+    #  el eje del otro muro y se alarga hasta su cara de mas alla. Con el castillo modelado al
+    #  eje sale exactamente el medio espesor que se pidio, y el que YA llegaba al pano no se
+    #  alarga: sumar a ciegas lo pasaria de largo justo en ese caso.
+    check("el castillo de area se alarga hasta el pano del muro que lo cruza",
+          "public static ElementoPlanta AlPanoDeLosMuros(" in cdm
+          and "faltaA = Math.Max(faltaA, medio - t);" in cdm
+          and "faltaB = Math.Max(faltaB, (t - largo) + medio);" in cdm)
+    # SOLO MUROS QUE LO CRUCEN, y solo en la PUNTA: uno que corre en su misma direccion no se
+    # cruza -se acompañan- y uno que pasa por el medio no lo alarga. Otro castillo tampoco:
+    # entre dos castillos no hay pano que alcanzar.
+    check("solo con muros que lo cruzan, y solo en la punta",
+          "if (muro.Clase != ClasePlanta.Muro || Dice(muro)" in cdm
+          and "if (Math.Abs(den) < 0.1)" in cdm
+          and "var alcance = tolM + (medio * 2);" in cdm)
+    # Y que el cruce caiga DENTRO del muro: en su prolongacion no hay muro que dé pano.
+    check("y con el cruce dentro del muro, no en su prolongacion",
+          "if (sMuro < -tolM || sMuro > largoMuro + tolM)" in cdm)
+    # Con la holgura del encuentro que ya usa el recorte de los muros: es la misma pregunta.
+    check("con la holgura del encuentro de la hoja y su bandera",
+          '_cfg.Bandera("SHELL_CASTILLO_AL_PANO", true)' in dibp
+          and '_cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100' in dibp
+          and 'P("SHELL_CASTILLO_AL_PANO", "SI",' in cfgplano)
+    # Y se alarga ANTES de convertirlo, para que la medida que se dibuja y la que nombra al
+    # bloque sean la misma: el nombre del bloque tiene que describir al bloque.
+    check("se alarga antes de nombrarlo, para que el nombre diga lo que se dibuja",
+          "unido = AlPanoDeLosMuros(unido, elementos, espesorPorOmision, tolPanoM);" in cdm
+          and cdm.index("AlPanoDeLosMuros(unido")
+              < cdm.index("elementos[g[0]] = Como(unido"))
+
+    # ------------------------------------------------------------------
+    # EL CABEZAL DE LAS PROPERTY NOTES
+    # ------------------------------------------------------------------
+    #  Se pidio leerlo igual que los demas. Va ANTES que TRABE y que VIGA en la lista de
+    #  palabras: una nota que diga «CABEZAL DE TRABE» es un cabezal, no una trabe. Y su CAPA es
+    #  la de las trabes, porque un cabezal es una viga -la que cierra un vano o la que reparte
+    #  sobre los apoyos-: sin esa traduccion se iria a E-OTROS, una capa que nadie mira, que es
+    #  lo mismo que les pasaba a las tres cadenas.
+    secm = leer(ruta("client/src/CadLink.Etabs/SeccionesModelo.cs"))
+    capp2 = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+
+    check("CABEZAL se lee de las property notes",
+          '("CABEZAL", "CABEZAL"),' in secm
+          and secm.index('("CABEZAL", "CABEZAL"),') < secm.index('("TRABE", "TRABE"),'))
+    check("y va a la capa de las trabes",
+          'if (t.Equals("CABEZAL", StringComparison.OrdinalIgnoreCase))' in capp2
+          and 'return CapaDeTipo("TRABE");' in capp2)
 
     # ------------------------------------------------------------------
     # POR QUE NO SE VEIA EL CASTILLO DE AREA DEBAJO DE LA CADENA

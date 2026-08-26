@@ -1512,9 +1512,10 @@ Cerca("con altura 0.52", 0.52, rot.AlturaTitulo);
 Cerca("y el segundo renglón, 0.26", 0.26, rot.AlturaNivel);
 Igual("en el estilo HAETTENSCHWEILER", "HAETTENSCHWEILER", rot.Estilo);
 Check("centrado y con su línea", rot.Centrado && rot.ConLinea);
-// A -5 DE LOS EJES, no a 0.5: se pidio que los rotulos de un juego de plantas queden todos a la
-// misma altura, y con medio metro quedaba pegado a las burbujas.
-Cerca("y a 5 de los ejes, para que todas las plantas lo lleven igual", 5, rot.SeparacionEjes);
+// A -0.50 DE LOS EJES, la de la hoja de la macro. Lo que estaba mal no era la distancia, sino
+// DESDE DONDE se medía: desde la caja de los elementos y no desde los ejes, y por eso los
+// rotulos de un juego de plantas salian escalonados.
+Cerca("y a medio metro de los ejes", 0.5, rot.SeparacionEjes);
 
 Igual("la BASE se rotula CIMENTACION", "CIMENTACION", rot.NombreDeNivel("Base"));
 Igual("Story1 es la PLANTA BAJA", "PLANTA BAJA", rot.NombreDeNivel("Story1"));
@@ -1750,6 +1751,106 @@ var castillosEnCruz = new List<ElementoPlanta>
 };
 Igual("uno en X y otro en Y no son el mismo castillo", 2,
       CastilloDeMuro.Normalizar(castillosEnCruz, 0.15));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL CASTILLO DE AREA, HASTA EL PANO DEL MURO QUE SE CRUZA");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «cuando sea area un castillo debes sumarle la mitad del espesor de la seccion en el
+// lado donde se intersecta con otro muro modelado, para que llegue al pano y no se corte antes».
+// En el modelo LOS MUROS SE DIBUJAN POR SU EJE, asi que el shell del castillo se traza hasta la
+// LINEA del muro con el que se topa: en el plano el castillo se quedaba a media pared -el pano
+// del muro seguia mas alla de el- y parecia cortado.
+//
+// El castillo va en Y, de 0 a 0.235, y en su punta de abajo lo cruza un muro de 15 que corre en
+// X con su eje en y = 0: sus dos caras estan en -0.075 y +0.075.
+var castilloAlPano = PanelCastillo(12, 0, 12, 0.235, 0, 2.5);
+
+var muroQueCruza = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", Notas = "MURO DE BLOCK",
+    X1 = 12, Y1 = 0, X2 = 15, Y2 = 0, AnchoM = 0.15
+};
+
+var estirado = CastilloDeMuro.AlPanoDeLosMuros(
+    castilloAlPano, new List<ElementoPlanta> { muroQueCruza }, 0.15, 0.25);
+
+Cerca("el castillo baja hasta la cara de mas alla del muro", -0.075, estirado.Y1);
+Cerca("y por arriba no se toca, que ahi no hay nada", 0.235, estirado.Y2);
+
+// SI YA LLEGABA AL PANO no se alarga: sumar medio espesor a ciegas lo pasaria de largo.
+var yaLlegaba = PanelCastillo(12, -0.075, 12, 0.235, 0, 2.5);
+Cerca("el que ya llegaba al pano se queda como esta", -0.075,
+      CastilloDeMuro.AlPanoDeLosMuros(
+          yaLlegaba, new List<ElementoPlanta> { muroQueCruza }, 0.15, 0.25).Y1);
+
+// UN MURO QUE CORRE EN LA MISMA DIRECCION no cuenta: no se cruzan en un punto, se acompañan, y
+// ahi no hay pano que alcanzar.
+var muroALoLargo = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", X1 = 12, Y1 = 0, X2 = 12, Y2 = 3, AnchoM = 0.15
+};
+Cerca("un muro en la misma direccion no lo alarga", 0,
+      CastilloDeMuro.AlPanoDeLosMuros(
+          castilloAlPano, new List<ElementoPlanta> { muroALoLargo }, 0.15, 0.25).Y1);
+
+// UN MURO QUE CRUZA POR EL MEDIO tampoco: el castillo no tiene que llegar a ningun sitio.
+var muroPorElMedio = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", X1 = 11, Y1 = 1.5, X2 = 15, Y2 = 1.5, AnchoM = 0.15
+};
+Cerca("un muro que cruza lejos de las puntas no lo alarga", 0,
+      CastilloDeMuro.AlPanoDeLosMuros(
+          PanelCastillo(12, 0, 12, 3, 0, 2.5),
+          new List<ElementoPlanta> { muroPorElMedio }, 0.15, 0.25).Y1);
+
+// UN MURO QUE NO LLEGA HASTA EL CASTILLO tampoco: su eje se cruzaria con el del castillo en su
+// prolongacion, pero ahi no hay muro.
+var muroQueNoLlega = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", X1 = 14, Y1 = 0, X2 = 15, Y2 = 0, AnchoM = 0.15
+};
+Cerca("un muro que se queda a dos metros no lo alarga", 0,
+      CastilloDeMuro.AlPanoDeLosMuros(
+          castilloAlPano, new List<ElementoPlanta> { muroQueNoLlega }, 0.15, 0.25).Y1);
+
+// Y OTRO CASTILLO DE AREA tampoco: entre dos castillos no hay pano que alcanzar.
+Cerca("otro castillo de area no lo alarga", 0,
+      CastilloDeMuro.AlPanoDeLosMuros(
+          castilloAlPano,
+          new List<ElementoPlanta> { PanelCastillo(11.8, 0, 12.2, 0, 0, 2.5) },
+          0.15, 0.25).Y1);
+
+// DE PUNTA A PUNTA: un castillo que muere en un muro por cada lado se alarga por los dos.
+var entreDosMuros = new List<ElementoPlanta>
+{
+    muroQueCruza,
+    new()
+    {
+        Clase = ClasePlanta.Muro, Tipo = "MURO",
+        X1 = 12, Y1 = 0.235, X2 = 15, Y2 = 0.235, AnchoM = 0.20
+    }
+};
+var porLosDos = CastilloDeMuro.AlPanoDeLosMuros(castilloAlPano, entreDosMuros, 0.15, 0.25);
+Cerca("por abajo, medio muro de 15", -0.075, porLosDos.Y1);
+Cerca("y por arriba, medio muro de 20", 0.235 + 0.10, porLosDos.Y2);
+
+// Y TODO JUNTO: al normalizar, el castillo sale con la medida ESTIRADA, y su nombre dice esa
+// medida -la que se dibuja- porque el nombre del bloque tiene que describir al bloque.
+var conPano = new List<ElementoPlanta> { PanelCastillo(12, 0, 12, 0.235, 0, 2.5), muroQueCruza };
+CastilloDeMuro.Normalizar(conPano, 0.15, 0.02, "K", 0.25);
+
+Cerca("el castillo normalizado mide lo estirado", 0.31, conPano[0].AnchoM);
+Igual("y su nombre lo dice, que es lo que se dibuja", "K 15X31", conPano[0].Seccion);
+
+// Con la holgura en 0 -SHELL_CASTILLO_AL_PANO en NO- no se alarga nada.
+var sinPanoLista = new List<ElementoPlanta>
+{
+    PanelCastillo(12, 0, 12, 0.235, 0, 2.5), muroQueCruza
+};
+CastilloDeMuro.Normalizar(sinPanoLista, 0.15, 0.02, "K", 0);
+Cerca("y apagado se queda con su medida de modelo", 0.235, sinPanoLista[0].AnchoM);
 
 // EL ALTO DEL AREA, QUE ES LO QUE LO HACIA DESAPARECER DEL CORTE. Las cotas de un muro salian
 // de los dos vertices MAS SEPARADOS EN PLANTA, y esos pueden ser los dos de ABAJO -depende del

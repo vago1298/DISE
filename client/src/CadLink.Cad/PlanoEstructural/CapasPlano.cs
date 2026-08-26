@@ -232,6 +232,23 @@ public sealed class CapasPlano
                 : CapaDeTipo("DALA");
         }
 
+        // ==============================================================================
+        //  EL CABEZAL VA CON LAS TRABES
+        // ==============================================================================
+        //  Se pidió leer CABEZAL de las notas, y como tipo ya sale: la tabla de secciones lo
+        //  dice y el plano lo distingue. Pero CABEZAL no es el nombre de ninguna capa, así que
+        //  sin esta traducción se iría a E-OTROS —se dibujaría, pero en una capa que nadie
+        //  mira—, que es lo mismo que les pasaba a las tres cadenas.
+        //
+        //  Va a la de las TRABES porque un cabezal es eso, una viga: la que cierra un vano o la
+        //  que reparte sobre los apoyos. Con eso hereda su color, su PHANTOM2 y su sitio en
+        //  CAPAS_AL_FRENTE. Si algún día quiere su propia capa, se añade a la tabla con su
+        //  color y esta traducción sobra.
+        if (t.Equals("CABEZAL", StringComparison.OrdinalIgnoreCase))
+        {
+            return CapaDeTipo("TRABE");
+        }
+
         foreach (var c in Todas)
         {
             if (c.Tipo.Length > 0 && string.Equals(c.Tipo, tipo, StringComparison.OrdinalIgnoreCase))

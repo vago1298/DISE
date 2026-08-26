@@ -77,8 +77,9 @@ var cfg = new ConfigPlano();
 //   SHELL_CASTILLO_UNIR_TOL_CM      y sus pedazos se unen, para que salga completo
 //   SHELL_CASTILLO_DE_OTRO_NIVEL    y el que cruza el nivel se dibuja aunque sea de otro story
 //   SHELL_CASTILLO_PREFIJO          y se nombra con su medida: «K 15X23.5»
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y uno que se añadieron",
-      301, ConfigPlano.PorOmision.Count);
+//   SHELL_CASTILLO_AL_PANO          y se alarga hasta el pano del muro con el que se cruza
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y dos que se añadieron",
+      302, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -242,17 +243,22 @@ Igual("y solo cuenta donde cubre tres cuartas partes del entrepiso",
       0.75, cfg.Numero("MURO_FRACCION_ENTREPISO", 0));
 // Y se nombra con su medida en planta: «K 15X23.5», que es su rotulo y el nombre de su bloque.
 Igual("el castillo de area se nombra con K", "K", cfg.Texto("SHELL_CASTILLO_PREFIJO"));
+// Y SE ALARGA HASTA EL PANO del muro con el que se cruza: en el modelo los muros se dibujan por
+// su EJE, asi que el shell del castillo llega a la linea del muro y en el plano se quedaba a
+// media pared, como cortado.
+Check("y se alarga hasta el pano del muro", cfg.Bandera("SHELL_CASTILLO_AL_PANO", false));
 
-// EL ROTULO DE LA PLANTA, A -5 DE LOS EJES: se pidio asi para que en un juego de tres plantas
-// los tres rotulos queden a la misma altura. La hoja de la macro traia 0.5.
-Igual("el rotulo va a 5 de los ejes de abajo",
-      5.0, cfg.Numero("ROTULO_SEPARACION_EJES", 0));
+// EL ROTULO DE LA PLANTA, A -0.50 DE LOS EJES, como en la hoja de la macro. Se probo con 5 y se
+// pidio volver: lo que estaba mal no era la distancia, sino DESDE DONDE se medía -desde la caja
+// de los elementos en lugar de desde los ejes-, que es lo que los dejaba escalonados.
+Igual("el rotulo va a medio metro de los ejes de abajo",
+      0.5, cfg.Numero("ROTULO_SEPARACION_EJES", 0));
 
 Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 301 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 302 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -327,6 +333,11 @@ Console.WriteLine();
 Igual("el muro va a su capa", "E-MURO", capas.CapaDeTipo("MURO"));
 Igual("el castillo a la suya", "E-CASTILLO", capas.CapaDeTipo("CASTILLO"));
 Igual("y lo que no está en la tabla, a E-OTROS", "E-OTROS", capas.CapaDeTipo("LO QUE SEA"));
+// EL CABEZAL, que se pidio leer de las notas, va con las TRABES: un cabezal es una viga -la que
+// cierra un vano o la que reparte sobre los apoyos-. Sin esta traduccion se iria a E-OTROS, que
+// es una capa que nadie mira, igual que les pasaba a las tres cadenas.
+Igual("el cabezal va a la capa de las trabes", "E-TRABE", capas.CapaDeTipo("CABEZAL"));
+Igual("y en minusculas igual", "E-TRABE", capas.CapaDeTipo("cabezal"));
 
 Igual("las capas al frente son las cuatro de la hoja",
       "E-CADENA, E-CADENA DESPLANTE, E-TRABE, E-ACERO",

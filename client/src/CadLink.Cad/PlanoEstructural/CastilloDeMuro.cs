@@ -200,7 +200,7 @@ public static class CastilloDeMuro
     /// <returns>Cuántos castillos quedaron, para la bitácora.</returns>
     public static int Normalizar(
         IList<ElementoPlanta>? elementos, double espesorPorOmision, double tolUnirM = 0.02,
-        string prefijo = "K")
+        string prefijo = "K", double tolPanoM = 0)
     {
         if (elementos is null)
         {
@@ -249,7 +249,16 @@ public static class CastilloDeMuro
         {
             var piezas = g.Select(j => elementos[j]).ToList();
 
-            elementos[g[0]] = Como(Unido(piezas), espesorPorOmision, prefijo);
+            var unido = Unido(piezas);
+
+            // Y HASTA EL PAÑO del muro con el que se cruza, antes de convertirlo: la medida
+            // que se dibuja y la que da nombre al bloque tienen que ser la misma.
+            if (tolPanoM > 0)
+            {
+                unido = AlPanoDeLosMuros(unido, elementos, espesorPorOmision, tolPanoM);
+            }
+
+            elementos[g[0]] = Como(unido, espesorPorOmision, prefijo);
             sobran.AddRange(g.Skip(1));
         }
 
@@ -427,6 +436,135 @@ public static class CastilloDeMuro
     /// <summary>De metros a centímetros, sin decimales de relleno.</summary>
     private static string Cm(double m) =>
         (m * 100).ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Alarga el castillo hasta el <b>paño</b> del muro con el que se cruza en cada punta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «cuando sea área un castillo debes sumarle la mitad del espesor de la sección
+    /// en el lado donde se intersecta con otro muro modelado, para que llegue al paño y no se
+    /// corte antes». Y es lo que hace falta, porque en el modelo <b>los muros se dibujan por su
+    /// eje</b>: el shell del castillo se traza hasta la <i>línea</i> del muro con el que se
+    /// topa, así que en el plano el castillo se quedaba a media pared —el paño del muro seguía
+    /// más allá de él— y parecía cortado.
+    /// </para>
+    /// <para>
+    /// La cuenta no es «súmale medio espesor y ya», sino <b>hasta dónde falta</b>: se busca
+    /// dónde cruza el eje del otro muro y se alarga hasta su cara de más allá, que está a medio
+    /// espesor de ese eje. Con el castillo modelado al eje sale exactamente el medio espesor que
+    /// se pidió, y si ya llegaba al paño no se alarga nada. Sumar siempre medio espesor lo
+    /// pasaría de largo justo en ese caso.
+    /// </para>
+    /// <para>
+    /// Solo cuentan los <b>MUROS</b> —es lo que se pidió— que <b>cruzan</b> al castillo, no los
+    /// que corren en su misma dirección, y solo si el cruce cae <b>en la punta</b>: un muro que
+    /// pasa por el medio del castillo no lo alarga, y uno que cruza a dos metros tampoco. Otro
+    /// castillo de área tampoco cuenta: entre dos castillos no hay paño que alcanzar.
+    /// </para>
+    /// </remarks>
+    /// <param name="castillo">El shell del castillo, ya unido si venía en pedazos.</param>
+    /// <param name="otros">Todos los elementos de la planta.</param>
+    /// <param name="espesorPorOmision">Espesor para el muro que no dio el suyo.</param>
+    /// <param name="tolM">Holgura del encuentro: es <c>PANO_TOLERANCIA_CM</c>.</param>
+    public static ElementoPlanta AlPanoDeLosMuros(
+        ElementoPlanta castillo, IEnumerable<ElementoPlanta> otros,
+        double espesorPorOmision, double tolM)
+    {
+        var (ux, uy, largo) = Direccion(castillo);
+
+        if (largo <= Nada)
+        {
+            return castillo;
+        }
+
+        // Cuánto le falta a cada punta para llegar al paño. La punta A es la de X1,Y1.
+        double faltaA = 0;
+        double faltaB = 0;
+
+        foreach (var muro in otros)
+        {
+            if (muro.Clase != ClasePlanta.Muro || Dice(muro) || ReferenceEquals(muro, castillo))
+            {
+                continue;
+            }
+
+            var (vx, vy, largoMuro) = Direccion(muro);
+
+            if (largoMuro <= Nada)
+            {
+                continue;
+            }
+
+            // QUE SE CRUCEN DE VERDAD: dos líneas casi paralelas no se cruzan en un punto, se
+            // acompañan, y ahí no hay paño que alcanzar sino un muro que sigue al castillo.
+            var den = (ux * vy) - (uy * vx);
+
+            if (Math.Abs(den) < 0.1)
+            {
+                continue;
+            }
+
+            var wx = muro.X1 - castillo.X1;
+            var wy = muro.Y1 - castillo.Y1;
+
+            // Dónde se cruzan: t sobre el castillo —en metros desde su punta A— y s sobre el
+            // muro, para comprobar que el cruce cae DENTRO del muro y no en su prolongación.
+            var t = ((wx * vy) - (wy * vx)) / den;
+            var sMuro = ((wx * uy) - (wy * ux)) / den;
+
+            if (sMuro < -tolM || sMuro > largoMuro + tolM)
+            {
+                continue;
+            }
+
+            var medio = (muro.AnchoM > Nada ? muro.AnchoM : espesorPorOmision) / 2;
+
+            // EN LA PUNTA: el cruce tiene que caer cerca de un extremo. Se admite hasta el
+            // espesor del muro más la holgura, que es lo que puede quedar dentro del castillo
+            // cuando el modelo los solapa un poco.
+            var alcance = tolM + (medio * 2);
+
+            if (Math.Abs(t) <= alcance)
+            {
+                // Hacia afuera por la punta A: lo que falta para la cara de más allá.
+                faltaA = Math.Max(faltaA, medio - t);
+            }
+
+            if (Math.Abs(t - largo) <= alcance)
+            {
+                faltaB = Math.Max(faltaB, (t - largo) + medio);
+            }
+        }
+
+        if (faltaA <= Nada && faltaB <= Nada)
+        {
+            return castillo;
+        }
+
+        return new ElementoPlanta
+        {
+            Clase = castillo.Clase,
+            Tipo = castillo.Tipo,
+            Forma = castillo.Forma,
+            Etiqueta = castillo.Etiqueta,
+            Seccion = castillo.Seccion,
+            Notas = castillo.Notas,
+            Material = castillo.Material,
+
+            X1 = castillo.X1 - (ux * Math.Max(faltaA, 0)),
+            Y1 = castillo.Y1 - (uy * Math.Max(faltaA, 0)),
+            X2 = castillo.X2 + (ux * Math.Max(faltaB, 0)),
+            Y2 = castillo.Y2 + (uy * Math.Max(faltaB, 0)),
+
+            Z1 = castillo.Z1,
+            Z2 = castillo.Z2,
+
+            AnchoM = castillo.AnchoM,
+            PeralteM = castillo.PeralteM,
+            AnguloGrados = castillo.AnguloGrados
+        };
+    }
 
     /// <summary>La dirección unitaria de un shell en planta, y su largo.</summary>
     private static (double X, double Y, double Largo) Direccion(ElementoPlanta el)

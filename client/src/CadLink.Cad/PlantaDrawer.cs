@@ -209,7 +209,14 @@ public sealed partial class PlantaDrawer
             var deShell = PlanoEstructural.CastilloDeMuro.Normalizar(
                 p.Elementos, EspesorMuroPorOmision,
                 _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100,
-                _cfg.Texto("SHELL_CASTILLO_PREFIJO", "K"));
+                _cfg.Texto("SHELL_CASTILLO_PREFIJO", "K"),
+
+                // Y HASTA EL PAÑO del muro con el que se cruza. Con la holgura del encuentro
+                // que ya usa el recorte de los muros —PANO_TOLERANCIA_CM—, que es la misma
+                // pregunta: ¿este elemento llega a aquel?
+                _cfg.Bandera("SHELL_CASTILLO_AL_PANO", true)
+                    ? _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100
+                    : 0);
 
             if (deShell > 0)
             {

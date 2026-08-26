@@ -586,7 +586,7 @@ public sealed class ConfigPlano
         // dos burbujas y dos cotas pisándose. 0 = no se une nada.
         P("EJES_UNIR_TOL_CM", "1",
           "<<< DOS EJES A MENOS DE ESTO SON EL MISMO: SE DIBUJA UNA SOLA LINEA (0 = no unir)"),
-        P("ROTULO_SEPARACION_EJES", "5", "AIRE ENTRE LOS EJES DE ABAJO Y EL ROTULO (m)"),
+        P("ROTULO_SEPARACION_EJES", "0.5", "AIRE ENTRE LOS EJES DE ABAJO Y EL ROTULO (m)"),
         P("PANO_ALARGAR_MAX_CM", "150", "<<< CUANTO SE ALARGA LA VIGA QUE QUEDO CORTA EN EL MODELO (1.50 m)"),
         P("PANO_BUSCA_CM", "150", "<<< Radio de busqueda del elemento al que hay que llegar (1.50 m)"),
 
@@ -719,6 +719,8 @@ public sealed class ConfigPlano
           "SI = dibujar el castillo de area que cruza el nivel aunque sea de otro story"),
         P("SHELL_CASTILLO_PREFIJO", "K",
           "Con que se nombra el castillo de area: K da «K 15X23.5»"),
+        P("SHELL_CASTILLO_AL_PANO", "SI",
+          "SI = alargarlo hasta el pano del muro con el que se cruza"),
         P("DIBUJAR_EJES", "SI", "Dibujar la cuadricula con burbujas"),
         P("LINETYPE_EJES", "DASHDOT", "Tipo de linea de la capa E-EJES"),
         P("EJES_ESCALA_TIPOLINEA", "1", "LinetypeScale de las lineas de eje (1 = no tocar)"),

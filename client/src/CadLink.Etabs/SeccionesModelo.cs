@@ -352,6 +352,11 @@ public static class SeccionesModelo
             ("CONTRATRABE", "CONTRATRABE"),
             ("CASTILLO", "CASTILLO"),
 
+            // EL CABEZAL, que se pidió que se lea igual que los demás. Va ANTES que TRABE y que
+            // VIGA: una nota que diga «CABEZAL DE TRABE» es un cabezal, no una trabe. Y no
+            // choca con ninguna otra palabra de la lista, así que aquí no estorba a nadie.
+            ("CABEZAL", "CABEZAL"),
+
             // LAS TRES CADENAS, CADA UNA CON SU NOMBRE. Se pidió que salgan las de
             // CERRAMIENTO, las de DESPLANTE y las INTERMEDIAS, y son tres cosas distintas en
             // obra: la de desplante va sobre la cimentación, la intermedia a media altura del

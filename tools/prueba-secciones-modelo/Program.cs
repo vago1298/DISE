@@ -319,6 +319,13 @@ Igual("CASTILLO en las notas manda", "CASTILLO",
 Igual("COLUMNA en las notas manda", "COLUMNA",
       SeccionesModelo.TipoDeLasNotas("columna de concreto"));
 Igual("TRABE en las notas manda", "TRABE", SeccionesModelo.TipoDeLasNotas("TRABE"));
+// EL CABEZAL, que se pidio leer igual que los demas. Va ANTES que TRABE y que VIGA en la lista:
+// una nota que diga «CABEZAL DE TRABE» es un cabezal, no una trabe.
+Igual("CABEZAL en las notas sale como CABEZAL", "CABEZAL",
+      SeccionesModelo.TipoDeLasNotas("CABEZAL"));
+Igual("en minusculas igual", "CABEZAL", SeccionesModelo.TipoDeLasNotas("cabezal de concreto"));
+Igual("y manda sobre TRABE si estan las dos", "CABEZAL",
+      SeccionesModelo.TipoDeLasNotas("CABEZAL DE TRABE"));
 // LAS TRES CADENAS, CADA UNA CON SU NOMBRE: son tres cosas distintas en obra -la de
 // desplante va sobre la cimentacion, la intermedia a media altura del muro y la de
 // cerramiento arriba- y fundirlas en «DALA» es perder el dato que las distingue.
