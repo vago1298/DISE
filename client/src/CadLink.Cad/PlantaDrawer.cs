@@ -121,6 +121,27 @@ public sealed partial class PlantaDrawer
     private readonly List<string> _log = new();
     private readonly List<string> _notas = new();
 
+    /// <summary>
+    /// Las cadenas que <b>no</b> se dibujan porque otra más alta va sobre su misma línea.
+    /// </summary>
+    /// <remarks>
+    /// Se calcula una vez por planta, antes de dibujar las barras, y lo miran <b>dos</b> sitios:
+    /// la geometría y el <b>rótulo</b>. Si solo lo mirara la geometría, la cadena intermedia no
+    /// se dibujaría pero su nombre seguiría escrito en el mismo punto que el de la de arriba,
+    /// que es la mitad de lo que se pidió arreglar.
+    /// </remarks>
+    private HashSet<ElementoPlanta> _cadenasTapadas = new();
+
+    /// <summary>
+    /// Los castillos que vinieron de un <b>área</b>, para no rotular la cadena encima de ellos.
+    /// </summary>
+    /// <remarks>
+    /// Se guardan aquí porque quien rotula ve <b>un</b> elemento y no la planta entera, y para
+    /// esta pregunta hace falta mirar a los vecinos. Se llena después de convertir los shells,
+    /// que es cuando existen.
+    /// </remarks>
+    private List<ElementoPlanta> _castillosDeArea = new();
+
     public PlantaDrawer(dynamic doc)
     {
         _doc = doc;
@@ -179,6 +200,8 @@ public sealed partial class PlantaDrawer
         // Cada planta tiene sus ejes: si se quedara el de la anterior, el rótulo de esta se
         // colgaría de una cuadrícula que está en otro sitio del dibujo.
         _abajoDeLosEjes = null;
+        _cadenasTapadas = new HashSet<ElementoPlanta>();
+        _castillosDeArea = new List<ElementoPlanta>();
 
         AsegurarCapas();
         AsegurarEstiloTexto();
@@ -217,6 +240,8 @@ public sealed partial class PlantaDrawer
                 _cfg.Bandera("SHELL_CASTILLO_AL_PANO", true)
                     ? _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100
                     : 0);
+
+            _castillosDeArea = p.Elementos.Where(e => e.DeShell).ToList();
 
             if (deShell > 0)
             {
@@ -345,8 +370,37 @@ public sealed partial class PlantaDrawer
             }
         }
 
+        // ==============================================================================
+        //  DE VARIAS CADENAS EN LA MISMA LÍNEA, SOLO LA MÁS ALTA
+        // ==============================================================================
+        //  Se pidió: «si hay cadena intermedia abajo no lo muestres en planta; en planta solo
+        //  muestra la cadena más alta que exista, solo dibuja una». Un muro de mampostería lleva
+        //  tres cadenas sobre el mismo paño —desplante, intermedia y cerramiento—, las tres son
+        //  del mismo nivel y las tres ocupan LA MISMA LÍNEA en planta: se dibujaban las tres,
+        //  una encima de la otra, con tres rótulos pisándose. Y en una planta no hay forma de
+        //  distinguirlas, porque una planta no tiene alturas.
+        //
+        //  Se dibuja la de arriba, que es la que se ve al mirar el piso desde arriba.
+        _cadenasTapadas = _cfg.Bandera("CADENA_SOLO_LA_MAS_ALTA", true)
+            ? PlanoEstructural.CadenaMasAlta.Tapadas(p.Elementos, tolCadena)
+            : new HashSet<ElementoPlanta>();
+
+        if (_cadenasTapadas.Count > 0)
+        {
+            Nota($"{_cadenasTapadas.Count} cadena(s) no se dibujaron: sobre su misma línea va " +
+                 "otra más alta, y en planta las dos son la misma raya. Se dibuja la de arriba.");
+        }
+
         foreach (var el in p.Elementos.Where(e => e.Clase == ClasePlanta.Trabe))
         {
+            // LA QUE TIENE OTRA MÁS ALTA ENCIMA NO SE DIBUJA, pero cuenta en el resumen: está
+            // en el modelo, y el resumen dice lo que hay, no lo que se pintó.
+            if (_cadenasTapadas.Contains(el))
+            {
+                r.Trabes++;
+                continue;
+            }
+
             // LA CADENA SIN MURO DE PISO A TECHO VA CON OTRA LÍNEA. Es MarcarCadenasSinMuro:
             // una cadena de cerramiento que no lleva su muro completo debajo se marca con
             // ACAD_ISO02W100 para que se vea de un golpe; con muro completo, línea normal.
@@ -1798,6 +1852,31 @@ public sealed partial class PlantaDrawer
         }
 
         var (cx, cy) = CentroDe(el, x0, y0);
+
+        // ==============================================================================
+        //  LA CADENA QUE NO SE DIBUJÓ TAMPOCO SE ROTULA
+        // ==============================================================================
+        //  Si no, la intermedia desaparecería del dibujo pero su nombre seguiría escrito en el
+        //  mismo punto que el de la cadena de arriba, y el rótulo doble era la mitad del
+        //  problema.
+        if (_cadenasTapadas.Contains(el))
+        {
+            return;
+        }
+
+        // ==============================================================================
+        //  Y ENCIMA DE UN CASTILLO DE ÁREA NO VA EL NOMBRE DE LA CADENA
+        // ==============================================================================
+        //  Se pidió. La cadena que muere en un castillo de área es corta —a veces mide lo que el
+        //  castillo—, y su rótulo va al CENTRO de la barra: ese centro cae dentro del castillo,
+        //  así que el nombre de la cadena acababa escrito sobre el amarillo y encima del rótulo
+        //  del propio castillo, que es el que dice lo que hay que construir ahí.
+        if (el.Clase == ClasePlanta.Trabe
+            && !_cfg.Bandera("CADENA_ROTULO_EN_CASTILLO_AREA", false)
+            && PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaEn(cx, cy, _castillosDeArea))
+        {
+            return;
+        }
 
         // ---- COLUMNA Y CASTILLO: esquina superior derecha ---------------------------
         //  Con el estilo TEXTO_SECCIONES y anclado por su esquina INFERIOR IZQUIERDA

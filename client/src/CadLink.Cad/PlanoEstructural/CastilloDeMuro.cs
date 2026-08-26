@@ -140,6 +140,10 @@ public static class CastilloDeMuro
             Tipo = Palabra,
             Forma = "RECT",
 
+            // DE ÁREA: lo usan su nombre —que es su medida— y el rótulo de la cadena, que no se
+            // escribe encima de él.
+            DeShell = true,
+
             // DE SHELL: es lo que hace que el bloque lleve las medidas en el nombre. La
             // sección de un shell es la propiedad del MURO —solo fija el espesor— y el largo
             // lo pone cada castillo, así que con el nombre de la sección a secas todos se
@@ -407,6 +411,67 @@ public static class CastilloDeMuro
             Z1 = piezas.Min(x => Math.Min(x.Z1, x.Z2)),
             Z2 = piezas.Max(x => Math.Max(x.Z1, x.Z2))
         };
+    }
+
+    /// <summary>
+    /// ¿Cae este punto <b>dentro</b> de un castillo de área?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sirve para lo que se pidió: «cuando tenga un área sea castillo, no coloques el nombre de
+    /// la cadena». La cadena que muere en el castillo es corta —a veces mide lo que el castillo—
+    /// y su rótulo va al <b>centro</b> de la barra, así que ese centro cae dentro del castillo y
+    /// el nombre de la cadena acababa escrito sobre el amarillo, encima del rótulo del propio
+    /// castillo.
+    /// </para>
+    /// <para>
+    /// Se mide contra la sección <b>ya girada</b>, deshaciendo su giro, que es la misma cuenta
+    /// con la que se recorta un muro en el paño de su apoyo: en un castillo a 30° la caja recta
+    /// diría que sí donde no lo hay.
+    /// </para>
+    /// </remarks>
+    public static bool HayCastilloDeAreaEn(
+        double x, double y, IEnumerable<ElementoPlanta>? elementos)
+    {
+        if (elementos is null)
+        {
+            return false;
+        }
+
+        foreach (var el in elementos)
+        {
+            if (!el.DeShell || el.Clase != ClasePlanta.Columna)
+            {
+                continue;
+            }
+
+            var b = el.AnchoM;
+            var h = el.PeralteM;
+
+            if (b <= Nada || h <= Nada)
+            {
+                continue;
+            }
+
+            // Al sistema de la sección: se deshace su giro y así se compara con un rectángulo
+            // recto, que es lo único que hay que saber comparar.
+            var a = el.AnguloGrados * Math.PI / 180;
+            var ca = Math.Cos(a);
+            var sa = Math.Sin(a);
+
+            var rx = x - el.X1;
+            var ry = y - el.Y1;
+
+            var lx = (rx * ca) + (ry * sa);
+            var ly = (-rx * sa) + (ry * ca);
+
+            if (Math.Abs(lx) <= b / 2 && Math.Abs(ly) <= h / 2)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

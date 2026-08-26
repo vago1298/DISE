@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y dos renglones añadidos",
-          cfgp.count("        P(") == 302
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y cuatro renglones añadidos",
+          cfgp.count("        P(") == 304
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "302, ConfigPlano.PorOmision.Count" in pr
+          and "304, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4959,6 +4959,7 @@ def v18_planta_autocad() -> None:
     cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
     macp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
     rot = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/RotuloPlanta.cs"))
+    dtop2 = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
 
     check("el shell de muro que dice CASTILLO se convierte en castillo",
           "public static bool Dice(ElementoPlanta? el)" in cdm

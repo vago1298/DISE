@@ -78,8 +78,10 @@ var cfg = new ConfigPlano();
 //   SHELL_CASTILLO_DE_OTRO_NIVEL    y el que cruza el nivel se dibuja aunque sea de otro story
 //   SHELL_CASTILLO_PREFIJO          y se nombra con su medida: «K 15X23.5»
 //   SHELL_CASTILLO_AL_PANO          y se alarga hasta el pano del muro con el que se cruza
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y dos que se añadieron",
-      302, ConfigPlano.PorOmision.Count);
+//   CADENA_SOLO_LA_MAS_ALTA         de varias cadenas en la misma linea, en planta solo una
+//   CADENA_ROTULO_EN_CASTILLO_AREA  y su nombre no va encima de un castillo de area
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y cuatro que se añadieron",
+      304, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -248,6 +250,12 @@ Igual("el castillo de area se nombra con K", "K", cfg.Texto("SHELL_CASTILLO_PREF
 // media pared, como cortado.
 Check("y se alarga hasta el pano del muro", cfg.Bandera("SHELL_CASTILLO_AL_PANO", false));
 
+// LAS CADENAS: en planta solo la mas alta, y su nombre no va encima de un castillo de area.
+Check("en planta solo se dibuja la cadena mas alta",
+      cfg.Bandera("CADENA_SOLO_LA_MAS_ALTA", false));
+Check("y su nombre no va encima de un castillo de area",
+      !cfg.Bandera("CADENA_ROTULO_EN_CASTILLO_AREA", true));
+
 // EL ROTULO DE LA PLANTA, A -0.50 DE LOS EJES, como en la hoja de la macro. Se probo con 5 y se
 // pidio volver: lo que estaba mal no era la distancia, sino DESDE DONDE se medía -desde la caja
 // de los elementos en lugar de desde los ejes-, que es lo que los dejaba escalonados.
@@ -258,7 +266,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 302 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 304 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

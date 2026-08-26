@@ -1852,6 +1852,133 @@ var sinPanoLista = new List<ElementoPlanta>
 CastilloDeMuro.Normalizar(sinPanoLista, 0.15, 0.02, "K", 0);
 Cerca("y apagado se queda con su medida de modelo", 0.235, sinPanoLista[0].AnchoM);
 
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" DE VARIAS CADENAS EN LA MISMA LINEA, SOLO LA MAS ALTA");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «si hay cadena intermedia abajo no lo muestres en planta, en planta solo muestra la
+// cadena mas alta que exista, solo dibuja una». Un muro de mamposteria lleva TRES cadenas sobre
+// el mismo paño -desplante abajo, intermedia a media altura y cerramiento arriba-: las tres son
+// del mismo nivel y las tres ocupan LA MISMA LINEA en planta, asi que se dibujaban las tres, una
+// encima de la otra, con tres rotulos pisandose. Y en una planta no hay forma de distinguirlas,
+// porque una planta no tiene alturas.
+ElementoPlanta CadenaEnLinea(string tipo, double z, double x1 = 0, double x2 = 4,
+                      double y = 0, double ancho = 0.15) =>
+    new()
+    {
+        Clase = ClasePlanta.Trabe, Tipo = tipo, Seccion = "CC 15X25",
+        X1 = x1, Y1 = y, X2 = x2, Y2 = y, Z1 = z, Z2 = z, AnchoM = ancho, PeralteM = 0.25
+    };
+
+var lasTres = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE DESPLANTE", 0),
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2),
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5)
+};
+
+var tapadas = CadenaMasAlta.Tapadas(lasTres, 0.10);
+
+Igual("de las tres cadenas del muro se callan dos", 2, tapadas.Count);
+Check("la de desplante no se dibuja", tapadas.Contains(lasTres[0]));
+Check("la intermedia tampoco", tapadas.Contains(lasTres[1]));
+Check("y la de cerramiento, que es la mas alta, si", !tapadas.Contains(lasTres[2]));
+
+// DOS TRAMOS SEGUIDOS del mismo paño NO se tapan: son dos cadenas distintas -una de castillo a
+// castillo y la siguiente de ahi al final- y las dos se dibujan.
+var dosTramos = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 0, x2: 4),
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 4, x2: 8)
+};
+Igual("dos tramos seguidos se dibujan los dos", 0, CadenaMasAlta.Tapadas(dosTramos, 0.10).Count);
+
+// DOS CADENAS EN PAREDES DISTINTAS tampoco: estan a metros una de otra.
+var dosParedes = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, y: 0),
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2, y: 3)
+};
+Igual("cadenas de paredes distintas no se tapan", 0,
+      CadenaMasAlta.Tapadas(dosParedes, 0.10).Count);
+
+// Y UNA CADENA QUE CRUZA no tapa a la que corre: no van en la misma direccion.
+var enCruzCadenas = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 0, x2: 4, y: 0),
+    new()
+    {
+        Clase = ClasePlanta.Trabe, Tipo = "CADENA INTERMEDIA", Seccion = "CC 15X25",
+        X1 = 2, Y1 = -2, X2 = 2, Y2 = 2, Z1 = 1.2, Z2 = 1.2, AnchoM = 0.15, PeralteM = 0.25
+    }
+};
+Igual("una cadena que cruza no tapa a la que corre", 0,
+      CadenaMasAlta.Tapadas(enCruzCadenas, 0.10).Count);
+
+// LAS TRABES NO ENTRAN, y es a proposito: dos trabes a distinta altura sobre la misma linea son
+// dos vigas de verdad -una de entrepiso y una de azotea- y callar una seria esconder estructura.
+Check("una trabe no es una cadena", !CadenaMasAlta.EsCadena(CadenaEnLinea("TRABE", 2.5)));
+Check("una dala si", CadenaMasAlta.EsCadena(CadenaEnLinea("DALA", 2.5)));
+Check("y las tres cadenas tambien",
+      CadenaMasAlta.EsCadena(CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5))
+      && CadenaMasAlta.EsCadena(CadenaEnLinea("CADENA INTERMEDIA", 1.2))
+      && CadenaMasAlta.EsCadena(CadenaEnLinea("CADENA DE DESPLANTE", 0)));
+
+var dosTrabes = new List<ElementoPlanta> { CadenaEnLinea("TRABE", 2.5), CadenaEnLinea("TRABE", 5) };
+Igual("dos trabes encimadas se dibujan las dos", 0,
+      CadenaMasAlta.Tapadas(dosTrabes, 0.10).Count);
+
+// A LA MISMA ALTURA se queda la PRIMERA, siempre la misma: si dependiera del orden de recorrido,
+// dibujar dos veces la planta podria callar una distinta y el plano cambiaria sin motivo.
+var mismaAltura = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5),
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5)
+};
+var tapadasIguales = CadenaMasAlta.Tapadas(mismaAltura, 0.10);
+Igual("de dos cadenas iguales encimadas se calla una", 1, tapadasIguales.Count);
+Check("y la que se queda es la primera", tapadasIguales.Contains(mismaAltura[1]));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL NOMBRE DE LA CADENA NO VA ENCIMA DE UN CASTILLO DE AREA");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «cuando tenga un area sea castillo, no coloques el nombre de la cadena». La cadena
+// que muere en un castillo de area es corta -a veces mide lo que el castillo- y su rotulo va al
+// CENTRO de la barra: ese centro cae DENTRO del castillo, asi que el nombre de la cadena acababa
+// escrito sobre el amarillo y encima del rotulo del propio castillo.
+var castilloDeArea = new List<ElementoPlanta> { PanelCastillo(5, 0, 5, 0.20, 0, 2.5) };
+CastilloDeMuro.Normalizar(castilloDeArea, 0.15);
+
+Check("el castillo de area queda marcado como tal", castilloDeArea[0].DeShell);
+Check("y un punto en su centro cae dentro",
+      CastilloDeMuro.HayCastilloDeAreaEn(5, 0.10, castilloDeArea));
+Check("uno a medio metro, no",
+      !CastilloDeMuro.HayCastilloDeAreaEn(5.5, 0.10, castilloDeArea));
+
+// UN CASTILLO DE FRAME NO CUENTA: ahi el nombre de la cadena nunca ha estorbado, y callarlo
+// seria quitar un dato que si se lee.
+var deFrame = new List<ElementoPlanta>
+{
+    new()
+    {
+        Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Seccion = "K 15X15",
+        X1 = 5, Y1 = 0.10, X2 = 5, Y2 = 0.10, AnchoM = 0.15, PeralteM = 0.15
+    }
+};
+Check("un castillo de frame no calla a nadie",
+      !CastilloDeMuro.HayCastilloDeAreaEn(5, 0.10, deFrame));
+
+// Y EL GIRO CUENTA: en un castillo a 45 grados la caja recta diria que si donde no lo hay.
+var giradoArea = new List<ElementoPlanta> { PanelCastillo(0, 0, 0.60, 0.60, 0, 2.5) };
+CastilloDeMuro.Normalizar(giradoArea, 0.15);
+Check("el centro del castillo girado cae dentro",
+      CastilloDeMuro.HayCastilloDeAreaEn(0.30, 0.30, giradoArea));
+Check("y su esquina recta, fuera",
+      !CastilloDeMuro.HayCastilloDeAreaEn(0.60, 0.05, giradoArea));
+
 // EL ALTO DEL AREA, QUE ES LO QUE LO HACIA DESAPARECER DEL CORTE. Las cotas de un muro salian
 // de los dos vertices MAS SEPARADOS EN PLANTA, y esos pueden ser los dos de ABAJO -depende del
 // orden en que ETABS devuelva las esquinas-: entonces Z1 y Z2 valian LO MISMO, el alto era

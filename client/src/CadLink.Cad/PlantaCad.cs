@@ -126,6 +126,27 @@ public sealed class ElementoPlanta
     /// </remarks>
     public bool MuroDePisoATecho { get; set; }
 
+    /// <summary>
+    /// Este castillo se modeló como <b>área</b> —shell de muro—, no como frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hace falta saberlo para dos cosas que se pidieron, y las dos se ven en el plano:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     Su <b>nombre</b> es su medida —«K 15X23.5»— porque la sección de un área es la
+    ///     propiedad del muro y no dice nada de este castillo.
+    ///   </item>
+    ///   <item>
+    ///     Encima de él <b>no se rotula la cadena</b>: la cadena que muere ahí es corta, su
+    ///     rótulo cae en el centro y ese centro queda dentro del castillo, así que el nombre de
+    ///     la cadena salía escrito sobre el amarillo.
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    public bool DeShell { get; set; }
+
     /// <summary>Espesor de la <b>pared</b> del cajón o del tubo, en metros.</summary>
     /// <remarks>
     /// Es lo que le da su hueco: un cajón dibujado macizo parece una placa, y en un plano
