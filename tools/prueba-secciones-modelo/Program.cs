@@ -414,6 +414,49 @@ Cerca("y el eje 3 al -X", -1, g3[0], 1e-12);
 
 // ---- LOS OFFSETS DE NUDO, que es lo que trae el modelo ---------------------------
 // El caso de la pantalla: offsets en el eje 3 de -0.025 en los dos extremos, en LOCALES.
+// EL MOVIMIENTO CON SU Z, que es lo que se ve en la vista extruida. El punto cardinal de una
+// trabe es casi siempre el 8 -arriba al centro-: su CARA DE ARRIBA va a la cota de la linea, asi
+// que el centro de la seccion BAJA medio peralte y la trabe cuelga del piso. Dibujandola centrada,
+// medio peralte quedaba POR ENCIMA de la losa.
+var (_, _, dzArriba) = PuntoDeInsercion.Movimiento(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0, 0 }, enLocales: true,
+    puntoCardinal: 8, dim2: 0.40, dim3: 0.20);
+
+Cerca("con el punto 8 la trabe de 40 baja 20 cm", -0.20, dzArriba);
+
+// Con el centroide no se mueve nada: es el de omision.
+var (_, _, dzCentro) = PuntoDeInsercion.Movimiento(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0, 0 }, enLocales: true,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.40, dim3: 0.20);
+
+Cerca("y con el centroide se queda donde esta", 0, dzCentro);
+
+// El punto 2 -abajo al centro- la sube: la cara de abajo queda en la linea.
+var (_, _, dzAbajo) = PuntoDeInsercion.Movimiento(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0, 0 }, enLocales: true,
+    puntoCardinal: 2, dim2: 0.40, dim3: 0.20);
+
+Cerca("con el punto 2 sube 20 cm", 0.20, dzAbajo);
+
+// Y en una COLUMNA el eje 2 es horizontal, asi que el punto cardinal no la mueve en Z.
+var (_, _, dzColumna) = PuntoDeInsercion.Movimiento(
+    vertical: true, ux: 0, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, 0, 0 }, enLocales: true,
+    puntoCardinal: 8, dim2: 0.60, dim3: 0.20);
+
+Cerca("en una columna el punto cardinal no mueve la Z", 0, dzColumna);
+
+// Un offset de nudo en Z SI la mueve, y llega en la tercera componente.
+var (_, _, dzOffset) = PuntoDeInsercion.Movimiento(
+    vertical: false, ux: 1, uy: 0, anguloGrados: 0,
+    offset: new[] { 0d, -0.05, 0 }, enLocales: true,
+    puntoCardinal: PuntoDeInsercion.Centroide, dim2: 0.40, dim3: 0.20);
+
+Cerca("y el offset del nudo en el eje 2 baja lo suyo", -0.05, dzOffset);
+
 var (dxTrabe, dyTrabe) = PuntoDeInsercion.EnPlanta(
     vertical: false, ux: 1, uy: 0, anguloGrados: 0,
     offset: new[] { 0d, 0d, -0.025 }, enLocales: true,

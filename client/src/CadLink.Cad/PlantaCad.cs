@@ -252,6 +252,24 @@ public sealed class PlantaCad
     public List<ElementoPlanta> Elementos { get; } = new();
 
     /// <summary>
+    /// <b>Solo la cuadrícula</b>: los ejes, sus burbujas y sus cotas, sin los elementos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «la opción de solo dibujar ejes y cortes sin hacer todo el dibujo de planos». Y
+    /// se entiende para qué sirve: montar la cuadrícula sobre un plano de arquitectura que ya
+    /// existe, o replantear en obra con las cotas de los ejes y nada más. Dibujar la estructura
+    /// entera para luego borrarla es trabajo tirado y una ocasión de borrar de más.
+    /// </para>
+    /// <para>
+    /// Los elementos <b>siguen llegando</b> en <see cref="Elementos"/> y eso es a propósito: de
+    /// ellos sale el rectángulo que los ejes tienen que cubrir y el paño al que se corren los de
+    /// orilla. Lo que no se hace es <b>dibujarlos</b>.
+    /// </para>
+    /// </remarks>
+    public bool SoloEjes { get; set; }
+
+    /// <summary>
     /// Altura del texto de los rótulos, en metros de papel.
     /// </summary>
     /// <remarks>

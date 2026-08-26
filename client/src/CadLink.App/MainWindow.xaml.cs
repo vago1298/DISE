@@ -1358,71 +1358,163 @@ public partial class MainWindow : Window
             return 0;
         }
 
+        var ejesModelo = _modeloEtabs.Ejes ?? EjesModelo.DesdeGeometria(_modeloEtabs);
+
+        var ejesX = ejesModelo.X.Select(e => (e.Id, e.Ordenada)).ToList();
+        var ejesY = ejesModelo.Y.Select(e => (e.Id, e.Ordenada)).ToList();
+
         // ==============================================================================
-        //  SIN EJE ELEGIDO NO HAY CORTE, Y SE DICE
+        //  QUÉ CORTES SE PIDEN: EL DE LA LISTA, Y LOS QUE SE ESCRIBAN
+        // ==============================================================================
+        //  Se pidió poder cortar DONDE SEA —aunque la cuadrícula de ETABS o de SAP2000 no tenga
+        //  un eje ahí— y poder pedir VARIOS de golpe. En el campo se escriben nombres de eje y
+        //  valores con su dirección, mezclados: «A, C, 3, X=4.25». Lo que caiga sobre un eje se
+        //  rotula con el nombre de ese eje, para que el corte se pueda comparar con la planta.
+        var pedido = CadLink.Cad.PlanoEstructural.CortesPedidos.Interpretar(
+            CortesVariosTxt?.Text, null, null, ejesX, ejesY);
+
+        var cortes = pedido.Cortes.ToList();
+
+        // Y EL DE LA LISTA, si no se escribió nada: es lo de siempre, y sigue funcionando igual
+        // para quien solo quiere un corte.
+        if (cortes.Count == 0 && _vista.CorteEje.Length > 0)
+        {
+            cortes.Add(new CadLink.Cad.PlanoEstructural.CortesPedidos.Peticion(
+                _vista.CorteEje, _vista.CorteEnX, _vista.CorteOrdenada, false));
+        }
+
+        // LO QUE NO SE ENTENDIÓ SE DICE, no se traga: un eje mal escrito tiene que poder
+        // contarse, porque desde fuera «no salió» es indistinguible de «falló».
+        if (pedido.NoReconocidos.Count > 0)
+        {
+            MostrarNotas(
+                "No reconocí esto del campo de cortes: " +
+                string.Join(", ", pedido.NoReconocidos) +
+                ". Se admiten nombres de eje —A, C, 3— y valores con su dirección —X=4.25, " +
+                "Y=2.10—, separados por comas.");
+        }
+
+        // ==============================================================================
+        //  SIN CORTE PEDIDO NO HAY CORTE, Y SE DICE
         // ==============================================================================
         //  Antes se salía en silencio, y desde fuera eso es indistinguible de que el corte
         //  falle: se pulsa «Dibujar en AutoCAD», no aparece ningún corte y no hay manera de
         //  saber si es que no se pidió o si es que algo se rompió.
-        if (_vista.CorteEje.Length == 0)
+        if (cortes.Count == 0)
         {
             MostrarNotas(
-                "No se dibujó ningún corte porque no hay eje elegido. Elígelo en «Corte por " +
-                "el eje», arriba de la vista, y vuelve a dibujar: el corte sale 10 unidades " +
-                "encima de las plantas.");
+                "No se dibujó ningún corte porque no se pidió ninguno. Elige un eje en " +
+                "«Corte por el eje» o escríbelos en el campo de al lado —A, C, X=4.25—, y " +
+                "vuelve a dibujar: los cortes salen 10 unidades encima de las plantas.");
 
             return 0;
         }
 
-        var c = new CorteCad
-        {
-            Eje = _vista.CorteEje,
-            EnX = _vista.CorteEnX,
-            Ordenada = _vista.CorteOrdenada,
-            EspesorM = CfgPlano.Numero("CORTE_ESPESOR_CM", 60) / 100,
-            Modelo = _modeloEtabs.Archivo,
-            AlturaTexto = 0.25
-        };
+        // ==============================================================================
+        //  Y SI SON VARIOS, UNO AL LADO DEL OTRO
+        // ==============================================================================
+        //  Cada corte ocupa lo que mide el edificio EN LA DIRECCIÓN QUE RECORRE —un corte en X
+        //  recorre la Y—, así que el siguiente se corre eso más la separación de la hoja. Sin
+        //  esto, los cortes saldrían todos en el mismo sitio, encimados, que es peor que no
+        //  dibujarlos.
+        var (anchoEnX, anchoEnY) = MedidasDelModelo();
+        var separacion = CfgPlano.Numero("CORTE_SEPARACION_M", 10);
 
-        // TODOS los niveles: es un corte, no una planta.
+        var total = 0;
+        double dx = 0;
+
+        foreach (var q in cortes)
+        {
+            var c = new CorteCad
+            {
+                Eje = q.Id,
+                EnX = q.EnX,
+                Ordenada = q.Ordenada,
+                EspesorM = CfgPlano.Numero("CORTE_ESPESOR_CM", 60) / 100,
+                Modelo = _modeloEtabs.Archivo,
+                AlturaTexto = 0.25
+            };
+
+            // TODOS los niveles: es un corte, no una planta.
+            foreach (var el in _modeloEtabs.Elementos)
+            {
+                c.Elementos.Add(ComoElementoDePlanta(el, _modeloEtabs));
+            }
+
+            foreach (var n in _modeloEtabs.NivelesConElementos())
+            {
+                c.Niveles.Add((n.Nombre, n.ElevacionM));
+            }
+
+            // ==========================================================================
+            //  LOS EJES QUE SE VEN EN EL CORTE
+            // ==========================================================================
+            //  Los PERPENDICULARES al del corte: en un corte por un eje de los que van en X se
+            //  recorre la Y, así que los que se cruzan —y los que hay que acotar— son los de la
+            //  Y. Son los mismos ejes de la planta, sin repetidos, así que las cotas del corte y
+            //  las de la planta se pueden comparar eje por eje: si no cuadran, hay algo mal en
+            //  uno de los dos y se ve al momento.
+            foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                         (q.EnX ? ejesY : ejesX).Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
+            {
+                c.Ejes.Add((e.Id, e.Ordenada));
+            }
+
+            try
+            {
+                total += dibujante.DibujarCorte(c, dx, 0);
+            }
+            catch (Exception ex)
+            {
+                // Que falle un corte no puede tirar el plano, que ya está dibujado, ni impedir
+                // que se dibujen los demás cortes.
+                MostrarNotas($"El corte {q.Id} no se pudo dibujar: {ex.Message}");
+            }
+
+            dx += (q.EnX ? anchoEnY : anchoEnX) + separacion;
+        }
+
+        var propuestos = cortes.Where(x => x.Propuesto).Select(x => x.Id).ToList();
+
+        if (propuestos.Count > 0)
+        {
+            MostrarNotas(
+                $"{propuestos.Count} corte(s) no caen sobre ningún eje de la cuadrícula, así " +
+                "que van rotulados con su sitio: " + string.Join(", ", propuestos) + ".");
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Cuánto mide el modelo en X y en Y, para repartir varios cortes sin encimarlos.
+    /// </summary>
+    private (double EnX, double EnY) MedidasDelModelo()
+    {
+        if (_modeloEtabs is null || _modeloEtabs.Elementos.Count == 0)
+        {
+            return (10, 10);
+        }
+
+        var xMin = double.MaxValue;
+        var xMax = double.MinValue;
+        var yMin = double.MaxValue;
+        var yMax = double.MinValue;
+
         foreach (var el in _modeloEtabs.Elementos)
         {
-            c.Elementos.Add(ComoElementoDePlanta(el, _modeloEtabs));
+            foreach (var (x, y) in new[] { (el.X1, el.Y1), (el.X2, el.Y2) })
+            {
+                xMin = Math.Min(xMin, x);
+                xMax = Math.Max(xMax, x);
+                yMin = Math.Min(yMin, y);
+                yMax = Math.Max(yMax, y);
+            }
         }
 
-        foreach (var n in _modeloEtabs.NivelesConElementos())
-        {
-            c.Niveles.Add((n.Nombre, n.ElevacionM));
-        }
-
-        // ==============================================================================
-        //  LOS EJES QUE SE VEN EN EL CORTE
-        // ==============================================================================
-        //  Los PERPENDICULARES al del corte: en un corte por un eje de los que van en X se
-        //  recorre la Y, así que los que se cruzan —y los que hay que acotar— son los de la Y.
-        //  Son los mismos ejes de la planta, sin repetidos, así que las cotas del corte y las
-        //  de la planta se pueden comparar eje por eje: si no cuadran, hay algo mal en uno de
-        //  los dos y se ve al momento.
-        var ejesModelo = _modeloEtabs.Ejes ?? EjesModelo.DesdeGeometria(_modeloEtabs);
-
-        var delCorte = _vista.CorteEnX ? ejesModelo.Y : ejesModelo.X;
-
-        foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
-                     delCorte.Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
-        {
-            c.Ejes.Add((e.Id, e.Ordenada));
-        }
-
-        try
-        {
-            return dibujante.DibujarCorte(c, 0, 0);
-        }
-        catch (Exception ex)
-        {
-            // Que falle el corte no puede tirar el plano, que ya está dibujado.
-            MostrarNotas($"La planta se dibujó, pero el corte no: {ex.Message}");
-            return 0;
-        }
+        // Un modelo de un solo punto no tiene medidas: se le da algo para que la separación
+        // entre cortes siga teniendo sentido.
+        return (Math.Max(xMax - xMin, 1), Math.Max(yMax - yMin, 1));
     }
 
     // ======================================================================
@@ -2220,6 +2312,18 @@ public partial class MainWindow : Window
             ? new List<PlantaCad> { ArmarPlanta(_modeloEtabs) }
             : ArmarTodasLasPlantas(_modeloEtabs);
 
+        // SOLO LA CUADRÍCULA, SI SE PIDIÓ: los ejes con sus burbujas y sus cotas, y los cortes,
+        // sin los elementos. Los elementos siguen dentro de cada planta porque de ellos salen el
+        // rectángulo que los ejes cubren y el paño al que se corren los de orilla: así la
+        // cuadrícula cae en el MISMO sitio que caería con la planta dibujada, y la estructura se
+        // puede dibujar después encima sin que nada se mueva.
+        var soloEjes = SoloEjesCortesChk?.IsChecked == true;
+
+        foreach (var p in plantas)
+        {
+            p.SoloEjes = soloEjes;
+        }
+
         if (plantas.Sum(p => p.Elementos.Count) == 0)
         {
             MessageBox.Show(
@@ -2259,11 +2363,15 @@ public partial class MainWindow : Window
                 ? $"del nivel {(string.IsNullOrWhiteSpace(plantas[0].Nivel) ? "(todos)" : plantas[0].Nivel)}"
                 : $"en {plantas.Count} plantas ({string.Join(", ", plantas.Select(p => p.Nivel))})";
 
-            StatusText.Text = $"Dibujado en AutoCAD: {r.Total} elemento(s) {cuales}" +
-                              (piezasDelCorte > 0
-                                  ? $", y el corte por el eje {_vista.CorteEje} " +
-                                    $"con {piezasDelCorte} pieza(s)."
-                                  : ".");
+            // Con varios cortes ya no se puede nombrar «el» corte: se dicen las piezas, que es
+            // el dato que interesa —si son cero, algo no cuadró—.
+            StatusText.Text =
+                (soloEjes
+                    ? $"Dibujada en AutoCAD la CUADRÍCULA {cuales}, sin los elementos"
+                    : $"Dibujado en AutoCAD: {r.Total} elemento(s) {cuales}") +
+                (piezasDelCorte > 0
+                    ? $", y {piezasDelCorte} pieza(s) de corte."
+                    : ".");
 
             PlanoHintText.Text =
                 $"Última pasada: {r} en {plantas.Count} planta(s), de un jalón y repartidas " +

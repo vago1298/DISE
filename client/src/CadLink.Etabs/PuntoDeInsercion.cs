@@ -218,15 +218,46 @@ public static class PuntoDeInsercion
         int puntoCardinal, double dim2, double dim3,
         bool espejo2 = false, bool espejo3 = false)
     {
+        var (dx, dy, _) = Movimiento(
+            vertical, ux, uy, anguloGrados, offset, enLocales,
+            puntoCardinal, dim2, dim3, espejo2, espejo3);
+
+        return (dx, dy);
+    }
+
+    /// <summary>
+    /// Cuánto se mueve la pieza por su punto de inserción, en <b>globales y con la Z</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <see cref="EnPlanta"/> sin tirar la tercera componente, y la tercera es la que
+    /// <b>se ve en un dibujo con volumen</b>: el punto cardinal de una trabe es casi siempre el
+    /// <b>8 —arriba al centro—</b>, que es lo que hace que su <b>cara de arriba</b> quede a la
+    /// cota de la losa y la trabe cuelgue por debajo. Con el centroide, la trabe sale montada
+    /// medio peralte por encima del piso, que es lo que se veía en la vista extruida.
+    /// </para>
+    /// <para>
+    /// La Z se devuelve pero <b>no se aplica</b> a las cotas del elemento, y es a propósito:
+    /// mover la elevación de una trabe 20 cm podría cambiar el nivel al que se asigna, que es un
+    /// destrozo peor que el que se arregla. Quien dibuja volumen la usa; quien reparte por
+    /// niveles, no.
+    /// </para>
+    /// </remarks>
+    public static (double Dx, double Dy, double Dz) Movimiento(
+        bool vertical, double ux, double uy, double anguloGrados,
+        IReadOnlyList<double> offset, bool enLocales,
+        int puntoCardinal, double dim2, double dim3,
+        bool espejo2 = false, bool espejo3 = false)
+    {
         var (c2, c3) = PorPuntoCardinal(puntoCardinal, dim2, dim3, espejo2, espejo3);
 
         // El corrimiento del punto cardinal SIEMPRE va en ejes locales: es una medida de la
         // sección, no del modelo.
-        var (cx, cy, _) = AGlobales(
+        var (cx, cy, cz) = AGlobales(
             new[] { 0d, c2, c3 }, true, vertical, ux, uy, anguloGrados);
 
-        var (ox, oy, _) = AGlobales(offset, enLocales, vertical, ux, uy, anguloGrados);
+        var (ox, oy, oz) = AGlobales(offset, enLocales, vertical, ux, uy, anguloGrados);
 
-        return (cx + ox, cy + oy);
+        return (cx + ox, cy + oy, cz + oz);
     }
 }

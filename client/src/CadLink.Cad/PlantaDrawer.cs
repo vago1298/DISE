@@ -327,6 +327,36 @@ public sealed partial class PlantaDrawer
             }
         }
 
+        // ==============================================================================
+        //  SOLO LA CUADRÍCULA, SI ES LO QUE SE PIDIÓ
+        // ==============================================================================
+        //  Se pidió poder dibujar «solo ejes y cortes sin hacer todo el dibujo de planos», y se
+        //  entiende para qué: montar la cuadrícula sobre un plano de arquitectura que ya existe,
+        //  o replantear con las cotas de los ejes y nada más.
+        //
+        //  Se salta el dibujo de los ELEMENTOS y se va derecho a los ejes, que están más abajo.
+        //  Los elementos siguen contando para el rectángulo que los ejes cubren y para el paño al
+        //  que se corren los de orilla —esos cálculos ya están hechos, arriba—, así que la
+        //  cuadrícula sale EN EL MISMO SITIO que saldría con la planta entera dibujada. Eso es lo
+        //  que permite dibujar primero los ejes, revisarlos, y dibujar la estructura después
+        //  encima sin que nada se mueva.
+        if (p.SoloEjes)
+        {
+            var cajaSola = Envolvente(p);
+
+            DibujarEjesDeLaPlanta(
+                p, x0, y0, cajaSola.XMin, cajaSola.YMin, cajaSola.XMax, cajaSola.YMax);
+
+            RotuloDeLaPlanta(p, x0, y0, cajaSola.XMin, cajaSola.YMin, cajaSola.XMax);
+
+            Nota("Se dibujó SOLO la cuadrícula: los ejes con sus burbujas y sus cotas, sin los " +
+                 "elementos. La estructura se puede dibujar después encima y caerá en su sitio, " +
+                 "porque los ejes se colocan con las medidas de los elementos aunque no se " +
+                 "dibujen.");
+
+            return r;
+        }
+
         // Las losas PRIMERO, para que las trabes y las columnas queden encima. En
         // AutoCAD el orden de creación es el orden de dibujo, así que basta con
         // dibujarlas antes; no hace falta tocar el DrawOrder.

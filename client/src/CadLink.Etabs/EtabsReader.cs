@@ -843,11 +843,11 @@ public static class EtabsReader
         var dim2 = vertical ? e.AnchoM : e.PeralteM;    // t3
         var dim3 = vertical ? e.PeralteM : e.AnchoM;    // t2
 
-        var (dxi, dyi) = PuntoDeInsercion.EnPlanta(
+        var (dxi, dyi, dzi) = PuntoDeInsercion.Movimiento(
             vertical, e.X2 - e.X1, e.Y2 - e.Y1, e.AnguloGrados,
             offI, enLocales, punto, dim2, dim3, espejo2, espejo3);
 
-        var (dxj, dyj) = PuntoDeInsercion.EnPlanta(
+        var (dxj, dyj, dzj) = PuntoDeInsercion.Movimiento(
             vertical, e.X2 - e.X1, e.Y2 - e.Y1, e.AnguloGrados,
             offJ, enLocales, punto, dim2, dim3, espejo2, espejo3);
 
@@ -855,6 +855,12 @@ public static class EtabsReader
         e.MovidoYI = dyi;
         e.MovidoXJ = dxj;
         e.MovidoYJ = dyj;
+
+        // Y LA Z, que se guarda pero NO se aplica: la usa la vista extruida, donde el punto de
+        // inserción se ve —la trabe cuelga de la losa en lugar de montarse medio peralte encima—,
+        // y no se toca Z1/Z2 porque de la elevación depende el nivel al que se reparte la pieza.
+        e.MovidoZI = dzi;
+        e.MovidoZJ = dzj;
 
         if (!e.ConPuntoDeInsercion)
         {

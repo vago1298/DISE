@@ -1880,6 +1880,26 @@
                                 <ComboBox x:Name="CortePlanoCombo" Width="150"
                                           VerticalAlignment="Center"
                                           SelectionChanged="OnCorteEjeCambiado" />
+
+                                <!-- VARIOS CORTES, Y DONDE UNO QUIERA. Se pidio: poder cortar
+                                     aunque la cuadricula no tenga un eje ahi, diciendo en que
+                                     valor de X o de Y, y poder pedir varios de golpe. Un solo
+                                     campo lo resuelve: nombres de eje y valores con su
+                                     direccion, separados por comas. Lo que caiga sobre un eje
+                                     se rotula con el nombre de ese eje. -->
+                                <TextBlock Text="y ademas:" FontSize="11.5" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="12,0,6,0" />
+                                <TextBox x:Name="CortesVariosTxt" Width="190"
+                                         VerticalAlignment="Center"
+                                         ToolTip="Varios cortes de golpe: nombres de eje y valores donde quieras. Por ejemplo: A, C, 3, X=4.25, Y=2.10. Lo que caiga sobre un eje se rotula con su nombre; lo que no, se propone como X=4.25." />
+
+                                <!-- SOLO LA CUADRICULA: para montarla sobre un plano de
+                                     arquitectura que ya existe, o para replantear con las
+                                     cotas de los ejes y nada mas. Dibujar la estructura
+                                     entera para luego borrarla es trabajo tirado. -->
+                                <CheckBox x:Name="SoloEjesCortesChk" Content="Solo ejes y cortes"
+                                          VerticalAlignment="Center" Margin="12,0,0,0"
+                                          ToolTip="Dibuja la cuadricula -ejes, burbujas y cotas- y los cortes, sin los elementos. Los ejes caen en el mismo sitio que con la planta dibujada, asi que la estructura se puede dibujar despues encima." />
                             </StackPanel>
                         </Border>
 

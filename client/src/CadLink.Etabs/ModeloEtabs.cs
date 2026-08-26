@@ -140,6 +140,23 @@ public sealed class ElementoEtabs
     public double MovidoYJ { get; set; }
 
     /// <summary>¿Su punto de inserción lo movió algo en planta?</summary>
+    /// <summary>
+    /// Cuánto <b>baja o sube</b> la pieza por su punto de inserción, en los dos nudos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se guarda y <b>no se aplica</b> a <see cref="Z1"/> y <see cref="Z2"/>: mover la elevación
+    /// de una trabe podría cambiar el nivel al que se reparte, y eso rompería la planta entera.
+    /// Lo usa quien dibuja <b>volumen</b> —la vista extruida—, donde el punto de inserción sí se
+    /// ve: con el punto 8, arriba al centro, la cara de arriba de la trabe queda a la cota de la
+    /// losa y la trabe cuelga por debajo, como en ETABS.
+    /// </para>
+    /// </remarks>
+    public double MovidoZI { get; set; }
+
+    /// <summary>Ídem en el nudo J.</summary>
+    public double MovidoZJ { get; set; }
+
     public bool ConPuntoDeInsercion =>
         Math.Abs(MovidoXI) > 1e-9 || Math.Abs(MovidoYI) > 1e-9
         || Math.Abs(MovidoXJ) > 1e-9 || Math.Abs(MovidoYJ) > 1e-9;

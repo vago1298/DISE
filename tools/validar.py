@@ -4155,6 +4155,116 @@ def v18_planta_autocad() -> None:
           and "LosaEnPlanta.MedioApoyoEnBorde(" in dib)
 
     # ------------------------------------------------------------------
+    # EL PUNTO DE INSERCION EN LA VISTA EXTRUIDA
+    # ------------------------------------------------------------------
+    #  «Respeta los insertion point en la vista extruida: las trabes las inserta en su punto
+    #  centrico y esta mal, debe ser top center para que el paño coincida con el de la losa, asi
+    #  como en ETABS». El punto cardinal de una trabe es casi siempre el 8 -arriba al centro-: su
+    #  CARA DE ARRIBA va a la cota de la linea, asi que la trabe cuelga por debajo del piso.
+    #  Dibujandola centrada, medio peralte quedaba POR ENCIMA de la losa.
+    #
+    #  El movimiento en PLANTA ya se aplicaba; la Z no, y es la que se ve en un dibujo con
+    #  volumen. Se guarda aparte -MovidoZI/MovidoZJ- y NO se aplica a Z1/Z2 a proposito: de la
+    #  elevacion depende el nivel al que se reparte la pieza, y moverla romperia la planta.
+    pins = leer(ruta("client/src/CadLink.Etabs/PuntoDeInsercion.cs"))
+    dtos = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    extr = leer(ruta("client/src/CadLink.App/VistaModelo.Extruida.cs"))
+    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    dtop2 = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+    dibp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    winp = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+
+    check("el punto de insercion se calcula tambien en Z",
+          "public static (double Dx, double Dy, double Dz) Movimiento(" in pins
+          and "return (cx + ox, cy + oy, cz + oz);" in pins)
+    # EnPlanta se queda, y ahora tira de Movimiento: una sola cuenta, no dos que se separen.
+    check("y EnPlanta se apoya en ella, para no tener dos cuentas",
+          "var (dx, dy, _) = Movimiento(" in pins)
+    check("el elemento guarda su movimiento en Z sin aplicarlo",
+          "public double MovidoZI { get; set; }" in dtos
+          and "public double MovidoZJ { get; set; }" in dtos
+          and "e.MovidoZI = dzi;" in lector
+          and "e.MovidoZJ = dzj;" in lector)
+    # Y la Z NO se aplica a las cotas: solo la usa quien dibuja volumen.
+    check("y no se toca Z1 ni Z2 con ella",
+          "e.Z1 += dzi;" not in lector
+          and "e.Z2 += dzj;" not in lector)
+    check("la vista extruida lo usa, que es donde se ve",
+          "var bz = fin ? el.Z2 + el.MovidoZJ : el.Z1 + el.MovidoZI;" in extr)
+
+    # ------------------------------------------------------------------
+    # VARIOS CORTES, Y DONDE UNO QUIERA
+    # ------------------------------------------------------------------
+    #  «Agrega una opcion de realizar un corte en donde tu quieras si no lo trae los ejes de etabs
+    #  o sap, que tu coloques en que valor de X y Y lo quieres; si no encuentras el corte en los
+    #  ejes tu lo propones; igual que deje dibujar varios ejes o cortes al mismo tiempo».
+    #
+    #  Y una regla que evita el error mas facil: si el valor cae SOBRE un eje que existe, el corte
+    #  se queda con el NOMBRE de ese eje. Quien escribe «X=4.25» sin saber que ahi esta el eje C
+    #  obtiene el corte por C -rotulado C, comparable con la planta- y no uno con nombre inventado.
+    cop = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CortesPedidos.cs"))
+
+    check("se pueden pedir varios cortes, por su eje o por su valor",
+          "public static Resultado Interpretar(" in cop
+          and "public sealed record Peticion(string Id, bool EnX, double Ordenada, bool Propuesto);"
+              in cop
+          and "public static string NombrePropuesto(bool enX, double ordenada)" in cop)
+    check("el valor que cae sobre un eje toma el nombre de ese eje",
+          "return mejor.Length > 0" in cop
+          and "new Peticion(mejor, enX, valor, false)" in cop
+          and "NombrePropuesto(enX, valor), enX, valor, true)" in cop)
+    # Con PUNTO decimal: el nombre se rotula y acaba en el nombre de un bloque, asi que con la
+    # coma regional el mismo corte se llamaria distinto en dos maquinas.
+    check("y el nombre propuesto lleva punto decimal, no coma",
+          'ordenada.ToString("0.##", CultureInfo.InvariantCulture)' in cop)
+    # LA COMA HACE DOS PAPELES: separa la lista y es el decimal del teclado numerico. Separa salvo
+    # cuando va entre dos cifras. Lo ambiguo -«3,4»- se avisa en lugar de adivinarse.
+    check("la coma decimal se respeta y lo ambiguo se avisa",
+          '@"[;\s]+|(?<![0-9]),|,(?![0-9])"' in cop
+          and "public sealed record Resultado(List<Peticion> Cortes, List<string> NoReconocidos);"
+              in cop)
+    # Sin repetidos: el mismo corte por su nombre y por su valor se pide UNA vez.
+    check("sin repetidos, y se queda el nombre del eje",
+          "private static void Agregar(List<Peticion> cortes, Peticion nuevo, double tolM)" in cop
+          and "Math.Abs(c.Ordenada - nuevo.Ordenada) <= tolM" in cop)
+    check("la ventana los pide y los reparte uno al lado del otro",
+          "CadLink.Cad.PlanoEstructural.CortesPedidos.Interpretar(" in winp
+          and 'x:Name="CortesVariosTxt"' in xaml
+          and "total += dibujante.DibujarCorte(c, dx, 0);" in winp
+          and "dx += (q.EnX ? anchoEnY : anchoEnX) + separacion;" in winp)
+    # Lo que no se entendio se dice, y lo propuesto tambien: desde fuera «no salio» es
+    # indistinguible de «fallo».
+    check("y se avisa de lo que no se entendio y de lo propuesto",
+          "No reconocí esto del campo de cortes: " in winp
+          and "no caen sobre ningún eje de la cuadrícula" in winp)
+    # Que falle UN corte no impide los demas: se avisa y se sigue.
+    check("un corte que falla no se lleva a los demas",
+          "no se pudo dibujar: {ex.Message}" in winp)
+
+    # ------------------------------------------------------------------
+    # SOLO EJES Y CORTES, SIN LA PLANTA
+    # ------------------------------------------------------------------
+    #  «La opcion de solo dibujar ejes y cortes sin hacer todo el dibujo de planos». Sirve para
+    #  montar la cuadricula sobre un plano de arquitectura que ya existe, o para replantear con las
+    #  cotas de los ejes y nada mas.
+    #
+    #  Los elementos SIGUEN LLEGANDO en la planta y eso es a proposito: de ellos salen el
+    #  rectangulo que los ejes cubren y el paño al que se corren los de orilla, asi que la
+    #  cuadricula cae EN EL MISMO SITIO que caeria con la planta dibujada y la estructura se puede
+    #  dibujar despues encima sin que nada se mueva.
+    check("se puede dibujar solo la cuadricula y los cortes",
+          "public bool SoloEjes { get; set; }" in dtop2
+          and "if (p.SoloEjes)" in dibp
+          and 'x:Name="SoloEjesCortesChk"' in xaml
+          and "p.SoloEjes = soloEjes;" in winp)
+    # Y con los ejes y el rotulo, que es lo que se pidio dibujar.
+    check("con sus ejes, sus cotas y su rotulo",
+          "var cajaSola = Envolvente(p);" in dibp
+          and "DibujarEjesDeLaPlanta(\n                p, x0, y0, cajaSola.XMin" in dibp
+          and "RotuloDeLaPlanta(p, x0, y0, cajaSola.XMin, cajaSola.YMin, cajaSola.XMax);" in dibp)
+
+    # ------------------------------------------------------------------
     # EL ARMADO, AL PANO DE LA TRABE Y NO A SU EJE
     # ------------------------------------------------------------------
     #  «Cuando el armado de losa llegue a trabe, igual que llegue al paño y no al eje de la trabe,
@@ -4435,7 +4545,7 @@ def v18_planta_autocad() -> None:
           and "las alturas, que es lo que solo el corte dice" in cortedib)
     # Y LOS EJES DEL CORTE SON LOS PERPENDICULARES al del corte: los que se cruzan.
     check("los ejes del corte son los perpendiculares",
-          "_vista.CorteEnX ? ejesModelo.Y : ejesModelo.X" in codigo)
+          "(q.EnX ? ejesY : ejesX).Select(x => (x.Id, x.Ordenada)).ToList()" in codigo)
     # CADA TIPO SE VE DE UNA FORMA, y es lo que hace que un corte se entienda: la columna de
     # nudo a nudo, la trabe que corre a lo largo entera y con su peralte, la que cruza solo de
     # canto, y el muro como el paño que es.
@@ -4486,11 +4596,18 @@ def v18_planta_autocad() -> None:
           "public double Z1 { get; set; }" in dto
           and "Z1 = el.Z1," in codigo)
     # Y SE DIBUJA EL QUE ESTE ELEGIDO, con TODOS los niveles: un corte atraviesa el edificio.
-    check("se dibuja el corte elegido, con todos los niveles",
+    # Ahora se dibujan LOS CORTES PEDIDOS -uno o varios-, cada uno con todos los niveles y
+    # corrido para no encimarse con el anterior.
+    check("se dibujan los cortes pedidos, con todos los niveles",
           "private int DibujarCorteElegido(" in codigo.replace("DibujarElCorteElegido", "DibujarCorteElegido")
-          and "Eje = _vista.CorteEje," in codigo
+          and "Eje = q.Id," in codigo
           and "foreach (var el in _modeloEtabs.Elementos)" in codigo
-          and "dibujante.DibujarCorte(c, 0, 0)" in codigo)
+          and "total += dibujante.DibujarCorte(c, dx, 0);" in codigo)
+    # Y EL DE LA LISTA SIGUE FUNCIONANDO cuando no se escribe nada: quien solo quiere un corte no
+    # tiene que aprenderse la sintaxis nueva.
+    check("y el de la lista sigue valiendo si no se escribe nada",
+          "if (cortes.Count == 0 && _vista.CorteEje.Length > 0)" in codigo
+          and "_vista.CorteEje, _vista.CorteEnX, _vista.CorteOrdenada, false));" in codigo)
     check("hay prueba ejecutable del corte",
           "del corte salen TRES piezas" in pre
           and "la trabe se ve entera: 4 m mas medio castillo" in pre
@@ -5536,8 +5653,8 @@ def v18_planta_autocad() -> None:
           and "private bool _igualandoPrograma;" in cod_prog)
     # Y SIN EJE ELEGIDO NO HAY CORTE, PERO SE DICE: salir en silencio es indistinguible de que
     # el corte falle.
-    check("sin eje elegido se dice por que no hubo corte",
-          "No se dibujó ningún corte porque no hay eje elegido" in codigo)
+    check("sin corte pedido se dice por que no hubo corte",
+          "No se dibujó ningún corte porque no se pidió ninguno" in codigo)
     # DRAW ORDER -> SEND TO BACK: la capa de los ejes se baja de ULTIMA, asi que queda
     # debajo de la losa, del armado y de todo lo demas.
     check("la capa de los ejes se manda al fondo, de ultima",
@@ -7583,8 +7700,10 @@ def v19_circular_y_ui() -> None:
     check("hay un solo sitio que escribe las notas",
           "private void MostrarNotas(string texto)" in codigo
           and "NotasPanel.IsExpanded = false;" in codigo)
+    # NUEVE: las siete de antes mas las dos de los cortes -lo que no se entendio del campo y los
+    # cortes que no caen sobre ningun eje, que van rotulados con su sitio-.
     check("y los sitios que las escriben pasan por ahi",
-          codigo.count("MostrarNotas(") == 7
+          codigo.count("MostrarNotas(") == 9
           and codigo.count("ExportHintText.Text =") == 1,
           f"{codigo.count('MostrarNotas(')} llamadas, "
           f"{codigo.count('ExportHintText.Text =')} asignaciones directas")

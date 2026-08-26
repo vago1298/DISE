@@ -272,7 +272,23 @@ public sealed partial class VistaModelo
         {
             var bx = fin ? el.X2 : el.X1;
             var by = fin ? el.Y2 : el.Y1;
-            var bz = fin ? el.Z2 : el.Z1;
+
+            // ==========================================================================
+            //  EL PUNTO DE INSERCIÓN, QUE AQUÍ SÍ SE VE
+            // ==========================================================================
+            //  Se pidió: «las trabes las inserta en su punto céntrico y está mal, debe ser top
+            //  center para que el paño coincida con el de la losa, así como en ETABS».
+            //
+            //  El punto cardinal de una trabe es casi siempre el 8 —arriba al centro—, y eso
+            //  significa que la CARA DE ARRIBA de la trabe va a la cota de la línea, no su
+            //  centro: la trabe cuelga por debajo del piso. Dibujándola centrada, medio peralte
+            //  quedaba POR ENCIMA de la losa, y en la vista extruida se veía la trabe montada
+            //  sobre el piso en lugar de colgada de él.
+            //
+            //  El movimiento en planta ya viene aplicado en las coordenadas —lo hace el lector—;
+            //  la Z se guarda aparte a propósito, porque de la elevación depende el nivel al que
+            //  se reparte la pieza, y aquí es donde toca usarla.
+            var bz = fin ? el.Z2 + el.MovidoZJ : el.Z1 + el.MovidoZI;
 
             return (bx + (s1 * e1.Item1) + (s2 * e2.Item1),
                     by + (s1 * e1.Item2) + (s2 * e2.Item2),

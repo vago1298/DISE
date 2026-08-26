@@ -2104,6 +2104,96 @@ Igual("con Z1 = Z2 no se dibujaba: eso era el castillo invisible", 0,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LOS CORTES QUE SE PIDEN: POR SU EJE, O DONDE UNO QUIERA");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: poder cortar DONDE SEA -aunque la cuadricula de ETABS o de SAP no tenga un eje ahi-
+// diciendo en que valor de X o de Y, y poder pedir VARIOS de golpe.
+var cuadriculaX = new List<(string Id, double Ordenada)> { ("A", 0), ("B", 3), ("C", 6) };
+var cuadriculaY = new List<(string Id, double Ordenada)> { ("1", 0), ("2", 4), ("3", 8) };
+
+// VARIOS DE GOLPE, por su nombre, y cada uno en su direccion.
+var porNombre = CortesPedidos.Interpretar("A, C, 3", null, null, cuadriculaX, cuadriculaY);
+
+Igual("tres cortes pedidos por su nombre", 3, porNombre.Cortes.Count);
+Check("el A va en X", porNombre.Cortes[0].EnX);
+Cerca("en su ordenada", 0, porNombre.Cortes[0].Ordenada);
+Check("y el 3 va en Y, que es donde esta", !porNombre.Cortes[2].EnX);
+Cerca("con la suya", 8, porNombre.Cortes[2].Ordenada);
+Check("ninguno es propuesto: los tres son de la cuadricula",
+      porNombre.Cortes.All(c => !c.Propuesto));
+
+// DONDE UNO QUIERA: un valor que no cae en ningun eje se rotula con su sitio.
+var personalizado = CortesPedidos.Interpretar("X=4.25", null, null, cuadriculaX, cuadriculaY);
+
+Igual("un corte donde uno quiera", 1, personalizado.Cortes.Count);
+Igual("se llama con su sitio", "X=4.25", personalizado.Cortes[0].Id);
+Check("y se marca como propuesto, para poder avisar", personalizado.Cortes[0].Propuesto);
+Cerca("en el valor que se pidio", 4.25, personalizado.Cortes[0].Ordenada);
+
+// PERO SI CAE SOBRE UN EJE, ES ESE EJE: quien escribe el valor sin saber que ahi esta el eje C
+// obtiene el corte por C -rotulado C, comparable con la planta- y no uno con nombre inventado.
+var caeEnEje = CortesPedidos.Interpretar("X=6.02", null, null, cuadriculaX, cuadriculaY);
+
+Igual("un valor que cae sobre un eje toma su nombre", "C", caeEnEje.Cortes[0].Id);
+Check("y no es propuesto", !caeEnEje.Cortes[0].Propuesto);
+
+// Y DE DOS EJES CERCANOS, EL MAS CERCANO, no el primero que pase la tolerancia.
+var dosJuntos = new List<(string Id, double Ordenada)> { ("C", 6), ("C1", 6.04) };
+Igual("de dos ejes juntos toma el mas cercano", "C1",
+      CortesPedidos.Interpretar("X=6.039", null, null, dosJuntos, cuadriculaY).Cortes[0].Id);
+
+// LOS CAMPOS DE VALORES: varios numeros, cada uno en su direccion.
+var porValores = CortesPedidos.Interpretar(null, "4.25, 7", "2.10", cuadriculaX, cuadriculaY);
+
+Igual("dos cortes en X y uno en Y", 3, porValores.Cortes.Count);
+Check("los dos primeros van en X", porValores.Cortes[0].EnX && porValores.Cortes[1].EnX);
+Check("y el tercero en Y", !porValores.Cortes[2].EnX);
+Igual("el de Y se llama con su sitio", "Y=2.1", porValores.Cortes[2].Id);
+
+// LA COMA DECIMAL, que es lo que sale del teclado numerico en español: no se puede rechazar. La
+// coma separa la lista SALVO cuando va entre dos cifras, que ahi es el punto decimal.
+Cerca("«X=4,25» es 4.25", 4.25,
+      CortesPedidos.Interpretar("X=4,25", null, null, cuadriculaX, cuadriculaY)
+                   .Cortes[0].Ordenada);
+
+// SEPARADORES: comas, punto y coma o espacios, que es como cualquiera escribe una lista.
+Igual("comas, punto y coma o espacios", 3,
+      CortesPedidos.Interpretar("A;C 3", null, null, cuadriculaX, cuadriculaY).Cortes.Count);
+Igual("y sin espacios tambien", 3,
+      CortesPedidos.Interpretar("A,C,3", null, null, cuadriculaX, cuadriculaY).Cortes.Count);
+// El caso ambiguo de verdad: «3,4» se lee como el numero, no coincide con ningun eje y SE AVISA,
+// que es mejor que adivinar y dibujar un corte donde nadie lo pidio.
+Igual("«3,4» no se adivina: se avisa", 1,
+      CortesPedidos.Interpretar("3,4", null, null, cuadriculaX, cuadriculaY)
+                   .NoReconocidos.Count);
+
+// SIN REPETIDOS: el mismo corte por su nombre y por su valor se pide UNA vez, y se queda el
+// nombre del eje, que es lo que va rotulado.
+var repetido = CortesPedidos.Interpretar("A, X=0", null, null, cuadriculaX, cuadriculaY);
+Igual("el mismo corte dos veces se pide una", 1, repetido.Cortes.Count);
+Igual("y con el nombre del eje", "A", repetido.Cortes[0].Id);
+
+// LO QUE NO SE ENTIENDE SE DEVUELVE APARTE: un eje mal escrito tiene que poder contarse, porque
+// desde fuera «no salio el corte» es indistinguible de «el corte fallo».
+var conBasura = CortesPedidos.Interpretar("A, Z9, ??", null, null, cuadriculaX, cuadriculaY);
+Igual("el bueno se pide", 1, conBasura.Cortes.Count);
+Igual("y los dos malos se devuelven", 2, conBasura.NoReconocidos.Count);
+
+// Sin nada pedido, nada que dibujar -y sin reventar-.
+Igual("sin nada pedido no hay cortes", 0,
+      CortesPedidos.Interpretar(null, null, null, cuadriculaX, cuadriculaY).Cortes.Count);
+Igual("y sin cuadricula tampoco revienta", 1,
+      CortesPedidos.Interpretar("X=1.5", null, null, null, null).Cortes.Count);
+
+// EL NOMBRE PROPUESTO lleva PUNTO decimal siempre: se rotula en el plano y acaba en el nombre de
+// un bloque, asi que con la coma de la configuracion regional el mismo corte se llamaria distinto
+// en dos maquinas.
+Igual("el nombre propuesto en X", "X=4.25", CortesPedidos.NombrePropuesto(true, 4.25));
+Igual("y en Y, sin ceros de relleno", "Y=2.1", CortesPedidos.NombrePropuesto(false, 2.10));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ARMADO DE LA LOSA, AL PANO DE LA TRABE Y NO A SU EJE");
 Console.WriteLine("=====================================================================");
 
