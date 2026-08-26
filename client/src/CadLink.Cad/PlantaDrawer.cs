@@ -1635,15 +1635,43 @@ public sealed partial class PlantaDrawer
             var ay0 = el.Vertices.Min(v => v.Y) + margen;
             var ay1 = el.Vertices.Max(v => v.Y) - margen;
 
-            // AL PAÑO: cada borde se mete medio ancho del apoyo que corre sobre él.
+            // ==========================================================================
+            //  AL PAÑO DEL APOYO, TAMBIÉN DE LA TRABE
+            // ==========================================================================
+            //  Cada borde se mete medio ancho del apoyo que corra sobre él, y cuenta cualquiera:
+            //  muro, cadena o TRABE. Se pidió lo de la trabe y hacía falta: la losa se dibuja
+            //  hasta el EJE de la trabe que la sostiene, así que sin correr el borde la varilla
+            //  se metía media trabe dentro de ella.
+            //
+            //  Se pregunta por los cuatro BORDES DE LA CAJA del armado, no por los lados del
+            //  polígono del tablero, que es como estaba y por lo que las trabes se quedaban
+            //  fuera: la cuenta vieja necesitaba un lado en la coordenada extrema Y alineado con
+            //  los ejes al milímetro de millón, y en un tablero que no es un rectángulo perfecto
+            //  —o con las coordenadas que trae ETABS, que casi nunca son exactas— ese lado no
+            //  aparecía y no se corría nada.
             if (_cfg.Bandera("ARMADO_AL_PANO_CADENA", true) && huellas.Count > 0)
             {
-                var lados = LosaEnPlanta.Lados(el.Vertices);
+                var tolPano = _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100;
 
-                ax0 += MedioApoyo(lados, huellas, true, false);
-                ax1 -= MedioApoyo(lados, huellas, true, true);
-                ay0 += MedioApoyo(lados, huellas, false, false);
-                ay1 -= MedioApoyo(lados, huellas, false, true);
+                // Los cuatro se miden ANTES de mover nada: si se aplicara uno a uno, el segundo
+                // se mediría sobre un borde ya corrido y quedaría con el apoyo fuera de la
+                // holgura.
+                var pIzq = LosaEnPlanta.MedioApoyoEnBorde(
+                    new LosaEnPlanta.Segmento(ax0, ay0, ax0, ay1), huellas, tolPano);
+
+                var pDer = LosaEnPlanta.MedioApoyoEnBorde(
+                    new LosaEnPlanta.Segmento(ax1, ay0, ax1, ay1), huellas, tolPano);
+
+                var pAbajo = LosaEnPlanta.MedioApoyoEnBorde(
+                    new LosaEnPlanta.Segmento(ax0, ay0, ax1, ay0), huellas, tolPano);
+
+                var pArriba = LosaEnPlanta.MedioApoyoEnBorde(
+                    new LosaEnPlanta.Segmento(ax0, ay1, ax1, ay1), huellas, tolPano);
+
+                ax0 += pIzq;
+                ax1 -= pDer;
+                ay0 += pAbajo;
+                ay1 -= pArriba;
             }
 
             var escalaVar = _cfg.Numero("ARMADO_LOSA_ESCALA_VARILLA", 1);
@@ -1745,62 +1773,6 @@ public sealed partial class PlantaDrawer
 
             PolilineaAbierta(arr, capa);
         }
-    }
-
-    /// <summary>
-    /// <b>Medio ancho</b> del apoyo que corre sobre el lado de ese borde del tablero.
-    /// </summary>
-    /// <remarks>
-    /// Es <c>AnchoApoyoEnLado</c> / 2, el corrimiento con el que el armado llega al paño de
-    /// la cadena en lugar de a su eje. Se busca el lado del tablero que va en esa dirección y
-    /// en esa orilla, y se mide el apoyo más ancho que corra sobre él.
-    /// </remarks>
-    private static double MedioApoyo(
-        List<LosaEnPlanta.Segmento> lados, IReadOnlyList<ElementoPlanta> huellas,
-        bool enX, bool laMayor)
-    {
-        // El borde que toca: el lado de X mínima o máxima si se pide en X, y el de Y si no.
-        LosaEnPlanta.Segmento? mejor = null;
-        var mejorC = laMayor ? double.MinValue : double.MaxValue;
-
-        foreach (var l in lados)
-        {
-            // Un lado sirve si es PERPENDICULAR a la dirección que se ajusta.
-            var esPerpendicular = enX
-                ? Math.Abs(l.X2 - l.X1) < 1e-6
-                : Math.Abs(l.Y2 - l.Y1) < 1e-6;
-
-            if (!esPerpendicular)
-            {
-                continue;
-            }
-
-            var c = enX ? l.X1 : l.Y1;
-
-            if (laMayor ? c > mejorC : c < mejorC)
-            {
-                mejorC = c;
-                mejor = l;
-            }
-        }
-
-        if (mejor is not { } lado)
-        {
-            return 0;
-        }
-
-        double ancho = 0;
-
-        foreach (var h in huellas)
-        {
-            // El apoyo tiene que correr a lo largo de ese lado: se mide su cobertura.
-            if (LosaEnPlanta.FraccionApoyada(lado, new[] { h }) >= 0.25)
-            {
-                ancho = Math.Max(ancho, h.PeralteM);
-            }
-        }
-
-        return ancho / 2;
     }
 
     /// <summary>Una polilínea <b>abierta</b>: la bayoneta del armado.</summary>

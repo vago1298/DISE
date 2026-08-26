@@ -69,6 +69,105 @@ public static class LosaEnPlanta
     }
 
     /// <summary>
+    /// <b>Medio ancho</b> del apoyo que corre a lo largo de un <b>borde del armado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que hace que la varilla del tablero llegue al <b>paño</b> del apoyo y no a su
+    /// <b>eje</b>. Y hace falta porque en el modelo la losa se dibuja <b>hasta el eje</b> de la
+    /// trabe o del muro que la sostiene: tomando el borde del paño tal cual, la varilla se mete
+    /// media trabe dentro de ella, que no es donde empieza el claro ni donde se pone el acero.
+    /// </para>
+    /// <para>
+    /// <b>Por qué se pregunta por el BORDE y no por el lado del polígono</b>, que es como estaba
+    /// antes y por lo que las trabes no entraban: el armado se traza sobre la <b>caja</b> del
+    /// tablero, y el lado del polígono que buscaba la cuenta vieja tenía que ser el de la
+    /// coordenada extrema <b>y</b> estar alineado con los ejes al milímetro de millón. Un tablero
+    /// que no es un rectángulo perfecto —con un quiebre, con un vértice de más, o con las
+    /// coordenadas que trae ETABS, que casi nunca son exactas— dejaba sin encontrar ese lado, y
+    /// entonces no se corría nada: ni por la trabe ni por el muro. Preguntando por el borde de la
+    /// caja se acabó el problema: ahí siempre está.
+    /// </para>
+    /// <para>
+    /// Cuenta cualquier apoyo —<b>muro, cadena o trabe</b>—: lo único que se le pide es ir
+    /// <b>paralelo</b> al borde, estar <b>sobre su línea</b> —con la holgura del encuentro— y
+    /// <b>correr a lo largo</b> de él, no cruzarlo. Y de todos los que cumplan, el <b>más
+    /// ancho</b>: el paño que manda es el más saliente.
+    /// </para>
+    /// </remarks>
+    /// <param name="borde">El borde de la caja del armado, como segmento.</param>
+    /// <param name="huellas">Las huellas de los apoyos: muros, cadenas y trabes.</param>
+    /// <param name="tolM">Holgura para tomarlo como que va sobre el borde: la del encuentro.</param>
+    /// <param name="fraccionMin">
+    /// Qué parte del borde tiene que recorrer el apoyo. Con 0.2 basta con que lo acompañe en una
+    /// quinta parte: una trabe que solo cruza el borde por un punto no lo apoya.
+    /// </param>
+    public static double MedioApoyoEnBorde(
+        Segmento borde, IReadOnlyList<ElementoPlanta> huellas, double tolM,
+        double fraccionMin = 0.2)
+    {
+        var largo = borde.Largo;
+
+        if (largo < Nada || huellas.Count == 0)
+        {
+            return 0;
+        }
+
+        var ux = (borde.X2 - borde.X1) / largo;
+        var uy = (borde.Y2 - borde.Y1) / largo;
+
+        double ancho = 0;
+
+        foreach (var h in huellas)
+        {
+            if (h.AnchoM < Nada)
+            {
+                continue;
+            }
+
+            // La huella es un rectángulo: su eje va en AnchoM —su largo— con su giro.
+            var a = h.AnguloGrados * Math.PI / 180;
+            var vx = Math.Cos(a);
+            var vy = Math.Sin(a);
+
+            // PARALELO al borde: si lo cruza, no lo apoya.
+            if (Math.Abs((ux * vy) - (uy * vx)) > 0.10)
+            {
+                continue;
+            }
+
+            // SOBRE SU LÍNEA: lo que separa su eje del borde, medido de través.
+            if (Math.Abs((-uy * (h.X1 - borde.X1)) + (ux * (h.Y1 - borde.Y1))) > tolM)
+            {
+                continue;
+            }
+
+            // Y QUE LO RECORRA: sus dos puntas, proyectadas sobre el borde.
+            var medio = h.AnchoM / 2;
+
+            var t1 = ((h.X1 - (vx * medio) - borde.X1) * ux)
+                     + ((h.Y1 - (vy * medio) - borde.Y1) * uy);
+
+            var t2 = ((h.X1 + (vx * medio) - borde.X1) * ux)
+                     + ((h.Y1 + (vy * medio) - borde.Y1) * uy);
+
+            if (t2 < t1)
+            {
+                (t1, t2) = (t2, t1);
+            }
+
+            if (Math.Min(t2, largo) - Math.Max(t1, 0) < largo * fraccionMin)
+            {
+                continue;
+            }
+
+            ancho = Math.Max(ancho, h.PeralteM);
+        }
+
+        return ancho / 2;
+    }
+
+    /// <summary>
     /// Qué <b>fracción</b> de un lado tiene apoyo debajo: es <c>LongitudUnion</c>.
     /// </summary>
     /// <remarks>

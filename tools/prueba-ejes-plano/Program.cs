@@ -2104,6 +2104,89 @@ Igual("con Z1 = Z2 no se dibujaba: eso era el castillo invisible", 0,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL ARMADO DE LA LOSA, AL PANO DE LA TRABE Y NO A SU EJE");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «cuando el armado de losa llegue a trabe, igual que llegue al paño y no al eje de la
+// trabe, como a los muros o cadenas». Y hace falta porque en el modelo LA LOSA SE DIBUJA HASTA EL
+// EJE de la trabe que la sostiene: tomando el borde del paño tal cual, la varilla se mete media
+// trabe dentro de ella, que no es donde empieza el claro ni donde se pone el acero.
+//
+// Un tablero de 4x3 con una TRABE de 20 corriendo por su borde de abajo.
+var trabeDeApoyo = PanoDeApoyo.Huella(
+    new ElementoPlanta
+    {
+        Clase = ClasePlanta.Trabe, Tipo = "TRABE", Seccion = "T 20X40",
+        X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, AnchoM = 0.20, PeralteM = 0.40
+    },
+    0.20);
+
+var bordeAbajo = new LosaEnPlanta.Segmento(0, 0, 4, 0);
+
+Cerca("la trabe corre el borde medio ancho: 10 cm", 0.10,
+      LosaEnPlanta.MedioApoyoEnBorde(bordeAbajo, new[] { trabeDeApoyo }, 0.25));
+
+// Y UN MURO igual, que es lo que ya funcionaba: la regla es la misma para los dos.
+var muroDeApoyo = PanoDeApoyo.Huella(
+    new ElementoPlanta
+    {
+        Clase = ClasePlanta.Muro, Tipo = "MURO", X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, AnchoM = 0.15
+    },
+    0.15);
+Cerca("y un muro de 15, 7.5 cm", 0.075,
+      LosaEnPlanta.MedioApoyoEnBorde(bordeAbajo, new[] { muroDeApoyo }, 0.25));
+
+// DE VARIOS APOYOS, EL MAS ANCHO: el paño que manda es el mas saliente.
+Cerca("de la trabe y el muro manda la trabe", 0.10,
+      LosaEnPlanta.MedioApoyoEnBorde(
+          bordeAbajo, new[] { muroDeApoyo, trabeDeApoyo }, 0.25));
+
+// UNA TRABE QUE CRUZA EL BORDE no lo apoya: se le pide ir PARALELA.
+var trabeQueCruza = PanoDeApoyo.Huella(
+    new ElementoPlanta
+    {
+        Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 2, Y1 = -1.5, X2 = 2, Y2 = 1.5,
+        AnchoM = 0.20, PeralteM = 0.40
+    },
+    0.20);
+Cerca("una trabe que cruza el borde no lo corre", 0,
+      LosaEnPlanta.MedioApoyoEnBorde(bordeAbajo, new[] { trabeQueCruza }, 0.25));
+
+// UNA TRABE EN EL OTRO EXTREMO del tablero tampoco corre este borde.
+var trabeLejos = PanoDeApoyo.Huella(
+    new ElementoPlanta
+    {
+        Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 0, Y1 = 3, X2 = 4, Y2 = 3,
+        AnchoM = 0.20, PeralteM = 0.40
+    },
+    0.20);
+Cerca("una trabe a tres metros no corre este borde", 0,
+      LosaEnPlanta.MedioApoyoEnBorde(bordeAbajo, new[] { trabeLejos }, 0.25));
+// Pero si corre EL SUYO.
+Cerca("pero si corre el de arriba", 0.10,
+      LosaEnPlanta.MedioApoyoEnBorde(
+          new LosaEnPlanta.Segmento(0, 3, 4, 3), new[] { trabeLejos }, 0.25));
+
+// UNA TRABE QUE SOLO ASOMA por una punta del borde no lo apoya: se le pide recorrerlo.
+var trabeCorta = PanoDeApoyo.Huella(
+    new ElementoPlanta
+    {
+        Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 0, Y1 = 0, X2 = 0.30, Y2 = 0,
+        AnchoM = 0.20, PeralteM = 0.40
+    },
+    0.20);
+Cerca("una trabe que solo asoma no corre el borde", 0,
+      LosaEnPlanta.MedioApoyoEnBorde(bordeAbajo, new[] { trabeCorta }, 0.25));
+
+// Y LO QUE ARREGLA DE VERDAD: un tablero con el borde LIGERAMENTE torcido -las coordenadas que
+// trae ETABS casi nunca son exactas-. La cuenta vieja pedia el lado alineado al milimetro de
+// millon y no corria NADA; esta lo resuelve porque pregunta por el borde de la caja.
+Cerca("con el borde a un milimetro de estar recto, sigue corriendo", 0.10,
+      LosaEnPlanta.MedioApoyoEnBorde(
+          new LosaEnPlanta.Segmento(0, 0.001, 4, 0), new[] { trabeDeApoyo }, 0.25));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");
 Console.WriteLine("=====================================================================");
 return fallos == 0 ? 0 : 1;

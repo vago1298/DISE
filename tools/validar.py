@@ -4152,7 +4152,44 @@ def v18_planta_autocad() -> None:
     # AL PANO: el armado empieza donde empieza el claro, no en el eje de la cadena.
     check("el armado se mide sobre el tablero llevado al pano",
           '_cfg.Bandera("ARMADO_AL_PANO_CADENA", true)' in dib
-          and "private static double MedioApoyo(" in dib)
+          and "LosaEnPlanta.MedioApoyoEnBorde(" in dib)
+
+    # ------------------------------------------------------------------
+    # EL ARMADO, AL PANO DE LA TRABE Y NO A SU EJE
+    # ------------------------------------------------------------------
+    #  «Cuando el armado de losa llegue a trabe, igual que llegue al paño y no al eje de la trabe,
+    #  como a los muros o cadenas». Hace falta porque en el modelo LA LOSA SE DIBUJA HASTA EL EJE
+    #  de la trabe que la sostiene: tomando el borde del paño tal cual, la varilla se mete media
+    #  trabe dentro de ella, que no es donde empieza el claro ni donde se pone el acero.
+    #
+    #  Y POR QUE NO ENTRABAN LAS TRABES: la cuenta vieja buscaba el LADO DEL POLIGONO del tablero
+    #  en la coordenada extrema Y alineado con los ejes al milimetro de millon -1e-6-. Un tablero
+    #  que no es un rectangulo perfecto, o con las coordenadas que trae ETABS, dejaba sin encontrar
+    #  ese lado y no corria nada. Ahora se pregunta por los cuatro BORDES DE LA CAJA del armado,
+    #  que ahi siempre estan.
+    losap = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/LosaEnPlanta.cs"))
+
+    check("el armado llega al pano del apoyo, sea muro, cadena o trabe",
+          "public static double MedioApoyoEnBorde(" in losap
+          and "ancho = Math.Max(ancho, h.PeralteM);" in losap
+          and "return ancho / 2;" in losap)
+    # PARALELO al borde, SOBRE su linea y RECORRIENDOLO: una trabe que solo lo cruza no lo apoya.
+    check("y solo si va paralelo, sobre su linea y lo recorre",
+          "if (Math.Abs((ux * vy) - (uy * vx)) > 0.10)" in losap
+          and "(ux * (h.Y1 - borde.Y1))) > tolM)" in losap
+          and "< largo * fraccionMin)" in losap)
+    # Los cuatro bordes se miden ANTES de mover nada: si se aplicara uno a uno, el segundo se
+    # mediria sobre un borde ya corrido y el apoyo caeria fuera de la holgura.
+    check("los cuatro bordes se miden antes de mover nada",
+          "var pIzq = LosaEnPlanta.MedioApoyoEnBorde(" in dib
+          and "var pArriba = LosaEnPlanta.MedioApoyoEnBorde(" in dib
+          and dib.index("var pArriba = LosaEnPlanta.MedioApoyoEnBorde(") < dib.index("ax0 += pIzq;"))
+    # Y con la holgura del encuentro de la hoja, la misma con la que los muros mueren en el pano.
+    check("con la holgura del encuentro de la hoja",
+          'var tolPano = _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100;' in dib)
+    # Ya no queda la cuenta vieja, que es la que dejaba fuera a las trabes.
+    check("y no queda rastro de la cuenta vieja",
+          "private static double MedioApoyo(" not in dib)
     check("y la rejilla se queda apagada, disponible pero no puesta",
           'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
           and '_cfg.Bandera("ARMADO_LOSA_PARRILLA", false)' in dib)
