@@ -38,10 +38,14 @@ public static class CorteEnAlzado
     /// lado corto, que es donde se dibuja el armado—; <c>false</c> si el corte va <b>a lo largo</b>
     /// de ella y lo que se ve es su costado.
     /// </param>
+    /// <param name="Notas">
+    /// Las notas de la propiedad, tal como vienen del modelo. De ellas sale <b>de qué es</b> un
+    /// muro —tabique, tabicón, adobe o concreto—, que es lo que decide su achurado.
+    /// </param>
     public sealed record Pieza(
         ClasePlanta Clase, string Etiqueta, string Seccion,
         double X, double Z, double Ancho, double Alto,
-        string Tipo = "", bool Cortada = true, bool EnSeccion = true);
+        string Tipo = "", bool Cortada = true, bool EnSeccion = true, string Notas = "");
 
     /// <summary>Espesor mínimo con el que se dibuja algo, en metros.</summary>
     private const double Minimo = 0.02;
@@ -595,7 +599,7 @@ public static class CorteEnAlzado
             return alto > Minimo && derecha - izquierda > Minimo
                 ? new Pieza(el.Clase, el.Etiqueta, el.Seccion,
                             izquierda, zAbajo, derecha - izquierda, alto, el.Tipo,
-                            EnSeccion: false)
+                            EnSeccion: false, Notas: el.Notas)
                 : null;
         }
 

@@ -83,13 +83,15 @@ var cfg = new ConfigPlano();
 //   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
 //   CAPA_MURO_CONCRETO / COLOR_MURO_CONCRETO / MURO_CONCRETO_CAPA_PROPIA
 //                                   el muro de concreto sin cadena, en E-MURO DE CONCRETO
+//   CORTE_HATCH_MAMPOSTERIA / _TABIQUE / _TABIQUE_ESCALA / _TABICON / _TABICON_ESCALA / _COLOR
+//                                   el area de los muros de mamposteria, achurada
 //   CORTE_PIEZAS_COMO_BLOQUE        las trabes y cadenas del corte, como bloque
 //   CORTE_BLOQUE_PREFIJO            con este prefijo, para no chocar con los de la planta
 //   CORTE_RELLENAR_SOLO_EN_SECCION  se rellena lo que el corte cruza por su lado corto
 //   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
 //   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta y tres que se añadieron",
-      313, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta y nueve que se añadieron",
+      319, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -279,6 +281,17 @@ Check("la cadena de desplante va continua en cualquier nivel",
 // LAS PIEZAS DEL CORTE, COMO BLOQUE: el bloque se llama como la seccion con su medida detras, asi
 // que un BLOCKREPLACE cambia de golpe todas las cadenas de 15x25 por el detalle armado. Con el
 // prefijo para no chocar con los bloques de la planta, que son otro dibujo de la misma seccion.
+// EL ACHURADO DE LA MAMPOSTERIA: dos patrones, porque las piezas no son iguales. Las escalas son
+// diminutas porque estos patrones de AutoCAD estan pensados para PULGADAS y aqui se dibuja en metros:
+// a escala 1 el achurado sale como una mancha negra.
+Check("el achurado de la mamposteria viene encendido",
+      cfg.Bandera("CORTE_HATCH_MAMPOSTERIA", false));
+Igual("el tabique y el adobe, con AR-BRSTD", "AR-BRSTD", cfg.Texto("CORTE_HATCH_TABIQUE"));
+Igual("a escala 0.0010", 0.0010, cfg.Numero("CORTE_HATCH_TABIQUE_ESCALA", 0));
+Igual("el tabicon y el ligero, con AR-B816", "AR-B816", cfg.Texto("CORTE_HATCH_TABICON"));
+Igual("a escala 0.0005", 0.0005, cfg.Numero("CORTE_HATCH_TABICON_ESCALA", 0));
+Igual("los dos en color 12", 12.0, cfg.Numero("CORTE_HATCH_MAMPOSTERIA_COLOR", 0));
+
 Check("las piezas del corte van como bloque", cfg.Bandera("CORTE_PIEZAS_COMO_BLOQUE", false));
 Igual("con su prefijo", "CORTE-", cfg.Texto("CORTE_BLOQUE_PREFIJO"));
 
@@ -303,7 +316,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 313 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 319 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

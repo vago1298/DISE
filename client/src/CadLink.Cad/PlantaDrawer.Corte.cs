@@ -136,9 +136,15 @@ public sealed partial class PlantaDrawer
             //  varillas y sus estribos. Con rectángulos sueltos hay que dibujar el armado uno
             //  por uno, y en un corte de una casa eso son treinta veces el mismo trabajo.
             //
+            //  Y SOLO LA CARA CORTA, LA QUE LLEGA. Es lo que se pidió y es lo único que tiene
+            //  sentido: el bloque de una trabe de 20×30 es su CARA de 20×30 —la sección donde se
+            //  dibujan las varillas y los estribos— no el rectángulo de tres metros que se ve
+            //  cuando el corte va a lo largo de ella. Un bloque de tres metros de largo no se
+            //  puede reemplazar por ningún detalle armado: no es una sección, es un costado.
+            //
             //  Solo las CORTADAS: lo que se ve al fondo no lleva armado que enseñar, y meterlo en
             //  un bloque invitaría a reemplazarlo por un detalle que ahí no va.
-            if (p.Cortada && p.Clase == ClasePlanta.Trabe
+            if (p.Cortada && p.EnSeccion && p.Clase == ClasePlanta.Trabe
                 && PiezaComoBloque(p, cx, cy, capa))
             {
                 hechas++;
@@ -201,6 +207,21 @@ public sealed partial class PlantaDrawer
                 if (!p.Cortada)
                 {
                     ALineaDeFondo(pl);
+                }
+
+                // ======================================================================
+                //  EL ÁREA DE LOS MUROS DE MAMPOSTERÍA, ACHURADA
+                // ======================================================================
+                //  Se pidió: en el corte, el área de los muros de MAMPOSTERÍA lleva su patrón
+                //  —AR-BRSTD para el tabique y el adobe, AR-B816 para el tabicón y el tabique
+                //  ligero— y los de CONCRETO no llevan ninguno. Es una diferencia de obra: uno se
+                //  levanta con piezas y mortero y el otro se cimbra y se cuela, y en el corte se
+                //  tiene que ver de un golpe cuál es cuál.
+                //
+                //  De qué es el muro sale de las NOTAS de su propiedad, que es donde se escribe.
+                if (p.Clase == ClasePlanta.Muro)
+                {
+                    AchurarMamposteria(pl, capa, p);
                 }
 
                 hechas++;
@@ -424,6 +445,88 @@ public sealed partial class PlantaDrawer
     /// funciona en AutoCAD 2026, y si no se deja, el corte se queda con la pieza hueca: se ve
     /// peor, pero está.
     /// </remarks>
+    /// <summary>
+    /// El <b>achurado de mampostería</b> de un muro del corte, si es de mampostería.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El patrón, la escala y el color salen de la hoja, y de qué es el muro sale de las
+    /// <b>notas</b> de su propiedad: tabique y adobe llevan <c>AR-BRSTD</c>, y tabicón y tabique
+    /// ligero, <c>AR-B816</c>. Un muro de <b>concreto</b> no lleva ninguno y se queda como está.
+    /// </para>
+    /// <para>
+    /// El achurado va <b>por objeto</b> con su color, no por capa: la capa del muro es la de su
+    /// tipo y el patrón tiene que verse igual en todas. Y <b>no asociativo</b>, que es lo que se
+    /// aprendió con el achurado de las losas: un hatch asociado a una polilínea que luego se mueve
+    /// o se borra deja el dibujo con un achurado huérfano.
+    /// </para>
+    /// </remarks>
+    private void AchurarMamposteria(
+        object? pl, string capa, PlanoEstructural.CorteEnAlzado.Pieza p)
+    {
+        if (pl is null || !_cfg.Bandera("CORTE_HATCH_MAMPOSTERIA", true))
+        {
+            return;
+        }
+
+        var cual = PlanoEstructural.HatchDeMamposteria.Para(
+            p.Notas, p.Seccion,
+            _cfg.Texto("CORTE_HATCH_TABIQUE", "AR-BRSTD"),
+            _cfg.Numero("CORTE_HATCH_TABIQUE_ESCALA", 0.0010),
+            _cfg.Texto("CORTE_HATCH_TABICON", "AR-B816"),
+            _cfg.Numero("CORTE_HATCH_TABICON_ESCALA", 0.0005),
+            (int)_cfg.Numero("CORTE_HATCH_MAMPOSTERIA_COLOR", 12));
+
+        if (cual is null)
+        {
+            return;
+        }
+
+        object? ht;
+
+        try
+        {
+            ht = AcadConnection.Retry(
+                () => (object)_ms.AddHatch(0, cual.Patron, false, 0));
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Achurado '{cual.Patron}' del muro del corte", ex);
+            return;
+        }
+
+        dynamic h = ht!;
+
+        var conLazo = AcadArreglos.Llamar(
+            $"AppendOuterLoop del achurado '{cual.Patron}'",
+            new[] { pl },
+            arr => { h.AppendOuterLoop(arr); },
+            Fallo, Nota);
+
+        if (!conLazo)
+        {
+            Borrar(ht);
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                // La escala ANTES de evaluar: si se evalúa a escala 1 y se cambia después, hay
+                // versiones que se quedan con el achurado de la primera evaluación.
+                h.PatternScale = cual.Escala;
+                h.Evaluate();
+                h.Layer = capa;
+                h.Color = cual.Color;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Escala del achurado '{cual.Patron}'", ex);
+        }
+    }
+
     /// <summary>
     /// Inserta una pieza del corte como <b>bloque</b>, con su relleno dentro.
     /// </summary>

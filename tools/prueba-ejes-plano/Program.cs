@@ -2496,6 +2496,69 @@ Check("la columna dentro del muro se queda", limpias.Any(x => x.Etiqueta == "C1"
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL ACHURADO DE LA MAMPOSTERIA EN EL CORTE");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: en el corte, el area de los muros de MAMPOSTERIA lleva su patron -AR-BRSTD para el
+// tabique y el adobe, AR-B816 para el tabicon y el tabique ligero- y los de CONCRETO no llevan
+// ninguno. Es una diferencia de obra: uno se levanta con piezas y mortero y el otro se cuela.
+var deTabique = HatchDeMamposteria.Para("MURO DE TABIQUE ROJO RECOCIDO", "MURO 15");
+
+Check("el tabique lleva achurado", deTabique is not null);
+Igual("con el patron del ladrillo", "AR-BRSTD", deTabique!.Patron);
+Cerca("a su escala", 0.0010, deTabique.Escala, 1e-9);
+Igual("y en color 12", 12, deTabique.Color);
+
+var deTabicon = HatchDeMamposteria.Para("MURO DE TABICON", "MURO 15");
+Igual("el tabicon lleva el patron del bloque", "AR-B816", deTabicon!.Patron);
+Cerca("a la suya", 0.0005, deTabicon.Escala, 1e-9);
+
+// EL ORDEN IMPORTA: «TABIQUE LIGERO» contiene «TABIQUE», asi que preguntando por el tabique primero
+// el ligero saldria con el aparejo de ladrillo, que es el de la pieza maciza.
+Igual("el tabique LIGERO va con el patron del bloque", "AR-B816",
+      HatchDeMamposteria.Para("MURO DE TABIQUE LIGERO", "")!.Patron);
+
+// EL ADOBE, con el del ladrillo.
+Igual("el adobe va con el del ladrillo", "AR-BRSTD",
+      HatchDeMamposteria.Para("MURO DE ADOBE", "")!.Patron);
+
+// Y EL CONCRETO NO LLEVA NINGUNO: en el corte se lee por su paño.
+Check("el muro de concreto no lleva achurado",
+      HatchDeMamposteria.Para("MURO DE CONCRETO ARMADO", "MURO 20") is null);
+Check("y uno sin notas tampoco", HatchDeMamposteria.Para("", "") is null);
+
+// LOS ACENTOS NO CUENTAN: «TABICON» y «TABICON» con tilde son la misma palabra, y un muro que se
+// queda sin achurado por una tilde es de las cosas que nadie encuentra mirando el plano.
+Igual("con tilde da lo mismo", "AR-B816",
+      HatchDeMamposteria.Para("MURO DE TABICÓN", "")!.Patron);
+Igual("y en minusculas", "AR-BRSTD",
+      HatchDeMamposteria.Para("muro de tabique", "")!.Patron);
+
+// DEL NOMBRE DE LA SECCION como respaldo, para cuando las notas vienen vacias.
+Igual("si las notas no dicen nada, se mira la seccion", "AR-BRSTD",
+      HatchDeMamposteria.Para("", "MURO TABIQUE 15")!.Patron);
+
+// Y LO QUE LA HOJA DIGA, con respaldo si trae algo sin sentido.
+Igual("el patron sale de la hoja", "MI-PATRON",
+      HatchDeMamposteria.Para("TABIQUE", "", patronTabique: "MI-PATRON")!.Patron);
+Cerca("y una escala de cero vuelve a la de la hoja", 0.0010,
+      HatchDeMamposteria.Para("TABIQUE", "", escalaTabique: 0)!.Escala, 1e-9);
+
+// Y LA PIEZA DEL CORTE LLEVA SUS NOTAS, que es de donde sale todo esto.
+var muroDeTabique = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", Seccion = "MURO 15",
+    Notas = "MURO DE TABICON 15", X1 = 5, Y1 = 0, X2 = 5, Y2 = 4,
+    Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+};
+
+Igual("la pieza del corte lleva las notas del muro", "MURO DE TABICON 15",
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { muroDeTabique }, enX: true, ordenada: 5,
+          espesorM: 0.60)[0].Notas);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" LOS CORTES QUE SE PIDEN: POR SU EJE, O DONDE UNO QUIERA");
 Console.WriteLine("=====================================================================");
 

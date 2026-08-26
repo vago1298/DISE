@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cincuenta y tres renglones añadidos",
-          cfgp.count("        P(") == 313
+    check("la hoja CONFIG de la macro esta portada, con cincuenta y nueve renglones añadidos",
+          cfgp.count("        P(") == 319
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "313, ConfigPlano.PorOmision.Count" in pr
+          and "319, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4364,7 +4364,7 @@ def v18_planta_autocad() -> None:
     #  corte, que es lo que ya pasaba y hay que conservar.
     check("se rellena solo lo que se ve en seccion",
           "public static bool PorSuLadoCorto(ElementoPlanta el, bool enX)" in corte
-          and "bool EnSeccion = true);" in corte
+          and "bool EnSeccion = true, string Notas = \"\");" in corte
           and "EnSeccion: PorSuLadoCorto(el, enX))" in corte
           and 'P("CORTE_RELLENAR_SOLO_EN_SECCION", "SI",' in cfgp)
     check("y el dibujante lo mira antes de rellenar",
@@ -4375,7 +4375,7 @@ def v18_planta_autocad() -> None:
     # lo largo, de costado. El muro y la losa, de costado siempre: se leen por su paño y su franja.
     check("la barra de canto va en seccion y la que corre a lo largo, no",
           "EnSeccion: false);\n    }" in corte
-          and corte.count("EnSeccion: false)") >= 3)
+          and corte.count("EnSeccion: false") >= 3)
     # Una seccion cuadrada se ve en seccion siempre.
     check("y una seccion cuadrada se ve en seccion siempre",
           "if (largo - corto <= 0.02)" in corte
@@ -4408,10 +4408,63 @@ def v18_planta_autocad() -> None:
     check("con su relleno dentro y la insercion al centro",
           "private void RellenarDentroDelBloqueDelCorte(" in cortedib
           and "cy + p.Z + (p.Alto / 2)," in cortedib)
-    # Solo las CORTADAS: lo que se ve al fondo no lleva armado que enseñar.
-    check("y solo las cortadas",
-          "if (p.Cortada && p.Clase == ClasePlanta.Trabe\n                && PiezaComoBloque("
-          in cortedib)
+    # SOLO LA CARA CORTA, LA QUE LLEGA: el bloque de una trabe de 20x30 es su CARA de 20x30 -la
+    # seccion donde se dibujan las varillas y los estribos- no el rectangulo de tres metros que se
+    # ve cuando el corte va a lo largo de ella. Un bloque de tres metros no se puede reemplazar por
+    # ningun detalle armado: no es una seccion, es un costado. Y solo las CORTADAS.
+    check("y solo la cara corta de las cortadas",
+          "if (p.Cortada && p.EnSeccion && p.Clase == ClasePlanta.Trabe\n"
+          "                && PiezaComoBloque(" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL AREA DE LOS MUROS DE MAMPOSTERIA, ACHURADA
+    # ------------------------------------------------------------------
+    #  «Cuando se vean muros en el corte de fondo, agrega solo en el area de muros de MAMPOSTERIA
+    #  -ojo, no de concreto- un hatch AR-BRSTD si es tabique o adobe con escala de 0.0010 color 12,
+    #  y si es tabicon o tabique ligero, un hatch AR-B816 con escala de 0.0005 y color 12».
+    #
+    #  Es una diferencia de obra: un muro de mamposteria se levanta con piezas y mortero y uno de
+    #  concreto se cimbra y se cuela, y en el corte se tiene que ver de un golpe cual es cual.
+    ham = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/HatchDeMamposteria.cs"))
+
+    check("los muros de mamposteria del corte llevan su achurado",
+          "public static Achurado? Para(" in ham
+          and 'string patronTabique = "AR-BRSTD", double escalaTabique = 0.0010' in ham
+          and 'string patronTabicon = "AR-B816", double escalaTabicon = 0.0005' in ham
+          and "int color = 12)" in ham)
+    # EL ORDEN IMPORTA: «TABIQUE LIGERO» contiene «TABIQUE», asi que preguntando por el tabique
+    # primero el ligero saldria con el aparejo de ladrillo, que es el de la pieza maciza.
+    check("y el tabique ligero va con el patron del bloque, no con el del ladrillo",
+          ham.index('texto.Contains("TABIQUE LIGERO"') < ham.index('texto.Contains("TABIQUE",'))
+    # EL CONCRETO NO LLEVA NINGUNO: en el corte se lee por su paño.
+    check("el muro de concreto no lleva achurado",
+          "return null;\n    }\n\n    /// <summary>El achurado, con el respaldo" in ham)
+    # LOS ACENTOS NO CUENTAN: «TABICON» y «TABICÓN» son la misma palabra, y un muro sin achurado por
+    # una tilde es de las cosas que nadie encuentra mirando el plano.
+    check("y los acentos no dejan a un muro sin su patron",
+          "public static string Normalizar(string? texto)" in ham
+          and "'Ó' => 'O'," in ham)
+    check("el dibujante lo achura por objeto y no asociativo",
+          "private void AchurarMamposteria(" in cortedib
+          and "(object)_ms.AddHatch(0, cual.Patron, false, 0)" in cortedib
+          and "h.PatternScale = cual.Escala;" in cortedib
+          and "h.Color = cual.Color;" in cortedib)
+    # LA ESCALA ANTES DE EVALUAR: hay versiones que se quedan con el achurado de la primera
+    # evaluacion si la escala se cambia despues.
+    check("con la escala antes de evaluar",
+          cortedib.index("h.PatternScale = cual.Escala;") < cortedib.index("h.Evaluate();\n"
+          "                h.Layer = capa;\n                h.Color = cual.Color;"))
+    check("y con sus seis claves en la hoja",
+          'P("CORTE_HATCH_MAMPOSTERIA", "SI",' in cfgp
+          and 'P("CORTE_HATCH_TABIQUE", "AR-BRSTD",' in cfgp
+          and 'P("CORTE_HATCH_TABIQUE_ESCALA", "0.0010",' in cfgp
+          and 'P("CORTE_HATCH_TABICON", "AR-B816",' in cfgp
+          and 'P("CORTE_HATCH_TABICON_ESCALA", "0.0005",' in cfgp
+          and 'P("CORTE_HATCH_MAMPOSTERIA_COLOR", "12",' in cfgp)
+    # Y LA PIEZA LLEVA SUS NOTAS, que es de donde sale de que es el muro.
+    check("y la pieza del corte lleva las notas del muro",
+          "string Notas = \"\");" in corte
+          and "EnSeccion: false, Notas: el.Notas)" in corte)
 
     # ------------------------------------------------------------------
     # LA CADENA INTERMEDIA, RELLENA AUNQUE EL CORTE VAYA A LO LARGO
