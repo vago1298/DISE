@@ -1367,11 +1367,13 @@ public partial class MainWindow : Window
         //  QUÉ CORTES SE PIDEN: EL DE LA LISTA, Y LOS QUE SE ESCRIBAN
         // ==============================================================================
         //  Se pidió poder cortar DONDE SEA —aunque la cuadrícula de ETABS o de SAP2000 no tenga
-        //  un eje ahí— y poder pedir VARIOS de golpe. En el campo se escriben nombres de eje y
-        //  valores con su dirección, mezclados: «A, C, 3, X=4.25». Lo que caiga sobre un eje se
-        //  rotula con el nombre de ese eje, para que el corte se pueda comparar con la planta.
+        //  un eje ahí—, poder decirlo escribiendo LA COORDENADA en un campo para X y otro para Y,
+        //  y poder pedir VARIOS de golpe. En cada campo caben varias separadas por comas.
+        //
+        //  Lo que caiga sobre un eje se rotula con el NOMBRE DE ESE EJE, para que el corte se
+        //  pueda comparar con la planta; lo que no, con su sitio.
         var pedido = CadLink.Cad.PlanoEstructural.CortesPedidos.Interpretar(
-            CortesVariosTxt?.Text, null, null, ejesX, ejesY);
+            null, CorteXTxt?.Text, CorteYTxt?.Text, ejesX, ejesY);
 
         var cortes = pedido.Cortes.ToList();
 
@@ -1388,10 +1390,10 @@ public partial class MainWindow : Window
         if (pedido.NoReconocidos.Count > 0)
         {
             MostrarNotas(
-                "No reconocí esto del campo de cortes: " +
+                "No reconocí esto de los campos de corte: " +
                 string.Join(", ", pedido.NoReconocidos) +
-                ". Se admiten nombres de eje —A, C, 3— y valores con su dirección —X=4.25, " +
-                "Y=2.10—, separados por comas.");
+                ". Ahí van coordenadas —4.25, 7.10— separadas por comas, o el nombre de un eje " +
+                "de esa dirección.");
         }
 
         // ==============================================================================
@@ -1404,7 +1406,7 @@ public partial class MainWindow : Window
         {
             MostrarNotas(
                 "No se dibujó ningún corte porque no se pidió ninguno. Elige un eje en " +
-                "«Corte por el eje» o escríbelos en el campo de al lado —A, C, X=4.25—, y " +
+                "«Corte por el eje», o escribe las coordenadas en «Cortar en X» y «en Y», y " +
                 "vuelve a dibujar: los cortes salen 10 unidades encima de las plantas.");
 
             return 0;

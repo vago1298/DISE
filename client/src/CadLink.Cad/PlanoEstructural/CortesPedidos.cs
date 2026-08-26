@@ -116,8 +116,22 @@ public static class CortesPedidos
                     ? cd2.Valor
                     : Numero(t);
 
+                // Y SI NO ES UN NÚMERO, SE PRUEBA COMO NOMBRE DE EJE de esa dirección: quien
+                // escriba «C» en el campo de las X quiere el corte por el eje C, y decírselo con
+                // un aviso en lugar de dibujarlo sería quedarse corto por nada.
                 if (valor is null)
                 {
+                    var deEsaDireccion = esX ? enX : enY;
+
+                    var eje = deEsaDireccion.FirstOrDefault(
+                        x => string.Equals(x.Id.Trim(), t, StringComparison.OrdinalIgnoreCase));
+
+                    if (eje.Id is not null && eje.Id.Trim().Length > 0)
+                    {
+                        Agregar(cortes, new Peticion(eje.Id.Trim(), esX, eje.Ordenada, false), tolM);
+                        continue;
+                    }
+
                     malos.Add(t);
                     continue;
                 }

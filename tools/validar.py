@@ -4228,16 +4228,71 @@ def v18_planta_autocad() -> None:
     check("sin repetidos, y se queda el nombre del eje",
           "private static void Agregar(List<Peticion> cortes, Peticion nuevo, double tolM)" in cop
           and "Math.Abs(c.Ordenada - nuevo.Ordenada) <= tolM" in cop)
-    check("la ventana los pide y los reparte uno al lado del otro",
+    # UN CAMPO PARA X Y OTRO PARA Y, que es como se pidio: «no tanto como una tabla, si no uno
+    # mismo donde quiere cortar». En cada uno caben varias coordenadas separadas por comas, asi que
+    # de ahi salen tambien varios cortes de golpe, y se admite el nombre de un eje de esa
+    # direccion por si se prefiere decirlo asi.
+    check("la ventana los pide en un campo para X y otro para Y",
           "CadLink.Cad.PlanoEstructural.CortesPedidos.Interpretar(" in winp
-          and 'x:Name="CortesVariosTxt"' in xaml
-          and "total += dibujante.DibujarCorte(c, dx, 0);" in winp
+          and "null, CorteXTxt?.Text, CorteYTxt?.Text, ejesX, ejesY);" in winp
+          and 'x:Name="CorteXTxt"' in xaml
+          and 'x:Name="CorteYTxt"' in xaml)
+    check("y los reparte uno al lado del otro",
+          "total += dibujante.DibujarCorte(c, dx, 0);" in winp
           and "dx += (q.EnX ? anchoEnY : anchoEnX) + separacion;" in winp)
+    # En esos campos, un nombre de eje tambien vale: escribir «C» en el de las X es pedir el corte
+    # por el eje C, y avisar en lugar de dibujarlo seria quedarse corto por nada.
+    check("en los campos de X y de Y tambien vale el nombre de un eje",
+          "var deEsaDireccion = esX ? enX : enY;" in cop
+          and "Agregar(cortes, new Peticion(eje.Id.Trim(), esX, eje.Ordenada, false), tolM);"
+              in cop)
     # Lo que no se entendio se dice, y lo propuesto tambien: desde fuera «no salio» es
     # indistinguible de «fallo».
     check("y se avisa de lo que no se entendio y de lo propuesto",
-          "No reconocí esto del campo de cortes: " in winp
+          "No reconocí esto de los campos de corte: " in winp
           and "no caen sobre ningún eje de la cuadrícula" in winp)
+
+    # ------------------------------------------------------------------
+    # EN EL CORTE: LO QUE SE CORTA Y EL FONDO, NADA ENCIMADO
+    # ------------------------------------------------------------------
+    #  «En el corte de dibujo no se deben ver elementos encimandos, se deben ver los que se cortan
+    #  justo en la linea y el fondo nada mas».
+    #
+    #  EL PROBLEMA ERA LA REBANADA: el corte se tomaba con el espesor de la hoja
+    #  -CORTE_ESPESOR_CM, 60 cm-, asi que TODO lo que hubiera a 30 cm del eje se dibujaba como
+    #  CORTADO: dos muros paralelos, la cadena del muro de al lado y las columnas de la fila
+    #  siguiente salian todos a la vez, unos encima de otros.
+    #
+    #  Cortado es ahora lo que el plano CRUZA DE VERDAD: el elemento con su propio ancho encima del
+    #  eje. La holgura solo tapa el desajuste del modelo y se TOPA en 5 cm por lado aunque la hoja
+    #  diga 60: quien puso 60 no queria 60 cm de rebanada, queria que el corte no saliera vacio.
+    corte = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CorteEnAlzado.cs"))
+
+    check("cortado es lo que el plano cruza de verdad, no una rebanada de 60 cm",
+          "private static double Holgura(double espesorM) =>" in corte
+          and "Math.Min(Math.Max(espesorM, 0.02), 0.10) / 2;" in corte
+          and "var medio = MedioPerpendicular(el, enX) + Holgura(espesorM);" in corte)
+    # Con el ancho de cada elemento: un muro de 60 cruza desde mas lejos que uno de 15, y una barra
+    # que cruza el corte no necesita ninguno porque su propio eje lo atraviesa.
+    check("con el ancho de cada elemento, proyectado",
+          "private static double MedioPerpendicular(ElementoPlanta el, bool enX)" in corte
+          and "return esp * Math.Abs(enX ? -dy / largo : dx / largo);" in corte)
+    # Y EL MISMO MARGEN EN LAS DOS PREGUNTAS, para que nada sea cortado y fondo a la vez: los de la
+    # frontera salian dos veces, uno encima del otro.
+    check("y el mismo margen para el fondo, que nada sea las dos cosas",
+          "return min > ordenada + MedioPerpendicular(el, enX) + Holgura(espesorM);" in corte)
+    # LO ENCIMADO SE QUITA: la misma silueta dos veces no dice nada, y lo que cae DENTRO de otra
+    # pieza del fondo, tampoco.
+    check("y las siluetas encimadas se quitan",
+          "public static List<Pieza> SinEncimados(List<Pieza> piezas)" in corte
+          and "return SinEncimados(piezas);" in corte
+          and "private static bool Tapa(Pieza grande, Pieza chica)" in corte)
+    # DOS REGLAS QUE NO SE NEGOCIAN: lo CORTADO no se quita nunca -es el objeto del corte- y solo
+    # se comparan piezas de la MISMA CLASE, que una columna dentro de un muro dice otra cosa.
+    check("lo cortado no se quita nunca, y solo compite con su misma clase",
+          "if (!p.Cortada && salida.Any(q => Tapa(q, p)))" in corte
+          and "if (grande.Clase != chica.Clase)" in corte
+          and ".OrderByDescending(x => x.p.Cortada)" in corte)
     # Que falle UN corte no impide los demas: se avisa y se sigue.
     check("un corte que falla no se lleva a los demas",
           "no se pudo dibujar: {ex.Message}" in winp)

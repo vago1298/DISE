@@ -807,9 +807,27 @@ var conFondo = CorteEnAlzado.Piezas(
     new List<ElementoPlanta> { enElEje[0], colDetras }, enX: true, ordenada: 5,
     espesorM: 0.6, verElFondo: true);
 
-Igual("con el fondo salen las dos columnas", 2, conFondo.Count);
-Check("la del eje va marcada como cortada", conFondo.Any(q => q.Cortada));
-Check("y la de atras como fondo", conFondo.Any(q => !q.Cortada));
+// ESTA COLUMNA DEL FONDO ESTA EXACTAMENTE DETRAS DE LA DEL EJE -las dos en Y = 0- asi que en el
+// alzado cae en el MISMO rectangulo: dibujarla es dibujar la misma silueta dos veces, y la de
+// atras no se ve porque la tapa la de delante. Se pidio que no salgan elementos encimados, asi
+// que se queda una: la CORTADA.
+Igual("la columna del fondo tapada por la del eje no se repite", 1, conFondo.Count);
+Check("y la que se queda es la cortada", conFondo[0].Cortada);
+
+// PERO UNA DEL FONDO EN OTRO SITIO SI SALE: es lo que da el fondo del alzado.
+var colDetrasCorrida = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Etiqueta = "K8", Seccion = "K 15X15",
+    X1 = 9, Y1 = 3, X2 = 9, Y2 = 3, Z1 = 0, Z2 = 2.7, AnchoM = 0.15, PeralteM = 0.15
+};
+
+var fondoCorrido = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { enElEje[0], colDetrasCorrida }, enX: true, ordenada: 5,
+    espesorM: 0.6, verElFondo: true);
+
+Igual("con el fondo en otro sitio salen las dos", 2, fondoCorrido.Count);
+Check("la del eje va marcada como cortada", fondoCorrido.Any(q => q.Cortada));
+Check("y la de atras como fondo", fondoCorrido.Any(q => !q.Cortada));
 
 Igual("sin el fondo sale solo la del eje", 1,
       CorteEnAlzado.Piezas(
@@ -2104,6 +2122,79 @@ Igual("con Z1 = Z2 no se dibujaba: eso era el castillo invisible", 0,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" EN EL CORTE, LO QUE SE CORTA Y EL FONDO: NADA ENCIMADO");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «en el corte de dibujo no se deben ver elementos encimandos, se deben ver los que se
+// cortan justo en la linea y el fondo nada mas».
+//
+// EL PROBLEMA ERA LA REBANADA: el corte se tomaba con el espesor de la hoja -CORTE_ESPESOR_CM,
+// 60 cm-, asi que TODO lo que hubiera a 30 cm del eje se dibujaba como CORTADO. Dos muros
+// paralelos, la cadena del muro de al lado y las columnas de la fila siguiente salian todos a la
+// vez, unos encima de otros.
+//
+// Cortado es lo que el plano CRUZA DE VERDAD: el elemento con su propio ancho encima del eje.
+ElementoPlanta MuroEnY(double x, double espesor = 0.15) =>
+    new()
+    {
+        Clase = ClasePlanta.Muro, Tipo = "MURO", Seccion = "MURO 15",
+        X1 = x, Y1 = 0, X2 = x, Y2 = 4, Z1 = 0, Z2 = 2.5, AnchoM = espesor
+    };
+
+// El muro que esta EN el eje se corta: su espesor de 15 cruza la linea.
+Check("el muro del eje se corta",
+      CorteEnAlzado.Entra(MuroEnY(5), enX: true, ordenada: 5, espesorM: 0.60));
+
+// Uno a 4 cm tambien: es el desajuste normal del modelo -un muro dibujado a su paño-.
+Check("y uno a 4 cm, que es el desajuste del modelo, tambien",
+      CorteEnAlzado.Entra(MuroEnY(5.04), enX: true, ordenada: 5, espesorM: 0.60));
+
+// PERO UNO A 30 CM NO: antes salia cortado y se encimaba con el del eje.
+Check("uno a 30 cm ya NO se corta",
+      !CorteEnAlzado.Entra(MuroEnY(5.30), enX: true, ordenada: 5, espesorM: 0.60));
+// Ese, si queda detras, se ve al fondo, que es su sitio.
+Check("ese se ve al fondo",
+      CorteEnAlzado.AlFondo(MuroEnY(5.30), enX: true, ordenada: 5, espesorM: 0.60));
+// Y nada es las dos cosas a la vez: el del eje no esta al fondo.
+Check("y lo cortado no esta tambien al fondo",
+      !CorteEnAlzado.AlFondo(MuroEnY(5), enX: true, ordenada: 5, espesorM: 0.60));
+
+// UN MURO MAS GRUESO CRUZA DESDE MAS LEJOS, porque lo que cuenta es su ancho: uno de 60 cm con su
+// eje a 25 cm si cruza la linea.
+Check("un muro de 60 con su eje a 25 cm si cruza",
+      CorteEnAlzado.Entra(MuroEnY(5.25, espesor: 0.60), enX: true, ordenada: 5, espesorM: 0.60));
+
+// UNA TRABE QUE CRUZA EL CORTE se corta aunque su eje pase de largo: su propio eje lo atraviesa.
+var trabeQueCruzaElCorte = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "TRABE", Seccion = "T 20X40",
+    X1 = 3, Y1 = 2, X2 = 8, Y2 = 2, Z1 = 2.5, Z2 = 2.5, AnchoM = 0.20, PeralteM = 0.40
+};
+Check("la trabe que cruza el corte se corta",
+      CorteEnAlzado.Entra(trabeQueCruzaElCorte, enX: true, ordenada: 5, espesorM: 0.60));
+
+// Y LO ENCIMADO SE QUITA: la misma silueta dos veces no dice nada, y lo que cae DENTRO de otra
+// pieza del fondo, tampoco.
+var conEncimados = new List<CorteEnAlzado.Pieza>
+{
+    new(ClasePlanta.Muro, "M1", "MURO 15", 0, 0, 4, 2.5, "MURO", true),
+    new(ClasePlanta.Muro, "M2", "MURO 15", 0, 0, 4, 2.5, "MURO", false),
+    new(ClasePlanta.Muro, "M3", "MURO 15", 1, 0, 2, 2.5, "MURO", false),
+    new(ClasePlanta.Columna, "C1", "K 15X15", 1, 0, 0.15, 2.5, "CASTILLO", false)
+};
+
+var limpias = CorteEnAlzado.SinEncimados(conEncimados);
+
+Igual("de cuatro piezas encimadas quedan dos", 2, limpias.Count);
+Check("la CORTADA se queda siempre", limpias.Any(x => x.Etiqueta == "M1"));
+Check("la del fondo con la misma silueta se va", limpias.All(x => x.Etiqueta != "M2"));
+Check("y la que cae dentro de otra, tambien", limpias.All(x => x.Etiqueta != "M3"));
+// La columna dentro del muro SE QUEDA: en el alzado dicen cosas distintas -una es el paño y la
+// otra el apoyo- y solo se comparan piezas de la misma clase.
+Check("la columna dentro del muro se queda", limpias.Any(x => x.Etiqueta == "C1"));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" LOS CORTES QUE SE PIDEN: POR SU EJE, O DONDE UNO QUIERA");
 Console.WriteLine("=====================================================================");
 
@@ -2150,6 +2241,24 @@ Igual("dos cortes en X y uno en Y", 3, porValores.Cortes.Count);
 Check("los dos primeros van en X", porValores.Cortes[0].EnX && porValores.Cortes[1].EnX);
 Check("y el tercero en Y", !porValores.Cortes[2].EnX);
 Igual("el de Y se llama con su sitio", "Y=2.1", porValores.Cortes[2].Id);
+
+// Y EN LOS CAMPOS DE X Y DE Y TAMBIEN VALE EL NOMBRE DE UN EJE: quien escriba «C» en el campo de
+// las X quiere el corte por el eje C, y avisarle en lugar de dibujarlo seria quedarse corto.
+var nombreEnElCampo = CortesPedidos.Interpretar(null, "C", "4", cuadriculaX, cuadriculaY);
+Igual("un nombre de eje en el campo de X vale", 2, nombreEnElCampo.Cortes.Count);
+Igual("y se rotula con su nombre", "C", nombreEnElCampo.Cortes[0].Id);
+Cerca("en su ordenada", 6, nombreEnElCampo.Cortes[0].Ordenada);
+
+// EN ESOS CAMPOS UN NUMERO ES LA COORDENADA, no el nombre de un eje que se llame igual: el campo
+// dice «Cortar en Y», asi que «4» son cuatro metros. Y como ahi esta el eje 2, el corte se rotula
+// con SU nombre, que es lo que lo hace comparable con la planta.
+Igual("un numero es la coordenada, y toma el nombre del eje que este ahi",
+      "2", nombreEnElCampo.Cortes[1].Id);
+// Y donde no hay eje, el numero se queda con su sitio.
+Igual("y donde no hay eje, con su sitio", "Y=2",
+      CortesPedidos.Interpretar(null, null, "2", cuadriculaX, cuadriculaY).Cortes[0].Id);
+Igual("y lo que no es ni numero ni eje se avisa", 1,
+      CortesPedidos.Interpretar(null, "ZZ", null, cuadriculaX, cuadriculaY).NoReconocidos.Count);
 
 // LA COMA DECIMAL, que es lo que sale del teclado numerico en español: no se puede rechazar. La
 // coma separa la lista SALVO cuando va entre dos cifras, que ahi es el punto decimal.

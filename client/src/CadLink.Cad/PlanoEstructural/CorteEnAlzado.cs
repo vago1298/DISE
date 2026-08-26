@@ -60,11 +60,80 @@ public static class CorteEnAlzado
     public static bool Entra(
         ElementoPlanta el, bool enX, double ordenada, double espesorM)
     {
-        var medio = Math.Max(espesorM, 0.05) / 2;
-
         var (min, max) = Extremos(el, enX);
 
+        var medio = MedioPerpendicular(el, enX) + Holgura(espesorM);
+
         return max >= ordenada - medio && min <= ordenada + medio;
+    }
+
+    /// <summary>
+    /// La <b>holgura</b> del corte: lo que se admite de desajuste del modelo, y poco más.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Aquí estaba lo de los <b>elementos encimados</b>. El corte se tomaba como una rebanada del
+    /// espesor de la hoja —<c>CORTE_ESPESOR_CM</c>, 60 cm—, así que <b>todo lo que hubiera a 30 cm
+    /// del eje se dibujaba como cortado</b>: dos muros paralelos, la cadena del muro de al lado y
+    /// las columnas de la fila siguiente salían todos a la vez, unos encima de otros, y el alzado
+    /// se volvía ilegible.
+    /// </para>
+    /// <para>
+    /// Cortado es lo que el plano <b>cruza de verdad</b>: el elemento con su propio ancho encima
+    /// del eje. La holgura solo tapa el desajuste del modelo —un nudo movido un centímetro, un
+    /// muro dibujado a su paño en lugar de a su eje—, y por eso se <b>topa en 5 cm</b> por lado
+    /// aunque la hoja diga 60: quien tenía 60 en su hoja no quería 60 cm de rebanada, quería que
+    /// el corte no saliera vacío.
+    /// </para>
+    /// </remarks>
+    private static double Holgura(double espesorM) =>
+        Math.Min(Math.Max(espesorM, 0.02), 0.10) / 2;
+
+    /// <summary>
+    /// Cuánto se extiende un elemento <b>hacia los lados del corte</b>, más allá de su eje.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que hace que «cortado» signifique cortado: un muro de 15 cm dibujado en su eje cruza
+    /// el plano si el eje pasa a menos de 7.5 cm, y no si pasa a 30. Un <b>área</b> devuelve cero
+    /// porque sus vértices ya traen su contorno; una <b>barra</b>, su medio espesor <b>proyectado</b>
+    /// —la que cruza el corte no necesita ninguno, porque su propio eje ya lo atraviesa—; y una
+    /// <b>columna</b>, la caja que envuelve a su sección girada, la misma cuenta con la que se
+    /// coloca su rótulo.
+    /// </remarks>
+    private static double MedioPerpendicular(ElementoPlanta el, bool enX)
+    {
+        if (el.Vertices.Count > 0)
+        {
+            return 0;
+        }
+
+        if (el.Clase == ClasePlanta.Columna)
+        {
+            var b = el.AnchoM > Minimo ? el.AnchoM : 0.15;
+            var h = el.PeralteM > Minimo ? el.PeralteM : b;
+
+            var a = el.AnguloGrados * Math.PI / 180;
+            var ca = Math.Abs(Math.Cos(a));
+            var sa = Math.Abs(Math.Sin(a));
+
+            return enX ? (b / 2 * ca) + (h / 2 * sa) : (b / 2 * sa) + (h / 2 * ca);
+        }
+
+        var esp = (el.AnchoM > Minimo ? el.AnchoM : 0.15) / 2;
+
+        var dx = el.X2 - el.X1;
+        var dy = el.Y2 - el.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 1e-9)
+        {
+            return esp;
+        }
+
+        // El espesor de una barra va PERPENDICULAR a su eje: se proyecta en la dirección del
+        // corte. Una barra paralela al corte aporta su medio espesor entero; una que lo cruza,
+        // nada, porque su eje ya lo atraviesa.
+        return esp * Math.Abs(enX ? -dy / largo : dx / largo);
     }
 
     /// <summary>
@@ -131,7 +200,76 @@ public static class CorteEnAlzado
             }
         }
 
-        return piezas;
+        return SinEncimados(piezas);
+    }
+
+    /// <summary>
+    /// Quita las piezas <b>encimadas</b>: la misma silueta dibujada dos veces no dice nada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió que en el corte no se vean elementos unos encima de otros, y aparte de lo que
+    /// arregla la holgura queda esto: en el fondo de un alzado, <b>muchas piezas distintas caen en
+    /// el mismo sitio</b>. Tres muros paralelos a distinta profundidad se proyectan en el mismo
+    /// rectángulo, y la fila de columnas de atrás cae dentro del muro que tienen delante. En el
+    /// dibujo eso son rayas sobre rayas: no es información, es ruido.
+    /// </para>
+    /// <para>
+    /// Así que de las siluetas repetidas se queda <b>una</b>, y de las que caen <b>dentro</b> de
+    /// otra, la de fuera. Con dos reglas que no se negocian:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Lo CORTADO no se quita nunca.</b> Es el objeto del corte, va con su línea gruesa y
+    ///     tiene que estar aunque coincida con algo del fondo.
+    ///   </item>
+    ///   <item>
+    ///     Solo se comparan piezas de la <b>misma clase</b>: una columna dentro de un muro se
+    ///     queda, porque en el alzado dicen cosas distintas —una es el paño y la otra el apoyo—.
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    public static List<Pieza> SinEncimados(List<Pieza> piezas)
+    {
+        // Lo cortado primero: así, cuando una del fondo coincida con una cortada, la que se
+        // queda es la cortada.
+        var orden = piezas
+            .Select((p, i) => (p, i))
+            .OrderByDescending(x => x.p.Cortada)
+            .ThenBy(x => x.i)
+            .Select(x => x.p)
+            .ToList();
+
+        var salida = new List<Pieza>();
+
+        foreach (var p in orden)
+        {
+            if (!p.Cortada && salida.Any(q => Tapa(q, p)))
+            {
+                continue;
+            }
+
+            salida.Add(p);
+        }
+
+        return salida;
+    }
+
+    /// <summary>¿La pieza <paramref name="grande"/> tapa del todo a la otra?</summary>
+    private static bool Tapa(Pieza grande, Pieza chica)
+    {
+        if (grande.Clase != chica.Clase)
+        {
+            return false;
+        }
+
+        // Dos centímetros de holgura: en un plano de obra, por debajo de eso es la misma raya.
+        const double h = 0.02;
+
+        return chica.X >= grande.X - h
+               && chica.Z >= grande.Z - h
+               && chica.X + chica.Ancho <= grande.X + grande.Ancho + h
+               && chica.Z + chica.Alto <= grande.Z + grande.Alto + h;
     }
 
     /// <summary>
@@ -151,10 +289,12 @@ public static class CorteEnAlzado
     public static bool AlFondo(
         ElementoPlanta el, bool enX, double ordenada, double espesorM)
     {
-        var medio = Math.Max(espesorM, 0.05) / 2;
         var (min, _) = Extremos(el, enX);
 
-        return min > ordenada + medio;
+        // El mismo margen que usa «cortado», para que ningún elemento sea las dos cosas: lo que
+        // el plano cruza se dibuja cortado y lo que queda detrás, al fondo. Sin el mismo margen
+        // en las dos preguntas, los de la frontera salían dos veces, uno encima del otro.
+        return min > ordenada + MedioPerpendicular(el, enX) + Holgura(espesorM);
     }
 
     /// <summary>El rectángulo de un elemento, o nulo si no tiene nada que enseñar.</summary>
