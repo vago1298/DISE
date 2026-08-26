@@ -56,6 +56,15 @@ public sealed class CapasPlano
         // Los colores que aquí van escritos son los de la macro, no una preferencia:
         // en DefinirCapas están así, con el número a la vista.
         t.Add(PorTipo("MURO", 6));
+
+        // EL MURO DE CONCRETO, EN SU PROPIA CAPA. Se pidió: el de concreto que NO lleva cadena
+        // se dibuja, y va aparte del de mampostería. Tiene sentido en obra y en el plano: un
+        // muro de concreto es estructura —se arma y se cuela— y uno de block es cerramiento;
+        // apagando una capa se revisa una cosa sin la otra. El nombre lleva el «DE» porque así
+        // se pidió, y se puede cambiar desde la hoja sin tocar el código.
+        t.Add(new Capa("MURO CONCRETO",
+                       Prefijo + _cfg.Texto("CAPA_MURO_CONCRETO", "MURO DE CONCRETO"),
+                       Color("COLOR_MURO_CONCRETO", 4), string.Empty));
         t.Add(PorTipo("COLUMNA", 1));
         t.Add(PorTipo("CASTILLO", Color("COLOR_CASTILLO", 1)));
         t.Add(PorTipo("TRABE", 3, cfg.Texto("LINETYPE_TRABE", "PHANTOM2")));
@@ -102,6 +111,9 @@ public sealed class CapasPlano
 
         Todas = t;
     }
+
+    /// <summary>La capa del <b>muro de concreto</b>: <c>E-MURO DE CONCRETO</c>.</summary>
+    public string CapaMuroConcreto => CapaDeTipo("MURO CONCRETO");
 
     private Capa PorTipo(string tipo, int color, string tipoDeLinea = "") =>
         new(tipo, Prefijo + tipo, color, tipoDeLinea);

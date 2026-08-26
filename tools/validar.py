@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y cinco renglones añadidos",
-          cfgp.count("        P(") == 305
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y ocho renglones añadidos",
+          cfgp.count("        P(") == 308
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,8 +3157,8 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "305, ConfigPlano.PorOmision.Count" in pr
-          and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
+          and "308, ConfigPlano.PorOmision.Count" in pr
+          and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
           "CadLink.Cad.csproj" in leer(ruta("tools/prueba-config-plano/Prueba.csproj")))
@@ -3777,7 +3777,7 @@ def v18_planta_autocad() -> None:
     m_cap = re.search(r"public void AsegurarCapas\(\).*?\n    \}", dib, re.S)
     check("se puede leer AsegurarCapas", m_cap is not None)
     if m_cap:
-        check("se crean las 22 capas de la macro, con su color",
+        check("se crean las 23 capas de la tabla, con su color",
               "foreach (var capa in _capas.Todas)" in m_cap.group(0)
               and "lay.Color = capa.Color;" in m_cap.group(0))
         check("y con su tipo de linea",
@@ -5253,10 +5253,17 @@ def v18_planta_autocad() -> None:
     # El ancho del texto, con la misma cuenta de omision que AnchoDeTexto: largo x altura x 0.55.
     check("midiendo el ancho del texto como el resto del dibujante",
           "var medioTexto = texto.Length * altTrabe * 0.55 / 2;" in dibp
-          and "cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea)" in dibp)
+          and "cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea, altTrabe))" in dibp)
     # Cada cinco centimetros: un castillo mide quince, asi que no se cuela entre dos preguntas.
     check("y recorriendo el texto de punta a punta",
           "var pasos = Math.Max(2, (int)Math.Ceiling(largo / 0.05));" in cdm)
+    # UN ROTULO NO ES UNA RAYA, ES UNA CAJA: alto por largo, y con el fondo opaco todavia un poco
+    # mas. Se recorren sus TRES lineas -el centro y las dos orillas-, que si no un texto que pasa
+    # justo al lado tapaba el castillo con media letra y se escapaba.
+    check("y midiendo la caja del texto, no solo su linea",
+          "foreach (var lado in new[] { 0d, medioAlto, -medioAlto })" in cdm
+          and "var medioAlto = altoTexto > 0 ? altoTexto * 0.65 : 0;" in cdm
+          and "cx + ex, cy + ey, _castillosDeArea, altTrabe))" in dibp)
     # SOLO LOS DE AREA -DeShell-: en un castillo de frame el nombre de la cadena nunca ha
     # estorbado, y callarlo seria quitar un dato que si se lee.
     check("y solo con los castillos de AREA, no con los de frame",
@@ -5268,6 +5275,30 @@ def v18_planta_autocad() -> None:
     check("midiendo contra la seccion ya girada",
           "var lx = (rx * ca) + (ry * sa);" in cdm
           and "if (Math.Abs(lx) <= b / 2 && Math.Abs(ly) <= h / 2)" in cdm)
+
+    # ------------------------------------------------------------------
+    # EL MURO DE CONCRETO SIN CADENA, EN SU CAPA
+    # ------------------------------------------------------------------
+    #  «No me dibujas los muros de concreto cuando no tienen cadena, dibujalos en una capa -solo
+    #  si no tienen cadena; si tienen cadena dibuja pura cadena, como en mamposteria-: la capa
+    #  E-MURO DE CONCRETO». Es la regla de la mamposteria aplicada al concreto: donde hay cadena
+    #  manda la cadena -el muro y su cadena ocupan la misma linea en planta y dibujar los dos deja
+    #  dos parejas de rayas pegadas- y donde no hay cadena el muro es lo unico que hay. La
+    #  diferencia es la CAPA: un muro de concreto es estructura, se arma y se cuela, y tiene que
+    #  poderse revisar sin la mamposteria encima.
+    check("el muro de concreto sin cadena va a E-MURO DE CONCRETO",
+          'P("CAPA_MURO_CONCRETO", "MURO DE CONCRETO",' in cfgplano
+          and 'public string CapaMuroConcreto => CapaDeTipo("MURO CONCRETO");' in capp2
+          and 'Color("COLOR_MURO_CONCRETO", 4)' in capp2)
+    check("y el dibujante la usa solo cuando no lleva cadena",
+          "private string CapaDeMuro(ElementoPlanta el, bool tapado)" in dibp
+          and 'string.Equals(el.Material, "CONCRETO", StringComparison.OrdinalIgnoreCase)' in dibp
+          and "var capaMuro = CapaDeMuro(el, tapado);" in dibp
+          and "Barra(el, x0, y0, capaMuro," in dibp)
+    # Y se dice en la bitacora cuantos fueron, que es lo que permite saber por que no se ve uno.
+    check("y el resumen dice cuantos fueron",
+          "_murosDeConcreto++;" in dibp
+          and "muro(s) de concreto sin cadena se dibujaron en la capa" in dibp)
 
     # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA

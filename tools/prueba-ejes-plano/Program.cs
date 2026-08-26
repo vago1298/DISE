@@ -2003,6 +2003,18 @@ Check("un texto que acaba en el castillo tambien lo tapa",
 Check("un castillo de 15 no se cuela entre dos preguntas",
       CastilloDeMuro.HayCastilloDeAreaBajoElTexto(4, 0.10, 6, 0.10, dosCastillos));
 
+// UN ROTULO NO ES UNA RAYA, ES UNA CAJA: alto por largo, y con el fondo opaco todavia un poco
+// mas. Un texto que pasa justo al lado del castillo lo tapa con media letra, y preguntando solo
+// por su linea del centro se escapaba. Con el alto se detecta.
+var castilloParaCaja = new List<ElementoPlanta> { PanelCastillo(5, 0, 5, 0.20, 0, 2.5) };
+CastilloDeMuro.Normalizar(castilloParaCaja, 0.15);
+
+Check("un texto que pasa al lado, sin alto, no se detecta",
+      !CastilloDeMuro.HayCastilloDeAreaBajoElTexto(4.5, 0.32, 5.5, 0.32, castilloParaCaja));
+Check("pero con su alto si, porque su caja lo tapa",
+      CastilloDeMuro.HayCastilloDeAreaBajoElTexto(
+          4.5, 0.32, 5.5, 0.32, castilloParaCaja, altoTexto: 0.25));
+
 // Y EL GIRO CUENTA: en un castillo a 45 grados la caja recta diria que si donde no lo hay.
 var giradoArea = new List<ElementoPlanta> { PanelCastillo(0, 0, 0.60, 0.60, 0, 2.5) };
 CastilloDeMuro.Normalizar(giradoArea, 0.15);

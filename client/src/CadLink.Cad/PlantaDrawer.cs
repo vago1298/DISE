@@ -99,6 +99,35 @@ public sealed partial class PlantaDrawer
         return _capas.CapaDeTipo(tipo);
     }
 
+    /// <summary>
+    /// La capa de un <b>muro</b>: la de concreto tiene la suya cuando no lleva cadena.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió así: «no me dibujas los muros de concreto cuando no tienen cadena, dibújalos en
+    /// una capa —solo si no tienen cadena; si tienen cadena dibuja pura cadena, como en
+    /// mampostería—: la capa E-MURO DE CONCRETO».
+    /// </para>
+    /// <para>
+    /// Y es la regla de la mampostería aplicada al concreto: donde hay cadena, la cadena manda
+    /// —el muro y su cadena ocupan la misma línea en planta y dibujar los dos deja dos parejas
+    /// de rayas pegadas—, y donde no hay cadena el muro es lo único que hay, así que se dibuja.
+    /// La diferencia es la <b>capa</b>: un muro de concreto es estructura, se arma y se cuela, y
+    /// tiene que poderse revisar sin la mampostería encima.
+    /// </para>
+    /// </remarks>
+    private string CapaDeMuro(ElementoPlanta el, bool tapado)
+    {
+        if (!tapado
+            && _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
+            && string.Equals(el.Material, "CONCRETO", StringComparison.OrdinalIgnoreCase))
+        {
+            return _capas.CapaMuroConcreto;
+        }
+
+        return CapaDe(el);
+    }
+
     private const string EstiloTexto = "SECCIONES";
 
     /// <summary>Ancho por omisión de una trabe cuando el modelo no lo dice, en m.</summary>
@@ -144,6 +173,9 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Cuántos nombres de cadena se callaron por caer sobre un castillo de área.</summary>
     private int _rotulosSobreCastillo;
+
+    /// <summary>Cuántos muros de concreto se dibujaron en su capa, para el resumen.</summary>
+    private int _murosDeConcreto;
 
     public PlantaDrawer(dynamic doc)
     {
@@ -206,6 +238,7 @@ public sealed partial class PlantaDrawer
         _cadenasTapadas = new HashSet<ElementoPlanta>();
         _castillosDeArea = new List<ElementoPlanta>();
         _rotulosSobreCastillo = 0;
+        _murosDeConcreto = 0;
 
         AsegurarCapas();
         AsegurarEstiloTexto();
@@ -355,7 +388,14 @@ public sealed partial class PlantaDrawer
             // porque está en el modelo y su mampostería y su pier sí se dibujan.
             if (!tapado)
             {
-                Barra(el, x0, y0, CapaDe(el),
+                var capaMuro = CapaDeMuro(el, tapado);
+
+                if (!string.Equals(capaMuro, CapaDe(el), StringComparison.OrdinalIgnoreCase))
+                {
+                    _murosDeConcreto++;
+                }
+
+                Barra(el, x0, y0, capaMuro,
                       Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo);
             }
 
@@ -459,6 +499,13 @@ public sealed partial class PlantaDrawer
         // los muros que se quedaron sin pier, en lugar de uno por elemento.
         ResumirEspesores();
         ResumirPiers();
+
+        if (_murosDeConcreto > 0)
+        {
+            Nota($"{_murosDeConcreto} muro(s) de concreto sin cadena se dibujaron en la capa " +
+                 $"'{_capas.CapaMuroConcreto}'. Los que llevan cadena no se dibujan: ahí se ve " +
+                 "la cadena, como en la mampostería.");
+        }
 
         if (_rotulosSobreCastillo > 0)
         {
@@ -1988,7 +2035,7 @@ public sealed partial class PlantaDrawer
             var ey = dy / largo * medioTexto;
 
             if (PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaBajoElTexto(
-                    cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea))
+                    cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea, altTrabe))
             {
                 _rotulosSobreCastillo++;
                 return;

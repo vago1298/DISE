@@ -81,8 +81,10 @@ var cfg = new ConfigPlano();
 //   CADENA_SOLO_LA_MAS_ALTA         de varias cadenas en la misma linea, en planta solo una
 //   CADENA_ROTULO_EN_CASTILLO_AREA  y su nombre no va encima de un castillo de area
 //   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y cinco que se añadieron",
-      305, ConfigPlano.PorOmision.Count);
+//   CAPA_MURO_CONCRETO / COLOR_MURO_CONCRETO / MURO_CONCRETO_CAPA_PROPIA
+//                                   el muro de concreto sin cadena, en E-MURO DE CONCRETO
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y ocho que se añadieron",
+      308, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -261,6 +263,13 @@ Check("y su nombre no va encima de un castillo de area",
 Check("la cadena de desplante va continua en cualquier nivel",
       cfg.Bandera("CADENA_DESPLANTE_CONTINUA", false));
 
+// EL MURO DE CONCRETO SIN CADENA, EN SU PROPIA CAPA: un muro de concreto es estructura -se arma y
+// se cuela- y uno de block es cerramiento; apagando una capa se revisa uno sin el otro. Donde hay
+// cadena manda la cadena, igual que en la mamposteria.
+Igual("la capa del muro de concreto se llama como se pidio",
+      "MURO DE CONCRETO", cfg.Texto("CAPA_MURO_CONCRETO"));
+Check("y viene encendida", cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", false));
+
 // EL ROTULO DE LA PLANTA, A -0.50 DE LOS EJES, como en la hoja de la macro. Se probo con 5 y se
 // pidio volver: lo que estaba mal no era la distancia, sino DESDE DONDE se medía -desde la caja
 // de los elementos en lugar de desde los ejes-, que es lo que los dejaba escalonados.
@@ -271,7 +280,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 305 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 308 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -328,7 +337,13 @@ Igual("E-COTAS", 8, ColorDe("E-COTAS"));
 // LA LOSA EN VOLADIZO, EN SU CAPA: es la 22, y la de la losa se queda APAGADA para que
 // se vean los voladizos sin el contorno de todos los paños.
 Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"));
-Igual("son las 22 capas", 22, capas.Todas.Count);
+// VEINTITRES: las 22 de la macro mas E-MURO DE CONCRETO, que se pidio aparte para el muro de
+// concreto que no lleva cadena.
+Igual("son las 23 capas", 23, capas.Todas.Count);
+Igual("y la del muro de concreto se llama E-MURO DE CONCRETO",
+      "E-MURO DE CONCRETO", capas.CapaMuroConcreto);
+Igual("con su color de la hoja", 4,
+      capas.Todas.First(c => c.Nombre == "E-MURO DE CONCRETO").Color);
 Igual("y la que se apaga es la de la losa", "E-LOSA",
       string.Join(", ", capas.CapasApagadas()));
 

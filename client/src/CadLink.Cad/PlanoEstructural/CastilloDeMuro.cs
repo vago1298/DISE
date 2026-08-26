@@ -493,7 +493,8 @@ public static class CastilloDeMuro
     /// </para>
     /// </remarks>
     public static bool HayCastilloDeAreaBajoElTexto(
-        double xA, double yA, double xB, double yB, IEnumerable<ElementoPlanta>? elementos)
+        double xA, double yA, double xB, double yB, IEnumerable<ElementoPlanta>? elementos,
+        double altoTexto = 0)
     {
         if (elementos is null)
         {
@@ -510,15 +511,33 @@ public static class CastilloDeMuro
             return HayCastilloDeAreaEn(xA, yA, elementos);
         }
 
+        // LAS TRES LÍNEAS DE LA CAJA: la del centro y las dos orillas. Un rótulo no es una raya,
+        // es una caja de alto por largo —y con el fondo opaco puesto, todavía un poco más—, así
+        // que preguntando solo por su centro se escapaba el caso en que el texto tapa el castillo
+        // con media letra. El medio alto se toma con holgura por ese fondo.
+        var medioAlto = altoTexto > 0 ? altoTexto * 0.65 : 0;
+
+        var nx = largo > Nada ? -dy / largo : 0;
+        var ny = largo > Nada ? dx / largo : 0;
+
         var pasos = Math.Max(2, (int)Math.Ceiling(largo / 0.05));
 
-        for (var i = 0; i <= pasos; i++)
+        foreach (var lado in new[] { 0d, medioAlto, -medioAlto })
         {
-            var t = (double)i / pasos;
-
-            if (HayCastilloDeAreaEn(xA + (dx * t), yA + (dy * t), elementos))
+            if (lado != 0 && medioAlto <= 0)
             {
-                return true;
+                continue;
+            }
+
+            for (var i = 0; i <= pasos; i++)
+            {
+                var t = (double)i / pasos;
+
+                if (HayCastilloDeAreaEn(
+                        xA + (dx * t) + (nx * lado), yA + (dy * t) + (ny * lado), elementos))
+                {
+                    return true;
+                }
             }
         }
 
