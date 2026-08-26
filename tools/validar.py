@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cincuenta y un renglones añadidos",
-          cfgp.count("        P(") == 311
+    check("la hoja CONFIG de la macro esta portada, con cincuenta y tres renglones añadidos",
+          cfgp.count("        P(") == 313
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "311, ConfigPlano.PorOmision.Count" in pr
+          and "313, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4369,7 +4369,7 @@ def v18_planta_autocad() -> None:
           and 'P("CORTE_RELLENAR_SOLO_EN_SECCION", "SI",' in cfgp)
     check("y el dibujante lo mira antes de rellenar",
           "var enSeccion = p.EnSeccion" in cortedib
-          and '|| !_cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);' in cortedib
+          and "|| !soloEnSeccion" in cortedib
           and "if (p.Cortada && enSeccion &&" in cortedib)
     # La barra que CRUZA el corte se ve de canto -esa es su seccion, la del armado- y la que corre a
     # lo largo, de costado. El muro y la losa, de costado siempre: se leen por su paño y su franja.
@@ -4380,6 +4380,71 @@ def v18_planta_autocad() -> None:
     check("y una seccion cuadrada se ve en seccion siempre",
           "if (largo - corto <= 0.02)" in corte
           and "return AnchoVisto(el, enX) < (corto + largo) / 2;" in corte)
+
+    # ------------------------------------------------------------------
+    # LAS PIEZAS DEL CORTE, COMO BLOQUE
+    # ------------------------------------------------------------------
+    #  «El corte no estas poniendo o creando el bloque de la cadena intermedia, tampoco lo estas
+    #  rellenando» y «igual crea los bloques de trabes y cadenas o vigas de acero en corte».
+    #
+    #  Es la misma idea que ya se usa con las columnas en planta: el bloque se llama como la seccion
+    #  -con su medida detras- asi que un BLOCKREPLACE cambia de golpe TODAS las cadenas de 15x25 del
+    #  corte por el detalle armado, con sus varillas y sus estribos. La medida va en el nombre porque
+    #  la misma seccion se ve de dos formas en un corte: de canto son 15x25 y a lo largo son tres
+    #  metros por 25, que es otro dibujo y no puede compartir bloque.
+    check("las trabes y cadenas del corte van como bloque",
+          "private bool PiezaComoBloque(" in cortedib
+          and "private string NombreDelBloqueDeLaPieza(" in cortedib
+          and "private bool AsegurarBloqueDeLaPieza(" in cortedib
+          and 'P("CORTE_PIEZAS_COMO_BLOQUE", "SI",' in cfgp)
+    # Con PREFIJO para no chocar con los bloques de la planta: la seccion de una columna se llama
+    # igual en los dos dibujos y no es el mismo dibujo -uno es su seccion en planta y el otro su
+    # alzado-.
+    check("con su prefijo y su medida en el nombre",
+          '_cfg.Texto("CORTE_BLOQUE_PREFIJO", "CORTE-")' in cortedib
+          and 'var medida = $"{p.Ancho * 100:0.##}X{p.Alto * 100:0.##}";' in cortedib)
+    # EL RELLENO VA DENTRO DEL BLOQUE, como en la planta: asi se mueve con el y quien reemplace el
+    # bloque por su detalle se lleva el relleno con el cambio. Y la insercion, al CENTRO de la pieza.
+    check("con su relleno dentro y la insercion al centro",
+          "private void RellenarDentroDelBloqueDelCorte(" in cortedib
+          and "cy + p.Z + (p.Alto / 2)," in cortedib)
+    # Solo las CORTADAS: lo que se ve al fondo no lleva armado que enseñar.
+    check("y solo las cortadas",
+          "if (p.Cortada && p.Clase == ClasePlanta.Trabe\n                && PiezaComoBloque("
+          in cortedib)
+
+    # ------------------------------------------------------------------
+    # LA CADENA INTERMEDIA, RELLENA AUNQUE EL CORTE VAYA A LO LARGO
+    # ------------------------------------------------------------------
+    #  La restriccion de «solo lo que se ve en seccion» es para la COLUMNA y el CASTILLO, que es
+    #  donde se pidio: un castillo de area de 15x80 cortado a lo largo de sus 80 no es una seccion.
+    #  Una CADENA o una TRABE que el plano corta si se rellena aunque el corte vaya a lo largo de
+    #  ella: lo que se ve es material cortado -el plano la parte de punta a punta- y es justo lo que
+    #  hay que ver de la CADENA INTERMEDIA, la que confina los vanos de puertas y ventanas y va
+    #  metida en el muro; sin relleno se pierde entre las lineas del paño.
+    check("la cadena y la trabe cortadas se rellenan siempre",
+          "|| p.Clase != ClasePlanta.Columna;" in cortedib
+          and "var soloEnSeccion = _cfg.Bandera(\"CORTE_RELLENAR_SOLO_EN_SECCION\", true);"
+              in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL MURO, HASTA EL PAÑO DEL CASTILLO
+    # ------------------------------------------------------------------
+    #  «Las lineas de los muros ponlos hasta el paño de los castillos o columnas, no al eje». En el
+    #  modelo el muro va de NUDO a NUDO -del eje de un castillo al del siguiente- pero el muro de
+    #  verdad arranca en la CARA del castillo, porque contra el se levanta. Dibujado a ejes se mete
+    #  medio castillo por cada punta y lo pisa justo donde el castillo tiene que verse entero, que es
+    #  donde lleva su armado. Es lo contrario de lo que se hace con la trabe -a ella se le SUMA medio
+    #  apoyo- y por eso es la misma cuenta con el signo cambiado.
+    check("el muro del corte muere en el paño del castillo",
+          "var caraA = MedioApoyoEn(el, enX, min, todos);" in corte
+          and "var izquierda = min + caraA;" in corte
+          and "var derecha = max - caraB;" in corte)
+    # Y si los castillos se comieran el muro entero se deja como estaba: mejor un muro de mas que un
+    # hueco donde hay pared.
+    check("y si sus apoyos se lo comieran entero, se deja",
+          "if (derecha - izquierda <= Minimo)" in corte
+          and "izquierda = min;" in corte)
 
     # ------------------------------------------------------------------
     # QUE LADO DEL CORTE SE MIRA
@@ -4395,6 +4460,27 @@ def v18_planta_autocad() -> None:
           and "return haciaMas\n            ? min > ordenada + margen\n"
               "            : max < ordenada - margen;" in corte
           and "public bool HaciaMas { get; set; } = true;" in dtop2)
+    # Y LAS OPCIONES SE AJUSTAN SOLAS AL CORTE QUE SE PIDE: en uno cuyo plano esta en X los lados
+    # son derecha e izquierda; en uno en Y, arriba y abajo. Leer «derecha / arriba» cuando solo una
+    # de las dos aplica obliga a traducir mentalmente cada vez, y es donde uno se equivoca de lado.
+    # Las dos parejas se quedan cuando se piden cortes en las DOS direcciones a la vez, porque
+    # entonces las dos cosas son ciertas. Y sin corte pedido, la lista se apaga.
+    check("las opciones del lado se ajustan solas al corte",
+          "private void ActualizarLadoDelCorte()" in winp
+          and 'hayX ? "derecha (+X)" : "arriba (+Y)"' in winp
+          and 'hayX ? "izquierda (-X)" : "abajo (-Y)"' in winp
+          and "LadoDelCorteCombo.IsEnabled = conCorte;" in winp)
+    # Se recalcula al cambiar el eje, al escribir en los campos y al leer el modelo.
+    check("y se recalculan cuando cambia lo pedido",
+          "private void OnCortePersonalizadoCambiado(" in winp
+          and 'TextChanged="OnCortePersonalizadoCambiado"' in xaml
+          and winp.count("ActualizarLadoDelCorte();") >= 4)
+    # Solo el TEXTO de las opciones: el indice elegido no se toca, que si no cambiar de corte
+    # moveria el lado que el usuario acaba de escoger.
+    check("sin tocar el lado que ya eligio el usuario",
+          "if (LadoDelCorteCombo.Items[0] is ComboBoxItem arriba)" in winp
+          and "arriba.Content = mas;" in winp)
+
     check("y la ventana lo pregunta",
           'x:Name="LadoDelCorteCombo"' in xaml
           and "HaciaMas = LadoDelCorteCombo?.SelectedIndex != 1" in winp

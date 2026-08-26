@@ -1893,12 +1893,14 @@
                                            VerticalAlignment="Center" Margin="12,0,6,0" />
                                 <TextBox x:Name="CorteXTxt" Width="110"
                                          VerticalAlignment="Center"
+                                         TextChanged="OnCortePersonalizadoCambiado"
                                          ToolTip="En que valor de X quieres el corte. Varios, separados por comas: 4.25, 7.10. Un numero es la COORDENADA; si ahi hay un eje, el corte se rotula con su nombre, y si no, como X=4.25. Un texto que no sea numero se busca como nombre de eje de esa direccion." />
 
                                 <TextBlock Text="en Y:" FontSize="11.5" FontWeight="SemiBold"
                                            VerticalAlignment="Center" Margin="10,0,6,0" />
                                 <TextBox x:Name="CorteYTxt" Width="110"
                                          VerticalAlignment="Center"
+                                         TextChanged="OnCortePersonalizadoCambiado"
                                          ToolTip="En que valor de Y quieres el corte. Varios, separados por comas: 2.10, 8. Un numero es la COORDENADA; si ahi hay un eje, el corte se rotula con su nombre. Un texto que no sea numero se busca como nombre de eje de esa direccion." />
 
                                 <!-- QUE LADO DEL CORTE SE MIRA. Un corte mira hacia un lado:
@@ -1908,9 +1910,9 @@
                                      en cualquier programa de modelado. -->
                                 <TextBlock Text="Ver:" FontSize="11.5" FontWeight="SemiBold"
                                            VerticalAlignment="Center" Margin="10,0,6,0" />
-                                <ComboBox x:Name="LadoDelCorteCombo" Width="150"
+                                <ComboBox x:Name="LadoDelCorteCombo" Width="160"
                                           VerticalAlignment="Center"
-                                          ToolTip="Que lado del corte se ve al fondo. En un corte en X -la linea corre en Y- es elegir entre lo de la derecha o lo de la izquierda; en uno en Y, entre lo de arriba o lo de abajo.">
+                                          ToolTip="Que lado del corte se ve al fondo. Las opciones se ajustan solas al corte que se pide: en uno cuyo plano esta en X se elige entre derecha e izquierda, y en uno en Y entre arriba y abajo. Pidiendo cortes en las dos direcciones a la vez quedan las dos parejas.">
                                     <ComboBoxItem Content="derecha / arriba" IsSelected="True" />
                                     <ComboBoxItem Content="izquierda / abajo" />
                                 </ComboBox>

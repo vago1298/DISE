@@ -127,6 +127,24 @@ public sealed partial class PlantaDrawer
                 ? Linea(cx + p.X, cy + p.Z, cx + p.X + p.Ancho, cy + p.Z, capa)
                 : PolilineaCerrada(pts, capa);
 
+            // ==========================================================================
+            //  LA TRABE, LA CADENA Y LA VIGA DE ACERO, COMO BLOQUE
+            // ==========================================================================
+            //  Se pidió, y es la misma idea que ya se usa con las columnas en planta: el bloque
+            //  se llama como la sección —con su medida detrás— así que un BLOCKREPLACE cambia de
+            //  golpe TODAS las cadenas de 15×25 del corte por el detalle armado, con sus
+            //  varillas y sus estribos. Con rectángulos sueltos hay que dibujar el armado uno
+            //  por uno, y en un corte de una casa eso son treinta veces el mismo trabajo.
+            //
+            //  Solo las CORTADAS: lo que se ve al fondo no lleva armado que enseñar, y meterlo en
+            //  un bloque invitaría a reemplazarlo por un detalle que ahí no va.
+            if (p.Cortada && p.Clase == ClasePlanta.Trabe
+                && PiezaComoBloque(p, cx, cy, capa))
+            {
+                hechas++;
+                continue;
+            }
+
             if (pl is not null)
             {
                 // ======================================================================
@@ -149,8 +167,19 @@ public sealed partial class PlantaDrawer
                 //  cualquier plano de obra: el relleno dice «aquí el plano cruza la pieza y esto
                 //  es su sección, la cara donde va el armado». Rellenando también lo que se ve de
                 //  costado, el alzado deja de decir por dónde pasa el corte.
+                //  Y LA RESTRICCIÓN ES SOLO PARA LA COLUMNA Y EL CASTILLO, que es donde se
+                //  pidió: un castillo de área de 15×80 cortado a lo largo de sus 80 no es una
+                //  sección y no se rellena. Una CADENA o una TRABE que el plano corta sí se
+                //  rellena aunque el corte vaya a lo largo de ella, y por dos razones: lo que se
+                //  ve es material cortado —el plano la parte de punta a punta— y porque es justo
+                //  lo que hay que ver de la CADENA INTERMEDIA, la que confina los vanos de
+                //  puertas y ventanas y va metida en el muro: sin relleno se pierde entre las
+                //  líneas del paño.
+                var soloEnSeccion = _cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);
+
                 var enSeccion = p.EnSeccion
-                                || !_cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);
+                                || !soloEnSeccion
+                                || p.Clase != ClasePlanta.Columna;
 
                 if (p.Cortada && enSeccion && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
                 {
@@ -395,6 +424,235 @@ public sealed partial class PlantaDrawer
     /// funciona en AutoCAD 2026, y si no se deja, el corte se queda con la pieza hueca: se ve
     /// peor, pero está.
     /// </remarks>
+    /// <summary>
+    /// Inserta una pieza del corte como <b>bloque</b>, con su relleno dentro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El bloque se llama como su <b>sección</b> con la <b>medida</b> detrás —«CORTE-CC 15X25
+    /// 15X25»— y ahí está la gracia: con un <c>BLOCKREPLACE</c> se cambian de golpe todas las
+    /// cadenas de esa medida por el detalle armado. La medida va en el nombre porque la misma
+    /// sección se ve de dos formas en un corte: de canto son 15×25, y a lo largo son tres metros
+    /// por 25, que es otro dibujo y no puede compartir bloque con el primero.
+    /// </para>
+    /// <para>
+    /// El <b>relleno va dentro</b> del bloque, como en la planta: así se mueve con él y quien
+    /// reemplace el bloque por su detalle se lleva el relleno con el cambio. Y la inserción va al
+    /// <b>centro</b> de la pieza, que es el punto con el que se dibuja cualquier detalle de
+    /// sección.
+    /// </para>
+    /// <para>
+    /// Si algo falla se devuelve <c>false</c> y quien llama dibuja el rectángulo de siempre: el
+    /// corte no se queda sin la pieza.
+    /// </para>
+    /// </remarks>
+    private bool PiezaComoBloque(
+        PlanoEstructural.CorteEnAlzado.Pieza p, double cx, double cy, string capa)
+    {
+        if (!_cfg.Bandera("CORTE_PIEZAS_COMO_BLOQUE", true)
+            || p.Ancho <= 0.001 || p.Alto <= 0.001)
+        {
+            return false;
+        }
+
+        var nombre = NombreDelBloqueDeLaPieza(p);
+
+        if (nombre.Length == 0 || !AsegurarBloqueDeLaPieza(nombre, p))
+        {
+            return false;
+        }
+
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                dynamic ins = _ms.InsertBlock(
+                    new[]
+                    {
+                        cx + p.X + (p.Ancho / 2),
+                        cy + p.Z + (p.Alto / 2),
+                        0d
+                    },
+                    nombre, 1d, 1d, 1d, 0d);
+
+                ins.Layer = capa;
+
+                // POR CAPA: el relleno lleva su color dentro del bloque y el contorno tiene que
+                // salir del color de la capa del tipo —E-CADENA, E-TRABE, E-ACERO—, como el resto.
+                try
+                {
+                    ins.Color = PorCapa;
+                }
+                catch (Exception)
+                {
+                    // Un color que no se deja poner no estropea la pieza.
+                }
+
+                return true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Inserción del bloque '{nombre}' del corte", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// El nombre del bloque de una pieza del corte: su sección y su medida.
+    /// </summary>
+    /// <remarks>
+    /// Con el prefijo <c>CORTE_BLOQUE_PREFIJO</c> —«CORTE-»— para no chocar con los bloques de la
+    /// planta: la sección de una columna se llama igual en los dos dibujos y no es el mismo dibujo,
+    /// uno es su sección en planta y el otro su alzado. Sin sección se usa el <b>tipo</b>, que
+    /// siempre está: así una cadena sin nombre de sección sigue teniendo su bloque.
+    /// </remarks>
+    private string NombreDelBloqueDeLaPieza(PlanoEstructural.CorteEnAlzado.Pieza p)
+    {
+        var que = !string.IsNullOrWhiteSpace(p.Seccion)
+            ? p.Seccion
+            : !string.IsNullOrWhiteSpace(p.Tipo)
+                ? p.Tipo
+                : "PIEZA";
+
+        var medida = $"{p.Ancho * 100:0.##}X{p.Alto * 100:0.##}";
+
+        return LimpiaNombreDeBloque(
+            _cfg.Texto("CORTE_BLOQUE_PREFIJO", "CORTE-") + que.Trim() + " " + medida);
+    }
+
+    /// <summary>Crea el bloque de una pieza del corte: su rectángulo y su relleno.</summary>
+    /// <remarks>
+    /// El rectángulo va <b>centrado en el origen</b> del bloque, que es lo que hace que la
+    /// inserción caiga en el centro de la pieza y que un detalle dibujado a ese centro encaje sin
+    /// mover nada. Si el bloque ya existe se respeta, salvo que <c>REDEFINIR_BLOQUES</c> esté en
+    /// SI: es la diferencia entre conservar el detalle que ya se cambió a mano y actualizarlo.
+    /// </remarks>
+    private bool AsegurarBloqueDeLaPieza(
+        string nombre, PlanoEstructural.CorteEnAlzado.Pieza p)
+    {
+        if (_bloquesListos.Contains(nombre))
+        {
+            return true;
+        }
+
+        var color = ColorDelRellenoEnElCorte(p);
+
+        try
+        {
+            var ok = AcadConnection.Retry(() =>
+            {
+                dynamic bloques = _doc.Blocks;
+                dynamic blk;
+                var existia = true;
+
+                try
+                {
+                    blk = bloques.Item(nombre);
+                }
+                catch (Exception)
+                {
+                    existia = false;
+                    blk = bloques.Add(new[] { 0d, 0d, 0d }, nombre);
+                }
+
+                if (existia)
+                {
+                    if (!_cfg.Bandera("REDEFINIR_BLOQUES", true))
+                    {
+                        return true;
+                    }
+
+                    // De atrás hacia adelante: borrar por índice hacia adelante recoloca los que
+                    // quedan y se saltarían la mitad.
+                    for (var i = (int)blk.Count - 1; i >= 0; i--)
+                    {
+                        try
+                        {
+                            blk.Item(i).Delete();
+                        }
+                        catch (Exception)
+                        {
+                            // Una entidad que no se deja borrar no impide rearmar el resto.
+                        }
+                    }
+                }
+
+                var mediaA = p.Ancho / 2;
+                var mediaH = p.Alto / 2;
+
+                dynamic contorno = blk.AddLightWeightPolyline(
+                    new[]
+                    {
+                        -mediaA, -mediaH,
+                        mediaA, -mediaH,
+                        mediaA, mediaH,
+                        -mediaA, mediaH
+                    });
+
+                contorno.Closed = true;
+                contorno.Layer = "0";
+
+                if (color > 0)
+                {
+                    RellenarDentroDelBloqueDelCorte(blk, contorno, color, nombre);
+                }
+
+                return true;
+            });
+
+            if (ok)
+            {
+                _bloquesListos.Add(nombre);
+            }
+
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Bloque '{nombre}' del corte", ex);
+            return false;
+        }
+    }
+
+    /// <summary>El relleno sólido <b>dentro</b> del bloque de una pieza del corte.</summary>
+    private void RellenarDentroDelBloqueDelCorte(
+        dynamic blk, object contorno, int color, string nombre)
+    {
+        try
+        {
+            dynamic h = blk.AddHatch(0, "SOLID", true, 0);
+
+            var conLazo = AcadArreglos.Llamar(
+                $"AppendOuterLoop del relleno del bloque '{nombre}'",
+                new[] { contorno },
+                arr => { h.AppendOuterLoop(arr); },
+                Fallo, Nota);
+
+            if (!conLazo)
+            {
+                try
+                {
+                    h.Delete();
+                }
+                catch (Exception)
+                {
+                    // Un achurado vacío de más no estropea el bloque.
+                }
+
+                return;
+            }
+
+            h.Evaluate();
+            h.Layer = "0";
+            h.Color = color;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Relleno dentro del bloque '{nombre}' del corte", ex);
+        }
+    }
+
     /// <summary>
     /// El color del relleno de una pieza <b>cortada</b>: amarillo, morado o verde.
     /// </summary>

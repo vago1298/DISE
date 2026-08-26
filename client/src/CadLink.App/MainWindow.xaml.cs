@@ -1590,6 +1590,10 @@ public partial class MainWindow : Window
 
             lista.SelectedIndex = 0;
         }
+
+        // Y la lista del LADO, a lo que toca: al leer un modelo no hay corte elegido todavía, así
+        // que arranca apagada en lugar de ofrecer un lado que no se aplica a nada.
+        ActualizarLadoDelCorte();
     }
 
     /// <summary>
@@ -1601,6 +1605,86 @@ public partial class MainWindow : Window
     /// el lado —el plano YZ—, y uno de los que van en Y, de frente —el plano XZ—. Después se
     /// puede girar a mano, que para eso está el ratón.
     /// </remarks>
+    /// <summary>
+    /// Los campos de corte cambiaron: se ajustan solas las opciones del <b>lado</b>.
+    /// </summary>
+    private void OnCortePersonalizadoCambiado(object sender, TextChangedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        ActualizarLadoDelCorte();
+    }
+
+    /// <summary>
+    /// Pone en la lista del <b>lado</b> las opciones que tienen sentido para el corte pedido.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió que se active solo: las dos opciones no significan lo mismo en todos los cortes.
+    /// En uno cuyo plano está en <b>X</b> —la línea corre en Y— los lados son <b>derecha</b> e
+    /// <b>izquierda</b>; en uno cuyo plano está en <b>Y</b>, <b>arriba</b> y <b>abajo</b>. Leer
+    /// «derecha / arriba» cuando solo una de las dos aplica obliga a traducir mentalmente cada
+    /// vez, y es justo donde uno se equivoca de lado.
+    /// </para>
+    /// <para>
+    /// Y <b>las dos parejas se quedan</b> cuando se piden cortes en las <b>dos direcciones a la
+    /// vez</b> —unos en X y otros en Y—, porque entonces las dos cosas son ciertas: en el mismo
+    /// juego, el lado «+» es la derecha para unos cortes y el arriba para otros.
+    /// </para>
+    /// <para>
+    /// Si no hay ningún corte pedido, la lista se <b>apaga</b>: elegir el lado de un corte que no
+    /// existe no hace nada, y una lista viva que no sirve para nada es una invitación a buscarle
+    /// un efecto que no tiene.
+    /// </para>
+    /// </remarks>
+    private void ActualizarLadoDelCorte()
+    {
+        if (LadoDelCorteCombo is null || LadoDelCorteCombo.Items.Count < 2)
+        {
+            return;
+        }
+
+        var escritoEnX = !string.IsNullOrWhiteSpace(CorteXTxt?.Text);
+        var escritoEnY = !string.IsNullOrWhiteSpace(CorteYTxt?.Text);
+
+        var hayX = escritoEnX;
+        var hayY = escritoEnY;
+
+        // Sin nada escrito manda el corte de la lista, que es el que se va a dibujar.
+        if (!escritoEnX && !escritoEnY && _vista.CorteEje.Length > 0)
+        {
+            hayX = _vista.CorteEnX;
+            hayY = !_vista.CorteEnX;
+        }
+
+        var conCorte = hayX || hayY;
+
+        LadoDelCorteCombo.IsEnabled = conCorte;
+
+        var mas = !conCorte || (hayX && hayY)
+            ? "derecha / arriba"
+            : hayX ? "derecha (+X)" : "arriba (+Y)";
+
+        var menos = !conCorte || (hayX && hayY)
+            ? "izquierda / abajo"
+            : hayX ? "izquierda (-X)" : "abajo (-Y)";
+
+        // Solo el texto: el índice elegido no se toca, que si no cambiar de corte movería el lado
+        // que el usuario acaba de escoger.
+        if (LadoDelCorteCombo.Items[0] is ComboBoxItem arriba)
+        {
+            arriba.Content = mas;
+        }
+
+        if (LadoDelCorteCombo.Items[1] is ComboBoxItem abajo)
+        {
+            abajo.Content = menos;
+        }
+    }
+
     private void OnCorteEjeCambiado(object sender, SelectionChangedEventArgs e)
     {
         // Sin esto, sincronizar una lista dispararía el evento de la otra, que volvería a
@@ -1620,6 +1704,7 @@ public partial class MainWindow : Window
         if (lista.SelectedItem is not Corte corte)
         {
             _vista.SinCorte();
+            ActualizarLadoDelCorte();
             RedibujarVistas();
             return;
         }
@@ -1627,6 +1712,10 @@ public partial class MainWindow : Window
         _vista.CorteEje = corte.Id;
         _vista.CorteEnX = corte.EnX;
         _vista.CorteOrdenada = corte.Ordenada;
+
+        // Las opciones del lado, a lo que toca: en un corte en X son derecha e izquierda, y en
+        // uno en Y, arriba y abajo.
+        ActualizarLadoDelCorte();
 
         // De frente al corte: si el eje va en X se mira desde el lado, y al revés.
         _vista.Azimut = corte.EnX ? 90 : 0;

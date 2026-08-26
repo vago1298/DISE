@@ -565,10 +565,37 @@ public static class CorteEnAlzado
             //  perdía su franja.
             var alto = (zArriba - AlturaQueTapaLaCadena(el, todos)) - zAbajo;
 
+            // ==========================================================================
+            //  Y A LO ANCHO, HASTA EL PAÑO DEL CASTILLO, NO HASTA SU EJE
+            // ==========================================================================
+            //  Se pidió, y es la misma regla que ya cumple la planta: en el modelo el muro va de
+            //  NUDO a NUDO —del eje de un castillo al del siguiente— pero el muro de verdad
+            //  arranca en la CARA del castillo, porque contra él se levanta. Dibujado a ejes, en
+            //  el alzado el muro se mete medio castillo por cada punta y lo pisa justo donde el
+            //  castillo tiene que verse entero, que es donde lleva su armado.
+            //
+            //  Es lo contrario de lo que se hace con la trabe —a ella se le SUMA medio apoyo,
+            //  porque su concreto se cuela hasta la cara exterior— y por eso es la misma cuenta
+            //  con el signo cambiado.
+            var caraA = MedioApoyoEn(el, enX, min, todos);
+            var caraB = MedioApoyoEn(el, enX, max, todos);
+
+            var izquierda = min + caraA;
+            var derecha = max - caraB;
+
+            // Si los castillos se comieran el muro entero —un tramo más corto que sus dos
+            // apoyos— se deja como estaba: mejor un muro de más que un hueco donde hay pared.
+            if (derecha - izquierda <= Minimo)
+            {
+                izquierda = min;
+                derecha = max;
+            }
+
             // El muro se ve de frente, no en sección: es su paño.
-            return alto > Minimo && max - min > Minimo
+            return alto > Minimo && derecha - izquierda > Minimo
                 ? new Pieza(el.Clase, el.Etiqueta, el.Seccion,
-                            min, zAbajo, max - min, alto, el.Tipo, EnSeccion: false)
+                            izquierda, zAbajo, derecha - izquierda, alto, el.Tipo,
+                            EnSeccion: false)
                 : null;
         }
 

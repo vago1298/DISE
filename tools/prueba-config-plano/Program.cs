@@ -83,11 +83,13 @@ var cfg = new ConfigPlano();
 //   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
 //   CAPA_MURO_CONCRETO / COLOR_MURO_CONCRETO / MURO_CONCRETO_CAPA_PROPIA
 //                                   el muro de concreto sin cadena, en E-MURO DE CONCRETO
+//   CORTE_PIEZAS_COMO_BLOQUE        las trabes y cadenas del corte, como bloque
+//   CORTE_BLOQUE_PREFIJO            con este prefijo, para no chocar con los de la planta
 //   CORTE_RELLENAR_SOLO_EN_SECCION  se rellena lo que el corte cruza por su lado corto
 //   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
 //   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta y uno que se añadieron",
-      311, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta y tres que se añadieron",
+      313, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -274,6 +276,12 @@ Check("la cadena de desplante va continua en cualquier nivel",
 // la vista y del contorno solo no se distinguen: las tres son un rectangulo.
 // Y SOLO LO QUE SE VE EN SECCION: lo que el corte cruza por su lado corto -la cara donde va el
 // armado-. Lo que se ve de costado va solo con su linea.
+// LAS PIEZAS DEL CORTE, COMO BLOQUE: el bloque se llama como la seccion con su medida detras, asi
+// que un BLOCKREPLACE cambia de golpe todas las cadenas de 15x25 por el detalle armado. Con el
+// prefijo para no chocar con los bloques de la planta, que son otro dibujo de la misma seccion.
+Check("las piezas del corte van como bloque", cfg.Bandera("CORTE_PIEZAS_COMO_BLOQUE", false));
+Igual("con su prefijo", "CORTE-", cfg.Texto("CORTE_BLOQUE_PREFIJO"));
+
 Check("se rellena solo lo que se ve en seccion",
       cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", false));
 
@@ -295,7 +303,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 311 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 313 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

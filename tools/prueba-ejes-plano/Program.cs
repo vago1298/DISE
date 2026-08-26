@@ -2369,6 +2369,67 @@ Cerca("una cadena a otra altura no le quita nada", 0,
               }
           }));
 
+// EL MURO MUERE EN EL PAÑO DEL CASTILLO, NO EN SU EJE. En el modelo el muro va de NUDO a NUDO -del
+// eje de un castillo al del siguiente- pero el muro de verdad arranca en la CARA del castillo,
+// porque contra el se levanta. Dibujado a ejes se mete medio castillo por cada punta y lo pisa justo
+// donde el castillo tiene que verse entero, que es donde lleva su armado.
+var muroEntreCastillos = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", Seccion = "MURO 15",
+    X1 = 5, Y1 = 0, X2 = 5, Y2 = 4, Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+};
+
+var castilloA = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Seccion = "K 15X15",
+    X1 = 5, Y1 = 0, X2 = 5, Y2 = 0, Z1 = 0, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.15
+};
+
+var castilloB = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Seccion = "K 15X15",
+    X1 = 5, Y1 = 4, X2 = 5, Y2 = 4, Z1 = 0, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.15
+};
+
+var conCastillos = new List<ElementoPlanta> { muroEntreCastillos, castilloA, castilloB };
+
+var elMuroRecortado = CorteEnAlzado.Piezas(conCastillos, enX: true, ordenada: 5, espesorM: 0.60)
+                                   .First(x => x.Clase == ClasePlanta.Muro);
+
+Cerca("el muro arranca en el paño del primer castillo", 0.075, elMuroRecortado.X);
+Cerca("y mide el claro entre los dos paños", 4 - 0.15, elMuroRecortado.Ancho);
+
+// SIN CASTILLOS no se recorta: el muro llega donde dice el modelo.
+Cerca("sin castillos el muro se queda como esta", 4,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { muroEntreCastillos }, enX: true, ordenada: 5,
+          espesorM: 0.60)[0].Ancho);
+
+// Y SI LOS CASTILLOS SE COMIERAN EL MURO ENTERO se deja como estaba: mejor un muro de mas que un
+// hueco donde hay pared.
+var muroCortito = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", X1 = 5, Y1 = 0, X2 = 5, Y2 = 0.10,
+    Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+};
+var castilloPegado = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Seccion = "K 15X15",
+    X1 = 5, Y1 = 0.10, X2 = 5, Y2 = 0.10, Z1 = 0, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.15
+};
+
+Cerca("un muro mas corto que sus dos apoyos se deja entero", 0.10,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { muroCortito, castilloA, castilloPegado },
+          enX: true, ordenada: 5, espesorM: 0.60)
+                   .First(x => x.Clase == ClasePlanta.Muro).Ancho);
+
+// Con un castillo en UNA punta se recorta solo esa: 10 cm menos los 7.5 del castillo.
+Cerca("con un castillo en una punta se recorta esa", 0.025,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { muroCortito, castilloA }, enX: true, ordenada: 5,
+          espesorM: 0.60).First(x => x.Clase == ClasePlanta.Muro).Ancho);
+
 // EL FONDO SE UNE EN UNA SILUETA, como en un programa de modelado: de lo que hay detras se ve el
 // contorno, no las aristas de cada pieza. Cinco paños seguidos a distinta profundidad dibujados
 // uno a uno dejan una raya vertical en cada junta, y esas rayas no existen: ahi el muro sigue.
