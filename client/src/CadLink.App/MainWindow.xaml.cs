@@ -1415,15 +1415,12 @@ public partial class MainWindow : Window
         // ==============================================================================
         //  Y SI SON VARIOS, UNO AL LADO DEL OTRO
         // ==============================================================================
-        //  Cada corte ocupa lo que mide el edificio EN LA DIRECCIÓN QUE RECORRE —un corte en X
-        //  recorre la Y—, así que el siguiente se corre eso más la separación de la hoja. Sin
-        //  esto, los cortes saldrían todos en el mismo sitio, encimados, que es peor que no
-        //  dibujarlos.
-        var (anchoEnX, anchoEnY) = MedidasDelModelo();
-        var separacion = CfgPlano.Numero("CORTE_SEPARACION_M", 10);
-
+        //  El reparto lo hace el DIBUJANTE, que es el único que sabe cuánto ocupó de verdad cada
+        //  corte: depende de las piezas que toque, de sus ejes y de sus cotas. Aquí solo se piden
+        //  en orden, y él encadena cada uno a la derecha del anterior con la separación de la
+        //  hoja. Calculándolo desde aquí a ojo, los cortes se encimaban o quedaban a diez metros
+        //  unos de otros.
         var total = 0;
-        double dx = 0;
 
         foreach (var q in cortes)
         {
@@ -1440,7 +1437,7 @@ public partial class MainWindow : Window
                 // lo de la izquierda, y en uno en Y lo de arriba o lo de abajo. Con el lado fijo
                 // hay cortes en los que no se ve nada al fondo, porque el edificio está del otro
                 // lado del plano.
-                HaciaMas = LadoDelCorteCombo?.SelectedIndex != 1
+                HaciaMas = _vista.CorteHaciaMas
             };
 
             // TODOS los niveles: es un corte, no una planta.
@@ -1470,7 +1467,7 @@ public partial class MainWindow : Window
 
             try
             {
-                total += dibujante.DibujarCorte(c, dx, 0);
+                total += dibujante.DibujarCorte(c, 0, 0);
             }
             catch (Exception ex)
             {
@@ -1478,8 +1475,6 @@ public partial class MainWindow : Window
                 // que se dibujen los demás cortes.
                 MostrarNotas($"El corte {q.Id} no se pudo dibujar: {ex.Message}");
             }
-
-            dx += (q.EnX ? anchoEnY : anchoEnX) + separacion;
         }
 
         var propuestos = cortes.Where(x => x.Propuesto).Select(x => x.Id).ToList();
@@ -1494,36 +1489,7 @@ public partial class MainWindow : Window
         return total;
     }
 
-    /// <summary>
-    /// Cuánto mide el modelo en X y en Y, para repartir varios cortes sin encimarlos.
-    /// </summary>
-    private (double EnX, double EnY) MedidasDelModelo()
-    {
-        if (_modeloEtabs is null || _modeloEtabs.Elementos.Count == 0)
-        {
-            return (10, 10);
-        }
 
-        var xMin = double.MaxValue;
-        var xMax = double.MinValue;
-        var yMin = double.MaxValue;
-        var yMax = double.MinValue;
-
-        foreach (var el in _modeloEtabs.Elementos)
-        {
-            foreach (var (x, y) in new[] { (el.X1, el.Y1), (el.X2, el.Y2) })
-            {
-                xMin = Math.Min(xMin, x);
-                xMax = Math.Max(xMax, x);
-                yMin = Math.Min(yMin, y);
-                yMax = Math.Max(yMax, y);
-            }
-        }
-
-        // Un modelo de un solo punto no tiene medidas: se le da algo para que la separación
-        // entre cortes siga teniendo sentido.
-        return (Math.Max(xMax - xMin, 1), Math.Max(yMax - yMin, 1));
-    }
 
     // ======================================================================
     // EL CORTE POR UN EJE, en las vistas de volumen
@@ -1616,6 +1582,26 @@ public partial class MainWindow : Window
         }
 
         ActualizarLadoDelCorte();
+    }
+
+    /// <summary>
+    /// Se cambió el <b>lado</b> del corte: el visor se rehace para enseñarlo.
+    /// </summary>
+    /// <remarks>
+    /// Se pidió que se vea al momento, y es lo que convierte la lista en algo útil: se elige un
+    /// lado y en la vista extruida se ve si por ahí hay algo o si el edificio está del otro lado.
+    /// Sin esto había que dibujar en AutoCAD para descubrir que el lado elegido era el vacío.
+    /// </remarks>
+    private void OnLadoDelCorteCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        _vista.CorteHaciaMas = LadoDelCorteCombo?.SelectedIndex != 1;
+
+        RedibujarVistas();
     }
 
     /// <summary>

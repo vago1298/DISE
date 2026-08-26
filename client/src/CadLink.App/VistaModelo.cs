@@ -143,6 +143,17 @@ public sealed partial class VistaModelo
     public double CorteOrdenada { get; set; }
 
     /// <summary>
+    /// Qué <b>lado</b> del corte se mira: el de las coordenadas mayores, o el otro.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo dato con el que se dibuja el corte en AutoCAD, y está aquí para que la vista
+    /// <b>enseñe lo que se va a dibujar</b>: al cambiar de lado en la lista, el visor se rehace y
+    /// se ve al momento qué queda al fondo. Sin esto había que dibujar en AutoCAD para descubrir
+    /// que el lado elegido era el vacío.
+    /// </remarks>
+    public bool CorteHaciaMas { get; set; } = true;
+
+    /// <summary>
     /// Espesor de la <b>rebanada</b> del corte, en metros.
     /// </summary>
     /// <remarks>
@@ -1321,7 +1332,22 @@ public sealed partial class VistaModelo
         }
 
         // Se solapan la rebanada del corte y la extensión del elemento.
-        return max >= CorteOrdenada - medio && min <= CorteOrdenada + medio;
+        if (max >= CorteOrdenada - medio && min <= CorteOrdenada + medio)
+        {
+            return true;
+        }
+
+        // ==============================================================================
+        //  Y LO QUE QUEDA AL LADO QUE SE MIRA, QUE ES EL FONDO DEL ALZADO
+        // ==============================================================================
+        //  Un corte no es solo la rebanada: es una VISTA. Se ve lo que el plano corta y todo lo
+        //  que queda DETRÁS, del lado que se elige. Enseñarlo aquí es lo que hace que el visor
+        //  sirva para decidir: se cambia de lado en la lista y se ve al momento si por ahí hay
+        //  algo o si el edificio está del otro lado. Antes había que dibujar en AutoCAD para
+        //  descubrirlo.
+        return CorteHaciaMas
+            ? min > CorteOrdenada + medio
+            : max < CorteOrdenada - medio;
     }
 
     private static string Etiqueta(ElementoEtabs el)

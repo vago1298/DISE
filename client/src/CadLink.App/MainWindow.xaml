@@ -1912,6 +1912,7 @@
                                            VerticalAlignment="Center" Margin="10,0,6,0" />
                                 <ComboBox x:Name="LadoDelCorteCombo" Width="160"
                                           VerticalAlignment="Center"
+                                          SelectionChanged="OnLadoDelCorteCambiado"
                                           ToolTip="Que lado del corte se ve al fondo. Las opciones se ajustan solas al corte que se pide: en uno cuyo plano esta en X se elige entre derecha e izquierda, y en uno en Y entre arriba y abajo. Pidiendo cortes en las dos direcciones a la vez quedan las dos parejas.">
                                     <ComboBoxItem Content="derecha / arriba" IsSelected="True" />
                                     <ComboBoxItem Content="izquierda / abajo" />

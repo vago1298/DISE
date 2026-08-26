@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con sesenta renglones añadidos",
-          cfgp.count("        P(") == 320
+    check("la hoja CONFIG de la macro esta portada, con sesenta y dos renglones añadidos",
+          cfgp.count("        P(") == 322
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "320, ConfigPlano.PorOmision.Count" in pr
+          and "322, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3518,7 +3518,12 @@ def v16_extruida_piers() -> None:
     # centro este a diez metros. Filtrando por el centro desaparecerian justo las trabes que
     # llegan al eje del corte, que son las que se quieren ver.
     check("el corte mira el elemento completo, no su centro",
-          "return max >= CorteOrdenada - medio && min <= CorteOrdenada + medio;" in vista)
+          "if (max >= CorteOrdenada - medio && min <= CorteOrdenada + medio)" in vista)
+    # Y ADEMAS SE VE EL FONDO DEL LADO QUE SE ELIGE, que es lo que hace que el visor sirva para
+    # decidir: se cambia de lado en la lista y se ve al momento si por ahi hay algo.
+    check("y el fondo del lado que se mira",
+          "return CorteHaciaMas\n            ? min > CorteOrdenada + medio\n"
+          "            : max < CorteOrdenada - medio;" in vista)
     # Y SOLO EN LAS VISTAS DE VOLUMEN: la planta YA es un corte horizontal.
     check("el corte no se aplica a la planta",
           "private List<ElementoEtabs> Elementos(bool conCorte = false)" in vista
@@ -4241,9 +4246,11 @@ def v18_planta_autocad() -> None:
           and "null, CorteXTxt?.Text, CorteYTxt?.Text, ejesX, ejesY);" in winp
           and 'x:Name="CorteXTxt"' in xaml
           and 'x:Name="CorteYTxt"' in xaml)
+    # EL REPARTO LO HACE EL DIBUJANTE: es el unico que sabe cuanto ocupo de verdad cada corte.
     check("y los reparte uno al lado del otro",
-          "total += dibujante.DibujarCorte(c, dx, 0);" in winp
-          and "dx += (q.EnX ? anchoEnY : anchoEnX) + separacion;" in winp)
+          "total += dibujante.DibujarCorte(c, 0, 0);" in winp
+          and "var cx = _derechaDelUltimoCorte is { } yaHay"
+              in leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs")))
     # En esos campos, un nombre de eje tambien vale: escribir «C» en el de las X es pedir el corte
     # por el eje C, y avisar en lugar de dibujarlo seria quedarse corto por nada.
     check("en los campos de X y de Y tambien vale el nombre de un eje",
@@ -4378,7 +4385,7 @@ def v18_planta_autocad() -> None:
     # La barra que CRUZA el corte se ve de canto -esa es su seccion, la del armado- y la que corre a
     # lo largo, de costado. El muro y la losa, de costado siempre: se leen por su paño y su franja.
     check("la barra de canto va en seccion y la que corre a lo largo, no",
-          "EnSeccion: false);\n    }" in corte
+          "EnSeccion: false, Notas: el.Notas);\n    }" in corte
           and corte.count("EnSeccion: false") >= 3)
     # Una seccion cuadrada se ve en seccion siempre.
     check("y una seccion cuadrada se ve en seccion siempre",
@@ -4417,8 +4424,9 @@ def v18_planta_autocad() -> None:
     # ve cuando el corte va a lo largo de ella. Un bloque de tres metros no se puede reemplazar por
     # ningun detalle armado: no es una seccion, es un costado. Y solo las CORTADAS.
     check("y solo la cara corta de las cortadas",
-          "if (p.Cortada && p.EnSeccion && p.Clase == ClasePlanta.Trabe\n"
-          "                && PiezaComoBloque(" in cortedib)
+          "var conBloque = p.EnSeccion" in cortedib
+          and "if (p.Cortada && conBloque && p.Clase == ClasePlanta.Trabe\n"
+              "                && PiezaComoBloque(" in cortedib)
 
     # ------------------------------------------------------------------
     # EL AREA DE LOS MUROS DE MAMPOSTERIA, ACHURADA
@@ -4546,6 +4554,71 @@ def v18_planta_autocad() -> None:
           and 'P("CORTE_FONDO_CON_COLUMNAS", "NO",' in cfgp)
 
     # ------------------------------------------------------------------
+    # LA CADENA INTERMEDIA: SIEMPRE RELLENA Y CON BLOQUE
+    # ------------------------------------------------------------------
+    #  Se pidio tres veces, y tiene su razon de obra: la INTERMEDIA es la que confina los vanos de
+    #  puertas y ventanas y la que remata un antepecho, va metida en el muro y es lo que se viene a
+    #  revisar en un corte. Sin relleno se pierde entre las dos lineas del paño, y sin bloque no se
+    #  puede cambiar por su detalle armado.
+    #
+    #  Es la UNICA excepcion a «solo se rellena lo que se ve en seccion»: las demas cadenas y trabes
+    #  vistas a lo largo siguen yendo vacias, que es lo que se pidio despues.
+    check("la cadena intermedia se rellena y lleva bloque aunque el corte vaya a lo largo",
+          "public static bool EsIntermedia(Pieza p) =>" in corte
+          and "PlanoEstructural.CorteEnAlzado.EsIntermedia(p)" in cortedib
+          and cortedib.count("PlanoEstructural.CorteEnAlzado.EsIntermedia(p)") == 2
+          and 'P("CORTE_INTERMEDIA_SIEMPRE", "SI",' in cfgp)
+    # Por su TIPO y por sus NOTAS -en femenino y en masculino-, que el tipo puede llegar en blanco.
+    check("y se reconoce por su tipo o por sus notas",
+          '(p.Tipo ?? string.Empty).Contains("INTERMEDIA"' in corte
+          and '(p.Notas ?? string.Empty).Contains("INTERMEDIO"' in corte)
+    # La barra del corte lleva sus notas, que es de donde sale el tipo cuando el modelo no clasifico.
+    check("la barra del corte lleva sus notas",
+          "EnSeccion: false, Notas: el.Notas);" in corte
+          and "ancho, peralte, el.Tipo, Notas: el.Notas);" in corte)
+
+    # ------------------------------------------------------------------
+    # CADA CORTE, +8 A LA DERECHA DEL ANTERIOR
+    # ------------------------------------------------------------------
+    #  «Si voy a agregar mas cortes, que los agregue a la derecha +8.00 del ultimo corte existente,
+    #  asi para N cantidad de cortes». El reparto lo hace el DIBUJANTE, que es el unico que sabe
+    #  cuanto ocupo de verdad cada corte -depende de las piezas que toque, de sus ejes y de sus
+    #  cotas-. Calculandolo desde la ventana a ojo, los cortes se encimaban o quedaban a diez metros.
+    check("cada corte se encadena a la derecha del anterior",
+          "private double? _derechaDelUltimoCorte;" in cortedib
+          and "var cx = _derechaDelUltimoCorte is { } yaHay" in cortedib
+          and '? yaHay + _cfg.Numero("CORTE_SEPARACION_CORTES_M", 8)' in cortedib
+          and 'P("CORTE_SEPARACION_CORTES_M", "8",' in cfgp)
+    # Y se le suma lo que sobresale a su derecha -las burbujas de sus ejes y sus cotas-, que si no el
+    # siguiente corte se le metia encima de las burbujas.
+    check("contando sus burbujas y sus cotas",
+          "_derechaDelUltimoCorte = cx + piezas.Max(q => q.X + q.Ancho)" in cortedib
+          and "+ Ejes.SaleEjes() + Ejes.RadioBurbuja;" in cortedib)
+    # Y la ventana ya no lo calcula: pide los cortes en orden y el dibujante los encadena.
+    check("y la ventana ya no lo calcula",
+          "total += dibujante.DibujarCorte(c, 0, 0);" in winp
+          and "MedidasDelModelo()" not in winp)
+
+    # ------------------------------------------------------------------
+    # EL LADO DEL CORTE, EN EL VISOR Y EN TIEMPO REAL
+    # ------------------------------------------------------------------
+    #  «Haz que cuando elija entre un lado u el otro del corte, en la vista 3D de abajo igual se
+    #  actualice en tiempo real». Es lo que convierte la lista en algo util: se elige un lado y se ve
+    #  al momento si por ahi hay algo o si el edificio esta del otro lado. Antes habia que dibujar en
+    #  AutoCAD para descubrirlo.
+    vism = leer(ruta("client/src/CadLink.App/VistaModelo.cs"))
+
+    check("el visor mira el lado del corte y se rehace al cambiarlo",
+          "public bool CorteHaciaMas { get; set; } = true;" in vism
+          and "return CorteHaciaMas" in vism
+          and "private void OnLadoDelCorteCambiado(" in winp
+          and 'SelectionChanged="OnLadoDelCorteCambiado"' in xaml
+          and "_vista.CorteHaciaMas = LadoDelCorteCombo?.SelectedIndex != 1;" in winp)
+    # Y el corte que se dibuja toma el lado del visor: lo que se ve es lo que se dibuja.
+    check("y el corte que se dibuja toma el lado del visor",
+          "HaciaMas = _vista.CorteHaciaMas" in winp)
+
+    # ------------------------------------------------------------------
     # SOLO LAS CARAS QUE LLEGAN: LO LARGO VA VACIO
     # ------------------------------------------------------------------
     #  «No rellenes de color las cadenas, vigas o trabes largas, dejalas vacias, solo rellena las
@@ -4555,9 +4628,14 @@ def v18_planta_autocad() -> None:
     #  metros pinta de morado media fachada del alzado y entierra debajo lo unico que ese relleno
     #  tenia que señalar, que son las caras cortadas. Y la cadena intermedia no pierde nada: la que
     #  confina un vano se ve por su cara -el plano la cruza- y esa si se rellena y si lleva bloque.
-    check("solo se rellenan las caras que llegan, sin excepciones por clase",
-          "var enSeccion = p.EnSeccion || !soloEnSeccion;" in cortedib
-          and "|| p.Clase != ClasePlanta.Columna;" not in cortedib)
+    # La UNICA excepcion es la cadena INTERMEDIA -por su tipo, no por su clase-, que se pidio tres
+    # veces: es la que confina los vanos y va metida en el muro. Las demas cadenas y trabes vistas a
+    # lo largo van vacias.
+    check("solo se rellenan las caras que llegan, y la intermedia",
+          "var enSeccion = p.EnSeccion\n                                || !soloEnSeccion"
+          in cortedib
+          and "|| p.Clase != ClasePlanta.Columna;" not in cortedib
+          and "PlanoEstructural.CorteEnAlzado.EsIntermedia(p)" in cortedib)
 
     # ------------------------------------------------------------------
     # EL MURO, HASTA EL PAÑO DEL CASTILLO
@@ -5011,7 +5089,7 @@ def v18_planta_autocad() -> None:
           "private int DibujarCorteElegido(" in codigo.replace("DibujarElCorteElegido", "DibujarCorteElegido")
           and "Eje = q.Id," in codigo
           and "foreach (var el in _modeloEtabs.Elementos)" in codigo
-          and "total += dibujante.DibujarCorte(c, dx, 0);" in codigo)
+          and "total += dibujante.DibujarCorte(c, 0, 0);" in codigo)
     # Y EL DE LA LISTA SIGUE FUNCIONANDO cuando no se escribe nada: quien solo quiere un corte no
     # tiene que aprenderse la sintaxis nueva.
     check("y el de la lista sigue valiendo si no se escribe nada",

@@ -102,7 +102,17 @@ public sealed partial class PlantaDrawer
         //  que ya hubiera en el plano. El mayor de los dos no puede quedar debajo de ninguno.
         var tope = Math.Max(_topeDelJuego ?? 0, TopeDeLoDibujado() ?? 0);
 
-        var cx = IzquierdaDeLoDibujado() ?? 0;
+        // ==============================================================================
+        //  Y CADA CORTE, A LA DERECHA DEL ANTERIOR
+        // ==============================================================================
+        //  Se pidió: los cortes que se añadan van a la derecha, +8 del último que haya, y así
+        //  para cuantos sean. El dibujante se acuerda de dónde acabó el último y encadena, que es
+        //  más fiable que calcularlo desde fuera: quien pide los cortes no sabe cuánto va a
+        //  ocupar cada uno —depende de las piezas que toque, de sus ejes y de sus cotas— y con una
+        //  cuenta a ojo los cortes se encimaban o quedaban a diez metros unos de otros.
+        var cx = _derechaDelUltimoCorte is { } yaHay
+            ? yaHay + _cfg.Numero("CORTE_SEPARACION_CORTES_M", 8)
+            : IzquierdaDeLoDibujado() ?? 0;
 
         // LA BASE DEL CORTE va EXACTAMENTE a tope + separación: se le resta la cota más baja
         // de sus piezas para que la de abajo —una zapata, un desplante con Z negativa— caiga
@@ -163,7 +173,15 @@ public sealed partial class PlantaDrawer
             //
             //  Solo las CORTADAS: lo que se ve al fondo no lleva armado que enseñar, y meterlo en
             //  un bloque invitaría a reemplazarlo por un detalle que ahí no va.
-            if (p.Cortada && p.EnSeccion && p.Clase == ClasePlanta.Trabe
+            //  Y LA CADENA INTERMEDIA SIEMPRE, vaya el corte a lo largo o de canto: se pidió tres
+            //  veces y tiene su razón de obra. La intermedia es la que confina los vanos de
+            //  puertas y ventanas y la que remata un antepecho, va metida en el muro y es lo que
+            //  hay que revisar en un corte: sin bloque no se puede cambiar por su detalle armado.
+            var conBloque = p.EnSeccion
+                            || (PlanoEstructural.CorteEnAlzado.EsIntermedia(p)
+                                && _cfg.Bandera("CORTE_INTERMEDIA_SIEMPRE", true));
+
+            if (p.Cortada && conBloque && p.Clase == ClasePlanta.Trabe
                 && PiezaComoBloque(p, cx, cy, capa))
             {
                 hechas++;
@@ -203,7 +221,15 @@ public sealed partial class PlantaDrawer
                 //  por su cara —el plano la cruza— y esa sí se rellena y sí lleva su bloque.
                 var soloEnSeccion = _cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);
 
-                var enSeccion = p.EnSeccion || !soloEnSeccion;
+                //  CON UNA EXCEPCIÓN, Y SOLO UNA: LA CADENA INTERMEDIA. Se pidió tres veces que se
+                //  rellene y lleve bloque, y no es un capricho: es la que confina los vanos de
+                //  puertas y ventanas, va metida en el muro y es lo que se viene a revisar en un
+                //  corte. Sin relleno se pierde entre las dos líneas del paño. Las demás cadenas y
+                //  trabes vistas a lo largo siguen yendo vacías, que es lo que se pidió después.
+                var enSeccion = p.EnSeccion
+                                || !soloEnSeccion
+                                || (PlanoEstructural.CorteEnAlzado.EsIntermedia(p)
+                                    && _cfg.Bandera("CORTE_INTERMEDIA_SIEMPRE", true));
 
                 if (p.Cortada && enSeccion && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
                 {
@@ -250,6 +276,12 @@ public sealed partial class PlantaDrawer
         DibujarEjesDelCorte(c, cx, cy, piezas);
         AcotarElCorte(c, cx, cy, piezas);
         RotularElCorte(c, cx, cy, piezas);
+
+        // DÓNDE ACABÓ ESTE CORTE, para que el siguiente arranque a su derecha. Se mide sobre las
+        // piezas y se le suma lo que sobresale a su derecha —las burbujas de sus ejes y sus
+        // cotas—, que si no el siguiente corte se le metería encima de las burbujas.
+        _derechaDelUltimoCorte = cx + piezas.Max(q => q.X + q.Ancho)
+                                 + Ejes.SaleEjes() + Ejes.RadioBurbuja;
 
         Nota($"Corte por el eje {c.Eje} dibujado con {hechas} pieza(s), {separacion:0.##} " +
              "unidades ARRIBA de lo que ya había dibujado.");
@@ -463,6 +495,16 @@ public sealed partial class PlantaDrawer
     /// funciona en AutoCAD 2026, y si no se deja, el corte se queda con la pieza hueca: se ve
     /// peor, pero está.
     /// </remarks>
+    /// <summary>
+    /// Dónde acabó, <b>a la derecha</b>, el último corte dibujado en esta pasada.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que encadena los cortes: el siguiente arranca a su derecha más la separación de la
+    /// hoja. Vive en el dibujante y no en quien pide los cortes porque solo aquí se sabe cuánto
+    /// ocupó de verdad cada uno —depende de las piezas que toque, de sus ejes y de sus cotas—.
+    /// </remarks>
+    private double? _derechaDelUltimoCorte;
+
     /// <summary>
     /// El <b>achurado de mampostería</b> de un muro del corte, si es de mampostería.
     /// </summary>

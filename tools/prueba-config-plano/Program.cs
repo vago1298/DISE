@@ -83,6 +83,8 @@ var cfg = new ConfigPlano();
 //   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
 //   CAPA_MURO_CONCRETO / COLOR_MURO_CONCRETO / MURO_CONCRETO_CAPA_PROPIA
 //                                   el muro de concreto sin cadena, en E-MURO DE CONCRETO
+//   CORTE_INTERMEDIA_SIEMPRE        la cadena intermedia, rellena y con bloque siempre
+//   CORTE_SEPARACION_CORTES_M       y cada corte, +8 a la derecha del anterior
 //   CORTE_FONDO_CON_COLUMNAS        los castillos del fondo no se dibujan en el corte
 //   CORTE_HATCH_MAMPOSTERIA / _TABIQUE / _TABIQUE_ESCALA / _TABICON / _TABICON_ESCALA / _COLOR
 //                                   el area de los muros de mamposteria, achurada
@@ -91,8 +93,8 @@ var cfg = new ConfigPlano();
 //   CORTE_RELLENAR_SOLO_EN_SECCION  se rellena lo que el corte cruza por su lado corto
 //   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
 //   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta que se añadieron",
-      320, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y dos que se añadieron",
+      322, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -288,6 +290,14 @@ Check("la cadena de desplante va continua en cualquier nivel",
 // LOS CASTILLOS DEL FONDO NO SE DIBUJAN: en una casa de mamposteria hay un castillo cada dos metros
 // en TODOS los ejes, asi que el fondo de un alzado se llena de rectangulos que no son de este corte
 // y que tapan lo que si lo es.
+// LA CADENA INTERMEDIA, rellena y con bloque siempre: es la que confina los vanos, va metida en el
+// muro y es lo que se viene a revisar en un corte.
+Check("la cadena intermedia se rellena y lleva bloque siempre",
+      cfg.Bandera("CORTE_INTERMEDIA_SIEMPRE", false));
+// Y CADA CORTE, +8 A LA DERECHA DEL ANTERIOR, para cuantos sean.
+Igual("cada corte va 8 a la derecha del anterior",
+      8.0, cfg.Numero("CORTE_SEPARACION_CORTES_M", 0));
+
 Check("los castillos del fondo no se dibujan",
       !cfg.Bandera("CORTE_FONDO_CON_COLUMNAS", true));
 
@@ -323,7 +333,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 320 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 322 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

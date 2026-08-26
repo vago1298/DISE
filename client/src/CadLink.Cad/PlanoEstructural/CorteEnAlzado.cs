@@ -51,6 +51,29 @@ public static class CorteEnAlzado
     private const double Minimo = 0.02;
 
     /// <summary>
+    /// ¿Esta pieza es una <b>cadena intermedia</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pregunta aparte porque la cadena intermedia tiene un trato propio en el corte: se
+    /// <b>rellena y lleva bloque</b> aunque el corte vaya a lo largo de ella. Se pidió tres veces y
+    /// tiene su razón de obra: la intermedia es la que <b>confina los vanos</b> de puertas y
+    /// ventanas y la que remata un antepecho, va <b>metida en el muro</b> y es lo que hay que
+    /// revisar en un corte. Sin relleno se pierde entre las líneas del paño, y sin bloque no se
+    /// puede cambiar por su detalle armado.
+    /// </para>
+    /// <para>
+    /// El tipo lo pone el modelo en las notas de la propiedad —<c>CADENA INTERMEDIA</c>—, así que
+    /// esto no adivina nada: lo dice el ingeniero.
+    /// </para>
+    /// </remarks>
+    public static bool EsIntermedia(Pieza p) =>
+        (p.Tipo ?? string.Empty).Contains("INTERMEDIA", StringComparison.OrdinalIgnoreCase)
+        || (p.Tipo ?? string.Empty).Contains("INTERMEDIO", StringComparison.OrdinalIgnoreCase)
+        || (p.Notas ?? string.Empty).Contains("INTERMEDIA", StringComparison.OrdinalIgnoreCase)
+        || (p.Notas ?? string.Empty).Contains("INTERMEDIO", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// ¿Este elemento entra en la <b>rebanada</b> del corte?
     /// </summary>
     /// <remarks>
@@ -753,7 +776,7 @@ public static class CorteEnAlzado
 
             return new Pieza(el.Clase, el.Etiqueta, el.Seccion,
                              ((min + max) / 2) - (ancho / 2), zAbajo - peralte,
-                             ancho, peralte, el.Tipo);
+                             ancho, peralte, el.Tipo, Notas: el.Notas);
         }
 
         if (largoBarra <= Minimo)
@@ -779,7 +802,7 @@ public static class CorteEnAlzado
         return new Pieza(el.Clase, el.Etiqueta, el.Seccion,
                          min - mediaA, zAbajo - peralte,
                          largoBarra + mediaA + mediaB, peralte, el.Tipo,
-                         EnSeccion: false);
+                         EnSeccion: false, Notas: el.Notas);
     }
 
     /// <summary>

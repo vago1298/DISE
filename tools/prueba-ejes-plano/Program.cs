@@ -2579,6 +2579,55 @@ Cerca("colgando de su cota", 1.2, piezaDeLaCadena.Z);
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LA CADENA INTERMEDIA: SIEMPRE RELLENA Y CON BLOQUE");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO TRES VECES, y tiene su razon de obra: la intermedia es la que CONFINA LOS VANOS de
+// puertas y ventanas y la que remata un antepecho, va metida en el muro y es lo que se viene a
+// revisar en un corte. Sin relleno se pierde entre las dos lineas del paño, y sin bloque no se puede
+// cambiar por su detalle armado.
+var intermediaALoLargo = new CorteEnAlzado.Pieza(
+    ClasePlanta.Trabe, "CI1", "CC 15X20", 0, 1.2, 3, 0.20, "CADENA INTERMEDIA", true, false);
+
+Check("la cadena intermedia se reconoce por su tipo",
+      CorteEnAlzado.EsIntermedia(intermediaALoLargo));
+
+// Y por sus NOTAS, para cuando el tipo llega en blanco.
+Check("y por sus notas",
+      CorteEnAlzado.EsIntermedia(new CorteEnAlzado.Pieza(
+          ClasePlanta.Trabe, "CI2", "CC 15X20", 0, 1.2, 3, 0.20, "", true, false,
+          "CADENA INTERMEDIA DE CONFINAMIENTO")));
+
+// «INTERMEDIO» tambien: se escribe de las dos formas.
+Check("en masculino tambien",
+      CorteEnAlzado.EsIntermedia(new CorteEnAlzado.Pieza(
+          ClasePlanta.Trabe, "CI3", "CC 15X20", 0, 1.2, 3, 0.20, "CADENA INTERMEDIO", true)));
+
+// PERO LA DE CERRAMIENTO NO ES INTERMEDIA: esa, vista a lo largo, va vacia.
+Check("la de cerramiento no es intermedia",
+      !CorteEnAlzado.EsIntermedia(new CorteEnAlzado.Pieza(
+          ClasePlanta.Trabe, "CC1", "CC 15X25", 0, 2.5, 4, 0.25, "CADENA DE CERRAMIENTO",
+          true, false)));
+Check("ni una trabe",
+      !CorteEnAlzado.EsIntermedia(new CorteEnAlzado.Pieza(
+          ClasePlanta.Trabe, "T1", "T 20X40", 0, 2.5, 4, 0.40, "TRABE", true, false)));
+
+// Y LA PIEZA DEL CORTE LLEVA SUS NOTAS tambien cuando es una barra, que es de donde sale el tipo
+// cuando el modelo no lo clasifico.
+var barraConNotas = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "", Seccion = "CC 15X20",
+    Notas = "CADENA INTERMEDIA", X1 = 0, Y1 = 0, X2 = 3, Y2 = 0,
+    Z1 = 1.4, Z2 = 1.4, AnchoM = 0.15, PeralteM = 0.20
+};
+
+Igual("la barra del corte lleva sus notas", "CADENA INTERMEDIA",
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { barraConNotas }, enX: false, ordenada: 0,
+          espesorM: 0.60)[0].Notas);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ACHURADO DE LA MAMPOSTERIA EN EL CORTE");
 Console.WriteLine("=====================================================================");
 
