@@ -2305,11 +2305,16 @@ var piezaTrabeDeCanto = CorteEnAlzado.Piezas(
 
 Check("la trabe que cruza el corte se ve en seccion", piezaTrabeDeCanto.EnSeccion);
 
-// Y LA QUE CORRE A LO LARGO se ve de costado: solo su linea.
+// Y LA QUE CORRE A LO LARGO se ve de costado: solo su linea, VACIA. Se pidio expresamente -«no
+// rellenes de color las cadenas, vigas o trabes largas, dejalas vacias»- y con razon: una cadena de
+// cuatro metros rellena pinta de morado media fachada del alzado y entierra debajo lo unico que ese
+// relleno tenia que señalar, que son las caras cortadas.
 var piezaTrabeALoLargo = CorteEnAlzado.Piezas(
     new List<ElementoPlanta> { enElEje[1] }, enX: true, ordenada: 5, espesorM: 0.60)[0];
 
 Check("y la que corre a lo largo, de costado", !piezaTrabeALoLargo.EnSeccion);
+// Sola en la lista no tiene apoyos que la alarguen, asi que mide su largo tal cual.
+Cerca("y mide sus cuatro metros", 4, piezaTrabeALoLargo.Ancho);
 
 // EL MURO Y LA LOSA nunca van en seccion: se leen por su paño y por su franja.
 Check("el muro no va en seccion",

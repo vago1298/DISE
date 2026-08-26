@@ -173,19 +173,18 @@ public sealed partial class PlantaDrawer
                 //  cualquier plano de obra: el relleno dice «aquí el plano cruza la pieza y esto
                 //  es su sección, la cara donde va el armado». Rellenando también lo que se ve de
                 //  costado, el alzado deja de decir por dónde pasa el corte.
-                //  Y LA RESTRICCIÓN ES SOLO PARA LA COLUMNA Y EL CASTILLO, que es donde se
-                //  pidió: un castillo de área de 15×80 cortado a lo largo de sus 80 no es una
-                //  sección y no se rellena. Una CADENA o una TRABE que el plano corta sí se
-                //  rellena aunque el corte vaya a lo largo de ella, y por dos razones: lo que se
-                //  ve es material cortado —el plano la parte de punta a punta— y porque es justo
-                //  lo que hay que ver de la CADENA INTERMEDIA, la que confina los vanos de
-                //  puertas y ventanas y va metida en el muro: sin relleno se pierde entre las
-                //  líneas del paño.
+                //  Y VALE PARA TODO, sin excepciones por clase: la cadena, la viga o la trabe
+                //  vistas A LO LARGO se quedan VACÍAS, con su línea y nada más. Solo se rellenan
+                //  las CARAS QUE LLEGAN, o sea las secciones.
+                //
+                //  Hubo una excepción para las cadenas y duró poco, con razón: rellenar una
+                //  cadena de cuatro metros de largo pinta de morado media fachada del alzado y
+                //  entierra debajo lo único que ese relleno tenía que señalar, que son las caras
+                //  cortadas. Y la CADENA INTERMEDIA no pierde nada: la que confina un vano se ve
+                //  por su cara —el plano la cruza— y esa sí se rellena y sí lleva su bloque.
                 var soloEnSeccion = _cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);
 
-                var enSeccion = p.EnSeccion
-                                || !soloEnSeccion
-                                || p.Clase != ClasePlanta.Columna;
+                var enSeccion = p.EnSeccion || !soloEnSeccion;
 
                 if (p.Cortada && enSeccion && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
                 {

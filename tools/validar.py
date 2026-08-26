@@ -4495,18 +4495,18 @@ def v18_planta_autocad() -> None:
           and "if (borrarElLazo)" in cortedib)
 
     # ------------------------------------------------------------------
-    # LA CADENA INTERMEDIA, RELLENA AUNQUE EL CORTE VAYA A LO LARGO
+    # SOLO LAS CARAS QUE LLEGAN: LO LARGO VA VACIO
     # ------------------------------------------------------------------
-    #  La restriccion de «solo lo que se ve en seccion» es para la COLUMNA y el CASTILLO, que es
-    #  donde se pidio: un castillo de area de 15x80 cortado a lo largo de sus 80 no es una seccion.
-    #  Una CADENA o una TRABE que el plano corta si se rellena aunque el corte vaya a lo largo de
-    #  ella: lo que se ve es material cortado -el plano la parte de punta a punta- y es justo lo que
-    #  hay que ver de la CADENA INTERMEDIA, la que confina los vanos de puertas y ventanas y va
-    #  metida en el muro; sin relleno se pierde entre las lineas del paño.
-    check("la cadena y la trabe cortadas se rellenan siempre",
-          "|| p.Clase != ClasePlanta.Columna;" in cortedib
-          and "var soloEnSeccion = _cfg.Bandera(\"CORTE_RELLENAR_SOLO_EN_SECCION\", true);"
-              in cortedib)
+    #  «No rellenes de color las cadenas, vigas o trabes largas, dejalas vacias, solo rellena las
+    #  caras que llegan de las secciones». La regla vale para TODO, sin excepciones por clase.
+    #
+    #  Hubo una excepcion para las cadenas y duro poco, con razon: rellenar una cadena de cuatro
+    #  metros pinta de morado media fachada del alzado y entierra debajo lo unico que ese relleno
+    #  tenia que señalar, que son las caras cortadas. Y la cadena intermedia no pierde nada: la que
+    #  confina un vano se ve por su cara -el plano la cruza- y esa si se rellena y si lleva bloque.
+    check("solo se rellenan las caras que llegan, sin excepciones por clase",
+          "var enSeccion = p.EnSeccion || !soloEnSeccion;" in cortedib
+          and "|| p.Clase != ClasePlanta.Columna;" not in cortedib)
 
     # ------------------------------------------------------------------
     # EL MURO, HASTA EL PAÑO DEL CASTILLO
