@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con treinta y nueve renglones añadidos",
-          cfgp.count("        P(") == 299
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y un renglones añadidos",
+          cfgp.count("        P(") == 301
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "299, ConfigPlano.PorOmision.Count" in pr
+          and "301, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -5041,9 +5041,45 @@ def v18_planta_autocad() -> None:
     check("y la direccion la pone la pieza mas larga",
           "var guia = piezas.OrderByDescending(Largo).First();" in cdm)
     cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
-    check("las dos claves nuevas estan en la hoja CONFIG",
+    check("las claves del castillo de shell estan en la hoja CONFIG",
           'P("SHELL_CASTILLO_COMO_COLUMNA", "SI",' in cfgplano
-          and 'P("SHELL_CASTILLO_UNIR_TOL_CM", "2",' in cfgplano)
+          and 'P("SHELL_CASTILLO_UNIR_TOL_CM", "2",' in cfgplano
+          and 'P("SHELL_CASTILLO_DE_OTRO_NIVEL", "SI",' in cfgplano
+          and 'P("SHELL_CASTILLO_CRUZA_TOL_CM", "20",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # POR QUE NO SE VEIA EL CASTILLO DE AREA DEBAJO DE LA CADENA
+    # ------------------------------------------------------------------
+    #  Dos cosas, las dos comprobadas en el codigo:
+    #
+    #  1) EL STORY. Un castillo de area se dibuja de corrido en la vista de alzado -de la
+    #     cimentacion al cerramiento- y entonces ETABS lo guarda en UN story: el de su punta.
+    #     La planta filtra por esa etiqueta, asi que en los demas niveles salia la cadena y
+    #     debajo de ella nada. Se trae por GEOMETRIA: si cruza el entrepiso -o llega a el-, en
+    #     esa planta hay castillo. Es la misma idea de los arranques de la cimentacion.
+    #  2) LAS COTAS. Las de un muro salian de los dos vertices MAS SEPARADOS EN PLANTA, y esos
+    #     pueden ser los dos de ABAJO segun el orden en que ETABS devuelva las esquinas: Z1 y
+    #     Z2 valian lo mismo, el alto era CERO y en el corte no se dibujaba nada.
+    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+
+    check("las cotas del muro van de la mas baja a la mas alta del paño",
+          "e.X1 = coords[ia].X; e.Y1 = coords[ia].Y;" in lector
+          and "e.Z1 = zMin;" in lector
+          and "e.Z2 = zMax;" in lector)
+    check("el castillo de area que cruza el nivel se trae de cualquier story",
+          "private void AgregarCastillosDeArea(" in winp
+          and "AgregarCastillosDeArea(modelo, p, nivel);" in winp
+          and 'CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true)' in winp)
+    # Por su altura DE VERDAD -los vertices-, no por Z1/Z2, que en un area es el dato flojo.
+    check("y se mide por los vertices del area",
+          "el.Vertices3D.Min(v => v.Z)" in winp
+          and "el.Vertices3D.Max(v => v.Z)" in winp
+          and 'CfgPlano.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 20)' in winp)
+    # LA Z SE RECORTA AL ENTREPISO: sin eso, un castillo de tres niveles se dibujaria tres
+    # niveles de alto en el corte de uno solo.
+    check("la Z se recorta a este entrepiso, para el corte",
+          "e.Z1 = Math.Max(zMin, zBaja);" in winp
+          and "e.Z2 = Math.Min(zMax, zAlta);" in winp)
     check("y el dibujante los usa para la linea, las burbujas Y las cotas",
           "Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos)" in mac
           and "Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos)" in mac

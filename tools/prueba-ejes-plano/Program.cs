@@ -1734,6 +1734,35 @@ var castillosEnCruz = new List<ElementoPlanta>
 Igual("uno en X y otro en Y no son el mismo castillo", 2,
       CastilloDeMuro.Normalizar(castillosEnCruz, 0.15));
 
+// EL ALTO DEL AREA, QUE ES LO QUE LO HACIA DESAPARECER DEL CORTE. Las cotas de un muro salian
+// de los dos vertices MAS SEPARADOS EN PLANTA, y esos pueden ser los dos de ABAJO -depende del
+// orden en que ETABS devuelva las esquinas-: entonces Z1 y Z2 valian LO MISMO, el alto era
+// CERO y en el corte no se dibujaba nada. Ahora el lector manda la cota mas baja y la mas alta
+// del paño, y el castillo de area se ve.
+var castilloEnCorte = new List<ElementoPlanta>
+{
+    PanelCastillo(5, 0, 5, 0.15, 0, 2.7)
+};
+CastilloDeMuro.Normalizar(castilloEnCorte, 0.15);
+
+var pCastillo = CorteEnAlzado.Piezas(castilloEnCorte, enX: true, ordenada: 5, espesorM: 0.6);
+
+Igual("el castillo de area da su pieza en el corte", 1, pCastillo.Count);
+Cerca("con el alto que trae el area", 2.7, pCastillo[0].Alto);
+Igual("y como columna, que es lo que se rellena", ClasePlanta.Columna, pCastillo[0].Clase);
+Check("y CORTADA, que es lo que decide el relleno", pCastillo[0].Cortada);
+
+// Y con las dos cotas iguales -lo que llegaba antes- no habia nada que dibujar. Se deja
+// escrito para que se vea de dónde venia el problema.
+var castilloSinAlto = new List<ElementoPlanta>
+{
+    PanelCastillo(5, 0, 5, 0.15, 0, 0)
+};
+CastilloDeMuro.Normalizar(castilloSinAlto, 0.15);
+
+Igual("con Z1 = Z2 no se dibujaba: eso era el castillo invisible", 0,
+      CorteEnAlzado.Piezas(castilloSinAlto, enX: true, ordenada: 5, espesorM: 0.6).Count);
+
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");

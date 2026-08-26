@@ -2388,6 +2388,94 @@ public partial class MainWindow : Window
     /// que son los que llevan esos castillos.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Trae los <b>castillos de área</b> que cruzan este nivel, sea cual sea su story.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un castillo modelado como área casi nunca se dibuja piso por piso: se traza de corrido
+    /// en la vista de alzado, de la cimentación al cerramiento, y entonces ETABS lo guarda en
+    /// <b>un</b> story —el de su punta—. Filtrando la planta por la etiqueta de story, ese
+    /// castillo solo salía en un nivel: en los demás aparecía la cadena y <b>debajo de ella,
+    /// nada</b>. Es lo que se reportó.
+    /// </para>
+    /// <para>
+    /// Así que se trae por <b>geometría</b>: si su altura cruza el entrepiso de este nivel —o
+    /// <b>llega</b> a él, con la holgura de la hoja, que es el caso del castillo que muere en
+    /// la cadena de desplante—, en esta planta hay castillo y se dibuja. Es la misma idea que
+    /// los arranques de la cimentación, donde la columna del piso de arriba se trae porque
+    /// desplanta ahí.
+    /// </para>
+    /// <para>
+    /// La <b>Z se recorta</b> al entrepiso. En planta no se usa, pero el corte por un eje sí:
+    /// sin recortar, un castillo de tres niveles se dibujaría tres niveles de alto en el corte
+    /// de uno solo. Y si dos áreas son el mismo castillo —la de este nivel y la que se trae—,
+    /// el dibujante las <b>une</b>, así que no salen dos bloques encimados.
+    /// </para>
+    /// </remarks>
+    private void AgregarCastillosDeArea(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    {
+        // Sin nivel elegido la planta trae TODO el modelo: ya están dentro.
+        if (string.IsNullOrWhiteSpace(nivel) || VerColumnasPlanoChk.IsChecked != true)
+        {
+            return;
+        }
+
+        var n = modelo.Niveles.FirstOrDefault(
+            x => string.Equals(x.Nombre, nivel, StringComparison.OrdinalIgnoreCase));
+
+        // Sin la cota y la altura del nivel no hay entrepiso que comparar, y adivinarlo
+        // metería castillos de otros pisos en la planta.
+        if (n is null || n.AlturaM <= 0)
+        {
+            return;
+        }
+
+        var zAlta = n.ElevacionM;
+        var zBaja = zAlta - n.AlturaM;
+
+        var tol = CfgPlano.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 20) / 100;
+
+        foreach (var el in modelo.Elementos)
+        {
+            if (el.Clase != ClaseElemento.Muro
+                || !CadLink.Cad.PlanoEstructural.CastilloDeMuro.DicenLasNotas(null, el.Notas))
+            {
+                continue;
+            }
+
+            // El de este story ya entró por el camino de siempre.
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Su altura de verdad: los VÉRTICES, que es el dato fiel de un área.
+            var zMin = el.Vertices3D.Count > 0
+                ? el.Vertices3D.Min(v => v.Z)
+                : Math.Min(el.Z1, el.Z2);
+
+            var zMax = el.Vertices3D.Count > 0
+                ? el.Vertices3D.Max(v => v.Z)
+                : Math.Max(el.Z1, el.Z2);
+
+            // ¿CRUZA ESTE ENTREPISO O LLEGA A ÉL? Con la holgura se cuela el que solo lo
+            // toca —el que muere en la cadena de desplante—, que es el que se pidió ver.
+            if (Math.Min(zMax, zAlta + tol) < Math.Max(zMin, zBaja - tol))
+            {
+                continue;
+            }
+
+            var e = ComoElementoDePlanta(el, modelo);
+
+            // Recortado a este entrepiso, para el corte.
+            e.Z1 = Math.Max(zMin, zBaja);
+            e.Z2 = Math.Min(zMax, zAlta);
+
+            p.Elementos.Add(e);
+        }
+    }
+
     private void AgregarArranquesDeCimentacion(ModeloEtabs modelo, PlantaCad p, string? nivel)
     {
         var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20) / 100;
@@ -2571,6 +2659,23 @@ public partial class MainWindow : Window
         if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
         {
             AgregarArranquesDeCimentacion(modelo, p, nivel);
+        }
+
+        // ==============================================================================
+        //  Y LOS CASTILLOS DE ÁREA QUE CRUZAN ESTE NIVEL, DE CUALQUIER STORY
+        // ==============================================================================
+        //  Es el mismo problema que los arranques, y por eso va al lado. Un castillo
+        //  modelado como ÁREA se dibuja de corrido en la vista de alzado —de la cimentación
+        //  al cerramiento, de una sola pieza— y entonces ETABS lo guarda en UN story: el de
+        //  su punta. En la planta de los demás niveles no aparecía, así que la cadena salía
+        //  y el castillo que va debajo de ella, no. Es lo que se reportó.
+        //
+        //  Aquí se trae por su GEOMETRÍA y no por su etiqueta de story: si su altura cruza
+        //  este entrepiso —o llega a él—, en esta planta hay castillo y hay que dibujarlo.
+        if (CfgPlano.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)
+            && CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true))
+        {
+            AgregarCastillosDeArea(modelo, p, nivel);
         }
 
         // ==============================================================================

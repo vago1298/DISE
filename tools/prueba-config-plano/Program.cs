@@ -75,8 +75,10 @@ var cfg = new ConfigPlano();
 //   CORTE_FONDO_LINETYPE            y ese fondo va a trazos
 //   SHELL_CASTILLO_COMO_COLUMNA     el shell que dice CASTILLO se dibuja como castillo
 //   SHELL_CASTILLO_UNIR_TOL_CM      y sus pedazos se unen, para que salga completo
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta y nueve que se añadieron",
-      299, ConfigPlano.PorOmision.Count);
+//   SHELL_CASTILLO_DE_OTRO_NIVEL    y el que cruza el nivel se dibuja aunque sea de otro story
+//   SHELL_CASTILLO_CRUZA_TOL_CM     con esta holgura en Z para tomarlo como que llega al nivel
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y uno que se añadieron",
+      301, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -230,12 +232,18 @@ Check("el castillo de shell viene encendido",
       cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", false));
 Igual("y sus pedazos se unen con 2 cm de holgura",
       2.0, cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 0));
+// Y el castillo de area que se dibuja de corrido en el alzado -asi que ETABS lo guarda en UN
+// story- se trae a la planta que cruza, con 20 cm de holgura para el que solo llega a ella.
+Check("el castillo de area de otro nivel viene encendido",
+      cfg.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", false));
+Igual("y se toma como que cruza el nivel con 20 cm de holgura",
+      20.0, cfg.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 0));
 
 Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 299 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 301 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

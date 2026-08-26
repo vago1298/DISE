@@ -1118,8 +1118,25 @@ public static class EtabsReader
             {
                 // Los dos vértices más separados en planta definen la línea del muro
                 var (ia, ib) = MasSeparados(coords);
-                e.X1 = coords[ia].X; e.Y1 = coords[ia].Y; e.Z1 = coords[ia].Z;
-                e.X2 = coords[ib].X; e.Y2 = coords[ib].Y; e.Z2 = coords[ib].Z;
+                e.X1 = coords[ia].X; e.Y1 = coords[ia].Y;
+                e.X2 = coords[ib].X; e.Y2 = coords[ib].Y;
+
+                // ======================================================================
+                //  Y LAS COTAS, DE LA MÁS BAJA A LA MÁS ALTA DEL PAÑO
+                // ======================================================================
+                //  NO las de esos dos vértices, que es lo que había, y era una bomba de
+                //  relojería: los dos más separados en planta pueden ser los dos de ABAJO
+                //  —depende del orden en que ETABS devuelva las esquinas—, y entonces Z1 y
+                //  Z2 valían LO MISMO. Con eso, el alto del paño era CERO, y en el corte un
+                //  muro de alto nulo no se dibuja: desaparecía sin decir por qué.
+                //
+                //  Es lo que dejaba fuera al castillo de área: convertido en castillo, el
+                //  corte le pide su alto para saber de dónde a dónde va, y con Z1 = Z2 no
+                //  había nada que dibujar. MuroDePisoATechoBajo ya se defendía de esto por su
+                //  cuenta mirando Vertices3D; ahora el dato llega bien desde el principio y
+                //  no hay que defenderse.
+                e.Z1 = zMin;
+                e.Z2 = zMax;
             }
             else
             {
