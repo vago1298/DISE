@@ -49,7 +49,9 @@ public sealed partial class PlantaDrawer
         // Es la misma normalización que en planta, para que el corte y la planta no discutan.
         if (_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true))
         {
-            PlanoEstructural.CastilloDeMuro.Normalizar(c.Elementos, EspesorMuroPorOmision);
+            PlanoEstructural.CastilloDeMuro.Normalizar(
+                c.Elementos, EspesorMuroPorOmision,
+                _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100);
         }
 
         var piezas = CorteEnAlzado.Piezas(c.Elementos, c.EnX, c.Ordenada, c.EspesorM);

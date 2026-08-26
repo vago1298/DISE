@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con treinta y siete renglones añadidos",
-          cfgp.count("        P(") == 297
+    check("la hoja CONFIG de la macro esta portada, con treinta y nueve renglones añadidos",
+          cfgp.count("        P(") == 299
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "297, ConfigPlano.PorOmision.Count" in pr
+          and "299, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4989,14 +4989,61 @@ def v18_planta_autocad() -> None:
           and dibp.index("PlanoEstructural.CastilloDeMuro.Normalizar(")
               < dibp.index("var apoyos = p.Elementos.Where"))
     check("el corte lo normaliza igual, para que no discuta con la planta",
-          "PlanoEstructural.CastilloDeMuro.Normalizar(c.Elementos, EspesorMuroPorOmision);"
-          in corp)
+          "PlanoEstructural.CastilloDeMuro.Normalizar(\n                c.Elementos, "
+          "EspesorMuroPorOmision," in corp)
     # LA CASILLA que le toca es la de las COLUMNAS: quien apaga los muros para ver solo la
     # estructura de castillos los perderia todos, y en el plano ya no son muros.
     check("en la ventana sigue a la casilla de las columnas",
           "private bool VisibleEnElPlano(ElementoEtabs el) =>" in winp
           and "CastilloDeMuro.DicenLasNotas(null, el.Notas)" in winp
           and "if (!VisibleEnElPlano(el))" in winp)
+
+    # ------------------------------------------------------------------
+    # Y COMPLETO: EL BLOQUE CON SUS MEDIDAS Y LOS PEDAZOS UNIDOS
+    # ------------------------------------------------------------------
+    #  «Cuando un shell diga castillo en property notes debes ponerlo COMPLETO como bloque».
+    #  Eran dos cosas distintas las que lo dejaban incompleto:
+    #
+    #  1) EL NOMBRE DEL BLOQUE. En un frame la seccion fija las medidas -«K 15X15» mide 15x15
+    #     en todo el modelo-, asi que el bloque puede llamarse como ella. En un SHELL no: la
+    #     seccion es la propiedad del muro, que solo fija el ESPESOR, y el largo lo pone cada
+    #     shell. Llamando al bloque «MURO 15» a secas, el primer castillo creaba la definicion
+    #     y todos los demas se insertaban con las medidas de aquel: uno de 15x40 salia 15x15.
+    #  2) LOS PEDAZOS. Un castillo de shell casi nunca llega de una pieza: partido a lo alto
+    #     -antepecho y dintel- los dos paneles ocupan el mismo sitio en planta y salian DOS
+    #     bloques encimados; partido a lo largo, el castillo salia en dos mitades.
+    macp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
+    dtop = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+
+    check("el castillo de shell queda marcado en el elemento",
+          "public bool DeShell { get; set; }" in dtop
+          and "DeShell = true," in cdm)
+    check("y su bloque lleva las medidas en el nombre",
+          "if (el.DeShell && s.Length > 0)" in macp
+          and 'LimpiaNombreDeBloque($"{s} {b * 100:0}X{h * 100:0}")' in macp)
+    check("los pedazos del mismo castillo se unen en uno",
+          "public static bool MismoCastillo(" in cdm
+          and "public static ElementoPlanta Unido(" in cdm
+          and "elementos.RemoveAt(sobran[k]);" in cdm)
+    # MISMA DIRECCION, MISMA LINEA Y QUE SE TOQUEN: con eso, dos castillos distintos separados
+    # 15 cm no se unen, y las dos mitades de uno si.
+    check("y solo si van igual, en la misma linea y se tocan",
+          "Math.Abs((ax * by) - (ay * bx)) > 0.10" in cdm
+          and "return Math.Min(a2, b2) >= Math.Max(a1, b1) - tol;" in cdm)
+    # EL ESPESOR, EL MAYOR -el pano llega al mas saliente- Y LAS COTAS, del mas bajo al mas
+    # alto, que es lo que hace que en el corte salga de una pieza.
+    check("el unido toma el espesor mayor y las cotas de punta a punta",
+          "AnchoM = piezas.Max(x => x.AnchoM)," in cdm
+          and "Z1 = piezas.Min(x => Math.Min(x.Z1, x.Z2))," in cdm
+          and "Z2 = piezas.Max(x => Math.Max(x.Z1, x.Z2))" in cdm)
+    # LA DIRECCION LA PONE LA PIEZA MAS LARGA: tomando la primera, un pedacito de 5 cm dibujado
+    # torcido torceria el castillo entero.
+    check("y la direccion la pone la pieza mas larga",
+          "var guia = piezas.OrderByDescending(Largo).First();" in cdm)
+    cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+    check("las dos claves nuevas estan en la hoja CONFIG",
+          'P("SHELL_CASTILLO_COMO_COLUMNA", "SI",' in cfgplano
+          and 'P("SHELL_CASTILLO_UNIR_TOL_CM", "2",' in cfgplano)
     check("y el dibujante los usa para la linea, las burbujas Y las cotas",
           "Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos)" in mac
           and "Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos)" in mac

@@ -1639,6 +1639,101 @@ Igual("el elemento original se queda como muro", ClasePlanta.Muro, shellCastillo
 Cerca("un castillo de shell tambien corre el eje de orilla a su paño", 0.075,
       ejes.MedioAnchoSobreEje(12, vertical: true, new List<ElementoPlanta> { mezcla[0] }));
 
+// EL BLOQUE LLEVA SUS MEDIDAS: la seccion de un shell es la propiedad del MURO -solo fija el
+// espesor- y el largo lo pone cada castillo. Sin esta marca, el primero creaba el bloque
+// «MURO 15» y todos los demas se insertaban con LAS MEDIDAS DE AQUEL: un castillo de 15x40
+// salia de 15x15.
+Check("el castillo de shell queda marcado, para que su bloque lleve las medidas",
+      mezcla[0].DeShell);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" Y COMPLETO: LOS PEDAZOS DEL MISMO CASTILLO, UNO SOLO");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «cuando un shell diga castillo en property notes debes ponerlo COMPLETO como
+// bloque». Un castillo de shell casi nunca llega de una pieza, y se parte de dos maneras:
+//
+//  1) A LO ALTO -lo mas comun-: el modelador lo dibuja en dos paneles, uno hasta el antepecho
+//     y otro del dintel arriba. En planta los dos ocupan EXACTAMENTE el mismo sitio, asi que
+//     salian DOS BLOQUES ENCIMADOS y, en el corte, dos castillos cortos en vez de uno de piso
+//     a techo.
+//  2) A LO LARGO: dos paneles seguidos sobre la misma linea, y el castillo salia en dos
+//     mitades.
+ElementoPlanta PanelCastillo(double x1, double y1, double x2, double y2,
+                     double z1, double z2, double esp = 0.15, string etiqueta = "") =>
+    new()
+    {
+        Clase = ClasePlanta.Muro, Tipo = "CASTILLO", Notas = "CASTILLO",
+        Seccion = "MURO 15", Etiqueta = etiqueta,
+        X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, Z1 = z1, Z2 = z2, AnchoM = esp
+    };
+
+// 1) PARTIDO A LO ALTO: mismo sitio en planta, uno de 0 a 1.0 y otro de 1.0 a 2.5.
+var castilloAlto = new List<ElementoPlanta>
+{
+    PanelCastillo(12, 0, 12, 0.15, 0, 1.0),
+    PanelCastillo(12, 0, 12, 0.15, 1.0, 2.5, etiqueta: "C7")
+};
+
+Igual("dos paneles en el mismo sitio son UN castillo", 1,
+      CastilloDeMuro.Normalizar(castilloAlto, 0.15));
+Igual("y en la lista queda uno solo, no dos bloques encimados", 1, castilloAlto.Count);
+Cerca("con el largo del castillo", 0.15, castilloAlto[0].AnchoM);
+Cerca("y de cota va del mas bajo...", 0, castilloAlto[0].Z1);
+Cerca("...al mas alto, para que el corte lo saque de una pieza", 2.5, castilloAlto[0].Z2);
+Igual("la etiqueta la pone el panel que la trae", "C7", castilloAlto[0].Etiqueta);
+
+// 2) PARTIDO A LO LARGO: dos paneles seguidos de 30 cm dan un castillo de 60.
+var castilloLargo = new List<ElementoPlanta>
+{
+    PanelCastillo(12, 0, 12, 0.30, 0, 2.5),
+    PanelCastillo(12, 0.30, 12, 0.60, 0, 2.5)
+};
+
+Igual("dos paneles seguidos son UN castillo", 1,
+      CastilloDeMuro.Normalizar(castilloLargo, 0.15));
+Cerca("con el largo de los dos juntos", 0.60, castilloLargo[0].AnchoM);
+Cerca("y su centro a la mitad de todo", 0.30, castilloLargo[0].Y1);
+
+// EL ESPESOR, EL MAYOR: el paño tiene que llegar al mas saliente.
+var castilloDosEspesores = new List<ElementoPlanta>
+{
+    PanelCastillo(0, 0, 0, 0.15, 0, 1.0, esp: 0.15),
+    PanelCastillo(0, 0, 0, 0.15, 1.0, 2.5, esp: 0.20)
+};
+CastilloDeMuro.Normalizar(castilloDosEspesores, 0.15);
+Cerca("de dos espesores manda el mayor", 0.20, castilloDosEspesores[0].PeralteM);
+
+// LO QUE NO SE UNE. Dos castillos DISTINTOS siguen siendo dos: uno en cada esquina de un vano
+// de metro y medio, y dos castillosParalelos a los dos lados de un muro.
+var castillosLejanos = new List<ElementoPlanta>
+{
+    PanelCastillo(12, 0, 12, 0.15, 0, 2.5),
+    PanelCastillo(12, 1.5, 12, 1.65, 0, 2.5)
+};
+Igual("dos castillos separados metro y medio son DOS", 2,
+      CastilloDeMuro.Normalizar(castillosLejanos, 0.15));
+Igual("y los dos siguen en la lista", 2, castillosLejanos.Count);
+
+var castillosParalelos = new List<ElementoPlanta>
+{
+    PanelCastillo(12, 0, 12, 0.15, 0, 2.5),
+    PanelCastillo(12.15, 0, 12.15, 0.15, 0, 2.5)
+};
+Igual("dos castillos paralelos a 15 cm tampoco se unen", 2,
+      CastilloDeMuro.Normalizar(castillosParalelos, 0.15));
+
+// Y en cruz: uno en X y otro en Y que se cruzan no son el mismo castillo, porque no van en la
+// misma direccion.
+var castillosEnCruz = new List<ElementoPlanta>
+{
+    PanelCastillo(12, 0, 12, 0.15, 0, 2.5),
+    PanelCastillo(11.95, 0.075, 12.10, 0.075, 0, 2.5)
+};
+Igual("uno en X y otro en Y no son el mismo castillo", 2,
+      CastilloDeMuro.Normalizar(castillosEnCruz, 0.15));
+
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");

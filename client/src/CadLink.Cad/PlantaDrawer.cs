@@ -195,16 +195,22 @@ public sealed partial class PlantaDrawer
         //  VA AQUÍ, ANTES DE NADA, porque los apoyos y las huellas se calculan justo abajo: si
         //  la conversión llegara después, los muros morirían en el EJE de este castillo en vez
         //  de en su paño y el contorno de la losa se le metería por dentro.
+        //  Y COMPLETO: los pedazos del mismo castillo se unen antes de convertirlo. Un
+        //  castillo de shell casi nunca llega de una pieza —el modelador lo dibuja hasta el
+        //  antepecho y del dintel arriba, y en planta los dos paneles ocupan el mismo sitio—,
+        //  así que salían dos bloques encimados, o el castillo en dos mitades cuando el corte
+        //  era a lo largo.
         if (_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true))
         {
             var deShell = PlanoEstructural.CastilloDeMuro.Normalizar(
-                p.Elementos, EspesorMuroPorOmision);
+                p.Elementos, EspesorMuroPorOmision,
+                _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100);
 
             if (deShell > 0)
             {
-                Nota($"{deShell} shell(s) de muro con CASTILLO en sus notas se dibujaron " +
-                     "como castillo: bloque de la sección y relleno amarillo, igual que uno " +
-                     "de frame.");
+                Nota($"{deShell} castillo(s) venían como shell de muro con CASTILLO en sus " +
+                     "notas: se dibujaron completos y como bloque —relleno amarillo— igual " +
+                     "que uno de frame.");
             }
         }
 

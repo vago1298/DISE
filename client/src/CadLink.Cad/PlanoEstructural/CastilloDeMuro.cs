@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CadLink.Cad.PlanoEstructural;
 
@@ -137,6 +138,12 @@ public static class CastilloDeMuro
             Tipo = Palabra,
             Forma = "RECT",
 
+            // DE SHELL: es lo que hace que el bloque lleve las medidas en el nombre. La
+            // sección de un shell es la propiedad del MURO —solo fija el espesor— y el largo
+            // lo pone cada castillo, así que con el nombre de la sección a secas todos se
+            // insertaban con las medidas del primero y salían incompletos.
+            DeShell = true,
+
             Etiqueta = muro.Etiqueta,
             Seccion = muro.Seccion,
             Notas = muro.Notas,
@@ -175,27 +182,234 @@ public static class CastilloDeMuro
     /// que dibujar dos veces la misma planta no duplica ni desplaza nada.
     /// </para>
     /// </remarks>
-    /// <returns>Cuántos se convirtieron, para la bitácora.</returns>
-    public static int Normalizar(IList<ElementoPlanta>? elementos, double espesorPorOmision)
+    /// <returns>Cuántos castillos quedaron, para la bitácora.</returns>
+    public static int Normalizar(
+        IList<ElementoPlanta>? elementos, double espesorPorOmision, double tolUnirM = 0.02)
     {
         if (elementos is null)
         {
             return 0;
         }
 
-        var cuantos = 0;
+        // 1) Los shells que dicen CASTILLO, con su sitio en la lista.
+        var cuales = new List<int>();
 
         for (var i = 0; i < elementos.Count; i++)
         {
-            if (!Dice(elementos[i]))
+            if (Dice(elementos[i]))
             {
-                continue;
+                cuales.Add(i);
             }
-
-            elementos[i] = Como(elementos[i], espesorPorOmision);
-            cuantos++;
         }
 
-        return cuantos;
+        if (cuales.Count == 0)
+        {
+            return 0;
+        }
+
+        // 2) Los pedazos del MISMO castillo, juntos.
+        var grupos = new List<List<int>>();
+
+        foreach (var i in cuales)
+        {
+            var suyo = grupos.FirstOrDefault(
+                g => g.Any(j => MismoCastillo(elementos[j], elementos[i], tolUnirM)));
+
+            if (suyo is null)
+            {
+                grupos.Add(new List<int> { i });
+            }
+            else
+            {
+                suyo.Add(i);
+            }
+        }
+
+        // 3) Cada grupo, UN castillo completo en el sitio del primero. Los demás se quitan:
+        //    si se quedaran, saldrían dos bloques encima del otro.
+        var sobran = new List<int>();
+
+        foreach (var g in grupos)
+        {
+            var piezas = g.Select(j => elementos[j]).ToList();
+
+            elementos[g[0]] = Como(Unido(piezas), espesorPorOmision);
+            sobran.AddRange(g.Skip(1));
+        }
+
+        sobran.Sort();
+
+        for (var k = sobran.Count - 1; k >= 0; k--)
+        {
+            elementos.RemoveAt(sobran[k]);
+        }
+
+        return grupos.Count;
+    }
+
+    /// <summary>
+    /// ¿Estos dos shells son <b>pedazos del mismo castillo</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un castillo de shell casi nunca llega de una pieza, y las dos maneras en que se parte
+    /// se ven mal en el plano:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Partido a lo alto</b> —lo más común—: el modelador lo dibuja en dos paneles, uno
+    ///     hasta el antepecho y otro del dintel arriba. En planta los dos ocupan
+    ///     <b>exactamente el mismo sitio</b>, así que salían <b>dos bloques encimados</b>, y en
+    ///     el corte, dos castillos cortos en lugar de uno de piso a techo.
+    ///   </item>
+    ///   <item>
+    ///     <b>Partido a lo largo</b>: dos paneles seguidos sobre la misma línea. Cada uno daba
+    ///     su bloque, así que el castillo salía en dos mitades en vez de uno completo.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Son el mismo si van en la <b>misma dirección</b>, están en la <b>misma línea</b> —la
+    /// separación perpendicular no llega a la tolerancia— y se <b>tocan o se enciman</b> a lo
+    /// largo de ella. Con eso, dos castillos distintos separados 15 cm no se unen, y las dos
+    /// mitades de uno sí.
+    /// </para>
+    /// </remarks>
+    public static bool MismoCastillo(ElementoPlanta a, ElementoPlanta b, double tol)
+    {
+        var (ax, ay, largoA) = Direccion(a);
+        var (bx, by, largoB) = Direccion(b);
+
+        // PARALELOS: el seno del ángulo que forman las dos direcciones. Se admiten unos
+        // grados porque un shell dibujado a mano nunca queda exacto.
+        if (largoA > Nada && largoB > Nada
+            && Math.Abs((ax * by) - (ay * bx)) > 0.10)
+        {
+            return false;
+        }
+
+        // La dirección de trabajo: la del que la tenga. Dos puntos sueltos se comparan por
+        // distancia, y para eso cualquier dirección sirve.
+        var ux = largoA > Nada ? ax : largoB > Nada ? bx : 1;
+        var uy = largoA > Nada ? ay : largoB > Nada ? by : 0;
+
+        var (ox, oy) = Centro(a);
+        var (px, py) = Centro(b);
+
+        // EN LA MISMA LÍNEA: lo que separa a los dos centros medido de través.
+        if (Math.Abs(((py - oy) * ux) - ((px - ox) * uy)) > tol)
+        {
+            return false;
+        }
+
+        // Y QUE SE TOQUEN: sus dos tramos, proyectados sobre la línea, se enciman o les falta
+        // menos que la tolerancia para juntarse.
+        var (a1, a2) = Tramo(a, ux, uy, ox, oy);
+        var (b1, b2) = Tramo(b, ux, uy, ox, oy);
+
+        return Math.Min(a2, b2) >= Math.Max(a1, b1) - tol;
+    }
+
+    /// <summary>
+    /// Los pedazos de un castillo, <b>en uno solo</b>: el shell completo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El largo es de punta a punta —el más lejano de todos los extremos, medido sobre la
+    /// línea— y la dirección la pone la <b>pieza más larga</b>, que es la que mejor la define:
+    /// tomando la primera, un pedacito de 5 cm dibujado torcido torcería el castillo entero.
+    /// </para>
+    /// <para>
+    /// El espesor es el <b>mayor</b> de los pedazos —el paño tiene que llegar al más
+    /// saliente— y las cotas van del <b>más bajo al más alto</b>, que es lo que hace que en el
+    /// corte el castillo partido en antepecho y dintel salga de una pieza, de su desplante a
+    /// su cerramiento.
+    /// </para>
+    /// </remarks>
+    public static ElementoPlanta Unido(IReadOnlyList<ElementoPlanta> piezas)
+    {
+        if (piezas.Count == 1)
+        {
+            return piezas[0];
+        }
+
+        var guia = piezas.OrderByDescending(Largo).First();
+
+        var (ux, uy, largo) = Direccion(guia);
+
+        if (largo <= Nada)
+        {
+            ux = 1;
+            uy = 0;
+        }
+
+        var (ox, oy) = Centro(guia);
+
+        var tMin = double.MaxValue;
+        var tMax = double.MinValue;
+
+        foreach (var pieza in piezas)
+        {
+            foreach (var (x, y) in new[] { (pieza.X1, pieza.Y1), (pieza.X2, pieza.Y2) })
+            {
+                var t = ((x - ox) * ux) + ((y - oy) * uy);
+
+                tMin = Math.Min(tMin, t);
+                tMax = Math.Max(tMax, t);
+            }
+        }
+
+        return new ElementoPlanta
+        {
+            Clase = ClasePlanta.Muro,
+            Tipo = guia.Tipo,
+            Forma = guia.Forma,
+            Notas = guia.Notas,
+            Seccion = guia.Seccion,
+            Material = guia.Material,
+
+            // La etiqueta, la primera que traiga alguno: un panel sin pier deja la etiqueta en
+            // blanco, y el castillo se quedaba sin rótulo por el pedazo que no la tenía.
+            Etiqueta = piezas.FirstOrDefault(x => (x.Etiqueta ?? string.Empty).Length > 0)
+                            ?.Etiqueta ?? string.Empty,
+
+            X1 = ox + (ux * tMin),
+            Y1 = oy + (uy * tMin),
+            X2 = ox + (ux * tMax),
+            Y2 = oy + (uy * tMax),
+
+            AnchoM = piezas.Max(x => x.AnchoM),
+
+            Z1 = piezas.Min(x => Math.Min(x.Z1, x.Z2)),
+            Z2 = piezas.Max(x => Math.Max(x.Z1, x.Z2))
+        };
+    }
+
+    /// <summary>La dirección unitaria de un shell en planta, y su largo.</summary>
+    private static (double X, double Y, double Largo) Direccion(ElementoPlanta el)
+    {
+        var dx = el.X2 - el.X1;
+        var dy = el.Y2 - el.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        return largo > Nada ? (dx / largo, dy / largo, largo) : (0, 0, 0);
+    }
+
+    /// <summary>El largo en planta, para saber qué pieza manda.</summary>
+    private static double Largo(ElementoPlanta el) => Direccion(el).Largo;
+
+    /// <summary>El punto medio en planta.</summary>
+    private static (double X, double Y) Centro(ElementoPlanta el) =>
+        ((el.X1 + el.X2) / 2, (el.Y1 + el.Y2) / 2);
+
+    /// <summary>
+    /// El tramo que ocupa un shell <b>sobre una línea</b>, ordenado de menor a mayor.
+    /// </summary>
+    private static (double A, double B) Tramo(
+        ElementoPlanta el, double ux, double uy, double ox, double oy)
+    {
+        var t1 = ((el.X1 - ox) * ux) + ((el.Y1 - oy) * uy);
+        var t2 = ((el.X2 - ox) * ux) + ((el.Y2 - oy) * uy);
+
+        return t1 <= t2 ? (t1, t2) : (t2, t1);
     }
 }

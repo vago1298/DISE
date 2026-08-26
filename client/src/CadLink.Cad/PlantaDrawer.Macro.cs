@@ -1673,6 +1673,23 @@ public sealed partial class PlantaDrawer
                     $"{Tipo(el)}-{b * 100:0}X{h * 100:0}");
             }
 
+            // ==========================================================================
+            //  EL CASTILLO DE SHELL LLEVA SUS MEDIDAS EN EL NOMBRE
+            // ==========================================================================
+            //  En un frame la sección fija las medidas —«K 15X15» mide 15×15 en todo el
+            //  modelo—, así que el bloque puede llamarse como ella. En un SHELL no: la
+            //  sección es la propiedad del muro, que solo fija el ESPESOR, y el LARGO lo
+            //  pone cada shell. Llamando al bloque «MURO 15» a secas, el primer castillo
+            //  creaba la definición y todos los demás se insertaban con las medidas de
+            //  aquel: un castillo de 15×40 salía de 15×15, o al revés, según cuál se
+            //  dibujara primero. Con las medidas detrás, cada tamaño tiene su bloque y
+            //  CADA CASTILLO SALE COMPLETO —y el BLOCKREPLACE sigue cambiando de golpe
+            //  todos los de ese tamaño, que es para lo que sirve—.
+            if (el.DeShell && s.Length > 0)
+            {
+                s = LimpiaNombreDeBloque($"{s} {b * 100:0}X{h * 100:0}");
+            }
+
             return s.Length == 0 ? string.Empty : pref + s;
         }
 

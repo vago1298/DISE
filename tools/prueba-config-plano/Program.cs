@@ -73,8 +73,10 @@ var cfg = new ConfigPlano();
 //   VOLADO_SIN_DIVISIONES           varios volados juntos, un solo perimetro
 //   CORTE_VER_EL_FONDO              el corte dibuja lo que se ve detras, no solo la rebanada
 //   CORTE_FONDO_LINETYPE            y ese fondo va a trazos
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta y siete que se añadieron",
-      297, ConfigPlano.PorOmision.Count);
+//   SHELL_CASTILLO_COMO_COLUMNA     el shell que dice CASTILLO se dibuja como castillo
+//   SHELL_CASTILLO_UNIR_TOL_CM      y sus pedazos se unen, para que salga completo
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los treinta y nueve que se añadieron",
+      299, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -221,11 +223,19 @@ Check("una celda que no se entiende deja el valor de omisión",
 Igual("un parámetro que no existe devuelve lo que se le pase",
       7.5, cfg.Numero("NO_EXISTE_ESTE", 7.5));
 
+// LAS DOS CLAVES DEL CASTILLO DE SHELL, con sus valores de omision: encendido, y 2 cm de
+// holgura para unir los pedazos del mismo castillo -el modelador lo dibuja en dos paneles,
+// hasta el antepecho y del dintel arriba, y en planta los dos ocupan el mismo sitio-.
+Check("el castillo de shell viene encendido",
+      cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", false));
+Igual("y sus pedazos se unen con 2 cm de holgura",
+      2.0, cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 0));
+
 Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 297 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 299 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
