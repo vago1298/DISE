@@ -4466,6 +4466,34 @@ def v18_planta_autocad() -> None:
           "string Notas = \"\");" in corte
           and "EnSeccion: false, Notas: el.Notas)" in corte)
 
+    # PERO NO SE ACHURA DONDE EL CORTE PASA POR CONCRETO: «a los de fondo si, y a los que corta
+    # tambien, pero siempre y cuando no corte en un elemento de concreto». Donde el corte pasa por un
+    # castillo, una cadena o un muro de concreto, lo que hay ahi es CONCRETO: achurarlo de tabique
+    # seria decir que ese trozo se levanto con ladrillos. Un castillo en medio parte el achurado en
+    # dos, que es lo que se ve en obra: dos paños de mamposteria con su castillo entre los dos.
+    check("no se achura donde el corte pasa por concreto",
+          "public static List<(double X1, double X2)> TramosSinConcreto(" in corte
+          and "private static bool EsConcretoQueTapa(Pieza q, Pieza muro)" in corte
+          and "var tramos = PlanoEstructural.CorteEnAlzado.TramosSinConcreto(p, piezas);"
+              in cortedib)
+    # Solo las CORTADAS -lo que se ve al fondo no interrumpe lo que esta delante- y solo las que se
+    # enciman EN VERTICAL: una cadena tres metros mas arriba no le quita nada al muro.
+    check("solo lo cortado, y solo si se encima en vertical",
+          "if (ReferenceEquals(q, muro) || !q.Cortada)" in corte
+          and "return Math.Min(q.Z + q.Alto, muro.Z + muro.Alto) - Math.Max(q.Z, muro.Z) > Minimo;"
+              in corte)
+    # Y OTRO MURO DE MAMPOSTERIA NO lo parte -los dos son de piezas- pero uno de concreto si.
+    check("otro muro de mamposteria no lo parte, uno de concreto si",
+          "|| (q.Clase == ClasePlanta.Muro\n                             && HatchDeMamposteria.Para("
+          in corte)
+    # EL CASO NORMAL SE ACHURA SOBRE SU PROPIA POLILINEA, sin crear nada; y cuando hay concreto en
+    # medio, el contorno de cada tramo es un LAZO DE PASO que se dibuja, se achura y SE BORRA: esas
+    # lineas no existen en el muro y dejarlas seria inventar juntas donde no las hay.
+    check("y los tramos se achuran con un lazo de paso que se borra",
+          "AchurarConPatron(lazo, capa, cual, borrarElLazo: true);" in cortedib
+          and "AchurarConPatron(pl, capa, cual, borrarElLazo: false);" in cortedib
+          and "if (borrarElLazo)" in cortedib)
+
     # ------------------------------------------------------------------
     # LA CADENA INTERMEDIA, RELLENA AUNQUE EL CORTE VAYA A LO LARGO
     # ------------------------------------------------------------------

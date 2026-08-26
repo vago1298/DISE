@@ -213,6 +213,106 @@ public static class CorteEnAlzado
     }
 
     /// <summary>
+    /// Los <b>tramos</b> de un muro donde el achurado de mampostería sí va: los que no pisan
+    /// concreto.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: el achurado va en los muros de mampostería del fondo <b>y</b> en los que el plano
+    /// corta, «siempre y cuando no corte en un elemento de concreto». Y es lo correcto: donde el
+    /// corte pasa por un castillo, una cadena o un muro de concreto, lo que hay ahí es
+    /// <b>concreto</b>, no piezas con mortero. Achurarlo de tabique sería decir que ese trozo se
+    /// levantó con ladrillos.
+    /// </para>
+    /// <para>
+    /// Así que del ancho del muro se <b>quitan</b> los trozos que ocupan las piezas de concreto que
+    /// el plano corta, y se devuelve lo que queda. Un castillo en el medio del muro parte su
+    /// achurado en dos, que es exactamente lo que se ve en obra: dos paños de mampostería con su
+    /// castillo entre los dos.
+    /// </para>
+    /// <para>
+    /// Solo las <b>cortadas</b>: una columna que se ve al fondo no interrumpe la mampostería que
+    /// está delante de ella. Y solo las que se <b>encima en vertical</b>: una cadena que va tres
+    /// metros más arriba no le quita nada a este muro.
+    /// </para>
+    /// </remarks>
+    /// <param name="muro">La pieza del muro que se va a achurar.</param>
+    /// <param name="piezas">Todas las piezas del corte.</param>
+    public static List<(double X1, double X2)> TramosSinConcreto(
+        Pieza muro, IReadOnlyList<Pieza> piezas)
+    {
+        var libres = new List<(double X1, double X2)>
+        {
+            (muro.X, muro.X + muro.Ancho)
+        };
+
+        foreach (var q in piezas)
+        {
+            if (!EsConcretoQueTapa(q, muro))
+            {
+                continue;
+            }
+
+            var siguiente = new List<(double X1, double X2)>();
+
+            foreach (var (a, b) in libres)
+            {
+                // Lo que queda a la izquierda de la pieza de concreto…
+                if (q.X > a)
+                {
+                    siguiente.Add((a, Math.Min(b, q.X)));
+                }
+
+                // …y lo que queda a su derecha.
+                var derecha = q.X + q.Ancho;
+
+                if (derecha < b)
+                {
+                    siguiente.Add((Math.Max(a, derecha), b));
+                }
+            }
+
+            libres = siguiente
+                .Where(t => t.X2 - t.X1 > Minimo)
+                .ToList();
+
+            if (libres.Count == 0)
+            {
+                break;
+            }
+        }
+
+        return libres;
+    }
+
+    /// <summary>¿Esta pieza es de concreto y tapa a ese muro?</summary>
+    /// <remarks>
+    /// De concreto son el <b>castillo</b> y la <b>columna</b>, la <b>cadena</b> y la <b>trabe</b>, y
+    /// también otro <b>muro de concreto</b>. Tiene que estar <b>cortada</b> por el plano —lo que se
+    /// ve al fondo no interrumpe lo que está delante—, <b>encimarse en vertical</b> con el muro y
+    /// no ser el muro mismo.
+    /// </remarks>
+    private static bool EsConcretoQueTapa(Pieza q, Pieza muro)
+    {
+        if (ReferenceEquals(q, muro) || !q.Cortada)
+        {
+            return false;
+        }
+
+        var deConcreto = q.Clase is ClasePlanta.Columna or ClasePlanta.Trabe
+                         || (q.Clase == ClasePlanta.Muro
+                             && HatchDeMamposteria.Para(q.Notas, q.Seccion) is null);
+
+        if (!deConcreto)
+        {
+            return false;
+        }
+
+        // Que se encimen en vertical: una cadena tres metros más arriba no le quita nada.
+        return Math.Min(q.Z + q.Alto, muro.Z + muro.Alto) - Math.Max(q.Z, muro.Z) > Minimo;
+    }
+
+    /// <summary>
     /// Une las piezas del <b>fondo</b> que se tocan: una silueta, no una reja de rectángulos.
     /// </summary>
     /// <remarks>

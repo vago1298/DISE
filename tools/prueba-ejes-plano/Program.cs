@@ -2544,6 +2544,74 @@ Igual("el patron sale de la hoja", "MI-PATRON",
 Cerca("y una escala de cero vuelve a la de la hoja", 0.0010,
       HatchDeMamposteria.Para("TABIQUE", "", escalaTabique: 0)!.Escala, 1e-9);
 
+// PERO NO SE ACHURA DONDE EL CORTE PASA POR CONCRETO. Se pidio: en los muros del fondo y en los que
+// el plano corta, «siempre y cuando no corte en un elemento de concreto». Donde el corte pasa por un
+// castillo, una cadena o un muro de concreto, lo que hay ahi es CONCRETO: achurarlo de tabique seria
+// decir que ese trozo se levanto con ladrillos.
+var paño = new CorteEnAlzado.Pieza(
+    ClasePlanta.Muro, "M1", "MURO 15", 0, 0, 4, 2.5, "MURO", true, false, "MURO DE TABIQUE");
+
+// Sin concreto encima, el achurado va en todo el paño: un solo tramo, de punta a punta.
+var todoElPaño = CorteEnAlzado.TramosSinConcreto(paño, new[] { paño });
+
+Igual("sin concreto encima se achura el paño entero", 1, todoElPaño.Count);
+Cerca("de punta...", 0, todoElPaño[0].X1);
+Cerca("...a punta", 4, todoElPaño[0].X2);
+
+// UN CASTILLO EN MEDIO parte el achurado en dos, que es lo que se ve en obra: dos paños de
+// mamposteria con su castillo entre los dos.
+var castilloEnMedio = new CorteEnAlzado.Pieza(
+    ClasePlanta.Columna, "K1", "K 15X15", 1.925, 0, 0.15, 2.5, "CASTILLO", true);
+
+var partido = CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, castilloEnMedio });
+
+Igual("un castillo en medio parte el achurado en dos", 2, partido.Count);
+Cerca("el primer tramo acaba en su cara", 1.925, partido[0].X2);
+Cerca("y el segundo arranca en la otra", 2.075, partido[1].X1);
+
+// UNA CADENA QUE CRUZA -de canto, cortada- tambien lo parte.
+var cadenaDeCanto = new CorteEnAlzado.Pieza(
+    ClasePlanta.Trabe, "CC1", "CC 15X25", 3, 1.2, 0.15, 0.25, "CADENA INTERMEDIA", true);
+
+Igual("una cadena cortada tambien lo parte", 2,
+      CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, cadenaDeCanto }).Count);
+
+// PERO UNA QUE VA POR ENCIMA DEL MURO no le quita nada: no se encima en vertical.
+var cadenaArriba = new CorteEnAlzado.Pieza(
+    ClasePlanta.Trabe, "CC2", "CC 15X25", 3, 5.6, 0.15, 0.25, "CADENA DE CERRAMIENTO", true);
+
+Igual("una cadena tres metros mas arriba no le quita nada", 1,
+      CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, cadenaArriba }).Count);
+
+// Y UNA COLUMNA DEL FONDO tampoco: lo que se ve detras no interrumpe lo que esta delante.
+var columnaDelFondo = new CorteEnAlzado.Pieza(
+    ClasePlanta.Columna, "K9", "K 15X15", 2, 0, 0.15, 2.5, "CASTILLO", false);
+
+Igual("una columna del fondo no interrumpe la mamposteria", 1,
+      CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, columnaDelFondo }).Count);
+
+// OTRO MURO DE MAMPOSTERIA tampoco lo parte: los dos son de piezas, y el achurado sigue.
+var otroDeTabique = new CorteEnAlzado.Pieza(
+    ClasePlanta.Muro, "M2", "MURO 15", 2, 0, 0.5, 2.5, "MURO", true, false, "MURO DE TABICON");
+
+Igual("otro muro de mamposteria no parte el achurado", 1,
+      CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, otroDeTabique }).Count);
+
+// PERO UN MURO DE CONCRETO SI: ahi hay concreto, no piezas.
+var muroDeConcretoCortado = new CorteEnAlzado.Pieza(
+    ClasePlanta.Muro, "M3", "MURO 20", 2, 0, 0.5, 2.5, "MURO", true, false,
+    "MURO DE CONCRETO ARMADO");
+
+Igual("un muro de concreto si lo parte", 2,
+      CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, muroDeConcretoCortado }).Count);
+
+// Y SI EL CONCRETO SE COME EL PAÑO ENTERO no queda nada que achurar.
+var castillote = new CorteEnAlzado.Pieza(
+    ClasePlanta.Columna, "K5", "K 15X400", 0, 0, 4, 2.5, "CASTILLO", true);
+
+Igual("si el concreto lo cubre entero no se achura nada", 0,
+      CorteEnAlzado.TramosSinConcreto(paño, new[] { paño, castillote }).Count);
+
 // Y LA PIEZA DEL CORTE LLEVA SUS NOTAS, que es de donde sale todo esto.
 var muroDeTabique = new ElementoPlanta
 {

@@ -221,7 +221,7 @@ public sealed partial class PlantaDrawer
                 //  De qué es el muro sale de las NOTAS de su propiedad, que es donde se escribe.
                 if (p.Clase == ClasePlanta.Muro)
                 {
-                    AchurarMamposteria(pl, capa, p);
+                    AchurarMamposteria(pl, capa, p, piezas, cx, cy);
                 }
 
                 hechas++;
@@ -462,7 +462,8 @@ public sealed partial class PlantaDrawer
     /// </para>
     /// </remarks>
     private void AchurarMamposteria(
-        object? pl, string capa, PlanoEstructural.CorteEnAlzado.Pieza p)
+        object? pl, string capa, PlanoEstructural.CorteEnAlzado.Pieza p,
+        IReadOnlyList<PlanoEstructural.CorteEnAlzado.Pieza> piezas, double cx, double cy)
     {
         if (pl is null || !_cfg.Bandera("CORTE_HATCH_MAMPOSTERIA", true))
         {
@@ -478,6 +479,65 @@ public sealed partial class PlantaDrawer
             (int)_cfg.Numero("CORTE_HATCH_MAMPOSTERIA_COLOR", 12));
 
         if (cual is null)
+        {
+            return;
+        }
+
+        // ==============================================================================
+        //  NO SE ACHURA DONDE EL CORTE PASA POR CONCRETO
+        // ==============================================================================
+        //  Se pidió: en los muros de mampostería del fondo y en los que el plano corta, «siempre y
+        //  cuando no corte en un elemento de concreto». Donde el corte pasa por un castillo, una
+        //  cadena o un muro de concreto, lo que hay ahí es CONCRETO: achurarlo de tabique sería
+        //  decir que ese trozo se levantó con ladrillos.
+        //
+        //  Así que del ancho del muro se quitan los trozos de las piezas de concreto que el plano
+        //  corta y se achura lo que queda. Un castillo en medio del muro parte su achurado en dos,
+        //  que es lo que se ve en obra: dos paños de mampostería con su castillo entre los dos.
+        var tramos = PlanoEstructural.CorteEnAlzado.TramosSinConcreto(p, piezas);
+
+        if (tramos.Count == 0)
+        {
+            return;
+        }
+
+        // El caso normal —un muro sin concreto encima— se achura sobre su PROPIA polilínea, sin
+        // crear nada: es lo más barato y lo que menos toca el dibujo.
+        var entero = tramos.Count == 1
+                     && Math.Abs(tramos[0].X1 - p.X) < 0.001
+                     && Math.Abs(tramos[0].X2 - (p.X + p.Ancho)) < 0.001;
+
+        if (entero)
+        {
+            AchurarConPatron(pl, capa, cual, borrarElLazo: false);
+            return;
+        }
+
+        // Y si hay concreto en medio, un achurado por tramo. El contorno de cada tramo es un LAZO
+        // DE PASO: se dibuja, se achura y se borra, porque esas líneas no existen en el muro —lo
+        // que se ve es su paño entero— y dejarlas sería inventar juntas donde no las hay.
+        foreach (var (x1, x2) in tramos)
+        {
+            var lazo = PolilineaCerrada(
+                new[]
+                {
+                    cx + x1, cy + p.Z,
+                    cx + x2, cy + p.Z,
+                    cx + x2, cy + p.Z + p.Alto,
+                    cx + x1, cy + p.Z + p.Alto
+                },
+                capa);
+
+            AchurarConPatron(lazo, capa, cual, borrarElLazo: true);
+        }
+    }
+
+    /// <summary>Un achurado con patrón sobre un contorno, y el contorno de paso si toca.</summary>
+    private void AchurarConPatron(
+        object? pl, string capa, PlanoEstructural.HatchDeMamposteria.Achurado cual,
+        bool borrarElLazo)
+    {
+        if (pl is null)
         {
             return;
         }
@@ -524,6 +584,13 @@ public sealed partial class PlantaDrawer
         catch (Exception ex)
         {
             Fallo($"Escala del achurado '{cual.Patron}'", ex);
+        }
+
+        // EL LAZO DE PASO SE BORRA. Se puede porque el achurado NO es asociativo: si lo fuera, al
+        // borrar su contorno el achurado se iría con él.
+        if (borrarElLazo)
+        {
+            Borrar(pl);
         }
     }
 
