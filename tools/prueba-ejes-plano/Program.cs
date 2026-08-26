@@ -1592,7 +1592,13 @@ Cerca("y en Y", 0.075, comoCastillo.Y1);
 Cerca("su ancho es el LARGO del shell", 0.15, comoCastillo.AnchoM);
 Cerca("su peralte es el ESPESOR del muro", 0.15, comoCastillo.PeralteM);
 Cerca("y su giro, la direccion del shell", 90, comoCastillo.AnguloGrados);
-Igual("la etiqueta se conserva, que es lo que se rotula", "45", comoCastillo.Etiqueta);
+// SU NOMBRE ES SU MEDIDA. La seccion de un shell es la propiedad del MURO -«MURO 15», que no
+// dice nada de este castillo- y su etiqueta es el PIER, que en SAP2000 NO EXISTE: el castillo
+// salia sin rotulo y con el nombre de un muro. Se nombra con lo que lo describe: el espesor por
+// el largo, en centimetros.
+Igual("se rotula con su medida en planta", "K 15X15", comoCastillo.Etiqueta);
+Igual("y la seccion dice lo mismo, que es de donde sale el nombre del BLOQUE",
+      "K 15X15", comoCastillo.Seccion);
 Cerca("y las cotas, que es lo que el corte necesita", 2.5, comoCastillo.Z2);
 
 // Sin espesor en el modelo, el mismo respaldo que usa el dibujante para un muro.
@@ -1639,12 +1645,20 @@ Igual("el elemento original se queda como muro", ClasePlanta.Muro, shellCastillo
 Cerca("un castillo de shell tambien corre el eje de orilla a su paño", 0.075,
       ejes.MedioAnchoSobreEje(12, vertical: true, new List<ElementoPlanta> { mezcla[0] }));
 
-// EL BLOQUE LLEVA SUS MEDIDAS: la seccion de un shell es la propiedad del MURO -solo fija el
-// espesor- y el largo lo pone cada castillo. Sin esta marca, el primero creaba el bloque
-// «MURO 15» y todos los demas se insertaban con LAS MEDIDAS DE AQUEL: un castillo de 15x40
-// salia de 15x15.
-Check("el castillo de shell queda marcado, para que su bloque lleve las medidas",
-      mezcla[0].DeShell);
+// LOS DECIMALES, CUANDO HACEN FALTA: un castillo de 23.5 cm es «K 15X23.5», no «K 15X24». Y con
+// PUNTO decimal siempre, porque este texto acaba siendo un nombre de bloque de AutoCAD: con la
+// coma de la configuracion regional, la misma medida daria DOS bloques distintos.
+Igual("un castillo de 23.5 cm se nombra con su decimal", "K 15X23.5",
+      CastilloDeMuro.Nombre("K", 0.15, 0.235));
+Igual("y uno redondo no lleva ceros de relleno", "K 15X20",
+      CastilloDeMuro.Nombre("K", 0.15, 0.20));
+Igual("el prefijo se recorta y lleva UN espacio", "K 15X20",
+      CastilloDeMuro.Nombre("K ", 0.15, 0.20));
+Igual("y sin prefijo queda la medida sola", "15X20",
+      CastilloDeMuro.Nombre("", 0.15, 0.20));
+// El prefijo sale de la hoja: quien nombre sus castillos «C» los tendra como «C 15X20».
+Igual("y se puede cambiar en la hoja CONFIG", "C 15X20",
+      CastilloDeMuro.Nombre("C", 0.15, 0.20));
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
@@ -1682,7 +1696,8 @@ Igual("y en la lista queda uno solo, no dos bloques encimados", 1, castilloAlto.
 Cerca("con el largo del castillo", 0.15, castilloAlto[0].AnchoM);
 Cerca("y de cota va del mas bajo...", 0, castilloAlto[0].Z1);
 Cerca("...al mas alto, para que el corte lo saque de una pieza", 2.5, castilloAlto[0].Z2);
-Igual("la etiqueta la pone el panel que la trae", "C7", castilloAlto[0].Etiqueta);
+// Y el castillo unido tambien se rotula con SU medida, la de los dos juntos.
+Igual("el castillo unido se rotula con su medida", "K 15X15", castilloAlto[0].Etiqueta);
 
 // 2) PARTIDO A LO LARGO: dos paneles seguidos de 30 cm dan un castillo de 60.
 var castilloLargo = new List<ElementoPlanta>

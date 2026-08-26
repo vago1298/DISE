@@ -126,26 +126,6 @@ public sealed class ElementoPlanta
     /// </remarks>
     public bool MuroDePisoATecho { get; set; }
 
-    /// <summary>
-    /// Este castillo se modeló como <b>shell de muro</b>, no como frame.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Importa para <b>una</b> cosa, y se ve en el plano: el <b>nombre del bloque</b>. En un
-    /// frame, la sección fija las medidas —«K 15X15» mide 15×15 en todo el modelo—, así que el
-    /// bloque puede llamarse como ella. En un shell no: la sección es la propiedad del
-    /// <b>muro</b>, que solo fija el espesor, y el <b>largo lo pone cada shell</b>. Con el
-    /// nombre de la sección a secas, el primer castillo creaba el bloque y todos los demás se
-    /// insertaban con <i>sus</i> medidas: un castillo de 15×40 salía de 15×15.
-    /// </para>
-    /// <para>
-    /// Con esta marca el nombre del bloque lleva las medidas detrás y cada tamaño tiene el
-    /// suyo, así que <b>cada castillo sale completo</b> y un <c>BLOCKREPLACE</c> sigue
-    /// cambiando de golpe todos los de ese tamaño.
-    /// </para>
-    /// </remarks>
-    public bool DeShell { get; set; }
-
     /// <summary>Espesor de la <b>pared</b> del cajón o del tubo, en metros.</summary>
     /// <remarks>
     /// Es lo que le da su hueco: un cajón dibujado macizo parece una placa, y en un plano

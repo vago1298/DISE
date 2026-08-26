@@ -719,6 +719,8 @@ public sealed class ConfigPlano
           "SI = dibujar el castillo de area que cruza el nivel aunque sea de otro story"),
         P("SHELL_CASTILLO_CRUZA_TOL_CM", "20",
           "Holgura en Z para tomarlo como que cruza o llega al nivel"),
+        P("SHELL_CASTILLO_PREFIJO", "K",
+          "Con que se nombra el castillo de area: K da «K 15X23.5»"),
         P("DIBUJAR_EJES", "SI", "Dibujar la cuadricula con burbujas"),
         P("LINETYPE_EJES", "DASHDOT", "Tipo de linea de la capa E-EJES"),
         P("EJES_ESCALA_TIPOLINEA", "1", "LinetypeScale de las lineas de eje (1 = no tocar)"),

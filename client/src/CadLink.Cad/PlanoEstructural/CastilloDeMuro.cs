@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace CadLink.Cad.PlanoEstructural;
@@ -117,7 +118,8 @@ public static class CastilloDeMuro
     /// usa el dibujante para un muro cualquiera, y sin él el castillo quedaría de peralte cero
     /// —o sea, sin dibujar—.
     /// </param>
-    public static ElementoPlanta Como(ElementoPlanta muro, double espesorPorOmision)
+    public static ElementoPlanta Como(
+        ElementoPlanta muro, double espesorPorOmision, string prefijo = "K")
     {
         var dx = muro.X2 - muro.X1;
         var dy = muro.Y2 - muro.Y1;
@@ -142,10 +144,23 @@ public static class CastilloDeMuro
             // sección de un shell es la propiedad del MURO —solo fija el espesor— y el largo
             // lo pone cada castillo, así que con el nombre de la sección a secas todos se
             // insertaban con las medidas del primero y salían incompletos.
-            DeShell = true,
 
-            Etiqueta = muro.Etiqueta,
-            Seccion = muro.Seccion,
+            // ==========================================================================
+            //  SU NOMBRE ES SU MEDIDA: «K 15X23.5»
+            // ==========================================================================
+            //  Se pidió así, y es lo único que sirve. La sección de un shell es la propiedad
+            //  del MURO —«MURO 15», que no dice nada de este castillo— y su etiqueta es el
+            //  PIER, que en SAP2000 no existe: el castillo salía sin rótulo y con el nombre de
+            //  un muro. Ahora se nombra con lo que de verdad lo describe, su medida en planta:
+            //  el ESPESOR por el LARGO, en centímetros, con decimales solo si hacen falta
+            //  —un castillo de 23.5 cm es 23.5, no 24—.
+            //
+            //  Y va en la SECCIÓN además de en la etiqueta porque de ahí sale el nombre del
+            //  BLOQUE y el rótulo de la planta: así el bloque se llama «K 15X23.5», cada
+            //  medida distinta tiene el suyo, y un BLOCKREPLACE cambia de golpe todos los
+            //  castillos de esa medida por el detalle armado.
+            Etiqueta = Nombre(prefijo, espesor, b),
+            Seccion = Nombre(prefijo, espesor, b),
             Notas = muro.Notas,
             Material = muro.Material,
 
@@ -184,7 +199,8 @@ public static class CastilloDeMuro
     /// </remarks>
     /// <returns>Cuántos castillos quedaron, para la bitácora.</returns>
     public static int Normalizar(
-        IList<ElementoPlanta>? elementos, double espesorPorOmision, double tolUnirM = 0.02)
+        IList<ElementoPlanta>? elementos, double espesorPorOmision, double tolUnirM = 0.02,
+        string prefijo = "K")
     {
         if (elementos is null)
         {
@@ -233,7 +249,7 @@ public static class CastilloDeMuro
         {
             var piezas = g.Select(j => elementos[j]).ToList();
 
-            elementos[g[0]] = Como(Unido(piezas), espesorPorOmision);
+            elementos[g[0]] = Como(Unido(piezas), espesorPorOmision, prefijo);
             sobran.AddRange(g.Skip(1));
         }
 
@@ -383,6 +399,34 @@ public static class CastilloDeMuro
             Z2 = piezas.Max(x => Math.Max(x.Z1, x.Z2))
         };
     }
+
+    /// <summary>
+    /// El nombre de un castillo por su <b>medida en planta</b>: <c>K 15X23.5</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El espesor primero y el largo después, en centímetros, con hasta dos decimales y
+    /// <b>sin ceros de relleno</b>: 15 es «15» y 23.5 es «23.5». Con punto decimal siempre
+    /// —cultura invariante—, porque este texto acaba siendo un <b>nombre de bloque</b> de
+    /// AutoCAD y no puede depender de la configuración regional de la máquina: la misma
+    /// sección saldría «K 15X23,5» en una y «K 15X23.5» en otra, y serían dos bloques.
+    /// </para>
+    /// <para>
+    /// El prefijo se recorta y se le pone <b>un</b> espacio: en la hoja CONFIG se escribe
+    /// <c>K</c> y da igual si alguien lo deja como <c>K </c>.
+    /// </para>
+    /// </remarks>
+    public static string Nombre(string? prefijo, double espesorM, double largoM)
+    {
+        var p = (prefijo ?? string.Empty).Trim();
+        var medida = $"{Cm(espesorM)}X{Cm(largoM)}";
+
+        return p.Length > 0 ? p + " " + medida : medida;
+    }
+
+    /// <summary>De metros a centímetros, sin decimales de relleno.</summary>
+    private static string Cm(double m) =>
+        (m * 100).ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>La dirección unitaria de un shell en planta, y su largo.</summary>
     private static (double X, double Y, double Largo) Direccion(ElementoPlanta el)

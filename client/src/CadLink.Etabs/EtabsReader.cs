@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 
 namespace CadLink.Etabs;
@@ -1258,6 +1259,132 @@ public static class EtabsReader
         }
 
         // ==============================================================================
+        //  SI NO HUBO NOTAS: POR EL NOMBRE DE LOS PARÁMETROS, Y EN LOS DOS PROGRAMAS
+        // ==============================================================================
+        //  AQUÍ ESTABA EL CASTILLO QUE NO SALÍA, y son dos problemas distintos con el mismo
+        //  síntoma: la propiedad se queda SIN NOTAS, y sin notas no hay nada que diga CASTILLO,
+        //  así que el shell se dibuja como un muro cualquiera. El espesor se salvaba de milagro
+        //  por el respaldo del NOMBRE que hay más abajo —«MURO 15» da 0.15—, y por eso el muro
+        //  sí salía con su grueso y el castillo no salía de ninguna manera.
+        //
+        //  1) EN ETABS, GetWall declara sus dos primeros datos como ENUMERACIONES —el
+        //     eWallPropType y el eShellType—. Arriba se le pasa un arreglo con ceros enteros, y
+        //     contra la interfaz del ensamblado eso es un choque de tipos: la invocación
+        //     revienta antes de leer nada.
+        //  2) EN SAP2000 no existen ni GetWall ni GetSlab: el muro y la losa son conceptos de
+        //     ETABS. Todas las propiedades de área son SHELL y se leen con GetShell_1 —o con
+        //     GetShell en las versiones viejas—.
+        //
+        //  Las dos se arreglan igual: se le pregunta a la FIRMA REAL cómo se llama cada
+        //  parámetro y se pide «Notes» y «Thickness» por su nombre, con cada hueco rellenado con
+        //  un valor neutro de su tipo —que es lo que hace que las enumeraciones pasen—. Así da
+        //  igual en qué posición vengan y da igual la versión.
+        if (notas.Length == 0)
+        {
+            var metodos = esMuro
+                ? new[] { "GetWall", "GetWall_1", "GetShell_1", "GetShell" }
+                : new[] { "GetSlab", "GetSlab_1", "GetDeck", "GetShell_1", "GetShell" };
+
+            foreach (var m in metodos)
+            {
+                var d = Com.CallPorNombre(propArea, m, (0, seccion));
+
+                if (d is null)
+                {
+                    continue;
+                }
+
+                // El espesor, con los nombres que usa cada método, y solo si tiene sentido: un
+                // muro de más de un metro es una lectura equivocada, no un muro.
+                var espesor = NumeroDe(d, "Thickness", "Depth", "OverallDepth", "TotalDepth");
+
+                if (valor <= 0 && espesor > 0 && espesor < 1)
+                {
+                    valor = espesor;
+                }
+
+                var mat = TextoDe(d, "MatProp");
+
+                if (material.Length == 0)
+                {
+                    material = mat;
+                }
+
+                // notas + material, como los junta la macro: nts & " " & mat
+                var texto = (TextoDe(d, "Notes") + " " + mat).Trim();
+
+                if (texto.Length > 0)
+                {
+                    notas = texto;
+                    break;
+                }
+            }
+        }
+
+        // ==============================================================================
+        //  Y SI NO HAY ENSAMBLADO: LAS FIRMAS DE SHELL A MANO, POR IDispatch
+        // ==============================================================================
+        //  AQUÍ ESTABA EL CASTILLO QUE NO SALÍA. GetWall y GetSlab son de ETABS: el muro y la
+        //  losa son conceptos suyos. En SAP2000 todas las propiedades de área son SHELL y se
+        //  leen con GetShell_1 —o con GetShell en las versiones viejas—. Al no existir esos dos
+        //  métodos, la llamada fallaba, la propiedad se quedaba SIN NOTAS, y sin notas no hay
+        //  nada que diga CASTILLO: el shell se dibujaba como un muro cualquiera y el castillo
+        //  no aparecía por ningún lado. El espesor se salvaba de milagro, por el respaldo del
+        //  NOMBRE que hay más abajo.
+        //
+        //  DE LAS FIRMAS NO SE FÍA NADA. Cambian entre versiones y entre programas, así que en
+        //  lugar de leer «la posición 8» se prueban las plantillas conocidas y del resultado se
+        //  toman TODAS las cadenas —notas, material, lo que venga—, que es justo lo que junta
+        //  la macro en su nts & " " & mat. Si una plantilla no cuadra, la llamada falla y se
+        //  prueba la siguiente; si ninguna cuadra, se queda como estaba. Leyendo por índice
+        //  fijo, una firma distinta habría metido el GUID en las notas sin decir nada.
+        if (notas.Length == 0)
+        {
+            foreach (var (metodoSap, plantilla, iEspesor) in FirmasDeShell(seccion))
+            {
+                try
+                {
+                    var indices = Enumerable.Range(1, plantilla.Length - 1).ToArray();
+
+                    if (Com.CallRet(propArea, metodoSap, plantilla, indices) != 0)
+                    {
+                        continue;
+                    }
+
+                    // El espesor por su sitio en la plantilla, y solo si tiene sentido: un
+                    // muro de más de un metro no es un muro, es una lectura equivocada.
+                    var espesorSap = Convert.ToDouble(plantilla[iEspesor]);
+
+                    if (valor <= 0 && espesorSap > 0 && espesorSap < 1)
+                    {
+                        valor = espesorSap;
+                    }
+
+                    // Y el texto, sin mirar posiciones: todo lo que venga en cadenas. El
+                    // material no se separa —aquí no hay forma de distinguirlo— y no hace
+                    // falta: quien lo usa, MaterialDeMuro, busca sus palabras en las notas
+                    // enteras, igual que la macro.
+                    var texto = string.Join(
+                        " ",
+                        plantilla.Skip(1)
+                                 .OfType<string>()
+                                 .Select(x => x.Trim())
+                                 .Where(x => x.Length > 0));
+
+                    if (texto.Length > 0)
+                    {
+                        notas = texto;
+                        break;
+                    }
+                }
+                catch (Exception ex) when (EsFalloCom(ex))
+                {
+                    // Esa firma no es la de esta versión: se prueba la siguiente.
+                }
+            }
+        }
+
+        // ==============================================================================
         //  LA LOSA ALIGERADA Y LA RETICULAR, QUE NO RESPONDEN A GetSlab
         // ==============================================================================
         //  Una losa nervada —ribbed— o reticular —waffle— es una propiedad de losa distinta,
@@ -1308,6 +1435,87 @@ public static class EtabsReader
         var r = (valor, notas, material);
         cache[seccion] = r;
         return r;
+    }
+
+    /// <summary>El texto de un parámetro leído por su nombre, o vacío.</summary>
+    private static string TextoDe(Dictionary<string, object?> d, string nombre) =>
+        d.TryGetValue(nombre, out var v) ? (v?.ToString() ?? string.Empty).Trim() : string.Empty;
+
+    /// <summary>
+    /// El <b>primer</b> número que aparezca con alguno de esos nombres.
+    /// </summary>
+    /// <remarks>
+    /// Se pasan varios porque el espesor no se llama igual en todas partes: <c>Thickness</c> en
+    /// el muro y en el shell, <c>Depth</c> o <c>OverallDepth</c> en las losas que tienen
+    /// peralte total. Se pregunta por todos y se toma el primero que traiga algo.
+    /// </remarks>
+    private static double NumeroDe(Dictionary<string, object?> d, params string[] nombres)
+    {
+        foreach (var nombre in nombres)
+        {
+            if (!d.TryGetValue(nombre, out var v) || v is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var x = Convert.ToDouble(v, CultureInfo.InvariantCulture);
+
+                if (x > 0)
+                {
+                    return x;
+                }
+            }
+            catch (Exception)
+            {
+                // Ese parámetro no era un número: se prueba el siguiente nombre.
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Las <b>firmas conocidas</b> de la propiedad de shell de SAP2000, en orden.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GetShell_1</c> es la de las versiones actuales y lleva el <i>drilling DOF</i> detrás
+    /// del tipo; <c>GetShell</c> es la vieja y no lo lleva. Se prueban las cuatro
+    /// combinaciones porque hay versiones que declaran <c>GetShell_1</c> con la firma corta, y
+    /// una plantilla que no cuadra no rompe nada: la llamada falla y se pasa a la siguiente.
+    /// </para>
+    /// <para>
+    /// De cada una solo se usa el <b>índice del espesor</b>. Las notas y el material se sacan
+    /// después recogiendo todas las cadenas, sin mirar posiciones, que es lo que hace que esto
+    /// aguante un cambio de firma.
+    /// </para>
+    /// </remarks>
+    private static List<(string Metodo, object?[] Plantilla, int IEspesor)> FirmasDeShell(
+        string seccion)
+    {
+        // Name, ShellType, IncludeDrillingDOF, MatProp, MatAng, Thickness, Bending, Color,
+        // Notes, GUID  —el espesor va en la 5—
+        object?[] Larga() => new object?[]
+        {
+            seccion, 0, false, string.Empty, 0d, 0d, 0d, 0, string.Empty, string.Empty
+        };
+
+        // Name, MyType, MatProp, MatAng, Thickness, Bending, Color, Notes, GUID
+        //  —sin el drilling DOF, así que el espesor va en la 4—
+        object?[] Corta() => new object?[]
+        {
+            seccion, 0, string.Empty, 0d, 0d, 0d, 0, string.Empty, string.Empty
+        };
+
+        return new List<(string, object?[], int)>
+        {
+            ("GetShell_1", Larga(), 5),
+            ("GetShell", Corta(), 4),
+            ("GetShell_1", Corta(), 4),
+            ("GetShell", Larga(), 5)
+        };
     }
 
     /// <summary>

@@ -77,8 +77,9 @@ var cfg = new ConfigPlano();
 //   SHELL_CASTILLO_UNIR_TOL_CM      y sus pedazos se unen, para que salga completo
 //   SHELL_CASTILLO_DE_OTRO_NIVEL    y el que cruza el nivel se dibuja aunque sea de otro story
 //   SHELL_CASTILLO_CRUZA_TOL_CM     con esta holgura en Z para tomarlo como que llega al nivel
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y uno que se añadieron",
-      301, ConfigPlano.PorOmision.Count);
+//   SHELL_CASTILLO_PREFIJO          y se nombra con su medida: «K 15X23.5»
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y dos que se añadieron",
+      302, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -238,12 +239,14 @@ Check("el castillo de area de otro nivel viene encendido",
       cfg.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", false));
 Igual("y se toma como que cruza el nivel con 20 cm de holgura",
       20.0, cfg.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 0));
+// Y se nombra con su medida en planta: «K 15X23.5», que es su rotulo y el nombre de su bloque.
+Igual("el castillo de area se nombra con K", "K", cfg.Texto("SHELL_CASTILLO_PREFIJO"));
 
 Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 301 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 302 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

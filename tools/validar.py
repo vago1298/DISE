@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y un renglones añadidos",
-          cfgp.count("        P(") == 301
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y dos renglones añadidos",
+          cfgp.count("        P(") == 302
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "301, ConfigPlano.PorOmision.Count" in pr
+          and "302, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4956,6 +4956,7 @@ def v18_planta_autocad() -> None:
     dibp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
     corp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
     winp = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
 
     check("el shell de muro que dice CASTILLO se convierte en castillo",
           "public static bool Dice(ElementoPlanta? el)" in cdm
@@ -5012,15 +5013,69 @@ def v18_planta_autocad() -> None:
     #  2) LOS PEDAZOS. Un castillo de shell casi nunca llega de una pieza: partido a lo alto
     #     -antepecho y dintel- los dos paneles ocupan el mismo sitio en planta y salian DOS
     #     bloques encimados; partido a lo largo, el castillo salia en dos mitades.
-    macp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
-    dtop = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
 
-    check("el castillo de shell queda marcado en el elemento",
-          "public bool DeShell { get; set; }" in dtop
-          and "DeShell = true," in cdm)
-    check("y su bloque lleva las medidas en el nombre",
-          "if (el.DeShell && s.Length > 0)" in macp
-          and 'LimpiaNombreDeBloque($"{s} {b * 100:0}X{h * 100:0}")' in macp)
+    # ------------------------------------------------------------------
+    # SU NOMBRE ES SU MEDIDA: «K 15X23.5»
+    # ------------------------------------------------------------------
+    #  «Debes leer las property note que dice CASTILLO y solo de esos sacar su dimension en
+    #  planta, y ese dato ocuparlo para nombrar su bloque como su etiqueta». Es lo unico que
+    #  sirve: la seccion de un shell es la propiedad del MURO -«MURO 15», que no dice nada de
+    #  este castillo- y su etiqueta es el PIER, que en SAP2000 no existe, asi que el castillo
+    #  salia sin rotulo y con el nombre de un muro. Ahora se nombra con su medida en planta -el
+    #  espesor por el largo- y ese nombre va en la SECCION, que es de donde salen el nombre del
+    #  BLOQUE y el rotulo de la planta.
+    check("el castillo de area se nombra con su medida en planta",
+          "public static string Nombre(string? prefijo, double espesorM, double largoM)" in cdm
+          and "Etiqueta = Nombre(prefijo, espesor, b)," in cdm
+          and "Seccion = Nombre(prefijo, espesor, b)," in cdm)
+    # CON PUNTO DECIMAL SIEMPRE: el nombre acaba siendo un nombre de BLOQUE de AutoCAD, y con la
+    # coma de la configuracion regional la misma medida daria dos bloques distintos.
+    check("con decimales solo si hacen falta y con punto, no con coma",
+          '(m * 100).ToString("0.##", CultureInfo.InvariantCulture)' in cdm)
+    check("y el prefijo sale de la hoja",
+          '_cfg.Texto("SHELL_CASTILLO_PREFIJO", "K")' in dibp
+          and 'P("SHELL_CASTILLO_PREFIJO", "K",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # LAS NOTAS DE LA PROPIEDAD DE AREA, EN LOS DOS PROGRAMAS
+    # ------------------------------------------------------------------
+    #  AQUI ESTABA EL CASTILLO QUE NO SALIA, y son dos problemas con el mismo sintoma -la
+    #  propiedad se queda SIN NOTAS, y sin notas nada dice CASTILLO-:
+    #
+    #  1) EN ETABS, GetWall declara sus dos primeros datos como ENUMERACIONES -eWallPropType y
+    #     eShellType-. Pasandole ceros enteros, contra la interfaz del ensamblado es un choque
+    #     de tipos y la invocacion revienta antes de leer nada.
+    #  2) EN SAP2000 no existen GetWall ni GetSlab: todas las propiedades de area son SHELL.
+    #
+    #  Las dos se arreglan igual: se le pregunta a la FIRMA REAL como se llama cada parametro y
+    #  se piden «Notes» y «Thickness» POR SU NOMBRE, con cada hueco rellenado con un valor
+    #  neutro de su tipo, que es lo que hace pasar a las enumeraciones.
+    com = leer(ruta("client/src/CadLink.Etabs/ComLateBinding.cs"))
+
+    check("se puede llamar a la OAPI leyendo los parametros por su nombre",
+          "public static Dictionary<string, object?>? CallPorNombre(" in com
+          and "args[i] = ValorNeutro(ps[i]);" in com
+          and "salida[ps[i].Name ?? i.ToString(CultureInfo.InvariantCulture)] = args[i];" in com)
+    # Solo si la OAPI devolvio 0: preguntarle a una losa por GetWall no falla, devuelve error, y
+    # con la respuesta vacia pareceria que la propiedad no tiene notas.
+    check("y solo se acepta si la OAPI devolvio 0",
+          "if (r is not null && Convert.ToInt32(r) != 0)" in com)
+    check("las notas del area se buscan en los metodos de ETABS y de SAP2000",
+          'new[] { "GetWall", "GetWall_1", "GetShell_1", "GetShell" }' in lector
+          and '"GetSlab", "GetSlab_1", "GetDeck", "GetShell_1", "GetShell"' in lector
+          and 'Com.CallPorNombre(propArea, m, (0, seccion))' in lector)
+    check("y se piden por su nombre, no por su posicion",
+          'NumeroDe(d, "Thickness", "Depth", "OverallDepth", "TotalDepth")' in lector
+          and 'TextoDe(d, "Notes")' in lector
+          and 'TextoDe(d, "MatProp")' in lector)
+    # Y si no hay ensamblado que preguntar -solo IDispatch-, las firmas de shell a mano, con el
+    # texto recogido sin mirar posiciones.
+    check("con el respaldo de las firmas a mano por IDispatch",
+          '("GetShell_1", Larga(), 5),' in lector
+          and '("GetShell", Corta(), 4),' in lector
+          and "plantilla.Skip(1)" in lector
+          and ".OfType<string>()" in lector)
     check("los pedazos del mismo castillo se unen en uno",
           "public static bool MismoCastillo(" in cdm
           and "public static ElementoPlanta Unido(" in cdm
@@ -5040,7 +5095,6 @@ def v18_planta_autocad() -> None:
     # torcido torceria el castillo entero.
     check("y la direccion la pone la pieza mas larga",
           "var guia = piezas.OrderByDescending(Largo).First();" in cdm)
-    cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
     check("las claves del castillo de shell estan en la hoja CONFIG",
           'P("SHELL_CASTILLO_COMO_COLUMNA", "SI",' in cfgplano
           and 'P("SHELL_CASTILLO_UNIR_TOL_CM", "2",' in cfgplano
@@ -5060,8 +5114,6 @@ def v18_planta_autocad() -> None:
     #  2) LAS COTAS. Las de un muro salian de los dos vertices MAS SEPARADOS EN PLANTA, y esos
     #     pueden ser los dos de ABAJO segun el orden en que ETABS devuelva las esquinas: Z1 y
     #     Z2 valian lo mismo, el alto era CERO y en el corte no se dibujaba nada.
-    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
-
     check("las cotas del muro van de la mas baja a la mas alta del paño",
           "e.X1 = coords[ia].X; e.Y1 = coords[ia].Y;" in lector
           and "e.Z1 = zMin;" in lector

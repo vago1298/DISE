@@ -51,7 +51,8 @@ public sealed partial class PlantaDrawer
         {
             PlanoEstructural.CastilloDeMuro.Normalizar(
                 c.Elementos, EspesorMuroPorOmision,
-                _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100);
+                _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100,
+                _cfg.Texto("SHELL_CASTILLO_PREFIJO", "K"));
         }
 
         var piezas = CorteEnAlzado.Piezas(c.Elementos, c.EnX, c.Ordenada, c.EspesorM);

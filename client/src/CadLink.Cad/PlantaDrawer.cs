@@ -204,7 +204,8 @@ public sealed partial class PlantaDrawer
         {
             var deShell = PlanoEstructural.CastilloDeMuro.Normalizar(
                 p.Elementos, EspesorMuroPorOmision,
-                _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100);
+                _cfg.Numero("SHELL_CASTILLO_UNIR_TOL_CM", 2) / 100,
+                _cfg.Texto("SHELL_CASTILLO_PREFIJO", "K"));
 
             if (deShell > 0)
             {
