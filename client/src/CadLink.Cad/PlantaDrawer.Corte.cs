@@ -56,6 +56,10 @@ public sealed partial class PlantaDrawer
                 _cfg.Bandera("SHELL_CASTILLO_AL_PANO", true)
                     ? _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100
                     : 0);
+
+            // Y LAS CADENAS DE SHELL, que es lo que hacía que la cadena intermedia saliera como un
+            // paño de muro: sin relleno, sin bloque y en la capa equivocada.
+            PlanoEstructural.CadenaDeMuro.Normalizar(c.Elementos, AnchoTrabePorOmision);
         }
 
         var piezas = CorteEnAlzado.Piezas(
@@ -110,6 +114,21 @@ public sealed partial class PlantaDrawer
 
         foreach (var p in piezas)
         {
+            // ==========================================================================
+            //  LOS CASTILLOS DEL FONDO NO SE DIBUJAN
+            // ==========================================================================
+            //  Se pidió: «los castillos del fondo no se deben ver, solamente los que hayan en el
+            //  lugar del corte, en esa línea». Y tiene sentido de dibujo: en una casa de
+            //  mampostería hay un castillo cada dos metros en TODOS los ejes, así que el fondo de
+            //  un alzado se llena de rectángulos verticales que no son de este corte y que tapan
+            //  lo que sí lo es. Del fondo interesa el paño de los muros y la losa que sigue, no
+            //  la fila de castillos de tres ejes más allá.
+            if (!p.Cortada && p.Clase == ClasePlanta.Columna
+                && !_cfg.Bandera("CORTE_FONDO_CON_COLUMNAS", false))
+            {
+                continue;
+            }
+
             var capa = CapaDeLaPieza(p);
 
             var pts = new[]

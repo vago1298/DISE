@@ -727,6 +727,8 @@ public sealed class ConfigPlano
           "NO = no escribir el nombre de la cadena encima de un castillo de area"),
         P("CADENA_DESPLANTE_CONTINUA", "SI",
           "SI = la cadena de DESPLANTE va con linea continua en cualquier nivel"),
+        P("CORTE_FONDO_CON_COLUMNAS", "NO",
+          "NO = los castillos y columnas del fondo no se dibujan en el corte"),
         P("CORTE_HATCH_MAMPOSTERIA", "SI",
           "SI = achurar el area de los muros de mamposteria en el corte"),
         P("CORTE_HATCH_TABIQUE", "AR-BRSTD", "Patron del TABIQUE y del ADOBE"),

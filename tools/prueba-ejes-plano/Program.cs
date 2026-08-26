@@ -2501,6 +2501,84 @@ Check("la columna dentro del muro se queda", limpias.Any(x => x.Etiqueta == "C1"
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LA CADENA MODELADA COMO SHELL DE MURO");
+Console.WriteLine("=====================================================================");
+
+// AQUI ESTABA LA CADENA INTERMEDIA QUE NO SE RELLENABA NI LLEVABA BLOQUE: no es un marco, es un
+// SHELL. Una cadena tambien se modela como area -las INTERMEDIAS casi siempre, porque se dibujan
+// como un trozo del propio muro- y dibujada como muro no era una cadena para nada: sin su capa, sin
+// su rotulo, sin relleno en el corte y sin bloque.
+var cadenaDeArea = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "CADENA INTERMEDIA", Seccion = "MURO 15",
+    Notas = "CADENA INTERMEDIA", Etiqueta = "CI1",
+    X1 = 0, Y1 = 0, X2 = 3, Y2 = 0, Z1 = 1.2, Z2 = 1.45, AnchoM = 0.15
+};
+
+Check("un shell que dice CADENA es una cadena", CadenaDeMuro.Dice(cadenaDeArea));
+Check("y uno que dice CASTILLO no: ese tiene su propia conversion",
+      !CadenaDeMuro.Dice(new ElementoPlanta
+      {
+          Clase = ClasePlanta.Muro, Tipo = "CASTILLO", Notas = "CASTILLO"
+      }));
+Check("un muro normal tampoco",
+      !CadenaDeMuro.Dice(new ElementoPlanta
+      {
+          Clase = ClasePlanta.Muro, Tipo = "MURO", Notas = "MURO DE TABIQUE"
+      }));
+
+var comoCadena = CadenaDeMuro.Como(cadenaDeArea);
+
+Igual("se dibuja como TRABE, que es el camino de las cadenas",
+      ClasePlanta.Trabe, comoCadena.Clase);
+Igual("con su tipo, que es lo que la manda a E-CADENA", "CADENA INTERMEDIA", comoCadena.Tipo);
+Cerca("el espesor del muro es su ancho", 0.15, comoCadena.AnchoM);
+Cerca("y su alto es el peralte", 0.25, comoCadena.PeralteM);
+// LA COTA VA ARRIBA: una barra cuelga de su cota. Con la cota abajo, la de cerramiento saldria un
+// peralte por encima del techo.
+Cerca("la cota va en su cara de arriba", 1.45, comoCadena.Z1);
+Cerca("y las dos igual, que es una barra", 1.45, comoCadena.Z2);
+Cerca("el recorrido se conserva", 3, comoCadena.X2);
+
+// SIN ALTO en el modelo, el peralte de omision: si no, quedaria de peralte cero, o sea sin dibujar.
+Cerca("sin alto cae en el peralte de omision", 0.20,
+      CadenaDeMuro.Como(
+          new ElementoPlanta
+          {
+              Clase = ClasePlanta.Muro, Tipo = "DALA", X1 = 0, Y1 = 0, X2 = 3, Y2 = 0,
+              Z1 = 2.5, Z2 = 2.5, AnchoM = 0.15
+          }).PeralteM);
+
+// Y AL NORMALIZAR, la lista queda con la cadena convertida y el muro intacto.
+var mezclaConCadena = new List<ElementoPlanta>
+{
+    cadenaDeArea,
+    new()
+    {
+        Clase = ClasePlanta.Muro, Tipo = "MURO", Notas = "MURO DE TABICON",
+        X1 = 0, Y1 = 0, X2 = 3, Y2 = 0, Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+    }
+};
+
+Igual("de dos shells se convierte la cadena", 1, CadenaDeMuro.Normalizar(mezclaConCadena));
+Igual("que queda como trabe", ClasePlanta.Trabe, mezclaConCadena[0].Clase);
+Igual("y el muro sigue siendo muro", ClasePlanta.Muro, mezclaConCadena[1].Clase);
+
+// Y AHORA SI: EN EL CORTE SE VE COMO CADENA, con su cara en seccion -que es la que se rellena y la
+// que lleva bloque-. El corte la cruza en X = 1.5.
+var piezaDeLaCadena = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { mezclaConCadena[0] }, enX: true, ordenada: 1.5,
+    espesorM: 0.60)[0];
+
+Igual("la cadena de area da una pieza de trabe", ClasePlanta.Trabe, piezaDeLaCadena.Clase);
+Check("cortada por el plano", piezaDeLaCadena.Cortada);
+Check("y vista EN SECCION, asi que se rellena y lleva bloque", piezaDeLaCadena.EnSeccion);
+Cerca("de su ancho", 0.15, piezaDeLaCadena.Ancho);
+Cerca("y de su peralte", 0.25, piezaDeLaCadena.Alto);
+Cerca("colgando de su cota", 1.2, piezaDeLaCadena.Z);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ACHURADO DE LA MAMPOSTERIA EN EL CORTE");
 Console.WriteLine("=====================================================================");
 

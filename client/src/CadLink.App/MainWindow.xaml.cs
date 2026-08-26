@@ -3019,11 +3019,28 @@ public partial class MainWindow : Window
     /// la casilla de los muros, quien los apaga para ver solo la estructura los perdería
     /// todos, y en el plano ya no son muros.
     /// </remarks>
-    private bool VisibleEnElPlano(ElementoEtabs el) =>
-        (el.Clase == ClaseElemento.Muro
-         && CadLink.Cad.PlanoEstructural.CastilloDeMuro.DicenLasNotas(null, el.Notas))
-            ? VerColumnasPlanoChk.IsChecked == true
-            : VisibleEnElPlano(el.Clase);
+    private bool VisibleEnElPlano(ElementoEtabs el)
+    {
+        if (el.Clase != ClaseElemento.Muro)
+        {
+            return VisibleEnElPlano(el.Clase);
+        }
+
+        // El castillo de área sigue a la casilla de las COLUMNAS y la cadena de área a la de las
+        // TRABES, porque en el plano ya no son muros: son la pieza que dicen sus notas. Quien apaga
+        // los muros para ver solo la estructura las perdería todas.
+        if (CadLink.Cad.PlanoEstructural.CastilloDeMuro.DicenLasNotas(null, el.Notas))
+        {
+            return VerColumnasPlanoChk.IsChecked == true;
+        }
+
+        if (CadLink.Cad.PlanoEstructural.CadenaDeMuro.DicenLasNotas(null, el.Notas))
+        {
+            return VerTrabesPlanoChk.IsChecked == true;
+        }
+
+        return VisibleEnElPlano(el.Clase);
+    }
 
     private bool VisibleEnElPlano(ClaseElemento c) => c switch
     {

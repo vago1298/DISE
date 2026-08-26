@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cincuenta y nueve renglones añadidos",
-          cfgp.count("        P(") == 319
+    check("la hoja CONFIG de la macro esta portada, con sesenta renglones añadidos",
+          cfgp.count("        P(") == 320
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "319, ConfigPlano.PorOmision.Count" in pr
+          and "320, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -3657,7 +3657,11 @@ def v18_planta_autocad() -> None:
         check("filtra por el nivel elegido en la lista", "NivelElegido" in cuerpo)
         check("y por los filtros de ESA pestaña", "VisibleEnElPlano" in cuerpo)
 
-    m_vis = re.search(r"private bool VisibleEnElPlano\(.*?\n    \}", codigo, re.S)
+    # LAS DOS SOBRECARGAS: la que recibe el ELEMENTO -que manda el castillo de area a la casilla de
+    # las columnas y la cadena de area a la de las trabes- y la que recibe la CLASE, con su switch.
+    m_vis = re.search(
+        r"private bool VisibleEnElPlano\(ElementoEtabs el\).*?_ => false\s*\n    \};",
+        codigo, re.S)
     check("se puede leer VisibleEnElPlano", m_vis is not None)
     if m_vis:
         cuerpo = m_vis.group(0)
@@ -4493,6 +4497,53 @@ def v18_planta_autocad() -> None:
           "AchurarConPatron(lazo, capa, cual, borrarElLazo: true);" in cortedib
           and "AchurarConPatron(pl, capa, cual, borrarElLazo: false);" in cortedib
           and "if (borrarElLazo)" in cortedib)
+
+    # ------------------------------------------------------------------
+    # LA CADENA MODELADA COMO SHELL DE MURO
+    # ------------------------------------------------------------------
+    #  AQUI ESTABA LA CADENA INTERMEDIA que no se rellenaba ni llevaba bloque, por mas vueltas que se
+    #  le dio al relleno: NO ES UN MARCO, ES UN SHELL. Una cadena tambien se modela como area -las
+    #  INTERMEDIAS casi siempre, porque se dibujan como un trozo del propio muro- y dibujada como
+    #  muro no era una cadena para nada: sin su capa, sin su rotulo, sin relleno en el corte y sin
+    #  bloque. Es el hermano de CastilloDeMuro y sale del mismo sitio.
+    cdmc = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CadenaDeMuro.cs"))
+
+    check("el shell que dice cadena se dibuja como cadena",
+          "public static bool Dice(ElementoPlanta? el)" in cdmc
+          and "Clase = ClasePlanta.Trabe," in cdmc
+          and "PlanoEstructural.CadenaDeMuro.Normalizar(" in dibp
+          and "PlanoEstructural.CadenaDeMuro.Normalizar(c.Elementos, AnchoTrabePorOmision);"
+              in cortedib)
+    # LA GEOMETRIA de un shell vertical: su largo en planta es el recorrido, el espesor del muro es
+    # el ancho de la seccion y su alto en Z es el PERALTE.
+    check("con el espesor por ancho y su alto por peralte",
+          "var peralte = alto > Nada ? alto : peraltePorOmision;" in cdmc
+          and "AnchoM = muro.AnchoM," in cdmc
+          and "PeralteM = peralte," in cdmc)
+    # LA COTA VA ARRIBA: una barra cuelga de su cota, y con la cota abajo la cadena de cerramiento
+    # saldria un peralte por encima del techo.
+    check("y la cota en su cara de arriba, que una barra cuelga",
+          "Z1 = zArriba,\n            Z2 = zArriba," in cdmc)
+    # UN SHELL QUE DICE CASTILLO NO ES UNA CADENA: ese tiene su propia conversion, y si las notas
+    # dijeran las dos cosas manda el castillo, que es la pieza vertical.
+    check("y el castillo no se la lleva por delante",
+          "if (CastilloDeMuro.Dice(el))" in cdmc)
+    # EN LA VENTANA sigue a la casilla de las TRABES, como el castillo sigue a la de las columnas.
+    check("en la ventana sigue a la casilla de las trabes",
+          "CadLink.Cad.PlanoEstructural.CadenaDeMuro.DicenLasNotas(null, el.Notas)" in winp
+          and "return VerTrabesPlanoChk.IsChecked == true;" in winp)
+
+    # ------------------------------------------------------------------
+    # LOS CASTILLOS DEL FONDO NO SE DIBUJAN
+    # ------------------------------------------------------------------
+    #  «Los castillos del fondo no se deben ver, solamente los que hayan en el lugar del corte, en
+    #  esa linea». En una casa de mamposteria hay un castillo cada dos metros en TODOS los ejes, asi
+    #  que el fondo de un alzado se llena de rectangulos verticales que no son de este corte y que
+    #  tapan lo que si lo es. Del fondo interesa el paño de los muros y la losa que sigue.
+    check("los castillos del fondo no se dibujan en el corte",
+          "if (!p.Cortada && p.Clase == ClasePlanta.Columna" in cortedib
+          and '&& !_cfg.Bandera("CORTE_FONDO_CON_COLUMNAS", false))' in cortedib
+          and 'P("CORTE_FONDO_CON_COLUMNAS", "NO",' in cfgp)
 
     # ------------------------------------------------------------------
     # SOLO LAS CARAS QUE LLEGAN: LO LARGO VA VACIO
@@ -5510,8 +5561,9 @@ def v18_planta_autocad() -> None:
     # LA CASILLA que le toca es la de las COLUMNAS: quien apaga los muros para ver solo la
     # estructura de castillos los perderia todos, y en el plano ya no son muros.
     check("en la ventana sigue a la casilla de las columnas",
-          "private bool VisibleEnElPlano(ElementoEtabs el) =>" in winp
+          "private bool VisibleEnElPlano(ElementoEtabs el)" in winp
           and "CastilloDeMuro.DicenLasNotas(null, el.Notas)" in winp
+          and "return VerColumnasPlanoChk.IsChecked == true;" in winp
           and "if (!VisibleEnElPlano(el))" in winp)
 
     # ------------------------------------------------------------------

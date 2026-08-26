@@ -267,6 +267,22 @@ public sealed partial class PlantaDrawer
                     ? _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100
                     : 0);
 
+            // ==========================================================================
+            //  Y LAS CADENAS DE SHELL, IGUAL
+            // ==========================================================================
+            //  Una cadena también se modela como shell —las INTERMEDIAS casi siempre, porque se
+            //  dibujan como un trozo del propio muro— y dibujada como muro no era una cadena para
+            //  nada: sin su capa, sin su rótulo, sin su relleno en el corte y sin su bloque. Es
+            //  lo que se reportó de la cadena intermedia una y otra vez.
+            var cadenasDeShell = PlanoEstructural.CadenaDeMuro.Normalizar(
+                p.Elementos, AnchoTrabePorOmision);
+
+            if (cadenasDeShell > 0)
+            {
+                Nota($"{cadenasDeShell} cadena(s) venían como shell de muro: se dibujaron como " +
+                     "cadena —su capa, su rótulo y, en el corte, su relleno y su bloque—.");
+            }
+
             if (deShell > 0)
             {
                 Nota($"{deShell} castillo(s) venían como shell de muro con CASTILLO en sus " +
