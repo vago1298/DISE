@@ -388,7 +388,38 @@ public sealed partial class PlantaDrawer
                          c.XTexto + dx, c.YTexto + dy, capaCotas,
                          c.EsTotal ? extTotal : -1);
         }
+
+        // ==============================================================================
+        //  DÓNDE ACABAN LOS EJES DE ABAJO, DE VERDAD
+        // ==============================================================================
+        //  Se apunta para que el rótulo se coloque respecto a ESTO y no respecto al dibujo.
+        //  Era el motivo de que el rótulo saliera a distinta altura en cada planta —y en la
+        //  de cimentación, casi vacía, arriba del todo—: se medía desde la caja de los
+        //  ELEMENTOS, y aquí arriba esa caja se estira hasta los ejes que se salen de ella.
+        //  Los ejes de una planta con pocos elementos caen mucho más abajo que sus piezas,
+        //  así que el rótulo se quedaba flotando donde acababa el dibujo.
+        //
+        //  Se mira la burbuja de abajo Y las cotas: si una cota baja más que la burbuja, el
+        //  rótulo tiene que quedar debajo de la cota, no encima de ella.
+        _abajoDeLosEjes = yMin + dy - Ejes.AbajoDeEjes(true);
+
+        foreach (var c in cotas)
+        {
+            _abajoDeLosEjes = Math.Min(
+                _abajoDeLosEjes.Value,
+                Math.Min(c.Y1, Math.Min(c.Y2, c.YTexto)) + dy);
+        }
     }
+
+    /// <summary>
+    /// La cota <b>Y</b> donde acaba lo que se dibujó debajo de la planta: burbujas y cotas.
+    /// </summary>
+    /// <remarks>
+    /// La apunta <see cref="DibujarEjesDeLaPlanta"/> y la usa el rótulo, que va justo debajo.
+    /// Es <c>null</c> mientras no se hayan dibujado los ejes —una planta sin cuadrícula—, y
+    /// entonces el rótulo cae en la cuenta de siempre, medida desde el dibujo.
+    /// </remarks>
+    private double? _abajoDeLosEjes;
 
     /// <summary>La línea de un eje, con el <c>LinetypeScale</c> de la hoja.</summary>
     /// <remarks>
@@ -477,7 +508,24 @@ public sealed partial class PlantaDrawer
 
         var margen = _cfg.Numero("MARGEN", 3) / 4;
         var x0 = xMin + dx - margen;
-        var y0 = yMin + dy - Ejes.AbajoDeEjes(hayEjes) - Rot.SeparacionEjes - h1;
+
+        // ==============================================================================
+        //  SIEMPRE A LA MISMA DISTANCIA DE LOS EJES
+        // ==============================================================================
+        //  Se pidió: «los rotulados de planta estructural deben estar a -5 de los ejes para
+        //  que sea siempre uniforme». Y hacían falta las dos cosas:
+        //
+        //   · la DISTANCIA, que es ROTULO_SEPARACION_EJES y ahora vale 5;
+        //   · y el PUNTO DE PARTIDA, que era el error de bulto: se medía desde la caja de los
+        //     ELEMENTOS, y los ejes bajan más que ella cuando la planta tiene pocas piezas.
+        //     Por eso el rótulo salía a distinta altura en cada planta y en la de cimentación
+        //     aparecía arriba del todo, a la altura de los ejes de arriba. Ahora se cuelga de
+        //     donde ACABARON los ejes de abajo, que es lo que el dibujante ya sabe porque
+        //     acaba de dibujarlos, y así las tres plantas lo llevan a la misma altura.
+        var abajo = _abajoDeLosEjes
+                    ?? (yMin + dy - Ejes.AbajoDeEjes(hayEjes));
+
+        var y0 = abajo - Rot.SeparacionEjes - h1;
 
         var s1 = Rot.Titulo;
         var s2 = Rot.RenglonDelNivel(p.Nivel);

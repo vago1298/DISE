@@ -47,11 +47,17 @@ public sealed class RotuloPlanta
     public bool ConLinea => _cfg.Bandera("ROTULO_LINEA", true);
 
     /// <summary>Aire entre los ejes de abajo y el rótulo: <c>ROTULO_SEPARACION_EJES</c>.</summary>
+    /// <remarks>
+    /// <b>Cinco metros</b>, y no el 0.5 de la hoja de la macro: se pidió que el rótulo vaya
+    /// «a −5 de los ejes para que sea siempre uniforme». Con medio metro quedaba pegado a las
+    /// burbujas, y como cada planta acababa a distinta altura, en un juego de tres plantas los
+    /// tres rótulos salían escalonados.
+    /// </remarks>
     public double SeparacionEjes
     {
         get
         {
-            var s = _cfg.Numero("ROTULO_SEPARACION_EJES", 0.5);
+            var s = _cfg.Numero("ROTULO_SEPARACION_EJES", 5);
             return s < 0 ? 0 : s;
         }
     }

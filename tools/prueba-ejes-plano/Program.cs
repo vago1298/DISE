@@ -1512,7 +1512,9 @@ Cerca("con altura 0.52", 0.52, rot.AlturaTitulo);
 Cerca("y el segundo renglón, 0.26", 0.26, rot.AlturaNivel);
 Igual("en el estilo HAETTENSCHWEILER", "HAETTENSCHWEILER", rot.Estilo);
 Check("centrado y con su línea", rot.Centrado && rot.ConLinea);
-Cerca("y a 0.5 de los ejes", 0.5, rot.SeparacionEjes);
+// A -5 DE LOS EJES, no a 0.5: se pidio que los rotulos de un juego de plantas queden todos a la
+// misma altura, y con medio metro quedaba pegado a las burbujas.
+Cerca("y a 5 de los ejes, para que todas las plantas lo lleven igual", 5, rot.SeparacionEjes);
 
 Igual("la BASE se rotula CIMENTACION", "CIMENTACION", rot.NombreDeNivel("Base"));
 Igual("Story1 es la PLANTA BAJA", "PLANTA BAJA", rot.NombreDeNivel("Story1"));

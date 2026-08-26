@@ -2400,11 +2400,13 @@ public partial class MainWindow : Window
     /// nada</b>. Es lo que se reportó.
     /// </para>
     /// <para>
-    /// Así que se trae por <b>geometría</b>: si su altura cruza el entrepiso de este nivel —o
-    /// <b>llega</b> a él, con la holgura de la hoja, que es el caso del castillo que muere en
-    /// la cadena de desplante—, en esta planta hay castillo y se dibuja. Es la misma idea que
-    /// los arranques de la cimentación, donde la columna del piso de arriba se trae porque
-    /// desplanta ahí.
+    /// Así que se trae por <b>geometría</b>. Y con una condición que se pidió después, porque
+    /// sin ella el castillo salía <b>duplicado en dos niveles</b>: solo donde va de <b>piso a
+    /// techo</b>. Antes bastaba que lo <i>tocara</i> —con 20 cm de holgura—, así que un castillo
+    /// que muere justo en el nivel se dibujaba en su planta y otra vez en la de arriba, donde en
+    /// realidad no hay castillo. Ahora tiene que <b>cubrir el entrepiso</b>: al menos la
+    /// fracción de <c>MURO_FRACCION_ENTREPISO</c>, que es la regla que ya usaba la macro para
+    /// decidir si un muro es completo o es un antepecho.
     /// </para>
     /// <para>
     /// La <b>Z se recorta</b> al entrepiso. En planta no se usa, pero el corte por un eje sí:
@@ -2434,7 +2436,17 @@ public partial class MainWindow : Window
         var zAlta = n.ElevacionM;
         var zBaja = zAlta - n.AlturaM;
 
-        var tol = CfgPlano.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 20) / 100;
+        // CUÁNTO HAY QUE CUBRIR PARA SER «DE PISO A TECHO»: la fracción del entrepiso de la
+        // hoja. Con 0.75, un castillo tiene que subir tres cuartas partes del nivel para
+        // contar en él; el que solo asoma no se dibuja, y así no sale en dos plantas.
+        var fraccion = CfgPlano.Numero("MURO_FRACCION_ENTREPISO", 0.75);
+
+        if (fraccion <= 0 || fraccion > 1)
+        {
+            fraccion = 0.75;
+        }
+
+        var minimo = n.AlturaM * fraccion;
 
         foreach (var el in modelo.Elementos)
         {
@@ -2459,9 +2471,13 @@ public partial class MainWindow : Window
                 ? el.Vertices3D.Max(v => v.Z)
                 : Math.Max(el.Z1, el.Z2);
 
-            // ¿CRUZA ESTE ENTREPISO O LLEGA A ÉL? Con la holgura se cuela el que solo lo
-            // toca —el que muere en la cadena de desplante—, que es el que se pidió ver.
-            if (Math.Min(zMax, zAlta + tol) < Math.Max(zMin, zBaja - tol))
+            // ¿VA DE PISO A TECHO EN ESTE NIVEL? Se mide lo que de verdad cubre DENTRO del
+            // entrepiso: un castillo de tres niveles lo cubre entero en los tres y sale en las
+            // tres plantas —que es lo correcto, en las tres hay castillo—, y uno que solo
+            // asoma por abajo no cubre nada y no sale, que es lo que lo duplicaba.
+            var cubre = Math.Min(zMax, zAlta) - Math.Max(zMin, zBaja);
+
+            if (cubre < minimo)
             {
                 continue;
             }

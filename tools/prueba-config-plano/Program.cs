@@ -76,10 +76,9 @@ var cfg = new ConfigPlano();
 //   SHELL_CASTILLO_COMO_COLUMNA     el shell que dice CASTILLO se dibuja como castillo
 //   SHELL_CASTILLO_UNIR_TOL_CM      y sus pedazos se unen, para que salga completo
 //   SHELL_CASTILLO_DE_OTRO_NIVEL    y el que cruza el nivel se dibuja aunque sea de otro story
-//   SHELL_CASTILLO_CRUZA_TOL_CM     con esta holgura en Z para tomarlo como que llega al nivel
 //   SHELL_CASTILLO_PREFIJO          y se nombra con su medida: «K 15X23.5»
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y dos que se añadieron",
-      302, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y uno que se añadieron",
+      301, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -237,16 +236,23 @@ Igual("y sus pedazos se unen con 2 cm de holgura",
 // story- se trae a la planta que cruza, con 20 cm de holgura para el que solo llega a ella.
 Check("el castillo de area de otro nivel viene encendido",
       cfg.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", false));
-Igual("y se toma como que cruza el nivel con 20 cm de holgura",
-      20.0, cfg.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 0));
+// Y SOLO DONDE VA DE PISO A TECHO: tiene que cubrir esta fraccion del entrepiso. Sin eso, el
+// castillo que solo TOCA el nivel salia en su planta y otra vez en la de arriba, duplicado.
+Igual("y solo cuenta donde cubre tres cuartas partes del entrepiso",
+      0.75, cfg.Numero("MURO_FRACCION_ENTREPISO", 0));
 // Y se nombra con su medida en planta: «K 15X23.5», que es su rotulo y el nombre de su bloque.
 Igual("el castillo de area se nombra con K", "K", cfg.Texto("SHELL_CASTILLO_PREFIJO"));
+
+// EL ROTULO DE LA PLANTA, A -5 DE LOS EJES: se pidio asi para que en un juego de tres plantas
+// los tres rotulos queden a la misma altura. La hoja de la macro traia 0.5.
+Igual("el rotulo va a 5 de los ejes de abajo",
+      5.0, cfg.Numero("ROTULO_SEPARACION_EJES", 0));
 
 Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 302 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 301 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

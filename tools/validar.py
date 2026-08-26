@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y dos renglones añadidos",
-          cfgp.count("        P(") == 302
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y un renglones añadidos",
+          cfgp.count("        P(") == 301
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "302, ConfigPlano.PorOmision.Count" in pr
+          and "301, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4957,6 +4957,8 @@ def v18_planta_autocad() -> None:
     corp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
     winp = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
     cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+    macp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
+    rot = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/RotuloPlanta.cs"))
 
     check("el shell de muro que dice CASTILLO se convierte en castillo",
           "public static bool Dice(ElementoPlanta? el)" in cdm
@@ -5098,8 +5100,50 @@ def v18_planta_autocad() -> None:
     check("las claves del castillo de shell estan en la hoja CONFIG",
           'P("SHELL_CASTILLO_COMO_COLUMNA", "SI",' in cfgplano
           and 'P("SHELL_CASTILLO_UNIR_TOL_CM", "2",' in cfgplano
-          and 'P("SHELL_CASTILLO_DE_OTRO_NIVEL", "SI",' in cfgplano
-          and 'P("SHELL_CASTILLO_CRUZA_TOL_CM", "20",' in cfgplano)
+          and 'P("SHELL_CASTILLO_DE_OTRO_NIVEL", "SI",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # SOLO DONDE VA DE PISO A TECHO
+    # ------------------------------------------------------------------
+    #  «Ya lo colocas pero lo duplicas en los niveles, solo debe aparecer en donde sea de piso a
+    #  techo». Antes bastaba con que el castillo TOCARA el nivel -20 cm de holgura-, asi que uno
+    #  que muere justo en el nivel se dibujaba en su planta y otra vez en la de arriba, donde en
+    #  realidad no hay castillo. Ahora tiene que CUBRIR el entrepiso: la fraccion de
+    #  MURO_FRACCION_ENTREPISO, que es la regla que ya usaba la macro para saber si un muro es
+    #  completo o es un antepecho. Un castillo de tres niveles lo cubre entero en los tres y sale
+    #  en las tres plantas, que es lo correcto: en las tres hay castillo.
+    check("el castillo de area solo entra donde va de piso a techo",
+          'CfgPlano.Numero("MURO_FRACCION_ENTREPISO", 0.75)' in winp
+          and "var minimo = n.AlturaM * fraccion;" in winp
+          and "var cubre = Math.Min(zMax, zAlta) - Math.Max(zMin, zBaja);" in winp
+          and "if (cubre < minimo)" in winp)
+    check("y ya no basta con que lo toque",
+          "SHELL_CASTILLO_CRUZA_TOL_CM" not in winp
+          and "SHELL_CASTILLO_CRUZA_TOL_CM" not in cfgplano)
+
+    # ------------------------------------------------------------------
+    # EL ROTULO DE LA PLANTA, SIEMPRE A LA MISMA ALTURA
+    # ------------------------------------------------------------------
+    #  «Los rotulados de planta estructural deben estar a -5 de los ejes para que sea siempre
+    #  uniforme». Hacian falta las dos cosas: la DISTANCIA -ROTULO_SEPARACION_EJES, ahora 5- y el
+    #  PUNTO DE PARTIDA, que era el error de bulto: se medía desde la caja de los ELEMENTOS, y
+    #  los ejes bajan mas que ella cuando la planta tiene pocas piezas. Por eso en un juego de
+    #  tres plantas los tres rotulos salian escalonados y el de la cimentacion, casi vacia,
+    #  aparecia arriba del todo, a la altura de los ejes de arriba.
+    check("el rotulo se cuelga de donde ACABARON los ejes, no del dibujo",
+          "_abajoDeLosEjes = yMin + dy - Ejes.AbajoDeEjes(true);" in macp
+          and "var abajo = _abajoDeLosEjes" in macp
+          and "var y0 = abajo - Rot.SeparacionEjes - h1;" in macp)
+    # Y mirando tambien las cotas: si una cota baja mas que la burbuja, el rotulo va debajo de la
+    # cota y no encima de ella.
+    check("y tambien por debajo de las cotas",
+          "Math.Min(c.Y1, Math.Min(c.Y2, c.YTexto)) + dy);" in macp)
+    # Se reinicia en cada planta: si se quedara el de la anterior, el rotulo de esta se colgaria
+    # de una cuadricula que esta en otro sitio del dibujo.
+    check("se reinicia en cada planta", "_abajoDeLosEjes = null;" in dibp)
+    check("y la distancia es 5, como se pidio",
+          '_cfg.Numero("ROTULO_SEPARACION_EJES", 5)' in rot
+          and 'P("ROTULO_SEPARACION_EJES", "5",' in cfgplano)
 
     # ------------------------------------------------------------------
     # POR QUE NO SE VEIA EL CASTILLO DE AREA DEBAJO DE LA CADENA
@@ -5125,8 +5169,7 @@ def v18_planta_autocad() -> None:
     # Por su altura DE VERDAD -los vertices-, no por Z1/Z2, que en un area es el dato flojo.
     check("y se mide por los vertices del area",
           "el.Vertices3D.Min(v => v.Z)" in winp
-          and "el.Vertices3D.Max(v => v.Z)" in winp
-          and 'CfgPlano.Numero("SHELL_CASTILLO_CRUZA_TOL_CM", 20)' in winp)
+          and "el.Vertices3D.Max(v => v.Z)" in winp)
     # LA Z SE RECORTA AL ENTREPISO: sin eso, un castillo de tres niveles se dibujaria tres
     # niveles de alto en el corte de uno solo.
     check("la Z se recorta a este entrepiso, para el corte",

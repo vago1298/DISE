@@ -176,6 +176,10 @@ public sealed partial class PlantaDrawer
     {
         var r = new Resumen();
 
+        // Cada planta tiene sus ejes: si se quedara el de la anterior, el rótulo de esta se
+        // colgaría de una cuadrícula que está en otro sitio del dibujo.
+        _abajoDeLosEjes = null;
+
         AsegurarCapas();
         AsegurarEstiloTexto();
 
