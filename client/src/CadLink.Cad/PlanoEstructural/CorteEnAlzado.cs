@@ -200,7 +200,85 @@ public static class CorteEnAlzado
             }
         }
 
-        return SinEncimados(piezas);
+        return UnirElFondo(SinEncimados(piezas));
+    }
+
+    /// <summary>
+    /// Une las piezas del <b>fondo</b> que se tocan: una silueta, no una reja de rectángulos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la mitad que faltaba para que el corte se lea como el de un programa de modelado: ahí,
+    /// de lo que hay detrás del plano <b>se ve la silueta</b>, no las aristas de cada pieza. En un
+    /// muro de mampostería el fondo son cinco o seis paños seguidos a distinta profundidad, y
+    /// dibujando cada uno por separado el alzado sale con una raya vertical en cada junta: rayas
+    /// que no existen, porque ahí el muro sigue.
+    /// </para>
+    /// <para>
+    /// Así que los paños del fondo que van <b>a la misma altura</b> y se <b>tocan o se encima</b>
+    /// se unen en uno. Se repite hasta que no quede nada por unir, porque al unir dos puede que el
+    /// resultado alcance a un tercero.
+    /// </para>
+    /// <para>
+    /// <b>Lo cortado no se une nunca</b>: cada pieza cortada es una pieza de obra —esta cadena,
+    /// aquel castillo— y fundirlas sería perder lo que el corte tiene que decir. Y solo se unen
+    /// piezas de la <b>misma clase</b>, para no fundir un muro con una losa.
+    /// </para>
+    /// </remarks>
+    public static List<Pieza> UnirElFondo(List<Pieza> piezas)
+    {
+        var salida = piezas.Where(p => p.Cortada).ToList();
+        var fondo = piezas.Where(p => !p.Cortada).ToList();
+
+        var cambio = true;
+
+        while (cambio)
+        {
+            cambio = false;
+
+            for (var i = 0; i < fondo.Count && !cambio; i++)
+            {
+                for (var j = i + 1; j < fondo.Count && !cambio; j++)
+                {
+                    if (!SeUnen(fondo[i], fondo[j]))
+                    {
+                        continue;
+                    }
+
+                    var x1 = Math.Min(fondo[i].X, fondo[j].X);
+                    var x2 = Math.Max(fondo[i].X + fondo[i].Ancho, fondo[j].X + fondo[j].Ancho);
+
+                    fondo[i] = fondo[i] with { X = x1, Ancho = x2 - x1 };
+                    fondo.RemoveAt(j);
+
+                    cambio = true;
+                }
+            }
+        }
+
+        salida.AddRange(fondo);
+
+        return salida;
+    }
+
+    /// <summary>¿Estas dos piezas del fondo son el mismo paño visto de largo?</summary>
+    /// <remarks>
+    /// A la <b>misma altura</b> —el mismo arranque y el mismo alto, con dos centímetros de
+    /// holgura— y <b>tocándose</b> a lo largo. Dos paños separados por un vano <b>no</b> se unen:
+    /// el hueco es un dato del alzado, no una junta.
+    /// </remarks>
+    private static bool SeUnen(Pieza a, Pieza b)
+    {
+        const double h = 0.02;
+
+        if (a.Clase != b.Clase
+            || Math.Abs(a.Z - b.Z) > h
+            || Math.Abs(a.Alto - b.Alto) > h)
+        {
+            return false;
+        }
+
+        return Math.Min(a.X + a.Ancho, b.X + b.Ancho) >= Math.Max(a.X, b.X) - h;
     }
 
     /// <summary>
@@ -297,6 +375,117 @@ public static class CorteEnAlzado
         return min > ordenada + MedioPerpendicular(el, enX) + Holgura(espesorM);
     }
 
+    /// <summary>
+    /// Lo que <b>se ve</b> de una sección en el corte: su caja envolvente, ya girada.
+    /// </summary>
+    /// <remarks>
+    /// Medida en la dirección que <b>recorre</b> el corte —la Y si el plano está en X—, que es la
+    /// horizontal del alzado. Es la misma cuenta con la que se coloca el rótulo de una columna en
+    /// planta, y por eso lo que se ve en el corte coincide con lo que se ve en la planta.
+    /// </remarks>
+    public static double AnchoVisto(ElementoPlanta el, bool enX)
+    {
+        var b = el.AnchoM > Minimo ? el.AnchoM : 0.15;
+        var h = el.PeralteM > Minimo ? el.PeralteM : b;
+
+        var a = el.AnguloGrados * Math.PI / 180;
+        var ca = Math.Abs(Math.Cos(a));
+        var sa = Math.Abs(Math.Sin(a));
+
+        // A lo largo del corte se mide con la coordenada que NO es la del plano: con el plano en
+        // X, lo que se recorre es la Y.
+        return enX ? (b * sa) + (h * ca) : (b * ca) + (h * sa);
+    }
+
+    /// <summary>
+    /// Cuánto le quita a un muro la <b>cadena que lleva encima</b>, en metros.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El peralte de la trabe o la cadena que corre <b>sobre su misma línea</b> y remata a su
+    /// altura. Es lo que hace que el muro llegue al paño de <b>abajo</b> de la cadena: en el
+    /// modelo el muro sube hasta la cota del nivel, que es el <b>eje</b> de la cadena, así que sin
+    /// esto el muro se mete el peralte entero dentro de ella.
+    /// </para>
+    /// <para>
+    /// De varias, la <b>más peraltada</b>: el muro no puede meterse en ninguna. Y solo cuentan las
+    /// que van <b>a lo largo</b> del muro —las que lo cruzan pasan por encima y no lo rematan— y
+    /// las que están <b>a su altura</b>, con la holgura de un desajuste de modelo.
+    /// </para>
+    /// </remarks>
+    public static double AlturaQueTapaLaCadena(
+        ElementoPlanta muro, IReadOnlyList<ElementoPlanta> todos, double tolM = 0.10)
+    {
+        var dx = muro.X2 - muro.X1;
+        var dy = muro.Y2 - muro.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 1e-9)
+        {
+            return 0;
+        }
+
+        var ux = dx / largo;
+        var uy = dy / largo;
+
+        var arribaDelMuro = Math.Max(muro.Z1, muro.Z2);
+
+        double peralte = 0;
+
+        foreach (var c in todos)
+        {
+            if (c.Clase != ClasePlanta.Trabe || c.PeralteM <= Minimo)
+            {
+                continue;
+            }
+
+            // A SU ALTURA: la cadena remata el muro si su eje está a la cota de arriba del muro.
+            if (Math.Abs(Math.Max(c.Z1, c.Z2) - arribaDelMuro) > tolM)
+            {
+                continue;
+            }
+
+            var vx = c.X2 - c.X1;
+            var vy = c.Y2 - c.Y1;
+            var largoC = Math.Sqrt((vx * vx) + (vy * vy));
+
+            if (largoC < 1e-9)
+            {
+                continue;
+            }
+
+            // A LO LARGO DEL MURO: paralela y sobre su línea. Una que lo cruza pasa por encima.
+            if (Math.Abs((ux * (vy / largoC)) - (uy * (vx / largoC))) > 0.10)
+            {
+                continue;
+            }
+
+            if (Math.Abs((-uy * (c.X1 - muro.X1)) + (ux * (c.Y1 - muro.Y1))) > tolM)
+            {
+                continue;
+            }
+
+            // Y QUE SE ENCIMEN de verdad a lo largo: una cadena del muro de al lado, alineada con
+            // este pero en otro tramo, no lo remata.
+            var t1 = (ux * (c.X1 - muro.X1)) + (uy * (c.Y1 - muro.Y1));
+            var t2 = (ux * (c.X2 - muro.X1)) + (uy * (c.Y2 - muro.Y1));
+
+            if (t2 < t1)
+            {
+                (t1, t2) = (t2, t1);
+            }
+
+            if (Math.Min(t2, largo) - Math.Max(t1, 0) <= tolM)
+            {
+                continue;
+            }
+
+            peralte = Math.Max(peralte, c.PeralteM);
+        }
+
+        return peralte;
+    }
+
     /// <summary>El rectángulo de un elemento, o nulo si no tiene nada que enseñar.</summary>
     private static Pieza? DeUnElemento(
         ElementoPlanta el, bool enX, IReadOnlyList<ElementoPlanta> todos)
@@ -337,10 +526,18 @@ public static class CorteEnAlzado
                 : null;
         }
 
-        // EL MURO: su paño, de vértice a vértice y de su cota más baja a la más alta.
+        // EL MURO: su paño, de vértice a vértice y de su cota más baja a la de abajo de su cadena.
         if (el.Clase == ClasePlanta.Muro)
         {
-            var alto = zArriba - zAbajo;
+            // ==========================================================================
+            //  HASTA EL PAÑO DE ABAJO DE LA TRABE O LA CADENA
+            // ==========================================================================
+            //  Se pidió, y es lo que se construye: el muro sube hasta donde empieza la cadena,
+            //  no hasta su eje. En el modelo el muro llega a la COTA DEL NIVEL —que es el eje de
+            //  la cadena— así que dibujándolo tal cual se mete todo el peralte de la cadena
+            //  dentro de ella: en el corte se veían el muro y la cadena pisándose, y la cadena
+            //  perdía su franja.
+            var alto = (zArriba - AlturaQueTapaLaCadena(el, todos)) - zAbajo;
 
             return alto > Minimo && max - min > Minimo
                 ? new Pieza(el.Clase, el.Etiqueta, el.Seccion,
@@ -348,10 +545,23 @@ public static class CorteEnAlzado
                 : null;
         }
 
-        // LA COLUMNA: de canto y de nudo a nudo. El ancho es lo que cruza el corte.
+        // LA COLUMNA: de canto y de nudo a nudo. El ancho es lo que SE VE del corte.
         if (el.Clase == ClasePlanta.Columna)
         {
-            var ancho = el.AnchoM > Minimo ? el.AnchoM : 0.15;
+            // ==========================================================================
+            //  LO QUE SE VE ES LA SECCIÓN PROYECTADA, NO SU LADO MÁS LARGO
+            // ==========================================================================
+            //  Aquí estaba el castillo de 80 cm. Se tomaba AnchoM a secas, y en un castillo de
+            //  área ese ancho es su LARGO —«K 15X80» mide 80 a lo largo del muro y 15 de
+            //  espesor—: en un corte que lo cruza de frente se veía un rectángulo amarillo de
+            //  80 cm cuando lo que se ve de verdad son sus 15 cm de espesor.
+            //
+            //  Lo que se ve es la sección GIRADA, medida en la dirección que recorre el corte:
+            //  la caja que la envuelve, la misma cuenta con la que se coloca su rótulo en
+            //  planta. Así un castillo de 15×80 se ve de 15 cuando el corte lo cruza y de 80
+            //  cuando el corte va a lo largo de él, que es lo correcto en los dos casos, y una
+            //  columna de 20×60 girada 90° se ve de 60 en lugar de 20.
+            var ancho = AnchoVisto(el, enX);
             var alto = zArriba - zAbajo;
 
             // Una columna de altura nula no es una columna: es un nudo mal leído.

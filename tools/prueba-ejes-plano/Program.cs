@@ -2173,6 +2173,137 @@ var trabeQueCruzaElCorte = new ElementoPlanta
 Check("la trabe que cruza el corte se corta",
       CorteEnAlzado.Entra(trabeQueCruzaElCorte, enX: true, ordenada: 5, espesorM: 0.60));
 
+// EL CASTILLO DE AREA SE VE CON SU ESPESOR, NO CON SU LARGO. «K 15X80» mide 80 a lo largo del muro
+// y 15 de espesor: en un corte que lo cruza de frente se veia un rectangulo amarillo de 80 cm
+// cuando lo que se ve de verdad son sus 15. Lo que se ve es la seccion GIRADA, medida en la
+// direccion que recorre el corte.
+var castilloDeArea80 = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Tipo = "CASTILLO", Seccion = "K 15X80",
+    X1 = 5, Y1 = 2, X2 = 5, Y2 = 2, Z1 = 0, Z2 = 2.7,
+    AnchoM = 0.80, PeralteM = 0.15, AnguloGrados = 90
+};
+
+// El corte por un eje en Y recorre la X: el castillo, que corre en Y, se ve de canto -15 cm-.
+Cerca("el castillo de 15x80 que cruza el corte se ve de 15", 0.15,
+      CorteEnAlzado.AnchoVisto(castilloDeArea80, enX: false));
+// Y el corte que va A LO LARGO de el lo ve entero: sus 80.
+Cerca("y a lo largo se ve de 80", 0.80,
+      CorteEnAlzado.AnchoVisto(castilloDeArea80, enX: true));
+
+// Una columna de 20x60 girada 90 tiene su lado largo en X, asi que un corte que recorre la X la ve
+// de 60 y uno que recorre la Y, de 20. Es el mismo arreglo: manda la seccion girada, no AnchoM.
+var columnaGirada = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, AnchoM = 0.20, PeralteM = 0.60, AnguloGrados = 90
+};
+
+Cerca("una columna de 20x60 girada 90 se ve de 60 a lo largo de la X", 0.60,
+      CorteEnAlzado.AnchoVisto(columnaGirada, enX: false));
+Cerca("y de 20 a lo largo de la Y", 0.20,
+      CorteEnAlzado.AnchoVisto(columnaGirada, enX: true));
+// Y un castillo de 15x15 se ve de 15 en cualquier direccion, que es lo que ya pasaba.
+Cerca("un 15x15 se ve de 15 en cualquier direccion", 0.15,
+      CorteEnAlzado.AnchoVisto(
+          new ElementoPlanta { Clase = ClasePlanta.Columna, AnchoM = 0.15, PeralteM = 0.15 },
+          enX: true));
+
+// EL MURO LLEGA AL PAÑO DE ABAJO DE SU CADENA. En el modelo el muro sube hasta la cota del nivel
+// -que es el EJE de la cadena-, asi que dibujandolo tal cual se mete el peralte entero dentro de
+// ella y en el corte los dos se pisan.
+var muroBajoSuCadena = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", X1 = 0, Y1 = 0, X2 = 4, Y2 = 0,
+    Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+};
+
+var laCadenaDeEncima = new ElementoPlanta
+{
+    Clase = ClasePlanta.Trabe, Tipo = "CADENA DE CERRAMIENTO", Seccion = "CC 15X25",
+    X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, Z1 = 2.5, Z2 = 2.5, AnchoM = 0.15, PeralteM = 0.25
+};
+
+Cerca("la cadena de encima le quita su peralte al muro", 0.25,
+      CorteEnAlzado.AlturaQueTapaLaCadena(muroBajoSuCadena, new[] { muroBajoSuCadena, laCadenaDeEncima }));
+
+// Y se ve en la pieza: el muro sube 2.25 y no 2.5.
+var piezaDelMuro = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { muroBajoSuCadena, laCadenaDeEncima }, enX: false, ordenada: 0,
+    espesorM: 0.60).First(x => x.Clase == ClasePlanta.Muro);
+
+Cerca("asi que el muro sube hasta el paño de abajo de la cadena", 2.25, piezaDelMuro.Alto);
+
+// UNA CADENA QUE CRUZA EL MURO no lo remata: pasa por encima.
+Cerca("una cadena que lo cruza no le quita nada", 0,
+      CorteEnAlzado.AlturaQueTapaLaCadena(
+          muroBajoSuCadena,
+          new[]
+          {
+              new ElementoPlanta
+              {
+                  Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 2, Y1 = -2, X2 = 2, Y2 = 2,
+                  Z1 = 2.5, Z2 = 2.5, AnchoM = 0.20, PeralteM = 0.40
+              }
+          }));
+
+// Y UNA A OTRA ALTURA tampoco: la de la azotea no remata el muro de la planta baja.
+Cerca("una cadena a otra altura no le quita nada", 0,
+      CorteEnAlzado.AlturaQueTapaLaCadena(
+          muroBajoSuCadena,
+          new[]
+          {
+              new ElementoPlanta
+              {
+                  Clase = ClasePlanta.Trabe, Tipo = "CADENA DE CERRAMIENTO",
+                  X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, Z1 = 5.6, Z2 = 5.6,
+                  AnchoM = 0.15, PeralteM = 0.25
+              }
+          }));
+
+// EL FONDO SE UNE EN UNA SILUETA, como en un programa de modelado: de lo que hay detras se ve el
+// contorno, no las aristas de cada pieza. Cinco paños seguidos a distinta profundidad dibujados
+// uno a uno dejan una raya vertical en cada junta, y esas rayas no existen: ahi el muro sigue.
+var fondoEnPedazos = new List<CorteEnAlzado.Pieza>
+{
+    new(ClasePlanta.Muro, "M1", "MURO 15", 0, 0, 2, 2.5, "MURO", false),
+    new(ClasePlanta.Muro, "M2", "MURO 15", 2, 0, 2, 2.5, "MURO", false),
+    new(ClasePlanta.Muro, "M3", "MURO 15", 4, 0, 1.5, 2.5, "MURO", false)
+};
+
+var siluetaDelFondo = CorteEnAlzado.UnirElFondo(fondoEnPedazos);
+
+Igual("tres paños seguidos del fondo son una silueta", 1, siluetaDelFondo.Count);
+Cerca("que arranca donde el primero", 0, siluetaDelFondo[0].X);
+Cerca("y acaba donde el ultimo", 5.5, siluetaDelFondo[0].Ancho);
+
+// DOS PAÑOS SEPARADOS POR UN VANO NO se unen: el hueco es un dato del alzado, no una junta.
+Igual("dos paños con un vano en medio siguen siendo dos", 2,
+      CorteEnAlzado.UnirElFondo(
+          new List<CorteEnAlzado.Pieza>
+          {
+              new(ClasePlanta.Muro, "M1", "MURO 15", 0, 0, 2, 2.5, "MURO", false),
+              new(ClasePlanta.Muro, "M2", "MURO 15", 3, 0, 2, 2.5, "MURO", false)
+          }).Count);
+
+// A DISTINTA ALTURA tampoco: un antepecho y un muro completo son dos cosas.
+Igual("a distinta altura tampoco se unen", 2,
+      CorteEnAlzado.UnirElFondo(
+          new List<CorteEnAlzado.Pieza>
+          {
+              new(ClasePlanta.Muro, "M1", "MURO 15", 0, 0, 2, 2.5, "MURO", false),
+              new(ClasePlanta.Muro, "M2", "MURO 15", 2, 0, 2, 0.9, "MURO", false)
+          }).Count);
+
+// Y LO CORTADO NO SE UNE NUNCA: cada pieza cortada es una pieza de obra -esta cadena, aquel
+// castillo- y fundirlas seria perder lo que el corte tiene que decir.
+Igual("lo cortado no se une", 2,
+      CorteEnAlzado.UnirElFondo(
+          new List<CorteEnAlzado.Pieza>
+          {
+              new(ClasePlanta.Trabe, "C1", "CC 15X25", 0, 2.25, 2, 0.25, "CADENA", true),
+              new(ClasePlanta.Trabe, "C2", "CC 15X25", 2, 2.25, 2, 0.25, "CADENA", true)
+          }).Count);
+
 // Y LO ENCIMADO SE QUITA: la misma silueta dos veces no dice nada, y lo que cae DENTRO de otra
 // pieza del fondo, tampoco.
 var conEncimados = new List<CorteEnAlzado.Pieza>

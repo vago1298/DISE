@@ -83,8 +83,10 @@ var cfg = new ConfigPlano();
 //   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
 //   CAPA_MURO_CONCRETO / COLOR_MURO_CONCRETO / MURO_CONCRETO_CAPA_PROPIA
 //                                   el muro de concreto sin cadena, en E-MURO DE CONCRETO
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y ocho que se añadieron",
-      308, ConfigPlano.PorOmision.Count);
+//   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
+//   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta que se añadieron",
+      310, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -266,6 +268,13 @@ Check("la cadena de desplante va continua en cualquier nivel",
 // EL MURO DE CONCRETO SIN CADENA, EN SU PROPIA CAPA: un muro de concreto es estructura -se arma y
 // se cuela- y uno de block es cerramiento; apagando una capa se revisa uno sin el otro. Donde hay
 // cadena manda la cadena, igual que en la mamposteria.
+// LOS RELLENOS DEL CORTE, cada pieza de su color: el castillo amarillo -como en la planta-, la
+// cadena morada y la trabe verde. En un corte por un muro hay tres piezas de concreto distintas a
+// la vista y del contorno solo no se distinguen: las tres son un rectangulo.
+Igual("la cadena cortada se rellena de morado",
+      6.0, cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 0));
+Igual("y la trabe de verde", 3.0, cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 0));
+
 Igual("la capa del muro de concreto se llama como se pidio",
       "MURO DE CONCRETO", cfg.Texto("CAPA_MURO_CONCRETO"));
 Check("y viene encendida", cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", false));
@@ -280,7 +289,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 308 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 310 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

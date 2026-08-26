@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y ocho renglones añadidos",
-          cfgp.count("        P(") == 308
+    check("la hoja CONFIG de la macro esta portada, con cincuenta renglones añadidos",
+          cfgp.count("        P(") == 310
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "308, ConfigPlano.PorOmision.Count" in pr
+          and "310, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4285,10 +4285,88 @@ def v18_planta_autocad() -> None:
     # pieza del fondo, tampoco.
     check("y las siluetas encimadas se quitan",
           "public static List<Pieza> SinEncimados(List<Pieza> piezas)" in corte
-          and "return SinEncimados(piezas);" in corte
+          and "return UnirElFondo(SinEncimados(piezas));" in corte
           and "private static bool Tapa(Pieza grande, Pieza chica)" in corte)
     # DOS REGLAS QUE NO SE NEGOCIAN: lo CORTADO no se quita nunca -es el objeto del corte- y solo
     # se comparan piezas de la MISMA CLASE, que una columna dentro de un muro dice otra cosa.
+    # ------------------------------------------------------------------
+    # EL CASTILLO DE AREA SE VE CON SU ESPESOR, NO CON SU LARGO
+    # ------------------------------------------------------------------
+    #  «El castillote de 15, el amarillo, no debe ir asi: solo se debe ver su espesor de 15 cm, no
+    #  los 80 cm que mide». Se tomaba AnchoM a secas, y en un castillo de area ese ancho es su
+    #  LARGO -«K 15X80» mide 80 a lo largo del muro y 15 de espesor-, asi que un corte que lo cruza
+    #  de frente lo pintaba de 80 cm de ancho.
+    #
+    #  Lo que se ve es la seccion GIRADA medida en la direccion que recorre el corte: la caja que
+    #  la envuelve, la misma cuenta con la que se coloca su rotulo en planta. Y de paso arregla la
+    #  columna de 20x60 girada, que se veia de 20.
+    check("en el corte se ve la seccion proyectada, no su lado mas largo",
+          "public static double AnchoVisto(ElementoPlanta el, bool enX)" in corte
+          and "return enX ? (b * sa) + (h * ca) : (b * ca) + (h * sa);" in corte
+          and "var ancho = AnchoVisto(el, enX);" in corte)
+
+    # ------------------------------------------------------------------
+    # EL MURO, HASTA EL PAÑO DE ABAJO DE SU CADENA
+    # ------------------------------------------------------------------
+    #  «La altura del muro debe ser dibujada hasta el paño inferior de la trabe o cadena». En el
+    #  modelo el muro sube hasta la COTA DEL NIVEL, que es el EJE de la cadena, asi que dibujandolo
+    #  tal cual se mete el peralte entero dentro de ella: en el corte el muro y la cadena se
+    #  pisaban y la cadena perdia su franja.
+    check("el muro llega al paño de abajo de su cadena",
+          "public static double AlturaQueTapaLaCadena(" in corte
+          and "var alto = (zArriba - AlturaQueTapaLaCadena(el, todos)) - zAbajo;" in corte
+          and "peralte = Math.Max(peralte, c.PeralteM);" in corte)
+    # Solo la que va A LO LARGO del muro y A SU ALTURA: una que lo cruza pasa por encima, y la de
+    # la azotea no remata el muro de la planta baja.
+    check("y solo la que va a lo largo y a su altura",
+          "if (Math.Abs(Math.Max(c.Z1, c.Z2) - arribaDelMuro) > tolM)" in corte
+          and "if (Math.Abs((ux * (vy / largoC)) - (uy * (vx / largoC))) > 0.10)" in corte)
+
+    # ------------------------------------------------------------------
+    # CADA PIEZA CORTADA, DE SU COLOR
+    # ------------------------------------------------------------------
+    #  «Las cadenas que se cortan rellenalas de color morado, asi como los castillos es de
+    #  amarillo» y «las trabes rellenalas de color verde». No es decoracion: en un corte por un muro
+    #  hay tres piezas de concreto distintas a la vista -el castillo que sube, la cadena que cierra
+    #  y la trabe que carga- y del contorno solo no se distinguen, porque las tres son un
+    #  rectangulo.
+    cortedib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
+    cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+
+    check("la cadena cortada va morada y la trabe verde",
+          "private int ColorDelRellenoEnElCorte(" in cortedib
+          and '_cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 6)' in cortedib
+          and '_cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 3)' in cortedib
+          and 'P("CORTE_COLOR_RELLENO_CADENA", "6",' in cfgp
+          and 'P("CORTE_COLOR_RELLENO_TRABE", "3",' in cfgp)
+    # El castillo sigue amarillo, con el color de la planta: es la misma pieza en los dos dibujos.
+    check("y el castillo sigue amarillo, con el color de la planta",
+          "if (p.Clase == ClasePlanta.Columna)\n        {\n            return ColorDelRelleno();"
+          in cortedib)
+    # Solo las CORTADAS, y la losa y el muro no se rellenan: se leen por su franja y por su paño.
+    check("solo las cortadas, y el muro y la losa sin relleno",
+          'if (p.Cortada && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))' in cortedib
+          and "if (p.Clase != ClasePlanta.Trabe)\n        {\n            return 0;" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL FONDO, UNA SILUETA: LA FUNCION «COMO LA DE REVIT»
+    # ------------------------------------------------------------------
+    #  «Tambien se deben ver los muros de hasta el fondo, quiero hacer una funcion como la de
+    #  Revit». En un programa de modelado, de lo que hay detras del plano se ve LA SILUETA, no las
+    #  aristas de cada pieza. En un muro de mamposteria el fondo son cinco o seis paños seguidos a
+    #  distinta profundidad, y dibujando cada uno por separado el alzado sale con una raya vertical
+    #  en cada junta: rayas que no existen, porque ahi el muro sigue.
+    check("el fondo se une en una silueta",
+          "public static List<Pieza> UnirElFondo(List<Pieza> piezas)" in corte
+          and "return UnirElFondo(SinEncimados(piezas));" in corte
+          and "private static bool SeUnen(Pieza a, Pieza b)" in corte)
+    # UN VANO NO SE UNE -el hueco es un dato del alzado- y LO CORTADO NO SE UNE NUNCA: cada pieza
+    # cortada es una pieza de obra.
+    check("pero no por encima de un vano, ni lo cortado",
+          "var salida = piezas.Where(p => p.Cortada).ToList();" in corte
+          and "Math.Min(a.X + a.Ancho, b.X + b.Ancho) >= Math.Max(a.X, b.X) - h;" in corte
+          and "|| Math.Abs(a.Z - b.Z) > h" in corte)
+
     check("lo cortado no se quita nunca, y solo compite con su misma clase",
           "if (!p.Cortada && salida.Any(q => Tapa(q, p)))" in corte
           and "if (grande.Clase != chica.Clase)" in corte
@@ -4576,11 +4654,15 @@ def v18_planta_autocad() -> None:
           and "private double? _topeDelJuego;" in dib)
     # LOS CASTILLOS, RELLENOS, como en la planta: el relleno es lo que distingue de un golpe el
     # elemento CORTADO del que solo se ve al fondo.
-    check("las columnas cortadas del corte van rellenas",
+    # Ahora se rellenan TODAS las piezas cortadas que tienen color: el castillo amarillo, la cadena
+    # morada y la trabe verde. El color lo decide ColorDelRellenoEnElCorte, y el muro y la losa
+    # devuelven 0 -no se rellenan- porque en un alzado se leen por su paño y por su franja.
+    check("las piezas cortadas del corte van rellenas, cada una de su color",
           'P("CORTE_RELLENAR_COLUMNAS", "SI",' in cfgp
-          and "private void RellenarPieza(" in cortedib
-          and "h.Color = ColorDelRelleno();" in cortedib
-          and "if (p.Cortada && p.Clase == ClasePlanta.Columna" in cortedib)
+          and "private void RellenarPieza(object? pl, string capa, int color)" in cortedib
+          and "h.Color = color;" in cortedib
+          and 'if (p.Cortada && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))' in cortedib
+          and "var color = ColorDelRellenoEnElCorte(p);" in cortedib)
     # EL ESPESOR DE LA LOSA NO SE INVENTA: esto es un plano, la franja se mide y se acota, asi
     # que un espesor a dedo no es una aproximacion, es un dato falso. Sin el, sale una LINEA.
     check("el espesor de la losa del corte no se inventa",

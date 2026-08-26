@@ -136,10 +136,19 @@ public sealed partial class PlantaDrawer
                 //
                 //  Solo las CORTADAS: la que se ve al fondo no se rellena, porque no está
                 //  cortada por el plano.
-                if (p.Cortada && p.Clase == ClasePlanta.Columna
-                    && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
+                //  Y CADA COSA DE SU COLOR, que es lo que se pidió y lo que hace legible un
+                //  alzado de mampostería: el CASTILLO amarillo, la CADENA morada y la TRABE
+                //  verde. En un corte por un muro hay tres piezas de concreto distintas a la
+                //  vista —el castillo que sube, la cadena que cierra y la trabe que carga— y
+                //  del contorno solo no se distinguen: las tres son un rectángulo.
+                if (p.Cortada && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
                 {
-                    RellenarPieza(pl, capa);
+                    var color = ColorDelRellenoEnElCorte(p);
+
+                    if (color > 0)
+                    {
+                        RellenarPieza(pl, capa, color);
+                    }
                 }
 
                 // ======================================================================
@@ -375,7 +384,51 @@ public sealed partial class PlantaDrawer
     /// funciona en AutoCAD 2026, y si no se deja, el corte se queda con la pieza hueca: se ve
     /// peor, pero está.
     /// </remarks>
-    private void RellenarPieza(object? pl, string capa)
+    /// <summary>
+    /// El color del relleno de una pieza <b>cortada</b>: amarillo, morado o verde.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió así: el <b>castillo</b> —y la columna— amarillo, como en la planta; la
+    /// <b>cadena</b> morada; y la <b>trabe</b> verde. No es decoración: en un corte por un muro
+    /// hay tres piezas de concreto distintas a la vista —el castillo que sube, la cadena que
+    /// cierra y la trabe que carga— y del contorno solo no se distinguen, porque las tres son un
+    /// rectángulo. Con el color se leen de un golpe.
+    /// </para>
+    /// <para>
+    /// Devuelve <b>0</b> para lo que no se rellena —la losa y el muro—, que en un alzado se leen
+    /// por su franja y por su paño. Los tres colores salen de la hoja.
+    /// </para>
+    /// </remarks>
+    private int ColorDelRellenoEnElCorte(PlanoEstructural.CorteEnAlzado.Pieza p)
+    {
+        if (p.Clase == ClasePlanta.Columna)
+        {
+            return ColorDelRelleno();
+        }
+
+        if (p.Clase != ClasePlanta.Trabe)
+        {
+            return 0;
+        }
+
+        // La cadena y la dala son la misma pieza con dos nombres, y el tipo llega de las notas de
+        // la propiedad: CADENA DE CERRAMIENTO, CADENA DE DESPLANTE, CADENA INTERMEDIA o DALA.
+        var tipo = (p.Tipo ?? string.Empty).Trim();
+
+        var esCadena = tipo.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase)
+                       || tipo.Equals("DALA", StringComparison.OrdinalIgnoreCase);
+
+        return esCadena
+            ? Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 6), 6)
+            : Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 3), 3);
+
+        // Un color fuera de la paleta de AutoCAD no se puede poner: se vuelve al de la hoja.
+        static int Color(int color, int porOmision) =>
+            color is > 0 and <= 255 ? color : porOmision;
+    }
+
+    private void RellenarPieza(object? pl, string capa, int color)
     {
         if (pl is null)
         {
@@ -414,7 +467,7 @@ public sealed partial class PlantaDrawer
             {
                 h.Evaluate();
                 h.Layer = capa;
-                h.Color = ColorDelRelleno();
+                h.Color = color;
             });
         }
         catch (Exception ex)
