@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cincuenta renglones añadidos",
-          cfgp.count("        P(") == 310
+    check("la hoja CONFIG de la macro esta portada, con cincuenta y un renglones añadidos",
+          cfgp.count("        P(") == 311
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "310, ConfigPlano.PorOmision.Count" in pr
+          and "311, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4280,7 +4280,8 @@ def v18_planta_autocad() -> None:
     # Y EL MISMO MARGEN EN LAS DOS PREGUNTAS, para que nada sea cortado y fondo a la vez: los de la
     # frontera salian dos veces, uno encima del otro.
     check("y el mismo margen para el fondo, que nada sea las dos cosas",
-          "return min > ordenada + MedioPerpendicular(el, enX) + Holgura(espesorM);" in corte)
+          "var margen = MedioPerpendicular(el, enX) + Holgura(espesorM);" in corte
+          and "? min > ordenada + margen" in corte)
     # LO ENCIMADO SE QUITA: la misma silueta dos veces no dice nada, y lo que cae DENTRO de otra
     # pieza del fondo, tampoco.
     check("y las siluetas encimadas se quitan",
@@ -4345,8 +4346,60 @@ def v18_planta_autocad() -> None:
           in cortedib)
     # Solo las CORTADAS, y la losa y el muro no se rellenan: se leen por su franja y por su paño.
     check("solo las cortadas, y el muro y la losa sin relleno",
-          'if (p.Cortada && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))' in cortedib
+          "if (p.Cortada && enSeccion &&" in cortedib
           and "if (p.Clase != ClasePlanta.Trabe)\n        {\n            return 0;" in cortedib)
+
+    # ------------------------------------------------------------------
+    # SE RELLENA LO QUE SE VE EN SECCION, NO EL COSTADO
+    # ------------------------------------------------------------------
+    #  «Si cortas a lo largo de la seccion solo dale el tipo de linea, pero si lo cortas donde se ve
+    #  el armado -que debe ser el lado corto- si rellena la seccion». Es la convencion de cualquier
+    #  plano de obra: el relleno dice «aqui el plano cruza la pieza y esto es su seccion, la cara
+    #  donde va el armado». Rellenando tambien lo que se ve de costado, el alzado deja de decir por
+    #  donde pasa el corte.
+    #
+    #  El castillo de area «K 15X80» es el caso claro: cortado por su lado de 15 es una seccion -se
+    #  rellena- y cortado a lo largo de sus 80 es un costado -solo su linea-. Una seccion CUADRADA
+    #  se ve en seccion siempre, asi que un castillo de 15x15 se rellena se corte por donde se
+    #  corte, que es lo que ya pasaba y hay que conservar.
+    check("se rellena solo lo que se ve en seccion",
+          "public static bool PorSuLadoCorto(ElementoPlanta el, bool enX)" in corte
+          and "bool EnSeccion = true);" in corte
+          and "EnSeccion: PorSuLadoCorto(el, enX))" in corte
+          and 'P("CORTE_RELLENAR_SOLO_EN_SECCION", "SI",' in cfgp)
+    check("y el dibujante lo mira antes de rellenar",
+          "var enSeccion = p.EnSeccion" in cortedib
+          and '|| !_cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);' in cortedib
+          and "if (p.Cortada && enSeccion &&" in cortedib)
+    # La barra que CRUZA el corte se ve de canto -esa es su seccion, la del armado- y la que corre a
+    # lo largo, de costado. El muro y la losa, de costado siempre: se leen por su paño y su franja.
+    check("la barra de canto va en seccion y la que corre a lo largo, no",
+          "EnSeccion: false);\n    }" in corte
+          and corte.count("EnSeccion: false)") >= 3)
+    # Una seccion cuadrada se ve en seccion siempre.
+    check("y una seccion cuadrada se ve en seccion siempre",
+          "if (largo - corto <= 0.02)" in corte
+          and "return AnchoVisto(el, enX) < (corto + largo) / 2;" in corte)
+
+    # ------------------------------------------------------------------
+    # QUE LADO DEL CORTE SE MIRA
+    # ------------------------------------------------------------------
+    #  «Y ver que lado del corte quieres ver: si es en X, si quieres ver lo de arriba o abajo del
+    #  corte, y si es en Y el corte, si quieres ver el lado derecho o izquierdo».
+    #
+    #  Un corte mira hacia un lado: lo de detras se ve y lo de delante se quita. Estaba fijo hacia
+    #  las coordenadas mayores, y eso deja cortes en los que no se ve NADA al fondo porque el
+    #  edificio esta del otro lado del plano.
+    check("se elige que lado del corte se mira",
+          "bool haciaMas = true)" in corte
+          and "return haciaMas\n            ? min > ordenada + margen\n"
+              "            : max < ordenada - margen;" in corte
+          and "public bool HaciaMas { get; set; } = true;" in dtop2)
+    check("y la ventana lo pregunta",
+          'x:Name="LadoDelCorteCombo"' in xaml
+          and "HaciaMas = LadoDelCorteCombo?.SelectedIndex != 1" in winp
+          and "c.Elementos, c.EnX, c.Ordenada, c.EspesorM,\n"
+              '            _cfg.Bandera("CORTE_VER_EL_FONDO", true), c.HaciaMas);' in cortedib)
 
     # ------------------------------------------------------------------
     # EL FONDO, UNA SILUETA: LA FUNCION «COMO LA DE REVIT»
@@ -4661,7 +4714,8 @@ def v18_planta_autocad() -> None:
           'P("CORTE_RELLENAR_COLUMNAS", "SI",' in cfgp
           and "private void RellenarPieza(object? pl, string capa, int color)" in cortedib
           and "h.Color = color;" in cortedib
-          and 'if (p.Cortada && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))' in cortedib
+          and 'if (p.Cortada && enSeccion && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))'
+              in cortedib
           and "var color = ColorDelRellenoEnElCorte(p);" in cortedib)
     # EL ESPESOR DE LA LOSA NO SE INVENTA: esto es un plano, la franja se mide y se acota, asi
     # que un espesor a dedo no es una aproximacion, es un dato falso. Sin el, sale una LINEA.

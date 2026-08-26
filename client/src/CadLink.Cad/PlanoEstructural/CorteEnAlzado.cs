@@ -33,10 +33,15 @@ public static class CorteEnAlzado
     /// <b>ve al fondo</b>. En un corte de verdad se dibujan las dos cosas: lo que se corta y
     /// lo que se ve detrás.
     /// </param>
+    /// <param name="EnSeccion">
+    /// <c>true</c> si lo que se ve es la <b>sección</b> de la pieza —el plano la cruza por su
+    /// lado corto, que es donde se dibuja el armado—; <c>false</c> si el corte va <b>a lo largo</b>
+    /// de ella y lo que se ve es su costado.
+    /// </param>
     public sealed record Pieza(
         ClasePlanta Clase, string Etiqueta, string Seccion,
         double X, double Z, double Ancho, double Alto,
-        string Tipo = "", bool Cortada = true);
+        string Tipo = "", bool Cortada = true, bool EnSeccion = true);
 
     /// <summary>Espesor mínimo con el que se dibuja algo, en metros.</summary>
     private const double Minimo = 0.02;
@@ -168,7 +173,7 @@ public static class CorteEnAlzado
     /// </remarks>
     public static List<Pieza> Piezas(
         IReadOnlyList<ElementoPlanta> elementos, bool enX, double ordenada, double espesorM,
-        bool verElFondo = true)
+        bool verElFondo = true, bool haciaMas = true)
     {
         var piezas = new List<Pieza>();
 
@@ -187,7 +192,7 @@ public static class CorteEnAlzado
             //  y el fondo más flojo, como en cualquier plano de obra.
             var cortada = Entra(el, enX, ordenada, espesorM);
 
-            if (!cortada && !(verElFondo && AlFondo(el, enX, ordenada, espesorM)))
+            if (!cortada && !(verElFondo && AlFondo(el, enX, ordenada, espesorM, haciaMas)))
             {
                 continue;
             }
@@ -355,24 +360,43 @@ public static class CorteEnAlzado
     /// </summary>
     /// <remarks>
     /// <para>
-    /// «Detrás» es hacia las coordenadas <b>mayores</b> que la del corte: se mira en el sentido
-    /// en que crece el eje, que es el mismo criterio con el que la vista extruida se pone de
-    /// frente al corte. Así lo que se ve en la pantalla y lo que se dibuja coinciden.
+    /// Un corte <b>mira hacia un lado</b>: lo que queda por detrás se ve y lo que queda por
+    /// delante se quita, que es lo que hace que el plano enseñe algo en lugar de todo. Y qué lado
+    /// es «detrás» <b>lo elige quien dibuja</b>, con <paramref name="haciaMas"/>:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     En un corte cuyo plano está en <b>X</b> —la línea corre en Y— se elige entre ver lo de
+    ///     la <b>derecha</b> (X mayores) o lo de la <b>izquierda</b>.
+    ///   </item>
+    ///   <item>
+    ///     En uno cuyo plano está en <b>Y</b> —la línea corre en X— entre lo de <b>arriba</b>
+    ///     (Y mayores) o lo de <b>abajo</b>.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Antes era siempre hacia las coordenadas mayores, y eso dejaba cortes en los que no se veía
+    /// nada al fondo: el edificio estaba del otro lado. Es lo mismo que voltear un corte en
+    /// cualquier programa de modelado.
     /// </para>
     /// <para>
-    /// Y solo entra lo que está <b>del todo</b> detrás: lo que cruza la rebanada ya se dibujó
+    /// Y solo entra lo que está <b>del todo</b> a ese lado: lo que el plano cruza ya se dibujó
     /// como cortado, y meterlo dos veces dejaría dos rectángulos encima del otro.
     /// </para>
     /// </remarks>
     public static bool AlFondo(
-        ElementoPlanta el, bool enX, double ordenada, double espesorM)
+        ElementoPlanta el, bool enX, double ordenada, double espesorM, bool haciaMas = true)
     {
-        var (min, _) = Extremos(el, enX);
+        var (min, max) = Extremos(el, enX);
 
         // El mismo margen que usa «cortado», para que ningún elemento sea las dos cosas: lo que
-        // el plano cruza se dibuja cortado y lo que queda detrás, al fondo. Sin el mismo margen
-        // en las dos preguntas, los de la frontera salían dos veces, uno encima del otro.
-        return min > ordenada + MedioPerpendicular(el, enX) + Holgura(espesorM);
+        // el plano cruza se dibuja cortado y lo que queda al lado que se mira, al fondo. Sin el
+        // mismo margen en las dos preguntas, los de la frontera salían dos veces, encimados.
+        var margen = MedioPerpendicular(el, enX) + Holgura(espesorM);
+
+        return haciaMas
+            ? min > ordenada + margen
+            : max < ordenada - margen;
     }
 
     /// <summary>
@@ -520,9 +544,11 @@ public static class CorteEnAlzado
             var espesor = el.AnchoM > Minimo ? el.AnchoM : 0;
             var largo = max - min;
 
+            // La losa se ve por su canto a lo largo de todo el corte: es un corte LONGITUDINAL
+            // de ella, no su sección, así que va con su línea y sin relleno.
             return largo > Minimo
                 ? new Pieza(el.Clase, el.Etiqueta, el.Seccion,
-                            min, zArriba - espesor, largo, espesor, el.Tipo)
+                            min, zArriba - espesor, largo, espesor, el.Tipo, EnSeccion: false)
                 : null;
         }
 
@@ -539,9 +565,10 @@ public static class CorteEnAlzado
             //  perdía su franja.
             var alto = (zArriba - AlturaQueTapaLaCadena(el, todos)) - zAbajo;
 
+            // El muro se ve de frente, no en sección: es su paño.
             return alto > Minimo && max - min > Minimo
                 ? new Pieza(el.Clase, el.Etiqueta, el.Seccion,
-                            min, zAbajo, max - min, alto, el.Tipo)
+                            min, zAbajo, max - min, alto, el.Tipo, EnSeccion: false)
                 : null;
         }
 
@@ -567,7 +594,8 @@ public static class CorteEnAlzado
             // Una columna de altura nula no es una columna: es un nudo mal leído.
             return alto > Minimo
                 ? new Pieza(el.Clase, el.Etiqueta, el.Seccion,
-                            ((min + max) / 2) - (ancho / 2), zAbajo, ancho, alto, el.Tipo)
+                            ((min + max) / 2) - (ancho / 2), zAbajo, ancho, alto, el.Tipo,
+                            EnSeccion: PorSuLadoCorto(el, enX))
                 : null;
         }
 
@@ -580,6 +608,14 @@ public static class CorteEnAlzado
         // cruzando.
         var deCanto = largoBarra <= (el.AnchoM > Minimo ? el.AnchoM : 0.20) + 0.01;
 
+        // ==============================================================================
+        //  DE CANTO ES SU SECCIÓN; A LO LARGO, SU COSTADO
+        // ==============================================================================
+        //  Es la convención de cualquier plano de obra, y es lo que se pidió: la barra que el
+        //  plano CRUZA se ve por su sección —el lado corto, el que lleva el armado y los
+        //  estribos— y esa se rellena; la que corre A LO LARGO del corte se ve de costado, y esa
+        //  va solo con su línea. Rellenar las dos es decir que las dos están cortadas igual, y
+        //  entonces el alzado no dice por dónde pasa el plano.
         if (deCanto)
         {
             var ancho = el.AnchoM > Minimo ? el.AnchoM : 0.20;
@@ -611,7 +647,44 @@ public static class CorteEnAlzado
 
         return new Pieza(el.Clase, el.Etiqueta, el.Seccion,
                          min - mediaA, zAbajo - peralte,
-                         largoBarra + mediaA + mediaB, peralte, el.Tipo);
+                         largoBarra + mediaA + mediaB, peralte, el.Tipo,
+                         EnSeccion: false);
+    }
+
+    /// <summary>
+    /// ¿El plano corta a esta sección por su <b>lado corto</b>, o sea la ve <b>en sección</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la pregunta que decide si la pieza se rellena. Lo que se ve en el alzado es la sección
+    /// proyectada; si lo que se ve es su lado <b>corto</b>, el plano la está cruzando y lo que hay
+    /// ahí es <b>su sección</b>: la cara donde se dibuja el armado. Si lo que se ve es su lado
+    /// <b>largo</b>, el corte va a lo largo de la pieza y lo que se ve es su <b>costado</b>.
+    /// </para>
+    /// <para>
+    /// Es el caso del castillo de área «K 15X80»: cortado por su lado de 15 es una sección —se
+    /// rellena—, y cortado a lo largo de sus 80 es un costado —solo su línea—. En una sección
+    /// <b>cuadrada</b> las dos medidas son la misma, así que siempre se ve «en sección», que es lo
+    /// que corresponde: un castillo de 15×15 se rellena se corte por donde se corte.
+    /// </para>
+    /// </remarks>
+    public static bool PorSuLadoCorto(ElementoPlanta el, bool enX)
+    {
+        var b = el.AnchoM > Minimo ? el.AnchoM : 0.15;
+        var h = el.PeralteM > Minimo ? el.PeralteM : b;
+
+        var corto = Math.Min(b, h);
+        var largo = Math.Max(b, h);
+
+        // Cuadrada —o casi—: no hay lado largo que valga, y se ve en sección siempre.
+        if (largo - corto <= 0.02)
+        {
+            return true;
+        }
+
+        // Lo que se ve tiene que parecerse al lado CORTO, no al largo. Se compara con el punto
+        // medio de los dos para que un giro de unos grados no cambie la respuesta.
+        return AnchoVisto(el, enX) < (corto + largo) / 2;
     }
 
     /// <summary>

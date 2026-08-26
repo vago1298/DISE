@@ -223,6 +223,23 @@ public sealed class CorteCad
     /// <summary>Los elementos de TODOS los niveles, con su cota.</summary>
     public List<ElementoPlanta> Elementos { get; } = new();
 
+    /// <summary>
+    /// Qué <b>lado</b> del corte se mira: el de las coordenadas mayores, o el otro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió poder elegirlo, y hace falta: un corte mira hacia un lado —lo de detrás se ve y lo
+    /// de delante se quita— y con el lado fijo hay cortes en los que no se ve nada al fondo, porque
+    /// el edificio está del otro lado.
+    /// </para>
+    /// <para>
+    /// Con el plano en <b>X</b> —la línea corre en Y— es elegir entre ver lo de la <b>derecha</b>
+    /// o lo de la <b>izquierda</b>; con el plano en <b>Y</b>, entre lo de <b>arriba</b> o lo de
+    /// <b>abajo</b>. Es voltear el corte, como en cualquier programa de modelado.
+    /// </para>
+    /// </remarks>
+    public bool HaciaMas { get; set; } = true;
+
     /// <summary>Los niveles con su cota, para rotularlos en el corte.</summary>
     public List<(string Nombre, double Z)> Niveles { get; } = new();
 

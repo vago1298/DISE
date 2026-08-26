@@ -1901,6 +1901,20 @@
                                          VerticalAlignment="Center"
                                          ToolTip="En que valor de Y quieres el corte. Varios, separados por comas: 2.10, 8. Un numero es la COORDENADA; si ahi hay un eje, el corte se rotula con su nombre. Un texto que no sea numero se busca como nombre de eje de esa direccion." />
 
+                                <!-- QUE LADO DEL CORTE SE MIRA. Un corte mira hacia un lado:
+                                     lo de detras se ve y lo de delante se quita. Con el lado
+                                     fijo hay cortes en los que no se ve nada al fondo, porque
+                                     el edificio esta del otro lado. Es voltear el corte, como
+                                     en cualquier programa de modelado. -->
+                                <TextBlock Text="Ver:" FontSize="11.5" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="10,0,6,0" />
+                                <ComboBox x:Name="LadoDelCorteCombo" Width="150"
+                                          VerticalAlignment="Center"
+                                          ToolTip="Que lado del corte se ve al fondo. En un corte en X -la linea corre en Y- es elegir entre lo de la derecha o lo de la izquierda; en uno en Y, entre lo de arriba o lo de abajo.">
+                                    <ComboBoxItem Content="derecha / arriba" IsSelected="True" />
+                                    <ComboBoxItem Content="izquierda / abajo" />
+                                </ComboBox>
+
                                 <!-- SOLO LA CUADRICULA: para montarla sobre un plano de
                                      arquitectura que ya existe, o para replantear con las
                                      cotas de los ejes y nada mas. Dibujar la estructura

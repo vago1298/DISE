@@ -1434,7 +1434,13 @@ public partial class MainWindow : Window
                 Ordenada = q.Ordenada,
                 EspesorM = CfgPlano.Numero("CORTE_ESPESOR_CM", 60) / 100,
                 Modelo = _modeloEtabs.Archivo,
-                AlturaTexto = 0.25
+                AlturaTexto = 0.25,
+
+                // EL LADO QUE SE MIRA, el de la lista: en un corte en X es ver lo de la derecha o
+                // lo de la izquierda, y en uno en Y lo de arriba o lo de abajo. Con el lado fijo
+                // hay cortes en los que no se ve nada al fondo, porque el edificio está del otro
+                // lado del plano.
+                HaciaMas = LadoDelCorteCombo?.SelectedIndex != 1
             };
 
             // TODOS los niveles: es un corte, no una planta.

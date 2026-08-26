@@ -58,7 +58,9 @@ public sealed partial class PlantaDrawer
                     : 0);
         }
 
-        var piezas = CorteEnAlzado.Piezas(c.Elementos, c.EnX, c.Ordenada, c.EspesorM);
+        var piezas = CorteEnAlzado.Piezas(
+            c.Elementos, c.EnX, c.Ordenada, c.EspesorM,
+            _cfg.Bandera("CORTE_VER_EL_FONDO", true), c.HaciaMas);
 
         if (piezas.Count == 0)
         {
@@ -141,7 +143,16 @@ public sealed partial class PlantaDrawer
                 //  verde. En un corte por un muro hay tres piezas de concreto distintas a la
                 //  vista —el castillo que sube, la cadena que cierra y la trabe que carga— y
                 //  del contorno solo no se distinguen: las tres son un rectángulo.
-                if (p.Cortada && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
+                //  Y SOLO LO QUE SE VE EN SECCIÓN. Se pidió: «si cortas a lo largo de la
+                //  sección solo dale el tipo de línea, pero si lo cortas donde se ve el armado
+                //  —que debe ser el lado corto— sí rellena la sección». Es la convención de
+                //  cualquier plano de obra: el relleno dice «aquí el plano cruza la pieza y esto
+                //  es su sección, la cara donde va el armado». Rellenando también lo que se ve de
+                //  costado, el alzado deja de decir por dónde pasa el corte.
+                var enSeccion = p.EnSeccion
+                                || !_cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", true);
+
+                if (p.Cortada && enSeccion && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))
                 {
                     var color = ColorDelRellenoEnElCorte(p);
 

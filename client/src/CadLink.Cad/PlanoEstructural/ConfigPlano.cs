@@ -727,6 +727,8 @@ public sealed class ConfigPlano
           "NO = no escribir el nombre de la cadena encima de un castillo de area"),
         P("CADENA_DESPLANTE_CONTINUA", "SI",
           "SI = la cadena de DESPLANTE va con linea continua en cualquier nivel"),
+        P("CORTE_RELLENAR_SOLO_EN_SECCION", "SI",
+          "SI = rellenar solo lo que el corte cruza por su lado corto (su seccion)"),
         P("CORTE_COLOR_RELLENO_CADENA", "6",
           "COLOR DEL RELLENO DE LAS CADENAS CORTADAS (6 = morado)"),
         P("CORTE_COLOR_RELLENO_TRABE", "3",

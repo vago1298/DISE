@@ -2159,6 +2159,59 @@ Check("ese se ve al fondo",
 Check("y lo cortado no esta tambien al fondo",
       !CorteEnAlzado.AlFondo(MuroEnY(5), enX: true, ordenada: 5, espesorM: 0.60));
 
+// Y SE ELIGE QUE LADO SE MIRA. Un corte mira hacia un lado: lo de detras se ve y lo de delante se
+// quita. Con el lado fijo hay cortes en los que no se ve NADA al fondo, porque el edificio esta del
+// otro lado del plano. En un corte en X es elegir entre ver lo de la derecha o lo de la izquierda.
+var muroALaDerecha = MuroEnY(8);
+var muroALaIzquierda = MuroEnY(2);
+
+Check("mirando a la derecha se ve el de la derecha",
+      CorteEnAlzado.AlFondo(muroALaDerecha, enX: true, ordenada: 5, espesorM: 0.60,
+                            haciaMas: true));
+Check("y no el de la izquierda",
+      !CorteEnAlzado.AlFondo(muroALaIzquierda, enX: true, ordenada: 5, espesorM: 0.60,
+                             haciaMas: true));
+
+Check("mirando a la izquierda se ve el de la izquierda",
+      CorteEnAlzado.AlFondo(muroALaIzquierda, enX: true, ordenada: 5, espesorM: 0.60,
+                            haciaMas: false));
+Check("y no el de la derecha",
+      !CorteEnAlzado.AlFondo(muroALaDerecha, enX: true, ordenada: 5, espesorM: 0.60,
+                             haciaMas: false));
+
+// Y lo CORTADO sale con las dos, que para eso es el corte.
+Igual("lo cortado sale se mire hacia donde se mire", 1,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { MuroEnY(5) }, enX: true, ordenada: 5, espesorM: 0.60,
+          verElFondo: true, haciaMas: false).Count);
+
+// Con el fondo del otro lado, el corte trae las dos piezas: la cortada y la del lado que se mira.
+// El muro del fondo va en OTRO TRAMO -de Y = 5 a Y = 8- porque si cayera en el mismo sitio que el
+// cortado seria la misma silueta y se quitaria, que es lo que se arreglo antes.
+var muroIzquierdaOtroTramo = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Tipo = "MURO", Seccion = "MURO 15",
+    X1 = 2, Y1 = 5, X2 = 2, Y2 = 8, Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+};
+
+Igual("mirando a la izquierda salen la cortada y la de la izquierda", 2,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { MuroEnY(5), muroIzquierdaOtroTramo, muroALaDerecha },
+          enX: true, ordenada: 5, espesorM: 0.60, verElFondo: true, haciaMas: false).Count);
+// Y mirando a la derecha sale la otra, no esta.
+Igual("y mirando a la derecha, la cortada y la de la derecha", 2,
+      CorteEnAlzado.Piezas(
+          new List<ElementoPlanta>
+          {
+              MuroEnY(5), muroIzquierdaOtroTramo,
+              new()
+              {
+                  Clase = ClasePlanta.Muro, Tipo = "MURO", Seccion = "MURO 15",
+                  X1 = 8, Y1 = 5, X2 = 8, Y2 = 8, Z1 = 0, Z2 = 2.5, AnchoM = 0.15
+              }
+          },
+          enX: true, ordenada: 5, espesorM: 0.60, verElFondo: true, haciaMas: true).Count);
+
 // UN MURO MAS GRUESO CRUZA DESDE MAS LEJOS, porque lo que cuenta es su ancho: uno de 60 cm con su
 // eje a 25 cm si cruza la linea.
 Check("un muro de 60 con su eje a 25 cm si cruza",
@@ -2207,6 +2260,62 @@ Cerca("un 15x15 se ve de 15 en cualquier direccion", 0.15,
       CorteEnAlzado.AnchoVisto(
           new ElementoPlanta { Clase = ClasePlanta.Columna, AnchoM = 0.15, PeralteM = 0.15 },
           enX: true));
+
+// SE RELLENA LO QUE SE VE EN SECCION, NO LO QUE SE VE DE COSTADO. Se pidio: «si cortas a lo largo
+// de la seccion solo dale el tipo de linea, pero si lo cortas donde se ve el armado -que debe ser
+// el lado corto- si rellena la seccion». Es la convencion de cualquier plano de obra: el relleno
+// dice «aqui el plano cruza la pieza y esto es su seccion, la cara donde va el armado».
+//
+// El castillo de 15x80 cortado por su lado de 15 es una SECCION; cortado a lo largo de sus 80 es un
+// COSTADO.
+Check("el castillo de 15x80 cortado por su lado corto se ve en seccion",
+      CorteEnAlzado.PorSuLadoCorto(castilloDeArea80, enX: false));
+Check("y a lo largo de sus 80, no",
+      !CorteEnAlzado.PorSuLadoCorto(castilloDeArea80, enX: true));
+
+// Y se ve en la pieza, que es lo que mira el dibujante para rellenar o no.
+// El castillo esta en X = 5, Y = 2: el corte por Y = 2 lo cruza por su lado de 15.
+var piezaCastilloCorto = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { castilloDeArea80 }, enX: false, ordenada: 2, espesorM: 0.60)[0];
+
+Check("la pieza cortada por el lado corto va en seccion", piezaCastilloCorto.EnSeccion);
+Cerca("y mide sus 15", 0.15, piezaCastilloCorto.Ancho);
+
+// Y el corte por X = 5 va a lo largo de sus 80.
+var piezaCastilloLargo = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { castilloDeArea80 }, enX: true, ordenada: 5, espesorM: 0.60)[0];
+
+Check("la cortada a lo largo NO va en seccion", !piezaCastilloLargo.EnSeccion);
+Cerca("y mide sus 80", 0.80, piezaCastilloLargo.Ancho);
+
+// UNA SECCION CUADRADA se ve en seccion siempre: un castillo de 15x15 se rellena se corte por
+// donde se corte, que es lo que ya pasaba y hay que conservar.
+var castillo15 = new ElementoPlanta
+{
+    Clase = ClasePlanta.Columna, Tipo = "CASTILLO", AnchoM = 0.15, PeralteM = 0.15
+};
+Check("un 15x15 se ve en seccion en las dos direcciones",
+      CorteEnAlzado.PorSuLadoCorto(castillo15, enX: true)
+      && CorteEnAlzado.PorSuLadoCorto(castillo15, enX: false));
+
+// LA TRABE QUE CRUZA EL CORTE se ve DE CANTO: esa es su seccion, la del armado.
+var piezaTrabeDeCanto = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { trabeQueCruzaElCorte }, enX: true, ordenada: 5,
+    espesorM: 0.60)[0];
+
+Check("la trabe que cruza el corte se ve en seccion", piezaTrabeDeCanto.EnSeccion);
+
+// Y LA QUE CORRE A LO LARGO se ve de costado: solo su linea.
+var piezaTrabeALoLargo = CorteEnAlzado.Piezas(
+    new List<ElementoPlanta> { enElEje[1] }, enX: true, ordenada: 5, espesorM: 0.60)[0];
+
+Check("y la que corre a lo largo, de costado", !piezaTrabeALoLargo.EnSeccion);
+
+// EL MURO Y LA LOSA nunca van en seccion: se leen por su paño y por su franja.
+Check("el muro no va en seccion",
+      !CorteEnAlzado.Piezas(
+          new List<ElementoPlanta> { MuroEnY(5) }, enX: true, ordenada: 5,
+          espesorM: 0.60)[0].EnSeccion);
 
 // EL MURO LLEGA AL PAÑO DE ABAJO DE SU CADENA. En el modelo el muro sube hasta la cota del nivel
 // -que es el EJE de la cadena-, asi que dibujandolo tal cual se mete el peralte entero dentro de

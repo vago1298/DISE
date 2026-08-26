@@ -83,10 +83,11 @@ var cfg = new ConfigPlano();
 //   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
 //   CAPA_MURO_CONCRETO / COLOR_MURO_CONCRETO / MURO_CONCRETO_CAPA_PROPIA
 //                                   el muro de concreto sin cadena, en E-MURO DE CONCRETO
+//   CORTE_RELLENAR_SOLO_EN_SECCION  se rellena lo que el corte cruza por su lado corto
 //   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
 //   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta que se añadieron",
-      310, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cincuenta y uno que se añadieron",
+      311, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -271,6 +272,11 @@ Check("la cadena de desplante va continua en cualquier nivel",
 // LOS RELLENOS DEL CORTE, cada pieza de su color: el castillo amarillo -como en la planta-, la
 // cadena morada y la trabe verde. En un corte por un muro hay tres piezas de concreto distintas a
 // la vista y del contorno solo no se distinguen: las tres son un rectangulo.
+// Y SOLO LO QUE SE VE EN SECCION: lo que el corte cruza por su lado corto -la cara donde va el
+// armado-. Lo que se ve de costado va solo con su linea.
+Check("se rellena solo lo que se ve en seccion",
+      cfg.Bandera("CORTE_RELLENAR_SOLO_EN_SECCION", false));
+
 Igual("la cadena cortada se rellena de morado",
       6.0, cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 0));
 Igual("y la trabe de verde", 3.0, cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 0));
@@ -289,7 +295,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 310 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 311 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
