@@ -142,6 +142,9 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private List<ElementoPlanta> _castillosDeArea = new();
 
+    /// <summary>Cuántos nombres de cadena se callaron por caer sobre un castillo de área.</summary>
+    private int _rotulosSobreCastillo;
+
     public PlantaDrawer(dynamic doc)
     {
         _doc = doc;
@@ -202,6 +205,7 @@ public sealed partial class PlantaDrawer
         _abajoDeLosEjes = null;
         _cadenasTapadas = new HashSet<ElementoPlanta>();
         _castillosDeArea = new List<ElementoPlanta>();
+        _rotulosSobreCastillo = 0;
 
         AsegurarCapas();
         AsegurarEstiloTexto();
@@ -455,6 +459,12 @@ public sealed partial class PlantaDrawer
         // los muros que se quedaron sin pier, en lugar de uno por elemento.
         ResumirEspesores();
         ResumirPiers();
+
+        if (_rotulosSobreCastillo > 0)
+        {
+            Nota($"{_rotulosSobreCastillo} nombre(s) de cadena no se escribieron: caían encima " +
+                 "de un castillo de área, sobre su relleno y sobre su propio rótulo.");
+        }
 
         return r;
     }
@@ -1864,20 +1874,6 @@ public sealed partial class PlantaDrawer
             return;
         }
 
-        // ==============================================================================
-        //  Y ENCIMA DE UN CASTILLO DE ÁREA NO VA EL NOMBRE DE LA CADENA
-        // ==============================================================================
-        //  Se pidió. La cadena que muere en un castillo de área es corta —a veces mide lo que el
-        //  castillo—, y su rótulo va al CENTRO de la barra: ese centro cae dentro del castillo,
-        //  así que el nombre de la cadena acababa escrito sobre el amarillo y encima del rótulo
-        //  del propio castillo, que es el que dice lo que hay que construir ahí.
-        if (el.Clase == ClasePlanta.Trabe
-            && !_cfg.Bandera("CADENA_ROTULO_EN_CASTILLO_AREA", false)
-            && PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaEn(cx, cy, _castillosDeArea))
-        {
-            return;
-        }
-
         // ---- COLUMNA Y CASTILLO: esquina superior derecha ---------------------------
         //  Con el estilo TEXTO_SECCIONES y anclado por su esquina INFERIOR IZQUIERDA
         //  —la alineación 12 de la macro—, así que el texto crece hacia arriba y hacia la
@@ -1973,6 +1969,31 @@ public sealed partial class PlantaDrawer
         var altTrabe = esCadena ? AlturaCadenas(altura) : AlturaSecciones(altura);
         var estilo = esCadena ? EstiloCadenas : EstiloSecciones;
         var fondo = esCadena && _cfg.Bandera("CADENA_TEXTO_FONDO", true);
+
+        // ==============================================================================
+        //  EL NOMBRE DE LA CADENA NO SE ESCRIBE ENCIMA DE UN CASTILLO DE ÁREA
+        // ==============================================================================
+        //  Se pidió, y hay que medir EL TEXTO, no su punto de inserción, que es lo que fallaba
+        //  antes: el rótulo es un MTEXT CENTRADO en la barra, así que el texto se extiende a los
+        //  dos lados. Una cadena de 60 cm entre dos castillos tiene su centro ENTRE los dos
+        //  —fuera de los dos— y «CC 15X25» mide más que la propia cadena: el punto no caía en
+        //  ningún castillo y el texto los tapaba igual.
+        //
+        //  Se mide como el ancho de omisión de AnchoDeTexto —largo por altura por 0.55—, que es
+        //  la cuenta que ya se usa aquí cuando AutoCAD no da la caja del texto.
+        if (esCadena && !_cfg.Bandera("CADENA_ROTULO_EN_CASTILLO_AREA", false))
+        {
+            var medioTexto = texto.Length * altTrabe * 0.55 / 2;
+            var ex = dx / largo * medioTexto;
+            var ey = dy / largo * medioTexto;
+
+            if (PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaBajoElTexto(
+                    cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea))
+            {
+                _rotulosSobreCastillo++;
+                return;
+            }
+        }
 
         Mtexto(cx, cy, texto, altTrabe, CapaTextos, ang, estilo, fondo);
     }

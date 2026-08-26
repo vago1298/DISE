@@ -725,6 +725,8 @@ public sealed class ConfigPlano
           "SI = de varias cadenas en la misma linea, en planta solo la mas alta"),
         P("CADENA_ROTULO_EN_CASTILLO_AREA", "NO",
           "NO = no escribir el nombre de la cadena encima de un castillo de area"),
+        P("CADENA_DESPLANTE_CONTINUA", "SI",
+          "SI = la cadena de DESPLANTE va con linea continua en cualquier nivel"),
         P("DIBUJAR_EJES", "SI", "Dibujar la cuadricula con burbujas"),
         P("LINETYPE_EJES", "DASHDOT", "Tipo de linea de la capa E-EJES"),
         P("EJES_ESCALA_TIPOLINEA", "1", "LinetypeScale de las lineas de eje (1 = no tocar)"),

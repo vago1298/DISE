@@ -1219,6 +1219,26 @@ public sealed partial class PlantaDrawer
             return null;
         }
 
+        // ==============================================================================
+        //  LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
+        // ==============================================================================
+        //  Se pidió: «las que digan CADENA DE DESPLANTE, todas sus líneas deben ser continuas,
+        //  no punteadas, no importa si hay en niveles arriba, siempre debe ser continua».
+        //
+        //  Y es lo correcto, por lo mismo que en la cimentación: una cadena de DESPLANTE no
+        //  lleva muro debajo POR DEFINICIÓN —desplanta, es la primera—, así que la regla de
+        //  «sin muro debajo → a trazos» se las llevaba todas a la línea punteada y el aviso
+        //  dejaba de avisar de nada. Lo que estaba mal era pedirlo solo en el nivel de
+        //  cimentación: una cadena de desplante en un nivel intermedio —el arranque de un muro
+        //  que nace en una losa, o el de una planta alta— es igual de desplante, y salía
+        //  punteada. Se mira su TIPO, que sale de las notas de la propiedad, así que basta con
+        //  que el modelo lo diga.
+        if (_cfg.Bandera("CADENA_DESPLANTE_CONTINUA", true)
+            && (el.Tipo ?? string.Empty).Contains("DESPLANTE", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
         // Solo las cadenas y las dalas: una trabe de entrepiso no lleva muro debajo y no
         // tiene por qué marcarse.
         if (!EsCadena(el))

@@ -1971,6 +1971,38 @@ var deFrame = new List<ElementoPlanta>
 Check("un castillo de frame no calla a nadie",
       !CastilloDeMuro.HayCastilloDeAreaEn(5, 0.10, deFrame));
 
+// LO QUE FALLABA: MIRAR EL PUNTO Y NO EL TEXTO. El rotulo de una cadena es un MTEXT CENTRADO en
+// la barra, asi que el texto se extiende a los dos lados de su punto de insercion. Una cadena de
+// 45 cm entre dos castillos tiene su centro ENTRE los dos -fuera de los dos- y su nombre,
+// «CC 15X25», mide mas que la propia cadena: el punto no caia dentro de ningun castillo y el
+// texto los tapaba igual. Eso es lo que se seguia viendo en el plano.
+var dosCastillos = new List<ElementoPlanta>
+{
+    PanelCastillo(5, 0, 5, 0.20, 0, 2.5),
+    PanelCastillo(5.6, 0, 5.6, 0.20, 0, 2.5)
+};
+CastilloDeMuro.Normalizar(dosCastillos, 0.15);
+
+// El centro de la cadena que va de un castillo al otro: entre los dos, y en ninguno.
+Check("el punto del rotulo NO cae en ningun castillo -por eso no bastaba-",
+      !CastilloDeMuro.HayCastilloDeAreaEn(5.3, 0.10, dosCastillos));
+// Pero su texto, de un metro, pasa por encima de los dos.
+Check("y su texto SI pasa por encima",
+      CastilloDeMuro.HayCastilloDeAreaBajoElTexto(4.8, 0.10, 5.8, 0.10, dosCastillos));
+
+// Una cadena larga tiene su nombre lejos de los castillos: ese si se escribe.
+Check("el nombre de una cadena larga no estorba",
+      !CastilloDeMuro.HayCastilloDeAreaBajoElTexto(7.5, 0.10, 8.5, 0.10, dosCastillos));
+
+// Y el texto que ACABA en el castillo tambien cuenta, no solo el que lo cruza.
+Check("un texto que acaba en el castillo tambien lo tapa",
+      CastilloDeMuro.HayCastilloDeAreaBajoElTexto(6.2, 0.10, 5.65, 0.10, dosCastillos));
+
+// Se pregunta cada cinco centimetros, asi que un castillo de quince no se cuela entre dos
+// preguntas: el texto de dos metros pasa por encima del que esta en medio.
+Check("un castillo de 15 no se cuela entre dos preguntas",
+      CastilloDeMuro.HayCastilloDeAreaBajoElTexto(4, 0.10, 6, 0.10, dosCastillos));
+
 // Y EL GIRO CUENTA: en un castillo a 45 grados la caja recta diria que si donde no lo hay.
 var giradoArea = new List<ElementoPlanta> { PanelCastillo(0, 0, 0.60, 0.60, 0, 2.5) };
 CastilloDeMuro.Normalizar(giradoArea, 0.15);

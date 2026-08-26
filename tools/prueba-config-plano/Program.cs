@@ -80,8 +80,9 @@ var cfg = new ConfigPlano();
 //   SHELL_CASTILLO_AL_PANO          y se alarga hasta el pano del muro con el que se cruza
 //   CADENA_SOLO_LA_MAS_ALTA         de varias cadenas en la misma linea, en planta solo una
 //   CADENA_ROTULO_EN_CASTILLO_AREA  y su nombre no va encima de un castillo de area
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y cuatro que se añadieron",
-      304, ConfigPlano.PorOmision.Count);
+//   CADENA_DESPLANTE_CONTINUA       la de desplante, con linea continua en cualquier nivel
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los cuarenta y cinco que se añadieron",
+      305, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -255,6 +256,10 @@ Check("en planta solo se dibuja la cadena mas alta",
       cfg.Bandera("CADENA_SOLO_LA_MAS_ALTA", false));
 Check("y su nombre no va encima de un castillo de area",
       !cfg.Bandera("CADENA_ROTULO_EN_CASTILLO_AREA", true));
+// LA DE DESPLANTE, SIEMPRE CONTINUA: no lleva muro debajo POR DEFINICION -desplanta, es la
+// primera-, asi que la regla de «sin muro debajo va a trazos» se las llevaba todas a la punteada.
+Check("la cadena de desplante va continua en cualquier nivel",
+      cfg.Bandera("CADENA_DESPLANTE_CONTINUA", false));
 
 // EL ROTULO DE LA PLANTA, A -0.50 DE LOS EJES, como en la hoja de la macro. Se probo con 5 y se
 // pidio volver: lo que estaba mal no era la distancia, sino DESDE DONDE se medía -desde la caja
@@ -266,7 +271,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 304 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 305 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

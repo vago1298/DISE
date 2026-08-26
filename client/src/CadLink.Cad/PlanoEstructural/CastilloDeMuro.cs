@@ -475,6 +475,57 @@ public static class CastilloDeMuro
     }
 
     /// <summary>
+    /// ¿Pasa el <b>texto</b> de un rótulo por encima de un castillo de área?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la pregunta de verdad, y por eso no bastaba con mirar el punto de inserción: el rótulo
+    /// de una cadena es un MTEXT <b>centrado</b> en la barra, así que el texto se extiende a los
+    /// dos lados de ese punto. Una cadena de 60 cm entre dos castillos tiene su centro <i>entre</i>
+    /// los dos —fuera de los dos— y su nombre, «CC 15X25», mide más que la cadena: el punto no
+    /// caía dentro de ningún castillo y el texto los tapaba igual. Eso es lo que se seguía viendo.
+    /// </para>
+    /// <para>
+    /// Se recorre el <b>trazo del texto</b> de punta a punta preguntando por cada tramo, así que
+    /// el castillo se detecta esté el texto encima, empezando en él o acabando en él. Se pregunta
+    /// cada cinco centímetros: un castillo mide quince, así que no se puede colar entre dos
+    /// preguntas.
+    /// </para>
+    /// </remarks>
+    public static bool HayCastilloDeAreaBajoElTexto(
+        double xA, double yA, double xB, double yB, IEnumerable<ElementoPlanta>? elementos)
+    {
+        if (elementos is null)
+        {
+            return false;
+        }
+
+        var dx = xB - xA;
+        var dy = yB - yA;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        // Un texto sin largo es su punto, y de eso ya sabe el método de al lado.
+        if (largo <= Nada)
+        {
+            return HayCastilloDeAreaEn(xA, yA, elementos);
+        }
+
+        var pasos = Math.Max(2, (int)Math.Ceiling(largo / 0.05));
+
+        for (var i = 0; i <= pasos; i++)
+        {
+            var t = (double)i / pasos;
+
+            if (HayCastilloDeAreaEn(xA + (dx * t), yA + (dy * t), elementos))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// El nombre de un castillo por su <b>medida en planta</b>: <c>K 15X23.5</c>.
     /// </summary>
     /// <remarks>

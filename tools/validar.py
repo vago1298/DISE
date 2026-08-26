@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con cuarenta y cuatro renglones añadidos",
-          cfgp.count("        P(") == 304
+    check("la hoja CONFIG de la macro esta portada, con cuarenta y cinco renglones añadidos",
+          cfgp.count("        P(") == 305
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "304, ConfigPlano.PorOmision.Count" in pr
+          and "305, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 22 capas", 22, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -5204,6 +5204,90 @@ def v18_planta_autocad() -> None:
     check("y va a la capa de las trabes",
           'if (t.Equals("CABEZAL", StringComparison.OrdinalIgnoreCase))' in capp2
           and 'return CapaDeTipo("TRABE");' in capp2)
+
+    # ------------------------------------------------------------------
+    # DE VARIAS CADENAS EN LA MISMA LINEA, SOLO LA MAS ALTA
+    # ------------------------------------------------------------------
+    #  «Si hay cadena intermedia abajo no lo muestres en planta, en planta solo muestra la cadena
+    #  mas alta que exista, solo dibuja una». Un muro de mamposteria lleva TRES cadenas sobre el
+    #  mismo paño -desplante, intermedia y cerramiento-: las tres son del mismo nivel y las tres
+    #  ocupan LA MISMA LINEA en planta, asi que se dibujaban las tres una encima de la otra, con
+    #  tres rotulos pisandose. Y en una planta no hay forma de distinguirlas: no tiene alturas.
+    cma = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CadenaMasAlta.cs"))
+
+    check("de varias cadenas en la misma linea solo se dibuja la mas alta",
+          "public static HashSet<ElementoPlanta> Tapadas(" in cma
+          and "public static double Arriba(ElementoPlanta el) => Math.Max(el.Z1, el.Z2);" in cma
+          and "PlanoEstructural.CadenaMasAlta.Tapadas(p.Elementos, tolCadena)" in dibp)
+    # SOLO LAS QUE SE ENCIMAN DE VERDAD: dos tramos seguidos del mismo paño son dos cadenas
+    # distintas -una de castillo a castillo y la siguiente de ahi al final- y las dos se dibujan.
+    check("y solo se tapa la que otra le pasa por encima",
+          "return Math.Min(a2, b2) - Math.Max(a1, b1) > tolM;" in cma)
+    # LAS TRABES NO ENTRAN: dos trabes a distinta altura sobre la misma linea son dos vigas de
+    # verdad -una de entrepiso y una de azotea- y callar una seria esconder estructura.
+    check("las trabes no entran, solo las cadenas y las dalas",
+          'StartsWith("CADENA", StringComparison.OrdinalIgnoreCase)' in cma
+          and 'Equals("DALA", StringComparison.OrdinalIgnoreCase)' in cma
+          and "el.Clase != ClasePlanta.Trabe" in cma)
+    # LA TAPADA NO SE DIBUJA NI SE ROTULA: si solo se quitara la geometria, su nombre seguiria
+    # escrito en el mismo punto que el de la de arriba, que era la mitad del problema.
+    check("la cadena tapada no se dibuja ni se rotula",
+          dibp.count("if (_cadenasTapadas.Contains(el))") == 2)
+    check("con su bandera y la holgura de la cadena",
+          '_cfg.Bandera("CADENA_SOLO_LA_MAS_ALTA", true)' in dibp
+          and 'P("CADENA_SOLO_LA_MAS_ALTA", "SI",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # NI EL NOMBRE DE LA CADENA ENCIMA DE UN CASTILLO DE AREA
+    # ------------------------------------------------------------------
+    #  «Cuando tenga un area sea castillo, no coloques el nombre de la cadena». Y SE MIDE EL
+    #  TEXTO, NO SU PUNTO DE INSERCION, que es lo que fallaba: el rotulo es un MTEXT CENTRADO en
+    #  la barra, asi que el texto se extiende a los dos lados. Una cadena de 45 cm entre dos
+    #  castillos tiene su centro ENTRE los dos -fuera de los dos- y «CC 15X25» mide mas que la
+    #  propia cadena: el punto no caia en ningun castillo y el texto los tapaba igual.
+    check("el nombre de la cadena no se escribe encima de un castillo de area",
+          "public static bool HayCastilloDeAreaEn(" in cdm
+          and "public static bool HayCastilloDeAreaBajoElTexto(" in cdm
+          and "PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaBajoElTexto(" in dibp
+          and 'P("CADENA_ROTULO_EN_CASTILLO_AREA", "NO",' in cfgplano)
+    # El ancho del texto, con la misma cuenta de omision que AnchoDeTexto: largo x altura x 0.55.
+    check("midiendo el ancho del texto como el resto del dibujante",
+          "var medioTexto = texto.Length * altTrabe * 0.55 / 2;" in dibp
+          and "cx - ex, cy - ey, cx + ex, cy + ey, _castillosDeArea)" in dibp)
+    # Cada cinco centimetros: un castillo mide quince, asi que no se cuela entre dos preguntas.
+    check("y recorriendo el texto de punta a punta",
+          "var pasos = Math.Max(2, (int)Math.Ceiling(largo / 0.05));" in cdm)
+    # SOLO LOS DE AREA -DeShell-: en un castillo de frame el nombre de la cadena nunca ha
+    # estorbado, y callarlo seria quitar un dato que si se lee.
+    check("y solo con los castillos de AREA, no con los de frame",
+          "public bool DeShell { get; set; }" in dtop2
+          and "if (!el.DeShell || el.Clase != ClasePlanta.Columna)" in cdm
+          and "_castillosDeArea = p.Elementos.Where(e => e.DeShell).ToList();" in dibp)
+    # Con el giro deshecho, como el recorte al pano: en un castillo a 45 grados la caja recta
+    # diria que si donde no lo hay.
+    check("midiendo contra la seccion ya girada",
+          "var lx = (rx * ca) + (ry * sa);" in cdm
+          and "if (Math.Abs(lx) <= b / 2 && Math.Abs(ly) <= h / 2)" in cdm)
+
+    # ------------------------------------------------------------------
+    # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
+    # ------------------------------------------------------------------
+    #  «Las que digan CADENA DE DESPLANTE, todas sus lineas deben ser continuas, no punteadas, no
+    #  importa si hay en niveles arriba». Es lo correcto por lo mismo que en la cimentacion: una
+    #  cadena de DESPLANTE no lleva muro debajo POR DEFINICION -desplanta, es la primera-, asi que
+    #  la regla de «sin muro debajo va a trazos» se las llevaba TODAS a la punteada y el aviso
+    #  dejaba de avisar. Lo que estaba mal era pedirlo solo en el nivel de CIMENTACION: una cadena
+    #  de desplante en un nivel intermedio -el arranque de un muro que nace en una losa- es igual
+    #  de desplante, y salia punteada. Se mira su TIPO, que sale de las property notes.
+    check("la cadena de desplante va continua en cualquier nivel",
+          '_cfg.Bandera("CADENA_DESPLANTE_CONTINUA", true)' in macp
+          and '.Contains("DESPLANTE", StringComparison.OrdinalIgnoreCase)' in macp
+          and 'P("CADENA_DESPLANTE_CONTINUA", "SI",' in cfgplano)
+    # Y antes de preguntar por el muro de piso a techo: si no, la respuesta de la ventana mandaria
+    # y la de desplante saldria punteada igual.
+    check("y se decide antes de mirar si tiene muro debajo",
+          macp.index('_cfg.Bandera("CADENA_DESPLANTE_CONTINUA", true)')
+          < macp.index("if (el.MuroDePisoATecho)"))
 
     # ------------------------------------------------------------------
     # POR QUE NO SE VEIA EL CASTILLO DE AREA DEBAJO DE LA CADENA
