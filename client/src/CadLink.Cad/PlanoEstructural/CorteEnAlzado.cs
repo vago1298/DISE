@@ -74,6 +74,34 @@ public static class CorteEnAlzado
         || (p.Notas ?? string.Empty).Contains("INTERMEDIO", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// ¿Lo que dice esta pieza es una <b>cadena</b> —o una dala—, sea de la clase que sea?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pregunta por el <b>tipo y las notas</b>, y <b>no por la clase</b>, y ahí está la razón de
+    /// que exista: una cadena modelada como <b>área</b> llega como muro, y si el dibujo la trata por
+    /// su clase se queda sin relleno y sin bloque —eso es lo que le pasaba a la cadena intermedia
+    /// una y otra vez—. La conversión de shells la arregla antes, pero <b>esto no depende de
+    /// ella</b>: si por lo que sea un elemento llega sin convertir, el corte lo dibuja bien igual.
+    /// </para>
+    /// <para>
+    /// El dato lo pone el modelo en las notas de la propiedad, así que aquí no se adivina nada.
+    /// </para>
+    /// </remarks>
+    public static bool DiceCadena(Pieza p) =>
+        Dicen(p, "CADENA") || Dicen(p, "DALA");
+
+    /// <summary>¿Lo que dice esta pieza es una <b>trabe</b> o una viga?</summary>
+    public static bool DiceTrabe(Pieza p) =>
+        Dicen(p, "TRABE") || Dicen(p, "VIGA") || Dicen(p, "CABEZAL")
+        || Dicen(p, "CONTRATRABE");
+
+    /// <summary>¿El tipo o las notas de la pieza traen esa palabra?</summary>
+    private static bool Dicen(Pieza p, string palabra) =>
+        (p.Tipo ?? string.Empty).Contains(palabra, StringComparison.OrdinalIgnoreCase)
+        || (p.Notas ?? string.Empty).Contains(palabra, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// ¿Este elemento entra en la <b>rebanada</b> del corte?
     /// </summary>
     /// <remarks>

@@ -731,6 +731,8 @@ public sealed class ConfigPlano
           "SI = la cadena INTERMEDIA se rellena y lleva bloque aunque el corte vaya a lo largo"),
         P("CORTE_SEPARACION_CORTES_M", "8",
           "Aire entre un corte y el siguiente, a su derecha (m)"),
+        P("CORTE_FONDO_CONTORNO_MUROS", "NO",
+          "NO = los muros del fondo van sin contorno, solo con su achurado"),
         P("CORTE_FONDO_CON_COLUMNAS", "NO",
           "NO = los castillos y columnas del fondo no se dibujan en el corte"),
         P("CORTE_HATCH_MAMPOSTERIA", "SI",

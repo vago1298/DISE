@@ -86,6 +86,7 @@ var cfg = new ConfigPlano();
 //   CORTE_INTERMEDIA_SIEMPRE        la cadena intermedia, rellena y con bloque siempre
 //   CORTE_SEPARACION_CORTES_M       y cada corte, +8 a la derecha del anterior
 //   CORTE_FONDO_CON_COLUMNAS        los castillos del fondo no se dibujan en el corte
+//   CORTE_FONDO_CONTORNO_MUROS      y los muros del fondo van sin contorno, solo achurados
 //   CORTE_HATCH_MAMPOSTERIA / _TABIQUE / _TABIQUE_ESCALA / _TABICON / _TABICON_ESCALA / _COLOR
 //                                   el area de los muros de mamposteria, achurada
 //   CORTE_PIEZAS_COMO_BLOQUE        las trabes y cadenas del corte, como bloque
@@ -93,8 +94,8 @@ var cfg = new ConfigPlano();
 //   CORTE_RELLENAR_SOLO_EN_SECCION  se rellena lo que el corte cruza por su lado corto
 //   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
 //   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y dos que se añadieron",
-      322, ConfigPlano.PorOmision.Count);
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y tres que se añadieron",
+      323, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -301,6 +302,11 @@ Igual("cada corte va 8 a la derecha del anterior",
 Check("los castillos del fondo no se dibujan",
       !cfg.Bandera("CORTE_FONDO_CON_COLUMNAS", true));
 
+// Y EL CONTORNO DE LOS MUROS DEL FONDO TAMPOCO: del fondo lo que dice algo es su achurado, no sus
+// aristas. Solo lleva contorno lo que el corte cruza sobre su linea.
+Check("los muros del fondo van sin contorno",
+      !cfg.Bandera("CORTE_FONDO_CONTORNO_MUROS", true));
+
 Check("el achurado de la mamposteria viene encendido",
       cfg.Bandera("CORTE_HATCH_MAMPOSTERIA", false));
 Igual("el tabique y el adobe, con AR-BRSTD", "AR-BRSTD", cfg.Texto("CORTE_HATCH_TABIQUE"));
@@ -333,7 +339,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 322 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 323 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

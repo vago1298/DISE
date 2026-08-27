@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con sesenta y dos renglones añadidos",
-          cfgp.count("        P(") == 322
+    check("la hoja CONFIG de la macro esta portada, con sesenta y tres renglones añadidos",
+          cfgp.count("        P(") == 323
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "322, ConfigPlano.PorOmision.Count" in pr
+          and "323, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4358,7 +4358,57 @@ def v18_planta_autocad() -> None:
     # Solo las CORTADAS, y la losa y el muro no se rellenan: se leen por su franja y por su paño.
     check("solo las cortadas, y el muro y la losa sin relleno",
           "if (p.Cortada && enSeccion &&" in cortedib
-          and "if (p.Clase != ClasePlanta.Trabe)\n        {\n            return 0;" in cortedib)
+          and "return p.Clase == ClasePlanta.Trabe" in cortedib
+          and "            : 0;" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL COLOR Y EL BLOQUE, POR LO QUE DICE LA PIEZA Y NO POR SU CLASE
+    # ------------------------------------------------------------------
+    #  Aqui estaba la cadena intermedia que no se rellenaba ni salia como bloque, por mas vueltas que
+    #  se le dieron: se modela como AREA -un shell- y llega al dibujo con la clase MURO, y el corte
+    #  miraba la CLASE, veia un muro y la dejaba vacia, dijeran lo que dijeran sus notas.
+    #
+    #  La conversion de shells la arregla antes, pero esto NO DEPENDE de ella: si por lo que sea un
+    #  elemento llega sin convertir, el corte lo dibuja bien igual. El dato lo pone el modelo en las
+    #  property notes -CADENA INTERMEDIA-, asi que no se adivina nada.
+    check("el relleno del corte se decide por lo que dice la pieza",
+          "public static bool DiceCadena(Pieza p) =>" in corte
+          and 'Dicen(p, "CADENA") || Dicen(p, "DALA");' in corte
+          and "public static bool DiceTrabe(Pieza p) =>" in corte
+          and "if (PlanoEstructural.CorteEnAlzado.DiceCadena(p))" in cortedib
+          and "if (PlanoEstructural.CorteEnAlzado.DiceTrabe(p))" in cortedib)
+    # Por el TIPO o por las NOTAS, que el tipo llega en blanco cuando el modelo no clasifico.
+    check("y se mira su tipo y sus notas, no su clase",
+          "private static bool Dicen(Pieza p, string palabra) =>" in corte
+          and '(p.Tipo ?? string.Empty).Contains(palabra, StringComparison.OrdinalIgnoreCase)'
+              in corte
+          and '|| (p.Notas ?? string.Empty).Contains(palabra, StringComparison.OrdinalIgnoreCase);'
+              in corte)
+    # Y EL BLOQUE IGUAL: sin esto, la cadena que llega como muro se quedaba sin su bloque.
+    check("y el bloque del corte tambien",
+          "var deBarra = p.Clase == ClasePlanta.Trabe" in cortedib
+          and "|| PlanoEstructural.CorteEnAlzado.DiceCadena(p)" in cortedib
+          and "|| PlanoEstructural.CorteEnAlzado.DiceTrabe(p);" in cortedib
+          and "if (p.Cortada && conBloque && deBarra" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL CONTORNO DE LOS MUROS DEL FONDO NO SE DIBUJA
+    # ------------------------------------------------------------------
+    #  «El contorno de los muros del fondo borralos, solo deja el contorno de los muros que se cortan
+    #  sobre la linea de corte o eje». Y se entiende al verlo: el fondo de un alzado son cinco o seis
+    #  paños seguidos, y cada rectangulo mete cuatro lineas que no son de este corte. Del fondo lo
+    #  que dice algo es su ACHURADO -la mancha de mamposteria-, no sus aristas.
+    #
+    #  El contorno se usa igual como LAZO del achurado y se borra despues, que el hatch no es
+    #  asociativo. Y se borra solo el MURO: una cadena o una trabe modelada como area llega con la
+    #  clase Muro y esas si dejan su contorno, que son piezas y no paño.
+    check("los muros del fondo van sin contorno, solo con su achurado",
+          "var soloParaAchurar = !p.Cortada" in cortedib
+          and "&& p.Clase == ClasePlanta.Muro" in cortedib
+          and "&& !PlanoEstructural.CorteEnAlzado.DiceCadena(p)" in cortedib
+          and '&& !_cfg.Bandera("CORTE_FONDO_CONTORNO_MUROS", false);' in cortedib
+          and "if (soloParaAchurar)\n                {\n                    Borrar(pl);" in cortedib
+          and 'P("CORTE_FONDO_CONTORNO_MUROS", "NO",' in cfgp)
 
     # ------------------------------------------------------------------
     # SE RELLENA LO QUE SE VE EN SECCION, NO EL COSTADO
@@ -4425,7 +4475,7 @@ def v18_planta_autocad() -> None:
     # ningun detalle armado: no es una seccion, es un costado. Y solo las CORTADAS.
     check("y solo la cara corta de las cortadas",
           "var conBloque = p.EnSeccion" in cortedib
-          and "if (p.Cortada && conBloque && p.Clase == ClasePlanta.Trabe\n"
+          and "if (p.Cortada && conBloque && deBarra\n"
               "                && PiezaComoBloque(" in cortedib)
 
     # ------------------------------------------------------------------

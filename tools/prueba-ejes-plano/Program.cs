@@ -2628,6 +2628,55 @@ Igual("la barra del corte lleva sus notas", "CADENA INTERMEDIA",
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LO QUE DICE LA PIEZA MANDA, NO SU CLASE");
+Console.WriteLine("=====================================================================");
+
+// AQUI ESTABA LA CADENA INTERMEDIA QUE NO SE RELLENABA. Se modela como AREA -un shell- y llega al
+// dibujo con la clase MURO; el corte miraba la CLASE, veia un muro y la dejaba sin relleno y sin
+// bloque, dijeran lo que dijeran sus notas. Asi que ahora se pregunta por lo que la pieza DICE ser,
+// y el respaldo por clase va despues.
+var cadenaComoMuro = new CorteEnAlzado.Pieza(
+    ClasePlanta.Muro, "CI", "CC 15X20", 0, 1.2, 3, 0.20, "MURO", true, false,
+    "CADENA INTERMEDIA");
+
+Check("una cadena que llega como muro dice cadena", CorteEnAlzado.DiceCadena(cadenaComoMuro));
+Check("y esa sigue siendo intermedia", CorteEnAlzado.EsIntermedia(cadenaComoMuro));
+
+// POR SU TIPO tambien, que es lo normal cuando el modelo si clasifico.
+Check("por su tipo tambien",
+      CorteEnAlzado.DiceCadena(new CorteEnAlzado.Pieza(
+          ClasePlanta.Trabe, "CC", "CC 15X25", 0, 2.5, 4, 0.25, "CADENA DE CERRAMIENTO")));
+
+// LA DALA ES LA MISMA PIEZA CON OTRO NOMBRE: se escribe de las dos formas segun la region.
+Check("la dala es cadena",
+      CorteEnAlzado.DiceCadena(new CorteEnAlzado.Pieza(
+          ClasePlanta.Muro, "D1", "D 15X20", 0, 1.2, 3, 0.20, "MURO", true, false, "DALA")));
+
+// LA TRABE Y LA VIGA, por su lado.
+Check("la trabe dice trabe",
+      CorteEnAlzado.DiceTrabe(new CorteEnAlzado.Pieza(
+          ClasePlanta.Trabe, "T1", "T 20X40", 0, 2.5, 4, 0.40, "TRABE")));
+Check("y la viga de acero tambien",
+      CorteEnAlzado.DiceTrabe(new CorteEnAlzado.Pieza(
+          ClasePlanta.Muro, "V1", "V 20X40", 0, 2.5, 4, 0.40, "", true, true, "VIGA DE ACERO")));
+
+// PERO UN MURO ES UN MURO: ni cadena ni trabe, y sin relleno -en un alzado se lee por su paño-.
+var muroDeVerdad = new CorteEnAlzado.Pieza(
+    ClasePlanta.Muro, "M", "MURO 15", 0, 0, 4, 2.5, "MURO", true, true,
+    "MURO DE TABIQUE ROJO RECOCIDO");
+
+Check("un muro no dice cadena", !CorteEnAlzado.DiceCadena(muroDeVerdad));
+Check("un muro no dice trabe", !CorteEnAlzado.DiceTrabe(muroDeVerdad));
+
+// Y EL CASTILLO SIGUE SIENDO CASTILLO: amarillo por su clase, no por lo que digan sus notas.
+var castillodelCorte = new CorteEnAlzado.Pieza(
+    ClasePlanta.Columna, "K", "K 15X80", 0, 0, 0.15, 2.5, "CASTILLO", true, true, "CASTILLO");
+
+Check("el castillo no dice cadena", !CorteEnAlzado.DiceCadena(castillodelCorte));
+Check("el castillo tampoco dice trabe", !CorteEnAlzado.DiceTrabe(castillodelCorte));
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL ACHURADO DE LA MAMPOSTERIA EN EL CORTE");
 Console.WriteLine("=====================================================================");
 

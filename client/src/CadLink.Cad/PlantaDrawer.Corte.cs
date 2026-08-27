@@ -157,6 +157,26 @@ public sealed partial class PlantaDrawer
                 : PolilineaCerrada(pts, capa);
 
             // ==========================================================================
+            //  EL CONTORNO DE LOS MUROS DEL FONDO NO SE DIBUJA
+            // ==========================================================================
+            //  Se pidió: «el contorno de los muros del fondo bórralos, solo deja el contorno de los
+            //  muros que se cortan sobre la línea de corte». Y se entiende al verlo: el fondo de un
+            //  alzado son cinco o seis paños seguidos, y cada rectángulo mete cuatro líneas que no
+            //  son del corte. Del fondo lo que dice algo es su ACHURADO —la mancha de mampostería—,
+            //  no sus aristas.
+            //
+            //  El contorno se usa igual como LAZO del achurado y se borra después: se puede porque
+            //  el achurado no es asociativo.
+            //
+            //  Lo que se borra es el MURO del fondo y nada más: una cadena o una trabe modelada
+            //  como área llega con la clase Muro, y ésas sí dejan su contorno —son piezas, no paño—.
+            var soloParaAchurar = !p.Cortada
+                                  && p.Clase == ClasePlanta.Muro
+                                  && !PlanoEstructural.CorteEnAlzado.DiceCadena(p)
+                                  && !PlanoEstructural.CorteEnAlzado.DiceTrabe(p)
+                                  && !_cfg.Bandera("CORTE_FONDO_CONTORNO_MUROS", false);
+
+            // ==========================================================================
             //  LA TRABE, LA CADENA Y LA VIGA DE ACERO, COMO BLOQUE
             // ==========================================================================
             //  Se pidió, y es la misma idea que ya se usa con las columnas en planta: el bloque
@@ -181,7 +201,14 @@ public sealed partial class PlantaDrawer
                             || (PlanoEstructural.CorteEnAlzado.EsIntermedia(p)
                                 && _cfg.Bandera("CORTE_INTERMEDIA_SIEMPRE", true));
 
-            if (p.Cortada && conBloque && p.Clase == ClasePlanta.Trabe
+            //  Y TAMBIÉN POR LO QUE DICE LA PIEZA, no solo por su clase: una cadena modelada
+            //  como área llega como muro, y mirando la clase se quedaba sin bloque. Es lo mismo
+            //  que le pasaba al relleno.
+            var deBarra = p.Clase == ClasePlanta.Trabe
+                          || PlanoEstructural.CorteEnAlzado.DiceCadena(p)
+                          || PlanoEstructural.CorteEnAlzado.DiceTrabe(p);
+
+            if (p.Cortada && conBloque && deBarra
                 && PiezaComoBloque(p, cx, cy, capa))
             {
                 hechas++;
@@ -266,6 +293,12 @@ public sealed partial class PlantaDrawer
                 if (p.Clase == ClasePlanta.Muro)
                 {
                     AchurarMamposteria(pl, capa, p, piezas, cx, cy);
+                }
+
+                // Y el contorno del muro del fondo se va, que era solo el lazo del achurado.
+                if (soloParaAchurar)
+                {
+                    Borrar(pl);
                 }
 
                 hechas++;
@@ -901,26 +934,36 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private int ColorDelRellenoEnElCorte(PlanoEstructural.CorteEnAlzado.Pieza p)
     {
+        // ==============================================================================
+        //  POR LO QUE DICE LA PIEZA, NO POR SU CLASE
+        // ==============================================================================
+        //  Aquí estaba la cadena intermedia que no se rellenaba, por más vueltas que le dimos: si
+        //  llega como MURO —porque en el modelo es un área y la conversión no la alcanzó— este
+        //  método devolvía 0 y se quedaba sin relleno, sin importar lo que dijeran sus notas.
+        //
+        //  Así que se pregunta primero por lo que la pieza DICE ser: si sus notas o su tipo dicen
+        //  CADENA o DALA, es una cadena y va morada; si dicen TRABE o VIGA, verde. La clase se mira
+        //  después, como respaldo. El dato lo pone el modelo en las property notes, así que esto no
+        //  adivina nada.
+        if (PlanoEstructural.CorteEnAlzado.DiceCadena(p))
+        {
+            return Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 6), 6);
+        }
+
+        if (PlanoEstructural.CorteEnAlzado.DiceTrabe(p))
+        {
+            return Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 3), 3);
+        }
+
         if (p.Clase == ClasePlanta.Columna)
         {
             return ColorDelRelleno();
         }
 
-        if (p.Clase != ClasePlanta.Trabe)
-        {
-            return 0;
-        }
-
-        // La cadena y la dala son la misma pieza con dos nombres, y el tipo llega de las notas de
-        // la propiedad: CADENA DE CERRAMIENTO, CADENA DE DESPLANTE, CADENA INTERMEDIA o DALA.
-        var tipo = (p.Tipo ?? string.Empty).Trim();
-
-        var esCadena = tipo.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase)
-                       || tipo.Equals("DALA", StringComparison.OrdinalIgnoreCase);
-
-        return esCadena
-            ? Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 6), 6)
-            : Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 3), 3);
+        // El muro y la losa no se rellenan: en un alzado se leen por su paño y por su franja.
+        return p.Clase == ClasePlanta.Trabe
+            ? Color((int)_cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 3), 3)
+            : 0;
 
         // Un color fuera de la paleta de AutoCAD no se puede poner: se vuelve al de la hoja.
         static int Color(int color, int porOmision) =>
