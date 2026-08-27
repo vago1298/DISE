@@ -2999,6 +2999,155 @@ Cerca("con el borde a un milimetro de estar recto, sigue corriendo", 0.10,
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
+Console.WriteLine(" LOS PEDAZOS DEL MESH, EN UN SOLO TABLERO");
+Console.WriteLine("=====================================================================");
+
+// SE PIDIO: «si tengo varias secciones de losa en un mismo tablero, juntalas para que solo de un
+// armado, ojo, debe estar dentro de los limites de los muros o trabes o cadenas que lo limite».
+// Esos pedazos NO son losas distintas: es UNA que el mesh partio, y por eso salian tres armados y
+// tres rotulos encimados en el mismo tablero.
+var pedazoA = Pano((0, 0), (4, 0), (4, 3), (0, 3));
+var pedazoB = Pano((4, 0), (8, 0), (8, 3), (4, 3));
+var pedazoC = Pano((0, 3), (8, 3), (8, 6), (0, 6));
+
+var sinApoyos = new List<ElementoPlanta>();
+
+var unSolo = TableroDeLosa.Agrupar(
+    new List<ElementoPlanta> { pedazoA, pedazoB, pedazoC }, sinApoyos);
+
+Igual("los tres pedazos son UN tablero", 1, unSolo.Count);
+Igual("con sus tres pedazos", 3, unSolo[0].Pedazos.Count);
+Check("y se sabe que venia partido", unSolo[0].Partido);
+
+// LA CAJA ES LA DEL TABLERO COMPLETO: es el claro de verdad, el que decide la varilla.
+Cerca("la caja va de 0 a 8 en X", 8.0, unSolo[0].Ancho, 1e-9);
+Cerca("y de 0 a 6 en Y", 6.0, unSolo[0].Alto, 1e-9);
+
+// MANDA EL PEDAZO MAS GRANDE: de el salen el espesor y el uso que se rotulan.
+Check("manda el pedazo mas grande", unSolo[0].Manejado(pedazoC));
+Check("y los otros se callan", !unSolo[0].Manejado(pedazoA));
+
+// LA FUSION IMPORTA: el pedazo C toca a los dos, y sin fusionar grupos quedaban dos tableros
+// donde hay uno. Una losa mallada en nueve cuadros se descubre en zigzag.
+var alReves = TableroDeLosa.Agrupar(
+    new List<ElementoPlanta> { pedazoA, pedazoB, pedazoC }, sinApoyos);
+Igual("y el orden no cambia el resultado", 1, alReves.Count);
+
+// EL LIMITE QUE SE PIDIO: si por la orilla que comparten corre un apoyo, son DOS tableros. El
+// apoyo interrumpe el claro y ahi cambia el acero.
+var trabeEnMedio = new List<ElementoPlanta>
+{
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 4, Y1 = 0, X2 = 4, Y2 = 3,
+            AnchoM = 0.20, PeralteM = 0.40
+        },
+        0.20)
+};
+
+var dosTableros = TableroDeLosa.Agrupar(
+    new List<ElementoPlanta> { pedazoA, pedazoB }, trabeEnMedio);
+
+Igual("con una trabe en la frontera son DOS tableros", 2, dosTableros.Count);
+Igual("sin la trabe son uno",
+      1, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, pedazoB }, sinApoyos).Count);
+
+// UNA TRABE QUE CRUZA la frontera de traves no separa nada: pasa por encima de la losa continua.
+var trabeDeTraves = new List<ElementoPlanta>
+{
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            Clase = ClasePlanta.Trabe, Tipo = "TRABE", X1 = 0, Y1 = 1.5, X2 = 8, Y2 = 1.5,
+            AnchoM = 0.20, PeralteM = 0.40
+        },
+        0.20)
+};
+
+Igual("una trabe que cruza de traves no separa",
+      1, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, pedazoB }, trabeDeTraves).Count);
+
+// LA FRONTERA: la orilla comun, aunque los vertices no coincidan -el mesh reparte las coordenadas
+// que salen del calculo, no las que uno pondria-.
+var frontera = TableroDeLosa.Frontera(pedazoA, pedazoB);
+Check("la frontera de los dos pedazos existe", frontera is not null);
+Cerca("y mide los tres metros que comparten", 3.0, frontera!.Value.Largo, 1e-9);
+
+Check("con una trabe encima, hay apoyo en la frontera",
+      TableroDeLosa.HayApoyoEnLaFrontera(frontera.Value, trabeEnMedio));
+Check("y sin ella, no",
+      !TableroDeLosa.HayApoyoEnLaFrontera(frontera.Value, sinApoyos));
+
+// TOCARSE EN UNA ESQUINA NO ES COMPARTIR ORILLA: dos tableros en diagonal se tocan en un punto y
+// no son el mismo paño.
+var enDiagonal = Pano((4, 3), (8, 3), (8, 6), (4, 6));
+Check("dos pedazos en diagonal no son el mismo tablero",
+      !TableroDeLosa.MismoTablero(pedazoA, enDiagonal, sinApoyos));
+
+// Y DOS LOSAS SEPARADAS, cada una lo suyo.
+var lejos = Pano((20, 0), (24, 0), (24, 3), (20, 3));
+Igual("una losa que no toca a nadie es su propio tablero",
+      2, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, lejos }, sinApoyos).Count);
+
+// UN VOLADO NO SE JUNTA CON UN ENTREPISO aunque se toquen: se dibujan distinto y se rotulan
+// distinto. La familia la decide el dibujante y aqui se comprueba que se respeta.
+var voladito = Pano((4, 0), (8, 0), (8, 3), (4, 3));
+voladito.Notas = "LOSA DE VOLADO";
+
+Igual("el volado no se junta con el entrepiso", 2,
+      TableroDeLosa.Agrupar(
+          new List<ElementoPlanta> { pedazoA, voladito }, sinApoyos,
+          familia: e => e.Notas.Contains("VOLADO") ? "VOLADO" : "LOSA").Count);
+
+// EL ROTULO VA DENTRO DEL TABLERO: en una L el centro de la caja cae en el hueco, o sea encima de
+// otra cosa del plano, asi que se rotula en el centro del pedazo que manda.
+var brazoAncho = Pano((0, 0), (6, 0), (6, 2), (0, 2));
+var brazoAlto = Pano((0, 2), (2, 2), (2, 10), (0, 10));
+
+var laEle = TableroDeLosa.Agrupar(
+    new List<ElementoPlanta> { brazoAncho, brazoAlto }, sinApoyos);
+
+Igual("la L es un tablero", 1, laEle.Count);
+Check("y manda el brazo mas grande", laEle[0].Manejado(brazoAlto));
+Cerca("el rotulo se corre al centro de ese brazo, en X", 1.0, laEle[0].CentroX, 1e-9);
+Cerca("y en Y", 6.0, laEle[0].CentroY, 1e-9);
+
+// El centro de la caja de la L es (3, 5), y ahi NO hay concreto.
+Check("porque el centro de la caja cae en el hueco",
+      !TableroDeLosa.Dentro(brazoAncho.Vertices, 3, 5)
+      && !TableroDeLosa.Dentro(brazoAlto.Vertices, 3, 5));
+
+// En un tablero rectangular, en cambio, el rotulo va al centro de la caja: entre los pedazos.
+Cerca("en un tablero derecho el rotulo va al centro de la caja", 4.0, unSolo[0].CentroX, 1e-9);
+Cerca("y a media altura", 3.0, unSolo[0].CentroY, 1e-9);
+
+// EL AREA Y EL DENTRO, las dos cuentas de las que sale todo lo anterior.
+Cerca("el area del pedazo sale por el zapatero", 12.0,
+      TableroDeLosa.Area(pedazoA.Vertices), 1e-9);
+Check("un punto de dentro es de dentro", TableroDeLosa.Dentro(pedazoA.Vertices, 2, 1.5));
+Check("y uno de fuera, no", !TableroDeLosa.Dentro(pedazoA.Vertices, 5, 1.5));
+
+// SIN LISTA NO REVIENTA, que es lo que llega cuando la planta no trae losas.
+Igual("sin elementos no hay tableros", 0, TableroDeLosa.Agrupar(null, null).Count);
+
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
 Console.WriteLine(fallos == 0 ? " RESULTADO: todo bien" : $" RESULTADO: {fallos} fallaron");
 Console.WriteLine("=====================================================================");
 return fallos == 0 ? 0 : 1;
+
+static ElementoPlanta Pano(params (double X, double Y)[] v)
+{
+    var e = new ElementoPlanta
+    {
+        Clase = ClasePlanta.Losa, Etiqueta = "L", Seccion = "LOSA 10", AnchoM = 0.10
+    };
+
+    foreach (var q in v)
+    {
+        e.Vertices.Add(q);
+    }
+
+    return e;
+}

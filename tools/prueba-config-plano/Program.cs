@@ -94,8 +94,11 @@ var cfg = new ConfigPlano();
 //   CORTE_RELLENAR_SOLO_EN_SECCION  se rellena lo que el corte cruza por su lado corto
 //   CORTE_COLOR_RELLENO_CADENA      la cadena cortada, morada
 //   CORTE_COLOR_RELLENO_TRABE       y la trabe, verde
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y tres que se añadieron",
-      323, ConfigPlano.PorOmision.Count);
+//   LOSA_UNIR_TABLEROS              los pedazos del mesh, en un tablero: un armado y un rotulo
+//   LOSA_TABLERO_TOL_CM             holgura para tomar dos pedazos como pegados
+//   LOSA_TABLERO_SIN_LINEA_INTERIOR y la raya del mesh no se dibuja
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y seis que se añadieron",
+      326, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -168,6 +171,18 @@ Igual("COLOR_RELLENO_BLOQUE, el amarillo", 2d, cfg.Numero("COLOR_RELLENO_BLOQUE"
 Igual("BLOQUE_ROTACION_EXTRA_GRADOS", 0d, cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS"));
 Igual("EJES_PANO_TOL_CM", 25d, cfg.Numero("EJES_PANO_TOL_CM"));
 Igual("LOSA_APOYO_CUBRE", 0.7, cfg.Numero("LOSA_APOYO_CUBRE"));
+
+// LOS PEDAZOS DEL MESH SON UNA LOSA: se juntan en un tablero, con un armado y un rotulo, y con el
+// limite de los apoyos -si por la orilla que comparten corre un muro, una trabe o una cadena, son
+// dos tableros-.
+Check("los pedazos de losa se juntan en un tablero", cfg.Bandera("LOSA_UNIR_TABLEROS", false));
+Igual("con 5 cm de holgura para tomarlos como pegados",
+      5.0, cfg.Numero("LOSA_TABLERO_TOL_CM", 0));
+Check("y la raya del mesh no se dibuja",
+      cfg.Bandera("LOSA_TABLERO_SIN_LINEA_INTERIOR", false));
+// La holgura del apoyo sobre la frontera y cuanto tiene que recorrerla salen de las claves que ya
+// estaban en la hoja: LOSA_APOYO_TOL_CM y LOSA_APOYO_CUBRE.
+Igual("la holgura del apoyo sale de la hoja", 25.0, cfg.Numero("LOSA_APOYO_TOL_CM", 0));
 Igual("LOSA_HATCH_PATRON del volado", "ANSI37", cfg.Texto("LOSA_HATCH_PATRON"));
 Igual("LOSA_HATCH_ANGULO", 45d, cfg.Numero("LOSA_HATCH_ANGULO"));
 Igual("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100", cfg.Texto("CADENA_SIN_MURO_LINETYPE"));
@@ -339,7 +354,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 323 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 326 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();

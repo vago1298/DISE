@@ -344,6 +344,39 @@ public sealed partial class PlantaDrawer
         }
 
         // ==============================================================================
+        //  LOS PEDAZOS DE UNA MISMA LOSA, EN UN SOLO TABLERO
+        // ==============================================================================
+        //  Se pidió: «si tengo varias secciones de losa en un mismo tablero, júntalas para que
+        //  solo dé un armado». Y es exactamente lo que hay que hacer, porque esos pedazos NO son
+        //  losas distintas: es una sola que el MESH partió —en los nudos de las trabes, en los
+        //  ejes, o donde el programa decidió al mallar—. Dibujando cada shell por su cuenta salían
+        //  tres armados pequeños dentro del mismo tablero y tres rótulos encimados, o sea la malla
+        //  del programa de cálculo copiada al papel.
+        //
+        //  CON EL LÍMITE QUE SE PIDIÓ: la unión tiene que quedar dentro de los muros, las trabes o
+        //  las cadenas que limitan el tablero. Dos pedazos se juntan solo si la orilla que
+        //  comparten está LIBRE; si por ahí corre un apoyo son dos tableros, y cada uno lleva su
+        //  armado, porque el apoyo interrumpe el claro y ahí cambia el acero.
+        //
+        //  Y se calculan TODOS antes de dibujar el primer paño, como los voladizos y por lo mismo:
+        //  cada pedazo tiene que saber a qué tablero pertenece antes de decidir si le toca dibujar
+        //  el armado y el rótulo o callarse.
+        _tablerosDeLaPlanta.Clear();
+
+        if (_cfg.Bandera("LOSA_UNIR_TABLEROS", true))
+        {
+            _tablerosDeLaPlanta.AddRange(TableroDeLosa.Agrupar(
+                p.Elementos,
+                huellas,
+                _cfg.Numero("LOSA_TABLERO_TOL_CM", 5) / 100,
+                _cfg.Numero("LOSA_APOYO_TOL_CM", 25) / 100,
+                _cfg.Numero("LOSA_APOYO_CUBRE", 0.7),
+                el => FamiliaDeLaLosa(el, huellas)));
+
+            AvisarDeLosTableros();
+        }
+
+        // ==============================================================================
         //  SOLO LA CUADRÍCULA, SI ES LO QUE SE PIDIÓ
         // ==============================================================================
         //  Se pidió poder dibujar «solo ejes y cortes sin hacer todo el dibujo de planos», y se
@@ -1165,12 +1198,7 @@ public sealed partial class PlantaDrawer
         //  no va y falta donde sí.
         //
         //  La cuenta por geometría se queda disponible con VOLADO_POR_NOTA en NO.
-        var volada = _cfg.Bandera("VOLADO_POR_NOTA", true)
-            ? LosaEnPlanta.DiceVolado(
-                el.Notas, el.Seccion,
-                _cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER"))
-            : LosaEnPlanta.EsVolada(
-                el.Vertices, huellas, _cfg.Numero("LOSA_APOYO_CUBRE", 0.7));
+        var volada = LosaVolada(el, huellas);
 
         var capa = volada ? _capas.CapaVolado : CapaDe(el);
 
@@ -1337,10 +1365,30 @@ public sealed partial class PlantaDrawer
 
         if (fuera)
         {
+            // ==========================================================================
+            //  LA RAYA DEL MESH NO SE DIBUJA
+            // ==========================================================================
+            //  Los pedazos de un mismo tablero comparten orilla, y esa orilla EN LA OBRA NO
+            //  EXISTE: el concreto es continuo y ahí no hay junta ni cimbra. Es la misma raya
+            //  que ya se quita entre dos voladizos pegados, y por el mismo motivo: quien lee el
+            //  plano entiende una junta que nadie va a construir.
+            //
+            //  Y no se quita a lo bruto: se quita la orilla COMPARTIDA CON SU PROPIO TABLERO. La
+            //  que da a otro tablero —la que tiene un apoyo debajo— se dibuja, porque ahí sí
+            //  termina el paño.
+            var mismoTablero = _cfg.Bandera("LOSA_TABLERO_SIN_LINEA_INTERIOR", true)
+                ? OtrosDelTablero(el)
+                : new List<IReadOnlyList<(double X, double Y)>>();
+
             foreach (var lado in LosaEnPlanta.Lados(el.Vertices))
             {
                 foreach (var t in LosaEnPlanta.TramosFuera(lado, huellas))
                 {
+                    if (mismoTablero.Count > 0 && PanoDeLosa.ContornoCompartido(t, mismoTablero))
+                    {
+                        continue;
+                    }
+
                     algo |= Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, capa) is not null;
                 }
             }
@@ -1515,6 +1563,123 @@ public sealed partial class PlantaDrawer
     }
 
     /// <summary>
+    /// Los <b>tableros</b> de losa de la planta que se está dibujando: los pedazos del mesh,
+    /// juntos.
+    /// </summary>
+    /// <remarks>
+    /// Se calculan al empezar la planta, antes de dibujar el primer paño, por lo mismo que los
+    /// voladizos: cada pedazo tiene que saber a qué tablero pertenece <b>antes</b> de decidir si le
+    /// toca dibujar el armado y el rótulo o callarse. Descubriéndolos por el camino, el primer
+    /// pedazo dibujaría su armado —porque aún no sabe de los otros— y saldría el problema de
+    /// siempre, solo que con un armado en lugar de tres.
+    /// </remarks>
+    private readonly List<TableroDeLosa.Tablero> _tablerosDeLaPlanta = new();
+
+    /// <summary>El tablero al que pertenece este pedazo de losa, o nulo si no se están uniendo.</summary>
+    private TableroDeLosa.Tablero? TableroDe(ElementoPlanta el) =>
+        _tablerosDeLaPlanta.FirstOrDefault(t => t.Pedazos.Any(q => ReferenceEquals(q, el)));
+
+    /// <summary>Los contornos de los <b>otros pedazos del mismo tablero</b>.</summary>
+    /// <remarks>
+    /// Son los que dicen cuál de las orillas de este pedazo es una <b>junta del mesh</b> y no un
+    /// borde del paño. La orilla que da a otro tablero no está aquí, y por eso sí se dibuja.
+    /// </remarks>
+    private List<IReadOnlyList<(double X, double Y)>> OtrosDelTablero(ElementoPlanta el)
+    {
+        var suyo = TableroDe(el);
+
+        if (suyo is null || !suyo.Partido)
+        {
+            return new List<IReadOnlyList<(double X, double Y)>>();
+        }
+
+        return suyo.Pedazos
+            .Where(q => !ReferenceEquals(q, el))
+            .Select(q => (IReadOnlyList<(double X, double Y)>)q.Vertices)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Con qué se puede juntar este paño: <b>volado</b>, <b>losacero</b> o losa de concreto.
+    /// </summary>
+    /// <remarks>
+    /// Un volado no se junta con un entrepiso aunque se toquen, y una losacero tampoco con una losa
+    /// de concreto: son paños distintos, se dibujan distinto —achurado, franjas, armado— y se
+    /// rotulan distinto. Juntarlos daría un solo rótulo para dos cosas que no son la misma.
+    /// </remarks>
+    private string FamiliaDeLaLosa(ElementoPlanta el, IReadOnlyList<ElementoPlanta> huellas)
+    {
+        if (LosaVolada(el, huellas))
+        {
+            return "VOLADO";
+        }
+
+        if (_cfg.Bandera("LOSACERO_FRANJAS", true)
+            && LosaEnPlanta.DiceLosacero(
+                el.Etiqueta, el.Notas, el.Seccion,
+                _cfg.Texto("LOSACERO_PALABRAS", "LOSACERO,DECK,STEEL DECK,LAMINA ACANALADA")))
+        {
+            return "LOSACERO";
+        }
+
+        return "LOSA";
+    }
+
+    /// <summary>
+    /// ¿Este paño es un <b>voladizo</b>? Lo dice su nota, no la geometría.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que se pidió y lo correcto en un modelo real: el ingeniero sabe cuál es el volado y lo
+    /// escribe en la propiedad, mientras que contar lados apoyados se equivoca en cuanto una cadena
+    /// viene partida en el modelo. La cuenta por geometría se queda disponible con
+    /// <c>VOLADO_POR_NOTA</c> en NO.
+    /// </remarks>
+    private bool LosaVolada(ElementoPlanta el, IReadOnlyList<ElementoPlanta> huellas) =>
+        _cfg.Bandera("VOLADO_POR_NOTA", true)
+            ? LosaEnPlanta.DiceVolado(
+                el.Notas, el.Seccion,
+                _cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER"))
+            : LosaEnPlanta.EsVolada(
+                el.Vertices, huellas, _cfg.Numero("LOSA_APOYO_CUBRE", 0.7));
+
+    /// <summary>Se cuenta lo que se juntó, y se avisa si los pedazos no coincidían.</summary>
+    /// <remarks>
+    /// Lo primero es una NOTA —salió bien—, y lo segundo es un AVISO de verdad: si los pedazos de un
+    /// mismo tablero traen espesores distintos, el dibujo tiene que rotular uno solo y el dato del
+    /// modelo es dudoso. Callarlo sería esconder que se eligió por el usuario.
+    /// </remarks>
+    private void AvisarDeLosTableros()
+    {
+        var partidos = _tablerosDeLaPlanta.Where(t => t.Partido).ToList();
+
+        if (partidos.Count == 0)
+        {
+            return;
+        }
+
+        Nota($"{partidos.Count} tablero(s) de losa venían partidos por el mesh en " +
+             $"{partidos.Sum(t => t.Pedazos.Count)} pedazos: se juntaron, y cada tablero lleva UN " +
+             "armado y UN rótulo medidos sobre el tablero completo.");
+
+        foreach (var t in partidos)
+        {
+            var espesores = t.Pedazos
+                .Where(e => e.AnchoM > LargoMinimo)
+                .Select(e => e.AnchoM)
+                .ToList();
+
+            if (espesores.Count > 1 && espesores.Max() - espesores.Min() > 0.01)
+            {
+                _log.Add(
+                    $"Tablero de losa '{t.Manda.Etiqueta}': sus {t.Pedazos.Count} pedazos traen " +
+                    $"espesores distintos —de {espesores.Min() * 100:0.#} a " +
+                    $"{espesores.Max() * 100:0.#} cm—. Se rotuló el del pedazo más grande, " +
+                    $"{t.Manda.AnchoM * 100:0.#} cm: revísalo en el modelo.");
+            }
+        }
+    }
+
+    /// <summary>
     /// Una <b>clave</b> para reconocer el paño: su etiqueta y su primer vértice.
     /// </summary>
     /// <remarks>
@@ -1643,6 +1808,20 @@ public sealed partial class PlantaDrawer
             return;
         }
 
+        // ==============================================================================
+        //  UN TABLERO, UN ARMADO
+        // ==============================================================================
+        //  Los pedazos que el mesh partió son UNA losa, así que el armado lo dibuja UNO —el más
+        //  grande— y sobre la caja del tablero COMPLETO, que es el claro de verdad. Los demás se
+        //  callan: si cada pedazo dibujara el suyo saldrían tres armaditos dentro del mismo
+        //  tablero, cada uno con su bayoneta y sus bastones medidos sobre un claro que no existe.
+        var tablero = TableroDe(el);
+
+        if (tablero is not null && !tablero.Manejado(el))
+        {
+            return;
+        }
+
         // Una losa muy delgada es un firme: no se arma con parrilla.
         var espesorMin = _cfg.Numero("ARMADO_LOSA_ESPESOR_MIN_CM", 8) / 100;
 
@@ -1653,8 +1832,11 @@ public sealed partial class PlantaDrawer
 
         var ladoMin = _cfg.Numero("ARMADO_LOSA_LADO_MIN_CM", 50) / 100;
 
-        var ancho = el.Vertices.Max(v => v.X) - el.Vertices.Min(v => v.X);
-        var alto = el.Vertices.Max(v => v.Y) - el.Vertices.Min(v => v.Y);
+        // La medida es la del TABLERO, no la del pedazo: un tablero mallado en cuadros de 40 cm no
+        // se queda sin armado por el mínimo, que es lo que pasaba antes con cada cuadro por su
+        // cuenta.
+        var ancho = tablero?.Ancho ?? (el.Vertices.Max(v => v.X) - el.Vertices.Min(v => v.X));
+        var alto = tablero?.Alto ?? (el.Vertices.Max(v => v.Y) - el.Vertices.Min(v => v.Y));
 
         if (ancho < ladoMin || alto < ladoMin)
         {
@@ -1676,10 +1858,11 @@ public sealed partial class PlantaDrawer
         {
             var margen = _cfg.Numero("ARMADO_LOSA_MARGEN_CM", 0) / 100;
 
-            var ax0 = el.Vertices.Min(v => v.X) + margen;
-            var ax1 = el.Vertices.Max(v => v.X) - margen;
-            var ay0 = el.Vertices.Min(v => v.Y) + margen;
-            var ay1 = el.Vertices.Max(v => v.Y) - margen;
+            // La caja del TABLERO: de apoyo a apoyo, cruzando por encima de las juntas del mesh.
+            var ax0 = (tablero?.X0 ?? el.Vertices.Min(v => v.X)) + margen;
+            var ax1 = (tablero?.X1 ?? el.Vertices.Max(v => v.X)) - margen;
+            var ay0 = (tablero?.Y0 ?? el.Vertices.Min(v => v.Y)) + margen;
+            var ay1 = (tablero?.Y1 ?? el.Vertices.Max(v => v.Y)) - margen;
 
             // ==========================================================================
             //  AL PAÑO DEL APOYO, TAMBIÉN DE LA TRABE
@@ -1744,13 +1927,21 @@ public sealed partial class PlantaDrawer
 
         var sep = _cfg.Numero("MALLA_SEP_CM", 15) / 100;
 
-        var barras = LosaEnPlanta.Parrilla(
-            el.Vertices,
-            sep,
-            _cfg.Numero("ARMADO_LOSA_MARGEN_CM", 0) / 100,
-            _cfg.Bandera("ARMADO_LOSA_DOS_DIRECCIONES", true),
-            (int)_cfg.Numero("MALLA_MAX_LINEAS", 200),
-            _cfg.Numero("MALLA_SEGMENTO_MIN_CM", 15) / 100);
+        // La parrilla se traza sobre el CONTORNO de cada pedazo del tablero, no sobre la caja: así
+        // no aparece acero donde no hay concreto —un tablero en L tiene un hueco— y el tablero
+        // partido queda cubierto entero, no solo el pedazo que manda.
+        var barras = new List<LosaEnPlanta.Segmento>();
+
+        foreach (var pedazo in tablero?.Pedazos ?? new List<ElementoPlanta> { el })
+        {
+            barras.AddRange(LosaEnPlanta.Parrilla(
+                pedazo.Vertices,
+                sep,
+                _cfg.Numero("ARMADO_LOSA_MARGEN_CM", 0) / 100,
+                _cfg.Bandera("ARMADO_LOSA_DOS_DIRECCIONES", true),
+                (int)_cfg.Numero("MALLA_MAX_LINEAS", 200),
+                _cfg.Numero("MALLA_SEGMENTO_MIN_CM", 15) / 100));
+        }
 
         if (barras.Count == 0)
         {
@@ -1958,6 +2149,26 @@ public sealed partial class PlantaDrawer
         //  trabajo y diecinueve ocasiones de que uno quede distinto.
         if (el.Clase == ClasePlanta.Losa)
         {
+            // ==========================================================================
+            //  UN TABLERO, UN RÓTULO
+            // ==========================================================================
+            //  Los tres textos encimados de «Losa de… cm de espesor… Var. # @… cm.» eran esto:
+            //  el rótulo se escribía una vez POR PEDAZO, y los pedazos de un tablero mallado caen
+            //  todos dentro del mismo paño. Ahora lo escribe el que manda —el pedazo más grande,
+            //  del que salen el espesor y el uso— y va al CENTRO DEL TABLERO, no al de su pedazo.
+            var suTablero = TableroDe(el);
+
+            if (suTablero is not null && !suTablero.Manejado(el))
+            {
+                return;
+            }
+
+            if (suTablero is not null)
+            {
+                cx = suTablero.CentroX + x0;
+                cy = suTablero.CentroY + y0;
+            }
+
             var alturaLosa = AlturaLosas(altura);
 
             if (!RotuloDeLosaComoBloque(el, cx, cy, texto, alturaLosa))

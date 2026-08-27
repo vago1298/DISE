@@ -415,6 +415,15 @@ public sealed class ConfigPlano
           "NO = sin rejilla de varillas en los tableros (llena el plano)"),
         P("ARMADO_LOSA_LADO_MIN_CM", "50", "Tableros mas chicos no se arman"),
         P("ARMADO_LOSA_TEXTO", "SI", "Rotular seccion y espesor de la losa"),
+
+        // AÑADIDOS: los pedazos que el MESH parte son UNA losa. Se piden juntos —un armado y un
+        // rotulo por tablero— y con el limite de los apoyos: si por la orilla que comparten corre
+        // un muro, una trabe o una cadena, son DOS tableros y cada uno lleva lo suyo.
+        P("LOSA_UNIR_TABLEROS", "SI",
+          "<<< SI = LOS PEDAZOS DEL MESH SE JUNTAN EN UN TABLERO: UN ARMADO Y UN ROTULO"),
+        P("LOSA_TABLERO_TOL_CM", "5", "Holgura para tomar dos pedazos de losa como pegados"),
+        P("LOSA_TABLERO_SIN_LINEA_INTERIOR", "SI",
+          "SI = la raya del mesh entre pedazos del mismo tablero no se dibuja"),
         P("COLOR_ARMADO_LOSA", "142", "Color de la capa E-ARMADO LOSA"),
         P("OCULTAR_CAPA_LOSA", "SI", "SI = apagar solo la capa E-LOSA"),
         P("LOSA_HATCH", "SI", "SI = en la losa de un sentido va HATCH, no varillas"),

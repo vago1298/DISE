@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con sesenta y tres renglones añadidos",
-          cfgp.count("        P(") == 323
+    check("la hoja CONFIG de la macro esta portada, con sesenta y seis renglones añadidos",
+          cfgp.count("        P(") == 326
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "323, ConfigPlano.PorOmision.Count" in pr
+          and "326, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4162,6 +4162,109 @@ def v18_planta_autocad() -> None:
     check("el armado se mide sobre el tablero llevado al pano",
           '_cfg.Bandera("ARMADO_AL_PANO_CADENA", true)' in dib
           and "LosaEnPlanta.MedioApoyoEnBorde(" in dib)
+
+    # ------------------------------------------------------------------
+    # LOS PEDAZOS DEL MESH, EN UN SOLO TABLERO
+    # ------------------------------------------------------------------
+    #  «Si tengo varias secciones de losa en un mismo tablero, juntalas para que solo de un armado,
+    #  ojo, debe estar dentro de los limites de los muros o trabes o cadenas que lo limite: esas 3
+    #  losas son solo 1 en realidad, solo se dividio por el mesh en el programa».
+    #
+    #  Y es asi: esos pedazos NO son losas distintas. El mesh parte la losa -en los nudos de las
+    #  trabes, en los ejes, o donde el programa decidio al mallar- y lo que en la obra es UN tablero
+    #  de concreto llega al dibujo como tres o cuatro shells. Dibujando cada shell por su cuenta
+    #  salian tres armados pequeños dentro del mismo tablero y tres rotulos «Losa de... cm de
+    #  espesor... Var. # @... cm.» encimados: la malla del programa de calculo copiada al papel.
+    tab = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/TableroDeLosa.cs"))
+    pre_tab = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+    check("los pedazos de losa se juntan en tableros",
+          "public static class TableroDeLosa" in tab
+          and "public sealed record Tablero(" in tab
+          and "public static List<Tablero> Agrupar(" in tab
+          and "public static bool MismoTablero(" in tab
+          and 'P("LOSA_UNIR_TABLEROS", "SI",' in cfgp)
+    # EL LIMITE QUE SE PIDIO: la union tiene que quedar dentro de los apoyos que limitan el tablero.
+    # Si por la orilla que comparten corre un muro, una trabe o una cadena, son DOS tableros: el
+    # apoyo interrumpe el claro y ahi cambia el acero. Se reusa la misma cuenta que lleva el armado
+    # al pano -MedioApoyoEnBorde-, que ya sabe distinguir el apoyo que CORRE del que solo cruza.
+    check("y no se juntan cuando un apoyo corre por la frontera",
+          "public static LosaEnPlanta.Segmento? Frontera(" in tab
+          and "public static bool HayApoyoEnLaFrontera(" in tab
+          and "LosaEnPlanta.MedioApoyoEnBorde(frontera, huellas, tolM, cubre) > 0" in tab
+          and "Frontera(a, b, tolM) is { } f && !HayApoyoEnLaFrontera(f, huellas" in tab)
+    # TOCARSE EN UNA ESQUINA NO ES COMPARTIR ORILLA: dos tableros en diagonal se tocan en un punto.
+    check("y tocarse en una esquina no es compartir orilla",
+          "if (hasta - desde <= tol)" in tab)
+    # LA FUSION DE GRUPOS: si un pedazo resulta vecino de dos grupos, los dos son el mismo tablero.
+    # Sin fusionar, una losa mallada en nueve cuadros se descubre en zigzag y quedaban dos o tres
+    # tableros donde hay uno.
+    check("los grupos vecinos se fusionan, que la malla se descubre en zigzag",
+          "suyos[0].AddRange(suyos[k]);" in tab
+          and "grupos.Remove(suyos[k]);" in tab)
+    # UN TABLERO, UN ARMADO: lo dibuja el pedazo mas grande y sobre la caja del tablero COMPLETO,
+    # que es el claro de verdad. Los demas se callan.
+    check("un tablero, un armado, medido sobre el tablero completo",
+          "var tablero = TableroDe(el);" in dib
+          and "if (tablero is not null && !tablero.Manejado(el))" in dib
+          and "var ax0 = (tablero?.X0 ?? el.Vertices.Min(v => v.X)) + margen;" in dib
+          and "var ancho = tablero?.Ancho ?? (el.Vertices.Max(v => v.X)"
+              " - el.Vertices.Min(v => v.X));" in dib)
+    # UN TABLERO, UN ROTULO: los tres textos encimados eran esto -un rotulo por pedazo-, y va al
+    # CENTRO DEL TABLERO, no al del pedazo.
+    check("un tablero, un rotulo, al centro del tablero",
+          "var suTablero = TableroDe(el);" in dib
+          and "if (suTablero is not null && !suTablero.Manejado(el))" in dib
+          and "cx = suTablero.CentroX + x0;" in dib
+          and "cy = suTablero.CentroY + y0;" in dib)
+    # Y EL ROTULO, DENTRO DEL TABLERO: en una L el centro de la caja cae en el hueco.
+    check("y el rotulo no cae en el hueco de un tablero en L",
+          "public static bool Dentro(" in tab
+          and "if (!g.Any(e => Dentro(e.Vertices, cx, cy)))" in tab)
+    # MANDA EL PEDAZO MAS GRANDE: de el salen el espesor y el uso que se rotulan. Es lo honesto
+    # cuando el mesh reparte propiedades distintas entre los pedazos de un mismo tablero, que es el
+    # caso que se enseño: tres pedazos con tres nombres de seccion.
+    check("manda el pedazo mas grande, y se avisa si no coincidian",
+          "public static double Area(" in tab
+          and "private void AvisarDeLosTableros()" in dib
+          and "espesores.Max() - espesores.Min() > 0.01" in dib)
+    # LA RAYA DEL MESH NO SE DIBUJA: esa orilla en la obra NO EXISTE, el concreto es continuo. Es la
+    # misma raya que ya se quita entre dos voladizos pegados. Y solo la de SU tablero: la que da a
+    # otro tablero -la que tiene un apoyo debajo- si se dibuja, porque ahi termina el paño.
+    check("la raya del mesh entre pedazos del mismo tablero no se dibuja",
+          "private List<IReadOnlyList<(double X, double Y)>> OtrosDelTablero(" in dib
+          and '_cfg.Bandera("LOSA_TABLERO_SIN_LINEA_INTERIOR", true)' in dib
+          and "PanoDeLosa.ContornoCompartido(t, mismoTablero)" in dib
+          and 'P("LOSA_TABLERO_SIN_LINEA_INTERIOR", "SI",' in cfgp)
+    # UN VOLADO NO SE JUNTA CON UN ENTREPISO ni una losacero con una losa de concreto: se dibujan
+    # distinto y se rotulan distinto, aunque se toquen.
+    check("y el volado no se junta con el entrepiso",
+          "private string FamiliaDeLaLosa(" in dib
+          and 'return "VOLADO";' in dib
+          and 'return "LOSACERO";' in dib
+          and "el => FamiliaDeLaLosa(el, huellas)));" in dib
+          and "familia: e => e.Notas.Contains(\"VOLADO\") ? \"VOLADO\" : \"LOSA\").Count);"
+              in pre_tab)
+    # SE CALCULAN TODOS ANTES DE DIBUJAR EL PRIMER PAÑO, como los voladizos y por lo mismo: cada
+    # pedazo tiene que saber a que tablero pertenece ANTES de decidir si le toca dibujar el armado y
+    # el rotulo o callarse.
+    check("los tableros se conocen antes de dibujar la primera losa",
+          "_tablerosDeLaPlanta.Clear();" in dib
+          and dib.index("_tablerosDeLaPlanta.AddRange(TableroDeLosa.Agrupar(")
+              < dib.index("if (Losa(el, x0, y0, huellas))"))
+    # Y CON LAS HOLGURAS DE LA HOJA: la de pegado es nueva, y la del apoyo sale de las que ya
+    # estaban -LOSA_APOYO_TOL_CM y LOSA_APOYO_CUBRE-, que hasta ahora no se usaban en ningun sitio.
+    check("con las holguras de la hoja CONFIG",
+          '_cfg.Numero("LOSA_TABLERO_TOL_CM", 5) / 100' in dib
+          and '_cfg.Numero("LOSA_APOYO_TOL_CM", 25) / 100' in dib
+          and '_cfg.Numero("LOSA_APOYO_CUBRE", 0.7)' in dib
+          and 'P("LOSA_TABLERO_TOL_CM", "5",' in cfgp)
+    # Y SU PRUEBA EJECUTABLE, que es lo que comprueba la geometria de verdad y no el texto.
+    check("hay prueba ejecutable de los tableros de losa",
+          "TableroDeLosa.Agrupar(" in pre_tab
+          and 'Igual("los tres pedazos son UN tablero", 1, unSolo.Count);' in pre_tab
+          and 'Igual("con una trabe en la frontera son DOS tableros", 2, dosTableros.Count);'
+              in pre_tab
+          and "TableroDeLosa.HayApoyoEnLaFrontera(frontera.Value, trabeEnMedio)" in pre_tab)
 
     # ------------------------------------------------------------------
     # EL PUNTO DE INSERCION EN LA VISTA EXTRUIDA
