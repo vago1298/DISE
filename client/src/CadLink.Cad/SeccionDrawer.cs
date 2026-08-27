@@ -1827,16 +1827,26 @@ public sealed partial class SeccionDrawer
             // El obrondo completo: LA VUELTA del gancho. Se probó dejar solo el cuarto de
             // abajo y era peor: sin el tramo recto y sin el doblez de la esquina, el gancho
             // se quedaba sin vuelta.
+            // ===== LOS DOS TRAZOS QUE NO VAN, SIEMPRE =====
+            //
+            //  · Del doblez de la ESQUINA, el pedazo de 90° a 135°: es el arquito que
+            //    asomaba entre el final de la curva y el arranque de la cola. Los arcos
+            //    llegan hasta 90° y ahí paran.
+            //  · Del doblez de ABAJO, la cara de DENTRO: es la que se junta con la
+            //    tangente y deja el trocito suelto. Solo va la cara de fuera.
+            //
+            // Es regla fija para cualquier número de varillas en paquete.
+
+            // El doblez de abajo: solo la cara de FUERA.
+            Agregar(contorno, Arco(bx, byAbajo, rOut, 1.75 * Pi, 2 * Pi));
+
             foreach (var r in new[] { rIn, rOut })
             {
-                // El doblez de la varilla de abajo: de 315° a 360°, su cuarto de fuera.
-                Agregar(contorno, Arco(bx, byAbajo, r, 1.75 * Pi, 2 * Pi));
-
                 // El tramo RECTO del costado, que une los dos dobleces.
                 Agregar(contorno, Linea(bx + r, byAbajo, bx + r, by, "ESTRIBOS"));
 
-                // El doblez de la varilla de la esquina: de 0° a 135°.
-                Agregar(contorno, Arco(bx, by, r, 0, 0.75 * Pi));
+                // El doblez de la esquina, hasta ARRIBA y no más: de 0° a 90°.
+                Agregar(contorno, Arco(bx, by, r, 0, 0.5 * Pi));
             }
 
             // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del

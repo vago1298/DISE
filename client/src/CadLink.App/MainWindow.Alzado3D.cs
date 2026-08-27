@@ -190,11 +190,36 @@ public partial class MainWindow
         {
             Varilla.TryDiametroCm(fila.Estribo, out var de);
 
-            foreach (var (_, zx, vy, _) in TodasLasVarillas(fila, de, fila.RecubrimientoCm))
+            var varillasAlz = TodasLasVarillas(fila, de, fila.RecubrimientoCm);
+
+            // Grosor REAL, como en la seccion de pie.
+            foreach (var (_, zx, vy, vr) in varillasAlz)
             {
                 // En el corte la X es a lo ancho de la sección, que aquí es la Z; y la Y
                 // del corte es el peralte, que aquí sigue siendo Y.
-                Linea3D(P(0, vy, zx), P(lx, vy, zx), verde, 1.6);
+                Linea3D(P(0, vy, zx), P(lx, vy, zx), verde, Math.Max(vr * 2 * k, 1.2));
+            }
+
+            // Las grapas y el diamante, a la altura de cada estribo.
+            var grosorEstAlz = Math.Max(de * k, 1.0);
+
+            foreach (var c in centros)
+            {
+                var xq = c * 100.0;
+
+                foreach (var g in fila.Grapas)
+                {
+                    var va = BuscarVarillaPrevia(varillasAlz, g.A);
+                    var vb = BuscarVarillaPrevia(varillasAlz, g.B);
+
+                    if (va is null || vb is null)
+                    {
+                        continue;
+                    }
+
+                    Linea3D(P(xq, va.Value.Y, va.Value.X), P(xq, vb.Value.Y, vb.Value.X),
+                            brochaEst, grosorEstAlz);
+                }
             }
         }
 
@@ -352,9 +377,145 @@ public partial class MainWindow
         // Las varillas, de abajo arriba. La X del corte es la X, y su Y es el fondo.
         Varilla.TryDiametroCm(s.Estribo, out var de);
 
-        foreach (var (_, vx, vz, _) in TodasLasVarillas(s, de, rec))
+        // Grosor REAL: el diametro de la varilla a la escala del dibujo, no una linea
+        // fija. Un #8 y un #3 tienen que verse distintos, como en la pieza.
+        foreach (var (_, vx, vz, vr) in TodasLasVarillas(s, de, rec))
         {
-            L3(P(vx, 0, vz), P(vx, hy, vz), rojo, 1.5);
+            L3(P(vx, 0, vz), P(vx, hy, vz), rojo, Math.Max(vr * 2 * k, 1.2));
+        }
+
+        // ===== LAS GRAPAS Y EL DIAMANTE, EN CADA ESTRIBO =====
+        //
+        // Se repiten a la misma altura que los estribos, porque van amarradas a ellos: una
+        // grapa suelta en el aire no existe. Salen de las mismas funciones que el corte, asi
+        // que si en la seccion hay tres grapas, aqui se ven tres.
+        var varillas = TodasLasVarillas(s, de, rec);
+        var grosorEst = Math.Max(de * k, 1.0);
+
+        foreach (var c in centros)
+        {
+            var y = c * 100.0;
+
+            foreach (var g in s.Grapas)
+            {
+                var va = BuscarVarillaPrevia(varillas, g.A);
+                var vb = BuscarVarillaPrevia(varillas, g.B);
+
+                if (va is null || vb is null)
+                {
+                    continue;
+                }
+
+                L3(P(va.Value.X, y, va.Value.Y), P(vb.Value.X, y, vb.Value.Y),
+                   brochaEst, grosorEst);
+            }
+
+            if (s.LlevaDiamante)
+            {
+                DibujarDiamante3D(s, de, rec, y, P, brochaEst, grosorEst);
+            }
+        }
+    }
+}
+
+
+public partial class MainWindow
+{
+    /// <summary>
+    /// Busca una varilla por su señal en la tabla de la vista previa.
+    /// </summary>
+    /// <remarks>
+    /// Igual que <c>BuscarVarilla</c>, pero devolviendo solo X e Y, que es lo que hace
+    /// falta para colocar una grapa en el 3D. Devuelve <c>null</c> si la señal ya no
+    /// apunta a nada, y entonces esa grapa se salta: es lo mismo que hace el dibujo del
+    /// corte cuando el lecho se quedó con menos varillas.
+    /// </remarks>
+    private static (double X, double Y)? BuscarVarillaPrevia(
+        List<(RefVarilla Ref, double X, double Y, double R)> varillas, RefVarilla señal)
+    {
+        foreach (var v in varillas)
+        {
+            if (v.Ref.Equals(señal))
+            {
+                return (v.X, v.Y);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// El estribo <b>diamante</b> a una altura dada, en el 3D.
+    /// </summary>
+    /// <remarks>
+    /// El recorrido sale de <see cref="TrazoDiamante"/>, la misma clase que usa el corte y
+    /// el dibujante de AutoCAD, y se muestrea en tramos rectos porque el lienzo no tiene
+    /// arcos. Si se calculara aquí, el diamante del 3D podría abrazar otras varillas que
+    /// el de la sección.
+    /// </remarks>
+    private void DibujarDiamante3D(
+        SeccionConcretoRow s, double de, double rec, double y,
+        Func<double, double, double, Point> proyecta, Brush brocha, double grosor)
+    {
+        if (!Varilla.TryDiametroCm(
+                string.IsNullOrWhiteSpace(s.DiamEstriboDiamante) ? s.Estribo : s.DiamEstriboDiamante,
+                out var dDia) || dDia <= 0)
+        {
+            return;
+        }
+
+        var x1 = rec;
+        var y1 = rec;
+        var x2 = s.BaseCm - rec;
+        var y2 = s.AlturaCm - rec;
+
+        if (x2 <= x1 || y2 <= y1)
+        {
+            return;
+        }
+
+        var varSup = PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
+                                       arriba: true, intermedio: false);
+
+        var varInf = PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
+                                       arriba: false, intermedio: false);
+
+        var varLat = PosicionesLaterales(s, de, rec);
+
+        var centros = TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat);
+
+        if (centros is null)
+        {
+            return;
+        }
+
+        var geo = TrazoDiamante.Cinta(centros, 0);
+
+        if (geo is null)
+        {
+            return;
+        }
+
+        var puntos = TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 8);
+
+        if (puntos.Count < 3)
+        {
+            return;
+        }
+
+        // Cerrado: el diamante es un estribo cerrado.
+        for (var i = 0; i < puntos.Count; i++)
+        {
+            var a = puntos[i];
+            var b = puntos[(i + 1) % puntos.Count];
+
+            PreviewCanvas.Children.Add(new Line
+            {
+                X1 = proyecta(a.X, y, a.Y).X, Y1 = proyecta(a.X, y, a.Y).Y,
+                X2 = proyecta(b.X, y, b.Y).X, Y2 = proyecta(b.X, y, b.Y).Y,
+                Stroke = brocha,
+                StrokeThickness = grosor
+            });
         }
     }
 }
