@@ -4989,10 +4989,22 @@ public partial class MainWindow : Window
             // como una viga.
             var trazo = new PointCollection();
 
-            var gM = ganchoM > 0
-                ? Estribos.GanchoEfectivo(
-                    Estribos.GanchoNominal(a.EsVertical, ganchoM, dM), disponibleM, dM)
-                : 0;
+            // ===== EL GANCHO: 15 DIÁMETROS, Y SIN ENCIMARSE CON EL DE ENFRENTE =====
+            //
+            // 15 diámetros es el largo de anclaje que se pide. Antes salía de
+            // Estribos.GanchoNominal, que da 12 en la trabe.
+            //
+            // Y va topado: el gancho del lecho de arriba baja y el de abajo sube, así que
+            // con un peralte chico las dos puntas se cruzaban en el centro y el dibujo se
+            // leía como una sola varilla doblada de arriba abajo. El tope deja siempre un
+            // hueco entre las dos puntas —disponibleM ya viene descontado en el
+            // llamador—, para que se vea que son dos piezas distintas.
+            var gM = Math.Min(15 * dM, disponibleM);
+
+            if (gM < dM)
+            {
+                gM = 0;   // no cabe ni un diámetro: no hay gancho que dibujar
+            }
 
             if (gM > 0)
             {
@@ -5057,10 +5069,20 @@ public partial class MainWindow : Window
         var ySupM = peralteM - recM - (dSupCm / 200.0);
         var yInfM = recM + (dInfCm / 200.0);
 
-        // Lo que cabe para cada gancho: del borde de la varilla al recubrimiento
-        // opuesto. Es el mismo recorte que hace la macro con maxSup y maxInf.
-        var libreSup = ySupM - (dSupCm / 200.0) - recM;
-        var libreInf = peralteM - recM - (yInfM + (dInfCm / 200.0));
+        // ===== CUÁNTO CABE PARA CADA GANCHO, SIN QUE SE ENCIMEN =====
+        //
+        // Los dos ganchos apuntan al centro: el de arriba baja y el de abajo sube. Si
+        // cada uno pudiera llegar hasta el recubrimiento opuesto —como antes—, en un
+        // peralte chico se cruzaban por el medio.
+        //
+        // Ahora el hueco entre los dos ejes se reparte a medias y se le quita una
+        // separación de tres diámetros, así que siempre queda aire entre las dos puntas.
+        var hueco = ySupM - yInfM;
+        var separacion = 3 * Math.Max(dSupCm, dInfCm) / 100.0;
+        var mitadUtil = Math.Max(0, (hueco - separacion) / 2);
+
+        var libreSup = Math.Min(ySupM - (dSupCm / 200.0) - recM, mitadUtil);
+        var libreInf = Math.Min(peralteM - recM - (yInfM + (dInfCm / 200.0)), mitadUtil);
 
         BarraDeAlzado(top + rec + (dSupCm / 100.0 * esc / 2), dSupCm,
             dobleHaciaAbajo: true, disponibleM: libreSup);
@@ -5547,9 +5569,11 @@ public partial class MainWindow : Window
         var rIn = dSup / 2;
         var rOut = rIn + dEst;
 
+        // by es la varilla DE LA ESQUINA, sin bajarla. El obrondo del paquete baja por su
+        // cuenta hasta la varilla de abajo —ver byAbajo—, así que bajar también aquí
+        // dejaba el gancho entero un diámetro por debajo de su sitio.
         var bx = s.BaseCm - rec - dEst - rIn;
-        var by = s.AlturaCm - rec - dEst - rIn
-                 + (enPaquete > 1 ? PaqueteVarillas.Desplazamiento(1, dSup, arriba: true) : 0);
+        var by = s.AlturaCm - rec - dEst - rIn;
 
         // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
         // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.
