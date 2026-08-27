@@ -995,30 +995,13 @@ public sealed partial class SeccionDrawer
 
         if (hayEstribo)
         {
-            // Con el lecho superior en PAQUETE, el gancho se agarra de la SEGUNDA varilla
-            // y no de la de la esquina: esa ya la tiene abrazada el doblez de la esquina
-            // del estribo. Se calcula ANTES que el estribo porque las dos funciones del
-            // estribo necesitan saberlo: cuando el gancho se baja, esta esquina se cierra
-            // con su arco normal de 90° en lugar de alargarse 45° para el gancho.
-            var bajarGancho =
-                gancho > 0
-                && s.Superior.Esquina.Existe
-                && PaqueteVarillas.EsPaquete(s.Superior.NEsquina)
-                    ? Math.Abs(PaqueteVarillas.Desplazamiento(1, dSup, arriba: true))
-                    : 0;
-
-            var ganchoBajado = bajarGancho > 0;
-
-            EstriboExterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf,
-                gancho, ganchoBajado);
-
-            EstriboInterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf,
-                gancho, ganchoBajado);
+            EstriboExterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, gancho);
+            EstriboInterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, gancho);
 
             if (gancho > 0)
             {
                 Ganchos(contorno, ganchoQuads, ganchoSectores,
-                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho, bajarGancho);
+                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho);
             }
         }
 
@@ -1654,15 +1637,10 @@ public sealed partial class SeccionDrawer
     // Estribo
     // ==================================================================
 
-    /// <param name="ganchoBajado">
-    /// El gancho se bajó a la segunda varilla de un <b>paquete</b>. Entonces esta esquina
-    /// se cierra con su arco normal de 90°, porque el doblez del gancho ya no sale de
-    /// aquí: lo dibuja <see cref="Ganchos"/> sobre la varilla que abraza.
-    /// </param>
     private void EstriboExterior(
         List<object> contorno,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double dInf, double gancho, bool ganchoBajado)
+        double dEst, double dSup, double dInf, double gancho)
     {
         var rfSup = dEst + (dSup / 2);
         var rfInf = dEst + (dInf / 2);
@@ -1681,18 +1659,15 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rfInf, y1 + rfInf, rfInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rfSup, y2 - rfSup, rfSup, 0.5 * Pi, Pi));
 
-        // Con el gancho BAJADO al paquete, esta esquina se cierra normal: el doblez del
-        // gancho ya no sale de aquí, lo dibuja Ganchos sobre la segunda varilla.
-        Agregar(contorno, gancho > 0 && !ganchoBajado
+        Agregar(contorno, gancho > 0
             ? Arco(x2 - rfSup, y2 - rfSup, rfSup, 1.75 * Pi, 0.5 * Pi)
             : Arco(x2 - rfSup, y2 - rfSup, rfSup, 0, 0.5 * Pi));
     }
 
-    /// <param name="ganchoBajado">Ver <see cref="EstriboExterior"/>.</param>
     private void EstriboInterior(
         List<object> contorno,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double dInf, double gancho, bool ganchoBajado)
+        double dEst, double dSup, double dInf, double gancho)
     {
         var rSup = dSup / 2;
         var rInf = dInf / 2;
@@ -1707,10 +1682,8 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        // El recorte del tramo vertical derecho solo aplica cuando el gancho sale de ESTA
-        // esquina. Bajado al paquete, la esquina se cierra entera y no hay nada que abrir.
         var yFinDer = y2 - rSup;
-        if (gancho > 0 && !ganchoBajado)
+        if (gancho > 0)
         {
             var rOut = rSup + dEst;
             var tCruce = rOut - (Rt2 * rSup);
@@ -1733,49 +1706,24 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rInf, y1 + rInf, rInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rSup, y2 - rSup, rSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0 && !ganchoBajado
+        Agregar(contorno, gancho > 0
             ? Arco(x2 - rSup, y2 - rSup, rSup, 1.75 * Pi, 0.75 * Pi)
             : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
     }
 
-    /// <param name="bajar">
-    /// Cuánto baja el doblez respecto de la varilla de la esquina. Vale cero salvo que el
-    /// lecho superior de esquina vaya en <b>paquete</b>: entonces el gancho se agarra de
-    /// la <b>segunda</b> varilla del paquete, porque la de arriba ya la tiene abrazada el
-    /// propio doblez de la esquina del estribo y las dos cosas quedarían encimadas.
-    /// </param>
     private void Ganchos(
         List<object> contorno, List<double[]> quads, List<double[]> sectores,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double gancho, double bajar)
+        double dEst, double dSup, double gancho)
     {
         var rIn = dSup / 2;
         var rOut = rIn + dEst;
 
         var bx = x0 + b - rec - dEst - rIn;
-        var by = y0 + h - rec - dEst - rIn - bajar;
+        var by = y0 + h - rec - dEst - rIn;
 
         // Doblez: sector anular con los mismos radios y angulos de los arcos
         sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi });
-
-        // ===== EL ARCO VISIBLE DEL DOBLEZ, SOLO CUANDO EL GANCHO SE BAJO =====
-        //
-        // Normalmente el doblez del gancho NO se dibuja aquí: es la prolongación del arco
-        // de la esquina del estribo, que ya lo pintan EstriboExterior y EstriboInterior
-        // -sin gancho el arco va de 0° a 90°, y con gancho se alarga hasta 315°-, y los
-        // dos son concéntricos con este centro.
-        //
-        // Pero al bajar el gancho al paquete ese arco se queda arriba, en la primera
-        // varilla, y el gancho aparecía como dos colas sueltas sin nada que abrazara la
-        // segunda. Así que cuando se baja, el doblez se dibuja aquí, en su sitio, y las
-        // funciones del estribo cierran la esquina con el arco normal de 90°.
-        if (bajar > 0)
-        {
-            foreach (var r in new[] { rIn, rOut })
-            {
-                Agregar(contorno, Arco(bx, by, r, 1.75 * Pi, 0.75 * Pi));
-            }
-        }
 
         const double ux = -Rt2I;
         const double uy = -Rt2I;

@@ -5503,17 +5503,15 @@ public partial class MainWindow : Window
         var bx = s.BaseCm - rec - dEst - rIn;
         var by = s.AlturaCm - rec - dEst - rIn;
 
-        // CON EL LECHO SUPERIOR EN PAQUETE, el gancho se agarra de la SEGUNDA varilla.
+        // NOTA: el gancho se queda en la varilla de la ESQUINA, también cuando el lecho va
+        // en paquete.
         //
-        // La de la esquina ya la tiene abrazada el doblez de la esquina del estribo, así
-        // que un gancho ahí quedaría encimado con él. Se baja exactamente el mismo
-        // desplazamiento con el que se apiló el paquete —PaqueteVarillas.Desplazamiento—
-        // para que el doblez caiga en el centro de esa segunda varilla y no en medio de
-        // las dos.
-        if (PaqueteVarillas.EsPaquete(s.NEsqSup))
-        {
-            by += PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
-        }
+        // Se probó bajarlo a la segunda varilla del paquete y se revirtió: el arco visible
+        // del doblez no se dibuja aquí ni en el dibujante, es la prolongación de 45° del
+        // arco de la esquina del estribo, concéntrico con la varilla de la esquina. Al
+        // bajar solo el gancho quedaban las dos colas sueltas, sin doblez que abrazara
+        // nada. Moverlo de verdad exige rehacer también la esquina del estribo, y eso se
+        // hará aparte.
 
         // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
         // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.
