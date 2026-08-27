@@ -285,7 +285,7 @@
                                   SelectionUnit="FullRow" SelectionMode="Extended">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="Auto" />
-                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="Auto" />
+                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="240" />
                                 <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="Auto" />
                                 <!-- Solo lectura a proposito: el numero lo calcula el juego. -->
                                 <DataGridTextColumn Header="No. Plano" Binding="{Binding NumeroTexto}"
@@ -2396,7 +2396,7 @@
                                 <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorBaseM, StringFormat=N3}" Width="Auto" />
                                 <DataGridTextColumn Header="Medidas"  Binding="{Binding Dimensiones}" Width="Auto" />
                                 <DataGridTextColumn Header="Angulo"   Binding="{Binding AnguloEje, StringFormat=N1}" Width="Auto" />
-                                <DataGridTextColumn Header="Material" Binding="{Binding Material}" Width="*" MinWidth="Auto" />
+                                <DataGridTextColumn Header="Material" Binding="{Binding Material}" Width="*" MinWidth="110" />
                                 <DataGridTextColumn Header="Paños"    Binding="{Binding Areas}" Width="Auto" />
                             </DataGrid.Columns>
                         </DataGrid>
@@ -2534,7 +2534,7 @@
                                 <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="Auto" />
                                 <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="Auto" />
                                 <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="Auto" />
-                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="Auto" />
+                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
                                 <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="Auto" />
                                 <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="Auto" />
                             </DataGrid.Columns>
