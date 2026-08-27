@@ -1016,6 +1016,17 @@ public sealed partial class SeccionDrawer
         var rellenosVarilla = new List<object>();
         RellenarVarillas(circulos, rellenosVarilla);
 
+        // ---------- Grapas ----------
+        // Van DESPUES de las varillas, igual que el diamante y por lo mismo: se agarran
+        // de ellas, así que primero tienen que estar repartidas.
+        //
+        // Y antes del hatch, para que la polilínea ya exista cuando se decide qué se
+        // rellena. El orden de encima/debajo no se decide aquí: AlFrente sube los
+        // círculos al final, así que la varilla acaba tapando la parte del doblez que le
+        // pasa por detrás, que es como está armado y como se ve en la vista previa.
+        GrapasDeLaSeccion(
+            s, contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, conFondoSolido);
+
         // ---------- Estribo diamante ----------
         // Va DESPUES de las varillas porque se abraza a ellas: necesita saber
         // dónde quedaron las del centro de cada lecho.
@@ -2365,6 +2376,23 @@ public sealed partial class SeccionDrawer
             {
                 lineas.Add($"Est. Diamante {clave} @{sep} cm");
             }
+        }
+
+        // Renglón de las grapas, con LA CANTIDAD y su diámetro.
+        //
+        // Un renglón por calibre y del más grueso al más delgado, igual que las
+        // llamadas de varilla de arriba: si la sección lleva dos grapas del #3 y una
+        // del #4, en el plano tienen que verse las dos cosas o quien pide el acero no
+        // sabe cuántas cortar de cada una.
+        //
+        // Va SIN separación, a diferencia del estribo y del diamante: una grapa no se
+        // repite a lo largo de la pieza por su cuenta, va donde va el estribo. Poner
+        // «@10-20-10» aquí diría que hay una tercera familia con su propio paso.
+        foreach (var (clave, cuantas) in GrapasPorDiametro(s))
+        {
+            lineas.Add(cuantas == 1
+                ? $"1 grapa {clave}"
+                : $"{cuantas} grapas {clave}");
         }
 
         lineas.Add($"Rec. {s.RecubrimientoCm:0.##} cm");

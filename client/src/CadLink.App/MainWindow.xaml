@@ -622,6 +622,28 @@
                              del visor de ETABS llevan Background. -->
                         <Grid x:Name="PreviaHost" ClipToBounds="True"
                               Background="{StaticResource PreviewFondoBrush}">
+                            <!-- ===== LA CAPA FIJA: EL ALZADO Y LAS LETRAS =====
+
+                                 Va en su PROPIO lienzo, hermano del de la seccion y
+                                 SIN transformacion, porque el zoom y el arrastre son
+                                 solo para la seccion en corte.
+
+                                 Antes todo compartia un lienzo, y como la
+                                 transformacion es del lienzo entero, acercarse a una
+                                 varilla tambien agrandaba el alzado y el rotulo y los
+                                 sacaba del cuadro. Con dos lienzos, el corte se mueve
+                                 y el alzado y los textos se quedan donde estan.
+
+                                 Va PRIMERO -o sea debajo- y con IsHitTestVisible en
+                                 False: los clics tienen que llegar al lienzo de la
+                                 seccion, que es el que sabe convertir un punto en una
+                                 varilla. Si esta capa atrapara el raton, la mitad
+                                 derecha del recuadro -donde va el alzado- se quedaria
+                                 sin poder marcar nada. -->
+                            <Canvas x:Name="PreviaFijaCanvas"
+                                    Background="Transparent"
+                                    IsHitTestVisible="False" />
+
                             <!-- Sin ClipToBounds en el Canvas, a proposito: el recorte
                                  de verdad lo hace PreviaHost. Si el Canvas tambien
                                  recortara, al alejarse el zoom seguiria cortando el

@@ -3568,6 +3568,16 @@ public partial class MainWindow : Window
             // no se crearia y sus varillas saldrian en la capa activa del dibujo, con
             // otro color y sin poder apagarlas por separado.
             yield return Varilla.Normalizar(s.DiamVarTotalEfectivo);
+
+            // Los calibres de las grapas. Hoy la grapa se dibuja en la capa ESTRIBOS,
+            // asi que estrictamente no hacen falta; van igual porque el calibre de una
+            // grapa se elige por separado y puede no aparecer en ninguna otra columna.
+            // Asi, el dia que una grapa se dibuje en su capa de varilla, la capa ya
+            // existiria con su color en lugar de salir sin el.
+            foreach (var g in s.Grapas)
+            {
+                yield return Varilla.Normalizar(g.Diametro);
+            }
         }
     }
 
@@ -3636,7 +3646,18 @@ public partial class MainWindow : Window
             Circular = r.EsCircular,
             NVarTotal = r.NVarTotal,
             VarTotal = V(r.DiamVarTotalEfectivo),
-            ZunchoHelicoidal = r.EsZunchoHelicoidal
+            ZunchoHelicoidal = r.EsZunchoHelicoidal,
+
+            // ---------- Grapas ----------
+            // El diametro se resuelve AQUI, igual que todos los demas: el dibujante
+            // recibe centimetros. Una grapa con el calibre mal capturado llega con
+            // Cm = 0, y el dibujante la salta en lugar de inventarse un grueso.
+            //
+            // Las señales de las dos varillas pasan tal cual: RefVarilla vive en la capa
+            // de CAD justamente para que no haya que traducirlas y no puedan divergir.
+            Grapas = r.Grapas
+                .Select(g => new GrapaCad { A = g.A, B = g.B, Var = V(g.Diametro) })
+                .ToList()
         };
     }
 
@@ -4079,7 +4100,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void DibujarVistaPrevia()
     {
+        // Los DOS lienzos: el de la sección, que se mueve con el zoom, y el fijo, donde
+        // van el alzado y los textos. Si se olvidara uno, su contenido se acumularía
+        // dibujado sobre dibujado en cada tecla que se toca en la tabla.
         PreviewCanvas.Children.Clear();
+        PreviaFijaCanvas.Children.Clear();
 
         var s = Seleccionada;
         var ancho = PreviewCanvas.ActualWidth;
@@ -4102,7 +4127,9 @@ public partial class MainWindow : Window
 
         if (s is null || s.BaseCm <= 0 || s.AlturaCm <= 0)
         {
-            PreviewCanvas.Children.Add(new TextBlock
+            // A la capa fija: es un aviso, y los avisos no se arrastran ni se agrandan
+            // con el zoom.
+            PreviaFijaCanvas.Children.Add(new TextBlock
             {
                 Text = "Selecciona una sección con base y altura para verla dibujada.",
                 Foreground = Brushes.Gray,
@@ -4163,7 +4190,7 @@ public partial class MainWindow : Window
         // Patron AR-CONC. Se dibuja SIEMPRE, en los dos estilos: es justo el
         // rayado que faltaba en el dibujo. Va antes que estribo y varillas para
         // que estos queden encima, como las islas del hatch real.
-        DibujarPatronConcreto(cx0, cy0, cw, ch);
+        DibujarPatronConcreto(PreviewCanvas, cx0, cy0, cw, ch);
 
         var rec = s.RecubrimientoCm;
         Varilla.TryDiametroCm(s.Estribo, out var de);
@@ -4273,7 +4300,7 @@ public partial class MainWindow : Window
     {
         if (s.DiametroCm <= 0)
         {
-            PreviewCanvas.Children.Add(new TextBlock
+            PreviaFijaCanvas.Children.Add(new TextBlock
             {
                 Text = "La sección es circular: pon el diámetro en la columna «Base cm».",
                 Foreground = Brushes.Gray,
@@ -4568,9 +4595,63 @@ public partial class MainWindow : Window
         var total = s.TotalVarillas;
         var estribo = Varilla.Normalizar(s.Estribo);
 
+        // Las grapas, con la misma cuenta y el mismo texto que el rótulo del plano, para
+        // que la pantalla y el papel no se contradigan.
+        var grapas = ResumenDeGrapas(s);
+
         return total > 0
-            ? $"{cabeza}   ({total} vars., estribo {estribo})"
-            : $"{cabeza}   (estribo {estribo})";
+            ? $"{cabeza}   ({total} vars., estribo {estribo}{grapas})"
+            : $"{cabeza}   (estribo {estribo}{grapas})";
+    }
+
+    /// <summary>
+    /// Las grapas de la sección, agrupadas por diámetro, listas para el título.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Devuelve la cadena vacía si no hay ninguna, que es lo normal: así el título de una
+    /// sección sin grapas queda exactamente como estaba.
+    /// </para>
+    /// <para>
+    /// Cuenta solo las de <b>diámetro reconocido</b>, igual que
+    /// <c>SeccionDrawer.GrapasPorDiametro</c>. Una grapa con el calibre mal capturado no
+    /// se va a dibujar, así que anunciarla haría que el título prometiera algo que no se
+    /// ve.
+    /// </para>
+    /// </remarks>
+    private static string ResumenDeGrapas(SeccionConcretoRow s)
+    {
+        if (s.Grapas.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var porDiametro = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var g in s.Grapas)
+        {
+            if (!Varilla.TryDiametroCm(g.Diametro, out var cm) || cm <= 0)
+            {
+                continue;
+            }
+
+            var clave = Varilla.Normalizar(g.Diametro);
+            porDiametro[clave] = porDiametro.TryGetValue(clave, out var n) ? n + 1 : 1;
+        }
+
+        if (porDiametro.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        // Del más grueso al más delgado, igual que en el rótulo del plano.
+        var partes = porDiametro
+            .OrderByDescending(par => Varilla.TryDiametroCm(par.Key, out var cm) ? cm : 0)
+            .Select(par => par.Value == 1
+                ? $"1 grapa {par.Key}"
+                : $"{par.Value} grapas {par.Key}");
+
+        return ", " + string.Join(", ", partes);
     }
 
     /// <summary>
@@ -4665,9 +4746,11 @@ public partial class MainWindow : Window
             caraInt.Add(new Point(x, yMedio + ((rEje - (dEst / 2)) * sen)));
         }
 
+        // La hélice es parte del ALZADO -es el zuncho visto de lado-, así que va a la
+        // capa fija con él.
         foreach (var cara in new[] { caraExt, caraInt })
         {
-            PreviewCanvas.Children.Add(new Polyline
+            PreviaFijaCanvas.Children.Add(new Polyline
             {
                 Points = cara,
                 Stroke = brocha,
@@ -4753,9 +4836,10 @@ public partial class MainWindow : Window
             ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC))
             : Brushes.White;
 
-        // Concreto
-        PreviewCanvas.Children.Add(Rectangulo(izquierda, top, w, h, azul, 1.4, relleno));
-        DibujarPatronConcreto(izquierda, top, w, h);
+        // Concreto. A la capa FIJA: esto es el alzado, y el alzado no se mueve con el
+        // zoom de la sección.
+        PreviaFijaCanvas.Children.Add(Rectangulo(izquierda, top, w, h, azul, 1.4, relleno));
+        DibujarPatronConcreto(PreviaFijaCanvas, izquierda, top, w, h);
 
         var rec = a.RecubrimientoCm / 100.0 * esc;
         var dEst = a.EstriboDibujo.Cm / 100.0 * esc;
@@ -4787,7 +4871,7 @@ public partial class MainWindow : Window
                 var xc = izquierda + (c * esc);
 
                 // La cápsula: rectángulo con las puntas redondeadas
-                PreviewCanvas.Children.Add(new Rectangle
+                PreviaFijaCanvas.Children.Add(new Rectangle
                 {
                     Width = Math.Max(dEst, 1.5),
                     Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
@@ -4821,7 +4905,7 @@ public partial class MainWindow : Window
             var xIni = izquierda + rec;
             var xFin = izquierda + w - rec;
 
-            PreviewCanvas.Children.Add(new Line
+            PreviaFijaCanvas.Children.Add(new Line
             {
                 X1 = xIni, Y1 = yCentro,
                 X2 = xFin, Y2 = yCentro,
@@ -4848,7 +4932,7 @@ public partial class MainWindow : Window
 
             foreach (var x in new[] { xIni, xFin })
             {
-                PreviewCanvas.Children.Add(new Line
+                PreviaFijaCanvas.Children.Add(new Line
                 {
                     X1 = x, Y1 = yCentro,
                     X2 = x, Y2 = yCentro + g,
@@ -5433,7 +5517,13 @@ public partial class MainWindow : Window
     /// de sitio en cada redibujado, por ejemplo al cambiar el tamaño del panel.
     /// </para>
     /// </remarks>
-    private void DibujarPatronConcreto(double left, double top, double w, double h)
+    /// <param name="destino">
+    /// En qué lienzo se pinta. Lo piden <b>las dos</b> capas: el corte, que se mueve con
+    /// el zoom, y el alzado, que se queda fijo. Es la razón de que sea un parámetro y no
+    /// esté escrito dentro: es el único ayudante de dibujo que comparten.
+    /// </param>
+    private void DibujarPatronConcreto(
+        Canvas destino, double left, double top, double w, double h)
     {
         if (w < 4 || h < 4)
         {
@@ -5454,7 +5544,7 @@ public partial class MainWindow : Window
                 new Point(left + d + h, top)));
         }
 
-        PreviewCanvas.Children.Add(new FormaPath
+        destino.Children.Add(new FormaPath
         {
             Data = lineas,
             Stroke = tinta,
@@ -5475,7 +5565,7 @@ public partial class MainWindow : Window
             aridos.Children.Add(new EllipseGeometry(new Point(px, py), r, r));
         }
 
-        PreviewCanvas.Children.Add(new FormaPath
+        destino.Children.Add(new FormaPath
         {
             Data = aridos,
             Fill = tinta,
@@ -5539,7 +5629,11 @@ public partial class MainWindow : Window
         };
         Canvas.SetLeft(t, left);
         Canvas.SetTop(t, top);
-        PreviewCanvas.Children.Add(t);
+
+        // TODAS las letras van a la capa fija: el título, las cotas de la sección y los
+        // rótulos del alzado. Es lo que se pidió, y de paso el texto se lee al mismo
+        // tamaño con cualquier zoom en lugar de crecer hasta salirse del cuadro.
+        PreviaFijaCanvas.Children.Add(t);
     }
 
     // ==================================================================
