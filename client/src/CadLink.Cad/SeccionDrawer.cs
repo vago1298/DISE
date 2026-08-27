@@ -1718,13 +1718,21 @@ public sealed partial class SeccionDrawer
 
         var yFinDer = y2 - rSup;
 
-        if (gancho > 0 && !laEsquinaLaPoneElGancho)
+        // El costado de dentro se abre donde lo cruza la cola del gancho. Sin esto queda un
+        // pedazo de esa línea metido dentro del trazo del gancho.
+        //
+        // Con PAQUETE es la misma cuenta, solo que la cola sale de la ÚLTIMA varilla del
+        // paquete y no de la de la esquina, así que el corte baja lo que mida el paquete.
+        if (gancho > 0)
         {
             var rOut = rSup + dEst;
             var tCruce = rOut - (Rt2 * rSup);
+
             if (tCruce >= 0 && tCruce <= gancho)
             {
-                var yTrim = y2 - (Rt2 * rOut);
+                var bajaPaquete = laEsquinaLaPoneElGancho ? (enPaquete - 1) * dSup : 0;
+                var yTrim = y2 - bajaPaquete - (Rt2 * rOut);
+
                 if (yTrim > y1 + rInf)
                 {
                     yFinDer = yTrim;
@@ -1868,8 +1876,14 @@ public sealed partial class SeccionDrawer
             Cola(contorno, quads, bx, byAbajo, rIn, rOut, Rt2I, -Rt2I, uxPaq, uyPaq,
                 gancho, false, 0, 0);
 
+            // La cola de arriba se RECORTA donde la cruza la cara interior del techo del
+            // estribo: sin eso asomaba un pedacito de su canto por encima de esa línea. Es
+            // el mismo recorte, y con la misma cuenta, que ya lleva el gancho sin paquete.
+            var tCruzaPaq = rOut - (Rt2 * rIn);
+            var recortarPaq = gancho > 0 && tCruzaPaq >= 0 && tCruzaPaq <= gancho;
+
             Cola(contorno, quads, bx, by, rIn, rOut, -Rt2I, Rt2I, uxPaq, uyPaq,
-                gancho, false, 0, 0);
+                gancho, recortarPaq, bx + rIn - (Rt2 * rOut), by + rIn);
 
             return;
         }

@@ -369,7 +369,8 @@ public partial class MainWindow
 
                 for (var i = 0; i < 4; i++)
                 {
-                    L3(e[i], e[(i + 1) % 4], brochaEst, 1.1);
+                    BarraRedonda3D(e[i], e[(i + 1) % 4],
+                        Color.FromRgb(0x1F, 0x6F, 0xB2), Math.Max(de * k, 1.4));
                 }
             }
         }
@@ -381,7 +382,8 @@ public partial class MainWindow
         // fija. Un #8 y un #3 tienen que verse distintos, como en la pieza.
         foreach (var (_, vx, vz, vr) in TodasLasVarillas(s, de, rec))
         {
-            L3(P(vx, 0, vz), P(vx, hy, vz), rojo, Math.Max(vr * 2 * k, 1.2));
+            BarraRedonda3D(P(vx, 0, vz), P(vx, hy, vz),
+                           Color.FromRgb(0xC0, 0x39, 0x2B), Math.Max(vr * 2 * k, 1.6));
         }
 
         // ===== LAS GRAPAS Y EL DIAMANTE, EN CADA ESTRIBO =====
@@ -421,6 +423,65 @@ public partial class MainWindow
 
 public partial class MainWindow
 {
+
+    /// <summary>
+    /// Una <b>barra redonda</b> en el 3D: cilíndrica, no una raya plana.
+    /// </summary>
+    /// <remarks>
+    /// El volumen se consigue con dos cosas: las puntas <b>redondeadas</b>, que cierran el
+    /// cilindro en lugar de cortarlo a escuadra, y un <b>degradado</b> a lo ancho —claro en
+    /// el borde de la luz, oscuro en el otro— que es como se lee un tubo. Es la misma idea
+    /// que usa el visor de ETABS para las barras extruidas: en un lienzo no hay iluminación,
+    /// así que el relieve se pinta.
+    /// <para>
+    /// El degradado va PERPENDICULAR a la barra, así que se calcula con su dirección: un
+    /// degradado fijo se vería girado en las barras que no van en el mismo sentido.
+    /// </para>
+    /// </remarks>
+    private void BarraRedonda3D(Point p, Point q, Color color, double grueso)
+    {
+        var dx = q.X - p.X;
+        var dy = q.Y - p.Y;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 0.5 || grueso <= 0)
+        {
+            return;
+        }
+
+        // La normal en coordenadas de la propia barra: el degradado cruza su ancho.
+        var nx = -dy / largo;
+        var ny = dx / largo;
+
+        Color Mezcla(Color c, double f) => Color.FromRgb(
+            (byte)Math.Clamp(c.R * f, 0, 255),
+            (byte)Math.Clamp(c.G * f, 0, 255),
+            (byte)Math.Clamp(c.B * f, 0, 255));
+
+        var brocha = new LinearGradientBrush
+        {
+            MappingMode = BrushMappingMode.RelativeToBoundingBox,
+            StartPoint = new Point(0.5 - (nx / 2), 0.5 - (ny / 2)),
+            EndPoint = new Point(0.5 + (nx / 2), 0.5 + (ny / 2)),
+            GradientStops =
+            {
+                new GradientStop(Mezcla(color, 0.55), 0.0),
+                new GradientStop(Mezcla(color, 1.25), 0.35),
+                new GradientStop(color, 0.62),
+                new GradientStop(Mezcla(color, 0.5), 1.0)
+            }
+        };
+
+        PreviewCanvas.Children.Add(new Line
+        {
+            X1 = p.X, Y1 = p.Y, X2 = q.X, Y2 = q.Y,
+            Stroke = brocha,
+            StrokeThickness = grueso,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        });
+    }
+
     /// <summary>
     /// Busca una varilla por su señal en la tabla de la vista previa.
     /// </summary>
