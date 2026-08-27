@@ -45,6 +45,54 @@ public static class TrazoGrapa
     private const double FraccionMaximaDeCola = 0.40;
 
     /// <summary>
+    /// Distancia entre las dos varillas que la grapa agarra.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que decide <b>quién pasa por encima</b> cuando dos grapas se cruzan. Ver
+    /// <see cref="ClaveDeOrden"/>.
+    /// </remarks>
+    public static double Largo(double ax, double ay, double bx, double by)
+    {
+        var dx = bx - ax;
+        var dy = by - ay;
+
+        return Math.Sqrt((dx * dx) + (dy * dy));
+    }
+
+    /// <summary>¿La grapa va más tumbada que parada?</summary>
+    public static bool EsHorizontal(double ax, double ay, double bx, double by) =>
+        Math.Abs(bx - ax) >= Math.Abs(by - ay);
+
+    /// <summary>
+    /// La clave con la que se ordenan las grapas para dibujarlas: <b>primero las que van
+    /// debajo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La regla es que <b>la más larga va debajo y la más corta encima</b>. Tiene sentido
+    /// de armado: la grapa corta es la que se mete al final, cuando la larga ya está
+    /// colocada, así que queda por delante.
+    /// </para>
+    /// <para>
+    /// El desempate: si las dos miden lo mismo —una sección cuadrada con una grapa
+    /// horizontal y otra vertical—, <b>la horizontal va encima</b>. Sin una regla fija,
+    /// el resultado dependería del orden en que se hubieran ido marcando las grapas, y la
+    /// misma sección se dibujaría distinta en dos proyectos.
+    /// </para>
+    /// <para>
+    /// Vive aquí, y no en cada dibujante, porque los dos tienen que ordenar igual: si la
+    /// pantalla pusiera una encima y el plano la otra, la vista previa estaría mintiendo.
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// Dos números para ordenar de menor a mayor. El primero es el largo en negativo —así
+    /// la más larga sale primero— y el segundo desempata dejando la horizontal al final.
+    /// </returns>
+    public static (double Primero, int Segundo) ClaveDeOrden(
+        double ax, double ay, double bx, double by) =>
+        (-Largo(ax, ay, bx, by), EsHorizontal(ax, ay, bx, by) ? 1 : 0);
+
+    /// <summary>
     /// El <b>contorno cerrado</b> de la grapa, en centímetros.
     /// </summary>
     /// <param name="ax">X del centro de la primera varilla.</param>

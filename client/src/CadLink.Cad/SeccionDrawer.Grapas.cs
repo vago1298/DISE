@@ -151,6 +151,14 @@ public sealed partial class SeccionDrawer
         // pasan por encima.
         var contornos = new List<double[]>();
 
+        // Se resuelven primero y se ordenan con la MISMA regla que la vista previa:
+        // TrazoGrapa.ClaveDeOrden, la más larga debajo y la más corta encima, y en el
+        // empate la horizontal encima. Ordenar igual es lo que hace que la pantalla no
+        // mienta sobre cuál pasa por delante.
+        var resueltas = new List<((double X, double Y, double R) A,
+                                  (double X, double Y, double R) B,
+                                  double DGrapa)>();
+
         foreach (var g in s.Grapas)
         {
             // Un diámetro que no se reconoció se salta. La aplicación ya lo resolvió a
@@ -170,16 +178,29 @@ public sealed partial class SeccionDrawer
                 continue;
             }
 
-            var dGrapa = g.Var.Cm * _escala;
+            resueltas.Add((va.Value, vb.Value, g.Var.Cm * _escala));
+        }
 
+        resueltas.Sort((p, q) =>
+        {
+            var kp = TrazoGrapa.ClaveDeOrden(p.A.X, p.A.Y, p.B.X, p.B.Y);
+            var kq = TrazoGrapa.ClaveDeOrden(q.A.X, q.A.Y, q.B.X, q.B.Y);
+
+            var porLargo = kp.Primero.CompareTo(kq.Primero);
+
+            return porLargo != 0 ? porLargo : kp.Segundo.CompareTo(kq.Segundo);
+        });
+
+        foreach (var (va, vb, dGrapa) in resueltas)
+        {
             // El gancho de la sección da el largo de las colas. Sin gancho capturado se
             // usan seis diámetros, el mínimo de norma para un doblez sísmico. Es la
             // misma regla que la vista previa.
             var cola = s.GanchoCm > 0 ? s.GanchoCm * _escala : dGrapa * 6;
 
             var puntos = TrazoGrapa.Contorno(
-                va.Value.X, va.Value.Y, va.Value.R,
-                vb.Value.X, vb.Value.Y, vb.Value.R,
+                va.X, va.Y, va.R,
+                vb.X, vb.Y, vb.R,
                 dGrapa, cola);
 
             if (puntos is null || puntos.Count < 3)

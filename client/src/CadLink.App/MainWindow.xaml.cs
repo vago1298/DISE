@@ -4195,6 +4195,28 @@ public partial class MainWindow : Window
         var rec = s.RecubrimientoCm;
         Varilla.TryDiametroCm(s.Estribo, out var de);
 
+        // ===== EL RADIO DEL DOBLEZ DE LAS ESQUINAS =====
+        //
+        // Las mismas fórmulas que EstriboExterior y EstriboInterior en AutoCAD: la cara
+        // de fuera dobla con radio dEst + dVar/2 y la de dentro con dVar/2, medidos
+        // desde el centro de la varilla de esquina, que es alrededor de quien se dobla.
+        //
+        // Hace falta porque una varilla NO se dobla en pico: el estribo se veía en
+        // escuadra y el plano lo dibuja redondeado.
+        //
+        // Se usa un solo radio para las cuatro esquinas, con el diámetro del lecho
+        // superior o, si no está capturado, el del inferior. En el plano cada lecho
+        // aporta el suyo, pero la diferencia es medio diámetro de varilla y a esta
+        // escala no se distingue.
+        Varilla.TryDiametroCm(s.DiamEsqSup, out var dEsqSup);
+        Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dEsqInf);
+
+        var dEsquina = dEsqSup > 0 ? dEsqSup : dEsqInf;
+        if (dEsquina <= 0) { dEsquina = de; }
+
+        var radioExtPx = (de + (dEsquina / 2)) * escala;
+        var radioIntPx = (dEsquina / 2) * escala;
+
         // Estribo: dos contornos, como en la macro
         if (rec > 0 && rec * 2 < s.BaseCm && rec * 2 < s.AlturaCm)
         {
@@ -4210,7 +4232,8 @@ public partial class MainWindow : Window
                     (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
                     (de * escala),
                     new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B)),   // ACI 152
-                    negro));
+                    negro,
+                    radioExtPx));
             }
             else
             {
@@ -4218,13 +4241,13 @@ public partial class MainWindow : Window
 
                 PreviewCanvas.Children.Add(Rectangulo(PX(rec), PY(s.AlturaCm - rec),
                     (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
-                    trazo, 1.4, null));
+                    trazo, 1.4, null, radioExtPx));
 
                 if (hayInterior)
                 {
                     PreviewCanvas.Children.Add(Rectangulo(PX(i), PY(s.AlturaCm - i),
                         (s.BaseCm - (2 * i)) * escala, (s.AlturaCm - (2 * i)) * escala,
-                        trazo, 1.0, null));
+                        trazo, 1.0, null, radioIntPx));
                 }
             }
         }
@@ -5588,16 +5611,26 @@ public partial class MainWindow : Window
     /// Anillo relleno: representa el cuerpo del estribo, que en AutoCAD es un
     /// hatch <c>SOLID</c> entre la frontera exterior y la interior.
     /// </summary>
+    /// <param name="radio">
+    /// Radio de las esquinas de la cara exterior, en píxeles. La interior lleva el mismo
+    /// menos el grueso del estribo, que es la relación real: las dos caras de un doblez
+    /// son arcos concéntricos.
+    /// </param>
     private static FormaPath Anillo(
         double left, double top, double w, double h, double grosor,
-        Brush relleno, Brush trazo)
+        Brush relleno, Brush trazo, double radio = 0)
     {
-        var externo = new RectangleGeometry(new Rect(left, top, Math.Max(w, 1), Math.Max(h, 1)));
+        var rExt = Math.Max(0, Math.Min(radio, 0.49 * Math.Min(Math.Max(w, 1), Math.Max(h, 1))));
+        var rInt = Math.Max(0, rExt - grosor);
+
+        var externo = new RectangleGeometry(
+            new Rect(left, top, Math.Max(w, 1), Math.Max(h, 1)), rExt, rExt);
 
         var g = Math.Max(grosor, 0.8);
         var iw = Math.Max(w - (2 * g), 0.5);
         var ih = Math.Max(h - (2 * g), 0.5);
-        var interno = new RectangleGeometry(new Rect(left + g, top + g, iw, ih));
+        var interno = new RectangleGeometry(
+            new Rect(left + g, top + g, iw, ih), rInt, rInt);
 
         return new FormaPath
         {
@@ -5613,16 +5646,37 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <param name="radio">
+    /// Radio de las esquinas, en píxeles. Es lo que hace que el estribo se vea doblado y
+    /// no en escuadra: en AutoCAD las cuatro esquinas son arcos —<c>PolyRectFillet</c> las
+    /// dibuja con <i>bulges</i>— porque una varilla no puede doblarse en pico.
+    /// <para>
+    /// WPF aplica el MISMO radio a las cuatro esquinas, mientras que en el plano el de
+    /// arriba y el de abajo se calculan con la varilla de su propio lecho. La diferencia
+    /// es medio diámetro de varilla y a la escala de la vista previa no se distingue, así
+    /// que no vale la pena armar un <c>Path</c> con cuatro arcos solo por eso.
+    /// </para>
+    /// </param>
     private static Rectangle Rectangulo(
-        double left, double top, double w, double h, Brush trazo, double grosor, Brush? relleno)
+        double left, double top, double w, double h, Brush trazo, double grosor,
+        Brush? relleno, double radio = 0)
     {
+        var ancho = Math.Max(w, 1);
+        var alto = Math.Max(h, 1);
+
+        // El mismo tope que PolyRectFillet: un radio mayor que media cara dejaría de ser
+        // una esquina redondeada y se comería el lado entero.
+        var rr = Math.Max(0, Math.Min(radio, 0.49 * Math.Min(ancho, alto)));
+
         var r = new Rectangle
         {
-            Width = Math.Max(w, 1),
-            Height = Math.Max(h, 1),
+            Width = ancho,
+            Height = alto,
             Stroke = trazo,
             StrokeThickness = grosor,
-            Fill = relleno
+            Fill = relleno,
+            RadiusX = rr,
+            RadiusY = rr
         };
         Canvas.SetLeft(r, left);
         Canvas.SetTop(r, top);

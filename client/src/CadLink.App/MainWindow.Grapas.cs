@@ -389,29 +389,59 @@ public partial class MainWindow
             ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
             : rellenoConcreto;
 
+        // ===== EL ORDEN: LA MÁS LARGA DEBAJO, LA MÁS CORTA ENCIMA =====
+        //
+        // Se resuelven primero todas las grapas y se ordenan con la regla compartida
+        // TrazoGrapa.ClaveDeOrden, la MISMA que usa el dibujante de AutoCAD, para que la
+        // pantalla y el plano no pongan encima a grapas distintas.
+        //
+        // Aquí el orden es todo lo que hace falta: como cada grapa se pinta con relleno
+        // opaco, la que se dibuja después tapa el trozo de la anterior por donde se
+        // cruzan, y eso ES el efecto de pasar por encima. En AutoCAD no basta y el
+        // recorte hay que hacerlo de verdad.
+        var resueltas = new List<(GrapaSeccion G,
+                                  (double X, double Y, double R) A,
+                                  (double X, double Y, double R) B,
+                                  double Dg)>();
+
         foreach (var g in s.Grapas)
         {
-            var a = BuscarVarilla(varillas, g.A);
-            var b = BuscarVarilla(varillas, g.B);
+            var va = BuscarVarilla(varillas, g.A);
+            var vb = BuscarVarilla(varillas, g.B);
 
             // La sección cambió y una de las dos varillas ya no existe.
-            if (a is null || b is null)
+            if (va is null || vb is null)
             {
                 continue;
             }
 
-            if (!Varilla.TryDiametroCm(g.Diametro, out var dg) || dg <= 0)
+            if (!Varilla.TryDiametroCm(g.Diametro, out var dgg) || dgg <= 0)
             {
                 continue;
             }
 
+            resueltas.Add((g, va.Value, vb.Value, dgg));
+        }
+
+        resueltas.Sort((p, q) =>
+        {
+            var kp = TrazoGrapa.ClaveDeOrden(p.A.X, p.A.Y, p.B.X, p.B.Y);
+            var kq = TrazoGrapa.ClaveDeOrden(q.A.X, q.A.Y, q.B.X, q.B.Y);
+
+            var porLargo = kp.Primero.CompareTo(kq.Primero);
+
+            return porLargo != 0 ? porLargo : kp.Segundo.CompareTo(kq.Segundo);
+        });
+
+        foreach (var (g, a, b, dg) in resueltas)
+        {
             // El gancho de la sección es el largo de las colas. Si no está capturado se
             // usan seis diámetros, que es el mínimo de norma para un doblez sísmico.
             var cola = s.GanchoCm > 0 ? s.GanchoCm : dg * 6;
 
             var contorno = TrazoGrapa.Contorno(
-                a.Value.X, a.Value.Y, a.Value.R,
-                b.Value.X, b.Value.Y, b.Value.R,
+                a.X, a.Y, a.R,
+                b.X, b.Y, b.R,
                 dg, cola);
 
             if (contorno is null || contorno.Count < 3)

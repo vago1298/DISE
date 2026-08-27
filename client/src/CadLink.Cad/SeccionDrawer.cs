@@ -2355,9 +2355,11 @@ public sealed partial class SeccionDrawer
             // el rotulo tiene que decir cual es; pero una columna redonda sin la casilla
             // marcada lleva ESTRIBOS, y antes se rotulaba «Zuncho en anillos». La regla
             // esta en Estribos.EsZuncho, que es el mismo sitio que usa el alzado.
+            // La «C» detrás del calibre, igual que en las llamadas de varilla y en las
+            // grapas: TODOS los renglones del rótulo nombran la varilla del mismo modo.
             lineas.Add(Estribos.EsZuncho(s.Circular, s.ZunchoHelicoidal)
-                ? $"Zuncho helicoidal {s.Estribo.Clave} @{sep} cm"
-                : $"Estr. {s.Estribo.Clave} @{sep} cm");
+                ? $"Zuncho helicoidal {s.Estribo.Clave}C @{sep} cm"
+                : $"Estr. {s.Estribo.Clave}C @{sep} cm");
         }
 
         // Renglón del estribo diamante, con la MISMA separación que el principal.
@@ -2374,7 +2376,7 @@ public sealed partial class SeccionDrawer
 
             if (!string.IsNullOrWhiteSpace(clave))
             {
-                lineas.Add($"Est. Diamante {clave} @{sep} cm");
+                lineas.Add($"Est. Diamante {clave}C @{sep} cm");
             }
         }
 
