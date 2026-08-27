@@ -1825,17 +1825,28 @@ public sealed partial class SeccionDrawer
             // costado, y estaba mal: son caras del propio gancho y sin ellas la pieza queda
             // abierta. Lo que hay que recortar son las líneas del ESTRIBO por donde el
             // gancho le pasa por encima, que es otra cosa y se hace aparte.
+            // Los dos dobleces de la varilla de ABAJO, enteros.
             foreach (var r in new[] { rIn, rOut })
             {
-                // El doblez de la varilla de abajo: de 315° a 360°, su cuarto de fuera.
                 Agregar(contorno, Arco(bx, byAbajo, r, 1.75 * Pi, 2 * Pi));
-
-                // El tramo RECTO del costado, que une los dos dobleces.
-                Agregar(contorno, Linea(bx + r, byAbajo, bx + r, by, "ESTRIBOS"));
-
-                // El doblez de la varilla de la esquina: de 0° a 135°.
-                Agregar(contorno, Arco(bx, by, r, 0, 0.75 * Pi));
             }
+
+            // ===== LAS DOS CARAS DE DENTRO QUE NO SE TRAZAN =====
+            //
+            // El gancho pasa POR ENCIMA del estribo, así que las dos caras interiores que
+            // quedan debajo de su banda no se dibujan: se verían cortando la pieza en dos.
+            //
+            //  · Del costado NO se traza la cara de dentro. Es el tramo vertical que va del
+            //    arranque de la tangente hasta donde da la vuelta el gancho.
+            //  · Del doblez de la esquina, la cara de dentro llega solo hasta ARRIBA —90°—
+            //    y no hasta los 135°. El pedazo de 90° a 135° es el arquito que salía entre
+            //    el final de la curva y el arranque de la cola.
+            //
+            // Las caras de FUERA van completas: son las que dan la silueta del gancho.
+            Agregar(contorno, Linea(bx + rOut, byAbajo, bx + rOut, by, "ESTRIBOS"));
+
+            Agregar(contorno, Arco(bx, by, rOut, 0, 0.75 * Pi));
+            Agregar(contorno, Arco(bx, by, rIn, 0, 0.5 * Pi));
 
             // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del
             // tramo recto que queda entre ellos.

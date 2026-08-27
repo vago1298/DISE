@@ -234,18 +234,25 @@ public partial class MainWindow
             return;
         }
 
-        var bz = s.BaseCm;
+        // ===== LA SECCIÓN DE PIE, COMO UN CORTE 3D DE REVIT =====
+        //
+        // El ancho de la sección va en X y el peralte en Y, así que la cara del corte
+        // queda DE FRENTE y de pie. El fondo va en Z, hacia atrás.
+        //
+        // Antes el fondo iba en X y la sección quedaba tumbada: se veía como una plancha
+        // de canto, y lo que hay que mirar —el acomodo del armado— quedaba de perfil.
+        var bx0 = s.BaseCm;
         var hy = s.AlturaCm;
 
-        // El fondo de la rebanada: un tercio del ancho de la sección, que da perspectiva
-        // sin esconder las varillas de atrás.
-        var lx = Math.Max(bz / 3.0, 6.0);
+        // El fondo: la mitad del ancho. Da cuerpo sin que las varillas de delante tapen
+        // las de atrás.
+        var dz = Math.Max(bx0 / 2.0, 8.0);
 
         const double c30 = 0.86602540378443864;
         const double s30 = 0.5;
 
-        var anchoIso = (lx + bz) * c30;
-        var altoIso = hy + ((lx + bz) * s30);
+        var anchoIso = (bx0 + dz) * c30;
+        var altoIso = hy + ((bx0 + dz) * s30);
 
         // La mitad izquierda del lienzo, que es donde vive el corte.
         var anchoDisp = (ancho * 0.46) - 28;
@@ -263,8 +270,8 @@ public partial class MainWindow
             return;
         }
 
-        var ox = 30 + (bz * c30 * k);
-        var oy = 46 + (hy * k) + (bz * s30 * k);
+        var ox = 30 + (dz * c30 * k);
+        var oy = 46 + (hy * k);
 
         Point P(double x, double y, double z) => new(
             ox + ((x - z) * c30 * k),
@@ -289,7 +296,7 @@ public partial class MainWindow
         // estar mirando una pieza cortada y no un alambre.
         var cara = new PointCollection
         {
-            P(0, 0, 0), P(0, 0, bz), P(0, hy, bz), P(0, hy, 0)
+            P(0, 0, 0), P(bx0, 0, 0), P(bx0, hy, 0), P(0, hy, 0)
         };
 
         PreviewCanvas.Children.Add(new Polygon
@@ -303,8 +310,8 @@ public partial class MainWindow
         // La rebanada, en alambre.
         var esquinas = new[]
         {
-            P(0, 0, 0), P(lx, 0, 0), P(lx, hy, 0), P(0, hy, 0),
-            P(0, 0, bz), P(lx, 0, bz), P(lx, hy, bz), P(0, hy, bz)
+            P(0, 0, 0), P(bx0, 0, 0), P(bx0, hy, 0), P(0, hy, 0),
+            P(0, 0, dz), P(bx0, 0, dz), P(bx0, hy, dz), P(0, hy, dz)
         };
 
         foreach (var (i, j) in new[]
@@ -319,19 +326,19 @@ public partial class MainWindow
         // El estribo: un anillo en la cara del corte y otro al fondo de la rebanada.
         var rec = s.RecubrimientoCm;
 
-        if (rec > 0 && rec * 2 < bz && rec * 2 < hy)
+        if (rec > 0 && rec * 2 < bx0 && rec * 2 < hy)
         {
-            foreach (var x in new[] { 0.0, lx })
+            foreach (var z in new[] { 0.0, dz })
             {
                 var e = new[]
                 {
-                    P(x, rec, rec), P(x, rec, bz - rec),
-                    P(x, hy - rec, bz - rec), P(x, hy - rec, rec)
+                    P(rec, rec, z), P(bx0 - rec, rec, z),
+                    P(bx0 - rec, hy - rec, z), P(rec, hy - rec, z)
                 };
 
                 for (var v = 0; v < 4; v++)
                 {
-                    L3(e[v], e[(v + 1) % 4], brochaEst, x == 0 ? 1.4 : 1.0, x == 0 ? 1 : 0.55);
+                    L3(e[v], e[(v + 1) % 4], brochaEst, z == 0 ? 1.4 : 1.0, z == 0 ? 1 : 0.55);
                 }
             }
         }
@@ -342,9 +349,9 @@ public partial class MainWindow
 
         foreach (var (_, zx, vy, r) in TodasLasVarillas(s, de, rec))
         {
-            L3(P(0, vy, zx), P(lx, vy, zx), rojo, 1.5);
+            L3(P(zx, vy, 0), P(zx, vy, dz), rojo, 1.5);
 
-            var p = P(0, vy, zx);
+            var p = P(zx, vy, 0);
             var rr = Math.Max(r * k, 1.6);
 
             var bolita = new Ellipse
