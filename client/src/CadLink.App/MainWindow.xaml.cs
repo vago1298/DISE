@@ -5494,6 +5494,18 @@ public partial class MainWindow : Window
         var bx = s.BaseCm - rec - dEst - rIn;
         var by = s.AlturaCm - rec - dEst - rIn;
 
+        // CON EL LECHO SUPERIOR EN PAQUETE, el gancho se agarra de la SEGUNDA varilla.
+        //
+        // La de la esquina ya la tiene abrazada el doblez de la esquina del estribo, así
+        // que un gancho ahí quedaría encimado con él. Se baja exactamente el mismo
+        // desplazamiento con el que se apiló el paquete —PaqueteVarillas.Desplazamiento—
+        // para que el doblez caiga en el centro de esa segunda varilla y no en medio de
+        // las dos.
+        if (PaqueteVarillas.EsPaquete(s.NEsqSup))
+        {
+            by += PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
+        }
+
         // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
         // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.
         if (bx <= rec + dEst || by <= rec + dEst)

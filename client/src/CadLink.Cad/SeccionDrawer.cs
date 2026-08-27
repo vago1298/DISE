@@ -1000,8 +1000,17 @@ public sealed partial class SeccionDrawer
 
             if (gancho > 0)
             {
+                // Con el lecho superior en PAQUETE, el gancho se agarra de la segunda
+                // varilla y no de la de la esquina. Se pasa cuánto tiene que bajar, que es
+                // el mismo desplazamiento con el que se apiló el paquete, para que caiga
+                // justo en su centro y no en un punto intermedio.
+                var bajarGancho =
+                    s.Superior.Esquina.Existe && PaqueteVarillas.EsPaquete(s.Superior.NEsquina)
+                        ? Math.Abs(PaqueteVarillas.Desplazamiento(1, dSup, arriba: true))
+                        : 0;
+
                 Ganchos(contorno, ganchoQuads, ganchoSectores,
-                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho);
+                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho, bajarGancho);
             }
         }
 
@@ -1711,16 +1720,22 @@ public sealed partial class SeccionDrawer
             : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
     }
 
+    /// <param name="bajar">
+    /// Cuánto baja el doblez respecto de la varilla de la esquina. Vale cero salvo que el
+    /// lecho superior de esquina vaya en <b>paquete</b>: entonces el gancho se agarra de
+    /// la <b>segunda</b> varilla del paquete, porque la de arriba ya la tiene abrazada el
+    /// propio doblez de la esquina del estribo y las dos cosas quedarían encimadas.
+    /// </param>
     private void Ganchos(
         List<object> contorno, List<double[]> quads, List<double[]> sectores,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double gancho)
+        double dEst, double dSup, double gancho, double bajar)
     {
         var rIn = dSup / 2;
         var rOut = rIn + dEst;
 
         var bx = x0 + b - rec - dEst - rIn;
-        var by = y0 + h - rec - dEst - rIn;
+        var by = y0 + h - rec - dEst - rIn - bajar;
 
         // Doblez: sector anular con los mismos radios y angulos de los arcos
         sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi });
