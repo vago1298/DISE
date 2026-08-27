@@ -1666,8 +1666,18 @@ public sealed partial class SeccionDrawer
         var x2 = x0 + b - rec;
         var y2 = y0 + h - rec;
 
+        // Con paquete Y con gancho, la esquina de arriba a la derecha la pone el propio
+        // gancho: su obrondo pasa por ahí. Ver Ganchos.
+        var laEsquinaLaPoneElGancho = gancho > 0 && enPaquete > 1;
+
+        // Y entonces el costado derecho sube solo hasta la varilla de ABAJO del paquete,
+        // porque de ahí arriba ese mismo costado es el tramo recto del obrondo. Los dos
+        // van en la misma línea, así que juntos hacen el costado seguido.
+        var yTopDer = y2 - rfSup
+                      - (laEsquinaLaPoneElGancho ? (enPaquete - 1) * dSup : 0);
+
         Horizontal(contorno, x1 + rfInf, x2 - rfInf, y1);
-        Vertical(contorno, y1 + rfInf, y2 - rfSup, x2);
+        Vertical(contorno, y1 + rfInf, yTopDer, x2);
         Horizontal(contorno, x1 + rfSup, x2 - rfSup, y2);
         Vertical(contorno, y1 + rfInf, y2 - rfSup, x1);
 
@@ -1675,9 +1685,12 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rfInf, y1 + rfInf, rfInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rfSup, y2 - rfSup, rfSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0 && enPaquete <= 1
-            ? Arco(x2 - rfSup, y2 - rfSup, rfSup, 1.75 * Pi, 0.5 * Pi)
-            : Arco(x2 - rfSup, y2 - rfSup, rfSup, 0, 0.5 * Pi));
+        if (!laEsquinaLaPoneElGancho)
+        {
+            Agregar(contorno, gancho > 0
+                ? Arco(x2 - rfSup, y2 - rfSup, rfSup, 1.75 * Pi, 0.5 * Pi)
+                : Arco(x2 - rfSup, y2 - rfSup, rfSup, 0, 0.5 * Pi));
+        }
     }
 
     /// <param name="enPaquete">Ver <see cref="EstriboExterior"/>.</param>
@@ -1699,8 +1712,14 @@ public sealed partial class SeccionDrawer
             return;
         }
 
-        var yFinDer = y2 - rSup;
-        if (gancho > 0 && enPaquete <= 1)
+        // Ver EstriboExterior: con paquete y con gancho, esta esquina la pone el obrondo
+        // del gancho, y el costado derecho sube solo hasta la varilla de abajo.
+        var laEsquinaLaPoneElGancho = gancho > 0 && enPaquete > 1;
+
+        var yFinDer = y2 - rSup
+                      - (laEsquinaLaPoneElGancho ? (enPaquete - 1) * dSup : 0);
+
+        if (gancho > 0 && !laEsquinaLaPoneElGancho)
         {
             var rOut = rSup + dEst;
             var tCruce = rOut - (Rt2 * rSup);
@@ -1723,9 +1742,12 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rInf, y1 + rInf, rInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rSup, y2 - rSup, rSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0 && enPaquete <= 1
-            ? Arco(x2 - rSup, y2 - rSup, rSup, 1.75 * Pi, 0.75 * Pi)
-            : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
+        if (!laEsquinaLaPoneElGancho)
+        {
+            Agregar(contorno, gancho > 0
+                ? Arco(x2 - rSup, y2 - rSup, rSup, 1.75 * Pi, 0.75 * Pi)
+                : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
+        }
     }
 
     /// <param name="enPaquete">
@@ -1769,38 +1791,57 @@ public sealed partial class SeccionDrawer
         //  dejaba el cruce raro: la media vuelta le pasaba por encima a la primera.
         if (enPaquete > 1)
         {
-            var byPaq = by + PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
-
-            // El doblez es una MEDIA VUELTA, igual que el de la esquina: la varilla
-            // entra, rodea la segunda varilla y vuelve, así que salen DOS colas
-            // paralelas. Lo que cambia es por dónde rodea.
+            // ===== EL DOBLEZ ES UN OBRONDO QUE ABRAZA EL PAQUETE =====
             //
-            // Va de 225° a 405° —o sea pasando por abajo y por la derecha—, y así la
-            // boca del gancho mira hacia arriba y a la izquierda, al núcleo. Es al revés
-            // que el de la esquina, que rodea por arriba: rodeando por arriba, la media
-            // vuelta le pasaría por encima a la varilla de la esquina, que está justo
-            // ahí. Rodeando por abajo, la libra.
-            const double desde = 1.25 * Pi;    // 225°
-            const double hasta = 2.25 * Pi;    // 405°, o sea 45°
-
-            sectores.Add(new[] { bx, byPaq, rIn, rOut, desde, hasta });
+            //  Un doblez del mismo radio en CADA varilla del paquete, unidos por un tramo
+            //  recto. Es la forma que sale al doblar la varilla alrededor del paquete
+            //  entero en lugar de alrededor de una sola, y resuelve las tres cosas a la
+            //  vez: el radio NO crece —sigue siendo medio diámetro—, hay una parte recta,
+            //  y el gancho abraza todas las varillas del paquete.
+            //
+            //  El recorrido, de una punta a la otra: entra la cola, rodea la varilla de
+            //  ABAJO por su cara de fuera, sube recto por el costado, rodea la de la
+            //  ESQUINA y sale la otra cola. Las dos colas van paralelas hacia el núcleo.
+            //
+            //  Con una sola varilla los dos arcos son el mismo y el tramo recto mide
+            //  cero, así que esto degenera EXACTAMENTE en el gancho de siempre. Por eso el
+            //  camino de abajo solo se usa cuando no hay paquete: para no dibujar dos
+            //  veces lo mismo.
+            var byAbajo = by + PaqueteVarillas.Desplazamiento(enPaquete - 1, dSup, arriba: true);
 
             foreach (var r in new[] { rIn, rOut })
             {
-                Agregar(contorno, Arco(bx, byPaq, r, desde, hasta));
+                // El doblez de la varilla de abajo: de 315° a 360°, su cuarto de fuera.
+                Agregar(contorno, Arco(bx, byAbajo, r, 1.75 * Pi, 2 * Pi));
+
+                // El tramo RECTO del costado, que une los dos dobleces.
+                Agregar(contorno, Linea(bx + r, byAbajo, bx + r, by, "ESTRIBOS"));
+
+                // El doblez de la varilla de la esquina: de 0° a 135°.
+                Agregar(contorno, Arco(bx, by, r, 0, 0.75 * Pi));
             }
 
-            // Las DOS colas, una desde cada punta del doblez —225° y 45°—, las dos
-            // rectas y paralelas hacia el núcleo, en dirección 135°.
-            var uxPaq = Math.Cos(0.75 * Pi);
-            var uyPaq = Math.Sin(0.75 * Pi);
+            // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del
+            // tramo recto que queda entre ellos.
+            sectores.Add(new[] { bx, byAbajo, rIn, rOut, 1.75 * Pi, 2 * Pi });
+            sectores.Add(new[] { bx, by, rIn, rOut, 0, 0.75 * Pi });
 
-            foreach (var n in new[] { desde, 0.25 * Pi })
+            quads.Add(new[]
             {
-                Cola(contorno, quads, bx, byPaq, rIn, rOut,
-                    Math.Cos(n), Math.Sin(n), uxPaq, uyPaq,
-                    gancho, false, 0, 0);
-            }
+                bx + rIn, byAbajo, bx + rOut, byAbajo,
+                bx + rOut, by, bx + rIn, by
+            });
+
+            // Las DOS colas, hacia el núcleo. Una sale del doblez de abajo por su punto de
+            // 315°, y la otra del de la esquina por su 135°.
+            const double uxPaq = -Rt2I;
+            const double uyPaq = -Rt2I;
+
+            Cola(contorno, quads, bx, byAbajo, rIn, rOut, Rt2I, -Rt2I, uxPaq, uyPaq,
+                gancho, false, 0, 0);
+
+            Cola(contorno, quads, bx, by, rIn, rOut, -Rt2I, Rt2I, uxPaq, uyPaq,
+                gancho, false, 0, 0);
 
             return;
         }

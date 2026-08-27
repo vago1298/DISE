@@ -5588,39 +5588,52 @@ public partial class MainWindow : Window
         //  vuelta le pasaría por encima a la primera varilla del paquete.
         if (enPaquete > 1)
         {
-            var byPaq = by + PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
-
-            // MEDIA VUELTA, igual que el de la esquina, así que salen DOS colas
-            // paralelas. Lo que cambia es por dónde rodea: de 225° a 405°, o sea por
-            // abajo y por la derecha, con la boca mirando hacia arriba y a la izquierda.
+            // ===== EL DOBLEZ ES UN OBRONDO QUE ABRAZA EL PAQUETE =====
             //
-            // Al revés que el de la esquina, que rodea por arriba: por arriba la media
-            // vuelta le pasaría por encima a la varilla de la esquina, que está justo
-            // ahí. Por abajo la libra.
-            const double desde = 1.25 * Math.PI;   // 225°
-            const double barrido = Math.PI;        // media vuelta, hasta 405°
+            // Un doblez del MISMO radio en cada varilla del paquete, unidos por un tramo
+            // recto. El radio no crece, hay parte recta, y abraza todas las varillas.
+            //
+            // Recorrido: entra la cola, rodea la varilla de ABAJO por su cara de fuera,
+            // sube recto por el costado, rodea la de la ESQUINA y sale la otra cola. Las
+            // dos colas van paralelas hacia el núcleo.
+            //
+            // Es la misma geometría que SeccionDrawer.Ganchos.
+            var byAbajo = by + PaqueteVarillas.Desplazamiento(enPaquete - 1, dSup, arriba: true);
 
-            ArcoDoblez(bx, byPaq, rIn, desde, barrido);
-            ArcoDoblez(bx, byPaq, rOut, desde, barrido);
-
-            // Las DOS colas, una desde cada punta del doblez, rectas y paralelas hacia el
-            // núcleo en dirección 135°.
-            var uxP = Math.Cos(0.75 * Math.PI);
-            var uyP = Math.Sin(0.75 * Math.PI);
-
-            foreach (var n in new[] { desde, 0.25 * Math.PI })
+            foreach (var r in new[] { rIn, rOut })
             {
-                var nxP = Math.Cos(n);
-                var nyP = Math.Sin(n);
+                // Doblez de la varilla de abajo: su cuarto de fuera, de 315° a 360°.
+                ArcoDoblez(bx, byAbajo, r, 1.75 * Math.PI, 0.25 * Math.PI);
 
+                // El tramo RECTO del costado, que une los dos dobleces.
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(bx + r), Y1 = py(byAbajo),
+                    X2 = px(bx + r), Y2 = py(by),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+
+                // Doblez de la varilla de la esquina: de 0° a 135°.
+                ArcoDoblez(bx, by, r, 0, 0.75 * Math.PI);
+            }
+
+            // Las DOS colas, hacia el núcleo. Una sale del doblez de abajo por su punto de
+            // 315°, y la otra del de la esquina por su 135°.
+            foreach (var (cy, nx, ny) in new[]
+            {
+                (byAbajo, rt2I, -rt2I),
+                (by, -rt2I, rt2I)
+            })
+            {
                 foreach (var r in new[] { rIn, rOut })
                 {
                     PreviewCanvas.Children.Add(new Line
                     {
-                        X1 = px(bx + (r * nxP)),
-                        Y1 = py(byPaq + (r * nyP)),
-                        X2 = px(bx + (r * nxP) + (largo * uxP)),
-                        Y2 = py(byPaq + (r * nyP) + (largo * uyP)),
+                        X1 = px(bx + (r * nx)),
+                        Y1 = py(cy + (r * ny)),
+                        X2 = px(bx + (r * nx) - (largo * rt2I)),
+                        Y2 = py(cy + (r * ny) - (largo * rt2I)),
                         Stroke = trazo,
                         StrokeThickness = 1.2
                     });
@@ -5629,10 +5642,10 @@ public partial class MainWindow : Window
                 // La punta, que cierra las dos caras de esa cola.
                 PreviewCanvas.Children.Add(new Line
                 {
-                    X1 = px(bx + (rIn * nxP) + (largo * uxP)),
-                    Y1 = py(byPaq + (rIn * nyP) + (largo * uyP)),
-                    X2 = px(bx + (rOut * nxP) + (largo * uxP)),
-                    Y2 = py(byPaq + (rOut * nyP) + (largo * uyP)),
+                    X1 = px(bx + (rIn * nx) - (largo * rt2I)),
+                    Y1 = py(cy + (rIn * ny) - (largo * rt2I)),
+                    X2 = px(bx + (rOut * nx) - (largo * rt2I)),
+                    Y2 = py(cy + (rOut * ny) - (largo * rt2I)),
                     Stroke = trazo,
                     StrokeThickness = 1.2
                 });
