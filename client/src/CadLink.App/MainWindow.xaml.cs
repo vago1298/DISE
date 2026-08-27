@@ -5590,44 +5590,53 @@ public partial class MainWindow : Window
         {
             var byPaq = by + PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
 
-            // Llega tangente por la cara derecha —0°— y gira 135° en el sentido de las
-            // agujas, hasta 225°.
+            // MEDIA VUELTA, igual que el de la esquina, así que salen DOS colas
+            // paralelas. Lo que cambia es por dónde rodea: de 225° a 405°, o sea por
+            // abajo y por la derecha, con la boca mirando hacia arriba y a la izquierda.
+            //
+            // Al revés que el de la esquina, que rodea por arriba: por arriba la media
+            // vuelta le pasaría por encima a la varilla de la esquina, que está justo
+            // ahí. Por abajo la libra.
             const double desde = 1.25 * Math.PI;   // 225°
-            const double barrido = 0.75 * Math.PI; // hasta 360°
+            const double barrido = Math.PI;        // media vuelta, hasta 405°
 
             ArcoDoblez(bx, byPaq, rIn, desde, barrido);
             ArcoDoblez(bx, byPaq, rOut, desde, barrido);
 
-            // La cola sale donde acaba el doblez, en el punto de 225°, y se va por la
-            // tangente de ahí: 135°, hacia arriba y a la izquierda, al núcleo.
-            var nxP = Math.Cos(desde);
-            var nyP = Math.Sin(desde);
+            // Las DOS colas, una desde cada punta del doblez, rectas y paralelas hacia el
+            // núcleo en dirección 135°.
             var uxP = Math.Cos(0.75 * Math.PI);
             var uyP = Math.Sin(0.75 * Math.PI);
 
-            foreach (var r in new[] { rIn, rOut })
+            foreach (var n in new[] { desde, 0.25 * Math.PI })
             {
+                var nxP = Math.Cos(n);
+                var nyP = Math.Sin(n);
+
+                foreach (var r in new[] { rIn, rOut })
+                {
+                    PreviewCanvas.Children.Add(new Line
+                    {
+                        X1 = px(bx + (r * nxP)),
+                        Y1 = py(byPaq + (r * nyP)),
+                        X2 = px(bx + (r * nxP) + (largo * uxP)),
+                        Y2 = py(byPaq + (r * nyP) + (largo * uyP)),
+                        Stroke = trazo,
+                        StrokeThickness = 1.2
+                    });
+                }
+
+                // La punta, que cierra las dos caras de esa cola.
                 PreviewCanvas.Children.Add(new Line
                 {
-                    X1 = px(bx + (r * nxP)),
-                    Y1 = py(byPaq + (r * nyP)),
-                    X2 = px(bx + (r * nxP) + (largo * uxP)),
-                    Y2 = py(byPaq + (r * nyP) + (largo * uyP)),
+                    X1 = px(bx + (rIn * nxP) + (largo * uxP)),
+                    Y1 = py(byPaq + (rIn * nyP) + (largo * uyP)),
+                    X2 = px(bx + (rOut * nxP) + (largo * uxP)),
+                    Y2 = py(byPaq + (rOut * nyP) + (largo * uyP)),
                     Stroke = trazo,
                     StrokeThickness = 1.2
                 });
             }
-
-            // La punta, que cierra las dos caras de la cola.
-            PreviewCanvas.Children.Add(new Line
-            {
-                X1 = px(bx + (rIn * nxP) + (largo * uxP)),
-                Y1 = py(byPaq + (rIn * nyP) + (largo * uyP)),
-                X2 = px(bx + (rOut * nxP) + (largo * uxP)),
-                Y2 = py(byPaq + (rOut * nyP) + (largo * uyP)),
-                Stroke = trazo,
-                StrokeThickness = 1.2
-            });
 
             return;
         }

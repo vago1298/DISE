@@ -1771,11 +1771,17 @@ public sealed partial class SeccionDrawer
         {
             var byPaq = by + PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
 
-            // El barrido: llega tangente por la cara derecha —ángulo 0°— y gira en el
-            // sentido de las agujas hasta 225°. Son los 135° del gancho. Se escribe de
-            // 225° a 360° porque Arco va en sentido contrario a las agujas.
-            const double desde = 1.25 * Pi;   // 225°
-            const double hasta = 2 * Pi;      // 360°
+            // El doblez es una MEDIA VUELTA, igual que el de la esquina: la varilla
+            // entra, rodea la segunda varilla y vuelve, así que salen DOS colas
+            // paralelas. Lo que cambia es por dónde rodea.
+            //
+            // Va de 225° a 405° —o sea pasando por abajo y por la derecha—, y así la
+            // boca del gancho mira hacia arriba y a la izquierda, al núcleo. Es al revés
+            // que el de la esquina, que rodea por arriba: rodeando por arriba, la media
+            // vuelta le pasaría por encima a la varilla de la esquina, que está justo
+            // ahí. Rodeando por abajo, la libra.
+            const double desde = 1.25 * Pi;    // 225°
+            const double hasta = 2.25 * Pi;    // 405°, o sea 45°
 
             sectores.Add(new[] { bx, byPaq, rIn, rOut, desde, hasta });
 
@@ -1784,13 +1790,17 @@ public sealed partial class SeccionDrawer
                 Agregar(contorno, Arco(bx, byPaq, r, desde, hasta));
             }
 
-            // La cola arranca donde acaba el doblez, en el punto de 225°, y se va en la
-            // tangente de ahí: 135°, o sea hacia arriba y a la izquierda, hacia el
-            // núcleo. UNA sola, no dos.
-            Cola(contorno, quads, bx, byPaq, rIn, rOut,
-                Math.Cos(desde), Math.Sin(desde),
-                Math.Cos(0.75 * Pi), Math.Sin(0.75 * Pi),
-                gancho, false, 0, 0);
+            // Las DOS colas, una desde cada punta del doblez —225° y 45°—, las dos
+            // rectas y paralelas hacia el núcleo, en dirección 135°.
+            var uxPaq = Math.Cos(0.75 * Pi);
+            var uyPaq = Math.Sin(0.75 * Pi);
+
+            foreach (var n in new[] { desde, 0.25 * Pi })
+            {
+                Cola(contorno, quads, bx, byPaq, rIn, rOut,
+                    Math.Cos(n), Math.Sin(n), uxPaq, uyPaq,
+                    gancho, false, 0, 0);
+            }
 
             return;
         }
