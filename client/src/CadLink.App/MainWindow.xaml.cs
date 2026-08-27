@@ -5497,21 +5497,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        var rIn = dSup / 2;
+        // ===== EL DOBLEZ ENVUELVE TODO EL PAQUETE =====
+        //
+        // Con el lecho superior en paquete, el gancho no se agarra de una varilla: abraza
+        // las dos, o las tres. Así que el radio del doblez es MEDIO PAQUETE y su centro
+        // baja al centro del paquete. Con medio diámetro, como antes, el doblez quedaba
+        // del tamaño de una sola varilla y no envolvía nada.
+        //
+        // Con una varilla las dos cuentas dan exactamente lo de siempre, así que las
+        // secciones sin paquete se ven igual.
+        var enPaquete = PaqueteVarillas.EsPaquete(s.NEsqSup)
+            ? PaqueteVarillas.PorEsquina(s.NEsqSup)
+            : 1;
+
+        var rBarra = dSup / 2;
+        var rIn = enPaquete * dSup / 2;
         var rOut = rIn + dEst;
 
-        var bx = s.BaseCm - rec - dEst - rIn;
-        var by = s.AlturaCm - rec - dEst - rIn;
-
-        // NOTA: el gancho se queda en la varilla de la ESQUINA, también cuando el lecho va
-        // en paquete.
-        //
-        // Se probó bajarlo a la segunda varilla del paquete y se revirtió: el arco visible
-        // del doblez no se dibuja aquí ni en el dibujante, es la prolongación de 45° del
-        // arco de la esquina del estribo, concéntrico con la varilla de la esquina. Al
-        // bajar solo el gancho quedaban las dos colas sueltas, sin doblez que abrazara
-        // nada. Moverlo de verdad exige rehacer también la esquina del estribo, y eso se
-        // hará aparte.
+        var bx = s.BaseCm - rec - dEst - rBarra;
+        var by = s.AlturaCm - rec - dEst - rBarra - ((enPaquete - 1) * dSup / 2);
 
         // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
         // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.

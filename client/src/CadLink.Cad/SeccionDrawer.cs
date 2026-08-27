@@ -995,13 +995,23 @@ public sealed partial class SeccionDrawer
 
         if (hayEstribo)
         {
-            EstriboExterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, gancho);
-            EstriboInterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, gancho);
+            // Cuantas varillas hay en el paquete de la esquina de arriba. Uno cuando no
+            // es paquete, y entonces todo lo de abajo se comporta como siempre.
+            var enPaquete = s.Superior.Esquina.Existe
+                            && PaqueteVarillas.EsPaquete(s.Superior.NEsquina)
+                ? PaqueteVarillas.PorEsquina(s.Superior.NEsquina)
+                : 1;
+
+            EstriboExterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf,
+                gancho, enPaquete);
+
+            EstriboInterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf,
+                gancho, enPaquete);
 
             if (gancho > 0)
             {
                 Ganchos(contorno, ganchoQuads, ganchoSectores,
-                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho);
+                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho, enPaquete);
             }
         }
 
@@ -1637,10 +1647,16 @@ public sealed partial class SeccionDrawer
     // Estribo
     // ==================================================================
 
+    /// <param name="enPaquete">
+    /// Cuantas varillas hay en el paquete de la esquina superior. Con mas de una, esta
+    /// esquina se cierra con su arco normal de 90 grados: el doblez del gancho ya no sale
+    /// de aqui, porque es mas grande y lo dibuja <see cref="Ganchos"/> envolviendo el
+    /// paquete entero.
+    /// </param>
     private void EstriboExterior(
         List<object> contorno,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double dInf, double gancho)
+        double dEst, double dSup, double dInf, double gancho, int enPaquete)
     {
         var rfSup = dEst + (dSup / 2);
         var rfInf = dEst + (dInf / 2);
@@ -1659,15 +1675,16 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rfInf, y1 + rfInf, rfInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rfSup, y2 - rfSup, rfSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0
+        Agregar(contorno, gancho > 0 && enPaquete <= 1
             ? Arco(x2 - rfSup, y2 - rfSup, rfSup, 1.75 * Pi, 0.5 * Pi)
             : Arco(x2 - rfSup, y2 - rfSup, rfSup, 0, 0.5 * Pi));
     }
 
+    /// <param name="enPaquete">Ver <see cref="EstriboExterior"/>.</param>
     private void EstriboInterior(
         List<object> contorno,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double dInf, double gancho)
+        double dEst, double dSup, double dInf, double gancho, int enPaquete)
     {
         var rSup = dSup / 2;
         var rInf = dInf / 2;
@@ -1683,7 +1700,7 @@ public sealed partial class SeccionDrawer
         }
 
         var yFinDer = y2 - rSup;
-        if (gancho > 0)
+        if (gancho > 0 && enPaquete <= 1)
         {
             var rOut = rSup + dEst;
             var tCruce = rOut - (Rt2 * rSup);
@@ -1706,24 +1723,56 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rInf, y1 + rInf, rInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rSup, y2 - rSup, rSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0
+        Agregar(contorno, gancho > 0 && enPaquete <= 1
             ? Arco(x2 - rSup, y2 - rSup, rSup, 1.75 * Pi, 0.75 * Pi)
             : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
     }
 
+    /// <param name="enPaquete">
+    /// Cuántas varillas hay en el paquete de la esquina superior. Uno si no es paquete.
+    /// </param>
+    /// <remarks>
+    /// <b>El doblez envuelve TODO el paquete, no solo la varilla de la esquina.</b> Por eso
+    /// el radio crece con el número de varillas y el centro baja al centro del paquete: un
+    /// doblez del tamaño de una varilla, puesto sobre un paquete de dos, no abraza nada.
+    /// <para>
+    /// Con <paramref name="enPaquete"/> igual a 1 las dos cuentas dan exactamente lo de
+    /// siempre —radio medio diámetro y centro en la varilla—, así que las secciones sin
+    /// paquete se dibujan igual que antes.
+    /// </para>
+    /// </remarks>
     private void Ganchos(
         List<object> contorno, List<double[]> quads, List<double[]> sectores,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double gancho)
+        double dEst, double dSup, double gancho, int enPaquete)
     {
-        var rIn = dSup / 2;
+        var rBarra = dSup / 2;
+
+        // El radio del doblez: medio paquete. Con una varilla es medio diámetro, con dos
+        // es un diámetro entero, y así queda TANGENTE al borde de la varilla del extremo,
+        // que es justo lo que significa abrazar el paquete.
+        var rIn = enPaquete * dSup / 2;
         var rOut = rIn + dEst;
 
-        var bx = x0 + b - rec - dEst - rIn;
-        var by = y0 + h - rec - dEst - rIn;
+        var bx = x0 + b - rec - dEst - rBarra;
+
+        // El centro baja al centro del paquete. Con una varilla no baja nada.
+        var by = y0 + h - rec - dEst - rBarra - ((enPaquete - 1) * dSup / 2);
 
         // Doblez: sector anular con los mismos radios y angulos de los arcos
         sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi });
+
+        // El arco VISIBLE del doblez solo se dibuja aquí cuando hay paquete. Sin paquete
+        // es la prolongación de 45° del arco de la esquina del estribo, concéntrico con
+        // este mismo centro, y lo pintan EstriboExterior y EstriboInterior: dibujarlo
+        // también aquí lo dejaría con la línea doble.
+        if (enPaquete > 1)
+        {
+            foreach (var r in new[] { rIn, rOut })
+            {
+                Agregar(contorno, Arco(bx, by, r, 1.75 * Pi, 0.75 * Pi));
+            }
+        }
 
         const double ux = -Rt2I;
         const double uy = -Rt2I;
