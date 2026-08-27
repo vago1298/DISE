@@ -1819,19 +1819,23 @@ public sealed partial class SeccionDrawer
             // El relleno del tipo 2 no se toca —sigue saliendo de los sectores y del
             // cuadro de abajo—, así que la pieza se sigue viendo maciza.
 
-            // Los dos dobleces de la varilla de ABAJO, enteros.
+            // El obrondo COMPLETO: sus dos caras en los dos dobleces y en el costado.
+            //
+            // Se probó quitar la cara de fuera del doblez de la esquina y la de dentro del
+            // costado, y estaba mal: son caras del propio gancho y sin ellas la pieza queda
+            // abierta. Lo que hay que recortar son las líneas del ESTRIBO por donde el
+            // gancho le pasa por encima, que es otra cosa y se hace aparte.
             foreach (var r in new[] { rIn, rOut })
             {
+                // El doblez de la varilla de abajo: de 315° a 360°, su cuarto de fuera.
                 Agregar(contorno, Arco(bx, byAbajo, r, 1.75 * Pi, 2 * Pi));
+
+                // El tramo RECTO del costado, que une los dos dobleces.
+                Agregar(contorno, Linea(bx + r, byAbajo, bx + r, by, "ESTRIBOS"));
+
+                // El doblez de la varilla de la esquina: de 0° a 135°.
+                Agregar(contorno, Arco(bx, by, r, 0, 0.75 * Pi));
             }
-
-            // Del costado, solo la cara de FUERA. La de dentro va por el mismo sitio que
-            // el costado del estribo y lo cortaría en dos.
-            Agregar(contorno, Linea(bx + rOut, byAbajo, bx + rOut, by, "ESTRIBOS"));
-
-            // Del doblez de la varilla de la ESQUINA, solo la cara de DENTRO. La de fuera
-            // se monta sobre la esquina del estribo.
-            Agregar(contorno, Arco(bx, by, rIn, 0, 0.75 * Pi));
 
             // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del
             // tramo recto que queda entre ellos.
