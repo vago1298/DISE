@@ -4169,6 +4169,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ===== EN 3D, EL CORTE TAMBIÉN SE VE EN 3D =====
+        //
+        // El botón vale para las dos mitades del recuadro: la sección a la izquierda y el
+        // alzado a la derecha.
+        //
+        // Se pone _previaEscala en cero a propósito: es lo que usa VarillaEn para pasar de
+        // un clic a una varilla, y en 3D esa cuenta ya no vale porque el dibujo está
+        // proyectado. Con la escala en cero, VarillaEn devuelve null y los clics de grapa
+        // no hacen nada, en lugar de agarrar la varilla equivocada.
+        if (_alzado3D)
+        {
+            _previaEscala = 0;
+
+            DibujarSeccion3DPrevia(s, ancho, alto);
+            DibujarAlzadoPrevio(s, ancho * 0.5, alto);
+
+            Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
+            return;
+        }
+
         const double margen = 34;
         var escala = Math.Min((ancho - (2 * margen)) / s.BaseCm, (alto - (2 * margen)) / s.AlturaCm);
         if (escala <= 0 || double.IsInfinity(escala))
@@ -4937,23 +4957,35 @@ public partial class MainWindow : Window
         }
         else
         {
+            // ===== LOS ESTRIBOS, CON SU GROSOR REAL =====
+            //
+            // El grosor sale del diámetro de verdad: dEst ya viene en píxeles a la escala
+            // del dibujo. Antes había un suelo de 1.5 px que igualaba todos los calibres,
+            // así que un #3 y un #5 se veían iguales; ahora el suelo es de un tercio de
+            // píxel, lo justo para que nunca desaparezca, y los calibres se distinguen.
+            //
+            // Y se pinta como el resto del armado: contorno en el tipo 1 y relleno en el
+            // tipo 2, en lugar de una raya.
+            var grosorEst = Math.Max(a.EstriboDibujo.Cm / 100.0 * esc, 0.35);
+
             foreach (var c in centros)
             {
                 var xc = izquierda + (c * esc);
 
-                // La cápsula: rectángulo con las puntas redondeadas
+                // La cápsula: rectángulo con las puntas redondeadas, que es el estribo
+                // visto de canto.
                 PreviaFijaCanvas.Children.Add(new Rectangle
                 {
-                    Width = Math.Max(dEst, 1.5),
-                    Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
-                    RadiusX = dEst / 2,
-                    RadiusY = dEst / 2,
+                    Width = grosorEst,
+                    Height = Math.Max(h - (2 * rec) + (2 * grosorEst), 2),
+                    RadiusX = grosorEst / 2,
+                    RadiusY = grosorEst / 2,
                     Stroke = brochaEst,
-                    StrokeThickness = 0.7,
+                    StrokeThickness = 0.6,
                     Fill = a.Modo == ModoSeccion.Tipo2Rellena
                         ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
                         : null,
-                    Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
+                    Margin = new Thickness(xc - (grosorEst / 2), top + rec - grosorEst, 0, 0)
                 });
             }
         }
