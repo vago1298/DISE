@@ -4969,41 +4969,50 @@ public partial class MainWindow : Window
             var xIni = izquierda + rec;
             var xFin = izquierda + w - rec;
 
-            PreviaFijaCanvas.Children.Add(new Line
+            // ===== UNA SOLA POLILINEA, CON LAS UNIONES REDONDEADAS =====
+            //
+            // Antes eran tres líneas sueltas —el tramo recto y los dos ganchos—, y al
+            // ser piezas independientes las esquinas salían en escuadra y con las puntas
+            // cortadas a ras. Una varilla no se dobla en pico ni se corta en bisel.
+            //
+            // Con una sola polilínea y StrokeLineJoin en Round, WPF redondea el doblez
+            // con radio igual a la mitad del grosor, que es exactamente el fillet que
+            // deja AutoCAD al doblar la varilla sobre sí misma. Y con las puntas
+            // redondeadas, el extremo del gancho remata como una varilla cortada y no
+            // como una viga.
+            var trazo = new PointCollection();
+
+            var gM = ganchoM > 0
+                ? Estribos.GanchoEfectivo(
+                    Estribos.GanchoNominal(a.EsVertical, ganchoM, dM), disponibleM, dM)
+                : 0;
+
+            if (gM > 0)
             {
-                X1 = xIni, Y1 = yCentro,
-                X2 = xFin, Y2 = yCentro,
+                // El gancho va hacia DENTRO de la pieza: el del lecho superior baja y el
+                // del inferior sube. Al revés saldría del concreto.
+                var g = gM * esc * (dobleHaciaAbajo ? 1 : -1);
+
+                trazo.Add(new Point(xIni, yCentro + g));
+                trazo.Add(new Point(xIni, yCentro));
+                trazo.Add(new Point(xFin, yCentro));
+                trazo.Add(new Point(xFin, yCentro + g));
+            }
+            else
+            {
+                trazo.Add(new Point(xIni, yCentro));
+                trazo.Add(new Point(xFin, yCentro));
+            }
+
+            PreviaFijaCanvas.Children.Add(new Polyline
+            {
+                Points = trazo,
                 Stroke = verde,
-                StrokeThickness = grosor
+                StrokeThickness = grosor,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
             });
-
-            if (ganchoM <= 0)
-            {
-                return;
-            }
-
-            var gM = Estribos.GanchoEfectivo(
-                Estribos.GanchoNominal(a.EsVertical, ganchoM, dM), disponibleM, dM);
-
-            if (gM <= 0)
-            {
-                return;
-            }
-
-            // El gancho va hacia DENTRO de la pieza: el del lecho superior baja y el
-            // del inferior sube. Al revés saldría del concreto.
-            var g = gM * esc * (dobleHaciaAbajo ? 1 : -1);
-
-            foreach (var x in new[] { xIni, xFin })
-            {
-                PreviaFijaCanvas.Children.Add(new Line
-                {
-                    X1 = x, Y1 = yCentro,
-                    X2 = x, Y2 = yCentro + g,
-                    Stroke = verde,
-                    StrokeThickness = grosor
-                });
-            }
         }
 
         var dSupCm = a.Superior.Esquina.Cm > 0 ? a.Superior.Esquina.Cm : 0.95;
