@@ -3038,8 +3038,8 @@ def v16_extruida_piers() -> None:
     # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
     # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
     # comando y el ajuste de las lineas al pano del castillo.
-    check("la hoja CONFIG de la macro esta portada, con sesenta y seis renglones añadidos",
-          cfgp.count("        P(") == 326
+    check("la hoja CONFIG de la macro esta portada, con sesenta y siete renglones añadidos",
+          cfgp.count("        P(") == 327
           and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
           and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
           and 'P("CAPA_DALA", "CADENA",' in cfgp
@@ -3157,7 +3157,7 @@ def v16_extruida_piers() -> None:
     pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
     check("hay prueba ejecutable de la hoja CONFIG y de las capas",
           "using CadLink.Cad.PlanoEstructural;" in pr
-          and "326, ConfigPlano.PorOmision.Count" in pr
+          and "327, ConfigPlano.PorOmision.Count" in pr
           and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
           and "return fallos == 0 ? 0 : 1;" in pr)
     check("y su proyecto apunta al CadLink.Cad de verdad",
@@ -4190,8 +4190,27 @@ def v18_planta_autocad() -> None:
     check("y no se juntan cuando un apoyo corre por la frontera",
           "public static LosaEnPlanta.Segmento? Frontera(" in tab
           and "public static bool HayApoyoEnLaFrontera(" in tab
-          and "LosaEnPlanta.MedioApoyoEnBorde(frontera, huellas, tolM, cubre) > 0" in tab
-          and "Frontera(a, b, tolM) is { } f && !HayApoyoEnLaFrontera(f, huellas" in tab)
+          and "Frontera(a, b, tolM) is { } f" in tab
+          and "&& !HayApoyoEnLaFrontera(f, huellas, cubre)" in tab)
+    # POR LA UNION DE LO QUE LLEVA DEBAJO, NO APOYO POR APOYO. AQUI ESTABA EL FALLO que unio cinco
+    # pedazos de dos tableros en uno: se preguntaba «¿este muro recorre la frontera?», y un muro con
+    # VANOS de puerta y de ventana llega al dibujo partido en tres o cuatro trozos, de los que
+    # ninguno la recorre entera. La respuesta era «no hay apoyo» y los dos tableros se juntaban.
+    check("la frontera se mide por union de lo que lleva debajo, no apoyo por apoyo",
+          "LosaEnPlanta.FraccionApoyada(frontera, huellas) >= cubre" in tab
+          and 'P("LOSA_TABLERO_APOYO_CUBRE", "0.5",' in cfgp
+          and '_cfg.Numero("LOSA_TABLERO_APOYO_CUBRE", 0.5)' in dib)
+    # Y LA SEGUNDA VUELTA: el apoyo que no esta sobre la orilla comun sino EN MEDIO de los dos. Si
+    # andando del centro de uno al centro del otro se pisa un apoyo, son dos tableros.
+    check("y se mira si hay un apoyo en medio de los dos",
+          "public static bool ApoyoEnMedio(" in tab
+          and "&& !ApoyoEnMedio(a, b, huellas);" in tab
+          and "PanoDeApoyo.Intervalos(h, ax, ay, ux, uy)" in tab)
+    # PERO NO CUENTA LO QUE SE PISA EN EL ARRANQUE -un pedazo estrecho justo encima de un muro se
+    # quedaria suelto para siempre- NI LO QUE CAE EN EL HUECO DE UNA L, que no es de este paño.
+    check("sin contar el apoyo del propio centro ni el del hueco de una L",
+          "if (desde <= minM || hasta >= largo - minM || hasta - desde < minM)" in tab
+          and "if (Dentro(a.Vertices, mx, my) || Dentro(b.Vertices, mx, my))" in tab)
     # TOCARSE EN UNA ESQUINA NO ES COMPARTIR ORILLA: dos tableros en diagonal se tocan en un punto.
     check("y tocarse en una esquina no es compartir orilla",
           "if (hasta - desde <= tol)" in tab)
@@ -4255,16 +4274,22 @@ def v18_planta_autocad() -> None:
     # estaban -LOSA_APOYO_TOL_CM y LOSA_APOYO_CUBRE-, que hasta ahora no se usaban en ningun sitio.
     check("con las holguras de la hoja CONFIG",
           '_cfg.Numero("LOSA_TABLERO_TOL_CM", 5) / 100' in dib
-          and '_cfg.Numero("LOSA_APOYO_TOL_CM", 25) / 100' in dib
-          and '_cfg.Numero("LOSA_APOYO_CUBRE", 0.7)' in dib
           and 'P("LOSA_TABLERO_TOL_CM", "5",' in cfgp)
+    # Y CADA TABLERO PARTIDO SE CUENTA CON SU MEDIDA Y SU SITIO: es lo que permite revisar la union
+    # sin abrir el modelo. Si uno salio mas grande de lo que es, se ve en su medida y se sabe donde.
+    check("y cada tablero unido se dice con su medida y su sitio",
+          'Nota($"  · Tablero de {t.Ancho:0.00} × {t.Alto:0.00} m en " +' in dib)
     # Y SU PRUEBA EJECUTABLE, que es lo que comprueba la geometria de verdad y no el texto.
     check("hay prueba ejecutable de los tableros de losa",
           "TableroDeLosa.Agrupar(" in pre_tab
           and 'Igual("los tres pedazos son UN tablero", 1, unSolo.Count);' in pre_tab
           and 'Igual("con una trabe en la frontera son DOS tableros", 2, dosTableros.Count);'
               in pre_tab
-          and "TableroDeLosa.HayApoyoEnLaFrontera(frontera.Value, trabeEnMedio)" in pre_tab)
+          and "TableroDeLosa.HayApoyoEnLaFrontera(frontera.Value, trabeEnMedio)" in pre_tab
+          and 'Igual("un muro partido por sus vanos separa los dos tableros",' in pre_tab
+          and "2, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, pedazoB },"
+              " muroConVanos).Count);" in pre_tab
+          and "TableroDeLosa.ApoyoEnMedio(" in pre_tab)
 
     # ------------------------------------------------------------------
     # EL PUNTO DE INSERCION EN LA VISTA EXTRUIDA

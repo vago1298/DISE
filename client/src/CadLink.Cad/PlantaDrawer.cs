@@ -369,8 +369,7 @@ public sealed partial class PlantaDrawer
                 p.Elementos,
                 huellas,
                 _cfg.Numero("LOSA_TABLERO_TOL_CM", 5) / 100,
-                _cfg.Numero("LOSA_APOYO_TOL_CM", 25) / 100,
-                _cfg.Numero("LOSA_APOYO_CUBRE", 0.7),
+                _cfg.Numero("LOSA_TABLERO_APOYO_CUBRE", 0.5),
                 el => FamiliaDeLaLosa(el, huellas)));
 
             AvisarDeLosTableros();
@@ -1660,6 +1659,15 @@ public sealed partial class PlantaDrawer
         Nota($"{partidos.Count} tablero(s) de losa venían partidos por el mesh en " +
              $"{partidos.Sum(t => t.Pedazos.Count)} pedazos: se juntaron, y cada tablero lleva UN " +
              "armado y UN rótulo medidos sobre el tablero completo.");
+
+        // Y CADA UNO CON SU MEDIDA Y SU SITIO. Es lo que permite revisar la unión sin abrir el
+        // modelo: si un tablero salió más grande de lo que es —dos tableros juntados en uno— se ve
+        // en su medida y se sabe dónde está para ir a mirarlo.
+        foreach (var t in partidos)
+        {
+            Nota($"  · Tablero de {t.Ancho:0.00} × {t.Alto:0.00} m en " +
+                 $"({t.X0:0.00}, {t.Y0:0.00}): {t.Pedazos.Count} pedazos del mesh.");
+        }
 
         foreach (var t in partidos)
         {

@@ -3068,6 +3068,61 @@ var trabeDeTraves = new List<ElementoPlanta>
 Igual("una trabe que cruza de traves no separa",
       1, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, pedazoB }, trabeDeTraves).Count);
 
+// EL MURO CON PUERTAS: AQUI ESTABA EL FALLO QUE UNIO CINCO PEDAZOS DE DOS TABLEROS EN UNO.
+// Un muro con vanos de puerta y de ventana llega al dibujo PARTIDO en tres o cuatro trozos, y
+// ninguno de ellos recorre la frontera entero. Preguntando trozo por trozo la respuesta era «no hay
+// apoyo» y los dos tableros se juntaban. Ahora se mide la UNION de lo que la frontera lleva debajo.
+var muroConVanos = new List<ElementoPlanta>
+{
+    Trozo(4, 0, 4, 0.8),
+    Trozo(4, 1.2, 4, 2.0),
+    Trozo(4, 2.4, 4, 3.0)
+};
+
+Igual("un muro partido por sus vanos separa los dos tableros",
+      2, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, pedazoB }, muroConVanos).Count);
+
+// Y NINGUNO DE LOS TROZOS, POR SI SOLO, RECORRE LA FRONTERA: es lo que hacia fallar la cuenta vieja.
+Cerca("ningun trozo por si solo llega ni al 30 % de la frontera", 0.2667,
+      LosaEnPlanta.FraccionApoyada(
+          new LosaEnPlanta.Segmento(4, 0, 4, 3), new[] { muroConVanos[0] }), 0.01);
+Cerca("pero juntos cubren el 73 %", 0.7333,
+      LosaEnPlanta.FraccionApoyada(new LosaEnPlanta.Segmento(4, 0, 4, 3), muroConVanos), 0.01);
+
+// UN MURO CHICO en la frontera no separa: un pedacito de muro no interrumpe el claro.
+Igual("un trozo suelto de muro no parte el tablero",
+      1, TableroDeLosa.Agrupar(
+          new List<ElementoPlanta> { pedazoA, pedazoB },
+          new List<ElementoPlanta> { Trozo(4, 0, 4, 0.5) }).Count);
+
+// EL APOYO EN MEDIO: la segunda vuelta de la misma pregunta, para el muro que no esta sobre la
+// orilla comun. Si andando del centro de uno al centro del otro se pisa un apoyo, son dos tableros.
+var panoAbajo = Pano((0, 0), (4, 0), (4, 3), (0, 3));
+var panoArriba = Pano((0, 3), (4, 3), (4, 6), (0, 6));
+
+Check("un muro en medio de los dos centros separa",
+      TableroDeLosa.ApoyoEnMedio(panoAbajo, panoArriba, new List<ElementoPlanta> { Trozo(1.5, 3, 2.5, 3) }));
+Check("y uno que no esta en el camino, no",
+      !TableroDeLosa.ApoyoEnMedio(
+          panoAbajo, panoArriba, new List<ElementoPlanta> { Trozo(0, 3, 0.5, 3) }));
+
+// EL APOYO BAJO EL PROPIO CENTRO NO CUENTA: un pedazo estrecho del mesh justo encima de un muro se
+// quedaria suelto para siempre, y ese pedazo es losa igual.
+var franjita = Pano((0, 0), (4, 0), (4, 0.2), (0, 0.2));
+var elResto = Pano((0, 0.2), (4, 0.2), (4, 3), (0, 3));
+
+Check("el apoyo bajo el propio centro no cuenta",
+      !TableroDeLosa.ApoyoEnMedio(
+          franjita, elResto, new List<ElementoPlanta> { Trozo(0, 0.1, 4, 0.1) }));
+
+// NI EL QUE CAE EN EL HUECO DE UNA L: ahi no hay concreto de este tablero, hay otra cosa.
+var brazoLargo = Pano((0, 0), (6, 0), (6, 2), (0, 2));
+var brazoDePie = Pano((0, 2), (2, 2), (2, 10), (0, 10));
+
+Check("ni el muro que cae en el hueco de una L",
+      !TableroDeLosa.ApoyoEnMedio(
+          brazoLargo, brazoDePie, new List<ElementoPlanta> { Trozo(2.2, 3.5, 3.5, 3.5) }));
+
 // LA FRONTERA: la orilla comun, aunque los vertices no coincidan -el mesh reparte las coordenadas
 // que salen del calculo, no las que uno pondria-.
 var frontera = TableroDeLosa.Frontera(pedazoA, pedazoB);
@@ -3151,3 +3206,11 @@ static ElementoPlanta Pano(params (double X, double Y)[] v)
 
     return e;
 }
+
+static ElementoPlanta Trozo(double x1, double y1, double x2, double y2, double espesor = 0.15) =>
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            Clase = ClasePlanta.Muro, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, AnchoM = espesor
+        },
+        espesor);

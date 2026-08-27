@@ -86,8 +86,10 @@ public static class TableroDeLosa
     /// <param name="elementos">Todos los elementos de la planta. Se miran solo las losas.</param>
     /// <param name="huellas">Los apoyos en planta: muros, cadenas y trabes.</param>
     /// <param name="tolM">Holgura para tomar dos pedazos como pegados.</param>
-    /// <param name="tolApoyoM">Holgura para tomar un apoyo como que corre sobre la frontera.</param>
-    /// <param name="cubre">Qué parte de la frontera tiene que recorrer el apoyo para separarla.</param>
+    /// <param name="cubre">
+    /// Qué parte de la frontera tiene que llevar apoyo debajo para que sean dos tableros. Se mide
+    /// por <b>unión</b> de tramos, así que un muro partido en tres trozos cuenta como uno.
+    /// </param>
     /// <param name="familia">
     /// Con qué se puede juntar cada pedazo. Un <b>volado</b> no se junta con un entrepiso ni una
     /// <b>losacero</b> con una losa de concreto: son paños distintos, con dibujo distinto y con
@@ -97,8 +99,7 @@ public static class TableroDeLosa
         IReadOnlyList<ElementoPlanta>? elementos,
         IReadOnlyList<ElementoPlanta>? huellas,
         double tolM = 0.05,
-        double tolApoyoM = 0.25,
-        double cubre = 0.7,
+        double cubre = 0.5,
         Func<ElementoPlanta, string>? familia = null)
     {
         var salida = new List<Tablero>();
@@ -120,7 +121,7 @@ public static class TableroDeLosa
         {
             var suyos = grupos
                 .Where(g => g.Any(o => MismaFamilia(familia, o, el)
-                                       && MismoTablero(o, el, apoyos, tolM, tolApoyoM, cubre)))
+                                       && MismoTablero(o, el, apoyos, tolM, cubre)))
                 .ToList();
 
             if (suyos.Count == 0)
@@ -151,25 +152,42 @@ public static class TableroDeLosa
     /// ¿Estos dos pedazos son el <b>mismo tablero</b>?
     /// </summary>
     /// <remarks>
-    /// Dos condiciones, y las dos hacen falta: que <b>compartan orilla</b> —si no se tocan, no hay
-    /// nada que juntar— y que por esa orilla <b>no corra un apoyo</b>. Lo segundo es lo que se
-    /// pidió: la unión tiene que quedar dentro de los límites de los muros, las trabes o las
-    /// cadenas. Un tablero termina donde apoya.
+    /// <para>
+    /// Tres condiciones, y las tres hacen falta:
+    /// </para>
+    /// <list type="number">
+    ///   <item>que <b>compartan orilla</b> —si no se tocan, no hay nada que juntar—;</item>
+    ///   <item>que por esa orilla <b>no lleven apoyo debajo</b>;</item>
+    ///   <item>
+    ///     y que <b>entre sus centros no haya un apoyo</b>, que es lo que caza el muro que separa
+    ///     dos tableros por otro sitio que no es la orilla común.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Las dos últimas son la misma idea —la unión tiene que quedar dentro de los muros, las trabes
+    /// o las cadenas que limitan el tablero: un tablero termina donde apoya— preguntada de dos
+    /// maneras, porque con una sola se colaban tableros distintos: un muro con <b>vanos de puertas y
+    /// ventanas</b> llega al dibujo partido en tres o cuatro trozos, y ninguno de ellos recorre la
+    /// frontera entero. Ahí está el fallo que unió cinco pedazos de dos tableros en uno: se
+    /// preguntaba trozo por trozo. Ahora la frontera se mide por <b>unión</b> de lo que tiene
+    /// debajo, y de remate se mira si hay algo <b>en medio</b> de los dos.
+    /// </para>
     /// </remarks>
     public static bool MismoTablero(
         ElementoPlanta a,
         ElementoPlanta b,
         IReadOnlyList<ElementoPlanta> huellas,
         double tolM = 0.05,
-        double tolApoyoM = 0.25,
-        double cubre = 0.7)
+        double cubre = 0.5)
     {
         if (ReferenceEquals(a, b))
         {
             return false;
         }
 
-        return Frontera(a, b, tolM) is { } f && !HayApoyoEnLaFrontera(f, huellas, tolApoyoM, cubre);
+        return Frontera(a, b, tolM) is { } f
+               && !HayApoyoEnLaFrontera(f, huellas, cubre)
+               && !ApoyoEnMedio(a, b, huellas);
     }
 
     /// <summary>
@@ -205,17 +223,99 @@ public static class TableroDeLosa
     /// ¿Corre un <b>apoyo</b> a lo largo de esta frontera?
     /// </summary>
     /// <remarks>
-    /// Es la misma pregunta que hace el armado para llegar al paño —<see
-    /// cref="LosaEnPlanta.MedioApoyoEnBorde"/>—, y por eso se reusa: un apoyo cuenta si va
-    /// <b>paralelo</b> a la frontera, <b>sobre su línea</b> y la <b>recorre</b>. Una trabe que solo
-    /// la cruza de través no separa nada: pasa por encima de la losa continua.
+    /// <para>
+    /// Se mide con <see cref="LosaEnPlanta.FraccionApoyada"/>, que suma la <b>UNIÓN</b> de lo que la
+    /// frontera lleva debajo. Eso es lo que hace falta y lo que antes no se hacía: se preguntaba
+    /// <b>apoyo por apoyo</b> —¿este muro recorre la frontera?— y un muro con vanos de puerta y de
+    /// ventana llega al dibujo <b>partido en tres o cuatro trozos</b>, de los que ninguno la recorre
+    /// entera. Así que la respuesta era «no hay apoyo» y dos tableros se juntaban en uno.
+    /// </para>
+    /// <para>
+    /// Con el 50 % basta y sobra: un muro con dos puertas sigue siendo el muro que corta el tablero,
+    /// y en cambio una trabe que cruza la frontera <b>de través</b> solo aporta su espesor —quince
+    /// centímetros de dos metros— y no separa nada, que es lo correcto: pasa por encima de la losa
+    /// continua.
+    /// </para>
     /// </remarks>
     public static bool HayApoyoEnLaFrontera(
         LosaEnPlanta.Segmento frontera,
         IReadOnlyList<ElementoPlanta> huellas,
-        double tolM = 0.25,
-        double cubre = 0.7) =>
-        LosaEnPlanta.MedioApoyoEnBorde(frontera, huellas, tolM, cubre) > 0;
+        double cubre = 0.5) =>
+        LosaEnPlanta.FraccionApoyada(frontera, huellas) >= cubre;
+
+    /// <summary>
+    /// ¿Hay un apoyo <b>en medio</b> de los dos pedazos, cruzado entre sus centros?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la segunda vuelta de la misma pregunta, y caza lo que la frontera sola no ve: dos pedazos
+    /// que se tocan por una esquina larga o por un lado que no es el que lleva el muro. Si andando
+    /// en línea recta del centro de uno al centro del otro <b>se pisa un apoyo</b>, en medio hay un
+    /// muro, una trabe o una cadena, y entonces son dos tableros.
+    /// </para>
+    /// <para>
+    /// Solo cuenta lo que se pisa <b>por dentro</b> del camino: si el propio centro cae sobre un
+    /// apoyo —un pedazo estrecho del mesh justo encima de un muro— eso no dice nada de lo que hay
+    /// entre los dos, y contarlo dejaría ese pedazo suelto para siempre.
+    /// </para>
+    /// <para>
+    /// Y solo lo que se pisa <b>sobre losa</b>. En un tablero en <b>L</b> la recta que une los dos
+    /// centros se sale por el hueco de la L, donde no hay concreto de este tablero sino lo que haya
+    /// —otro tablero, un patio, sus muros—. Un muro de ahí no está «en medio» de nada: está fuera
+    /// del paño, y por eso no cuenta.
+    /// </para>
+    /// </remarks>
+    public static bool ApoyoEnMedio(
+        ElementoPlanta a,
+        ElementoPlanta b,
+        IReadOnlyList<ElementoPlanta> huellas,
+        double minM = 0.02)
+    {
+        var (ax, ay) = Centro(a);
+        var (bx, by) = Centro(b);
+
+        var largo = Math.Sqrt(((bx - ax) * (bx - ax)) + ((by - ay) * (by - ay)));
+
+        if (largo < Nada || huellas.Count == 0)
+        {
+            return false;
+        }
+
+        var ux = (bx - ax) / largo;
+        var uy = (by - ay) / largo;
+
+        foreach (var h in huellas)
+        {
+            foreach (var t in PanoDeApoyo.Intervalos(h, ax, ay, ux, uy))
+            {
+                var desde = Math.Min(t.A, t.B);
+                var hasta = Math.Max(t.A, t.B);
+
+                if (desde <= minM || hasta >= largo - minM || hasta - desde < minM)
+                {
+                    continue;
+                }
+
+                // Y que lo pisado esté sobre el paño de uno de los dos, no en el hueco de una L.
+                var medio = (desde + hasta) / 2;
+                var mx = ax + (ux * medio);
+                var my = ay + (uy * medio);
+
+                if (Dentro(a.Vertices, mx, my) || Dentro(b.Vertices, mx, my))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>El centro del paño: la media de sus vértices.</summary>
+    public static (double X, double Y) Centro(ElementoPlanta el) =>
+        el.Vertices.Count == 0
+            ? (0, 0)
+            : (el.Vertices.Average(v => v.X), el.Vertices.Average(v => v.Y));
 
     /// <summary>El <b>área</b> del paño, por la fórmula del zapatero.</summary>
     public static double Area(IReadOnlyList<(double X, double Y)>? v)

@@ -422,6 +422,8 @@ public sealed class ConfigPlano
         P("LOSA_UNIR_TABLEROS", "SI",
           "<<< SI = LOS PEDAZOS DEL MESH SE JUNTAN EN UN TABLERO: UN ARMADO Y UN ROTULO"),
         P("LOSA_TABLERO_TOL_CM", "5", "Holgura para tomar dos pedazos de losa como pegados"),
+        P("LOSA_TABLERO_APOYO_CUBRE", "0.5",
+          "Cuanto de la frontera lleva apoyo debajo para que sean DOS tableros (union de tramos)"),
         P("LOSA_TABLERO_SIN_LINEA_INTERIOR", "SI",
           "SI = la raya del mesh entre pedazos del mismo tablero no se dibuja"),
         P("COLOR_ARMADO_LOSA", "142", "Color de la capa E-ARMADO LOSA"),
