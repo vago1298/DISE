@@ -358,10 +358,17 @@ public partial class MainWindow
     /// tipo 1 va hueco, con el trazo gris del contorno.
     /// </para>
     /// </remarks>
+    /// <param name="rellenoConcreto">
+    /// El color con el que se pinta el concreto en el estilo activo. Se usa como relleno
+    /// de la grapa en el tipo 1, donde el estribo no lleva relleno: es lo que <b>tapa</b>
+    /// la línea del estribo y la del diamante por debajo de la grapa, y produce el efecto
+    /// de que la grapa pasa por arriba sin tener que recortarlas.
+    /// </param>
     private void DibujarGrapasPrevias(
         SeccionConcretoRow s,
         List<(RefVarilla Ref, double X, double Y, double R)> varillas,
-        Func<double, double> px, Func<double, double> py, bool conFondoSolido)
+        Func<double, double> px, Func<double, double> py, bool conFondoSolido,
+        Brush rellenoConcreto)
     {
         if (s.Grapas.Count == 0)
         {
@@ -372,11 +379,15 @@ public partial class MainWindow
             ? new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A))
             : new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
 
-        // El mismo ACI 152 con el que se rellena el cuerpo del estribo en el tipo 2:
-        // una grapa es un estribo, así que va del mismo color.
+        // En el tipo 2, el mismo ACI 152 del cuerpo del estribo: una grapa es un
+        // estribo. En el tipo 1, el color del concreto, que hace de goma de borrar
+        // sobre lo que la grapa cruza.
+        //
+        // Nunca null: sin relleno se vería la línea del estribo atravesando la grapa, que
+        // es justo el defecto que se está corrigiendo.
         var relleno = conFondoSolido
             ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
-            : null;
+            : rellenoConcreto;
 
         foreach (var g in s.Grapas)
         {

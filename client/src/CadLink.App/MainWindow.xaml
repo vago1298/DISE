@@ -307,11 +307,28 @@
             <!-- ===== Secciones de concreto ===== -->
             <TabItem Header="Secciones Concreto">
                 <Grid Margin="14">
+                    <!-- ===== REPARTO DE LA HOJA =====
+
+                         La vista previa tenia 230 px FIJOS y se quedaba con la peor
+                         parte: la tabla se estiraba con la ventana y el dibujo no, asi
+                         que en una pantalla grande sobraba hueco vacio en la tabla y la
+                         seccion seguia del tamano de un sello.
+
+                         Ahora la previa manda: 1.6 partes contra 1 de la tabla, con
+                         MinHeight en las dos para que ninguna pueda desaparecer, y un
+                         DIVISOR ARRASTRABLE en medio para repartirlas a gusto.
+
+                         La tabla y su barra de totales van juntas en un Grid anidado a
+                         proposito. El divisor reparte SUS DOS VECINOS, y si la barra de
+                         totales fuera un renglon suelto entre medias, el vecino de
+                         arriba seria esa barra -de alto Auto- y arrastrar la
+                         aplastaria en vez de mover la tabla. Metidas juntas, los dos
+                         vecinos del divisor son los dos renglones proporcionales. -->
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="*" MinHeight="120" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="230" />
+                        <RowDefinition Height="1.6*" MinHeight="220" />
 
                         <!-- Las notas del ultimo dibujo. Estaban ENCIMA de la vista
                              previa, en una capa semitransparente pegada abajo, y
@@ -378,7 +395,15 @@
                          y se acaba escribiendo el armado en el renglón equivocado.
                          La fila de encabezado no se desplaza al bajar: el DataGrid la
                          mantiene fija de serie. -->
-                    <DataGrid Grid.Row="1" x:Name="SeccionesGrid" Style="{StaticResource SheetGridStyle}"
+                    <!-- La tabla y su barra de totales, juntas: son una sola cosa y el
+                         divisor de abajo tiene que verlas como un solo vecino. -->
+                    <Grid Grid.Row="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                    <DataGrid Grid.Row="0" x:Name="SeccionesGrid" Style="{StaticResource SheetGridStyle}"
                               SelectionMode="Single" SelectionUnit="FullRow"
                               FrozenColumnCount="2"
                               HeadersVisibility="All"
@@ -555,7 +580,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="2"
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="1"
                             >
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -586,6 +611,22 @@
                             </StackPanel>
                         </Grid>
                     </Border>
+                    </Grid>
+
+                    <!-- EL DIVISOR. Reparte la tabla y la vista previa a gusto: quien
+                         este capturando le da mas sitio a la tabla, y quien este
+                         revisando el armado se la da al dibujo.
+
+                         ResizeBehavior en PreviousAndNext para que mueva los dos
+                         renglones proporcionales que tiene al lado. Sin esto, el
+                         GridSplitter solo empuja a uno y el otro se descuadra. -->
+                    <GridSplitter Grid.Row="2" Height="7"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                  ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                                  Background="Transparent"
+                                  ShowsPreview="True"
+                                  Cursor="SizeNS"
+                                  ToolTip="Arrastra para repartir el alto entre la tabla y la vista previa." />
 
                     <!-- Fondo AZUL, para que la vista previa se lea como un panel
                          aparte y no como una prolongacion en blanco de la tabla.
@@ -620,7 +661,94 @@
                              Transparent los recibe en toda su superficie sin pintar
                              un solo pixel. Es la misma razon por la que los lienzos
                              del visor de ETABS llevan Background. -->
-                        <Grid x:Name="PreviaHost" ClipToBounds="True"
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- ===== BARRA DE MANDOS DE LA VISTA PREVIA =====
+
+                                 Los mandos estaban FLOTANDO sobre las cuatro esquinas
+                                 del dibujo, y ahi pasaban dos cosas: los de la grapa,
+                                 abajo a la derecha, quedaban tan lejos de la seccion
+                                 -que se dibuja a la izquierda- que no se encontraban;
+                                 y encima tapaban parte del dibujo.
+
+                                 Ahora son una barra de verdad, en su propio renglon:
+                                 nada tapa el dibujo y los de la grapa quedan pegados al
+                                 lado por donde se dibuja el corte. -->
+                            <Grid Grid.Row="0" Margin="9,6,5,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Vista previa"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <!-- LOS MANDOS DE LA GRAPA, pegados al titulo y al lado
+                                     del dibujo donde va la seccion. -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <TextBlock Text="Grapa ø" FontSize="10.5"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"
+                                               Foreground="{DynamicResource MutedTextBrush}" />
+
+                                    <!-- DiametrosOpcionales y no Diametros: la primera
+                                         entrada es el BLANCO, y en blanco la grapa se
+                                         arma con el estribo de la seccion. Es el mismo
+                                         criterio que las columnas de la cuadricula que se
+                                         pueden dejar vacias para que hereden, y evita
+                                         elegir aqui un calibre por omision que luego no
+                                         cuadre con el de la seccion.
+
+                                         La lista sale de Varilla.DiametrosOpcionales, la
+                                         MISMA tabla que usan las columnas, para que
+                                         agregar una varilla al catalogo la deje tambien
+                                         aqui sin tocar este XAML. -->
+                                    <ComboBox x:Name="GrapaDiametroCombo"
+                                              Width="66" FontSize="11" Height="22"
+                                              VerticalAlignment="Center" Margin="0,0,6,0"
+                                              SelectedIndex="0"
+                                              ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                                              ToolTip="Diametro con el que se arma la grapa que se ponga.&#10;En blanco: el mismo del estribo de la seccion." />
+
+                                    <Button Content="Quitar grapas"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnQuitarGrapas"
+                                            ToolTip="Quita TODAS las grapas de la seccion seleccionada." />
+                                </StackPanel>
+
+                                <!-- Los del encuadre, a la derecha: son de mirar, no de
+                                     armar, asi que van separados de los de la grapa. -->
+                                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                                    <TextBlock x:Name="PreviaZoomText" Text="100%"
+                                               FontSize="10.5" VerticalAlignment="Center"
+                                               Margin="0,0,6,0" MinWidth="36"
+                                               TextAlignment="Right"
+                                               Foreground="{DynamicResource MutedTextBrush}" />
+                                    <Button Content="−" Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="9,2" FontSize="14"
+                                            Click="OnPreviaAlejar"
+                                            ToolTip="Alejar (tambien con la rueda del raton)" />
+                                    <Button Content="+" Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="9,2" FontSize="14"
+                                            Click="OnPreviaAcercar"
+                                            ToolTip="Acercar (tambien con la rueda del raton)" />
+                                    <Button Content="Ajustar" Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnPreviaAjustar"
+                                            ToolTip="Vuelve el dibujo a su encuadre original.&#10;Atajo: doble clic sobre la vista previa." />
+                                </StackPanel>
+                            </Grid>
+
+                        <Grid x:Name="PreviaHost" Grid.Row="1" ClipToBounds="True"
                               Background="{StaticResource PreviewFondoBrush}">
                             <!-- ===== LA CAPA FIJA: EL ALZADO Y LAS LETRAS =====
 
@@ -682,86 +810,15 @@
                                 </Canvas.RenderTransform>
                             </Canvas>
 
-                            <!-- IsHitTestVisible="False" en los rotulos: son etiquetas,
-                                 no mandos, y sin esto se tragan el arrastre en la
-                                 esquina donde estan, que en un recuadro de 230 px de
-                                 alto es una parte nada despreciable del area util. -->
-                            <TextBlock Text="Vista previa de la seccion seleccionada"
-                                       FontSize="10.5" Margin="8,6,0,0"
-                                       VerticalAlignment="Top" HorizontalAlignment="Left"
-                                       Foreground="{DynamicResource BrandDarkBrush}"
-                                       IsHitTestVisible="False" />
+                        </Grid>
 
-                            <!-- Los mandos del encuadre. Son HERMANOS del Canvas, no
-                                 hijos: si fueran hijos, el zoom los escalaria junto
-                                 con el dibujo y al acercarse se irian de la vista. -->
-                            <StackPanel Orientation="Horizontal"
-                                        VerticalAlignment="Top" HorizontalAlignment="Right"
-                                        Margin="0,3,4,0">
-                                <TextBlock x:Name="PreviaZoomText" Text="100%"
-                                           FontSize="10.5" VerticalAlignment="Center"
-                                           Margin="0,0,6,0" MinWidth="34"
-                                           TextAlignment="Right"
-                                           Foreground="{DynamicResource MutedTextBrush}"
-                                           IsHitTestVisible="False" />
-                                <Button Content="−" Style="{StaticResource ToolbarButtonStyle}"
-                                        Padding="8,1" FontSize="14"
-                                        Click="OnPreviaAlejar"
-                                        ToolTip="Alejar (tambien con la rueda del raton)" />
-                                <Button Content="+" Style="{StaticResource ToolbarButtonStyle}"
-                                        Padding="8,1" FontSize="14"
-                                        Click="OnPreviaAcercar"
-                                        ToolTip="Acercar (tambien con la rueda del raton)" />
-                                <Button Content="Ajustar" Style="{StaticResource ToolbarButtonStyle}"
-                                        Padding="8,1"
-                                        Click="OnPreviaAjustar"
-                                        ToolTip="Vuelve el dibujo a su encuadre original.&#10;Atajo: doble clic sobre la vista previa." />
-                            </StackPanel>
-
-                            <TextBlock Text="Arrastra para mover · rueda para zoom · clic en dos varillas = grapa"
-                                       FontSize="10" Margin="8,0,0,5"
-                                       VerticalAlignment="Bottom" HorizontalAlignment="Left"
-                                       Foreground="{DynamicResource MutedTextBrush}"
-                                       IsHitTestVisible="False" />
-
-                            <!-- LOS MANDOS DE LAS GRAPAS.
-
-                                 Abajo a la derecha, y no arriba con los del zoom, para
-                                 no juntar cinco controles en una esquina: en una
-                                 ventana estrecha se montarian unos sobre otros. Ahi
-                                 esta el encuadre, aqui el armado. -->
-                            <StackPanel Orientation="Horizontal"
-                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                                        Margin="0,0,4,3">
-                                <TextBlock Text="Grapa ø" FontSize="10.5"
-                                           VerticalAlignment="Center" Margin="0,0,4,0"
-                                           Foreground="{DynamicResource MutedTextBrush}"
-                                           IsHitTestVisible="False" />
-
-                                <!-- La lista sale de Varilla.Diametros, la MISMA tabla
-                                     que usan las columnas de la cuadricula, para que
-                                     agregar una varilla al catalogo la deje tambien
-                                     aqui sin tocar este XAML. -->
-                                <!-- DiametrosOpcionales y no Diametros: la primera
-                                     entrada es el BLANCO, y en blanco la grapa se arma
-                                     con el estribo de la seccion. Es el mismo criterio
-                                     que las columnas de la cuadricula que se pueden
-                                     dejar vacias para que hereden, y evita tener que
-                                     elegir un calibre por omision aqui que luego no
-                                     cuadre con el de la seccion. -->
-                                <ComboBox x:Name="GrapaDiametroCombo"
-                                          Width="64" FontSize="11" Height="22"
-                                          VerticalAlignment="Center" Margin="0,0,6,0"
-                                          SelectedIndex="0"
-                                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
-                                          ToolTip="Diametro con el que se arma la grapa que se ponga.&#10;En blanco: el mismo del estribo de la seccion." />
-
-                                <Button Content="Quitar grapas"
-                                        Style="{StaticResource ToolbarButtonStyle}"
-                                        Padding="8,1"
-                                        Click="OnQuitarGrapas"
-                                        ToolTip="Quita TODAS las grapas de la seccion seleccionada." />
-                            </StackPanel>
+                            <!-- La pista, en su propio renglon debajo del dibujo. Antes
+                                 iba flotando sobre la esquina de abajo y le comia sitio
+                                 al alzado. -->
+                            <TextBlock Grid.Row="2"
+                                       Text="Arrastra para mover · rueda para zoom · clic en dos varillas = grapa · doble clic = ajustar"
+                                       FontSize="10" Margin="9,2,0,5"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
                         </Grid>
                     </Border>
 

@@ -2388,11 +2388,14 @@ public sealed partial class SeccionDrawer
         // Va SIN separación, a diferencia del estribo y del diamante: una grapa no se
         // repite a lo largo de la pieza por su cuenta, va donde va el estribo. Poner
         // «@10-20-10» aquí diría que hay una tercera familia con su propio paso.
+        // La «C» detrás del calibre es la misma marca que llevan las llamadas de
+        // varilla de arriba —«6 vars. #8C»—, así que el rótulo se lee igual en todos
+        // sus renglones.
         foreach (var (clave, cuantas) in GrapasPorDiametro(s))
         {
             lineas.Add(cuantas == 1
-                ? $"1 grapa {clave}"
-                : $"{cuantas} grapas {clave}");
+                ? $"1 grapa {clave}C"
+                : $"{cuantas} grapas {clave}C");
         }
 
         lineas.Add($"Rec. {s.RecubrimientoCm:0.##} cm");

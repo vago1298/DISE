@@ -4236,15 +4236,7 @@ public partial class MainWindow : Window
         // que la varilla tapa la parte del doblez que le pasa por debajo.
         DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
 
-        // LAS GRAPAS, antes de las varillas.
-        //
-        // Van debajo a propósito, por lo mismo que el gancho del estribo: la grapa da
-        // media vuelta ALREDEDOR de la varilla, así que la varilla tapa la parte del
-        // doblez que le pasa por detrás. Dibujadas encima, el doblez se vería cruzando
-        // por delante de la varilla, que es al revés de como está armado.
         var varillas = TodasLasVarillas(s, de, rec);
-
-        DibujarGrapasPrevias(s, varillas, PX, PY, conFondoSolido);
 
         // Lechos
         DibujarLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec, escala, PX, PY, arriba: true, intermedio: false);
@@ -4267,6 +4259,20 @@ public partial class MainWindow : Window
         // las varillas que abraza.
         DibujarDiamantePrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
 
+        // LAS GRAPAS, POR ENCIMA DE TODO EL ARMADO.
+        //
+        // Van al final, después del estribo y del diamante, porque una grapa se coloca
+        // por FUERA de ellos: se mete cuando el estribo ya está armado, así que pasa por
+        // delante. Estaban antes de las varillas y se veían por debajo, que es al revés.
+        //
+        // Y se pintan con relleno OPACO —el gris del estribo en el tipo 2, el color del
+        // concreto en el tipo 1—, que es lo que produce el efecto de pasar por arriba:
+        // el relleno tapa el trozo de línea del estribo y del diamante que queda debajo,
+        // sin tener que recortarlos. En AutoCAD no basta con esto y el recorte sí se
+        // hace de verdad, porque allí EstribosAlFrente vuelve a subir las líneas del
+        // estribo por encima de todo lo que esté en su capa.
+        DibujarGrapasPrevias(s, varillas, PX, PY, conFondoSolido, relleno);
+
         // EL REALCE DE LAS VARILLAS, lo último y por encima de todo.
         //
         // Es un adorno de la interfaz, no parte del armado: marca la varilla que el
@@ -4274,14 +4280,18 @@ public partial class MainWindow : Window
         // no lo tape ni el diamante ni el achurado.
         DibujarRealceDeVarillas(varillas, escala, PX, PY);
 
-        // Cotas de referencia
-        Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
-        Etiqueta($"{s.AlturaCm:N0} cm", x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
+        // Cotas de referencia. A la capa del CORTE: miden la sección, así que tienen que
+        // moverse con ella.
+        Etiqueta(PreviewCanvas, $"{s.BaseCm:N0} cm",
+                 x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
+
+        Etiqueta(PreviewCanvas, $"{s.AlturaCm:N0} cm",
+                 x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
 
         // La MISMA linea de titulo que la circular: elemento, ID y resumen del
         // armado. Antes la rectangular solo decia elemento e ID, asi que las dos
         // formas no se veian igual.
-        Etiqueta(TituloVistaPrevia(s), 14, 26);
+        Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
 
         // El alzado va a la derecha de la sección, en el espacio que sobra
         DibujarAlzadoPrevio(s, x0 + (s.BaseCm * escala) + 70, alto);
@@ -4382,8 +4392,9 @@ public partial class MainWindow : Window
             conFondoSolido ? negro : gris);
 
         // ---------- Etiquetas ----------
-        Etiqueta($"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
-        Etiqueta(TituloVistaPrevia(s), 14, 26);
+        // La cota del diámetro acompaña al círculo; el título se queda fijo.
+        Etiqueta(PreviewCanvas, $"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
+        Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
 
         DibujarAlzadoPrevio(s, cx + r + 70, alto);
     }
@@ -4648,8 +4659,8 @@ public partial class MainWindow : Window
         var partes = porDiametro
             .OrderByDescending(par => Varilla.TryDiametroCm(par.Key, out var cm) ? cm : 0)
             .Select(par => par.Value == 1
-                ? $"1 grapa {par.Key}"
-                : $"{par.Value} grapas {par.Key}");
+                ? $"1 grapa {par.Key}C"
+                : $"{par.Value} grapas {par.Key}C");
 
         return ", " + string.Join(", ", partes);
     }
@@ -4791,8 +4802,8 @@ public partial class MainWindow : Window
         // previa lo dice en lugar de mostrar uno que nunca se va a generar.
         if (TipoDe(s.Elemento, s.Id) is null)
         {
-            Etiqueta($"{s.Elemento} no lleva alzado.", izquierda, (alto / 2) - 10);
-            Etiqueta("Solo trabes, contratrabes, columnas y dados.",
+            Etiqueta(PreviaFijaCanvas, $"{s.Elemento} no lleva alzado.", izquierda, (alto / 2) - 10);
+            Etiqueta(PreviaFijaCanvas, "Solo trabes, contratrabes, columnas y dados.",
                 izquierda, (alto / 2) + 8);
             return;
         }
@@ -4960,13 +4971,13 @@ public partial class MainWindow : Window
         BarraDeAlzado(top + h - rec - (dInfCm / 100.0 * esc / 2), dInfCm,
             dobleHaciaAbajo: false, disponibleM: libreInf);
 
-        Etiqueta($"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
+        Etiqueta(PreviaFijaCanvas, $"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
 
         var textoGancho = ganchoM > 0
             ? $"   ·   gancho {a.GanchoCm:N0} cm"
             : "   ·   sin gancho";
 
-        Etiqueta($"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
+        Etiqueta(PreviaFijaCanvas, $"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
                  $"{a.SeparacionesCm[0]:N0}-{a.SeparacionesCm[1]:N0}-{a.SeparacionesCm[2]:N0} cm" +
                  textoGancho,
             izquierda, top + h + 8);
@@ -5618,7 +5629,15 @@ public partial class MainWindow : Window
         return r;
     }
 
-    private void Etiqueta(string texto, double left, double top)
+    /// <summary>Un texto suelto en la vista previa.</summary>
+    /// <param name="destino">
+    /// En qué capa va. <b>Las cotas de la sección van en la capa del corte</b>, para que
+    /// acompañen a la sección al moverla y al acercarla: una cota que se queda quieta
+    /// mientras la sección se mueve deja de señalar la cara que mide, y entonces miente.
+    /// El título y los rótulos del alzado sí van en la capa fija, porque no señalan nada:
+    /// dicen de qué es el dibujo.
+    /// </param>
+    private void Etiqueta(Canvas destino, string texto, double left, double top)
     {
         var t = new TextBlock
         {
@@ -5630,10 +5649,7 @@ public partial class MainWindow : Window
         Canvas.SetLeft(t, left);
         Canvas.SetTop(t, top);
 
-        // TODAS las letras van a la capa fija: el título, las cotas de la sección y los
-        // rótulos del alzado. Es lo que se pidió, y de paso el texto se lee al mismo
-        // tamaño con cualquier zoom en lugar de crecer hasta salirse del cuadro.
-        PreviaFijaCanvas.Children.Add(t);
+        destino.Children.Add(t);
     }
 
     // ==================================================================

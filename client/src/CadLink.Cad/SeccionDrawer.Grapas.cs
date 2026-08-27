@@ -145,10 +145,11 @@ public sealed partial class SeccionDrawer
 
         var varillas = TodasLasVarillasCad(s, x0, y0, b, h, rec, dEst, dSup, dInf);
 
-        // Los contornos que hay que rellenar en el tipo 2. Se juntan y se rellenan de
-        // una vez al final: RellenoDelGancho manda todos sus achurados al fondo en una
-        // sola pasada.
-        var paraRellenar = new List<double[]>();
+        // Los contornos de las grapas dibujadas. Se juntan porque hacen falta DOS veces
+        // al final: para rellenarlas en el tipo 2 —RellenoDelGancho manda todos sus
+        // achurados al fondo en una sola pasada— y para recortar el estribo por donde le
+        // pasan por encima.
+        var contornos = new List<double[]>();
 
         foreach (var g in s.Grapas)
         {
@@ -189,15 +190,198 @@ public sealed partial class SeccionDrawer
             var plano = Aplanar(puntos);
 
             Agregar(contorno, PolyCerrada(plano));
-            paraRellenar.Add(plano);
+            contornos.Add(plano);
         }
 
-        if (conFondoSolido && paraRellenar.Count > 0)
+        if (conFondoSolido && contornos.Count > 0)
         {
             // Sin sectores: el contorno de la grapa ya trae sus dobleces muestreados en
             // tramos rectos, así que no hay ningún arco que rellenar por separado.
-            RellenoDelGancho(paraRellenar, new List<double[]>());
+            RellenoDelGancho(contornos, new List<double[]>());
         }
+
+        // Y AL FINAL, con las grapas ya dibujadas: se abre el estribo por donde le pasan
+        // por encima. Al final por lo mismo que el recorte del diamante está al final de
+        // EstriboDiamante: si se recortara antes y luego fallara el dibujo de la grapa,
+        // el estribo se quedaría con un hueco sin nada que lo justifique.
+        RecortarEstriboBajoGrapas(contorno, contornos);
+    }
+
+    /// <summary>
+    /// Abre el estribo por donde la grapa le pasa <b>por encima</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el mismo trato que recibe el estribo bajo el diamante, y por el mismo motivo:
+    /// una grapa se coloca por fuera del estribo, así que debe verse pasar por delante.
+    /// Sin recortar, la línea del estribo cruza la grapa y el dibujo se lee al revés, con
+    /// el estribo por encima.
+    /// </para>
+    /// <para>
+    /// <b>Y no basta con el orden de dibujo.</b> Al final de la sección,
+    /// <c>EstribosAlFrente</c> sube al frente TODO lo que está en la capa
+    /// <c>ESTRIBOS</c> —la grapa incluida, pero también las líneas del estribo—, así que
+    /// quien acabe encima depende del orden interno del bloque y no de lo que uno quiera.
+    /// En el tipo 1, además, la grapa no lleva relleno que pudiera tapar nada. El recorte
+    /// es la única manera de que el efecto sea firme en los dos estilos.
+    /// </para>
+    /// <para>
+    /// El contorno de la grapa ya viene <b>poligonizado</b> desde
+    /// <see cref="TrazoGrapa.Contorno"/> —sus dobleces son tramos rectos—, así que se
+    /// puede reusar <c>DentroDelPoligono</c> tal cual, sin tener que añadir el término de
+    /// los arcos que sí necesita el recorte del diamante.
+    /// </para>
+    /// <para>
+    /// Los trozos que sobreviven se vuelven a anotar con <see cref="Tramo"/>, o sea que
+    /// entran otra vez en <c>_tramosEstribo</c>. Es imprescindible: el diamante recorta
+    /// DESPUÉS, y si los trozos nuevos no estuvieran en la lista, el diamante cruzaría
+    /// sobre ellos sin recortarlos y el defecto volvería, pero solo en las secciones que
+    /// llevan grapa y diamante a la vez.
+    /// </para>
+    /// </remarks>
+    private void RecortarEstriboBajoGrapas(
+        List<object> contorno, List<double[]> contornosDeGrapa)
+    {
+        if (contornosDeGrapa.Count == 0)
+        {
+            return;
+        }
+
+        // Se recorre una copia: la lista se modifica dentro del bucle, tanto al quitar
+        // el tramo original como al anotar los trozos nuevos.
+        foreach (var tramo in _tramosEstribo.ToList())
+        {
+            var largo = tramo.B - tramo.A;
+
+            if (largo <= LargoMinTramo)
+            {
+                continue;
+            }
+
+            // Lo que tapan TODAS las grapas juntas, unido.
+            var brutos = new List<(double Ini, double Fin)>();
+
+            foreach (var poligono in contornosDeGrapa)
+            {
+                foreach (var trozo in DentroDelPoligono(tramo, poligono))
+                {
+                    if (trozo.Fin - trozo.Ini > LargoMinTramo)
+                    {
+                        brutos.Add(trozo);
+                    }
+                }
+            }
+
+            if (brutos.Count == 0)
+            {
+                continue;
+            }
+
+            var tapado = UnirIntervalos(brutos);
+            var suma = tapado.Sum(i => i.Fin - i.Ini);
+
+            // El mismo seguro que el recorte del diamante: una grapa tapa un trozo
+            // corto del estribo, así que si la cuenta dice que tapa medio tramo es que
+            // algo está mal, y es mejor un dibujo con la línea cruzada que un estribo
+            // borrado de lado a lado.
+            if (suma > FraccionMaxRecorte * largo)
+            {
+                Nota(
+                    "Grapas: no se recortó un tramo del estribo porque el hueco " +
+                    $"calculado tapaba el {100 * suma / largo:0} % del tramo. El dibujo " +
+                    "queda completo, con la línea del estribo cruzando la grapa.");
+                continue;
+            }
+
+            // Lo que queda del tramo: los huecos en negativo.
+            var trozos = new List<(double A, double B)>();
+            var cursor = tramo.A;
+
+            foreach (var (ini, fin) in tapado)
+            {
+                if (ini > cursor)
+                {
+                    trozos.Add((cursor, ini));
+                }
+
+                cursor = Math.Max(cursor, fin);
+            }
+
+            if (cursor < tramo.B)
+            {
+                trozos.Add((cursor, tramo.B));
+            }
+
+            // PRIMERO se dibujan los trozos nuevos, y solo si alguno se creó se borra el
+            // original: al revés, un fallo al dibujar dejaría el estribo abierto.
+            var nuevos = new List<object>();
+
+            foreach (var (a, bb) in trozos)
+            {
+                if (bb - a < LargoMinTramo)
+                {
+                    continue;
+                }
+
+                var linea = tramo.Horizontal
+                    ? Linea(a, tramo.Fijo, bb, tramo.Fijo, "ESTRIBOS")
+                    : Linea(tramo.Fijo, a, tramo.Fijo, bb, "ESTRIBOS");
+
+                if (linea is not null)
+                {
+                    nuevos.Add(linea);
+
+                    // Se anota como tramo recortable, para que el diamante pueda
+                    // recortarlo después. Ver el remark de este método.
+                    Tramo(contorno, linea, tramo.Horizontal, tramo.Fijo, a, bb);
+                }
+            }
+
+            if (nuevos.Count == 0)
+            {
+                Nota(
+                    "Grapas: no se pudo redibujar un tramo recortado del estribo, así " +
+                    "que se dejó el tramo entero.");
+                continue;
+            }
+
+            Borrar(tramo.Ent);
+            contorno.Remove(tramo.Ent);
+            _tramosEstribo.Remove(tramo);
+        }
+    }
+
+    /// <summary>Une intervalos que se solapan, y los devuelve ordenados.</summary>
+    /// <remarks>
+    /// Hace falta porque los dobleces de una grapa y su tramo recto se tocan, y porque
+    /// dos grapas pueden cruzar el mismo tramo del estribo. Sin unir, el complemento
+    /// saldría con trozos de largo negativo.
+    /// </remarks>
+    private static List<(double Ini, double Fin)> UnirIntervalos(
+        List<(double Ini, double Fin)> brutos)
+    {
+        brutos.Sort((p, q) => p.Ini.CompareTo(q.Ini));
+
+        var union = new List<(double Ini, double Fin)> { brutos[0] };
+
+        for (var i = 1; i < brutos.Count; i++)
+        {
+            var ultimo = union[^1];
+
+            if (brutos[i].Ini <= ultimo.Fin)
+            {
+                if (brutos[i].Fin > ultimo.Fin)
+                {
+                    union[^1] = (ultimo.Ini, brutos[i].Fin);
+                }
+            }
+            else
+            {
+                union.Add(brutos[i]);
+            }
+        }
+
+        return union;
     }
 
     /// <summary>
