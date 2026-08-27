@@ -453,6 +453,19 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Al pasar a OTRA seccion el encuadre vuelve a su sitio.
+        //
+        // Es a proposito que esto NO este dentro de DibujarVistaPrevia: al editar una
+        // celda tambien se redibuja, y ahi el zoom tiene que quedarse quieto, que es
+        // justo para lo que sirve: acercarse a una esquina y probar diametros viendo el
+        // detalle. Si se reajustara en cada redibujado, cada tecla devolveria la vista
+        // al principio.
+        //
+        // Cambiar de seccion es otra cosa: la nueva puede ser de otro tamano, y
+        // heredar un zoom de veinte aumentos puesto sobre la esquina de la anterior
+        // deja el cuadro en blanco, como si el programa no hubiera dibujado nada.
+        ReiniciarEncuadrePrevia();
+
         DibujarVistaPrevia();
     }
 

@@ -594,15 +594,90 @@
                          varillas y las cotas sin contraste. -->
                     <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="3"
                             >
-                        <Grid>
+                        <!-- ClipToBounds va AQUI, en el contenedor, y no solo en el
+                             Canvas.
+
+                             El Canvas lleva un RenderTransform para el zoom, y WPF
+                             aplica el recorte de un elemento ANTES de su
+                             RenderTransform: al escalar, el propio recorte se escala
+                             con el dibujo, asi que al acercarse el trazo se saldria
+                             del marco y se pintaria encima de la tabla y de la barra
+                             de totales. El Border tampoco recorta por si mismo -no lo
+                             hace ni con CornerRadius-, de modo que hace falta un
+                             contenedor sin transformar que recorte de verdad. -->
+                        <Grid x:Name="PreviaHost" ClipToBounds="True">
                             <Canvas x:Name="PreviewCanvas"
                                     Background="{StaticResource PreviewFondoBrush}"
-                                    ClipToBounds="True" />
+                                    ClipToBounds="True"
+                                    MouseLeftButtonDown="OnPreviaMouseDown"
+                                    MouseRightButtonDown="OnPreviaMouseDown"
+                                    MouseMove="OnPreviaMouseMove"
+                                    MouseLeftButtonUp="OnPreviaMouseUp"
+                                    MouseRightButtonUp="OnPreviaMouseUp"
+                                    LostMouseCapture="OnPreviaMouseUp"
+                                    MouseWheel="OnPreviaWheel">
+                                <!-- EL ZOOM Y EL ENCUADRE DE LA VISTA PREVIA.
+                                     
+                                     Van en el Canvas y NO en sus hijos a proposito:
+                                     DibujarVistaPrevia empieza con Children.Clear(),
+                                     asi que cualquier transformacion puesta en las
+                                     figuras se perderia en cuanto se editara una
+                                     celda. Puesta en el Canvas, el encuadre sobrevive
+                                     a los redibujados.
+
+                                     El orden importa: primero escala y luego mueve,
+                                     de modo que el desplazamiento queda en pixeles de
+                                     pantalla y arrastrar mueve el dibujo justo lo que
+                                     se mueve el raton, con cualquier zoom. -->
+                                <Canvas.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="PreviaEscala" ScaleX="1" ScaleY="1" />
+                                        <TranslateTransform x:Name="PreviaMueve" X="0" Y="0" />
+                                    </TransformGroup>
+                                </Canvas.RenderTransform>
+                            </Canvas>
+
+                            <!-- IsHitTestVisible="False" en los rotulos: son etiquetas,
+                                 no mandos, y sin esto se tragan el arrastre en la
+                                 esquina donde estan, que en un recuadro de 230 px de
+                                 alto es una parte nada despreciable del area util. -->
                             <TextBlock Text="Vista previa de la seccion seleccionada"
                                        FontSize="10.5" Margin="8,6,0,0"
                                        VerticalAlignment="Top" HorizontalAlignment="Left"
-                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                                       Foreground="{DynamicResource BrandDarkBrush}"
+                                       IsHitTestVisible="False" />
 
+                            <!-- Los mandos del encuadre. Son HERMANOS del Canvas, no
+                                 hijos: si fueran hijos, el zoom los escalaria junto
+                                 con el dibujo y al acercarse se irian de la vista. -->
+                            <StackPanel Orientation="Horizontal"
+                                        VerticalAlignment="Top" HorizontalAlignment="Right"
+                                        Margin="0,3,4,0">
+                                <TextBlock x:Name="PreviaZoomText" Text="100%"
+                                           FontSize="10.5" VerticalAlignment="Center"
+                                           Margin="0,0,6,0" MinWidth="34"
+                                           TextAlignment="Right"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           IsHitTestVisible="False" />
+                                <Button Content="−" Style="{StaticResource ToolbarButtonStyle}"
+                                        Padding="8,1" FontSize="14"
+                                        Click="OnPreviaAlejar"
+                                        ToolTip="Alejar (tambien con la rueda del raton)" />
+                                <Button Content="+" Style="{StaticResource ToolbarButtonStyle}"
+                                        Padding="8,1" FontSize="14"
+                                        Click="OnPreviaAcercar"
+                                        ToolTip="Acercar (tambien con la rueda del raton)" />
+                                <Button Content="Ajustar" Style="{StaticResource ToolbarButtonStyle}"
+                                        Padding="8,1"
+                                        Click="OnPreviaAjustar"
+                                        ToolTip="Vuelve el dibujo a su encuadre original.&#10;Atajo: doble clic sobre la vista previa." />
+                            </StackPanel>
+
+                            <TextBlock Text="Arrastra para mover · rueda para zoom · doble clic para ajustar"
+                                       FontSize="10" Margin="8,0,0,5"
+                                       VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       IsHitTestVisible="False" />
                         </Grid>
                     </Border>
 
