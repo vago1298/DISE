@@ -142,6 +142,37 @@ public sealed class SeccionGuardada
     public string Fc { get; set; } = string.Empty;
     public string Escala { get; set; } = string.Empty;
     public double LongitudM { get; set; }
+
+    // ---------------- Grapas ----------------
+    // Al final y con la lista vacía por omisión, por el mismo motivo que la sección
+    // circular de arriba: un .clk guardado antes de que existieran las grapas se
+    // abre igual y sus secciones salen sin ninguna, que es lo que tenían. La
+    // versión del archivo NO sube, porque nada de lo que ya se guardaba cambió de
+    // significado.
+    public List<GrapaGuardada> Grapas { get; set; } = new();
+}
+
+/// <summary>Una grapa, como se guarda en el archivo del proyecto.</summary>
+/// <remarks>
+/// Se guardan los <b>números</b> del lecho y del índice, y no el
+/// <see cref="Models.RefVarilla"/> directamente, para que el archivo no dependa de la
+/// forma interna de una estructura de C#: si algún día se le agrega un campo, los
+/// proyectos ya guardados siguen abriéndose.
+/// </remarks>
+public sealed class GrapaGuardada
+{
+    /// <summary>El lecho de la primera varilla, como número de <c>LechoVarilla</c>.</summary>
+    public int LechoA { get; set; }
+
+    public int IndiceA { get; set; }
+
+    /// <summary>El lecho de la segunda varilla.</summary>
+    public int LechoB { get; set; }
+
+    public int IndiceB { get; set; }
+
+    /// <summary>Clave de la varilla de la grapa, por ejemplo <c>#3</c>.</summary>
+    public string Diametro { get; set; } = string.Empty;
 }
 
 /// <summary>Lee y escribe los archivos <c>.clk</c>.</summary>

@@ -466,6 +466,11 @@ public partial class MainWindow : Window
         // deja el cuadro en blanco, como si el programa no hubiera dibujado nada.
         ReiniciarEncuadrePrevia();
 
+        // Y se olvida la varilla que estuviera marcada. Sus índices son de la sección
+        // ANTERIOR: dejarla marcada al cambiar de fila pondría la grapa entre una
+        // varilla de la sección de antes y otra de la de ahora.
+        CancelarGrapaPendiente();
+
         DibujarVistaPrevia();
     }
 
@@ -1942,7 +1947,7 @@ public partial class MainWindow : Window
 
         foreach (var s in _datos.SeccionesConcreto)
         {
-            p.Secciones.Add(new SeccionGuardada
+            var guardada = new SeccionGuardada
             {
                 Elemento = s.Elemento, Id = s.Id,
                 BaseCm = s.BaseCm, AlturaCm = s.AlturaCm,
@@ -1960,7 +1965,20 @@ public partial class MainWindow : Window
                 DiamEstriboDiamante = s.DiamEstriboDiamante,
                 GanchoCm = s.GanchoCm, Fc = s.Fc, Escala = s.Escala,
                 LongitudM = s.LongitudM
-            });
+            };
+
+            // Las grapas van aparte del inicializador porque hay que recorrerlas.
+            foreach (var g in s.Grapas)
+            {
+                guardada.Grapas.Add(new GrapaGuardada
+                {
+                    LechoA = (int)g.A.Lecho, IndiceA = g.A.Indice,
+                    LechoB = (int)g.B.Lecho, IndiceB = g.B.Indice,
+                    Diametro = g.Diametro
+                });
+            }
+
+            p.Secciones.Add(guardada);
         }
 
         // LAS OTRAS DOS HOJAS. Antes no se guardaban: «guardar trabajo» escribía solo el
@@ -2040,7 +2058,7 @@ public partial class MainWindow : Window
 
             foreach (var s in p.Secciones)
             {
-                _datos.SeccionesConcreto.Add(new SeccionConcretoRow
+                var fila = new SeccionConcretoRow
                 {
                     Elemento = s.Elemento, Id = s.Id,
                     BaseCm = s.BaseCm, AlturaCm = s.AlturaCm,
@@ -2063,7 +2081,33 @@ public partial class MainWindow : Window
                     // guardado no lo pisa el automatico del elemento.
                     Fc = s.Fc,
                     Escala = s.Escala, LongitudM = s.LongitudM
-                });
+                };
+
+                // Las grapas del archivo. Se usa CargarGrapa, que NO avisa de cambios:
+                // aquí se está montando la tabla entera y la vista previa se dibuja una
+                // sola vez al final, igual que con _listo apagado.
+                //
+                // Un lecho que no se reconozca se salta en lugar de caerse: es la misma
+                // regla que el resto de la carga, que prefiere abrir el trabajo aunque
+                // una fila venga rara antes que negarse a abrirlo.
+                foreach (var g in s.Grapas ?? new List<GrapaGuardada>())
+                {
+                    if (!Enum.IsDefined(typeof(LechoVarilla), g.LechoA)
+                        || !Enum.IsDefined(typeof(LechoVarilla), g.LechoB)
+                        || g.IndiceA < 0 || g.IndiceB < 0)
+                    {
+                        continue;
+                    }
+
+                    fila.CargarGrapa(new GrapaSeccion
+                    {
+                        A = new RefVarilla((LechoVarilla)g.LechoA, g.IndiceA),
+                        B = new RefVarilla((LechoVarilla)g.LechoB, g.IndiceB),
+                        Diametro = string.IsNullOrWhiteSpace(g.Diametro) ? "#3" : g.Diametro
+                    });
+                }
+
+                _datos.SeccionesConcreto.Add(fila);
             }
 
             // ---- Secciones Acero ----
@@ -4082,6 +4126,21 @@ public partial class MainWindow : Window
         double PX(double xcm) => x0 + (xcm * escala);
         double PY(double ycm) => y0 + ((s.AlturaCm - ycm) * escala);
 
+        // La MISMA transformada, guardada para poder deshacerla.
+        //
+        // Hace falta para las grapas: un clic llega en píxeles del lienzo y hay que
+        // saber sobre qué varilla cayó, que se conoce en centímetros. Sin esto, escala,
+        // x0 y y0 mueren al terminar este método y no hay forma de convertir de vuelta.
+        //
+        // Se guarda aquí, y no se recalcula en el clic, para que las dos cuentas no
+        // puedan discrepar: si el clic recalculara la escala con un ancho distinto
+        // -porque el panel cambió de tamaño entre el dibujado y el clic-, señalaría una
+        // varilla que no es la que está debajo del cursor.
+        _previaEscala = escala;
+        _previaX0 = x0;
+        _previaY0 = y0;
+        _previaAlturaCm = s.AlturaCm;
+
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
         var negro = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
@@ -4150,6 +4209,16 @@ public partial class MainWindow : Window
         // que la varilla tapa la parte del doblez que le pasa por debajo.
         DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
 
+        // LAS GRAPAS, antes de las varillas.
+        //
+        // Van debajo a propósito, por lo mismo que el gancho del estribo: la grapa da
+        // media vuelta ALREDEDOR de la varilla, así que la varilla tapa la parte del
+        // doblez que le pasa por detrás. Dibujadas encima, el doblez se vería cruzando
+        // por delante de la varilla, que es al revés de como está armado.
+        var varillas = TodasLasVarillas(s, de, rec);
+
+        DibujarGrapasPrevias(s, varillas, PX, PY, conFondoSolido);
+
         // Lechos
         DibujarLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec, escala, PX, PY, arriba: true, intermedio: false);
         DibujarLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec, escala, PX, PY, arriba: true, intermedio: true);
@@ -4170,6 +4239,13 @@ public partial class MainWindow : Window
         // frente con AlFrente: el diamante es lo último que se arma y pasa por delante de
         // las varillas que abraza.
         DibujarDiamantePrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
+
+        // EL REALCE DE LAS VARILLAS, lo último y por encima de todo.
+        //
+        // Es un adorno de la interfaz, no parte del armado: marca la varilla que el
+        // cursor tiene encima y la que ya se eligió para la grapa. Va al final para que
+        // no lo tape ni el diamante ni el achurado.
+        DibujarRealceDeVarillas(varillas, escala, PX, PY);
 
         // Cotas de referencia
         Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);

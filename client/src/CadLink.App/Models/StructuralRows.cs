@@ -865,6 +865,86 @@ public sealed class SeccionConcretoRow : Row
             ? 0
             : Math.Round(AreaAceroCm2 / AreaBrutaCm2 * 100.0, 3);
 
+    // ======================================================================
+    //  Grapas: los estribos suplementarios que unen dos varillas
+    // ======================================================================
+
+    private readonly List<GrapaSeccion> _grapas = new();
+
+    /// <summary>Las grapas de esta sección.</summary>
+    /// <remarks>
+    /// <para>
+    /// Se expone como <b>solo lectura</b> y se toca por los métodos de abajo, no
+    /// devolviendo la lista para que quien quiera le añada cosas.
+    /// </para>
+    /// <para>
+    /// El motivo es el aviso de cambios. <see cref="Row.Set{T}"/> compara con
+    /// <c>EqualityComparer</c>, y la referencia de una lista NO cambia al añadirle un
+    /// elemento: si el resto del programa metiera grapas directamente en la lista,
+    /// <c>PropertyChanged</c> no se dispararía nunca y la vista previa no se
+    /// enteraría hasta el siguiente redibujado por otro motivo. Pasando por estos
+    /// métodos, el aviso sale siempre.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<GrapaSeccion> Grapas => _grapas;
+
+    /// <summary>Pone una grapa entre dos varillas.</summary>
+    /// <remarks>
+    /// No admite grapas de una varilla a sí misma ni repetidas: las dos cosas se ven
+    /// igual en el dibujo que nada, y una repetida no habría forma de quitarla porque
+    /// tapa a la otra.
+    /// </remarks>
+    public bool AgregarGrapa(RefVarilla a, RefVarilla b, string diametro)
+    {
+        if (a.Equals(b) || YaHayGrapa(a, b))
+        {
+            return false;
+        }
+
+        _grapas.Add(new GrapaSeccion { A = a, B = b, Diametro = diametro });
+        Raise(nameof(Grapas));
+        return true;
+    }
+
+    /// <summary>¿Ya hay una grapa entre esas dos varillas?</summary>
+    public bool YaHayGrapa(RefVarilla a, RefVarilla b) => _grapas.Any(g => g.Une(a, b));
+
+    /// <summary>Quita la grapa que une esas dos varillas, si la hay.</summary>
+    public bool QuitarGrapa(RefVarilla a, RefVarilla b)
+    {
+        var cuantas = _grapas.RemoveAll(g => g.Une(a, b));
+
+        if (cuantas == 0)
+        {
+            return false;
+        }
+
+        Raise(nameof(Grapas));
+        return true;
+    }
+
+    /// <summary>Quita todas las grapas de la sección.</summary>
+    public void LimpiarGrapas()
+    {
+        if (_grapas.Count == 0)
+        {
+            return;
+        }
+
+        _grapas.Clear();
+        Raise(nameof(Grapas));
+    }
+
+    /// <summary>
+    /// Mete una grapa <b>sin</b> avisar de que cambió, para cargar el proyecto.
+    /// </summary>
+    /// <remarks>
+    /// Al abrir un archivo se cargan las filas de golpe y el aviso por grapa no sirve
+    /// de nada: la vista previa se redibuja una vez al final. Es el mismo motivo por
+    /// el que la carga apaga <c>_listo</c>.
+    /// </remarks>
+    public void CargarGrapa(GrapaSeccion g) => _grapas.Add(g);
+
     protected override void RaiseCalculadas()
     {
         Raise(nameof(DiamIntSupEfectivo));

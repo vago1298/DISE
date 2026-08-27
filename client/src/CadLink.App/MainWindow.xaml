@@ -605,16 +605,39 @@
                              de totales. El Border tampoco recorta por si mismo -no lo
                              hace ni con CornerRadius-, de modo que hace falta un
                              contenedor sin transformar que recorte de verdad. -->
-                        <Grid x:Name="PreviaHost" ClipToBounds="True">
+                        <!-- EL PAPEL VA AQUI, EN EL CONTENEDOR, Y NO EN EL CANVAS.
+
+                             Es lo que hace que al arrastrar se mueva SOLO el dibujo.
+                             Con el Background en el Canvas, el zoom y el arrastre
+                             tambien movian el rectangulo de papel, asi que al
+                             arrastrar el papel se corria, asomaba el borde por un
+                             lado y parecia que se moviera el panel entero en vez de
+                             la seccion.
+
+                             El Canvas se queda en Transparent, que NO es lo mismo que
+                             no ponerle nada: un Canvas sin Background no recibe
+                             eventos de raton -no hay nada que golpear-, y con
+                             Transparent los recibe en toda su superficie sin pintar
+                             un solo pixel. Es la misma razon por la que los lienzos
+                             del visor de ETABS llevan Background. -->
+                        <Grid x:Name="PreviaHost" ClipToBounds="True"
+                              Background="{StaticResource PreviewFondoBrush}">
+                            <!-- Sin ClipToBounds en el Canvas, a proposito: el recorte
+                                 de verdad lo hace PreviaHost. Si el Canvas tambien
+                                 recortara, al alejarse el zoom seguiria cortando el
+                                 dibujo en los limites que tenia el lienzo, y el alzado
+                                 -que se dibuja a la derecha y a veces se sale- nunca
+                                 se podria ver entero alejandose, que es justo para lo
+                                 que uno se aleja. -->
                             <Canvas x:Name="PreviewCanvas"
-                                    Background="{StaticResource PreviewFondoBrush}"
-                                    ClipToBounds="True"
+                                    Background="Transparent"
                                     MouseLeftButtonDown="OnPreviaMouseDown"
                                     MouseRightButtonDown="OnPreviaMouseDown"
                                     MouseMove="OnPreviaMouseMove"
                                     MouseLeftButtonUp="OnPreviaMouseUp"
                                     MouseRightButtonUp="OnPreviaMouseUp"
                                     LostMouseCapture="OnPreviaMouseUp"
+                                    MouseLeave="OnPreviaMouseLeave"
                                     MouseWheel="OnPreviaWheel">
                                 <!-- EL ZOOM Y EL ENCUADRE DE LA VISTA PREVIA.
                                      
@@ -673,11 +696,50 @@
                                         ToolTip="Vuelve el dibujo a su encuadre original.&#10;Atajo: doble clic sobre la vista previa." />
                             </StackPanel>
 
-                            <TextBlock Text="Arrastra para mover · rueda para zoom · doble clic para ajustar"
+                            <TextBlock Text="Arrastra para mover · rueda para zoom · clic en dos varillas = grapa"
                                        FontSize="10" Margin="8,0,0,5"
                                        VerticalAlignment="Bottom" HorizontalAlignment="Left"
                                        Foreground="{DynamicResource MutedTextBrush}"
                                        IsHitTestVisible="False" />
+
+                            <!-- LOS MANDOS DE LAS GRAPAS.
+
+                                 Abajo a la derecha, y no arriba con los del zoom, para
+                                 no juntar cinco controles en una esquina: en una
+                                 ventana estrecha se montarian unos sobre otros. Ahi
+                                 esta el encuadre, aqui el armado. -->
+                            <StackPanel Orientation="Horizontal"
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="0,0,4,3">
+                                <TextBlock Text="Grapa ø" FontSize="10.5"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"
+                                           Foreground="{DynamicResource MutedTextBrush}"
+                                           IsHitTestVisible="False" />
+
+                                <!-- La lista sale de Varilla.Diametros, la MISMA tabla
+                                     que usan las columnas de la cuadricula, para que
+                                     agregar una varilla al catalogo la deje tambien
+                                     aqui sin tocar este XAML. -->
+                                <!-- DiametrosOpcionales y no Diametros: la primera
+                                     entrada es el BLANCO, y en blanco la grapa se arma
+                                     con el estribo de la seccion. Es el mismo criterio
+                                     que las columnas de la cuadricula que se pueden
+                                     dejar vacias para que hereden, y evita tener que
+                                     elegir un calibre por omision aqui que luego no
+                                     cuadre con el de la seccion. -->
+                                <ComboBox x:Name="GrapaDiametroCombo"
+                                          Width="64" FontSize="11" Height="22"
+                                          VerticalAlignment="Center" Margin="0,0,6,0"
+                                          SelectedIndex="0"
+                                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                                          ToolTip="Diametro con el que se arma la grapa que se ponga.&#10;En blanco: el mismo del estribo de la seccion." />
+
+                                <Button Content="Quitar grapas"
+                                        Style="{StaticResource ToolbarButtonStyle}"
+                                        Padding="8,1"
+                                        Click="OnQuitarGrapas"
+                                        ToolTip="Quita TODAS las grapas de la seccion seleccionada." />
+                            </StackPanel>
                         </Grid>
                     </Border>
 

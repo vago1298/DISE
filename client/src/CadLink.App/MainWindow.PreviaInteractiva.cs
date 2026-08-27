@@ -50,10 +50,33 @@ public partial class MainWindow
     /// </remarks>
     private const double PreviaPasoZoom = 1.15;
 
+    /// <summary>
+    /// Cuánto se tiene que mover el ratón para que deje de ser un clic y pase a ser un
+    /// arrastre.
+    /// </summary>
+    /// <remarks>
+    /// Cuatro píxeles es el margen que usa Windows para lo mismo. Con menos, el temblor
+    /// normal de la mano al hacer clic contaría como arrastre; con mucho más, un
+    /// desplazamiento corto de verdad se perdería y parecería que el dibujo se resiste.
+    /// </remarks>
+    private const double UmbralDeArrastrePx = 4.0;
+
     /// <summary>Desde dónde se está arrastrando, en coordenadas del contenedor.</summary>
     private Point _previaArrastreDesde;
 
+    /// <summary>Dónde se apretó el botón, para medir el umbral contra el sitio inicial.</summary>
+    /// <remarks>
+    /// Es distinto de <see cref="_previaArrastreDesde"/>, que se va actualizando en cada
+    /// movimiento. Si el umbral se midiera contra ese, nunca se alcanzaría: entre dos
+    /// mensajes de ratón seguidos hay uno o dos píxeles, así que el movimiento siempre
+    /// parecería demasiado pequeño y el dibujo no se movería jamás.
+    /// </remarks>
+    private Point _previaPresionEn;
+
     private bool _previaMoviendo;
+
+    /// <summary>Si el arrastre ya pasó del umbral y por tanto no es un clic.</summary>
+    private bool _previaHuboArrastre;
 
     // ======================================================================
     //  Mover arrastrando
@@ -69,33 +92,55 @@ public partial class MainWindow
     /// </remarks>
     private void OnPreviaMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // El doble clic reajusta. Es el atajo de siempre para «devuélveme la vista»,
-        // y evita tener que apuntar al botón de Ajustar cuando uno se ha perdido
-        // dentro del dibujo.
+        // El doble clic reajusta, PERO solo en el vacío.
+        //
+        // Este matiz es lo que deja convivir el encuadre con las grapas. Poner una
+        // grapa son dos clics, y dos clics seguidos sobre varillas vecinas los reporta
+        // Windows como un doble clic: sin la comprobación, marcar la segunda varilla
+        // deshacía el zoom en lugar de poner la grapa.
+        //
+        // Sobre una varilla, un doble clic se trata como un clic normal y la marca.
+        // En el vacío no hay nada que marcar, así que ahí sí reajusta.
         //
         // Canvas es un Panel, no un Control, así que NO tiene el evento
         // MouseDoubleClick: hay que contar los clics a mano.
-        if (e.ChangedButton == MouseButton.Left && e.ClickCount == 2)
+        if (e.ChangedButton == MouseButton.Left
+            && e.ClickCount == 2
+            && VarillaEn(e.GetPosition(PreviewCanvas)) is null)
         {
             ReiniciarEncuadrePrevia();
+            CancelarGrapaPendiente();
+            DibujarVistaPrevia();
             e.Handled = true;
             return;
         }
 
         _previaArrastreDesde = e.GetPosition(PreviaHost);
+        _previaPresionEn = _previaArrastreDesde;
+        _previaHuboArrastre = false;
         _previaMoviendo = true;
 
         // Sin capturar, al salirse del lienzo mientras se arrastra el botón se
         // suelta fuera, no llega el MouseUp y el dibujo se queda pegado al ratón.
         PreviewCanvas.CaptureMouse();
-        PreviewCanvas.Cursor = Cursors.ScrollAll;
+
+        // El cursor NO cambia todavía: hasta que se pase del umbral esto podría ser un
+        // clic, y poner la mano de mover en un clic simple da la impresión de que el
+        // dibujo se va a arrastrar cuando en realidad se está marcando una varilla.
     }
 
-    /// <summary>Mueve el dibujo con el ratón.</summary>
+    /// <summary>Mueve el dibujo con el ratón, o realza la varilla que hay debajo.</summary>
     private void OnPreviaMouseMove(object sender, MouseEventArgs e)
     {
+        // Sin botón apretado: lo único que se hace es realzar la varilla bajo el
+        // cursor, para que se vea que son cosas que se pueden tocar.
         if (!_previaMoviendo)
         {
+            if (ActualizarVarillaBajoCursor(e.GetPosition(PreviewCanvas)))
+            {
+                DibujarVistaPrevia();
+            }
+
             return;
         }
 
@@ -106,6 +151,28 @@ public partial class MainWindow
         // acelerando solo mientras se arrastra.
         var p = e.GetPosition(PreviaHost);
 
+        // EL UMBRAL: hasta que el ratón no se mueve de verdad, esto sigue siendo un
+        // clic en potencia y el dibujo no se toca.
+        //
+        // Es lo que permite que el mismo botón izquierdo sirva para mover el dibujo y
+        // para marcar varillas, sin un modo que haya que encender. Nadie deja el ratón
+        // completamente quieto al hacer clic, así que sin margen de tolerancia cada
+        // clic movería el dibujo unos píxeles y marcar dos varillas dejaría la sección
+        // descentrada.
+        if (!_previaHuboArrastre)
+        {
+            var dxTotal = p.X - _previaPresionEn.X;
+            var dyTotal = p.Y - _previaPresionEn.Y;
+
+            if (Math.Sqrt((dxTotal * dxTotal) + (dyTotal * dyTotal)) < UmbralDeArrastrePx)
+            {
+                return;
+            }
+
+            _previaHuboArrastre = true;
+            PreviewCanvas.Cursor = Cursors.ScrollAll;
+        }
+
         // El desplazamiento se suma tal cual, en píxeles: como en el XAML el
         // TranslateTransform va DESPUÉS del ScaleTransform, no hay que dividirlo
         // entre la escala. Así el dibujo acompaña al puntero exactamente, esté al
@@ -114,6 +181,23 @@ public partial class MainWindow
         PreviaMueve.Y += p.Y - _previaArrastreDesde.Y;
 
         _previaArrastreDesde = p;
+    }
+
+    /// <summary>Al salir el cursor, se apaga el realce.</summary>
+    /// <remarks>
+    /// Solo el realce. El arrastre NO se corta aquí —está razonado en
+    /// <see cref="OnPreviaMouseUp"/>—, y por eso esto no hace nada mientras se mueve el
+    /// dibujo: redibujar la sección entera en medio de un arrastre la dejaría a tirones.
+    /// </remarks>
+    private void OnPreviaMouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_previaMoviendo || _varillaBajoCursor is null)
+        {
+            return;
+        }
+
+        _varillaBajoCursor = null;
+        DibujarVistaPrevia();
     }
 
     /// <summary>Suelta el dibujo.</summary>
@@ -139,9 +223,31 @@ public partial class MainWindow
             return;
         }
 
+        // El orden importa: apagar la bandera ANTES de soltar la captura.
+        //
+        // ReleaseMouseCapture dispara LostMouseCapture, que está enganchado a este
+        // mismo método, así que esto se llama a sí mismo. Con la bandera ya apagada, esa
+        // segunda entrada se va por el return de arriba y no pasa nada.
         _previaMoviendo = false;
+
+        var fueArrastre = _previaHuboArrastre;
+        _previaHuboArrastre = false;
+
         PreviewCanvas.ReleaseMouseCapture();
         PreviewCanvas.Cursor = null;
+
+        // Si el ratón no se movió, esto no era un arrastre: era un clic, y va a las
+        // grapas. Solo el botón izquierdo: el derecho es para mover.
+        //
+        // Se comprueba el tipo del argumento porque este método atiende tres eventos y
+        // solo dos traen botón; LostMouseCapture llega como MouseEventArgs pelado, y
+        // perder la captura no es un clic.
+        if (!fueArrastre
+            && e is MouseButtonEventArgs boton
+            && boton.ChangedButton == MouseButton.Left)
+        {
+            ProcesarClicEnPrevia(e.GetPosition(PreviewCanvas));
+        }
     }
 
     // ======================================================================
