@@ -5004,14 +5004,42 @@ public partial class MainWindow : Window
                 trazo.Add(new Point(xFin, yCentro));
             }
 
-            PreviaFijaCanvas.Children.Add(new Polyline
+            // ===== LA VARILLA VA HUECA, SALVO EN EL TIPO RELLENA =====
+            //
+            // Antes era una banda verde MACIZA, y con dos varillas a todo lo largo de la
+            // pieza el verde se comía el alzado: tapaba el achurado y competía con los
+            // estribos, que es lo que hay que mirar.
+            //
+            // Ahora se saca el CONTORNO de la banda con GetWidenedPathGeometry, que es la
+            // silueta que dejaría esa pluma, y se pinta como contorno fino. En el tipo
+            // rellena se rellena, igual que el estribo, para que los dos estilos sigan
+            // distinguiéndose.
+            //
+            // El contorno sale con las esquinas ya redondeadas porque la pluma lleva
+            // LineJoin en Round: el mismo fillet de medio diámetro que deja AutoCAD.
+            var camino = new PathGeometry();
+            var figura = new PathFigure { StartPoint = trazo[0], IsClosed = false };
+
+            for (var i = 1; i < trazo.Count; i++)
             {
-                Points = trazo,
+                figura.Segments.Add(new LineSegment(trazo[i], true));
+            }
+
+            camino.Figures.Add(figura);
+
+            var pluma = new Pen(verde, grosor)
+            {
+                LineJoin = PenLineJoin.Round,
+                StartLineCap = PenLineCap.Round,
+                EndLineCap = PenLineCap.Round
+            };
+
+            PreviaFijaCanvas.Children.Add(new FormaPath
+            {
+                Data = camino.GetWidenedPathGeometry(pluma),
                 Stroke = verde,
-                StrokeThickness = grosor,
-                StrokeLineJoin = PenLineJoin.Round,
-                StrokeStartLineCap = PenLineCap.Round,
-                StrokeEndLineCap = PenLineCap.Round
+                StrokeThickness = 0.8,
+                Fill = a.Modo == ModoSeccion.Tipo2Rellena ? verde : null
             });
         }
 
@@ -5647,41 +5675,77 @@ public partial class MainWindow : Window
         var recorte = new RectangleGeometry(new Rect(left, top, w, h));
         var tinta = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0x9C));
 
-        // Líneas a 45°, recortadas al rectángulo de concreto
-        var lineas = new GeometryGroup();
-        const double paso = 9.0;
-
-        for (var d = -h; d < w + h; d += paso)
-        {
-            lineas.Children.Add(new LineGeometry(
-                new Point(left + d, top + h),
-                new Point(left + d + h, top)));
-        }
-
-        destino.Children.Add(new FormaPath
-        {
-            Data = lineas,
-            Stroke = tinta,
-            StrokeThickness = 0.55,
-            Clip = recorte
-        });
-
-        // Áridos: puntos dispersos, con semilla fija
+        // La semilla es fija a propósito: si fuera aleatoria, los áridos saltarían de
+        // sitio en cada redibujado, por ejemplo al cambiar el tamaño del panel.
         var rnd = new Random(20260817);
-        var cuantos = (int)Math.Clamp(w * h / 380.0, 6, 260);
-        var aridos = new GeometryGroup();
+
+        // ---------- Los áridos: TRIÁNGULOS huecos ----------
+        //
+        // Así es el AR-CONC de AutoCAD: piedra angular dibujada como triangulitos
+        // sueltos, de tamaños y giros distintos, más puntos finos de arena. NO lleva
+        // rayado diagonal; el que había antes era una aproximación que no se parecía.
+        var triangulos = new GeometryGroup();
+
+        // Uno por cada 900 px² de superficie, con topes para que no queden cuatro
+        // perdidos en una sección grande ni un amasijo en una chica.
+        var cuantos = (int)Math.Clamp(w * h / 900.0, 4, 90);
 
         for (var k = 0; k < cuantos; k++)
         {
-            var px = left + (rnd.NextDouble() * w);
-            var py = top + (rnd.NextDouble() * h);
-            var r = 0.7 + (rnd.NextDouble() * 1.15);
-            aridos.Children.Add(new EllipseGeometry(new Point(px, py), r, r));
+            var cx = left + (rnd.NextDouble() * w);
+            var cy = top + (rnd.NextDouble() * h);
+
+            // Radio del triángulo y giro, los dos al azar: en el patrón real no hay dos
+            // piedras iguales ni alineadas.
+            var r = 2.6 + (rnd.NextDouble() * 2.6);
+            var giro = rnd.NextDouble() * 2 * Math.PI;
+
+            var fig = new PathFigure { IsClosed = true, IsFilled = false };
+
+            for (var v = 0; v < 3; v++)
+            {
+                var a = giro + (v * 2 * Math.PI / 3);
+                var p = new Point(cx + (r * Math.Cos(a)), cy + (r * Math.Sin(a)));
+
+                if (v == 0)
+                {
+                    fig.StartPoint = p;
+                }
+                else
+                {
+                    fig.Segments.Add(new LineSegment(p, true));
+                }
+            }
+
+            var geo = new PathGeometry();
+            geo.Figures.Add(fig);
+            triangulos.Children.Add(geo);
         }
 
         destino.Children.Add(new FormaPath
         {
-            Data = aridos,
+            Data = triangulos,
+            Stroke = tinta,
+            StrokeThickness = 0.6,
+            Fill = null,
+            Clip = recorte
+        });
+
+        // ---------- La arena: puntos finos ----------
+        var arena = new GeometryGroup();
+        var puntos = (int)Math.Clamp(w * h / 500.0, 6, 200);
+
+        for (var k = 0; k < puntos; k++)
+        {
+            var px = left + (rnd.NextDouble() * w);
+            var py = top + (rnd.NextDouble() * h);
+            var r = 0.35 + (rnd.NextDouble() * 0.45);
+            arena.Children.Add(new EllipseGeometry(new Point(px, py), r, r));
+        }
+
+        destino.Children.Add(new FormaPath
+        {
+            Data = arena,
             Fill = tinta,
             Clip = recorte
         });
