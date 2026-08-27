@@ -695,6 +695,16 @@
                                 <!-- LOS MANDOS DE LA GRAPA, pegados al titulo y al lado
                                      del dibujo donde va la seccion. -->
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <!-- 2D / 3D del alzado. Va de este lado, junto a la
+                                         seccion, para tenerlo a mano sin cruzar el
+                                         recuadro. Dice en que vista se esta. -->
+                                    <Button x:Name="AlzadoVistaButton" Content="2D"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="9,2" MinWidth="34"
+                                            Margin="0,0,10,0"
+                                            Click="OnAlternarAlzado3D"
+                                            ToolTip="Viendo el alzado plano. Toca para verlo en 3D." />
+
                                     <TextBlock Text="Grapa ø" FontSize="10.5"
                                                VerticalAlignment="Center" Margin="0,0,4,0"
                                                Foreground="{DynamicResource MutedTextBrush}" />

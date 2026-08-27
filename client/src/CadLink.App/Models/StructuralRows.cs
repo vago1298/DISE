@@ -232,7 +232,10 @@ public sealed class SeccionConcretoRow : Row
 
     // Columna W. 0 = la longitud la calcula el programa acomodando un número
     // entero de estribos en cada zona, igual que la macro de alzados.
-    private double _longitudM;
+    // Tres metros por omisión: es un tramo de trabe corriente, y sin largo no hay alzado
+    // que dibujar. Antes las filas nuevas salían en cero y el alzado aparecía vacío sin
+    // explicar por qué.
+    private double _longitudM = 3.0;
 
     /// <summary>Columna A: tipo de elemento. Va en mayúsculas en el rótulo.</summary>
     /// <summary>

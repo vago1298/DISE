@@ -4894,6 +4894,13 @@ public partial class MainWindow : Window
         var h = peralteM * esc;
         var top = (alto - h) / 2;
 
+        // En 3D el alzado se dibuja aparte, con los MISMOS datos y las mismas posiciones.
+        if (_alzado3D)
+        {
+            DibujarAlzado3DPrevio(a, izquierda, alto);
+            return;
+        }
+
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
         var relleno = a.Modo == ModoSeccion.Tipo2Rellena
