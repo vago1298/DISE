@@ -1,4 +1,10 @@
 using System.Windows;
+
+// System.Windows.Controls es donde vive Canvas, y de ahi salen Canvas.SetLeft y
+// Canvas.SetTop, que son las que colocan una figura dentro del lienzo. Sin este using el
+// error que sale es un CS0103 diciendo que «Canvas» no existe, que despista bastante:
+// parece que falte una referencia y lo que falta es el espacio de nombres.
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using CadLink.App.Models;
