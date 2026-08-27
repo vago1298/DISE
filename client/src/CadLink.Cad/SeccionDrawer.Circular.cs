@@ -1128,9 +1128,14 @@ public sealed partial class SeccionDrawer
             var pSup = PosicionesDeLecho(s.Superior, xIzquierda, yAbajo, b, h, rec, dEst, true);
             var pInf = PosicionesDeLecho(s.Inferior, xIzquierda, yAbajo, b, h, rec, dEst, false);
 
-            LeadersDeLecho(s.Superior, (pSup.Esquina, pSup.Intermedia, pSup.YGrupo),
+            // Las X sin repetir, por lo mismo que en Lecho: un paquete comparte X y
+            // dibujaría dos flechas encimadas.
+            LeadersDeLecho(s.Superior,
+                (XsUnicas(pSup.Esquina), XsUnicas(pSup.Intermedia), pSup.YGrupo),
                 xIzquierda, arriba: true);
-            LeadersDeLecho(s.Inferior, (pInf.Esquina, pInf.Intermedia, pInf.YGrupo),
+
+            LeadersDeLecho(s.Inferior,
+                (XsUnicas(pInf.Esquina), XsUnicas(pInf.Intermedia), pInf.YGrupo),
                 xIzquierda, arriba: false);
 
             if (s.NLateral > 0 && s.Lateral.Existe)

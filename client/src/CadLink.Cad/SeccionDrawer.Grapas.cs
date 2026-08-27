@@ -52,25 +52,27 @@ public sealed partial class SeccionDrawer
         var pSup = PosicionesDeLecho(s.Superior, x0, y0, b, h, rec, dEst, arriba: true);
         var pInf = PosicionesDeLecho(s.Inferior, x0, y0, b, h, rec, dEst, arriba: false);
 
-        void Agrupar(LechoVarilla lecho, double[] xs, double y, double radio)
+        void Agrupar(LechoVarilla lecho, List<(double X, double Y)> vars, double radio)
         {
-            for (var i = 0; i < xs.Length; i++)
+            for (var i = 0; i < vars.Count; i++)
             {
-                salida.Add((new RefVarilla(lecho, i), xs[i], y, radio));
+                salida.Add((new RefVarilla(lecho, i), vars[i].X, vars[i].Y, radio));
             }
         }
 
-        // Los cuatro lechos, en el MISMO orden que la tabla de la aplicación.
-        Agrupar(LechoVarilla.EsquinaSuperior, pSup.Esquina, pSup.YEsquina,
+        // Los cuatro lechos, en el MISMO orden que la tabla de la aplicación. La Y sale
+        // de cada varilla, no del grupo: en un paquete las apiladas no están a la misma
+        // altura que la de la esquina.
+        Agrupar(LechoVarilla.EsquinaSuperior, pSup.Esquina,
                 s.Superior.Esquina.Cm * _escala / 2);
 
-        Agrupar(LechoVarilla.IntermediaSuperior, pSup.Intermedia, pSup.YIntermedia,
+        Agrupar(LechoVarilla.IntermediaSuperior, pSup.Intermedia,
                 s.Superior.Intermedia.Cm * _escala / 2);
 
-        Agrupar(LechoVarilla.EsquinaInferior, pInf.Esquina, pInf.YEsquina,
+        Agrupar(LechoVarilla.EsquinaInferior, pInf.Esquina,
                 s.Inferior.Esquina.Cm * _escala / 2);
 
-        Agrupar(LechoVarilla.IntermediaInferior, pInf.Intermedia, pInf.YIntermedia,
+        Agrupar(LechoVarilla.IntermediaInferior, pInf.Intermedia,
                 s.Inferior.Intermedia.Cm * _escala / 2);
 
         // Las laterales: izquierda y luego derecha por cada altura, que es exactamente

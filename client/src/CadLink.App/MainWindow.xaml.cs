@@ -3923,8 +3923,10 @@ public partial class MainWindow : Window
         }
 
         RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
+        RevisarPaquete(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup);
         RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
         RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
+        RevisarPaquete(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf);
         RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
         RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
 
@@ -4067,6 +4069,34 @@ public partial class MainWindow : Window
         }
 
         RevisarDiametro(problemas, etiqueta, lecho, diametro, obligatorio: true);
+    }
+
+    /// <summary>
+    /// Un lecho de esquina con más de dos varillas forma <b>paquetes</b>, y para eso el
+    /// número tiene que ser par.
+    /// </summary>
+    /// <remarks>
+    /// Las esquinas son dos y el armado es simétrico, así que un número impar mayor que
+    /// dos no se puede repartir en dos paquetes iguales. Se avisa aquí en lugar de
+    /// arreglarlo por lo bajo: repartir 5 como 3 y 2 dejaría la sección asimétrica sin
+    /// que nadie lo hubiera pedido, y quedarse con 4 perdería una varilla en silencio.
+    /// <para>
+    /// Mientras el número sea impar, la sección se sigue dibujando con el reparto a lo
+    /// ancho de siempre, así que el plano nunca queda a medias.
+    /// </para>
+    /// </remarks>
+    private static void RevisarPaquete(
+        List<string> problemas, string etiqueta, string lecho, int cantidad)
+    {
+        if (cantidad <= 2 || cantidad % 2 == 0)
+        {
+            return;
+        }
+
+        problemas.Add(
+            $"• {etiqueta}: el {lecho} tiene {cantidad} varillas. Con más de dos se " +
+            "arman en paquetes, uno por esquina, así que la cantidad debe ser PAR. " +
+            "Mientras sea impar se dibujan repartidas a lo ancho.");
     }
 
     private static void RevisarDiametro(
@@ -5057,6 +5087,34 @@ public partial class MainWindow : Window
 
         if (!intermedio)
         {
+            // ===== PAQUETE: más de dos varillas de esquina se APILAN =====
+            //
+            // Un lecho de esquina lleva una varilla en cada esquina. Cuando se piden más,
+            // NO se reparten a lo ancho —para eso está el lecho intermedio—: se cuelgan
+            // de la de la esquina hacia el núcleo, pegadas, formando un paquete.
+            //
+            // La de fuera es la que da el doblez del estribo, así que las demás van
+            // detrás de ella y no al contrario. La regla está en PaqueteVarillas, que es
+            // la misma que usa el dibujante de AutoCAD.
+            if (PaqueteVarillas.EsPaquete(cantidad))
+            {
+                var porEsquina = PaqueteVarillas.PorEsquina(cantidad);
+
+                // Primero el paquete izquierdo completo y luego el derecho. El orden
+                // importa: es el que numera las varillas para las grapas.
+                foreach (var xEsquina in new[] { off, s.BaseCm - off })
+                {
+                    for (var k = 0; k < porEsquina; k++)
+                    {
+                        salida.Add((xEsquina,
+                                    y + PaqueteVarillas.Desplazamiento(k, d, arriba),
+                                    r));
+                    }
+                }
+
+                return salida;
+            }
+
             // Lecho de esquina: repartido de off a base menos off
             var paso = (s.BaseCm - (2 * off)) / (cantidad - 1);
 

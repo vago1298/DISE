@@ -1823,21 +1823,27 @@ public sealed partial class SeccionDrawer
     {
         var p = PosicionesDeLecho(lecho, x0, y0, b, h, rec, dEst, arriba);
 
-        foreach (var x in p.Esquina)
+        // Se dibuja con la Y DE CADA VARILLA y no con la del grupo: en un paquete las
+        // apiladas están más abajo (o más arriba) que la de la esquina.
+        foreach (var (x, y) in p.Esquina)
         {
             var rr = lecho.Esquina.Cm * _escala / 2;
-            Agregar(circulos, Varilla(x, p.YEsquina, rr, lecho.Esquina.Clave));
-            (arriba ? _varSup : _varInf).Add((x, p.YEsquina, rr));
+            Agregar(circulos, Varilla(x, y, rr, lecho.Esquina.Clave));
+            (arriba ? _varSup : _varInf).Add((x, y, rr));
         }
 
-        foreach (var x in p.Intermedia)
+        foreach (var (x, y) in p.Intermedia)
         {
             var rr = lecho.Intermedia.Cm * _escala / 2;
-            Agregar(circulos, Varilla(x, p.YIntermedia, rr, lecho.Intermedia.Clave));
-            (arriba ? _varSup : _varInf).Add((x, p.YIntermedia, rr));
+            Agregar(circulos, Varilla(x, y, rr, lecho.Intermedia.Clave));
+            (arriba ? _varSup : _varInf).Add((x, y, rr));
         }
 
-        return (p.Esquina, p.Intermedia, p.YGrupo);
+        // A las LLAMADAS van las X sin repetir. En un paquete las varillas comparten X,
+        // y LeaderLecho dibuja una flecha por cada valor: sin quitar las repetidas se
+        // pintarían dos flechas exactamente encima. La cantidad del texto no se toca,
+        // porque va aparte y sigue diciendo el total.
+        return (XsUnicas(p.Esquina), XsUnicas(p.Intermedia), p.YGrupo);
     }
 
     /// <summary>
@@ -1861,13 +1867,14 @@ public sealed partial class SeccionDrawer
     /// <c>ySup</c> termina valiendo la de la última fila dibujada.
     /// </para>
     /// </remarks>
-    private (double[] Esquina, double YEsquina, double[] Intermedia, double YIntermedia,
+    private (List<(double X, double Y)> Esquina, double YEsquina,
+        List<(double X, double Y)> Intermedia, double YIntermedia,
         double YGrupo) PosicionesDeLecho(
         LechoCad lecho,
         double x0, double y0, double b, double h, double rec, double dEst, bool arriba)
     {
-        var xsEsquina = Array.Empty<double>();
-        var xsIntermedia = Array.Empty<double>();
+        var xsEsquina = new List<(double X, double Y)>();
+        var xsIntermedia = new List<(double X, double Y)>();
         var yEsquina = 0d;
         var yIntermedia = 0d;
         var yGrupo = 0d;
@@ -1879,22 +1886,36 @@ public sealed partial class SeccionDrawer
             yEsquina = arriba ? y0 + h - off : y0 + off;
             yGrupo = yEsquina;
 
-            var xs = new List<double>();
-
             if (lecho.NEsquina == 1)
             {
-                xs.Add(x0 + (b / 2));
+                xsEsquina.Add((x0 + (b / 2), yEsquina));
+            }
+            else if (PaqueteVarillas.EsPaquete(lecho.NEsquina))
+            {
+                // ===== PAQUETE =====
+                // Más de dos varillas de esquina se APILAN hacia el núcleo, pegadas a la
+                // de la esquina, que es la que da el doblez del estribo. Mismo reparto y
+                // MISMO ORDEN que la vista previa —izquierda completa y luego derecha—,
+                // porque ese orden es el que numera las varillas para las grapas.
+                var porEsquina = PaqueteVarillas.PorEsquina(lecho.NEsquina);
+
+                foreach (var xEsquina in new[] { x0 + off, x0 + b - off })
+                {
+                    for (var k = 0; k < porEsquina; k++)
+                    {
+                        xsEsquina.Add((xEsquina,
+                                       yEsquina + PaqueteVarillas.Desplazamiento(k, d, arriba)));
+                    }
+                }
             }
             else
             {
                 var paso = (b - (2 * off)) / (lecho.NEsquina - 1);
                 for (var i = 0; i < lecho.NEsquina; i++)
                 {
-                    xs.Add(x0 + off + (i * paso));
+                    xsEsquina.Add((x0 + off + (i * paso), yEsquina));
                 }
             }
-
-            xsEsquina = xs.ToArray();
         }
 
         if (lecho.NIntermedia > 0 && lecho.Intermedia.Existe)
@@ -1904,11 +1925,11 @@ public sealed partial class SeccionDrawer
             yIntermedia = arriba ? y0 + h - off : y0 + off;
             yGrupo = yIntermedia;
 
-            var xs = new List<double>();
-
+            // El lecho intermedio NO se apila: es justo el que reparte a lo ancho, y es
+            // el sitio donde van las varillas que no caben en las esquinas.
             if (lecho.NIntermedia == 1)
             {
-                xs.Add(x0 + (b / 2));
+                xsIntermedia.Add((x0 + (b / 2), yIntermedia));
             }
             else
             {
@@ -1917,14 +1938,32 @@ public sealed partial class SeccionDrawer
                 var paso = (xFin - xIni) / (lecho.NIntermedia + 1);
                 for (var i = 1; i <= lecho.NIntermedia; i++)
                 {
-                    xs.Add(xIni + (i * paso));
+                    xsIntermedia.Add((xIni + (i * paso), yIntermedia));
                 }
             }
-
-            xsIntermedia = xs.ToArray();
         }
 
         return (xsEsquina, yEsquina, xsIntermedia, yIntermedia, yGrupo);
+    }
+
+    /// <summary>Las X sin repetir de un grupo de varillas, en orden.</summary>
+    /// <remarks>
+    /// Las varillas de un <b>paquete</b> comparten X exacta —sale del mismo cálculo—, así
+    /// que basta comparar por igualdad y no hace falta tolerancia.
+    /// </remarks>
+    private static double[] XsUnicas(List<(double X, double Y)> varillas)
+    {
+        var salida = new List<double>();
+
+        foreach (var (x, _) in varillas)
+        {
+            if (!salida.Contains(x))
+            {
+                salida.Add(x);
+            }
+        }
+
+        return salida.ToArray();
     }
 
     /// <summary>
