@@ -1732,13 +1732,12 @@ public sealed partial class SeccionDrawer
     /// Cuántas varillas hay en el paquete de la esquina superior. Uno si no es paquete.
     /// </param>
     /// <remarks>
-    /// <b>El doblez envuelve TODO el paquete, no solo la varilla de la esquina.</b> Por eso
-    /// el radio crece con el número de varillas y el centro baja al centro del paquete: un
-    /// doblez del tamaño de una varilla, puesto sobre un paquete de dos, no abraza nada.
+    /// Con paquete, el doblez <b>baja</b> a la segunda varilla, y solo eso: <b>no crece</b>.
+    /// El radio de un doblez lo manda la varilla con la que se dobla, así que es el mismo
+    /// con una varilla en la esquina o con tres.
     /// <para>
-    /// Con <paramref name="enPaquete"/> igual a 1 las dos cuentas dan exactamente lo de
-    /// siempre —radio medio diámetro y centro en la varilla—, así que las secciones sin
-    /// paquete se dibujan igual que antes.
+    /// Y baja porque la varilla de la esquina ya la tiene abrazada el propio doblez de la
+    /// esquina del estribo: un gancho ahí quedaría encimado con él.
     /// </para>
     /// </remarks>
     private void Ganchos(
@@ -1748,16 +1747,19 @@ public sealed partial class SeccionDrawer
     {
         var rBarra = dSup / 2;
 
-        // El radio del doblez: medio paquete. Con una varilla es medio diámetro, con dos
-        // es un diámetro entero, y así queda TANGENTE al borde de la varilla del extremo,
-        // que es justo lo que significa abrazar el paquete.
-        var rIn = enPaquete * dSup / 2;
+        // El doblez NO cambia de tamaño: es el mismo de siempre, medio diámetro por
+        // dentro y el grueso del estribo por fuera. Un doblez es un doblez, y su radio
+        // lo manda la varilla con la que se dobla, no cuántas haya en la esquina.
+        var rIn = rBarra;
         var rOut = rIn + dEst;
 
         var bx = x0 + b - rec - dEst - rBarra;
 
-        // El centro baja al centro del paquete. Con una varilla no baja nada.
-        var by = y0 + h - rec - dEst - rBarra - ((enPaquete - 1) * dSup / 2);
+        // Lo único que cambia con el paquete es que BAJA: se centra en la SEGUNDA
+        // varilla en lugar de la de la esquina, porque esa ya la tiene abrazada el
+        // doblez de la esquina del estribo.
+        var by = y0 + h - rec - dEst - rBarra
+                 + (enPaquete > 1 ? PaqueteVarillas.Desplazamiento(1, dSup, arriba: true) : 0);
 
         // Doblez: sector anular con los mismos radios y angulos de los arcos
         sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi });

@@ -5497,25 +5497,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        // ===== EL DOBLEZ ENVUELVE TODO EL PAQUETE =====
+        // ===== CON PAQUETE, EL DOBLEZ BAJA A LA SEGUNDA VARILLA =====
         //
-        // Con el lecho superior en paquete, el gancho no se agarra de una varilla: abraza
-        // las dos, o las tres. Así que el radio del doblez es MEDIO PAQUETE y su centro
-        // baja al centro del paquete. Con medio diámetro, como antes, el doblez quedaba
-        // del tamaño de una sola varilla y no envolvía nada.
+        // Baja, y nada más: NO cambia de tamaño. El radio de un doblez lo manda la varilla
+        // con la que se dobla, así que es el mismo con una varilla en la esquina o con
+        // tres.
         //
-        // Con una varilla las dos cuentas dan exactamente lo de siempre, así que las
-        // secciones sin paquete se ven igual.
+        // Y baja porque la de la esquina ya la tiene abrazada el propio doblez de la
+        // esquina del estribo, y un gancho ahí quedaría encimado con él.
         var enPaquete = PaqueteVarillas.EsPaquete(s.NEsqSup)
             ? PaqueteVarillas.PorEsquina(s.NEsqSup)
             : 1;
 
-        var rBarra = dSup / 2;
-        var rIn = enPaquete * dSup / 2;
+        var rIn = dSup / 2;
         var rOut = rIn + dEst;
 
-        var bx = s.BaseCm - rec - dEst - rBarra;
-        var by = s.AlturaCm - rec - dEst - rBarra - ((enPaquete - 1) * dSup / 2);
+        var bx = s.BaseCm - rec - dEst - rIn;
+        var by = s.AlturaCm - rec - dEst - rIn
+                 + (enPaquete > 1 ? PaqueteVarillas.Desplazamiento(1, dSup, arriba: true) : 0);
 
         // Que quepa: con un recubrimiento grande en una sección chica, el centro del doblez
         // se sale del núcleo y dibujarlo pondría el gancho fuera del concreto.
