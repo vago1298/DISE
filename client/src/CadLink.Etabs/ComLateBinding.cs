@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 
 namespace CadLink.Etabs;
@@ -205,6 +206,83 @@ internal static class Com
 
                 Anota($"{metodo}: por '{m.DeclaringType?.Name}' con {ps.Length} argumentos.");
                 return args;
+            }
+            catch (Exception ex)
+            {
+                Anota($"{metodo} por '{m.DeclaringType?.Name}' " +
+                      $"({m.GetParameters().Length} args): {Detalle(ex)}");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Llama a un método y devuelve sus resultados <b>por el nombre del parámetro</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es <see cref="CallConFirma"/> con una vuelta más, y resuelve el problema de fondo de
+    /// esta API: <b>las firmas cambian</b> entre versiones y entre ETABS y SAP2000, así que
+    /// leer «la posición 6» es una apuesta. Aquí se pregunta a la firma real cómo se llama cada
+    /// parámetro y se devuelve un diccionario: quien llama pide <c>Notes</c> o
+    /// <c>Thickness</c> y no le importa en qué hueco vinieran.
+    /// </para>
+    /// <para>
+    /// Y como <see cref="CallConFirma"/>, cada parámetro se rellena con un <b>valor neutro de
+    /// su tipo</b>. Eso es lo que permite llamar a métodos con <b>enumeraciones</b> —el
+    /// <c>eWallPropType</c> y el <c>eShellType</c> de <c>GetWall</c>—, que es justo donde se
+    /// atascaba la lectura: pasándoles un 0 entero, la invocación revienta con un choque de
+    /// tipos y la propiedad se queda sin notas.
+    /// </para>
+    /// <para>
+    /// Solo se acepta la llamada si la OAPI devolvió <b>0</b>: preguntarle a una propiedad de
+    /// losa por <c>GetWall</c> no falla, devuelve error, y con la respuesta vacía parecería que
+    /// la propiedad no tiene notas.
+    /// </para>
+    /// </remarks>
+    /// <returns>Los parámetros por su nombre, o <c>null</c> si ninguna firma respondió.</returns>
+    public static Dictionary<string, object?>? CallPorNombre(
+        object objetivo, string metodo, params (int Indice, object? Valor)[] entradas)
+    {
+        foreach (var m in MetodosDeInterfaz(metodo, 0))
+        {
+            try
+            {
+                var ps = m.GetParameters();
+                var args = new object?[ps.Length];
+
+                for (var i = 0; i < ps.Length; i++)
+                {
+                    args[i] = ValorNeutro(ps[i]);
+                }
+
+                foreach (var (indice, valor) in entradas)
+                {
+                    if (indice >= 0 && indice < args.Length)
+                    {
+                        args[indice] = valor;
+                    }
+                }
+
+                var r = m.Invoke(objetivo, args);
+
+                if (r is not null && Convert.ToInt32(r) != 0)
+                {
+                    Anota($"{metodo} por '{m.DeclaringType?.Name}': la OAPI devolvió error.");
+                    continue;
+                }
+
+                var salida = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+                for (var i = 0; i < ps.Length; i++)
+                {
+                    salida[ps[i].Name ?? i.ToString(CultureInfo.InvariantCulture)] = args[i];
+                }
+
+                Anota($"{metodo}: por '{m.DeclaringType?.Name}', {ps.Length} parámetros " +
+                      "leídos por su nombre.");
+                return salida;
             }
             catch (Exception ex)
             {

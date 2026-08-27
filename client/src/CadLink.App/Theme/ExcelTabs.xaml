@@ -7,15 +7,32 @@
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework">
+                    xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+                    xmlns:models="clr-namespace:CadLink.App.Models">
+
+    <!-- ===================== Tipografia y medidas =====================
+         El rediseno empieza aqui: antes cada estilo llevaba su tamano y su radio
+         escritos a mano, asi que la ventana tenia botones de radio 3, pestanas de
+         radio 4 y tarjetas de radio 4, con seis tamanos de letra sin relacion entre
+         si. Con la escala en un solo sitio, todo el programa respira igual.
+
+         La fuente es la de Windows 11 con la de siempre como respaldo: si el equipo
+         no tiene la Variable, cae en Segoe UI y no en la fuente por omision de WPF,
+         que es de los noventa. -->
+    <FontFamily x:Key="FuenteUI">Segoe UI Variable Text, Segoe UI, Segoe UI Emoji</FontFamily>
+
+    <CornerRadius x:Key="RadioChico">4</CornerRadius>
+    <CornerRadius x:Key="RadioBoton">6</CornerRadius>
+    <CornerRadius x:Key="RadioTarjeta">8</CornerRadius>
+    <CornerRadius x:Key="RadioPestana">7,7,0,0</CornerRadius>
 
     <!-- ===================== Paleta ===================== -->
-    <Color x:Key="BrandDarkColor">#FF0B3D6B</Color>
-    <Color x:Key="BrandColor">#FF1776BF</Color>
+    <Color x:Key="BrandDarkColor">#FF0A2F4C</Color>
+    <Color x:Key="BrandColor">#FF15679F</Color>
 
     <SolidColorBrush x:Key="BrandDarkBrush" Color="{StaticResource BrandDarkColor}" />
     <SolidColorBrush x:Key="BrandBrush" Color="{StaticResource BrandColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#FFFFC72C" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FFF2A32C" />
 
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF" />
 
@@ -23,15 +40,15 @@
          concreto claro, asi que un azul fuerte dejaria las varillas, las cotas y
          el rayado del concreto sin contraste. -->
     <SolidColorBrush x:Key="PreviewFondoBrush" Color="#FFE8F1FA" />
-    <SolidColorBrush x:Key="TabStripBrush" Color="#FFE9EDF1" />
-    <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF3F5F7" />
-    <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE1E7EC" />
-    <SolidColorBrush x:Key="BorderBrush" Color="#FFC9D2DA" />
-    <SolidColorBrush x:Key="TextBrush" Color="#FF1F2933" />
-    <SolidColorBrush x:Key="MutedTextBrush" Color="#FF6B7A88" />
+    <SolidColorBrush x:Key="TabStripBrush" Color="#FFE8EEF5" />
+    <SolidColorBrush x:Key="TabInactiveBrush" Color="#FFF5F8FB" />
+    <SolidColorBrush x:Key="TabHoverBrush" Color="#FFE0E8F1" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#FFD7DFE9" />
+    <SolidColorBrush x:Key="TextBrush" Color="#FF11202D" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#FF64748B" />
     <SolidColorBrush x:Key="DangerBrush" Color="#FFC0392B" />
-    <SolidColorBrush x:Key="WarningBrush" Color="#FFB8860B" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="#FF1E7E34" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFB07908" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#FF1B7A33" />
 
     <!-- ===================== Paleta, segunda parte =====================
          Estas brochas se anadieron al montar el tema oscuro. Antes cada uno de
@@ -44,28 +61,65 @@
          diccionario. Ver Tema.cs, que explica por que. -->
 
     <!-- Fondo de la ventana -->
-    <SolidColorBrush x:Key="WindowBrush" Color="#FFF7F9FB" />
+    <SolidColorBrush x:Key="WindowBrush" Color="#FFF2F5F9" />
 
     <!-- Tarjetas: las cabeceras de cada hoja -->
-    <SolidColorBrush x:Key="CardBrush" Color="#FFF3F6F9" />
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFAFCFE" />
 
     <!-- Barra de totales, debajo de la cuadricula -->
-    <SolidColorBrush x:Key="TotalesBrush" Color="#FFEDF3F8" />
+    <SolidColorBrush x:Key="TotalesBrush" Color="#FFEEF3F9" />
 
     <!-- Cuadricula: filas, alternas y lineas -->
     <SolidColorBrush x:Key="GridRowBrush" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="GridAltRowBrush" Color="#FFF8FAFB" />
-    <SolidColorBrush x:Key="GridLineBrush" Color="#FFE3E8ED" />
-    <SolidColorBrush x:Key="HeaderBrush" Color="#FFD6DEE6" />
+    <SolidColorBrush x:Key="GridAltRowBrush" Color="#FFF8FBFD" />
+    <SolidColorBrush x:Key="GridLineBrush" Color="#FFE6EDF4" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#FFE5ECF4" />
 
     <!-- Aviso amarillo de la barra de notificaciones -->
-    <SolidColorBrush x:Key="NoticeFondoBrush" Color="#FFFFF4CE" />
-    <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE0C36A" />
+    <SolidColorBrush x:Key="NoticeFondoBrush" Color="#FFFFF6DC" />
+    <SolidColorBrush x:Key="NoticeBordeBrush" Color="#FFE6C97A" />
     <SolidColorBrush x:Key="NoticeTextoBrush" Color="#FF7A5B00" />
 
+    <!-- ===== TINTA DE LA CUADRICULA =====
+         Oscura en los DOS temas, porque la cuadricula se queda clara en los dos.
+         Este fue un error del rediseno: al dar Foreground a la ventana y a la
+         cuadricula con el TextBrush del tema, en oscuro las letras de las tablas
+         se volvieron claras sobre celdas claras y solo se veian al seleccionar
+         la fila. La superficie de trabajo lleva su propia tinta. -->
+    <SolidColorBrush x:Key="GridTextBrush" Color="#FF11202D" />
+
+    <!-- ===== TINTA Y FONDO DE LAS LISTAS DESPLEGABLES =====
+         Estas cuatro son las UNICAS del archivo que no estan en Tema.cs, y es a
+         proposito: son FIJAS de verdad.
+
+         Aqui estuvo el ultimo error del tema oscuro. Los renglones de las listas
+         se pintaban con GridRowBrush y se escribian con GridTextBrush, con la
+         idea de que las dos eran fijas. GridTextBrush si lo es; GridRowBrush NO
+         -en oscuro se cambia a un gris #4A4A4A-, asi que en oscuro quedaba tinta
+         casi negra sobre gris oscuro: la letra se leia «un poco oscura», que es
+         justo lo que se reporto. El renglon resaltado era peor todavia, porque
+         SelectionBrush tambien se oscurece.
+
+         Con estas cuatro, la ventanita de una lista se ve IGUAL en los dos temas:
+         papel claro, tinta oscura y resalte azul claro. -->
+    <SolidColorBrush x:Key="ListaFondoBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="ListaTextoBrush" Color="#FF11202D" />
+    <SolidColorBrush x:Key="ListaResalteBrush" Color="#FFD6E8F7" />
+    <SolidColorBrush x:Key="ListaApagadaBrush" Color="#FF8A97A4" />
+
+    <!-- ===== Seleccion, foco y sombra =====
+         Tres brochas del rediseno. Antes la fila seleccionada se pintaba con el azul
+         del sistema -que no es el azul del programa- y no habia ni foco ni sombra:
+         todo era plano y con el mismo borde gris.
+         Van en la paleta y no escritas en el estilo por lo mismo que las demas: el
+         tema oscuro tiene que poder cambiarlas. Ver Tema.cs. -->
+    <SolidColorBrush x:Key="SelectionBrush" Color="#FFD6E8F7" />
+    <SolidColorBrush x:Key="FocoBrush" Color="#FF15679F" />
+    <SolidColorBrush x:Key="SombraBrush" Color="#FF0A2F4C" />
+
     <!-- Botones -->
-    <SolidColorBrush x:Key="DisabledTextBrush" Color="#FFB6C2CC" />
-    <SolidColorBrush x:Key="ToolbarPressedBrush" Color="#FFD2DAE1" />
+    <SolidColorBrush x:Key="DisabledTextBrush" Color="#FFA7B3C0" />
+    <SolidColorBrush x:Key="ToolbarPressedBrush" Color="#FFD5DFEA" />
 
     <!-- ===================== Colores de celda =====================
          Sacados a brochas por lo mismo: en tema oscuro estos nueve pasteles
@@ -105,11 +159,196 @@
     <Style TargetType="Menu">
         <Setter Property="Background" Value="{DynamicResource TabStripBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
     </Style>
 
+    <!-- ==================================================================
+         EL MENU, CON PLANTILLA PROPIA
+         ==================================================================
+         Dar Background y Foreground al MenuItem NO alcanzaba: la ventanita
+         que se abre al pulsar «Archivo» es un Popup, y su marco lo pintaba
+         WINDOWS con SystemColors. En tema oscuro eso dejaba una LINEA BLANCA
+         alrededor del menu -y un borde claro que no era de ningun tema-,
+         que es justo lo que se ve en la captura.
+
+         Con plantilla propia el marco es un Border nuestro, con las brochas
+         de la paleta, asi que sigue al tema como todo lo demas. Se escriben
+         los CUATRO roles porque un MenuItem cambia de plantilla segun donde
+         viva -barra o submenu- y si falta uno, ese vuelve al de Windows.
+         ================================================================== -->
+
+    <!-- Los titulos de la barra: «Archivo», «Dibujar», «ETABS», «Ayuda» -->
+    <ControlTemplate x:Key="MenuTituloTemplate" TargetType="MenuItem">
+        <Grid>
+            <Border x:Name="Bd"
+                    Background="Transparent"
+                    CornerRadius="{StaticResource RadioChico}"
+                    Padding="10,5">
+                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                  VerticalAlignment="Center" />
+            </Border>
+
+            <Popup x:Name="PART_Popup"
+                   AllowsTransparency="True"
+                   Placement="Bottom"
+                   VerticalOffset="2"
+                   IsOpen="{TemplateBinding IsSubmenuOpen}"
+                   Focusable="False"
+                   PopupAnimation="Fade">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource RadioBoton}"
+                        Padding="4"
+                        Margin="0,0,8,8"
+                        SnapsToDevicePixels="True">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
+                                          Opacity="0.28" Color="#FF000000" />
+                    </Border.Effect>
+                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsSubmenuOpen" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarPressedBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <!-- Cada opcion del menu, con su atajo a la derecha -->
+    <ControlTemplate x:Key="MenuOpcionTemplate" TargetType="MenuItem">
+        <Border x:Name="Bd"
+                Background="Transparent"
+                CornerRadius="{StaticResource RadioChico}"
+                Padding="10,6"
+                Margin="1,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ContentPresenter Grid.Column="0" ContentSource="Header"
+                                  RecognizesAccessKey="True"
+                                  VerticalAlignment="Center" />
+
+                <!-- El atajo, en gris y separado: es informacion de apoyo -->
+                <TextBlock Grid.Column="1"
+                           Text="{TemplateBinding InputGestureText}"
+                           Margin="22,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource MutedTextBrush}" />
+            </Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <!-- Una opcion que ABRE otro submenu -->
+    <ControlTemplate x:Key="MenuSubmenuTemplate" TargetType="MenuItem">
+        <Grid>
+            <Border x:Name="Bd"
+                    Background="Transparent"
+                    CornerRadius="{StaticResource RadioChico}"
+                    Padding="10,6"
+                    Margin="1,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ContentPresenter Grid.Column="0" ContentSource="Header"
+                                      RecognizesAccessKey="True"
+                                      VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1" Text="›" Margin="18,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource MutedTextBrush}" />
+                </Grid>
+            </Border>
+
+            <Popup x:Name="PART_Popup"
+                   AllowsTransparency="True"
+                   Placement="Right"
+                   HorizontalOffset="-2"
+                   IsOpen="{TemplateBinding IsSubmenuOpen}"
+                   Focusable="False"
+                   PopupAnimation="Fade">
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource RadioBoton}"
+                        Padding="4"
+                        Margin="0,0,8,8"
+                        SnapsToDevicePixels="True">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
+                                          Opacity="0.28" Color="#FF000000" />
+                    </Border.Effect>
+                    <StackPanel IsItemsHost="True" />
+                </Border>
+            </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
     <Style TargetType="MenuItem">
-        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Template" Value="{StaticResource MenuOpcionTemplate}" />
+        <Style.Triggers>
+            <Trigger Property="Role" Value="TopLevelHeader">
+                <Setter Property="Template" Value="{StaticResource MenuTituloTemplate}" />
+            </Trigger>
+            <Trigger Property="Role" Value="TopLevelItem">
+                <Setter Property="Template" Value="{StaticResource MenuTituloTemplate}" />
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuHeader">
+                <Setter Property="Template" Value="{StaticResource MenuSubmenuTemplate}" />
+            </Trigger>
+            <Trigger Property="Role" Value="SubmenuItem">
+                <Setter Property="Template" Value="{StaticResource MenuOpcionTemplate}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- La rayita que separa grupos de opciones. Sin estilo tambien la pintaba
+         Windows, y en oscuro salia blanca. -->
+    <Style TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Margin="8,4"
+                            Background="{DynamicResource BorderBrush}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===================== Casillas y opciones =====================
@@ -117,6 +356,96 @@
          texto NEGRO por omisión de Windows, así que en tema oscuro desaparecían
          sobre el fondo. Con la ventana clara no se notaba porque el negro es el
          color que tocaba. Van sin x:Key para que apliquen a todos. -->
+    <Style TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="5,3" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource BrandBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter Property="BorderBrush" Value="{DynamicResource FocoBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource WindowBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+    </Style>
+
+    <!-- ==================================================================
+         LO QUE HAY DENTRO DE UNA LISTA DESPLEGABLE
+         ==================================================================
+         Segundo error del tema oscuro, y hermano del de las tablas: la
+         ventanita que se abre al pulsar una celda de lista la pinta WPF con
+         fondo CLARO, pero sus renglones heredaban el color de texto del tema.
+         En oscuro eso dejaba «CENTRAL» y «LINDERO» en letra clara sobre fondo
+         claro: la lista se veia vacia y solo aparecia el renglon por el que
+         pasaba el raton.
+
+         Aqui el renglon lleva su fondo y su tinta, los dos FIJOS y de la misma
+         familia que la cuadricula, asi que la lista se lee igual en los dos
+         temas. Vale para las listas de las tablas y para las de los
+         formularios -las unidades, la escala-, que son el mismo control. -->
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Background" Value="{StaticResource ListaFondoBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}"
+                            CornerRadius="0"
+                            Margin="0"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{StaticResource ListaResalteBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{StaticResource ListaResalteBrush}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{StaticResource ListaApagadaBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Y lo mismo para las listas normales, que usan ListBoxItem.
+         El Margin va a cero adrede: con margen se veia por los bordes el fondo de
+         la ventanita, que lo pinta Windows, y en oscuro eso dejaba un cerco negro
+         alrededor de cada renglon. -->
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="Background" Value="{StaticResource ListaFondoBrush}" />
+        <Setter Property="Padding" Value="8,5" />
+    </Style>
+
     <Style TargetType="RadioButton">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
     </Style>
@@ -133,10 +462,12 @@
     <!-- ===================== Pestaña individual ===================== -->
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Padding" Value="14,7" />
-        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="Padding" Value="17,9" />
+        <Setter Property="Margin" Value="0,0,3,0" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
@@ -148,7 +479,7 @@
                                 Background="{DynamicResource TabInactiveBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1,1,1,0"
-                                CornerRadius="4,4,0,0">
+                                CornerRadius="{StaticResource RadioPestana}">
                             <ContentPresenter x:Name="Label"
                                               ContentSource="Header"
                                               Margin="{TemplateBinding Padding}"
@@ -163,13 +494,19 @@
                                 Height="3"
                                 VerticalAlignment="Top"
                                 Background="{DynamicResource BrandBrush}"
-                                CornerRadius="4,4,0,0"
+                                CornerRadius="{StaticResource RadioPestana}"
                                 Visibility="Collapsed" />
                     </Grid>
 
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                            <Setter TargetName="Bg" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="6" ShadowDepth="0"
+                                                      Opacity="0.16" Color="#FF0A2F4C" />
+                                </Setter.Value>
+                            </Setter>
                             <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                             <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
@@ -235,7 +572,7 @@
                              es un problema: la pestaña activa ya se distingue por su fondo
                              blanco, su barra de acento y su texto en negrita.
                              ============================================================== -->
-                        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}" Padding="6,4,6,0">
+                        <Border Grid.Row="0" Background="{DynamicResource TabStripBrush}" Padding="10,7,10,0">
                             <WrapPanel IsItemsHost="True" Orientation="Horizontal" />
                         </Border>
 
@@ -255,42 +592,106 @@
 
     <!-- ===================== Estilos auxiliares ===================== -->
     <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="17" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="19" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
-        <Setter Property="Margin" Value="0,0,0,3" />
+        <Setter Property="Margin" Value="0,2,0,2" />
     </Style>
 
+    <!-- El subtitulo explica la hoja, asi que se lee de verdad: se le puso
+         interlineado y un ancho maximo. Un parrafo de 1800 px de ancho no se lee,
+         se salta. -->
     <Style x:Key="ModuleSubtitleStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
-        <Setter Property="Margin" Value="0,0,0,14" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="MaxWidth" Value="1120" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
+    <!-- ===================== Botones =====================
+         El PRIMARIO es el que dibuja: fondo de marca, sombra baja para que se
+         levante del fondo y radio de 6. El SECUNDARIO ya no es un boton gris
+         solido -competia con el primario y la hoja acababa con dos botones
+         igual de fuertes-: ahora es de CONTORNO, que es lo que se espera de una
+         accion que no es la principal.
+
+         Los dos crecen a 32 px de alto minimo: es la altura comoda para el raton
+         y la que hace que la fila de botones se lea como una sola pieza. -->
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource BrandBrush}" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="Padding" Value="16,8" />
         <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd"
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="3"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid>
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect x:Name="Sombra" BlurRadius="8" ShadowDepth="1"
+                                                  Direction="270" Opacity="0.20"
+                                                  Color="#FF0A2F4C" />
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextBlock.FontWeight="{TemplateBinding FontWeight}" />
+                        </Border>
+
+                        <!-- Anillo de FOCO por teclado. Sin esto, quien navega con
+                             Tab no sabe en que boton esta. -->
+                        <Border x:Name="Foco"
+                                BorderBrush="{DynamicResource FocoBrush}"
+                                BorderThickness="2"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Margin="-3"
+                                Visibility="Collapsed" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandDarkBrush}" />
                         </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrandDarkBrush}" />
+                            <Setter TargetName="Bd" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="0" ShadowDepth="0" Opacity="0" />
+                                </Setter.Value>
+                            </Setter>
+                            <Setter TargetName="Bd" Property="RenderTransform">
+                                <Setter.Value>
+                                    <TranslateTransform Y="1" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Foco" Property="Visibility" Value="Visible" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DisabledTextBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                            <Setter Property="Cursor" Value="No" />
+                            <Setter TargetName="Bd" Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="0" ShadowDepth="0" Opacity="0" />
+                                </Setter.Value>
+                            </Setter>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -298,15 +699,77 @@
         </Setter>
     </Style>
 
-    <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-        <Setter Property="Background" Value="{DynamicResource MutedTextBrush}" />
+    <!-- El de CONTORNO: la accion de apoyo -revisar, comprobar- con el mismo
+         tamano que el primario pero sin peso visual. -->
+    <Style x:Key="SecondaryButtonStyle" TargetType="Button"
+           BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <Border x:Name="Foco"
+                                BorderBrush="{DynamicResource FocoBrush}"
+                                BorderThickness="2"
+                                CornerRadius="{StaticResource RadioBoton}"
+                                Margin="-3"
+                                Visibility="Collapsed" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TabHoverBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BrandBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarPressedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Foco" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{DynamicResource DisabledTextBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource WindowBrush}" />
+                            <Setter Property="Cursor" Value="No" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Celda con lista desplegable, como la validación de datos de Excel.
          IsDropDownOpen en True hace que la lista se abra en cuanto la celda entra
          en edición, en lugar de exigir un segundo clic en la flechita. -->
     <Style x:Key="ComboCeldaEdicion" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
         <Setter Property="IsDropDownOpen" Value="True" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- LA MISMA CELDA DE LISTA, PERO SIN EDITAR.
+         Es la que se ve el 99 % del tiempo, y le faltaba estilo: sin el, la celda
+         se dibujaba con el estilo general de ComboBox, cuyo Foreground es el del
+         tema. En oscuro eso ponia el valor de la celda -«CENTRAL»- en letra clara
+         sobre el color claro de la celda, y solo se leia al entrar en edicion.
+         Aqui la tinta es la fija de la cuadricula, y el fondo transparente para
+         que se vea el color de la columna en lugar del marco de un control. -->
+    <Style x:Key="ComboCeldaMuestra" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="2,0" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -315,6 +778,7 @@
     <Style x:Key="ComboCeldaLectura" TargetType="TextBlock">
         <Setter Property="Padding" Value="4,3" />
         <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
     </Style>
 
     <!-- Cuadrícula con aire de hoja de cálculo: encabezados grises, líneas suaves,
@@ -332,7 +796,22 @@
         <Setter Property="RowBackground" Value="{DynamicResource GridRowBrush}" />
         <Setter Property="AlternatingRowBackground" Value="{DynamicResource GridAltRowBrush}" />
         <Setter Property="SelectionUnit" Value="CellOrRowHeader" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12" />
+
+        <!-- Aire dentro de la cuadricula: 26 px de fila y 32 de encabezado. Con las
+             filas apretadas de antes, veinte renglones de captura se leian como un
+             muro de numeros. -->
+        <Setter Property="RowHeight" Value="26" />
+        <!-- 40 y no 32: las columnas de parrilla llevan cabecera de DOS renglones
+             -la banda que dice de que parrilla son y el nombre de la columna-, y
+             con 32 el segundo renglon se cortaba. -->
+        <Setter Property="ColumnHeaderHeight" Value="40" />
+        <Setter Property="RowHeaderWidth" Value="22" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
     </Style>
 
     <!-- ==================================================================
@@ -354,7 +833,21 @@
     <Style x:Key="CeldaBase" TargetType="DataGridCell"
            BasedOn="{StaticResource {x:Type DataGridCell}}">
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="4,2" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+
+        <!-- LA SELECCION, CON EL AZUL DEL PROGRAMA.
+             Antes la pintaba Windows con su azul de sistema, que tapaba el color del
+             grupo de columnas y dejaba el texto en blanco sobre un fondo que no es de
+             aqui. Ahora es un azul claro de la propia paleta: se ve que la fila esta
+             elegida y se sigue leyendo el dato. -->
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Identificacion: que elemento es y como se llama su bloque -->
@@ -387,6 +880,406 @@
     <!-- Seccion circular: armado del circulo y forma del zuncho -->
     <Style x:Key="CeldaCircular" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaCircularBrush}" />
+    </Style>
+
+    <!-- ==============================================================
+         CELDAS QUE SOLO APLICAN CON UN TIPO DE MURO
+         (hoja de zapatas corridas)
+
+         Una zapata con muro de MAMPOSTERIA no tiene armado de muro, y una
+         con muro de CONCRETO no lleva cadena de desplante: sus macros ni
+         las leen. Dejar la casilla escribible invita a capturar un dato
+         que el dibujo va a ignorar, y despues a no entender por que no
+         sale en el plano.
+
+         Se apaga con IsEnabled enlazado a la propia fila -el DataContext
+         de una celda ES su fila-, asi que la casilla se enciende y se
+         apaga sola al cambiar el tipo de muro, sin una linea de codigo.
+         La opacidad es para que se vea apagada y no solo intocable.
+         ============================================================== -->
+    <Style x:Key="CeldaSoloMamposteria" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaIdent}">
+        <Setter Property="IsEnabled" Value="{Binding MuroEsMamposteria}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="CeldaSoloConcreto" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaLateral}">
+        <Setter Property="IsEnabled" Value="{Binding MuroEsConcreto}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- LAS CUATRO CASILLAS DE LA PARRILLA SUPERIOR, APAGADAS SI NO HAY DOBLE PARRILLA.
+         Mismo criterio que las del muro: una celda que el dibujo no va a leer no se
+         deja escribir, porque capturar ahi un dato y no verlo en el plano es media
+         hora buscando el error. Vale para la hoja de corridas y para la de aisladas:
+         las dos filas tienen EsDobleParrilla. -->
+    <Style x:Key="CeldaSoloDobleParrilla" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaLechoSup}">
+        <Setter Property="IsEnabled" Value="{Binding EsDobleParrilla}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ==================================================================
+         LAS DOS COLUMNAS DE PARRILLA, CON SU CABECERA COMBINADA
+         ==================================================================
+         Aqui hay UNA columna de cuadricula por parrilla -no cuatro-, y las
+         cuatro casillas se dibujan DENTRO de ella. Es la unica forma de que el
+         titulo «PARRILLA INFERIOR» abarque de verdad las cuatro: si son cuatro
+         columnas de la cuadricula, no hay manera, porque WPF no tiene cabeceras
+         combinadas y cada cabecera se recorta a su propia columna. Se intento
+         de las dos maneras que parecian salir mas baratas y las dos fallaron:
+
+           1. La banda ancha en la cabecera de una sola columna, desbordandose
+              sobre las de al lado. La cuadricula la recortaba a su columna y se
+              leian trozos: «PARRILL», «IFERIOR».
+           2. La misma banda repetida en las cuatro cabeceras con un margen
+              negativo distinto en cada una. Lo mismo: cada cabecera recorta.
+
+         Asi que la columna es de PLANTILLA y ella misma se parte en cuatro:
+
+           - la cabecera lleva DOS renglones: la banda, entera, de lado a lado,
+             y debajo los cuatro nombres;
+           - la celda lleva las cuatro casillas de captura, con su linea entre
+             ellas para que se sigan viendo y contando como cuatro.
+
+         Los repartos de ancho -115, 60, 115, 60- son los mismos arriba y abajo,
+         y van en ESTRELLA, no en pixeles: asi los nombres siguen cuadrados con
+         sus casillas aunque se cambie el ancho de la columna.
+
+         La contrapartida de la columna de plantilla es que su lista desplegable
+         ya no se puede rellenar por codigo -no hay un x:Name al que agarrarse,
+         se crea una celda por fila-, y por eso los numeros de varilla se atacan
+         con x:Static desde el XAML: models:Varilla.Diametros. -->
+
+    <!-- La banda: el titulo de la parrilla, centrado sobre las cuatro casillas -->
+    <Style x:Key="BandaParrillaStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Opacity" Value="0.9" />
+        <Setter Property="Margin" Value="0,1,0,1" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandBrush}" />
+    </Style>
+
+    <!-- Cada uno de los cuatro nombres del segundo renglon. Recortados con
+         puntos suspensivos: «Var. Sup. Temp.» roza el ancho de su casilla y es
+         mejor que se recorte a que empuje a las otras tres. -->
+    <Style x:Key="NombreSubColumnaStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="Padding" Value="2,0" />
+    </Style>
+
+    <!-- La cabecera de la columna de parrilla va SIN relleno, y su estilo esta
+         mas abajo, pegado al de las demas cabeceras: CabeceraParrillaStyle. Un
+         StaticResource tiene que estar declarado ANTES de usarse, y ese hereda
+         de EncabezadoHojaStyle. -->
+
+    <!-- La linea que separa las cuatro casillas dentro de la celda, del mismo
+         gris que la cuadricula: sin ella la columna de parrilla se leeria como
+         una sola casilla larga. -->
+    <Style x:Key="SubCeldaParrillaStyle" TargetType="Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource GridLineBrush}" />
+        <Setter Property="BorderThickness" Value="0,0,1,0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- Y la ultima, que no lleva linea: la pone la cuadricula -->
+    <Style x:Key="SubCeldaParrillaFinStyle" TargetType="Border"
+           BasedOn="{StaticResource SubCeldaParrillaStyle}">
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Lista desplegable de una sub-casilla. Va SIEMPRE desplegable, sin el
+         paso de «primero selecciono, luego edito» de una columna normal: dentro
+         de una celda de plantilla no hay modo edicion, la celda ES el control. -->
+    <Style x:Key="ComboSubCeldaStyle" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="1,0" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+
+        <!-- EL NUMERO DE VARILLA, CON LA MISMA TINTA QUE LOS DEMAS DATOS.
+             Con el Foreground de la lista a secas salia GRIS, porque el estilo de
+             ComboBox de Windows pinta el valor elegido con su propia plantilla y
+             ahi el Foreground del control no siempre llega. Puesto en la plantilla
+             del renglon si manda: la misma tinta de la cuadricula, la que usan la
+             separacion en cm y el resto de la hoja. -->
+        <Setter Property="ItemTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}"
+                               Foreground="{DynamicResource GridTextBrush}" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+
+        <!-- ==============================================================
+             Y LA CASILLA, DEL COLOR DE SU COLUMNA
+             ==============================================================
+             Este es el motivo de verdad de que las dos casillas de varilla se
+             vieran GRISES y las de «@ cm» no: el ComboBox de serie NO usa el
+             Background que se le pone. Su plantilla pinta el fondo con los
+             pinceles del tema de Windows -un gris claro fijo- y ese gris tapaba
+             el color de la parrilla; el TextBox de al lado si respeta el suyo, y
+             por eso ahi si se veia el color.
+
+             Asi que la casilla lleva SU PROPIA plantilla, la minima que hace
+             falta: fondo transparente -para que se vea el color de la celda-, el
+             valor elegido, la flechita y la lista. Nada de marcos ni degradados:
+             dentro de una cuadricula tipo Excel, una casilla de lista se lee por
+             la flecha, no por el recuadro. -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid Background="Transparent">
+                        <!-- El boton que abre la lista ocupa la celda entera: asi se
+                             despliega pulsando en cualquier parte de la casilla y no
+                             solo en la flechita. -->
+                        <ToggleButton Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen,
+                                                  RelativeSource={RelativeSource TemplatedParent},
+                                                  Mode=TwoWay}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border Background="Transparent" BorderThickness="0">
+                                        <Path HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              Margin="0,0,5,0" Data="M 0,0 L 7,0 L 3.5,4 Z"
+                                              Fill="{DynamicResource MutedTextBrush}" />
+                                    </Border>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <!-- El valor elegido. IsHitTestVisible en False para que el clic
+                             llegue al boton de arriba y la lista se abra igual. -->
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center"
+                                          IsHitTestVisible="False"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+
+                        <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                               IsOpen="{TemplateBinding IsDropDownOpen}" Focusable="False">
+                            <Border MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" SnapsToDevicePixels="True">
+                                <ScrollViewer>
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Casilla de escribir de una sub-casilla: la separacion en cm -->
+    <Style x:Key="TextoSubCeldaStyle" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- ============ LA CABECERA DE LA PARRILLA INFERIOR ============
+         El texto de la banda sale de {Binding}: en la cabecera de una cuadricula
+         el DataContext de la plantilla ES el Header, asi que la misma plantilla
+         sirve para las DOS hojas -corridas y aisladas- y el titulo se escribe una
+         sola vez, en la columna. -->
+    <DataTemplate x:Key="CabeceraParrillaInferior">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- LA CELDA COMBINADA: una sola, de lado a lado de las cuatro -->
+            <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaParrillaStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Var Inf. Flexión"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="2" Text="Var. Sup. Temp."
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="3" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
+    </DataTemplate>
+
+    <!-- ============ LA CABECERA DE LA PARRILLA SUPERIOR ============
+         Los nombres van al REVES a proposito: en la parrilla de arriba la varilla
+         de flexion se amarra por el lomo -queda en el lecho superior- y la de
+         temperatura queda debajo. Es lo mismo que sale rotulado en el plano. -->
+    <DataTemplate x:Key="CabeceraParrillaSuperior">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaParrillaStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                    <ColumnDefinition Width="115*" />
+                    <ColumnDefinition Width="60*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Var Sup. Flexión"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="2" Text="Var. Inf. Temp."
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="3" Text="@ cm"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
+    </DataTemplate>
+
+    <!-- ============ LAS CUATRO CASILLAS DE LA PARRILLA INFERIOR ============
+         Las propiedades se llaman igual en la fila de corridas y en la de
+         aisladas -VarInf, SepInf, VarInfTrans, SepInfTrans-, asi que la misma
+         plantilla vale para las dos hojas. -->
+    <DataTemplate x:Key="CeldasParrillaInferior">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
+                          SelectedItem="{Binding VarInf, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de FLEXION de la parrilla inferior: la que va abajo, en el lecho." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepInf, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de flexion." />
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
+                          SelectedItem="{Binding VarInfTrans, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de TEMPERATURA de la parrilla inferior: se apoya encima de la de flexion." />
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepInfTrans, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de temperatura." />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
+    <!-- ============ LAS CUATRO DE LA PARRILLA SUPERIOR ============
+         Las listas son las OPCIONALES -con el blanco delante-: sin doble parrilla
+         estas cuatro se quedan vacias. Que se puedan apagar lo hace el CellStyle
+         de la columna, que mira EsDobleParrilla: al apagar la celda se apagan sus
+         cuatro controles de dentro, porque IsEnabled baja por el arbol. -->
+    <DataTemplate x:Key="CeldasParrillaSuperior">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+                <ColumnDefinition Width="115*" />
+                <ColumnDefinition Width="60*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding VarSup, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de FLEXION de la parrilla superior: la que se amarra por el lomo." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepSup, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de flexion de arriba." />
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding VarSupTrans, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Varilla de TEMPERATURA de la parrilla superior: queda debajo de la de flexion." />
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding SepSupTrans, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Separacion en centimetros de la varilla de temperatura de arriba." />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
+    <!-- Las dos celdas de parrilla van SIN relleno, por lo mismo que la cabecera:
+         las cuatro casillas de dentro tienen que cuadrar con los cuatro nombres
+         de arriba, y 6 px de relleno las correrian. -->
+    <Style x:Key="CeldaParrillaInf" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaLechoInf}">
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <!-- La de arriba hereda de CeldaSoloDobleParrilla, que es la que la apaga
+         cuando la zapata lleva una sola parrilla. -->
+    <Style x:Key="CeldaParrillaSup" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaSoloDobleParrilla}">
+        <Setter Property="Padding" Value="0" />
     </Style>
 
     <!-- Acero transversal: recubrimiento, estribo, separacion, diamante -->
@@ -463,13 +1356,66 @@
     <Style x:Key="EncabezadoHojaStyle" TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="Padding" Value="6,6" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-        <Setter Property="BorderThickness" Value="0,0,1,1" />
+        <Setter Property="Padding" Value="8,7" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridColumnHeader">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="0,0,1,0">
+                            <!-- La alineacion del contenido NO va escrita a mano: sale de
+                                 la propia cabecera. Las normales la traen en Center, y la
+                                 de las columnas de parrilla en Stretch, que es lo que deja
+                                 que la banda de «PARRILLA INFERIOR» y el renglon de los
+                                 cuatro nombres ocupen la columna entera. Con Center escrito
+                                 aqui, la cabecera de parrilla se encogia a lo que medía su
+                                 texto y los nombres no cuadraban con sus casillas. -->
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+
+                        <!-- La LINEA DE MARCA que cierra la cabecera por abajo. Es
+                             lo que separa de un golpe de vista los titulos de los
+                             datos: antes la cabecera y la primera fila se tocaban
+                             con la misma linea gris que el resto de la cuadricula. -->
+                        <Border Height="2" VerticalAlignment="Bottom"
+                                Background="{DynamicResource BrandBrush}"
+                                Opacity="0.55" />
+
+                        <Thumb x:Name="PART_RightHeaderGripper"
+                               HorizontalAlignment="Right"
+                               Width="6" Cursor="SizeWE" Opacity="0">
+                            <Thumb.Template>
+                                <ControlTemplate TargetType="Thumb">
+                                    <Border Background="Transparent" />
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- LA CABECERA DE LAS DOS COLUMNAS DE PARRILLA.
+         Igual que las demas pero SIN relleno y estirada: dentro lleva la banda con
+         el nombre de la parrilla y, debajo, los cuatro nombres de casilla, y esos
+         cuatro tienen que caer justo encima de las cuatro casillas de captura. Con
+         los 8 px de relleno de una cabecera normal, el renglon de nombres quedaba
+         corrido respecto a las casillas. -->
+    <Style x:Key="CabeceraParrillaStyle" TargetType="DataGridColumnHeader"
+           BasedOn="{StaticResource EncabezadoHojaStyle}">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Stretch" />
     </Style>
 
     <!-- ==================================================================
@@ -484,8 +1430,9 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Padding" Value="11,6" />
         <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -493,7 +1440,7 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd"
                             Background="{TemplateBinding Background}"
-                            CornerRadius="3"
+                            CornerRadius="{StaticResource RadioChico}"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -520,6 +1467,64 @@
            BasedOn="{StaticResource ToolbarButtonStyle}">
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- ==================================================================
+         LAS TRES PIEZAS DEL REDISENO QUE ANTES SE ESCRIBIAN A MANO
+         ==================================================================
+         Las tarjetas de cabecera, el marco de la vista previa y la barra de
+         totales estaban puestos Border por Border en cada hoja, con su fondo,
+         su borde y su radio repetidos DOCENAS de veces y no siempre iguales:
+         habia tarjetas de radio 4 y de radio 0, y marcos de previa con borde
+         azul de 1 px pegado al dibujo.
+
+         Ahora son tres estilos. Cambiar el aire de todas las hojas es cambiar
+         estos tres sitios, y ninguna hoja se puede quedar descolgada. -->
+
+    <!-- Tarjeta: la caja donde vive cada grupo de ajustes de una hoja -->
+    <Style x:Key="TarjetaStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadioTarjeta}" />
+        <Setter Property="Padding" Value="14,11" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Marco de la vista previa: el dibujo va sobre papel claro, con el marco
+         redondeado y sin el borde de color, que competia con las cotas. -->
+    <Style x:Key="MarcoPreviaStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource PreviewFondoBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadioTarjeta}" />
+        <Setter Property="Margin" Value="0,10,0,0" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="1" Direction="270"
+                                  Opacity="0.10" Color="#FF0A2F4C" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Barra de totales: cierra la cuadricula por abajo -->
+    <Style x:Key="BarraTotalesStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource TotalesBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1,0,1,1" />
+        <Setter Property="CornerRadius" Value="0,0,6,6" />
+        <Setter Property="Padding" Value="13,8" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- El texto de la barra de totales -->
+    <Style x:Key="TextoTotalesStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
     </Style>
 
     <!-- Separador vertical de la barra, para agrupar acciones -->

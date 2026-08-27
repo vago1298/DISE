@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -44,16 +46,18 @@ public partial class MainWindow
         // plantilla de la celda. Es el patron de la hoja de concreto, y es lo que evita
         // que el enlace pise el valor capturado cuando la lista llega tarde.
 
-        ColZapVarInf.ItemsSource = diametros;
-        ColZapVarInfT.ItemsSource = diametros;
+        // LAS OCHO DE LAS PARRILLAS TAMPOCO SE LLENAN AQUI: las dos parrillas son ya
+        // UNA columna de plantilla cada una -para que el titulo «PARRILLA INFERIOR»
+        // abarque sus cuatro casillas-, y una celda de plantilla no tiene x:Name al
+        // que agarrarse: se crea una por fila. Su lista sale del XAML con x:Static,
+        // de Varilla.Diametros y Varilla.DiametrosOpcionales, que es la MISMA tabla
+        // de diametros que se usa aqui.
+
         ColZapVarDadoSup.ItemsSource = diametros;
         ColZapVarDadoInf.ItemsSource = diametros;
         ColZapEstribo.ItemsSource = diametros;
 
-        // Las de la parrilla superior y la intermedia del dado son opcionales: con una sola
-        // parrilla o sin intermedias se dejan en blanco.
-        ColZapVarSup.ItemsSource = opcionales;
-        ColZapVarSupT.ItemsSource = opcionales;
+        // La intermedia del dado es opcional: sin intermedias se deja en blanco.
         ColZapVarIntDado.ItemsSource = opcionales;
 
         // La separacion de estribos NO se llena aqui: su lista va en el XAML, en la
@@ -89,6 +93,66 @@ public partial class MainWindow
         // zapata que la usa se pone al día sola. Es lo que hace que la medida sea una referencia
         // y no una copia que envejece.
         ReferenciarMedidasDeTodas();
+    }
+
+    /// <summary>
+    /// El doblez del gancho de arranque que se capturó, en <b>diámetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// Lo que se lee de la casilla, sin validar: de eso se encarga
+    /// <see cref="TrazoZapata.FactorGanchoValido"/>, que es el mismo para el dibujo y para la vista
+    /// previa. Si la casilla está vacía o trae algo que no es número, se devuelve 0 y esa función
+    /// resuelve con los 15 de la macro.
+    /// </remarks>
+    private double FactorGanchoElegido =>
+        double.TryParse(
+            (ZapGanchoDiametrosBox?.Text ?? string.Empty).Trim().Replace(',', '.'),
+            NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
+            ? v
+            : 0;
+
+    /// <summary>
+    /// La casilla del doblez cambió: se avisa de lo que significa y se redibuja la previa.
+    /// </summary>
+    /// <remarks>
+    /// El aviso dice el largo <b>en centímetros</b> para una varilla del #4, que es lo que se
+    /// entiende de un tirón: «40 diámetros = 51 cm en una #4». Y dice si el valor se ajustó, porque
+    /// un 0 escrito por error saldría dibujado como 15 y sin avisar nadie lo notaría.
+    /// </remarks>
+    private void OnGanchoZapataCambio(object sender, TextChangedEventArgs e)
+    {
+        if (!_listo || ZapGanchoHintText is null)
+        {
+            return;
+        }
+
+        var pedido = FactorGanchoElegido;
+        var usado = TrazoZapata.FactorGanchoValido(pedido);
+
+        // El #4 como referencia: es la varilla con la que se arma casi todo dado.
+        var enCm = usado * DiametroCmDeVarilla("#4");
+
+        var texto = $"{usado:0.#} diámetros = {enCm:0.#} cm en una varilla del #4.";
+
+        if (pedido <= 0)
+        {
+            texto += "  (la casilla está vacía: se usan los 15 de la macro)";
+        }
+        else if (Math.Abs(pedido - usado) > 1e-9)
+        {
+            texto += $"  (se pidió {pedido:0.#} y se ajustó al rango "
+                     + $"{TrazoZapata.FactorGanchoMinimo:0.#}–{TrazoZapata.FactorGanchoMaximo:0.#})";
+        }
+
+        ZapGanchoHintText.Text = texto;
+
+        DibujarVistaPreviaZapata();
+
+        // La hoja de corridas usa ESTE mismo valor para el doblez del acero del muro, así que su
+        // rótulo y su vista previa se ponen al día aquí: si no, la otra pestaña seguiría
+        // enseñando el doblez viejo y el plano saldría con el nuevo.
+        ActualizarGanchoDeCorridas();
+        DibujarVistaPreviaZapataCorrida();
     }
 
     private void ActualizarDadosDisponibles()
@@ -318,6 +382,11 @@ public partial class MainWindow
             }
 
             fila.TipoColumna = ZapataAisladaRow.TipoColumnaConcreto;
+
+            // La FORMA, igual que con el dado: la necesita la transición dado -> columna, porque
+            // en la redonda las varillas van en la circunferencia y lo que se ve en el alzado es
+            // su proyección.
+            fila.ColumnaCircular = col.EsCircular;
 
             // Y su ARMADO, que es lo que el dibujante necesita para el arranque de la columna
             // encima del dado. En la macro esto se capturaba otra vez en la hoja de la zapata;
@@ -844,7 +913,12 @@ public partial class MainWindow
             {
                 // El tipo de sección es del JUEGO, no de cada zapata: sale de los mismos botones
                 // de arriba que mandan en las secciones de concreto.
-                SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena
+                SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena,
+
+                // El doblez del gancho de arranque, en diámetros, también del JUEGO: la casilla de
+                // arriba. El dibujante lo valida por su cuenta, así que aquí se pasa tal cual se
+                // capturó.
+                FactorGanchoDiametros = FactorGanchoElegido
             };
 
             var zapatas = _datos.ZapatasAisladas.Select(f => f.AFormatoCad()).ToList();
@@ -1004,7 +1078,9 @@ public partial class MainWindow
         // números, en el renglón de abajo, que es donde se puede leer.
         var gap = 18.0;
         var arriba = 44.0;
-        var abajo = 34.0;
+
+        // Abajo hay DOS renglones: el del acomodo y la leyenda de colores.
+        var abajo = 52.0;
 
         var wMitad = (ancho - (3 * gap)) / 2;
         var hUtil = alto - arriba - abajo;
@@ -1031,6 +1107,17 @@ public partial class MainWindow
             $"Se dibuja en x = {a.XBase:N2} m    ·    la planta cae en y = {a.YPlanta:N2} m"
             + $"    ·    {dado}",
             12, alto - 20, 10.5, gris);
+
+        // ---------- La leyenda: qué es cada color ----------
+        LeyendaZapata(
+            12, alto - 36,
+            (PincelConcreto, "concreto"),
+            (PincelTerreno, "terreno"),
+            (new SolidColorBrush(Color.FromRgb(0x0E, 0x6E, 0xA8)), "longitudinal"),
+            (new SolidColorBrush(Color.FromRgb(0x12, 0x4A, 0x77)), "estribos"),
+            (new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B)), "parrilla inf."),
+            (new SolidColorBrush(Color.FromRgb(0xE0, 0x8B, 0x7F)), "parrilla sup."),
+            (new SolidColorBrush(Color.FromRgb(0x00, 0xA6, 0xB8)), "transición 1:6"));
     }
 
     /// <summary>La <b>elevación</b>, en su mitad del cuadro y con sus cotas.</summary>
@@ -1069,8 +1156,35 @@ public partial class MainWindow
         double PY(double y) => dy - (y * escala);
 
         var tierra = new SolidColorBrush(Color.FromRgb(0xA9, 0x8A, 0x6A));
+        var acero = new SolidColorBrush(Color.FromRgb(0x0E, 0x6E, 0xA8));
+        var estribo = new SolidColorBrush(Color.FromRgb(0x12, 0x4A, 0x77));
 
-        Recta(PX(a.XBase) - 10, PY(a.YTerreno), PX(a.XDer) + 10, PY(a.YTerreno), tierra, 1.2);
+        var yColTope = a.YDadoTop + (0.8 * (8.0 / 9.0));
+
+        // ---------- 1) LOS RELLENOS, primero, para que el acero se dibuje encima ----------
+        // El terreno a los dos lados del dado, como en el plano: por encima del lomo de la zapata
+        // y hasta el nivel del terreno. Debajo del lomo está la zapata, no tierra.
+        if (a.XDadoIzq > a.XBase)
+        {
+            Relleno(PX(a.XBase), PY(a.YTerreno), PX(a.XDadoIzq), PY(a.YZapTop), PincelTerreno);
+        }
+
+        if (a.XDer > a.XDadoDer)
+        {
+            Relleno(PX(a.XDadoDer), PY(a.YTerreno), PX(a.XDer), PY(a.YZapTop), PincelTerreno);
+        }
+
+        Relleno(PX(a.XBase), PY(a.YZapBot), PX(a.XDer), PY(a.YPlantillaBot), PincelPlantilla);
+        Relleno(PX(a.XBase), PY(a.YZapTop), PX(a.XDer), PY(a.YZapBot), PincelConcreto);
+        Relleno(PX(a.XDadoIzq), PY(a.YDadoTop), PX(a.XDadoDer), PY(a.YZapTop), PincelConcreto);
+
+        if (z.ColumnaDeConcreto)
+        {
+            Relleno(PX(a.XColIzq), PY(yColTope), PX(a.XColDer), PY(a.YDadoTop), PincelConcreto);
+        }
+
+        // ---------- 2) EL NIVEL DEL TERRENO Y LOS CONTORNOS ----------
+        Recta(PX(a.XBase) - 10, PY(a.YTerreno), PX(a.XDer) + 10, PY(a.YTerreno), tierra, 1.4);
 
         Contorno(PX(a.XBase), PY(a.YZapBot), PX(a.XDer), PY(a.YPlantillaBot), gris, 1.0);
         Contorno(PX(a.XBase), PY(a.YZapTop), PX(a.XDer), PY(a.YZapBot), azul, 1.6);
@@ -1078,12 +1192,23 @@ public partial class MainWindow
 
         if (z.ColumnaDeConcreto)
         {
-            var yTope = a.YDadoTop + (0.8 * (8.0 / 9.0));
+            Contorno(PX(a.XColIzq), PY(yColTope), PX(a.XColDer), PY(a.YDadoTop), azul, 1.4);
 
-            Contorno(PX(a.XColIzq), PY(yTope), PX(a.XColDer), PY(a.YDadoTop), azul, 1.4);
+            // La línea de rotura del tope de la columna: sigue hacia arriba.
+            var xm = (a.XColIzq + a.XColDer) / 2;
+            var amp = (a.XColDer - a.XColIzq) / 6;
+
+            Recta(PX(a.XColIzq), PY(yColTope), PX(xm - amp), PY(yColTope + 0.04), azul, 1.2);
+            Recta(PX(xm - amp), PY(yColTope + 0.04), PX(xm + amp), PY(yColTope - 0.02), azul, 1.2);
+            Recta(PX(xm + amp), PY(yColTope - 0.02), PX(a.XColDer), PY(yColTope + 0.03), azul, 1.2);
         }
 
-        DibujarEstribosDadoPrevio(z, a, PX, PY, gris);
+        // ---------- 3) EL ACERO ----------
+        DibujarEstribosDadoPrevio(z, a, PX, PY, estribo);
+
+        // Las longitudinales del dado y de la columna, con su pata de arranque: es el acero que
+        // más se revisa y era justo el que no se veía.
+        DibujarLongitudinalesPrevias(z, a, PX, PY, acero);
 
         DibujarParrillaPrevia(z, a, PX, PY, superior: false);
 
@@ -1114,21 +1239,163 @@ public partial class MainWindow
 
         CotaH(PX(a.XBase), PX(a.XDer), yTot, z.AnchoM, gris);
 
-        var x1 = PX(a.XBase) - (0.08 * escala);
-        var x2 = PX(a.XBase) - (0.20 * escala);
+        // A LA IZQUIERDA DEL PAÑO IZQUIERDO, pegadas a la cimentación, con las mismas distancias
+        // que usa el dibujante. La previa tiene que enseñar lo que va a salir en AutoCAD, así que
+        // estas dos X salen de TrazoZapata y no de números escritos aquí.
+        var x1 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert1 * escala);
+        var x2 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert2 * escala);
 
         CotaV(x1, PY(a.YPlantillaBot), PY(a.YZapBot), TrazoZapata.PlantillaEspesor, gris);
         CotaV(x1, PY(a.YZapBot), PY(a.YZapTop), z.EspesorM, gris);
         CotaV(x1, PY(a.YZapTop), PY(a.YTerreno), a.YTerreno - a.YZapTop, gris);
         CotaV(x2, PY(a.YPlantillaBot), PY(a.YTerreno), a.YTerreno - a.YPlantillaBot, gris);
 
-        EtiquetaZapata("ELEVACIÓN", left, PY(a.YPlantillaBot) + (0.30 * escala), 10.5, gris);
+        var yRotulo = PY(a.YPlantillaBot) + (0.30 * escala);
+
+        EtiquetaZapata("ELEVACIÓN", left, yRotulo, 10.5, azul, true);
 
         var fc = string.IsNullOrWhiteSpace(fila.Fc) ? string.Empty : $"    ·    f'c = {fila.Fc}";
+        var doblez = TrazoZapata.FactorGanchoValido(FactorGanchoElegido);
 
         EtiquetaZapata(
-            $"Rec. 5 cm{fc}", left, PY(a.YPlantillaBot) + (0.30 * escala) + 15, 10, gris);
+            $"Rec. {z.RecM * 100:0.#} cm{fc}    ·    doblez {doblez:0.#} Ø",
+            left, yRotulo + 15, 10, gris);
     }
+
+    /// <summary>
+    /// Las varillas <b>longitudinales</b> del dado y de la columna, con su pata de arranque y su
+    /// transición.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el acero que más se revisa de un dado y era el que no se veía en la previa: solo estaban
+    /// los estribos, así que el dado salía como una caja rayada. Ahora se dibuja lo mismo que va al
+    /// plano y con la misma cuenta:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>Dónde va cada varilla lo dice <see cref="TrazoZapata.BarrasRectangulares"/>, el mismo
+    ///   reparto que usa el dibujante.</item>
+    ///   <item>La <b>pata</b> de arranque mide los diámetros de la casilla de la hoja, no los 15
+    ///   fijos: así se ve el efecto de cambiarla antes de dibujar.</item>
+    ///   <item>La <b>transición</b> a 1:6 sale de <see cref="TrazoZapata.Desplazamiento"/>, así que
+    ///   la previa enseña el mismo doblez que va a salir, y si no cabe tampoco lo enseña.</item>
+    /// </list>
+    /// </remarks>
+    private void DibujarLongitudinalesPrevias(
+        ZapataCad z, TrazoZapata.Acomodo a,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        var dSup = DiametroMDeVarilla(z.VarDadoSup);
+        var dInf = DiametroMDeVarilla(z.VarDadoInf);
+
+        if (dSup <= 0 && dInf <= 0)
+        {
+            return;
+        }
+
+        var recDado = z.RecDadoCm * TrazoZapata.EscalaElevacion;
+        var recCol = z.RecColumnaCm * TrazoZapata.EscalaElevacion;
+
+        var barrasDado = TrazoZapata.BarrasRectangulares(
+            a.XDadoDer, a.XDadoDer - a.XDadoIzq, recDado, dSup, dInf, z.NIntDado);
+
+        var barrasCol = TrazoZapata.BarrasRectangulares(
+            a.XColDer, a.XColDer - a.XColIzq, recCol,
+            DiametroMDeVarilla(z.VarColSup), DiametroMDeVarilla(z.VarColInf), z.NIntColumna);
+
+        // La pata de arranque, con los diámetros de la casilla de la hoja.
+        var factor = TrazoZapata.FactorGanchoValido(FactorGanchoElegido);
+
+        var yPata = a.YZapBot + recDado;
+        var yTopeDado = a.YDadoTop - recDado;
+
+        // ¿Hay transición? Se pregunta igual que el dibujante: mismas posiciones, mismo 1:6.
+        var xs = new List<(double Dado, double Col)>();
+
+        if (z.ColumnaDeConcreto)
+        {
+            var ordD = new List<double> { barrasDado.Izq, barrasDado.Der };
+            var ordC = new List<double> { barrasCol.Izq, barrasCol.Der };
+
+            ordD.AddRange(barrasDado.Intermedias);
+            ordC.AddRange(barrasCol.Intermedias);
+
+            ordD.Sort();
+            ordC.Sort();
+
+            var pares = Math.Min(ordD.Count, ordC.Count);
+
+            for (var i = 0; i < pares; i++)
+            {
+                xs.Add((ordD[i], ordC[i]));
+            }
+        }
+
+        var dxMax = xs.Count == 0 ? 0 : xs.Max(p => Math.Abs(p.Col - p.Dado));
+
+        var hayUnion = z.ColumnaDeConcreto
+                       && dxMax <= TrazoZapata.DesplazamientoMax
+                       && xs.Count > 0;
+
+        var trans = TrazoZapata.Desplazamiento(dxMax, a.YZapTop, a.YDadoTop, recDado);
+
+        var yQuiebre = hayUnion && trans.Cabe ? trans.YZonaBot : yTopeDado;
+
+        // ---- Las varillas del dado ----
+        var todas = new List<double> { barrasDado.Izq, barrasDado.Der };
+        todas.AddRange(barrasDado.Intermedias);
+
+        foreach (var x in todas)
+        {
+            // La recta de abajo, hasta donde arranque el doblez.
+            Recta(px(x), py(yPata), px(x), py(yQuiebre), trazo, 1.5);
+
+            // Y su pata, hacia dentro del dado.
+            var haciaDentro = x < (a.XDadoIzq + a.XDadoDer) / 2 ? 1 : -1;
+            var largo = factor * Math.Max(dSup, dInf);
+
+            Recta(px(x), py(yPata), px(x + (haciaDentro * largo)), py(yPata), trazo, 1.5);
+        }
+
+        // ---- La transición, si cabe ----
+        if (hayUnion && trans.Cabe)
+        {
+            var cian = new SolidColorBrush(Color.FromRgb(0x00, 0xA6, 0xB8));
+
+            foreach (var (xd, xc) in xs)
+            {
+                Recta(px(xd), py(trans.YZonaBot), px(xc), py(trans.YDiagTop), cian, 1.6);
+                Recta(px(xc), py(trans.YDiagTop), px(xc), py(a.YDadoTop + recCol), cian, 1.5);
+            }
+        }
+        else if (z.ColumnaDeConcreto)
+        {
+            // Sin transición las del dado siguen rectas hasta su tope, como en el plano.
+            foreach (var x in todas)
+            {
+                Recta(px(x), py(yQuiebre), px(x), py(yTopeDado), trazo, 1.5);
+            }
+        }
+
+        // ---- Las de la columna ----
+        if (!z.ColumnaDeConcreto)
+        {
+            return;
+        }
+
+        var yColTope = a.YDadoTop + (0.8 * (8.0 / 9.0));
+        var deColumna = new List<double> { barrasCol.Izq, barrasCol.Der };
+        deColumna.AddRange(barrasCol.Intermedias);
+
+        foreach (var x in deColumna)
+        {
+            Recta(px(x), py(a.YDadoTop + recCol), px(x), py(yColTope), trazo, 1.5);
+        }
+    }
+
+    /// <summary>El diámetro de una varilla en <b>metros</b>, o 0 si la celda está vacía.</summary>
+    private static double DiametroMDeVarilla(string? clave) =>
+        Varilla.TryDiametroCm(clave, out var cm) ? cm / 100.0 : 0;
 
     /// <summary>Los estribos del dado, en las posiciones que reparte la macro.</summary>
     /// <remarks>
@@ -1269,6 +1536,9 @@ public partial class MainWindow
         double PX(double x) => dx + (x * escala);
         double PY(double y) => dy - (y * escala);
 
+        // El concreto de la planta, para que la malla se lea sobre él y no sobre el fondo.
+        Relleno(PX(a.XBase), PY(yTop), PX(a.XDer), PY(yBot), PincelConcreto);
+
         Contorno(PX(a.XBase), PY(yTop), PX(a.XDer), PY(yBot), azul, 1.6);
 
         var (hx1, hy1, hx2, hy2) = TrazoZapata.HuecoDelDado(z, a.XBase, yBot);
@@ -1287,20 +1557,37 @@ public partial class MainWindow
             Recta(PX(a.XBase), PY(yBot), PX(a.XDer), PY(yTop), gris, 0.8);
         }
 
-        // El dado va encima de la malla, como en el dibujo: es lo que se ve en planta.
+        // El dado va encima de la malla, como en el dibujo: es lo que se ve en planta. Y con su
+        // relleno, que es lo que hace que se lea como un bloque y no como un cuadro más de la malla.
+        Relleno(PX(hx1), PY(hy2), PX(hx2), PY(hy1), PincelConcreto);
         Contorno(PX(hx1), PY(hy2), PX(hx2), PY(hy1), azul, 1.3);
 
+        var idDado = (z.IdDado ?? string.Empty).Trim();
+
+        if (idDado.Length > 0 && hx2 - hx1 > 0.20)
+        {
+            EtiquetaZapata(
+                idDado, ((PX(hx1) + PX(hx2)) / 2) - (idDado.Length * 2.6),
+                ((PY(hy1) + PY(hy2)) / 2) - 7, 9.5, azul, true);
+        }
+
         // ---------- COTAS ----------
-        // Las de la macro: el ancho abajo, el largo a la izquierda y las dos del dado
-        // -su ancho arriba y su largo a la derecha-, que ahí miden exactamente el bloque.
+        // Las de la macro, como en el dibujo: el ancho abajo, el largo a la izquierda, y las dos
+        // del dado -su ancho arriba y su largo a la derecha-, que ahí miden exactamente el bloque.
         CotaH(PX(a.XBase), PX(a.XDer), PY(yBot) + (0.12 * escala), z.AnchoM, gris);
         CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);
 
         CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala), hx2 - hx1, gris);
         CotaV(PX(a.XDer) + (0.10 * escala), PY(hy1), PY(hy2), hy2 - hy1, gris);
 
-        EtiquetaZapata("PLANTA", left, PY(yBot) + (0.26 * escala), 10.5, gris);
-        EtiquetaZapata("Escala 1:10", left, PY(yBot) + (0.26 * escala) + 15, 10, gris);
+        EtiquetaZapata("PLANTA", left, PY(yBot) + (0.26 * escala), 10.5, azul, true);
+
+        var parrillas = z.DobleParrilla && !string.IsNullOrWhiteSpace(z.VarSup)
+            ? "doble parrilla"
+            : "una parrilla";
+
+        EtiquetaZapata(
+            $"Escala 1:10    ·    {parrillas}", left, PY(yBot) + (0.26 * escala) + 15, 10, gris);
     }
 
     /// <summary>Una cota <b>horizontal</b>: su línea, sus dos topes y su número.</summary>
@@ -1387,6 +1674,142 @@ public partial class MainWindow
     /// escrita «@20» podría salir de 20 cm en la previa y de 12 en el plano.
     /// </remarks>
     private static double LeerSeparacionM(string? texto) => TrazoZapata.SeparacionM(texto);
+
+    // ======================================================================
+    // LOS COLORES Y LAS TEXTURAS DE LA VISTA PREVIA
+    // ======================================================================
+    //
+    // LO QUE SE PIDIO: «que la previsualizacion se vea mejor detallada y con colores, se ven muy
+    // vacias». Estaba dibujada a puro contorno, asi que un cuadro con la mitad del sitio en blanco
+    // no decia si el dibujo iba bien o si faltaba algo.
+    //
+    // Los colores NO son decorativos: son los mismos papeles que en el plano, uno por cosa, para
+    // que de un vistazo se vea qué es cada linea. Y las texturas son las de AutoCAD -el AR-CONC del
+    // concreto y el EARTH del terreno- reducidas a un mosaico que se lee en unos centimetros.
+
+    /// <summary>Concreto: gris claro con su granito, como el AR-CONC del plano.</summary>
+    private static readonly Brush PincelConcreto = Textura(
+        Color.FromRgb(0xE6, 0xE8, 0xEA), Color.FromRgb(0xAE, 0xB6, 0xBD), 9, punteado: true);
+
+    /// <summary>Plantilla de concreto simple: el mismo granito, un tono más oscuro.</summary>
+    private static readonly Brush PincelPlantilla = Textura(
+        Color.FromRgb(0xD3, 0xD7, 0xDB), Color.FromRgb(0x99, 0xA3, 0xAC), 7, punteado: true);
+
+    /// <summary>Terreno: el ladrillo del EARTH, en tierra.</summary>
+    private static readonly Brush PincelTerreno = Textura(
+        Color.FromRgb(0xEC, 0xE1, 0xD3), Color.FromRgb(0xC0, 0xA6, 0x86), 11, punteado: false);
+
+    /// <summary>Un mosaico de textura, congelado: se crea una vez y se reutiliza.</summary>
+    /// <remarks>
+    /// <para>
+    /// <paramref name="punteado"/> da el granito del concreto —puntos sueltos— y su contrario da el
+    /// ladrillo del terreno: una línea horizontal y las dos verticales alternadas del EARTH.
+    /// </para>
+    /// <para>
+    /// Va <c>Freeze()</c> porque el mosaico no cambia nunca y así WPF no lo vuelve a evaluar en cada
+    /// redibujo. La vista previa se redibuja en cada tecla que se pulsa en la tabla.
+    /// </para>
+    /// </remarks>
+    private static Brush Textura(Color fondo, Color trazo, double lado, bool punteado)
+    {
+        var grupo = new DrawingGroup();
+
+        grupo.Children.Add(new GeometryDrawing(
+            new SolidColorBrush(fondo), null, new RectangleGeometry(new Rect(0, 0, lado, lado))));
+
+        var figuras = new GeometryGroup();
+
+        if (punteado)
+        {
+            var r = lado / 11;
+
+            figuras.Children.Add(new EllipseGeometry(new Point(lado * 0.25, lado * 0.30), r, r));
+            figuras.Children.Add(new EllipseGeometry(new Point(lado * 0.70, lado * 0.55), r, r));
+            figuras.Children.Add(new EllipseGeometry(new Point(lado * 0.45, lado * 0.85), r, r));
+
+            grupo.Children.Add(new GeometryDrawing(new SolidColorBrush(trazo), null, figuras));
+        }
+        else
+        {
+            figuras.Children.Add(new LineGeometry(
+                new Point(0, lado / 2), new Point(lado, lado / 2)));
+            figuras.Children.Add(new LineGeometry(
+                new Point(lado / 2, 0), new Point(lado / 2, lado / 2)));
+            figuras.Children.Add(new LineGeometry(
+                new Point(0, lado / 2), new Point(0, lado)));
+
+            grupo.Children.Add(new GeometryDrawing(
+                null, new Pen(new SolidColorBrush(trazo), 0.7), figuras));
+        }
+
+        var pincel = new DrawingBrush(grupo)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, lado, lado),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
+
+        pincel.Freeze();
+
+        return pincel;
+    }
+
+    /// <summary>Un relleno rectangular, por debajo de todo lo que se dibuje después.</summary>
+    private void Relleno(double x1, double y1, double x2, double y2, Brush pincel)
+    {
+        var w = Math.Abs(x2 - x1);
+        var h = Math.Abs(y2 - y1);
+
+        if (w < 0.5 || h < 0.5)
+        {
+            return;
+        }
+
+        var r = new Rectangle { Width = w, Height = h, Fill = pincel };
+
+        System.Windows.Controls.Canvas.SetLeft(r, Math.Min(x1, x2));
+        System.Windows.Controls.Canvas.SetTop(r, Math.Min(y1, y2));
+
+        ZapataPreviewCanvas.Children.Add(r);
+    }
+
+    /// <summary>
+    /// La <b>leyenda</b> de colores: qué es cada cosa del dibujo.
+    /// </summary>
+    /// <remarks>
+    /// Con seis colores en el cuadro hace falta decir cuál es cuál, y decirlo <b>en el cuadro</b>:
+    /// una leyenda en la ayuda no se lee mientras se revisa un dibujo.
+    /// </remarks>
+    private void LeyendaZapata(double left, double top, params (Brush Color, string Texto)[] partes)
+    {
+        var x = left;
+
+        foreach (var (color, texto) in partes)
+        {
+            var chip = new Rectangle
+            {
+                Width = 9,
+                Height = 9,
+                Fill = color,
+                RadiusX = 2,
+                RadiusY = 2
+            };
+
+            System.Windows.Controls.Canvas.SetLeft(chip, x);
+            System.Windows.Controls.Canvas.SetTop(chip, top + 3);
+
+            ZapataPreviewCanvas.Children.Add(chip);
+
+            EtiquetaZapata(texto, x + 13, top, 9.5, PinceLeyenda);
+
+            x += 13 + (texto.Length * 5.4) + 14;
+        }
+    }
+
+    /// <summary>El gris de los textos de la leyenda.</summary>
+    private static readonly Brush PinceLeyenda =
+        new SolidColorBrush(Color.FromRgb(0x60, 0x6A, 0x74));
 
     private void Recta(double x1, double y1, double x2, double y2, Brush trazo, double grosor) =>
         ZapataPreviewCanvas.Children.Add(new Line

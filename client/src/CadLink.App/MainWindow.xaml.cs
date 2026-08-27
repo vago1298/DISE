@@ -28,6 +28,18 @@ public partial class MainWindow : Window
     private LicenseInfo _license;
     private DatosProyecto _datos = DatosProyecto.CrearEjemplo();
     private ModeloEtabs? _modeloEtabs;
+
+    /// <summary>
+    /// De <b>qué programa</b> es el modelo que está en <see cref="_modeloEtabs"/>.
+    /// </summary>
+    /// <remarks>
+    /// Hace falta porque los dos programas dan un <c>ModeloEtabs</c> igualito y, sin
+    /// guardar de dónde salió, con la casilla en SAP2000 se seguía enseñando la tabla de
+    /// ETABS sin avisar. Con esto la tabla se vacía cuando dejan de coincidir y el botón
+    /// vuelve a leer en lugar de reaprovechar lo que hay.
+    /// </remarks>
+    private EtabsConnection.ProgramaCsi? _destinoLeido;
+
     private readonly VistaModelo _vista = new();
     private Point _arrastreDesde;
     private bool _girando;
@@ -77,6 +89,7 @@ public partial class MainWindow : Window
         // enganchado cinco veces.
         EngancharVistaPreviaAcero();
         EngancharVistaPreviaZapata();
+        EngancharVistaPreviaZapataCorrida();
 
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
@@ -187,6 +200,7 @@ public partial class MainWindow : Window
         // Y las de la hoja de acero, que viven en MainWindow.Acero.cs.
         LlenarListasAcero();
         LlenarListasZapatas();
+        LlenarListasZapatasCorridas();
     }
 
     private void Enlazar()
@@ -238,6 +252,7 @@ public partial class MainWindow : Window
         // aparte, su cuadricula seguiria mostrando la coleccion del proyecto anterior.
         EnlazarAcero();
         EnlazarZapatas();
+        EnlazarZapatasCorridas();
 
         DatosCambiaron();
     }
@@ -259,6 +274,18 @@ public partial class MainWindow : Window
 
         ActualizarTotales();
 
+        // LAS LISTAS DE LA HOJA DE ZAPATAS SE REFRESCAN TAMBIÉN AL EDITAR UNA FILA, no solo al
+        // agregarla o borrarla. Aquí estaba el defecto de «no me aparece el dado que tengo»: al
+        // agregar la fila su ID está vacío, y el ID y el elemento se escriben DESPUÉS —editando—,
+        // así que la lista se armaba con la fila en blanco y no volvía a mirarla. El dado existía
+        // en su hoja y el desplegable de la zapata no lo ofrecía.
+        //
+        // Va sin filtrar por propiedad a propósito: el ID y el elemento deciden si entra en la
+        // lista, y la base, el recubrimiento y el armado deciden las medidas que la zapata trae
+        // por referencia. Filtrar por nombre de propiedad es la clase de lista que se queda corta
+        // en cuanto se agrega una columna.
+        ActualizarListasDeZapatas();
+
         if (ReferenceEquals(sender, Seleccionada))
         {
             DibujarVistaPrevia();
@@ -273,6 +300,10 @@ public partial class MainWindow : Window
         // así que se refrescan aquí: al agregar, borrar o renombrar uno, el desplegable se
         // entera solo. Las columnas de acero avisan por su lado, desde su propia hoja.
         ActualizarListasDeZapatas();
+
+        // Y las de la hoja de zapatas corridas: la contratrabe y la cadena de desplante también
+        // se capturan en la hoja de concreto y también se insertan como bloque por su ID.
+        ActualizarListasDeZapatasCorridas();
 
         ActualizarContadores();
         ActualizarTotales();
@@ -509,10 +540,18 @@ public partial class MainWindow : Window
         // pulsar en la version de prueba seria este.
         DibujarZapatasButton.IsEnabled = puedeDibujar;
 
+        // Y las corridas, por lo mismo.
+        DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;
+
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
             : "La generación de dibujos no está incluida en la versión de prueba.");
 
+        // EL CANDADO DE LA LICENCIA sigue en su sitio, solo que ahora la pestaña se llama
+        // «Dibujar planos estructurales»: el módulo de ETABS se metió DENTRO de ella —el
+        // visor a la derecha y la lectura del modelo en su panel plegable— así que la que hay
+        // que apagar sin licencia es esa. El nombre EtabsTab se conserva a propósito: es lo
+        // que ata este candado a la pestaña, y renombrarlo solo obligaría a tocar dos sitios.
         var puedeEtabs = _license.HasFeature("etabs");
         EtabsTab.IsEnabled = puedeEtabs;
         if (!puedeEtabs)
@@ -734,16 +773,18 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Wait;
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
             EtabsStatusText.Text =
                 "Conexión correcta.\n\n" +
                 $"Programa : {cx.Programa}\n" +
                 $"Modelo   : {cx.Modelo}\n\n" +
-                "Ya puedes pulsar 'Leer modelo'.";
+                $"Ya puedes pulsar 'Leer modelo de {cx.NombreDelDestino}'.";
 
-            StatusText.Text = "ETABS conectado.";
+            // El nombre sale de la CONEXION y no escrito a mano: la casilla pudo decir
+            // SAP2000, y un mensaje que diga ETABS en ese caso es un error a la vista.
+            StatusText.Text = $"{cx.NombreDelDestino} conectado.";
         }
         catch (EtabsException ex)
         {
@@ -769,7 +810,7 @@ public partial class MainWindow : Window
             Cursor = Cursors.Wait;
             EtabsStatusText.Text = "Leyendo los piers de los muros…";
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
             var piers = EtabsPiers.Leer(cx);
@@ -798,19 +839,147 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnImportEtabs(object sender, RoutedEventArgs e) =>
-        LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs);
-
-    /// <summary>Lee el modelo abierto en <b>SAP2000</b>.</summary>
+    /// <summary>
+    /// <b>De dónde se lee</b>: lo que diga la casilla de la pestaña, ETABS o SAP2000.
+    /// </summary>
     /// <remarks>
-    /// Es el mismo lector que el de ETABS, y no es un atajo: CSI comparte la OAPI entre
-    /// los dos programas —la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las
+    /// <para>
+    /// Está en <b>un solo sitio</b> a propósito: lo usan la prueba de conexión, la
+    /// lectura del modelo, la de los piers y el armado de los planos, y así no hay
+    /// manera de que un botón se quede hablándole a ETABS cuando la casilla dice
+    /// SAP2000.
+    /// </para>
+    /// <para>
+    /// El lector es el mismo para los dos, y no es un atajo: CSI comparte la OAPI entre
+    /// ETABS y SAP2000 —la misma interfaz <c>cOAPI</c>, el mismo <c>SapModel</c> y las
     /// mismas llamadas para pisos, marcos y áreas— así que lo único que cambia es el
-    /// ProgID con el que se pide el objeto activo. Ver
+    /// ProgID con el que se pide el objeto activo y la librería que se carga. Ver
     /// <c>EtabsConnection.ProgramaCsi</c>.
+    /// </para>
+    /// <para>
+    /// Se lee con <c>?.</c> porque el constructor de la ventana llama a rutinas que
+    /// preguntan por el destino <b>antes</b> de que el XAML haya creado la casilla; sin
+    /// casilla todavía, el destino es ETABS.
+    /// </para>
     /// </remarks>
-    private void OnImportSap2000(object sender, RoutedEventArgs e) =>
-        LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000);
+    private EtabsConnection.ProgramaCsi DestinoCsi =>
+        ProgramaCsiCombo?.SelectedIndex == 1
+            ? EtabsConnection.ProgramaCsi.Sap2000
+            : EtabsConnection.ProgramaCsi.Etabs;
+
+    /// <summary>Nombre del programa elegido, para los mensajes.</summary>
+    private string NombreDestinoCsi =>
+        DestinoCsi == EtabsConnection.ProgramaCsi.Sap2000 ? "SAP2000" : "ETABS";
+
+    /// <summary>
+    /// Al cambiar la casilla, el botón de leer dice a quién se le va a leer.
+    /// </summary>
+    /// <remarks>
+    /// Es la única forma de que se vea que la casilla surtió efecto: si el botón siguiera
+    /// diciendo «Leer modelo» a secas, no habría manera de saber a qué programa apunta
+    /// sin pulsarlo.
+    /// </remarks>
+    private void OnProgramaCsiCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        // ==============================================================================
+        //  LAS DOS CASILLAS DEL PROGRAMA, IGUALADAS A MANO
+        // ==============================================================================
+        //  Antes iban atadas con un enlace del XAML —SelectedIndex por ElementName, de dos
+        //  vías— y desde que la casilla de la lectura del modelo vive dentro del panel
+        //  PLEGADO, ese enlace dejó de servir: la casilla que todavía no tenía selección
+        //  escribía su −1 en la otra y las dos se quedaban EN BLANCO. Por eso no se veía en
+        //  qué programa se estaba trabajando.
+        //
+        //  Igualarlas aquí es explícito y no depende del orden en que WPF cargue los
+        //  controles ni de que el panel esté abierto. La guarda evita el rebote: sin ella,
+        //  cada casilla dispararía el evento de la otra sin parar.
+        if (!_igualandoPrograma && sender is ComboBox tocada && tocada.SelectedIndex >= 0)
+        {
+            _igualandoPrograma = true;
+
+            try
+            {
+                // Las TRES casillas del programa: la de la lectura del modelo, la de planos y
+                // la de las secciones. Todas dicen lo mismo, siempre, porque el programa
+                // elegido es UNO: lo que cambia es desde dónde se pulsa.
+                foreach (var otra in new[]
+                         {
+                             ProgramaCsiCombo, ProgramaCsiPlanosCombo, ProgramaCsiSeccionesCombo
+                         })
+                {
+                    if (otra is not null && !ReferenceEquals(otra, tocada)
+                        && otra.SelectedIndex != tocada.SelectedIndex)
+                    {
+                        otra.SelectedIndex = tocada.SelectedIndex;
+                    }
+                }
+            }
+            finally
+            {
+                // En un finally: si la bandera se queda puesta, las casillas dejan de
+                // sincronizarse y no hay forma de saber por qué.
+                _igualandoPrograma = false;
+            }
+        }
+
+        if (LeerModeloCsiButton is not null)
+        {
+            LeerModeloCsiButton.Content = $"Leer modelo de {NombreDestinoCsi}";
+        }
+
+        // El de la pestaña de planos, igual: la casilla de allá es la MISMA de aquí
+        // —van atadas por el XAML—, así que el botón de leer plantas también dice a
+        // quién le va a leer.
+        if (LeerPlantasButton is not null)
+        {
+            LeerPlantasButton.Content = $"Leer plantas de {NombreDestinoCsi}";
+        }
+
+        if (LeerSeccionesModeloButton is not null)
+        {
+            LeerSeccionesModeloButton.Content = $"Leer secciones de {NombreDestinoCsi}";
+        }
+
+        // ==============================================================================
+        //  Y LA TABLA NO SE QUEDA CON LOS DATOS DEL OTRO PROGRAMA.
+        //  Se pidió esto: con la tabla llena de ETABS y la casilla en SAP2000, lo que se
+        //  estaba viendo era del programa que NO decía la casilla, y no había forma de
+        //  saberlo. Ahora la tabla se vacía en cuanto la casilla deja de coincidir con el
+        //  modelo que está en memoria, y el aviso dice qué hay que pulsar.
+        // ==============================================================================
+        SincronizarSeccionesConLaCasilla();
+    }
+
+    /// <summary>Se están igualando las dos casillas del programa: no hay que reaccionar.</summary>
+    private bool _igualandoPrograma;
+
+    /// <summary>
+    /// Vacía la tabla de secciones si el modelo que hay en memoria es del otro programa.
+    /// </summary>
+    private void SincronizarSeccionesConLaCasilla()
+    {
+        if (SeccionesModeloGrid is null || SeccionesModeloResumenText is null)
+        {
+            return;
+        }
+
+        if (_modeloEtabs is not null && _destinoLeido == DestinoCsi)
+        {
+            return;
+        }
+
+        SeccionesModeloGrid.ItemsSource = null;
+        SeccionesModeloResumenText.Text =
+            $"Pulsa «Leer secciones de {NombreDestinoCsi}»: " +
+            (_modeloEtabs is null
+                ? "todavía no hay ningún modelo leído."
+                : $"lo que había era del modelo de " +
+                  $"{(_destinoLeido == EtabsConnection.ProgramaCsi.Sap2000 ? "SAP2000" : "ETABS")}.");
+    }
+
+    /// <summary>Lee el modelo del programa que diga la casilla.</summary>
+    private void OnImportModeloCsi(object sender, RoutedEventArgs e) =>
+        LeerModeloCsi(DestinoCsi);
 
     /// <summary>
     /// Lee el modelo abierto en el programa de CSI que se le diga, y lo <b>visualiza</b>.
@@ -841,6 +1010,7 @@ public partial class MainWindow : Window
 
             var modelo = EtabsReader.Leer(cx);
             _modeloEtabs = modelo;
+            _destinoLeido = destino;
 
             EtabsGrid.ItemsSource = modelo.Elementos;
             EtabsStatusText.Text = modelo.Resumen();
@@ -852,7 +1022,14 @@ public partial class MainWindow : Window
             _vista.Modelo = modelo;
             _vista.Reiniciar();
             PoblarNiveles(modelo);
+
+            // Y la lista de CORTES, que sale de los mismos ejes del modelo.
+            PoblarCortes(modelo);
             RedibujarVistas();
+
+            // Y la tabla de secciones del modelo, que sale del mismo modelo: así está
+            // puesta sin que haya que volver a leer nada.
+            LlenarSeccionesModelo(modelo);
         }
         catch (EtabsException ex)
         {
@@ -862,6 +1039,124 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Arrow;
         }
+    }
+
+    // ======================================================================
+    // SECCIONES DEL MODELO: la hoja SECCIONES de la macro
+    // ======================================================================
+
+    /// <summary>
+    /// Llena la tabla de secciones usadas en el modelo.
+    /// </summary>
+    /// <remarks>
+    /// La tabla la arma <c>SeccionesModelo.Construir</c>, que es el port de
+    /// <c>VolcarSecciones</c>: mismos tipos, mismo orden y mismas columnas. Aquí solo se
+    /// pone en la cuadrícula y se cuenta lo que salió.
+    /// </remarks>
+    private void LlenarSeccionesModelo(ModeloEtabs modelo)
+    {
+        var filas = SeccionesModelo.Construir(modelo);
+        SeccionesModeloGrid.ItemsSource = filas;
+
+        var tipos = filas.Select(f => f.Tipo).Distinct().Count();
+        SeccionesModeloResumenText.Text =
+            $"{filas.Count} sección(es) distinta(s) en {tipos} tipo(s) de elemento, " +
+            $"de {modelo.Elementos.Count} elementos del modelo.";
+    }
+
+    /// <summary>
+    /// Cambia entre <b>totales</b> por sección e <b>individuales</b> por elemento.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las dos tablas salen del mismo modelo y dicen lo mismo a dos niveles de detalle: la
+    /// de arriba, una línea por sección con cuántas hay, su longitud o su área y en qué
+    /// niveles; la de abajo, una línea por elemento con su etiqueta y su largo. Enseñar las
+    /// dos a la vez era ver doble, así que se ve <b>la que se pida</b>.
+    /// </para>
+    /// <para>
+    /// El botón dice <b>a dónde se va</b>, no dónde se está: es lo que espera quien pulsa un
+    /// botón, y es el mismo criterio que el de cambiar de tema.
+    /// </para>
+    /// </remarks>
+    private void OnAlternarSeccionesModelo(object sender, RoutedEventArgs e)
+    {
+        var aIndividuales = SeccionesModeloGrid.Visibility == Visibility.Visible;
+
+        SeccionesModeloGrid.Visibility = aIndividuales ? Visibility.Collapsed : Visibility.Visible;
+
+        EtabsGrid.Visibility = aIndividuales ? Visibility.Visible : Visibility.Collapsed;
+        ElementosTitulo.Visibility = EtabsGrid.Visibility;
+
+        AlternarSeccionesButton.Content = aIndividuales ? "Ver totales" : "Ver individuales";
+
+        StatusText.Text = aIndividuales
+            ? "Secciones del modelo: una línea por elemento."
+            : "Secciones del modelo: los totales por sección.";
+    }
+
+    /// <summary>Lee el modelo y arma la tabla de secciones.</summary>
+    /// <remarks>
+    /// Si el modelo ya se leyó, no se vuelve a leer: se arma la tabla con el que hay. Leer
+    /// otra vez tarda y no cambia nada mientras no se toque el modelo en ETABS.
+    /// </remarks>
+    private void OnLeerSeccionesModelo(object sender, RoutedEventArgs e)
+    {
+        // Se reaprovecha el modelo en memoria SOLO si es del programa que dice la casilla.
+        // Si la casilla cambió, hay que leer otra vez: son dos modelos distintos.
+        if (_modeloEtabs is not null && _modeloEtabs.Elementos.Count > 0 &&
+            _destinoLeido == DestinoCsi)
+        {
+            LlenarSeccionesModelo(_modeloEtabs);
+            StatusText.Text =
+                $"Tabla de secciones armada con el modelo de {NombreDestinoCsi} que ya " +
+                "estaba leído.";
+            return;
+        }
+
+        LeerModeloCsi(DestinoCsi);
+    }
+
+    /// <summary>
+    /// Copia la tabla al portapapeles con tabuladores, para pegarla en Excel.
+    /// </summary>
+    /// <remarks>
+    /// Con tabuladores y no con comas a propósito: los nombres de sección y la lista de
+    /// niveles llevan comas dentro, y pegado como CSV se partiría en columnas que no son.
+    /// </remarks>
+    private void OnCopiarSeccionesModelo(object sender, RoutedEventArgs e)
+    {
+        if (SeccionesModeloGrid.ItemsSource is not IEnumerable<SeccionesModelo.Fila> filas)
+        {
+            StatusText.Text = "Todavía no hay tabla de secciones: lee el modelo primero.";
+            return;
+        }
+
+        var s = new System.Text.StringBuilder();
+        s.AppendLine("TIPO\tSECCION DE ETABS\tFORMA\tMATERIAL\tT3 PERALTE (cm)\t" +
+                     "T2 ANCHO / ESPESOR (cm)\tTF (cm)\tTW (cm)\tCANTIDAD\tNIVELES");
+
+        foreach (var f in filas)
+        {
+            s.AppendLine(string.Join('\t',
+                f.Tipo, f.Seccion, f.Forma, f.Material,
+                Num(f.PeralteCm), Num(f.AnchoCm), Num(f.PatinCm), Num(f.AlmaCm),
+                f.Cantidad.ToString(), f.Niveles));
+        }
+
+        try
+        {
+            Clipboard.SetText(s.ToString());
+            StatusText.Text = "Tabla de secciones copiada: pégala en Excel.";
+        }
+        catch (Exception ex)
+        {
+            // El portapapeles lo puede tener tomado otro programa; no es para tirar la app.
+            StatusText.Text = "No se pudo copiar al portapapeles: " + ex.Message;
+        }
+
+        static string Num(double? v) =>
+            v is null ? string.Empty : v.Value.ToString("0.##");
     }
 
     /// <summary>
@@ -1019,14 +1314,17 @@ public partial class MainWindow : Window
         NivelPlantaCombo.Items.Clear();
         NivelPlantaCombo.Items.Add("(todos los niveles)");
 
-        // Se toman los niveles del modelo y, además, los que aparecen asignados a
-        // los elementos: si el modelo no expone el objeto Story, la lista de
-        // niveles llega vacía y sin esto la vista en planta quedaría inservible.
-        var nombres = modelo.Niveles
+        // LOS NIVELES QUE TIENEN ELEMENTOS, de arriba abajo: la BASE incluida.
+        // GetStories no devuelve el nivel base, así que con la lista de la API a secas la
+        // planta de cimentación no aparecía ni en esta lista ni en el dibujo, aunque el
+        // modelo tenga ahí las cadenas de desplante. NivelesConElementos los saca de los
+        // propios elementos, como StoriesDesdeElementos de la macro.
+        //
+        // Aquí van del más alto al más bajo porque es una lista para elegir a mano y lo que
+        // se suele mirar es el nivel de arriba; en el DIBUJO van al revés, ascendente, que
+        // es el ORDEN_NIVELES de la hoja.
+        var nombres = modelo.NivelesConElementos(ascendente: false)
             .Select(n => n.Nombre)
-            .Concat(modelo.Elementos.Select(el => el.Story))
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         foreach (var n in nombres)
@@ -1037,6 +1335,418 @@ public partial class MainWindow : Window
         // Arranca en el nivel más alto, que suele ser el de interés
         NivelPlantaCombo.SelectedIndex = nombres.Count > 0 ? 1 : 0;
     }
+
+    /// <summary>
+    /// Dibuja en AutoCAD el <b>corte elegido</b> en la pestaña del modelo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se dibuja el que esté seleccionado y ninguno más: el corte que se está mirando es el
+    /// que se quiere en el plano. Sin corte elegido no se dibuja nada, que es lo que tiene que
+    /// pasar —un corte de más en el plano es un dibujo que alguien tiene que borrar—.
+    /// </para>
+    /// <para>
+    /// El corte lleva los elementos de <b>todos los niveles</b>, no los del nivel elegido: un
+    /// corte atraviesa el edificio de la cimentación a la azotea, y es justo para eso.
+    /// </para>
+    /// </remarks>
+    /// <returns>Cuántas piezas se dibujaron; 0 si no había corte que dibujar.</returns>
+    private int DibujarElCorteElegido(PlantaDrawer dibujante)
+    {
+        if (_modeloEtabs is null || !CfgPlano.Bandera("CORTE_DIBUJAR", true))
+        {
+            return 0;
+        }
+
+        var ejesModelo = _modeloEtabs.Ejes ?? EjesModelo.DesdeGeometria(_modeloEtabs);
+
+        var ejesX = ejesModelo.X.Select(e => (e.Id, e.Ordenada)).ToList();
+        var ejesY = ejesModelo.Y.Select(e => (e.Id, e.Ordenada)).ToList();
+
+        // ==============================================================================
+        //  QUÉ CORTES SE PIDEN: EL DE LA LISTA, Y LOS QUE SE ESCRIBAN
+        // ==============================================================================
+        //  Se pidió poder cortar DONDE SEA —aunque la cuadrícula de ETABS o de SAP2000 no tenga
+        //  un eje ahí—, poder decirlo escribiendo LA COORDENADA en un campo para X y otro para Y,
+        //  y poder pedir VARIOS de golpe. En cada campo caben varias separadas por comas.
+        //
+        //  Lo que caiga sobre un eje se rotula con el NOMBRE DE ESE EJE, para que el corte se
+        //  pueda comparar con la planta; lo que no, con su sitio.
+        var pedido = CadLink.Cad.PlanoEstructural.CortesPedidos.Interpretar(
+            null, CorteXTxt?.Text, CorteYTxt?.Text, ejesX, ejesY);
+
+        var cortes = pedido.Cortes.ToList();
+
+        // Y EL DE LA LISTA, si no se escribió nada: es lo de siempre, y sigue funcionando igual
+        // para quien solo quiere un corte.
+        if (cortes.Count == 0 && _vista.CorteEje.Length > 0)
+        {
+            cortes.Add(new CadLink.Cad.PlanoEstructural.CortesPedidos.Peticion(
+                _vista.CorteEje, _vista.CorteEnX, _vista.CorteOrdenada, false));
+        }
+
+        // LO QUE NO SE ENTENDIÓ SE DICE, no se traga: un eje mal escrito tiene que poder
+        // contarse, porque desde fuera «no salió» es indistinguible de «falló».
+        if (pedido.NoReconocidos.Count > 0)
+        {
+            MostrarNotas(
+                "No reconocí esto de los campos de corte: " +
+                string.Join(", ", pedido.NoReconocidos) +
+                ". Ahí van coordenadas —4.25, 7.10— separadas por comas, o el nombre de un eje " +
+                "de esa dirección.");
+        }
+
+        // ==============================================================================
+        //  SIN CORTE PEDIDO NO HAY CORTE, Y SE DICE
+        // ==============================================================================
+        //  Antes se salía en silencio, y desde fuera eso es indistinguible de que el corte
+        //  falle: se pulsa «Dibujar en AutoCAD», no aparece ningún corte y no hay manera de
+        //  saber si es que no se pidió o si es que algo se rompió.
+        if (cortes.Count == 0)
+        {
+            MostrarNotas(
+                "No se dibujó ningún corte porque no se pidió ninguno. Elige un eje en " +
+                "«Corte por el eje», o escribe las coordenadas en «Cortar en X» y «en Y», y " +
+                "vuelve a dibujar: los cortes salen 10 unidades encima de las plantas.");
+
+            return 0;
+        }
+
+        // ==============================================================================
+        //  Y SI SON VARIOS, UNO AL LADO DEL OTRO
+        // ==============================================================================
+        //  El reparto lo hace el DIBUJANTE, que es el único que sabe cuánto ocupó de verdad cada
+        //  corte: depende de las piezas que toque, de sus ejes y de sus cotas. Aquí solo se piden
+        //  en orden, y él encadena cada uno a la derecha del anterior con la separación de la
+        //  hoja. Calculándolo desde aquí a ojo, los cortes se encimaban o quedaban a diez metros
+        //  unos de otros.
+        var total = 0;
+
+        foreach (var q in cortes)
+        {
+            var c = new CorteCad
+            {
+                Eje = q.Id,
+                EnX = q.EnX,
+                Ordenada = q.Ordenada,
+                EspesorM = CfgPlano.Numero("CORTE_ESPESOR_CM", 60) / 100,
+                Modelo = _modeloEtabs.Archivo,
+                AlturaTexto = 0.25,
+
+                // EL LADO QUE SE MIRA, el de la lista: en un corte en X es ver lo de la derecha o
+                // lo de la izquierda, y en uno en Y lo de arriba o lo de abajo. Con el lado fijo
+                // hay cortes en los que no se ve nada al fondo, porque el edificio está del otro
+                // lado del plano.
+                HaciaMas = _vista.CorteHaciaMas
+            };
+
+            // TODOS los niveles: es un corte, no una planta.
+            foreach (var el in _modeloEtabs.Elementos)
+            {
+                c.Elementos.Add(ComoElementoDePlanta(el, _modeloEtabs));
+            }
+
+            foreach (var n in _modeloEtabs.NivelesConElementos())
+            {
+                c.Niveles.Add((n.Nombre, n.ElevacionM));
+            }
+
+            // ==========================================================================
+            //  LOS EJES QUE SE VEN EN EL CORTE
+            // ==========================================================================
+            //  Los PERPENDICULARES al del corte: en un corte por un eje de los que van en X se
+            //  recorre la Y, así que los que se cruzan —y los que hay que acotar— son los de la
+            //  Y. Son los mismos ejes de la planta, sin repetidos, así que las cotas del corte y
+            //  las de la planta se pueden comparar eje por eje: si no cuadran, hay algo mal en
+            //  uno de los dos y se ve al momento.
+            foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                         (q.EnX ? ejesY : ejesX).Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
+            {
+                c.Ejes.Add((e.Id, e.Ordenada));
+            }
+
+            try
+            {
+                total += dibujante.DibujarCorte(c, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                // Que falle un corte no puede tirar el plano, que ya está dibujado, ni impedir
+                // que se dibujen los demás cortes.
+                MostrarNotas($"El corte {q.Id} no se pudo dibujar: {ex.Message}");
+            }
+        }
+
+        var propuestos = cortes.Where(x => x.Propuesto).Select(x => x.Id).ToList();
+
+        if (propuestos.Count > 0)
+        {
+            MostrarNotas(
+                $"{propuestos.Count} corte(s) no caen sobre ningún eje de la cuadrícula, así " +
+                "que van rotulados con su sitio: " + string.Join(", ", propuestos) + ".");
+        }
+
+        return total;
+    }
+
+
+
+    // ======================================================================
+    // EL CORTE POR UN EJE, en las vistas de volumen
+    // ======================================================================
+
+    /// <summary>Un renglón de la lista de cortes: el eje y por dónde pasa.</summary>
+    /// <remarks>
+    /// Se guarda el objeto y no el texto porque así no hay que volver a interpretar la
+    /// cadena para saber la ordenada. El <c>ToString</c> es lo que enseña el desplegable.
+    /// </remarks>
+    private sealed record Corte(string Texto, string Id, bool EnX, double Ordenada)
+    {
+        public override string ToString() => Texto;
+    }
+
+    /// <summary>
+    /// Llena la lista de cortes con <b>los ejes del modelo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Los mismos ejes que la planta y el plano: los del modelo si el programa los dio y, si
+    /// no, los deducidos de las columnas. Y pasados por el mismo filtro de repetidos, porque
+    /// dos ejes iguales darían dos cortes idénticos en la lista.
+    /// </para>
+    /// <para>
+    /// Los verticales se anuncian como <c>Eje 1 (X)</c> y los horizontales como
+    /// <c>Eje A (Y)</c>, con su letra, que es como los nombra el plano.
+    /// </para>
+    /// </remarks>
+    private void PoblarCortes(ModeloEtabs modelo)
+    {
+        // LAS DOS LISTAS, la del visor y la de la pestaña de planos, con lo MISMO y en el
+        // mismo orden: así sincronizarlas es copiar el índice y no hay que buscar nada.
+        var listas = new[] { CorteEjeCombo, CortePlanoCombo };
+
+        foreach (var lista in listas)
+        {
+            lista.Items.Clear();
+            lista.Items.Add("(sin corte)");
+        }
+
+        var ejes = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        var cortes = new List<Corte>();
+
+        foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                     ejes.X.Select(x => (x.Id, x.Ordenada)).ToList(), 0.01))
+        {
+            cortes.Add(new Corte($"Eje {e.Id}  (X)", e.Id, true, e.Ordenada));
+        }
+
+        foreach (var e in CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(
+                     ejes.Y.Select(y => (y.Id, y.Ordenada)).ToList(), 0.01))
+        {
+            cortes.Add(new Corte($"Eje {e.Id}  (Y)", e.Id, false, e.Ordenada));
+        }
+
+        foreach (var lista in listas)
+        {
+            foreach (var c in cortes)
+            {
+                lista.Items.Add(c);
+            }
+
+            lista.SelectedIndex = 0;
+        }
+
+        // Y la lista del LADO, a lo que toca: al leer un modelo no hay corte elegido todavía, así
+        // que arranca apagada en lugar de ofrecer un lado que no se aplica a nada.
+        ActualizarLadoDelCorte();
+    }
+
+    /// <summary>
+    /// Al elegir un corte: se guarda y la vista se <b>pone de frente</b> a él.
+    /// </summary>
+    /// <remarks>
+    /// Orientar la cámara sola es la mitad de la gracia: un corte visto en isométrica sigue
+    /// siendo un dibujo torcido. Un corte por un eje <b>de los que van en X</b> se mira desde
+    /// el lado —el plano YZ—, y uno de los que van en Y, de frente —el plano XZ—. Después se
+    /// puede girar a mano, que para eso está el ratón.
+    /// </remarks>
+    /// <summary>
+    /// Los campos de corte cambiaron: se ajustan solas las opciones del <b>lado</b>.
+    /// </summary>
+    private void OnCortePersonalizadoCambiado(object sender, TextChangedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        ActualizarLadoDelCorte();
+    }
+
+    /// <summary>
+    /// Se cambió el <b>lado</b> del corte: el visor se rehace para enseñarlo.
+    /// </summary>
+    /// <remarks>
+    /// Se pidió que se vea al momento, y es lo que convierte la lista en algo útil: se elige un
+    /// lado y en la vista extruida se ve si por ahí hay algo o si el edificio está del otro lado.
+    /// Sin esto había que dibujar en AutoCAD para descubrir que el lado elegido era el vacío.
+    /// </remarks>
+    private void OnLadoDelCorteCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_listo)
+        {
+            return;
+        }
+
+        _vista.CorteHaciaMas = LadoDelCorteCombo?.SelectedIndex != 1;
+
+        RedibujarVistas();
+    }
+
+    /// <summary>
+    /// Pone en la lista del <b>lado</b> las opciones que tienen sentido para el corte pedido.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió que se active solo: las dos opciones no significan lo mismo en todos los cortes.
+    /// En uno cuyo plano está en <b>X</b> —la línea corre en Y— los lados son <b>derecha</b> e
+    /// <b>izquierda</b>; en uno cuyo plano está en <b>Y</b>, <b>arriba</b> y <b>abajo</b>. Leer
+    /// «derecha / arriba» cuando solo una de las dos aplica obliga a traducir mentalmente cada
+    /// vez, y es justo donde uno se equivoca de lado.
+    /// </para>
+    /// <para>
+    /// Y <b>las dos parejas se quedan</b> cuando se piden cortes en las <b>dos direcciones a la
+    /// vez</b> —unos en X y otros en Y—, porque entonces las dos cosas son ciertas: en el mismo
+    /// juego, el lado «+» es la derecha para unos cortes y el arriba para otros.
+    /// </para>
+    /// <para>
+    /// Si no hay ningún corte pedido, la lista se <b>apaga</b>: elegir el lado de un corte que no
+    /// existe no hace nada, y una lista viva que no sirve para nada es una invitación a buscarle
+    /// un efecto que no tiene.
+    /// </para>
+    /// </remarks>
+    private void ActualizarLadoDelCorte()
+    {
+        if (LadoDelCorteCombo is null || LadoDelCorteCombo.Items.Count < 2)
+        {
+            return;
+        }
+
+        var escritoEnX = !string.IsNullOrWhiteSpace(CorteXTxt?.Text);
+        var escritoEnY = !string.IsNullOrWhiteSpace(CorteYTxt?.Text);
+
+        var hayX = escritoEnX;
+        var hayY = escritoEnY;
+
+        // Sin nada escrito manda el corte de la lista, que es el que se va a dibujar.
+        if (!escritoEnX && !escritoEnY && _vista.CorteEje.Length > 0)
+        {
+            hayX = _vista.CorteEnX;
+            hayY = !_vista.CorteEnX;
+        }
+
+        var conCorte = hayX || hayY;
+
+        LadoDelCorteCombo.IsEnabled = conCorte;
+
+        var mas = !conCorte || (hayX && hayY)
+            ? "derecha / arriba"
+            : hayX ? "derecha (+X)" : "arriba (+Y)";
+
+        var menos = !conCorte || (hayX && hayY)
+            ? "izquierda / abajo"
+            : hayX ? "izquierda (-X)" : "abajo (-Y)";
+
+        // Solo el texto: el índice elegido no se toca, que si no cambiar de corte movería el lado
+        // que el usuario acaba de escoger.
+        if (LadoDelCorteCombo.Items[0] is ComboBoxItem arriba)
+        {
+            arriba.Content = mas;
+        }
+
+        if (LadoDelCorteCombo.Items[1] is ComboBoxItem abajo)
+        {
+            abajo.Content = menos;
+        }
+    }
+
+    private void OnCorteEjeCambiado(object sender, SelectionChangedEventArgs e)
+    {
+        // Sin esto, sincronizar una lista dispararía el evento de la otra, que volvería a
+        // sincronizar la primera: dos pestañas mirándose la una a la otra sin parar.
+        if (!_listo || _sincronizandoCortes)
+        {
+            return;
+        }
+
+        // El corte se elige en DOS sitios —el visor y la pestaña de planos— porque en el
+        // visor se busca y en la de planos se dibuja. Manda la lista que se acaba de tocar,
+        // y la otra se pone igual.
+        var lista = sender as ComboBox ?? CorteEjeCombo;
+
+        IgualarLaOtraListaDeCortes(lista);
+
+        if (lista.SelectedItem is not Corte corte)
+        {
+            _vista.SinCorte();
+            ActualizarLadoDelCorte();
+            RedibujarVistas();
+            return;
+        }
+
+        _vista.CorteEje = corte.Id;
+        _vista.CorteEnX = corte.EnX;
+        _vista.CorteOrdenada = corte.Ordenada;
+
+        // Las opciones del lado, a lo que toca: en un corte en X son derecha e izquierda, y en
+        // uno en Y, arriba y abajo.
+        ActualizarLadoDelCorte();
+
+        // De frente al corte: si el eje va en X se mira desde el lado, y al revés.
+        _vista.Azimut = corte.EnX ? 90 : 0;
+        _vista.Elevacion = 0;
+        _vista.Zoom = 1;
+        _vista.PanX = 0;
+        _vista.PanY = 0;
+
+        RedibujarVistas();
+    }
+
+    /// <summary>
+    /// Deja la <b>otra</b> lista de cortes en lo mismo que la que se acaba de tocar.
+    /// </summary>
+    /// <remarks>
+    /// Las dos listas se llenan con los mismos renglones y en el mismo orden, así que igualar
+    /// es copiar el índice: no hay que buscar por nombre ni comparar ordenadas, que es donde
+    /// aparecerían las diferencias por redondeo.
+    /// </remarks>
+    private void IgualarLaOtraListaDeCortes(ComboBox tocada)
+    {
+        var otra = ReferenceEquals(tocada, CorteEjeCombo) ? CortePlanoCombo : CorteEjeCombo;
+
+        if (otra.SelectedIndex == tocada.SelectedIndex
+            || tocada.SelectedIndex >= otra.Items.Count)
+        {
+            return;
+        }
+
+        _sincronizandoCortes = true;
+
+        try
+        {
+            otra.SelectedIndex = tocada.SelectedIndex;
+        }
+        finally
+        {
+            // En un finally a propósito: si esto se queda en true por una excepción, el
+            // desplegable del corte deja de responder y no hay forma de saber por qué.
+            _sincronizandoCortes = false;
+        }
+    }
+
+    /// <summary>Se está igualando una lista con la otra: no hay que reaccionar al evento.</summary>
+    private bool _sincronizandoCortes;
 
     /// <summary>Nivel elegido, o <c>null</c> cuando están seleccionados todos.</summary>
     private string? NivelElegido =>
@@ -1202,7 +1912,11 @@ public partial class MainWindow : Window
             Acotacion = _juego.Solapa.Acotacion,
             EscalaDibujo = LeerEscala(),
             EscalaHatch = LeerEscalaHatch(),
-            ModoSeccion = (int)ModoElegido
+            ModoSeccion = (int)ModoElegido,
+
+            // El doblez del gancho de las zapatas es del juego, igual que el modo de sección: se
+            // guarda con él y no con cada zapata.
+            GanchoZapatasDiametros = FactorGanchoElegido
         };
 
         foreach (var pl in _juego.Planos)
@@ -1250,6 +1964,11 @@ public partial class MainWindow : Window
             p.Zapatas.Add(FilaSerializable.Leer(z));
         }
 
+        foreach (var z in _datos.ZapatasCorridas)
+        {
+            p.ZapatasCorridas.Add(FilaSerializable.Leer(z));
+        }
+
         return p;
     }
 
@@ -1286,6 +2005,16 @@ public partial class MainWindow : Window
 
             HatchScaleBox.Text = p.EscalaHatch.ToString(
                 "0.######", CultureInfo.InvariantCulture);
+
+            // El doblez del gancho de las zapatas. Un .clk de antes de esta casilla trae el 15 por
+            // omisión, que es con el que se dibujó cuando se guardó.
+            ZapGanchoDiametrosBox.Text = TrazoZapata
+                .FactorGanchoValido(p.GanchoZapatasDiametros)
+                .ToString("0.#", CultureInfo.InvariantCulture);
+
+            // El rótulo de la hoja de corridas lee esa misma casilla, y aquí estamos con
+            // _listo en false, así que su TextChanged no va a saltar: se pone al día a mano.
+            ActualizarGanchoDeCorridas();
 
             _juego.Planos.Clear();
 
@@ -1342,6 +2071,16 @@ public partial class MainWindow : Window
                 var nueva = new ZapataAisladaRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.ZapatasAisladas.Add(nueva);
+            }
+
+            // ---- Zapatas Corridas ----
+            _datos.ZapatasCorridas.Clear();
+
+            foreach (var fila in p.ZapatasCorridas)
+            {
+                var nueva = new ZapataCorridaRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.ZapatasCorridas.Add(nueva);
             }
         }
         finally
@@ -1520,15 +2259,22 @@ public partial class MainWindow : Window
         {
             Cursor = Cursors.Wait;
 
-            using var cx = new EtabsConnection();
+            using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
             var modelo = EtabsReader.Leer(cx);
             _modeloEtabs = modelo;
+            _destinoLeido = DestinoCsi;
             _vista.Modelo = modelo;
             _vista.Reiniciar();
             PoblarNiveles(modelo);
+
+            // Y la lista de CORTES, que sale de los mismos ejes del modelo.
+            PoblarCortes(modelo);
             DibujarPlanta();
+
+            // Del mismo modelo sale la tabla de secciones, así que se llena de una vez.
+            LlenarSeccionesModelo(modelo);
 
             // Un plano por nivel, del más alto al más bajo, que es el orden en que se
             // arma un juego de planos estructurales.
@@ -1586,6 +2332,11 @@ public partial class MainWindow : Window
         _vista.VerLosas = VerLosasPlanoChk.IsChecked == true;
         _vista.VerDiagonales = false;
 
+        // LOS EJES son de la planta y solo de la planta: en el visor 3D la cuadrícula no
+        // aporta —se cruzaría con todo— así que esta casilla no tiene pareja allá y no hace
+        // falta restaurarla después.
+        _vista.VerEjes = VerEjesPlanoChk.IsChecked == true;
+
         _vista.DibujarPlanta(PlantaCanvas, NivelElegido);
 
         // Y se dejan como estaban, para que el visor 3D no herede estos filtros: es
@@ -1634,14 +2385,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        var planta = ArmarPlanta(_modeloEtabs);
+        // ==============================================================================
+        //  DE UN JALÓN, TODAS LAS PLANTAS: es como se usa y como lo hace la macro.
+        //  La casilla «Solo el nivel elegido» está para cuando se quiere una sola.
+        // ==============================================================================
+        var soloUna = SoloNivelElegidoChk?.IsChecked == true;
 
-        if (planta.Elementos.Count == 0)
+        var plantas = soloUna
+            ? new List<PlantaCad> { ArmarPlanta(_modeloEtabs) }
+            : ArmarTodasLasPlantas(_modeloEtabs);
+
+        // SOLO LA CUADRÍCULA, SI SE PIDIÓ: los ejes con sus burbujas y sus cotas, y los cortes,
+        // sin los elementos. Los elementos siguen dentro de cada planta porque de ellos salen el
+        // rectángulo que los ejes cubren y el paño al que se corren los de orilla: así la
+        // cuadrícula cae en el MISMO sitio que caería con la planta dibujada, y la estructura se
+        // puede dibujar después encima sin que nada se mueva.
+        var soloEjes = SoloEjesCortesChk?.IsChecked == true;
+
+        foreach (var p in plantas)
+        {
+            p.SoloEjes = soloEjes;
+        }
+
+        if (plantas.Sum(p => p.Elementos.Count) == 0)
         {
             MessageBox.Show(
-                "Con el nivel y los filtros actuales no queda ningún elemento que " +
-                "dibujar.\n\n" +
-                "Revisa la lista de niveles y las casillas de «Mostrar».",
+                soloUna
+                    ? "Con el nivel y los filtros actuales no queda ningún elemento que " +
+                      "dibujar.\n\nRevisa la lista de niveles y las casillas de «Mostrar»."
+                    : "Con los filtros actuales no queda ningún elemento que dibujar.\n\n" +
+                      "Revisa las casillas de «Mostrar».",
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -1654,20 +2427,43 @@ public partial class MainWindow : Window
             dynamic doc = AcadConnection.GetOrCreateDocument(app);
 
             var dibujante = new PlantaDrawer(doc);
-            var r = dibujante.Dibujar(planta);
+            var r = dibujante.DibujarTodas(plantas);
+
+            // ==============================================================================
+            //  Y EL CORTE ELEGIDO, AL LADO DE LA PLANTA
+            // ==============================================================================
+            //  Se pidió: que se dibuje el corte que esté seleccionado en la pestaña del
+            //  modelo, a 10 m de la planta. Juntos se leen, y separados no: la planta da los
+            //  espesores y las distancias entre ejes, y el corte da las alturas, que la
+            //  planta no puede dar.
+            var piezasDelCorte = DibujarElCorteElegido(dibujante);
 
             AcadConnection.Retry(() => { app.ZoomExtents(); });
 
             var fallos = dibujante.Fallos;
 
+            var cuales = plantas.Count == 1
+                ? $"del nivel {(string.IsNullOrWhiteSpace(plantas[0].Nivel) ? "(todos)" : plantas[0].Nivel)}"
+                : $"en {plantas.Count} plantas ({string.Join(", ", plantas.Select(p => p.Nivel))})";
+
+            // Con varios cortes ya no se puede nombrar «el» corte: se dicen las piezas, que es
+            // el dato que interesa —si son cero, algo no cuadró—.
             StatusText.Text =
-                $"Planta dibujada en AutoCAD: {r.Total} elemento(s) del nivel " +
-                $"{(string.IsNullOrWhiteSpace(planta.Nivel) ? "(todos)" : planta.Nivel)}.";
+                (soloEjes
+                    ? $"Dibujada en AutoCAD la CUADRÍCULA {cuales}, sin los elementos"
+                    : $"Dibujado en AutoCAD: {r.Total} elemento(s) {cuales}") +
+                (piezasDelCorte > 0
+                    ? $", y {piezasDelCorte} pieza(s) de corte."
+                    : ".");
 
             PlanoHintText.Text =
-                "Última planta dibujada: " + r +
-                ". Quedó repartida en las capas PLANTA-COLUMNAS, PLANTA-TRABES, " +
-                "PLANTA-MUROS, PLANTA-LOSAS, PLANTA-EJES y PLANTA-TEXTOS, en metros.";
+                $"Última pasada: {r} en {plantas.Count} planta(s), de un jalón y repartidas " +
+                "a la derecha, con sus EJES —burbujas en los cuatro lados—, sus COTAS " +
+                "—cadena eje a eje a 0.75 y ancho total a 1.17, en los cuatro lados—, la " +
+                "línea de mampostería de los muros de block y el rótulo de dos renglones " +
+                "con el nombre del nivel y la escala. Todo en LAS CAPAS DE LA MACRO, cada " +
+                "una con su color, y con las de CAPAS_AL_FRENTE encima. Falta el armado de " +
+                "losa y los bloques de sección rellenos.";
 
             if (fallos.Count == 0)
             {
@@ -1751,6 +2547,273 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// La hoja CONFIG del plano, para las decisiones que se toman <b>al armar</b> la planta.
+    /// </summary>
+    /// <remarks>
+    /// El dibujante tiene la suya, y esto no la duplica: son los mismos valores de omisión
+    /// leídos del mismo sitio. Aquí hace falta porque hay dos preguntas que solo se pueden
+    /// contestar con el MODELO delante —qué columnas desplantan en la base y si una cadena
+    /// lleva muro de piso a techo— y esas se resuelven antes de dibujar.
+    /// </remarks>
+    private CadLink.Cad.PlanoEstructural.ConfigPlano CfgPlano { get; } = new();
+
+    /// <summary>¿Este nivel es la cimentación? Es la regla de <c>CIMENTACION_STORIES</c>.</summary>
+    private bool EsNivelDeCimentacion(string? nivel) =>
+        !string.IsNullOrWhiteSpace(nivel) &&
+        new CadLink.Cad.PlanoEstructural.RotuloPlanta(CfgPlano).EsCimentacion(nivel);
+
+    /// <summary>
+    /// Trae a la planta de cimentación los <b>arranques</b> de castillos y columnas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Son las columnas de <b>cualquier</b> nivel cuyo extremo de abajo esté a la cota de la
+    /// base, con la holgura de <c>CIMENTACION_COLUMNA_TOL_CM</c>. En el modelo esas columnas
+    /// pertenecen al piso de arriba, así que sin esto la planta de cimentación salía sin un
+    /// solo arranque, y el arranque de los castillos es lo primero que se replantea.
+    /// </para>
+    /// <para>
+    /// <b>Y solo si hay muros que arranquen ahí</b>, que es como se pidió: en una cimentación
+    /// sin mampostería no se dibujan castillos ni columnas. Cuentan como muros los del propio
+    /// nivel y los que <b>desplantan</b> en él —los del piso de arriba que nacen en la base—,
+    /// que son los que llevan esos castillos.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// Trae los <b>castillos de área</b> que cruzan este nivel, sea cual sea su story.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un castillo modelado como área casi nunca se dibuja piso por piso: se traza de corrido
+    /// en la vista de alzado, de la cimentación al cerramiento, y entonces ETABS lo guarda en
+    /// <b>un</b> story —el de su punta—. Filtrando la planta por la etiqueta de story, ese
+    /// castillo solo salía en un nivel: en los demás aparecía la cadena y <b>debajo de ella,
+    /// nada</b>. Es lo que se reportó.
+    /// </para>
+    /// <para>
+    /// Así que se trae por <b>geometría</b>. Y con una condición que se pidió después, porque
+    /// sin ella el castillo salía <b>duplicado en dos niveles</b>: solo donde va de <b>piso a
+    /// techo</b>. Antes bastaba que lo <i>tocara</i> —con 20 cm de holgura—, así que un castillo
+    /// que muere justo en el nivel se dibujaba en su planta y otra vez en la de arriba, donde en
+    /// realidad no hay castillo. Ahora tiene que <b>cubrir el entrepiso</b>: al menos la
+    /// fracción de <c>MURO_FRACCION_ENTREPISO</c>, que es la regla que ya usaba la macro para
+    /// decidir si un muro es completo o es un antepecho.
+    /// </para>
+    /// <para>
+    /// La <b>Z se recorta</b> al entrepiso. En planta no se usa, pero el corte por un eje sí:
+    /// sin recortar, un castillo de tres niveles se dibujaría tres niveles de alto en el corte
+    /// de uno solo. Y si dos áreas son el mismo castillo —la de este nivel y la que se trae—,
+    /// el dibujante las <b>une</b>, así que no salen dos bloques encimados.
+    /// </para>
+    /// </remarks>
+    private void AgregarCastillosDeArea(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    {
+        // Sin nivel elegido la planta trae TODO el modelo: ya están dentro.
+        if (string.IsNullOrWhiteSpace(nivel) || VerColumnasPlanoChk.IsChecked != true)
+        {
+            return;
+        }
+
+        var n = modelo.Niveles.FirstOrDefault(
+            x => string.Equals(x.Nombre, nivel, StringComparison.OrdinalIgnoreCase));
+
+        // Sin la cota y la altura del nivel no hay entrepiso que comparar, y adivinarlo
+        // metería castillos de otros pisos en la planta.
+        if (n is null || n.AlturaM <= 0)
+        {
+            return;
+        }
+
+        var zAlta = n.ElevacionM;
+        var zBaja = zAlta - n.AlturaM;
+
+        // CUÁNTO HAY QUE CUBRIR PARA SER «DE PISO A TECHO»: la fracción del entrepiso de la
+        // hoja. Con 0.75, un castillo tiene que subir tres cuartas partes del nivel para
+        // contar en él; el que solo asoma no se dibuja, y así no sale en dos plantas.
+        var fraccion = CfgPlano.Numero("MURO_FRACCION_ENTREPISO", 0.75);
+
+        if (fraccion <= 0 || fraccion > 1)
+        {
+            fraccion = 0.75;
+        }
+
+        var minimo = n.AlturaM * fraccion;
+
+        foreach (var el in modelo.Elementos)
+        {
+            if (el.Clase != ClaseElemento.Muro
+                || !CadLink.Cad.PlanoEstructural.CastilloDeMuro.DicenLasNotas(null, el.Notas))
+            {
+                continue;
+            }
+
+            // El de este story ya entró por el camino de siempre.
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Su altura de verdad: los VÉRTICES, que es el dato fiel de un área.
+            var zMin = el.Vertices3D.Count > 0
+                ? el.Vertices3D.Min(v => v.Z)
+                : Math.Min(el.Z1, el.Z2);
+
+            var zMax = el.Vertices3D.Count > 0
+                ? el.Vertices3D.Max(v => v.Z)
+                : Math.Max(el.Z1, el.Z2);
+
+            // ¿VA DE PISO A TECHO EN ESTE NIVEL? Se mide lo que de verdad cubre DENTRO del
+            // entrepiso: un castillo de tres niveles lo cubre entero en los tres y sale en las
+            // tres plantas —que es lo correcto, en las tres hay castillo—, y uno que solo
+            // asoma por abajo no cubre nada y no sale, que es lo que lo duplicaba.
+            var cubre = Math.Min(zMax, zAlta) - Math.Max(zMin, zBaja);
+
+            if (cubre < minimo)
+            {
+                continue;
+            }
+
+            var e = ComoElementoDePlanta(el, modelo);
+
+            // Recortado a este entrepiso, para el corte.
+            e.Z1 = Math.Max(zMin, zBaja);
+            e.Z2 = Math.Min(zMax, zAlta);
+
+            p.Elementos.Add(e);
+        }
+    }
+
+    private void AgregarArranquesDeCimentacion(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    {
+        var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20) / 100;
+
+        // La cota de la base: la del nivel, o la más baja del modelo si no se conoce.
+        var zBase = modelo.Niveles
+            .Where(n => string.Equals(n.Nombre, nivel, StringComparison.OrdinalIgnoreCase))
+            .Select(n => n.ElevacionM)
+            .DefaultIfEmpty(modelo.Elementos.Count == 0
+                ? 0
+                : modelo.Elementos.Min(e => Math.Min(e.Z1, e.Z2)))
+            .First();
+
+        // ¿HAY MUROS QUE ARRANQUEN EN LA BASE? Si no, no se dibuja ningún castillo.
+        var hayMuros = p.Elementos.Any(e => e.Clase == ClasePlanta.Muro) ||
+                       modelo.Elementos.Any(
+                           e => e.Clase == ClaseElemento.Muro &&
+                                Math.Abs(Math.Min(e.Z1, e.Z2) - zBase) <= tol);
+
+        if (!hayMuros && CfgPlano.Bandera("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", true))
+        {
+            return;
+        }
+
+        foreach (var el in modelo.Elementos)
+        {
+            if (el.Clase != ClaseElemento.Columna)
+            {
+                continue;
+            }
+
+            // Que DESPLANTE en la base, y que no esté ya en la planta.
+            if (Math.Abs(Math.Min(el.Z1, el.Z2) - zBase) > tol)
+            {
+                continue;
+            }
+
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            p.Elementos.Add(ComoElementoDePlanta(el, modelo));
+        }
+    }
+
+    /// <summary>
+    /// Traduce un elemento del modelo al elemento de la planta que dibuja CadLink.Cad.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Esta traducción vive aquí a propósito —CadLink.Cad no referencia a CadLink.Etabs— y
+    /// está en un método propio porque hace falta <b>dos veces</b>: al recorrer los elementos
+    /// del nivel y al traer los arranques de castillos a la planta de cimentación. Con el
+    /// bloque duplicado, cualquier dato nuevo se quedaba fuera en uno de los dos sitios.
+    /// </para>
+    /// </remarks>
+    private ElementoPlanta ComoElementoDePlanta(ElementoEtabs el, ModeloEtabs modelo)
+    {
+        // El TIPO se clasifica con la regla de la macro -ClasificaTipo- porque es lo
+        // que decide la CAPA: castillo y columna no van a la misma, ni dala y trabe.
+        // Y la FORMA, para que un perfil de acero se vaya a E-ACERO.
+        var t2 = el.Clase == ClaseElemento.Columna ? el.PeralteM : el.AnchoM;
+        var t3 = el.Clase == ClaseElemento.Columna ? el.AnchoM : el.PeralteM;
+
+        var e = new ElementoPlanta
+        {
+            Clase = ClasePlantaDe(el.Clase),
+
+            // CON LAS NOTAS, que es lo que faltaba y por lo que las cadenas no salían como
+            // cadenas: aquí se clasificaba SIN ellas, así que una «CC 15X25» de 25 cm de
+            // peralte pasaba de los 20 del criterio por medidas y se iba a E-TRABE, aunque en
+            // sus notas dijera CADENA DE CERRAMIENTO. La tabla de secciones sí las leía; el
+            // dibujo, no, y por eso una decía una cosa y el otro otra.
+            Tipo = SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3, null, el.Notas),
+            Forma = el.Forma,
+            Etiqueta = el.Etiqueta,
+            Seccion = el.Seccion,
+
+            // EL PIER DEL MURO, que es lo único que la macro rotula ahí, y el GIRO de
+            // la sección, que es lo que orienta el bloque de la columna como está en
+            // ETABS. Sin estos dos, los muros salían rotulados con el nombre de su
+            // propiedad y todas las columnas derechas.
+            Pier = el.Pier,
+            AnguloGrados = el.AnguloGrados,
+
+            // ¿ESTA CADENA LLEVA MURO DE PISO A TECHO DEBAJO? Solo se pregunta por las
+            // cadenas: la respuesta decide si su línea sale a trazos —ACAD_ISO02W100— o
+            // normal, y hay que mirar el nivel de abajo del modelo, que es algo que el
+            // dibujante no puede hacer porque solo ve una planta.
+            MuroDePisoATecho = el.Clase == ClaseElemento.Trabe
+                               && modelo.MuroDePisoATechoBajo(el),
+
+            // De qué es el muro: lo clasifica la regla de la macro con las palabras de
+            // PALABRAS_MAMPOSTERIA y PALABRAS_CONCRETO. Es lo que decide si lleva la
+            // polilínea ancha de block al centro.
+            Material = el.Clase == ClaseElemento.Muro
+                ? SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)
+                : string.Empty,
+
+            // LAS NOTAS DE LA PROPIEDAD, tal como vienen del modelo: de ahí sale si la losa
+            // es un VOLADIZO, que es lo que decide su capa y su achurado.
+            Notas = el.Notas,
+
+            // LAS COTAS. En planta no se usan, pero el CORTE por un eje es un alzado y ahí la
+            // altura es la mitad del dibujo: sin la Z, una columna no tiene de dónde a dónde.
+            Z1 = el.Z1,
+            Z2 = el.Z2,
+
+            X1 = el.X1, Y1 = el.Y1,
+            X2 = el.X2, Y2 = el.Y2,
+            AnchoM = el.AnchoM,
+            PeralteM = el.PeralteM,
+
+            // LOS ESPESORES DEL PERFIL. Son los que permiten dibujar la sección de acero
+            // como es —la I con sus patines, el cajón con su hueco— en lugar de una caja
+            // en la que no se distingue una IR de un tubo. El lector ya los trae.
+            PatinM = el.PatinM,
+            AlmaM = el.AlmaM,
+            ParedM = el.ParedM
+        };
+
+        foreach (var v in el.Vertices)
+        {
+            e.Vertices.Add((v.X, v.Y));
+        }
+
+        return e;
+    }
+
+    /// <summary>
     /// Traduce el modelo de ETABS a lo que entiende el dibujante de plantas.
     /// </summary>
     /// <remarks>
@@ -1759,9 +2822,9 @@ public partial class MainWindow : Window
     /// las secciones. Un solo sitio traduce y el dibujante se puede alimentar mañana
     /// de otra fuente sin tocarlo.
     /// </remarks>
-    private PlantaCad ArmarPlanta(ModeloEtabs modelo)
+    private PlantaCad ArmarPlanta(ModeloEtabs modelo, string? nivelPedido = null)
     {
-        var nivel = NivelElegido;
+        var nivel = nivelPedido ?? NivelElegido;
 
         var p = new PlantaCad
         {
@@ -1779,28 +2842,66 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (!VisibleEnElPlano(el.Clase))
+            if (!VisibleEnElPlano(el))
             {
                 continue;
             }
 
-            var e = new ElementoPlanta
-            {
-                Clase = ClasePlantaDe(el.Clase),
-                Etiqueta = el.Etiqueta,
-                Seccion = el.Seccion,
-                X1 = el.X1, Y1 = el.Y1,
-                X2 = el.X2, Y2 = el.Y2,
-                AnchoM = el.AnchoM,
-                PeralteM = el.PeralteM
-            };
+            p.Elementos.Add(ComoElementoDePlanta(el, modelo));
+        }
 
-            foreach (var v in el.Vertices)
-            {
-                e.Vertices.Add((v.X, v.Y));
-            }
+        // ==============================================================================
+        //  EN LA CIMENTACIÓN, LOS ARRANQUES DE CASTILLOS Y COLUMNAS
+        // ==============================================================================
+        //  En el modelo la columna que va del suelo al primer piso pertenece al piso de
+        //  ARRIBA, así que en la planta de cimentación no salía ninguna y el plano no decía
+        //  dónde arrancan los castillos, que es justo lo que se replantea primero.
+        //
+        //  Es CIMENTACION_DIBUJA_COLUMNAS: se traen las columnas de cualquier nivel que
+        //  DESPLANTEN en la base, con la holgura en Z de la hoja.
+        //
+        //  Y con la regla que se pidió: SI NO HAY MUROS que arranquen ahí, no se dibuja
+        //  ninguna. Un juego de cimentación sin mampostería no lleva castillos, y sacarlos
+        //  «por si acaso» llena el plano de secciones que no se van a construir.
+        if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
+        {
+            AgregarArranquesDeCimentacion(modelo, p, nivel);
+        }
 
-            p.Elementos.Add(e);
+        // ==============================================================================
+        //  Y LOS CASTILLOS DE ÁREA QUE CRUZAN ESTE NIVEL, DE CUALQUIER STORY
+        // ==============================================================================
+        //  Es el mismo problema que los arranques, y por eso va al lado. Un castillo
+        //  modelado como ÁREA se dibuja de corrido en la vista de alzado —de la cimentación
+        //  al cerramiento, de una sola pieza— y entonces ETABS lo guarda en UN story: el de
+        //  su punta. En la planta de los demás niveles no aparecía, así que la cadena salía
+        //  y el castillo que va debajo de ella, no. Es lo que se reportó.
+        //
+        //  Aquí se trae por su GEOMETRÍA y no por su etiqueta de story: si su altura cruza
+        //  este entrepiso —o llega a él—, en esta planta hay castillo y hay que dibujarlo.
+        if (CfgPlano.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)
+            && CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true))
+        {
+            AgregarCastillosDeArea(modelo, p, nivel);
+        }
+
+        // ==============================================================================
+        //  LOS EJES DE LA CUADRÍCULA
+        // ==============================================================================
+        //  Son los MISMOS para todas las plantas —la cuadrícula es del edificio, no de un
+        //  nivel—, así que se ponen en cada una tal cual. Salen del modelo si el programa
+        //  los dio y, si no, se DEDUCEN de las columnas y los muros, que es el respaldo de
+        //  la macro: GetGridSys_2 no existe en todas las versiones de ETABS.
+        var ejes = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        foreach (var e in ejes.X)
+        {
+            p.EjesX.Add((e.Id, e.Ordenada));
+        }
+
+        foreach (var e in ejes.Y)
+        {
+            p.EjesY.Add((e.Id, e.Ordenada));
         }
 
         // El texto se dimensiona respecto al TAMAÑO DE LA PLANTA, no a un valor fijo:
@@ -1810,6 +2911,52 @@ public partial class MainWindow : Window
         p.AlturaTexto = AlturaDeTexto(p);
 
         return p;
+    }
+
+    /// <summary>
+    /// Una planta <b>por nivel</b>, en el orden en que la macro las reparte.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ORDEN_NIVELES = ASC</c>, así que primero el nivel más bajo: el juego se lee de
+    /// izquierda a derecha empezando por la cimentación, como se arma un juego de planos.
+    /// </para>
+    /// <para>
+    /// Los niveles <b>sin elementos</b> se saltan, igual que hace <c>HayElementosEn</c>: un
+    /// hueco en la fila de plantas por un nivel vacío se ve como un error de dibujo.
+    /// </para>
+    /// <para>
+    /// La altura de texto es la MISMA para todas —la que sale de la planta más grande— para
+    /// que el juego se vea de una pieza y no con una letra por planta.
+    /// </para>
+    /// </remarks>
+    private List<PlantaCad> ArmarTodasLasPlantas(ModeloEtabs modelo)
+    {
+        var plantas = new List<PlantaCad>();
+
+        // Los niveles CON ELEMENTOS y no la lista de la API: es la única forma de que la
+        // BASE entre, porque GetStories no la devuelve y en el modelo sí hay elementos con
+        // Story = «Base» —las cadenas de desplante—. Ver ModeloEtabs.NivelesConElementos.
+        foreach (var n in modelo.NivelesConElementos(ascendente: true))
+        {
+            var p = ArmarPlanta(modelo, n.Nombre);
+
+            if (p.Elementos.Count > 0)
+            {
+                plantas.Add(p);
+            }
+        }
+
+        if (plantas.Count > 1)
+        {
+            var altura = plantas.Max(p => p.AlturaTexto);
+            foreach (var p in plantas)
+            {
+                p.AlturaTexto = altura;
+            }
+        }
+
+        return plantas;
     }
 
     private static double AlturaDeTexto(PlantaCad p)
@@ -1846,6 +2993,39 @@ public partial class MainWindow : Window
 
         var lado = Math.Max(xMax - xMin, yMax - yMin);
         return Math.Clamp(lado / 100.0, 0.05, 0.60);
+    }
+
+    /// <summary>
+    /// ¿Se dibuja este elemento, según las casillas de la pestaña?
+    /// </summary>
+    /// <remarks>
+    /// Se pregunta por el ELEMENTO y no solo por su clase por una razón: el castillo modelado
+    /// como <b>shell de muro</b> —el que lleva CASTILLO en las notas de su propiedad— se
+    /// dibuja como castillo, así que tiene que seguir a la casilla de las <b>columnas</b>. Con
+    /// la casilla de los muros, quien los apaga para ver solo la estructura los perdería
+    /// todos, y en el plano ya no son muros.
+    /// </remarks>
+    private bool VisibleEnElPlano(ElementoEtabs el)
+    {
+        if (el.Clase != ClaseElemento.Muro)
+        {
+            return VisibleEnElPlano(el.Clase);
+        }
+
+        // El castillo de área sigue a la casilla de las COLUMNAS y la cadena de área a la de las
+        // TRABES, porque en el plano ya no son muros: son la pieza que dicen sus notas. Quien apaga
+        // los muros para ver solo la estructura las perdería todas.
+        if (CadLink.Cad.PlanoEstructural.CastilloDeMuro.DicenLasNotas(null, el.Notas))
+        {
+            return VerColumnasPlanoChk.IsChecked == true;
+        }
+
+        if (CadLink.Cad.PlanoEstructural.CadenaDeMuro.DicenLasNotas(null, el.Notas))
+        {
+            return VerTrabesPlanoChk.IsChecked == true;
+        }
+
+        return VisibleEnElPlano(el.Clase);
     }
 
     private bool VisibleEnElPlano(ClaseElemento c) => c switch
@@ -1958,6 +3138,12 @@ public partial class MainWindow : Window
                 _vista.Azimut = 0;
                 _vista.Elevacion = 90;
                 break;
+
+            case "ENCUADRAR":
+                // A propósito no toca el giro: se deja la vista como está y solo se
+                // recentra. Es la salida cuando uno se pierde arrastrando, y si además le
+                // cambiara el punto de vista habría que volver a orientarse.
+                break;
         }
 
         _vista.Zoom = 1;
@@ -1976,10 +3162,22 @@ public partial class MainWindow : Window
         _arrastreDesde = e.GetPosition(lienzo);
 
         // Girar tiene sentido en las dos vistas de volumen; en planta, no.
-        _girando = e.ChangedButton == MouseButton.Left
-                   && (ReferenceEquals(lienzo, Vista3DCanvas)
-                       || ReferenceEquals(lienzo, ExtruidaCanvas));
-        _moviendo = e.ChangedButton == MouseButton.Right;
+        var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);
+
+        _girando = e.ChangedButton == MouseButton.Left && !esPlanta;
+
+        // ==============================================================================
+        //  EN PLANTA, EL BOTÓN IZQUIERDO TAMBIÉN MUEVE
+        // ==============================================================================
+        //  Aquí estaba el problema de «solo me deja hacer zoom»: mover era SOLO con el
+        //  botón derecho, y en la planta el izquierdo no hacía nada —no hay nada que girar—,
+        //  así que quien arrastraba con el izquierdo, que es lo natural, no veía respuesta y
+        //  parecía que la vista estuviera clavada.
+        //
+        //  En las vistas de volumen se queda como estaba: el izquierdo gira y el derecho
+        //  mueve, que es lo que hace ETABS.
+        _moviendo = e.ChangedButton == MouseButton.Right
+                    || (esPlanta && e.ChangedButton == MouseButton.Left);
 
         if (_girando || _moviendo)
         {

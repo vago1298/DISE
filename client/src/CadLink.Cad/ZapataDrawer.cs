@@ -85,12 +85,24 @@ public sealed partial class ZapataDrawer
     /// <summary>Gancho de las parrillas de la zapata: la macro pasa 0.03.</summary>
     private const double GanchoParrilla = 0.03;
 
-    // Cotas y rótulos
-    private const double CotaOffsetVert1 = 0.08;
-    private const double CotaOffsetVert2 = 0.16;
-    private const double CotaOffsetCadena = 0.14;
-    private const double CotaOffsetTotal = 0.22;
-    private const double CotaDoblezOffset = 0.06;
+    // ---- Cotas y rótulos: TODO cuelga de la ESQUINA INFERIOR DERECHA ----
+    //
+    // Las distancias viven en TrazoZapata, en un solo bloque y medidas todas a esa esquina, para
+    // que no vuelva a pasar lo de antes: tres anclas distintas -paño izquierdo, desplante y fondo
+    // de la plantilla- y el rótulo además centrado en el eje. Con eso, cambiar el ancho de una
+    // zapata movía cada anotación en una dirección distinta.
+    private const double CotaOffsetVert1 = TrazoZapata.AnotacionCotaVert1;
+    private const double CotaOffsetVert2 = TrazoZapata.AnotacionCotaVert2;
+    private const double CotaOffsetCadena = TrazoZapata.AnotacionCadena;
+    private const double CotaOffsetTotal = TrazoZapata.AnotacionTotal;
+
+    /// <summary>Separación de la cota de la pata del gancho respecto de la pata.</summary>
+    /// <remarks>
+    /// Los 6 cm de la macro, y ahí se quedan. Bajarlas a un renglón propio por debajo de la cota
+    /// total las dejaba lejos de lo que miden y con las líneas de extensión cruzando la zapata
+    /// entera.
+    /// </remarks>
+    private const double CotaDoblezOffset = TrazoZapata.AnotacionGancho;
 
     // Los offsets de rótulo de la macro -0.32, 0.41 y 0.49 desde el fondo de la zapata- YA NO
     // ESTÁN: a esa distancia el rótulo cae sobre el dibujo y sobre las cotas de anchos. Ahora el
@@ -162,8 +174,20 @@ public sealed partial class ZapataDrawer
     private const string CapaConcreto = "CONCRETO";
     private const string CapaEstribos = "ESTRIBOS";
     private const string CapaRotulos = "ROTULOS";
+
+    /// <summary>La capa <c>TEXTOS</c> de la macro: de ella sale el color de los rótulos.</summary>
+    private const string CapaTextos = "TEXTOS";
     private const string CapaCotas = "COTAS";
-    private const string CapaLeader = "LEADER";
+    /// <summary>
+    /// La capa de los leaders: <b>la misma que la de los rótulos</b>.
+    /// </summary>
+    /// <remarks>
+    /// Se pidió expresamente, y para las dos hojas: aisladas y corridas. Tenía capa propia
+    /// —<c>LEADER</c>—, y eso obliga a apagar dos capas para quitar la anotación de un plano, y a
+    /// acordarse de que la línea y el texto que la acompaña viven en sitios distintos. La flecha es
+    /// parte del rótulo, así que va con él.
+    /// </remarks>
+    private const string CapaLeader = CapaRotulos;
     private const string CapaTerreno = "TERRENO_LINEA";
     private const string CapaTerrenoHatch = "TERRENO_HATCH";
     private const string CapaPlantilla = "PLANTILLA";
@@ -188,6 +212,16 @@ public sealed partial class ZapataDrawer
 
     /// <summary>Modo de relleno de la sección en curso: la celda B3 de la macro.</summary>
     private bool _relleno;
+
+    /// <summary>
+    /// Los estribos de la zapata en curso, para subirlos al frente al final.
+    /// </summary>
+    /// <remarks>
+    /// El estribo se dibuja antes que las varillas longitudinales, así que sin esto queda por debajo
+    /// de ellas y en la zona de dobleces —donde todo se cruza— desaparece. Se sube con la tabla
+    /// <c>ACAD_SORTENTS</c>, el mismo <i>bring to front</i> que se usa a mano en AutoCAD.
+    /// </remarks>
+    private readonly List<object> _estribos = new();
 
     // Rotación de 90° del elemento vertical.
     private bool _rot;
@@ -222,6 +256,26 @@ public sealed partial class ZapataDrawer
     /// </para>
     /// </remarks>
     public bool SeccionRellena { get; set; }
+
+    /// <summary>
+    /// Largo del doblez del gancho de arranque, en <b>diámetros</b>. Por omisión, los 15 de la macro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es una decisión del juego entero, no de cada zapata: se captura una vez en la hoja y vale
+    /// para todas. Con 40, la pata de una varilla del #4 pasa de 19 a 51 cm, y el dibujo <b>y su
+    /// cota</b> salen con ese valor: los dos lo leen de aquí, así que no puede pasar que la cota
+    /// diga una cosa y la pata mida otra.
+    /// </para>
+    /// <para>
+    /// Se valida con <see cref="TrazoZapata.FactorGanchoValido"/>, que es quien decide qué hacer
+    /// con una casilla vacía o con un valor imposible.
+    /// </para>
+    /// </remarks>
+    public double FactorGanchoDiametros { get; set; } = TrazoZapata.FactorGanchoAbajo;
+
+    /// <summary>El factor ya validado, que es el que se usa al dibujar.</summary>
+    private double FactorGancho => TrazoZapata.FactorGanchoValido(FactorGanchoDiametros);
 
     /// <summary>Meter la elevación en un bloque con el nombre de la zapata.</summary>
     /// <remarks><c>ZAPATA_COMO_BLOQUE</c>. En <c>false</c> se dibuja directo en el modelo.</remarks>
@@ -363,9 +417,22 @@ public sealed partial class ZapataDrawer
 
         var dSupDado = Diam(z.VarDadoSup);
         var dInfDado = Diam(z.VarDadoInf);
-        var dIntDado = Diam(z.VarIntDado);
         var dEstDado = Diam(z.EstriboDado);
         var dMaxDado = Math.Max(dSupDado, dInfDado);
+
+        // SI NO SE DIJO EL DIÁMETRO DE LAS INTERMEDIAS, SE USA EL DE LAS DE ESQUINA. Es el respaldo
+        // de la macro, y FALTABA:
+        //     If Len(NormalizeDiaLabel(txtIntDado)) = 0 Then txtIntDado = txtAA7
+        // Sin él, una sección que declara intermedias pero no su diámetro —pasa cuando las lleva en
+        // los lechos y no en la casilla de intermedias— deja el dado SIN VARILLAS INTERIORES: el
+        // conteo dice que hay, el diámetro sale 0 y no se dibuja ninguna. Y el rótulo también las
+        // perdía, porque se arma con el mismo dato.
+        var diaIntDado = Diam(z.VarIntDado) > 0 ? z.VarIntDado : z.VarDadoSup;
+        var dIntDado = Diam(diaIntDado);
+
+        // El mismo respaldo para la columna:
+        //     If Len(NormalizeDiaLabel(txtIntCol)) = 0 Then txtIntCol = txtAA5
+        var diaIntCol = Diam(z.VarIntColumna) > 0 ? z.VarIntColumna : z.VarColSup;
 
         var dSupCol = Diam(z.VarColSup);
         var dInfCol = Diam(z.VarColInf);
@@ -440,53 +507,69 @@ public sealed partial class ZapataDrawer
 
         var intermediasIguales = z.NIntDado > 0 && z.NIntColumna > 0;
 
+        // Las varillas de cada elemento, en las MISMAS posiciones en las que el alzado las dibuja.
+        var barrasDado = BarrasDelElemento(
+            a.XDadoDer, a.XDadoDer - a.XDadoIzq, recDadoM, dSupDado, dInfDado, z.NIntDado);
+
+        var barrasCol = BarrasDelElemento(
+            a.XColDer, a.XColDer - a.XColIzq, recColM, dSupCol, dInfCol, z.NIntColumna);
+
         var union = PrepararUnion(
-            a.XDadoDer, a.XDadoDer - a.XDadoIzq, recDadoM, dSupDado, dInfDado, z.NIntDado,
-            z.VarIntDado, dIntDado, z.VarDadoSup, z.VarDadoInf,
-            a.XColDer, a.XColDer - a.XColIzq, recColM, dSupCol, dInfCol, z.NIntColumna,
+            barrasDado, barrasCol,
+            dSupDado, dInfDado, dIntDado,
+            z.VarDadoSup, z.VarDadoInf, diaIntDado,
             esquinasIguales, intermediasIguales);
 
-        // Alto de la zona de dobleces, recortado para que quede barra recta en el dado.
-        var hMaxZona = (yDadoTop - recDadoM) - (yZapTop + MinBarraRectaDado);
+        // EL DOBLEZ VA A 1:6 Y NO SE NEGOCIA. Lo resuelve TrazoZapata.Desplazamiento: el alto es
+        // seis veces el corrimiento y lo que se acomoda es DÓNDE queda ese doblez. Si no cabe en el
+        // dado, acaba dentro de la columna; y si no cabe ni así, no se dibuja y se avisa.
+        //
+        // Antes el alto se recortaba a lo que quedaba libre en el dado, y el doblez salía más
+        // parado que el detalle: en el dibujo que se revisó, 1:3.
+        var trans = TrazoZapata.Desplazamiento(union.DxMax, yZapTop, yDadoTop, recDadoM);
 
-        if (hMaxZona < 0)
-        {
-            hMaxZona = 0;
-        }
+        var yZonaBot = trans.Cabe ? trans.YZonaBot : yDadoTop - recDadoM;
+        var yDiagTop = trans.Cabe ? trans.YDiagTop : yDadoTop;
 
-        var hZona = Math.Min(union.Alto, hMaxZona);
-
-        if (hZona < 0)
-        {
-            hZona = 0;
-        }
-
+        // La varilla se mete un recubrimiento en la columna, para que se vea la continuidad. Es el
+        // yZonaTop de la macro y NO más: por encima de ahí las varillas son las de la columna, que
+        // dibuja su propio elemento. Pasarse de ese punto es dibujar dos veces la misma varilla.
         var yZonaTop = yDadoTop + recColM;
-        var yZonaBot = yDadoTop - hZona;
 
-        if (yZonaBot > yDadoTop - recDadoM)
-        {
-            yZonaBot = yDadoTop - recDadoM;
-        }
+        // Se dibuja la transición solo si el doblez cabe a 1:6 DENTRO del dado. Si no, las varillas
+        // del dado se quedan rectas y su gancho de remate se conserva, como cuando no hay unión.
+        //
+        // Y una condición más, que es la que evitaba el dibujo duplicado: al dado se le recortan
+        // las varillas justo en yZonaBot para que la unión siga desde ahí. Si ese recorte fuera tan
+        // grande que no dejara barra donde recortar, ElementoVertical lo IGNORA y dibuja la varilla
+        // completa; entonces la unión la volvía a dibujar encima y salían las dos.
+        var topeBarrasDado = yDadoTop - recDadoM;
+
+        // La misma cuenta que hace ElementoVertical para decidir hasta dónde puede recortar: el
+        // arranque de la varilla del dado es el desplante + su recubrimiento + lo que se le sube el
+        // gancho, y hay que dejarle 2 cm. Le faltaba el recubrimiento y por eso había un margen en
+        // el que la unión se dibujaba pero el recorte no llegaba a aplicarse.
+        var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;
+
+        var aplicarUnion = union.Activa && trans.Cabe && recorteCabe;
 
         var recorteDado = 0.0;
 
-        if (union.Activa)
+        if (aplicarUnion)
         {
             recorteDado = Math.Max((yDadoTop - recDadoM) - yZonaBot, 0);
 
-            // EL TRASLAPE VA A 1:6 —la RELACION_DESPLAZAMIENTO de la macro—: la zona de dobleces
-            // mide seis veces lo que la barra se corre de lado. Si el dado es tan bajo que no
-            // caben esos seis, la zona se recorta y el doblez sale MAS PARADO que 1:6, así que se
-            // dice: un doblez más parado de lo que manda el reglamento no se arregla dibujándolo
-            // bonito, se arregla subiendo el dado o bajando el desplazamiento.
-            if (union.Alto > hZona + 1e-6)
-            {
-                Nota($"Zapata '{z.Id}': el traslape del dado con la columna necesita "
-                     + $"{union.Alto:0.###} m para quedar a 1:6 y en el dado solo caben "
-                     + $"{hZona:0.###} m, así que el doblez queda más parado. Sube el dado o "
-                     + "reduce la diferencia entre el ancho del dado y el de la columna.");
-            }
+        }
+        else if (union.Activa)
+        {
+            // No cabe: las varillas del dado se quedan RECTAS y la columna se traslapa aparte. Es
+            // mejor eso que un doblez más parado que el detalle, o metido encima de las varillas de
+            // la columna, que alguien podría armar así en obra.
+            Nota($"Zapata '{z.Id}': el desplazamiento de {union.DxMax:0.###} m pediría "
+                 + $"{trans.Alto:0.###} m de doblez a 1:6 y en el dado solo hay "
+                 + $"{Math.Max(topeBarrasDado - (yZapBot + z.EspesorM + TrazoZapata.MinBarraRectaDado), 0):0.###} m, "
+                 + "así que las varillas del dado se dejan rectas y la columna se traslapa "
+                 + "aparte. Sube el dado o acerca los anchos del dado y de la columna.");
         }
 
         // offEstribosFin del dado: con columna de concreto, 2 cm; con columna de acero hay que
@@ -515,23 +598,31 @@ public sealed partial class ZapataDrawer
             ? (lindero ? 2 : 1)
             : 1;
 
+        // Dónde empieza el acero del dado, para poder barrer después SOLO lo que se dibuje de aquí
+        // en adelante: la parrilla de la zapata también está en capas VAR_ y no se toca.
+        var idxAntesDado = CuentaDelContenedor();
+
         r.Estribos += ElementoVertical(
             x0: a.XDadoDer, y0: yZapBot, largo: alturaDadoRep,
             anchoCm: z.AnchoDadoCm, recCm: z.RecDadoCm,
             diaSup: z.VarDadoSup, diaInf: z.VarDadoInf,
-            nInt: z.NIntDado, diaInt: z.VarIntDado,
+            nInt: z.NIntDado, diaInt: diaIntDado,
             estrDia: z.EstriboDado, espStr: z.SepEstriboDado,
             gancho: GanchoRemate, esDado: true, subirGanchos: subirGanchoDado,
             gancho12D: true, recorteConcIni: z.EspesorM, fracCorte: 0,
             estrOmitirIni: omitirEstribos, omitGanchoIni: false,
-            omitGanchoFin: union.Activa, ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1,
+            omitGanchoFin: aplicarUnion, ganchoIniAfuera: z.ColumnaDeConcreto ? 0 : 1,
             recorteBarrasFin: recorteDado, offEstribosFin: offEstFinDado,
             // ganchosAmbosIzq va SIEMPRE en false, también en el lindero. La regla es el TIPO
             // DE COLUMNA y nada más: con columna de concreto las dos patas doblan hacia ADENTRO
             // del núcleo -que es donde hay concreto que las reciba- y con columna de acero una
             // adentro y otra afuera. La macro V1 del lindero las mandaba las dos a la izquierda
             // por el paño del lindero, y eso dejaba una pata saliéndose del dado.
-            estribosAlTope: z.ColumnaDeConcreto, ganchosAmbosIzq: false);
+            estribosAlTope: z.ColumnaDeConcreto, ganchosAmbosIzq: false,
+            // CON UNIÓN, LAS VARILLAS DEL DADO ACABAN EXACTAMENTE DONDE ARRANCAN LOS DOBLECES.
+            // No basta con pedir el recorte: por debajo se le restan holguras y márgenes y quedaba
+            // un tramo recto asomando justo donde empieza el 1:6.
+            topeBarras: aplicarUnion ? yZonaBot : null);
 
         if (z.ColumnaDeConcreto)
         {
@@ -539,27 +630,54 @@ public sealed partial class ZapataDrawer
                 x0: a.XColDer, y0: yDadoTop, largo: AlturaColumnaRep,
                 anchoCm: z.AnchoColumnaCm, recCm: z.RecColumnaCm,
                 diaSup: z.VarColSup, diaInf: z.VarColInf,
-                nInt: z.NIntColumna, diaInt: z.VarIntColumna,
+                nInt: z.NIntColumna, diaInt: diaIntCol,
                 estrDia: z.EstriboColumna, espStr: z.SepEstriboColumna,
                 gancho: GanchoRemate, esDado: false, subirGanchos: 0,
                 gancho12D: false, recorteConcIni: 0, fracCorte: ColumnaFraccionCorte,
-                estrOmitirIni: -1, omitGanchoIni: union.Activa,
+                estrOmitirIni: -1, omitGanchoIni: aplicarUnion,
                 omitGanchoFin: false, ganchoIniAfuera: -1,
                 recorteBarrasFin: 0, offEstribosFin: -1,
                 estribosAlTope: false, ganchosAmbosIzq: false);
 
-            if (union.Activa)
+            if (aplicarUnion)
             {
-                DibujarUnion(union, yZonaBot, yDadoTop, yZonaTop, yDadoTop - recDadoM);
+                // PRIMERO SE BARRE LA ZONA y después se dibujan los dobleces, igual que el VBA: así
+                // no queda ni un tramo recto de las varillas del dado dentro del 1:6, venga de la
+                // holgura que venga.
+                if (idxAntesDado >= 0)
+                {
+                    RecortarVerticalesEnLaZona(
+                        idxAntesDado, yZonaBot, yZonaTop, a.XDadoIzq, a.XDadoDer);
+                }
+
+                // El doblez acaba en yDiagTop -el 1:6- y de ahí la varilla sigue vertical.
+                DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop);
+
+
+                if (union.SinPareja > 0)
+                {
+                    Nota($"Zapata '{z.Id}': {union.SinPareja} varilla(s) del dado no tienen pareja "
+                         + "en la columna, así que no llevan doblez y acaban en el dado. Si tienen "
+                         + "que subir, dale a la columna las mismas varillas intermedias.");
+                }
             }
         }
+
+        // ---------- LOS ESTRIBOS, AL FRENTE ----------
+        // Lo último de la geometría, y por eso va aquí y no junto a donde se dibujan: el orden lo
+        // decide el final, cuando ya están todas las varillas. Es el «draw order → bring to front»
+        // de AutoCAD, con la misma tabla ACAD_SORTENTS que usa el alzado.
+        AlFrente(_cont, _estribos);
+        _estribos.Clear();
 
         // ---------- Se inserta el bloque de la zapata ----------
         _cont = _ms;
 
         if (usaBloque)
         {
-            if (InsertarBloque(nombreBloque, xBase, yZapBot, CapaBloqueZapata))
+            // En su sitio y sin recolocar: el bloque se creó con su punto base en (xBase, yZapBot)
+            // y su geometría está en coordenadas absolutas.
+            if (InsertarBloquePropio(nombreBloque, xBase, yZapBot, CapaBloqueZapata))
             {
                 r.Bloques++;
             }
@@ -570,11 +688,11 @@ public sealed partial class ZapataDrawer
         PlantillaTexto(xBase, yZapBot, anchoZapata, TrazoZapata.PlantillaEspesor);
 
         // ---------- Rótulos con leader del dado y de la columna ----------
-        RotuloDelDado(z, a, lindero);
+        RotuloDelDado(z, a, lindero, diaIntDado);
 
         if (z.ColumnaDeConcreto)
         {
-            RotuloDeLaColumna(z, a, lindero);
+            RotuloDeLaColumna(z, a, lindero, diaIntCol);
         }
 
         // ---------- Cotas de los dobleces del gancho de arranque ----------
@@ -611,33 +729,36 @@ public sealed partial class ZapataDrawer
             ? $"ZAPATA AISLADA DE LINDERO \"{z.Id}\""
             : $"ZAPATA AISLADA CENTRAL \"{z.Id}\"";
 
-        // EL RÓTULO SE BAJA A SU PROPIO RENGLÓN, APARTE DEL DIBUJO: 80 cm —los mismos 0.8 de la
-        // fila, X = −0.8— por debajo del fondo de la plantilla, que es el punto más bajo de la
-        // elevación. A 32 cm, como en la macro, caía sobre el dibujo y sobre las cotas de anchos.
+        // EL RÓTULO, DONDE LO PONE LA MACRO: a 0.32, 0.41 y 0.49 por debajo del desplante y
+        // CENTRADO en el eje de la zapata. Nada de bajarlo a un renglón propio ni de alinearlo al
+        // paño derecho: las dos cosas se probaron y las dos dejaron el rótulo despegado de su
+        // dibujo.
         //
-        // Y COMO ESE FONDO ES EL MISMO PARA TODAS LAS ZAPATAS (el punto de inserción −8 es fijo),
-        // los tres renglones quedan EN LA MISMA LÍNEA para todas, midan lo que midan: es lo que
-        // se pidió, que estén alineados siempre. Van centrados en el eje de su zapata, como la
-        // macro, y si el renglón no cabe en el ancho que le toca —su zapata más los 80 cm— se le
-        // baja el alto en vez de dejarlo meterse en el rótulo de la de al lado.
-        var yTitulo = TrazoZapata.YRotulo(a.YPlantillaBot, 0);
-        var ySubtitulo = TrazoZapata.YRotulo(a.YPlantillaBot, 1);
-        var yEscala = TrazoZapata.YRotulo(a.YPlantillaBot, 2);
+        // Lo único que se le añade a la macro es el encogido: si el renglón no cabe en el hueco
+        // que le toca —su zapata más los 80 cm de la fila— se le baja el alto. Y se mide con el
+        // ancho de letra REAL del dibujo (FactorLetraTitulo), que es lo que faltaba: con el 0.62
+        // de la macro el título nunca se encogía y por eso se encimaba con el de al lado.
+        var yTitulo = TrazoZapata.YRotulo(yZapBot, 0);
+        var ySubtitulo = TrazoZapata.YRotulo(yZapBot, 1);
+        var yEscala = TrazoZapata.YRotulo(yZapBot, 2);
         var anchoRotulo = TrazoZapata.AnchoParaElRotulo(anchoZapata);
 
         Texto(xCentro, yTitulo,
-            TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
+            TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo,
+                TrazoZapata.FactorLetraTitulo),
             titulo, CapaRotulos, alineacion: Alineacion.Centro);
 
         Texto(xCentro, ySubtitulo,
-            TrazoZapata.AltoQueQuepa("ELEVACION".Length, AltoSubtitulo, anchoRotulo),
+            TrazoZapata.AltoQueQuepa("ELEVACION".Length, AltoSubtitulo, anchoRotulo,
+                TrazoZapata.FactorLetraTitulo),
             "ELEVACION", CapaRotulos, alineacion: Alineacion.Centro);
 
         var fc = string.IsNullOrWhiteSpace(z.Fc) ? string.Empty : $"    f'c = {z.Fc.Trim()} kg/cm\u00B2";
         var escala = $"Rec. {z.RecM * 100:0.#} cm{fc}    Escala 1:10";
 
         Texto(xCentro, yEscala,
-            TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
+            TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo,
+                TrazoZapata.FactorLetraTitulo),
             escala, CapaRotulos, alineacion: Alineacion.Centro);
 
         // ---------- La planta ----------
@@ -664,7 +785,7 @@ public sealed partial class ZapataDrawer
             return 0;
         }
 
-        var suma = (TrazoZapata.FactorGanchoAbajo * dSup) + (TrazoZapata.FactorGanchoAbajo * dInf);
+        var suma = (FactorGancho * dSup) + (FactorGancho * dInf);
 
         return suma > interior - 0.02 ? (2 * dMax) + 0.005 : 0;
     }
@@ -698,7 +819,8 @@ public sealed partial class ZapataDrawer
         string? estrDia, string? espStr, double gancho, bool esDado, double subirGanchos,
         bool gancho12D, double recorteConcIni, double fracCorte,
         int estrOmitirIni, bool omitGanchoIni, bool omitGanchoFin, int ganchoIniAfuera,
-        double recorteBarrasFin, double offEstribosFin, bool estribosAlTope, bool ganchosAmbosIzq)
+        double recorteBarrasFin, double offEstribosFin, bool estribosAlTope, bool ganchosAmbosIzq,
+        double? topeBarras = null)
     {
         var w = anchoCm * TrazoZapata.EscalaElevacion;
         var recM = recCm * TrazoZapata.EscalaElevacion;
@@ -837,14 +959,31 @@ public sealed partial class ZapataDrawer
             {
                 xbBar = xb;
 
-                if (recorteBarrasFin > 0 && xb - recorteBarrasFin > xaBot + 0.02)
+                // EL RECORTE SE APLICA SIEMPRE, RECORTADO SI HACE FALTA, PERO NUNCA SE IGNORA.
+                // Antes, si el recorte no dejaba al menos 2 cm de barra, se descartaba entero y la
+                // varilla salía COMPLETA. Y cuando el recorte viene de la zona de dobleces, eso
+                // significa la varilla completa MÁS el doblez encima: la misma varilla dos veces.
+                // Ahora, si no cabe entero, se aplica lo que quepa; y si no cabe nada, el que pidió
+                // el recorte se enterará porque la barra llega hasta arriba, no porque aparezca
+                // duplicada.
+                if (recorteBarrasFin > 0)
                 {
-                    xbBar = xb - recorteBarrasFin;
+                    var maximo = Math.Max(xb - (xaBot + 0.02), 0);
+                    xbBar = xb - Math.Min(recorteBarrasFin, maximo);
+                }
+
+                // Y SI SE PIDIÓ UN TOPE EXACTO, MANDA ESE. Es el caso del dado cuando lleva la zona
+                // de dobleces: sus varillas tienen que acabar JUSTO donde arrancan los dobleces, sin
+                // los 2 cm de margen ni las holguras del gancho que se aplican más abajo. Cualquier
+                // milímetro de más es un tramo recto asomando por debajo del 1:6.
+                if (topeBarras is { } tope)
+                {
+                    xbBar = x0 + (tope - y0);
                 }
             }
 
-            var gAbSup = gancho12D ? TrazoZapata.FactorGanchoAbajo * dSup : gancho;
-            var gAbInf = gancho12D ? TrazoZapata.FactorGanchoAbajo * dInf : gancho;
+            var gAbSup = gancho12D ? FactorGancho * dSup : gancho;
+            var gAbInf = gancho12D ? FactorGancho * dInf : gancho;
 
             // Hacia dónde dobla cada gancho de arranque. bendUp local = izquierda global.
             bool bendIniSup;
@@ -911,13 +1050,32 @@ public sealed partial class ZapataDrawer
                 }
             }
 
-            // Barra del paño izquierdo global.
+            // ======================================================================
+            //  EL GANCHO DE REMATE, EL DE ARRIBA: LAS DOS BARRAS DOBLAN HACIA ADENTRO
+            // ======================================================================
+            //  Aquí estaba el error que se veía en el plano: las dos barras remataban con
+            //  el gancho doblado hacia el MISMO lado —bendUpDer en false, que en locales es
+            //  hacia la derecha global—, así que la del paño IZQUIERDO doblaba hacia dentro
+            //  del núcleo, bien, y la del paño DERECHO se salía del dado.
+            //
+            //  Un gancho de remate se mete SIEMPRE hacia el núcleo: es donde tiene concreto
+            //  que lo confine. Fuera del paño se queda en el recubrimiento, y ahí no ancla
+            //  nada. Así que la barra izquierda dobla a la derecha —false— y la derecha a la
+            //  izquierda —true—, y da igual si la columna es de concreto o de acero: eso
+            //  cambia el pie de abajo, no el remate de arriba.
+            //
+            //  Recordatorio, que es fácil de confundir: el elemento vertical se dibuja
+            //  girado, así que bendUp en LOCALES es la IZQUIERDA en globales.
+            // ======================================================================
+
+            // Barra del paño izquierdo global: remata hacia la derecha, hacia el núcleo.
             BarraConGanchos(xaBot, xbBar, ycSup, dSup, CapaVar(diaSup), centros, dE,
                 hookIniSup, bendIniSup, hookFinSup, false, false, false);
 
-            // Barra del paño derecho global (en el lindero, el lindero).
+            // Barra del paño derecho global (en el lindero, la del lindero): remata hacia la
+            // izquierda, que también es hacia el núcleo.
             BarraConGanchos(xaBotInf, xbBar, ycInf, dInf, CapaVar(diaInf), centros, dE,
-                hookIniInf, bendIniInf, hookFinInf, false, true, false);
+                hookIniInf, bendIniInf, hookFinInf, true, true, false);
 
             // Intermedias: rectas, cortadas en cada estribo.
             if (nInt > 0 && dInt > 0)
@@ -931,7 +1089,7 @@ public sealed partial class ZapataDrawer
                     xaInt = xaIntBase + dMaxCara + HolguraIntermediasGancho;
                 }
 
-                if (!hayCorte && !omitGanchoFin)
+                if (!hayCorte && !omitGanchoFin && topeBarras is null)
                 {
                     xbInt = xbBar - dMaxCara - HolguraIntermediasGancho;
                 }
@@ -1032,6 +1190,14 @@ public sealed partial class ZapataDrawer
                 Negro(a1);
                 Negro(a2);
             }
+
+            // Se apuntan para subirlos al frente al final. El estribo es lo que amarra el nudo y en
+            // el plano tiene que leerse por encima de las varillas: se dibuja antes que ellas, así
+            // que sin esto queda tapado justo donde más se cruzan, en la zona de dobleces.
+            Apuntar(_estribos, e1);
+            Apuntar(_estribos, e2);
+            Apuntar(_estribos, a1);
+            Apuntar(_estribos, a2);
         }
     }
 
@@ -1511,9 +1677,29 @@ public sealed partial class ZapataDrawer
     private sealed class Union
     {
         public bool Activa { get; set; }
-        public double Alto { get; set; }
+
+        /// <summary>
+        /// El corrimiento más grande de todas las varillas emparejadas.
+        /// </summary>
+        /// <remarks>
+        /// Se guarda el corrimiento y <b>no</b> el alto del doblez: el alto lo resuelve
+        /// <see cref="TrazoZapata.Desplazamiento"/> a 1:6, y así no hay dos sitios donde se pueda
+        /// recortar. Antes se guardaba el alto ya calculado y después se recortaba aquí, que es
+        /// como el doblez acababa más parado que el detalle.
+        /// </remarks>
+        public double DxMax { get; set; }
+
         public List<(double X1, double X2, double Dia, string Capa)> Dobleces { get; } = new();
-        public List<(double X, double Dia, string Capa)> Rectas { get; } = new();
+
+        /// <summary>
+        /// Cuántas varillas del dado se quedaron <b>sin pareja</b> en la columna.
+        /// </summary>
+        /// <remarks>
+        /// Solo para avisar. Antes se dibujaban rectas hasta el tope del dado —así lo hace la
+        /// macro— y en el plano quedaban unos tramos de varilla que no van a ningún lado, entre
+        /// los dobleces. Ya no se dibujan: la varilla acaba donde el dado la corta.
+        /// </remarks>
+        public int SinPareja { get; set; }
     }
 
     /// <summary>Port de <c>PrepararUnionDadoColumna</c>.</summary>
@@ -1530,9 +1716,9 @@ public sealed partial class ZapataDrawer
     /// </para>
     /// </remarks>
     private Union PrepararUnion(
-        double xDadoCaraDer, double wDado, double recDadoM, double dSupD, double dInfD,
-        int nIntD, string? diaIntD, double dIntD, string? diaSupD, string? diaInfD,
-        double xColCaraDer, double wCol, double recColM, double dSupC, double dInfC, int nIntC,
+        TrazoZapata.BarrasElemento dado, TrazoZapata.BarrasElemento columna,
+        double dSupD, double dInfD, double dIntD,
+        string? diaSupD, string? diaInfD, string? diaIntD,
         bool esquinasIguales, bool intermediasIguales)
     {
         var u = new Union();
@@ -1542,13 +1728,16 @@ public sealed partial class ZapataDrawer
             return u;
         }
 
-        var (xEsqIzqD, xEsqDerD, xIntD) =
-            PosicionesBarras(xDadoCaraDer, wDado, recDadoM, dSupD, dInfD, nIntD);
-        var (xEsqIzqC, xEsqDerC, xIntC) =
-            PosicionesBarras(xColCaraDer, wCol, recColM, dSupC, dInfC, nIntC);
+        var xEsqIzqD = dado.Izq;
+        var xEsqDerD = dado.Der;
+        var xIntD = dado.Intermedias;
 
-        if (Math.Abs(xEsqIzqC - xEsqIzqD) > DesplazamientoMax
-            || Math.Abs(xEsqDerC - xEsqDerD) > DesplazamientoMax)
+        var xEsqIzqC = columna.Izq;
+        var xEsqDerC = columna.Der;
+        var xIntC = columna.Intermedias;
+
+        if (Math.Abs(xEsqIzqC - xEsqIzqD) > TrazoZapata.DesplazamientoMax
+            || Math.Abs(xEsqDerC - xEsqDerD) > TrazoZapata.DesplazamientoMax)
         {
             return u;
         }
@@ -1556,124 +1745,123 @@ public sealed partial class ZapataDrawer
         u.Dobleces.Add((xEsqIzqD, xEsqIzqC, dSupD, CapaVar(diaSupD)));
         u.Dobleces.Add((xEsqDerD, xEsqDerC, dInfD, CapaVar(diaInfD)));
 
-        var usadoD = new bool[xIntD.Count];
-        var usadoC = new bool[xIntC.Count];
+        // EMPAREJADO EN ORDEN, NO POR CERCANÍA. Las dos listas se ordenan y se emparejan la 1ª con
+        // la 1ª, la 2ª con la 2ª: así el orden se conserva y DOS BARRAS NO PUEDEN CRUZARSE, porque
+        // para cruzarse tendrían que cambiar de orden entre el dado y la columna.
+        //
+        // El emparejado por cercanía —el de la macro y el que estaba aquí— elige en cada vuelta el
+        // mejor par disponible, y eso SÍ cruza: si la 1ª del dado queda más cerca de la 2ª de la
+        // columna, se lleva esa, y a la 2ª del dado le toca la 1ª. Es lo que se veía en el dibujo,
+        // dos aspas en el arranque del dado.
+        var ordD = xIntD.OrderBy(x => x).ToList();
+        var ordC = xIntC.OrderBy(x => x).ToList();
 
-        if (intermediasIguales && xIntD.Count > 0 && xIntC.Count > 0)
+        var pares = intermediasIguales ? Math.Min(ordD.Count, ordC.Count) : 0;
+
+        for (var k = 0; k < pares; k++)
         {
-            var pares = Math.Min(xIntD.Count, xIntC.Count);
-
-            for (var p = 0; p < pares; p++)
-            {
-                var mejorD = -1;
-                var mejorC = -1;
-                var mejor = double.MaxValue;
-
-                for (var k = 0; k < xIntD.Count; k++)
-                {
-                    if (usadoD[k])
-                    {
-                        continue;
-                    }
-
-                    for (var j = 0; j < xIntC.Count; j++)
-                    {
-                        if (usadoC[j])
-                        {
-                            continue;
-                        }
-
-                        var d = Math.Abs(xIntD[k] - xIntC[j]);
-
-                        if (d < mejor)
-                        {
-                            mejor = d;
-                            mejorD = k;
-                            mejorC = j;
-                        }
-                    }
-                }
-
-                if (mejorD < 0)
-                {
-                    break;
-                }
-
-                usadoD[mejorD] = true;
-                usadoC[mejorC] = true;
-
-                u.Dobleces.Add((xIntD[mejorD], xIntC[mejorC], dIntD, CapaVar(diaIntD)));
-            }
+            u.Dobleces.Add((ordD[k], ordC[k], dIntD, CapaVar(diaIntD)));
         }
 
-        for (var k = 0; k < xIntD.Count; k++)
-        {
-            if (!usadoD[k])
-            {
-                u.Rectas.Add((xIntD[k], dIntD, CapaVar(diaIntD)));
-            }
-        }
+        // Las del dado que se quedaron sin pareja NO SE DIBUJAN en la zona: acaban donde el dado
+        // las corta. La macro las seguía recta hasta el tope del dado y eso dejaba, entre los
+        // dobleces, tramos de varilla que no van a ningún lado.
+        u.SinPareja = Math.Max(ordD.Count - pares, 0);
 
-        var dxMax = u.Dobleces.Count == 0
+        u.DxMax = u.Dobleces.Count == 0
             ? 0
             : u.Dobleces.Max(d => Math.Abs(d.X2 - d.X1));
 
-        u.Alto = RelacionDesplazamiento * dxMax;
         u.Activa = true;
 
         return u;
     }
 
-    /// <summary>Port de <c>PosicionesBarrasElemento</c>, ya en coordenadas globales.</summary>
-    private static (double Izq, double Der, List<double> Intermedias) PosicionesBarras(
-        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt)
+    /// <summary>
+    /// Las varillas de un elemento vertical, <b>donde el alzado las dibuja</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Redondo o cuadrado, se usa el <b>mismo</b> reparto que <see cref="ElementoVertical"/>: las
+    /// dos de los paños y las intermedias repartidas entre ellas. Y tiene que ser el mismo, porque
+    /// si la unión partiera de otras posiciones —por ejemplo de la proyección real de las varillas
+    /// de un círculo— los dobleces <b>no arrancarían encima de las varillas</b> que ya están
+    /// dibujadas: se verían despegados.
+    /// </para>
+    /// <para>
+    /// Con esto el caso que se pidió sale solo: dado y columna circulares con las <b>mismas</b>
+    /// varillas dan el mismo número de posiciones en los dos, se emparejan una a una en orden, y
+    /// cada una se corre en proporción a su sitio. Todas cruzan la misma zona, así que el nudo se ve
+    /// <b>parejo</b>.
+    /// </para>
+    /// <para>
+    /// Cuando el alzado dibuje las varillas de un elemento redondo en su <b>proyección real</b> —hoy
+    /// las reparte a lo ancho, como en el cuadrado— hay que cambiar las dos cosas a la vez, aquí y
+    /// en <see cref="ElementoVertical"/>, o volverán a no coincidir.
+    /// </para>
+    /// </remarks>
+    private static TrazoZapata.BarrasElemento BarrasDelElemento(
+        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt) =>
+        TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);
+
+    /// <summary>
+    /// Port de <c>DibujarUnionDadoColumna</c>: cada varilla con <b>su</b> doblez a 1:6.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// EL TEOREMA: <b>hay UNA zona de doblez y la comparten todas las varillas</b>. Empieza en
+    /// <paramref name="yZonaBot"/> y acaba en la junta, y cada varilla la cruza entera, desde donde
+    /// está en el dado hasta donde le toca en la columna.
+    /// </para>
+    /// <para>
+    /// El 1:6 no se aplica varilla por varilla: fija el <b>alto de la zona</b>, y lo fija la que más
+    /// se corre. Esa sale exactamente a 1:6 y todas las demás, que se corren menos en la misma
+    /// altura, salen <b>más tendidas</b> —1:8, 1:12— que es del lado seguro. Por eso el nudo se ve
+    /// <b>parejo</b>: las varillas quedan paralelas y sin quiebres.
+    /// </para>
+    /// <para>
+    /// Darle a cada varilla su propio doblez corto de 6·dx —que fue mi turno anterior— cumple el
+    /// 1:6 en cada una por separado, pero deja cada quiebre a una altura distinta y el arranque sale
+    /// desparejo, con unas varillas rectas y otras torcidas. No es lo que hace la macro ni lo que se
+    /// arma en obra: los dobleces de un nudo se hacen todos en la misma zona.
+    /// </para>
+    /// <para>
+    /// Se ve mejor con el caso que lo destapó: dado y columna <b>circulares con las mismas
+    /// varillas</b>. Cada una se corre lo que dice su posición en el círculo —la del paño casi nada,
+    /// la del otro extremo el doble— y con la zona compartida todas cruzan en paralelo, que es
+    /// exactamente el plano de la macro.
+    /// </para>
+    /// </remarks>
+    /// <param name="yZonaBot">Donde arranca la zona de doblez, la misma para todas.</param>
+    /// <param name="yDiagTop">Donde acaba, en la junta con la columna.</param>
+    /// <param name="yZonaTop">Hasta donde sigue la varilla, ya dentro de la columna.</param>
+    private void DibujarUnion(Union u, double yZonaBot, double yDiagTop, double yZonaTop)
     {
-        var izq = xCaraDer - (w - recM - (dSup / 2));
-        var der = xCaraDer - (recM + (dInf / 2));
-
-        var lista = new List<double>();
-
-        if (nInt <= 0)
-        {
-            return (izq, der, lista);
-        }
-
-        var yBot = recM + dInf;
-        var yTop = w - recM - dSup;
-
-        if (yTop <= yBot)
-        {
-            return (izq, der, lista);
-        }
-
-        var paso = (yTop - yBot) / (nInt + 1);
-
-        for (var k = 1; k <= nInt; k++)
-        {
-            lista.Add(xCaraDer - (yBot + (paso * k)));
-        }
-
-        return (izq, der, lista);
-    }
-
-    /// <summary>Port de <c>DibujarUnionDadoColumna</c>.</summary>
-    private void DibujarUnion(
-        Union u, double yZonaBot, double yJunta, double yZonaTop, double yTopRectas)
-    {
+        // EN LA ZONA SOLO VAN LOS DOBLECES. Las varillas del dado que no tienen pareja en la
+        // columna ya no se dibujan aquí: la macro las seguía rectas hasta el tope del dado y en el
+        // plano quedaban tramos de varilla entre los dobleces que no van a ningún lado.
         foreach (var (x1, x2, dia, capa) in u.Dobleces)
         {
-            DesplazamientoVarilla(x1, x2, yZonaBot, yJunta, yZonaTop, dia, capa);
-        }
-
-        foreach (var (x, dia, capa) in u.Rectas)
-        {
-            BarraVerticalBanda(x, yZonaBot, yTopRectas, dia, capa, false, true);
+            // La zona es la MISMA para todas: de yZonaBot a yDiagTop. La que más se corre va a 1:6
+            // y las otras, más tendidas.
+            DesplazamientoVarilla(x1, x2, yZonaBot, yZonaBot, yDiagTop, yZonaTop, dia, capa);
         }
     }
 
-    /// <summary>Port de <c>DibujarDesplazamientoVarilla</c>: la barra que se corre y sigue.</summary>
+    /// <summary>
+    /// Port de <c>DibujarDesplazamientoVarilla</c>: recta, el doblez a 1:6, y recta otra vez.
+    /// </summary>
+    /// <remarks>
+    /// Hasta tres tramos: sube derecha hasta <paramref name="yDiagBot"/>, se corre de lado hasta
+    /// <paramref name="yDiagTop"/> y sigue derecha hasta arriba. La unión la llama con
+    /// <c>yDiagBot == yBot</c>, así que el primer tramo <b>no existe</b> y la varilla es diagonal
+    /// desde el arranque de la zona, como en la macro; el parámetro se conserva porque el tramo
+    /// recto de abajo sí hace falta si algún día se acota el doblez por otra regla. Con
+    /// <c>x1 == x2</c> sale una varilla recta, que es lo correcto cuando no hay nada que correr.
+    /// </remarks>
     private void DesplazamientoVarilla(
-        double x1, double x2, double yBot, double yDiagTop, double yTop, double dia, string capa)
+        double x1, double x2, double yBot, double yDiagBot, double yDiagTop, double yTop,
+        double dia, string capa)
     {
         if (dia <= 0 || yTop <= yBot)
         {
@@ -1683,54 +1871,258 @@ public sealed partial class ZapataDrawer
         AsegurarCapaVarilla(capa);
 
         var r = dia / 2;
-        var yt = Math.Clamp(yDiagTop, yBot, yTop);
+
+        var yd1 = Math.Clamp(yDiagBot, yBot, yTop);
+        var yd2 = Math.Clamp(yDiagTop, yd1, yTop);
 
         if (_relleno)
         {
-            RellenarQuad(x1 - r, yBot, x2 - r, yt, x2 + r, yt, x1 + r, yBot, capa, 0);
-            RellenarQuad(x2 - r, yt, x2 - r, yTop, x2 + r, yTop, x2 + r, yt, capa, 0);
+            if (yd1 > yBot)
+            {
+                RellenarQuad(x1 - r, yBot, x1 - r, yd1, x1 + r, yd1, x1 + r, yBot, capa, 0);
+            }
+
+            if (yd2 > yd1)
+            {
+                RellenarQuad(x1 - r, yd1, x2 - r, yd2, x2 + r, yd2, x1 + r, yd1, capa, 0);
+            }
+
+            if (yTop > yd2)
+            {
+                RellenarQuad(x2 - r, yd2, x2 - r, yTop, x2 + r, yTop, x2 + r, yd2, capa, 0);
+            }
         }
 
         foreach (var s in new[] { -1.0, 1.0 })
         {
-            Var(Polilinea(
-                new[] { x1 + (s * r), yBot, x2 + (s * r), yt, x2 + (s * r), yTop },
-                capa, cerrada: false));
+            var pts = new List<double> { x1 + (s * r), yBot };
+
+            // El vértice del arranque solo se pone si hay tramo recto abajo: repetir el punto
+            // dejaría un segmento de longitud cero en la polilínea.
+            if (yd1 > yBot + 1e-9)
+            {
+                pts.Add(x1 + (s * r));
+                pts.Add(yd1);
+            }
+
+            pts.Add(x2 + (s * r));
+            pts.Add(yd2);
+
+            if (yTop > yd2 + 1e-9)
+            {
+                pts.Add(x2 + (s * r));
+                pts.Add(yTop);
+            }
+
+            Var(Polilinea(pts.ToArray(), capa, cerrada: false));
         }
     }
 
-    /// <summary>Port de <c>DibujarBarraVerticalBanda</c>.</summary>
-    private void BarraVerticalBanda(
-        double x, double yBot, double yTop, double dia, string capa,
-        bool taparAbajo, bool taparArriba)
+    /// <summary>
+    /// Port de <c>RecortarVerticalesZonaDobleces</c>: <b>limpia la zona de dobleces</b> antes de
+    /// dibujar la transición.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ESTA RUTINA FALTABA, y es la que cierra el problema de las varillas rectas dentro del
+    /// 1:6. El dado dibuja sus varillas y se les pide que acaben en el arranque de la zona, pero
+    /// ese recorte pasa por media docena de holguras y márgenes —el gancho, el remate, los 2 cm
+    /// mínimos— y cualquiera de ellos deja un pedazo asomando. La macro no confía en el recorte:
+    /// después de dibujar el dado <b>barre la zona</b> y quita lo que haya quedado dentro.
+    /// </para>
+    /// <para>
+    /// Se llama <b>antes</b> de dibujar los dobleces, igual que en el VBA, así que lo único que
+    /// puede encontrar son restos: las varillas de la transición todavía no existen.
+    /// </para>
+    /// <para>
+    /// Lo que barre son las capas <c>VAR_*</c> dentro de los paños del dado. Los estribos —capa
+    /// <c>ESTRIBOS</c>— no se tocan: esos SÍ van en la zona, son los que amarran el nudo. Y de cada
+    /// resto: si empieza dentro de la zona se borra entero, y si viene de más abajo se recorta al
+    /// arranque de la zona, que es donde tiene que acabar.
+    /// </para>
+    /// </remarks>
+    /// <param name="desde">Índice del contenedor antes de dibujar el dado.</param>
+    private void RecortarVerticalesEnLaZona(
+        int desde, double yZonaBot, double yZonaTop, double xIzq, double xDer)
     {
-        if (dia <= 0 || yTop <= yBot)
+        if (yZonaTop <= yZonaBot + TrimTolVertical)
         {
             return;
         }
 
-        AsegurarCapaVarilla(capa);
+        var restos = new List<(object Ent, bool EsLinea, double[] Min, double[] Max, string Capa)>();
 
-        var r = dia / 2;
-
-        if (_relleno)
+        try
         {
-            RellenarQuad(x - r, yBot, x + r, yBot, x + r, yTop, x - r, yTop, capa, 0);
+            AcadConnection.Retry(() =>
+            {
+                restos.Clear();
+
+                var total = (int)((dynamic)_cont).Count;
+
+                for (var i = Math.Max(desde, 0); i < total; i++)
+                {
+                    dynamic ent = ((dynamic)_cont).Item(i);
+
+                    string capa = ent.Layer;
+
+                    if (!capa.StartsWith("VAR_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string tipo = ent.ObjectName;
+
+                    var esLinea = tipo.Contains("Line", StringComparison.OrdinalIgnoreCase);
+                    var esRelleno = tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase);
+
+                    if (!esLinea && !esRelleno)
+                    {
+                        continue;
+                    }
+
+                    var caja = CajaEnvolvente((object)ent);
+
+                    if (caja is null)
+                    {
+                        continue;
+                    }
+
+                    restos.Add(((object)ent, esLinea, caja.Value.Min, caja.Value.Max, capa));
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Barrer la zona de dobleces", ex);
+            return;
         }
 
-        Var(Linea(x - r, yBot, x - r, yTop, capa));
-        Var(Linea(x + r, yBot, x + r, yTop, capa));
+        var borradas = 0;
 
-        if (taparAbajo)
+        foreach (var (ent, esLinea, mn, mx, capa) in restos)
         {
-            Var(Linea(x - r, yBot, x + r, yBot, capa));
+            var xm = (mn[0] + mx[0]) / 2;
+
+            // Solo lo que está dentro de los paños del dado.
+            if (xm < xIzq - 0.02 || xm > xDer + 0.02)
+            {
+                continue;
+            }
+
+            // Y solo lo que se mete en la zona.
+            if (mx[1] <= yZonaBot + TrimTolVertical || mn[1] >= yZonaTop - TrimTolVertical)
+            {
+                continue;
+            }
+
+            var desdeAbajo = mn[1] < yZonaBot - TrimTolVertical;
+
+            Borrar(ent);
+            borradas++;
+
+            if (!desdeAbajo)
+            {
+                continue;
+            }
+
+            // Venía de más abajo: se rehace solo el tramo que queda por debajo de la zona.
+            if (esLinea)
+            {
+                Var(Linea(xm, mn[1], xm, yZonaBot, capa));
+            }
+            else if (_relleno)
+            {
+                RellenarQuad(mn[0], mn[1], mx[0], mn[1], mx[0], yZonaBot, mn[0], yZonaBot, capa, 0);
+            }
         }
 
-        if (taparArriba)
+        if (borradas > 0)
         {
-            Var(Linea(x - r, yTop, x + r, yTop, capa));
+            Nota($"Zona de dobleces: se quitaron {borradas} resto(s) de varilla que quedaban "
+                 + "dentro del 1:6.");
         }
     }
+
+    /// <summary>Cuántas entidades tiene el contenedor en curso.</summary>
+    private int CuentaDelContenedor()
+    {
+        try
+        {
+            return AcadConnection.Retry(() => (int)((dynamic)_cont).Count);
+        }
+        catch (Exception ex)
+        {
+            Nota("No se pudo contar el contenido del bloque de la zapata: " + ex.Message);
+            return -1;
+        }
+    }
+
+    /// <summary>Tolerancia para decidir si una varilla se mete en la zona: <c>TRIM_TOL_VERTICAL</c>.</summary>
+    private const double TrimTolVertical = 0.0006;
+
+    /// <summary>Apunta una entidad para reordenarla después, si se creó.</summary>
+    private static void Apuntar(List<object> lista, object? ent)
+    {
+        if (ent is not null)
+        {
+            lista.Add(ent);
+        }
+    }
+
+    /// <summary>
+    /// Sube entidades al frente: el <b>bring to front</b> de AutoCAD.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con la tabla <c>ACAD_SORTENTS</c> del contenedor, igual que
+    /// <c>AlzadoDrawer.AlFrente</c>. Funciona dentro de un bloque porque la tabla vive en el
+    /// diccionario de extensión del bloque, no en el del modelo.
+    /// </para>
+    /// <para>
+    /// Las llamadas van por <see cref="AcadArreglos"/>: <c>MoveToTop</c> recibe un arreglo de
+    /// entidades y esa es una de las llamadas que revienta con <c>dynamic</c> si no se le pasa el
+    /// arreglo con el tipo que espera.
+    /// </para>
+    /// </remarks>
+    private void AlFrente(object cont, List<object> objetos)
+    {
+        if (objetos.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic dict = ((dynamic)cont).GetExtensionDictionary;
+                dynamic tabla;
+
+                try
+                {
+                    tabla = dict.GetObject("ACAD_SORTENTS");
+                }
+                catch (Exception)
+                {
+                    tabla = dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable");
+                }
+
+                AcadArreglos.Llamar("MoveToTop de la zapata", objetos,
+                    arr => { tabla.MoveToTop(arr); },
+                    (op, ex) => Fallo(op, ex), Nota);
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Orden de dibujo de la zapata", ex);
+        }
+    }
+
+    // El port de DibujarBarraVerticalBanda YA NO ESTÁ. Era la varilla recta que la macro dibujaba
+    // en la zona de dobleces para las del dado sin pareja en la columna, y en el plano quedaban
+    // tramos de varilla entre los dobleces que no van a ningún lado. Se quitó el dibujo y con él su
+    // única rutina, en lugar de dejarla sin usar: una rutina que no se llama vuelve sola.
 
     // ======================================================================
     // Concreto, plantilla y terreno
@@ -1906,11 +2298,10 @@ public sealed partial class ZapataDrawer
     private void CotasVerticales(
         double xBase, double yZapBot, double yZapTop, double yTerreno, Resumen r)
     {
-        // A LA IZQUIERDA DEL PAÑO IZQUIERDO, a 0.08 y 0.16, que es donde las pone la macro
-        // (COTA_OFFSET_VERT_1 y _2 medidos desde xBase). El turno pasado las pasé al paño
-        // derecho por mi cuenta y ahí es donde empezaron a estorbar: con la fila creciendo
-        // hacia la izquierda, el hueco de 80 cm queda a la IZQUIERDA de cada zapata, que es
-        // justo donde la macro ya las tenía.
+        // A LA IZQUIERDA DEL PAÑO IZQUIERDO, a 0.08 y 0.16, donde las pone la macro
+        // (COTA_OFFSET_VERT_1 y _2, medidos desde xBase) y donde tienen que estar: pegadas a la
+        // SECCIÓN DE CIMENTACIÓN, que es lo que miden. Pasarlas al paño derecho las dejaba al otro
+        // lado del dado, a media altura y lejos de lo medido. Se probó dos veces; las dos, peor.
         var x1 = xBase - CotaOffsetVert1;
         var x2 = xBase - CotaOffsetVert2;
         var yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor;
@@ -1929,6 +2320,10 @@ public sealed partial class ZapataDrawer
     }
 
     /// <summary>Port de <c>CotasDoblezGanchosDado</c>: los 15 diámetros de cada pata.</summary>
+    /// <remarks>
+    /// Cada una a 6 cm de su pata, como la macro: la de arriba por debajo de su pata y la de abajo
+    /// por encima de la suya, así que no comparten renglón aunque las dos patas se cruzen.
+    /// </remarks>
     private void CotasDoblezGanchos(
         double xDadoIzq, double xDadoDer, double yZapBot, double recDadoM, double subirGanchos,
         double dSup, double dInf, double offset, bool haciaAfuera, double desfaseInf,
@@ -1945,18 +2340,18 @@ public sealed partial class ZapataDrawer
 
         if (ambosIzquierda)
         {
-            xIzq2 = xIzq1 - (TrazoZapata.FactorGanchoAbajo * dSup);
-            xDer2 = xDer1 - (TrazoZapata.FactorGanchoAbajo * dInf);
+            xIzq2 = xIzq1 - (FactorGancho * dSup);
+            xDer2 = xDer1 - (FactorGancho * dInf);
         }
         else if (haciaAfuera)
         {
-            xIzq2 = xIzq1 - (TrazoZapata.FactorGanchoAbajo * dSup);
-            xDer2 = xDer1 + (TrazoZapata.FactorGanchoAbajo * dInf);
+            xIzq2 = xIzq1 - (FactorGancho * dSup);
+            xDer2 = xDer1 + (FactorGancho * dInf);
         }
         else
         {
-            xIzq2 = xIzq1 + (TrazoZapata.FactorGanchoAbajo * dSup);
-            xDer2 = xDer1 - (TrazoZapata.FactorGanchoAbajo * dInf);
+            xIzq2 = xIzq1 + (FactorGancho * dSup);
+            xDer2 = xDer1 - (FactorGancho * dInf);
         }
 
         r.Cotas += Cota(xIzq2, yPataSup, xIzq1, yPataSup, (xIzq2 + xIzq1) / 2,
@@ -2081,7 +2476,10 @@ public sealed partial class ZapataDrawer
         return string.Join(" + ", terminos);
     }
 
-    private void RotuloDelDado(ZapataCad z, TrazoZapata.Acomodo a, bool lindero)
+    /// <param name="diaInt">
+    /// Diámetro de las intermedias <b>ya resuelto</b>, con el respaldo de la macro aplicado.
+    /// </param>
+    private void RotuloDelDado(ZapataCad z, TrazoZapata.Acomodo a, bool lindero, string? diaInt)
     {
         if (a.YDadoTop <= a.YZapTop + 0.02)
         {
@@ -2090,8 +2488,10 @@ public sealed partial class ZapataDrawer
 
         var y = (a.YZapTop + a.YDadoTop) / 2;
 
+        // Con el mismo respaldo de diámetro que el dibujo, para que el rótulo no diga una cosa y el
+        // dibujo otra.
         var texto = TextoElemento("DADO", z.IdDado, z.VarDadoSup, z.VarDadoInf,
-            z.NIntDado, z.VarIntDado, z.EstriboDado, z.SepEstriboDado,
+            z.NIntDado, diaInt, z.EstriboDado, z.SepEstriboDado,
             z.NVarDadoSup, z.NVarDadoInf, z.NVarIntDadoTotal);
 
         if (lindero)
@@ -2105,12 +2505,14 @@ public sealed partial class ZapataDrawer
         }
     }
 
-    private void RotuloDeLaColumna(ZapataCad z, TrazoZapata.Acomodo a, bool lindero)
+    /// <param name="diaInt">Diámetro de las intermedias ya resuelto.</param>
+    private void RotuloDeLaColumna(
+        ZapataCad z, TrazoZapata.Acomodo a, bool lindero, string? diaInt)
     {
         var y = a.YDadoTop + (AlturaColumnaRep * ColumnaFraccionCorte / 2);
 
         var texto = TextoElemento("COLUMNA", z.IdColumna, z.VarColSup, z.VarColInf,
-            z.NIntColumna, z.VarIntColumna, z.EstriboColumna, z.SepEstriboColumna,
+            z.NIntColumna, diaInt, z.EstriboColumna, z.SepEstriboColumna,
             z.NVarColSup, z.NVarColInf, z.NVarIntColumnaTotal);
 
         if (lindero)
@@ -2195,7 +2597,8 @@ public sealed partial class ZapataDrawer
     /// </remarks>
     private void RotuloParrillaInferior(
         double xBase, double yZapBot, double anchoZapata, double rec,
-        string? varBarra, string? sepBarra, string? varCirc, string? sepCirc)
+        string? varBarra, string? sepBarra, string? varCirc, string? sepCirc,
+        double? xTopePuntas = null)
     {
         var dBarra = Diam(varBarra);
 
@@ -2229,6 +2632,26 @@ public sealed partial class ZapataDrawer
         if (xPuntaBarra < xPuntaBarraMin)
         {
             xPuntaBarra = xPuntaBarraMin;
+        }
+
+        // EL TOPE DE LA CONTRATRABE. Lo usa la zapata CORRIDA: su macro recorta la franja de los
+        // rotulos con
+        //     If hayCT Then If zonaR > xCTL - 0.02 Then zonaR = xCTL - 0.02
+        // para que ninguna flecha acabe debajo de la contratrabe, donde no se ve a que varilla
+        // apunta. Las aisladas no lo pasan y siguen igual que siempre.
+        if (xTopePuntas is not null)
+        {
+            var tope = xTopePuntas.Value;
+
+            if (xPuntaBarra > tope)
+            {
+                xPuntaBarra = tope;
+            }
+
+            if (xPuntaCirc > tope)
+            {
+                xPuntaCirc = tope;
+            }
         }
 
         var xTexto = xBase - 0.18 + 0.272 - 0.11 + DesplazamientoParrillaInfCentrar;

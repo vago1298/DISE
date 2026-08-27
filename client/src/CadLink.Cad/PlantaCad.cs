@@ -28,16 +28,154 @@ public sealed class ElementoPlanta
     /// <summary>Nombre de la sección. Se rotula debajo de la etiqueta.</summary>
     public string Seccion { get; set; } = string.Empty;
 
+    /// <summary>
+    /// La etiqueta de <b>PIER</b> del muro: <c>M1</c>, <c>M2X</c>… Vacío si no tiene.
+    /// </summary>
+    /// <remarks>
+    /// Es <b>lo único</b> que la macro rotula en un muro, y va en su capa aparte
+    /// —<c>PIERS</c>—. El nombre de la propiedad no se rotula a propósito: era lo que
+    /// llenaba la planta de «MURO TABICON 2 APLANADOS 15 CM» repetido en los 31 muros.
+    /// Un muro sin pier asignado se queda sin rótulo, igual que allá.
+    /// </remarks>
+    public string Pier { get; set; } = string.Empty;
+
+    /// <summary>
+    /// El <b>giro de la sección</b> en planta, en grados. Solo en columnas y castillos.
+    /// </summary>
+    /// <remarks>
+    /// Es el ángulo del eje local 2 que da <c>GetLocalAxes</c>, y es lo que hace que una
+    /// columna de 20×60 girada 90° se vea de 60×20 en el plano, como se ve en ETABS. Va a
+    /// la <b>inserción del bloque</b>, no a su geometría: así el bloque de la sección es
+    /// uno solo y un <c>BLOCKREPLACE</c> conserva la orientación de cada columna.
+    /// </remarks>
+    public double AnguloGrados { get; set; }
+
+    /// <summary>
+    /// El <b>tipo</b> de la macro: CASTILLO, COLUMNA, DALA, TRABE, CONTRATRABE, DIAGONAL,
+    /// MURO o LOSA.
+    /// </summary>
+    /// <remarks>
+    /// Es más fino que <see cref="Clase"/> y hace falta para la <b>capa</b>: la macro manda
+    /// el castillo a <c>E-CASTILLO</c> y la columna a <c>E-COLUMNA</c>, la dala a
+    /// <c>E-DALA</c> y la trabe a <c>E-TRABE</c>, cada una con su color. Lo clasifica la
+    /// ventana con <c>SeccionesModelo.ClasificaTipo</c>, que es el <c>ClasificaTipo</c> de
+    /// la macro; si llega en blanco, el dibujante lo deduce de la clase.
+    /// </remarks>
+    public string Tipo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// La forma de la sección: RECT, CIRC, I, TUBO, PIPE, C, T, L, AREA.
+    /// </summary>
+    /// <remarks>
+    /// Se usa para una sola cosa, pero importante: un perfil de acero va a la capa
+    /// <c>E-ACERO</c>, como en la macro, en lugar de a la de su tipo.
+    /// </remarks>
+    public string Forma { get; set; } = "RECT";
+
     public double X1 { get; set; }
     public double Y1 { get; set; }
     public double X2 { get; set; }
     public double Y2 { get; set; }
+
+    /// <summary>
+    /// Las <b>cotas</b> de los dos extremos, en metros. Solo hacen falta en el CORTE.
+    /// </summary>
+    /// <remarks>
+    /// En planta la Z no se usa —para eso es una planta— pero un corte por un eje es un
+    /// alzado, y ahí la altura es la mitad del dibujo: sin la Z, una columna no tiene de
+    /// dónde a dónde y un muro no tiene alto. Llegan del modelo tal cual, sin tocar.
+    /// </remarks>
+    public double Z1 { get; set; }
+
+    public double Z2 { get; set; }
 
     /// <summary>Ancho de la sección en metros: el espesor en un muro.</summary>
     public double AnchoM { get; set; }
 
     /// <summary>Peralte de la sección en metros.</summary>
     public double PeralteM { get; set; }
+
+    /// <summary>Espesor del <b>patín</b> del perfil —el <c>Tf</c> de ETABS—, en metros.</summary>
+    /// <remarks>
+    /// Con este y con <see cref="AlmaM"/> la sección de acero se dibuja <b>como es</b>: la I
+    /// con sus dos patines y su alma, la canal con el alma a un lado, el ángulo con sus dos
+    /// alas. Sin ellos no hay más remedio que la caja, y una IR de 25×15 y un cajón de 25×15
+    /// se veían iguales en el plano.
+    /// </remarks>
+    public double PatinM { get; set; }
+
+    /// <summary>Espesor del <b>alma</b> —el <c>Tw</c>—, en metros.</summary>
+    public double AlmaM { get; set; }
+
+    /// <summary>
+    /// ¿Esta cadena lleva debajo un <b>muro de piso a techo</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Decide una cosa que se ve en el plano: la cadena de cerramiento que <b>no</b> lleva su
+    /// muro completo se dibuja con <c>ACAD_ISO02W100</c> —a trazos— y la que sí, con línea
+    /// normal. Es información de obra: esa cadena no tiene sobre qué apoyarse en todo su
+    /// tramo, porque ahí hay un vano o una ventana corrida.
+    /// </para>
+    /// <para>
+    /// Lo calcula la <b>ventana</b>, no el dibujante, y no es un capricho: hay que mirar el
+    /// nivel de <i>abajo</i> del modelo para saber si el muro sube de piso a techo, y el
+    /// dibujante solo ve una planta. En una planta sin cadenas, o en la cimentación, el valor
+    /// no se usa.
+    /// </para>
+    /// </remarks>
+    public bool MuroDePisoATecho { get; set; }
+
+    /// <summary>
+    /// Este castillo se modeló como <b>área</b> —shell de muro—, no como frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hace falta saberlo para dos cosas que se pidieron, y las dos se ven en el plano:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     Su <b>nombre</b> es su medida —«K 15X23.5»— porque la sección de un área es la
+    ///     propiedad del muro y no dice nada de este castillo.
+    ///   </item>
+    ///   <item>
+    ///     Encima de él <b>no se rotula la cadena</b>: la cadena que muere ahí es corta, su
+    ///     rótulo cae en el centro y ese centro queda dentro del castillo, así que el nombre de
+    ///     la cadena salía escrito sobre el amarillo.
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    public bool DeShell { get; set; }
+
+    /// <summary>Espesor de la <b>pared</b> del cajón o del tubo, en metros.</summary>
+    /// <remarks>
+    /// Es lo que le da su hueco: un cajón dibujado macizo parece una placa, y en un plano
+    /// estructural eso es un dato equivocado, no un detalle de dibujo.
+    /// </remarks>
+    public double ParedM { get; set; }
+
+    /// <summary>
+    /// De qué es el muro: <c>MAMPOSTERIA</c> o <c>CONCRETO</c>, si el modelo lo dice.
+    /// </summary>
+    /// <remarks>
+    /// Decide una cosa que se ve mucho en el plano: <b>la línea de mampostería</b>, la
+    /// polilínea ancha que la macro dibuja al centro del muro de block y no en el de
+    /// concreto. Lo clasifica la ventana con la regla de la macro
+    /// —<c>PALABRAS_MAMPOSTERIA</c>— porque es la que tiene las notas del modelo.
+    /// </remarks>
+    public string Material { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Las <b>notas</b> de la propiedad en el modelo, tal como vienen.
+    /// </summary>
+    /// <remarks>
+    /// De aquí sale una decisión que se pidió explícita: el achurado <c>ANSI37</c> va
+    /// <b>solo</b> en las losas cuya nota dice <c>VOLADO</c>. Reconocer el voladizo por la
+    /// nota y no por la geometría es lo correcto en un modelo real: el ingeniero <b>sabe</b>
+    /// cuál es el volado y lo escribe, mientras que contar lados apoyados se equivoca en
+    /// cuanto una cadena está partida en el modelo.
+    /// </remarks>
+    public string Notas { get; set; } = string.Empty;
 
     /// <summary>Contorno del paño, para las losas.</summary>
     public List<(double X, double Y)> Vertices { get; } = new();
@@ -50,6 +188,76 @@ public sealed class ElementoPlanta
 /// <summary>
 /// Todo lo que hace falta para dibujar una planta en AutoCAD.
 /// </summary>
+/// <summary>
+/// Lo que hace falta para dibujar un <b>corte por un eje</b>: el alzado del modelo.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Va aparte de <see cref="PlantaCad"/> porque un corte no es de un nivel: <b>atraviesa el
+/// edificio entero</b>, así que lleva los elementos de todos los niveles con su cota. Es la
+/// diferencia de fondo entre una planta y un alzado.
+/// </para>
+/// <para>
+/// Se dibuja al lado de la planta estructural, a la distancia que diga
+/// <c>CORTE_SEPARACION_M</c>, para que los dos dibujos se lean juntos: el corte dice las
+/// alturas que la planta no puede decir.
+/// </para>
+/// </remarks>
+public sealed class CorteCad
+{
+    /// <summary>Nombre del eje del corte: lo que dice su burbuja.</summary>
+    public string Eje { get; set; } = string.Empty;
+
+    /// <summary><c>true</c> si el corte va por un eje de los que corren en X.</summary>
+    public bool EnX { get; set; }
+
+    /// <summary>Coordenada del eje del corte, en metros.</summary>
+    public double Ordenada { get; set; }
+
+    /// <summary>Espesor de la rebanada que entra en el corte, en metros.</summary>
+    public double EspesorM { get; set; } = 0.6;
+
+    /// <summary>Nombre del modelo, para el rótulo.</summary>
+    public string Modelo { get; set; } = string.Empty;
+
+    /// <summary>Los elementos de TODOS los niveles, con su cota.</summary>
+    public List<ElementoPlanta> Elementos { get; } = new();
+
+    /// <summary>
+    /// Qué <b>lado</b> del corte se mira: el de las coordenadas mayores, o el otro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió poder elegirlo, y hace falta: un corte mira hacia un lado —lo de detrás se ve y lo
+    /// de delante se quita— y con el lado fijo hay cortes en los que no se ve nada al fondo, porque
+    /// el edificio está del otro lado.
+    /// </para>
+    /// <para>
+    /// Con el plano en <b>X</b> —la línea corre en Y— es elegir entre ver lo de la <b>derecha</b>
+    /// o lo de la <b>izquierda</b>; con el plano en <b>Y</b>, entre lo de <b>arriba</b> o lo de
+    /// <b>abajo</b>. Es voltear el corte, como en cualquier programa de modelado.
+    /// </para>
+    /// </remarks>
+    public bool HaciaMas { get; set; } = true;
+
+    /// <summary>Los niveles con su cota, para rotularlos en el corte.</summary>
+    public List<(string Nombre, double Z)> Niveles { get; } = new();
+
+    /// <summary>
+    /// Los <b>ejes que se ven</b> en el corte, con su nombre y su coordenada.
+    /// </summary>
+    /// <remarks>
+    /// Son los <b>perpendiculares</b> al del corte: en un corte por un eje de los que van en X
+    /// se recorre la Y, así que los que se cruzan —y los que hay que acotar— son los de la Y.
+    /// Con ellos el corte lleva sus burbujas y sus cotas, igual que la planta, y las dos cosas
+    /// se pueden comparar eje por eje.
+    /// </remarks>
+    public List<(string Id, double Ordenada)> Ejes { get; } = new();
+
+    /// <summary>Altura del texto de los rótulos, en metros.</summary>
+    public double AlturaTexto { get; set; } = 0.25;
+}
+
 public sealed class PlantaCad
 {
     /// <summary>Nombre del nivel, tal como lo llama el modelo.</summary>
@@ -59,6 +267,24 @@ public sealed class PlantaCad
     public string Modelo { get; set; } = string.Empty;
 
     public List<ElementoPlanta> Elementos { get; } = new();
+
+    /// <summary>
+    /// <b>Solo la cuadrícula</b>: los ejes, sus burbujas y sus cotas, sin los elementos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «la opción de solo dibujar ejes y cortes sin hacer todo el dibujo de planos». Y
+    /// se entiende para qué sirve: montar la cuadrícula sobre un plano de arquitectura que ya
+    /// existe, o replantear en obra con las cotas de los ejes y nada más. Dibujar la estructura
+    /// entera para luego borrarla es trabajo tirado y una ocasión de borrar de más.
+    /// </para>
+    /// <para>
+    /// Los elementos <b>siguen llegando</b> en <see cref="Elementos"/> y eso es a propósito: de
+    /// ellos sale el rectángulo que los ejes tienen que cubrir y el paño al que se corren los de
+    /// orilla. Lo que no se hace es <b>dibujarlos</b>.
+    /// </para>
+    /// </remarks>
+    public bool SoloEjes { get; set; }
 
     /// <summary>
     /// Altura del texto de los rótulos, en metros de papel.
@@ -71,4 +297,16 @@ public sealed class PlantaCad
 
     /// <summary>¿Se rotula cada elemento con su etiqueta y su sección?</summary>
     public bool ConRotulos { get; set; } = true;
+
+    /// <summary>
+    /// Los ejes <b>verticales</b> de la cuadrícula: nombre y X, de izquierda a derecha.
+    /// </summary>
+    /// <remarks>
+    /// Salen de la cuadrícula del modelo o, si el programa no la da, deducidos de las
+    /// columnas y los muros. Vacío significa «esta planta va sin ejes».
+    /// </remarks>
+    public List<(string Id, double Ordenada)> EjesX { get; } = new();
+
+    /// <summary>Los <b>horizontales</b>: nombre y Y, de abajo arriba.</summary>
+    public List<(string Id, double Ordenada)> EjesY { get; } = new();
 }

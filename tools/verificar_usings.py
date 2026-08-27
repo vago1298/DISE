@@ -210,7 +210,20 @@ def revisar_usings(ruta, codigo):
             usado = re.search(
                 r"(?<![\w.])" + tipo + r"\s*\.\s*\w"
                 r"|new\s+" + tipo + r"\s*[({]"
-                r"|<\s*" + tipo + r"\s*[,>]",
+                r"|<\s*" + tipo + r"\s*[,>]"
+
+                # EL TIPO GENERICO, ESCRITO EN UNA DECLARACION.
+                # Esto FALTABA, y por faltar dejo pasar un error de compilacion hasta
+                # Windows: 'public static ObservableCollection<string> X { get; } = new();'
+                # no es 'Tipo.Miembro' ni 'new Tipo(...)' -el 'new()' no repite el tipo- ni
+                # el tipo DENTRO de otro generico, asi que ninguno de los tres patrones de
+                # arriba lo veia. Es justo como se declara una lista observable, o sea el
+                # caso mas corriente que hay.
+                r"|(?<![\w.])" + tipo + r"\s*<"
+
+                # Y el tipo a secas en una declaracion: 'StringBuilder sb = new();',
+                # 'CultureInfo? c;', 'Process p, q;'. Mismo motivo.
+                r"|(?<![\w.])" + tipo + r"\??\s+\w+\s*(?:=|;|\)|,)",
                 limpio,
             )
 
@@ -336,6 +349,11 @@ AJENOS = {
     "OrdinalIgnoreCase", "StringComparison", "NumberStyles", "PropertyChanged",
     "PropertyName", "ContainsKey", "TryGetValue", "FirstOrDefault", "ElementAt",
     "SetDatabaseDefaults", "TrueColor", "ObjectName", "StartPoint", "EndPoint",
+    # De la COTA de AutoCAD, por objeto. ExtensionLineExtend se parece a «Extension» de
+    # este proyecto y se reportaba como CS1061 sin serlo: es una propiedad de AcadDimension
+    # y el objeto es dynamic.
+    "ExtensionLineExtend", "DecimalSeparator", "ArrowheadSize", "TextHeight",
+    "LinetypeScale", "AddSolid", "MoveToTop", "GetExtensionDictionary",
     "AddMText", "AddText", "AddHatch", "AddCircle", "AddLine", "AddArc", "Evaluate",
     "SetFont", "CopyFrom", "Regen", "Update", "Delete", "Move", "Rotate", "Explode",
     "ScreenUpdating", "ShowDialog", "InitializeComponent", "Children", "Content",
@@ -405,6 +423,17 @@ def revisar_miembros_que_no_existen(rutas):
         for m in re.finditer(r"\benum\s+\w+[^{]*\{([^}]*)\}", t, re.S):
             for id_ in re.findall(r"[A-Za-z_]\w*", m.group(1)):
                 declarados.add(id_)
+
+        # Los parametros POSICIONALES de un record tampoco llevan modificador, y sin
+        # embargo son propiedades publicas: 'Parrilla(double[] Circulos)' declara
+        # .Circulos. Sin esto, el dia que aparecio 'CirculosDelMuro' el verificador
+        # senalo el .Circulos de la parrilla como si no existiera, que es justo el
+        # aviso falso que hace que un verificador se deje de leer.
+        for m in re.finditer(r"\brecord\s+(?:struct\s+|class\s+)?\w+\s*\(([^)]*)\)", t):
+            for parte in m.group(1).split(","):
+                ids = re.findall(r"[A-Za-z_]\w*", parte)
+                if ids:
+                    declarados.add(ids[-1])
 
     largos = [d for d in declarados if len(d) >= 8]
 

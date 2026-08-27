@@ -68,6 +68,7 @@ public sealed class ZapataAisladaRow : Row
     private string _fc = "250";
 
     private bool _dadoCircular;
+    private bool _columnaCircular;
 
     // Armado de la COLUMNA. No se captura: se trae de la seccion de la columna elegida, que es
     // donde ya estaba. La macro lo lee de sus propias celdas (J5, J6, K5, L5, O4, O5).
@@ -348,6 +349,20 @@ public sealed class ZapataAisladaRow : Row
     /// </remarks>
     public bool DadoCircular { get => _dadoCircular; set => Set(ref _dadoCircular, value); }
 
+    /// <summary>
+    /// La columna que desplanta es <b>circular</b>. Tampoco se captura: sale de su sección.
+    /// </summary>
+    /// <remarks>
+    /// La usa la <b>transición dado → columna</b>: en un elemento redondo las varillas van en la
+    /// circunferencia y en el alzado se ve su proyección, así que emparejarlas con las del dado
+    /// como si estuvieran repartidas a lo ancho de una cara sacaba barras cruzadas.
+    /// </remarks>
+    public bool ColumnaCircular
+    {
+        get => _columnaCircular;
+        set => Set(ref _columnaCircular, value);
+    }
+
     /// <summary>Varilla de una cara de la columna, traída de su sección.</summary>
     /// <remarks>
     /// Estas seis propiedades <b>no se capturan</b>: las llena la ventana desde la sección de la
@@ -484,6 +499,7 @@ public sealed class ZapataAisladaRow : Row
         // La forma del dado y el armado de la COLUMNA, que vienen de sus secciones. El modo de
         // relleno ya NO viaja por fila: es del juego entero y lo pone el dibujante.
         DadoCircular = DadoCircular,
+        ColumnaCircular = ColumnaCircular,
         IdColumna = SoloElId(IdColumna),
         VarColSup = VarColSup,
         VarColInf = VarColInf,

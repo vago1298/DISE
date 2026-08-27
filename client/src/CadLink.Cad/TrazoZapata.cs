@@ -157,6 +157,17 @@ public sealed class ZapataCad
     /// </remarks>
     public bool DadoCircular { get; init; }
 
+    /// <summary>
+    /// La columna que desplanta es <b>circular</b>.
+    /// </summary>
+    /// <remarks>
+    /// Igual que <see cref="DadoCircular"/>, sale de su sección y no se captura. Se usa en la
+    /// <b>transición dado → columna</b>: en un elemento redondo las varillas no están repartidas a
+    /// lo ancho de una cara, sino en la circunferencia, y lo que se ve en el alzado es su
+    /// proyección. Emparejarlas como si fuera rectangular sacaba barras cruzadas.
+    /// </remarks>
+    public bool ColumnaCircular { get; init; }
+
     /// <summary>ID de la columna que desplanta, para su rótulo. <c>H5</c> / <c>Y5</c>.</summary>
     public string IdColumna { get; init; } = string.Empty;
 
@@ -282,8 +293,39 @@ public static class TrazoZapata
     /// <summary>Largo del gancho de las parrillas, en metros. La macro pasa 0.03.</summary>
     public const double GanchoParrilla = 0.03;
 
-    /// <summary>Factor del gancho de arranque del dado: <c>FACTOR_GANCHO_ABAJO</c>.</summary>
+    /// <summary>
+    /// Factor del gancho de arranque del dado, en <b>diámetros</b>: <c>FACTOR_GANCHO_ABAJO</c>.
+    /// </summary>
+    /// <remarks>
+    /// Los <b>15 diámetros</b> de la macro, y es solo el valor <b>por omisión</b>: la hoja de
+    /// zapatas lleva una casilla para cambiarlo —40 diámetros, los que hagan falta— y ese valor
+    /// manda en el dibujo y en las cotas. Ver <see cref="FactorGanchoValido"/>.
+    /// </remarks>
     public const double FactorGanchoAbajo = 15.0;
+
+    /// <summary>Mínimo admitido para el doblez, en diámetros.</summary>
+    /// <remarks>
+    /// Por debajo de 6 diámetros no es una pata de anclaje: es el propio radio de doblado. Se pone
+    /// un mínimo para que una casilla en blanco o un 0 no dejen el dibujo sin patas.
+    /// </remarks>
+    public const double FactorGanchoMinimo = 6.0;
+
+    /// <summary>Máximo admitido, para que un dedo de más no dibuje una pata de dos metros.</summary>
+    public const double FactorGanchoMaximo = 80.0;
+
+    /// <summary>
+    /// El factor del doblez que se va a usar de verdad, ya validado.
+    /// </summary>
+    /// <remarks>
+    /// Vive aquí, y no en la ventana, porque lo tienen que usar los dos: el dibujante de AutoCAD y
+    /// la vista previa. Si cada uno validara por su cuenta, con una casilla vacía la previa
+    /// enseñaría una pata y el plano saldría con otra.
+    /// </remarks>
+    /// <param name="diametros">Lo que se capturó en la casilla. 0 o vacío = el de la macro.</param>
+    public static double FactorGanchoValido(double diametros) =>
+        diametros <= 0
+            ? FactorGanchoAbajo
+            : Math.Clamp(diametros, FactorGanchoMinimo, FactorGanchoMaximo);
 
     /// <summary>Separación mínima de estribos, en metros.</summary>
     public const double SepEstriboMinima = 0.05;
@@ -298,37 +340,275 @@ public static class TrazoZapata
     public const double PlantaFraccionCierre = 0.3;
 
     // ======================================================================
+    // LA TRANSICIÓN DADO → COLUMNA: DESPLAZAMIENTO DE VARILLA A 1:6
+    // ======================================================================
+    //
+    // Es el detalle DESPLAZAMIENTO DE VARILLA EN COLUMNA O TRABE, RELACION 1:6: la varilla del
+    // dado se corre de lado para caer en la posición que le toca en la columna, y ese corrimiento
+    // se reparte en SEIS veces su longitud. La macro lo tiene en RELACION_DESPLAZAMIENTO = 6.
+
+    /// <summary>Uno de lado por <b>seis</b> de largo. <c>RELACION_DESPLAZAMIENTO</c>.</summary>
+    public const double RelacionDesplazamiento = 6.0;
+
+    /// <summary>
+    /// Corrimiento máximo que se resuelve doblando la misma varilla.
+    /// </summary>
+    /// <remarks>
+    /// <c>DESPLAZAMIENTO_MAX</c>. Por encima de 12 cm ya no es una varilla que se corre: son dos
+    /// varillas distintas y lo que va es un traslape, que es otro detalle. La macro se sale de la
+    /// rutina y deja las barras rectas.
+    /// </remarks>
+    public const double DesplazamientoMax = 0.12;
+
+    /// <summary>Tramo recto que se le deja a la varilla del dado antes del doblez.</summary>
+    /// <remarks><c>MIN_BARRA_RECTA_DADO</c>, medido desde el lomo de la zapata.</remarks>
+    public const double MinBarraRectaDado = 0.15;
+
+    /// <summary>Dónde va el doblez de la transición, ya resuelto a 1:6.</summary>
+    /// <param name="Cabe">
+    /// Se puede dibujar. Si es <c>false</c> las varillas del dado siguen <b>rectas</b>: es mejor
+    /// eso que un doblez más parado que el detalle.
+    /// </param>
+    /// <param name="YZonaBot">Donde arranca el doblez.</param>
+    /// <param name="YDiagTop">Donde acaba el doblez y la varilla sigue vertical.</param>
+    /// <param name="Alto">Lo que mide el doblez: seis veces el corrimiento.</param>
+    public readonly record struct Transicion(
+        bool Cabe, double YZonaBot, double YDiagTop, double Alto);
+
+    /// <summary>
+    /// Resuelve el doblez de la transición <b>siempre a 1:6</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ESTO ES LO QUE ESTABA MAL. El alto del doblez se calculaba a 1:6 y después se
+    /// <b>recortaba</b> a lo que quedaba libre en el dado, así que en un dado bajo el mismo
+    /// corrimiento se repartía en menos altura y el doblez salía <b>más parado</b> que el detalle
+    /// —hasta 1:3 en el dibujo que se revisó—. El aviso decía «sube el dado», pero el plano ya
+    /// había salido con un doblez que no es el que se especifica.
+    /// </para>
+    /// <para>
+    /// Ahora el alto es intocable: seis veces el corrimiento. Y el doblez <b>acaba en la junta</b> y
+    /// vive DENTRO del dado, como en la macro. No se le deja pasar al otro lado por dos razones:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>Arriba de la junta ya están las varillas de la columna, que las dibuja su propio
+    ///   elemento; un doblez que siga hacia arriba pasa por encima de ellas y en el plano se ven
+    ///   <b>varillas duplicadas</b>.</item>
+    ///   <item>El doblez de un nudo se hace por debajo de la junta. Es lo que dice el detalle.</item>
+    /// </list>
+    /// <para>
+    /// Si 6·dx no cabe entre el tramo recto mínimo y la junta, <b>no se dibuja</b>: las varillas del
+    /// dado se quedan rectas y se avisa. Un doblez más parado que el detalle, o metido en la
+    /// columna encima de sus varillas, no es un dibujo: es un error.
+    /// </para>
+    /// </remarks>
+    /// <param name="dxMax">El corrimiento más grande de todas las varillas emparejadas.</param>
+    /// <param name="yZapTop">Lomo de la zapata.</param>
+    /// <param name="yDadoTop">Tope del dado, que es la junta con la columna.</param>
+    /// <param name="recDadoM">Recubrimiento del dado.</param>
+    public static Transicion Desplazamiento(
+        double dxMax, double yZapTop, double yDadoTop, double recDadoM)
+    {
+        var alto = RelacionDesplazamiento * Math.Abs(dxMax);
+
+        if (alto <= 1e-9)
+        {
+            // Las varillas caen en la misma X: no hay nada que correr y no hay doblez.
+            return new Transicion(false, yDadoTop, yDadoTop, 0);
+        }
+
+        var piso = yZapTop + MinBarraRectaDado;
+        var techo = yDadoTop - recDadoM;
+
+        var yDiagTop = yDadoTop;
+        var yZonaBot = yDadoTop - alto;
+
+        // Un doblez chico no arranca dentro del recubrimiento del tope: se baja el arranque al
+        // techo y el doblez acaba por debajo de la junta, que también es correcto.
+        if (yZonaBot > techo)
+        {
+            yZonaBot = techo;
+            yDiagTop = techo + alto;
+        }
+
+        // Y tiene que caber por encima del tramo recto que se le deja sobre la zapata.
+        var cabe = yZonaBot >= piso - 1e-9
+                   && yZonaBot < yDiagTop - 1e-9
+                   && yDiagTop <= yDadoTop + 1e-9;
+
+        return new Transicion(cabe, yZonaBot, yDiagTop, alto);
+    }
+
+    /// <summary>
+    /// Las varillas de una cara del elemento vertical, en X, como se ven en el alzado.
+    /// </summary>
+    /// <param name="Izq">La del paño izquierdo.</param>
+    /// <param name="Der">La del paño derecho.</param>
+    /// <param name="Intermedias">Las de en medio, de izquierda a derecha.</param>
+    public readonly record struct BarrasElemento(
+        double Izq, double Der, IReadOnlyList<double> Intermedias);
+
+    /// <summary>
+    /// Varillas de un elemento <b>rectangular</b>. Port de <c>PosicionesBarrasElemento</c>.
+    /// </summary>
+    /// <param name="xCaraDer">Paño derecho del elemento.</param>
+    public static BarrasElemento BarrasRectangulares(
+        double xCaraDer, double w, double recM, double dSup, double dInf, int nInt)
+    {
+        var izq = xCaraDer - (w - recM - (dSup / 2));
+        var der = xCaraDer - (recM + (dInf / 2));
+
+        var lista = new List<double>();
+
+        if (nInt <= 0)
+        {
+            return new BarrasElemento(izq, der, lista);
+        }
+
+        var desde = recM + dInf;
+        var hasta = w - recM - dSup;
+
+        if (hasta <= desde)
+        {
+            return new BarrasElemento(izq, der, lista);
+        }
+
+        var paso = (hasta - desde) / (nInt + 1);
+
+        for (var k = 1; k <= nInt; k++)
+        {
+            lista.Add(xCaraDer - (desde + (paso * k)));
+        }
+
+        return new BarrasElemento(izq, der, lista);
+    }
+
+    /// <summary>
+    /// Varillas de un elemento <b>circular</b>, proyectadas como se verían en el alzado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Todavía no la usa el dibujante</b>, y es a propósito: el alzado reparte las varillas de
+    /// un elemento redondo a lo ancho, igual que en el cuadrado, así que si la unión partiera de
+    /// estas posiciones los dobleces no arrancarían encima de las varillas dibujadas. Las dos cosas
+    /// tienen que cambiar a la vez. Queda aquí, con su cuenta comprobada, para ese paso.
+    /// </para>
+    /// <para>
+    /// La macro no tiene el caso redondo —sus dos hojas capturan base y altura—, así que esto se
+    /// arma con la misma idea que la rectangular: en el alzado no se ve la planta, se ve la
+    /// <b>proyección</b> de las varillas sobre el diámetro horizontal.
+    /// </para>
+    /// <para>
+    /// Las <c>n</c> varillas van repartidas en la circunferencia de radio
+    /// <c>D/2 − rec − dEstribo − dBarra/2</c>, empezando arriba. Su proyección en X es
+    /// <c>cx + R·cos θ</c>, así que dos varillas simétricas respecto del eje vertical caen en la
+    /// <b>misma</b> X y en el alzado son una sola: se agrupan con una tolerancia de medio diámetro,
+    /// porque dibujar dos varillas encimadas y emparejarlas por separado con la columna es
+    /// exactamente lo que hacía que salieran barras cruzadas.
+    /// </para>
+    /// <para>
+    /// Las dos de los extremos son las de los paños —las que en la rectangular son las de
+    /// esquina— y las demás quedan como intermedias.
+    /// </para>
+    /// </remarks>
+    /// <param name="xCaraDer">Paño derecho, que en el redondo es el borde del círculo.</param>
+    /// <param name="diametroM">Diámetro del elemento.</param>
+    /// <param name="nTotal">Cuántas varillas lleva en total la circunferencia.</param>
+    public static BarrasElemento BarrasCirculares(
+        double xCaraDer, double diametroM, double recM, double dEstriboM, double dBarraM,
+        int nTotal)
+    {
+        var cx = xCaraDer - (diametroM / 2);
+        var radio = (diametroM / 2) - recM - dEstriboM - (dBarraM / 2);
+
+        if (radio <= 0 || nTotal < 2)
+        {
+            // Sin sitio o sin varillas: se responde como si fuera un rectángulo de ese ancho, que
+            // deja las dos de los paños y ninguna intermedia.
+            return BarrasRectangulares(xCaraDer, diametroM, recM, dBarraM, dBarraM, 0);
+        }
+
+        var xs = new List<double>();
+        var tol = Math.Max(dBarraM / 2, 1e-4);
+
+        for (var k = 0; k < nTotal; k++)
+        {
+            // Se empieza ARRIBA, como se reparte una columna redonda en obra.
+            var ang = (Math.PI / 2) + (2 * Math.PI * k / nTotal);
+            var x = cx + (radio * Math.Cos(ang));
+
+            if (!xs.Any(v => Math.Abs(v - x) < tol))
+            {
+                xs.Add(x);
+            }
+        }
+
+        xs.Sort();
+
+        var izq = xs[0];
+        var der = xs[^1];
+        var medias = xs.Count > 2 ? xs.GetRange(1, xs.Count - 2) : new List<double>();
+
+        return new BarrasElemento(izq, der, medias);
+    }
+
+    // ======================================================================
     // El acomodo
     // ======================================================================
+
+    /// <summary>
+    /// Donde <b>empieza</b> la fila: el paño <b>derecho</b> de la primera zapata, en
+    /// <c>x = −0.8</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// LO QUE SE PIDIÓ: <i>«empezar en x = −0.8»</i>, <i>«no lo dibujes a partir del centro»</i>.
+    /// Antes la primera zapata se colocaba con su paño izquierdo <b>en el origen</b> y de ahí
+    /// crecía hacia la izquierda, así que el dibujo arrancaba encima del <c>0,0</c> y se metía en
+    /// la zona donde viven las secciones y los alzados.
+    /// </para>
+    /// <para>
+    /// Son los mismos <see cref="SeparacionIzquierda"/> = 0.8 que separan una zapata de la
+    /// siguiente: el origen se trata como si fuera una zapata más, así que el hueco antes del
+    /// dibujo es igual al que hay entre dos zapatas. Con esto la fila entera queda en
+    /// <c>x ≤ −0.8</c> y nada toca el origen.
+    /// </para>
+    /// <para>
+    /// Si algún día se quiere que sea el paño <b>izquierdo</b> el que arranque en −0.8, y no el
+    /// derecho, se le quita el <c>− Ancho(anchos, 0)</c> a <see cref="XBase"/>: es el único
+    /// sitio donde se decide.
+    /// </para>
+    /// </remarks>
+    public const double XArranque = -SeparacionIzquierda;
 
     /// <summary>
     /// El <b>paño izquierdo</b> de la zapata número <paramref name="indice"/>, en metros.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Aquí está la diferencia de acomodo entre las dos macros, y es de sentido, no de número:
+    /// La fila <b>empieza en <see cref="XArranque"/> = −0.8</b> y crece hacia la <b>izquierda</b>:
+    /// la primera zapata queda con su paño derecho ahí, y cada siguiente a 0.8 del paño izquierdo
+    /// de la anterior.
+    /// </para>
+    /// <para>
+    /// Dos detalles que se ven poco y se notan mucho:
     /// </para>
     /// <list type="bullet">
-    /// <item>La <b>central</b> arranca en 0 y crece hacia la derecha: cada zapata se pone a un
-    /// metro del borde derecho de la anterior. La macro lo hace acumulando
-    /// <c>xBase = xBase + anchoZapata + SEPARACION_SECCIONES</c>, así que el sitio de una
-    /// depende de los anchos de <b>todas</b> las de antes.</item>
-    /// <item>La de <b>lindero</b> arranca en −3 y crece hacia la izquierda: se le resta la
-    /// separación y el ancho de la zapata que se va a dibujar. Ojo con el detalle: se resta el
-    /// ancho de la <b>nueva</b>, no el de la anterior, porque lo que se coloca es su paño
-    /// izquierdo.</item>
+    /// <item>Lo que se coloca es el <b>paño izquierdo</b>, así que se resta el ancho de la zapata
+    /// <b>nueva</b>, no el de la anterior. Restar el que no toca es lo que dejaba la zapata ancha
+    /// montada sobre la angosta.</item>
+    /// <item>El tipo ya no cambia el acomodo. Las dos familias crecen hacia la izquierda.
+    /// Antes las centrales crecían a la derecha desde cero y los linderos a la izquierda desde
+    /// −3, como en cada macro, y al mezclar los dos tipos en una misma hoja se encimaban.</item>
     /// </list>
     /// </remarks>
     /// <param name="anchos">Los anchos, en metros, en el orden de la tabla.</param>
     /// <param name="indice">Cuál de ellas.</param>
     public static double XBase(string tipo, IReadOnlyList<double> anchos, int indice)
     {
-        // La PRIMERA en cero, y cada siguiente un metro a la IZQUIERDA del paño izquierdo de la
-        // anterior. El tipo ya no cambia el acomodo: sea central o de lindero, la fila crece
-        // hacia la izquierda, que es como se pidió y como se lee un juego de zapatas puesto en
-        // hilera. Antes las centrales crecían a la derecha desde cero y los linderos a la
-        // izquierda desde −3, y al mezclar los dos tipos en una misma hoja se encimaban.
-        var x = 0.0;
+        // La PRIMERA con su paño DERECHO en -0.8 -por eso se le resta su propio ancho-, y cada
+        // siguiente a 0.8 del paño izquierdo de la anterior.
+        var x = XArranque - Ancho(anchos, 0);
 
         for (var i = 1; i <= indice; i++)
         {
@@ -339,6 +619,15 @@ public static class TrazoZapata
 
         return x;
     }
+
+    /// <summary>
+    /// El punto más a la <b>derecha</b> que ocupa la fila de zapatas: <see cref="XArranque"/>.
+    /// </summary>
+    /// <remarks>
+    /// Existe para poder comprobar de un tiro que ninguna zapata pasa de aquí, que es la forma
+    /// corta de decir «no arranca en el centro».
+    /// </remarks>
+    public static double XDerechaDeLaFila => XArranque;
 
     /// <summary>Si el tipo es el de lindero.</summary>
     public static bool EsLindero(string? tipo) =>
@@ -464,38 +753,65 @@ public static class TrazoZapata
     }
 
     // ======================================================================
-    // EL RENGLÓN DE LOS RÓTULOS
+    // LA ANOTACIÓN: LA DE LAS MACROS, SIN INVENTOS
     // ======================================================================
+    //
+    // Estas seis distancias son las de <c>ZAPATA AISLADA CENTRAL V2</c> y <c>LINDERO V1</c>, con
+    // el nombre que tenían allí, y van pegadas a la SECCIÓN DE CIMENTACIÓN: las verticales a la
+    // izquierda del paño izquierdo, la cadena y el total justo por debajo del desplante, y las
+    // patas de los ganchos a 6 cm de la pata.
+    //
+    // NO SE MUEVEN DE AHÍ. Se probaron dos veces otras posiciones —las verticales al paño derecho
+    // y el rótulo bajado a su propio renglón— y las dos veces salió peor: las cotas se despegaban
+    // de la cimentación y acababan a la altura del dado, lejos de lo que miden.
+    //
+    // El encimado de los rótulos, que es lo que se quería arreglar moviéndolos, NO era un problema
+    // de posición: era el ANCHO DE LETRA con el que se decide si el título cabe. Ver
+    // <see cref="FactorLetraTitulo"/>.
+
+    /// <summary>Cotas verticales, primera línea: a la <b>izquierda</b> del paño izquierdo.</summary>
+    /// <remarks><c>COTA_OFFSET_VERT_1</c>.</remarks>
+    public const double AnotacionCotaVert1 = 0.08;
+
+    /// <summary>Cotas verticales, la del total. <c>COTA_OFFSET_VERT_2</c>.</summary>
+    public const double AnotacionCotaVert2 = 0.16;
+
+    /// <summary>Cadena de anchos, por debajo del desplante. <c>COTA_OFFSET_CADENA</c>.</summary>
+    public const double AnotacionCadena = 0.14;
+
+    /// <summary>Cota del ancho total. <c>COTA_OFFSET_TOTAL</c>.</summary>
+    public const double AnotacionTotal = 0.22;
 
     /// <summary>
-    /// Lo que se BAJA el rótulo por debajo del dibujo: los mismos <b>0.8</b> que separan una
-    /// zapata de la siguiente, ahora hacia abajo.
+    /// Separación de la cota de la pata del gancho respecto de la pata que mide.
     /// </summary>
     /// <remarks>
-    /// El rótulo NO se cuelga del fondo de la zapata a 32 cm como en la macro: ahí caía sobre el
-    /// dibujo. Se va a su propio renglón, 80 cm por debajo del punto más bajo de la elevación
-    /// —el fondo de la plantilla—, y como ese fondo es el mismo para todas las zapatas
-    /// (<see cref="YBaseElevacion"/> es fijo), <b>todos los rótulos quedan alineados siempre</b>,
-    /// midan lo que midan las zapatas.
+    /// Los 6 cm con los que la macro llama a <c>CotasDoblezGanchosDado</c>. Queda dentro del
+    /// dado, que es donde está lo que se mide: una cota de 19 cm sacada medio metro más abajo, con
+    /// sus líneas de extensión cruzando la zapata entera, se lee peor, no mejor.
     /// </remarks>
-    public const double RotuloSeparacion = SeparacionIzquierda;
+    public const double AnotacionGancho = 0.06;
 
-    /// <summary>Del título al segundo renglón. Es el salto de la macro: 0.41 − 0.32.</summary>
+    /// <summary>Primer renglón del rótulo: <c>ROTULO_TITULO_OFFSET</c>.</summary>
+    public const double AnotacionRotulo = 0.32;
+
+    /// <summary>Del título al segundo renglón. El salto de la macro: 0.41 − 0.32.</summary>
     public const double RotuloSalto1 = 0.09;
 
     /// <summary>Del título al tercero. El de la macro: 0.49 − 0.32.</summary>
     public const double RotuloSalto2 = 0.17;
 
     /// <summary>
-    /// La Y de un renglón del rótulo: 0 = título, 1 = subtítulo, 2 = recubrimiento y escala.
+    /// La Y de un renglón del rótulo del <b>corte</b>: 0 = título, 1 = subtítulo, 2 = escala.
     /// </summary>
-    /// <param name="yFondoDibujo">
-    /// El punto más bajo del dibujo al que pertenece el rótulo: el fondo de la plantilla en el
-    /// corte y el paño inferior en la planta.
-    /// </param>
-    public static double YRotulo(double yFondoDibujo, int renglon)
+    /// <remarks>
+    /// Los 0.32, 0.41 y 0.49 de la macro, medidos <b>desde el desplante</b>. El rótulo va
+    /// <b>centrado</b> en el eje de la zapata, también como la macro.
+    /// </remarks>
+    /// <param name="yZapBot">El desplante de la zapata.</param>
+    public static double YRotulo(double yZapBot, int renglon)
     {
-        var y = yFondoDibujo - RotuloSeparacion;
+        var y = yZapBot - AnotacionRotulo;
 
         return renglon switch
         {
@@ -504,6 +820,21 @@ public static class TrazoZapata
             _ => y - RotuloSalto2
         };
     }
+
+    /// <summary>Los dos renglones del rótulo de la <b>planta</b>, con los saltos de la macro.</summary>
+    /// <remarks>
+    /// La planta cuelga de <b>su</b> esquina inferior derecha, y ahí abajo solo tiene la cota del
+    /// ancho, a 0.12, así que el rótulo cabe a los 0.24 y 0.33 de la macro sin bajarlo más.
+    /// </remarks>
+    /// <param name="yBot">Paño inferior de la planta.</param>
+    public static double YRotuloPlanta(double yBot, int renglon) =>
+        renglon == 0 ? yBot - PlantaTituloOffset : yBot - PlantaEscalaOffset;
+
+    /// <summary>Renglón del título de la planta, el de la macro.</summary>
+    public const double PlantaTituloOffset = 0.24;
+
+    /// <summary>Renglón de la escala de la planta.</summary>
+    public const double PlantaEscalaOffset = 0.33;
 
     /// <summary>
     /// El ancho del que dispone un rótulo: el de su zapata más el hueco de 80 cm que la fila
@@ -514,6 +845,26 @@ public static class TrazoZapata
     /// aquí no puede meterse en el de la zapata de al lado.
     /// </remarks>
     public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;
+
+    /// <summary>
+    /// Ancho de letra del <b>rótulo</b>, en fracción de su alto: <b>1.0</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// AQUÍ ESTABA EL ENCIMADO DE LOS TÍTULOS, y no en dónde iba el rótulo. Se venía usando el
+    /// <b>0.62</b> con el que la macro estima el texto de la plantilla, y con ese número
+    /// <c>ZAPATA AISLADA DE LINDERO "ZE-1"</c> —32 letras a 7 cm— «medía» 1.39 m, cabía en el
+    /// hueco de 1.80 y no se encogía nunca. En el dibujo, con el estilo de texto que se usa, ese
+    /// mismo título mide <b>2.2 m</b>: 0.98 del alto por letra. Los dos títulos se pasaban 40 cm
+    /// cada uno y se leían uno sobre el otro.
+    /// </para>
+    /// <para>
+    /// Con 1.0 la cuenta queda del lado seguro y el título se encoge —a 5.6 cm en una zapata de
+    /// 1.00 m— en lugar de meterse en el de al lado. El 0.62 se conserva donde lo usa la macro:
+    /// el texto de la plantilla y el ID del dado, que van dentro de una caja que ella misma midió.
+    /// </para>
+    /// </remarks>
+    public const double FactorLetraTitulo = 1.0;
 
     /// <summary>
     /// El alto con el que un texto de una línea <b>cabe</b> en el ancho disponible.

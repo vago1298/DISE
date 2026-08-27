@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de la tabla de secciones del modelo: el port de
+       VolcarSecciones, ClasificaTipo, MaterialDeMuro y OrdenDeTipo, mas el respaldo
+       del espesor por el NOMBRE de la propiedad (DimsDesdeNombre).
+
+       Esas cuatro rutinas son de la CAPA 2 de la macro: aritmetica y palabras, sin
+       ETABS y sin AutoCAD. Por eso se pueden probar aqui, sin abrir nada.
+
+           cd tools/prueba-secciones-modelo
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-secciones-modelo</AssemblyName>
+
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Etabs\CadLink.Etabs.csproj" />
+  </ItemGroup>
+
+</Project>

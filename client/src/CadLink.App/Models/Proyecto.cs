@@ -54,6 +54,16 @@ public sealed class ProyectoGuardado
     public double EscalaHatch { get; set; } = 0.0003;
     public int ModoSeccion { get; set; } = 1;
 
+    /// <summary>
+    /// Doblez del gancho de arranque de las zapatas, en <b>diámetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es del juego entero, como el modo de sección, así que se guarda aquí y no por fila. Por
+    /// omisión los <b>15</b> de la macro: un <c>.clk</c> guardado antes de que existiera esta
+    /// casilla se abre con los 15 que tenía, que es lo que se dibujó cuando se guardó.
+    /// </remarks>
+    public double GanchoZapatasDiametros { get; set; } = 15.0;
+
     // ---- Contenido ----
     public List<PlanoGuardado> Planos { get; set; } = new();
     public List<SeccionGuardada> Secciones { get; set; } = new();
@@ -68,6 +78,15 @@ public sealed class ProyectoGuardado
 
     /// <summary>Las filas de <b>Zapatas Aisladas</b>.</summary>
     public List<FilaGuardada> Zapatas { get; set; } = new();
+
+    /// <summary>Las filas de la hoja de <b>zapatas corridas</b>.</summary>
+    /// <remarks>
+    /// En su propia lista y no revueltas con las aisladas: son otra hoja, con otras columnas y
+    /// otro dibujante. Van con el mismo mecanismo genérico —<see cref="FilaSerializable"/>—, así
+    /// que una columna nueva de esta hoja se guarda sola. Un <c>.clk</c> de antes de esta hoja
+    /// llega sin la clave y la lista queda vacía, que es lo correcto: no había zapatas corridas.
+    /// </remarks>
+    public List<FilaGuardada> ZapatasCorridas { get; set; } = new();
 }
 
 public sealed class PlanoGuardado

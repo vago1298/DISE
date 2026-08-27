@@ -17,12 +17,20 @@ namespace CadLink.Cad;
 /// </remarks>
 public sealed partial class ZapataDrawer
 {
+    /// <summary>Cota del ancho, por debajo del paño inferior de la planta.</summary>
     private const double PlantaCotaOffset = 0.12;
 
+    /// <summary>Cota del dado, a la derecha del paño derecho.</summary>
     private const double PlantaCotaOffsetDado = 0.1;
 
-    // PLANTA_TITULO_OFFSET (0.24) y PLANTA_ESCALA_OFFSET (0.33) tampoco están: el rótulo de la
-    // planta usa el mismo renglón propio que el del corte, TrazoZapata.YRotulo.
+    /// <summary>
+    /// Cota del largo de la zapata, a la <b>izquierda</b> del paño izquierdo.
+    /// </summary>
+    /// <remarks>
+    /// Los 0.12 de la macro. El largo del dado va a la derecha, a 0.10, y así las dos cotas
+    /// verticales de la planta no comparten lado ni se montan.
+    /// </remarks>
+    private const double PlantaCotaOffsetLargo = 0.12;
     private const double PlantaMinBarra = 0.03;
     private const double PlantaMinSeg = 0.004;
     private const double PlantaHuecoMargen = 0.003;
@@ -227,7 +235,7 @@ public sealed partial class ZapataDrawer
         // ------------------------------------------------------------------
         _cont = _ms;
 
-        if (plantaEnBloque && InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata))
+        if (plantaEnBloque && InsertarBloquePropio(nombrePlanta, xIzq, yBot, CapaBloqueZapata))
         {
             r.Bloques++;
         }
@@ -260,43 +268,40 @@ public sealed partial class ZapataDrawer
         }
 
         // ---------- Cotas: LAS DE LA MACRO, en su sitio ----------
-        // El ancho del DADO arriba, el de la zapata abajo, el largo de la zapata a la izquierda
-        // y el del dado a la derecha. Cada medida por fuera del paño que le toca y ninguna
-        // encima del dibujo.
-        //
-        // El turno pasado las puse en cadena y total abajo, como en el corte, y estuvo mal:
-        // en la planta ya estaban en orden y lo unico que hizo fue amontonar tres medidas
-        // debajo del paño y dejar el total encima del titulo. Se vuelve a lo de la macro.
+        // El ancho del dado arriba, el de la zapata abajo, el largo de la zapata a la izquierda y
+        // el del dado a la derecha. Cada medida pegada al paño que le toca, que es donde se lee.
         r.Cotas += Cota(dx1, yTop + PlantaCotaOffsetDado, dx2, yTop + PlantaCotaOffsetDado,
             (dx1 + dx2) / 2, yTop + PlantaCotaOffsetDado, false, false);
 
         r.Cotas += Cota(xIzq, yBot - PlantaCotaOffset, xDer, yBot - PlantaCotaOffset,
             xCen, yBot - PlantaCotaOffset, false, false);
 
-        // El largo del DADO a la derecha, a 0.10; el de la ZAPATA va a la IZQUIERDA, a 0.12,
-        // que es como lo pone la macro. Ponerlos los dos a la derecha fue idea mía y dejaba dos
-        // cotas verticales una encima de la otra.
+        // El largo del DADO a la derecha, a 0.10; el de la ZAPATA a la IZQUIERDA, a 0.12, que es
+        // como lo pone la macro. Los dos por el mismo lado se montaban.
         r.Cotas += Cota(xDer + PlantaCotaOffsetDado, dy1, xDer + PlantaCotaOffsetDado, dy2,
             xDer + PlantaCotaOffsetDado, (dy1 + dy2) / 2, true, false);
 
-        r.Cotas += Cota(xIzq - PlantaCotaOffset, yBot, xIzq - PlantaCotaOffset, yTop,
-            xIzq - PlantaCotaOffset, yCen, true, false);
+        r.Cotas += Cota(xIzq - PlantaCotaOffsetLargo, yBot, xIzq - PlantaCotaOffsetLargo, yTop,
+            xIzq - PlantaCotaOffsetLargo, yCen, true, false);
 
-        // Y los dos renglones del rótulo, EN SU PROPIO RENGLÓN igual que en el corte: 80 cm por
-        // debajo del paño inferior de la planta, centrados en su eje y encogidos si no caben en
-        // el ancho que les toca. Como todas las plantas arrancan en −15, los rótulos de todas
-        // quedan en la misma línea.
-        var yTitulo = TrazoZapata.YRotulo(yBot, 0);
-        var yEscala = TrazoZapata.YRotulo(yBot, 2);
+        // Y los dos renglones del rótulo, a los 0.24 y 0.33 de la macro por debajo del paño
+        // inferior y CENTRADOS en el eje de la planta, con el mismo encogido del corte para que un
+        // título largo no se meta en el de la planta de al lado.
+        var yTitulo = TrazoZapata.YRotuloPlanta(yBot, 0);
+        var yEscala = TrazoZapata.YRotuloPlanta(yBot, 2);
         var anchoRotulo = TrazoZapata.AnchoParaElRotulo(ancho);
 
         var titulo = $"VISTA EN PLANTA \"{z.Id}\"";
         var escala = $"Rec. {rec * 100:0.#} cm    Escala 1:10";
 
-        Texto(xCen, yTitulo, TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo),
+        Texto(xCen, yTitulo,
+            TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo,
+                TrazoZapata.FactorLetraTitulo),
             titulo, CapaRotulos, alineacion: Alineacion.Centro);
 
-        Texto(xCen, yEscala, TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo),
+        Texto(xCen, yEscala,
+            TrazoZapata.AltoQueQuepa(escala.Length, AltoEscala, anchoRotulo,
+                TrazoZapata.FactorLetraTitulo),
             escala, CapaRotulos, alineacion: Alineacion.Centro);
     }
 
@@ -908,6 +913,15 @@ public sealed partial class ZapataDrawer
         return e.Length == 0 ? "VAR_#3" : "VAR_" + e;
     }
 
+    /// <summary>
+    /// Crea la capa de un diámetro con <b>el color que le da la macro</b>.
+    /// </summary>
+    /// <remarks>
+    /// Aquí estaba el error que se reportó: la capa se creaba <b>sin color</b>, así que al capturar
+    /// una varilla del #5 AutoCAD dejaba <c>VAR_#5</c> en blanco en lugar del <b>160</b> de la
+    /// macro. El color sale de <see cref="CapasCad"/>, la misma tabla que usa el dibujante de
+    /// secciones, y se le pone aunque la capa ya exista.
+    /// </remarks>
     private void AsegurarCapaVarilla(string capa)
     {
         if (!_capas.Add(capa))
@@ -915,26 +929,7 @@ public sealed partial class ZapataDrawer
             return;
         }
 
-        try
-        {
-            AcadConnection.Retry(() =>
-            {
-                dynamic todas = _doc.Layers;
-
-                try
-                {
-                    _ = todas.Item(capa);
-                }
-                catch (Exception)
-                {
-                    _ = todas.Add(capa);
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            Fallo($"Crear la capa '{capa}'", ex);
-        }
+        CrearCapa(capa, CapasCad.ColorDeCapa(capa), forzarColor: true);
     }
 
     /// <summary>
@@ -959,16 +954,25 @@ public sealed partial class ZapataDrawer
     // Primitivas de AutoCAD
     // ======================================================================
 
-    /// <summary>Crea las capas de la macro si no existen. Nunca cambia las que ya hay.</summary>
+    /// <summary>
+    /// Crea las capas que usa la zapata, con <b>los colores de la macro</b>.
+    /// </summary>
+    /// <remarks>
+    /// Las que están en la tabla de la macro —<c>CONCRETO</c>, <c>ESTRIBOS</c>, <c>TEXTOS</c> y las
+    /// nueve de varilla— llevan su color <b>siempre</b>, existan ya o no: son los colores del juego
+    /// de planos. Las demás —cotas, terreno, plantilla, los bloques— solo se pintan al crearlas, y
+    /// si ya están se dejan como el usuario las tenga. Ver <see cref="CapasCad"/>.
+    /// </remarks>
     public void AsegurarCapasBase()
     {
         var capas = new (string Nombre, int Color)[]
         {
-            (CapaConcreto, 0),
-            (CapaEstribos, 0),
+            (CapaConcreto, CapasCad.ColorDeCapa(CapaConcreto)),
+            (CapaEstribos, CapasCad.ColorDeCapa(CapaEstribos)),
             (CapaCotas, 0),
-            (CapaRotulos, 3),
-            (CapaLeader, 3),
+            // Los leaders van en ROTULOS, la misma capa del texto: CapaLeader ES CapaRotulos, así
+            // que no hay una segunda entrada que crear.
+            (CapaRotulos, CapasCad.ColorDeCapa(CapaTextos)),
             (CapaTerreno, 140),
             (CapaTerrenoHatch, 8),
             (CapaPlantilla, 8),
@@ -983,32 +987,48 @@ public sealed partial class ZapataDrawer
                 continue;
             }
 
-            try
+            CrearCapa(nombre, color, forzarColor: CapasCad.EsDeLaMacro(nombre));
+        }
+    }
+
+    /// <summary>
+    /// Crea una capa —o la encuentra— y le pone su color.
+    /// </summary>
+    /// <param name="nombre">Nombre de la capa.</param>
+    /// <param name="color">Color ACI, o cero o menos para no tocarlo.</param>
+    /// <param name="forzarColor">
+    /// <c>true</c> para pintarla aunque ya exista, que es lo que hace <c>CrearCapa</c> en la macro y
+    /// lo que necesitan las capas de su tabla; <c>false</c> para pintarla solo al crearla.
+    /// </param>
+    private void CrearCapa(string nombre, int color, bool forzarColor)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
             {
-                AcadConnection.Retry(() =>
+                dynamic todas = _doc.Layers;
+                dynamic capa;
+                var nueva = false;
+
+                try
                 {
-                    dynamic todas = _doc.Layers;
+                    capa = todas.Item(nombre);
+                }
+                catch (Exception)
+                {
+                    capa = todas.Add(nombre);
+                    nueva = true;
+                }
 
-                    try
-                    {
-                        // Si ya existe se deja como está: son las capas del usuario.
-                        _ = todas.Item(nombre);
-                    }
-                    catch (Exception)
-                    {
-                        dynamic nueva = todas.Add(nombre);
-
-                        if (color > 0)
-                        {
-                            nueva.Color = color;
-                        }
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                Fallo($"Crear la capa '{nombre}'", ex);
-            }
+                if (color > 0 && (nueva || forzarColor))
+                {
+                    capa.Color = color;
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Crear la capa '{nombre}'", ex);
         }
     }
 
@@ -1276,6 +1296,47 @@ public sealed partial class ZapataDrawer
         }
 
         var borde = Rectangulo(x, y, x + w, y + h, capa);
+
+        if (borde is null)
+        {
+            return null;
+        }
+
+        var h1 = Hatch(borde, patron, escala, capa, colorAci);
+
+        if (h1 is null && !patron.Equals("SOLID", StringComparison.OrdinalIgnoreCase))
+        {
+            Nota($"El patrón '{patron}' no se pudo usar; se rellenó con '{PatronRespaldo}'.");
+            h1 = Hatch(borde, PatronRespaldo, escala, capa, colorAci);
+        }
+
+        if (transparencia.Length > 0)
+        {
+            Transparencia(h1, transparencia);
+        }
+
+        Borrar(borde);
+
+        return h1;
+    }
+
+    /// <summary>Lo mismo que <see cref="HatchRect"/>, pero con un contorno de cualquier forma.</summary>
+    /// <remarks>
+    /// Hace falta para el terreno de las zapatas corridas: ahí el relleno no es un rectángulo, sino
+    /// una <b>escalera</b> que se ceñe a la contratrabe y al muro, que no tienen el mismo ancho. Con
+    /// dos rectángulos apilados el patrón se cortaría en la junta, porque cada hatch arranca su
+    /// rayado por su cuenta; con un contorno solo, el rayado es continuo.
+    /// </remarks>
+    private object? HatchPoligono(
+        double[] puntos, string capa,
+        string patron, double escala, string transparencia, int colorAci)
+    {
+        if (puntos.Length < 6)
+        {
+            return null;
+        }
+
+        var borde = Polilinea(puntos, capa, cerrada: true);
 
         if (borde is null)
         {
@@ -1674,6 +1735,14 @@ public sealed partial class ZapataDrawer
     /// pasado y lo que consiguió fue que el título de una zapata angosta se saliera por el otro
     /// lado. Las macros centran, y centrado se queda.
     /// </remarks>
+    /// <summary>
+    /// Las dos alineaciones que usa la macro. No hay una tercera a propósito.
+    /// </summary>
+    /// <remarks>
+    /// Se probó alinear el rótulo al paño derecho y quedó peor: el texto se despegaba de su dibujo.
+    /// El encimado de los títulos, que era lo que se quería arreglar con eso, se arregla con el
+    /// ancho de letra —<see cref="TrazoZapata.FactorLetraTitulo"/>—, no con la alineación.
+    /// </remarks>
     private enum Alineacion
     {
         Izquierda,
@@ -1789,16 +1858,101 @@ public sealed partial class ZapataDrawer
     /// <summary>Port de <c>AgregarLeaderRecto</c>: la línea y su flecha rellena.</summary>
     private void Leader(double xPunta, double yPunta, double xAnclaje, double yAnclaje)
     {
-        var dx = xPunta - xAnclaje;
-        var dy = yPunta - yAnclaje;
-        var l = Math.Sqrt((dx * dx) + (dy * dy));
-
-        if (l <= 1e-6)
+        if (Math.Abs(xPunta - xAnclaje) + Math.Abs(yPunta - yAnclaje) <= 1e-6)
         {
             return;
         }
 
         Linea(xAnclaje, yAnclaje, xPunta, yPunta, CapaLeader);
+
+        Flecha(xPunta, yPunta, xAnclaje, yAnclaje);
+    }
+
+    /// <summary>
+    /// Un leader <b>quebrado</b>: la cola que sale del renglón y, de ahí, la diagonal a la punta.
+    /// </summary>
+    /// <remarks>
+    /// Es el leader de las macros: la <b>cola</b> sale horizontal del renglón —así se ve de qué
+    /// renglón arranca— y el tramo largo va en diagonal hasta la flecha. Con un solo tramo, la línea
+    /// salía casi a plomo y no se distinguía de dónde venía; con el quiebre se lee de un tirón.
+    /// </remarks>
+    /// <returns>Las entidades creadas, para poder subirlas al frente.</returns>
+    private List<object> LeaderQuebrado(
+        double xPunta, double yPunta, double xCodo, double yCodo,
+        double xAnclaje, double yAnclaje)
+    {
+        var creadas = new List<object>();
+
+        if (Math.Abs(xCodo - xAnclaje) + Math.Abs(yCodo - yAnclaje) > 1e-6)
+        {
+            var cola = Linea(xAnclaje, yAnclaje, xCodo, yCodo, CapaLeader);
+
+            if (cola is not null)
+            {
+                creadas.Add(cola);
+            }
+        }
+
+        if (Math.Abs(xPunta - xCodo) + Math.Abs(yPunta - yCodo) <= 1e-6)
+        {
+            return creadas;
+        }
+
+        var tramo = Linea(xCodo, yCodo, xPunta, yPunta, CapaLeader);
+
+        if (tramo is not null)
+        {
+            creadas.Add(tramo);
+        }
+
+        creadas.AddRange(Flecha(xPunta, yPunta, xCodo, yCodo));
+
+        return creadas;
+    }
+
+    /// <summary>
+    /// Lo que mide de ancho un renglón, medido de verdad y no estimado.
+    /// </summary>
+    /// <remarks>
+    /// Los renglones de un MText van <b>centrados</b> en su ancho de columna, así que el borde del
+    /// bloque no dice dónde acaba la palabra: entre el final de <c>INFERIOR</c> y el borde puede
+    /// haber 6 cm de aire, y el leader que arrancaba en el borde parecía suelto. Con la medida real
+    /// se puede pegar la cola al final de la palabra.
+    /// <para>
+    /// Se mide creando el renglón, midiéndolo y borrándolo. Es lo único fiable: el ancho de un texto
+    /// depende del estilo, de la fuente y de si AutoCAD la sustituyó.
+    /// </para>
+    /// </remarks>
+    private double AnchoDeRenglon(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return 0;
+        }
+
+        var mt = Mtexto(0, 0, texto, AltoMtexto, CapaRotulos, conFondo: false);
+
+        var caja = Caja(mt);
+
+        Borrar(mt);
+
+        return caja is null ? 0 : caja.Value.X2 - caja.Value.X1;
+    }
+
+    /// <summary>La punta de flecha rellena, apuntando a <c>(xPunta, yPunta)</c>.</summary>
+    /// <returns>Las entidades creadas, para poder subirlas al frente.</returns>
+    private List<object> Flecha(double xPunta, double yPunta, double xDesde, double yDesde)
+    {
+        var creadas = new List<object>();
+
+        var dx = xPunta - xDesde;
+        var dy = yPunta - yDesde;
+        var l = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (l <= 1e-6)
+        {
+            return creadas;
+        }
 
         var ux = dx / l;
         var uy = dy / l;
@@ -1820,8 +1974,17 @@ public sealed partial class ZapataDrawer
         if (borde is not null)
         {
             // La flecha SÍ conserva su frontera: es parte del dibujo, no un borde temporal.
-            _ = Hatch(borde, "SOLID", 1, CapaLeader, 0);
+            creadas.Add(borde);
+
+            var relleno = Hatch(borde, "SOLID", 1, CapaLeader, 0);
+
+            if (relleno is not null)
+            {
+                creadas.Add(relleno);
+            }
         }
+
+        return creadas;
     }
 
     // ======================================================================
@@ -1886,8 +2049,65 @@ public sealed partial class ZapataDrawer
     }
 
     /// <summary>
-    /// Inserta un bloque que ya exista. Con <paramref name="alinearDerechaEn"/> lo pega a esa X.
+    /// Inserta un bloque <b>propio</b> —de los que crea este dibujante— en su sitio, sin tocarlo.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// AQUÍ ESTABA EL DESFASE DE TODO EL DIBUJO. La sección y la planta se estaban insertando con
+    /// <see cref="InsertarBloque"/>, que <b>recoloca el bloque por el centro de su caja</b>. Esa
+    /// rutina es para el bloque del <b>dado</b>, que viene de otro dibujo y cuyo punto base no se
+    /// conoce; aplicada a un bloque propio arrastra el dibujo entero.
+    /// </para>
+    /// <para>
+    /// La cuenta, con una zapata de 1.00 × 0.30 y 1.05 de desplante: la elevación va de
+    /// <c>y = −8.05</c> —el fondo de la plantilla— a <c>−6.2</c>, así que el centro de su caja está
+    /// en <c>−7.12</c>; al forzar ese centro al punto de inserción <c>−8.00</c>, la geometría
+    /// <b>bajaba 88 cm</b>. En X, con el centro en <c>xBase + 0.5</c>, se corría <b>50 cm a la
+    /// izquierda</b>. Las cotas y los rótulos, que se dibujan fuera del bloque, se quedaban en su
+    /// sitio: de ahí que salieran despegados de la cimentación, y de ahí el «las cotas no están a
+    /// la altura de la sección».
+    /// </para>
+    /// <para>
+    /// Un bloque propio no necesita nada de eso: se crea con su punto base en <c>(x, y)</c> y su
+    /// geometría se dibuja dentro en coordenadas <b>absolutas</b>, así que insertándolo en ese
+    /// mismo punto cae exactamente donde se dibujó. Es lo que hacen las dos macros.
+    /// </para>
+    /// </remarks>
+    private bool InsertarBloquePropio(string nombre, double x, double y, string capa)
+    {
+        if (!ExisteBloque(nombre))
+        {
+            return false;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic r = _cont.InsertBlock(new[] { x, y, 0d }, nombre, 1d, 1d, 1d, 0d);
+                r.Layer = capa;
+                r.Update();
+            });
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Insertar el bloque '{nombre}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Inserta un bloque <b>ajeno</b> que ya exista en el dibujo, recolocándolo por el centro de su
+    /// caja. Con <paramref name="alinearDerechaEn"/> lo pega a esa X.
+    /// </summary>
+    /// <remarks>
+    /// <b>Solo para el bloque del DADO</b>, que lo dibujó alguien más y cuyo punto base puede estar
+    /// en cualquier parte. Para los bloques propios —la sección y la planta— va
+    /// <see cref="InsertarBloquePropio"/>: recolocar uno de esos por su centro mueve el dibujo
+    /// entero y lo despega de sus cotas.
+    /// </remarks>
     /// <remarks>
     /// Port de <c>InsertarBloqueCentroide</c> y de <c>InsertarBloqueDerecha</c>: se inserta, se
     /// mide su caja y se <b>recoloca</b>, porque el punto de inserción de un bloque no tiene por

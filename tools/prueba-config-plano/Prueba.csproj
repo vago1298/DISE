@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de la hoja CONFIG y de las capas del plano estructural.
+
+       Es la etapa 1 del port de la macro PLANOS ESTRUCTURALES: los ~260 parametros de
+       la hoja CONFIG y las 21 capas con sus colores. Todo lo que se dibuje despues
+       cuelga de estos valores, asi que se comprueban uno por uno contra la macro.
+
+       Ejecuta el CadLink.Cad COMPILADO, no un port a Python: un verificador que copia
+       la cuenta en otro lenguaje puede dar verde con el C# equivocado.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-config-plano
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla, asi que sirve para un script. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-config-plano</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

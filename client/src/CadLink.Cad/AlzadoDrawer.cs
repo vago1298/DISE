@@ -2784,6 +2784,8 @@ public sealed class AlzadoDrawer
     /// </remarks>
     public void AsegurarCapas()
     {
+        // Con los colores de la tabla de la macro para las que están en ella —CONCRETO, ESTRIBOS y
+        // TEXTOS—: antes se creaban sin color y salían en blanco. Ver CapasCad.
         foreach (var capa in new[] { "ALZADOS", "CONCRETO", "ESTRIBOS", "TEXTOS", "ROTULOS", "COTAS" })
         {
             try
@@ -2791,14 +2793,22 @@ public sealed class AlzadoDrawer
                 AcadConnection.Retry(() =>
                 {
                     dynamic capas = _doc.Layers;
+                    dynamic capa1;
 
                     try
                     {
-                        _ = capas.Item(capa);
+                        capa1 = capas.Item(capa);
                     }
                     catch (Exception)
                     {
-                        capas.Add(capa);
+                        capa1 = capas.Add(capa);
+                    }
+
+                    var color = CapasCad.ColorDeCapa(capa);
+
+                    if (color != CapasCad.SinColor)
+                    {
+                        capa1.Color = color;
                     }
                 });
             }

@@ -603,6 +603,8 @@ def v11_visor() -> None:
     check("VistaModelo.cs presente", True)
 
     t = leer(p)
+    tx_planos = leer(ruta("client", "src", "CadLink.App", "MainWindow.xaml"))
+    codigo_planos = leer(ruta("client", "src", "CadLink.App", "MainWindow.xaml.cs"))
 
     # La fórmula correcta suma los dos términos y niega el conjunto
     formulas = re.findall(r"-\(\((\w+) \* [Cc]e\) \+ \((\w+) \* [Ss]e\)\)", t)
@@ -620,17 +622,239 @@ def v11_visor() -> None:
         "; ".join(malas),
     )
 
+    # EL ORDEN DEL PINTOR se queda solo en la vista de ALAMBRE, donde no hay caras que se
+    # atraviesen. La EXTRUIDA ya no ordena: pinta con Z-BUFFER, que es lo que arregla la losa
+    # que se veia cortada por el muro -dos caras que se cruzan no tienen orden correcto,
+    # porque cada una esta delante en una parte-.
     check(
-        "orden del pintor de lejos a cerca",
+        "el alambre sigue pintando de lejos a cerca",
         "OrderByDescending" in t and re.search(r"OrderBy\(t => t\.Prof\)", t) is None,
     )
 
+    # ------------------------------------------------------------------
+    # LA EXTRUIDA, CON Z-BUFFER: LA LOSA YA NO SE VE CORTADA
+    # ------------------------------------------------------------------
+    #  No era el motor de dibujo, era el METODO: ordenar caras por su profundidad media no
+    #  puede resolver dos caras que se atraviesan. Con Z-buffer la decision se toma por PIXEL.
+    # Se releen aqui: las variables de mas abajo son de otra parte de la funcion.
+    rast = leer(ruta("client/src/CadLink.Cad/RasterZ.cs"))
+    ext_z = leer(ruta("client/src/CadLink.App/VistaModelo.Extruida.cs"))
+    pre_z = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+
+    check("hay un rasterizador con Z-buffer, y sin WPF para poder probarlo",
+          "public sealed class RasterZ" in rast
+          and "public void Triangulo(" in rast
+          and "public void Linea(" in rast
+          and "if (z >= _z[i])" in rast
+          and "using System.Windows" not in rast)
+    check("la extruida lo usa en vez de ordenar caras",
+          "var lienzoZ = new RasterZ(" in ext_z
+          and "lienzoZ.Triangulo(" in ext_z
+          and "MostrarRaster(lienzo, lienzoZ);" in ext_z
+          and "OrderByDescending" not in ext_z)
+    # LA PROFUNDIDAD, POR VERTICE: con una sola por cara solo se puede ordenar.
+    check("la cara guarda la profundidad de cada vertice",
+          "public required double[] Prof { get; init; }" in ext_z
+          and "Prof = cara.Select(p => cam.Prof(p.X, p.Y)).ToArray()," in ext_z)
+    # LAS ARISTAS, con sesgo hacia la camara: sin el, saldrian a puntos contra su propia cara.
+    check("las aristas se acercan un pelo para no pelearse con su cara",
+          "double sesgo = 0.05" in rast
+          and "z1 + ((z2 - z1) * t) - sesgo" in rast)
+    # Y SE VUELCA COMO UNA IMAGEN: un objeto en el lienzo en vez de miles de poligonos.
+    check("el resultado se vuelca como una imagen, no como miles de poligonos",
+          "WriteableBitmap(" in ext_z
+          and "PixelFormats.Bgra32" in ext_z
+          and "NearestNeighbor" in ext_z)
+    check("hay prueba ejecutable del Z-buffer",
+          "a la izquierda queda la cara que ahi esta mas cerca" in pre_z
+          and "lo de detras no tapa lo de delante aunque se pinte despues" in pre_z
+          and "un triangulo sin area no pinta" in pre_z)
+
     # La vista en planta dedicada invierte la Y, porque la del lienzo crece
     # hacia abajo y la del modelo hacia arriba
+    # La Y del modelo sube y la del lienzo baja. La formula ya no arranca de h/2 sino del
+    # CENTRO DEL HUECO UTIL, porque los margenes son asimetricos: arriba y a la izquierda hay
+    # que dejar sitio para las cotas y las burbujas. Lo que no cambia es el signo.
     check(
         "la planta invierte la Y",
-        re.search(r"\(h / 2\) - \(\(y - cy\) \* escala\)", t) is not None,
+        re.search(r"centroY - \(\(y - cy\) \* escala\)", t) is not None,
     )
+    check(
+        "y se centra en el hueco util, no en el lienzo",
+        "var centroX = (w + MargenAnotado - MargenLibre) / 2;" in t
+        and "var centroY = (h + MargenAnotado - MargenLibre) / 2;" in t,
+    )
+
+    # ------------------------------------------------------------------
+    # LA PREVISUALIZACION, CON LA ORIENTACION Y LA POSICION DE VERDAD
+    # ------------------------------------------------------------------
+    #  Se pidio expresamente: la vista previa tiene que ensenar lo que se va a dibujar. Antes
+    #  la columna era un Rectangle de WPF -y un Rectangle NO GIRA, esta alineado a los ejes
+    #  del lienzo-, asi que una columna de 20x60 girada 90 grados se veia de 20x60 derecha, y
+    #  la trabe era una linea de 1.4 pixeles pase lo que pase: dos trabes de 15 y de 35 se
+    #  veian iguales.
+    check("la columna de la vista previa se dibuja con su seccion girada",
+          "SeccionEnPlanta.Contorno(" in t
+          and "SeccionEnPlanta.Colocar(" in t
+          and "el.AnguloGrados" in t
+          and "using CadLink.Cad.PlanoEstructural;" in t)
+    check("y comparte la geometria con el dibujante de AutoCAD, no una copia",
+          "SeccionEnPlanta.EsRedonda(el.Forma)" in t
+          and "el.PatinM, el.AlmaM, el.ParedM" in t)
+    # EL GROSOR REAL, que es lo que se pidio: la trabe salia como una linea de 1.4 px pase lo
+    # que pase -una de 15 y otra de 35 se veian iguales- y el muro como un trazo con un
+    # minimo de 2.2 px, que a poco zoom lo engorda y a mucho zoom lo adelgaza. Ahora se
+    # dibuja la HUELLA en metros del modelo, asi que el grosor de la pantalla es el de verdad
+    # a la escala del momento.
+    check("la trabe y el muro se dibujan con su grosor real, no con una linea fija",
+          "private void DibujarBarraEnPlanta(" in t
+          and "DibujarBarraEnPlanta(lienzo, el, APantallaPlanta, anchoReal)" in t
+          and "var anchoReal = AnchoEnPlanta(el);" in t
+          and "ClaseElemento.Muro => RellenoMuro," in t)
+    # Y CON EL MISMO RESPALDO QUE EL DIBUJANTE cuando ETABS no da la medida: si la vista
+    # previa dibujara un pelo donde el plano va a dibujar 15 cm, estaria mintiendo.
+    dib_esp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    check("y con los mismos valores de omision que el dibujante",
+          "private static double AnchoEnPlanta(" in t
+          and "private const double EspesorMuroPorOmision = 0.15;" in t
+          and "private const double AnchoTrabePorOmision = 0.20;" in t
+          and "private const double EspesorMuroPorOmision = 0.15;" in dib_esp
+          and "private const double AnchoTrabePorOmision = 0.20;" in dib_esp)
+    # Y el pelo solo cuando la huella no llegaria a un pixel: ahi el grosor no se puede
+    # representar y lo que importa es que el elemento no desaparezca.
+    check("con el zoom muy lejos queda una linea de un pelo, no un grosor inventado",
+          "if (anchoReal * escala >= 1.2)" in t
+          and "Math.Max(2.2, el.AnchoM * escala)" not in t)
+    # Y EL ORDEN DE PINTADO: ahora que las piezas van rellenas, una trabe ancha podia tapar
+    # la seccion de la columna, que es justo lo que se viene a comprobar aqui.
+    check("el orden de pintado deja la columna al frente",
+          "static int Capa(ElementoEtabs el) => el.Clase switch" in t
+          and "ClaseElemento.Columna => 3," in t)
+    # LA MARCA MINIMA solo cuando la seccion no se puede dibujar: sin medidas o con el zoom
+    # tan lejos que mide menos de tres pixeles. Lo que no puede hacer es fingir un tamano.
+    check("sin medidas queda una marca, y se dice que es una marca",
+          "private static void MarcaDeColumna(" in t)
+    # LA EXTRUIDA TAMBIEN: su triedro salia solo de la geometria del eje, asi que todas las
+    # columnas quedaban alineadas con la X y la Y globales.
+    ext = leer(ruta("client", "src", "CadLink.App", "VistaModelo.Extruida.cs"))
+    check("la vista extruida gira el prisma con los ejes locales",
+          "Math.Abs(el.AnguloGrados) > 1e-9" in ext_z
+          and "(n1.Item1 * ca) + (n2.Item1 * sa)" in ext_z
+          and "(n2.Item1 * ca) - (n1.Item1 * sa)" in ext_z)
+    # ------------------------------------------------------------------
+    # LA CUADRICULA DE EJES EN LA VISTA PREVIA
+    # ------------------------------------------------------------------
+    #  Se pidio. Sale del modelo si el programa la dio y, si no, se deduce de las columnas
+    #  -el mismo respaldo del plano-, y pasa por el MISMO filtro de repetidos, porque la
+    #  cuadricula de ETABS suele traer el mismo eje declarado dos veces.
+    check("la vista previa dibuja la cuadricula de ejes",
+          "private List<(string Id, double Ordenada)> EjesDeLaPlanta(" in t
+          and "private static void DibujarEjesEnPlanta(" in t
+          and "Modelo.Ejes ?? EjesModelo.DesdeGeometria(Modelo)" in t
+          and "EjesPlano.SinRepetidos(lista, 0.01)" in t)
+    # LOS EJES SE MIDEN CON LOS ELEMENTOS: un eje puede caer por fuera de lo construido -el
+    # de una fachada sin muro- y sin contarlo se dibujaria fuera del lienzo.
+    check("los ejes entran en el encuadre, para que no queden fuera del lienzo",
+          "var ejesX = EjesDeLaPlanta(true);" in t
+          and "xMin = Math.Min(xMin, o);" in t
+          and "yMax = Math.Max(yMax, o);" in t)
+    # AL FONDO, como en el plano: el eje es la referencia, no el dibujo.
+    check("y van al fondo, antes que los elementos",
+          "DibujarEjesEnPlanta(lienzo, ejesX, ejesY, APantallaPlanta" in t)
+    # LA BURBUJA EN PIXELES, no en metros: es un rotulo y tiene que leerse igual de cerca
+    # que de lejos, igual que en el plano su radio va en papel.
+    check("la burbuja del eje va en pixeles y rellena, para que se lea",
+          "const double Radio = 9;" in t
+          and "Fill = RellenoBurbuja" in t
+          and "StrokeDashArray = trazos" in t)
+    # LAS COTAS: un eje sin cota no dice nada, lo que se replantea son las DISTANCIAS. Van
+    # del lado contrario a las burbujas -abajo y a la derecha- para que no se estorben.
+    check("los ejes se acotan, con la parcial y la total",
+          "private static void AcotarEjes(" in t
+          and "AcotarEjes(lienzo, ejesX, ejesY, aPantalla, arriba, abajo);" in t
+          and 'v.ToString("0.000"' in t
+          and "if (orden.Count > 2)" in t)
+    # EL NUMERO SOLO SI CABE: con la vista alejada dos ejes pueden quedar a diez pixeles y
+    # los rotulos se encimarian hasta ser ilegibles. La linea de cota siempre se dibuja.
+    check("el numero de la cota se escribe solo si cabe",
+          "void NumeroArriba(" in t
+          and "void NumeroAlLado(" in t
+          and "if (hueco < texto.Length * 5.6)" in t
+          and "if (hueco < 13)" in t)
+    # LA COTA VERTICAL VA GIRADA: en un plano se lee de abajo arriba, y ademas a la izquierda
+    # solo hay 18 px entre la cota parcial y la total, donde el numero en horizontal no cabe.
+    check("la cota vertical lleva su numero girado",
+          "RenderTransform = new RotateTransform(-90)" in t)
+    # Y HAY SITIO PARA TODO ESO: sin ampliar el margen, burbujas y cotas quedaban cortadas
+    # contra el borde del lienzo.
+    check("el margen del lienzo deja sitio a burbujas y cotas",
+          "private const double MargenAnotado = 78;" in t
+          and "private const double MargenLibre = 18;" in t)
+    # Y LAS COTAS, ARRIBA Y A LA IZQUIERDA NADA MAS, que es como se pidio. Comparten lado con
+    # las burbujas, asi que la burbuja se va la mas afuera: parcial 22, total 40, burbuja 58.
+    check("las cotas van arriba y a la izquierda, con la burbuja por fuera",
+          "const double Parcial = 22;" in t
+          and "const double Total = 40;" in t
+          and "const double SaleBurbuja = 58;" in t
+          and "var y = arriba.Y - Parcial;" in t
+          and "var x = arriba.X - Parcial;" in t
+          and "Burbuja(x, arriba.Y - SaleBurbuja, id);" in t
+          and "Burbuja(arriba.X - SaleBurbuja, y, id);" in t)
+
+    # ------------------------------------------------------------------
+    # MOVER LA PLANTA CON EL RATON
+    # ------------------------------------------------------------------
+    #  Aqui estaba el «solo me deja hacer zoom»: mover era SOLO con el boton derecho, y en la
+    #  planta el izquierdo no hacia nada -no hay nada que girar-, asi que quien arrastraba con
+    #  el izquierdo, que es lo natural, no veia respuesta.
+    check("en la planta el boton izquierdo tambien mueve",
+          "var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);" in codigo_planos
+          and "_girando = e.ChangedButton == MouseButton.Left && !esPlanta;" in codigo_planos
+          and "|| (esPlanta && e.ChangedButton == MouseButton.Left);" in codigo_planos)
+    check("y el lienzo de la planta escucha el boton izquierdo",
+          'MouseLeftButtonDown="OnVistaMouseDown"' in tx_planos
+          and 'MouseLeftButtonUp="OnVistaMouseUp"' in tx_planos)
+
+    # Y SE PUEDE APAGAR: en un modelo con muchos ejes la cuadricula tapa lo que se mira.
+    # EL CORTE SE ELIGE EN LAS DOS PESTAÑAS: en el visor se busca y en la de planos se
+    # dibuja, asi que tener que ir a la otra para escoger el eje y volver es un viaje que no
+    # hace falta. Las dos listas llevan lo mismo y en el mismo orden, asi que igualarlas es
+    # copiar el indice -por nombre o por ordenada aparecerian diferencias por redondeo-.
+    check("el corte se elige tambien en la pestaña de planos",
+          'x:Name="CortePlanoCombo"' in tx_planos
+          and tx_planos.count('SelectionChanged="OnCorteEjeCambiado"') == 2
+          and "var listas = new[] { CorteEjeCombo, CortePlanoCombo };" in codigo_planos
+          and "private void IgualarLaOtraListaDeCortes(" in codigo_planos)
+    # Y CON GUARDA: sin ella, sincronizar una lista dispara el evento de la otra, que vuelve a
+    # sincronizar la primera. El finally tambien importa: si la bandera se queda puesta, el
+    # desplegable deja de responder y no hay forma de saber por que.
+    check("y sincronizarlas no se muerde la cola",
+          "if (!_listo || _sincronizandoCortes)" in codigo_planos
+          and "_sincronizandoCortes = true;" in codigo_planos
+          and "finally" in codigo_planos)
+
+    check("los ejes se pueden apagar con su casilla",
+          "public bool VerEjes { get; set; } = true;" in t
+          and "if (!VerEjes || Modelo is null)" in t
+          and 'x:Name="VerEjesPlanoChk"' in tx_planos
+          and "_vista.VerEjes = VerEjesPlanoChk.IsChecked == true;" in codigo_planos)
+
+    # LA POSICION viene sola: el visor lee el MISMO ModeloEtabs al que el lector ya le
+    # aplico el punto de insercion, asi que la vista previa y el plano coinciden.
+    check("y la posicion sale del modelo ya corregido, sin recalcularla aparte",
+          "GetInsertionPoint" not in t
+          and "e.X1 +=" not in t)
+
+    # LA PESTAÑA DEL MODELO YA NO EXISTE: primero se movio al lado de la de planos y despues
+    # se pidio meterla DENTRO, que es donde esta. Lo que se comprueba ahora es eso: que el
+    # visor viva dentro de la pestaña de planos, con la planta a la izquierda y el 3D a la
+    # derecha, y que no haya quedado una pestaña suelta.
+    orden = re.findall(r'<TabItem[^>]*Header="([^"]+)"', tx_planos)
+    check("el visor del modelo vive dentro de la pestaña de planos",
+          "Dibujar planos estructurales" in orden
+          and "ETABS/SAP2000" not in orden
+          and "Vista en planta y cortes" in tx_planos
+          and 'Grid.Row="2" Grid.Column="1"' in tx_planos)
 
     # Los lienzos necesitan Background para recibir el mouse
     x = ruta("client", "src", "CadLink.App", "MainWindow.xaml")
@@ -2519,16 +2743,425 @@ def v16_extruida_piers() -> None:
               "EtabsAssembly.ParaSap2000 = Destino == ProgramaCsi.Sap2000;"
               in m_con.group(0))
 
-    # La pestaña y el boton.
-    check("la pestaña dice ETABS/SAP2000", 'Header="ETABS/SAP2000"' in xaml)
-    check("hay boton para leer el modelo de SAP2000",
-          'Click="OnImportSap2000"' in xaml)
-    check("y su manejador existe", "private void OnImportSap2000(" in codigo)
+    # La pestaña y LA CASILLA. Se pidio elegir el programa en una casilla, no con un
+    # boton por programa: con dos botones era facil pulsar el que no tocaba.
+    # YA NO HAY PESTAÑA DE ETABS: se pidio meterla DENTRO de la de planos, y ahi esta. El
+    # visor del modelo a la derecha de la planta, y la lectura del modelo -conexion, botones y
+    # tablas- en un panel plegable, porque se usa una vez al empezar y despues estorba.
+    check("el modulo de ETABS vive dentro de la pestaña de planos",
+          'Header="ETABS/SAP2000"' not in xaml
+          and 'x:Name="EtabsTab" Header="Dibujar planos estructurales"' in xaml
+          and 'Header="Lectura del modelo y tablas de elementos"' in xaml)
+    # Y EL CANDADO DE LA LICENCIA sigue atado a esa pestaña: sin licencia de ETABS no se
+    # puede usar, como antes.
+    check("y el candado de la licencia sigue en pie",
+          "EtabsTab.IsEnabled = puedeEtabs;" in codigo)
+    # LAS DOS VISTAS, UNA A CADA LADO: planta y cortes a la izquierda, 3D a la derecha, al
+    # 50% cada una, que es como se pidio.
+    check("la planta va a la izquierda y el 3D a la derecha",
+          'Grid.Row="2" Grid.Column="0"' in xaml
+          and 'Grid.Row="2" Grid.Column="1"' in xaml
+          and "Vista en planta y cortes" in xaml
+          and xaml.index('Vista en planta y cortes') < xaml.index('Vista del modelo'))
+    # LAS DOS VISTAS AL MISMO NIVEL. Con dos StackPanel sueltos, cada lienzo empezaba donde
+    # acabara lo que tuviera encima: la derecha llevaba una barra mas -dentro de su pestaña- y
+    # el modelo salia medio renglon mas abajo que la planta. Con UNA rejilla de tres filas
+    # -titulo, barra y lienzo- la altura de cada fila es la del cel mas alto, asi que los dos
+    # lienzos arrancan en la misma linea pase lo que pase con las barras.
+    check("las dos vistas quedan al mismo nivel, no disparejas",
+          xaml.count("<RowDefinition Height=\"Auto\" />") >= 3
+          and 'Grid.Row="1" Grid.Column="0"' in xaml
+          and 'Grid.Row="1" Grid.Column="1"' in xaml
+          and 'Grid.Row="0" Grid.Column="0"' in xaml)
+    # Y LOS TRES LIENZOS, DEL MISMO ALTO: con alturas distintas, aunque arranquen juntos,
+    # acabarian en sitios distintos.
+    alturas = re.findall(r'x:Name="(?:PlantaCanvas|Vista3DCanvas|ExtruidaCanvas)"[^>]*?Height="(\d+)"',
+                         xaml, re.S)
+    check("y los tres lienzos miden lo mismo de alto",
+          len(alturas) == 3 and len(set(alturas)) == 1,
+          f"alturas: {alturas}")
+    # LA BARRA DE LAS VISTAS, UNA SOLA: era la misma dentro de cada pestaña, y duplicada solo
+    # servia para bajar el lienzo y para que las dos pudieran quedar descuadradas.
+    check("la barra de las vistas es una, fuera de las pestañas",
+          xaml.count('Tag="ISO"') == 1
+          and xaml.count('Tag="ENCUADRAR"') == 1)
+    check("hay una casilla para elegir el programa, con los dos",
+          'x:Name="ProgramaCsiCombo"' in xaml
+          and '<ComboBoxItem Content="ETABS" />' in xaml
+          and '<ComboBoxItem Content="SAP2000" />' in xaml
+          and 'SelectionChanged="OnProgramaCsiCambiado"' in xaml)
+    check("y sus manejadores existen",
+          "private void OnProgramaCsiCambiado(" in codigo
+          and "private void OnImportModeloCsi(" in codigo)
+    check("el boton de leer dice a que programa apunta",
+          'x:Name="LeerModeloCsiButton"' in xaml
+          and 'Click="OnImportModeloCsi"' in xaml
+          and 'LeerModeloCsiButton.Content = $"Leer modelo de {NombreDestinoCsi}"' in codigo)
+    check("ya no hay un boton por programa",
+          'Click="OnImportSap2000"' not in xaml
+          and 'Click="OnImportEtabs"' not in xaml
+          and "private void OnImportSap2000(" not in codigo)
+
+    # LA MISMA CASILLA EN LA PESTAÑA DE PLANOS. Se pidio poder elegir ahi tambien de que
+    # programa se leen las plantas, y NO es otra opcion aparte: el programa elegido es UNO.
+    #
+    # Lo que cambio es COMO se mantienen iguales. Iban atadas con un enlace del XAML
+    # -SelectedIndex por ElementName, de dos vias- y desde que la casilla de la lectura del
+    # modelo vive dentro del panel PLEGADO, ese enlace dejo de servir: la casilla que aun no
+    # tenia seleccion escribia su -1 en la otra y las dos se quedaban EN BLANCO, asi que no se
+    # veia en que programa se estaba trabajando. Ahora se igualan en el code-behind.
+    check("la pestaña de planos tiene su casilla, igualada a la del modelo",
+          'x:Name="ProgramaCsiPlanosCombo"' in xaml
+          and "ElementName=ProgramaCsiCombo" not in xaml
+          and "ProgramaCsiCombo, ProgramaCsiPlanosCombo, ProgramaCsiSeccionesCombo" in codigo)
+    check("y su boton dice de que programa lee las plantas",
+          'x:Name="LeerPlantasButton"' in xaml
+          and 'LeerPlantasButton.Content = $"Leer plantas de {NombreDestinoCsi}"' in codigo)
+
+    # EL DESTINO SALE DE LA CASILLA, EN UN SOLO SITIO, y manda para TODA la pestaña:
+    # probar la conexion, leer el modelo, leer los piers y armar los planos. Si una
+    # conexion se abriera sin destino, ese boton le hablaria a ETABS con la casilla en
+    # SAP2000, que es justo el error que se pidio quitar.
+    check("el destino sale de la casilla, en un solo sitio",
+          "private EtabsConnection.ProgramaCsi DestinoCsi =>" in codigo
+          and "ProgramaCsiCombo?.SelectedIndex == 1" in codigo)
+    check("y todas las conexiones de la ventana lo respetan",
+          codigo.count("new EtabsConnection { Destino = DestinoCsi }") == 3
+          and "new EtabsConnection()" not in codigo)
 
     # UN solo lector para los dos, o un arreglo entraria en uno y no en el otro.
-    check("los dos botones usan el mismo lector",
-          "LeerModeloCsi(EtabsConnection.ProgramaCsi.Etabs)" in codigo
-          and "LeerModeloCsi(EtabsConnection.ProgramaCsi.Sap2000)" in codigo)
+    check("hay un solo lector para los dos programas",
+          codigo.count("private void LeerModeloCsi(") == 1
+          and "LeerModeloCsi(DestinoCsi);" in codigo)
+    check("y los mensajes no atribuyen a ETABS lo que pudo salir de SAP2000",
+          '$"{cx.NombreDelDestino} conectado."' in codigo
+          and 'StatusText.Text = "ETABS conectado.";' not in codigo)
+
+    # ------------------------------------------------------------------
+    # EL ORDEN DE LAS PESTAÑAS Y LA DE SECCIONES DEL MODELO
+    # ------------------------------------------------------------------
+    # EL ORDEN CAMBIO A PETICION: la de ETABS/SAP2000 estaba de PENULTIMA -justo antes de
+    # Licencia- y se pidio moverla JUNTO A la de dibujar planos, porque se trabaja con las dos
+    # a la vez: se lee el modelo, se mira en el visor y se dibuja. Estando en filas distintas
+    # del TabControl, cada vuelta eran dos clics y un salto de fila.
+    # Solo las pestañas de PRIMER nivel: dentro de la de ETABS hay otro TabControl -las
+    # vistas 3D y extruida- y sus pestañas no cuentan aqui. Se distinguen por la sangria.
+    orden = [m.group(1) for m in
+             re.finditer(r'\n            <TabItem[^>]*?Header="([^"]+)"', xaml)]
+    for cabecera in ("Dibujar planos estructurales", "Secciones modelo", "Licencia"):
+        check(f"existe la pestaña {cabecera}", cabecera in orden)
+
+    # La de ETABS/SAP2000 YA NO ES UNA PESTAÑA: se pidio meterla dentro de la de planos.
+    check("ETABS/SAP2000 ya no es una pestaña suelta", "ETABS/SAP2000" not in orden)
+
+    if all(c in orden for c in ("Dibujar planos estructurales", "Secciones modelo",
+                                "Licencia")):
+        check("la de planos va antes que la de secciones del modelo",
+              orden.index("Dibujar planos estructurales") < orden.index("Secciones modelo"))
+        check("Licencia se queda de ultima",
+              orden.index("Licencia") == len(orden) - 1)
+
+    # LA TABLA DE SECCIONES DEL MODELO: es la hoja SECCIONES de la macro, con sus mismas
+    # columnas, su mismo orden por tipo y su mismo criterio de clasificacion.
+    secs = leer(ruta("client/src/CadLink.Etabs/SeccionesModelo.cs"))
+
+    check("la hoja SECCIONES esta portada",
+          "public static class SeccionesModelo" in secs
+          and "public static List<Fila> Construir(" in secs
+          and "public static string ClasificaTipo(" in secs
+          and "public static string MaterialDeMuro(" in secs
+          and "public static int OrdenDeTipo(" in secs)
+
+    check("con los umbrales de la hoja CONFIG",
+          "double CastilloLadoMaxCm = 20" in secs
+          and "double DalaPeralteMaxCm = 25" in secs
+          and '"TABIQUE,TABICON,BLOCK,BLOQUE,MAMPOSTERIA,LADRILLO,ADOBE"' in secs
+          and '"CONCRETO,CONCRETE,C.A.,REFORZADO"' in secs)
+
+    check("y con el orden de tipos de la macro",
+          all(f'"{t}" => {n}' in secs for t, n in
+              (("CASTILLO", 1), ("COLUMNA", 2), ("DALA", 3), ("TRABE", 4),
+               ("CONTRATRABE", 5), ("DIAGONAL", 6), ("MURO", 7), ("LOSA", 8))))
+
+    # Las diez columnas de la hoja, con su nombre tal cual.
+    for col in ("TIPO", "SECCION DE ETABS", "FORMA", "MATERIAL", "T3 PERALTE (cm)",
+                "T2 ANCHO / ESPESOR (cm)", "TF (cm)", "TW (cm)", "CANTIDAD", "NIVELES"):
+        check(f"la tabla tiene la columna {col}",
+              f'Header="{col}"' in xaml)
+
+    check("la cuadricula se llena con el modelo que se leyo, sin volver a leer",
+          'x:Name="SeccionesModeloGrid"' in xaml
+          and "private void LlenarSeccionesModelo(ModeloEtabs modelo)" in codigo
+          and "SeccionesModelo.Construir(modelo)" in codigo
+          and codigo.count("LlenarSeccionesModelo(modelo);") == 2)
+    # TOTALES O INDIVIDUALES: la tabla de elementos que estaba debajo del visor 3D se movio
+    # a esta pestaña, y se ve UNA de las dos, no las dos a la vez.
+    check("la tabla de elementos vive ahora en la pestaña de secciones",
+          'x:Name="ElementosTitulo"' in xaml
+          and 'x:Name="AlternarSeccionesButton"' in xaml
+          and 'Click="OnAlternarSeccionesModelo"' in xaml)
+    check("y el boton cambia entre las dos, sin verlas dobles",
+          "private void OnAlternarSeccionesModelo(" in codigo
+          and "SeccionesModeloGrid.Visibility = aIndividuales" in codigo
+          and 'AlternarSeccionesButton.Content = aIndividuales ? "Ver totales" : "Ver individuales";'
+              in codigo)
+
+    check("y se puede copiar a Excel con tabuladores",
+          'Click="OnCopiarSeccionesModelo"' in xaml
+          and "private void OnCopiarSeccionesModelo(" in codigo
+          and "Clipboard.SetText(" in codigo)
+    check("su boton tambien dice de que programa lee",
+          'x:Name="LeerSeccionesModeloButton"' in xaml
+          and 'LeerSeccionesModeloButton.Content = $"Leer secciones de {NombreDestinoCsi}"'
+              in codigo)
+
+    # LA TABLA CAMBIA CON LA CASILLA. Con datos de ETABS y la casilla en SAP2000 se estaba
+    # viendo la tabla del programa que NO decia la casilla, y sin avisar.
+    check("se recuerda de que programa es el modelo que hay en memoria",
+          "private EtabsConnection.ProgramaCsi? _destinoLeido;" in codigo
+          and codigo.count("_destinoLeido = ") >= 2)
+    check("la tabla se vacia cuando la casilla deja de coincidir",
+          "private void SincronizarSeccionesConLaCasilla()" in codigo
+          and "SeccionesModeloGrid.ItemsSource = null;" in codigo
+          and "SincronizarSeccionesConLaCasilla();" in codigo)
+    check("y el boton vuelve a LEER en vez de reaprovechar lo del otro programa",
+          "_destinoLeido == DestinoCsi)" in codigo)
+
+    # LO QUE HAY DE CADA COSA: longitud de los frames y area de los shell.
+    check("la tabla trae la longitud total de los frames",
+          "public double? LongitudTotalM { get; set; }" in secs
+          and "fila.LongitudTotalM = Math.Round((fila.LongitudTotalM ?? 0) + e.LargoM, 3);" in secs
+          and 'Header="LONGITUD TOTAL (m)"' in xaml)
+    check("y el area total de los muros y las losas",
+          "public double? AreaTotalM2 { get; set; }" in secs
+          and "fila.AreaTotalM2 = Math.Round((fila.AreaTotalM2 ?? 0) + e.AreaM2, 3);" in secs
+          and 'Header="AREA TOTAL (m²)"' in xaml)
+    # El area es la del PAÑO, no la de su proyeccion en planta: un muro es vertical y en
+    # planta mediria cero.
+    check("el area es la del paño de verdad, con el metodo de Newell",
+          "public double AreaM2" in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+          and "nx += (a.Y - b.Y) * (a.Z + b.Z);"
+              in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs")))
+
+    # EL MATERIAL, EN TODOS. Lo devuelve la misma llamada que las medidas y se estaba
+    # tirando: por eso la columna salia en blanco en todo menos en los muros.
+    check("el material de la propiedad se guarda",
+          "public string Material { get; set; }"
+              in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+          and "e.Material = dims.Material;" in lect
+          and "e.Material = prop.Material;" in lect
+          and "private static string Material(object?[] a)" in lect)
+    check("y en el muro se ven las dos cosas: la clasificada y la del modelo",
+          "private static string Material(ElementoEtabs e, Opciones op)" in secs
+          and 'return $"{clasificado} ({delModelo})";' in secs)
+
+    # Y fuera el texto que no hacia falta encima de la tabla.
+    check("la tabla ya no lleva la tarjeta de explicacion",
+          "Que es esta tabla" not in xaml)
+
+    # Y su prueba ejecutable.
+    prs = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
+    check("hay prueba ejecutable de la tabla de secciones",
+          "using CadLink.Etabs;" in prs
+          and "SeccionesModelo.Construir(m)" in prs
+          and "EtabsReader.EspesorDesdeNombre" in prs
+          and "return fallos == 0 ? 0 : 1;" in prs)
+
+    # ------------------------------------------------------------------
+    # EL PUNTO DE INSERCION DEL MARCO: POR ESTO LA BARRA APARECE MOVIDA
+    # ------------------------------------------------------------------
+    #  Es el «Assign - Frame - Insertion Point» de ETABS. En el modelo la barra se CALCULA
+    #  sobre la linea que une sus dos nudos, pero la pieza que se construye -y la que hay que
+    #  dibujar- esta donde la ponen su punto cardinal y sus offsets de nudo. Sin leerlo, el
+    #  plano sale con las barras en el eje del nudo mientras en la pantalla de ETABS se ven
+    #  corridas, y no hay forma de que cuadren.
+    ins = leer(ruta("client/src/CadLink.Etabs/PuntoDeInsercion.cs"))
+    lec_ins = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    mod_ins = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+
+    check("se lee el punto de insercion del marco, con las dos firmas de la API",
+          "GetInsertionPoint_1" in lec_ins
+          and '"GetInsertionPoint", a, 1, 2, 3, 4, 5, 6' in lec_ins
+          and "private static void LeerPuntoDeInsercion(" in lec_ins)
+    check("y hay valvula de escape para volver a la linea de los nudos",
+          "public static bool AplicarPuntosDeInsercion { get; set; } = true;" in lec_ins)
+    # LOS EJES LOCALES DE CSI, que son los que explican el signo: en la TRABE el eje 2 es
+    # vertical y el 3 horizontal -asi que el offset del 3 la mueve en planta-, y en la
+    # COLUMNA los dos son horizontales, asi que cualquier offset la mueve.
+    check("los ejes locales siguen la convencion de CSI",
+          "public static (double[] E1, double[] E2, double[] E3) Ejes(" in ins
+          and "e2c = new[] { 0d, 0d, 1d };" in ins
+          and "e3c = new[] { dy, -dx, 0d };" in ins
+          and "e2c = new[] { 1d, 0d, 0d };" in ins)
+    check("el punto cardinal corre el centro de la seccion al lado contrario",
+          "public static (double D2, double D3) PorPuntoCardinal(" in ins
+          and "var columna = (punto - 1) % 3;" in ins
+          and "var fila = (punto - 1) / 3;" in ins
+          and "if (punto < 1 || punto > 9)" in ins)
+    # t3 se mide sobre el eje 2 y t2 sobre el 3: es la misma regla que ya seguia el lector
+    # -«en la columna el ancho se mide sobre el eje 3, al contrario que en la viga»-.
+    check("las dimensiones se toman con la regla que ya usaba el lector",
+          "var dim2 = vertical ? e.AnchoM : e.PeralteM;" in lec_ins
+          and "var dim3 = vertical ? e.PeralteM : e.AnchoM;" in lec_ins)
+    # SOLO EN PLANTA: mover la Z de una trabe 2.5 cm no se ve en el plano y podria cambiarle
+    # el nivel al que se asigna.
+    check("solo se mueve la planta, la Z no se toca",
+          "public static (double Dx, double Dy) EnPlanta(" in ins
+          and "e.X1 += dxi;" in lec_ins
+          and "e.Y2 += dyj;" in lec_ins
+          and "e.Z1 +=" not in lec_ins)
+    check("el elemento guarda cuanto lo movio, para el diagnostico",
+          "public double MovidoXI { get; set; }" in mod_ins
+          and "public bool ConPuntoDeInsercion =>" in mod_ins
+          and "public int ConPuntoDeInsercion { get; set; }" in mod_ins)
+    check("y el resumen del modelo lo dice, que es donde se ve la explicacion",
+          "barra(s) van CORRIDAS respecto" in mod_ins
+          and "Puntos cardinales distintos del centroide" in mod_ins)
+    check("hay prueba ejecutable del punto de insercion",
+          "trabe en +X con offset 3 = -0.025: NO se mueve en X" in prs
+          and "y se mueve 2.5 cm en Y, que es lo que se ve corrido" in prs
+          and "el offset del eje 2 en una trabe no mueve la planta, en X" in prs
+          and "columna con el punto 1: media seccion en X" in prs
+          and "el punto 8 baja el centro medio peralte" in prs)
+
+    # ------------------------------------------------------------------
+    # ETAPA 1 DEL PORT DE LA MACRO DE PLANOS ESTRUCTURALES: LA HOJA CONFIG
+    # ------------------------------------------------------------------
+    # La macro guarda sus ~260 parametros en la hoja CONFIG, que ella misma crea con
+    # CrearHojaConfig. Aqui esa hoja es una tabla en el codigo, renglon por renglon y con
+    # su descripcion, y de ella cuelga TODO lo que se dibuje despues: capas, colores,
+    # estilos de texto, patrones de hatch, separaciones, cotas y ejes.
+    cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+    capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+
+    # 266 y no los 261 de CrearHojaConfig: se añadieron CINCO renglones que NO estan en su
+    # hoja, y todos porque se pidieron: el juego encima de lo ya dibujado, los rotulos al
+    # frente, la capa de las dalas llamada E-CADENA, el respaldo del orden de dibujo por
+    # comando y el ajuste de las lineas al pano del castillo.
+    check("la hoja CONFIG de la macro esta portada, con sesenta y siete renglones añadidos",
+          cfgp.count("        P(") == 327
+          and 'P("AIRE_SOBRE_LO_DIBUJADO_M", "5",' in cfgp
+          and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
+          and 'P("CAPA_DALA", "CADENA",' in cfgp
+          and 'P("DRAWORDER_POR_COMANDO", "SI",' in cfgp
+          and 'P("LINEAS_AL_PANO", "SI",' in cfgp
+          and 'P("CAPA_VOLADO", "VOLADO",' in cfgp
+          and 'P("APAGAR_CAPA_LOSA", "SI",' in cfgp
+          and 'P("LOSA_CONTORNO_FUERA_DE_MUROS", "SI",' in cfgp
+          and 'P("VIGAS_CORTAR_EN_CRUCES", "SI",' in cfgp
+          and 'P("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", "SI",' in cfgp
+          and 'P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"' in cfgp
+          and 'P("VOLADO_POR_NOTA", "SI",' in cfgp
+          and 'P("ARMADO_LOSA_BAYONETA", "SI",' in cfgp
+          and 'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
+          and 'P("EJES_UNIR_TOL_CM", "1",' in cfgp
+          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "NO",' in cfgp
+          and 'P("VOLADO_SIN_DIVISIONES", "SI",' in cfgp)
+    check("y con los numeros de version de la macro",
+          "public const double VersionConfig = 29;" in cfgp
+          and "public const double VersionParche = 50;" in cfgp)
+
+    # La lectura tipada, con las MISMAS reglas: CfgS recorta, CfgT no -y eso importa,
+    # porque los espacios de LOSA_TEXTO_2 son los que dejan el hueco del numero-, CfgD
+    # acepta la coma decimal y CfgB entiende SI, TRUE, VERDADERO, 1, X y YES.
+    check("la lectura tipada respeta las reglas de CfgS / CfgT / CfgD / CfgB",
+          "public string Texto(" in cfgp
+          and "public string TextoTalCual(" in cfgp
+          and "public double Numero(" in cfgp
+          and "public bool Bandera(" in cfgp
+          and '"SI" or "SÍ" or "TRUE" or "VERDADERO" or "1" or "X" or "YES" => true' in cfgp
+          and '"NO" or "FALSE" or "FALSO" or "0" => false' in cfgp)
+
+    # Los renglones que mas se han peleado, con el valor exacto de su macro.
+    for par, valor in (("VERSION_CONFIG", "29"), ("VERSION_PARCHE", "50"),
+                       ("PREFIJO_CAPAS", "E-"), ("ALTURA_TEXTO", "0.12"),
+                       ("OFFSET_Y_INICIAL", "25"),
+                       ("SEC_ALTURA", "0.12"), ("CADENA_TEXTO_ALTURA", "0.09"),
+                       ("SEPARACION_ENTRE_PLANTAS", "10"),
+                       ("LOSA_TEXTO_ALTURA", "0.072"), ("LOSA_HATCH_ESCALA", "0.0475"),
+                       ("LOSACERO_HATCH_ESCALA", "0.02"),
+                       ("LOSACERO_FRANJA_ANCHO_M", "0.15"),
+                       ("COTAS_SEPARACION", "0.75"), ("COTAS_SEPARACION_TOTAL", "1.17"),
+                       ("EJES_INICIO_BURBUJA_M", "2"), ("PANO_SOLAPE_CM", "0"),
+                       ("PANO_BUSCA_CM", "150"), ("PANO_ALARGAR_MAX_CM", "150"),
+                       ("COTA_EXT_LINE_EXT", "0"), ("COTA_EXT_LINE_OFFSET", "0.5"),
+                       ("COTA_PRECISION", "3"), ("MALLA_SEP_CM", "15"),
+                       ("COLOR_ACERO", "130"), ("COLOR_ARMADO_LOSA", "142"),
+                       ("COLOR_CASTILLO", "1"), ("COLOR_DALA", "12")):
+        check(f"CONFIG: {par} = {valor}",
+              f'P("{par}", "{valor}", ' in cfgp)
+
+    # Y los textos: los estilos, los patrones y las plantillas, sin traducir.
+    for par, valor in (("PANO_ALMA_W_MODO", "ALMA"), ("ESTILO_COTA", "COTA_DIM"),
+                       ("ESTILO_TEXTO_COTA", "COTA"),
+                       ("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES"),
+                       ("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS"),
+                       ("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS"),
+                       ("ROTULO_ESTILO_TEXTO", "HAETTENSCHWEILER"),
+                       ("LOSA_HATCH_PATRON", "ANSI37"),
+                       ("LOSACERO_HATCH_PATRON", "FLEX"),
+                       ("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C"),
+                       ("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100"),
+                       ("LINETYPE_EJES", "DASHDOT"), ("LINETYPE_TRABE", "PHANTOM2"),
+                       ("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO"),
+                       ("CIMENTACION_STORIES", "BASE,CIMENTACION,FOUNDATION"),
+                       ("CAPA_CADENA_DESPLANTE", "CADENA DESPLANTE"),
+                       ("CAPA_PIERS", "PIERS")):
+        check(f"CONFIG: {par} = {valor}",
+              f'P("{par}", "{valor}", ' in cfgp)
+
+    # El titulo lleva DOS espacios y el renglon 2 del rotulo de la losa lleva SIETE
+    # adelante: son el dato, no un descuido, y recortarlos cambia el dibujo.
+    check("el titulo conserva sus dos espacios",
+          'P("ROTULO_TITULO", "PLANTA  ESTRUCTURAL", ' in cfgp)
+    check("y el rotulo de la losa sus espacios de adelante",
+          'P("LOSA_TEXTO_2", "       cm de espesor", ' in cfgp)
+
+    # ------------------------------------------------------------------
+    # LAS CAPAS DEL PLANO, CON LOS COLORES DE LA MACRO
+    # ------------------------------------------------------------------
+    # «NO MODIFIQUES NINGUNA CAPA NI NINGUN COLOR»: los que la macro lleva escritos en el
+    # codigo van aqui con ese numero, y los que salen de la hoja se leen de la hoja.
+    for capa, color in (("MURO", "6"), ("COLUMNA", "1"), ("CONTRATRABE", "2"),
+                        ("LOSA", "8"), ("DIAGONAL", "30"), ("OTROS", "7")):
+        check(f"capa E-{capa} color {color}",
+              f'PorTipo("{capa}", {color})' in capp)
+
+    check("la trabe va en color 3 con PHANTOM2",
+          'PorTipo("TRABE", 3, cfg.Texto("LINETYPE_TRABE", "PHANTOM2"))' in capp)
+    check("y el castillo, la dala y el acero toman su color de la hoja",
+          'PorTipo("CASTILLO", Color("COLOR_CASTILLO", 1))' in capp
+          and 'Capa("DALA", Prefijo + _cfg.Texto("CAPA_DALA", "CADENA")' in capp
+          and 'Color("COLOR_ACERO", 130)' in capp)
+    check("las capas de servicio, igual que en CrearCapas",
+          'Servicio("TEXTO", 7)' in capp
+          and 'Servicio("TITULO", Color("COLOR_TITULO", 7, minimo: 0))' in capp
+          and 'Servicio("EJES", Color("COLOR_EJES", 8), cfg.Texto("LINETYPE_EJES", "DASHDOT"))' in capp
+          and 'Servicio("EJES-BURBUJA", Color("COLOR_BURBUJA_EJES", 4))' in capp
+          and 'Servicio("EJES-TEXTO", Color("COLOR_EJES_TEXTO", 6))' in capp
+          and 'Servicio("ARMADO LOSA", Color("COLOR_ARMADO_LOSA", 142))' in capp
+          and 'Servicio("MAMPOSTERIA", Color("COLOR_MAMPOSTERIA", 30))' in capp
+          and 'Servicio("LOSACERO", Color("COLOR_LOSACERO", 6))' in capp
+          and 'Servicio("COTAS", Color("COLOR_COTAS", 8))' in capp)
+    check("la de los piers es la unica SIN prefijo, como en la macro",
+          "public string CapaPiers" in capp
+          and 'new Capa(string.Empty, CapaPiers, Color("COLOR_PIERS", 7), string.Empty)' in capp)
+    check("un color fuera de rango se regresa al de la macro, no a blanco",
+          "return c < minimo || c > 255 ? omision : c;" in capp)
+    check("y estan CapaDeTipo, CapasAlFrente y el reconocimiento de lo generado",
+          "public string CapaDeTipo(" in capp
+          and "public IReadOnlyList<string> CapasAlFrente()" in capp
+          and "public bool EsCapaGenerada(" in capp)
+
+    # La prueba EJECUTABLE de las dos piezas: se corre el C# compilado, no un port.
+    pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
+    check("hay prueba ejecutable de la hoja CONFIG y de las capas",
+          "using CadLink.Cad.PlanoEstructural;" in pr
+          and "327, ConfigPlano.PorOmision.Count" in pr
+          and 'Igual("son las 23 capas", 23, capas.Todas.Count)' in pr
+          and "return fallos == 0 ? 0 : 1;" in pr)
+    check("y su proyecto apunta al CadLink.Cad de verdad",
+          "CadLink.Cad.csproj" in leer(ruta("tools/prueba-config-plano/Prueba.csproj")))
 
     # Y el modelo se VISUALIZA: es lo que pidio el usuario, no solo leerlo.
     m_lm = re.search(r"private void LeerModeloCsi\(.*?\n    \}", codigo, re.S)
@@ -2816,8 +3449,106 @@ def v16_extruida_piers() -> None:
           "_vista.DibujarExtruido(ExtruidaCanvas);" in codigo)
     m_gira = re.search(r"_girando = e\.ChangedButton.*?;", codigo, re.S)
     check("se puede leer la condicion de giro", m_gira is not None)
+    # EL GIRO SE DEFINE POR EXCLUSION desde que la planta usa el boton izquierdo para
+    # MOVER: gira todo lo que NO es la planta, y la extruida entra ahi. Antes la condicion
+    # nombraba los dos lienzos de volumen; ahora nombra al que se queda fuera.
     check("se puede girar la vista extruida",
-          m_gira is not None and "ExtruidaCanvas" in m_gira.group(0))
+          m_gira is not None
+          and "!esPlanta" in m_gira.group(0)
+          and "var esPlanta = ReferenceEquals(lienzo, PlantaCanvas);" in codigo)
+
+    # ------------------------------------------------------------------
+    # LA PESTAÑA DE ETABS/SAP2000: MURO CON ESPESOR, TERNA Y CORTES
+    # ------------------------------------------------------------------
+    #  EL MURO CON ESPESOR. Cuando GetWall no da el espesor -pasa con las propiedades de
+    #  mamposteria- el muro se dibujaba PLANO, como una hoja de papel, y en una vista extruida
+    #  eso es justo lo que no se quiere ver. El plano de AutoCAD si lo dibuja con espesor,
+    #  porque alla hay un respaldo de 15 cm: aqui se usa EL MISMO, o una de las dos vistas
+    #  estaria mintiendo.
+    check("el muro de la vista extruida siempre tiene espesor",
+          "private static double EspesorDePanel(" in ext
+          and "var t = EspesorDePanel(el);" in ext
+          and "el.Clase == ClaseElemento.Muro ? 0.15 : 0.10;" in ext)
+    # LA LOSA NO: su espesor manda en el armado y en el rotulo, asi que inventarlo seria peor
+    # que dejarla plana. Que se note.
+    # Y LA LOSA, CON SU ESPESOR REAL: se pidio. El del modelo siempre que este -y ahora llega
+    # tambien en las nervadas y las reticulares, que no responden a GetSlab y por eso venian en
+    # cero- y, si de verdad no esta, 10 cm: una losa PLANA en una vista extruida se lee como si
+    # no tuviera espesor, que es imposible. Y se AVISA de cual salio asi.
+    check("la losa de la extruida lleva su espesor real",
+          "return el.Clase == ClaseElemento.Muro ? 0.15 : 0.10;" in ext)
+    check("el espesor se busca tambien en las losas nervadas y reticulares",
+          '"GetSlabRibbed", "GetSlabWaffle"' in lec_ins
+          and "var total = Convert.ToDouble(a[1]);" in lec_ins)
+    check("y se avisa de la propiedad que no dio su espesor, una vez por seccion",
+          "no dio su espesor" in lec_ins
+          and "sinEspesor.Add(seccion)" in lec_ins)
+
+    #  LA TERNA XYZ. Estaba dibujada, pero en el mismo gris claro de todo y con linea de 1.2
+    #  px: sobre el fondo claro era invisible, y en una vista que se gira, no saber para donde
+    #  cae la X deja al modelo sin referencia.
+    # LA PLACA DE LA TERNA, TRASLUCIDA Y SIN CONTORNO: se pidio. Opaca tapaba la esquina del
+    # modelo -que es donde uno mira para orientarse- y el circulo dibujado competia con los
+    # ejes, haciendo parecer que la terna era un objeto del modelo.
+    check("la placa de la terna es traslucida y sin contorno",
+          "Pincel(0xFF, 0xFF, 0xFF, 0x3C)" in vista
+          and "Fill = FondoTerna\n        };" in vista.replace("\r\n", "\n"))
+
+    check("la terna XYZ se ve: colores, flecha y placa",
+          "private static readonly Brush ColorEjeX" in vista
+          and "private static readonly Brush ColorEjeZ" in vista
+          and "private static readonly Brush FondoTerna" in vista
+          and "LA PUNTA DE FLECHA" in vista
+          and 'Eje(1, 0, 0, "X", ColorEjeX);' in vista)
+    check("y usa la MISMA proyeccion que el modelo, no otra formula",
+          "var u = (x * ca) - (y * sa);" in vista
+          and "var v = -((z * ce) + (d * se));" in vista)
+
+    #  EL CORTE POR UN EJE, que es un ALZADO: se ve solo lo que hay sobre ese eje. Se resuelve
+    #  como una REBANADA, no como un plano de espesor cero, porque en un modelo real los muros
+    #  de un eje no estan todos exactamente en su ordenada -el eje pasa por el paño y el muro
+    #  se modela en su linea media- y un corte de espesor cero se quedaria vacio.
+    check("hay corte por un eje en las vistas de volumen",
+          "public string CorteEje { get; set; } = string.Empty;" in vista
+          and "public bool CorteEnX { get; set; }" in vista
+          and "public double CorteEspesorM { get; set; } = 0.6;" in vista
+          and "private bool EnElCorte(" in vista
+          and "public void SinCorte()" in vista)
+    # SE MIRA EL ELEMENTO COMPLETO, no su centro: una trabe que cruza el eje entra aunque su
+    # centro este a diez metros. Filtrando por el centro desaparecerian justo las trabes que
+    # llegan al eje del corte, que son las que se quieren ver.
+    check("el corte mira el elemento completo, no su centro",
+          "if (max >= CorteOrdenada - medio && min <= CorteOrdenada + medio)" in vista)
+    # Y ADEMAS SE VE EL FONDO DEL LADO QUE SE ELIGE, que es lo que hace que el visor sirva para
+    # decidir: se cambia de lado en la lista y se ve al momento si por ahi hay algo.
+    check("y el fondo del lado que se mira",
+          "return CorteHaciaMas\n            ? min > CorteOrdenada + medio\n"
+          "            : max < CorteOrdenada - medio;" in vista)
+    # Y SOLO EN LAS VISTAS DE VOLUMEN: la planta YA es un corte horizontal.
+    check("el corte no se aplica a la planta",
+          "private List<ElementoEtabs> Elementos(bool conCorte = false)" in vista
+          and "var elementos = Elementos(conCorte: true);" in vista
+          and "var elementos = Elementos(conCorte: true);" in ext)
+    # EL CORTE SE DICE EN LA LEYENDA: deja fuera media estructura, asi que tiene que estar
+    # escrito o se mira un modelo incompleto creyendo que esta entero.
+    check("la leyenda dice por que eje va el corte",
+          "corte por el eje {CorteEje}" in vista)
+    # Y LA VISTA SE PONE DE FRENTE AL CORTE: un corte visto en isometrica sigue siendo un
+    # dibujo torcido.
+    check("al elegir el corte la vista se pone de frente",
+          "private void OnCorteEjeCambiado(" in codigo
+          and "_vista.Azimut = corte.EnX ? 90 : 0;" in codigo
+          and "private void PoblarCortes(" in codigo
+          and "PoblarCortes(modelo);" in codigo)
+    check("la lista de cortes sale de los ejes del modelo, sin repetidos",
+          "modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo)" in codigo
+          and "CadLink.Cad.PlanoEstructural.EjesPlano.SinRepetidos(" in codigo
+          and 'x:Name="CorteEjeCombo"' in xaml
+          and 'SelectionChanged="OnCorteEjeCambiado"' in xaml)
+    # ENCUADRAR: la salida cuando uno se pierde arrastrando. No toca el giro a proposito.
+    check("hay boton de Encuadrar que no cambia el punto de vista",
+          'Tag="ENCUADRAR"' in xaml
+          and 'case "ENCUADRAR":' in codigo)
 
     # La camara es UNA, compartida. Duplicar la proyeccion acaba con una vista
     # espejeada respecto a la otra.
@@ -2852,10 +3583,14 @@ def v16_extruida_piers() -> None:
         check("el prisma tiene sus seis caras",
               cuerpo.count("yield return") >= 3 and "for (var i = 0; i < 4; i++)" in cuerpo)
 
-    # El pintor va por CARA, no por elemento: una trabe que cruza una columna tiene
-    # caras delante y detras de ella a la vez.
-    check("el orden del pintor es por cara",
-          "caras.OrderByDescending(c => c.Profundidad)" in ext)
+    # SE PINTA POR CARA, y ahora ni siquiera por orden: con Z-BUFFER, pixel a pixel. El
+    # orden por caras -aunque fuera por cara y no por elemento- no puede resolver dos caras
+    # que se ATRAVIESAN, y ese era el caso de la losa que se veia cortada por el muro: cada
+    # una esta delante en una parte, asi que no hay orden correcto que elegir.
+    check("la extruida pinta cara por cara, con Z-buffer",
+          "foreach (var cara in caras)" in ext
+          and "lienzoZ.Triangulo(" in ext
+          and "caras.OrderByDescending(c => c.Profundidad)" not in ext)
     # La normal por Newell, no por los tres primeros vertices (pueden ser casi
     # colineales en una losa con vertice intermedio).
     check("la normal se calcula por Newell", "NormalDe(" in ext and "a.Y - b.Y" in ext)
@@ -2927,7 +3662,11 @@ def v18_planta_autocad() -> None:
         check("filtra por el nivel elegido en la lista", "NivelElegido" in cuerpo)
         check("y por los filtros de ESA pestaña", "VisibleEnElPlano" in cuerpo)
 
-    m_vis = re.search(r"private bool VisibleEnElPlano\(.*?\n    \}", codigo, re.S)
+    # LAS DOS SOBRECARGAS: la que recibe el ELEMENTO -que manda el castillo de area a la casilla de
+    # las columnas y la cadena de area a la de las trabes- y la que recibe la CLASE, con su switch.
+    m_vis = re.search(
+        r"private bool VisibleEnElPlano\(ElementoEtabs el\).*?_ => false\s*\n    \};",
+        codigo, re.S)
     check("se puede leer VisibleEnElPlano", m_vis is not None)
     if m_vis:
         cuerpo = m_vis.group(0)
@@ -2960,7 +3699,15 @@ def v18_planta_autocad() -> None:
               'HasFeature("export-dxf")' in cuerpo)
         check("no se dibuja sin modelo leido", "_modeloEtabs is null" in cuerpo)
         check("se avisa si no queda nada que dibujar",
-              "planta.Elementos.Count == 0" in cuerpo)
+              "plantas.Sum(p => p.Elementos.Count) == 0" in cuerpo)
+        # DE UN JALON TODAS LAS PLANTAS, que es como lo hace la macro. La casilla es para
+        # cuando se quiere revisar una sola.
+        check("se dibujan TODAS las plantas, no solo la del nivel elegido",
+              "ArmarTodasLasPlantas(_modeloEtabs)" in cuerpo
+              and "dibujante.DibujarTodas(plantas)" in cuerpo)
+        check("y hay casilla para dibujar solo una",
+              'x:Name="SoloNivelElegidoChk"' in xaml
+              and "SoloNivelElegidoChk?.IsChecked == true" in cuerpo)
         check("se tolera que AutoCAD no este abierto",
               "AcadNotAvailableException" in cuerpo)
         check("y el cursor de espera se repone siempre",
@@ -2971,6 +3718,15 @@ def v18_planta_autocad() -> None:
     # ------------------------------------------------------------------
     dib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
     dto = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+    mac = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
+    # La prueba ejecutable de la etapa 4. Se lee AQUI, antes del primer uso: dejarla mas
+    # abajo ya reventó dos veces con UnboundLocalError.
+    pre = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+    # Y las capas y la prueba de la hoja CONFIG. Se vuelven a leer AQUI a proposito: las de
+    # mas arriba son locales de otra comprobacion y no llegan hasta aqui.
+    capp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+    cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+    pr = leer(ruta("tools/prueba-config-plano/Program.cs"))
 
     check("existe PlantaDrawer", "class PlantaDrawer" in dib)
     check("existe el DTO PlantaCad", "class PlantaCad" in dto)
@@ -2987,18 +3743,2597 @@ def v18_planta_autocad() -> None:
               "CadLink.Etabs" not in limpio and "ClaseElemento" not in limpio)
     check("la ventana es la que traduce", "ClasePlantaDe" in codigo)
 
-    # Una capa por tipo de elemento: es lo que se usa para trabajar encima.
-    for capa in ("PLANTA-COLUMNAS", "PLANTA-TRABES", "PLANTA-MUROS",
-                 "PLANTA-LOSAS", "PLANTA-EJES", "PLANTA-TEXTOS"):
-        check(f"hay capa {capa}", f'"{capa}"' in dib)
+    # LAS CAPAS SON LAS DE LA MACRO, no unas propias: antes eran PLANTA-COLUMNAS,
+    # PLANTA-TRABES... con sus propios colores, y el plano salia en capas que no eran las
+    # suyas. Ahora salen de CapasPlano -E-CASTILLO, E-COLUMNA, E-DALA, E-TRABE...- y la de
+    # cada elemento se elige por su TIPO, como en su DibujarElemento.
+    check("las capas ya no son unas propias",
+          all(v not in dib for v in ('"PLANTA-COLUMNAS"', '"PLANTA-TRABES"',
+                                     '"PLANTA-MUROS"', '"PLANTA-LOSAS"')))
+    check("y salen de la tabla de la macro",
+          "PlanoEstructural.CapasPlano _capas" in dib
+          and "_capas.CapaDeTipo(tipo)" in dib
+          and '_capas.Prefijo + "TEXTO"' in dib
+          and '_capas.Prefijo + "TITULO"' in dib)
+    prs_cad = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
 
-    # Las capas que ya existen se dejan como estan: pueden llevar el color y la
-    # pluma que les puso el usuario.
+    check("un perfil de acero va a la capa del acero",
+          "PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma)" in dib
+          and '_capas.CapaDeTipo("ACERO")' in dib)
+    # EL TIPO DEL PLANO, CON LAS NOTAS. Aqui se clasificaba SIN ellas, y por eso las cadenas
+    # no salian como cadenas: una «CC 15X25» de 25 cm de peralte pasa de los 20 del criterio
+    # por medidas y se iba a E-TRABE, aunque en sus notas dijera CADENA DE CERRAMIENTO. La
+    # tabla de secciones si las leia; el dibujo, no.
+    check("el tipo lo clasifica la ventana con la regla de la macro Y las notas",
+          "SeccionesModelo.ClasificaTipo(el.Clase, el.Seccion, t2, t3, null, el.Notas)"
+          in codigo
+          and "public string Tipo { get; set; }" in dto)
+    # Y LAS TRES CADENAS VAN A LAS CAPAS DE LAS CADENAS: CADENA DE CERRAMIENTO no es el
+    # nombre de ninguna capa, asi que sin traducirlo se irian a E-OTROS, que es peor que
+    # antes: se dibujarian, pero en una capa que nadie mira.
+    check("las tres cadenas van a la capa de las cadenas",
+          'if (t.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase))' in capp
+          and 'CapaCadenaDesplante' in capp
+          and 'CapaDeTipo("DALA")' in capp)
+    check("hay prueba ejecutable de las tres cadenas",
+          "la de CERRAMIENTO sale con su nombre" in prs_cad
+          and "la de cerramiento se ordena con las dalas" in prs_cad
+          and "«CADENA» a secas es DALA" in prs_cad)
+
+    # El color se PONE, exista la capa o no: es lo que hace AsegurarCapa en la macro, y es
+    # lo que permite que el plano se vea igual aunque el dibujo traiga esas capas de otro
+    # sitio con otro color.
     m_cap = re.search(r"public void AsegurarCapas\(\).*?\n    \}", dib, re.S)
     check("se puede leer AsegurarCapas", m_cap is not None)
     if m_cap:
-        check("una capa que ya existe no se toca",
-              "todas.Item(nombre)" in m_cap.group(0))
+        check("se crean las 23 capas de la tabla, con su color",
+              "foreach (var capa in _capas.Todas)" in m_cap.group(0)
+              and "lay.Color = capa.Color;" in m_cap.group(0))
+        check("y con su tipo de linea",
+              "AsegurarTipoDeLinea(capa.TipoDeLinea)" in m_cap.group(0))
+
+    # DIBUJAR TODAS LAS PLANTAS DE UN JALON, con la separacion de la hoja CONFIG.
+    m_todas = re.search(r"public Resumen DibujarTodas\(.*?\n    \}", dib, re.S)
+    check("se puede leer DibujarTodas", m_todas is not None)
+    if m_todas:
+        cuerpo = m_todas.group(0)
+        check("el paso sale de SEPARACION_ENTRE_PLANTAS, que ahora son 10.00",
+              '_cfg.Numero("SEPARACION_ENTRE_PLANTAS", 10)' in cuerpo)
+        # Y el juego se pone POR ENCIMA de lo que ya este dibujado, no a una altura fija:
+        # asi dibujar dos veces no encima las plantas. Con el dibujo vacio, al origen.
+        check("el juego se coloca por encima de lo ya dibujado",
+              '_cfg.Numero("AIRE_SOBRE_LO_DIBUJADO_M", 5)' in cuerpo
+              and "var tope = TopeDeLoDibujado();" in cuerpo)
+        # Y CON EL DIBUJO VACIO, A LA Y DE OFFSET_Y_INICIAL -25-, no al origen: el rotulo
+        # de la planta va DEBAJO de las burbujas y de las cotas, asi que pegado al origen se
+        # salia por abajo, a la zona de los negativos.
+        check("y con el dibujo vacio arranca en OFFSET_Y_INICIAL, que son 25",
+              'tope is { } t ? t + aire : _cfg.Numero("OFFSET_Y_INICIAL", 25)' in cuerpo)
+        check("y se mide lo que hay en el dibujo para saber donde acaba",
+              "internal double? TopeDeLoDibujado()" in mac)
+        check("y caben PLANTAS_POR_FILA en cada fila",
+              '_cfg.Numero("PLANTAS_POR_FILA", 100)' in cuerpo)
+        check("el paso es el MISMO para todas, del rectangulo que las envuelve",
+              "foreach (var p in plantas)" in cuerpo and "var pasoX = (xMax - xMin) + hueco;" in cuerpo)
+    # LA BASE TAMBIEN SE DIBUJA. GetStories NO devuelve el nivel base, pero el modelo si
+    # tiene elementos con Story = «Base» -las cadenas de desplante-, asi que los niveles se
+    # sacan de los ELEMENTOS, como StoriesDesdeElementos de la macro.
+    mod = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    check("los niveles que se dibujan salen de los elementos, asi entra la BASE",
+          "public List<NivelEtabs> NivelesConElementos(bool ascendente = true)" in mod
+          and "e.Clase != ClaseElemento.Losa" in mod
+          and "modelo.NivelesConElementos(ascendente: true)" in codigo)
+    check("y la lista de la pestaña tambien la trae",
+          "modelo.NivelesConElementos(ascendente: false)" in codigo)
+    check("las plantas van del nivel mas bajo al mas alto, como ORDEN_NIVELES = ASC",
+          "salida.OrderBy(n => n.ElevacionM).ToList()" in mod)
+
+    # ------------------------------------------------------------------
+    # ETAPA 4: EJES CON BURBUJAS, COTAS, ESTILOS Y ROTULO DE LA PLANTA
+    # ------------------------------------------------------------------
+    # Es lo que convierte un dibujo de elementos en un PLANO. La cuenta va aparte del
+    # dibujante -EjesPlano y RotuloPlanta, sin COM- para poder comprobarla sin AutoCAD.
+    ejp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/EjesPlano.cs"))
+    rtp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/RotuloPlanta.cs"))
+
+    check("la cuenta de los ejes y las cotas esta portada",
+          "public double SaleEjes()" in ejp
+          and "public double SaleEjesCorto()" in ejp
+          and "public double AbajoDeEjes(bool hayEjes)" in ejp
+          and "public List<Cota> Cotas(" in ejp
+          and "public List<EjeColocado> Verticales(" in ejp
+          and "public List<EjeColocado> Horizontales(" in ejp)
+
+    # LOS DOS NUMEROS QUE MAS SE HAN PELEADO EN LA MACRO, y que son INDEPENDIENTES:
+    # EJES_INICIO_BURBUJA_M manda las burbujas y COTAS_SEPARACION_TOTAL manda la cota.
+    check("las burbujas las manda EJES_INICIO_BURBUJA_M, y solo eso",
+          '_cfg.Numero("EJES_INICIO_BURBUJA_M", 2)' in ejp
+          and "if (inicio > 0)" in ejp)
+    check("y las cotas, COTAS_SEPARACION y COTAS_SEPARACION_TOTAL",
+          '_cfg.Numero("COTAS_SEPARACION", 0.75)' in ejp
+          and '_cfg.Numero("COTAS_SEPARACION_TOTAL", 1.17)' in ejp)
+    check("los cuatro lados se prenden por separado",
+          all(f'_cfg.Bandera("COTAS_{lado}", true)' in ejp
+              for lado in ("ARRIBA", "ABAJO", "IZQUIERDA", "DERECHA")))
+    check("la cota total necesita 3 ejes: con 2 seria la misma linea dos veces",
+          "ejes.Count >= 3" in ejp)
+    check("la burbuja lleva su anillo y sus rayitas, 3 o 4",
+          "public double RadioAnillo()" in ejp
+          and '_cfg.Bandera("BURBUJA_CRUZ_4_LINEAS", true)' in ejp)
+
+    # EL ROTULO: CIMENTACION en la base y PLANTA BAJA en Story1, no «STORY1».
+    check("el rotulo de la planta esta portado",
+          "public string RenglonDelNivel(string story)" in rtp
+          and "public bool EsCimentacion(string story)" in rtp
+          and "public static int NumeroDeStory(string story)" in rtp)
+    check("la base se rotula CIMENTACION",
+          '_cfg.Texto("ROTULO_NOMBRE_CIMENTACION", "CIMENTACION")' in rtp)
+    check("y el nombre del nivel sale de ROTULO_NIVELES",
+          '_cfg.Texto("ROTULO_NIVELES")' in rtp)
+    check("la comparacion de la base es EXACTA, para que Basement no cuente",
+          "if (p.Length > 0 && t == p)" in rtp)
+
+    # EL DIBUJO: estilos, ejes, cotas, rotulo, mamposteria y draw order.
+    check("se crean los estilos de la macro",
+          "private void AsegurarEstilosDeLaMacro()" in mac
+          and '_cfg.Texto("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES")' in mac
+          and '_cfg.Texto("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS")' in mac
+          and '_cfg.Texto("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS")' in mac
+          and '_cfg.Texto("ESTILO_TEXTO_COTA", "COTA")' in mac)
+    check("el de las cotas va en NEGRITA, que solo se puede pedir por el nombre de fuente",
+          '_cfg.Bandera("COTA_NEGRITA", true)' in mac
+          and "est.SetFont(fuente, negrita, false, 0, 0);" in mac)
+    check("y el estilo de cota se arma con las variables DIM y CopyFrom",
+          "private void EstiloDeCota()" in mac
+          and 'V("DIMTXSTY"' in mac and 'V("DIMEXE"' in mac and 'V("DIMDSEP"' in mac
+          and "est.CopyFrom(_doc);" in mac)
+
+    check("se dibujan los ejes con sus burbujas",
+          "private void DibujarEjesDeLaPlanta(" in mac
+          and "private void Burbuja(" in mac
+          and '_capas.Prefijo + "EJES-BURBUJA"' in mac
+          and '_capas.Prefijo + "EJES-TEXTO"' in mac)
+    check("las rayitas van en la capa de la burbuja, no en la de los ejes",
+          "Linea(x1, y1, x2, y2, capaBur);" in mac)
+    check("y las cotas, en la capa de cotas y con su estilo",
+          "private void CotaAlineada(" in mac
+          and '_capas.Prefijo + "COTAS"' in mac
+          and "_ms.AddDimAligned(" in mac)
+    # EL PUNTO DECIMAL, POR OBJETO. En el estilo -DIMDSEP- no basta: en un AutoCAD en
+    # español gana la configuracion regional y las cotas salen con coma. La macro lo pone en
+    # CADA cota, y eso es lo que hay que hacer.
+    check("cada cota lleva su separador decimal, para que sea PUNTO y no coma",
+          "d.DecimalSeparator = sepDecimal;" in mac
+          and '_cfg.Texto("COTA_SEPARADOR_DECIMAL", ".")' in mac)
+
+    check("la cota total lleva su linea de extension corta, para no tocar la burbuja",
+          '_cfg.Numero("COTA_TOTAL_EXT_LINE_EXT", 0)' in mac
+          and "c.EsTotal ? extTotal : -1" in mac)
+
+    check("el rotulo de dos renglones se dibuja debajo de los ejes",
+          "private void RotuloDeLaPlanta(" in mac
+          and "Ejes.AbajoDeEjes(hayEjes)" in mac
+          and "Rot.SeparacionEjes" in mac)
+    check("y se MIDE para poder centrarlo, como hace la macro",
+          "private double AnchoDeTexto(" in mac
+          and "GetBoundingBox" in mac
+          and "MoverTexto(t1, x0, y0);" in mac)
+    # GetBoundingBox NO se puede llamar con dynamic: devuelve por referencia. Ya se
+    # aprendio dos veces en este proyecto, asi que aqui va por reflexion desde el principio.
+    check("la medida va por reflexion y no con dynamic",
+          "System.Reflection.ParameterModifier(2)" in mac
+          and "InvokeMember(" in mac)
+
+    check("el muro de block lleva su polilinea ancha",
+          "private bool LineaDeMamposteria(" in mac
+          and '_cfg.Numero("MAMPOSTERIA_ANCHO", 0.06)' in mac
+          and '_cfg.Numero("MAMPOSTERIA_GAP_M", 0.05)' in mac
+          and '_capas.Prefijo + "MAMPOSTERIA"' in mac)
+    check("y el material del muro llega desde la ventana, con la regla de la macro",
+          "public string Material { get; set; }" in dto
+          and "SeccionesModelo.MaterialDeMuro(el.Seccion, el.Notas)" in codigo)
+
+    check("las capas de CAPAS_AL_FRENTE se suben al frente al terminar",
+          "private void TraerCapasAlFrente()" in mac
+          and 'dict.AddObject("ACAD_SORTENTS", "AcDbSortentsTable")' in mac
+          and "tabla.MoveToTop(" in mac
+          and '_doc.SetVariable("SORTENTS", 127)' in mac
+          and "TraerCapasAlFrente();" in dib)
+    # El respaldo de la macro -copiar y borrar- NO se porta: cambia los handles y rompe
+    # xrefs, campos y anotaciones asociativas.
+    check("y no se recurre a copiar y borrar, que cambia los handles",
+          "RecrearAlFrente" not in mac)
+
+    # ------------------------------------------------------------------
+    # LOS ROTULOS, ENCIMA DE TODO: DOS PASADAS DEL ORDEN DE DIBUJO
+    # ------------------------------------------------------------------
+    #  En una sola pasada el orden entre la geometria y los textos lo decidia el recorrido
+    #  del dibujo, asi que unas veces el rotulo quedaba encima y otras debajo. Subiendo
+    #  primero la geometria y DESPUES los textos, los textos quedan siempre arriba.
+    check("los rotulos se suben al frente en una segunda pasada, despues de la geometria",
+          "private void SubirCapas(" in mac
+          and "SubirCapas(_capas.CapasAlFrente());" in mac
+          and "SubirCapas(_capas.CapasDeTextoAlFrente());" in mac
+          and mac.find("SubirCapas(_capas.CapasAlFrente());")
+              < mac.find("SubirCapas(_capas.CapasDeTextoAlFrente());"))
+    # EL MTEXT NO SE SUBE AL FRENTE, y esto es lo que se pidio: tiene que quedar ENCIMA de
+    # la polilinea de mamposteria -para eso lleva fondo- pero DEBAJO de las lineas de la
+    # cadena y del acero. Sale solo del orden en que se dibuja, asi que la lista va VACIA.
+    check("el MTEXT no se sube al frente: queda entre la mamposteria y las lineas",
+          "public IReadOnlyList<string> CapasDeTextoAlFrente()" in capp
+          and '_cfg.Texto("CAPAS_TEXTO_AL_FRENTE", string.Empty)' in capp
+          and 'P("CAPAS_TEXTO_AL_FRENTE", "",' in cfgp
+          and "s != piers &&" in capp)
+    check("y la prueba lo comprueba",
+          'Igual("la lista de capas de texto al frente va VACIA", ""' in pr)
+
+    # CAPA POR CAPA Y EN SU ORDEN, no todas de golpe: cada MoveToTop deja lo suyo encima de
+    # lo anterior. Con una sola llamada, el orden entre ellas lo decidia el recorrido del
+    # dibujo, y era el motivo de que E-CADENA y E-ACERO siguieran saliendo tapadas.
+    check("cada capa se sube por separado y en el orden de la hoja",
+          "private bool MoverAlFrente(" in mac
+          and "foreach (var capa in capas)" in mac
+          and "porCapa[capa]" in mac)
+    # Y con RESPALDO: el DRAWORDER de verdad, por comando, para cuando la tabla de orden no
+    # se deja usar. Los nombres van con _ delante para que funcione en cualquier idioma.
+    check("hay respaldo con el DRAWORDER de verdad",
+          "private bool DrawOrderPorComando(" in mac
+          and "_.draworder" in mac
+          and "(410 . " in mac
+          and "_doc.SendCommand(lisp)" in mac
+          and '_cfg.Bandera("DRAWORDER_POR_COMANDO", true)' in mac)
+    # LA CAPA DE LAS DALAS SE LLAMA E-CADENA, y CAPAS_AL_FRENTE tiene que decir CADENA o no
+    # se subiria: es el nombre de la capa lo que se compara.
+    check("la capa de las dalas se llama E-CADENA",
+          'P("CAPA_DALA", "CADENA",' in cfgp
+          and 'P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO"' in cfgp
+          and 'CapaDeTipo("DALA")' in capp)
+
+    # ------------------------------------------------------------------
+    # LAS LINEAS MUEREN EN EL PANO DEL CASTILLO, NO EN SU EJE
+    # ------------------------------------------------------------------
+    #  En el modelo el muro llega al NUDO -al centro del castillo-, y dibujado asi sus dos
+    #  lineas cruzan la seccion de la columna. En obra el muro EMPIEZA en el pano.
+    pan = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/PanoDeApoyo.cs"))
+    check("existe la cuenta del ajuste al pano",
+          "public sealed class PanoDeApoyo" in pan
+          and "public Tramo Recortar(" in pan
+          and "public static double? SalidaDelMaterial(" in pan
+          and '_cfg.Bandera("LINEAS_AL_PANO", true)' in pan)
+    check("con los numeros de la hoja: busqueda, solape, alargue y tope",
+          '_cfg.Numero("PANO_BUSCA_CM", 150)' in pan
+          and '_cfg.Numero("PANO_SOLAPE_CM", 0)' in pan
+          and '_cfg.Numero("PANO_ALARGAR_MAX_CM", 150)' in pan
+          and '_cfg.Numero("PANO_RECORTE_MAX", 0.4)' in pan)
+    # LA MISMA CUENTA ALARGA el muro que quedo corto en el modelo: el recorte sale negativo.
+    # Es el detalle elegante de la macro y la mitad que se olvida.
+    check("y la misma cuenta alarga el muro que quedo corto",
+          "El apoyo queda <b>detrás</b>" in pan or "queda DETRÁS" in pan)
+    check("el muro y la trabe se dibujan sobre el tramo llevado al pano",
+          "var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();" in dib
+          and "var tramo = Pano.Recortar(el, apoyos, cruces);" in dib
+          and "Pano.Recortar(el, apoyos, cruces), punteada))" in dib
+          and "PanoDeApoyo.Tramo? tramo = null" in dib)
+    # Un castillo INTERMEDIO no recorta nada: si contara, un muro largo con un castillo a un
+    # metro de la punta se quedaria cortado por la mitad.
+    check("un castillo intermedio no recorta el muro",
+          "es un castillo intermedio" in pan)
+    check("hay prueba ejecutable del ajuste al pano",
+          "el muro arranca en el pano del castillo, no en su eje" in pre
+          and "el muro corto se alarga hasta el pano" in pre
+          and "entre los patines, a la cara del alma" in pre
+          and "un castillo por el que el muro pasa de largo no lo recorta" in pre)
+
+    # LA MAMPOSTERIA SE DESPEGA DEL CASTILLO 5 cm, y solo si el muro llega a 1 m: por debajo
+    # de eso los dos huecos se comerian la linea y quedaria un rayon suelto en medio.
+    check("la linea de mamposteria se mide desde el pano y se despega 5 cm",
+          "PanoDeApoyo.Tramo? tramo = null)" in mac
+          and "LineaDeMamposteria(el, x0, y0, tramo);" in dib
+          and "if (gap > 0 && largo >= minimo)" in mac)
+
+    # ------------------------------------------------------------------
+    # LOS EJES DE SAP2000: LOS DEL MODELO, NI UNO DE MAS
+    # ------------------------------------------------------------------
+    #  GetGridSys_2 es de ETABS; SAP2000 tiene su cuadricula en GetGridSysCartesian. Sin esa
+    #  segunda pasada, en SAP2000 los ejes NUNCA salian del modelo: se deducian, y salia una
+    #  burbuja por cada quiebre de muro. Y cada eje de mas se acota.
+    lect_sap = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("en SAP2000 la cuadricula se lee con GetGridSysCartesian",
+          'Com.CallRet(gridSys, "GetGridSysCartesian"' in lect_sap
+          and 'Com.CallRet(gridSys, "GetGridSys_2"' in lect_sap)
+    ejm = leer(ruta("client/src/CadLink.Etabs/EjesModelo.cs"))
+    check("y si hay que deducirlos, solo de las columnas: no de cada quiebre de muro",
+          "if (e.Clase != ClaseElemento.Columna)" in ejm
+          and "var conColumnas = xs.Count >= 2 || ys.Count >= 2;" in ejm
+          and '"deducida de las columnas del modelo"' in ejm)
+
+    # ------------------------------------------------------------------
+    # SAP2000 NO TIENE PISOS: LOS NIVELES SALEN DE LA Z
+    # ------------------------------------------------------------------
+    #  Los stories son de ETABS. Sin esto, un modelo de SAP llegaba con TODOS los elementos
+    #  en un solo nivel sin nombre y el juego de plantas era UNA planta con el edificio
+    #  entero encimado. Cada elemento va al nivel de su cota mas ALTA, que es la regla de
+    #  ETABS: una columna del suelo al primer piso pertenece al piso de arriba.
+    mod_z = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    check("sin pisos, los niveles se deducen de la altura en Z",
+          "public void NivelesDesdeZ(" in mod_z
+          and "e.Story = nivel.Nombre;" in mod_z
+          and "if (m.Niveles.Count == 0)" in lect_sap
+          and "m.NivelesDesdeZ();" in lect_sap)
+    check("y el mas bajo es la BASE, donde van las cadenas de desplante",
+          'var nombre = i == 0 && cotas.Count > 1 ? "Base" : $"N{i}";' in mod_z)
+
+    # ------------------------------------------------------------------
+    # LA CADENA SIN MURO DE PISO A TECHO, A TRAZOS
+    # ------------------------------------------------------------------
+    #  Es MarcarCadenasSinMuro: la cadena que no lleva su muro completo debajo sale con
+    #  ACAD_ISO02W100, y con muro completo va normal. En la CIMENTACION todas continuas
+    #  -CIMENTACION_SIN_PUNTEADA-, porque una cadena de desplante no lleva muro por
+    #  definicion y saldrian TODAS punteadas.
+    check("la cadena sin muro de piso a techo va con ACAD_ISO02W100",
+          "private (string Tipo, double Escala)? LineaDeCadenaSinMuro(" in mac
+          and '_cfg.Texto("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100")' in mac
+          and "if (el.MuroDePisoATecho)" in mac
+          and "public bool MuroDePisoATecho { get; set; }" in dto)
+    check("en la cimentacion, todas continuas",
+          '_cfg.Bandera("CIMENTACION_SIN_PUNTEADA", true) && Rot.EsCimentacion(p.Nivel)' in mac)
+    check("y el tipo de linea va POR OBJETO, no por capa",
+          "private void PonerTipoDeLinea(" in dib
+          and "PonerTipoDeLinea(p1, lt.Tipo, lt.Escala);" in dib)
+    # El dato lo calcula la VENTANA: hay que mirar el nivel de abajo del modelo, y el
+    # dibujante solo ve una planta.
+    check("y quien sabe si hay muro completo es el modelo, no el dibujante",
+          "public bool MuroDePisoATechoBajo(" in mod_z
+          and "MuroDePisoATecho = el.Clase == ClaseElemento.Trabe" in codigo)
+
+    # ------------------------------------------------------------------
+    # LA VIGA MUERE EN LA CARA DE LA VIGA QUE CRUZA
+    # ------------------------------------------------------------------
+    #  Es la imagen 2 del usuario: en cada nudo las lineas se cortan, no se cruzan. Se hace
+    #  con la HUELLA de la otra barra -un rectangulo largo- y la misma cuenta del rayo.
+    check("la viga se corta contra la huella de la que cruza",
+          "public static ElementoPlanta Huella(" in pan
+          and "PanoDeApoyo.Huella(el, anchoHuella)" in dib
+          and '_cfg.Bandera("VIGAS_CORTAR_EN_CRUCES", true)' in dib)
+    # Y SOLO contra lo que CRUZA: dos tramos del mismo muro en linea se tocan por la punta,
+    # y medirlos uno contra otro dejaria cada tramo la mitad.
+    check("y solo contra lo que cruza, no contra lo que sigue en linea",
+          "private static bool EsTransversal(" in pan
+          and "seno > 0.342" in pan)
+
+    # ------------------------------------------------------------------
+    # LA LOSA: ARMADO, VOLADO Y CONTORNO
+    # ------------------------------------------------------------------
+    los = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/LosaEnPlanta.cs"))
+    check("hay cuenta de apoyos, volado y parrilla de la losa",
+          "public static class LosaEnPlanta" in los
+          and "public static bool EsVolada(" in los
+          and "public static List<Segmento> Parrilla(" in los
+          and "public static double FraccionApoyada(" in los)
+    # LA UNION Y NO LA SUMA: dos cadenas traslapadas cubren su tramo una sola vez.
+    check("los apoyos se miden por UNION de tramos, no sumando",
+          "public static List<(double A, double B)> Unidos(" in los
+          and "return Unidos(tramos).Sum(t => t.B - t.A) / largo;" in los)
+    # LA REGLA SEMIABIERTA de la macro: un vertice sobre la linea cuenta UNA vez. Sin ella
+    # las parejas se descuadran y media parrilla sale fuera de la losa.
+    check("la parrilla se recorta al contorno con la regla semiabierta",
+          "public static List<(double A, double B)> Cortes(" in los
+          and "if (!((ca <= c && cb > c) || (cb <= c && ca > c)))" in los)
+    check("el armado sale con los numeros de la hoja",
+          "private void ArmadoDeLosa(" in dib
+          and '_cfg.Numero("MALLA_SEP_CM", 15)' in dib
+          and '_cfg.Bandera("DIBUJAR_ARMADO_LOSA", true)' in dib
+          and '_cfg.Numero("ARMADO_LOSA_ESPESOR_MIN_CM", 8)' in dib
+          and '_cfg.Numero("MALLA_MAX_LINEAS", 200)' in dib)
+    check("y ajustado al pano: la varilla no se mete en la cadena",
+          '_cfg.Bandera("MALLA_AL_PANO", true)' in dib
+          and "LosaEnPlanta.TramosFuera(b, huellas, minTramo)" in dib)
+    # EL VOLADIZO: su hatch, su capa propia, y E-LOSA apagada.
+    # EL VOLADO SE RECONOCE POR SU NOTA, no por la geometria: se pidio que el ANSI37 salga
+    # SOLO en las losas cuya etiqueta de nota diga VOLADO. Contar lados apoyados se equivoca
+    # en cuanto una cadena viene partida en el modelo, y el achurado aparecia donde no va.
+    check("el volado se reconoce por su NOTA",
+          "public static bool DiceVolado(" in los
+          and '_cfg.Bandera("VOLADO_POR_NOTA", true)' in dib
+          and '_cfg.Texto("LOSA_PALABRAS_VOLADO", "VOLADO,VOLADIZO,VOLADA,CANTILEVER")' in dib
+          and "public string Notas { get; set; }" in dto
+          and "Notas = el.Notas," in codigo)
+    check("y el color de E-VOLADO es el 252",
+          'P("COLOR_VOLADO", "252",' in cfgp
+          and 'Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"))' in pr)
+
+    # EN EL TABLERO APOYADO VA LA BAYONETA, no la rejilla: la parrilla en todos los tableros
+    # llenaba el plano de rejilla azul y tapaba las cadenas.
+    # EL ARMADO DEL TABLERO, CON LAS MEDIDAS DE LA MACRO: la bayoneta de seis vertices con
+    # sus quiebres a 45, los dos bastones de L/4 con su rayita, y la corrida. Y cada varilla
+    # en DOBLE LINEA, que es su DobleLineaDesde.
+    check("en el tablero apoyado va la bayoneta, los bastones y la corrida",
+          "public static List<Trazo> ArmadoDeTablero(" in los
+          and "var barD = 0.0157 * escala;" in los
+          and "var corrOff = 0.0344 * escala;" in los
+          and "var bastOff = 0.0287 * escala;" in los
+          and "var hBaston = largo / 4;" in los
+          and '_cfg.Bandera("ARMADO_LOSA_BAYONETA", true)' in dib)
+    check("y cada varilla va en doble linea",
+          "public static double MedioDiametroDeVarilla(" in los
+          and "private void DibujarTrazoDeArmado(" in dib
+          and "private object? PolilineaAbierta(" in dib)
+    # AL PANO: el armado empieza donde empieza el claro, no en el eje de la cadena.
+    check("el armado se mide sobre el tablero llevado al pano",
+          '_cfg.Bandera("ARMADO_AL_PANO_CADENA", true)' in dib
+          and "LosaEnPlanta.MedioApoyoEnBorde(" in dib)
+
+    # ------------------------------------------------------------------
+    # LOS PEDAZOS DEL MESH, EN UN SOLO TABLERO
+    # ------------------------------------------------------------------
+    #  «Si tengo varias secciones de losa en un mismo tablero, juntalas para que solo de un armado,
+    #  ojo, debe estar dentro de los limites de los muros o trabes o cadenas que lo limite: esas 3
+    #  losas son solo 1 en realidad, solo se dividio por el mesh en el programa».
+    #
+    #  Y es asi: esos pedazos NO son losas distintas. El mesh parte la losa -en los nudos de las
+    #  trabes, en los ejes, o donde el programa decidio al mallar- y lo que en la obra es UN tablero
+    #  de concreto llega al dibujo como tres o cuatro shells. Dibujando cada shell por su cuenta
+    #  salian tres armados pequeños dentro del mismo tablero y tres rotulos «Losa de... cm de
+    #  espesor... Var. # @... cm.» encimados: la malla del programa de calculo copiada al papel.
+    tab = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/TableroDeLosa.cs"))
+    pre_tab = leer(ruta("tools/prueba-ejes-plano/Program.cs"))
+    check("los pedazos de losa se juntan en tableros",
+          "public static class TableroDeLosa" in tab
+          and "public sealed record Tablero(" in tab
+          and "public static List<Tablero> Agrupar(" in tab
+          and "public static bool MismoTablero(" in tab
+          and 'P("LOSA_UNIR_TABLEROS", "SI",' in cfgp)
+    # EL LIMITE QUE SE PIDIO: la union tiene que quedar dentro de los apoyos que limitan el tablero.
+    # Si por la orilla que comparten corre un muro, una trabe o una cadena, son DOS tableros: el
+    # apoyo interrumpe el claro y ahi cambia el acero. Se reusa la misma cuenta que lleva el armado
+    # al pano -MedioApoyoEnBorde-, que ya sabe distinguir el apoyo que CORRE del que solo cruza.
+    check("y no se juntan cuando un apoyo corre por la frontera",
+          "public static LosaEnPlanta.Segmento? Frontera(" in tab
+          and "public static bool HayApoyoEnLaFrontera(" in tab
+          and "Frontera(a, b, tolM) is { } f" in tab
+          and "&& !HayApoyoEnLaFrontera(f, huellas, cubre)" in tab)
+    # POR LA UNION DE LO QUE LLEVA DEBAJO, NO APOYO POR APOYO. AQUI ESTABA EL FALLO que unio cinco
+    # pedazos de dos tableros en uno: se preguntaba «¿este muro recorre la frontera?», y un muro con
+    # VANOS de puerta y de ventana llega al dibujo partido en tres o cuatro trozos, de los que
+    # ninguno la recorre entera. La respuesta era «no hay apoyo» y los dos tableros se juntaban.
+    check("la frontera se mide por union de lo que lleva debajo, no apoyo por apoyo",
+          "LosaEnPlanta.FraccionApoyada(frontera, huellas) >= cubre" in tab
+          and 'P("LOSA_TABLERO_APOYO_CUBRE", "0.5",' in cfgp
+          and '_cfg.Numero("LOSA_TABLERO_APOYO_CUBRE", 0.5)' in dib)
+    # Y LA SEGUNDA VUELTA: el apoyo que no esta sobre la orilla comun sino EN MEDIO de los dos. Si
+    # andando del centro de uno al centro del otro se pisa un apoyo, son dos tableros.
+    check("y se mira si hay un apoyo en medio de los dos",
+          "public static bool ApoyoEnMedio(" in tab
+          and "&& !ApoyoEnMedio(a, b, huellas);" in tab
+          and "PanoDeApoyo.Intervalos(h, ax, ay, ux, uy)" in tab)
+    # PERO NO CUENTA LO QUE SE PISA EN EL ARRANQUE -un pedazo estrecho justo encima de un muro se
+    # quedaria suelto para siempre- NI LO QUE CAE EN EL HUECO DE UNA L, que no es de este paño.
+    check("sin contar el apoyo del propio centro ni el del hueco de una L",
+          "if (desde <= minM || hasta >= largo - minM || hasta - desde < minM)" in tab
+          and "if (Dentro(a.Vertices, mx, my) || Dentro(b.Vertices, mx, my))" in tab)
+    # TOCARSE EN UNA ESQUINA NO ES COMPARTIR ORILLA: dos tableros en diagonal se tocan en un punto.
+    check("y tocarse en una esquina no es compartir orilla",
+          "if (hasta - desde <= tol)" in tab)
+    # LA FUSION DE GRUPOS: si un pedazo resulta vecino de dos grupos, los dos son el mismo tablero.
+    # Sin fusionar, una losa mallada en nueve cuadros se descubre en zigzag y quedaban dos o tres
+    # tableros donde hay uno.
+    check("los grupos vecinos se fusionan, que la malla se descubre en zigzag",
+          "suyos[0].AddRange(suyos[k]);" in tab
+          and "grupos.Remove(suyos[k]);" in tab)
+    # UN TABLERO, UN ARMADO: lo dibuja el pedazo mas grande y sobre la caja del tablero COMPLETO,
+    # que es el claro de verdad. Los demas se callan.
+    check("un tablero, un armado, medido sobre el tablero completo",
+          "var tablero = TableroDe(el);" in dib
+          and "if (tablero is not null && !tablero.Manejado(el))" in dib
+          and "var ax0 = (tablero?.X0 ?? el.Vertices.Min(v => v.X)) + margen;" in dib
+          and "var ancho = tablero?.Ancho ?? (el.Vertices.Max(v => v.X)"
+              " - el.Vertices.Min(v => v.X));" in dib)
+    # UN TABLERO, UN ROTULO: los tres textos encimados eran esto -un rotulo por pedazo-, y va al
+    # CENTRO DEL TABLERO, no al del pedazo.
+    check("un tablero, un rotulo, al centro del tablero",
+          "var suTablero = TableroDe(el);" in dib
+          and "if (suTablero is not null && !suTablero.Manejado(el))" in dib
+          and "cx = suTablero.CentroX + x0;" in dib
+          and "cy = suTablero.CentroY + y0;" in dib)
+    # Y EL ROTULO, DENTRO DEL TABLERO: en una L el centro de la caja cae en el hueco.
+    check("y el rotulo no cae en el hueco de un tablero en L",
+          "public static bool Dentro(" in tab
+          and "if (!g.Any(e => Dentro(e.Vertices, cx, cy)))" in tab)
+    # MANDA EL PEDAZO MAS GRANDE: de el salen el espesor y el uso que se rotulan. Es lo honesto
+    # cuando el mesh reparte propiedades distintas entre los pedazos de un mismo tablero, que es el
+    # caso que se enseño: tres pedazos con tres nombres de seccion.
+    check("manda el pedazo mas grande, y se avisa si no coincidian",
+          "public static double Area(" in tab
+          and "private void AvisarDeLosTableros()" in dib
+          and "espesores.Max() - espesores.Min() > 0.01" in dib)
+    # LA RAYA DEL MESH NO SE DIBUJA: esa orilla en la obra NO EXISTE, el concreto es continuo. Es la
+    # misma raya que ya se quita entre dos voladizos pegados. Y solo la de SU tablero: la que da a
+    # otro tablero -la que tiene un apoyo debajo- si se dibuja, porque ahi termina el paño.
+    check("la raya del mesh entre pedazos del mismo tablero no se dibuja",
+          "private List<IReadOnlyList<(double X, double Y)>> OtrosDelTablero(" in dib
+          and '_cfg.Bandera("LOSA_TABLERO_SIN_LINEA_INTERIOR", true)' in dib
+          and "PanoDeLosa.ContornoCompartido(t, mismoTablero)" in dib
+          and 'P("LOSA_TABLERO_SIN_LINEA_INTERIOR", "SI",' in cfgp)
+    # UN VOLADO NO SE JUNTA CON UN ENTREPISO ni una losacero con una losa de concreto: se dibujan
+    # distinto y se rotulan distinto, aunque se toquen.
+    check("y el volado no se junta con el entrepiso",
+          "private string FamiliaDeLaLosa(" in dib
+          and 'return "VOLADO";' in dib
+          and 'return "LOSACERO";' in dib
+          and "el => FamiliaDeLaLosa(el, huellas)));" in dib
+          and "familia: e => e.Notas.Contains(\"VOLADO\") ? \"VOLADO\" : \"LOSA\").Count);"
+              in pre_tab)
+    # SE CALCULAN TODOS ANTES DE DIBUJAR EL PRIMER PAÑO, como los voladizos y por lo mismo: cada
+    # pedazo tiene que saber a que tablero pertenece ANTES de decidir si le toca dibujar el armado y
+    # el rotulo o callarse.
+    check("los tableros se conocen antes de dibujar la primera losa",
+          "_tablerosDeLaPlanta.Clear();" in dib
+          and dib.index("_tablerosDeLaPlanta.AddRange(TableroDeLosa.Agrupar(")
+              < dib.index("if (Losa(el, x0, y0, huellas))"))
+    # Y CON LAS HOLGURAS DE LA HOJA: la de pegado es nueva, y la del apoyo sale de las que ya
+    # estaban -LOSA_APOYO_TOL_CM y LOSA_APOYO_CUBRE-, que hasta ahora no se usaban en ningun sitio.
+    check("con las holguras de la hoja CONFIG",
+          '_cfg.Numero("LOSA_TABLERO_TOL_CM", 5) / 100' in dib
+          and 'P("LOSA_TABLERO_TOL_CM", "5",' in cfgp)
+    # Y CADA TABLERO PARTIDO SE CUENTA CON SU MEDIDA Y SU SITIO: es lo que permite revisar la union
+    # sin abrir el modelo. Si uno salio mas grande de lo que es, se ve en su medida y se sabe donde.
+    check("y cada tablero unido se dice con su medida y su sitio",
+          'Nota($"  · Tablero de {t.Ancho:0.00} × {t.Alto:0.00} m en " +' in dib)
+    # Y SU PRUEBA EJECUTABLE, que es lo que comprueba la geometria de verdad y no el texto.
+    check("hay prueba ejecutable de los tableros de losa",
+          "TableroDeLosa.Agrupar(" in pre_tab
+          and 'Igual("los tres pedazos son UN tablero", 1, unSolo.Count);' in pre_tab
+          and 'Igual("con una trabe en la frontera son DOS tableros", 2, dosTableros.Count);'
+              in pre_tab
+          and "TableroDeLosa.HayApoyoEnLaFrontera(frontera.Value, trabeEnMedio)" in pre_tab
+          and 'Igual("un muro partido por sus vanos separa los dos tableros",' in pre_tab
+          and "2, TableroDeLosa.Agrupar(new List<ElementoPlanta> { pedazoA, pedazoB },"
+              " muroConVanos).Count);" in pre_tab
+          and "TableroDeLosa.ApoyoEnMedio(" in pre_tab)
+
+    # ------------------------------------------------------------------
+    # EL PUNTO DE INSERCION EN LA VISTA EXTRUIDA
+    # ------------------------------------------------------------------
+    #  «Respeta los insertion point en la vista extruida: las trabes las inserta en su punto
+    #  centrico y esta mal, debe ser top center para que el paño coincida con el de la losa, asi
+    #  como en ETABS». El punto cardinal de una trabe es casi siempre el 8 -arriba al centro-: su
+    #  CARA DE ARRIBA va a la cota de la linea, asi que la trabe cuelga por debajo del piso.
+    #  Dibujandola centrada, medio peralte quedaba POR ENCIMA de la losa.
+    #
+    #  El movimiento en PLANTA ya se aplicaba; la Z no, y es la que se ve en un dibujo con
+    #  volumen. Se guarda aparte -MovidoZI/MovidoZJ- y NO se aplica a Z1/Z2 a proposito: de la
+    #  elevacion depende el nivel al que se reparte la pieza, y moverla romperia la planta.
+    pins = leer(ruta("client/src/CadLink.Etabs/PuntoDeInsercion.cs"))
+    dtos = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    extr = leer(ruta("client/src/CadLink.App/VistaModelo.Extruida.cs"))
+    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    dtop2 = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+    dibp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    winp = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+
+    check("el punto de insercion se calcula tambien en Z",
+          "public static (double Dx, double Dy, double Dz) Movimiento(" in pins
+          and "return (cx + ox, cy + oy, cz + oz);" in pins)
+    # EnPlanta se queda, y ahora tira de Movimiento: una sola cuenta, no dos que se separen.
+    check("y EnPlanta se apoya en ella, para no tener dos cuentas",
+          "var (dx, dy, _) = Movimiento(" in pins)
+    check("el elemento guarda su movimiento en Z sin aplicarlo",
+          "public double MovidoZI { get; set; }" in dtos
+          and "public double MovidoZJ { get; set; }" in dtos
+          and "e.MovidoZI = dzi;" in lector
+          and "e.MovidoZJ = dzj;" in lector)
+    # Y la Z NO se aplica a las cotas: solo la usa quien dibuja volumen.
+    check("y no se toca Z1 ni Z2 con ella",
+          "e.Z1 += dzi;" not in lector
+          and "e.Z2 += dzj;" not in lector)
+    check("la vista extruida lo usa, que es donde se ve",
+          "var bz = fin ? el.Z2 + el.MovidoZJ : el.Z1 + el.MovidoZI;" in extr)
+
+    # ------------------------------------------------------------------
+    # VARIOS CORTES, Y DONDE UNO QUIERA
+    # ------------------------------------------------------------------
+    #  «Agrega una opcion de realizar un corte en donde tu quieras si no lo trae los ejes de etabs
+    #  o sap, que tu coloques en que valor de X y Y lo quieres; si no encuentras el corte en los
+    #  ejes tu lo propones; igual que deje dibujar varios ejes o cortes al mismo tiempo».
+    #
+    #  Y una regla que evita el error mas facil: si el valor cae SOBRE un eje que existe, el corte
+    #  se queda con el NOMBRE de ese eje. Quien escribe «X=4.25» sin saber que ahi esta el eje C
+    #  obtiene el corte por C -rotulado C, comparable con la planta- y no uno con nombre inventado.
+    cop = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CortesPedidos.cs"))
+
+    check("se pueden pedir varios cortes, por su eje o por su valor",
+          "public static Resultado Interpretar(" in cop
+          and "public sealed record Peticion(string Id, bool EnX, double Ordenada, bool Propuesto);"
+              in cop
+          and "public static string NombrePropuesto(bool enX, double ordenada)" in cop)
+    check("el valor que cae sobre un eje toma el nombre de ese eje",
+          "return mejor.Length > 0" in cop
+          and "new Peticion(mejor, enX, valor, false)" in cop
+          and "NombrePropuesto(enX, valor), enX, valor, true)" in cop)
+    # Con PUNTO decimal: el nombre se rotula y acaba en el nombre de un bloque, asi que con la
+    # coma regional el mismo corte se llamaria distinto en dos maquinas.
+    check("y el nombre propuesto lleva punto decimal, no coma",
+          'ordenada.ToString("0.##", CultureInfo.InvariantCulture)' in cop)
+    # LA COMA HACE DOS PAPELES: separa la lista y es el decimal del teclado numerico. Separa salvo
+    # cuando va entre dos cifras. Lo ambiguo -«3,4»- se avisa en lugar de adivinarse.
+    check("la coma decimal se respeta y lo ambiguo se avisa",
+          '@"[;\s]+|(?<![0-9]),|,(?![0-9])"' in cop
+          and "public sealed record Resultado(List<Peticion> Cortes, List<string> NoReconocidos);"
+              in cop)
+    # Sin repetidos: el mismo corte por su nombre y por su valor se pide UNA vez.
+    check("sin repetidos, y se queda el nombre del eje",
+          "private static void Agregar(List<Peticion> cortes, Peticion nuevo, double tolM)" in cop
+          and "Math.Abs(c.Ordenada - nuevo.Ordenada) <= tolM" in cop)
+    # UN CAMPO PARA X Y OTRO PARA Y, que es como se pidio: «no tanto como una tabla, si no uno
+    # mismo donde quiere cortar». En cada uno caben varias coordenadas separadas por comas, asi que
+    # de ahi salen tambien varios cortes de golpe, y se admite el nombre de un eje de esa
+    # direccion por si se prefiere decirlo asi.
+    check("la ventana los pide en un campo para X y otro para Y",
+          "CadLink.Cad.PlanoEstructural.CortesPedidos.Interpretar(" in winp
+          and "null, CorteXTxt?.Text, CorteYTxt?.Text, ejesX, ejesY);" in winp
+          and 'x:Name="CorteXTxt"' in xaml
+          and 'x:Name="CorteYTxt"' in xaml)
+    # EL REPARTO LO HACE EL DIBUJANTE: es el unico que sabe cuanto ocupo de verdad cada corte.
+    check("y los reparte uno al lado del otro",
+          "total += dibujante.DibujarCorte(c, 0, 0);" in winp
+          and "var cx = _derechaDelUltimoCorte is { } yaHay"
+              in leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs")))
+    # En esos campos, un nombre de eje tambien vale: escribir «C» en el de las X es pedir el corte
+    # por el eje C, y avisar en lugar de dibujarlo seria quedarse corto por nada.
+    check("en los campos de X y de Y tambien vale el nombre de un eje",
+          "var deEsaDireccion = esX ? enX : enY;" in cop
+          and "Agregar(cortes, new Peticion(eje.Id.Trim(), esX, eje.Ordenada, false), tolM);"
+              in cop)
+    # Lo que no se entendio se dice, y lo propuesto tambien: desde fuera «no salio» es
+    # indistinguible de «fallo».
+    check("y se avisa de lo que no se entendio y de lo propuesto",
+          "No reconocí esto de los campos de corte: " in winp
+          and "no caen sobre ningún eje de la cuadrícula" in winp)
+
+    # ------------------------------------------------------------------
+    # EN EL CORTE: LO QUE SE CORTA Y EL FONDO, NADA ENCIMADO
+    # ------------------------------------------------------------------
+    #  «En el corte de dibujo no se deben ver elementos encimandos, se deben ver los que se cortan
+    #  justo en la linea y el fondo nada mas».
+    #
+    #  EL PROBLEMA ERA LA REBANADA: el corte se tomaba con el espesor de la hoja
+    #  -CORTE_ESPESOR_CM, 60 cm-, asi que TODO lo que hubiera a 30 cm del eje se dibujaba como
+    #  CORTADO: dos muros paralelos, la cadena del muro de al lado y las columnas de la fila
+    #  siguiente salian todos a la vez, unos encima de otros.
+    #
+    #  Cortado es ahora lo que el plano CRUZA DE VERDAD: el elemento con su propio ancho encima del
+    #  eje. La holgura solo tapa el desajuste del modelo y se TOPA en 5 cm por lado aunque la hoja
+    #  diga 60: quien puso 60 no queria 60 cm de rebanada, queria que el corte no saliera vacio.
+    corte = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CorteEnAlzado.cs"))
+
+    check("cortado es lo que el plano cruza de verdad, no una rebanada de 60 cm",
+          "private static double Holgura(double espesorM) =>" in corte
+          and "Math.Min(Math.Max(espesorM, 0.02), 0.10) / 2;" in corte
+          and "var medio = MedioPerpendicular(el, enX) + Holgura(espesorM);" in corte)
+    # Con el ancho de cada elemento: un muro de 60 cruza desde mas lejos que uno de 15, y una barra
+    # que cruza el corte no necesita ninguno porque su propio eje lo atraviesa.
+    check("con el ancho de cada elemento, proyectado",
+          "private static double MedioPerpendicular(ElementoPlanta el, bool enX)" in corte
+          and "return esp * Math.Abs(enX ? -dy / largo : dx / largo);" in corte)
+    # Y EL MISMO MARGEN EN LAS DOS PREGUNTAS, para que nada sea cortado y fondo a la vez: los de la
+    # frontera salian dos veces, uno encima del otro.
+    check("y el mismo margen para el fondo, que nada sea las dos cosas",
+          "var margen = MedioPerpendicular(el, enX) + Holgura(espesorM);" in corte
+          and "? min > ordenada + margen" in corte)
+    # LO ENCIMADO SE QUITA: la misma silueta dos veces no dice nada, y lo que cae DENTRO de otra
+    # pieza del fondo, tampoco.
+    check("y las siluetas encimadas se quitan",
+          "public static List<Pieza> SinEncimados(List<Pieza> piezas)" in corte
+          and "return UnirElFondo(SinEncimados(piezas));" in corte
+          and "private static bool Tapa(Pieza grande, Pieza chica)" in corte)
+    # DOS REGLAS QUE NO SE NEGOCIAN: lo CORTADO no se quita nunca -es el objeto del corte- y solo
+    # se comparan piezas de la MISMA CLASE, que una columna dentro de un muro dice otra cosa.
+    # ------------------------------------------------------------------
+    # EL CASTILLO DE AREA SE VE CON SU ESPESOR, NO CON SU LARGO
+    # ------------------------------------------------------------------
+    #  «El castillote de 15, el amarillo, no debe ir asi: solo se debe ver su espesor de 15 cm, no
+    #  los 80 cm que mide». Se tomaba AnchoM a secas, y en un castillo de area ese ancho es su
+    #  LARGO -«K 15X80» mide 80 a lo largo del muro y 15 de espesor-, asi que un corte que lo cruza
+    #  de frente lo pintaba de 80 cm de ancho.
+    #
+    #  Lo que se ve es la seccion GIRADA medida en la direccion que recorre el corte: la caja que
+    #  la envuelve, la misma cuenta con la que se coloca su rotulo en planta. Y de paso arregla la
+    #  columna de 20x60 girada, que se veia de 20.
+    check("en el corte se ve la seccion proyectada, no su lado mas largo",
+          "public static double AnchoVisto(ElementoPlanta el, bool enX)" in corte
+          and "return enX ? (b * sa) + (h * ca) : (b * ca) + (h * sa);" in corte
+          and "var ancho = AnchoVisto(el, enX);" in corte)
+
+    # ------------------------------------------------------------------
+    # EL MURO, HASTA EL PAÑO DE ABAJO DE SU CADENA
+    # ------------------------------------------------------------------
+    #  «La altura del muro debe ser dibujada hasta el paño inferior de la trabe o cadena». En el
+    #  modelo el muro sube hasta la COTA DEL NIVEL, que es el EJE de la cadena, asi que dibujandolo
+    #  tal cual se mete el peralte entero dentro de ella: en el corte el muro y la cadena se
+    #  pisaban y la cadena perdia su franja.
+    check("el muro llega al paño de abajo de su cadena",
+          "public static double AlturaQueTapaLaCadena(" in corte
+          and "var alto = (zArriba - AlturaQueTapaLaCadena(el, todos)) - zAbajo;" in corte
+          and "peralte = Math.Max(peralte, c.PeralteM);" in corte)
+    # Solo la que va A LO LARGO del muro y A SU ALTURA: una que lo cruza pasa por encima, y la de
+    # la azotea no remata el muro de la planta baja.
+    check("y solo la que va a lo largo y a su altura",
+          "if (Math.Abs(Math.Max(c.Z1, c.Z2) - arribaDelMuro) > tolM)" in corte
+          and "if (Math.Abs((ux * (vy / largoC)) - (uy * (vx / largoC))) > 0.10)" in corte)
+
+    # ------------------------------------------------------------------
+    # CADA PIEZA CORTADA, DE SU COLOR
+    # ------------------------------------------------------------------
+    #  «Las cadenas que se cortan rellenalas de color morado, asi como los castillos es de
+    #  amarillo» y «las trabes rellenalas de color verde». No es decoracion: en un corte por un muro
+    #  hay tres piezas de concreto distintas a la vista -el castillo que sube, la cadena que cierra
+    #  y la trabe que carga- y del contorno solo no se distinguen, porque las tres son un
+    #  rectangulo.
+    cortedib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
+    cfgp = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+
+    check("la cadena cortada va morada y la trabe verde",
+          "private int ColorDelRellenoEnElCorte(" in cortedib
+          and '_cfg.Numero("CORTE_COLOR_RELLENO_CADENA", 6)' in cortedib
+          and '_cfg.Numero("CORTE_COLOR_RELLENO_TRABE", 3)' in cortedib
+          and 'P("CORTE_COLOR_RELLENO_CADENA", "6",' in cfgp
+          and 'P("CORTE_COLOR_RELLENO_TRABE", "3",' in cfgp)
+    # El castillo sigue amarillo, con el color de la planta: es la misma pieza en los dos dibujos.
+    check("y el castillo sigue amarillo, con el color de la planta",
+          "if (p.Clase == ClasePlanta.Columna)\n        {\n            return ColorDelRelleno();"
+          in cortedib)
+    # Solo las CORTADAS, y la losa y el muro no se rellenan: se leen por su franja y por su paño.
+    check("solo las cortadas, y el muro y la losa sin relleno",
+          "if (p.Cortada && enSeccion &&" in cortedib
+          and "return p.Clase == ClasePlanta.Trabe" in cortedib
+          and "            : 0;" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL COLOR Y EL BLOQUE, POR LO QUE DICE LA PIEZA Y NO POR SU CLASE
+    # ------------------------------------------------------------------
+    #  Aqui estaba la cadena intermedia que no se rellenaba ni salia como bloque, por mas vueltas que
+    #  se le dieron: se modela como AREA -un shell- y llega al dibujo con la clase MURO, y el corte
+    #  miraba la CLASE, veia un muro y la dejaba vacia, dijeran lo que dijeran sus notas.
+    #
+    #  La conversion de shells la arregla antes, pero esto NO DEPENDE de ella: si por lo que sea un
+    #  elemento llega sin convertir, el corte lo dibuja bien igual. El dato lo pone el modelo en las
+    #  property notes -CADENA INTERMEDIA-, asi que no se adivina nada.
+    check("el relleno del corte se decide por lo que dice la pieza",
+          "public static bool DiceCadena(Pieza p) =>" in corte
+          and 'Dicen(p, "CADENA") || Dicen(p, "DALA");' in corte
+          and "public static bool DiceTrabe(Pieza p) =>" in corte
+          and "if (PlanoEstructural.CorteEnAlzado.DiceCadena(p))" in cortedib
+          and "if (PlanoEstructural.CorteEnAlzado.DiceTrabe(p))" in cortedib)
+    # Por el TIPO o por las NOTAS, que el tipo llega en blanco cuando el modelo no clasifico.
+    check("y se mira su tipo y sus notas, no su clase",
+          "private static bool Dicen(Pieza p, string palabra) =>" in corte
+          and '(p.Tipo ?? string.Empty).Contains(palabra, StringComparison.OrdinalIgnoreCase)'
+              in corte
+          and '|| (p.Notas ?? string.Empty).Contains(palabra, StringComparison.OrdinalIgnoreCase);'
+              in corte)
+    # Y EL BLOQUE IGUAL: sin esto, la cadena que llega como muro se quedaba sin su bloque.
+    check("y el bloque del corte tambien",
+          "var deBarra = p.Clase == ClasePlanta.Trabe" in cortedib
+          and "|| PlanoEstructural.CorteEnAlzado.DiceCadena(p)" in cortedib
+          and "|| PlanoEstructural.CorteEnAlzado.DiceTrabe(p);" in cortedib
+          and "if (p.Cortada && conBloque && deBarra" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL CONTORNO DE LOS MUROS DEL FONDO NO SE DIBUJA
+    # ------------------------------------------------------------------
+    #  «El contorno de los muros del fondo borralos, solo deja el contorno de los muros que se cortan
+    #  sobre la linea de corte o eje». Y se entiende al verlo: el fondo de un alzado son cinco o seis
+    #  paños seguidos, y cada rectangulo mete cuatro lineas que no son de este corte. Del fondo lo
+    #  que dice algo es su ACHURADO -la mancha de mamposteria-, no sus aristas.
+    #
+    #  El contorno se usa igual como LAZO del achurado y se borra despues, que el hatch no es
+    #  asociativo. Y se borra solo el MURO: una cadena o una trabe modelada como area llega con la
+    #  clase Muro y esas si dejan su contorno, que son piezas y no paño.
+    check("los muros del fondo van sin contorno, solo con su achurado",
+          "var soloParaAchurar = !p.Cortada" in cortedib
+          and "&& p.Clase == ClasePlanta.Muro" in cortedib
+          and "&& !PlanoEstructural.CorteEnAlzado.DiceCadena(p)" in cortedib
+          and '&& !_cfg.Bandera("CORTE_FONDO_CONTORNO_MUROS", false);' in cortedib
+          and "if (soloParaAchurar)\n                {\n                    Borrar(pl);" in cortedib
+          and 'P("CORTE_FONDO_CONTORNO_MUROS", "NO",' in cfgp)
+
+    # ------------------------------------------------------------------
+    # SE RELLENA LO QUE SE VE EN SECCION, NO EL COSTADO
+    # ------------------------------------------------------------------
+    #  «Si cortas a lo largo de la seccion solo dale el tipo de linea, pero si lo cortas donde se ve
+    #  el armado -que debe ser el lado corto- si rellena la seccion». Es la convencion de cualquier
+    #  plano de obra: el relleno dice «aqui el plano cruza la pieza y esto es su seccion, la cara
+    #  donde va el armado». Rellenando tambien lo que se ve de costado, el alzado deja de decir por
+    #  donde pasa el corte.
+    #
+    #  El castillo de area «K 15X80» es el caso claro: cortado por su lado de 15 es una seccion -se
+    #  rellena- y cortado a lo largo de sus 80 es un costado -solo su linea-. Una seccion CUADRADA
+    #  se ve en seccion siempre, asi que un castillo de 15x15 se rellena se corte por donde se
+    #  corte, que es lo que ya pasaba y hay que conservar.
+    check("se rellena solo lo que se ve en seccion",
+          "public static bool PorSuLadoCorto(ElementoPlanta el, bool enX)" in corte
+          and "bool EnSeccion = true, string Notas = \"\");" in corte
+          and "EnSeccion: PorSuLadoCorto(el, enX))" in corte
+          and 'P("CORTE_RELLENAR_SOLO_EN_SECCION", "SI",' in cfgp)
+    check("y el dibujante lo mira antes de rellenar",
+          "var enSeccion = p.EnSeccion" in cortedib
+          and "|| !soloEnSeccion" in cortedib
+          and "if (p.Cortada && enSeccion &&" in cortedib)
+    # La barra que CRUZA el corte se ve de canto -esa es su seccion, la del armado- y la que corre a
+    # lo largo, de costado. El muro y la losa, de costado siempre: se leen por su paño y su franja.
+    check("la barra de canto va en seccion y la que corre a lo largo, no",
+          "EnSeccion: false, Notas: el.Notas);\n    }" in corte
+          and corte.count("EnSeccion: false") >= 3)
+    # Una seccion cuadrada se ve en seccion siempre.
+    check("y una seccion cuadrada se ve en seccion siempre",
+          "if (largo - corto <= 0.02)" in corte
+          and "return AnchoVisto(el, enX) < (corto + largo) / 2;" in corte)
+
+    # ------------------------------------------------------------------
+    # LAS PIEZAS DEL CORTE, COMO BLOQUE
+    # ------------------------------------------------------------------
+    #  «El corte no estas poniendo o creando el bloque de la cadena intermedia, tampoco lo estas
+    #  rellenando» y «igual crea los bloques de trabes y cadenas o vigas de acero en corte».
+    #
+    #  Es la misma idea que ya se usa con las columnas en planta: el bloque se llama como la seccion
+    #  -con su medida detras- asi que un BLOCKREPLACE cambia de golpe TODAS las cadenas de 15x25 del
+    #  corte por el detalle armado, con sus varillas y sus estribos. La medida va en el nombre porque
+    #  la misma seccion se ve de dos formas en un corte: de canto son 15x25 y a lo largo son tres
+    #  metros por 25, que es otro dibujo y no puede compartir bloque.
+    check("las trabes y cadenas del corte van como bloque",
+          "private bool PiezaComoBloque(" in cortedib
+          and "private string NombreDelBloqueDeLaPieza(" in cortedib
+          and "private bool AsegurarBloqueDeLaPieza(" in cortedib
+          and 'P("CORTE_PIEZAS_COMO_BLOQUE", "SI",' in cfgp)
+    # Con PREFIJO para no chocar con los bloques de la planta: la seccion de una columna se llama
+    # igual en los dos dibujos y no es el mismo dibujo -uno es su seccion en planta y el otro su
+    # alzado-.
+    check("con su prefijo y su medida en el nombre",
+          '_cfg.Texto("CORTE_BLOQUE_PREFIJO", "CORTE-")' in cortedib
+          and 'var medida = $"{p.Ancho * 100:0.##}X{p.Alto * 100:0.##}";' in cortedib)
+    # EL RELLENO VA DENTRO DEL BLOQUE, como en la planta: asi se mueve con el y quien reemplace el
+    # bloque por su detalle se lleva el relleno con el cambio. Y la insercion, al CENTRO de la pieza.
+    check("con su relleno dentro y la insercion al centro",
+          "private void RellenarDentroDelBloqueDelCorte(" in cortedib
+          and "cy + p.Z + (p.Alto / 2)," in cortedib)
+    # SOLO LA CARA CORTA, LA QUE LLEGA: el bloque de una trabe de 20x30 es su CARA de 20x30 -la
+    # seccion donde se dibujan las varillas y los estribos- no el rectangulo de tres metros que se
+    # ve cuando el corte va a lo largo de ella. Un bloque de tres metros no se puede reemplazar por
+    # ningun detalle armado: no es una seccion, es un costado. Y solo las CORTADAS.
+    check("y solo la cara corta de las cortadas",
+          "var conBloque = p.EnSeccion" in cortedib
+          and "if (p.Cortada && conBloque && deBarra\n"
+              "                && PiezaComoBloque(" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL AREA DE LOS MUROS DE MAMPOSTERIA, ACHURADA
+    # ------------------------------------------------------------------
+    #  «Cuando se vean muros en el corte de fondo, agrega solo en el area de muros de MAMPOSTERIA
+    #  -ojo, no de concreto- un hatch AR-BRSTD si es tabique o adobe con escala de 0.0010 color 12,
+    #  y si es tabicon o tabique ligero, un hatch AR-B816 con escala de 0.0005 y color 12».
+    #
+    #  Es una diferencia de obra: un muro de mamposteria se levanta con piezas y mortero y uno de
+    #  concreto se cimbra y se cuela, y en el corte se tiene que ver de un golpe cual es cual.
+    ham = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/HatchDeMamposteria.cs"))
+
+    check("los muros de mamposteria del corte llevan su achurado",
+          "public static Achurado? Para(" in ham
+          and 'string patronTabique = "AR-BRSTD", double escalaTabique = 0.0010' in ham
+          and 'string patronTabicon = "AR-B816", double escalaTabicon = 0.0005' in ham
+          and "int color = 12)" in ham)
+    # EL ORDEN IMPORTA: «TABIQUE LIGERO» contiene «TABIQUE», asi que preguntando por el tabique
+    # primero el ligero saldria con el aparejo de ladrillo, que es el de la pieza maciza.
+    check("y el tabique ligero va con el patron del bloque, no con el del ladrillo",
+          ham.index('texto.Contains("TABIQUE LIGERO"') < ham.index('texto.Contains("TABIQUE",'))
+    # EL CONCRETO NO LLEVA NINGUNO: en el corte se lee por su paño.
+    check("el muro de concreto no lleva achurado",
+          "return null;\n    }\n\n    /// <summary>El achurado, con el respaldo" in ham)
+    # LOS ACENTOS NO CUENTAN: «TABICON» y «TABICÓN» son la misma palabra, y un muro sin achurado por
+    # una tilde es de las cosas que nadie encuentra mirando el plano.
+    check("y los acentos no dejan a un muro sin su patron",
+          "public static string Normalizar(string? texto)" in ham
+          and "'Ó' => 'O'," in ham)
+    check("el dibujante lo achura por objeto y no asociativo",
+          "private void AchurarMamposteria(" in cortedib
+          and "(object)_ms.AddHatch(0, cual.Patron, false, 0)" in cortedib
+          and "h.PatternScale = cual.Escala;" in cortedib
+          and "h.Color = cual.Color;" in cortedib)
+    # LA ESCALA ANTES DE EVALUAR: hay versiones que se quedan con el achurado de la primera
+    # evaluacion si la escala se cambia despues.
+    check("con la escala antes de evaluar",
+          cortedib.index("h.PatternScale = cual.Escala;") < cortedib.index("h.Evaluate();\n"
+          "                h.Layer = capa;\n                h.Color = cual.Color;"))
+    check("y con sus seis claves en la hoja",
+          'P("CORTE_HATCH_MAMPOSTERIA", "SI",' in cfgp
+          and 'P("CORTE_HATCH_TABIQUE", "AR-BRSTD",' in cfgp
+          and 'P("CORTE_HATCH_TABIQUE_ESCALA", "0.0010",' in cfgp
+          and 'P("CORTE_HATCH_TABICON", "AR-B816",' in cfgp
+          and 'P("CORTE_HATCH_TABICON_ESCALA", "0.0005",' in cfgp
+          and 'P("CORTE_HATCH_MAMPOSTERIA_COLOR", "12",' in cfgp)
+    # Y LA PIEZA LLEVA SUS NOTAS, que es de donde sale de que es el muro.
+    check("y la pieza del corte lleva las notas del muro",
+          "string Notas = \"\");" in corte
+          and "EnSeccion: false, Notas: el.Notas)" in corte)
+
+    # PERO NO SE ACHURA DONDE EL CORTE PASA POR CONCRETO: «a los de fondo si, y a los que corta
+    # tambien, pero siempre y cuando no corte en un elemento de concreto». Donde el corte pasa por un
+    # castillo, una cadena o un muro de concreto, lo que hay ahi es CONCRETO: achurarlo de tabique
+    # seria decir que ese trozo se levanto con ladrillos. Un castillo en medio parte el achurado en
+    # dos, que es lo que se ve en obra: dos paños de mamposteria con su castillo entre los dos.
+    check("no se achura donde el corte pasa por concreto",
+          "public static List<(double X1, double X2)> TramosSinConcreto(" in corte
+          and "private static bool EsConcretoQueTapa(Pieza q, Pieza muro)" in corte
+          and "var tramos = PlanoEstructural.CorteEnAlzado.TramosSinConcreto(p, piezas);"
+              in cortedib)
+    # Solo las CORTADAS -lo que se ve al fondo no interrumpe lo que esta delante- y solo las que se
+    # enciman EN VERTICAL: una cadena tres metros mas arriba no le quita nada al muro.
+    check("solo lo cortado, y solo si se encima en vertical",
+          "if (ReferenceEquals(q, muro) || !q.Cortada)" in corte
+          and "return Math.Min(q.Z + q.Alto, muro.Z + muro.Alto) - Math.Max(q.Z, muro.Z) > Minimo;"
+              in corte)
+    # Y OTRO MURO DE MAMPOSTERIA NO lo parte -los dos son de piezas- pero uno de concreto si.
+    check("otro muro de mamposteria no lo parte, uno de concreto si",
+          "|| (q.Clase == ClasePlanta.Muro\n                             && HatchDeMamposteria.Para("
+          in corte)
+    # EL CASO NORMAL SE ACHURA SOBRE SU PROPIA POLILINEA, sin crear nada; y cuando hay concreto en
+    # medio, el contorno de cada tramo es un LAZO DE PASO que se dibuja, se achura y SE BORRA: esas
+    # lineas no existen en el muro y dejarlas seria inventar juntas donde no las hay.
+    check("y los tramos se achuran con un lazo de paso que se borra",
+          "AchurarConPatron(lazo, capa, cual, borrarElLazo: true);" in cortedib
+          and "AchurarConPatron(pl, capa, cual, borrarElLazo: false);" in cortedib
+          and "if (borrarElLazo)" in cortedib)
+
+    # ------------------------------------------------------------------
+    # LA CADENA MODELADA COMO SHELL DE MURO
+    # ------------------------------------------------------------------
+    #  AQUI ESTABA LA CADENA INTERMEDIA que no se rellenaba ni llevaba bloque, por mas vueltas que se
+    #  le dio al relleno: NO ES UN MARCO, ES UN SHELL. Una cadena tambien se modela como area -las
+    #  INTERMEDIAS casi siempre, porque se dibujan como un trozo del propio muro- y dibujada como
+    #  muro no era una cadena para nada: sin su capa, sin su rotulo, sin relleno en el corte y sin
+    #  bloque. Es el hermano de CastilloDeMuro y sale del mismo sitio.
+    cdmc = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CadenaDeMuro.cs"))
+
+    check("el shell que dice cadena se dibuja como cadena",
+          "public static bool Dice(ElementoPlanta? el)" in cdmc
+          and "Clase = ClasePlanta.Trabe," in cdmc
+          and "PlanoEstructural.CadenaDeMuro.Normalizar(" in dibp
+          and "PlanoEstructural.CadenaDeMuro.Normalizar(c.Elementos, AnchoTrabePorOmision);"
+              in cortedib)
+    # LA GEOMETRIA de un shell vertical: su largo en planta es el recorrido, el espesor del muro es
+    # el ancho de la seccion y su alto en Z es el PERALTE.
+    check("con el espesor por ancho y su alto por peralte",
+          "var peralte = alto > Nada ? alto : peraltePorOmision;" in cdmc
+          and "AnchoM = muro.AnchoM," in cdmc
+          and "PeralteM = peralte," in cdmc)
+    # LA COTA VA ARRIBA: una barra cuelga de su cota, y con la cota abajo la cadena de cerramiento
+    # saldria un peralte por encima del techo.
+    check("y la cota en su cara de arriba, que una barra cuelga",
+          "Z1 = zArriba,\n            Z2 = zArriba," in cdmc)
+    # UN SHELL QUE DICE CASTILLO NO ES UNA CADENA: ese tiene su propia conversion, y si las notas
+    # dijeran las dos cosas manda el castillo, que es la pieza vertical.
+    check("y el castillo no se la lleva por delante",
+          "if (CastilloDeMuro.Dice(el))" in cdmc)
+    # EN LA VENTANA sigue a la casilla de las TRABES, como el castillo sigue a la de las columnas.
+    check("en la ventana sigue a la casilla de las trabes",
+          "CadLink.Cad.PlanoEstructural.CadenaDeMuro.DicenLasNotas(null, el.Notas)" in winp
+          and "return VerTrabesPlanoChk.IsChecked == true;" in winp)
+
+    # ------------------------------------------------------------------
+    # LOS CASTILLOS DEL FONDO NO SE DIBUJAN
+    # ------------------------------------------------------------------
+    #  «Los castillos del fondo no se deben ver, solamente los que hayan en el lugar del corte, en
+    #  esa linea». En una casa de mamposteria hay un castillo cada dos metros en TODOS los ejes, asi
+    #  que el fondo de un alzado se llena de rectangulos verticales que no son de este corte y que
+    #  tapan lo que si lo es. Del fondo interesa el paño de los muros y la losa que sigue.
+    check("los castillos del fondo no se dibujan en el corte",
+          "if (!p.Cortada && p.Clase == ClasePlanta.Columna" in cortedib
+          and '&& !_cfg.Bandera("CORTE_FONDO_CON_COLUMNAS", false))' in cortedib
+          and 'P("CORTE_FONDO_CON_COLUMNAS", "NO",' in cfgp)
+
+    # ------------------------------------------------------------------
+    # LA CADENA INTERMEDIA: SIEMPRE RELLENA Y CON BLOQUE
+    # ------------------------------------------------------------------
+    #  Se pidio tres veces, y tiene su razon de obra: la INTERMEDIA es la que confina los vanos de
+    #  puertas y ventanas y la que remata un antepecho, va metida en el muro y es lo que se viene a
+    #  revisar en un corte. Sin relleno se pierde entre las dos lineas del paño, y sin bloque no se
+    #  puede cambiar por su detalle armado.
+    #
+    #  Es la UNICA excepcion a «solo se rellena lo que se ve en seccion»: las demas cadenas y trabes
+    #  vistas a lo largo siguen yendo vacias, que es lo que se pidio despues.
+    check("la cadena intermedia se rellena y lleva bloque aunque el corte vaya a lo largo",
+          "public static bool EsIntermedia(Pieza p) =>" in corte
+          and "PlanoEstructural.CorteEnAlzado.EsIntermedia(p)" in cortedib
+          and cortedib.count("PlanoEstructural.CorteEnAlzado.EsIntermedia(p)") == 2
+          and 'P("CORTE_INTERMEDIA_SIEMPRE", "SI",' in cfgp)
+    # Por su TIPO y por sus NOTAS -en femenino y en masculino-, que el tipo puede llegar en blanco.
+    check("y se reconoce por su tipo o por sus notas",
+          '(p.Tipo ?? string.Empty).Contains("INTERMEDIA"' in corte
+          and '(p.Notas ?? string.Empty).Contains("INTERMEDIO"' in corte)
+    # La barra del corte lleva sus notas, que es de donde sale el tipo cuando el modelo no clasifico.
+    check("la barra del corte lleva sus notas",
+          "EnSeccion: false, Notas: el.Notas);" in corte
+          and "ancho, peralte, el.Tipo, Notas: el.Notas);" in corte)
+
+    # ------------------------------------------------------------------
+    # CADA CORTE, +8 A LA DERECHA DEL ANTERIOR
+    # ------------------------------------------------------------------
+    #  «Si voy a agregar mas cortes, que los agregue a la derecha +8.00 del ultimo corte existente,
+    #  asi para N cantidad de cortes». El reparto lo hace el DIBUJANTE, que es el unico que sabe
+    #  cuanto ocupo de verdad cada corte -depende de las piezas que toque, de sus ejes y de sus
+    #  cotas-. Calculandolo desde la ventana a ojo, los cortes se encimaban o quedaban a diez metros.
+    check("cada corte se encadena a la derecha del anterior",
+          "private double? _derechaDelUltimoCorte;" in cortedib
+          and "var cx = _derechaDelUltimoCorte is { } yaHay" in cortedib
+          and '? yaHay + _cfg.Numero("CORTE_SEPARACION_CORTES_M", 8)' in cortedib
+          and 'P("CORTE_SEPARACION_CORTES_M", "8",' in cfgp)
+    # Y se le suma lo que sobresale a su derecha -las burbujas de sus ejes y sus cotas-, que si no el
+    # siguiente corte se le metia encima de las burbujas.
+    check("contando sus burbujas y sus cotas",
+          "_derechaDelUltimoCorte = cx + piezas.Max(q => q.X + q.Ancho)" in cortedib
+          and "+ Ejes.SaleEjes() + Ejes.RadioBurbuja;" in cortedib)
+    # Y la ventana ya no lo calcula: pide los cortes en orden y el dibujante los encadena.
+    check("y la ventana ya no lo calcula",
+          "total += dibujante.DibujarCorte(c, 0, 0);" in winp
+          and "MedidasDelModelo()" not in winp)
+
+    # ------------------------------------------------------------------
+    # EL LADO DEL CORTE, EN EL VISOR Y EN TIEMPO REAL
+    # ------------------------------------------------------------------
+    #  «Haz que cuando elija entre un lado u el otro del corte, en la vista 3D de abajo igual se
+    #  actualice en tiempo real». Es lo que convierte la lista en algo util: se elige un lado y se ve
+    #  al momento si por ahi hay algo o si el edificio esta del otro lado. Antes habia que dibujar en
+    #  AutoCAD para descubrirlo.
+    vism = leer(ruta("client/src/CadLink.App/VistaModelo.cs"))
+
+    check("el visor mira el lado del corte y se rehace al cambiarlo",
+          "public bool CorteHaciaMas { get; set; } = true;" in vism
+          and "return CorteHaciaMas" in vism
+          and "private void OnLadoDelCorteCambiado(" in winp
+          and 'SelectionChanged="OnLadoDelCorteCambiado"' in xaml
+          and "_vista.CorteHaciaMas = LadoDelCorteCombo?.SelectedIndex != 1;" in winp)
+    # Y el corte que se dibuja toma el lado del visor: lo que se ve es lo que se dibuja.
+    check("y el corte que se dibuja toma el lado del visor",
+          "HaciaMas = _vista.CorteHaciaMas" in winp)
+
+    # ------------------------------------------------------------------
+    # SOLO LAS CARAS QUE LLEGAN: LO LARGO VA VACIO
+    # ------------------------------------------------------------------
+    #  «No rellenes de color las cadenas, vigas o trabes largas, dejalas vacias, solo rellena las
+    #  caras que llegan de las secciones». La regla vale para TODO, sin excepciones por clase.
+    #
+    #  Hubo una excepcion para las cadenas y duro poco, con razon: rellenar una cadena de cuatro
+    #  metros pinta de morado media fachada del alzado y entierra debajo lo unico que ese relleno
+    #  tenia que señalar, que son las caras cortadas. Y la cadena intermedia no pierde nada: la que
+    #  confina un vano se ve por su cara -el plano la cruza- y esa si se rellena y si lleva bloque.
+    # La UNICA excepcion es la cadena INTERMEDIA -por su tipo, no por su clase-, que se pidio tres
+    # veces: es la que confina los vanos y va metida en el muro. Las demas cadenas y trabes vistas a
+    # lo largo van vacias.
+    check("solo se rellenan las caras que llegan, y la intermedia",
+          "var enSeccion = p.EnSeccion\n                                || !soloEnSeccion"
+          in cortedib
+          and "|| p.Clase != ClasePlanta.Columna;" not in cortedib
+          and "PlanoEstructural.CorteEnAlzado.EsIntermedia(p)" in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL MURO, HASTA EL PAÑO DEL CASTILLO
+    # ------------------------------------------------------------------
+    #  «Las lineas de los muros ponlos hasta el paño de los castillos o columnas, no al eje». En el
+    #  modelo el muro va de NUDO a NUDO -del eje de un castillo al del siguiente- pero el muro de
+    #  verdad arranca en la CARA del castillo, porque contra el se levanta. Dibujado a ejes se mete
+    #  medio castillo por cada punta y lo pisa justo donde el castillo tiene que verse entero, que es
+    #  donde lleva su armado. Es lo contrario de lo que se hace con la trabe -a ella se le SUMA medio
+    #  apoyo- y por eso es la misma cuenta con el signo cambiado.
+    check("el muro del corte muere en el paño del castillo",
+          "var caraA = MedioApoyoEn(el, enX, min, todos);" in corte
+          and "var izquierda = min + caraA;" in corte
+          and "var derecha = max - caraB;" in corte)
+    # Y si los castillos se comieran el muro entero se deja como estaba: mejor un muro de mas que un
+    # hueco donde hay pared.
+    check("y si sus apoyos se lo comieran entero, se deja",
+          "if (derecha - izquierda <= Minimo)" in corte
+          and "izquierda = min;" in corte)
+
+    # ------------------------------------------------------------------
+    # QUE LADO DEL CORTE SE MIRA
+    # ------------------------------------------------------------------
+    #  «Y ver que lado del corte quieres ver: si es en X, si quieres ver lo de arriba o abajo del
+    #  corte, y si es en Y el corte, si quieres ver el lado derecho o izquierdo».
+    #
+    #  Un corte mira hacia un lado: lo de detras se ve y lo de delante se quita. Estaba fijo hacia
+    #  las coordenadas mayores, y eso deja cortes en los que no se ve NADA al fondo porque el
+    #  edificio esta del otro lado del plano.
+    check("se elige que lado del corte se mira",
+          "bool haciaMas = true)" in corte
+          and "return haciaMas\n            ? min > ordenada + margen\n"
+              "            : max < ordenada - margen;" in corte
+          and "public bool HaciaMas { get; set; } = true;" in dtop2)
+    # Y LAS OPCIONES SE AJUSTAN SOLAS AL CORTE QUE SE PIDE: en uno cuyo plano esta en X los lados
+    # son derecha e izquierda; en uno en Y, arriba y abajo. Leer «derecha / arriba» cuando solo una
+    # de las dos aplica obliga a traducir mentalmente cada vez, y es donde uno se equivoca de lado.
+    # Las dos parejas se quedan cuando se piden cortes en las DOS direcciones a la vez, porque
+    # entonces las dos cosas son ciertas. Y sin corte pedido, la lista se apaga.
+    check("las opciones del lado se ajustan solas al corte",
+          "private void ActualizarLadoDelCorte()" in winp
+          and 'hayX ? "derecha (+X)" : "arriba (+Y)"' in winp
+          and 'hayX ? "izquierda (-X)" : "abajo (-Y)"' in winp
+          and "LadoDelCorteCombo.IsEnabled = conCorte;" in winp)
+    # Se recalcula al cambiar el eje, al escribir en los campos y al leer el modelo.
+    check("y se recalculan cuando cambia lo pedido",
+          "private void OnCortePersonalizadoCambiado(" in winp
+          and 'TextChanged="OnCortePersonalizadoCambiado"' in xaml
+          and winp.count("ActualizarLadoDelCorte();") >= 4)
+    # Solo el TEXTO de las opciones: el indice elegido no se toca, que si no cambiar de corte
+    # moveria el lado que el usuario acaba de escoger.
+    check("sin tocar el lado que ya eligio el usuario",
+          "if (LadoDelCorteCombo.Items[0] is ComboBoxItem arriba)" in winp
+          and "arriba.Content = mas;" in winp)
+
+    check("y la ventana lo pregunta",
+          'x:Name="LadoDelCorteCombo"' in xaml
+          and "HaciaMas = LadoDelCorteCombo?.SelectedIndex != 1" in winp
+          and "c.Elementos, c.EnX, c.Ordenada, c.EspesorM,\n"
+              '            _cfg.Bandera("CORTE_VER_EL_FONDO", true), c.HaciaMas);' in cortedib)
+
+    # ------------------------------------------------------------------
+    # EL FONDO, UNA SILUETA: LA FUNCION «COMO LA DE REVIT»
+    # ------------------------------------------------------------------
+    #  «Tambien se deben ver los muros de hasta el fondo, quiero hacer una funcion como la de
+    #  Revit». En un programa de modelado, de lo que hay detras del plano se ve LA SILUETA, no las
+    #  aristas de cada pieza. En un muro de mamposteria el fondo son cinco o seis paños seguidos a
+    #  distinta profundidad, y dibujando cada uno por separado el alzado sale con una raya vertical
+    #  en cada junta: rayas que no existen, porque ahi el muro sigue.
+    check("el fondo se une en una silueta",
+          "public static List<Pieza> UnirElFondo(List<Pieza> piezas)" in corte
+          and "return UnirElFondo(SinEncimados(piezas));" in corte
+          and "private static bool SeUnen(Pieza a, Pieza b)" in corte)
+    # UN VANO NO SE UNE -el hueco es un dato del alzado- y LO CORTADO NO SE UNE NUNCA: cada pieza
+    # cortada es una pieza de obra.
+    check("pero no por encima de un vano, ni lo cortado",
+          "var salida = piezas.Where(p => p.Cortada).ToList();" in corte
+          and "Math.Min(a.X + a.Ancho, b.X + b.Ancho) >= Math.Max(a.X, b.X) - h;" in corte
+          and "|| Math.Abs(a.Z - b.Z) > h" in corte)
+
+    check("lo cortado no se quita nunca, y solo compite con su misma clase",
+          "if (!p.Cortada && salida.Any(q => Tapa(q, p)))" in corte
+          and "if (grande.Clase != chica.Clase)" in corte
+          and ".OrderByDescending(x => x.p.Cortada)" in corte)
+    # Que falle UN corte no impide los demas: se avisa y se sigue.
+    check("un corte que falla no se lleva a los demas",
+          "no se pudo dibujar: {ex.Message}" in winp)
+
+    # ------------------------------------------------------------------
+    # SOLO EJES Y CORTES, SIN LA PLANTA
+    # ------------------------------------------------------------------
+    #  «La opcion de solo dibujar ejes y cortes sin hacer todo el dibujo de planos». Sirve para
+    #  montar la cuadricula sobre un plano de arquitectura que ya existe, o para replantear con las
+    #  cotas de los ejes y nada mas.
+    #
+    #  Los elementos SIGUEN LLEGANDO en la planta y eso es a proposito: de ellos salen el
+    #  rectangulo que los ejes cubren y el paño al que se corren los de orilla, asi que la
+    #  cuadricula cae EN EL MISMO SITIO que caeria con la planta dibujada y la estructura se puede
+    #  dibujar despues encima sin que nada se mueva.
+    check("se puede dibujar solo la cuadricula y los cortes",
+          "public bool SoloEjes { get; set; }" in dtop2
+          and "if (p.SoloEjes)" in dibp
+          and 'x:Name="SoloEjesCortesChk"' in xaml
+          and "p.SoloEjes = soloEjes;" in winp)
+    # Y con los ejes y el rotulo, que es lo que se pidio dibujar.
+    check("con sus ejes, sus cotas y su rotulo",
+          "var cajaSola = Envolvente(p);" in dibp
+          and "DibujarEjesDeLaPlanta(\n                p, x0, y0, cajaSola.XMin" in dibp
+          and "RotuloDeLaPlanta(p, x0, y0, cajaSola.XMin, cajaSola.YMin, cajaSola.XMax);" in dibp)
+
+    # ------------------------------------------------------------------
+    # EL ARMADO, AL PANO DE LA TRABE Y NO A SU EJE
+    # ------------------------------------------------------------------
+    #  «Cuando el armado de losa llegue a trabe, igual que llegue al paño y no al eje de la trabe,
+    #  como a los muros o cadenas». Hace falta porque en el modelo LA LOSA SE DIBUJA HASTA EL EJE
+    #  de la trabe que la sostiene: tomando el borde del paño tal cual, la varilla se mete media
+    #  trabe dentro de ella, que no es donde empieza el claro ni donde se pone el acero.
+    #
+    #  Y POR QUE NO ENTRABAN LAS TRABES: la cuenta vieja buscaba el LADO DEL POLIGONO del tablero
+    #  en la coordenada extrema Y alineado con los ejes al milimetro de millon -1e-6-. Un tablero
+    #  que no es un rectangulo perfecto, o con las coordenadas que trae ETABS, dejaba sin encontrar
+    #  ese lado y no corria nada. Ahora se pregunta por los cuatro BORDES DE LA CAJA del armado,
+    #  que ahi siempre estan.
+    losap = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/LosaEnPlanta.cs"))
+
+    check("el armado llega al pano del apoyo, sea muro, cadena o trabe",
+          "public static double MedioApoyoEnBorde(" in losap
+          and "ancho = Math.Max(ancho, h.PeralteM);" in losap
+          and "return ancho / 2;" in losap)
+    # PARALELO al borde, SOBRE su linea y RECORRIENDOLO: una trabe que solo lo cruza no lo apoya.
+    check("y solo si va paralelo, sobre su linea y lo recorre",
+          "if (Math.Abs((ux * vy) - (uy * vx)) > 0.10)" in losap
+          and "(ux * (h.Y1 - borde.Y1))) > tolM)" in losap
+          and "< largo * fraccionMin)" in losap)
+    # Los cuatro bordes se miden ANTES de mover nada: si se aplicara uno a uno, el segundo se
+    # mediria sobre un borde ya corrido y el apoyo caeria fuera de la holgura.
+    check("los cuatro bordes se miden antes de mover nada",
+          "var pIzq = LosaEnPlanta.MedioApoyoEnBorde(" in dib
+          and "var pArriba = LosaEnPlanta.MedioApoyoEnBorde(" in dib
+          and dib.index("var pArriba = LosaEnPlanta.MedioApoyoEnBorde(") < dib.index("ax0 += pIzq;"))
+    # Y con la holgura del encuentro de la hoja, la misma con la que los muros mueren en el pano.
+    check("con la holgura del encuentro de la hoja",
+          'var tolPano = _cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100;' in dib)
+    # Ya no queda la cuenta vieja, que es la que dejaba fuera a las trabes.
+    check("y no queda rastro de la cuenta vieja",
+          "private static double MedioApoyo(" not in dib)
+    check("y la rejilla se queda apagada, disponible pero no puesta",
+          'P("ARMADO_LOSA_PARRILLA", "NO",' in cfgp
+          and '_cfg.Bandera("ARMADO_LOSA_PARRILLA", false)' in dib)
+    check("hay prueba ejecutable del armado y del volado por nota",
+          "la bayoneta tiene SEIS vertices, como en la macro" in pre
+          and "la corrida va de lado a lado" in pre
+          and "una losa cuya NOTA dice VOLADO es volado" in pre
+          and "una losa de azotea normal NO es volado" in pre)
+
+    # EL ROTULO DE LA LOSA, LOS CUATRO RENGLONES DE LA HOJA. Antes se rotulaba el nombre de
+    # la propiedad de ETABS, que en el plano no dice nada.
+    check("la losa se rotula con los cuatro renglones de la hoja",
+          "private string RotuloDeLosa(" in dib
+          and '_cfg.TextoTalCual($"LOSA_TEXTO_{i}")' in dib
+          and 'linea.Replace("%U", uso).Replace("%E", espesor)' in dib
+          and "private string UsoDeLaLosa(" in dib)
+
+    # PERO LA LOSA DE VOLADO, SOLO CON EL ARMADO. Se pidio tal cual: cuando diga VOLADO el
+    # rotulo debe decir unicamente «Var. # @ cm. / Ambos sentidos», o sea los renglones 3 y
+    # 4, sin el «Losa de ...» ni el espesor. Se reconoce con las MISMAS palabras que el
+    # achurado ANSI37, para que rotulo y hatch no discrepen nunca.
+    # EL VOLADO SE ROTULA «Losa VOLADO» EN EL PRIMER RENGLON, y sin el renglon del espesor.
+    # La palabra sale de las NOTAS de la propiedad de la losa en ETABS -ahi la escribe el
+    # ingeniero- y solo si las notas no dicen nada, del nombre de la seccion. Es la MISMA
+    # palabra que decide el achurado, asi que rotulo y ANSI37 no se contradicen nunca.
+    # EL ROTULO DEL VOLADO LLEVA LOS CUATRO RENGLONES: se pidio el espesor en el segundo y la
+    # varilla en el tercero. La bandera de saltarse el espesor se queda en la hoja -en NO-
+    # porque el mecanismo sirve, pero por omision no se salta nada.
+    check("el volado se rotula «Losa de VOLADO» y con los cuatro renglones",
+          'P("VOLADO_TEXTO_1", "Losa de %U",' in cfgp
+          and 'P("VOLADO_ROTULO_SOLO_ARMADO", "NO",' in cfgp
+          and '_cfg.TextoTalCual("VOLADO_TEXTO_1")' in dib
+          and "public static string ArmarRotuloDeLosa(" in dib
+          and "if (soloArmado && i == 2)" in dib)
+    check("hay prueba ejecutable de los cuatro renglones del volado",
+          "el volado lleva CUATRO renglones" in pre
+          and "el segundo, el espesor" in pre
+          and "el tercero, la varilla" in pre)
+    check("y la palabra del volado sale de las NOTAS primero",
+          "public static string PalabraVolado(" in los
+          and "foreach (var donde in new[] { notas, seccion })" in los
+          and "LosaEnPlanta.PalabraVolado(el.Notas, el.Seccion, PalabrasDeVolado())" in dib
+          and "uso = palabraVolado;" in dib)
+    check("hay prueba ejecutable del rotulo del volado",
+          "el volado lleva TRES renglones" in pre
+          and "el nombre va en el primero, y los otros dos son el armado" in pre
+          and "la palabra sale de las NOTAS, aunque la seccion no diga nada" in pre
+          and "la losa normal lleva los cuatro renglones" in pre)
+
+    # LAS LINEAS DE E-ACERO, CONTINUAS: en la hoja de la macro ese renglon va vacio -no
+    # toques la linea que tenga el dibujo- y por eso salian a trazos.
+    check("las lineas de E-ACERO son continuas",
+          'P("LINETYPE_ACERO", "Continuous",' in cfgp
+          and 'Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"))' in pr)
+    # Y NUNCA A TRAZOS POR OBJETO: es el arreglo de su v50. Una viga de acero nunca lleva
+    # muro de piso a techo debajo, asi que la regla de «sin muro -> punteada» se las llevaba
+    # TODAS. Con ACERO_LINEA_BYLAYER no se les pone tipo de linea por objeto.
+    check("y una viga de acero nunca sale punteada por objeto",
+          '_cfg.Bandera("ACERO_LINEA_BYLAYER", true)' in mac
+          and "PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma)" in mac)
+
+    # ------------------------------------------------------------------
+    # DONDE HAY ACERO LA LOSA ES LOSACERO, NO CONCRETO
+    # ------------------------------------------------------------------
+    #  Una losacero NO lleva armado de concreto: lleva las franjas de la lamina con el hatch
+    #  FLEX en el sentido corto y su rotulo con el CALIBRE, que sale de las notas de la
+    #  seccion de ETABS (LOSACERO CAL 24 -> 24).
+    check("la losacero se dibuja con sus franjas de hatch FLEX",
+          "public static List<Segmento> Franjas(" in los
+          and "public static bool DiceLosacero(" in los
+          and "private bool Losacero(" in dib
+          and '_cfg.Texto("LOSACERO_HATCH_PATRON", "FLEX")' in dib
+          and '_capas.Prefijo + "LOSACERO"' in dib)
+    check("y con su rotulo, con el calibre de las notas",
+          "public static string Calibre(" in los
+          and '_cfg.Texto("LOSACERO_TEXTO_PLANTILLA", "LOSACERO IMSA CALIBRE %C")' in dib
+          and '_cfg.Texto("LOSACERO_CALIBRE_OMISION", "24")' in dib)
+    # El calibre: primero el numero que sigue a CAL, y si no hay, el ULTIMO del texto.
+    check("el calibre sale del numero que sigue a CAL",
+          'var cal = t.IndexOf("CAL", StringComparison.Ordinal);' in los)
+    # Y EL LECTOR TIENE QUE SABER QUE ES UN DECK: su PropiedadDeLosa prueba GetDeck ANTES de
+    # GetSlab, porque la propiedad de una losacero no responde a GetSlab.
+    check("el lector pregunta GetDeck antes de GetSlab",
+          'Com.CallRet(propArea, "GetDeck"' in lect_sap
+          and '"DECK " + (d[6]?.ToString()' in lect_sap)
+    check("hay prueba ejecutable de la losacero",
+          "una losa que dice DECK es losacero" in pre
+          and "LOSACERO CAL 24 da 24" in pre
+          and "y todas corren en el sentido corto" in pre)
+
+    # Y LA OTRA MITAD DEL ORDEN DE DIBUJO: la losa y su armado AL FONDO, mas un REGEN. Sin el
+    # regen, AutoCAD puede seguir mostrando el orden viejo y eso se ve igual que si no se
+    # hubiera aplicado.
+    check("la losa y su armado se mandan al fondo",
+          "private void BajarCapas(" in mac
+          and "private bool MoverAlFondo(" in mac
+          and "tabla.MoveToBottom(" in mac
+          and "public IReadOnlyList<string> CapasAlFondo()" in capp
+          and "BajarCapas(_capas.CapasAlFondo());" in mac)
+    check("el DRAWORDER por comando sirve para los dos lados",
+          'private bool DrawOrderPorComando(string capa, bool alFrente = true)' in mac
+          and 'var donde = alFrente ? "_F" : "_B";' in mac)
+    check("y al final se regenera, para que el orden nuevo se vea",
+          "private void Regenerar()" in mac
+          and "_doc.Regen(1)" in mac
+          and "Regenerar();" in mac)
+
+    check("el voladizo lleva su hatch en su propia capa",
+          "private bool HatchSobre(" in mac
+          and '_cfg.Texto("LOSA_HATCH_PATRON", "ANSI37")' in dib
+          and "_capas.CapaVolado" in dib
+          and "public string CapaVolado" in capp)
+    # LA LINEA DEL VOLADO SE QUEDA, Y COMPLETA: es el borde libre de la losa, lo que se
+    # cimbra, asi que no se recorta contra los muros. La misma polilinea es el molde del
+    # achurado, asi que no hay que crear una auxiliar para borrarla.
+    # LA LINEA DEL VOLADO, SOLO EL CONTORNO EXTERIOR: se pidio que no toque la cadena ni el
+    # muro. La polilinea cerrada se sigue creando -un achurado necesita contorno cerrado para
+    # nacer- pero solo como MOLDE, y se borra en cuanto el hatch esta puesto.
+    check("el volado se achura con un molde y su linea es solo el contorno exterior",
+          'P("VOLADO_CONTORNO_FUERA_DE_MUROS", "SI",' in cfgp
+          and "var molde = PolilineaCerrada(pts, capa);" in dib
+          and "conHatch = HatchSobre(molde, capa," in dib
+          and '_cfg.Bandera("VOLADO_CONTORNO_FUERA_DE_MUROS", true)' in dib
+          and "LosaEnPlanta.TramosFuera(lado, huellas)" in dib
+          and "Borrar(molde);" in dib)
+    # ES UN HATCH DE VERDAD, Y POR LA VIA QUE EN ESTE MISMO PROGRAMA SI FUNCIONA. El
+    # achurado de las secciones y de las zapatas pasa el lazo por AcadArreglos -la cascada
+    # que prueba el arreglo de entidades de varias formas, escrita porque AutoCAD 2026
+    # rechaza un object[] pelado con «Invalid object array»- mientras que la planta lo pasaba
+    # directo, y con AddHatch de TRES argumentos en vez de los cuatro que usa el relleno de
+    # las columnas. Resultado: en la losa el hatch no nacia nunca y siempre acababa cayendo
+    # al respaldo de rayitas, que es lo que se veia: lineas dibujadas una por una.
+    check("el hatch de la losa se crea por la cascada de arreglos, como el de las secciones",
+          "private bool Achurar(" in mac
+          and "_ms.AddHatch(0, patron, asociativo, 0)" in mac
+          and "AcadArreglos.Llamar(" in mac
+          and "arr => { h.AppendOuterLoop(arr); }," in mac)
+    check("y se prueban las dos asociatividades antes de rendirse",
+          "foreach (var asociativo in new[] { false, true })" in mac
+          and "if (Achurar(contorno, capa, patron, escala, anguloGrados, asociativo))" in mac)
+    # Y SI LA API NO QUIERE, EL COMANDO -HATCH: lo que sale por ahi sigue siendo un HATCH
+    # autentico, con su patron, no una imitacion con lineas.
+    check("hay tercera via: el comando -HATCH, que sigue dando un hatch",
+          'P("LOSA_HATCH_POR_COMANDO", "SI",' in cfgp
+          and "private bool AchurarPorComando(" in mac
+          and "._-hatch" in mac
+          and "(handent" in mac
+          and "hpassoc" in mac
+          and "clayer" in mac)
+    # EL COMANDO NO PUEDE DARSE POR BUENO SIN MIRAR. SendCommand no falla cuando el comando
+    # de dentro se aborta -otro orden de preguntas, un patron que no esta en el acad.pat-, asi
+    # que se creia el achurado puesto, se saltaba el respaldo y el voladizo se quedaba SIN
+    # NADA: rotulo sobre una losa sin achurar, que es lo que se veia.
+    check("el -HATCH por comando se comprueba, no se da por bueno",
+          "private object? HatchRecienCreado(" in mac
+          and "private int CuantosObjetos(" in mac
+          and 'tipo.Contains("Hatch", StringComparison.OrdinalIgnoreCase)' in mac
+          and "if (hecho is null)" in mac)
+    # Y EL HATCH ASOCIATIVO NO PUEDE PERDER SU MOLDE: se le quita la asociatividad antes de
+    # borrarlo, y si AutoCAD no deja, el molde SE QUEDA. Antes que un voladizo sin achurar,
+    # una linea de mas por dentro del muro.
+    check("al hatch asociativo se le quita la asociatividad antes de borrar el molde",
+          "h.AssociativeHatch = false;" in mac
+          and "private bool HatchAtadoAlMolde" in mac
+          and "if (tramos > 0 && !HatchAtadoAlMolde)" in dib)
+
+    # EL MTEXT DE LA LOSA, DENTRO DE UN BLOQUE, y uno por losa DISTINTA: cambiando el bloque
+    # una vez se cambian los veinte rotulos de esa losa. Con veinte MTEXT sueltos hay que
+    # escribirlo veinte veces y hay diecinueve ocasiones de que uno quede distinto.
+    check("el rotulo de la losa va dentro de un bloque, uno por losa distinta",
+          'P("LOSA_TEXTO_BLOQUE", "SI",' in cfgp
+          and "private bool RotuloDeLosaComoBloque(" in mac
+          and "private bool AsegurarBloqueDeRotulo(" in mac
+          and "_bloquesDeRotulo" in mac
+          and "if (!RotuloDeLosaComoBloque(el, cx, cy, texto, alturaLosa))" in dib)
+    # CON EL PREFIJO DE LA MACRO -«TEXTO LOSA »- y no con uno nuevo: el bloque tiene que
+    # llamarse como alla.
+    check("y con el prefijo de la macro, no con uno inventado",
+          '_cfg.Texto("LOSA_TEXTO_BLOQUE_PREFIJO", "TEXTO LOSA ")' in mac)
+    # EL MISMO Mtexto de siempre, solo que dentro del bloque: duplicar la logica del estilo,
+    # el ancho automatico y el fondo terminaria con dos rotulos que se ven distinto.
+    check("el texto del bloque lo crea el mismo Mtexto, con un dueño distinto",
+          "object? dentroDe = null)" in dib
+          and "dynamic duenio = dentroDe ?? _ms;" in dib
+          and "duenio.AddMText(" in dib)
+
+    # ------------------------------------------------------------------
+    # EL CORTE POR UN EJE, DIBUJADO AL LADO DE LA PLANTA
+    # ------------------------------------------------------------------
+    #  Se pidio: que se dibuje el corte ELEGIDO, a 10 m de la planta estructural. Juntos se
+    #  leen: la planta da los espesores y las distancias entre ejes, y el corte las alturas.
+    corte = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CorteEnAlzado.cs"))
+    cortedib = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
+
+    check("la geometria del corte esta aparte y es comprobable sin AutoCAD",
+          "public static class CorteEnAlzado" in corte
+          and "public static bool Entra(" in corte
+          and "public static List<Pieza> Piezas(" in corte)
+    # ARRIBA DE LAS PLANTAS, a +10: las plantas se reparten a lo ANCHO -una al lado de la
+    # otra- asi que el corte a la derecha acabaria chocando con la planta siguiente en cuanto
+    # el modelo tuviera un nivel mas. Encima queda en su propia banda y se lee junto a todas.
+    # 10 UNIDADES ARRIBA DE LO YA DIBUJADO, y se pregunta AL DIBUJO. Antes se medía el alto de
+    # los ELEMENTOS y se sumaba desde el origen del modelo, pero las plantas no se dibujan en el
+    # origen -DibujarTodas las reparte y las sube al tope de lo que hubiera-, asi que el corte
+    # caia justo en medio del juego. Con TopeDeLoDibujado el corte queda encima siempre.
+    check("el corte se dibuja 10 unidades ARRIBA de lo ya dibujado",
+          'P("CORTE_SEPARACION_M", "10",' in cfgp
+          and 'P("CORTE_DIBUJAR", "SI",' in cfgp
+          and "public int DibujarCorte(" in cortedib
+          and '_cfg.Numero("CORTE_SEPARACION_M", 10)' in cortedib
+          and "var cy = tope + separacion - zBase;" in cortedib
+          and "private double? IzquierdaDeLoDibujado()" in cortedib
+          and "Math.Max(_topeDelJuego ?? 0, TopeDeLoDibujado() ?? 0)" in cortedib)
+    # NUNCA DEBAJO, tampoco si COM no responde. El tope del juego se CALCULA al repartir las
+    # plantas, asi que siempre esta; lo leido del dibujo cubre ademas lo que hubiera de antes.
+    # Con solo lo leido, un fallo de lectura dejaba el corte en Y = 10 con las plantas en Y = 40.
+    check("el tope del juego se calcula, no solo se pregunta al dibujo",
+          "_topeDelJuego = offsetY + (yMax - yMin) + Ejes.SaleEjes()" in dib
+          and "private double? _topeDelJuego;" in dib)
+    # LOS CASTILLOS, RELLENOS, como en la planta: el relleno es lo que distingue de un golpe el
+    # elemento CORTADO del que solo se ve al fondo.
+    # Ahora se rellenan TODAS las piezas cortadas que tienen color: el castillo amarillo, la cadena
+    # morada y la trabe verde. El color lo decide ColorDelRellenoEnElCorte, y el muro y la losa
+    # devuelven 0 -no se rellenan- porque en un alzado se leen por su paño y por su franja.
+    check("las piezas cortadas del corte van rellenas, cada una de su color",
+          'P("CORTE_RELLENAR_COLUMNAS", "SI",' in cfgp
+          and "private void RellenarPieza(object? pl, string capa, int color)" in cortedib
+          and "h.Color = color;" in cortedib
+          and 'if (p.Cortada && enSeccion && _cfg.Bandera("CORTE_RELLENAR_COLUMNAS", true))'
+              in cortedib
+          and "var color = ColorDelRellenoEnElCorte(p);" in cortedib)
+    # EL ESPESOR DE LA LOSA NO SE INVENTA: esto es un plano, la franja se mide y se acota, asi
+    # que un espesor a dedo no es una aproximacion, es un dato falso. Sin el, sale una LINEA.
+    check("el espesor de la losa del corte no se inventa",
+          "var espesor = el.AnchoM > Minimo ? el.AnchoM : 0;" in corte
+          and "p.Alto <= 0.001" in cortedib)
+    # EL CORTE, CON SUS EJES Y ACOTADO: sin ejes no se sabe que columna es cual, y sin cotas
+    # verticales no dice las alturas de entrepiso, que es el dato que SOLO el corte da.
+    check("el corte lleva sus ejes con burbuja",
+          'P("CORTE_CON_EJES", "SI",' in cfgp
+          and "private void DibujarEjesDelCorte(" in cortedib
+          and "public List<(string Id, double Ordenada)> Ejes { get; } = new();" in dto
+          and "c.Ejes.Add((e.Id, e.Ordenada));" in codigo)
+    check("y se acota en las dos direcciones, con la misma cota de la planta",
+          'P("CORTE_ACOTAR", "SI",' in cfgp
+          and "private void AcotarElCorte(" in cortedib
+          and "CotaAlineada(" in cortedib
+          and "las alturas, que es lo que solo el corte dice" in cortedib)
+    # Y LOS EJES DEL CORTE SON LOS PERPENDICULARES al del corte: los que se cruzan.
+    check("los ejes del corte son los perpendiculares",
+          "(q.EnX ? ejesY : ejesX).Select(x => (x.Id, x.Ordenada)).ToList()" in codigo)
+    # CADA TIPO SE VE DE UNA FORMA, y es lo que hace que un corte se entienda: la columna de
+    # nudo a nudo, la trabe que corre a lo largo entera y con su peralte, la que cruza solo de
+    # canto, y el muro como el paño que es.
+    check("cada pieza del corte se ve como toca",
+          "La <b>trabe o cadena que corre A LO LARGO</b>" in corte
+          and "var deCanto = largoBarra <=" in corte
+          and "el.Clase == ClasePlanta.Muro" in corte)
+    # LAS COTAS DE NIVEL: sin ellas un corte es un monton de rectangulos.
+    check("el corte lleva sus lineas de nivel y su rotulo",
+          "private void DibujarNivelesDelCorte(" in cortedib
+          and "private void RotularElCorte(" in cortedib
+          and 'P("CORTE_ROTULO", "CORTE  POR  EL  EJE  %E"' in cfgp)
+    # LAS MISMAS CAPAS que la planta: asi apagar E-MURO apaga el muro en los dos dibujos.
+    check("el corte usa las capas de la planta, no unas propias",
+          'ClasePlanta.Muro => _capas.CapaDeTipo("MURO"),' in cortedib)
+    # LA CAPA DEL ALZADO SALE DE LAS NOTAS: se pidio que una cadena de cerramiento o de
+    # desplante vaya a las capas de las cadenas y una trabe a E-TRABE. Antes la capa salia solo
+    # de la CLASE, asi que todas las barras horizontales caian en E-TRABE y el corte no
+    # coincidia con la planta.
+    check("la capa del corte sale del tipo, o sea de las notas",
+          "private string CapaDeLaPieza(CorteEnAlzado.Pieza p)" in cortedib
+          and "return _capas.CapaDeTipo(p.Tipo);" in cortedib
+          and "var capa = CapaDeLaPieza(p);" in cortedib)
+    # LA LOSA SE DIBUJA: en la extruida se veia y en el plano no aparecia porque se descartaba.
+    check("la losa da su franja en el corte",
+          "if (el.Clase == ClasePlanta.Losa)" in corte
+          and "zArriba - espesor" in corte)
+    # UN CORTE ES UNA VISTA: se dibuja tambien lo que queda DETRAS, y a trazos para no
+    # confundirlo con lo cortado.
+    check("el corte dibuja lo que se ve al fondo, y a trazos",
+          'P("CORTE_VER_EL_FONDO", "SI",' in cfgp
+          and "public static bool AlFondo(" in corte
+          and "private void ALineaDeFondo(" in cortedib
+          and "if (!p.Cortada)" in cortedib)
+    # LA TRABE, COMPLETA: el concreto llega a la CARA de sus apoyos, no a su eje. Dibujada a
+    # ejes deja un hueco en cada punta justo donde mas concreto hay.
+    check("la trabe del corte se dibuja completa, hasta la cara de sus apoyos",
+          "public static double MedioApoyoEn(" in corte
+          and "min - mediaA" in corte
+          and "largoBarra + mediaA + mediaB" in corte)
+    check("hay prueba ejecutable de la losa, el fondo y la trabe completa",
+          "la losa da su franja en el corte" in pre
+          and "una columna a 4 m detras del corte se ve al fondo" in pre
+          and "la trabe llega a la cara de sus dos apoyos" in pre
+          and "medio apoyo donde no hay nada es cero" in pre)
+    # LA Z LLEGA HASTA EL DTO: en planta no se usa, pero un corte es un alzado.
+    check("el elemento lleva su cota para el corte",
+          "public double Z1 { get; set; }" in dto
+          and "Z1 = el.Z1," in codigo)
+    # Y SE DIBUJA EL QUE ESTE ELEGIDO, con TODOS los niveles: un corte atraviesa el edificio.
+    # Ahora se dibujan LOS CORTES PEDIDOS -uno o varios-, cada uno con todos los niveles y
+    # corrido para no encimarse con el anterior.
+    check("se dibujan los cortes pedidos, con todos los niveles",
+          "private int DibujarCorteElegido(" in codigo.replace("DibujarElCorteElegido", "DibujarCorteElegido")
+          and "Eje = q.Id," in codigo
+          and "foreach (var el in _modeloEtabs.Elementos)" in codigo
+          and "total += dibujante.DibujarCorte(c, 0, 0);" in codigo)
+    # Y EL DE LA LISTA SIGUE FUNCIONANDO cuando no se escribe nada: quien solo quiere un corte no
+    # tiene que aprenderse la sintaxis nueva.
+    check("y el de la lista sigue valiendo si no se escribe nada",
+          "if (cortes.Count == 0 && _vista.CorteEje.Length > 0)" in codigo
+          and "_vista.CorteEje, _vista.CorteEnX, _vista.CorteOrdenada, false));" in codigo)
+    check("hay prueba ejecutable del corte",
+          "del corte salen TRES piezas" in pre
+          and "la trabe se ve entera: 4 m mas medio castillo" in pre
+          and "la que cruza se ve solo de canto" in pre
+          and "con espesor 0 se usa el minimo, no se queda vacio" in pre)
+
+    check("y las rayitas quedan como ULTIMO recurso, avisando de que no son un hatch",
+          "eso NO es un hatch" in mac
+          and "private int RayarAMano(" in mac)
+    check("el achurado sigue naciendo NO asociativo primero, para sobrevivir al molde",
+          "private void Borrar(" in mac)
+    # EL RESPALDO DEL ANSI37: un hatch puede fallar por tres motivos que no se ven desde
+    # aqui -que el patron no este en el acad.pat del usuario, que MAXHATCH lo rechace por
+    # denso, o que la version no lo acepte sobre un contorno recien hecho- y en los tres el
+    # voladizo se quedaba SIN MARCAR. Si falla, se raya a mano: lineas a 45 grados
+    # recortadas al contorno, que se ven y se imprimen igual.
+    # EL ACHURADO SE TIENE QUE VER. El ANSI37 lleva sus lineas a 0.125 de unidad, asi que
+    # con la escala literal de la macro -0.0475- la separacion real queda en 5.9 MILIMETROS:
+    # en un tablero de 6 x 12 m son mas de dos mil lineas y no se ve un rayado, se ve una
+    # MANCHA GRIS uniforme, y en el color 252 parece una sombra. La escala se saca al reves,
+    # de la separacion que se quiere ver.
+    # LA ESCALA Y EL COLOR LOS DIO EL USUARIO: escala 0.0475 -la de la macro- y color 142. El
+    # automatico de la escala se queda disponible pero APAGADO: manda el valor de la macro.
+    # Y el color va POR OBJETO, porque los dos datos conviven asi: la capa E-VOLADO en 252
+    # -el gris del contorno- y el rayado en 142. Por capa habria que elegir uno de los dos.
+    check("el achurado va con la escala de la macro y en color 142",
+          'P("LOSA_HATCH_ESCALA", "0.0475"' in cfgp
+          and 'P("LOSA_HATCH_ESCALA_AUTO", "NO",' in cfgp
+          and 'P("LOSA_HATCH_COLOR", "142",' in cfgp
+          and "private int ColorDelAchurado()" in mac
+          and "h.Color = ColorDelAchurado();" in mac
+          and "EscalaDelHatchDeLosa()," in dib)
+    # El automatico se queda, por si algun dia se dibuja en otras unidades.
+    check("y el automatico de la escala sigue disponible",
+          "public static double EscalaDeHatch(" in dib
+          and "separacionM > 0.005 ? separacionM / 0.125 : escalaHoja;" in dib
+          and 'P("LOSA_HATCH_SEPARACION_CM", "25",' in cfgp)
+    # EL COLOR TAMBIEN EN LAS OTRAS DOS VIAS: el comando lo crea por capa, asi que se le pone
+    # despues; y las rayitas del ultimo recurso tienen que verse igual que el hatch.
+    check("el color 142 se pone en las tres vias del achurado",
+          "((dynamic)hecho).Color = ColorDelAchurado();" in mac
+          and "((dynamic)raya).Color = ColorDelAchurado();" in mac)
+    check("hay prueba ejecutable de la escala y del color del achurado",
+          "la escala del ANSI37 es la de la macro" in pre
+          and "el color del achurado es el 142, por objeto" in pre
+          and "y el automatico va apagado" in pre)
+    # LAS NOTAS SON DE LA PROPIEDAD, no del paño: si el volado comparte seccion con el
+    # entrepiso, TODOS los paños de esa seccion salen achurados. Eso se arregla en ETABS, no
+    # aqui, y sin la nota no habia manera de verlo.
+    check("se avisa de que seccion se tomo por voladizo y por que",
+          "private void AvisarDelVolado(" in dib
+          and "_voladosAvisados" in dib
+          and "dale su propia propiedad de losa en ETABS" in dib)
+    # Y EL NOMBRE «VOLADO» NO SE ESCRIBE NUNCA, venga de las notas o del nombre de la
+    # seccion: el nombre que se iba a poner sale de la seccion, asi que se comprueba tambien
+    # sobre el uso ya resuelto.
+    check("y la palabra se busca tambien en el nombre ya resuelto, por si acaso",
+          "LosaEnPlanta.PalabraVolado(uso, null, PalabrasDeVolado())" in dib
+          and "private string PalabrasDeVolado()" in dib)
+
+    check("si el patron no se puede aplicar, el volado se raya a mano",
+          "private int RayarAMano(" in mac
+          and "IReadOnlyList<(double X, double Y)>? paraRayar = null," in mac
+          and "alPano, x0, y0);" in dib
+          and "LosaEnPlanta.Cortes(girado, y, false)" in mac)
+
+    # ------------------------------------------------------------------
+    # EL HATCH HASTA EL PAÑO, Y VARIOS VOLADOS COMO UN SOLO PAÑO
+    # ------------------------------------------------------------------
+    #  En el modelo la losa llega al EJE del muro, porque ahi estan los nudos. Pero el concreto
+    #  de la losa llega al PAÑO: medio espesor antes ya es muro, y el rayado se metia por dentro
+    #  de la cadena.
+    pano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/PanoDeLosa.cs"))
+
+    check("el molde del achurado se mete hasta el pano del muro",
+          "public static List<(double X, double Y)> AlPano(" in pano
+          and "public static double MedioAnchoDelMuro(" in pano
+          and '_cfg.Bandera("LOSA_HATCH_AL_PANO", true) && huellas.Count > 0' in dib
+          and "PanoDeLosa.AlPano(el.Vertices, huellas)" in dib)
+    # LAS ESQUINAS SE RECALCULAN CORTANDO los lados movidos: moviendo los vertices uno a uno,
+    # un lado con muro y otro sin muro dejarian la esquina abierta o cruzada.
+    check("y las esquinas se recalculan cortando los lados, no moviendo vertices",
+          "private static (double X, double Y)? Cruce(" in pano
+          and "var corte = Cruce(r, s);" in pano)
+    # Y UN MURO PERPENDICULAR QUE SOLO TOCA LA ORILLA NO CUENTA: no esta debajo de esa orilla.
+    check("un muro perpendicular no mete el pano",
+          'Math.Abs((hx * dx) + (hy * dy)) < 0.98' in pano)
+
+    #  DOS VOLADIZOS PEGADOS SON UN SOLO PAÑO: la raya del medio es la orilla que comparten, y
+    #  en la obra no existe -el concreto es continuo-. Casi siempre es una losa partida en dos
+    #  por un eje, porque en el modelo hace falta el nudo.
+    check("varios volados juntos se dibujan con un solo perimetro",
+          'P("VOLADO_SIN_DIVISIONES", "SI",' in cfgp
+          and "public static bool ContornoCompartido(" in pano
+          and "PanoDeLosa.ContornoCompartido(t, vecinas)" in dib
+          and "private List<IReadOnlyList<(double X, double Y)>> OtrosVolados(" in dib)
+    # SE RECONOCEN TODOS ANTES DE DIBUJAR EL PRIMERO: descubriendolos por el camino, la primera
+    # losa dibujaria su raya -aun no sabe de la segunda- y la segunda ya no. Media junta.
+    check("y se conocen todos antes de dibujar el primero",
+          "_voladosDeLaPlanta.Clear();" in dib
+          and "_voladosDeLaPlanta.Add((ClaveDelPano(el), el.Vertices));" in dib)
+    # LA OTRA MITAD: el ORIGEN del patron, el mismo para todos, o la junta se sigue viendo
+    # porque las lineas de un pano no continuan en el otro.
+    check("el patron arranca del mismo origen en todos los paños",
+          "h.Origin = new[] { 0d, 0d };" in mac)
+    check("hay prueba ejecutable del pano y de los volados pegados",
+          "la cadena de 15 mete el pano 7.5 cm" in pre
+          and "una cadena perpendicular no mete el pano" in pre
+          and "la orilla compartida con el otro volado se reconoce" in pre
+          and "se reconoce por la orilla, no por los vertices" in pre)
+
+    # ------------------------------------------------------------------
+    # EL TIPO DE LA TABLA, POR LAS NOTAS DE LA PROPIEDAD
+    # ------------------------------------------------------------------
+    #  Es lo que se pidio y la respuesta a «como puedo hacer que los clasifiques como tipos»:
+    #  con las NOTAS. El nombre de la seccion cambia de obra en obra y las medidas se equivocan
+    #  en los casos de frontera -una de 15x23.5 pasa de 20 cm, asi que por medidas sale COLUMNA
+    #  aunque en obra sea un castillo-. Las notas son el unico sitio donde se dice lo que ES.
+    secs_tipo = leer(ruta("client/src/CadLink.Etabs/SeccionesModelo.cs"))
+    lec_tipo = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+
+    check("el tipo sale de las notas de la propiedad",
+          "public static string TipoDeLasNotas(" in secs_tipo
+          and "var deLasNotas = TipoDeLasNotas(notas);" in secs_tipo
+          and "ClasificaTipo(e.Clase, e.Seccion, t2, t3, op, e.Notas)" in secs_tipo)
+    # EL ORDEN NO ES ALFABETICO, es de lo mas especifico a lo mas general: «CONTRATRABE»
+    # contiene TRABE, y «CASTILLO AHOGADO EN COLUMNA» contiene las dos.
+    check("y lo mas especifico se pregunta primero",
+          '("CONTRATRABE", "CONTRATRABE"),' in secs_tipo
+          and secs_tipo.index('("CASTILLO", "CASTILLO")')
+          < secs_tipo.index('("COLUMNA", "COLUMNA")'))
+    # Y LAS NOTAS DE LOS MARCOS, QUE NO SE LEIAN: solo se leian las de muros y losas.
+    check("las notas de las secciones de marco ya se leen",
+          "private static string NotasDe(object?[] a) =>" in lec_tipo
+          and "Material(a), NotasDe(a)) : null;" in lec_tipo
+          and "e.Notas = dims.Notas;" in lec_tipo)
+    # La prueba de las secciones vive en su propio archivo; aqui se relee, porque las
+    # variables de arriba son de otra funcion.
+    prs_tipo = leer(ruta("tools/prueba-secciones-modelo/Program.cs"))
+
+    check("hay prueba ejecutable del tipo por notas",
+          "CASTILLO en las notas manda" in prs_tipo
+          and "CONTRATRABE no se confunde con TRABE" in prs_tipo
+          and "por medidas, la de 15x23.5 sale COLUMNA" in prs_tipo)
+    check("E-LOSA se queda apagada y E-VOLADO encendida",
+          "private void ApagarCapasDeLosa()" in mac
+          and "lay.LayerOn = false;" in mac
+          and "public IReadOnlyList<string> CapasApagadas()" in capp
+          and "ApagarCapasDeLosa();" in dib)
+    # EL CONTORNO, SOLO POR FUERA: donde la losa apoya, su pano y el del muro son la misma
+    # linea, y dibujarla deja una raya en medio del muro que se lee como una junta.
+    check("el contorno de la losa no se dibuja dentro del muro ni de la cadena",
+          "public static List<Segmento> TramosFuera(" in los
+          and '_cfg.Bandera("LOSA_CONTORNO_FUERA_DE_MUROS", true)' in dib
+          and "LosaEnPlanta.Lados(el.Vertices)" in dib)
+    check("hay prueba ejecutable de la losa",
+          "y el pano SI esta volado" in pre
+          and "dos cadenas traslapadas cubren el lado una sola vez" in pre
+          and "en la vertical del quiebre, UN tramo y no dos" in pre
+          and "un lado entero dentro del muro no se dibuja" in pre)
+
+    # ------------------------------------------------------------------
+    # EL MURO BAJO LA CADENA NO SE DIBUJA
+    # ------------------------------------------------------------------
+    #  Es MarcarMurosTapados. En el modelo el muro y su cadena de cerramiento ocupan LA MISMA
+    #  linea en planta, asi que dibujando los dos salen DOS parejas de lineas pegadas: eso
+    #  era la raya de mas a cada lado de cada cadena. Se dejan SOLO los muros SIN cadena, que
+    #  son los que hay que revisar.
+    mbc = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/MuroBajoCadena.cs"))
+    check("el muro que va debajo de una cadena no se dibuja",
+          "public static class MuroBajoCadena" in mbc
+          and "public static Estado Como(" in mbc
+          and '_cfg.Bandera("OCULTAR_MURO_BAJO_CADENA", true)' in dib
+          and "MuroBajoCadena.Como(" in dib
+          and "if (!tapado)" in dib)
+    check("con los numeros de la hoja: traslape, tolerancia y que las trabes no cuentan",
+          '_cfg.Numero("TRASLAPE_MINIMO", 0.8)' in dib
+          and '_cfg.Numero("TOLERANCIA_CADENA_CM", 10)' in dib
+          and '_cfg.Bandera("CADENA_INCLUYE_TRABES", false)' in dib
+          and "public static bool EsCadena(" in mbc)
+    # LA COBERTURA POR UNION, no sumando: dos cadenas traslapadas cubren su tramo una vez.
+    check("la cobertura se mide por union de tramos",
+          "LosaEnPlanta.Unidos(tramos).Sum(t => t.B - t.A) / largo" in mbc)
+    # Y LA MAMPOSTERIA SE QUEDA aunque el muro no se dibuje: es la marca de que ahi va block.
+    check("la linea de mamposteria se dibuja aunque el muro este tapado",
+          '_cfg.Bandera("MAMPOSTERIA_AUNQUE_TAPADO", true)' in dib)
+    # El ancho de la cadena que lo tapa -el eTapaB de la macro- separa el rotulo del pier.
+    check("el pier se separa de la cadena que tapa al muro",
+          "_anchoDeLaCadena" in dib
+          and "public readonly record struct Estado(bool Tapado, double Cobertura, double AnchoCadena)"
+              in mbc)
+    check("hay prueba ejecutable del muro tapado",
+          "el muro con su cadena encima queda TAPADO" in pre
+          and "un muro SIN cadena no esta tapado" in pre
+          and "una TRABE no tapa el muro por omision" in pre)
+
+    # ------------------------------------------------------------------
+    # EL NOMBRE DE LA LOSA: EL DE LA SECCION, SIN LA PALABRA «LOSA»
+    # ------------------------------------------------------------------
+    #  El renglon ya dice «Losa de», asi que la seccion «LOSA VOLADO» se rotula «Losa de
+    #  VOLADO». Sirve para cualquier nombre que use, sin apuntarlo en la hoja.
+    check("el rotulo de la losa toma el nombre de la seccion sin la palabra LOSA",
+          "public static string SinLaPalabraLosa(" in dib
+          and "var deLaSeccion = SinLaPalabraLosa(el.Seccion);" in dib)
+    check("y si de la seccion no queda nada, mandan las palabras de la hoja",
+          '_cfg.Texto("LOSA_PALABRAS_AZOTEA", "AZOTEA,CUBIERTA,TECHO,ROOF")' in dib
+          and '_cfg.Texto("LOSA_USO_POR_OMISION", "ENTREPISO")' in dib)
+    check("hay prueba ejecutable del nombre de la losa",
+          '«LOSA VOLADO» se rotula VOLADO' in pre
+          and 'ni «SLAB 10»' in pre)
+
+    # ------------------------------------------------------------------
+    # EN LA BASE, LOS ARRANQUES DE CASTILLOS
+    # ------------------------------------------------------------------
+    #  En el modelo la columna que va del suelo al primer piso pertenece al piso de ARRIBA,
+    #  asi que la planta de cimentacion salia sin un solo arranque. Y con la regla que se
+    #  pidio: sin muros que arranquen ahi, no se dibuja ninguno.
+    check("en la cimentacion se traen los arranques que desplantan en la base",
+          "private void AgregarArranquesDeCimentacion(" in codigo
+          and '_cfg is not None' not in codigo
+          and 'CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true)' in codigo
+          and 'CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20)' in codigo)
+    check("y sin muros, sin castillos",
+          'CfgPlano.Bandera("CIMENTACION_SIN_MUROS_SIN_COLUMNAS", true)' in codigo
+          and "var hayMuros = p.Elementos.Any(e => e.Clase == ClasePlanta.Muro)" in codigo)
+    # La traduccion del elemento en UN solo sitio: hace falta dos veces -al recorrer el
+    # nivel y al traer los arranques- y duplicarla era garantia de que a uno le faltara un
+    # dato.
+    check("la traduccion del elemento esta en un solo metodo",
+          "private ElementoPlanta ComoElementoDePlanta(" in codigo
+          and codigo.count("p.Elementos.Add(ComoElementoDePlanta(el, modelo));") == 2)
+
+    # ------------------------------------------------------------------
+    # EL ANCHO DEL MTEXT, AUTOMATICO
+    # ------------------------------------------------------------------
+    #  Width = 0 es «sin ancho definido»: la caja sigue al texto. Hace falta porque al
+    #  centrar se centra LA CAJA, y con una caja mas ancha que el texto el rotulo se veia
+    #  gordo y corrido respecto a la trabe. Con respaldo: medir el texto ya dibujado.
+    check("el ancho del MTEXT es automatico",
+          "private void AnchoAutomatico(" in dib
+          and "((dynamic)mt).Width = 0d;" in dib
+          and "AnchoAutomatico(mt, texto, altura);" in dib)
+    check("y si la version no acepta el 0, se mide el texto y se le da su ancho",
+          "var caja = CajaEnvolvente(mt);" in dib
+          and "((dynamic)mt).Width = medido + (altura * 0.1);" in dib)
+    # El anclaje va DESPUES del ancho: cambiar la caja mueve el texto.
+    check("el anclaje se pone despues del ancho",
+          dib.find("AnchoAutomatico(mt, texto, altura);")
+          < dib.find("mt.AttachmentPoint = anclaje;"))
+
+    # ------------------------------------------------------------------
+    # LA SECCION DE ACERO, DIBUJADA COMO ES
+    # ------------------------------------------------------------------
+    #  Antes TODO lo que no era redondo salia como rectangulo, asi que una IR de 25x15 y un
+    #  cajon de 25x15 se dibujaban igual: en el plano no habia forma de distinguir el acero
+    #  del concreto. Ahora se traza el perfil con sus espesores.
+    sec = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/SeccionEnPlanta.cs"))
+    check("hay geometria de perfiles para la planta",
+          "public static class SeccionEnPlanta" in sec
+          and "public static double[] Contorno(" in sec
+          and "private static double[] PerfilI(" in sec
+          and "private static double[] Canal(" in sec
+          and "private static double[] Te(" in sec
+          and "private static double[] Angulo(" in sec)
+    check("el cajon y el tubo llevan su hueco",
+          "public static double[] Hueco(" in sec
+          and "public static double RadioInterior(" in sec
+          and "ht.AppendInnerLoop(" in dib
+          and "ht.AppendInnerLoop(" in mac)
+    # SIN ESPESORES NO HAY PERFIL: mejor una caja honesta que una I inventada, que se
+    # acotaria mal.
+    check("sin espesores se cae al rectangulo, no se inventa el perfil",
+          "return Rectangulo(b, h);" in sec
+          and "private static bool Valen(" in sec)
+    check("el perfil se usa en el bloque y en el camino suelto",
+          "SeccionEnPlanta.Contorno(\n                        forma, b, h, el.PatinM, el.AlmaM, el.ParedM)" in mac
+          and "SeccionEnPlanta.Contorno(el.Forma, b, h, el.PatinM, el.AlmaM, el.ParedM)" in dib)
+    check("los espesores llegan del modelo hasta el dibujante",
+          "public double PatinM { get; set; }" in dto
+          and "public double AlmaM { get; set; }" in dto
+          and "public double ParedM { get; set; }" in dto
+          and "PatinM = el.PatinM," in codigo
+          and "AlmaM = el.AlmaM," in codigo
+          and "ParedM = el.ParedM" in codigo)
+    # Un SOLID solo cubre un cuadrilatero CONVEXO, y una I no lo es: el relleno de respaldo
+    # va por las PIEZAS de la seccion -los dos patines y el alma-.
+    check("el relleno de respaldo va por las piezas de la seccion",
+          "public static List<double[]> RectangulosDeRelleno(" in sec
+          and "SeccionEnPlanta.RectangulosDeRelleno(" in dib
+          and "SeccionEnPlanta.RectangulosDeRelleno(" in mac
+          and "private void SolidoGirado(" in dib)
+    # En un perfil no van las diagonales: la forma ya dice lo que es, y taparian el alma.
+    check("un perfil de acero no lleva las diagonales de la columna",
+          "if (!PlanoEstructural.CapasPlano.EsPerfilAcero(el.Forma))" in dib)
+    check("la redonda se dibuja con circunferencias, no con un poligono",
+          "private bool SeccionRedonda(" in dib
+          and "SeccionEnPlanta.EsRedonda(el.Forma)" in dib)
+    check("hay prueba ejecutable del perfil de acero",
+          'SeccionEnPlanta.Contorno("I", bI, hI, tfI, twI)' in pre
+          and "su area es la de dos patines y un alma" in pre
+          and "y sus areas suman la del perfil" in pre)
+
+    # LAS COLUMNAS, COMO BLOQUE Y RELLENAS. El bloque se llama como la SECCION, que es lo
+    # que permite cambiar de golpe las 30 columnas de una seccion con un BLOCKREPLACE; y el
+    # giro va en la INSERCION, que es lo que hace que el reemplazo conserve la orientacion.
+    check("la columna se inserta como bloque",
+          "private bool ColumnaComoBloque(" in mac
+          and "_ms.InsertBlock(" in mac
+          and "ColumnaComoBloque(el, cx, cy, b, h)" in dib)
+    check("el bloque se llama como la seccion",
+          '_cfg.Bandera("BLOQUE_NOMBRE_SECCION", true)' in mac
+          and "internal static string LimpiaNombreDeBloque(string s)" in mac)
+    check("el giro va en la insercion, no en la geometria",
+          '_cfg.Numero("BLOQUE_ROTACION_EXTRA_GRADOS", 0)' in mac)
+    # EL GIRO ES EL DEL MODELO. Con 0 todas las columnas salian derechas y una 20x60 girada
+    # 90 grados se veia de 20x60 en lugar de 60x20: el plano no coincidia con ETABS.
+    check("y el giro es el del modelo, no cero",
+          "var grados = el.AnguloGrados + _cfg.Numero(\"BLOQUE_ROTACION_EXTRA_GRADOS\", 0);"
+          in mac
+          and "public double AnguloGrados { get; set; }" in dto
+          and "AnguloGrados = el.AnguloGrados," in codigo)
+    check("y va RELLENA, con el color de la hoja",
+          '_cfg.Bandera("RELLENAR_COLUMNAS", true)' in mac
+          and 'blk.AddHatch(0, "SOLID", true, 0)' in mac
+          and "var color = ColorDelRelleno();" in mac
+          and '_cfg.Numero("COLOR_RELLENO_BLOQUE", 2)' in dib)
+    # EL RESPALDO CON SOLID: un AddHatch dentro de una DEFINICION de bloque falla en varias
+    # versiones -el achurado quiere un contorno que ya este en la base de datos- y la columna
+    # se quedaba hueca. Un SOLID de cuatro puntos siempre se puede crear.
+    check("si el achurado no se deja, el relleno va con un SOLID",
+          "private void RellenarDentroDelBloque(" in mac
+          and "blk.AddSolid(" in mac
+          and "private void RellenarEnPlanta(" in dib
+          and "_ms.AddSolid(" in dib)
+    # Los cuatro puntos de un SOLID van CRUZADOS: en orden circular sale un monio.
+    check("los cuatro puntos del SOLID van cruzados, no en orden circular",
+          "new[] { r[0], r[3], 0d },\n                    new[] { r[2], r[3], 0d })" in mac
+          and "new[] { p[6], p[7], 0d },\n                    new[] { p[4], p[5], 0d })" in dib)
+    # LA SECCION SUELTA, IGUAL DE FIEL: girada y rellena. Antes este camino dibujaba un
+    # rectangulo derecho y hueco, asi que cuando el bloque fallaba el plano salia sin
+    # orientacion y sin relleno, y sin decir por que.
+    check("el camino sin bloque tambien sale girado y relleno",
+          "public static double[] EsquinasGiradas(" in dib
+          and "SeccionEnPlanta.Colocar(local, cx, cy, el.AnguloGrados)" in dib
+          and "RellenarEnPlanta(pl, plHueco, el, cx, cy, b, h, capa);" in dib)
+    check("hay prueba ejecutable del giro de la seccion",
+          "PlantaDrawer.EsquinasGiradas(0, 0, 0.20, 0.60, 90)" in pre
+          and "a 90 grados mide 0.60 de ancho" in pre)
+    check("un bloque que ya existe se respeta salvo que la hoja diga lo contrario",
+          '_cfg.Bandera("REDEFINIR_BLOQUES", true)' in mac)
+    check("y si algo falla se dibuja la seccion suelta, no se pierde la columna",
+          "if (ColumnaComoBloque(el, cx, cy, b, h))" in dib)
+
+    # LEER LOS EJES NO PUEDE TIRAR LA LECTURA. Se probo con Com.Get y rompio SAP2000: al
+    # pedir «GridSys» salta una excepcion propia -no un fallo de COM- que subia y se llevaba
+    # el modelo completo. Los ejes son opcionales: si no se leen, se deducen.
+    lect_gs = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("pedir la cuadricula no puede tirar la lectura del modelo",
+          'gridSys = Com.TryGet(cx.SapModel, "GridSys");' in lect_gs
+          and 'Com.Get(cx.SapModel, "GridSys")' not in lect_gs)
+
+    # LOS EJES DEL MODELO, con su respaldo: GetGridSys_2 no esta en todas las versiones.
+    lect_ej = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("la cuadricula se lee del modelo",
+          "private static void LeerEjes(EtabsConnection cx, ModeloEtabs m)" in lect_ej
+          and '"GetGridSys_2"' in lect_ej)
+    check("y si no se puede, se deduce de las columnas y los muros",
+          "public static EjesModelo DesdeGeometria(" in leer(
+              ruta("client/src/CadLink.Etabs/EjesModelo.cs"))
+          and "EjesModelo.DesdeGeometria(modelo)" in codigo)
+    check("los verticales se numeran y los horizontales se letran",
+          "public static string Letra(int i)" in leer(
+              ruta("client/src/CadLink.Etabs/EjesModelo.cs")))
+
+    # Y su prueba ejecutable, leída más arriba.
+    check("hay prueba ejecutable de los ejes, las cotas y el rotulo",
+          "using CadLink.Cad.PlanoEstructural;" in pre
+          and "ejes.SaleEjes()" in pre
+          and "ejes.Cotas(" in pre
+          and "rot.NombreDeNivel(" in pre
+          and "return fallos == 0 ? 0 : 1;" in pre)
+    check("y comprueba que mover las cotas NO mueve las burbujas",
+          "mover la cota total NO mueve las burbujas" in pre)
+
+    # LOS ROTULOS, DONDE LOS PONE LA MACRO: la columna en la esquina superior derecha y la
+    # trabe girada a lo largo de la barra. Todos al centro y horizontales era lo que
+    # convertia cada nudo en un borron.
+    check("el rotulo de la columna va a la esquina, con su separacion",
+          '_cfg.Numero("COLUMNA_TEXTO_SEPARACION_CM", 2)' in dib)
+    check("el de la trabe va girado a lo largo de la barra",
+          "public static double AnguloLegible(double dx, double dy)" in dib
+          and "ang -= 180;" in dib and "ang += 180;" in dib
+          and "var ang = AnguloLegible(dx, dy);" in dib)
+    check("y el del muro corrido al lado con PIER_SEPARACION_CM",
+          '_cfg.Numero("PIER_SEPARACION_CM", 6)' in dib)
+    check("el MText acepta giro",
+          "double giroGrados = 0," in dib
+          and "mt.Rotation = giroGrados * Math.PI / 180;" in dib)
+
+    # ------------------------------------------------------------------
+    # EL MTEXT DE VERDAD: CON SU ESTILO, SU ANCHO Y SU FONDO
+    # ------------------------------------------------------------------
+    #  Los rotulos no aparecian. Dos motivos, los dos aqui:
+    #    1) el MTEXT se creaba con ancho 0, y con ancho 0 hay versiones que crean el objeto
+    #       y no lo muestran; ademas AttachmentPoint necesita caja con ancho para centrar.
+    #    2) el estilo se asignaba y, si no existia en el dibujo, se perdia en silencio.
+    #       Ahora se CREA el que falte, que es lo que pidio el usuario.
+    check("el MTEXT se crea con ancho, nunca con 0",
+          "duenio.AddMText(new[] { x, y, 0d }, ancho, texto)" in dib
+          and "var ancho = Math.Max(1, letras) * altura * 0.62;" in dib)
+    # EL DUEÑO por omision es el espacio modelo; solo el rotulo de la losa pasa un BLOQUE.
+    check("y su dueño por omision sigue siendo el espacio modelo",
+          "dynamic duenio = dentroDe ?? _ms;" in dib)
+    check("el estilo del rotulo se crea si el dibujo no lo tiene",
+          "private void AsegurarEstiloDeTexto(string nombre)" in dib
+          and "AsegurarEstiloDeTexto(nombreEstilo);" in dib
+          and "_estilosVistos" in dib)
+    check("y el estilo va ANTES de la altura, porque el de la macro trae altura fija",
+          dib.find("mt.StyleName = nombreEstilo;") < dib.find("mt.Height = altura;"))
+    check("el rotulo de la cadena lleva FONDO opaco, como en la macro",
+          "mt.BackgroundFill = true;" in dib
+          and '_cfg.Bandera("CADENA_TEXTO_FONDO", true)' in dib)
+    check("cada familia de rotulos va con SU estilo y SU altura de la hoja",
+          '_cfg.Texto("SEC_ESTILO_TEXTO", "TEXTO_SECCIONES")' in dib
+          and '_cfg.Texto("CADENA_ESTILO_TEXTO", "TEXTO_CADENAS")' in dib
+          and '_cfg.Texto("LOSA_ESTILO_TEXTO", "TEXTO_LOSAS")' in dib
+          and "private double AlturaSecciones(double respaldo)" in dib
+          and "private double AlturaCadenas(double respaldo)" in dib
+          and "private double AlturaLosas(double respaldo)" in dib)
+    # La columna se ancla por su esquina INFERIOR IZQUIERDA -la alineacion 12 de la macro-,
+    # asi el texto crece hacia arriba y a la derecha y no se mete sobre la seccion.
+    check("el rotulo de la columna se ancla por su esquina, no centrado",
+          "int anclaje = 5," in dib and "mt.AttachmentPoint = anclaje;" in dib
+          and "EstiloSecciones, false, 7)" in dib)
+
+    # ------------------------------------------------------------------
+    # EL MURO SE ROTULA CON SU PIER, EN LA CAPA PIERS
+    # ------------------------------------------------------------------
+    #  Antes se caia a la etiqueta -el nombre de la propiedad- y la planta salia con
+    #  «MURO TABICON 2 APLANADOS 15 CM» escrito 31 veces. Si no hay pier, no hay rotulo.
+    check("el muro se rotula con su PIER y nada mas",
+          "ClasePlanta.Muro => PierDelMuro(el)," in dib
+          and "private static string PierDelMuro(ElementoPlanta el)" in dib
+          and "public string Pier { get; set; }" in dto)
+    check("y el pier va en la capa PIERS, no en la de los textos",
+          "_capas.CapaPiers, ang, EstiloSecciones);" in dib)
+    check("el pier llega desde la ventana",
+          "Pier = el.Pier," in codigo)
+
+    # ------------------------------------------------------------------
+    # EL PRIMER Y EL ULTIMO EJE, AL PANO EXTERIOR DEL MURO
+    # ------------------------------------------------------------------
+    #  Solo esos dos de cada direccion: las cotas de orilla se dan al pano -es lo que se
+    #  replantea- y las interiores eje a eje. Y manda el MURO sobre la trabe.
+    check("los ejes de orilla se corren al pano exterior del muro",
+          "public List<(string Id, double Ordenada)> AlPanoExterior(" in ejp
+          and "public double MedioAnchoSobreEje(" in ejp
+          and '_cfg.Bandera("EJES_EXTREMOS_AL_PANO", true)' in ejp
+          and '_cfg.Numero("EJES_PANO_TOL_CM", 25)' in ejp)
+    check("manda el muro sobre la trabe",
+          "return deTrabe > 0 ? deTrabe : deApoyo;" in ejp
+          and "if (deMuro > 0)" in ejp)
+
+    # ------------------------------------------------------------------
+    # EL EJE DE ORILLA CON SOLO UN CASTILLO
+    # ------------------------------------------------------------------
+    #  «El ultimo eje de izquierda a derecha no esta poniendo la cota a pano». En el eje de
+    #  orilla muchas veces NO corre ningun muro a lo largo: solo esta el castillo -un
+    #  K 15X15- con los muros y las cadenas LLEGANDO a el en perpendicular. Una columna en
+    #  planta es un PUNTO, asi que la comprobacion de los dos extremos no le servia, se
+    #  devolvia cero, el eje no se corria y la cota de orilla quedaba A EJE.
+    check("un castillo sobre el eje de orilla tambien da pano",
+          "if (el.Clase == ClasePlanta.Columna)" in ejp
+          and "deApoyo = Math.Max(deApoyo, MedioDeApoyo(el, vertical));" in ejp)
+    # Basta con que su CENTRO caiga sobre el eje: un punto no tiene dos extremos que mirar.
+    check("basta con que su centro caiga sobre el eje",
+          "var centro = vertical" in ejp
+          and "Math.Abs(el.X1 - ordenada) <= tol" in ejp)
+    # EL GIRO CUENTA: se mide la caja que ENVUELVE a la seccion girada, la misma cuenta con
+    # la que se coloca su rotulo, asi que da el mismo pano que el dibujo. Un 15x40 girado 90
+    # saca pano a 20 cm del eje, no a 7.5.
+    check("y su pano se mide con la seccion YA GIRADA",
+          "private static double MedioDeApoyo(ElementoPlanta el, bool vertical)" in ejp
+          and "? (b / 2 * ca) + (h / 2 * sa)" in ejp
+          and ": (b / 2 * sa) + (h / 2 * ca);" in ejp)
+    # Sin medidas, los 15x15 del castillo de siempre: el mismo respaldo que en planta.
+    check("un castillo sin medidas cae en los 15x15 de siempre",
+          "var b = el.AnchoM > 0 ? el.AnchoM : 0.15;" in ejp
+          and "var h = el.PeralteM > 0 ? el.PeralteM : b;" in ejp)
+
+    # ------------------------------------------------------------------
+    # EL CASTILLO MODELADO COMO SHELL DE MURO
+    # ------------------------------------------------------------------
+    #  «Los shells de muro que tengan en property note CASTILLO igual hacerlos bloques y
+    #  rellenarlos con amarillo como un frame normal, OJO solo si dice CASTILLO». Un castillo
+    #  se puede modelar como frame de 15x15 o como shell angosto -lo que sale al dibujarlo
+    #  junto con su muro-, y dibujado como muro salia como dos rayas, sin bloque y sin
+    #  relleno: la misma cosa se veia de dos formas distintas en el plano.
+    cdm = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CastilloDeMuro.cs"))
+    dibp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    corp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Corte.cs"))
+    winp = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    cfgplano = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/ConfigPlano.cs"))
+    macp = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.Macro.cs"))
+    rot = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/RotuloPlanta.cs"))
+    dtop2 = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+
+    check("el shell de muro que dice CASTILLO se convierte en castillo",
+          "public static bool Dice(ElementoPlanta? el)" in cdm
+          and "public static ElementoPlanta Como(" in cdm
+          and "public static int Normalizar(" in cdm)
+    # SOLO SI DICE CASTILLO, y solo los MUROS: una losa o una trabe con esa nota se quedan
+    # como estan, y el NOMBRE DE LA SECCION no cuenta -se pidio la property note-.
+    check("solo los muros, y solo por el tipo o las notas",
+          "el.Clase != ClasePlanta.Muro" in cdm
+          and "return DicenLasNotas(el.Tipo, el.Notas);" in cdm
+          and "el.Seccion" not in cdm.split("public static bool Dice")[1].split("}")[0])
+    # Se dibuja por el camino de la COLUMNA, que es el del bloque con el nombre de la seccion
+    # y el relleno SOLID amarillo -COLOR_RELLENO_BLOQUE, el 2- dentro del bloque.
+    check("y se dibuja como columna, que es el camino del bloque y el relleno",
+          "Clase = ClasePlanta.Columna," in cdm
+          and 'Tipo = Palabra,' in cdm
+          and 'Forma = "RECT",' in cdm)
+    # El segmento con espesor se vuelve una SECCION EN UN PUNTO, girada: el centro es el punto
+    # medio, el ancho el largo del shell y el peralte su espesor.
+    check("el shell se vuelve una seccion en su centro, girada",
+          "AnchoM = b," in cdm
+          and "PeralteM = espesor," in cdm
+          and "AnguloGrados = largo > Nada ? Math.Atan2(dy, dx) * 180 / Math.PI : 0" in cdm)
+    check("con la bandera para apagarlo",
+          '_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)' in dibp
+          and '_cfg.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)' in corp)
+    # ANTES DE LOS APOYOS: si la conversion llegara despues, los muros moririan en el EJE de
+    # este castillo en vez de en su pano, y el contorno de la losa se le metaria por dentro.
+    check("y se convierte ANTES de calcular los apoyos y las huellas",
+          "PlanoEstructural.CastilloDeMuro.Normalizar(" in dibp
+          and dibp.index("PlanoEstructural.CastilloDeMuro.Normalizar(")
+              < dibp.index("var apoyos = p.Elementos.Where"))
+    check("el corte lo normaliza igual, para que no discuta con la planta",
+          "PlanoEstructural.CastilloDeMuro.Normalizar(\n                c.Elementos, "
+          "EspesorMuroPorOmision," in corp)
+    # LA CASILLA que le toca es la de las COLUMNAS: quien apaga los muros para ver solo la
+    # estructura de castillos los perderia todos, y en el plano ya no son muros.
+    check("en la ventana sigue a la casilla de las columnas",
+          "private bool VisibleEnElPlano(ElementoEtabs el)" in winp
+          and "CastilloDeMuro.DicenLasNotas(null, el.Notas)" in winp
+          and "return VerColumnasPlanoChk.IsChecked == true;" in winp
+          and "if (!VisibleEnElPlano(el))" in winp)
+
+    # ------------------------------------------------------------------
+    # Y COMPLETO: EL BLOQUE CON SUS MEDIDAS Y LOS PEDAZOS UNIDOS
+    # ------------------------------------------------------------------
+    #  «Cuando un shell diga castillo en property notes debes ponerlo COMPLETO como bloque».
+    #  Eran dos cosas distintas las que lo dejaban incompleto:
+    #
+    #  1) EL NOMBRE DEL BLOQUE. En un frame la seccion fija las medidas -«K 15X15» mide 15x15
+    #     en todo el modelo-, asi que el bloque puede llamarse como ella. En un SHELL no: la
+    #     seccion es la propiedad del muro, que solo fija el ESPESOR, y el largo lo pone cada
+    #     shell. Llamando al bloque «MURO 15» a secas, el primer castillo creaba la definicion
+    #     y todos los demas se insertaban con las medidas de aquel: uno de 15x40 salia 15x15.
+    #  2) LOS PEDAZOS. Un castillo de shell casi nunca llega de una pieza: partido a lo alto
+    #     -antepecho y dintel- los dos paneles ocupan el mismo sitio en planta y salian DOS
+    #     bloques encimados; partido a lo largo, el castillo salia en dos mitades.
+    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+
+    # ------------------------------------------------------------------
+    # SU NOMBRE ES SU MEDIDA: «K 15X23.5»
+    # ------------------------------------------------------------------
+    #  «Debes leer las property note que dice CASTILLO y solo de esos sacar su dimension en
+    #  planta, y ese dato ocuparlo para nombrar su bloque como su etiqueta». Es lo unico que
+    #  sirve: la seccion de un shell es la propiedad del MURO -«MURO 15», que no dice nada de
+    #  este castillo- y su etiqueta es el PIER, que en SAP2000 no existe, asi que el castillo
+    #  salia sin rotulo y con el nombre de un muro. Ahora se nombra con su medida en planta -el
+    #  espesor por el largo- y ese nombre va en la SECCION, que es de donde salen el nombre del
+    #  BLOQUE y el rotulo de la planta.
+    check("el castillo de area se nombra con su medida en planta",
+          "public static string Nombre(string? prefijo, double espesorM, double largoM)" in cdm
+          and "Etiqueta = Nombre(prefijo, espesor, b)," in cdm
+          and "Seccion = Nombre(prefijo, espesor, b)," in cdm)
+    # CON PUNTO DECIMAL SIEMPRE: el nombre acaba siendo un nombre de BLOQUE de AutoCAD, y con la
+    # coma de la configuracion regional la misma medida daria dos bloques distintos.
+    check("con decimales solo si hacen falta y con punto, no con coma",
+          '(m * 100).ToString("0.##", CultureInfo.InvariantCulture)' in cdm)
+    check("y el prefijo sale de la hoja",
+          '_cfg.Texto("SHELL_CASTILLO_PREFIJO", "K")' in dibp
+          and 'P("SHELL_CASTILLO_PREFIJO", "K",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # LAS NOTAS DE LA PROPIEDAD DE AREA, EN LOS DOS PROGRAMAS
+    # ------------------------------------------------------------------
+    #  AQUI ESTABA EL CASTILLO QUE NO SALIA, y son dos problemas con el mismo sintoma -la
+    #  propiedad se queda SIN NOTAS, y sin notas nada dice CASTILLO-:
+    #
+    #  1) EN ETABS, GetWall declara sus dos primeros datos como ENUMERACIONES -eWallPropType y
+    #     eShellType-. Pasandole ceros enteros, contra la interfaz del ensamblado es un choque
+    #     de tipos y la invocacion revienta antes de leer nada.
+    #  2) EN SAP2000 no existen GetWall ni GetSlab: todas las propiedades de area son SHELL.
+    #
+    #  Las dos se arreglan igual: se le pregunta a la FIRMA REAL como se llama cada parametro y
+    #  se piden «Notes» y «Thickness» POR SU NOMBRE, con cada hueco rellenado con un valor
+    #  neutro de su tipo, que es lo que hace pasar a las enumeraciones.
+    com = leer(ruta("client/src/CadLink.Etabs/ComLateBinding.cs"))
+
+    check("se puede llamar a la OAPI leyendo los parametros por su nombre",
+          "public static Dictionary<string, object?>? CallPorNombre(" in com
+          and "args[i] = ValorNeutro(ps[i]);" in com
+          and "salida[ps[i].Name ?? i.ToString(CultureInfo.InvariantCulture)] = args[i];" in com)
+    # Solo si la OAPI devolvio 0: preguntarle a una losa por GetWall no falla, devuelve error, y
+    # con la respuesta vacia pareceria que la propiedad no tiene notas.
+    check("y solo se acepta si la OAPI devolvio 0",
+          "if (r is not null && Convert.ToInt32(r) != 0)" in com)
+    check("las notas del area se buscan en los metodos de ETABS y de SAP2000",
+          'new[] { "GetWall", "GetWall_1", "GetShell_1", "GetShell" }' in lector
+          and '"GetSlab", "GetSlab_1", "GetDeck", "GetShell_1", "GetShell"' in lector
+          and 'Com.CallPorNombre(propArea, m, (0, seccion))' in lector)
+    check("y se piden por su nombre, no por su posicion",
+          'NumeroDe(d, "Thickness", "Depth", "OverallDepth", "TotalDepth")' in lector
+          and 'TextoDe(d, "Notes")' in lector
+          and 'TextoDe(d, "MatProp")' in lector)
+    # Y si no hay ensamblado que preguntar -solo IDispatch-, las firmas de shell a mano, con el
+    # texto recogido sin mirar posiciones.
+    check("con el respaldo de las firmas a mano por IDispatch",
+          '("GetShell_1", Larga(), 5),' in lector
+          and '("GetShell", Corta(), 4),' in lector
+          and "plantilla.Skip(1)" in lector
+          and ".OfType<string>()" in lector)
+    check("los pedazos del mismo castillo se unen en uno",
+          "public static bool MismoCastillo(" in cdm
+          and "public static ElementoPlanta Unido(" in cdm
+          and "elementos.RemoveAt(sobran[k]);" in cdm)
+    # MISMA DIRECCION, MISMA LINEA Y QUE SE TOQUEN: con eso, dos castillos distintos separados
+    # 15 cm no se unen, y las dos mitades de uno si.
+    check("y solo si van igual, en la misma linea y se tocan",
+          "Math.Abs((ax * by) - (ay * bx)) > 0.10" in cdm
+          and "return Math.Min(a2, b2) >= Math.Max(a1, b1) - tol;" in cdm)
+    # EL ESPESOR, EL MAYOR -el pano llega al mas saliente- Y LAS COTAS, del mas bajo al mas
+    # alto, que es lo que hace que en el corte salga de una pieza.
+    check("el unido toma el espesor mayor y las cotas de punta a punta",
+          "AnchoM = piezas.Max(x => x.AnchoM)," in cdm
+          and "Z1 = piezas.Min(x => Math.Min(x.Z1, x.Z2))," in cdm
+          and "Z2 = piezas.Max(x => Math.Max(x.Z1, x.Z2))" in cdm)
+    # LA DIRECCION LA PONE LA PIEZA MAS LARGA: tomando la primera, un pedacito de 5 cm dibujado
+    # torcido torceria el castillo entero.
+    check("y la direccion la pone la pieza mas larga",
+          "var guia = piezas.OrderByDescending(Largo).First();" in cdm)
+    check("las claves del castillo de shell estan en la hoja CONFIG",
+          'P("SHELL_CASTILLO_COMO_COLUMNA", "SI",' in cfgplano
+          and 'P("SHELL_CASTILLO_UNIR_TOL_CM", "2",' in cfgplano
+          and 'P("SHELL_CASTILLO_DE_OTRO_NIVEL", "SI",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # SOLO DONDE VA DE PISO A TECHO
+    # ------------------------------------------------------------------
+    #  «Ya lo colocas pero lo duplicas en los niveles, solo debe aparecer en donde sea de piso a
+    #  techo». Antes bastaba con que el castillo TOCARA el nivel -20 cm de holgura-, asi que uno
+    #  que muere justo en el nivel se dibujaba en su planta y otra vez en la de arriba, donde en
+    #  realidad no hay castillo. Ahora tiene que CUBRIR el entrepiso: la fraccion de
+    #  MURO_FRACCION_ENTREPISO, que es la regla que ya usaba la macro para saber si un muro es
+    #  completo o es un antepecho. Un castillo de tres niveles lo cubre entero en los tres y sale
+    #  en las tres plantas, que es lo correcto: en las tres hay castillo.
+    check("el castillo de area solo entra donde va de piso a techo",
+          'CfgPlano.Numero("MURO_FRACCION_ENTREPISO", 0.75)' in winp
+          and "var minimo = n.AlturaM * fraccion;" in winp
+          and "var cubre = Math.Min(zMax, zAlta) - Math.Max(zMin, zBaja);" in winp
+          and "if (cubre < minimo)" in winp)
+    check("y ya no basta con que lo toque",
+          "SHELL_CASTILLO_CRUZA_TOL_CM" not in winp
+          and "SHELL_CASTILLO_CRUZA_TOL_CM" not in cfgplano)
+
+    # ------------------------------------------------------------------
+    # EL ROTULO DE LA PLANTA, SIEMPRE A LA MISMA ALTURA
+    # ------------------------------------------------------------------
+    #  «Los rotulados de planta estructural deben estar a -5 de los ejes para que sea siempre
+    #  uniforme». Hacian falta las dos cosas: la DISTANCIA -ROTULO_SEPARACION_EJES, ahora 5- y el
+    #  PUNTO DE PARTIDA, que era el error de bulto: se medía desde la caja de los ELEMENTOS, y
+    #  los ejes bajan mas que ella cuando la planta tiene pocas piezas. Por eso en un juego de
+    #  tres plantas los tres rotulos salian escalonados y el de la cimentacion, casi vacia,
+    #  aparecia arriba del todo, a la altura de los ejes de arriba.
+    check("el rotulo se cuelga de donde ACABARON los ejes, no del dibujo",
+          "_abajoDeLosEjes = yMin + dy - Ejes.AbajoDeEjes(true);" in macp
+          and "var abajo = _abajoDeLosEjes" in macp
+          and "var y0 = abajo - Rot.SeparacionEjes - h1;" in macp)
+    # Y mirando tambien las cotas: si una cota baja mas que la burbuja, el rotulo va debajo de la
+    # cota y no encima de ella.
+    check("y tambien por debajo de las cotas",
+          "Math.Min(c.Y1, Math.Min(c.Y2, c.YTexto)) + dy);" in macp)
+    # Se reinicia en cada planta: si se quedara el de la anterior, el rotulo de esta se colgaria
+    # de una cuadricula que esta en otro sitio del dibujo.
+    check("se reinicia en cada planta", "_abajoDeLosEjes = null;" in dibp)
+    # LA DISTANCIA VUELVE A 0.50, la de la hoja de la macro: se probo con 5 y se pidio volver.
+    # Lo que estaba mal no era la distancia, sino desde donde se medía.
+    check("y la distancia es la de la macro, medio metro",
+          '_cfg.Numero("ROTULO_SEPARACION_EJES", 0.5)' in rot
+          and 'P("ROTULO_SEPARACION_EJES", "0.5",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # EL CASTILLO DE AREA, HASTA EL PANO DEL MURO QUE SE CRUZA
+    # ------------------------------------------------------------------
+    #  «Cuando sea area un castillo debes sumarle la mitad del espesor de la seccion en el lado
+    #  donde se intersecta con otro muro modelado, para que llegue al pano y no se corte antes».
+    #  En el modelo LOS MUROS SE DIBUJAN POR SU EJE, asi que el shell del castillo se traza hasta
+    #  la LINEA del muro con el que se topa: en el plano el castillo se quedaba a media pared -el
+    #  pano del muro seguia mas alla- y parecia cortado.
+    #
+    #  La cuenta no es «sumale medio espesor y ya», sino HASTA DONDE FALTA: se busca donde cruza
+    #  el eje del otro muro y se alarga hasta su cara de mas alla. Con el castillo modelado al
+    #  eje sale exactamente el medio espesor que se pidio, y el que YA llegaba al pano no se
+    #  alarga: sumar a ciegas lo pasaria de largo justo en ese caso.
+    check("el castillo de area se alarga hasta el pano del muro que lo cruza",
+          "public static ElementoPlanta AlPanoDeLosMuros(" in cdm
+          and "faltaA = Math.Max(faltaA, medio - t);" in cdm
+          and "faltaB = Math.Max(faltaB, (t - largo) + medio);" in cdm)
+    # SOLO MUROS QUE LO CRUCEN, y solo en la PUNTA: uno que corre en su misma direccion no se
+    # cruza -se acompañan- y uno que pasa por el medio no lo alarga. Otro castillo tampoco:
+    # entre dos castillos no hay pano que alcanzar.
+    check("solo con muros que lo cruzan, y solo en la punta",
+          "if (muro.Clase != ClasePlanta.Muro || Dice(muro)" in cdm
+          and "if (Math.Abs(den) < 0.1)" in cdm
+          and "var alcance = tolM + (medio * 2);" in cdm)
+    # Y que el cruce caiga DENTRO del muro: en su prolongacion no hay muro que dé pano.
+    check("y con el cruce dentro del muro, no en su prolongacion",
+          "if (sMuro < -tolM || sMuro > largoMuro + tolM)" in cdm)
+    # Con la holgura del encuentro que ya usa el recorte de los muros: es la misma pregunta.
+    check("con la holgura del encuentro de la hoja y su bandera",
+          '_cfg.Bandera("SHELL_CASTILLO_AL_PANO", true)' in dibp
+          and '_cfg.Numero("PANO_TOLERANCIA_CM", 25) / 100' in dibp
+          and 'P("SHELL_CASTILLO_AL_PANO", "SI",' in cfgplano)
+    # Y se alarga ANTES de convertirlo, para que la medida que se dibuja y la que nombra al
+    # bloque sean la misma: el nombre del bloque tiene que describir al bloque.
+    check("se alarga antes de nombrarlo, para que el nombre diga lo que se dibuja",
+          "unido = AlPanoDeLosMuros(unido, elementos, espesorPorOmision, tolPanoM);" in cdm
+          and cdm.index("AlPanoDeLosMuros(unido")
+              < cdm.index("elementos[g[0]] = Como(unido"))
+
+    # ------------------------------------------------------------------
+    # EL CABEZAL DE LAS PROPERTY NOTES
+    # ------------------------------------------------------------------
+    #  Se pidio leerlo igual que los demas. Va ANTES que TRABE y que VIGA en la lista de
+    #  palabras: una nota que diga «CABEZAL DE TRABE» es un cabezal, no una trabe. Y su CAPA es
+    #  la de las trabes, porque un cabezal es una viga -la que cierra un vano o la que reparte
+    #  sobre los apoyos-: sin esa traduccion se iria a E-OTROS, una capa que nadie mira, que es
+    #  lo mismo que les pasaba a las tres cadenas.
+    secm = leer(ruta("client/src/CadLink.Etabs/SeccionesModelo.cs"))
+    capp2 = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CapasPlano.cs"))
+
+    check("CABEZAL se lee de las property notes",
+          '("CABEZAL", "CABEZAL"),' in secm
+          and secm.index('("CABEZAL", "CABEZAL"),') < secm.index('("TRABE", "TRABE"),'))
+    check("y va a la capa de las trabes",
+          'if (t.Equals("CABEZAL", StringComparison.OrdinalIgnoreCase))' in capp2
+          and 'return CapaDeTipo("TRABE");' in capp2)
+
+    # ------------------------------------------------------------------
+    # DE VARIAS CADENAS EN LA MISMA LINEA, SOLO LA MAS ALTA
+    # ------------------------------------------------------------------
+    #  «Si hay cadena intermedia abajo no lo muestres en planta, en planta solo muestra la cadena
+    #  mas alta que exista, solo dibuja una». Un muro de mamposteria lleva TRES cadenas sobre el
+    #  mismo paño -desplante, intermedia y cerramiento-: las tres son del mismo nivel y las tres
+    #  ocupan LA MISMA LINEA en planta, asi que se dibujaban las tres una encima de la otra, con
+    #  tres rotulos pisandose. Y en una planta no hay forma de distinguirlas: no tiene alturas.
+    cma = leer(ruta("client/src/CadLink.Cad/PlanoEstructural/CadenaMasAlta.cs"))
+
+    check("de varias cadenas en la misma linea solo se dibuja la mas alta",
+          "public static HashSet<ElementoPlanta> Tapadas(" in cma
+          and "public static double Arriba(ElementoPlanta el) => Math.Max(el.Z1, el.Z2);" in cma
+          and "PlanoEstructural.CadenaMasAlta.Tapadas(p.Elementos, tolCadena)" in dibp)
+    # SOLO LAS QUE SE ENCIMAN DE VERDAD: dos tramos seguidos del mismo paño son dos cadenas
+    # distintas -una de castillo a castillo y la siguiente de ahi al final- y las dos se dibujan.
+    check("y solo se tapa la que otra le pasa por encima",
+          "return Math.Min(a2, b2) - Math.Max(a1, b1) > tolM;" in cma)
+    # LAS TRABES NO ENTRAN: dos trabes a distinta altura sobre la misma linea son dos vigas de
+    # verdad -una de entrepiso y una de azotea- y callar una seria esconder estructura.
+    check("las trabes no entran, solo las cadenas y las dalas",
+          'StartsWith("CADENA", StringComparison.OrdinalIgnoreCase)' in cma
+          and 'Equals("DALA", StringComparison.OrdinalIgnoreCase)' in cma
+          and "el.Clase != ClasePlanta.Trabe" in cma)
+    # LA TAPADA NO SE DIBUJA NI SE ROTULA: si solo se quitara la geometria, su nombre seguiria
+    # escrito en el mismo punto que el de la de arriba, que era la mitad del problema.
+    check("la cadena tapada no se dibuja ni se rotula",
+          dibp.count("if (_cadenasTapadas.Contains(el))") == 2)
+    check("con su bandera y la holgura de la cadena",
+          '_cfg.Bandera("CADENA_SOLO_LA_MAS_ALTA", true)' in dibp
+          and 'P("CADENA_SOLO_LA_MAS_ALTA", "SI",' in cfgplano)
+
+    # ------------------------------------------------------------------
+    # NI EL NOMBRE DE LA CADENA ENCIMA DE UN CASTILLO DE AREA
+    # ------------------------------------------------------------------
+    #  «Cuando tenga un area sea castillo, no coloques el nombre de la cadena». Y SE MIDE EL
+    #  TEXTO, NO SU PUNTO DE INSERCION, que es lo que fallaba: el rotulo es un MTEXT CENTRADO en
+    #  la barra, asi que el texto se extiende a los dos lados. Una cadena de 45 cm entre dos
+    #  castillos tiene su centro ENTRE los dos -fuera de los dos- y «CC 15X25» mide mas que la
+    #  propia cadena: el punto no caia en ningun castillo y el texto los tapaba igual.
+    check("el nombre de la cadena no se escribe encima de un castillo de area",
+          "public static bool HayCastilloDeAreaEn(" in cdm
+          and "public static bool HayCastilloDeAreaBajoElTexto(" in cdm
+          and "PlanoEstructural.CastilloDeMuro.HayCastilloDeAreaBajoElTexto(" in dibp
+          and 'P("CADENA_ROTULO_EN_CASTILLO_AREA", "NO",' in cfgplano)
+    # El ancho del texto, con la misma cuenta de omision que AnchoDeTexto: largo x altura x 0.55.
+    check("midiendo el ancho del texto como el resto del dibujante",
+          "var medioTexto = texto.Length * altTrabe * 0.55 / 2;" in dibp
+          and "cx - ex, cy - ey, cx + ex, cy + ey, castillos, altTrabe))" in dibp)
+
+    # ------------------------------------------------------------------
+    # LA REGLA QUE NO DEPENDE DEL TEXTO: EL CASTILLO CUBRE A LA CADENA
+    # ------------------------------------------------------------------
+    #  En el modelo la cadena llega PARTIDA por sus cruces, asi que EL PEDAZO QUE VA SOBRE EL
+    #  CASTILLO es una cadena propia: mide lo que el castillo, su rotulo va al centro de ese
+    #  pedazo -o sea justo en medio del castillo- y ahi no cabe ningun nombre. Es el caso de la
+    #  imagen: «CC 15X25» escrito a lo largo del K 15X80, con su fondo opaco partiendo el amarillo.
+    #
+    #  Y distingue los dos casos del plano: la cadena que corre A LO LARGO del castillo queda
+    #  cubierta por el y no se rotula; la que LLEGA DE LADO y muere en el solo lo toca en su punta
+    #  -de su largo, el castillo cubre el espesor y nada mas- asi que si se rotula.
+    check("la cadena que el castillo cubre no se rotula, sin medir el texto",
+          "public static bool CubreALaBarra(" in cdm
+          and "PlanoEstructural.CastilloDeMuro.CubreALaBarra(el, castillos, tolCastillo)" in dibp
+          and "if (comun >= largo * fraccionMin)" in cdm)
+    # Con la fraccion, para que una cadena larga que solo lo topa conserve su nombre.
+    check("y solo si le cubre la mayor parte",
+          "double fraccionMin = 0.6)" in cdm)
+    # LOS CASTILLOS SE MIRAN EN LA PLANTA QUE SE ESTA DIBUJANDO, no en un campo que se llena antes:
+    # un campo es una fuente de error de mas -si el orden cambia, llega vacio y la regla no se
+    # aplica sin decir nada-. La planta siempre esta.
+    check("los castillos se miran en la planta, no en un campo",
+          "private void Rotulo(ElementoPlanta el, PlantaCad p, double x0, double y0," in dibp
+          and "var castillos = p.Elementos.Where(" in dibp
+          and "e => e.DeShell && e.Clase == ClasePlanta.Columna).ToList();" in dibp
+          and "_castillosDeArea" not in dibp)
+    # Cada cinco centimetros: un castillo mide quince, asi que no se cuela entre dos preguntas.
+    check("y recorriendo el texto de punta a punta",
+          "var pasos = Math.Max(2, (int)Math.Ceiling(largo / 0.05));" in cdm)
+    # UN ROTULO NO ES UNA RAYA, ES UNA CAJA: alto por largo, y con el fondo opaco todavia un poco
+    # mas. Se recorren sus TRES lineas -el centro y las dos orillas-, que si no un texto que pasa
+    # justo al lado tapaba el castillo con media letra y se escapaba.
+    check("y midiendo la caja del texto, no solo su linea",
+          "foreach (var lado in new[] { 0d, medioAlto, -medioAlto })" in cdm
+          and "var medioAlto = altoTexto > 0 ? altoTexto * 0.65 : 0;" in cdm
+          and "cx + ex, cy + ey, castillos, altTrabe))" in dibp)
+    # SOLO LOS DE AREA -DeShell-: en un castillo de frame el nombre de la cadena nunca ha
+    # estorbado, y callarlo seria quitar un dato que si se lee.
+    check("y solo con los castillos de AREA, no con los de frame",
+          "public bool DeShell { get; set; }" in dtop2
+          and "if (!el.DeShell || el.Clase != ClasePlanta.Columna)" in cdm
+          and "if (!el.DeShell || el.Clase != ClasePlanta.Columna || el.AnchoM <= Nada)" in cdm)
+    # Con el giro deshecho, como el recorte al pano: en un castillo a 45 grados la caja recta
+    # diria que si donde no lo hay.
+    check("midiendo contra la seccion ya girada",
+          "var lx = (rx * ca) + (ry * sa);" in cdm
+          and "if (Math.Abs(lx) <= b / 2 && Math.Abs(ly) <= h / 2)" in cdm)
+
+    # ------------------------------------------------------------------
+    # EL MURO DE CONCRETO SIN CADENA, EN SU CAPA
+    # ------------------------------------------------------------------
+    #  «No me dibujas los muros de concreto cuando no tienen cadena, dibujalos en una capa -solo
+    #  si no tienen cadena; si tienen cadena dibuja pura cadena, como en mamposteria-: la capa
+    #  E-MURO DE CONCRETO». Es la regla de la mamposteria aplicada al concreto: donde hay cadena
+    #  manda la cadena -el muro y su cadena ocupan la misma linea en planta y dibujar los dos deja
+    #  dos parejas de rayas pegadas- y donde no hay cadena el muro es lo unico que hay. La
+    #  diferencia es la CAPA: un muro de concreto es estructura, se arma y se cuela, y tiene que
+    #  poderse revisar sin la mamposteria encima.
+    check("el muro de concreto sin cadena va a E-MURO DE CONCRETO",
+          'P("CAPA_MURO_CONCRETO", "MURO DE CONCRETO",' in cfgplano
+          and 'public string CapaMuroConcreto => CapaDeTipo("MURO CONCRETO");' in capp2
+          and 'Color("COLOR_MURO_CONCRETO", 4)' in capp2)
+    check("y el dibujante la usa solo cuando no lleva cadena",
+          "private string CapaDeMuro(ElementoPlanta el, bool tapado)" in dibp
+          and 'string.Equals(el.Material, "CONCRETO", StringComparison.OrdinalIgnoreCase)' in dibp
+          and "var capaMuro = CapaDeMuro(el, tapado);" in dibp
+          and "Barra(el, x0, y0, capaMuro," in dibp)
+    # Y se dice en la bitacora cuantos fueron, que es lo que permite saber por que no se ve uno.
+    check("y el resumen dice cuantos fueron",
+          "_murosDeConcreto++;" in dibp
+          and "muro(s) de concreto sin cadena se dibujaron en la capa" in dibp)
+
+    # ------------------------------------------------------------------
+    # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
+    # ------------------------------------------------------------------
+    #  «Las que digan CADENA DE DESPLANTE, todas sus lineas deben ser continuas, no punteadas, no
+    #  importa si hay en niveles arriba». Es lo correcto por lo mismo que en la cimentacion: una
+    #  cadena de DESPLANTE no lleva muro debajo POR DEFINICION -desplanta, es la primera-, asi que
+    #  la regla de «sin muro debajo va a trazos» se las llevaba TODAS a la punteada y el aviso
+    #  dejaba de avisar. Lo que estaba mal era pedirlo solo en el nivel de CIMENTACION: una cadena
+    #  de desplante en un nivel intermedio -el arranque de un muro que nace en una losa- es igual
+    #  de desplante, y salia punteada. Se mira su TIPO, que sale de las property notes.
+    check("la cadena de desplante va continua en cualquier nivel",
+          '_cfg.Bandera("CADENA_DESPLANTE_CONTINUA", true)' in macp
+          and '.Contains("DESPLANTE", StringComparison.OrdinalIgnoreCase)' in macp
+          and 'P("CADENA_DESPLANTE_CONTINUA", "SI",' in cfgplano)
+    # Y antes de preguntar por el muro de piso a techo: si no, la respuesta de la ventana mandaria
+    # y la de desplante saldria punteada igual.
+    check("y se decide antes de mirar si tiene muro debajo",
+          macp.index('_cfg.Bandera("CADENA_DESPLANTE_CONTINUA", true)')
+          < macp.index("if (el.MuroDePisoATecho)"))
+
+    # ------------------------------------------------------------------
+    # POR QUE NO SE VEIA EL CASTILLO DE AREA DEBAJO DE LA CADENA
+    # ------------------------------------------------------------------
+    #  Dos cosas, las dos comprobadas en el codigo:
+    #
+    #  1) EL STORY. Un castillo de area se dibuja de corrido en la vista de alzado -de la
+    #     cimentacion al cerramiento- y entonces ETABS lo guarda en UN story: el de su punta.
+    #     La planta filtra por esa etiqueta, asi que en los demas niveles salia la cadena y
+    #     debajo de ella nada. Se trae por GEOMETRIA: si cruza el entrepiso -o llega a el-, en
+    #     esa planta hay castillo. Es la misma idea de los arranques de la cimentacion.
+    #  2) LAS COTAS. Las de un muro salian de los dos vertices MAS SEPARADOS EN PLANTA, y esos
+    #     pueden ser los dos de ABAJO segun el orden en que ETABS devuelva las esquinas: Z1 y
+    #     Z2 valian lo mismo, el alto era CERO y en el corte no se dibujaba nada.
+    check("las cotas del muro van de la mas baja a la mas alta del paño",
+          "e.X1 = coords[ia].X; e.Y1 = coords[ia].Y;" in lector
+          and "e.Z1 = zMin;" in lector
+          and "e.Z2 = zMax;" in lector)
+    check("el castillo de area que cruza el nivel se trae de cualquier story",
+          "private void AgregarCastillosDeArea(" in winp
+          and "AgregarCastillosDeArea(modelo, p, nivel);" in winp
+          and 'CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true)' in winp)
+    # Por su altura DE VERDAD -los vertices-, no por Z1/Z2, que en un area es el dato flojo.
+    check("y se mide por los vertices del area",
+          "el.Vertices3D.Min(v => v.Z)" in winp
+          and "el.Vertices3D.Max(v => v.Z)" in winp)
+    # LA Z SE RECORTA AL ENTREPISO: sin eso, un castillo de tres niveles se dibujaria tres
+    # niveles de alto en el corte de uno solo.
+    check("la Z se recorta a este entrepiso, para el corte",
+          "e.Z1 = Math.Max(zMin, zBaja);" in winp
+          and "e.Z2 = Math.Min(zMax, zAlta);" in winp)
+    check("y el dibujante los usa para la linea, las burbujas Y las cotas",
+          "Ejes.SinRepetidos(p.EjesX), verticales: true, p.Elementos)" in mac
+          and "Ejes.SinRepetidos(p.EjesY), verticales: false, p.Elementos)" in mac
+          and "Ejes.Verticales(ejesX, yMin, yMax)" in mac
+          and "Ejes.Horizontales(ejesY, xMin, xMax)" in mac
+          and "ejesX.Select(e => e.Ordenada).ToList()" in mac)
+    # Con COPIAS y no sobre la lista de la planta: dibujar dos veces correria los ejes dos
+    # veces y la cota total creceria sola.
+    check("se trabaja con copias, no se toca la cuadricula de la planta",
+          "var salida = ejes.ToList();" in ejp)
+    # ------------------------------------------------------------------
+    # UN EJE, UNA LINEA: FUERA LOS REPETIDOS, Y LA CAPA AL FONDO
+    # ------------------------------------------------------------------
+    #  La cuadricula del modelo trae ejes DECLARADOS DOS VECES -uno en el sistema principal
+    #  y otro como secundario- y salian dos lineas encima de la otra, dos burbujas
+    #  superpuestas y dos cotas pisandose: en el plano se ve como un eje mas grueso.
+    check("los ejes repetidos se dibujan UNA sola vez",
+          'P("EJES_UNIR_TOL_CM", "1",' in cfgp
+          and "public double ToleranciaUnirEjes" in ejp
+          and "public static List<(string Id, double Ordenada)> SinRepetidos(" in ejp
+          and "Ejes.SinRepetidos(p.EjesX)" in mac)
+    # Y tambien en el LECTOR, para que no lleguen duplicados ni al visor ni a la tabla.
+    lec = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("y el lector tampoco los mete dos veces",
+          "static void Cargar(" in lec
+          and "List<EjesModelo.Eje> destino," in lec
+          and "const double tol = 0.01;" in lec)
+    # ------------------------------------------------------------------
+    # «EN SAP2000 ME GENERA MAS EJES DE LOS QUE TENGO»
+    # ------------------------------------------------------------------
+    #  La cuadricula guarda TODAS las lineas declaradas, visibles o no, y la API las devuelve
+    #  todas. En SAP2000 es de lo mas normal tener lineas OCULTAS -se apagan en cuanto sirvieron
+    #  para construir y ya no hacen falta-, y esas no son ejes del plano: son lineas de apoyo
+    #  que su autor decidio esconder.
+    check("los ejes OCULTOS del modelo no se dibujan",
+          "Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[10]), Banderas(a[13]), m)"
+          in lec
+          and "Cargar(ejes.X, Com.AsStrings(a[7]), Com.AsDoubles(a[9]), Banderas(a[11]), m)"
+          in lec
+          and "if (mirarVisibles && !visibles[i])" in lec)
+    # CON SALVAGUARDA: si el arreglo no cuadra o dice que NINGUNO se ve, no se filtra nada. Un
+    # plano con ejes de mas es un problema; un plano SIN ejes es peor, y ese caso no se puede
+    # distinguir de un dato mal leido.
+    check("y si el dato de visibilidad no cuadra, no se filtra nada",
+          "var mirarVisibles = visibles.Length >= ords.Length && visibles.Any(v => v);" in lec)
+    # LAS BANDERAS, en las tres formas en que CSI las puede devolver: cambia entre versiones y
+    # entre ETABS y SAP2000.
+    check("las banderas de visibilidad se leen en cualquiera de sus formas",
+          "private static bool[] Banderas(" in lec
+          and "private static bool Verdadero(" in lec
+          and '"TRUE" or "YES" or "SI"' in lec)
+    check("y se avisa de cuantos ejes se saltaron por estar ocultos",
+          "OCULTOS en el modelo y no se " in lec)
+    # ------------------------------------------------------------------
+    # EL SISTEMA DE EJES DE SAP2000 SE LLAMA «GLOBAL», NO «G1»
+    # ------------------------------------------------------------------
+    #  Aqui estaba el motivo de que en SAP salieran ejes DEDUCIDOS -16 numeros y 26 letras- en
+    #  lugar de los que tiene el modelo: si GetNameList no respondia, se probaba «G1», que es
+    #  el nombre de omision de ETABS. Con el nombre equivocado la llamada devuelve error y no
+    #  hay ejes, aunque esten ahi. Ahora se prueban TODOS los que de el modelo y detras los
+    #  tres de convencion: GLOBAL -SAP2000-, G1 -ETABS- y el vacio -el sistema activo-.
+    check("se prueban todos los nombres del sistema de ejes, GLOBAL incluido",
+          'new[] { "GLOBAL", "G1", string.Empty }' in lec
+          and "foreach (var nombre in nombres)" in lec
+          and "private static bool LeerCuadricula(" in lec)
+    # Y SE DICE DE DONDE SALIERON: leidos del modelo o deducidos. Sin eso, un plano con ejes de
+    # mas no se distingue de un modelo con ejes de mas.
+    check("y se dice si los ejes se leyeron o se dedujeron",
+          "Ejes leídos del modelo: sistema" in lec
+          and "los ejes se DEDUCEN de la geometría" in lec)
+    # LA DEDUCCION, CON 25 CM DE TOLERANCIA: dos columnas a diez centimetros no son dos ejes,
+    # son la misma alineacion con un nudo movido.
+    ejm = leer(ruta("client/src/CadLink.Etabs/EjesModelo.cs"))
+    check("la deduccion agrupa con 25 cm, no con 5",
+          "double tolM = 0.25" in ejm)
+
+    # ------------------------------------------------------------------
+    # LAS SECCIONES VARIABLES Y LAS CIRCULARES DE SAP2000
+    # ------------------------------------------------------------------
+    #  «Salen todas cuadradas cuando son variables e incluso circulares». Una seccion VARIABLE
+    #  -non prismatic- no tiene medidas propias: es una lista de tramos con su seccion de
+    #  arranque y de llegada, asi que no le responde ningun GetRectangle ni GetCircle, su tipo
+    #  no estaba en la lista, y todo acababa en el respaldo: una caja.
+    check("la seccion variable se lee por sus tramos",
+          "private static Dims? LeerVariable(" in lec
+          and '"GetNonPrismatic"' in lec
+          and "14 => LeerVariable(propFrame, seccion)" in lec)
+    # HEREDA LA FORMA de su seccion de arranque: una variable de circular a circular sale
+    # CIRCULAR, que es lo que se pidio.
+    check("y hereda la forma de su seccion de arranque",
+          "LeerCirculo(propFrame, primera)" in lec
+          and "?? LeerTubo(propFrame, primera)" in lec)
+    # SIN RECURSION POSIBLE: PorForma vuelve a probar la variable, asi que una variable cuya
+    # seccion de arranque fuera otra variable colgaria la lectura del modelo.
+    check("y no puede entrar en un bucle sin fin",
+          "Aquí NO se llama a PorForma" in lec
+          and "PorForma(propFrame, primera)" not in lec)
+    # EL TANTEO, CON EL CIRCULO POR DELANTE: su getter es especifico -o es un circulo o falla-
+    # mientras que probar rectangulo primero es lo que hacia que una redonda saliera cuadrada.
+    check("en el tanteo el circulo va antes que el rectangulo",
+          lec.index("?? LeerCirculo(propFrame, seccion)")
+          < lec.index("?? LeerRectangulo(propFrame, seccion)"))
+
+    # ------------------------------------------------------------------
+    # LAS TRES CASILLAS DEL PROGRAMA, IGUALADAS A MANO
+    # ------------------------------------------------------------------
+    #  Iban atadas con un enlace del XAML -SelectedIndex por ElementName, de dos vias- y desde
+    #  que la casilla de la lectura del modelo vive dentro del panel PLEGADO, ese enlace dejo de
+    #  servir: la casilla sin seleccion escribia su -1 en la otra y las dos se quedaban EN
+    #  BLANCO. Por eso no se veia en que programa se estaba trabajando.
+    xaml_prog = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    cod_prog = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+
+    check("las casillas del programa ya no dependen del enlace del XAML",
+          "ElementName=ProgramaCsiCombo" not in xaml_prog
+          and xaml_prog.count('SelectionChanged="OnProgramaCsiCambiado"') == 3)
+    check("y se igualan las tres a mano, con guarda contra el rebote",
+          "ProgramaCsiCombo, ProgramaCsiPlanosCombo, ProgramaCsiSeccionesCombo" in cod_prog
+          and "if (!_igualandoPrograma && sender is ComboBox tocada" in cod_prog
+          and "private bool _igualandoPrograma;" in cod_prog)
+    # Y SIN EJE ELEGIDO NO HAY CORTE, PERO SE DICE: salir en silencio es indistinguible de que
+    # el corte falle.
+    check("sin corte pedido se dice por que no hubo corte",
+          "No se dibujó ningún corte porque no se pidió ninguno" in codigo)
+    # DRAW ORDER -> SEND TO BACK: la capa de los ejes se baja de ULTIMA, asi que queda
+    # debajo de la losa, del armado y de todo lo demas.
+    check("la capa de los ejes se manda al fondo, de ultima",
+          'P("CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"' in cfgp
+          and '"CAPAS_AL_FONDO", "LOSA,ARMADO LOSA,VOLADO,LOSACERO,EJES"' in capp)
+    check("hay prueba ejecutable de los ejes repetidos",
+          "de cinco ejes declarados quedan tres distintos" in pre
+          and "E-EJES esta entre las capas que se mandan al fondo" in pre)
+
+    check("hay prueba ejecutable de los ejes al pano",
+          "el eje A se corre medio espesor a la IZQUIERDA" in pre
+          and "sobre el eje C manda el muro y no la trabe de 40" in pre
+          and "un muro perpendicular que cruza el eje no da pano" in pre)
 
     # Las losas ANTES que trabes y columnas: en AutoCAD el orden de creacion es el
     # orden de dibujo, asi que si se dibujaran al final taparian el resto.
@@ -3006,8 +6341,8 @@ def v18_planta_autocad() -> None:
     check("se puede leer Dibujar", m_dib is not None)
     if m_dib:
         cuerpo = m_dib.group(0)
-        i_losa = cuerpo.find("ClasePlanta.Losa")
-        i_col = cuerpo.find("ClasePlanta.Columna")
+        i_losa = cuerpo.find("Losa(el, x0, y0, huellas)")
+        i_col = cuerpo.find("Columna(el, x0, y0)")
         check("las losas se dibujan antes que las columnas",
               0 <= i_losa < i_col, f"losa en {i_losa}, columna en {i_col}")
 
@@ -3022,11 +6357,43 @@ def v18_planta_autocad() -> None:
         check("y un elemento de largo nulo no se dibuja",
               "largo < LargoMinimo" in cuerpo)
 
-    # Lo que el modelo no dio se AVISA, no se calla: hay que saberlo antes de acotar.
+    # Lo que el modelo no dio se avisa UNA VEZ, con el total, no una por elemento: con 31
+    # muros de tabicon el resumen eran 31 renglones diciendo lo mismo. La macro no avisa de
+    # esto: saca el espesor del NOMBRE de la propiedad y, si de ahi tampoco sale, usa
+    # ESPESOR_MURO_CM y sigue.
     m_esp = re.search(r"private double Espesor\(.*?\n    \}", dib, re.S)
     check("se puede leer Espesor", m_esp is not None)
     if m_esp:
-        check("una medida que falta se avisa", "_log.Add(" in m_esp.group(0))
+        check("una medida que falta NO suelta un aviso por elemento",
+              "_log.Add(" not in m_esp.group(0)
+              and "_sinEspesor++;" in m_esp.group(0))
+    check("se cuentan y se avisan de golpe, con el total",
+          "internal void ResumirEspesores()" in dib
+          and "elemento(s) sin espesor en el modelo" in dib
+          and "ResumirEspesores();" in dib)
+
+    # Y el espesor se busca antes en el NOMBRE de la propiedad, como DimsDesdeNombre.
+    lect = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    check("el espesor se saca del nombre de la propiedad antes de rendirse",
+          "public static double EspesorDesdeNombre(string nombre)" in lect
+          and "var delNombre = EspesorDesdeNombre(seccion);" in lect
+          and "if (delNombre > 0 && delNombre < 1)" in lect)
+    check("y se leen las NOTAS de la propiedad, que es de donde sale el material",
+          "public string Notas { get; set; }" in leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+          and "e.Notas = prop.Notas;" in lect)
+
+    # LOS ROTULOS DE LA PLANTA, COMO LOS PIDE LA HOJA CONFIG: sin los ID, que es lo que
+    # llenaba el dibujo de textos encimados.
+    m_rot = re.search(r"private void Rotulo\(.*?\n    \}", dib, re.S)
+    check("se puede leer Rotulo", m_rot is not None)
+    if m_rot:
+        cuerpo = m_rot.group(0)
+        check("del muro solo se rotula su PIER",
+              "ClasePlanta.Muro => PierDelMuro(el)," in cuerpo)
+        check("y de columnas y trabes solo la SECCION, sin el ID",
+              "ETIQUETA_ID_COLUMNAS y" in cuerpo
+              and 'string.IsNullOrWhiteSpace(el.Seccion) ? el.Etiqueta : el.Seccion' in cuerpo
+              and '$"{el.Etiqueta}\\P{el.Seccion}"' not in cuerpo)
 
     check("los fallos se pueden consultar", "IReadOnlyList<string> Fallos" in dib)
 
@@ -3095,7 +6462,8 @@ def v19_circular_y_ui() -> None:
         check("la pestaña se abre hacia abajo, hacia el contenido",
               'BorderThickness="1,1,1,0"' in m_item.group(0))
         check("y se redondea por arriba",
-              'CornerRadius="4,4,0,0"' in m_item.group(0))
+              'CornerRadius="{StaticResource RadioPestana}"' in m_item.group(0)
+              and "<CornerRadius x:Key=\"RadioPestana\">7,7,0,0</CornerRadius>" in tema)
 
     # ------------------------------------------------------------------
     # La forma es POR FILA
@@ -3739,6 +7107,25 @@ def v19_circular_y_ui() -> None:
     check("y esta comprobado con numeros, para los dos tipos",
           "justo la separacion de 80 cm" in leer(ruta("tools/prueba-zapata/Program.cs")))
 
+    # LO QUE SE PIDIO: "empezar en x = -0.8", "no lo dibujes a partir del centro". La fila ya no
+    # arranca en el origen: la primera zapata queda con su pano DERECHO en -0.8, los mismos 0.8
+    # que separan una zapata de la siguiente, y de ahi crece hacia la izquierda.
+    check("la fila empieza en x = -0.8 y no en el origen",
+          "public const double XArranque = -SeparacionIzquierda;" in trazo_zap
+          and "var x = XArranque - Ancho(anchos, 0);" in trazo_zap
+          and "var x = 0.0;" not in trazo_zap)
+    check("se coloca el pano DERECHO de la primera, por eso se resta su ancho",
+          "La PRIMERA con su paño DERECHO en -0.8" in trazo_zap)
+    check("y se puede preguntar hasta donde llega la fila por la derecha",
+          "public static double XDerechaDeLaFila => XArranque;" in trazo_zap)
+    check("queda escrito por que se movio, y como volver atras",
+          "empezar en x = −0.8" in trazo_zap
+          and "no lo dibujes a partir del centro" in trazo_zap
+          and "se le quita el <c>− Ancho(anchos, 0)</c>" in trazo_zap)
+    check("y esta comprobado con numeros que ninguna zapata toca el origen",
+          "ninguna zapata pasa de x = -0.8 ni toca el origen"
+          in leer(ruta("tools/prueba-zapata/Program.cs")))
+
     check("la separacion entre secciones es la de cada macro",
           "public const double SeparacionCentral = 1.0;" in trazo_zap
           and "public const double SeparacionLindero = 0.8;" in trazo_zap)
@@ -3814,6 +7201,41 @@ def v19_circular_y_ui() -> None:
           "dos dibujos diminutos con un" in zap_cb)
 
     # LAS COTAS: las mismas que pone la macro y en el mismo sitio.
+    # LA PREVIA, CON RELLENOS Y COLORES: estaba a puro contorno y se veia vacia. Los colores son
+    # los mismos papeles del plano, uno por cosa, y las texturas son el AR-CONC y el EARTH reducidos
+    # a un mosaico que se lee en unos centimetros.
+    check("la previa lleva rellenos de concreto, plantilla y terreno",
+          "private static readonly Brush PincelConcreto" in zap_cb
+          and "private static readonly Brush PincelPlantilla" in zap_cb
+          and "private static readonly Brush PincelTerreno" in zap_cb
+          and "private static Brush Textura(" in zap_cb)
+    check("las texturas se congelan, que la previa se redibuja en cada tecla",
+          "pincel.Freeze();" in zap_cb
+          and "TileMode = TileMode.Tile" in zap_cb)
+    check("el terreno solo va a los lados del dado y por encima del lomo",
+          "Relleno(PX(a.XBase), PY(a.YTerreno), PX(a.XDadoIzq), PY(a.YZapTop), PincelTerreno);"
+          in zap_cb
+          and "Relleno(PX(a.XDadoDer), PY(a.YTerreno), PX(a.XDer), PY(a.YZapTop), PincelTerreno);"
+          in zap_cb)
+    check("los rellenos van ANTES del acero, para no taparlo",
+          zap_cb.index("LOS RELLENOS, primero") < zap_cb.index("EL ACERO"))
+    check("la previa dibuja las longitudinales del dado con su pata",
+          "private void DibujarLongitudinalesPrevias(" in zap_cb
+          and "TrazoZapata.BarrasRectangulares(" in zap_cb
+          and "var largo = factor * Math.Max(dSup, dInf);" in zap_cb)
+    check("y la pata usa los diametros de la casilla, no los 15 fijos",
+          "var factor = TrazoZapata.FactorGanchoValido(FactorGanchoElegido);" in zap_cb)
+    check("y la transicion 1:6 sale de la misma cuenta que el dibujante",
+          "TrazoZapata.Desplazamiento(dxMax, a.YZapTop, a.YDadoTop, recDado)" in zap_cb
+          and "dxMax <= TrazoZapata.DesplazamientoMax" in zap_cb)
+    check("hay leyenda de colores en el cuadro",
+          "private void LeyendaZapata(" in zap_cb
+          and "LeyendaZapata(" in zap_cb
+          and '"transición 1:6"' in zap_cb)
+    check("y el dado de la planta lleva su relleno y su ID",
+          "Relleno(PX(hx1), PY(hy2), PX(hx2), PY(hy1), PincelConcreto);" in zap_cb
+          and "var idDado = (z.IdDado ?? string.Empty).Trim();" in zap_cb)
+
     check("la vista previa lleva cotas",
           "private void CotaH(" in zap_cb and "private void CotaV(" in zap_cb)
     check("la elevacion acota los tramos, el espesor y la profundidad",
@@ -3822,7 +7244,20 @@ def v19_circular_y_ui() -> None:
           and "CotaV(x2, PY(a.YPlantillaBot), PY(a.YTerreno)" in zap_cb)
     check("y la planta acota la zapata y el dado",
           "CotaV(PX(a.XBase) - (0.12 * escala), PY(yBot), PY(yTop), z.LargoM, gris);" in zap_cb
+          and "CotaV(PX(a.XDer) + (0.10 * escala), PY(hy1), PY(hy2)" in zap_cb
           and "CotaH(PX(hx1), PX(hx2), PY(yTop) - (0.10 * escala)" in zap_cb)
+    # La previa tiene que ensenar lo que va a salir: las verticales de la elevacion van a la
+    # IZQUIERDA, pegadas a la cimentacion, y con las mismas distancias que usa el dibujante.
+    check("la previa saca las verticales a la izquierda, con las distancias del dibujante",
+          "var x1 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert1 * escala);" in zap_cb
+          and "var x2 = PX(a.XBase) - (TrazoZapata.AnotacionCotaVert2 * escala);" in zap_cb)
+    # Y EL BOTON DE DIBUJAR, con el color de los de concreto y acero: PrimaryButtonStyle.
+    check("el boton de dibujar zapatas lleva el color de los otros dos",
+          'x:Name="DibujarZapatasButton"' in xaml
+          and 'Content="Dibujar zapatas en AutoCAD"' in xaml
+          and xaml.split('Content="Dibujar zapatas en AutoCAD"')[1]
+              .split("/>")[0].find("PrimaryButtonStyle") > 0
+          and 'Content="Revisar zapatas"' in xaml)
     check("los numeros de las cotas van en metros con dos decimales",
           'valorM.ToString("N2"' in zap_cb)
 
@@ -3835,6 +7270,18 @@ def v19_circular_y_ui() -> None:
           and ".Where(s => EsDado(s.Elemento))" in zap_cb)
     check("y se actualiza en cada cambio de esa hoja",
           "ActualizarListasDeZapatas();" in codigo)
+    # LO QUE SE REPORTO: "en la seccion de dado no me aparece el que tengo". La lista se refrescaba
+    # al AGREGAR o BORRAR una fila, pero no al EDITARLA, y el ID y el elemento se escriben editando:
+    # la lista se armaba con la fila en blanco y no volvia a mirarla.
+    check("la lista se refresca tambien al EDITAR una fila, no solo al agregarla",
+          "ActualizarListasDeZapatas();" in leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+          .split("private void OnFilaEditada")[1].split("private void DatosCambiaron")[0])
+    check("y lo mismo en la hoja de acero, que tambien aporta columnas",
+          "ActualizarListasDeZapatas();" in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs"))
+          .split("private void OnFilaAceroEditada")[1].split("private void")[0])
+    check("queda escrito el defecto que arregla",
+          "no me aparece el dado que tengo" in leer(
+              ruta("client/src/CadLink.App/MainWindow.xaml.cs")))
     check("se actualiza EN SITIO, no se sustituye la coleccion",
           "sin sustituir la colección" in zap_cb
           and "lista.Clear();" in zap_cb)
@@ -4050,31 +7497,78 @@ def v19_circular_y_ui() -> None:
           "private void BarraConGanchos(" in zap_drw
           and "BarraConGanchos(xaBot, xbBar, ycSup, dSup, CapaVar(diaSup)" in zap_drw
           and "BarraConGanchos(xaBotInf, xbBar, ycInf, dInf, CapaVar(diaInf)" in zap_drw)
-    check("con el gancho de 15 diametros abajo",
-          "TrazoZapata.FactorGanchoAbajo * dSup" in zap_drw
-          and "TrazoZapata.FactorGanchoAbajo * dInf" in zap_drw)
+    # EL DOBLEZ, EN DIAMETROS Y CAMBIABLE PARA TODAS. La macro lo trae fijo en 15; la hoja lleva una
+    # casilla para poner 40 -o los que hagan falta- y con ese valor salen el dibujo Y SUS COTAS.
+    check("el gancho de arranque se mide en diametros y sale de un solo sitio",
+          "FactorGancho * dSup" in zap_drw
+          and "FactorGancho * dInf" in zap_drw
+          and "public double FactorGanchoDiametros { get; set; }" in zap_drw
+          and "private double FactorGancho => TrazoZapata.FactorGanchoValido(FactorGanchoDiametros);"
+          in zap_drw)
+    check("los 15 de la macro quedan como valor por omision, no como unico",
+          "public const double FactorGanchoAbajo = 15.0;" in trazo_zap
+          and "public static double FactorGanchoValido(double diametros)" in trazo_zap
+          and "FactorGanchoMinimo = 6.0" in trazo_zap
+          and "FactorGanchoMaximo = 80.0" in trazo_zap)
+    check("y las COTAS del doblez usan el mismo factor que el dibujo",
+          "xIzq2 = xIzq1 - (FactorGancho * dSup);" in zap_drw
+          and "xDer2 = xDer1 + (FactorGancho * dInf);" in zap_drw)
+    check("la casilla esta en la hoja de zapatas, no por fila",
+          'x:Name="ZapGanchoDiametrosBox"' in xaml
+          and "Doblez del gancho de arranque:" in xaml
+          and "es una decision del juego entero" in xaml.lower()
+             or "decision del juego entero" in xaml)
+    check("lo que se captura llega al dibujante",
+          "FactorGanchoDiametros = FactorGanchoElegido" in zap_cb
+          and "private double FactorGanchoElegido =>" in zap_cb)
+    check("y se guarda en el trabajo, con los 15 por omision para un archivo viejo",
+          "public double GanchoZapatasDiametros { get; set; } = 15.0;"
+          in leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+          and "GanchoZapatasDiametros = FactorGanchoElegido" in codigo
+          and "FactorGanchoValido(p.GanchoZapatasDiametros)" in codigo)
+    check("la casilla dice lo que significa, en centimetros de una #4",
+          "diámetros = " in zap_cb
+          and 'DiametroCmDeVarilla("#4")' in zap_cb)
     check("y con las intermedias cortadas en cada estribo",
           "private void BarraRectaSegmentada(" in zap_drw
           and "private void CaraSegmentada(" in zap_drw)
     check("los ganchos del lindero doblan LOS DOS a la izquierda",
           "ganchosAmbosIzq" in zap_drw
-          and "bendIniSup = true;" in zap_drw
+          and "bendIniSup = true;" in zap_drw)
+
+    # EL GANCHO DE REMATE -el de ARRIBA- DOBLA HACIA ADENTRO EN LAS DOS BARRAS. Antes las
+    # dos doblaban al mismo lado y la del paño DERECHO se salia del dado; un gancho fuera
+    # del paño se queda en el recubrimiento y no ancla nada. Da igual si la columna es de
+    # concreto o de acero: eso cambia el pie de abajo, no el remate.
+    # OJO: el elemento vertical se dibuja GIRADO, asi que bendUp en locales es la izquierda
+    # en globales; por eso la barra izquierda va con false y la derecha con true.
+    check("el gancho de remate de la barra izquierda dobla hacia el nucleo",
+          "hookIniSup, bendIniSup, hookFinSup, false, false, false);" in zap_drw)
+    check("y el de la derecha tambien, hacia el otro lado",
+          "hookIniInf, bendIniInf, hookFinInf, true, true, false);" in zap_drw)
+    check("con su explicacion, que es facil de confundir",
+          "bendUp en LOCALES es la IZQUIERDA en globales" in zap_drw
           and "bendIniInf = true;" in zap_drw)
     check("y si las patas se alcanzarian, una se sube",
           "private double DesfaseDeLosGanchos(" in zap_drw
           and "(2 * dMax) + 0.005" in zap_drw)
     # El traslape a 1:6 -RELACION_DESPLAZAMIENTO- y, si el dado es tan bajo que no caben esos
     # seis, se AVISA en lugar de dibujar un doblez mas parado y callarlo.
-    check("el traslape va a 1:6 y se avisa si no cabe",
-          "para quedar a 1:6 y en el dado solo caben" in zap_drw
-          and "RelacionDesplazamiento" in zap_drw)
+    check("el traslape va a 1:6 SIEMPRE, o no se dibuja",
+          "TrazoZapata.Desplazamiento(union.DxMax" in zap_drw
+          and "pediría " in zap_drw
+          and "de doblez a 1:6 y en el dado solo hay " in zap_drw
+          and "RelacionDesplazamiento" in trazo_zap)
 
     check("la union dado-columna dibuja el desplazamiento de cada barra",
           "private Union PrepararUnion(" in zap_drw
           and "private void DesplazamientoVarilla(" in zap_drw
           and "RelacionDesplazamiento" in zap_drw)
-    check("y las intermedias se emparejan una a una por cercania",
-          "mejorD" in zap_drw and "usadoD[mejorD] = true;" in zap_drw)
+    # EN ORDEN, no por cercania: el de cercania -el de la macro- cruza dos barras cuando la
+    # primera del dado queda mas cerca de la segunda de la columna.
+    check("y las intermedias se emparejan EN ORDEN, para que no se cruzen",
+          "var pares = intermediasIguales ? Math.Min(ordD.Count, ordC.Count) : 0;" in zap_drw
+          and "mejorD" not in zap_drw)
 
     # Estribos y parrillas.
     check("los estribos van en capsula, con su ARCOFFSET y su protrusion",
@@ -4137,6 +7631,39 @@ def v19_circular_y_ui() -> None:
     check("cada varilla va a su capa VAR_#n",
           'return e.Length == 0 ? "VAR_#3" : "VAR_" + e;' in zap_pla
           and "private void AsegurarCapaVarilla(" in zap_pla)
+
+    # ------------------------------------------------------------------
+    # LOS COLORES DE CAPA DE LA MACRO, EN UN SOLO SITIO
+    # ------------------------------------------------------------------
+    # Se reporto que una varilla del #5 salia BLANCA: la tabla de colores estaba
+    # escrita solo en el dibujante de secciones, asi que el de zapatas creaba
+    # VAR_#5 sin color y AutoCAD la dejaba en el 7. Ahora la tabla es de todos y el
+    # color se FUERZA para las capas de la macro, como hace su CrearCapa.
+    capas_cad = leer(ruta("client/src/CadLink.Cad/CapasCad.cs"))
+
+    for capa, color in (("VAR_#2", 150), ("VAR_#2.5", 6), ("VAR_#3", 132),
+                        ("VAR_#4", 142), ("VAR_#5", 160), ("VAR_#6", 4),
+                        ("VAR_#8", 1), ("VAR_#10", 6), ("VAR_#12", 15),
+                        ("TEXTOS", 3), ("CONCRETO", 8), ("ESTRIBOS", 150)):
+        check(f"la capa {capa} lleva el color {color} de la macro",
+              f'["{capa}"] = {color},' in capas_cad)
+
+    check("la tabla de colores es una sola, y la usan los tres dibujantes",
+          "CapasCad.ColorDeCapa(" in zap_pla
+          and "CapasCad.ColorDeVarilla(" in leer(
+              ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+          and "CapasCad.ColorDeCapa(capa)" in leer(
+              ruta("client/src/CadLink.Cad/AlzadoDrawer.cs")))
+    check("la capa de varilla de la zapata se crea CON su color",
+          "CrearCapa(capa, CapasCad.ColorDeCapa(capa), forzarColor: true);" in zap_pla)
+    check("y a las capas de la macro se les pone su color aunque ya existan",
+          "private void CrearCapa(string nombre, int color, bool forzarColor)" in zap_pla
+          and "if (color > 0 && (nueva || forzarColor))" in zap_pla
+          and "forzarColor: CapasCad.EsDeLaMacro(nombre));" in zap_pla)
+    check("un diametro que no este en la tabla se queda sin color, no en blanco",
+          "public const int SinColor = -1;" in capas_cad
+          and "if (color != CapasCad.SinColor)" in leer(
+              ruta("client/src/CadLink.Cad/SeccionDrawer.cs")))
 
     # Rotulos con leader.
     check("el dado y la columna llevan rotulo con leader",
@@ -4211,21 +7738,20 @@ def v19_circular_y_ui() -> None:
           and "ParameterModifier" in zap_pla
           and "no se puede invocar con 'dynamic'" in zap_pla)
 
-    # Cotas: las de la macro, con sus offsets.
-    # LO QUE SE PIDIO: cotas y rotulos colgados del PUNTO INFERIOR DERECHO de la zapata, para
-    # que viajen con ella. Y el hueco de 80 cm de la fila queda a su derecha, que es donde
-    # caben.
-    # LAS COTAS Y LOS ROTULOS, DONDE LOS PONE LA MACRO. Moverlos fue idea mia y fue peor.
-    check("las cotas verticales van a la izquierda, a 0.08 y 0.16 de xBase",
+    # Cotas y rotulos: TODO colgado de la ESQUINA INFERIOR DERECHA, que es lo que se pidio, para
+    # que la anotacion entera viaje con la zapata y no se descuelgue cada parte por su lado.
+    # LO QUE SE PIDIO, TEXTUAL: "que tan dificil es hacer que las cotas esten a la altura de la
+    # seccion de cimentacion, si estas tomando en cuenta mis macros ahi no me hacia eso".
+    # Las cotas verticales van A LA IZQUIERDA del pano izquierdo, pegadas a la cimentacion, y el
+    # rotulo CENTRADO a 0.32 / 0.41 / 0.49 del desplante. Las dos cosas, como las macros.
+    check("las cotas verticales van a la izquierda, pegadas a la cimentacion",
           "CotasVerticales(xBase, yZapBot, yZapTop, yTerreno, r);" in zap_drw
           and "var x1 = xBase - CotaOffsetVert1;" in zap_drw
-          and "var x2 = xBase - CotaOffsetVert2;" in zap_drw)
+          and "var x2 = xBase - CotaOffsetVert2;" in zap_drw
+          and "xDer + CotaOffsetVert1" not in zap_drw)
     check("y los tres renglones del rotulo van CENTRADOS en el eje",
           "Texto(xCentro, yTitulo," in zap_drw
           and "alineacion: Alineacion.Centro" in zap_drw)
-    check("y queda escrito que alinearlos a la derecha fue un error mio",
-          "fue un invento mío" in zap_pla
-          and "fue idea mía" in zap_pla)
     check("la alineacion de texto es la de la macro: centrado o pegado a la izquierda",
           "private enum Alineacion" in zap_pla
           and "if (alineacion == Alineacion.Centro)" in zap_pla
@@ -4234,50 +7760,249 @@ def v19_circular_y_ui() -> None:
           "Alineacion.Derecha" not in zap_pla
           and "Alineacion.Derecha" not in zap_drw)
     check("la planta acota el largo de la zapata a la izquierda y el del dado a la derecha",
-          "PlantaCotaOffsetLargo" not in zap_pla
-          and "Cota(xIzq - PlantaCotaOffset, yBot" in zap_pla
+          "PlantaCotaOffsetLargo = 0.12" in zap_pla
+          and "Cota(xIzq - PlantaCotaOffsetLargo, yBot" in zap_pla
           and "Cota(xDer + PlantaCotaOffsetDado, dy1" in zap_pla)
     check("y su rotulo va centrado, como la macro",
-          "Texto(xCen, yTitulo, TrazoZapata.AltoQueQuepa(" in zap_pla
-          and "Texto(xCen, yEscala, TrazoZapata.AltoQueQuepa(" in zap_pla)
+          "Texto(xCen, yTitulo," in zap_pla
+          and "Texto(xCen, yEscala," in zap_pla
+          and "alineacion: Alineacion.Centro" in zap_pla)
 
     check("las cotas de la elevacion son las de la macro",
-          "CotaOffsetCadena = 0.14" in zap_drw
-          and "CotaOffsetTotal = 0.22" in zap_drw
-          and "CotaOffsetVert1 = 0.08" in zap_drw
-          and "CotaOffsetVert2 = 0.16" in zap_drw)
+          "AnotacionCadena = 0.14" in trazo_zap
+          and "AnotacionTotal = 0.22" in trazo_zap
+          and "AnotacionCotaVert1 = 0.08" in trazo_zap
+          and "AnotacionCotaVert2 = 0.16" in trazo_zap)
+    # LO QUE SE PIDIO: "solo quiero que las cotas esten en su lugar, no que esten en medio de los
+    # dibujos". Las de los 15 diametros de las patas del gancho iban PEGADAS A LA PATA, a 6 cm,
+    # y la pata esta DENTRO del dado: la cota caia sobre el concreto, la parrilla y los estribos.
+    check("las cotas de las patas del gancho van a 6 cm de su pata, como la macro",
+          "AnotacionGancho = 0.06" in trazo_zap
+          and "CotaDoblezOffset = TrazoZapata.AnotacionGancho" in zap_drw
+          and "yPataSup - offset" in zap_drw
+          and "yPataInf + offset" in zap_drw)
+    check("se mide el arranque y la punta de cada pata",
+          "Cota(xIzq2, yPataSup, xIzq1, yPataSup" in zap_drw
+          and "Cota(xDer2, yPataInf, xDer1, yPataInf" in zap_drw)
+    check("y queda escrito que bajarlas a un renglon propio salio peor",
+          "renglón propio" in zap_drw)
     check("la cota de la plantilla lleva el numero EN MEDIO",
           "d.TextInside = true;" in zap_pla
           and "d.ForceLineInside = true;" in zap_pla
           and "d.TextMovement = 0;" in zap_pla)
     check("y la total arranca del fondo de la plantilla",
           "yPlantillaBot = yZapBot - TrazoZapata.PlantillaEspesor" in zap_drw)
-    # ---- EL ROTULO, EN SU PROPIO RENGLON Y ALINEADO SIEMPRE ----
-    # LO QUE SE PIDIO: bajar el titulo, dibujarlo APARTE del dibujo con los mismos 0.8 de la
-    # fila (X = -0.8) y que todos queden en la misma linea.
-    check("el rotulo se baja a su propio renglon, a los 0.8 de la fila",
-          "public const double RotuloSeparacion = SeparacionIzquierda;" in trazo_zap
-          and "public static double YRotulo(double yFondoDibujo, int renglon)" in trazo_zap)
-    check("y ya no cuelga a 32 cm del fondo, encima del dibujo",
-          "RotuloTituloOffset = 0.32" not in zap_drw
-          and "RotuloSubtituloOffset = 0.41" not in zap_drw
-          and "PlantaTituloOffset = 0.24" not in zap_pla)
+    # ---- TODA LA ANOTACION CUELGA DE LA ESQUINA INFERIOR DERECHA ----
+    # LO QUE SE PIDIO, TEXTUAL: "necesito que se alineen con la esquina inferior derecha para que
+    # siempre se muevan con ese", "siempre lo pones mas abajo y a la izquierda de las cotas".
+    # Antes habia TRES anclas -pano izquierdo para las verticales, desplante para la cadena y
+    # fondo de la plantilla para el rotulo, y encima centrado en el eje-, asi que al cambiar el
+    # ancho de una zapata cada anotacion se movia en una direccion distinta.
+    check("las distancias de la anotacion son las de las macros, y viven juntas",
+          "AnotacionCotaVert1 = 0.08" in trazo_zap
+          and "AnotacionCotaVert2 = 0.16" in trazo_zap
+          and "AnotacionCadena = 0.14" in trazo_zap
+          and "AnotacionTotal = 0.22" in trazo_zap
+          and "AnotacionGancho = 0.06" in trazo_zap
+          and "AnotacionRotulo = 0.32" in trazo_zap)
+    check("y el dibujante las toma de ahi, sin volver a escribir los numeros",
+          "CotaOffsetVert1 = TrazoZapata.AnotacionCotaVert1" in zap_drw
+          and "CotaOffsetCadena = TrazoZapata.AnotacionCadena" in zap_drw
+          and "CotaDoblezOffset = TrazoZapata.AnotacionGancho" in zap_drw)
+    check("el rotulo cuelga del DESPLANTE, a los 0.32 de la macro",
+          "public static double YRotulo(double yZapBot, int renglon)" in trazo_zap
+          and "TrazoZapata.YRotulo(yZapBot, 0)" in zap_drw
+          and "TrazoZapata.YRotulo(a.YPlantillaBot, 0)" not in zap_drw
+          and "RotuloSeparacion" not in trazo_zap)
     check("los saltos entre renglones si son los de la macro",
           "RotuloSalto1 = 0.09" in trazo_zap
           and "RotuloSalto2 = 0.17" in trazo_zap)
-    check("el renglon se mide desde el fondo de la plantilla, que es fijo para todas",
-          "TrazoZapata.YRotulo(a.YPlantillaBot, 0)" in zap_drw
-          and "TrazoZapata.YRotulo(a.YPlantillaBot, 2)" in zap_drw)
+    # AQUI ESTABA EL ENCIMADO: no en la posicion del rotulo, sino en el ancho de letra con el que
+    # se decide si cabe. Con el 0.62 de la macro el titulo "medía" 1.39 m y nunca se encogia; en el
+    # dibujo mide 2.2 m y se salia 40 cm por cada lado, encima del titulo de al lado.
+    check("el titulo se mide con el ancho de letra REAL del dibujo, no con el 0.62",
+          "public const double FactorLetraTitulo = 1.0;" in trazo_zap
+          and "TrazoZapata.FactorLetraTitulo" in zap_drw
+          and "TrazoZapata.FactorLetraTitulo" in zap_pla)
+    check("y queda escrito que ahi estaba el encimado",
+          "AQUÍ ESTABA EL ENCIMADO" in trazo_zap)
     check("y el titulo se encoge si no cabe en su hueco, en vez de meterse en el vecino",
           "public static double AnchoParaElRotulo(double anchoM) => anchoM + SeparacionIzquierda;"
           in trazo_zap
           and "public static double AltoQueQuepa(" in trazo_zap
-          and "TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo)" in zap_drw)
-    check("la planta usa el MISMO renglon, asi que las dos vistas quedan alineadas",
-          "TrazoZapata.YRotulo(yBot, 0)" in zap_pla
-          and "TrazoZapata.YRotulo(yBot, 2)" in zap_pla)
-    check("y queda escrito por que se bajo",
-          "cae sobre el dibujo" in zap_drw)
+          and "TrazoZapata.AltoQueQuepa(titulo.Length, AltoTitulo, anchoRotulo," in zap_drw)
+    check("la planta usa su propia esquina, con los renglones de la macro",
+          "public static double YRotuloPlanta(double yBot, int renglon)" in trazo_zap
+          and "PlantaTituloOffset = 0.24" in trazo_zap
+          and "PlantaEscalaOffset = 0.33" in trazo_zap
+          and "TrazoZapata.YRotuloPlanta(yBot, 0)" in zap_pla)
+    # ------------------------------------------------------------------
+    # LA TRANSICION DADO -> COLUMNA: DESPLAZAMIENTO DE VARILLA A 1:6
+    # ------------------------------------------------------------------
+    # El detalle del usuario: "DESPLAZAMIENTO DE VARILLA EN COLUMNA O TRABE, RELACION 1:6".
+    # El alto del doblez se calculaba a 1:6 y DESPUES se recortaba a lo que quedaba libre en el
+    # dado, asi que en un dado bajo el doblez salia mas parado que el detalle.
+    check("el doblez de la transicion se resuelve en un solo sitio, a 1:6",
+          "public const double RelacionDesplazamiento = 6.0;" in trazo_zap
+          and "public static Transicion Desplazamiento(" in trazo_zap
+          and "var alto = RelacionDesplazamiento * Math.Abs(dxMax);" in trazo_zap)
+    check("y el alto ya NO se recorta a lo que quede libre en el dado",
+          "var hZona = Math.Min(union.Alto, hMaxZona);" not in zap_drw
+          and "public double Alto { get; set; }" not in zap_drw
+          and "public double DxMax { get; set; }" in zap_drw)
+    # Y EL DOBLEZ VIVE DENTRO DEL DADO: si se le deja pasar la junta, arriba ya estan las varillas
+    # de la columna y en el plano se ven DUPLICADAS. Es lo que se reporto: "las varillas las
+    # duplicas".
+    check("el doblez acaba en la junta y no la pasa",
+          "&& yDiagTop <= yDadoTop + 1e-9;" in trazo_zap
+          and "CruzaLaJunta" not in trazo_zap
+          and "varillas duplicadas" in trazo_zap)
+    check("y la union no sube mas alla del recubrimiento de la columna",
+          "var yZonaTop = yDadoTop + recColM;" in zap_drw
+          and "dibujar dos veces la misma varilla" in zap_drw)
+    check("si el doblez no cabe, las varillas se dejan RECTAS y se avisa",
+          "var aplicarUnion = union.Activa && trans.Cabe && recorteCabe;" in zap_drw
+          and "se dejan rectas y la columna se traslapa" in zap_drw)
+    # La otra mitad del duplicado: al dado se le recortan las varillas en yZonaBot para que la
+    # union siga desde ahi, y ElementoVertical IGNORA un recorte que no deje barra. Si se ignora y
+    # la union dibuja igual, salen las dos.
+    check("y no se dibuja la union si el recorte del dado no se puede aplicar",
+          "var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;" in zap_drw
+          and "el recorte no llegaba a aplicarse" in zap_drw)
+    check("la varilla se dibuja sin vertices de longitud cero",
+          "if (yd1 > yBot + 1e-9)" in zap_drw
+          and "if (yTop > yd2 + 1e-9)" in zap_drw)
+    # LAS BARRAS NO PUEDEN CRUZARSE: emparejado EN ORDEN, no por cercania.
+    check("las varillas se emparejan en orden, asi que no pueden cruzarse",
+          "var ordD = xIntD.OrderBy(x => x).ToList();" in zap_drw
+          and "u.Dobleces.Add((ordD[k], ordC[k], dIntD, CapaVar(diaIntD)));" in zap_drw
+          and "DOS BARRAS NO PUEDEN CRUZARSE" in zap_drw)
+    check("el corrimiento maximo que se dobla son los 12 cm de la macro",
+          "public const double DesplazamientoMax = 0.12;" in trazo_zap
+          and "TrazoZapata.DesplazamientoMax" in zap_drw)
+    check("y el doblez se dibuja hasta donde dice el 1:6, no hasta la junta",
+          "DibujarUnion(union, yZonaBot, yDiagTop, yZonaTop" in zap_drw)
+
+    # LO QUE NO TRAEN LAS MACROS: el caso REDONDO. Se arma con la misma idea que el cuadrado.
+    check("las varillas de un elemento redondo se proyectan sobre su diametro",
+          "public static BarrasElemento BarrasCirculares(" in trazo_zap
+          and "radio * Math.Cos(ang)" in trazo_zap
+          and "(Math.PI / 2) + (2 * Math.PI * k / nTotal)" in trazo_zap)
+    check("y dos varillas simetricas se ven como UNA en el alzado",
+          "xs.Any(v => Math.Abs(v - x) < tol)" in trazo_zap
+          and "en el alzado son una sola" in trazo_zap)
+    # LA UNION PARTE DE DONDE EL ALZADO DIBUJA LAS VARILLAS, no de otra cuenta: si no, los dobleces
+    # no arrancan encima de las varillas y se ven despegados.
+    check("la union usa las mismas posiciones que dibuja el alzado",
+          "private static TrazoZapata.BarrasElemento BarrasDelElemento(" in zap_drw
+          and "TrazoZapata.BarrasRectangulares(xCaraDer, w, recM, dSup, dInf, nInt);" in zap_drw
+          and "TrazoZapata.BarrasCirculares(" not in zap_drw
+          and "no arrancarían encima de las varillas" in zap_drw)
+    check("y la proyeccion del redondo queda lista, marcada como pendiente de enganchar",
+          "Todavía no la usa el dibujante" in trazo_zap)
+    # EL TEOREMA: UNA zona para todas. El 1:6 fija su ALTO con la varilla que mas se corre; las
+    # demas salen mas tendidas y el nudo se ve PAREJO.
+    check("hay UNA zona de doblez y la comparten todas las varillas",
+          "EL TEOREMA" in zap_drw
+          and "DesplazamientoVarilla(x1, x2, yZonaBot, yZonaBot, yDiagTop, yZonaTop, dia, capa);"
+          in zap_drw)
+    # LO QUE SE PIDIO: "esos tramos de varilla recta que no van a ningun lado, esas ya no van".
+    # Eran las varillas del dado sin pareja en la columna, que la macro seguia rectas hasta el tope
+    # del dado y quedaban entre los dobleces.
+    check("en la zona de doblez SOLO van los dobleces",
+          "EN LA ZONA SOLO VAN LOS DOBLECES" in zap_drw
+          and "private void DibujarUnion(Union u, double yZonaBot, double yDiagTop, "
+              "double yZonaTop)" in zap_drw
+          and "u.Rectas" not in zap_drw)
+    check("y la rutina de la varilla recta se quito, no se dejo sin usar",
+          "private void BarraVerticalBanda(" not in zap_drw
+          and "El port de DibujarBarraVerticalBanda YA NO ESTÁ" in zap_drw)
+    check("las que se quedan sin pareja se cuentan y se avisan",
+          "public int SinPareja { get; set; }" in zap_drw
+          and "u.SinPareja = Math.Max(ordD.Count - pares, 0);" in zap_drw
+          and "no tienen pareja " in zap_drw)
+    # LA OTRA FUENTE DE VARILLAS DUPLICADAS: el recorte que se DESCARTABA. Si no dejaba 2 cm de
+    # barra, ElementoVertical lo ignoraba y dibujaba la varilla completa; con el recorte de la zona
+    # de dobleces, eso es la varilla entera MAS su doblez encima.
+    # EL DADO SIN VARILLAS INTERIORES: la macro tiene un respaldo que faltaba. Si no se dijo el
+    # diametro de las intermedias, se usa el de las de esquina:
+    #     If Len(NormalizeDiaLabel(txtIntDado)) = 0 Then txtIntDado = txtAA7
+    # Sin el, una seccion que declara intermedias pero no su diametro deja el dado sin ninguna.
+    check("si falta el diametro de las intermedias, se usa el de las de esquina",
+          "var diaIntDado = Diam(z.VarIntDado) > 0 ? z.VarIntDado : z.VarDadoSup;" in zap_drw
+          and "var diaIntCol = Diam(z.VarIntColumna) > 0 ? z.VarIntColumna : z.VarColSup;"
+          in zap_drw
+          and "SIN VARILLAS INTERIORES" in zap_drw)
+    check("y el rotulo usa el MISMO diametro que el dibujo",
+          "RotuloDelDado(z, a, lindero, diaIntDado);" in zap_drw
+          and "RotuloDeLaColumna(z, a, lindero, diaIntCol);" in zap_drw
+          and "z.NIntDado, diaInt, z.EstriboDado" in zap_drw)
+    # NI UN TRAMO RECTO DONDE ARRANCA EL 1:6: con union, las varillas del dado acaban EXACTAMENTE
+    # en yZonaBot. Pedir el recorte no bastaba: por debajo se le restan holguras y margenes.
+    check("con union, las varillas del dado acaban justo donde arrancan los dobleces",
+          "topeBarras: aplicarUnion ? yZonaBot : null);" in zap_drw
+          and "xbBar = x0 + (tope - y0);" in zap_drw
+          and "if (!hayCorte && !omitGanchoFin && topeBarras is null)" in zap_drw)
+    check("y queda escrito que un milimetro de mas es un tramo recto asomando",
+          "es un tramo recto asomando por debajo del 1:6" in zap_drw)
+
+    check("el recorte de las varillas se aplica siempre, recortado si hace falta",
+          "var maximo = Math.Max(xb - (xaBot + 0.02), 0);" in zap_drw
+          and "xbBar = xb - Math.Min(recorteBarrasFin, maximo);" in zap_drw
+          and "NUNCA SE IGNORA" in zap_drw)
+    check("y la union comprueba el recorte con la MISMA cuenta, recubrimiento incluido",
+          "var recorteCabe = yZonaBot > yZapBot + recDadoM + subirGanchoDado + 0.02;" in zap_drw)
+    # LOS ESTRIBOS, AL FRENTE: se dibujan antes que las varillas y en la zona de dobleces quedaban
+    # tapados. Es el draw order > bring to front de AutoCAD.
+    # LA ZONA SE BARRE ANTES DE DIBUJAR LOS DOBLECES: es el port de RecortarVerticalesZonaDobleces,
+    # que FALTABA. El recorte de las varillas del dado pasa por media docena de holguras y cualquiera
+    # deja un pedazo asomando dentro del 1:6; la macro no confia en el recorte, barre la zona.
+    check("la zona de dobleces se barre antes de dibujar la transicion",
+          "private void RecortarVerticalesEnLaZona(" in zap_drw
+          and "RecortarVerticalesEnLaZona(\n                        idxAntesDado" in zap_drw
+          and "ESTA RUTINA FALTABA" in zap_drw)
+    check("solo barre las capas VAR_ dentro de los panos del dado",
+          'capa.StartsWith("VAR_", StringComparison.OrdinalIgnoreCase)' in zap_drw
+          and "xm < xIzq - 0.02 || xm > xDer + 0.02" in zap_drw)
+    check("los estribos NO se barren: esos si van en la zona",
+          "Los estribos —capa" in zap_drw
+          and "no se tocan" in zap_drw)
+    check("lo que venia de mas abajo se recorta, no se pierde",
+          "var desdeAbajo = mn[1] < yZonaBot - TrimTolVertical;" in zap_drw
+          and "Var(Linea(xm, mn[1], xm, yZonaBot, capa));" in zap_drw)
+    check("y se cuenta lo que se quito, para que se sepa",
+          "se quitaron {borradas} resto(s) de varilla" in zap_drw)
+    check("se barre solo desde donde empieza el acero del dado",
+          "var idxAntesDado = CuentaDelContenedor();" in zap_drw
+          and "private int CuentaDelContenedor()" in zap_drw)
+
+    check("los estribos se suben al frente al final",
+          "private void AlFrente(object cont, List<object> objetos)" in zap_drw
+          and "tabla.MoveToTop(arr)" in zap_drw
+          and "AlFrente(_cont, _estribos);" in zap_drw)
+    check("se apuntan al dibujarlos, con sus dos caras y sus dos puntas",
+          "Apuntar(_estribos, e1);" in zap_drw
+          and "Apuntar(_estribos, a2);" in zap_drw
+          and "private readonly List<object> _estribos = new();" in zap_drw)
+    check("y la lista se vacia en cada zapata, para no arrastrar la anterior",
+          "_estribos.Clear();" in zap_drw)
+    check("el reordenado va por AcadArreglos, que es el que sabe pasar el arreglo",
+          'AcadArreglos.Llamar("MoveToTop de la zapata"' in zap_drw)
+    check("y queda escrito por que no se le da a cada varilla su propio doblez",
+          "deja cada quiebre a una altura distinta" in zap_drw)
+    check("la forma de la columna viaja desde su seccion, como la del dado",
+          "public bool ColumnaCircular { get; init; }" in trazo_zap
+          and "fila.ColumnaCircular = col.EsCircular;" in zap_cb
+          and "ColumnaCircular = ColumnaCircular," in zap_row)
+    check("y esta comprobado con numeros, con dado y columna redondos",
+          "redondo: los extremos caen en la circunferencia del armado"
+          in leer(ruta("tools/prueba-zapata/Program.cs"))
+          and "ningun doblez se pasa de la junta ni deja de ser 1:6"
+          in leer(ruta("tools/prueba-zapata/Program.cs")))
+
+    check("y queda escrito que las cotas NO se mueven de donde las pone la macro",
+          "NO SE MUEVEN DE AHÍ" in trazo_zap
+          and "a la altura del dado" in trazo_zap)
     check("y el titulo dice CENTRAL o DE LINDERO, como la macro",
           '"ZAPATA AISLADA DE LINDERO' in zap_drw
           and '"ZAPATA AISLADA CENTRAL' in zap_drw)
@@ -4304,7 +8029,7 @@ def v19_circular_y_ui() -> None:
           "IdDado = SoloElId(IdDado)" in zap_row)
     check("la planta lleva sus cotas y su titulo",
           "PlantaCotaOffset = 0.12" in zap_pla
-          and "TrazoZapata.YRotulo(yBot, 0)" in zap_pla
+          and "TrazoZapata.YRotuloPlanta(yBot, 0)" in zap_pla
           and '"VISTA EN PLANTA' in zap_pla)
 
     # El armado de la COLUMNA sale de su seccion, no se vuelve a capturar.
@@ -4413,8 +8138,8 @@ def v19_circular_y_ui() -> None:
           and "PlantaCotaOffsetDado = 0.1;" in zap_pla
           and "PlantaCotaNivel2" not in zap_pla
           and "yTop + PlantaCotaOffsetDado" in zap_pla)
-    check("y queda escrito que cambiarlas fue un error",
-          "en la planta ya estaban en orden" in zap_pla)
+    check("y queda escrito por que cada largo va por su lado",
+          "Los dos por el mismo lado se montaban" in zap_pla)
 
     # ------------------------------------------------------------------
     # LAS PATAS DEL DADO: ADENTRO CON COLUMNA DE CONCRETO, AFUERA CON ACERO
@@ -4450,10 +8175,29 @@ def v19_circular_y_ui() -> None:
     # LA VISTA EN PLANTA, EN SU PROPIO BLOQUE
     # ------------------------------------------------------------------
     # Lo que se pidio: bloque con el dado, las varillas y el contorno; cotas y rotulos FUERA.
+    # AQUI ESTABA EL DESFASE DE TODO EL DIBUJO, y es lo que hacia que las cotas se vieran
+    # despegadas de la cimentacion: la seccion y la planta se insertaban con la rutina que
+    # RECOLOCA el bloque por el centro de su caja -la del dado, que viene de otro dibujo-, y eso
+    # arrastraba la geometria 88 cm hacia abajo y 50 cm a la izquierda. Las cotas y los rotulos,
+    # que van fuera del bloque, se quedaban en su sitio.
+    check("los bloques PROPIOS se insertan en su sitio, sin recolocar",
+          "private bool InsertarBloquePropio(" in zap_pla
+          and "InsertarBloquePropio(nombreBloque, xBase, yZapBot, CapaBloqueZapata)" in zap_drw
+          and "InsertarBloquePropio(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
+    check("y la seccion ya no pasa por la rutina del centroide",
+          "InsertarBloque(nombreBloque" not in zap_drw
+          and "InsertarBloque(nombrePlanta" not in zap_pla)
+    check("el recolocado por centroide queda SOLO para el bloque del dado",
+          "InsertarBloque(id, (dx1 + dx2) / 2, yCen, CapaBloqueDado" in zap_pla
+          and "Solo para el bloque del DADO" in zap_pla)
+    check("y queda escrita la cuenta del desfase que producia",
+          "AQUÍ ESTABA EL DESFASE DE TODO EL DIBUJO" in zap_pla
+          and "bajaba 88 cm" in zap_pla)
+
     check("la planta se mete en su propio bloque",
           '"-PLANTA"' in zap_pla
           and "var plantaEnBloque = false;" in zap_pla
-          and "InsertarBloque(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
+          and "InsertarBloquePropio(nombrePlanta, xIzq, yBot, CapaBloqueZapata)" in zap_pla)
     check("y los rotulos y las cotas quedan FUERA del bloque",
           "Se cierra el bloque: lo que sigue -cotas y rótulos- va en el MODELO." in zap_pla)
     check("y queda escrito por que una cota no puede ir dentro",
@@ -4622,8 +8366,10 @@ def v19_circular_y_ui() -> None:
     check("hay un solo sitio que escribe las notas",
           "private void MostrarNotas(string texto)" in codigo
           and "NotasPanel.IsExpanded = false;" in codigo)
-    check("y los cuatro sitios que las escriben pasan por ahi",
-          codigo.count("MostrarNotas(") == 5
+    # NUEVE: las siete de antes mas las dos de los cortes -lo que no se entendio del campo y los
+    # cortes que no caen sobre ningun eje, que van rotulados con su sitio-.
+    check("y los sitios que las escriben pasan por ahi",
+          codigo.count("MostrarNotas(") == 9
           and codigo.count("ExportHintText.Text =") == 1,
           f"{codigo.count('MostrarNotas(')} llamadas, "
           f"{codigo.count('ExportHintText.Text =')} asignaciones directas")
@@ -5663,8 +9409,15 @@ def v19_circular_y_ui() -> None:
         #                      los dos temas, asi que la marca que va ENCIMA de ellas
         #                      tambien tiene que quedarse clara. Una marca que cambia de
         #                      tema sobre una celda que no lo cambia deja de contrastar.
+        #   Lista*Brush        la ventanita de una lista desplegable se queda clara en
+        #                      los dos temas, por lo mismo que la cuadricula: es donde
+        #                      se elige un dato, no parte del marco. Se les dio brocha
+        #                      propia porque antes tomaban GridRowBrush -que SI cambia
+        #                      con el tema- y en oscuro la letra se leia casi negra
+        #                      sobre gris oscuro.
         aparte = ({"PreviewFondoBrush"}
                   | {b for b in declaradas if b.startswith("Celda")}
+                  | {b for b in declaradas if b.startswith("Lista")}
                   | {b for b in declaradas
                      if b.startswith("FilaAcero") or b.startswith("Acero")})
 
@@ -5730,15 +9483,18 @@ def v19_circular_y_ui() -> None:
     # cuando la brocha esta congelada, que es el caso en que el tema no aplicaba.
     check("el fondo de la ventana sale de la paleta",
           'Background="{DynamicResource WindowBrush}"' in xaml)
-    check("y las tarjetas tambien, que estaban repetidas once veces",
-          xaml.count('Background="{DynamicResource CardBrush}"') >= 10)
-    check("las brochas del tema se referencian con DynamicResource",
-          xaml.count("{DynamicResource") > 50)
-    check("y el tema sabe sustituir la brocha si esta congelada",
-          "recursos[clave] = new SolidColorBrush(color);" in temacs)
-    check("los menus tambien siguen el tema",
-          '<Style TargetType="Menu">' in tema
-          and '<Style TargetType="MenuItem">' in tema)
+    # LAS TARJETAS YA NO LLEVAN SU PINTA ESCRITA. Antes cada Border repetia fondo,
+    # borde, grosor y radio -y no siempre iguales: habia tarjetas de radio 4 y de
+    # radio 0-. Ahora hay UN estilo, asi que lo que se comprueba es que el estilo
+    # saque el color de la paleta y que las hojas lo usen, no que el hex este
+    # repetido trece veces.
+    check("las tarjetas salen de un solo estilo",
+          'x:Key="TarjetaStyle"' in tema
+          and '<Setter Property="Background" Value="{DynamicResource CardBrush}" />' in tema)
+    check("y todas las hojas lo usan",
+          xaml.count('Style="{StaticResource TarjetaStyle}"') >= 10)
+    check("ninguna tarjeta se quedo con la pinta escrita a mano",
+          'Background="{DynamicResource CardBrush}" BorderBrush=' not in xaml)
 
     # Los RadioButton de «Seccion tipo 1 / tipo 2» y los CheckBox salian con el texto
     # NEGRO por omision de Windows, asi que en tema oscuro desaparecian.
@@ -6040,6 +9796,19 @@ def v20_estaticos_sin_cualificar() -> None:
     problemas: list[str] = []
     usos_revisados = 0
 
+    # Los tres patrones de cada miembro se compilan UNA vez, no en cada renglon.
+    # Con mas de 500 miembros declarados el cache de re se invalida y Python los
+    # recompilaba linea por linea: la comprobacion se quedaba colgada minutos y
+    # parecia un cuelgue del validador. Es el MISMO patron, solo compilado antes.
+    patrones = {
+        miembro: (
+            re.compile(r"^\s*public\s.*\b" + miembro + r"\b\s*(?:=|\()"),
+            re.compile(r"(\.)?\b" + miembro + r"\b"),
+            re.compile(r"\s*" + miembro + r"\s*=[^=]"),
+        )
+        for miembro in declarados
+    }
+
     for p in rutas:
         texto = _sin_comentarios(leer(p))
         lineas = texto.split("\n")
@@ -6051,11 +9820,17 @@ def v20_estaticos_sin_cualificar() -> None:
             pila = pilas[i] if i < len(pilas) else []
 
             for miembro, duena in declarados.items():
-                # Uso, no declaracion
-                if re.search(r"^\s*public\s.*\b" + miembro + r"\b\s*(?:=|\()", l):
+                # Atajo: sin el nombre escrito tal cual, ningun patron puede casar.
+                if miembro not in l:
                     continue
 
-                for m in re.finditer(r"(\.)?\b" + miembro + r"\b", l):
+                pat_decl, pat_uso, pat_init = patrones[miembro]
+
+                # Uso, no declaracion
+                if pat_decl.search(l):
+                    continue
+
+                for m in pat_uso.finditer(l):
                     if m.group(1):
                         continue        # ya viene cualificado con algo
 
@@ -6078,7 +9853,7 @@ def v20_estaticos_sin_cualificar() -> None:
 
                     # Nombre de propiedad dentro de un inicializador de objeto:
                     # 'Elemento = ...' se resuelve contra el tipo que se construye.
-                    if re.match(r"\s*" + miembro + r"\s*=[^=]", l):
+                    if pat_init.match(l):
                         continue
 
                     usos_revisados += 1
@@ -6128,7 +9903,10 @@ def main() -> int:
               v16_extruida_piers, v17_guardar_y_defaults,
               v18_planta_autocad, v19_circular_y_ui,
               v20_estaticos_sin_cualificar,
-              v21_separacion_y_acero):
+              v21_separacion_y_acero,
+              v22_zapatas_corridas,
+              v23_hoja_zapatas_corridas,
+              v24_rediseno):
         f()
 
     print("\n" + "=" * 66)
@@ -6218,6 +9996,9 @@ _DECLARA = [
     # out var x / is Tipo x
     r"\bout\s+(?:var|[\w<>,?\[\]\.]+)\s+(\w+)",
     r"\bis\s+(?:not\s+)?[\w<>,?\[\]\.]+\s+(\w+)\b",
+    # is { } x  /  is { Prop: 1 } x  -> el patron de propiedades TAMBIEN declara. Sin
+    # esto, 'if (t is { } c) lista.Add(c);' se reportaba como un CS0103 que no existe.
+    r"\bis\s+(?:not\s+)?\{[^{}]*\}\s+(\w+)\b",
     # lambdas: x => ...   y   (x, y) => ...
     r"\(?\s*\b(\w+)\s*\)?\s*=>",
     r"\(\s*(\w+)\s*,\s*(\w+)\s*\)\s*=>",
@@ -6985,8 +10766,15 @@ def v21_separacion_y_acero() -> None:
               "Modulo pendiente de portar" not in tab)
         check("tiene su cuadricula", 'x:Name="AceroGrid"' in tab)
         check("y su boton de dibujar", 'Click="OnExportAcero"' in tab)
-        check("y dice que columna usa cada familia",
-              "el peralte es el DIAMETRO" in tab)
+        # De la tarjeta de ayuda queda UN solo renglon -el de las familias-, que es el que
+        # de verdad hace falta: los otros dos explicaban lo que ya dice cada columna y se
+        # comian el alto de la tabla. Lo que decian vive ahora en el globo del titulo.
+        check("y dice que familias hay",
+              'Text="Las doce familias:"' in tab
+              and "OC: tubo redondo" in tab)
+        check("la ayuda larga se queda en el globo del titulo, no encima de la tabla",
+              "Que columna usa cada una" not in tab
+              and "cada familia usa las columnas que necesita" in tab)
 
         # ---------------------------------------------------------------
         # Las columnas de propiedades geometricas
@@ -7919,6 +11707,1137 @@ def v21_separacion_y_acero() -> None:
     check("la nota dice que el dibujo esta completo",
           "no se pudo reordenar" in seccion and "El dibujo está " in seccion
           and "no se pudo reordenar" in alzado and "El alzado está " in alzado)
+
+
+
+# ======================================================================
+# 22. Las dos macros de ZAPATA CORRIDA
+#
+#     Lo que se vigila aqui no es que el codigo compile -eso lo hace el
+#     compilador- sino que el port siga siendo UN port: que las corridas no
+#     se lleven una copia de lo que ya calculan las aisladas, y que no se
+#     mezclen los niveles de las dos familias, que son contrarios.
+#
+#     Los numeros, uno por uno, se comprueban EJECUTANDO el codigo en
+#     tools/verificar_zapatas_corridas.py y en tools/prueba-zapata.
+# ======================================================================
+def v22_zapatas_corridas() -> None:
+    print("\n[22] Zapatas corridas: las dos macros")
+
+    trazo = leer(ruta("client/src/CadLink.Cad/TrazoZapataCorrida.cs"))
+    datos = leer(ruta("client/src/CadLink.Cad/ZapataCorridaCad.cs"))
+    aislada = leer(ruta("client/src/CadLink.Cad/TrazoZapata.cs"))
+    doc = leer(ruta("docs/macro-zapatas-corridas.md"))
+
+    check("la geometria de la corrida existe y es una clase estatica",
+          "public static class TrazoZapataCorrida" in trazo)
+
+    # ------------------------------------------------------------------
+    # Los niveles de las dos familias son CONTRARIOS y no se mezclan
+    # ------------------------------------------------------------------
+    # La corrida cuelga del terreno -yNivTerr = -3.5- y la aislada tiene el
+    # fondo fijo en -8. Si una tomara el numero de la otra, dos zapatas con
+    # desplantes distintos saldrian con el terreno a dos alturas.
+    check("la corrida cuelga del terreno en -3.5",
+          "public const double YNivelTerreno = -3.5;" in trazo)
+    # El nombre de la constante de las aisladas SI aparece en el comentario -se
+    # cita a proposito-, asi que lo que se vigila es que no se USE.
+    check("y no se trae el fondo fijo de las aisladas",
+          "-8.0" not in _sin_comentarios(trazo)
+          and "YBaseElevacion" not in _sin_comentarios(trazo))
+    check("las aisladas conservan el suyo",
+          "public const double YBaseElevacion = -8.0;" in aislada)
+    check("y queda escrito que las dos familias no lo comparten",
+          "comparten este número" in trazo)
+
+    # ------------------------------------------------------------------
+    # EL ERROR QUE SE CORRIGIO: la seccion va CENTRADA en su offset
+    # ------------------------------------------------------------------
+    # Las dos macros hacen xBase = offsetX - anchoZapata / 2. La primera
+    # version del port arrancaba en el propio offset y corria media zapata
+    # por seccion, con el rotulo -que va centrado en el eje- descuadrado.
+    check("xBase resta media zapata al offset",
+          "OffsetX(tipo, indice) - (anchoM / 2)" in trazo)
+    check("el paso entre secciones son los 2 m de las macros",
+          "public const double SeparacionSecciones = 2.0;" in trazo)
+    check("el lindero arranca en -2",
+          "public const double LinderoPrimerOffset = -2.0;" in trazo)
+    check("y crece al lado contrario que la central",
+          "LinderoPrimerOffset - (i * SeparacionSecciones)" in trazo
+          and "i * SeparacionSecciones" in trazo)
+    check("un indice negativo no manda la seccion a otro lado",
+          "Math.Max(indice, 0)" in trazo)
+
+    # ------------------------------------------------------------------
+    # El muro
+    # ------------------------------------------------------------------
+    # Las macros NO recortan el muro al pano de la zapata. Recortarlo esconde
+    # un espesor mal capturado en lugar de ensenarlo en el dibujo.
+    check("el muro no se recorta al pano de la zapata",
+          "las macros no lo recortan" in trazo
+          and "Math.Min(xMuroDer" not in trazo)
+    check("el muro se apoya en la contratrabe cuando la hay",
+          "Math.Max(yContratrabeTop, a.YZapTop)" in trazo)
+    check("y nunca sale de alto negativo", "Math.Max(yTope, yBase)" in trazo)
+
+    # ------------------------------------------------------------------
+    # El muro de enrase: la unica cuenta con truco
+    # ------------------------------------------------------------------
+    for nombre, valor in (("EnraseAltoObjetivo", "0.08"), ("EnraseJunta", "0.01"),
+                          ("EnraseDesfaseLado", "0.01"), ("EnraseAltoMinimo", "0.02")):
+        check(f"el enrase trae su {nombre} = {valor}",
+              f"public const double {nombre} = {valor};" in trazo)
+
+    check("el reparto se busca hasta 50 piezas",
+          "public const int EnraseMaxPiezas = 50;" in trazo)
+    check("con n piezas hay n-1 juntas, no n",
+          "(hueco - ((n - 1) * EnraseJunta)) / n" in trazo)
+    check("y gana el reparto mas cercano a los 8 cm",
+          "Math.Abs(alto - EnraseAltoObjetivo)" in trazo
+          and "error < mejorError" in trazo)
+    check("con menos de 2 cm de hueco no se dibuja enrase",
+          "hueco <= EnraseAltoMinimo" in trazo)
+    check("y la hilada se enrasa con la caja de la cadena",
+          "public static Enrase MuroDeEnrase(double xIzq, double ancho," in trazo
+          and "de la caja de la cadena" in trazo)
+
+    # ------------------------------------------------------------------
+    # El acero del muro de concreto
+    # ------------------------------------------------------------------
+    # Los 5 cm son AL EJE de la varilla, no "recubrimiento + medio diametro":
+    # asi esta en las dos macros, y cambiarlo mueve el acero de todos los muros.
+    check("los ejes del acero van a 5 cm del pano",
+          "public const double MuroRetiroAcero = 0.05;" in trazo
+          and "m.XIzq + MuroRetiroAcero" in trazo)
+    check("un muro delgado pierde la doble parrilla en lugar de cruzar el acero",
+          "return new EjesAcero(m.XCentro, m.XCentro, false);" in trazo)
+    check("los circulos se reparten con la separacion VERTICAL",
+          "double[] CirculosDelMuro(Muro m, double yTerreno, double diam, double sepVertM)"
+          in trazo)
+    check("y se dibuja uno menos de los que caben, como la macro",
+          "var aDibujar = caben - 1;" in trazo)
+    check("la pata queda por encima de la parrilla inferior",
+          "public static double YDeLaPata(" in trazo)
+
+    # LAS DOS MACROS DOBLAN DISTINTO, y esa es la diferencia que se porto mal
+    # la primera vez: no es "hacia el eje de la zapata".
+    check("la central dobla cada varilla hacia SU lado",
+          "VarillaMuro[] VerticalesCentral(" in trazo
+          and "new VarillaMuro(xIzq, yTerreno, yPata, xIzq - doblez, -1)" in trazo
+          and "new VarillaMuro(xDer, yTerreno, yPata, xDer + doblez, 1)" in trazo)
+    check("el lindero dobla las dos a la izquierda",
+          "VarillaMuro[] VerticalesLindero(" in trazo
+          and "yPata, XFin(xDer), -1)" in trazo
+          and "yPata + sep, XFin(xIzq), -1)" in trazo)
+    check("y a dos alturas distintas, con su separacion ajustada",
+          "public static double SepDeLosDobleces(" in trazo
+          and "LinderoSepDoblecesFactorMin" in trazo)
+    check("la pata del lindero se recorta al recubrimiento de la zapata",
+          "var xLimIzq = a.XBase + rec + (diamMuro / 2);" in trazo)
+    check("el doblez usa el validador de las aisladas, no una copia",
+          "TrazoZapata.FactorGanchoValido(factorDoblez)" in trazo)
+    check("y los 15 diametros son los mismos que los del dado",
+          "FactorDoblezMuro = TrazoZapata.FactorGanchoAbajo" in trazo)
+
+    # ------------------------------------------------------------------
+    # La anotacion: cada offset con el nombre de lo que mide
+    # ------------------------------------------------------------------
+    for nombre, valor in (("CotaAnchoTotal", "0.13"), ("CotaAnchosParciales", "0.075"),
+                          ("CotaAlturaTotal", "0.1445"),
+                          ("CotaAlturasParciales", "0.0585"),
+                          ("RotuloOffset", "0.25"), ("RotuloSalto1", "0.34"),
+                          ("RotuloSalto2", "0.42")):
+        check(f"la distancia {nombre} vale {valor}",
+              f"public const double {nombre} = {valor};" in trazo)
+
+    check("el rotulo se mide desde el fondo de la plantilla",
+          "var yFondo = yZapBot - PlantillaEspesor;" in trazo)
+    # EL TEXTO DEL NIVEL, A LA IZQUIERDA. Se pidio asi, y con anclaje a la
+    # izquierda: la resta de la macro -«xCentro + 0.35 - 0.313»- lo dejaba centrado
+    # encima del muro, y en una zapata angosta tapaba el arranque del enrase.
+    check("el texto del nivel arranca en el pano izquierdo de la zapata",
+          "(a.XBase, a.YTerreno + (AltoTextoNivel / 2) + 0.035);" in trazo
+          and "a.XCentro + 0.35 - 0.313" not in trazo)
+    check("y se escribe anclado a la izquierda, para que crezca hacia dentro",
+          "anclaje: AnclajeIzquierda);" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Corrida.cs")))
+
+    # ------------------------------------------------------------------
+    # Lo que ya existia NO se vuelve a escribir
+    # ------------------------------------------------------------------
+    check("las parrillas se delegan en la rutina de las aisladas",
+          "TrazoZapata.ParrillaEnAlzado(" in trazo
+          and "TrazoZapata.Parrilla ParrillaEnAlzado" in trazo)
+    check("y no hay constantes de gancho duplicadas",
+          "FactorGanchoMinimo" not in trazo and "FactorGanchoMaximo" not in trazo)
+
+    # ------------------------------------------------------------------
+    # Los datos de la hoja
+    # ------------------------------------------------------------------
+    check("los datos traen anotadas las celdas de LAS DOS macros",
+          "<c>E4</c> / <c>O4</c>" in datos and "<c>H4</c> / <c>R4</c>" in datos)
+    check("el espesor del muro apunta a su celda segun el tipo de muro",
+          "<c>H9</c> / <c>R9</c>" in datos and "<c>G7</c> / <c>P7</c>" in datos)
+    check("y queda avisado que con mamposteria el acero sube un renglon",
+          "suben un renglón" in datos)
+    check("el espesor del muro esta en cm y se pasa a metros",
+          "EspesorMuroCm / 100.0" in datos)
+    check("con la celda vacia el muro sale de 15 cm",
+          "EspesorMuroCm > 0 ? EspesorMuroCm / 100.0 : 0.15" in datos)
+    check("cada zapata ocupa 16 renglones de la hoja",
+          "<b>16 renglones</b>" in datos)
+    check("un bloque capturado como 0 no cuenta como bloque",
+          "public static bool HayBloque(string? id)" in datos
+          and 't != "0"' in datos)
+    check("el titulo del lindero no dice «corrida», como en su macro",
+          '"ZAPATA DE LINDERO"' in datos and '"ZAPATA CORRIDA CENTRAL"' in datos)
+
+    # ------------------------------------------------------------------
+    # El inventario, que es lo que dice que falta
+    # ------------------------------------------------------------------
+    check("el inventario de las dos macros esta escrito",
+          "# Inventario de `ZAPATA CORRIDA CENTRAL V2`" in doc)
+    # El inventario tiene que seguir el paso del port: cuando el dibujante no existia
+    # decia «Falta», y ahora tiene que decir cual es su archivo. Un inventario que se
+    # queda viejo es peor que no tenerlo, porque se lee y se cree.
+    check("el inventario apunta al dibujante que existe de verdad",
+          "ZapataDrawer.Corrida.cs" in doc)
+    check("y a la hoja de captura",
+          "pestaña «Zapatas Corridas»" in doc)
+    check("y deja por escrito los errores que cazo la comprobacion",
+          "Lo que se corrigió al leer el fuente" in doc)
+
+
+# ======================================================================
+# 23. La HOJA de zapatas corridas: la pestana, el modelo y el dibujante
+#
+#     Esta hoja no se puede compilar en el entorno donde se escribio -la
+#     aplicacion es WPF y aqui no hay Windows-, asi que estas
+#     comprobaciones son la unica red: que la pestana ya no sea un
+#     marcador, que cada nombre del XAML exista en el codigo, que la fila
+#     se guarde en el .clk y que el dibujante este enganchado.
+# ======================================================================
+def v23_hoja_zapatas_corridas() -> None:
+    print("\n[23] La hoja de zapatas corridas")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    hoja = leer(ruta("client/src/CadLink.App/MainWindow.ZapatasCorridas.cs"))
+    fila = leer(ruta("client/src/CadLink.App/Models/ZapataCorridaRow.cs"))
+    filas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    ventana = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    zapatas = leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
+    proyecto = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    drawer = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Corrida.cs"))
+
+    # ------------------------------------------------------------------
+    # La pestana ya NO es un marcador
+    # ------------------------------------------------------------------
+    # Se mira SOLO el trozo de esta pestana: los otros modulos que faltan
+    # -muros de contencion, placa base, conexiones- siguen siendo marcadores a
+    # proposito, y buscar el texto en todo el XAML los daba por rotos.
+    i_tab = xaml.index('<TabItem Header="Zapatas Corridas">')
+    pestana = xaml[i_tab:xaml.index("</TabItem>", i_tab)]
+
+    check("la pestana ya no es un marcador",
+          "Modulo pendiente de portar" not in pestana)
+    check("y trae su cuadricula, su vista previa y sus totales",
+          'x:Name="ZapatasCorridasGrid"' in xaml
+          and 'x:Name="ZapataCorridaPreviewCanvas"' in xaml
+          and 'x:Name="TotalesZapatasCorridasText"' in xaml)
+    check("con los dos botones de siempre y sus estilos",
+          'Click="OnRevisarZapatasCorridas"' in xaml
+          and 'Style="{StaticResource SecondaryButtonStyle}"' in xaml
+          and 'x:Name="DibujarZapatasCorridasButton"' in xaml
+          and 'Click="OnExportZapatasCorridas"' in xaml)
+
+    # El estilo de dibujo es del JUEGO: los radios van atados a los de concreto.
+    check("el estilo de dibujo esta atado a los botones de la hoja de concreto",
+          'x:Name="ZapCorTipo1Radio"' in xaml
+          and "IsChecked=\"{Binding IsChecked, ElementName=Tipo1Radio, Mode=TwoWay}\"" in xaml)
+
+    # ------------------------------------------------------------------
+    # Cada nombre del XAML existe en el codigo, y al contrario
+    # ------------------------------------------------------------------
+    # Las de las parrillas ya no salen aqui: son DOS columnas de plantilla -una por
+    # parrilla- y su lista va en el XAML con x:Static, porque una celda de plantilla no
+    # tiene x:Name al que agarrarse.
+    for nombre in ("ColZapCorVarMuro", "ColZapCorVarMuroVert"):
+        check(f"la columna {nombre} esta en el XAML y se llena en el codigo",
+              f'x:Name="{nombre}"' in xaml and f"{nombre}.ItemsSource" in hoja)
+
+    check("el rotulo del doblez del muro se rellena desde el codigo",
+          'x:Name="ZapCorGanchoText"' in xaml and "ZapCorGanchoText.Text" in hoja)
+
+    # ------------------------------------------------------------------
+    # Las casillas que solo aplican con un tipo de muro
+    # ------------------------------------------------------------------
+    # Una zapata con muro de MAMPOSTERIA no tiene armado de muro y una de
+    # CONCRETO no lleva cadena de desplante: sus macros ni las leen. Las celdas
+    # se apagan solas con IsEnabled enlazado a la fila, sin una linea de codigo.
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("existe el estilo de celda que solo aplica con mamposteria",
+          'x:Key="CeldaSoloMamposteria"' in tema
+          and '<Setter Property="IsEnabled" Value="{Binding MuroEsMamposteria}" />' in tema)
+    check("y el que solo aplica con concreto",
+          'x:Key="CeldaSoloConcreto"' in tema
+          and '<Setter Property="IsEnabled" Value="{Binding MuroEsConcreto}" />' in tema)
+    check("los dos se ven apagados, no solo intocables",
+          tema.count('<Trigger Property="IsEnabled" Value="False">') >= 2)
+
+    check("la cadena de desplante se apaga con muro de concreto",
+          pestana.count("CeldaSoloMamposteria") == 1)
+    # Cinco desde que el muro tiene DOS varillas -la horizontal y la vertical-: la de
+    # doble parrilla del muro, las dos varillas y las dos separaciones.
+    check("y las cinco casillas del armado del muro con mamposteria",
+          pestana.count("CeldaSoloConcreto") == 5)
+
+    # La fila tiene que AVISAR de los dos cambios para que la celda se entere.
+    check("la fila avisa cuando cambia el tipo de muro",
+          "Raise(nameof(MuroEsConcreto));" in fila
+          and "Raise(nameof(MuroEsMamposteria));" in fila)
+
+    for manejador in ("OnRevisarZapatasCorridas", "OnExportZapatasCorridas"):
+        check(f"el manejador {manejador} existe",
+              f"private void {manejador}(object sender, RoutedEventArgs e)" in hoja)
+
+    # ------------------------------------------------------------------
+    # Las celdas que se pueden ESCRIBIR van por Text, no por SelectedItem
+    # ------------------------------------------------------------------
+    # Es el bug que dejaba las zapatas «de lindero»: con SelectedItemBinding y la
+    # lista llegando tarde, el enlace pisa el valor capturado.
+    for prop, lista in (("Tipo", "ZapataCorridaRow.Tipos"),
+                        ("TipoMuro", "ZapataCorridaRow.TiposDeMuro"),
+                        ("DobleParrilla", "ZapataCorridaRow.SiNo"),
+                        ("MuroDobleParrilla", "ZapataCorridaRow.SiNo"),
+                        ("IdContratrabe", "ZapataCorridaRow.ContratrabesDisponibles"),
+                        ("IdCadena", "ZapataCorridaRow.CadenasDisponibles")):
+        check(f"la celda de {prop} es un combo editable enlazado por Text",
+              f"models:{lista}" in xaml
+              and f'Text="{{Binding {prop}, UpdateSourceTrigger=PropertyChanged}}"' in xaml)
+
+    # ------------------------------------------------------------------
+    # El modelo de fila
+    # ------------------------------------------------------------------
+    check("la fila existe y hereda de Row",
+          "public sealed class ZapataCorridaRow : Row" in fila)
+    check("y convierte a geometria en UN solo sitio",
+          "public ZapataCorridaCad AFormatoCad()" in fila)
+    check("las listas de bloques son estaticas y observables",
+          "public static ObservableCollection<string> ContratrabesDisponibles" in fila
+          and "public static ObservableCollection<string> CadenasDisponibles" in fila)
+    check("el recubrimiento sale de la geometria, no de una casilla",
+          "public double RecM => TrazoZapataCorrida.RecPorOmision;" in fila)
+    check("la columna «Falta» avisa de la varilla del muro de concreto",
+          "la varilla del muro de concreto" in fila)
+    check("la coleccion viva esta en los datos del proyecto",
+          "public ObservableCollection<ZapataCorridaRow> ZapatasCorridas" in filas)
+    check("y el ejemplo trae una de cada tipo",
+          "ZapataCorridaCad.Central, Id = \"ZC-1\"" in filas
+          and "ZapataCorridaCad.Lindero, Id = \"ZCL-1\"" in filas)
+    check("con la contratrabe y la cadena que usan, capturadas en concreto",
+          'Elemento = "CONTRATRABE", Id = "CT-1"' in filas
+          and 'Elemento = "CADENA DE DESPLANTE", Id = "CD-1"' in filas)
+
+    # ------------------------------------------------------------------
+    # Los enganches de la ventana
+    # ------------------------------------------------------------------
+    check("las listas se llenan al arrancar",
+          "LlenarListasZapatasCorridas();" in ventana)
+    check("la cuadricula se enlaza con el resto",
+          "EnlazarZapatasCorridas();" in ventana)
+    check("la vista previa se engancha UNA vez, en el constructor",
+          ventana.count("EngancharVistaPreviaZapataCorrida();") == 1)
+    check("el boton lo enciende la LICENCIA, no el XAML",
+          "DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;" in ventana)
+    check("las listas de bloques se refrescan cuando cambia la hoja de concreto",
+          "ActualizarListasDeZapatasCorridas();" in ventana)
+
+    # El doblez es UNO para toda la obra: la casilla de las aisladas manda aqui.
+    # EL DOBLEZ SE PUEDE CAMBIAR EN LAS DOS HOJAS, y es UN valor: el de la obra.
+    # Cada casilla escribe en la otra, con una bandera que corta el ciclo -sin ella,
+    # escribir en una disparaba el evento de la otra sin fin y el cursor saltaba-.
+    check("la hoja de corridas tiene su propia casilla de doblez",
+          'x:Name="ZapCorGanchoBox"' in xaml
+          and 'TextChanged="OnGanchoCorridaCambio"' in xaml
+          and "private void OnGanchoCorridaCambio(" in hoja)
+    check("y escribe en la casilla del juego, que es la que manda",
+          "ZapGanchoDiametrosBox.Text = ZapCorGanchoBox.Text;" in hoja)
+    check("con la bandera que evita el ciclo entre las dos casillas",
+          "_sincronizandoGancho" in hoja)
+    check("la casilla de las aisladas sigue poniendo al dia la otra hoja",
+          "ActualizarGanchoDeCorridas();" in zapatas
+          and "DibujarVistaPreviaZapataCorrida();" in zapatas)
+
+    # ------------------------------------------------------------------
+    # Se guarda en el .clk
+    # ------------------------------------------------------------------
+    check("el proyecto guarda las zapatas corridas en su propia lista",
+          "public List<FilaGuardada> ZapatasCorridas" in proyecto)
+    check("se escriben al guardar",
+          "p.ZapatasCorridas.Add(FilaSerializable.Leer(z));" in ventana)
+    check("y se leen al abrir",
+          "_datos.ZapatasCorridas.Clear();" in ventana
+          and "foreach (var fila in p.ZapatasCorridas)" in ventana)
+
+    # ------------------------------------------------------------------
+    # El dibujante
+    # ------------------------------------------------------------------
+    check("el dibujante de corridas es un parcial del de zapatas",
+          "public sealed partial class ZapataDrawer" in drawer)
+    check("y no duplica las primitivas de AutoCAD",
+          "private object? Linea(" not in drawer
+          and "private object? HatchRect(" not in drawer
+          and "AcadConnection.Retry" in drawer)
+    check("su punto de entrada devuelve un resumen propio",
+          "public ResumenCorrida DibujarCorridas(" in drawer
+          and "public sealed class ResumenCorrida" in drawer)
+    check("cada familia lleva su propio indice de acomodo",
+          "var indice = lindero ? iLindero++ : iCentral++;" in drawer)
+    check("un fallo en una zapata no aborta el juego",
+          'Fallo($"Zapata corrida \'{z.Id}\'", ex);' in drawer)
+    check("la contratrabe se inserta ANTES de dibujar la zapata",
+          drawer.index("InsertarBloqueApoyado(") < drawer.index("HatchConcreto(xBase"))
+
+    # EL ERROR QUE SE CORRIGIO: se estaba apoyando en el LOMO de la zapata y salia
+    # flotando encima. Las dos macros la apoyan en yZapBot, que es el pano de arriba
+    # de la plantilla: arranca del desplante y atraviesa el espesor, y de ahi sale
+    # que la linea superior de la zapata se interrumpa.
+    check("y se apoya en el pano de arriba de la plantilla",
+          "lindero ? a.XDer : a.XCentro, a.YZapBot, lindero);" in drawer)
+    check("la vista previa la apoya en el mismo sitio",
+          "a.YZapBot + TrazoZapataCorrida.ContratrabeAltoPorOmision" in hoja)
+    check("la geometria sale de TrazoZapataCorrida y no se recalcula",
+          "TrazoZapataCorrida.Colocar(" in drawer
+          and "TrazoZapataCorrida.MuroDeEnrase(" in drawer
+          and "TrazoZapataCorrida.EjesDelAcero(" in drawer
+          and "TrazoZapataCorrida.CirculosDelMuro(" in drawer)
+    check("el enrase pinta primero los rellenos y luego los contornos",
+          drawer.index("Pasada 1: los rellenos") < drawer.index("Pasada 2: los contornos"))
+    check("y manda sus contornos al frente cuando va relleno",
+          "AlFrente(_cont, contornos);" in drawer)
+    check("el titulo del lindero sale de la clase de datos, con su texto de macro",
+          "z.TipoTexto" in drawer)
+    check("la hoja llama al dibujante",
+          "dibujante.DibujarCorridas(zapatas)" in hoja)
+
+    # ------------------------------------------------------------------
+    # LOS ROTULOS Y LOS LEADERS DE LAS MACROS DE CORRIDA
+    # ------------------------------------------------------------------
+    # UN ROTULO POR PARRILLA, y el mismo para las dos hojas: su cabecera, sus dos
+    # varillas con su lecho y dos flechas, una a la varilla de canto y otra a la de
+    # punta. Lo que cambia es DONDE se cuelga, y eso lo decide el que dibuja.
+    check("hay un rotulo por parrilla, con su cabecera y sus dos flechas",
+          "private void RotuloDeParrillaCompleto(" in drawer
+          and "La varilla de flexión: por la IZQUIERDA" in drawer
+          and "Y la de temperatura: por la DERECHA" in drawer)
+    check("las dos varillas de esa parrilla van en el MISMO mtext",
+          'texto += "\\n" + segundo;' in drawer)
+    check("y el tope es la contratrabe cuando sobresale, y el muro cuando no",
+          "var xTopeIzq = Math.Min(a.XMuroIzq, hayCt ? xCtIzq : a.XMuroIzq);" in drawer
+          and "var xTopeDer = Math.Max(a.XMuroDer, hayCt ? xCtDer : a.XMuroDer);" in drawer)
+
+    # LA CENTRAL: uno en cada volado, la de abajo a la izquierda y la de arriba a la
+    # derecha. «Cada lado» es el volado LIBRE -del pano de la zapata al pano de la
+    # contratrabe- y no la cuarta parte del ancho: con la contratrabe de 30 en una
+    # zapata de 80, la cuarta parte caia a 20 cm del pano y el renglon se metia dentro
+    # del bloque.
+    check("la central cuelga uno en cada volado, el de abajo a la izquierda",
+          "private static double MitadDelLado(" in drawer
+          and "MitadDelLado(xTopeIzq, a.XBase, haciaDerecha: false),\n"
+          "                a.XBase, xTopeIzq, xTopeIzq, xTopeDer);" in drawer
+          and "MitadDelLado(xTopeDer, a.XDer, haciaDerecha: true),\n"
+          "                    xTopeDer, a.XDer, xTopeIzq, xTopeDer);" in drawer)
+    check("y ninguno se mete en el bloque del centro",
+          "private static double LimiteDelRotulo(" in drawer
+          and "xTope + RotuloParrillaHolgura + (AnchoRotuloParrilla / 2)" in drawer
+          and "xTope - RotuloParrillaHolgura - (AnchoRotuloParrilla / 2);" in drawer)
+
+    # EL LINDERO: LOS DOS EN EL VOLADO IZQUIERDO, UNO EN CADA MITAD. Ahi el muro esta
+    # pegado al pano DERECHO -a su derecha esta la colindancia-, asi que no hay «lado
+    # derecho» donde colgar nada y todo el hueco esta a la izquierda.
+    check("el lindero cuelga los dos en el volado izquierdo, uno en cada mitad",
+          "EL LINDERO: LOS DOS RÓTULOS EN EL VOLADO IZQUIERDO, UNO EN CADA MITAD." in drawer
+          and "var xMedio = (a.XBase + xTopeIzq) / 2;" in drawer
+          and "(a.XBase + xMedio) / 2, a.XBase, xMedio, xTopeIzq, xTopeDer);" in drawer
+          and "(xMedio + xTopeIzq) / 2, xMedio, xTopeIzq, xTopeIzq, xTopeDer);" in drawer)
+    check("y con una sola parrilla, uno centrado en todo el volado",
+          "(a.XBase + xTopeIzq) / 2, a.XBase, xTopeIzq, xTopeIzq, xTopeDer);" in drawer)
+    check("cada rotulo señala varillas de SU franja, no las del otro",
+          "private void RotuloDeParrillaCompleto(" in drawer
+          and "var xMin = Math.Max(xFranjaMin, p.XCaraIzq + (diam / 2));" in drawer
+          and "var xMax = Math.Min(xFranjaMax, p.XCaraDer - (diam / 2));" in drawer)
+
+    # Y NO QUEDA NADA DEL REPARTO VIEJO por tipo de varilla -flexion a un lado y
+    # temperatura al otro, apilados-: se cambio por el rotulo por parrilla en las DOS
+    # hojas, asi que su codigo se fue.
+    check("el reparto viejo por tipo de varilla ya no esta",
+          "RotulosDeParrillaCorrida" not in drawer
+          and "HuellaRotulos" not in drawer
+          and "CarrilDeFlexion" not in drawer
+          and "CarrilLibre" not in drawer)
+
+    # EL ROTULO ES UN MTEXT DE VARIOS RENGLONES: en una sola linea medía 30 cm y no
+    # cabe en el volado.
+    check("los dos textos llevan la C de corrugada, y en dos renglones",
+          '$"VAR {etiqueta}C @ {SepTexto(sep)} cm\\n{sufijo}"' in drawer)
+    check("el rotulo de parrilla se escribe con ancho de renglon",
+          "private const double AnchoRotuloParrilla = 0.22;" in drawer
+          and "MtextoAncho(xTexto, yTexto, texto, AnchoRotuloParrilla, AnclajeCentro);" in drawer)
+    check("la flecha de temperatura se pega a una varilla de verdad",
+          "private static double CirculoMasCercano(" in drawer)
+
+    # LA CABECERA, ARRIBA DE TODO: de que parrilla se habla. Se pidio, y hace falta en
+    # cuanto hay dos, porque la palabra del lecho dice en que cama va cada varilla
+    # DENTRO de su parrilla, no de que parrilla es.
+    check("el rotulo dice de que parrilla es, en su primer renglon",
+          'private const string CabeceraParrillaInferior = "PARRILLA INFERIOR";' in drawer
+          and 'private const string CabeceraParrillaSuperior = "PARRILLA SUPERIOR";' in drawer
+          and "texto = (superior ? CabeceraParrillaSuperior : CabeceraParrillaInferior)"
+          in drawer)
+    check("y los renglones se cuentan con ella, para que el leader salga del que toca",
+          "var renglones = segundo.Length > 0 ? 5 : 3;" in drawer)
+    # CADA FLECHA SALE DE SU RENGLON, y con leader QUEBRADO: la cola horizontal sale
+    # del renglon de la palabra -el que dice INFERIOR, SUPERIOR o AMBOS SENTIDOS- y
+    # de ahi la linea va en diagonal a la varilla. Se pidio asi para que se vea de
+    # que renglon sale cada una.
+    check("cada flecha arranca en la altura de SU renglon",
+          "var yFila1 = yTop - (2.5 * alto);" in drawer
+          and "var yFila2 = segundo.Length > 0 ? yTop - (4.5 * alto) : yFila1;" in drawer)
+
+    # Y CON QUIEBRE: cola horizontal desde el renglon y de ahi la diagonal. Recta salia
+    # casi a plomo y no se veia de donde arrancaba.
+    check("y la linea va quebrada: cola horizontal y luego la diagonal",
+          "private List<object> LeaderQuebrado(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+          and "LeaderQuebrado(xFlexion, p.YBarra, xColaIzq, yFila1, xPalabraIzq, yFila1);"
+          in drawer
+          and "LeaderQuebrado(xTemp, p.YCirculos, xColaDer, yFila2, xPalabraDer, yFila2));"
+          in drawer)
+    check("la cola sale por lados contrarios, y no acaba encima de la contratrabe",
+          "var xColaIzq = FueraDelBloque(xPalabraIzq - RotuloParrillaCola, xTopeIzq, xTopeDer);"
+          in drawer
+          and "xPalabraDer + RotuloParrillaCola, xTopeIzq, xTopeDer);" in drawer
+          and "private static double FueraDelBloque(" in drawer)
+
+    # LA COLA ARRANCA EN LA PALABRA, no en el borde del bloque: los renglones van
+    # CENTRADOS, asi que entre el final de «INFERIOR» y el borde hay aire y la cola
+    # parecia suelta. Se mide el renglon de verdad, creandolo y borrandolo.
+    check("la cola arranca donde acaba la palabra, medida de verdad",
+          "private double AnchoDeRenglon(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+          and "var xPalabraIzq = xTexto - mitad1;" in drawer
+          and "var xPalabraDer = xTexto + (AnchoDeRenglon(palabra2) / 2);" in drawer)
+    check("y la cola mide 6 cm, no 3",
+          "private const double RotuloParrillaCola = 0.06;" in drawer)
+    check("con un solo armado salen las dos flechas igual, como en las macros",
+          "Sale TAMBIÉN con un solo armado" in drawer
+          and drawer.index("var xTemp = CirculoEnLaFranja(")
+          > drawer.index("LeaderQuebrado(xFlexion,"))
+    check("y cada una sale por su lado: flexion por la izquierda, temperatura por la derecha",
+          "La varilla de flexión: por la IZQUIERDA" in drawer
+          and "Y la de temperatura: por la DERECHA" in drawer)
+    check("las dos señalan la varilla mas cercana que tienen",
+          "var xFlexion = Math.Clamp(x1, xMin, xMax);" in drawer
+          and "var xTemp = CirculoEnLaFranja(p.Circulos, x2, xMin, xMax);" in drawer)
+    check("y ninguna se mete debajo de la contratrabe para llegar",
+          "private static double CirculoEnLaFranja(" in drawer
+          and "private static double FueraDelBloque(" in drawer)
+    # LOS LEADERS AL FRENTE -bring to front-, que es lo que se pidio: la diagonal cruza
+    # por detras del propio bloque de texto, y la mascara del MText la borraba.
+    check("los leaders se suben al frente, para que se vean enteros",
+          "if (lineas.Count > 0)" in drawer
+          and "AlFrente(_cont, lineas);" in drawer
+          and "private void EncimaDelLeader(" not in drawer)
+
+    # Y VIVEN EN LA CAPA DE LOS ROTULOS, no en una propia: se pidio para las dos hojas.
+    # Con capa aparte hay que apagar dos capas para quitar la anotacion de un plano.
+    zap_base = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+    zap_planta = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+
+    check("los leaders van en la capa de los rotulos, en las dos hojas",
+          "private const string CapaLeader = CapaRotulos;" in zap_base
+          and "(CapaRotulos, CapasCad.ColorDeCapa(CapaTextos))," in zap_planta
+          and '"LEADER"' not in zap_base)
+    # EL TEXTO DE CADA VARILLA DICE SU LECHO, y cuando los dos sentidos llevan lo
+    # mismo se rotula una sola vez. Se pidio asi.
+    # Y LA PALABRA SE VOLTEA EN LA PARRILLA DE ARRIBA: ahi la de flexion se amarra
+    # por el lomo, asi que es la del lecho SUPERIOR y la de temperatura queda debajo.
+    check("la varilla de flexion dice INFERIOR y la de temperatura SUPERIOR",
+          'private const string SufijoLechoInferior = "INFERIOR";' in drawer
+          and 'private const string SufijoLechoSuperior = "SUPERIOR";' in drawer
+          and "varBarra, sepBarra, superior ? SufijoLechoSuperior : SufijoLechoInferior);"
+          in drawer
+          and "varCirc, sepCirc, superior ? SufijoLechoInferior : SufijoLechoSuperior);"
+          in drawer)
+    check("con el mismo armado en los dos sentidos sale un solo rotulo",
+          'private const string SufijoAmbosSentidos = "AMBOS SENTIDOS";' in drawer
+          and "var unSoloArmado = MismoArmado(varBarra, sepBarra, varCirc, sepCirc);" in drawer
+          and "TextoParrillaCorrida(varBarra, sepBarra, SufijoAmbosSentidos)" in drawer)
+    check("y para eso tienen que coincidir la varilla Y la separacion",
+          "private bool MismoArmado(" in drawer
+          and "SepTexto(sepA).Equals(SepTexto(sepB), StringComparison.OrdinalIgnoreCase)"
+          in drawer)
+
+    # EL RENGLON SE MIDE DESDE EL LOMO DEL CONCRETO, NO DESDE LA VARILLA: asi nunca
+    # cae dentro de la seccion, con el espesor que sea, y con doble parrilla se sube
+    # solo. Era el error que se veia con zapatas de 50 cm.
+    check("el rotulo de parrilla sube 10 cm sobre el lomo de la zapata",
+          "private const double RotuloParrillaDy = 0.10;" in drawer
+          and "var yTexto = a.YZapTop + RotuloParrillaDy;" in drawer)
+    # EL ENRASE Y EL MURO DE CONCRETO, DESPEGADOS 6 CM DE SU PANO, Y POR EL LADO DONDE
+    # HAY HUECO: la central por la derecha y el lindero por la IZQUIERDA, donde a la
+    # derecha esta la colindancia. Medido desde el pano y no desde el eje de la
+    # seccion, la separacion es la misma con cualquier espesor.
+    check("el rotulo del enrase va a 6 cm del pano, y por el lado con hueco",
+          "private const double RotuloEnraseSeparacion = 0.06;" in drawer
+          and "var xPano = lindero ? e.XIzq : e.XIzq + e.Ancho;" in drawer
+          and "? xPano - RotuloEnraseSeparacion" in drawer
+          and ": xPano + RotuloEnraseSeparacion;" in drawer
+          and "e.XIzq - 0.3" not in drawer)
+    check("y el del muro de concreto, igual, a 6 cm de su pano en las dos hojas",
+          "private const double RotuloMuroSeparacion = 0.06;" in drawer
+          and "? m.XIzq - RotuloMuroSeparacion" in drawer
+          and ": m.XDer + RotuloMuroSeparacion;" in drawer
+          and "m.XIzq - 0.27" not in drawer)
+    check("en el lindero los tres rotulos de ese lado se despegan lo mismo",
+          "? xCtIzq - RotuloMuroSeparacion" in drawer)
+
+    for rotulo in ("RotuloDelEnrase", "RotuloDeLaContratrabe",
+                   "RotuloDeLaCadena", "RotuloDelMuroDeConcreto"):
+        check(f"esta el rotulo {rotulo}", f"private void {rotulo}(" in drawer)
+
+    check("y los cuatro se cuelgan con leader",
+          drawer.count("Leader(") >= 4)
+
+    # Los anchos de renglon son los de las macros, y el MText los respeta: con
+    # Width = 0 el rotulo del enrase saldria en una tira que cruza la zapata de al lado.
+    for nombre, valor in (("AnchoRotuloEnrase", "0.26"),
+                          ("AnchoRotuloContratrabe", "0.23"),
+                          ("AnchoRotuloCadena", "0.26"),
+                          ("AnchoRotuloMuroCentral", "0.25"),
+                          ("AnchoRotuloMuroLindero", "0.25")):
+        check(f"el ancho {nombre} vale {valor}",
+              f"private const double {nombre} = {valor};" in drawer)
+
+    check("el MText de esta hoja respeta el ancho de renglon",
+          "private object? MtextoAncho(" in drawer and "mt.Width = ancho;" in drawer)
+    check("y lleva mascara de fondo, para que el terreno no se lea por detras",
+          "mt.BackgroundFill = true;" in drawer)
+
+    # El texto del muro de concreto es el de la macro, con sus abreviaturas.
+    check("el rotulo del muro dice HORIZ. y VERT. como en la macro",
+          "cm HORIZ." in drawer and "cm VERT." in drawer)
+    check("y su varilla lleva la C de corrugada, como las de parrilla",
+          'var varHoriz = $"VAR {Etiqueta(z.VarMuro)}C";' in drawer
+          and 'var varVert = $"VAR {Etiqueta(z.VarMuroVertical)}C";' in drawer)
+    check("las dos varillas del muro llevan su numero, tambien la vertical",
+          '$"{varVert} @ {SepTexto(z.SepMuroVert)} cm VERT.";' in drawer)
+    check("y con el mismo armado en los dos sentidos se escribe una sola vez",
+          "var mismoArmado = varHoriz.Equals(varVert, StringComparison.OrdinalIgnoreCase)"
+          in drawer
+          and "cm {SufijoAmbosSentidos}\"" in drawer)
+
+    # DOS VARILLAS PARA EL MURO: la horizontal -la que se ve de punta- y la vertical, la
+    # que arranca de la zapata con su pata. En la hoja de las macros hay UNA sola
+    # casilla; se pidio poder elegir las dos. Vacia la vertical, se usa la horizontal.
+    check("el muro tiene su varilla vertical, aparte de la horizontal",
+          "public string VarMuroVert { get; init; }" in leer(
+              ruta("client/src/CadLink.Cad/ZapataCorridaCad.cs"))
+          and "public string VarMuroVertical =>" in leer(
+              ruta("client/src/CadLink.Cad/ZapataCorridaCad.cs"))
+          and "public string VarMuroVert" in leer(
+              ruta("client/src/CadLink.App/Models/ZapataCorridaRow.cs")))
+    check("y la hoja la deja elegir, con su columna propia",
+          'x:Name="ColZapCorVarMuroVert"' in xaml
+          and 'Header="Var muro horiz."' in xaml
+          and 'Header="Var muro vert."' in xaml
+          and "ColZapCorVarMuroVert.ItemsSource = opcionales;" in hoja)
+    check("el dibujo usa la vertical para las patas y la horizontal para los circulos",
+          "var diamHoriz = Diam(z.VarMuro);" in drawer
+          and "var diamVert = Diam(z.VarMuroVertical);" in drawer
+          and "VarillaDelMuro(b, diamVert, capaVert, lindero);" in drawer
+          and "HatchCirculoVarilla(xc1, y, diamHoriz / 2, capa);" in drawer)
+
+    # LOS CIRCULOS, TANGENTES A LAS VERTICALES. Iban en el eje del acero y las
+    # verticales van corridas de ese eje, asi que el circulo caia DENTRO de la vertical.
+    trazo_cor = leer(ruta("client/src/CadLink.Cad/TrazoZapataCorrida.cs"))
+
+    check("los circulos del muro quedan tangentes a la varilla vertical",
+          "public static double TangenteALaVertical(" in trazo_cor
+          and "var sep = (diamCirculo + diamVertical) / 2;" in trazo_cor
+          and "var x = xEje <= cerca.X ? cerca.X - sep : cerca.X + sep;" in trazo_cor)
+    check("y se queda dentro del muro, para no asomar por la cara",
+          "return Math.Clamp(x, m.XIzq + (diamCirculo / 2), m.XDer - (diamCirculo / 2));"
+          in trazo_cor)
+    check("la geometria es UNA, compartida por el dibujante y la previa",
+          "TrazoZapataCorrida.TangenteALaVertical(" in drawer
+          and "TrazoZapataCorrida.TangenteALaVertical(" in hoja)
+    check("las verticales se calculan ANTES de los circulos, que se apoyan en ellas",
+          drawer.index("var barras = Array.Empty<TrazoZapataCorrida.VarillaMuro>();")
+          < drawer.index("var ys = TrazoZapataCorrida.CirculosDelMuro("))
+
+    # EL ROTULO DEL MURO DEL LINDERO: 10 cm del pano IZQUIERDO y anclado a la DERECHA.
+    # Iba CENTRADO en ese punto, asi que media caja de texto se metia dentro del muro.
+    check("el rotulo del muro del lindero se despega 10 cm y crece hacia el terreno",
+          "private const double RotuloMuroSeparacionLindero = 0.10;" in drawer
+          and "? m.XIzq - RotuloMuroSeparacionLindero" in drawer
+          and "var anclaje = lindero ? AnclajeDerecha : AnclajeIzquierda;" in drawer)
+    check("la flecha del muro de concreto va a su pano, no a su eje",
+          "var xPunta = lindero ? m.XIzq : m.XDer;" in drawer)
+    check("y la del muro de enrase, igual",
+          "var xPano = lindero ? e.XIzq : e.XIzq + e.Ancho;" in drawer
+          and "Leader(xPano, yCentro, xTexto, yTexto);" in drawer)
+    check("y el ultimo renglon dice donde va el acero",
+          '"DOBLE PARRILLA" : "PARRILLA AL CENTRO"' in drawer)
+    check("el rotulo del enrase es el texto de la macro",
+          '"MURO DE ENRASE DE BLOCK DE CEMENTO"' in drawer)
+
+    # ------------------------------------------------------------------
+    # EL ACERO DEL MURO: relleno SOLO con la seccion rellena
+    # ------------------------------------------------------------------
+    # Se pidio expresamente, y coincide con las macros: el relleno de varilla es
+    # cosa del B3 = 1. En modo normal la varilla va hueca y el rayado del
+    # concreto se sigue viendo por detras.
+    check("las varillas de punta del muro solo se rellenan con la seccion rellena",
+          "if (_relleno)\n        {\n            RellenarCirculo(" in drawer)
+    check("y el tramo recto, el codo y la pata, tambien",
+          "RellenarVarillaDelMuro(" in drawer
+          and drawer.index("if (_relleno)") < drawer.index("RellenarVarillaDelMuro("))
+    check("el relleno toma el color de la capa de la varilla",
+          '_ = Hatch(borde, "SOLID", 1, capa, 256);' in drawer)
+
+    # LA VARILLA SE RELLENA DE UNA VEZ, con su contorno completo. Antes eran tres
+    # trozos -tramo recto, pata y codo- y entre ellos quedaban dos CUNAS sin pintar
+    # en la esquina: se veia un triangulo del color del concreto dentro del doblez.
+    check("la varilla se rellena con un solo contorno, no en tres trozos",
+          "private void RellenarVarillaDelMuro(" in drawer
+          and "RellenarTramoDeVarilla(" not in drawer
+          and "RellenarCodoDeVarilla(" not in drawer)
+    check("y ese contorno recorre las dos caras, los dos arcos y la punta",
+          "La cara de DENTRO" in drawer and "El arco INTERIOR" in drawer
+          and "El arco EXTERIOR" in drawer and "la cara de FUERA" in drawer)
+    check("los extremos del barrido se toman por lo que son, no por su numero",
+          "var angRecto = AnguloCodo(sentido, sentido < 0);" in drawer
+          and "var angPata = AnguloCodo(sentido, sentido > 0);" in drawer)
+    check("el contorno y el relleno del codo usan los mismos angulos",
+          "private static double AnguloCodo(" in drawer
+          and drawer.count("AnguloCodo(s") >= 2)
+    check("y la geometria de ese contorno se comprueba aparte",
+          os.path.exists(ruta("tools/verificar_codo_muro.py")))
+
+    # La contratrabe: la flecha a su esquina superior derecha.
+    # La flecha, a la esquina superior del lado por el que se cuelga el rotulo: la
+    # derecha en la central y la IZQUIERDA en el lindero, donde el texto va a ese lado
+    # y apuntando a la derecha la linea cruzaba el bloque de lado a lado.
+    check("la flecha de la contratrabe va a su esquina superior, la del lado del rotulo",
+          "var xPunta = lindero ? xCtIzq : xCtDer;" in drawer
+          and "var yPunta = yCtTop;" in drawer)
+    check("y su rotulo se cuelga del lado donde hay sitio",
+          "? xCtIzq - RotuloMuroSeparacion" in drawer
+          and "xCtDer + RotuloContratrabeDx - RotuloContratrabeCorrimiento;" in drawer)
+    check("y en la central se corre 6 cm a la izquierda, para pegarlo mas al bloque",
+          "private const double RotuloContratrabeCorrimiento = 0.06;" in drawer)
+
+    # EL TERRENO SE CIÑE A LO QUE SOBRESALE. Antes era un pano recto por lado, y la
+    # contratrabe -que es mas ancha que el muro- salia metida en la tierra.
+    check("el terreno de la corrida se ciñe a la forma de cada pieza",
+          "private void HatchTerrenoCorrida(" in drawer
+          and "private readonly record struct ObstaculoTerreno(" in drawer)
+    check("y se le pasan las cuatro piezas que pueden sobresalir",
+          drawer.count("obstaculos.Add(new ObstaculoTerreno(") == 4)
+    check("las bandas se cosen en un solo contorno por lado",
+          "private void HatchEscaleraTerreno(" in drawer
+          and "HatchPoligono(pts.ToArray(), CapaTerrenoHatch," in drawer)
+    check("y ese hatch de contorno libre existe en el dibujante",
+          "private object? HatchPoligono(" in leer(
+              ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs")))
+    check("una banda sin pieza hereda el pano de su vecina",
+          "izq[i] = izq[i - 1];" in drawer and "izq[i] = izq[i + 1];" in drawer)
+    check("y sin ninguna pieza el terreno vuelve a ser un rectangulo",
+          "// Ninguna pieza en toda la altura: el terreno es un rectángulo de lado a lado."
+          in drawer)
+
+    # La cadena: el texto SIEMPRE despegado de su pano.
+    check("el rotulo de la cadena se despega 5 cm de su pano",
+          "private const double RotuloCadenaSeparacion = 0.05;" in drawer
+          and "var xIns = xCadIzq - RotuloCadenaSeparacion;" in drawer)
+
+    # El codo se dibuja con ARCOS, y con los radios de CADA macro.
+    check("el codo de la pata se dibuja con sus dos arcos",
+          "Var(Arco(cxIn, cyIn, rIn, AnguloCodo(s, false), AnguloCodo(s, true), capa));"
+          in drawer
+          and "Var(Arco(cxOut, cyOut, rOut, AnguloCodo(s, false), AnguloCodo(s, true), capa));"
+          in drawer)
+    check("con los radios propios de cada macro",
+          "var rIn = lindero ? diam : diam / 4;" in drawer
+          and "var rOut = lindero ? 2 * diam : diam / 2;" in drawer)
+
+    # Las cotas de las patas van FUERA del bloque, como en las macros.
+    check("las cotas de las patas se dibujan fuera del bloque",
+          "private void CotasDeLasPatasDelMuro(" in drawer
+          and drawer.index("_cont = _ms;") < drawer.index("CotasDeLasPatasDelMuro(a, lindero"))
+    check("y en el lindero cada pata lleva su propio offset",
+          "sep * TrazoZapataCorrida.CotaDoblezLinderoFraccion" in drawer)
+
+    # Ninguna flecha de rotulo entra en la huella de la contratrabe: es el recorte
+    # de franja de las dos macros de corrida -«zonaR = xCTL - 0.02»-.
+    aislada_drawer = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.cs"))
+
+    check("las puntas de los leaders se recortan al llegar a la contratrabe",
+          "double? xTopePuntas = null)" in aislada_drawer
+          and "if (xTopePuntas is not null)" in aislada_drawer)
+    check("y la punta de la flecha se queda entre las caras de su acero",
+          "var xMin = Math.Max(xFranjaMin, p.XCaraIzq + (diam / 2));" in drawer
+          and "var xMax = Math.Min(xFranjaMax, p.XCaraDer - (diam / 2));" in drawer)
+    check("las aisladas no lo pasan, asi que siguen igual",
+          "z.VarInf, z.SepInf, z.VarInfTrans, z.SepInfTrans);" in aislada_drawer)
+
+    # La previa dice la verdad: colorea solo si el juego va relleno.
+    check("la vista previa colorea el acero del muro solo con la seccion rellena",
+          "var rellenas = ModoElegido == ModoSeccion.Tipo2Rellena;" in hoja
+          and "CirculoCorrida(px(xc1), py(y), r, acero, rellenas);" in hoja)
+
+
+# ======================================================================
+# 24. EL REDISENO DE LA INTERFAZ
+#
+#     Lo que se vigila no es el gusto -eso no se comprueba- sino que el
+#     rediseno siga siendo UN SISTEMA y no una capa de pintura: una escala
+#     de radios y una fuente en un solo sitio, los tres Border repetidos
+#     convertidos en estilos, y sobre todo QUE NO SE HAYA PERDIDO NADA por
+#     el camino. Se pidio expresamente que las vistas previas y los botones
+#     que uno puede modificar siguieran ahi.
+# ======================================================================
+def v24_rediseno() -> None:
+    print("\n[24] El rediseno de la interfaz")
+
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    temacs = leer(ruta("client/src/CadLink.App/Tema.cs"))
+
+    # ------------------------------------------------------------------
+    # La escala: una fuente y cuatro radios, en un solo sitio
+    # ------------------------------------------------------------------
+    check("la fuente de la interfaz vive en la paleta",
+          '<FontFamily x:Key="FuenteUI">' in tema
+          and "Segoe UI Variable Text" in tema)
+
+    for radio, valor in (("RadioChico", "4"), ("RadioBoton", "6"),
+                         ("RadioTarjeta", "8"), ("RadioPestana", "7,7,0,0")):
+        check(f"esta el radio {radio} = {valor}",
+              f'<CornerRadius x:Key="{radio}">{valor}</CornerRadius>' in tema)
+
+    check("y los estilos usan la escala, no numeros suyos",
+          tema.count("{StaticResource RadioBoton}") >= 2
+          and tema.count("{StaticResource RadioTarjeta}") >= 2)
+
+    # ------------------------------------------------------------------
+    # Los botones
+    # ------------------------------------------------------------------
+    check("el boton principal tiene sombra y foco por teclado",
+          "DropShadowEffect" in tema
+          and 'x:Name="Foco"' in tema
+          and 'Property="IsKeyboardFocused" Value="True"' in tema)
+    check("y se hunde al pulsarlo",
+          '<TranslateTransform Y="1" />' in tema)
+    check("el secundario es de contorno, no otro boton solido",
+          'x:Key="SecondaryButtonStyle"' in tema
+          and '<Setter Property="BorderThickness" Value="1" />' in tema
+          and '<Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />' in tema)
+    check("los dos son igual de altos, para que la fila se lea como una pieza",
+          '<Setter Property="MinHeight" Value="32" />' in tema)
+
+    # ------------------------------------------------------------------
+    # La cuadricula
+    # ------------------------------------------------------------------
+    # La cabecera pasa de 32 a 40: las columnas de parrilla llevan DOS renglones -la
+    # banda de la parrilla y el nombre de la columna- y con 32 el segundo se cortaba.
+    check("la cuadricula tiene aire: fila de 26 y cabecera de 40",
+          '<Setter Property="RowHeight" Value="26" />' in tema
+          and '<Setter Property="ColumnHeaderHeight" Value="40" />' in tema)
+
+    # ------------------------------------------------------------------
+    # LA CABECERA COMBINADA DE CADA PARRILLA, en las DOS hojas de zapatas
+    # ------------------------------------------------------------------
+    # WPF no tiene cabeceras combinadas y recorta cada cabecera a SU columna, asi que
+    # con las cuatro columnas de antes el titulo salia en trozos: «PARRILL», «IFERIOR».
+    # Ahora cada parrilla es UNA sola columna de plantilla de 350 px -115 + 60 + 115 +
+    # 60- que se parte en cuatro por dentro: arriba la banda entera y el renglon de los
+    # cuatro nombres, y abajo las cuatro casillas de captura.
+    for plantilla in ("CabeceraParrillaInferior", "CabeceraParrillaSuperior",
+                      "CeldasParrillaInferior", "CeldasParrillaSuperior"):
+        check(f"existe la plantilla de parrilla {plantilla}",
+              f'x:Key="{plantilla}"' in tema)
+
+    check("las dos hojas usan las DOS columnas de parrilla, con su cabecera y sus celdas",
+          xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaInferior}"') == 2
+          and xaml.count('HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"') == 2
+          and xaml.count('CellTemplate="{StaticResource CeldasParrillaInferior}"') == 2
+          and xaml.count('CellTemplate="{StaticResource CeldasParrillaSuperior}"') == 2)
+
+    check("el titulo de cada grupo es el Header de SU columna, una por parrilla y hoja",
+          xaml.count('<DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="350"') == 2
+          and xaml.count('<DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="350"') == 2)
+
+    check("y la banda lo pinta centrado sobre las cuatro casillas",
+          'x:Key="BandaParrillaStyle"' in tema
+          and tema.count('<TextBlock Text="{Binding}" '
+                         'Style="{StaticResource BandaParrillaStyle}" />') == 2)
+
+    check("no queda nada de los dos intentos que fallaron",
+          all(f'x:Key="CabeceraParrilla{t}"' not in tema
+              for t in ("Inf1", "Inf2", "Inf3", "Inf4", "Sup1", "Sup2", "Sup3", "Sup4"))
+          and '<Setter Property="Width" Value="350" />' not in tema
+          and 'Margin="-298,0,0,0"' not in tema)
+
+    # La cabecera de parrilla va SIN relleno y ESTIRADA, y el ContentPresenter de la
+    # cabecera respeta esa alineacion en lugar de centrar a la fuerza: si no, la
+    # cabecera se encoge a lo que mide su texto y los cuatro nombres no caen encima de
+    # sus cuatro casillas.
+    check("la cabecera de parrilla va sin relleno y estirada",
+          'x:Key="CabeceraParrillaStyle"' in tema
+          and 'BasedOn="{StaticResource EncabezadoHojaStyle}"' in tema
+          and '<Setter Property="HorizontalContentAlignment" Value="Stretch" />' in tema
+          and xaml.count('HeaderStyle="{StaticResource CabeceraParrillaStyle}"') == 4)
+    check("y la cabecera respeta la alineacion de su contenido",
+          'HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"' in tema)
+
+    # EL NUMERO DE VARILLA, CON LA TINTA DE LA CUADRICULA Y NO EN GRIS. El Foreground del
+    # ComboBox no basta: el estilo de Windows pinta el valor elegido con su plantilla y ahi
+    # el color del control no siempre llega. Puesto en la plantilla del renglon si manda.
+    check("el numero de varilla se ve con la tinta de la cuadricula, no en gris",
+          'x:Key="ComboSubCeldaStyle"' in tema
+          and '<Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />' in tema
+          and '<Setter Property="ItemTemplate">' in tema
+          and tema.count('<TextBlock Text="{Binding}"\n                               '
+                         'Foreground="{DynamicResource GridTextBrush}" />') == 1)
+
+    # Las cuatro casillas y los cuatro nombres, con el MISMO reparto de ancho en
+    # estrella: asi siguen cuadrados aunque se cambie el ancho de la columna.
+    check("los cuatro nombres y las cuatro casillas llevan el mismo reparto de ancho",
+          tema.count('<ColumnDefinition Width="115*" />') == 8
+          and tema.count('<ColumnDefinition Width="60*" />') == 8)
+
+    # LOS NOMBRES DE COLUMNA, los que se pidieron: dicen el LECHO y el TRABAJO de cada
+    # varilla, y coinciden con lo que sale rotulado en el plano. Van UNA vez, en la
+    # plantilla, porque las dos hojas usan la misma.
+    for nombre in ("Var Inf. Flexión", "Var. Sup. Temp.",
+                   "Var Sup. Flexión", "Var. Inf. Temp."):
+        check(f"la plantilla tiene el nombre {nombre}",
+              tema.count(f'Text="{nombre}"') == 1)
+
+    check('y las cuatro casillas de separacion dicen «@ cm»',
+          tema.count('Text="@ cm"') == 4)
+
+    check("y no queda ningun nombre viejo de columna de parrilla",
+          'Header="Var inf."' not in xaml
+          and 'Header="Var sup."' not in xaml
+          and 'Header="Var inf. trans."' not in xaml
+          and 'Header="Var sup. trans."' not in xaml
+          and 'Header="Var Inf. Flexión"' not in xaml)
+
+    # LAS LISTAS DE LAS SUB-CASILLAS. Una celda de plantilla no tiene x:Name -se crea
+    # una por fila-, asi que los numeros de varilla se atacan con x:Static, y salen de
+    # la MISMA tabla de diametros: Varilla.DiametrosCm.
+    modelos = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    check("los numeros de varilla se pueden atacar desde el XAML",
+          "public static readonly string[] Diametros = DiametrosCm.Keys.ToArray();" in modelos
+          and "public static readonly string[] DiametrosOpcionales =" in modelos
+          and "new[] { string.Empty }.Concat(Diametros).ToArray();" in modelos)
+    check("la parrilla inferior las pide obligatorias y la superior opcionales",
+          tema.count('{Binding Source={x:Static models:Varilla.Diametros}}') == 2
+          and tema.count('{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}') == 2)
+    check("y ya no se rellenan por codigo, que con la columna de plantilla no se puede",
+          all(f"{c}.ItemsSource" not in leer(ruta(f"client/src/CadLink.App/{f}"))
+              for f, cs in (("MainWindow.ZapatasCorridas.cs",
+                             ("ColZapCorVarInf", "ColZapCorVarInfT",
+                              "ColZapCorVarSup", "ColZapCorVarSupT")),
+                            ("MainWindow.Zapatas.cs",
+                             ("ColZapVarInf", "ColZapVarInfT",
+                              "ColZapVarSup", "ColZapVarSupT")))
+              for c in cs))
+
+    # Las cuatro casillas de captura de cada parrilla, con su enlace
+    for prop in ("VarInf", "SepInf", "VarInfTrans", "SepInfTrans",
+                 "VarSup", "SepSup", "VarSupTrans", "SepSupTrans"):
+        check(f"la casilla de {prop} esta enlazada",
+              f'{prop}, UpdateSourceTrigger=PropertyChanged}}' in tema)
+
+    # LAS CASILLAS DE LA PARRILLA SUPERIOR, APAGADAS SI NO HAY DOBLE PARRILLA. Ahora es
+    # UNA columna por hoja, y al apagar la celda se apagan sus cuatro casillas de dentro,
+    # porque IsEnabled baja por el arbol. Las dos filas tienen EsDobleParrilla.
+    check("las casillas de la parrilla superior se apagan sin doble parrilla",
+          'x:Key="CeldaSoloDobleParrilla"' in tema
+          and '<Setter Property="IsEnabled" Value="{Binding EsDobleParrilla}" />' in tema
+          and 'x:Key="CeldaParrillaSup"' in tema
+          and 'BasedOn="{StaticResource CeldaSoloDobleParrilla}"' in tema
+          and xaml.count('CellStyle="{StaticResource CeldaParrillaSup}"') == 2)
+    check("y la fila avisa del cambio, para que se enciendan al poner SI",
+          all("Raise(nameof(EsDobleParrilla));" in leer(ruta(f"client/src/CadLink.App/Models/{m}"))
+              for m in ("ZapataCorridaRow.cs", "ZapataAisladaRow.cs")))
+    check("la seleccion usa el azul del programa y no el del sistema",
+          '<Setter Property="Background" Value="{DynamicResource SelectionBrush}" />' in tema)
+    check("y la cabecera se cierra con la linea de marca",
+          "La LINEA DE MARCA que cierra la cabecera" in tema)
+
+    # ------------------------------------------------------------------
+    # Las tres piezas que antes se escribian Border por Border
+    # ------------------------------------------------------------------
+    for estilo in ("TarjetaStyle", "MarcoPreviaStyle", "BarraTotalesStyle",
+                   "TextoTotalesStyle"):
+        check(f"existe el estilo {estilo}", f'x:Key="{estilo}"' in tema)
+
+    # LA BARRA DE ARRIBA, SIN NUEVO / ABRIR / GUARDAR / GUARDAR COMO: se pidio dejarlos
+    # solo en el menu Archivo, donde estan con su atajo. Los comandos siguen siendo los
+    # mismos -ApplicationCommands- asi que los atajos funcionan igual.
+    check("la barra ya no repite los botones de archivo",
+          'Content="Nuevo" Style="{StaticResource ToolbarButtonStyle}"' not in xaml
+          and 'Content="Abrir" Style="{StaticResource ToolbarButtonStyle}"' not in xaml
+          and 'Content="Guardar" Style="{StaticResource ToolbarPrimaryButtonStyle}"' not in xaml
+          and 'Content="Guardar como..."' not in xaml)
+    check("pero siguen en el menu Archivo, con su atajo",
+          all(f'Command="ApplicationCommands.{c}"' in xaml
+              for c in ("New", "Open", "Save", "SaveAs"))
+          and 'InputGestureText="Ctrl+N"' in xaml
+          and 'InputGestureText="Ctrl+Mayus+G"' in xaml)
+    check("y lo que se usa de verdad sigue en la barra",
+          'x:Name="DeshacerButton"' in xaml
+          and 'Click="OnValidate"' in xaml
+          and 'x:Name="TemaButton"' in xaml)
+
+    # Y la tarjeta de la hoja de acero, con UN solo renglon: los otros dos ocupaban alto de
+    # la tabla para explicar lo que ya dice cada columna.
+    check("la tarjeta de la hoja de acero deja un solo renglon",
+          'Text="Las doce familias:"' in xaml
+          and "Que columna usa cada una" not in xaml
+          and "Al final de la tabla" not in xaml)
+
+    check("los marcos de vista previa usan su estilo",
+          xaml.count('Style="{StaticResource MarcoPreviaStyle}"') >= 4)
+    check("las barras de totales tambien",
+          xaml.count('Style="{StaticResource BarraTotalesStyle}"') >= 4)
+
+    # ------------------------------------------------------------------
+    # NO SE PERDIO NADA: las previas y los botones siguen ahi
+    # ------------------------------------------------------------------
+    # Es la condicion que se puso al pedir el rediseno, y la que un cambio de
+    # estilos puede romper sin que nadie lo note hasta abrir la ventana.
+    for lienzo in ("PreviewCanvas", "AceroPreviewCanvas",
+                   "ZapataPreviewCanvas", "ZapataCorridaPreviewCanvas"):
+        check(f"sigue el lienzo {lienzo}", f'x:Name="{lienzo}"' in xaml)
+
+    check("los cuatro lienzos siguen sobre papel claro",
+          xaml.count('Background="{StaticResource PreviewFondoBrush}"') >= 4)
+
+    for boton in ("DibujarZapatasButton", "DibujarZapatasCorridasButton",
+                  "TemaButton"):
+        check(f"sigue el boton {boton}", f'x:Name="{boton}"' in xaml)
+
+    for handler in ("OnExportZapatas", "OnExportZapatasCorridas",
+                    "OnRevisarZapatas", "OnRevisarZapatasCorridas"):
+        check(f"sigue enganchado {handler}", f'Click="{handler}"' in xaml)
+
+    check("siguen los radios de estilo de seccion de las tres hojas",
+          xaml.count('GroupName="TipoSeccion') >= 3)
+
+    # ------------------------------------------------------------------
+    # El tema oscuro sabe de las brochas nuevas
+    # ------------------------------------------------------------------
+    # Si una brocha nueva no esta en los dos diccionarios, al cambiar de tema se
+    # queda con el color del otro: es como se ve un boton azul claro sobre fondo
+    # negro. Se comprueba que las tres esten DOS veces, una por tema.
+    # ------------------------------------------------------------------
+    # LOS DOS ERRORES DEL REDISENO EN TEMA OSCURO
+    # ------------------------------------------------------------------
+    # 1) La CUADRICULA se queda clara en los dos temas -sus pasteles de columna
+    #    son la referencia del usuario-, asi que su texto NO puede seguir al
+    #    TextBrush: en oscuro salia claro sobre celda clara y solo se leia la
+    #    fila seleccionada.
+    check("la cuadricula tiene su propia tinta, oscura en los dos temas",
+          'x:Key="GridTextBrush"' in tema
+          and temacs.count('["GridTextBrush"]') == 2)
+    check("y la usan la cuadricula, sus celdas y sus combos",
+          tema.count("{DynamicResource GridTextBrush}") >= 4)
+    # Se mira DENTRO del estilo de la cuadricula: los TextBox y ComboBox de
+    # formulario si tienen que seguir al tema -viven sobre las tarjetas, que se
+    # oscurecen-, asi que buscar la cadena en todo el archivo daba un falso fallo.
+    m_grid = re.search(r'Style x:Key="SheetGridStyle".*?</Style>', tema, re.S)
+
+    check("el estilo de la cuadricula usa la tinta propia y no la del tema",
+          m_grid is not None
+          and "{DynamicResource GridTextBrush}" in m_grid.group(0)
+          and '"Foreground" Value="{DynamicResource TextBrush}"' not in m_grid.group(0))
+
+    # 1 bis) LAS LISTAS DESPLEGABLES. Mismo caso que las tablas, y con una vuelta de
+    #    tuerca: los renglones se pintaban con GridRowBrush creyendo que era fija, y NO
+    #    lo es -en oscuro se va a un gris #4A4A4A-. Con la tinta casi negra encima, la
+    #    letra se leia «un poco oscura». Ahora las listas llevan sus CUATRO brochas
+    #    propias, que no estan en ninguna paleta y por tanto no las toca el tema.
+    check("los renglones de las listas llevan su fondo y su tinta, fijos",
+          '<Style TargetType="ComboBoxItem">' in tema
+          and '<Setter Property="Background" Value="{StaticResource ListaFondoBrush}" />' in tema
+          and '<Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />' in tema)
+    check("y esas brochas de lista no las cambia ningun tema",
+          all(f'x:Key="{b}"' in tema for b in
+              ("ListaFondoBrush", "ListaTextoBrush", "ListaResalteBrush", "ListaApagadaBrush"))
+          and all(f'["{b}"]' not in temacs for b in
+                  ("ListaFondoBrush", "ListaTextoBrush", "ListaResalteBrush",
+                   "ListaApagadaBrush")))
+    check("y se resaltan con un azul que se lee sobre el papel claro",
+          'Value="{StaticResource ListaResalteBrush}" />' in tema)
+    check("las listas normales, igual",
+          '<Style TargetType="ListBoxItem">' in tema)
+
+    # 1 ter) LA CELDA DE LISTA SIN EDITAR. Le faltaba estilo, asi que se dibujaba con
+    #    el ComboBox general: en oscuro el valor de la celda -«CENTRAL»- salia en
+    #    letra clara sobre el color claro de la columna.
+    check("la celda de lista tiene estilo tambien cuando NO se esta editando",
+          '<Style x:Key="ComboCeldaMuestra" TargetType="ComboBox">' in tema
+          and '<Setter Property="Foreground" Value="{StaticResource ListaTextoBrush}" />' in tema)
+    check("y todas las columnas de lista lo usan",
+          xaml.count('ElementStyle="{StaticResource ComboCeldaMuestra}"')
+          == xaml.count('EditingElementStyle="{StaticResource ComboCeldaEdicion}"') - 1
+          and 'BasedOn="{StaticResource ComboCeldaMuestra}"' in xaml)
+
+    # 2) El MENU lo pintaba WINDOWS: su Popup salia con marco claro -la linea
+    #    blanca- porque un Background en el MenuItem no alcanza para el marco.
+    check("el menu tiene plantilla propia, con su marco y su sombra",
+          'x:Key="MenuTituloTemplate"' in tema
+          and 'x:Key="MenuOpcionTemplate"' in tema
+          and 'x:Key="MenuSubmenuTemplate"' in tema)
+    check("y estan los CUATRO roles, o el que falte vuelve al de Windows",
+          all(f'<Trigger Property="Role" Value="{rol}">' in tema
+              for rol in ("TopLevelHeader", "TopLevelItem",
+                          "SubmenuHeader", "SubmenuItem")))
+    check("el marco del menu sale de la paleta",
+          'Background="{DynamicResource SurfaceBrush}"' in tema
+          and 'BorderBrush="{DynamicResource BorderBrush}"' in tema)
+    check("los atajos del menu se siguen viendo",
+          'Text="{TemplateBinding InputGestureText}"' in tema)
+    check("y la rayita que separa grupos tambien es nuestra",
+          '<Style TargetType="Separator">' in tema)
+
+    # ------------------------------------------------------------------
+    # EL ESPACIO DE LAS HOJAS
+    # ------------------------------------------------------------------
+    # La descripcion de cada hoja se comia 40 px de alto en once pestanas. Se
+    # paso al GLOBO del titulo: sigue estando, pero no ocupa.
+    check("las hojas ya no llevan la descripcion al inicio",
+          xaml.count('Style="{StaticResource ModuleSubtitleStyle}"') <= 2)
+    check("y la explicacion sigue accesible en el globo del titulo",
+          xaml.count('Style="{StaticResource ModuleTitleStyle}"\n'
+                     '                                   ToolTip="') >= 8)
+
+    # El alto de fila se queda en 26, como se pidio.
+    check("el alto de fila sigue en 26",
+          '<Setter Property="RowHeight" Value="26" />' in tema)
+
+    for brocha in ("SelectionBrush", "FocoBrush", "SombraBrush"):
+        check(f"{brocha} esta en los dos temas",
+              temacs.count(f'["{brocha}"]') == 2)
+        check(f"y {brocha} esta declarada en la paleta",
+              f'x:Key="{brocha}"' in tema)
 
 if __name__ == "__main__":
     sys.exit(main())
