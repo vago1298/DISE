@@ -1754,27 +1754,51 @@ public sealed partial class SeccionDrawer
         var rOut = rIn + dEst;
 
         var bx = x0 + b - rec - dEst - rBarra;
+        var by = y0 + h - rec - dEst - rBarra;
 
-        // Lo único que cambia con el paquete es que BAJA: se centra en la SEGUNDA
-        // varilla en lugar de la de la esquina, porque esa ya la tiene abrazada el
-        // doblez de la esquina del estribo.
-        var by = y0 + h - rec - dEst - rBarra
-                 + (enPaquete > 1 ? PaqueteVarillas.Desplazamiento(1, dSup, arriba: true) : 0);
+        // ==============================================================================
+        //  CON PAQUETE: GANCHO DE 135° SOBRE LA SEGUNDA VARILLA
+        // ==============================================================================
+        //  El estribo baja RECTO por la cara derecha —ese tramo ya lo dibuja el propio
+        //  costado del estribo—, pasa de largo la varilla de la esquina, llega a la
+        //  segunda y gira ahí.
+        //
+        //  Y es un gancho de 135° DE VERDAD: barre 135° y sale UNA cola. El de la esquina
+        //  es de 180°, da media vuelta y salen DOS colas paralelas, porque la varilla
+        //  entra, rodea y vuelve. Dibujar ese de 180° sobre la segunda varilla es lo que
+        //  dejaba el cruce raro: la media vuelta le pasaba por encima a la primera.
+        if (enPaquete > 1)
+        {
+            var byPaq = by + PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
+
+            // El barrido: llega tangente por la cara derecha —ángulo 0°— y gira en el
+            // sentido de las agujas hasta 225°. Son los 135° del gancho. Se escribe de
+            // 225° a 360° porque Arco va en sentido contrario a las agujas.
+            const double desde = 1.25 * Pi;   // 225°
+            const double hasta = 2 * Pi;      // 360°
+
+            sectores.Add(new[] { bx, byPaq, rIn, rOut, desde, hasta });
+
+            foreach (var r in new[] { rIn, rOut })
+            {
+                Agregar(contorno, Arco(bx, byPaq, r, desde, hasta));
+            }
+
+            // La cola arranca donde acaba el doblez, en el punto de 225°, y se va en la
+            // tangente de ahí: 135°, o sea hacia arriba y a la izquierda, hacia el
+            // núcleo. UNA sola, no dos.
+            Cola(contorno, quads, bx, byPaq, rIn, rOut,
+                Math.Cos(desde), Math.Sin(desde),
+                Math.Cos(0.75 * Pi), Math.Sin(0.75 * Pi),
+                gancho, false, 0, 0);
+
+            return;
+        }
+
+        // ---------- Sin paquete: el gancho de siempre, de 180° en la esquina ----------
 
         // Doblez: sector anular con los mismos radios y angulos de los arcos
         sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi });
-
-        // El arco VISIBLE del doblez solo se dibuja aquí cuando hay paquete. Sin paquete
-        // es la prolongación de 45° del arco de la esquina del estribo, concéntrico con
-        // este mismo centro, y lo pintan EstriboExterior y EstriboInterior: dibujarlo
-        // también aquí lo dejaría con la línea doble.
-        if (enPaquete > 1)
-        {
-            foreach (var r in new[] { rIn, rOut })
-            {
-                Agregar(contorno, Arco(bx, by, r, 1.75 * Pi, 0.75 * Pi));
-            }
-        }
 
         const double ux = -Rt2I;
         const double uy = -Rt2I;

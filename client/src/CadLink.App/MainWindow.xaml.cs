@@ -5551,18 +5551,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
-        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
-        foreach (var r in new[] { rIn, rOut })
+        // Dibuja un arco del doblez muestreado en tramos rectos, que es lo que se puede
+        // hacer en un lienzo de WPF.
+        void ArcoDoblez(double cx, double cy, double r, double desde, double barrido)
         {
             var puntos = new PointCollection();
 
             for (var k = 0; k <= 24; k++)
             {
-                var a = (1.75 * Math.PI) + (k / 24.0 * Math.PI);
+                var a = desde + (k / 24.0 * barrido);
 
                 puntos.Add(new Point(
-                    px(bx + (r * Math.Cos(a))), py(by + (r * Math.Sin(a)))));
+                    px(cx + (r * Math.Cos(a))), py(cy + (r * Math.Sin(a)))));
             }
 
             PreviewCanvas.Children.Add(new Polyline
@@ -5573,12 +5573,75 @@ public partial class MainWindow : Window
             });
         }
 
-        // Las dos colas, hacia el núcleo. Rt2I es cos(45°): la dirección es 225°.
         const double rt2I = 0.707106781186547;
+        var largo = s.GanchoCm;
+
+        // ======================================================================
+        //  CON PAQUETE: GANCHO DE 135° SOBRE LA SEGUNDA VARILLA
+        // ======================================================================
+        //  El estribo baja RECTO por la cara derecha, pasa de largo la varilla de la
+        //  esquina, llega a la segunda y gira ahí. Es un gancho de 135° de verdad: barre
+        //  135° y sale UNA cola.
+        //
+        //  El de la esquina es de 180°: da media vuelta y salen DOS colas paralelas,
+        //  porque la varilla entra, rodea y vuelve. Ese es el que NO sirve aquí: la media
+        //  vuelta le pasaría por encima a la primera varilla del paquete.
+        if (enPaquete > 1)
+        {
+            var byPaq = by + PaqueteVarillas.Desplazamiento(1, dSup, arriba: true);
+
+            // Llega tangente por la cara derecha —0°— y gira 135° en el sentido de las
+            // agujas, hasta 225°.
+            const double desde = 1.25 * Math.PI;   // 225°
+            const double barrido = 0.75 * Math.PI; // hasta 360°
+
+            ArcoDoblez(bx, byPaq, rIn, desde, barrido);
+            ArcoDoblez(bx, byPaq, rOut, desde, barrido);
+
+            // La cola sale donde acaba el doblez, en el punto de 225°, y se va por la
+            // tangente de ahí: 135°, hacia arriba y a la izquierda, al núcleo.
+            var nxP = Math.Cos(desde);
+            var nyP = Math.Sin(desde);
+            var uxP = Math.Cos(0.75 * Math.PI);
+            var uyP = Math.Sin(0.75 * Math.PI);
+
+            foreach (var r in new[] { rIn, rOut })
+            {
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(bx + (r * nxP)),
+                    Y1 = py(byPaq + (r * nyP)),
+                    X2 = px(bx + (r * nxP) + (largo * uxP)),
+                    Y2 = py(byPaq + (r * nyP) + (largo * uyP)),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+            }
+
+            // La punta, que cierra las dos caras de la cola.
+            PreviewCanvas.Children.Add(new Line
+            {
+                X1 = px(bx + (rIn * nxP) + (largo * uxP)),
+                Y1 = py(byPaq + (rIn * nyP) + (largo * uyP)),
+                X2 = px(bx + (rOut * nxP) + (largo * uxP)),
+                Y2 = py(byPaq + (rOut * nyP) + (largo * uyP)),
+                Stroke = trazo,
+                StrokeThickness = 1.2
+            });
+
+            return;
+        }
+
+        // ---------- Sin paquete: el gancho de siempre, de 180° en la esquina ----------
+
+        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
+        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
+        ArcoDoblez(bx, by, rIn, 1.75 * Math.PI, Math.PI);
+        ArcoDoblez(bx, by, rOut, 1.75 * Math.PI, Math.PI);
+
+        // Las dos colas, hacia el núcleo. rt2I es cos(45°): la dirección es 225°.
         const double ux = -rt2I;
         const double uy = -rt2I;
-
-        var largo = s.GanchoCm;
 
         // El recorte de la segunda cola, con la condición del dibujante: el cruce con el
         // estribo tiene que caer DENTRO del largo del gancho. Si el gancho es corto, no
