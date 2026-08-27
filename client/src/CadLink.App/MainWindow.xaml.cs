@@ -5672,12 +5672,23 @@ public partial class MainWindow : Window
             // El obrondo COMPLETO, con sus dos caras. Quitarle caras propias lo dejaba
             // abierto; lo que hay que recortar son las líneas del ESTRIBO por donde el
             // gancho le pasa por encima.
-            // Solo el doblez de ABAJO y las colas, igual que en el dibujante. El costado
-            // derecho y la esquina ya los dibuja el propio estribo: trazarlos otra vez aquí
-            // dejaba dos pedacitos de línea sueltos encima del estribo.
+            // El obrondo completo: LA VUELTA del gancho, igual que en el dibujante.
             foreach (var r in new[] { rIn, rOut })
             {
+                // Doblez de la varilla de abajo: su cuarto de fuera, de 315° a 360°.
                 ArcoDoblez(bx, byAbajo, r, 1.75 * Math.PI, 0.25 * Math.PI);
+
+                // El tramo RECTO del costado, que une los dos dobleces.
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(bx + r), Y1 = py(byAbajo),
+                    X2 = px(bx + r), Y2 = py(by),
+                    Stroke = trazo,
+                    StrokeThickness = 1.2
+                });
+
+                // Doblez de la varilla de la esquina: de 0° a 135°.
+                ArcoDoblez(bx, by, r, 0, 0.75 * Math.PI);
             }
 
             // Las DOS colas, hacia el núcleo. Una sale del doblez de abajo por su punto de

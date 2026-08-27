@@ -1824,20 +1824,19 @@ public sealed partial class SeccionDrawer
             // costado, y estaba mal: son caras del propio gancho y sin ellas la pieza queda
             // abierta. Lo que hay que recortar son las líneas del ESTRIBO por donde el
             // gancho le pasa por encima, que es otra cosa y se hace aparte.
-            // ===== SOLO EL DOBLEZ DE ABAJO Y LAS COLAS =====
-            //
-            // El gancho baja por el costado derecho, y ese costado YA LO DIBUJA EL PROPIO
-            // ESTRIBO: sus dos caras van justo por ahí. Así que del obrondo no se trazan ni
-            // los tramos rectos del costado ni el doblez de la esquina; serían la misma
-            // línea encima de la misma línea, y eso es lo que dejaba los dos pedacitos
-            // negros sueltos: la prolongación del arco por arriba y el trocito de tangente
-            // por abajo.
-            //
-            // Lo que sí es del gancho, y solo suyo, es el doblez de ABAJO —donde da la
-            // vuelta— y las dos colas. Eso es lo que se dibuja.
+            // El obrondo completo: LA VUELTA del gancho. Se probó dejar solo el cuarto de
+            // abajo y era peor: sin el tramo recto y sin el doblez de la esquina, el gancho
+            // se quedaba sin vuelta.
             foreach (var r in new[] { rIn, rOut })
             {
+                // El doblez de la varilla de abajo: de 315° a 360°, su cuarto de fuera.
                 Agregar(contorno, Arco(bx, byAbajo, r, 1.75 * Pi, 2 * Pi));
+
+                // El tramo RECTO del costado, que une los dos dobleces.
+                Agregar(contorno, Linea(bx + r, byAbajo, bx + r, by, "ESTRIBOS"));
+
+                // El doblez de la varilla de la esquina: de 0° a 135°.
+                Agregar(contorno, Arco(bx, by, r, 0, 0.75 * Pi));
             }
 
             // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del
