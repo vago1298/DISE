@@ -227,6 +227,21 @@ public partial class MainWindow
     /// del fondo. La pieza completa ya se ve a la derecha, en el alzado en 3D.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// La sección en 3D: <b>el elemento de pie</b>, con sus estribos a la separación real.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No es una rebanada: es la pieza <b>levantada</b> a su longitud, con los estribos
+    /// repartidos como dice la tabla. Lo que se ve en el corte es una sección; puesta de pie
+    /// y con sus estribos, se ve el elemento.
+    /// </para>
+    /// <para>
+    /// Las posiciones de los estribos salen de <c>Estribos.CentrosDeAlzado</c> y las
+    /// varillas de <see cref="TodasLasVarillas"/>: las MISMAS funciones que el corte y que
+    /// el dibujo de AutoCAD, así que las tres vistas no pueden discrepar.
+    /// </para>
+    /// </remarks>
     private void DibujarSeccion3DPrevia(SeccionConcretoRow s, double ancho, double alto)
     {
         if (s.BaseCm <= 0 || s.AlturaCm <= 0)
@@ -234,19 +249,13 @@ public partial class MainWindow
             return;
         }
 
-        // ===== LA SECCIÓN DE PIE, COMO UN CORTE 3D DE REVIT =====
-        //
-        // El ancho de la sección va en X y el peralte en Y, así que la cara del corte
-        // queda DE FRENTE y de pie. El fondo va en Z, hacia atrás.
-        //
-        // Antes el fondo iba en X y la sección quedaba tumbada: se veía como una plancha
-        // de canto, y lo que hay que mirar —el acomodo del armado— quedaba de perfil.
-        var bx0 = s.BaseCm;
-        var hy = s.AlturaCm;
+        // De pie: el ancho de la sección en X, el fondo en Z y la LONGITUD en Y, que es la
+        // que sube. Si la fila no trae largo se usa el de respaldo para poder dibujar.
+        var largoM = s.LongitudM > 0 ? s.LongitudM : LargoPorOmisionM;
 
-        // El fondo: la mitad del ancho. Da cuerpo sin que las varillas de delante tapen
-        // las de atrás.
-        var dz = Math.Max(bx0 / 2.0, 8.0);
+        var bx0 = s.BaseCm;
+        var dz = s.AlturaCm;
+        var hy = largoM * 100.0;
 
         const double c30 = 0.86602540378443864;
         const double s30 = 0.5;
@@ -254,7 +263,6 @@ public partial class MainWindow
         var anchoIso = (bx0 + dz) * c30;
         var altoIso = hy + ((bx0 + dz) * s30);
 
-        // La mitad izquierda del lienzo, que es donde vive el corte.
         var anchoDisp = (ancho * 0.46) - 28;
         var altoDisp = alto - 76;
 
@@ -292,23 +300,8 @@ public partial class MainWindow
             });
         }
 
-        // La cara del corte, rellena con el color del concreto: es la que da la idea de
-        // estar mirando una pieza cortada y no un alambre.
-        var cara = new PointCollection
-        {
-            P(0, 0, 0), P(bx0, 0, 0), P(bx0, hy, 0), P(0, hy, 0)
-        };
-
-        PreviewCanvas.Children.Add(new Polygon
-        {
-            Points = cara,
-            Fill = new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC)),
-            Stroke = azul,
-            StrokeThickness = 1.3
-        });
-
-        // La rebanada, en alambre.
-        var esquinas = new[]
+        // La caja del elemento, en alambre y tenue: lo que hay que mirar es el armado.
+        var v = new[]
         {
             P(0, 0, 0), P(bx0, 0, 0), P(bx0, hy, 0), P(0, hy, 0),
             P(0, 0, dz), P(bx0, 0, dz), P(bx0, hy, dz), P(0, hy, dz)
@@ -316,56 +309,52 @@ public partial class MainWindow
 
         foreach (var (i, j) in new[]
         {
-            (0, 1), (1, 2), (2, 3), (4, 5), (5, 6), (6, 7),
-            (1, 5), (2, 6), (3, 7)
+            (0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
+            (0, 4), (1, 5), (2, 6), (3, 7)
         })
         {
-            L3(esquinas[i], esquinas[j], azul, 1.0, 0.5);
+            L3(v[i], v[j], azul, 1.0, 0.4);
         }
 
-        // El estribo: un anillo en la cara del corte y otro al fondo de la rebanada.
+        // Los estribos, a la separación de la tabla. En un elemento de pie el reparto es el
+        // de columna, que es justo lo que dice esVertical.
+        // Separaciones(...) es el mismo lector de la columna «Sep cm» que usa el dibujo de
+        // AutoCAD, así que el reparto de aquí sale de lo que dice la tabla.
+        var sep = Separaciones(s.SeparacionCm);
+
+        var centros = Estribos.CentrosDeAlzado(
+            largoM,
+            sep[0] / 100, sep[1] / 100, sep[2] / 100,
+            vertical: true,
+            esColumna: true);
+
         var rec = s.RecubrimientoCm;
 
-        if (rec > 0 && rec * 2 < bx0 && rec * 2 < hy)
+        if (rec > 0 && rec * 2 < bx0 && rec * 2 < dz)
         {
-            foreach (var z in new[] { 0.0, dz })
+            foreach (var c in centros)
             {
+                var y = c * 100.0;
+
                 var e = new[]
                 {
-                    P(rec, rec, z), P(bx0 - rec, rec, z),
-                    P(bx0 - rec, hy - rec, z), P(rec, hy - rec, z)
+                    P(rec, y, rec), P(bx0 - rec, y, rec),
+                    P(bx0 - rec, y, dz - rec), P(rec, y, dz - rec)
                 };
 
-                for (var v = 0; v < 4; v++)
+                for (var i = 0; i < 4; i++)
                 {
-                    L3(e[v], e[(v + 1) % 4], brochaEst, z == 0 ? 1.4 : 1.0, z == 0 ? 1 : 0.55);
+                    L3(e[i], e[(i + 1) % 4], brochaEst, 1.1);
                 }
             }
         }
 
-        // Las varillas: un tramo por cada una, con su bolita en la cara del corte, que es
-        // como se ven en el corte plano.
+        // Las varillas, de abajo arriba. La X del corte es la X, y su Y es el fondo.
         Varilla.TryDiametroCm(s.Estribo, out var de);
 
-        foreach (var (_, zx, vy, r) in TodasLasVarillas(s, de, rec))
+        foreach (var (_, vx, vz, _) in TodasLasVarillas(s, de, rec))
         {
-            L3(P(zx, vy, 0), P(zx, vy, dz), rojo, 1.5);
-
-            var p = P(zx, vy, 0);
-            var rr = Math.Max(r * k, 1.6);
-
-            var bolita = new Ellipse
-            {
-                Width = rr * 2,
-                Height = rr * 2,
-                Fill = rojo,
-                Stroke = new SolidColorBrush(Color.FromRgb(0x7B, 0x24, 0x1B)),
-                StrokeThickness = 0.7
-            };
-
-            Canvas.SetLeft(bolita, p.X - rr);
-            Canvas.SetTop(bolita, p.Y - rr);
-            PreviewCanvas.Children.Add(bolita);
+            L3(P(vx, 0, vz), P(vx, hy, vz), rojo, 1.5);
         }
     }
 }

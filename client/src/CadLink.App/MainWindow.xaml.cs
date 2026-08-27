@@ -5672,27 +5672,13 @@ public partial class MainWindow : Window
             // El obrondo COMPLETO, con sus dos caras. Quitarle caras propias lo dejaba
             // abierto; lo que hay que recortar son las líneas del ESTRIBO por donde el
             // gancho le pasa por encima.
-            // Los dos dobleces de la varilla de ABAJO, enteros.
+            // Solo el doblez de ABAJO y las colas, igual que en el dibujante. El costado
+            // derecho y la esquina ya los dibuja el propio estribo: trazarlos otra vez aquí
+            // dejaba dos pedacitos de línea sueltos encima del estribo.
             foreach (var r in new[] { rIn, rOut })
             {
                 ArcoDoblez(bx, byAbajo, r, 1.75 * Math.PI, 0.25 * Math.PI);
             }
-
-            // Las dos caras de DENTRO que no se trazan, igual que en el dibujante: el
-            // gancho pasa por encima del estribo y esas dos lo cortarían en dos.
-            //  · Del costado, la cara de dentro no va.
-            //  · Del doblez de la esquina, la cara de dentro llega solo hasta 90°; el
-            //    pedazo de 90° a 135° es el arquito que sobraba antes de la cola.
-            PreviewCanvas.Children.Add(new Line
-            {
-                X1 = px(bx + rOut), Y1 = py(byAbajo),
-                X2 = px(bx + rOut), Y2 = py(by),
-                Stroke = trazo,
-                StrokeThickness = 1.2
-            });
-
-            ArcoDoblez(bx, by, rOut, 0, 0.75 * Math.PI);
-            ArcoDoblez(bx, by, rIn, 0, 0.5 * Math.PI);
 
             // Las DOS colas, hacia el núcleo. Una sale del doblez de abajo por su punto de
             // 315°, y la otra del de la esquina por su 135°.

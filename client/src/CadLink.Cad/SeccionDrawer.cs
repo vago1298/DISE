@@ -1666,15 +1666,15 @@ public sealed partial class SeccionDrawer
         var x2 = x0 + b - rec;
         var y2 = y0 + h - rec;
 
-        // Con paquete Y con gancho, la esquina de arriba a la derecha la pone el propio
-        // gancho: su obrondo pasa por ahí. Ver Ganchos.
+        // Con paquete y con gancho, esta esquina se cierra con su arco NORMAL de 90°: el
+        // gancho no la prolonga, porque da la vuelta abajo, en la última varilla del
+        // paquete. Ver Ganchos.
         var laEsquinaLaPoneElGancho = gancho > 0 && enPaquete > 1;
 
-        // Y entonces el costado derecho sube solo hasta la varilla de ABAJO del paquete,
-        // porque de ahí arriba ese mismo costado es el tramo recto del obrondo. Los dos
-        // van en la misma línea, así que juntos hacen el costado seguido.
-        var yTopDer = y2 - rfSup
-                      - (laEsquinaLaPoneElGancho ? (enPaquete - 1) * dSup : 0);
+        // El costado derecho va COMPLETO hasta la esquina, como siempre. Se probó cortarlo
+        // a la altura de la varilla de abajo para que el obrondo pusiera el resto, y era un
+        // error: las dos líneas caían en el mismo sitio.
+        var yTopDer = y2 - rfSup;
 
         Horizontal(contorno, x1 + rfInf, x2 - rfInf, y1);
         Vertical(contorno, y1 + rfInf, yTopDer, x2);
@@ -1716,8 +1716,7 @@ public sealed partial class SeccionDrawer
         // del gancho, y el costado derecho sube solo hasta la varilla de abajo.
         var laEsquinaLaPoneElGancho = gancho > 0 && enPaquete > 1;
 
-        var yFinDer = y2 - rSup
-                      - (laEsquinaLaPoneElGancho ? (enPaquete - 1) * dSup : 0);
+        var yFinDer = y2 - rSup;
 
         if (gancho > 0 && !laEsquinaLaPoneElGancho)
         {
@@ -1825,28 +1824,21 @@ public sealed partial class SeccionDrawer
             // costado, y estaba mal: son caras del propio gancho y sin ellas la pieza queda
             // abierta. Lo que hay que recortar son las líneas del ESTRIBO por donde el
             // gancho le pasa por encima, que es otra cosa y se hace aparte.
-            // Los dos dobleces de la varilla de ABAJO, enteros.
+            // ===== SOLO EL DOBLEZ DE ABAJO Y LAS COLAS =====
+            //
+            // El gancho baja por el costado derecho, y ese costado YA LO DIBUJA EL PROPIO
+            // ESTRIBO: sus dos caras van justo por ahí. Así que del obrondo no se trazan ni
+            // los tramos rectos del costado ni el doblez de la esquina; serían la misma
+            // línea encima de la misma línea, y eso es lo que dejaba los dos pedacitos
+            // negros sueltos: la prolongación del arco por arriba y el trocito de tangente
+            // por abajo.
+            //
+            // Lo que sí es del gancho, y solo suyo, es el doblez de ABAJO —donde da la
+            // vuelta— y las dos colas. Eso es lo que se dibuja.
             foreach (var r in new[] { rIn, rOut })
             {
                 Agregar(contorno, Arco(bx, byAbajo, r, 1.75 * Pi, 2 * Pi));
             }
-
-            // ===== LAS DOS CARAS DE DENTRO QUE NO SE TRAZAN =====
-            //
-            // El gancho pasa POR ENCIMA del estribo, así que las dos caras interiores que
-            // quedan debajo de su banda no se dibujan: se verían cortando la pieza en dos.
-            //
-            //  · Del costado NO se traza la cara de dentro. Es el tramo vertical que va del
-            //    arranque de la tangente hasta donde da la vuelta el gancho.
-            //  · Del doblez de la esquina, la cara de dentro llega solo hasta ARRIBA —90°—
-            //    y no hasta los 135°. El pedazo de 90° a 135° es el arquito que salía entre
-            //    el final de la curva y el arranque de la cola.
-            //
-            // Las caras de FUERA van completas: son las que dan la silueta del gancho.
-            Agregar(contorno, Linea(bx + rOut, byAbajo, bx + rOut, by, "ESTRIBOS"));
-
-            Agregar(contorno, Arco(bx, by, rOut, 0, 0.75 * Pi));
-            Agregar(contorno, Arco(bx, by, rIn, 0, 0.5 * Pi));
 
             // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del
             // tramo recto que queda entre ellos.
