@@ -355,6 +355,10 @@ public partial class MainWindow
 
         var rec = s.RecubrimientoCm;
 
+        // El diametro del estribo, que aqui es GROSOR y no solo una cota: el 3D es para ver
+        // los espesores reales, asi que un #3 y un #4 tienen que verse distintos.
+        Varilla.TryDiametroCm(s.Estribo, out var de);
+
         if (rec > 0 && rec * 2 < bx0 && rec * 2 < dz)
         {
             foreach (var c in centros)
@@ -376,8 +380,7 @@ public partial class MainWindow
         }
 
         // Las varillas, de abajo arriba. La X del corte es la X, y su Y es el fondo.
-        Varilla.TryDiametroCm(s.Estribo, out var de);
-
+        //
         // Grosor REAL: el diametro de la varilla a la escala del dibujo, no una linea
         // fija. Un #8 y un #3 tienen que verse distintos, como en la pieza.
         foreach (var (_, vx, vz, vr) in TodasLasVarillas(s, de, rec))
