@@ -281,6 +281,17 @@ public partial class MainWindow
         var fueArrastre = _previaHuboArrastre;
         _previaHuboArrastre = false;
 
+        // Se apaga el giro y, si se estaba girando, se REDIBUJA fino: mientras se arrastra el
+        // 3D se dibuja basto para que siga al ratón, y al soltar hay que rehacerlo con todo
+        // el detalle. Sin apagar la bandera aquí, el dibujo se quedaría basto para siempre.
+        var estabaGirando = _previaGirando;
+        _previaGirando = false;
+
+        if (estabaGirando)
+        {
+            DibujarVistaPrevia();
+        }
+
         PreviewCanvas.ReleaseMouseCapture();
         PreviewCanvas.Cursor = null;
 

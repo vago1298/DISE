@@ -138,9 +138,10 @@ public partial class MainWindow
     /// por arriba.
     /// </remarks>
     private static Camara3D? PrepararCamara3D(
-        double bx, double by, double bz, double azimut, double elevacion, Rect area)
+        IReadOnlyList<(double X, double Y, double Z)> encuadra,
+        double azimut, double elevacion, Rect area)
     {
-        if (bx <= 0 || by <= 0 || bz <= 0 || area.Width < 30 || area.Height < 30)
+        if (encuadra.Count < 2 || area.Width < 30 || area.Height < 30)
         {
             return null;
         }
@@ -154,11 +155,7 @@ public partial class MainWindow
         double uMin = double.MaxValue, uMax = double.MinValue;
         double vMin = double.MaxValue, vMax = double.MinValue;
 
-        foreach (var (x, y, z) in new[]
-        {
-            (0.0, 0.0, 0.0), (bx, 0.0, 0.0), (bx, by, 0.0), (0.0, by, 0.0),
-            (0.0, 0.0, bz), (bx, 0.0, bz), (bx, by, bz), (0.0, by, bz)
-        })
+        foreach (var (x, y, z) in encuadra)
         {
             var (u, v) = basica.Proyectar(x, y, z);
 
@@ -227,7 +224,18 @@ public partial class MainWindow
 
         var area = new Rect(26, 44, _limite3DDerecha - 52, alto - 78);
 
-        var cam = PrepararCamara3D(bx, by, bz, _giro3DAzimut, _giro3DElevacion, area);
+        // Lo que tiene que caber: las ocho esquinas de la pieza Y las de su sombra. Si la
+        // sombra no entrara en la cuenta, se saldría del recuadro y aparecería cortada.
+        var encuadra = new List<(double X, double Y, double Z)>();
+
+        foreach (var (x, y) in new[] { (0.0, 0.0), (bx, 0.0), (bx, by), (0.0, by) })
+        {
+            encuadra.Add((x, y, 0));
+            encuadra.Add((x, y, bz));
+            encuadra.Add(EnLaSombra(x, y, bz));
+        }
+
+        var cam = PrepararCamara3D(encuadra, _giro3DAzimut, _giro3DElevacion, area);
 
         if (cam is null)
         {
@@ -236,9 +244,18 @@ public partial class MainWindow
 
         var c = cam.Value;
 
+        // Lo grande que se ve de verdad: la escala de la cámara POR el zoom del lienzo. De
+        // aquí sale cuántos tramos lleva cada doblez y en cuántos trozos se parte cada barra,
+        // así que al acercarse las curvas se afinan solas en lugar de verse facetadas.
+        var kPantalla = c.K * PreviaEscala.ScaleX;
+
+        // Mientras se gira se dibuja más basto: en un arrastre hay decenas de redibujados por
+        // segundo y lo que importa es que siga el ratón. Al soltar se redibuja fino.
+        var trozoPx = _previaGirando ? 22.0 : 9.0;
+
         // ---------- La sombra en el suelo ----------
         // Va PRIMERO, para quedar debajo de todo lo demás.
-        SombraEnElSuelo(c, bx, by);
+        SombraEnElSuelo(c, bx, by, bz);
 
         // ---------- La caja de concreto, en alambre y tenue ----------
         // Lo que hay que mirar es el armado; una caja opaca lo taparía entero. Es lo mismo
@@ -303,11 +320,44 @@ public partial class MainWindow
             // que todo salía casi del mismo ancho.
             var grueso = Math.Max(diamCm * c.K, 0.7);
 
-            var prof = (c.Prof(x1, y1) + c.Prof(x2, y2)) / 2;
+            // ==========================================================================
+            //  LA BARRA SE PARTE EN TROZOS, Y ES LO QUE EVITA QUE SE TRASPASEN
+            // ==========================================================================
+            //
+            // El orden de pintado se decide por la profundidad de cada pieza. Con la barra
+            // entera como una sola pieza, su profundidad es la del CENTRO, así que una
+            // varilla y el costado de un estribo que se cruzan se pintaban una entera
+            // delante de la otra: en el cruce, la de atrás asomaba por encima y parecía
+            // atravesarla. Partidas en trozos, en el cruce manda la profundidad de ESE
+            // trozo, que es la de verdad.
+            //
+            // El corte se hace en el espacio del modelo y no en pantalla porque lo que hay
+            // que interpolar es la profundidad. La proyección es afín, así que el punto de
+            // pantalla del trozo sale igual interpolando los extremos: no hace falta volver
+            // a proyectar.
+            var largoPx = Math.Sqrt(((q.X - p.X) * (q.X - p.X)) + ((q.Y - p.Y) * (q.Y - p.Y)));
 
-            var luz = dRango > 1e-9 ? (prof - dMin) / dRango : 1;
+            var trozos = Math.Clamp((int)Math.Ceiling(largoPx / trozoPx), 1, 48);
 
-            piezas.Add((prof, () => BarraRedonda3D(PreviewCanvas, p, q, color, grueso, luz)));
+            for (var i = 0; i < trozos; i++)
+            {
+                var t0 = (double)i / trozos;
+                var t1 = (double)(i + 1) / trozos;
+
+                var a = new Point(p.X + ((q.X - p.X) * t0), p.Y + ((q.Y - p.Y) * t0));
+                var b = new Point(p.X + ((q.X - p.X) * t1), p.Y + ((q.Y - p.Y) * t1));
+
+                var tm = (t0 + t1) / 2;
+
+                var prof = c.Prof(
+                    x1 + ((x2 - x1) * tm),
+                    y1 + ((y2 - y1) * tm));
+
+                var luz = dRango > 1e-9 ? (prof - dMin) / dRango : 1;
+
+                piezas.Add((
+                    prof, () => BarraRedonda3D(PreviewCanvas, a, b, color, grueso, luz)));
+            }
         }
 
         // Pinta un recorrido del plano de la sección a una cota z dada.
@@ -345,13 +395,13 @@ public partial class MainWindow
         //
         // Se calcula UNA vez: es el mismo en todas las posiciones, y armarlo pasa por los
         // arcos de los cuatro dobleces y las dos colas.
-        var trazo = TrazoDelEstribo3D(s, de, rec);
+        var trazo = TrazoDelEstribo3D(s, de, rec, kPantalla);
 
         var dDia = DiametroDelDiamante(s, de);
         var hayDiamante = s.LlevaDiamante && dDia > 0;
 
         var recorridoDia = hayDiamante
-            ? RecorridoDelDiamante3D(s, de, rec, dDia)
+            ? RecorridoDelDiamante3D(s, de, rec, dDia, kPantalla)
             : null;
 
         var sep = Separaciones(s.SeparacionCm);
@@ -476,40 +526,99 @@ public partial class MainWindow
     /// justo lo que evita que crezca con la longitud de la pieza.
     /// </para>
     /// </remarks>
-    private void SombraEnElSuelo(Camara3D c, double bx, double by)
-    {
-        var corrimiento = 0.20 * Math.Min(bx, by);
+    /// <summary>
+    /// El <b>sol</b>, en coordenadas del modelo: de la pieza hacia el suelo.
+    /// </summary>
+    /// <remarks>
+    /// Alto y algo de lado, como el sol a media mañana. De aquí sale el largo de la sombra:
+    /// un punto a cota <c>z</c> cae en el suelo corrido <c>z · Sol/|SolZ|</c>, así que con
+    /// estos números la sombra de una pieza de tres metros se extiende unos dos, que es lo
+    /// que se ve en obra. Bajar más el sol la alargaría hasta comerse el recuadro.
+    /// </remarks>
+    private const double SolX = 0.30;
 
-        if (corrimiento <= 0)
+    private const double SolY = 0.42;
+
+    private const double SolZ = 0.86;
+
+    /// <summary>La sombra de un punto en el suelo.</summary>
+    private static (double X, double Y, double Z) EnLaSombra(double x, double y, double z) =>
+        (x + (SolX / SolZ * z), y + (SolY / SolZ * z), 0);
+
+    /// <summary>
+    /// La <b>sombra proyectada</b> de la pieza en el suelo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la sombra de verdad: cada esquina de la pieza se lleva al suelo siguiendo la
+    /// dirección del sol, y la silueta es la <b>envolvente convexa</b> de todas ellas —de las
+    /// cuatro de la base, que se quedan donde están, y de las cuatro de arriba, que caen
+    /// lejos—. Sale un hexágono tumbado a lo largo, no una huella pegada a la base.
+    /// </para>
+    /// <para>
+    /// Hizo falta la envolvente porque la unión de la base y la tapa corrida <b>no es un
+    /// rectángulo</b>: son dos rectángulos iguales desplazados en diagonal, y su silueta
+    /// tiene seis lados. Dibujar los dos por separado se notaría, porque al ser
+    /// translúcidos la zona común saldría del doble de oscura.
+    /// </para>
+    /// <para>
+    /// La sombra <b>entra en el encuadre</b>, así que la pieza sale algo más pequeña que
+    /// antes. Es el precio de que la sombra se vea entera: recortarla al borde del recuadro
+    /// quedaría peor que la pieza un poco menor.
+    /// </para>
+    /// </remarks>
+    private void SombraEnElSuelo(Camara3D c, double bx, double by, double bz)
+    {
+        // Cuánto se corre la tapa al caer al suelo.
+        var ox = SolX / SolZ * bz;
+        var oy = SolY / SolZ * bz;
+
+        if (bx <= 0 || by <= 0 || ox <= 0 || oy <= 0)
         {
             return;
         }
 
-        // Tres capas: la de dentro más oscura y pequeña, las de fuera más grandes y tenues.
-        foreach (var (crece, alfa) in new[] { (0.0, (byte)0x2E), (0.7, (byte)0x1C), (1.6, (byte)0x0E) })
+        // ---------- La silueta, escrita a mano y no con una envolvente ----------
+        //
+        // La sombra es la unión de la base con la tapa corrida: dos rectángulos IGUALES
+        // desplazados en diagonal. Su silueta no es un rectángulo, es un hexágono, y para dos
+        // rectángulos alineados con los ejes y un corrimiento positivo en las dos direcciones
+        // se puede escribir directamente:
+        //
+        //     (0,0) → (bx,0) → (bx+ox, oy) → (bx+ox, by+oy) → (ox, by+oy) → (0,by)
+        //
+        // Se hizo así en lugar de con una envolvente convexa general por una razón práctica:
+        // esta parte vive en CadLink.App, que en este entorno NO se puede compilar ni probar,
+        // y un algoritmo de envolvente sin prueba es justo lo que no conviene meter. El
+        // hexágono se comprueba leyéndolo.
+        var silueta = new List<(double X, double Y)>
         {
-            var d = corrimiento * (1 + crece);
+            (0, 0), (bx, 0), (bx + ox, oy),
+            (bx + ox, by + oy), (ox, by + oy), (0, by)
+        };
 
-            var brocha = new SolidColorBrush(Color.FromArgb(alfa, 0x1B, 0x2A, 0x3A));
+        // Dos capas: la sombra y un halo un poco mayor y más tenue, para que el borde no
+        // salga como recortado con tijeras.
+        foreach (var (alfa, crece) in new[] { ((byte)0x12, 1.06), ((byte)0x22, 1.0) })
+        {
+            var cx = silueta.Average(p => p.X);
+            var cy = silueta.Average(p => p.Y);
+
+            var brocha = new SolidColorBrush(Color.FromArgb(alfa, 0x16, 0x24, 0x33));
             brocha.Freeze();
 
             var poly = new Polygon { Fill = brocha };
 
-            // La huella, corrida al lado contrario de la luz y crecida un poco.
-            foreach (var (x, y) in new[]
+            foreach (var (x, y) in silueta)
             {
-                (-d + corrimiento, -d + corrimiento),
-                (bx + d + corrimiento, -d + corrimiento),
-                (bx + d + corrimiento, by + d + corrimiento),
-                (-d + corrimiento, by + d + corrimiento)
-            })
-            {
-                poly.Points.Add(c.APantalla(x, y, 0));
+                poly.Points.Add(c.APantalla(
+                    cx + ((x - cx) * crece), cy + ((y - cy) * crece), 0));
             }
 
             PreviewCanvas.Children.Add(poly);
         }
     }
+
 
     /// <summary>
     /// El recorrido del <b>estribo</b> de la fila, listo para el 3D.
@@ -529,7 +638,7 @@ public partial class MainWindow
     /// </para>
     /// </remarks>
     private static TrazoEstribo.Trazo? TrazoDelEstribo3D(
-        SeccionConcretoRow s, double de, double rec)
+        SeccionConcretoRow s, double de, double rec, double kPantalla)
     {
         if (de <= 0)
         {
@@ -546,11 +655,36 @@ public partial class MainWindow
 
         var medio = de / 2;
 
+        var rSup = (de + dSup) / 2;
+        var rInf = (de + dInf) / 2;
+
         return TrazoEstribo.Eje(
             rec + medio, rec + medio,
             s.BaseCm - rec - medio, s.AlturaCm - rec - medio,
-            (de + dSup) / 2, (de + dInf) / 2,
-            s.GanchoCm);
+            rSup, rInf,
+            s.GanchoCm,
+            TramosDeDoblez(Math.Max(rSup, rInf), kPantalla));
+    }
+
+    /// <summary>
+    /// Cuántos tramos rectos lleva un doblez para que <b>no se vea facetado</b>.
+    /// </summary>
+    /// <remarks>
+    /// Sale del radio del doblez medido <b>en píxeles</b>, no de un número fijo: al 100 % un
+    /// doblez de estribo ocupa dos o tres píxeles y con seis tramos ya se ve redondo, pero al
+    /// 350 % —que es a lo que se revisa el armado— ocupa treinta y los seis tramos se ven como
+    /// un hexágono. Con esto las curvas se afinan solas al acercarse.
+    /// <para>
+    /// La cuenta es la del arco: un cuadrante mide <c>r · π/2</c>, y se pide que cada tramo no
+    /// pase de unos tres píxeles de cuerda. Entre 6 y 40 para no quedarse corto ni disparar el
+    /// número de figuras.
+    /// </para>
+    /// </remarks>
+    private static int TramosDeDoblez(double radioCm, double kPantalla)
+    {
+        var arcoPx = radioCm * kPantalla * Math.PI / 2;
+
+        return Math.Clamp((int)Math.Ceiling(arcoPx / 3), 6, 40);
     }
 }
 
@@ -726,7 +860,7 @@ public partial class MainWindow
     /// </remarks>
     /// <returns>El recorrido cerrado, o <c>null</c> si no se pudo armar.</returns>
     private List<(double X, double Y)>? RecorridoDelDiamante3D(
-        SeccionConcretoRow s, double de, double rec, double dDia)
+        SeccionConcretoRow s, double de, double rec, double dDia, double kPantalla)
     {
         if (dDia <= 0)
         {
@@ -765,7 +899,11 @@ public partial class MainWindow
             return null;
         }
 
-        var puntos = TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 8);
+        // Los dobleces del diamante se muestrean según lo grandes que se vean, igual que los
+        // del estribo: con un número fijo, al acercarse se veían como polígonos.
+        var puntos = TrazoDiamante.Muestrear(
+            geo.Value.Pts, geo.Value.Bulges,
+            TramosDeDoblez(dDia, kPantalla));
 
         return puntos.Count < 3 ? null : puntos;
     }
