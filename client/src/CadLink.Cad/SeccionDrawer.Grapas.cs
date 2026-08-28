@@ -23,6 +23,21 @@ namespace CadLink.Cad;
 public sealed partial class SeccionDrawer
 {
     /// <summary>
+    /// Contornos de las grapas dibujadas en la sección en curso.
+    /// </summary>
+    /// <remarks>
+    /// Se guardan porque el <b>diamante</b> los necesita, y se dibuja después: su cinta
+    /// también tiene que abrirse por donde una grapa le pasa por encima. Se guarda el
+    /// contorno YA CALCULADO, no los datos para recalcularlo, para que el hueco caiga
+    /// exactamente sobre la grapa que se dibujó.
+    /// <para>
+    /// Se limpia por sección, junto con los demás registros, en el arranque del dibujo de
+    /// cada una.
+    /// </para>
+    /// </remarks>
+    private readonly List<double[]> _contornosDeGrapa = new();
+
+    /// <summary>
     /// <b>Todas</b> las varillas longitudinales, con la señal que las identifica.
     /// </summary>
     /// <remarks>
@@ -222,6 +237,12 @@ public sealed partial class SeccionDrawer
             // tramos rectos, así que no hay ningún arco que rellenar por separado.
             RellenoDelGancho(contornos, new List<double[]>());
         }
+
+        // Se guardan para el DIAMANTE, que se dibuja después. Su cinta también tiene que
+        // abrirse donde una grapa le pasa por encima, y para eso necesita estos mismos
+        // contornos: si los recalculara, la grapa dibujada y el hueco abierto podrían no
+        // coincidir.
+        _contornosDeGrapa.AddRange(contornos);
 
         // Y AL FINAL, con las grapas ya dibujadas: se abre el estribo por donde le pasan
         // por encima. Al final por lo mismo que el recorte del diamante está al final de

@@ -17,8 +17,26 @@ namespace CadLink.Cad;
 public sealed partial class SeccionDrawer
 {
     /// <summary>Contornos del diamante de la sección en curso, para las islas.</summary>
+    /// <remarks>
+    /// Quedan en <c>null</c> cuando una grapa o el gancho les abren huecos: entonces la
+    /// cinta se sustituye por sus trozos. Para saber si la sección lleva diamante está
+    /// <see cref="_hayDiamante"/>, que no depende de eso.
+    /// </remarks>
     private object? _diamExt;
     private object? _diamInt;
+
+    /// <summary>Si la sección en curso llegó a dibujar el diamante.</summary>
+    private bool _hayDiamante;
+
+    /// <summary>
+    /// El hueco que el gancho del diamante abre en su propia cinta interior.
+    /// </summary>
+    /// <remarks>
+    /// Se calcula al dibujar el gancho pero <b>no se aplica ahí</b>: se junta con los que
+    /// abren las grapas y se rearma la cinta UNA sola vez. Abrirla dos veces obligaría a
+    /// partir una polilínea ya abierta, que es un caso distinto y peor.
+    /// </remarks>
+    private CintaConHuecos.Hueco? _huecoDelGancho;
 
     /// <summary>
     /// Dibuja el estribo diamante y lo deja listo para usarse como isla del hatch.
@@ -102,6 +120,7 @@ public sealed partial class SeccionDrawer
 
         _diamInt = interior;
         _diamExt = exterior;
+        _hayDiamante = true;
 
         // ---------- Relleno y color ----------
         if (conFondoSolido)
@@ -128,6 +147,11 @@ public sealed partial class SeccionDrawer
         // Va al FINAL, cuando la cinta ya está dibujada y coloreada: el gancho es una
         // pieza aparte que se le añade, igual que en el zuncho circular.
         GanchoDelDiamante(s, contorno, centros, cx, cy, dDia, conFondoSolido);
+
+        // ---------- Las cintas, abiertas por donde algo les pasa por encima ----------
+        // El gancho apuntó su hueco al dibujarse y las grapas dejaron sus contornos, así
+        // que aquí se juntan todos y las dos cintas se rearman UNA vez.
+        RearmarLasCintas(centros, dDia, conFondoSolido);
 
         // Y AL FINAL, con la cinta ya hecha: se abre el estribo principal por donde
         // el diamante pasa por encima. Va aquí y no antes porque solo tiene sentido
@@ -828,16 +852,12 @@ public sealed partial class SeccionDrawer
         // OJO CON LO QUE ESTO NO ES: no le quita ninguna línea al gancho. Las dos colas
         // siguen con sus tres líneas cada una. Lo que se abre es un hueco del ancho del
         // brazo en la línea del DIAMANTE, que es la que pasa por debajo.
-        var cintaAbierta = AbrirCintaBajoLaCola(
-            centros, iBarra, n1X, n1Y, ux, uy, rIn, rOut, gancho, conFondoSolido);
-
-        if (cintaAbierta is not null)
-        {
-            // La vieja se borra AHORA, no antes: hacía de isla del relleno del diamante,
-            // que ya está hecho, y los hatches no son asociativos.
-            Borrar(_diamInt);
-            _diamInt = cintaAbierta;
-        }
+        // El hueco se APUNTA, no se abre todavía. Lo abre RearmarLasCintas junto con los
+        // que abren las grapas, en una sola pasada: si se abriera aquí, la cinta quedaría
+        // ya partida y luego habría que volver a partir una polilínea abierta, que es un
+        // caso distinto y con más aristas.
+        _huecoDelGancho = HuecoDelGanchoEnLaCinta(
+            centros, iBarra, n1X, n1Y, ux, uy, rIn, rOut, gancho);
 
         if (conFondoSolido && (sectores.Count > 0 || quads.Count > 0))
         {
@@ -998,11 +1018,11 @@ public sealed partial class SeccionDrawer
     /// que dependa de ella.
     /// </para>
     /// </remarks>
-    /// <returns>La cinta interior nueva, o <c>null</c> si se deja la de antes.</returns>
-    private object? AbrirCintaBajoLaCola(
+    /// <returns>El hueco que hay que abrir, o <c>null</c> si el gancho no tapa nada.</returns>
+    private CintaConHuecos.Hueco? HuecoDelGanchoEnLaCinta(
         List<(double X, double Y, double R)> centros, int iBarra,
         double nx, double ny, double ux, double uy,
-        double rIn, double rOut, double largo, bool conFondoSolido)
+        double rIn, double rOut, double largo)
     {
         var geo = GeometriaCinta(centros, 0);
 
@@ -1012,7 +1032,6 @@ public sealed partial class SeccionDrawer
         }
 
         var pts = geo.Value.Pts;
-        var bulges = geo.Value.Bulges;
 
         var tramo = TramoDeLaCinta(pts, centros, iBarra, nx, ny);
 
@@ -1054,55 +1073,146 @@ public sealed partial class SeccionDrawer
             return null;
         }
 
-        if (s1 - s0 > FraccionMaxHuecoCinta)
+        // El seguro de la fracción ya no se comprueba aquí: lo hace CintaConHuecos.Abrir
+        // sobre el TOTAL de los huecos, que es donde tiene sentido. Comprobarlo también
+        // aquí, hueco a hueco, dejaría pasar el caso de varios huecos pequeños que juntos
+        // se comen la cinta.
+        return new CintaConHuecos.Hueco(verticeA, s0, s1);
+    }
+
+    /// <summary>
+    /// Vuelve a montar las dos cintas del diamante con los <b>huecos</b> de todo lo que
+    /// les pasa por encima.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Qué se ve sin esto.</b> Una grapa se coloca por fuera y tiene que verse pasar por
+    /// delante, igual que ya pasa con el estribo rectangular. Pero el diamante se dibuja
+    /// <b>después</b> de las grapas y nada le abría la cinta, así que sus dos líneas
+    /// cruzaban por encima de cualquier grapa que les pasara: el dibujo se leía al revés,
+    /// con el diamante montado sobre la grapa.
+    /// </para>
+    /// <para>
+    /// <b>Por qué no se arregla con el orden de dibujo.</b> Por lo mismo que en
+    /// <see cref="RecortarEstriboBajoDiamante"/> y en <c>RecortarEstriboBajoGrapas</c>:
+    /// <c>EstribosAlFrente</c> sube al frente TODO lo que está en la capa <c>ESTRIBOS</c>
+    /// —la grapa y también la cinta—, y en la sección de contorno no hay ningún relleno que
+    /// pudiera tapar nada. Hay que abrir el hueco de verdad.
+    /// </para>
+    /// <para>
+    /// <b>Se abren las DOS cintas, no solo la interior.</b> La grapa pasa por encima del
+    /// diamante entero, así que si solo se abriera la interior, la línea exterior seguiría
+    /// cruzando la grapa y el defecto se vería igual, nada más que corrido un grueso de
+    /// estribo. La del gancho sí es solo la interior, y eso no cambia: el brazo del gancho
+    /// sale por encima de la varilla y solo cruza esa.
+    /// </para>
+    /// <para>
+    /// La cuenta vive en <see cref="CintaConHuecos"/>, fuera de aquí y sin COM, para poder
+    /// probarla: es lo que hace <c>tools/prueba-cinta-huecos</c>. Y ahí se descubrió que la
+    /// grapa cruza la cinta <b>justo en los dobleces</b> y no en las diagonales —lógico,
+    /// porque los dobleces están en las varillas que el diamante abraza y la grapa se
+    /// amarra a varillas—, así que hubo que partir arcos y no solo rectas.
+    /// </para>
+    /// </remarks>
+    private void RearmarLasCintas(
+        List<(double X, double Y, double R)> centros, double dDia, bool conFondoSolido)
+    {
+        RearmarUnaCinta(ref _diamInt, centros, 0, _huecoDelGancho, conFondoSolido, "interior");
+        RearmarUnaCinta(ref _diamExt, centros, dDia, null, conFondoSolido, "exterior");
+    }
+
+    /// <summary>Rearma una de las dos cintas, si algo le abre hueco.</summary>
+    private void RearmarUnaCinta(
+        ref object? cinta,
+        List<(double X, double Y, double R)> centros,
+        double extra,
+        CintaConHuecos.Hueco? huecoDelGancho,
+        bool conFondoSolido,
+        string cual)
+    {
+        if (cinta is null)
+        {
+            return;
+        }
+
+        var geo = GeometriaCinta(centros, extra);
+
+        if (geo is null)
+        {
+            return;
+        }
+
+        var pts = geo.Value.Pts;
+        var bulges = geo.Value.Bulges;
+
+        var huecos = new List<CintaConHuecos.Hueco>();
+
+        if (huecoDelGancho is not null)
+        {
+            huecos.Add(huecoDelGancho.Value);
+        }
+
+        if (_contornosDeGrapa.Count > 0)
+        {
+            huecos.AddRange(
+                CintaConHuecos.Huecos(pts, bulges, _contornosDeGrapa, LargoMinTramo));
+        }
+
+        if (huecos.Count == 0)
+        {
+            return;
+        }
+
+        var trozos = CintaConHuecos.Abrir(
+            pts, bulges, huecos, LargoMinTramo, FraccionMaxHuecoCinta);
+
+        if (trozos is null)
         {
             Nota(
-                "Estribo diamante: no se abrió la línea interior de la cinta bajo el " +
-                $"gancho porque el hueco calculado se comía el {100 * (s1 - s0):0} % de " +
-                "la diagonal. El dibujo queda completo, con la línea cruzando el gancho.");
-            return null;
+                $"Estribo diamante: no se abrió la línea {cual} de la cinta porque los " +
+                "huecos calculados se comían más de la mitad del contorno. El dibujo " +
+                "queda completo, con la línea cruzando lo que le pasa por encima.");
+            return;
         }
 
-        // ---------- La cinta, otra vez, abierta por el hueco ----------
-        var m = 2 * centros.Count;
+        // PRIMERO se dibujan los trozos nuevos…
+        var nuevos = new List<object>();
 
-        var nuevos = new List<double>();
-        var nuevosBulges = new List<double> { 0 };
-
-        // Empieza donde ACABA el hueco…
-        nuevos.Add(a.X + (s1 * (b.X - a.X)));
-        nuevos.Add(a.Y + (s1 * (b.Y - a.Y)));
-
-        // …da la vuelta entera por los vértices de siempre…
-        for (var k = 1; k <= m; k++)
+        foreach (var trozo in trozos)
         {
-            var v = (verticeA + k) % m;
+            var pl = PolilineaAbierta(trozo.Pts, trozo.Bulges);
 
-            nuevos.Add(pts[2 * v]);
-            nuevos.Add(pts[(2 * v) + 1]);
-            nuevosBulges.Add(bulges[v]);
+            if (pl is not null)
+            {
+                nuevos.Add(pl);
+            }
         }
 
-        // …y termina donde el hueco EMPIEZA.
-        nuevos.Add(a.X + (s0 * (b.X - a.X)));
-        nuevos.Add(a.Y + (s0 * (b.Y - a.Y)));
-        nuevosBulges.Add(0);
-
-        var abierta = PolilineaAbierta(nuevos.ToArray(), nuevosBulges.ToArray());
-
-        if (abierta is null)
+        // …y la vieja se borra SOLO si alguno se creó. Al revés, un fallo al dibujar
+        // dejaría el diamante sin esa línea entera. Es la misma regla que siguen los otros
+        // dos recortes de la sección.
+        if (nuevos.Count == 0)
         {
-            return null;
+            Nota(
+                $"Estribo diamante: no se pudieron dibujar los trozos de la línea {cual} " +
+                "de la cinta, así que se dejó entera.");
+            return;
         }
+
+        // La vieja se puede borrar aunque haya hecho de isla del relleno: ese relleno ya
+        // está hecho y los hatches de AutoCAD no son asociativos.
+        Borrar(cinta);
+        cinta = null;
 
         if (conFondoSolido)
         {
-            Negro(abierta);
+            foreach (var e in nuevos)
+            {
+                Negro(e);
+            }
         }
 
-        AlFrente(new List<object> { abierta });
-
-        return abierta;
+        AlFrente(nuevos);
     }
 
     /// <summary>

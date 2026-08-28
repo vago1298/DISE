@@ -943,6 +943,16 @@ public sealed partial class SeccionDrawer
         _varLat.Clear();
         _tramosEstribo.Clear();
 
+        // Y el diamante y las grapas, por lo mismo y con un motivo extra: EstriboDiamante
+        // solo se llama si la sección LLEVA diamante, así que reiniciar sus campos ahí
+        // dentro no basta —una sección sin diamante se quedaba con la cinta de la
+        // anterior—. Aquí se limpia siempre, lleve lo que lleve.
+        _diamInt = null;
+        _diamExt = null;
+        _hayDiamante = false;
+        _huecoDelGancho = null;
+        _contornosDeGrapa.Clear();
+
         // Se escribe con switch y no con una comparacion suelta para que cada
         // tipo diga explicitamente si lleva fondo solido, sin depender de que el
         // Tipo 1 sea el valor por omision. El AR-CONC se dibuja en los DOS tipos;
@@ -1182,7 +1192,10 @@ public sealed partial class SeccionDrawer
                 // On Error Resume Next. El resultado es el mismo que aquí: el rayado
                 // cruza la banda del diamante. No se nota porque el rayado se manda
                 // al fondo y el diamante lleva su propio relleno encima.
-                if (_diamExt is not null || _diamInt is not null)
+                // Se pregunta por _hayDiamante y no por las cintas: cuando una grapa le
+                // abre huecos, las cintas se sustituyen por sus trozos y los campos
+                // quedan vacíos, pero el diamante sigue estando ahí.
+                if (_hayDiamante)
                 {
                     Nota(
                         "Estribo diamante: no se usa como isla del rayado. Su cinta " +
