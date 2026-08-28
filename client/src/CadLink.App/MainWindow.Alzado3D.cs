@@ -111,8 +111,6 @@ public partial class MainWindow
             oy - (y * k) + ((x + z) * s30 * k));
 
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
-        var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
-        var verde = new SolidColorBrush(Color.FromRgb(0x1D, 0x8A, 0x4E));
 
         void Linea3D(Point p, Point q, Brush brocha, double grosor, double opacidad = 1.0)
         {
@@ -160,67 +158,141 @@ public partial class MainWindow
 
         var rec = a.RecubrimientoCm;
 
-        if (rec > 0 && rec * 2 < bz && rec * 2 < hy)
-        {
-            foreach (var c in centros)
-            {
-                var x = c * 100.0;
+        // ---------- El armado, apuntado para pintarlo de atrás hacia delante ----------
+        // Mismo trato que la sección de pie, y por lo mismo: sin ordenar por profundidad,
+        // quién tapa a quién lo decide el orden del código y los cruces no se leen.
+        var piezas = new List<(double Prof, Action Pintar)>();
 
-                // El estribo es un rectángulo en el plano de la sección, o sea a X fija.
+        void Barra(
+            double x1, double y1, double z1,
+            double x2, double y2, double z2,
+            Color color, double diamCm)
+        {
+            var p = P(x1, y1, z1);
+            var q = P(x2, y2, z2);
+
+            // El grueso ES el diámetro a la escala, con un único tope mínimo para todas
+            // las familias: así se conservan las proporciones entre calibres.
+            var grueso = Math.Max(diamCm * k, 0.7);
+
+            piezas.Add((
+                (x1 + z1 + x2 + z2) / 2,
+                () => BarraRedonda3D(PreviaFijaCanvas, p, q, color, grueso)));
+        }
+
+        var colorEstriboAlz = Color.FromRgb(0x1F, 0x6F, 0xB2);
+        var colorVarillaAlz = Color.FromRgb(0x1D, 0x8A, 0x4E);
+
+        var fila = Seleccionada;
+
+        // Las varillas y el diamante necesitan la fila; los estribos, no.
+        var conArmado = fila is not null && !fila.EsCircular;
+
+        // El diámetro del estribo PRINCIPAL. Antes aquí había un 1.1 fijo, así que un #3 y
+        // un #5 se veían idénticos.
+        //
+        // Y NO se usa a.EstriboDibujo, aunque sea lo que usa el alzado plano: ese campo
+        // trae el del DIAMANTE cuando la sección lleva diamante —se arma así en
+        // MainWindow.xaml.cs, «diamante && varDiamante.Existe ? varDiamante : estribo»—.
+        // Aquí hacen falta los dos por separado, que es justo el error que se está
+        // arreglando. Solo se cae a EstriboDibujo cuando no hay fila de la que sacarlo.
+        var deAlz = conArmado
+                    && Varilla.TryDiametroCm(fila!.Estribo, out var dEstFila)
+                    && dEstFila > 0
+            ? dEstFila
+            : a.EstriboDibujo.Cm;
+
+        var varillasAlz = conArmado
+            ? TodasLasVarillas(fila!, deAlz, fila!.RecubrimientoCm)
+            : new List<(RefVarilla Ref, double X, double Y, double R)>();
+
+        // Las varillas longitudinales, de las mismas funciones que reparten las del corte.
+        // En el corte la X es a lo ancho de la sección, que aquí es la Z; y la Y del corte
+        // es el peralte, que aquí sigue siendo Y.
+        foreach (var (_, zx, vy, vr) in varillasAlz)
+        {
+            Barra(0, vy, zx, lx, vy, zx, colorVarillaAlz, vr * 2);
+        }
+
+        var dDiaAlz = conArmado ? DiametroDelDiamante(fila!, deAlz) : 0;
+        var hayDiamanteAlz = conArmado && fila!.LlevaDiamante && dDiaAlz > 0;
+
+        var recorridoAlz = hayDiamanteAlz
+            ? RecorridoDelDiamante3D(fila!, deAlz, fila!.RecubrimientoCm, dDiaAlz)
+            : null;
+
+        foreach (var c in centros)
+        {
+            var xEst = c * 100.0;
+
+            // El estribo: un rectángulo en el plano de la sección, o sea a X fija.
+            if (rec > 0 && rec * 2 < bz && rec * 2 < hy)
+            {
                 var e = new[]
                 {
-                    P(x, rec, rec), P(x, rec, bz - rec),
-                    P(x, hy - rec, bz - rec), P(x, hy - rec, rec)
+                    (Y: rec, Z: rec), (Y: rec, Z: bz - rec),
+                    (Y: hy - rec, Z: bz - rec), (Y: hy - rec, Z: rec)
                 };
 
                 for (var v = 0; v < 4; v++)
                 {
-                    Linea3D(e[v], e[(v + 1) % 4], brochaEst, 1.1);
+                    var p1 = e[v];
+                    var p2 = e[(v + 1) % 4];
+
+                    Barra(xEst, p1.Y, p1.Z, xEst, p2.Y, p2.Z, colorEstriboAlz, deAlz);
                 }
+            }
+
+            // El diamante, apilado sobre el estribo y tangente a él. Antes el alzado en 3D
+            // NO lo dibujaba: la jaula enseñaba un armado y el corte otro.
+            var xDia = xEst + ((deAlz + dDiaAlz) / 2);
+
+            if (recorridoAlz is not null)
+            {
+                for (var i = 0; i < recorridoAlz.Count; i++)
+                {
+                    var p1 = recorridoAlz[i];
+                    var p2 = recorridoAlz[(i + 1) % recorridoAlz.Count];
+
+                    Barra(xDia, p1.Y, p1.X, xDia, p2.Y, p2.X, colorEstriboAlz, dDiaAlz);
+                }
+            }
+
+            // Y las grapas encima, cada una con SU diámetro.
+            var xGrapa = hayDiamanteAlz ? xDia + (dDiaAlz / 2) : xEst + (deAlz / 2);
+
+            if (!conArmado)
+            {
+                continue;
+            }
+
+            foreach (var g in fila!.Grapas)
+            {
+                if (!Varilla.TryDiametroCm(g.Diametro, out var dGrapa) || dGrapa <= 0)
+                {
+                    dGrapa = deAlz;
+                }
+
+                var va = BuscarVarillaPrevia(varillasAlz, g.A);
+                var vb = BuscarVarillaPrevia(varillasAlz, g.B);
+
+                if (va is null || vb is null)
+                {
+                    continue;
+                }
+
+                xGrapa += dGrapa / 2;
+
+                Barra(xGrapa, va.Value.Y, va.Value.X,
+                      xGrapa, vb.Value.Y, vb.Value.X, colorEstriboAlz, dGrapa);
+
+                xGrapa += dGrapa / 2;
             }
         }
 
-        // ---------- Las varillas longitudinales ----------
-        //
-        // De las mismas funciones que reparten las varillas del corte, así que la jaula
-        // en 3D lleva exactamente las varillas que se ven en la sección.
-        var fila = Seleccionada;
-
-        if (fila is not null && !fila.EsCircular)
+        foreach (var (_, pintar) in piezas.OrderBy(p => p.Prof))
         {
-            Varilla.TryDiametroCm(fila.Estribo, out var de);
-
-            var varillasAlz = TodasLasVarillas(fila, de, fila.RecubrimientoCm);
-
-            // Grosor REAL, como en la seccion de pie.
-            foreach (var (_, zx, vy, vr) in varillasAlz)
-            {
-                // En el corte la X es a lo ancho de la sección, que aquí es la Z; y la Y
-                // del corte es el peralte, que aquí sigue siendo Y.
-                Linea3D(P(0, vy, zx), P(lx, vy, zx), verde, Math.Max(vr * 2 * k, 1.2));
-            }
-
-            // Las grapas y el diamante, a la altura de cada estribo.
-            var grosorEstAlz = Math.Max(de * k, 1.0);
-
-            foreach (var c in centros)
-            {
-                var xq = c * 100.0;
-
-                foreach (var g in fila.Grapas)
-                {
-                    var va = BuscarVarillaPrevia(varillasAlz, g.A);
-                    var vb = BuscarVarillaPrevia(varillasAlz, g.B);
-
-                    if (va is null || vb is null)
-                    {
-                        continue;
-                    }
-
-                    Linea3D(P(xq, va.Value.Y, va.Value.X), P(xq, vb.Value.Y, vb.Value.X),
-                            brochaEst, grosorEstAlz);
-                }
-            }
+            pintar();
         }
 
         Etiqueta(PreviaFijaCanvas,
@@ -311,8 +383,6 @@ public partial class MainWindow
             oy - (y * k) + ((x + z) * s30 * k));
 
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
-        var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
-        var rojo = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
 
         void L3(Point p, Point q, Brush brocha, double grosor, double opacidad = 1.0)
         {
@@ -359,50 +429,127 @@ public partial class MainWindow
         // los espesores reales, asi que un #3 y un #4 tienen que verse distintos.
         Varilla.TryDiametroCm(s.Estribo, out var de);
 
-        if (rec > 0 && rec * 2 < bx0 && rec * 2 < dz)
-        {
-            foreach (var c in centros)
-            {
-                var y = c * 100.0;
+        // ==============================================================================
+        //  TODO EL ARMADO SE APUNTA PRIMERO Y SE PINTA DESPUES, DE ATRAS HACIA DELANTE
+        // ==============================================================================
+        //
+        // Sin esto el orden de encima/debajo lo decidia el orden del codigo: todas las
+        // varillas tapaban a todos los estribos, tambien las que estan detras, y en el
+        // cruce de un estribo con el diamante no se sabia cual pasa por delante. Con las
+        // piezas ordenadas por profundidad, lo que esta mas cerca del ojo se pinta al
+        // final y tapa a lo de atras, que es lo unico que hace que un cruce se lea.
+        //
+        // Es el algoritmo del pintor. Con barras redondas y cruces sueltos es exacto de
+        // sobra; lo mismo hace el visor de ETABS con las barras extruidas.
+        var piezas = new List<(double Prof, Action Pintar)>();
 
+        void Barra(
+            double x1, double v1, double z1,
+            double x2, double v2, double z2,
+            Color color, double diamCm)
+        {
+            var p = P(x1, v1, z1);
+            var q = P(x2, v2, z2);
+
+            // EL GRUESO ES EL DIAMETRO a la escala del dibujo, sin mas.
+            //
+            // El tope de 0.7 px es solo para que una barra no se vuelva invisible, y es
+            // el MISMO para todas a proposito: antes cada familia tenia el suyo -1.6 la
+            // varilla, 1.4 el estribo, 1.0 la grapa- y a escalas normales los tres topes
+            // mandaban sobre el diametro, asi que todo salia casi del mismo ancho y las
+            // proporciones entre calibres desaparecian. Con un solo tope, un #8 y un #3
+            // se ven distintos porque lo son.
+            var grueso = Math.Max(diamCm * k, 0.7);
+
+            // La profundidad en isometrico es x + z: cuanto mas grande, mas cerca del ojo.
+            // Se toma el centro de la barra, que es lo que decide el orden de pintado.
+            piezas.Add((
+                (x1 + z1 + x2 + z2) / 2,
+                () => BarraRedonda3D(PreviewCanvas, p, q, color, grueso)));
+        }
+
+        var colorEstribo = Color.FromRgb(0x1F, 0x6F, 0xB2);
+        var colorVarilla = Color.FromRgb(0xC0, 0x39, 0x2B);
+
+        var varillas = TodasLasVarillas(s, de, rec);
+
+        // ---------- Las varillas, de abajo arriba ----------
+        // La X del corte es la X, y su Y es el fondo.
+        foreach (var (_, vx, vz, vr) in varillas)
+        {
+            Barra(vx, 0, vz, vx, hy, vz, colorVarilla, vr * 2);
+        }
+
+        // ---------- Estribo, diamante y grapas, en cada posicion ----------
+        //
+        // VAN APILADOS A LO LARGO DE LA PIEZA, no los tres en el mismo plano.
+        //
+        // Antes se dibujaban los tres exactamente a la misma altura, y eso no es solo
+        // un detalle de dibujo: dos barras del mismo calibre en el mismo plano se
+        // ATRAVIESAN, que en la pieza no puede pasar. En el armado real se amarran una
+        // pegada a la siguiente, y por eso una va encima de la otra. Aqui se apilan en
+        // ese mismo orden -estribo, luego diamante, luego grapa-, cada una tangente a la
+        // anterior, que es el mismo orden de encima/debajo que lleva el corte.
+        var dDia = DiametroDelDiamante(s, de);
+
+        var hayDiamante = s.LlevaDiamante && dDia > 0;
+
+        // El recorrido se calcula UNA vez y se reutiliza en cada estribo: es el mismo en
+        // todos, y armarlo pasa por TrazoDiamante.Centros, Cinta y Muestrear. Calcularlo
+        // dentro del bucle era repetir ese trabajo treinta veces por redibujado.
+        var recorrido = hayDiamante ? RecorridoDelDiamante3D(s, de, rec, dDia) : null;
+
+        foreach (var c in centros)
+        {
+            var yEst = c * 100.0;
+
+            // El estribo, cerrado en el plano de la seccion.
+            if (rec > 0 && rec * 2 < bx0 && rec * 2 < dz)
+            {
                 var e = new[]
                 {
-                    P(rec, y, rec), P(bx0 - rec, y, rec),
-                    P(bx0 - rec, y, dz - rec), P(rec, y, dz - rec)
+                    (X: rec, Z: rec), (X: bx0 - rec, Z: rec),
+                    (X: bx0 - rec, Z: dz - rec), (X: rec, Z: dz - rec)
                 };
 
                 for (var i = 0; i < 4; i++)
                 {
-                    BarraRedonda3D(e[i], e[(i + 1) % 4],
-                        Color.FromRgb(0x1F, 0x6F, 0xB2), Math.Max(de * k, 1.4));
+                    var a = e[i];
+                    var b = e[(i + 1) % 4];
+
+                    Barra(a.X, yEst, a.Z, b.X, yEst, b.Z, colorEstribo, de);
                 }
             }
-        }
 
-        // Las varillas, de abajo arriba. La X del corte es la X, y su Y es el fondo.
-        //
-        // Grosor REAL: el diametro de la varilla a la escala del dibujo, no una linea
-        // fija. Un #8 y un #3 tienen que verse distintos, como en la pieza.
-        foreach (var (_, vx, vz, vr) in TodasLasVarillas(s, de, rec))
-        {
-            BarraRedonda3D(P(vx, 0, vz), P(vx, hy, vz),
-                           Color.FromRgb(0xC0, 0x39, 0x2B), Math.Max(vr * 2 * k, 1.6));
-        }
+            // El diamante, pegado al estribo: sus dos ejes separados media suma de los
+            // dos diametros es justo tangencia.
+            var yDia = yEst + ((de + dDia) / 2);
 
-        // ===== LAS GRAPAS Y EL DIAMANTE, EN CADA ESTRIBO =====
-        //
-        // Se repiten a la misma altura que los estribos, porque van amarradas a ellos: una
-        // grapa suelta en el aire no existe. Salen de las mismas funciones que el corte, asi
-        // que si en la seccion hay tres grapas, aqui se ven tres.
-        var varillas = TodasLasVarillas(s, de, rec);
-        var grosorEst = Math.Max(de * k, 1.0);
+            if (recorrido is not null)
+            {
+                for (var i = 0; i < recorrido.Count; i++)
+                {
+                    var a = recorrido[i];
+                    var b = recorrido[(i + 1) % recorrido.Count];
 
-        foreach (var c in centros)
-        {
-            var y = c * 100.0;
+                    Barra(a.X, yDia, a.Y, b.X, yDia, b.Y, colorEstribo, dDia);
+                }
+            }
+
+            // Y las grapas encima de todo, cada una con SU diametro y apilada sobre la
+            // anterior. Antes las dibujaba todas con el diametro del estribo principal,
+            // asi que una grapa del #4 se veia igual que una del #3.
+            var yGrapa = hayDiamante ? yDia + (dDia / 2) : yEst + (de / 2);
 
             foreach (var g in s.Grapas)
             {
+                if (!Varilla.TryDiametroCm(g.Diametro, out var dGrapa) || dGrapa <= 0)
+                {
+                    // Sin diametro reconocido se usa el del estribo, que es la misma
+                    // regla que sigue el dibujo del corte.
+                    dGrapa = de;
+                }
+
                 var va = BuscarVarillaPrevia(varillas, g.A);
                 var vb = BuscarVarillaPrevia(varillas, g.B);
 
@@ -411,14 +558,19 @@ public partial class MainWindow
                     continue;
                 }
 
-                L3(P(va.Value.X, y, va.Value.Y), P(vb.Value.X, y, vb.Value.Y),
-                   brochaEst, grosorEst);
-            }
+                yGrapa += dGrapa / 2;
 
-            if (s.LlevaDiamante)
-            {
-                DibujarDiamante3D(s, de, rec, y, P, brochaEst, grosorEst);
+                Barra(va.Value.X, yGrapa, va.Value.Y,
+                      vb.Value.X, yGrapa, vb.Value.Y, colorEstribo, dGrapa);
+
+                yGrapa += dGrapa / 2;
             }
+        }
+
+        // ---------- Y AHORA SI, DE ATRAS HACIA DELANTE ----------
+        foreach (var (_, pintar) in piezas.OrderBy(p => p.Prof))
+        {
+            pintar();
         }
     }
 }
@@ -441,20 +593,42 @@ public partial class MainWindow
     /// degradado fijo se vería girado en las barras que no van en el mismo sentido.
     /// </para>
     /// </remarks>
-    private void BarraRedonda3D(Point p, Point q, Color color, double grueso)
-    {
-        var dx = q.X - p.X;
-        var dy = q.Y - p.Y;
-        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+    /// <summary>Brochas de barra ya hechas, por color y dirección.</summary>
+    /// <remarks>
+    /// <para>
+    /// Hace falta porque el diamante muestreado da del orden de cincuenta barras por
+    /// estribo, y una columna de tres metros lleva treinta estribos: sin caché serían miles
+    /// de degradados nuevos <b>en cada redibujado</b>, y el dibujo se rehace con cada tecla
+    /// que se toca en la tabla.
+    /// </para>
+    /// <para>
+    /// La clave es el color y la <b>dirección</b>, y no hace falta más: el degradado se
+    /// define en coordenadas relativas al recuadro de la barra, así que dos barras
+    /// paralelas del mismo color lo tienen idéntico por largas o cortas que sean. La
+    /// dirección se redondea a un grado, que a ojo no se distingue y hace que las barras
+    /// del mismo estribo compartan brocha.
+    /// </para>
+    /// </remarks>
+    private readonly Dictionary<(uint Color, int Grados), Brush> _brochasDeBarra = new();
 
-        if (largo < 0.5 || grueso <= 0)
+    /// <summary>La brocha de una barra: clara en el borde de la luz y oscura en el otro.</summary>
+    private Brush BrochaDeBarra(Color color, double angulo)
+    {
+        var grados = (int)Math.Round(angulo * 180 / Math.PI);
+
+        var clave = ((uint)((color.R << 16) | (color.G << 8) | color.B), grados);
+
+        if (_brochasDeBarra.TryGetValue(clave, out var ya))
         {
-            return;
+            return ya;
         }
 
-        // La normal en coordenadas de la propia barra: el degradado cruza su ancho.
-        var nx = -dy / largo;
-        var ny = dx / largo;
+        // La normal en coordenadas de la propia barra: el degradado cruza su ancho. Se
+        // recalcula del ángulo redondeado, no del original, para que la brocha guardada
+        // corresponda de verdad a la clave con la que se guarda.
+        var rad = grados * Math.PI / 180;
+        var nx = -Math.Sin(rad);
+        var ny = Math.Cos(rad);
 
         Color Mezcla(Color c, double f) => Color.FromRgb(
             (byte)Math.Clamp(c.R * f, 0, 255),
@@ -475,7 +649,29 @@ public partial class MainWindow
             }
         };
 
-        PreviewCanvas.Children.Add(new Line
+        // Congelada: una brocha inmutable WPF la puede compartir entre miles de figuras
+        // sin volver a resolverla en cada pintado. Es la mitad del motivo de la caché.
+        brocha.Freeze();
+
+        _brochasDeBarra[clave] = brocha;
+
+        return brocha;
+    }
+
+    private void BarraRedonda3D(Canvas lienzo, Point p, Point q, Color color, double grueso)
+    {
+        var dx = q.X - p.X;
+        var dy = q.Y - p.Y;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 0.5 || grueso <= 0)
+        {
+            return;
+        }
+
+        var brocha = BrochaDeBarra(color, Math.Atan2(dy, dx));
+
+        lienzo.Children.Add(new Line
         {
             X1 = p.X, Y1 = p.Y, X2 = q.X, Y2 = q.Y,
             Stroke = brocha,
@@ -508,24 +704,47 @@ public partial class MainWindow
         return null;
     }
 
+    /// <summary>El diámetro del estribo <b>diamante</b>, en centímetros.</summary>
+    /// <remarks>
+    /// Sin diámetro propio capturado se usa el del estribo principal, que es exactamente
+    /// la regla que sigue el dibujante de AutoCAD en <c>EstriboDiamante</c>. Está en su
+    /// propia función porque hace falta en dos sitios —para el grueso de la barra y para el
+    /// recorrido— y las dos cuentas tienen que dar el mismo número.
+    /// </remarks>
+    private static double DiametroDelDiamante(SeccionConcretoRow s, double de) =>
+        Varilla.TryDiametroCm(
+            string.IsNullOrWhiteSpace(s.DiamEstriboDiamante)
+                ? s.Estribo
+                : s.DiamEstriboDiamante,
+            out var dDia) && dDia > 0
+            ? dDia
+            : de;
+
     /// <summary>
-    /// El estribo <b>diamante</b> a una altura dada, en el 3D.
+    /// El <b>recorrido</b> del estribo diamante en el plano de la sección, muestreado.
     /// </summary>
     /// <remarks>
-    /// El recorrido sale de <see cref="TrazoDiamante"/>, la misma clase que usa el corte y
-    /// el dibujante de AutoCAD, y se muestrea en tramos rectos porque el lienzo no tiene
-    /// arcos. Si se calculara aquí, el diamante del 3D podría abrazar otras varillas que
-    /// el de la sección.
+    /// <para>
+    /// Sale de <see cref="TrazoDiamante"/>, la misma clase que usa el corte y el dibujante
+    /// de AutoCAD, y se muestrea en tramos rectos porque el lienzo no tiene arcos. Si se
+    /// calculara aquí, el diamante del 3D podría abrazar otras varillas que el de la
+    /// sección.
+    /// </para>
+    /// <para>
+    /// <b>Solo devuelve geometría; no pinta.</b> Antes esta función dibujaba directamente,
+    /// y por eso el diamante quedaba fuera del orden por profundidad y se pintaba con el
+    /// grueso que le pasara el que llamaba —que era el del estribo principal, no el
+    /// suyo—. Devolviendo el recorrido, el que llama decide el grueso, la altura y cuándo
+    /// se pinta.
+    /// </para>
     /// </remarks>
-    private void DibujarDiamante3D(
-        SeccionConcretoRow s, double de, double rec, double y,
-        Func<double, double, double, Point> proyecta, Brush brocha, double grosor)
+    /// <returns>El recorrido cerrado, o <c>null</c> si no se pudo armar.</returns>
+    private List<(double X, double Y)>? RecorridoDelDiamante3D(
+        SeccionConcretoRow s, double de, double rec, double dDia)
     {
-        if (!Varilla.TryDiametroCm(
-                string.IsNullOrWhiteSpace(s.DiamEstriboDiamante) ? s.Estribo : s.DiamEstriboDiamante,
-                out var dDia) || dDia <= 0)
+        if (dDia <= 0)
         {
-            return;
+            return null;
         }
 
         var x1 = rec;
@@ -535,7 +754,7 @@ public partial class MainWindow
 
         if (x2 <= x1 || y2 <= y1)
         {
-            return;
+            return null;
         }
 
         var varSup = PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
@@ -550,36 +769,18 @@ public partial class MainWindow
 
         if (centros is null)
         {
-            return;
+            return null;
         }
 
         var geo = TrazoDiamante.Cinta(centros, 0);
 
         if (geo is null)
         {
-            return;
+            return null;
         }
 
         var puntos = TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, 8);
 
-        if (puntos.Count < 3)
-        {
-            return;
-        }
-
-        // Cerrado: el diamante es un estribo cerrado.
-        for (var i = 0; i < puntos.Count; i++)
-        {
-            var a = puntos[i];
-            var b = puntos[(i + 1) % puntos.Count];
-
-            PreviewCanvas.Children.Add(new Line
-            {
-                X1 = proyecta(a.X, y, a.Y).X, Y1 = proyecta(a.X, y, a.Y).Y,
-                X2 = proyecta(b.X, y, b.Y).X, Y2 = proyecta(b.X, y, b.Y).Y,
-                Stroke = brocha,
-                StrokeThickness = grosor
-            });
-        }
+        return puntos.Count < 3 ? null : puntos;
     }
 }
