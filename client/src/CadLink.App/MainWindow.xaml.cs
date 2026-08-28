@@ -4178,6 +4178,22 @@ public partial class MainWindow : Window
         // un clic a una varilla, y en 3D esa cuenta ya no vale porque el dibujo está
         // proyectado. Con la escala en cero, VarillaEn devuelve null y los clics de grapa
         // no hacen nada, en lugar de agarrar la varilla equivocada.
+        // ===== EN 2D EL CORTE SE QUEDA EN SU MITAD =====
+        //
+        // Se movía libremente y acababa montado sobre el alzado. Ahora su recuadro se recorta
+        // a la mitad izquierda: se puede acercar y pasear por dentro —que es para lo que
+        // sirve— pero el dibujo no sale de su ventana. Es lo que hace una cámara.
+        //
+        // El recorte va en PreviaCorteHost y no en PreviewCanvas porque WPF aplica el Clip
+        // ANTES del RenderTransform: puesto en el lienzo se escalaría y se movería con el
+        // zoom, o sea que no recortaría nada. El contenedor no lleva transformación, así que
+        // su recorte se queda quieto mientras el dibujo se mueve por dentro.
+        //
+        // En 3D se deja SIN recortar, a propósito: ahí la pieza se puede pasear libremente.
+        PreviaCorteHost.Clip = _alzado3D
+            ? null
+            : new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
+
         if (_alzado3D)
         {
             _previaEscala = 0;
@@ -4235,7 +4251,7 @@ public partial class MainWindow : Window
         var cw = s.BaseCm * escala;
         var ch = s.AlturaCm * escala;
 
-        PreviewCanvas.Children.Add(Rectangulo(cx0, cy0, cw, ch, azul, 1.6, relleno));
+        PreviewCanvas.Children.Add(Rectangulo(cx0, cy0, cw, ch, azul, LineaConcreto, relleno));
 
         // Patron AR-CONC. Se dibuja SIEMPRE, en los dos estilos: es justo el
         // rayado que faltaba en el dibujo. Va antes que estribo y varillas para
@@ -4291,13 +4307,13 @@ public partial class MainWindow : Window
 
                 PreviewCanvas.Children.Add(Rectangulo(PX(rec), PY(s.AlturaCm - rec),
                     (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
-                    trazo, 1.4, null, radioExtPx));
+                    trazo, LineaAcero, null, radioExtPx));
 
                 if (hayInterior)
                 {
                     PreviewCanvas.Children.Add(Rectangulo(PX(i), PY(s.AlturaCm - i),
                         (s.BaseCm - (2 * i)) * escala, (s.AlturaCm - (2 * i)) * escala,
-                        trazo, 1.0, null, radioIntPx));
+                        trazo, LineaAcero, null, radioIntPx));
                 }
             }
         }
@@ -4418,7 +4434,7 @@ public partial class MainWindow : Window
             : Brushes.White;
 
         // ---------- Concreto ----------
-        PreviewCanvas.Children.Add(Circunferencia(cx, cy, r, azul, 1.6, relleno));
+        PreviewCanvas.Children.Add(Circunferencia(cx, cy, r, azul, LineaConcreto, relleno));
 
         var rec = s.RecubrimientoCm * escala;
         Varilla.TryDiametroCm(s.Estribo, out var deCm);
@@ -4432,8 +4448,8 @@ public partial class MainWindow : Window
         {
             var trazo = conFondoSolido ? negro : gris;
 
-            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunExt, trazo, 1.4, null));
-            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunInt, trazo, 1.0, null));
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunExt, trazo, LineaAcero, null));
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunInt, trazo, LineaAcero, null));
         }
 
         // ---------- Varillas ----------
@@ -4614,7 +4630,7 @@ public partial class MainWindow : Window
         {
             Points = arco,
             Stroke = trazo,
-            StrokeThickness = 1.2
+            StrokeThickness = LineaAcero
         });
 
         // ---------- Las dos colas ----------
@@ -4644,7 +4660,7 @@ public partial class MainWindow : Window
                     X1 = PX(x1), Y1 = PY(y1),
                     X2 = PX(x2), Y2 = PY(y2),
                     Stroke = trazo,
-                    StrokeThickness = 1.2
+                    StrokeThickness = LineaAcero
                 });
             }
         }
@@ -5520,7 +5536,7 @@ public partial class MainWindow : Window
             {
                 Points = linea,
                 Stroke = trazo,
-                StrokeThickness = 1.1
+                StrokeThickness = LineaAcero
             });
         }
 
@@ -5641,7 +5657,7 @@ public partial class MainWindow : Window
         {
             Points = arco,
             Stroke = trazo,
-            StrokeThickness = 1.1
+            StrokeThickness = LineaAcero
         });
 
         // Las dos colas, con sus tres líneas cada una.
@@ -5669,7 +5685,7 @@ public partial class MainWindow : Window
                     X1 = px(x1), Y1 = py(y1),
                     X2 = px(x2), Y2 = py(y2),
                     Stroke = trazo,
-                    StrokeThickness = 1.1
+                    StrokeThickness = LineaAcero
                 });
             }
         }
@@ -5771,7 +5787,7 @@ public partial class MainWindow : Window
             {
                 Points = puntos,
                 Stroke = trazo,
-                StrokeThickness = 1.2
+                StrokeThickness = LineaAcero
             });
         }
 
@@ -5823,7 +5839,7 @@ public partial class MainWindow : Window
                     X1 = px(bx + r), Y1 = py(byAbajo),
                     X2 = px(bx + r), Y2 = py(by),
                     Stroke = trazo,
-                    StrokeThickness = 1.2
+                    StrokeThickness = LineaAcero
                 });
 
                 // El doblez de la esquina, hasta ARRIBA: de 0° a 90°.
@@ -5847,7 +5863,7 @@ public partial class MainWindow : Window
                         X2 = px(bx + (r * nx) - (largo * rt2I)),
                         Y2 = py(cy + (r * ny) - (largo * rt2I)),
                         Stroke = trazo,
-                        StrokeThickness = 1.2
+                        StrokeThickness = LineaAcero
                     });
                 }
 
@@ -5859,7 +5875,7 @@ public partial class MainWindow : Window
                     X2 = px(bx + (rOut * nx) - (largo * rt2I)),
                     Y2 = py(cy + (rOut * ny) - (largo * rt2I)),
                     Stroke = trazo,
-                    StrokeThickness = 1.2
+                    StrokeThickness = LineaAcero
                 });
             }
 
@@ -5921,7 +5937,7 @@ public partial class MainWindow : Window
                     X1 = px(ax), Y1 = py(ay),
                     X2 = px(bx2), Y2 = py(by2),
                     Stroke = trazo,
-                    StrokeThickness = 1.2
+                    StrokeThickness = LineaAcero
                 });
             }
         }

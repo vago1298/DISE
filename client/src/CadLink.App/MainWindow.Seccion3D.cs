@@ -342,9 +342,13 @@ public partial class MainWindow
         // así que al acercarse las curvas se afinan solas en lugar de verse facetadas.
         var kPantalla = c.K * PreviaEscala.ScaleX;
 
-        // Mientras se gira se dibuja más basto: en un arrastre hay decenas de redibujados por
-        // segundo y lo que importa es que siga el ratón. Al soltar se redibuja fino.
-        var trozoPx = _previaGirando ? 22.0 : 9.0;
+        // En qué trozos se parte cada barra para decidir quién tapa a quién.
+        //
+        // ANTES SE DIBUJABA MÁS BASTO MIENTRAS SE GIRABA —trozos de 22 px— para que siguiera
+        // al ratón. Se quitó: los dobleces salían facetados justo cuando se está mirando cómo
+        // gira la pieza, que es cuando más se nota. Vale más que el giro cueste un poco que
+        // ver la pieza deshecha mientras se mueve.
+        const double trozoPx = 9.0;
 
         // ---------- La sombra en el suelo ----------
         // Va PRIMERO, para quedar debajo de todo lo demás. Su silueta es la envolvente de la
@@ -474,6 +478,26 @@ public partial class MainWindow
 
             var trozos = Math.Clamp((int)Math.Ceiling(largoPx / trozoPx), 1, 48);
 
+            // ==========================================================================
+            //  LA LUZ ES DE LA BARRA ENTERA, NO DE CADA TROZO
+            // ==========================================================================
+            //
+            // Aquí estaba lo de «no se ve sólida». Cada trozo calculaba su propia luz con su
+            // propia cercanía, así que una barra que se va al fondo salía en franjas: cada
+            // trozo un poco más oscuro que el anterior, con el escalón justo en la junta. Y
+            // como cada trozo remata en punta redonda, los dos casquetes de la junta se
+            // superponían con colores distintos y se veía el bulto.
+            //
+            // Con una sola luz para toda la barra, todos sus trozos quedan IDÉNTICOS: el
+            // degradado va perpendicular a la barra, así que es constante a lo largo de ella.
+            // Las juntas desaparecen y la barra se lee de una pieza.
+            //
+            // El trozo sigue teniendo su propia cercanía, pero solo para ORDENAR. Que es para
+            // lo que se partió la barra.
+            var luzBarra = dRango > 1e-9
+                ? (c.Cercania((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2) - dMin) / dRango
+                : 1;
+
             for (var i = 0; i < trozos; i++)
             {
                 var t0 = (double)i / trozos;
@@ -484,17 +508,15 @@ public partial class MainWindow
 
                 var tm = (t0 + t1) / 2;
 
-                // La cercanía del CENTRO del trozo, con los tres ejes: es la que decide el
-                // orden de pintado y cuánta luz le toca.
+                // La cercanía del CENTRO del trozo: decide el orden de pintado y nada más.
                 var cerca = c.Cercania(
                     x1 + ((x2 - x1) * tm),
                     y1 + ((y2 - y1) * tm),
                     z1 + ((z2 - z1) * tm));
 
-                var luz = dRango > 1e-9 ? (cerca - dMin) / dRango : 1;
-
                 piezas.Add((
-                    cerca, () => BarraRedonda3D(PreviewCanvas, a, b, color, grueso, luz)));
+                    cerca,
+                    () => BarraRedonda3D(PreviewCanvas, a, b, color, grueso, luzBarra)));
             }
         }
 

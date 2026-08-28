@@ -804,6 +804,24 @@
                                  -que se dibuja a la derecha y a veces se sale- nunca
                                  se podria ver entero alejandose, que es justo para lo
                                  que uno se aleja. -->
+                            <!-- ===== EL RECUADRO DEL CORTE =====
+
+                                 Existe para poder RECORTAR el corte a su mitad del
+                                 panel sin recortar tambien el alzado, que es su
+                                 hermano en PreviaHost.
+
+                                 Y tiene que ser un contenedor aparte porque WPF aplica
+                                 el Clip de un elemento ANTES de su RenderTransform: un
+                                 Clip puesto en PreviewCanvas se movería y se escalaría
+                                 con el zoom, o sea que no recortaria nada. Aqui el
+                                 contenedor no lleva transformacion, asi que su recorte
+                                 se queda quieto mientras el dibujo se mueve por
+                                 dentro, que es como se comporta una ventana.
+
+                                 El recorte se pone desde el codigo, y SOLO en 2D: en
+                                 3D la seccion se puede pasear libremente, que es lo
+                                 que se pidio. -->
+                            <Grid x:Name="PreviaCorteHost">
                             <Canvas x:Name="PreviewCanvas"
                                     Background="Transparent"
                                     MouseLeftButtonDown="OnPreviaMouseDown"
@@ -834,6 +852,7 @@
                                     </TransformGroup>
                                 </Canvas.RenderTransform>
                             </Canvas>
+                            </Grid>
 
                         </Grid>
 

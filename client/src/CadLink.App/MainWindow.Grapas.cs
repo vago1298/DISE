@@ -39,6 +39,34 @@ public partial class MainWindow
     private double _previaY0;
     private double _previaAlturaCm;
 
+    // ======================================================================
+    //  Grueso de las líneas del corte
+    // ======================================================================
+
+    /// <summary>Grueso de las líneas de <b>acero</b> del corte, en píxeles.</summary>
+    /// <remarks>
+    /// <para>
+    /// En un plano estas líneas son de pluma fina: lo que da el grosor de una varilla es la
+    /// <b>separación entre sus dos caras</b>, no lo gordo del trazo. La vista previa las tenía
+    /// entre 1.0 y 2.2 px, y a esos grosores las dos caras de un estribo del #3 casi se tocan
+    /// y se leen como una sola banda gruesa. Con 0.7 px se ve el hueco entre caras, que es lo
+    /// que dice el calibre.
+    /// </para>
+    /// <para>
+    /// Está en una constante porque antes no lo estaba, y de ahí venía que unos ganchos
+    /// salieran a 1.1, otros a 1.2 y las grapas a 1.4: el mismo acero con tres grosores según
+    /// qué método lo dibujara.
+    /// </para>
+    /// </remarks>
+    public const double LineaAcero = 0.7;
+
+    /// <summary>Grueso de la línea del <b>concreto</b>, en píxeles.</summary>
+    /// <remarks>
+    /// Algo más que el acero, porque es el contorno de la pieza y tiene que leerse como el
+    /// borde de todo lo demás. En un plano es la misma diferencia de plumas.
+    /// </remarks>
+    public const double LineaConcreto = 1.0;
+
     /// <summary>La primera varilla marcada, esperando la segunda.</summary>
     private RefVarilla? _grapaPrimera;
 
@@ -460,7 +488,7 @@ public partial class MainWindow
             {
                 Points = puntos,
                 Stroke = trazo,
-                StrokeThickness = 1.0,
+                StrokeThickness = LineaAcero,
                 Fill = relleno
             });
         }
@@ -506,7 +534,7 @@ public partial class MainWindow
                 Stroke = marcada
                     ? new SolidColorBrush(Color.FromRgb(0xE8, 0x7E, 0x04))   // naranja
                     : new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B)),  // azul de marca
-                StrokeThickness = marcada ? 2.2 : 1.4
+                StrokeThickness = marcada ? LineaAcero * 2 : LineaAcero
             };
 
             Canvas.SetLeft(anillo, px(v.X) - r);
