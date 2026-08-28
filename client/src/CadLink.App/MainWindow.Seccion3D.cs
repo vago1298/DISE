@@ -1,7 +1,15 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+
+// Imaging es donde viven RenderTargetBitmap, JpegBitmapEncoder y PixelFormats, que son los
+// tres que hacen falta para guardar la vista como JPG.
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Media3D;
+
+// Microsoft.Win32 es donde esta SaveFileDialog. Sin este using el error que sale es un CS0246
+// diciendo que no encuentra el tipo, que despista: parece que falte una referencia.
+using Microsoft.Win32;
 using CadLink.App.Models;
 using CadLink.Cad;
 
@@ -129,6 +137,188 @@ public partial class MainWindow
         ReiniciarEncuadrePrevia();
 
         DibujarVistaPrevia();
+    }
+
+    // ======================================================================
+    //  Guardar la vista en 3D como imagen
+    // ======================================================================
+
+    /// <summary>Cuántos píxeles de ancho tiene la imagen que se guarda.</summary>
+    /// <remarks>
+    /// 3200 px da unos 27 cm a 300 ppp, o sea que entra en una hoja tamaño carta a resolución
+    /// de imprenta. No se sube más porque el coste de memoria va con el CUADRADO del ancho y a
+    /// partir de ahí no se gana nada que se vea en papel.
+    /// </remarks>
+    private const int AnchoDeLaImagen3D = 3200;
+
+    /// <summary>
+    /// La <b>inclinación del isométrico de verdad</b>, en grados.
+    /// </summary>
+    /// <remarks>
+    /// No es un ángulo elegido a ojo: en un isométrico los tres ejes se acortan lo mismo, y eso
+    /// sale exactamente con <c>asen(tan 30°)</c> = 35.264°, mirando a 45° en planta. Poner 30 o
+    /// 45 «porque se ve bien» daría una axonométrica cualquiera, no un isométrico, y en un
+    /// dibujo que se va a un plano eso importa.
+    /// </remarks>
+    private static readonly double ElevacionIsometrica =
+        Math.Asin(Math.Tan(30 * Math.PI / 180)) * 180 / Math.PI;
+
+    /// <summary>Giro en planta del isométrico.</summary>
+    private const double AzimutIsometrico = 45;
+
+    /// <summary>Guarda un JPG de la sección en 3D, en isométrico y a alta resolución.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>La orientación del JPG no depende de cómo esté girada la vista.</b> Se pone el
+    /// isométrico, se toma la imagen y se devuelve la vista a donde estaba. Si saliera con el
+    /// giro de pantalla, dos personas exportando la misma sección sacarían dos dibujos
+    /// distintos, y un isométrico es lo que se pide para un plano.
+    /// </para>
+    /// <para>
+    /// La resolución se consigue con los <b>puntos por pulgada</b> del mapa de bits, no
+    /// agrandando el recuadro: al subir los ppp, WPF vuelve a rasterizar la escena a ese
+    /// tamaño. Como las barras son geometría y no una imagen, salen con el borde limpio por
+    /// grande que se pida. Es la ventaja de haber pasado el 3D a un motor.
+    /// </para>
+    /// <para>
+    /// El fondo se pinta a mano antes de componer: el recuadro 3D es transparente, y un JPG no
+    /// guarda transparencia, así que lo transparente saldría <b>negro</b>.
+    /// </para>
+    /// </remarks>
+    private void OnGuardarImagen3D(object sender, RoutedEventArgs e)
+    {
+        if (!_alzado3D)
+        {
+            MessageBox.Show(
+                "La imagen se toma de la vista en 3D. Toca el botón «2D» de la vista previa "
+                + "para pasar a 3D y vuelve a intentarlo.",
+                "Imagen en 3D", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            return;
+        }
+
+        var s = Seleccionada;
+
+        if (s is null || PreviaEscena3D.Content is null)
+        {
+            MessageBox.Show(
+                "No hay una sección en 3D que guardar. Selecciona una fila con sus medidas.",
+                "Imagen en 3D", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            return;
+        }
+
+        var ancho = PreviaViewport.Width;
+        var alto = PreviaCorteHost.ActualHeight;
+
+        if (double.IsNaN(ancho) || ancho < 20 || alto < 20)
+        {
+            return;
+        }
+
+        var dialogo = new SaveFileDialog
+        {
+            Title = "Guardar la imagen de la sección en 3D",
+            Filter = "Imagen JPG (*.jpg)|*.jpg",
+            DefaultExt = ".jpg",
+
+            // Se propone el ID de la sección: es lo que el usuario reconoce.
+            FileName = (string.IsNullOrWhiteSpace(s.Id) ? "seccion-3d" : s.Id.Trim()) + ".jpg"
+        };
+
+        if (dialogo.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        // El encuadre de pantalla se guarda para devolverlo tal cual: exportar no debe mover
+        // la vista con la que se estaba trabajando.
+        var azimutAntes = _giro3DAzimut;
+        var elevacionAntes = _giro3DElevacion;
+        var zoomAntes = _zoom3D;
+        var panUAntes = _pan3DU;
+        var panVAntes = _pan3DV;
+
+        try
+        {
+            // La cámara mira desde un azimut FIJO y lo que gira es la pieza, así que para que
+            // la vista quede en isométrico hay que girar la pieza la diferencia.
+            _giro3DAzimut = AzimutDeLaCamara - AzimutIsometrico;
+            _giro3DElevacion = ElevacionIsometrica;
+            _zoom3D = 1;
+            _pan3DU = 0;
+            _pan3DV = 0;
+
+            ActualizarGiro3D();
+
+            // Sin esto se tomaría la imagen con la cámara vieja: los cambios de arriba no se
+            // aplican al árbol visual hasta que WPF vuelve a medir y componer.
+            PreviaViewport.UpdateLayout();
+
+            GuardarJpgDe(PreviaViewport, ancho, alto, dialogo.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "No se pudo guardar la imagen.\n\n" + ex.Message,
+                "Imagen en 3D", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            // Vuelve la vista a donde estaba, pase lo que pase con el guardado.
+            _giro3DAzimut = azimutAntes;
+            _giro3DElevacion = elevacionAntes;
+            _zoom3D = zoomAntes;
+            _pan3DU = panUAntes;
+            _pan3DV = panVAntes;
+
+            ActualizarGiro3D();
+            ActualizarZoomPreviaTexto();
+        }
+    }
+
+    /// <summary>Rasteriza un elemento a JPG, con fondo y a alta resolución.</summary>
+    private static void GuardarJpgDe(Visual visual, double ancho, double alto, string ruta)
+    {
+        // Los puntos por pulgada que hacen falta para llegar al ancho pedido. 96 es la
+        // resolución con la que WPF mide, así que este cociente es el factor de aumento.
+        var ppp = 96.0 * AnchoDeLaImagen3D / ancho;
+
+        var pxAncho = AnchoDeLaImagen3D;
+        var pxAlto = Math.Max(1, (int)Math.Round(alto * ppp / 96.0));
+
+        var delRecuadro = new RenderTargetBitmap(
+            pxAncho, pxAlto, ppp, ppp, PixelFormats.Pbgra32);
+
+        delRecuadro.Render(visual);
+
+        // ---------- El fondo ----------
+        //
+        // El recuadro 3D es transparente donde no hay nada, y un JPG no guarda transparencia:
+        // lo transparente se guardaría NEGRO. Así que se compone sobre un fondo claro, el
+        // mismo de la vista previa, y así la imagen sale como se ve en pantalla.
+        var lienzo = new DrawingVisual();
+
+        using (var dc = lienzo.RenderOpen())
+        {
+            var fondo = new SolidColorBrush(Color.FromRgb(0xEC, 0xF2, 0xFA));
+            fondo.Freeze();
+
+            dc.DrawRectangle(fondo, null, new Rect(0, 0, ancho, alto));
+            dc.DrawImage(delRecuadro, new Rect(0, 0, ancho, alto));
+        }
+
+        var final = new RenderTargetBitmap(pxAncho, pxAlto, ppp, ppp, PixelFormats.Pbgra32);
+
+        final.Render(lienzo);
+
+        var codificador = new JpegBitmapEncoder { QualityLevel = 95 };
+
+        codificador.Frames.Add(BitmapFrame.Create(final));
+
+        using var archivo = File.Create(ruta);
+
+        codificador.Save(archivo);
     }
 
     // ======================================================================

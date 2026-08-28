@@ -345,8 +345,11 @@
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
+                        <!-- Compacta a proposito: esta tira es de configurar, no de
+                             trabajar, asi que todo el alto que se le quite se lo gana la
+                             tabla y la vista previa, que es donde se mira. -->
                         <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="12,9" Margin="0,0,0,10"
+                                Padding="9,4" Margin="0,0,0,5"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
@@ -770,6 +773,12 @@
                                             Padding="8,2"
                                             Click="OnPreviaAjustar"
                                             ToolTip="Vuelve el dibujo a su encuadre original.&#10;Atajo: doble clic sobre la vista previa." />
+
+                                    <Button Content="Imagen 3D"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnGuardarImagen3D"
+                                            ToolTip="Guarda un JPG de la seccion en 3D, en isometrico y a alta resolucion.&#10;La orientacion del JPG NO depende de como este girada la vista: siempre sale en isometrico." />
                                 </StackPanel>
                             </Grid>
 
@@ -978,8 +987,12 @@
                         <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}"
                                    ToolTip="Las doce familias del manual IMCA en una sola tabla. Elige la familia y la celda Perfil te ofrece SOLO los perfiles de esa familia: la IR trae las W, y la IS, la IC y la S tienen cada una su propia lista. Al elegir un perfil sus medidas se traen solas, y cada familia usa las columnas que necesita y deja las demas en blanco." />
 
+                        <!-- Compacta a proposito, igual que la de secciones de concreto:
+                             esta tira es de CONSULTA -dice que trae cada familia- y se lee
+                             una vez. Todo el alto que se le quite se lo gana la tabla, que
+                             es donde se trabaja. -->
                         <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="12,9" Margin="0,0,0,10"
+                                Padding="9,4" Margin="0,0,0,5"
                                 HorizontalAlignment="Left">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">

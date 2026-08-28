@@ -463,8 +463,8 @@
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Padding" Value="17,9" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Padding" Value="13,5" />
         <Setter Property="Margin" Value="0,0,3,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -593,10 +593,10 @@
     <!-- ===================== Estilos auxiliares ===================== -->
     <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
-        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
-        <Setter Property="Margin" Value="0,2,0,2" />
+        <Setter Property="Margin" Value="0,0,0,1" />
     </Style>
 
     <!-- El subtitulo explica la hoja, asi que se lee de verdad: se le puso
