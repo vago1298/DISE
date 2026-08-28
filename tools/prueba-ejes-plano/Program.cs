@@ -2253,6 +2253,83 @@ var tapadasIguales = CadenaMasAlta.Tapadas(mismaAltura, 0.10);
 Igual("de dos cadenas iguales encimadas se calla una", 1, tapadasIguales.Count);
 Check("y la que se queda es la primera", tapadasIguales.Contains(mismaAltura[1]));
 
+// =====================================================================================
+//  LA CADENA CORTA QUE FALTABA: SOLO SE CALLA SI LA CUBREN ENTERA
+// =====================================================================================
+//  Se reporto: "en mi eje 2 entre los ejes D y E no pones cadena si en mi modelo si existe".
+//  Y era esto. Bastaba que la de arriba la solapara MAS DE LA HOLGURA -diez centimetros-
+//  para callarla ENTERA, aunque solo le entrara por la punta. Donde la de arriba no llegaba
+//  no quedaba nada dibujado, y el hueco media lo que la cadena menos el solape.
+Console.WriteLine();
+Console.WriteLine("La cadena corta que otra solo pisa en parte SI se dibuja:");
+
+// La cadena corta de castillo a castillo: 40 cm, de x=4.00 a x=4.40, intermedia.
+// Y una de cerramiento mas alta que solo le entra 15 cm por la punta.
+var cortaYLarga = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 0, x2: 4.15),
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2, x1: 4.00, x2: 4.40)
+};
+
+var tapadasCorta = CadenaMasAlta.Tapadas(cortaYLarga, 0.10);
+
+Igual("no se calla ninguna: la de arriba solo cubre 15 de sus 40 cm", 0, tapadasCorta.Count);
+Check("y la corta SE DIBUJA, que es lo que faltaba en el plano",
+      !tapadasCorta.Contains(cortaYLarga[1]));
+
+// LO QUE PASABA ANTES, para que quede claro que la prueba mide el cambio: el solape es de
+// 15 cm, mas que la holgura de 10. Con la regla vieja eso bastaba para callarla.
+Check("el solape es de 15 cm, mas que la holgura: con la regla vieja se callaba",
+      0.15 > 0.10);
+
+// LO QUE **SI** SE DEBE SEGUIR CALLANDO: cuando la de arriba la cubre entera.
+var cortaCubierta = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 0, x2: 8),
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2, x1: 4.00, x2: 4.40)
+};
+
+var tapadasCubierta = CadenaMasAlta.Tapadas(cortaCubierta, 0.10);
+
+Igual("si la de arriba la cubre entera, si se calla", 1, tapadasCubierta.Count);
+Check("y la que se calla es la de abajo", tapadasCubierta.Contains(cortaCubierta[1]));
+
+// Y CON **DOS** DE ARRIBA QUE SE REPARTEN CUBRIRLA, tambien se calla: entre las dos no dejan
+// ni un pedazo sin dibujar. Por eso se mide la UNION y no cada una por su cuenta.
+var dosLaCubren = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 0.00, x2: 4.20),
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 4.20, x2: 8.00),
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2, x1: 4.00, x2: 4.40)
+};
+
+var tapadasDos = CadenaMasAlta.Tapadas(dosLaCubren, 0.10);
+
+Check("con dos de arriba repartiendose cubrirla, la de abajo se calla",
+      tapadasDos.Contains(dosLaCubren[2]));
+
+// Pero si entre las DOS dejan un hueco en medio, NO se calla: ahi no habria nada dibujado.
+var dosConHueco = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 0.00, x2: 4.05),
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, x1: 4.35, x2: 8.00),
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2, x1: 4.00, x2: 4.40)
+};
+
+Check("pero si las dos dejan un hueco en medio, la de abajo se dibuja",
+      !CadenaMasAlta.Tapadas(dosConHueco, 0.10).Contains(dosConHueco[2]));
+
+// UNA CADENA MAS CORTA QUE LA HOLGURA, sola: no se puede callar, porque no hay nadie encima.
+// Sin la guarda, "cubierto >= largo - holgura" sale cierto con cero cubierto.
+var cortita = new List<ElementoPlanta>
+{
+    CadenaEnLinea("CADENA INTERMEDIA", 1.2, x1: 0, x2: 0.06),
+    CadenaEnLinea("CADENA DE CERRAMIENTO", 2.5, y: 9)
+};
+
+Igual("una cadena de 6 cm que nadie tapa se dibuja", 0,
+      CadenaMasAlta.Tapadas(cortita, 0.10).Count);
+
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL NOMBRE DE LA CADENA NO VA ENCIMA DE UN CASTILLO DE AREA");

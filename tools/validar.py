@@ -6063,8 +6063,19 @@ def v18_planta_autocad() -> None:
           and "PlanoEstructural.CadenaMasAlta.Tapadas(p.Elementos, tolCadena)" in dibp)
     # SOLO LAS QUE SE ENCIMAN DE VERDAD: dos tramos seguidos del mismo paño son dos cadenas
     # distintas -una de castillo a castillo y la siguiente de ahi al final- y las dos se dibujan.
-    check("y solo se tapa la que otra le pasa por encima",
-          "return Math.Min(a2, b2) - Math.Max(a1, b1) > tolM;" in cma)
+    #
+    # Y SE TAPA SOLO SI LA CUBREN ENTERA. Esto se corrigio: antes bastaba que la de arriba la
+    # solapara mas de la holgura -diez centimetros- para callarla COMPLETA, asi que una cadena
+    # corta con una de cerramiento que solo le entraba por la punta desaparecia del plano y en
+    # su sitio no quedaba nada. Se mide la UNION de las de arriba, no cada una por su cuenta:
+    # si dos se reparten cubrirla, no dejan ningun pedazo sin dibujar y si se calla.
+    check("y solo se tapa la que otra le pasa por encima, cubriendola entera",
+          "return Math.Min(a2, b2) - Math.Max(a1, b1) >= largoA - tolM;" in cma
+          and "private static double LargoCubierto(" in cma
+          and "if (LargoCubierto(cubren) >= largoA - tolM)" in cma
+          # Sin nadie encima no se calla: en una cadena mas corta que la holgura, la cuenta
+          # saldria cierta con cero cubierto.
+          and "if (cubren.Count == 0)" in cma)
     # LAS TRABES NO ENTRAN: dos trabes a distinta altura sobre la misma linea son dos vigas de
     # verdad -una de entrepiso y una de azotea- y callar una seria esconder estructura.
     check("las trabes no entran, solo las cadenas y las dalas",
