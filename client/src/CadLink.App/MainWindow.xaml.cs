@@ -2366,7 +2366,7 @@ public partial class MainWindow : Window
     /// Se muestra donde se está trabajando, que es lo que hace que el aviso sirva de algo.
     /// </para>
     /// </remarks>
-    private static string AvisoDeNivelesMovidos(ModeloEtabs modelo)
+    private string AvisoDeNivelesMovidos(ModeloEtabs modelo)
     {
         var dePretiles = modelo.Avisos
             .Where(a => a.Contains("PRETIL", StringComparison.Ordinal))
@@ -2375,7 +2375,38 @@ public partial class MainWindow : Window
 
         return dePretiles.Count == 0
             ? string.Empty
-            : "\n" + string.Join("\n", dePretiles);
+            : "\n" + string.Join("\n", dePretiles) + EquivalenciaDeNiveles(modelo);
+    }
+
+    /// <summary>
+    /// La equivalencia entre el <b>story de ETABS</b> y el <b>nombre que sale en el plano</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hace falta porque los dos nombres <b>no coinciden, y van corridos uno</b>: el rótulo del
+    /// plano sale de <c>ROTULO_NIVELES</c>, donde <c>Story1</c> es PLANTA BAJA, <c>Story2</c> es
+    /// PRIMER NIVEL, <c>Story3</c> es SEGUNDO NIVEL… Así que «el segundo nivel» del plano es el
+    /// <c>Story3</c> del modelo, y quien mira el plano y quien mira ETABS creen estar hablando del
+    /// mismo piso cuando no lo están.
+    /// </para>
+    /// <para>
+    /// Eso costó varias vueltas al reportar dónde debía salir un pretil, y no es un fallo del
+    /// dibujo: el corrimiento es <b>correcto</b> —la planta baja no es «el primer nivel»—. Lo que
+    /// faltaba era decirlo en algún sitio. Va junto al aviso de las piezas que cambiaron de nivel,
+    /// que es justo cuando importa saber de qué piso se está hablando.
+    /// </para>
+    /// </remarks>
+    private string EquivalenciaDeNiveles(ModeloEtabs modelo)
+    {
+        var rot = new CadLink.Cad.PlanoEstructural.RotuloPlanta(CfgPlano);
+
+        var pares = modelo.NivelesConElementos(ascendente: false)
+            .Select(n => $"{n.Nombre} (Z {n.ElevacionM:0.##}) = {rot.NombreDeNivel(n.Nombre)}")
+            .ToList();
+
+        return pares.Count == 0
+            ? string.Empty
+            : "\nEquivalencia nivel del modelo = rótulo del plano:  " + string.Join("  ·  ", pares);
     }
 
     private void OnLeerPlantas(object sender, RoutedEventArgs e)

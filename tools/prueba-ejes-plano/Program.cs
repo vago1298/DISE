@@ -495,6 +495,35 @@ Igual("y con la palabra del modelo queda «Losa de VOLADO»",
 // =====================================================================================
 //  LA LOSA DE ESCALERA NO SE DIBUJA
 // =====================================================================================
+//  EL ROTULO DEL PLANO VA CORRIDO UNO RESPECTO AL STORY DE ETABS
+// =====================================================================================
+//  Esto costo varias vueltas hablando con el usuario, asi que queda escrito y comprobado.
+//  El rotulo del plano NO dice el nombre del story: sale de ROTULO_NIVELES, donde Story1 es
+//  PLANTA BAJA. Asi que va corrido uno:
+//
+//      Story1 -> PLANTA BAJA        Story3 -> SEGUNDO NIVEL
+//      Story2 -> PRIMER NIVEL       Story4 -> TERCER NIVEL
+//
+//  El corrimiento es CORRECTO -la planta baja no es «el primer nivel»- pero significa que
+//  «el segundo nivel» de un plano es el Story3 del modelo. Quien mira el plano y quien mira
+//  ETABS creen hablar del mismo piso y no lo hacen.
+Console.WriteLine();
+Console.WriteLine("El rotulo del plano va corrido uno respecto al story:");
+
+var rotN = new RotuloPlanta(cfg);
+
+Igual("Story1 se rotula PLANTA BAJA", "PLANTA BAJA", rotN.NombreDeNivel("Story1"));
+Igual("Story2 se rotula PRIMER NIVEL", "PRIMER NIVEL", rotN.NombreDeNivel("Story2"));
+Igual("Story3 se rotula SEGUNDO NIVEL", "SEGUNDO NIVEL", rotN.NombreDeNivel("Story3"));
+Igual("Story4 se rotula TERCER NIVEL", "TERCER NIVEL", rotN.NombreDeNivel("Story4"));
+Igual("y la base, CIMENTACION", "CIMENTACION", rotN.NombreDeNivel("Base"));
+
+// LO QUE IMPORTA DE VERDAD: que «el segundo nivel» del plano NO es el Story2.
+Check("«SEGUNDO NIVEL» en el plano NO es el Story2 del modelo",
+      rotN.NombreDeNivel("Story2") != "SEGUNDO NIVEL");
+Check("es el Story3", rotN.NombreDeNivel("Story3") == "SEGUNDO NIVEL");
+
+// =====================================================================================
 //  LA ESCALERA: PURO CONTORNO, TAMBIEN LA QUE SE MODELA COMO MURO
 // =====================================================================================
 //  Se pidio: «nada de losa de escalera en planos, tampoco las que se modelan como muro,
