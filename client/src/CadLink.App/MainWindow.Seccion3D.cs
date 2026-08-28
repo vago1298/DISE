@@ -562,8 +562,12 @@ public partial class MainWindow
                 // Arrancando arriba y repartidas, igual que en el corte.
                 var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
 
+                // La Z del mundo ES la Y de la sección, igual que en Mundo() para la
+                // rectangular. Estaba con el signo cambiado, que en un círculo no se nota
+                // porque el reparto sale simétrico, pero SÍ se nota en el gancho: quedaría
+                // espejeado y doblando hacia el lado contrario que en AutoCAD.
                 var x = cx + (rPaso * Math.Cos(a));
-                var z = cz - (rPaso * Math.Sin(a));
+                var z = cz + (rPaso * Math.Sin(a));
 
                 TuboDeMalla.Agregar(
                     mallaVarillas,
@@ -643,6 +647,33 @@ public partial class MainWindow
                     TuboDeMalla.Agregar(mallaEstribos, anillo, dZun / 2, cerrado: true);
                 }
             }
+
+            // ---------- EL GANCHO DEL ZUNCHO ----------
+            //
+            // Faltaba. Un zuncho —anillo o hélice— remata con su gancho sísmico agarrado a
+            // una varilla, igual que el estribo rectangular.
+            //
+            // En los ANILLOS va uno por anillo, porque cada anillo es una pieza cerrada con
+            // sus dos extremos. En la HÉLICE va solo en los dos extremos, porque es UNA pieza
+            // continua: ponerle uno por vuelta sería dibujar treinta ganchos donde hay dos.
+            var gancho = GanchoDelZuncho3D(s, cx, cz, rPaso, dVar, dZun);
+
+            if (gancho is not null)
+            {
+                var donde = s.EsZunchoHelicoidal && centros.Count >= 2
+                    ? new[] { centros[0], centros[^1] }
+                    : centros.ToArray();
+
+                foreach (var pos in donde)
+                {
+                    var y = pos * 100.0;
+
+                    TuboDeMalla.Agregar(
+                        mallaEstribos,
+                        gancho.Select(p => (p.X, y, p.Y)).ToList(),
+                        dZun / 2);
+                }
+            }
         }
 
         // ---------- El concreto, en alambre ----------
@@ -696,6 +727,91 @@ public partial class MainWindow
             26, alto - 18);
     }
 
+    /// <summary>
+    /// El eje del <b>gancho del zuncho</b> de una sección redonda.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las reglas son las de <c>SeccionDrawer.GanchoDelZuncho</c>, y están razonadas allí y en
+    /// el gancho del corte. Aquí se aplican tal cual, que es lo que hace que el 3D enseñe el
+    /// mismo gancho que el plano:
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     Se agarra de la varilla <b>de abajo</b>, para no pisarse con la llamada de
+    ///     varillas, que apunta a la de arriba.
+    ///   </item>
+    ///   <item>
+    ///     La dirección de las colas es el <b>radio hacia dentro girado 45°</b>. Eso es lo que
+    ///     hace los 135° del gancho de norma, y no se escribe a mano como en la rectangular
+    ///     porque aquí la varilla puede quedar en cualquier ángulo.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// El giro de 45° va en el plano <c>(x, z)</c> del mundo tomando la Z como la Y de la
+    /// sección, que es el mismo convenio de <c>Mundo()</c>. Eso importa: con el signo al revés
+    /// el giro sale para el otro lado y el gancho queda <b>espejeado</b> —sigue siendo de
+    /// 135°, pero apuntando al lado contrario que en AutoCAD—. Está avisado en la vista del
+    /// corte y aquí pasa lo mismo.
+    /// </para>
+    /// </remarks>
+    /// <returns>El recorrido en el plano de la sección, o <c>null</c> si no hay gancho.</returns>
+    private static List<(double X, double Y)>? GanchoDelZuncho3D(
+        SeccionConcretoRow s, double cx, double cz, double rPaso, double dVar, double dZun)
+    {
+        if (s.GanchoCm <= 0 || dZun <= 0 || dVar <= 0 || rPaso <= 0 || s.NVarTotal <= 0)
+        {
+            return null;
+        }
+
+        // La varilla de ABAJO de las que se reparten. El reparto arranca arriba y gira
+        // antihorario, igual que el del dibujante y que el de las varillas de esta misma
+        // escena.
+        double bxs = 0, bzs = 0;
+        var primera = true;
+
+        for (var i = 0; i < s.NVarTotal; i++)
+        {
+            var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
+
+            var x = rPaso * Math.Cos(a);
+            var z = rPaso * Math.Sin(a);
+
+            if (primera || z < bzs)
+            {
+                bxs = x;
+                bzs = z;
+                primera = false;
+            }
+        }
+
+        var rl = Math.Sqrt((bxs * bxs) + (bzs * bzs));
+
+        if (rl < 1e-9)
+        {
+            return null;
+        }
+
+        // El radio HACIA DENTRO, normalizado: el centro está en el origen de este sistema.
+        var rx = -bxs / rl;
+        var rz = -bzs / rl;
+
+        const double rt2I = 0.707106781186547;
+
+        // Y girado 45°, que es de donde salen los 135° del gancho.
+        var ux = (rx - rz) * rt2I;
+        var uz = (rx + rz) * rt2I;
+
+        // El eje del gancho envuelve la varilla: su radio más medio diámetro de zuncho.
+        var rEje = (dVar / 2) + (dZun / 2);
+
+        // La cola apunta al núcleo, así que se topa para no cruzarlo.
+        var cola = Math.Min(s.GanchoCm, Math.Max(0, rl - rEje));
+
+        return TrazoEstribo.GanchoAlrededorDeBarra(
+            cx + bxs, cz + bzs, rEje, ux, uz, Math.PI, cola, 14);
+    }
+
     /// <summary>La planta de la pieza y su centro, para poder rehacer la sombra al girar.</summary>
     private (List<(double X, double Z)> Planta, double Cx, double Cz, double By)? _plantaDeLaPieza;
 
@@ -738,14 +854,31 @@ public partial class MainWindow
 
         jaula.Transform = new RotateTransform3D(_giroDeLaJaula, new Point3D(cx, 0, cz));
 
-        grupo.Children.Add(jaula);
-
+        // ===== LA SOMBRA VA DENTRO DE LA JAULA, ASÍ QUE GIRA CON ELLA =====
+        //
+        // Ha pasado por tres versiones y las dos primeras estaban mal por lados opuestos:
+        //
+        //   1. Se rehacía en cada grado con el sol fijo. Era la sombra exacta, pero cambiaba
+        //      de FORMA mientras se giraba y no acompañaba a la pieza: la mancha se quedaba
+        //      apuntando al mismo sitio mientras la sección daba vueltas.
+        //   2. Se dejó quieta del todo. Ya no distraía, pero al girar la pieza la sombra se
+        //      quedaba atrás y dejaba de corresponder con ella.
+        //
+        // Metiéndola DENTRO del grupo que lleva el giro, gira con la pieza como un cuerpo
+        // rígido: no cambia de forma —así que no distrae— y siempre corresponde a la posición
+        // en que está la sección. Es lo pedido, y además no cuesta nada: se construye una vez
+        // y girar solo cambia el ángulo de la transformación que ya estaba.
+        //
+        // Se puede meter ahí porque el giro es alrededor de un eje VERTICAL que pasa por el
+        // centro de la pieza: girar así una figura que está en el suelo la deja en el suelo.
         _modeloDeSombra = SombraEnElSuelo();
 
         if (_modeloDeSombra is not null)
         {
-            grupo.Children.Add(_modeloDeSombra);
+            jaula.Children.Add(_modeloDeSombra);
         }
+
+        grupo.Children.Add(jaula);
 
         PreviaEscena3D.Content = grupo;
 
