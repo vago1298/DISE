@@ -4947,16 +4947,26 @@ public partial class MainWindow : Window
 
         var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
 
-        if (a.Circular && a.ZunchoHelicoidal)
+        // ===== LOS ESTRIBOS SE PINTAN AL FINAL, ENCIMA DE LAS VARILLAS =====
+        //
+        // Antes iban primero, así que la varilla les pasaba por encima y el estribo se veía
+        // partido en trozos: el alzado se leía con la varilla por delante, que es al revés
+        // de como está armado. El estribo abraza la varilla, así que se ve corrido.
+        //
+        // Va en una función local y no aquí mismo para que el orden sea explícito y no
+        // dependa de en qué parte del método está escrito.
+        void DibujarEstribosDelAlzado()
         {
-            // El zuncho helicoidal NO son capsulas repetidas: es una sola pieza que
-            // sube en helice. Dibujarlo como estribos sueltos aqui haria que la vista
-            // previa mostrara una cosa y AutoCAD otra, que es lo peor que puede hacer
-            // una vista previa.
-            DibujarHelicePrevia(a, izquierda, top, w, h, rec, dEst, brochaEst);
-        }
-        else
-        {
+            if (a.Circular && a.ZunchoHelicoidal)
+            {
+                // El zuncho helicoidal NO son capsulas repetidas: es una sola pieza que
+                // sube en helice. Dibujarlo como estribos sueltos aqui haria que la vista
+                // previa mostrara una cosa y AutoCAD otra, que es lo peor que puede hacer
+                // una vista previa.
+                DibujarHelicePrevia(a, izquierda, top, w, h, rec, dEst, brochaEst);
+                return;
+            }
+
             // ===== LOS ESTRIBOS, CON SU GROSOR REAL =====
             //
             // El grosor sale del diámetro de verdad: dEst ya viene en píxeles a la escala
@@ -5021,6 +5031,21 @@ public partial class MainWindow : Window
             // como una viga.
             var trazo = new PointCollection();
 
+            // Añade un doblez muestreado. Se muestrea en lugar de usar ArcSegment para no
+            // depender del sentido de barrido, que es de donde salen los arcos al revés.
+            void Doblez(double cx, double cy, double radio, double a0, double a1)
+            {
+                const int tramos = 10;
+
+                for (var i = 0; i <= tramos; i++)
+                {
+                    var t = a0 + ((a1 - a0) * i / tramos);
+
+                    trazo.Add(new Point(
+                        cx + (radio * Math.Cos(t)), cy + (radio * Math.Sin(t))));
+                }
+            }
+
             // ===== EL GANCHO: 15 DIÁMETROS, Y SIN ENCIMARSE CON EL DE ENFRENTE =====
             //
             // 15 diámetros es el largo de anclaje que se pide. Antes salía de
@@ -5043,11 +5068,51 @@ public partial class MainWindow : Window
                 // El gancho va hacia DENTRO de la pieza: el del lecho superior baja y el
                 // del inferior sube. Al revés saldría del concreto.
                 var g = gM * esc * (dobleHaciaAbajo ? 1 : -1);
+                var s = dobleHaciaAbajo ? 1 : -1;
 
-                trazo.Add(new Point(xIni, yCentro + g));
-                trazo.Add(new Point(xIni, yCentro));
-                trazo.Add(new Point(xFin, yCentro));
-                trazo.Add(new Point(xFin, yCentro + g));
+                // ===== EL DOBLEZ ES UN ARCO DE VERDAD, NO UNA ESQUINA =====
+                //
+                // Antes el eje iba en pico y solo se redondeaba al ensanchar la pluma, así
+                // que la cara de FUERA salía curva pero la de DENTRO quedaba en escuadra:
+                // un doblez que ninguna varilla hace. Ahora el eje lleva su arco, así que
+                // las dos caras salen curvas y concéntricas.
+                //
+                // El radio del EJE es un diámetro, que es lo que deja la cara de dentro a
+                // medio diámetro: el mismo radio interior con el que AutoCAD dibuja este
+                // doblez en VarillaConGanchos —su arco de dentro va a dBar/2—.
+                var radio = grosor;
+
+                // Y topado: no puede pasar de lo que mide la cola ni de media longitud, o
+                // el arco se comería el tramo recto y se cruzaría consigo mismo.
+                radio = Math.Min(radio, Math.Abs(g));
+                radio = Math.Min(radio, (xFin - xIni) / 2);
+
+                if (radio < 0.2)
+                {
+                    // Sin sitio para el doblez se deja en pico: es mejor que un arco que
+                    // se dobla sobre sí mismo.
+                    trazo.Add(new Point(xIni, yCentro + g));
+                    trazo.Add(new Point(xIni, yCentro));
+                    trazo.Add(new Point(xFin, yCentro));
+                    trazo.Add(new Point(xFin, yCentro + g));
+                }
+                else
+                {
+                    var pi = Math.PI;
+
+                    // La punta de la cola de la izquierda, y el doblez que la entrega al
+                    // tramo recto.
+                    trazo.Add(new Point(xIni, yCentro + g));
+
+                    Doblez(xIni + radio, yCentro + (s * radio), radio,
+                           pi, pi + (s * pi / 2));
+
+                    // El tramo recto lo pone el propio doblez de la derecha.
+                    Doblez(xFin - radio, yCentro + (s * radio), radio,
+                           (2 * pi) - (s * pi / 2), 2 * pi);
+
+                    trazo.Add(new Point(xFin, yCentro + g));
+                }
             }
             else
             {
@@ -5085,13 +5150,69 @@ public partial class MainWindow : Window
                 EndLineCap = PenLineCap.Round
             };
 
+            var contorno = camino.GetWidenedPathGeometry(pluma);
+
+            // El RELLENO, en el tipo 2, va entero y sin cortar: en AutoCAD el achurado de
+            // la varilla es continuo y lo que se corta son sus caras.
+            if (a.Modo == ModoSeccion.Tipo2Rellena)
+            {
+                PreviaFijaCanvas.Children.Add(new FormaPath
+                {
+                    Data = contorno,
+                    Fill = verde
+                });
+            }
+
+            // ==================================================================
+            //  LA CARA DE LA VARILLA SE CORTA DONDE CRUZA UN ESTRIBO
+            // ==================================================================
+            //
+            // Es lo que hace que el alzado se lea: la varilla pasa por DETRÁS del estribo, y
+            // dejar su línea entera hace creer que pasa por delante. Es exactamente lo que
+            // hace CaraSegmentada en el dibujante de AutoCAD, con el mismo hueco de medio
+            // diámetro de estribo a cada lado del eje del estribo.
+            //
+            // Se resuelve RECORTANDO el dibujo y no partiendo la geometría: recortar deja
+            // que el contorno desaparezca dentro de la banda del estribo sin más. Si se
+            // partiera la geometría, WPF trazaría también los bordes del corte y aparecerían
+            // dos rayas verticales en cada cruce, que en el plano no están.
             PreviaFijaCanvas.Children.Add(new FormaPath
             {
-                Data = camino.GetWidenedPathGeometry(pluma),
+                Data = contorno,
                 Stroke = verde,
                 StrokeThickness = 0.8,
-                Fill = a.Modo == ModoSeccion.Tipo2Rellena ? verde : null
+                Clip = FueraDeLosEstribos()
             });
+        }
+
+        // La zona donde SÍ se dibuja la cara de la varilla: todo el alzado menos una banda
+        // en cada estribo. Se arma una vez por varilla porque un Clip no se puede compartir
+        // entre figuras si luego alguna se congela.
+        Geometry FueraDeLosEstribos()
+        {
+            var bandas = new GeometryGroup();
+
+            // El mismo hueco que AutoCAD: medio diámetro de estribo a cada lado. Con un
+            // mínimo de medio píxel, o a escalas chicas el corte no se vería.
+            var mitad = Math.Max(dEst / 2, 0.5);
+
+            foreach (var c in centros)
+            {
+                var xc = izquierda + (c * esc);
+
+                bandas.Children.Add(new RectangleGeometry(
+                    new Rect(xc - mitad, top - 40, 2 * mitad, h + 80)));
+            }
+
+            var todo = new RectangleGeometry(
+                new Rect(izquierda - 40, top - 40, w + 80, h + 80));
+
+            if (bandas.Children.Count == 0)
+            {
+                return todo;
+            }
+
+            return new CombinedGeometry(GeometryCombineMode.Exclude, todo, bandas);
         }
 
         var dSupCm = a.Superior.Esquina.Cm > 0 ? a.Superior.Esquina.Cm : 0.95;
@@ -5121,6 +5242,9 @@ public partial class MainWindow : Window
 
         BarraDeAlzado(top + h - rec - (dInfCm / 100.0 * esc / 2), dInfCm,
             dobleHaciaAbajo: false, disponibleM: libreInf);
+
+        // Y AHORA los estribos, encima de las varillas.
+        DibujarEstribosDelAlzado();
 
         Etiqueta(PreviaFijaCanvas, $"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
 

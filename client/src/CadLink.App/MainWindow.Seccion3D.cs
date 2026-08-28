@@ -124,8 +124,35 @@ public partial class MainWindow
             return new Point(Ox + ((u - Cu) * K), Oy + ((v - Cv) * K));
         }
 
-        /// <summary>Distancia al fondo. Cuanto mayor, más cerca del ojo.</summary>
+        /// <summary>Distancia hacia el fondo en planta. Cuanto MAYOR, más lejos del ojo.</summary>
         public double Prof(double x, double y) => (x * Sa) + (y * Ca);
+
+        /// <summary>
+        /// Lo <b>cerca del ojo</b> que queda un punto. Cuanto mayor, más cerca.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Es la proyección del punto sobre la dirección que sale de la pantalla. Con esta
+        /// cámara —giro <c>a</c> y luego inclinación <c>e</c>— esa dirección es
+        /// <c>(−sen a·cos e, −cos a·cos e, sen e)</c>, así que la cuenta sale
+        /// <c>z·sen e − cos e·Prof</c>.
+        /// </para>
+        /// <para>
+        /// <b>Los dos términos hacen falta, y el de la altura suele MANDAR.</b> Aquí se mira
+        /// una pieza levantada tres metros con una sección de medio, así que mirándola desde
+        /// 22° el término <c>z·sen e</c> barre más de un metro y el de la planta apenas medio.
+        /// Ordenar solo por <see cref="Prof"/> —que es lo que hace el visor de ETABS, donde
+        /// los elementos están repartidos en planta y no apilados— deja el orden decidido por
+        /// lo que menos pesa, y el armado se pinta entremezclado.
+        /// </para>
+        /// <para>
+        /// Y el <b>signo</b> importa: <see cref="Prof"/> crece hacia el fondo, así que entra
+        /// RESTANDO. Ordenar de menor a mayor por <c>Prof</c> pinta lo cercano primero y lo
+        /// lejano encima, que es justo lo contrario de lo que se quiere.
+        /// </para>
+        /// </remarks>
+        public double Cercania(double x, double y, double z) =>
+            (z * Se) - (Ce * Prof(x, y));
     }
 
     /// <summary>
@@ -289,18 +316,26 @@ public partial class MainWindow
         // varillas taparían a todos los estribos, también las de detrás, y en el cruce de un
         // estribo con el diamante no se sabría cuál pasa por delante. Es el algoritmo del
         // pintor, lo mismo que hace el visor de ETABS con las barras extruidas.
-        var piezas = new List<(double Prof, Action Pintar)>();
+        // Cada trozo con su CERCANÍA al ojo. Se pinta de menor a mayor, o sea de lo más
+        // lejano a lo más cercano, para que lo de delante tape lo de atrás.
+        var piezas = new List<(double Cerca, Action Pintar)>();
 
         var minX = double.MaxValue;
         var maxX = double.MinValue;
 
-        // El rango de profundidad de la pieza, para poder apagar lo que queda al fondo. Se
-        // mide en las cuatro esquinas de la planta: la profundidad no depende de la cota, así
-        // que con la planta basta.
-        var profs = new[] { c.Prof(0, 0), c.Prof(bx, 0), c.Prof(bx, by), c.Prof(0, by) };
+        // El rango de cercanía de la pieza, para poder apagar lo que queda al fondo. Se mide
+        // en las OCHO esquinas y no en las cuatro de la planta: la cercanía sí depende de la
+        // cota, y en una pieza de tres metros ese término es el que más pesa.
+        var cercanias = new List<double>();
 
-        var dMin = profs.Min();
-        var dMax = profs.Max();
+        foreach (var (x, y) in new[] { (0.0, 0.0), (bx, 0.0), (bx, by), (0.0, by) })
+        {
+            cercanias.Add(c.Cercania(x, y, 0));
+            cercanias.Add(c.Cercania(x, y, bz));
+        }
+
+        var dMin = cercanias.Min();
+        var dMax = cercanias.Max();
         var dRango = dMax - dMin;
 
         void Barra(
@@ -349,14 +384,17 @@ public partial class MainWindow
 
                 var tm = (t0 + t1) / 2;
 
-                var prof = c.Prof(
+                // La cercanía del CENTRO del trozo, con los tres ejes: es la que decide el
+                // orden de pintado y cuánta luz le toca.
+                var cerca = c.Cercania(
                     x1 + ((x2 - x1) * tm),
-                    y1 + ((y2 - y1) * tm));
+                    y1 + ((y2 - y1) * tm),
+                    z1 + ((z2 - z1) * tm));
 
-                var luz = dRango > 1e-9 ? (prof - dMin) / dRango : 1;
+                var luz = dRango > 1e-9 ? (cerca - dMin) / dRango : 1;
 
                 piezas.Add((
-                    prof, () => BarraRedonda3D(PreviewCanvas, a, b, color, grueso, luz)));
+                    cerca, () => BarraRedonda3D(PreviewCanvas, a, b, color, grueso, luz)));
             }
         }
 
@@ -490,7 +528,9 @@ public partial class MainWindow
             }
         }
 
-        foreach (var (_, pintar) in piezas.OrderBy(p => p.Prof))
+        // De lo MÁS LEJANO a lo más cercano. Cercania crece hacia el ojo, así que de menor a
+        // mayor: lo último que se pinta es lo que está delante y tapa a lo demás.
+        foreach (var (_, pintar) in piezas.OrderBy(p => p.Cerca))
         {
             pintar();
         }
