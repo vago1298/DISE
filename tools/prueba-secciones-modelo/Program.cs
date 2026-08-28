@@ -825,6 +825,69 @@ Igual("una barra saca la cota de abajo de Z1", 5.6,
 Igual("y la de arriba de Z2", 6.6,
       Pretil.CotasDe(Castillo("Story3", 5.6, 6.6)).Arriba);
 
+// ---- EL PRETIL DE AZOTEA SOLO SE VE EN LA AZOTEA ----
+//  Se pidio: «el pretil de la azotea solo se debe ver en la azotea y no en la planta de
+//  abajo». Es LA MISMA regla, y sale sola: un pretil pertenece al plano de la losa sobre la
+//  que se para. El de un pasillo intermedio se para en la losa de ese nivel, y el de azotea
+//  se para en la losa de azotea.
+//
+//  Lo que hay que comprobar es que el de azotea NO baja, y hay dos formas en que ETABS lo
+//  entrega segun como este armado el modelo. Las dos tienen que acabar en la azotea.
+Console.WriteLine();
+Console.WriteLine("El pretil de AZOTEA se queda en la azotea:");
+
+// CASO 1: la azotea es el nivel MAS ALTO. ETABS no tiene donde poner lo que sobresale de
+// ella, asi que lo deja en la azotea. Su tapa queda POR ENCIMA de la elevacion del nivel, y
+// eso es justo lo que hace que falle la condicion 1 y no se mueva.
+var azo = new ModeloEtabs();
+
+azo.Niveles.Add(n1);
+azo.Niveles.Add(n2);
+azo.Niveles.Add(Nivel("Azotea", 8.4, 2.8));
+
+var azoPretil = Panel("Azotea", 8.4, 9.4, x: 20);   // se para EN la losa de azotea
+var azoCadena = Viga("Azotea", 9.4, x: 20);         // su cadena de remate
+var azoCastillo = Castillo("Azotea", 8.4, 9.4, x: 20);
+var azoMuro = Panel("Azotea", 5.6, 8.4);            // el muro que SOSTIENE la azotea
+
+foreach (var e in new[] { azoPretil, azoCadena, azoCastillo, azoMuro })
+{
+    azo.Elementos.Add(e);
+}
+
+Igual("con la azotea como nivel mas alto no se mueve nada", 0, Pretil.Bajar(azo).Count);
+Igual("EL PRETIL DE AZOTEA SE QUEDA EN LA AZOTEA", "Azotea", azoPretil.Story);
+Igual("su cadena de remate tambien", "Azotea", azoCadena.Story);
+Igual("y su castillo", "Azotea", azoCastillo.Story);
+Igual("y el muro que sostiene la azotea no se mueve", "Azotea", azoMuro.Story);
+
+// CASO 2: el modelador puso un nivel POR ENCIMA de la azotea -pasa cuando se dibuja el
+// pretil creando un story para su tapa-. Entonces ETABS mete el pretil en ese nivel de
+// arriba, y hay que bajarlo hasta LA AZOTEA. Ni mas abajo ni se queda en la tapa.
+var conTapa = new ModeloEtabs();
+
+conTapa.Niveles.Add(n2);
+conTapa.Niveles.Add(Nivel("Azotea", 8.4, 2.8));
+conTapa.Niveles.Add(Nivel("Tapa", 11.2, 2.8));
+
+var tapaPretil = Panel("Tapa", 8.4, 9.4, x: 20);
+var tapaCadena = Viga("Tapa", 9.4, x: 20);
+
+conTapa.Elementos.Add(tapaPretil);
+conTapa.Elementos.Add(tapaCadena);
+
+Igual("con un nivel Tapa por encima se bajan las dos piezas", 2,
+      Pretil.Bajar(conTapa).Count);
+Igual("EL PRETIL DE AZOTEA BAJA A LA AZOTEA, no a la planta de abajo",
+      "Azotea", tapaPretil.Story);
+Igual("y su cadena tambien", "Azotea", tapaCadena.Story);
+
+// LA REGLA EN UNA FRASE: el pretil acaba en el plano de la losa sobre la que se para. Se
+// comprueba con los tres a la vez, que es lo que hace que las dos peticiones sean la misma.
+Check("el de azotea acaba en la azotea y el del pasillo en su nivel, con la misma regla",
+      azoPretil.Story == "Azotea" && tapaPretil.Story == "Azotea"
+      && pMuro.Story == "Story2");
+
 // ---- QUE CLASES SE BAJAN ----
 Check("se bajan los muros", Pretil.ClaseQueSeBaja(ClaseElemento.Muro));
 Check("las columnas", Pretil.ClaseQueSeBaja(ClaseElemento.Columna));
