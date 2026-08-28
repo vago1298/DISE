@@ -208,6 +208,11 @@ public sealed partial class SeccionDrawer
             return porLargo != 0 ? porLargo : kp.Segundo.CompareTo(kq.Segundo);
         });
 
+        // La entidad de cada grapa, en el mismo orden que sus contornos: hace falta para
+        // poder borrar la de abajo y sustituirla por sus trozos cuando otra le pasa por
+        // encima.
+        var entidades = new List<object?>();
+
         foreach (var (va, vb, dGrapa) in resueltas)
         {
             // El gancho de la sección da el largo de las colas. Sin gancho capturado se
@@ -226,9 +231,11 @@ public sealed partial class SeccionDrawer
             }
 
             var plano = Aplanar(puntos);
+            var ent = PolyCerrada(plano);
 
-            Agregar(contorno, PolyCerrada(plano));
+            Agregar(contorno, ent);
             contornos.Add(plano);
+            entidades.Add(ent);
         }
 
         if (conFondoSolido && contornos.Count > 0)
@@ -242,13 +249,143 @@ public sealed partial class SeccionDrawer
         // abrirse donde una grapa le pasa por encima, y para eso necesita estos mismos
         // contornos: si los recalculara, la grapa dibujada y el hueco abierto podrían no
         // coincidir.
+        //
+        // Se guardan los contornos COMPLETOS, antes de recortarlos entre ellas: lo que el
+        // diamante necesita saber es qué tapa la grapa, y una grapa tapa todo su cuerpo
+        // aunque su propia línea esté abierta porque otra le pase por encima.
         _contornosDeGrapa.AddRange(contornos);
+
+        // Y las grapas ENTRE ELLAS: donde dos se cruzan, a la de abajo se le abre la
+        // línea para que la de arriba se vea pasar entera.
+        RecortarLasGrapasDeAbajo(contorno, contornos, entidades);
 
         // Y AL FINAL, con las grapas ya dibujadas: se abre el estribo por donde le pasan
         // por encima. Al final por lo mismo que el recorte del diamante está al final de
         // EstriboDiamante: si se recortara antes y luego fallara el dibujo de la grapa,
         // el estribo se quedaría con un hueco sin nada que lo justifique.
         RecortarEstriboBajoGrapas(contorno, contornos);
+    }
+
+    /// <summary>
+    /// Donde dos grapas se cruzan, abre la línea de <b>la de abajo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Qué se ve sin esto.</b> Dos grapas que se cruzan son dos polilíneas cerradas, así
+    /// que en el cruce se ven los <b>dos contornos</b>: queda un cuadradito con línea por
+    /// los cuatro lados y no se sabe cuál pasa por encima de cuál. Con el hueco abierto, la
+    /// de arriba cruza entera y la de abajo se corta contra sus dos caras, que es como se
+    /// lee un cruce en un plano de armado.
+    /// </para>
+    /// <para>
+    /// <b>Quién va encima ya está decidido</b> y no se decide aquí: las grapas se
+    /// dibujaron ordenadas por <see cref="TrazoGrapa.ClaveDeOrden"/> —la más larga debajo,
+    /// la más corta encima, y en el empate la horizontal encima—, así que la que está en
+    /// una posición posterior de la lista es la que va por delante. Ordenar en un sitio y
+    /// recortar según otro criterio es como se acaba con la pantalla y el plano diciendo
+    /// cosas distintas.
+    /// </para>
+    /// <para>
+    /// <b>Y no basta con el orden de dibujo</b>, por lo mismo que en los otros tres
+    /// recortes de la sección: <c>EstribosAlFrente</c> sube al frente TODO lo que está en
+    /// la capa <c>ESTRIBOS</c>, las dos grapas incluidas, y en la sección de contorno no
+    /// hay ningún relleno que pudiera tapar la línea de abajo.
+    /// </para>
+    /// <para>
+    /// La cuenta es la <b>misma</b> que abre la cinta del diamante, sin ninguna adaptación:
+    /// el contorno de una grapa es una polilínea cerrada con todos los dobleces ya
+    /// muestreados en tramos rectos, o sea el caso más sencillo de los que
+    /// <see cref="CintaConHuecos"/> resuelve. De ahí que esto sean veinte líneas y no
+    /// doscientas.
+    /// </para>
+    /// <para>
+    /// El <b>relleno</b> de la grapa de abajo se deja entero a propósito. Lo que sobra en
+    /// el cruce es la línea, no el acero: las dos grapas son del mismo color, así que sus
+    /// rellenos superpuestos se leen como un cruce macizo, que es exactamente lo que se
+    /// quiere ver.
+    /// </para>
+    /// </remarks>
+    private void RecortarLasGrapasDeAbajo(
+        List<object> contorno, List<double[]> contornos, List<object?> entidades)
+    {
+        for (var i = 0; i < contornos.Count && i < entidades.Count; i++)
+        {
+            var ent = entidades[i];
+
+            if (ent is null)
+            {
+                continue;
+            }
+
+            // Las que van ENCIMA de esta son las que se dibujaron después.
+            var encima = new List<double[]>();
+
+            for (var j = i + 1; j < contornos.Count; j++)
+            {
+                encima.Add(contornos[j]);
+            }
+
+            if (encima.Count == 0)
+            {
+                continue;
+            }
+
+            var pts = contornos[i];
+
+            // El contorno de la grapa ya viene poligonizado —TrazoGrapa muestrea cada
+            // doblez en tramos rectos—, así que no lleva ninguna curvatura.
+            var bulges = new double[pts.Length / 2];
+
+            var huecos = CintaConHuecos.Huecos(pts, bulges, encima, LargoMinTramo);
+
+            if (huecos.Count == 0)
+            {
+                continue;
+            }
+
+            var trozos = CintaConHuecos.Abrir(
+                pts, bulges, huecos, LargoMinTramo, FraccionMaxHuecoCinta);
+
+            if (trozos is null)
+            {
+                Nota(
+                    "Grapas: no se abrió la línea de una grapa en su cruce con otra " +
+                    "porque el hueco calculado se comía más de la mitad de su contorno. " +
+                    "El dibujo queda completo, con las dos líneas cruzándose.");
+                continue;
+            }
+
+            // PRIMERO los trozos nuevos…
+            var nuevos = new List<object>();
+
+            foreach (var trozo in trozos)
+            {
+                var pl = PolilineaAbierta(trozo.Pts, trozo.Bulges);
+
+                if (pl is not null)
+                {
+                    nuevos.Add(pl);
+                }
+            }
+
+            // …y la original se borra SOLO si alguno se creó. Al revés, un fallo al
+            // dibujar dejaría la grapa sin contorno.
+            if (nuevos.Count == 0)
+            {
+                Nota(
+                    "Grapas: no se pudieron dibujar los trozos del contorno de una grapa " +
+                    "recortada en su cruce, así que se dejó entero.");
+                continue;
+            }
+
+            Borrar(ent);
+            contorno.Remove(ent);
+            entidades[i] = null;
+
+            // Van a 'contorno' para que reciban el contorno negro del tipo 2 y para que
+            // EstribosAlFrente los suba, igual que la polilínea que sustituyen.
+            contorno.AddRange(nuevos);
+        }
     }
 
     /// <summary>

@@ -1376,7 +1376,12 @@ public sealed partial class SeccionDrawer
         return s0 < s1 ? (s0, s1) : null;
     }
 
-    /// <summary>La cinta interior, abierta: misma polilínea con arcos, pero sin cerrar.</summary>
+    /// <summary>Una polilínea <b>abierta</b>, con sus arcos: un trozo de contorno.</summary>
+    /// <remarks>
+    /// La usan los tres sitios que abren huecos con <see cref="CintaConHuecos"/>: las dos
+    /// cintas del diamante y el contorno de una grapa cruzada por otra. Vive aquí por
+    /// historia —nació para la cinta— y no se ha movido porque moverla no aportaría nada.
+    /// </remarks>
     private object? PolilineaAbierta(double[] pts, double[] bulges)
     {
         try
@@ -1403,7 +1408,7 @@ public sealed partial class SeccionDrawer
         }
         catch (Exception ex)
         {
-            Fallo("Cinta interior del diamante, abierta bajo el gancho", ex);
+            Fallo("Trozo de contorno abierto por un cruce", ex);
             return null;
         }
     }

@@ -42,6 +42,7 @@ internal static class Program
         ElSeguroSalta();
         LosDoblecesNoSeDeforman();
         ElCasoDeVerdadDiamanteYGrapa();
+        DosGrapasQueSeCruzan();
 
         Console.WriteLine(new string('=', 70));
 
@@ -563,6 +564,189 @@ internal static class Program
             peor < 1e-9,
             "cada pedazo de doblez sigue sobre su circunferencia original",
             $"el peor se desvia {peor:E3} cm del doblez de verdad");
+    }
+
+    /// <summary>
+    /// Dos grapas cruzadas: a la de abajo se le abre la linea y a la de arriba no.
+    /// </summary>
+    /// <remarks>
+    /// Es el cruce en «+» de una seccion cuadrada con una grapa horizontal y otra
+    /// vertical. La de arriba tiene que salir INTACTA y la de abajo con dos huecos, uno
+    /// por cada cara de la que le pasa por encima.
+    /// </remarks>
+    private static void DosGrapasQueSeCruzan()
+    {
+        Console.WriteLine();
+        Console.WriteLine("Dos grapas que se cruzan");
+
+        const double rVar = 1.91 / 2;
+        const double dGrapa = 0.95;
+
+        // Columna cuadrada de 40: una grapa de izquierda a derecha a media altura y
+        // otra de abajo arriba a media base. Se cruzan en el centro.
+        var horizontal = TrazoGrapa.Contorno(6, 20, rVar, 34, 20, rVar, dGrapa, dGrapa * 6);
+        var vertical = TrazoGrapa.Contorno(20, 6, rVar, 20, 34, rVar, dGrapa, dGrapa * 6);
+
+        if (horizontal is null || vertical is null)
+        {
+            Mal("se arman las dos grapas", "TrazoGrapa.Contorno devolvio null");
+            return;
+        }
+
+        static double[] Plano(List<(double X, double Y)> p)
+        {
+            var a = new double[p.Count * 2];
+
+            for (var i = 0; i < p.Count; i++)
+            {
+                a[2 * i] = p[i].X;
+                a[(2 * i) + 1] = p[i].Y;
+            }
+
+            return a;
+        }
+
+        var pH = Plano(horizontal);
+        var pV = Plano(vertical);
+
+        // Las dos miden lo mismo, asi que manda el desempate: la HORIZONTAL encima.
+        var kH = TrazoGrapa.ClaveDeOrden(6, 20, 34, 20);
+        var kV = TrazoGrapa.ClaveDeOrden(20, 6, 20, 34);
+
+        Comprobar(
+            Math.Abs(kH.Primero - kV.Primero) < 1e-9 && kH.Segundo > kV.Segundo,
+            "midiendo lo mismo, la horizontal queda encima",
+            $"claves H=({kH.Primero:F3}, {kH.Segundo}) y V=({kV.Primero:F3}, {kV.Segundo})");
+
+        // A la VERTICAL, que va debajo, le abre hueco la horizontal.
+        var bulgesV = new double[pV.Length / 2];
+
+        var huecos = CintaConHuecos.Huecos(pV, bulgesV, new[] { pH }, 0.0005);
+
+        Console.WriteLine($"        huecos en la grapa de abajo: {huecos.Count}");
+
+        Comprobar(
+            huecos.Count >= 2,
+            "la de abajo recibe hueco en sus DOS costados",
+            $"recibio {huecos.Count}, y un cruce en cruz tiene que cortar los dos");
+
+        var trozos = CintaConHuecos.Abrir(pV, bulgesV, huecos, 0.0005, 0.5);
+
+        if (trozos is null)
+        {
+            Mal("la de abajo se vuelve a montar", "Abrir devolvio null");
+            return;
+        }
+
+        Console.WriteLine($"        la de abajo se monta en {trozos.Count} trozo(s)");
+
+        // Un punto puede quedar EN EL BORDE de la de arriba: ahi es justo donde se
+        // corta, asi que eso es correcto. Lo que no puede es quedar METIDO dentro. Se
+        // distingue midiendo la distancia al borde, no por lo que diga el conteo de
+        // cruces, que en un punto exactamente sobre un lado decide por coma flotante.
+        var metidos = 0;
+        var peorDentro = 0.0;
+
+        foreach (var t in trozos)
+        {
+            for (var i = 0; i + 1 < t.Pts.Length; i += 2)
+            {
+                if (!CintaConHuecos.PuntoEnPoligono(t.Pts[i], t.Pts[i + 1], pH))
+                {
+                    continue;
+                }
+
+                var d = AlBorde(t.Pts[i], t.Pts[i + 1], pH);
+                peorDentro = Math.Max(peorDentro, d);
+
+                if (d > 1e-9)
+                {
+                    metidos++;
+                }
+            }
+        }
+
+        Console.WriteLine(
+            $"        el punto que mas se mete pasa del borde {peorDentro:E2} cm");
+
+        Comprobar(
+            metidos == 0,
+            "ningun punto de la de abajo queda METIDO en la de arriba",
+            $"{metidos} puntos se meten hasta {peorDentro:E3} cm del borde");
+
+        // Y el centro de cada tramo que sobrevive, que es lo que se ve: si un tramo
+        // cruzara el acero de la de arriba, su centro caeria dentro.
+        var cruzan = 0;
+
+        foreach (var t in trozos)
+        {
+            for (var i = 0; i + 3 < t.Pts.Length; i += 2)
+            {
+                var mx = (t.Pts[i] + t.Pts[i + 2]) / 2;
+                var my = (t.Pts[i + 1] + t.Pts[i + 3]) / 2;
+
+                if (CintaConHuecos.PuntoEnPoligono(mx, my, pH)
+                    && AlBorde(mx, my, pH) > 1e-9)
+                {
+                    cruzan++;
+                }
+            }
+        }
+
+        Comprobar(
+            cruzan == 0,
+            "ningun tramo de la de abajo atraviesa a la de arriba",
+            $"{cruzan} tramos siguen cruzando el acero de la grapa de encima");
+
+        // Y LA OTRA MITAD DE LA PETICION: la de ARRIBA no se toca. Si tambien se
+        // recortara, el cruce quedaria con las dos lineas abiertas y no se leeria
+        // que una pasa por encima.
+        var bulgesH = new double[pH.Length / 2];
+
+        var huecosArriba = CintaConHuecos.Huecos(pH, bulgesH, new[] { pV }, 0.0005);
+
+        Comprobar(
+            huecosArriba.Count > 0,
+            "geometricamente la de arriba TAMBIEN se cruza con la de abajo",
+            "no se cruzan, asi que esta prueba no esta comprobando un cruce");
+
+        Console.WriteLine(
+            "        (y por eso el dibujante solo recorta contra las POSTERIORES:"
+            + " la de arriba se deja entera)");
+    }
+
+    /// <summary>Distancia de un punto al borde del poligono, sin signo.</summary>
+    private static double AlBorde(double px, double py, double[] poly)
+    {
+        var n = poly.Length / 2;
+        var mejor = double.MaxValue;
+
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+
+            var ax = poly[2 * i];
+            var ay = poly[(2 * i) + 1];
+            var bx = poly[2 * j];
+            var by = poly[(2 * j) + 1];
+
+            var dx = bx - ax;
+            var dy = by - ay;
+
+            var largo2 = (dx * dx) + (dy * dy);
+
+            var t = largo2 < 1e-18
+                ? 0
+                : Math.Clamp((((px - ax) * dx) + ((py - ay) * dy)) / largo2, 0, 1);
+
+            var qx = ax + (t * dx);
+            var qy = ay + (t * dy);
+
+            mejor = Math.Min(
+                mejor, Math.Sqrt(((px - qx) * (px - qx)) + ((py - qy) * (py - qy))));
+        }
+
+        return mejor;
     }
 
     /// <summary>Centro y radio de un arco, a partir de sus extremos y su bulge.</summary>
