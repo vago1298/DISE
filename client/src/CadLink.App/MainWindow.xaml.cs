@@ -4914,12 +4914,12 @@ public partial class MainWindow : Window
         var h = peralteM * esc;
         var top = (alto - h) / 2;
 
-        // En 3D el alzado se dibuja aparte, con los MISMOS datos y las mismas posiciones.
-        if (_alzado3D)
-        {
-            DibujarAlzado3DPrevio(a, izquierda, alto);
-            return;
-        }
+        // El alzado se dibuja SIEMPRE plano, también con el botón en 3D.
+        //
+        // Lo tuvo en isométrico y se quitó a pedido: el alzado enseña el reparto de
+        // estribos a lo largo de la pieza, y para eso una vista de lado se lee mejor que un
+        // isométrico donde los estribos del fondo se confunden con los de delante. El 3D es
+        // para la sección, que es donde hay algo que mirar en volumen.
 
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));

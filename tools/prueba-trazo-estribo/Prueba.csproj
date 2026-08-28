@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de TrazoEstribo, el eje del estribo rectangular con sus
+       dobleces y su gancho sismico, que es lo que dibuja la vista en 3D.
+
+       Contra el CadLink.Cad COMPILADO y no contra un port a Python, por lo
+       mismo que prueba-trazo-diamante: un port correcto conviviendo con un C#
+       equivocado da todo en verde.
+
+       Se comprueban INVARIANTES, no resultados esperados:
+
+         * cada punto del recorrido cae dentro del rectangulo del eje
+         * los dobleces estan a su radio exacto del centro de su esquina
+         * los lados rectos son de verdad rectos
+         * el cuerpo va en sentido antihorario y no se cruza consigo mismo
+         * con gancho el cuerpo queda ABIERTO justo en la esquina del gancho
+         * las dos colas salen PARALELAS y separadas un diametro de doblez,
+           que es lo que hace que un gancho se vea como dos rayas
+         * las colas apuntan al nucleo
+         * un radio imposible se recorta en lugar de cruzar el recorrido
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-trazo-estribo
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-trazo-estribo</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

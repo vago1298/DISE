@@ -384,6 +384,35 @@
                                      siempre igual, asi que la casilla solo era una forma de
                                      descuadrarlo. El valor vive en
                                      MainWindow.EscalaDeDibujo, en un solo sitio. -->
+
+                                <Border Width="1" Background="{DynamicResource BorderBrush}"
+                                        Margin="18,2,18,2" />
+
+                                <!-- LOS BOTONES DE DIBUJAR, AQUI ARRIBA.
+
+                                     Estaban en la barra de abajo, pegados a los totales.
+                                     Se subieron para que la barra de abajo quede fina y le
+                                     deje sitio a la vista previa, que es donde se revisa el
+                                     armado y donde se gira la seccion en 3D.
+
+                                     Van junto al estilo de dibujo a proposito: las dos
+                                     cosas responden a la misma pregunta -como va a salir el
+                                     dibujo- asi que se eligen de una pasada y sin bajar la
+                                     vista al otro extremo de la pantalla. -->
+
+                                <!-- Sin esta casilla, una seccion ya dibujada no habia
+                                     forma de actualizarla mas que purgando su bloque
+                                     a mano en AutoCAD. -->
+                                <CheckBox x:Name="RedibujarChk" VerticalAlignment="Center"
+                                          Margin="0,0,14,0"
+                                          Content="Redibujar las que ya existen"
+                                          ToolTip="Apagado: la seccion que ya es bloque se salta, como DibujarSecciones de la macro.&#10;Encendido: se rehace EN SU MISMO SITIO, como ActualizarSecciones." />
+                                <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnValidate" />
+                                <Button x:Name="AlzadosButton" Content="Generar alzados"
+                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
+                                <Button x:Name="ExportButton" Content="Generar dibujo"
+                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnExport" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -588,27 +617,13 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
+                            <!-- Aqui ya solo van los totales: los botones de dibujar
+                                 subieron al panel del estilo de dibujo, para que esta barra
+                                 quede fina y le deje sitio a la vista previa. La columna
+                                 Auto se queda sin nada y por tanto sin ancho. -->
                             <TextBlock x:Name="TotalesText" Grid.Column="0"
                                        Style="{StaticResource TextoTotalesStyle}"
                                        VerticalAlignment="Center" />
-
-                            <!-- El boton de dibujar vive aqui, junto a la tabla que
-                                 dibuja, y no en una pestaña aparte. -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <!-- Sin esta casilla, una seccion ya dibujada no habia
-                                     forma de actualizarla mas que purgando su bloque
-                                     a mano en AutoCAD. -->
-                                <CheckBox x:Name="RedibujarChk" VerticalAlignment="Center"
-                                          Margin="0,0,14,0"
-                                          Content="Redibujar las que ya existen"
-                                          ToolTip="Apagado: la seccion que ya es bloque se salta, como DibujarSecciones de la macro.&#10;Encendido: se rehace EN SU MISMO SITIO, como ActualizarSecciones." />
-                                <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
-                                        Click="OnValidate" />
-                                <Button x:Name="AlzadosButton" Content="Generar alzados"
-                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
-                                <Button x:Name="ExportButton" Content="Generar dibujo"
-                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnExport" />
-                            </StackPanel>
                         </Grid>
                     </Border>
                     </Grid>

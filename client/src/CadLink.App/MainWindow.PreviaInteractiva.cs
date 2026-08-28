@@ -78,6 +78,24 @@ public partial class MainWindow
     /// <summary>Si el arrastre ya pasó del umbral y por tanto no es un clic.</summary>
     private bool _previaHuboArrastre;
 
+    /// <summary>Si este arrastre está <b>girando</b> el 3D en lugar de mover el dibujo.</summary>
+    /// <remarks>
+    /// Se decide al apretar el botón y no en cada movimiento: si se consultara el modo a
+    /// mitad del arrastre, tocar el botón de 2D/3D con el ratón apretado cambiaría lo que
+    /// hace el gesto a media faena.
+    /// </remarks>
+    private bool _previaGirando;
+
+    /// <summary>Cuánto gira el 3D por píxel arrastrado.</summary>
+    /// <remarks>
+    /// Los mismos números que el visor de ETABS: medio grado por píxel en horizontal y
+    /// cuatro décimas en vertical. La vertical va más despacio a propósito, porque su
+    /// recorrido útil es de 180° y el de la horizontal 360°.
+    /// </remarks>
+    private const double GradosPorPixelAzimut = 0.5;
+
+    private const double GradosPorPixelElevacion = 0.4;
+
     // ======================================================================
     //  Mover arrastrando
     // ======================================================================
@@ -119,6 +137,14 @@ public partial class MainWindow
         _previaPresionEn = _previaArrastreDesde;
         _previaHuboArrastre = false;
         _previaMoviendo = true;
+
+        // EN 3D EL BOTÓN IZQUIERDO GIRA. El derecho sigue moviendo.
+        //
+        // Es el reparto del visor de ETABS, y aquí ahora tiene sentido: el comentario de
+        // arriba decía que no había nada que girar «porque una sección es plana», y eso
+        // dejó de ser verdad al levantarla en 3D. En el corte plano no cambia nada, los dos
+        // botones siguen moviendo.
+        _previaGirando = _alzado3D && e.ChangedButton == MouseButton.Left;
 
         // Sin capturar, al salirse del lienzo mientras se arrastra el botón se
         // suelta fuera, no llega el MouseUp y el dibujo se queda pegado al ratón.
@@ -170,7 +196,27 @@ public partial class MainWindow
             }
 
             _previaHuboArrastre = true;
-            PreviewCanvas.Cursor = Cursors.ScrollAll;
+            PreviewCanvas.Cursor = _previaGirando ? Cursors.SizeAll : Cursors.ScrollAll;
+        }
+
+        // ---------- Girando el 3D ----------
+        if (_previaGirando)
+        {
+            _giro3DAzimut += (p.X - _previaArrastreDesde.X) * GradosPorPixelAzimut;
+
+            // La elevación se limita: pasando de ±90° la vista se voltea y se pierde la
+            // noción de qué es arriba. Es el mismo tope que el visor de ETABS.
+            _giro3DElevacion = Math.Clamp(
+                _giro3DElevacion + ((p.Y - _previaArrastreDesde.Y) * GradosPorPixelElevacion),
+                -89, 89);
+
+            _previaArrastreDesde = p;
+
+            // Hay que redibujar: el giro cambia la proyección, y el encuadre se recalcula
+            // con ella para que la pieza siga cabiendo al ponerse de perfil. Una
+            // transformación del lienzo no podría hacer eso.
+            DibujarVistaPrevia();
+            return;
         }
 
         // El desplazamiento se suma tal cual, en píxeles: como en el XAML el
@@ -181,6 +227,8 @@ public partial class MainWindow
         PreviaMueve.Y += p.Y - _previaArrastreDesde.Y;
 
         _previaArrastreDesde = p;
+
+        LimitarEncuadre3D();
     }
 
     /// <summary>Al salir el cursor, se apaga el realce.</summary>
@@ -276,7 +324,21 @@ public partial class MainWindow
     private void OnPreviaAlejar(object sender, RoutedEventArgs e)
         => AplicarZoomPrevia(PreviaEscala.ScaleX / PreviaPasoZoom, CentroPrevia());
 
-    private void OnPreviaAjustar(object sender, RoutedEventArgs e) => ReiniciarEncuadrePrevia();
+    private void OnPreviaAjustar(object sender, RoutedEventArgs e)
+    {
+        var era3D = _alzado3D;
+
+        ReiniciarEncuadrePrevia();
+
+        // En el corte plano no hace falta redibujar: volver la transformación a la identidad
+        // ya devuelve el encuadre de siempre. En 3D SÍ, porque lo que se reinicia es el
+        // GIRO, y el giro está metido en la proyección con la que se calcularon los puntos:
+        // ninguna transformación del lienzo puede deshacerlo.
+        if (era3D)
+        {
+            DibujarVistaPrevia();
+        }
+    }
 
     /// <summary>El centro del recuadro, que es el ancla de los botones de zoom.</summary>
     /// <remarks>
@@ -331,7 +393,46 @@ public partial class MainWindow
         PreviaMueve.X = ancla.X - (kNueva * px);
         PreviaMueve.Y = ancla.Y - (kNueva * py);
 
+        LimitarEncuadre3D();
+
         ActualizarZoomPreviaTexto();
+    }
+
+    /// <summary>
+    /// En 3D, impide que la sección se monte encima del <b>alzado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El alzado va en el lienzo fijo, que no se mueve; la sección va en el que sí. Sin tope,
+    /// al mover o acercar la sección se le metía por encima y las dos se leían como una sola
+    /// maraña.
+    /// </para>
+    /// <para>
+    /// El tope se pone sobre el borde DERECHO de lo dibujado, no sobre el recuadro: lo que
+    /// molesta es que el acero cruce a la otra mitad, y el recuadro de la caja de concreto es
+    /// más ancho que el acero. Los dos números los deja el dibujo del 3D, que es quien sabe
+    /// dónde acabó cada cosa.
+    /// </para>
+    /// <para>
+    /// Solo se topa por la derecha. Por la izquierda y en vertical se puede mover libremente:
+    /// ahí no hay nada con lo que chocar, y limitarlo de más daría la impresión de que la
+    /// vista está trabada.
+    /// </para>
+    /// </remarks>
+    private void LimitarEncuadre3D()
+    {
+        if (!_alzado3D || _borde3DDerecha <= 0 || _limite3DDerecha <= 0)
+        {
+            return;
+        }
+
+        // Dónde cae ahora mismo en pantalla el borde derecho del dibujo.
+        var enPantalla = (PreviaEscala.ScaleX * _borde3DDerecha) + PreviaMueve.X;
+
+        if (enPantalla > _limite3DDerecha)
+        {
+            PreviaMueve.X -= enPantalla - _limite3DDerecha;
+        }
     }
 
     /// <summary>Devuelve la vista previa a su encuadre original.</summary>
@@ -347,6 +448,10 @@ public partial class MainWindow
         PreviaEscala.ScaleY = 1;
         PreviaMueve.X = 0;
         PreviaMueve.Y = 0;
+
+        // Y el giro del 3D, que también es encuadre: «Ajustar» tiene que devolver la vista
+        // a como estaba, y una sección girada de canto no es el encuadre de siempre.
+        ReiniciarGiro3D();
 
         ActualizarZoomPreviaTexto();
     }
