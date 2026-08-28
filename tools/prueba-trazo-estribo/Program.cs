@@ -48,6 +48,7 @@ internal static class Program
         LasColasApuntanAlNucleo();
         UnRadioImposibleSeRecorta();
         SeccionDegeneradaDevuelveNull();
+        ElEjeDeLaGrapa();
 
         Console.WriteLine(new string('=', 70));
 
@@ -426,5 +427,128 @@ internal static class Program
 
         Comprobar(TrazoEstribo.Eje(10, 0, 0, 5, 1, 1, 0) is null,
             "un rectangulo al reves devuelve null", "devolvio un trazo");
+    }
+
+    /// <summary>Corre la comprobacion del eje de la grapa y la imprime.</summary>
+    private static void ElEjeDeLaGrapa()
+    {
+        var (fallos, lineas) = EjeDeGrapa.Correr();
+
+        foreach (var l in lineas)
+        {
+            Console.WriteLine(l);
+        }
+
+        _fallos += fallos;
+    }
+}
+
+
+
+internal static class EjeDeGrapa
+{
+    /// <summary>
+    /// El eje de la grapa: dos dobleces que envuelven cada varilla y dos colas.
+    /// </summary>
+    /// <remarks>
+    /// Lo que se comprueba es que el eje sea de verdad <b>tangente</b>: que cada punto de un
+    /// doblez esté al radio exacto de su varilla y que el tramo recto salga perpendicular al
+    /// radio en la tangencia. Con eso, el eje no puede estar corrido respecto al contorno que
+    /// se dibuja en el plano.
+    /// </remarks>
+    public static (int Fallos, string[] Lineas) Correr()
+    {
+        var fallos = 0;
+        var salida = new List<string>();
+
+        void Comprobar(bool cond, string que, string porque)
+        {
+            if (cond)
+            {
+                salida.Add($"  OK    {que}");
+                return;
+            }
+
+            salida.Add($"  FALLA {que}");
+            salida.Add($"        {porque}");
+            fallos++;
+        }
+
+        salida.Add(string.Empty);
+        salida.Add("El eje de la grapa");
+
+        // Dos varillas de distinto calibre, para que la tangencia no sea el caso facil de
+        // dos radios iguales.
+        const double ax = 6, ay = 20, ra = 1.91 / 2;
+        const double bx = 34, by = 26, rb = 2.54 / 2;
+        const double dGrapa = 0.95;
+        const double cola = 6 * dGrapa;
+
+        var eje = TrazoGrapa.Eje(ax, ay, ra, bx, by, rb, dGrapa, cola);
+
+        if (eje is null)
+        {
+            Comprobar(false, "se arma el eje", "devolvio null");
+            return (fallos, salida.ToArray());
+        }
+
+        Comprobar(eje.Count > 2 * TrazoGrapa.TramosPorDoblez,
+            "el eje trae sus dos dobleces muestreados",
+            $"solo {eje.Count} puntos, y dos dobleces ya piden mas");
+
+        var r1 = ra + (dGrapa / 2);
+        var r2 = rb + (dGrapa / 2);
+
+        // Cada punto tiene que estar, o al radio del eje de una de las dos varillas -si
+        // esta en un doblez-, o sobre el tramo recto o una cola.
+        var enA = 0;
+        var enB = 0;
+        var peor = 0.0;
+
+        foreach (var (x, y) in eje)
+        {
+            var da = Math.Sqrt(((x - ax) * (x - ax)) + ((y - ay) * (y - ay)));
+            var db = Math.Sqrt(((x - bx) * (x - bx)) + ((y - by) * (y - by)));
+
+            if (Math.Abs(da - r1) < 1e-9) { enA++; peor = Math.Max(peor, Math.Abs(da - r1)); }
+            if (Math.Abs(db - r2) < 1e-9) { enB++; peor = Math.Max(peor, Math.Abs(db - r2)); }
+        }
+
+        Comprobar(enA > TrazoGrapa.TramosPorDoblez / 2 && enB > TrazoGrapa.TramosPorDoblez / 2,
+            "los dos dobleces envuelven su varilla al radio del eje",
+            $"{enA} puntos al radio de A y {enB} al de B");
+
+        Comprobar(peor < 1e-9,
+            "y al radio EXACTO, no aproximado",
+            $"el peor se desvia {peor:E3} cm");
+
+        // Las dos colas: sus tramos rectos tienen que ser paralelos entre si, porque los
+        // dos son paralelos al tramo recto de la grapa.
+        static (double Dx, double Dy) Dir(
+            (double X, double Y) p, (double X, double Y) q)
+        {
+            var l = Math.Sqrt(
+                ((q.X - p.X) * (q.X - p.X)) + ((q.Y - p.Y) * (q.Y - p.Y)));
+
+            return ((q.X - p.X) / l, (q.Y - p.Y) / l);
+        }
+
+        var d1 = Dir(eje[1], eje[0]);
+        var d2 = Dir(eje[^2], eje[^1]);
+
+        var cruz = Math.Abs((d1.Dx * d2.Dy) - (d1.Dy * d2.Dx));
+
+        Comprobar(cruz < 1e-9,
+            "las dos colas salen paralelas al tramo recto",
+            $"el cruzado de sus direcciones es {cruz:E3}");
+
+        // Y las puntas apuntan a lados OPUESTOS: una cola sale por cada extremo.
+        var punto = (d1.Dx * d2.Dx) + (d1.Dy * d2.Dy);
+
+        Comprobar(punto < -0.99,
+            "y cada una hacia su extremo, no las dos al mismo lado",
+            $"el producto punto de sus direcciones es {punto:F4}");
+
+        return (fallos, salida.ToArray());
     }
 }

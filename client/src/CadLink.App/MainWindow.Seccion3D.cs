@@ -236,6 +236,10 @@ public partial class MainWindow
 
         var c = cam.Value;
 
+        // ---------- La sombra en el suelo ----------
+        // Va PRIMERO, para quedar debajo de todo lo demás.
+        SombraEnElSuelo(c, bx, by);
+
         // ---------- La caja de concreto, en alambre y tenue ----------
         // Lo que hay que mirar es el armado; una caja opaca lo taparía entero. Es lo mismo
         // que hace el visor de ETABS con el modelo.
@@ -273,6 +277,15 @@ public partial class MainWindow
         var minX = double.MaxValue;
         var maxX = double.MinValue;
 
+        // El rango de profundidad de la pieza, para poder apagar lo que queda al fondo. Se
+        // mide en las cuatro esquinas de la planta: la profundidad no depende de la cota, así
+        // que con la planta basta.
+        var profs = new[] { c.Prof(0, 0), c.Prof(bx, 0), c.Prof(bx, by), c.Prof(0, by) };
+
+        var dMin = profs.Min();
+        var dMax = profs.Max();
+        var dRango = dMax - dMin;
+
         void Barra(
             double x1, double y1, double z1,
             double x2, double y2, double z2,
@@ -290,9 +303,11 @@ public partial class MainWindow
             // que todo salía casi del mismo ancho.
             var grueso = Math.Max(diamCm * c.K, 0.7);
 
-            piezas.Add((
-                (c.Prof(x1, y1) + c.Prof(x2, y2)) / 2,
-                () => BarraRedonda3D(PreviewCanvas, p, q, color, grueso)));
+            var prof = (c.Prof(x1, y1) + c.Prof(x2, y2)) / 2;
+
+            var luz = dRango > 1e-9 ? (prof - dMin) / dRango : 1;
+
+            piezas.Add((prof, () => BarraRedonda3D(PreviewCanvas, p, q, color, grueso, luz)));
         }
 
         // Pinta un recorrido del plano de la sección a una cota z dada.
@@ -393,8 +408,33 @@ public partial class MainWindow
 
                 zGrapa += dGrapa / 2;
 
-                Barra(va.Value.X, va.Value.Y, zGrapa,
-                      vb.Value.X, vb.Value.Y, zGrapa, colorEstribo, dGrapa);
+                // EL EJE DE LA GRAPA, CON SUS DOS DOBLECES Y SUS DOS COLAS.
+                //
+                // Antes era una raya recta de centro a centro: ni envolvía las varillas ni
+                // tenía ganchos. Sale de TrazoGrapa.Eje, que resuelve la tangencia con la
+                // MISMA función que el contorno del plano, así que la grapa del 3D y la de
+                // AutoCAD son la misma pieza.
+                //
+                // El largo de la cola es la misma regla del corte: el gancho capturado, y
+                // si no hay, seis diámetros, que es el mínimo de norma.
+                var eje = TrazoGrapa.Eje(
+                    va.Value.X, va.Value.Y, va.Value.R,
+                    vb.Value.X, vb.Value.Y, vb.Value.R,
+                    dGrapa,
+                    s.GanchoCm > 0 ? s.GanchoCm : dGrapa * 6);
+
+                if (eje is not null)
+                {
+                    Recorrido(eje, zGrapa, false, colorEstribo, dGrapa);
+                }
+                else
+                {
+                    // Sin tangente común -dos varillas demasiado juntas- no hay grapa que
+                    // envuelva nada, pero el usuario la puso: se dibuja recta para que se
+                    // vea que está, igual que hace el corte.
+                    Barra(va.Value.X, va.Value.Y, zGrapa,
+                          vb.Value.X, vb.Value.Y, zGrapa, colorEstribo, dGrapa);
+                }
 
                 zGrapa += dGrapa / 2;
             }
@@ -412,6 +452,63 @@ public partial class MainWindow
             + $"   ·   giro {_giro3DAzimut:N0}°/{_giro3DElevacion:N0}°"
             + (s.LongitudM > 0 ? string.Empty : "   ·   largo por omisión"),
             26, alto - 18);
+    }
+
+    /// <summary>
+    /// La <b>sombra</b> de la pieza apoyada en el suelo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es una <b>sombra de contacto</b>: la huella de la pieza, corrida un poco al lado
+    /// opuesto a la luz y con tres capas cada vez más grandes y más tenues para que el borde
+    /// se vea difuso. Sirve para lo único que una sombra tiene que hacer aquí: que la pieza
+    /// se apoye en algo en lugar de flotar.
+    /// </para>
+    /// <para>
+    /// <b>No es la sombra proyectada de la pieza entera, y es a propósito.</b> La de verdad
+    /// se calcula llevando cada punto al suelo por la dirección de la luz, y para un elemento
+    /// de tres metros eso da una mancha de dos metros de largo: encuadrar la pieza y su
+    /// sombra dejaría la pieza del tamaño de un dedo, y lo que hay que mirar es el armado. La
+    /// huella corrida da la misma sensación de apoyo y no se come el recuadro.
+    /// </para>
+    /// <para>
+    /// El corrimiento se mide con el <b>tamaño de la sección</b> y no con la altura, que es
+    /// justo lo que evita que crezca con la longitud de la pieza.
+    /// </para>
+    /// </remarks>
+    private void SombraEnElSuelo(Camara3D c, double bx, double by)
+    {
+        var corrimiento = 0.20 * Math.Min(bx, by);
+
+        if (corrimiento <= 0)
+        {
+            return;
+        }
+
+        // Tres capas: la de dentro más oscura y pequeña, las de fuera más grandes y tenues.
+        foreach (var (crece, alfa) in new[] { (0.0, (byte)0x2E), (0.7, (byte)0x1C), (1.6, (byte)0x0E) })
+        {
+            var d = corrimiento * (1 + crece);
+
+            var brocha = new SolidColorBrush(Color.FromArgb(alfa, 0x1B, 0x2A, 0x3A));
+            brocha.Freeze();
+
+            var poly = new Polygon { Fill = brocha };
+
+            // La huella, corrida al lado contrario de la luz y crecida un poco.
+            foreach (var (x, y) in new[]
+            {
+                (-d + corrimiento, -d + corrimiento),
+                (bx + d + corrimiento, -d + corrimiento),
+                (bx + d + corrimiento, by + d + corrimiento),
+                (-d + corrimiento, by + d + corrimiento)
+            })
+            {
+                poly.Points.Add(c.APantalla(x, y, 0));
+            }
+
+            PreviewCanvas.Children.Add(poly);
+        }
     }
 
     /// <summary>
@@ -460,94 +557,113 @@ public partial class MainWindow
 
 public partial class MainWindow
 {
-    /// <summary>Brochas de barra ya hechas, por color y dirección.</summary>
+    /// <summary>
+    /// De dónde viene la luz, en coordenadas de <b>pantalla</b>.
+    /// </summary>
     /// <remarks>
-    /// <para>
-    /// Hace falta porque el estribo con sus dobleces y el diamante muestreado dan del orden
-    /// de cien barras por posición, y una columna de tres metros lleva treinta posiciones:
-    /// sin caché serían miles de degradados nuevos <b>en cada redibujado</b>, y el dibujo se
-    /// rehace con cada tecla de la tabla y con cada movimiento del ratón al girar.
-    /// </para>
-    /// <para>
-    /// La clave es el color y la <b>dirección</b>, y no hace falta más: el degradado se
-    /// define en coordenadas relativas al recuadro de la barra, así que dos barras paralelas
-    /// del mismo color lo tienen idéntico por largas o cortas que sean. La dirección se
-    /// redondea a un grado, que a ojo no se distingue y hace que las barras del mismo doblez
-    /// compartan brocha.
-    /// </para>
+    /// Arriba a la izquierda, que es de donde se supone que viene la luz en cualquier dibujo
+    /// técnico. Va en pantalla y no en el modelo a propósito: así el brillo se queda del
+    /// mismo lado al girar la pieza, que es lo que hace que las barras se lean como un solo
+    /// grupo iluminado y no como piezas sueltas cada una con su brillo. Recuérdese que en un
+    /// lienzo la Y crece hacia ABAJO, de ahí el signo.
     /// </remarks>
-    private readonly Dictionary<(uint Color, int Grados), Brush> _brochasDeBarra = new();
+    private const double LuzX = -0.5547;
 
-    /// <summary>La brocha de una barra: clara en el borde de la luz y oscura en el otro.</summary>
-    private Brush BrochaDeBarra(Color color, double angulo)
-    {
-        var grados = (int)Math.Round(angulo * 180 / Math.PI);
+    private const double LuzY = -0.8320;
 
-        var clave = ((uint)((color.R << 16) | (color.G << 8) | color.B), grados);
-
-        if (_brochasDeBarra.TryGetValue(clave, out var ya))
-        {
-            return ya;
-        }
-
-        // La normal en coordenadas de la propia barra: el degradado cruza su ancho. Se
-        // recalcula del ángulo REDONDEADO, no del original, para que la brocha guardada
-        // corresponda de verdad a la clave con la que se guarda.
-        var rad = grados * Math.PI / 180;
-        var nx = -Math.Sin(rad);
-        var ny = Math.Cos(rad);
-
-        Color Mezcla(Color cc, double f) => Color.FromRgb(
-            (byte)Math.Clamp(cc.R * f, 0, 255),
-            (byte)Math.Clamp(cc.G * f, 0, 255),
-            (byte)Math.Clamp(cc.B * f, 0, 255));
-
-        var brocha = new LinearGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            StartPoint = new Point(0.5 - (nx / 2), 0.5 - (ny / 2)),
-            EndPoint = new Point(0.5 + (nx / 2), 0.5 + (ny / 2)),
-            GradientStops =
-            {
-                new GradientStop(Mezcla(color, 0.55), 0.0),
-                new GradientStop(Mezcla(color, 1.25), 0.35),
-                new GradientStop(color, 0.62),
-                new GradientStop(Mezcla(color, 0.5), 1.0)
-            }
-        };
-
-        // Congelada: una brocha inmutable WPF la puede compartir entre miles de figuras sin
-        // volver a resolverla en cada pintado. Es la mitad del motivo de la caché.
-        brocha.Freeze();
-
-        _brochasDeBarra[clave] = brocha;
-
-        return brocha;
-    }
+    private static Color Mezcla(Color c, double f) => Color.FromRgb(
+        (byte)Math.Clamp(c.R * f, 0, 255),
+        (byte)Math.Clamp(c.G * f, 0, 255),
+        (byte)Math.Clamp(c.B * f, 0, 255));
 
     /// <summary>
     /// Una <b>barra redonda</b> en el 3D: cilíndrica, no una raya plana.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// El volumen se consigue con dos cosas: las puntas <b>redondeadas</b>, que cierran el
-    /// cilindro en lugar de cortarlo a escuadra, y un <b>degradado</b> a lo ancho —claro en
-    /// el borde de la luz, oscuro en el otro— que es como se lee un tubo. En un lienzo no hay
-    /// iluminación, así que el relieve se pinta.
+    /// cilindro en lugar de cortarlo a escuadra, y un <b>degradado a lo ancho</b> —oscuro en
+    /// el borde de sombra, con una banda de brillo hacia el de la luz— que es como se lee un
+    /// tubo. En un lienzo no hay iluminación, así que el relieve se pinta.
+    /// </para>
+    /// <para>
+    /// <b>El degradado va en coordenadas ABSOLUTAS, y ahí estaba el defecto.</b> Antes iba
+    /// en coordenadas relativas al recuadro de la barra, y eso solo sale bien cuando el
+    /// recuadro es cuadrado: en una barra tumbada el recuadro es mucho más ancho que alto,
+    /// así que el eje del degradado se estiraba con él y dejaba de ser perpendicular a la
+    /// barra. Resultado: las varillas, que van casi verticales, se veían redondas, y los
+    /// estribos y el diamante, que en isométrico van en diagonal, salían planos. Era
+    /// exactamente lo que se reportó. Con coordenadas absolutas el eje es perpendicular de
+    /// verdad, y una barra se ve igual de redonda en cualquier dirección.
+    /// </para>
+    /// <para>
+    /// El precio es que la brocha depende de <b>dónde</b> está la barra, así que ya no se
+    /// puede guardar en caché por dirección. Se cambió a propósito: la caché era rápida
+    /// porque suponía justo lo que estaba mal.
+    /// </para>
     /// </remarks>
-    private void BarraRedonda3D(Canvas lienzo, Point p, Point q, Color color, double grueso)
+    /// <param name="luz">
+    /// Cuánta luz le toca por su <b>profundidad</b>, de 0 al fondo a 1 al frente. Lo que
+    /// está lejos se ve más apagado, y es lo que separa el acero del fondo del de delante
+    /// cuando la jaula tiene treinta estribos superpuestos.
+    /// </param>
+    private void BarraRedonda3D(
+        Canvas lienzo, Point p, Point q, Color color, double grueso, double luz)
     {
         var dx = q.X - p.X;
         var dy = q.Y - p.Y;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
 
-        if (Math.Sqrt((dx * dx) + (dy * dy)) < 0.4 || grueso <= 0)
+        if (largo < 0.4 || grueso <= 0)
         {
             return;
         }
 
+        // La normal a la barra, orientada hacia la luz: así el brillo cae siempre del
+        // mismo lado, gire la pieza como gire.
+        var nx = -dy / largo;
+        var ny = dx / largo;
+
+        if ((nx * LuzX) + (ny * LuzY) < 0)
+        {
+            nx = -nx;
+            ny = -ny;
+        }
+
+        // El eje del degradado: perpendicular a la barra, centrado en ella y del ancho
+        // exacto del grueso. De la sombra (0) al lado de la luz (1).
+        var mx = (p.X + q.X) / 2;
+        var my = (p.Y + q.Y) / 2;
+
+        var mitad = grueso / 2;
+
+        // La profundidad apaga la barra entera, sin tocar el relieve: se multiplica el
+        // color base y el degradado se calcula sobre ese.
+        var f = 0.62 + (0.38 * Math.Clamp(luz, 0, 1));
+
+        var baseColor = Mezcla(color, f);
+
+        var brocha = new LinearGradientBrush
+        {
+            MappingMode = BrushMappingMode.Absolute,
+            StartPoint = new Point(mx - (nx * mitad), my - (ny * mitad)),
+            EndPoint = new Point(mx + (nx * mitad), my + (ny * mitad)),
+            GradientStops =
+            {
+                new GradientStop(Mezcla(baseColor, 0.42), 0.00),
+                new GradientStop(Mezcla(baseColor, 0.80), 0.30),
+                new GradientStop(Mezcla(baseColor, 1.32), 0.62),
+                new GradientStop(Mezcla(baseColor, 1.08), 0.85),
+                new GradientStop(Mezcla(baseColor, 0.74), 1.00)
+            }
+        };
+
+        brocha.Freeze();
+
         lienzo.Children.Add(new Line
         {
             X1 = p.X, Y1 = p.Y, X2 = q.X, Y2 = q.Y,
-            Stroke = BrochaDeBarra(color, Math.Atan2(dy, dx)),
+            Stroke = brocha,
             StrokeThickness = grueso,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round
@@ -561,14 +677,16 @@ public partial class MainWindow
     /// y entonces esa grapa se salta: es lo mismo que hace el dibujo del corte cuando el
     /// lecho se quedó con menos varillas.
     /// </remarks>
-    private static (double X, double Y)? BuscarVarillaPrevia(
+    private static (double X, double Y, double R)? BuscarVarillaPrevia(
         List<(RefVarilla Ref, double X, double Y, double R)> varillas, RefVarilla señal)
     {
         foreach (var v in varillas)
         {
             if (v.Ref.Equals(señal))
             {
-                return (v.X, v.Y);
+                // El RADIO también: el eje de la grapa envuelve la varilla, así que sin su
+                // radio no se puede saber por dónde pasa el doblez.
+                return (v.X, v.Y, v.R);
             }
         }
 

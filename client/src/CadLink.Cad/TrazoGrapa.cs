@@ -129,6 +129,121 @@ public static class TrazoGrapa
         double bx, double by, double rb,
         double dGrapa, double colaCm)
     {
+        var geo = Resolver(ax, ay, ra, bx, by, rb, dGrapa, colaCm);
+
+        if (geo is null)
+        {
+            return null;
+        }
+
+        var thetaM = geo.Value.ThetaM;
+        var dx = geo.Value.Dx;
+        var dy = geo.Value.Dy;
+        var cola = geo.Value.Cola;
+
+        return ContornoDesde(ax, ay, ra, bx, by, rb, dGrapa, thetaM, dx, dy, cola);
+    }
+
+    /// <summary>
+    /// El <b>eje</b> de la grapa: el recorrido que sigue la varilla, con sus dos dobleces
+    /// y sus dos colas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Para qué hace falta.</b> <see cref="Contorno"/> devuelve el <i>contorno</i> —las dos
+    /// caras de la grapa, dando una vuelta completa—, que es lo que necesita el corte para
+    /// rellenarla y para recortar lo que le pasa por debajo. Pero la vista en 3D dibuja cada
+    /// tramo como una <b>barra con grueso</b>, y ahí hace falta el eje: dibujar el contorno
+    /// con grueso daría una grapa del doble de gordo y con el cuerpo hueco.
+    /// </para>
+    /// <para>
+    /// <b>Los dos salen de la misma tangencia.</b> <see cref="Resolver"/> es la única que la
+    /// calcula, así que el eje del 3D y el contorno del plano no pueden discrepar: son la
+    /// misma grapa medida de dos maneras. Antes de esto el 3D dibujaba la grapa como una raya
+    /// recta de centro a centro, sin dobleces ni ganchos.
+    /// </para>
+    /// <para>
+    /// El recorrido envuelve <b>media vuelta</b> cada varilla, que es lo que hace
+    /// <see cref="Contorno"/> —sus <c>thetaAFin</c> y <c>thetaBFin</c> están a 180° de la
+    /// tangencia—, y las colas salen paralelas al tramo recto, no a la línea de centros: con
+    /// calibres distintos no es lo mismo y quedaría un codo donde el doblez entrega a la cola.
+    /// </para>
+    /// </remarks>
+    /// <returns>El recorrido abierto, o <c>null</c> si la grapa no existe.</returns>
+    public static List<(double X, double Y)>? Eje(
+        double ax, double ay, double ra,
+        double bx, double by, double rb,
+        double dGrapa, double colaCm)
+    {
+        var geo = Resolver(ax, ay, ra, bx, by, rb, dGrapa, colaCm);
+
+        if (geo is null)
+        {
+            return null;
+        }
+
+        var g = geo.Value;
+
+        // Los radios del EJE: la varilla más medio diámetro de grapa.
+        var r1 = ra + (dGrapa / 2);
+        var r2 = rb + (dGrapa / 2);
+
+        var eje = new List<(double X, double Y)>();
+
+        (double X, double Y) En(double cx, double cy, double r, double t) =>
+            (cx + (r * Math.Cos(t)), cy + (r * Math.Sin(t)));
+
+        void Arco(double cx, double cy, double r, double desde, double hasta)
+        {
+            for (var k = 0; k <= TramosPorDoblez; k++)
+            {
+                var t = desde + ((hasta - desde) * k / TramosPorDoblez);
+
+                eje.Add(En(cx, cy, r, t));
+            }
+        }
+
+        var aFin = g.ThetaM + Math.PI;
+        var bFin = g.ThetaM - Math.PI;
+
+        // La punta de la cola de A, y de ahí el doblez de vuelta al tramo recto.
+        var puntaA = En(ax, ay, r1, aFin);
+        eje.Add((puntaA.X + (g.Cola * g.Dx), puntaA.Y + (g.Cola * g.Dy)));
+
+        Arco(ax, ay, r1, aFin, g.ThetaM);
+
+        // El tramo recto, y el doblez de B.
+        Arco(bx, by, r2, g.ThetaM, bFin);
+
+        // Y la punta de la cola de B, que sale al revés.
+        var puntaB = En(bx, by, r2, bFin);
+        eje.Add((puntaB.X - (g.Cola * g.Dx), puntaB.Y - (g.Cola * g.Dy)));
+
+        return eje;
+    }
+
+    /// <summary>La tangencia común de los dos dobleces, que es de donde sale todo.</summary>
+    /// <param name="ThetaM">Ángulo del centro de cada varilla a su punto de tangencia.</param>
+    /// <param name="Dx">Dirección del tramo recto, de A hacia B.</param>
+    /// <param name="Dy">Dirección del tramo recto, de A hacia B.</param>
+    /// <param name="Cola">Largo recto de cada cola, ya recortado.</param>
+    private readonly record struct Tangencia(
+        double ThetaM, double Dx, double Dy, double Cola);
+
+    /// <summary>
+    /// Resuelve la tangencia común. <b>La única que hace esta cuenta.</b>
+    /// </summary>
+    /// <remarks>
+    /// La usan <see cref="Contorno"/> y <see cref="Eje"/>. Estaba dentro de
+    /// <c>Contorno</c> y se sacó al necesitarla el eje: dos copias de esta cuenta acabarían
+    /// dibujando en el plano una grapa y en la pantalla otra, que es justo el error que este
+    /// programa existe para no repetir.
+    /// </remarks>
+    private static Tangencia? Resolver(
+        double ax, double ay, double ra,
+        double bx, double by, double rb,
+        double dGrapa, double colaCm)
+    {
         if (dGrapa <= 0 || ra <= 0 || rb <= 0)
         {
             return null;
@@ -200,6 +315,15 @@ public static class TrazoGrapa
 
         var cola = Math.Max(0, Math.Min(colaCm, largoRecto * FraccionMaximaDeCola));
 
+        return new Tangencia(thetaM, dx, dy, cola);
+    }
+
+    /// <summary>El contorno, ya resuelta la tangencia. Cuerpo original, sin cambios.</summary>
+    private static List<(double X, double Y)> ContornoDesde(
+        double ax, double ay, double ra,
+        double bx, double by, double rb,
+        double dGrapa, double thetaM, double dx, double dy, double cola)
+    {
         // Los cuatro círculos del contorno: interior y exterior de cada doblez.
         var raIn = ra;
         var raOut = ra + dGrapa;
