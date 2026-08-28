@@ -143,26 +143,91 @@ public partial class MainWindow
     //  Guardar la vista en 3D como imagen
     // ======================================================================
 
-    /// <summary>Cuántos píxeles de ancho tiene la imagen que se guarda.</summary>
+    /// <summary>Cuántos píxeles de ancho se querrían guardar.</summary>
     /// <remarks>
-    /// 6000 px son 50 cm a 300 ppp: la sección entra a tamaño de plano, no solo de hoja.
     /// <para>
-    /// No se sube más, y el tope no es el gusto: el rasterizador de WPF trabaja sobre
-    /// superficies intermedias que se atascan pasados los <b>8192</b> píxeles de lado, que es el
-    /// límite clásico de textura. Pedir 12000 no da una imagen mejor, da una imagen recortada o
-    /// una excepción de memoria.
+    /// Es un <b>deseo</b>, no una promesa: si con el supermuestreo la superficie intermedia no
+    /// cabe en los topes, sale algo menor. La cuenta está en <see cref="TamanoDeImagen"/>.
+    /// </para>
+    /// <para>
+    /// <b>Bajó de 6000 a 4000, y la imagen se ve MUCHO mejor.</b> No es una contradicción, es que
+    /// 6000 eran píxeles falsos: el 3D se dibujaba al tamaño del recuadro de pantalla —unos 700—
+    /// y se estiraba. Ahora los píxeles son de verdad, están promediados —así que los bordes no
+    /// hacen escalera— y las barras se rehacen con muchos más lados. Detalle real de 700 a 4000
+    /// es multiplicar por casi seis; el número del ancho es lo de menos.
     /// </para>
     /// </remarks>
-    private const int AnchoDeLaImagen3D = 6000;
+    private const int AnchoDeLaImagen3D = 4000;
 
-    /// <summary>Tope de píxeles totales de la imagen que se guarda.</summary>
+    /// <summary>Tope de píxeles por lado de la superficie que se <b>dibuja</b>.</summary>
     /// <remarks>
-    /// El ancho solo no acota nada: con un recuadro alto y estrecho, 6000 px de ancho salen con
-    /// un alto de 8000 y eso son <b>190 MB</b> en un solo mapa de bits. Este tope reparte: si el
-    /// área se pasa, se bajan ancho y alto por igual —por la raíz del exceso, que es lo que
-    /// conserva la proporción— y la imagen sigue siendo la misma, algo más pequeña.
+    /// No es una preferencia: el rasterizador de WPF trabaja sobre superficies intermedias que se
+    /// atascan pasados los <b>8192</b> píxeles de lado, el límite clásico de textura. Se queda en
+    /// 8000 para no ir al filo. Pedir más no da una imagen mejor: da una imagen recortada, en
+    /// blanco, o una excepción de memoria.
     /// </remarks>
-    private const long MaximoDePixelesDeLaImagen3D = 32_000_000;
+    private const int MaximoLadoQueSeDibuja3D = 8000;
+
+    /// <summary>
+    /// Cuántas veces más grande se dibuja la imagen antes de reducirla: el <b>supermuestreo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es lo que le quita los dientes de sierra, y hacía falta por un motivo concreto: el
+    /// rasterizador con el que WPF resuelve un <c>RenderTargetBitmap</c> <b>no suaviza los bordes
+    /// del 3D</b>. Cada píxel del borde de una barra sale entero del color de la barra o entero
+    /// del color del fondo, sin medias tintas, y eso es una escalera por muchos píxeles que se
+    /// pidan. Subir la resolución no lo arregla: hace la escalera más fina, pero escalera.
+    /// </para>
+    /// <para>
+    /// Dibujando al doble y reduciendo a la mitad con un filtro de calidad, cada píxel final es
+    /// el <b>promedio de cuatro</b>, así que el borde de la barra sale con sus medias tintas: es
+    /// antialias de verdad, hecho a mano. De ahí que la imagen se vea «casi vectorizada».
+    /// </para>
+    /// <para>
+    /// <b>Y esto no es la vuelta al fallo de antes.</b> Lo que estaba mal era dibujar PEQUEÑO y
+    /// estirar; aquí se dibuja GRANDE y se reduce. Es la operación contraria: estirar invéntase
+    /// información, reducir la promedia.
+    /// </para>
+    /// <para>
+    /// Dos y no cuatro porque el coste va con el cuadrado: a 2× ya se recoge casi toda la mejora
+    /// que el ojo distingue, y a 4× la superficie intermedia se pasa del límite del rasterizador.
+    /// </para>
+    /// </remarks>
+    private const int SuperMuestreoDeLaImagen3D = 2;
+
+    /// <summary>Lados del tubo de cada barra <b>al guardar la imagen</b>.</summary>
+    /// <remarks>
+    /// <para>
+    /// En pantalla las barras se hacen de ocho lados, que es de sobra: al tamaño de la vista
+    /// previa un octógono no se distingue de un círculo, y la malla se rehace en cada cambio de
+    /// la tabla, así que ahí lo que importa es que gire suelto.
+    /// </para>
+    /// <para>
+    /// En la imagen guardada la barra se ve <b>diez veces más grande</b>, y ahí sí se le notan las
+    /// caras planas: el contorno deja de ser una curva y se ve el octógono. Así que para guardar
+    /// se rehace la escena con muchos más lados y después se vuelve a dejar como estaba. Se paga
+    /// una vez, al exportar, y no en cada giro.
+    /// </para>
+    /// </remarks>
+    private const int LadosDelTuboEnLaImagen3D = 28;
+
+    /// <summary>Lados del tubo con los que se está construyendo la escena ahora mismo.</summary>
+    /// <remarks>
+    /// Normalmente el de la vista previa; solo sube mientras se guarda la imagen. Es un campo y
+    /// no un parámetro porque lo leen una docena de sitios repartidos por las dos formas
+    /// —rectangular y circular— y pasarlo por la cadena entera no aclararía nada.
+    /// </remarks>
+    private int _ladosDelTubo3D = TuboDeMalla.LadosPorOmision;
+
+    /// <summary>Tope de píxeles totales de la superficie que se <b>dibuja</b>.</summary>
+    /// <remarks>
+    /// El tope por lado solo no acota la memoria: con un recuadro alto y estrecho se puede llegar
+    /// a 8000 en los dos lados, y 64 megapíxeles son <b>256 MB</b> en un solo mapa de bits, más el
+    /// de la imagen reducida. Este tope reparte: si el área se pasa, se bajan los dos lados por
+    /// igual y la imagen sigue siendo la misma, algo más pequeña.
+    /// </remarks>
+    private const long MaximoDePixelesQueSeDibujan3D = 44_000_000;
 
     /// <summary>
     /// La <b>inclinación del isométrico de verdad</b>, en grados.
@@ -232,6 +297,12 @@ public partial class MainWindow
             return;
         }
 
+        // Las medidas del LIENZO, que son las que espera ConstruirEscena3D —y que no son las
+        // del recuadro 3D, que ocupa la mitad—. Hacen falta para rehacer la malla fina y para
+        // devolver la vista previa a como estaba.
+        var anchoLienzo = PreviewCanvas.ActualWidth;
+        var altoLienzo = PreviewCanvas.ActualHeight;
+
         var dialogo = new SaveFileDialog
         {
             Title = "Guardar la imagen de la sección en 3D",
@@ -257,6 +328,19 @@ public partial class MainWindow
 
         try
         {
+            // ---------- La malla FINA, solo para la imagen ----------
+            //
+            // En pantalla las barras llevan ocho lados y no se les nota; en la imagen se ven
+            // diez veces más grandes y el octógono se delata. Así que se rehace la escena con
+            // muchos más lados. Va ANTES de tocar el giro porque reconstruir la escena crea un
+            // ángulo de jaula nuevo, y si se pusiera al revés el giro se perdería.
+            if (anchoLienzo > 60 && altoLienzo > 60)
+            {
+                _ladosDelTubo3D = LadosDelTuboEnLaImagen3D;
+
+                ConstruirEscena3D(s, anchoLienzo, altoLienzo);
+            }
+
             // La cámara mira desde un azimut FIJO y lo que gira es la pieza, así que para que
             // la vista quede en isométrico hay que girar la pieza la diferencia.
             _giro3DAzimut = AzimutDeLaCamara - AzimutIsometrico;
@@ -284,7 +368,23 @@ public partial class MainWindow
             _pan3DU = panUAntes;
             _pan3DV = panVAntes;
 
-            ActualizarGiro3D();
+            // Y la malla vuelve a la de pantalla. Dejando la fina, cada arrastre movería una
+            // malla del triple de triángulos y el giro se volvería pastoso.
+            var eraFina = _ladosDelTubo3D != TuboDeMalla.LadosPorOmision;
+
+            _ladosDelTubo3D = TuboDeMalla.LadosPorOmision;
+
+            if (eraFina)
+            {
+                // Se redibuja la vista previa entera y no solo la escena: así vuelven también el
+                // alzado y los rótulos, y no hay dos caminos que puedan discrepar.
+                DibujarVistaPrevia();
+            }
+            else
+            {
+                ActualizarGiro3D();
+            }
+
             ActualizarZoomPreviaTexto();
         }
     }
@@ -306,7 +406,15 @@ public partial class MainWindow
     /// </remarks>
     private void GuardarJpgDela3D(double ancho, double alto, string ruta)
     {
-        var (pxAncho, pxAlto) = PixelesDeLaImagen3D(ancho, alto);
+        // El tamaño al que se DIBUJA es mayor que el que se guarda: de ahí sale el antialias.
+        // El razonamiento está en SuperMuestreoDeLaImagen3D.
+        var t = TamanoDeLaImagen3D(ancho, alto);
+
+        var pxAncho = t.Ancho;
+        var pxAlto = t.Alto;
+
+        var grandeAncho = t.AnchoQueSeDibuja;
+        var grandeAlto = t.AltoQueSeDibuja;
 
         // La escena se saca de la vista previa para poder colgarla en el recuadro de fuera.
         var escena = PreviaEscena3D.Content;
@@ -335,28 +443,28 @@ public partial class MainWindow
             var contenedor = new Grid
             {
                 Background = fondo,
-                Width = pxAncho,
-                Height = pxAlto
+                Width = grandeAncho,
+                Height = grandeAlto
             };
 
             contenedor.Children.Add(recuadro);
 
             // Sin medir y colocar a mano, el contenedor no tiene tamaño —no cuelga de ninguna
             // ventana— y lo que se guardaría sería una imagen vacía.
-            contenedor.Measure(new Size(pxAncho, pxAlto));
-            contenedor.Arrange(new Rect(0, 0, pxAncho, pxAlto));
+            contenedor.Measure(new Size(grandeAncho, grandeAlto));
+            contenedor.Arrange(new Rect(0, 0, grandeAncho, grandeAlto));
             contenedor.UpdateLayout();
 
             // 96 ppp a propósito: el tamaño ya está en píxeles, así que aquí no hay ningún
             // factor de escala y el motor dibuja el 3D uno a uno.
-            var mapa = new RenderTargetBitmap(
-                pxAncho, pxAlto, 96, 96, PixelFormats.Pbgra32);
+            var grande = new RenderTargetBitmap(
+                grandeAncho, grandeAlto, 96, 96, PixelFormats.Pbgra32);
 
-            mapa.Render(contenedor);
+            grande.Render(contenedor);
 
             var codificador = new JpegBitmapEncoder { QualityLevel = 95 };
 
-            codificador.Frames.Add(BitmapFrame.Create(mapa));
+            codificador.Frames.Add(BitmapFrame.Create(Reducida(grande, pxAncho, pxAlto)));
 
             using var archivo = File.Create(ruta);
 
@@ -373,35 +481,58 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>El tamaño en píxeles de la imagen, respetando el aspecto y el tope de área.</summary>
+    /// <summary>
+    /// Reduce el mapa de bits al tamaño final <b>promediando</b>, que es lo que da el antialias.
+    /// </summary>
     /// <remarks>
-    /// Se separa del guardado porque es la única parte con aritmética que se puede razonar
-    /// sola: el aspecto que entra tiene que ser el que sale, o la cámara —que se calculó con el
-    /// aspecto de pantalla— encuadraría la pieza estirada.
+    /// <para>
+    /// La clave está en <c>BitmapScalingMode.HighQuality</c>: le dice a WPF que use su filtro
+    /// bueno, que para reducir promedia todos los píxeles de origen que caen en cada píxel de
+    /// destino. Con el modo de omisión —el rápido— cogería el más cercano y <b>tirar tres de cada
+    /// cuatro píxeles no suaviza nada</b>: la escalera del borde saldría igual, solo más pequeña,
+    /// y todo el supermuestreo habría sido para nada.
+    /// </para>
+    /// <para>
+    /// Se pone en el <c>DrawingVisual</c> y no en el mapa de bits porque la opción vive en el
+    /// <b>momento de dibujar</b>: es una propiedad del que pinta, no de la imagen.
+    /// </para>
     /// </remarks>
-    private static (int Ancho, int Alto) PixelesDeLaImagen3D(double ancho, double alto)
+    private static BitmapSource Reducida(BitmapSource grande, int pxAncho, int pxAlto)
     {
-        var aspecto = ancho / alto;
-
-        double pxAncho = AnchoDeLaImagen3D;
-        var pxAlto = pxAncho / aspecto;
-
-        // Si el área se pasa del tope, se bajan los dos lados por la RAÍZ del exceso: bajando
-        // solo el ancho cambiaría el aspecto y la pieza saldría deformada.
-        var area = pxAncho * pxAlto;
-
-        if (area > MaximoDePixelesDeLaImagen3D)
+        if (grande.PixelWidth == pxAncho && grande.PixelHeight == pxAlto)
         {
-            var factor = Math.Sqrt(MaximoDePixelesDeLaImagen3D / area);
-
-            pxAncho *= factor;
-            pxAlto *= factor;
+            return grande;
         }
 
-        return (
-            Math.Max(1, (int)Math.Round(pxAncho)),
-            Math.Max(1, (int)Math.Round(pxAlto)));
+        var lienzo = new DrawingVisual();
+
+        RenderOptions.SetBitmapScalingMode(lienzo, BitmapScalingMode.HighQuality);
+
+        using (var dc = lienzo.RenderOpen())
+        {
+            dc.DrawImage(grande, new Rect(0, 0, pxAncho, pxAlto));
+        }
+
+        var mapa = new RenderTargetBitmap(pxAncho, pxAlto, 96, 96, PixelFormats.Pbgra32);
+
+        mapa.Render(lienzo);
+
+        return mapa;
     }
+
+    /// <summary>El tamaño de la imagen: el que se guarda y el que se dibuja.</summary>
+    /// <remarks>
+    /// La cuenta vive en <see cref="TamanoDeImagen"/>, en CadLink.Cad, y no aquí: es aritmética
+    /// con dos topes que se pisan entre ellos y una invariante que importa —el aspecto que entra
+    /// es el que sale, o la pieza sale estirada—, y allí <b>se puede probar</b>. Aquí no.
+    /// </remarks>
+    private static TamanoDeImagen.Tamano TamanoDeLaImagen3D(double ancho, double alto) =>
+        TamanoDeImagen.Calcular(
+            ancho / alto,
+            AnchoDeLaImagen3D,
+            SuperMuestreoDeLaImagen3D,
+            MaximoLadoQueSeDibuja3D,
+            MaximoDePixelesQueSeDibujan3D);
 
     // ======================================================================
     //  El sol
@@ -538,7 +669,7 @@ public partial class MainWindow
                 eje.Add((p.X, p.Y, p.Z));
             }
 
-            TuboDeMalla.Agregar(malla, eje, diamCm / 2, cerrado);
+            TuboDeMalla.Agregar(malla, eje, diamCm / 2, cerrado, _ladosDelTubo3D);
         }
 
         // ---------- Las varillas longitudinales ----------
@@ -550,7 +681,7 @@ public partial class MainWindow
             TuboDeMalla.Agregar(
                 mallaVarillas,
                 new[] { (a.X, a.Y, a.Z), (b.X, b.Y, b.Z) },
-                vr);
+                vr, lados: _ladosDelTubo3D);
         }
 
         // ---------- El estribo, el diamante y las grapas en cada posición ----------
@@ -844,7 +975,7 @@ public partial class MainWindow
                 TuboDeMalla.Agregar(
                     mallaVarillas,
                     new[] { (x, 0.0, z), (x, by, z) },
-                    dVar / 2);
+                    dVar / 2, lados: _ladosDelTubo3D);
             }
         }
 
@@ -895,7 +1026,8 @@ public partial class MainWindow
                     centros[^1] * 100.0,
                     cz + (rZunEje * Math.Sin(aFin))));
 
-                TuboDeMalla.Agregar(mallaEstribos, helice, dZun / 2);
+                TuboDeMalla.Agregar(
+                    mallaEstribos, helice, dZun / 2, lados: _ladosDelTubo3D);
             }
             else
             {
@@ -916,7 +1048,9 @@ public partial class MainWindow
                             cz + (rZunEje * Math.Sin(a))));
                     }
 
-                    TuboDeMalla.Agregar(mallaEstribos, anillo, dZun / 2, cerrado: true);
+                    TuboDeMalla.Agregar(
+                        mallaEstribos, anillo, dZun / 2,
+                        cerrado: true, lados: _ladosDelTubo3D);
                 }
             }
 
@@ -943,7 +1077,7 @@ public partial class MainWindow
                     TuboDeMalla.Agregar(
                         mallaEstribos,
                         gancho.Select(p => (p.X, y, p.Y)).ToList(),
-                        dZun / 2);
+                        dZun / 2, lados: _ladosDelTubo3D);
                 }
             }
         }
@@ -1300,44 +1434,64 @@ public partial class MainWindow
             return null;
         }
 
-        var centroX = silueta.Average(p => p.X);
-        var centroZ = silueta.Average(p => p.Y);
-
         var grupo = new Model3DGroup();
 
-        // ===== TRES CAPAS PARA LA PENUMBRA =====
+        // ===== LA PENUMBRA: MUCHAS CAPAS Y UNA BANDA DE ANCHO CONSTANTE =====
         //
-        // Una sombra de verdad no tiene el borde cortado a tijera: se va deshaciendo. Se
-        // apilan tres siluetas, cada una un poco más grande y más tenue, y donde se solapan
-        // las tres queda lo más oscuro. Eso da el degradado del borde sin calcularlo.
+        // Una sombra de verdad no tiene el borde cortado a tijera: se va deshaciendo en una
+        // banda. Aquí eso se consigue apilando siluetas cada vez más grandes y tenues, y donde
+        // se solapan muchas queda lo más oscuro.
         //
-        // Y van a cotas ligeramente distintas —fracciones de milímetro— porque dos caras
-        // exactamente a la misma altura dejan al motor sin criterio para decidir cuál va
-        // delante, y eso parpadea al girar.
-        var capas = new[]
-        {
-            (Crece: 1.22, Alfa: (byte)0x30, Cota: 0.04),
-            (Crece: 1.10, Alfa: (byte)0x3E, Cota: 0.07),
-            (Crece: 1.00, Alfa: (byte)0x52, Cota: 0.10)
-        };
+        // DOS COSAS SE CORRIGIERON, Y LAS DOS SE VEÍAN:
+        //
+        //  · ERAN TRES CAPAS. Tres saltos de opacidad no son un degradado: son tres escalones,
+        //    y en la imagen se leían como tres platos grises apilados. Ahora son
+        //    CapasDeLaSombra, con lo que el ojo ya no distingue un borde de otro.
+        //
+        //  · CRECÍAN POR ESCALA, desde el centro. Al escalar, la banda sale PROPORCIONAL a la
+        //    distancia al centro, así que en una sombra alargada —y la de una columna de tres
+        //    metros lo es— la punta se ensanchaba muchísimo y los costados casi nada. Ahora cada
+        //    silueta se ENSANCHA una distancia fija con Envolvente.Ensanchada, así que la
+        //    penumbra tiene el mismo ancho por todos lados, que es lo que hace un sol de verdad.
+        //
+        // El REPARTO de las capas no es lineal: el desplazamiento va con una potencia mayor que
+        // uno, así que se apiñan cerca del núcleo y se separan hacia fuera. Eso concentra la
+        // opacidad en el centro de la sombra y la deja caer despacio en el borde, que es la forma
+        // que tiene una penumbra. Con reparto lineal el degradado sale plano y parece una mancha.
+        var anchoDeLaPenumbra = AnchoDeLaPenumbra(silueta);
 
-        foreach (var (crece, alfa, cota) in capas)
+        for (var k = CapasDeLaSombra - 1; k >= 0; k--)
         {
+            // De fuera hacia dentro: la más grande primero. Es el orden en que hay que
+            // dibujarlas —de atrás hacia delante desde la cámara, que mira desde arriba— para
+            // que la mezcla de transparencias salga bien. El motor 3D no las reordena.
+            var t = CapasDeLaSombra == 1 ? 0 : (double)k / (CapasDeLaSombra - 1);
+
+            var fuera = anchoDeLaPenumbra * Math.Pow(t, RepartoDeLaPenumbra);
+
+            var borde = fuera <= 1e-9 ? silueta : Envolvente.Ensanchada(silueta, fuera);
+
+            if (borde.Count < 3)
+            {
+                continue;
+            }
+
+            // Las cotas van escalonadas —fracciones de milímetro— porque dos caras exactamente
+            // a la misma altura dejan al motor sin criterio para decidir cuál va delante, y eso
+            // parpadea al girar. La de dentro va arriba, encima de las de fuera.
+            var cota = CotaDeLaSombra + ((CapasDeLaSombra - 1 - k) * SaltoDeCotaDeLaSombra);
+
             var geo = new MeshGeometry3D();
 
-            foreach (var (x, z) in silueta)
+            foreach (var (x, z) in borde)
             {
-                geo.Positions.Add(new Point3D(
-                    centroX + ((x - centroX) * crece),
-                    cota,
-                    centroZ + ((z - centroZ) * crece)));
-
+                geo.Positions.Add(new Point3D(x, cota, z));
                 geo.Normals.Add(new Vector3D(0, 1, 0));
             }
 
-            // Un abanico desde el primer vértice: vale para cualquier polígono CONVEXO, y la
-            // envolvente lo es por construcción.
-            for (var i = 1; i + 1 < silueta.Count; i++)
+            // Un abanico desde el primer vértice: vale para cualquier polígono CONVEXO, y el
+            // ensanchado de una envolvente lo sigue siendo.
+            for (var i = 1; i + 1 < borde.Count; i++)
             {
                 geo.TriangleIndices.Add(0);
                 geo.TriangleIndices.Add(i);
@@ -1346,7 +1500,27 @@ public partial class MainWindow
 
             geo.Freeze();
 
-            var brocha = new SolidColorBrush(Color.FromArgb(alfa, 0x0A, 0x12, 0x1B));
+            // ===== EL COLOR: UNA SOMBRA NO ES GRIS =====
+            //
+            // Se veía gris plomo, y eso es lo que delata una sombra pintada en lugar de
+            // calculada. Una sombra al aire libre no recibe la luz del sol pero SÍ la del cielo,
+            // que es azul; por eso en una foto las sombras salen azuladas, y más azuladas en el
+            // borde, donde el cielo se ve más despejado.
+            //
+            // Así que el color se interpola: el núcleo va a un azul muy oscuro y casi neutro
+            // —ahí no llega ni el cielo— y el borde a un azul más claro y más saturado. Sobre el
+            // fondo azul claro de la vista previa, eso se lee como una sombra; un gris neutro se
+            // lee como una calcomanía.
+            var mezcla = CapasDeLaSombra == 1 ? 0 : t;
+
+            var color = Color.FromArgb(
+                AlfaDeCadaCapaDeSombra,
+                Mezclar(0x14, 0x3C, mezcla),
+                Mezclar(0x1D, 0x4C, mezcla),
+                Mezclar(0x2E, 0x70, mezcla));
+
+            var brocha = new SolidColorBrush(color);
+
             brocha.Freeze();
 
             // ===== DIFUSA, NO EMISIVA =====
@@ -1371,6 +1545,61 @@ public partial class MainWindow
 
         return grupo;
     }
+
+    /// <summary>Cuántas siluetas se apilan para difuminar el borde de la sombra.</summary>
+    /// <remarks>
+    /// Eran tres, y tres saltos de opacidad se ven como tres escalones: en la imagen parecían
+    /// platos apilados. Catorce ya no se distinguen de un degradado, y siguen siendo catorce
+    /// polígonos planos de pocos vértices, o sea nada de coste al lado de las mil barras.
+    /// </remarks>
+    private const int CapasDeLaSombra = 14;
+
+    /// <summary>La opacidad de cada capa, de 0 a 255.</summary>
+    /// <remarks>
+    /// Es baja a propósito: lo que oscurece es la <b>suma</b> de las capas que se solapan. En el
+    /// núcleo se solapan las catorce y la sombra llega a unos dos tercios de opacidad, que es lo
+    /// que tiene una sombra a media mañana. Subiendo esto, el núcleo se va a negro de tinta.
+    /// </remarks>
+    private const byte AlfaDeCadaCapaDeSombra = 0x14;
+
+    /// <summary>Con qué potencia se reparten las capas de la penumbra.</summary>
+    /// <remarks>
+    /// Mayor que uno: las capas se apiñan cerca del núcleo y se separan hacia fuera, así que la
+    /// opacidad se concentra en el centro y cae despacio en el borde. Con 1 —reparto lineal— el
+    /// degradado sale plano y la sombra parece una mancha de acuarela.
+    /// </remarks>
+    private const double RepartoDeLaPenumbra = 1.8;
+
+    /// <summary>A qué altura del suelo va la capa más exterior de la sombra.</summary>
+    private const double CotaDeLaSombra = 0.03;
+
+    /// <summary>Cuánto sube cada capa respecto a la anterior.</summary>
+    /// <remarks>
+    /// Décimas de milímetro. No es para que se vea: es para que el motor tenga un criterio con
+    /// el que ordenar caras que si no estarían a la misma altura, y sin él parpadean al girar.
+    /// </remarks>
+    private const double SaltoDeCotaDeLaSombra = 0.012;
+
+    /// <summary>Cuánto se difumina el borde de la sombra, en las unidades de la pieza.</summary>
+    /// <remarks>
+    /// <b>Va con el tamaño de la sombra, no fijo.</b> Una penumbra de dos centímetros en una
+    /// zapata de tres metros no se ve, y de dos centímetros en un dado de 20 se lo come. Se toma
+    /// una fracción del lado menor de la silueta, con un mínimo para que en una pieza pequeña
+    /// siga habiendo degradado.
+    /// </remarks>
+    private static double AnchoDeLaPenumbra(IReadOnlyList<(double X, double Y)> silueta)
+    {
+        var anchoX = silueta.Max(p => p.X) - silueta.Min(p => p.X);
+        var anchoZ = silueta.Max(p => p.Y) - silueta.Min(p => p.Y);
+
+        var menor = Math.Min(anchoX, anchoZ);
+
+        return Math.Max(1.5, menor * 0.16);
+    }
+
+    /// <summary>Un canal de color interpolado entre dos, con <paramref name="t"/> de 0 a 1.</summary>
+    private static byte Mezclar(int de, int a, double t) =>
+        (byte)Math.Clamp(Math.Round(de + ((a - de) * t)), 0, 255);
 
     // ======================================================================
     //  La cámara

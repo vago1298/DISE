@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de TamanoDeImagen: a que tamaño se guarda el JPG de la
+       vista en 3D.
+
+       Parece una cuenta trivial y no lo es. Hay que cumplir tres cosas a la vez y
+       dos tiran en contra:
+
+         * EL ASPECTO QUE ENTRA ES EL QUE SALE. La camara se coloco con el aspecto
+           del recuadro de pantalla; si la imagen sale con otro, la pieza sale
+           estirada. Esto no se negocia, y es lo que se rompe si se recorta un
+           lado y no el otro.
+
+         * EL SUPERMUESTREO. La imagen se DIBUJA al doble por lado y luego se
+           reduce promediando, que es lo que le quita los dientes de sierra. Asi
+           que los topes van sobre el tamaño DIBUJADO, que es cuatro veces mas
+           superficie. Ahi esta la trampa: aplicarlos al tamaño guardado deja
+           pasar mapas de 400 MB.
+
+         * LOS TOPES. Ningun lado de la superficie que se dibuja puede pasar del
+           limite del rasterizador de WPF, y su area tiene que caber en memoria.
+
+       Y hace falta que este probado porque CadLink.App, que es quien lo usa, NO
+       se puede compilar en el entorno donde se desarrolla.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-tamano-imagen
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-tamano-imagen</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

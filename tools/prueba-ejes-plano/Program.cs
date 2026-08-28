@@ -495,12 +495,20 @@ Igual("y con la palabra del modelo queda «Losa de VOLADO»",
 // =====================================================================================
 //  LA LOSA DE ESCALERA NO SE DIBUJA
 // =====================================================================================
-//  Se pidio: «nada de losa de escalera en planos». Una escalera no es un tablero de losa
-//  -no se arma con parrilla ni se cota como un paño-, asi que se descarta antes de
-//  dibujar. Lo que se comprueba aqui es lo que puede salir mal: que se cuele una
-//  escalera, y sobre todo que NO se lleve por delante una losa normal ni una columna.
+//  LA ESCALERA: PURO CONTORNO, TAMBIEN LA QUE SE MODELA COMO MURO
+// =====================================================================================
+//  Se pidio: «nada de losa de escalera en planos, tampoco las que se modelan como muro,
+//  solo dibuja el contorno de las escaleras, puro contorno nada mas».
+//
+//  Una escalera no es un tablero de losa -no se arma con parrilla ni se cota como un paño-
+//  pero tampoco puede desaparecer: hay que ver DONDE esta. Asi que se APARTA de la lista
+//  antes de dibujar y despues se dibuja solo su perimetro.
+//
+//  Lo que se comprueba aqui es lo que puede salir mal: que se cuele una escalera, que NO se
+//  lleve por delante una losa normal, y sobre todo que NO se lleve por delante la columna ni
+//  la trabe que APOYAN la escalera, que son estructura de verdad.
 Console.WriteLine();
-Console.WriteLine("La losa de escalera fuera del plano:");
+Console.WriteLine("La escalera, de puro contorno:");
 
 var palabrasEsc = cfg.Texto("PALABRAS_ESCALERA", "");
 
@@ -510,33 +518,30 @@ Igual("y las palabras son las del parametro",
       "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", palabrasEsc);
 
 Check("la nota ESCALERA lo dice",
-      LosaEnPlanta.DiceEscalera(null, "ESCALERA", null, palabrasEsc));
+      EscaleraEnPlanta.DiceEscalera(null, "ESCALERA", null, palabrasEsc));
 Check("y en minusculas tambien: el texto se pasa a mayusculas",
-      LosaEnPlanta.DiceEscalera(null, "losa de escalera", null, palabrasEsc));
+      EscaleraEnPlanta.DiceEscalera(null, "losa de escalera", null, palabrasEsc));
 Check("la ETIQUETA tambien vale, que es lo que suele traer el modelo",
-      LosaEnPlanta.DiceEscalera("ESCALERA-1", "", "SLAB1", palabrasEsc));
+      EscaleraEnPlanta.DiceEscalera("ESCALERA-1", "", "SLAB1", palabrasEsc));
 Check("y el nombre de la SECCION",
-      LosaEnPlanta.DiceEscalera(null, null, "LOSA STAIR", palabrasEsc));
-Check("una RAMPA tambien se va: tampoco es un tablero",
-      LosaEnPlanta.DiceEscalera(null, "RAMPA DE ACCESO", null, palabrasEsc));
+      EscaleraEnPlanta.DiceEscalera(null, null, "LOSA STAIR", palabrasEsc));
+Check("una RAMPA tambien: tampoco es un tablero",
+      EscaleraEnPlanta.DiceEscalera(null, "RAMPA DE ACCESO", null, palabrasEsc));
 Check("y el DESCANSO, que es horizontal y por geometria no se distinguiria",
-      LosaEnPlanta.DiceEscalera(null, "DESCANSO", null, palabrasEsc));
+      EscaleraEnPlanta.DiceEscalera(null, "DESCANSO", null, palabrasEsc));
 
 Igual("y se sabe POR QUE palabra, que es lo que se avisa", "STAIR",
-      LosaEnPlanta.PalabraEscalera(null, "STAIR 2", null, palabrasEsc));
+      EscaleraEnPlanta.PalabraEscalera(null, "STAIR 2", null, palabrasEsc));
 
 // LO QUE NO DEBE PASAR. Una losa de entrepiso normal se queda.
 Check("una losa de ENTREPISO se queda",
-      !LosaEnPlanta.DiceEscalera("L-1", "ENTREPISO", "LOSA 10", palabrasEsc));
+      !EscaleraEnPlanta.DiceEscalera("L-1", "ENTREPISO", "LOSA 10", palabrasEsc));
 Check("una losa sin ningun texto se queda",
-      !LosaEnPlanta.DiceEscalera(null, null, null, palabrasEsc));
+      !EscaleraEnPlanta.DiceEscalera(null, null, null, palabrasEsc));
 Check("y una de AZOTEA tambien",
-      !LosaEnPlanta.DiceEscalera("L-9", "AZOTEA", "LOSA 12", palabrasEsc));
+      !EscaleraEnPlanta.DiceEscalera("L-9", "AZOTEA", "LOSA 12", palabrasEsc));
 
-// EL DESCARTE SOBRE LA LISTA. Aqui esta la parte que importa de verdad: se quitan las
-// LOSAS de escalera y NO se toca nada mas. La columna que APOYA la escalera es
-// estructura de verdad y tiene que salir en el plano, aunque su nota diga ESCALERA: por
-// eso el parametro se llama IGNORAR_LOSA_ESCALERA y no «ignorar escaleras».
+// EL APARTADO SOBRE LA LISTA. Aqui esta la parte que importa de verdad.
 ElementoPlanta Elem(ClasePlanta clase, string etiqueta, string notas)
 {
     var e = new ElementoPlanta { Clase = clase, Etiqueta = etiqueta, Notas = notas };
@@ -546,33 +551,53 @@ ElementoPlanta Elem(ClasePlanta clase, string etiqueta, string notas)
     return e;
 }
 
+// Un peldaño modelado como MURO: un eje y un grosor, sin poligono.
+ElementoPlanta Peldano(string etiqueta, string notas,
+                       double x1, double y1, double x2, double y2, double esp)
+{
+    return new ElementoPlanta
+    {
+        Clase = ClasePlanta.Muro, Etiqueta = etiqueta, Notas = notas,
+        X1 = x1, Y1 = y1, X2 = x2, Y2 = y2, AnchoM = esp
+    };
+}
+
 var deLaPlanta = new List<ElementoPlanta>
 {
     Elem(ClasePlanta.Losa, "L-1", "ENTREPISO"),
     Elem(ClasePlanta.Losa, "L-2", "LOSA DE ESCALERA"),
     Elem(ClasePlanta.Losa, "ESCALERA-3", ""),
     Elem(ClasePlanta.Losa, "L-4", "RAMPA"),
+    Peldano("M-1", "ESCALERA", 0, 0, 1.2, 0, 0.30),
+    Peldano("M-2", "MURO DE BLOCK", 0, 5, 4, 5, 0.15),
     Elem(ClasePlanta.Columna, "C-1", "APOYO DE LA ESCALERA"),
     Elem(ClasePlanta.Trabe, "T-1", "TRABE DEL DESCANSO DE ESCALERA"),
 };
 
-var quitadas = LosaEnPlanta.Descartar(deLaPlanta, palabrasEsc);
+var apartadas = EscaleraEnPlanta.Apartar(deLaPlanta, palabrasEsc);
 
-Igual("se quitaron las TRES losas de escalera", 3, quitadas.Count);
-Igual("y quedan tres elementos", 3, deLaPlanta.Count);
+Igual("se apartaron CUATRO: tres losas y un peldaño de muro", 4, apartadas.Count);
+Check("y entre ellas esta el peldaño modelado como MURO",
+      apartadas.Any(e => e.Clase == ClasePlanta.Muro && e.Etiqueta == "M-1"));
+Igual("y quedan cuatro elementos", 4, deLaPlanta.Count);
 Check("la losa de entrepiso sigue ahi",
       deLaPlanta.Any(e => e.Etiqueta == "L-1"));
+Check("el muro de block, que no es escalera, sigue ahi",
+      deLaPlanta.Any(e => e.Clase == ClasePlanta.Muro && e.Etiqueta == "M-2"));
 Check("LA COLUMNA que apoya la escalera SIGUE AHI, aunque su nota diga ESCALERA",
       deLaPlanta.Any(e => e.Clase == ClasePlanta.Columna && e.Etiqueta == "C-1"));
 Check("y la TRABE del descanso tambien: es estructura, no un tablero",
       deLaPlanta.Any(e => e.Clase == ClasePlanta.Trabe && e.Etiqueta == "T-1"));
-Check("ninguna losa que quede dice escalera",
-      !deLaPlanta.Any(e => e.Clase == ClasePlanta.Losa
-                           && LosaEnPlanta.DiceEscalera(
-                               e.Etiqueta, e.Notas, e.Seccion, palabrasEsc)));
+Check("no queda ninguna losa ni muro que diga escalera",
+      !deLaPlanta.Any(e => EscaleraEnPlanta.EsEscalera(e, palabrasEsc)));
+
+// Y SE DEVUELVEN EN EL ORDEN DEL MODELO, no al reves: el dibujo tiene que salir igual dos
+// veces seguidas.
+Igual("la primera apartada es la primera que estaba", "L-2", apartadas[0].Etiqueta);
 
 // Se recorre la lista AL REVES justo para esto: quitando de delante hacia atras, los
-// indices se corren y se salta un elemento. Con tres escaleras SEGUIDAS se nota.
+// indices se corren y se salta un elemento. Con varios peldaños SEGUIDOS -que es como
+// llega una escalera de muro- se nota.
 var seguidas = new List<ElementoPlanta>
 {
     Elem(ClasePlanta.Losa, "E-1", "ESCALERA"),
@@ -581,17 +606,60 @@ var seguidas = new List<ElementoPlanta>
     Elem(ClasePlanta.Losa, "L-5", "AZOTEA"),
 };
 
-Igual("tres escaleras SEGUIDAS se quitan las tres", 3,
-      LosaEnPlanta.Descartar(seguidas, palabrasEsc).Count);
+Igual("tres escaleras SEGUIDAS se apartan las tres", 3,
+      EscaleraEnPlanta.Apartar(seguidas, palabrasEsc).Count);
 Igual("y queda solo la losa de azotea", 1, seguidas.Count);
 Igual("que es la de azotea", "L-5", seguidas[0].Etiqueta);
 
-// Con la lista de palabras VACIA no se descarta nada: es la salida de emergencia si el
+// Con la lista de palabras VACIA no se aparta nada: es la salida de emergencia si el
 // modelo usa esas palabras para otra cosa.
 var conEscalera = new List<ElementoPlanta> { Elem(ClasePlanta.Losa, "E-1", "ESCALERA") };
 
-Igual("con la lista de palabras vacia no se quita nada", 0,
-      LosaEnPlanta.Descartar(conEscalera, "").Count);
+Igual("con la lista de palabras vacia no se aparta nada", 0,
+      EscaleraEnPlanta.Apartar(conEscalera, "").Count);
+
+// ---- EL CONTORNO, QUE ES LO UNICO QUE SE DIBUJA -----------------------------------
+// De una losa es su propio poligono.
+var contornoLosa = EscaleraEnPlanta.Contorno(Elem(ClasePlanta.Losa, "E", "ESCALERA"));
+
+Igual("el contorno de una losa son sus tres vertices", 3, contornoLosa.Count);
+
+// De un MURO es el rectangulo de su huella: el eje engordado medio grosor a cada lado. Un
+// peldaño de 1.2 m con 30 cm de ancho tiene que salir de 1.2 x 0.30, no como una raya.
+var contornoMuro = EscaleraEnPlanta.Contorno(
+    Peldano("M", "ESCALERA", 0, 0, 1.2, 0, 0.30));
+
+Igual("el contorno de un peldaño de muro son cuatro vertices", 4, contornoMuro.Count);
+Cerca("y mide 1.20 de largo", 1.2,
+      contornoMuro.Max(v => v.X) - contornoMuro.Min(v => v.X));
+Cerca("por 0.30 de ancho: el eje engordado medio grosor a cada lado", 0.30,
+      contornoMuro.Max(v => v.Y) - contornoMuro.Min(v => v.Y));
+Cerca("centrado en el eje, arriba", 0.15, contornoMuro.Max(v => v.Y));
+Cerca("y abajo", -0.15, contornoMuro.Min(v => v.Y));
+
+// Un muro SIN grosor en el modelo se dibuja con el de omision, 15 cm: mejor eso que una
+// polilinea degenerada.
+var sinGrosor = EscaleraEnPlanta.Contorno(Peldano("M", "ESCALERA", 0, 0, 1, 0, 0));
+
+Cerca("un muro sin grosor usa el de omision, 15 cm", 0.15,
+      sinGrosor.Max(v => v.Y) - sinGrosor.Min(v => v.Y));
+
+// Y un muro DIAGONAL tambien: el rectangulo va girado con el eje.
+var diagonal = EscaleraEnPlanta.Contorno(Peldano("M", "ESCALERA", 0, 0, 3, 4, 0.20));
+
+Igual("un peldaño diagonal tambien da cuatro vertices", 4, diagonal.Count);
+Cerca("y su area es largo por ancho: 5 x 0.20", 1.0,
+      Math.Abs(diagonal.Select((v, i) =>
+      {
+          var w = diagonal[(i + 1) % diagonal.Count];
+          return (v.X * w.Y) - (w.X * v.Y);
+      }).Sum() / 2));
+
+// LOS DEGENERADOS: no se dibuja nada, en lugar de una polilinea imposible.
+Igual("una losa de dos vertices no da contorno", 0,
+      EscaleraEnPlanta.Contorno(new ElementoPlanta { Clase = ClasePlanta.Losa }).Count);
+Igual("y un muro de largo cero tampoco", 0,
+      EscaleraEnPlanta.Contorno(Peldano("M", "ESCALERA", 2, 2, 2, 2, 0.15)).Count);
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
@@ -699,6 +767,59 @@ Cerca("la orilla con cadena sube al pano: y = 0.075", 0.075, panoLosa.Min(v => v
 Cerca("la de arriba se queda donde estaba", 3, panoLosa.Max(v => v.Y));
 Cerca("y los lados sin cadena no se mueven, en X", 0, panoLosa.Min(v => v.X));
 Cerca("ni el otro", 4, panoLosa.Max(v => v.X));
+
+// =====================================================================================
+//  EL HATCH HASTA LA LINEA DE LA LOSA: SE METE EL TROZO CON CADENA, NO EL LADO ENTERO
+// =====================================================================================
+//  Esto era un fallo de verdad y se veia en el plano: un lado de 4 m con una cadena de solo
+//  2 m se metia COMPLETO, asi que en los 2 m libres el achurado del voladizo se quedaba a
+//  7.5 cm de la linea de la losa y entre los dos habia una franja en blanco. Se pidio que el
+//  hatch llegue hasta el pano de la losa, o sea hasta su linea.
+//
+//  Ahora el contorno del molde ESCALONA: va por la cara de la cadena donde hay cadena, y por
+//  la linea de la losa donde no la hay.
+Console.WriteLine();
+Console.WriteLine("El molde del hatch escalona donde la cadena no llega:");
+
+var cadenaCorta = new List<ElementoPlanta>
+{
+    PanoDeApoyo.Huella(
+        new ElementoPlanta
+        {
+            // Solo de x=0 a x=2, la mitad del lado de abajo del cuadro de 4x3.
+            Clase = ClasePlanta.Trabe, X1 = 0, Y1 = 0, X2 = 2, Y2 = 0, AnchoM = 0.15
+        },
+        0.15)
+};
+
+var escalonado = PanoDeLosa.AlPano(losaCuadro, cadenaCorta);
+
+// La mitad SIN cadena tiene que seguir en y = 0: ahi esta la linea de la losa, y el hatch
+// tiene que llegar hasta ella.
+Cerca("la mitad sin cadena se queda en la linea de la losa: y = 0", 0,
+      escalonado.Min(v => v.Y));
+
+// Y la mitad CON cadena sigue metida a 7.5 cm: por ahi el rayado no debe entrar en la cadena.
+Check("y hay un punto a 7.5 cm, la cara de la cadena",
+      escalonado.Any(v => Math.Abs(v.Y - 0.075) < 1e-6));
+
+// El escalon existe: el contorno tiene mas de cuatro vertices porque sube y baja.
+Check("el contorno lleva mas de cuatro vertices: es el escalon", escalonado.Count > 4);
+
+// Y EL ESCALON ESTA DONDE ACABA LA CADENA, en x = 2. Sin esto el escalon podria estar en
+// cualquier parte y la prueba pasaria igual.
+Check("el escalon esta en x = 2, donde acaba la cadena",
+      escalonado.Any(v => Math.Abs(v.X - 2) < 1e-6 && Math.Abs(v.Y - 0.075) < 1e-6)
+      && escalonado.Any(v => Math.Abs(v.X - 2) < 1e-6 && Math.Abs(v.Y) < 1e-6));
+
+// LO QUE NO DEBE CAMBIAR: con la cadena a lo largo de TODO el lado, el resultado es el de
+// antes -cuatro vertices y el lado entero metido-. Es la comprobacion de que la correccion
+// no se llevo por delante el caso que ya funcionaba.
+var entera = PanoDeLosa.AlPano(losaCuadro, cadenaAbajo);
+
+Igual("con la cadena a lo largo de todo el lado, siguen siendo cuatro vertices",
+      4, entera.Count);
+Cerca("y el lado entero sigue metido a 7.5 cm", 0.075, entera.Min(v => v.Y));
 
 // UNA CADENA PERPENDICULAR que solo toca la orilla NO mete el pano: no esta debajo de
 // esa orilla.

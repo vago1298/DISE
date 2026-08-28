@@ -106,8 +106,10 @@ var cfg = new ConfigPlano();
 //   VACIO_TOL_CM                    dos bordes a menos de esto son el MISMO borde
 //   VACIO_AREA_MIN_M2               por debajo de esto no se dibuja: son astillas del mesh
 //   VACIO_CRUZ                      la cruz dentro del hueco, ademas del contorno
+//   CAPA_ESCALERA                   el contorno de la escalera: E-ESCALERA
+//   COLOR_ESCALERA                  su color
 Igual("la hoja trae los renglones de CrearHojaConfig, mas los que se han añadido",
-      335, ConfigPlano.PorOmision.Count);
+      337, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -364,7 +366,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 335 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 337 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -425,9 +427,16 @@ Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"));
 // hueco de la escalera, del elevador o del ducto.
 Igual("E-VACIO, la de donde no hay piso", 252, ColorDe("E-VACIO"));
 Igual("y se llega a ella por su nombre", "E-VACIO", capas.CapaVacio);
-// VEINTICUATRO: las 22 de la macro, mas E-MURO DE CONCRETO -que se pidio aparte para el muro de
-// concreto que no lleva cadena- y mas E-VACIO.
-Igual("son las 24 capas", 24, capas.Todas.Count);
+// LA ESCALERA: de ella se dibuja PURO CONTORNO, y va en su capa. NO puede ir en E-LOSA
+// porque esa se deja APAGADA al terminar, y entonces se apagaria con ella justo lo unico
+// que se pidio dibujar.
+Igual("E-ESCALERA, la del contorno de la escalera", 8, ColorDe("E-ESCALERA"));
+Igual("y se llega a ella por su nombre", "E-ESCALERA", capas.CapaEscalera);
+Check("y NO es la de la losa, que se apaga al terminar",
+      capas.CapaEscalera != capas.CapaDeTipo("LOSA"));
+// VEINTICINCO: las 22 de la macro, mas E-MURO DE CONCRETO -que se pidio aparte para el muro de
+// concreto que no lleva cadena-, mas E-VACIO y mas E-ESCALERA.
+Igual("son las 25 capas", 25, capas.Todas.Count);
 Igual("y la del muro de concreto se llama E-MURO DE CONCRETO",
       "E-MURO DE CONCRETO", capas.CapaMuroConcreto);
 Igual("con su color de la hoja", 4,

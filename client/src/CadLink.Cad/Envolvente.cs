@@ -116,4 +116,137 @@ public static class Envolvente
 
         return abajo;
     }
+
+    /// <summary>
+    /// El mismo polígono convexo <b>ensanchado</b> <paramref name="cuanto"/> metros por fuera.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es para la <b>penumbra</b> de la sombra. Una sombra de verdad no tiene el borde cortado a
+    /// tijera: se va deshaciendo en una banda de <b>ancho constante</b> alrededor de la silueta.
+    /// Y ahí estaba el defecto de la versión anterior, que apilaba siluetas <i>escaladas</i>
+    /// desde el centro: al escalar, la banda sale proporcional a la distancia al centro, así que
+    /// en una sombra alargada la punta se ensancha muchísimo y los costados casi nada. Eso no se
+    /// lee como una sombra difuminada, se lee como platos apilados, que es justo lo que se veía.
+    /// </para>
+    /// <para>
+    /// Cada lado se desplaza hacia fuera <paramref name="cuanto"/> y las esquinas se recuperan
+    /// <b>cortando</b> los lados desplazados. El sentido de «fuera» se saca del signo del área,
+    /// así que da igual si el polígono viene en sentido horario o antihorario.
+    /// </para>
+    /// <para>
+    /// <b>El tope del pico</b> —<paramref name="topeDePico"/>— es lo que salva las esquinas muy
+    /// agudas. En un vértice casi en punta, los dos lados desplazados se cortan lejísimos y sale
+    /// una espina larguísima, que en la sombra aparece como un pincho saliendo de la nada.
+    /// Pasado el tope se <b>chaflana</b>: en lugar de una esquina en punta se ponen dos puntos,
+    /// uno por lado. Es el «miter limit» de siempre, y es la diferencia entre una sombra con el
+    /// borde redondeado y una con agujas.
+    /// </para>
+    /// </remarks>
+    /// <param name="convexa">El polígono, convexo. Sale de <see cref="Convexa"/>.</param>
+    /// <param name="cuanto">Cuánto se ensancha, en las mismas unidades que los puntos.</param>
+    /// <param name="topeDePico">
+    /// Cuántas veces <paramref name="cuanto"/> se admite que la esquina se aleje antes de
+    /// chaflanarla.
+    /// </param>
+    public static List<(double X, double Y)> Ensanchada(
+        IReadOnlyList<(double X, double Y)> convexa,
+        double cuanto,
+        double topeDePico = 3.0)
+    {
+        var n = convexa?.Count ?? 0;
+
+        if (convexa is null || n < 3 || cuanto <= 0)
+        {
+            return convexa?.ToList() ?? new List<(double X, double Y)>();
+        }
+
+        // El signo del área dice el sentido del recorrido, y de ahí cuál de las dos normales de
+        // cada lado apunta hacia fuera.
+        double doble = 0;
+
+        for (var i = 0; i < n; i++)
+        {
+            var a = convexa[i];
+            var b = convexa[(i + 1) % n];
+
+            doble += (a.X * b.Y) - (b.X * a.Y);
+        }
+
+        // Antihorario (área positiva): la normal exterior del lado a→b es (dy, -dx).
+        var signo = doble >= 0 ? 1.0 : -1.0;
+
+        // Cada lado, ya desplazado: un punto suyo y su dirección.
+        var lados = new (double Px, double Py, double Dx, double Dy, double Nx, double Ny)[n];
+
+        for (var i = 0; i < n; i++)
+        {
+            var a = convexa[i];
+            var b = convexa[(i + 1) % n];
+
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+
+            var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+            if (largo < 1e-12)
+            {
+                // Un lado de largo cero no tiene normal: se deja donde está y las esquinas
+                // vecinas lo resuelven entre ellas.
+                lados[i] = (a.X, a.Y, 1, 0, 0, 0);
+                continue;
+            }
+
+            dx /= largo;
+            dy /= largo;
+
+            var nx = signo * dy;
+            var ny = signo * -dx;
+
+            lados[i] = (a.X + (nx * cuanto), a.Y + (ny * cuanto), dx, dy, nx, ny);
+        }
+
+        var salida = new List<(double X, double Y)>(n + 4);
+
+        for (var j = 0; j < n; j++)
+        {
+            // La esquina j está entre el lado anterior y el lado j.
+            var r = lados[(j - 1 + n) % n];
+            var s = lados[j];
+
+            var det = (r.Dx * -s.Dy) - (r.Dy * -s.Dx);
+
+            var v = convexa[j];
+
+            if (Math.Abs(det) < 1e-12)
+            {
+                // Lados paralelos: no hay esquina que cortar, se desplaza el vértice.
+                salida.Add((v.X + (s.Nx * cuanto), v.Y + (s.Ny * cuanto)));
+                continue;
+            }
+
+            var ex = s.Px - r.Px;
+            var ey = s.Py - r.Py;
+
+            var t = ((ex * -s.Dy) - (ey * -s.Dx)) / det;
+
+            var px = r.Px + (r.Dx * t);
+            var py = r.Py + (r.Dy * t);
+
+            // ¿Se fue muy lejos? Entonces se chaflana con un punto por lado.
+            var lejos = Math.Sqrt(((px - v.X) * (px - v.X)) + ((py - v.Y) * (py - v.Y)));
+
+            if (lejos > cuanto * topeDePico)
+            {
+                salida.Add((v.X + (r.Nx * cuanto), v.Y + (r.Ny * cuanto)));
+                salida.Add((v.X + (s.Nx * cuanto), v.Y + (s.Ny * cuanto)));
+
+                continue;
+            }
+
+            salida.Add((px, py));
+        }
+
+        return salida;
+    }
 }

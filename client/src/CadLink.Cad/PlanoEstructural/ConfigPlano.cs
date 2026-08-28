@@ -313,8 +313,15 @@ public sealed class ConfigPlano
         P("CIMENTACION_COLUMNA_TOL_CM", "20", "Holgura en Z para saber que desplanta en la base"),
         P("ROTULO_NOMBRE_CIMENTACION", "CIMENTACION", "LO QUE DICE EL ROTULO CUANDO EL NIVEL ES LA BASE"),
         P("DIBUJAR_LOSAS", "SI", "Dibujar el contorno de las losas"),
-        P("IGNORAR_LOSA_ESCALERA", "SI", "SI = las losas de escalera NO se dibujan"),
+        // LA ESCALERA: SOLO SU CONTORNO. Se pidio "nada de losa de escalera en planos,
+        // tampoco las que se modelan como muro, solo dibuja el contorno de las escaleras,
+        // puro contorno nada mas". Se apartan de la lista antes de dibujar -asi no las ve
+        // el achurado, ni la parrilla, ni el rotulo, ni la union de tableros, ni la linea
+        // doble del muro- y despues se dibuja su perimetro en su propia capa.
+        P("IGNORAR_LOSA_ESCALERA", "SI", "SI = de las escaleras solo se dibuja el contorno"),
         P("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", "Palabras que identifican escaleras"),
+        P("CAPA_ESCALERA", "ESCALERA", "CAPA DEL CONTORNO DE LA ESCALERA (con prefijo: E-ESCALERA)"),
+        P("COLOR_ESCALERA", "8", "Color de esa capa"),
 
         // ---- EL VACIO: DONDE NO HAY PISO -------------------------------------------
         // Se pidio delimitar los vacios con linea punteada y una cruz dentro, que es la

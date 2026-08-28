@@ -25,9 +25,13 @@ internal static class Program
         _fallos++;
     }
 
+    private static void Cerca(double esperado, double real, string que, double tol = 1e-9) =>
+        Comprobar(Math.Abs(esperado - real) <= tol, que,
+                  $"esperado {esperado}, salió {real}");
+
     private static int Main()
     {
-        Console.WriteLine("PRUEBA DE Envolvente.Convexa");
+        Console.WriteLine("PRUEBA DE Envolvente.Convexa y Envolvente.Ensanchada");
         Console.WriteLine(new string('=', 70));
 
         UnCuadrado();
@@ -38,6 +42,9 @@ internal static class Program
         ElCasoDeLaSombraGIRADA();
         Degenerados();
         TodoLoQueEntraQuedaDentro();
+        LaPenumbraSeEnsanchaIgualPorTodOS();
+        ElTopeDelPico();
+        EnsancharDegenerados();
 
         Console.WriteLine(new string('=', 70));
 
@@ -336,5 +343,191 @@ internal static class Program
 
         Comprobar(fuera == 0, "y nunca deja un punto de entrada fuera",
             $"{fuera} puntos quedaron fuera");
+    }
+
+    // =================================================================================
+    //  LA PENUMBRA: LA BANDA TIENE QUE SER DEL MISMO ANCHO POR TODOS LADOS
+    // =================================================================================
+    //  Es lo que arregla la sombra. Antes se apilaban siluetas ESCALADAS desde el centro, y
+    //  al escalar la banda sale proporcional a la distancia al centro: en una sombra
+    //  alargada la punta se ensancha muchisimo y los costados casi nada. Eso no se lee como
+    //  una sombra difuminada, se lee como platos apilados.
+    //
+    //  Ensanchada desplaza cada LADO una distancia fija, asi que la banda es de ancho
+    //  constante. La prueba mide justo eso, y con un rectangulo MUY alargado, que es donde
+    //  la diferencia entre escalar y desplazar se ve.
+    private static void LaPenumbraSeEnsanchaIgualPorTodOS()
+    {
+        Console.WriteLine();
+        Console.WriteLine("La penumbra se ensancha igual por todos lados:");
+
+        // 10 de largo por 1 de ancho: escalar esto deformaria la banda 10 a 1.
+        var largo = new List<(double X, double Y)>
+        {
+            (0, 0), (10, 0), (10, 1), (0, 1)
+        };
+
+        var ancha = Envolvente.Ensanchada(largo, 0.5);
+
+        Comprobar(ancha.Count == 4, "un rectangulo ensanchado sigue teniendo cuatro esquinas",
+            $"salieron {ancha.Count}");
+
+        Cerca(-0.5, ancha.Min(p => p.X), "se sale 0.5 por la izquierda");
+        Cerca(10.5, ancha.Max(p => p.X), "y 0.5 por la derecha");
+        Cerca(-0.5, ancha.Min(p => p.Y), "0.5 por abajo");
+        Cerca(1.5, ancha.Max(p => p.Y), "y 0.5 por arriba: LA MISMA banda en el lado corto");
+
+        // Escalar habria dado otra cosa completamente: el ancho pasaria de 1 a 1.1 mientras
+        // el largo pasa de 10 a 11. Se comprueba que NO es eso.
+        var comoSiEscalara = 1 * 1.1;
+
+        Comprobar(Math.Abs((ancha.Max(p => p.Y) - ancha.Min(p => p.Y)) - comoSiEscalara) > 0.5,
+            "y NO es un escalado: el lado corto crece lo mismo que el largo");
+
+        // El area crece como area + perimetro*d + pi*d^2 aproximado por las esquinas en punta.
+        // Con esquinas rectas y mitre, crece exactamente area + perimetro*d + 4*d^2.
+        Cerca(11 * 2, Math.Abs(Area(ancha)), "y el area es la de un 11 x 2", 1e-6);
+
+        // ---- EN SENTIDO HORARIO TAMBIEN ----
+        // El sentido de «fuera» se saca del signo del area, asi que no importa como venga. Y el
+        // sentido se CONSERVA: lo que entra horario sale horario. Eso importa porque quien
+        // dibuja la sombra hace un abanico de triangulos, y si el sentido cambiara de un
+        // ensanchado a otro las caras mirarian al lado contrario.
+        var alReves = new List<(double X, double Y)>(largo);
+        alReves.Reverse();
+
+        Comprobar(Area(largo) > 0, "el rectangulo de partida es antihorario");
+        Comprobar(Area(alReves) < 0, "y su reverso, horario");
+
+        var anchaAlReves = Envolvente.Ensanchada(alReves, 0.5);
+
+        Cerca(-0.5, anchaAlReves.Min(p => p.X), "en sentido horario tambien se ensancha, no se mete");
+        Cerca(10.5, anchaAlReves.Max(p => p.X), "por los dos lados");
+        Cerca(11 * 2, Math.Abs(Area(anchaAlReves)), "y con la misma area", 1e-6);
+        Comprobar(Area(anchaAlReves) < 0, "y sigue siendo horario: el sentido se conserva");
+
+        // ---- Y SIEMPRE CONTIENE AL ORIGINAL ----
+        // DentroOEnElBorde da por hecho el sentido antihorario, asi que se endereza antes de
+        // preguntar. Es cosa de la prueba, no del calculo.
+        var enderezado = Antihorario(anchaAlReves);
+
+        var dentro = largo.Count(p => DentroOEnElBorde(p, enderezado));
+
+        Comprobar(dentro == largo.Count,
+            "el poligono original queda entero dentro del ensanchado");
+    }
+
+    /// <summary>El mismo poligono en sentido antihorario, para poder preguntar si algo cae dentro.</summary>
+    private static List<(double X, double Y)> Antihorario(List<(double X, double Y)> p)
+    {
+        if (Area(p) >= 0)
+        {
+            return p;
+        }
+
+        var alReves = new List<(double X, double Y)>(p);
+
+        alReves.Reverse();
+
+        return alReves;
+    }
+
+    // =================================================================================
+    //  EL TOPE DEL PICO: UNA ESQUINA AGUDA NO PUEDE SACAR UNA AGUJA
+    // =================================================================================
+    private static void ElTopeDelPico()
+    {
+        Console.WriteLine();
+        Console.WriteLine("El tope del pico:");
+
+        // Un triangulo con una punta muy aguda: la de (0,0), que abre poquisimo.
+        var punta = new List<(double X, double Y)>
+        {
+            (0, 0), (20, 0.4), (20, -0.4)
+        };
+
+        // Sin tope, los dos lados de la punta se cortarian LEJISIMOS: el semiangulo es de
+        // unos 1.1 grados, asi que la esquina se iria a d/sen(1.1) = mas de 50 veces d.
+        var conTope = Envolvente.Ensanchada(punta, 0.2, topeDePico: 3);
+
+        var masLejos = conTope.Max(p =>
+            Math.Sqrt((p.X * p.X) + (p.Y * p.Y)));
+
+        Comprobar(conTope.Count > 3,
+            "la punta se chaflana, asi que salen mas de tres vertices",
+            $"salieron {conTope.Count}");
+
+        // La punta original esta en (0,0). Ningun vertice nuevo puede estar a mas de
+        // 3 * 0.2 = 0.6 de ella POR EL LADO DE LA PUNTA.
+        var cercaDeLaPunta = conTope
+            .Where(p => p.X < 1)
+            .Select(p => Math.Sqrt((p.X * p.X) + (p.Y * p.Y)))
+            .ToList();
+
+        Comprobar(cercaDeLaPunta.Count > 0, "hay vertices en la zona de la punta");
+        Comprobar(cercaDeLaPunta.All(d => d <= 0.6 + 1e-9),
+            "y ninguno se va mas alla del tope de 3 x 0.2 = 0.6",
+            $"el mas lejano esta a {(cercaDeLaPunta.Count > 0 ? cercaDeLaPunta.Max() : 0):0.###}");
+
+        // CON EL TOPE MUY ALTO si sale la aguja: asi se ve que el tope es lo que la corta y
+        // que la prueba no esta pasando por otro motivo.
+        var sinTope = Envolvente.Ensanchada(punta, 0.2, topeDePico: 1000);
+
+        var agujaLejos = sinTope
+            .Where(p => p.X < 1)
+            .Select(p => Math.Sqrt((p.X * p.X) + (p.Y * p.Y)))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        Comprobar(agujaLejos > 5,
+            "con el tope muy alto SI sale la aguja, o sea que el tope es lo que la corta",
+            $"la aguja llego a {agujaLejos:0.##}");
+
+        // Y en los dos casos el original sigue dentro.
+        Comprobar(punta.All(p => DentroOEnElBorde(p, Antihorario(conTope))),
+            "chaflanada o no, el triangulo original sigue dentro");
+    }
+
+    // =================================================================================
+    //  LOS DEGENERADOS DEL ENSANCHADO
+    // =================================================================================
+    private static void EnsancharDegenerados()
+    {
+        Console.WriteLine();
+        Console.WriteLine("Los degenerados del ensanchado:");
+
+        var cuadro = new List<(double X, double Y)> { (0, 0), (1, 0), (1, 1), (0, 1) };
+
+        Comprobar(Envolvente.Ensanchada(cuadro, 0).Count == 4,
+            "ensanchar cero no cambia el numero de vertices");
+        Cerca(1, Area(Envolvente.Ensanchada(cuadro, 0)), "ni el area");
+
+        Comprobar(Envolvente.Ensanchada(cuadro, -1).Count == 4,
+            "y ensanchar un negativo tampoco: se devuelve tal cual");
+
+        Comprobar(Envolvente.Ensanchada(
+            new List<(double X, double Y)> { (0, 0), (1, 1) }, 0.5).Count == 2,
+            "dos puntos no son un poligono: se devuelven tal cual");
+
+        Comprobar(Envolvente.Ensanchada(
+            new List<(double X, double Y)>(), 0.5).Count == 0,
+            "y sin puntos, nada");
+
+        // El caso de verdad: la silueta de la sombra, ensanchada. Tiene que seguir siendo
+        // convexa, porque de eso depende que el abanico de triangulos valga.
+        var silueta = Envolvente.Convexa(new List<(double X, double Y)>
+        {
+            (0, 0), (30, 0), (30, 60), (0, 60),
+            (12, 25), (42, 25), (42, 85), (12, 85)
+        });
+
+        var conPenumbra = Envolvente.Ensanchada(silueta, 1.5);
+
+        Comprobar(EsConvexoAntihorario(conPenumbra),
+            "la silueta de la sombra ensanchada sigue siendo convexa y antihoraria");
+        Comprobar(silueta.All(p => DentroOEnElBorde(p, conPenumbra)),
+            "y contiene a la silueta original entera");
+        Comprobar(Math.Abs(Area(conPenumbra)) > Math.Abs(Area(silueta)),
+            "y es mas grande, no mas chica");
     }
 }

@@ -106,6 +106,12 @@ public sealed class CapasPlano
         // con los volados, que es lo que se revisa en obra.
         t.Add(new Capa(string.Empty, CapaVolado, Color("COLOR_VOLADO", 4), string.Empty));
 
+        // LA ESCALERA, EN SU PROPIA CAPA. Se pidió que de las escaleras se dibuje «puro
+        // contorno nada más», y ese contorno NO puede ir en E-LOSA: esa capa se deja APAGADA al
+        // terminar —el contorno de todos los paños llena el plano—, así que la escalera se
+        // apagaría con ella y no se vería justo lo único que se pidió dibujar.
+        t.Add(new Capa(string.Empty, CapaEscalera, Color("COLOR_ESCALERA", 8), string.Empty));
+
         // EL VACIO, EN SU PROPIA CAPA Y CON SU TIPO DE LÍNEA. Se pidió así: E-VACIO, color 252
         // y DASHDOT. Va aparte de E-LOSA a propósito, y no por orden: E-LOSA se APAGA al
         // terminar —el contorno de todos los paños llena el plano— y el vacío es justo lo que
@@ -184,6 +190,29 @@ public sealed class CapasPlano
             if (s.Length == 0)
             {
                 s = "VOLADO";
+            }
+
+            return Prefijo.Length > 0 &&
+                   !s.StartsWith(Prefijo, StringComparison.OrdinalIgnoreCase)
+                ? Prefijo + s
+                : s;
+        }
+    }
+
+    /// <summary>La capa de la <b>escalera</b>: <c>E-ESCALERA</c>.</summary>
+    /// <remarks>
+    /// Lleva <b>solo el contorno</b> de las escaleras, que es lo único que se pidió de ellas. Va
+    /// aparte de <c>E-LOSA</c> porque esa se apaga al terminar.
+    /// </remarks>
+    public string CapaEscalera
+    {
+        get
+        {
+            var s = _cfg.Texto("CAPA_ESCALERA", "ESCALERA");
+
+            if (s.Length == 0)
+            {
+                s = "ESCALERA";
             }
 
             return Prefijo.Length > 0 &&

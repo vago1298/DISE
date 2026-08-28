@@ -5354,9 +5354,31 @@ def v18_planta_autocad() -> None:
           and "PanoDeLosa.AlPano(el.Vertices, huellas)" in dib)
     # LAS ESQUINAS SE RECALCULAN CORTANDO los lados movidos: moviendo los vertices uno a uno,
     # un lado con muro y otro sin muro dejarian la esquina abierta o cruzada.
+    #
+    # Lo que se corta son el ULTIMO tramo de un lado y el PRIMERO del siguiente, que son los
+    # pedazos que de verdad llegan a la esquina.
     check("y las esquinas se recalculan cortando los lados, no moviendo vertices",
           "private static (double X, double Y)? Cruce(" in pano
-          and "var corte = Cruce(r, s);" in pano)
+          and "var corte = Cruce(lados[i].Tramos[^1].Recta, lados[j].Tramos[0].Recta);" in pano)
+
+    # ------------------------------------------------------------------
+    # EL HATCH LLEGA HASTA LA LINEA DE LA LOSA
+    # ------------------------------------------------------------------
+    #  Esto era un fallo que se veia en el plano. Se metia el LADO ENTERO en cuanto habia
+    #  cualquier huella paralela debajo, asi que un lado de 4 m con una cadena de solo 2 m se
+    #  metia completo: en los 2 m libres el achurado del voladizo quedaba a 7.5 cm de la linea
+    #  de la losa, con una franja en blanco entre los dos. Se pidio que el hatch llegue hasta el
+    #  pano de la losa, o sea hasta su linea.
+    #
+    #  Ahora el lado se parte en TRAMOS y solo se mete el que tiene muro debajo, asi que el
+    #  contorno del molde escalona.
+    check("el molde del hatch se mete por tramos, no el lado entero",
+          "private static Lado DelLado(" in pano
+          and "private sealed record Tramo(" in pano
+          and "cubren.Add((desde, hasta, Math.Min(h.PeralteM / 2, maximo)));" in pano
+          # Los cortes son los extremos de las huellas proyectados sobre el lado.
+          and "cortes.Add(desde)" in pano
+          and "cortes.Add(hasta)" in pano)
     # Y UN MURO PERPENDICULAR QUE SOLO TOCA LA ORILLA NO CUENTA: no esta debajo de esa orilla.
     check("un muro perpendicular no mete el pano",
           'Math.Abs((hx * dx) + (hy * dy)) < 0.98' in pano)
