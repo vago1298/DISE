@@ -338,7 +338,21 @@ public sealed class ConfigPlano
         // Y NO SOLO EL MURO: un pretil lleva sus CASTILLOS -columnas cortas- y su CADENA
         // DE REMATE -una viga a un metro del piso-. Las tres piezas se iban al mismo sitio
         // equivocado por el mismo motivo, asi que las tres bajan.
-        P("PRETIL_BAJAR_UN_NIVEL", "SI", "SI = el pretil, sus castillos y su cadena van al nivel que los sostiene"),
+        // VIENE EN **NO**, Y ESO SE DECIDIO CON DATOS.
+        //
+        // Se reporto que los pretiles salian "un nivel arriba". La causa NO era el dibujo: era
+        // que el rotulo del plano va CORRIDO UNO respecto al story -Story1 se rotula PLANTA
+        // BAJA, asi que Story3 se rotula SEGUNDO NIVEL y Story4 TERCER NIVEL-. El pretil que
+        // se para en la losa del Story3 lo asigna ETABS al Story4, que es el plano titulado
+        // TERCER NIVEL, y ahi es DONDE SE PIDIO QUE ESTE. O sea que ETABS ya lo pone bien.
+        //
+        // Confirmado por el usuario: "si hay pretil parado en story 3, se debe ver en el plano
+        // estructural de tercer nivel" mas "story 3 es segundo nivel".
+        //
+        // La maquinaria se queda -probada y documentada en Pretil- porque el caso contrario
+        // existe: un modelo con un story creado solo para la tapa del pretil deja el pretil
+        // dos niveles por encima de su losa. Para eso, esto en SI.
+        P("PRETIL_BAJAR_UN_NIVEL", "NO", "NO = el pretil se queda en el nivel que le da ETABS"),
         P("PRETIL_ALTURA_MAX_M", "1.5", "Altura maxima SOBRE LA LOSA para tomarlo por pretil"),
         P("PRETIL_TOL_CM", "20", "Holgura en Z al comparar con la losa"),
 

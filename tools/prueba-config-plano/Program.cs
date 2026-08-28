@@ -477,14 +477,32 @@ Igual("la tolerancia que borra la junta del mallado son 5 cm", 5d,
 Igual("y el area minima 0.10 m2", 0.10, cfg.Numero("VACIO_AREA_MIN_M2", -1));
 
 // ==================================================================================
-//  EL PRETIL, AL NIVEL QUE LO SOSTIENE
+//  EL PRETIL SE QUEDA DONDE LO PONE ETABS, Y ESO SE DECIDIO CON DATOS
 // ==================================================================================
-//  ETABS asigna cada shell al piso de su cota MAS ALTA, asi que un pretil de 1 m que se
-//  para en la losa de un nivel y no llega a la de arriba salia dibujado un nivel por
-//  encima de donde esta. Se baja al que lo sostiene, y SOLO el pretil.
+//  Se reporto que los pretiles salian "un nivel arriba". La causa NO era el dibujo: es
+//  que el ROTULO del plano va CORRIDO UNO respecto al story -Story1 se rotula PLANTA
+//  BAJA, asi que Story3 se rotula SEGUNDO NIVEL y Story4 TERCER NIVEL-.
+//
+//  Un pretil parado en la losa del Story3 lo asigna ETABS al Story4, que es el plano
+//  titulado TERCER NIVEL, y ahi es donde se pidio que salga. ETABS ya lo pone bien.
+//
+//  Asi que la bandera viene en NO. La maquinaria se queda -probada en Pretil- porque el
+//  caso contrario existe: un modelo con un story creado solo para la tapa del pretil lo
+//  deja DOS niveles por encima de su losa, y para eso esto va en SI.
 Console.WriteLine();
-Igual("los pretiles se bajan al nivel que los sostiene", true,
-      cfg.Bandera("PRETIL_BAJAR_UN_NIVEL", false));
+Igual("los pretiles NO se bajan: ETABS ya los pone en el nivel que se pidio", false,
+      cfg.Bandera("PRETIL_BAJAR_UN_NIVEL", true));
+
+// Y LA EQUIVALENCIA QUE LO EXPLICA TODO, comprobada aqui para que quede fijada: el
+// rotulo va corrido uno, asi que "SEGUNDO NIVEL" es el Story3 y no el Story2.
+var rotNiv = new RotuloPlanta(cfg);
+
+Igual("Story1 se rotula PLANTA BAJA", "PLANTA BAJA", rotNiv.NombreDeNivel("Story1"));
+Igual("Story2, PRIMER NIVEL", "PRIMER NIVEL", rotNiv.NombreDeNivel("Story2"));
+Igual("Story3, SEGUNDO NIVEL", "SEGUNDO NIVEL", rotNiv.NombreDeNivel("Story3"));
+Igual("Story4, TERCER NIVEL", "TERCER NIVEL", rotNiv.NombreDeNivel("Story4"));
+Check("o sea que «SEGUNDO NIVEL» NO es el Story2",
+      rotNiv.NombreDeNivel("Story2") != "SEGUNDO NIVEL");
 Igual("con tope de altura de 1.5 m, que es la prudencia que se pidio", 1.5,
       cfg.Numero("PRETIL_ALTURA_MAX_M", -1));
 Igual("y 20 cm de holgura al comparar con la losa", 20d, cfg.Numero("PRETIL_TOL_CM", -1));

@@ -2329,7 +2329,10 @@ public partial class MainWindow : Window
     {
         var modelo = EtabsReader.Leer(cx);
 
-        if (!CfgPlano.Bandera("PRETIL_BAJAR_UN_NIVEL", true))
+        // El valor por omisión es NO, y está razonado en la hoja: ETABS ya pone el pretil en el
+        // nivel donde se pidió que salga. Esto solo hace falta cuando el modelo trae un story
+        // creado para la tapa del pretil, que lo deja dos niveles por encima de su losa.
+        if (!CfgPlano.Bandera("PRETIL_BAJAR_UN_NIVEL", false))
         {
             return modelo;
         }
