@@ -1103,8 +1103,10 @@ public partial class MainWindow : Window
 
         SeccionesModeloGrid.Visibility = aIndividuales ? Visibility.Collapsed : Visibility.Visible;
 
-        EtabsGrid.Visibility = aIndividuales ? Visibility.Visible : Visibility.Collapsed;
-        ElementosTitulo.Visibility = EtabsGrid.Visibility;
+        // Se enciende y se apaga EL PANEL, no la tabla y su título por separado: las dos
+        // tablas comparten el renglón que se queda con todo el alto de la pestaña, así que lo
+        // que tiene que aparecer o desaparecer es el bloque entero.
+        ElementosPanel.Visibility = aIndividuales ? Visibility.Visible : Visibility.Collapsed;
 
         AlternarSeccionesButton.Content = aIndividuales ? "Ver totales" : "Ver individuales";
 
@@ -2602,6 +2604,20 @@ public partial class MainWindow : Window
 
             var fallos = dibujante.Fallos;
 
+            // ==============================================================================
+            //  LAS NOTAS DEL DIBUJO, QUE HASTA AHORA SE TIRABAN
+            // ==============================================================================
+            //  Esto era un agujero de verdad. El dibujante escribe notas explicando lo que
+            //  DECIDIÓ callar: las cadenas que no dibujó porque otra más alta va sobre su misma
+            //  línea, los vacíos que marcó, las escaleras que dejó en puro contorno, la
+            //  retícula que no cupo… y aquí solo se leía Fallos, así que TODAS esas notas se
+            //  escribían y se tiraban.
+            //
+            //  El resultado es que una cadena podía no salir en el plano por una razón que el
+            //  programa conocía y tenía escrita, y el usuario no tenía forma de enterarse. Eso
+            //  cuesta media tarde buscando en el modelo algo que no está mal.
+            var notas = dibujante.Notas;
+
             var cuales = plantas.Count == 1
                 ? $"del nivel {(string.IsNullOrWhiteSpace(plantas[0].Nivel) ? "(todos)" : plantas[0].Nivel)}"
                 : $"en {plantas.Count} plantas ({string.Join(", ", plantas.Select(p => p.Nivel))})";
@@ -2625,12 +2641,26 @@ public partial class MainWindow : Window
                 "una con su color, y con las de CAPAS_AL_FRENTE encima. Falta el armado de " +
                 "losa y los bloques de sección rellenos.";
 
+            // Las notas van al recuadro SIEMPRE, hubiera fallos o no: explican lo que el
+            // dibujante decidió callar, y eso hay que poder leerlo justo después de dibujar.
+            if (notas.Count > 0)
+            {
+                PlanoHintText.Text +=
+                    Environment.NewLine + Environment.NewLine +
+                    $"LO QUE SE DECIDIÓ ({notas.Count}):" + Environment.NewLine +
+                    string.Join(Environment.NewLine, notas.Select(n => "  - " + n));
+            }
+
             if (fallos.Count == 0)
             {
                 MessageBox.Show(
-                    $"Listo.\n\n{r}\n\n" +
-                    "Cada tipo de elemento quedó en su propia capa, así que puedes " +
-                    "apagar lo que no te interese y seguir trabajando encima.",
+                    $"Listo.\n\n{r}\n\n"
+                    + (notas.Count > 0
+                        ? "Y hay " + notas.Count + " nota(s) de lo que se decidió —qué se "
+                          + "dibujó de otra forma y por qué—, en el recuadro de abajo.\n\n"
+                        : string.Empty)
+                    + "Cada tipo de elemento quedó en su propia capa, así que puedes "
+                    + "apagar lo que no te interese y seguir trabajando encima.",
                     AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else

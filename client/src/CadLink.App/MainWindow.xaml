@@ -2519,12 +2519,30 @@
 
             <!-- ===== Secciones del modelo (la hoja SECCIONES de la macro) ===== -->
             <TabItem Header="Secciones modelo">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
-                        <TextBlock Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
+                <!-- ===== LA TABLA OCUPA TODO EL ALTO DE LA PESTAÑA =====
+
+                     Antes esto era un ScrollViewer con un StackPanel dentro, y la
+                     tabla llevaba MaxHeight="520". Dos cosas la limitaban: el tope
+                     de 520 px y el StackPanel, que a un hijo le da su tamaño
+                     deseado y nunca el hueco que queda libre. Asi que la tabla se
+                     cortaba a media pantalla y debajo quedaba sitio sin usar.
+
+                     Con un Grid de tres renglones -titulo Auto, botones Auto y la
+                     tabla en *- la tabla se queda con TODO lo que sobra, y crece
+                     con la ventana. Y el ScrollViewer de fuera se va a proposito:
+                     con el, el alto disponible seria infinito y el * no repartiria
+                     nada. La tabla ya tiene su propia barra. -->
+                <Grid Margin="22">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
                                    ToolTip="Es la hoja SECCIONES de tu macro: que secciones de ETABS o de SAP2000 se estan usando de verdad, cuantas veces y en que niveles." />
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                             <!-- La misma casilla de las otras dos pestañas: la lectura es
                                  una sola y el programa elegido tambien. -->
                             <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
@@ -2565,10 +2583,10 @@
                         </StackPanel>
 
                         <!-- Los nombres de columna son los de la hoja SECCIONES, tal cual -->
-                        <DataGrid x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
+                        <DataGrid Grid.Row="2" x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
                                   ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
                                   IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
-                                  MinHeight="320" MaxHeight="520">
+                                  MinHeight="320">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}" />
@@ -2624,28 +2642,41 @@
 
                         <!-- LA MISMA TABLA QUE ESTABA DEBAJO DEL VISOR 3D, movida aqui: es
                              el detalle -una linea por elemento- de lo que la de arriba
-                             resume por seccion. Arranca oculta y la ensena el boton. -->
-                        <TextBlock x:Name="ElementosTitulo" Visibility="Collapsed"
-                                   Text="Elementos del modelo, uno por uno" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+                             resume por seccion. Arranca oculta y la ensena el boton.
 
-                        <DataGrid x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
-                                  Visibility="Collapsed"
-                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
-                                  MinHeight="320" MaxHeight="520" IsReadOnly="True" CanUserAddRows="False"
-                                  CanUserDeleteRows="False">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="Auto" />
-                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="Auto" />
-                                <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="Auto" />
-                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
-                                <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="Auto" />
-                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="Auto" />
-                            </DataGrid.Columns>
-                        </DataGrid>
+                             VA EN EL MISMO RENGLON QUE LA OTRA, encima, y no en uno
+                             propio. El boton las ALTERNA -nunca se ven las dos a la
+                             vez- asi que compartir el renglon es correcto y ademas es
+                             lo unico que funciona: un renglon en * se queda con su
+                             parte del alto AUNQUE su contenido este oculto, asi que con
+                             un renglon para cada una la tabla visible se quedaria solo
+                             con la mitad de la pestaña. -->
+                        <Grid Grid.Row="2" x:Name="ElementosPanel" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
 
-                    </StackPanel>
-                </ScrollViewer>
+                            <TextBlock Grid.Row="0" x:Name="ElementosTitulo"
+                                       Text="Elementos del modelo, uno por uno" FontWeight="SemiBold" FontSize="12.5"
+                                       Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                            <DataGrid Grid.Row="1" x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
+                                      ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
+                                      MinHeight="320" IsReadOnly="True" CanUserAddRows="False"
+                                      CanUserDeleteRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="Auto" />
+                                    <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="Auto" />
+                                    <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="Auto" />
+                                    <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
+                                    <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="Auto" />
+                                    <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="Auto" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+
+                </Grid>
             </TabItem>
 
             <!-- ===== ETABS ===== -->

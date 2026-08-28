@@ -376,12 +376,17 @@ public sealed class ConfigPlano
         P("DIBUJAR_VACIOS", "SI", "SI = marcar con linea punteada y cruz donde no hay losa"),
         P("CAPA_VACIO", "VACIO", "CAPA DEL VACIO (con prefijo: E-VACIO)"),
         P("COLOR_VACIO", "252", "Color de esa capa"),
-        P("LINETYPE_VACIO", "DASHDOT", "Tipo de linea del vacio"),
 
-        // OJO CON ESTE: en un dibujo en METROS un DASHDOT a escala 1 se ve CONTINUO,
-        // porque el patron mide media unidad de dibujo. Es el mismo caso que
-        // CADENA_SIN_MURO_LTSCALE.
-        P("VACIO_LTSCALE", "0", "0 = automatico (0.01 si el dibujo va en metros)"),
+        // DASHED2 y no DASHDOT: se pidio expresamente despues de verlo dibujado. Un DASHDOT
+        // alterna raya y punto, y en un tramo corto -el lado de un hueco de escalera- se
+        // lee como una linea rota; el DASHED2 es raya corta uniforme y se ve como lo que
+        // es, una linea de referencia.
+        P("LINETYPE_VACIO", "DASHED2", "Tipo de linea del vacio"),
+
+        // OJO CON ESTE: en un dibujo en METROS un tipo de linea a escala 1 se ve CONTINUO,
+        // porque el patron mide del orden de media unidad de dibujo. Es el mismo caso que
+        // CADENA_SIN_MURO_LTSCALE. El 0.02 se pidio con el DASHED2, medido en el dibujo.
+        P("VACIO_LTSCALE", "0.02", "Escala del tipo de linea (0 = automatico)"),
 
         // La tolerancia con la que se juntan dos bordes de paño. Es lo que evita que la
         // junta del mallado -paños contiguos separados por milimetros- salga como un

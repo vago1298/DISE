@@ -459,7 +459,9 @@ Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"));
 Igual("la cadena de desplante va SIN tipo de línea, nunca punteada",
       string.Empty, LineaDe("E-CADENA DESPLANTE"));
 // EL VACIO, DASHDOT: se pidió así, y es la convención para el hueco de la escalera.
-Igual("y el vacio DASHDOT", "DASHDOT", LineaDe("E-VACIO"));
+// DASHED2 y no DASHDOT: se pidio despues de verlo dibujado. Un DASHDOT alterna raya y
+// punto, y en el lado corto de un hueco se lee como una linea rota.
+Igual("y el vacio DASHED2", "DASHED2", LineaDe("E-VACIO"));
 
 // ==================================================================================
 //  EL VACIO: SU LTSCALE ES LO QUE HACE QUE SE VEA PUNTEADO
@@ -469,7 +471,9 @@ Igual("y el vacio DASHDOT", "DASHDOT", LineaDe("E-VACIO"));
 //  medio de espacio en un hueco de 1.20 m es una linea seguida. De ahi VACIO_LTSCALE, con
 //  la misma cuenta que CADENA_SIN_MURO_LTSCALE: 0 = automatico = 0.01.
 Console.WriteLine();
-Igual("VACIO_LTSCALE viene en 0, o sea automatico", 0d, cfg.Numero("VACIO_LTSCALE", -1));
+// LA ESCALA SE PIDIO MEDIDA EN EL DIBUJO: 0.02 con el DASHED2. No es automatica.
+Igual("VACIO_LTSCALE es 0.02, medido en el dibujo", 0.02, cfg.Numero("VACIO_LTSCALE", -1));
+Check("y no es 1, que en metros se veria continuo", cfg.Numero("VACIO_LTSCALE", -1) < 0.5);
 Igual("y los vacios se dibujan por omision", true, cfg.Bandera("DIBUJAR_VACIOS", false));
 Igual("con su cruz dentro", true, cfg.Bandera("VACIO_CRUZ", false));
 Igual("la tolerancia que borra la junta del mallado son 5 cm", 5d,
