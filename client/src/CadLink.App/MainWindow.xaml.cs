@@ -2336,7 +2336,6 @@ public partial class MainWindow : Window
 
         var movidos = Pretil.Bajar(
             modelo,
-            CfgPlano.Numero("MURO_FRACCION_ENTREPISO", Pretil.FraccionDeEntrepiso),
             CfgPlano.Numero("PRETIL_TOL_CM", Pretil.ToleranciaM * 100) / 100,
             CfgPlano.Numero("PRETIL_ALTURA_MAX_M", Pretil.AlturaMaximaM));
 

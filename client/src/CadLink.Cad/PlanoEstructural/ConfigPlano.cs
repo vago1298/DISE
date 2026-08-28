@@ -335,8 +335,11 @@ public sealed class ConfigPlano
         // losa de abajo Y que no llegue a la de arriba. Un muro completo falla lo segundo
         // -su tapa ES la elevacion de su piso- y un dintel falla lo primero -arranca a dos
         // metros del suelo-, asi que ninguno se mueve.
-        P("PRETIL_BAJAR_UN_NIVEL", "SI", "SI = el pretil se dibuja en el nivel que lo sostiene"),
-        P("PRETIL_ALTURA_MAX_M", "1.5", "Altura maxima para tomar un muro bajo como pretil"),
+        // Y NO SOLO EL MURO: un pretil lleva sus CASTILLOS -columnas cortas- y su CADENA
+        // DE REMATE -una viga a un metro del piso-. Las tres piezas se iban al mismo sitio
+        // equivocado por el mismo motivo, asi que las tres bajan.
+        P("PRETIL_BAJAR_UN_NIVEL", "SI", "SI = el pretil, sus castillos y su cadena van al nivel que los sostiene"),
+        P("PRETIL_ALTURA_MAX_M", "1.5", "Altura maxima SOBRE LA LOSA para tomarlo por pretil"),
         P("PRETIL_TOL_CM", "20", "Holgura en Z al comparar con la losa"),
 
         // ---- EL VACIO: DONDE NO HAY PISO -------------------------------------------

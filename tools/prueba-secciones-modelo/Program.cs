@@ -548,135 +548,236 @@ Check("y la que no se movio, tambien", !quieta.ConPuntoDeInsercion);
 Igual("el punto cardinal de omision es el centroide", 10, quieta.PuntoCardinal);
 
 // =====================================================================================
-//  EL PRETIL, AL NIVEL QUE LO SOSTIENE
+//  EL PRETIL, AL NIVEL QUE LO SOSTIENE: MURO, CASTILLOS Y CADENA DE REMATE
 // =====================================================================================
-//  Se reporto: «tengo en el segundo y tercer nivel un pasillo que sobresale, y arriba de ese
-//  pasillo va un pretil de 1 m que se debe ver en el piso de cada uno, pero donde van
-//  pretiles no hay nada y los estas colocando un nivel arriba».
+//  Se reporto: «arriba del pasillo va un pretil de 1 m que se debe ver en el piso de cada
+//  uno, pero donde van pretiles no hay nada y los estas colocando un nivel arriba». Y
+//  despues: «ya pones el muro en su nivel, pero tambien te faltan las columnas y vigas que
+//  estan a 1 m del piso terminado».
 //
-//  El motivo no es un fallo de ETABS: ETABS asigna cada shell al piso de su cota MAS ALTA.
-//  Un pretil se para en la losa del nivel 2 y se queda a un metro, asi que su cota alta cae
-//  en el tramo del nivel 3 y ETABS lo mete ahi.
+//  Un pretil no es solo su muro: lleva sus CASTILLOS -columnas cortas- y su CADENA DE
+//  REMATE -una viga a un metro del piso-. Las tres se iban al mismo sitio equivocado porque
+//  ETABS asigna cada pieza al piso de su cota MAS ALTA.
 //
-//  Y LO QUE HAY QUE PROTEGER es lo que se pidio expresamente: «no quiero que mueva todos los
-//  muros, solo los pretiles». Asi que la mitad de esta prueba son los paneles que NO se deben
-//  mover, uno por uno.
+//  Y LA MITAD DE ESTA PRUEBA son las piezas que NO se deben mover, una por una, porque se
+//  pidio expresamente «no quiero que mueva todos los muros, solo los pretiles».
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
-Console.WriteLine(" EL PRETIL, AL NIVEL QUE LO SOSTIENE");
+Console.WriteLine(" EL PRETIL: MURO, CASTILLOS Y CADENA, AL NIVEL QUE LOS SOSTIENE");
 Console.WriteLine("=====================================================================");
 
 // Un edificio de tres niveles con entrepiso de 2.80: losas a 0, 2.8, 5.6 y 8.4.
 NivelEtabs Nivel(string nombre, double elev, double alto) =>
     new() { Nombre = nombre, ElevacionM = elev, AlturaM = alto };
 
-ElementoEtabs Panel(string story, double zAbajo, double zArriba,
-                    ClaseElemento clase = ClaseElemento.Muro)
+// Un PANEL de muro: shell con sus vertices 3D.
+ElementoEtabs Panel(string story, double zAbajo, double zArriba, double x = 0)
 {
     var e = new ElementoEtabs
     {
-        Clase = clase, Story = story, Forma = "AREA",
-        X1 = 0, Y1 = 0, X2 = 4, Y2 = 0, AnchoM = 0.15,
+        Clase = ClaseElemento.Muro, Story = story, Forma = "AREA",
+        X1 = x, Y1 = 0, X2 = x + 4, Y2 = 0, AnchoM = 0.15,
         Z1 = zAbajo, Z2 = zArriba
     };
 
-    e.Vertices3D.Add((0, 0, zAbajo));
-    e.Vertices3D.Add((4, 0, zAbajo));
-    e.Vertices3D.Add((4, 0, zArriba));
-    e.Vertices3D.Add((0, 0, zArriba));
+    e.Vertices3D.Add((x, 0, zAbajo));
+    e.Vertices3D.Add((x + 4, 0, zAbajo));
+    e.Vertices3D.Add((x + 4, 0, zArriba));
+    e.Vertices3D.Add((x, 0, zArriba));
 
     return e;
 }
+
+// Una BARRA: columna si sube, viga si es plana. Sin vertices 3D, como llegan del lector.
+ElementoEtabs Barra(ClaseElemento clase, string story,
+                    double zAbajo, double zArriba, double x = 0, double largo = 0)
+{
+    return new ElementoEtabs
+    {
+        Clase = clase, Story = story,
+        X1 = x, Y1 = 0, Z1 = zAbajo,
+        X2 = x + largo, Y2 = 0, Z2 = zArriba,
+        AnchoM = 0.15, PeralteM = 0.25
+    };
+}
+
+ElementoEtabs Castillo(string story, double zAbajo, double zArriba, double x = 0) =>
+    Barra(ClaseElemento.Columna, story, zAbajo, zArriba, x);
+
+ElementoEtabs Viga(string story, double z, double x = 0) =>
+    Barra(ClaseElemento.Trabe, story, z, z, x, largo: 4);
 
 var n1 = Nivel("Story1", 2.8, 2.8);
 var n2 = Nivel("Story2", 5.6, 2.8);
 var n3 = Nivel("Story3", 8.4, 2.8);
 
-// ---- EL PRETIL: se para en la losa del 2 (5.6) y llega a 6.6, sin tocar la del 3 (8.4).
-Check("un pretil de 1 m apoyado en la losa de abajo SI es pretil",
-      Pretil.EsPretil(Panel("Story3", 5.6, 6.6), n3));
+// El modelo con el que se preguntan los casos de una en una. Hace falta porque la condicion
+// de «no continua hacia arriba» mira el resto del modelo.
+var solo = new ModeloEtabs();
 
-// ---- LO QUE **NO** SE DEBE MOVER, QUE ES LA MITAD DE LO QUE SE PIDIO ----
+bool EsPretil(ElementoEtabs el, NivelEtabs suyo, double losaAbajo,
+              double alturaMax = Pretil.AlturaMaximaM)
+{
+    var uno = new ModeloEtabs();
+    uno.Elementos.Add(el);
+    return Pretil.EsDelPretil(uno, el, suyo, losaAbajo, Pretil.ToleranciaM, alturaMax);
+}
 
-// UN MURO COMPLETO de piso a techo: su tapa ES la elevacion de su piso.
-Check("un muro completo de piso a techo NO es pretil",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 8.4), n3));
+// ---- LAS TRES PIEZAS DEL PRETIL: se paran en la losa del 2 (5.6) y no llegan a la del 3.
+Check("el MURO del pretil, de 1 m, si es del pretil",
+      EsPretil(Panel("Story3", 5.6, 6.6), n3, 5.6));
+Check("el CASTILLO del pretil tambien",
+      EsPretil(Castillo("Story3", 5.6, 6.6), n3, 5.6));
+Check("y la CADENA DE REMATE, que flota a 1 m y no se apoya en la losa",
+      EsPretil(Viga("Story3", 6.6), n3, 5.6));
 
-// UN DINTEL: el panel de encima de la puerta a la losa. No se apoya en la losa de abajo.
-Check("un dintel NO es pretil: arranca a dos metros del suelo",
-      !Pretil.EsPretil(Panel("Story3", 7.7, 8.4), n3));
+// La cadena es EL caso que forzo a cambiar la regla: no se apoya en la losa, asi que medir
+// «se para en la losa de abajo» la dejaba fuera. Lo que se mide es su altura SOBRE la losa.
+Check("una cadena a 1.4 m sigue siendo del pretil",
+      EsPretil(Viga("Story3", 7.0), n3, 5.6));
+Check("pero una a 2 m ya no: pasa del tope de altura",
+      !EsPretil(Viga("Story3", 7.6), n3, 5.6));
 
-// EL PANEL DE ENCIMA DE UN ANTEPECHO: de 1 m hasta la losa. Tampoco se apoya.
-Check("el panel de encima de un antepecho NO es pretil",
-      !Pretil.EsPretil(Panel("Story3", 6.6, 8.4), n3));
+// ---- LO QUE **NO** SE DEBE MOVER ----
 
-// UN MURO DE DOS PISOS dibujado de corrido: ni se apoya en la losa de su piso menos el
-// entrepiso, ni se queda corto.
-Check("un muro de dos pisos de corrido NO es pretil",
-      !Pretil.EsPretil(Panel("Story3", 2.8, 8.4), n3));
+Check("un MURO COMPLETO de piso a techo NO se mueve",
+      !EsPretil(Panel("Story3", 5.6, 8.4), n3, 5.6));
+Check("una COLUMNA normal de piso a piso NO se mueve",
+      !EsPretil(Castillo("Story3", 5.6, 8.4), n3, 5.6));
+Check("una VIGA a la altura de su losa NO se mueve",
+      !EsPretil(Viga("Story3", 8.4), n3, 5.6));
+Check("una CADENA DE CERRAMIENTO, que va en la losa, tampoco",
+      !EsPretil(Viga("Story3", 8.35), n3, 5.6));
+Check("un DINTEL NO se mueve: su tapa es la losa",
+      !EsPretil(Panel("Story3", 7.7, 8.4), n3, 5.6));
+Check("el panel de encima de un antepecho NO se mueve",
+      !EsPretil(Panel("Story3", 6.6, 8.4), n3, 5.6));
+Check("un muro de dos pisos de corrido NO se mueve",
+      !EsPretil(Panel("Story3", 2.8, 8.4), n3, 5.6));
+Check("una LOSA nunca se mueve: una losa a media altura es un entrepiso",
+      !EsPretil(Barra(ClaseElemento.Losa, "Story3", 5.6, 6.6), n3, 5.6));
+Check("y una DIAGONAL tampoco",
+      !EsPretil(Barra(ClaseElemento.Diagonal, "Story3", 5.6, 6.6, largo: 3), n3, 5.6));
+Check("un muro de 1.9 m sobre la losa no se mueve: pasa del tope",
+      !EsPretil(Panel("Story3", 5.6, 7.5), n3, 5.6));
+Check("pero subiendo el tope a 2.0 si, o sea que el tope es lo que lo frena",
+      EsPretil(Panel("Story3", 5.6, 7.5), n3, 5.6, alturaMax: 2.0));
 
-// UNA COLUMNA o UNA TRABE cortas: mover estructura de piso seria un error grave.
-Check("una columna corta NO es pretil",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 6.6, ClaseElemento.Columna), n3));
-Check("una trabe NO es pretil",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 6.6, ClaseElemento.Trabe), n3));
-Check("una losa NO es pretil",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 6.6, ClaseElemento.Losa), n3));
+// ---- LA CONDICION 3: NO CONTINUA HACIA ARRIBA ----
+//  Es la que salva al ANTEPECHO DE VENTANA y a la COLUMNA PARTIDA EN DOS. Las dos se
+//  parecen muchisimo a un pretil: son bajas y no llegan a la losa. La diferencia es que
+//  llevan algo encima que SI llega.
+var conAntepecho = new ModeloEtabs();
 
-// UN MURO ALTO que se queda corto: pasa las dos condiciones pero se para en el tope de
-// altura. Es la prudencia que se pidio con «solo los pretiles».
-Check("un muro de 1.9 m no se mueve: pasa del tope de altura",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 7.5), n3));
-Check("pero subiendo el tope a 2.0 si se mueve, o sea que el tope es lo que lo frena",
-      Pretil.EsPretil(Panel("Story3", 5.6, 7.5), n3, alturaMaxM: 2.0));
+var antepecho = Panel("Story3", 5.6, 6.6);
+var sobreAntepecho = Panel("Story3", 6.6, 8.4);
 
-// SIN ALTURA DE ENTREPISO no se puede decidir, asi que no se toca. Pasa con los niveles
-// deducidos de las cotas, donde la altura puede venir en cero.
-Check("sin altura de entrepiso no se mueve nada",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 6.6), Nivel("Story3", 8.4, 0)));
+conAntepecho.Elementos.Add(antepecho);
+conAntepecho.Elementos.Add(sobreAntepecho);
 
-// UN PANEL DE ALTURA CERO no es nada.
-Check("un panel de altura cero no es pretil",
-      !Pretil.EsPretil(Panel("Story3", 5.6, 5.6), n3));
+Check("con pared encima que llega a la losa, el antepecho NO es un pretil",
+      !Pretil.EsDelPretil(conAntepecho, antepecho, n3, 5.6));
+Check("y se sabe porque continua hacia arriba",
+      Pretil.ContinuaArriba(conAntepecho, antepecho));
 
-// ---- Y AHORA SOBRE EL MODELO ENTERO ----
+// SIN esa pared encima, el mismo panel SI es un pretil. Asi se ve que lo que decide es la
+// pieza de arriba y no otra cosa del panel.
+var sinNadaEncima = new ModeloEtabs();
+var pretilSuelto = Panel("Story3", 5.6, 6.6);
+
+sinNadaEncima.Elementos.Add(pretilSuelto);
+
+Check("quitando la pared de encima, el mismo panel SI es un pretil",
+      Pretil.EsDelPretil(sinNadaEncima, pretilSuelto, n3, 5.6));
+Check("y no continua hacia arriba", !Pretil.ContinuaArriba(sinNadaEncima, pretilSuelto));
+
+// UNA COLUMNA PARTIDA EN DOS por el modelador, casi siempre porque ahi llega una cadena.
+var partida = new ModeloEtabs();
+
+var mitadBaja = Castillo("Story3", 5.6, 6.6);
+var mitadAlta = Castillo("Story3", 6.6, 8.4);
+
+partida.Elementos.Add(mitadBaja);
+partida.Elementos.Add(mitadAlta);
+
+Check("la mitad de abajo de una columna partida NO es un pretil",
+      !Pretil.EsDelPretil(partida, mitadBaja, n3, 5.6));
+
+// Y LA CADENA DE REMATE DEL PROPIO PRETIL no cuenta como continuacion del castillo: es
+// plana. Sin esto, el castillo del pretil se quedaria arriba por culpa de su propia cadena.
+var pretilCompleto = new ModeloEtabs();
+
+var muroP = Panel("Story3", 5.6, 6.6);
+var castilloP = Castillo("Story3", 5.6, 6.6);
+var cadenaP = Viga("Story3", 6.6);
+
+pretilCompleto.Elementos.Add(muroP);
+pretilCompleto.Elementos.Add(castilloP);
+pretilCompleto.Elementos.Add(cadenaP);
+
+Check("la cadena de remate NO cuenta como continuacion del castillo",
+      !Pretil.ContinuaArriba(pretilCompleto, castilloP));
+Check("asi que el castillo del pretil si se mueve",
+      Pretil.EsDelPretil(pretilCompleto, castilloP, n3, 5.6));
+
+// ---- AHORA SOBRE EL MODELO ENTERO, CON EL CASO REPORTADO ----
 var mod = new ModeloEtabs();
 
 mod.Niveles.Add(n1);
 mod.Niveles.Add(n2);
 mod.Niveles.Add(n3);
 
-// Los dos pretiles del caso reportado: uno en el pasillo del nivel 2 y otro en el del 3.
-var pretil2 = Panel("Story2", 2.8, 3.8);   // se apoya en la losa del 1, deberia ser Story1
-var pretil3 = Panel("Story3", 5.6, 6.6);   // se apoya en la losa del 2, deberia ser Story2
+// El pretil del pasillo del nivel 3, completo: muro, dos castillos y su cadena.
+var pMuro = Panel("Story3", 5.6, 6.6, x: 20);
+var pCast1 = Castillo("Story3", 5.6, 6.6, x: 20);
+var pCast2 = Castillo("Story3", 5.6, 6.6, x: 24);
+var pCadena = Viga("Story3", 6.6, x: 20);
 
-// Y los muros normales de cada nivel, que NO se pueden mover.
-var muro2 = Panel("Story2", 2.8, 5.6);
+// Y el del pasillo del nivel 2.
+var qMuro = Panel("Story2", 2.8, 3.8, x: 20);
+var qCadena = Viga("Story2", 3.8, x: 20);
+
+// La estructura de verdad de cada nivel, que NO se puede mover.
 var muro3 = Panel("Story3", 5.6, 8.4);
-var dintel3 = Panel("Story3", 7.7, 8.4);
+var col3 = Castillo("Story3", 5.6, 8.4, x: 8);
+var viga3 = Viga("Story3", 8.4, x: 8);
+var muro2 = Panel("Story2", 2.8, 5.6);
+var col2 = Castillo("Story2", 2.8, 5.6, x: 8);
 
-mod.Elementos.Add(pretil2);
-mod.Elementos.Add(pretil3);
-mod.Elementos.Add(muro2);
-mod.Elementos.Add(muro3);
-mod.Elementos.Add(dintel3);
+foreach (var e in new[]
+         {
+             pMuro, pCast1, pCast2, pCadena, qMuro, qCadena,
+             muro3, col3, viga3, muro2, col2
+         })
+{
+    mod.Elementos.Add(e);
+}
 
 var movidos = Pretil.Bajar(mod);
 
-Igual("se bajaron los DOS pretiles y nada mas", 2, movidos.Count);
-Igual("el pretil del pasillo del nivel 3 pasa al Story2", "Story2", pretil3.Story);
-Igual("y el del nivel 2 pasa al Story1", "Story1", pretil2.Story);
+Igual("se bajaron las SEIS piezas de pretil y nada mas", 6, movidos.Count);
 
-Igual("EL MURO COMPLETO DEL 2 NO SE MOVIO", "Story2", muro2.Story);
+Igual("el muro del pretil del 3 pasa al Story2", "Story2", pMuro.Story);
+Igual("su primer castillo tambien", "Story2", pCast1.Story);
+Igual("y el segundo", "Story2", pCast2.Story);
+Igual("y su cadena de remate", "Story2", pCadena.Story);
+Igual("el muro del pretil del 2 pasa al Story1", "Story1", qMuro.Story);
+Igual("y su cadena", "Story1", qCadena.Story);
+
 Igual("EL MURO COMPLETO DEL 3 NO SE MOVIO", "Story3", muro3.Story);
-Igual("Y EL DINTEL TAMPOCO", "Story3", dintel3.Story);
+Igual("LA COLUMNA DEL 3 NO SE MOVIO", "Story3", col3.Story);
+Igual("LA VIGA DEL 3 NO SE MOVIO", "Story3", viga3.Story);
+Igual("EL MURO COMPLETO DEL 2 NO SE MOVIO", "Story2", muro2.Story);
+Igual("LA COLUMNA DEL 2 NO SE MOVIO", "Story2", col2.Story);
 
-// El aviso dice de donde a donde, que es lo que hace falta para revisarlo.
+// El aviso dice de donde a donde y de que clase, que es lo que hace falta para revisarlo.
 var avisoPretil = Pretil.Aviso(movidos);
 
 Check("el aviso menciona los dos niveles de destino",
       avisoPretil.Contains("Story1") && avisoPretil.Contains("Story2"));
-Check("y dice cuantos paneles se movieron", avisoPretil.Contains("2 panel"));
+Check("y distingue muros de castillos y de cadenas",
+      avisoPretil.Contains("muro") && avisoPretil.Contains("castillo")
+      && avisoPretil.Contains("cadena"));
 Igual("sin nada movido no hay aviso", "", Pretil.Aviso(new List<Pretil.Bajado>()));
 
 // ---- IDEMPOTENTE: aplicarlo dos veces no baja el pretil dos pisos ----
@@ -685,12 +786,10 @@ Igual("sin nada movido no hay aviso", "", Pretil.Aviso(new List<Pretil.Bajado>()
 var segunda = Pretil.Bajar(mod);
 
 Igual("aplicado dos veces no mueve nada mas", 0, segunda.Count);
-Igual("y el pretil se queda donde lo dejo la primera vez", "Story2", pretil3.Story);
-Igual("igual el otro", "Story1", pretil2.Story);
+Igual("y el muro se queda donde lo dejo la primera vez", "Story2", pMuro.Story);
+Igual("y la cadena tambien", "Story2", pCadena.Story);
 
 // ---- SIN NIVEL DE DESTINO no se adivina: se queda donde estaba ----
-// Un pretil apoyado en una losa que no es ningun nivel del modelo. Antes que ponerlo en un
-// sitio inventado, se queda como esta: es un defecto conocido y no una pieza mal colocada.
 var raro = new ModeloEtabs();
 
 raro.Niveles.Add(n3);
@@ -699,41 +798,39 @@ var sinDestino = Panel("Story3", 5.6, 6.6);
 
 raro.Elementos.Add(sinDestino);
 
-Igual("sin un nivel que lo sostenga no se mueve", 0, Pretil.Bajar(raro).Count);
+Igual("con un solo nivel no se mueve nada", 0, Pretil.Bajar(raro).Count);
 Igual("y se queda en su nivel", "Story3", sinDestino.Story);
 
 // ---- LA TOLERANCIA: la losa nunca cae exacta en el modelo ----
-// El pretil se apoya 3 cm por encima de la losa, que es lo que pasa de verdad.
 Check("un pretil 3 cm por encima de la losa sigue siendo pretil",
-      Pretil.EsPretil(Panel("Story3", 5.63, 6.6), n3));
+      EsPretil(Panel("Story3", 5.63, 6.6), n3, 5.6));
 Check("y 3 cm por debajo tambien",
-      Pretil.EsPretil(Panel("Story3", 5.57, 6.6), n3));
-Check("pero medio metro por encima ya no: eso es un panel colgado",
-      !Pretil.EsPretil(Panel("Story3", 6.1, 6.9), n3));
+      EsPretil(Panel("Story3", 5.57, 6.6), n3, 5.6));
 
 // ---- LAS COTAS SALEN DE LOS VERTICES 3D, NO DE Z1/Z2 ----
 // Z1/Z2 los pone el lector al minimo y al maximo, pero un panel que llegue por otro camino
-// podria traerlos como las cotas de dos vertices cualesquiera, y entonces saldria de altura
-// cero. Se comprueba que manda el vertice.
+// podria traerlos como las cotas de dos vertices cualesquiera, y saldria de altura cero.
 var conVertices = Panel("Story3", 5.6, 6.6);
-conVertices.Z1 = 6.6;   // al reves a proposito
+conVertices.Z1 = 6.6;
 conVertices.Z2 = 6.6;
 
 var cotas = Pretil.CotasDe(conVertices);
 
 Igual("la cota de abajo sale de los vertices 3D", 5.6, cotas.Abajo);
 Igual("y la de arriba tambien", 6.6, cotas.Arriba);
-Check("asi que sigue reconociendose como pretil",
-      Pretil.EsPretil(conVertices, n3));
 
-// Sin vertices 3D se cae a Z1/Z2, que es lo unico que hay.
-var sinVertices = new ElementoEtabs
-{
-    Clase = ClaseElemento.Muro, Story = "Story3", Z1 = 5.6, Z2 = 6.6
-};
+// Una BARRA no trae vertices 3D: sus cotas son las de sus dos nudos.
+Igual("una barra saca la cota de abajo de Z1", 5.6,
+      Pretil.CotasDe(Castillo("Story3", 5.6, 6.6)).Abajo);
+Igual("y la de arriba de Z2", 6.6,
+      Pretil.CotasDe(Castillo("Story3", 5.6, 6.6)).Arriba);
 
-Igual("sin vertices 3D la cota de abajo sale de Z1", 5.6, Pretil.CotasDe(sinVertices).Abajo);
-Check("y tambien se reconoce", Pretil.EsPretil(sinVertices, n3));
+// ---- QUE CLASES SE BAJAN ----
+Check("se bajan los muros", Pretil.ClaseQueSeBaja(ClaseElemento.Muro));
+Check("las columnas", Pretil.ClaseQueSeBaja(ClaseElemento.Columna));
+Check("y las trabes", Pretil.ClaseQueSeBaja(ClaseElemento.Trabe));
+Check("las losas NO", !Pretil.ClaseQueSeBaja(ClaseElemento.Losa));
+Check("y las diagonales NO", !Pretil.ClaseQueSeBaja(ClaseElemento.Diagonal));
 
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
