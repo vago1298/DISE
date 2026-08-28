@@ -1780,12 +1780,32 @@ public partial class MainWindow
 
         var medio = de / 2;
 
+        // ==============================================================================
+        //  SI LA ESQUINA VA EN PAQUETE, EL GANCHO ABRAZA EL PAQUETE ENTERO
+        // ==============================================================================
+        //  Esto faltaba, y era una discrepancia de verdad: el 3D dibujaba el gancho dando la
+        //  vuelta solo a la varilla de la esquina, y el plano de AutoCAD lo dibuja abrazando
+        //  todas las del paquete. Dos dibujos distintos del mismo acero.
+        //
+        //  La regla del paquete es la MISMA que usa el dibujante de AutoCAD —PaqueteVarillas—
+        //  y se mide aquí para pasarla ya hecha: cuánto más adentro queda la última varilla
+        //  del paquete respecto de la que da el doblez. El signo del desplazamiento apunta al
+        //  núcleo, así que se toma su valor absoluto.
+        var enPaquete = PaqueteVarillas.EsPaquete(s.NEsqSup)
+            ? PaqueteVarillas.PorEsquina(s.NEsqSup)
+            : 1;
+
+        var paqueteAdentro = enPaquete > 1
+            ? Math.Abs(PaqueteVarillas.Desplazamiento(enPaquete - 1, dSup, arriba: true))
+            : 0;
+
         return TrazoEstribo.Eje(
             rec + medio, rec + medio,
             s.BaseCm - rec - medio, s.AlturaCm - rec - medio,
             (de + dSup) / 2, (de + dInf) / 2,
             s.GanchoCm,
-            tramosPorDoblez);
+            tramosPorDoblez,
+            paqueteAdentro);
     }
 
     /// <summary>Busca una varilla por su señal en la tabla de la vista previa.</summary>

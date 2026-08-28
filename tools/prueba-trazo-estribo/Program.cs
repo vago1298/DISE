@@ -44,6 +44,7 @@ internal static class Program
         LosLadosSonRectos();
         ElCuerpoVaAntihorario();
         ConGanchoElCuerpoQuedaAbierto();
+        ElGanchoConPaqueteAbrazaElPaquete();
         LasDosColasSonParalelasYSeparadas();
         LasColasApuntanAlNucleo();
         UnRadioImposibleSeRecorta();
@@ -284,6 +285,123 @@ internal static class Program
             Math.Abs(a.Y - y2) < 1e-9 && Math.Abs(b.X - x2) < 1e-9,
             "el hueco queda justo en la esquina de arriba a la derecha",
             $"arranca en ({a.X:F3}, {a.Y:F3}) y acaba en ({b.X:F3}, {b.Y:F3})");
+    }
+
+    // =================================================================================
+    //  EL GANCHO CON VARILLAS EN PAQUETE ABRAZA EL PAQUETE ENTERO
+    // =================================================================================
+    //  Se reporto: "arregla la vista 3D cuando haya varillas en paquete, el gancho debe ser
+    //  el mismo que en AutoCAD". El 3D dibujaba el gancho dando la vuelta solo a la varilla
+    //  de la esquina, y el plano lo dibuja abrazando TODAS las del paquete.
+    //
+    //  La forma es un OBRONDO: un doblez del mismo radio en cada punta del paquete unidos
+    //  por un tramo recto. El radio NO crece -lo manda la varilla con la que se dobla- y el
+    //  tramo recto cae sobre el costado del estribo, que ya esta dibujado.
+    private static void ElGanchoConPaqueteAbrazaElPaquete()
+    {
+        Console.WriteLine();
+        Console.WriteLine("El gancho con varillas en paquete");
+
+        var (x1, y1, x2, y2, rS, rI) = Caso();
+
+        var gancho = DVar * 6;
+
+        var sinPaquete = TrazoEstribo.Eje(x1, y1, x2, y2, rS, rI, gancho);
+
+        // Dos varillas de 1.27 en paquete: la segunda queda un diametro mas adentro.
+        var unDiametro = 1.27;
+        var conPaquete = TrazoEstribo.Eje(
+            x1, y1, x2, y2, rS, rI, gancho, paqueteAdentro: unDiametro);
+
+        if (sinPaquete is null || conPaquete is null)
+        {
+            Comprobar(false, "los dos trazos salen", "alguno salio nulo");
+            return;
+        }
+
+        // LO PRIMERO: SIN PAQUETE NADA CAMBIA. Es la comprobacion de que la correccion no se
+        // llevo por delante el caso de siempre, que es el 99 % de las secciones.
+        var igual = TrazoEstribo.Eje(x1, y1, x2, y2, rS, rI, gancho, paqueteAdentro: 0);
+
+        Comprobar(igual is not null
+                  && igual.Value.Colas.Count == sinPaquete.Value.Colas.Count
+                  && igual.Value.Cuerpo.Count == sinPaquete.Value.Cuerpo.Count,
+            "con paqueteAdentro en cero sale EXACTAMENTE el trazo de siempre",
+            "cambio algo sin haber paquete");
+
+        var y0Sin = MasAbajo(sinPaquete.Value.Colas[0]);
+        var y0Con = MasAbajo(conPaquete.Value.Colas[0]);
+
+        // EL DOBLEZ BAJA UN DIAMETRO: es el de la ultima varilla del paquete, no el de la
+        // esquina. Ahi esta la diferencia que se veia en el plano.
+        Comprobar(y0Con < y0Sin - (unDiametro * 0.5),
+            "el doblez del gancho BAJA hasta la ultima varilla del paquete",
+            $"sin paquete su punto mas bajo esta en {y0Sin:F3} y con paquete en {y0Con:F3}");
+
+        // Y SIGUEN SIENDO DOS COLAS PARALELAS: un gancho sismico tiene dos extremos, con
+        // paquete o sin el.
+        Comprobar(conPaquete.Value.Colas.Count == 2,
+            "siguen saliendo DOS colas", $"salieron {conPaquete.Value.Colas.Count}");
+
+        static (double Dx, double Dy) Dir(List<(double X, double Y)> cola)
+        {
+            var p = cola[^2];
+            var q = cola[^1];
+            var l = Math.Sqrt(((q.X - p.X) * (q.X - p.X)) + ((q.Y - p.Y) * (q.Y - p.Y)));
+            return ((q.X - p.X) / l, (q.Y - p.Y) / l);
+        }
+
+        var d1 = Dir(conPaquete.Value.Colas[0]);
+        var d2 = Dir(conPaquete.Value.Colas[1]);
+
+        Comprobar(Math.Abs((d1.Dx * d2.Dy) - (d1.Dy * d2.Dx)) < 1e-9,
+            "y siguen saliendo PARALELAS, las dos hacia el nucleo",
+            "divergen, y un gancho no abre las colas");
+
+        // EL OTRO DOBLEZ NO SE MUEVE: es el de la varilla de la esquina. Los dos juntos son
+        // el obrondo, y si se movieran los dos no habria obrondo, habria un gancho corrido.
+        Comprobar(
+            Math.Abs(MasArriba(conPaquete.Value.Colas[1])
+                     - MasArriba(sinPaquete.Value.Colas[1])) < 1e-9,
+            "el doblez de la ESQUINA se queda donde estaba: los dos juntos son el obrondo",
+            "se movio, y entonces no hay obrondo sino un gancho corrido");
+
+        // EL CUERPO NO CAMBIA: el tramo recto del obrondo es el costado del estribo, que ya
+        // estaba dibujado. Si el cuerpo cambiara, se estaria dibujando dos veces.
+        Comprobar(conPaquete.Value.Cuerpo.Count == sinPaquete.Value.Cuerpo.Count,
+            "y el cuerpo del estribo no cambia: el tramo recto ya es su costado",
+            "cambio, y entonces el tramo recto se dibuja dos veces");
+
+        // EL TOPE: un paquete disparatado no puede llevarse el gancho fuera del estribo.
+        var exagerado = TrazoEstribo.Eje(
+            x1, y1, x2, y2, rS, rI, gancho, paqueteAdentro: 1000);
+
+        Comprobar(exagerado is not null && MasAbajo(exagerado.Value.Colas[0]) >= y1 - gancho,
+            "con un paquete disparatado el gancho no se sale del estribo",
+            "el doblez se fue fuera de la seccion");
+
+        // Y un desplazamiento NEGATIVO no lo saca por arriba: se toma como cero.
+        var negativo = TrazoEstribo.Eje(
+            x1, y1, x2, y2, rS, rI, gancho, paqueteAdentro: -5);
+
+        Comprobar(negativo is not null
+                  && Math.Abs(MasAbajo(negativo.Value.Colas[0]) - y0Sin) < 1e-9,
+            "y un desplazamiento negativo se toma como cero",
+            "un negativo saco el gancho por arriba");
+    }
+
+    private static double MasAbajo(List<(double X, double Y)> puntos)
+    {
+        var y = double.MaxValue;
+        foreach (var p in puntos) { y = Math.Min(y, p.Y); }
+        return y;
+    }
+
+    private static double MasArriba(List<(double X, double Y)> puntos)
+    {
+        var y = double.MinValue;
+        foreach (var p in puntos) { y = Math.Max(y, p.Y); }
+        return y;
     }
 
     private static void LasDosColasSonParalelasYSeparadas()

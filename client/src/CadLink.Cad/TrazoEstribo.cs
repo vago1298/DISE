@@ -72,10 +72,19 @@ public static class TrazoEstribo
     /// corte, y las dos vistas tienen que enseñar el estribo con el gancho en el mismo sitio.
     /// </remarks>
     /// <returns>El recorrido, o <c>null</c> si el rectángulo no da para un estribo.</returns>
+    /// <param name="paqueteAdentro">
+    /// Cuánto más adentro está la <b>última varilla del paquete</b> de la esquina del gancho,
+    /// respecto de la que da el doblez. Cero cuando no hay paquete, que es el caso de siempre.
+    /// <para>
+    /// Lo calcula quien llama con <see cref="PaqueteVarillas.Desplazamiento"/>; aquí llega ya
+    /// medido para que esta clase no tenga que conocer la regla del paquete.
+    /// </para>
+    /// </param>
     public static Trazo? Eje(
         double x1, double y1, double x2, double y2,
         double rSup, double rInf, double gancho,
-        int tramosPorDoblez = TramosPorDoblez)
+        int tramosPorDoblez = TramosPorDoblez,
+        double paqueteAdentro = 0)
     {
         var ancho = x2 - x1;
         var alto = y2 - y1;
@@ -148,9 +157,31 @@ public static class TrazoEstribo
         var tope = 0.9 * Math.Sqrt((ancho * ancho) + (alto * alto)) / 2;
         var largo = Math.Min(gancho, tope);
 
+        // ==============================================================================
+        //  CON VARILLAS EN PAQUETE, EL GANCHO ABRAZA EL PAQUETE ENTERO
+        // ==============================================================================
+        //  El 3D enseñaba el gancho dando la vuelta solo a la varilla de la esquina, y el
+        //  plano de AutoCAD lo dibuja abrazando TODAS las del paquete. Dos dibujos distintos
+        //  del mismo acero, y el que manda es el plano.
+        //
+        //  LA FORMA ES UN OBRONDO: un doblez del MISMO radio en cada punta del paquete
+        //  —el radio no crece, lo manda la varilla con la que se dobla, no cuántas haya—
+        //  unidos por un tramo recto. Y ese tramo recto NO hay que añadirlo: cae justo sobre
+        //  el costado derecho del estribo, que ya está dibujado. Así que basta con bajar el
+        //  centro de ESTE doblez hasta la última varilla del paquete.
+        //
+        //  De ahí que el cambio sea de una línea y que sin paquete no cambie nada: con
+        //  paqueteAdentro en cero los dos dobleces son el mismo, el tramo recto mide cero y
+        //  queda el gancho de media vuelta de siempre.
+        var adentro = Math.Max(0, paqueteAdentro);
+
+        // Y con el tope de que no se salga del estribo por abajo: un paquete mal leído no
+        // puede llevarse el gancho al otro extremo de la sección.
+        adentro = Math.Min(adentro, Math.Max(0, cgY - y1 - rInf));
+
         // Extremo que llega SUBIENDO por el costado: entra al doblez en 0° y barre 135° en
-        // sentido antihorario.
-        colas.Add(Cola(cgX, cgY, rSup, 0, 0.75 * Math.PI, largo, ux, uy, tramos));
+        // sentido antihorario. Su doblez es el de la ÚLTIMA varilla del paquete.
+        colas.Add(Cola(cgX, cgY - adentro, rSup, 0, 0.75 * Math.PI, largo, ux, uy, tramos));
 
         // Extremo que llega por ARRIBA: entra en 90° y barre 135° en sentido horario, así
         // que sale por el punto opuesto del doblez y su cola queda paralela a la otra.
