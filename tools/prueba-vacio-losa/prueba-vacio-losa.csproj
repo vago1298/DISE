@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de VacioEnLosa: donde NO hay piso.
+
+       Se pidio delimitar los vacios con linea punteada y una cruz dentro, que es
+       la convencion de siempre en un plano de losas: el hueco de la escalera,
+       del elevador o del ducto.
+
+       Y el vacio NO viene del modelo. En ETABS nadie modela un agujero: lo que
+       hay son shells de losa, y el hueco es DONDE NO PUSIERON NINGUNO. Asi que
+       hay que deducirlo, y ahi esta el riesgo que cubre esta prueba:
+
+         * una ESCOTADURA no es un vacio. La esquina que le falta a una planta en
+           L no tiene losa, pero tampoco tiene piso debajo ni al lado: se sale
+           del edificio. Confundirla con un hueco pondria una cruz enorme fuera
+           del edificio.
+
+         * la JUNTA DEL MALLADO no es un vacio. Un modelo real trae paños
+           contiguos separados por milimetros, y sin cuidado cada junta saldria
+           como un vacio larguisimo y flaco. El plano se llenaria de cruces.
+
+         * la CRUZ no puede pisar la losa. En un hueco que no es rectangular -o
+           que tiene una isla de losa dentro, como una escalera con su descanso-
+           la diagonal de la caja se sale del hueco, y una raya cruzando la losa
+           de al lado dice que ahi no hay piso cuando si lo hay.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-vacio-losa
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-vacio-losa</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

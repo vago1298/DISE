@@ -492,6 +492,107 @@ Igual("y con la palabra del modelo queda «Losa de VOLADO»",
           new[] { cfg.TextoTalCual("VOLADO_TEXTO_1"), "  %E  cm de espesor", "", "" },
           soloArmado: true, "VOLADO", "10"));
 
+// =====================================================================================
+//  LA LOSA DE ESCALERA NO SE DIBUJA
+// =====================================================================================
+//  Se pidio: «nada de losa de escalera en planos». Una escalera no es un tablero de losa
+//  -no se arma con parrilla ni se cota como un paño-, asi que se descarta antes de
+//  dibujar. Lo que se comprueba aqui es lo que puede salir mal: que se cuele una
+//  escalera, y sobre todo que NO se lleve por delante una losa normal ni una columna.
+Console.WriteLine();
+Console.WriteLine("La losa de escalera fuera del plano:");
+
+var palabrasEsc = cfg.Texto("PALABRAS_ESCALERA", "");
+
+Check("la bandera IGNORAR_LOSA_ESCALERA viene encendida",
+      cfg.Bandera("IGNORAR_LOSA_ESCALERA", false));
+Igual("y las palabras son las del parametro",
+      "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", palabrasEsc);
+
+Check("la nota ESCALERA lo dice",
+      LosaEnPlanta.DiceEscalera(null, "ESCALERA", null, palabrasEsc));
+Check("y en minusculas tambien: el texto se pasa a mayusculas",
+      LosaEnPlanta.DiceEscalera(null, "losa de escalera", null, palabrasEsc));
+Check("la ETIQUETA tambien vale, que es lo que suele traer el modelo",
+      LosaEnPlanta.DiceEscalera("ESCALERA-1", "", "SLAB1", palabrasEsc));
+Check("y el nombre de la SECCION",
+      LosaEnPlanta.DiceEscalera(null, null, "LOSA STAIR", palabrasEsc));
+Check("una RAMPA tambien se va: tampoco es un tablero",
+      LosaEnPlanta.DiceEscalera(null, "RAMPA DE ACCESO", null, palabrasEsc));
+Check("y el DESCANSO, que es horizontal y por geometria no se distinguiria",
+      LosaEnPlanta.DiceEscalera(null, "DESCANSO", null, palabrasEsc));
+
+Igual("y se sabe POR QUE palabra, que es lo que se avisa", "STAIR",
+      LosaEnPlanta.PalabraEscalera(null, "STAIR 2", null, palabrasEsc));
+
+// LO QUE NO DEBE PASAR. Una losa de entrepiso normal se queda.
+Check("una losa de ENTREPISO se queda",
+      !LosaEnPlanta.DiceEscalera("L-1", "ENTREPISO", "LOSA 10", palabrasEsc));
+Check("una losa sin ningun texto se queda",
+      !LosaEnPlanta.DiceEscalera(null, null, null, palabrasEsc));
+Check("y una de AZOTEA tambien",
+      !LosaEnPlanta.DiceEscalera("L-9", "AZOTEA", "LOSA 12", palabrasEsc));
+
+// EL DESCARTE SOBRE LA LISTA. Aqui esta la parte que importa de verdad: se quitan las
+// LOSAS de escalera y NO se toca nada mas. La columna que APOYA la escalera es
+// estructura de verdad y tiene que salir en el plano, aunque su nota diga ESCALERA: por
+// eso el parametro se llama IGNORAR_LOSA_ESCALERA y no «ignorar escaleras».
+ElementoPlanta Elem(ClasePlanta clase, string etiqueta, string notas)
+{
+    var e = new ElementoPlanta { Clase = clase, Etiqueta = etiqueta, Notas = notas };
+    e.Vertices.Add((0, 0));
+    e.Vertices.Add((1, 0));
+    e.Vertices.Add((1, 1));
+    return e;
+}
+
+var deLaPlanta = new List<ElementoPlanta>
+{
+    Elem(ClasePlanta.Losa, "L-1", "ENTREPISO"),
+    Elem(ClasePlanta.Losa, "L-2", "LOSA DE ESCALERA"),
+    Elem(ClasePlanta.Losa, "ESCALERA-3", ""),
+    Elem(ClasePlanta.Losa, "L-4", "RAMPA"),
+    Elem(ClasePlanta.Columna, "C-1", "APOYO DE LA ESCALERA"),
+    Elem(ClasePlanta.Trabe, "T-1", "TRABE DEL DESCANSO DE ESCALERA"),
+};
+
+var quitadas = LosaEnPlanta.Descartar(deLaPlanta, palabrasEsc);
+
+Igual("se quitaron las TRES losas de escalera", 3, quitadas.Count);
+Igual("y quedan tres elementos", 3, deLaPlanta.Count);
+Check("la losa de entrepiso sigue ahi",
+      deLaPlanta.Any(e => e.Etiqueta == "L-1"));
+Check("LA COLUMNA que apoya la escalera SIGUE AHI, aunque su nota diga ESCALERA",
+      deLaPlanta.Any(e => e.Clase == ClasePlanta.Columna && e.Etiqueta == "C-1"));
+Check("y la TRABE del descanso tambien: es estructura, no un tablero",
+      deLaPlanta.Any(e => e.Clase == ClasePlanta.Trabe && e.Etiqueta == "T-1"));
+Check("ninguna losa que quede dice escalera",
+      !deLaPlanta.Any(e => e.Clase == ClasePlanta.Losa
+                           && LosaEnPlanta.DiceEscalera(
+                               e.Etiqueta, e.Notas, e.Seccion, palabrasEsc)));
+
+// Se recorre la lista AL REVES justo para esto: quitando de delante hacia atras, los
+// indices se corren y se salta un elemento. Con tres escaleras SEGUIDAS se nota.
+var seguidas = new List<ElementoPlanta>
+{
+    Elem(ClasePlanta.Losa, "E-1", "ESCALERA"),
+    Elem(ClasePlanta.Losa, "E-2", "ESCALERA"),
+    Elem(ClasePlanta.Losa, "E-3", "ESCALERA"),
+    Elem(ClasePlanta.Losa, "L-5", "AZOTEA"),
+};
+
+Igual("tres escaleras SEGUIDAS se quitan las tres", 3,
+      LosaEnPlanta.Descartar(seguidas, palabrasEsc).Count);
+Igual("y queda solo la losa de azotea", 1, seguidas.Count);
+Igual("que es la de azotea", "L-5", seguidas[0].Etiqueta);
+
+// Con la lista de palabras VACIA no se descarta nada: es la salida de emergencia si el
+// modelo usa esas palabras para otra cosa.
+var conEscalera = new List<ElementoPlanta> { Elem(ClasePlanta.Losa, "E-1", "ESCALERA") };
+
+Igual("con la lista de palabras vacia no se quita nada", 0,
+      LosaEnPlanta.Descartar(conEscalera, "").Count);
+
 Console.WriteLine();
 Console.WriteLine("=====================================================================");
 Console.WriteLine(" EL Z-BUFFER: POR ESO LA LOSA SE VEIA CORTADA");

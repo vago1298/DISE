@@ -98,8 +98,16 @@ var cfg = new ConfigPlano();
 //   LOSA_TABLERO_TOL_CM             holgura para tomar dos pedazos como pegados
 //   LOSA_TABLERO_APOYO_CUBRE        y cuanta frontera con apoyo debajo son DOS tableros
 //   LOSA_TABLERO_SIN_LINEA_INTERIOR y la raya del mesh no se dibuja
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y siete que se añadieron",
-      327, ConfigPlano.PorOmision.Count);
+//   DIBUJAR_VACIOS                  donde NO hay piso, con linea punteada y una cruz
+//   CAPA_VACIO                      su capa: E-VACIO
+//   COLOR_VACIO                     252, como se pidio
+//   LINETYPE_VACIO                  DASHDOT
+//   VACIO_LTSCALE                   0 = automatico; en metros el DASHDOT necesita 0.01
+//   VACIO_TOL_CM                    dos bordes a menos de esto son el MISMO borde
+//   VACIO_AREA_MIN_M2               por debajo de esto no se dibuja: son astillas del mesh
+//   VACIO_CRUZ                      la cruz dentro del hueco, ademas del contorno
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los que se han añadido",
+      335, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -356,7 +364,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 327 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 335 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -413,9 +421,13 @@ Igual("E-COTAS", 8, ColorDe("E-COTAS"));
 // LA LOSA EN VOLADIZO, EN SU CAPA: es la 22, y la de la losa se queda APAGADA para que
 // se vean los voladizos sin el contorno de todos los paños.
 Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"));
-// VEINTITRES: las 22 de la macro mas E-MURO DE CONCRETO, que se pidio aparte para el muro de
-// concreto que no lleva cadena.
-Igual("son las 23 capas", 23, capas.Todas.Count);
+// EL VACIO: donde NO hay piso. Se pidio tal cual -capa VACIO, color 252 y DASHDOT- para el
+// hueco de la escalera, del elevador o del ducto.
+Igual("E-VACIO, la de donde no hay piso", 252, ColorDe("E-VACIO"));
+Igual("y se llega a ella por su nombre", "E-VACIO", capas.CapaVacio);
+// VEINTICUATRO: las 22 de la macro, mas E-MURO DE CONCRETO -que se pidio aparte para el muro de
+// concreto que no lleva cadena- y mas E-VACIO.
+Igual("son las 24 capas", 24, capas.Todas.Count);
 Igual("y la del muro de concreto se llama E-MURO DE CONCRETO",
       "E-MURO DE CONCRETO", capas.CapaMuroConcreto);
 Igual("con su color de la hoja", 4,
@@ -432,6 +444,23 @@ Igual("los ejes, DASHDOT", "DASHDOT", LineaDe("E-EJES"));
 Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"));
 Igual("la cadena de desplante va SIN tipo de línea, nunca punteada",
       string.Empty, LineaDe("E-CADENA DESPLANTE"));
+// EL VACIO, DASHDOT: se pidió así, y es la convención para el hueco de la escalera.
+Igual("y el vacio DASHDOT", "DASHDOT", LineaDe("E-VACIO"));
+
+// ==================================================================================
+//  EL VACIO: SU LTSCALE ES LO QUE HACE QUE SE VEA PUNTEADO
+// ==================================================================================
+//  OJO CON ESTO, que ya mordio con los ejes: en un dibujo en METROS un DASHDOT a escala 1
+//  se ve CONTINUO, porque el patron mide media unidad de dibujo. Medio metro de raya y
+//  medio de espacio en un hueco de 1.20 m es una linea seguida. De ahi VACIO_LTSCALE, con
+//  la misma cuenta que CADENA_SIN_MURO_LTSCALE: 0 = automatico = 0.01.
+Console.WriteLine();
+Igual("VACIO_LTSCALE viene en 0, o sea automatico", 0d, cfg.Numero("VACIO_LTSCALE", -1));
+Igual("y los vacios se dibujan por omision", true, cfg.Bandera("DIBUJAR_VACIOS", false));
+Igual("con su cruz dentro", true, cfg.Bandera("VACIO_CRUZ", false));
+Igual("la tolerancia que borra la junta del mallado son 5 cm", 5d,
+      cfg.Numero("VACIO_TOL_CM", -1));
+Igual("y el area minima 0.10 m2", 0.10, cfg.Numero("VACIO_AREA_MIN_M2", -1));
 
 Console.WriteLine();
 Igual("el muro va a su capa", "E-MURO", capas.CapaDeTipo("MURO"));

@@ -145,11 +145,24 @@ public partial class MainWindow
 
     /// <summary>Cuántos píxeles de ancho tiene la imagen que se guarda.</summary>
     /// <remarks>
-    /// 3200 px da unos 27 cm a 300 ppp, o sea que entra en una hoja tamaño carta a resolución
-    /// de imprenta. No se sube más porque el coste de memoria va con el CUADRADO del ancho y a
-    /// partir de ahí no se gana nada que se vea en papel.
+    /// 6000 px son 50 cm a 300 ppp: la sección entra a tamaño de plano, no solo de hoja.
+    /// <para>
+    /// No se sube más, y el tope no es el gusto: el rasterizador de WPF trabaja sobre
+    /// superficies intermedias que se atascan pasados los <b>8192</b> píxeles de lado, que es el
+    /// límite clásico de textura. Pedir 12000 no da una imagen mejor, da una imagen recortada o
+    /// una excepción de memoria.
+    /// </para>
     /// </remarks>
-    private const int AnchoDeLaImagen3D = 3200;
+    private const int AnchoDeLaImagen3D = 6000;
+
+    /// <summary>Tope de píxeles totales de la imagen que se guarda.</summary>
+    /// <remarks>
+    /// El ancho solo no acota nada: con un recuadro alto y estrecho, 6000 px de ancho salen con
+    /// un alto de 8000 y eso son <b>190 MB</b> en un solo mapa de bits. Este tope reparte: si el
+    /// área se pasa, se bajan ancho y alto por igual —por la raíz del exceso, que es lo que
+    /// conserva la proporción— y la imagen sigue siendo la misma, algo más pequeña.
+    /// </remarks>
+    private const long MaximoDePixelesDeLaImagen3D = 32_000_000;
 
     /// <summary>
     /// La <b>inclinación del isométrico de verdad</b>, en grados.
@@ -175,14 +188,17 @@ public partial class MainWindow
     /// distintos, y un isométrico es lo que se pide para un plano.
     /// </para>
     /// <para>
-    /// La resolución se consigue con los <b>puntos por pulgada</b> del mapa de bits, no
-    /// agrandando el recuadro: al subir los ppp, WPF vuelve a rasterizar la escena a ese
-    /// tamaño. Como las barras son geometría y no una imagen, salen con el borde limpio por
-    /// grande que se pida. Es la ventaja de haber pasado el 3D a un motor.
+    /// La resolución <b>no</b> se consigue subiendo los puntos por pulgada del mapa de bits, y
+    /// esto costó una imagen pixelada: los ppp altos sí reescalan la geometría plana, pero un
+    /// <c>Viewport3D</c> se rasteriza a la resolución de <b>su propio tamaño de composición</b>,
+    /// que es el que ocupa en pantalla. Pidiendo 3200 px sobre un recuadro de 700 se obtenía un
+    /// 3D dibujado a 700 px y <i>estirado</i> a 3200. De ahí los dientes de sierra.
     /// </para>
     /// <para>
-    /// El fondo se pinta a mano antes de componer: el recuadro 3D es transparente, y un JPG no
-    /// guarda transparencia, así que lo transparente saldría <b>negro</b>.
+    /// Lo que se hace es montar un recuadro 3D <b>aparte</b>, medido y colocado a los píxeles de
+    /// verdad que se quieren, y rasterizarlo a 96 ppp de una sola pasada. Así el motor dibuja
+    /// las barras a tamaño completo y los bordes salen limpios, que es la ventaja de que el 3D
+    /// sea geometría y no una imagen.
     /// </para>
     /// </remarks>
     private void OnGuardarImagen3D(object sender, RoutedEventArgs e)
@@ -251,11 +267,7 @@ public partial class MainWindow
 
             ActualizarGiro3D();
 
-            // Sin esto se tomaría la imagen con la cámara vieja: los cambios de arriba no se
-            // aplican al árbol visual hasta que WPF vuelve a medir y componer.
-            PreviaViewport.UpdateLayout();
-
-            GuardarJpgDe(PreviaViewport, ancho, alto, dialogo.FileName);
+            GuardarJpgDela3D(ancho, alto, dialogo.FileName);
         }
         catch (Exception ex)
         {
@@ -277,48 +289,118 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Rasteriza un elemento a JPG, con fondo y a alta resolución.</summary>
-    private static void GuardarJpgDe(Visual visual, double ancho, double alto, string ruta)
+    /// <summary>Guarda la escena en 3D como JPG rasterizándola a tamaño completo.</summary>
+    /// <remarks>
+    /// <para>
+    /// La escena se <b>descuelga</b> del recuadro de pantalla y se cuelga en uno nuevo del
+    /// tamaño en píxeles que se quiere. Se descuelga y no se copia por dos razones: clonar la
+    /// jaula entera duplicaría miles de mallas, y colgar el mismo modelo en dos sitios a la vez
+    /// es pedir problemas. Al terminar se devuelve a su sitio en el <c>finally</c>, así que un
+    /// fallo a medio guardar no deja la vista previa en blanco.
+    /// </para>
+    /// <para>
+    /// El recuadro va dentro de un contenedor con <b>fondo opaco</b>. Un JPG no guarda
+    /// transparencia, y donde el 3D no pinta nada es transparente: sin fondo, esas zonas
+    /// saldrían <b>negras</b>. Poniéndolo aquí se resuelve en la misma pasada, sin recomponer.
+    /// </para>
+    /// </remarks>
+    private void GuardarJpgDela3D(double ancho, double alto, string ruta)
     {
-        // Los puntos por pulgada que hacen falta para llegar al ancho pedido. 96 es la
-        // resolución con la que WPF mide, así que este cociente es el factor de aumento.
-        var ppp = 96.0 * AnchoDeLaImagen3D / ancho;
+        var (pxAncho, pxAlto) = PixelesDeLaImagen3D(ancho, alto);
 
-        var pxAncho = AnchoDeLaImagen3D;
-        var pxAlto = Math.Max(1, (int)Math.Round(alto * ppp / 96.0));
+        // La escena se saca de la vista previa para poder colgarla en el recuadro de fuera.
+        var escena = PreviaEscena3D.Content;
 
-        var delRecuadro = new RenderTargetBitmap(
-            pxAncho, pxAlto, ppp, ppp, PixelFormats.Pbgra32);
+        // Este es el recuadro que hace el trabajo: mismo aspecto que el de pantalla, así que la
+        // cámara vale tal cual, pero medido en PÍXELES DE VERDAD. Aquí está la diferencia con
+        // la versión pixelada.
+        var recuadro = new Viewport3D { ClipToBounds = true };
 
-        delRecuadro.Render(visual);
+        var portador = new ModelVisual3D();
 
-        // ---------- El fondo ----------
-        //
-        // El recuadro 3D es transparente donde no hay nada, y un JPG no guarda transparencia:
-        // lo transparente se guardaría NEGRO. Así que se compone sobre un fondo claro, el
-        // mismo de la vista previa, y así la imagen sale como se ve en pantalla.
-        var lienzo = new DrawingVisual();
-
-        using (var dc = lienzo.RenderOpen())
+        try
         {
+            PreviaEscena3D.Content = null;
+
+            portador.Content = escena;
+
+            // Clone() y no la cámara misma: sigue colgada del recuadro de pantalla.
+            recuadro.Camera = PreviaCamara3D.Clone();
+            recuadro.Children.Add(portador);
+
             var fondo = new SolidColorBrush(Color.FromRgb(0xEC, 0xF2, 0xFA));
+
             fondo.Freeze();
 
-            dc.DrawRectangle(fondo, null, new Rect(0, 0, ancho, alto));
-            dc.DrawImage(delRecuadro, new Rect(0, 0, ancho, alto));
+            var contenedor = new Grid
+            {
+                Background = fondo,
+                Width = pxAncho,
+                Height = pxAlto
+            };
+
+            contenedor.Children.Add(recuadro);
+
+            // Sin medir y colocar a mano, el contenedor no tiene tamaño —no cuelga de ninguna
+            // ventana— y lo que se guardaría sería una imagen vacía.
+            contenedor.Measure(new Size(pxAncho, pxAlto));
+            contenedor.Arrange(new Rect(0, 0, pxAncho, pxAlto));
+            contenedor.UpdateLayout();
+
+            // 96 ppp a propósito: el tamaño ya está en píxeles, así que aquí no hay ningún
+            // factor de escala y el motor dibuja el 3D uno a uno.
+            var mapa = new RenderTargetBitmap(
+                pxAncho, pxAlto, 96, 96, PixelFormats.Pbgra32);
+
+            mapa.Render(contenedor);
+
+            var codificador = new JpegBitmapEncoder { QualityLevel = 95 };
+
+            codificador.Frames.Add(BitmapFrame.Create(mapa));
+
+            using var archivo = File.Create(ruta);
+
+            codificador.Save(archivo);
+        }
+        finally
+        {
+            // El orden importa: primero se suelta del recuadro de fuera y luego se devuelve a
+            // la vista previa. Al revés quedaría colgada en dos sitios.
+            recuadro.Children.Remove(portador);
+            portador.Content = null;
+
+            PreviaEscena3D.Content = escena;
+        }
+    }
+
+    /// <summary>El tamaño en píxeles de la imagen, respetando el aspecto y el tope de área.</summary>
+    /// <remarks>
+    /// Se separa del guardado porque es la única parte con aritmética que se puede razonar
+    /// sola: el aspecto que entra tiene que ser el que sale, o la cámara —que se calculó con el
+    /// aspecto de pantalla— encuadraría la pieza estirada.
+    /// </remarks>
+    private static (int Ancho, int Alto) PixelesDeLaImagen3D(double ancho, double alto)
+    {
+        var aspecto = ancho / alto;
+
+        double pxAncho = AnchoDeLaImagen3D;
+        var pxAlto = pxAncho / aspecto;
+
+        // Si el área se pasa del tope, se bajan los dos lados por la RAÍZ del exceso: bajando
+        // solo el ancho cambiaría el aspecto y la pieza saldría deformada.
+        var area = pxAncho * pxAlto;
+
+        if (area > MaximoDePixelesDeLaImagen3D)
+        {
+            var factor = Math.Sqrt(MaximoDePixelesDeLaImagen3D / area);
+
+            pxAncho *= factor;
+            pxAlto *= factor;
         }
 
-        var final = new RenderTargetBitmap(pxAncho, pxAlto, ppp, ppp, PixelFormats.Pbgra32);
-
-        final.Render(lienzo);
-
-        var codificador = new JpegBitmapEncoder { QualityLevel = 95 };
-
-        codificador.Frames.Add(BitmapFrame.Create(final));
-
-        using var archivo = File.Create(ruta);
-
-        codificador.Save(archivo);
+        return (
+            Math.Max(1, (int)Math.Round(pxAncho)),
+            Math.Max(1, (int)Math.Round(pxAlto)));
     }
 
     // ======================================================================

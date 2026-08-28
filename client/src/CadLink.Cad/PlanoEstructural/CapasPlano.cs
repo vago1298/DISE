@@ -106,6 +106,17 @@ public sealed class CapasPlano
         // con los volados, que es lo que se revisa en obra.
         t.Add(new Capa(string.Empty, CapaVolado, Color("COLOR_VOLADO", 4), string.Empty));
 
+        // EL VACIO, EN SU PROPIA CAPA Y CON SU TIPO DE LÍNEA. Se pidió así: E-VACIO, color 252
+        // y DASHDOT. Va aparte de E-LOSA a propósito, y no por orden: E-LOSA se APAGA al
+        // terminar —el contorno de todos los paños llena el plano— y el vacío es justo lo que
+        // NO se puede perder de vista, porque dice dónde no hay piso.
+        //
+        // El tipo de línea se pone en la CAPA, pero eso no basta en un dibujo en metros: ahí un
+        // DASHDOT a escala 1 se ve continuo, así que el objeto lleva además su LinetypeScale.
+        // Está en VACIO_LTSCALE.
+        t.Add(new Capa(string.Empty, CapaVacio, Color("COLOR_VACIO", 252),
+                       cfg.Texto("LINETYPE_VACIO", "DASHDOT")));
+
         t.Add(Servicio("LOSACERO", Color("COLOR_LOSACERO", 6)));
         t.Add(Servicio("COTAS", Color("COLOR_COTAS", 8)));
 
@@ -173,6 +184,29 @@ public sealed class CapasPlano
             if (s.Length == 0)
             {
                 s = "VOLADO";
+            }
+
+            return Prefijo.Length > 0 &&
+                   !s.StartsWith(Prefijo, StringComparison.OrdinalIgnoreCase)
+                ? Prefijo + s
+                : s;
+        }
+    }
+
+    /// <summary>La capa del <b>vacío</b>: <c>E-VACIO</c>.</summary>
+    /// <remarks>
+    /// Donde no hay piso. Lleva el contorno a trazos del hueco y la cruz de dentro, las dos
+    /// cosas que se pidieron, y va con color 252 y <c>DASHDOT</c>.
+    /// </remarks>
+    public string CapaVacio
+    {
+        get
+        {
+            var s = _cfg.Texto("CAPA_VACIO", "VACIO");
+
+            if (s.Length == 0)
+            {
+                s = "VACIO";
             }
 
             return Prefijo.Length > 0 &&

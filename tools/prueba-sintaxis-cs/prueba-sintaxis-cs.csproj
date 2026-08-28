@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Revisa la SINTAXIS de todo el C# del cliente con el analizador de verdad,
+       el mismo que usa el compilador.
+
+       PARA QUE EXISTE. CadLink.App NO se puede compilar en el entorno donde se
+       desarrolla (no estan las referencias de WPF), asi que sus archivos se
+       editan sin que nadie los lea nunca. Esta herramienta cubre el hueco que
+       se puede cubrir: monta el arbol sintactico de cada .cs y saca los errores
+       de PARSEO. Una llave sin cerrar, un parentesis de menos o un punto y coma
+       olvidado salen aqui.
+
+       LO QUE ESTA HERRAMIENTA NO HACE, Y ES IMPORTANTE SABERLO. No es una
+       compilacion. No resuelve tipos, asi que NO detecta un nombre mal escrito,
+       ni un CS0841 (usar una variable antes de declararla), ni un CS0128 (dos
+       variables con el mismo nombre), ni un argumento del tipo equivocado. Para
+       eso hace falta compilar de verdad, en Windows.
+
+       Se dice tan claro porque ya hubo aqui un comprobador que PARECIA revisar
+       que la app compilaba y en realidad no detectaba nada: se borro. Que pase
+       esta prueba significa "se puede parsear", nada mas.
+
+       De donde sale Roslyn: del propio SDK que esta corriendo. Viene dentro de
+       todos los SDK de .NET, asi que no hace falta descargar ningun paquete y
+       funciona igual en Windows y en Linux.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-sintaxis-cs
+           dotnet run
+
+       Devuelve 0 si no hay errores de sintaxis y 1 si hay alguno. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+
+    <!-- El framework se saca del SDK que esta corriendo, y no se fija a mano.
+         El motivo: Roslyn se toma prestado de ese mismo SDK, y el Roslyn de un
+         SDK 9 esta compilado contra .NET 9. Fijando net8.0 aqui, en una maquina
+         con el SDK 9 la compilacion falla con un CS1705 que no dice nada obvio.
+         Asi el tool sigue al SDK que haya, sea 8, 9 o el que venga. -->
+    <TargetFramework>net$([System.Version]::Parse('$(NETCoreSdkVersion)').Major).0</TargetFramework>
+
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-sintaxis-cs</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- La carpeta de Roslyn dentro del SDK que esta ejecutando esta compilacion.
+         NetCoreRoot y NETCoreSdkVersion los define MSBuild, asi que esto apunta
+         al sitio correcto sin escribir ninguna ruta a mano. -->
+    <CarpetaRoslyn>$(NetCoreRoot)sdk/$(NETCoreSdkVersion)/Roslyn/bincore/</CarpetaRoslyn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>$(CarpetaRoslyn)Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>$(CarpetaRoslyn)Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="AvisarSiFaltaRoslyn" BeforeTargets="Build"
+          Condition="!Exists('$(CarpetaRoslyn)Microsoft.CodeAnalysis.CSharp.dll')">
+    <Error Text="No se encontro Roslyn en $(CarpetaRoslyn). Revisa la version del SDK." />
+  </Target>
+
+</Project>

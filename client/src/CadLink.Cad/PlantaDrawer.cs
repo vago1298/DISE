@@ -292,6 +292,40 @@ public sealed partial class PlantaDrawer
         }
 
         // ==============================================================================
+        //  LA LOSA DE ESCALERA SE VA, Y SE VA AQUÍ
+        // ==============================================================================
+        //  Se pidió tal cual: «nada de losa de escalera en planos». Una escalera no es un
+        //  tablero de losa —no se arma con parrilla, no lleva bastones por claro y no se cota
+        //  como un paño—: en la planta va su hueco, y el detalle aparte.
+        //
+        //  VA AQUÍ, ANTES DE TODO LO DEMÁS, y no es un detalle de orden. La losa se lee en
+        //  media docena de sitios más abajo: la unión de tableros, la lista de voladizos, el
+        //  achurado, la parrilla, el rótulo y el recuadro del título de la planta. Filtrando
+        //  solo donde se dibuja el contorno, la escalera desaparecería del papel pero seguiría
+        //  metida en todo lo demás: agrupada con el tablero de al lado y cambiándole el armado.
+        if (_cfg.Bandera("IGNORAR_LOSA_ESCALERA", true))
+        {
+            var escaleras = PlanoEstructural.LosaEnPlanta.Descartar(
+                p.Elementos,
+                _cfg.Texto("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO"));
+
+            if (escaleras.Count > 0)
+            {
+                // Se dice CUÁNTAS y POR QUÉ PALABRA. Una losa que desaparece del plano sin
+                // avisar es un misterio; sabiendo que se fue por decir «RAMPA» se corrige el
+                // modelo o se quita la palabra de la lista.
+                var porQue = string.Join(", ", escaleras
+                    .GroupBy(x => x)
+                    .OrderByDescending(g => g.Count())
+                    .Select(g => $"{g.Key} ({g.Count()})"));
+
+                Nota($"{escaleras.Count} losa(s) de escalera NO se dibujaron, por decir " +
+                     $"{porQue} en su nota, etiqueta o sección. Se apaga con " +
+                     "IGNORAR_LOSA_ESCALERA en NO.");
+            }
+        }
+
+        // ==============================================================================
         //  LO QUE HAY QUE SABER ANTES DE DIBUJAR NADA
         // ==============================================================================
         //  Los APOYOS —las columnas y los castillos— y las HUELLAS de las barras: el
@@ -415,6 +449,11 @@ public sealed partial class PlantaDrawer
                 r.Losas++;
             }
         }
+
+        // Y donde NO hay losa: el hueco de la escalera, del elevador o del ducto, con su
+        // contorno a trazos y su cruz. Después de los paños para que la línea del vacío quede
+        // por encima de su achurado.
+        Vacios(p, x0, y0);
 
         // ==============================================================================
         //  EL MURO QUE VA DEBAJO DE UNA CADENA NO SE DIBUJA
@@ -1408,6 +1447,143 @@ public sealed partial class PlantaDrawer
         ArmadoDeLosa(el, x0, y0, huellas);
 
         return algo;
+    }
+
+    // =================================================================================
+    //  EL VACÍO: DONDE NO HAY PISO
+    // =================================================================================
+
+    /// <summary>
+    /// Marca los <b>vacíos</b> de la planta: contorno a trazos y una <b>cruz</b> dentro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «delimita los vacíos con líneas punteadas… de los vértices de donde se forma el
+    /// vacío, de ahí salen las líneas para formar la cruz, que hay vacío, o sea no hay piso». Es
+    /// la convención de siempre en un plano de losas: el hueco de la escalera, el del elevador o
+    /// el del ducto van con su contorno a trazos y una X dentro.
+    /// </para>
+    /// <para>
+    /// Dónde salen los vacíos está razonado en <see cref="PlanoEstructural.VacioEnLosa"/>: no
+    /// vienen del modelo, se deducen buscando los <b>agujeros de la unión de los paños</b>. Aquí
+    /// solo se pasa a líneas lo que esa cuenta devuelve.
+    /// </para>
+    /// <para>
+    /// <b>Va DESPUÉS de dibujar las losas</b>, y a propósito: en AutoCAD el orden de creación es
+    /// el orden de dibujo, así que la línea del vacío queda por encima del achurado de los paños
+    /// vecinos y no se pierde debajo.
+    /// </para>
+    /// <para>
+    /// Y el <b>LinetypeScale</b> no es un adorno: el plano va en <b>metros</b>, y el patrón del
+    /// DASHDOT mide media unidad de dibujo. A escala 1, medio metro de raya seguida de medio de
+    /// espacio en un hueco de 1.20 m se ve como una línea <b>continua</b>. De ahí
+    /// <c>VACIO_LTSCALE</c>, con la misma cuenta que la cadena sin muro: 0 = automático = 0.01.
+    /// </para>
+    /// </remarks>
+    private int Vacios(PlantaCad p, double x0, double y0)
+    {
+        if (!_cfg.Bandera("DIBUJAR_VACIOS", true))
+        {
+            return 0;
+        }
+
+        // Los paños YA desplazados a su sitio en el plano: así lo que devuelve la cuenta se
+        // dibuja tal cual, sin volver a sumar el origen en cada punto y cada trazo.
+        var panos = p.Elementos
+            .Where(e => e.Clase == ClasePlanta.Losa && e.Vertices.Count >= 3)
+            .Select(e => (IReadOnlyList<(double X, double Y)>)e.Vertices
+                .Select(v => (v.X + x0, v.Y + y0))
+                .ToList())
+            .ToList();
+
+        if (panos.Count == 0)
+        {
+            return 0;
+        }
+
+        var tol = _cfg.Numero("VACIO_TOL_CM", 5) / 100;
+
+        // La retícula la ponen los vértices de los paños, así que un nivel con el mallado muy
+        // fino puede pedir una gigantesca. Se avisa ANTES de intentarlo, porque si no el usuario
+        // solo vería que no salió ningún vacío y no sabría que hay algo que subir.
+        var celdas = PlanoEstructural.VacioEnLosa.CeldasQueHacenFalta(panos, tol);
+
+        if (celdas > PlanoEstructural.VacioEnLosa.MaximoDeCeldas)
+        {
+            Nota($"No se buscaron los vacíos de este nivel: sus {panos.Count} paños piden una " +
+                 $"retícula de {celdas:N0} celdas y el tope está en " +
+                 $"{PlanoEstructural.VacioEnLosa.MaximoDeCeldas:N0}. El mallado del modelo es " +
+                 "muy fino; sube VACIO_TOL_CM —junta los bordes casi iguales— y vuelve a " +
+                 "dibujar.");
+
+            return 0;
+        }
+
+        List<PlanoEstructural.VacioEnLosa.Vacio> vacios;
+
+        try
+        {
+            vacios = PlanoEstructural.VacioEnLosa.Detectar(
+                panos, tol, _cfg.Numero("VACIO_AREA_MIN_M2", 0.10));
+        }
+        catch (Exception ex)
+        {
+            // Un fallo buscando los huecos no puede tumbar la planta entera: el resto del
+            // plano ya está dibujado y es bueno.
+            Fallo("Buscar los vacíos de la losa", ex);
+
+            return 0;
+        }
+
+        if (vacios.Count == 0)
+        {
+            return 0;
+        }
+
+        var capa = _capas.CapaVacio;
+        var tipo = _cfg.Texto("LINETYPE_VACIO", "DASHDOT");
+
+        var escalaLt = _cfg.Numero("VACIO_LTSCALE", 0);
+
+        if (escalaLt <= 0)
+        {
+            escalaLt = 0.01;
+        }
+
+        var conCruz = _cfg.Bandera("VACIO_CRUZ", true);
+
+        foreach (var vacio in vacios)
+        {
+            foreach (var contorno in vacio.Contornos)
+            {
+                var pts = new double[contorno.Count * 2];
+
+                for (var i = 0; i < contorno.Count; i++)
+                {
+                    pts[2 * i] = contorno[i].X;
+                    pts[(2 * i) + 1] = contorno[i].Y;
+                }
+
+                PonerTipoDeLinea(PolilineaCerrada(pts, capa), tipo, escalaLt);
+            }
+
+            if (!conCruz)
+            {
+                continue;
+            }
+
+            foreach (var (xa, ya, xb, yb) in vacio.Cruz)
+            {
+                PonerTipoDeLinea(Linea(xa, ya, xb, yb, capa), tipo, escalaLt);
+            }
+        }
+
+        var area = vacios.Sum(v => v.Area);
+
+        Nota($"{vacios.Count} vacío(s) marcados —{area:0.00} m² sin losa— con su contorno a " +
+             $"trazos y su cruz, en la capa {capa}. Se apaga con DIBUJAR_VACIOS en NO.");
+
+        return vacios.Count;
     }
 
     /// <summary>

@@ -315,6 +315,28 @@ public sealed class ConfigPlano
         P("DIBUJAR_LOSAS", "SI", "Dibujar el contorno de las losas"),
         P("IGNORAR_LOSA_ESCALERA", "SI", "SI = las losas de escalera NO se dibujan"),
         P("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", "Palabras que identifican escaleras"),
+
+        // ---- EL VACIO: DONDE NO HAY PISO -------------------------------------------
+        // Se pidio delimitar los vacios con linea punteada y una cruz dentro, que es la
+        // convencion de siempre: el hueco de la escalera, del elevador o del ducto. El
+        // vacio NO viene del modelo -en ETABS el hueco es donde no pusieron shell-, asi
+        // que se deduce buscando los agujeros de la union de los paños.
+        P("DIBUJAR_VACIOS", "SI", "SI = marcar con linea punteada y cruz donde no hay losa"),
+        P("CAPA_VACIO", "VACIO", "CAPA DEL VACIO (con prefijo: E-VACIO)"),
+        P("COLOR_VACIO", "252", "Color de esa capa"),
+        P("LINETYPE_VACIO", "DASHDOT", "Tipo de linea del vacio"),
+
+        // OJO CON ESTE: en un dibujo en METROS un DASHDOT a escala 1 se ve CONTINUO,
+        // porque el patron mide media unidad de dibujo. Es el mismo caso que
+        // CADENA_SIN_MURO_LTSCALE.
+        P("VACIO_LTSCALE", "0", "0 = automatico (0.01 si el dibujo va en metros)"),
+
+        // La tolerancia con la que se juntan dos bordes de paño. Es lo que evita que la
+        // junta del mallado -paños contiguos separados por milimetros- salga como un
+        // vacio larguisimo y flaco.
+        P("VACIO_TOL_CM", "5", "Bordes de paño a menos de esto son el MISMO borde"),
+        P("VACIO_AREA_MIN_M2", "0.10", "Vacios mas chicos que esto no se dibujan"),
+        P("VACIO_CRUZ", "SI", "SI = la cruz dentro del vacio, ademas del contorno"),
         P("PLANTAS_POR_FILA", "100", "100 = todas en una fila hacia la derecha"),
         // 10.00 y no los 5.00 de la hoja: se pidió expresamente, y con 5 las burbujas y las
         // cotas de una planta quedaban a un palmo de las de la siguiente.
