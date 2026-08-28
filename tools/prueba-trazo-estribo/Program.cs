@@ -49,6 +49,7 @@ internal static class Program
         UnRadioImposibleSeRecorta();
         SeccionDegeneradaDevuelveNull();
         ElEjeDeLaGrapa();
+        ElGanchoSuelto();
 
         Console.WriteLine(new string('=', 70));
 
@@ -441,6 +442,19 @@ internal static class Program
 
         _fallos += fallos;
     }
+
+    /// <summary>Corre la comprobacion del gancho suelto y la imprime.</summary>
+    private static void ElGanchoSuelto()
+    {
+        var (fallos, lineas) = GanchoSuelto.Correr();
+
+        foreach (var l in lineas)
+        {
+            Console.WriteLine(l);
+        }
+
+        _fallos += fallos;
+    }
 }
 
 
@@ -548,6 +562,159 @@ internal static class EjeDeGrapa
         Comprobar(punto < -0.99,
             "y cada una hacia su extremo, no las dos al mismo lado",
             $"el producto punto de sus direcciones es {punto:F4}");
+
+        return (fallos, salida.ToArray());
+    }
+}
+
+
+internal static class GanchoSuelto
+{
+    /// <summary>
+    /// El gancho que envuelve una barra: el del diamante y cualquier remate parecido.
+    /// </summary>
+    /// <remarks>
+    /// Lo que se comprueba es lo que hace que un gancho sea un gancho: que el doblez este al
+    /// radio exacto de la barra, que envuelva por el lado OPUESTO a las colas -o sea que el
+    /// acero pase por detras de la barra- y que las dos colas salgan paralelas y separadas el
+    /// diametro del doblez, que es lo que se ve como dos rayas.
+    /// </remarks>
+    public static (int Fallos, string[] Lineas) Correr()
+    {
+        var fallos = 0;
+        var salida = new List<string>();
+
+        void Comprobar(bool cond, string que, string porque)
+        {
+            if (cond)
+            {
+                salida.Add($"  OK    {que}");
+                return;
+            }
+
+            salida.Add($"  FALLA {que}");
+            salida.Add($"        {porque}");
+            fallos++;
+        }
+
+        salida.Add(string.Empty);
+        salida.Add("El gancho que envuelve una barra");
+
+        // Una varilla del #6 en el costado, con un diamante del #3 dandole la vuelta, y las
+        // colas apuntando al nucleo. Los numeros son los de una columna de 40 x 60.
+        const double bx = 5.5, by = 30.0;
+        const double rVar = 1.91 / 2;
+        const double dDia = 0.95;
+        const double rEje = rVar + (dDia / 2);
+        const double cola = 6 * dDia;
+
+        // Al nucleo: del centro de la barra al centro de la seccion.
+        var ux = 20.0 - bx;
+        var uy = 30.0 - by;
+        var lu = Math.Sqrt((ux * ux) + (uy * uy));
+        ux /= lu;
+        uy /= lu;
+
+        var g = TrazoEstribo.GanchoAlrededorDeBarra(
+            bx, by, rEje, ux, uy, Math.PI, cola);
+
+        if (g is null)
+        {
+            Comprobar(false, "se arma el gancho", "devolvio null");
+            return (fallos, salida.ToArray());
+        }
+
+        Comprobar(g.Count >= TrazoEstribo.TramosPorDoblez + 2,
+            "trae el doblez muestreado y las dos puntas",
+            $"solo {g.Count} puntos");
+
+        // El doblez son todos los puntos menos las dos puntas.
+        var peorRadio = 0.0;
+
+        for (var i = 1; i < g.Count - 1; i++)
+        {
+            var d = Math.Sqrt(
+                ((g[i].X - bx) * (g[i].X - bx)) + ((g[i].Y - by) * (g[i].Y - by)));
+
+            peorRadio = Math.Max(peorRadio, Math.Abs(d - rEje));
+        }
+
+        Comprobar(peorRadio < 1e-9,
+            "el doblez esta al radio EXACTO de la barra que envuelve",
+            $"el peor se desvia {peorRadio:E3} cm");
+
+        // Envuelve por DETRAS: el punto medio del doblez cae del lado opuesto a las colas.
+        var medio = g[g.Count / 2];
+
+        var haciaElMedio = ((medio.X - bx) * ux) + ((medio.Y - by) * uy);
+
+        Comprobar(haciaElMedio < -0.9 * rEje,
+            "y envuelve por el lado OPUESTO a las colas",
+            $"su punto medio proyecta {haciaElMedio:F4} sobre la direccion de las colas, "
+            + $"y deberia ser cerca de {-rEje:F4}");
+
+        // Las dos colas: paralelas y separadas el diametro del doblez.
+        static (double Dx, double Dy) Dir(
+            (double X, double Y) p, (double X, double Y) q)
+        {
+            var l = Math.Sqrt(
+                ((q.X - p.X) * (q.X - p.X)) + ((q.Y - p.Y) * (q.Y - p.Y)));
+
+            return ((q.X - p.X) / l, (q.Y - p.Y) / l);
+        }
+
+        // La primera cola va de su punta al arranque del doblez; la segunda al contrario.
+        var d1 = Dir(g[0], g[1]);
+        var d2 = Dir(g[^2], g[^1]);
+
+        var cruz = Math.Abs((d1.Dx * d2.Dy) - (d1.Dy * d2.Dx));
+
+        Comprobar(cruz < 1e-9, "las dos colas salen PARALELAS",
+            $"el cruzado de sus direcciones es {cruz:E3}");
+
+        // Y opuestas: una entra al doblez y la otra sale.
+        var punto = (d1.Dx * d2.Dx) + (d1.Dy * d2.Dy);
+
+        Comprobar(punto < -0.99, "una entra al doblez y la otra sale",
+            $"su producto punto es {punto:F4}");
+
+        // La segunda apunta al nucleo.
+        Comprobar((d2.Dx * ux) + (d2.Dy * uy) > 0.99,
+            "y la que sale apunta al nucleo",
+            $"proyecta {(d2.Dx * ux) + (d2.Dy * uy):F4} sobre la direccion pedida");
+
+        var sep = Math.Sqrt(
+            ((g[^2].X - g[1].X) * (g[^2].X - g[1].X))
+            + ((g[^2].Y - g[1].Y) * (g[^2].Y - g[1].Y)));
+
+        salida.Add($"        separacion entre colas: {sep:F4} cm"
+            + $", diametro del doblez: {2 * rEje:F4} cm");
+
+        Comprobar(Math.Abs(sep - (2 * rEje)) < 1e-9,
+            "y estan separadas el diametro del doblez",
+            $"estan a {sep:F4} y el diametro es {2 * rEje:F4}");
+
+        // Y el largo de cada cola es el pedido.
+        var largoCola = Math.Sqrt(
+            ((g[1].X - g[0].X) * (g[1].X - g[0].X))
+            + ((g[1].Y - g[0].Y) * (g[1].Y - g[0].Y)));
+
+        Comprobar(Math.Abs(largoCola - cola) < 1e-9,
+            "cada cola mide lo que se pidio",
+            $"mide {largoCola:F4} y se pidio {cola:F4}");
+
+        // Degenerados
+        Comprobar(
+            TrazoEstribo.GanchoAlrededorDeBarra(0, 0, 0, 1, 0, Math.PI, 5) is null,
+            "radio cero devuelve null", "devolvio un trazo");
+
+        Comprobar(
+            TrazoEstribo.GanchoAlrededorDeBarra(0, 0, 1, 0, 0, Math.PI, 5) is null,
+            "sin direccion de colas devuelve null", "devolvio un trazo");
+
+        Comprobar(
+            TrazoEstribo.GanchoAlrededorDeBarra(0, 0, 1, 1, 0, 0, 5) is null,
+            "barrido cero devuelve null", "devolvio un trazo");
 
         return (fallos, salida.ToArray());
     }

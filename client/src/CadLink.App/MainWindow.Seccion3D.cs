@@ -184,6 +184,16 @@ public partial class MainWindow
     {
         PreviaViewport.Width = Math.Max(10, ancho * 0.5);
 
+        // Las dos formas REDONDAS —la columna circular y el dado circular— tienen su propio
+        // armado: varillas repartidas en un círculo de paso y un zuncho, en anillos o en
+        // hélice. No es un caso del rectangular con la base igual a la altura, así que va por
+        // su lado. EsCircular ya cubre las dos, por eso no hay que preguntar por el elemento.
+        if (s.EsCircular)
+        {
+            ConstruirEscena3DCircular(s, alto);
+            return;
+        }
+
         if (s.BaseCm <= 0 || s.AlturaCm <= 0)
         {
             PreviaEscena3D.Content = null;
@@ -281,6 +291,8 @@ public partial class MainWindow
 
         var recorridoDia = hayDiamante ? RecorridoDelDiamante3D(s, de, rec, dDia, 14) : null;
 
+        var ganchoDia = hayDiamante ? GanchoDelDiamante3D(s, de, rec, dDia) : null;
+
         var sep = Separaciones(s.SeparacionCm);
 
         var centros = Estribos.CentrosDeAlzado(
@@ -328,6 +340,14 @@ public partial class MainWindow
             if (recorridoDia is not null)
             {
                 Tubo(mallaEstribos, recorridoDia, zDia, zDia, true, dDia);
+
+                // Y SU GANCHO. El diamante es un estribo cerrado, así que sus dos extremos se
+                // juntan en un sitio y ahí llevan su gancho, agarrado a la varilla lateral que
+                // abraza. Faltaba: el 3D dibujaba la cinta y no el remate.
+                if (ganchoDia is not null)
+                {
+                    Tubo(mallaEstribos, ganchoDia, zDia, zDia, false, dDia);
+                }
             }
 
             // Y las grapas encima, cada una con SU diámetro y apilada sobre la anterior.
@@ -395,11 +415,307 @@ public partial class MainWindow
                 canto, lados: 4);
         }
 
-        // ---------- La escena ----------
+        MontarEscena3D(
+            mallaVarillas, mallaEstribos, mallaConcreto,
+            new[] { (0.0, 0.0), (bx, 0.0), (bx, bz), (0.0, bz) },
+            by, bx / 2, bz / 2);
+
+        Etiqueta(PreviaFijaCanvas,
+            $"SECCIÓN 3D   ·   L = {largoM:N2} m   ·   {centros.Count} estribos"
+            + $"   ·   {mallaVarillas.CuantosTriangulos + mallaEstribos.CuantosTriangulos:N0}"
+            + " triángulos"
+            + (s.LongitudM > 0 ? string.Empty : "   ·   largo por omisión"),
+            26, alto - 18);
+    }
+
+    /// <summary>
+    /// El eje del <b>gancho del diamante</b>, en el vértice izquierdo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las reglas son las de <c>GanchoDelDiamante</c> en el dibujante de AutoCAD, y se siguen
+    /// una por una para que el 3D enseñe el mismo gancho que el plano: va en el vértice
+    /// <b>izquierdo</b> —porque el del estribo rectangular está arriba a la derecha y así no se
+    /// montan—, se agarra de la varilla lateral que el diamante ya abraza ahí, y si en ese
+    /// costado no hay varilla <b>no se dibuja</b>: un gancho sísmico rodea una varilla, no dobla
+    /// en el aire.
+    /// </para>
+    /// <para>
+    /// Con dos varillas a media altura se elige la de <b>arriba</b>, que es donde el acero llega
+    /// al vértice, y las colas apuntan al <b>núcleo</b>. Las dos cosas están razonadas en el
+    /// dibujante; aquí solo se aplican.
+    /// </para>
+    /// </remarks>
+    private List<(double X, double Y)>? GanchoDelDiamante3D(
+        SeccionConcretoRow s, double de, double rec, double dDia)
+    {
+        if (s.GanchoCm <= 0 || dDia <= 0)
+        {
+            return null;
+        }
+
+        // El centro del núcleo: el mismo que usa el dibujante, (x1+x2)/2 con x1 = rec.
+        var cx = s.BaseCm / 2;
+        var cy = s.AlturaCm / 2;
+
+        var delLado = PosicionesLaterales(s, de, rec)
+            .Where(v => v.X < cx)
+            .ToList();
+
+        if (delLado.Count == 0)
+        {
+            return null;
+        }
+
+        // La MISMA regla que usa el vértice para decidir a qué varilla se agarra.
+        var seleccion = TrazoDiamante.VarillasDelCentro(delLado, cy, porY: true);
+
+        if (seleccion.Count == 0)
+        {
+            return null;
+        }
+
+        var barra = seleccion.OrderByDescending(v => v.Y).First();
+
+        var ux = cx - barra.X;
+        var uy = cy - barra.Y;
+
+        var alNucleo = Math.Sqrt((ux * ux) + (uy * uy));
+
+        if (alNucleo < 1e-9)
+        {
+            return null;
+        }
+
+        var rEje = barra.R + (dDia / 2);
+
+        // La cola apunta al núcleo, así que cuanto más larga más se acerca al centro. Se topa
+        // para que no lo cruce y salga por el otro lado, igual que en el dibujante.
+        var cola = Math.Min(s.GanchoCm, Math.Max(0, alNucleo - rEje));
+
+        return TrazoEstribo.GanchoAlrededorDeBarra(
+            barra.X, barra.Y, rEje, ux, uy, Math.PI, cola, 14);
+    }
+
+    /// <summary>
+    /// La <b>columna circular</b> y el <b>dado circular</b> en 3D.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Va aparte del rectangular porque el armado es otro: las varillas se reparten en un
+    /// <b>círculo de paso</b> y el estribo es un <b>zuncho</b>, que según la fila es una pila de
+    /// anillos o una <b>hélice</b> continua.
+    /// </para>
+    /// <para>
+    /// <b>La hélice no son anillos apilados</b>, y eso ya está razonado en el alzado plano: es
+    /// una sola pieza que sube girando. Dibujarla como anillos haría que la pantalla enseñara
+    /// una cosa y AutoCAD otra. Aquí se construye como un tubo único que pasa por la cota de
+    /// cada vuelta, así que su paso sale del MISMO reparto de separaciones que los anillos.
+    /// </para>
+    /// </remarks>
+    private void ConstruirEscena3DCircular(SeccionConcretoRow s, double alto)
+    {
+        var diam = s.DiametroCm;
+
+        if (diam <= 0)
+        {
+            PreviaEscena3D.Content = null;
+            _cajaDeLaPieza = null;
+            return;
+        }
+
+        var largoM = s.LongitudM > 0 ? s.LongitudM : LargoPorOmisionM;
+        var by = largoM * 100.0;
+
+        // La caja que la envuelve, para que la cámara la encuadre como a cualquier otra.
+        _cajaDeLaPieza = (diam, by, diam);
+
+        var r = diam / 2;
+        var rec = s.RecubrimientoCm;
+
+        Varilla.TryDiametroCm(s.Estribo, out var dZun);
+        Varilla.TryDiametroCm(s.DiamVarTotalEfectivo, out var dVar);
+
+        var mallaVarillas = new TuboDeMalla.Malla();
+        var mallaEstribos = new TuboDeMalla.Malla();
+        var mallaConcreto = new TuboDeMalla.Malla();
+
+        // El centro de la sección, en el mundo.
+        var cx = r;
+        var cz = r;
+
+        // ---------- Las varillas, en el círculo de paso ----------
+        //
+        // El radio es el MISMO que comprueba la validación y que dibuja el corte:
+        // r − recubrimiento − diámetro del zuncho − medio diámetro de varilla.
+        var rPaso = r - rec - dZun - (dVar / 2);
+
+        if (s.NVarTotal > 0 && rPaso > 0 && dVar > 0)
+        {
+            for (var i = 0; i < s.NVarTotal; i++)
+            {
+                // Arrancando arriba y repartidas, igual que en el corte.
+                var a = (Math.PI / 2) + (i * 2 * Math.PI / s.NVarTotal);
+
+                var x = cx + (rPaso * Math.Cos(a));
+                var z = cz - (rPaso * Math.Sin(a));
+
+                TuboDeMalla.Agregar(
+                    mallaVarillas,
+                    new[] { (x, 0.0, z), (x, by, z) },
+                    dVar / 2);
+            }
+        }
+
+        // ---------- El zuncho ----------
+        var rZunEje = r - rec - (dZun / 2);
+
+        var sep = Separaciones(s.SeparacionCm);
+
+        var centros = Estribos.CentrosDeAlzado(
+            largoM,
+            sep[0] / 100, sep[1] / 100, sep[2] / 100,
+            vertical: true,
+            esColumna: true);
+
+        if (dZun > 0 && rZunEje > 0)
+        {
+            const int porVuelta = 28;
+
+            if (s.EsZunchoHelicoidal && centros.Count >= 2)
+            {
+                // UNA sola pieza que sube girando. Pasa por la cota de cada vuelta, así que su
+                // paso es el que dicen las separaciones de la tabla: donde el zuncho va
+                // cerrado, las vueltas quedan juntas.
+                var helice = new List<(double X, double Y, double Z)>();
+
+                for (var k = 0; k + 1 < centros.Count; k++)
+                {
+                    var y0 = centros[k] * 100.0;
+                    var y1 = centros[k + 1] * 100.0;
+
+                    for (var t = 0; t < porVuelta; t++)
+                    {
+                        var f = (double)t / porVuelta;
+                        var a = 2 * Math.PI * (k + f);
+
+                        helice.Add((
+                            cx + (rZunEje * Math.Cos(a)),
+                            y0 + ((y1 - y0) * f),
+                            cz + (rZunEje * Math.Sin(a))));
+                    }
+                }
+
+                // Y el punto final, que cierra la última vuelta.
+                var aFin = 2 * Math.PI * (centros.Count - 1);
+
+                helice.Add((
+                    cx + (rZunEje * Math.Cos(aFin)),
+                    centros[^1] * 100.0,
+                    cz + (rZunEje * Math.Sin(aFin))));
+
+                TuboDeMalla.Agregar(mallaEstribos, helice, dZun / 2);
+            }
+            else
+            {
+                // Anillos: uno cerrado en cada posición de la tabla.
+                foreach (var pos in centros)
+                {
+                    var y = pos * 100.0;
+
+                    var anillo = new List<(double X, double Y, double Z)>();
+
+                    for (var t = 0; t < porVuelta; t++)
+                    {
+                        var a = 2 * Math.PI * t / porVuelta;
+
+                        anillo.Add((
+                            cx + (rZunEje * Math.Cos(a)),
+                            y,
+                            cz + (rZunEje * Math.Sin(a))));
+                    }
+
+                    TuboDeMalla.Agregar(mallaEstribos, anillo, dZun / 2, cerrado: true);
+                }
+            }
+        }
+
+        // ---------- El concreto, en alambre ----------
+        //
+        // Dos aros y cuatro generatrices: lo justo para que se lea el cilindro sin tapar el
+        // armado, que es lo mismo que hace la caja del rectangular.
+        var canto = Math.Max(diam * 0.006, 0.25);
+
+        foreach (var y in new[] { 0.0, by })
+        {
+            var aro = new List<(double X, double Y, double Z)>();
+
+            for (var t = 0; t < 40; t++)
+            {
+                var a = 2 * Math.PI * t / 40;
+
+                aro.Add((cx + (r * Math.Cos(a)), y, cz + (r * Math.Sin(a))));
+            }
+
+            TuboDeMalla.Agregar(mallaConcreto, aro, canto, cerrado: true, lados: 4);
+        }
+
+        for (var q = 0; q < 4; q++)
+        {
+            var a = (Math.PI / 4) + (q * Math.PI / 2);
+
+            var x = cx + (r * Math.Cos(a));
+            var z = cz + (r * Math.Sin(a));
+
+            TuboDeMalla.Agregar(
+                mallaConcreto, new[] { (x, 0.0, z), (x, by, z) }, canto, lados: 4);
+        }
+
+        // La planta es el CÍRCULO, muestreado: así su sombra sale redonda y no cuadrada.
+        var planta = new List<(double X, double Z)>();
+
+        for (var t = 0; t < 28; t++)
+        {
+            var a = 2 * Math.PI * t / 28;
+
+            planta.Add((cx + (r * Math.Cos(a)), cz + (r * Math.Sin(a))));
+        }
+
+        MontarEscena3D(mallaVarillas, mallaEstribos, mallaConcreto, planta, by, cx, cz);
+
+        Etiqueta(PreviaFijaCanvas,
+            $"SECCIÓN 3D   ·   Ø {diam:N0} cm   ·   L = {largoM:N2} m"
+            + $"   ·   {s.NVarTotal} varillas"
+            + (s.EsZunchoHelicoidal ? "   ·   zuncho helicoidal" : $"   ·   {centros.Count} anillos")
+            + (s.LongitudM > 0 ? string.Empty : "   ·   largo por omisión"),
+            26, alto - 18);
+    }
+
+    /// <summary>La planta de la pieza y su centro, para poder rehacer la sombra al girar.</summary>
+    private (List<(double X, double Z)> Planta, double Cx, double Cz, double By)? _plantaDeLaPieza;
+
+    /// <summary>
+    /// Arma la escena con las mallas ya construidas: luz, jaula girable y sombra.
+    /// </summary>
+    /// <remarks>
+    /// Lo comparten la sección rectangular y la circular. Estaba escrito dentro de la
+    /// rectangular, y dejarlo ahí habría obligado a la circular a repetirlo: dos escenas con
+    /// dos luces distintas es como se acaba con una vista más oscura que la otra sin saber por
+    /// qué.
+    /// </remarks>
+    private void MontarEscena3D(
+        TuboDeMalla.Malla varillas,
+        TuboDeMalla.Malla estribos,
+        TuboDeMalla.Malla concreto,
+        IReadOnlyList<(double X, double Z)> planta,
+        double by, double cx, double cz)
+    {
+        _plantaDeLaPieza = (planta.ToList(), cx, cz, by);
+
         var grupo = new Model3DGroup();
 
-        // La luz: una direccional que hace el sombreado y un poco de ambiente para que la
-        // cara de sombra no quede negra. Sin la ambiente, media jaula se pierde.
+        // La luz: una direccional que hace el sombreado y un poco de ambiente para que la cara
+        // de sombra no quede negra. Sin la ambiente, media jaula se pierde.
         grupo.Children.Add(new DirectionalLight(
             Color.FromRgb(0xFF, 0xFB, 0xF2), new Vector3D(SolX, SolY, SolZ)));
 
@@ -409,18 +725,17 @@ public partial class MainWindow
         // pieza, es la marca que la pieza deja en el suelo, y cambia de forma al girar.
         var jaula = new Model3DGroup();
 
-        Agregar3D(jaula, mallaVarillas, Color.FromRgb(0xC0, 0x39, 0x2B), 0.35);
-        Agregar3D(jaula, mallaEstribos, Color.FromRgb(0x1F, 0x6F, 0xB2), 0.35);
-        Agregar3D(jaula, mallaConcreto, Color.FromRgb(0x8F, 0xA6, 0xBC), 0.05);
+        Agregar3D(jaula, varillas, Color.FromRgb(0xC0, 0x39, 0x2B), 0.35);
+        Agregar3D(jaula, estribos, Color.FromRgb(0x1F, 0x6F, 0xB2), 0.35);
+        Agregar3D(jaula, concreto, Color.FromRgb(0x8F, 0xA6, 0xBC), 0.05);
 
         _giroDeLaJaula = new AxisAngleRotation3D(new Vector3D(0, 1, 0), _giro3DAzimut);
 
-        jaula.Transform = new RotateTransform3D(
-            _giroDeLaJaula, new Point3D(bx / 2, 0, bz / 2));
+        jaula.Transform = new RotateTransform3D(_giroDeLaJaula, new Point3D(cx, 0, cz));
 
         grupo.Children.Add(jaula);
 
-        _modeloDeSombra = SombraEnElSuelo(bx, by, bz);
+        _modeloDeSombra = SombraEnElSuelo();
 
         if (_modeloDeSombra is not null)
         {
@@ -430,13 +745,6 @@ public partial class MainWindow
         PreviaEscena3D.Content = grupo;
 
         AjustarCamara3D();
-
-        Etiqueta(PreviaFijaCanvas,
-            $"SECCIÓN 3D   ·   L = {largoM:N2} m   ·   {centros.Count} estribos"
-            + $"   ·   {mallaVarillas.CuantosTriangulos + mallaEstribos.CuantosTriangulos:N0}"
-            + " triángulos"
-            + (s.LongitudM > 0 ? string.Empty : "   ·   largo por omisión"),
-            26, alto - 18);
     }
 
     /// <summary>Las doce aristas de la caja de concreto.</summary>
@@ -541,8 +849,15 @@ public partial class MainWindow
     /// entre dos superficies a la misma cota, que es de donde salen los parpadeos.
     /// </para>
     /// </remarks>
-    private GeometryModel3D? SombraEnElSuelo(double bx, double by, double bz)
+    private GeometryModel3D? SombraEnElSuelo()
     {
+        if (_plantaDeLaPieza is null)
+        {
+            return null;
+        }
+
+        var (planta, cx, cz, by) = _plantaDeLaPieza.Value;
+
         var ox = SolX / -SolY * by;
         var oz = SolZ / -SolY * by;
 
@@ -550,12 +865,12 @@ public partial class MainWindow
         var co = Math.Cos(gr);
         var se = Math.Sin(gr);
 
-        var cx = bx / 2;
-        var cz = bz / 2;
-
         var puntos = new List<(double X, double Y)>();
 
-        foreach (var (x, z) in new[] { (0.0, 0.0), (bx, 0.0), (bx, bz), (0.0, bz) })
+        // La PLANTA de la pieza, sea la que sea: cuatro esquinas en la rectangular y el
+        // contorno del círculo en la redonda. Con las cuatro esquinas de su caja, una columna
+        // circular proyectaría una sombra cuadrada.
+        foreach (var (x, z) in planta)
         {
             // El mismo giro que lleva la jaula, aplicado a mano: la sombra no puede heredarlo
             // como transformación porque el corrimiento del sol NO gira con la pieza.
@@ -597,13 +912,21 @@ public partial class MainWindow
 
         geo.Freeze();
 
-        var brocha = new SolidColorBrush(Color.FromArgb(0x4C, 0x16, 0x24, 0x33));
+        var brocha = new SolidColorBrush(Color.FromArgb(0x66, 0x0E, 0x18, 0x24));
         brocha.Freeze();
 
-        // Emisiva y no difusa: una sombra no se ilumina. Con un material difuso, la luz que
-        // hace el sombreado de las barras le pegaría también a la sombra y la aclararía justo
-        // donde tiene que ser más oscura.
-        var material = new EmissiveMaterial(brocha);
+        // ===== DIFUSA, NO EMISIVA =====
+        //
+        // La primera versión de esto usaba EmissiveMaterial razonando que «una sombra no se
+        // ilumina». El razonamiento estaba del revés: un material emisivo EMITE luz, o sea que
+        // SUMA color a lo que hay detrás. Sumar un color oscuro sobre un fondo claro no lo
+        // oscurece: lo aclara un poco y lo tiñe. Por eso la sombra salía blanquecina.
+        //
+        // Lo que oscurece es un material difuso de color oscuro: lo que se ve es su color
+        // multiplicado por la luz que le llega, y un color casi negro sigue casi negro por
+        // mucha luz que reciba. Y con el alfa de la brocha se deja translúcido para que no sea
+        // una mancha plana.
+        var material = new DiffuseMaterial(brocha);
 
         return new GeometryModel3D
         {
@@ -751,13 +1074,11 @@ public partial class MainWindow
 
         _giroDeLaJaula.Angle = _giro3DAzimut;
 
-        var (bx, by, bz) = _cajaDeLaPieza.Value;
-
         if (PreviaEscena3D.Content is Model3DGroup grupo && _modeloDeSombra is not null)
         {
             grupo.Children.Remove(_modeloDeSombra);
 
-            _modeloDeSombra = SombraEnElSuelo(bx, by, bz);
+            _modeloDeSombra = SombraEnElSuelo();
 
             if (_modeloDeSombra is not null)
             {

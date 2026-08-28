@@ -248,6 +248,8 @@ public partial class MainWindow
         PreviaMueve.Y += p.Y - _previaArrastreDesde.Y;
 
         _previaArrastreDesde = p;
+
+        LimitarEncuadre2D();
     }
 
     /// <summary>Al salir el cursor, se apaga el realce.</summary>
@@ -449,9 +451,80 @@ public partial class MainWindow
         PreviaMueve.X = ancla.X - (kNueva * px);
         PreviaMueve.Y = ancla.Y - (kNueva * py);
 
+        LimitarEncuadre2D();
+
         ActualizarZoomPreviaTexto();
     }
 
+
+    // ======================================================================
+    //  El corte plano se queda quieto
+    // ======================================================================
+
+    /// <summary>Lo que ocupa el corte en el lienzo, y la ventana donde debe quedarse.</summary>
+    private (double X, double Y, double W, double H, double VentanaW, double VentanaH)? _caja2D;
+
+    /// <summary>Lo apunta el dibujo del corte, que es quien sabe dónde acabó.</summary>
+    private void GuardarCaja2D(
+        double x, double y, double w, double h, double ventanaW, double ventanaH)
+        => _caja2D = (x, y, w, h, ventanaW, ventanaH);
+
+    /// <summary>
+    /// Topa el encuadre del corte para que <b>la sección no se pueda mover</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La diferencia que se pidió es entre <i>mover la sección</i> y <i>moverse uno</i>. Antes
+    /// se arrastraba el dibujo y podía acabar en cualquier parte, incluso fuera de su sitio.
+    /// Ahora el encuadre está topado contra lo que ocupa el dibujo, y eso da las dos cosas de
+    /// golpe:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     Al 100 %, el dibujo cabe entero en su ventana, así que el tope lo <b>centra</b> y
+    ///     arrastrar no lo mueve: la sección se queda estática, que es lo que se pidió.
+    ///   </item>
+    ///   <item>
+    ///     Acercado, el dibujo es mayor que la ventana y se puede recorrer, pero solo por
+    ///     encima de él: nunca se puede empujar fuera y dejar el hueco vacío. Eso es moverse
+    ///     uno sobre la superficie.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Se topa después de mover y después del zoom, porque el zoom va anclado al puntero y
+    /// también desplaza.
+    /// </para>
+    /// </remarks>
+    private void LimitarEncuadre2D()
+    {
+        if (_alzado3D || _caja2D is null)
+        {
+            return;
+        }
+
+        var (cx, cy, cw, ch, ventanaW, ventanaH) = _caja2D.Value;
+
+        var k = PreviaEscala.ScaleX;
+
+        PreviaMueve.X = Topar(cx, cw, ventanaW, k, PreviaMueve.X);
+        PreviaMueve.Y = Topar(cy, ch, ventanaH, k, PreviaMueve.Y);
+    }
+
+    /// <summary>El tope en un eje: centrar si cabe, y si no, no dejar hueco.</summary>
+    private static double Topar(
+        double desde, double largo, double ventana, double escala, double actual)
+    {
+        var ocupa = largo * escala;
+
+        // Cabe entero: se centra y se queda ahí, pase lo que pase con el ratón.
+        if (ocupa <= ventana)
+        {
+            return ((ventana - ocupa) / 2) - (desde * escala);
+        }
+
+        // No cabe: se puede recorrer, pero sin descubrir el fondo por ningún lado.
+        return Math.Clamp(actual, ventana - ((desde + largo) * escala), -(desde * escala));
+    }
 
     /// <summary>Devuelve la vista previa a su encuadre original.</summary>
     /// <remarks>

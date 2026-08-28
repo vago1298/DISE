@@ -4210,14 +4210,36 @@ public partial class MainWindow : Window
         }
 
         const double margen = 34;
-        var escala = Math.Min((ancho - (2 * margen)) / s.BaseCm, (alto - (2 * margen)) / s.AlturaCm);
+
+        // ===== EL CORTE VIVE EN SU MITAD IZQUIERDA =====
+        //
+        // Antes se centraba en el ANCHO COMPLETO, así que caía encima del alzado —que ocupa
+        // todo el ancho del lienzo fijo— y de ahí venía el montaje que se reportó.
+        //
+        // Y era peor de lo que parecía: al recortar el recuadro del corte a su mitad, un corte
+        // centrado en el ancho completo se quedaba PARTIDO por la mitad. El recorte y el
+        // encuadre tienen que estar de acuerdo, y ahora lo están.
+        //
+        // La circular ya reservaba la mitad derecha para el alzado; esto la iguala.
+        var mitad = ancho * 0.5;
+
+        var escala = Math.Min(
+            (mitad - (2 * margen)) / s.BaseCm, (alto - (2 * margen)) / s.AlturaCm);
+
         if (escala <= 0 || double.IsInfinity(escala))
         {
             return;
         }
 
-        var x0 = (ancho - (s.BaseCm * escala)) / 2;
+        var x0 = (mitad - (s.BaseCm * escala)) / 2;
         var y0 = (alto - (s.AlturaCm * escala)) / 2;
+
+        // Lo que ocupa el dibujo, con sus cotas, y la ventana donde tiene que quedarse. De
+        // aquí sale el tope del encuadre: ver LimitarEncuadre2D.
+        GuardarCaja2D(
+            x0 - margen, y0 - margen,
+            (s.BaseCm * escala) + (2 * margen), (s.AlturaCm * escala) + (2 * margen),
+            mitad, alto);
 
         // Del modelo (y hacia arriba) al lienzo (y hacia abajo)
         double PX(double xcm) => x0 + (xcm * escala);
@@ -4426,6 +4448,11 @@ public partial class MainWindow : Window
         var r = s.DiametroCm * escala / 2;
         var cx = margen + r;
         var cy = alto / 2;
+
+        GuardarCaja2D(
+            cx - r - margen, cy - r - margen,
+            (2 * r) + (2 * margen), (2 * r) + (2 * margen),
+            ancho * 0.5, alto);
 
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
@@ -5277,6 +5304,45 @@ public partial class MainWindow : Window
 
         BarraDeAlzado(top + h - rec - (dInfCm / 100.0 * esc / 2), dInfCm,
             dobleHaciaAbajo: false, disponibleM: libreInf);
+
+        // ===== LAS VARILLAS INTERMEDIAS =====
+        //
+        // Faltaban, y por eso no se veían: el alzado dibujaba solo los dos lechos extremos.
+        //
+        // Lo que se ve a media altura en un alzado son las LATERALES: las intermedias de un
+        // lecho van a la misma altura que las de esquina de ese lecho, así que en una vista de
+        // lado caen justo encima y no añaden nada. Las laterales, en cambio, están cada una a
+        // su altura y son las que faltan por dibujar.
+        //
+        // Sin gancho, que es la regla del dibujante de AutoCAD: solo las de los lechos
+        // extremos lo llevan, porque el de una intermedia chocaría con el de al lado.
+        // Pasando cero de disponible, BarraDeAlzado no dibuja gancho.
+        Varilla.TryDiametroCm(s.Estribo, out var deLat);
+
+        var alturas = new List<double>();
+
+        foreach (var (_, yLatCm, rLatCm) in PosicionesLaterales(s, deLat, s.RecubrimientoCm))
+        {
+            // Una altura por FILA de laterales: las dos de una fila —la de cada costado— caen
+            // en el mismo sitio en el alzado, así que dibujar las dos sería pintar dos veces la
+            // misma línea.
+            if (alturas.Any(y => Math.Abs(y - yLatCm) < 1e-6))
+            {
+                continue;
+            }
+
+            alturas.Add(yLatCm);
+
+            // La Y de PosicionesLaterales va del paño de ABAJO hacia arriba, en centímetros, y
+            // el lienzo crece hacia abajo desde 'top'. Es la misma cuenta que hacen los dos
+            // lechos extremos: el de abajo se coloca en top + h − (rec + dInf/2) convertido a
+            // píxeles, que es exactamente top + h − suY.
+            BarraDeAlzado(
+                top + h - (yLatCm / 100.0 * esc),
+                rLatCm * 2,
+                dobleHaciaAbajo: false,
+                disponibleM: 0);
+        }
 
         // Y AHORA los estribos, encima de las varillas.
         DibujarEstribosDelAlzado();

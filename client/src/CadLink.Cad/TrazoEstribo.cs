@@ -159,6 +159,76 @@ public static class TrazoEstribo
         return new Trazo(Limpiar(cuerpo), colas, false);
     }
 
+    /// <summary>
+    /// El eje de un <b>gancho sísmico que envuelve una barra</b>, suelto.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el gancho como pieza aparte, no el del estribo rectangular: lo usan el <b>diamante</b>
+    /// —que cierra sus dos extremos en el vértice izquierdo, agarrado a la varilla lateral que
+    /// abraza ahí— y cualquier otro remate que envuelva una barra.
+    /// </para>
+    /// <para>
+    /// <b>Las reglas salen de <c>GanchoDelDiamante</c></b>, en el dibujante de AutoCAD, que es
+    /// donde estaban escritas: el doblez es <b>media vuelta</b> alrededor de la barra y su punto
+    /// medio cae en el lado <b>opuesto</b> a las colas, o sea que el acero pasa por detrás de la
+    /// barra y sale hacia el núcleo. Las dos colas salen <b>paralelas</b> y separadas el
+    /// diámetro del doblez, que es lo que hace que un gancho se vea como dos rayas.
+    /// </para>
+    /// <para>
+    /// Está aquí porque la geometría del dibujante está enredada con llamadas COM y no se puede
+    /// llamar desde la vista previa. Sacarla es lo que permite que el 3D enseñe el mismo gancho
+    /// que el plano en lugar de una copia que se pueda desviar.
+    /// </para>
+    /// </remarks>
+    /// <param name="bx">X del centro de la barra que envuelve.</param>
+    /// <param name="by">Y del centro de la barra que envuelve.</param>
+    /// <param name="rEje">
+    /// Radio del <b>eje</b> del gancho alrededor de esa barra: el radio de la barra más medio
+    /// diámetro del acero del gancho.
+    /// </param>
+    /// <param name="ux">Hacia dónde apuntan las colas, unitario. Normalmente al núcleo.</param>
+    /// <param name="uy">Hacia dónde apuntan las colas, unitario.</param>
+    /// <param name="barrido">Cuánto envuelve el doblez, en radianes. Media vuelta es <c>π</c>.</param>
+    /// <param name="cola">Largo recto de cada cola.</param>
+    /// <returns>El recorrido abierto, de la punta de una cola a la de la otra.</returns>
+    public static List<(double X, double Y)>? GanchoAlrededorDeBarra(
+        double bx, double by, double rEje,
+        double ux, double uy, double barrido, double cola,
+        int tramosPorDoblez = TramosPorDoblez)
+    {
+        var largoU = Math.Sqrt((ux * ux) + (uy * uy));
+
+        if (rEje <= 0 || cola < 0 || largoU < 1e-9 || Math.Abs(barrido) < 1e-9)
+        {
+            return null;
+        }
+
+        ux /= largoU;
+        uy /= largoU;
+
+        // Las dos normales a la dirección de las colas: por ahí arranca y remata el doblez.
+        var n1X = -uy;
+        var n1Y = ux;
+
+        var a1 = Math.Atan2(n1Y, n1X);
+
+        var puntos = new List<(double X, double Y)>();
+
+        // La punta de la primera cola, hacia fuera del doblez.
+        puntos.Add((bx + (rEje * n1X) + (cola * ux), by + (rEje * n1Y) + (cola * uy)));
+
+        // El doblez, que arranca justo donde acaba esa cola.
+        Arco(puntos, bx, by, rEje, a1, a1 + barrido, Math.Max(1, tramosPorDoblez));
+
+        // Y la punta de la segunda, que sale del final del doblez en la misma dirección.
+        var fin = puntos[^1];
+
+        puntos.Add((fin.X + (cola * ux), fin.Y + (cola * uy)));
+
+        return puntos;
+    }
+
     /// <summary>Una cola del gancho: su doblez y el tramo recto.</summary>
     private static List<(double X, double Y)> Cola(
         double cx, double cy, double r,
