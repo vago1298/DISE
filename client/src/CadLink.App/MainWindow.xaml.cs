@@ -2705,7 +2705,76 @@ public partial class MainWindow : Window
     /// el dibujante las <b>une</b>, así que no salen dos bloques encimados.
     /// </para>
     /// </remarks>
-    private void AgregarCastillosDeArea(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    /// <summary>
+    /// Trae a esta planta <b>todo lo que cruza su entrepiso</b>, sea del story que sea.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «haz el corte al nivel story y todo lo que haya debajo de ese nivel se dibuja en
+    /// ese story». Un muro o un castillo dibujado <b>de corrido por dos niveles</b> es de un solo
+    /// story para ETABS —el de su punta— y desaparecía del plano de abajo, aunque en ese nivel el
+    /// muro esté ahí.
+    /// </para>
+    /// <para>
+    /// La medida y su razonamiento están en <see cref="CruceDeNivel"/>: se exige cubrir una
+    /// <b>fracción del entrepiso</b> y no solo tocarlo, porque si no una pieza que asoma un
+    /// centímetro saldría dibujada en dos plantas.
+    /// </para>
+    /// <para>
+    /// Las cotas se <b>recortan</b> a este entrepiso. Una pieza de tres niveles sale en las tres
+    /// plantas, pero en cada una el corte tiene que verla del alto de <i>ese</i> entrepiso y no de
+    /// los tres, o el alzado la sacaría saliéndose del nivel.
+    /// </para>
+    /// </remarks>
+    private void AgregarLoQueCruzaElNivel(
+        ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
+    {
+        // Sin nivel elegido la planta trae TODO el modelo: ya están dentro.
+        if (string.IsNullOrWhiteSpace(nivel))
+        {
+            return;
+        }
+
+        var n = modelo.Niveles.FirstOrDefault(
+            x => string.Equals(x.Nombre, nivel, StringComparison.OrdinalIgnoreCase));
+
+        // Sin la cota y la altura del nivel no hay entrepiso que comparar, y adivinarlo metería
+        // piezas de otros pisos en la planta.
+        if (n is null || n.AlturaM <= 0)
+        {
+            return;
+        }
+
+        var fraccion = CfgPlano.Numero(
+            "MURO_FRACCION_ENTREPISO", CruceDeNivel.FraccionPorOmision);
+
+        foreach (var el in modelo.Elementos)
+        {
+            // Lo que ya entró por su story, o por otra pasada, no se repite.
+            if (yaEstan.Contains(el))
+            {
+                continue;
+            }
+
+            if (!CruceDeNivel.CruzaBastante(el, n, fraccion) || !VisibleEnElPlano(el))
+            {
+                continue;
+            }
+
+            var e = ComoElementoDePlanta(el, modelo);
+
+            var (z1, z2) = CruceDeNivel.RecortadaAlNivel(el, n);
+
+            e.Z1 = z1;
+            e.Z2 = z2;
+
+            yaEstan.Add(el);
+            p.Elementos.Add(e);
+        }
+    }
+
+    private void AgregarCastillosDeArea(
+        ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
     {
         // Sin nivel elegido la planta trae TODO el modelo: ya están dentro.
         if (string.IsNullOrWhiteSpace(nivel) || VerColumnasPlanoChk.IsChecked != true)
@@ -2746,8 +2815,10 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            // El de este story ya entró por el camino de siempre.
-            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            // El de este story ya entró por el camino de siempre, y el que cruza el nivel pudo
+            // entrar por la pasada de arriba: en los dos casos repetirlo lo dibujaría doble.
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase)
+                || yaEstan.Contains(el))
             {
                 continue;
             }
@@ -2778,11 +2849,13 @@ public partial class MainWindow : Window
             e.Z1 = Math.Max(zMin, zBaja);
             e.Z2 = Math.Min(zMax, zAlta);
 
+            yaEstan.Add(el);
             p.Elementos.Add(e);
         }
     }
 
-    private void AgregarArranquesDeCimentacion(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    private void AgregarArranquesDeCimentacion(
+        ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
     {
         var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20) / 100;
 
@@ -2819,11 +2892,13 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase)
+                || yaEstan.Contains(el))
             {
                 continue;
             }
 
+            yaEstan.Add(el);
             p.Elementos.Add(ComoElementoDePlanta(el, modelo));
         }
     }
@@ -2932,6 +3007,11 @@ public partial class MainWindow : Window
             ConRotulos = true
         };
 
+        // Lo que YA está en esta planta. Hace falta porque abajo hay tres pasadas más que
+        // recogen piezas de otros story por su geometría, y sin esto la misma pieza podría
+        // entrar dos veces por dos caminos distintos: se vería doble y se contaría doble.
+        var yaEstan = new HashSet<ElementoEtabs>();
+
         foreach (var el in modelo.Elementos)
         {
             // El MISMO filtro por nivel que usa el lienzo de esta pestaña
@@ -2946,7 +3026,32 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            yaEstan.Add(el);
             p.Elementos.Add(ComoElementoDePlanta(el, modelo));
+        }
+
+        // ==============================================================================
+        //  EL CORTE ES A LA COTA DEL NIVEL: LO QUE HAY DEBAJO SE DIBUJA EN ÉL
+        // ==============================================================================
+        //  Se pidió tal cual: «haz el corte al nivel story y todo lo que haya debajo de ese
+        //  nivel se dibuja en ese story». Y es la convención de un plano estructural: la planta
+        //  de un nivel es un corte a su cota, y se ve lo que hay entre ese nivel y el de abajo.
+        //
+        //  QUÉ FALLABA. La planta se armaba SOLO con lo que ETABS tenía asignado a este story, y
+        //  ETABS asigna cada pieza al piso de su cota MÁS ALTA. Así que un muro o un castillo
+        //  dibujado DE CORRIDO por dos niveles es de un solo story —el de arriba— y desaparecía
+        //  del plano de abajo, aunque en ese nivel el muro esté ahí y haya que verlo.
+        //
+        //  Esto ya estaba resuelto para UN caso, el castillo de shell, y con este mismo
+        //  razonamiento escrito en su comentario. Lo que faltaba era que valiera para TODO.
+        //
+        //  El razonamiento de la medida —cuánto cubre del entrepiso, y por qué no vale preguntar
+        //  «¿toca este nivel?»— está en CruceDeNivel. Y de ahí sale que el PRETIL no se duplique:
+        //  un metro no cubre las tres cuartas partes de un entrepiso, así que no sube a la planta
+        //  de arriba y se queda solo en la de su losa.
+        if (CfgPlano.Bandera("NIVEL_DIBUJA_LO_QUE_CRUZA", true))
+        {
+            AgregarLoQueCruzaElNivel(modelo, p, nivel, yaEstan);
         }
 
         // ==============================================================================
@@ -2964,7 +3069,7 @@ public partial class MainWindow : Window
         //  «por si acaso» llena el plano de secciones que no se van a construir.
         if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
         {
-            AgregarArranquesDeCimentacion(modelo, p, nivel);
+            AgregarArranquesDeCimentacion(modelo, p, nivel, yaEstan);
         }
 
         // ==============================================================================
@@ -2981,7 +3086,7 @@ public partial class MainWindow : Window
         if (CfgPlano.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)
             && CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true))
         {
-            AgregarCastillosDeArea(modelo, p, nivel);
+            AgregarCastillosDeArea(modelo, p, nivel, yaEstan);
         }
 
         // ==============================================================================

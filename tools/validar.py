@@ -6208,8 +6208,49 @@ def v18_planta_autocad() -> None:
           and "e.Z2 = zMax;" in lector)
     check("el castillo de area que cruza el nivel se trae de cualquier story",
           "private void AgregarCastillosDeArea(" in winp
-          and "AgregarCastillosDeArea(modelo, p, nivel);" in winp
+          and "AgregarCastillosDeArea(modelo, p, nivel, yaEstan);" in winp
           and 'CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true)' in winp)
+
+    # ------------------------------------------------------------------
+    # EL CORTE ES A LA COTA DEL NIVEL: LO QUE CRUZA SE DIBUJA AHI
+    # ------------------------------------------------------------------
+    #  Se pidio: "haz el corte al nivel story y todo lo que haya debajo de ese nivel se dibuja
+    #  en ese story". La planta se armaba SOLO con lo que ETABS tenia asignado a ese story, y
+    #  ETABS asigna cada pieza al piso de su cota MAS ALTA: un muro de corrido por dos niveles
+    #  es de un solo story -el de arriba- y desaparecia del plano de abajo.
+    #
+    #  Ya estaba resuelto para UN caso -el castillo de shell, justo arriba- y con este mismo
+    #  razonamiento. Lo que faltaba era que valiera para todo.
+    check("lo que cruza el entrepiso se dibuja en ese nivel, sea del story que sea",
+          "private void AgregarLoQueCruzaElNivel(" in winp
+          and "AgregarLoQueCruzaElNivel(modelo, p, nivel, yaEstan);" in winp
+          and 'CfgPlano.Bandera("NIVEL_DIBUJA_LO_QUE_CRUZA", true)' in winp
+          and "CruceDeNivel.CruzaBastante(el, n, fraccion)" in winp)
+
+    # Y NADA SE DIBUJA DOS VECES: hay tres pasadas que recogen piezas de otros story por su
+    # geometria, asi que las tres comparten el conjunto de lo que ya entro. Sin eso la misma
+    # pieza podria entrar por dos caminos y verse doble.
+    check("y nada entra dos veces: las pasadas comparten lo que ya esta",
+          "var yaEstan = new HashSet<ElementoEtabs>();" in winp
+          and winp.count("yaEstan.Contains(el)") >= 3
+          and winp.count("yaEstan.Add(el)") >= 4)
+
+    # LA MEDIDA ES CUANTO CUBRE DEL ENTREPISO, no "toca este nivel": una pieza que asoma un
+    # centimetro saldria dibujada en dos plantas.
+    cruce = leer(ruta("client/src/CadLink.Etabs/CruceDeNivel.cs"))
+
+    check("la medida es cuanto cubre del entrepiso, con su fraccion",
+          "public static double Cubre(" in cruce
+          and "public static bool CruzaBastante(" in cruce
+          and "return Cubre(el, zBaja, zAlta) >= n.AlturaM * f;" in cruce)
+    # Y LA Z SE RECORTA AL ENTREPISO, o el corte veria la pieza de tres niveles saliendose.
+    check("y las cotas se recortan a ese entrepiso",
+          "public static (double Z1, double Z2) RecortadaAlNivel(" in cruce
+          and "CruceDeNivel.RecortadaAlNivel(el, n)" in winp)
+    # UNA VIGA Y UNA LOSA estan a UNA sola cota: no cruzan nada.
+    check("una viga y una losa no cruzan un entrepiso",
+          "clase is ClaseElemento.Muro or ClaseElemento.Columna or ClaseElemento.Diagonal"
+          in cruce)
     # Por su altura DE VERDAD -los vertices-, no por Z1/Z2, que en un area es el dato flojo.
     check("y se mide por los vertices del area",
           "el.Vertices3D.Min(v => v.Z)" in winp

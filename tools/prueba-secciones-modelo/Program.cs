@@ -888,6 +888,95 @@ Check("el de azotea acaba en la azotea y el del pasillo en su nivel, con la mism
       azoPretil.Story == "Azotea" && tapaPretil.Story == "Azotea"
       && pMuro.Story == "Story2");
 
+// =====================================================================================
+//  EL CORTE A LA COTA DEL NIVEL: LO QUE CRUZA EL ENTREPISO SE DIBUJA EN EL
+// =====================================================================================
+//  Se pidio: «haz el corte al nivel story y todo lo que haya debajo de ese nivel se dibuja
+//  en ese story». La planta se armaba SOLO con lo que ETABS tenia asignado a ese story, y
+//  ETABS asigna cada pieza al piso de su cota MAS ALTA: un muro dibujado DE CORRIDO por dos
+//  niveles es de un solo story -el de arriba- y desaparecia del plano de abajo.
+Console.WriteLine();
+Console.WriteLine("=====================================================================");
+Console.WriteLine(" EL CORTE A LA COTA DEL NIVEL: LO QUE CRUZA SE DIBUJA AHI");
+Console.WriteLine("=====================================================================");
+
+// Entrepiso de 2.80: hay que cubrir 2.10 para contar en el nivel.
+Check("un muro de piso a techo de ESTE nivel cruza",
+      CruceDeNivel.CruzaBastante(Panel("Story3", 5.6, 8.4), n3));
+
+// EL CASO QUE FALLABA: un muro de corrido por dos niveles. ETABS lo tiene en Story3, pero
+// tambien cubre el Story2 entero, asi que en la planta del 2 hay muro y hay que dibujarlo.
+var deCorrido = Panel("Story3", 2.8, 8.4);
+
+Check("un muro de corrido por dos niveles cruza el de arriba",
+      CruceDeNivel.CruzaBastante(deCorrido, n3));
+Check("Y TAMBIEN EL DE ABAJO, que es lo que faltaba",
+      CruceDeNivel.CruzaBastante(deCorrido, n2));
+Check("pero no un nivel por el que no pasa",
+      !CruceDeNivel.CruzaBastante(deCorrido, n1));
+
+// UNA COLUMNA de corrido, igual.
+Check("una columna de corrido cruza los dos niveles",
+      CruceDeNivel.CruzaBastante(Castillo("Story3", 2.8, 8.4), n2)
+      && CruceDeNivel.CruzaBastante(Castillo("Story3", 2.8, 8.4), n3));
+
+// ---- LO QUE **NO** DEBE APARECER EN DOS PLANTAS ----
+// No vale preguntar «toca este nivel»: una pieza que ASOMA un centimetro por debajo del
+// piso saldria dibujada en el, y la misma pieza saldria en dos plantas por un asomo.
+Check("un muro que solo ASOMA 5 cm por debajo del nivel no cruza el de abajo",
+      !CruceDeNivel.CruzaBastante(Panel("Story3", 5.55, 8.4), n2));
+Check("y un dintel no cruza el nivel de abajo",
+      !CruceDeNivel.CruzaBastante(Panel("Story3", 7.7, 8.4), n2));
+
+// ---- Y AQUI LO QUE MAS IMPORTA: EL PRETIL NO SE DUPLICA ----
+//  Las dos reglas tienen que encajar sin conocerse. El pretil ya lo bajo Pretil.Bajar al
+//  nivel de su losa; si ademas «cruzara» el nivel de arriba, saldria en las dos plantas.
+//  Un metro no cubre las 2.10 que se exigen, asi que no sube.
+Check("EL PRETIL NO CRUZA EL NIVEL DE ARRIBA, asi que no se duplica",
+      !CruceDeNivel.CruzaBastante(Panel("Story2", 5.6, 6.6), n3));
+Check("ni su castillo",
+      !CruceDeNivel.CruzaBastante(Castillo("Story2", 5.6, 6.6), n3));
+Check("y su cadena tampoco, que es plana",
+      !CruceDeNivel.CruzaBastante(Viga("Story2", 6.6), n3));
+
+// ---- LAS CLASES ----
+// Una viga y una losa estan a UNA sola cota: no cubren nada de ningun entrepiso.
+Check("los muros cruzan", CruceDeNivel.ClaseQueCruza(ClaseElemento.Muro));
+Check("las columnas cruzan", CruceDeNivel.ClaseQueCruza(ClaseElemento.Columna));
+Check("las diagonales cruzan", CruceDeNivel.ClaseQueCruza(ClaseElemento.Diagonal));
+Check("una VIGA no cruza: esta a una sola cota",
+      !CruceDeNivel.ClaseQueCruza(ClaseElemento.Trabe));
+Check("y una LOSA tampoco", !CruceDeNivel.ClaseQueCruza(ClaseElemento.Losa));
+
+// Y aunque la clase lo permitiera, la cuenta de una viga da cero.
+Cerca("lo que cubre una viga de un entrepiso es cero", 0,
+      Math.Max(0, CruceDeNivel.Cubre(Viga("Story3", 7.0), 5.6, 8.4)), 1e-9);
+
+// ---- SIN ALTURA DE ENTREPISO no se adivina ----
+Check("sin altura de entrepiso no cruza nada",
+      !CruceDeNivel.CruzaBastante(Panel("Story3", 2.8, 8.4), Nivel("Story3", 8.4, 0)));
+
+// ---- LO QUE CUBRE, EN NUMEROS ----
+Cerca("un muro de corrido cubre el entrepiso entero del nivel de abajo", 2.8,
+      CruceDeNivel.Cubre(deCorrido, 2.8, 5.6), 1e-9);
+Cerca("un pretil de 1 m cubre 1 m del entrepiso de arriba", 1.0,
+      CruceDeNivel.Cubre(Panel("Story2", 5.6, 6.6), 5.6, 8.4), 1e-9);
+Check("y algo entero por debajo del tramo da cero o menos",
+      CruceDeNivel.Cubre(Panel("Story1", 0, 2.8), 5.6, 8.4) <= 0);
+
+// ---- EL RECORTE AL ENTREPISO ----
+//  Una pieza de tres niveles sale en las tres plantas, pero en cada una el CORTE tiene que
+//  verla del alto de ESE entrepiso y no de los tres.
+var (rz1, rz2) = CruceDeNivel.RecortadaAlNivel(deCorrido, n2);
+
+Cerca("el muro de corrido se recorta abajo al piso del nivel", 2.8, rz1, 1e-9);
+Cerca("y arriba a su losa", 5.6, rz2, 1e-9);
+
+var (sz1, sz2) = CruceDeNivel.RecortadaAlNivel(deCorrido, n3);
+
+Cerca("y en el nivel de arriba, al suyo", 5.6, sz1, 1e-9);
+Cerca("y a su losa", 8.4, sz2, 1e-9);
+
 // ---- QUE CLASES SE BAJAN ----
 Check("se bajan los muros", Pretil.ClaseQueSeBaja(ClaseElemento.Muro));
 Check("las columnas", Pretil.ClaseQueSeBaja(ClaseElemento.Columna));

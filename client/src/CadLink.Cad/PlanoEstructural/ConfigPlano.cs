@@ -342,6 +342,18 @@ public sealed class ConfigPlano
         P("PRETIL_ALTURA_MAX_M", "1.5", "Altura maxima SOBRE LA LOSA para tomarlo por pretil"),
         P("PRETIL_TOL_CM", "20", "Holgura en Z al comparar con la losa"),
 
+        // ---- EL CORTE ES A LA COTA DEL NIVEL ----------------------------------------
+        // Se pidio: "haz el corte al nivel story y todo lo que haya debajo de ese nivel se
+        // dibuja en ese story". La planta se armaba SOLO con lo que ETABS tenia asignado a
+        // ese story, y ETABS asigna cada pieza al piso de su cota MAS ALTA: un muro o un
+        // castillo dibujado de corrido por dos niveles es de un solo story -el de arriba- y
+        // desaparecia del plano de abajo.
+        //
+        // Se exige cubrir MURO_FRACCION_ENTREPISO del entrepiso y no solo tocarlo, porque si
+        // no una pieza que asoma un centimetro saldria dibujada en dos plantas. Esa misma
+        // fraccion es la que evita que el pretil se duplique.
+        P("NIVEL_DIBUJA_LO_QUE_CRUZA", "SI", "SI = lo que cruza el entrepiso se dibuja en ese nivel"),
+
         // ---- EL VACIO: DONDE NO HAY PISO -------------------------------------------
         // Se pidio delimitar los vacios con linea punteada y una cruz dentro, que es la
         // convencion de siempre: el hueco de la escalera, del elevador o del ducto. El

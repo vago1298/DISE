@@ -112,8 +112,9 @@ var cfg = new ConfigPlano();
 //   PRETIL_BAJAR_UN_NIVEL           el pretil se dibuja en el nivel que lo SOSTIENE
 //   PRETIL_ALTURA_MAX_M             altura maxima para tomarlo por pretil
 //   PRETIL_TOL_CM                   holgura en Z al comparar con la losa
+//   NIVEL_DIBUJA_LO_QUE_CRUZA       el corte es a la cota del nivel: lo que cruza sale ahi
 Igual("la hoja trae los renglones de CrearHojaConfig, mas los que se han añadido",
-      341, ConfigPlano.PorOmision.Count);
+      342, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -370,7 +371,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 341 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 342 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -489,6 +490,13 @@ Igual("con tope de altura de 1.5 m, que es la prudencia que se pidio", 1.5,
 Igual("y 20 cm de holgura al comparar con la losa", 20d, cfg.Numero("PRETIL_TOL_CM", -1));
 Igual("la linea de la escalera muere en el paño del muro", true,
       cfg.Bandera("ESCALERA_AL_PANO", false));
+
+// EL CORTE ES A LA COTA DEL NIVEL: un muro de corrido por dos niveles es de un solo story
+// para ETABS -el de su punta- y desaparecia del plano de abajo.
+Igual("lo que cruza el entrepiso se dibuja en ese nivel", true,
+      cfg.Bandera("NIVEL_DIBUJA_LO_QUE_CRUZA", false));
+Igual("y la fraccion que hay que cubrir es la misma del muro", 0.75,
+      cfg.Numero("MURO_FRACCION_ENTREPISO", -1));
 
 Console.WriteLine();
 Igual("el muro va a su capa", "E-MURO", capas.CapaDeTipo("MURO"));
