@@ -159,8 +159,13 @@ public partial class MainWindow
     /// </remarks>
     private AxisAngleRotation3D? _giroDeLaJaula;
 
-    /// <summary>La sombra, que sí se rehace al girar porque cambia de forma.</summary>
-    private GeometryModel3D? _modeloDeSombra;
+    /// <summary>La sombra. Se construye una vez y NO se rehace al girar.</summary>
+    /// <remarks>
+    /// Es un grupo y no una sola cara porque lleva tres capas para la penumbra. Y se queda
+    /// quieta a pedido: la sombra correcta cambiaría de forma al girar la pieza, pero una
+    /// sombra que se deforma mientras uno gira estorba para lo que se está mirando.
+    /// </remarks>
+    private Model3D? _modeloDeSombra;
 
     /// <summary>Las medidas de la pieza en curso, para reajustar la cámara sin rehacer nada.</summary>
     private (double Bx, double By, double Bz)? _cajaDeLaPieza;
@@ -849,7 +854,7 @@ public partial class MainWindow
     /// entre dos superficies a la misma cota, que es de donde salen los parpadeos.
     /// </para>
     /// </remarks>
-    private GeometryModel3D? SombraEnElSuelo()
+    private Model3D? SombraEnElSuelo()
     {
         if (_plantaDeLaPieza is null)
         {
@@ -861,27 +866,26 @@ public partial class MainWindow
         var ox = SolX / -SolY * by;
         var oz = SolZ / -SolY * by;
 
-        var gr = _giro3DAzimut * Math.PI / 180.0;
-        var co = Math.Cos(gr);
-        var se = Math.Sin(gr);
-
         var puntos = new List<(double X, double Y)>();
 
         // La PLANTA de la pieza, sea la que sea: cuatro esquinas en la rectangular y el
         // contorno del círculo en la redonda. Con las cuatro esquinas de su caja, una columna
         // circular proyectaría una sombra cuadrada.
+        //
+        // ===== SIN GIRO: LA SOMBRA ES ESTÁTICA =====
+        //
+        // Antes se le aplicaba el mismo giro que a la jaula, y era lo correcto de verdad: al
+        // girar la pieza, su sombra cambia de forma porque el corrimiento del sol no gira con
+        // ella. Pero se pidió que se quede quieta, y con razón: una sombra que se deforma
+        // mientras uno gira la pieza tira de la vista y estorba para lo que se está mirando,
+        // que es el armado.
+        //
+        // Así que se calcula con la planta SIN girar, una sola vez, y ya no se vuelve a tocar.
+        // Es la sombra que le toca a la pieza en su posición de arranque, y se queda ahí.
         foreach (var (x, z) in planta)
         {
-            // El mismo giro que lleva la jaula, aplicado a mano: la sombra no puede heredarlo
-            // como transformación porque el corrimiento del sol NO gira con la pieza.
-            var dx = x - cx;
-            var dz = z - cz;
-
-            var gxx = cx + (dx * co) - (dz * se);
-            var gzz = cz + (dx * se) + (dz * co);
-
-            puntos.Add((gxx, gzz));
-            puntos.Add((gxx + ox, gzz + oz));
+            puntos.Add((x, z));
+            puntos.Add((x + ox, z + oz));
         }
 
         var silueta = Envolvente.Convexa(puntos);
@@ -891,49 +895,76 @@ public partial class MainWindow
             return null;
         }
 
-        var geo = new MeshGeometry3D();
+        var centroX = silueta.Average(p => p.X);
+        var centroZ = silueta.Average(p => p.Y);
 
-        const double casiElSuelo = 0.05;
+        var grupo = new Model3DGroup();
 
-        // Un abanico desde el primer vértice: vale para cualquier polígono CONVEXO, y la
-        // envolvente lo es por construcción.
-        foreach (var (x, z) in silueta)
-        {
-            geo.Positions.Add(new Point3D(x, casiElSuelo, z));
-            geo.Normals.Add(new Vector3D(0, 1, 0));
-        }
-
-        for (var i = 1; i + 1 < silueta.Count; i++)
-        {
-            geo.TriangleIndices.Add(0);
-            geo.TriangleIndices.Add(i);
-            geo.TriangleIndices.Add(i + 1);
-        }
-
-        geo.Freeze();
-
-        var brocha = new SolidColorBrush(Color.FromArgb(0x66, 0x0E, 0x18, 0x24));
-        brocha.Freeze();
-
-        // ===== DIFUSA, NO EMISIVA =====
+        // ===== TRES CAPAS PARA LA PENUMBRA =====
         //
-        // La primera versión de esto usaba EmissiveMaterial razonando que «una sombra no se
-        // ilumina». El razonamiento estaba del revés: un material emisivo EMITE luz, o sea que
-        // SUMA color a lo que hay detrás. Sumar un color oscuro sobre un fondo claro no lo
-        // oscurece: lo aclara un poco y lo tiñe. Por eso la sombra salía blanquecina.
+        // Una sombra de verdad no tiene el borde cortado a tijera: se va deshaciendo. Se
+        // apilan tres siluetas, cada una un poco más grande y más tenue, y donde se solapan
+        // las tres queda lo más oscuro. Eso da el degradado del borde sin calcularlo.
         //
-        // Lo que oscurece es un material difuso de color oscuro: lo que se ve es su color
-        // multiplicado por la luz que le llega, y un color casi negro sigue casi negro por
-        // mucha luz que reciba. Y con el alfa de la brocha se deja translúcido para que no sea
-        // una mancha plana.
-        var material = new DiffuseMaterial(brocha);
-
-        return new GeometryModel3D
+        // Y van a cotas ligeramente distintas —fracciones de milímetro— porque dos caras
+        // exactamente a la misma altura dejan al motor sin criterio para decidir cuál va
+        // delante, y eso parpadea al girar.
+        var capas = new[]
         {
-            Geometry = geo,
-            Material = material,
-            BackMaterial = material
+            (Crece: 1.22, Alfa: (byte)0x30, Cota: 0.04),
+            (Crece: 1.10, Alfa: (byte)0x3E, Cota: 0.07),
+            (Crece: 1.00, Alfa: (byte)0x52, Cota: 0.10)
         };
+
+        foreach (var (crece, alfa, cota) in capas)
+        {
+            var geo = new MeshGeometry3D();
+
+            foreach (var (x, z) in silueta)
+            {
+                geo.Positions.Add(new Point3D(
+                    centroX + ((x - centroX) * crece),
+                    cota,
+                    centroZ + ((z - centroZ) * crece)));
+
+                geo.Normals.Add(new Vector3D(0, 1, 0));
+            }
+
+            // Un abanico desde el primer vértice: vale para cualquier polígono CONVEXO, y la
+            // envolvente lo es por construcción.
+            for (var i = 1; i + 1 < silueta.Count; i++)
+            {
+                geo.TriangleIndices.Add(0);
+                geo.TriangleIndices.Add(i);
+                geo.TriangleIndices.Add(i + 1);
+            }
+
+            geo.Freeze();
+
+            var brocha = new SolidColorBrush(Color.FromArgb(alfa, 0x0A, 0x12, 0x1B));
+            brocha.Freeze();
+
+            // ===== DIFUSA, NO EMISIVA =====
+            //
+            // Una versión anterior usaba EmissiveMaterial razonando que «una sombra no se
+            // ilumina». El razonamiento estaba del revés: un material emisivo EMITE luz, o sea
+            // que SUMA color a lo que hay detrás. Sumar un color oscuro sobre un fondo claro
+            // no lo oscurece: lo aclara un poco y lo tiñe. Por eso salía blanquecina.
+            //
+            // Lo que oscurece es un material difuso de color oscuro: se ve su color
+            // multiplicado por la luz que recibe, y un color casi negro sigue casi negro por
+            // mucha luz que le llegue.
+            var material = new DiffuseMaterial(brocha);
+
+            grupo.Children.Add(new GeometryModel3D
+            {
+                Geometry = geo,
+                Material = material,
+                BackMaterial = material
+            });
+        }
+
+        return grupo;
     }
 
     // ======================================================================
@@ -1060,10 +1091,8 @@ public partial class MainWindow
     /// Aplica el giro y el encuadre <b>sin reconstruir la malla</b>.
     /// </summary>
     /// <remarks>
-    /// Es lo que hace que arrastrar sea instantáneo. La jaula solo cambia el ángulo de su
-    /// transformación; la sombra sí se rehace, porque al girar la pieza su silueta cambia de
-    /// forma y no es una transformación de la anterior. Rehacer un polígono de seis lados no
-    /// cuesta nada; rehacer la jaula sí.
+    /// Es lo que hace que arrastrar sea instantáneo: la jaula solo cambia el ángulo de su
+    /// transformación y la cámara se recoloca. No se reconstruye ninguna malla.
     /// </remarks>
     private void ActualizarGiro3D()
     {
@@ -1074,18 +1103,9 @@ public partial class MainWindow
 
         _giroDeLaJaula.Angle = _giro3DAzimut;
 
-        if (PreviaEscena3D.Content is Model3DGroup grupo && _modeloDeSombra is not null)
-        {
-            grupo.Children.Remove(_modeloDeSombra);
-
-            _modeloDeSombra = SombraEnElSuelo();
-
-            if (_modeloDeSombra is not null)
-            {
-                grupo.Children.Add(_modeloDeSombra);
-            }
-        }
-
+        // La sombra NO se rehace: se pidió que se quede quieta. Antes se reconstruía en cada
+        // grado para que fuera la sombra exacta de la pieza girada, y eso es lo que la hacía
+        // moverse.
         AjustarCamara3D();
     }
 

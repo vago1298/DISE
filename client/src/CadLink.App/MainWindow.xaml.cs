@@ -4145,12 +4145,45 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ===== EL 3D SE DECIDE ANTES QUE LA FORMA =====
+        //
+        // Esto estaba AL REVÉS y era un fallo de verdad: la sección redonda se desviaba aquí
+        // con su propio «return», así que en 3D nunca se llegaba a la rama del 3D. Como
+        // tampoco se tocaba la visibilidad del recuadro ni se reconstruía la escena, quedaba
+        // a la vista LA JAULA DE LA SECCIÓN ANTERIOR —una rectangular— encima del alzado de
+        // la redonda. Es justo lo que se reportó: el 3D de otra sección.
+        //
+        // Ahora manda la vista y luego la forma. ConstruirEscena3D ya reparte por su cuenta
+        // entre la rectangular y la redonda, así que las dos entran por el mismo sitio y
+        // ninguna se puede quedar sin construir.
+        if (_alzado3D && s is not null)
+        {
+            PreviaCorteHost.Clip = null;
+            PreviaViewport.Visibility = Visibility.Visible;
+
+            // En 3D la cuenta que convierte un clic en una varilla no vale, porque el dibujo
+            // ya no está en el lienzo. Con la escala en cero, VarillaEn devuelve null y los
+            // clics de grapa no hacen nada, en lugar de agarrar la varilla equivocada.
+            _previaEscala = 0;
+
+            ConstruirEscena3D(s, ancho, alto);
+            DibujarAlzadoPrevio(s, ancho * 0.5, alto);
+
+            Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
+            return;
+        }
+
         // La seccion redonda se previsualiza aparte, con su propia geometria. Si
         // cayera en el camino de abajo se veria como un rectangulo con estribo
         // rectangular, o sea NO se veria lo que se va a dibujar, que es justo para lo
         // que sirve una vista previa.
         if (s is not null && s.EsCircular)
         {
+            PreviaViewport.Visibility = Visibility.Collapsed;
+
+            PreviaCorteHost.Clip =
+                new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
+
             DibujarVistaPreviaCircular(s, ancho, alto);
             return;
         }
@@ -4169,15 +4202,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // ===== EN 3D, EL CORTE TAMBIÉN SE VE EN 3D =====
-        //
-        // El botón vale para las dos mitades del recuadro: la sección a la izquierda y el
-        // alzado a la derecha.
-        //
-        // Se pone _previaEscala en cero a propósito: es lo que usa VarillaEn para pasar de
-        // un clic a una varilla, y en 3D esa cuenta ya no vale porque el dibujo está
-        // proyectado. Con la escala en cero, VarillaEn devuelve null y los clics de grapa
-        // no hacen nada, en lugar de agarrar la varilla equivocada.
         // ===== EN 2D EL CORTE SE QUEDA EN SU MITAD =====
         //
         // Se movía libremente y acababa montado sobre el alzado. Ahora su recuadro se recorta
@@ -4190,24 +4214,12 @@ public partial class MainWindow : Window
         // su recorte se queda quieto mientras el dibujo se mueve por dentro.
         //
         // En 3D se deja SIN recortar, a propósito: ahí la pieza se puede pasear libremente.
-        PreviaCorteHost.Clip = _alzado3D
-            ? null
-            : new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
+        PreviaCorteHost.Clip = new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
 
         // El recuadro del 3D solo existe en 3D: en el corte plano se apaga para que no atrape
-        // recursos del motor ni tape nada.
-        PreviaViewport.Visibility = _alzado3D ? Visibility.Visible : Visibility.Collapsed;
-
-        if (_alzado3D)
-        {
-            _previaEscala = 0;
-
-            ConstruirEscena3D(s, ancho, alto);
-            DibujarAlzadoPrevio(s, ancho * 0.5, alto);
-
-            Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
-            return;
-        }
+        // recursos del motor ni tape nada. Aquí ya se sabe que la vista es plana, porque el
+        // 3D se desvió arriba.
+        PreviaViewport.Visibility = Visibility.Collapsed;
 
         const double margen = 34;
 

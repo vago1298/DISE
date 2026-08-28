@@ -900,6 +900,34 @@
         <Setter Property="Background" Value="{StaticResource CeldaCircularBrush}" />
     </Style>
 
+    <!-- LAS TRES CASILLAS DE LA SECCION REDONDA, APAGADAS SI NO LO ES.
+
+         «N total», «Var total» y «Zuncho helic.» solo las lee el dibujo de una
+         COLUMNA CIRCULAR o un DADO CIRCULAR: la seccion rectangular captura su
+         acero por lechos y su estribo aparte, y ni mira estas tres.
+
+         Dejarlas escribibles en una seccion cuadrada invita a capturar un dato que
+         el dibujo va a ignorar, y despues a no entender por que no sale en el
+         plano. Es el mismo criterio -y el mismo apano- que las casillas del muro y
+         de la parrilla en la hoja de zapatas.
+
+         Se apaga con IsEnabled enlazado a EsCircular de la propia fila -el
+         DataContext de una celda ES su fila-, asi que se enciende y se apaga sola
+         al cambiar el Elemento, sin una linea de codigo. Y EsCircular ya cubre las
+         DOS formas redondas, la columna y el dado, asi que no hay que preguntar por
+         el elemento.
+
+         La opacidad es para que se vea apagada y no solo intocable. -->
+    <Style x:Key="CeldaSoloCircular" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaCircular}">
+        <Setter Property="IsEnabled" Value="{Binding EsCircular}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- ==============================================================
          CELDAS QUE SOLO APLICAN CON UN TIPO DE MURO
          (hoja de zapatas corridas)

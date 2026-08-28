@@ -528,15 +528,15 @@
                                  el acero se captura como TOTAL en lugar de por lechos.
                                  En el plano se rotula «COLUMNA», igual que una cuadrada. -->
                             <DataGridTextColumn Header="N° total" Binding="{Binding NVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    CellStyle="{StaticResource CeldaCircular}" />
+                                                    CellStyle="{StaticResource CeldaSoloCircular}" />
                             <DataGridComboBoxColumn x:Name="ColVarTotal" Header="Var total"
                                                     SelectedItemBinding="{Binding DiamVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaCircular}" />
+                                                    CellStyle="{StaticResource CeldaSoloCircular}" />
                             <DataGridComboBoxColumn x:Name="ColZuncho" Header="Zuncho helic."
                                                     SelectedItemBinding="{Binding ZunchoHelicoidal, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaCircular}" />
+                                                    CellStyle="{StaticResource CeldaSoloCircular}" />
 
                             <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
