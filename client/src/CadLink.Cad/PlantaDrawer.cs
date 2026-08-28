@@ -444,8 +444,9 @@ public sealed partial class PlantaDrawer
         }
 
         // Las escaleras, de puro contorno: se apartaron al empezar, así que no han pasado por
-        // nada de lo de arriba.
-        Escaleras(x0, y0);
+        // nada de lo de arriba. Se les pasan las huellas para que su línea muera en el PAÑO del
+        // muro y no en su eje.
+        Escaleras(x0, y0, huellas);
 
         // Y donde NO hay losa: el hueco del elevador, del ducto o de la doble altura, con su
         // contorno a trazos y su cruz. Después de los paños para que la línea del vacío quede
@@ -1466,7 +1467,7 @@ public sealed partial class PlantaDrawer
     /// con ella y no se vería justo lo único que se pidió dibujar.
     /// </para>
     /// </remarks>
-    private int Escaleras(double x0, double y0)
+    private int Escaleras(double x0, double y0, IReadOnlyList<ElementoPlanta> huellas)
     {
         if (_escalerasDeLaPlanta.Count == 0)
         {
@@ -1476,9 +1477,33 @@ public sealed partial class PlantaDrawer
         var capa = _capas.CapaEscalera;
         var dibujadas = 0;
 
+        // ==============================================================================
+        //  LA LÍNEA DE LA ESCALERA MUERE EN EL PAÑO DEL MURO, NO EN SU EJE
+        // ==============================================================================
+        //  Se pidió, y es lo mismo que ya se hace con el molde del achurado de la losa: en el
+        //  modelo la escalera llega al EJE del muro, porque ahí están los nudos, pero el
+        //  concreto no llega al eje —medio espesor antes ya es muro—. Dibujando el contorno del
+        //  modelo, la línea de la escalera se mete por dentro de la cadena y se lee como una
+        //  junta que no existe.
+        //
+        //  Lo hace PanoDeLosa.AlPano, que mete cada lado SOLO por el trozo que tiene muro
+        //  debajo. Y aquí importa que sea por tramos: el rellano de una escalera apoya en el
+        //  muro por un pedazo de su lado y da al aire por el resto.
+        var alPano = _cfg.Bandera("ESCALERA_AL_PANO", true) && huellas.Count > 0;
+
         foreach (var el in _escalerasDeLaPlanta)
         {
             var contorno = PlanoEstructural.EscaleraEnPlanta.Contorno(el);
+
+            if (contorno.Count < 3)
+            {
+                continue;
+            }
+
+            if (alPano)
+            {
+                contorno = PanoDeLosa.AlPano(contorno, huellas);
+            }
 
             if (contorno.Count < 3)
             {

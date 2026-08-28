@@ -821,6 +821,50 @@ Igual("con la cadena a lo largo de todo el lado, siguen siendo cuatro vertices",
       4, entera.Count);
 Cerca("y el lado entero sigue metido a 7.5 cm", 0.075, entera.Min(v => v.Y));
 
+// =====================================================================================
+//  Y LA LINEA DE LA ESCALERA, IGUAL: AL PAÑO DEL MURO Y NO A SU EJE
+// =====================================================================================
+//  Se pidio: «en las lineas de las escaleras, que llegue al pañio del muro, que no entre al
+//  eje del muro». Es el mismo problema que el molde del achurado: en el modelo la escalera
+//  llega al EJE del muro porque ahi estan los nudos, pero el concreto no llega al eje.
+//
+//  Se resuelve con la MISMA funcion, asi que se comprueba la composicion de las dos: el
+//  contorno de la escalera metido al paño.
+Console.WriteLine();
+Console.WriteLine("La linea de la escalera muere en el paño del muro:");
+
+Check("la hoja pide meter la escalera al paño", cfg.Bandera("ESCALERA_AL_PANO", false));
+
+// Una escalera de losa que llega al eje de la cadena de abajo, que corre por todo su lado.
+var escaleraLosa = new ElementoPlanta { Clase = ClasePlanta.Losa, Notas = "ESCALERA" };
+
+escaleraLosa.Vertices.Add((0, 0));
+escaleraLosa.Vertices.Add((4, 0));
+escaleraLosa.Vertices.Add((4, 3));
+escaleraLosa.Vertices.Add((0, 3));
+
+var contornoEscalera = PanoDeLosa.AlPano(
+    EscaleraEnPlanta.Contorno(escaleraLosa), cadenaAbajo);
+
+Cerca("la orilla que apoya en la cadena sube a su paño: y = 0.075", 0.075,
+      contornoEscalera.Min(v => v.Y));
+Cerca("y la de arriba, que da al aire, se queda donde estaba", 3,
+      contornoEscalera.Max(v => v.Y));
+
+// Y UN PELDAÑO DE MURO tambien: su huella se mete igual.
+var peldanoAlPano = new ElementoPlanta
+{
+    Clase = ClasePlanta.Muro, Notas = "ESCALERA",
+    X1 = 0, Y1 = 1.5, X2 = 4, Y2 = 1.5, AnchoM = 0.30
+};
+
+var contornoPeldano = PanoDeLosa.AlPano(
+    EscaleraEnPlanta.Contorno(peldanoAlPano), cadenaAbajo);
+
+Igual("el peldaño de muro sigue teniendo cuatro esquinas", 4, contornoPeldano.Count);
+Cerca("y no lo toca la cadena, que corre lejos de sus lados", 1.35,
+      contornoPeldano.Min(v => v.Y));
+
 // UNA CADENA PERPENDICULAR que solo toca la orilla NO mete el pano: no esta debajo de
 // esa orilla.
 var cadenaCruza = new List<ElementoPlanta>

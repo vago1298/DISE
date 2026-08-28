@@ -108,8 +108,12 @@ var cfg = new ConfigPlano();
 //   VACIO_CRUZ                      la cruz dentro del hueco, ademas del contorno
 //   CAPA_ESCALERA                   el contorno de la escalera: E-ESCALERA
 //   COLOR_ESCALERA                  su color
+//   ESCALERA_AL_PANO                su linea muere en el paño del muro, no en su eje
+//   PRETIL_BAJAR_UN_NIVEL           el pretil se dibuja en el nivel que lo SOSTIENE
+//   PRETIL_ALTURA_MAX_M             altura maxima para tomarlo por pretil
+//   PRETIL_TOL_CM                   holgura en Z al comparar con la losa
 Igual("la hoja trae los renglones de CrearHojaConfig, mas los que se han añadido",
-      337, ConfigPlano.PorOmision.Count);
+      341, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -366,7 +370,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 337 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 341 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -470,6 +474,21 @@ Igual("con su cruz dentro", true, cfg.Bandera("VACIO_CRUZ", false));
 Igual("la tolerancia que borra la junta del mallado son 5 cm", 5d,
       cfg.Numero("VACIO_TOL_CM", -1));
 Igual("y el area minima 0.10 m2", 0.10, cfg.Numero("VACIO_AREA_MIN_M2", -1));
+
+// ==================================================================================
+//  EL PRETIL, AL NIVEL QUE LO SOSTIENE
+// ==================================================================================
+//  ETABS asigna cada shell al piso de su cota MAS ALTA, asi que un pretil de 1 m que se
+//  para en la losa de un nivel y no llega a la de arriba salia dibujado un nivel por
+//  encima de donde esta. Se baja al que lo sostiene, y SOLO el pretil.
+Console.WriteLine();
+Igual("los pretiles se bajan al nivel que los sostiene", true,
+      cfg.Bandera("PRETIL_BAJAR_UN_NIVEL", false));
+Igual("con tope de altura de 1.5 m, que es la prudencia que se pidio", 1.5,
+      cfg.Numero("PRETIL_ALTURA_MAX_M", -1));
+Igual("y 20 cm de holgura al comparar con la losa", 20d, cfg.Numero("PRETIL_TOL_CM", -1));
+Igual("la linea de la escalera muere en el paño del muro", true,
+      cfg.Bandera("ESCALERA_AL_PANO", false));
 
 Console.WriteLine();
 Igual("el muro va a su capa", "E-MURO", capas.CapaDeTipo("MURO"));

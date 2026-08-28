@@ -1026,7 +1026,7 @@ public partial class MainWindow : Window
 
             cx.Conectar();
 
-            var modelo = EtabsReader.Leer(cx);
+            var modelo = LeerModeloEtabs(cx);
             _modeloEtabs = modelo;
             _destinoLeido = destino;
 
@@ -2310,6 +2310,49 @@ public partial class MainWindow : Window
     /// Es el arranque del juego de planos: en un edificio, cada nivel es un plano de
     /// planta. Los planos se agregan al juego, así que la numeración sale puesta.
     /// </remarks>
+    /// <summary>
+    /// Lee el modelo y le aplica los <b>arreglos de nivel</b> antes de que nadie lo filtre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe para que el arreglo del <b>pretil</b> se aplique en <b>un solo sitio</b>. Hay dos
+    /// filtros por nivel independientes —el que arma la planta para AutoCAD y el del lienzo de la
+    /// vista previa—, así que tocando solo uno el plano y lo que se ve en pantalla dirían cosas
+    /// distintas. Arreglando el modelo antes de los dos, no hay nada que sincronizar.
+    /// </para>
+    /// <para>
+    /// El razonamiento de qué es un pretil y por qué ETABS lo deja un piso arriba está en
+    /// <see cref="Pretil"/>.
+    /// </para>
+    /// </remarks>
+    private ModeloEtabs LeerModeloEtabs(EtabsConnection cx)
+    {
+        var modelo = EtabsReader.Leer(cx);
+
+        if (!CfgPlano.Bandera("PRETIL_BAJAR_UN_NIVEL", true))
+        {
+            return modelo;
+        }
+
+        var movidos = Pretil.Bajar(
+            modelo,
+            CfgPlano.Numero("MURO_FRACCION_ENTREPISO", Pretil.FraccionDeEntrepiso),
+            CfgPlano.Numero("PRETIL_TOL_CM", Pretil.ToleranciaM * 100) / 100,
+            CfgPlano.Numero("PRETIL_ALTURA_MAX_M", Pretil.AlturaMaximaM));
+
+        var aviso = Pretil.Aviso(movidos);
+
+        if (aviso.Length > 0)
+        {
+            // A los avisos del modelo, que es donde el usuario ya mira: salen en Resumen(), o
+            // sea en el recuadro de estado al leer. Mover una pieza de nivel sin decirlo sería
+            // peor que no moverla.
+            modelo.Avisos.Add(aviso);
+        }
+
+        return modelo;
+    }
+
     private void OnLeerPlantas(object sender, RoutedEventArgs e)
     {
         try
@@ -2319,7 +2362,7 @@ public partial class MainWindow : Window
             using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
-            var modelo = EtabsReader.Leer(cx);
+            var modelo = LeerModeloEtabs(cx);
             _modeloEtabs = modelo;
             _destinoLeido = DestinoCsi;
             _vista.Modelo = modelo;

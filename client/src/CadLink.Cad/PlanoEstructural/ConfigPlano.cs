@@ -322,6 +322,22 @@ public sealed class ConfigPlano
         P("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", "Palabras que identifican escaleras"),
         P("CAPA_ESCALERA", "ESCALERA", "CAPA DEL CONTORNO DE LA ESCALERA (con prefijo: E-ESCALERA)"),
         P("COLOR_ESCALERA", "8", "Color de esa capa"),
+        P("ESCALERA_AL_PANO", "SI", "SI = LA LINEA MUERE EN EL PAÑO DEL MURO, NO EN SU EJE"),
+
+        // ---- EL PRETIL, AL NIVEL QUE LO SOSTIENE ------------------------------------
+        // ETABS asigna cada shell al piso de su cota MAS ALTA. Para un muro completo eso
+        // es lo correcto, pero un pretil de 1 m se para en la losa de un nivel y NO llega
+        // a la de arriba: su cota alta sigue cayendo en el tramo del piso de arriba, asi
+        // que ETABS lo mete ahi y el pretil salia dibujado un nivel por encima de donde
+        // esta, mientras que en su nivel no habia nada.
+        //
+        // Se baja al piso que lo sostiene, y SOLO el pretil: hace falta que se apoye en la
+        // losa de abajo Y que no llegue a la de arriba. Un muro completo falla lo segundo
+        // -su tapa ES la elevacion de su piso- y un dintel falla lo primero -arranca a dos
+        // metros del suelo-, asi que ninguno se mueve.
+        P("PRETIL_BAJAR_UN_NIVEL", "SI", "SI = el pretil se dibuja en el nivel que lo sostiene"),
+        P("PRETIL_ALTURA_MAX_M", "1.5", "Altura maxima para tomar un muro bajo como pretil"),
+        P("PRETIL_TOL_CM", "20", "Holgura en Z al comparar con la losa"),
 
         // ---- EL VACIO: DONDE NO HAY PISO -------------------------------------------
         // Se pidio delimitar los vacios con linea punteada y una cruz dentro, que es la
