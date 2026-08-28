@@ -520,19 +520,63 @@ public partial class MainWindow
             }
         }
 
-        // Pinta un recorrido del plano de la sección a una cota z dada.
+        // Pinta un recorrido del plano de la sección, subiendo de z0 a z1 a lo largo de él.
+        //
+        // ===== POR QUÉ SUBE: UN ESTRIBO CERRADO ES UNA HÉLICE MUY PLANA =====
+        //
+        // Los dos extremos se juntan en la misma esquina y los dos envuelven la varilla, así
+        // que en un plano exacto se ocuparían el mismo sitio. En la pieza uno lapa sobre el
+        // otro, y ese lape es de un diámetro.
+        //
+        // La primera versión de esto puso el lape como un SALTO: la segunda cola arrancaba un
+        // diámetro más arriba que el cuerpo. El resultado fue peor que el problema —la cola
+        // quedaba separada del cuerpo, como un muñón flotando— y es lo que se reportó.
+        //
+        // Ahora el lape se reparte a lo largo del recorrido: el cuerpo sube un diámetro desde
+        // donde arranca hasta donde acaba, y cada cola queda a la cota del extremo al que se
+        // engancha. Todo empalma sin saltos, y es lo que hace la varilla de verdad.
+        //
+        // La subida se reparte por LARGO recorrido y no por número de puntos: los dobleces
+        // llevan muchos puntos y los lados rectos pocos, así que por índice casi toda la
+        // subida caería dentro de los dobleces y se vería el escalón ahí.
         void Recorrido(
-            List<(double X, double Y)> puntos, double z, bool cerrado,
+            List<(double X, double Y)> puntos, double z0, double z1, bool cerrado,
             Color color, double diamCm)
         {
             var hasta = cerrado ? puntos.Count : puntos.Count - 1;
+
+            if (hasta < 1)
+            {
+                return;
+            }
+
+            // El largo acumulado en cada punto, para repartir la subida.
+            var acumulado = new double[puntos.Count + 1];
 
             for (var i = 0; i < hasta; i++)
             {
                 var a = puntos[i];
                 var b = puntos[(i + 1) % puntos.Count];
 
-                Barra(a.X, a.Y, z, b.X, b.Y, z, color, diamCm);
+                acumulado[i + 1] = acumulado[i]
+                    + Math.Sqrt(
+                        ((b.X - a.X) * (b.X - a.X)) + ((b.Y - a.Y) * (b.Y - a.Y)));
+            }
+
+            var total = acumulado[hasta];
+
+            for (var i = 0; i < hasta; i++)
+            {
+                var a = puntos[i];
+                var b = puntos[(i + 1) % puntos.Count];
+
+                var f0 = total > 1e-9 ? acumulado[i] / total : 0;
+                var f1 = total > 1e-9 ? acumulado[i + 1] / total : 0;
+
+                Barra(
+                    a.X, a.Y, z0 + ((z1 - z0) * f0),
+                    b.X, b.Y, z0 + ((z1 - z0) * f1),
+                    color, diamCm);
             }
         }
 
@@ -579,27 +623,31 @@ public partial class MainWindow
             // El estribo, con su cuerpo y sus dos colas de gancho.
             if (trazo is not null)
             {
-                Recorrido(trazo.Value.Cuerpo, zEst, trazo.Value.Cerrado, colorEstribo, de);
+                // Sin gancho el estribo es un aro cerrado y no lapa: se queda plano. Con
+                // gancho sube un diámetro de punta a punta, que es el lape de sus extremos.
+                var lape = trazo.Value.Cerrado ? 0 : de;
 
-                // ===== LOS DOS EXTREMOS LAPAN, NO SE PISAN =====
+                Recorrido(
+                    trazo.Value.Cuerpo, zEst, zEst + lape,
+                    trazo.Value.Cerrado, colorEstribo, de);
+
+                // Cada cola va a la cota del extremo del cuerpo al que se engancha, así que
+                // empalma sin salto.
                 //
-                // Los dos extremos del estribo se juntan en esta esquina y LOS DOS envuelven
-                // la varilla: uno llega subiendo por el costado y da la vuelta por encima, el
-                // otro llega por arriba y la da por el costado. Sus dobleces barren el mismo
-                // cuadrante, así que en el mismo plano se ocupaban el mismo sitio: dos barras
-                // dibujadas una dentro de la otra. Eso es lo que hacía que el gancho no se
-                // leyera, y desde ciertos ángulos pareciera un muñón suelto.
-                //
-                // En la pieza uno LAPA sobre el otro —el estribo no es plano en esa esquina,
-                // ahí es donde se cierra—, así que el segundo va corrido un diámetro a lo
-                // largo del elemento. Con eso los dos dobleces se ven, uno pasando sobre el
-                // otro, que es como está armado.
-                for (var i = 0; i < trazo.Value.Colas.Count; i++)
+                // Colas[0] arranca en la tangencia del COSTADO, que es donde ACABA el
+                // cuerpo; Colas[1] arranca en la tangencia de ARRIBA, que es donde EMPIEZA.
+                // Ese reparto lo fija TrazoEstribo y no se puede invertir aquí sin que las
+                // colas se despeguen.
+                if (trazo.Value.Colas.Count > 0)
                 {
-                    Recorrido(
-                        trazo.Value.Colas[i],
-                        zEst + (i == 1 ? de : 0),
-                        false, colorEstribo, de);
+                    Recorrido(trazo.Value.Colas[0], zEst + lape, zEst + lape,
+                              false, colorEstribo, de);
+                }
+
+                if (trazo.Value.Colas.Count > 1)
+                {
+                    Recorrido(trazo.Value.Colas[1], zEst, zEst,
+                              false, colorEstribo, de);
                 }
             }
 
@@ -609,7 +657,8 @@ public partial class MainWindow
 
             if (recorridoDia is not null)
             {
-                Recorrido(recorridoDia, zDia, true, colorEstribo, dDia);
+                // El diamante se dibuja cerrado, así que no lapa: se queda plano.
+                Recorrido(recorridoDia, zDia, zDia, true, colorEstribo, dDia);
             }
 
             // Y las grapas encima, cada una con SU diámetro y apilada sobre la anterior.
@@ -651,7 +700,9 @@ public partial class MainWindow
 
                 if (eje is not null)
                 {
-                    Recorrido(eje, zGrapa, false, colorEstribo, dGrapa);
+                    // La grapa es una pieza abierta con sus dos ganchos en los extremos
+                    // opuestos, así que no se lapa consigo misma: va plana.
+                    Recorrido(eje, zGrapa, zGrapa, false, colorEstribo, dGrapa);
                 }
                 else
                 {
