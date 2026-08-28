@@ -53,20 +53,51 @@ public partial class MainWindow
     //  El giro
     // ======================================================================
 
-    /// <summary>Giro alrededor del eje vertical de la pieza, en grados.</summary>
+    /// <summary>
+    /// Cuánto se ha girado <b>la pieza</b> sobre su eje vertical, en grados.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Gira la PIEZA, no la cámara.</b> Es la diferencia entre un plato giratorio y una
+    /// cámara dando vueltas, y aquí importa: el <b>sol y el suelo están quietos</b>, así que
+    /// si girara la cámara el suelo entero giraría con ella y la sombra se pasearía por la
+    /// pantalla. Girando la pieza, la sombra se queda donde está —solo cambia de forma, como
+    /// la de un objeto que uno hace girar al sol— y lo único que se mueve es la sección.
+    /// </para>
+    /// <para>
+    /// Para la sección el resultado se ve igual que girar la cámara: girar el objeto un
+    /// ángulo o el ojo el contrario son la misma imagen. La diferencia está solo en lo que
+    /// está clavado al mundo, que es justo la sombra.
+    /// </para>
+    /// </remarks>
     private double _giro3DAzimut = GiroAzimutPorOmision;
 
-    /// <summary>Inclinación de la vista, en grados.</summary>
+    /// <summary>Inclinación de la vista, en grados. Esta sí es de la cámara.</summary>
+    /// <remarks>
+    /// La inclinación no se puede pasar a la pieza: inclinar la pieza la volcaría, y lo que
+    /// se quiere es mirarla desde más arriba o más abajo. Al inclinar, el suelo se inclina
+    /// también y la sombra acompaña, que es lo que pasa de verdad cuando uno se agacha.
+    /// </remarks>
     private double _giro3DElevacion = GiroElevacionPorOmision;
 
-    /// <remarks>
-    /// 35° y 22° son los mismos valores de arranque que usa el visor de ETABS, y por el
-    /// mismo motivo: es la orientación en la que se ven las tres caras de un prisma sin que
-    /// ninguna quede de canto.
-    /// </remarks>
-    private const double GiroAzimutPorOmision = 35;
+    /// <summary>La pieza arranca sin girar; el escorzo lo da la cámara.</summary>
+    private const double GiroAzimutPorOmision = 0;
 
+    /// <remarks>
+    /// 22° es el valor de arranque del visor de ETABS, y por el mismo motivo: es la
+    /// inclinación en la que se ven las tres caras de un prisma sin que ninguna quede de
+    /// canto.
+    /// </remarks>
     private const double GiroElevacionPorOmision = 22;
+
+    /// <summary>
+    /// Desde qué lado mira la cámara. <b>Fijo</b>, porque lo que gira es la pieza.
+    /// </summary>
+    /// <remarks>
+    /// 32° pone el suelo en escorzo —ni de frente ni de canto— así que la sombra se lee como
+    /// apoyada en un piso y no como una mancha pegada a la pieza.
+    /// </remarks>
+    private const double AzimutDeLaCamara = 32;
 
     /// <summary>Devuelve el 3D a su orientación de arranque.</summary>
     private void ReiniciarGiro3D()
@@ -251,18 +282,53 @@ public partial class MainWindow
 
         var area = new Rect(26, 44, _limite3DDerecha - 52, alto - 78);
 
-        // Lo que tiene que caber: las ocho esquinas de la pieza Y las de su sombra. Si la
-        // sombra no entrara en la cuenta, se saldría del recuadro y aparecería cortada.
-        var encuadra = new List<(double X, double Y, double Z)>();
+        // ===== EL GIRO ES DE LA PIEZA =====
+        //
+        // Se rota alrededor del eje vertical que pasa por el centro de la sección. El sol, el
+        // suelo y la cámara se quedan quietos, así que la sombra no se pasea: solo cambia de
+        // forma, y lo que se ve moverse es la sección.
+        var ejeX = bx / 2;
+        var ejeY = by / 2;
 
-        foreach (var (x, y) in new[] { (0.0, 0.0), (bx, 0.0), (bx, by), (0.0, by) })
+        var gr = _giro3DAzimut * Math.PI / 180.0;
+        var cosG = Math.Cos(gr);
+        var senG = Math.Sin(gr);
+
+        (double X, double Y) Gira(double x, double y)
         {
-            encuadra.Add((x, y, 0));
-            encuadra.Add((x, y, bz));
-            encuadra.Add(EnLaSombra(x, y, bz));
+            var dx = x - ejeX;
+            var dy = y - ejeY;
+
+            return (ejeX + (dx * cosG) - (dy * senG), ejeY + (dx * senG) + (dy * cosG));
         }
 
-        var cam = PrepararCamara3D(encuadra, _giro3DAzimut, _giro3DElevacion, area);
+        // ===== EL ENCUADRE NO DEBE CAMBIAR AL GIRAR =====
+        //
+        // Si se midiera la pieza tal como queda girada, su silueta cambia con cada grado y el
+        // encuadre se recalcularía: la pieza daría saltos de tamaño y de sitio mientras se
+        // gira. Se mide el CILINDRO que la envuelve —de radio media diagonal de la sección—,
+        // que es lo mismo en cualquier giro. Con eso la pieza se queda quieta girando en su
+        // sitio.
+        //
+        // Y entra la sombra de ese cilindro, no la de la pieza, por lo mismo: así el encuadre
+        // deja sitio para la sombra sin depender del giro.
+        var radio = Math.Sqrt((bx * bx) + (by * by)) / 2;
+
+        var encuadra = new List<(double X, double Y, double Z)>();
+
+        foreach (var (dx, dy) in new[] { (-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0) })
+        {
+            var x = ejeX + (dx * radio);
+            var y = ejeY + (dy * radio);
+
+            encuadra.Add((x, y, 0));
+            encuadra.Add((x, y, bz));
+
+            // Donde cae su sombra: corrida lo que dice el sol.
+            encuadra.Add((x + (SolX / SolZ * bz), y + (SolY / SolZ * bz), 0));
+        }
+
+        var cam = PrepararCamara3D(encuadra, AzimutDeLaCamara, _giro3DElevacion, area);
 
         if (cam is null)
         {
@@ -281,20 +347,40 @@ public partial class MainWindow
         var trozoPx = _previaGirando ? 22.0 : 9.0;
 
         // ---------- La sombra en el suelo ----------
-        // Va PRIMERO, para quedar debajo de todo lo demás.
-        SombraEnElSuelo(c, bx, by, bz);
+        // Va PRIMERO, para quedar debajo de todo lo demás. Su silueta es la envolvente de la
+        // base GIRADA y de la tapa girada y corrida: con la pieza girada la base ya no está
+        // alineada con los ejes, así que no se puede escribir a mano.
+        var puntosDeSombra = new List<(double X, double Y)>();
+
+        foreach (var (x, y) in new[] { (0.0, 0.0), (bx, 0.0), (bx, by), (0.0, by) })
+        {
+            var (gx, gy) = Gira(x, y);
+
+            puntosDeSombra.Add((gx, gy));
+            puntosDeSombra.Add((gx + (SolX / SolZ * bz), gy + (SolY / SolZ * bz)));
+        }
+
+        SombraEnElSuelo(c, Envolvente.Convexa(puntosDeSombra));
 
         // ---------- La caja de concreto, en alambre y tenue ----------
         // Lo que hay que mirar es el armado; una caja opaca lo taparía entero. Es lo mismo
         // que hace el visor de ETABS con el modelo.
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
 
+        // Las esquinas, ya giradas: la caja acompaña a la pieza.
+        Point Esquina(double x, double y, double z)
+        {
+            var (gx, gy) = Gira(x, y);
+
+            return c.APantalla(gx, gy, z);
+        }
+
         var v = new[]
         {
-            c.APantalla(0, 0, 0), c.APantalla(bx, 0, 0),
-            c.APantalla(bx, by, 0), c.APantalla(0, by, 0),
-            c.APantalla(0, 0, bz), c.APantalla(bx, 0, bz),
-            c.APantalla(bx, by, bz), c.APantalla(0, by, bz)
+            Esquina(0, 0, 0), Esquina(bx, 0, 0),
+            Esquina(bx, by, 0), Esquina(0, by, 0),
+            Esquina(0, 0, bz), Esquina(bx, 0, bz),
+            Esquina(bx, by, bz), Esquina(0, by, bz)
         };
 
         foreach (var (i, j) in new[]
@@ -326,10 +412,17 @@ public partial class MainWindow
         // El rango de cercanía de la pieza, para poder apagar lo que queda al fondo. Se mide
         // en las OCHO esquinas y no en las cuatro de la planta: la cercanía sí depende de la
         // cota, y en una pieza de tres metros ese término es el que más pesa.
+        // Se mide sobre el CILINDRO que envuelve la pieza, igual que el encuadre y por lo
+        // mismo: así el rango no cambia al girar y una barra no cambia de brillo sola
+        // mientras se gira. Con el rango medido sobre la pieza girada, la misma barra saldría
+        // más clara o más oscura según el ángulo.
         var cercanias = new List<double>();
 
-        foreach (var (x, y) in new[] { (0.0, 0.0), (bx, 0.0), (bx, by), (0.0, by) })
+        foreach (var (dx, dy) in new[] { (-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0) })
         {
+            var x = ejeX + (dx * radio);
+            var y = ejeY + (dy * radio);
+
             cercanias.Add(c.Cercania(x, y, 0));
             cercanias.Add(c.Cercania(x, y, bz));
         }
@@ -339,10 +432,17 @@ public partial class MainWindow
         var dRango = dMax - dMin;
 
         void Barra(
-            double x1, double y1, double z1,
-            double x2, double y2, double z2,
+            double sx1, double sy1, double z1,
+            double sx2, double sy2, double z2,
             Color color, double diamCm)
         {
+            // Las coordenadas llegan en el plano de la SECCIÓN y aquí se pasan al mundo
+            // aplicándoles el giro de la pieza. Se hace en un solo sitio a propósito: si cada
+            // familia de barras lo aplicara por su cuenta, bastaría con olvidarlo en una para
+            // que esa se quedara sin girar.
+            var (x1, y1) = Gira(sx1, sy1);
+            var (x2, y2) = Gira(sx2, sy2);
+
             var p = c.APantalla(x1, y1, z1);
             var q = c.APantalla(x2, y2, z2);
 
@@ -459,9 +559,25 @@ public partial class MainWindow
             {
                 Recorrido(trazo.Value.Cuerpo, zEst, trazo.Value.Cerrado, colorEstribo, de);
 
-                foreach (var cola in trazo.Value.Colas)
+                // ===== LOS DOS EXTREMOS LAPAN, NO SE PISAN =====
+                //
+                // Los dos extremos del estribo se juntan en esta esquina y LOS DOS envuelven
+                // la varilla: uno llega subiendo por el costado y da la vuelta por encima, el
+                // otro llega por arriba y la da por el costado. Sus dobleces barren el mismo
+                // cuadrante, así que en el mismo plano se ocupaban el mismo sitio: dos barras
+                // dibujadas una dentro de la otra. Eso es lo que hacía que el gancho no se
+                // leyera, y desde ciertos ángulos pareciera un muñón suelto.
+                //
+                // En la pieza uno LAPA sobre el otro —el estribo no es plano en esa esquina,
+                // ahí es donde se cierra—, así que el segundo va corrido un diámetro a lo
+                // largo del elemento. Con eso los dos dobleces se ven, uno pasando sobre el
+                // otro, que es como está armado.
+                for (var i = 0; i < trazo.Value.Colas.Count; i++)
                 {
-                    Recorrido(cola, zEst, false, colorEstribo, de);
+                    Recorrido(
+                        trazo.Value.Colas[i],
+                        zEst + (i == 1 ? de : 0),
+                        false, colorEstribo, de);
                 }
             }
 
@@ -539,7 +655,8 @@ public partial class MainWindow
 
         Etiqueta(PreviaFijaCanvas,
             $"SECCIÓN 3D   ·   L = {largoM:N2} m   ·   {centros.Count} estribos"
-            + $"   ·   giro {_giro3DAzimut:N0}°/{_giro3DElevacion:N0}°"
+            + $"   ·   giro {((_giro3DAzimut % 360) + 360) % 360:N0}°"
+            + $"   ·   vista {_giro3DElevacion:N0}°"
             + (s.LongitudM > 0 ? string.Empty : "   ·   largo por omisión"),
             26, alto - 18);
     }
@@ -581,9 +698,6 @@ public partial class MainWindow
 
     private const double SolZ = 0.86;
 
-    /// <summary>La sombra de un punto en el suelo.</summary>
-    private static (double X, double Y, double Z) EnLaSombra(double x, double y, double z) =>
-        (x + (SolX / SolZ * z), y + (SolY / SolZ * z), 0);
 
     /// <summary>
     /// La <b>sombra proyectada</b> de la pieza en el suelo.
@@ -591,51 +705,34 @@ public partial class MainWindow
     /// <remarks>
     /// <para>
     /// Es la sombra de verdad: cada esquina de la pieza se lleva al suelo siguiendo la
-    /// dirección del sol, y la silueta es la <b>envolvente convexa</b> de todas ellas —de las
-    /// cuatro de la base, que se quedan donde están, y de las cuatro de arriba, que caen
-    /// lejos—. Sale un hexágono tumbado a lo largo, no una huella pegada a la base.
+    /// dirección del sol, y la silueta es la <b>envolvente convexa</b> de todas ellas —las
+    /// cuatro de la base, que se quedan donde están, y las cuatro de arriba, que caen lejos—.
+    /// Sale tumbada a lo largo, no como una huella pegada a la base.
     /// </para>
     /// <para>
-    /// Hizo falta la envolvente porque la unión de la base y la tapa corrida <b>no es un
-    /// rectángulo</b>: son dos rectángulos iguales desplazados en diagonal, y su silueta
-    /// tiene seis lados. Dibujar los dos por separado se notaría, porque al ser
-    /// translúcidos la zona común saldría del doble de oscura.
+    /// Hizo falta la envolvente porque esa unión <b>no es un rectángulo</b>: son dos
+    /// polígonos iguales desplazados en diagonal, y su silueta tiene más lados que cada uno.
+    /// Dibujar los dos por separado se notaría, porque al ser translúcidos la zona común
+    /// saldría del doble de oscura. La cuenta vive en <see cref="Envolvente"/>, fuera de aquí
+    /// y con su prueba, porque esta parte del programa no se puede compilar en el entorno de
+    /// trabajo.
     /// </para>
     /// <para>
-    /// La sombra <b>entra en el encuadre</b>, así que la pieza sale algo más pequeña que
-    /// antes. Es el precio de que la sombra se vea entera: recortarla al borde del recuadro
-    /// quedaría peor que la pieza un poco menor.
+    /// La silueta llega <b>ya girada</b>: gira la pieza y no la cámara, así que la sombra se
+    /// queda donde está y solo cambia de forma, que es lo que hace un objeto al que se le da
+    /// vueltas al sol.
     /// </para>
     /// </remarks>
-    private void SombraEnElSuelo(Camara3D c, double bx, double by, double bz)
+    /// <param name="silueta">
+    /// El contorno de la sombra en el suelo, ya resuelto. Con menos de tres vértices no hay
+    /// nada que rellenar: pasa si la pieza es degenerada o si el sol cae a plomo.
+    /// </param>
+    private void SombraEnElSuelo(Camara3D c, List<(double X, double Y)> silueta)
     {
-        // Cuánto se corre la tapa al caer al suelo.
-        var ox = SolX / SolZ * bz;
-        var oy = SolY / SolZ * bz;
-
-        if (bx <= 0 || by <= 0 || ox <= 0 || oy <= 0)
+        if (silueta.Count < 3)
         {
             return;
         }
-
-        // ---------- La silueta, escrita a mano y no con una envolvente ----------
-        //
-        // La sombra es la unión de la base con la tapa corrida: dos rectángulos IGUALES
-        // desplazados en diagonal. Su silueta no es un rectángulo, es un hexágono, y para dos
-        // rectángulos alineados con los ejes y un corrimiento positivo en las dos direcciones
-        // se puede escribir directamente:
-        //
-        //     (0,0) → (bx,0) → (bx+ox, oy) → (bx+ox, by+oy) → (ox, by+oy) → (0,by)
-        //
-        // Se hizo así en lugar de con una envolvente convexa general por una razón práctica:
-        // esta parte vive en CadLink.App, que en este entorno NO se puede compilar ni probar,
-        // y un algoritmo de envolvente sin prueba es justo lo que no conviene meter. El
-        // hexágono se comprueba leyéndolo.
-        var silueta = new List<(double X, double Y)>
-        {
-            (0, 0), (bx, 0), (bx + ox, oy),
-            (bx + ox, by + oy), (ox, by + oy), (0, by)
-        };
 
         // Dos capas: la sombra y un halo un poco mayor y más tenue, para que el borde no
         // salga como recortado con tijeras.

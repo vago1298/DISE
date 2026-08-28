@@ -5150,7 +5150,22 @@ public partial class MainWindow : Window
                 EndLineCap = PenLineCap.Round
             };
 
-            var contorno = camino.GetWidenedPathGeometry(pluma);
+            // ===== EL CONTORNO, LIMPIO DE COSTURAS =====
+            //
+            // GetWidenedPathGeometry devuelve la silueta de la pluma tramo POR tramo: un
+            // cuadrilátero por segmento del eje más la unión entre ellos. Eso vale para
+            // rellenar, pero al trazarlo se dibujan TAMBIÉN todas las costuras internas, una
+            // por segmento.
+            //
+            // Con el eje en pico eran tres segmentos y las costuras casi no se veían. Al
+            // meter los dobleces como arcos muestreados pasaron a ser veinte, y las de los
+            // dobleces caen todas juntas en unos milímetros: eso era el borrón verde que
+            // aparecía justo en los ganchos. No era un color de más, eran veinte líneas.
+            //
+            // GetOutlinedPathGeometry funde todo eso en un solo contorno, el de la unión, sin
+            // costuras por dentro. Es la diferencia entre trazar la silueta y trazar todos
+            // los trozos con los que se construyó.
+            var contorno = camino.GetWidenedPathGeometry(pluma).GetOutlinedPathGeometry();
 
             // El RELLENO, en el tipo 2, va entero y sin cortar: en AutoCAD el achurado de
             // la varilla es continuo y lo que se corta son sus caras.
