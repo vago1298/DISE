@@ -4194,11 +4194,15 @@ public partial class MainWindow : Window
             ? null
             : new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
 
+        // El recuadro del 3D solo existe en 3D: en el corte plano se apaga para que no atrape
+        // recursos del motor ni tape nada.
+        PreviaViewport.Visibility = _alzado3D ? Visibility.Visible : Visibility.Collapsed;
+
         if (_alzado3D)
         {
             _previaEscala = 0;
 
-            DibujarSeccion3DPrevia(s, ancho, alto);
+            ConstruirEscena3D(s, ancho, alto);
             DibujarAlzadoPrevio(s, ancho * 0.5, alto);
 
             Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);

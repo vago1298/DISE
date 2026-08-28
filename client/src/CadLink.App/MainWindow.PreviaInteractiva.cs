@@ -212,10 +212,31 @@ public partial class MainWindow
 
             _previaArrastreDesde = p;
 
-            // Hay que redibujar: el giro cambia la proyección, y el encuadre se recalcula
-            // con ella para que la pieza siga cabiendo al ponerse de perfil. Una
-            // transformación del lienzo no podría hacer eso.
-            DibujarVistaPrevia();
+            // NO se redibuja: solo se le cambia el ángulo a la transformación de la jaula y se
+            // recoloca la cámara. Ahí está la ganancia de haber pasado el 3D a un motor: la
+            // malla son decenas de miles de triángulos y antes se rehacía entera en cada
+            // movimiento del ratón, que es lo que obligaba a dibujar más basto al girar.
+            ActualizarGiro3D();
+            return;
+        }
+
+        // ---------- Moviendo el 3D ----------
+        if (_alzado3D)
+        {
+            // En 3D el desplazamiento es de la CÁMARA y va en unidades del modelo, no en
+            // píxeles del lienzo: el dibujo no está en el lienzo. Se convierte con el ancho
+            // que la cámara abarca, así que arrastrar mueve la pieza justo lo que se mueve el
+            // ratón, a cualquier zoom.
+            var porPixel = PreviaViewport.Width > 1
+                ? PreviaCamara3D.Width / PreviaViewport.Width
+                : 0;
+
+            _pan3DU -= (p.X - _previaArrastreDesde.X) * porPixel;
+            _pan3DV += (p.Y - _previaArrastreDesde.Y) * porPixel;
+
+            _previaArrastreDesde = p;
+
+            AjustarCamara3D();
             return;
         }
 
@@ -227,8 +248,6 @@ public partial class MainWindow
         PreviaMueve.Y += p.Y - _previaArrastreDesde.Y;
 
         _previaArrastreDesde = p;
-
-        LimitarEncuadre3D();
     }
 
     /// <summary>Al salir el cursor, se apaga el realce.</summary>
@@ -281,16 +300,10 @@ public partial class MainWindow
         var fueArrastre = _previaHuboArrastre;
         _previaHuboArrastre = false;
 
-        // Se apaga el giro y, si se estaba girando, se REDIBUJA fino: mientras se arrastra el
-        // 3D se dibuja basto para que siga al ratón, y al soltar hay que rehacerlo con todo
-        // el detalle. Sin apagar la bandera aquí, el dibujo se quedaría basto para siempre.
-        var estabaGirando = _previaGirando;
+        // Se apaga el giro. Ya no hace falta redibujar al soltar: con el 3D en un motor, el
+        // arrastre no dibuja más basto —solo cambia un ángulo— así que no hay nada que
+        // rehacer con más detalle.
         _previaGirando = false;
-
-        if (estabaGirando)
-        {
-            DibujarVistaPrevia();
-        }
 
         PreviewCanvas.ReleaseMouseCapture();
         PreviewCanvas.Cursor = null;
@@ -318,6 +331,24 @@ public partial class MainWindow
     {
         var factor = e.Delta > 0 ? PreviaPasoZoom : 1 / PreviaPasoZoom;
 
+        // En 3D el zoom es de la CÁMARA: se estrecha el ancho que abarca. Escalar el lienzo no
+        // serviría de nada, porque el 3D no se dibuja en el lienzo.
+        //
+        // No se ancla al puntero, a diferencia del corte plano: en una vista girada, «lo que
+        // hay bajo el cursor» es un punto del espacio y para saber cuál habría que preguntarle
+        // al motor contra qué barra choca el rayo. Anclar al centro es lo que hace cualquier
+        // visor 3D y no engaña a nadie.
+        if (_alzado3D)
+        {
+            _zoom3D = Math.Clamp(_zoom3D * factor, Zoom3DMin, Zoom3DMax);
+
+            AjustarCamara3D();
+            ActualizarZoomPreviaTexto();
+
+            e.Handled = true;
+            return;
+        }
+
         // El ancla es el puntero: se hace zoom SOBRE el detalle que se está mirando,
         // que es lo que hace AutoCAD. Anclar al centro obligaría a mover el dibujo
         // después de cada golpe de rueda para recuperar lo que se estaba viendo.
@@ -329,11 +360,25 @@ public partial class MainWindow
         e.Handled = true;
     }
 
-    private void OnPreviaAcercar(object sender, RoutedEventArgs e)
-        => AplicarZoomPrevia(PreviaEscala.ScaleX * PreviaPasoZoom, CentroPrevia());
+    private void OnPreviaAcercar(object sender, RoutedEventArgs e) => ZoomPorBoton(PreviaPasoZoom);
 
     private void OnPreviaAlejar(object sender, RoutedEventArgs e)
-        => AplicarZoomPrevia(PreviaEscala.ScaleX / PreviaPasoZoom, CentroPrevia());
+        => ZoomPorBoton(1 / PreviaPasoZoom);
+
+    /// <summary>Acerca o aleja desde los botones, en la vista que toque.</summary>
+    private void ZoomPorBoton(double factor)
+    {
+        if (_alzado3D)
+        {
+            _zoom3D = Math.Clamp(_zoom3D * factor, Zoom3DMin, Zoom3DMax);
+
+            AjustarCamara3D();
+            ActualizarZoomPreviaTexto();
+            return;
+        }
+
+        AplicarZoomPrevia(PreviaEscala.ScaleX * factor, CentroPrevia());
+    }
 
     private void OnPreviaAjustar(object sender, RoutedEventArgs e)
     {
@@ -341,13 +386,13 @@ public partial class MainWindow
 
         ReiniciarEncuadrePrevia();
 
-        // En el corte plano no hace falta redibujar: volver la transformación a la identidad
-        // ya devuelve el encuadre de siempre. En 3D SÍ, porque lo que se reinicia es el
-        // GIRO, y el giro está metido en la proyección con la que se calcularon los puntos:
-        // ninguna transformación del lienzo puede deshacerlo.
+        // En el corte plano no hace falta redibujar: volver la transformación a la identidad ya
+        // devuelve el encuadre de siempre. En 3D basta con recolocar la cámara y el ángulo, que
+        // es lo que se acaba de reiniciar; la malla no cambia.
         if (era3D)
         {
-            DibujarVistaPrevia();
+            ActualizarGiro3D();
+            ActualizarZoomPreviaTexto();
         }
     }
 
@@ -404,47 +449,9 @@ public partial class MainWindow
         PreviaMueve.X = ancla.X - (kNueva * px);
         PreviaMueve.Y = ancla.Y - (kNueva * py);
 
-        LimitarEncuadre3D();
-
         ActualizarZoomPreviaTexto();
     }
 
-    /// <summary>
-    /// En 3D, impide que la sección se monte encima del <b>alzado</b>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// El alzado va en el lienzo fijo, que no se mueve; la sección va en el que sí. Sin tope,
-    /// al mover o acercar la sección se le metía por encima y las dos se leían como una sola
-    /// maraña.
-    /// </para>
-    /// <para>
-    /// El tope se pone sobre el borde DERECHO de lo dibujado, no sobre el recuadro: lo que
-    /// molesta es que el acero cruce a la otra mitad, y el recuadro de la caja de concreto es
-    /// más ancho que el acero. Los dos números los deja el dibujo del 3D, que es quien sabe
-    /// dónde acabó cada cosa.
-    /// </para>
-    /// <para>
-    /// Solo se topa por la derecha. Por la izquierda y en vertical se puede mover libremente:
-    /// ahí no hay nada con lo que chocar, y limitarlo de más daría la impresión de que la
-    /// vista está trabada.
-    /// </para>
-    /// </remarks>
-    private void LimitarEncuadre3D()
-    {
-        if (!_alzado3D || _borde3DDerecha <= 0 || _limite3DDerecha <= 0)
-        {
-            return;
-        }
-
-        // Dónde cae ahora mismo en pantalla el borde derecho del dibujo.
-        var enPantalla = (PreviaEscala.ScaleX * _borde3DDerecha) + PreviaMueve.X;
-
-        if (enPantalla > _limite3DDerecha)
-        {
-            PreviaMueve.X -= enPantalla - _limite3DDerecha;
-        }
-    }
 
     /// <summary>Devuelve la vista previa a su encuadre original.</summary>
     /// <remarks>
@@ -467,6 +474,14 @@ public partial class MainWindow
         ActualizarZoomPreviaTexto();
     }
 
+    /// <summary>El porcentaje del recuadro, que sale de sitios distintos en cada vista.</summary>
+    /// <remarks>
+    /// En el corte plano el zoom es la escala del lienzo; en 3D es lo que abarca la cámara. Son
+    /// dos cosas distintas y se guardan aparte, porque cambiar de vista no debe heredar el
+    /// encuadre de la otra.
+    /// </remarks>
     private void ActualizarZoomPreviaTexto()
-        => PreviaZoomText.Text = $"{PreviaEscala.ScaleX * 100:N0}%";
+        => PreviaZoomText.Text = _alzado3D
+            ? $"{_zoom3D * 100:N0}%"
+            : $"{PreviaEscala.ScaleX * 100:N0}%";
 }

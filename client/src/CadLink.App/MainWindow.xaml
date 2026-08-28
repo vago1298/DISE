@@ -822,6 +822,48 @@
                                  3D la seccion se puede pasear libremente, que es lo
                                  que se pidio. -->
                             <Grid x:Name="PreviaCorteHost">
+
+                            <!-- ===== EL 3D DE VERDAD =====
+
+                                 La seccion en 3D se dibujaba proyectandola a mano
+                                 sobre el lienzo: lineas gruesas con degradado que
+                                 PARECIAN barras redondas. Eso tenia un techo que no se
+                                 arregla afinando -no hay profundidad por pixel, asi
+                                 que dos barras tangentes se traspasan siempre- y esta
+                                 razonado en TuboDeMalla.
+
+                                 Aqui las barras son SOLIDOS y el motor resuelve la
+                                 oclusion con su buffer de profundidad. Girar pasa a
+                                 ser una transformacion: la malla se construye una vez
+                                 y arrastrar solo cambia un angulo.
+
+                                 La camara es ORTOGRAFICA, no en perspectiva: un dibujo
+                                 tecnico no lleva punto de fuga, y asi las dos varillas
+                                 de un lecho se ven del mismo tamano esten delante o
+                                 detras, que es lo que se quiere comprobar.
+
+                                 IsHitTestVisible en False a proposito: los eventos del
+                                 raton los sigue atendiendo PreviewCanvas, que esta
+                                 encima y es transparente. Asi el giro, el zoom y el
+                                 arrastre se manejan en un solo sitio para las dos
+                                 vistas. -->
+                            <Viewport3D x:Name="PreviaViewport"
+                                        Visibility="Collapsed"
+                                        IsHitTestVisible="False"
+                                        ClipToBounds="True"
+                                        HorizontalAlignment="Left">
+                                <Viewport3D.Camera>
+                                    <OrthographicCamera x:Name="PreviaCamara3D"
+                                                        Position="0,0,1000"
+                                                        LookDirection="0,0,-1"
+                                                        UpDirection="0,1,0"
+                                                        Width="200"
+                                                        NearPlaneDistance="1"
+                                                        FarPlaneDistance="100000" />
+                                </Viewport3D.Camera>
+                                <ModelVisual3D x:Name="PreviaEscena3D" />
+                            </Viewport3D>
+
                             <Canvas x:Name="PreviewCanvas"
                                     Background="Transparent"
                                     MouseLeftButtonDown="OnPreviaMouseDown"

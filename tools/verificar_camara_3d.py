@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""Comprueba la cámara del 3D de secciones: la proyección y el orden de pintado.
+"""Comprueba la cámara del 3D de secciones: los tres ejes con los que se coloca.
 
-¿Por qué en Python y no en una prueba ejecutable?
+QUÉ COMPRUEBA Y QUÉ NO
 
-La cámara vive en MainWindow.Seccion3D.cs, o sea en CadLink.App, que en este
-entorno NO se puede compilar: falta el ref pack de WPF. Pero la cuenta es
-aritmética pura y se puede portar. Lo que NO comprueba esto es que el C# diga lo
-mismo que este port; eso hay que leerlo. Lo que sí comprueba es que la CUENTA sea
-la correcta, que es donde estaba el error.
+La vista 3D ya no proyecta a mano: la dibuja un Viewport3D y la proyección la hace
+el motor. Lo que sigue siendo cuenta nuestra es COLOCAR la cámara, y eso son tres
+vectores que AjustarCamara3D calcula a partir del giro y la inclinación:
 
-EL ERROR QUE ESTO CAZA. El orden de pintado se hacía con `Prof(x, y)`, ordenando
-de menor a mayor. Dos cosas mal:
+    mira    = (-sen a·cos e,  -sen e,  -cos a·cos e)
+    arriba  = (-sen a·sen e,   cos e,  -cos a·sen e)
+    derecha = ( cos a,         0,      -sen a)
 
-  1. Prof crece hacia el FONDO, así que ordenar de menor a mayor pinta lo
-     cercano primero y lo lejano encima: justo al revés. El visor de ETABS, que
-     usa la misma proyección, ordena con OrderByDescending.
+Si esos tres no forman una terna a derechas, la imagen sale espejeada o de lado, y
+el desplazamiento con el ratón se va en la dirección equivocada. Es lo que se
+comprueba aquí, porque en Linux no se puede compilar CadLink.App.
 
-  2. Prof ignora la ALTURA. En una pieza levantada tres metros con una sección de
-     medio, mirándola desde 22° el término de la altura barre más de un metro y el
-     de la planta apenas medio: manda el que se estaba ignorando. Por eso el
-     armado se veía entremezclado y las barras parecían traspasarse.
+Este fichero comprobaba antes otra cosa: el orden de pintado del algoritmo del
+pintor, con una función Cercania que ya NO EXISTE. Se reescribió en lugar de
+dejarlo pasando en verde sobre código borrado, que es peor que no tener prueba.
 
 Uso:  python3 tools/verificar_camara_3d.py
 """
@@ -46,249 +44,179 @@ def comprobar(cond: bool, que: str, porque: str = "") -> None:
     FALLOS += 1
 
 
-# ----------------------------------------------------------------------
-#  El port de la cámara, tal como está en MainWindow.Seccion3D.cs
-# ----------------------------------------------------------------------
+# El port de AjustarCamara3D, con los ejes de WPF: Y hacia arriba.
+def ejes(azimut: float, elevacion: float):
+    a = math.radians(azimut)
+    e = math.radians(elevacion)
+
+    sa, ca = math.sin(a), math.cos(a)
+    se, ce = math.sin(e), math.cos(e)
+
+    mira = (-sa * ce, -se, -ca * ce)
+    arriba = (-sa * se, ce, -ca * se)
+    derecha = (ca, 0.0, -sa)
+
+    return mira, arriba, derecha
 
 
-class Camara:
-    def __init__(self, azimut: float, elevacion: float) -> None:
-        a = math.radians(azimut)
-        e = math.radians(elevacion)
-
-        self.sa, self.ca = math.sin(a), math.cos(a)
-        self.se, self.ce = math.sin(e), math.cos(e)
-
-    def proyectar(self, x: float, y: float, z: float) -> tuple[float, float]:
-        d = (x * self.sa) + (y * self.ca)
-
-        return ((x * self.ca) - (y * self.sa), -((z * self.ce) + (d * self.se)))
-
-    def prof(self, x: float, y: float) -> float:
-        return (x * self.sa) + (y * self.ca)
-
-    def cercania(self, x: float, y: float, z: float) -> float:
-        """Lo cerca del ojo. Cuanto mayor, más cerca."""
-        return (z * self.se) - (self.ce * self.prof(x, y))
-
-    # Los tres ejes de la pantalla, de los que TIENE que salir todo lo de arriba.
-    def derecha(self) -> tuple[float, float, float]:
-        return (self.ca, -self.sa, 0.0)
-
-    def arriba(self) -> tuple[float, float, float]:
-        return (self.sa * self.se, self.ca * self.se, self.ce)
-
-    def hacia_el_ojo(self) -> tuple[float, float, float]:
-        """Derecha × Arriba, que en una terna a derechas sale de la pantalla."""
-        r = self.derecha()
-        u = self.arriba()
-
-        return (
-            (r[1] * u[2]) - (r[2] * u[1]),
-            (r[2] * u[0]) - (r[0] * u[2]),
-            (r[0] * u[1]) - (r[1] * u[0]),
-        )
+def punto(u, v) -> float:
+    return sum(a * b for a, b in zip(u, v))
 
 
-def punto(v, w) -> float:
-    return sum(a * b for a, b in zip(v, w))
+def cruz(u, v):
+    return (
+        (u[1] * v[2]) - (u[2] * v[1]),
+        (u[2] * v[0]) - (u[0] * v[2]),
+        (u[0] * v[1]) - (u[1] * v[0]),
+    )
 
 
-def largo(v) -> float:
-    return math.sqrt(punto(v, v))
+def largo(u) -> float:
+    return math.sqrt(punto(u, u))
 
 
 # ----------------------------------------------------------------------
 
 
-def ternas_ortonormales() -> None:
+def ternaOrtonormal() -> None:
     print()
-    print("Los tres ejes de la pantalla")
+    print("Los tres ejes de la camara")
 
-    peor_norma = 0.0
-    peor_ortog = 0.0
+    peorNorma = 0.0
+    peorOrtog = 0.0
 
-    for az in range(0, 360, 17):
-        for el in range(-89, 90, 13):
-            c = Camara(az, el)
+    for az in range(0, 360, 11):
+        for el in range(-89, 90, 7):
+            mira, arriba, derecha = ejes(az, el)
 
-            r, u, o = c.derecha(), c.arriba(), c.hacia_el_ojo()
+            for v in (mira, arriba, derecha):
+                peorNorma = max(peorNorma, abs(largo(v) - 1))
 
-            for v in (r, u, o):
-                peor_norma = max(peor_norma, abs(largo(v) - 1))
-
-            peor_ortog = max(
-                peor_ortog,
-                abs(punto(r, u)),
-                abs(punto(r, o)),
-                abs(punto(u, o)),
+            peorOrtog = max(
+                peorOrtog,
+                abs(punto(mira, arriba)),
+                abs(punto(mira, derecha)),
+                abs(punto(arriba, derecha)),
             )
 
-    comprobar(peor_norma < 1e-12, "los tres son unitarios",
-              f"el peor se desvia {peor_norma:.3e}")
+    comprobar(peorNorma < 1e-12, "los tres son unitarios",
+              f"el peor se desvia {peorNorma:.3e}")
 
-    comprobar(peor_ortog < 1e-12, "y perpendiculares entre si",
-              f"el peor producto punto es {peor_ortog:.3e}")
+    comprobar(peorOrtog < 1e-12, "y perpendiculares entre si",
+              f"el peor producto punto es {peorOrtog:.3e}")
 
 
-def la_proyeccion_usa_esos_ejes() -> None:
+def aDerechas() -> None:
+    """derecha x arriba tiene que SALIR de la pantalla, o sea ser -mira."""
     print()
-    print("La proyeccion sale de esos ejes")
-
-    peor_u = 0.0
-    peor_v = 0.0
-
-    rnd = random.Random(7)
-
-    for _ in range(4000):
-        c = Camara(rnd.uniform(0, 360), rnd.uniform(-89, 89))
-        p = (rnd.uniform(-300, 300), rnd.uniform(-300, 300), rnd.uniform(-300, 300))
-
-        u, v = c.proyectar(*p)
-
-        peor_u = max(peor_u, abs(u - punto(p, c.derecha())))
-        # En un lienzo la v crece hacia ABAJO, de ahi el signo.
-        peor_v = max(peor_v, abs(v + punto(p, c.arriba())))
-
-    comprobar(peor_u < 1e-9, "la u es la proyeccion sobre el eje DERECHA",
-              f"se desvia {peor_u:.3e}")
-
-    comprobar(peor_v < 1e-9, "y la v es menos la proyeccion sobre ARRIBA",
-              f"se desvia {peor_v:.3e}")
-
-
-def la_cercania_es_el_eje_que_sale() -> None:
-    print()
-    print("La cercania")
+    print("El sentido de la terna")
 
     peor = 0.0
 
-    rnd = random.Random(11)
+    for az in range(0, 360, 11):
+        for el in range(-89, 90, 7):
+            mira, arriba, derecha = ejes(az, el)
 
-    for _ in range(4000):
-        c = Camara(rnd.uniform(0, 360), rnd.uniform(-89, 89))
-        p = (rnd.uniform(-300, 300), rnd.uniform(-300, 300), rnd.uniform(-300, 300))
+            fuera = cruz(derecha, arriba)
 
-        peor = max(peor, abs(c.cercania(*p) - punto(p, c.hacia_el_ojo())))
+            for i in range(3):
+                peor = max(peor, abs(fuera[i] + mira[i]))
 
-    comprobar(peor < 1e-9,
-              "es exactamente la proyeccion sobre el eje que SALE de la pantalla",
-              f"se desvia {peor:.3e}")
+    comprobar(peor < 1e-12,
+              "derecha x arriba sale de la pantalla: la terna va a derechas",
+              f"se desvia {peor:.3e}. Con esto mal, la imagen sale espejeada")
 
 
-def casos_sin_ambiguedad() -> None:
-    """Casos donde se sabe a ojo quien tapa a quien."""
+def arribaEsArriba() -> None:
+    """El 'arriba' de la pantalla tiene que apuntar al cielo del modelo."""
+    print()
+    print("Que arriba sea arriba")
+
+    peor = -1.0
+
+    for az in range(0, 360, 11):
+        for el in range(-88, 89, 7):
+            _, arriba, _ = ejes(az, el)
+
+            # La componente vertical del 'arriba' de la pantalla es cos(e), que es
+            # positiva mientras no se mire a plomo. Si saliera negativa, la pieza se
+            # veria del reves.
+            peor = max(peor, -arriba[1])
+
+    comprobar(peor < 0,
+              "la vertical del modelo siempre queda hacia arriba en pantalla",
+              f"en algun angulo el arriba apunta al suelo ({peor:.3f})")
+
+
+def mirarDesdeArriba() -> None:
     print()
     print("Casos que no admiten discusion")
 
-    # Mirando de frente (azimut 0, elevacion 0): el ojo esta en y = -infinito,
-    # asi que la y pequena esta mas cerca.
-    c = Camara(0, 0)
+    # Inclinacion 0: se mira en horizontal, asi que la mirada no tiene componente
+    # vertical y el arriba de la pantalla es la vertical del mundo.
+    mira, arriba, _ = ejes(35, 0)
 
-    comprobar(c.cercania(0, 0, 0) > c.cercania(0, 10, 0),
-              "de frente, lo de y menor esta mas cerca",
-              f"{c.cercania(0, 0, 0):.3f} contra {c.cercania(0, 10, 0):.3f}")
+    comprobar(abs(mira[1]) < 1e-12,
+              "mirando en horizontal, la mirada no sube ni baja",
+              f"su componente vertical es {mira[1]:.3e}")
 
-    # Los dos caen en el MISMO punto de pantalla, asi que uno tapa al otro de
-    # verdad: es el caso critico.
-    a = c.proyectar(0, 0, 0)
-    b = c.proyectar(0, 10, 0)
+    comprobar(abs(arriba[1] - 1) < 1e-12,
+              "y el arriba de la pantalla es la vertical del mundo",
+              f"vale {arriba[1]:.6f}")
 
-    comprobar(abs(a[0] - b[0]) < 1e-12 and abs(a[1] - b[1]) < 1e-12,
-              "y los dos caen en el mismo punto de pantalla",
-              f"{a} contra {b}")
+    # Inclinacion 89: casi a plomo. La mirada apunta casi todo hacia abajo.
+    mira, arriba, _ = ejes(35, 89)
 
-    # Mirando desde arriba (elevacion 90): lo mas alto esta mas cerca.
-    c = Camara(0, 90)
+    comprobar(mira[1] < -0.999,
+              "casi a plomo, la mirada va practicamente hacia abajo",
+              f"su componente vertical es {mira[1]:.6f}")
 
-    comprobar(c.cercania(0, 0, 300) > c.cercania(0, 0, 0),
-              "desde arriba, lo mas alto esta mas cerca",
-              f"{c.cercania(0, 0, 300):.3f} contra {c.cercania(0, 0, 0):.3f}")
+    comprobar(abs(arriba[1]) < 0.02,
+              "y el arriba de la pantalla queda casi horizontal",
+              f"vale {arriba[1]:.6f}")
 
-    a = c.proyectar(0, 0, 300)
-    b = c.proyectar(0, 0, 0)
+    # Azimut 0: se mira desde -Z, asi que la derecha de la pantalla es +X.
+    _, _, derecha = ejes(0, 22)
 
-    comprobar(abs(a[0] - b[0]) < 1e-12 and abs(a[1] - b[1]) < 1e-12,
-              "y tambien caen en el mismo punto de pantalla",
-              f"{a} contra {b}")
+    comprobar(abs(derecha[0] - 1) < 1e-12 and abs(derecha[2]) < 1e-12,
+              "con giro cero, la derecha de la pantalla es el eje X",
+              f"vale {derecha}")
 
 
-def el_orden_viejo_estaba_al_reves() -> None:
-    """La comprobacion que le da sentido al arreglo."""
+def elGiroRecorreLaVuelta() -> None:
+    """Girar 360 grados tiene que volver al mismo sitio, sin saltos."""
     print()
-    print("Lo que hacia el orden viejo")
+    print("El giro completo")
 
-    c = Camara(0, 0)
+    rnd = random.Random(5)
 
-    cerca = (0.0, 0.0, 0.0)
-    lejos = (0.0, 10.0, 0.0)
+    peor = 0.0
 
-    # El orden viejo: de menor a mayor Prof, y se pinta en ese orden.
-    viejo = sorted([cerca, lejos], key=lambda p: c.prof(p[0], p[1]))
+    for _ in range(2000):
+        el = rnd.uniform(-89, 89)
+        az = rnd.uniform(0, 360)
 
-    # Lo ULTIMO que se pinta queda encima.
-    comprobar(viejo[-1] == lejos,
-              "ordenando por Prof de menor a mayor, lo ULTIMO que se pinta es lo LEJANO",
-              "no reproduce el error, asi que esta comprobacion no vale")
+        a = ejes(az, el)
+        b = ejes(az + 360, el)
 
-    # El orden nuevo: de menor a mayor cercania.
-    nuevo = sorted([cerca, lejos], key=lambda p: c.cercania(*p))
+        for i in range(3):
+            for j in range(3):
+                peor = max(peor, abs(a[i][j] - b[i][j]))
 
-    comprobar(nuevo[-1] == cerca,
-              "y ordenando por cercania, lo ultimo es lo CERCANO",
-              f"quedo {nuevo[-1]} encima")
-
-
-def la_altura_manda_en_una_pieza_alta() -> None:
-    """Por que no basta con Prof, aunque se ordene bien."""
-    print()
-    print("Por que no basta con Prof")
-
-    # Una columna de 40 x 60 levantada 3 m, mirada desde 22 grados, que es la
-    # orientacion de arranque del 3D.
-    c = Camara(35, 22)
-
-    bx, by, bz = 40.0, 60.0, 300.0
-
-    rango_planta = max(
-        abs(c.ce * (c.prof(x, y) - c.prof(x2, y2)))
-        for x, y in ((0, 0), (bx, 0), (bx, by), (0, by))
-        for x2, y2 in ((0, 0), (bx, 0), (bx, by), (0, by))
-    )
-
-    rango_altura = abs(bz * c.se)
-
-    print(f"        el termino de la planta barre {rango_planta:.1f} cm")
-    print(f"        el de la altura barre        {rango_altura:.1f} cm")
-
-    comprobar(rango_altura > rango_planta,
-              "en una pieza alta el termino de la ALTURA es el que manda",
-              "no manda, asi que este caso no justifica el arreglo")
-
-    # Y el caso concreto: dos barras que caen encima en pantalla y que Prof no
-    # sabe separar porque comparten planta.
-    abajo = (bx / 2, by / 2, 0.0)
-    arriba = (bx / 2, by / 2, bz)
-
-    comprobar(abs(c.prof(abajo[0], abajo[1]) - c.prof(arriba[0], arriba[1])) < 1e-12,
-              "dos puntos en la misma vertical tienen la MISMA Prof",
-              "no la tienen")
-
-    comprobar(c.cercania(*arriba) > c.cercania(*abajo),
-              "pero la cercania si los separa, y pone arriba el de mas cota",
-              f"{c.cercania(*arriba):.3f} contra {c.cercania(*abajo):.3f}")
+    comprobar(peor < 1e-9,
+              "girar una vuelta entera deja la camara igual",
+              f"se desvia {peor:.3e}")
 
 
 def main() -> int:
     print("COMPROBACION DE LA CAMARA DEL 3D DE SECCIONES")
     print("=" * 70)
 
-    ternas_ortonormales()
-    la_proyeccion_usa_esos_ejes()
-    la_cercania_es_el_eje_que_sale()
-    casos_sin_ambiguedad()
-    el_orden_viejo_estaba_al_reves()
-    la_altura_manda_en_una_pieza_alta()
+    ternaOrtonormal()
+    aDerechas()
+    arribaEsArriba()
+    mirarDesdeArriba()
+    elGiroRecorreLaVuelta()
 
     print()
     print("=" * 70)
