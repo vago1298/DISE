@@ -2352,6 +2352,32 @@ public partial class MainWindow : Window
         return modelo;
     }
 
+    /// <summary>
+    /// Lo que se movió de nivel al leer el modelo, para verlo <b>en esta pestaña</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El aviso de los pretiles se guarda en <c>modelo.Avisos</c>, pero eso solo se muestra en la
+    /// pestaña de ETABS, con <c>Resumen()</c>. Quien dibuja planos no pasa por ahí, así que
+    /// <b>movíamos piezas de nivel sin que el usuario llegara a enterarse nunca</b>, y luego no
+    /// había forma de saber por qué un pretil salió en un nivel y no en otro.
+    /// </para>
+    /// <para>
+    /// Se muestra donde se está trabajando, que es lo que hace que el aviso sirva de algo.
+    /// </para>
+    /// </remarks>
+    private static string AvisoDeNivelesMovidos(ModeloEtabs modelo)
+    {
+        var dePretiles = modelo.Avisos
+            .Where(a => a.Contains("PRETIL", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return dePretiles.Count == 0
+            ? string.Empty
+            : "\n" + string.Join("\n", dePretiles);
+    }
+
     private void OnLeerPlantas(object sender, RoutedEventArgs e)
     {
         try
@@ -2400,7 +2426,8 @@ public partial class MainWindow : Window
             }
 
             PlantasResumenText.Text =
-                $"{modelo.Niveles.Count} nivel(es) leídos · {nuevos} plano(s) agregados al juego.";
+                $"{modelo.Niveles.Count} nivel(es) leídos · {nuevos} plano(s) agregados al juego."
+                + AvisoDeNivelesMovidos(modelo);
 
             StatusText.Text = $"Plantas leídas: {modelo.Niveles.Count} nivel(es).";
 

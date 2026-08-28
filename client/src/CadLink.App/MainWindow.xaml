@@ -2164,7 +2164,12 @@
                                       VerticalAlignment="Center" Margin="4,0,0,0"
                                       ToolTip="Apagada: se dibujan TODAS las plantas, repartidas a la derecha con la separacion de la hoja CONFIG.&#10;Encendida: solo la del nivel de abajo." />
 
+                            <!-- Con TextWrapping porque aqui va tambien el aviso de las piezas
+                                 que cambiaron de nivel -los pretiles-, y ese es largo: sin
+                                 envolver se cortaria justo donde dice a que nivel se movieron,
+                                 que es el dato que hace falta para revisarlo. -->
                             <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" MaxWidth="620"
                                        Margin="14,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
                         </StackPanel>
 
