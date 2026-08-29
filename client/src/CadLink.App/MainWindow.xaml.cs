@@ -4407,6 +4407,14 @@ public partial class MainWindow : Window
             ConstruirEscena3D(s, ancho, alto);
             DibujarAlzadoPrevio(s, ancho * 0.5, alto);
 
+            // LO QUE NO SE PUDO ARMAR, DICHO DONDE EL USUARIO ESTÁ MIRANDO. Estas notas salían
+            // solo en el cuadro de «3D a AutoCAD», y eso no servía de nada: la vista que se mira
+            // es esta, y si AutoCAD falla no se llegan a leer nunca. Ver _notasDeLaJaula.
+            if (_notasDeLaJaula.Count > 0)
+            {
+                StatusText.Text = "Vista 3D — " + string.Join("   ·   ", _notasDeLaJaula);
+            }
+
             Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
             return;
         }
@@ -5797,27 +5805,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        // El núcleo, ya descontado el recubrimiento.
-        var x1 = rec;
-        var y1 = rec;
-        var x2 = s.BaseCm - rec;
-        var y2 = s.AlturaCm - rec;
-
-        var varSup = new List<(double X, double Y, double R)>();
-        varSup.AddRange(PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
-                                         arriba: true, intermedio: false));
-        varSup.AddRange(PosicionesDeLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec,
-                                         arriba: true, intermedio: true));
-
-        var varInf = new List<(double X, double Y, double R)>();
-        varInf.AddRange(PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
-                                         arriba: false, intermedio: false));
-        varInf.AddRange(PosicionesDeLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec,
-                                         arriba: false, intermedio: true));
-
-        var varLat = PosicionesLaterales(s, de, rec);
-
-        var centros = TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat);
+        // LOS CENTROS SALEN DE LA CUENTA COMPARTIDA, la misma que usa la vista 3D. Aquí estaba
+        // repetida, y por eso las dos vistas se separaron: esta pasaba los lechos completos y la
+        // 3D solo las varillas de esquina, así que en una sección con varilla intermedia el
+        // diamante salía en el corte y no salía en el 3D. Ver CentrosDelDiamante.
+        var centros = CentrosDelDiamante(s, de, rec, dDia);
 
         if (centros is null)
         {

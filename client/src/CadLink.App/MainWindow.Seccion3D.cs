@@ -2320,6 +2320,63 @@ public partial class MainWindow
     /// que abraza.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Las varillas que <b>abraza el diamante</b>. Una sola cuenta para la vista 2D y para la 3D.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Existe porque las dos vistas se habían separado, y de la peor manera: en silencio.</b>
+    /// El 2D le pasaba a <see cref="TrazoDiamante.Centros"/> los lechos completos —las varillas de
+    /// esquina <b>y las intermedias</b>— y el 3D solo las de esquina. Con eso, en una sección que
+    /// lleva varilla intermedia el diamante salía en el corte y <b>no salía en el 3D</b>: no era
+    /// que el 3D no lo dibujara, es que le estaba preguntando por un armado que no era el de la
+    /// pieza. Y como el diamante abraza precisamente la varilla del centro del lecho, quitarle las
+    /// intermedias es quitarle justo la que agarra.
+    /// </para>
+    /// <para>
+    /// Ya se pagó este precio con el gancho, y la lección es la misma: <b>dos cuentas de la misma
+    /// geometría acaban discrepando</b>. Así que ahora hay una, y las dos vistas la llaman.
+    /// </para>
+    /// </remarks>
+    private List<(double X, double Y, double R)>? CentrosDelDiamante(
+        SeccionConcretoRow s, double de, double rec, double dDia, List<string>? notas = null)
+    {
+        // LOS LECHOS COMPLETOS: esquina MÁS intermedias. Las intermedias son las que faltaban.
+        var varSup = new List<(double X, double Y, double R)>();
+
+        varSup.AddRange(PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
+                                          arriba: true, intermedio: false));
+
+        varSup.AddRange(PosicionesDeLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec,
+                                          arriba: true, intermedio: true));
+
+        var varInf = new List<(double X, double Y, double R)>();
+
+        varInf.AddRange(PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
+                                          arriba: false, intermedio: false));
+
+        varInf.AddRange(PosicionesDeLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec,
+                                          arriba: false, intermedio: true));
+
+        var varLat = PosicionesLaterales(s, de, rec);
+
+        // LAS NOTAS DE Centros() SE PASAN. Este parámetro existía y no se le daba nada, así que
+        // los avisos que genera al rodear las varillas laterales -que son los que explican por
+        // qué a veces no hay diamante- se tiraban a la basura.
+        var centros = TrazoDiamante.Centros(
+            rec, rec, s.BaseCm - rec, s.AlturaCm - rec, dDia, varSup, varInf, varLat, notas);
+
+        if (centros is null)
+        {
+            notas?.Add(
+                "No se dibujó el diamante: no hay tres varillas que pueda abrazar. Esta sección "
+                + $"tiene {varSup.Count} varilla(s) en el lecho de arriba, {varInf.Count} en el "
+                + $"de abajo y {varLat.Count} en los costados.");
+        }
+
+        return centros;
+    }
+
     private List<(double X, double Y)>? RecorridoDelDiamante3D(
         SeccionConcretoRow s, double de, double rec, double dDia, int tramosPorDoblez,
         List<string>? notas = null)
@@ -2346,27 +2403,10 @@ public partial class MainWindow
             return null;
         }
 
-        var varSup = PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
-                                       arriba: true, intermedio: false);
-
-        var varInf = PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
-                                       arriba: false, intermedio: false);
-
-        var varLat = PosicionesLaterales(s, de, rec);
-
-        // LAS NOTAS DE Centros() SE PASAN. Este parámetro existía y no se le daba nada, así que
-        // los avisos que genera al rodear las varillas laterales -que son los que explican por
-        // qué a veces no hay diamante- se tiraban a la basura.
-        var centros = TrazoDiamante.Centros(
-            x1, y1, x2, y2, dDia, varSup, varInf, varLat, notas);
+        var centros = CentrosDelDiamante(s, de, rec, dDia, notas);
 
         if (centros is null)
         {
-            notas?.Add(
-                "No se dibujó el diamante: no hay tres varillas que pueda abrazar. Un diamante "
-                + $"necesita acero en los dos costados; esta sección tiene {varSup.Count} "
-                + $"arriba, {varInf.Count} abajo y {varLat.Count} en los costados.");
-
             return null;
         }
 

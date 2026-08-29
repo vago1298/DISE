@@ -242,7 +242,43 @@ public sealed class Jaula3dDrawer
             }
         }
 
-        if (!Sombrear())
+        var sombreado = Sombrear();
+
+        // ===== Y AHORA SE APAGAN LAS ARISTAS. AQUÍ ESTÁ LO DE LOS GANCHOS =====
+        //
+        // Un doblez hecho de cilindros rectos tiene una arista de verdad en cada junta, y el
+        // sombreado las DIBUJA: el gancho salía con un abanico de rayas. Más tramos no lo
+        // arreglan, lo empeoran, porque son más rayas.
+        //
+        // El doblez curvo de verdad -girar el perfil- sería la solución buena y cierra AutoCAD,
+        // así que se resuelve por el otro lado: se le dice a la ventana que NO dibuje aristas. Las
+        // facetas siguen ahí en la geometría, pero no se ven, y lo que se ve es una varilla que
+        // dobla lisa. La silueta sí se mantiene, que es la que le da el contorno a la pieza.
+        //
+        // Va DESPUÉS de poner el estilo visual, y no antes: al cambiar de estilo se cargan los
+        // ajustes del estilo nuevo y se llevarían esto por delante.
+        if (sombreado)
+        {
+            foreach (var (nombre, valor) in new (string, object)[]
+                     {
+                         ("VSEDGES", 0),
+                         ("VSSILHEDGES", 1),
+                         ("VSOBSCUREDEDGES", 0),
+                         ("VSINTERSECTIONEDGES", 0)
+                     })
+            {
+                try
+                {
+                    AcadConnection.Retry(() => { _doc.SetVariable(nombre, valor); });
+                }
+                catch (Exception)
+                {
+                    // Si una no está en esta versión, se ven algunas aristas de más. Feo, no roto.
+                }
+            }
+        }
+
+        if (!sombreado)
         {
             _notas.Add(
                 "No se pudo poner la vista en sombreado, así que las varillas se van a ver como "
@@ -606,22 +642,25 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            // UN DOBLEZ. El estiron se mide en angulo, que es lo que entiende un arco.
-            var extra = t.Radio > Nada ? b.Radio / t.Radio : 0;
-
+            // UN DOBLEZ: cadena de cilindros por sus propios puntos.
+            //
+            // AQUÍ IBA UN TORO Y SE QUITÓ. Girar el perfil con AddRevolvedSolid daba el doblez
+            // perfecto, de una sola superficie curva y sin una arista dentro. Pero CIERRA AUTOCAD
+            // 2026, igual que AddExtrudedSolidAlongPath, y por lo mismo: sin excepción, sin error
+            // y sin nada que capturar. Se probó y se cerró.
+            //
+            // Se intentó a ciegas, que fue el error: es la SEGUNDA API de sólidos con perfil y
+            // región que mata AutoCAD en este entorno, y no hay forma de comprobarlo aquí porque
+            // el camino COM no se ejecuta. La conclusión, ya con dos casos, es que en esta versión
+            // NO se toca ninguna operación que consuma una región. Solo AddCylinder y Boolean, que
+            // están probados por el usuario.
+            //
+            // El precio es que el doblez queda facetado, y las aristas de las facetas se ven en
+            // sombreado. Eso NO se arregla con más tramos —serían más aristas— sino apagando el
+            // dibujo de aristas de la ventana, que es lo que hace PrepararLaVista con VSEDGES.
             var trozo = t;
 
-            var giroAtras = atras ? extra : 0;
-
-            // Y NUNCA MÁS DE UNA VUELTA. Un zuncho en anillo se reconoce como un arco de 360°
-            // enteros; sumarle el solape pediría un giro de más de una vuelta, que no significa
-            // nada y que AutoCAD puede rechazar. Al dar la vuelta completa el sólido ya se cierra
-            // consigo mismo, así que el solape no hace falta.
-            var barrido = Math.Min(
-                t.Barrido + giroAtras + (delante ? extra : 0),
-                2 * Math.PI);
-
-            piezas.Add(() => Toro(trozo, giroAtras, barrido, b, eje));
+            piezas.Add(() => CadenaDeCilindros(trozo, b));
         }
 
         return piezas;
@@ -712,157 +751,6 @@ public sealed class Jaula3dDrawer
         }
     }
 
-    /// <summary>
-    /// Un doblez como <b>un solo sólido curvo</b>: el círculo de la varilla girado alrededor del
-    /// eje del doblez.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Esto es lo que hace que un gancho se vea liso. Un doblez hecho de cilindros rectos tiene una
-    /// <b>arista real</b> en cada junta, y los estilos sombreados de AutoCAD dibujan las aristas:
-    /// el gancho salía con un abanico de rayas, y afinarlo lo empeoraba porque eran más rayas.
-    /// Girando el perfil sale <b>una superficie curva sin ninguna arista dentro</b>, que es lo que
-    /// es un doblez de verdad.
-    /// </para>
-    /// <para>
-    /// <b>El perfil tiene que arrancar perpendicular al doblez</b>, o la varilla sale de sección
-    /// elíptica y más gruesa que la de la tabla. La perpendicular es la <b>tangente del arco</b> en
-    /// el punto de arranque, que se saca del radio y del eje de giro: <c>tangente = eje × radio</c>.
-    /// </para>
-    /// <para>
-    /// <b>El centro se vuelve a poner después de la normal</b>, y no es por gusto: al cambiar el
-    /// plano de un círculo, AutoCAD reinterpreta su centro en el sistema nuevo y el doblez
-    /// arrancaría desplazado. Es la misma trampa que ya estaba documentada en la versión que
-    /// barría el perfil.
-    /// </para>
-    /// <para>
-    /// <b>La región se consume y no se borra.</b> <c>AddRevolvedSolid</c> se queda con el perfil,
-    /// igual que <c>AddExtrudedSolid</c> en <see cref="Modelo3dDrawer"/>. Llamar a <c>Delete()</c>
-    /// sobre un objeto COM ya consumido no lanza excepción: se lleva AutoCAD por delante. Así que
-    /// no se toca.
-    /// </para>
-    /// <para>
-    /// Y si el giro no sale, <b>el doblez no se pierde</b>: se dibuja a la antigua, como cadena de
-    /// cilindros por sus puntos originales. Se le ven las aristas, pero está y mide lo que tiene
-    /// que medir.
-    /// </para>
-    /// </remarks>
-    private object? Toro(
-        EjeDeBarra.Trozo t, double giroAtras, double barrido, Barra b,
-        List<(double X, double Y, double Z)> eje)
-    {
-        var hecho = GirarElPerfil(t, giroAtras, barrido, b);
-
-        if (hecho is not null)
-        {
-            return hecho;
-        }
-
-        // RESPALDO: el doblez como cadena de cilindros, por los puntos que traía.
-        _notas.Add(
-            $"El doblez de '{b.Id}' no se pudo hacer curvo y se hizo con tramos rectos: se le van "
-            + "a ver las aristas.");
-
-        return CadenaDeCilindros(t, b);
-    }
-
-    private object? GirarElPerfil(
-        EjeDeBarra.Trozo t, double giroAtras, double barrido, Barra b)
-    {
-        if (t.Radio <= b.Radio || barrido <= Nada)
-        {
-            // Un doblez mas cerrado que la propia varilla no es un toro: el perfil cortaria el eje
-            // de giro y AutoCAD no puede con eso.
-            return null;
-        }
-
-        try
-        {
-            return AcadConnection.Retry<object?>(() =>
-            {
-                // El punto de arranque, ya retrasado el estiron de la junta.
-                var (px, py, pz) = GirarPunto(t.A, t.Centro, t.Normal, -giroAtras);
-
-                // La tangente ahi: eje x radio. Es la normal que le toca al perfil.
-                var rx = px - t.Centro.X;
-                var ry = py - t.Centro.Y;
-                var rz = pz - t.Centro.Z;
-
-                var tx = (t.Normal.Y * rz) - (t.Normal.Z * ry);
-                var ty = (t.Normal.Z * rx) - (t.Normal.X * rz);
-                var tz = (t.Normal.X * ry) - (t.Normal.Y * rx);
-
-                var nt = Math.Sqrt((tx * tx) + (ty * ty) + (tz * tz));
-
-                if (nt <= Nada)
-                {
-                    return null;
-                }
-
-                dynamic circulo = _ms.AddCircle(new[] { px, py, pz }, b.Radio);
-
-                circulo.Normal = new[] { tx / nt, ty / nt, tz / nt };
-
-                // DESPUES de la normal, siempre. Ver la cabecera.
-                circulo.Center = new[] { px, py, pz };
-
-                var regiones = _ms.AddRegion(new object[] { circulo });
-
-                if (regiones is null || (int)regiones.Length < 1)
-                {
-                    return null;
-                }
-
-                dynamic region = regiones[0];
-
-                dynamic solido = _ms.AddRevolvedSolid(
-                    region,
-                    new[] { t.Centro.X, t.Centro.Y, t.Centro.Z },
-                    new[] { t.Normal.X, t.Normal.Y, t.Normal.Z },
-                    barrido);
-
-                solido.Layer = b.Capa;
-
-                return (object?)solido;
-            });
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>Gira un punto <paramref name="angulo"/> radianes alrededor del eje del doblez.</summary>
-    private static (double X, double Y, double Z) GirarPunto(
-        (double X, double Y, double Z) p,
-        (double X, double Y, double Z) centro,
-        (double X, double Y, double Z) eje,
-        double angulo)
-    {
-        if (Math.Abs(angulo) <= Nada)
-        {
-            return p;
-        }
-
-        var rx = p.X - centro.X;
-        var ry = p.Y - centro.Y;
-        var rz = p.Z - centro.Z;
-
-        var c = Math.Cos(angulo);
-        var s = Math.Sin(angulo);
-
-        // Rodrigues: r' = r cos + (eje x r) sen + eje (eje . r)(1 - cos)
-        var cruzX = (eje.Y * rz) - (eje.Z * ry);
-        var cruzY = (eje.Z * rx) - (eje.X * rz);
-        var cruzZ = (eje.X * ry) - (eje.Y * rx);
-
-        var punto = (eje.X * rx) + (eje.Y * ry) + (eje.Z * rz);
-
-        return (
-            centro.X + (rx * c) + (cruzX * s) + (eje.X * punto * (1 - c)),
-            centro.Y + (ry * c) + (cruzY * s) + (eje.Y * punto * (1 - c)),
-            centro.Z + (rz * c) + (cruzZ * s) + (eje.Z * punto * (1 - c)));
-    }
 
     /// <summary>El doblez a la antigua: cilindros por sus puntos. Es el respaldo del toro.</summary>
     private object? CadenaDeCilindros(EjeDeBarra.Trozo t, Barra b)

@@ -8549,8 +8549,9 @@ def v19_circular_y_ui() -> None:
     if m_dp:
         dp = m_dp.group(0)
 
-        check("la vista previa pide el recorrido a TrazoDiamante",
-              "TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat)" in dp)
+        check("la vista previa pide el recorrido a la cuenta compartida",
+              "CentrosDelDiamante(s, de, rec, dDia)" in dp
+              and "TrazoDiamante.Centros(" not in dp)
         check("y no calcula ningun vertice del rombo por su cuenta",
               "Math.Atan2" not in dp and "tangente" not in dp.lower())
         check("dibuja las DOS cintas, no una linea",
@@ -8567,6 +8568,56 @@ def v19_circular_y_ui() -> None:
 
     check("si lleva diamante lo dice el modelo, no la vista previa",
           "public bool LlevaDiamante =>" in filas)
+
+    # EL 2D Y EL 3D PREGUNTAN LO MISMO. Estuvieron separados y en silencio: el 2D pasaba los
+    # lechos COMPLETOS -esquina mas intermedias- y el 3D solo las de esquina. En una seccion con
+    # varilla intermedia, el diamante salia en el corte y NO salia en el 3D, porque la varilla
+    # intermedia es justo la que el rombo abraza. No era que el 3D no lo dibujara: le estaban
+    # preguntando por un armado que no era el de la pieza.
+    # La cuenta compartida y el recorrido del 3D viven en la parcial de la seccion 3D.
+    s3d = leer(ruta("client/src/CadLink.App/MainWindow.Seccion3D.cs"))
+
+    check("los centros del diamante salen de UNA sola cuenta",
+          "private List<(double X, double Y, double R)>? CentrosDelDiamante(" in s3d)
+
+    m_cd = re.search(
+        r"private List<\(double X, double Y, double R\)>\? CentrosDelDiamante\(.*?\n    \}",
+        s3d, re.S)
+
+    check("se puede leer CentrosDelDiamante", m_cd is not None)
+
+    if m_cd:
+        cd = m_cd.group(0)
+
+        # Las CUATRO llamadas: los dos lechos, cada uno con su esquina y su intermedia.
+        check("y pasa los lechos COMPLETOS, con las varillas intermedias",
+              "s.NIntSup" in cd and "s.NIntInf" in cd
+              and "s.NEsqSup" in cd and "s.NEsqInf" in cd
+              and cd.count("intermedio: true") == 2
+              and cd.count("intermedio: false") == 2)
+
+        check("y las laterales, que son las que el rombo rodea",
+              "PosicionesLaterales(s, de, rec)" in cd)
+
+        check("y le pasa las notas a TrazoDiamante, que antes se tiraban",
+              "varSup, varInf, varLat, notas)" in cd)
+
+    # Y la vista 3D tiene que usarla, no una copia suya.
+    m_r3 = re.search(
+        r"private List<\(double X, double Y\)>\? RecorridoDelDiamante3D\(.*?\n    \}",
+        s3d, re.S)
+
+    check("se puede leer RecorridoDelDiamante3D", m_r3 is not None)
+
+    if m_r3:
+        r3 = m_r3.group(0)
+
+        check("la vista 3D usa la misma cuenta que el corte",
+              "CentrosDelDiamante(s, de, rec, dDia, notas)" in r3
+              and "PosicionesDeLecho(" not in r3)
+
+        check("y dice POR QUE no hay diamante en lugar de callarse",
+              r3.count("notas?.Add(") >= 3)
 
     # Las posiciones de las varillas se calculan UNA vez: las usan el pintado y el
     # recorrido del diamante. Con dos copias, el rombo podria rodear una varilla que no
