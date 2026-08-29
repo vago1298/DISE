@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de Envolvente.Convexa, la que da la silueta de la sombra
+       en la vista 3D.
+
+       Existe porque la primera version de esta envolvente estaba metida en
+       CadLink.App, que en este entorno NO se puede compilar ni probar: falta el
+       ref pack de WPF. Se saco a CadLink.Cad justamente para poder ejecutarla.
+
+       Se comprueban INVARIANTES y CASOS LIMITE, que es donde una envolvente
+       falla:
+
+         * el resultado es convexo y antihorario
+         * TODOS los puntos de entrada quedan dentro o en el borde
+         * los puntos de dentro no aparecen en el resultado
+         * los ALINEADOS en medio de un lado se descartan
+         * los repetidos no dejan vertices dobles
+         * el caso de la sombra: un rectangulo y su copia corrida dan SEIS lados
+         * y girado, tambien seis, que es lo que la formula a mano no daba
+         * degenerados: 0, 1, 2 puntos, y todos en linea
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-envolvente
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-envolvente</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

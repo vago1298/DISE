@@ -182,4 +182,34 @@ public sealed class SeccionCad
     /// como un anillo, porque un corte de una hélice ES un anillo.
     /// </remarks>
     public bool ZunchoHelicoidal { get; set; }
+
+    /// <summary>Las <b>grapas</b>: estribos suplementarios entre dos varillas.</summary>
+    /// <remarks>
+    /// Vacía si la sección no lleva ninguna, que es lo normal. Va al final por lo mismo
+    /// que el bloque circular de arriba: es lo último que se agregó.
+    /// </remarks>
+    public List<GrapaCad> Grapas { get; set; } = new();
+}
+
+/// <summary>
+/// Una <b>grapa</b> como la recibe el dibujante: dos señales de varilla y el diámetro
+/// ya resuelto en centímetros.
+/// </summary>
+/// <remarks>
+/// Es el gemelo de <c>GrapaSeccion</c> de la hoja, con una diferencia deliberada: aquí
+/// el diámetro es un <see cref="VarCad"/> y no un texto. El motor de dibujo no puede
+/// recibir un diámetro sin reconocer —tendría que inventarse uno, que es justo el error
+/// de la macro de VBA que este programa corrige—, así que la clave se resuelve en la
+/// aplicación, al armar el <see cref="SeccionCad"/>.
+/// </remarks>
+public sealed class GrapaCad
+{
+    /// <summary>Una de las dos varillas que la grapa agarra.</summary>
+    public RefVarilla A { get; set; }
+
+    /// <summary>La otra.</summary>
+    public RefVarilla B { get; set; }
+
+    /// <summary>La varilla con la que se arma la grapa.</summary>
+    public VarCad Var { get; set; }
 }

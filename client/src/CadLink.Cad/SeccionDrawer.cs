@@ -943,6 +943,16 @@ public sealed partial class SeccionDrawer
         _varLat.Clear();
         _tramosEstribo.Clear();
 
+        // Y el diamante y las grapas, por lo mismo y con un motivo extra: EstriboDiamante
+        // solo se llama si la sección LLEVA diamante, así que reiniciar sus campos ahí
+        // dentro no basta —una sección sin diamante se quedaba con la cinta de la
+        // anterior—. Aquí se limpia siempre, lleve lo que lleve.
+        _diamInt = null;
+        _diamExt = null;
+        _hayDiamante = false;
+        _huecoDelGancho = null;
+        _contornosDeGrapa.Clear();
+
         // Se escribe con switch y no con una comparacion suelta para que cada
         // tipo diga explicitamente si lleva fondo solido, sin depender de que el
         // Tipo 1 sea el valor por omision. El AR-CONC se dibuja en los DOS tipos;
@@ -995,13 +1005,23 @@ public sealed partial class SeccionDrawer
 
         if (hayEstribo)
         {
-            EstriboExterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, gancho);
-            EstriboInterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, gancho);
+            // Cuantas varillas hay en el paquete de la esquina de arriba. Uno cuando no
+            // es paquete, y entonces todo lo de abajo se comporta como siempre.
+            var enPaquete = s.Superior.Esquina.Existe
+                            && PaqueteVarillas.EsPaquete(s.Superior.NEsquina)
+                ? PaqueteVarillas.PorEsquina(s.Superior.NEsquina)
+                : 1;
+
+            EstriboExterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf,
+                gancho, enPaquete);
+
+            EstriboInterior(contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf,
+                gancho, enPaquete);
 
             if (gancho > 0)
             {
                 Ganchos(contorno, ganchoQuads, ganchoSectores,
-                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho);
+                    xIzquierda, yAbajo, b, h, rec, dEst, dSup, gancho, enPaquete);
             }
         }
 
@@ -1015,6 +1035,17 @@ public sealed partial class SeccionDrawer
 
         var rellenosVarilla = new List<object>();
         RellenarVarillas(circulos, rellenosVarilla);
+
+        // ---------- Grapas ----------
+        // Van DESPUES de las varillas, igual que el diamante y por lo mismo: se agarran
+        // de ellas, así que primero tienen que estar repartidas.
+        //
+        // Y antes del hatch, para que la polilínea ya exista cuando se decide qué se
+        // rellena. El orden de encima/debajo no se decide aquí: AlFrente sube los
+        // círculos al final, así que la varilla acaba tapando la parte del doblez que le
+        // pasa por detrás, que es como está armado y como se ve en la vista previa.
+        GrapasDeLaSeccion(
+            s, contorno, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf, conFondoSolido);
 
         // ---------- Estribo diamante ----------
         // Va DESPUES de las varillas porque se abraza a ellas: necesita saber
@@ -1161,7 +1192,10 @@ public sealed partial class SeccionDrawer
                 // On Error Resume Next. El resultado es el mismo que aquí: el rayado
                 // cruza la banda del diamante. No se nota porque el rayado se manda
                 // al fondo y el diamante lleva su propio relleno encima.
-                if (_diamExt is not null || _diamInt is not null)
+                // Se pregunta por _hayDiamante y no por las cintas: cuando una grapa le
+                // abre huecos, las cintas se sustituyen por sus trozos y los campos
+                // quedan vacíos, pero el diamante sigue estando ahí.
+                if (_hayDiamante)
                 {
                     Nota(
                         "Estribo diamante: no se usa como isla del rayado. Su cinta " +
@@ -1626,10 +1660,16 @@ public sealed partial class SeccionDrawer
     // Estribo
     // ==================================================================
 
+    /// <param name="enPaquete">
+    /// Cuantas varillas hay en el paquete de la esquina superior. Con mas de una, esta
+    /// esquina se cierra con su arco normal de 90 grados: el doblez del gancho ya no sale
+    /// de aqui, porque es mas grande y lo dibuja <see cref="Ganchos"/> envolviendo el
+    /// paquete entero.
+    /// </param>
     private void EstriboExterior(
         List<object> contorno,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double dInf, double gancho)
+        double dEst, double dSup, double dInf, double gancho, int enPaquete)
     {
         var rfSup = dEst + (dSup / 2);
         var rfInf = dEst + (dInf / 2);
@@ -1639,8 +1679,18 @@ public sealed partial class SeccionDrawer
         var x2 = x0 + b - rec;
         var y2 = y0 + h - rec;
 
+        // Con paquete y con gancho, esta esquina se cierra con su arco NORMAL de 90°: el
+        // gancho no la prolonga, porque da la vuelta abajo, en la última varilla del
+        // paquete. Ver Ganchos.
+        var laEsquinaLaPoneElGancho = gancho > 0 && enPaquete > 1;
+
+        // El costado derecho va COMPLETO hasta la esquina, como siempre. Se probó cortarlo
+        // a la altura de la varilla de abajo para que el obrondo pusiera el resto, y era un
+        // error: las dos líneas caían en el mismo sitio.
+        var yTopDer = y2 - rfSup;
+
         Horizontal(contorno, x1 + rfInf, x2 - rfInf, y1);
-        Vertical(contorno, y1 + rfInf, y2 - rfSup, x2);
+        Vertical(contorno, y1 + rfInf, yTopDer, x2);
         Horizontal(contorno, x1 + rfSup, x2 - rfSup, y2);
         Vertical(contorno, y1 + rfInf, y2 - rfSup, x1);
 
@@ -1648,15 +1698,19 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rfInf, y1 + rfInf, rfInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rfSup, y2 - rfSup, rfSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0
-            ? Arco(x2 - rfSup, y2 - rfSup, rfSup, 1.75 * Pi, 0.5 * Pi)
-            : Arco(x2 - rfSup, y2 - rfSup, rfSup, 0, 0.5 * Pi));
+        if (!laEsquinaLaPoneElGancho)
+        {
+            Agregar(contorno, gancho > 0
+                ? Arco(x2 - rfSup, y2 - rfSup, rfSup, 1.75 * Pi, 0.5 * Pi)
+                : Arco(x2 - rfSup, y2 - rfSup, rfSup, 0, 0.5 * Pi));
+        }
     }
 
+    /// <param name="enPaquete">Ver <see cref="EstriboExterior"/>.</param>
     private void EstriboInterior(
         List<object> contorno,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double dInf, double gancho)
+        double dEst, double dSup, double dInf, double gancho, int enPaquete)
     {
         var rSup = dSup / 2;
         var rInf = dInf / 2;
@@ -1671,14 +1725,27 @@ public sealed partial class SeccionDrawer
             return;
         }
 
+        // Ver EstriboExterior: con paquete y con gancho, esta esquina la pone el obrondo
+        // del gancho, y el costado derecho sube solo hasta la varilla de abajo.
+        var laEsquinaLaPoneElGancho = gancho > 0 && enPaquete > 1;
+
         var yFinDer = y2 - rSup;
+
+        // El costado de dentro se abre donde lo cruza la cola del gancho. Sin esto queda un
+        // pedazo de esa línea metido dentro del trazo del gancho.
+        //
+        // Con PAQUETE es la misma cuenta, solo que la cola sale de la ÚLTIMA varilla del
+        // paquete y no de la de la esquina, así que el corte baja lo que mida el paquete.
         if (gancho > 0)
         {
             var rOut = rSup + dEst;
             var tCruce = rOut - (Rt2 * rSup);
+
             if (tCruce >= 0 && tCruce <= gancho)
             {
-                var yTrim = y2 - (Rt2 * rOut);
+                var bajaPaquete = laEsquinaLaPoneElGancho ? (enPaquete - 1) * dSup : 0;
+                var yTrim = y2 - bajaPaquete - (Rt2 * rOut);
+
                 if (yTrim > y1 + rInf)
                 {
                     yFinDer = yTrim;
@@ -1695,21 +1762,146 @@ public sealed partial class SeccionDrawer
         Agregar(contorno, Arco(x1 + rInf, y1 + rInf, rInf, Pi, 1.5 * Pi));
         Agregar(contorno, Arco(x1 + rSup, y2 - rSup, rSup, 0.5 * Pi, Pi));
 
-        Agregar(contorno, gancho > 0
-            ? Arco(x2 - rSup, y2 - rSup, rSup, 1.75 * Pi, 0.75 * Pi)
-            : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
+        if (!laEsquinaLaPoneElGancho)
+        {
+            Agregar(contorno, gancho > 0
+                ? Arco(x2 - rSup, y2 - rSup, rSup, 1.75 * Pi, 0.75 * Pi)
+                : Arco(x2 - rSup, y2 - rSup, rSup, 0, 0.5 * Pi));
+        }
     }
 
+    /// <param name="enPaquete">
+    /// Cuántas varillas hay en el paquete de la esquina superior. Uno si no es paquete.
+    /// </param>
+    /// <remarks>
+    /// Con paquete, el doblez <b>baja</b> a la segunda varilla, y solo eso: <b>no crece</b>.
+    /// El radio de un doblez lo manda la varilla con la que se dobla, así que es el mismo
+    /// con una varilla en la esquina o con tres.
+    /// <para>
+    /// Y baja porque la varilla de la esquina ya la tiene abrazada el propio doblez de la
+    /// esquina del estribo: un gancho ahí quedaría encimado con él.
+    /// </para>
+    /// </remarks>
     private void Ganchos(
         List<object> contorno, List<double[]> quads, List<double[]> sectores,
         double x0, double y0, double b, double h, double rec,
-        double dEst, double dSup, double gancho)
+        double dEst, double dSup, double gancho, int enPaquete)
     {
-        var rIn = dSup / 2;
+        var rBarra = dSup / 2;
+
+        // El doblez NO cambia de tamaño: es el mismo de siempre, medio diámetro por
+        // dentro y el grueso del estribo por fuera. Un doblez es un doblez, y su radio
+        // lo manda la varilla con la que se dobla, no cuántas haya en la esquina.
+        var rIn = rBarra;
         var rOut = rIn + dEst;
 
-        var bx = x0 + b - rec - dEst - rIn;
-        var by = y0 + h - rec - dEst - rIn;
+        var bx = x0 + b - rec - dEst - rBarra;
+        var by = y0 + h - rec - dEst - rBarra;
+
+        // ==============================================================================
+        //  CON PAQUETE: GANCHO DE 135° SOBRE LA SEGUNDA VARILLA
+        // ==============================================================================
+        //  El estribo baja RECTO por la cara derecha —ese tramo ya lo dibuja el propio
+        //  costado del estribo—, pasa de largo la varilla de la esquina, llega a la
+        //  segunda y gira ahí.
+        //
+        //  Y es un gancho de 135° DE VERDAD: barre 135° y sale UNA cola. El de la esquina
+        //  es de 180°, da media vuelta y salen DOS colas paralelas, porque la varilla
+        //  entra, rodea y vuelve. Dibujar ese de 180° sobre la segunda varilla es lo que
+        //  dejaba el cruce raro: la media vuelta le pasaba por encima a la primera.
+        if (enPaquete > 1)
+        {
+            // ===== EL DOBLEZ ES UN OBRONDO QUE ABRAZA EL PAQUETE =====
+            //
+            //  Un doblez del mismo radio en CADA varilla del paquete, unidos por un tramo
+            //  recto. Es la forma que sale al doblar la varilla alrededor del paquete
+            //  entero en lugar de alrededor de una sola, y resuelve las tres cosas a la
+            //  vez: el radio NO crece —sigue siendo medio diámetro—, hay una parte recta,
+            //  y el gancho abraza todas las varillas del paquete.
+            //
+            //  El recorrido, de una punta a la otra: entra la cola, rodea la varilla de
+            //  ABAJO por su cara de fuera, sube recto por el costado, rodea la de la
+            //  ESQUINA y sale la otra cola. Las dos colas van paralelas hacia el núcleo.
+            //
+            //  Con una sola varilla los dos arcos son el mismo y el tramo recto mide
+            //  cero, así que esto degenera EXACTAMENTE en el gancho de siempre. Por eso el
+            //  camino de abajo solo se usa cuando no hay paquete: para no dibujar dos
+            //  veces lo mismo.
+            var byAbajo = by + PaqueteVarillas.Desplazamiento(enPaquete - 1, dSup, arriba: true);
+
+            // ===== QUÉ SE DIBUJA Y QUÉ NO =====
+            //
+            // No se trazan todas las caras del obrondo, y es a propósito: el gancho pasa
+            // POR ENCIMA del estribo, así que las dos líneas que caerían dentro del trazo
+            // del estribo se dejan fuera. Sin ellas el cruce se lee limpio y se ve que el
+            // gancho da la vuelta por delante; con ellas el estribo aparecía partido.
+            //
+            // El relleno del tipo 2 no se toca —sigue saliendo de los sectores y del
+            // cuadro de abajo—, así que la pieza se sigue viendo maciza.
+
+            // El obrondo COMPLETO: sus dos caras en los dos dobleces y en el costado.
+            //
+            // Se probó quitar la cara de fuera del doblez de la esquina y la de dentro del
+            // costado, y estaba mal: son caras del propio gancho y sin ellas la pieza queda
+            // abierta. Lo que hay que recortar son las líneas del ESTRIBO por donde el
+            // gancho le pasa por encima, que es otra cosa y se hace aparte.
+            // El obrondo completo: LA VUELTA del gancho. Se probó dejar solo el cuarto de
+            // abajo y era peor: sin el tramo recto y sin el doblez de la esquina, el gancho
+            // se quedaba sin vuelta.
+            // ===== LOS DOS TRAZOS QUE NO VAN, SIEMPRE =====
+            //
+            //  · Del doblez de la ESQUINA, el pedazo de 90° a 135°: es el arquito que
+            //    asomaba entre el final de la curva y el arranque de la cola. Los arcos
+            //    llegan hasta 90° y ahí paran.
+            //  · Del doblez de ABAJO, la cara de DENTRO: es la que se junta con la
+            //    tangente y deja el trocito suelto. Solo va la cara de fuera.
+            //
+            // Es regla fija para cualquier número de varillas en paquete.
+
+            // El doblez de abajo: solo la cara de FUERA.
+            Agregar(contorno, Arco(bx, byAbajo, rOut, 1.75 * Pi, 2 * Pi));
+
+            foreach (var r in new[] { rIn, rOut })
+            {
+                // El tramo RECTO del costado, que une los dos dobleces.
+                Agregar(contorno, Linea(bx + r, byAbajo, bx + r, by, "ESTRIBOS"));
+
+                // El doblez de la esquina, hasta ARRIBA y no más: de 0° a 90°.
+                Agregar(contorno, Arco(bx, by, r, 0, 0.5 * Pi));
+            }
+
+            // El relleno del tipo 2: los dos sectores de los dobleces y el rectángulo del
+            // tramo recto que queda entre ellos.
+            sectores.Add(new[] { bx, byAbajo, rIn, rOut, 1.75 * Pi, 2 * Pi });
+            sectores.Add(new[] { bx, by, rIn, rOut, 0, 0.75 * Pi });
+
+            quads.Add(new[]
+            {
+                bx + rIn, byAbajo, bx + rOut, byAbajo,
+                bx + rOut, by, bx + rIn, by
+            });
+
+            // Las DOS colas, hacia el núcleo. Una sale del doblez de abajo por su punto de
+            // 315°, y la otra del de la esquina por su 135°.
+            const double uxPaq = -Rt2I;
+            const double uyPaq = -Rt2I;
+
+            Cola(contorno, quads, bx, byAbajo, rIn, rOut, Rt2I, -Rt2I, uxPaq, uyPaq,
+                gancho, false, 0, 0);
+
+            // La cola de arriba se RECORTA donde la cruza la cara interior del techo del
+            // estribo: sin eso asomaba un pedacito de su canto por encima de esa línea. Es
+            // el mismo recorte, y con la misma cuenta, que ya lleva el gancho sin paquete.
+            var tCruzaPaq = rOut - (Rt2 * rIn);
+            var recortarPaq = gancho > 0 && tCruzaPaq >= 0 && tCruzaPaq <= gancho;
+
+            Cola(contorno, quads, bx, by, rIn, rOut, -Rt2I, Rt2I, uxPaq, uyPaq,
+                gancho, recortarPaq, bx + rIn - (Rt2 * rOut), by + rIn);
+
+            return;
+        }
+
+        // ---------- Sin paquete: el gancho de siempre, de 180° en la esquina ----------
 
         // Doblez: sector anular con los mismos radios y angulos de los arcos
         sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi });
@@ -1812,21 +2004,27 @@ public sealed partial class SeccionDrawer
     {
         var p = PosicionesDeLecho(lecho, x0, y0, b, h, rec, dEst, arriba);
 
-        foreach (var x in p.Esquina)
+        // Se dibuja con la Y DE CADA VARILLA y no con la del grupo: en un paquete las
+        // apiladas están más abajo (o más arriba) que la de la esquina.
+        foreach (var (x, y) in p.Esquina)
         {
             var rr = lecho.Esquina.Cm * _escala / 2;
-            Agregar(circulos, Varilla(x, p.YEsquina, rr, lecho.Esquina.Clave));
-            (arriba ? _varSup : _varInf).Add((x, p.YEsquina, rr));
+            Agregar(circulos, Varilla(x, y, rr, lecho.Esquina.Clave));
+            (arriba ? _varSup : _varInf).Add((x, y, rr));
         }
 
-        foreach (var x in p.Intermedia)
+        foreach (var (x, y) in p.Intermedia)
         {
             var rr = lecho.Intermedia.Cm * _escala / 2;
-            Agregar(circulos, Varilla(x, p.YIntermedia, rr, lecho.Intermedia.Clave));
-            (arriba ? _varSup : _varInf).Add((x, p.YIntermedia, rr));
+            Agregar(circulos, Varilla(x, y, rr, lecho.Intermedia.Clave));
+            (arriba ? _varSup : _varInf).Add((x, y, rr));
         }
 
-        return (p.Esquina, p.Intermedia, p.YGrupo);
+        // A las LLAMADAS van las X sin repetir. En un paquete las varillas comparten X,
+        // y LeaderLecho dibuja una flecha por cada valor: sin quitar las repetidas se
+        // pintarían dos flechas exactamente encima. La cantidad del texto no se toca,
+        // porque va aparte y sigue diciendo el total.
+        return (XsUnicas(p.Esquina), XsUnicas(p.Intermedia), p.YGrupo);
     }
 
     /// <summary>
@@ -1850,13 +2048,14 @@ public sealed partial class SeccionDrawer
     /// <c>ySup</c> termina valiendo la de la última fila dibujada.
     /// </para>
     /// </remarks>
-    private (double[] Esquina, double YEsquina, double[] Intermedia, double YIntermedia,
+    private (List<(double X, double Y)> Esquina, double YEsquina,
+        List<(double X, double Y)> Intermedia, double YIntermedia,
         double YGrupo) PosicionesDeLecho(
         LechoCad lecho,
         double x0, double y0, double b, double h, double rec, double dEst, bool arriba)
     {
-        var xsEsquina = Array.Empty<double>();
-        var xsIntermedia = Array.Empty<double>();
+        var xsEsquina = new List<(double X, double Y)>();
+        var xsIntermedia = new List<(double X, double Y)>();
         var yEsquina = 0d;
         var yIntermedia = 0d;
         var yGrupo = 0d;
@@ -1868,22 +2067,36 @@ public sealed partial class SeccionDrawer
             yEsquina = arriba ? y0 + h - off : y0 + off;
             yGrupo = yEsquina;
 
-            var xs = new List<double>();
-
             if (lecho.NEsquina == 1)
             {
-                xs.Add(x0 + (b / 2));
+                xsEsquina.Add((x0 + (b / 2), yEsquina));
+            }
+            else if (PaqueteVarillas.EsPaquete(lecho.NEsquina))
+            {
+                // ===== PAQUETE =====
+                // Más de dos varillas de esquina se APILAN hacia el núcleo, pegadas a la
+                // de la esquina, que es la que da el doblez del estribo. Mismo reparto y
+                // MISMO ORDEN que la vista previa —izquierda completa y luego derecha—,
+                // porque ese orden es el que numera las varillas para las grapas.
+                var porEsquina = PaqueteVarillas.PorEsquina(lecho.NEsquina);
+
+                foreach (var xEsquina in new[] { x0 + off, x0 + b - off })
+                {
+                    for (var k = 0; k < porEsquina; k++)
+                    {
+                        xsEsquina.Add((xEsquina,
+                                       yEsquina + PaqueteVarillas.Desplazamiento(k, d, arriba)));
+                    }
+                }
             }
             else
             {
                 var paso = (b - (2 * off)) / (lecho.NEsquina - 1);
                 for (var i = 0; i < lecho.NEsquina; i++)
                 {
-                    xs.Add(x0 + off + (i * paso));
+                    xsEsquina.Add((x0 + off + (i * paso), yEsquina));
                 }
             }
-
-            xsEsquina = xs.ToArray();
         }
 
         if (lecho.NIntermedia > 0 && lecho.Intermedia.Existe)
@@ -1893,11 +2106,11 @@ public sealed partial class SeccionDrawer
             yIntermedia = arriba ? y0 + h - off : y0 + off;
             yGrupo = yIntermedia;
 
-            var xs = new List<double>();
-
+            // El lecho intermedio NO se apila: es justo el que reparte a lo ancho, y es
+            // el sitio donde van las varillas que no caben en las esquinas.
             if (lecho.NIntermedia == 1)
             {
-                xs.Add(x0 + (b / 2));
+                xsIntermedia.Add((x0 + (b / 2), yIntermedia));
             }
             else
             {
@@ -1906,14 +2119,32 @@ public sealed partial class SeccionDrawer
                 var paso = (xFin - xIni) / (lecho.NIntermedia + 1);
                 for (var i = 1; i <= lecho.NIntermedia; i++)
                 {
-                    xs.Add(xIni + (i * paso));
+                    xsIntermedia.Add((xIni + (i * paso), yIntermedia));
                 }
             }
-
-            xsIntermedia = xs.ToArray();
         }
 
         return (xsEsquina, yEsquina, xsIntermedia, yIntermedia, yGrupo);
+    }
+
+    /// <summary>Las X sin repetir de un grupo de varillas, en orden.</summary>
+    /// <remarks>
+    /// Las varillas de un <b>paquete</b> comparten X exacta —sale del mismo cálculo—, así
+    /// que basta comparar por igualdad y no hace falta tolerancia.
+    /// </remarks>
+    private static double[] XsUnicas(List<(double X, double Y)> varillas)
+    {
+        var salida = new List<double>();
+
+        foreach (var (x, _) in varillas)
+        {
+            if (!salida.Contains(x))
+            {
+                salida.Add(x);
+            }
+        }
+
+        return salida.ToArray();
     }
 
     /// <summary>
@@ -2344,9 +2575,11 @@ public sealed partial class SeccionDrawer
             // el rotulo tiene que decir cual es; pero una columna redonda sin la casilla
             // marcada lleva ESTRIBOS, y antes se rotulaba «Zuncho en anillos». La regla
             // esta en Estribos.EsZuncho, que es el mismo sitio que usa el alzado.
+            // La «C» detrás del calibre, igual que en las llamadas de varilla y en las
+            // grapas: TODOS los renglones del rótulo nombran la varilla del mismo modo.
             lineas.Add(Estribos.EsZuncho(s.Circular, s.ZunchoHelicoidal)
-                ? $"Zuncho helicoidal {s.Estribo.Clave} @{sep} cm"
-                : $"Estr. {s.Estribo.Clave} @{sep} cm");
+                ? $"Zuncho helicoidal {s.Estribo.Clave}C @{sep} cm"
+                : $"Estr. {s.Estribo.Clave}C @{sep} cm");
         }
 
         // Renglón del estribo diamante, con la MISMA separación que el principal.
@@ -2363,8 +2596,28 @@ public sealed partial class SeccionDrawer
 
             if (!string.IsNullOrWhiteSpace(clave))
             {
-                lineas.Add($"Est. Diamante {clave} @{sep} cm");
+                lineas.Add($"Est. Diamante {clave}C @{sep} cm");
             }
+        }
+
+        // Renglón de las grapas, con LA CANTIDAD y su diámetro.
+        //
+        // Un renglón por calibre y del más grueso al más delgado, igual que las
+        // llamadas de varilla de arriba: si la sección lleva dos grapas del #3 y una
+        // del #4, en el plano tienen que verse las dos cosas o quien pide el acero no
+        // sabe cuántas cortar de cada una.
+        //
+        // Va SIN separación, a diferencia del estribo y del diamante: una grapa no se
+        // repite a lo largo de la pieza por su cuenta, va donde va el estribo. Poner
+        // «@10-20-10» aquí diría que hay una tercera familia con su propio paso.
+        // La «C» detrás del calibre es la misma marca que llevan las llamadas de
+        // varilla de arriba —«6 vars. #8C»—, así que el rótulo se lee igual en todos
+        // sus renglones.
+        foreach (var (clave, cuantas) in GrapasPorDiametro(s))
+        {
+            lineas.Add(cuantas == 1
+                ? $"1 grapa {clave}C"
+                : $"{cuantas} grapas {clave}C");
         }
 
         lineas.Add($"Rec. {s.RecubrimientoCm:0.##} cm");

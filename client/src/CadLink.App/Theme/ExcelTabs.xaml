@@ -463,8 +463,8 @@
     <Style x:Key="ExcelTabItemStyle" TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
-        <Setter Property="FontSize" Value="12.5" />
-        <Setter Property="Padding" Value="17,9" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Padding" Value="13,5" />
         <Setter Property="Margin" Value="0,0,3,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -593,10 +593,10 @@
     <!-- ===================== Estilos auxiliares ===================== -->
     <Style x:Key="ModuleTitleStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
-        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
-        <Setter Property="Margin" Value="0,2,0,2" />
+        <Setter Property="Margin" Value="0,0,0,1" />
     </Style>
 
     <!-- El subtitulo explica la hoja, asi que se lee de verdad: se le puso
@@ -799,6 +799,19 @@
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontSize" Value="12" />
 
+        <!-- ===== ANCHO DE COLUMNA: AL CONTENIDO =====
+
+             Auto mide el encabezado Y las celdas y se queda con el mayor, o sea el
+             minimo que muestra el dato entero. Antes cada columna traia un ancho fijo
+             en pixeles, calculado a ojo y siempre de mas: con veintisiete columnas, ese
+             margen sobrante sumaba cientos de pixeles y obligaba a desplazar la tabla a
+             lo ancho para ver el estribo.
+
+             Va en el ESTILO y no columna por columna para que valga tambien para las
+             columnas que no declaran ancho: sin esto heredarian SizeToHeader, que mide
+             solo la cabecera y corta el contenido si es mas largo. -->
+        <Setter Property="ColumnWidth" Value="Auto" />
+
         <!-- Aire dentro de la cuadricula: 26 px de fila y 32 de encabezado. Con las
              filas apretadas de antes, veinte renglones de captura se leian como un
              muro de numeros. -->
@@ -833,7 +846,12 @@
     <Style x:Key="CeldaBase" TargetType="DataGridCell"
            BasedOn="{StaticResource {x:Type DataGridCell}}">
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="6,3" />
+
+        <!-- 4,3 y no 6,3: con las columnas ya ajustadas al contenido, el relleno
+             lateral es lo unico que sigue sobrando. Dos pixeles por lado y por columna,
+             con veintisiete columnas, son mas de cien pixeles recuperados. El vertical
+             se queda igual para no apretar los renglones. -->
+        <Setter Property="Padding" Value="4,3" />
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="Foreground" Value="{DynamicResource GridTextBrush}" />
 
@@ -880,6 +898,34 @@
     <!-- Seccion circular: armado del circulo y forma del zuncho -->
     <Style x:Key="CeldaCircular" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaCircularBrush}" />
+    </Style>
+
+    <!-- LAS TRES CASILLAS DE LA SECCION REDONDA, APAGADAS SI NO LO ES.
+
+         «N total», «Var total» y «Zuncho helic.» solo las lee el dibujo de una
+         COLUMNA CIRCULAR o un DADO CIRCULAR: la seccion rectangular captura su
+         acero por lechos y su estribo aparte, y ni mira estas tres.
+
+         Dejarlas escribibles en una seccion cuadrada invita a capturar un dato que
+         el dibujo va a ignorar, y despues a no entender por que no sale en el
+         plano. Es el mismo criterio -y el mismo apano- que las casillas del muro y
+         de la parrilla en la hoja de zapatas.
+
+         Se apaga con IsEnabled enlazado a EsCircular de la propia fila -el
+         DataContext de una celda ES su fila-, asi que se enciende y se apaga sola
+         al cambiar el Elemento, sin una linea de codigo. Y EsCircular ya cubre las
+         DOS formas redondas, la columna y el dado, asi que no hay que preguntar por
+         el elemento.
+
+         La opacidad es para que se vea apagada y no solo intocable. -->
+    <Style x:Key="CeldaSoloCircular" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaCircular}">
+        <Setter Property="IsEnabled" Value="{Binding EsCircular}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ==============================================================
@@ -1359,7 +1405,11 @@
         <Setter Property="FontFamily" Value="{StaticResource FuenteUI}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="Padding" Value="8,7" />
+
+        <!-- 5,7 y no 8,7: el encabezado es lo que MANDA el ancho de una columna Auto
+             -casi siempre es mas largo que el dato-, asi que su relleno lateral se paga
+             en cada columna. -->
+        <Setter Property="Padding" Value="5,7" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="SnapsToDevicePixels" Value="True" />

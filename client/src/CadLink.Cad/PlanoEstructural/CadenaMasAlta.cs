@@ -97,35 +97,152 @@ public static class CadenaMasAlta
 
         for (var i = 0; i < elementos.Count; i++)
         {
-            if (!EsCadena(elementos[i]))
+            var a = elementos[i];
+
+            if (!EsCadena(a))
             {
                 continue;
             }
 
+            var (ux, uy, largoA) = Direccion(a);
+
+            if (largoA <= Nada)
+            {
+                continue;
+            }
+
+            var ox = (a.X1 + a.X2) / 2;
+            var oy = (a.Y1 + a.Y2) / 2;
+
+            var (a1, a2) = Tramo(a, ux, uy, ox, oy);
+
+            // ==========================================================================
+            //  LO QUE DE VERDAD LA TAPA: LA UNIÓN DE LAS DE ARRIBA
+            // ==========================================================================
+            //  Aquí estaba el fallo, y se veía en el plano como una cadena que falta. Antes
+            //  bastaba que la de arriba la solapara MÁS DE LA HOLGURA —diez centímetros— para
+            //  callarla ENTERA. Así que una cadena corta de castillo a castillo, con una de
+            //  cerramiento más alta que solo le entraba quince centímetros por la punta,
+            //  desaparecía del plano y en su sitio no quedaba nada: la de arriba solo cubría
+            //  esos quince centímetros. El hueco medía lo que la cadena menos el solape.
+            //
+            //  Ahora se junta lo que cubren TODAS las de arriba y se calla solo si entre ellas
+            //  la cubren ENTERA. Con eso:
+            //
+            //    · las tres cadenas del mismo paño —desplante, intermedia y cerramiento— se
+            //      siguen callando, que es para lo que se hizo esto: las tres miden lo mismo;
+            //    · una cadena que otra solo pisa en parte SE DIBUJA, porque hay tramo suyo que
+            //      nadie más está dibujando;
+            //    · y si DOS de arriba se reparten cubrirla, también se calla: entre las dos no
+            //      dejan ni un pedazo sin dibujar. Por eso es la unión y no cada una por su
+            //      cuenta.
+            var cubren = new List<(double Desde, double Hasta)>();
+
             for (var j = 0; j < elementos.Count; j++)
             {
-                if (i == j || !EsCadena(elementos[j]))
+                var b = elementos[j];
+
+                if (i == j || !EsCadena(b))
                 {
                     continue;
                 }
 
                 // ¿Manda la otra? Está más arriba, o está a la misma altura y llega antes en
                 // la lista, que es el desempate estable.
-                var mandaLaOtra = Arriba(elementos[j]) > Arriba(elementos[i]) + Nada
-                                  || (Math.Abs(Arriba(elementos[j]) - Arriba(elementos[i])) <= Nada
-                                      && j < i);
+                var mandaLaOtra = Arriba(b) > Arriba(a) + Nada
+                                  || (Math.Abs(Arriba(b) - Arriba(a)) <= Nada && j < i);
 
-                if (!mandaLaOtra || !SeEnciman(elementos[i], elementos[j], tolM))
+                if (!mandaLaOtra || !MismaLinea(a, b, ux, uy, ox, oy, tolM))
                 {
                     continue;
                 }
 
-                tapadas.Add(elementos[i]);
-                break;
+                var (b1, b2) = Tramo(b, ux, uy, ox, oy);
+
+                var desde = Math.Max(a1, b1);
+                var hasta = Math.Min(a2, b2);
+
+                // Que se toquen por la punta no cuenta: dos tramos seguidos del mismo paño se
+                // dibujan los dos.
+                if (hasta - desde > Nada)
+                {
+                    cubren.Add((desde, hasta));
+                }
+            }
+
+            // Sin nadie encima no hay nada que decidir. Y hace falta preguntarlo: en una cadena
+            // más corta que la holgura, «cubierto >= largo - holgura» sale cierto con cero
+            // cubierto, y se callaría una cadena que nadie tapa.
+            if (cubren.Count == 0)
+            {
+                continue;
+            }
+
+            if (LargoCubierto(cubren) >= largoA - tolM)
+            {
+                tapadas.Add(a);
             }
         }
 
         return tapadas;
+    }
+
+    /// <summary>Cuánto miden los tramos <b>juntos</b>, sin contar dos veces lo que se solapa.</summary>
+    /// <remarks>
+    /// Se ordenan por su principio y se van fundiendo con el anterior mientras lo toquen. Sin
+    /// fundirlos, dos de arriba que se solapan entre ellas sumarían más de lo que cubren y
+    /// callarían una cadena que sí tiene tramo libre.
+    /// </remarks>
+    private static double LargoCubierto(List<(double Desde, double Hasta)> tramos)
+    {
+        tramos.Sort((p, q) => p.Desde.CompareTo(q.Desde));
+
+        double total = 0;
+
+        var desde = tramos[0].Desde;
+        var hasta = tramos[0].Hasta;
+
+        for (var k = 1; k < tramos.Count; k++)
+        {
+            if (tramos[k].Desde <= hasta)
+            {
+                hasta = Math.Max(hasta, tramos[k].Hasta);
+                continue;
+            }
+
+            total += hasta - desde;
+
+            desde = tramos[k].Desde;
+            hasta = tramos[k].Hasta;
+        }
+
+        return total + (hasta - desde);
+    }
+
+    /// <summary>¿Van en la <b>misma dirección</b> y por la <b>misma línea</b>?</summary>
+    private static bool MismaLinea(
+        ElementoPlanta a, ElementoPlanta b,
+        double ux, double uy, double ox, double oy, double tolM)
+    {
+        var (vx, vy, largoB) = Direccion(b);
+
+        if (largoB <= Nada)
+        {
+            return false;
+        }
+
+        // MISMA DIRECCIÓN: el seno del ángulo que forman. Se admiten unos grados, porque un
+        // muro dibujado a mano nunca queda exacto.
+        if (Math.Abs((ux * vy) - (uy * vx)) > 0.10)
+        {
+            return false;
+        }
+
+        var px = (b.X1 + b.X2) / 2;
+        var py = (b.Y1 + b.Y2) / 2;
+
+        // MISMA LÍNEA: lo que separa a los dos centros, medido de través.
+        return Math.Abs(((py - oy) * ux) - ((px - ox) * uy)) <= tolM;
     }
 
     /// <summary>
@@ -141,16 +258,9 @@ public static class CadenaMasAlta
     public static bool SeEnciman(ElementoPlanta a, ElementoPlanta b, double tolM)
     {
         var (ux, uy, largoA) = Direccion(a);
-        var (vx, vy, largoB) = Direccion(b);
 
-        if (largoA <= Nada || largoB <= Nada)
-        {
-            return false;
-        }
-
-        // MISMA DIRECCIÓN: el seno del ángulo que forman. Se admiten unos grados, porque un
-        // muro dibujado a mano nunca queda exacto.
-        if (Math.Abs((ux * vy) - (uy * vx)) > 0.10)
+        if (largoA <= Nada || !MismaLinea(a, b, ux, uy,
+                (a.X1 + a.X2) / 2, (a.Y1 + a.Y2) / 2, tolM))
         {
             return false;
         }
@@ -158,20 +268,13 @@ public static class CadenaMasAlta
         var ox = (a.X1 + a.X2) / 2;
         var oy = (a.Y1 + a.Y2) / 2;
 
-        var px = (b.X1 + b.X2) / 2;
-        var py = (b.Y1 + b.Y2) / 2;
-
-        // MISMA LÍNEA: lo que separa a los dos centros, medido de través.
-        if (Math.Abs(((py - oy) * ux) - ((px - ox) * uy)) > tolM)
-        {
-            return false;
-        }
-
-        // Y QUE SE ENCIMEN, no que se toquen: el trozo común tiene que medir algo.
         var (a1, a2) = Tramo(a, ux, uy, ox, oy);
         var (b1, b2) = Tramo(b, ux, uy, ox, oy);
 
-        return Math.Min(a2, b2) - Math.Max(a1, b1) > tolM;
+        // LA CUBRE ENTERA, no «se solapan un poco». Esto se corrigió: con «un poco» bastaba
+        // para callar la cadena completa, y donde la de arriba no llegaba no quedaba nada
+        // dibujado. El hueco medía lo que la cadena menos el solape.
+        return Math.Min(a2, b2) - Math.Max(a1, b1) >= largoA - tolM;
     }
 
     /// <summary>La dirección unitaria de una barra en planta, y su largo.</summary>

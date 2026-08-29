@@ -284,12 +284,12 @@
                                   AutoGenerateColumns="False"
                                   SelectionUnit="FullRow" SelectionMode="Extended">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="130" />
+                                <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="Auto" />
                                 <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="240" />
-                                <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="110" />
+                                <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="Auto" />
                                 <!-- Solo lectura a proposito: el numero lo calcula el juego. -->
                                 <DataGridTextColumn Header="No. Plano" Binding="{Binding NumeroTexto}"
-                                                    Width="120" IsReadOnly="True" />
+                                                    Width="Auto" IsReadOnly="True" />
                             </DataGrid.Columns>
                         </DataGrid>
 
@@ -307,11 +307,28 @@
             <!-- ===== Secciones de concreto ===== -->
             <TabItem Header="Secciones Concreto">
                 <Grid Margin="14">
+                    <!-- ===== REPARTO DE LA HOJA =====
+
+                         La vista previa tenia 230 px FIJOS y se quedaba con la peor
+                         parte: la tabla se estiraba con la ventana y el dibujo no, asi
+                         que en una pantalla grande sobraba hueco vacio en la tabla y la
+                         seccion seguia del tamano de un sello.
+
+                         Ahora la previa manda: 1.6 partes contra 1 de la tabla, con
+                         MinHeight en las dos para que ninguna pueda desaparecer, y un
+                         DIVISOR ARRASTRABLE en medio para repartirlas a gusto.
+
+                         La tabla y su barra de totales van juntas en un Grid anidado a
+                         proposito. El divisor reparte SUS DOS VECINOS, y si la barra de
+                         totales fuera un renglon suelto entre medias, el vecino de
+                         arriba seria esa barra -de alto Auto- y arrastrar la
+                         aplastaria en vez de mover la tabla. Metidas juntas, los dos
+                         vecinos del divisor son los dos renglones proporcionales. -->
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="*" MinHeight="120" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="230" />
+                        <RowDefinition Height="1.6*" MinHeight="220" />
 
                         <!-- Las notas del ultimo dibujo. Estaban ENCIMA de la vista
                              previa, en una capa semitransparente pegada abajo, y
@@ -328,8 +345,11 @@
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
+                        <!-- Compacta a proposito: esta tira es de configurar, no de
+                             trabajar, asi que todo el alto que se le quite se lo gana la
+                             tabla y la vista previa, que es donde se mira. -->
                         <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="12,9" Margin="0,0,0,10"
+                                Padding="9,4" Margin="0,0,0,5"
                                 HorizontalAlignment="Left">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Estilo de dibujo:" FontWeight="SemiBold" FontSize="12"
@@ -367,6 +387,35 @@
                                      siempre igual, asi que la casilla solo era una forma de
                                      descuadrarlo. El valor vive en
                                      MainWindow.EscalaDeDibujo, en un solo sitio. -->
+
+                                <Border Width="1" Background="{DynamicResource BorderBrush}"
+                                        Margin="18,2,18,2" />
+
+                                <!-- LOS BOTONES DE DIBUJAR, AQUI ARRIBA.
+
+                                     Estaban en la barra de abajo, pegados a los totales.
+                                     Se subieron para que la barra de abajo quede fina y le
+                                     deje sitio a la vista previa, que es donde se revisa el
+                                     armado y donde se gira la seccion en 3D.
+
+                                     Van junto al estilo de dibujo a proposito: las dos
+                                     cosas responden a la misma pregunta -como va a salir el
+                                     dibujo- asi que se eligen de una pasada y sin bajar la
+                                     vista al otro extremo de la pantalla. -->
+
+                                <!-- Sin esta casilla, una seccion ya dibujada no habia
+                                     forma de actualizarla mas que purgando su bloque
+                                     a mano en AutoCAD. -->
+                                <CheckBox x:Name="RedibujarChk" VerticalAlignment="Center"
+                                          Margin="0,0,14,0"
+                                          Content="Redibujar las que ya existen"
+                                          ToolTip="Apagado: la seccion que ya es bloque se salta, como DibujarSecciones de la macro.&#10;Encendido: se rehace EN SU MISMO SITIO, como ActualizarSecciones." />
+                                <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnValidate" />
+                                <Button x:Name="AlzadosButton" Content="Generar alzados"
+                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
+                                <Button x:Name="ExportButton" Content="Generar dibujo"
+                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnExport" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -378,7 +427,15 @@
                          y se acaba escribiendo el armado en el renglón equivocado.
                          La fila de encabezado no se desplaza al bajar: el DataGrid la
                          mantiene fija de serie. -->
-                    <DataGrid Grid.Row="1" x:Name="SeccionesGrid" Style="{StaticResource SheetGridStyle}"
+                    <!-- La tabla y su barra de totales, juntas: son una sola cosa y el
+                         divisor de abajo tiene que verlas como un solo vecino. -->
+                    <Grid Grid.Row="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                    <DataGrid Grid.Row="0" x:Name="SeccionesGrid" Style="{StaticResource SheetGridStyle}"
                               SelectionMode="Single" SelectionUnit="FullRow"
                               FrozenColumnCount="2"
                               HeadersVisibility="All"
@@ -390,7 +447,7 @@
                                  code-behind desde la tabla de diametros, asi que no puede
                                  desincronizarse con la validacion. -->
                             <DataGridComboBoxColumn x:Name="ColElemento" Header="Elemento"
-                                                    SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="115"
+                                                    SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
                             <!-- ID: el PREFIJO va fijo y solo se edita el NUMERO.
@@ -403,7 +460,7 @@
                                  Y el caso OTRO sale gratis: alli no hay prefijo, asi que
                                  PrefijoId queda vacio, NumeroId vale el ID entero y se
                                  edita todo. El mismo mecanismo para los dos casos. -->
-                            <DataGridTemplateColumn Header="ID" Width="90"
+                            <DataGridTemplateColumn Header="ID" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -429,41 +486,41 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
 
-                            <DataGridTextColumn Header="N esq sup"  Binding="{Binding NEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="N° esq sup"  Binding="{Binding NEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqSup" Header="Var esq sup"
-                                                    SelectedItemBinding="{Binding DiamEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
-                            <DataGridTextColumn Header="N int sup"  Binding="{Binding NIntSup, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="N° int sup"  Binding="{Binding NIntSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntSup" Header="Var int sup"
-                                                    SelectedItemBinding="{Binding DiamIntSup, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamIntSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
 
-                            <DataGridTextColumn Header="N esq inf"  Binding="{Binding NEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="N° esq inf"  Binding="{Binding NEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqInf" Header="Var esq inf"
-                                                    SelectedItemBinding="{Binding DiamEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="N int inf"  Binding="{Binding NIntInf, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="N° int inf"  Binding="{Binding NIntInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntInf" Header="Var int inf"
-                                                    SelectedItemBinding="{Binding DiamIntInf, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamIntInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
 
-                            <DataGridTextColumn Header="N lateral"  Binding="{Binding NInter, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="N° lateral"  Binding="{Binding NInter, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaLateral}" />
                             <DataGridComboBoxColumn x:Name="ColVarLateral" Header="Var lateral"
-                                                    SelectedItemBinding="{Binding DiamInter, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamInter, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLateral}" />
 
@@ -473,21 +530,21 @@
                                  circular la base es el DIAMETRO, la altura se ignora, y
                                  el acero se captura como TOTAL en lugar de por lechos.
                                  En el plano se rotula «COLUMNA», igual que una cuadrada. -->
-                            <DataGridTextColumn Header="N total" Binding="{Binding NVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="75"
-                                                    CellStyle="{StaticResource CeldaCircular}" />
+                            <DataGridTextColumn Header="N° total" Binding="{Binding NVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaSoloCircular}" />
                             <DataGridComboBoxColumn x:Name="ColVarTotal" Header="Var total"
-                                                    SelectedItemBinding="{Binding DiamVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamVarTotal, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaCircular}" />
+                                                    CellStyle="{StaticResource CeldaSoloCircular}" />
                             <DataGridComboBoxColumn x:Name="ColZuncho" Header="Zuncho helic."
-                                                    SelectedItemBinding="{Binding ZunchoHelicoidal, UpdateSourceTrigger=PropertyChanged}" Width="100"
+                                                    SelectedItemBinding="{Binding ZunchoHelicoidal, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    CellStyle="{StaticResource CeldaCircular}" />
+                                                    CellStyle="{StaticResource CeldaSoloCircular}" />
 
-                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="70"
+                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColEstribo" Header="Estribo"
-                                                    SelectedItemBinding="{Binding Estribo, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                    SelectedItemBinding="{Binding Estribo, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <!-- Sep cm: desplegable con las separaciones de siempre, pero
@@ -504,7 +561,7 @@
                                  La lista sale de SeccionConcretoRow.SeparacionesUsuales,
                                  un solo sitio, igual que los diametros salen de
                                  Varilla.DiametrosCm. -->
-                            <DataGridTemplateColumn Header="Sep cm" Width="95"
+                            <DataGridTemplateColumn Header="Sep cm" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}"
                                                     SortMemberPath="SeparacionCm">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -527,35 +584,35 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridComboBoxColumn x:Name="ColDiamante" Header="Diamante"
-                                                    SelectedItemBinding="{Binding EstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                    SelectedItemBinding="{Binding EstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColVarDiamante" Header="Var diam."
-                                                    SelectedItemBinding="{Binding DiamEstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="95"
+                                                    SelectedItemBinding="{Binding DiamEstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
-                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}" Width="65"
+                            <DataGridTextColumn Header="f'c"        Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala, UpdateSourceTrigger=PropertyChanged}" Width="65"
+                            <DataGridTextColumn Header="Escala"     Binding="{Binding Escala, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
 
                             <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas, UpdateSourceTrigger=PropertyChanged}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                IsReadOnly="True" Width="80"
+                                                IsReadOnly="True" Width="Auto"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="2"
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="1"
                             >
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -563,29 +620,31 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
+                            <!-- Aqui ya solo van los totales: los botones de dibujar
+                                 subieron al panel del estilo de dibujo, para que esta barra
+                                 quede fina y le deje sitio a la vista previa. La columna
+                                 Auto se queda sin nada y por tanto sin ancho. -->
                             <TextBlock x:Name="TotalesText" Grid.Column="0"
                                        Style="{StaticResource TextoTotalesStyle}"
                                        VerticalAlignment="Center" />
-
-                            <!-- El boton de dibujar vive aqui, junto a la tabla que
-                                 dibuja, y no en una pestaña aparte. -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <!-- Sin esta casilla, una seccion ya dibujada no habia
-                                     forma de actualizarla mas que purgando su bloque
-                                     a mano en AutoCAD. -->
-                                <CheckBox x:Name="RedibujarChk" VerticalAlignment="Center"
-                                          Margin="0,0,14,0"
-                                          Content="Redibujar las que ya existen"
-                                          ToolTip="Apagado: la seccion que ya es bloque se salta, como DibujarSecciones de la macro.&#10;Encendido: se rehace EN SU MISMO SITIO, como ActualizarSecciones." />
-                                <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
-                                        Click="OnValidate" />
-                                <Button x:Name="AlzadosButton" Content="Generar alzados"
-                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
-                                <Button x:Name="ExportButton" Content="Generar dibujo"
-                                        Style="{StaticResource PrimaryButtonStyle}" Click="OnExport" />
-                            </StackPanel>
                         </Grid>
                     </Border>
+                    </Grid>
+
+                    <!-- EL DIVISOR. Reparte la tabla y la vista previa a gusto: quien
+                         este capturando le da mas sitio a la tabla, y quien este
+                         revisando el armado se la da al dibujo.
+
+                         ResizeBehavior en PreviousAndNext para que mueva los dos
+                         renglones proporcionales que tiene al lado. Sin esto, el
+                         GridSplitter solo empuja a uno y el otro se descuadra. -->
+                    <GridSplitter Grid.Row="2" Height="7"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                  ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                                  Background="Transparent"
+                                  ShowsPreview="True"
+                                  Cursor="SizeNS"
+                                  ToolTip="Arrastra para repartir el alto entre la tabla y la vista previa." />
 
                     <!-- Fondo AZUL, para que la vista previa se lea como un panel
                          aparte y no como una prolongacion en blanco de la tabla.
@@ -594,15 +653,277 @@
                          varillas y las cotas sin contraste. -->
                     <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="3"
                             >
-                        <Grid>
-                            <Canvas x:Name="PreviewCanvas"
-                                    Background="{StaticResource PreviewFondoBrush}"
-                                    ClipToBounds="True" />
-                            <TextBlock Text="Vista previa de la seccion seleccionada"
-                                       FontSize="10.5" Margin="8,6,0,0"
-                                       VerticalAlignment="Top" HorizontalAlignment="Left"
-                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                        <!-- ClipToBounds va AQUI, en el contenedor, y no solo en el
+                             Canvas.
 
+                             El Canvas lleva un RenderTransform para el zoom, y WPF
+                             aplica el recorte de un elemento ANTES de su
+                             RenderTransform: al escalar, el propio recorte se escala
+                             con el dibujo, asi que al acercarse el trazo se saldria
+                             del marco y se pintaria encima de la tabla y de la barra
+                             de totales. El Border tampoco recorta por si mismo -no lo
+                             hace ni con CornerRadius-, de modo que hace falta un
+                             contenedor sin transformar que recorte de verdad. -->
+                        <!-- EL PAPEL VA AQUI, EN EL CONTENEDOR, Y NO EN EL CANVAS.
+
+                             Es lo que hace que al arrastrar se mueva SOLO el dibujo.
+                             Con el Background en el Canvas, el zoom y el arrastre
+                             tambien movian el rectangulo de papel, asi que al
+                             arrastrar el papel se corria, asomaba el borde por un
+                             lado y parecia que se moviera el panel entero en vez de
+                             la seccion.
+
+                             El Canvas se queda en Transparent, que NO es lo mismo que
+                             no ponerle nada: un Canvas sin Background no recibe
+                             eventos de raton -no hay nada que golpear-, y con
+                             Transparent los recibe en toda su superficie sin pintar
+                             un solo pixel. Es la misma razon por la que los lienzos
+                             del visor de ETABS llevan Background. -->
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- ===== BARRA DE MANDOS DE LA VISTA PREVIA =====
+
+                                 Los mandos estaban FLOTANDO sobre las cuatro esquinas
+                                 del dibujo, y ahi pasaban dos cosas: los de la grapa,
+                                 abajo a la derecha, quedaban tan lejos de la seccion
+                                 -que se dibuja a la izquierda- que no se encontraban;
+                                 y encima tapaban parte del dibujo.
+
+                                 Ahora son una barra de verdad, en su propio renglon:
+                                 nada tapa el dibujo y los de la grapa quedan pegados al
+                                 lado por donde se dibuja el corte. -->
+                            <Grid Grid.Row="0" Margin="9,6,5,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Vista previa"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="0,0,12,0"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+
+                                <!-- LOS MANDOS DE LA GRAPA, pegados al titulo y al lado
+                                     del dibujo donde va la seccion. -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <!-- 2D / 3D del alzado. Va de este lado, junto a la
+                                         seccion, para tenerlo a mano sin cruzar el
+                                         recuadro. Dice en que vista se esta. -->
+                                    <Button x:Name="AlzadoVistaButton" Content="2D"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="9,2" MinWidth="34"
+                                            Margin="0,0,10,0"
+                                            Click="OnAlternarAlzado3D"
+                                            ToolTip="Viendo el alzado plano. Toca para verlo en 3D." />
+
+                                    <TextBlock Text="Grapa ø" FontSize="10.5"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"
+                                               Foreground="{DynamicResource MutedTextBrush}" />
+
+                                    <!-- DiametrosOpcionales y no Diametros: la primera
+                                         entrada es el BLANCO, y en blanco la grapa se
+                                         arma con el estribo de la seccion. Es el mismo
+                                         criterio que las columnas de la cuadricula que se
+                                         pueden dejar vacias para que hereden, y evita
+                                         elegir aqui un calibre por omision que luego no
+                                         cuadre con el de la seccion.
+
+                                         La lista sale de Varilla.DiametrosOpcionales, la
+                                         MISMA tabla que usan las columnas, para que
+                                         agregar una varilla al catalogo la deje tambien
+                                         aqui sin tocar este XAML. -->
+                                    <ComboBox x:Name="GrapaDiametroCombo"
+                                              Width="66" FontSize="11" Height="22"
+                                              VerticalAlignment="Center" Margin="0,0,6,0"
+                                              SelectedIndex="0"
+                                              ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                                              ToolTip="Diametro con el que se arma la grapa que se ponga.&#10;En blanco: el mismo del estribo de la seccion." />
+
+                                    <Button Content="Quitar grapas"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnQuitarGrapas"
+                                            ToolTip="Quita TODAS las grapas de la seccion seleccionada." />
+                                </StackPanel>
+
+                                <!-- Los del encuadre, a la derecha: son de mirar, no de
+                                     armar, asi que van separados de los de la grapa. -->
+                                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                                    <TextBlock x:Name="PreviaZoomText" Text="100%"
+                                               FontSize="10.5" VerticalAlignment="Center"
+                                               Margin="0,0,6,0" MinWidth="36"
+                                               TextAlignment="Right"
+                                               Foreground="{DynamicResource MutedTextBrush}" />
+                                    <Button Content="−" Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="9,2" FontSize="14"
+                                            Click="OnPreviaAlejar"
+                                            ToolTip="Alejar (tambien con la rueda del raton)" />
+                                    <Button Content="+" Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="9,2" FontSize="14"
+                                            Click="OnPreviaAcercar"
+                                            ToolTip="Acercar (tambien con la rueda del raton)" />
+                                    <Button Content="Ajustar" Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnPreviaAjustar"
+                                            ToolTip="Vuelve el dibujo a su encuadre original.&#10;Atajo: doble clic sobre la vista previa." />
+
+                                    <Button Content="Imagen 3D"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnGuardarImagen3D"
+                                            ToolTip="Guarda un JPG de la seccion en 3D, en isometrico y a alta resolucion.&#10;La orientacion del JPG NO depende de como este girada la vista: siempre sale en isometrico." />
+
+                                    <!-- LA JAULA EN 3D A AUTOCAD, como SOLIDOS. Va aqui, al
+                                         lado del JPG, porque las dos cosas sacan lo mismo que
+                                         se esta viendo en 3D: una a una imagen y la otra al
+                                         dibujo. -->
+                                    <Button Content="3D a AutoCAD"
+                                            Style="{StaticResource ToolbarButtonStyle}"
+                                            Padding="8,2"
+                                            Click="OnDibujarJaula3dCad"
+                                            ToolTip="Dibuja en AutoCAD la jaula de armado en 3D: cada varilla, estribo, grapa y diamante como un SOLIDO, con sus dobleces y sus ganchos.&#10;Son solidos de verdad: se pueden seccionar, medir y acotar.&#10;Las varillas van en E-ACERO 3D y los estribos en E-ESTRIBO 3D.&#10;Requiere AutoCAD abierto y la vista en 3D." />
+                                </StackPanel>
+                            </Grid>
+
+                        <Grid x:Name="PreviaHost" Grid.Row="1" ClipToBounds="True"
+                              Background="{StaticResource PreviewFondoBrush}">
+                            <!-- ===== LA CAPA FIJA: EL ALZADO Y LAS LETRAS =====
+
+                                 Va en su PROPIO lienzo, hermano del de la seccion y
+                                 SIN transformacion, porque el zoom y el arrastre son
+                                 solo para la seccion en corte.
+
+                                 Antes todo compartia un lienzo, y como la
+                                 transformacion es del lienzo entero, acercarse a una
+                                 varilla tambien agrandaba el alzado y el rotulo y los
+                                 sacaba del cuadro. Con dos lienzos, el corte se mueve
+                                 y el alzado y los textos se quedan donde estan.
+
+                                 Va PRIMERO -o sea debajo- y con IsHitTestVisible en
+                                 False: los clics tienen que llegar al lienzo de la
+                                 seccion, que es el que sabe convertir un punto en una
+                                 varilla. Si esta capa atrapara el raton, la mitad
+                                 derecha del recuadro -donde va el alzado- se quedaria
+                                 sin poder marcar nada. -->
+                            <Canvas x:Name="PreviaFijaCanvas"
+                                    Background="Transparent"
+                                    IsHitTestVisible="False" />
+
+                            <!-- Sin ClipToBounds en el Canvas, a proposito: el recorte
+                                 de verdad lo hace PreviaHost. Si el Canvas tambien
+                                 recortara, al alejarse el zoom seguiria cortando el
+                                 dibujo en los limites que tenia el lienzo, y el alzado
+                                 -que se dibuja a la derecha y a veces se sale- nunca
+                                 se podria ver entero alejandose, que es justo para lo
+                                 que uno se aleja. -->
+                            <!-- ===== EL RECUADRO DEL CORTE =====
+
+                                 Existe para poder RECORTAR el corte a su mitad del
+                                 panel sin recortar tambien el alzado, que es su
+                                 hermano en PreviaHost.
+
+                                 Y tiene que ser un contenedor aparte porque WPF aplica
+                                 el Clip de un elemento ANTES de su RenderTransform: un
+                                 Clip puesto en PreviewCanvas se movería y se escalaría
+                                 con el zoom, o sea que no recortaria nada. Aqui el
+                                 contenedor no lleva transformacion, asi que su recorte
+                                 se queda quieto mientras el dibujo se mueve por
+                                 dentro, que es como se comporta una ventana.
+
+                                 El recorte se pone desde el codigo, y SOLO en 2D: en
+                                 3D la seccion se puede pasear libremente, que es lo
+                                 que se pidio. -->
+                            <Grid x:Name="PreviaCorteHost">
+
+                            <!-- ===== EL 3D DE VERDAD =====
+
+                                 La seccion en 3D se dibujaba proyectandola a mano
+                                 sobre el lienzo: lineas gruesas con degradado que
+                                 PARECIAN barras redondas. Eso tenia un techo que no se
+                                 arregla afinando -no hay profundidad por pixel, asi
+                                 que dos barras tangentes se traspasan siempre- y esta
+                                 razonado en TuboDeMalla.
+
+                                 Aqui las barras son SOLIDOS y el motor resuelve la
+                                 oclusion con su buffer de profundidad. Girar pasa a
+                                 ser una transformacion: la malla se construye una vez
+                                 y arrastrar solo cambia un angulo.
+
+                                 La camara es ORTOGRAFICA, no en perspectiva: un dibujo
+                                 tecnico no lleva punto de fuga, y asi las dos varillas
+                                 de un lecho se ven del mismo tamano esten delante o
+                                 detras, que es lo que se quiere comprobar.
+
+                                 IsHitTestVisible en False a proposito: los eventos del
+                                 raton los sigue atendiendo PreviewCanvas, que esta
+                                 encima y es transparente. Asi el giro, el zoom y el
+                                 arrastre se manejan en un solo sitio para las dos
+                                 vistas. -->
+                            <Viewport3D x:Name="PreviaViewport"
+                                        Visibility="Collapsed"
+                                        IsHitTestVisible="False"
+                                        ClipToBounds="True"
+                                        HorizontalAlignment="Left">
+                                <Viewport3D.Camera>
+                                    <OrthographicCamera x:Name="PreviaCamara3D"
+                                                        Position="0,0,1000"
+                                                        LookDirection="0,0,-1"
+                                                        UpDirection="0,1,0"
+                                                        Width="200"
+                                                        NearPlaneDistance="1"
+                                                        FarPlaneDistance="100000" />
+                                </Viewport3D.Camera>
+                                <ModelVisual3D x:Name="PreviaEscena3D" />
+                            </Viewport3D>
+
+                            <Canvas x:Name="PreviewCanvas"
+                                    Background="Transparent"
+                                    MouseLeftButtonDown="OnPreviaMouseDown"
+                                    MouseRightButtonDown="OnPreviaMouseDown"
+                                    MouseMove="OnPreviaMouseMove"
+                                    MouseLeftButtonUp="OnPreviaMouseUp"
+                                    MouseRightButtonUp="OnPreviaMouseUp"
+                                    LostMouseCapture="OnPreviaMouseUp"
+                                    MouseLeave="OnPreviaMouseLeave"
+                                    MouseWheel="OnPreviaWheel">
+                                <!-- EL ZOOM Y EL ENCUADRE DE LA VISTA PREVIA.
+                                     
+                                     Van en el Canvas y NO en sus hijos a proposito:
+                                     DibujarVistaPrevia empieza con Children.Clear(),
+                                     asi que cualquier transformacion puesta en las
+                                     figuras se perderia en cuanto se editara una
+                                     celda. Puesta en el Canvas, el encuadre sobrevive
+                                     a los redibujados.
+
+                                     El orden importa: primero escala y luego mueve,
+                                     de modo que el desplazamiento queda en pixeles de
+                                     pantalla y arrastrar mueve el dibujo justo lo que
+                                     se mueve el raton, con cualquier zoom. -->
+                                <Canvas.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="PreviaEscala" ScaleX="1" ScaleY="1" />
+                                        <TranslateTransform x:Name="PreviaMueve" X="0" Y="0" />
+                                    </TransformGroup>
+                                </Canvas.RenderTransform>
+                            </Canvas>
+                            </Grid>
+
+                        </Grid>
+
+                            <!-- La pista, en su propio renglon debajo del dibujo. Antes
+                                 iba flotando sobre la esquina de abajo y le comia sitio
+                                 al alzado. -->
+                            <TextBlock Grid.Row="2"
+                                       Text="Arrastra para mover · rueda para zoom · clic en dos varillas = grapa · doble clic = ajustar"
+                                       FontSize="10" Margin="9,2,0,5"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
                         </Grid>
                     </Border>
 
@@ -676,8 +997,12 @@
                         <TextBlock Text="Secciones estructurales de acero" Style="{StaticResource ModuleTitleStyle}"
                                    ToolTip="Las doce familias del manual IMCA en una sola tabla. Elige la familia y la celda Perfil te ofrece SOLO los perfiles de esa familia: la IR trae las W, y la IS, la IC y la S tienen cada una su propia lista. Al elegir un perfil sus medidas se traen solas, y cada familia usa las columnas que necesita y deja las demas en blanco." />
 
+                        <!-- Compacta a proposito, igual que la de secciones de concreto:
+                             esta tira es de CONSULTA -dice que trae cada familia- y se lee
+                             una vez. Todo el alto que se le quite se lo gana la tabla, que
+                             es donde se trabaja. -->
                         <Border Style="{StaticResource TarjetaStyle}"
-                                Padding="12,9" Margin="0,0,0,10"
+                                Padding="9,4" Margin="0,0,0,5"
                                 HorizontalAlignment="Left">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -702,7 +1027,7 @@
                               ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
                         <DataGrid.Columns>
                             <DataGridComboBoxColumn x:Name="ColFamilia" Header="Familia"
-                                                    SelectedItemBinding="{Binding Familia, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                                                    SelectedItemBinding="{Binding Familia, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
 
@@ -720,7 +1045,7 @@
                                  La lista sale de la FILA y no de la columna porque cada
                                  fila puede ser de otra familia. Y es editable, para poder
                                  capturar un perfil que no este en el catalogo. -->
-                            <DataGridTemplateColumn Header="Perfil" Width="150"
+                            <DataGridTemplateColumn Header="Perfil" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="Perfil">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -742,11 +1067,11 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Width="80"
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaIdent}" />
 
                             <DataGridComboBoxColumn x:Name="ColElementoAcero" Header="Elemento"
-                                                    SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                    SelectedItemBinding="{Binding Elemento, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
                             <!-- Se pega al rotulo detras del elemento, sea cual sea: una
@@ -755,30 +1080,30 @@
                                  resultado era que la clasificacion se elegia, se veia en la
                                  celda y luego no aparecia en el dibujo. -->
                             <DataGridComboBoxColumn x:Name="ColClasificacion" Header="Clasificación"
-                                                    SelectedItemBinding="{Binding Clasificacion, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                    SelectedItemBinding="{Binding Clasificacion, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
 
-                            <DataGridTextColumn Header="Peralte cm" Binding="{Binding PeralteCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                            <DataGridTextColumn Header="Peralte cm" Binding="{Binding PeralteCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="e alma cm" Binding="{Binding EspesorAlmaCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                            <DataGridTextColumn Header="e alma cm" Binding="{Binding EspesorAlmaCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="e patin cm" Binding="{Binding EspesorPatinCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                            <DataGridTextColumn Header="e patin cm" Binding="{Binding EspesorPatinCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Labio cm" Binding="{Binding LabioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                            <DataGridTextColumn Header="Labio cm" Binding="{Binding LabioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="r cm" Binding="{Binding RadioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="70"
+                            <DataGridTextColumn Header="r cm" Binding="{Binding RadioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
                             <!-- Solo la ZF. Una zeta de catalogo tiene los dos patines de
                                  distinto ancho (60.3 y 54 mm en la de 2 3/8") y eso no es
                                  una errata del manual: es lo que permite traslapar dos
                                  zetas en el apoyo. En cero, la zeta sale simetrica. -->
-                            <DataGridTextColumn Header="Ancho 2 cm" Binding="{Binding AnchoMenorCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="90"
+                            <DataGridTextColumn Header="Ancho 2 cm" Binding="{Binding AnchoMenorCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
 
-                            <DataGridCheckBoxColumn Header="Doble" Binding="{Binding Doble, UpdateSourceTrigger=PropertyChanged}" Width="60"
+                            <DataGridCheckBoxColumn Header="Doble" Binding="{Binding Doble, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
                             <!-- El acero: la lista sale del catalogo aceros.csv, que trae
                                  los 39 del manual con su Fy, su Fu y en que secciones se
@@ -788,7 +1113,7 @@
                                  kg/cm2 y en MPa, y la norma mexicana equivalente- para no
                                  tener que ir a buscarlo a la hoja. -->
                             <DataGridComboBoxColumn x:Name="ColAcero" Header="Acero"
-                                                    SelectedItemBinding="{Binding Acero, UpdateSourceTrigger=PropertyChanged}" Width="135"
+                                                    SelectedItemBinding="{Binding Acero, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaAcabado}">
                                 <!-- Esta columna SI trae su ElementStyle escrito, porque lleva
@@ -807,7 +1132,7 @@
                                  no se teclea su esfuerzo. -->
                             <DataGridTextColumn Header="Fy kg/cm²"
                                                 Binding="{Binding FyKgCm2, StringFormat=N0}"
-                                                IsReadOnly="True" Width="80"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
 
                             <!-- Y SI ESE ACERO SE CONSIGUE EN ESE PERFIL, que es lo que no
@@ -820,7 +1145,7 @@
                                  fila. Ver CeldaDisponibilidadAcero. -->
                             <DataGridTextColumn Header="¿Se hace?"
                                                 Binding="{Binding AceroDisponibleLeyenda}"
-                                                IsReadOnly="True" Width="90"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaDisponibilidadAcero}" />
 
                             <!-- Calculadas. «Forma» es lo que se va a dibujar, y esta aqui
@@ -831,13 +1156,13 @@
                                  «Falta» dice, para la forma elegida, que dimension no se
                                  sostiene. -->
                             <DataGridTextColumn Header="Forma" Binding="{Binding FormaNombre}"
-                                                IsReadOnly="True" Width="120"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="En el plano" Binding="{Binding PerfilRotulo}"
-                                                IsReadOnly="True" Width="190"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Falta" Binding="{Binding FaltanDatos}"
-                                                IsReadOnly="True" Width="220"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
 
                             <!-- ===== PROPIEDADES GEOMETRICAS, del manual IMCA =====
@@ -856,52 +1181,52 @@
                                  valores de DISEÑO por ancho efectivo, que es lo que da el
                                  manual para una lamina delgada. -->
                             <DataGridTextColumn Header="Peso kg/m" Binding="{Binding Propiedades.PesoKgM, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Área cm²" Binding="{Binding Propiedades.AreaCm2, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Ix cm⁴" Binding="{Binding Propiedades.IxCm4, StringFormat=N2}"
-                                                IsReadOnly="True" Width="90"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Sx cm³" Binding="{Binding Propiedades.SxCm3, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Zx cm³" Binding="{Binding Propiedades.ZxCm3, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="rx cm" Binding="{Binding Propiedades.RxCm, StringFormat=N2}"
-                                                IsReadOnly="True" Width="75"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Iy cm⁴" Binding="{Binding Propiedades.IyCm4, StringFormat=N2}"
-                                                IsReadOnly="True" Width="90"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Sy cm³" Binding="{Binding Propiedades.SyCm3, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Zy cm³" Binding="{Binding Propiedades.ZyCm3, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="ry cm" Binding="{Binding Propiedades.RyCm, StringFormat=N2}"
-                                                IsReadOnly="True" Width="75"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="rmín cm" Binding="{Binding Propiedades.RminCm, StringFormat=N2}"
-                                                IsReadOnly="True" Width="80"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="J cm⁴" Binding="{Binding Propiedades.JCm4, StringFormat=N3}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Cw cm⁶" Binding="{Binding Propiedades.CwCm6, StringFormat=N1}"
-                                                IsReadOnly="True" Width="95"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Ixy cm⁴" Binding="{Binding Propiedades.IxyCm4, StringFormat=N2}"
-                                                IsReadOnly="True" Width="85"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="x̄ cm" Binding="{Binding Propiedades.XbarCm, StringFormat=N2}"
-                                                IsReadOnly="True" Width="70"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="ȳ cm" Binding="{Binding Propiedades.YbarCm, StringFormat=N2}"
-                                                IsReadOnly="True" Width="70"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -1051,7 +1376,7 @@
                                  puesta desde la propia clase con x:Static. Con
                                  SelectedItemBinding y la lista llegando desde el code-behind,
                                  el enlace PISA el valor capturado. -->
-                            <DataGridTemplateColumn Header="Tipo" Width="95"
+                            <DataGridTemplateColumn Header="Tipo" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="Tipo">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1072,18 +1397,18 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="70" CellStyle="{StaticResource CeldaIdent}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaIdent}" />
 
                             <!-- Geometria de la zapata, EN METROS como en la macro -->
                             <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                             <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                             <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="80" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- Parrillas de la zapata -->
-                            <DataGridTemplateColumn Header="Doble parrilla" Width="95"
+                            <DataGridTemplateColumn Header="Doble parrilla" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}"
                                                     SortMemberPath="DobleParrilla">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1122,7 +1447,7 @@
                                  El nombre dice el LECHO y el TRABAJO de cada varilla, que es como
                                  salen rotuladas en el plano: en la parrilla de abajo la de flexion
                                  va en el lecho inferior y la de temperatura se apoya encima. -->
-                            <DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="350"
+                            <DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraParrillaStyle}"
                                                     HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
                                                     CellTemplate="{StaticResource CeldasParrillaInferior}"
@@ -1135,7 +1460,7 @@
 
                                  Ahi las palabras del lecho van al REVES, porque la de flexion se
                                  amarra por el lomo y la de temperatura queda debajo. -->
-                            <DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="350"
+                            <DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraParrillaStyle}"
                                                     HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
                                                     CellTemplate="{StaticResource CeldasParrillaSuperior}"
@@ -1143,7 +1468,7 @@
                                                     CanUserSort="False" />
                             <!-- El muro. El espesor va en CENTIMETROS, como en la hoja:
                                  la macro lo divide entre 100 al dibujar. -->
-                            <DataGridTemplateColumn Header="Muro" Width="130"
+                            <DataGridTemplateColumn Header="Muro" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}"
                                                     SortMemberPath="TipoMuro">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1169,7 +1494,7 @@
                                  error de compilacion MC3072. -->
                             <DataGridTextColumn Header="e muro cm"
                                                 Binding="{Binding EspesorMuroCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="85" CellStyle="{StaticResource CeldaAcabado}">
+                                                Width="Auto" CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
@@ -1178,7 +1503,7 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
-                            <DataGridTemplateColumn Header="Muro doble parr." Width="110"
+                            <DataGridTemplateColumn Header="Muro doble parr." Width="Auto"
                                                     CellStyle="{StaticResource CeldaSoloConcreto}"
                                                     SortMemberPath="MuroDobleParrilla">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1204,15 +1529,15 @@
                                  las dos. Si la vertical se deja vacia se usa la horizontal, asi que
                                  una hoja vieja dibuja igual. -->
                             <DataGridComboBoxColumn x:Name="ColZapCorVarMuro" Header="Var muro horiz."
-                                                    SelectedItemBinding="{Binding VarMuro, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                    SelectedItemBinding="{Binding VarMuro, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloConcreto}" />
                             <DataGridComboBoxColumn x:Name="ColZapCorVarMuroVert" Header="Var muro vert."
-                                                    SelectedItemBinding="{Binding VarMuroVert, UpdateSourceTrigger=PropertyChanged}" Width="110"
+                                                    SelectedItemBinding="{Binding VarMuroVert, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloConcreto}" />
                             <DataGridTextColumn Header="@ horiz cm" Binding="{Binding SepMuroHoriz, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="90" CellStyle="{StaticResource CeldaSoloConcreto}">
+                                                Width="Auto" CellStyle="{StaticResource CeldaSoloConcreto}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
@@ -1221,7 +1546,7 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
                             <DataGridTextColumn Header="@ vert cm" Binding="{Binding SepMuroVert, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="90" CellStyle="{StaticResource CeldaSoloConcreto}">
+                                                Width="Auto" CellStyle="{StaticResource CeldaSoloConcreto}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
@@ -1235,7 +1560,7 @@
                                  capturadas en la hoja de concreto. La celda sigue siendo
                                  editable: el bloque puede estar en el dibujo sin estar
                                  capturado, y eso es corriente en un plano empezado. -->
-                            <DataGridTemplateColumn Header="Contratrabe" Width="115"
+                            <DataGridTemplateColumn Header="Contratrabe" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="IdContratrabe">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1256,7 +1581,7 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTemplateColumn Header="Cadena despl." Width="115"
+                            <DataGridTemplateColumn Header="Cadena despl." Width="Auto"
                                                     CellStyle="{StaticResource CeldaSoloMamposteria}"
                                                     SortMemberPath="IdCadena">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1278,10 +1603,10 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTextColumn Header="f'c" Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="70" CellStyle="{StaticResource CeldaAcabado}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaAcabado}" />
 
                             <DataGridTextColumn Header="Falta" Binding="{Binding Falta}"
-                                                Width="220" IsReadOnly="True"
+                                                Width="Auto" IsReadOnly="True"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -1428,7 +1753,7 @@
                                  no encuentra su valor en la lista y el enlace lo PISA. Las
                                  dos zapatas del ejemplo salian «de lindero» aunque una
                                  estaba capturada como central. -->
-                            <DataGridTemplateColumn Header="Tipo" Width="95"
+                            <DataGridTemplateColumn Header="Tipo" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="Tipo">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1449,17 +1774,17 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="70" CellStyle="{StaticResource CeldaIdent}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaIdent}" />
 
                             <!-- Geometria de la zapata, EN METROS como en la macro -->
                             <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                             <DataGridTextColumn Header="Largo m" Binding="{Binding LargoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                             <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                             <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="80" CellStyle="{StaticResource CeldaGeom}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- Parrilla inferior -->
                             <!-- DOBLE PARRILLA Y RELLENO: dos casillas de SI o NO.
@@ -1468,7 +1793,7 @@
                                  que nada lo diga: la celda se lee buscando «SI» al principio.
                                  El combo va EDITABLE y enlazado por Text, como el resto de esta
                                  hoja, para que lo teclado tambien llegue a la propiedad. -->
-                            <DataGridTemplateColumn Header="Doble parrilla" Width="95"
+                            <DataGridTemplateColumn Header="Doble parrilla" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}"
                                                     SortMemberPath="DobleParrilla">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1507,7 +1832,7 @@
                                  El nombre dice el LECHO y el TRABAJO de cada varilla, que es como
                                  salen rotuladas en el plano: en la parrilla de abajo la de flexion
                                  va en el lecho inferior y la de temperatura se apoya encima. -->
-                            <DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="350"
+                            <DataGridTemplateColumn Header="PARRILLA INFERIOR" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraParrillaStyle}"
                                                     HeaderTemplate="{StaticResource CabeceraParrillaInferior}"
                                                     CellTemplate="{StaticResource CeldasParrillaInferior}"
@@ -1520,7 +1845,7 @@
 
                                  Ahi las palabras del lecho van al REVES, porque la de flexion se
                                  amarra por el lomo y la de temperatura queda debajo. -->
-                            <DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="350"
+                            <DataGridTemplateColumn Header="PARRILLA SUPERIOR" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraParrillaStyle}"
                                                     HeaderTemplate="{StaticResource CabeceraParrillaSuperior}"
                                                     CellTemplate="{StaticResource CeldasParrillaSuperior}"
@@ -1528,7 +1853,7 @@
                                                     CanUserSort="False" />
                             <!-- Dado y columna. El ancho va en CENTIMETROS, como en la
                                  macro: ahi se multiplican por SCALEELEVATION al dibujar. -->
-                            <DataGridTemplateColumn Header="Desplanta" Width="155"
+                            <DataGridTemplateColumn Header="Desplanta" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}"
                                                     SortMemberPath="TipoColumna">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1559,7 +1884,7 @@
                                  Sigue siendo editable: se puede escribir un ID que
                                  todavia no este capturado, porque el orden en que se
                                  llenan las hojas es del usuario. -->
-                            <DataGridTemplateColumn Header="ID dado" Width="90"
+                            <DataGridTemplateColumn Header="ID dado" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="IdDado">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1584,7 +1909,7 @@
                                  editable para un caso a mano, pero lo escrito a mano no gana
                                  contra la seccion: la referencia es la seccion. -->
                             <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaLateral}">
+                                                Width="Auto" CellStyle="{StaticResource CeldaLateral}">
                                 <!-- El globo va en ElementStyle y NO como ToolTip de la
                                      columna: una columna de DataGrid no es un control, no
                                      tiene ToolTip, y ponerselo es el error MC3072. Lo que
@@ -1610,7 +1935,7 @@
                                  que se captura en «Secciones» es el TIPO de columna, y el mismo
                                  tipo desplanta en todas las cimentaciones donde toque.
                                  «Revisar zapatas» lo cuenta, no lo reprocha. -->
-                            <DataGridTemplateColumn Header="ID col." Width="95"
+                            <DataGridTemplateColumn Header="ID col." Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="IdColumna">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -1631,7 +1956,7 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Col. cm" Binding="{Binding AnchoColumnaCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="75" CellStyle="{StaticResource CeldaLateral}">
+                                                Width="Auto" CellStyle="{StaticResource CeldaLateral}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
@@ -1640,7 +1965,7 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
                             <DataGridTextColumn Header="Rec. dado cm" Binding="{Binding RecDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="95" CellStyle="{StaticResource CeldaLateral}">
+                                                Width="Auto" CellStyle="{StaticResource CeldaLateral}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
@@ -1658,25 +1983,25 @@
                                  cosa y la seccion otra. Para cambiarlas se cambia la seccion. -->
                             <!-- Arranque del dado -->
                             <DataGridComboBoxColumn x:Name="ColZapVarDadoSup" Header="Arranque 1"
-                                                    SelectedItemBinding="{Binding VarDadoSup, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                    SelectedItemBinding="{Binding VarDadoSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLateral}" 
                                                 Visibility="Collapsed"/>
                             <DataGridComboBoxColumn x:Name="ColZapVarDadoInf" Header="Arranque 2"
-                                                    SelectedItemBinding="{Binding VarDadoInf, UpdateSourceTrigger=PropertyChanged}" Width="85"
+                                                    SelectedItemBinding="{Binding VarDadoInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLateral}" 
                                                 Visibility="Collapsed"/>
                             <DataGridTextColumn Header="N int." Binding="{Binding NIntDado, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaLateral}" 
+                                                Width="Auto" CellStyle="{StaticResource CeldaLateral}" 
                                                 Visibility="Collapsed"/>
                             <DataGridComboBoxColumn x:Name="ColZapVarIntDado" Header="Var int."
-                                                    SelectedItemBinding="{Binding VarIntDado, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                                                    SelectedItemBinding="{Binding VarIntDado, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaLateral}" 
                                                 Visibility="Collapsed"/>
                             <DataGridComboBoxColumn x:Name="ColZapEstribo" Header="Estribo"
-                                                    SelectedItemBinding="{Binding EstriboDado, UpdateSourceTrigger=PropertyChanged}" Width="75"
+                                                    SelectedItemBinding="{Binding EstriboDado, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" 
                                                     Visibility="Collapsed"/>
@@ -1689,7 +2014,7 @@
                                  teclea no llega a la propiedad y se pierde al salir de la
                                  celda. Es el mismo patron -y el mismo motivo- que la
                                  columna «Sep cm» de la hoja de concreto. -->
-                            <DataGridTemplateColumn Header="Est. @ cm" Width="95"
+                            <DataGridTemplateColumn Header="Est. @ cm" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}"
                                                     SortMemberPath="SepEstriboDado"
                                                     Visibility="Collapsed">
@@ -1712,11 +2037,11 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTextColumn Header="f'c" Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}"
-                                                Width="60" CellStyle="{StaticResource CeldaAcabado}" />
+                                                Width="Auto" CellStyle="{StaticResource CeldaAcabado}" />
 
                             <!-- Calculadas -->
                             <DataGridTextColumn Header="Falta" Binding="{Binding Falta}"
-                                                IsReadOnly="True" Width="200"
+                                                IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -1849,7 +2174,12 @@
                                       VerticalAlignment="Center" Margin="4,0,0,0"
                                       ToolTip="Apagada: se dibujan TODAS las plantas, repartidas a la derecha con la separacion de la hoja CONFIG.&#10;Encendida: solo la del nivel de abajo." />
 
+                            <!-- Con TextWrapping porque aqui va tambien el aviso de las piezas
+                                 que cambiaron de nivel -los pretiles-, y ese es largo: sin
+                                 envolver se cortaria justo donde dice a que nivel se movieron,
+                                 que es el dato que hace falta para revisarlo. -->
                             <TextBlock x:Name="PlantasResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" MaxWidth="620"
                                        Margin="14,0,0,0" Foreground="{DynamicResource MutedTextBrush}" />
                         </StackPanel>
 
@@ -2174,14 +2504,14 @@
                                   CanUserDeleteRows="False" Visibility="Collapsed"
                                   Margin="0,0,0,16">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Pier"     Binding="{Binding Nombre}" Width="120" />
-                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="120" />
-                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoBaseM, StringFormat=N3}" Width="90" />
-                                <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorBaseM, StringFormat=N3}" Width="95" />
-                                <DataGridTextColumn Header="Medidas"  Binding="{Binding Dimensiones}" Width="130" />
-                                <DataGridTextColumn Header="Angulo"   Binding="{Binding AnguloEje, StringFormat=N1}" Width="80" />
+                                <DataGridTextColumn Header="Pier"     Binding="{Binding Nombre}" Width="Auto" />
+                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="Auto" />
+                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoBaseM, StringFormat=N3}" Width="Auto" />
+                                <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorBaseM, StringFormat=N3}" Width="Auto" />
+                                <DataGridTextColumn Header="Medidas"  Binding="{Binding Dimensiones}" Width="Auto" />
+                                <DataGridTextColumn Header="Angulo"   Binding="{Binding AnguloEje, StringFormat=N1}" Width="Auto" />
                                 <DataGridTextColumn Header="Material" Binding="{Binding Material}" Width="*" MinWidth="110" />
-                                <DataGridTextColumn Header="Paños"    Binding="{Binding Areas}" Width="70" />
+                                <DataGridTextColumn Header="Paños"    Binding="{Binding Areas}" Width="Auto" />
                             </DataGrid.Columns>
                         </DataGrid>
                     
@@ -2199,12 +2529,30 @@
 
             <!-- ===== Secciones del modelo (la hoja SECCIONES de la macro) ===== -->
             <TabItem Header="Secciones modelo">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="22">
-                        <TextBlock Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
+                <!-- ===== LA TABLA OCUPA TODO EL ALTO DE LA PESTAÑA =====
+
+                     Antes esto era un ScrollViewer con un StackPanel dentro, y la
+                     tabla llevaba MaxHeight="520". Dos cosas la limitaban: el tope
+                     de 520 px y el StackPanel, que a un hijo le da su tamaño
+                     deseado y nunca el hueco que queda libre. Asi que la tabla se
+                     cortaba a media pantalla y debajo quedaba sitio sin usar.
+
+                     Con un Grid de tres renglones -titulo Auto, botones Auto y la
+                     tabla en *- la tabla se queda con TODO lo que sobra, y crece
+                     con la ventana. Y el ScrollViewer de fuera se va a proposito:
+                     con el, el alto disponible seria infinito y el * no repartiria
+                     nada. La tabla ya tiene su propia barra. -->
+                <Grid Margin="22">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Secciones usadas en el modelo" Style="{StaticResource ModuleTitleStyle}"
                                    ToolTip="Es la hoja SECCIONES de tu macro: que secciones de ETABS o de SAP2000 se estan usando de verdad, cuantas veces y en que niveles." />
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                             <!-- La misma casilla de las otras dos pestañas: la lectura es
                                  una sola y el programa elegido tambien. -->
                             <TextBlock Text="Programa:" FontWeight="SemiBold" FontSize="11.5"
@@ -2245,40 +2593,40 @@
                         </StackPanel>
 
                         <!-- Los nombres de columna son los de la hoja SECCIONES, tal cual -->
-                        <DataGrid x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
+                        <DataGrid Grid.Row="2" x:Name="SeccionesModeloGrid" Style="{StaticResource SheetGridStyle}"
                                   ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
                                   IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
-                                  MinHeight="320" MaxHeight="520">
+                                  MinHeight="320">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="110"
+                                <DataGridTextColumn Header="TIPO" Binding="{Binding Tipo}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}" />
                                 <DataGridTextColumn Header="SECCION DE ETABS" Binding="{Binding Seccion}"
-                                                    Width="260" CellStyle="{StaticResource CeldaIdent}" />
-                                <DataGridTextColumn Header="FORMA" Binding="{Binding Forma}" Width="110"
+                                                    Width="Auto" CellStyle="{StaticResource CeldaIdent}" />
+                                <DataGridTextColumn Header="FORMA" Binding="{Binding Forma}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
-                                <DataGridTextColumn Header="MATERIAL" Binding="{Binding Material}" Width="120"
+                                <DataGridTextColumn Header="MATERIAL" Binding="{Binding Material}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
                                 <DataGridTextColumn Header="T3 PERALTE (cm)"
                                                     Binding="{Binding PeralteCm, StringFormat=N1}"
-                                                    Width="115" CellStyle="{StaticResource CeldaGeom}" />
+                                                    Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                                 <DataGridTextColumn Header="T2 ANCHO / ESPESOR (cm)"
                                                     Binding="{Binding AnchoCm, StringFormat=N1}"
-                                                    Width="160" CellStyle="{StaticResource CeldaGeom}" />
+                                                    Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
                                 <DataGridTextColumn Header="TF (cm)"
                                                     Binding="{Binding PatinCm, StringFormat=N2}"
-                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
+                                                    Width="Auto" CellStyle="{StaticResource CeldaEstribo}" />
                                 <DataGridTextColumn Header="TW (cm)"
                                                     Binding="{Binding AlmaCm, StringFormat=N2}"
-                                                    Width="80" CellStyle="{StaticResource CeldaEstribo}" />
+                                                    Width="Auto" CellStyle="{StaticResource CeldaEstribo}" />
                                 <DataGridTextColumn Header="CANTIDAD" Binding="{Binding Cantidad}"
-                                                    Width="90" CellStyle="{StaticResource CeldaAcabado}" />
+                                                    Width="Auto" CellStyle="{StaticResource CeldaAcabado}" />
 
                                 <!-- LO QUE HAY DE CADA COSA. Un frame se mide por su LARGO
                                      y un shell por su AREA, asi que cada renglon llena una
                                      de las dos y la otra se queda en blanco. -->
                                 <DataGridTextColumn Header="LONGITUD TOTAL (m)"
                                                     Binding="{Binding LongitudTotalM, StringFormat=N2}"
-                                                    Width="140" CellStyle="{StaticResource CeldaLechoInf}">
+                                                    Width="Auto" CellStyle="{StaticResource CeldaLechoInf}">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="ToolTip"
@@ -2289,7 +2637,7 @@
 
                                 <DataGridTextColumn Header="AREA TOTAL (m²)"
                                                     Binding="{Binding AreaTotalM2, StringFormat=N2}"
-                                                    Width="130" CellStyle="{StaticResource CeldaLechoSup}">
+                                                    Width="Auto" CellStyle="{StaticResource CeldaLechoSup}">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="ToolTip"
@@ -2304,28 +2652,41 @@
 
                         <!-- LA MISMA TABLA QUE ESTABA DEBAJO DEL VISOR 3D, movida aqui: es
                              el detalle -una linea por elemento- de lo que la de arriba
-                             resume por seccion. Arranca oculta y la ensena el boton. -->
-                        <TextBlock x:Name="ElementosTitulo" Visibility="Collapsed"
-                                   Text="Elementos del modelo, uno por uno" FontWeight="SemiBold" FontSize="12.5"
-                                   Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+                             resume por seccion. Arranca oculta y la ensena el boton.
 
-                        <DataGrid x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
-                                  Visibility="Collapsed"
-                                  ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
-                                  MinHeight="320" MaxHeight="520" IsReadOnly="True" CanUserAddRows="False"
-                                  CanUserDeleteRows="False">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="95" />
-                                <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="110" />
-                                <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="110" />
-                                <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
-                                <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="130" />
-                                <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="90" />
-                            </DataGrid.Columns>
-                        </DataGrid>
+                             VA EN EL MISMO RENGLON QUE LA OTRA, encima, y no en uno
+                             propio. El boton las ALTERNA -nunca se ven las dos a la
+                             vez- asi que compartir el renglon es correcto y ademas es
+                             lo unico que funciona: un renglon en * se queda con su
+                             parte del alto AUNQUE su contenido este oculto, asi que con
+                             un renglon para cada una la tabla visible se quedaria solo
+                             con la mitad de la pestaña. -->
+                        <Grid Grid.Row="2" x:Name="ElementosPanel" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
 
-                    </StackPanel>
-                </ScrollViewer>
+                            <TextBlock Grid.Row="0" x:Name="ElementosTitulo"
+                                       Text="Elementos del modelo, uno por uno" FontWeight="SemiBold" FontSize="12.5"
+                                       Margin="0,0,0,6" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                            <DataGrid Grid.Row="1" x:Name="EtabsGrid" Style="{StaticResource SheetGridStyle}"
+                                      ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}"
+                                      MinHeight="320" IsReadOnly="True" CanUserAddRows="False"
+                                      CanUserDeleteRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Clase"    Binding="{Binding Clase}" Width="Auto" />
+                                    <DataGridTextColumn Header="Nivel"    Binding="{Binding Story}" Width="Auto" />
+                                    <DataGridTextColumn Header="Etiqueta" Binding="{Binding Etiqueta}" Width="Auto" />
+                                    <DataGridTextColumn Header="Seccion"  Binding="{Binding Seccion}" Width="*" MinWidth="170" />
+                                    <DataGridTextColumn Header="Dimensiones" Binding="{Binding Dimensiones}" Width="Auto" />
+                                    <DataGridTextColumn Header="Largo m"  Binding="{Binding LargoM, StringFormat=N2}" Width="Auto" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+
+                </Grid>
             </TabItem>
 
             <!-- ===== ETABS ===== -->

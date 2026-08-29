@@ -35,6 +35,15 @@ public static class PanoDeLosa
     /// tocan: ahí la losa termina donde dice el modelo.
     /// </para>
     /// <para>
+    /// <b>Y se mete SOLO EL TROZO QUE TIENE MURO DEBAJO, no el lado entero.</b> Esto se
+    /// corrigió, y era lo que dejaba el achurado del voladizo separado de la línea de la losa:
+    /// un lado de seis metros con una cadena de dos se metía completo, así que en los cuatro
+    /// metros libres el rayado se quedaba a siete centímetros y medio de la línea dibujada, con
+    /// una franja en blanco entre los dos. Ahora el contorno del molde <b>escalona</b>: va por la
+    /// cara de la cadena donde hay cadena y por la línea de la losa donde no la hay, que es
+    /// justo lo que se pidió —el hatch hasta el paño de la losa—.
+    /// </para>
+    /// <para>
     /// Las esquinas se recalculan <b>cortando</b> los dos lados movidos, no moviendo los
     /// vértices uno a uno: si se movieran los vértices, un lado con muro y otro sin muro
     /// dejarían la esquina abierta o cruzada. Y si dos lados salen paralelos —una losa con un
@@ -63,67 +72,236 @@ public static class PanoDeLosa
         var cx = vertices.Average(v => v.X);
         var cy = vertices.Average(v => v.Y);
 
-        // Cada lado, ya movido: punto y dirección.
-        var rectas = new (double X, double Y, double Dx, double Dy)[n];
+        // Cada lado con sus TRAMOS: los pedazos en que se parte según lo que tenga debajo.
+        var lados = new List<Lado>(n);
 
         for (var i = 0; i < n; i++)
         {
-            var a = vertices[i];
-            var b = vertices[(i + 1) % n];
-
-            var dx = b.X - a.X;
-            var dy = b.Y - a.Y;
-            var largo = Math.Sqrt((dx * dx) + (dy * dy));
-
-            if (largo < 1e-9)
-            {
-                rectas[i] = (a.X, a.Y, 1, 0);
-                continue;
-            }
-
-            dx /= largo;
-            dy /= largo;
-
-            // La normal que apunta HACIA DENTRO: se prueba con el centro del paño.
-            var nx = -dy;
-            var ny = dx;
-
-            var mx = (a.X + b.X) / 2;
-            var my = (a.Y + b.Y) / 2;
-
-            if (((cx - mx) * nx) + ((cy - my) * ny) < 0)
-            {
-                nx = -nx;
-                ny = -ny;
-            }
-
-            var mete = Math.Min(MedioAnchoDelMuro(a, b, huellas), maximo);
-
-            rectas[i] = (a.X + (nx * mete), a.Y + (ny * mete), dx, dy);
+            lados.Add(DelLado(vertices[i], vertices[(i + 1) % n], huellas, maximo, cx, cy));
         }
 
-        // Y las esquinas, cortando cada lado con el siguiente.
-        var salida = new List<(double X, double Y)>(n);
+        // ---------- Las esquinas ----------
+        //
+        // Cortando la recta del ÚLTIMO tramo de cada lado con la del PRIMERO del siguiente. Con
+        // los lados enteros esto es lo de siempre; con tramos, lo que se corta es el pedazo que
+        // de verdad llega a la esquina, que es lo correcto.
+        var esquinas = new (double X, double Y)[n];
 
         for (var i = 0; i < n; i++)
         {
-            var r = rectas[i];
-            var s = rectas[(i + 1) % n];
+            var j = (i + 1) % n;
 
-            var corte = Cruce(r, s);
+            var corte = Cruce(lados[i].Tramos[^1].Recta, lados[j].Tramos[0].Recta);
 
             // Sin corte —lados paralelos— se queda el vértice original, que es lo que menos
             // deforma el contorno.
-            salida.Add(corte ?? vertices[(i + 1) % n]);
+            esquinas[i] = corte ?? vertices[j];
         }
 
-        // El primer vértice de la salida es la esquina entre el lado 0 y el 1, así que la
-        // lista queda corrida uno: se devuelve empezando por donde empezaba.
-        var ultimo = salida[^1];
-        salida.RemoveAt(salida.Count - 1);
-        salida.Insert(0, ultimo);
+        // ---------- Y el contorno, tramo a tramo ----------
+        var salida = new List<(double X, double Y)>();
+
+        for (var i = 0; i < n; i++)
+        {
+            var lado = lados[i];
+
+            for (var k = 0; k < lado.Tramos.Count; k++)
+            {
+                var t = lado.Tramos[k];
+
+                // El arranque del primer tramo y el final del último son las esquinas, ya
+                // cortadas. Los de en medio van sobre el propio lado, y ahí el salto entre un
+                // tramo y el siguiente es lo que ESCALONA el contorno: sube a la cara de la
+                // cadena y vuelve a bajar a la línea de la losa.
+                Poner(salida, k == 0
+                    ? esquinas[(i - 1 + n) % n]
+                    : lado.En(t.Desde, t.Mete));
+
+                Poner(salida, k == lado.Tramos.Count - 1
+                    ? esquinas[i]
+                    : lado.En(t.Hasta, t.Mete));
+            }
+        }
+
+        // Y si al cerrar el último punto repite el primero, se quita.
+        if (salida.Count > 1 && Pegados(salida[0], salida[^1]))
+        {
+            salida.RemoveAt(salida.Count - 1);
+        }
 
         return salida;
+    }
+
+    /// <summary>Un lado del contorno, ya partido en tramos.</summary>
+    private sealed record Lado(
+        (double X, double Y) A,
+        double Dx, double Dy, double Nx, double Ny,
+        List<Tramo> Tramos)
+    {
+        /// <summary>El punto del lado a <paramref name="s"/> metros, metido <paramref name="mete"/>.</summary>
+        public (double X, double Y) En(double s, double mete) =>
+            (A.X + (Dx * s) + (Nx * mete), A.Y + (Dy * s) + (Ny * mete));
+    }
+
+    /// <summary>Un pedazo de lado con lo que hay que meterlo, y su recta ya movida.</summary>
+    private sealed record Tramo(
+        double Desde, double Hasta, double Mete,
+        (double X, double Y, double Dx, double Dy) Recta);
+
+    /// <summary>Añade el punto si no está pegado al anterior.</summary>
+    private static void Poner(List<(double X, double Y)> lista, (double X, double Y) p)
+    {
+        if (lista.Count == 0 || !Pegados(lista[^1], p))
+        {
+            lista.Add(p);
+        }
+    }
+
+    private static bool Pegados((double X, double Y) a, (double X, double Y) b) =>
+        Math.Abs(a.X - b.X) < 1e-9 && Math.Abs(a.Y - b.Y) < 1e-9;
+
+    /// <summary>
+    /// Un lado partido en tramos según <b>cuánto muro</b> tiene debajo en cada pedazo.
+    /// </summary>
+    /// <remarks>
+    /// Los cortes son los extremos de las huellas proyectados sobre el lado. En cada pedazo que
+    /// queda entre dos cortes manda la huella <b>más ancha</b> de las que lo cubren: es la que
+    /// más adentro deja el paño, y con dos muros encimados hay que respetar el peor.
+    /// </remarks>
+    private static Lado DelLado(
+        (double X, double Y) a, (double X, double Y) b,
+        IReadOnlyList<ElementoPlanta> huellas, double maximo, double cx, double cy)
+    {
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < 1e-9)
+        {
+            // Un lado de largo cero no tiene dirección: se deja quieto y no estorba.
+            return new Lado(a, 1, 0, 0, 0,
+                new List<Tramo> { new(0, 0, 0, (a.X, a.Y, 1, 0)) });
+        }
+
+        dx /= largo;
+        dy /= largo;
+
+        // La normal que apunta HACIA DENTRO: se prueba con el centro del paño.
+        var nx = -dy;
+        var ny = dx;
+
+        var mx = (a.X + b.X) / 2;
+        var my = (a.Y + b.Y) / 2;
+
+        if (((cx - mx) * nx) + ((cy - my) * ny) < 0)
+        {
+            nx = -nx;
+            ny = -ny;
+        }
+
+        var lado = new Lado(a, dx, dy, nx, ny, new List<Tramo>());
+
+        // ---------- Qué huella cubre qué pedazo ----------
+        var cubren = new List<(double Desde, double Hasta, double Mete)>();
+
+        foreach (var h in huellas)
+        {
+            var ang = h.AnguloGrados * Math.PI / 180;
+            var hx = Math.Cos(ang);
+            var hy = Math.Sin(ang);
+
+            // ¿Paralela al lado? Un muro perpendicular que solo cruza la orilla no está
+            // DEBAJO de ella, así que no mete nada.
+            if (Math.Abs((hx * dx) + (hy * dy)) < 0.98)
+            {
+                continue;
+            }
+
+            // ¿Su eje cae encima del lado?
+            var ex = h.X1 - a.X;
+            var ey = h.Y1 - a.Y;
+
+            if (Math.Abs((ex * -dy) + (ey * dx)) > (h.PeralteM / 2) + Junto)
+            {
+                continue;
+            }
+
+            // Hasta dónde llega A LO LARGO del lado. X1,Y1 de una huella es su CENTRO y AnchoM
+            // su largo, así que se extiende medio a cada lado.
+            var centro = (ex * dx) + (ey * dy);
+
+            var desde = Math.Max(0, centro - (h.AnchoM / 2));
+            var hasta = Math.Min(largo, centro + (h.AnchoM / 2));
+
+            if (hasta - desde <= Junto)
+            {
+                continue;
+            }
+
+            cubren.Add((desde, hasta, Math.Min(h.PeralteM / 2, maximo)));
+        }
+
+        if (cubren.Count == 0)
+        {
+            lado.Tramos.Add(new Tramo(0, largo, 0, (a.X, a.Y, dx, dy)));
+
+            return lado;
+        }
+
+        // ---------- Los cortes ----------
+        var cortes = new List<double> { 0, largo };
+
+        foreach (var (desde, hasta, _) in cubren)
+        {
+            cortes.Add(desde);
+            cortes.Add(hasta);
+        }
+
+        cortes.Sort();
+
+        for (var i = 0; i + 1 < cortes.Count; i++)
+        {
+            var desde = cortes[i];
+            var hasta = cortes[i + 1];
+
+            // Los pedazos de nada que deja ordenar los cortes no son tramos.
+            if (hasta - desde <= 1e-9)
+            {
+                continue;
+            }
+
+            var medio = (desde + hasta) / 2;
+
+            var mete = 0d;
+
+            foreach (var c in cubren)
+            {
+                if (medio >= c.Desde && medio <= c.Hasta)
+                {
+                    mete = Math.Max(mete, c.Mete);
+                }
+            }
+
+            var p = lado.En(0, mete);
+
+            // Dos pedazos seguidos con el mismo metido son UN tramo: así el contorno no lleva
+            // vértices de más ni escalones de altura cero.
+            if (lado.Tramos.Count > 0 && Math.Abs(lado.Tramos[^1].Mete - mete) < 1e-9)
+            {
+                lado.Tramos[^1] = lado.Tramos[^1] with { Hasta = hasta };
+
+                continue;
+            }
+
+            lado.Tramos.Add(new Tramo(desde, hasta, mete, (p.X, p.Y, dx, dy)));
+        }
+
+        if (lado.Tramos.Count == 0)
+        {
+            lado.Tramos.Add(new Tramo(0, largo, 0, (a.X, a.Y, dx, dy)));
+        }
+
+        return lado;
     }
 
     /// <summary>

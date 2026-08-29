@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de CintaConHuecos, la que abre huecos en la cinta del
+       estribo diamante para que la grapa se vea pasar por encima.
+
+       Se ejecuta contra el CadLink.Cad COMPILADO, no contra un port a Python,
+       por el mismo motivo que prueba-trazo-diamante: un port correcto
+       conviviendo con un C# equivocado da todo en verde y no sirve de nada.
+
+       Lo que se comprueba no es «el resultado se parece al esperado» sino
+       INVARIANTES, que es lo unico que se sostiene con geometria de verdad:
+
+         * sin huecos no se toca nada
+         * lo que sobrevive mas lo que se abrio suma el contorno original
+         * ningun punto que sobrevive queda DENTRO del poligono que lo tapaba
+         * los bulges de los dobleces salen intactos: el rombo no se deforma
+         * el seguro salta cuando el hueco se come media cinta
+         * y el caso de verdad: un diamante y una grapa reales, sacados de
+           TrazoDiamante y TrazoGrapa, no de numeros inventados
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-cinta-huecos
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla, asi que sirve para un script. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-cinta-huecos</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

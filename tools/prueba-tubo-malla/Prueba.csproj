@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de TuboDeMalla, el generador de la malla de las barras
+       de la vista 3D.
+
+       Es la pieza en la que se apoya el cambio del 3D a un motor de verdad, asi
+       que conviene que este comprobada de sobra: CadLink.App, donde va el
+       Viewport3D, NO se puede compilar en este entorno.
+
+       La comprobacion fuerte es el VOLUMEN. Un tubo recto de N lados es un
+       prisma, y su volumen se sabe: (N/2)*r^2*sen(2*pi/N)*L. El volumen que
+       encierra una malla cerrada sale de sus triangulos con el teorema de la
+       divergencia, y coincide SOLO SI:
+
+         * los anillos estan al radio correcto
+         * estan perpendiculares al eje
+         * las tapas cierran de verdad
+         * y todos los triangulos giran en el mismo sentido, hacia fuera
+
+       O sea que un solo numero cubre casi todo lo que puede salir mal. Ademas se
+       comprueban las normales, el retorcido en un recorrido doblado, los
+       recorridos cerrados y los casos degenerados.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-tubo-malla
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-tubo-malla</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Cad\CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

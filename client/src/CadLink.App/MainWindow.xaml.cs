@@ -453,6 +453,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Al pasar a OTRA seccion el encuadre vuelve a su sitio.
+        //
+        // Es a proposito que esto NO este dentro de DibujarVistaPrevia: al editar una
+        // celda tambien se redibuja, y ahi el zoom tiene que quedarse quieto, que es
+        // justo para lo que sirve: acercarse a una esquina y probar diametros viendo el
+        // detalle. Si se reajustara en cada redibujado, cada tecla devolveria la vista
+        // al principio.
+        //
+        // Cambiar de seccion es otra cosa: la nueva puede ser de otro tamano, y
+        // heredar un zoom de veinte aumentos puesto sobre la esquina de la anterior
+        // deja el cuadro en blanco, como si el programa no hubiera dibujado nada.
+        ReiniciarEncuadrePrevia();
+
+        // Y se olvida la varilla que estuviera marcada. Sus índices son de la sección
+        // ANTERIOR: dejarla marcada al cambiar de fila pondría la grapa entre una
+        // varilla de la sección de antes y otra de la de ahora.
+        CancelarGrapaPendiente();
+
         DibujarVistaPrevia();
     }
 
@@ -1008,7 +1026,7 @@ public partial class MainWindow : Window
 
             cx.Conectar();
 
-            var modelo = EtabsReader.Leer(cx);
+            var modelo = LeerModeloEtabs(cx);
             _modeloEtabs = modelo;
             _destinoLeido = destino;
 
@@ -1085,8 +1103,10 @@ public partial class MainWindow : Window
 
         SeccionesModeloGrid.Visibility = aIndividuales ? Visibility.Collapsed : Visibility.Visible;
 
-        EtabsGrid.Visibility = aIndividuales ? Visibility.Visible : Visibility.Collapsed;
-        ElementosTitulo.Visibility = EtabsGrid.Visibility;
+        // Se enciende y se apaga EL PANEL, no la tabla y su título por separado: las dos
+        // tablas comparten el renglón que se queda con todo el alto de la pestaña, así que lo
+        // que tiene que aparecer o desaparecer es el bloque entero.
+        ElementosPanel.Visibility = aIndividuales ? Visibility.Visible : Visibility.Collapsed;
 
         AlternarSeccionesButton.Content = aIndividuales ? "Ver totales" : "Ver individuales";
 
@@ -1929,7 +1949,7 @@ public partial class MainWindow : Window
 
         foreach (var s in _datos.SeccionesConcreto)
         {
-            p.Secciones.Add(new SeccionGuardada
+            var guardada = new SeccionGuardada
             {
                 Elemento = s.Elemento, Id = s.Id,
                 BaseCm = s.BaseCm, AlturaCm = s.AlturaCm,
@@ -1947,7 +1967,20 @@ public partial class MainWindow : Window
                 DiamEstriboDiamante = s.DiamEstriboDiamante,
                 GanchoCm = s.GanchoCm, Fc = s.Fc, Escala = s.Escala,
                 LongitudM = s.LongitudM
-            });
+            };
+
+            // Las grapas van aparte del inicializador porque hay que recorrerlas.
+            foreach (var g in s.Grapas)
+            {
+                guardada.Grapas.Add(new GrapaGuardada
+                {
+                    LechoA = (int)g.A.Lecho, IndiceA = g.A.Indice,
+                    LechoB = (int)g.B.Lecho, IndiceB = g.B.Indice,
+                    Diametro = g.Diametro
+                });
+            }
+
+            p.Secciones.Add(guardada);
         }
 
         // LAS OTRAS DOS HOJAS. Antes no se guardaban: «guardar trabajo» escribía solo el
@@ -2027,7 +2060,7 @@ public partial class MainWindow : Window
 
             foreach (var s in p.Secciones)
             {
-                _datos.SeccionesConcreto.Add(new SeccionConcretoRow
+                var fila = new SeccionConcretoRow
                 {
                     Elemento = s.Elemento, Id = s.Id,
                     BaseCm = s.BaseCm, AlturaCm = s.AlturaCm,
@@ -2050,7 +2083,33 @@ public partial class MainWindow : Window
                     // guardado no lo pisa el automatico del elemento.
                     Fc = s.Fc,
                     Escala = s.Escala, LongitudM = s.LongitudM
-                });
+                };
+
+                // Las grapas del archivo. Se usa CargarGrapa, que NO avisa de cambios:
+                // aquí se está montando la tabla entera y la vista previa se dibuja una
+                // sola vez al final, igual que con _listo apagado.
+                //
+                // Un lecho que no se reconozca se salta en lugar de caerse: es la misma
+                // regla que el resto de la carga, que prefiere abrir el trabajo aunque
+                // una fila venga rara antes que negarse a abrirlo.
+                foreach (var g in s.Grapas ?? new List<GrapaGuardada>())
+                {
+                    if (!Enum.IsDefined(typeof(LechoVarilla), g.LechoA)
+                        || !Enum.IsDefined(typeof(LechoVarilla), g.LechoB)
+                        || g.IndiceA < 0 || g.IndiceB < 0)
+                    {
+                        continue;
+                    }
+
+                    fila.CargarGrapa(new GrapaSeccion
+                    {
+                        A = new RefVarilla((LechoVarilla)g.LechoA, g.IndiceA),
+                        B = new RefVarilla((LechoVarilla)g.LechoB, g.IndiceB),
+                        Diametro = string.IsNullOrWhiteSpace(g.Diametro) ? "#3" : g.Diametro
+                    });
+                }
+
+                _datos.SeccionesConcreto.Add(fila);
             }
 
             // ---- Secciones Acero ----
@@ -2253,6 +2312,108 @@ public partial class MainWindow : Window
     /// Es el arranque del juego de planos: en un edificio, cada nivel es un plano de
     /// planta. Los planos se agregan al juego, así que la numeración sale puesta.
     /// </remarks>
+    /// <summary>
+    /// Lee el modelo y le aplica los <b>arreglos de nivel</b> antes de que nadie lo filtre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe para que el arreglo del <b>pretil</b> se aplique en <b>un solo sitio</b>. Hay dos
+    /// filtros por nivel independientes —el que arma la planta para AutoCAD y el del lienzo de la
+    /// vista previa—, así que tocando solo uno el plano y lo que se ve en pantalla dirían cosas
+    /// distintas. Arreglando el modelo antes de los dos, no hay nada que sincronizar.
+    /// </para>
+    /// <para>
+    /// El razonamiento de qué es un pretil y por qué ETABS lo deja un piso arriba está en
+    /// <see cref="Pretil"/>.
+    /// </para>
+    /// </remarks>
+    private ModeloEtabs LeerModeloEtabs(EtabsConnection cx)
+    {
+        var modelo = EtabsReader.Leer(cx);
+
+        // El valor por omisión es NO, y está razonado en la hoja: ETABS ya pone el pretil en el
+        // nivel donde se pidió que salga. Esto solo hace falta cuando el modelo trae un story
+        // creado para la tapa del pretil, que lo deja dos niveles por encima de su losa.
+        if (!CfgPlano.Bandera("PRETIL_BAJAR_UN_NIVEL", false))
+        {
+            return modelo;
+        }
+
+        var movidos = Pretil.Bajar(
+            modelo,
+            CfgPlano.Numero("PRETIL_TOL_CM", Pretil.ToleranciaM * 100) / 100,
+            CfgPlano.Numero("PRETIL_ALTURA_MAX_M", Pretil.AlturaMaximaM));
+
+        var aviso = Pretil.Aviso(movidos);
+
+        if (aviso.Length > 0)
+        {
+            // A los avisos del modelo, que es donde el usuario ya mira: salen en Resumen(), o
+            // sea en el recuadro de estado al leer. Mover una pieza de nivel sin decirlo sería
+            // peor que no moverla.
+            modelo.Avisos.Add(aviso);
+        }
+
+        return modelo;
+    }
+
+    /// <summary>
+    /// Lo que se movió de nivel al leer el modelo, para verlo <b>en esta pestaña</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El aviso de los pretiles se guarda en <c>modelo.Avisos</c>, pero eso solo se muestra en la
+    /// pestaña de ETABS, con <c>Resumen()</c>. Quien dibuja planos no pasa por ahí, así que
+    /// <b>movíamos piezas de nivel sin que el usuario llegara a enterarse nunca</b>, y luego no
+    /// había forma de saber por qué un pretil salió en un nivel y no en otro.
+    /// </para>
+    /// <para>
+    /// Se muestra donde se está trabajando, que es lo que hace que el aviso sirva de algo.
+    /// </para>
+    /// </remarks>
+    private string AvisoDeNivelesMovidos(ModeloEtabs modelo)
+    {
+        var dePretiles = modelo.Avisos
+            .Where(a => a.Contains("PRETIL", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return dePretiles.Count == 0
+            ? string.Empty
+            : "\n" + string.Join("\n", dePretiles) + EquivalenciaDeNiveles(modelo);
+    }
+
+    /// <summary>
+    /// La equivalencia entre el <b>story de ETABS</b> y el <b>nombre que sale en el plano</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hace falta porque los dos nombres <b>no coinciden, y van corridos uno</b>: el rótulo del
+    /// plano sale de <c>ROTULO_NIVELES</c>, donde <c>Story1</c> es PLANTA BAJA, <c>Story2</c> es
+    /// PRIMER NIVEL, <c>Story3</c> es SEGUNDO NIVEL… Así que «el segundo nivel» del plano es el
+    /// <c>Story3</c> del modelo, y quien mira el plano y quien mira ETABS creen estar hablando del
+    /// mismo piso cuando no lo están.
+    /// </para>
+    /// <para>
+    /// Eso costó varias vueltas al reportar dónde debía salir un pretil, y no es un fallo del
+    /// dibujo: el corrimiento es <b>correcto</b> —la planta baja no es «el primer nivel»—. Lo que
+    /// faltaba era decirlo en algún sitio. Va junto al aviso de las piezas que cambiaron de nivel,
+    /// que es justo cuando importa saber de qué piso se está hablando.
+    /// </para>
+    /// </remarks>
+    private string EquivalenciaDeNiveles(ModeloEtabs modelo)
+    {
+        var rot = new CadLink.Cad.PlanoEstructural.RotuloPlanta(CfgPlano);
+
+        var pares = modelo.NivelesConElementos(ascendente: false)
+            .Select(n => $"{n.Nombre} (Z {n.ElevacionM:0.##}) = {rot.NombreDeNivel(n.Nombre)}")
+            .ToList();
+
+        return pares.Count == 0
+            ? string.Empty
+            : "\nEquivalencia nivel del modelo = rótulo del plano:  " + string.Join("  ·  ", pares);
+    }
+
     private void OnLeerPlantas(object sender, RoutedEventArgs e)
     {
         try
@@ -2262,7 +2423,7 @@ public partial class MainWindow : Window
             using var cx = new EtabsConnection { Destino = DestinoCsi };
             cx.Conectar();
 
-            var modelo = EtabsReader.Leer(cx);
+            var modelo = LeerModeloEtabs(cx);
             _modeloEtabs = modelo;
             _destinoLeido = DestinoCsi;
             _vista.Modelo = modelo;
@@ -2301,7 +2462,8 @@ public partial class MainWindow : Window
             }
 
             PlantasResumenText.Text =
-                $"{modelo.Niveles.Count} nivel(es) leídos · {nuevos} plano(s) agregados al juego.";
+                $"{modelo.Niveles.Count} nivel(es) leídos · {nuevos} plano(s) agregados al juego."
+                + AvisoDeNivelesMovidos(modelo);
 
             StatusText.Text = $"Plantas leídas: {modelo.Niveles.Count} nivel(es).";
 
@@ -2442,6 +2604,20 @@ public partial class MainWindow : Window
 
             var fallos = dibujante.Fallos;
 
+            // ==============================================================================
+            //  LAS NOTAS DEL DIBUJO, QUE HASTA AHORA SE TIRABAN
+            // ==============================================================================
+            //  Esto era un agujero de verdad. El dibujante escribe notas explicando lo que
+            //  DECIDIÓ callar: las cadenas que no dibujó porque otra más alta va sobre su misma
+            //  línea, los vacíos que marcó, las escaleras que dejó en puro contorno, la
+            //  retícula que no cupo… y aquí solo se leía Fallos, así que TODAS esas notas se
+            //  escribían y se tiraban.
+            //
+            //  El resultado es que una cadena podía no salir en el plano por una razón que el
+            //  programa conocía y tenía escrita, y el usuario no tenía forma de enterarse. Eso
+            //  cuesta media tarde buscando en el modelo algo que no está mal.
+            var notas = dibujante.Notas;
+
             var cuales = plantas.Count == 1
                 ? $"del nivel {(string.IsNullOrWhiteSpace(plantas[0].Nivel) ? "(todos)" : plantas[0].Nivel)}"
                 : $"en {plantas.Count} plantas ({string.Join(", ", plantas.Select(p => p.Nivel))})";
@@ -2465,12 +2641,26 @@ public partial class MainWindow : Window
                 "una con su color, y con las de CAPAS_AL_FRENTE encima. Falta el armado de " +
                 "losa y los bloques de sección rellenos.";
 
+            // Las notas van al recuadro SIEMPRE, hubiera fallos o no: explican lo que el
+            // dibujante decidió callar, y eso hay que poder leerlo justo después de dibujar.
+            if (notas.Count > 0)
+            {
+                PlanoHintText.Text +=
+                    Environment.NewLine + Environment.NewLine +
+                    $"LO QUE SE DECIDIÓ ({notas.Count}):" + Environment.NewLine +
+                    string.Join(Environment.NewLine, notas.Select(n => "  - " + n));
+            }
+
             if (fallos.Count == 0)
             {
                 MessageBox.Show(
-                    $"Listo.\n\n{r}\n\n" +
-                    "Cada tipo de elemento quedó en su propia capa, así que puedes " +
-                    "apagar lo que no te interese y seguir trabajando encima.",
+                    $"Listo.\n\n{r}\n\n"
+                    + (notas.Count > 0
+                        ? "Y hay " + notas.Count + " nota(s) de lo que se decidió —qué se "
+                          + "dibujó de otra forma y por qué—, en el recuadro de abajo.\n\n"
+                        : string.Empty)
+                    + "Cada tipo de elemento quedó en su propia capa, así que puedes "
+                    + "apagar lo que no te interese y seguir trabajando encima.",
                     AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
@@ -2606,7 +2796,76 @@ public partial class MainWindow : Window
     /// el dibujante las <b>une</b>, así que no salen dos bloques encimados.
     /// </para>
     /// </remarks>
-    private void AgregarCastillosDeArea(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    /// <summary>
+    /// Trae a esta planta <b>todo lo que cruza su entrepiso</b>, sea del story que sea.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «haz el corte al nivel story y todo lo que haya debajo de ese nivel se dibuja en
+    /// ese story». Un muro o un castillo dibujado <b>de corrido por dos niveles</b> es de un solo
+    /// story para ETABS —el de su punta— y desaparecía del plano de abajo, aunque en ese nivel el
+    /// muro esté ahí.
+    /// </para>
+    /// <para>
+    /// La medida y su razonamiento están en <see cref="CruceDeNivel"/>: se exige cubrir una
+    /// <b>fracción del entrepiso</b> y no solo tocarlo, porque si no una pieza que asoma un
+    /// centímetro saldría dibujada en dos plantas.
+    /// </para>
+    /// <para>
+    /// Las cotas se <b>recortan</b> a este entrepiso. Una pieza de tres niveles sale en las tres
+    /// plantas, pero en cada una el corte tiene que verla del alto de <i>ese</i> entrepiso y no de
+    /// los tres, o el alzado la sacaría saliéndose del nivel.
+    /// </para>
+    /// </remarks>
+    private void AgregarLoQueCruzaElNivel(
+        ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
+    {
+        // Sin nivel elegido la planta trae TODO el modelo: ya están dentro.
+        if (string.IsNullOrWhiteSpace(nivel))
+        {
+            return;
+        }
+
+        var n = modelo.Niveles.FirstOrDefault(
+            x => string.Equals(x.Nombre, nivel, StringComparison.OrdinalIgnoreCase));
+
+        // Sin la cota y la altura del nivel no hay entrepiso que comparar, y adivinarlo metería
+        // piezas de otros pisos en la planta.
+        if (n is null || n.AlturaM <= 0)
+        {
+            return;
+        }
+
+        var fraccion = CfgPlano.Numero(
+            "MURO_FRACCION_ENTREPISO", CruceDeNivel.FraccionPorOmision);
+
+        foreach (var el in modelo.Elementos)
+        {
+            // Lo que ya entró por su story, o por otra pasada, no se repite.
+            if (yaEstan.Contains(el))
+            {
+                continue;
+            }
+
+            if (!CruceDeNivel.CruzaBastante(el, n, fraccion) || !VisibleEnElPlano(el))
+            {
+                continue;
+            }
+
+            var e = ComoElementoDePlanta(el, modelo);
+
+            var (z1, z2) = CruceDeNivel.RecortadaAlNivel(el, n);
+
+            e.Z1 = z1;
+            e.Z2 = z2;
+
+            yaEstan.Add(el);
+            p.Elementos.Add(e);
+        }
+    }
+
+    private void AgregarCastillosDeArea(
+        ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
     {
         // Sin nivel elegido la planta trae TODO el modelo: ya están dentro.
         if (string.IsNullOrWhiteSpace(nivel) || VerColumnasPlanoChk.IsChecked != true)
@@ -2647,8 +2906,10 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            // El de este story ya entró por el camino de siempre.
-            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            // El de este story ya entró por el camino de siempre, y el que cruza el nivel pudo
+            // entrar por la pasada de arriba: en los dos casos repetirlo lo dibujaría doble.
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase)
+                || yaEstan.Contains(el))
             {
                 continue;
             }
@@ -2679,11 +2940,13 @@ public partial class MainWindow : Window
             e.Z1 = Math.Max(zMin, zBaja);
             e.Z2 = Math.Min(zMax, zAlta);
 
+            yaEstan.Add(el);
             p.Elementos.Add(e);
         }
     }
 
-    private void AgregarArranquesDeCimentacion(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    private void AgregarArranquesDeCimentacion(
+        ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
     {
         var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 20) / 100;
 
@@ -2720,11 +2983,13 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(el.Story, nivel, StringComparison.OrdinalIgnoreCase)
+                || yaEstan.Contains(el))
             {
                 continue;
             }
 
+            yaEstan.Add(el);
             p.Elementos.Add(ComoElementoDePlanta(el, modelo));
         }
     }
@@ -2833,6 +3098,11 @@ public partial class MainWindow : Window
             ConRotulos = true
         };
 
+        // Lo que YA está en esta planta. Hace falta porque abajo hay tres pasadas más que
+        // recogen piezas de otros story por su geometría, y sin esto la misma pieza podría
+        // entrar dos veces por dos caminos distintos: se vería doble y se contaría doble.
+        var yaEstan = new HashSet<ElementoEtabs>();
+
         foreach (var el in modelo.Elementos)
         {
             // El MISMO filtro por nivel que usa el lienzo de esta pestaña
@@ -2847,7 +3117,32 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            yaEstan.Add(el);
             p.Elementos.Add(ComoElementoDePlanta(el, modelo));
+        }
+
+        // ==============================================================================
+        //  EL CORTE ES A LA COTA DEL NIVEL: LO QUE HAY DEBAJO SE DIBUJA EN ÉL
+        // ==============================================================================
+        //  Se pidió tal cual: «haz el corte al nivel story y todo lo que haya debajo de ese
+        //  nivel se dibuja en ese story». Y es la convención de un plano estructural: la planta
+        //  de un nivel es un corte a su cota, y se ve lo que hay entre ese nivel y el de abajo.
+        //
+        //  QUÉ FALLABA. La planta se armaba SOLO con lo que ETABS tenía asignado a este story, y
+        //  ETABS asigna cada pieza al piso de su cota MÁS ALTA. Así que un muro o un castillo
+        //  dibujado DE CORRIDO por dos niveles es de un solo story —el de arriba— y desaparecía
+        //  del plano de abajo, aunque en ese nivel el muro esté ahí y haya que verlo.
+        //
+        //  Esto ya estaba resuelto para UN caso, el castillo de shell, y con este mismo
+        //  razonamiento escrito en su comentario. Lo que faltaba era que valiera para TODO.
+        //
+        //  El razonamiento de la medida —cuánto cubre del entrepiso, y por qué no vale preguntar
+        //  «¿toca este nivel?»— está en CruceDeNivel. Y de ahí sale que el PRETIL no se duplique:
+        //  un metro no cubre las tres cuartas partes de un entrepiso, así que no sube a la planta
+        //  de arriba y se queda solo en la de su losa.
+        if (CfgPlano.Bandera("NIVEL_DIBUJA_LO_QUE_CRUZA", true))
+        {
+            AgregarLoQueCruzaElNivel(modelo, p, nivel, yaEstan);
         }
 
         // ==============================================================================
@@ -2865,7 +3160,7 @@ public partial class MainWindow : Window
         //  «por si acaso» llena el plano de secciones que no se van a construir.
         if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
         {
-            AgregarArranquesDeCimentacion(modelo, p, nivel);
+            AgregarArranquesDeCimentacion(modelo, p, nivel, yaEstan);
         }
 
         // ==============================================================================
@@ -2882,7 +3177,7 @@ public partial class MainWindow : Window
         if (CfgPlano.Bandera("SHELL_CASTILLO_COMO_COLUMNA", true)
             && CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true))
         {
-            AgregarCastillosDeArea(modelo, p, nivel);
+            AgregarCastillosDeArea(modelo, p, nivel, yaEstan);
         }
 
         // ==============================================================================
@@ -3511,6 +3806,16 @@ public partial class MainWindow : Window
             // no se crearia y sus varillas saldrian en la capa activa del dibujo, con
             // otro color y sin poder apagarlas por separado.
             yield return Varilla.Normalizar(s.DiamVarTotalEfectivo);
+
+            // Los calibres de las grapas. Hoy la grapa se dibuja en la capa ESTRIBOS,
+            // asi que estrictamente no hacen falta; van igual porque el calibre de una
+            // grapa se elige por separado y puede no aparecer en ninguna otra columna.
+            // Asi, el dia que una grapa se dibuje en su capa de varilla, la capa ya
+            // existiria con su color en lugar de salir sin el.
+            foreach (var g in s.Grapas)
+            {
+                yield return Varilla.Normalizar(g.Diametro);
+            }
         }
     }
 
@@ -3579,7 +3884,18 @@ public partial class MainWindow : Window
             Circular = r.EsCircular,
             NVarTotal = r.NVarTotal,
             VarTotal = V(r.DiamVarTotalEfectivo),
-            ZunchoHelicoidal = r.EsZunchoHelicoidal
+            ZunchoHelicoidal = r.EsZunchoHelicoidal,
+
+            // ---------- Grapas ----------
+            // El diametro se resuelve AQUI, igual que todos los demas: el dibujante
+            // recibe centimetros. Una grapa con el calibre mal capturado llega con
+            // Cm = 0, y el dibujante la salta en lugar de inventarse un grueso.
+            //
+            // Las señales de las dos varillas pasan tal cual: RefVarilla vive en la capa
+            // de CAD justamente para que no haya que traducirlas y no puedan divergir.
+            Grapas = r.Grapas
+                .Select(g => new GrapaCad { A = g.A, B = g.B, Var = V(g.Diametro) })
+                .ToList()
         };
     }
 
@@ -3845,8 +4161,10 @@ public partial class MainWindow : Window
         }
 
         RevisarLecho(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup, s.DiamEsqSup);
+        RevisarPaquete(problemas, etiqueta, "lecho sup. esquina", s.NEsqSup);
         RevisarLecho(problemas, etiqueta, "lecho sup. intermedio", s.NIntSup, s.DiamIntSupEfectivo);
         RevisarLecho(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf, s.DiamEsqInfEfectivo);
+        RevisarPaquete(problemas, etiqueta, "lecho inf. esquina", s.NEsqInf);
         RevisarLecho(problemas, etiqueta, "lecho inf. intermedio", s.NIntInf, s.DiamIntInfEfectivo);
         RevisarLecho(problemas, etiqueta, "varillas laterales", s.NInter, s.DiamInter);
 
@@ -3991,6 +4309,34 @@ public partial class MainWindow : Window
         RevisarDiametro(problemas, etiqueta, lecho, diametro, obligatorio: true);
     }
 
+    /// <summary>
+    /// Un lecho de esquina con más de dos varillas forma <b>paquetes</b>, y para eso el
+    /// número tiene que ser par.
+    /// </summary>
+    /// <remarks>
+    /// Las esquinas son dos y el armado es simétrico, así que un número impar mayor que
+    /// dos no se puede repartir en dos paquetes iguales. Se avisa aquí en lugar de
+    /// arreglarlo por lo bajo: repartir 5 como 3 y 2 dejaría la sección asimétrica sin
+    /// que nadie lo hubiera pedido, y quedarse con 4 perdería una varilla en silencio.
+    /// <para>
+    /// Mientras el número sea impar, la sección se sigue dibujando con el reparto a lo
+    /// ancho de siempre, así que el plano nunca queda a medias.
+    /// </para>
+    /// </remarks>
+    private static void RevisarPaquete(
+        List<string> problemas, string etiqueta, string lecho, int cantidad)
+    {
+        if (cantidad <= 2 || cantidad % 2 == 0)
+        {
+            return;
+        }
+
+        problemas.Add(
+            $"• {etiqueta}: el {lecho} tiene {cantidad} varillas. Con más de dos se " +
+            "arman en paquetes, uno por esquina, así que la cantidad debe ser PAR. " +
+            "Mientras sea impar se dibujan repartidas a lo ancho.");
+    }
+
     private static void RevisarDiametro(
         List<string> problemas, string etiqueta, string donde, string diametro, bool obligatorio)
     {
@@ -4022,7 +4368,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void DibujarVistaPrevia()
     {
+        // Los DOS lienzos: el de la sección, que se mueve con el zoom, y el fijo, donde
+        // van el alzado y los textos. Si se olvidara uno, su contenido se acumularía
+        // dibujado sobre dibujado en cada tecla que se toca en la tabla.
         PreviewCanvas.Children.Clear();
+        PreviaFijaCanvas.Children.Clear();
 
         var s = Seleccionada;
         var ancho = PreviewCanvas.ActualWidth;
@@ -4033,19 +4383,62 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ===== EL 3D SE DECIDE ANTES QUE LA FORMA =====
+        //
+        // Esto estaba AL REVÉS y era un fallo de verdad: la sección redonda se desviaba aquí
+        // con su propio «return», así que en 3D nunca se llegaba a la rama del 3D. Como
+        // tampoco se tocaba la visibilidad del recuadro ni se reconstruía la escena, quedaba
+        // a la vista LA JAULA DE LA SECCIÓN ANTERIOR —una rectangular— encima del alzado de
+        // la redonda. Es justo lo que se reportó: el 3D de otra sección.
+        //
+        // Ahora manda la vista y luego la forma. ConstruirEscena3D ya reparte por su cuenta
+        // entre la rectangular y la redonda, así que las dos entran por el mismo sitio y
+        // ninguna se puede quedar sin construir.
+        if (_alzado3D && s is not null)
+        {
+            PreviaCorteHost.Clip = null;
+            PreviaViewport.Visibility = Visibility.Visible;
+
+            // En 3D la cuenta que convierte un clic en una varilla no vale, porque el dibujo
+            // ya no está en el lienzo. Con la escala en cero, VarillaEn devuelve null y los
+            // clics de grapa no hacen nada, en lugar de agarrar la varilla equivocada.
+            _previaEscala = 0;
+
+            ConstruirEscena3D(s, ancho, alto);
+            DibujarAlzadoPrevio(s, ancho * 0.5, alto);
+
+            // LO QUE NO SE PUDO ARMAR, DICHO DONDE EL USUARIO ESTÁ MIRANDO. Estas notas salían
+            // solo en el cuadro de «3D a AutoCAD», y eso no servía de nada: la vista que se mira
+            // es esta, y si AutoCAD falla no se llegan a leer nunca. Ver _notasDeLaJaula.
+            if (_notasDeLaJaula.Count > 0)
+            {
+                StatusText.Text = "Vista 3D — " + string.Join("   ·   ", _notasDeLaJaula);
+            }
+
+            Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
+            return;
+        }
+
         // La seccion redonda se previsualiza aparte, con su propia geometria. Si
         // cayera en el camino de abajo se veria como un rectangulo con estribo
         // rectangular, o sea NO se veria lo que se va a dibujar, que es justo para lo
         // que sirve una vista previa.
         if (s is not null && s.EsCircular)
         {
+            PreviaViewport.Visibility = Visibility.Collapsed;
+
+            PreviaCorteHost.Clip =
+                new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
+
             DibujarVistaPreviaCircular(s, ancho, alto);
             return;
         }
 
         if (s is null || s.BaseCm <= 0 || s.AlturaCm <= 0)
         {
-            PreviewCanvas.Children.Add(new TextBlock
+            // A la capa fija: es un aviso, y los avisos no se arrastran ni se agrandan
+            // con el zoom.
+            PreviaFijaCanvas.Children.Add(new TextBlock
             {
                 Text = "Selecciona una sección con base y altura para verla dibujada.",
                 Foreground = Brushes.Gray,
@@ -4055,19 +4448,75 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ===== EN 2D EL CORTE SE QUEDA EN SU MITAD =====
+        //
+        // Se movía libremente y acababa montado sobre el alzado. Ahora su recuadro se recorta
+        // a la mitad izquierda: se puede acercar y pasear por dentro —que es para lo que
+        // sirve— pero el dibujo no sale de su ventana. Es lo que hace una cámara.
+        //
+        // El recorte va en PreviaCorteHost y no en PreviewCanvas porque WPF aplica el Clip
+        // ANTES del RenderTransform: puesto en el lienzo se escalaría y se movería con el
+        // zoom, o sea que no recortaría nada. El contenedor no lleva transformación, así que
+        // su recorte se queda quieto mientras el dibujo se mueve por dentro.
+        //
+        // En 3D se deja SIN recortar, a propósito: ahí la pieza se puede pasear libremente.
+        PreviaCorteHost.Clip = new RectangleGeometry(new Rect(0, 0, ancho * 0.5, alto));
+
+        // El recuadro del 3D solo existe en 3D: en el corte plano se apaga para que no atrape
+        // recursos del motor ni tape nada. Aquí ya se sabe que la vista es plana, porque el
+        // 3D se desvió arriba.
+        PreviaViewport.Visibility = Visibility.Collapsed;
+
         const double margen = 34;
-        var escala = Math.Min((ancho - (2 * margen)) / s.BaseCm, (alto - (2 * margen)) / s.AlturaCm);
+
+        // ===== EL CORTE VIVE EN SU MITAD IZQUIERDA =====
+        //
+        // Antes se centraba en el ANCHO COMPLETO, así que caía encima del alzado —que ocupa
+        // todo el ancho del lienzo fijo— y de ahí venía el montaje que se reportó.
+        //
+        // Y era peor de lo que parecía: al recortar el recuadro del corte a su mitad, un corte
+        // centrado en el ancho completo se quedaba PARTIDO por la mitad. El recorte y el
+        // encuadre tienen que estar de acuerdo, y ahora lo están.
+        //
+        // La circular ya reservaba la mitad derecha para el alzado; esto la iguala.
+        var mitad = ancho * 0.5;
+
+        var escala = Math.Min(
+            (mitad - (2 * margen)) / s.BaseCm, (alto - (2 * margen)) / s.AlturaCm);
+
         if (escala <= 0 || double.IsInfinity(escala))
         {
             return;
         }
 
-        var x0 = (ancho - (s.BaseCm * escala)) / 2;
+        var x0 = (mitad - (s.BaseCm * escala)) / 2;
         var y0 = (alto - (s.AlturaCm * escala)) / 2;
+
+        // Lo que ocupa el dibujo, con sus cotas, y la ventana donde tiene que quedarse. De
+        // aquí sale el tope del encuadre: ver LimitarEncuadre2D.
+        GuardarCaja2D(
+            x0 - margen, y0 - margen,
+            (s.BaseCm * escala) + (2 * margen), (s.AlturaCm * escala) + (2 * margen),
+            mitad, alto);
 
         // Del modelo (y hacia arriba) al lienzo (y hacia abajo)
         double PX(double xcm) => x0 + (xcm * escala);
         double PY(double ycm) => y0 + ((s.AlturaCm - ycm) * escala);
+
+        // La MISMA transformada, guardada para poder deshacerla.
+        //
+        // Hace falta para las grapas: un clic llega en píxeles del lienzo y hay que
+        // saber sobre qué varilla cayó, que se conoce en centímetros. Sin esto, escala,
+        // x0 y y0 mueren al terminar este método y no hay forma de convertir de vuelta.
+        //
+        // Se guarda aquí, y no se recalcula en el clic, para que las dos cuentas no
+        // puedan discrepar: si el clic recalculara la escala con un ancho distinto
+        // -porque el panel cambió de tamaño entre el dibujado y el clic-, señalaría una
+        // varilla que no es la que está debajo del cursor.
+        _previaEscala = escala;
+        _previaX0 = x0;
+        _previaY0 = y0;
+        _previaAlturaCm = s.AlturaCm;
 
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
@@ -4086,15 +4535,37 @@ public partial class MainWindow : Window
         var cw = s.BaseCm * escala;
         var ch = s.AlturaCm * escala;
 
-        PreviewCanvas.Children.Add(Rectangulo(cx0, cy0, cw, ch, azul, 1.6, relleno));
+        PreviewCanvas.Children.Add(Rectangulo(cx0, cy0, cw, ch, azul, LineaConcreto, relleno));
 
         // Patron AR-CONC. Se dibuja SIEMPRE, en los dos estilos: es justo el
         // rayado que faltaba en el dibujo. Va antes que estribo y varillas para
         // que estos queden encima, como las islas del hatch real.
-        DibujarPatronConcreto(cx0, cy0, cw, ch);
+        DibujarPatronConcreto(PreviewCanvas, cx0, cy0, cw, ch);
 
         var rec = s.RecubrimientoCm;
         Varilla.TryDiametroCm(s.Estribo, out var de);
+
+        // ===== EL RADIO DEL DOBLEZ DE LAS ESQUINAS =====
+        //
+        // Las mismas fórmulas que EstriboExterior y EstriboInterior en AutoCAD: la cara
+        // de fuera dobla con radio dEst + dVar/2 y la de dentro con dVar/2, medidos
+        // desde el centro de la varilla de esquina, que es alrededor de quien se dobla.
+        //
+        // Hace falta porque una varilla NO se dobla en pico: el estribo se veía en
+        // escuadra y el plano lo dibuja redondeado.
+        //
+        // Se usa un solo radio para las cuatro esquinas, con el diámetro del lecho
+        // superior o, si no está capturado, el del inferior. En el plano cada lecho
+        // aporta el suyo, pero la diferencia es medio diámetro de varilla y a esta
+        // escala no se distingue.
+        Varilla.TryDiametroCm(s.DiamEsqSup, out var dEsqSup);
+        Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var dEsqInf);
+
+        var dEsquina = dEsqSup > 0 ? dEsqSup : dEsqInf;
+        if (dEsquina <= 0) { dEsquina = de; }
+
+        var radioExtPx = (de + (dEsquina / 2)) * escala;
+        var radioIntPx = (dEsquina / 2) * escala;
 
         // Estribo: dos contornos, como en la macro
         if (rec > 0 && rec * 2 < s.BaseCm && rec * 2 < s.AlturaCm)
@@ -4111,7 +4582,8 @@ public partial class MainWindow : Window
                     (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
                     (de * escala),
                     new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B)),   // ACI 152
-                    negro));
+                    negro,
+                    radioExtPx));
             }
             else
             {
@@ -4119,13 +4591,13 @@ public partial class MainWindow : Window
 
                 PreviewCanvas.Children.Add(Rectangulo(PX(rec), PY(s.AlturaCm - rec),
                     (s.BaseCm - (2 * rec)) * escala, (s.AlturaCm - (2 * rec)) * escala,
-                    trazo, 1.4, null));
+                    trazo, LineaAcero, null, radioExtPx));
 
                 if (hayInterior)
                 {
                     PreviewCanvas.Children.Add(Rectangulo(PX(i), PY(s.AlturaCm - i),
                         (s.BaseCm - (2 * i)) * escala, (s.AlturaCm - (2 * i)) * escala,
-                        trazo, 1.0, null));
+                        trazo, LineaAcero, null, radioIntPx));
                 }
             }
         }
@@ -4136,6 +4608,8 @@ public partial class MainWindow : Window
         // doblez, igual que en AutoCAD: el gancho se dobla alrededor de esa varilla, así
         // que la varilla tapa la parte del doblez que le pasa por debajo.
         DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
+
+        var varillas = TodasLasVarillas(s, de, rec);
 
         // Lechos
         DibujarLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec, escala, PX, PY, arriba: true, intermedio: false);
@@ -4158,14 +4632,39 @@ public partial class MainWindow : Window
         // las varillas que abraza.
         DibujarDiamantePrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
 
-        // Cotas de referencia
-        Etiqueta($"{s.BaseCm:N0} cm", x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
-        Etiqueta($"{s.AlturaCm:N0} cm", x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
+        // LAS GRAPAS, POR ENCIMA DE TODO EL ARMADO.
+        //
+        // Van al final, después del estribo y del diamante, porque una grapa se coloca
+        // por FUERA de ellos: se mete cuando el estribo ya está armado, así que pasa por
+        // delante. Estaban antes de las varillas y se veían por debajo, que es al revés.
+        //
+        // Y se pintan con relleno OPACO —el gris del estribo en el tipo 2, el color del
+        // concreto en el tipo 1—, que es lo que produce el efecto de pasar por arriba:
+        // el relleno tapa el trozo de línea del estribo y del diamante que queda debajo,
+        // sin tener que recortarlos. En AutoCAD no basta con esto y el recorte sí se
+        // hace de verdad, porque allí EstribosAlFrente vuelve a subir las líneas del
+        // estribo por encima de todo lo que esté en su capa.
+        DibujarGrapasPrevias(s, varillas, PX, PY, conFondoSolido, relleno);
+
+        // EL REALCE DE LAS VARILLAS, lo último y por encima de todo.
+        //
+        // Es un adorno de la interfaz, no parte del armado: marca la varilla que el
+        // cursor tiene encima y la que ya se eligió para la grapa. Va al final para que
+        // no lo tape ni el diamante ni el achurado.
+        DibujarRealceDeVarillas(varillas, escala, PX, PY);
+
+        // Cotas de referencia. A la capa del CORTE: miden la sección, así que tienen que
+        // moverse con ella.
+        Etiqueta(PreviewCanvas, $"{s.BaseCm:N0} cm",
+                 x0 + (s.BaseCm * escala / 2) - 22, y0 + (s.AlturaCm * escala) + 8);
+
+        Etiqueta(PreviewCanvas, $"{s.AlturaCm:N0} cm",
+                 x0 + (s.BaseCm * escala) + 8, y0 + (s.AlturaCm * escala / 2) - 8);
 
         // La MISMA linea de titulo que la circular: elemento, ID y resumen del
         // armado. Antes la rectangular solo decia elemento e ID, asi que las dos
         // formas no se veian igual.
-        Etiqueta(TituloVistaPrevia(s), 14, 26);
+        Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
 
         // El alzado va a la derecha de la sección, en el espacio que sobra
         DibujarAlzadoPrevio(s, x0 + (s.BaseCm * escala) + 70, alto);
@@ -4184,7 +4683,7 @@ public partial class MainWindow : Window
     {
         if (s.DiametroCm <= 0)
         {
-            PreviewCanvas.Children.Add(new TextBlock
+            PreviaFijaCanvas.Children.Add(new TextBlock
             {
                 Text = "La sección es circular: pon el diámetro en la columna «Base cm».",
                 Foreground = Brushes.Gray,
@@ -4208,6 +4707,11 @@ public partial class MainWindow : Window
         var cx = margen + r;
         var cy = alto / 2;
 
+        GuardarCaja2D(
+            cx - r - margen, cy - r - margen,
+            (2 * r) + (2 * margen), (2 * r) + (2 * margen),
+            ancho * 0.5, alto);
+
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
         var negro = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
@@ -4219,7 +4723,7 @@ public partial class MainWindow : Window
             : Brushes.White;
 
         // ---------- Concreto ----------
-        PreviewCanvas.Children.Add(Circunferencia(cx, cy, r, azul, 1.6, relleno));
+        PreviewCanvas.Children.Add(Circunferencia(cx, cy, r, azul, LineaConcreto, relleno));
 
         var rec = s.RecubrimientoCm * escala;
         Varilla.TryDiametroCm(s.Estribo, out var deCm);
@@ -4233,8 +4737,8 @@ public partial class MainWindow : Window
         {
             var trazo = conFondoSolido ? negro : gris;
 
-            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunExt, trazo, 1.4, null));
-            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunInt, trazo, 1.0, null));
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunExt, trazo, LineaAcero, null));
+            PreviewCanvas.Children.Add(Circunferencia(cx, cy, rZunInt, trazo, LineaAcero, null));
         }
 
         // ---------- Varillas ----------
@@ -4266,8 +4770,9 @@ public partial class MainWindow : Window
             conFondoSolido ? negro : gris);
 
         // ---------- Etiquetas ----------
-        Etiqueta($"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
-        Etiqueta(TituloVistaPrevia(s), 14, 26);
+        // La cota del diámetro acompaña al círculo; el título se queda fijo.
+        Etiqueta(PreviewCanvas, $"\u00D8 {s.DiametroCm:N0} cm", cx - 26, cy + r + 8);
+        Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s), 14, 26);
 
         DibujarAlzadoPrevio(s, cx + r + 70, alto);
     }
@@ -4414,7 +4919,7 @@ public partial class MainWindow : Window
         {
             Points = arco,
             Stroke = trazo,
-            StrokeThickness = 1.2
+            StrokeThickness = LineaAcero
         });
 
         // ---------- Las dos colas ----------
@@ -4444,7 +4949,7 @@ public partial class MainWindow : Window
                     X1 = PX(x1), Y1 = PY(y1),
                     X2 = PX(x2), Y2 = PY(y2),
                     Stroke = trazo,
-                    StrokeThickness = 1.2
+                    StrokeThickness = LineaAcero
                 });
             }
         }
@@ -4479,9 +4984,63 @@ public partial class MainWindow : Window
         var total = s.TotalVarillas;
         var estribo = Varilla.Normalizar(s.Estribo);
 
+        // Las grapas, con la misma cuenta y el mismo texto que el rótulo del plano, para
+        // que la pantalla y el papel no se contradigan.
+        var grapas = ResumenDeGrapas(s);
+
         return total > 0
-            ? $"{cabeza}   ({total} vars., estribo {estribo})"
-            : $"{cabeza}   (estribo {estribo})";
+            ? $"{cabeza}   ({total} vars., estribo {estribo}{grapas})"
+            : $"{cabeza}   (estribo {estribo}{grapas})";
+    }
+
+    /// <summary>
+    /// Las grapas de la sección, agrupadas por diámetro, listas para el título.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Devuelve la cadena vacía si no hay ninguna, que es lo normal: así el título de una
+    /// sección sin grapas queda exactamente como estaba.
+    /// </para>
+    /// <para>
+    /// Cuenta solo las de <b>diámetro reconocido</b>, igual que
+    /// <c>SeccionDrawer.GrapasPorDiametro</c>. Una grapa con el calibre mal capturado no
+    /// se va a dibujar, así que anunciarla haría que el título prometiera algo que no se
+    /// ve.
+    /// </para>
+    /// </remarks>
+    private static string ResumenDeGrapas(SeccionConcretoRow s)
+    {
+        if (s.Grapas.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var porDiametro = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var g in s.Grapas)
+        {
+            if (!Varilla.TryDiametroCm(g.Diametro, out var cm) || cm <= 0)
+            {
+                continue;
+            }
+
+            var clave = Varilla.Normalizar(g.Diametro);
+            porDiametro[clave] = porDiametro.TryGetValue(clave, out var n) ? n + 1 : 1;
+        }
+
+        if (porDiametro.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        // Del más grueso al más delgado, igual que en el rótulo del plano.
+        var partes = porDiametro
+            .OrderByDescending(par => Varilla.TryDiametroCm(par.Key, out var cm) ? cm : 0)
+            .Select(par => par.Value == 1
+                ? $"1 grapa {par.Key}C"
+                : $"{par.Value} grapas {par.Key}C");
+
+        return ", " + string.Join(", ", partes);
     }
 
     /// <summary>
@@ -4576,9 +5135,11 @@ public partial class MainWindow : Window
             caraInt.Add(new Point(x, yMedio + ((rEje - (dEst / 2)) * sen)));
         }
 
+        // La hélice es parte del ALZADO -es el zuncho visto de lado-, así que va a la
+        // capa fija con él.
         foreach (var cara in new[] { caraExt, caraInt })
         {
-            PreviewCanvas.Children.Add(new Polyline
+            PreviaFijaCanvas.Children.Add(new Polyline
             {
                 Points = cara,
                 Stroke = brocha,
@@ -4619,8 +5180,8 @@ public partial class MainWindow : Window
         // previa lo dice en lugar de mostrar uno que nunca se va a generar.
         if (TipoDe(s.Elemento, s.Id) is null)
         {
-            Etiqueta($"{s.Elemento} no lleva alzado.", izquierda, (alto / 2) - 10);
-            Etiqueta("Solo trabes, contratrabes, columnas y dados.",
+            Etiqueta(PreviaFijaCanvas, $"{s.Elemento} no lleva alzado.", izquierda, (alto / 2) - 10);
+            Etiqueta(PreviaFijaCanvas, "Solo trabes, contratrabes, columnas y dados.",
                 izquierda, (alto / 2) + 8);
             return;
         }
@@ -4658,15 +5219,23 @@ public partial class MainWindow : Window
         var h = peralteM * esc;
         var top = (alto - h) / 2;
 
+        // El alzado se dibuja SIEMPRE plano, también con el botón en 3D.
+        //
+        // Lo tuvo en isométrico y se quitó a pedido: el alzado enseña el reparto de
+        // estribos a lo largo de la pieza, y para eso una vista de lado se lee mejor que un
+        // isométrico donde los estribos del fondo se confunden con los de delante. El 3D es
+        // para la sección, que es donde hay algo que mirar en volumen.
+
         var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
         var gris = new SolidColorBrush(Color.FromRgb(0x90, 0x9A, 0xA4));
         var relleno = a.Modo == ModoSeccion.Tipo2Rellena
             ? new SolidColorBrush(Color.FromRgb(0xD4, 0xD8, 0xDC))
             : Brushes.White;
 
-        // Concreto
-        PreviewCanvas.Children.Add(Rectangulo(izquierda, top, w, h, azul, 1.4, relleno));
-        DibujarPatronConcreto(izquierda, top, w, h);
+        // Concreto. A la capa FIJA: esto es el alzado, y el alzado no se mueve con el
+        // zoom de la sección.
+        PreviaFijaCanvas.Children.Add(Rectangulo(izquierda, top, w, h, azul, 1.4, relleno));
+        DibujarPatronConcreto(PreviaFijaCanvas, izquierda, top, w, h);
 
         var rec = a.RecubrimientoCm / 100.0 * esc;
         var dEst = a.EstriboDibujo.Cm / 100.0 * esc;
@@ -4683,33 +5252,55 @@ public partial class MainWindow : Window
 
         var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
 
-        if (a.Circular && a.ZunchoHelicoidal)
+        // ===== LOS ESTRIBOS SE PINTAN AL FINAL, ENCIMA DE LAS VARILLAS =====
+        //
+        // Antes iban primero, así que la varilla les pasaba por encima y el estribo se veía
+        // partido en trozos: el alzado se leía con la varilla por delante, que es al revés
+        // de como está armado. El estribo abraza la varilla, así que se ve corrido.
+        //
+        // Va en una función local y no aquí mismo para que el orden sea explícito y no
+        // dependa de en qué parte del método está escrito.
+        void DibujarEstribosDelAlzado()
         {
-            // El zuncho helicoidal NO son capsulas repetidas: es una sola pieza que
-            // sube en helice. Dibujarlo como estribos sueltos aqui haria que la vista
-            // previa mostrara una cosa y AutoCAD otra, que es lo peor que puede hacer
-            // una vista previa.
-            DibujarHelicePrevia(a, izquierda, top, w, h, rec, dEst, brochaEst);
-        }
-        else
-        {
+            if (a.Circular && a.ZunchoHelicoidal)
+            {
+                // El zuncho helicoidal NO son capsulas repetidas: es una sola pieza que
+                // sube en helice. Dibujarlo como estribos sueltos aqui haria que la vista
+                // previa mostrara una cosa y AutoCAD otra, que es lo peor que puede hacer
+                // una vista previa.
+                DibujarHelicePrevia(a, izquierda, top, w, h, rec, dEst, brochaEst);
+                return;
+            }
+
+            // ===== LOS ESTRIBOS, CON SU GROSOR REAL =====
+            //
+            // El grosor sale del diámetro de verdad: dEst ya viene en píxeles a la escala
+            // del dibujo. Antes había un suelo de 1.5 px que igualaba todos los calibres,
+            // así que un #3 y un #5 se veían iguales; ahora el suelo es de un tercio de
+            // píxel, lo justo para que nunca desaparezca, y los calibres se distinguen.
+            //
+            // Y se pinta como el resto del armado: contorno en el tipo 1 y relleno en el
+            // tipo 2, en lugar de una raya.
+            var grosorEst = Math.Max(a.EstriboDibujo.Cm / 100.0 * esc, 0.35);
+
             foreach (var c in centros)
             {
                 var xc = izquierda + (c * esc);
 
-                // La cápsula: rectángulo con las puntas redondeadas
-                PreviewCanvas.Children.Add(new Rectangle
+                // La cápsula: rectángulo con las puntas redondeadas, que es el estribo
+                // visto de canto.
+                PreviaFijaCanvas.Children.Add(new Rectangle
                 {
-                    Width = Math.Max(dEst, 1.5),
-                    Height = Math.Max(h - (2 * rec) + (2 * dEst), 2),
-                    RadiusX = dEst / 2,
-                    RadiusY = dEst / 2,
+                    Width = grosorEst,
+                    Height = Math.Max(h - (2 * rec) + (2 * grosorEst), 2),
+                    RadiusX = grosorEst / 2,
+                    RadiusY = grosorEst / 2,
                     Stroke = brochaEst,
-                    StrokeThickness = 0.7,
+                    StrokeThickness = 0.6,
                     Fill = a.Modo == ModoSeccion.Tipo2Rellena
                         ? new SolidColorBrush(Color.FromRgb(0x5B, 0x6B, 0x7B))
                         : null,
-                    Margin = new Thickness(xc - (dEst / 2), top + rec - dEst, 0, 0)
+                    Margin = new Thickness(xc - (grosorEst / 2), top + rec - grosorEst, 0, 0)
                 });
             }
         }
@@ -4732,41 +5323,216 @@ public partial class MainWindow : Window
             var xIni = izquierda + rec;
             var xFin = izquierda + w - rec;
 
-            PreviewCanvas.Children.Add(new Line
+            // ===== UNA SOLA POLILINEA, CON LAS UNIONES REDONDEADAS =====
+            //
+            // Antes eran tres líneas sueltas —el tramo recto y los dos ganchos—, y al
+            // ser piezas independientes las esquinas salían en escuadra y con las puntas
+            // cortadas a ras. Una varilla no se dobla en pico ni se corta en bisel.
+            //
+            // Con una sola polilínea y StrokeLineJoin en Round, WPF redondea el doblez
+            // con radio igual a la mitad del grosor, que es exactamente el fillet que
+            // deja AutoCAD al doblar la varilla sobre sí misma. Y con las puntas
+            // redondeadas, el extremo del gancho remata como una varilla cortada y no
+            // como una viga.
+            var trazo = new PointCollection();
+
+            // Añade un doblez muestreado. Se muestrea en lugar de usar ArcSegment para no
+            // depender del sentido de barrido, que es de donde salen los arcos al revés.
+            void Doblez(double cx, double cy, double radio, double a0, double a1)
             {
-                X1 = xIni, Y1 = yCentro,
-                X2 = xFin, Y2 = yCentro,
-                Stroke = verde,
-                StrokeThickness = grosor
-            });
+                const int tramos = 10;
 
-            if (ganchoM <= 0)
-            {
-                return;
-            }
-
-            var gM = Estribos.GanchoEfectivo(
-                Estribos.GanchoNominal(a.EsVertical, ganchoM, dM), disponibleM, dM);
-
-            if (gM <= 0)
-            {
-                return;
-            }
-
-            // El gancho va hacia DENTRO de la pieza: el del lecho superior baja y el
-            // del inferior sube. Al revés saldría del concreto.
-            var g = gM * esc * (dobleHaciaAbajo ? 1 : -1);
-
-            foreach (var x in new[] { xIni, xFin })
-            {
-                PreviewCanvas.Children.Add(new Line
+                for (var i = 0; i <= tramos; i++)
                 {
-                    X1 = x, Y1 = yCentro,
-                    X2 = x, Y2 = yCentro + g,
-                    Stroke = verde,
-                    StrokeThickness = grosor
+                    var t = a0 + ((a1 - a0) * i / tramos);
+
+                    trazo.Add(new Point(
+                        cx + (radio * Math.Cos(t)), cy + (radio * Math.Sin(t))));
+                }
+            }
+
+            // ===== EL GANCHO: 15 DIÁMETROS, Y SIN ENCIMARSE CON EL DE ENFRENTE =====
+            //
+            // 15 diámetros es el largo de anclaje que se pide. Antes salía de
+            // Estribos.GanchoNominal, que da 12 en la trabe.
+            //
+            // Y va topado: el gancho del lecho de arriba baja y el de abajo sube, así que
+            // con un peralte chico las dos puntas se cruzaban en el centro y el dibujo se
+            // leía como una sola varilla doblada de arriba abajo. El tope deja siempre un
+            // hueco entre las dos puntas —disponibleM ya viene descontado en el
+            // llamador—, para que se vea que son dos piezas distintas.
+            var gM = Math.Min(15 * dM, disponibleM);
+
+            if (gM < dM)
+            {
+                gM = 0;   // no cabe ni un diámetro: no hay gancho que dibujar
+            }
+
+            if (gM > 0)
+            {
+                // El gancho va hacia DENTRO de la pieza: el del lecho superior baja y el
+                // del inferior sube. Al revés saldría del concreto.
+                var g = gM * esc * (dobleHaciaAbajo ? 1 : -1);
+                var s = dobleHaciaAbajo ? 1 : -1;
+
+                // ===== EL DOBLEZ ES UN ARCO DE VERDAD, NO UNA ESQUINA =====
+                //
+                // Antes el eje iba en pico y solo se redondeaba al ensanchar la pluma, así
+                // que la cara de FUERA salía curva pero la de DENTRO quedaba en escuadra:
+                // un doblez que ninguna varilla hace. Ahora el eje lleva su arco, así que
+                // las dos caras salen curvas y concéntricas.
+                //
+                // El radio del EJE es un diámetro, que es lo que deja la cara de dentro a
+                // medio diámetro: el mismo radio interior con el que AutoCAD dibuja este
+                // doblez en VarillaConGanchos —su arco de dentro va a dBar/2—.
+                var radio = grosor;
+
+                // Y topado: no puede pasar de lo que mide la cola ni de media longitud, o
+                // el arco se comería el tramo recto y se cruzaría consigo mismo.
+                radio = Math.Min(radio, Math.Abs(g));
+                radio = Math.Min(radio, (xFin - xIni) / 2);
+
+                if (radio < 0.2)
+                {
+                    // Sin sitio para el doblez se deja en pico: es mejor que un arco que
+                    // se dobla sobre sí mismo.
+                    trazo.Add(new Point(xIni, yCentro + g));
+                    trazo.Add(new Point(xIni, yCentro));
+                    trazo.Add(new Point(xFin, yCentro));
+                    trazo.Add(new Point(xFin, yCentro + g));
+                }
+                else
+                {
+                    var pi = Math.PI;
+
+                    // La punta de la cola de la izquierda, y el doblez que la entrega al
+                    // tramo recto.
+                    trazo.Add(new Point(xIni, yCentro + g));
+
+                    Doblez(xIni + radio, yCentro + (s * radio), radio,
+                           pi, pi + (s * pi / 2));
+
+                    // El tramo recto lo pone el propio doblez de la derecha.
+                    Doblez(xFin - radio, yCentro + (s * radio), radio,
+                           (2 * pi) - (s * pi / 2), 2 * pi);
+
+                    trazo.Add(new Point(xFin, yCentro + g));
+                }
+            }
+            else
+            {
+                trazo.Add(new Point(xIni, yCentro));
+                trazo.Add(new Point(xFin, yCentro));
+            }
+
+            // ===== LA VARILLA VA HUECA, SALVO EN EL TIPO RELLENA =====
+            //
+            // Antes era una banda verde MACIZA, y con dos varillas a todo lo largo de la
+            // pieza el verde se comía el alzado: tapaba el achurado y competía con los
+            // estribos, que es lo que hay que mirar.
+            //
+            // Ahora se saca el CONTORNO de la banda con GetWidenedPathGeometry, que es la
+            // silueta que dejaría esa pluma, y se pinta como contorno fino. En el tipo
+            // rellena se rellena, igual que el estribo, para que los dos estilos sigan
+            // distinguiéndose.
+            //
+            // El contorno sale con las esquinas ya redondeadas porque la pluma lleva
+            // LineJoin en Round: el mismo fillet de medio diámetro que deja AutoCAD.
+            var camino = new PathGeometry();
+            var figura = new PathFigure { StartPoint = trazo[0], IsClosed = false };
+
+            for (var i = 1; i < trazo.Count; i++)
+            {
+                figura.Segments.Add(new LineSegment(trazo[i], true));
+            }
+
+            camino.Figures.Add(figura);
+
+            var pluma = new Pen(verde, grosor)
+            {
+                LineJoin = PenLineJoin.Round,
+                StartLineCap = PenLineCap.Round,
+                EndLineCap = PenLineCap.Round
+            };
+
+            // ===== EL CONTORNO, LIMPIO DE COSTURAS =====
+            //
+            // GetWidenedPathGeometry devuelve la silueta de la pluma tramo POR tramo: un
+            // cuadrilátero por segmento del eje más la unión entre ellos. Eso vale para
+            // rellenar, pero al trazarlo se dibujan TAMBIÉN todas las costuras internas, una
+            // por segmento.
+            //
+            // Con el eje en pico eran tres segmentos y las costuras casi no se veían. Al
+            // meter los dobleces como arcos muestreados pasaron a ser veinte, y las de los
+            // dobleces caen todas juntas en unos milímetros: eso era el borrón verde que
+            // aparecía justo en los ganchos. No era un color de más, eran veinte líneas.
+            //
+            // GetOutlinedPathGeometry funde todo eso en un solo contorno, el de la unión, sin
+            // costuras por dentro. Es la diferencia entre trazar la silueta y trazar todos
+            // los trozos con los que se construyó.
+            var contorno = camino.GetWidenedPathGeometry(pluma).GetOutlinedPathGeometry();
+
+            // El RELLENO, en el tipo 2, va entero y sin cortar: en AutoCAD el achurado de
+            // la varilla es continuo y lo que se corta son sus caras.
+            if (a.Modo == ModoSeccion.Tipo2Rellena)
+            {
+                PreviaFijaCanvas.Children.Add(new FormaPath
+                {
+                    Data = contorno,
+                    Fill = verde
                 });
             }
+
+            // ==================================================================
+            //  LA CARA DE LA VARILLA SE CORTA DONDE CRUZA UN ESTRIBO
+            // ==================================================================
+            //
+            // Es lo que hace que el alzado se lea: la varilla pasa por DETRÁS del estribo, y
+            // dejar su línea entera hace creer que pasa por delante. Es exactamente lo que
+            // hace CaraSegmentada en el dibujante de AutoCAD, con el mismo hueco de medio
+            // diámetro de estribo a cada lado del eje del estribo.
+            //
+            // Se resuelve RECORTANDO el dibujo y no partiendo la geometría: recortar deja
+            // que el contorno desaparezca dentro de la banda del estribo sin más. Si se
+            // partiera la geometría, WPF trazaría también los bordes del corte y aparecerían
+            // dos rayas verticales en cada cruce, que en el plano no están.
+            PreviaFijaCanvas.Children.Add(new FormaPath
+            {
+                Data = contorno,
+                Stroke = verde,
+                StrokeThickness = 0.8,
+                Clip = FueraDeLosEstribos()
+            });
+        }
+
+        // La zona donde SÍ se dibuja la cara de la varilla: todo el alzado menos una banda
+        // en cada estribo. Se arma una vez por varilla porque un Clip no se puede compartir
+        // entre figuras si luego alguna se congela.
+        Geometry FueraDeLosEstribos()
+        {
+            var bandas = new GeometryGroup();
+
+            // El mismo hueco que AutoCAD: medio diámetro de estribo a cada lado. Con un
+            // mínimo de medio píxel, o a escalas chicas el corte no se vería.
+            var mitad = Math.Max(dEst / 2, 0.5);
+
+            foreach (var c in centros)
+            {
+                var xc = izquierda + (c * esc);
+
+                bandas.Children.Add(new RectangleGeometry(
+                    new Rect(xc - mitad, top - 40, 2 * mitad, h + 80)));
+            }
+
+            var todo = new RectangleGeometry(
+                new Rect(izquierda - 40, top - 40, w + 80, h + 80));
+
+            if (bandas.Children.Count == 0)
+            {
+                return todo;
+            }
+
+            return new CombinedGeometry(GeometryCombineMode.Exclude, todo, bandas);
         }
 
         var dSupCm = a.Superior.Esquina.Cm > 0 ? a.Superior.Esquina.Cm : 0.95;
@@ -4776,10 +5542,20 @@ public partial class MainWindow : Window
         var ySupM = peralteM - recM - (dSupCm / 200.0);
         var yInfM = recM + (dInfCm / 200.0);
 
-        // Lo que cabe para cada gancho: del borde de la varilla al recubrimiento
-        // opuesto. Es el mismo recorte que hace la macro con maxSup y maxInf.
-        var libreSup = ySupM - (dSupCm / 200.0) - recM;
-        var libreInf = peralteM - recM - (yInfM + (dInfCm / 200.0));
+        // ===== CUÁNTO CABE PARA CADA GANCHO, SIN QUE SE ENCIMEN =====
+        //
+        // Los dos ganchos apuntan al centro: el de arriba baja y el de abajo sube. Si
+        // cada uno pudiera llegar hasta el recubrimiento opuesto —como antes—, en un
+        // peralte chico se cruzaban por el medio.
+        //
+        // Ahora el hueco entre los dos ejes se reparte a medias y se le quita una
+        // separación de tres diámetros, así que siempre queda aire entre las dos puntas.
+        var hueco = ySupM - yInfM;
+        var separacion = 3 * Math.Max(dSupCm, dInfCm) / 100.0;
+        var mitadUtil = Math.Max(0, (hueco - separacion) / 2);
+
+        var libreSup = Math.Min(ySupM - (dSupCm / 200.0) - recM, mitadUtil);
+        var libreInf = Math.Min(peralteM - recM - (yInfM + (dInfCm / 200.0)), mitadUtil);
 
         BarraDeAlzado(top + rec + (dSupCm / 100.0 * esc / 2), dSupCm,
             dobleHaciaAbajo: true, disponibleM: libreSup);
@@ -4787,13 +5563,55 @@ public partial class MainWindow : Window
         BarraDeAlzado(top + h - rec - (dInfCm / 100.0 * esc / 2), dInfCm,
             dobleHaciaAbajo: false, disponibleM: libreInf);
 
-        Etiqueta($"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
+        // ===== LAS VARILLAS INTERMEDIAS =====
+        //
+        // Faltaban, y por eso no se veían: el alzado dibujaba solo los dos lechos extremos.
+        //
+        // Lo que se ve a media altura en un alzado son las LATERALES: las intermedias de un
+        // lecho van a la misma altura que las de esquina de ese lecho, así que en una vista de
+        // lado caen justo encima y no añaden nada. Las laterales, en cambio, están cada una a
+        // su altura y son las que faltan por dibujar.
+        //
+        // Sin gancho, que es la regla del dibujante de AutoCAD: solo las de los lechos
+        // extremos lo llevan, porque el de una intermedia chocaría con el de al lado.
+        // Pasando cero de disponible, BarraDeAlzado no dibuja gancho.
+        Varilla.TryDiametroCm(s.Estribo, out var deLat);
+
+        var alturas = new List<double>();
+
+        foreach (var (_, yLatCm, rLatCm) in PosicionesLaterales(s, deLat, s.RecubrimientoCm))
+        {
+            // Una altura por FILA de laterales: las dos de una fila —la de cada costado— caen
+            // en el mismo sitio en el alzado, así que dibujar las dos sería pintar dos veces la
+            // misma línea.
+            if (alturas.Any(y => Math.Abs(y - yLatCm) < 1e-6))
+            {
+                continue;
+            }
+
+            alturas.Add(yLatCm);
+
+            // La Y de PosicionesLaterales va del paño de ABAJO hacia arriba, en centímetros, y
+            // el lienzo crece hacia abajo desde 'top'. Es la misma cuenta que hacen los dos
+            // lechos extremos: el de abajo se coloca en top + h − (rec + dInf/2) convertido a
+            // píxeles, que es exactamente top + h − suY.
+            BarraDeAlzado(
+                top + h - (yLatCm / 100.0 * esc),
+                rLatCm * 2,
+                dobleHaciaAbajo: false,
+                disponibleM: 0);
+        }
+
+        // Y AHORA los estribos, encima de las varillas.
+        DibujarEstribosDelAlzado();
+
+        Etiqueta(PreviaFijaCanvas, $"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
 
         var textoGancho = ganchoM > 0
             ? $"   ·   gancho {a.GanchoCm:N0} cm"
             : "   ·   sin gancho";
 
-        Etiqueta($"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
+        Etiqueta(PreviaFijaCanvas, $"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
                  $"{a.SeparacionesCm[0]:N0}-{a.SeparacionesCm[1]:N0}-{a.SeparacionesCm[2]:N0} cm" +
                  textoGancho,
             izquierda, top + h + 8);
@@ -4850,6 +5668,34 @@ public partial class MainWindow : Window
 
         if (!intermedio)
         {
+            // ===== PAQUETE: más de dos varillas de esquina se APILAN =====
+            //
+            // Un lecho de esquina lleva una varilla en cada esquina. Cuando se piden más,
+            // NO se reparten a lo ancho —para eso está el lecho intermedio—: se cuelgan
+            // de la de la esquina hacia el núcleo, pegadas, formando un paquete.
+            //
+            // La de fuera es la que da el doblez del estribo, así que las demás van
+            // detrás de ella y no al contrario. La regla está en PaqueteVarillas, que es
+            // la misma que usa el dibujante de AutoCAD.
+            if (PaqueteVarillas.EsPaquete(cantidad))
+            {
+                var porEsquina = PaqueteVarillas.PorEsquina(cantidad);
+
+                // Primero el paquete izquierdo completo y luego el derecho. El orden
+                // importa: es el que numera las varillas para las grapas.
+                foreach (var xEsquina in new[] { off, s.BaseCm - off })
+                {
+                    for (var k = 0; k < porEsquina; k++)
+                    {
+                        salida.Add((xEsquina,
+                                    y + PaqueteVarillas.Desplazamiento(k, d, arriba),
+                                    r));
+                    }
+                }
+
+                return salida;
+            }
+
             // Lecho de esquina: repartido de off a base menos off
             var paso = (s.BaseCm - (2 * off)) / (cantidad - 1);
 
@@ -4959,27 +5805,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        // El núcleo, ya descontado el recubrimiento.
-        var x1 = rec;
-        var y1 = rec;
-        var x2 = s.BaseCm - rec;
-        var y2 = s.AlturaCm - rec;
-
-        var varSup = new List<(double X, double Y, double R)>();
-        varSup.AddRange(PosicionesDeLecho(s, s.NEsqSup, s.DiamEsqSup, de, rec,
-                                         arriba: true, intermedio: false));
-        varSup.AddRange(PosicionesDeLecho(s, s.NIntSup, s.DiamIntSupEfectivo, de, rec,
-                                         arriba: true, intermedio: true));
-
-        var varInf = new List<(double X, double Y, double R)>();
-        varInf.AddRange(PosicionesDeLecho(s, s.NEsqInf, s.DiamEsqInfEfectivo, de, rec,
-                                         arriba: false, intermedio: false));
-        varInf.AddRange(PosicionesDeLecho(s, s.NIntInf, s.DiamIntInfEfectivo, de, rec,
-                                         arriba: false, intermedio: true));
-
-        var varLat = PosicionesLaterales(s, de, rec);
-
-        var centros = TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat);
+        // LOS CENTROS SALEN DE LA CUENTA COMPARTIDA, la misma que usa la vista 3D. Aquí estaba
+        // repetida, y por eso las dos vistas se separaron: esta pasaba los lechos completos y la
+        // 3D solo las varillas de esquina, así que en una sección con varilla intermedia el
+        // diamante salía en el corte y no salía en el 3D. Ver CentrosDelDiamante.
+        var centros = CentrosDelDiamante(s, de, rec, dDia);
 
         if (centros is null)
         {
@@ -5018,7 +5848,7 @@ public partial class MainWindow : Window
             {
                 Points = linea,
                 Stroke = trazo,
-                StrokeThickness = 1.1
+                StrokeThickness = LineaAcero
             });
         }
 
@@ -5139,7 +5969,7 @@ public partial class MainWindow : Window
         {
             Points = arco,
             Stroke = trazo,
-            StrokeThickness = 1.1
+            StrokeThickness = LineaAcero
         });
 
         // Las dos colas, con sus tres líneas cada una.
@@ -5167,7 +5997,7 @@ public partial class MainWindow : Window
                     X1 = px(x1), Y1 = py(y1),
                     X2 = px(x2), Y2 = py(y2),
                     Stroke = trazo,
-                    StrokeThickness = 1.1
+                    StrokeThickness = LineaAcero
                 });
             }
         }
@@ -5223,9 +6053,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ===== CON PAQUETE, EL DOBLEZ BAJA A LA SEGUNDA VARILLA =====
+        //
+        // Baja, y nada más: NO cambia de tamaño. El radio de un doblez lo manda la varilla
+        // con la que se dobla, así que es el mismo con una varilla en la esquina o con
+        // tres.
+        //
+        // Y baja porque la de la esquina ya la tiene abrazada el propio doblez de la
+        // esquina del estribo, y un gancho ahí quedaría encimado con él.
+        var enPaquete = PaqueteVarillas.EsPaquete(s.NEsqSup)
+            ? PaqueteVarillas.PorEsquina(s.NEsqSup)
+            : 1;
+
         var rIn = dSup / 2;
         var rOut = rIn + dEst;
 
+        // by es la varilla DE LA ESQUINA, sin bajarla. El obrondo del paquete baja por su
+        // cuenta hasta la varilla de abajo —ver byAbajo—, así que bajar también aquí
+        // dejaba el gancho entero un diámetro por debajo de su sitio.
         var bx = s.BaseCm - rec - dEst - rIn;
         var by = s.AlturaCm - rec - dEst - rIn;
 
@@ -5236,34 +6081,129 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
-        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
-        foreach (var r in new[] { rIn, rOut })
+        // Dibuja un arco del doblez muestreado en tramos rectos, que es lo que se puede
+        // hacer en un lienzo de WPF.
+        void ArcoDoblez(double cx, double cy, double r, double desde, double barrido)
         {
             var puntos = new PointCollection();
 
             for (var k = 0; k <= 24; k++)
             {
-                var a = (1.75 * Math.PI) + (k / 24.0 * Math.PI);
+                var a = desde + (k / 24.0 * barrido);
 
                 puntos.Add(new Point(
-                    px(bx + (r * Math.Cos(a))), py(by + (r * Math.Sin(a)))));
+                    px(cx + (r * Math.Cos(a))), py(cy + (r * Math.Sin(a)))));
             }
 
             PreviewCanvas.Children.Add(new Polyline
             {
                 Points = puntos,
                 Stroke = trazo,
-                StrokeThickness = 1.2
+                StrokeThickness = LineaAcero
             });
         }
 
-        // Las dos colas, hacia el núcleo. Rt2I es cos(45°): la dirección es 225°.
         const double rt2I = 0.707106781186547;
+        var largo = s.GanchoCm;
+
+        // ======================================================================
+        //  CON PAQUETE: GANCHO DE 135° SOBRE LA SEGUNDA VARILLA
+        // ======================================================================
+        //  El estribo baja RECTO por la cara derecha, pasa de largo la varilla de la
+        //  esquina, llega a la segunda y gira ahí. Es un gancho de 135° de verdad: barre
+        //  135° y sale UNA cola.
+        //
+        //  El de la esquina es de 180°: da media vuelta y salen DOS colas paralelas,
+        //  porque la varilla entra, rodea y vuelve. Ese es el que NO sirve aquí: la media
+        //  vuelta le pasaría por encima a la primera varilla del paquete.
+        if (enPaquete > 1)
+        {
+            // ===== EL DOBLEZ ES UN OBRONDO QUE ABRAZA EL PAQUETE =====
+            //
+            // Un doblez del MISMO radio en cada varilla del paquete, unidos por un tramo
+            // recto. El radio no crece, hay parte recta, y abraza todas las varillas.
+            //
+            // Recorrido: entra la cola, rodea la varilla de ABAJO por su cara de fuera,
+            // sube recto por el costado, rodea la de la ESQUINA y sale la otra cola. Las
+            // dos colas van paralelas hacia el núcleo.
+            //
+            // Es la misma geometría que SeccionDrawer.Ganchos.
+            var byAbajo = by + PaqueteVarillas.Desplazamiento(enPaquete - 1, dSup, arriba: true);
+
+            // Qué se dibuja y qué no, igual que en el dibujante: el gancho pasa POR ENCIMA
+            // del estribo, así que las dos caras que caerían dentro del trazo del estribo
+            // se dejan fuera —la de fuera del doblez de la esquina y la de dentro del
+            // costado—. Sin ellas el cruce se lee limpio; con ellas el estribo aparecía
+            // partido.
+
+            // El obrondo COMPLETO, con sus dos caras. Quitarle caras propias lo dejaba
+            // abierto; lo que hay que recortar son las líneas del ESTRIBO por donde el
+            // gancho le pasa por encima.
+            // Los dos trazos que NO van, siempre, igual que en el dibujante: del doblez de
+            // la esquina el pedazo de 90° a 135°, y del doblez de abajo la cara de dentro.
+            ArcoDoblez(bx, byAbajo, rOut, 1.75 * Math.PI, 0.25 * Math.PI);
+
+            foreach (var r in new[] { rIn, rOut })
+            {
+                // El tramo RECTO del costado.
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(bx + r), Y1 = py(byAbajo),
+                    X2 = px(bx + r), Y2 = py(by),
+                    Stroke = trazo,
+                    StrokeThickness = LineaAcero
+                });
+
+                // El doblez de la esquina, hasta ARRIBA: de 0° a 90°.
+                ArcoDoblez(bx, by, r, 0, 0.5 * Math.PI);
+            }
+
+            // Las DOS colas, hacia el núcleo. Una sale del doblez de abajo por su punto de
+            // 315°, y la otra del de la esquina por su 135°.
+            foreach (var (cy, nx, ny) in new[]
+            {
+                (byAbajo, rt2I, -rt2I),
+                (by, -rt2I, rt2I)
+            })
+            {
+                foreach (var r in new[] { rIn, rOut })
+                {
+                    PreviewCanvas.Children.Add(new Line
+                    {
+                        X1 = px(bx + (r * nx)),
+                        Y1 = py(cy + (r * ny)),
+                        X2 = px(bx + (r * nx) - (largo * rt2I)),
+                        Y2 = py(cy + (r * ny) - (largo * rt2I)),
+                        Stroke = trazo,
+                        StrokeThickness = LineaAcero
+                    });
+                }
+
+                // La punta, que cierra las dos caras de esa cola.
+                PreviewCanvas.Children.Add(new Line
+                {
+                    X1 = px(bx + (rIn * nx) - (largo * rt2I)),
+                    Y1 = py(cy + (rIn * ny) - (largo * rt2I)),
+                    X2 = px(bx + (rOut * nx) - (largo * rt2I)),
+                    Y2 = py(cy + (rOut * ny) - (largo * rt2I)),
+                    Stroke = trazo,
+                    StrokeThickness = LineaAcero
+                });
+            }
+
+            return;
+        }
+
+        // ---------- Sin paquete: el gancho de siempre, de 180° en la esquina ----------
+
+        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
+        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
+        ArcoDoblez(bx, by, rIn, 1.75 * Math.PI, Math.PI);
+        ArcoDoblez(bx, by, rOut, 1.75 * Math.PI, Math.PI);
+
+        // Las dos colas, hacia el núcleo. rt2I es cos(45°): la dirección es 225°.
         const double ux = -rt2I;
         const double uy = -rt2I;
-
-        var largo = s.GanchoCm;
 
         // El recorte de la segunda cola, con la condición del dibujante: el cruce con el
         // estribo tiene que caer DENTRO del largo del gancho. Si el gancho es corto, no
@@ -5309,7 +6249,7 @@ public partial class MainWindow : Window
                     X1 = px(ax), Y1 = py(ay),
                     X2 = px(bx2), Y2 = py(by2),
                     Stroke = trazo,
-                    StrokeThickness = 1.2
+                    StrokeThickness = LineaAcero
                 });
             }
         }
@@ -5344,7 +6284,13 @@ public partial class MainWindow : Window
     /// de sitio en cada redibujado, por ejemplo al cambiar el tamaño del panel.
     /// </para>
     /// </remarks>
-    private void DibujarPatronConcreto(double left, double top, double w, double h)
+    /// <param name="destino">
+    /// En qué lienzo se pinta. Lo piden <b>las dos</b> capas: el corte, que se mueve con
+    /// el zoom, y el alzado, que se queda fijo. Es la razón de que sea un parámetro y no
+    /// esté escrito dentro: es el único ayudante de dibujo que comparten.
+    /// </param>
+    private void DibujarPatronConcreto(
+        Canvas destino, double left, double top, double w, double h)
     {
         if (w < 4 || h < 4)
         {
@@ -5354,41 +6300,77 @@ public partial class MainWindow : Window
         var recorte = new RectangleGeometry(new Rect(left, top, w, h));
         var tinta = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0x9C));
 
-        // Líneas a 45°, recortadas al rectángulo de concreto
-        var lineas = new GeometryGroup();
-        const double paso = 9.0;
-
-        for (var d = -h; d < w + h; d += paso)
-        {
-            lineas.Children.Add(new LineGeometry(
-                new Point(left + d, top + h),
-                new Point(left + d + h, top)));
-        }
-
-        PreviewCanvas.Children.Add(new FormaPath
-        {
-            Data = lineas,
-            Stroke = tinta,
-            StrokeThickness = 0.55,
-            Clip = recorte
-        });
-
-        // Áridos: puntos dispersos, con semilla fija
+        // La semilla es fija a propósito: si fuera aleatoria, los áridos saltarían de
+        // sitio en cada redibujado, por ejemplo al cambiar el tamaño del panel.
         var rnd = new Random(20260817);
-        var cuantos = (int)Math.Clamp(w * h / 380.0, 6, 260);
-        var aridos = new GeometryGroup();
+
+        // ---------- Los áridos: TRIÁNGULOS huecos ----------
+        //
+        // Así es el AR-CONC de AutoCAD: piedra angular dibujada como triangulitos
+        // sueltos, de tamaños y giros distintos, más puntos finos de arena. NO lleva
+        // rayado diagonal; el que había antes era una aproximación que no se parecía.
+        var triangulos = new GeometryGroup();
+
+        // Uno por cada 900 px² de superficie, con topes para que no queden cuatro
+        // perdidos en una sección grande ni un amasijo en una chica.
+        var cuantos = (int)Math.Clamp(w * h / 900.0, 4, 90);
 
         for (var k = 0; k < cuantos; k++)
         {
-            var px = left + (rnd.NextDouble() * w);
-            var py = top + (rnd.NextDouble() * h);
-            var r = 0.7 + (rnd.NextDouble() * 1.15);
-            aridos.Children.Add(new EllipseGeometry(new Point(px, py), r, r));
+            var cx = left + (rnd.NextDouble() * w);
+            var cy = top + (rnd.NextDouble() * h);
+
+            // Radio del triángulo y giro, los dos al azar: en el patrón real no hay dos
+            // piedras iguales ni alineadas.
+            var r = 2.6 + (rnd.NextDouble() * 2.6);
+            var giro = rnd.NextDouble() * 2 * Math.PI;
+
+            var fig = new PathFigure { IsClosed = true, IsFilled = false };
+
+            for (var v = 0; v < 3; v++)
+            {
+                var a = giro + (v * 2 * Math.PI / 3);
+                var p = new Point(cx + (r * Math.Cos(a)), cy + (r * Math.Sin(a)));
+
+                if (v == 0)
+                {
+                    fig.StartPoint = p;
+                }
+                else
+                {
+                    fig.Segments.Add(new LineSegment(p, true));
+                }
+            }
+
+            var geo = new PathGeometry();
+            geo.Figures.Add(fig);
+            triangulos.Children.Add(geo);
         }
 
-        PreviewCanvas.Children.Add(new FormaPath
+        destino.Children.Add(new FormaPath
         {
-            Data = aridos,
+            Data = triangulos,
+            Stroke = tinta,
+            StrokeThickness = 0.6,
+            Fill = null,
+            Clip = recorte
+        });
+
+        // ---------- La arena: puntos finos ----------
+        var arena = new GeometryGroup();
+        var puntos = (int)Math.Clamp(w * h / 500.0, 6, 200);
+
+        for (var k = 0; k < puntos; k++)
+        {
+            var px = left + (rnd.NextDouble() * w);
+            var py = top + (rnd.NextDouble() * h);
+            var r = 0.35 + (rnd.NextDouble() * 0.45);
+            arena.Children.Add(new EllipseGeometry(new Point(px, py), r, r));
+        }
+
+        destino.Children.Add(new FormaPath
+        {
+            Data = arena,
             Fill = tinta,
             Clip = recorte
         });
@@ -5398,16 +6380,26 @@ public partial class MainWindow : Window
     /// Anillo relleno: representa el cuerpo del estribo, que en AutoCAD es un
     /// hatch <c>SOLID</c> entre la frontera exterior y la interior.
     /// </summary>
+    /// <param name="radio">
+    /// Radio de las esquinas de la cara exterior, en píxeles. La interior lleva el mismo
+    /// menos el grueso del estribo, que es la relación real: las dos caras de un doblez
+    /// son arcos concéntricos.
+    /// </param>
     private static FormaPath Anillo(
         double left, double top, double w, double h, double grosor,
-        Brush relleno, Brush trazo)
+        Brush relleno, Brush trazo, double radio = 0)
     {
-        var externo = new RectangleGeometry(new Rect(left, top, Math.Max(w, 1), Math.Max(h, 1)));
+        var rExt = Math.Max(0, Math.Min(radio, 0.49 * Math.Min(Math.Max(w, 1), Math.Max(h, 1))));
+        var rInt = Math.Max(0, rExt - grosor);
+
+        var externo = new RectangleGeometry(
+            new Rect(left, top, Math.Max(w, 1), Math.Max(h, 1)), rExt, rExt);
 
         var g = Math.Max(grosor, 0.8);
         var iw = Math.Max(w - (2 * g), 0.5);
         var ih = Math.Max(h - (2 * g), 0.5);
-        var interno = new RectangleGeometry(new Rect(left + g, top + g, iw, ih));
+        var interno = new RectangleGeometry(
+            new Rect(left + g, top + g, iw, ih), rInt, rInt);
 
         return new FormaPath
         {
@@ -5423,23 +6415,52 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <param name="radio">
+    /// Radio de las esquinas, en píxeles. Es lo que hace que el estribo se vea doblado y
+    /// no en escuadra: en AutoCAD las cuatro esquinas son arcos —<c>PolyRectFillet</c> las
+    /// dibuja con <i>bulges</i>— porque una varilla no puede doblarse en pico.
+    /// <para>
+    /// WPF aplica el MISMO radio a las cuatro esquinas, mientras que en el plano el de
+    /// arriba y el de abajo se calculan con la varilla de su propio lecho. La diferencia
+    /// es medio diámetro de varilla y a la escala de la vista previa no se distingue, así
+    /// que no vale la pena armar un <c>Path</c> con cuatro arcos solo por eso.
+    /// </para>
+    /// </param>
     private static Rectangle Rectangulo(
-        double left, double top, double w, double h, Brush trazo, double grosor, Brush? relleno)
+        double left, double top, double w, double h, Brush trazo, double grosor,
+        Brush? relleno, double radio = 0)
     {
+        var ancho = Math.Max(w, 1);
+        var alto = Math.Max(h, 1);
+
+        // El mismo tope que PolyRectFillet: un radio mayor que media cara dejaría de ser
+        // una esquina redondeada y se comería el lado entero.
+        var rr = Math.Max(0, Math.Min(radio, 0.49 * Math.Min(ancho, alto)));
+
         var r = new Rectangle
         {
-            Width = Math.Max(w, 1),
-            Height = Math.Max(h, 1),
+            Width = ancho,
+            Height = alto,
             Stroke = trazo,
             StrokeThickness = grosor,
-            Fill = relleno
+            Fill = relleno,
+            RadiusX = rr,
+            RadiusY = rr
         };
         Canvas.SetLeft(r, left);
         Canvas.SetTop(r, top);
         return r;
     }
 
-    private void Etiqueta(string texto, double left, double top)
+    /// <summary>Un texto suelto en la vista previa.</summary>
+    /// <param name="destino">
+    /// En qué capa va. <b>Las cotas de la sección van en la capa del corte</b>, para que
+    /// acompañen a la sección al moverla y al acercarla: una cota que se queda quieta
+    /// mientras la sección se mueve deja de señalar la cara que mide, y entonces miente.
+    /// El título y los rótulos del alzado sí van en la capa fija, porque no señalan nada:
+    /// dicen de qué es el dibujo.
+    /// </param>
+    private void Etiqueta(Canvas destino, string texto, double left, double top)
     {
         var t = new TextBlock
         {
@@ -5450,7 +6471,8 @@ public partial class MainWindow : Window
         };
         Canvas.SetLeft(t, left);
         Canvas.SetTop(t, top);
-        PreviewCanvas.Children.Add(t);
+
+        destino.Children.Add(t);
     }
 
     // ==================================================================

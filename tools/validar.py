@@ -5354,9 +5354,31 @@ def v18_planta_autocad() -> None:
           and "PanoDeLosa.AlPano(el.Vertices, huellas)" in dib)
     # LAS ESQUINAS SE RECALCULAN CORTANDO los lados movidos: moviendo los vertices uno a uno,
     # un lado con muro y otro sin muro dejarian la esquina abierta o cruzada.
+    #
+    # Lo que se corta son el ULTIMO tramo de un lado y el PRIMERO del siguiente, que son los
+    # pedazos que de verdad llegan a la esquina.
     check("y las esquinas se recalculan cortando los lados, no moviendo vertices",
           "private static (double X, double Y)? Cruce(" in pano
-          and "var corte = Cruce(r, s);" in pano)
+          and "var corte = Cruce(lados[i].Tramos[^1].Recta, lados[j].Tramos[0].Recta);" in pano)
+
+    # ------------------------------------------------------------------
+    # EL HATCH LLEGA HASTA LA LINEA DE LA LOSA
+    # ------------------------------------------------------------------
+    #  Esto era un fallo que se veia en el plano. Se metia el LADO ENTERO en cuanto habia
+    #  cualquier huella paralela debajo, asi que un lado de 4 m con una cadena de solo 2 m se
+    #  metia completo: en los 2 m libres el achurado del voladizo quedaba a 7.5 cm de la linea
+    #  de la losa, con una franja en blanco entre los dos. Se pidio que el hatch llegue hasta el
+    #  pano de la losa, o sea hasta su linea.
+    #
+    #  Ahora el lado se parte en TRAMOS y solo se mete el que tiene muro debajo, asi que el
+    #  contorno del molde escalona.
+    check("el molde del hatch se mete por tramos, no el lado entero",
+          "private static Lado DelLado(" in pano
+          and "private sealed record Tramo(" in pano
+          and "cubren.Add((desde, hasta, Math.Min(h.PeralteM / 2, maximo)));" in pano
+          # Los cortes son los extremos de las huellas proyectados sobre el lado.
+          and "cortes.Add(desde)" in pano
+          and "cortes.Add(hasta)" in pano)
     # Y UN MURO PERPENDICULAR QUE SOLO TOCA LA ORILLA NO CUENTA: no esta debajo de esa orilla.
     check("un muro perpendicular no mete el pano",
           'Math.Abs((hx * dx) + (hy * dy)) < 0.98' in pano)
@@ -6041,8 +6063,19 @@ def v18_planta_autocad() -> None:
           and "PlanoEstructural.CadenaMasAlta.Tapadas(p.Elementos, tolCadena)" in dibp)
     # SOLO LAS QUE SE ENCIMAN DE VERDAD: dos tramos seguidos del mismo paño son dos cadenas
     # distintas -una de castillo a castillo y la siguiente de ahi al final- y las dos se dibujan.
-    check("y solo se tapa la que otra le pasa por encima",
-          "return Math.Min(a2, b2) - Math.Max(a1, b1) > tolM;" in cma)
+    #
+    # Y SE TAPA SOLO SI LA CUBREN ENTERA. Esto se corrigio: antes bastaba que la de arriba la
+    # solapara mas de la holgura -diez centimetros- para callarla COMPLETA, asi que una cadena
+    # corta con una de cerramiento que solo le entraba por la punta desaparecia del plano y en
+    # su sitio no quedaba nada. Se mide la UNION de las de arriba, no cada una por su cuenta:
+    # si dos se reparten cubrirla, no dejan ningun pedazo sin dibujar y si se calla.
+    check("y solo se tapa la que otra le pasa por encima, cubriendola entera",
+          "return Math.Min(a2, b2) - Math.Max(a1, b1) >= largoA - tolM;" in cma
+          and "private static double LargoCubierto(" in cma
+          and "if (LargoCubierto(cubren) >= largoA - tolM)" in cma
+          # Sin nadie encima no se calla: en una cadena mas corta que la holgura, la cuenta
+          # saldria cierta con cero cubierto.
+          and "if (cubren.Count == 0)" in cma)
     # LAS TRABES NO ENTRAN: dos trabes a distinta altura sobre la misma linea son dos vigas de
     # verdad -una de entrepiso y una de azotea- y callar una seria esconder estructura.
     check("las trabes no entran, solo las cadenas y las dalas",
@@ -6186,8 +6219,49 @@ def v18_planta_autocad() -> None:
           and "e.Z2 = zMax;" in lector)
     check("el castillo de area que cruza el nivel se trae de cualquier story",
           "private void AgregarCastillosDeArea(" in winp
-          and "AgregarCastillosDeArea(modelo, p, nivel);" in winp
+          and "AgregarCastillosDeArea(modelo, p, nivel, yaEstan);" in winp
           and 'CfgPlano.Bandera("SHELL_CASTILLO_DE_OTRO_NIVEL", true)' in winp)
+
+    # ------------------------------------------------------------------
+    # EL CORTE ES A LA COTA DEL NIVEL: LO QUE CRUZA SE DIBUJA AHI
+    # ------------------------------------------------------------------
+    #  Se pidio: "haz el corte al nivel story y todo lo que haya debajo de ese nivel se dibuja
+    #  en ese story". La planta se armaba SOLO con lo que ETABS tenia asignado a ese story, y
+    #  ETABS asigna cada pieza al piso de su cota MAS ALTA: un muro de corrido por dos niveles
+    #  es de un solo story -el de arriba- y desaparecia del plano de abajo.
+    #
+    #  Ya estaba resuelto para UN caso -el castillo de shell, justo arriba- y con este mismo
+    #  razonamiento. Lo que faltaba era que valiera para todo.
+    check("lo que cruza el entrepiso se dibuja en ese nivel, sea del story que sea",
+          "private void AgregarLoQueCruzaElNivel(" in winp
+          and "AgregarLoQueCruzaElNivel(modelo, p, nivel, yaEstan);" in winp
+          and 'CfgPlano.Bandera("NIVEL_DIBUJA_LO_QUE_CRUZA", true)' in winp
+          and "CruceDeNivel.CruzaBastante(el, n, fraccion)" in winp)
+
+    # Y NADA SE DIBUJA DOS VECES: hay tres pasadas que recogen piezas de otros story por su
+    # geometria, asi que las tres comparten el conjunto de lo que ya entro. Sin eso la misma
+    # pieza podria entrar por dos caminos y verse doble.
+    check("y nada entra dos veces: las pasadas comparten lo que ya esta",
+          "var yaEstan = new HashSet<ElementoEtabs>();" in winp
+          and winp.count("yaEstan.Contains(el)") >= 3
+          and winp.count("yaEstan.Add(el)") >= 4)
+
+    # LA MEDIDA ES CUANTO CUBRE DEL ENTREPISO, no "toca este nivel": una pieza que asoma un
+    # centimetro saldria dibujada en dos plantas.
+    cruce = leer(ruta("client/src/CadLink.Etabs/CruceDeNivel.cs"))
+
+    check("la medida es cuanto cubre del entrepiso, con su fraccion",
+          "public static double Cubre(" in cruce
+          and "public static bool CruzaBastante(" in cruce
+          and "return Cubre(el, zBaja, zAlta) >= n.AlturaM * f;" in cruce)
+    # Y LA Z SE RECORTA AL ENTREPISO, o el corte veria la pieza de tres niveles saliendose.
+    check("y las cotas se recortan a ese entrepiso",
+          "public static (double Z1, double Z2) RecortadaAlNivel(" in cruce
+          and "CruceDeNivel.RecortadaAlNivel(el, n)" in winp)
+    # UNA VIGA Y UNA LOSA estan a UNA sola cota: no cruzan nada.
+    check("una viga y una losa no cruzan un entrepiso",
+          "clase is ClaseElemento.Muro or ClaseElemento.Columna or ClaseElemento.Diagonal"
+          in cruce)
     # Por su altura DE VERDAD -los vertices-, no por Z1/Z2, que en un area es el dato flojo.
     check("y se mide por los vertices del area",
           "el.Vertices3D.Min(v => v.Z)" in winp
@@ -8475,8 +8549,9 @@ def v19_circular_y_ui() -> None:
     if m_dp:
         dp = m_dp.group(0)
 
-        check("la vista previa pide el recorrido a TrazoDiamante",
-              "TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat)" in dp)
+        check("la vista previa pide el recorrido a la cuenta compartida",
+              "CentrosDelDiamante(s, de, rec, dDia)" in dp
+              and "TrazoDiamante.Centros(" not in dp)
         check("y no calcula ningun vertice del rombo por su cuenta",
               "Math.Atan2" not in dp and "tangente" not in dp.lower())
         check("dibuja las DOS cintas, no una linea",
@@ -8493,6 +8568,56 @@ def v19_circular_y_ui() -> None:
 
     check("si lleva diamante lo dice el modelo, no la vista previa",
           "public bool LlevaDiamante =>" in filas)
+
+    # EL 2D Y EL 3D PREGUNTAN LO MISMO. Estuvieron separados y en silencio: el 2D pasaba los
+    # lechos COMPLETOS -esquina mas intermedias- y el 3D solo las de esquina. En una seccion con
+    # varilla intermedia, el diamante salia en el corte y NO salia en el 3D, porque la varilla
+    # intermedia es justo la que el rombo abraza. No era que el 3D no lo dibujara: le estaban
+    # preguntando por un armado que no era el de la pieza.
+    # La cuenta compartida y el recorrido del 3D viven en la parcial de la seccion 3D.
+    s3d = leer(ruta("client/src/CadLink.App/MainWindow.Seccion3D.cs"))
+
+    check("los centros del diamante salen de UNA sola cuenta",
+          "private List<(double X, double Y, double R)>? CentrosDelDiamante(" in s3d)
+
+    m_cd = re.search(
+        r"private List<\(double X, double Y, double R\)>\? CentrosDelDiamante\(.*?\n    \}",
+        s3d, re.S)
+
+    check("se puede leer CentrosDelDiamante", m_cd is not None)
+
+    if m_cd:
+        cd = m_cd.group(0)
+
+        # Las CUATRO llamadas: los dos lechos, cada uno con su esquina y su intermedia.
+        check("y pasa los lechos COMPLETOS, con las varillas intermedias",
+              "s.NIntSup" in cd and "s.NIntInf" in cd
+              and "s.NEsqSup" in cd and "s.NEsqInf" in cd
+              and cd.count("intermedio: true") == 2
+              and cd.count("intermedio: false") == 2)
+
+        check("y las laterales, que son las que el rombo rodea",
+              "PosicionesLaterales(s, de, rec)" in cd)
+
+        check("y le pasa las notas a TrazoDiamante, que antes se tiraban",
+              "varSup, varInf, varLat, notas)" in cd)
+
+    # Y la vista 3D tiene que usarla, no una copia suya.
+    m_r3 = re.search(
+        r"private List<\(double X, double Y\)>\? RecorridoDelDiamante3D\(.*?\n    \}",
+        s3d, re.S)
+
+    check("se puede leer RecorridoDelDiamante3D", m_r3 is not None)
+
+    if m_r3:
+        r3 = m_r3.group(0)
+
+        check("la vista 3D usa la misma cuenta que el corte",
+              "CentrosDelDiamante(s, de, rec, dDia, notas)" in r3
+              and "PosicionesDeLecho(" not in r3)
+
+        check("y dice POR QUE no hay diamante en lugar de callarse",
+              r3.count("notas?.Add(") >= 3)
 
     # Las posiciones de las varillas se calculan UNA vez: las usan el pintado y el
     # recorrido del diamante. Con dos copias, el rombo podria rodear una varilla que no

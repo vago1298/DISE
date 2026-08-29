@@ -98,8 +98,23 @@ var cfg = new ConfigPlano();
 //   LOSA_TABLERO_TOL_CM             holgura para tomar dos pedazos como pegados
 //   LOSA_TABLERO_APOYO_CUBRE        y cuanta frontera con apoyo debajo son DOS tableros
 //   LOSA_TABLERO_SIN_LINEA_INTERIOR y la raya del mesh no se dibuja
-Igual("la hoja trae los renglones de CrearHojaConfig, mas los sesenta y siete que se añadieron",
-      327, ConfigPlano.PorOmision.Count);
+//   DIBUJAR_VACIOS                  donde NO hay piso, con linea punteada y una cruz
+//   CAPA_VACIO                      su capa: E-VACIO
+//   COLOR_VACIO                     252, como se pidio
+//   LINETYPE_VACIO                  DASHDOT
+//   VACIO_LTSCALE                   0 = automatico; en metros el DASHDOT necesita 0.01
+//   VACIO_TOL_CM                    dos bordes a menos de esto son el MISMO borde
+//   VACIO_AREA_MIN_M2               por debajo de esto no se dibuja: son astillas del mesh
+//   VACIO_CRUZ                      la cruz dentro del hueco, ademas del contorno
+//   CAPA_ESCALERA                   el contorno de la escalera: E-ESCALERA
+//   COLOR_ESCALERA                  su color
+//   ESCALERA_AL_PANO                su linea muere en el paño del muro, no en su eje
+//   PRETIL_BAJAR_UN_NIVEL           el pretil se dibuja en el nivel que lo SOSTIENE
+//   PRETIL_ALTURA_MAX_M             altura maxima para tomarlo por pretil
+//   PRETIL_TOL_CM                   holgura en Z al comparar con la losa
+//   NIVEL_DIBUJA_LO_QUE_CRUZA       el corte es a la cota del nivel: lo que cruza sale ahi
+Igual("la hoja trae los renglones de CrearHojaConfig, mas los que se han añadido",
+      342, ConfigPlano.PorOmision.Count);
 
 var repes = ConfigPlano.PorOmision
     .GroupBy(r => r.Parametro, StringComparer.OrdinalIgnoreCase)
@@ -356,7 +371,7 @@ Console.WriteLine();
 Console.WriteLine(" Guardar: solo lo que el usuario cambió");
 
 var guardado = libre.ParaGuardar();
-Check("se guardan los cinco cambios y no los 327 renglones", guardado.Count == 5);
+Check("se guardan los cinco cambios y no los 342 renglones", guardado.Count == 5);
 Check("y entre ellos está el que se tocó", guardado.ContainsKey("MALLA_SEP_CM"));
 
 var virgen = new ConfigPlano();
@@ -413,9 +428,20 @@ Igual("E-COTAS", 8, ColorDe("E-COTAS"));
 // LA LOSA EN VOLADIZO, EN SU CAPA: es la 22, y la de la losa se queda APAGADA para que
 // se vean los voladizos sin el contorno de todos los paños.
 Igual("E-VOLADO, la de la losa en voladizo", 252, ColorDe("E-VOLADO"));
-// VEINTITRES: las 22 de la macro mas E-MURO DE CONCRETO, que se pidio aparte para el muro de
-// concreto que no lleva cadena.
-Igual("son las 23 capas", 23, capas.Todas.Count);
+// EL VACIO: donde NO hay piso. Se pidio tal cual -capa VACIO, color 252 y DASHDOT- para el
+// hueco de la escalera, del elevador o del ducto.
+Igual("E-VACIO, la de donde no hay piso", 252, ColorDe("E-VACIO"));
+Igual("y se llega a ella por su nombre", "E-VACIO", capas.CapaVacio);
+// LA ESCALERA: de ella se dibuja PURO CONTORNO, y va en su capa. NO puede ir en E-LOSA
+// porque esa se deja APAGADA al terminar, y entonces se apagaria con ella justo lo unico
+// que se pidio dibujar.
+Igual("E-ESCALERA, la del contorno de la escalera", 8, ColorDe("E-ESCALERA"));
+Igual("y se llega a ella por su nombre", "E-ESCALERA", capas.CapaEscalera);
+Check("y NO es la de la losa, que se apaga al terminar",
+      capas.CapaEscalera != capas.CapaDeTipo("LOSA"));
+// VEINTICINCO: las 22 de la macro, mas E-MURO DE CONCRETO -que se pidio aparte para el muro de
+// concreto que no lleva cadena-, mas E-VACIO y mas E-ESCALERA.
+Igual("son las 25 capas", 25, capas.Todas.Count);
 Igual("y la del muro de concreto se llama E-MURO DE CONCRETO",
       "E-MURO DE CONCRETO", capas.CapaMuroConcreto);
 Igual("con su color de la hoja", 4,
@@ -432,6 +458,67 @@ Igual("los ejes, DASHDOT", "DASHDOT", LineaDe("E-EJES"));
 Igual("y la del acero es CONTINUA", "Continuous", LineaDe("E-ACERO"));
 Igual("la cadena de desplante va SIN tipo de línea, nunca punteada",
       string.Empty, LineaDe("E-CADENA DESPLANTE"));
+// EL VACIO, DASHDOT: se pidió así, y es la convención para el hueco de la escalera.
+// DASHED2 y no DASHDOT: se pidio despues de verlo dibujado. Un DASHDOT alterna raya y
+// punto, y en el lado corto de un hueco se lee como una linea rota.
+Igual("y el vacio DASHED2", "DASHED2", LineaDe("E-VACIO"));
+
+// ==================================================================================
+//  EL VACIO: SU LTSCALE ES LO QUE HACE QUE SE VEA PUNTEADO
+// ==================================================================================
+//  OJO CON ESTO, que ya mordio con los ejes: en un dibujo en METROS un DASHDOT a escala 1
+//  se ve CONTINUO, porque el patron mide media unidad de dibujo. Medio metro de raya y
+//  medio de espacio en un hueco de 1.20 m es una linea seguida. De ahi VACIO_LTSCALE, con
+//  la misma cuenta que CADENA_SIN_MURO_LTSCALE: 0 = automatico = 0.01.
+Console.WriteLine();
+// LA ESCALA SE PIDIO MEDIDA EN EL DIBUJO: 0.02 con el DASHED2. No es automatica.
+Igual("VACIO_LTSCALE es 0.02, medido en el dibujo", 0.02, cfg.Numero("VACIO_LTSCALE", -1));
+Check("y no es 1, que en metros se veria continuo", cfg.Numero("VACIO_LTSCALE", -1) < 0.5);
+Igual("y los vacios se dibujan por omision", true, cfg.Bandera("DIBUJAR_VACIOS", false));
+Igual("con su cruz dentro", true, cfg.Bandera("VACIO_CRUZ", false));
+Igual("la tolerancia que borra la junta del mallado son 5 cm", 5d,
+      cfg.Numero("VACIO_TOL_CM", -1));
+Igual("y el area minima 0.10 m2", 0.10, cfg.Numero("VACIO_AREA_MIN_M2", -1));
+
+// ==================================================================================
+//  EL PRETIL SE QUEDA DONDE LO PONE ETABS, Y ESO SE DECIDIO CON DATOS
+// ==================================================================================
+//  Se reporto que los pretiles salian "un nivel arriba". La causa NO era el dibujo: es
+//  que el ROTULO del plano va CORRIDO UNO respecto al story -Story1 se rotula PLANTA
+//  BAJA, asi que Story3 se rotula SEGUNDO NIVEL y Story4 TERCER NIVEL-.
+//
+//  Un pretil parado en la losa del Story3 lo asigna ETABS al Story4, que es el plano
+//  titulado TERCER NIVEL, y ahi es donde se pidio que salga. ETABS ya lo pone bien.
+//
+//  Asi que la bandera viene en NO. La maquinaria se queda -probada en Pretil- porque el
+//  caso contrario existe: un modelo con un story creado solo para la tapa del pretil lo
+//  deja DOS niveles por encima de su losa, y para eso esto va en SI.
+Console.WriteLine();
+Igual("los pretiles NO se bajan: ETABS ya los pone en el nivel que se pidio", false,
+      cfg.Bandera("PRETIL_BAJAR_UN_NIVEL", true));
+
+// Y LA EQUIVALENCIA QUE LO EXPLICA TODO, comprobada aqui para que quede fijada: el
+// rotulo va corrido uno, asi que "SEGUNDO NIVEL" es el Story3 y no el Story2.
+var rotNiv = new RotuloPlanta(cfg);
+
+Igual("Story1 se rotula PLANTA BAJA", "PLANTA BAJA", rotNiv.NombreDeNivel("Story1"));
+Igual("Story2, PRIMER NIVEL", "PRIMER NIVEL", rotNiv.NombreDeNivel("Story2"));
+Igual("Story3, SEGUNDO NIVEL", "SEGUNDO NIVEL", rotNiv.NombreDeNivel("Story3"));
+Igual("Story4, TERCER NIVEL", "TERCER NIVEL", rotNiv.NombreDeNivel("Story4"));
+Check("o sea que «SEGUNDO NIVEL» NO es el Story2",
+      rotNiv.NombreDeNivel("Story2") != "SEGUNDO NIVEL");
+Igual("con tope de altura de 1.5 m, que es la prudencia que se pidio", 1.5,
+      cfg.Numero("PRETIL_ALTURA_MAX_M", -1));
+Igual("y 20 cm de holgura al comparar con la losa", 20d, cfg.Numero("PRETIL_TOL_CM", -1));
+Igual("la linea de la escalera muere en el paño del muro", true,
+      cfg.Bandera("ESCALERA_AL_PANO", false));
+
+// EL CORTE ES A LA COTA DEL NIVEL: un muro de corrido por dos niveles es de un solo story
+// para ETABS -el de su punta- y desaparecia del plano de abajo.
+Igual("lo que cruza el entrepiso se dibuja en ese nivel", true,
+      cfg.Bandera("NIVEL_DIBUJA_LO_QUE_CRUZA", false));
+Igual("y la fraccion que hay que cubrir es la misma del muro", 0.75,
+      cfg.Numero("MURO_FRACCION_ENTREPISO", -1));
 
 Console.WriteLine();
 Igual("el muro va a su capa", "E-MURO", capas.CapaDeTipo("MURO"));

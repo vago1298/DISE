@@ -313,8 +313,87 @@ public sealed class ConfigPlano
         P("CIMENTACION_COLUMNA_TOL_CM", "20", "Holgura en Z para saber que desplanta en la base"),
         P("ROTULO_NOMBRE_CIMENTACION", "CIMENTACION", "LO QUE DICE EL ROTULO CUANDO EL NIVEL ES LA BASE"),
         P("DIBUJAR_LOSAS", "SI", "Dibujar el contorno de las losas"),
-        P("IGNORAR_LOSA_ESCALERA", "SI", "SI = las losas de escalera NO se dibujan"),
+        // LA ESCALERA: SOLO SU CONTORNO. Se pidio "nada de losa de escalera en planos,
+        // tampoco las que se modelan como muro, solo dibuja el contorno de las escaleras,
+        // puro contorno nada mas". Se apartan de la lista antes de dibujar -asi no las ve
+        // el achurado, ni la parrilla, ni el rotulo, ni la union de tableros, ni la linea
+        // doble del muro- y despues se dibuja su perimetro en su propia capa.
+        P("IGNORAR_LOSA_ESCALERA", "SI", "SI = de las escaleras solo se dibuja el contorno"),
         P("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO", "Palabras que identifican escaleras"),
+        P("CAPA_ESCALERA", "ESCALERA", "CAPA DEL CONTORNO DE LA ESCALERA (con prefijo: E-ESCALERA)"),
+        P("COLOR_ESCALERA", "8", "Color de esa capa"),
+        P("ESCALERA_AL_PANO", "SI", "SI = LA LINEA MUERE EN EL PAÑO DEL MURO, NO EN SU EJE"),
+
+        // ---- EL PRETIL, AL NIVEL QUE LO SOSTIENE ------------------------------------
+        // ETABS asigna cada shell al piso de su cota MAS ALTA. Para un muro completo eso
+        // es lo correcto, pero un pretil de 1 m se para en la losa de un nivel y NO llega
+        // a la de arriba: su cota alta sigue cayendo en el tramo del piso de arriba, asi
+        // que ETABS lo mete ahi y el pretil salia dibujado un nivel por encima de donde
+        // esta, mientras que en su nivel no habia nada.
+        //
+        // Se baja al piso que lo sostiene, y SOLO el pretil: hace falta que se apoye en la
+        // losa de abajo Y que no llegue a la de arriba. Un muro completo falla lo segundo
+        // -su tapa ES la elevacion de su piso- y un dintel falla lo primero -arranca a dos
+        // metros del suelo-, asi que ninguno se mueve.
+        // Y NO SOLO EL MURO: un pretil lleva sus CASTILLOS -columnas cortas- y su CADENA
+        // DE REMATE -una viga a un metro del piso-. Las tres piezas se iban al mismo sitio
+        // equivocado por el mismo motivo, asi que las tres bajan.
+        // VIENE EN **NO**, Y ESO SE DECIDIO CON DATOS.
+        //
+        // Se reporto que los pretiles salian "un nivel arriba". La causa NO era el dibujo: era
+        // que el rotulo del plano va CORRIDO UNO respecto al story -Story1 se rotula PLANTA
+        // BAJA, asi que Story3 se rotula SEGUNDO NIVEL y Story4 TERCER NIVEL-. El pretil que
+        // se para en la losa del Story3 lo asigna ETABS al Story4, que es el plano titulado
+        // TERCER NIVEL, y ahi es DONDE SE PIDIO QUE ESTE. O sea que ETABS ya lo pone bien.
+        //
+        // Confirmado por el usuario: "si hay pretil parado en story 3, se debe ver en el plano
+        // estructural de tercer nivel" mas "story 3 es segundo nivel".
+        //
+        // La maquinaria se queda -probada y documentada en Pretil- porque el caso contrario
+        // existe: un modelo con un story creado solo para la tapa del pretil deja el pretil
+        // dos niveles por encima de su losa. Para eso, esto en SI.
+        P("PRETIL_BAJAR_UN_NIVEL", "NO", "NO = el pretil se queda en el nivel que le da ETABS"),
+        P("PRETIL_ALTURA_MAX_M", "1.5", "Altura maxima SOBRE LA LOSA para tomarlo por pretil"),
+        P("PRETIL_TOL_CM", "20", "Holgura en Z al comparar con la losa"),
+
+        // ---- EL CORTE ES A LA COTA DEL NIVEL ----------------------------------------
+        // Se pidio: "haz el corte al nivel story y todo lo que haya debajo de ese nivel se
+        // dibuja en ese story". La planta se armaba SOLO con lo que ETABS tenia asignado a
+        // ese story, y ETABS asigna cada pieza al piso de su cota MAS ALTA: un muro o un
+        // castillo dibujado de corrido por dos niveles es de un solo story -el de arriba- y
+        // desaparecia del plano de abajo.
+        //
+        // Se exige cubrir MURO_FRACCION_ENTREPISO del entrepiso y no solo tocarlo, porque si
+        // no una pieza que asoma un centimetro saldria dibujada en dos plantas. Esa misma
+        // fraccion es la que evita que el pretil se duplique.
+        P("NIVEL_DIBUJA_LO_QUE_CRUZA", "SI", "SI = lo que cruza el entrepiso se dibuja en ese nivel"),
+
+        // ---- EL VACIO: DONDE NO HAY PISO -------------------------------------------
+        // Se pidio delimitar los vacios con linea punteada y una cruz dentro, que es la
+        // convencion de siempre: el hueco de la escalera, del elevador o del ducto. El
+        // vacio NO viene del modelo -en ETABS el hueco es donde no pusieron shell-, asi
+        // que se deduce buscando los agujeros de la union de los paños.
+        P("DIBUJAR_VACIOS", "SI", "SI = marcar con linea punteada y cruz donde no hay losa"),
+        P("CAPA_VACIO", "VACIO", "CAPA DEL VACIO (con prefijo: E-VACIO)"),
+        P("COLOR_VACIO", "252", "Color de esa capa"),
+
+        // DASHED2 y no DASHDOT: se pidio expresamente despues de verlo dibujado. Un DASHDOT
+        // alterna raya y punto, y en un tramo corto -el lado de un hueco de escalera- se
+        // lee como una linea rota; el DASHED2 es raya corta uniforme y se ve como lo que
+        // es, una linea de referencia.
+        P("LINETYPE_VACIO", "DASHED2", "Tipo de linea del vacio"),
+
+        // OJO CON ESTE: en un dibujo en METROS un tipo de linea a escala 1 se ve CONTINUO,
+        // porque el patron mide del orden de media unidad de dibujo. Es el mismo caso que
+        // CADENA_SIN_MURO_LTSCALE. El 0.02 se pidio con el DASHED2, medido en el dibujo.
+        P("VACIO_LTSCALE", "0.02", "Escala del tipo de linea (0 = automatico)"),
+
+        // La tolerancia con la que se juntan dos bordes de paño. Es lo que evita que la
+        // junta del mallado -paños contiguos separados por milimetros- salga como un
+        // vacio larguisimo y flaco.
+        P("VACIO_TOL_CM", "5", "Bordes de paño a menos de esto son el MISMO borde"),
+        P("VACIO_AREA_MIN_M2", "0.10", "Vacios mas chicos que esto no se dibujan"),
+        P("VACIO_CRUZ", "SI", "SI = la cruz dentro del vacio, ademas del contorno"),
         P("PLANTAS_POR_FILA", "100", "100 = todas en una fila hacia la derecha"),
         // 10.00 y no los 5.00 de la hoja: se pidió expresamente, y con 5 las burbujas y las
         // cotas de una planta quedaban a un palmo de las de la siguiente.

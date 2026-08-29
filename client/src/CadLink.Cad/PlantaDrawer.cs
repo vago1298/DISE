@@ -237,6 +237,33 @@ public sealed partial class PlantaDrawer
         AsegurarEstilosDeLaMacro();
 
         // ==============================================================================
+        //  LA ESCALERA SE APARTA, Y SE APARTA LO PRIMERO DE TODO
+        // ==============================================================================
+        //  Se pidió tal cual: «nada de losa de escalera en planos, tampoco las que se modelan
+        //  como muro, solo dibuja el contorno de las escaleras, puro contorno nada más». El
+        //  razonamiento está en EscaleraEnPlanta; en corto: una escalera no es un tablero de
+        //  losa —no se arma con parrilla ni se cota como un paño— pero tampoco puede
+        //  desaparecer, porque hay que ver dónde está. Su armado va en su detalle aparte.
+        //
+        //  VA LO PRIMERO, Y ESO IMPORTA DOS VECES:
+        //
+        //   · Antes de las conversiones de shell que vienen justo debajo. Un peldaño modelado
+        //     como shell angosto y corto es exactamente lo que buscan el castillo de muro y la
+        //     cadena de muro, así que llegando después convertirían los peldaños en cadenas y
+        //     entonces ya no serían muros: se colarían al plano con su capa y su rótulo.
+        //
+        //   · Antes de las huellas, los tableros, los voladizos y el recuadro del título. Es
+        //     lo que hace cierto el «nada más»: ninguna de esas etapas llega a verla.
+        _escalerasDeLaPlanta.Clear();
+
+        if (_cfg.Bandera("IGNORAR_LOSA_ESCALERA", true))
+        {
+            _escalerasDeLaPlanta.AddRange(PlanoEstructural.EscaleraEnPlanta.Apartar(
+                p.Elementos,
+                _cfg.Texto("PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO")));
+        }
+
+        // ==============================================================================
         //  EL CASTILLO MODELADO COMO SHELL DE MURO, A CASTILLO
         // ==============================================================================
         //  Se pidió: «los shells de muro que tengan en property note CASTILLO igual hacerlos
@@ -415,6 +442,16 @@ public sealed partial class PlantaDrawer
                 r.Losas++;
             }
         }
+
+        // Las escaleras, de puro contorno: se apartaron al empezar, así que no han pasado por
+        // nada de lo de arriba. Se les pasan las huellas para que su línea muera en el PAÑO del
+        // muro y no en su eje.
+        Escaleras(x0, y0, huellas);
+
+        // Y donde NO hay losa: el hueco del elevador, del ducto o de la doble altura, con su
+        // contorno a trazos y su cruz. Después de los paños para que la línea del vacío quede
+        // por encima de su achurado.
+        Vacios(p, x0, y0);
 
         // ==============================================================================
         //  EL MURO QUE VA DEBAJO DE UNA CADENA NO SE DIBUJA
@@ -1410,6 +1447,263 @@ public sealed partial class PlantaDrawer
         return algo;
     }
 
+    // =================================================================================
+    //  LA ESCALERA: PURO CONTORNO
+    // =================================================================================
+
+    /// <summary>Dibuja el <b>contorno</b> de las escaleras apartadas, y nada más.</summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «solo dibuja el contorno de las escaleras, puro contorno nada más». Aquí eso es
+    /// literal —una polilínea cerrada por escalera y se acabó—, y lo es porque las escaleras se
+    /// <b>apartaron de la lista</b> antes de empezar: el achurado, la parrilla, el rótulo, la
+    /// unión de tableros y la línea doble del muro nunca las vieron. El razonamiento completo
+    /// está en <see cref="PlanoEstructural.EscaleraEnPlanta"/>.
+    /// </para>
+    /// <para>
+    /// Va en su <b>propia capa</b>, <c>E-ESCALERA</c>, y no en la de la losa. No es orden: la
+    /// capa de la losa se deja <b>apagada</b> al terminar —<c>APAGAR_CAPA_LOSA</c>, porque el
+    /// contorno de todos los paños llena el plano—, así que metiendo ahí la escalera se apagaría
+    /// con ella y no se vería justo lo único que se pidió dibujar.
+    /// </para>
+    /// </remarks>
+    private int Escaleras(double x0, double y0, IReadOnlyList<ElementoPlanta> huellas)
+    {
+        if (_escalerasDeLaPlanta.Count == 0)
+        {
+            return 0;
+        }
+
+        var capa = _capas.CapaEscalera;
+        var dibujadas = 0;
+
+        // ==============================================================================
+        //  LA LÍNEA DE LA ESCALERA MUERE EN EL PAÑO DEL MURO, NO EN SU EJE
+        // ==============================================================================
+        //  Se pidió, y es lo mismo que ya se hace con el molde del achurado de la losa: en el
+        //  modelo la escalera llega al EJE del muro, porque ahí están los nudos, pero el
+        //  concreto no llega al eje —medio espesor antes ya es muro—. Dibujando el contorno del
+        //  modelo, la línea de la escalera se mete por dentro de la cadena y se lee como una
+        //  junta que no existe.
+        //
+        //  Lo hace PanoDeLosa.AlPano, que mete cada lado SOLO por el trozo que tiene muro
+        //  debajo. Y aquí importa que sea por tramos: el rellano de una escalera apoya en el
+        //  muro por un pedazo de su lado y da al aire por el resto.
+        var alPano = _cfg.Bandera("ESCALERA_AL_PANO", true) && huellas.Count > 0;
+
+        foreach (var el in _escalerasDeLaPlanta)
+        {
+            var contorno = PlanoEstructural.EscaleraEnPlanta.Contorno(el);
+
+            if (contorno.Count < 3)
+            {
+                continue;
+            }
+
+            if (alPano)
+            {
+                contorno = PanoDeLosa.AlPano(contorno, huellas);
+            }
+
+            if (contorno.Count < 3)
+            {
+                continue;
+            }
+
+            var pts = new double[contorno.Count * 2];
+
+            for (var i = 0; i < contorno.Count; i++)
+            {
+                pts[2 * i] = contorno[i].X + x0;
+                pts[(2 * i) + 1] = contorno[i].Y + y0;
+            }
+
+            if (PolilineaCerrada(pts, capa) is not null)
+            {
+                dibujadas++;
+            }
+        }
+
+        // Se dice CUÁNTAS y POR QUÉ PALABRA. Una losa que se queda en puro contorno sin avisar
+        // es un misterio; sabiendo que fue por decir «RAMPA» se corrige el modelo o se quita la
+        // palabra de la lista.
+        var palabras = _cfg.Texto(
+            "PALABRAS_ESCALERA", "ESCALERA,ESCAL,STAIR,RAMPA,RAMP,DESCANSO");
+
+        var porQue = string.Join(", ", _escalerasDeLaPlanta
+            .Select(e => PlanoEstructural.EscaleraEnPlanta.PalabraEscalera(
+                e.Etiqueta, e.Notas, e.Seccion, palabras))
+            .Where(s => s.Length > 0)
+            .GroupBy(s => s, StringComparer.Ordinal)
+            .OrderByDescending(g => g.Count())
+            .Select(g => $"{g.Key} ({g.Count()})"));
+
+        var deMuro = _escalerasDeLaPlanta.Count(e => e.Clase == ClasePlanta.Muro);
+
+        Nota($"{dibujadas} escalera(s) se dibujaron SOLO de contorno en la capa {capa} " +
+             $"—sin achurado, sin armado y sin rótulo—, por decir {porQue} en su nota, " +
+             $"etiqueta o sección." +
+             (deMuro > 0 ? $" {deMuro} de ellas venían modeladas como muro." : string.Empty) +
+             " Se apaga con IGNORAR_LOSA_ESCALERA en NO.");
+
+        return dibujadas;
+    }
+
+    // =================================================================================
+    //  EL VACÍO: DONDE NO HAY PISO
+    // =================================================================================
+
+    /// <summary>
+    /// Marca los <b>vacíos</b> de la planta: contorno a trazos y una <b>cruz</b> dentro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió: «delimita los vacíos con líneas punteadas… de los vértices de donde se forma el
+    /// vacío, de ahí salen las líneas para formar la cruz, que hay vacío, o sea no hay piso». Es
+    /// la convención de siempre en un plano de losas: el hueco de la escalera, el del elevador o
+    /// el del ducto van con su contorno a trazos y una X dentro.
+    /// </para>
+    /// <para>
+    /// Dónde salen los vacíos está razonado en <see cref="PlanoEstructural.VacioEnLosa"/>: no
+    /// vienen del modelo, se deducen buscando los <b>agujeros de la unión de los paños</b>. Aquí
+    /// solo se pasa a líneas lo que esa cuenta devuelve.
+    /// </para>
+    /// <para>
+    /// <b>Va DESPUÉS de dibujar las losas</b>, y a propósito: en AutoCAD el orden de creación es
+    /// el orden de dibujo, así que la línea del vacío queda por encima del achurado de los paños
+    /// vecinos y no se pierde debajo.
+    /// </para>
+    /// <para>
+    /// Y el <b>LinetypeScale</b> no es un adorno: el plano va en <b>metros</b>, y el patrón del
+    /// DASHDOT mide media unidad de dibujo. A escala 1, medio metro de raya seguida de medio de
+    /// espacio en un hueco de 1.20 m se ve como una línea <b>continua</b>. De ahí
+    /// <c>VACIO_LTSCALE</c>, con la misma cuenta que la cadena sin muro: 0 = automático = 0.01.
+    /// </para>
+    /// </remarks>
+    private int Vacios(PlantaCad p, double x0, double y0)
+    {
+        if (!_cfg.Bandera("DIBUJAR_VACIOS", true))
+        {
+            return 0;
+        }
+
+        // Los paños YA desplazados a su sitio en el plano: así lo que devuelve la cuenta se
+        // dibuja tal cual, sin volver a sumar el origen en cada punto y cada trazo.
+        var contornos = p.Elementos
+            .Where(e => e.Clase == ClasePlanta.Losa && e.Vertices.Count >= 3)
+            .Select(e => (IReadOnlyList<(double X, double Y)>)e.Vertices)
+            .ToList();
+
+        // LA ESCALERA CUENTA COMO PISO. Se apartó de la lista de elementos al empezar, así que
+        // hay que volver a meterla AQUÍ: si no, su hueco saldría marcado con la cruz de «no hay
+        // piso», y por una escalera sí se pasa. Es el sitio exacto donde la escalera vuelve a
+        // ser suelo sin volver a ser un tablero de losa.
+        foreach (var el in _escalerasDeLaPlanta)
+        {
+            var c = PlanoEstructural.EscaleraEnPlanta.Contorno(el);
+
+            if (c.Count >= 3)
+            {
+                contornos.Add(c);
+            }
+        }
+
+        var panos = contornos
+            .Select(c => (IReadOnlyList<(double X, double Y)>)c
+                .Select(v => (v.X + x0, v.Y + y0))
+                .ToList())
+            .ToList();
+
+        if (panos.Count == 0)
+        {
+            return 0;
+        }
+
+        var tol = _cfg.Numero("VACIO_TOL_CM", 5) / 100;
+
+        // La retícula la ponen los vértices de los paños, así que un nivel con el mallado muy
+        // fino puede pedir una gigantesca. Se avisa ANTES de intentarlo, porque si no el usuario
+        // solo vería que no salió ningún vacío y no sabría que hay algo que subir.
+        var celdas = PlanoEstructural.VacioEnLosa.CeldasQueHacenFalta(panos, tol);
+
+        if (celdas > PlanoEstructural.VacioEnLosa.MaximoDeCeldas)
+        {
+            Nota($"No se buscaron los vacíos de este nivel: sus {panos.Count} paños piden una " +
+                 $"retícula de {celdas:N0} celdas y el tope está en " +
+                 $"{PlanoEstructural.VacioEnLosa.MaximoDeCeldas:N0}. El mallado del modelo es " +
+                 "muy fino; sube VACIO_TOL_CM —junta los bordes casi iguales— y vuelve a " +
+                 "dibujar.");
+
+            return 0;
+        }
+
+        List<PlanoEstructural.VacioEnLosa.Vacio> vacios;
+
+        try
+        {
+            vacios = PlanoEstructural.VacioEnLosa.Detectar(
+                panos, tol, _cfg.Numero("VACIO_AREA_MIN_M2", 0.10));
+        }
+        catch (Exception ex)
+        {
+            // Un fallo buscando los huecos no puede tumbar la planta entera: el resto del
+            // plano ya está dibujado y es bueno.
+            Fallo("Buscar los vacíos de la losa", ex);
+
+            return 0;
+        }
+
+        if (vacios.Count == 0)
+        {
+            return 0;
+        }
+
+        var capa = _capas.CapaVacio;
+        var tipo = _cfg.Texto("LINETYPE_VACIO", "DASHDOT");
+
+        var escalaLt = _cfg.Numero("VACIO_LTSCALE", 0);
+
+        if (escalaLt <= 0)
+        {
+            escalaLt = 0.01;
+        }
+
+        var conCruz = _cfg.Bandera("VACIO_CRUZ", true);
+
+        foreach (var vacio in vacios)
+        {
+            foreach (var contorno in vacio.Contornos)
+            {
+                var pts = new double[contorno.Count * 2];
+
+                for (var i = 0; i < contorno.Count; i++)
+                {
+                    pts[2 * i] = contorno[i].X;
+                    pts[(2 * i) + 1] = contorno[i].Y;
+                }
+
+                PonerTipoDeLinea(PolilineaCerrada(pts, capa), tipo, escalaLt);
+            }
+
+            if (!conCruz)
+            {
+                continue;
+            }
+
+            foreach (var (xa, ya, xb, yb) in vacio.Cruz)
+            {
+                PonerTipoDeLinea(Linea(xa, ya, xb, yb, capa), tipo, escalaLt);
+            }
+        }
+
+        var area = vacios.Sum(v => v.Area);
+
+        Nota($"{vacios.Count} vacío(s) marcados —{area:0.00} m² sin losa— con su contorno a " +
+             $"trazos y su cruz, en la capa {capa}. Se apaga con DIBUJAR_VACIOS en NO.");
+
+        return vacios.Count;
+    }
+
     /// <summary>
     /// La <b>losacero</b>: sus franjas con hatch <c>FLEX</c> y su rótulo con el calibre.
     /// </summary>
@@ -1549,6 +1843,18 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private readonly List<(string Clave, IReadOnlyList<(double X, double Y)> Vertices)>
         _voladosDeLaPlanta = new();
+
+    /// <summary>
+    /// Las <b>escaleras</b> apartadas de la planta que se está dibujando.
+    /// </summary>
+    /// <remarks>
+    /// Se sacan de la lista de elementos lo primero de todo —el razonamiento está en
+    /// <see cref="PlanoEstructural.EscaleraEnPlanta"/>— y se guardan aquí para dos cosas: dibujar
+    /// su contorno, que es lo único que se pidió de ellas, y contar su superficie como
+    /// <b>piso</b> al buscar los vacíos. Sin lo segundo, el hueco de la escalera saldría marcado
+    /// con la cruz de «no hay piso», y por la escalera sí se pasa.
+    /// </remarks>
+    private readonly List<ElementoPlanta> _escalerasDeLaPlanta = new();
 
     /// <summary>Los contornos de los demás voladizos, sin contar el que se está dibujando.</summary>
     private List<IReadOnlyList<(double X, double Y)>> OtrosVolados(ElementoPlanta el)
