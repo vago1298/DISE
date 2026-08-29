@@ -577,9 +577,39 @@ public partial class MainWindow
     //  Construir la escena
     // ======================================================================
 
+    /// <summary>
+    /// Si la pieza va <b>tendida</b> en lugar de de pie.
+    /// </summary>
+    /// <remarks>
+    /// La regla es la <b>misma del alzado</b>, y a propósito: una trabe y una contratrabe se
+    /// dibujan tendidas y todo lo demás de pie. Sale de <c>TipoDe</c>, que es donde ya estaba
+    /// escrita, en lugar de repetir aquí la lista de elementos —repetirla es lo que hace que un
+    /// día el alzado y el 3D dejen de coincidir—.
+    /// </remarks>
+    private bool _piezaAcostada;
+
     /// <summary>Del plano de la sección al mundo. <b>El único convenio de ejes.</b></summary>
-    private static Point3D Mundo(double seccionX, double seccionY, double alturaEnLaPieza) =>
-        new(seccionX, alturaEnLaPieza, seccionY);
+    /// <remarks>
+    /// <para>
+    /// De pie: la <b>X</b> es la base de la sección, la <b>Z</b> su peralte y la <b>Y</b> el
+    /// largo de la pieza, que es el que sube.
+    /// </para>
+    /// <para>
+    /// Tendida: el largo pasa a la <b>Z</b> y el <b>peralte</b> de la sección pasa a ser la
+    /// altura. O sea que la pieza se acuesta sobre su base, que es como se dibuja una trabe.
+    /// </para>
+    /// <para>
+    /// <b>Es el único sitio donde esto se decide</b>, y por eso acostar la pieza sale casi
+    /// gratis: las varillas, los estribos, las grapas y el diamante pasan todos por aquí, así
+    /// que se acuestan solos. Lo único que hay que acompañar son las tres cosas que se dan en
+    /// coordenadas del mundo directamente: la caja de concreto, la huella para la sombra y la
+    /// caja que usa la cámara para encuadrar.
+    /// </para>
+    /// </remarks>
+    private Point3D Mundo(double seccionX, double seccionY, double alturaEnLaPieza) =>
+        _piezaAcostada
+            ? new Point3D(seccionX, seccionY, alturaEnLaPieza)
+            : new Point3D(seccionX, alturaEnLaPieza, seccionY);
 
     /// <summary>
     /// Arma la sección en 3D: la jaula, la caja de concreto, la sombra y la luz.
@@ -613,9 +643,25 @@ public partial class MainWindow
 
         var bx = s.BaseCm;          // X: la base de la sección
         var bz = s.AlturaCm;        // Z: el peralte
-        var by = largoM * 100.0;    // Y: la longitud, que sube
+        var by = largoM * 100.0;    // Y: la longitud
 
-        _cajaDeLaPieza = (bx, by, bz);
+        // ===== DE PIE O TENDIDA: LA MISMA REGLA QUE EL ALZADO =====
+        //
+        // Se pidió: «que el 3D sea vertical si son elementos verticales y horizontal para los
+        // horizontales, misma regla que para los alzados». La regla ya existía en TipoDe —trabe
+        // y contratrabe se dibujan tendidas, todo lo demás de pie— así que se lee de ahí en vez
+        // de repetir la lista de elementos. Repetirla es lo que hace que un día el alzado diga
+        // una cosa y el 3D otra.
+        //
+        // Un elemento que no lleva alzado —un castillo, una cadena, algo escrito a mano— se
+        // queda DE PIE. Es lo prudente: si el programa no sabe si la pieza está tendida o de
+        // pie, acostarla sería adivinar.
+        _piezaAcostada = TipoDe(s.Elemento, s.Id)
+            is TipoElemento.Trabe or TipoElemento.Contratrabe;
+
+        // La caja que usa la cámara va en coordenadas del MUNDO, así que al acostar la pieza el
+        // peralte pasa a ser el alto y el largo el fondo.
+        _cajaDeLaPieza = _piezaAcostada ? (bx, bz, by) : (bx, by, bz);
 
         var rec = s.RecubrimientoCm;
 
@@ -815,7 +861,19 @@ public partial class MainWindow
         // mil barras. Un alambre sólido no tiene ese problema.
         var canto = Math.Max(Math.Min(bx, bz) * 0.012, 0.25);
 
-        foreach (var (a, b) in AristasDeLaCaja(bx, by, bz))
+        // ===== LAS TRES COSAS QUE NO PASAN POR Mundo() =====
+        //
+        // La caja de concreto, la huella de la sombra y la caja de la cámara se dan en
+        // coordenadas del MUNDO directamente, así que hay que acompañarlas al acostar la pieza.
+        // Todo lo demás —varillas, estribos, grapas, diamante— pasa por Mundo y se acuesta solo.
+        //
+        // Tendida, el largo va por Z y el peralte pasa a ser la altura: la caja del mundo es
+        // (base, peralte, largo) en lugar de (base, largo, peralte), y la huella en el suelo es
+        // base por largo en lugar de base por peralte.
+        var mundoAlto = _piezaAcostada ? bz : by;
+        var mundoFondo = _piezaAcostada ? by : bz;
+
+        foreach (var (a, b) in AristasDeLaCaja(bx, mundoAlto, mundoFondo))
         {
             TuboDeMalla.Agregar(
                 mallaConcreto,
@@ -825,8 +883,8 @@ public partial class MainWindow
 
         MontarEscena3D(
             mallaVarillas, mallaEstribos, mallaConcreto,
-            new[] { (0.0, 0.0), (bx, 0.0), (bx, bz), (0.0, bz) },
-            by, bx / 2, bz / 2);
+            new[] { (0.0, 0.0), (bx, 0.0), (bx, mundoFondo), (0.0, mundoFondo) },
+            mundoAlto, bx / 2, mundoFondo / 2);
 
         Etiqueta(PreviaFijaCanvas,
             $"SECCIÓN 3D   ·   L = {largoM:N2} m   ·   {centros.Count} estribos"
@@ -923,6 +981,11 @@ public partial class MainWindow
     /// </remarks>
     private void ConstruirEscena3DCircular(SeccionConcretoRow s, double alto)
     {
+        // DE PIE, SIEMPRE, y hay que decirlo aquí: las dos formas redondas son una columna o un
+        // dado, o sea elementos verticales. Y como esto es un campo, sin reponerlo una redonda
+        // elegida después de una trabe heredaría el «tendida» de la trabe y saldría acostada.
+        _piezaAcostada = false;
+
         var diam = s.DiametroCm;
 
         if (diam <= 0)
