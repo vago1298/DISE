@@ -485,7 +485,11 @@ public partial class MainWindow
 
             AcadConnection.Retry(() => { app.ZoomExtents(); });
 
-            var notas = dibujante.Notas;
+            // LAS NOTAS DE LAS DOS PARTES, JUNTAS. Las de la jaula explican qué no se pudo armar
+            // -el diamante que no salió y por qué- y las del dibujante, qué no se pudo pasar a
+            // AutoCAD. Al usuario le da igual de quién es cada una: lo que necesita es la lista
+            // de lo que falta en su dibujo y el motivo.
+            var notas = _notasDeLaJaula.Concat(dibujante.Notas).ToList();
 
             StatusText.Text =
                 $"Jaula 3D de {s.Id} en AutoCAD: {r}."
@@ -736,6 +740,29 @@ public partial class MainWindow
     private readonly List<(List<(double X, double Y, double Z)> Eje, double RadioCm, bool EsEstribo)>
         _barrasDeLaJaula = new();
 
+    /// <summary>
+    /// Lo que <b>no se pudo armar</b> de la jaula, y por qué, en palabras para el usuario.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe porque esta escena estaba llena de compuertas que devolvían <c>null</c> y seguían
+    /// adelante como si nada. Cada una tenía su motivo razonable —una sección circular no lleva
+    /// diamante, un diámetro sin reconocer no se puede dibujar— pero desde fuera <b>todas se
+    /// veían igual</b>: la pieza que faltaba, sin ninguna pista de cuál de las seis razones
+    /// había sido. Y con AutoCAD y la hoja de cálculo en la máquina del usuario, adivinarlo
+    /// desde aquí es imposible.
+    /// </para>
+    /// <para>
+    /// Es la misma lección que ya se aprendió con las notas del dibujante de plantas: se
+    /// escribían y se tiraban. Una decisión que el programa toma solo y no cuenta es una
+    /// decisión que el usuario vive como un fallo.
+    /// </para>
+    /// </remarks>
+    private readonly List<string> _notasDeLaJaula = new();
+
+    /// <summary>Lo que hay que contarle al usuario de la última jaula que se armó.</summary>
+    public IReadOnlyList<string> NotasDeLaJaula => _notasDeLaJaula;
+
     /// <summary>Apunta una barra de la jaula tal como se acaba de dibujar en pantalla.</summary>
     /// <remarks>
     /// <para>
@@ -859,6 +886,7 @@ public partial class MainWindow
         // La lista de barras se vacía en cada reconstrucción: si no, exportar después de
         // cambiar de sección mandaría a AutoCAD la jaula vieja pegada a la nueva.
         _barrasDeLaJaula.Clear();
+        _notasDeLaJaula.Clear();
 
         _piezaAcostada = TipoDe(s.Elemento, s.Id)
             is TipoElemento.Trabe or TipoElemento.Contratrabe;
@@ -959,12 +987,52 @@ public partial class MainWindow
         // se olvida el asunto.
         var trazo = TrazoDelEstribo3D(s, de, rec, 14);
 
+        // ===== EL DIAMANTE, Y POR QUÉ SE DICE EN VOZ ALTA CUANDO NO SALE =====
+        //
+        // Aquí había CINCO maneras de que el diamante desapareciera sin dejar rastro: la celda
+        // de la hoja que no dice exactamente SI, el diámetro sin reconocer, el núcleo invertido,
+        // Centros() sin tres círculos y Cinta() sin geometría. Ninguna avisaba, así que desde
+        // fuera el síntoma era siempre el mismo -«no dibujas el diamante»- y no había forma de
+        // saber cuál de las cinco era. Ahora cada una deja su nota, y la nota llega al usuario.
+        // La sexta -la sección circular- se avisa en ConstruirEscena3DCircular, que es por donde
+        // pasa una redonda; aquí no puede darse porque el circular ya salió antes.
         var dDia = DiametroDelDiamante(s, de);
         var hayDiamante = s.LlevaDiamante && dDia > 0;
 
-        var recorridoDia = hayDiamante ? RecorridoDelDiamante3D(s, de, rec, dDia, 14) : null;
+        List<(double X, double Y)>? recorridoDia = null;
+        List<(double X, double Y)>? ganchoDia = null;
 
-        var ganchoDia = hayDiamante ? GanchoDelDiamante3D(s, de, rec, dDia) : null;
+        if (hayDiamante)
+        {
+            recorridoDia = RecorridoDelDiamante3D(s, de, rec, dDia, 14, _notasDeLaJaula);
+
+            ganchoDia = GanchoDelDiamante3D(s, de, rec, dDia);
+
+            if (recorridoDia is not null && ganchoDia is null)
+            {
+                _notasDeLaJaula.Add(
+                    "El diamante se dibujó sin su gancho: no se encontró la varilla lateral de "
+                    + "la que agarrarlo.");
+            }
+        }
+        else if (dDia <= 0)
+        {
+            _notasDeLaJaula.Add(
+                "No se dibujó el diamante: no se reconoció ningún diámetro de varilla, ni el "
+                + "suyo ni el del estribo principal.");
+        }
+        else
+        {
+            // La celda no dice SI. Es, de largo, la causa más frecuente, y la más fácil de
+            // arreglar si se dice con esas palabras.
+            _notasDeLaJaula.Add(
+                "No se dibujó el diamante porque la columna de estribo diamante de esta "
+                + "sección no dice «SI»"
+                + (string.IsNullOrWhiteSpace(s.EstriboDiamante)
+                    ? " (está vacía)."
+                    : $" (dice «{s.EstriboDiamante.Trim()}»).")
+                + " Tiene que decir exactamente SI.");
+        }
 
         var sep = Separaciones(s.SeparacionCm);
 
@@ -1206,11 +1274,26 @@ public partial class MainWindow
         _piezaAcostada = false;
 
         _barrasDeLaJaula.Clear();
+        _notasDeLaJaula.Clear();
+
+        // Si pidió diamante en una redonda, se le dice. No es un fallo -en una columna redonda
+        // el que confina el núcleo es el zuncho- pero puso SI en la celda y espera verlo, así que
+        // callarse deja el mismo síntoma que un error: la pieza que no aparece.
+        if (!string.IsNullOrWhiteSpace(s.EstriboDiamante))
+        {
+            _notasDeLaJaula.Add(
+                "Esta sección es circular, así que no lleva estribo diamante aunque la celda "
+                + $"diga «{s.EstriboDiamante.Trim()}»: en una columna redonda el que confina el "
+                + "núcleo es el zuncho, y ese sí se está dibujando.");
+        }
 
         var diam = s.DiametroCm;
 
         if (diam <= 0)
         {
+            _notasDeLaJaula.Add(
+                "No se armó la jaula: esta sección circular no tiene diámetro.");
+
             PreviaEscena3D.Content = null;
             _cajaDeLaPieza = null;
             return;
@@ -2238,10 +2321,13 @@ public partial class MainWindow
     /// </para>
     /// </remarks>
     private List<(double X, double Y)>? RecorridoDelDiamante3D(
-        SeccionConcretoRow s, double de, double rec, double dDia, int tramosPorDoblez)
+        SeccionConcretoRow s, double de, double rec, double dDia, int tramosPorDoblez,
+        List<string>? notas = null)
     {
         if (dDia <= 0)
         {
+            notas?.Add("No se dibujó el diamante: su varilla no tiene diámetro.");
+
             return null;
         }
 
@@ -2252,6 +2338,11 @@ public partial class MainWindow
 
         if (x2 <= x1 || y2 <= y1)
         {
+            notas?.Add(
+                $"No se dibujó el diamante: con base {s.BaseCm:0.#} cm, altura "
+                + $"{s.AlturaCm:0.#} cm y recubrimiento {rec:0.#} cm no queda núcleo por dentro "
+                + "del estribo. Revisa el recubrimiento.");
+
             return null;
         }
 
@@ -2263,10 +2354,19 @@ public partial class MainWindow
 
         var varLat = PosicionesLaterales(s, de, rec);
 
-        var centros = TrazoDiamante.Centros(x1, y1, x2, y2, dDia, varSup, varInf, varLat);
+        // LAS NOTAS DE Centros() SE PASAN. Este parámetro existía y no se le daba nada, así que
+        // los avisos que genera al rodear las varillas laterales -que son los que explican por
+        // qué a veces no hay diamante- se tiraban a la basura.
+        var centros = TrazoDiamante.Centros(
+            x1, y1, x2, y2, dDia, varSup, varInf, varLat, notas);
 
         if (centros is null)
         {
+            notas?.Add(
+                "No se dibujó el diamante: no hay tres varillas que pueda abrazar. Un diamante "
+                + $"necesita acero en los dos costados; esta sección tiene {varSup.Count} "
+                + $"arriba, {varInf.Count} abajo y {varLat.Count} en los costados.");
+
             return null;
         }
 
@@ -2274,11 +2374,24 @@ public partial class MainWindow
 
         if (geo is null)
         {
+            notas?.Add(
+                $"No se dibujó el diamante: con {centros.Count} varilla(s) abrazadas no se pudo "
+                + "trazar la cinta del rombo.");
+
             return null;
         }
 
         var puntos = TrazoDiamante.Muestrear(geo.Value.Pts, geo.Value.Bulges, tramosPorDoblez);
 
-        return puntos.Count < 3 ? null : puntos;
+        if (puntos.Count < 3)
+        {
+            notas?.Add(
+                $"No se dibujó el diamante: su recorrido salió con {puntos.Count} punto(s), que "
+                + "no dan una figura.");
+
+            return null;
+        }
+
+        return puntos;
     }
 }

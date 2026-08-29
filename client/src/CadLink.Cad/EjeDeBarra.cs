@@ -256,6 +256,354 @@ public static class EjeDeBarra
         Partir(p, peor, j, tol, guardar);
     }
 
+    /// <summary>Un trozo del eje: o una <b>recta</b>, o un <b>arco de verdad</b>.</summary>
+    /// <remarks>
+    /// Lleva siempre los puntos del eje original de los que salió, y no solo su forma ideal. Es
+    /// para poder dibujarlo <b>a la antigua</b> —una cadena de cilindros— si el arco no se puede
+    /// hacer: mejor un doblez con aristas que un hueco donde va el doblez.
+    /// </remarks>
+    public sealed class Trozo
+    {
+        /// <summary>Los puntos del eje original que forman este trozo.</summary>
+        public required List<(double X, double Y, double Z)> Puntos { get; init; }
+
+        public bool EsArco { get; init; }
+
+        /// <summary>Centro del arco. Solo si <see cref="EsArco"/>.</summary>
+        public (double X, double Y, double Z) Centro { get; init; }
+
+        /// <summary>
+        /// Eje de giro del arco, unitario, orientado para que el barrido vaya <b>del principio al
+        /// final</b> por la regla de la mano derecha. Solo si <see cref="EsArco"/>.
+        /// </summary>
+        public (double X, double Y, double Z) Normal { get; init; }
+
+        /// <summary>Radio del doblez —no de la varilla—. Solo si <see cref="EsArco"/>.</summary>
+        public double Radio { get; init; }
+
+        /// <summary>Cuánto barre el arco, en radianes y positivo. Solo si <see cref="EsArco"/>.</summary>
+        public double Barrido { get; init; }
+
+        public (double X, double Y, double Z) A => Puntos[0];
+
+        public (double X, double Y, double Z) B => Puntos[^1];
+    }
+
+    /// <summary>
+    /// El eje separado en <b>rectas y arcos</b>, reconociendo los dobleces que traía.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>POR QUÉ HACE FALTA RECONOCER LOS ARCOS</b></para>
+    /// <para>
+    /// Un doblez dibujado como cadena de cilindros rectos <b>no se puede ver bien</b>, y afinarlo
+    /// lo empeora. El motivo es que cada junta entre dos cilindros es una <b>arista de verdad</b>
+    /// del sólido, y los estilos sombreados de AutoCAD dibujan las aristas: el gancho sale con un
+    /// abanico de rayas. Más tramos son más rayas. No hay tolerancia que arregle eso, porque el
+    /// problema no es la precisión —con el 8% del radio el error ya es invisible— sino que la
+    /// superficie está <b>facetada</b> en lugar de ser curva.
+    /// </para>
+    /// <para>
+    /// La solución es no aproximar el doblez: dibujarlo como el <b>toro</b> que es, girando el
+    /// círculo de la varilla alrededor del eje del doblez. Una sola superficie curva, sin ninguna
+    /// arista dentro. Y para eso hay que recuperar el arco que la vista previa había convertido en
+    /// catorce puntos, que es lo que hace esta función.
+    /// </para>
+    /// <para><b>CÓMO</b></para>
+    /// <para>
+    /// Se avanza por el eje y en cada sitio se mira <b>qué explica más puntos</b>: la recta más
+    /// larga que arranca ahí, o el arco más largo. Gana el que cubra más, y así los lados rectos
+    /// del estribo salen de una pieza y los dobleces, de una pieza cada uno. El arco se ajusta por
+    /// los tres primeros puntos —una circunferencia por tres puntos es única— y se estira mientras
+    /// los siguientes sigan cayendo encima dentro de <paramref name="tol"/>.
+    /// </para>
+    /// <para>
+    /// Y no se supone que el eje venga con arcos: si no los hay —una varilla recta, un eje que
+    /// alguien construyó a mano— salen rectas y ya está. Esta función <b>no puede empeorar</b> un
+    /// eje, solo reconocer lo que traiga.
+    /// </para>
+    /// </remarks>
+    /// <param name="tol">
+    /// Cuánto se permite que un punto se separe de la recta o del arco para seguir considerándolo
+    /// parte de él, en las unidades del eje.
+    /// </param>
+    public static List<Trozo> Curvas(
+        IReadOnlyList<(double X, double Y, double Z)>? eje, double tol)
+    {
+        var p = Limpio(eje);
+
+        var salida = new List<Trozo>();
+
+        if (p.Count < 2)
+        {
+            return salida;
+        }
+
+        if (tol <= 0)
+        {
+            tol = Nada;
+        }
+
+        var i = 0;
+
+        while (i < p.Count - 1)
+        {
+            // LA RECTA MAS LARGA que arranca aqui.
+            var hastaRecta = i + 1;
+
+            while (hastaRecta + 1 < p.Count && EsRecto(p, i, hastaRecta + 1, tol))
+            {
+                hastaRecta++;
+            }
+
+            // Y EL ARCO MAS LARGO que arranca aqui.
+            var arco = AjustarArco(p, i, tol);
+
+            // Gana el que explique mas puntos. En un empate gana la recta, que es mas simple y
+            // mas barata de dibujar.
+            if (arco is not null && arco.Puntos.Count - 1 > hastaRecta - i)
+            {
+                salida.Add(arco);
+
+                i += arco.Puntos.Count - 1;
+
+                continue;
+            }
+
+            salida.Add(new Trozo
+            {
+                Puntos = p.GetRange(i, hastaRecta - i + 1),
+                EsArco = false
+            });
+
+            i = hastaRecta;
+        }
+
+        return salida;
+    }
+
+    /// <summary>¿Los puntos entre <paramref name="i"/> y <paramref name="j"/> están en línea?</summary>
+    private static bool EsRecto(
+        List<(double X, double Y, double Z)> p, int i, int j, double tol)
+    {
+        for (var k = i + 1; k < j; k++)
+        {
+            if (AlSegmento(p[k], p[i], p[j]) > tol)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// El arco más largo que arranca en <paramref name="i"/>, o <c>null</c> si ahí no hay arco.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Hacen falta CUATRO puntos, no tres</b>, y esta es la regla que sostiene todo el
+    /// reconocimiento. Por tres puntos cualesquiera pasa <b>siempre</b> una circunferencia, así que
+    /// un ajuste de tres puntos no comprueba nada: no distingue un doblez de una esquina viva. Con
+    /// tres puntos, la esquina de noventa grados de un estribo se «reconocía» como un arco de
+    /// ciento ochenta que pasaba por sus tres puntos, y el estribo salía redondeado por donde no
+    /// debía. El cuarto punto es el que <b>confirma o desmiente</b> la circunferencia.
+    /// </para>
+    /// <para>
+    /// Y es también lo que evita el otro error, el de las juntas: al llegar al final de un lado
+    /// recto, los tres primeros puntos son el final del lado y los dos primeros del doblez, que
+    /// definen una circunferencia falsa. El cuarto punto ya no cae en ella, así que se descarta y el
+    /// arco arranca donde de verdad arranca.
+    /// </para>
+    /// <para>
+    /// Se pide además un mínimo de <b>un grado</b> de barrido, porque tres puntos casi en línea
+    /// definen una circunferencia enorme que se tragaría un lado recto entero convirtiéndolo en un
+    /// arco de radio kilométrico.
+    /// </para>
+    /// </remarks>
+    private static Trozo? AjustarArco(
+        List<(double X, double Y, double Z)> p, int i, double tol)
+    {
+        if (i + 2 >= p.Count)
+        {
+            return null;
+        }
+
+        var circulo = PorTresPuntos(p[i], p[i + 1], p[i + 2]);
+
+        if (circulo is null)
+        {
+            return null;
+        }
+
+        var (centro, normal, radio) = circulo.Value;
+
+        // Se estira mientras los puntos sigan cayendo sobre la circunferencia.
+        var hasta = i + 2;
+
+        while (hasta + 1 < p.Count && AlCirculo(p[hasta + 1], centro, normal, radio) <= tol)
+        {
+            hasta++;
+        }
+
+        // EL CUARTO PUNTO. Sin al menos uno que confirme la circunferencia, esto no es un arco
+        // reconocido: es una circunferencia trazada por tres puntos, que existe siempre. Ver la
+        // cabecera: es lo que separaba un doblez de una esquina viva.
+        if (hasta < i + 3)
+        {
+            return null;
+        }
+
+        // El barrido, sumando tramo a tramo: asi vale igual para un doblez de 30 grados que para
+        // uno de 270, que sumando de golpe entre el primero y el ultimo saldria del reves.
+        var barrido = 0d;
+
+        for (var k = i; k < hasta; k++)
+        {
+            barrido += AnguloEntre(p[k], p[k + 1], centro, normal);
+        }
+
+        // Menos de un grado no es un doblez: es una recta con ruido.
+        if (barrido < Math.PI / 180)
+        {
+            return null;
+        }
+
+        return new Trozo
+        {
+            Puntos = p.GetRange(i, hasta - i + 1),
+            EsArco = true,
+            Centro = centro,
+            Normal = normal,
+            Radio = radio,
+            Barrido = barrido
+        };
+    }
+
+    /// <summary>
+    /// La circunferencia que pasa por tres puntos: centro, eje de giro y radio. <c>null</c> si
+    /// están en línea.
+    /// </summary>
+    /// <remarks>
+    /// El eje de giro sale del producto vectorial, así que ya queda orientado para que el giro de
+    /// <paramref name="a"/> hacia <paramref name="c"/> sea <b>positivo</b> por la regla de la mano
+    /// derecha. Eso importa: es el signo con el que después se le pide a AutoCAD el barrido, y con
+    /// el signo al revés el doblez sale hacia el lado contrario.
+    /// </remarks>
+    private static ((double X, double Y, double Z) Centro,
+                    (double X, double Y, double Z) Normal,
+                    double Radio)? PorTresPuntos(
+        (double X, double Y, double Z) a,
+        (double X, double Y, double Z) b,
+        (double X, double Y, double Z) c)
+    {
+        var u = new[] { b.X - a.X, b.Y - a.Y, b.Z - a.Z };
+        var v = new[] { c.X - a.X, c.Y - a.Y, c.Z - a.Z };
+
+        var w = Cruz(u, v);
+
+        var w2 = (w[0] * w[0]) + (w[1] * w[1]) + (w[2] * w[2]);
+
+        // En linea: no hay circunferencia, hay recta.
+        if (w2 <= 1e-24)
+        {
+            return null;
+        }
+
+        var u2 = (u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]);
+        var v2 = (v[0] * v[0]) + (v[1] * v[1]) + (v[2] * v[2]);
+
+        var vw = Cruz(v, w);
+        var wu = Cruz(w, u);
+
+        var centro = (
+            a.X + (((u2 * vw[0]) + (v2 * wu[0])) / (2 * w2)),
+            a.Y + (((u2 * vw[1]) + (v2 * wu[1])) / (2 * w2)),
+            a.Z + (((u2 * vw[2]) + (v2 * wu[2])) / (2 * w2)));
+
+        var radio = Distancia(centro, a);
+
+        if (radio <= Nada)
+        {
+            return null;
+        }
+
+        var nw = Math.Sqrt(w2);
+
+        return (centro, (w[0] / nw, w[1] / nw, w[2] / nw), radio);
+    }
+
+    /// <summary>Lo que se separa un punto de una <b>circunferencia</b> en el espacio.</summary>
+    /// <remarks>
+    /// Se miden las dos desviaciones y se juntan: cuánto se sale del <b>plano</b> de la
+    /// circunferencia y cuánto se desvía de su <b>radio</b> dentro del plano. Con solo la segunda,
+    /// un punto muy fuera del plano pero a la distancia justa del eje pasaría por bueno.
+    /// </remarks>
+    private static double AlCirculo(
+        (double X, double Y, double Z) p,
+        (double X, double Y, double Z) centro,
+        (double X, double Y, double Z) normal,
+        double radio)
+    {
+        var dx = p.X - centro.X;
+        var dy = p.Y - centro.Y;
+        var dz = p.Z - centro.Z;
+
+        var fuera = (dx * normal.X) + (dy * normal.Y) + (dz * normal.Z);
+
+        var ex = dx - (fuera * normal.X);
+        var ey = dy - (fuera * normal.Y);
+        var ez = dz - (fuera * normal.Z);
+
+        var enElPlano = Math.Sqrt((ex * ex) + (ey * ey) + (ez * ez));
+
+        var deRadio = enElPlano - radio;
+
+        return Math.Sqrt((fuera * fuera) + (deRadio * deRadio));
+    }
+
+    /// <summary>El ángulo que hay de <paramref name="a"/> a <paramref name="b"/> alrededor del eje.</summary>
+    private static double AnguloEntre(
+        (double X, double Y, double Z) a,
+        (double X, double Y, double Z) b,
+        (double X, double Y, double Z) centro,
+        (double X, double Y, double Z) normal)
+    {
+        var ra = Aplanar(a, centro, normal);
+        var rb = Aplanar(b, centro, normal);
+
+        var na = Math.Sqrt((ra[0] * ra[0]) + (ra[1] * ra[1]) + (ra[2] * ra[2]));
+        var nb = Math.Sqrt((rb[0] * rb[0]) + (rb[1] * rb[1]) + (rb[2] * rb[2]));
+
+        if (na <= Nada || nb <= Nada)
+        {
+            return 0;
+        }
+
+        var cos = (((ra[0] * rb[0]) + (ra[1] * rb[1]) + (ra[2] * rb[2])) / (na * nb));
+
+        return Math.Acos(Math.Clamp(cos, -1d, 1d));
+    }
+
+    /// <summary>El radio del punto proyectado al plano de la circunferencia.</summary>
+    private static double[] Aplanar(
+        (double X, double Y, double Z) p,
+        (double X, double Y, double Z) centro,
+        (double X, double Y, double Z) normal)
+    {
+        var dx = p.X - centro.X;
+        var dy = p.Y - centro.Y;
+        var dz = p.Z - centro.Z;
+
+        var fuera = (dx * normal.X) + (dy * normal.Y) + (dz * normal.Z);
+
+        return new[]
+        {
+            dx - (fuera * normal.X),
+            dy - (fuera * normal.Y),
+            dz - (fuera * normal.Z)
+        };
+    }
+
     /// <summary>Distancia de un punto al <b>segmento</b> a–b, no a su recta.</summary>
     /// <remarks>
     /// Al segmento y no a la recta infinita, y hay un caso donde importa de verdad: en un

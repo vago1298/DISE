@@ -45,6 +45,9 @@ internal static class Program
         SimplificadoGarantizaElError();
         SimplificadoBajaLaCuenta();
         SimplificadoNoSeComeLasEsquinas();
+        CurvasReconoceRectasYArcos();
+        CurvasEnUnEstriboDeVerdad();
+        CurvasNoInventaArcos();
         TramosNoAlarganLasPuntasLibres();
         TramosSolapanEnLasUniones();
         TramosDeUnRecorridoCerrado();
@@ -162,6 +165,60 @@ internal static class Program
         pts.Add(pts[0]);
 
         return pts;
+    }
+
+    /// <summary>Un estribo cerrado con las cuatro esquinas redondeadas, como la vista previa.</summary>
+    private static List<(double X, double Y, double Z)> EstriboCerrado(double rad, int muestras)
+    {
+        var eje = new List<(double X, double Y, double Z)>();
+
+        void Esquina(double cx, double cy, double desde)
+        {
+            for (var i = 0; i <= muestras; i++)
+            {
+                var ang = desde + (Math.PI / 2 * i / muestras);
+
+                eje.Add(P(cx + (rad * Math.Cos(ang)), cy + (rad * Math.Sin(ang)), 0));
+            }
+        }
+
+        Esquina(30 - rad, rad, -Math.PI / 2);
+        Esquina(30 - rad, 50 - rad, 0);
+        Esquina(rad, 50 - rad, Math.PI / 2);
+        Esquina(rad, rad, Math.PI);
+
+        eje.Add(eje[0]);
+
+        return eje;
+    }
+
+    /// <summary>
+    /// Gira un punto alrededor de un eje. <b>Se calcula aquí</b>, no se llama a la clase probada:
+    /// si se usara su misma cuenta, la prueba no probaría nada.
+    /// </summary>
+    private static (double X, double Y, double Z) Girar(
+        (double X, double Y, double Z) p,
+        (double X, double Y, double Z) centro,
+        (double X, double Y, double Z) eje,
+        double angulo)
+    {
+        var rx = p.X - centro.X;
+        var ry = p.Y - centro.Y;
+        var rz = p.Z - centro.Z;
+
+        var c = Math.Cos(angulo);
+        var s = Math.Sin(angulo);
+
+        var cruzX = (eje.Y * rz) - (eje.Z * ry);
+        var cruzY = (eje.Z * rx) - (eje.X * rz);
+        var cruzZ = (eje.X * ry) - (eje.Y * rx);
+
+        var punto = (eje.X * rx) + (eje.Y * ry) + (eje.Z * rz);
+
+        return (
+            centro.X + (rx * c) + (cruzX * s) + (eje.X * punto * (1 - c)),
+            centro.Y + (ry * c) + (cruzY * s) + (eje.Y * punto * (1 - c)),
+            centro.Z + (rz * c) + (cruzZ * s) + (eje.Z * punto * (1 - c)));
     }
 
     /// <summary>Lo que se separa un punto del <b>recorrido entero</b>, tramo a tramo.</summary>
@@ -448,6 +505,243 @@ internal static class Program
 
         Comprobar(s.Count <= 8,
             $"y bajo de {cuadro.Count} a {s.Count} puntos");
+    }
+
+    /// <summary>
+    /// <c>Curvas</c> tiene que recuperar los arcos que la vista previa convirtió en puntos, porque
+    /// es lo único que permite dibujar un doblez <b>sin aristas</b>.
+    /// </summary>
+    private static void CurvasReconoceRectasYArcos()
+    {
+        Console.WriteLine("\nCurvas reconoce rectas y ARCOS (el gancho liso depende de esto)");
+
+        // Una recta pura, con puntos de sobra: UN trozo, y recto.
+        var recta = new List<(double X, double Y, double Z)>();
+
+        for (var i = 0; i <= 10; i++)
+        {
+            recta.Add(P(i, 0, 0));
+        }
+
+        var tr = EjeDeBarra.Curvas(recta, 0.01);
+
+        Comprobar(tr.Count == 1, $"una recta da un solo trozo: {tr.Count}");
+        Comprobar(tr.Count == 1 && !tr[0].EsArco, "y no es arco");
+        Comprobar(tr.Count == 1 && Dist(tr[0].A, P(0, 0, 0)) < Tol
+                  && Dist(tr[0].B, P(10, 0, 0)) < Tol,
+            "y va de punta a punta");
+
+        // Un codo: recta + arco + recta. Tres trozos, el de en medio arco.
+        const double radio = 2;
+
+        var codo = Codo(14, radio);
+
+        var tc = EjeDeBarra.Curvas(codo, 0.01);
+
+        Comprobar(tc.Count == 3, $"un codo da tres trozos (recta, arco, recta): {tc.Count}");
+
+        if (tc.Count == 3)
+        {
+            Comprobar(!tc[0].EsArco && tc[1].EsArco && !tc[2].EsArco,
+                "y el del medio es el arco");
+
+            Comprobar(Math.Abs(tc[1].Radio - radio) < 1e-6,
+                $"el radio del doblez es {tc[1].Radio:0.####}, se esperaba {radio}");
+
+            Comprobar(Math.Abs(tc[1].Barrido - (Math.PI / 2)) < 1e-6,
+                $"y barre 90°: {tc[1].Barrido * 180 / Math.PI:0.###}°");
+
+            Comprobar(Dist(tc[1].Centro, P(0, 0, 0)) < 1e-6,
+                $"con el centro en el origen: ({tc[1].Centro.X:0.###}, {tc[1].Centro.Y:0.###})");
+
+            // El eje de giro tiene que estar orientado para que el barrido vaya del principio al
+            // final. El codo va de -X a +Y en el plano XY, o sea giro POSITIVO en Z.
+            Comprobar(Math.Abs(tc[1].Normal.Z - 1) < 1e-9,
+                $"y el eje de giro apunta +Z: ({tc[1].Normal.X:0.##}, {tc[1].Normal.Y:0.##}, "
+                + $"{tc[1].Normal.Z:0.##})");
+        }
+
+        // LA COMPROBACION QUE IMPORTA: girar el punto de arranque el barrido alrededor del eje
+        // tiene que caer en el punto final. Es exactamente lo que le va a pedir a AutoCAD.
+        foreach (var (nombre, eje) in new (string, List<(double X, double Y, double Z)>)[]
+                 {
+                     ("codo de 90°", Codo(14)),
+                     ("codo de radio 8", Codo(14, 8)),
+                     ("gancho de 135°", Gancho(14)),
+                     ("aro cerrado", Aro(40))
+                 })
+        {
+            var trozos = EjeDeBarra.Curvas(eje, 0.01);
+
+            var arcos = trozos.Count(x => x.EsArco);
+
+            Comprobar(arcos >= 1, $"{nombre}: se reconoce al menos un arco ({arcos})");
+
+            var todosBien = true;
+
+            foreach (var a in trozos.Where(x => x.EsArco))
+            {
+                var girado = Girar(a.A, a.Centro, a.Normal, a.Barrido);
+
+                if (Dist(girado, a.B) > 1e-6)
+                {
+                    todosBien = false;
+                }
+            }
+
+            Comprobar(todosBien,
+                $"{nombre}: girar el arranque su barrido cae en el final (el signo del giro)");
+
+            // Y los puntos originales estan todos sobre su arco.
+            var enSuArco = true;
+
+            foreach (var a in trozos.Where(x => x.EsArco))
+            {
+                foreach (var p in a.Puntos)
+                {
+                    var d = Math.Sqrt(
+                        ((p.X - a.Centro.X) * (p.X - a.Centro.X))
+                        + ((p.Y - a.Centro.Y) * (p.Y - a.Centro.Y))
+                        + ((p.Z - a.Centro.Z) * (p.Z - a.Centro.Z)));
+
+                    if (Math.Abs(d - a.Radio) > 1e-6)
+                    {
+                        enSuArco = false;
+                    }
+                }
+            }
+
+            Comprobar(enSuArco, $"{nombre}: cada punto esta a su radio del centro");
+
+            // Y NO SE PIERDE NADA: los trozos, en orden, cubren el eje entero.
+            var sinHuecos = true;
+
+            for (var i = 1; i < trozos.Count; i++)
+            {
+                if (Dist(trozos[i - 1].B, trozos[i].A) > 1e-9)
+                {
+                    sinHuecos = false;
+                }
+            }
+
+            Comprobar(sinHuecos, $"{nombre}: los trozos empalman sin huecos");
+
+            Comprobar(trozos.Count > 0 && Dist(trozos[0].A, eje[0]) < 1e-9
+                      && Dist(trozos[^1].B, eje[^1]) < 1e-9,
+                $"{nombre}: y van del primer punto del eje al ultimo");
+        }
+    }
+
+    /// <summary>El caso real: un estribo con sus cuatro esquinas redondeadas.</summary>
+    private static void CurvasEnUnEstriboDeVerdad()
+    {
+        Console.WriteLine("\nCurvas en un estribo de verdad: 4 rectas y 4 arcos");
+
+        const double rad = 2.5;
+
+        var eje = EstriboCerrado(rad, 14);
+
+        var trozos = EjeDeBarra.Curvas(eje, 0.475 * Jaula3dDrawer.ToleranciaDeReconocer);
+
+        var arcos = trozos.Count(t => t.EsArco);
+        var rectas = trozos.Count(t => !t.EsArco);
+
+        Comprobar(arcos == 4, $"cuatro dobleces reconocidos: {arcos}");
+
+        Comprobar(rectas >= 4 && rectas <= 5,
+            $"y los lados rectos, de una pieza cada uno: {rectas} rectas");
+
+        // Y AQUI ESTA EL PREMIO: antes eran 28 solidos por estribo, todos con aristas entre
+        // ellos. Ahora son 8 o 9, y los dobleces sin ninguna arista dentro.
+        Comprobar(trozos.Count <= 10,
+            $"el estribo entero sale en {trozos.Count} piezas (antes 28 cilindros)");
+
+        var todos90 = trozos.Where(t => t.EsArco)
+            .All(t => Math.Abs(t.Barrido - (Math.PI / 2)) < 1e-6);
+
+        Comprobar(todos90, "y los cuatro dobleces barren 90° exactos");
+
+        var radioBien = trozos.Where(t => t.EsArco)
+            .All(t => Math.Abs(t.Radio - rad) < 1e-6);
+
+        Comprobar(radioBien, $"con el radio del doblez, {rad}");
+
+        // El largo total no se pierde: la suma de los trozos es el eje.
+        var largoTrozos = trozos.Sum(t => t.EsArco
+            ? t.Radio * t.Barrido
+            : Dist(t.A, t.B));
+
+        var largoEje = EjeDeBarra.Largo(eje);
+
+        // El eje muestreado es un poco mas corto que el arco de verdad -las cuerdas cortan-, asi
+        // que el de los trozos tiene que ser IGUAL O UN POCO MAYOR, nunca menor.
+        Comprobar(largoTrozos >= largoEje - 1e-9 && largoTrozos < largoEje * 1.002,
+            $"el perimetro cuadra: {largoTrozos:0.####} de arco contra {largoEje:0.####} "
+            + "de cuerdas");
+    }
+
+    /// <summary>
+    /// Lo peligroso de reconocer arcos es <b>inventárselos</b>: convertir un lado recto en un arco
+    /// de radio kilométrico y dibujarlo curvado.
+    /// </summary>
+    private static void CurvasNoInventaArcos()
+    {
+        Console.WriteLine("\nCurvas NO se inventa arcos donde hay rectas");
+
+        // Una recta con ruido de redondeo: NO es un arco.
+        var casi = new List<(double X, double Y, double Z)>();
+
+        for (var i = 0; i <= 20; i++)
+        {
+            casi.Add(P(i, i % 2 == 0 ? 1e-9 : -1e-9, 0));
+        }
+
+        var t = EjeDeBarra.Curvas(casi, 0.01);
+
+        Comprobar(t.All(x => !x.EsArco),
+            $"una recta con ruido no se vuelve arco: {t.Count(x => x.EsArco)} arcos");
+
+        // Una esquina VIVA -sin redondeo- son dos rectas, no un arco.
+        var esquina = new List<(double X, double Y, double Z)>
+        {
+            P(0, 0, 0), P(10, 0, 0), P(10, 10, 0)
+        };
+
+        var te = EjeDeBarra.Curvas(esquina, 0.01);
+
+        Comprobar(te.Count == 2 && te.All(x => !x.EsArco),
+            $"una esquina viva son dos rectas: {te.Count} trozos, "
+            + $"{te.Count(x => x.EsArco)} arcos");
+
+        // Degenerados: sin excepcion y sin disparates.
+        Comprobar(EjeDeBarra.Curvas(null, 0.01).Count == 0, "Curvas de null es vacio");
+
+        Comprobar(EjeDeBarra.Curvas(
+            new List<(double X, double Y, double Z)> { P(1, 1, 1) }, 0.01).Count == 0,
+            "un solo punto no da trozos");
+
+        var dos = EjeDeBarra.Curvas(
+            new List<(double X, double Y, double Z)> { P(0, 0, 0), P(1, 0, 0) }, 0.01);
+
+        Comprobar(dos.Count == 1 && !dos[0].EsArco, "dos puntos dan una recta");
+
+        var pegados = EjeDeBarra.Curvas(
+            new List<(double X, double Y, double Z)> { P(2, 2, 2), P(2, 2, 2), P(2, 2, 2) }, 0.01);
+
+        Comprobar(pegados.Count == 0, "puntos pegados no dan trozos");
+
+        // Una tolerancia de cero o negativa no puede reventar.
+        Comprobar(EjeDeBarra.Curvas(Codo(14), 0).Count > 0, "con tolerancia 0 sigue dando trozos");
+        Comprobar(EjeDeBarra.Curvas(Codo(14), -1).Count > 0, "y con tolerancia negativa tambien");
+
+        // Un pico de 180° no es un arco: la varilla vuelve sobre si misma.
+        var pico = new List<(double X, double Y, double Z)>
+        {
+            P(0, 0, 0), P(10, 0, 0), P(0, 0, 0)
+        };
+
+        Comprobar(EjeDeBarra.Curvas(pico, 0.01).All(x => !x.EsArco),
+            "un pico de 180° no se toma por arco");
     }
 
     /// <summary>
