@@ -1,5 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+
+// Input es donde vive Cursors, que se usa al mandar la jaula a AutoCAD: esa pasada tarda y hay
+// que enseñar el reloj de arena.
+using System.Windows.Input;
 using System.Windows.Media;
 
 // Imaging es donde viven RenderTargetBitmap, JpegBitmapEncoder y PixelFormats, que son los
@@ -389,6 +393,122 @@ public partial class MainWindow
         }
     }
 
+    // ======================================================================
+    //  La jaula en 3D, a AutoCAD
+    // ======================================================================
+
+    /// <summary>Manda la jaula de armado en 3D a AutoCAD, cada varilla como un sólido.</summary>
+    /// <remarks>
+    /// <para>
+    /// Las barras son <b>las que se están viendo</b>: se apuntaron al construir la escena, con su
+    /// eje ya resuelto. No se recalcula nada aquí, y eso es a propósito —recalcular es lo que hace
+    /// que el plano y la pantalla acaben enseñando cosas distintas—.
+    /// </para>
+    /// <para>
+    /// <b>El cambio de coordenadas.</b> La vista previa trabaja en <b>centímetros con la Y hacia
+    /// arriba</b> y AutoCAD en <b>metros con la Z hacia arriba</b>, que es lo que ya usa el dibujo
+    /// de las secciones. El paso es <c>(x, fondo − z, y) · 0.01</c>, y las dos partes tienen su
+    /// motivo:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     El <b>signo menos</b> no es un adorno: pasar de «Y arriba» a «Z arriba»
+    ///     intercambiando dos ejes a secas <b>voltea el dibujo como un espejo</b>, y entonces el
+    ///     gancho del estribo saldría en la esquina contraria. Con el signo es un giro de verdad
+    ///     y la pieza conserva su mano.
+    ///   </item>
+    ///   <item>
+    ///     El <b>fondo</b> es solo un corrimiento para que la pieza quede en las Y positivas, al
+    ///     lado del origen en lugar de detrás de él. Un corrimiento no toca la mano del dibujo.
+    ///   </item>
+    /// </list>
+    /// </remarks>
+    private void OnDibujarJaula3dCad(object sender, RoutedEventArgs e)
+    {
+        var s = Seleccionada;
+
+        if (s is null || _barrasDeLaJaula.Count == 0 || _cajaDeLaPieza is null)
+        {
+            MessageBox.Show(
+                "No hay una jaula que dibujar. Selecciona una fila con sus medidas y toca el "
+                + "botón «2D» de la vista previa para pasar a 3D: se manda a AutoCAD la misma "
+                + "jaula que se ve en pantalla.",
+                "Sección 3D en AutoCAD", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+
+            var dibujante = new Jaula3dDrawer(doc);
+
+            dibujante.AsegurarCapas();
+
+            // El fondo de la pieza en el mundo de la vista previa: la Z de su caja.
+            var fondo = _cajaDeLaPieza.Value.Bz;
+
+            const double aMetros = 0.01;
+
+            var barras = _barrasDeLaJaula
+                .Select(b => new Jaula3dDrawer.Barra
+                {
+                    Eje = b.Eje
+                        .Select(p => (
+                            p.X * aMetros,
+                            (fondo - p.Z) * aMetros,
+                            p.Y * aMetros))
+                        .ToList(),
+
+                    Radio = b.RadioCm * aMetros,
+
+                    Capa = b.EsEstribo
+                        ? Jaula3dDrawer.CapaEstribos
+                        : Jaula3dDrawer.CapaVarillas,
+
+                    Id = (string.IsNullOrWhiteSpace(s.Id) ? "sección" : s.Id.Trim())
+                         + (b.EsEstribo ? " estribo" : " varilla")
+                })
+                .ToList();
+
+            var r = dibujante.Dibujar(barras);
+
+            AcadConnection.Retry(() => { app.ZoomExtents(); });
+
+            var notas = dibujante.Notas;
+
+            StatusText.Text =
+                $"Jaula 3D de {s.Id} en AutoCAD: {r}."
+                + (notas.Count > 0 ? $" {notas.Count} nota(s)." : string.Empty);
+
+            MessageBox.Show(
+                $"Listo.\n\n{r}\n\n"
+                + $"Las varillas quedaron en «{Jaula3dDrawer.CapaVarillas}» y los estribos, "
+                + $"grapas y diamantes en «{Jaula3dDrawer.CapaEstribos}», así que puedes apagar "
+                + "unos para ver los otros.\n\n"
+                + "Son sólidos: se pueden seccionar, medir y acotar."
+                + (notas.Count > 0
+                    ? "\n\nNotas:\n" + string.Join(Environment.NewLine,
+                        notas.Select(n => "  - " + n))
+                    : string.Empty),
+                "Sección 3D en AutoCAD", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "No se pudo dibujar la jaula en 3D.\n\n" + ex.Message,
+                "Sección 3D en AutoCAD", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
     /// <summary>Guarda la escena en 3D como JPG rasterizándola a tamaño completo.</summary>
     /// <remarks>
     /// <para>
@@ -588,6 +708,35 @@ public partial class MainWindow
     /// </remarks>
     private bool _piezaAcostada;
 
+    /// <summary>
+    /// Las barras de la jaula que se está viendo, para poder mandarlas a AutoCAD.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se apuntan <b>mientras se construye la escena</b>, con el eje ya resuelto, en lugar de
+    /// recalcularlas al exportar. Es la diferencia entre que el sólido de AutoCAD sea <i>la misma
+    /// barra</i> que se está viendo y que sea una segunda versión que un día se desvía. Ya hemos
+    /// pagado ese precio con el gancho.
+    /// </para>
+    /// <para>
+    /// Van en coordenadas del <b>mundo de la vista previa</b>: centímetros y la Y hacia arriba.
+    /// La conversión a las de AutoCAD —metros y la Z arriba— se hace al exportar, que es donde
+    /// se sabe a qué dibujo van.
+    /// </para>
+    /// </remarks>
+    private readonly List<(List<(double X, double Y, double Z)> Eje, double RadioCm, bool EsEstribo)>
+        _barrasDeLaJaula = new();
+
+    /// <summary>Apunta una barra de la jaula tal como se acaba de dibujar en pantalla.</summary>
+    private void ApuntarBarra(
+        List<(double X, double Y, double Z)> eje, double radioCm, bool esEstribo)
+    {
+        if (radioCm > 0 && eje.Count >= 2)
+        {
+            _barrasDeLaJaula.Add((new List<(double X, double Y, double Z)>(eje), radioCm, esEstribo));
+        }
+    }
+
     /// <summary>Del plano de la sección al mundo. <b>El único convenio de ejes.</b></summary>
     /// <remarks>
     /// <para>
@@ -656,6 +805,10 @@ public partial class MainWindow
         // Un elemento que no lleva alzado —un castillo, una cadena, algo escrito a mano— se
         // queda DE PIE. Es lo prudente: si el programa no sabe si la pieza está tendida o de
         // pie, acostarla sería adivinar.
+        // La lista de barras se vacía en cada reconstrucción: si no, exportar después de
+        // cambiar de sección mandaría a AutoCAD la jaula vieja pegada a la nueva.
+        _barrasDeLaJaula.Clear();
+
         _piezaAcostada = TipoDe(s.Elemento, s.Id)
             is TipoElemento.Trabe or TipoElemento.Contratrabe;
 
@@ -716,6 +869,11 @@ public partial class MainWindow
             }
 
             TuboDeMalla.Agregar(malla, eje, diamCm / 2, cerrado, _ladosDelTubo3D);
+
+            // Y se apunta para poder mandarla a AutoCAD. Se apunta AQUÍ, con el eje ya
+            // resuelto, y no se recalcula al exportar: así el sólido de AutoCAD es la misma
+            // barra que se está viendo en pantalla, con sus dobleces, su gancho y su lape.
+            ApuntarBarra(eje, diamCm / 2, !ReferenceEquals(malla, mallaVarillas));
         }
 
         // ---------- Las varillas longitudinales ----------
@@ -728,6 +886,13 @@ public partial class MainWindow
                 mallaVarillas,
                 new[] { (a.X, a.Y, a.Z), (b.X, b.Y, b.Z) },
                 vr, lados: _ladosDelTubo3D);
+
+            ApuntarBarra(
+                new List<(double X, double Y, double Z)>
+                {
+                    (a.X, a.Y, a.Z), (b.X, b.Y, b.Z)
+                },
+                vr, esEstribo: false);
         }
 
         // ---------- El estribo, el diamante y las grapas en cada posición ----------
@@ -986,6 +1151,8 @@ public partial class MainWindow
         // elegida después de una trabe heredaría el «tendida» de la trabe y saldría acostada.
         _piezaAcostada = false;
 
+        _barrasDeLaJaula.Clear();
+
         var diam = s.DiametroCm;
 
         if (diam <= 0)
@@ -1039,6 +1206,10 @@ public partial class MainWindow
                     mallaVarillas,
                     new[] { (x, 0.0, z), (x, by, z) },
                     dVar / 2, lados: _ladosDelTubo3D);
+
+                ApuntarBarra(
+                    new List<(double X, double Y, double Z)> { (x, 0.0, z), (x, by, z) },
+                    dVar / 2, esEstribo: false);
             }
         }
 
@@ -1091,6 +1262,8 @@ public partial class MainWindow
 
                 TuboDeMalla.Agregar(
                     mallaEstribos, helice, dZun / 2, lados: _ladosDelTubo3D);
+
+                ApuntarBarra(helice.ToList(), dZun / 2, esEstribo: true);
             }
             else
             {
@@ -1114,6 +1287,8 @@ public partial class MainWindow
                     TuboDeMalla.Agregar(
                         mallaEstribos, anillo, dZun / 2,
                         cerrado: true, lados: _ladosDelTubo3D);
+
+                    ApuntarBarra(anillo.ToList(), dZun / 2, esEstribo: true);
                 }
             }
 
@@ -1137,10 +1312,12 @@ public partial class MainWindow
                 {
                     var y = pos * 100.0;
 
+                    var ejeGancho = gancho.Select(p => (p.X, y, p.Y)).ToList();
+
                     TuboDeMalla.Agregar(
-                        mallaEstribos,
-                        gancho.Select(p => (p.X, y, p.Y)).ToList(),
-                        dZun / 2, lados: _ladosDelTubo3D);
+                        mallaEstribos, ejeGancho, dZun / 2, lados: _ladosDelTubo3D);
+
+                    ApuntarBarra(ejeGancho, dZun / 2, esEstribo: true);
                 }
             }
         }
