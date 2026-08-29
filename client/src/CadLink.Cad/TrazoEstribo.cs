@@ -164,28 +164,43 @@ public static class TrazoEstribo
         //  plano de AutoCAD lo dibuja abrazando TODAS las del paquete. Dos dibujos distintos
         //  del mismo acero, y el que manda es el plano.
         //
-        //  LA FORMA ES UN OBRONDO: un doblez del MISMO radio en cada punta del paquete
-        //  —el radio no crece, lo manda la varilla con la que se dobla, no cuántas haya—
-        //  unidos por un tramo recto. Y ese tramo recto NO hay que añadirlo: cae justo sobre
-        //  el costado derecho del estribo, que ya está dibujado. Así que basta con bajar el
-        //  centro de ESTE doblez hasta la última varilla del paquete.
+        //  LA FORMA ES UN OBRONDO, tomada de Ganchos en el dibujante de AutoCAD: un doblez
+        //  del MISMO radio en cada punta del paquete —el radio no crece, lo manda la varilla
+        //  con la que se dobla, no cuántas haya— unidos por un tramo recto.
         //
-        //  De ahí que el cambio sea de una línea y que sin paquete no cambie nada: con
-        //  paqueteAdentro en cero los dos dobleces son el mismo, el tramo recto mide cero y
-        //  queda el gancho de media vuelta de siempre.
+        //  Y ese tramo recto NO hay que añadirlo: va por x = x2, que es exactamente donde ya
+        //  corre el costado derecho del estribo. De ahí que el cambio sea mover un centro.
+        //
+        //  EL RECORRIDO, y aquí está lo que se había hecho mal: los dos dobleces se recorren
+        //  desde el MISMO punto —la tangencia del costado derecho, a 0°— y cada uno se va por
+        //  su lado, uno hacia arriba y otro hacia abajo:
+        //
+        //    · el de la ESQUINA barre 135° hacia ARRIBA —0° → 135°—, pasa por encima de la
+        //      varilla y su cola sale al núcleo;
+        //    · el de la ÚLTIMA DEL PAQUETE barre 45° hacia ABAJO —0° → −45°—, que es su cara
+        //      de FUERA, y su cola sale al núcleo por debajo.
+        //
+        //  En el intento anterior este segundo doblez barría 135° hacia ARRIBA, y eso le hacía
+        //  pasar POR ENCIMA de la varilla de la esquina: el gancho se metía por dentro del
+        //  paquete en lugar de abrazarlo. Es lo que se seguía viendo mal.
         var adentro = Math.Max(0, paqueteAdentro);
 
-        // Y con el tope de que no se salga del estribo por abajo: un paquete mal leído no
-        // puede llevarse el gancho al otro extremo de la sección.
+        // Con el tope de que no se salga del estribo por abajo: un paquete mal leído no puede
+        // llevarse el gancho al otro extremo de la sección.
         adentro = Math.Min(adentro, Math.Max(0, cgY - y1 - rInf));
 
-        // Extremo que llega SUBIENDO por el costado: entra al doblez en 0° y barre 135° en
-        // sentido antihorario. Su doblez es el de la ÚLTIMA varilla del paquete.
-        colas.Add(Cola(cgX, cgY - adentro, rSup, 0, 0.75 * Math.PI, largo, ux, uy, tramos));
+        // El doblez de la ESQUINA: entra en 0° y barre 135° hacia arriba.
+        colas.Add(Cola(cgX, cgY, rSup, 0, 0.75 * Math.PI, largo, ux, uy, tramos));
 
-        // Extremo que llega por ARRIBA: entra en 90° y barre 135° en sentido horario, así
-        // que sale por el punto opuesto del doblez y su cola queda paralela a la otra.
-        colas.Add(Cola(cgX, cgY, rSup, 0.5 * Math.PI, -0.75 * Math.PI, largo, ux, uy, tramos));
+        // El de la ÚLTIMA DEL PAQUETE: entra en 0° y barre 45° hacia abajo, por su cara de
+        // fuera. Sale por el punto OPUESTO al de la otra cola —135° y −45° son diametralmente
+        // opuestos— y por eso las dos colas quedan paralelas y separadas el diámetro del
+        // doblez, que es lo que hace que un gancho se lea como dos rayas.
+        //
+        // SIN PAQUETE NO CAMBIA NADA: con adentro en cero los dos dobleces son el mismo
+        // círculo, y entre 0° → 135° y 0° → −45° cubren los mismos 180° de media vuelta que
+        // cubrían antes. Solo se juntan en 0° en lugar de en 90°, y la unión es idéntica.
+        colas.Add(Cola(cgX, cgY - adentro, rSup, 0, -0.25 * Math.PI, largo, ux, uy, tramos));
 
         return new Trazo(Limpiar(cuerpo), colas, false);
     }

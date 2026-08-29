@@ -329,14 +329,33 @@ internal static class Program
             "con paqueteAdentro en cero sale EXACTAMENTE el trazo de siempre",
             "cambio algo sin haber paquete");
 
-        var y0Sin = MasAbajo(sinPaquete.Value.Colas[0]);
-        var y0Con = MasAbajo(conPaquete.Value.Colas[0]);
+        // EL DOBLEZ QUE BAJA ES EL DE LA COLA[1]: la de la ULTIMA varilla del paquete. La
+        // cola[0] es la de la ESQUINA y NO se mueve. Los dos juntos son el obrondo.
+        var y1Sin = MasAbajo(sinPaquete.Value.Colas[1]);
+        var y1Con = MasAbajo(conPaquete.Value.Colas[1]);
 
-        // EL DOBLEZ BAJA UN DIAMETRO: es el de la ultima varilla del paquete, no el de la
-        // esquina. Ahi esta la diferencia que se veia en el plano.
-        Comprobar(y0Con < y0Sin - (unDiametro * 0.5),
-            "el doblez del gancho BAJA hasta la ultima varilla del paquete",
-            $"sin paquete su punto mas bajo esta en {y0Sin:F3} y con paquete en {y0Con:F3}");
+        Comprobar(y1Con < y1Sin - (unDiametro * 0.5),
+            "el doblez de la ULTIMA del paquete BAJA hasta ella",
+            $"sin paquete su punto mas bajo esta en {y1Sin:F3} y con paquete en {y1Con:F3}");
+
+        Comprobar(
+            Math.Abs(MasArriba(conPaquete.Value.Colas[0])
+                     - MasArriba(sinPaquete.Value.Colas[0])) < 1e-9,
+            "y el de la ESQUINA se queda donde estaba: los dos juntos son el obrondo",
+            "se movio, y entonces no hay obrondo sino un gancho corrido");
+
+        // EL GANCHO NO PASA POR ENCIMA DE LA VARILLA DE LA ESQUINA. Esto es lo que estaba mal
+        // en el primer intento: el doblez de abajo barria 135 grados HACIA ARRIBA y se metia
+        // por dentro del paquete en lugar de abrazarlo.
+        //
+        // Se comprueba con la altura: ningun punto de la cola de abajo puede subir por encima
+        // del centro de la varilla de la esquina.
+        var arribaDeLaDeAbajo = MasArriba(conPaquete.Value.Colas[1]);
+        var centroDeLaEsquina = y2 - rS;
+
+        Comprobar(arribaDeLaDeAbajo <= centroDeLaEsquina + 1e-9,
+            "la cola de abajo NO sube por encima de la varilla de la esquina",
+            $"sube hasta {arribaDeLaDeAbajo:F3} y el centro de la esquina esta en {centroDeLaEsquina:F3}");
 
         // Y SIGUEN SIENDO DOS COLAS PARALELAS: un gancho sismico tiene dos extremos, con
         // paquete o sin el.
@@ -358,14 +377,6 @@ internal static class Program
             "y siguen saliendo PARALELAS, las dos hacia el nucleo",
             "divergen, y un gancho no abre las colas");
 
-        // EL OTRO DOBLEZ NO SE MUEVE: es el de la varilla de la esquina. Los dos juntos son
-        // el obrondo, y si se movieran los dos no habria obrondo, habria un gancho corrido.
-        Comprobar(
-            Math.Abs(MasArriba(conPaquete.Value.Colas[1])
-                     - MasArriba(sinPaquete.Value.Colas[1])) < 1e-9,
-            "el doblez de la ESQUINA se queda donde estaba: los dos juntos son el obrondo",
-            "se movio, y entonces no hay obrondo sino un gancho corrido");
-
         // EL CUERPO NO CAMBIA: el tramo recto del obrondo es el costado del estribo, que ya
         // estaba dibujado. Si el cuerpo cambiara, se estaria dibujando dos veces.
         Comprobar(conPaquete.Value.Cuerpo.Count == sinPaquete.Value.Cuerpo.Count,
@@ -376,7 +387,7 @@ internal static class Program
         var exagerado = TrazoEstribo.Eje(
             x1, y1, x2, y2, rS, rI, gancho, paqueteAdentro: 1000);
 
-        Comprobar(exagerado is not null && MasAbajo(exagerado.Value.Colas[0]) >= y1 - gancho,
+        Comprobar(exagerado is not null && MasAbajo(exagerado.Value.Colas[1]) >= y1 - gancho,
             "con un paquete disparatado el gancho no se sale del estribo",
             "el doblez se fue fuera de la seccion");
 
@@ -385,7 +396,7 @@ internal static class Program
             x1, y1, x2, y2, rS, rI, gancho, paqueteAdentro: -5);
 
         Comprobar(negativo is not null
-                  && Math.Abs(MasAbajo(negativo.Value.Colas[0]) - y0Sin) < 1e-9,
+                  && Math.Abs(MasAbajo(negativo.Value.Colas[1]) - y1Sin) < 1e-9,
             "y un desplazamiento negativo se toma como cero",
             "un negativo saco el gancho por arriba");
     }

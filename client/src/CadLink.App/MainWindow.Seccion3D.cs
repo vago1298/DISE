@@ -1252,7 +1252,28 @@ public partial class MainWindow
         // pieza, es la marca que la pieza deja en el suelo, y cambia de forma al girar.
         var jaula = new Model3DGroup();
 
-        Agregar3D(jaula, varillas, Color.FromRgb(0xC0, 0x39, 0x2B), 0.35);
+        // ===== EL CONTORNO DE CADA VARILLA, PARA PODER DISTINGUIRLAS =====
+        //
+        // Se pidió: «que las varillas verticales tengan líneas para diferenciarlas». Dos
+        // varillas pegadas —y en un paquete se tocan— son del mismo color y reciben la misma
+        // luz, así que se leían como una sola pieza gorda: no había forma de contarlas.
+        //
+        // La línea NO se dibuja: se saca del propio volumen. Se monta una segunda copia de las
+        // varillas un poco más gruesa y se le pinta SOLO LA CARA DE ATRÁS. Con el buffer de
+        // profundidad, la varilla de verdad —más delgada y por tanto por delante— gana en todo
+        // el centro, y de la copia solo asoma un reborde oscuro justo donde la varilla se va de
+        // canto. O sea, su silueta.
+        //
+        // Y por qué así: una silueta depende de DESDE DÓNDE se mira, así que una línea dibujada
+        // en un sitio fijo solo estaría bien en un ángulo y se saldría de la barra en el resto.
+        // Esta sale sola en cada giro, sin recalcular nada, porque no es una línea: es el borde
+        // de un sólido.
+        //
+        // Va ANTES de las varillas a propósito. Son translúcidas de nada, pero el orden de
+        // dibujo de WPF importa con transparencia, y así el reborde queda detrás.
+        Agregar3D(jaula, varillas, Color.FromRgb(0xC0, 0x39, 0x2B), 0.35,
+                  contorno: Color.FromRgb(0x4A, 0x10, 0x0C));
+
         Agregar3D(jaula, estribos, Color.FromRgb(0x1F, 0x6F, 0xB2), 0.35);
         Agregar3D(jaula, concreto, Color.FromRgb(0x8F, 0xA6, 0xBC), 0.05);
 
@@ -1320,12 +1341,74 @@ public partial class MainWindow
     /// brillo, y sin ese reflejo una barra cilíndrica se ve como un tubo de plástico mate. El
     /// concreto va con casi nada.
     /// </remarks>
+    /// <summary>Cuánto se engorda la copia que hace de contorno.</summary>
+    /// <remarks>
+    /// Un 6 %: lo justo para que el reborde se vea a cualquier tamaño y no tanto que dos
+    /// varillas pegadas se toquen por sus contornos y vuelvan a leerse como una sola pieza, que
+    /// es justo lo que se quería resolver.
+    /// </remarks>
+    private const double GrosorDelContorno3D = 1.06;
+
     private static void Agregar3D(
-        Model3DGroup grupo, TuboDeMalla.Malla malla, Color color, double brillo)
+        Model3DGroup grupo, TuboDeMalla.Malla malla, Color color, double brillo,
+        Color? contorno = null)
     {
         if (malla.Triangulos.Count == 0)
         {
             return;
+        }
+
+        // ---------- El contorno, si se pidió ----------
+        //
+        // La copia engordada se calcula empujando cada punto a lo largo de SU NORMAL, que es lo
+        // que hace crecer el tubo por su superficie. Escalar la malla desde un centro no
+        // valdría: la jaula entera se estiraría y las varillas se separarían de los estribos.
+        if (contorno is { } colorContorno)
+        {
+            var gorda = new MeshGeometry3D
+            {
+                Positions = new Point3DCollection(malla.Puntos.Count),
+                TriangleIndices = new Int32Collection(malla.Triangulos)
+            };
+
+            var crece = GrosorDelContorno3D - 1;
+
+            for (var i = 0; i < malla.Puntos.Count; i++)
+            {
+                var (px, py, pz) = malla.Puntos[i];
+
+                // El radio del tubo no se conoce aquí, así que se empuja una fracción del punto
+                // a lo largo de su normal. Con las normales unitarias que da TuboDeMalla, eso
+                // es un desplazamiento constante; se toma pequeño y en las unidades de la
+                // pieza —centímetros—, que es donde un reborde se ve sin comerse la barra.
+                if (i < malla.Normales.Count)
+                {
+                    var (nx, ny, nz) = malla.Normales[i];
+
+                    px += nx * crece;
+                    py += ny * crece;
+                    pz += nz * crece;
+                }
+
+                gorda.Positions.Add(new Point3D(px, py, pz));
+            }
+
+            gorda.Freeze();
+
+            var oscuro = new DiffuseMaterial(new SolidColorBrush(colorContorno));
+
+            oscuro.Freeze();
+
+            grupo.Children.Add(new GeometryModel3D
+            {
+                Geometry = gorda,
+
+                // SOLO LA CARA DE ATRÁS, y esto es lo que hace que funcione: la cara de
+                // delante de la copia taparía la varilla entera. Sin pintarla, de la copia
+                // solo se ve por donde la varilla de verdad no llega, o sea su reborde.
+                Material = null,
+                BackMaterial = oscuro
+            });
         }
 
         var geo = new MeshGeometry3D
