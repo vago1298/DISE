@@ -42,6 +42,7 @@ internal static class Program
 
         LoQueYaHabia();
         SimplificadoNoMueveLasPuntas();
+        SimplificadoGarantizaElError();
         SimplificadoBajaLaCuenta();
         SimplificadoNoSeComeLasEsquinas();
         TramosNoAlarganLasPuntasLibres();
@@ -120,6 +121,95 @@ internal static class Program
         return pts;
     }
 
+    /// <summary>
+    /// Un <b>gancho sísmico</b>: 135° en un radio pequeño y una cola. Es la forma que se veía con
+    /// aristas.
+    /// </summary>
+    private static List<(double X, double Y, double Z)> Gancho(int muestras, double radio = 1.2)
+    {
+        var pts = new List<(double X, double Y, double Z)> { P(-6, -radio, 0) };
+
+        for (var i = 0; i <= muestras; i++)
+        {
+            var a = -Math.PI / 2 + (Math.PI * 0.75 * i / muestras);
+
+            pts.Add(P(radio * Math.Cos(a), radio * Math.Sin(a), 0));
+        }
+
+        // La cola, en la direccion en la que quedo el doblez.
+        var fin = -Math.PI / 2 + (Math.PI * 0.75);
+
+        pts.Add(P(
+            (radio * Math.Cos(fin)) - (6 * Math.Sin(fin)),
+            (radio * Math.Sin(fin)) + (6 * Math.Cos(fin)),
+            0));
+
+        return pts;
+    }
+
+    /// <summary>Un aro cerrado, muestreado.</summary>
+    private static List<(double X, double Y, double Z)> Aro(int muestras, double radio = 10)
+    {
+        var pts = new List<(double X, double Y, double Z)>();
+
+        for (var i = 0; i < muestras; i++)
+        {
+            var a = 2 * Math.PI * i / muestras;
+
+            pts.Add(P(radio * Math.Cos(a), radio * Math.Sin(a), 0));
+        }
+
+        pts.Add(pts[0]);
+
+        return pts;
+    }
+
+    /// <summary>Lo que se separa un punto del <b>recorrido entero</b>, tramo a tramo.</summary>
+    /// <remarks>
+    /// Es la medida con la que se comprueba la garantía de <c>Simplificado</c>. Se calcula aquí, en
+    /// la prueba, y a propósito: si se usara la misma cuenta que usa la clase probada, la prueba no
+    /// probaría nada.
+    /// </remarks>
+    private static double AlRecorrido(
+        (double X, double Y, double Z) p, List<(double X, double Y, double Z)> r)
+    {
+        var mejor = double.MaxValue;
+
+        for (var i = 1; i < r.Count; i++)
+        {
+            var a = r[i - 1];
+            var b = r[i];
+
+            var vx = b.X - a.X;
+            var vy = b.Y - a.Y;
+            var vz = b.Z - a.Z;
+
+            var largo2 = (vx * vx) + (vy * vy) + (vz * vz);
+
+            double d;
+
+            if (largo2 <= 1e-18)
+            {
+                d = Dist(p, a);
+            }
+            else
+            {
+                var t = (((p.X - a.X) * vx) + ((p.Y - a.Y) * vy) + ((p.Z - a.Z) * vz)) / largo2;
+
+                t = Math.Clamp(t, 0d, 1d);
+
+                d = Dist(p, (a.X + (vx * t), a.Y + (vy * t), a.Z + (vz * t)));
+            }
+
+            if (d < mejor)
+            {
+                mejor = d;
+            }
+        }
+
+        return mejor;
+    }
+
     // ================================================================= las pruebas
 
     /// <summary>Lo que ya existía sigue igual: no se rompió nada al añadir lo nuevo.</summary>
@@ -171,22 +261,22 @@ internal static class Program
 
         var codo = Codo(14);
 
-        foreach (var grados in new[] { 5d, 20d, 45d, 90d, 180d })
+        foreach (var t in new[] { 0.001, 0.02, 0.1, 0.5, 2.0 })
         {
-            var s = EjeDeBarra.Simplificado(codo, grados);
+            var s = EjeDeBarra.Simplificado(codo, t);
 
             Comprobar(Dist(s[0], codo[0]) < Tol,
-                $"con {grados}° el primer punto es el mismo");
+                $"con tolerancia {t} el primer punto es el mismo");
 
             Comprobar(Dist(s[^1], codo[^1]) < Tol,
-                $"con {grados}° el ultimo punto es el mismo");
+                $"con tolerancia {t} el ultimo punto es el mismo");
 
-            Comprobar(s.Count >= 2, $"con {grados}° quedan al menos dos puntos: {s.Count}");
+            Comprobar(s.Count >= 2, $"con tolerancia {t} quedan al menos dos puntos: {s.Count}");
         }
 
         // Y el largo no se dispara: enderezar acorta un poco, pero no puede alargar.
         var largoO = EjeDeBarra.Largo(codo);
-        var largoS = EjeDeBarra.Largo(EjeDeBarra.Simplificado(codo, 20));
+        var largoS = EjeDeBarra.Largo(EjeDeBarra.Simplificado(codo, 0.02));
 
         Comprobar(largoS <= largoO + Tol,
             $"simplificar no alarga la varilla: {largoS:0.####} <= {largoO:0.####}");
@@ -206,10 +296,64 @@ internal static class Program
 
         aro.Add(aro[0]);
 
-        var aroS = EjeDeBarra.Simplificado(aro, 20);
+        var aroS = EjeDeBarra.Simplificado(aro, 0.02);
 
         Comprobar(EjeDeBarra.Cerrado(aroS),
             $"un recorrido cerrado sigue cerrado al simplificar ({aroS.Count} puntos)");
+    }
+
+    /// <summary>
+    /// <b>La garantía</b>: ningún punto del eje original queda a más de la tolerancia del recorrido
+    /// que sale. Es lo que hace que se pueda razonar «la varilla no se sale de su sitio más de
+    /// tanto», y es la razón de simplificar por distancia y no por grados.
+    /// </summary>
+    private static void SimplificadoGarantizaElError()
+    {
+        Console.WriteLine("\nSimplificado GARANTIZA el error (ningun punto se sale de la tolerancia)");
+
+        // Se prueba sobre formas distintas: un codo, un aro cerrado y un gancho de 135 grados,
+        // que es el caso que se veia con aristas.
+        var formas = new (string Nombre, List<(double X, double Y, double Z)> Eje)[]
+        {
+            ("un codo de 90°", Codo(14)),
+            ("un codo abierto de radio 8", Codo(14, 8)),
+            ("un gancho de 135°", Gancho(14)),
+            ("un aro cerrado", Aro(40))
+        };
+
+        foreach (var (nombre, eje) in formas)
+        {
+            foreach (var tol in new[] { 0.005, 0.02, 0.1 })
+            {
+                var s = EjeDeBarra.Simplificado(eje, tol);
+
+                // El peor punto del original contra el recorrido que salio.
+                var peor = eje.Max(p => AlRecorrido(p, s));
+
+                Comprobar(peor <= tol + 1e-12,
+                    $"{nombre}, tolerancia {tol}: el peor punto se separa {peor:0.######}");
+            }
+        }
+
+        // Y afinar la tolerancia NO puede quitar puntos: mas fino, mas tramos.
+        var gancho = Gancho(14);
+
+        var fino = EjeDeBarra.Simplificado(gancho, 0.005).Count;
+        var medio = EjeDeBarra.Simplificado(gancho, 0.02).Count;
+        var basto = EjeDeBarra.Simplificado(gancho, 0.1).Count;
+
+        Comprobar(fino >= medio && medio >= basto,
+            $"mas fino, mas puntos: {fino} >= {medio} >= {basto}");
+
+        // Y el gancho, que es lo que se veia mal, recibe tramos de sobra con la tolerancia que usa
+        // el dibujante DE VERDAD: se toma su constante, no una copia, para que no se separen.
+        const double radioVarilla = 0.635;
+
+        var comoEnElDibujo = EjeDeBarra.Simplificado(
+            gancho, radioVarilla * Jaula3dDrawer.ToleranciaEnRadios);
+
+        Comprobar(comoEnElDibujo.Count >= 6,
+            $"el gancho de una varilla del 4 sale con {comoEnElDibujo.Count} puntos (>= 6)");
     }
 
     /// <summary>El motivo de existir de <c>Simplificado</c>: que bajen los sólidos.</summary>
@@ -219,23 +363,22 @@ internal static class Program
 
         var codo = Codo(14);
 
-        var s20 = EjeDeBarra.Simplificado(codo, 20);
+        var s = EjeDeBarra.Simplificado(codo, 0.02);
 
-        Comprobar(s20.Count < codo.Count,
-            $"un codo de 14 muestras baja de {codo.Count} a {s20.Count} puntos");
+        Comprobar(s.Count < codo.Count,
+            $"un codo de 14 muestras baja de {codo.Count} a {s.Count} puntos");
 
-        // Un doblez de 90 grados con 20 de tolerancia son unos cinco tramos, mas las dos
-        // rectas. Se comprueba el orden de magnitud, no el numero exacto.
-        Comprobar(s20.Count <= 9,
-            $"un doblez de 90° con 20° de margen queda en {s20.Count} puntos (<= 9)");
+        Comprobar(s.Count <= 12,
+            $"un doblez de 90° queda en {s.Count} puntos (<= 12)");
 
         // Y con mas margen, menos puntos: la tolerancia hace algo.
-        var s45 = EjeDeBarra.Simplificado(codo, 45);
+        var basto = EjeDeBarra.Simplificado(codo, 0.3);
 
-        Comprobar(s45.Count <= s20.Count,
-            $"con 45° no quedan mas puntos que con 20°: {s45.Count} <= {s20.Count}");
+        Comprobar(basto.Count <= s.Count,
+            $"con 0,3 no quedan mas puntos que con 0,02: {basto.Count} <= {s.Count}");
 
-        // Una RECTA con puntos de sobra se queda en sus dos extremos: no dobla en ningun sitio.
+        // Una RECTA con puntos de sobra se queda en sus dos extremos: no se separa de su cuerda
+        // en ningun sitio, asi que no hace falta ni un vertice.
         var recta = new List<(double X, double Y, double Z)>();
 
         for (var i = 0; i <= 20; i++)
@@ -243,22 +386,23 @@ internal static class Program
             recta.Add(P(i * 0.5, 0, 0));
         }
 
-        var rectaS = EjeDeBarra.Simplificado(recta, 20);
+        var rectaS = EjeDeBarra.Simplificado(recta, 0.02);
 
         Comprobar(rectaS.Count == 2,
             $"una recta de 21 puntos se queda en 2: {rectaS.Count}");
 
-        Comprobar(Math.Abs(EjeDeBarra.Largo(rectaS) - 10) < Tol,
-            "y con el largo intacto");
+        var rectaIntacta = Math.Abs(EjeDeBarra.Largo(rectaS) - 10) < Tol;
+
+        Comprobar(rectaIntacta, "y con el largo intacto");
 
         // Con tolerancia cero o negativa NO se toca nada: es la valvula de escape.
         var igual = EjeDeBarra.Simplificado(codo, 0);
 
         Comprobar(igual.Count == codo.Count,
-            $"con 0° de margen el eje no se toca: {igual.Count} de {codo.Count}");
+            $"con tolerancia 0 el eje no se toca: {igual.Count} de {codo.Count}");
 
         Comprobar(EjeDeBarra.Simplificado(codo, -5).Count == codo.Count,
-            "y con un margen negativo tampoco");
+            "y con una tolerancia negativa tampoco");
     }
 
     /// <summary>Una esquina de verdad no se puede perder: es la forma del estribo.</summary>
@@ -286,7 +430,7 @@ internal static class Program
 
         cuadro.Add(cuadro[0]);
 
-        var s = EjeDeBarra.Simplificado(cuadro, 20);
+        var s = EjeDeBarra.Simplificado(cuadro, 0.02);
 
         // Las cuatro esquinas tienen que seguir ahi. Se buscan por posicion.
         foreach (var esq in new[] { P(30, 0, 0), P(30, 50, 0), P(0, 50, 0) })
@@ -358,7 +502,7 @@ internal static class Program
 
         const double r = 0.6;
 
-        var codo = EjeDeBarra.Simplificado(Codo(14), 20);
+        var codo = EjeDeBarra.Simplificado(Codo(14), 0.02);
 
         var tramos = EjeDeBarra.Tramos(codo, r);
 
@@ -684,7 +828,8 @@ internal static class Program
 
         var crudo = EjeDeBarra.Tramos(eje, diam / 2).Count;
 
-        var simple = EjeDeBarra.Simplificado(eje, 20);
+        var simple = EjeDeBarra.Simplificado(
+            eje, diam / 2 * Jaula3dDrawer.ToleranciaEnRadios);
 
         var tramos = EjeDeBarra.Tramos(simple, diam / 2);
 
@@ -720,17 +865,17 @@ internal static class Program
     {
         Console.WriteLine("\nCasos degenerados");
 
-        Comprobar(EjeDeBarra.Simplificado(null).Count == 0, "Simplificado de null es vacio");
+        Comprobar(EjeDeBarra.Simplificado(null, 0.02).Count == 0, "Simplificado de null es vacio");
         Comprobar(EjeDeBarra.Tramos(null, 1).Count == 0, "Tramos de null es vacio");
 
         var uno = new List<(double X, double Y, double Z)> { P(1, 1, 1) };
 
-        Comprobar(EjeDeBarra.Simplificado(uno).Count == 1, "un solo punto se devuelve tal cual");
+        Comprobar(EjeDeBarra.Simplificado(uno, 0.02).Count == 1, "un solo punto se devuelve tal cual");
         Comprobar(EjeDeBarra.Tramos(uno, 1).Count == 0, "y no da ningun tramo");
 
         var dos = new List<(double X, double Y, double Z)> { P(0, 0, 0), P(1, 0, 0) };
 
-        Comprobar(EjeDeBarra.Simplificado(dos).Count == 2, "dos puntos se devuelven tal cual");
+        Comprobar(EjeDeBarra.Simplificado(dos, 0.02).Count == 2, "dos puntos se devuelven tal cual");
 
         // Todos los puntos iguales: ni tramos ni matriz, y sin excepcion.
         var pegados = new List<(double X, double Y, double Z)>
@@ -750,7 +895,7 @@ internal static class Program
             P(0, 0, 0), P(10, 0, 0), P(0, 0, 0)
         };
 
-        var picoS = EjeDeBarra.Simplificado(pico, 20);
+        var picoS = EjeDeBarra.Simplificado(pico, 0.02);
 
         Comprobar(picoS.Count == 3, $"un pico de 180° conserva su vertice: {picoS.Count}");
 

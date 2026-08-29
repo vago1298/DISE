@@ -152,10 +152,23 @@ public static class EjeDeBarra
     /// Eso no es un dibujo, es un dibujo que no se puede abrir.
     /// </para>
     /// <para>
-    /// Así que antes de dibujar se quitan los vértices que no aportan. Se va sumando <b>cuánto ha
-    /// doblado</b> el recorrido desde el último vértice que se guardó, y solo se guarda uno nuevo
-    /// cuando lo acumulado pasa de <paramref name="gradosMax"/>. Con veinte grados, un doblez de
-    /// noventa baja de catorce tramos a cinco, y el estribo de ochenta y cuatro sólidos a treinta.
+    /// Así que antes de dibujar se quitan los vértices que no aportan. Y se quitan por
+    /// <b>cuánto se separaría la varilla de su sitio</b>, no por cuántos grados dobla: se guarda
+    /// el vértice que más se aleja de la recta que une los dos que ya están guardados, y se repite
+    /// mientras alguno se aleje más de <paramref name="tolerancia"/>. Es Douglas-Peucker.
+    /// </para>
+    /// <para>
+    /// <b>Por qué por distancia y no por ángulo.</b> Porque la tolerancia pasa a ser una medida
+    /// que se puede razonar: «que la varilla no se salga de su eje más de tanto». Y porque se
+    /// <b>adapta sola</b>, que es lo que hacía falta para los ganchos. Un gancho es un doblez muy
+    /// cerrado en un radio pequeño, y una regla de grados le daba los mismos tramos que a la
+    /// esquina ancha de un estribo: el gancho salía con esquinas y la esquina, de sobra. Por
+    /// distancia, el doblez cerrado recibe más tramos y el ancho menos, sin decirle nada.
+    /// </para>
+    /// <para>
+    /// <b>Y las esquinas vivas no se pueden perder</b>, que es de lo que está hecho un estribo.
+    /// No se pierden por construcción: en una esquina de noventa grados el vértice está lejísimos
+    /// de la recta que une sus vecinos, así que siempre es el primero que se guarda.
     /// </para>
     /// <para>
     /// <b>Los extremos no se tocan nunca.</b> El primer y el último punto siempre se guardan: son
@@ -164,38 +177,114 @@ public static class EjeDeBarra
     /// sigue cerrado al salir, porque su último punto es su primero.
     /// </para>
     /// </remarks>
-    /// <param name="gradosMax">
-    /// Cuánto se permite que se enderece el recorrido. Cero o menos deja el eje tal cual.
+    /// <param name="tolerancia">
+    /// Cuánto se permite que la varilla se separe de su eje, <b>en las unidades del eje</b>. Cero
+    /// o menos deja el recorrido tal cual.
     /// </param>
     public static List<(double X, double Y, double Z)> Simplificado(
-        IReadOnlyList<(double X, double Y, double Z)>? eje, double gradosMax = 20)
+        IReadOnlyList<(double X, double Y, double Z)>? eje, double tolerancia)
     {
         var limpio = Limpio(eje);
 
-        if (limpio.Count < 3 || gradosMax <= 0)
+        if (limpio.Count < 3 || tolerancia <= 0)
         {
             return limpio;
         }
 
-        var salida = new List<(double X, double Y, double Z)> { limpio[0] };
+        var guardar = new bool[limpio.Count];
 
-        double acumulado = 0;
+        // Las dos puntas, siempre.
+        guardar[0] = true;
+        guardar[^1] = true;
 
-        for (var i = 1; i < limpio.Count - 1; i++)
+        Partir(limpio, 0, limpio.Count - 1, tolerancia, guardar);
+
+        var salida = new List<(double X, double Y, double Z)>();
+
+        for (var i = 0; i < limpio.Count; i++)
         {
-            acumulado += Doblez(limpio[i - 1], limpio[i], limpio[i + 1]);
-
-            if (acumulado >= gradosMax)
+            if (guardar[i])
             {
                 salida.Add(limpio[i]);
-
-                acumulado = 0;
             }
         }
 
-        salida.Add(limpio[^1]);
-
         return salida;
+    }
+
+    /// <summary>
+    /// El paso de Douglas-Peucker: guarda el vértice que más se separa de la cuerda y repite a los
+    /// dos lados.
+    /// </summary>
+    /// <remarks>
+    /// La recursión no se dispara: cada llamada parte el trozo en dos por su peor vértice, así que
+    /// la profundidad es la del árbol de particiones, y un eje de armado trae unos cientos de
+    /// puntos. Se sale en cuanto ningún vértice del trozo se separa más de la tolerancia, que es
+    /// lo que da la garantía: <b>ningún punto del original queda a más de la tolerancia</b> del
+    /// recorrido que sale.
+    /// </remarks>
+    private static void Partir(
+        List<(double X, double Y, double Z)> p, int i, int j, double tol, bool[] guardar)
+    {
+        if (j <= i + 1)
+        {
+            return;
+        }
+
+        var peor = -1;
+        var dPeor = 0d;
+
+        for (var k = i + 1; k < j; k++)
+        {
+            var d = AlSegmento(p[k], p[i], p[j]);
+
+            if (d > dPeor)
+            {
+                dPeor = d;
+                peor = k;
+            }
+        }
+
+        if (peor < 0 || dPeor <= tol)
+        {
+            return;
+        }
+
+        guardar[peor] = true;
+
+        Partir(p, i, peor, tol, guardar);
+        Partir(p, peor, j, tol, guardar);
+    }
+
+    /// <summary>Distancia de un punto al <b>segmento</b> a–b, no a su recta.</summary>
+    /// <remarks>
+    /// Al segmento y no a la recta infinita, y hay un caso donde importa de verdad: en un
+    /// recorrido <b>cerrado</b> el primer punto y el último son el mismo, así que la primera
+    /// cuerda tiene largo cero. Contra una recta infinita eso no está definido; contra un
+    /// segmento degenerado la distancia es, sin más, la distancia a ese punto, y entonces el
+    /// reparto arranca por el vértice más lejano y sigue solo.
+    /// </remarks>
+    private static double AlSegmento(
+        (double X, double Y, double Z) p,
+        (double X, double Y, double Z) a,
+        (double X, double Y, double Z) b)
+    {
+        var vx = b.X - a.X;
+        var vy = b.Y - a.Y;
+        var vz = b.Z - a.Z;
+
+        var largo2 = (vx * vx) + (vy * vy) + (vz * vz);
+
+        if (largo2 <= Nada)
+        {
+            return Distancia(p, a);
+        }
+
+        var t = (((p.X - a.X) * vx) + ((p.Y - a.Y) * vy) + ((p.Z - a.Z) * vz)) / largo2;
+
+        t = Math.Clamp(t, 0d, 1d);
+
+        return Distancia(p, (a.X + (vx * t), a.Y + (vy * t), a.Z + (vz * t)));
     }
 
     /// <summary>
@@ -331,31 +420,6 @@ public static class EjeDeBarra
             { u[2], v[2], w[2], (a.Z + b.Z) / 2 },
             { 0d,   0d,   0d,   1d              }
         };
-    }
-
-    /// <summary>Cuánto dobla el recorrido al pasar por <paramref name="b"/>, en grados.</summary>
-    private static double Doblez(
-        (double X, double Y, double Z) a,
-        (double X, double Y, double Z) b,
-        (double X, double Y, double Z) c)
-    {
-        var e = new[] { b.X - a.X, b.Y - a.Y, b.Z - a.Z };
-        var s = new[] { c.X - b.X, c.Y - b.Y, c.Z - b.Z };
-
-        var le = Math.Sqrt((e[0] * e[0]) + (e[1] * e[1]) + (e[2] * e[2]));
-        var ls = Math.Sqrt((s[0] * s[0]) + (s[1] * s[1]) + (s[2] * s[2]));
-
-        if (le <= Nada || ls <= Nada)
-        {
-            return 0;
-        }
-
-        var cos = ((e[0] * s[0]) + (e[1] * s[1]) + (e[2] * s[2])) / (le * ls);
-
-        // El redondeo puede sacar el coseno del rango y Acos daria NaN.
-        cos = Math.Clamp(cos, -1d, 1d);
-
-        return Math.Acos(cos) * 180d / Math.PI;
     }
 
     private static double[] Cruz(double[] p, double[] q) =>

@@ -477,6 +477,12 @@ public partial class MainWindow
 
             var r = dibujante.Dibujar(barras);
 
+            // Y SE PONE LA VISTA EN CONDICIONES DE VERLO. Va después de dibujar, no antes: si
+            // algo del estilo visual no lo acepta este AutoCAD, el aviso queda junto a las demás
+            // notas en lugar de perderse. Sin esto el armado sale bien y se ve como alambres,
+            // porque un dibujo normal está en «Estructura alámbrica 2D».
+            dibujante.PrepararLaVista();
+
             AcadConnection.Retry(() => { app.ZoomExtents(); });
 
             var notas = dibujante.Notas;
@@ -490,10 +496,10 @@ public partial class MainWindow
                 + $"Las varillas quedaron en «{Jaula3dDrawer.CapaVarillas}» y los estribos, "
                 + $"grapas y diamantes en «{Jaula3dDrawer.CapaEstribos}», así que puedes apagar "
                 + "unos para ver los otros.\n\n"
-                + "Son sólidos: se pueden seccionar, medir y acotar. Una varilla recta es un "
-                + "sólido y una doblada son varios, solapados en cada doblez, así que la cuenta "
-                + "de sólidos es mayor que la de varillas. Si quieres una sola pieza por varilla, "
-                + "selecciónala y usa UNION."
+                + "Cada varilla es UN sólido continuo, con sus dobleces y su gancho fundidos: se "
+                + "selecciona de un clic y se puede seccionar, medir y acotar como una pieza.\n\n"
+                + "La vista se dejó en estilo «Conceptual» para que se vean llenas. Si la quieres "
+                + "en líneas, cambia el estilo visual a «Estructura alámbrica 2D»."
                 + (notas.Count > 0
                     ? "\n\nNotas:\n" + string.Join(Environment.NewLine,
                         notas.Select(n => "  - " + n))
