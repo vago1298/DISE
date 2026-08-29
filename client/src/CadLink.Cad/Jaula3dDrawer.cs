@@ -3,56 +3,73 @@ using System.Globalization;
 namespace CadLink.Cad;
 
 /// <summary>
-/// Dibuja la <b>jaula de armado en 3D</b> en AutoCAD: cada barra como un sólido de verdad.
+/// Dibuja la <b>jaula de armado en 3D</b> en AutoCAD: cada barra como sólidos de verdad.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Cada barra se hace <b>barriendo un círculo por su eje</b>: el círculo es la sección de la
-/// varilla y el eje es el recorrido que ya calcula la vista previa —con sus dobleces, sus ganchos
-/// y sus lapes—. El resultado son varillas que se pueden <b>seccionar, medir y acotar</b> en
-/// AutoCAD, que es lo que hace que el dibujo sirva para trabajar y no solo para mirar. Es el mismo
-/// criterio de <see cref="Modelo3dDrawer"/>, y por eso no se usan mallas.
-/// </para>
-/// <para>
-/// <b>El perfil tiene que arrancar perpendicular al camino.</b> Barrer un círculo torcido da una
-/// varilla de sección elíptica y más gruesa que la de la tabla. Y no es un caso raro: los estribos
-/// van en un plano horizontal y las varillas suben, así que el círculo que AutoCAD crea por
-/// omisión —en el plano XY— está bien para una y girado noventa grados para la otra. La cuenta de
-/// la tangente está en <see cref="EjeDeBarra"/>, aparte y probada.
+/// Las varillas salen <b>sólidas</b>, no de malla ni de alambre, porque un sólido se puede
+/// <b>seccionar, medir y acotar</b> y eso es lo que hace que el dibujo sirva para trabajar. Es el
+/// mismo criterio de <see cref="Modelo3dDrawer"/>.
 /// </para>
 ///
-/// <para><b>EL PROBLEMA DE QUIÉN BORRA QUÉ, Y CÓMO SE RESUELVE</b></para>
+/// <para><b>POR QUÉ NO SE BARRE EL PERFIL POR EL EJE</b></para>
 /// <para>
-/// Un barrido necesita dos objetos auxiliares: la <b>región</b> del perfil y la <b>polilínea</b>
-/// del camino. Al terminar hay que quitarlos, y aquí está la trampa: <c>AddExtrudedSolid</c>
-/// <b>consume</b> el perfil —se comprobó a base de cerrar AutoCAD—, y con el barrido por camino no
-/// está claro si consume también el camino. Y el fallo no es benigno: llamar a <c>Delete()</c>
-/// sobre un objeto COM ya destruido <b>no lanza excepción, se lleva AutoCAD por delante</b>, así
-/// que no hay forma de capturarlo.
+/// La forma bonita de hacer esto es barrer un círculo por el eje de la varilla:
+/// <c>AddExtrudedSolidAlongPath</c>, una llamada y sale la varilla entera con sus dobleces. Se
+/// hizo así y <b>cierra AutoCAD 2026</b>. No lanza excepción, no da error, no se puede capturar:
+/// desaparece la ventana y sale el informe de fallo de AutoCAD. Con caminos cerrados —o sea, con
+/// todos los estribos— es inmediato.
 /// </para>
 /// <para>
-/// Así que no se adivina. Los auxiliares se crean en una <b>capa de trabajo</b> y al final se
-/// recorre el espacio modelo <b>una vez</b> borrando lo que siga en ella. Lo que AutoCAD consumió
-/// ya no está en el espacio modelo, así que no aparece y no se toca; lo que sobró aparece y se
-/// borra. La corrección deja de depender de saber quién es el dueño de cada objeto, que es
-/// justamente lo que no se puede comprobar sin AutoCAD delante.
+/// Y arrastraba un problema que tampoco tenía solución limpia: el barrido necesita una
+/// <b>región</b> y una <b>polilínea</b> auxiliares, y AutoCAD <b>consume</b> algunas de las dos.
+/// Llamar a <c>Delete()</c> sobre un objeto COM ya consumido tampoco lanza excepción: también se
+/// lleva AutoCAD por delante. Había que adivinar de quién era cada objeto, y eso no se puede
+/// comprobar sin AutoCAD delante.
 /// </para>
 /// <para>
-/// Y si el barrido falla en una barra, esa barra <b>no se pierde</b>: se dibuja su eje como
-/// polilínea 3D y se anota. Mejor una línea donde va la varilla que un hueco silencioso.
+/// Así que se cambió de raíz. Cada <b>tramo recto</b> del eje se dibuja con
+/// <c>AddCylinder</c>, que es la llamada más simple del API de sólidos: un centro, un radio y una
+/// altura. No hay perfil, no hay camino, no hay región, no hay auxiliares y por tanto no hay nada
+/// que borrar ni dueño que adivinar. Una varilla recta es <b>un</b> cilindro. Una doblada son
+/// varios, y ahí están los dos cuidados que sí hacen falta:
+/// </para>
+/// <list type="number">
+///   <item>
+///     <b>Los tramos se solapan en las uniones.</b> Dos cilindros que se tocan justo en la punta
+///     dejan la esquina del doblez comida. Cada tramo se alarga el radio de la varilla por su
+///     propio eje —<see cref="EjeDeBarra.Tramos"/>—, y solo en las uniones: alargar las puntas
+///     libres haría la varilla más larga que la de la tabla.
+///   </item>
+///   <item>
+///     <b>El eje se simplifica antes.</b> La vista previa dibuja cada doblez con catorce muestras
+///     porque en pantalla se ve la curva; aquí cada muestra sería un sólido y un estribo saldría
+///     con ochenta y cuatro. <see cref="EjeDeBarra.Simplificado"/> los baja a unos treinta sin
+///     mover las puntas.
+///   </item>
+/// </list>
+/// <para>
+/// <b>Un cilindro nace de pie y centrado</b> en el punto que se le pasa, así que se hace en el
+/// origen y se lleva a su sitio con <c>TransformBy</c> y la matriz de
+/// <see cref="EjeDeBarra.MatrizDeTramo"/>. Es el mismo camino que ya funciona en
+/// <see cref="Modelo3dDrawer"/> para las columnas y las trabes del modelo.
+/// </para>
+/// <para>
+/// Y si una barra no sale, <b>no se pierde</b>: se dibuja su eje como polilínea 3D y se anota.
+/// Mejor una línea donde va la varilla que un hueco silencioso.
 /// </para>
 /// </remarks>
 public sealed class Jaula3dDrawer
 {
-    /// <summary>Capa donde se dejan los auxiliares del barrido.</summary>
-    /// <remarks>
-    /// El nombre empieza por el guion bajo para que quede al principio de la lista de capas y se
-    /// note si alguna vez queda algo dentro. En un dibujo terminado tiene que estar vacía.
-    /// </remarks>
-    public const string CapaDeTrabajo = "_CADLINK-TRABAJO";
-
     /// <summary>Menos que esto no es una barra: es un nudo mal leído.</summary>
     private const double LargoMinimo = 1e-6;
+
+    /// <summary>Cuánto se deja que se enderece el eje al simplificarlo, en grados.</summary>
+    /// <remarks>
+    /// Veinte grados deja unos cinco tramos por doblez de noventa. Menos no se distingue en un
+    /// dibujo de estructuras y más ya se ve poligonal en un acercamiento a un gancho.
+    /// </remarks>
+    public const double GradosDeSimplificacion = 20;
 
     private readonly dynamic _doc;
     private readonly dynamic _ms;
@@ -89,26 +106,25 @@ public sealed class Jaula3dDrawer
         public string Id { get; init; } = string.Empty;
     }
 
-    /// <summary>Cuántas barras salieron sólidas y cuántas se quedaron en línea.</summary>
-    public sealed record Resumen(int Solidos, int Lineas)
+    /// <summary>Qué salió del dibujo: barras sólidas, barras en línea y cuántos sólidos.</summary>
+    public sealed record Resumen(int Solidos, int Lineas, int Cilindros)
     {
         public override string ToString() =>
-            $"{Solidos} varilla(s) sólidas"
-            + (Lineas > 0 ? $" y {Lineas} en línea, que no se pudieron barrer" : string.Empty);
+            $"{Solidos} varilla(s) sólidas ({Cilindros} sólido(s))"
+            + (Lineas > 0 ? $" y {Lineas} en línea, que no se pudieron hacer sólidas" : string.Empty);
     }
 
     public const string CapaVarillas = "E-ACERO 3D";
 
     public const string CapaEstribos = "E-ESTRIBO 3D";
 
-    /// <summary>Crea las capas de la jaula y la de trabajo.</summary>
+    /// <summary>Crea las capas de la jaula.</summary>
     public void AsegurarCapas()
     {
         foreach (var (capa, color) in new[]
                  {
                      (CapaVarillas, 1),
-                     (CapaEstribos, 5),
-                     (CapaDeTrabajo, 8)
+                     (CapaEstribos, 5)
                  })
         {
             try
@@ -133,11 +149,14 @@ public sealed class Jaula3dDrawer
 
         var solidos = 0;
         var lineas = 0;
+        var cilindros = 0;
         var cortas = 0;
+        var incompletas = 0;
 
         foreach (var b in barras)
         {
-            var eje = EjeDeBarra.Limpio(b.Eje);
+            // Se simplifica ANTES de medir: asi el largo que se reporta es el que se dibuja.
+            var eje = EjeDeBarra.Simplificado(b.Eje, GradosDeSimplificacion);
 
             var largo = EjeDeBarra.Largo(eje);
 
@@ -147,9 +166,18 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            if (Solido(b, eje))
+            var (hechos, pedidos) = Solida(b, eje);
+
+            if (hechos > 0)
             {
                 solidos++;
+                cilindros += hechos;
+
+                if (hechos < pedidos)
+                {
+                    incompletas++;
+                }
+
                 continue;
             }
 
@@ -159,7 +187,7 @@ public sealed class Jaula3dDrawer
                 lineas++;
 
                 _notas.Add(
-                    $"La varilla '{b.Id}' no se pudo barrer —largo "
+                    $"La varilla '{b.Id}' no se pudo hacer sólida —largo "
                     + largo.ToString("0.###", CultureInfo.InvariantCulture)
                     + " m— y se dibujó su eje.");
             }
@@ -172,80 +200,98 @@ public sealed class Jaula3dDrawer
                 + "no se dibujaron.");
         }
 
-        LimpiarLaCapaDeTrabajo();
+        if (incompletas > 0)
+        {
+            _notas.Add(
+                $"A {incompletas} varilla(s) les falta algún tramo. Revísalas antes de acotar.");
+        }
 
-        return new Resumen(solidos, lineas);
+        return new Resumen(solidos, lineas, cilindros);
     }
 
-    /// <summary>Barre el círculo por el eje. <c>false</c> si no se pudo.</summary>
-    private bool Solido(Barra b, List<(double X, double Y, double Z)> eje)
+    /// <summary>
+    /// La barra como una fila de cilindros solapados. Devuelve cuántos salieron y cuántos se
+    /// pedían.
+    /// </summary>
+    /// <remarks>
+    /// El solape en las uniones lo pone <see cref="EjeDeBarra.Tramos"/> con el <b>radio</b> como
+    /// alargue: sin él la parte de fuera de cada doblez queda comida.
+    /// </remarks>
+    private (int Hechos, int Pedidos) Solida(Barra b, List<(double X, double Y, double Z)> eje)
     {
+        var tramos = EjeDeBarra.Tramos(eje, b.Radio);
+
+        var hechos = 0;
+
+        foreach (var (a, z) in tramos)
+        {
+            if (Cilindro(a, z, b.Radio, b.Capa))
+            {
+                hechos++;
+            }
+        }
+
+        return (hechos, tramos.Count);
+    }
+
+    /// <summary>Un tramo recto como cilindro. <c>false</c> si no se pudo.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>AddCylinder</c> lo hace <b>de pie y centrado</b> en el punto que se le pasa, así que se
+    /// hace en el origen y se lleva al tramo con la matriz. Hacerlo ya en el punto medio y
+    /// transformarlo después no serviría: <c>TransformBy</c> gira respecto al origen del mundo, y
+    /// el cilindro se iría de sitio al girarlo.
+    /// </para>
+    /// <para>
+    /// Y la capa se pone <b>después</b> de transformar, no antes, solo por costumbre de este
+    /// código: si la transformación falla, no queda una entidad marcada como buena.
+    /// </para>
+    /// </remarks>
+    private bool Cilindro(
+        (double X, double Y, double Z) a,
+        (double X, double Y, double Z) b,
+        double radio,
+        string capa)
+    {
+        var matriz = EjeDeBarra.MatrizDeTramo(a, b);
+
+        if (matriz is null)
+        {
+            return false;
+        }
+
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+        var dz = b.Z - a.Z;
+
+        var largo = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+        if (largo < LargoMinimo)
+        {
+            return false;
+        }
+
         try
         {
             return AcadConnection.Retry(() =>
             {
-                // 1) EL CAMINO. Una polilínea 3D admite cualquier recorrido, que es lo que hace
-                //    falta: el eje de un estribo con sus dobleces no está en ningún plano
-                //    cómodo, y el de una varilla con su lape tampoco.
-                dynamic camino = _ms.Add3DPoly(EjeDeBarra.Tira(eje));
+                dynamic cil = _ms.AddCylinder(new[] { 0d, 0d, 0d }, radio, largo);
 
-                camino.Layer = CapaDeTrabajo;
+                cil.TransformBy(matriz);
 
-                // Un estribo vuelve a su principio. Cerrarlo de verdad importa: sin esto el
-                // barrido deja una muesca en la esquina donde empezó.
-                if (EjeDeBarra.Cerrado(eje))
-                {
-                    camino.Closed = true;
-                }
-
-                // 2) EL PERFIL, PERPENDICULAR AL CAMINO. Ver la cabecera: torcido, la varilla
-                //    sale elíptica y más gorda que la de la tabla.
-                var (tx, ty, tz) = EjeDeBarra.TangenteInicial(eje);
-
-                var p0 = eje[0];
-
-                dynamic circulo = _ms.AddCircle(new[] { p0.X, p0.Y, p0.Z }, b.Radio);
-
-                circulo.Layer = CapaDeTrabajo;
-                circulo.Normal = new[] { tx, ty, tz };
-
-                // El centro SE VUELVE A PONER después de la normal, y no es por gusto: al
-                // cambiar el plano del círculo, AutoCAD reinterpreta su centro en el sistema
-                // nuevo y la varilla arrancaría desplazada.
-                circulo.Center = new[] { p0.X, p0.Y, p0.Z };
-
-                // 3) LA REGIÓN: el barrido pide una región, no una curva.
-                var regiones = _ms.AddRegion(new object[] { circulo });
-
-                if (regiones is null || (int)regiones.Length < 1)
-                {
-                    return false;
-                }
-
-                dynamic region = regiones[0];
-
-                region.Layer = CapaDeTrabajo;
-
-                // 4) Y EL BARRIDO. No se borra nada aquí: quién es el dueño del perfil y del
-                //    camino después de esto es justamente lo que no se puede comprobar sin
-                //    AutoCAD delante, y equivocarse cierra el programa. Lo resuelve la capa de
-                //    trabajo al final.
-                dynamic solido = _ms.AddExtrudedSolidAlongPath(region, camino);
-
-                solido.Layer = b.Capa;
+                cil.Layer = capa;
 
                 return true;
             });
         }
         catch (Exception)
         {
-            // Un barrido puede fallar por geometría —un doblez más cerrado que el radio de la
-            // varilla— y eso no es motivo para tirar el dibujo entero.
+            // Un tramo perdido deja un hueco en una varilla; tirar el dibujo entero es peor.
             return false;
         }
     }
 
-    /// <summary>El eje como polilínea 3D, que es el respaldo cuando el barrido falla.</summary>
+    /// <summary>El eje como polilínea 3D, que es el respaldo cuando el sólido falla.</summary>
     private object? Eje3D(List<(double X, double Y, double Z)> eje, string capa)
     {
         try
@@ -267,79 +313,6 @@ public sealed class Jaula3dDrawer
         catch (Exception)
         {
             return null;
-        }
-    }
-
-    /// <summary>
-    /// Borra lo que haya quedado en la capa de trabajo, <b>sin adivinar quién es el dueño</b>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Es la pieza que hace segura toda esta clase, y está razonada en la cabecera. Se recorre el
-    /// espacio modelo y se borra lo que siga en la capa de trabajo. Lo que AutoCAD consumió al
-    /// barrer <b>ya no está en el espacio modelo</b>, así que no aparece en el recorrido y no se
-    /// toca; lo que sobró aparece y se borra.
-    /// </para>
-    /// <para>
-    /// Se recorre <b>una sola vez al final</b> y no por barra: recorrer el espacio modelo es
-    /// caro, y con una jaula de cien varillas serían cien recorridos de un dibujo que puede
-    /// tener miles de objetos.
-    /// </para>
-    /// <para>
-    /// Y se recogen primero las entidades y se borran después. Borrar mientras se recorre una
-    /// colección COM que se está modificando salta objetos, y ahí es donde quedaría un auxiliar
-    /// suelto en el dibujo.
-    /// </para>
-    /// </remarks>
-    private void LimpiarLaCapaDeTrabajo()
-    {
-        try
-        {
-            var sobras = AcadConnection.Retry(() =>
-            {
-                var lista = new List<object>();
-
-                var cuantos = (int)_ms.Count;
-
-                for (var i = 0; i < cuantos; i++)
-                {
-                    dynamic ent = _ms.Item(i);
-
-                    if (string.Equals(
-                            (string)ent.Layer, CapaDeTrabajo, StringComparison.OrdinalIgnoreCase))
-                    {
-                        lista.Add(ent);
-                    }
-                }
-
-                return lista;
-            });
-
-            foreach (var ent in sobras)
-            {
-                try
-                {
-                    AcadConnection.Retry(() => { ((dynamic)ent).Delete(); });
-                }
-                catch (Exception)
-                {
-                    // Una sobra que no se puede borrar es un objeto de más en una capa que se
-                    // puede apagar. No es motivo para nada.
-                }
-            }
-
-            if (sobras.Count > 0)
-            {
-                _notas.Add(
-                    $"Se limpiaron {sobras.Count} objeto(s) auxiliares del barrido de la capa "
-                    + CapaDeTrabajo + ".");
-            }
-        }
-        catch (Exception)
-        {
-            _notas.Add(
-                "No se pudo recorrer el espacio modelo para limpiar la capa "
-                + CapaDeTrabajo + ". Puedes borrarla a mano: solo lleva auxiliares.");
         }
     }
 }

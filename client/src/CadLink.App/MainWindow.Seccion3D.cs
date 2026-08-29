@@ -490,7 +490,10 @@ public partial class MainWindow
                 + $"Las varillas quedaron en «{Jaula3dDrawer.CapaVarillas}» y los estribos, "
                 + $"grapas y diamantes en «{Jaula3dDrawer.CapaEstribos}», así que puedes apagar "
                 + "unos para ver los otros.\n\n"
-                + "Son sólidos: se pueden seccionar, medir y acotar."
+                + "Son sólidos: se pueden seccionar, medir y acotar. Una varilla recta es un "
+                + "sólido y una doblada son varios, solapados en cada doblez, así que la cuenta "
+                + "de sólidos es mayor que la de varillas. Si quieres una sola pieza por varilla, "
+                + "selecciónala y usa UNION."
                 + (notas.Count > 0
                     ? "\n\nNotas:\n" + string.Join(Environment.NewLine,
                         notas.Select(n => "  - " + n))
@@ -728,13 +731,55 @@ public partial class MainWindow
         _barrasDeLaJaula = new();
 
     /// <summary>Apunta una barra de la jaula tal como se acaba de dibujar en pantalla.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Un recorrido cerrado se cierra aquí, repitiendo su primer punto al final.</b> Y no es
+    /// un detalle: el motor de la vista previa recibe el aviso de «cerrado» <i>aparte</i> de la
+    /// lista de puntos —<see cref="TuboDeMalla.Agregar"/> une el último con el primero él solo, y
+    /// hasta descarta el punto repetido si se lo dan—, así que la lista que se estaba apuntando
+    /// <b>no incluía el tramo que cierra la figura</b>. En pantalla el estribo se veía entero y en
+    /// AutoCAD le faltaba un lado.
+    /// </para>
+    /// <para>
+    /// Al que más se le notaba era al <b>diamante</b>, porque es cerrado de una sola pieza: salía
+    /// como una uve abierta en lugar de como un rombo. Le pasaba lo mismo al estribo principal
+    /// cuando el trazo sale cerrado y a los anillos del zuncho.
+    /// </para>
+    /// <para>
+    /// Se cierra apuntando el punto, y no con una bandera, para que <see cref="Jaula3dDrawer"/> no
+    /// tenga que enterarse: <c>EjeDeBarra.Cerrado</c> lo reconoce por la geometría y entonces
+    /// <c>EjeDeBarra.Tramos</c> solapa también la unión del principio con el final, que si no
+    /// dejaría esa esquina comida.
+    /// </para>
+    /// </remarks>
     private void ApuntarBarra(
-        List<(double X, double Y, double Z)> eje, double radioCm, bool esEstribo)
+        List<(double X, double Y, double Z)> eje, double radioCm, bool esEstribo,
+        bool cerrado = false)
     {
-        if (radioCm > 0 && eje.Count >= 2)
+        if (radioCm <= 0 || eje.Count < 2)
         {
-            _barrasDeLaJaula.Add((new List<(double X, double Y, double Z)>(eje), radioCm, esEstribo));
+            return;
         }
+
+        var copia = new List<(double X, double Y, double Z)>(eje);
+
+        if (cerrado && copia.Count > 2)
+        {
+            var a = copia[0];
+            var z = copia[^1];
+
+            var d = Math.Sqrt(
+                ((a.X - z.X) * (a.X - z.X))
+                + ((a.Y - z.Y) * (a.Y - z.Y))
+                + ((a.Z - z.Z) * (a.Z - z.Z)));
+
+            if (d > 1e-9)
+            {
+                copia.Add(a);
+            }
+        }
+
+        _barrasDeLaJaula.Add((copia, radioCm, esEstribo));
     }
 
     /// <summary>Del plano de la sección al mundo. <b>El único convenio de ejes.</b></summary>
@@ -873,7 +918,10 @@ public partial class MainWindow
             // Y se apunta para poder mandarla a AutoCAD. Se apunta AQUÍ, con el eje ya
             // resuelto, y no se recalcula al exportar: así el sólido de AutoCAD es la misma
             // barra que se está viendo en pantalla, con sus dobleces, su gancho y su lape.
-            ApuntarBarra(eje, diamCm / 2, !ReferenceEquals(malla, mallaVarillas));
+            // El «cerrado» se pasa TAL CUAL: es la misma bandera con la que se acaba de armar
+            // la malla, así que la barra de AutoCAD cierra donde cierra la de la pantalla. Sin
+            // esto, al diamante le faltaba el lado que lo cierra.
+            ApuntarBarra(eje, diamCm / 2, !ReferenceEquals(malla, mallaVarillas), cerrado);
         }
 
         // ---------- Las varillas longitudinales ----------
@@ -1288,7 +1336,9 @@ public partial class MainWindow
                         mallaEstribos, anillo, dZun / 2,
                         cerrado: true, lados: _ladosDelTubo3D);
 
-                    ApuntarBarra(anillo.ToList(), dZun / 2, esEstribo: true);
+                    // Un anillo es cerrado, igual que arriba en la malla: sin decirlo aquí, el
+                    // anillo de AutoCAD saldría abierto por donde empezó a dibujarse.
+                    ApuntarBarra(anillo.ToList(), dZun / 2, esEstribo: true, cerrado: true);
                 }
             }
 

@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE de EjeDeBarra: la geometria con la que se dibuja la jaula
+       de armado en 3D dentro de AutoCAD.
+
+       Hace falta que este probado por dos motivos, y el segundo es el que duele:
+
+         * QUIEN LO USA NO SE PUEDE COMPILAR AQUI. Jaula3dDrawer habla con AutoCAD
+           por COM y CadLink.App es WPF; ninguno de los dos se compila en el
+           entorno donde se desarrolla. Esta clase si, porque es aritmetica pura y
+           no toca AutoCAD.
+
+         * EQUIVOCARSE AQUI CIERRA AUTOCAD. La version anterior de este dibujo
+           barria un circulo por el eje con AddExtrudedSolidAlongPath y cerraba
+           AutoCAD 2026 de forma fatal: sin excepcion, sin error, sin posibilidad
+           de capturarlo. Se cambio a un cilindro por tramo recto, y entonces toda
+           la correccion del dibujo pasa a depender de esta aritmetica. Si esta
+           mal, no hay un mensaje de error: hay una varilla mal medida en un plano
+           que se va a obra.
+
+       Lo que se cubre, y por que cada cosa importa:
+
+         * SIMPLIFICADO. La vista previa dibuja cada doblez con catorce muestras
+           porque en pantalla se ve la curva. Aqui cada muestra seria un solido:
+           un estribo tiene cuatro esquinas mas dos ganchos, seis por catorce son
+           ochenta y cuatro solidos, y con treinta estribos son dos mil
+           quinientos. Se comprueba que baja de verdad la cuenta, que NO MUEVE LAS
+           PUNTAS -que es lo que el usuario acota contra su tabla-, que un
+           recorrido cerrado sigue cerrado, y que una recta no pierde nada porque
+           no dobla.
+
+         * TRAMOS. Dos cilindros que se tocan justo en la punta dejan la esquina
+           del doblez comida, asi que cada tramo se alarga por su propio eje. Pero
+           SOLO EN LAS UNIONES: alargar las puntas libres hace la varilla mas
+           larga que la de la tabla, y eso se ve en cuanto se acota. Se comprueba
+           el largo exacto de las puntas, el solape en el doblez, y el caso
+           cerrado, donde no hay puntas libres y se alarga por los dos lados.
+
+         * MATRIZDETRAMO. La matriz que lleva el cilindro -que AutoCAD hace de pie
+           y centrado en el origen- hasta su tramo. Se comprueba que el marco es
+           ortonormal, que su tercera columna es la direccion del tramo, que la
+           traslacion es el PUNTO MEDIO y no el principio -el cilindro nace
+           centrado-, y que el determinante es +1: un marco espejado tendria
+           determinante -1 y AutoCAD voltearia el solido. Y sobre todo, que
+           APLICADA DE VERDAD lleva las dos tapas del cilindro a las dos puntas
+           del tramo, que es lo unico que al final se mide en el plano.
+
+         * EL CASO VERTICAL. Todas las varillas longitudinales son verticales. Si
+           la perpendicular de arranque se toma siempre de la vertical del mundo,
+           el producto vectorial se anula justo ahi: no es un caso raro que se
+           pueda ignorar, es la mitad del acero del plano.
+
+       Como se corre, en Windows:
+
+           cd tools/prueba-eje-barra
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-eje-barra</AssemblyName>
+
+    <!-- No entra en la solucion del cliente: es una herramienta. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../client/src/CadLink.Cad/CadLink.Cad.csproj" />
+  </ItemGroup>
+
+</Project>

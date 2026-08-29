@@ -140,6 +140,232 @@ public static class EjeDeBarra
         return tira;
     }
 
+    /// <summary>
+    /// El mismo recorrido con <b>menos vértices</b>, quitando los que casi no doblan.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La vista previa dibuja cada doblez con <b>catorce muestras</b>, porque en pantalla se ve
+    /// la curva y catorce segmentos ya parecen redondos. Pero en AutoCAD cada tramo del eje es un
+    /// sólido, y un estribo tiene cuatro esquinas más dos ganchos: seis dobleces por catorce son
+    /// <b>ochenta y cuatro sólidos por estribo</b>. Con treinta estribos son dos mil quinientos.
+    /// Eso no es un dibujo, es un dibujo que no se puede abrir.
+    /// </para>
+    /// <para>
+    /// Así que antes de dibujar se quitan los vértices que no aportan. Se va sumando <b>cuánto ha
+    /// doblado</b> el recorrido desde el último vértice que se guardó, y solo se guarda uno nuevo
+    /// cuando lo acumulado pasa de <paramref name="gradosMax"/>. Con veinte grados, un doblez de
+    /// noventa baja de catorce tramos a cinco, y el estribo de ochenta y cuatro sólidos a treinta.
+    /// </para>
+    /// <para>
+    /// <b>Los extremos no se tocan nunca.</b> El primer y el último punto siempre se guardan: son
+    /// dónde arranca y dónde acaba la varilla, y el usuario los va a medir contra su tabla. Se
+    /// acorta por dentro, no por las puntas. Y por lo mismo un recorrido cerrado —un estribo—
+    /// sigue cerrado al salir, porque su último punto es su primero.
+    /// </para>
+    /// </remarks>
+    /// <param name="gradosMax">
+    /// Cuánto se permite que se enderece el recorrido. Cero o menos deja el eje tal cual.
+    /// </param>
+    public static List<(double X, double Y, double Z)> Simplificado(
+        IReadOnlyList<(double X, double Y, double Z)>? eje, double gradosMax = 20)
+    {
+        var limpio = Limpio(eje);
+
+        if (limpio.Count < 3 || gradosMax <= 0)
+        {
+            return limpio;
+        }
+
+        var salida = new List<(double X, double Y, double Z)> { limpio[0] };
+
+        double acumulado = 0;
+
+        for (var i = 1; i < limpio.Count - 1; i++)
+        {
+            acumulado += Doblez(limpio[i - 1], limpio[i], limpio[i + 1]);
+
+            if (acumulado >= gradosMax)
+            {
+                salida.Add(limpio[i]);
+
+                acumulado = 0;
+            }
+        }
+
+        salida.Add(limpio[^1]);
+
+        return salida;
+    }
+
+    /// <summary>
+    /// El recorrido partido en <b>tramos</b>, cada uno alargado en las uniones.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cada tramo se va a dibujar como un cilindro suelto, y dos cilindros que se tocan justo en
+    /// la punta dejan una <b>muesca en la parte de fuera del doblez</b>: la esquina queda comida.
+    /// Se arregla alargando cada tramo <paramref name="alargue"/> por su propio eje, de modo que
+    /// los dos cilindros se solapen y el doblez quede lleno. Con el <b>radio de la varilla</b>
+    /// como alargue basta para cualquier doblez de armado.
+    /// </para>
+    /// <para>
+    /// <b>Pero solo por dentro.</b> Alargar también las dos puntas libres haría la varilla más
+    /// larga que la de la tabla, y eso es un error que el usuario ve en cuanto acota. Así que se
+    /// alarga en las uniones y <b>no</b> en el principio ni en el final. En un recorrido cerrado
+    /// —un estribo— no hay puntas libres: la unión del principio con el final también es unión, y
+    /// también se alarga.
+    /// </para>
+    /// </remarks>
+    public static List<((double X, double Y, double Z) A, (double X, double Y, double Z) B)> Tramos(
+        IReadOnlyList<(double X, double Y, double Z)>? eje, double alargue = 0)
+    {
+        var salida =
+            new List<((double X, double Y, double Z) A, (double X, double Y, double Z) B)>();
+
+        if (eje is null || eje.Count < 2)
+        {
+            return salida;
+        }
+
+        var cerrado = Cerrado(eje);
+
+        var ultimo = eje.Count - 1;
+
+        for (var i = 1; i <= ultimo; i++)
+        {
+            var a = eje[i - 1];
+            var b = eje[i];
+
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+            var dz = b.Z - a.Z;
+
+            var largo = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+            if (largo <= Nada)
+            {
+                continue;
+            }
+
+            var ux = dx / largo;
+            var uy = dy / largo;
+            var uz = dz / largo;
+
+            // Hacia atras solo si antes hay otro tramo; hacia delante solo si viene otro.
+            var atras = (i - 1 > 0 || cerrado) ? alargue : 0;
+            var delante = (i < ultimo || cerrado) ? alargue : 0;
+
+            salida.Add((
+                (a.X - (ux * atras), a.Y - (uy * atras), a.Z - (uz * atras)),
+                (b.X + (ux * delante), b.Y + (uy * delante), b.Z + (uz * delante))));
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// La matriz 4×4 que lleva un cilindro <b>hecho en el origen y de pie</b> al tramo
+    /// <paramref name="a"/>–<paramref name="b"/>. Nula si el tramo no tiene largo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// AutoCAD solo sabe hacer cilindros <b>verticales y centrados</b> en el punto que se le dice.
+    /// Para poner uno a lo largo de un tramo cualquiera se hace en el origen y se transforma. La
+    /// traslación es el <b>punto medio</b> del tramo, no su principio, precisamente porque el
+    /// cilindro nace centrado: de <c>−largo/2</c> a <c>+largo/2</c> en su Z.
+    /// </para>
+    /// <para>
+    /// Las tres primeras columnas son un marco ortonormal cuya tercera, <c>w</c>, es la dirección
+    /// del tramo. Las otras dos <b>da igual cómo salgan</b> —un círculo es igual por donde se lo
+    /// mire, así que girar el cilindro sobre su eje no cambia nada— y por eso aquí no hay el
+    /// cuidado que sí hace falta en <see cref="Modelo3dDrawer"/>, donde el perfil es una viga con
+    /// su alma y tiene que quedar de pie.
+    /// </para>
+    /// <para>
+    /// <b>El marco queda derecho, no espejado.</b> Se toma <c>u</c> perpendicular a la dirección y
+    /// luego <c>v = w × u</c>, y entonces <c>u × v = w</c> sale por identidad. Un marco espejado
+    /// tiene determinante negativo y AutoCAD lo aplicaría volteando el sólido.
+    /// </para>
+    /// <para>
+    /// Y la perpendicular de arranque se elige mirando <b>cuál de los ejes del mundo es menos
+    /// paralelo</b> al tramo. Tomar siempre la vertical se anularía en cada varilla longitudinal,
+    /// que son todas verticales: no es un caso raro que se pueda ignorar, es la mitad del acero.
+    /// </para>
+    /// </remarks>
+    public static double[,]? MatrizDeTramo(
+        (double X, double Y, double Z) a, (double X, double Y, double Z) b)
+    {
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+        var dz = b.Z - a.Z;
+
+        var largo = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+        if (largo <= Nada)
+        {
+            return null;
+        }
+
+        var w = new[] { dx / largo, dy / largo, dz / largo };
+
+        // El eje del mundo menos paralelo al tramo: asi el producto vectorial nunca se anula.
+        var h = Math.Abs(w[2]) < 0.9
+            ? new[] { 0d, 0d, 1d }
+            : new[] { 1d, 0d, 0d };
+
+        var u = Cruz(h, w);
+
+        var n = Math.Sqrt((u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]));
+
+        u = new[] { u[0] / n, u[1] / n, u[2] / n };
+
+        // v = w x u, y entonces u x v = w: el marco queda derecho.
+        var v = Cruz(w, u);
+
+        // Por FILAS, como la quiere AutoCAD, y con el PUNTO MEDIO en la cuarta columna.
+        return new[,]
+        {
+            { u[0], v[0], w[0], (a.X + b.X) / 2 },
+            { u[1], v[1], w[1], (a.Y + b.Y) / 2 },
+            { u[2], v[2], w[2], (a.Z + b.Z) / 2 },
+            { 0d,   0d,   0d,   1d              }
+        };
+    }
+
+    /// <summary>Cuánto dobla el recorrido al pasar por <paramref name="b"/>, en grados.</summary>
+    private static double Doblez(
+        (double X, double Y, double Z) a,
+        (double X, double Y, double Z) b,
+        (double X, double Y, double Z) c)
+    {
+        var e = new[] { b.X - a.X, b.Y - a.Y, b.Z - a.Z };
+        var s = new[] { c.X - b.X, c.Y - b.Y, c.Z - b.Z };
+
+        var le = Math.Sqrt((e[0] * e[0]) + (e[1] * e[1]) + (e[2] * e[2]));
+        var ls = Math.Sqrt((s[0] * s[0]) + (s[1] * s[1]) + (s[2] * s[2]));
+
+        if (le <= Nada || ls <= Nada)
+        {
+            return 0;
+        }
+
+        var cos = ((e[0] * s[0]) + (e[1] * s[1]) + (e[2] * s[2])) / (le * ls);
+
+        // El redondeo puede sacar el coseno del rango y Acos daria NaN.
+        cos = Math.Clamp(cos, -1d, 1d);
+
+        return Math.Acos(cos) * 180d / Math.PI;
+    }
+
+    private static double[] Cruz(double[] p, double[] q) =>
+        new[]
+        {
+            (p[1] * q[2]) - (p[2] * q[1]),
+            (p[2] * q[0]) - (p[0] * q[2]),
+            (p[0] * q[1]) - (p[1] * q[0])
+        };
+
     private static double Distancia(
         (double X, double Y, double Z) a, (double X, double Y, double Z) b)
     {
