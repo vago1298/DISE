@@ -86,12 +86,26 @@ public sealed class Jaula3dDrawer
     /// </para>
     /// </remarks>
     /// <remarks>
-    /// <b>Por qué un doceavo y no menos.</b> En una varilla del cuatro son cinco centésimas de
-    /// centímetro: la veinticincoava parte de su grueso, que no se ve ni con la nariz pegada. Bajar
-    /// más no mejora nada de lo que se mira y sí cuesta: cada tramo de más es un cilindro más y una
-    /// unión más, y las uniones booleanas de AutoCAD son lo caro de esta operación.
+    /// <para>
+    /// <b>Estaba en 0.08 y era lo que dejaba los ganchos con «tanto doblez».</b> El razonamiento
+    /// de antes —que cinco centésimas de centímetro no se ven— es correcto para el <i>error de
+    /// posición</i> del eje, pero el defecto que se ve en el gancho no es de posición: es que la
+    /// superficie está <b>facetada</b>, y lo que delata una faceta no es cuánto se desvía sino el
+    /// <b>quiebre</b> entre una cara y la siguiente.
+    /// </para>
+    /// <para>
+    /// Medido con <c>tools/verificar_jaula_3d.py</c>: con 0.08 un estribo pasaba de <b>47 puntos a
+    /// 20</b>, así que de los catorce tramos por doblez que la vista previa se había tomado la
+    /// molestia de generar, al doblez le quedaban <b>tres o cuatro</b>. Un cuarto de vuelta en
+    /// cuatro trozos no es un doblez, es un chaflán.
+    /// </para>
+    /// <para>
+    /// A <b>0.01</b> el doblez conserva sus tramos y se lee como una curva. Cuesta más cilindros y
+    /// más uniones —que es lo caro—, pero es la diferencia entre un gancho y un acordeón, y el
+    /// gancho es de lo que más se mira en un armado.
+    /// </para>
     /// </remarks>
-    public const double ToleranciaEnRadios = 0.08;
+    public const double ToleranciaEnRadios = 0.01;
 
     /// <summary>
     /// Tolerancia para <b>reconocer</b> rectas y arcos en el eje, en fracción del radio de la
@@ -360,8 +374,9 @@ public sealed class Jaula3dDrawer
         try
         {
             // Último recurso. El punto salta redefiniciones y el guion bajo fuerza el nombre en
-            // inglés, así que vale también en un AutoCAD en español.
-            _doc.SendCommand("_.REGENALL\n");
+            // inglés, así que vale también en un AutoCAD en español. Y el ENTER es "\r": con
+            // "\n" el comando se queda esperando en la línea de órdenes sin ejecutarse.
+            _doc.SendCommand("_.REGENALL\r");
         }
         catch (Exception)
         {
@@ -411,18 +426,34 @@ public sealed class Jaula3dDrawer
         //    redefinición del comando y el guion bajo fuerza el nombre en inglés, así que esto
         //    funciona igual en un AutoCAD en español. Y las opciones van con guion bajo por lo
         //    mismo.
+        // ===== EL RETORNO DE CARRO. AQUÍ ESTABA EL FALLO =====
+        //
+        // Estas órdenes iban terminadas en "\n", y AutoCAD espera "\r" —o un espacio— como
+        // ENTER en SendCommand. Con "\n" el comando NO SE EJECUTA: se queda a medias en la línea
+        // de órdenes esperando que alguien lo termine.
+        //
+        // Consecuencia exacta de lo que se veía: el estilo visual nunca cambiaba, la ventana se
+        // quedaba en alámbrico 2D, y ahí un sólido fundido de diecinueve cilindros dibuja tan
+        // pocas aristas que el estribo PARECE que le falta media vuelta. Y con VSEDGES sin
+        // aplicar —solo se fija si el sombreado funcionó—, los dobleces se veían facetados, que
+        // es lo del gancho «con tanto doblez».
+        //
+        // Se prueban las dos terminaciones, "\r" primero, porque en algunas versiones "\n"
+        // también vale y no cuesta nada dejar las dos.
         foreach (var orden in new[]
                  {
+                     "_.VSCURRENT\r_Conceptual\r",
+                     "_.VSCURRENT\r_C\r",
+                     "_.SHADEMODE\r_Conceptual\r",
                      "_.VSCURRENT\n_Conceptual\n",
-                     "_.VSCURRENT\n_C\n",
                      "_.SHADEMODE\n_Conceptual\n"
                  })
         {
             try
             {
                 // EL SendCommand NO VA DENTRO DE Retry, y es importante: Retry reejecuta la
-                // lambda, así que un «ocupado» ENCOLABA EL COMANDO OTRA VEZ. Con tres órdenes por
-                // doce reintentos se le podían meter a AutoCAD hasta treinta y seis comandos en la
+                // lambda, así que un «ocupado» ENCOLABA EL COMANDO OTRA VEZ. Con varias órdenes
+                // por doce reintentos se le podían meter a AutoCAD decenas de comandos en la
                 // línea, y ahí es donde un VSCURRENT a medias se come el siguiente como si fuera
                 // su opción.
                 _doc.SendCommand(orden);
