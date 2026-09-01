@@ -64,6 +64,32 @@ public sealed class Jaula3dDrawer
     /// <summary>Menos que esto no es una barra: es un nudo mal leído.</summary>
     private const double LargoMinimo = 1e-6;
 
+    private const double Pi = Math.PI;
+
+    /// <summary>
+    /// Los dobleces se hacen como <b>toro recortado</b> —una revolución— en lugar de como cadena de
+    /// cilindros.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Encendido es lo correcto: una cadena de cilindros está facetada por definición y el gancho
+    /// se ve como un acordeón. El toro es una sola superficie curva.
+    /// </para>
+    /// <para>
+    /// <b>Existe el interruptor porque hay un antecedente.</b> En este entorno no se puede probar
+    /// nada contra AutoCAD, y dos APIs de sólidos —<c>AddRevolvedSolid</c> y
+    /// <c>AddExtrudedSolidAlongPath</c>— ya cerraron AutoCAD 2026 sin lanzar ninguna excepción.
+    /// <c>AddTorus</c> es de otra familia —un primitivo paramétrico, como el <c>AddCylinder</c> que
+    /// sí funciona— y no consume ninguna región, que es lo que tenían en común las dos que
+    /// fallaron. Pero mientras no se ejecute una vez, es una deducción y no un hecho.
+    /// </para>
+    /// <para>
+    /// Si AutoCAD se cerrara al dibujar, poner esto en <c>false</c> devuelve el comportamiento
+    /// anterior, que es feo pero está probado.
+    /// </para>
+    /// </remarks>
+    public bool DoblecesRedondos { get; set; } = true;
+
     /// <summary>
     /// Cuánto se deja que la varilla se separe de su eje al simplificarlo, <b>en fracción de su
     /// propio radio</b>.
@@ -724,6 +750,50 @@ public sealed class Jaula3dDrawer
         return (entero is null ? 0 : sueltos, piezas.Count, perdidos);
     }
 
+    /// <summary>Borra una entidad, tolerando que ya no exista.</summary>
+    private static void Borrar(object? ent)
+    {
+        if (ent is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ((dynamic)ent).Delete();
+        }
+        catch (Exception)
+        {
+            // Ya estaba borrada, o consumida por una unión. No hay nada que hacer.
+        }
+    }
+
+    /// <summary>Anota un fallo tolerado, con su causa real y sin repetirlo.</summary>
+    private void Fallo(string operacion, Exception ex)
+    {
+        var e = ex;
+
+        while (e is System.Reflection.TargetInvocationException && e.InnerException is not null)
+        {
+            e = e.InnerException;
+        }
+
+        var detalle = e.GetType().Name;
+
+        if (e is System.Runtime.InteropServices.COMException com)
+        {
+            detalle += $" 0x{(uint)com.HResult:X8}";
+        }
+
+        var linea = operacion + " -> " + detalle + ": "
+                    + e.Message.Replace(Environment.NewLine, " ").Trim();
+
+        if (!_notas.Contains(linea))
+        {
+            _notas.Add(linea);
+        }
+    }
+
     /// <summary>¿La entidad sigue viva en el dibujo, o ya se la llevó una unión?</summary>
     /// <remarks>
     /// Se pregunta por una propiedad cualquiera. Si el objeto COM ya fue consumido, leerla lanza,
@@ -820,25 +890,34 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            // UN DOBLEZ: cadena de cilindros por sus propios puntos.
+            // ==================================================================
+            //  UN DOBLEZ: TORO RECORTADO, Y SI NO SE PUEDE, CADENA DE CILINDROS
+            // ==================================================================
             //
-            // AQUÍ IBA UN TORO Y SE QUITÓ. Girar el perfil con AddRevolvedSolid daba el doblez
-            // perfecto, de una sola superficie curva y sin una arista dentro. Pero CIERRA AUTOCAD
-            // 2026, igual que AddExtrudedSolidAlongPath, y por lo mismo: sin excepción, sin error
-            // y sin nada que capturar. Se probó y se cerró.
+            // EL DOBLEZ TIENE QUE SER UNA REVOLUCIÓN, no una cadena de trozos rectos. Una cadena
+            // está FACETADA por definición, y lo que delata una faceta no es cuánto se desvía sino
+            // el quiebre entre una cara y la siguiente: más tramos son más quiebres.
             //
-            // Se intentó a ciegas, que fue el error: es la SEGUNDA API de sólidos con perfil y
-            // región que mata AutoCAD en este entorno, y no hay forma de comprobarlo aquí porque
-            // el camino COM no se ejecuta. La conclusión, ya con dos casos, es que en esta versión
-            // NO se toca ninguna operación que consuma una región. Solo AddCylinder y Boolean, que
-            // están probados por el usuario.
+            // Antes se descartó la revolución porque AddRevolvedSolid CIERRA AUTOCAD 2026, igual
+            // que AddExtrudedSolidAlongPath. Y es verdad. Pero las dos tienen algo en común que la
+            // conclusión de entonces no separó: CONSUMEN UNA REGIÓN. Lo que quedó sin probar es
+            // AddTorus, que es un primitivo paramétrico —de la misma familia que AddCylinder, que
+            // está comprobado que funciona— y no toca ninguna región.
             //
-            // El precio es que el doblez queda facetado, y las aristas de las facetas se ven en
-            // sombreado. Eso NO se arregla con más tramos —serían más aristas— sino apagando el
-            // dibujo de aristas de la ventana, que es lo que hace PrepararLaVista con VSEDGES.
+            // Y un toro ES un círculo revolucionado alrededor de un eje: recortado a su barrido da
+            // el doblez exacto, con UNA SOLA superficie curva y sin ninguna arista dentro. Que es
+            // lo que se quería desde el principio.
+            //
+            // El recorte se hace con SliceSolid, que es una operación de sólido como Boolean, no de
+            // región.
+            //
+            // Si el toro no se puede hacer —barrido de media vuelta o más, radio de doblez menor
+            // que la varilla, o esta versión no acepta AddTorus— se cae a la cadena de cilindros de
+            // siempre. Nunca se queda sin doblez.
             var trozo = t;
 
-            piezas.Add(() => CadenaDeCilindros(trozo, b));
+            piezas.Add(() => (DoblecesRedondos ? ToroDeDoblez(trozo, b) : null)
+                             ?? CadenaDeCilindros(trozo, b));
         }
 
         return piezas;
@@ -999,6 +1078,193 @@ public sealed class Jaula3dDrawer
     }
 
 
+    /// <summary>
+    /// El doblez como <b>toro recortado</b>: una revolución de verdad, sin facetas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Cómo.</b> Se hace el toro completo en el origen —<c>AddTorus</c> lo deja tumbado en el
+    /// plano XY, con su eje en la Z— se lleva al doblez con
+    /// <see cref="EjeDeBarra.MatrizDeGiro"/>, y se le quitan las dos partes que sobran con dos
+    /// cortes por planos que pasan por el eje de giro.
+    /// </para>
+    /// <para>
+    /// <b>Por qué dos cortes bastan.</b> Dos planos que pasan por el eje dejan una cuña de como
+    /// mucho media vuelta. Los dobleces de un armado no llegan ahí —el más abierto es el gancho
+    /// sísmico, 135°— así que la cuña entre los dos planos, del lado donde está el arco, es
+    /// exactamente el barrido que se quiere. Con 180° o más haría falta trocear y unir, y no vale
+    /// la pena: se cae al respaldo.
+    /// </para>
+    /// <para>
+    /// <b>Cuál de las dos mitades se guarda.</b> No se confía en el parámetro <c>Negative</c> de
+    /// <c>SliceSolid</c>, cuyo criterio depende de la orientación del plano y es fácil de invertir
+    /// sin darse cuenta. Se compara el <c>Centroid</c> de cada mitad con el punto medio del arco y
+    /// se guarda la más cercana. Es geometría, no un convenio de la API, así que no se puede
+    /// equivocar de lado.
+    /// </para>
+    /// </remarks>
+    private object? ToroDeDoblez(EjeDeBarra.Trozo t, Barra b)
+    {
+        // ---------- Lo que hace imposible el toro ----------
+        if (!t.EsArco || b.Radio <= 0 || t.Radio <= 0)
+        {
+            return null;
+        }
+
+        // Media vuelta o más no sale con dos cortes.
+        if (t.Barrido <= 0 || t.Barrido >= Pi - 1e-6)
+        {
+            return null;
+        }
+
+        // Un toro cuyo tubo es más gordo que su radio se corta a sí mismo por dentro, y AutoCAD lo
+        // rechaza o lo hace mal. Pasa en los dobleces muy cerrados.
+        if (t.Radio <= b.Radio * 1.02)
+        {
+            return null;
+        }
+
+        if (t.Puntos.Count < 3)
+        {
+            return null;
+        }
+
+        var matriz = EjeDeBarra.MatrizDeGiro(t.Centro, t.Normal);
+
+        if (matriz is null)
+        {
+            return null;
+        }
+
+        // El punto medio del arco: el que dice de qué lado de los planos hay que quedarse.
+        var medio = t.Puntos[t.Puntos.Count / 2];
+
+        object? toro = null;
+
+        try
+        {
+            toro = AcadConnection.Retry<object>(() =>
+                _ms.AddTorus(new[] { 0d, 0d, 0d }, t.Radio, b.Radio));
+
+            // TransformBy acumula, así que va sola y sin reintento, como en Cilindro.
+            ((dynamic)toro).TransformBy(matriz);
+
+            // ---------- Los dos cortes ----------
+            // Cada plano pasa por el centro del doblez, contiene el eje de giro y pasa por el
+            // extremo del arco: es el plano que corta justo donde el doblez empieza o acaba.
+            var eje = new[]
+            {
+                t.Centro.X + t.Normal.X,
+                t.Centro.Y + t.Normal.Y,
+                t.Centro.Z + t.Normal.Z
+            };
+
+            foreach (var extremo in new[] { t.A, t.B })
+            {
+                toro = CortarYQuedarse(toro, t.Centro, eje, extremo, medio);
+
+                if (toro is null)
+                {
+                    return null;
+                }
+            }
+
+            ((dynamic)toro).Layer = b.Capa;
+
+            return toro;
+        }
+        catch (Exception ex)
+        {
+            // Se limpia el toro a medias: si se queda, es un donut entero atravesando la varilla.
+            Borrar(toro);
+
+            Fallo($"Doblez redondo de '{b.Id}' con AddTorus", ex);
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Corta <paramref name="solido"/> por el plano que pasa por tres puntos y devuelve la mitad
+    /// que queda del lado de <paramref name="referencia"/>.
+    /// </summary>
+    private object? CortarYQuedarse(
+        object solido,
+        (double X, double Y, double Z) centro,
+        double[] eje,
+        (double X, double Y, double Z) extremo,
+        (double X, double Y, double Z) referencia)
+    {
+        object? otra = null;
+
+        try
+        {
+            // SliceSolid deja UNA mitad en el sólido original y devuelve la otra. Va sin reintento:
+            // repetirlo volvería a cortar la mitad que ya quedó.
+            otra = (object?)((dynamic)solido).SliceSolid(
+                new[] { centro.X, centro.Y, centro.Z },
+                eje,
+                new[] { extremo.X, extremo.Y, extremo.Z },
+                true);
+        }
+        catch (Exception)
+        {
+            // El plano no lo corta —puede pasar si el extremo cae justo en el eje— así que el
+            // sólido se queda como está. No es un fallo: es un corte que no hacía falta.
+            return solido;
+        }
+
+        if (otra is null)
+        {
+            return solido;
+        }
+
+        // La que se guarda es la que tiene el centroide MÁS CERCA del punto medio del arco.
+        var dSolido = DistanciaAlCentroide(solido, referencia);
+        var dOtra = DistanciaAlCentroide(otra, referencia);
+
+        if (dOtra < dSolido)
+        {
+            Borrar(solido);
+
+            return otra;
+        }
+
+        Borrar(otra);
+
+        return solido;
+    }
+
+    /// <summary>
+    /// Del centroide del sólido al punto dado. <see cref="double.MaxValue"/> si no se puede leer.
+    /// </summary>
+    /// <remarks>
+    /// Devolver el máximo cuando no se puede leer hace que esa mitad <b>pierda</b> la comparación,
+    /// que es el lado prudente: ante la duda se conserva la que sí se pudo medir.
+    /// </remarks>
+    private static double DistanciaAlCentroide(object solido, (double X, double Y, double Z) p)
+    {
+        try
+        {
+            var c = (double[])((dynamic)solido).Centroid;
+
+            if (c.Length < 3)
+            {
+                return double.MaxValue;
+            }
+
+            var dx = c[0] - p.X;
+            var dy = c[1] - p.Y;
+            var dz = c[2] - p.Z;
+
+            return Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+        }
+        catch (Exception)
+        {
+            return double.MaxValue;
+        }
+    }
+
     /// <summary>El doblez a la antigua: cilindros por sus puntos. Es el respaldo del toro.</summary>
     /// <remarks>
     /// Lleva el <b>mismo rescate</b> que <see cref="Solida"/>, y por el mismo motivo: una unión
@@ -1009,7 +1275,40 @@ public sealed class Jaula3dDrawer
     {
         object? entero = null;
 
-        foreach (var (a, z) in EjeDeBarra.Tramos(t.Puntos, b.Radio))
+        // ===== EL SOLAPE SE LIMITA AL TRAMO MÁS CORTO =====
+        //
+        // Iba fijo en un radio de varilla, y en un doblez eso se pasa de largo: los tramos de un
+        // doblez de 1 cm de radio muestreado fino miden alrededor de 1 mm, mientras que el radio de
+        // una varilla del tres es 4.75 mm. O sea que cada cilindro se alargaba CUATRO VECES su
+        // propio largo por cada punta, y en lugar de seguir la curva sobresalía de ella y se metía
+        // en los tramos rectos vecinos. Es lo que hacía que el gancho pareciera despegado del
+        // estribo.
+        //
+        // Se limita a la mitad del tramo más corto: suficiente para que la unión tenga volumen que
+        // morder, y nunca tanto como para salirse del doblez.
+        var minimo = double.MaxValue;
+
+        for (var i = 1; i < t.Puntos.Count; i++)
+        {
+            var p = t.Puntos[i - 1];
+            var q = t.Puntos[i];
+
+            var d = Math.Sqrt(
+                ((q.X - p.X) * (q.X - p.X))
+                + ((q.Y - p.Y) * (q.Y - p.Y))
+                + ((q.Z - p.Z) * (q.Z - p.Z)));
+
+            if (d > LargoMinimo && d < minimo)
+            {
+                minimo = d;
+            }
+        }
+
+        var solape = minimo < double.MaxValue
+            ? Math.Min(b.Radio, minimo * 0.5)
+            : b.Radio;
+
+        foreach (var (a, z) in EjeDeBarra.Tramos(t.Puntos, solape))
         {
             var cil = Cilindro(a, z, b.Radio, b.Capa);
 
