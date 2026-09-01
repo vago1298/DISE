@@ -787,6 +787,51 @@ public static class EjeDeBarra
     /// AutoCAD lo aplicaría volteando el sólido.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// El marco ortonormal de un doblez: <c>w</c> es su eje de giro y <c>u</c>, <c>v</c> son los
+    /// dos ejes del plano en el que gira.
+    /// </summary>
+    /// <remarks>
+    /// Se expone aparte de <see cref="MatrizDeGiro"/> porque para <b>recortar</b> el doblez hacen
+    /// falta los vectores, no la matriz: los planos de corte se construyen a partir de la dirección
+    /// radial de cada extremo del arco, y esa dirección solo tiene sentido dentro de este marco.
+    /// Los dos comparten la misma elección de <c>u</c>, así que las cuentas de uno valen en el otro.
+    /// </remarks>
+    public static ((double X, double Y, double Z) U,
+                   (double X, double Y, double Z) V,
+                   (double X, double Y, double Z) W)? MarcoDeGiro(
+        (double X, double Y, double Z) normal)
+    {
+        var n = Math.Sqrt(
+            (normal.X * normal.X) + (normal.Y * normal.Y) + (normal.Z * normal.Z));
+
+        if (n <= Nada)
+        {
+            return null;
+        }
+
+        var w = new[] { normal.X / n, normal.Y / n, normal.Z / n };
+
+        var h = Math.Abs(w[2]) < 0.9
+            ? new[] { 0d, 0d, 1d }
+            : new[] { 1d, 0d, 0d };
+
+        var u = Cruz(h, w);
+
+        var nu = Math.Sqrt((u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]));
+
+        if (nu <= Nada)
+        {
+            return null;
+        }
+
+        u = new[] { u[0] / nu, u[1] / nu, u[2] / nu };
+
+        var v = Cruz(w, u);
+
+        return ((u[0], u[1], u[2]), (v[0], v[1], v[2]), (w[0], w[1], w[2]));
+    }
+
     public static double[,]? MatrizDeGiro(
         (double X, double Y, double Z) centro, (double X, double Y, double Z) normal)
     {

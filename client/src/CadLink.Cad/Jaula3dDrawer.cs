@@ -1248,22 +1248,40 @@ public sealed class Jaula3dDrawer
             // TransformBy acumula, así que va sola y sin reintento, como en Cilindro.
             ((dynamic)toro).TransformBy(matriz);
 
-            // ---------- Los dos cortes ----------
-            // Cada plano pasa por el centro del doblez, contiene el eje de giro y pasa por el
-            // extremo del arco: es el plano que corta justo donde el doblez empieza o acaba.
-            var eje = new[]
+            // ---------- El recorte, RESTANDO CAJAS ----------
+            //
+            // ANTES ESTO ERA SliceSolid Y ERA EL FALLO. SliceSolid es la única API de toda esta
+            // cadena que no está verificada, y cuando no corta, mi código se quedaba con el toro
+            // ENTERO: un donut completo envolviendo la varilla. Es exactamente el «estás creando de
+            // más» que se ve en el doblez de 90°. Y en el gancho, al no poder recortar, se caía al
+            // respaldo de cilindros, que es lo de «tantas líneas».
+            //
+            // Se cambia por Boolean de sustracción, que es la operación de sólidos que SÍ está
+            // comprobada en este AutoCAD, restando dos cajas —AddBox, primitivo como AddCylinder—
+            // que tapan cada una la mitad que sobra.
+            //
+            // Dos medios espacios dejan una cuña convexa de como mucho media vuelta, y ningún
+            // doblez de armado llega ahí: el gancho sísmico son 135°, que es convexo y sale bien.
+            var marco = EjeDeBarra.MarcoDeGiro(t.Normal);
+
+            if (marco is null)
             {
-                t.Centro.X + t.Normal.X,
-                t.Centro.Y + t.Normal.Y,
-                t.Centro.Z + t.Normal.Z
-            };
+                Borrar(toro);
+                return null;
+            }
+
+            var w = marco.Value.W;
+
+            // Lo bastante grande para tapar el toro completo por el lado que sobra.
+            var lado = 4 * (t.Radio + b.Radio);
 
             foreach (var extremo in new[] { t.A, t.B })
             {
-                toro = CortarYQuedarse(toro, t.Centro, eje, extremo, medio);
-
-                if (toro is null)
+                if (!QuitarMitad(toro, t.Centro, w, extremo, medio, lado))
                 {
+                    // Sin poder recortar, un toro entero es MUCHO peor que un doblez facetado:
+                    // se tira y se deja que el respaldo dibuje la cadena de cilindros.
+                    Borrar(toro);
                     return null;
                 }
             }
@@ -1284,83 +1302,116 @@ public sealed class Jaula3dDrawer
     }
 
     /// <summary>
-    /// Corta <paramref name="solido"/> por el plano que pasa por tres puntos y devuelve la mitad
-    /// que queda del lado de <paramref name="referencia"/>.
-    /// </summary>
-    private object? CortarYQuedarse(
-        object solido,
-        (double X, double Y, double Z) centro,
-        double[] eje,
-        (double X, double Y, double Z) extremo,
-        (double X, double Y, double Z) referencia)
-    {
-        object? otra = null;
-
-        try
-        {
-            // SliceSolid deja UNA mitad en el sólido original y devuelve la otra. Va sin reintento:
-            // repetirlo volvería a cortar la mitad que ya quedó.
-            otra = (object?)((dynamic)solido).SliceSolid(
-                new[] { centro.X, centro.Y, centro.Z },
-                eje,
-                new[] { extremo.X, extremo.Y, extremo.Z },
-                true);
-        }
-        catch (Exception)
-        {
-            // El plano no lo corta —puede pasar si el extremo cae justo en el eje— así que el
-            // sólido se queda como está. No es un fallo: es un corte que no hacía falta.
-            return solido;
-        }
-
-        if (otra is null)
-        {
-            return solido;
-        }
-
-        // La que se guarda es la que tiene el centroide MÁS CERCA del punto medio del arco.
-        var dSolido = DistanciaAlCentroide(solido, referencia);
-        var dOtra = DistanciaAlCentroide(otra, referencia);
-
-        if (dOtra < dSolido)
-        {
-            Borrar(solido);
-
-            return otra;
-        }
-
-        Borrar(otra);
-
-        return solido;
-    }
-
-    /// <summary>
-    /// Del centroide del sólido al punto dado. <see cref="double.MaxValue"/> si no se puede leer.
+    /// Le resta a <paramref name="solido"/> el medio espacio del plano que pasa por el eje del
+    /// doblez y por <paramref name="extremo"/>, quedándose con el lado de
+    /// <paramref name="referencia"/>.
     /// </summary>
     /// <remarks>
-    /// Devolver el máximo cuando no se puede leer hace que esa mitad <b>pierda</b> la comparación,
-    /// que es el lado prudente: ante la duda se conserva la que sí se pudo medir.
+    /// <para>
+    /// El plano se define por el centro del doblez, su eje de giro y el extremo del arco: es el
+    /// plano que pasa justo por donde el doblez empieza —o acaba—. Su normal sale del producto
+    /// vectorial del eje por la dirección radial del extremo.
+    /// </para>
+    /// <para>
+    /// <b>De qué lado se corta lo decide la geometría, no un convenio de la API.</b> Se mira de qué
+    /// lado del plano cae el punto medio del arco y se resta el otro. Es lo que hace que no se pueda
+    /// equivocar de mitad, que es el error más fácil de cometer aquí y el más difícil de ver.
+    /// </para>
+    /// <para>
+    /// La caja se hace con <c>AddBox</c> —primitivo, como <c>AddCylinder</c>— y se resta con
+    /// <c>Boolean</c>. Las dos son operaciones comprobadas en este AutoCAD, a diferencia de
+    /// <c>SliceSolid</c>. Y <c>Boolean</c> <b>consume la caja</b>, así que no hay que borrarla:
+    /// desaparece al restarla.
+    /// </para>
     /// </remarks>
-    private static double DistanciaAlCentroide(object solido, (double X, double Y, double Z) p)
+    private bool QuitarMitad(
+        object solido,
+        (double X, double Y, double Z) centro,
+        (double X, double Y, double Z) eje,
+        (double X, double Y, double Z) extremo,
+        (double X, double Y, double Z) referencia,
+        double lado)
     {
+        // Dirección radial del extremo del arco, dentro del plano del doblez.
+        var rx = extremo.X - centro.X;
+        var ry = extremo.Y - centro.Y;
+        var rz = extremo.Z - centro.Z;
+
+        var nr = Math.Sqrt((rx * rx) + (ry * ry) + (rz * rz));
+
+        if (nr <= LargoMinimo)
+        {
+            return false;
+        }
+
+        rx /= nr; ry /= nr; rz /= nr;
+
+        // Normal del plano de corte: el eje por la radial.
+        var px = (eje.Y * rz) - (eje.Z * ry);
+        var py = (eje.Z * rx) - (eje.X * rz);
+        var pz = (eje.X * ry) - (eje.Y * rx);
+
+        var np = Math.Sqrt((px * px) + (py * py) + (pz * pz));
+
+        if (np <= 1e-12)
+        {
+            return false;
+        }
+
+        px /= np; py /= np; pz /= np;
+
+        // ¿De qué lado está el punto medio del arco? Ese lado se conserva.
+        var lD = ((referencia.X - centro.X) * px)
+                 + ((referencia.Y - centro.Y) * py)
+                 + ((referencia.Z - centro.Z) * pz);
+
+        if (Math.Abs(lD) <= 1e-12)
+        {
+            // El punto medio cae EN el plano: no se puede decidir, y cortar a ciegas se llevaría
+            // la mitad buena.
+            return false;
+        }
+
+        // Se resta el lado contrario al del punto medio.
+        var s = lD > 0 ? -1d : 1d;
+
+        var qx = px * s;
+        var qy = py * s;
+        var qz = pz * s;
+
         try
         {
-            var c = (double[])((dynamic)solido).Centroid;
+            // La caja nace centrada en el origen y alineada con los ejes del mundo, así que se
+            // hace y se lleva a su sitio con la matriz: su eje Z pasa a ser la normal del recorte,
+            // y su centro se corre medio lado en esa dirección para que UNA CARA quede justo sobre
+            // el plano de corte.
+            var matriz = EjeDeBarra.MatrizDeGiro(
+                (centro.X + (qx * lado / 2),
+                 centro.Y + (qy * lado / 2),
+                 centro.Z + (qz * lado / 2)),
+                (qx, qy, qz));
 
-            if (c.Length < 3)
+            if (matriz is null)
             {
-                return double.MaxValue;
+                return false;
             }
 
-            var dx = c[0] - p.X;
-            var dy = c[1] - p.Y;
-            var dz = c[2] - p.Z;
+            dynamic caja = AcadConnection.Retry<object>(() =>
+                _ms.AddBox(new[] { 0d, 0d, 0d }, lado, lado, lado));
 
-            return Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+            // TransformBy acumula: va sola y sin reintento.
+            caja.TransformBy(matriz);
+
+            // acSubtraction es el 2 del enumerado de operaciones booleanas. Y consume la caja.
+            ((dynamic)solido).Boolean(2, caja);
+
+            return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return double.MaxValue;
+            Fallo("Recortar el doblez restando una caja", ex);
+
+            return false;
         }
     }
 
