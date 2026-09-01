@@ -2037,8 +2037,22 @@ public sealed partial class ZapataDrawer
     {
         try
         {
-            return AcadConnection.Retry<object?>(() =>
-                (object?)_doc.Blocks.Add(new[] { x, y, 0d }, nombre));
+            // SIN REINTENTO. Blocks.Add no es idempotente: si AutoCAD contesta «ocupado»
+            // después de haber creado el bloque, el reintento vuelve a llamarlo con un nombre
+            // que ya existe, y ese error NO es «busy», así que se escapa del Retry y se pierde
+            // el bloque entero. Se reutiliza el que haya y, si no hay, se crea de una sola vez.
+            object? yaEsta = null;
+
+            try
+            {
+                yaEsta = AcadConnection.Retry<object?>(() => (object?)_doc.Blocks.Item(nombre));
+            }
+            catch (Exception)
+            {
+                // No existe: se crea abajo.
+            }
+
+            return yaEsta ?? (object?)_doc.Blocks.Add(new[] { x, y, 0d }, nombre);
         }
         catch (Exception ex)
         {

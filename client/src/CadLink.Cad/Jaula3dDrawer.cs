@@ -675,21 +675,53 @@ public sealed class Jaula3dDrawer
     /// número y no el nombre porque aquí se habla con AutoCAD por <c>dynamic</c>, sin la biblioteca
     /// de tipos delante.
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>SE LLAMA UNA SOLA VEZ, SIN REINTENTO, Y ESO NO ES NEGOCIABLE.</b>
+    /// </para>
+    /// <para>
+    /// Aquí había un <c>AcadConnection.Retry</c> envolviendo el <c>Boolean</c>, y era el que
+    /// <b>cerraba AutoCAD a media jaula</b>. El motivo está escrito tres párrafos más arriba, en
+    /// <see cref="Solida"/>: <i>la unión CONSUME el sólido que se le pasa</i>. Y <c>Retry</c> no
+    /// reintenta la llamada: <b>reejecuta la lambda entera</b>. Así que cuando AutoCAD contestaba
+    /// «ocupado» —<c>0x8001010A</c>, que es de lo más común mientras se están creando cientos de
+    /// sólidos— el reintento volvía a llamar a <c>Boolean</c> pasándole un objeto COM
+    /// <b>ya consumido</b>. Es exactamente la operación que el propio archivo describe como la que
+    /// «cierra AutoCAD sin dar la cara»: sin excepción, sin error y sin nada que capturar.
+    /// </para>
+    /// <para>
+    /// Y el síntoma es justo el reportado: AutoCAD se va a media corrida y en el dibujo queda
+    /// <b>media jaula</b>. No es un dibujo incompleto, es un programa cerrado.
+    /// </para>
+    /// <para>
+    /// No se puede arreglar reintentando con cuidado, porque <b>no hay forma de preguntar</b> si el
+    /// <c>Boolean</c> llegó a surtir efecto: si surtió, <c>otro</c> ya no existe y consultarlo es
+    /// el mismo crash. La única vía segura es intentarlo <b>una vez</b>.
+    /// </para>
+    /// <para>
+    /// Perder la unión no cuesta nada, y eso es lo que hace que esta sea la decisión correcta y no
+    /// un apaño: los dos sólidos se quedan en el dibujo por separado. Se ve la costura, pero la
+    /// varilla está completa y mide lo que tiene que medir. Es infinitamente mejor que un AutoCAD
+    /// cerrado con el trabajo sin guardar.
+    /// </para>
+    /// </remarks>
     private static bool Fundir(object cuerpo, object otro)
     {
         try
         {
-            return AcadConnection.Retry(() =>
-            {
-                ((dynamic)cuerpo).Boolean(0, (dynamic)otro);
+            ((dynamic)cuerpo).Boolean(0, (dynamic)otro);
 
-                return true;
-            });
+            return true;
         }
         catch (Exception)
         {
-            // Una unión puede fallar si los dos sólidos no llegan a tocarse por redondeo. No es
-            // motivo para tirar la varilla: se queda en dos piezas.
+            // Una unión puede fallar si los dos sólidos no llegan a tocarse por redondeo, o
+            // porque AutoCAD estaba ocupado. No es motivo para tirar la varilla: se queda en dos
+            // piezas, las dos dibujadas.
+            //
+            // 'otro' NO se borra aquí. Si el Boolean alcanzó a consumirlo, borrarlo es el crash
+            // que se acaba de quitar; y si no lo consumió, sigue dibujado y en su sitio, que es
+            // lo que se quiere.
             return false;
         }
     }
@@ -733,16 +765,54 @@ public sealed class Jaula3dDrawer
 
         try
         {
-            return AcadConnection.Retry<object?>(() =>
+            // EL AddCylinder Y EL TransformBy VAN EN REINTENTOS SEPARADOS.
+            //
+            // Juntos en uno solo, un «ocupado» después de crear el cilindro hacía que el
+            // reintento creara OTRO, y el primero se quedaba en el dibujo: un cilindro de pie,
+            // sin transformar, plantado en el origen del mundo. Con cientos de tramos por jaula
+            // eso deja un ramillete de sólidos sueltos en el 0,0,0 que no son ninguna varilla,
+            // se seleccionan al hacer marco y falsean el ZoomExtents.
+            //
+            // TransformBy tampoco es idempotente —aplicarla dos veces transforma dos veces— así
+            // que necesita su propio reintento por el mismo motivo que el Boolean de Fundir.
+            dynamic cil = AcadConnection.Retry<object>(() =>
+                _ms.AddCylinder(new[] { 0d, 0d, 0d }, radio, largo));
+
+            try
             {
-                dynamic cil = _ms.AddCylinder(new[] { 0d, 0d, 0d }, radio, largo);
-
+                // SIN REINTENTO, y sola. TransformBy acumula: reintentarla después de que haya
+                // surtido efecto transformaría el cilindro dos veces y lo mandaría lejos de la
+                // varilla. Es el mismo motivo por el que el Boolean de Fundir tampoco se
+                // reintenta.
                 cil.TransformBy(matriz);
+            }
+            catch (Exception)
+            {
+                // Sin transformar, el cilindro está en el origen y no representa nada. Se borra:
+                // aquí SÍ es seguro, porque a diferencia del Boolean de Fundir nadie lo ha
+                // consumido todavía.
+                try
+                {
+                    AcadConnection.Retry(() => { cil.Delete(); });
+                }
+                catch (Exception)
+                {
+                    // Si tampoco se puede borrar, no se insiste.
+                }
 
-                cil.Layer = capa;
+                return null;
+            }
 
-                return (object?)cil;
-            });
+            try
+            {
+                AcadConnection.Retry(() => { cil.Layer = capa; });
+            }
+            catch (Exception)
+            {
+                // La capa es lo de menos: el sólido ya está en su sitio y con su forma.
+            }
+
+            return (object?)cil;
         }
         catch (Exception)
         {
