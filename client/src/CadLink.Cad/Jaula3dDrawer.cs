@@ -675,14 +675,31 @@ public sealed class Jaula3dDrawer
         var perdidos = 0;
         var rescatados = 0;
 
+        // Con esto encendido se deja de unir en esta varilla: ya se perdió una vez.
+        var sinFundir = false;
+
         for (var i = 0; i < piezas.Count; i++)
         {
-            var cil = piezas[i]();
+            var cil = piezas[i].Crear();
 
             if (cil is null)
             {
                 // Esta pieza no salió: la varilla va a tener un hueco justo aquí.
                 perdidos++;
+
+                continue;
+            }
+
+            // ===== LA PIEZA QUE NO SE FUNDE =====
+            //
+            // Los dobleces se quedan como sólidos aparte. Es lo que impide que un doblez mal
+            // formado se lleve la varilla entera al unirlo, que es lo que pasó al estrenar el toro:
+            // desaparecían TODOS los estribos, mientras el diamante —casi todo recto, sin dobleces
+            // que pasen por aquí— salía perfecto. La costura no se ve en sombreado; perder la
+            // varilla sí se ve.
+            if (!piezas[i].Fundible || sinFundir)
+            {
+                sueltos++;
 
                 continue;
             }
@@ -697,6 +714,44 @@ public sealed class Jaula3dDrawer
 
             if (Fundir(entero, cil))
             {
+                // ¿Y sigue viva la varilla acumulada?
+                //
+                // Fundir puede devolver true y aun así haber dejado 'entero' en mal estado: la
+                // unión trabaja SOBRE él. Antes nadie lo comprobaba, así que una unión que salía
+                // mal se llevaba en silencio todo lo acumulado hasta ese punto y la varilla
+                // desaparecía sin una sola nota.
+                if (Vive(entero))
+                {
+                    continue;
+                }
+
+                _notas.Add(
+                    $"La varilla '{b.Id}': una unión de sólidos se llevó la barra acumulada. Se "
+                    + "vuelve a dibujar por piezas sueltas, así que se verá con costuras.");
+
+                // Se rehace desde el principio, y esta vez SIN unir nada.
+                entero = null;
+                sueltos = 0;
+
+                for (var k = 0; k <= i; k++)
+                {
+                    if (piezas[k].Crear() is not null)
+                    {
+                        sueltos++;
+                        rescatados++;
+                    }
+                    else
+                    {
+                        perdidos++;
+                    }
+                }
+
+                // Y NO SE VUELVE A FUNDIR en esta varilla. Sin esta bandera, la pieza siguiente
+                // entraría por 'entero is null', volvería a empezar a acumular y a la primera
+                // unión mala se perdería otra vez lo acumulado. Si una unión ya salió mal en esta
+                // barra, lo prudente es dejar de intentarlo.
+                sinFundir = true;
+
                 continue;
             }
 
@@ -726,7 +781,7 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            var repuesto = piezas[i]();
+            var repuesto = piezas[i].Crear();
 
             if (repuesto is null)
             {
@@ -835,13 +890,27 @@ public sealed class Jaula3dDrawer
     /// exactamente como antes: sale una lista de cilindros.
     /// </para>
     /// </remarks>
-    private List<Func<object?>> Piezas(Barra b, List<(double X, double Y, double Z)> eje)
+    /// <summary>Una pieza de la barra, y si se puede fundir con las demás.</summary>
+    /// <remarks>
+    /// <b>El doblez hecho como toro NO se funde</b>, y esa es la lección de la última regresión:
+    /// al fundirlo, un toro mal recortado se llevaba por delante <b>la varilla entera</b>, porque
+    /// <c>Boolean</c> trabaja SOBRE el sólido acumulado. Se veía como un estribo que desaparecía
+    /// completo mientras el diamante —que es casi todo recto y no pasa por aquí— salía bien.
+    /// <para>
+    /// Dejarlo suelto no cuesta nada: el toro ya es una superficie curva de una pieza, así que no
+    /// necesita la unión para verse bien, y la costura contra el tramo recto queda tapada en
+    /// sombreado. Lo que sí cuesta es perder la varilla.
+    /// </para>
+    /// </remarks>
+    private sealed record Pieza(Func<object?> Crear, bool Fundible);
+
+    private List<Pieza> Piezas(Barra b, List<(double X, double Y, double Z)> eje)
     {
         var trozos = EjeDeBarra.Curvas(eje, b.Radio * ToleranciaDeReconocer);
 
         var cerrado = EjeDeBarra.Cerrado(eje);
 
-        var piezas = new List<Func<object?>>();
+        var piezas = new List<Pieza>();
 
         for (var i = 0; i < trozos.Count; i++)
         {
@@ -885,7 +954,9 @@ public sealed class Jaula3dDrawer
                 var p1 = (a.X - (ux * da), a.Y - (uy * da), a.Z - (uz * da));
                 var p2 = (z.X + (ux * dd), z.Y + (uy * dd), z.Z + (uz * dd));
 
-                piezas.Add(() => Cilindro(p1, p2, b.Radio, b.Capa));
+                // Un tramo recto sí se funde: es un cilindro sano y la unión con otro cilindro es
+                // la operación más probada de todas.
+                piezas.Add(new Pieza(() => Cilindro(p1, p2, b.Radio, b.Capa), Fundible: true));
 
                 continue;
             }
@@ -916,8 +987,14 @@ public sealed class Jaula3dDrawer
             // siempre. Nunca se queda sin doblez.
             var trozo = t;
 
-            piezas.Add(() => (DoblecesRedondos ? ToroDeDoblez(trozo, b) : null)
-                             ?? CadenaDeCilindros(trozo, b));
+            // Fundible: FALSE. Un doblez no se une al resto de la varilla, y es lo que impide que
+            // se repita la regresión: al fundirlo, un doblez mal formado se llevaba la varilla
+            // COMPLETA, porque Boolean trabaja sobre el sólido acumulado. Vale para el toro y para
+            // la cadena, porque el riesgo no está en cómo se hizo el doblez sino en unirlo.
+            piezas.Add(new Pieza(
+                () => (DoblecesRedondos ? ToroDeDoblez(trozo, b) : null)
+                      ?? CadenaDeCilindros(trozo, b),
+                Fundible: false));
         }
 
         return piezas;
@@ -1117,9 +1194,31 @@ public sealed class Jaula3dDrawer
             return null;
         }
 
+        // Un barrido muy pequeño no merece un toro y además deja los dos planos de corte casi
+        // pegados, que es donde el recorte se vuelve inestable: un grado o menos es ruido.
+        if (t.Barrido < Pi / 180)
+        {
+            return null;
+        }
+
         // Un toro cuyo tubo es más gordo que su radio se corta a sí mismo por dentro, y AutoCAD lo
         // rechaza o lo hace mal. Pasa en los dobleces muy cerrados.
         if (t.Radio <= b.Radio * 1.02)
+        {
+            return null;
+        }
+
+        // ===== Y UN TOPE POR ARRIBA, QUE ES EL QUE FALTABA =====
+        //
+        // El radio sale de ajustar una circunferencia por tres puntos, y cuando esos tres puntos
+        // están casi en línea la circunferencia es ENORME: metros de radio para un doblez de un
+        // centímetro. Con eso, AddTorus crea un donut gigantesco que atraviesa todo el dibujo, y al
+        // recortarlo por dos planos que pasan por su eje queda un trozo descomunal.
+        //
+        // Ese era el sólido que después rompía la unión y se llevaba la varilla. El doblez de un
+        // armado nunca pasa de unos pocos diámetros de varilla, así que treinta veces el radio es
+        // holgado de sobra y a la vez descarta cualquier ajuste disparatado.
+        if (t.Radio > b.Radio * 30)
         {
             return null;
         }
@@ -1275,40 +1374,22 @@ public sealed class Jaula3dDrawer
     {
         object? entero = null;
 
-        // ===== EL SOLAPE SE LIMITA AL TRAMO MÁS CORTO =====
+        // ===== EL SOLAPE VUELVE A SER UN RADIO DE VARILLA =====
         //
-        // Iba fijo en un radio de varilla, y en un doblez eso se pasa de largo: los tramos de un
-        // doblez de 1 cm de radio muestreado fino miden alrededor de 1 mm, mientras que el radio de
-        // una varilla del tres es 4.75 mm. O sea que cada cilindro se alargaba CUATRO VECES su
-        // propio largo por cada punta, y en lugar de seguir la curva sobresalía de ella y se metía
-        // en los tramos rectos vecinos. Es lo que hacía que el gancho pareciera despegado del
-        // estribo.
+        // Se había limitado a la mitad del tramo más corto, creyendo que un solape mayor que el
+        // propio tramo hacía que los cilindros sobresalieran del doblez. ERA UN ERROR MÍO, por dos
+        // motivos:
         //
-        // Se limita a la mitad del tramo más corto: suficiente para que la unión tenga volumen que
-        // morder, y nunca tanto como para salirse del doblez.
-        var minimo = double.MaxValue;
-
-        for (var i = 1; i < t.Puntos.Count; i++)
-        {
-            var p = t.Puntos[i - 1];
-            var q = t.Puntos[i];
-
-            var d = Math.Sqrt(
-                ((q.X - p.X) * (q.X - p.X))
-                + ((q.Y - p.Y) * (q.Y - p.Y))
-                + ((q.Z - p.Z) * (q.Z - p.Z)));
-
-            if (d > LargoMinimo && d < minimo)
-            {
-                minimo = d;
-            }
-        }
-
-        var solape = minimo < double.MaxValue
-            ? Math.Min(b.Radio, minimo * 0.5)
-            : b.Radio;
-
-        foreach (var (a, z) in EjeDeBarra.Tramos(t.Puntos, solape))
+        //   * Sobresalir no pasa: EjeDeBarra.Tramos solo alarga una punta CUANDO HAY OTRO TRAMO
+        //     de ese lado. Las puntas exteriores del trozo no se tocan, así que el doblez no se
+        //     mete en los lados rectos. El solape grande solo hace que los cilindros de dentro se
+        //     encimen mucho, y eso es inofensivo.
+        //   * Y no es inofensivo lo contrario: con poco solape la unión booleana FALLA mucho más
+        //     -dos sólidos que apenas se rozan no se pueden unir-, y ahí es donde se perdían las
+        //     varillas enteras.
+        //
+        // Un solape generoso es justo lo que hace la unión fiable, que es lo que se quiere.
+        foreach (var (a, z) in EjeDeBarra.Tramos(t.Puntos, b.Radio))
         {
             var cil = Cilindro(a, z, b.Radio, b.Capa);
 
