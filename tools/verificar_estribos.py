@@ -42,7 +42,23 @@ def _por_separacion(col, ini, desde, hasta, sep, *, corregido):
             _con_separacion(col, ini + p)
 
 
-def _transicion(col, nominal, siguiente, lim_superior):
+class ClampInvalido(Exception):
+    """Lo que lanza Math.Clamp en .NET cuando el minimo supera al maximo."""
+
+
+def _clamp(valor, lo, hi, *, corregido):
+    # Math.Clamp de .NET NO tolera lo > hi: lanza ArgumentException con el texto
+    #     '0.55' cannot be greater than 0.5499999999999999.
+    # Se reproduce aqui para poder demostrar el fallo y la correccion.
+    if lo > hi:
+        if not corregido:
+            raise ClampInvalido(f"'{lo!r}' cannot be greater than {hi!r}.")
+        lo = hi
+
+    return min(max(valor, lo), hi)
+
+
+def _transicion(col, nominal, siguiente, lim_superior, *, corregido):
     lo = nominal - TOL_TRANSICION_M
     hi = nominal + TOL_TRANSICION_M
 
@@ -54,7 +70,7 @@ def _transicion(col, nominal, siguiente, lim_superior):
     if lo > hi + 1e-7:
         return
 
-    col.append(min(max(nominal, lo), hi))
+    col.append(_clamp(nominal, lo, hi, corregido=corregido))
 
 
 def centros(x0, x1, s1, s2, s3, con_extremos, con_fronteras, *, corregido):
@@ -107,11 +123,11 @@ def centros(x0, x1, s1, s2, s3, con_extremos, con_fronteras, *, corregido):
 
     _por_separacion(col, ini, 0, z1, s1, corregido=corregido)
     if con_fronteras:
-        _transicion(col, ini + z1, sig1, fin)
+        _transicion(col, ini + z1, sig1, fin, corregido=corregido)
 
     _por_separacion(col, ini, z1, z2, s2, corregido=corregido)
     if con_fronteras:
-        _transicion(col, ini + z2, sig2, fin)
+        _transicion(col, ini + z2, sig2, fin, corregido=corregido)
 
     _por_separacion(col, ini, z2, largo, s3, corregido=corregido)
 
@@ -203,6 +219,66 @@ def revisar(col, largo, s_max):
     return problemas
 
 
+def barrido_de_clamp():
+    """Reproduce el ArgumentException de Math.Clamp y comprueba que ya no salta.
+
+    El usuario lo vio al capturar 5-10-5:
+        '0.55' cannot be greater than 0.5499999999999999.
+
+    Se barren MUCHAS combinaciones de separaciones y longitudes, porque el fallo
+    solo aparece cuando la ventana de Transicion se cierra a cero exacto, y eso
+    depende de que los numeros cuadren.
+    """
+    valores = [5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30]
+    largos = [x / 100 for x in range(60, 621, 10)]
+
+    antes = []
+    despues = []
+
+    for s1 in valores:
+        for s2 in valores:
+            for s3 in valores:
+                for largo in largos:
+                    for vertical in (True, False):
+                        for es_col in (True, False):
+                            args = (largo, s1 / 100, s2 / 100, s3 / 100, vertical, es_col)
+
+                            try:
+                                centros_de_alzado(*args, corregido=False)
+                            except ClampInvalido as e:
+                                antes.append((s1, s2, s3, largo, str(e)))
+
+                            try:
+                                centros_de_alzado(*args, corregido=True)
+                            except ClampInvalido as e:
+                                despues.append((s1, s2, s3, largo, str(e)))
+
+    total = len(valores) ** 3 * len(largos) * 4
+
+    print("\n" + "=" * 78)
+    print("EL ArgumentException DE Math.Clamp EN Transicion")
+    print("=" * 78)
+    print(f"\n  combinaciones probadas : {total}")
+    print(f"  ANTES   reventaban     : {len(antes)}")
+    print(f"  DESPUES reventaban     : {len(despues)}")
+
+    if antes:
+        print("\n  Ejemplos de los que fallaban (separaciones cm, largo m, mensaje):")
+        for s1, s2, s3, largo, msg in antes[:5]:
+            print(f"    {s1}-{s2}-{s3}  L={largo:.2f}  ->  {msg}")
+
+        # El caso que reporto el usuario
+        suyos = [a for a in antes if (a[0], a[1], a[2]) == (5, 10, 5)]
+        print(f"\n  De ellos, con 5-10-5: {len(suyos)}")
+
+    if despues:
+        print("\n  *** SIGUEN FALLANDO ***")
+        for s1, s2, s3, largo, msg in despues[:5]:
+            print(f"    {s1}-{s2}-{s3}  L={largo:.2f}  ->  {msg}")
+
+    return len(despues)
+
+
 def main():
     fallos_totales = 0
 
@@ -240,6 +316,12 @@ def main():
         print("    ningun extremo sin estribo y ninguna separacion bajo el minimo.")
     else:
         print(f"ATENCION: quedan {fallos_totales} defecto(s) por revisar.")
+    print("=" * 78)
+
+    fallos_totales += barrido_de_clamp()
+
+    print("\n" + "=" * 78)
+    print("OK" if fallos_totales == 0 else "ATENCION")
     print("=" * 78)
 
     return 0 if fallos_totales == 0 else 1

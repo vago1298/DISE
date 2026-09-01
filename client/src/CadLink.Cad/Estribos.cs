@@ -192,6 +192,30 @@ public static class Estribos
             return;
         }
 
+        // ===== Y AHORA SE CIERRA EL HUECO DE COMA FLOTANTE =====
+        //
+        // El guardián de arriba tolera a propósito que 'lo' supere a 'hi' por hasta 1e-7: la
+        // ventana puede cerrarse a cero exacto de forma legítima y no hay que descartar el estribo
+        // por un residuo de redondeo. Pero acto seguido se llamaba a Math.Clamp(nominal, lo, hi)
+        // con ese lo > hi, y Math.Clamp NO lo tolera: lanza ArgumentException con el mensaje
+        //
+        //     '0.55' cannot be greater than 0.5499999999999999.
+        //
+        // que es lo que le salía al usuario al capturar 5-10-5. Los dos números son EL MISMO valor;
+        // se diferencian en 1.1e-16.
+        //
+        // Aparece con separaciones cerradas porque ahí la ventana se cierra justo: con 5-10-5, el
+        // límite inferior 'col[^1] + SepMinimaM' cae exactamente sobre el superior
+        // 'siguiente - SepMinimaM'. Antes no se veía porque en el alzado vertical Transicion no se
+        // llamaba nunca; al pasar conFronteras a true para tapar el hueco doble de la frontera de
+        // zona, este camino se abrió para todos los elementos.
+        //
+        // Cuando la ventana está cerrada, el único sitio posible es su borde: se usa 'hi'.
+        if (lo > hi)
+        {
+            lo = hi;
+        }
+
         col.Add(Math.Clamp(nominal, lo, hi));
     }
 
