@@ -242,7 +242,26 @@ public sealed class Jaula3dDrawer
             }
         }
 
+        // ===== Y AHORA UN REGEN, QUE ES LO QUE FALTABA =====
+        //
+        // FACETRES, ISOLINES y DISPSILH NO CAMBIAN NADA hasta que se regenera: AutoCAD guarda la
+        // representación de pantalla de cada sólido y no la vuelve a calcular solo. ZoomExtents
+        // tampoco sirve, porque solo mueve la cámara.
+        //
+        // Sin esto, DISPSILH quedaba puesto pero sin efecto, y los sólidos seguían dibujados con
+        // la representación anterior: los que se habían fundido en uno mostraban muy pocas
+        // aristas y en la ventana PARECÍA QUE FALTABAN TRAMOS DEL ESTRIBO. La geometría estaba
+        // completa; lo que no se había actualizado era el dibujado.
+        //
+        // Es justo el defecto reportado: se veían el lado derecho y el inferior —los cilindros
+        // que habían quedado sueltos— y no el izquierdo ni el superior, que eran los fundidos.
+        Regenerar();
+
         var sombreado = Sombrear();
+
+        // Otro regen después del estilo visual: cambiar de estilo también rehace la
+        // representación, y las variables de arriba tienen que volver a aplicarse encima.
+        Regenerar();
 
         // ===== Y AHORA SE APAGAN LAS ARISTAS. AQUÍ ESTÁ LO DE LOS GANCHOS =====
         //
@@ -280,11 +299,21 @@ public sealed class Jaula3dDrawer
 
         if (!sombreado)
         {
+            // El aviso dice AHORA lo que de verdad importa: que puede PARECER que falta acero.
+            //
+            // El texto anterior decía «se van a ver como líneas» y «están bien dibujadas», y se
+            // quedaba corto: en alámbrico 2D un sólido fundido dibuja muy pocas aristas, así que
+            // el estribo no se ve fino, se ve INCOMPLETO —faltando lados enteros—. El usuario
+            // leía «están bien dibujadas», miraba un estribo al que le faltaba medio perímetro, y
+            // con razón concluía que el programa no lo había dibujado.
             _notas.Add(
-                "No se pudo poner la vista en sombreado, así que las varillas se van a ver como "
-                + "líneas en lugar de como tubos llenos. Están bien dibujadas: es el estilo "
-                + "visual de la ventana. Escribe VSCURRENT y elige «Conceptual», o usa el menú "
-                + "Vista › Estilos visuales.");
+                "IMPORTANTE: no se pudo poner la vista en sombreado, y en «Estructura alámbrica "
+                + "2D» el acero PUEDE PARECER INCOMPLETO —a un estribo se le ven unos lados y "
+                + "otros no—. No falta nada: las varillas fundidas en un solo sólido casi no "
+                + "dibujan aristas en ese estilo. Para verlo bien, escribe VSCURRENT y elige "
+                + "«Conceptual» (o menú Vista › Estilos visuales), y si aún así ves huecos, "
+                + "escribe REGEN. Para comprobarlo sin cambiar de estilo, selecciona un estribo: "
+                + "se marcará entero.");
         }
     }
 
@@ -305,6 +334,48 @@ public sealed class Jaula3dDrawer
     /// alámbrico y pensando que no se habían dibujado sólidos.
     /// </para>
     /// </remarks>
+    /// <summary>Rehace la representación de pantalla de los sólidos, en todas las ventanas.</summary>
+    /// <remarks>
+    /// Hace falta porque <c>DISPSILH</c>, <c>ISOLINES</c> y <c>FACETRES</c> solo surten efecto tras
+    /// un regen: AutoCAD conserva la representación calculada de cada sólido. El <c>1</c> es
+    /// <c>acAllViewports</c>; si esta versión no lo acepta se prueba <c>0</c>,
+    /// <c>acActiveViewport</c>, y si tampoco, el comando.
+    /// </remarks>
+    private void Regenerar()
+    {
+        foreach (var modo in new object[] { 1, 0 })
+        {
+            try
+            {
+                AcadConnection.Retry(() => { _doc.Regen(modo); });
+
+                return;
+            }
+            catch (Exception)
+            {
+                // Esta versión no acepta ese modo: se prueba el siguiente.
+            }
+        }
+
+        try
+        {
+            // Último recurso. El punto salta redefiniciones y el guion bajo fuerza el nombre en
+            // inglés, así que vale también en un AutoCAD en español.
+            _doc.SendCommand("_.REGENALL\n");
+        }
+        catch (Exception)
+        {
+            var aviso =
+                "No se pudo regenerar la vista. Si algún tramo de acero se ve incompleto, escribe "
+                + "REGEN en AutoCAD: la geometría está dibujada, es solo el refresco de pantalla.";
+
+            if (!_notas.Contains(aviso))
+            {
+                _notas.Add(aviso);
+            }
+        }
+    }
+
     private bool Sombrear()
     {
         // 1) POR VARIABLE. Es la vía limpia: sin comandos, sin depender del idioma. Se prueban
@@ -349,21 +420,31 @@ public sealed class Jaula3dDrawer
         {
             try
             {
-                var puesto = AcadConnection.Retry(() =>
-                {
-                    _doc.SendCommand(orden);
-
-                    return EstaSombreado();
-                });
-
-                if (puesto)
-                {
-                    return true;
-                }
+                // EL SendCommand NO VA DENTRO DE Retry, y es importante: Retry reejecuta la
+                // lambda, así que un «ocupado» ENCOLABA EL COMANDO OTRA VEZ. Con tres órdenes por
+                // doce reintentos se le podían meter a AutoCAD hasta treinta y seis comandos en la
+                // línea, y ahí es donde un VSCURRENT a medias se come el siguiente como si fuera
+                // su opción.
+                _doc.SendCommand(orden);
             }
             catch (Exception)
             {
                 // Ese comando u opción no existe en esta versión. Al siguiente.
+                continue;
+            }
+
+            // Y SE COMPRUEBA DESPUÉS DE REGENERAR, no en la misma llamada.
+            //
+            // SendCommand no termina de aplicarse al volver: el estilo visual es una propiedad de
+            // la ventana y hasta que AutoCAD no rehace el dibujado, leer VSCURRENT puede devolver
+            // todavía el valor viejo. Verificar acto seguido daba un FALSO NEGATIVO: el comando
+            // había funcionado, la comprobación decía que no, se probaba el siguiente y al final
+            // se avisaba de que no se pudo sombrear cuando sí se había puesto.
+            Regenerar();
+
+            if (EstaSombreado())
+            {
+                return true;
             }
         }
 
