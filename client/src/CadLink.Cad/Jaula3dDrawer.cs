@@ -519,8 +519,11 @@ public sealed class Jaula3dDrawer
     /// COM ya consumido es justo lo que cierra AutoCAD sin dar la cara.
     /// </para>
     /// <para>
-    /// Y si una unión falla, <b>no se pierde nada</b>: los dos sólidos se quedan en el dibujo por
-    /// separado. Se ve la costura, pero la varilla está y mide lo que tiene que medir.
+    /// <b>Cuidado con la unión que falla.</b> Aquí decía que si una unión falla «no se pierde
+    /// nada, los dos sólidos se quedan en el dibujo por separado». <b>Es falso</b>, y era el
+    /// origen de que la sección saliera incompleta: <c>Boolean</c> consume el sólido que se le
+    /// pasa <b>antes</b> de decidir si puede unirlo, así que una unión fallida <b>borra</b> ese
+    /// tramo. Por eso ahora se comprueba si sobrevivió y, si no, se vuelve a dibujar.
     /// </para>
     /// </remarks>
     private (int Hechos, int Pedidos, int Perdidos) Solida(
@@ -532,10 +535,11 @@ public sealed class Jaula3dDrawer
 
         var sueltos = 0;
         var perdidos = 0;
+        var rescatados = 0;
 
-        foreach (var pieza in piezas)
+        for (var i = 0; i < piezas.Count; i++)
         {
-            var cil = pieza();
+            var cil = piezas[i]();
 
             if (cil is null)
             {
@@ -558,12 +562,74 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            // No se fundió: se queda suelto en el dibujo. Un objeto más y una costura a la
-            // vista, pero la varilla no pierde ni un tramo.
+            // ===== LA UNIÓN FALLÓ. ¿SIGUE AHÍ EL TRAMO? =====
+            //
+            // ESTE ERA EL «no dibujas toda la sección». La suposición de todo este archivo era
+            // que una unión fallida deja los dos sólidos en el dibujo, y NO es cierta:
+            // 'Boolean' consume el sólido que se le pasa ANTES de decidir si puede unirlo, así
+            // que cuando falla —lo más común, dos sólidos que por redondeo no llegan a
+            // tocarse— 'otro' ya ha desaparecido del dibujo. El tramo no se queda suelto: se
+            // BORRA, y sin una sola excepción de por medio.
+            //
+            // En el estribo eso se ve exactamente como lo reportó el usuario: el lado derecho y
+            // el inferior están, y el izquierdo y el superior faltan. No es media sección al
+            // azar, son los tramos cuya unión falló.
+            //
+            // Así que se comprueba si sobrevivió y, si no, SE VUELVE A CREAR. La pieza se sabe
+            // rehacer sola —por eso Piezas() devuelve funciones y no objetos— y el tramo nuevo
+            // se deja suelto, sin intentar unirlo otra vez: reintentar la unión que acaba de
+            // fallar solo volvería a consumirlo.
+            if (Vive(cil))
+            {
+                // Sobrevivió: se queda suelto. Un objeto más y una costura a la vista, pero la
+                // varilla no pierde ni un tramo.
+                sueltos++;
+
+                continue;
+            }
+
+            var repuesto = piezas[i]();
+
+            if (repuesto is null)
+            {
+                perdidos++;
+
+                continue;
+            }
+
             sueltos++;
+            rescatados++;
+        }
+
+        if (rescatados > 0)
+        {
+            _notas.Add(
+                $"La varilla '{b.Id}': {rescatados} tramo(s) se volvieron a dibujar porque la "
+                + "unión de sólidos se los había llevado. Quedan como piezas aparte, así que la "
+                + "varilla se ve con costuras pero está completa.");
         }
 
         return (entero is null ? 0 : sueltos, piezas.Count, perdidos);
+    }
+
+    /// <summary>¿La entidad sigue viva en el dibujo, o ya se la llevó una unión?</summary>
+    /// <remarks>
+    /// Se pregunta por una propiedad cualquiera. Si el objeto COM ya fue consumido, leerla lanza,
+    /// y eso es la respuesta. No hay una forma más limpia de saberlo: AutoCAD no expone un
+    /// «¿sigues ahí?», y por eso este archivo llevaba tanto tiempo dando por hecho que sí.
+    /// </remarks>
+    private static bool Vive(object ent)
+    {
+        try
+        {
+            _ = ((dynamic)ent).ObjectName;
+
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -699,10 +765,9 @@ public sealed class Jaula3dDrawer
     /// el mismo crash. La única vía segura es intentarlo <b>una vez</b>.
     /// </para>
     /// <para>
-    /// Perder la unión no cuesta nada, y eso es lo que hace que esta sea la decisión correcta y no
-    /// un apaño: los dos sólidos se quedan en el dibujo por separado. Se ve la costura, pero la
-    /// varilla está completa y mide lo que tiene que medir. Es infinitamente mejor que un AutoCAD
-    /// cerrado con el trabajo sin guardar.
+    /// Y no basta con no reintentar: <c>Boolean</c> <b>consume el sólido antes de decidir si puede
+    /// unirlo</b>, así que cuando devuelve <c>false</c> el tramo ya <b>no está en el dibujo</b>.
+    /// Quien llama tiene que comprobarlo y volver a crearlo. Ver <see cref="Solida"/>.
     /// </para>
     /// </remarks>
     private static bool Fundir(object cuerpo, object otro)
@@ -823,6 +888,11 @@ public sealed class Jaula3dDrawer
 
 
     /// <summary>El doblez a la antigua: cilindros por sus puntos. Es el respaldo del toro.</summary>
+    /// <remarks>
+    /// Lleva el <b>mismo rescate</b> que <see cref="Solida"/>, y por el mismo motivo: una unión
+    /// fallida se lleva el cilindro, y aquí eso deja el <b>doblez mordido</b> —una esquina del
+    /// estribo a medias— que es justo uno de los defectos que se veían en el dibujo.
+    /// </remarks>
     private object? CadenaDeCilindros(EjeDeBarra.Trozo t, Barra b)
     {
         object? entero = null;
@@ -843,7 +913,13 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            Fundir(entero, cil);
+            if (Fundir(entero, cil) || Vive(cil))
+            {
+                continue;
+            }
+
+            // La unión se lo llevó: se rehace y se queda suelto.
+            Cilindro(a, z, b.Radio, b.Capa);
         }
 
         return entero;
