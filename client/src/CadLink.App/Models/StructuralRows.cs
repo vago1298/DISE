@@ -593,6 +593,7 @@ public sealed class SeccionConcretoRow : Row
     /// </remarks>
     public static readonly string[] SeparacionesUsuales =
     {
+        "5-10-5",
         "6-12-6",
         "7-14-7",
         "8-16-8",

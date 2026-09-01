@@ -572,14 +572,27 @@
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
+                                        <!-- IsTextSearchEnabled="False" ES LO QUE PERMITE ESCRIBIR.
+                                             Sin ponerlo, WPF lo deja en True, y en un ComboBox
+                                             editable eso AUTOCOMPLETA a un elemento de la lista
+                                             mientras se teclea: al escribir «5-10-5» el control
+                                             saltaba a una entrada de la lista y se perdia lo
+                                             escrito. La lista son sugerencias, no una lista
+                                             cerrada, asi que la busqueda por texto solo estorba.
+
+                                             Y el desplegable YA NO SE ABRE SOLO. Con la lista
+                                             abierta el teclado va a la lista y no al cuadro de
+                                             texto, que es la otra mitad de «no me deja poner».
+                                             Para ver las sugerencias esta la flecha. -->
                                         <ComboBox IsEditable="True"
-                                                  IsDropDownOpen="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
                                                   BorderThickness="0"
                                                   Padding="2,0"
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"
                                                   Text="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Elige una de la lista o escribe la que necesites, por ejemplo 6-12-6 o 15.&#10;Los tramos se reparten como confinamiento, centro y confinamiento." />
+                                                  ToolTip="Escribe la separacion que necesites, por ejemplo 5-10-5, 6-12-6 o 15.&#10;La lista de la flecha son solo sugerencias: puedes poner cualquier valor.&#10;Los tramos se reparten como confinamiento, centro y confinamiento." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2026,12 +2039,19 @@
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
-                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                        <!-- Mismo arreglo que la columna «Sep cm» de concreto:
+                                             sin IsTextSearchEnabled="False" el ComboBox editable
+                                             autocompleta a la lista y se come lo tecleado, y con
+                                             el desplegable abierto el teclado no llega al cuadro
+                                             de texto. -->
+                                        <ComboBox IsEditable="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
                                                   BorderThickness="0" Padding="2,0"
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"
                                                   Text="{Binding SepEstriboDado, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Elige una de la lista o escribe la que necesites, por ejemplo 9-18-9 o 15.&#10;Con tres tramos, el dado se reparte 25 % - 50 % - 25 %: confinamiento, centro y confinamiento." />
+                                                  ToolTip="Escribe la separacion que necesites, por ejemplo 5-10-5, 9-18-9 o 15.&#10;La lista de la flecha son solo sugerencias: puedes poner cualquier valor.&#10;Con tres tramos, el dado se reparte 25 % - 50 % - 25 %: confinamiento, centro y confinamiento." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
