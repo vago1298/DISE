@@ -6181,6 +6181,52 @@ def v18_planta_autocad() -> None:
           and "muro(s) de concreto sin cadena se dibujaron en la capa" in dibp)
 
     # ------------------------------------------------------------------
+    # EL MURO DE CONCRETO EN CIMENTACION: CONTORNO CERRADO Y LEYENDA «MC»
+    # ------------------------------------------------------------------
+    #  «Cuando dibujes la planta de la cimentacion, para los muros de concreto que digan en
+    #  property note CONCRETO, coloca la linea en la base, solo como contorno del muro, y adentro
+    #  pon la leyenda MC».
+    #
+    #  Barra() dibuja los dos panos como DOS LINEAS SUELTAS, sin tapar los extremos. Para la
+    #  mamposteria esta bien -las tapas las ponen los castillos- pero un muro de concreto en
+    #  cimentacion se lee como UNA PIEZA: sin tapas parece que se queda abierto, y no hay figura
+    #  cerrada donde meter la leyenda.
+    check("el muro de concreto se dibuja como contorno cerrado",
+          'P("MURO_CONCRETO_CONTORNO", "SI",' in cfgplano
+          and "private bool ContornoDeMuro(" in dibp
+          and "PolilineaCerrada(" in dibp
+          and "_contornosMc++;" in dibp)
+
+    #  LA IDENTIFICACION ES POR LA PROPERTY NOTE, y hace falta mirarla APARTE de el.Material:
+    #  SeccionesModelo.MaterialDeMuro decide con la nota y el nombre de la seccion JUNTOS y le da
+    #  prioridad a la mamposteria, asi que una propiedad llamada "MURO BLOCK 15" cuya nota diga
+    #  CONCRETO saldria clasificada como mamposteria. Es justo el caso que se quiere poder
+    #  resolver escribiendo la nota.
+    check("y se reconoce por la PROPERTY NOTE, no solo por el material",
+          'P("MURO_CONCRETO_POR_NOTA", "SI",' in cfgplano
+          and "private bool EsMuroDeConcreto(ElementoPlanta el)" in dibp
+          and "DiceConcreto(el.Notas)" in dibp
+          and 'PALABRAS_CONCRETO' in dibp)
+
+    #  La leyenda va DENTRO, centrada en el tramo ya recortado y girada con el muro.
+    check("y la leyenda MC va dentro, centrada y girada con el muro",
+          'P("MURO_CONCRETO_LEYENDA", "MC",' in cfgplano
+          and 'MURO_CONCRETO_LEYENDA_ALTURA' in dibp
+          and "AnguloLegible(dx, dy), EstiloSecciones, conFondo: true);" in dibp)
+
+    #  Solo en cimentacion por omision: en un entrepiso el muro de concreto convive con la losa y
+    #  su armado, y un contorno con leyenda ahi llena el plano.
+    check("y por omision solo en la planta de cimentacion",
+          'P("MURO_CONCRETO_SOLO_CIMENTACION", "SI",' in cfgplano
+          and 'Rot.EsCimentacion(p.Nivel)' in dibp)
+
+    #  El muro al que no le cabe la leyenda se cuenta y se dice: uno corto sin su MC mientras los
+    #  de al lado si lo llevan parece un muro de otro material, y eso se malinterpreta en obra.
+    check("y el que no le cabe la leyenda se dice",
+          "_sinLeyendaMc++;" in dibp
+          and "no les cupo la leyenda" in dibp)
+
+    # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
     # ------------------------------------------------------------------
     #  «Las que digan CADENA DE DESPLANTE, todas sus lineas deben ser continuas, no punteadas, no
@@ -10654,7 +10700,9 @@ def v21_separacion_y_acero() -> None:
     # LO QUE SE PIDIO: la lista corta. Solo las cinco de tres tramos que se repiten en
     # casi todos los planos, mas las dos unicas de 15 y 20 cm que se usan en parrillas y
     # mallas de zapata. Las demas se teclean a mano, que es lo que la celda permite.
-    for sep in ("6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"):
+    # 5-10-5 se agrego porque el usuario la usa y la pidio. Encaja en el orden documentado de
+    # la lista, que va de la mas cerrada a la mas abierta.
+    for sep in ("5-10-5", "6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"):
         check(f"esta la separacion {sep}", f'"{sep}"' in filas)
 
     m_seps = re.search(
@@ -10664,7 +10712,8 @@ def v21_separacion_y_acero() -> None:
     check("la lista de separaciones no trae nada mas",
           m_seps is not None
           and sorted(re.findall(r'"([^"]+)"', m_seps.group(1)))
-          == sorted(["6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"]))
+          == sorted(["5-10-5", "6-12-6", "7-14-7", "8-16-8", "9-18-9",
+                     "10-20-10", "15", "20"]))
 
     # Las que se quitaron. Se comprueba que NO esten en la lista, no que no esten en el
     # archivo: «10-15-20» sigue apareciendo en los comentarios como ejemplo del formato de

@@ -120,12 +120,70 @@ public sealed partial class PlantaDrawer
     {
         if (!tapado
             && _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
-            && string.Equals(el.Material, "CONCRETO", StringComparison.OrdinalIgnoreCase))
+            && EsMuroDeConcreto(el))
         {
             return _capas.CapaMuroConcreto;
         }
 
         return CapaDe(el);
+    }
+
+    /// <summary>
+    /// ¿Es un muro de <b>concreto</b>? Manda la <b>property note</b> de ETABS.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió con esas palabras: los muros «que digan en property note CONCRETO». Y hay que
+    /// mirar la nota <b>aparte</b>, no basta con reusar <c>el.Material</c>, porque
+    /// <c>SeccionesModelo.MaterialDeMuro</c> decide con <b>la nota y el nombre de la sección
+    /// juntos</b> y además le da <b>prioridad a la mampostería</b>. Con esa regla, una propiedad
+    /// que se llame <c>MURO BLOCK 15</c> pero cuya nota diga <c>CONCRETO</c> sale clasificada
+    /// como mampostería, que es justo el caso que se quiere poder resolver escribiendo la nota.
+    /// </para>
+    /// <para>
+    /// Así que si la nota dice concreto, es de concreto y punto. Si la nota no dice nada del
+    /// material, se respeta la clasificación general, que sigue siendo la buena para el resto de
+    /// los casos.
+    /// </para>
+    /// <para>
+    /// Las palabras son las de la hoja —<c>PALABRAS_CONCRETO</c>—, las mismas que usa el
+    /// clasificador, para que no haya dos listas que se puedan desincronizar.
+    /// </para>
+    /// </remarks>
+    private bool EsMuroDeConcreto(ElementoPlanta el)
+    {
+        if (_cfg.Bandera("MURO_CONCRETO_POR_NOTA", true)
+            && DiceConcreto(el.Notas))
+        {
+            return true;
+        }
+
+        return string.Equals(el.Material, "CONCRETO", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>¿Este texto nombra el concreto, con las palabras de la hoja?</summary>
+    private bool DiceConcreto(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return false;
+        }
+
+        var t = texto.ToUpperInvariant();
+
+        var palabras = _cfg.Texto("PALABRAS_CONCRETO", "CONCRETO,CONCRETE,C.A.,REFORZADO")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var palabra in palabras)
+        {
+            if (palabra.Length > 0
+                && t.Contains(palabra.ToUpperInvariant(), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private const string EstiloTexto = "SECCIONES";
@@ -166,6 +224,18 @@ public sealed partial class PlantaDrawer
 
     /// <summary>Cuántos muros de concreto se dibujaron en su capa, para el resumen.</summary>
     private int _murosDeConcreto;
+
+    /// <summary>Muros de concreto dibujados como contorno cerrado con su leyenda dentro.</summary>
+    private int _contornosMc;
+
+    /// <summary>
+    /// Muros de concreto a los que no les cupo la leyenda.
+    /// </summary>
+    /// <remarks>
+    /// Se cuenta y se dice. Un muro corto sin su «MC» mientras los de al lado sí lo llevan parece
+    /// un muro de otro material, y eso en un plano de cimentación se malinterpreta en obra.
+    /// </remarks>
+    private int _sinLeyendaMc;
 
     public PlantaDrawer(dynamic doc)
     {
@@ -228,6 +298,8 @@ public sealed partial class PlantaDrawer
         _cadenasTapadas = new HashSet<ElementoPlanta>();
         _rotulosSobreCastillo = 0;
         _murosDeConcreto = 0;
+        _contornosMc = 0;
+        _sinLeyendaMc = 0;
 
         AsegurarCapas();
         AsegurarEstiloTexto();
@@ -497,8 +569,32 @@ public sealed partial class PlantaDrawer
                     _murosDeConcreto++;
                 }
 
-                Barra(el, x0, y0, capaMuro,
-                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo);
+                // ==============================================================================
+                //  EL MURO DE CONCRETO: CONTORNO CERRADO Y LEYENDA «MC» DENTRO
+                // ==============================================================================
+                //  Se pidió para la planta de CIMENTACIÓN: los muros cuya property note dice
+                //  CONCRETO se dibujan solo como el contorno del muro, y dentro la leyenda MC.
+                //
+                //  Va restringido a la cimentación por omisión —MURO_CONCRETO_SOLO_CIMENTACION—
+                //  porque es donde se pidió y porque en una planta de entrepiso el muro de
+                //  concreto convive con la losa y su armado, y un contorno cerrado con leyenda
+                //  ahí llena el plano. Con la bandera en NO sale en todas las plantas.
+                var contornoMc = _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
+                                 && EsMuroDeConcreto(el)
+                                 && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
+                                     || Rot.EsCimentacion(p.Nivel));
+
+                if (contornoMc
+                    && ContornoDeMuro(el, x0, y0, capaMuro,
+                                      Espesor(el, EspesorMuroPorOmision, "muro"), tramo))
+                {
+                    _contornosMc++;
+                }
+                else
+                {
+                    Barra(el, x0, y0, capaMuro,
+                          Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo);
+                }
             }
 
             r.Muros++;
@@ -607,6 +703,22 @@ public sealed partial class PlantaDrawer
             Nota($"{_murosDeConcreto} muro(s) de concreto sin cadena se dibujaron en la capa " +
                  $"'{_capas.CapaMuroConcreto}'. Los que llevan cadena no se dibujan: ahí se ve " +
                  "la cadena, como en la mampostería.");
+        }
+
+        if (_contornosMc > 0)
+        {
+            var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
+
+            Nota($"{_contornosMc} muro(s) de concreto se dibujaron como contorno cerrado" +
+                 (leyenda.Length > 0 ? $" con la leyenda '{leyenda}' dentro" : string.Empty) +
+                 ". Se reconocen por su property note de ETABS.");
+        }
+
+        if (_sinLeyendaMc > 0)
+        {
+            Nota($"A {_sinLeyendaMc} muro(s) de concreto no les cupo la leyenda: son más cortos " +
+                 "que el texto. El contorno sí está. Si los necesitas rotulados, baja " +
+                 "MURO_CONCRETO_LEYENDA_ALTURA en la hoja de configuración.");
         }
 
         if (_rotulosSobreCastillo > 0)
@@ -1183,6 +1295,99 @@ public sealed partial class PlantaDrawer
             var eje = Linea(ax, ay, bx, by, CapaEjes);
             LineaATrazos(eje);
         }
+
+        return true;
+    }
+
+    /// <summary>
+    /// El muro de concreto como <b>contorno cerrado</b>, con su leyenda dentro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Por qué no vale <see cref="Barra"/> aquí.</b> <c>Barra</c> dibuja los dos paños como
+    /// <b>dos líneas sueltas</b>, sin tapar los extremos. Para un muro de mampostería eso está
+    /// bien —el muro sigue de castillo a castillo y las tapas las ponen ellos— pero un muro de
+    /// concreto en la planta de cimentación se lee como <b>una pieza</b>: sin las tapas parece un
+    /// muro que se queda abierto, y además no hay figura cerrada donde meter la leyenda.
+    /// </para>
+    /// <para>
+    /// Son los cuatro vértices del rectángulo del tramo, en orden: los dos de un paño y los dos
+    /// del otro al revés. La normal se calcula igual que en <c>Barra</c>, así que el contorno cae
+    /// <b>exactamente</b> sobre las líneas que se dibujaban antes: el plano no se mueve, solo se
+    /// cierra.
+    /// </para>
+    /// <para>
+    /// Va sobre el <b>tramo ya recortado</b> a los paños de los castillos, igual que la barra y
+    /// la línea de mampostería. Si se usara el eje completo, el muro se metería dentro del
+    /// castillo y la leyenda quedaría descentrada.
+    /// </para>
+    /// </remarks>
+    private bool ContornoDeMuro(
+        ElementoPlanta el, double x0, double y0, string capa,
+        double ancho, PanoDeApoyo.Tramo? tramo)
+    {
+        var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
+
+        var dx = t.X2 - t.X1;
+        var dy = t.Y2 - t.Y1;
+        var largo = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (largo < LargoMinimo || ancho <= 0)
+        {
+            return false;
+        }
+
+        var ax = t.X1 + x0;
+        var ay = t.Y1 + y0;
+        var bx = t.X2 + x0;
+        var by = t.Y2 + y0;
+
+        // La MISMA normal que Barra, para que el contorno caiga sobre los paños de siempre.
+        var nx = -dy / largo * (ancho / 2);
+        var ny = dx / largo * (ancho / 2);
+
+        var contorno = PolilineaCerrada(
+            new[]
+            {
+                ax + nx, ay + ny,
+                bx + nx, by + ny,
+                bx - nx, by - ny,
+                ax - nx, ay - ny
+            },
+            capa);
+
+        if (contorno is null)
+        {
+            return false;
+        }
+
+        // ---------- La leyenda, dentro ----------
+        var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
+
+        if (leyenda.Length == 0)
+        {
+            return true;
+        }
+
+        var altura = _cfg.Numero("MURO_CONCRETO_LEYENDA_ALTURA", 0.12);
+
+        // No se rotula el muro donde la leyenda no cabe: un «MC» más largo que el muro se sale
+        // por los dos lados y se lee peor que no ponerlo. Se mide contra el LARGO, que es la
+        // dirección en la que crece el texto una vez girado con el muro.
+        if (altura <= 0 || largo < altura * leyenda.Length)
+        {
+            _sinLeyendaMc++;
+            return true;
+        }
+
+        // Centrado en el medio del tramo —no en el del eje del modelo— y girado con el muro, con
+        // AnguloLegible para que nunca salga cabeza abajo. Anclaje 5 es MiddleCenter, así que el
+        // punto ES el centro del texto.
+        //
+        // Con fondo opaco: la leyenda va DENTRO del contorno, y si la losa o el armado pasan por
+        // debajo, sin fondo quedaría ilegible.
+        Mtexto((ax + bx) / 2, (ay + by) / 2, leyenda, altura, capa,
+               AnguloLegible(dx, dy), EstiloSecciones, conFondo: true);
 
         return true;
     }

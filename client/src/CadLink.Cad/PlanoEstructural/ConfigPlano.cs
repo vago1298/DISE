@@ -847,6 +847,19 @@ public sealed class ConfigPlano
         P("COLOR_MURO_CONCRETO", "4", "COLOR DE LA CAPA DEL MURO DE CONCRETO"),
         P("MURO_CONCRETO_CAPA_PROPIA", "SI",
           "SI = el muro de concreto sin cadena va a su capa, no a E-MURO"),
+        P("MURO_CONCRETO_CONTORNO", "SI",
+          "SI = el muro de concreto se dibuja como CONTORNO CERRADO (con sus tapas en los "
+          + "extremos) en lugar de dos lineas sueltas"),
+        P("MURO_CONCRETO_LEYENDA", "MC",
+          "Leyenda que se pone DENTRO del contorno del muro de concreto. En blanco = ninguna"),
+        P("MURO_CONCRETO_LEYENDA_ALTURA", "0.12",
+          "Altura de la leyenda del muro de concreto, en unidades de dibujo"),
+        P("MURO_CONCRETO_SOLO_CIMENTACION", "SI",
+          "SI = el contorno y la leyenda del muro de concreto solo en la planta de cimentacion. "
+          + "NO = en todas las plantas"),
+        P("MURO_CONCRETO_POR_NOTA", "SI",
+          "SI = un muro es de concreto si su PROPERTY NOTE de ETABS lo dice, aunque el nombre "
+          + "de la seccion diga otra cosa"),
         P("DIBUJAR_EJES", "SI", "Dibujar la cuadricula con burbujas"),
         P("LINETYPE_EJES", "DASHDOT", "Tipo de linea de la capa E-EJES"),
         P("EJES_ESCALA_TIPOLINEA", "1", "LinetypeScale de las lineas de eje (1 = no tocar)"),
