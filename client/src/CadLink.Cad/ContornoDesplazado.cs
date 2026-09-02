@@ -277,6 +277,126 @@ public static class ContornoDesplazado
     }
 
     /// <summary>
+    /// Hasta dónde llega el contorno <b>a la altura</b> <paramref name="y"/>, en horizontal.
+    /// </summary>
+    /// <param name="lado">Positivo, la X mayor —el paño derecho—. Negativo, la X menor.</param>
+    /// <returns>La X del paño, o <c>null</c> si a esa altura el contorno no pasa.</returns>
+    /// <remarks>
+    /// <para>
+    /// Es un <b>rayo horizontal</b> contra el contorno, y existe para pegar los cartabones al acero
+    /// de verdad. Sin él se usaba el rectángulo envolvente del perfil, y en un perfil I eso pone el
+    /// cartabón del eje Y a la altura del centro pero arrancando en la <b>punta del patín</b>: a
+    /// media altura el patín no está —está el hueco entre los dos— así que el cartabón salía
+    /// flotando en el aire, sin nada que lo uniera a la columna.
+    /// </para>
+    /// <para>
+    /// Con el rayo, a media altura de una I lo que se encuentra es el <b>alma</b>, que es donde el
+    /// cartabón se suelda. Y no hay que preguntarle nada a la forma: sale de la geometría, así que
+    /// vale igual para la te, la canal, el ángulo o el tubo.
+    /// </para>
+    /// <para>
+    /// <b>Los arcos se tratan como cuerdas.</b> En las formas con dobleces —la canal y la zeta en
+    /// frío, las esquinas del tubo— el paño calculado queda un pelo por dentro del real, o sea que
+    /// el cartabón monta unas décimas de milímetro sobre el acero en lugar de quedar separado. De
+    /// los dos errores posibles es el inofensivo: van soldados.
+    /// </para>
+    /// </remarks>
+    public static double? CruceHorizontal(double[]? puntos, double y, int lado)
+    {
+        if (puntos is null || puntos.Length < 6 || puntos.Length % 2 != 0)
+        {
+            return null;
+        }
+
+        var n = puntos.Length / 2;
+        double? mejor = null;
+
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+
+            var y1 = puntos[(2 * i) + 1];
+            var y2 = puntos[(2 * j) + 1];
+            var x1 = puntos[2 * i];
+            var x2 = puntos[2 * j];
+
+            if (y < Math.Min(y1, y2) - Tolerancia || y > Math.Max(y1, y2) + Tolerancia)
+            {
+                continue;
+            }
+
+            if (Math.Abs(y2 - y1) <= Tolerancia)
+            {
+                // Arista horizontal justo a esa altura: sus dos extremos cuentan.
+                mejor = Extremo(mejor, x1, lado);
+                mejor = Extremo(mejor, x2, lado);
+                continue;
+            }
+
+            var t = (y - y1) / (y2 - y1);
+
+            mejor = Extremo(mejor, x1 + (t * (x2 - x1)), lado);
+        }
+
+        return mejor;
+    }
+
+    /// <summary>
+    /// Hasta dónde llega el contorno <b>en la abscisa</b> <paramref name="x"/>, en vertical.
+    /// </summary>
+    /// <param name="lado">Positivo, la Y mayor —el paño de arriba—. Negativo, la Y menor.</param>
+    /// <remarks>La hermana de <see cref="CruceHorizontal"/>, con los ejes cambiados.</remarks>
+    public static double? CruceVertical(double[]? puntos, double x, int lado)
+    {
+        if (puntos is null || puntos.Length < 6 || puntos.Length % 2 != 0)
+        {
+            return null;
+        }
+
+        var n = puntos.Length / 2;
+        double? mejor = null;
+
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+
+            var x1 = puntos[2 * i];
+            var x2 = puntos[2 * j];
+            var y1 = puntos[(2 * i) + 1];
+            var y2 = puntos[(2 * j) + 1];
+
+            if (x < Math.Min(x1, x2) - Tolerancia || x > Math.Max(x1, x2) + Tolerancia)
+            {
+                continue;
+            }
+
+            if (Math.Abs(x2 - x1) <= Tolerancia)
+            {
+                mejor = Extremo(mejor, y1, lado);
+                mejor = Extremo(mejor, y2, lado);
+                continue;
+            }
+
+            var t = (x - x1) / (x2 - x1);
+
+            mejor = Extremo(mejor, y1 + (t * (y2 - y1)), lado);
+        }
+
+        return mejor;
+    }
+
+    /// <summary>El mayor o el menor de los dos, según el lado que se pida.</summary>
+    private static double Extremo(double? actual, double candidato, int lado)
+    {
+        if (actual is null)
+        {
+            return candidato;
+        }
+
+        return lado >= 0 ? Math.Max(actual.Value, candidato) : Math.Min(actual.Value, candidato);
+    }
+
+    /// <summary>
     /// La distancia de un punto al <b>contorno</b>, en las mismas unidades que los puntos.
     /// </summary>
     /// <remarks>

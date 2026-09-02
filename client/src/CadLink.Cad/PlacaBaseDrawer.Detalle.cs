@@ -303,8 +303,11 @@ public sealed partial class PlacaBaseDrawer
     /// El reparto que se usó, para que los leaders sepan cuál es de X y cuál de Y sin volver a
     /// deducirlo de la geometría ni repetir la regla del descarte.
     /// </param>
+    /// <param name="contorno">
+    /// El paño del perfil, para que cada cartabón arranque del acero que de verdad tiene al lado.
+    /// </param>
     private List<object> Cartabones(
-        PlacaBaseCad p, double xc, double yc, double pX, double pY,
+        PlacaBaseCad p, double xc, double yc, double pX, double pY, double[]? contorno,
         out List<CartabonesPlacaBase.Cartabon> reparto)
     {
         var creados = new List<object>();
@@ -312,7 +315,7 @@ public sealed partial class PlacaBaseDrawer
         // EL REPARTO LO HACE CartabonesPlacaBase, y este método solo dibuja lo que le diga. La
         // cuenta la necesita también la vista previa de la hoja, y con una copia aquí las dos
         // podrían discrepar: la previa enseñando unos cartabones y el plano poniendo otros.
-        reparto = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala);
+        reparto = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno);
 
         foreach (var c in reparto)
         {

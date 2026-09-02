@@ -10,9 +10,8 @@ Que se verifica
 3. El reparto PERIMETRAL de las anclas: los totales de la hoja se reparten
    mitad y mitad, la impar va ABAJO en X, y las de Y van ENTRE las hileras de
    X para no repetir las esquinas.
-4. El reparto en MALLA, incluida la salvedad del nx = 1.
-5. PosLineal: con n = 1 va al CENTRO, no al extremo.
-6. SepAuto y sus tres topes.
+4. PosLineal: con n = 1 va al CENTRO, no al extremo.
+5. SepAuto y sus tres topes.
 
 No necesita .NET ni AutoCAD: es aritmetica.
 """
@@ -67,38 +66,33 @@ def sep_auto(dim_placa, dim_perfil, d_agujero, escala):
 
 
 def construir(x0, y0, ancho, alto, nx, ny, sep_x, sep_y,
-              d_anc_x, d_agu_x, d_anc_y, d_agu_y, modo="PERIMETRAL"):
-    """Devuelve [(x, y, d_ancla, d_agujero, es_x), ...]"""
+              d_anc_x, d_agu_x, d_anc_y, d_agu_y):
+    """Devuelve [(x, y, d_ancla, d_agujero, es_x), ...]
+
+    UN SOLO REPARTO, el perimetral de la macro. Habia un segundo reparto en malla,
+    capturable por fila; se quito del programa porque no esta en la macro, y estas
+    pruebas se quitaron con el: una prueba que cubre codigo que ya no existe no
+    protege nada y ademas hace creer que la funcion tiene dos modos.
+    """
     anclas = []
     nx = max(nx, 0)
     ny = max(ny, 0)
 
-    if modo == "PERIMETRAL":
-        for j in (0, 1):
-            en_fila = (nx + 1) // 2 if j == 0 else nx // 2
-            yj = y0 + sep_y if j == 0 else y0 + alto - sep_y
-            for i in range(en_fila):
-                anclas.append((pos_lineal(x0 + sep_x, x0 + ancho - sep_x, en_fila, i),
-                               yj, d_anc_x, d_agu_x, True))
+    for j in (0, 1):
+        en_fila = (nx + 1) // 2 if j == 0 else nx // 2
+        yj = y0 + sep_y if j == 0 else y0 + alto - sep_y
+        for i in range(en_fila):
+            anclas.append((pos_lineal(x0 + sep_x, x0 + ancho - sep_x, en_fila, i),
+                           yj, d_anc_x, d_agu_x, True))
 
-        for i in (0, 1):
-            en_col = (ny + 1) // 2 if i == 0 else ny // 2
-            xi = x0 + sep_x if i == 0 else x0 + ancho - sep_x
-            for k in range(1, en_col + 1):
-                anclas.append((xi,
-                               y0 + sep_y + k * ((alto - 2 * sep_y) / (en_col + 1)),
-                               d_anc_y, d_agu_y, False))
-        return anclas
+    for i in (0, 1):
+        en_col = (ny + 1) // 2 if i == 0 else ny // 2
+        xi = x0 + sep_x if i == 0 else x0 + ancho - sep_x
+        for k in range(1, en_col + 1):
+            anclas.append((xi,
+                           y0 + sep_y + k * ((alto - 2 * sep_y) / (en_col + 1)),
+                           d_anc_y, d_agu_y, False))
 
-    for j in range(ny):
-        yj = pos_lineal(y0 + sep_y, y0 + alto - sep_y, ny, j)
-        for i in range(nx):
-            xi = pos_lineal(x0 + sep_x, x0 + ancho - sep_x, nx, i)
-            extrema = (j == 0 or j == ny - 1) and not (nx == 1 and ny > 1)
-            if extrema:
-                anclas.append((xi, yj, d_anc_x, d_agu_x, True))
-            else:
-                anclas.append((xi, yj, d_anc_y, d_agu_y, False))
     return anclas
 
 
@@ -226,23 +220,6 @@ check("se admite 0 anclas en una direccion",
       len(solo_x) == 4 and all(a[4] for a in solo_x))
 
 print("\n" + "=" * 78)
-print("REPARTO EN MALLA")
-print("=" * 78)
-
-malla = construir(0, 0, 40, 30, 3, 3, 5, 5, 1.59, 1.75, 1.27, 1.43, modo="MALLA")
-check("la malla da nx * ny anclas", len(malla) == 9)
-check("las hileras extremas llevan el diametro de X",
-      all(abs(a[2] - 1.59) < 1e-9 for a in malla if a[1] in (5, 25)))
-check("la hilera interior lleva el diametro de Y",
-      all(abs(a[2] - 1.27) < 1e-9 for a in malla if abs(a[1] - 15) < 1e-9))
-
-# La salvedad del nx = 1: una sola columna es una hilera VERTICAL, asi que le
-# toca el diametro de Y aunque este en el extremo.
-columna = construir(0, 0, 40, 30, 1, 3, 5, 5, 1.59, 1.75, 1.27, 1.43, modo="MALLA")
-check("con nx = 1 todas llevan el diametro de Y, aunque esten en el extremo",
-      all(abs(a[2] - 1.27) < 1e-9 for a in columna))
-
-print("\n" + "=" * 78)
 print("PosLineal Y SepAuto")
 print("=" * 78)
 
@@ -306,10 +283,9 @@ def pulgadas(texto):
     return total if algo else 0.0
 
 
-def total_anclas(nx, ny, en_malla):
-    nx = max(0, nx)
-    ny = max(0, ny)
-    return nx * ny if en_malla else nx + ny
+def total_anclas(nx, ny):
+    """Los dos numeros de la hoja son TOTALES, asi que el total es su suma."""
+    return max(0, nx) + max(0, ny)
 
 
 print("\n" + "=" * 78)
@@ -332,21 +308,16 @@ print("\n" + "=" * 78)
 print("EL CONTEO DE ANCLAS DE LA TABLA")
 print("=" * 78)
 
-#  Los mismos numeros que da Construir: perimetral suma, malla multiplica. Es lo que se
-#  le pide al proveedor, asi que la tabla tiene que decir el que de verdad se dibuja.
-cuenta_perim = construir(0, 0, 40, 40, 4, 4, 5, 5, 1.9, 2.06, 1.9, 2.06, modo="PERIMETRAL")
-cuenta_malla = construir(0, 0, 40, 40, 4, 4, 5, 5, 1.9, 2.06, 1.9, 2.06, modo="MALLA")
+#  El numero que dice la tabla tiene que ser el que de verdad se dibuja: es lo que se
+#  le pide al proveedor.
+cuenta = construir(0, 0, 40, 40, 4, 4, 5, 5, 1.9, 2.06, 1.9, 2.06)
 
-check("perimetral: la tabla dice lo mismo que dibuja Construir",
-      total_anclas(4, 4, False) == len(cuenta_perim),
-      f"{total_anclas(4, 4, False)} vs {len(cuenta_perim)}")
-check("malla: la tabla dice lo mismo que dibuja Construir",
-      total_anclas(4, 4, True) == len(cuenta_malla),
-      f"{total_anclas(4, 4, True)} vs {len(cuenta_malla)}")
-check("y no son el mismo numero: 8 contra 16",
-      len(cuenta_perim) == 8 and len(cuenta_malla) == 16,
-      f"{len(cuenta_perim)} y {len(cuenta_malla)}")
-check("un negativo se trata como cero", total_anclas(-3, 4, False) == 4)
+check("la tabla dice el mismo numero de anclas que dibuja Construir",
+      total_anclas(4, 4) == len(cuenta),
+      f"la tabla dice {total_anclas(4, 4)} y se dibujan {len(cuenta)}")
+check("con 4 y 4 son OCHO anclas, no dieciseis",
+      len(cuenta) == 8, f"{len(cuenta)}")
+check("un negativo se trata como cero", total_anclas(-3, 4) == 4)
 
 # ==========================================================================
 #  LOS CARTABONES: port de CartabonesPlacaBase
@@ -370,23 +341,82 @@ def posicion_cartabon(centro, dimension, indice, cuantos):
     return centro - tramo / 2.0 + (indice - 1) * tramo / (cuantos - 1)
 
 
-def construir_cartabones(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_y,
-                         xc, yc, p_x, p_y, escala=1.0):
-    """Devuelve [(x1, y1, x2, y2, es_x), ...] en el mismo orden que el C#."""
+#  EL CONSTRUCTOR DE CARTABONES ES UNO SOLO. Antes habia dos: este y una copia que
+#  solo sabia arrancar del rectangulo envolvente, o sea la version con el defecto.
+#  Llamando a este SIN contorno se obtiene ese mismo comportamiento -es el respaldo
+#  del C#- asi que las pruebas del REPARTO -cuantos salen, el cruce X/Y, el 60 %
+#  central- lo usan sin contorno, y las del ARRANQUE, mas abajo, con el.
+
+def _extremo(actual, candidato, lado):
+    if actual is None:
+        return candidato
+    return max(actual, candidato) if lado >= 0 else min(actual, candidato)
+
+
+def cruce_horizontal(pts, y, lado):
+    """Hasta donde llega el contorno a la altura y. None si a esa altura no pasa."""
+    if pts is None or len(pts) < 6 or len(pts) % 2 != 0:
+        return None
+
+    n = len(pts) // 2
+    mejor = None
+
+    for i in range(n):
+        j = (i + 1) % n
+        y1, y2 = pts[2 * i + 1], pts[2 * j + 1]
+        x1, x2 = pts[2 * i], pts[2 * j]
+
+        if y < min(y1, y2) - TOL or y > max(y1, y2) + TOL:
+            continue
+
+        if abs(y2 - y1) <= TOL:
+            mejor = _extremo(mejor, x1, lado)
+            mejor = _extremo(mejor, x2, lado)
+            continue
+
+        t = (y - y1) / (y2 - y1)
+        mejor = _extremo(mejor, x1 + t * (x2 - x1), lado)
+
+    return mejor
+
+
+def cruce_vertical(pts, x, lado):
+    if pts is None or len(pts) < 6 or len(pts) % 2 != 0:
+        return None
+
+    n = len(pts) // 2
+    mejor = None
+
+    for i in range(n):
+        j = (i + 1) % n
+        x1, x2 = pts[2 * i], pts[2 * j]
+        y1, y2 = pts[2 * i + 1], pts[2 * j + 1]
+
+        if x < min(x1, x2) - TOL or x > max(x1, x2) + TOL:
+            continue
+
+        if abs(x2 - x1) <= TOL:
+            mejor = _extremo(mejor, y1, lado)
+            mejor = _extremo(mejor, y2, lado)
+            continue
+
+        t = (x - x1) / (x2 - x1)
+        mejor = _extremo(mejor, y1 + t * (y2 - y1), lado)
+
+    return mejor
+
+
+def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_y,
+                                 xc, yc, p_x, p_y, contorno=None):
+    """El reparto con el arranque en la cara REAL. contorno=None -> envolvente."""
     salida = []
 
-    if not con_cartabones or escala <= 0:
+    if not con_cartabones:
         return salida
-
-    esp_x *= escala
-    esp_y *= escala
-    largo_x *= escala
-    largo_y *= escala
 
     nx = max(0, n_x) if esp_x > 0 and largo_x > 0 else 0
     ny = max(0, n_y) if esp_y > 0 and largo_y > 0 else 0
 
-    # Cartabones X: placas verticales, desde las caras +Y y -Y.
     for lado in (0, 1):
         cuantos = (nx + 1) // 2 if lado == 0 else nx // 2
 
@@ -394,13 +424,14 @@ def construir_cartabones(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_
             x = posicion_cartabon(xc, p_x, i, cuantos)
 
             if lado == 0:
-                salida.append((x - esp_x / 2, yc + p_y / 2,
-                               x + esp_x / 2, yc + p_y / 2 + largo_x, True))
+                cara = cruce_vertical(contorno, x, 1)
+                cara = yc + p_y / 2 if cara is None else cara
+                salida.append((x - esp_x / 2, cara, x + esp_x / 2, cara + largo_x, True))
             else:
-                salida.append((x - esp_x / 2, yc - p_y / 2 - largo_x,
-                               x + esp_x / 2, yc - p_y / 2, True))
+                cara = cruce_vertical(contorno, x, -1)
+                cara = yc - p_y / 2 if cara is None else cara
+                salida.append((x - esp_x / 2, cara - largo_x, x + esp_x / 2, cara, True))
 
-    # Cartabones Y: placas horizontales, desde las caras +X y -X.
     for lado in (0, 1):
         cuantos = (ny + 1) // 2 if lado == 0 else ny // 2
 
@@ -408,11 +439,13 @@ def construir_cartabones(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_
             y = posicion_cartabon(yc, p_y, i, cuantos)
 
             if lado == 0:
-                salida.append((xc + p_x / 2, y - esp_y / 2,
-                               xc + p_x / 2 + largo_y, y + esp_y / 2, False))
+                cara = cruce_horizontal(contorno, y, 1)
+                cara = xc + p_x / 2 if cara is None else cara
+                salida.append((cara, y - esp_y / 2, cara + largo_y, y + esp_y / 2, False))
             else:
-                salida.append((xc - p_x / 2 - largo_y, y - esp_y / 2,
-                               xc - p_x / 2, y + esp_y / 2, False))
+                cara = cruce_horizontal(contorno, y, -1)
+                cara = xc - p_x / 2 if cara is None else cara
+                salida.append((cara - largo_y, y - esp_y / 2, cara, y + esp_y / 2, False))
 
     return salida
 
@@ -423,10 +456,10 @@ print("=" * 78)
 
 #  Placa 40x40, perfil de 20x20 centrado, 4 cartabones por sentido de 1.27 cm de
 #  espesor y 15 cm de largo.
-cart = construir_cartabones(True, 4, 4, 1.27, 1.27, 15, 15, 20, 20, 20, 20)
+cart = construir_cartabones_pegados(True, 4, 4, 1.27, 1.27, 15, 15, 20, 20, 20, 20)
 
 check("con la casilla apagada no sale ninguno",
-      len(construir_cartabones(False, 4, 4, 1.27, 1.27, 15, 15, 20, 20, 20, 20)) == 0)
+      len(construir_cartabones_pegados(False, 4, 4, 1.27, 1.27, 15, 15, 20, 20, 20, 20)) == 0)
 
 check("4 y 4 dan ocho cartabones", len(cart) == 8, f"{len(cart)}")
 
@@ -452,7 +485,7 @@ check("arrancan del pano del perfil, no del centro",
       and any(abs(c[3] - 10) < 1e-9 for c in altos))  # cara -Y: 20 - 20/2
 
 #  La impar va en la cara POSITIVA, igual que en las anclas.
-impar = construir_cartabones(True, 3, 0, 1.27, 1.27, 15, 15, 20, 20, 20, 20)
+impar = construir_cartabones_pegados(True, 3, 0, 1.27, 1.27, 15, 15, 20, 20, 20, 20)
 
 check("con 3, dos van en la cara positiva y una en la negativa",
       len(impar) == 3
@@ -463,9 +496,9 @@ check("con 3, dos van en la cara positiva y una en la negativa",
 #  Sin espesor o sin longitud no hay cartabon: la macro pone la cantidad en cero en
 #  lugar de dibujar una placa de grueso nulo.
 check("sin espesor no sale ninguno de ese sentido",
-      len(construir_cartabones(True, 4, 4, 0, 1.27, 15, 15, 20, 20, 20, 20)) == 4)
+      len(construir_cartabones_pegados(True, 4, 4, 0, 1.27, 15, 15, 20, 20, 20, 20)) == 4)
 check("sin longitud no sale ninguno de ese sentido",
-      len(construir_cartabones(True, 4, 4, 1.27, 1.27, 0, 15, 20, 20, 20, 20)) == 4)
+      len(construir_cartabones_pegados(True, 4, 4, 1.27, 1.27, 0, 15, 20, 20, 20, 20)) == 4)
 
 print("\n" + "=" * 78)
 print("EL 60 % CENTRAL DE LA CARA")
@@ -1423,6 +1456,125 @@ raros = [f'{d}" -> {agujero_automatico(d)}' for d in DIAMETROS_CELDA
 
 check("y el agujero de todos cae en dieciseisavos, sin decimales raros",
       not raros, "; ".join(raros))
+
+# ==========================================================================
+#  LOS CARTABONES ARRANCAN DEL ACERO, NO DEL RECTANGULO ENVOLVENTE
+# ==========================================================================
+#  Port de ContornoDesplazado.CruceHorizontal / CruceVertical y del arranque de
+#  CartabonesPlacaBase.
+#
+#  EL DEFECTO: se usaba el rectangulo envolvente del perfil. En un perfil I el
+#  cartabon del eje Y se colocaba a la altura del centro pero arrancando en la PUNTA
+#  DEL PATIN, y a media altura el patin no esta -esta el hueco entre los dos-, asi
+#  que salia flotando en el aire, sin nada que lo uniera a la columna.
+print("\n" + "=" * 78)
+print("LOS CARTABONES SE PEGAN AL ACERO, NO AL RECTANGULO ENVOLVENTE")
+print("=" * 78)
+
+#  El perfil IR del ejemplo: peralte 20.4, patin 20.4, alma 0.73, patin 1.11.
+#  Centrado en el origen, o sea que:
+#     - el alma va de x = -0.365 a +0.365
+#     - los patines de y = -10.2 a -9.09 y de +9.09 a +10.2
+#     - las puntas de patin en x = +-10.2
+IR = perfil_i(0, 0, 20.4, 20.4, 0.73, 1.11)
+
+print("  El rayo, primero:")
+
+check("a media altura, el rayo horizontal encuentra el ALMA",
+      abs(cruce_horizontal(IR, 0.0, 1) - 0.365) < 1e-9,
+      f"dio {cruce_horizontal(IR, 0.0, 1)}")
+
+check("y por el otro lado, la otra cara del alma",
+      abs(cruce_horizontal(IR, 0.0, -1) - (-0.365)) < 1e-9,
+      f"dio {cruce_horizontal(IR, 0.0, -1)}")
+
+check("a la altura del patin, encuentra la PUNTA del patin",
+      abs(cruce_horizontal(IR, -9.8, 1) - 10.2) < 1e-9,
+      f"dio {cruce_horizontal(IR, -9.8, 1)}")
+
+check("en el eje del alma, el rayo vertical encuentra la cara del patin",
+      abs(cruce_vertical(IR, 0.0, 1) - 10.2) < 1e-9
+      and abs(cruce_vertical(IR, 0.0, -1) - (-10.2)) < 1e-9)
+
+check("fuera del perfil, el rayo no encuentra nada",
+      cruce_horizontal(IR, 50.0, 1) is None and cruce_vertical(IR, 50.0, 1) is None)
+
+print("  Y el arranque de cada cartabon:")
+
+#  Un cartabon por sentido, de 1.27 de espesor y 15 de largo.
+pegados = construir_cartabones_pegados(True, 1, 1, 1.27, 1.27, 15, 15,
+                                       0, 0, 20.4, 20.4, contorno=IR)
+sueltos = construir_cartabones_pegados(True, 1, 1, 1.27, 1.27, 15, 15,
+                                       0, 0, 20.4, 20.4, contorno=None)
+
+y_pegado = [c for c in pegados if not c[4]][0]
+y_suelto = [c for c in sueltos if not c[4]][0]
+
+#  ESTA ES LA COMPROBACION DEL DEFECTO. El de Y arranca del alma -0.365- y no de la
+#  punta del patin -10.2-.
+check("el cartabon del eje Y arranca del ALMA, no de la punta del patin",
+      abs(y_pegado[0] - 0.365) < 1e-9,
+      f"arranca en x = {y_pegado[0]:.3f}, el alma esta en 0.365")
+
+check("y ANTES arrancaba de la punta del patin, que es el defecto",
+      abs(y_suelto[0] - 10.2) < 1e-9,
+      f"el envolvente da x = {y_suelto[0]:.3f}")
+
+#  LA PRUEBA DE VERDAD: el borde de arranque TOCA el contorno del perfil. Se mide con
+#  la distancia al contorno, que ya esta portada mas arriba.
+def toca(cartabon, contorno):
+    x1, y1, x2, y2, es_x = cartabon
+
+    if es_x:
+        # Placa vertical: el borde de arranque es el horizontal mas cercano al centro.
+        borde_y = y1 if abs(y1) < abs(y2) else y2
+        puntos = [(x1, borde_y), ((x1 + x2) / 2, borde_y), (x2, borde_y)]
+    else:
+        borde_x = x1 if abs(x1) < abs(x2) else x2
+        puntos = [(borde_x, y1), (borde_x, (y1 + y2) / 2), (borde_x, y2)]
+
+    return max(distancia_al_contorno(contorno, px, py) for px, py in puntos)
+
+
+check("TODOS los cartabones tocan el contorno del perfil",
+      all(toca(c, IR) < 1e-6 for c in pegados),
+      "; ".join(f"{'X' if c[4] else 'Y'} a {toca(c, IR):.4f}" for c in pegados))
+
+check("y con el envolvente el de Y quedaba SEPARADO del perfil",
+      toca(y_suelto, IR) > 9.0,
+      f"a {toca(y_suelto, IR):.3f} cm del acero")
+
+#  El de X no cambia: en el eje del alma, la cara de arriba del patin es la misma que
+#  da el envolvente. Es la comprobacion de que el arreglo no movio lo que estaba bien.
+x_pegado = [c for c in pegados if c[4]][0]
+x_suelto = [c for c in sueltos if c[4]][0]
+
+check("el cartabon del eje X no se movio: ya estaba bien",
+      abs(x_pegado[1] - x_suelto[1]) < 1e-9,
+      f"pegado {x_pegado[1]:.3f} contra envolvente {x_suelto[1]:.3f}")
+
+#  Con VARIOS cartabones en Y, todos caen en el 60 % central de la altura, que en una
+#  I es zona de alma: todos se pegan al alma.
+varios = construir_cartabones_pegados(True, 0, 4, 1.27, 1.27, 15, 15,
+                                      0, 0, 20.4, 20.4, contorno=IR)
+
+check("con cuatro en Y, los cuatro se pegan al alma",
+      len(varios) == 4
+      and all(abs(abs(c[0] if abs(c[0]) < abs(c[2]) else c[2]) - 0.365) < 1e-9
+              for c in varios),
+      f"{[round(c[0], 3) for c in varios]}")
+
+#  Y EN UN TUBO no cambia nada, porque su envolvente SI es su contorno: es el caso en
+#  el que el defecto no se veia, y por eso tardo en salir.
+tubo = [-10, -10, 10, -10, 10, 10, -10, 10]
+t_pegado = construir_cartabones_pegados(True, 1, 1, 1.27, 1.27, 15, 15,
+                                        0, 0, 20, 20, contorno=tubo)
+t_suelto = construir_cartabones_pegados(True, 1, 1, 1.27, 1.27, 15, 15,
+                                        0, 0, 20, 20, contorno=None)
+
+check("en un tubo rectangular el arranque no cambia: su envolvente ES su contorno",
+      all(abs(a[0] - b[0]) < 1e-9 and abs(a[1] - b[1]) < 1e-9
+          for a, b in zip(t_pegado, t_suelto)))
 
 print("\n" + "=" * 78)
 if fallos:

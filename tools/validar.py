@@ -6369,6 +6369,8 @@ def v18_planta_autocad() -> None:
     pbw = leer(ruta("client/src/CadLink.App/MainWindow.PlacaBase.cs"))
     pbfilas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
     pbproy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    cdesp = leer(ruta("client/src/CadLink.Cad/ContornoDesplazado.cs"))
+    cpb = leer(ruta("client/src/CadLink.Cad/CartabonesPlacaBase.cs"))
 
     #  LAS TRES COLUMNAS DEL CUADRO, con la NOMENCLATURA del estandar escrita en el codigo:
     #      J - distancia minima ENTRE ANCLAS
@@ -6409,13 +6411,53 @@ def v18_planta_autocad() -> None:
           # 1 3/4" = 44 mm
           and "<= 44 => 130," in anc and "<= 44 => 75," in anc and "<= 44 => 76," in anc)
 
-    #  El reparto PERIMETRAL: los totales de la hoja se reparten mitad y mitad, la impar va ABAJO
-    #  en X, y las de Y van ENTRE las hileras de X para no repetir las esquinas.
-    check("el reparto de anclas respeta el modo PERIMETRAL de la macro",
-          "public enum Modo" in anc
-          and "Perimetral," in anc
-          and "(nx + 1) / 2 : nx / 2" in anc
-          and "(alto - (2 * sepY)) / (enCol + 1)" in anc)
+    #  El reparto PERIMETRAL de la macro, y el UNICO: los totales de la hoja se reparten mitad y
+    #  mitad, la impar va ABAJO en X, y las de Y van ENTRE las hileras de X para no repetir las
+    #  esquinas.
+    #
+    #  Habia un segundo reparto en malla, capturable por fila. Se quito: no esta en la macro. Y no
+    #  era inocuo, era confuso de la peor manera -con 4 y 4, el perimetro da ocho anclas y la malla
+    #  dieciseis- asi que una casilla que nadie entendia podia duplicar el numero de anclas.
+    check("el reparto de anclas es el PERIMETRAL de la macro, y el unico",
+          "(nx + 1) / 2 : nx / 2" in anc
+          and "(alto - (2 * sepY)) / (enCol + 1)" in anc
+          # NI ENUM NI PARAMETRO: si vuelven, vuelve la casilla.
+          and "public enum Modo" not in anc
+          and "Modo modo" not in anc
+          and "Modo.Malla" not in anc)
+
+    check("y la casilla de malla no esta en ningun sitio",
+          "AnclasEnMalla" not in pbr
+          and "AnclasEnMalla" not in pbw
+          and "AnclasEnMalla" not in xaml
+          and "ModoAnclas" not in pbc
+          and "ModoAnclas" not in pbd)
+
+    #  ─── LOS CARTABONES ARRANCAN DEL ACERO ──────────────────────────────────────────────
+    #  Antes se usaba el rectangulo envolvente del perfil, y en un perfil I eso deja el cartabon
+    #  del eje Y flotando en el aire: se colocaba a la altura del centro pero arrancando en la
+    #  PUNTA DEL PATIN, y a media altura el patin no esta -esta el hueco entre los dos-. En el
+    #  plano se veia una placa suelta al lado de la columna, sin nada que la uniera.
+    #
+    #  Con un rayo contra el contorno, a media altura de una I lo que se encuentra es el ALMA. Y no
+    #  hay que preguntarle la forma a nadie: sale de la geometria, asi que vale igual para la te, la
+    #  canal, el angulo o el tubo.
+    check("los cartabones arrancan de la cara real del perfil, no del envolvente",
+          "public static double? CruceHorizontal(" in cdesp
+          and "public static double? CruceVertical(" in cdesp
+          and "private static double CaraDerecha(" in cpb
+          and "private static double CaraIzquierda(" in cpb
+          and "private static double CaraDeArriba(" in cpb
+          and "private static double CaraDeAbajo(" in cpb
+          and "ContornoDesplazado.CruceHorizontal(contorno, y, 1)" in cpb)
+
+    #  Y EL CONTORNO LLEGA DESDE LOS DOS SITIOS que dibujan cartabones, con el mismo pano de
+    #  columna que usa la soldadura: si a uno se le olvidara pasarlo, sus cartabones volverian al
+    #  envolvente sin decir nada.
+    check("y el contorno se le pasa desde el dibujante y desde la previa",
+          "p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna?.Puntos," in pbd
+          and "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno)" in pbd2
+          and "p, xc, yc, pX, pY, 1, panoColumna?.Puntos)" in pbw)
 
     #  Y no se dibuja NADA si no se cumplen J o K: un detalle con las anclas mas juntas de lo que
     #  la tabla permite no es un detalle a medias, es uno que no se puede construir.
@@ -6479,7 +6521,6 @@ def v18_planta_autocad() -> None:
     #  con la I dentro como isla. En un W 8x31 con filete de 1/4" son 411 cm2 de rayado donde
     #  van 78: cinco veces mas. Se ve en el dibujo y no se parece a una soldadura.
     #  ══════════════════════════════════════════════════════════════════════════════════════
-    cdesp = leer(ruta("client/src/CadLink.Cad/ContornoDesplazado.cs"))
 
     check("el desplazamiento del contorno vive aparte y sin nada de COM",
           "public static class ContornoDesplazado" in cdesp
@@ -6719,7 +6760,6 @@ def v18_planta_autocad() -> None:
     #  las llamadas a AddLightWeightPolyline, asi que la vista previa no podia usarlo y habria
     #  tenido que reimplementarlo: dos juegos de la misma cuenta, y la previa ensenando unos
     #  cartabones y el plano poniendo otros.
-    cpb = leer(ruta("client/src/CadLink.Cad/CartabonesPlacaBase.cs"))
 
     check("el reparto de cartabones vive aparte y sin nada de COM",
           "public static class CartabonesPlacaBase" in cpb
@@ -6730,7 +6770,7 @@ def v18_planta_autocad() -> None:
           and "AcadConnection" not in cpb)
 
     check("y el dibujante lo pide en lugar de repetirlo",
-          "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala)" in pbd2
+          "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno)" in pbd2
           and "private static double PosicionCartabon(" not in pbd2)
 
     #  El 60 % central y el cruce X/Y, que son las dos reglas que no se ven en el dibujo.
@@ -6787,7 +6827,7 @@ def v18_planta_autocad() -> None:
     #  AnclasPlacaBase, CartabonesPlacaBase y TrazoAcero existan sin COM.
     check("la vista previa de la placa usa la geometria del dibujante",
           "private void DibujarVistaPreviaPlacaBase()" in pbw
-          and "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, 1)" in pbw
+          and "CartabonesPlacaBase.Construir(\n            p, xc, yc, pX, pY, 1, panoColumna?.Puntos)" in pbw
           and "AnclasPlacaBase.Construir(" in pbw
           and "TrazoAcero.De(" in pbw
           and 'x:Name="PlacaPreviewCanvas"' in tab_pb)

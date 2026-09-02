@@ -50,7 +50,6 @@ public sealed class PlacaBaseRow : Row
     private bool _conCartabones;
     private double _escala = 10;
     private bool _girarPlaca90 = true;
-    private bool _anclasEnMalla;
 
     /// <summary>Celda <b>E2</b>: la marca de la placa. Va al rótulo.</summary>
     public string Marca { get => _marca; set => Set(ref _marca, value); }
@@ -524,15 +523,6 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Gira 90° la placa. El dado gira con ella; las anclas y el rótulo, no.</summary>
     public bool GirarPlaca90 { get => _girarPlaca90; set => Set(ref _girarPlaca90, value); }
 
-    /// <summary>
-    /// Reparte las anclas en <b>malla</b> en lugar de en el perímetro.
-    /// </summary>
-    /// <remarks>
-    /// Es el <c>MODO_ANCLAS</c> de la macro, que estaba escrito en el código y aquí se captura por
-    /// fila. La diferencia no es de acomodo, es de <b>cantidad</b>: con 4 y 4, el perímetro da
-    /// ocho anclas y la malla da dieciséis. Apagado —el perímetro— es el caso normal.
-    /// </remarks>
-    public bool AnclasEnMalla { get => _anclasEnMalla; set => Set(ref _anclasEnMalla, value); }
 
     // ======================================================================
     //  COLUMNAS CALCULADAS
@@ -628,23 +618,12 @@ public sealed class PlacaBaseRow : Row
 
     /// <summary>Cuántas anclas salen en total, ya repartidas.</summary>
     /// <remarks>
-    /// En el reparto <b>perimetral</b> —el normal— los dos números de la hoja son totales: las de
-    /// X se parten entre la hilera de abajo y la de arriba, y las de Y van <b>entre</b> esas dos
-    /// hileras, así que las esquinas no se cuentan dos veces y el total es la suma de los dos. En
-    /// el reparto en <b>malla</b>, en cambio, son el número por dirección y el total es el
-    /// producto. Se distinguen porque poner 4 y 4 significa cuatro anclas en un caso y dieciséis
-    /// en el otro, y ese número es lo que se pide al proveedor.
+    /// Los dos números de la hoja son <b>totales</b>: las de X se parten entre la hilera de abajo y
+    /// la de arriba, y las de Y van <b>entre</b> esas dos hileras, así que las esquinas no se
+    /// cuentan dos veces y el total es la suma de los dos. Es el reparto perimetral de la macro, y
+    /// el único.
     /// </remarks>
-    public int TotalAnclas
-    {
-        get
-        {
-            var nx = Math.Max(0, NAnclasX);
-            var ny = Math.Max(0, NAnclasY);
-
-            return AnclasEnMalla ? nx * ny : nx + ny;
-        }
-    }
+    public int TotalAnclas => Math.Max(0, NAnclasX) + Math.Max(0, NAnclasY);
 
     /// <summary>
     /// Los libramientos J y K, ya comprobados. Vacío = cumple.
@@ -700,7 +679,7 @@ public sealed class PlacaBaseRow : Row
 
             var anclas = AnclasPlacaBase.Construir(
                 0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
-                dAncX, dAguX, dAncY, dAguY, p.ModoAnclas);
+                dAncX, dAguX, dAncY, dAguY);
 
             // LAS TRES COLUMNAS DEL CUADRO, y cada una mide LO SUYO:
             //   J - la distancia entre anclas
@@ -841,11 +820,7 @@ public sealed class PlacaBaseRow : Row
             ConCartabones = ConCartabones,
 
             Escala = Escala > 0 ? Escala : 10,
-            GirarPlaca90 = GirarPlaca90,
-
-            ModoAnclas = AnclasEnMalla
-                ? AnclasPlacaBase.Modo.Malla
-                : AnclasPlacaBase.Modo.Perimetral
+            GirarPlaca90 = GirarPlaca90
         };
     }
 

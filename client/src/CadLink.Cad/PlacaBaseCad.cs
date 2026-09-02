@@ -258,9 +258,6 @@ public sealed class PlacaBaseCad
     /// <summary>Aplica las tablas J y K de libramientos antes de dibujar.</summary>
     public bool ValidarSeparacionAnclas { get; set; } = true;
 
-    /// <summary>Cómo se reparten las anclas.</summary>
-    public AnclasPlacaBase.Modo ModoAnclas { get; set; } = AnclasPlacaBase.Modo.Perimetral;
-
     /// <summary>Punto de inserción, en unidades de dibujo. Es la esquina inferior izquierda.</summary>
     public double InsercionX { get; set; }
     public double InsercionY { get; set; } = -2;

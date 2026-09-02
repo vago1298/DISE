@@ -386,7 +386,7 @@ public sealed partial class PlacaBaseDrawer
         // ---------- Las anclas ----------
         var anclas = AnclasPlacaBase.Construir(
             x0, y0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
-            dAncX, dAguX, dAncY, dAguY, p.ModoAnclas);
+            dAncX, dAguX, dAncY, dAguY);
 
         // ---------- Los libramientos, ANTES de dibujar ----------
         if (p.ValidarSeparacionAnclas)
@@ -512,7 +512,8 @@ public sealed partial class PlacaBaseDrawer
 
         // ---------- Los cartabones ----------
         var cartabones = Cartabones(
-            p, x0 + (b / 2), y0 + (h / 2), pX, pY, out var repartoCartabones);
+            p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna?.Puntos,
+            out var repartoCartabones);
 
         // ---------- Las anclas: dos círculos cada una ----------
         var nAncX = 0;

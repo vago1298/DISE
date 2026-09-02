@@ -20,23 +20,6 @@ namespace CadLink.Cad;
 /// </remarks>
 public static class AnclasPlacaBase
 {
-    /// <summary>Cómo se reparten las anclas sobre la placa.</summary>
-    public enum Modo
-    {
-        /// <summary>
-        /// Los valores de la hoja son <b>totales</b> y se reparten en el perímetro.
-        /// </summary>
-        /// <remarks>
-        /// X: mitad abajo y mitad arriba. Y: mitad izquierda y mitad derecha, y <b>entre</b> las
-        /// hileras de X, así que las anclas de las esquinas —que son de X— no se cuentan dos veces.
-        /// Es el <c>MODO_ANCLAS = "PERIMETRAL"</c> de la macro y el caso normal.
-        /// </remarks>
-        Perimetral,
-
-        /// <summary>Los valores son el número de anclas por dirección: una malla nx × ny.</summary>
-        Malla
-    }
-
     /// <summary>Una ancla colocada, con sus dos diámetros.</summary>
     /// <param name="X">Centro, en unidades de dibujo.</param>
     /// <param name="Y">Centro, en unidades de dibujo.</param>
@@ -59,73 +42,61 @@ public static class AnclasPlacaBase
     /// «N. de anclas (y)»: se reparten a lo <b>alto</b>, en vertical. Sale de C10.
     /// </param>
     /// <remarks>
+    /// <para>
+    /// El reparto es el <b>perimetral</b> de la macro —su <c>MODO_ANCLAS = "PERIMETRAL"</c>— y es el
+    /// único: los dos valores de la hoja son TOTALES. Las de X se parten entre la hilera de abajo y
+    /// la de arriba, con la impar abajo; las de Y van <b>entre</b> esas dos hileras, así que las
+    /// anclas de las esquinas —que son de X— no se cuentan dos veces.
+    /// </para>
+    /// <para>
+    /// Hubo un segundo reparto en malla, capturable por fila. Se quitó: no está en la macro y no
+    /// hacía falta. Y no era inocuo, era confuso de la peor manera —con 4 y 4, el perímetro da ocho
+    /// anclas y la malla dieciséis— así que una casilla que nadie entendía podía duplicar el número
+    /// de anclas del detalle.
+    /// </para>
+    /// <para>
     /// Se admite <c>0</c> en cualquiera de las dos direcciones: una placa puede llevar anclas solo
     /// en un sentido, y la macro lo permite explícitamente.
+    /// </para>
     /// </remarks>
     public static List<Ancla> Construir(
         double x0, double y0, double ancho, double alto,
         int nx, int ny, double sepX, double sepY,
-        double dAncX, double dAguX, double dAncY, double dAguY,
-        Modo modo = Modo.Perimetral)
+        double dAncX, double dAguX, double dAncY, double dAguY)
     {
         var anclas = new List<Ancla>();
 
         if (nx < 0) { nx = 0; }
         if (ny < 0) { ny = 0; }
 
-        if (modo == Modo.Perimetral)
+        // ---------- ANCLAS (X): el TOTAL se reparte entre abajo y arriba ----------
+        // 6 -> 3 abajo + 3 arriba. Si es impar, la de más va ABAJO, como en la macro.
+        for (var j = 0; j <= 1; j++)
         {
-            // ---------- ANCLAS (X): el TOTAL se reparte entre abajo y arriba ----------
-            // 6 -> 3 abajo + 3 arriba. Si es impar, la de más va ABAJO, como en la macro.
-            for (var j = 0; j <= 1; j++)
+            var enFila = j == 0 ? (nx + 1) / 2 : nx / 2;
+            var yj = j == 0 ? y0 + sepY : y0 + alto - sepY;
+
+            for (var i = 0; i < enFila; i++)
             {
-                var enFila = j == 0 ? (nx + 1) / 2 : nx / 2;
-                var yj = j == 0 ? y0 + sepY : y0 + alto - sepY;
-
-                for (var i = 0; i < enFila; i++)
-                {
-                    anclas.Add(new Ancla(
-                        PosLineal(x0 + sepX, x0 + ancho - sepX, enFila, i),
-                        yj, dAncX, dAguX, EsX: true));
-                }
+                anclas.Add(new Ancla(
+                    PosLineal(x0 + sepX, x0 + ancho - sepX, enFila, i),
+                    yj, dAncX, dAguX, EsX: true));
             }
-
-            // ---------- ANCLAS (y): el TOTAL se reparte entre izquierda y derecha ----------
-            // Van ENTRE las hileras de X, así que las esquinas —que son de X— no se repiten.
-            for (var i = 0; i <= 1; i++)
-            {
-                var enCol = i == 0 ? (ny + 1) / 2 : ny / 2;
-                var xi = i == 0 ? x0 + sepX : x0 + ancho - sepX;
-
-                for (var k = 1; k <= enCol; k++)
-                {
-                    anclas.Add(new Ancla(
-                        xi,
-                        y0 + sepY + (k * ((alto - (2 * sepY)) / (enCol + 1))),
-                        dAncY, dAguY, EsX: false));
-                }
-            }
-
-            return anclas;
         }
 
-        // ---------- MALLA: nx en horizontal por ny en vertical ----------
-        for (var j = 0; j < ny; j++)
+        // ---------- ANCLAS (y): el TOTAL se reparte entre izquierda y derecha ----------
+        // Van ENTRE las hileras de X, así que las esquinas —que son de X— no se repiten.
+        for (var i = 0; i <= 1; i++)
         {
-            var yj = PosLineal(y0 + sepY, y0 + alto - sepY, ny, j);
+            var enCol = i == 0 ? (ny + 1) / 2 : ny / 2;
+            var xi = i == 0 ? x0 + sepX : x0 + ancho - sepX;
 
-            for (var i = 0; i < nx; i++)
+            for (var k = 1; k <= enCol; k++)
             {
-                var xi = PosLineal(x0 + sepX, x0 + ancho - sepX, nx, i);
-
-                // Las hileras horizontales extremas llevan el diámetro de X; las interiores, el
-                // de Y. La salvedad del nx = 1 es de la macro: una sola columna de anclas es una
-                // hilera vertical, así que le toca el diámetro de Y aunque esté en el extremo.
-                var esExtrema = (j == 0 || j == ny - 1) && !(nx == 1 && ny > 1);
-
-                anclas.Add(esExtrema
-                    ? new Ancla(xi, yj, dAncX, dAguX, EsX: true)
-                    : new Ancla(xi, yj, dAncY, dAguY, EsX: false));
+                anclas.Add(new Ancla(
+                    xi,
+                    y0 + sepY + (k * ((alto - (2 * sepY)) / (enCol + 1))),
+                    dAncY, dAguY, EsX: false));
             }
         }
 

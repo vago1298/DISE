@@ -346,7 +346,13 @@ public partial class MainWindow
 
         var (pX, pY) = (p.PerfilXDibujoCm, p.PerfilYDibujoCm);
 
-        var cartabones = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, 1);
+        // El paño del perfil: lo MISMO que usa el dibujante, y de la misma clase. Con él los
+        // cartabones arrancan del acero que de verdad tienen al lado —en una I, del alma— en lugar
+        // del rectángulo envolvente.
+        var panoColumna = p.PanoDeLaColumna(xc, yc, 1);
+
+        var cartabones = CartabonesPlacaBase.Construir(
+            p, xc, yc, pX, pY, 1, panoColumna?.Puntos);
 
         foreach (var c in cartabones)
         {
@@ -490,7 +496,7 @@ public partial class MainWindow
 
         var anclas = AnclasPlacaBase.Construir(
             0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
-            dAncX, dAguX, dAncY, dAguY, p.ModoAnclas);
+            dAncX, dAguX, dAncY, dAguY);
 
         if (anclas.Count > 0)
         {
@@ -951,8 +957,7 @@ public partial class MainWindow
         LongCartabonYCm = f.LongCartabonYCm,
         ConCartabones = f.ConCartabones,
         Escala = f.Escala,
-        GirarPlaca90 = f.GirarPlaca90,
-        AnclasEnMalla = f.AnclasEnMalla
+        GirarPlaca90 = f.GirarPlaca90
     };
 
     /// <summary>Quita la placa seleccionada.</summary>

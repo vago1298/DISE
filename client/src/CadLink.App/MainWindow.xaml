@@ -2439,10 +2439,6 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
-                            <!-- Perimetral o malla. NO ES UN ACOMODO, ES UNA CANTIDAD: con 4 y 4,
-                                 el perimetro da OCHO anclas y la malla da DIECISEIS. -->
-                            <DataGridCheckBoxColumn Header="Anclas en malla" Binding="{Binding AnclasEnMalla, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    CellStyle="{StaticResource CeldaAcabado}" />
 
                             <!-- ===== LA SOLDADURA ===== -->
                             <DataGridComboBoxColumn x:Name="ColPlacaElectrodo" Header="Electrodo"

@@ -65,8 +65,15 @@ public static class CartabonesPlacaBase
     /// sentido, y eso no se ve en la tabla: se ve en el plano, y solo si se mide.
     /// </para>
     /// </remarks>
+    /// <param name="contorno">
+    /// El paño del perfil, ya girado y en unidades de dibujo. Con él, cada cartabón arranca del
+    /// <b>acero que de verdad tiene al lado</b> en lugar del rectángulo envolvente. En <c>null</c> se
+    /// usa el envolvente, que es lo que se hacía antes: sirve de respaldo cuando no hay perfil
+    /// dibujado —una placa sin columna— y ahí el envolvente es lo único que hay.
+    /// </param>
     public static List<Cartabon> Construir(
-        PlacaBaseCad p, double xc, double yc, double pX, double pY, double escala)
+        PlacaBaseCad p, double xc, double yc, double pX, double pY, double escala,
+        double[]? contorno = null)
     {
         var salida = new List<Cartabon>();
 
@@ -95,11 +102,20 @@ public static class CartabonesPlacaBase
             {
                 var x = Posicion(xc, pX, i, cuantos);
 
-                salida.Add(lado == 0
-                    ? new Cartabon(x - (espX / 2), yc + (pY / 2),
-                                   x + (espX / 2), yc + (pY / 2) + largoX, EsX: true)
-                    : new Cartabon(x - (espX / 2), yc - (pY / 2) - largoX,
-                                   x + (espX / 2), yc - (pY / 2), EsX: true));
+                if (lado == 0)
+                {
+                    var cara = CaraDeArriba(contorno, x, yc + (pY / 2));
+
+                    salida.Add(new Cartabon(
+                        x - (espX / 2), cara, x + (espX / 2), cara + largoX, EsX: true));
+                }
+                else
+                {
+                    var cara = CaraDeAbajo(contorno, x, yc - (pY / 2));
+
+                    salida.Add(new Cartabon(
+                        x - (espX / 2), cara - largoX, x + (espX / 2), cara, EsX: true));
+                }
             }
         }
 
@@ -112,16 +128,59 @@ public static class CartabonesPlacaBase
             {
                 var y = Posicion(yc, pY, i, cuantos);
 
-                salida.Add(lado == 0
-                    ? new Cartabon(xc + (pX / 2), y - (espY / 2),
-                                   xc + (pX / 2) + largoY, y + (espY / 2), EsX: false)
-                    : new Cartabon(xc - (pX / 2) - largoY, y - (espY / 2),
-                                   xc - (pX / 2), y + (espY / 2), EsX: false));
+                if (lado == 0)
+                {
+                    var cara = CaraDerecha(contorno, y, xc + (pX / 2));
+
+                    salida.Add(new Cartabon(
+                        cara, y - (espY / 2), cara + largoY, y + (espY / 2), EsX: false));
+                }
+                else
+                {
+                    var cara = CaraIzquierda(contorno, y, xc - (pX / 2));
+
+                    salida.Add(new Cartabon(
+                        cara - largoY, y - (espY / 2), cara, y + (espY / 2), EsX: false));
+                }
             }
         }
 
         return salida;
     }
+
+    // ======================================================================
+    //  DE DÓNDE ARRANCA CADA CARTABÓN
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  EL CARTABÓN ARRANCA DEL ACERO, NO DEL RECTÁNGULO ENVOLVENTE.
+    //
+    //  Antes se usaba el envolvente del perfil, y en un perfil I eso deja el cartabón del eje
+    //  Y flotando en el aire: se colocaba a la altura del centro pero arrancando en la punta
+    //  del patín, y a media altura el patín no está —está el hueco entre los dos—. En el plano
+    //  se veía una placa suelta al lado de la columna, sin nada que la uniera.
+    //
+    //  Con un rayo contra el contorno, a media altura de una I lo que se encuentra es el
+    //  ALMA, que es donde el cartabón se suelda. Y no hay que preguntarle la forma a nadie:
+    //  sale de la geometría, así que vale igual para la te, la canal, el ángulo o el tubo.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>El paño derecho del perfil a la altura <paramref name="y"/>.</summary>
+    /// <param name="respaldo">El del envolvente, para cuando no hay contorno o el rayo no cruza.</param>
+    private static double CaraDerecha(double[]? contorno, double y, double respaldo) =>
+        ContornoDesplazado.CruceHorizontal(contorno, y, 1) ?? respaldo;
+
+    /// <summary>El paño izquierdo del perfil a la altura <paramref name="y"/>.</summary>
+    private static double CaraIzquierda(double[]? contorno, double y, double respaldo) =>
+        ContornoDesplazado.CruceHorizontal(contorno, y, -1) ?? respaldo;
+
+    /// <summary>El paño de arriba del perfil en la abscisa <paramref name="x"/>.</summary>
+    private static double CaraDeArriba(double[]? contorno, double x, double respaldo) =>
+        ContornoDesplazado.CruceVertical(contorno, x, 1) ?? respaldo;
+
+    /// <summary>El paño de abajo del perfil en la abscisa <paramref name="x"/>.</summary>
+    private static double CaraDeAbajo(double[]? contorno, double x, double respaldo) =>
+        ContornoDesplazado.CruceVertical(contorno, x, -1) ?? respaldo;
 
     /// <summary>
     /// Reparte los cartabones sobre el <see cref="FraccionDeLaCara">60 % central</see> de la cara.
