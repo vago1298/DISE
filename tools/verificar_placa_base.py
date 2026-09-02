@@ -425,10 +425,26 @@ DIRECCION_ABAJO = 3
 
 
 class Cart:
-    def __init__(self, puntos, dobleces, es_x):
+    def __init__(self, puntos, dobleces, direccion):
         self.puntos = puntos
         self.dobleces = dobleces
-        self.es_x = es_x
+        self.direccion = direccion
+
+    @property
+    def es_x(self):
+        """Se DEDUCE de la direccion. Guardado aparte, podia discrepar de la geometria."""
+        return self.direccion in (DIRECCION_ARRIBA, DIRECCION_ABAJO)
+
+    @property
+    def punta_libre(self):
+        """El punto medio del canto OPUESTO al perfil: donde acaba la flecha del leader."""
+        if self.direccion == DIRECCION_DERECHA:
+            return (self.x2, (self.y1 + self.y2) / 2.0)
+        if self.direccion == DIRECCION_ARRIBA:
+            return ((self.x1 + self.x2) / 2.0, self.y2)
+        if self.direccion == DIRECCION_IZQUIERDA:
+            return (self.x1, (self.y1 + self.y2) / 2.0)
+        return ((self.x1 + self.x2) / 2.0, self.y1)
 
     @property
     def con_boca(self):
@@ -464,9 +480,9 @@ class Cart:
         return f"Cart({self.x1:.3f}, {self.y1:.3f}, {self.x2:.3f}, {self.y2:.3f}, {self.es_x})"
 
 
-def cart_recto(x1, y1, x2, y2, es_x):
+def cart_recto(x1, y1, x2, y2, direccion):
     """Los cuatro vertices en ANTIHORARIO, igual que los de la boca."""
-    return Cart([x1, y1, x2, y1, x2, y2, x1, y2], None, es_x)
+    return Cart([x1, y1, x2, y1, x2, y2, x1, y2], None, direccion)
 
 
 def girar90_punto(x, y, xc, yc):
@@ -474,7 +490,7 @@ def girar90_punto(x, y, xc, yc):
     return (xc - (y - yc), yc + (x - xc))
 
 
-def boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo, es_x):
+def boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo):
     """El cartabon recortado a la curva del tubo. None si no procede."""
     if circulo is None or esp <= 0 or largo <= 0:
         return None
@@ -528,11 +544,11 @@ def boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo, es_x):
 
         puntos.extend([x, y])
 
-    return Cart(puntos, dobleces, es_x)
+    return Cart(puntos, dobleces, direccion)
 
 
-def cartabon_uno(direccion, xc, yc, centro, cara, esp, largo, circulo, es_x):
-    boca = boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo, es_x)
+def cartabon_uno(direccion, xc, yc, centro, cara, esp, largo, circulo):
+    boca = boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo)
 
     if boca is not None:
         return boca
@@ -540,13 +556,13 @@ def cartabon_uno(direccion, xc, yc, centro, cara, esp, largo, circulo, es_x):
     m = esp / 2.0
 
     if direccion == DIRECCION_DERECHA:
-        return cart_recto(cara, centro - m, cara + largo, centro + m, es_x)
+        return cart_recto(cara, centro - m, cara + largo, centro + m, DIRECCION_DERECHA)
     if direccion == DIRECCION_ARRIBA:
-        return cart_recto(centro - m, cara, centro + m, cara + largo, es_x)
+        return cart_recto(centro - m, cara, centro + m, cara + largo, DIRECCION_ARRIBA)
     if direccion == DIRECCION_IZQUIERDA:
-        return cart_recto(cara - largo, centro - m, cara, centro + m, es_x)
+        return cart_recto(cara - largo, centro - m, cara, centro + m, DIRECCION_IZQUIERDA)
 
-    return cart_recto(centro - m, cara - largo, centro + m, cara, es_x)
+    return cart_recto(centro - m, cara - largo, centro + m, cara, DIRECCION_ABAJO)
 
 
 def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_y,
@@ -570,12 +586,12 @@ def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x
                 cara = cruce_vertical(contorno, x, 1)
                 cara = yc + p_y / 2 if cara is None else cara
                 salida.append(cartabon_uno(DIRECCION_ARRIBA, xc, yc, x, cara,
-                                           esp_x, largo_x, circulo, True))
+                                           esp_x, largo_x, circulo))
             else:
                 cara = cruce_vertical(contorno, x, -1)
                 cara = yc - p_y / 2 if cara is None else cara
                 salida.append(cartabon_uno(DIRECCION_ABAJO, xc, yc, x, cara,
-                                           esp_x, largo_x, circulo, True))
+                                           esp_x, largo_x, circulo))
 
     for lado in (0, 1):
         cuantos = (ny + 1) // 2 if lado == 0 else ny // 2
@@ -587,12 +603,12 @@ def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x
                 cara = cruce_horizontal(contorno, y, 1)
                 cara = xc + p_x / 2 if cara is None else cara
                 salida.append(cartabon_uno(DIRECCION_DERECHA, xc, yc, y, cara,
-                                           esp_y, largo_y, circulo, False))
+                                           esp_y, largo_y, circulo))
             else:
                 cara = cruce_horizontal(contorno, y, -1)
                 cara = xc - p_x / 2 if cara is None else cara
                 salida.append(cartabon_uno(DIRECCION_IZQUIERDA, xc, yc, y, cara,
-                                           esp_y, largo_y, circulo, False))
+                                           esp_y, largo_y, circulo))
 
     return salida
 
@@ -1831,10 +1847,10 @@ check("con 2 y 2 salen los cuatro lados, y los cuatro con boca",
 
 #  Uno por cada direccion, centrado, para poder mirarlos de a uno.
 por_lado = {
-    "+X": boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, ESP, LARGO, CIRC, False),
-    "+Y": boca_de_pescado(DIRECCION_ARRIBA, 0, 0, 0, ESP, LARGO, CIRC, True),
-    "-X": boca_de_pescado(DIRECCION_IZQUIERDA, 0, 0, 0, ESP, LARGO, CIRC, False),
-    "-Y": boca_de_pescado(DIRECCION_ABAJO, 0, 0, 0, ESP, LARGO, CIRC, True),
+    "+X": boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, ESP, LARGO, CIRC),
+    "+Y": boca_de_pescado(DIRECCION_ARRIBA, 0, 0, 0, ESP, LARGO, CIRC),
+    "-X": boca_de_pescado(DIRECCION_IZQUIERDA, 0, 0, 0, ESP, LARGO, CIRC),
+    "-Y": boca_de_pescado(DIRECCION_ABAJO, 0, 0, 0, ESP, LARGO, CIRC),
 }
 
 check("las cuatro direcciones dan boca",
@@ -1900,7 +1916,7 @@ check("y la longitud, medida desde el pano del tubo en su eje",
 #  Con el cartabon fuera del eje, el canto de dentro corta el circulo mas lejos que el
 #  de fuera. Es el caso en el que un recorte simetrico -recortar los dos cantos lo
 #  mismo- se equivoca, y por eso la boca se calcula canto por canto.
-fuera_eje = boca_de_pescado(DIRECCION_DERECHA, 0, 0, 6.0, ESP, LARGO, CIRC, False)
+fuera_eje = boca_de_pescado(DIRECCION_DERECHA, 0, 0, 6.0, ESP, LARGO, CIRC)
 
 check("descentrado, los dos cantos arrancan en abscisas DISTINTAS",
       fuera_eje is not None
@@ -1918,7 +1934,7 @@ check("y descentrado tampoco se mete en el tubo",
 #  perfil tapa la diferencia. Asi que se rompe a proposito y se comprueba que la
 #  comprobacion de arriba lo caza: si no lo cazara, no estaria comprobando nada.
 bien = por_lado["+X"]
-mal = Cart(list(bien.puntos), [(3, -bien.dobleces[0][1])], bien.es_x)
+mal = Cart(list(bien.puntos), [(3, -bien.dobleces[0][1])], bien.direccion)
 
 check("el bulge de la boca es NEGATIVO: el arco muerde hacia dentro del cartabon",
       bien.dobleces[0][1] < 0,
@@ -1933,19 +1949,19 @@ check("PRUEBA NEGATIVA: con el bulge al reves el cartabon SI se mete en el tubo"
 #  propio canto. Ahi lo correcto es dejarlo recto arrancando del envolvente, que es lo
 #  que se hacia antes, y no dibujar un recorte imposible.
 check("un cartabon mas ancho que el tubo se queda recto, sin boca",
-      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, 2 * TUBO_R + 1, LARGO, CIRC, False) is None)
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, 2 * TUBO_R + 1, LARGO, CIRC) is None)
 
 check("y uno muy descentrado tambien",
-      boca_de_pescado(DIRECCION_DERECHA, 0, 0, TUBO_R, ESP, LARGO, CIRC, False) is None)
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, TUBO_R, ESP, LARGO, CIRC) is None)
 
 #  Un cartabon corto y descentrado: la punta libre quedaria mas cerca que el arranque
 #  del canto de dentro, y la polilinea se cruzaria sola.
 check("un cartabon demasiado corto para su descentrado se queda recto",
-      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 14.0, ESP, 0.05, CIRC, False) is None)
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 14.0, ESP, 0.05, CIRC) is None)
 
 check("sin longitud o sin espesor no hay boca",
-      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, ESP, 0, CIRC, False) is None
-      and boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, 0, LARGO, CIRC, False) is None)
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, ESP, 0, CIRC) is None
+      and boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, 0, LARGO, CIRC) is None)
 
 #  ---- Y EL CONTORNO SIGUE SIENDO ANTIHORARIO ----
 #  Lo necesita hacia_fuera, que es quien calcula la franja de soldadura del cartabon:
@@ -2020,8 +2036,12 @@ _FILA = _fuente("client", "src", "CadLink.App", "Models", "PlacaBaseRow.cs")
 
 check("el cartabon del C# guarda PUNTOS y BULGES, no cuatro esquinas",
       "public readonly record struct Cartabon(" in _CART
-      and "double[] Puntos, (int Indice, double Bulge)[]? Dobleces, bool EsX)" in _CART
-      and "public static Cartabon Recto(" in _CART)
+      and "double[] Puntos, (int Indice, double Bulge)[]? Dobleces, int Direccion)" in _CART
+      and "public static Cartabon Recto(" in _CART
+      # Y EsX se DEDUCE de la direccion: guardado aparte, eran dos hechos sobre la misma
+      # pieza que podian discrepar.
+      and "public bool EsX => Direccion == Arriba || Direccion == Abajo;" in _CART
+      and "public (double X, double Y) PuntaLibre => Direccion switch" in _CART)
 
 check("y existe BocaDePescado, con el giro de 90 grados por direccion",
       "private static Cartabon? BocaDePescado(" in _CART
@@ -2049,7 +2069,7 @@ check("y los cuatro lados llaman a Uno con su direccion",
 check("Construir recibe el contorno COMPLETO, para poder ver el circulo",
       "ContornoDeColumna? contorno = null)" in _CART
       and "var circulo = contorno?.Circulo;" in _CART
-      and "pX, pY, panoColumna," in _DRW)
+      and "pX, pY, panoColumna);" in _DRW)
 
 check("el dibujante saca el cartabon con Polilinea y sus bulges, no con Rectangulo",
       "Polilinea(c.Puntos, PlacaBaseCapas.Cartabones, c.Dobleces)" in _DET
@@ -2080,10 +2100,217 @@ check("y se dibuja al fondo, con el cartabon como isla, y la frontera se borra",
       and "AlFondo(new List<object> { hatch });" in _DET
       and "Borrar(frontera);" in _DET)
 
+#  ---- Y LA FLECHA DEL CARTABON ----
+#  El leader se dibuja DESPUES de Bloquear, que borra las entidades originales. Si volviera
+#  a preguntarle a una polilinea donde esta, la flecha se iria otra vez al origen.
+check("el leader del cartabon usa el REPARTO, no las entidades de AutoCAD",
+      "private void LeadersDeCartabones(\n        PlacaBaseCad p, List<CartabonesPlacaBase.Cartabon> reparto, double xLef)" in _DET
+      and "LeadersDeCartabones(p, repartoCartabones, xLef);" in _DRW
+      and "deX.Value.PuntaLibre" in _DET
+      and "deY.Value.PuntaLibre" in _DET
+      # Y ya no se le pregunta a NINGUNA entidad donde esta: el metodo Caja se fue con el
+      # defecto. Se busca la llamada -con sus comillas- y no el nombre suelto, que sigue
+      # nombrado en el comentario que explica por que se quito.
+      and '"GetBoundingBox",' not in _DET
+      and "private (double X1, double Y1, double X2, double Y2)? Caja(" not in _DET)
+
+check("y senala el cartabon del lado del texto",
+      "ParaRotular(reparto, esX: true, CartabonesPlacaBase.Arriba)" in _DET
+      and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.Izquierda)" in _DET
+      and "public const int Arriba = 1;" in _CART
+      and "public const int Izquierda = 2;" in _CART)
+
+check("el salto de renglon del leader se pone DESPUES de escapar",
+      "private static string Renglones(params string[] partes)" in _DET
+      and 'string.Join("\\\\P", partes.Where(t => t.Trim().Length > 0).Select(Escapar))' in _DET
+      and "yaEscapado ? s : Escapar(s)" in _DET
+      # Y el renglon del filete ya no trae el \P pegado ni se escapa dos veces.
+      and 'return "SOLDADURA DE " + espesor + "\\" DE ESP.";' in _DET)
+
 check("la previa tambien pinta la franja del cartabon, en morado",
       "private void DibujarSoldaduraDeCartabonesPrevia(" in _PREV
       and "DibujarSoldaduraDeCartabonesPrevia(p, cartabones, transformar);" in _PREV
       and "0x7B, 0x2F, 0xBE" in _PREV)
+
+print("\n" + "=" * 78)
+print("LA FLECHA DEL CARTABON SENALA AL CARTABON")
+print("=" * 78)
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  LAS DOS FLECHAS ACABABAN EN EL ORIGEN DEL DIBUJO, APUNTANDO A NADA.
+#
+#  El leader le pedia a cada polilinea su GetBoundingBox. Y para cuando los rotulos se
+#  dibujan, esas polilineas YA NO EXISTEN: Bloquear copia la geometria a la definicion
+#  del bloque y BORRA las originales, y corre antes. Asi que el bounding box fallaba,
+#  el respaldo devolvia (0, 0), y los dos leaders quedaban clavados en el origen con su
+#  texto colgando al lado -a metros del detalle-.
+#
+#  Ahora la punta sale del REPARTO, que es geometria pura y sigue en la mano. Y por eso
+#  se puede comprobar aqui: lo de antes no se podia comprobar sin AutoCAD, que es
+#  justamente como llego a produccion.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+
+def en_el_borde(cart, punto, tol=1e-9):
+    """El punto esta SOBRE el perimetro del cartabon -no cerca, no dentro-."""
+    px, py = punto
+    pts = cart.puntos
+    n = len(pts) // 2
+
+    return min(distancia_al_segmento(px, py,
+                                     pts[2 * i], pts[2 * i + 1],
+                                     pts[2 * ((i + 1) % n)], pts[2 * ((i + 1) % n) + 1])
+               for i in range(n)) < tol
+
+
+#  Un perfil I, cuatro cartabones: uno en cada direccion.
+lados = construir_cartabones_pegados(True, 2, 2, 1.27, 1.27, 15, 15,
+                                     0, 0, 20.4, 20.4, contorno=IR)
+
+check("con 2 y 2 salen los cuatro lados, uno por direccion",
+      len(lados) == 4
+      and sorted(c.direccion for c in lados) == [DIRECCION_DERECHA, DIRECCION_ARRIBA,
+                                                 DIRECCION_IZQUIERDA, DIRECCION_ABAJO])
+
+#  LO QUE ESTABA ROTO: la punta ni siquiera caia en el detalle.
+check("NINGUNA punta se va al origen del dibujo",
+      all(c.punta_libre != (0.0, 0.0) for c in lados),
+      "; ".join(f"{c.punta_libre[0]:.2f},{c.punta_libre[1]:.2f}" for c in lados))
+
+check("y TODAS caen sobre el perimetro de su cartabon",
+      all(en_el_borde(c, c.punta_libre) for c in lados),
+      "; ".join(f"dir {c.direccion} a "
+                f"{min(distancia_al_segmento(c.punta_libre[0], c.punta_libre[1], c.puntos[2*i], c.puntos[2*i+1], c.puntos[2*((i+1)%4)], c.puntos[2*((i+1)%4)+1]) for i in range(4)):.1e}"
+                for c in lados))
+
+#  Y ES LA PUNTA LIBRE, no el canto pegado al perfil: el pegado queda debajo de la
+#  columna, asi que una flecha ahi senala al perfil y no al cartabon.
+por_dir = {c.direccion: c for c in lados}
+
+check("la punta es el canto LEJOS del perfil, no el pegado",
+      abs(por_dir[DIRECCION_DERECHA].punta_libre[0] - por_dir[DIRECCION_DERECHA].x2) < 1e-9
+      and abs(por_dir[DIRECCION_IZQUIERDA].punta_libre[0] - por_dir[DIRECCION_IZQUIERDA].x1) < 1e-9
+      and abs(por_dir[DIRECCION_ARRIBA].punta_libre[1] - por_dir[DIRECCION_ARRIBA].y2) < 1e-9
+      and abs(por_dir[DIRECCION_ABAJO].punta_libre[1] - por_dir[DIRECCION_ABAJO].y1) < 1e-9)
+
+#  Y cada punta esta MAS LEJOS del centro del perfil que su propio arranque. Es la forma
+#  de decir «hacia fuera» sin depender de cual es cada lado.
+check("y siempre queda mas lejos del centro que el arranque",
+      all(math.hypot(*c.punta_libre) > 10.0 for c in lados),
+      "; ".join(f"a {math.hypot(*c.punta_libre):.2f} cm del centro" for c in lados))
+
+#  ---- PRUEBA NEGATIVA: LA REGLA VIEJA FALLABA EN DOS DE LOS CUATRO ----
+#  Antes se elegia por la forma del envolvente -«el lado largo manda, y siempre el
+#  extremo alto o el derecho»- y eso acierta con el que sube y con el que va a la
+#  derecha, y se equivoca con los otros dos: senala el canto PEGADO al perfil.
+
+
+def punta_a_la_vieja(cart):
+    x1, y1, x2, y2 = cart.x1, cart.y1, cart.x2, cart.y2
+
+    if x2 - x1 >= y2 - y1:
+        return (x2, (y1 + y2) / 2.0)
+
+    return ((x1 + x2) / 2.0, y2)
+
+
+equivocadas = [c.direccion for c in lados
+               if punta_a_la_vieja(c) != c.punta_libre]
+
+check("PRUEBA NEGATIVA: la regla vieja se equivocaba en el que baja y el de la izquierda",
+      sorted(equivocadas) == [DIRECCION_IZQUIERDA, DIRECCION_ABAJO],
+      f"se equivocaba en las direcciones {sorted(equivocadas)}")
+
+#  ---- SE ROTULA EL DEL LADO DEL TEXTO ----
+#  El rotulo de X va ARRIBA del detalle y el de Y ABAJO A LA IZQUIERDA. Tomando el
+#  primero del reparto -que es el de la cara positiva- la flecha del rotulo de Y cruzaba
+#  el detalle entero para llegar al cartabon del otro extremo.
+
+
+def para_rotular(reparto, es_x, preferida):
+    respaldo = None
+
+    for c in reparto:
+        if c.es_x != es_x:
+            continue
+        if c.direccion == preferida:
+            return c
+        if respaldo is None:
+            respaldo = c
+
+    return respaldo
+
+
+check("el rotulo de X senala al cartabon que SUBE, y el de Y al de la IZQUIERDA",
+      para_rotular(lados, True, DIRECCION_ARRIBA).direccion == DIRECCION_ARRIBA
+      and para_rotular(lados, False, DIRECCION_IZQUIERDA).direccion == DIRECCION_IZQUIERDA)
+
+#  Con uno solo por sentido no hay el del lado del texto -la impar va a la cara positiva-
+#  y entonces vale cualquiera: mejor senalar el de la cara opuesta que dejar el rotulo
+#  sin flecha.
+uno_solo = construir_cartabones_pegados(True, 1, 1, 1.27, 1.27, 15, 15,
+                                        0, 0, 20.4, 20.4, contorno=IR)
+
+check("con uno solo por sentido se senala el que hay, no ninguno",
+      para_rotular(uno_solo, True, DIRECCION_ARRIBA) is not None
+      and para_rotular(uno_solo, False, DIRECCION_IZQUIERDA) is not None
+      and para_rotular(uno_solo, False, DIRECCION_IZQUIERDA).direccion == DIRECCION_DERECHA)
+
+check("y sin cartabones de un sentido, ese rotulo no sale",
+      para_rotular(construir_cartabones_pegados(True, 2, 0, 1.27, 1.27, 15, 15,
+                                                0, 0, 20.4, 20.4, contorno=IR),
+                   False, DIRECCION_IZQUIERDA) is None)
+
+#  ---- Y CONTRA UNA COLUMNA REDONDA, IGUAL ----
+#  La boca de pescado cambia el canto PEGADO, no el libre, asi que la punta sigue siendo
+#  el extremo de fuera. Es lo que hay que comprobar: la flecha no se puede ir al arco.
+redondos4 = construir_cartabones_pegados(True, 2, 2, ESP, ESP, LARGO, LARGO,
+                                         0, 0, 2 * TUBO_R, 2 * TUBO_R,
+                                         contorno=None, circulo=CIRC)
+
+check("con boca de pescado la punta tampoco se va al arco",
+      all(c.con_boca for c in redondos4)
+      and all(en_el_borde(c, c.punta_libre) for c in redondos4)
+      and all(math.hypot(*c.punta_libre) > TUBO_R + LARGO - 1e-6 for c in redondos4),
+      "; ".join(f"a {math.hypot(*c.punta_libre):.2f} cm del centro" for c in redondos4))
+
+print("\n" + "=" * 78)
+print("EL SALTO DE RENGLON DEL LEADER NO SE ESCAPA")
+print("=" * 78)
+#  El leader del cartabon salia en el plano como
+#      CARTABON X DE 1/2" DE ESP.\PSOLDADURA DE 1/4" DE ESP.
+#  de un tiron, con el codigo a la vista. Escapar dobla la contrabarra -que es lo que
+#  hay que hacerle a la que el usuario escriba, para que MTEXT no la lea como codigo- y
+#  el «\P» pasaba por ahi. El orden importa: primero escapar cada renglon, y DESPUES
+#  unirlos.
+
+
+def escapar(t):
+    return t.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+
+
+def renglones(*partes):
+    return "\\P".join(escapar(t) for t in partes if t.strip())
+
+
+bien_txt = renglones('CARTABON X DE 1/2" DE ESP.', 'SOLDADURA DE 1/4" DE ESP.')
+mal_txt = escapar('CARTABON X DE 1/2" DE ESP.\\PSOLDADURA DE 1/4" DE ESP.')
+
+check("el salto de renglon sale como codigo de MTEXT, no doblado",
+      "\\P" in bien_txt and "\\\\P" not in bien_txt,
+      repr(bien_txt))
+
+check("PRUEBA NEGATIVA: escapando el texto entero, el \\P sale IMPRESO",
+      "\\\\P" in mal_txt,
+      repr(mal_txt))
+
+#  Y lo que el usuario escriba SI se escapa: una llave suelta en un espesor rompe el
+#  MTEXT si pasa cruda.
+check("y las llaves del texto del usuario siguen escapandose",
+      renglones("ESPESOR {raro}") == "ESPESOR \\{raro\\}",
+      repr(renglones("ESPESOR {raro}")))
+
+check("un renglon vacio no deja un salto de mas",
+      renglones('CARTABON X DE 1/2" DE ESP.', "") == 'CARTABON X DE 1/2" DE ESP.')
 
 print("\n" + "=" * 78)
 if fallos:

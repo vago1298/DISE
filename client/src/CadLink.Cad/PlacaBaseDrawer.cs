@@ -515,9 +515,8 @@ public sealed partial class PlacaBaseDrawer
         }
 
         // ---------- Los cartabones ----------
-        var cartabones = Cartabones(
-            p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna,
-            out var repartoCartabones);
+        var repartoCartabones = Cartabones(
+            p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna);
 
         // ---------- Las anclas: dos círculos cada una ----------
         var nAncX = 0;
@@ -562,9 +561,12 @@ public sealed partial class PlacaBaseDrawer
             LeadersDeAnclas(p, anclas, xRig, y0 + (h / 2));
         }
 
-        if (p.DibujarLeaders && cartabones.Count > 0)
+        // CON EL REPARTO Y NO CON LAS ENTIDADES: para cuando esto corre, Bloquear ya copió la
+        // geometría a la definición del bloque y borró las originales, así que preguntarle a una
+        // polilínea dónde está devuelve nada y la flecha se iba al origen del dibujo.
+        if (p.DibujarLeaders && repartoCartabones.Count > 0)
         {
-            LeadersDeCartabones(p, cartabones, repartoCartabones, xLef);
+            LeadersDeCartabones(p, repartoCartabones, xLef);
         }
 
         // ---------- El rótulo ----------

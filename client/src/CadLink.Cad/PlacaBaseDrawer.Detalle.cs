@@ -299,24 +299,22 @@ public sealed partial class PlacaBaseDrawer
     /// espesor visto en planta.
     /// </para>
     /// </remarks>
-    /// <param name="reparto">
-    /// El reparto que se usó, para que los leaders sepan cuál es de X y cuál de Y sin volver a
-    /// deducirlo de la geometría ni repetir la regla del descarte.
-    /// </param>
     /// <param name="contorno">
     /// El paño del perfil, para que cada cartabón arranque del acero que de verdad tiene al lado, y
     /// para que contra una columna redonda se le recorte la <b>boca de pescado</b>.
     /// </param>
-    private List<object> Cartabones(
-        PlacaBaseCad p, double xc, double yc, double pX, double pY, ContornoDeColumna? contorno,
-        out List<CartabonesPlacaBase.Cartabon> reparto)
+    /// <returns>
+    /// El <b>reparto</b>, no las entidades. Es lo que necesitan los leaders, y las entidades no les
+    /// servirían: para cuando se dibujan los rótulos, <c>Bloquear</c> ya copió la geometría a la
+    /// definición del bloque y borró las originales.
+    /// </returns>
+    private List<CartabonesPlacaBase.Cartabon> Cartabones(
+        PlacaBaseCad p, double xc, double yc, double pX, double pY, ContornoDeColumna? contorno)
     {
-        var creados = new List<object>();
-
         // EL REPARTO LO HACE CartabonesPlacaBase, y este método solo dibuja lo que le diga. La
         // cuenta la necesita también la vista previa de la hoja, y con una copia aquí las dos
         // podrían discrepar: la previa enseñando unos cartabones y el plano poniendo otros.
-        reparto = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno);
+        var reparto = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno);
 
         foreach (var c in reparto)
         {
@@ -328,13 +326,11 @@ public sealed partial class PlacaBaseDrawer
 
             if (r is not null)
             {
-                creados.Add(r);
-
                 SoldaduraDeCartabon(p, c, r);
             }
         }
 
-        return creados;
+        return reparto;
     }
 
     /// <summary>
@@ -629,19 +625,46 @@ public sealed partial class PlacaBaseDrawer
         return idx;
     }
 
-    /// <summary>Un leader por dirección de cartabones, con su espesor.</summary>
+    // ======================================================================
+    //  LOS LEADERS DE LOS CARTABONES
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  LA FLECHA SALE DE LA GEOMETRÍA, NO DE PREGUNTARLE A AUTOCAD DÓNDE ESTÁ LA PIEZA.
+    //
+    //  Antes se le pedía a cada polilínea su GetBoundingBox. Y para cuando estos leaders se
+    //  dibujan, esas polilíneas YA NO EXISTEN: Bloquear copia toda la geometría a la
+    //  definición del bloque y BORRA las originales, y corre antes que los rótulos. Así que
+    //  el bounding box fallaba, el respaldo devolvía (0, 0), y los dos leaders acababan
+    //  clavados en el origen del dibujo con su texto colgando al lado —lejos del detalle y
+    //  apuntando a nada—.
+    //
+    //  El reparto que devuelve CartabonesPlacaBase es geometría pura y sigue en la mano: de
+    //  ahí sale la punta. Y como no toca COM, se puede comprobar sin AutoCAD delante, que es
+    //  lo único que se puede hacer aquí.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Un leader por dirección de cartabones, con su espesor y el de su soldadura.</summary>
     /// <remarks>
+    /// <para>
     /// <b>La dirección se lee del reparto, no se vuelve a deducir.</b> Antes se recalculaba aquí la
     /// regla del descarte —«sin espesor o sin longitud, cantidad cero»— y se contaba a mano el
     /// índice del primero de Y. Eran las mismas dos cuentas escritas en dos sitios: cambiar el
     /// criterio del descarte en uno y no en el otro dejaba el leader apuntando a un cartabón que no
     /// era, o a ninguno.
+    /// </para>
+    /// <para>
+    /// <b>Y se señala el cartabón que cae del lado del texto:</b> el rótulo de X va arriba, así que
+    /// se apunta al que sube, y el de Y va abajo a la izquierda, así que se apunta al que sale hacia
+    /// la izquierda. Tomando el primero del reparto —que es el de la cara positiva— la flecha del
+    /// rótulo de Y cruzaba el detalle entero de lado a lado para llegar al cartabón del otro
+    /// extremo.
+    /// </para>
     /// </remarks>
     private void LeadersDeCartabones(
-        PlacaBaseCad p, List<object> cartabones,
-        List<CartabonesPlacaBase.Cartabon> reparto, double xLef)
+        PlacaBaseCad p, List<CartabonesPlacaBase.Cartabon> reparto, double xLef)
     {
-        if (cartabones.Count == 0 || reparto.Count != cartabones.Count)
+        if (reparto.Count == 0)
         {
             return;
         }
@@ -652,37 +675,73 @@ public sealed partial class PlacaBaseDrawer
 
         // El alto que ocupan todos, para poner el texto de X arriba y el de Y abajo sin que
         // ninguno caiga sobre el detalle.
-        var (minY, maxY) = AltoDeTodos(cartabones);
-
-        var primeroX = reparto.FindIndex(c => c.EsX);
-        var primeroY = reparto.FindIndex(c => !c.EsX);
+        var (minY, maxY) = AltoDeTodos(reparto);
 
         // El filete del cartabón se rotula EN EL MISMO LEADER, en un segundo renglón. Es la
         // soldadura de esa pieza y de ninguna otra, así que un leader propio apuntando al mismo
         // sitio solo añadiría una flecha más a un detalle que ya tiene siete.
-        var filete = RenglonDelFileteDeCartabon(p);
+        var filete = TextoFileteDeCartabon(p);
 
-        if (primeroX >= 0)
+        var deX = ParaRotular(reparto, esX: true, CartabonesPlacaBase.Arriba);
+        var deY = ParaRotular(reparto, esX: false, CartabonesPlacaBase.Izquierda);
+
+        if (deX is not null)
         {
-            var (x, y) = PuntaLibre(cartabones[primeroX]);
+            var (x, y) = deX.Value.PuntaLibre;
 
             LeaderRectoDerecha(
-                "CARTABON X DE " + ConPulgadas(p.TextoEspCartabonX) + " DE ESP." + filete,
-                x, y, xTexto, maxY + separacionY);
+                Renglones("CARTABON X DE " + ConPulgadas(p.TextoEspCartabonX) + " DE ESP.", filete),
+                x, y, xTexto, maxY + separacionY, yaEscapado: true);
         }
 
-        if (primeroY >= 0)
+        if (deY is not null)
         {
-            var (x, y) = PuntaLibre(cartabones[primeroY]);
+            var (x, y) = deY.Value.PuntaLibre;
 
             LeaderRectoDerecha(
-                "CARTABON Y DE " + ConPulgadas(p.TextoEspCartabonY) + " DE ESP." + filete,
-                x, y, xTexto, minY - separacionY);
+                Renglones("CARTABON Y DE " + ConPulgadas(p.TextoEspCartabonY) + " DE ESP.", filete),
+                x, y, xTexto, minY - separacionY, yaEscapado: true);
         }
     }
 
+    /// <summary>
+    /// El cartabón de ese sentido al que se le pone la flecha.
+    /// </summary>
+    /// <param name="preferida">
+    /// La dirección que se busca —la del lado del texto—. Si de ese sentido no hay ninguno que
+    /// salga hacia ahí, vale cualquiera: es mejor señalar el de la cara opuesta que dejar el rótulo
+    /// sin flecha.
+    /// </param>
+    private static CartabonesPlacaBase.Cartabon? ParaRotular(
+        List<CartabonesPlacaBase.Cartabon> reparto, bool esX, int preferida)
+    {
+        CartabonesPlacaBase.Cartabon? respaldo = null;
+
+        foreach (var c in reparto)
+        {
+            if (c.EsX != esX)
+            {
+                continue;
+            }
+
+            if (c.Direccion == preferida)
+            {
+                return c;
+            }
+
+            respaldo ??= c;
+        }
+
+        return respaldo;
+    }
+
     /// <summary>El segundo renglón del leader del cartabón: su soldadura. Vacío si no lleva.</summary>
-    private string RenglonDelFileteDeCartabon(PlacaBaseCad p)
+    /// <remarks>
+    /// Devuelve el renglón <b>sin escapar y sin el <c>\P</c></b>: los pone
+    /// <see cref="Renglones"/>, que es quien sabe en qué orden van. Ver ahí por qué el orden
+    /// importa.
+    /// </remarks>
+    private static string TextoFileteDeCartabon(PlacaBaseCad p)
     {
         if (!p.DibujarSoldadura || p.SoldaduraCartabonCm <= 0)
         {
@@ -696,79 +755,22 @@ public sealed partial class PlacaBaseDrawer
             espesor = Numero(p.SoldaduraCartabonCm / 2.54);
         }
 
-        return "\\PSOLDADURA DE " + Escapar(espesor) + "\" DE ESP.";
+        return "SOLDADURA DE " + espesor + "\" DE ESP.";
     }
 
-    private (double Min, double Max) AltoDeTodos(List<object> objetos)
+    /// <summary>El alto que ocupan todos los cartabones, del reparto y sin tocar AutoCAD.</summary>
+    private static (double Min, double Max) AltoDeTodos(List<CartabonesPlacaBase.Cartabon> reparto)
     {
         var min = double.MaxValue;
         var max = double.MinValue;
 
-        foreach (var o in objetos)
+        foreach (var c in reparto)
         {
-            var caja = Caja(o);
-
-            if (caja is null)
-            {
-                continue;
-            }
-
-            if (caja.Value.Y1 < min) { min = caja.Value.Y1; }
-            if (caja.Value.Y2 > max) { max = caja.Value.Y2; }
+            if (c.Y1 < min) { min = c.Y1; }
+            if (c.Y2 > max) { max = c.Y2; }
         }
 
         return min < max ? (min, max) : (0, 0);
-    }
-
-    /// <summary>El punto medio de la <b>punta libre</b> del cartabón: el extremo lejos del perfil.</summary>
-    private (double X, double Y) PuntaLibre(object cartabon)
-    {
-        var caja = Caja(cartabon);
-
-        if (caja is null)
-        {
-            return (0, 0);
-        }
-
-        var (x1, y1, x2, y2) = caja.Value;
-
-        // El cartabón es una placa: su lado largo dice si es horizontal o vertical, y la punta
-        // libre es el extremo de ese lado.
-        return x2 - x1 >= y2 - y1
-            ? (x2, (y1 + y2) / 2)
-            : ((x1 + x2) / 2, y2);
-    }
-
-    private (double X1, double Y1, double X2, double Y2)? Caja(object ent)
-    {
-        try
-        {
-            return AcadConnection.Retry<(double, double, double, double)?>(() =>
-            {
-                object? min = null;
-                object? max = null;
-
-                var args = new object?[] { min, max };
-
-                ent.GetType().InvokeMember(
-                    "GetBoundingBox",
-                    System.Reflection.BindingFlags.InvokeMethod,
-                    binder: null, target: ent, args: args,
-                    modifiers: new[] { new System.Reflection.ParameterModifier(2) { [0] = true, [1] = true } },
-                    culture: null, namedParameters: null);
-
-                if (args[0] is not double[] a || args[1] is not double[] b)
-                {
-                    return null;
-                }
-
-                return (a[0], a[1], b[0], b[1]);
-            });
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 
     /// <summary>Leader de un tramo recto con el texto a la <b>derecha</b> del elemento.</summary>
@@ -785,13 +787,17 @@ public sealed partial class PlacaBaseDrawer
     }
 
     /// <summary>Igual, con el texto a la <b>izquierda</b>.</summary>
+    /// <param name="yaEscapado">
+    /// El texto viene <b>ya escapado</b> y con sus <c>\P</c> puestos, así que no se vuelve a
+    /// escapar. Lo usan los rótulos de varios renglones; ver <see cref="Renglones"/>.
+    /// </param>
     private void LeaderRectoDerecha(string s, double xFlecha, double yFlecha,
-                                    double xTexto, double yTexto)
+                                    double xTexto, double yTexto, bool yaEscapado = false)
     {
         var xFin = xTexto + (0.5 * _hTxt);
 
         // Anclaje 6 = MiddleRight.
-        Mtexto("\\pxqr;" + Escapar(s), xTexto, yTexto, anclaje: 6);
+        Mtexto("\\pxqr;" + (yaEscapado ? s : Escapar(s)), xTexto, yTexto, anclaje: 6);
 
         Linea(xFlecha, yFlecha, xFin, yTexto, PlacaBaseCapas.Rotulos);
 
@@ -1244,4 +1250,23 @@ public sealed partial class PlacaBaseDrawer
     /// <summary>Protege los caracteres con significado propio dentro de un MTEXT.</summary>
     private static string Escapar(string s) =>
         s.Replace("\\", "\\\\").Replace("{", "\\{").Replace("}", "\\}");
+
+    /// <summary>
+    /// Varios renglones en un solo MTEXT: cada uno escapado, y unidos con <c>\P</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>El <c>\P</c> se pone DESPUÉS de escapar, y el orden no es un detalle.</b>
+    /// <see cref="Escapar"/> dobla la contrabarra —que es lo que hay que hacerle a la que el
+    /// usuario escriba, para que MTEXT no la lea como un código— así que un <c>\P</c> que pase por
+    /// ahí sale <b>impreso en el plano</b> en lugar de partir el renglón.
+    /// </para>
+    /// <para>
+    /// Es exactamente lo que le pasaba al leader del cartabón: en el detalle se leía
+    /// <c>CARTABON X DE 1/2" DE ESP.\PSOLDADURA DE 1/4" DE ESP.</c> de un tirón, con el código a la
+    /// vista. Es el mismo reparto que usa el rótulo, que nunca lo tuvo.
+    /// </para>
+    /// </remarks>
+    private static string Renglones(params string[] partes) =>
+        string.Join("\\P", partes.Where(t => t.Trim().Length > 0).Select(Escapar));
 }

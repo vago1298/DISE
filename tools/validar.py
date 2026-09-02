@@ -6459,7 +6459,7 @@ def v18_planta_autocad() -> None:
     #  redondo llegaba con contorno nulo y sus cartabones volvian al envolvente -o sea, a la
     #  tangente- sin decir nada.
     check("y el contorno se le pasa desde el dibujante y desde la previa",
-          "p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna," in pbd
+          "p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna);" in pbd
           and "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno)" in pbd2
           and "p, xc, yc, pX, pY, 1, panoColumna)" in pbw
           and "ContornoDeColumna? contorno = null)" in cpb)
@@ -6785,9 +6785,18 @@ def v18_planta_autocad() -> None:
 
     #  Y LOS LEADERS LEEN LA DIRECCION DEL REPARTO. Antes recalculaban la regla del descarte y
     #  contaban a mano el indice del primero de Y: las mismas dos cuentas en dos sitios.
+    #
+    #  Y AHORA TAMBIEN LA PUNTA DE LA FLECHA SALE DE AHI. Antes le pedia a cada polilinea su
+    #  GetBoundingBox, y para cuando los rotulos se dibujan esas polilineas YA NO EXISTEN:
+    #  Bloquear copia la geometria a la definicion del bloque y borra las originales. El
+    #  bounding box fallaba, el respaldo devolvia (0, 0), y las dos flechas acababan clavadas
+    #  en el origen del dibujo con su texto colgando al lado, apuntando a nada.
     check("los leaders de cartabones leen la direccion del reparto",
-          "reparto.FindIndex(c => c.EsX)" in pbd2
-          and "reparto.FindIndex(c => !c.EsX)" in pbd2)
+          "ParaRotular(reparto, esX: true, CartabonesPlacaBase.Arriba)" in pbd2
+          and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.Izquierda)" in pbd2
+          and "public (double X, double Y) PuntaLibre => Direccion switch" in cpb
+          and "deX.Value.PuntaLibre" in pbd2
+          and '"GetBoundingBox",' not in pbd2)
 
     #  EL DADO SE REFERENCIA DE LA HOJA DE CONCRETO. Ya esta capturado ahi -con su armado, su
     #  recubrimiento y su forma- porque es una seccion que se dibuja por su cuenta. Volver a

@@ -41,10 +41,17 @@ public static class CartabonesPlacaBase
     //  direcciones salgan girando. Cuatro bloques con sus signos escritos a mano es donde se
     //  esconde un error que en el plano se ve como un cartabón montado sobre el tubo.
 
-    private const int Derecha = 0;
-    private const int Arriba = 1;
-    private const int Izquierda = 2;
-    private const int Abajo = 3;
+    /// <summary>Sale hacia <b>+X</b>, de la cara derecha del perfil.</summary>
+    public const int Derecha = 0;
+
+    /// <summary>Sale hacia <b>+Y</b>, de la cara de arriba.</summary>
+    public const int Arriba = 1;
+
+    /// <summary>Sale hacia <b>−X</b>, de la cara izquierda.</summary>
+    public const int Izquierda = 2;
+
+    /// <summary>Sale hacia <b>−Y</b>, de la cara de abajo.</summary>
+    public const int Abajo = 3;
 
     /// <summary>Un cartabón visto en planta: la polilínea cerrada que se dibuja.</summary>
     /// <param name="Puntos">
@@ -55,9 +62,8 @@ public static class CartabonesPlacaBase
     /// Los bulges de los vértices que llevan arco. Solo la <b>boca de pescado</b> trae uno; un
     /// cartabón contra un perfil recto no lleva ninguno y aquí viene <c>null</c>.
     /// </param>
-    /// <param name="EsX">
-    /// Sale de una cara <b>Y</b> del perfil y por tanto lo gobiernan los datos de X. Ver la nota
-    /// del cruce en <see cref="Construir"/>. Decide con qué espesor se rotula.
+    /// <param name="Direccion">
+    /// <see cref="Derecha"/>, <see cref="Arriba"/>, <see cref="Izquierda"/> o <see cref="Abajo"/>.
     /// </param>
     /// <remarks>
     /// <para>
@@ -74,8 +80,42 @@ public static class CartabonesPlacaBase
     /// </para>
     /// </remarks>
     public readonly record struct Cartabon(
-        double[] Puntos, (int Indice, double Bulge)[]? Dobleces, bool EsX)
+        double[] Puntos, (int Indice, double Bulge)[]? Dobleces, int Direccion)
     {
+        /// <summary>
+        /// Sale de una cara <b>Y</b> del perfil y por tanto lo gobiernan los datos de X.
+        /// </summary>
+        /// <remarks>
+        /// <b>Se deduce de la dirección, no se guarda aparte.</b> Guardado, eran dos hechos sobre la
+        /// misma pieza que podían discrepar: un cartabón marcado como de X saliendo hacia el lado, y
+        /// el rótulo diciendo un espesor que no es el suyo. Ver la nota del cruce en
+        /// <see cref="Construir"/>.
+        /// </remarks>
+        public bool EsX => Direccion == Arriba || Direccion == Abajo;
+
+        /// <summary>
+        /// El punto medio de la <b>punta libre</b>: el canto opuesto al perfil.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Es donde tiene que acabar la flecha de su leader, y sale de la <b>dirección</b> porque de
+        /// la geometría sola no se puede sacar: las dos puntas de una placa se parecen, y elegir
+        /// «la de arriba» acierta con el cartabón que sube y falla con el que baja.
+        /// </para>
+        /// <para>
+        /// La punta libre y no el canto pegado al perfil: el pegado queda <b>debajo de la columna</b>
+        /// —y en una columna redonda es el arco de la boca de pescado, tapado por el propio tubo—,
+        /// así que una flecha ahí señala al perfil y no al cartabón.
+        /// </para>
+        /// </remarks>
+        public (double X, double Y) PuntaLibre => Direccion switch
+        {
+            Derecha => (X2, (Y1 + Y2) / 2),
+            Arriba => ((X1 + X2) / 2, Y2),
+            Izquierda => (X1, (Y1 + Y2) / 2),
+            _ => ((X1 + X2) / 2, Y1),
+        };
+
         /// <summary>La X menor del envolvente.</summary>
         public double X1 => Extremo(0, menor: true);
 
@@ -97,8 +137,9 @@ public static class CartabonesPlacaBase
         /// así el desplazamiento hacia fuera del contorno —el de la soldadura— no tiene que
         /// preguntarse el sentido de cada cartabón.
         /// </remarks>
-        public static Cartabon Recto(double x1, double y1, double x2, double y2, bool esX) =>
-            new(new[] { x1, y1, x2, y1, x2, y2, x1, y2 }, null, esX);
+        public static Cartabon Recto(
+            double x1, double y1, double x2, double y2, int direccion) =>
+            new(new[] { x1, y1, x2, y1, x2, y2, x1, y2 }, null, direccion);
 
         /// <remarks>
         /// El arco de la boca <b>muerde hacia dentro</b> del cartabón, así que nunca se sale del
@@ -192,9 +233,9 @@ public static class CartabonesPlacaBase
 
                 salida.Add(lado == 0
                     ? Uno(Arriba, xc, yc, x, CaraDeArriba(puntos, x, yc + (pY / 2)),
-                          espX, largoX, circulo, esX: true)
+                          espX, largoX, circulo)
                     : Uno(Abajo, xc, yc, x, CaraDeAbajo(puntos, x, yc - (pY / 2)),
-                          espX, largoX, circulo, esX: true));
+                          espX, largoX, circulo));
             }
         }
 
@@ -209,9 +250,9 @@ public static class CartabonesPlacaBase
 
                 salida.Add(lado == 0
                     ? Uno(Derecha, xc, yc, y, CaraDerecha(puntos, y, xc + (pX / 2)),
-                          espY, largoY, circulo, esX: false)
+                          espY, largoY, circulo)
                     : Uno(Izquierda, xc, yc, y, CaraIzquierda(puntos, y, xc - (pX / 2)),
-                          espY, largoY, circulo, esX: false));
+                          espY, largoY, circulo));
             }
         }
 
@@ -229,9 +270,9 @@ public static class CartabonesPlacaBase
     /// <param name="cara">De dónde arranca cuando NO lleva boca: el paño que encontró el rayo.</param>
     private static Cartabon Uno(
         int direccion, double xc, double yc, double centro, double cara,
-        double esp, double largo, (double Cx, double Cy, double R)? circulo, bool esX)
+        double esp, double largo, (double Cx, double Cy, double R)? circulo)
     {
-        var boca = BocaDePescado(direccion, xc, yc, centro, esp, largo, circulo, esX);
+        var boca = BocaDePescado(direccion, xc, yc, centro, esp, largo, circulo);
 
         if (boca is not null)
         {
@@ -242,10 +283,10 @@ public static class CartabonesPlacaBase
 
         return direccion switch
         {
-            Derecha => Cartabon.Recto(cara, centro - medio, cara + largo, centro + medio, esX),
-            Arriba => Cartabon.Recto(centro - medio, cara, centro + medio, cara + largo, esX),
-            Izquierda => Cartabon.Recto(cara - largo, centro - medio, cara, centro + medio, esX),
-            _ => Cartabon.Recto(centro - medio, cara - largo, centro + medio, cara, esX),
+            Derecha => Cartabon.Recto(cara, centro - medio, cara + largo, centro + medio, Derecha),
+            Arriba => Cartabon.Recto(centro - medio, cara, centro + medio, cara + largo, Arriba),
+            Izquierda => Cartabon.Recto(cara - largo, centro - medio, cara, centro + medio, Izquierda),
+            _ => Cartabon.Recto(centro - medio, cara - largo, centro + medio, cara, Abajo),
         };
     }
 
@@ -285,7 +326,7 @@ public static class CartabonesPlacaBase
     /// </remarks>
     private static Cartabon? BocaDePescado(
         int direccion, double xc, double yc, double centro,
-        double esp, double largo, (double Cx, double Cy, double R)? circulo, bool esX)
+        double esp, double largo, (double Cx, double Cy, double R)? circulo)
     {
         if (circulo is null || esp <= 0 || largo <= 0)
         {
@@ -378,7 +419,7 @@ public static class CartabonesPlacaBase
             puntos[i + 1] = y;
         }
 
-        return new Cartabon(puntos, dobleces, esX);
+        return new Cartabon(puntos, dobleces, direccion);
     }
 
     // ======================================================================
