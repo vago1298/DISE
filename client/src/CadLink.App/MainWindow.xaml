@@ -2272,24 +2272,45 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- SE LLENAN SOLAS con las medidas de la seccion elegida en «ID dado».
-                                 Siguen siendo editables para un caso a mano, pero lo escrito a mano
-                                 NO gana contra la seccion: la referencia es la seccion, y en cuanto
-                                 esa seccion cambie estas dos se vuelven a poner al dia. -->
-                            <DataGridTextColumn Header="Dado X cm" Binding="{Binding DadoXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}">
+                            <!-- ===== LAS MEDIDAS DEL DADO: SE VEN, NO SE ESCRIBEN =====
+
+                                 De solo lectura a proposito. El dado ya esta capturado en
+                                 «Secciones Concreto» y esa es su UNICA definicion: si estas dos
+                                 celdas se pudieran escribir, habria dos sitios donde vive la misma
+                                 medida y nada que diga cual manda. Y no es una duda teorica: el
+                                 valor escrito aqui se perderia en cuanto alguien toque esa seccion,
+                                 porque la referencia se vuelve a resolver sola.
+
+                                 Asi que el dado se cambia donde se captura, y aqui solo se ve.
+                                 Para no tener dado, se deja «ID dado» en blanco.
+
+                                 IsReadOnly Y ADEMAS el estilo referenciado: el IsReadOnly impide
+                                 escribir y el estilo lo hace VISIBLE. Con solo el primero, la
+                                 celda se ve igual que las de al lado y el usuario descubre que no
+                                 se puede escribir intentandolo. -->
+                            <DataGridTextColumn Header="Dado X cm" Binding="{Binding DadoXCm, StringFormat=N1}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaReferenciada}">
                                 <!-- El globo va en ElementStyle y NO como ToolTip de la columna:
                                      una columna de DataGrid no es un control, no tiene ToolTip, y
                                      ponerselo es el error MC3072. -->
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="En cero: sin dado. Si el dado es redondo, esta es su DIAMETRO." />
+                                                Value="Sale de la seccion elegida en «ID dado». Para cambiarlo, ve a la pestaña «Secciones Concreto» y edita ese dado.&#10;Si el dado es redondo, esta medida es su DIAMETRO.&#10;Para dejar la placa sin dado, borra el «ID dado»." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Dado Y cm" Binding="{Binding DadoYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="Dado Y cm" Binding="{Binding DadoYCm, StringFormat=N1}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaReferenciada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Sale de la seccion elegida en «ID dado». Para cambiarlo, ve a la pestaña «Secciones Concreto» y edita ese dado.&#10;En un dado redondo vale lo mismo que X: un circulo tiene un solo diametro." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
                             <!-- ===== LAS ANCLAS =====
 
@@ -2344,8 +2365,22 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- Los agujeros. EN BLANCO es lo normal: el agujero sale del ancla
-                                 mas 1/16" de holgura, que es el respaldo de la macro. -->
+                            <!-- ===== LOS AGUJEROS: SE LLENAN SOLOS =====
+
+                                 El ancla mas 1/16" de holgura, escrito en la celda en cuanto se
+                                 elige el ancla. Antes esa cuenta se hacia por dentro al dibujar
+                                 -la celda iba en blanco- y la diferencia no es cosmetica: con el
+                                 valor a la vista se puede cotejar el agujero con el plano, y en
+                                 blanco habia que fiarse de que el programa lo hizo bien.
+
+                                 SIGUE SIENDO CAPTURABLE, porque el agujero holgado a proposito
+                                 existe: en montaje se usa para tener margen al cuadrar la columna.
+                                 Lo escrito a mano se respeta y NO se pisa al cambiar el ancla; solo
+                                 se recalcula si lo que habia era el automatico del ancla anterior.
+                                 Ver PlacaBaseRow.SeguirConElAgujero.
+
+                                 Y en blanco sigue significando «calculalo al dibujar», que es lo
+                                 que hacia la macro. -->
                             <DataGridTemplateColumn Header="Ø agujero X &quot;" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}"
                                                     SortMemberPath="DiamAgujeroX">
@@ -2360,9 +2395,9 @@
                                         <ComboBox IsEditable="True" IsTextSearchEnabled="False"
                                                   StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
                                                   VerticalContentAlignment="Center"
-                                                  ItemsSource="{Binding DiametrosAncla}"
+                                                  ItemsSource="{Binding DiametrosAgujero}"
                                                   Text="{Binding DiamAgujeroX, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="En blanco: el ancla mas 1/16&quot; de holgura." />
+                                                  ToolTip="Se llena solo: el ancla mas 1/16&quot; de holgura.&#10;Escribe otra medida si quieres el agujero HOLGADO a proposito -para tener margen al cuadrar la columna en montaje-: lo que escribas se respeta y no se pisa al cambiar el ancla.&#10;En blanco: se calcula al dibujar." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2381,9 +2416,9 @@
                                         <ComboBox IsEditable="True" IsTextSearchEnabled="False"
                                                   StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
                                                   VerticalContentAlignment="Center"
-                                                  ItemsSource="{Binding DiametrosAncla}"
+                                                  ItemsSource="{Binding DiametrosAgujero}"
                                                   Text="{Binding DiamAgujeroY, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="En blanco: el ancla mas 1/16&quot; de holgura." />
+                                                  ToolTip="Se llena solo: el ancla mas 1/16&quot; de holgura.&#10;Escribe otra medida si quieres el agujero HOLGADO a proposito -para tener margen al cuadrar la columna en montaje-: lo que escribas se respeta y no se pisa al cambiar el ancla.&#10;En blanco: se calcula al dibujar." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>

@@ -1365,6 +1365,26 @@
          El color va ADEMAS del IsEnabled porque WPF no cambia visiblemente una
          DataGridCell deshabilitada: sin esto la celda se veria igual y solo se
          notaria al intentar escribir en ella, que es tarde. -->
+    <!-- ==================================================================
+         CELDAS REFERENCIADAS DE OTRA HOJA
+         ==================================================================
+
+         El dato SE VE pero no se escribe aqui, porque su sitio es otra
+         pestaña. No es lo mismo que CeldaCalculada -que significa «esto sale
+         de una cuenta»-: esto significa «esto ya esta capturado, y en otro
+         lado». La distincion importa porque la respuesta a «¿y como lo
+         cambio?» es distinta: en una calculada se cambian los datos de los
+         que sale, y aqui se va a la hoja de la que viene.
+
+         Va en su propio color y con el candado en el globo de ayuda, que es
+         donde se dice a que pestaña hay que ir. -->
+    <Style x:Key="CeldaReferenciada" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Right" />
+    </Style>
+
     <Style x:Key="CeldaCartabon" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
         <Style.Triggers>

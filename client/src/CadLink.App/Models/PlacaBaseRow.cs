@@ -54,6 +54,20 @@ public sealed class PlacaBaseRow : Row
     private bool _girarPlaca90 = true;
     private bool _anclasEnMalla;
 
+    /// <summary>
+    /// Una fila nueva nace con el <b>agujero</b> ya puesto: el de su ancla más 1/16".
+    /// </summary>
+    /// <remarks>
+    /// Se calcula en lugar de escribirlo en el inicializador del campo. Con un <c>"13/16"</c>
+    /// literal ahí, el día que cambie el ancla de arranque las dos cosas dejarían de corresponder y
+    /// la fila nueva saldría con un agujero que no es el de su ancla.
+    /// </remarks>
+    public PlacaBaseRow()
+    {
+        _diamAgujeroX = AgujeroAutomatico(_diamAnclaX);
+        _diamAgujeroY = AgujeroAutomatico(_diamAnclaY);
+    }
+
     /// <summary>Celda <b>E2</b>: la marca de la placa. Va al rótulo.</summary>
     public string Marca { get => _marca; set => Set(ref _marca, value); }
 
@@ -167,6 +181,17 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Los espesores de placa y de cartabón usuales, en pulgadas.</summary>
     public string[] EspesoresPlaca => _espesoresPlaca;
 
+    /// <summary>
+    /// Los agujeros usuales: el ancla <b>más 1/16"</b> de holgura, ya en dieciseisavos.
+    /// </summary>
+    /// <remarks>
+    /// Son los que salen de los ocho diámetros de ancla de la lista de al lado. La celda se llena
+    /// sola, así que esta lista es para el caso raro: un agujero <b>holgado</b> a propósito, que en
+    /// una placa base se usa cuando el montaje necesita margen para cuadrar la columna. Por eso
+    /// llevan al final los dos sobremedida, que no corresponden a ningún ancla más 1/16".
+    /// </remarks>
+    public string[] DiametrosAgujero => _diametrosAgujero;
+
     /// <summary>Los espesores de soldadura, con el vacío al principio: vacío = sin soldadura.</summary>
     public string[] EspesoresSoldadura => _espesoresSoldadura;
 
@@ -176,8 +201,24 @@ public sealed class PlacaBaseRow : Row
     private static readonly string[] _espesoresPlaca =
         { "1/4", "5/16", "3/8", "1/2", "5/8", "3/4", "1", "1 1/4", "1 1/2", "2" };
 
+    // El vacío al principio sigue significando «calcúlalo»: es el respaldo de la macro, y el
+    // dibujante lo sigue respetando aunque ahora la celda se rellene sola.
+    private static readonly string[] _diametrosAgujero =
+    {
+        string.Empty,
+        "9/16", "11/16", "13/16", "15/16", "1 1/16", "1 3/16", "1 5/16", "1 9/16",
+        "1 3/4", "2"
+    };
+
+    // LA LISTA DE SOLDADURA, COMPLETA. Antes iba de 3/16 a 1/2, que deja fuera los dos extremos que
+    // sí se usan: el filete de 1/8 de una placa delgada y los de 5/8 en adelante de una columna de
+    // varias toneladas. La celda es editable, así que faltar en la lista no impedía capturarlos,
+    // pero obligaba a teclear a mano lo que debería estar a un clic.
     private static readonly string[] _espesoresSoldadura =
-        { string.Empty, "3/16", "1/4", "5/16", "3/8", "1/2" };
+    {
+        string.Empty,
+        "1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2", "9/16", "5/8", "3/4", "7/8", "1"
+    };
 
     /// <summary>Celda <b>C9</b>: designación del perfil, del catálogo.</summary>
     public string Seccion { get => _seccion; set => Set(ref _seccion, value); }
@@ -201,18 +242,168 @@ public sealed class PlacaBaseRow : Row
     public double SepBordeYCm { get => _sepBordeYCm; set => Set(ref _sepBordeYCm, value); }
 
     /// <summary>Celda <b>C14</b>: diámetro de las anclas en X, en pulgadas.</summary>
-    public string DiamAnclaX { get => _diamAnclaX; set => Set(ref _diamAnclaX, value); }
+    /// <remarks>Al cambiarlo, el <b>agujero</b> se recalcula solo. Ver <see cref="DiamAgujeroX"/>.</remarks>
+    public string DiamAnclaX
+    {
+        get => _diamAnclaX;
+        set
+        {
+            // EL VALOR DE ANTES SE GUARDA ANTES DE ESCRIBIR EL NUEVO. Es lo que permite saber si el
+            // agujero que hay puesto era el automático de esa ancla o uno que el usuario escribió.
+            var antes = _diamAnclaX;
+
+            Set(ref _diamAnclaX, value);
+
+            SeguirConElAgujero(antes, _diamAnclaX, _diamAgujeroX, v => DiamAgujeroX = v);
+        }
+    }
 
     /// <summary>Celda <b>C15</b>: diámetro de las anclas en Y, en pulgadas.</summary>
-    public string DiamAnclaY { get => _diamAnclaY; set => Set(ref _diamAnclaY, value); }
+    public string DiamAnclaY
+    {
+        get => _diamAnclaY;
+        set
+        {
+            var antes = _diamAnclaY;
+
+            Set(ref _diamAnclaY, value);
+
+            SeguirConElAgujero(antes, _diamAnclaY, _diamAgujeroY, v => DiamAgujeroY = v);
+        }
+    }
 
     /// <summary>
-    /// Celda <b>E14</b>: diámetro del agujero en X, en pulgadas. Vacío = el ancla más 1/16".
+    /// Celda <b>E14</b>: diámetro del agujero en X, en pulgadas.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Se llena solo: el ancla más 1/16"</b> de holgura, que es la cuenta que hacía el respaldo
+    /// de la macro cuando la celda venía en blanco. Ahora se ve escrita en la celda en lugar de
+    /// resolverse por dentro al dibujar, que es la diferencia entre poder cotejar el agujero con el
+    /// plano y tener que fiarse de que el programa lo hizo bien.
+    /// </para>
+    /// <para>
+    /// Y <b>sigue siendo capturable</b>, porque el agujero holgado a propósito existe: en montaje se
+    /// usa para tener margen al cuadrar la columna. Lo escrito a mano se respeta y no se pisa al
+    /// cambiar el ancla —solo se recalcula si lo que había era el automático del ancla anterior—.
+    /// </para>
+    /// <para>
+    /// En blanco sigue significando «calcúlalo al dibujar», que es lo que hacía la macro.
+    /// </para>
+    /// </remarks>
     public string DiamAgujeroX { get => _diamAgujeroX; set => Set(ref _diamAgujeroX, value); }
 
-    /// <summary>Celda <b>E15</b>: diámetro del agujero en Y. Vacío = el ancla más 1/16".</summary>
+    /// <summary>Celda <b>E15</b>: diámetro del agujero en Y. Ver la nota de X.</summary>
     public string DiamAgujeroY { get => _diamAgujeroY; set => Set(ref _diamAgujeroY, value); }
+
+    /// <summary>
+    /// Pone el agujero al día cuando cambia su ancla, <b>sin pisar lo que se escribió a mano</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La regla: el agujero sigue al ancla si está <b>en blanco</b> o si es exactamente el
+    /// automático del ancla <b>anterior</b>. Cualquier otra cosa es una decisión del usuario y se
+    /// queda.
+    /// </para>
+    /// <para>
+    /// Se resuelve comparando con el automático de antes y <b>no guardando una bandera</b> de «esto
+    /// lo puso el programa». Una bandera es estado que hay que mantener en el copiado de filas, en
+    /// la apertura del archivo y en el deshacer, y en cuanto uno de esos tres se olvide de ponerla,
+    /// el programa empieza a pisar valores que el usuario escribió. Comparando, no hay nada que
+    /// mantener: la respuesta sale de los datos que ya están en la fila.
+    /// </para>
+    /// </remarks>
+    private static void SeguirConElAgujero(
+        string anclaAntes, string anclaAhora, string agujeroPuesto, Action<string> escribir)
+    {
+        var puesto = (agujeroPuesto ?? string.Empty).Trim();
+
+        if (puesto.Length > 0 && puesto != AgujeroAutomatico(anclaAntes))
+        {
+            return;
+        }
+
+        escribir(AgujeroAutomatico(anclaAhora));
+    }
+
+    /// <summary>
+    /// El agujero que le toca a un ancla: su diámetro <b>más 1/16"</b>, en fracción.
+    /// </summary>
+    /// <remarks>
+    /// Devuelve vacío si el ancla no se entiende o es cero, porque entonces no hay agujero que
+    /// proponer: escribir «1/16» ahí sería inventarse un dato.
+    /// </remarks>
+    public static string AgujeroAutomatico(string? ancla)
+    {
+        var d = Pulgadas(ancla);
+
+        return d <= 0 ? string.Empty : ComoFraccion(d + (1.0 / 16.0));
+    }
+
+    /// <summary>
+    /// Escribe unas pulgadas como <b>fracción</b>: <c>13/16</c>, <c>1 1/16</c>, <c>1 3/16</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el camino de vuelta de <see cref="Pulgadas"/>, y hace falta por lo mismo que ella: en el
+    /// taller los diámetros se piden en fracciones. Un agujero que en el plano dijera <c>0.8125"</c>
+    /// obligaría a traducir en obra, que es justo lo que la hoja ahorra.
+    /// </para>
+    /// <para>
+    /// Se prueba en dieciseisavos, luego en treintaidosavos y luego en sesentaicuatroavos, y se
+    /// reduce. Las medidas de taller caen todas ahí: un ancla de 3/4 más 1/16 son 13/16 exactos. Si
+    /// el número no es una fracción de esas —porque alguien capturó un decimal cualquiera— se
+    /// escribe como decimal antes que redondear en silencio a la fracción de al lado.
+    /// </para>
+    /// </remarks>
+    public static string ComoFraccion(double pulgadas)
+    {
+        if (pulgadas <= 0)
+        {
+            return string.Empty;
+        }
+
+        foreach (var den in new[] { 16, 32, 64 })
+        {
+            var exacto = pulgadas * den;
+            var redondo = Math.Round(exacto);
+
+            if (Math.Abs(exacto - redondo) > 1e-6 || redondo <= 0)
+            {
+                continue;
+            }
+
+            var n = (long)redondo;
+            var d = (long)den;
+
+            var g = Mcd(n, d);
+
+            n /= g;
+            d /= g;
+
+            var entero = n / d;
+            var resto = n % d;
+
+            if (resto == 0)
+            {
+                return entero.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            return entero == 0 ? $"{resto}/{d}" : $"{entero} {resto}/{d}";
+        }
+
+        return pulgadas.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static long Mcd(long a, long b)
+    {
+        while (b != 0)
+        {
+            (a, b) = (b, a % b);
+        }
+
+        return a == 0 ? 1 : a;
+    }
 
     /// <summary>Celda <b>C16</b>: electrodo. Se rotula con el sufijo <c>XX</c>.</summary>
     public string Electrodo { get => _electrodo; set => Set(ref _electrodo, value); }

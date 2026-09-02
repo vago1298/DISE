@@ -460,6 +460,137 @@ check("NINGUNO se sale del 60 % central de la cara",
 check("sin dimension de cara va al centro y no divide por cero",
       abs(posicion_cartabon(20, 0, 2, 4) - 20) < 1e-9)
 
+# ==========================================================================
+#  EL AGUJERO AUTOMATICO: ancla + 1/16", escrito en fraccion
+# ==========================================================================
+#  Port de PlacaBaseRow.ComoFraccion, AgujeroAutomatico y SeguirConElAgujero.
+#
+#  La vuelta a fraccion hace falta por lo mismo que el lector: en el taller los
+#  diametros se piden en fracciones. Un agujero que en el plano dijera 0.8125"
+#  obligaria a traducir en obra.
+def mcd(a, b):
+    while b:
+        a, b = b, a % b
+    return a or 1
+
+
+def como_fraccion(pulgadas):
+    if pulgadas <= 0:
+        return ""
+
+    for den in (16, 32, 64):
+        exacto = pulgadas * den
+        redondo = round(exacto)
+
+        if abs(exacto - redondo) > 1e-6 or redondo <= 0:
+            continue
+
+        n, d = int(redondo), den
+        g = mcd(n, d)
+        n //= g
+        d //= g
+
+        entero, resto = divmod(n, d)
+
+        if resto == 0:
+            return str(entero)
+
+        return f"{resto}/{d}" if entero == 0 else f"{entero} {resto}/{d}"
+
+    # Antes que redondear en silencio a la fraccion de al lado, se escribe decimal.
+    return f"{pulgadas:.4f}".rstrip("0").rstrip(".")
+
+
+def agujero_automatico(ancla):
+    d = pulgadas(ancla)
+
+    return "" if d <= 0 else como_fraccion(d + 1.0 / 16.0)
+
+
+def seguir_con_el_agujero(ancla_antes, ancla_ahora, agujero_puesto):
+    """Devuelve el agujero que queda tras cambiar el ancla."""
+    puesto = (agujero_puesto or "").strip()
+
+    if puesto and puesto != agujero_automatico(ancla_antes):
+        return puesto        # lo escribio el usuario: se respeta
+
+    return agujero_automatico(ancla_ahora)
+
+
+print("\n" + "=" * 78)
+print("EL AGUJERO AUTOMATICO")
+print("=" * 78)
+
+#  Los ocho diametros usuales, con su agujero. Todos caen en dieciseisavos exactos,
+#  que es la razon de probar 16 antes que nada.
+esperados = {
+    "1/2":   "9/16",
+    "5/8":   "11/16",
+    "3/4":   "13/16",
+    "7/8":   "15/16",
+    "1":     "1 1/16",
+    "1 1/8": "1 3/16",
+    "1 1/4": "1 5/16",
+    "1 1/2": "1 9/16",
+}
+
+for ancla, agujero in esperados.items():
+    check(f'ancla {ancla}" -> agujero {agujero}"',
+          agujero_automatico(ancla) == agujero,
+          f'dio "{agujero_automatico(ancla)}"')
+
+check("y el agujero es SIEMPRE 1/16 mayor que su ancla",
+      all(abs(pulgadas(a) + 1 / 16 - pulgadas(g)) < 1e-9
+          for a, g in esperados.items()))
+
+check("sin ancla no se propone agujero, y no se inventa 1/16",
+      agujero_automatico("") == "" and agujero_automatico(None) == ""
+      and agujero_automatico("como sea") == "")
+
+print("\n" + "=" * 78)
+print("LA VUELTA A FRACCION")
+print("=" * 78)
+
+check("se reduce: 8/16 se escribe 1/2", como_fraccion(0.5) == "1/2")
+check("un entero se escribe entero, sin /1", como_fraccion(2.0) == "2")
+check("un mixto lleva el entero delante", como_fraccion(1.25) == "1 1/4")
+check("los treintaidosavos tambien salen", como_fraccion(1.0 / 32) == "1/32")
+check("y los sesentaicuatroavos", como_fraccion(3.0 / 64) == "3/64")
+check("cero y negativos dan vacio",
+      como_fraccion(0) == "" and como_fraccion(-1) == "")
+
+#  Lo importante: un decimal que NO es fraccion de taller no se redondea en silencio
+#  a la de al lado. Redondear seria poner en el plano una medida que nadie pidio.
+check("un decimal cualquiera se escribe decimal, no se redondea a la fraccion vecina",
+      como_fraccion(0.7) == "0.7", f'dio "{como_fraccion(0.7)}"')
+
+#  Y el viaje de ida y vuelta cierra: lo que se escribe se vuelve a leer igual.
+check("ida y vuelta: leer(escribir(x)) == x para los ocho agujeros",
+      all(abs(pulgadas(como_fraccion(pulgadas(g))) - pulgadas(g)) < 1e-9
+          for g in esperados.values()))
+
+print("\n" + "=" * 78)
+print("EL AGUJERO SIGUE AL ANCLA, PERO NO PISA LO ESCRITO A MANO")
+print("=" * 78)
+
+check("en blanco, se llena con el automatico del ancla nueva",
+      seguir_con_el_agujero("3/4", "1", "") == "1 1/16")
+
+check("si tenia el automatico del ancla vieja, pasa al de la nueva",
+      seguir_con_el_agujero("3/4", "1", "13/16") == "1 1/16")
+
+#  Este es el que importa: un agujero HOLGADO a proposito -para tener margen al
+#  cuadrar la columna en montaje- no se puede perder al tocar el ancla.
+check("un agujero holgado escrito a mano SE RESPETA",
+      seguir_con_el_agujero("3/4", "1", "1 1/4") == "1 1/4")
+
+check("y se sigue respetando aunque se cambie el ancla dos veces",
+      seguir_con_el_agujero("1", "1 1/8",
+                            seguir_con_el_agujero("3/4", "1", "1 1/4")) == "1 1/4")
+
+check("si el ancla nueva no se entiende, el agujero queda vacio y no a medias",
+      seguir_con_el_agujero("3/4", "", "13/16") == "")
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

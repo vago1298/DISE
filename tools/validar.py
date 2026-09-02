@@ -6671,6 +6671,59 @@ def v18_planta_autocad() -> None:
           "public static int Cuantos(PlacaBaseCad p)" in cpb
           and "public int TotalCartabones => CartabonesPlacaBase.Cuantos(AFormatoCad());" in pbr)
 
+    # ---- EL DADO NO SE ESCRIBE AQUI ----
+    #  Solo se ve. Su UNICA definicion esta en la hoja de concreto: con las celdas escribibles
+    #  habria dos sitios donde vive la misma medida y nada que diga cual manda. Y no es una duda
+    #  teorica: lo escrito aqui se perderia en cuanto alguien toque esa seccion, porque la
+    #  referencia se vuelve a resolver sola.
+    check("las medidas del dado se ven pero no se escriben en la placa",
+          'x:Key="CeldaReferenciada"' in tema
+          # Las DOS celdas del dado, de solo lectura y con el estilo que lo hace visible: con el
+          # IsReadOnly a secas la celda se ve igual que las de al lado y el usuario descubre que no
+          # se puede escribir intentandolo.
+          and tab_pb.count('CellStyle="{StaticResource CeldaReferenciada}"') == 2
+          and 'Binding="{Binding DadoXCm, StringFormat=N1}"' in tab_pb
+          and 'Binding="{Binding DadoYCm, StringFormat=N1}"' in tab_pb
+          # Y SIN UpdateSourceTrigger: si sigue ahi, la celda seguia siendo de ida y vuelta.
+          and "DadoXCm, StringFormat=N1, UpdateSourceTrigger" not in tab_pb
+          and "DadoYCm, StringFormat=N1, UpdateSourceTrigger" not in tab_pb)
+
+    # ---- EL AGUJERO SE LLENA SOLO: ANCLA + 1/16" ----
+    #  Esa cuenta ya la hacia el respaldo de la macro cuando la celda venia en blanco, pero por
+    #  dentro y al dibujar. Escrita en la celda se puede cotejar el agujero con el plano; en blanco
+    #  habia que fiarse de que el programa lo hizo bien.
+    check("el agujero se llena solo con el ancla mas 1/16",
+          "public static string AgujeroAutomatico(" in pbr
+          and "ComoFraccion(d + (1.0 / 16.0))" in pbr
+          # Y en FRACCION, no en decimal: un plano que pida 0.8125" obliga a traducir en obra.
+          and "public static string ComoFraccion(" in pbr
+          and "new[] { 16, 32, 64 }" in pbr)
+
+    #  PERO NO PISA LO ESCRITO A MANO. El agujero holgado a proposito existe: en montaje se usa
+    #  para tener margen al cuadrar la columna.
+    check("y no pisa un agujero holgado escrito a mano",
+          "private static void SeguirConElAgujero(" in pbr
+          and "puesto != AgujeroAutomatico(anclaAntes)" in pbr
+          # Se resuelve COMPARANDO con el automatico de antes y no guardando una bandera de «esto
+          # lo puso el programa»: una bandera es estado que hay que mantener en el copiado de filas,
+          # en la apertura del archivo y en el deshacer, y en cuanto uno se olvide, el programa
+          # empieza a pisar valores del usuario.
+          and "_autoAgujero" not in pbr)
+
+    #  Y las celdas del agujero tienen su propia lista, la de los dieciseisavos que salen de las
+    #  anclas, no la de las anclas: ofrecer «3/4» como agujero de un ancla de 3/4 es ofrecer un
+    #  agujero en el que el ancla no entra.
+    check("las celdas de agujero ofrecen agujeros, no diametros de ancla",
+          "public string[] DiametrosAgujero =>" in pbr
+          and '"9/16", "11/16", "13/16", "15/16", "1 1/16"' in pbr
+          and tab_pb.count('ItemsSource="{Binding DiametrosAgujero}"') == 2)
+
+    #  Y la lista de soldadura llega a los dos extremos que se usan: el filete de 1/8 de una placa
+    #  delgada y los de 5/8 en adelante de una columna de varias toneladas.
+    check("la lista de soldadura cubre de 1/8 a 1 pulgada",
+          '"1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2", "9/16", "5/8", "3/4", "7/8", "1"'
+          in pbr)
+
     # ------------------------------------------------------------------
     # LA CADENA, PARTIDA POR EL VANO DE LA PUERTA
     # ------------------------------------------------------------------

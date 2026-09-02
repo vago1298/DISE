@@ -685,6 +685,10 @@ public partial class MainWindow
         DadoXCm = f.DadoXCm,
         DadoYCm = f.DadoYCm,
         DadoCircular = f.DadoCircular,
+
+        // EL ORDEN IMPORTA AQUÍ: las anclas ANTES que sus agujeros. Al escribir un ancla, la fila
+        // pone su agujero al día sola, así que copiando el agujero primero el ancla lo pisaría y un
+        // agujero holgado a propósito se perdería al duplicar la fila.
         Familia = f.Familia,
         Seccion = f.Seccion,
         NAnclasX = f.NAnclasX,
