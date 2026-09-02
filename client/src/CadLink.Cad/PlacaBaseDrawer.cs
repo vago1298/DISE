@@ -489,7 +489,8 @@ public sealed partial class PlacaBaseDrawer
 
         if (p.DibujarPerfil && p.Perfil is not null)
         {
-            perfil = DibujarPerfil(p, x0 + (b / 2), y0 + (h / 2));
+            perfil = DibujarPerfil(
+                p, x0 + (b / 2), y0 + (h / 2), out var contornoDelPerfil);
 
             if (perfil.Count > 0 && EsFormaI(p.Perfil.Forma))
             {
@@ -497,10 +498,10 @@ public sealed partial class PlacaBaseDrawer
                 AcabadoPerfilI(perfil);
             }
 
-            // La soldadura: la franja entre el perfil y su offset exterior.
+            // La soldadura: la franja entre el paño del perfil y ese mismo paño corrido hacia fuera.
             if (p.DibujarSoldadura && p.SoldaduraCm > 0 && perfil.Count > 0)
             {
-                Soldadura(p, perfil, x0 + (b / 2), y0 + (h / 2), xLef);
+                Soldadura(p, perfil, contornoDelPerfil, x0 + (b / 2), y0 + (h / 2), xLef);
             }
         }
 

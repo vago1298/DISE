@@ -6460,6 +6460,63 @@ def v18_planta_autocad() -> None:
           and "b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX)" in pbr
           and "h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY)" in pbr)
 
+    # ------------------------------------------------------------------
+    # LA SOLDADURA SIGUE EL CONTORNO DEL PERFIL, NO SU CAJA
+    # ------------------------------------------------------------------
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    #  El defecto: la frontera del achurado se generaba con el RECTANGULO ENVOLVENTE del
+    #  perfil crecido el espesor. Para un tubo rectangular da lo mismo, pero para todo lo
+    #  demas no: en un perfil I la caja no es una franja, es la caja entera rellena de rayado
+    #  con la I dentro como isla. En un W 8x31 con filete de 1/4" son 411 cm2 de rayado donde
+    #  van 78: cinco veces mas. Se ve en el dibujo y no se parece a una soldadura.
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    cdesp = leer(ruta("client/src/CadLink.Cad/ContornoDesplazado.cs"))
+
+    check("el desplazamiento del contorno vive aparte y sin nada de COM",
+          "public static class ContornoDesplazado" in cdesp
+          and "public static double[]? HaciaFuera(" in cdesp
+          and "public static double AreaConSigno(" in cdesp
+          and "_ms." not in cdesp
+          and "AcadConnection" not in cdesp)
+
+    #  EL SENTIDO SE CALCULA, no se supone: TrazoAcero entrega unas formas antihorarias y
+    #  otras horarias -el angulo y la canal se espejean para el segundo perfil de una pareja-
+    #  asi que suponer un sentido desplazaria la mitad de las formas hacia DENTRO.
+    check("y el sentido del contorno se calcula, no se supone",
+          "var sentido = area > 0 ? 1.0 : -1.0;" in cdesp)
+
+    #  Cada vertice sale de CRUZAR sus dos aristas ya desplazadas. Por la bisectriz -el atajo
+    #  obvio- la franja sale mas angosta en las esquinas, un 30 % en una de 90 grados: la
+    #  soldadura se veria adelgazar justo donde mas material hay.
+    check("cada vertice sale de cruzar sus dos aristas desplazadas",
+          "var cruz = (dx[entra] * dy[sale]) - (dy[entra] * dx[sale]);" in cdesp
+          and "AristaHaciaAtras(" in cdesp
+          and "AristaHaciaAdelante(" in cdesp)
+
+    #  Y LA FRONTERA DEL ACHURADO ES ESE CONTORNO, no un Rectangulo. Si volviera a haber un
+    #  Rectangulo ahi, el defecto habria vuelto.
+    check("la frontera de la soldadura es el contorno desplazado",
+          "ContornoDesplazado.HaciaFuera(puntos, t)" in pbd2
+          and "frontera = Polilinea(fuera, PlacaBaseCapas.Soldadura, contornoExterior.Dobleces)"
+              in pbd2
+          # El tubo redondo y el macizo: anillo, no poligonal.
+          and "frontera = Circulo(circulo.Cx, circulo.Cy, (circulo.R + t) * 2" in pbd2)
+
+    #  Y EL CONTORNO SALE DEL PERFIL QUE SE DIBUJO, ya girado, no de un segundo TrazoAcero.De:
+    #  recalculandolo habria que repetir el giro y el encuadre, y el dia que uno cambie la
+    #  soldadura rodearia un perfil que no es el que esta dibujado.
+    check("y ese contorno es el que de verdad se dibujo, ya girado",
+          "out ContornoDelPerfil? contornoExterior" in pbd2
+          and "private sealed record ContornoDelPerfil" in pbd2
+          and "new ContornoDelPerfil { Puntos = pts, Dobleces = contorno.Dobleces }" in pbd2
+          and "out var contornoDelPerfil)" in pbd)
+
+    #  Y LA VISTA PREVIA DIBUJA LA FRANJA, con la misma clase. Es lo que permite ver este
+    #  arreglo sin abrir AutoCAD, que es justo lo que aqui no se puede hacer.
+    check("la vista previa ensena la franja de soldadura",
+          "private void DibujarSoldaduraPrevia(" in pbw
+          and "ContornoDesplazado.HaciaFuera(puntos, t)" in pbw)
+
     #  El dado va en CONCRETO y su rayado SOLO en la franja que sobresale: la placa entra como
     #  isla, porque bajo la placa lo que se ve es la placa, no el concreto.
     check("el dado va en CONCRETO y su rayado deja la placa como isla",

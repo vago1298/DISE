@@ -786,6 +786,254 @@ check("con el sobrante por debajo del minimo, el automatico sube al minimo",
 check("y sin borde libre daria menos, que es el defecto que esto corrige",
       sep_auto_con_borde(40, 36, 2.06, 1, 0) < 3.4)
 
+# ==========================================================================
+#  LA FRANJA DE SOLDADURA: EL CONTORNO DESPLAZADO HACIA FUERA
+# ==========================================================================
+#  Port de ContornoDesplazado. Esto es el arreglo del defecto que se veia en el
+#  dibujo: la franja se generaba con el RECTANGULO ENVOLVENTE del perfil crecido el
+#  espesor, asi que en un perfil I no era una franja, era la caja entera rellena de
+#  rayado con la I dentro como isla.
+#
+#  La prueba fuerte no es «el area crece»: es que CADA ARISTA desplazada quede a
+#  distancia t de la suya. Eso es lo que hace que sea una franja de ancho constante,
+#  o sea un filete, y es lo que un desplazamiento por la bisectriz NO cumple.
+TOL = 1e-9
+
+
+def area_con_signo(pts):
+    n = len(pts) // 2
+    suma = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        suma += pts[2 * i] * pts[2 * j + 1] - pts[2 * j] * pts[2 * i + 1]
+    return suma / 2
+
+
+def _arista_atras(sirve, n, v):
+    for k in range(1, n + 1):
+        i = (v - k) % n
+        if sirve[i]:
+            return i
+    return v
+
+
+def _arista_adelante(sirve, n, v):
+    for k in range(n):
+        i = (v + k) % n
+        if sirve[i]:
+            return i
+    return v
+
+
+def hacia_fuera(pts, t):
+    if pts is None or len(pts) < 6 or len(pts) % 2 != 0:
+        return None
+    if abs(t) <= TOL:
+        return list(pts)
+
+    area = area_con_signo(pts)
+    if abs(area) <= TOL:
+        return None
+
+    n = len(pts) // 2
+    sentido = 1.0 if area > 0 else -1.0
+
+    dx = [0.0] * n
+    dy = [0.0] * n
+    sirve = [False] * n
+
+    for i in range(n):
+        j = (i + 1) % n
+        ax = pts[2 * j] - pts[2 * i]
+        ay = pts[2 * j + 1] - pts[2 * i + 1]
+        largo = math.sqrt(ax * ax + ay * ay)
+        if largo <= TOL:
+            continue
+        dx[i] = ax / largo
+        dy[i] = ay / largo
+        sirve[i] = True
+
+    if sum(1 for x in sirve if x) < 2:
+        return None
+
+    salida = [0.0] * len(pts)
+
+    for i in range(n):
+        entra = _arista_atras(sirve, n, i)
+        sale = _arista_adelante(sirve, n, i)
+
+        a1x = pts[2 * i] + t * sentido * dy[entra]
+        a1y = pts[2 * i + 1] - t * sentido * dx[entra]
+        a2x = pts[2 * i] + t * sentido * dy[sale]
+        a2y = pts[2 * i + 1] - t * sentido * dx[sale]
+
+        cruz = dx[entra] * dy[sale] - dy[entra] * dx[sale]
+
+        if abs(cruz) <= 1e-7:
+            salida[2 * i] = a1x
+            salida[2 * i + 1] = a1y
+            continue
+
+        u = ((a2x - a1x) * dy[sale] - (a2y - a1y) * dx[sale]) / cruz
+        salida[2 * i] = a1x + u * dx[entra]
+        salida[2 * i + 1] = a1y + u * dy[entra]
+
+    return salida
+
+
+def dentro(pts, x, y):
+    """Punto en poligono, por cruces."""
+    n = len(pts) // 2
+    adentro = False
+    for i in range(n):
+        j = (i + 1) % n
+        x1, y1 = pts[2 * i], pts[2 * i + 1]
+        x2, y2 = pts[2 * j], pts[2 * j + 1]
+        if (y1 > y) != (y2 > y):
+            xc = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if x < xc:
+                adentro = not adentro
+    return adentro
+
+
+def aristas_a_distancia(orig, desp, t):
+    """Cada arista desplazada esta sobre la paralela a la suya, a distancia t hacia FUERA."""
+    n = len(orig) // 2
+    sentido = 1.0 if area_con_signo(orig) > 0 else -1.0
+    peor = 0.0
+
+    for i in range(n):
+        j = (i + 1) % n
+        ax = orig[2 * j] - orig[2 * i]
+        ay = orig[2 * j + 1] - orig[2 * i + 1]
+        largo = math.sqrt(ax * ax + ay * ay)
+        if largo <= TOL:
+            continue
+
+        nx = sentido * (ay / largo)
+        ny = -sentido * (ax / largo)
+
+        # La recta desplazada pasa por (orig_i + t*n) con la misma direccion.
+        px = orig[2 * i] + t * nx
+        py = orig[2 * i + 1] + t * ny
+
+        # Los DOS extremos de la arista desplazada tienen que estar en esa recta:
+        # su distancia con signo a la recta es cero.
+        for k in (i, j):
+            d = (desp[2 * k] - px) * nx + (desp[2 * k + 1] - py) * ny
+            peor = max(peor, abs(d))
+
+    return peor
+
+
+#  Un perfil I de verdad, en centimetros: peralte 20.4, patin 20.4, alma 0.73,
+#  patin 1.11 -el W 8x31 del ejemplo-. Doce vertices, con CUATRO reflejos, que son
+#  los que hacen que el rectangulo envolvente no sirva.
+def perfil_i(xc, yc, h, b, tw, tf):
+    x0, y0 = xc - b / 2, yc - h / 2
+    return [
+        x0, y0,
+        x0 + b, y0,
+        x0 + b, y0 + tf,
+        x0 + b / 2 + tw / 2, y0 + tf,
+        x0 + b / 2 + tw / 2, y0 + h - tf,
+        x0 + b, y0 + h - tf,
+        x0 + b, y0 + h,
+        x0, y0 + h,
+        x0, y0 + h - tf,
+        x0 + b / 2 - tw / 2, y0 + h - tf,
+        x0 + b / 2 - tw / 2, y0 + tf,
+        x0, y0 + tf,
+    ]
+
+
+print("\n" + "=" * 78)
+print("LA FRANJA DE SOLDADURA: EL CONTORNO DESPLAZADO")
+print("=" * 78)
+
+t_sold = 0.635          # 1/4" en cm
+cuadro = [0, 0, 10, 0, 10, 10, 0, 10]
+
+check("un cuadrado antihorario crece por los cuatro lados",
+      hacia_fuera(cuadro, 1) == [-1, -1, 11, -1, 11, 11, -1, 11],
+      f"{hacia_fuera(cuadro, 1)}")
+
+#  EL SENTIDO NO PUEDE IMPORTAR: TrazoAcero entrega unas formas antihorarias y otras
+#  horarias -el angulo y la canal se espejean-, asi que suponer un sentido desplazaria
+#  la mitad de las formas hacia DENTRO.
+cuadro_horario = [0, 0, 0, 10, 10, 10, 10, 0]
+d_horario = hacia_fuera(cuadro_horario, 1)
+
+check("y uno HORARIO tambien crece, no se encoge",
+      area_con_signo(cuadro) > 0 and area_con_signo(cuadro_horario) < 0
+      and abs(abs(area_con_signo(d_horario)) - 144) < 1e-9,
+      f"area {abs(area_con_signo(d_horario))}, esperada 144")
+
+#  Ahora el caso del defecto: el perfil I.
+i_pts = perfil_i(0, 0, 20.4, 20.4, 0.73, 1.11)
+i_desp = hacia_fuera(i_pts, t_sold)
+
+check("el perfil I se desplaza: doce vertices, doce vertices",
+      i_desp is not None and len(i_desp) == len(i_pts))
+
+check("TODAS las aristas de la I quedan a distancia t exacta",
+      aristas_a_distancia(i_pts, i_desp, t_sold) < 1e-9,
+      f"peor desvio {aristas_a_distancia(i_pts, i_desp, t_sold):.2e}")
+
+check("y el contorno desplazado CONTIENE al perfil, no al contrario",
+      all(dentro(i_desp, i_pts[2 * k], i_pts[2 * k + 1]) for k in range(len(i_pts) // 2)))
+
+#  Y LA COMPARACION CON LO QUE HABIA: el rectangulo envolvente crecido. La franja
+#  buena tiene que ser MUCHO mas chica en area que la caja menos el perfil, porque la
+#  caja de una I es casi toda aire.
+area_i = abs(area_con_signo(i_pts))
+area_franja = abs(area_con_signo(i_desp)) - area_i
+
+caja = 20.4 + 2 * t_sold
+area_caja_menos_i = caja * caja - area_i
+
+check("la franja buena es mucho menor que la caja envolvente menos el perfil",
+      area_franja < area_caja_menos_i / 3,
+      f"franja {area_franja:.1f} cm2 contra {area_caja_menos_i:.1f} cm2 de la caja")
+
+#  El ancho de la franja se puede estimar: area / perimetro ~ t. Con la caja no se
+#  parece a nada.
+perim_i = sum(
+    math.hypot(i_pts[2 * ((k + 1) % 12)] - i_pts[2 * k],
+               i_pts[2 * ((k + 1) % 12) + 1] - i_pts[2 * k + 1])
+    for k in range(12))
+
+check("y su ancho medio es el espesor de la soldadura",
+      abs(area_franja / perim_i - t_sold) < 0.15 * t_sold,
+      f"ancho medio {area_franja / perim_i:.3f} cm, espesor {t_sold:.3f} cm")
+
+#  Las otras formas: una canal -tres reflejos-, un angulo -uno- y una te.
+canal = [0, 0, 10, 0, 10, 1, 1.5, 1, 1.5, 9, 10, 9, 10, 10, 0, 10]
+angulo = [0, 0, 10, 0, 10, 1.2, 1.2, 1.2, 1.2, 10, 0, 10]
+te = [0, 9, 0, 10, 12, 10, 12, 9, 6.7, 9, 6.7, 0, 5.3, 0, 5.3, 9]
+
+for nombre, forma in (("canal", canal), ("angulo", angulo), ("te", te)):
+    d = hacia_fuera(forma, t_sold)
+
+    check(f"la {nombre}: todas sus aristas a distancia t exacta",
+          d is not None and aristas_a_distancia(forma, d, t_sold) < 1e-9,
+          "no se pudo desplazar" if d is None
+          else f"peor desvio {aristas_a_distancia(forma, d, t_sold):.2e}")
+
+    check(f"y el contorno de la {nombre} contiene a su perfil",
+          d is not None
+          and all(dentro(d, forma[2 * k], forma[2 * k + 1])
+                  for k in range(len(forma) // 2)))
+
+#  Un contorno degenerado no revienta: se contesta que no se puede y el dibujante lo
+#  dice en las notas en lugar de dibujar una franja al azar.
+check("un contorno de area nula no se desplaza, se rechaza",
+      hacia_fuera([0, 0, 5, 0, 10, 0], 1) is None)
+check("y menos de tres puntos tampoco",
+      hacia_fuera([0, 0, 1, 1], 1) is None)
+check("un espesor cero devuelve el mismo contorno",
+      hacia_fuera(cuadro, 0) == list(cuadro))
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

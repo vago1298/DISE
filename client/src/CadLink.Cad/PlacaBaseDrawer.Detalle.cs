@@ -25,9 +25,18 @@ public sealed partial class PlacaBaseDrawer
     /// sobre los puntos, no pidiéndole otro trazo: así el giro es el mismo para las nueve formas.
     /// </para>
     /// </remarks>
-    private List<object> DibujarPerfil(PlacaBaseCad p, double xc, double yc)
+    /// <param name="contornoExterior">
+    /// El contorno <b>exterior</b> tal como se dibujó, ya girado. Lo necesita la soldadura para
+    /// seguirlo, y sale de aquí y no de un segundo <c>TrazoAcero.De</c> a propósito: recalculándolo
+    /// habría que repetir el giro y el encuadre, y el día que uno de los dos cambie, la soldadura
+    /// rodearía un perfil que no es el que está dibujado.
+    /// </param>
+    private List<object> DibujarPerfil(
+        PlacaBaseCad p, double xc, double yc, out ContornoDelPerfil? contornoExterior)
     {
         var creados = new List<object>();
+
+        contornoExterior = null;
 
         if (p.Perfil is null)
         {
@@ -62,6 +71,14 @@ public sealed partial class PlacaBaseDrawer
             {
                 creados.Add(pl);
             }
+
+            // El PRIMERO es el exterior: TrazoAcero entrega siempre Exterior antes que Interior.
+            // Es el que rodea la soldadura; el interior es el hueco del tubo y no lleva filete.
+            if (ReferenceEquals(contorno, trazo.Exterior))
+            {
+                contornoExterior =
+                    new ContornoDelPerfil { Puntos = pts, Dobleces = contorno.Dobleces };
+            }
         }
 
         foreach (var circulo in new[] { trazo.CircExterior, trazo.CircInterior })
@@ -81,9 +98,33 @@ public sealed partial class PlacaBaseDrawer
             {
                 creados.Add(c);
             }
+
+            // El tubo redondo y el redondo macizo no tienen polilínea: su paño es esta
+            // circunferencia, y la soldadura la rodea con otra de radio mayor.
+            if (ReferenceEquals(circulo, trazo.CircExterior))
+            {
+                contornoExterior = new ContornoDelPerfil { Circulo = (cx, cy, circulo.R) };
+            }
         }
 
         return creados;
+    }
+
+    /// <summary>
+    /// El paño exterior del perfil, tal como quedó dibujado. Es lo que rodea la soldadura.
+    /// </summary>
+    /// <remarks>
+    /// Las nueve formas del manual caben en dos casos: siete son una polilínea —con o sin arcos— y
+    /// dos son una circunferencia. Se guardan aparte porque el desplazamiento es distinto: la
+    /// poligonal se corre vértice a vértice y la circunferencia solo crece de radio.
+    /// </remarks>
+    private sealed record ContornoDelPerfil
+    {
+        public double[]? Puntos { get; init; }
+
+        public (int Indice, double Bulge)[]? Dobleces { get; init; }
+
+        public (double Cx, double Cy, double R)? Circulo { get; init; }
     }
 
     /// <summary>Gira 90° un arreglo plano de puntos alrededor de (xc, yc).</summary>
@@ -156,25 +197,28 @@ public sealed partial class PlacaBaseDrawer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Aquí hay una diferencia deliberada con la macro.</b> La macro genera la frontera exterior
-    /// con <c>Offset</c> de AutoCAD, sobre una copia temporal del perfil, y después elige de los dos
-    /// offsets el que creció. Es un baile de crear, medir y borrar que depende de que
-    /// <c>Offset</c> se comporte igual en todas las versiones, y que en la propia macro obligó a
-    /// dibujar el perfil <b>dos veces</b> para que un <c>Delete</c> no se llevara la columna buena.
+    /// <b>La frontera sigue el CONTORNO del perfil</b>, no su rectángulo envolvente. La primera
+    /// versión usaba la caja del perfil crecida el espesor, y para un tubo rectangular eso da lo
+    /// mismo, pero para todo lo demás no: en un perfil I la caja no es una franja, es la caja
+    /// entera rellena de rayado con la I dentro como isla. Se ve en el dibujo y no se parece a una
+    /// soldadura.
     /// </para>
     /// <para>
-    /// Aquí la frontera se calcula: es el mismo contorno con sus puntos desplazados hacia fuera el
-    /// espesor de la soldadura. Para el rectángulo envolvente del perfil eso es exacto, y es lo que
-    /// se necesita, porque el hatch de soldadura solo tiene que rellenar la franja entre el paño del
-    /// perfil y ese borde. Se gana no depender de <c>Offset</c> y no tener que dibujar el perfil dos
-    /// veces.
+    /// El desplazamiento lo hace <see cref="ContornoDesplazado"/>, aparte y sin COM, en lugar del
+    /// <c>Offset</c> de AutoCAD que usaba la macro. La macro creaba una copia temporal del perfil,
+    /// la desplazaba a los dos lados, medía las dos y se quedaba con la que creció —un baile que
+    /// obligaba a dibujar el perfil <b>dos veces</b> para que un <c>Delete</c> no se llevara la
+    /// columna buena—. Calculándolo no hace falta nada de eso y, sobre todo, se puede comprobar sin
+    /// AutoCAD delante, que aquí es la única manera de comprobar algo.
     /// </para>
     /// <para>
     /// La frontera es <b>temporal</b>: se borra en cuanto el hatch está hecho, igual que en la
     /// macro. El hatch se crea no asociativo para que borrarla no se lo lleve.
     /// </para>
     /// </remarks>
-    private void Soldadura(PlacaBaseCad p, List<object> perfil, double xc, double yc, double xLef)
+    private void Soldadura(
+        PlacaBaseCad p, List<object> perfil, ContornoDelPerfil? contornoExterior,
+        double xc, double yc, double xLef)
     {
         var t = p.SoldaduraCm * _escala;
 
@@ -183,18 +227,40 @@ public sealed partial class PlacaBaseDrawer
             return;
         }
 
-        var (pX, pY) = MedidasDelPerfil(p);
+        // ---------- La frontera exterior: el paño del perfil corrido hacia fuera ----------
+        object? frontera = null;
 
-        if (pX <= 0 || pY <= 0)
+        // Por donde arranca el leader: el punto más a la izquierda de la franja.
+        var xIzquierdaFranja = xc;
+
+        if (contornoExterior?.Circulo is { } circulo)
         {
+            // El tubo redondo y el macizo: la franja es un anillo, así que la frontera es la misma
+            // circunferencia con el radio crecido.
+            frontera = Circulo(circulo.Cx, circulo.Cy, (circulo.R + t) * 2, PlacaBaseCapas.Soldadura);
+            xIzquierdaFranja = circulo.Cx - circulo.R - t;
+        }
+        else if (contornoExterior?.Puntos is { } puntos)
+        {
+            var fuera = ContornoDesplazado.HaciaFuera(puntos, t);
+
+            if (fuera is null)
+            {
+                Nota($"No se pudo calcular la franja de soldadura del perfil '{p.Seccion}': su " +
+                     "contorno no da para desplazarse. El perfil y las anclas se dibujaron igual.");
+                return;
+            }
+
+            frontera = Polilinea(fuera, PlacaBaseCapas.Soldadura, contornoExterior.Dobleces);
+
+            xIzquierdaFranja = MenorX(fuera);
+        }
+        else
+        {
+            // Sin paño no hay nada que rodear. Pasa si TrazoAcero no supo trazar el perfil, y en ese
+            // caso ya se avisó al dibujarlo.
             return;
         }
-
-        // La frontera exterior: el rectángulo del perfil crecido el espesor de la soldadura.
-        var frontera = Rectangulo(
-            xc - (pX / 2) - t, yc - (pY / 2) - t,
-            xc + (pX / 2) + t, yc + (pY / 2) + t,
-            PlacaBaseCapas.Soldadura);
 
         if (frontera is null)
         {
@@ -225,10 +291,29 @@ public sealed partial class PlacaBaseDrawer
 
         var separacion = Math.Max(11.0 * _hTxt, 8.0 * _escala);
 
+        // El leader arranca del borde REAL de la franja, no del de la caja del perfil. En una I la
+        // caja llega hasta la punta del patín y la franja del alma está mucho más adentro: apuntando
+        // a la caja, la flecha señalaba aire.
         LeaderZIzquierda(
             TextoSoldadura(p),
-            xc - (pX / 2) - t, yc,
+            xIzquierdaFranja, yc,
             xLef - separacion, yc);
+    }
+
+    /// <summary>La X más chica de un arreglo plano de puntos.</summary>
+    private static double MenorX(double[] puntos)
+    {
+        var min = double.MaxValue;
+
+        for (var i = 0; i + 1 < puntos.Length; i += 2)
+        {
+            if (puntos[i] < min)
+            {
+                min = puntos[i];
+            }
+        }
+
+        return min < double.MaxValue ? min : 0;
     }
 
     /// <summary>El texto del leader de soldadura, en dos renglones.</summary>

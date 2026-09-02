@@ -425,7 +425,7 @@ public partial class MainWindow
             });
         }
 
-        // ---------- El perfil de la columna ----------
+        // ---------- El perfil de la columna, y la franja de soldadura ----------
         if (p.Perfil is not null)
         {
             var trazo = TrazoAcero.De(
@@ -433,6 +433,15 @@ public partial class MainWindow
 
             if (trazo is not null)
             {
+                // LA SOLDADURA VA PRIMERO, debajo del perfil. Es la franja entre el paño del perfil
+                // y ese mismo paño corrido hacia fuera el espesor del filete, y se calcula con
+                // ContornoDesplazado: LA MISMA clase que usa el dibujante.
+                //
+                // Está en la previa porque es justo lo que estaba mal —la franja se dibujaba como
+                // la caja del perfil crecida, así que en una I el rayado llenaba toda la caja— y
+                // aquí se ve sin abrir AutoCAD.
+                DibujarSoldaduraPrevia(p, trazo, xc, yc, transformar);
+
                 var geoPerfil = new GeometryGroup
                 {
                     FillRule = FillRule.EvenOdd,
@@ -548,6 +557,167 @@ public partial class MainWindow
         {
             EtiquetaPlaca("NO SE DIBUJARÁ — " + libramiento, 10, 8, 11.5, rojo, negrita: true);
         }
+    }
+
+    /// <summary>
+    /// La franja de soldadura de la vista previa: el paño del perfil corrido hacia fuera.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se dibuja como el <b>hueco</b> entre dos contornos, con la regla par-impar: el desplazado por
+    /// fuera y el del perfil por dentro. Es lo mismo que hace el hatch de AutoCAD con el perfil como
+    /// isla, así que lo que se ve aquí es lo que va a salir en el plano.
+    /// </para>
+    /// <para>
+    /// Los arcos se muestrean igual que en el perfil, y los <b>bulges se conservan</b> al desplazar:
+    /// correr un arco hacia fuera le cambia el radio pero no el ángulo que barre.
+    /// </para>
+    /// </remarks>
+    private void DibujarSoldaduraPrevia(
+        PlacaBaseCad p, TrazoAcero.Trazo trazo, double xc, double yc, Transform transformar)
+    {
+        var t = p.SoldaduraCm;
+
+        if (t <= 0)
+        {
+            return;
+        }
+
+        var rojoSoldadura = new SolidColorBrush(Color.FromArgb(0x80, 0xC0, 0x2A, 0x1B));
+        var franja = new GeometryGroup { FillRule = FillRule.EvenOdd, Transform = transformar };
+
+        // ---- El tubo redondo y el macizo: la franja es un anillo ----
+        if (trazo.CircExterior is { } circ && trazo.Exterior is null)
+        {
+            var (cx, cy) = GirarSiToca(circ.Cx, circ.Cy, p.GiraElPerfil, xc, yc);
+
+            franja.Children.Add(new EllipseGeometry(new Point(cx, cy), circ.R + t, circ.R + t));
+            franja.Children.Add(new EllipseGeometry(new Point(cx, cy), circ.R, circ.R));
+        }
+        else if (trazo.Exterior is { } contorno)
+        {
+            var puntos = p.GiraElPerfil
+                ? GirarPuntos(contorno.Puntos, xc, yc)
+                : contorno.Puntos;
+
+            var fuera = ContornoDesplazado.HaciaFuera(puntos, t);
+
+            if (fuera is null)
+            {
+                return;
+            }
+
+            AgregarPoligonal(franja, fuera, contorno.Dobleces);
+            AgregarPoligonal(franja, puntos, contorno.Dobleces);
+        }
+
+        if (franja.Children.Count == 0)
+        {
+            return;
+        }
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = franja,
+            Fill = rojoSoldadura,
+            Stroke = new SolidColorBrush(Color.FromRgb(0xC0, 0x2A, 0x1B)),
+            StrokeThickness = 0.8
+        });
+    }
+
+    /// <summary>Gira 90° un arreglo plano de puntos, con el mismo giro que el dibujante.</summary>
+    private static double[] GirarPuntos(double[] puntos, double xc, double yc)
+    {
+        var salida = new double[puntos.Length];
+
+        for (var i = 0; i + 1 < puntos.Length; i += 2)
+        {
+            var (x, y) = GirarSiToca(puntos[i], puntos[i + 1], true, xc, yc);
+
+            salida[i] = x;
+            salida[i + 1] = y;
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Mete una poligonal con arcos en el grupo, muestreando los arcos.
+    /// </summary>
+    /// <remarks>
+    /// El bulge de una polilínea es <c>tan(ángulo / 4)</c>, así que el ángulo que barre el arco sale
+    /// de <c>4·atan(bulge)</c> y el radio, de la cuerda. Se muestrea con veinte tramos, que a este
+    /// tamaño es de sobra para que un doblez se vea curvo.
+    /// </remarks>
+    private static void AgregarPoligonal(
+        GeometryGroup grupo, double[] puntos, (int Indice, double Bulge)[]? dobleces)
+    {
+        var n = puntos.Length / 2;
+
+        if (n < 3)
+        {
+            return;
+        }
+
+        var bulge = new double[n];
+
+        if (dobleces is not null)
+        {
+            foreach (var (indice, b) in dobleces)
+            {
+                if (indice >= 0 && indice < n)
+                {
+                    bulge[indice] = b;
+                }
+            }
+        }
+
+        var figura = new PathFigure
+        {
+            StartPoint = new Point(puntos[0], puntos[1]),
+            IsClosed = true,
+            IsFilled = true
+        };
+
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+
+            var x1 = puntos[2 * i];
+            var y1 = puntos[(2 * i) + 1];
+            var x2 = puntos[2 * j];
+            var y2 = puntos[(2 * j) + 1];
+
+            if (Math.Abs(bulge[i]) < 1e-9)
+            {
+                figura.Segments.Add(new LineSegment(new Point(x2, y2), true));
+                continue;
+            }
+
+            var angulo = 4 * Math.Atan(bulge[i]);
+            var cuerda = Math.Sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)));
+
+            if (cuerda < 1e-12 || Math.Abs(Math.Sin(angulo / 2)) < 1e-12)
+            {
+                figura.Segments.Add(new LineSegment(new Point(x2, y2), true));
+                continue;
+            }
+
+            var radio = cuerda / (2 * Math.Sin(angulo / 2));
+
+            figura.Segments.Add(new ArcSegment(
+                new Point(x2, y2),
+                new Size(Math.Abs(radio), Math.Abs(radio)),
+                0,
+                Math.Abs(angulo) > Math.PI,
+                angulo > 0 ? SweepDirection.Counterclockwise : SweepDirection.Clockwise,
+                true));
+        }
+
+        var geo = new PathGeometry();
+        geo.Figures.Add(figura);
+
+        grupo.Children.Add(geo);
     }
 
     /// <summary>Mete el trazo del perfil en el grupo, girándolo si le toca.</summary>
