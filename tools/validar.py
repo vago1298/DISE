@@ -6576,6 +6576,22 @@ def v18_planta_autocad() -> None:
           os.path.exists(ruta("tools", "verificar_xaml.py"))
           and os.path.exists(ruta("tools", "balance_cs.py")))
 
+    #  EL CS0246 QUE ROMPIO LA COMPILACION, fijado por los dos lados.
+    #
+    #  El manejador de CellEditEnding declaraba 'DataGridCellEditEndingEventArgs e' y este archivo
+    #  no importa System.Windows.Controls. Se cualifica el tipo en lugar de importar el espacio
+    #  entero: el archivo solo necesita tres clases de ahi y ya usa TextBlock y Canvas cualificados.
+    check("el manejador de CellEditEnding no usa su tipo a secas",
+          "System.Windows.Controls.DataGridCellEditEndingEventArgs e" in pbw
+          and "using System.Windows.Controls;" not in pbw)
+
+    #  Y LA TABLA DE verificar_usings.py YA LOS CONOCE. Ahi estaba el hueco de verdad: la
+    #  herramienta para cazar esto ya existia y su patron para «Tipo nombre)» tambien, pero los
+    #  argumentos de los eventos del DataGrid no estaban en su tabla, asi que no los miraba.
+    check("y la tabla de verificar_usings conoce los eventos del DataGrid",
+          '"DataGridCellEditEndingEventArgs", "DataGridRowEditEndingEventArgs",' in
+          leer(ruta("tools/verificar_usings.py")))
+
     # ------------------------------------------------------------------
     # PLACA BASE: LA VISTA PREVIA, LOS CARTABONES Y EL DADO REFERENCIADO
     # ------------------------------------------------------------------

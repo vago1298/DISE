@@ -32,7 +32,11 @@ public sealed class ConPulgadas : IValueConverter
     /// <summary>El símbolo, en un solo sitio.</summary>
     public const string Simbolo = "\"";
 
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    // LAS FIRMAS VAN CON ? EN LOS PARAMETROS Y EN EL RETORNO. IValueConverter está anotado así en
+    // .NET —«object? Convert(object? value, ...)»— y el proyecto compila con Nullable habilitado, así
+    // que declararlo sin los interrogantes es un CS8767 por cada método: no rompe el build, pero
+    // añade dos avisos a una salida donde los avisos hay que poder leer.
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var texto = (value as string ?? value?.ToString() ?? string.Empty).Trim();
 
@@ -54,7 +58,7 @@ public sealed class ConPulgadas : IValueConverter
     /// no sepa volver lanza en cuanto algo lo use, y dejarlo sin implementar es dejar una trampa
     /// para el día que alguien enlace una celda de edición a través de aquí.
     /// </remarks>
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var texto = (value as string ?? value?.ToString() ?? string.Empty).Trim();
 

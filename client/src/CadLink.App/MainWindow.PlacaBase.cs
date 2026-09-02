@@ -112,7 +112,16 @@ public partial class MainWindow
     /// escribir, sin decir nada, se parece mucho a que el programa no le hiciera caso.
     /// </para>
     /// </remarks>
-    private void OnCeldaPlacaEditada(object? sender, DataGridCellEditEndingEventArgs e)
+    // EL TIPO VA CUALIFICADO. DataGridCellEditEndingEventArgs vive en System.Windows.Controls, que
+    // este archivo NO importa, y escribirlo a secas era el CS0246 que rompió la compilación.
+    //
+    // Se cualifica en lugar de agregar el using, por lo mismo que con FormaPath: este archivo ya
+    // usa System.Windows.Controls.TextBlock y .Canvas cualificados, e importar el espacio entero
+    // mete unas cincuenta clases en el ámbito —Border, Grid, Panel, Image, Label— en un archivo que
+    // solo necesita tres. Cada una es una ambigüedad futura esperando a que alguien declare una
+    // variable con ese nombre.
+    private void OnCeldaPlacaEditada(
+        object? sender, System.Windows.Controls.DataGridCellEditEndingEventArgs e)
     {
         if (!_listo || e.Row?.Item is not PlacaBaseRow fila)
         {

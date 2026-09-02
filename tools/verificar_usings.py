@@ -89,6 +89,18 @@ TIPOS = {
         "StackPanel", "ScrollViewer", "MenuItem", "TabItem",
         "SelectionChangedEventArgs", "TextChangedEventArgs", "Orientation",
         "DataGridCell", "DataGridRow", "DataGridColumn",
+
+        # LOS ARGUMENTOS DE LOS EVENTOS DEL DataGrid. Faltaban, y por faltar dejaron
+        # pasar hasta Windows un CS0246: el manejador de CellEditEnding de la hoja de
+        # placas base declaraba 'DataGridCellEditEndingEventArgs e' y el archivo no
+        # importa System.Windows.Controls.
+        #
+        # El patron que los caza -'Tipo nombre)'- ya estaba; lo que faltaba era el
+        # nombre en esta tabla. Van los seis del DataGrid de una vez, porque el que se
+        # deje fuera es el que va a salir la proxima vez.
+        "DataGridCellEditEndingEventArgs", "DataGridRowEditEndingEventArgs",
+        "DataGridBeginningEditEventArgs", "DataGridPreparingCellForEditEventArgs",
+        "DataGridSortingEventArgs", "InitializingNewItemEventArgs",
     ],
     "System.Windows.Threading": [
         "DispatcherTimer", "DispatcherPriority",
@@ -352,7 +364,11 @@ AJENOS = {
     # De la COTA de AutoCAD, por objeto. ExtensionLineExtend se parece a «Extension» de
     # este proyecto y se reportaba como CS1061 sin serlo: es una propiedad de AcadDimension
     # y el objeto es dynamic.
-    "ExtensionLineExtend", "DecimalSeparator", "ArrowheadSize", "TextHeight",
+    #
+    # ExtensionLineOffset es su hermana -DIMEXO- y llego con el detalle de la placa base:
+    # se reportaba igual, por parecerse a «Extension» y a «ExtensionDeLoDibujado».
+    "ExtensionLineExtend", "ExtensionLineOffset", "ExtLineFixedLenSuppress",
+    "DecimalSeparator", "ArrowheadSize", "TextHeight",
     "LinetypeScale", "AddSolid", "MoveToTop", "GetExtensionDictionary",
     "AddMText", "AddText", "AddHatch", "AddCircle", "AddLine", "AddArc", "Evaluate",
     "SetFont", "CopyFrom", "Regen", "Update", "Delete", "Move", "Rotate", "Explode",
