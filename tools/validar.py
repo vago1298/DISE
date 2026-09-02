@@ -6251,6 +6251,26 @@ def v18_planta_autocad() -> None:
           "? _capas.CapaMuroConcreto" in dibp
           and "if (!tapado && !dibujado)" in dibp)
 
+    #  SI NO SALIO NI UN MURO DE CONCRETO, SE DICE POR QUE.
+    #  Callar aqui hizo perder varias vueltas: el plano sin la linea del muro de concreto se ve
+    #  IGUAL en tres casos distintos -la regla no se aplico, la cadena lo tapo, o el muro no esta
+    #  clasificado como concreto- y no habia forma de distinguirlos. Era el tercero, y la pista
+    #  estaba en otra nota del propio programa: "su linea de mamposteria se dibuja en todos", que
+    #  solo puede pasar si NINGUNO es de concreto.
+    check("y si ningun muro salio de concreto, el resumen dice por que y con que notas",
+          "_muroConcretoVistos" in dibp
+          and "_notasDeMuro" in dibp
+          and "NINGUNO salió de concreto" in dibp
+          and "PALABRAS_CONCRETO" in dibp)
+
+    #  La comparacion normaliza IGUAL que el clasificador -sin espacios ni acentos-, porque
+    #  CadLink.Cad no referencia a CadLink.Etabs y no puede reusar EtabsReader.Normalizar. Si una
+    #  quitara los espacios y la otra no, el mismo muro saldria de concreto para una y de otra cosa
+    #  para la otra.
+    check("y la nota se compara normalizada, como en el clasificador",
+          "private static string NormalizarNota(string s)" in dibp
+          and "char.IsAsciiDigit(c)" in dibp)
+
     # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
     # ------------------------------------------------------------------

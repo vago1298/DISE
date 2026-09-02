@@ -169,21 +169,51 @@ public sealed partial class PlantaDrawer
             return false;
         }
 
-        var t = texto.ToUpperInvariant();
+        var t = NormalizarNota(texto);
 
         var palabras = _cfg.Texto("PALABRAS_CONCRETO", "CONCRETO,CONCRETE,C.A.,REFORZADO")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         foreach (var palabra in palabras)
         {
-            if (palabra.Length > 0
-                && t.Contains(palabra.ToUpperInvariant(), StringComparison.Ordinal))
+            var p = NormalizarNota(palabra);
+
+            if (p.Length > 0 && t.Contains(p, StringComparison.Ordinal))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Normaliza una nota igual que <c>EtabsReader.Normalizar</c>: mayúsculas, sin acentos y
+    /// <b>sin espacios ni signos</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se duplica la regla aquí porque <c>CadLink.Cad</c> <b>no referencia</b> a
+    /// <c>CadLink.Etabs</c> —el dibujante no sabe nada de ETABS y así debe seguir—, pero tiene que
+    /// comparar <b>con el mismo criterio</b> que el clasificador. Si una de las dos quitara los
+    /// espacios y la otra no, un muro saldría de concreto para una y de otra cosa para la otra, y
+    /// eso es exactamente el tipo de diferencia que no se ve hasta que está en el plano.
+    /// </para>
+    /// <para>
+    /// Quitar los espacios importa de verdad: en la hoja las palabras se escriben separadas por
+    /// comas y con espacios alrededor, y las notas de ETABS traen texto libre como
+    /// <c>«MURO DE CONCRETO f'c=250 kg/cm²»</c>. Comparando en crudo, un espacio de más o un
+    /// apóstrofo bastan para no encontrar la palabra.
+    /// </para>
+    /// </remarks>
+    private static string NormalizarNota(string s)
+    {
+        var t = s.ToUpperInvariant().Trim()
+            .Replace('Á', 'A').Replace('É', 'E').Replace('Í', 'I')
+            .Replace('Ó', 'O').Replace('Ú', 'U').Replace('Ñ', 'N');
+
+        return new string(
+            t.Where(c => (c >= 'A' && c <= 'Z') || char.IsAsciiDigit(c) || c == '.').ToArray());
     }
 
     private const string EstiloTexto = "SECCIONES";
@@ -246,6 +276,26 @@ public sealed partial class PlantaDrawer
     /// que esa regla existe para evitar.
     /// </remarks>
     private int _mcBajoCadena;
+
+    /// <summary>Muros que salieron clasificados como de concreto.</summary>
+    private int _muroConcretoVistos;
+
+    /// <summary>Muros que salieron clasificados como de mampostería.</summary>
+    private int _muroMamposteriaVistos;
+
+    /// <summary>Muros sin material reconocido.</summary>
+    private int _muroSinMaterial;
+
+    /// <summary>
+    /// Las notas distintas de los muros que <b>no</b> salieron de concreto.
+    /// </summary>
+    /// <remarks>
+    /// Es el dato que faltaba para no adivinar. Cuando el usuario dice «no me dibujas la base del
+    /// muro de concreto», hay tres causas que desde el plano se ven idénticas —no hay línea— y
+    /// esta lista distingue la tercera: que la property note no diga lo que se cree que dice.
+    /// </remarks>
+    private readonly SortedSet<string> _notasDeMuro =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public PlantaDrawer(dynamic doc)
     {
@@ -311,6 +361,10 @@ public sealed partial class PlantaDrawer
         _contornosMc = 0;
         _sinLeyendaMc = 0;
         _mcBajoCadena = 0;
+        _muroConcretoVistos = 0;
+        _muroMamposteriaVistos = 0;
+        _muroSinMaterial = 0;
+        _notasDeMuro.Clear();
 
         AsegurarCapas();
         AsegurarEstiloTexto();
@@ -593,6 +647,43 @@ public sealed partial class PlantaDrawer
             //  que es lo que se pidió explícitamente.
             var esConcreto = EsMuroDeConcreto(el);
 
+            // ==============================================================================
+            //  QUÉ CLASIFICACIÓN LE SALIÓ A CADA MURO, Y CON QUÉ NOTA
+            // ==============================================================================
+            //  Esto existe porque el usuario y yo nos quedamos atascados: él veía que no se
+            //  dibujaba la base del muro de concreto y desde el código no había forma de saber si
+            //  era porque la regla no se aplicaba, porque la cadena lo tapaba, o porque el muro
+            //  NO ESTABA CLASIFICADO COMO CONCRETO. Las tres se ven igual desde el plano: no hay
+            //  línea.
+            //
+            //  Y era la tercera. La pista estaba en otra nota del propio programa —«su línea de
+            //  mampostería se dibuja en todos»—, porque esa línea solo se dibuja cuando el
+            //  material es MAMPOSTERIA: si sale en todos, ninguno es de concreto.
+            //
+            //  Así que el resumen dice ahora la cuenta por material Y las notas que llegaron. Con
+            //  eso, mirar el aviso una vez sustituye a adivinar.
+            if (esConcreto)
+            {
+                _muroConcretoVistos++;
+            }
+            else if (string.Equals(el.Material, "MAMPOSTERIA", StringComparison.OrdinalIgnoreCase))
+            {
+                _muroMamposteriaVistos++;
+            }
+            else
+            {
+                _muroSinMaterial++;
+            }
+
+            // Las notas distintas que trae el modelo, para poder ver QUÉ dice la property note en
+            // lugar de suponerlo. Se guardan pocas: es un aviso, no un volcado.
+            if (!esConcreto && _notasDeMuro.Count < 8)
+            {
+                var nota = (el.Notas ?? string.Empty).Trim();
+
+                _notasDeMuro.Add(nota.Length > 0 ? nota : "(sin nota)");
+            }
+
             var contornoMc = esConcreto
                              && _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
                              && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
@@ -752,6 +843,37 @@ public sealed partial class PlantaDrawer
                  (leyenda.Length > 0 ? $" con la leyenda '{leyenda}' dentro" : string.Empty) +
                  $" en la capa '{_capas.CapaMuroConcreto}'. Se reconocen por su property note " +
                  "de ETABS.");
+        }
+
+        // ==============================================================================
+        //  SI NO SALIÓ NI UN MURO DE CONCRETO, SE DICE POR QUÉ
+        // ==============================================================================
+        //  Callar aquí es lo que hizo perder varias vueltas: el plano sin la línea del muro de
+        //  concreto se ve igual si la regla no se aplicó, si la cadena lo tapó o si el muro no
+        //  está clasificado como concreto. Se dice la cuenta por material y QUÉ notas llegaron.
+        if (_contornosMc == 0
+            && (_muroMamposteriaVistos > 0 || _muroSinMaterial > 0))
+        {
+            var detalle =
+                $"Muros vistos: {_muroConcretoVistos} de concreto, " +
+                $"{_muroMamposteriaVistos} de mampostería, " +
+                $"{_muroSinMaterial} sin material reconocido.";
+
+            if (_muroConcretoVistos == 0)
+            {
+                detalle +=
+                    " NINGUNO salió de concreto, así que no hay base de muro de concreto que " +
+                    "dibujar. La property note de ETABS es la que manda, y estas son las que " +
+                    "llegaron: " + string.Join(" | ", _notasDeMuro) + ". " +
+                    "Para que un muro salga de concreto, su property note tiene que traer una " +
+                    "de las palabras de PALABRAS_CONCRETO (" +
+                    _cfg.Texto("PALABRAS_CONCRETO", "CONCRETO,CONCRETE,C.A.,REFORZADO") + "). " +
+                    "Ojo: si la nota trae además una palabra de mampostería, gana la " +
+                    "mampostería; para ese caso está MURO_CONCRETO_POR_NOTA, que hace que la " +
+                    "nota mande sobre el nombre de la sección.";
+            }
+
+            Nota(detalle);
         }
 
         if (_mcBajoCadena > 0)
