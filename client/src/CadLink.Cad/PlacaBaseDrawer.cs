@@ -361,22 +361,27 @@ public sealed partial class PlacaBaseDrawer
         // ---------- El perfil, para poder medir la separación al borde ----------
         var (pX, pY) = MedidasDelPerfil(p);
 
-        // ---------- Separación al borde, respetando el BORDE LIBRE de la tabla L ----------
-        // Se ajusta aquí y no solo en la celda de la hoja: la separación se pudo capturar ANTES de
-        // cambiar el diámetro del ancla, y en ese caso la celda quedó con un número que ya no
-        // cumple. Ajustando también al dibujar, lo que sale al plano cumple siempre.
+        // El paño de la columna, ya girado. Se saca ANTES de dibujar nada porque la revisión de la
+        // columna L mide contra él y tiene que poder negarse a dibujar.
+        var panoColumna = p.PanoDeLaColumna(x0 + (b / 2), y0 + (h / 2), _escala);
+
+        // ---------- Separación al borde, respetando la DISTANCIA K del cuadro ----------
+        // K es la distancia mínima del ancla al canto recortado de la placa, que es exactamente lo
+        // que se captura en «Sep borde». Se ajusta aquí y no solo en la celda de la hoja: la
+        // separación se pudo capturar ANTES de cambiar el diámetro del ancla, y en ese caso la celda
+        // quedó con un número que ya no cumple. Ajustando también al dibujar, el plano cumple siempre.
         var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, p.DiamAnclaXCm, p.AnchoDibujoCm);
         var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, p.DiamAnclaYCm, p.AltoDibujoCm);
 
         sepX = sepX > 0
             ? sepX * _escala
             : AnclasPlacaBase.SepAuto(
-                b, pX, dAguX, _escala, AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaXCm) * _escala);
+                b, pX, dAguX, _escala, AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaXCm) * _escala);
 
         sepY = sepY > 0
             ? sepY * _escala
             : AnclasPlacaBase.SepAuto(
-                h, pY, dAguY, _escala, AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaYCm) * _escala);
+                h, pY, dAguY, _escala, AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaYCm) * _escala);
 
         // ---------- Las anclas ----------
         var anclas = AnclasPlacaBase.Construir(
@@ -388,7 +393,8 @@ public sealed partial class PlacaBaseDrawer
         {
             var falla = AnclasPlacaBase.RevisarSeparacionJ(anclas, _escala)
                         ?? AnclasPlacaBase.RevisarDistanciaK(anclas, x0, y0, b, h, _escala)
-                        ?? AnclasPlacaBase.RevisarBordeLibreL(anclas, x0, y0, b, h, _escala);
+                        ?? AnclasPlacaBase.RevisarHolguraColumnaL(
+                               anclas, panoColumna?.Puntos, _escala);
 
             if (falla is not null)
             {
@@ -489,8 +495,7 @@ public sealed partial class PlacaBaseDrawer
 
         if (p.DibujarPerfil && p.Perfil is not null)
         {
-            perfil = DibujarPerfil(
-                p, x0 + (b / 2), y0 + (h / 2), out var contornoDelPerfil);
+            perfil = DibujarPerfil(p, x0 + (b / 2), y0 + (h / 2));
 
             if (perfil.Count > 0 && EsFormaI(p.Perfil.Forma))
             {
@@ -501,7 +506,7 @@ public sealed partial class PlacaBaseDrawer
             // La soldadura: la franja entre el paño del perfil y ese mismo paño corrido hacia fuera.
             if (p.DibujarSoldadura && p.SoldaduraCm > 0 && perfil.Count > 0)
             {
-                Soldadura(p, perfil, contornoDelPerfil, x0 + (b / 2), y0 + (h / 2), xLef);
+                Soldadura(p, perfil, panoColumna, x0 + (b / 2), y0 + (h / 2), xLef);
             }
         }
 

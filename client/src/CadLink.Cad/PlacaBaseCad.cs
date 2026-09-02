@@ -93,6 +93,26 @@ public static class PlacaBaseCapas
 }
 
 /// <summary>
+/// El paño exterior de la columna, tal como queda dibujado.
+/// </summary>
+/// <remarks>
+/// Las nueve formas del manual caben en dos casos: siete son una polilínea —con o sin arcos— y dos
+/// son una circunferencia. Se guardan aparte porque lo que se hace con ellas es distinto: la
+/// poligonal se desplaza vértice a vértice y la circunferencia solo crece de radio.
+/// </remarks>
+public sealed record ContornoDeColumna
+{
+    /// <summary>Plano y cerrado: <c>x1,y1,x2,y2…</c>. Nulo si la columna es redonda.</summary>
+    public double[]? Puntos { get; init; }
+
+    /// <summary>Los bulges de los vértices que llevan arco.</summary>
+    public (int Indice, double Bulge)[]? Dobleces { get; init; }
+
+    /// <summary>La circunferencia, para el tubo redondo y el redondo macizo.</summary>
+    public (double Cx, double Cy, double R)? Circulo { get; init; }
+}
+
+/// <summary>
 /// Todo lo que hace falta para dibujar una placa base, ya en <b>centímetros</b>.
 /// </summary>
 /// <remarks>
@@ -263,6 +283,65 @@ public sealed class PlacaBaseCad
 
     /// <summary>El dado ya orientado, en cm.</summary>
     public double DadoYDibujoCm => GirarPlaca90 && GirarDado90 ? DadoXCm : DadoYCm;
+
+    /// <summary>
+    /// El paño exterior de la columna, <b>tal como se va a dibujar</b>: ya girado y a escala.
+    /// </summary>
+    /// <param name="xc">Centro del perfil, en unidades de dibujo.</param>
+    /// <param name="yc">Centro del perfil, en unidades de dibujo.</param>
+    /// <param name="escala">Cuántas unidades de dibujo mide un centímetro.</param>
+    /// <remarks>
+    /// <para>
+    /// Vive aquí y no en el dibujante porque lo necesitan <b>tres</b>: el dibujante, para trazarlo y
+    /// para rodearlo de soldadura; la revisión de la <b>columna L</b> del estándar, que mide la
+    /// holgura del ancla contra este paño y corre <i>antes</i> de dibujar nada; y la vista previa de
+    /// la hoja. Con la cuenta en el dibujante, la revisión no podía llegar a ella —el perfil todavía
+    /// no existe cuando hay que decidir si la placa se dibuja o no—.
+    /// </para>
+    /// <para>
+    /// Y con tres copias de «el contorno ya girado», el día que cambie el giro dos de las tres se
+    /// quedan atrás: la soldadura rodearía un perfil y la revisión mediría contra otro.
+    /// </para>
+    /// </remarks>
+    public ContornoDeColumna? PanoDeLaColumna(double xc, double yc, double escala)
+    {
+        if (Perfil is null || escala <= 0)
+        {
+            return null;
+        }
+
+        var ancho = Perfil.AnchoDibujoCm * escala;
+        var alto = Perfil.AltoDibujoCm * escala;
+
+        var trazo = TrazoAcero.De(Perfil, xc - (ancho / 2), yc - (alto / 2), escala);
+
+        if (trazo is null)
+        {
+            return null;
+        }
+
+        if (trazo.Exterior is { } contorno)
+        {
+            return new ContornoDeColumna
+            {
+                Puntos = GiraElPerfil
+                    ? ContornoDesplazado.Girar90(contorno.Puntos, xc, yc)
+                    : contorno.Puntos,
+                Dobleces = contorno.Dobleces
+            };
+        }
+
+        if (trazo.CircExterior is { } circulo)
+        {
+            var (cx, cy) = GiraElPerfil
+                ? ContornoDesplazado.Girar90Punto(circulo.Cx, circulo.Cy, xc, yc)
+                : (circulo.Cx, circulo.Cy);
+
+            return new ContornoDeColumna { Circulo = (cx, cy, circulo.R) };
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Lo que ocupa el detalle a lo ancho, en cm: la placa o el dado, el que sobresalga.

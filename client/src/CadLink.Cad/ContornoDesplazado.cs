@@ -25,6 +25,31 @@ public static class ContornoDesplazado
     /// <summary>Por debajo de esto, dos puntos son el mismo y una arista no tiene dirección.</summary>
     public const double Tolerancia = 1e-9;
 
+    /// <summary>Gira 90° un arreglo plano de puntos alrededor de <c>(xc, yc)</c>.</summary>
+    /// <remarks>
+    /// El giro de la macro es <c>xd = xc - y ; yd = yc + x</c> sobre las coordenadas locales, que es
+    /// un giro de +90°. Aquí los puntos vienen ya en coordenadas del dibujo, así que primero se
+    /// llevan al centro, se giran y se devuelven.
+    /// </remarks>
+    public static double[] Girar90(double[] puntos, double xc, double yc)
+    {
+        var salida = new double[puntos.Length];
+
+        for (var i = 0; i + 1 < puntos.Length; i += 2)
+        {
+            var (x, y) = Girar90Punto(puntos[i], puntos[i + 1], xc, yc);
+
+            salida[i] = x;
+            salida[i + 1] = y;
+        }
+
+        return salida;
+    }
+
+    /// <summary>Gira 90° un punto alrededor de <c>(xc, yc)</c>.</summary>
+    public static (double X, double Y) Girar90Punto(double x, double y, double xc, double yc) =>
+        (xc - (y - yc), yc + (x - xc));
+
     /// <summary>
     /// El área con <b>signo</b> del contorno: positiva si va antihorario.
     /// </summary>
@@ -249,6 +274,78 @@ public static class ContornoDesplazado
         }
 
         return (minX, mejorY);
+    }
+
+    /// <summary>
+    /// La distancia de un punto al <b>contorno</b>, en las mismas unidades que los puntos.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la distancia al <b>perímetro</b>, no al interior: un punto dentro del contorno devuelve su
+    /// distancia a la arista más cercana, con signo positivo igual que uno de fuera. Sirve así porque
+    /// lo que se mide con ella es la <b>holgura de la llave</b> —la columna L del estándar— y esa
+    /// holgura es contra el paño de la columna, esté el ancla del lado que esté.
+    /// </para>
+    /// <para>
+    /// Se mide al <b>segmento</b> y no al vértice más cercano. Con los vértices, un ancla frente a la
+    /// mitad de un patín largo daría una distancia enorme —la de la punta del patín— y pasaría una
+    /// holgura que no existe.
+    /// </para>
+    /// </remarks>
+    public static double DistanciaAlContorno(double[]? puntos, double x, double y)
+    {
+        if (puntos is null || puntos.Length < 4 || puntos.Length % 2 != 0)
+        {
+            return double.MaxValue;
+        }
+
+        var n = puntos.Length / 2;
+        var menor = double.MaxValue;
+
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+
+            var d = DistanciaAlSegmento(
+                x, y,
+                puntos[2 * i], puntos[(2 * i) + 1],
+                puntos[2 * j], puntos[(2 * j) + 1]);
+
+            if (d < menor)
+            {
+                menor = d;
+            }
+        }
+
+        return menor;
+    }
+
+    /// <summary>La distancia de un punto a un segmento, no a la recta que lo contiene.</summary>
+    private static double DistanciaAlSegmento(
+        double x, double y, double x1, double y1, double x2, double y2)
+    {
+        var dx = x2 - x1;
+        var dy = y2 - y1;
+
+        var largo2 = (dx * dx) + (dy * dy);
+
+        if (largo2 <= Tolerancia)
+        {
+            // Segmento de largo cero: es un punto.
+            return Math.Sqrt(((x - x1) * (x - x1)) + ((y - y1) * (y - y1)));
+        }
+
+        // Dónde cae la proyección, acotada a los extremos: eso es lo que la hace distancia al
+        // SEGMENTO y no a la recta.
+        var u = (((x - x1) * dx) + ((y - y1) * dy)) / largo2;
+
+        if (u < 0) { u = 0; }
+        if (u > 1) { u = 1; }
+
+        var px = x1 + (u * dx);
+        var py = y1 + (u * dy);
+
+        return Math.Sqrt(((x - px) * (x - px)) + ((y - py) * (y - py)));
     }
 
     /// <summary>La arista que <b>llega</b> al vértice, saltando las de largo cero.</summary>

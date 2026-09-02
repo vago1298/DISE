@@ -25,18 +25,9 @@ public sealed partial class PlacaBaseDrawer
     /// sobre los puntos, no pidiéndole otro trazo: así el giro es el mismo para las nueve formas.
     /// </para>
     /// </remarks>
-    /// <param name="contornoExterior">
-    /// El contorno <b>exterior</b> tal como se dibujó, ya girado. Lo necesita la soldadura para
-    /// seguirlo, y sale de aquí y no de un segundo <c>TrazoAcero.De</c> a propósito: recalculándolo
-    /// habría que repetir el giro y el encuadre, y el día que uno de los dos cambie, la soldadura
-    /// rodearía un perfil que no es el que está dibujado.
-    /// </param>
-    private List<object> DibujarPerfil(
-        PlacaBaseCad p, double xc, double yc, out ContornoDelPerfil? contornoExterior)
+    private List<object> DibujarPerfil(PlacaBaseCad p, double xc, double yc)
     {
         var creados = new List<object>();
-
-        contornoExterior = null;
 
         if (p.Perfil is null)
         {
@@ -63,21 +54,13 @@ public sealed partial class PlacaBaseDrawer
                 continue;
             }
 
-            var pts = girar ? Girar90(contorno.Puntos, xc, yc) : contorno.Puntos;
+            var pts = girar ? ContornoDesplazado.Girar90(contorno.Puntos, xc, yc) : contorno.Puntos;
 
             var pl = Polilinea(pts, PlacaBaseCapas.Perfiles, contorno.Dobleces);
 
             if (pl is not null)
             {
                 creados.Add(pl);
-            }
-
-            // El PRIMERO es el exterior: TrazoAcero entrega siempre Exterior antes que Interior.
-            // Es el que rodea la soldadura; el interior es el hueco del tubo y no lleva filete.
-            if (ReferenceEquals(contorno, trazo.Exterior))
-            {
-                contornoExterior =
-                    new ContornoDelPerfil { Puntos = pts, Dobleces = contorno.Dobleces };
             }
         }
 
@@ -90,7 +73,9 @@ public sealed partial class PlacaBaseDrawer
 
             // Un círculo girado alrededor del centro del perfil queda donde estaba si su centro es
             // el mismo; si no lo es, se gira su centro.
-            var (cx, cy) = girar ? Girar90Punto(circulo.Cx, circulo.Cy, xc, yc) : (circulo.Cx, circulo.Cy);
+            var (cx, cy) = girar
+                ? ContornoDesplazado.Girar90Punto(circulo.Cx, circulo.Cy, xc, yc)
+                : (circulo.Cx, circulo.Cy);
 
             var c = Circulo(cx, cy, circulo.R * 2, PlacaBaseCapas.Perfiles);
 
@@ -98,58 +83,15 @@ public sealed partial class PlacaBaseDrawer
             {
                 creados.Add(c);
             }
-
-            // El tubo redondo y el redondo macizo no tienen polilínea: su paño es esta
-            // circunferencia, y la soldadura la rodea con otra de radio mayor.
-            if (ReferenceEquals(circulo, trazo.CircExterior))
-            {
-                contornoExterior = new ContornoDelPerfil { Circulo = (cx, cy, circulo.R) };
-            }
         }
 
         return creados;
     }
 
-    /// <summary>
-    /// El paño exterior del perfil, tal como quedó dibujado. Es lo que rodea la soldadura.
-    /// </summary>
-    /// <remarks>
-    /// Las nueve formas del manual caben en dos casos: siete son una polilínea —con o sin arcos— y
-    /// dos son una circunferencia. Se guardan aparte porque el desplazamiento es distinto: la
-    /// poligonal se corre vértice a vértice y la circunferencia solo crece de radio.
-    /// </remarks>
-    private sealed record ContornoDelPerfil
-    {
-        public double[]? Puntos { get; init; }
 
-        public (int Indice, double Bulge)[]? Dobleces { get; init; }
-
-        public (double Cx, double Cy, double R)? Circulo { get; init; }
-    }
-
-    /// <summary>Gira 90° un arreglo plano de puntos alrededor de (xc, yc).</summary>
-    /// <remarks>
-    /// El giro de la macro es <c>xd = xc - y ; yd = yc + x</c> sobre las coordenadas locales, que es
-    /// un giro de +90°. Aquí los puntos ya vienen en coordenadas del dibujo, así que primero se
-    /// llevan al centro, se giran y se devuelven.
-    /// </remarks>
-    private static double[] Girar90(double[] puntos, double xc, double yc)
-    {
-        var salida = new double[puntos.Length];
-
-        for (var i = 0; i + 1 < puntos.Length; i += 2)
-        {
-            var (x, y) = Girar90Punto(puntos[i], puntos[i + 1], xc, yc);
-
-            salida[i] = x;
-            salida[i + 1] = y;
-        }
-
-        return salida;
-    }
-
-    private static (double X, double Y) Girar90Punto(double x, double y, double xc, double yc) =>
-        (xc - (y - yc), yc + (x - xc));
+    // Girar90 y Girar90Punto ya NO viven aquí: están en ContornoDesplazado, que es donde también
+    // los usa PlacaBaseCad.PanoDeLaColumna. Con una copia en cada sitio, el día que cambie el giro
+    // el perfil se dibujaría en una orientación y la soldadura lo rodearía en otra.
 
     /// <summary>Contorno ancho y rayado propio para las familias con forma de I.</summary>
     private void AcabadoPerfilI(List<object> perfil)
@@ -217,7 +159,7 @@ public sealed partial class PlacaBaseDrawer
     /// </para>
     /// </remarks>
     private void Soldadura(
-        PlacaBaseCad p, List<object> perfil, ContornoDelPerfil? contornoExterior,
+        PlacaBaseCad p, List<object> perfil, ContornoDeColumna? contornoExterior,
         double xc, double yc, double xLef)
     {
         var t = p.SoldaduraCm * _escala;

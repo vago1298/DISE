@@ -2409,8 +2409,10 @@
                                  perfil y el borde de la placa, que es donde cae de forma natural el
                                  ancla.
 
-                                 Y SE CORRIGEN SOLAS si no llegan al BORDE LIBRE que la tabla L
-                                 exige para ese diametro de ancla. El ajuste se hace al SALIR de la
+                                 Y SE CORRIGEN SOLAS si no llegan al minimo que la columna K del
+                                 cuadro Hylsa ES-03-001 exige para ese diametro de ancla -la
+                                 distancia del ancla al canto recortado de la placa, que es
+                                 exactamente lo que se captura aqui-. El ajuste se hace al SALIR de la
                                  celda, no en cada tecla: corrigiendo mientras se escribe, teclear
                                  «5» camino de «50» se convierte en un forcejeo -la celda sube el 5
                                  al minimo antes de que se llegue a escribir el 0-.
@@ -2423,7 +2425,7 @@
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al borde libre minimo de la tabla L para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
+                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al minimo de la columna K -del ancla al canto recortado de la placa- para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
@@ -2432,7 +2434,7 @@
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al borde libre minimo de la tabla L para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
+                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al minimo de la columna K -del ancla al canto recortado de la placa- para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
@@ -2579,7 +2581,7 @@
                             <DataGridTextColumn Header="Cartabones" Binding="{Binding TotalCartabones}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
-                            <!-- El BORDE LIBRE que exige la tabla L para estas anclas, y la
+                            <!-- El minimo de la columna K que exigen estas anclas, y la
                                  separacion al borde que se va a USAR de verdad.
 
                                  Las dos estan aqui porque son el numero que explica por que una
@@ -2588,15 +2590,15 @@
 
                                  Y «Sep borde usada» es distinta de lo capturado en DOS casos: cuando
                                  la celda va en cero -automatica- y cuando lo capturado no llegaba al
-                                 borde libre. En los dos, sin esta columna se ve una cosa en la celda
+                                 minimo de K. En los dos, sin esta columna se ve una cosa en la celda
                                  y el plano sale con otra. -->
-                            <DataGridTextColumn Header="Borde libre mín." Binding="{Binding BordeLibreMinimo}"
+                            <DataGridTextColumn Header="Mín. K · L" Binding="{Binding BordeMinimo}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Columna L del cuadro de libramientos, para el diametro de ancla de esta fila.&#10;Es el minimo al que se sube «Sep borde» si se captura menos." />
+                                                Value="Los dos minimos del cuadro Hylsa ES-03-001 para el diametro de ancla de esta fila.&#10;K: del ancla al canto recortado de la PLACA. Es el minimo al que se sube «Sep borde» si se captura menos.&#10;L: del ancla al paño de la COLUMNA, para que entre la llave al apretar la tuerca. Si no se cumple, el detalle no se dibuja.&#10;El ancla tiene que caber entre las dos." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>

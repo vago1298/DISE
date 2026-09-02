@@ -25,7 +25,7 @@ import math
 def separacion_minima_j_mm(diametro_mm):
     d = int(math.floor(diametro_mm + 0.5))
     tabla = [(13, 40), (16, 45), (19, 60), (22, 65), (25, 75), (29, 90),
-             (32, 95), (35, 105), (38, 120), (41, 130), (44, 150),
+             (32, 95), (35, 105), (38, 120), (41, 120), (44, 130), (48, 150),
              (51, 150), (57, 170), (64, 195), (70, 210), (76, 225), (89, 270),
              (102, 300)]
     for tope, valor in tabla:
@@ -37,7 +37,7 @@ def separacion_minima_j_mm(diametro_mm):
 def distancia_minima_k_mm(diametro_mm):
     d = int(math.floor(diametro_mm + 0.5))
     tabla = [(13, 22), (16, 30), (19, 32), (22, 38), (25, 45), (29, 51),
-             (32, 57), (35, 60), (38, 65), (41, 75), (44, 85),
+             (32, 57), (35, 60), (38, 65), (41, 70), (44, 75), (48, 85),
              (51, 90), (57, 100), (64, 110), (70, 120), (76, 135), (89, 155),
              (102, 180)]
     for tope, valor in tabla:
@@ -118,35 +118,44 @@ print("PLACA BASE: TABLAS J, K y L DE LIBRAMIENTOS")
 print("=" * 78)
 
 # ==========================================================================
-#  EL VBA TENIA DOS RENGLONES MAL. LA AUTORIDAD ES EL CUADRO IMPRESO.
+#  LA AUTORIDAD ES EL ORIGINAL EN MILIMETROS, Y EL PORT DEL VBA COINCIDIA
 # ==========================================================================
-#  Esto empezo como «los renglones EXACTOS del VBA», y el port los reprodujo
-#  fielmente. Al cotejarlos contra el cuadro «Libramientos requeridos para anclas
-#  en placas base» aparecio que la macro traia un CORRIMIENTO en las dos columnas,
-#  en los mismos dos renglones, mas un renglon de 48 mm que en el cuadro no existe:
+#  Hay que dejar escrito lo que paso, porque el error se cometio en las dos
+#  direcciones y la segunda vez fue peor:
 #
-#      D           VBA        cuadro
-#      1 5/8"  41   J=120  ->  J=130     K=70  ->  K=75
-#      1 3/4"  44   J=130  ->  J=150     K=75  ->  K=85
-#      (48 mm)      J=150      no existe K=85      no existe
+#  1) El port reprodujo fielmente la tabla del VBA. Correcto.
+#  2) Llego una captura del mismo cuadro en PULGADAS, se cotejo contra ella y se
+#     «corrigieron» J y K en dos renglones. INCORRECTO: la captura era la que
+#     estaba mal. Le faltaba el renglon de 48 mm -1 7/8"- y al faltarle, los
+#     valores de 1 5/8" y 1 3/4" salian corridos uno hacia arriba.
+#  3) Llego el original -Hylsa ES-03-001, en milimetros, 19 renglones- y se
+#     revirtio al valor del VBA.
 #
-#  Un ancla de 1 3/4" pasaba la revision con 130 mm de separacion cuando el cuadro
-#  pide 150: veinte milimetros de menos. Eso NO se ve en el dibujo -sale un detalle
-#  creible-, se ve en obra.
+#      D                 VBA / original   captura en pulgadas
+#      1 5/8"  41 mm     J=120  K=70      J=130  K=75   <- del renglon siguiente
+#      1 3/4"  44 mm     J=130  K=75      J=150  K=85   <- del renglon siguiente
+#      1 7/8"  48 mm     J=150  K=85      (no estaba)
 #
-#  Asi que la referencia de estas pruebas es el CUADRO y no el VBA. Los dos
-#  renglones se comprueban uno por uno mas abajo, con su nombre, para que nadie los
-#  «corrija» de vuelta al valor de la macro creyendo que arregla una errata.
+#  LA DEFENSA CONTRA QUE VUELVA A PASAR es contar los renglones antes de tocar
+#  nada: el cuadro tiene DIECINUEVE. Si una transcripcion trae dieciocho, le falta
+#  uno y los valores de abajo estan corridos.
 J_CUADRO = {13: 40, 16: 45, 19: 60, 22: 65, 25: 75, 29: 90, 32: 95, 35: 105,
-            38: 120, 41: 130, 44: 150, 51: 150, 57: 170, 64: 195,
+            38: 120, 41: 120, 44: 130, 48: 150, 51: 150, 57: 170, 64: 195,
             70: 210, 76: 225, 89: 270, 102: 300}
 K_CUADRO = {13: 22, 16: 30, 19: 32, 22: 38, 25: 45, 29: 51, 32: 57, 35: 60,
-            38: 65, 41: 75, 44: 85, 51: 90, 57: 100, 64: 110, 70: 120,
+            38: 65, 41: 70, 44: 75, 48: 85, 51: 90, 57: 100, 64: 110, 70: 120,
             76: 135, 89: 155, 102: 180}
+L_CUADRO = {13: 23, 16: 28, 19: 34, 22: 37, 25: 44, 29: 49, 32: 55, 35: 60,
+            38: 66, 41: 71, 44: 76, 48: 82, 51: 87, 57: 97, 64: 107, 70: 118,
+            76: 130, 89: 150, 102: 172}
 
-check("los 18 renglones de la tabla J coinciden con el cuadro",
+check("el cuadro tiene 19 renglones en las tres columnas",
+      len(J_CUADRO) == 19 and len(K_CUADRO) == 19 and len(L_CUADRO) == 19,
+      f"J={len(J_CUADRO)} K={len(K_CUADRO)} L={len(L_CUADRO)}")
+
+check("los 19 renglones de la tabla J coinciden con el original",
       all(separacion_minima_j_mm(d) == v for d, v in J_CUADRO.items()))
-check("los 18 renglones de la tabla K coinciden con el cuadro",
+check("los 19 renglones de la tabla K coinciden con el original",
       all(distancia_minima_k_mm(d) == v for d, v in K_CUADRO.items()))
 
 # El renglon INMEDIATO SUPERIOR cuando el diametro cae entre dos.
@@ -621,10 +630,10 @@ check("si el ancla nueva no se entiende, el agujero queda vacio y no a medias",
 #  Se escribe en PULGADAS y no en milimetros a proposito: asi se puede cotejar de un
 #  vistazo con la tabla impresa, que es como esta. La conversion a mm la hace la
 #  prueba, que es justo lo que hace el programa.
-def borde_libre_l_mm(diametro_mm):
+def distancia_minima_l_mm(diametro_mm):
     d = int(math.floor(diametro_mm + 0.5))
     tabla = [(13, 23), (16, 28), (19, 34), (22, 37), (25, 44), (29, 49),
-             (32, 55), (35, 60), (38, 66), (41, 76), (44, 82),
+             (32, 55), (35, 60), (38, 66), (41, 71), (44, 76), (48, 82),
              (51, 87), (57, 97), (64, 107), (70, 118), (76, 130), (89, 150),
              (102, 172)]
     for tope, valor in tabla:
@@ -633,70 +642,118 @@ def borde_libre_l_mm(diametro_mm):
     return 1.7 * d
 
 
-#  D en pulgadas -> (J, K, L) en mm, tal como esta en el cuadro.
+#  EL CUADRO, TRANSCRITO DEL ORIGINAL EN MILIMETROS.
+#
+#  Fuente: Hylsa, Estandar de Ingenieria ES-03-001, «LIBRAMIENTOS REQUERIDOS PARA
+#  ANCLAS EN PLACAS BASE», pag. 5 de 5, 30-MAY-80. DIECINUEVE renglones.
+#
+#      D  -  DIAMETRO DEL ANCLA (mm)
+#      J  -  DISTANCIA MINIMA ENTRE ANCLAS (mm)
+#      K  -  DISTANCIA MINIMA DEL ANCLA AL CANTO RECORTADO DE LA PLACA (mm)
+#      L  -  DISTANCIA MINIMA DE COLUMNA/CARTABON PARA ATORNILLAR (mm)
+#
+#  ─── POR QUE ESTA EN MILIMETROS Y NO EN PULGADAS ────────────────────────────────
+#  Hubo una vuelta en la que este cuadro se transcribio de una hoja de calculo que
+#  lo tenia en pulgadas, y esa transcripcion habia TIRADO el renglon de 48 mm
+#  -1 7/8", que existe pero es raro-. Al tirarlo, los valores de 1 5/8" y 1 3/4"
+#  quedaron corridos un renglon, y el port se «corrigio» contra ellos:
+#
+#      D                 original   transcripcion
+#      1 5/8"  41 mm     J=120      J=130   <- el 130 es del 1 3/4"
+#      1 3/4"  44 mm     J=130      J=150   <- el 150 es del 1 7/8"
+#      1 7/8"  48 mm     J=150      (no estaba)
+#
+#  El original manda. Y la defensa contra que vuelva a pasar es contar los
+#  renglones: si no son diecinueve, a la transcripcion le falta uno.
 CUADRO = [
-    ("1/2",   40,  22,  23),
-    ("5/8",   45,  30,  28),
-    ("3/4",   60,  32,  34),
-    ("7/8",   65,  38,  37),
-    ("1",     75,  45,  44),
-    ("1 1/8", 90,  51,  49),
-    ("1 1/4", 95,  57,  55),
-    ("1 3/8", 105, 60,  60),
-    ("1 1/2", 120, 65,  66),
-    ("1 5/8", 130, 75,  76),
-    ("1 3/4", 150, 85,  82),
-    ("2",     150, 90,  87),
-    ("2 1/4", 170, 100, 97),
-    ("2 1/2", 195, 110, 107),
-    ("2 3/4", 210, 120, 118),
-    ("3",     225, 135, 130),
-    ("3 1/2", 270, 155, 150),
-    ("4",     300, 180, 172),
+    ( 13,  40,  22,  23),
+    ( 16,  45,  30,  28),
+    ( 19,  60,  32,  34),
+    ( 22,  65,  38,  37),
+    ( 25,  75,  45,  44),
+    ( 29,  90,  51,  49),
+    ( 32,  95,  57,  55),
+    ( 35, 105,  60,  60),
+    ( 38, 120,  65,  66),
+    ( 41, 120,  70,  71),
+    ( 44, 130,  75,  76),
+    ( 48, 150,  85,  82),
+    ( 51, 150,  90,  87),
+    ( 57, 170, 100,  97),
+    ( 64, 195, 110, 107),
+    ( 70, 210, 120, 118),
+    ( 76, 225, 135, 130),
+    ( 89, 270, 155, 150),
+    (102, 300, 180, 172),
 ]
 
 print("\n" + "=" * 78)
 print("EL CUADRO DE LIBRAMIENTOS: LAS TRES COLUMNAS, RENGLON POR RENGLON")
 print("=" * 78)
 
+check("el cuadro transcrito tiene los DIECINUEVE renglones del original",
+      len(CUADRO) == 19, f"{len(CUADRO)} renglones")
+
 malos_j, malos_k, malos_l = [], [], []
 
-for d_pulg, j, k, l in CUADRO:
-    mm = pulgadas(d_pulg) * 25.4
+for d, j, k, l in CUADRO:
+    if separacion_minima_j_mm(d) != j:
+        malos_j.append(f"{d} mm: {separacion_minima_j_mm(d):.0f} en vez de {j}")
 
-    if separacion_minima_j_mm(mm) != j:
-        malos_j.append(f'{d_pulg}": {separacion_minima_j_mm(mm):.0f} en vez de {j}')
+    if distancia_minima_k_mm(d) != k:
+        malos_k.append(f"{d} mm: {distancia_minima_k_mm(d):.0f} en vez de {k}")
 
-    if distancia_minima_k_mm(mm) != k:
-        malos_k.append(f'{d_pulg}": {distancia_minima_k_mm(mm):.0f} en vez de {k}')
+    if distancia_minima_l_mm(d) != l:
+        malos_l.append(f"{d} mm: {distancia_minima_l_mm(d):.0f} en vez de {l}")
 
-    if borde_libre_l_mm(mm) != l:
-        malos_l.append(f'{d_pulg}": {borde_libre_l_mm(mm):.0f} en vez de {l}')
-
-check(f"columna J: los {len(CUADRO)} renglones coinciden con la tabla",
+check(f"columna J: los {len(CUADRO)} renglones coinciden con el original",
       not malos_j, "; ".join(malos_j))
-check(f"columna K: los {len(CUADRO)} renglones coinciden con la tabla",
+check(f"columna K: los {len(CUADRO)} renglones coinciden con el original",
       not malos_k, "; ".join(malos_k))
-check(f"columna L: los {len(CUADRO)} renglones coinciden con la tabla",
+check(f"columna L: los {len(CUADRO)} renglones coinciden con el original",
       not malos_l, "; ".join(malos_l))
 
-#  Y LOS DOS RENGLONES QUE ESTABAN MAL, fijados uno por uno. Sin esto, el mismo
-#  corrimiento podria volver en una edicion futura y las comprobaciones de arriba lo
-#  dirian sin explicar que ya paso una vez.
-check("el 1 5/8\" pide 130 mm de separacion J, no 120 (era el error)",
-      separacion_minima_j_mm(pulgadas("1 5/8") * 25.4) == 130)
-check("el 1 3/4\" pide 150 mm de separacion J, no 130 (era el error)",
-      separacion_minima_j_mm(pulgadas("1 3/4") * 25.4) == 150)
-check("el 1 5/8\" pide 75 mm de distancia K, no 70 (era el error)",
-      distancia_minima_k_mm(pulgadas("1 5/8") * 25.4) == 75)
-check("el 1 3/4\" pide 85 mm de distancia K, no 75 (era el error)",
-      distancia_minima_k_mm(pulgadas("1 3/4") * 25.4) == 85)
+#  ─── LOS TRES RENGLONES QUE LA TRANSCRIPCION A PULGADAS HABIA MOVIDO ────────────
+#  Se fijan uno por uno y con su numero para que nadie los vuelva a «corregir». La
+#  transcripcion decia J=130 en el 1 5/8" y J=150 en el 1 3/4": los valores del
+#  renglon siguiente, porque le faltaba el de 48 mm.
+check("el 1 5/8\" (41 mm) pide J = 120, no 130",
+      separacion_minima_j_mm(41) == 120, f"dio {separacion_minima_j_mm(41):.0f}")
+check("el 1 3/4\" (44 mm) pide J = 130, no 150",
+      separacion_minima_j_mm(44) == 130, f"dio {separacion_minima_j_mm(44):.0f}")
+check("y el 1 7/8\" (48 mm) EXISTE y pide J = 150",
+      separacion_minima_j_mm(48) == 150, f"dio {separacion_minima_j_mm(48):.0f}")
 
-#  Y QUE NO HAY RENGLON DE 48 mm: no existe en la tabla. 48 mm cae entre el 1 3/4" y
-#  el 2", asi que le toca el valor del 2".
-check("no hay renglon de 48 mm inventado: cae en el del 2\"",
-      separacion_minima_j_mm(48) == 150 and distancia_minima_k_mm(48) == 90
-      and borde_libre_l_mm(48) == 87)
+check("el 1 5/8\" (41 mm) pide K = 70, no 75",
+      distancia_minima_k_mm(41) == 70, f"dio {distancia_minima_k_mm(41):.0f}")
+check("el 1 3/4\" (44 mm) pide K = 75, no 85",
+      distancia_minima_k_mm(44) == 75, f"dio {distancia_minima_k_mm(44):.0f}")
+check("y el 1 7/8\" (48 mm) pide K = 85",
+      distancia_minima_k_mm(48) == 85, f"dio {distancia_minima_k_mm(48):.0f}")
+
+check("el 1 5/8\" (41 mm) pide L = 71, no 76",
+      distancia_minima_l_mm(41) == 71, f"dio {distancia_minima_l_mm(41):.0f}")
+check("el 1 3/4\" (44 mm) pide L = 76, no 82",
+      distancia_minima_l_mm(44) == 76, f"dio {distancia_minima_l_mm(44):.0f}")
+check("y el 1 7/8\" (48 mm) pide L = 82",
+      distancia_minima_l_mm(48) == 82, f"dio {distancia_minima_l_mm(48):.0f}")
+
+#  Y EL PUENTE PULGADAS -> MILIMETROS, que es donde se cometio el error: cada medida
+#  comercial en pulgadas tiene que caer en SU renglon del cuadro.
+pares = [("1/2", 13), ("5/8", 16), ("3/4", 19), ("7/8", 22), ("1", 25),
+         ("1 1/8", 29), ("1 1/4", 32), ("1 3/8", 35), ("1 1/2", 38),
+         ("1 5/8", 41), ("1 3/4", 44), ("1 7/8", 48), ("2", 51),
+         ("2 1/4", 57), ("2 1/2", 64), ("2 3/4", 70), ("3", 76),
+         ("3 1/2", 89), ("4", 102)]
+
+descuadres = [
+    f'{p}" cae en el renglon de {d} y da J={separacion_minima_j_mm(pulgadas(p) * 25.4):.0f}, '
+    f'no {separacion_minima_j_mm(d):.0f}'
+    for p, d in pares
+    if separacion_minima_j_mm(pulgadas(p) * 25.4) != separacion_minima_j_mm(d)]
+
+check("cada diametro comercial en pulgadas cae en SU renglon del cuadro",
+      not descuadres, "; ".join(descuadres))
 
 #  La L NO es la K con otro nombre: en unos diametros es mayor y en otros menor, asi
 #  que quedarse con una de las dos deja pasar los casos en los que manda la otra.
@@ -708,19 +765,20 @@ check("la L no se puede deducir de la K: a veces es mayor y a veces menor",
       f"L mayor en {len(mayor_l)} renglones, K mayor en {len(mayor_k)}")
 
 print("\n" + "=" * 78)
-print("LA SEPARACION AL BORDE SE AJUSTA AL BORDE LIBRE")
+print("LA SEPARACION AL BORDE SE AJUSTA AL MINIMO DE LA COLUMNA K")
 print("=" * 78)
 
 
-def borde_libre_min_cm(diam_ancla_cm):
-    return 0.0 if diam_ancla_cm <= 0 else borde_libre_l_mm(diam_ancla_cm * 10) / 10.0
+def borde_minimo_cm(diam_ancla_cm):
+    """La columna K, en cm: del ancla al canto recortado de la placa."""
+    return 0.0 if diam_ancla_cm <= 0 else distancia_minima_k_mm(diam_ancla_cm * 10) / 10.0
 
 
 def sep_borde_ajustada(sep_pedida_cm, diam_ancla_cm, dim_placa_cm):
     if sep_pedida_cm <= 0:
         return 0.0
 
-    s = max(sep_pedida_cm, borde_libre_min_cm(diam_ancla_cm))
+    s = max(sep_pedida_cm, borde_minimo_cm(diam_ancla_cm))
 
     if dim_placa_cm > 0:
         tope = dim_placa_cm / 2.0 - 0.5
@@ -730,12 +788,18 @@ def sep_borde_ajustada(sep_pedida_cm, diam_ancla_cm, dim_placa_cm):
     return s
 
 
-#  Un ancla de 3/4" pide 34 mm = 3.4 cm de borde libre.
+#  Un ancla de 3/4" son 19 mm, y la columna K pide 32 mm = 3.2 cm al canto de la placa.
+#  OJO: la L de ese mismo diametro pide 34 mm. Que los dos numeros sean parecidos es
+#  justo lo que hizo facil confundir las columnas, asi que aqui se comprueba que se
+#  usa la K -3.2- y no la L -3.4-.
 d34 = pulgadas("3/4") * 2.54
 
-check("una separacion por debajo del minimo se sube al minimo",
-      abs(sep_borde_ajustada(2.0, d34, 40) - 3.4) < 1e-9,
-      f"dio {sep_borde_ajustada(2.0, d34, 40)}")
+check("una separacion por debajo del minimo se sube al minimo de K",
+      abs(sep_borde_ajustada(2.0, d34, 40) - 3.2) < 1e-9,
+      f"dio {sep_borde_ajustada(2.0, d34, 40)}, se esperaba 3.2 (K)")
+
+check("y NO al de L, que para ese diametro seria 3.4",
+      abs(sep_borde_ajustada(2.0, d34, 40) - 3.4) > 1e-9)
 
 check("una separacion que ya cumple no se toca",
       abs(sep_borde_ajustada(6.0, d34, 40) - 6.0) < 1e-9)
@@ -743,8 +807,8 @@ check("una separacion que ya cumple no se toca",
 check("en cero se queda en cero, que significa «calculala»",
       sep_borde_ajustada(0, d34, 40) == 0)
 
-#  Un ancla de 4" pide 172 mm = 17.2 cm. En una placa de 20 cm no cabe: el tope de
-#  media placa manda, y quien avisa es la revision de la L.
+#  Un ancla de 4" pide K = 180 mm = 18 cm. En una placa de 20 cm no cabe: el tope de
+#  media placa manda, y quien avisa es la revision de la K.
 d4 = pulgadas("4") * 2.54
 
 check("si el minimo no cabe en la placa, gana el tope de media placa",
@@ -752,11 +816,7 @@ check("si el minimo no cabe en la placa, gana el tope de media placa",
       f"dio {sep_borde_ajustada(5.0, d4, 20)}")
 
 #  Y el automatico tambien lo respeta: sin esto, dejar la celda en cero seria la
-#  manera de saltarse la tabla.
-check("el calculo automatico tambien respeta el borde libre",
-      sep_auto(40, 20, 2.06, 1, ) >= 0)   # firma vieja, se comprueba abajo
-
-
+#  manera de saltarse el cuadro.
 def sep_auto_con_borde(dim_placa, dim_perfil, d_agujero, escala, borde_libre=0.0):
     minimo = 0.5 * escala
 
@@ -783,7 +843,7 @@ check("con el sobrante por debajo del minimo, el automatico sube al minimo",
       abs(sep_auto_con_borde(40, 36, 2.06, 1, 3.4) - 3.4) < 1e-9,
       f"dio {sep_auto_con_borde(40, 36, 2.06, 1, 3.4)}")
 
-check("y sin borde libre daria menos, que es el defecto que esto corrige",
+check("y sin el minimo daria menos, que es el defecto que esto corrige",
       sep_auto_con_borde(40, 36, 2.06, 1, 0) < 3.4)
 
 # ==========================================================================
@@ -1150,6 +1210,136 @@ check("una forma en punta devuelve su vertice, sin reventar",
 
 check("y un arreglo vacio o corto contesta el origen, sin excepcion",
       punto_izquierdo(None) == (0.0, 0.0) and punto_izquierdo([1, 2]) == (0.0, 0.0))
+
+# ==========================================================================
+#  LA COLUMNA L: HOLGURA PARA METER LA LLAVE
+# ==========================================================================
+#  Port de ContornoDesplazado.DistanciaAlContorno y de RevisarHolguraColumnaL.
+#
+#  L es «DISTANCIA MINIMA DE COLUMNA/CARTABON PARA ATORNILLAR»: el espacio entre el
+#  ancla y el PAÑO DE LA COLUMNA para que entre la llave. En una vuelta anterior se
+#  implemento como si fuera una segunda distancia al BORDE DE LA PLACA -o sea, como
+#  la K con otro nombre-, y eso es medir contra lo contrario: en el croquis del
+#  estandar el orden es canto de la placa -> K -> ancla -> L -> paño de la columna.
+def distancia_al_segmento(x, y, x1, y1, x2, y2):
+    dx, dy = x2 - x1, y2 - y1
+    largo2 = dx * dx + dy * dy
+
+    if largo2 <= TOL:
+        return math.hypot(x - x1, y - y1)
+
+    u = ((x - x1) * dx + (y - y1) * dy) / largo2
+    u = max(0.0, min(1.0, u))
+
+    return math.hypot(x - (x1 + u * dx), y - (y1 + u * dy))
+
+
+def distancia_al_contorno(pts, x, y):
+    if pts is None or len(pts) < 4 or len(pts) % 2 != 0:
+        return float("inf")
+
+    n = len(pts) // 2
+
+    return min(distancia_al_segmento(x, y,
+                                     pts[2 * i], pts[2 * i + 1],
+                                     pts[2 * ((i + 1) % n)], pts[2 * ((i + 1) % n) + 1])
+               for i in range(n))
+
+
+print("\n" + "=" * 78)
+print("LA COLUMNA L: HOLGURA DEL ANCLA A LA COLUMNA, PARA LA LLAVE")
+print("=" * 78)
+
+#  Un perfil I de 20.4 x 20.4 centrado en el origen: sus patines llegan a x = +-10.2.
+col = perfil_i(0, 0, 20.4, 20.4, 0.73, 1.11)
+
+#  UN ANCLA AL COSTADO, A MEDIA ALTURA. Aqui hay una trampa que conviene dejar
+#  escrita: a media altura el perfil I NO tiene patin, tiene el hueco entre los dos.
+#  Asi que el acero mas cercano a (-14, 0) no esta a 3.8 cm en horizontal -eso seria
+#  el canto del patin si el patin llegara hasta ahi- sino en la ESQUINA del patin
+#  inferior, (-10.2, -9.09), en diagonal:
+#
+#      sqrt(3.8^2 + 9.09^2) = 9.8523 cm
+#
+#  Es lo correcto y es lo que hay que medir: la holgura de la llave es contra el
+#  acero que de verdad esta al lado, esté donde esté.
+check("la distancia se mide al acero mas cercano, aunque quede en diagonal",
+      abs(distancia_al_contorno(col, -14.0, 0.0) - 9.8523) < 1e-4,
+      f"dio {distancia_al_contorno(col, -14.0, 0.0):.4f}, se esperaba 9.8523")
+
+#  ESTA ES LA QUE IMPORTA: un ancla frente a la MITAD de un patin. Midiendo a los
+#  vertices daria la distancia a la punta del patin -mucho mayor- y pasaria una
+#  holgura que no existe.
+#  El ancla en (0, -14) esta 2.9 cm por debajo del patin inferior (y = -10.2).
+check("un ancla frente a la mitad de un patin mide contra el patin, no contra su punta",
+      abs(distancia_al_contorno(col, 0.0, -14.0) - 3.8) < 1e-9,
+      f"dio {distancia_al_contorno(col, 0.0, -14.0):.4f}")
+
+#  Y un ancla en el hueco entre patines mide contra el ALMA, que es lo que tiene al
+#  lado: el alma va de x = -0.365 a +0.365.
+check("un ancla en el hueco entre patines mide contra el ALMA",
+      abs(distancia_al_contorno(col, -5.0, 0.0) - 4.635) < 1e-9,
+      f"dio {distancia_al_contorno(col, -5.0, 0.0):.4f}, se esperaba 4.635")
+
+
+def revisar_holgura_l(anclas, contorno, escala=1.0):
+    """(x, y, d_ancla_cm) -> None si todas cumplen, o el ancla que falla."""
+    if contorno is None or len(contorno) < 6 or escala <= 0:
+        return None
+
+    for i, (x, y, d_cm) in enumerate(anclas):
+        requerida = distancia_minima_l_mm(d_cm * 10)
+        disponible = distancia_al_contorno(contorno, x, y) / escala * 10
+
+        if disponible + 0.01 < requerida:
+            return (i + 1, disponible, requerida)
+
+    return None
+
+
+#  Un ancla de 3/4" pide L = 34 mm = 3.4 cm de holgura a la columna.
+d_anc = pulgadas("3/4") * 2.54
+
+check("un ancla con holgura de sobra pasa",
+      revisar_holgura_l([(-14.0, 0.0, d_anc)], col) is None,
+      "9.85 cm disponibles contra 3.4 exigidos")
+
+#  Y UNA QUE NO CABE: (0, -13) esta 2.8 cm por debajo de la cara del patin, y la L de
+#  un ancla de 3/4" pide 3.4. Falta medio centimetro para la llave.
+falla_l = revisar_holgura_l([(0.0, -13.0, d_anc)], col)
+
+check("un ancla demasiado pegada a la columna se reporta, con sus dos numeros",
+      falla_l is not None and abs(falla_l[1] - 28.0) < 1e-6
+      and abs(falla_l[2] - 34.0) < 1e-6,
+      f"{falla_l}")
+
+#  Y SIN COLUMNA NO SE COMPRUEBA NADA: sin perfil dibujado no hay a que medirle la
+#  holgura, y rechazar la placa por eso seria rechazarla por un dato que no existe.
+check("sin columna no se comprueba la L",
+      revisar_holgura_l([(0.0, 0.0, d_anc)], None) is None
+      and revisar_holgura_l([(0.0, 0.0, d_anc)], [0, 0, 1, 1]) is None)
+
+#  LA COMPROBACION QUE DISTINGUE LAS DOS LECTURAS. Con la placa de 40x40 del ejemplo
+#  y anclas a 4.9 cm del borde -o sea en x = +-15.1-, la holgura a la columna es
+#  15.1 - 10.2 = 4.9 cm, que cumple L. Si la L se midiera contra el BORDE DE LA
+#  PLACA -la lectura equivocada- lo que se compararia serian esos 4.9 cm contra la
+#  misma L y tambien pasaria: por eso el error no salto a la vista.
+#
+#  Se distinguen en una placa ANCHA con perfil chico: placa de 60, perfil de 20.4,
+#  ancla a 3.5 cm del borde, o sea en x = -26.5.
+#    - al borde de la placa  :  3.5 cm      <- lo que mediria la lectura equivocada
+#    - a la columna          : 18.66 cm     <- lo que mide de verdad, en diagonal a
+#                                              la esquina del patin
+#  Cinco veces mas. Con una placa justa los dos numeros se parecen, y por eso la
+#  confusion no salta a la vista; con una ancha, no hay manera de confundirlos.
+col_chico = perfil_i(0, 0, 20.4, 20.4, 0.73, 1.11)
+x_ancla = -(60 / 2 - 3.5)
+
+d_a_columna = distancia_al_contorno(col_chico, x_ancla, 0.0)
+
+check("en una placa ancha, la L mide contra la columna y no contra el borde",
+      abs(d_a_columna - 18.6633) < 1e-4 and abs(d_a_columna - 3.5) > 1,
+      f"dio {d_a_columna:.4f}; al borde serian 3.5")
 
 print("\n" + "=" * 78)
 if fallos:

@@ -203,8 +203,8 @@ public sealed class PlacaBaseRow : Row
     /// Celda <b>E11</b>: separación al borde en X, en cm. Cero = automática.
     /// </summary>
     /// <remarks>
-    /// <b>Se corrige sola si no respeta el borde libre</b> de la tabla L para el diámetro de su
-    /// ancla. Ver <see cref="AjustarSeparacionesAlBorde"/>.
+    /// <b>Se corrige sola si no llega al mínimo de la columna K</b> —la distancia del ancla al canto
+    /// recortado de la placa— para el diámetro de su ancla. Ver <see cref="AjustarSeparacionesAlBorde"/>.
     /// </remarks>
     public double SepBordeXCm { get => _sepBordeXCm; set => Set(ref _sepBordeXCm, value); }
 
@@ -212,7 +212,7 @@ public sealed class PlacaBaseRow : Row
     public double SepBordeYCm { get => _sepBordeYCm; set => Set(ref _sepBordeYCm, value); }
 
     /// <summary>
-    /// Sube las separaciones al borde capturadas hasta el <b>borde libre</b> de la tabla L.
+    /// Sube las separaciones al borde capturadas hasta el mínimo de la <b>columna K</b>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -255,31 +255,42 @@ public sealed class PlacaBaseRow : Row
     }
 
     /// <summary>
-    /// El <b>borde libre mínimo</b> que exige la tabla L para las anclas de esta fila, en cm.
+    /// La distancia mínima al <b>canto de la placa</b> que exige la columna K, en cm.
     /// </summary>
     /// <remarks>
-    /// Se ve en la tabla porque es el número que explica por qué una separación al borde se corrigió
-    /// sola. Sin él, la celda cambia de valor y el usuario no tiene de dónde sacar el motivo.
+    /// <para>
+    /// Se ven en la tabla porque son los números que explican dos cosas que si no pasan sin decir
+    /// por qué: que una separación al borde se corrigió sola —eso es la <b>K</b>— y que el detalle
+    /// se negó a dibujarse porque no cabe la llave —eso es la <b>L</b>—. Sin ellos, la celda cambia
+    /// de valor o el botón no hace nada, y el usuario no tiene de dónde sacar el motivo.
+    /// </para>
+    /// <para>
+    /// Van los dos juntos y no en columnas separadas porque se leen juntos: son las dos paredes
+    /// entre las que tiene que caber el ancla.
+    /// </para>
     /// </remarks>
-    public string BordeLibreMinimo
+    public string BordeMinimo
     {
         get
         {
             var p = AFormatoCad();
 
-            var lx = AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaXCm);
-            var ly = AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaYCm);
+            var k = Math.Max(
+                AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaXCm),
+                AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaYCm));
 
-            if (lx <= 0 && ly <= 0)
+            var l = Math.Max(
+                AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaXCm),
+                AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaYCm));
+
+            if (k <= 0 && l <= 0)
             {
                 return string.Empty;
             }
 
-            // Con las dos anclas del mismo diámetro —el caso normal— se dice un solo número: dos
-            // veces el mismo valor separado por una barra se lee como si fueran dos cosas.
-            return Math.Abs(lx - ly) < 1e-9
-                ? $"{lx:0.#} cm"
-                : $"{lx:0.#} / {ly:0.#} cm";
+            // Se dice el MAYOR de las dos direcciones: es el que manda, y con dos anclas de distinto
+            // diámetro cuatro números en una celda no se leen.
+            return $"K {k:0.#} · L {l:0.#} cm";
         }
     }
 
@@ -288,7 +299,7 @@ public sealed class PlacaBaseRow : Row
     /// </summary>
     /// <remarks>
     /// Hace visible el número final, que es distinto de lo capturado en dos casos: cuando la celda
-    /// va en cero —automática— y cuando lo capturado no llegaba al borde libre. En los dos, sin
+    /// va en cero —automática— y cuando lo capturado no llegaba al mínimo de K. En los dos, sin
     /// esta columna el usuario ve una cosa en la celda y el plano sale con otra.
     /// </remarks>
     public string SepBordeUsada
@@ -309,20 +320,20 @@ public sealed class PlacaBaseRow : Row
             var y = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, p.DiamAnclaYCm, p.AltoDibujoCm);
 
             // Y si va en cero, la automática: la MISMA llamada que hace el dibujante, con el mismo
-            // borde libre. Repetir aquí una versión simplificada sería enseñar un número que el
+            // mínimo de K. Repetir aquí una versión simplificada sería enseñar un número que el
             // plano no usa.
             if (x <= 0)
             {
                 x = AnclasPlacaBase.SepAuto(
                     p.AnchoDibujoCm, p.PerfilXDibujoCm, dAguX, 1,
-                    AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaXCm));
+                    AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaXCm));
             }
 
             if (y <= 0)
             {
                 y = AnclasPlacaBase.SepAuto(
                     p.AltoDibujoCm, p.PerfilYDibujoCm, dAguY, 1,
-                    AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaYCm));
+                    AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaYCm));
             }
 
             return $"{x:0.#} / {y:0.#} cm";
@@ -634,36 +645,43 @@ public sealed class PlacaBaseRow : Row
             var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
             var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
 
-            // EL PERFIL Y EL BORDE LIBRE ENTRAN EN LA CUENTA, igual que en el dibujante. La
+            // EL PERFIL Y LA DISTANCIA K ENTRAN EN LA CUENTA, igual que en el dibujante. La
             // separación automática reparte el sobrante entre la placa y el patín, así que sin el
             // perfil esta columna usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría
             // que la placa cumple y el botón se negaría a dibujarla, sin nada que explicara la
-            // diferencia. Y el ajuste al borde libre, por lo mismo.
+            // diferencia. Y el ajuste al mínimo de K, por lo mismo.
             var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
             var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
 
             if (sepX <= 0)
             {
                 sepX = AnclasPlacaBase.SepAuto(
-                    b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX));
+                    b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
             }
 
             if (sepY <= 0)
             {
                 sepY = AnclasPlacaBase.SepAuto(
-                    h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY));
+                    h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
             }
 
             var anclas = AnclasPlacaBase.Construir(
                 0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
                 dAncX, dAguX, dAncY, dAguY, p.ModoAnclas);
 
-            // LAS TRES COLUMNAS DEL CUADRO, no dos. La L no es «la K con otro nombre»: en un ancla
-            // de 5/8" la K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66, así que
-            // quedarse con una deja pasar los casos en los que manda la otra.
+            // LAS TRES COLUMNAS DEL CUADRO, y cada una mide LO SUYO:
+            //   J - la distancia entre anclas
+            //   K - la del ancla al canto recortado de la placa
+            //   L - la del ancla al paño de la COLUMNA, para que entre la llave
+            //
+            // La L no es «la K con otro nombre»: en el croquis del estándar el orden es canto de la
+            // placa -> K -> ancla -> L -> paño de la columna, así que una mira hacia fuera y la otra
+            // hacia dentro. Los números tampoco dejan deducir una de la otra: en un ancla de 5/8" la
+            // K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66.
             var falla = AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)
                         ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1)
-                        ?? AnclasPlacaBase.RevisarBordeLibreL(anclas, 0, 0, b, h, 1);
+                        ?? AnclasPlacaBase.RevisarHolguraColumnaL(
+                               anclas, p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos, 1);
 
             // En la celda solo cabe el titular; el detalle completo sale al intentar dibujar.
             return falla is null ? string.Empty : falla.Titulo;
@@ -708,7 +726,7 @@ public sealed class PlacaBaseRow : Row
         Raise(nameof(DiamAgujeroX));
         Raise(nameof(DiamAgujeroY));
 
-        Raise(nameof(BordeLibreMinimo));
+        Raise(nameof(BordeMinimo));
         Raise(nameof(SepBordeUsada));
         Raise(nameof(Libramientos));
         Raise(nameof(Falta));

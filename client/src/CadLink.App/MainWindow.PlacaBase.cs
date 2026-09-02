@@ -153,8 +153,8 @@ public partial class MainWindow
             }
 
             StatusText.Text =
-                $"{Nombre(fila)}: separación al borde ajustada al mínimo de la tabla L " +
-                $"({fila.BordeLibreMinimo}).  " + string.Join("   ", partes);
+                $"{Nombre(fila)}: separación al borde ajustada al mínimo de la columna K " +
+                $"({fila.BordeMinimo}).  " + string.Join("   ", partes);
 
             DibujarVistaPreviaPlacaBase();
         }));
@@ -468,20 +468,20 @@ public partial class MainWindow
         var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
         var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
 
-        // La MISMA cuenta que el dibujante, ajuste al borde libre incluido.
+        // La MISMA cuenta que el dibujante, ajuste al mínimo de la columna K incluido.
         var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
         var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
 
         if (sepX <= 0)
         {
             sepX = AnclasPlacaBase.SepAuto(
-                b, pX, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX));
+                b, pX, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
         }
 
         if (sepY <= 0)
         {
             sepY = AnclasPlacaBase.SepAuto(
-                h, pY, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY));
+                h, pY, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
         }
 
         var anclas = AnclasPlacaBase.Construir(

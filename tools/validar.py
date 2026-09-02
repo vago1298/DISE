@@ -6370,35 +6370,44 @@ def v18_planta_autocad() -> None:
     pbfilas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
     pbproy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
 
-    #  LAS TRES COLUMNAS DEL CUADRO, no dos: faltaba la L, que es la que gobierna la separacion al
-    #  borde de las anclas. Sin ella, «Sep borde X cm» y «Sep borde Y cm» aceptaban cualquier numero.
+    #  LAS TRES COLUMNAS DEL CUADRO, con la NOMENCLATURA del estandar escrita en el codigo:
+    #      J - distancia minima ENTRE ANCLAS
+    #      K - distancia minima del ancla al CANTO RECORTADO DE LA PLACA
+    #      L - distancia minima de COLUMNA/CARTABON PARA ATORNILLAR
     check("las tres tablas de libramientos J, K y L estan portadas",
           "public static double SeparacionMinimaJmm(" in anc
           and "public static double DistanciaMinimaKmm(" in anc
-          and "public static double BordeLibreMinimoLmm(" in anc
+          and "public static double DistanciaMinimaLmm(" in anc
           # Los extremos de cada tabla, para que no se cuele una lista a medias.
           and "<= 13 => 40," in anc and "<= 102 => 300," in anc
           and "<= 13 => 22," in anc and "<= 102 => 180," in anc
           and "<= 13 => 23," in anc and "<= 102 => 172," in anc)
 
+    check("y la fuente queda citada, con su numero de estandar",
+          "ES-03-001" in anc
+          and "DISTANCIA MÍNIMA DEL ANCLA AL CANTO RECORTADO DE LA PLACA" in anc
+          and "DISTANCIA MÍNIMA DE COLUMNA/CARTABÓN PARA ATORNILLAR" in anc)
+
     #  ══════════════════════════════════════════════════════════════════════════════════════
-    #  EL CORRIMIENTO DE LA MACRO, FIJADO RENGLON POR RENGLON.
+    #  EL RENGLON DE 48 mm, FIJADO. Aqui se cometio un error en las dos direcciones:
     #
-    #  El VBA traia DOS renglones mal en las dos columnas, y el port los reprodujo fielmente:
-    #  el 1 5/8" y el 1 3/4". Un ancla de 1 3/4" pasaba la revision con 130 mm de separacion
-    #  cuando el cuadro pide 150. Eso no se ve en el dibujo -sale un detalle creible-, se ve
-    #  en obra.
+    #  El port reprodujo bien la tabla del VBA. Luego llego una captura del mismo cuadro en
+    #  PULGADAS, se cotejo contra ella y se «corrigieron» J y K en dos renglones. La captura
+    #  era la que estaba mal: le faltaba el renglon de 48 mm -1 7/8"- y al faltarle, los
+    #  valores de 1 5/8" y 1 3/4" salian corridos uno hacia arriba. El original en milimetros
+    #  -19 renglones- lo aclaro.
     #
-    #  Se fija aqui con los valores escritos para que nadie los «corrija» de vuelta al valor
-    #  de la macro creyendo que arregla una errata del port.
+    #  Se fija con los valores escritos y con el renglon de 48 presente, porque es el que
+    #  delata el corrimiento: si algun dia desaparece, los dos de arriba estaran mal otra vez.
     #  ══════════════════════════════════════════════════════════════════════════════════════
-    check("y los dos renglones que la macro traia mal quedan corregidos",
-          # 1 5/8" = 41 mm: J = 130 (la macro decia 120) y K = 75 (decia 70)
-          "<= 41 => 130," in anc and "<= 41 => 75," in anc
-          # 1 3/4" = 44 mm: J = 150 (decia 130) y K = 85 (decia 75)
-          and "<= 44 => 150," in anc and "<= 44 => 85," in anc
-          # Y el renglon de 48 mm, que en el cuadro no existe, se fue.
-          and "<= 48 =>" not in anc)
+    check("el renglon de 1 7/8 (48 mm) esta, que es el que delata el corrimiento",
+          "<= 48 => 150," in anc and "<= 48 => 85," in anc and "<= 48 => 82," in anc)
+
+    check("y los tres renglones de alrededor tienen el valor del original",
+          # 1 5/8" = 41 mm
+          "<= 41 => 120," in anc and "<= 41 => 70," in anc and "<= 41 => 71," in anc
+          # 1 3/4" = 44 mm
+          and "<= 44 => 130," in anc and "<= 44 => 75," in anc and "<= 44 => 76," in anc)
 
     #  El reparto PERIMETRAL: los totales de la hoja se reparten mitad y mitad, la impar va ABAJO
     #  en X, y las de Y van ENTRE las hileras de X para no repetir las esquinas.
@@ -6457,8 +6466,8 @@ def v18_planta_autocad() -> None:
           and "private static bool GirarEstePerfil(PlacaBaseCad p) => p.GiraElPerfil;" in pbd
           #  Y la columna de la tabla usa la MISMA, en centimetros: el ancho del perfil ya
           #  orientado entra en la separacion automatica al borde.
-          and "b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX)" in pbr
-          and "h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY)" in pbr)
+          and "b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX)" in pbr
+          and "h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY)" in pbr)
 
     # ------------------------------------------------------------------
     # LA SOLDADURA SIGUE EL CONTORNO DEL PERFIL, NO SU CAJA
@@ -6505,11 +6514,14 @@ def v18_planta_autocad() -> None:
     #  Y EL CONTORNO SALE DEL PERFIL QUE SE DIBUJO, ya girado, no de un segundo TrazoAcero.De:
     #  recalculandolo habria que repetir el giro y el encuadre, y el dia que uno cambie la
     #  soldadura rodearia un perfil que no es el que esta dibujado.
+    #  Y EL CONTORNO ES EL QUE DE VERDAD SE DIBUJO, ya girado. Ahora sale de
+    #  PlacaBaseCad.PanoDeLaColumna, que es el unico sitio que lo calcula, y de ahi lo toman los
+    #  tres que lo necesitan: el trazo del perfil, la soldadura y la revision de la columna L.
     check("y ese contorno es el que de verdad se dibujo, ya girado",
-          "out ContornoDelPerfil? contornoExterior" in pbd2
-          and "private sealed record ContornoDelPerfil" in pbd2
-          and "new ContornoDelPerfil { Puntos = pts, Dobleces = contorno.Dobleces }" in pbd2
-          and "out var contornoDelPerfil)" in pbd)
+          "ContornoDeColumna? contornoExterior" in pbd2
+          and "public ContornoDeColumna? PanoDeLaColumna(" in pbc
+          and "var panoColumna = p.PanoDeLaColumna(x0 + (b / 2), y0 + (h / 2), _escala);" in pbd
+          and "Soldadura(p, perfil, panoColumna," in pbd)
 
     #  Y LA FLECHA APUNTA A LA SOLDADURA, no cerca.
     #
@@ -6863,10 +6875,12 @@ def v18_planta_autocad() -> None:
           and usos_pulgadas == 8,
           f"{usos_pulgadas} celdas con el simbolo")
 
-    # ---- LA SEPARACION AL BORDE SE AJUSTA AL BORDE LIBRE ----
-    check("la separacion al borde se ajusta al borde libre de la tabla L",
+    # ---- LA SEPARACION AL BORDE SE AJUSTA AL MINIMO DE LA COLUMNA K ----
+    #  K es «distancia minima del ancla al canto recortado de la placa», que es exactamente lo que
+    #  se captura en «Sep borde». Antes se ajustaba con la L, que mide otra cosa.
+    check("la separacion al borde se ajusta al minimo de la columna K",
           "public static double SepBordeAjustada(" in anc
-          and "public static double BordeLibreMinimoCm(" in anc
+          and "public static double BordeMinimoCm(" in anc
           and "public bool AjustarSeparacionesAlBorde()" in pbr
           # El dibujante tambien lo aplica: la separacion se pudo capturar ANTES de cambiar el
           # diametro del ancla, y en ese caso la celda quedo con un numero que ya no cumple.
@@ -6875,7 +6889,7 @@ def v18_planta_autocad() -> None:
 
     #  Y EL AUTOMATICO TAMBIEN, porque si no, dejar la celda en cero seria la manera de saltarse la
     #  tabla sin que nada avisara.
-    check("y el calculo automatico de la separacion tambien lo respeta",
+    check("y el calculo automatico de la separacion tambien respeta la K",
           "double escala, double bordeLibre = 0)" in anc
           and "if (bordeLibre > 0 && s < bordeLibre) { s = bordeLibre; }" in anc)
 
@@ -6884,20 +6898,59 @@ def v18_planta_autocad() -> None:
     check("el ajuste se hace al salir de la celda y se avisa",
           'CellEditEnding="OnCeldaPlacaEditada"' in tab_pb
           and "private void OnCeldaPlacaEditada(" in pbw
-          and "separación al borde ajustada al mínimo de la tabla L" in pbw)
+          and "separación al borde ajustada al mínimo de la columna K" in pbw)
 
-    #  Y LA REVISION DE LA L, aparte de la K: no son la misma distancia ni una es siempre mayor.
-    check("la L se revisa aparte de la K",
-          "public static Incumplimiento? RevisarBordeLibreL(" in anc
-          and "RevisarBordeLibreL(anclas, x0, y0, b, h, _escala)" in pbd
-          and "RevisarBordeLibreL(anclas, 0, 0, b, h, 1)" in pbr)
+    #  ─── LA L MIDE CONTRA LA COLUMNA, NO CONTRA LA PLACA ────────────────────────────────
+    #  Es «DISTANCIA MINIMA DE COLUMNA/CARTABON PARA ATORNILLAR»: el espacio entre el ancla y
+    #  el paño de la columna para que entre la LLAVE. En una vuelta anterior se implemento
+    #  midiendola al borde de la placa, o sea como una segunda K, que es medir contra lo
+    #  contrario: en el croquis del estandar el orden es canto de la placa -> K -> ancla -> L
+    #  -> paño de la columna.
+    check("la L mide la holgura a la COLUMNA, no al borde de la placa",
+          "public static Incumplimiento? RevisarHolguraColumnaL(" in anc
+          and "double[]? contornoColumna" in anc
+          and "ContornoDesplazado.DistanciaAlContorno(contornoColumna" in anc
+          # Y el nombre viejo, que medía al borde, ya no está en ningún sitio.
+          and "RevisarBordeLibreL" not in anc
+          and "RevisarBordeLibreL" not in pbd
+          and "RevisarBordeLibreL" not in pbr)
+
+    check("y se revisa desde el dibujante y desde la tabla, con el paño de la columna",
+          "RevisarHolguraColumnaL(\n                               anclas, panoColumna?.Puntos, _escala)"
+          in pbd
+          and "RevisarHolguraColumnaL(" in pbr
+          and "p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos" in pbr)
+
+    #  Y EL PAÑO DE LA COLUMNA SE CALCULA EN UN SOLO SITIO. Lo necesitan tres: el dibujante
+    #  -para trazarlo y rodearlo de soldadura-, la revision de la L -que corre ANTES de dibujar
+    #  nada- y la vista previa. Con tres copias del «contorno ya girado», el dia que cambie el
+    #  giro dos se quedan atras: la soldadura rodearia un perfil y la L mediria contra otro.
+    check("el pano de la columna se calcula en un solo sitio",
+          "public ContornoDeColumna? PanoDeLaColumna(" in pbc
+          and "public sealed record ContornoDeColumna" in pbc
+          and "ContornoDesplazado.Girar90(contorno.Puntos, xc, yc)" in pbc
+          # Y el dibujante ya no lleva su propia copia del giro.
+          and "private static double[] Girar90(" not in pbd2)
+
+    #  La distancia se mide al SEGMENTO, no al vertice mas cercano: un ancla frente a la mitad
+    #  de un patin largo daria la distancia a la punta del patin y pasaria una holgura que no
+    #  existe.
+    check("la distancia al contorno se mide al segmento, no al vertice",
+          "public static double DistanciaAlContorno(" in cdesp
+          and "private static double DistanciaAlSegmento(" in cdesp
+          and "if (u < 0) { u = 0; }" in cdesp
+          and "if (u > 1) { u = 1; }" in cdesp)
 
     #  Y el numero que EXPLICA la correccion se ve en la tabla: sin el, la celda cambia de valor y
     #  el usuario no tiene de donde sacar el motivo.
-    check("el borde libre y la separacion usada se ven en la tabla",
-          "public string BordeLibreMinimo" in pbr
+    #  LOS DOS MINIMOS SE VEN EN LA TABLA, K y L, porque explican dos cosas que si no pasan sin
+    #  decir por que: que la separacion al borde se corrigio sola -la K- y que el detalle se nego a
+    #  dibujarse porque no cabe la llave -la L-.
+    check("los minimos de K y L y la separacion usada se ven en la tabla",
+          "public string BordeMinimo" in pbr
           and "public string SepBordeUsada" in pbr
-          and 'Header="Borde libre mín."' in tab_pb
+          and "AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaXCm)" in pbr
+          and 'Header="Mín. K · L"' in tab_pb
           and 'Header="Sep borde usada"' in tab_pb)
 
     #  Y la lista de soldadura llega a los dos extremos que se usan: el filete de 1/8 de una placa
