@@ -860,9 +860,10 @@ public sealed class ConfigPlano
         P("MURO_BASE_TOLERANCIA_CM", "20",
           "Cuanto por debajo de la base del muro tiene que estar un nivel para contar como que "
           + "hay algo abajo. Evita que el propio nivel del muro cuente"),
-        P("MURO_CONCRETO_AUNQUE_TAPADO", "SI",
-          "SI = la base del muro de concreto se dibuja AUNQUE lleve una cadena encima. En "
-          + "cimentacion casi todos la llevan, y sin esto no se dibujaba ninguno"),
+        P("MURO_SIN_CADENA_ES_CONCRETO", "SI",
+          "SI = el muro que NO lleva cadena de desplante se toma como de concreto. En el plano es "
+          + "la senal que los distingue: el de mamposteria lleva su cadena y el de concreto no, "
+          + "porque se cuela con la cimentacion"),
         P("MURO_CONCRETO_POR_NOTA", "SI",
           "SI = un muro es de concreto si su PROPERTY NOTE de ETABS lo dice, aunque el nombre "
           + "de la seccion diga otra cosa"),

@@ -6193,14 +6193,13 @@ def v18_planta_autocad() -> None:
     #  property note CONCRETO, coloca la linea en la base, solo como contorno del muro, y adentro
     #  pon la leyenda MC».
     #
-    #  Barra() dibuja los dos panos como DOS LINEAS SUELTAS, sin tapar los extremos. Para la
-    #  mamposteria esta bien -las tapas las ponen los castillos- pero un muro de concreto en
-    #  cimentacion se lee como UNA PIEZA: sin tapas parece que se queda abierto, y no hay figura
-    #  cerrada donde meter la leyenda.
-    check("el muro de concreto se dibuja como contorno cerrado",
+    #  DOS LINEAS, que es su grosor. Se pidio asi: «debe verse su cara inferior representada con 2
+    #  lineas que es su grosor». Es lo que Barra() ya hace -los dos panos separados su espesor- y
+    #  por eso se usa Barra y no una polilinea cerrada: un contorno cerrado anadiria tapas en los
+    #  extremos que ahi no van, porque el muro sigue.
+    check("la cara inferior del muro de concreto va con dos lineas",
           'P("MURO_CONCRETO_CONTORNO", "SI",' in cfgplano
-          and "private bool ContornoDeMuro(" in dibp
-          and "PolilineaCerrada(" in dibp
+          and "if (Barra(el, x0, y0, capaConcreto," in dibp
           and "_contornosMc++;" in dibp)
 
     #  LA IDENTIFICACION ES POR LA PROPERTY NOTE, y hace falta mirarla APARTE de el.Material:
@@ -6214,9 +6213,12 @@ def v18_planta_autocad() -> None:
           and "DiceConcreto(el.Notas)" in dibp
           and 'PALABRAS_CONCRETO' in dibp)
 
-    #  La leyenda va DENTRO, centrada en el tramo ya recortado y girada con el muro.
+    #  La leyenda va DENTRO, centrada en el tramo ya recortado y girada con el muro. Vive en su
+    #  propio metodo porque el muro se dibuja con Barra(), que es la primitiva de TODOS los
+    #  elementos de barra y no puede saber nada de leyendas.
     check("y la leyenda MC va dentro, centrada y girada con el muro",
           'P("MURO_CONCRETO_LEYENDA", "MC",' in cfgplano
+          and "private void LeyendaDeMuro(" in dibp
           and 'MURO_CONCRETO_LEYENDA_ALTURA' in dibp
           and "AnguloLegible(dx, dy), EstiloSecciones, conFondo: true);" in dibp)
 
@@ -6240,10 +6242,20 @@ def v18_planta_autocad() -> None:
     #  La regla sigue siendo la correcta para el muro NORMAL -el muro y su cadena ocupan la misma
     #  linea en planta-, pero la BASE de un muro de concreto es el desplante que hay que colar y
     #  tiene que estar en el plano aunque encima lleve cadena. Por eso va FUERA del if.
-    check("la base del muro de concreto se dibuja aunque lleve cadena",
-          'P("MURO_CONCRETO_AUNQUE_TAPADO", "SI",' in cfgplano
-          and '(!tapado || _cfg.Bandera("MURO_CONCRETO_AUNQUE_TAPADO", true))' in dibp
-          and "_mcBajoCadena++;" in dibp)
+    #  Y EL MURO DE CONCRETO ES EL QUE NO LLEVA CADENA DE DESPLANTE. Es la definicion que dio el
+    #  usuario -«como los muros de concreto no llevan cadena de desplante»- y la que faltaba: en su
+    #  modelo la property note dice TABICON en los 21 muros, asi que atarse a la nota no dibuja
+    #  NADA. Pero el plano si los distingue: el de mamposteria lleva su cadena encima y el de
+    #  concreto no, porque se cuela con la cimentacion.
+    #
+    #  Esto INVIERTE lo que habia antes: MURO_CONCRETO_AUNQUE_TAPADO dibujaba la linea AUNQUE
+    #  tuviera cadena, que es lo contrario del criterio. El que tiene cadena no la lleva: ahi se ve
+    #  la cadena.
+    check("el muro sin cadena de desplante se toma como de concreto",
+          'P("MURO_SIN_CADENA_ES_CONCRETO", "SI",' in cfgplano
+          and "var sinCadena = !bajoCadena.Tapado;" in dibp
+          and "&& sinCadena" in dibp
+          and 'P("MURO_CONCRETO_AUNQUE_TAPADO"' not in cfgplano)
 
     #  Y la capa se pide SIN mirar 'tapado': CapaDeMuro() devuelve la capa generica cuando el muro
     #  esta tapado, y aqui se quiere E-MURO DE CONCRETO SIEMPRE, que es lo que se pidio.
@@ -6302,9 +6314,9 @@ def v18_planta_autocad() -> None:
     #  Consecuencia asumida: si el modelo no trae muros con CONCRETO en su property note, no se
     #  dibuja NADA. No es un fallo del dibujo, y el resumen lo dice con las notas que llegaron.
     check("la base es SOLO del muro de concreto",
-          "var contornoMc = esConcreto" in dibp
+          "var baseMc = esMuroConcreto" in dibp
           and 'P("MURO_BASE_TODOS"' not in cfgplano
-          and "else if (esConcreto && !nadaAbajo)" in dibp)
+          and "else if (esMuroConcreto && !nadaAbajo)" in dibp)
 
     # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA

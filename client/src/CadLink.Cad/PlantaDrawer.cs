@@ -321,15 +321,6 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private int _sinLeyendaMc;
 
-    /// <summary>
-    /// Bases de muro de concreto dibujadas <b>debajo de una cadena</b>.
-    /// </summary>
-    /// <remarks>
-    /// Se cuenta aparte porque es la excepción a <c>OCULTAR_MURO_BAJO_CADENA</c>, y quien lea el
-    /// plano tiene que poder saber que esas líneas están ahí a propósito y no son la raya de más
-    /// que esa regla existe para evitar.
-    /// </remarks>
-    private int _mcBajoCadena;
 
     /// <summary>Muros que salieron clasificados como de concreto.</summary>
     /// <summary>
@@ -425,7 +416,6 @@ public sealed partial class PlantaDrawer
         _murosDeConcreto = 0;
         _contornosMc = 0;
         _sinLeyendaMc = 0;
-        _mcBajoCadena = 0;
         _muroConAlgoAbajo = 0;
         _muroConcretoVistos = 0;
         _muroMamposteriaVistos = 0;
@@ -768,43 +758,66 @@ public sealed partial class PlantaDrawer
             //  el resumen lo dice con esas palabras y con las notas que llegaron.
             var nadaAbajo = NadaDebajoDelMuro(el, p);
 
-            var contornoMc = esConcreto
-                             && nadaAbajo
-                             && _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
-                             && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
-                                 || Rot.EsCimentacion(p.Nivel))
-                             && (!tapado || _cfg.Bandera("MURO_CONCRETO_AUNQUE_TAPADO", true));
+            // ==============================================================================
+            //  EL MURO DE CONCRETO ES EL QUE NO LLEVA CADENA DE DESPLANTE
+            // ==============================================================================
+            //  Se dijo con estas palabras: «como los muros de concreto NO LLEVAN CADENA DE
+            //  DESPLANTE, debe verse su cara inferior representada con 2 líneas, que es su grosor,
+            //  y con la leyenda MC; cuando no haya muro debajo del muro de concreto».
+            //
+            //  Ahí está la definición, y es la que faltaba. En este modelo la property note dice
+            //  TABICON en los 21 muros, así que atarse a la nota no dibuja NADA —es lo que llevaba
+            //  pasando—. Pero el plano sí distingue los dos: el muro de mampostería lleva su
+            //  cadena de desplante encima y el de concreto no la lleva, porque se cuela con la
+            //  cimentación. O sea que NO TENER CADENA es la señal de que es de concreto.
+            //
+            //  Y esto invierte lo que yo había hecho: había puesto MURO_CONCRETO_AUNQUE_TAPADO
+            //  para dibujarlo AUNQUE tuviera cadena, que es exactamente lo contrario del
+            //  criterio. El que tiene cadena NO lleva esta línea: ahí se ve la cadena.
+            var sinCadena = !bajoCadena.Tapado;
+
+            var esMuroConcreto = esConcreto
+                                 || (sinCadena
+                                     && _cfg.Bandera("MURO_SIN_CADENA_ES_CONCRETO", true));
+
+            var baseMc = esMuroConcreto
+                         && sinCadena
+                         && nadaAbajo
+                         && _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
+                         && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
+                             || Rot.EsCimentacion(p.Nivel));
 
             var dibujado = false;
 
-            if (contornoMc)
+            if (baseMc)
             {
                 var capaConcreto = _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
                     ? _capas.CapaMuroConcreto
                     : CapaDe(el);
 
-                if (ContornoDeMuro(el, x0, y0, capaConcreto,
-                                   Espesor(el, EspesorMuroPorOmision, "muro"), tramo))
+                // DOS LÍNEAS, no un contorno cerrado. Es lo que se pidió —«su cara inferior
+                // representada con 2 líneas que es su grosor»— y es lo que Barra() ya hace: los
+                // dos paños del muro, separados su espesor. Un contorno cerrado añadiría tapas en
+                // los extremos que ahí no van, porque el muro sigue.
+                if (Barra(el, x0, y0, capaConcreto,
+                          Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo))
                 {
                     _contornosMc++;
                     dibujado = true;
 
-                    if (tapado)
-                    {
-                        _mcBajoCadena++;
-                    }
+                    LeyendaDeMuro(el, x0, y0, capaConcreto, tramo);
                 }
             }
-            else if (esConcreto && !nadaAbajo)
+            else if (esMuroConcreto && !nadaAbajo)
             {
-                // Solo se cuenta el de CONCRETO: es el único al que le tocaría la base, así que
-                // es el único cuya ausencia hay que explicar.
+                // Solo se cuenta el que SÍ es de concreto: es el único al que le tocaría la línea,
+                // así que es el único cuya ausencia hay que explicar.
                 _muroConAlgoAbajo++;
             }
 
-            // El muro NORMAL: solo si NO está tapado y si el contorno de concreto no lo dibujó
-            // ya. El muro cuenta igual en el resumen aunque esté tapado, porque está en el
-            // modelo y su mampostería y su pier sí se dibujan.
+            // El muro NORMAL: solo si NO está tapado y si la base de concreto no lo dibujó ya. El
+            // muro cuenta igual en el resumen aunque esté tapado, porque está en el modelo y su
+            // mampostería y su pier sí se dibujan.
             if (!tapado && !dibujado)
             {
                 var capaMuro = CapaDeMuro(el, tapado);
@@ -938,12 +951,12 @@ public sealed partial class PlantaDrawer
         {
             var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
 
-            Nota($"{_contornosMc} muro(s) DE CONCRETO llevan dibujada la línea de su BASE, en la " +
-                 $"capa '{_capas.CapaMuroConcreto}'" +
+            Nota($"{_contornosMc} muro(s) DE CONCRETO llevan su cara inferior dibujada con dos " +
+                 $"líneas —su grosor— en la capa '{_capas.CapaMuroConcreto}'" +
                  (leyenda.Length > 0 ? $" y con la leyenda '{leyenda}' dentro" : string.Empty) +
-                 ". La llevan porque debajo de ellos no hay ningún nivel, así que apoyan " +
-                 "directamente. Solo se dibuja en muros de concreto: es el desplante de lo que se " +
-                 "cuela, y en un muro de mampostería diría que hay algo que colar donde no lo hay.");
+                 ". Se toman como de concreto los que NO llevan cadena de desplante, que en el " +
+                 "plano es la señal que los distingue, además de los que lo dicen en su property " +
+                 "note. Y solo si debajo no hay ningún nivel, porque es ahí donde apoyan.");
         }
 
         // ==============================================================================
@@ -977,12 +990,12 @@ public sealed partial class PlantaDrawer
             Nota(detalle);
         }
 
-        if (_mcBajoCadena > 0)
+        if (_tapados > 0)
         {
-            Nota($"De ellos, {_mcBajoCadena} llevan una cadena encima y se dibujaron IGUAL: la " +
-                 "base del muro de concreto es el desplante que hay que colar, así que tiene que " +
-                 "estar en el plano de cimentación aunque la cadena ocupe la misma línea. Si " +
-                 "estorba, apaga MURO_CONCRETO_AUNQUE_TAPADO en la hoja de configuración.");
+            Nota($"{_tapados} muro(s) llevan cadena de desplante encima, así que NO se les dibuja " +
+                 "la cara inferior: ahí lo que se ve es la cadena. Son los de mampostería. Si " +
+                 "alguno de esos es de concreto, quítale la cadena en el modelo o pon CONCRETO en " +
+                 "su property note.");
         }
 
         if (_sinLeyendaMc > 0)
@@ -1570,101 +1583,55 @@ public sealed partial class PlantaDrawer
         return true;
     }
 
-    /// <summary>
-    /// El muro de concreto como <b>contorno cerrado</b>, con su leyenda dentro.
-    /// </summary>
+    /// <summary>La leyenda «MC» centrada dentro del muro y girada con él.</summary>
     /// <remarks>
     /// <para>
-    /// <b>Por qué no vale <see cref="Barra"/> aquí.</b> <c>Barra</c> dibuja los dos paños como
-    /// <b>dos líneas sueltas</b>, sin tapar los extremos. Para un muro de mampostería eso está
-    /// bien —el muro sigue de castillo a castillo y las tapas las ponen ellos— pero un muro de
-    /// concreto en la planta de cimentación se lee como <b>una pieza</b>: sin las tapas parece un
-    /// muro que se queda abierto, y además no hay figura cerrada donde meter la leyenda.
+    /// Va en su propio método porque el muro se dibuja con <see cref="Barra"/> —que es lo que se
+    /// pidió, dos líneas y no un contorno cerrado— y <c>Barra</c> es la primitiva que usan todos
+    /// los elementos de barra: no puede saber nada de leyendas.
     /// </para>
     /// <para>
-    /// Son los cuatro vértices del rectángulo del tramo, en orden: los dos de un paño y los dos
-    /// del otro al revés. La normal se calcula igual que en <c>Barra</c>, así que el contorno cae
-    /// <b>exactamente</b> sobre las líneas que se dibujaban antes: el plano no se mueve, solo se
-    /// cierra.
-    /// </para>
-    /// <para>
-    /// Va sobre el <b>tramo ya recortado</b> a los paños de los castillos, igual que la barra y
-    /// la línea de mampostería. Si se usara el eje completo, el muro se metería dentro del
-    /// castillo y la leyenda quedaría descentrada.
+    /// Se centra en el <b>medio del tramo ya recortado</b> a los paños de los castillos, no en el
+    /// medio del eje del modelo: si el muro se recortó por un lado, el centro del eje ya no es el
+    /// centro de lo que se ve.
     /// </para>
     /// </remarks>
-    private bool ContornoDeMuro(
-        ElementoPlanta el, double x0, double y0, string capa,
-        double ancho, PanoDeApoyo.Tramo? tramo)
+    private void LeyendaDeMuro(
+        ElementoPlanta el, double x0, double y0, string capa, PanoDeApoyo.Tramo? tramo)
     {
+        var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
+
+        if (leyenda.Length == 0)
+        {
+            return;
+        }
+
         var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
 
         var dx = t.X2 - t.X1;
         var dy = t.Y2 - t.Y1;
         var largo = Math.Sqrt((dx * dx) + (dy * dy));
 
-        if (largo < LargoMinimo || ancho <= 0)
+        if (largo < LargoMinimo)
         {
-            return false;
-        }
-
-        var ax = t.X1 + x0;
-        var ay = t.Y1 + y0;
-        var bx = t.X2 + x0;
-        var by = t.Y2 + y0;
-
-        // La MISMA normal que Barra, para que el contorno caiga sobre los paños de siempre.
-        var nx = -dy / largo * (ancho / 2);
-        var ny = dx / largo * (ancho / 2);
-
-        var contorno = PolilineaCerrada(
-            new[]
-            {
-                ax + nx, ay + ny,
-                bx + nx, by + ny,
-                bx - nx, by - ny,
-                ax - nx, ay - ny
-            },
-            capa);
-
-        if (contorno is null)
-        {
-            return false;
-        }
-
-        // ---------- La leyenda, dentro ----------
-        //
-        // Aquí solo llegan muros de concreto, así que la leyenda va siempre: quien decide es el
-        // bucle de muros, y este método no vuelve a preguntarlo. Tener la condición en un solo
-        // sitio es lo que evita que un día una de las dos diga una cosa y la otra otra.
-        var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
-
-        if (leyenda.Length == 0)
-        {
-            return true;
+            return;
         }
 
         var altura = _cfg.Numero("MURO_CONCRETO_LEYENDA_ALTURA", 0.12);
 
-        // No se rotula el muro donde la leyenda no cabe: un «MC» más largo que el muro se sale
-        // por los dos lados y se lee peor que no ponerlo. Se mide contra el LARGO, que es la
-        // dirección en la que crece el texto una vez girado con el muro.
+        // No se rotula donde no cabe: un «MC» más largo que el muro se sale por los dos lados y se
+        // lee peor que no ponerlo. Se mide contra el LARGO, que es la dirección en la que crece el
+        // texto una vez girado con el muro.
         if (altura <= 0 || largo < altura * leyenda.Length)
         {
             _sinLeyendaMc++;
-            return true;
+            return;
         }
 
-        // Centrado en el medio del tramo —no en el del eje del modelo— y girado con el muro, con
-        // AnguloLegible para que nunca salga cabeza abajo. Anclaje 5 es MiddleCenter, así que el
-        // punto ES el centro del texto.
-        //
-        // Con fondo opaco: la leyenda va DENTRO del contorno, y si la losa o el armado pasan por
-        // debajo, sin fondo quedaría ilegible.
-        Mtexto((ax + bx) / 2, (ay + by) / 2, leyenda, altura, capa,
+        // Anclaje 5 es MiddleCenter, así que el punto ES el centro del texto. Con fondo opaco,
+        // porque cae encima de las dos líneas del muro y sin él quedaría cruzado por ellas.
+        Mtexto(((t.X1 + t.X2) / 2) + x0, ((t.Y1 + t.Y2) / 2) + y0, leyenda, altura, capa,
                AnguloLegible(dx, dy), EstiloSecciones, conFondo: true);
-
-        return true;
     }
 
     /// <summary>
