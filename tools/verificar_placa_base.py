@@ -1034,6 +1034,123 @@ check("y menos de tres puntos tampoco",
 check("un espesor cero devuelve el mismo contorno",
       hacia_fuera(cuadro, 0) == list(cuadro))
 
+# ==========================================================================
+#  LA FLECHA DE LA SOLDADURA APUNTA A LA SOLDADURA
+# ==========================================================================
+#  Port de ContornoDesplazado.PuntoIzquierdo.
+#
+#  El defecto: se tomaba la X mas chica de la franja y se le forzaba el CENTRO
+#  VERTICAL de la pieza. En un perfil I eso es AIRE: la X mas chica es la punta del
+#  patin, y a media altura por ahi no pasa el contorno, esta el hueco entre los dos
+#  patines. La flecha acababa señalando a nada.
+#
+#  La prueba de verdad es geometrica: la punta tiene que caer DENTRO de la franja, o
+#  sea entre el contorno del perfil y el contorno corrido el espesor. Se comprueba
+#  con «punto en poligono» sobre los dos contornos: dentro del de fuera y fuera del
+#  del perfil.
+def punto_izquierdo(pts):
+    if pts is None or len(pts) < 4 or len(pts) % 2 != 0:
+        return (0.0, 0.0)
+
+    n = len(pts) // 2
+    xs = [pts[2 * i] for i in range(n)]
+    min_x, max_x = min(xs), max(xs)
+    holgura = 1e-9 + 1e-7 * max(1e-9, max_x - min_x)
+
+    mejor_largo = -1.0
+    mejor = (min_x, pts[1])
+
+    for i in range(n):
+        j = (i + 1) % n
+        if pts[2 * i] > min_x + holgura or pts[2 * j] > min_x + holgura:
+            continue
+        largo = abs(pts[2 * j + 1] - pts[2 * i + 1])
+        if largo > mejor_largo:
+            mejor_largo = largo
+            mejor = ((pts[2 * i] + pts[2 * j]) / 2,
+                     (pts[2 * i + 1] + pts[2 * j + 1]) / 2)
+
+    if mejor_largo > holgura:
+        return mejor
+
+    for i in range(n):
+        if pts[2 * i] <= min_x + holgura:
+            return (pts[2 * i], pts[2 * i + 1])
+
+    return mejor
+
+
+def punta_de_la_flecha(perfil, t):
+    """Lo que hace el dibujante: el contorno corrido MEDIO espesor, por la izquierda."""
+    medio = hacia_fuera(perfil, t / 2.0)
+    return punto_izquierdo(medio if medio is not None else perfil)
+
+
+print("\n" + "=" * 78)
+print("LA FLECHA DE LA SOLDADURA CAE DENTRO DE LA FRANJA")
+print("=" * 78)
+
+t_f = 0.635
+
+formas = {
+    "perfil I": perfil_i(0, 0, 20.4, 20.4, 0.73, 1.11),
+    "canal": canal,
+    "angulo": angulo,
+    "te": te,
+}
+
+for nombre, forma in formas.items():
+    fuera = hacia_fuera(forma, t_f)
+    px, py = punta_de_la_flecha(forma, t_f)
+
+    check(f"la {nombre}: la punta cae DENTRO de la franja",
+          dentro(fuera, px, py) and not dentro(forma, px, py),
+          f"punta ({px:.3f}, {py:.3f})")
+
+#  Y EL CASO CONCRETO QUE SE VEIA MAL, escrito con su numero. En el perfil I de
+#  20.4 de peralte con patin de 1.11, el centro vertical esta en y = 0 y la punta
+#  buena cae en el canto del patin, muy lejos de ahi.
+i_pts2 = perfil_i(0, 0, 20.4, 20.4, 0.73, 1.11)
+px_i, py_i = punta_de_la_flecha(i_pts2, t_f)
+
+check("y en el perfil I NO se queda en el centro vertical, que es el hueco",
+      abs(py_i) > 8.0,
+      f"la punta quedo en y = {py_i:.3f}; el centro es y = 0")
+
+#  EL DEFECTO, DEMOSTRADO. El punto que usaba la version anterior era (X minima de la
+#  franja, centro vertical). Se reconstruye y se comprueba que NO esta dentro de la
+#  franja: si esta comprobacion se pusiera en verde con el codigo viejo, no probaria
+#  nada.
+x_min_franja = min(hacia_fuera(i_pts2, t_f)[2 * k] for k in range(12))
+punta_vieja = (x_min_franja, 0.0)
+
+check("el punto que usaba la version anterior NO estaba en la franja",
+      not dentro(hacia_fuera(i_pts2, t_f), punta_vieja[0], punta_vieja[1]),
+      f"punta vieja ({punta_vieja[0]:.3f}, {punta_vieja[1]:.3f})")
+
+check("y la nueva SI lo esta, con la misma medida",
+      dentro(hacia_fuera(i_pts2, t_f), px_i, py_i),
+      f"punta nueva ({px_i:.3f}, {py_i:.3f})")
+
+#  El punto sale del EJE de la franja, no de su borde: apuntando al borde de fuera la
+#  flecha queda justo sobre la linea, y al de dentro, encima del perfil.
+borde_fuera = punto_izquierdo(hacia_fuera(i_pts2, t_f))
+eje = punta_de_la_flecha(i_pts2, t_f)
+
+check("la punta esta en el EJE de la franja, no en su borde exterior",
+      abs(eje[0] - borde_fuera[0]) > t_f / 4,
+      f"eje x={eje[0]:.4f}, borde x={borde_fuera[0]:.4f}")
+
+#  Y en una forma sin arista vertical al minimo -una punta- se devuelve el vertice y
+#  no se revienta.
+rombo = [0, 5, 5, 0, 10, 5, 5, 10]
+
+check("una forma en punta devuelve su vertice, sin reventar",
+      punto_izquierdo(rombo) == (0, 5), f"{punto_izquierdo(rombo)}")
+
+check("y un arreglo vacio o corto contesta el origen, sin excepcion",
+      punto_izquierdo(None) == (0.0, 0.0) and punto_izquierdo([1, 2]) == (0.0, 0.0))
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

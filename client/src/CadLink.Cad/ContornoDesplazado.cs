@@ -171,6 +171,86 @@ public static class ContornoDesplazado
         return salida;
     }
 
+    /// <summary>
+    /// Un punto del contorno por su <b>lado izquierdo</b>, para que una flecha pueda apuntarle.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>No basta con la X más chica.</b> Eso da una coordenada del contorno y ninguna Y, y tomar
+    /// el centro vertical de la pieza deja la flecha en el aire: en un perfil I la X más chica es la
+    /// punta del patín, y a media altura por ahí no pasa el contorno —está el hueco entre los dos
+    /// patines—. Es exactamente lo que hacía que la flecha de la soldadura señalara a nada.
+    /// </para>
+    /// <para>
+    /// Así que se busca la <b>arista</b> de más a la izquierda —la más larga de las que están al
+    /// mínimo de X— y se devuelve su punto medio. En un perfil I eso cae en el canto del patín, que
+    /// es contorno de verdad; en un ángulo o una canal, en el canto del alma. Si el mínimo de X se da
+    /// en un solo vértice, se devuelve ese vértice.
+    /// </para>
+    /// </remarks>
+    public static (double X, double Y) PuntoIzquierdo(double[]? puntos)
+    {
+        if (puntos is null || puntos.Length < 4 || puntos.Length % 2 != 0)
+        {
+            return (0, 0);
+        }
+
+        var n = puntos.Length / 2;
+
+        var minX = double.MaxValue;
+        var maxX = double.MinValue;
+
+        for (var i = 0; i < n; i++)
+        {
+            if (puntos[2 * i] < minX) { minX = puntos[2 * i]; }
+            if (puntos[2 * i] > maxX) { maxX = puntos[2 * i]; }
+        }
+
+        // La holgura es RELATIVA al tamaño de la pieza: en unidades de dibujo un perfil puede medir
+        // 0.2, y una holgura fija de un milímetro se comería medio contorno.
+        var holgura = 1e-9 + (1e-7 * Math.Max(1e-9, maxX - minX));
+
+        var mejorLargo = -1.0;
+        var mejorX = minX;
+        var mejorY = puntos[1];
+
+        // Primero, la arista COMPLETA que esté al mínimo de X: sus dos extremos ahí.
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+
+            if (puntos[2 * i] > minX + holgura || puntos[2 * j] > minX + holgura)
+            {
+                continue;
+            }
+
+            var largo = Math.Abs(puntos[(2 * j) + 1] - puntos[(2 * i) + 1]);
+
+            if (largo > mejorLargo)
+            {
+                mejorLargo = largo;
+                mejorX = (puntos[2 * i] + puntos[2 * j]) / 2;
+                mejorY = (puntos[(2 * i) + 1] + puntos[(2 * j) + 1]) / 2;
+            }
+        }
+
+        if (mejorLargo > holgura)
+        {
+            return (mejorX, mejorY);
+        }
+
+        // No hay arista vertical en el mínimo —una punta—: se devuelve el vértice.
+        for (var i = 0; i < n; i++)
+        {
+            if (puntos[2 * i] <= minX + holgura)
+            {
+                return (puntos[2 * i], puntos[(2 * i) + 1]);
+            }
+        }
+
+        return (minX, mejorY);
+    }
+
     /// <summary>La arista que <b>llega</b> al vértice, saltando las de largo cero.</summary>
     private static int AristaHaciaAtras(bool[] sirve, int n, int vertice)
     {

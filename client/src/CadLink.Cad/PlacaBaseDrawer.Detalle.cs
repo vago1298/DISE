@@ -230,15 +230,18 @@ public sealed partial class PlacaBaseDrawer
         // ---------- La frontera exterior: el paño del perfil corrido hacia fuera ----------
         object? frontera = null;
 
-        // Por donde arranca el leader: el punto más a la izquierda de la franja.
-        var xIzquierdaFranja = xc;
+        // A DÓNDE APUNTA LA FLECHA: al MEDIO de la franja, no a su borde ni al centro de la pieza.
+        // Se saca del contorno corrido la MITAD del espesor, así que el punto cae dentro del rayado
+        // por construcción, sea el perfil el que sea.
+        var puntaFlecha = (X: xc, Y: yc);
 
         if (contornoExterior?.Circulo is { } circulo)
         {
             // El tubo redondo y el macizo: la franja es un anillo, así que la frontera es la misma
             // circunferencia con el radio crecido.
             frontera = Circulo(circulo.Cx, circulo.Cy, (circulo.R + t) * 2, PlacaBaseCapas.Soldadura);
-            xIzquierdaFranja = circulo.Cx - circulo.R - t;
+
+            puntaFlecha = (circulo.Cx - circulo.R - (t / 2), circulo.Cy);
         }
         else if (contornoExterior?.Puntos is { } puntos)
         {
@@ -253,7 +256,11 @@ public sealed partial class PlacaBaseDrawer
 
             frontera = Polilinea(fuera, PlacaBaseCapas.Soldadura, contornoExterior.Dobleces);
 
-            xIzquierdaFranja = MenorX(fuera);
+            // El eje de la franja, que es el contorno corrido medio espesor. Apuntar al borde de
+            // fuera dejaría la flecha justo en la línea, y al de dentro, encima del perfil.
+            var medio = ContornoDesplazado.HaciaFuera(puntos, t / 2) ?? fuera;
+
+            puntaFlecha = ContornoDesplazado.PuntoIzquierdo(medio);
         }
         else
         {
@@ -291,29 +298,14 @@ public sealed partial class PlacaBaseDrawer
 
         var separacion = Math.Max(11.0 * _hTxt, 8.0 * _escala);
 
-        // El leader arranca del borde REAL de la franja, no del de la caja del perfil. En una I la
-        // caja llega hasta la punta del patín y la franja del alma está mucho más adentro: apuntando
-        // a la caja, la flecha señalaba aire.
+        // LA FLECHA APUNTA A LA SOLDADURA, con su propia Y. Antes tomaba la X del borde de la franja
+        // y le forzaba el centro vertical de la pieza, y eso en un perfil I es AIRE: a media altura,
+        // por la punta del patín no pasa el contorno, está el hueco entre los dos patines. El texto
+        // sí se queda centrado; lo que se corrige es dónde acaba la punta.
         LeaderZIzquierda(
             TextoSoldadura(p),
-            xIzquierdaFranja, yc,
+            puntaFlecha.X, puntaFlecha.Y,
             xLef - separacion, yc);
-    }
-
-    /// <summary>La X más chica de un arreglo plano de puntos.</summary>
-    private static double MenorX(double[] puntos)
-    {
-        var min = double.MaxValue;
-
-        for (var i = 0; i + 1 < puntos.Length; i += 2)
-        {
-            if (puntos[i] < min)
-            {
-                min = puntos[i];
-            }
-        }
-
-        return min < double.MaxValue ? min : 0;
     }
 
     /// <summary>El texto del leader de soldadura, en dos renglones.</summary>

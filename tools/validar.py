@@ -6511,6 +6511,23 @@ def v18_planta_autocad() -> None:
           and "new ContornoDelPerfil { Puntos = pts, Dobleces = contorno.Dobleces }" in pbd2
           and "out var contornoDelPerfil)" in pbd)
 
+    #  Y LA FLECHA APUNTA A LA SOLDADURA, no cerca.
+    #
+    #  El defecto: se tomaba la X mas chica de la franja y se le forzaba el CENTRO VERTICAL de la
+    #  pieza. En un perfil I eso es aire —la X mas chica es la punta del patin, y a media altura por
+    #  ahi no pasa el contorno, esta el hueco entre los dos patines—. En el W 8x31 la punta caia en
+    #  (-10.835, 0.000), fuera de la franja; ahora cae en (-10.518, 9.645), dentro.
+    #
+    #  Y apunta al EJE de la franja, no a su borde: al de fuera quedaria justo sobre la linea y al de
+    #  dentro, encima del perfil. De ahi el medio espesor.
+    check("la flecha de la soldadura apunta a la soldadura",
+          "public static (double X, double Y) PuntoIzquierdo(" in cdesp
+          and "ContornoDesplazado.HaciaFuera(puntos, t / 2)" in pbd2
+          and "puntaFlecha = ContornoDesplazado.PuntoIzquierdo(medio);" in pbd2
+          and "puntaFlecha.X, puntaFlecha.Y," in pbd2
+          # Y NO la X sola con el centro de la pieza, que es lo que estaba mal.
+          and "xIzquierdaFranja" not in pbd2)
+
     #  Y LA VISTA PREVIA DIBUJA LA FRANJA, con la misma clase. Es lo que permite ver este
     #  arreglo sin abrir AutoCAD, que es justo lo que aqui no se puede hacer.
     check("la vista previa ensena la franja de soldadura",
