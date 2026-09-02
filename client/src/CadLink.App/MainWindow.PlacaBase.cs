@@ -1,12 +1,20 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using CadLink.App.Models;
 using CadLink.Cad;
+
+// La figura de WPF con la que se pinta la vista previa, con alias y SIN importar
+// System.Windows.Shapes entero. El motivo es el de MainWindow.Acero.cs: ese espacio de nombres trae
+// un Path y System.IO —que es using GLOBAL, está en el .csproj— trae otro, así que con los dos
+// importados escribir «Path» a secas es un CS0104, referencia ambigua. Con el alias a secas, ese
+// choque no puede ocurrir en este archivo.
+using FormaPath = System.Windows.Shapes.Path;
 
 namespace CadLink.App;
 
 /// <summary>
-/// La pestaña de <b>placas base</b>: su tabla y el botón que las dibuja en AutoCAD.
+/// La pestaña de <b>placas base</b>: su tabla, su vista previa y el botón que las dibuja.
 /// </summary>
 public partial class MainWindow
 {
@@ -79,21 +87,504 @@ public partial class MainWindow
 
         ActualizarTotalesPlacas();
 
+        // La primera fila queda seleccionada para que la vista previa arranque con algo dibujado en
+        // lugar de con un aviso de «selecciona una placa».
         if (PlacasGrid.SelectedItem is null && _datos.PlacasBase.Count > 0)
         {
             PlacasGrid.SelectedIndex = 0;
         }
+
+        DibujarVistaPreviaPlacaBase();
     }
 
     private void OnFilaPlacaEditada(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // AL ELEGIR EL DADO, SUS MEDIDAS SE TRAEN SOLAS. Va ANTES del guardia de _listo a
+        // propósito: al abrir un trabajo las filas entran con _listo apagado, y si la referencia se
+        // saltara ahí, un .clk guardado con el ID del dado se abriría con las medidas viejas.
+        if (sender is PlacaBaseRow fila && e.PropertyName == nameof(PlacaBaseRow.IdDado))
+        {
+            ReferenciarDadoDePlaca(fila);
+        }
+
         if (!_listo)
         {
             return;
         }
 
         ActualizarTotalesPlacas();
+
+        // Y la vista previa, EN CADA CELDA QUE SE EDITA. Es lo que la hace útil: si solo se
+        // refrescara al cambiar de fila, habría que salir y volver a entrar para ver el efecto de
+        // mover una separación, y a esas alturas ya se perdió de vista qué se cambió.
+        //
+        // Solo si la fila que cambió es la que se está viendo: con veinte filas enlazadas,
+        // redibujar por cualquiera de ellas sería veinte veces el trabajo para enseñar lo mismo.
+        if (sender is null || ReferenceEquals(sender, PlacasGrid.SelectedItem))
+        {
+            DibujarVistaPreviaPlacaBase();
+        }
     }
+
+    /// <summary>
+    /// Trae a la fila las medidas del <b>dado</b> elegido, de la hoja de secciones de concreto.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el mismo mecanismo que usa la hoja de zapatas con su dado y su columna, y por el mismo
+    /// motivo: el dado ya está capturado en su hoja —con su armado, su recubrimiento y su forma—
+    /// porque es una sección que se dibuja por su cuenta. Volver a teclear sus medidas aquí es
+    /// pedir dos veces el mismo dato, y de los dos sitios el segundo es el que se equivoca.
+    /// </para>
+    /// <para>
+    /// <b>Nunca se escribe un cero.</b> Si la sección no tiene la medida capturada, se deja lo que
+    /// hubiera: traer un cero borraría un dato bueno para poner uno que no existe.
+    /// </para>
+    /// </remarks>
+    private void ReferenciarDadoDePlaca(PlacaBaseRow fila)
+    {
+        var id = ZapataAisladaRow.SoloElId(fila.IdDado);
+
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        var dado = _datos.SeccionesConcreto.FirstOrDefault(s =>
+            EsDado(s.Elemento)
+            && ZapataAisladaRow.SoloElId(s.Id).Equals(id, StringComparison.OrdinalIgnoreCase));
+
+        if (dado is null)
+        {
+            return;
+        }
+
+        // LA FORMA PRIMERO. Decide cómo se leen las dos medidas siguientes: en un dado redondo la
+        // base es el DIÁMETRO y no hay una segunda dimensión que valga.
+        fila.DadoCircular = dado.EsCircular;
+
+        if (dado.BaseCm > 0)
+        {
+            fila.DadoXCm = dado.BaseCm;
+        }
+
+        if (dado.EsCircular)
+        {
+            // El diámetro, en las dos direcciones: así las cotas del detalle miden lo mismo por los
+            // dos lados y el encuadre no se descuadra.
+            if (dado.BaseCm > 0)
+            {
+                fila.DadoYCm = dado.BaseCm;
+            }
+        }
+        else if (dado.AlturaCm > 0)
+        {
+            fila.DadoYCm = dado.AlturaCm;
+        }
+    }
+
+    // ======================================================================
+    //  LA VISTA PREVIA
+    // ======================================================================
+
+    /// <summary>
+    /// Engancha la vista previa: se redibuja al cambiar de fila y al redimensionar.
+    /// </summary>
+    /// <remarks>
+    /// Va aparte de <see cref="EnlazarPlacaBase"/> porque esto se hace <b>una vez</b>, en el
+    /// arranque: <c>Enlazar</c> se vuelve a llamar al cargar el ejemplo, al borrar todo y al
+    /// empezar de nuevo, y suscribirse ahí dejaría el mismo evento enganchado cinco veces.
+    /// </remarks>
+    private void EngancharVistaPreviaPlacaBase()
+    {
+        PlacaPreviewCanvas.SizeChanged += (_, _) => DibujarVistaPreviaPlacaBase();
+        PlacasGrid.SelectionChanged += (_, _) => DibujarVistaPreviaPlacaBase();
+    }
+
+    /// <summary>
+    /// Dibuja la placa seleccionada en el lienzo de la pestaña.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>La geometría es la MISMA que va a AutoCAD</b>, no una versión de pantalla: las anclas las
+    /// coloca <see cref="AnclasPlacaBase"/>, los cartabones <see cref="CartabonesPlacaBase"/> y el
+    /// perfil <see cref="TrazoAcero"/>, que son las tres clases que usa el dibujante. Es la razón de
+    /// que existan sin nada de COM. Una previa que calculara su propia versión podría acabar
+    /// enseñando algo distinto de lo que se dibuja, que es justo lo que no puede hacer.
+    /// </para>
+    /// <para>
+    /// Se trabaja <b>en centímetros</b> —escala 1 y origen en cero— y el ajuste al lienzo se hace al
+    /// final. Así la escala de pantalla no se mezcla con la del dibujo.
+    /// </para>
+    /// </remarks>
+    private void DibujarVistaPreviaPlacaBase()
+    {
+        if (PlacaPreviewCanvas is null)
+        {
+            return;
+        }
+
+        PlacaPreviewCanvas.Children.Clear();
+
+        var ancho = PlacaPreviewCanvas.ActualWidth;
+        var alto = PlacaPreviewCanvas.ActualHeight;
+
+        if (ancho < 60 || alto < 60)
+        {
+            return;
+        }
+
+        if (PlacasGrid?.SelectedItem is not PlacaBaseRow fila)
+        {
+            AvisoVistaPlaca("Selecciona una placa de la tabla para verla dibujada.");
+            return;
+        }
+
+        var p = fila.AFormatoCad();
+
+        // SI FALTAN MEDIDAS SE DICE CUÁLES, con el mismo texto de la columna «Falta». Dibujar una
+        // placa imposible enseñaría un borrón, y un borrón no explica nada. Es el mismo criterio que
+        // la previa del concreto y la del acero.
+        //
+        // OJO: se mira p.Falta —lo que falta CAPTURAR— y no fila.Falta, que además incluye los
+        // libramientos J y K. Son dos cosas distintas: sin el largo de la placa no hay nada que
+        // dibujar, pero unas anclas demasiado juntas SÍ se pueden dibujar, y es justo el caso en el
+        // que la previa más sirve —se ve dónde están y por qué no cumplen—. Con fila.Falta aquí, la
+        // placa que incumple sería la única que nunca se llegaría a ver.
+        if (p.Falta.Count > 0)
+        {
+            AvisoVistaPlaca("No se puede dibujar todavía: falta " + string.Join("; ", p.Falta) + ".");
+            return;
+        }
+
+        // Todo en centímetros, con la placa apoyada en el origen.
+        var b = p.AnchoDibujoCm;
+        var h = p.AltoDibujoCm;
+
+        if (b <= 0 || h <= 0)
+        {
+            AvisoVistaPlaca("La placa no tiene ancho o alto que dibujar.");
+            return;
+        }
+
+        var dadoX = p.DadoXDibujoCm;
+        var dadoY = p.DadoYDibujoCm;
+
+        var xc = b / 2;
+        var yc = h / 2;
+
+        // ---------- Lo que ocupa todo, para encuadrar ----------
+        var ocupaX = Math.Max(b, dadoX > 0 ? dadoX : 0);
+        var ocupaY = Math.Max(h, dadoY > 0 ? dadoY : 0);
+
+        var (pX, pY) = (p.PerfilXDibujoCm, p.PerfilYDibujoCm);
+
+        var cartabones = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, 1);
+
+        foreach (var c in cartabones)
+        {
+            ocupaX = Math.Max(ocupaX, 2 * Math.Max(Math.Abs(c.X1 - xc), Math.Abs(c.X2 - xc)));
+            ocupaY = Math.Max(ocupaY, 2 * Math.Max(Math.Abs(c.Y1 - yc), Math.Abs(c.Y2 - yc)));
+        }
+
+        const double margen = 34;
+
+        var escala = Math.Min(
+            (ancho - (2 * margen)) / ocupaX,
+            (alto - (2 * margen)) / ocupaY);
+
+        if (escala <= 0 || double.IsInfinity(escala) || double.IsNaN(escala))
+        {
+            return;
+        }
+
+        // De centímetros con la Y hacia arriba a píxeles con la Y hacia abajo, centrado en la placa.
+        var dx = (ancho / 2) - (xc * escala);
+        var dy = (alto / 2) + (yc * escala);
+
+        var transformar = new TransformGroup();
+        transformar.Children.Add(new ScaleTransform(escala, -escala));
+        transformar.Children.Add(new TranslateTransform(dx, dy));
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var grisAcero = new SolidColorBrush(Color.FromRgb(0xC3, 0xCB, 0xD3));
+        var concreto = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8));
+        var rojo = new SolidColorBrush(Color.FromRgb(0xC0, 0x2A, 0x1B));
+
+        // ---------- El dado, al fondo ----------
+        if (dadoX > 0 && dadoY > 0)
+        {
+            var geoDado = p.DadoCircular
+                ? new EllipseGeometry(new Point(xc, yc), dadoX / 2, dadoX / 2)
+                : (Geometry)new RectangleGeometry(new Rect(
+                    xc - (dadoX / 2), yc - (dadoY / 2), dadoX, dadoY));
+
+            geoDado.Transform = transformar;
+
+            PlacaPreviewCanvas.Children.Add(new FormaPath
+            {
+                Data = geoDado,
+                Fill = concreto,
+                Stroke = new SolidColorBrush(Color.FromRgb(0x8A, 0x84, 0x78)),
+                StrokeThickness = 1.2
+            });
+        }
+
+        // ---------- La placa ----------
+        var geoPlaca = new RectangleGeometry(new Rect(0, 0, b, h)) { Transform = transformar };
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoPlaca,
+            Fill = new SolidColorBrush(Color.FromArgb(0x60, 0xC3, 0xCB, 0xD3)),
+            Stroke = azul,
+            StrokeThickness = 2
+        });
+
+        // ---------- Los cartabones ----------
+        if (cartabones.Count > 0)
+        {
+            var geoCart = new GeometryGroup { Transform = transformar };
+
+            foreach (var c in cartabones)
+            {
+                geoCart.Children.Add(new RectangleGeometry(new Rect(
+                    Math.Min(c.X1, c.X2), Math.Min(c.Y1, c.Y2),
+                    Math.Abs(c.X2 - c.X1), Math.Abs(c.Y2 - c.Y1))));
+            }
+
+            PlacaPreviewCanvas.Children.Add(new FormaPath
+            {
+                Data = geoCart,
+                Fill = new SolidColorBrush(Color.FromRgb(0x9A, 0xA6, 0xB2)),
+                Stroke = azul,
+                StrokeThickness = 1
+            });
+        }
+
+        // ---------- El perfil de la columna ----------
+        if (p.Perfil is not null)
+        {
+            var trazo = TrazoAcero.De(
+                p.Perfil, xc - (p.Perfil.AnchoDibujoCm / 2), yc - (p.Perfil.AltoDibujoCm / 2), 1);
+
+            if (trazo is not null)
+            {
+                var geoPerfil = new GeometryGroup
+                {
+                    FillRule = FillRule.EvenOdd,
+                    Transform = transformar
+                };
+
+                AgregarPerfilGirado(geoPerfil, trazo, p.GiraElPerfil, xc, yc);
+
+                PlacaPreviewCanvas.Children.Add(new FormaPath
+                {
+                    Data = geoPerfil,
+                    Fill = grisAcero,
+                    Stroke = azul,
+                    StrokeThickness = 1.6,
+                    StrokeLineJoin = PenLineJoin.Round
+                });
+            }
+        }
+
+        // ---------- Las anclas: el agujero y el ancla, como en el detalle ----------
+        var dAncX = p.DiamAnclaXCm;
+        var dAncY = p.DiamAnclaYCm;
+
+        var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
+        var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
+
+        var sepX = p.SepBordeXCm > 0
+            ? p.SepBordeXCm
+            : AnclasPlacaBase.SepAuto(b, pX, dAguX, 1);
+
+        var sepY = p.SepBordeYCm > 0
+            ? p.SepBordeYCm
+            : AnclasPlacaBase.SepAuto(h, pY, dAguY, 1);
+
+        var anclas = AnclasPlacaBase.Construir(
+            0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
+            dAncX, dAguX, dAncY, dAguY, p.ModoAnclas);
+
+        if (anclas.Count > 0)
+        {
+            var geoAgujeros = new GeometryGroup { Transform = transformar };
+            var geoAnclas = new GeometryGroup { Transform = transformar };
+
+            foreach (var a in anclas)
+            {
+                geoAgujeros.Children.Add(new EllipseGeometry(
+                    new Point(a.X, a.Y), a.DAgujero / 2, a.DAgujero / 2));
+
+                geoAnclas.Children.Add(new EllipseGeometry(
+                    new Point(a.X, a.Y), a.DAncla / 2, a.DAncla / 2));
+            }
+
+            PlacaPreviewCanvas.Children.Add(new FormaPath
+            {
+                Data = geoAgujeros,
+                Fill = Brushes.White,
+                Stroke = azul,
+                StrokeThickness = 1
+            });
+
+            PlacaPreviewCanvas.Children.Add(new FormaPath
+            {
+                Data = geoAnclas,
+                Stroke = rojo,
+                StrokeThickness = 1.4
+            });
+        }
+
+        // ---------- Lo que hay que poder leer sin medir ----------
+        var titulo = fila.Marca.Trim().Length > 0 ? fila.Marca.Trim() : "placa sin marca";
+
+        EtiquetaPlaca(
+            $"{titulo}    ·    PLACA {b:N0} × {h:N0} × {fila.Espesor}\"",
+            10, alto - 40, 12.5, azul, negrita: true);
+
+        var resumen = $"{anclas.Count} ancla(s) de {fila.DiamAnclaX}\"";
+
+        if (p.NAnclasY > 0 && !string.Equals(fila.DiamAnclaX, fila.DiamAnclaY))
+        {
+            resumen += $" y {fila.DiamAnclaY}\"";
+        }
+
+        resumen += $"    ·    sep. borde {sepX:N1} / {sepY:N1} cm";
+
+        if (cartabones.Count > 0)
+        {
+            resumen += $"    ·    {cartabones.Count} cartabón(es)";
+        }
+
+        if (dadoX > 0 && dadoY > 0)
+        {
+            resumen += p.DadoCircular
+                ? $"    ·    dado Ø{dadoX:N0}"
+                : $"    ·    dado {dadoX:N0} × {dadoY:N0}";
+        }
+
+        EtiquetaPlaca(resumen, 10, alto - 22, 11, Brushes.DimGray);
+
+        // Y EL AVISO DE LOS LIBRAMIENTOS, EN ROJO Y ARRIBA. Es lo único de la previa que significa
+        // «esto no se va a dibujar»: el dibujante se niega si no se cumplen las tablas J o K, así
+        // que verlo aquí es enterarse con la fila delante y no cuando el botón no hace nada.
+        var libramiento = fila.Libramientos;
+
+        if (libramiento.Length > 0)
+        {
+            EtiquetaPlaca("NO SE DIBUJARÁ — " + libramiento, 10, 8, 11.5, rojo, negrita: true);
+        }
+    }
+
+    /// <summary>Mete el trazo del perfil en el grupo, girándolo si le toca.</summary>
+    /// <remarks>
+    /// El giro es el <b>mismo</b> que aplica el dibujante —<c>xd = xc - y ; yd = yc + x</c> sobre las
+    /// coordenadas locales— y se aplica igual a los contornos y a los círculos. Se hace aquí sobre
+    /// los puntos, y no pidiéndole otro trazo a <see cref="TrazoAcero"/>, por lo mismo que allí: así
+    /// el giro es uno solo para las nueve formas.
+    /// </remarks>
+    private static void AgregarPerfilGirado(
+        GeometryGroup grupo, TrazoAcero.Trazo trazo, bool girar, double xc, double yc)
+    {
+        foreach (var contorno in new[] { trazo.Exterior, trazo.Interior })
+        {
+            if (contorno is null)
+            {
+                continue;
+            }
+
+            // Los arcos se muestrean: un lienzo de WPF no tiene bulges. Veinte tramos por arco es
+            // de sobra para que el doblez de una lámina se vea curvo a este tamaño.
+            var pts = TrazoAcero.Muestrear(contorno, 20);
+
+            if (pts.Count < 3)
+            {
+                continue;
+            }
+
+            var primero = GirarSiToca(pts[0].X, pts[0].Y, girar, xc, yc);
+
+            var figura = new PathFigure
+            {
+                StartPoint = new Point(primero.X, primero.Y),
+                IsClosed = true,
+                IsFilled = true
+            };
+
+            for (var k = 1; k < pts.Count; k++)
+            {
+                var q = GirarSiToca(pts[k].X, pts[k].Y, girar, xc, yc);
+
+                figura.Segments.Add(new LineSegment(new Point(q.X, q.Y), true));
+            }
+
+            var geo = new PathGeometry();
+            geo.Figures.Add(figura);
+
+            grupo.Children.Add(geo);
+        }
+
+        foreach (var circulo in new[] { trazo.CircExterior, trazo.CircInterior })
+        {
+            if (circulo is null || circulo.R <= 0)
+            {
+                continue;
+            }
+
+            var c = GirarSiToca(circulo.Cx, circulo.Cy, girar, xc, yc);
+
+            grupo.Children.Add(new EllipseGeometry(new Point(c.X, c.Y), circulo.R, circulo.R));
+        }
+    }
+
+    private static (double X, double Y) GirarSiToca(
+        double x, double y, bool girar, double xc, double yc) =>
+        girar ? (xc - (y - yc), yc + (x - xc)) : (x, y);
+
+    /// <summary>Un aviso centrado en la vista previa de placas.</summary>
+    private void AvisoVistaPlaca(string texto) =>
+        EtiquetaPlaca(texto, 14, 34, 12, Brushes.Gray);
+
+    /// <summary>Un texto en el lienzo de la vista previa de placas.</summary>
+    private void EtiquetaPlaca(
+        string texto, double x, double y, double tamano, Brush color, bool negrita = false)
+    {
+        var t = new System.Windows.Controls.TextBlock
+        {
+            Text = texto,
+            FontSize = tamano,
+            Foreground = color,
+            FontWeight = negrita ? FontWeights.SemiBold : FontWeights.Normal
+        };
+
+        System.Windows.Controls.Canvas.SetLeft(t, x);
+        System.Windows.Controls.Canvas.SetTop(t, y);
+
+        PlacaPreviewCanvas.Children.Add(t);
+    }
+
+    /// <summary>Pone al día el dado de TODAS las placas.</summary>
+    /// <remarks>
+    /// Se llama desde donde se refrescan las listas de las otras hojas: al agregar, borrar o
+    /// <b>editar</b> una sección de concreto. Editar importa igual que agregar —si el dado crece en
+    /// su hoja, la placa que lo usa tiene que crecer con él— y es lo que hace que la medida sea una
+    /// referencia y no una copia que envejece.
+    /// </remarks>
+    private void ReferenciarDadosDeTodasLasPlacas()
+    {
+        foreach (var fila in _datos.PlacasBase)
+        {
+            ReferenciarDadoDePlaca(fila);
+        }
+    }
+
+    // EsDado NO SE VUELVE A ESCRIBIR AQUÍ. Ya existe en MainWindow.Zapatas.cs, y MainWindow es UNA
+    // clase partida en varios archivos: declararlo otra vez es el error CS0111. Y además es lo
+    // correcto: el criterio de qué cuenta como dado —que el elemento empiece por «DADO», así entran
+    // «DADO» y «DADO CIRCULAR»— tiene que ser el mismo para las dos hojas que ofrecen la lista.
 
     /// <summary>
     /// El renglón de totales: cuántas placas, cuántas anclas y qué no se puede dibujar.
@@ -190,8 +681,10 @@ public partial class MainWindow
         AnchoCm = f.AnchoCm,
         Espesor = f.Espesor,
         AceroPlaca = f.AceroPlaca,
+        IdDado = f.IdDado,
         DadoXCm = f.DadoXCm,
         DadoYCm = f.DadoYCm,
+        DadoCircular = f.DadoCircular,
         Familia = f.Familia,
         Seccion = f.Seccion,
         NAnclasX = f.NAnclasX,
@@ -219,8 +712,7 @@ public partial class MainWindow
     /// <summary>Quita la placa seleccionada.</summary>
     private void OnQuitarPlaca(object sender, RoutedEventArgs e)
     {
-        // La variable se declara en un patrón POSITIVO. Escrito al revés —«is not { } fila»— no
-        // compila: C# no permite declarar una variable dentro de un patrón negado.
+        // El caso bueno primero y el aviso al final, que es como se lee de corrido.
         if (PlacaSeleccionada is { } fila)
         {
             _datos.PlacasBase.Remove(fila);

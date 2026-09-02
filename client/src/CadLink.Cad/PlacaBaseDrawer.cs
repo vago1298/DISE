@@ -404,7 +404,12 @@ public sealed partial class PlacaBaseDrawer
             var dx0 = x0 + ((b - dadoX) / 2);
             var dy0 = y0 + ((h - dadoY) / 2);
 
-            contornoDado = Rectangulo(dx0, dy0, dx0 + dadoX, dy0 + dadoY, PlacaBaseCapas.Concreto);
+            // EL DADO REDONDO SE DIBUJA REDONDO. Viene de la hoja de secciones de concreto, y ahí
+            // un DADO CIRCULAR es otra forma: dibujarlo cuadrado pondría en el plano un dado que no
+            // es el que se armó, con el mismo ID en el rótulo.
+            contornoDado = p.DadoCircular
+                ? Circulo(x0 + (b / 2), y0 + (h / 2), dadoX, PlacaBaseCapas.Concreto)
+                : Rectangulo(dx0, dy0, dx0 + dadoX, dy0 + dadoY, PlacaBaseCapas.Concreto);
 
             if (dy0 + dadoY > yTop) { yTop = dy0 + dadoY; }
             if (dy0 < yBot) { yBot = dy0; }
@@ -434,8 +439,20 @@ public sealed partial class PlacaBaseDrawer
         // ---------- El rayado del dado, SOLO en la franja que sobresale ----------
         // La placa entra como isla, así que lo que queda bajo la placa no se raya: ahí lo que se
         // ve es la placa, no el concreto.
+        // LA PLACA TIENE QUE CABER ENTERA DENTRO DEL DADO para poder entrar como isla. Si los dos
+        // contornos se cruzan, el rayado no es «la franja que sobresale»: son dos bordes que se
+        // cortan, y AutoCAD o falla o raya de más.
+        //
+        // En el dado rectangular basta comparar lado a lado. En el REDONDO hay que medir la
+        // DIAGONAL de la placa: un dado de 50 cm de diámetro sobresale por el centro de los lados
+        // de una placa de 40x40 y sin embargo sus esquinas —que están a 56.6 cm— quedan FUERA del
+        // círculo. Comparando solo los lados, ese caso pasaría el filtro y el rayado saldría mal.
+        var placaCabeEnElDado = p.DadoCircular
+            ? dadoX > Math.Sqrt((b * b) + (h * h)) + 1e-6
+            : dadoX > b + 1e-6 && dadoY > h + 1e-6;
+
         if (p.DibujarHatchDado && contornoDado is not null && contornoPlaca is not null
-            && dadoX > b + 1e-6 && dadoY > h + 1e-6)
+            && placaCabeEnElDado)
         {
             var hatch = Hatch(
                 PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado,
@@ -446,6 +463,16 @@ public sealed partial class PlacaBaseDrawer
             {
                 AlFondo(new List<object> { hatch });
             }
+        }
+        else if (p.DibujarHatchDado && p.DadoCircular && contornoDado is not null
+                 && dadoX > 0 && dadoX <= Math.Sqrt((b * b) + (h * h)))
+        {
+            // SE DICE POR QUÉ NO SE RAYÓ. Un dado redondo sin rayado y sin explicación se lee como
+            // un fallo del programa; lo que pasa es que las esquinas de la placa se salen del
+            // círculo, y eso es un dato del detalle que conviene mirar.
+            Nota($"El dado redondo de {dadoX / _escala:0.#} cm no se rayó: las esquinas de la " +
+                 $"placa ({Math.Sqrt((b * b) + (h * h)) / _escala:0.#} cm de diagonal) se salen " +
+                 "del círculo, así que el contorno de la placa no puede entrar como isla.");
         }
 
         // ---------- El perfil de la columna ----------
@@ -469,7 +496,8 @@ public sealed partial class PlacaBaseDrawer
         }
 
         // ---------- Los cartabones ----------
-        var cartabones = Cartabones(p, x0 + (b / 2), y0 + (h / 2), pX, pY);
+        var cartabones = Cartabones(
+            p, x0 + (b / 2), y0 + (h / 2), pX, pY, out var repartoCartabones);
 
         // ---------- Las anclas: dos círculos cada una ----------
         var nAncX = 0;
@@ -516,7 +544,7 @@ public sealed partial class PlacaBaseDrawer
 
         if (p.DibujarLeaders && cartabones.Count > 0)
         {
-            LeadersDeCartabones(p, cartabones, xLef);
+            LeadersDeCartabones(p, cartabones, repartoCartabones, xLef);
         }
 
         // ---------- El rótulo ----------

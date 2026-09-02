@@ -90,6 +90,7 @@ public partial class MainWindow : Window
         EngancharVistaPreviaAcero();
         EngancharVistaPreviaZapata();
         EngancharVistaPreviaZapataCorrida();
+        EngancharVistaPreviaPlacaBase();
 
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
@@ -292,6 +293,11 @@ public partial class MainWindow : Window
         // en cuanto se agrega una columna.
         ActualizarListasDeZapatas();
 
+        // Y EL DADO DE LAS PLACAS BASE, por lo mismo. La placa toma las medidas de su dado de ESTA
+        // hoja, así que si el dado crece aquí, la placa que lo usa tiene que crecer con él. Sin
+        // esto la medida sería una copia que envejece, no una referencia.
+        ReferenciarDadosDeTodasLasPlacas();
+
         if (ReferenceEquals(sender, Seleccionada))
         {
             DibujarVistaPrevia();
@@ -314,9 +320,11 @@ public partial class MainWindow : Window
         ActualizarContadores();
         ActualizarTotales();
 
-        // El renglón de la hoja de placas base. Va aquí porque este método se llama también al
-        // ABRIR un trabajo y al DESHACER, y en esos dos casos las filas entran con _listo apagado:
-        // sin esto, el renglón de totales se quedaría con el recuento del trabajo anterior.
+        // La hoja de placas base. Va aquí porque este método se llama también al ABRIR un trabajo y
+        // al DESHACER, y en esos dos casos las filas entran con _listo apagado: sin esto, el
+        // renglón de totales se quedaría con el recuento del trabajo anterior y el dado de cada
+        // placa, con las medidas del dado de antes.
+        ReferenciarDadosDeTodasLasPlacas();
         ActualizarTotalesPlacas();
 
         DibujarVistaPrevia();

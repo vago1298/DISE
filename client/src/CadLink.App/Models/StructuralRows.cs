@@ -1071,6 +1071,25 @@ public sealed class DatosProyecto
             GanchoCm = 5, Fc = "200", Escala = "10"
         });
 
+        // UN DADO, y está aquí por la misma razón que la contratrabe de abajo: la hoja de PLACAS
+        // BASE toma las medidas de su dado de ESTA hoja, buscándolo por su ID. Sin un dado
+        // capturado, el desplegable «ID dado» de la placa saldría vacío en el ejemplo y no se vería
+        // que las dos hojas están enlazadas —que es justo lo que hay que ver de un tirón—.
+        d.SeccionesConcreto.Add(new SeccionConcretoRow
+        {
+            Elemento = SeccionConcretoRow.ElementoDado, Id = "D-1",
+            BaseCm = 50, AlturaCm = 50,
+            NEsqSup = 2, DiamEsqSup = "#4",
+            NIntSup = 0, DiamIntSup = string.Empty,
+            NEsqInf = 2, DiamEsqInf = "#4",
+            NIntInf = 0, DiamIntInf = string.Empty,
+            NInter = 0, DiamInter = string.Empty,
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20-10",
+            EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
+            GanchoCm = 5, Fc = "250", Escala = "20",
+            LongitudM = 1
+        });
+
         // Estas dos son las que usan las ZAPATAS CORRIDAS del ejemplo: las dos macros las
         // insertan como BLOQUE buscándolas por su ID, así que tienen que existir aquí para
         // que la hoja de corridas arranque sin avisos y se vea de una vez cómo se enlazan.
@@ -1274,7 +1293,14 @@ public sealed class DatosProyecto
             Marca = "PB-1",
             LargoCm = 40, AnchoCm = 40,
             Espesor = "1", AceroPlaca = "A-36",
-            DadoXCm = 50, DadoYCm = 50,
+
+            // EL DADO SE REFERENCIA, no se teclea: «D-1» es el dado capturado arriba en esta misma
+            // hoja, y de ahí salen sus 50x50. Las dos medidas se dejan puestas porque la referencia
+            // se resuelve al arrancar la ventana, no aquí: así el ejemplo se ve completo también si
+            // alguien mira estas filas antes de que la interfaz las enlace.
+            IdDado = "D-1",
+            DadoXCm = 50,
+            DadoYCm = 50,
             // EL NOMBRE ES EL DEL CATALOGO, tal cual. La búsqueda es por nombre exacto, así que un
             // «W8X31» escrito a la americana no se encuentra y la placa saldría sin su columna.
             Familia = FamiliaPerfil.Ir, Seccion = "W - 8'' x 31.04 lb/ft",

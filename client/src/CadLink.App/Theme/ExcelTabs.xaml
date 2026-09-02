@@ -1347,6 +1347,39 @@
     </Style>
 
     <!-- ==================================================================
+         CELDAS DE CARTABON: SE APAGAN CUANDO NO HAY CARTABONES
+         ==================================================================
+
+         Las seis celdas de cartabon -cantidad, espesor y longitud de cada
+         sentido- no sirven de nada si la casilla «Cartabones» esta apagada: el
+         dibujante ni las mira. Dejandolas activas, la hoja invita a capturar
+         seis numeros que no van a salir en el plano, y cuando el detalle
+         aparece sin atiesadores lo que se piensa es que el programa los
+         perdio, no que faltaba encender una casilla tres columnas a la
+         izquierda.
+
+         Se apagan con IsEnabled y no solo pintandolas de gris: el gris se lee
+         como «esto es calculado» -que es lo que significa en esta hoja- y
+         seguiria dejando escribir. Apagada, la celda no entra en edicion.
+
+         El color va ADEMAS del IsEnabled porque WPF no cambia visiblemente una
+         DataGridCell deshabilitada: sin esto la celda se veria igual y solo se
+         notaria al intentar escribir en ella, que es tarde. -->
+    <Style x:Key="CeldaCartabon" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding ConCartabones}" Value="False">
+                <Setter Property="IsEnabled" Value="False" />
+                <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                <Setter Property="Opacity" Value="0.45" />
+                <Setter Property="ToolTip"
+                        Value="Enciende la casilla «Cartabones» de esta fila para poder capturarlos." />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ==================================================================
          La fila de acero: marcada cuando el acero no se hace en ese perfil
          ==================================================================
          El manual dice, acero por acero, en qué secciones se consigue. Un A-36

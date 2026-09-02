@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CadLink.Cad;
 
 namespace CadLink.App.Models;
@@ -26,8 +27,10 @@ public sealed class PlacaBaseRow : Row
     private double _anchoCm = 40;
     private string _espesor = "1";
     private string _aceroPlaca = "A-36";
+    private string _idDado = string.Empty;
     private double _dadoXCm;
     private double _dadoYCm;
+    private bool _dadoCircular;
     private string _familia = FamiliaPerfil.Ir;
     private string _seccion = string.Empty;
     private int _nAnclasX = 4;
@@ -66,11 +69,54 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>E5</b>: tipo de acero de la placa.</summary>
     public string AceroPlaca { get => _aceroPlaca; set => Set(ref _aceroPlaca, value); }
 
+    /// <summary>
+    /// ID del <b>dado</b> de la hoja de secciones de concreto, del que salen sus medidas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La macro pedía el dado a mano, en dos celdas —D7 y E7—, y eso es capturar dos veces el mismo
+    /// dato: el dado ya está en la hoja de concreto, con su armado y su recubrimiento, porque es
+    /// una sección que se dibuja por su cuenta. De los dos sitios el segundo es el que se
+    /// equivoca, y no se ve: una placa que dice 50×50 sobre un dado que se armó de 45 sale con la
+    /// placa volando 2.5 cm por cada lado y nada en la tabla lo delata.
+    /// </para>
+    /// <para>
+    /// Al elegirlo, <see cref="DadoXCm"/>, <see cref="DadoYCm"/> y <see cref="DadoCircular"/> se
+    /// llenan solos y <b>se vuelven a poner al día</b> si esa sección cambia. Las celdas siguen
+    /// siendo editables para un caso a mano, pero lo escrito a mano no gana contra la sección: la
+    /// referencia es la sección.
+    /// </para>
+    /// <para>
+    /// En blanco se queda como estaba la macro: el dado se captura a mano en las dos celdas.
+    /// </para>
+    /// </remarks>
+    public string IdDado
+    {
+        get => _idDado;
+        set => Set(ref _idDado, ZapataAisladaRow.SoloElId(value));
+    }
+
+    /// <summary>
+    /// Los dados capturados en la hoja de concreto, para el desplegable de la celda.
+    /// </summary>
+    /// <remarks>
+    /// <b>Es la lista de la hoja de zapatas, la misma.</b> La mantiene al día
+    /// <c>ActualizarDadosDisponibles</c> en cada cambio, y compartirla es lo que garantiza que las
+    /// dos hojas ofrezcan exactamente los mismos dados: con una lista propia habría dos sitios que
+    /// recorren la hoja de concreto buscando dados, y el día que cambie el criterio —hoy es
+    /// «DADO» y «DADO CIRCULAR»— uno de los dos se quedaría corto sin que nada avisara.
+    /// </remarks>
+    public static ObservableCollection<string> DadosDisponibles => ZapataAisladaRow.DadosDisponibles;
+
     /// <summary>Celda <b>D7</b>: dado de concreto en X, en cm. Cero = sin dado.</summary>
+    /// <remarks>Si es redondo, es su <b>diámetro</b>.</remarks>
     public double DadoXCm { get => _dadoXCm; set => Set(ref _dadoXCm, value); }
 
     /// <summary>Celda <b>E7</b>: dado de concreto en Y, en cm.</summary>
     public double DadoYCm { get => _dadoYCm; set => Set(ref _dadoYCm, value); }
+
+    /// <summary>El dado es <b>redondo</b>. Lo dice su sección, no se captura aquí.</summary>
+    public bool DadoCircular { get => _dadoCircular; set => Set(ref _dadoCircular, value); }
 
     /// <summary>Celda <b>C8</b>: familia del perfil de la columna.</summary>
     /// <remarks>
@@ -259,6 +305,57 @@ public sealed class PlacaBaseRow : Row
         }
     }
 
+    /// <summary>
+    /// De dónde salen las medidas del dado, y si sobresale de la placa. <b>Se ve en la tabla.</b>
+    /// </summary>
+    /// <remarks>
+    /// Por el mismo motivo que <see cref="MedidasPerfil"/>: cuando un dato se trae de otra hoja, lo
+    /// que hay que hacer visible es <b>si de verdad se trajo</b>. Un ID escrito con un guion de más
+    /// no encuentra la sección, las celdas se quedan con lo que hubiera, y la fila se ve completa.
+    /// </remarks>
+    public string ReferenciaDado
+    {
+        get
+        {
+            // EL REDONDO SE MIDE CON UNA SOLA MEDIDA, igual que en AFormatoCad. Exigiendo las dos,
+            // un dado circular al que solo se le puso el diámetro se leería aquí como «sin dado»
+            // mientras el dibujo lo pone: la tabla diciendo una cosa y el plano otra.
+            var dadoY = DadoCircular ? DadoXCm : DadoYCm;
+
+            if (DadoXCm <= 0 || dadoY <= 0)
+            {
+                return "sin dado";
+            }
+
+            var forma = DadoCircular ? "redondo" : "rectangular";
+
+            var origen = IdDado.Trim().Length > 0 ? $"de «{IdDado.Trim()}»" : "a mano";
+
+            // Y SI SOBRESALE, que es lo que decide si el rayado de concreto se ve: un dado igual o
+            // menor que la placa no deja franja que rayar, y el detalle sale sin concreto a la
+            // vista sin que nada lo hubiera dicho.
+            var vuela = DadoCircular
+                ? DadoXCm > Math.Sqrt((AnchoDibujoCm * AnchoDibujoCm) + (AltoDibujoCm * AltoDibujoCm))
+                : DadoXCm > AnchoDibujoCm && dadoY > AltoDibujoCm;
+
+            return $"{forma}, {origen}" + (vuela ? string.Empty : " · NO SOBRESALE");
+        }
+    }
+
+    /// <summary>El ancho de la placa ya orientada, para poder comparar el dado contra ella.</summary>
+    private double AnchoDibujoCm => GirarPlaca90 ? LargoCm : AnchoCm;
+
+    /// <summary>El alto de la placa ya orientada.</summary>
+    private double AltoDibujoCm => GirarPlaca90 ? AnchoCm : LargoCm;
+
+    /// <summary>Cuántos cartabones se van a dibujar de verdad.</summary>
+    /// <remarks>
+    /// Se contesta con la <b>misma</b> regla que el dibujo, incluido el descarte por espesor o
+    /// longitud en cero: prometer en la tabla seis cartabones y dibujar cuatro es peor que no decir
+    /// nada. Y con la casilla apagada son cero, aunque las cantidades sigan capturadas.
+    /// </remarks>
+    public int TotalCartabones => CartabonesPlacaBase.Cuantos(AFormatoCad());
+
     /// <summary>Cuántas anclas salen en total, ya repartidas.</summary>
     /// <remarks>
     /// En el reparto <b>perimetral</b> —el normal— los dos números de la hoja son totales: las de
@@ -364,7 +461,9 @@ public sealed class PlacaBaseRow : Row
 
         Raise(nameof(Forma));
         Raise(nameof(MedidasPerfil));
+        Raise(nameof(ReferenciaDado));
         Raise(nameof(TotalAnclas));
+        Raise(nameof(TotalCartabones));
         Raise(nameof(Libramientos));
         Raise(nameof(Falta));
     }
@@ -401,7 +500,12 @@ public sealed class PlacaBaseRow : Row
             AceroPlaca = AceroPlaca,
 
             DadoXCm = DadoXCm,
-            DadoYCm = DadoYCm,
+
+            // EL DADO REDONDO ES UN DIÁMETRO, uno solo. Se copia en las dos direcciones para que
+            // las cotas y el encuadre del detalle midan lo mismo por los dos lados: con un Y
+            // distinto, el dibujo cotaría un diámetro vertical que el círculo no tiene.
+            DadoYCm = DadoCircular ? DadoXCm : DadoYCm,
+            DadoCircular = DadoCircular,
 
             Familia = Familia,
             Seccion = Seccion,

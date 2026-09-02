@@ -276,87 +276,32 @@ public sealed partial class PlacaBaseDrawer
     /// espesor visto en planta.
     /// </para>
     /// </remarks>
-    private List<object> Cartabones(PlacaBaseCad p, double xc, double yc, double pX, double pY)
+    /// <param name="reparto">
+    /// El reparto que se usó, para que los leaders sepan cuál es de X y cuál de Y sin volver a
+    /// deducirlo de la geometría ni repetir la regla del descarte.
+    /// </param>
+    private List<object> Cartabones(
+        PlacaBaseCad p, double xc, double yc, double pX, double pY,
+        out List<CartabonesPlacaBase.Cartabon> reparto)
     {
         var creados = new List<object>();
 
-        if (!p.ConCartabones)
+        // EL REPARTO LO HACE CartabonesPlacaBase, y este método solo dibuja lo que le diga. La
+        // cuenta la necesita también la vista previa de la hoja, y con una copia aquí las dos
+        // podrían discrepar: la previa enseñando unos cartabones y el plano poniendo otros.
+        reparto = CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala);
+
+        foreach (var c in reparto)
         {
-            return creados;
-        }
+            var r = Rectangulo(c.X1, c.Y1, c.X2, c.Y2, PlacaBaseCapas.Cartabones);
 
-        var espX = p.EspCartabonXCm * _escala;
-        var espY = p.EspCartabonYCm * _escala;
-        var largoX = p.LongCartabonXCm * _escala;
-        var largoY = p.LongCartabonYCm * _escala;
-
-        // Sin espesor o sin longitud no hay cartabón que dibujar, y la macro pone la cantidad en
-        // cero en ese caso en lugar de dibujar una placa de grueso nulo.
-        var nX = espX > 0 && largoX > 0 ? p.NCartabonesX : 0;
-        var nY = espY > 0 && largoY > 0 ? p.NCartabonesY : 0;
-
-        // ---------- Cartabones X: placas verticales, desde las caras +Y y -Y ----------
-        for (var lado = 0; lado <= 1; lado++)
-        {
-            var cuantos = lado == 0 ? (nX + 1) / 2 : nX / 2;
-
-            for (var i = 1; i <= cuantos; i++)
+            if (r is not null)
             {
-                var x = PosicionCartabon(xc, pX, i, cuantos);
-
-                var r = lado == 0
-                    ? Rectangulo(x - (espX / 2), yc + (pY / 2), x + (espX / 2), yc + (pY / 2) + largoX,
-                                 PlacaBaseCapas.Cartabones)
-                    : Rectangulo(x - (espX / 2), yc - (pY / 2) - largoX, x + (espX / 2), yc - (pY / 2),
-                                 PlacaBaseCapas.Cartabones);
-
-                if (r is not null)
-                {
-                    creados.Add(r);
-                }
-            }
-        }
-
-        // ---------- Cartabones Y: placas horizontales, desde las caras +X y -X ----------
-        for (var lado = 0; lado <= 1; lado++)
-        {
-            var cuantos = lado == 0 ? (nY + 1) / 2 : nY / 2;
-
-            for (var i = 1; i <= cuantos; i++)
-            {
-                var y = PosicionCartabon(yc, pY, i, cuantos);
-
-                var r = lado == 0
-                    ? Rectangulo(xc + (pX / 2), y - (espY / 2), xc + (pX / 2) + largoY, y + (espY / 2),
-                                 PlacaBaseCapas.Cartabones)
-                    : Rectangulo(xc - (pX / 2) - largoY, y - (espY / 2), xc - (pX / 2), y + (espY / 2),
-                                 PlacaBaseCapas.Cartabones);
-
-                if (r is not null)
-                {
-                    creados.Add(r);
-                }
+                creados.Add(r);
             }
         }
 
         return creados;
-    }
-
-    /// <summary>Reparte los cartabones sobre el <b>60% central</b> de la cara del perfil.</summary>
-    /// <remarks>
-    /// El 60% es de la macro. No se reparten sobre la cara entera a propósito: un cartabón en el
-    /// extremo del patín cae donde el perfil ya no tiene alma que lo respalde.
-    /// </remarks>
-    private static double PosicionCartabon(double centro, double dimension, int indice, int cuantos)
-    {
-        if (cuantos <= 1 || dimension <= 0)
-        {
-            return centro;
-        }
-
-        var tramo = 0.6 * dimension;
-
-        return centro - (tramo / 2) + ((indice - 1) * tramo / (cuantos - 1));
     }
 
     // ======================================================================
@@ -587,9 +532,18 @@ public sealed partial class PlacaBaseDrawer
     }
 
     /// <summary>Un leader por dirección de cartabones, con su espesor.</summary>
-    private void LeadersDeCartabones(PlacaBaseCad p, List<object> cartabones, double xLef)
+    /// <remarks>
+    /// <b>La dirección se lee del reparto, no se vuelve a deducir.</b> Antes se recalculaba aquí la
+    /// regla del descarte —«sin espesor o sin longitud, cantidad cero»— y se contaba a mano el
+    /// índice del primero de Y. Eran las mismas dos cuentas escritas en dos sitios: cambiar el
+    /// criterio del descarte en uno y no en el otro dejaba el leader apuntando a un cartabón que no
+    /// era, o a ninguno.
+    /// </remarks>
+    private void LeadersDeCartabones(
+        PlacaBaseCad p, List<object> cartabones,
+        List<CartabonesPlacaBase.Cartabon> reparto, double xLef)
     {
-        if (cartabones.Count == 0)
+        if (cartabones.Count == 0 || reparto.Count != cartabones.Count)
         {
             return;
         }
@@ -602,31 +556,25 @@ public sealed partial class PlacaBaseDrawer
         // ninguno caiga sobre el detalle.
         var (minY, maxY) = AltoDeTodos(cartabones);
 
-        var nX = p.EspCartabonXCm > 0 && p.LongCartabonXCm > 0 ? p.NCartabonesX : 0;
-        var nY = p.EspCartabonYCm > 0 && p.LongCartabonYCm > 0 ? p.NCartabonesY : 0;
+        var primeroX = reparto.FindIndex(c => c.EsX);
+        var primeroY = reparto.FindIndex(c => !c.EsX);
 
-        if (nX > 0)
+        if (primeroX >= 0)
         {
-            var (x, y) = PuntaLibre(cartabones[0]);
+            var (x, y) = PuntaLibre(cartabones[primeroX]);
 
             LeaderRectoDerecha(
                 "CARTABON X DE " + ConPulgadas(p.TextoEspCartabonX) + " DE ESP.",
                 x, y, xTexto, maxY + separacionY);
         }
 
-        if (nY > 0)
+        if (primeroY >= 0)
         {
-            // El primero de los Y viene después de todos los X en la lista.
-            var primeroY = (nX + 1) / 2 + (nX / 2);
+            var (x, y) = PuntaLibre(cartabones[primeroY]);
 
-            if (primeroY < cartabones.Count)
-            {
-                var (x, y) = PuntaLibre(cartabones[primeroY]);
-
-                LeaderRectoDerecha(
-                    "CARTABON Y DE " + ConPulgadas(p.TextoEspCartabonY) + " DE ESP.",
-                    x, y, xTexto, minY - separacionY);
-            }
+            LeaderRectoDerecha(
+                "CARTABON Y DE " + ConPulgadas(p.TextoEspCartabonY) + " DE ESP.",
+                x, y, xTexto, minY - separacionY);
         }
     }
 

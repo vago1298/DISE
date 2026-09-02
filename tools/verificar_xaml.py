@@ -85,7 +85,7 @@ def main():
     # ---- 3. Lo que esta pestaña necesita, nombre por nombre ----
     obligatorios = [
         'PlacasGrid', 'TotalesPlacasText', 'PlacaBaseButton',
-        'PlacasNotasText', 'PlacasNotasPanel',
+        'PlacasNotasText', 'PlacasNotasPanel', 'PlacaPreviewCanvas',
         'ColPlacaFamilia', 'ColPlacaAcero', 'ColPlacaElectrodo',
     ]
 
@@ -96,6 +96,8 @@ def main():
     obligatorios_metodos = [
         'OnAgregarPlaca', 'OnQuitarPlaca', 'OnDibujarPlacaBase',
         'LlenarListasPlacaBase', 'EnlazarPlacaBase', 'ActualizarTotalesPlacas',
+        'EngancharVistaPreviaPlacaBase', 'DibujarVistaPreviaPlacaBase',
+        'ReferenciarDadoDePlaca', 'ReferenciarDadosDeTodasLasPlacas',
     ]
 
     for m in obligatorios_metodos:
@@ -103,9 +105,40 @@ def main():
             fallos.append(f'falta el metodo «{m}» en el code-behind')
 
     # ---- 4. Y que el ciclo de vida los llama ----
-    for llamada in ['LlenarListasPlacaBase();', 'EnlazarPlacaBase();']:
+    #
+    # Es la mitad que se olvida: un metodo que existe y que nadie llama deja la pestaña
+    # vacia, y eso no lo detecta el compilador -compila igual-. Solo se ve al abrir la
+    # pestaña y encontrarla en blanco.
+    llamadas = [
+        'LlenarListasPlacaBase();',
+        'EnlazarPlacaBase();',
+        'EngancharVistaPreviaPlacaBase();',
+        'DibujarVistaPreviaPlacaBase();',
+        'ReferenciarDadosDeTodasLasPlacas();',
+    ]
+
+    for llamada in llamadas:
         if llamada not in codigo:
-            fallos.append(f'nadie llama a «{llamada}»: la pestaña saldria vacia')
+            fallos.append(f'nadie llama a «{llamada}»')
+
+    # ---- 5. El estilo que apaga las celdas de cartabon, y quien lo usa ----
+    tema = os.path.join(APP, 'Theme', 'ExcelTabs.xaml')
+
+    if os.path.exists(tema):
+        estilos = leer(tema)
+
+        if 'x:Key="CeldaCartabon"' not in estilos:
+            fallos.append('falta el estilo «CeldaCartabon» en Theme/ExcelTabs.xaml')
+        elif 'Binding="{Binding ConCartabones}" Value="False"' not in estilos:
+            fallos.append('«CeldaCartabon» no se apaga con ConCartabones')
+
+        # Las SEIS celdas de cartabon tienen que usarlo. Con cinco, la que se quede fuera
+        # sigue aceptando lo que se escriba y no habria nada que lo delatara.
+        usos = xaml.count('CellStyle="{StaticResource CeldaCartabon}"')
+
+        if usos != 6:
+            fallos.append(f'«CeldaCartabon» lo usan {usos} columnas y tienen que ser 6 '
+                          '(N, e y L de cada sentido)')
 
     print(f'{len(nombres)} x:Name en el XAML, {len(manejadores)} manejadores, '
           f'{len(metodos)} metodos en el code-behind.')

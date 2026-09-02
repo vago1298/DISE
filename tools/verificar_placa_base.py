@@ -319,6 +319,147 @@ check("y no son el mismo numero: 8 contra 16",
       f"{len(cuenta_perim)} y {len(cuenta_malla)}")
 check("un negativo se trata como cero", total_anclas(-3, 4, False) == 4)
 
+# ==========================================================================
+#  LOS CARTABONES: port de CartabonesPlacaBase
+# ==========================================================================
+#  Dos cosas que no se ven en el dibujo y si en obra:
+#
+#  1. EL CRUCE X/Y. Los datos de X dibujan los cartabones que salen de las caras Y,
+#     y al contrario. Es la correccion que la macro documenta, e intercambiarla saca
+#     los cartabones con la longitud del otro sentido: se ve creible y esta mal.
+#  2. EL 60 % CENTRAL. No se reparten sobre la cara entera: un cartabon en el extremo
+#     del patin cae donde el perfil ya no tiene alma que lo respalde.
+FRACCION_DE_LA_CARA = 0.6
+
+
+def posicion_cartabon(centro, dimension, indice, cuantos):
+    if cuantos <= 1 or dimension <= 0:
+        return centro
+
+    tramo = FRACCION_DE_LA_CARA * dimension
+
+    return centro - tramo / 2.0 + (indice - 1) * tramo / (cuantos - 1)
+
+
+def construir_cartabones(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_y,
+                         xc, yc, p_x, p_y, escala=1.0):
+    """Devuelve [(x1, y1, x2, y2, es_x), ...] en el mismo orden que el C#."""
+    salida = []
+
+    if not con_cartabones or escala <= 0:
+        return salida
+
+    esp_x *= escala
+    esp_y *= escala
+    largo_x *= escala
+    largo_y *= escala
+
+    nx = max(0, n_x) if esp_x > 0 and largo_x > 0 else 0
+    ny = max(0, n_y) if esp_y > 0 and largo_y > 0 else 0
+
+    # Cartabones X: placas verticales, desde las caras +Y y -Y.
+    for lado in (0, 1):
+        cuantos = (nx + 1) // 2 if lado == 0 else nx // 2
+
+        for i in range(1, cuantos + 1):
+            x = posicion_cartabon(xc, p_x, i, cuantos)
+
+            if lado == 0:
+                salida.append((x - esp_x / 2, yc + p_y / 2,
+                               x + esp_x / 2, yc + p_y / 2 + largo_x, True))
+            else:
+                salida.append((x - esp_x / 2, yc - p_y / 2 - largo_x,
+                               x + esp_x / 2, yc - p_y / 2, True))
+
+    # Cartabones Y: placas horizontales, desde las caras +X y -X.
+    for lado in (0, 1):
+        cuantos = (ny + 1) // 2 if lado == 0 else ny // 2
+
+        for i in range(1, cuantos + 1):
+            y = posicion_cartabon(yc, p_y, i, cuantos)
+
+            if lado == 0:
+                salida.append((xc + p_x / 2, y - esp_y / 2,
+                               xc + p_x / 2 + largo_y, y + esp_y / 2, False))
+            else:
+                salida.append((xc - p_x / 2 - largo_y, y - esp_y / 2,
+                               xc - p_x / 2, y + esp_y / 2, False))
+
+    return salida
+
+
+print("\n" + "=" * 78)
+print("EL REPARTO DE LOS CARTABONES")
+print("=" * 78)
+
+#  Placa 40x40, perfil de 20x20 centrado, 4 cartabones por sentido de 1.27 cm de
+#  espesor y 15 cm de largo.
+cart = construir_cartabones(True, 4, 4, 1.27, 1.27, 15, 15, 20, 20, 20, 20)
+
+check("con la casilla apagada no sale ninguno",
+      len(construir_cartabones(False, 4, 4, 1.27, 1.27, 15, 15, 20, 20, 20, 20)) == 0)
+
+check("4 y 4 dan ocho cartabones", len(cart) == 8, f"{len(cart)}")
+
+check("los cuatro primeros son de X y los cuatro ultimos de Y",
+      all(c[4] for c in cart[:4]) and not any(c[4] for c in cart[4:]))
+
+#  El cruce: los de X salen en VERTICAL de las caras horizontales, asi que su lado
+#  largo es el vertical y mide LargoX.
+altos = [c for c in cart if c[4]]
+anchos = [c for c in cart if not c[4]]
+
+check("los de X son placas VERTICALES de largo LongCartabonX",
+      all(abs(abs(c[3] - c[1]) - 15) < 1e-9 for c in altos)
+      and all(abs(abs(c[2] - c[0]) - 1.27) < 1e-9 for c in altos))
+
+check("los de Y son placas HORIZONTALES de largo LongCartabonY",
+      all(abs(abs(c[2] - c[0]) - 15) < 1e-9 for c in anchos)
+      and all(abs(abs(c[3] - c[1]) - 1.27) < 1e-9 for c in anchos))
+
+#  Y arrancan del PANO del perfil, no del centro ni del borde de la placa.
+check("arrancan del pano del perfil, no del centro",
+      any(abs(c[1] - 30) < 1e-9 for c in altos)     # cara +Y: 20 + 20/2
+      and any(abs(c[3] - 10) < 1e-9 for c in altos))  # cara -Y: 20 - 20/2
+
+#  La impar va en la cara POSITIVA, igual que en las anclas.
+impar = construir_cartabones(True, 3, 0, 1.27, 1.27, 15, 15, 20, 20, 20, 20)
+
+check("con 3, dos van en la cara positiva y una en la negativa",
+      len(impar) == 3
+      and sum(1 for c in impar if c[1] > 20) == 2
+      and sum(1 for c in impar if c[1] < 20) == 1,
+      f"{len(impar)} cartabones")
+
+#  Sin espesor o sin longitud no hay cartabon: la macro pone la cantidad en cero en
+#  lugar de dibujar una placa de grueso nulo.
+check("sin espesor no sale ninguno de ese sentido",
+      len(construir_cartabones(True, 4, 4, 0, 1.27, 15, 15, 20, 20, 20, 20)) == 4)
+check("sin longitud no sale ninguno de ese sentido",
+      len(construir_cartabones(True, 4, 4, 1.27, 1.27, 0, 15, 20, 20, 20, 20)) == 4)
+
+print("\n" + "=" * 78)
+print("EL 60 % CENTRAL DE LA CARA")
+print("=" * 78)
+
+check("con uno solo va al centro, que es donde esta el alma",
+      abs(posicion_cartabon(20, 20, 1, 1) - 20) < 1e-9)
+
+#  Cara de 20 cm: el 60 % son 12, o sea de 14 a 26 con el centro en 20.
+check("con dos, a los extremos del 60 % central",
+      abs(posicion_cartabon(20, 20, 1, 2) - 14) < 1e-9
+      and abs(posicion_cartabon(20, 20, 2, 2) - 26) < 1e-9)
+
+check("con tres, el de en medio cae en el centro",
+      abs(posicion_cartabon(20, 20, 2, 3) - 20) < 1e-9)
+
+check("NINGUNO se sale del 60 % central de la cara",
+      all(14 - 1e-9 <= posicion_cartabon(20, 20, i, 5) <= 26 + 1e-9
+          for i in range(1, 6)))
+
+check("sin dimension de cara va al centro y no divide por cero",
+      abs(posicion_cartabon(20, 0, 2, 4) - 20) < 1e-9)
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

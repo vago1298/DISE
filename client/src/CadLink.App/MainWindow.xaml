@@ -2112,8 +2112,10 @@
             <TabItem Header="Placa Base">
                 <Grid Margin="14">
                     <Grid.RowDefinitions>
+                        <!-- 0 cabecera  ·  1 tabla  ·  2 vista previa  ·  3 totales  ·  4 notas -->
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -2230,9 +2232,62 @@
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaGeom}" />
 
-                            <!-- ===== EL DADO DE CONCRETO ===== -->
+                            <!-- ===== EL DADO DE CONCRETO =====
+
+                                 EL DADO SE ELIGE, NO SE TECLEA. Ya esta capturado en «Secciones
+                                 Concreto» -con su armado, su recubrimiento y su forma- porque es
+                                 una seccion que se dibuja por su cuenta. Volver a escribir sus dos
+                                 medidas aqui es pedir dos veces el mismo dato, y de los dos sitios
+                                 el segundo es el que se equivoca sin que se vea: una placa que dice
+                                 50x50 sobre un dado que se armo de 45 sale volando 2.5 cm por lado
+                                 y nada en la tabla lo delata.
+
+                                 La lista es la MISMA de la hoja de zapatas, no una copia: la
+                                 mantiene ActualizarDadosDisponibles en cada cambio, asi que las dos
+                                 hojas ofrecen exactamente los mismos dados.
+
+                                 Sigue siendo editable: se puede escribir un ID que todavia no este
+                                 capturado, porque el orden en que se llenan las hojas es del
+                                 usuario. -->
+                            <DataGridTemplateColumn Header="ID dado" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="IdDado">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IdDado}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:PlacaBaseRow.DadosDisponibles}}"
+                                                  Text="{Binding IdDado, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;Al elegirlo, «Dado X» y «Dado Y» se llenan solos con las medidas reales de esa seccion, y se ponen al dia si esa seccion cambia.&#10;En blanco: el dado se captura a mano en las dos celdas de al lado." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- SE LLENAN SOLAS con las medidas de la seccion elegida en «ID dado».
+                                 Siguen siendo editables para un caso a mano, pero lo escrito a mano
+                                 NO gana contra la seccion: la referencia es la seccion, y en cuanto
+                                 esa seccion cambie estas dos se vuelven a poner al dia. -->
                             <DataGridTextColumn Header="Dado X cm" Binding="{Binding DadoXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <!-- El globo va en ElementStyle y NO como ToolTip de la columna:
+                                     una columna de DataGrid no es un control, no tiene ToolTip, y
+                                     ponerselo es el error MC3072. -->
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="En cero: sin dado. Si el dado es redondo, esta es su DIAMETRO." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Dado Y cm" Binding="{Binding DadoYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
 
@@ -2374,15 +2429,24 @@
                             </DataGridTemplateColumn>
 
                             <!-- ===== LOS CARTABONES ===== -->
-                            <DataGridCheckBoxColumn Header="Cartabones" Binding="{Binding ConCartabones, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <!-- LA CASILLA QUE MANDA. Apagada, las seis celdas de cartabon de la
+                                 derecha se apagan con ella -ver el estilo CeldaCartabon-: el
+                                 dibujante no las mira, asi que dejarlas activas invita a capturar
+                                 seis numeros que no van a salir en el plano.
+
+                                 «Con cartabones» y no «Cartabones» a secas para no repetir el
+                                 encabezado de la columna calculada del final, que dice cuantos
+                                 salen. Dos columnas con el mismo titulo en la misma hoja es una
+                                 manera de mirar la que no era. -->
+                            <DataGridCheckBoxColumn Header="Con cartabones" Binding="{Binding ConCartabones, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
                             <DataGridTextColumn Header="N cart X" Binding="{Binding NCartabonesX, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaCartabon}" />
                             <DataGridTextColumn Header="N cart Y" Binding="{Binding NCartabonesY, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaCartabon}" />
 
                             <DataGridTemplateColumn Header="e cart X &quot;" Width="Auto"
-                                                    CellStyle="{StaticResource CeldaAcabado}"
+                                                    CellStyle="{StaticResource CeldaCartabon}"
                                                     SortMemberPath="EspCartabonX">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -2403,7 +2467,7 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="e cart Y &quot;" Width="Auto"
-                                                    CellStyle="{StaticResource CeldaAcabado}"
+                                                    CellStyle="{StaticResource CeldaCartabon}"
                                                     SortMemberPath="EspCartabonY">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -2424,9 +2488,9 @@
                             </DataGridTemplateColumn>
 
                             <DataGridTextColumn Header="L cart X cm" Binding="{Binding LongCartabonXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaCartabon}" />
                             <DataGridTextColumn Header="L cart Y cm" Binding="{Binding LongCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaCartabon}" />
 
                             <!-- ===== ACOMODO Y ROTULO ===== -->
                             <DataGridCheckBoxColumn Header="Girar 90°" Binding="{Binding GirarPlaca90, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
@@ -2452,7 +2516,26 @@
                             <DataGridTextColumn Header="Medidas perfil" Binding="{Binding MedidasPerfil}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <!-- Por lo mismo que «Medidas perfil»: cuando un dato se trae de otra
+                                 hoja, lo que hay que hacer visible es SI DE VERDAD SE TRAJO. Un ID
+                                 con un guion de mas no encuentra la seccion, las celdas se quedan
+                                 con lo que hubiera y la fila se ve completa. Aqui se lee de donde
+                                 salieron las medidas, si el dado es redondo, y si SOBRESALE de la
+                                 placa -que es lo que decide si el rayado de concreto se ve-. -->
+                            <DataGridTextColumn Header="Dado" Binding="{Binding ReferenciaDado}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+
                             <DataGridTextColumn Header="Anclas" Binding="{Binding TotalAnclas}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <!-- Los que se van a dibujar DE VERDAD, con el mismo descarte que el
+                                 dibujo: con la casilla apagada son cero aunque las cantidades sigan
+                                 capturadas, y un espesor o una longitud en cero tambien descartan.
+                                 Prometer seis cartabones y dibujar cuatro es peor que no decirlo. -->
+                            <DataGridTextColumn Header="Cartabones" Binding="{Binding TotalCartabones}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
                             <DataGridTextColumn Header="Libramientos" Binding="{Binding Libramientos}"
@@ -2464,7 +2547,30 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="2">
+                    <!-- ===== VISTA PREVIA DE LA PLACA =====
+
+                         Igual que la del concreto y la del acero, y por el mismo motivo: la tabla
+                         dice numeros y la placa se dibuja con una GEOMETRIA, asi que una separacion
+                         al borde mal capturada no se ve en la tabla pero si en el dibujo.
+
+                         Y LA GEOMETRIA ES LA MISMA QUE VA A AUTOCAD, no una version de pantalla:
+                         las anclas las coloca AnclasPlacaBase, los cartabones CartabonesPlacaBase y
+                         el perfil TrazoAcero, que son las tres clases que usa el dibujante. Una
+                         previa que calculara su propia version podria acabar ensenando algo distinto
+                         de lo que se dibuja, que es justo lo que no puede hacer. -->
+                    <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="2" Height="260">
+                        <Grid>
+                            <Canvas x:Name="PlacaPreviewCanvas"
+                                    Background="{StaticResource PreviewFondoBrush}"
+                                    ClipToBounds="True" />
+                            <TextBlock Text="Vista previa de la placa seleccionada"
+                                       FontSize="10.5" Margin="8,6,0,0"
+                                       VerticalAlignment="Top" HorizontalAlignment="Left"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="3">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -2502,7 +2608,7 @@
                          La visibilidad la manda el TEXTO, con un disparador, igual que la del
                          concreto: asi aparece y desaparece sola y no hay que acordarse de
                          apagarla en cada sitio que la escribe. -->
-                    <Border Grid.Row="3" Margin="0,8,0,0"
+                    <Border Grid.Row="4" Margin="0,8,0,0"
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1">

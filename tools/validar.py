@@ -6553,6 +6553,125 @@ def v18_planta_autocad() -> None:
           and os.path.exists(ruta("tools", "balance_cs.py")))
 
     # ------------------------------------------------------------------
+    # PLACA BASE: LA VISTA PREVIA, LOS CARTABONES Y EL DADO REFERENCIADO
+    # ------------------------------------------------------------------
+    #  EL REPARTO DE CARTABONES SALE DEL DIBUJANTE. Estaba dentro de PlacaBaseDrawer mezclado con
+    #  las llamadas a AddLightWeightPolyline, asi que la vista previa no podia usarlo y habria
+    #  tenido que reimplementarlo: dos juegos de la misma cuenta, y la previa ensenando unos
+    #  cartabones y el plano poniendo otros.
+    cpb = leer(ruta("client/src/CadLink.Cad/CartabonesPlacaBase.cs"))
+
+    check("el reparto de cartabones vive aparte y sin nada de COM",
+          "public static class CartabonesPlacaBase" in cpb
+          and "public readonly record struct Cartabon(" in cpb
+          and "public static List<Cartabon> Construir(" in cpb
+          # NADA de COM aqui: ni una llamada al ModelSpace ni al Retry.
+          and "_ms." not in cpb
+          and "AcadConnection" not in cpb)
+
+    check("y el dibujante lo pide en lugar de repetirlo",
+          "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala)" in pbd2
+          and "private static double PosicionCartabon(" not in pbd2)
+
+    #  El 60 % central y el cruce X/Y, que son las dos reglas que no se ven en el dibujo.
+    check("el 60 % central de la cara es una constante con nombre",
+          "public const double FraccionDeLaCara = 0.6;" in cpb
+          and "FraccionDeLaCara * dimension" in cpb)
+
+    #  Y LOS LEADERS LEEN LA DIRECCION DEL REPARTO. Antes recalculaban la regla del descarte y
+    #  contaban a mano el indice del primero de Y: las mismas dos cuentas en dos sitios.
+    check("los leaders de cartabones leen la direccion del reparto",
+          "reparto.FindIndex(c => c.EsX)" in pbd2
+          and "reparto.FindIndex(c => !c.EsX)" in pbd2)
+
+    #  EL DADO SE REFERENCIA DE LA HOJA DE CONCRETO. Ya esta capturado ahi -con su armado, su
+    #  recubrimiento y su forma- porque es una seccion que se dibuja por su cuenta. Volver a
+    #  teclear sus medidas en la placa es pedir dos veces el mismo dato, y de los dos sitios el
+    #  segundo es el que se equivoca sin que se vea.
+    check("el dado de la placa sale de la hoja de secciones de concreto",
+          "public string IdDado" in pbr
+          and "private void ReferenciarDadoDePlaca(" in pbw
+          and "EsDado(s.Elemento)" in pbw
+          and 'Header="ID dado"' in tab_pb)
+
+    #  Y LA LISTA ES LA MISMA DE LA HOJA DE ZAPATAS, no una copia: con dos listas habria dos
+    #  sitios recorriendo la hoja de concreto en busca de dados, y el dia que cambie el criterio
+    #  uno de los dos se quedaria corto sin que nada avisara.
+    check("y la lista de dados es la misma que la de zapatas",
+          "ZapataAisladaRow.DadosDisponibles;" in pbr
+          and "x:Static models:PlacaBaseRow.DadosDisponibles" in tab_pb)
+
+    #  SE PONE AL DIA AL EDITAR LA SECCION, no solo al elegirla: si el dado crece en su hoja, la
+    #  placa que lo usa tiene que crecer con el. Es lo que hace que sea una referencia y no una
+    #  copia que envejece.
+    check("y se pone al dia cuando cambia esa seccion",
+          "ReferenciarDadosDeTodasLasPlacas();" in codigo
+          and codigo.count("ReferenciarDadosDeTodasLasPlacas();") >= 2)
+
+    #  UN DADO REDONDO SE DIBUJA REDONDO. En la hoja de concreto DADO CIRCULAR es otra forma, no
+    #  un cuadrado con las mismas medidas.
+    check("un dado circular se dibuja circular, no cuadrado",
+          "public bool DadoCircular" in pbc
+          and "? Circulo(x0 + (b / 2), y0 + (h / 2), dadoX, PlacaBaseCapas.Concreto)" in pbd)
+
+    #  Y su rayado solo se intenta si la placa CABE ENTERA dentro del circulo: si los dos
+    #  contornos se cruzan, la placa no puede entrar como isla y AutoCAD o falla o raya de mas.
+    #  Con la diagonal, no con los lados: un dado de 50 de diametro sobresale por el centro de los
+    #  lados de una placa de 40x40 y sus esquinas -a 56.6- se quedan FUERA.
+    check("el rayado del dado redondo mide la DIAGONAL de la placa",
+          "var placaCabeEnElDado = p.DadoCircular" in pbd
+          and "Math.Sqrt((b * b) + (h * h))" in pbd)
+
+    # ---- LA VISTA PREVIA ----
+    #  Con la MISMA geometria que va a AutoCAD, no una version de pantalla. Es la razon de que
+    #  AnclasPlacaBase, CartabonesPlacaBase y TrazoAcero existan sin COM.
+    check("la vista previa de la placa usa la geometria del dibujante",
+          "private void DibujarVistaPreviaPlacaBase()" in pbw
+          and "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, 1)" in pbw
+          and "AnclasPlacaBase.Construir(" in pbw
+          and "TrazoAcero.De(" in pbw
+          and 'x:Name="PlacaPreviewCanvas"' in tab_pb)
+
+    #  Y SE FILTRA CON p.Falta, NO CON fila.Falta. Son dos cosas distintas: sin el largo de la
+    #  placa no hay nada que dibujar, pero unas anclas demasiado juntas SI se pueden dibujar, y es
+    #  justo el caso en el que la previa mas sirve. Con fila.Falta -que incluye los libramientos-
+    #  la placa que incumple seria la unica que nunca se llegaria a ver.
+    check("la previa dibuja la placa que incumple J o K, y lo avisa en rojo",
+          "if (p.Falta.Count > 0)" in pbw
+          and "NO SE DIBUJARÁ — " in pbw)
+
+    #  Se engancha UNA VEZ, en el arranque, como las otras tres previas: Enlazar se vuelve a
+    #  llamar al cargar el ejemplo y al empezar de nuevo, y suscribirse ahi dejaria el mismo
+    #  evento enganchado cinco veces.
+    check("y se engancha una sola vez, como las otras previas",
+          "EngancharVistaPreviaPlacaBase();" in codigo
+          and "PlacaPreviewCanvas.SizeChanged +=" in pbw
+          and "PlacasGrid.SelectionChanged +=" in pbw)
+
+    # ---- LAS CELDAS DE CARTABON SE APAGAN ----
+    #  Sin la casilla, el dibujante no las mira: dejarlas activas invita a capturar seis numeros
+    #  que no van a salir en el plano, y cuando el detalle aparece sin atiesadores lo que se piensa
+    #  es que el programa los perdio, no que faltaba encender una casilla.
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    # Fuera de la f-string: lleva comillas dobles escapadas y Python 3.9 no las admite dentro.
+    usos_celda_cartabon = tab_pb.count('CellStyle="{StaticResource CeldaCartabon}"')
+
+    check("las celdas de cartabon se apagan sin la casilla de cartabones",
+          'x:Key="CeldaCartabon"' in tema
+          and 'Binding="{Binding ConCartabones}" Value="False"' in tema
+          and '<Setter Property="IsEnabled" Value="False" />' in tema
+          # Las SEIS: cantidad, espesor y longitud de cada sentido. Con cinco, la que se quede
+          # fuera sigue aceptando lo que se escriba y nada lo delata.
+          and usos_celda_cartabon == 6,
+          f"{usos_celda_cartabon} columnas la usan")
+
+    #  Y LA TABLA DICE CUANTOS SALEN DE VERDAD, con el mismo descarte que el dibujo.
+    check("la tabla dice cuantos cartabones se dibujan de verdad",
+          "public static int Cuantos(PlacaBaseCad p)" in cpb
+          and "public int TotalCartabones => CartabonesPlacaBase.Cuantos(AFormatoCad());" in pbr)
+
+    # ------------------------------------------------------------------
     # LA CADENA, PARTIDA POR EL VANO DE LA PUERTA
     # ------------------------------------------------------------------
     #  «La parte de la izquierda debe ser continua y la derecha punteada porque es puerta».

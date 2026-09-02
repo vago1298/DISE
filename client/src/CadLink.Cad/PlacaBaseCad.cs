@@ -124,6 +124,17 @@ public sealed class PlacaBaseCad
     public double DadoXCm { get; set; }
     public double DadoYCm { get; set; }
 
+    /// <summary>
+    /// El dado es <b>redondo</b>. Su diámetro es <see cref="DadoXCm"/>.
+    /// </summary>
+    /// <remarks>
+    /// La macro solo dibujaba dados rectangulares porque su hoja solo daba dos medidas. Ahora el
+    /// dado se toma de la hoja de secciones de concreto, y ahí un <c>DADO CIRCULAR</c> es otra
+    /// forma, no un cuadrado con las mismas medidas: dibujarlo cuadrado pondría en el plano, con el
+    /// mismo ID, un dado que no es el que se armó.
+    /// </remarks>
+    public bool DadoCircular { get; set; }
+
     /// <summary>Familia del perfil de la columna. Celda C8.</summary>
     public string Familia { get; set; } = string.Empty;
 
