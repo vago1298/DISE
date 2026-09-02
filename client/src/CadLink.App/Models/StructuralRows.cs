@@ -1307,7 +1307,7 @@ public sealed class DatosProyecto
             NAnclasX = 4, NAnclasY = 0,
             SepBordeXCm = 0, SepBordeYCm = 0,
             DiamAnclaX = "3/4", DiamAnclaY = "3/4",
-            Electrodo = "E70",
+            Electrodo = "E70XX",
             Soldadura = "1/4",
             ConCartabones = false,
             Escala = 10

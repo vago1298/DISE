@@ -39,7 +39,7 @@ public sealed class PlacaBaseRow : Row
     private double _sepBordeYCm;
     private string _diamAnclaX = "3/4";
     private string _diamAnclaY = "3/4";
-    private string _electrodo = "E70";
+    private string _electrodo = "E70XX";
     private string _soldadura = "1/4";
     private int _nCartabonesX;
     private int _nCartabonesY;
@@ -168,8 +168,41 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Los espesores de soldadura, con el vacío al principio: vacío = sin soldadura.</summary>
     public string[] EspesoresSoldadura => _espesoresSoldadura;
 
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    //  LOS DIECINUEVE DIÁMETROS DEL CUADRO, en el mismo orden y con su equivalente en mm.
+    //
+    //  Son exactamente los renglones del cuadro Hylsa ES-03-001 del que salen J, K y L. Antes
+    //  la lista tenía OCHO, y le faltaban los once de arriba: un ancla de 2" había que
+    //  teclearla a mano. Y peor, faltaba justo el tramo donde el cuadro se pone exigente —una
+    //  de 4" pide 300 mm entre anclas— así que lo que no estaba a un clic era lo que más
+    //  cuidado necesita.
+    //
+    //  Que la lista y el cuadro coincidan NO es decorativo: si aquí hubiera un diámetro que el
+    //  cuadro no tiene, sus libramientos se resolverían por el renglón inmediato superior sin
+    //  que nada lo dijera. Hay una comprobación que lo cotela renglón por renglón.
+    // ═══════════════════════════════════════════════════════════════════════════════════════
     private static readonly string[] _diametrosAncla =
-        { "1/2", "5/8", "3/4", "7/8", "1", "1 1/8", "1 1/4", "1 1/2" };
+    {
+        "1/2",      // 13 mm
+        "5/8",      // 16 mm
+        "3/4",      // 19 mm
+        "7/8",      // 22 mm
+        "1",        // 25 mm
+        "1 1/8",    // 29 mm
+        "1 1/4",    // 32 mm
+        "1 3/8",    // 35 mm
+        "1 1/2",    // 38 mm
+        "1 5/8",    // 41 mm
+        "1 3/4",    // 44 mm
+        "1 7/8",    // 48 mm
+        "2",        // 51 mm
+        "2 1/4",    // 57 mm
+        "2 1/2",    // 64 mm
+        "2 3/4",    // 70 mm
+        "3",        // 76 mm
+        "3 1/2",    // 89 mm
+        "4"         // 102 mm
+    };
 
     private static readonly string[] _espesoresPlaca =
         { "1/4", "5/16", "3/8", "1/2", "5/8", "3/4", "1", "1 1/4", "1 1/2", "2" };

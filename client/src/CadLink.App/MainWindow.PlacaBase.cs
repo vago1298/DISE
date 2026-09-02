@@ -37,7 +37,11 @@ public partial class MainWindow
     {
         ColPlacaFamilia.ItemsSource = FamiliaPerfil.Todas;
         ColPlacaAcero.ItemsSource = CatalogoAceros.Nombres;
-        ColPlacaElectrodo.ItemsSource = new[] { "E60", "E70", "E80", "E90" };
+        // LOS ELECTRODOS, CON SU XX. Es la convención del plano: un E70 se escribe «E70XX» porque
+        // los dos últimos dígitos —posición y tipo de corriente— los elige el taller, no el
+        // calculista. Antes la lista los ofrecía sin el sufijo y el rótulo lo agregaba por su
+        // cuenta, así que la celda decía una cosa y el plano otra.
+        ColPlacaElectrodo.ItemsSource = new[] { "E60XX", "E70XX", "E80XX", "E90XX" };
 
         // Las celdas en FRACCIONES —el espesor, los diámetros de ancla y de agujero, la soldadura
         // y los cartabones— no se llenan aquí: son desplegables editables y su lista sale de la

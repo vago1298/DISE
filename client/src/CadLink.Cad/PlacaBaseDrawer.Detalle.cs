@@ -265,7 +265,11 @@ public sealed partial class PlacaBaseDrawer
 
         if (electrodo.Length > 0)
         {
-            s += " CON " + Escapar(electrodo);
+            // CON SU XX, igual que el rótulo. Este leader lo ponía crudo, así que un E70 capturado
+            // sin sufijo salía «SOLDADURA CON E70» aquí y «ELECTRODO E70XX» tres centímetros más
+            // abajo: el mismo dato escrito de dos maneras en el mismo detalle. ConXX es idempotente,
+            // así que un E70XX ya capturado no se convierte en E70XXXX.
+            s += " CON " + Escapar(ConXX(electrodo));
         }
 
         if (espesor.Length > 0)

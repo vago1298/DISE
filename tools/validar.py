@@ -6633,6 +6633,40 @@ def v18_planta_autocad() -> None:
           and '"NO ESTA EN EL CATALOGO"' in pbr
           and 'Header="Medidas perfil"' in tab_pb)
 
+    #  ─── LA LISTA DE ANCLAS ES EL CUADRO ENTERO ─────────────────────────────────────────
+    #  Los DIECINUEVE diametros, los mismos renglones de los que salen J, K y L. Antes eran
+    #  ocho y se cortaba en 1 1/2": justo antes del tramo donde el cuadro se pone exigente -una
+    #  de 4" pide 300 mm entre anclas- asi que lo que no estaba a un clic era lo que mas cuidado
+    #  necesita.
+    #
+    #  Y que la lista y el cuadro coincidan no es prolijidad: un diametro que el cuadro no
+    #  tuviera resolveria sus libramientos por el renglon inmediato superior sin decirlo, o sea
+    #  que el usuario creeria leer la fila de su ancla y estaria leyendo otra. La comprobacion
+    #  de verificar_placa_base.py lo cotela renglon por renglon LEYENDO ESTE ARCHIVO, asi que no
+    #  se puede quedar vieja.
+    check("la celda de ancla ofrece los 19 diametros del cuadro",
+          '"1 3/8",    // 35 mm' in pbr
+          and '"1 7/8",    // 48 mm' in pbr
+          and '"4"         // 102 mm' in pbr
+          # Y el de 1 7/8, que es el renglon que el corrimiento habia borrado del cuadro.
+          and pbr.count("// 48 mm") == 1)
+
+    #  ─── LOS ELECTRODOS LLEVAN SU XX ────────────────────────────────────────────────────
+    #  Es la convencion del plano: un E70 se escribe «E70XX» porque los dos ultimos digitos
+    #  -posicion y tipo de corriente- los elige el taller. La lista los ofrecia sin sufijo y el
+    #  rotulo lo agregaba por su cuenta, asi que la celda decia una cosa y el plano otra.
+    check("los electrodos se ofrecen con su XX",
+          'new[] { "E60XX", "E70XX", "E80XX", "E90XX" }' in pbw
+          and '_electrodo = "E70XX"' in pbr)
+
+    #  Y EL LEADER DE SOLDADURA TAMBIEN LO PONE, no solo el rotulo. Antes este leader escribia el
+    #  electrodo crudo, asi que un E70 capturado sin sufijo salia «SOLDADURA CON E70» arriba y
+    #  «ELECTRODO E70XX» tres centimetros mas abajo: el mismo dato de dos maneras en el mismo
+    #  detalle. ConXX es idempotente, asi que un E70XX no se vuelve E70XXXX.
+    check("y el leader de soldadura lo pone igual que el rotulo",
+          "s += \" CON \" + Escapar(ConXX(electrodo));" in pbd2
+          and 'e.EndsWith("XX", StringComparison.OrdinalIgnoreCase) ? e : e + "XX"' in pbd2)
+
     #  Las celdas en FRACCIONES son desplegables EDITABLES y su lista sale de la FILA. Con un
     #  DataGridComboBoxColumn y SelectedItemBinding, un espesor que no este en la lista se descarta
     #  al salir de la celda sin decir nada, que es la peor manera de perder un dato.

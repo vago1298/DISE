@@ -18,6 +18,7 @@ No necesita .NET ni AutoCAD: es aritmetica.
 """
 
 import math
+import re
 
 # ==========================================================================
 #  Port de AnclasPlacaBase, para poder compararlo
@@ -1340,6 +1341,88 @@ d_a_columna = distancia_al_contorno(col_chico, x_ancla, 0.0)
 check("en una placa ancha, la L mide contra la columna y no contra el borde",
       abs(d_a_columna - 18.6633) < 1e-4 and abs(d_a_columna - 3.5) > 1,
       f"dio {d_a_columna:.4f}; al borde serian 3.5")
+
+# ==========================================================================
+#  LA LISTA DE DIAMETROS DE ANCLA Y EL CUADRO SON LA MISMA COSA
+# ==========================================================================
+#  La lista que ofrece la celda «Ø ancla» tiene que ser exactamente los renglones del
+#  cuadro de libramientos. Y no por prolijidad: si la celda ofreciera un diametro que
+#  el cuadro no tiene, sus J, K y L se resolverian por el renglon inmediato superior
+#  -que es lo prudente- pero SIN QUE NADA LO DIJERA, o sea que el usuario creeria
+#  estar leyendo la fila de su ancla y estaria leyendo la de otra.
+#
+#  Se lee del propio codigo, no se copia aqui: copiada, esta prueba se quedaria vieja
+#  el dia que alguien toque la lista, que es justo el dia que hace falta.
+import os as _os
+
+_fuente_fila = _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+    "client", "src", "CadLink.App", "Models", "PlacaBaseRow.cs")
+
+with open(_fuente_fila, encoding="utf-8") as _f:
+    _cs = _f.read()
+
+_ini = _cs.index("private static readonly string[] _diametrosAncla")
+_fin = _cs.index("};", _ini)
+
+DIAMETROS_CELDA = re.findall(r'"([^"]+)"', _cs[_ini:_fin])
+
+print("\n" + "=" * 78)
+print("LA LISTA DE DIAMETROS DE ANCLA CONTRA EL CUADRO")
+print("=" * 78)
+
+check(f"la celda ofrece los {len(CUADRO)} diametros del cuadro",
+      len(DIAMETROS_CELDA) == len(CUADRO),
+      f"la celda tiene {len(DIAMETROS_CELDA)} y el cuadro {len(CUADRO)}")
+
+#  Cada entrada de la lista tiene que caer EXACTAMENTE en su renglon: se convierte a mm
+#  y se compara contra el D del cuadro, en el mismo orden.
+descuadres = []
+
+for i, texto in enumerate(DIAMETROS_CELDA):
+    if i >= len(CUADRO):
+        break
+
+    mm = pulgadas(texto) * 25.4
+    d_cuadro = CUADRO[i][0]
+
+    # El redondeo del programa: al milimetro nominal mas cercano.
+    if int(math.floor(mm + 0.5)) != d_cuadro:
+        descuadres.append(f'"{texto}" da {mm:.2f} mm y su renglon es {d_cuadro}')
+
+check("y cada uno cae exactamente en su renglon del cuadro",
+      not descuadres, "; ".join(descuadres))
+
+#  Ninguno se puede quedar sin libramientos por caer fuera de la tabla: el ultimo
+#  renglon es 102 mm y la lista acaba en 4" = 101.6, que redondea a 102.
+fuera = [t for t in DIAMETROS_CELDA if int(math.floor(pulgadas(t) * 25.4 + 0.5)) > 102]
+
+check("ninguno se sale de la tabla, o sea ninguno se extrapola",
+      not fuera, f"se salen: {fuera}")
+
+#  Y LOS ONCE QUE FALTABAN, nombrados. La lista vieja tenia ocho y se cortaba en
+#  1 1/2": justo antes del tramo donde el cuadro se pone exigente.
+faltaban = ["1 3/8", "1 5/8", "1 3/4", "1 7/8", "2", "2 1/4", "2 1/2", "2 3/4",
+            "3", "3 1/2", "4"]
+
+ausentes = [d for d in faltaban if d not in DIAMETROS_CELDA]
+
+check("los once diametros que faltaban estan en la lista",
+      not ausentes, f"siguen ausentes: {ausentes}")
+
+#  Y el agujero automatico funciona para TODOS, incluidos los nuevos: es el ancla mas
+#  1/16", y todos caen en dieciseisavos exactos.
+sin_agujero = [d for d in DIAMETROS_CELDA if not agujero_automatico(d)]
+
+check("todos tienen su agujero automatico, tambien los nuevos",
+      not sin_agujero, f"sin agujero: {sin_agujero}")
+
+raros = [f'{d}" -> {agujero_automatico(d)}' for d in DIAMETROS_CELDA
+         if "/" in agujero_automatico(d)
+         and not agujero_automatico(d).split("/")[-1] == "16"]
+
+check("y el agujero de todos cae en dieciseisavos, sin decimales raros",
+      not raros, "; ".join(raros))
 
 print("\n" + "=" * 78)
 if fallos:
