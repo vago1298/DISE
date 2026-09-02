@@ -120,6 +120,10 @@ public sealed partial class PlacaBaseDrawer
         Capa(PlacaBaseCapas.Cartabones, PlacaBaseCapas.ColorCartabones, forzar: false);
         Capa(PlacaBaseCapas.Soldadura, PlacaBaseCapas.ColorSoldadura, forzar: true);
 
+        // La de los cartabones FUERZA su color, igual que la del perfil: las dos son de esta macro
+        // —no vienen de la plantilla del usuario— y el morado es lo que las distingue en el detalle.
+        Capa(PlacaBaseCapas.SoldaduraCartabon, PlacaBaseCapas.ColorSoldaduraCartabon, forzar: true);
+
         AsegurarEstiloTexto();
         AsegurarEstiloCota();
     }
@@ -512,7 +516,7 @@ public sealed partial class PlacaBaseDrawer
 
         // ---------- Los cartabones ----------
         var cartabones = Cartabones(
-            p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna?.Puntos,
+            p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna,
             out var repartoCartabones);
 
         // ---------- Las anclas: dos círculos cada una ----------

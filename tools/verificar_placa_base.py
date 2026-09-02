@@ -406,8 +406,151 @@ def cruce_vertical(pts, x, lado):
     return mejor
 
 
+#  ==========================================================================
+#  EL CARTABON YA NO ES UN RECTANGULO: ES UNA POLILINEA
+#  ==========================================================================
+#  Contra una columna redonda lleva BOCA DE PESCADO -un arco- y cuatro numeros no
+#  pueden describirla. Se guardan los puntos y los bulges, igual que el C#, y las
+#  cuatro esquinas pasan a ser el ENVOLVENTE, que es lo unico que necesitan los
+#  leaders y el encuadre de la previa.
+#
+#  Cart se indexa y se desempaqueta como la tupla de antes -x1, y1, x2, y2, es_x- para
+#  que las pruebas del reparto sigan valiendo tal cual: lo que comprueban es CUANTOS
+#  salen y DONDE, no de que tipo es el objeto.
+
+DIRECCION_DERECHA = 0
+DIRECCION_ARRIBA = 1
+DIRECCION_IZQUIERDA = 2
+DIRECCION_ABAJO = 3
+
+
+class Cart:
+    def __init__(self, puntos, dobleces, es_x):
+        self.puntos = puntos
+        self.dobleces = dobleces
+        self.es_x = es_x
+
+    @property
+    def con_boca(self):
+        return bool(self.dobleces)
+
+    def _extremo(self, eje, menor):
+        vals = self.puntos[eje::2]
+        return min(vals) if menor else max(vals)
+
+    @property
+    def x1(self):
+        return self._extremo(0, True)
+
+    @property
+    def y1(self):
+        return self._extremo(1, True)
+
+    @property
+    def x2(self):
+        return self._extremo(0, False)
+
+    @property
+    def y2(self):
+        return self._extremo(1, False)
+
+    def __len__(self):
+        return 5
+
+    def __getitem__(self, i):
+        return (self.x1, self.y1, self.x2, self.y2, self.es_x)[i]
+
+    def __repr__(self):
+        return f"Cart({self.x1:.3f}, {self.y1:.3f}, {self.x2:.3f}, {self.y2:.3f}, {self.es_x})"
+
+
+def cart_recto(x1, y1, x2, y2, es_x):
+    """Los cuatro vertices en ANTIHORARIO, igual que los de la boca."""
+    return Cart([x1, y1, x2, y1, x2, y2, x1, y2], None, es_x)
+
+
+def girar90_punto(x, y, xc, yc):
+    """El giro de la macro: xd = xc - y, yd = yc + x sobre las coordenadas locales."""
+    return (xc - (y - yc), yc + (x - xc))
+
+
+def boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo, es_x):
+    """El cartabon recortado a la curva del tubo. None si no procede."""
+    if circulo is None or esp <= 0 or largo <= 0:
+        return None
+
+    cx, cy, r = circulo
+
+    if r <= 0 or abs(cx - xc) > 1e-6 or abs(cy - yc) > 1e-6:
+        return None
+
+    #  El desplazamiento del eje del cartabon respecto al centro del circulo, YA EN EL
+    #  MARCO LOCAL -el que mira hacia +X-. Es la unica cuenta que depende del lado.
+    t = {
+        DIRECCION_DERECHA: centro - cy,
+        DIRECCION_ARRIBA: cx - centro,
+        DIRECCION_IZQUIERDA: cy - centro,
+        DIRECCION_ABAJO: centro - cx,
+    }[direccion]
+
+    y_alto = t + esp / 2.0
+    y_bajo = t - esp / 2.0
+
+    #  Los DOS cantos tienen que cruzar el circulo, o no hay boca que recortar.
+    if abs(y_alto) >= r - 1e-9 or abs(y_bajo) >= r - 1e-9:
+        return None
+
+    x_alto = math.sqrt(r * r - y_alto * y_alto)
+    x_bajo = math.sqrt(r * r - y_bajo * y_bajo)
+
+    #  La longitud se mide desde el pano del tubo EN EL EJE del cartabon.
+    x_pano = math.sqrt(r * r - t * t)
+    x_lejos = x_pano + largo
+
+    if x_lejos <= max(x_alto, x_bajo) + 1e-9:
+        return None
+
+    locales = [x_bajo, y_bajo, x_lejos, y_bajo, x_lejos, y_alto, x_alto, y_alto]
+
+    #  El bulge del tramo 3->0. Va del canto de arriba al de abajo, o sea HORARIO
+    #  alrededor del centro del circulo: sale negativo, y por eso el arco muerde hacia
+    #  DENTRO del cartabon en lugar de abombarse contra el tubo.
+    barrido = math.atan2(y_bajo, x_bajo) - math.atan2(y_alto, x_alto)
+    dobleces = [(3, math.tan(barrido / 4.0))]
+
+    puntos = []
+
+    for i in range(0, len(locales), 2):
+        x, y = cx + locales[i], cy + locales[i + 1]
+
+        for _ in range(direccion):
+            x, y = girar90_punto(x, y, cx, cy)
+
+        puntos.extend([x, y])
+
+    return Cart(puntos, dobleces, es_x)
+
+
+def cartabon_uno(direccion, xc, yc, centro, cara, esp, largo, circulo, es_x):
+    boca = boca_de_pescado(direccion, xc, yc, centro, esp, largo, circulo, es_x)
+
+    if boca is not None:
+        return boca
+
+    m = esp / 2.0
+
+    if direccion == DIRECCION_DERECHA:
+        return cart_recto(cara, centro - m, cara + largo, centro + m, es_x)
+    if direccion == DIRECCION_ARRIBA:
+        return cart_recto(centro - m, cara, centro + m, cara + largo, es_x)
+    if direccion == DIRECCION_IZQUIERDA:
+        return cart_recto(cara - largo, centro - m, cara, centro + m, es_x)
+
+    return cart_recto(centro - m, cara - largo, centro + m, cara, es_x)
+
+
 def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x, largo_y,
-                                 xc, yc, p_x, p_y, contorno=None):
+                                 xc, yc, p_x, p_y, contorno=None, circulo=None):
     """El reparto con el arranque en la cara REAL. contorno=None -> envolvente."""
     salida = []
 
@@ -426,11 +569,13 @@ def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x
             if lado == 0:
                 cara = cruce_vertical(contorno, x, 1)
                 cara = yc + p_y / 2 if cara is None else cara
-                salida.append((x - esp_x / 2, cara, x + esp_x / 2, cara + largo_x, True))
+                salida.append(cartabon_uno(DIRECCION_ARRIBA, xc, yc, x, cara,
+                                           esp_x, largo_x, circulo, True))
             else:
                 cara = cruce_vertical(contorno, x, -1)
                 cara = yc - p_y / 2 if cara is None else cara
-                salida.append((x - esp_x / 2, cara - largo_x, x + esp_x / 2, cara, True))
+                salida.append(cartabon_uno(DIRECCION_ABAJO, xc, yc, x, cara,
+                                           esp_x, largo_x, circulo, True))
 
     for lado in (0, 1):
         cuantos = (ny + 1) // 2 if lado == 0 else ny // 2
@@ -441,11 +586,13 @@ def construir_cartabones_pegados(con_cartabones, n_x, n_y, esp_x, esp_y, largo_x
             if lado == 0:
                 cara = cruce_horizontal(contorno, y, 1)
                 cara = xc + p_x / 2 if cara is None else cara
-                salida.append((cara, y - esp_y / 2, cara + largo_y, y + esp_y / 2, False))
+                salida.append(cartabon_uno(DIRECCION_DERECHA, xc, yc, y, cara,
+                                           esp_y, largo_y, circulo, False))
             else:
                 cara = cruce_horizontal(contorno, y, -1)
                 cara = xc - p_x / 2 if cara is None else cara
-                salida.append((cara - largo_y, y - esp_y / 2, cara, y + esp_y / 2, False))
+                salida.append(cartabon_uno(DIRECCION_IZQUIERDA, xc, yc, y, cara,
+                                           esp_y, largo_y, circulo, False))
 
     return salida
 
@@ -1575,6 +1722,368 @@ t_suelto = construir_cartabones_pegados(True, 1, 1, 1.27, 1.27, 15, 15,
 check("en un tubo rectangular el arranque no cambia: su envolvente ES su contorno",
       all(abs(a[0] - b[0]) < 1e-9 and abs(a[1] - b[1]) < 1e-9
           for a, b in zip(t_pegado, t_suelto)))
+
+print("\n" + "=" * 78)
+print("LA BOCA DE PESCADO: EL CARTABON SE AJUSTA A LA COLUMNA REDONDA")
+print("=" * 78)
+#  Contra un tubo redondo el cartabon recto no se pega: se TOCA en un punto. El rayo
+#  del pano no ayuda -una columna redonda no tiene contorno poligonal, asi que se caia
+#  al rectangulo envolvente- y el envolvente de un circulo es su TANGENTE. En el taller
+#  eso se resuelve recortando el canto con la curva del tubo.
+#
+#  Lo que se comprueba aqui es lo unico que no se ve en el dibujo hasta que alguien lo
+#  mide: que el arco caiga EXACTAMENTE sobre la circunferencia, que el cartabon no se
+#  meta dentro del tubo, y que salga igual en las CUATRO direcciones. Un signo mal
+#  puesto en una sola de ellas dibuja un cartabon metido en la columna, que en pantalla
+#  parece correcto porque queda tapado por el propio perfil.
+
+
+def muestrear(cart, tramos=48):
+    """Todos los puntos del contorno, con los arcos desarrollados."""
+    pts = cart.puntos
+    n = len(pts) // 2
+
+    bulge = [0.0] * n
+
+    for indice, b in (cart.dobleces or []):
+        if 0 <= indice < n:
+            bulge[indice] = b
+
+    salida = []
+
+    for i in range(n):
+        j = (i + 1) % n
+
+        x1, y1 = pts[2 * i], pts[2 * i + 1]
+        x2, y2 = pts[2 * j], pts[2 * j + 1]
+
+        if abs(bulge[i]) < 1e-12:
+            salida.append((x1, y1))
+            continue
+
+        ang = 4.0 * math.atan(bulge[i])
+        cuerda = math.hypot(x2 - x1, y2 - y1)
+        radio = cuerda / (2.0 * math.sin(ang / 2.0))
+
+        ux, uy = (x2 - x1) / cuerda, (y2 - y1) / cuerda
+        nx, ny = -uy, ux
+        mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+
+        cx = mx + nx * radio * math.cos(ang / 2.0)
+        cy = my + ny * radio * math.cos(ang / 2.0)
+
+        a1 = math.atan2(y1 - cy, x1 - cx)
+        r = math.hypot(x1 - cx, y1 - cy)
+
+        for k in range(tramos):
+            a = a1 + ang * k / tramos
+            salida.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+
+    return salida
+
+
+def fuera_del_tubo(cart, circulo):
+    """Lo que MAS se mete dentro del tubo, en cm. Negativo o cero: no se mete."""
+    cx, cy, r = circulo
+
+    return max(r - math.hypot(x - cx, y - cy) for x, y in muestrear(cart))
+
+
+def pegado_al_tubo(cart, circulo):
+    """Lo mas LEJOS que se queda el arco de la circunferencia, en cm."""
+    cx, cy, r = circulo
+
+    return min(abs(math.hypot(x - cx, y - cy) - r) for x, y in muestrear(cart))
+
+
+#  Un tubo redondo de 15 cm de radio y cartabones de 1" -2.54 cm- por 20 cm.
+TUBO_R = 15.0
+CIRC = (0.0, 0.0, TUBO_R)
+ESP = 2.54
+LARGO = 20.0
+
+redondos = construir_cartabones_pegados(True, 1, 1, ESP, ESP, LARGO, LARGO,
+                                        0, 0, 2 * TUBO_R, 2 * TUBO_R,
+                                        contorno=None, circulo=CIRC)
+
+rectos = construir_cartabones_pegados(True, 1, 1, ESP, ESP, LARGO, LARGO,
+                                      0, 0, 2 * TUBO_R, 2 * TUBO_R,
+                                      contorno=None, circulo=None)
+
+check("con columna redonda los dos cartabones llevan boca",
+      len(redondos) == 2 and all(c.con_boca for c in redondos))
+
+check("y sin circulo NINGUNO la lleva: siguen siendo rectangulos",
+      len(rectos) == 2
+      and not any(c.con_boca for c in rectos)
+      and all(len(c.puntos) == 8 and c.dobleces is None for c in rectos))
+
+#  ---- LAS CUATRO DIRECCIONES ----
+#  Cuatro y cuatro, para que salgan las dos caras de cada sentido. Es la peticion
+#  literal: «que se ajusten en ambas direcciones porque una la pones separado».
+cuatro = construir_cartabones_pegados(True, 2, 2, ESP, ESP, LARGO, LARGO,
+                                      0, 0, 2 * TUBO_R, 2 * TUBO_R,
+                                      contorno=None, circulo=CIRC)
+
+check("con 2 y 2 salen los cuatro lados, y los cuatro con boca",
+      len(cuatro) == 4 and all(c.con_boca for c in cuatro),
+      f"{sum(1 for c in cuatro if c.con_boca)} de {len(cuatro)} con boca")
+
+#  Uno por cada direccion, centrado, para poder mirarlos de a uno.
+por_lado = {
+    "+X": boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, ESP, LARGO, CIRC, False),
+    "+Y": boca_de_pescado(DIRECCION_ARRIBA, 0, 0, 0, ESP, LARGO, CIRC, True),
+    "-X": boca_de_pescado(DIRECCION_IZQUIERDA, 0, 0, 0, ESP, LARGO, CIRC, False),
+    "-Y": boca_de_pescado(DIRECCION_ABAJO, 0, 0, 0, ESP, LARGO, CIRC, True),
+}
+
+check("las cuatro direcciones dan boca",
+      all(c is not None for c in por_lado.values()))
+
+#  CADA UNA SALE HACIA SU LADO. Es lo que un signo mal puesto rompe.
+check("cada boca sale hacia SU lado",
+      por_lado["+X"].x1 > 0 and abs(por_lado["+X"].y2 - ESP / 2) < 1e-9
+      and por_lado["+Y"].y1 > 0 and abs(por_lado["+Y"].x2 - ESP / 2) < 1e-9
+      and por_lado["-X"].x2 < 0 and abs(por_lado["-X"].y2 - ESP / 2) < 1e-9
+      and por_lado["-Y"].y2 < 0 and abs(por_lado["-Y"].x2 - ESP / 2) < 1e-9,
+      "; ".join(f"{k} en [{c.x1:.2f},{c.x2:.2f}]x[{c.y1:.2f},{c.y2:.2f}]"
+                for k, c in por_lado.items()))
+
+#  ---- EL ARCO CAE SOBRE LA CIRCUNFERENCIA, NO CERCA ----
+for lado, c in por_lado.items():
+    check(f"el arco de {lado} arranca y acaba EN la circunferencia",
+          abs(math.hypot(c.puntos[6], c.puntos[7]) - TUBO_R) < 1e-9
+          and abs(math.hypot(c.puntos[0], c.puntos[1]) - TUBO_R) < 1e-9,
+          f"{math.hypot(c.puntos[6], c.puntos[7]):.9f} y "
+          f"{math.hypot(c.puntos[0], c.puntos[1]):.9f} contra {TUBO_R}")
+
+for lado, c in por_lado.items():
+    check(f"el cartabon de {lado} no se mete dentro del tubo",
+          fuera_del_tubo(c, CIRC) < 1e-9,
+          f"se mete {fuera_del_tubo(c, CIRC):.2e} cm")
+
+    check(f"y el arco de {lado} va PEGADO al tubo, no cerca",
+          pegado_al_tubo(c, CIRC) < 1e-9,
+          f"a {pegado_al_tubo(c, CIRC):.2e} cm")
+
+#  ---- LO QUE ARREGLA: EL RECTO DEJA HUECO ----
+#  El recto arranca en la tangente, asi que sus dos esquinas quedan separadas del tubo.
+#  Es el hueco que el soldador tiene que rellenar y que la boca elimina.
+recto_x = [c for c in rectos if not c.es_x][0]
+
+#  El recto arranca en la TANGENTE: solo su punto medio toca el tubo, y sus dos
+#  esquinas se quedan separadas. La boca, en cambio, toca en todo el canto.
+hueco_esquina = math.hypot(TUBO_R, ESP / 2) - TUBO_R
+
+check("el cartabon RECTO deja hueco contra el tubo, y la boca no",
+      hueco_esquina > 1e-3
+      and abs(math.hypot(recto_x.puntos[0], recto_x.puntos[1]) - TUBO_R) > 1e-3
+      and pegado_al_tubo(por_lado["+X"], CIRC) < 1e-9,
+      f"la esquina del recto queda a {hueco_esquina * 10:.2f} mm del acero; "
+      f"la boca, a {pegado_al_tubo(por_lado['+X'], CIRC) * 10:.2e} mm")
+
+#  ---- EL ESPESOR Y LA LONGITUD NO CAMBIAN ----
+check("la boca respeta el espesor del cartabon",
+      all(abs((c.y2 - c.y1) - ESP) < 1e-9 for c in (por_lado["+X"], por_lado["-X"]))
+      and all(abs((c.x2 - c.x1) - ESP) < 1e-9 for c in (por_lado["+Y"], por_lado["-Y"])))
+
+#  La longitud se mide desde el pano del tubo EN EL EJE del cartabon, que es donde se
+#  acota. Centrado, el eje pasa por el punto mas saliente: el pano esta en r.
+check("y la longitud, medida desde el pano del tubo en su eje",
+      abs(por_lado["+X"].x2 - (TUBO_R + LARGO)) < 1e-9
+      and abs(por_lado["+Y"].y2 - (TUBO_R + LARGO)) < 1e-9
+      and abs(por_lado["-X"].x1 + (TUBO_R + LARGO)) < 1e-9
+      and abs(por_lado["-Y"].y1 + (TUBO_R + LARGO)) < 1e-9,
+      f"+X acaba en {por_lado['+X'].x2:.3f}, esperado {TUBO_R + LARGO:.3f}")
+
+#  ---- DESCENTRADO: LOS DOS ARRANQUES SON DISTINTOS ----
+#  Con el cartabon fuera del eje, el canto de dentro corta el circulo mas lejos que el
+#  de fuera. Es el caso en el que un recorte simetrico -recortar los dos cantos lo
+#  mismo- se equivoca, y por eso la boca se calcula canto por canto.
+fuera_eje = boca_de_pescado(DIRECCION_DERECHA, 0, 0, 6.0, ESP, LARGO, CIRC, False)
+
+check("descentrado, los dos cantos arrancan en abscisas DISTINTAS",
+      fuera_eje is not None
+      and abs(fuera_eje.puntos[0] - fuera_eje.puntos[6]) > 1e-3,
+      f"{fuera_eje.puntos[0]:.4f} contra {fuera_eje.puntos[6]:.4f}")
+
+check("y descentrado tampoco se mete en el tubo",
+      fuera_del_tubo(fuera_eje, CIRC) < 1e-9
+      and pegado_al_tubo(fuera_eje, CIRC) < 1e-9,
+      f"se mete {fuera_del_tubo(fuera_eje, CIRC):.2e} cm")
+
+#  ---- LA PRUEBA NEGATIVA: CON EL BULGE AL REVES SE METE EN EL TUBO ----
+#  El signo del bulge es lo unico que decide si el arco MUERDE el cartabon o se abomba
+#  contra la columna, y las dos versiones se ven casi iguales en pantalla porque el
+#  perfil tapa la diferencia. Asi que se rompe a proposito y se comprueba que la
+#  comprobacion de arriba lo caza: si no lo cazara, no estaria comprobando nada.
+bien = por_lado["+X"]
+mal = Cart(list(bien.puntos), [(3, -bien.dobleces[0][1])], bien.es_x)
+
+check("el bulge de la boca es NEGATIVO: el arco muerde hacia dentro del cartabon",
+      bien.dobleces[0][1] < 0,
+      f"bulge = {bien.dobleces[0][1]:.6f}")
+
+check("PRUEBA NEGATIVA: con el bulge al reves el cartabon SI se mete en el tubo",
+      fuera_del_tubo(mal, CIRC) > 1e-3,
+      f"se meteria {fuera_del_tubo(mal, CIRC) * 10:.2f} mm dentro de la columna")
+
+#  ---- CUANDO NO CABE, SE QUEDA RECTO ----
+#  Un cartabon mas grueso que el tubo no tiene boca posible: el arco se saldria de su
+#  propio canto. Ahi lo correcto es dejarlo recto arrancando del envolvente, que es lo
+#  que se hacia antes, y no dibujar un recorte imposible.
+check("un cartabon mas ancho que el tubo se queda recto, sin boca",
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, 2 * TUBO_R + 1, LARGO, CIRC, False) is None)
+
+check("y uno muy descentrado tambien",
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, TUBO_R, ESP, LARGO, CIRC, False) is None)
+
+#  Un cartabon corto y descentrado: la punta libre quedaria mas cerca que el arranque
+#  del canto de dentro, y la polilinea se cruzaria sola.
+check("un cartabon demasiado corto para su descentrado se queda recto",
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 14.0, ESP, 0.05, CIRC, False) is None)
+
+check("sin longitud o sin espesor no hay boca",
+      boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, ESP, 0, CIRC, False) is None
+      and boca_de_pescado(DIRECCION_DERECHA, 0, 0, 0, 0, LARGO, CIRC, False) is None)
+
+#  ---- Y EL CONTORNO SIGUE SIENDO ANTIHORARIO ----
+#  Lo necesita hacia_fuera, que es quien calcula la franja de soldadura del cartabon:
+#  con el sentido al reves la franja se dibujaria hacia DENTRO de la pieza.
+check("las cuatro bocas salen en ANTIHORARIO, como los rectos",
+      all(area_con_signo(c.puntos) > 0 for c in por_lado.values())
+      and all(area_con_signo(c.puntos) > 0 for c in rectos),
+      "; ".join(f"{k} {area_con_signo(c.puntos):.2f}" for k, c in por_lado.items()))
+
+print("\n" + "=" * 78)
+print("LA SOLDADURA DEL CARTABON: SU PROPIA FRANJA, CON SU PROPIO ESPESOR")
+print("=" * 78)
+#  Es la misma cuenta que la del perfil -el contorno corrido hacia fuera el espesor del
+#  filete- pero con OTRO espesor: el cartabon es una placa mas delgada que la columna,
+#  asi que su filete casi nunca mide lo mismo.
+
+T_SOLD = 3.0 / 16.0 * 2.54
+
+for lado, c in por_lado.items():
+    banda = hacia_fuera(c.puntos, T_SOLD)
+
+    check(f"la franja de soldadura de {lado} se puede calcular",
+          banda is not None and len(banda) == len(c.puntos))
+
+    if banda is None:
+        continue
+
+    #  La franja RODEA al cartabon: su area es mayor, y crece por los cuatro lados.
+    check(f"y rodea al cartabon de {lado}, no se le mete dentro",
+          area_con_signo(banda) > area_con_signo(c.puntos)
+          and min(banda[0::2]) <= min(c.puntos[0::2]) + 1e-9
+          and max(banda[0::2]) >= max(c.puntos[0::2]) - 1e-9
+          and min(banda[1::2]) <= min(c.puntos[1::2]) + 1e-9
+          and max(banda[1::2]) >= max(c.puntos[1::2]) - 1e-9,
+          f"area {area_con_signo(c.puntos):.2f} -> {area_con_signo(banda):.2f} cm2")
+
+#  Y EL ANCHO DE LA FRANJA ES EL ESPESOR DEL FILETE en todo el perimetro. Es lo que
+#  distingue cruzar las aristas de correr el vertice por la bisectriz: por la bisectriz
+#  la franja se adelgaza un 30 % en cada esquina de 90 grados.
+recta = por_lado["+X"]
+banda_recta = hacia_fuera(recta.puntos, T_SOLD)
+
+anchos = aristas_a_distancia(recta.puntos, banda_recta, T_SOLD)
+
+check("la franja mide el espesor del filete en TODOS los tramos",
+      anchos < 1e-9,
+      f"filete de {T_SOLD:.4f} cm, y el peor tramo se desvia {anchos:.2e} cm")
+
+print("\n" + "=" * 78)
+print("Y EL C# HACE LO MISMO QUE ESTE PORT")
+print("=" * 78)
+#  Todo lo de arriba es un port, y un port sirve mientras siga siendo el mismo codigo.
+#  Aqui no hay AutoCAD ni compilador, asi que lo unico que se puede hacer es LEER las
+#  fuentes y comprobar que las piezas que se acaban de probar son las que estan
+#  escritas. Sin esto, la prueba mas verde del mundo podria estar comprobando una
+#  version del calculo que ya nadie ejecuta.
+
+_RAIZ = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+
+
+def _fuente(*partes):
+    with open(_os.path.join(_RAIZ, *partes), encoding="utf-8") as f:
+        return f.read()
+
+
+_CART = _fuente("client", "src", "CadLink.Cad", "CartabonesPlacaBase.cs")
+_DET = _fuente("client", "src", "CadLink.Cad", "PlacaBaseDrawer.Detalle.cs")
+_CAD = _fuente("client", "src", "CadLink.Cad", "PlacaBaseCad.cs")
+_DRW = _fuente("client", "src", "CadLink.Cad", "PlacaBaseDrawer.cs")
+_PREV = _fuente("client", "src", "CadLink.App", "MainWindow.PlacaBase.cs")
+_FILA = _fuente("client", "src", "CadLink.App", "Models", "PlacaBaseRow.cs")
+
+check("el cartabon del C# guarda PUNTOS y BULGES, no cuatro esquinas",
+      "public readonly record struct Cartabon(" in _CART
+      and "double[] Puntos, (int Indice, double Bulge)[]? Dobleces, bool EsX)" in _CART
+      and "public static Cartabon Recto(" in _CART)
+
+check("y existe BocaDePescado, con el giro de 90 grados por direccion",
+      "private static Cartabon? BocaDePescado(" in _CART
+      and "ContornoDesplazado.Girar90Punto(x, y, cx, cy)" in _CART
+      and "for (var giro = 0; giro < direccion; giro++)" in _CART)
+
+#  EL SIGNO DEL BULGE es lo unico que decide si el arco muerde el cartabon o se abomba
+#  contra la columna, y es la cuenta que la prueba negativa de arriba vigila.
+check("el bulge sale del barrido, en el mismo orden que el port",
+      "Math.Atan2(yBajo, xBajo) - Math.Atan2(yAlto, xAlto)" in _CART
+      and "Math.Tan(barrido / 4)" in _CART)
+
+#  LAS CUATRO DIRECCIONES, con su desplazamiento local. Es donde se esconderia un signo.
+for _dir, _expr in (("Derecha", "centro - cy"), ("Arriba", "cx - centro"),
+                    ("Izquierda", "cy - centro"), ("_", "centro - cx")):
+    check(f"el desplazamiento local de {_dir} es «{_expr}»",
+          f"{_dir} => {_expr}," in _CART)
+
+check("y los cuatro lados llaman a Uno con su direccion",
+      _CART.count("Uno(Arriba,") == 1 and _CART.count("Uno(Abajo,") == 1
+      and _CART.count("Uno(Derecha,") == 1 and _CART.count("Uno(Izquierda,") == 1)
+
+#  EL CONTORNO ENTERO, no solo sus puntos: la boca necesita la CIRCUNFERENCIA, y el
+#  rayo, los puntos. Pasando solo los puntos, una columna redonda nunca llevaria boca.
+check("Construir recibe el contorno COMPLETO, para poder ver el circulo",
+      "ContornoDeColumna? contorno = null)" in _CART
+      and "var circulo = contorno?.Circulo;" in _CART
+      and "pX, pY, panoColumna," in _DRW)
+
+check("el dibujante saca el cartabon con Polilinea y sus bulges, no con Rectangulo",
+      "Polilinea(c.Puntos, PlacaBaseCapas.Cartabones, c.Dobleces)" in _DET
+      and "Rectangulo(c.X1" not in _DET)
+
+check("y la previa lo saca con AgregarPoligonal, no con RectangleGeometry",
+      "AgregarPoligonal(geoCart, c.Puntos, c.Dobleces)" in _PREV
+      and "CartabonesPlacaBase.Construir(\n            p, xc, yc, pX, pY, 1, panoColumna)" in _PREV)
+
+#  ---- LA SOLDADURA DEL CARTABON ----
+check("la soldadura del cartabon tiene su capa y su color MORADO",
+      'public const string SoldaduraCartabon = "SOLDADURA CARTABON";' in _CAD
+      and "public const int ColorSoldaduraCartabon = 210;" in _CAD
+      and "Capa(PlacaBaseCapas.SoldaduraCartabon, PlacaBaseCapas.ColorSoldaduraCartabon" in _DRW)
+
+check("y su propio espesor, aparte del de la columna",
+      "public double SoldaduraCartabonCm { get; set; }" in _CAD
+      and "public string SoldaduraCartabon" in _FILA
+      and "SoldaduraCartabonCm = Pulgadas(SoldaduraCartabon) * 2.54," in _FILA)
+
+check("la franja del cartabon se calcula con ContornoDesplazado, como la del perfil",
+      "private void SoldaduraDeCartabon(" in _DET
+      and "ContornoDesplazado.HaciaFuera(c.Puntos, t)" in _DET
+      and "PlacaBaseCapas.PatronSoldadura, PlacaBaseCapas.EscalaHatchSoldadura" in _DET)
+
+check("y se dibuja al fondo, con el cartabon como isla, y la frontera se borra",
+      "frontera, new List<object> { cartabon }," in _DET
+      and "AlFondo(new List<object> { hatch });" in _DET
+      and "Borrar(frontera);" in _DET)
+
+check("la previa tambien pinta la franja del cartabon, en morado",
+      "private void DibujarSoldaduraDeCartabonesPrevia(" in _PREV
+      and "DibujarSoldaduraDeCartabonesPrevia(p, cartabones, transformar);" in _PREV
+      and "0x7B, 0x2F, 0xBE" in _PREV)
 
 print("\n" + "=" * 78)
 if fallos:

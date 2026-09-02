@@ -352,7 +352,7 @@ public partial class MainWindow
         var panoColumna = p.PanoDeLaColumna(xc, yc, 1);
 
         var cartabones = CartabonesPlacaBase.Construir(
-            p, xc, yc, pX, pY, 1, panoColumna?.Puntos);
+            p, xc, yc, pX, pY, 1, panoColumna);
 
         foreach (var c in cartabones)
         {
@@ -414,16 +414,20 @@ public partial class MainWindow
             StrokeThickness = 2
         });
 
-        // ---------- Los cartabones ----------
+        // ---------- Los cartabones, con su soldadura morada debajo ----------
         if (cartabones.Count > 0)
         {
+            DibujarSoldaduraDeCartabonesPrevia(p, cartabones, transformar);
+
+            // POLIGONAL Y NO RECTÁNGULO: contra una columna redonda el cartabón lleva la boca de
+            // pescado, que es un ARCO. Con RectangleGeometry la previa enseñaría un cartabón recto
+            // y el plano saldría con el recorte: precisamente la discrepancia que la previa existe
+            // para evitar.
             var geoCart = new GeometryGroup { Transform = transformar };
 
             foreach (var c in cartabones)
             {
-                geoCart.Children.Add(new RectangleGeometry(new Rect(
-                    Math.Min(c.X1, c.X2), Math.Min(c.Y1, c.Y2),
-                    Math.Abs(c.X2 - c.X1), Math.Abs(c.Y2 - c.Y1))));
+                AgregarPoligonal(geoCart, c.Puntos, c.Dobleces);
             }
 
             PlacaPreviewCanvas.Children.Add(new FormaPath
@@ -631,6 +635,60 @@ public partial class MainWindow
             Data = franja,
             Fill = rojoSoldadura,
             Stroke = new SolidColorBrush(Color.FromRgb(0xC0, 0x2A, 0x1B)),
+            StrokeThickness = 0.8
+        });
+    }
+
+    /// <summary>
+    /// La franja <b>morada</b> que rodea el contorno de cada cartabón.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Igual que la del perfil: el hueco entre el contorno del cartabón y ese mismo contorno corrido
+    /// hacia fuera el espesor de su filete, con la regla par-impar, y con
+    /// <see cref="ContornoDesplazado"/> —LA MISMA clase que usa el dibujante—.
+    /// </para>
+    /// <para>
+    /// <b>Morada y no roja</b>, que es el mismo color con que sale en el plano: las dos franjas
+    /// quedan a un centímetro una de otra y del mismo color se leen como una sola soldadura. Van
+    /// todas en un solo <c>FormaPath</c> porque son la misma soldadura repetida.
+    /// </para>
+    /// </remarks>
+    private void DibujarSoldaduraDeCartabonesPrevia(
+        PlacaBaseCad p, List<CartabonesPlacaBase.Cartabon> cartabones, Transform transformar)
+    {
+        var t = p.SoldaduraCartabonCm;
+
+        if (t <= 0)
+        {
+            return;
+        }
+
+        var franja = new GeometryGroup { FillRule = FillRule.EvenOdd, Transform = transformar };
+
+        foreach (var c in cartabones)
+        {
+            var fuera = ContornoDesplazado.HaciaFuera(c.Puntos, t);
+
+            if (fuera is null)
+            {
+                continue;
+            }
+
+            AgregarPoligonal(franja, fuera, c.Dobleces);
+            AgregarPoligonal(franja, c.Puntos, c.Dobleces);
+        }
+
+        if (franja.Children.Count == 0)
+        {
+            return;
+        }
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = franja,
+            Fill = new SolidColorBrush(Color.FromArgb(0x80, 0x7B, 0x2F, 0xBE)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x7B, 0x2F, 0xBE)),
             StrokeThickness = 0.8
         });
     }
@@ -949,6 +1007,7 @@ public partial class MainWindow
         DiamAnclaY = f.DiamAnclaY,
         Electrodo = f.Electrodo,
         Soldadura = f.Soldadura,
+        SoldaduraCartabon = f.SoldaduraCartabon,
         NCartabonesX = f.NCartabonesX,
         NCartabonesY = f.NCartabonesY,
         EspCartabonX = f.EspCartabonX,

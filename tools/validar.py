@@ -6454,10 +6454,15 @@ def v18_planta_autocad() -> None:
     #  Y EL CONTORNO LLEGA DESDE LOS DOS SITIOS que dibujan cartabones, con el mismo pano de
     #  columna que usa la soldadura: si a uno se le olvidara pasarlo, sus cartabones volverian al
     #  envolvente sin decir nada.
+    #  Y SE LE PASA EL CONTORNO COMPLETO, no solo sus puntos: la boca de pescado necesita la
+    #  CIRCUNFERENCIA, que es lo unico que trae una columna redonda. Con los puntos a secas, un tubo
+    #  redondo llegaba con contorno nulo y sus cartabones volvian al envolvente -o sea, a la
+    #  tangente- sin decir nada.
     check("y el contorno se le pasa desde el dibujante y desde la previa",
-          "p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna?.Puntos," in pbd
+          "p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna," in pbd
           and "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno)" in pbd2
-          and "p, xc, yc, pX, pY, 1, panoColumna?.Puntos)" in pbw)
+          and "p, xc, yc, pX, pY, 1, panoColumna)" in pbw
+          and "ContornoDeColumna? contorno = null)" in cpb)
 
     #  Y no se dibuja NADA si no se cumplen J o K: un detalle con las anclas mas juntas de lo que
     #  la tabla permite no es un detalle a medias, es uno que no se puede construir.
@@ -6827,7 +6832,12 @@ def v18_planta_autocad() -> None:
     #  AnclasPlacaBase, CartabonesPlacaBase y TrazoAcero existan sin COM.
     check("la vista previa de la placa usa la geometria del dibujante",
           "private void DibujarVistaPreviaPlacaBase()" in pbw
-          and "CartabonesPlacaBase.Construir(\n            p, xc, yc, pX, pY, 1, panoColumna?.Puntos)" in pbw
+          and "CartabonesPlacaBase.Construir(\n            p, xc, yc, pX, pY, 1, panoColumna)" in pbw
+          # Y CON LA POLILINEA, no con un rectangulo: contra una columna redonda el cartabon lleva
+          # boca de pescado -un arco- y RectangleGeometry no puede dibujarla. La previa ensenaria
+          # un cartabon recto y el plano saldria con el recorte, que es justo la discrepancia que
+          # esta previa existe para evitar.
+          and "AgregarPoligonal(geoCart, c.Puntos, c.Dobleces)" in pbw
           and "AnclasPlacaBase.Construir(" in pbw
           and "TrazoAcero.De(" in pbw
           and 'x:Name="PlacaPreviewCanvas"' in tab_pb)
@@ -6849,7 +6859,7 @@ def v18_planta_autocad() -> None:
           and "PlacasGrid.SelectionChanged +=" in pbw)
 
     # ---- LAS CELDAS DE CARTABON SE APAGAN ----
-    #  Sin la casilla, el dibujante no las mira: dejarlas activas invita a capturar seis numeros
+    #  Sin la casilla, el dibujante no las mira: dejarlas activas invita a capturar siete numeros
     #  que no van a salir en el plano, y cuando el detalle aparece sin atiesadores lo que se piensa
     #  es que el programa los perdio, no que faltaba encender una casilla.
     tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
@@ -6861,9 +6871,10 @@ def v18_planta_autocad() -> None:
           'x:Key="CeldaCartabon"' in tema
           and 'Binding="{Binding ConCartabones}" Value="False"' in tema
           and '<Setter Property="IsEnabled" Value="False" />' in tema
-          # Las SEIS: cantidad, espesor y longitud de cada sentido. Con cinco, la que se quede
-          # fuera sigue aceptando lo que se escriba y nada lo delata.
-          and usos_celda_cartabon == 6,
+          # Las SIETE: cantidad, espesor y longitud de cada sentido, mas el espesor de la
+          # soldadura del contorno. Con seis, la que se quede fuera sigue aceptando lo que se
+          # escriba y nada lo delata.
+          and usos_celda_cartabon == 7,
           f"{usos_celda_cartabon} columnas la usan")
 
     #  Y LA TABLA DICE CUANTOS SALEN DE VERDAD, con el mismo descarte que el dibujo.
@@ -6944,9 +6955,9 @@ def v18_planta_autocad() -> None:
           and "public sealed class ConPulgadas : IValueConverter" in
               leer(ruta("client/src/CadLink.App/ConPulgadas.cs"))
           and '<app:ConPulgadas x:Key="ConPulgadas" />' in tema
-          # Las OCHO celdas en pulgadas: espesor, dos anclas, dos agujeros, soldadura y dos
-          # espesores de cartabon.
-          and usos_pulgadas == 8,
+          # Las NUEVE celdas en pulgadas: espesor, dos anclas, dos agujeros, la soldadura de la
+          # columna, los dos espesores de cartabon y la soldadura del cartabon.
+          and usos_pulgadas == 9,
           f"{usos_pulgadas} celdas con el simbolo")
 
     # ---- LA SEPARACION AL BORDE SE AJUSTA AL MINIMO DE LA COLUMNA K ----
@@ -10813,7 +10824,14 @@ def v20_estaticos_sin_cualificar() -> None:
             # nombre de la clase de fuera.
             m_prop = re.match(
                 r"^ {4,}(?:public|private|protected|internal)[^;=]*?"
-                r"\b(\w+)\s*(?:\{|=>|=|;)", l)
+                # El cuerpo puede abrirse en el MISMO renglon -'{ get => …; }'- o en el
+                # SIGUIENTE, que es como se escribe una propiedad con documentacion larga.
+                # Con solo la primera forma se perdian esas, y su nombre se reportaba
+                # contra el estatico homonimo de otra clase: paso con el
+                # 'SoldaduraCartabon' de PlacaBaseRow contra el de PlacaBaseCapas, que es
+                # el nombre de la capa. Se recoge de mas a proposito -esto solo descarta
+                # falsos positivos- asi que colar de paso algun nombre de clase no daña.
+                r"\b(\w+)\s*(?:\{|=>|=|;|$)", l)
             if m_prop:
                 miembros_de.setdefault(clase_en(i), set()).add(m_prop.group(1))
 

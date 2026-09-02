@@ -2103,7 +2103,7 @@
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                                   Text="Modulo pendiente, proximamente..." />
                     </Border>
                 </StackPanel>
             </TabItem>
@@ -2468,10 +2468,10 @@
                             </DataGridTemplateColumn>
 
                             <!-- ===== LOS CARTABONES ===== -->
-                            <!-- LA CASILLA QUE MANDA. Apagada, las seis celdas de cartabon de la
+                            <!-- LA CASILLA QUE MANDA. Apagada, las siete celdas de cartabon de la
                                  derecha se apagan con ella -ver el estilo CeldaCartabon-: el
                                  dibujante no las mira, asi que dejarlas activas invita a capturar
-                                 seis numeros que no van a salir en el plano.
+                                 siete numeros que no van a salir en el plano.
 
                                  «Con cartabones» y no «Cartabones» a secas para no repetir el
                                  encabezado de la columna calculada del final, que dice cuantos
@@ -2522,6 +2522,34 @@
                                                   ItemsSource="{Binding EspesoresPlaca}"
                                                   Text="{Binding EspCartabonY, UpdateSourceTrigger=PropertyChanged}"
                                                   ToolTip="Espesor de los cartabones del sentido Y, en pulgadas." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- EL FILETE DEL CARTABON, aparte del de la columna.
+
+                                 Son dos soldaduras distintas y con espesores distintos: la del
+                                 perfil sella el pano de la columna contra la placa, y esta corre
+                                 por el contorno del atiesador. Una sola columna para las dos
+                                 obligaria a que midieran igual, que no es el caso. Sale en
+                                 morado -capa SOLDADURA CARTABON- para distinguirla de un tiron. -->
+                            <DataGridTemplateColumn Header="e sold cart &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaCartabon}"
+                                                    SortMemberPath="SoldaduraCartabon">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SoldaduraCartabon, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding EspesoresSoldadura}"
+                                                  Text="{Binding SoldaduraCartabon, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Espesor de la soldadura que corre por el contorno de los cartabones, en pulgadas.&#10;En blanco o en cero: el contorno sale sin soldadura." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2720,7 +2748,7 @@
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                                   Text="Modulo pendiente, proximamente..." />
                     </Border>
                 </StackPanel>
             </TabItem>

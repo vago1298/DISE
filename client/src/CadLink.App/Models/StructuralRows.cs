@@ -1309,6 +1309,7 @@ public sealed class DatosProyecto
             DiamAnclaX = "3/4", DiamAnclaY = "3/4",
             Electrodo = "E70XX",
             Soldadura = "1/4",
+            SoldaduraCartabon = "3/16",
             ConCartabones = false,
             Escala = 10
         });

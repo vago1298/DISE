@@ -304,10 +304,11 @@ public sealed partial class PlacaBaseDrawer
     /// deducirlo de la geometría ni repetir la regla del descarte.
     /// </param>
     /// <param name="contorno">
-    /// El paño del perfil, para que cada cartabón arranque del acero que de verdad tiene al lado.
+    /// El paño del perfil, para que cada cartabón arranque del acero que de verdad tiene al lado, y
+    /// para que contra una columna redonda se le recorte la <b>boca de pescado</b>.
     /// </param>
     private List<object> Cartabones(
-        PlacaBaseCad p, double xc, double yc, double pX, double pY, double[]? contorno,
+        PlacaBaseCad p, double xc, double yc, double pX, double pY, ContornoDeColumna? contorno,
         out List<CartabonesPlacaBase.Cartabon> reparto)
     {
         var creados = new List<object>();
@@ -319,15 +320,86 @@ public sealed partial class PlacaBaseDrawer
 
         foreach (var c in reparto)
         {
-            var r = Rectangulo(c.X1, c.Y1, c.X2, c.Y2, PlacaBaseCapas.Cartabones);
+            // POLILÍNEA Y NO RECTÁNGULO: el cartabón contra una columna redonda lleva un ARCO —la
+            // boca de pescado— y un rectángulo no puede describirlo. Los cartabones contra un
+            // perfil recto siguen saliendo con sus cuatro vértices y sin ningún bulge, así que en
+            // el plano son exactamente lo que eran.
+            var r = Polilinea(c.Puntos, PlacaBaseCapas.Cartabones, c.Dobleces);
 
             if (r is not null)
             {
                 creados.Add(r);
+
+                SoldaduraDeCartabon(p, c, r);
             }
         }
 
         return creados;
+    }
+
+    /// <summary>
+    /// La franja de soldadura que rodea el contorno de <b>un</b> cartabón, en morado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la misma idea que la soldadura del perfil —el contorno corrido hacia fuera el espesor del
+    /// filete, y el rayado en la franja de en medio— con dos diferencias que no son de adorno.
+    /// </para>
+    /// <para>
+    /// <b>Su propio espesor.</b> El cartabón es una placa más delgada que la columna, así que su
+    /// filete casi nunca mide lo mismo. Con un solo dato para las dos, el plano diría que se sueldan
+    /// igual y no es cierto.
+    /// </para>
+    /// <para>
+    /// <b>Su propia capa y su propio color.</b> Morado, y no el de la soldadura del perfil: en un
+    /// detalle con cartabones las dos franjas quedan a un centímetro una de otra, y del mismo color
+    /// se leen como una sola soldadura con un espesor. Compartir capa además impediría apagar una
+    /// sin la otra.
+    /// </para>
+    /// <para>
+    /// El arco de la boca queda dentro de la franja como cualquier otro tramo, que es lo que se ve
+    /// en obra: el filete de la boca es justo el que pega el cartabón al tubo.
+    /// </para>
+    /// </remarks>
+    private void SoldaduraDeCartabon(
+        PlacaBaseCad p, CartabonesPlacaBase.Cartabon c, object cartabon)
+    {
+        if (!p.DibujarSoldadura || !p.DibujarHatchSoldadura || p.SoldaduraCartabonCm <= 0)
+        {
+            return;
+        }
+
+        var t = p.SoldaduraCartabonCm * _escala;
+
+        var fuera = ContornoDesplazado.HaciaFuera(c.Puntos, t);
+
+        if (fuera is null)
+        {
+            Nota("No se pudo calcular la franja de soldadura de un cartabón: su contorno no da " +
+                 "para desplazarse. El cartabón se dibujó igual, sin su soldadura.");
+            return;
+        }
+
+        var frontera = Polilinea(fuera, PlacaBaseCapas.SoldaduraCartabon, c.Dobleces);
+
+        if (frontera is null)
+        {
+            return;
+        }
+
+        var hatch = Hatch(
+            PlacaBaseCapas.PatronSoldadura, PlacaBaseCapas.EscalaHatchSoldadura,
+            frontera, new List<object> { cartabon },
+            PlacaBaseCapas.SoldaduraCartabon, PlacaBaseCapas.ColorSoldaduraCartabon);
+
+        if (hatch is not null)
+        {
+            AlFondo(new List<object> { hatch });
+        }
+
+        // La frontera era auxiliar, igual que la del perfil. El hatch no es asociativo, así que
+        // borrarla no lo afecta.
+        Borrar(frontera);
     }
 
     // ======================================================================
@@ -585,12 +657,17 @@ public sealed partial class PlacaBaseDrawer
         var primeroX = reparto.FindIndex(c => c.EsX);
         var primeroY = reparto.FindIndex(c => !c.EsX);
 
+        // El filete del cartabón se rotula EN EL MISMO LEADER, en un segundo renglón. Es la
+        // soldadura de esa pieza y de ninguna otra, así que un leader propio apuntando al mismo
+        // sitio solo añadiría una flecha más a un detalle que ya tiene siete.
+        var filete = RenglonDelFileteDeCartabon(p);
+
         if (primeroX >= 0)
         {
             var (x, y) = PuntaLibre(cartabones[primeroX]);
 
             LeaderRectoDerecha(
-                "CARTABON X DE " + ConPulgadas(p.TextoEspCartabonX) + " DE ESP.",
+                "CARTABON X DE " + ConPulgadas(p.TextoEspCartabonX) + " DE ESP." + filete,
                 x, y, xTexto, maxY + separacionY);
         }
 
@@ -599,9 +676,27 @@ public sealed partial class PlacaBaseDrawer
             var (x, y) = PuntaLibre(cartabones[primeroY]);
 
             LeaderRectoDerecha(
-                "CARTABON Y DE " + ConPulgadas(p.TextoEspCartabonY) + " DE ESP.",
+                "CARTABON Y DE " + ConPulgadas(p.TextoEspCartabonY) + " DE ESP." + filete,
                 x, y, xTexto, minY - separacionY);
         }
+    }
+
+    /// <summary>El segundo renglón del leader del cartabón: su soldadura. Vacío si no lleva.</summary>
+    private string RenglonDelFileteDeCartabon(PlacaBaseCad p)
+    {
+        if (!p.DibujarSoldadura || p.SoldaduraCartabonCm <= 0)
+        {
+            return string.Empty;
+        }
+
+        var espesor = p.TextoSoldaduraCartabon.Trim().Replace("\"", string.Empty);
+
+        if (espesor.Length == 0)
+        {
+            espesor = Numero(p.SoldaduraCartabonCm / 2.54);
+        }
+
+        return "\\PSOLDADURA DE " + Escapar(espesor) + "\" DE ESP.";
     }
 
     private (double Min, double Max) AltoDeTodos(List<object> objetos)

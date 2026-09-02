@@ -49,6 +49,23 @@ public static class PlacaBaseCapas
     public const string Soldadura = "SOLDADURA";
     public const int ColorSoldadura = 240;
 
+    /// <summary>
+    /// La soldadura de los <b>cartabones</b>, en su propia capa y en <b>morado</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Aparte de la soldadura del perfil a propósito: son dos filetes con espesores distintos —cada
+    /// uno tiene su celda en la hoja— y en el detalle se rotulan por separado. Con las dos en la
+    /// misma capa no se podrían apagar por separado ni distinguir de un vistazo cuál es cuál.
+    /// </para>
+    /// <para>
+    /// El <b>210</b> de la paleta de AutoCAD es el violeta. Si el tono no es el que se quiere, se
+    /// cambia aquí y solo aquí: la capa se crea con este color forzado.
+    /// </para>
+    /// </remarks>
+    public const string SoldaduraCartabon = "SOLDADURA CARTABON";
+    public const int ColorSoldaduraCartabon = 210;
+
     // ---------- Hatches ----------
 
     /// <summary>Rayado del dado, solo en la franja que sobresale de la placa.</summary>
@@ -199,6 +216,18 @@ public sealed class PlacaBaseCad
     /// <summary>Espesor de soldadura, en cm, y su texto. Celda C17.</summary>
     public double SoldaduraCm { get; set; }
     public string TextoSoldadura { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Espesor del filete que une los <b>cartabones</b> a la placa y a la columna, en cm.
+    /// </summary>
+    /// <remarks>
+    /// Es un dato aparte del de la columna porque son dos soldaduras distintas: el cartabón es una
+    /// placa más delgada, así que su filete casi nunca es el mismo. Cero = sin soldadura de cartabón.
+    /// </remarks>
+    public double SoldaduraCartabonCm { get; set; }
+
+    /// <summary>El espesor del filete de cartabón tal como se escribió, para el rótulo.</summary>
+    public string TextoSoldaduraCartabon { get; set; } = string.Empty;
 
     /// <summary>Cartabones: cantidad total por dirección. Celdas C18 y C19.</summary>
     public int NCartabonesX { get; set; }

@@ -43,6 +43,7 @@ public sealed class PlacaBaseRow : Row
     private string _soldadura = "1/4";
     private int _nCartabonesX;
     private int _nCartabonesY;
+    private string _soldaduraCartabon = "3/16";
     private string _espCartabonX = "1/2";
     private string _espCartabonY = "1/2";
     private double _longCartabonXCm = 15;
@@ -495,6 +496,21 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>C19</b>: cantidad TOTAL de cartabones en Y.</summary>
     public int NCartabonesY { get => _nCartabonesY; set => Set(ref _nCartabonesY, value); }
 
+    /// <summary>
+    /// Espesor del filete que une los <b>cartabones</b>, en pulgadas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es un dato aparte del de la columna, y no por simetría: el cartabón es una placa más delgada
+    /// que el perfil, así que su filete casi nunca es el mismo. Con un solo espesor para las dos
+    /// soldaduras, una de las dos sale mal en el plano y no se ve —los dos rayados se parecen—.
+    /// </para>
+    /// <para>
+    /// En blanco o en cero, los cartabones se dibujan sin soldadura.
+    /// </para>
+    /// </remarks>
+    public string SoldaduraCartabon { get => _soldaduraCartabon; set => Set(ref _soldaduraCartabon, value); }
+
     /// <summary>Celda <b>C20</b>: espesor de los cartabones X, en pulgadas.</summary>
     public string EspCartabonX { get => _espCartabonX; set => Set(ref _espCartabonX, value); }
 
@@ -808,6 +824,9 @@ public sealed class PlacaBaseRow : Row
             Electrodo = Electrodo,
             SoldaduraCm = Pulgadas(Soldadura) * 2.54,
             TextoSoldadura = Soldadura,
+
+            SoldaduraCartabonCm = Pulgadas(SoldaduraCartabon) * 2.54,
+            TextoSoldaduraCartabon = SoldaduraCartabon,
 
             NCartabonesX = Math.Max(0, NCartabonesX),
             NCartabonesY = Math.Max(0, NCartabonesY),
