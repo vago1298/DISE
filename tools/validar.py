@@ -6335,6 +6335,21 @@ def v18_planta_autocad() -> None:
           and 'MURO_SIN_CADENA_ES_CONCRETO' in dibp
           and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba);" in dibp)
 
+    #  Y LA CAPA DEL MURO DE CONCRETO SE SUBE AL FRENTE, como las cadenas: esas dos lineas son la
+    #  base del muro, van sobre el achurado de la losa y sobre las lineas de los ejes, y si quedan
+    #  debajo el plano no las ensena aunque esten dibujadas.
+    #
+    #  Se resuelve en CapasAlFrente() y no solo escrito en la tabla de omision, porque el nombre de
+    #  la capa lo decide CAPA_MURO_CONCRETO, que es configurable: dejandolo solo a mano, el dia que
+    #  alguien renombre la capa la lista dejaria de coincidir y el muro se quedaria atras EN
+    #  SILENCIO.
+    check("la capa del muro de concreto se sube al frente, como las cadenas",
+          'P("MURO_CONCRETO_AL_FRENTE", "SI",' in cfgplano
+          and 'if (_cfg.Bandera("MURO_CONCRETO_AL_FRENTE", true))' in capp2
+          and "var muro = CapaMuroConcreto.Trim().ToUpperInvariant();" in capp2
+          # Y NO escrita a mano en la lista: la lista sigue siendo la de la macro.
+          and 'P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO"' in cfgplano)
+
     #  SOLO PARA MURO DE CONCRETO, pedido expresamente. Y es lo correcto: esta linea es el
     #  desplante de un muro que se cuela, y dibujarla en un muro de mamposteria diria que hay algo
     #  que colar donde no lo hay. Un muro de tabicon apoya en su cadena de desplante, y esa cadena

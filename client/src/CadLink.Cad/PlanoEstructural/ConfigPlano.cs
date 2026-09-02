@@ -695,6 +695,10 @@ public sealed class ConfigPlano
         P("TRAER_AL_FRENTE", "SI", "SI = subir CAPAS_AL_FRENTE encima de todo (Bring to Front)"),
         // CADENA y no DALA: la capa de las dalas se llama E-CADENA —ver CAPA_DALA—, así que
         // aquí tiene que ir con ese nombre o no se subiría al frente.
+        // La capa del MURO DE CONCRETO no se escribe aquí a mano: la añade CapasPlano.CapasAlFrente
+        // resolviéndola desde CAPA_MURO_CONCRETO, que es configurable. Escrita aquí, el día que
+        // alguien renombrara la capa esta lista dejaría de coincidir y el muro se quedaría atrás en
+        // silencio. Se apaga con MURO_CONCRETO_AL_FRENTE.
         P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO", "<<< CAPAS ENCIMA DE TODO (incluye ACERO: las vigas de acero al frente)"),
 
         // AÑADIDO, no está en la hoja de la macro. Los ROTULOS tienen que quedar encima de
@@ -860,6 +864,9 @@ public sealed class ConfigPlano
         P("MURO_BASE_TOLERANCIA_CM", "20",
           "Cuanto por debajo de la base del muro tiene que estar un nivel para contar como que "
           + "hay algo abajo. Evita que el propio nivel del muro cuente"),
+        P("MURO_CONCRETO_AL_FRENTE", "SI",
+          "SI = la capa del muro de concreto se sube al frente (Bring to Front) igual que las "
+          + "cadenas. Se resuelve por CAPA_MURO_CONCRETO, asi que sigue valiendo si se renombra"),
         P("MURO_SIN_CADENA_ES_CONCRETO", "SI",
           "SI = el muro que NO lleva cadena de desplante se toma como de concreto. En el plano es "
           + "la senal que los distingue: el de mamposteria lleva su cadena y el de concreto no, "
