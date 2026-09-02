@@ -857,6 +857,9 @@ public sealed class ConfigPlano
         P("MURO_CONCRETO_SOLO_CIMENTACION", "SI",
           "SI = el contorno y la leyenda del muro de concreto solo en la planta de cimentacion. "
           + "NO = en todas las plantas"),
+        P("MURO_CONCRETO_AUNQUE_TAPADO", "SI",
+          "SI = la base del muro de concreto se dibuja AUNQUE lleve una cadena encima. En "
+          + "cimentacion casi todos la llevan, y sin esto no se dibujaba ninguno"),
         P("MURO_CONCRETO_POR_NOTA", "SI",
           "SI = un muro es de concreto si su PROPERTY NOTE de ETABS lo dice, aunque el nombre "
           + "de la seccion diga otra cosa"),

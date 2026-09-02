@@ -1552,9 +1552,15 @@ def v12_fidelidad() -> None:
         "en columna se quita el ultimo estribo",
         "esColumna" in est and "centros.RemoveAt(centros.Count - 1)" in est,
     )
+    # LAS FRONTERAS DE ZONA, AHORA SIEMPRE. Antes era "conFronteras: !vertical", copiando el VBA:
+    # el estribo de la frontera entre zonas solo se ponia en el alzado horizontal. El problema es
+    # que PorSeparacion descartaba tambien el estribo que cae EXACTAMENTE en la frontera, y en
+    # columna y dado no lo tapaba nadie, asi que en cada frontera L/4-L/2 quedaba un hueco de DOS
+    # separaciones. Medido: columna L=4.10 con 10-20-10 tenia dos huecos de 30 cm donde la
+    # separacion mas holgada es 20. Ver tools/verificar_estribos.py.
     check(
-        "las fronteras de zona solo en el alzado horizontal",
-        "conFronteras: !vertical" in est,
+        "las fronteras de zona se ponen SIEMPRE, no solo en el horizontal",
+        "conFronteras: true" in est and "conFronteras: !vertical" not in est,
     )
     n_comp = len(re.findall(r"Estribos\.CentrosDeAlzado\(", codigo + alz))
     check("el dibujo y la vista previa usan el MISMO reparto", n_comp == 2,
@@ -6225,6 +6231,25 @@ def v18_planta_autocad() -> None:
     check("y el que no le cabe la leyenda se dice",
           "_sinLeyendaMc++;" in dibp
           and "no les cupo la leyenda" in dibp)
+
+    #  Y SE DIBUJA SIEMPRE, TAPADO O NO. Es la correccion de «haz que aparezca siempre»: en
+    #  cimentacion casi todos los muros llevan su cadena de desplante encima, asi que
+    #  OCULTAR_MURO_BAJO_CADENA los daba por tapados y no se dibujaba NINGUNO. El contorno estaba
+    #  dentro del if (!tapado) y la regla de la cadena se lo comia antes de empezar.
+    #
+    #  La regla sigue siendo la correcta para el muro NORMAL -el muro y su cadena ocupan la misma
+    #  linea en planta-, pero la BASE de un muro de concreto es el desplante que hay que colar y
+    #  tiene que estar en el plano aunque encima lleve cadena. Por eso va FUERA del if.
+    check("la base del muro de concreto se dibuja aunque lleve cadena",
+          'P("MURO_CONCRETO_AUNQUE_TAPADO", "SI",' in cfgplano
+          and '(!tapado || _cfg.Bandera("MURO_CONCRETO_AUNQUE_TAPADO", true))' in dibp
+          and "_mcBajoCadena++;" in dibp)
+
+    #  Y la capa se pide SIN mirar 'tapado': CapaDeMuro() devuelve la capa generica cuando el muro
+    #  esta tapado, y aqui se quiere E-MURO DE CONCRETO SIEMPRE, que es lo que se pidio.
+    check("y va en E-MURO DE CONCRETO siempre, no en la capa generica",
+          "? _capas.CapaMuroConcreto" in dibp
+          and "if (!tapado && !dibujado)" in dibp)
 
     # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA

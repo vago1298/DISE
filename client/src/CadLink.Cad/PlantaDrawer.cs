@@ -237,6 +237,16 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private int _sinLeyendaMc;
 
+    /// <summary>
+    /// Bases de muro de concreto dibujadas <b>debajo de una cadena</b>.
+    /// </summary>
+    /// <remarks>
+    /// Se cuenta aparte porque es la excepción a <c>OCULTAR_MURO_BAJO_CADENA</c>, y quien lea el
+    /// plano tiene que poder saber que esas líneas están ahí a propósito y no son la raya de más
+    /// que esa regla existe para evitar.
+    /// </remarks>
+    private int _mcBajoCadena;
+
     public PlantaDrawer(dynamic doc)
     {
         _doc = doc;
@@ -300,6 +310,7 @@ public sealed partial class PlantaDrawer
         _murosDeConcreto = 0;
         _contornosMc = 0;
         _sinLeyendaMc = 0;
+        _mcBajoCadena = 0;
 
         AsegurarCapas();
         AsegurarEstiloTexto();
@@ -558,9 +569,61 @@ public sealed partial class PlantaDrawer
                 _tapados++;
             }
 
-            // La geometría solo si NO está tapado; el muro cuenta igual en el resumen,
-            // porque está en el modelo y su mampostería y su pier sí se dibujan.
-            if (!tapado)
+            // ==============================================================================
+            //  EL MURO DE CONCRETO SE DIBUJA SIEMPRE, TAPADO O NO
+            // ==============================================================================
+            //  Se pidió con esas palabras: «aún no me dibuja la base de los muros de concreto en
+            //  la planta de cimentación, la línea debe estar en la capa E-MURO DE CONCRETO pero
+            //  haz que aparezca SIEMPRE».
+            //
+            //  Y esta es la razón por la que no aparecía: en cimentación casi todos los muros
+            //  llevan su cadena de desplante encima, así que OCULTAR_MURO_BAJO_CADENA los daba
+            //  por tapados y NO SE DIBUJABA NINGUNO. El contorno estaba metido dentro del
+            //  if (!tapado), de modo que la regla de la cadena se lo comía antes de empezar.
+            //
+            //  La regla de la cadena sigue siendo la correcta para el MURO NORMAL: el muro y su
+            //  cadena ocupan la misma línea en planta, y dibujar los dos deja dos parejas de
+            //  rayas pegadas. Pero la BASE de un muro de concreto no es lo mismo que el muro: es
+            //  el desplante que hay que colar, va en su propia capa y tiene que estar en el plano
+            //  de cimentación aunque encima lleve una cadena. Por eso va aparte y no comparte el
+            //  if, igual que ya hacía la línea de mampostería con MAMPOSTERIA_AUNQUE_TAPADO.
+            //
+            //  La capa se pide SIN mirar 'tapado' a propósito: CapaDeMuro() devuelve la capa
+            //  genérica cuando el muro está tapado, y aquí se quiere E-MURO DE CONCRETO siempre,
+            //  que es lo que se pidió explícitamente.
+            var esConcreto = EsMuroDeConcreto(el);
+
+            var contornoMc = esConcreto
+                             && _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
+                             && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
+                                 || Rot.EsCimentacion(p.Nivel))
+                             && (!tapado || _cfg.Bandera("MURO_CONCRETO_AUNQUE_TAPADO", true));
+
+            var dibujado = false;
+
+            if (contornoMc)
+            {
+                var capaConcreto = _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
+                    ? _capas.CapaMuroConcreto
+                    : CapaDe(el);
+
+                if (ContornoDeMuro(el, x0, y0, capaConcreto,
+                                   Espesor(el, EspesorMuroPorOmision, "muro"), tramo))
+                {
+                    _contornosMc++;
+                    dibujado = true;
+
+                    if (tapado)
+                    {
+                        _mcBajoCadena++;
+                    }
+                }
+            }
+
+            // El muro NORMAL: solo si NO está tapado y si el contorno de concreto no lo dibujó
+            // ya. El muro cuenta igual en el resumen aunque esté tapado, porque está en el
+            // modelo y su mampostería y su pier sí se dibujan.
+            if (!tapado && !dibujado)
             {
                 var capaMuro = CapaDeMuro(el, tapado);
 
@@ -569,32 +632,8 @@ public sealed partial class PlantaDrawer
                     _murosDeConcreto++;
                 }
 
-                // ==============================================================================
-                //  EL MURO DE CONCRETO: CONTORNO CERRADO Y LEYENDA «MC» DENTRO
-                // ==============================================================================
-                //  Se pidió para la planta de CIMENTACIÓN: los muros cuya property note dice
-                //  CONCRETO se dibujan solo como el contorno del muro, y dentro la leyenda MC.
-                //
-                //  Va restringido a la cimentación por omisión —MURO_CONCRETO_SOLO_CIMENTACION—
-                //  porque es donde se pidió y porque en una planta de entrepiso el muro de
-                //  concreto convive con la losa y su armado, y un contorno cerrado con leyenda
-                //  ahí llena el plano. Con la bandera en NO sale en todas las plantas.
-                var contornoMc = _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
-                                 && EsMuroDeConcreto(el)
-                                 && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
-                                     || Rot.EsCimentacion(p.Nivel));
-
-                if (contornoMc
-                    && ContornoDeMuro(el, x0, y0, capaMuro,
-                                      Espesor(el, EspesorMuroPorOmision, "muro"), tramo))
-                {
-                    _contornosMc++;
-                }
-                else
-                {
-                    Barra(el, x0, y0, capaMuro,
-                          Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo);
-                }
+                Barra(el, x0, y0, capaMuro,
+                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo);
             }
 
             r.Muros++;
@@ -711,7 +750,16 @@ public sealed partial class PlantaDrawer
 
             Nota($"{_contornosMc} muro(s) de concreto se dibujaron como contorno cerrado" +
                  (leyenda.Length > 0 ? $" con la leyenda '{leyenda}' dentro" : string.Empty) +
-                 ". Se reconocen por su property note de ETABS.");
+                 $" en la capa '{_capas.CapaMuroConcreto}'. Se reconocen por su property note " +
+                 "de ETABS.");
+        }
+
+        if (_mcBajoCadena > 0)
+        {
+            Nota($"De ellos, {_mcBajoCadena} llevan una cadena encima y se dibujaron IGUAL: la " +
+                 "base del muro de concreto es el desplante que hay que colar, así que tiene que " +
+                 "estar en el plano de cimentación aunque la cadena ocupe la misma línea. Si " +
+                 "estorba, apaga MURO_CONCRETO_AUNQUE_TAPADO en la hoja de configuración.");
         }
 
         if (_sinLeyendaMc > 0)
