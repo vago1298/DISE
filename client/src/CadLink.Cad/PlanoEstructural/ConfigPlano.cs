@@ -691,6 +691,9 @@ public sealed class ConfigPlano
         P("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100", "TIPO DE LINEA DE ESAS CADENAS"),
         P("CADENA_SIN_MURO_LTSCALE", "0", "0 = automatico (0.01 si el dibujo va en metros)"),
         P("CADENA_SIN_MURO_CUBRE", "0.5", "Fraccion con muro abajo para NO marcarla"),
+        P("CADENA_PARTIR_EN_VANOS", "SI",
+          "SI = la cadena se dibuja PARTIDA: continua donde tiene muro debajo y a trazos en el "
+          + "vano, que es donde va la puerta. NO = entera de un solo tipo de linea, como antes"),
         P("LOSA_HATCH_AL_PANO", "SI", "SI = EL HATCH LLEGA AL PANO DE LA CADENA, NO A LA MITAD"),
         P("TRAER_AL_FRENTE", "SI", "SI = subir CAPAS_AL_FRENTE encima de todo (Bring to Front)"),
         // CADENA y no DALA: la capa de las dalas se llama E-CADENA —ver CAPA_DALA—, así que

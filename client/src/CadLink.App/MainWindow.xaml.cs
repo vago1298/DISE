@@ -172,7 +172,11 @@ public partial class MainWindow : Window
             SeccionConcretoRow.ElementoDadoCircular,
             "CASTILLO", "TRABE", "CONTRATRABE",
             SeccionConcretoRow.ElementoCabezal,
-            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE",
+            // Las TRES cadenas. La INTERMEDIA va con las otras dos porque es una cadena
+            // mas: el dibujante ya la conoce -la reconoce por las notas de la propiedad y
+            // tiene reglas propias para ella en el corte-, pero faltaba en la lista de la
+            // tabla, asi que habia que teclearla a mano.
+            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE", "CADENA INTERMEDIA",
 
             // OTRO va AL FINAL, y es un recordatorio de que la casilla se puede
             // escribir: el combo es editable, asi que se puede teclear cualquier nombre
@@ -3119,6 +3123,14 @@ public partial class MainWindow : Window
         foreach (var v in el.Vertices)
         {
             e.Vertices.Add((v.X, v.Y));
+        }
+
+        // DÓNDE tiene muro debajo, no solo si lo tiene. Es lo que permite dibujar la cadena
+        // partida: continua bajo el muro y a trazos en el vano de la puerta. Solo se pide para
+        // las cadenas y trabes, que son las únicas que se marcan.
+        if (el.Clase == ClaseElemento.Trabe)
+        {
+            e.TramosConMuro.AddRange(modelo.TramosConMuroDebajo(el));
         }
 
         return e;

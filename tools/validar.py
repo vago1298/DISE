@@ -4015,10 +4015,14 @@ def v18_planta_autocad() -> None:
     # Es el detalle elegante de la macro y la mitad que se olvida.
     check("y la misma cuenta alarga el muro que quedo corto",
           "El apoyo queda <b>detrás</b>" in pan or "queda DETRÁS" in pan)
+    # El tramo de la trabe se guarda ahora en una variable -tramoTrabe- en lugar de calcularse
+    # dentro de la llamada, porque hace falta DOS veces: para dibujarla partida por el vano y para
+    # el respaldo de una pieza. Sigue siendo el mismo Pano.Recortar con los mismos argumentos.
     check("el muro y la trabe se dibujan sobre el tramo llevado al pano",
           "var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();" in dib
           and "var tramo = Pano.Recortar(el, apoyos, cruces);" in dib
-          and "Pano.Recortar(el, apoyos, cruces), punteada))" in dib
+          and "var tramoTrabe = Pano.Recortar(el, apoyos, cruces);" in dib
+          and "tramoTrabe, punteada))" in dib
           and "PanoDeApoyo.Tramo? tramo = null" in dib)
     # Un castillo INTERMEDIO no recorta nada: si contara, un muro largo con un castillo a un
     # metro de la punta se quedaria cortado por la mitad.
@@ -6349,6 +6353,38 @@ def v18_planta_autocad() -> None:
           and "_muroDeArribaConCadena++;" in dibp
           and 'MURO_SIN_CADENA_ES_CONCRETO' in dibp
           and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);" in dibp)
+
+    # ------------------------------------------------------------------
+    # LA CADENA, PARTIDA POR EL VANO DE LA PUERTA
+    # ------------------------------------------------------------------
+    #  «La parte de la izquierda debe ser continua y la derecha punteada porque es puerta».
+    #
+    #  Antes la cadena se dibujaba ENTERA de un solo tipo de linea, porque la decision venia de un
+    #  bool -MuroDePisoATecho: "tiene muro" o "no tiene"-. Con eso, una cadena con muro en la mitad
+    #  y un vano de puerta en la otra salia toda igual y el plano no decia donde esta la puerta.
+    #
+    #  Los intervalos YA los calculaba ModeloEtabs.MuroDePisoATechoBajo para decidir el bool: se
+    #  estaban tirando. TramosConMuroDebajo los devuelve, en fraccion del largo, y el dibujante
+    #  parte la cadena por ellos.
+    mod = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+
+    check("el modelo dice DONDE hay muro debajo, no solo si lo hay",
+          "public List<(double A, double B)> TramosConMuroDebajo(" in mod
+          and "public List<(double A, double B)> TramosConMuro" in plc
+          and "e.TramosConMuro.AddRange(modelo.TramosConMuroDebajo(el));" in codigo)
+
+    check("y la cadena se dibuja partida: continua con muro, a trazos en el vano",
+          'P("CADENA_PARTIR_EN_VANOS", "SI",' in cfgplano
+          and "private bool PartirCadenaPorElVano(" in dibp
+          and "_cadenasPartidas++;" in dibp
+          # El EJE va entero y una sola vez: trocearlo lo dejaria roto en cada puerta.
+          and "conEje: false, trozo, tipoLinea);" in dibp)
+
+    #  Y el texto MC va a la capa de TEXTOS, no a la del muro: es lo coherente con el resto del
+    #  plano -los rotulos de losa y de seccion ya van ahi- y resuelve de raiz el orden, porque al no
+    #  compartir capa con las lineas no puede volver a quedar por encima de ellas.
+    check("la leyenda MC va en la capa de textos, no en la del muro",
+          "leyenda, altura, CapaTextos," in dibp)
 
     #  Y LA CAPA DEL MURO DE CONCRETO SE SUBE AL FRENTE, como las cadenas: esas dos lineas son la
     #  base del muro, van sobre el achurado de la losa y sobre las lineas de los ejes, y si quedan

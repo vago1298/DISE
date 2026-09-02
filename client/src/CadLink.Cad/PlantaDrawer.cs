@@ -333,6 +333,9 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private int _muroConAlgoAbajo;
 
+    /// <summary>Cadenas dibujadas partidas: continuas bajo el muro y a trazos en el vano.</summary>
+    private int _cadenasPartidas;
+
     /// <summary>Bases de muro de planta baja dibujadas en la cimentación.</summary>
     private int _basesDeMuroDeArriba;
 
@@ -429,6 +432,7 @@ public sealed partial class PlantaDrawer
         _contornosMc = 0;
         _sinLeyendaMc = 0;
         _muroConAlgoAbajo = 0;
+        _cadenasPartidas = 0;
         _basesDeMuroDeArriba = 0;
         _muroDeArribaConCadena = 0;
         _muroConcretoVistos = 0;
@@ -966,9 +970,29 @@ public sealed partial class PlantaDrawer
             // ACAD_ISO02W100 para que se vea de un golpe; con muro completo, línea normal.
             var punteada = LineaDeCadenaSinMuro(el, p);
 
-            if (Barra(el, x0, y0, CapaDe(el),
+            var tramoTrabe = Pano.Recortar(el, apoyos, cruces);
+
+            // ==============================================================================
+            //  CONTINUA DONDE HAY MURO, A TRAZOS EN EL VANO
+            // ==============================================================================
+            //  Se pidió: «la parte de la izquierda debe ser continua y la derecha punteada
+            //  porque es puerta».
+            //
+            //  Antes la cadena se dibujaba ENTERA de un solo tipo de línea, porque la decisión
+            //  venía de un bool: «tiene muro» o «no tiene». Con eso, una cadena que lleva muro
+            //  en la mitad y un vano de puerta en la otra salía toda igual, y el plano no decía
+            //  dónde está la puerta.
+            //
+            //  Ahora se parte por los tramos con muro debajo: los que tienen muro van con la
+            //  línea normal y los huecos —los vanos— con la de trazos. Los intervalos ya los
+            //  calculaba el modelo para decidir el bool; solo se estaban tirando.
+            if (PartirCadenaPorElVano(el, x0, y0, tramoTrabe, punteada))
+            {
+                r.Trabes++;
+            }
+            else if (Barra(el, x0, y0, CapaDe(el),
                      Espesor(el, AnchoTrabePorOmision, "trabe"), conEje: true,
-                     Pano.Recortar(el, apoyos, cruces), punteada))
+                     tramoTrabe, punteada))
             {
                 r.Trabes++;
             }
@@ -1072,6 +1096,14 @@ public sealed partial class PlantaDrawer
             }
 
             Nota(detalle);
+        }
+
+        if (_cadenasPartidas > 0)
+        {
+            Nota($"{_cadenasPartidas} cadena(s) se dibujaron PARTIDAS: continuas donde tienen muro " +
+                 "debajo y a trazos en el vano, que es donde va la puerta. Antes se dibujaban " +
+                 "enteras de un solo tipo de línea, así que un vano no se distinguía. Se apaga con " +
+                 "CADENA_PARTIR_EN_VANOS.");
         }
 
         if (_basesDeMuroDeArriba > 0)
@@ -1687,6 +1719,140 @@ public sealed partial class PlantaDrawer
         return true;
     }
 
+    /// <summary>
+    /// Dibuja la cadena <b>partida</b>: continua donde tiene muro debajo y a trazos en el vano.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Devuelve <c>false</c> cuando no hay nada que partir —sin intervalos, o con muro en todo el
+    /// largo, o sin muro en ninguna parte— y entonces quien llama la dibuja de una pieza como
+    /// siempre. Es lo que hace que este añadido <b>no pueda empeorar</b> el caso normal.
+    /// </para>
+    /// <para>
+    /// Los intervalos vienen en <b>fracción del largo</b>, así que se aplican sobre el tramo ya
+    /// recortado a los paños de los castillos sin rehacer ninguna proyección.
+    /// </para>
+    /// <para>
+    /// El eje va <b>una sola vez y de punta a punta</b>, no por trozo: es el eje de la cadena, es
+    /// continuo, y trocearlo dejaría el plano con un eje interrumpido en cada puerta.
+    /// </para>
+    /// </remarks>
+    private bool PartirCadenaPorElVano(
+        ElementoPlanta el, double x0, double y0, PanoDeApoyo.Tramo? tramo,
+        (string Tipo, double Escala)? punteada)
+    {
+        if (!_cfg.Bandera("CADENA_PARTIR_EN_VANOS", true) || el.TramosConMuro.Count == 0)
+        {
+            return false;
+        }
+
+        // Sin tipo de línea de trazos no hay con qué distinguir el vano.
+        var trazos = punteada ?? LineaDeTrazosDeVano();
+
+        if (trazos is null)
+        {
+            return false;
+        }
+
+        var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
+
+        // Los tramos con muro, acotados y ordenados. Vienen del modelo sobre el largo COMPLETO
+        // de la cadena, y aquí se aplican sobre el tramo recortado: es una aproximación buena
+        // porque el recorte solo quita los paños de los castillos, y en un castillo no hay vano.
+        var conMuro = el.TramosConMuro
+            .Select(x => (A: Math.Clamp(Math.Min(x.A, x.B), 0, 1),
+                          B: Math.Clamp(Math.Max(x.A, x.B), 0, 1)))
+            .Where(x => x.B - x.A > 1e-6)
+            .OrderBy(x => x.A)
+            .ToList();
+
+        if (conMuro.Count == 0)
+        {
+            return false;
+        }
+
+        // Si el muro cubre TODO, no hay vano que marcar: se dibuja de una pieza.
+        if (conMuro[0].A <= 1e-6 && conMuro[^1].B >= 1 - 1e-6 && conMuro.Count == 1)
+        {
+            return false;
+        }
+
+        var dx = t.X2 - t.X1;
+        var dy = t.Y2 - t.Y1;
+        var ancho = Espesor(el, AnchoTrabePorOmision, "trabe");
+        var capa = CapaDe(el);
+
+        var algo = false;
+
+        // Los trozos, alternando: con muro -> línea normal, hueco -> trazos.
+        var cursor = 0d;
+
+        foreach (var (a, b) in conMuro)
+        {
+            if (a > cursor + 1e-6)
+            {
+                algo |= TrozoDeCadena(el, x0, y0, t, dx, dy, cursor, a, capa, ancho, trazos);
+            }
+
+            algo |= TrozoDeCadena(el, x0, y0, t, dx, dy, a, b, capa, ancho, null);
+
+            cursor = Math.Max(cursor, b);
+        }
+
+        if (cursor < 1 - 1e-6)
+        {
+            algo |= TrozoDeCadena(el, x0, y0, t, dx, dy, cursor, 1, capa, ancho, trazos);
+        }
+
+        if (!algo)
+        {
+            return false;
+        }
+
+        // EL EJE, UNA SOLA VEZ Y COMPLETO. Es el eje de la cadena: es continuo, y trocearlo
+        // dejaría el plano con un eje roto en cada puerta.
+        LineaATrazos(Linea(t.X1 + x0, t.Y1 + y0, t.X2 + x0, t.Y2 + y0, CapaEjes));
+
+        _cadenasPartidas++;
+
+        return true;
+    }
+
+    /// <summary>Un trozo de cadena entre dos fracciones del tramo, con su tipo de línea.</summary>
+    private bool TrozoDeCadena(
+        ElementoPlanta el, double x0, double y0, PanoDeApoyo.Tramo t,
+        double dx, double dy, double f1, double f2,
+        string capa, double ancho, (string Tipo, double Escala)? tipoLinea)
+    {
+        var trozo = new PanoDeApoyo.Tramo(
+            t.X1 + (dx * f1), t.Y1 + (dy * f1),
+            t.X1 + (dx * f2), t.Y1 + (dy * f2));
+
+        // conEje: false SIEMPRE. El eje lo pone quien llama, entero y una sola vez.
+        return Barra(el, x0, y0, capa, ancho, conEje: false, trozo, tipoLinea);
+    }
+
+    /// <summary>El tipo de línea del vano, cuando la cadena no venía ya marcada.</summary>
+    /// <remarks>
+    /// Hace falta porque <c>LineaDeCadenaSinMuro</c> devuelve <c>null</c> justo en los casos en que
+    /// la cadena <b>sí</b> lleva muro —y son los que ahora interesan: esa cadena tiene muro en una
+    /// parte y vano en la otra, así que necesita los trazos para el hueco aunque no estuviera
+    /// marcada como «sin muro».
+    /// </remarks>
+    private (string Tipo, double Escala)? LineaDeTrazosDeVano()
+    {
+        var tipo = _cfg.Texto("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100");
+
+        if (tipo.Length == 0)
+        {
+            return null;
+        }
+
+        var escala = _cfg.Numero("CADENA_SIN_MURO_LTSCALE", 0);
+
+        return (tipo, escala > 0 ? escala : 0.01);
+    }
+
     /// <summary>La leyenda «MC» centrada dentro del muro y girada con él.</summary>
     /// <remarks>
     /// <para>
@@ -1754,8 +1920,15 @@ public sealed partial class PlantaDrawer
         // grosor no llega a tocarlas. Y como la leyenda se dibuja ANTES que las líneas, si alguna
         // vez se rozaran, mandan las líneas, que es lo que se pidió.
         //
+        // ===== EL TEXTO VA EN LA CAPA DE TEXTOS, NO EN LA DEL MURO =====
+        //
+        // Se pidió: «el texto de MC debe ir en la capa de E-TEXTO». Y es lo coherente con el resto
+        // del plano —los rótulos de losa y de sección ya van ahí— y además resuelve de raíz lo del
+        // orden: al no compartir capa con las dos líneas, el texto no puede volver a subir con
+        // ellas ni quedarse por encima cuando la capa del muro se manda al frente.
+        //
         // Anclaje 5 es MiddleCenter, así que el punto ES el centro del texto.
-        Mtexto(((t.X1 + t.X2) / 2) + x0, ((t.Y1 + t.Y2) / 2) + y0, leyenda, altura, capa,
+        Mtexto(((t.X1 + t.X2) / 2) + x0, ((t.Y1 + t.Y2) / 2) + y0, leyenda, altura, CapaTextos,
                AnguloLegible(dx, dy), EstiloSecciones, conFondo: false);
     }
 

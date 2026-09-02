@@ -302,6 +302,9 @@ public sealed class SeccionConcretoRow : Row
             "CABEZAL" => "CA-",
             "CADENA DE CERRAMIENTO" => "CC-",
             "CADENA DE DESPLANTE" => "CD-",
+            // La intermedia con su propio prefijo: en el plano hay que poder distinguir de qué
+            // cadena habla un ID, y CI- no choca con ninguno de los ya usados.
+            "CADENA INTERMEDIA" => "CI-",
             _ => null
         };
     }
@@ -312,7 +315,7 @@ public sealed class SeccionConcretoRow : Row
     /// que <c>C-</c>, o «CT-3» se leería como una columna llamada «T-3».
     /// </remarks>
     private static readonly string[] Prefijos =
-        { "CT-", "CC-", "CD-", "CA-", "C-", "D-", "K-", "T-" };
+        { "CT-", "CC-", "CD-", "CI-", "CA-", "C-", "D-", "K-", "T-" };
 
     /// <summary>
     /// Pone en el ID el prefijo del elemento, <b>conservando el número</b>.

@@ -127,6 +127,24 @@ public sealed class ElementoPlanta
     public bool MuroDePisoATecho { get; set; }
 
     /// <summary>
+    /// <b>Dónde</b> tiene muro debajo esta cadena, en fracción de su largo (0 a 1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con <see cref="MuroDePisoATecho"/> a secas la cadena solo podía dibujarse <b>entera</b>
+    /// continua o <b>entera</b> a trazos, así que un tramo con muro y un vano de puerta salían
+    /// iguales. Con los intervalos se dibuja <b>partida</b>: continua donde hay muro y a trazos
+    /// donde está el vano, que es como se lee un plano.
+    /// </para>
+    /// <para>
+    /// Vacío significa «no se sabe» y entonces manda <see cref="MuroDePisoATecho"/>, que es el
+    /// comportamiento anterior: así un modelo del que no se puedan sacar los tramos sigue
+    /// dibujándose como antes en lugar de quedarse sin línea.
+    /// </para>
+    /// </remarks>
+    public List<(double A, double B)> TramosConMuro { get; } = new();
+
+    /// <summary>
     /// Este castillo se modeló como <b>área</b> —shell de muro—, no como frame.
     /// </summary>
     /// <remarks>
