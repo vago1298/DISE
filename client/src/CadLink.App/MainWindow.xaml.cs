@@ -3098,6 +3098,15 @@ public partial class MainWindow : Window
             ConRotulos = true
         };
 
+        // TODOS los niveles del modelo, con su cota. No son los de esta planta: son los del
+        // edificio, y sirven para poder contestar «¿hay algo debajo de este muro?», que es lo que
+        // decide si su línea de base se dibuja. Misma llamada que en el corte, para que las dos
+        // vistas hablen de los mismos niveles.
+        foreach (var n in modelo.NivelesConElementos())
+        {
+            p.Niveles.Add((n.Nombre, n.ElevacionM));
+        }
+
         // Lo que YA está en esta planta. Hace falta porque abajo hay tres pasadas más que
         // recogen piezas de otros story por su geometría, y sin esto la misma pieza podría
         // entrar dos veces por dos caminos distintos: se vería doble y se contaría doble.

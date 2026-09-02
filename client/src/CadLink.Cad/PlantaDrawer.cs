@@ -150,6 +150,60 @@ public sealed partial class PlantaDrawer
     /// clasificador, para que no haya dos listas que se puedan desincronizar.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// ¿Debajo de este muro <b>no hay nada</b>: ni otro nivel, ni nada?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió con esas palabras: dibujar la línea de la base del muro <b>solo si abajo del muro
+    /// no hay nada, ni otro nivel</b>, y que valga <b>para distintos niveles</b>.
+    /// </para>
+    /// <para>
+    /// Y es la regla correcta, no un capricho: la línea de la base es <b>donde el muro apoya</b>.
+    /// Si debajo hay otro nivel, el muro no apoya ahí —apoya en la losa o en la trabe de ese
+    /// nivel— y dibujarle una base es dibujar un desplante que no existe. Solo el muro que
+    /// arranca desde lo más bajo del edificio apoya de verdad, y ese es el que la lleva.
+    /// </para>
+    /// <para>
+    /// <b>Cómo se comprueba.</b> Se mira si existe algún nivel del modelo por <b>debajo</b> de la
+    /// base del muro. Se compara contra la lista de niveles y no contra el nivel que se está
+    /// dibujando, y eso es justo lo que hace que valga para cualquier planta: en la de cimentación
+    /// no habrá ninguno por debajo y el muro llevará su base; en un entrepiso sí lo habrá y no la
+    /// llevará, sin necesidad de preguntar en qué planta estamos.
+    /// </para>
+    /// <para>
+    /// La tolerancia evita que un nivel a la misma cota que la base —el propio nivel del muro, o
+    /// uno duplicado por redondeo en el modelo— cuente como «hay algo debajo».
+    /// </para>
+    /// <para>
+    /// Si el modelo <b>no trae niveles</b>, se contesta que no hay nada debajo: es lo que pasa en
+    /// un modelo de SAP2000 sin pisos, y ahí lo prudente es dibujar la base y que se vea, no
+    /// callarse por falta de datos.
+    /// </para>
+    /// </remarks>
+    private bool NadaDebajoDelMuro(ElementoPlanta el, PlantaCad p)
+    {
+        if (p.Niveles.Count == 0)
+        {
+            return true;
+        }
+
+        var tol = _cfg.Numero("MURO_BASE_TOLERANCIA_CM", 20) / 100;
+
+        // La base del muro: la más baja de sus dos cotas, que el modelo puede traerlas al revés.
+        var baseMuro = Math.Min(el.Z1, el.Z2);
+
+        foreach (var (_, z) in p.Niveles)
+        {
+            if (z < baseMuro - tol)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private bool EsMuroDeConcreto(ElementoPlanta el)
     {
         if (_cfg.Bandera("MURO_CONCRETO_POR_NOTA", true)
@@ -278,6 +332,17 @@ public sealed partial class PlantaDrawer
     private int _mcBajoCadena;
 
     /// <summary>Muros que salieron clasificados como de concreto.</summary>
+    /// <summary>
+    /// Muros a los que <b>no</b> se les dibujó la base porque debajo hay otro nivel.
+    /// </summary>
+    /// <remarks>
+    /// Se dice, porque es la diferencia entre «no lo dibuja» y «no lo dibuja a propósito»: un muro
+    /// de un entrepiso no apoya en la cimentación, así que no lleva base, y quien mire el plano
+    /// tiene que poder confirmar que eso es la regla y no un fallo.
+    /// </remarks>
+    private int _muroConAlgoAbajo;
+
+    /// <summary>Muros que salieron clasificados como de concreto.</summary>
     private int _muroConcretoVistos;
 
     /// <summary>Muros que salieron clasificados como de mampostería.</summary>
@@ -361,6 +426,7 @@ public sealed partial class PlantaDrawer
         _contornosMc = 0;
         _sinLeyendaMc = 0;
         _mcBajoCadena = 0;
+        _muroConAlgoAbajo = 0;
         _muroConcretoVistos = 0;
         _muroMamposteriaVistos = 0;
         _muroSinMaterial = 0;
@@ -684,7 +750,25 @@ public sealed partial class PlantaDrawer
                 _notasDeMuro.Add(nota.Length > 0 ? nota : "(sin nota)");
             }
 
-            var contornoMc = esConcreto
+            // ==============================================================================
+            //  LA BASE SE DIBUJA SI DEBAJO DEL MURO NO HAY NADA
+            // ==============================================================================
+            //  Es el criterio que se pidió: la línea de la base solo cuando abajo no hay nada, ni
+            //  otro nivel, y que valga para distintos niveles. La comprobación mira los NIVELES
+            //  DEL MODELO, no la planta que se dibuja, así que sale sola en cualquier planta.
+            //
+            //  Y SE APLICA A CUALQUIER MURO, no solo al de concreto —MURO_BASE_TODOS—. El motivo
+            //  es concreto: en el modelo del usuario los 21 muros dicen TABICON en su property
+            //  note, o sea que NO HAY NI UN MURO DE CONCRETO. Con la regla atada al concreto no se
+            //  dibujaría nada, que es exactamente lo que estaba pasando.
+            //
+            //  Lo que NO se aplica a todos es la leyenda «MC»: MC es muro de concreto, y ponérsela
+            //  a un muro de tabicón sería decir en el plano que está colado. La leyenda queda solo
+            //  para los que de verdad son de concreto; la base, para todo el que apoye.
+            var nadaAbajo = NadaDebajoDelMuro(el, p);
+
+            var contornoMc = (esConcreto || _cfg.Bandera("MURO_BASE_TODOS", true))
+                             && nadaAbajo
                              && _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
                              && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
                                  || Rot.EsCimentacion(p.Nivel))
@@ -694,12 +778,15 @@ public sealed partial class PlantaDrawer
 
             if (contornoMc)
             {
-                var capaConcreto = _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
+                // La capa del concreto solo si lo es. Un muro de tabicón en E-MURO DE CONCRETO
+                // mentiría igual que la leyenda.
+                var capaConcreto = esConcreto && _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
                     ? _capas.CapaMuroConcreto
                     : CapaDe(el);
 
                 if (ContornoDeMuro(el, x0, y0, capaConcreto,
-                                   Espesor(el, EspesorMuroPorOmision, "muro"), tramo))
+                                   Espesor(el, EspesorMuroPorOmision, "muro"), tramo,
+                                   conLeyenda: esConcreto))
                 {
                     _contornosMc++;
                     dibujado = true;
@@ -709,6 +796,10 @@ public sealed partial class PlantaDrawer
                         _mcBajoCadena++;
                     }
                 }
+            }
+            else if (!nadaAbajo)
+            {
+                _muroConAlgoAbajo++;
             }
 
             // El muro NORMAL: solo si NO está tapado y si el contorno de concreto no lo dibujó
@@ -835,14 +926,27 @@ public sealed partial class PlantaDrawer
                  "la cadena, como en la mampostería.");
         }
 
+        if (_muroConAlgoAbajo > 0)
+        {
+            Nota($"A {_muroConAlgoAbajo} muro(s) no se les dibujó la línea de la base porque " +
+                 "DEBAJO HAY OTRO NIVEL: ahí el muro no apoya, apoya en la losa o la trabe de ese " +
+                 "nivel, así que dibujarle una base sería dibujar un desplante que no existe. " +
+                 "Solo la lleva el muro que arranca desde lo más bajo del edificio.");
+        }
+
         if (_contornosMc > 0)
         {
             var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
 
-            Nota($"{_contornosMc} muro(s) de concreto se dibujaron como contorno cerrado" +
-                 (leyenda.Length > 0 ? $" con la leyenda '{leyenda}' dentro" : string.Empty) +
-                 $" en la capa '{_capas.CapaMuroConcreto}'. Se reconocen por su property note " +
-                 "de ETABS.");
+            Nota($"{_contornosMc} muro(s) llevan dibujada la línea de su BASE, porque debajo de " +
+                 "ellos no hay ningún nivel y por tanto apoyan directamente. De ellos, " +
+                 $"{_muroConcretoVistos} son de concreto: esos van en la capa " +
+                 $"'{_capas.CapaMuroConcreto}'" +
+                 (leyenda.Length > 0 ? $" y con la leyenda '{leyenda}' dentro" : string.Empty) +
+                 ". Los demás llevan solo el contorno, en su capa: la leyenda " +
+                 (leyenda.Length > 0 ? $"'{leyenda}' " : string.Empty) +
+                 "es de muro de concreto y ponérsela a uno de otro material diría en el plano " +
+                 "que está colado.");
         }
 
         // ==============================================================================
@@ -1494,7 +1598,7 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private bool ContornoDeMuro(
         ElementoPlanta el, double x0, double y0, string capa,
-        double ancho, PanoDeApoyo.Tramo? tramo)
+        double ancho, PanoDeApoyo.Tramo? tramo, bool conLeyenda = true)
     {
         var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
 
@@ -1532,6 +1636,14 @@ public sealed partial class PlantaDrawer
         }
 
         // ---------- La leyenda, dentro ----------
+        //
+        // Solo si el muro es de concreto de verdad. «MC» significa muro de concreto: ponérselo a
+        // uno de tabicón sería afirmar en el plano que está colado, y eso llega a obra.
+        if (!conLeyenda)
+        {
+            return true;
+        }
+
         var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
 
         if (leyenda.Length == 0)

@@ -305,6 +305,24 @@ public sealed class PlantaCad
     /// Salen de la cuadrícula del modelo o, si el programa no la da, deducidos de las
     /// columnas y los muros. Vacío significa «esta planta va sin ejes».
     /// </remarks>
+    /// <summary>
+    /// Los niveles del modelo con su elevación, <b>todos</b>, no solo el que se dibuja.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hacen falta para poder contestar una pregunta que el nivel dibujado no puede contestar
+    /// solo: <b>¿hay algo debajo de este muro?</b> Un muro cuya base no tiene ningún nivel por
+    /// debajo apoya directamente en la cimentación, y es el que lleva dibujada su línea de base.
+    /// Si hay otro nivel abajo, el muro no apoya ahí y esa línea sobra.
+    /// </para>
+    /// <para>
+    /// Es la misma lista que ya llevaba <see cref="CorteCad.Niveles"/>, con la misma forma, y se
+    /// llena en el mismo sitio y con la misma llamada —<c>NivelesConElementos</c>—, para que las
+    /// dos vistas hablen de los mismos niveles.
+    /// </para>
+    /// </remarks>
+    public List<(string Nombre, double Z)> Niveles { get; } = new();
+
     public List<(string Id, double Ordenada)> EjesX { get; } = new();
 
     /// <summary>Los <b>horizontales</b>: nombre y Y, de abajo arriba.</summary>

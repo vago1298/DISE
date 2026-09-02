@@ -857,6 +857,12 @@ public sealed class ConfigPlano
         P("MURO_CONCRETO_SOLO_CIMENTACION", "SI",
           "SI = el contorno y la leyenda del muro de concreto solo en la planta de cimentacion. "
           + "NO = en todas las plantas"),
+        P("MURO_BASE_TODOS", "SI",
+          "SI = la linea de la base se dibuja en CUALQUIER muro que apoye, no solo en el de "
+          + "concreto. La leyenda MC sigue siendo solo del de concreto"),
+        P("MURO_BASE_TOLERANCIA_CM", "20",
+          "Cuanto por debajo de la base del muro tiene que estar un nivel para contar como que "
+          + "hay algo abajo. Evita que el propio nivel del muro cuente"),
         P("MURO_CONCRETO_AUNQUE_TAPADO", "SI",
           "SI = la base del muro de concreto se dibuja AUNQUE lleve una cadena encima. En "
           + "cimentacion casi todos la llevan, y sin esto no se dibujaba ninguno"),

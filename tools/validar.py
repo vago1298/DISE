@@ -6272,6 +6272,38 @@ def v18_planta_autocad() -> None:
           and "char.IsAsciiDigit(c)" in dibp)
 
     # ------------------------------------------------------------------
+    # LA BASE DEL MURO, SOLO SI DEBAJO NO HAY NADA
+    # ------------------------------------------------------------------
+    #  «Yo solo quiero que los dibujes si abajo del muro no hay nada nada ni otro nivel, que
+    #  aplique para diferentes niveles».
+    #
+    #  Y es la regla correcta: la linea de la base es DONDE EL MURO APOYA. Si debajo hay otro
+    #  nivel, el muro apoya en la losa o la trabe de ese nivel, y dibujarle una base es dibujar un
+    #  desplante que no existe. Solo el muro que arranca desde lo mas bajo del edificio la lleva.
+    #
+    #  La comprobacion mira LOS NIVELES DEL MODELO, no la planta que se dibuja: eso es lo que hace
+    #  que valga para cualquier nivel sin preguntar en cual estamos.
+    plc = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+
+    check("la planta lleva los niveles del modelo, para saber que hay debajo",
+          "public List<(string Nombre, double Z)> Niveles" in plc
+          and "p.Niveles.Add((n.Nombre, n.ElevacionM));" in codigo)
+
+    check("y la base solo se dibuja si debajo no hay ningun nivel",
+          "private bool NadaDebajoDelMuro(ElementoPlanta el, PlantaCad p)" in dibp
+          and "&& nadaAbajo" in dibp
+          and "_muroConAlgoAbajo++;" in dibp)
+
+    #  Se aplica a CUALQUIER muro que apoye, no solo al de concreto: en el modelo del usuario los
+    #  21 muros dicen TABICON, o sea que no hay ni uno de concreto, y atada al concreto la regla no
+    #  dibujaria nada. Pero la LEYENDA MC sigue siendo solo del de concreto: ponersela a uno de
+    #  tabicon seria decir en el plano que esta colado.
+    check("la base es de cualquier muro, pero la leyenda MC solo del de concreto",
+          'P("MURO_BASE_TODOS", "SI",' in cfgplano
+          and 'conLeyenda: esConcreto)' in dibp
+          and "if (!conLeyenda)" in dibp)
+
+    # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
     # ------------------------------------------------------------------
     #  «Las que digan CADENA DE DESPLANTE, todas sus lineas deben ser continuas, no punteadas, no
