@@ -6216,11 +6216,26 @@ def v18_planta_autocad() -> None:
     #  La leyenda va DENTRO, centrada en el tramo ya recortado y girada con el muro. Vive en su
     #  propio metodo porque el muro se dibuja con Barra(), que es la primitiva de TODOS los
     #  elementos de barra y no puede saber nada de leyendas.
-    check("y la leyenda MC va dentro, centrada y girada con el muro",
+    #  SIN FONDO OPACO, y esto es la correccion de «todavia no traes las lineas al frente». El MTEXT
+    #  llevaba conFondo:true, y ese fondo TAPA lo que hay detras: en el plano las dos lineas del
+    #  muro se veian interrumpidas justo en el «MC».
+    #
+    #  Y la LEYENDA SE DIBUJA ANTES QUE LAS LINEAS. Las dos van en la misma capa, y al subir una
+    #  capa al frente se conserva el orden de dentro: con el texto dibujado despues quedaba encima
+    #  de las lineas. Dibujandolo antes, las lineas nacen despues y suben por encima de el.
+    check("y la leyenda MC va dentro, centrada, girada y SIN tapar las lineas",
           'P("MURO_CONCRETO_LEYENDA", "MC",' in cfgplano
           and "private void LeyendaDeMuro(" in dibp
           and 'MURO_CONCRETO_LEYENDA_ALTURA' in dibp
-          and "AnguloLegible(dx, dy), EstiloSecciones, conFondo: true);" in dibp)
+          and "AnguloLegible(dx, dy), EstiloSecciones, conFondo: false);" in dibp
+          # La altura se limita al grosor del muro: el texto va ENTRE las dos caras.
+          and "altura = Math.Min(altura, espesor * 0.7);" in dibp)
+
+    #  El orden en los DOS sitios que dibujan la base: leyenda primero, lineas despues.
+    check("y las lineas se dibujan DESPUES de la leyenda, para quedar encima",
+          "LeyendaDeMuro(el, x0, y0, capaConcreto, tramo, espesorDelMuro);" in dibp
+          and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);" in dibp
+          and "if (Barra(el, x0, y0, capaConcreto, espesorMuro, conEje: false, tramoArriba))" in dibp)
 
     #  Solo en cimentacion por omision: en un entrepiso el muro de concreto convive con la losa y
     #  su armado, y un contorno con leyenda ahi llena el plano.
@@ -6333,7 +6348,7 @@ def v18_planta_autocad() -> None:
           "_basesDeMuroDeArriba++;" in dibp
           and "_muroDeArribaConCadena++;" in dibp
           and 'MURO_SIN_CADENA_ES_CONCRETO' in dibp
-          and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba);" in dibp)
+          and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);" in dibp)
 
     #  Y LA CAPA DEL MURO DE CONCRETO SE SUBE AL FRENTE, como las cadenas: esas dos lineas son la
     #  base del muro, van sobre el achurado de la losa y sobre las lineas de los ejes, y si quedan

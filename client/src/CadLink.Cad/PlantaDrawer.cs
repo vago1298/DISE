@@ -809,17 +809,22 @@ public sealed partial class PlantaDrawer
                     ? _capas.CapaMuroConcreto
                     : CapaDe(el);
 
+                var espesorDelMuro = Espesor(el, EspesorMuroPorOmision, "muro");
+
+                // La LEYENDA PRIMERO y las líneas después, por el mismo motivo que en el bucle de
+                // los muros de arriba: las dos van en la misma capa, y al subir la capa al frente
+                // se conserva el orden de dentro. Con el texto dibujado después quedaba encima y
+                // cortaba las líneas.
+                LeyendaDeMuro(el, x0, y0, capaConcreto, tramo, espesorDelMuro);
+
                 // DOS LÍNEAS, no un contorno cerrado. Es lo que se pidió —«su cara inferior
                 // representada con 2 líneas que es su grosor»— y es lo que Barra() ya hace: los
                 // dos paños del muro, separados su espesor. Un contorno cerrado añadiría tapas en
                 // los extremos que ahí no van, porque el muro sigue.
-                if (Barra(el, x0, y0, capaConcreto,
-                          Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramo))
+                if (Barra(el, x0, y0, capaConcreto, espesorDelMuro, conEje: false, tramo))
                 {
                     _contornosMc++;
                     dibujado = true;
-
-                    LeyendaDeMuro(el, x0, y0, capaConcreto, tramo);
                 }
             }
             else if (esMuroConcreto && !nadaAbajo)
@@ -902,13 +907,26 @@ public sealed partial class PlantaDrawer
             // normal: si no, la base se metería dentro del castillo.
             var tramoArriba = Pano.Recortar(el, apoyos, cruces);
 
+            var espesorMuro = Espesor(el, EspesorMuroPorOmision, "muro");
+
+            // ==============================================================================
+            //  LA LEYENDA PRIMERO Y LAS LÍNEAS DESPUÉS
+            // ==============================================================================
+            //  El orden importa y era el fallo. La leyenda va en LA MISMA CAPA que las líneas, y
+            //  al subir una capa al frente se conserva el orden relativo de lo que hay dentro. Con
+            //  la leyenda dibujada DESPUÉS, quedaba por encima de las líneas y su fondo opaco las
+            //  cortaba: en el plano se veían las dos líneas interrumpidas justo en el «MC», que es
+            //  exactamente el síntoma reportado.
+            //
+            //  Dibujando la leyenda ANTES, las líneas nacen después y quedan encima de ella. Así,
+            //  cuando la capa sube al frente, las líneas suben por encima del texto y ya no hay
+            //  nada que las corte.
+            LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);
+
             // DOS LÍNEAS, que son su grosor. Es lo que hace Barra().
-            if (Barra(el, x0, y0, capaConcreto,
-                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramoArriba))
+            if (Barra(el, x0, y0, capaConcreto, espesorMuro, conEje: false, tramoArriba))
             {
                 _basesDeMuroDeArriba++;
-
-                LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba);
             }
         }
 
@@ -1683,7 +1701,8 @@ public sealed partial class PlantaDrawer
     /// </para>
     /// </remarks>
     private void LeyendaDeMuro(
-        ElementoPlanta el, double x0, double y0, string capa, PanoDeApoyo.Tramo? tramo)
+        ElementoPlanta el, double x0, double y0, string capa, PanoDeApoyo.Tramo? tramo,
+        double espesor = 0)
     {
         var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
 
@@ -1705,6 +1724,18 @@ public sealed partial class PlantaDrawer
 
         var altura = _cfg.Numero("MURO_CONCRETO_LEYENDA_ALTURA", 0.12);
 
+        // ===== LA ALTURA SE AJUSTA AL GROSOR DEL MURO =====
+        //
+        // El texto va DENTRO del muro, entre sus dos caras, así que no puede ser más alto que el
+        // grosor. Con 0.12 fijo y un muro de 15 cm, el «MC» sobresalía por las dos caras y se
+        // comía las líneas que se supone que acompaña.
+        //
+        // Se deja al 70% del grosor: entra con aire y sigue siendo legible.
+        if (espesor > 0)
+        {
+            altura = Math.Min(altura, espesor * 0.7);
+        }
+
         // No se rotula donde no cabe: un «MC» más largo que el muro se sale por los dos lados y se
         // lee peor que no ponerlo. Se mide contra el LARGO, que es la dirección en la que crece el
         // texto una vez girado con el muro.
@@ -1714,10 +1745,18 @@ public sealed partial class PlantaDrawer
             return;
         }
 
-        // Anclaje 5 es MiddleCenter, así que el punto ES el centro del texto. Con fondo opaco,
-        // porque cae encima de las dos líneas del muro y sin él quedaría cruzado por ellas.
+        // ===== SIN FONDO OPACO =====
+        //
+        // Lo llevaba, y era lo que CORTABA LAS DOS LÍNEAS del muro: el fondo del MTEXT tapa lo que
+        // hay detrás, y en el plano se veían las líneas interrumpidas justo en el «MC».
+        //
+        // No hace falta: el texto va entre las dos caras del muro, y con la altura ajustada al
+        // grosor no llega a tocarlas. Y como la leyenda se dibuja ANTES que las líneas, si alguna
+        // vez se rozaran, mandan las líneas, que es lo que se pidió.
+        //
+        // Anclaje 5 es MiddleCenter, así que el punto ES el centro del texto.
         Mtexto(((t.X1 + t.X2) / 2) + x0, ((t.Y1 + t.Y2) / 2) + y0, leyenda, altura, capa,
-               AnguloLegible(dx, dy), EstiloSecciones, conFondo: true);
+               AnguloLegible(dx, dy), EstiloSecciones, conFondo: false);
     }
 
     /// <summary>
