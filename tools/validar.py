@@ -6355,6 +6355,91 @@ def v18_planta_autocad() -> None:
           and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);" in dibp)
 
     # ------------------------------------------------------------------
+    # PLACA BASE: LA MACRO DibujarPlacaBase_BloqueXX
+    # ------------------------------------------------------------------
+    #  La logica pura -reparto de anclas y las dos tablas de libramientos- vive aparte del
+    #  dibujante y sin nada de COM, igual que Estribos, y por el mismo motivo: es la parte que
+    #  decide si el detalle es CONSTRUIBLE, y equivocarse en ella no se ve en el dibujo, se ve en
+    #  obra cuando la tuerca no entra o el concreto se desconcha en el borde.
+    anc = leer(ruta("client/src/CadLink.Cad/AnclasPlacaBase.cs"))
+    pbc = leer(ruta("client/src/CadLink.Cad/PlacaBaseCad.cs"))
+    pbd = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.cs"))
+    pbd2 = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Detalle.cs"))
+
+    check("las dos tablas de libramientos J y K estan portadas",
+          "public static double SeparacionMinimaJmm(" in anc
+          and "public static double DistanciaMinimaKmm(" in anc
+          # Los extremos de cada tabla, para que no se cuele una lista a medias.
+          and "<= 13 => 40," in anc and "<= 102 => 300," in anc
+          and "<= 13 => 22," in anc and "<= 102 => 180," in anc)
+
+    #  El reparto PERIMETRAL: los totales de la hoja se reparten mitad y mitad, la impar va ABAJO
+    #  en X, y las de Y van ENTRE las hileras de X para no repetir las esquinas.
+    check("el reparto de anclas respeta el modo PERIMETRAL de la macro",
+          "public enum Modo" in anc
+          and "Perimetral," in anc
+          and "(nx + 1) / 2 : nx / 2" in anc
+          and "(alto - (2 * sepY)) / (enCol + 1)" in anc)
+
+    #  Y no se dibuja NADA si no se cumplen J o K: un detalle con las anclas mas juntas de lo que
+    #  la tabla permite no es un detalle a medias, es uno que no se puede construir.
+    check("si no se cumplen J o K no se dibuja nada, y se dice por que",
+          "RevisarSeparacionJ(" in anc and "RevisarDistanciaK(" in anc
+          and "sealed record Incumplimiento(" in anc
+          and "return 0;" in pbd)
+
+    #  Las capas, los colores y los patrones de la macro, en un solo sitio y con su nombre.
+    check("las capas y colores de la macro estan respetados",
+          'public const string Placa = "PLACA BASE";' in pbc
+          and "public const int ColorPlaca = 140;" in pbc
+          and 'public const string Anclas = "ANCLAS";' in pbc
+          and "public const int ColorAnclas = 1;" in pbc
+          and 'public const string Concreto = "CONCRETO";' in pbc
+          and 'public const string Soldadura = "SOLDADURA";' in pbc
+          and "public const int ColorSoldadura = 240;" in pbc)
+
+    check("y los patrones de achurado con su escala",
+          'PatronDado = "AR-CONC"' in pbc and "EscalaHatchDado = 0.0002" in pbc
+          and 'PatronPerfilI = "ANSI32"' in pbc and "EscalaHatchPerfilI = 0.0009" in pbc
+          and 'PatronSoldadura = "JIS_RC_10"' in pbc and "EscalaHatchSoldadura = 0.0005" in pbc)
+
+    #  EL PERFIL NO SE TRAZA DOS VECES. TrazoAcero ya traia portadas las nueve formas del IMCA con
+    #  la misma geometria que la macro dibujaba a mano; duplicarla habria dejado dos juegos de
+    #  formulas para el mismo perfil.
+    check("el perfil se pide a TrazoAcero y no se vuelve a trazar",
+          "TrazoAcero.De(p.Perfil," in pbd2
+          and "private List<object> DibujarPerfil(" in pbd2)
+
+    #  Las formas de I NO se giran: su geometria ya nace vertical -patines horizontales y alma
+    #  vertical-, que es como va una columna, asi que girarla la acuesta.
+    check("las formas de I no se giran, como en la macro",
+          "private static bool GirarEstePerfil(" in pbd
+          and "!EsFormaI(p.Perfil?.Forma)" in pbd)
+
+    #  El dado va en CONCRETO y su rayado SOLO en la franja que sobresale: la placa entra como
+    #  isla, porque bajo la placa lo que se ve es la placa, no el concreto.
+    check("el dado va en CONCRETO y su rayado deja la placa como isla",
+          "PlacaBaseCapas.Concreto)" in pbd
+          and "new List<object> { contornoPlaca }" in pbd)
+
+    #  Cotas y rotulos FUERA del bloque, para poder mover el detalle sin arrastrarlas.
+    check("el bloque agrupa solo geometria: cotas y rotulos quedan fuera",
+          "private string Bloquear(" in pbd2
+          and "PlacaBaseCapas.Cotas, StringComparison.OrdinalIgnoreCase)" in pbd2
+          and 'nombre.Contains("Dimension"' in pbd2)
+
+    #  Y no se sobrescribe un bloque que ya exista: podria ser del usuario.
+    check("y no se sobrescribe un bloque que ya exista",
+          "private string NombreLibre(" in pbd2 and "ExisteBloque(nombre)" in pbd2)
+
+    #  El cruce E19/E18 de los cartabones NO es un error: es la correccion que la macro documenta.
+    check("el cruce E19/E18 de la longitud de cartabones queda documentado",
+          "LongCartabonXCm" in pbc and "E19" in pbc and "E18" in pbc)
+
+    check("hay verificacion ejecutable de la logica de la placa base",
+          os.path.exists(ruta("tools", "verificar_placa_base.py")))
+
+    # ------------------------------------------------------------------
     # LA CADENA, PARTIDA POR EL VANO DE LA PUERTA
     # ------------------------------------------------------------------
     #  «La parte de la izquierda debe ser continua y la derecha punteada porque es puerta».
