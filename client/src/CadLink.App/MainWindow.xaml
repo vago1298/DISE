@@ -2157,6 +2157,7 @@
                               FrozenColumnCount="2"
                               HeadersVisibility="All"
                               EnableRowVirtualization="True"
+                              CellEditEnding="OnCeldaPlacaEditada"
                               ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
                         <DataGrid.Columns>
                             <!-- ===== IDENTIFICACION ===== -->
@@ -2211,7 +2212,7 @@
                                                     SortMemberPath="Espesor">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Espesor}"
+                                        <TextBlock Text="{Binding Espesor, Converter={StaticResource ConPulgadas}}"
                                                    Style="{StaticResource ComboCeldaLectura}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2328,7 +2329,7 @@
                                                     SortMemberPath="DiamAnclaX">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding DiamAnclaX}"
+                                        <TextBlock Text="{Binding DiamAnclaX, Converter={StaticResource ConPulgadas}}"
                                                    Style="{StaticResource ComboCeldaLectura}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2349,7 +2350,7 @@
                                                     SortMemberPath="DiamAnclaY">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding DiamAnclaY}"
+                                        <TextBlock Text="{Binding DiamAnclaY, Converter={StaticResource ConPulgadas}}"
                                                    Style="{StaticResource ComboCeldaLectura}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2365,71 +2366,76 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- ===== LOS AGUJEROS: SE LLENAN SOLOS =====
+                            <!-- ===== LOS AGUJEROS: CALCULADOS, NO SE ESCRIBEN =====
 
-                                 El ancla mas 1/16" de holgura, escrito en la celda en cuanto se
-                                 elige el ancla. Antes esa cuenta se hacia por dentro al dibujar
-                                 -la celda iba en blanco- y la diferencia no es cosmetica: con el
-                                 valor a la vista se puede cotejar el agujero con el plano, y en
-                                 blanco habia que fiarse de que el programa lo hizo bien.
+                                 El ancla mas 1/16" de holgura. No es un dato que se decida: en una
+                                 placa base el agujero es SIEMPRE eso, asi que dejarlo capturable era
+                                 ofrecer una decision que no existe -y con ella la posibilidad de que
+                                 el agujero y su ancla dejaran de corresponder sin que nada lo dijera.
 
-                                 SIGUE SIENDO CAPTURABLE, porque el agujero holgado a proposito
-                                 existe: en montaje se usa para tener margen al cuadrar la columna.
-                                 Lo escrito a mano se respeta y NO se pisa al cambiar el ancla; solo
-                                 se recalcula si lo que habia era el automatico del ancla anterior.
-                                 Ver PlacaBaseRow.SeguirConElAgujero.
+                                 Antes esta cuenta se hacia por dentro y al dibujar, con la celda en
+                                 blanco. Ahora se ve el numero, que es lo que permite cotejarlo con
+                                 el plano en lugar de fiarse de que el programa lo hizo bien.
 
-                                 Y en blanco sigue significando «calculalo al dibujar», que es lo
-                                 que hacia la macro. -->
-                            <DataGridTemplateColumn Header="Ø agujero X &quot;" Width="Auto"
-                                                    CellStyle="{StaticResource CeldaAcabado}"
-                                                    SortMemberPath="DiamAgujeroX">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding DiamAgujeroX}"
-                                                   Style="{StaticResource ComboCeldaLectura}" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                                <DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
-                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
-                                                  VerticalContentAlignment="Center"
-                                                  ItemsSource="{Binding DiametrosAgujero}"
-                                                  Text="{Binding DiamAgujeroX, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Se llena solo: el ancla mas 1/16&quot; de holgura.&#10;Escribe otra medida si quieres el agujero HOLGADO a proposito -para tener margen al cuadrar la columna en montaje-: lo que escribas se respeta y no se pisa al cambiar el ancla.&#10;En blanco: se calcula al dibujar." />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellEditingTemplate>
-                            </DataGridTemplateColumn>
+                                 Y al ser calculadas tampoco se guardan en el .clk: se recalculan al
+                                 abrir a partir del ancla, asi que no pueden llegar viejas. -->
+                            <DataGridTextColumn Header="Ø agujero X &quot;"
+                                                Binding="{Binding DiamAgujeroX, Converter={StaticResource ConPulgadas}}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="El diametro del ancla en X mas 1/16&quot; de holgura.&#10;Se calcula solo: para cambiarlo, cambia el diametro del ancla." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
-                            <DataGridTemplateColumn Header="Ø agujero Y &quot;" Width="Auto"
-                                                    CellStyle="{StaticResource CeldaAcabado}"
-                                                    SortMemberPath="DiamAgujeroY">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding DiamAgujeroY}"
-                                                   Style="{StaticResource ComboCeldaLectura}" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                                <DataGridTemplateColumn.CellEditingTemplate>
-                                    <DataTemplate>
-                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
-                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
-                                                  VerticalContentAlignment="Center"
-                                                  ItemsSource="{Binding DiametrosAgujero}"
-                                                  Text="{Binding DiamAgujeroY, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Se llena solo: el ancla mas 1/16&quot; de holgura.&#10;Escribe otra medida si quieres el agujero HOLGADO a proposito -para tener margen al cuadrar la columna en montaje-: lo que escribas se respeta y no se pisa al cambiar el ancla.&#10;En blanco: se calcula al dibujar." />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellEditingTemplate>
-                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Ø agujero Y &quot;"
+                                                Binding="{Binding DiamAgujeroY, Converter={StaticResource ConPulgadas}}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="El diametro del ancla en Y mas 1/16&quot; de holgura.&#10;Se calcula solo: para cambiarlo, cambia el diametro del ancla." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
-                            <!-- Las separaciones al borde. EN CERO se calculan solas, a media
-                                 distancia entre el paño del perfil y el borde de la placa, que
-                                 es donde cae de forma natural el ancla. -->
+                            <!-- ===== LAS SEPARACIONES AL BORDE =====
+
+                                 EN CERO se calculan solas, a media distancia entre el paño del
+                                 perfil y el borde de la placa, que es donde cae de forma natural el
+                                 ancla.
+
+                                 Y SE CORRIGEN SOLAS si no llegan al BORDE LIBRE que la tabla L
+                                 exige para ese diametro de ancla. El ajuste se hace al SALIR de la
+                                 celda, no en cada tecla: corrigiendo mientras se escribe, teclear
+                                 «5» camino de «50» se convierte en un forcejeo -la celda sube el 5
+                                 al minimo antes de que se llegue a escribir el 0-.
+
+                                 Cuando se corrige, se dice en la barra de estado: cambiar un numero
+                                 que el usuario acaba de escribir, sin avisar, se parece mucho a que
+                                 el programa no le hiciera caso. -->
                             <DataGridTextColumn Header="Sep borde X cm" Binding="{Binding SepBordeXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al borde libre minimo de la tabla L para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Sep borde Y cm" Binding="{Binding SepBordeYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}" />
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al borde libre minimo de la tabla L para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
                             <!-- Perimetral o malla. NO ES UN ACOMODO, ES UNA CANTIDAD: con 4 y 4,
                                  el perimetro da OCHO anclas y la malla da DIECISEIS. -->
@@ -2447,7 +2453,7 @@
                                                     SortMemberPath="Soldadura">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Soldadura}"
+                                        <TextBlock Text="{Binding Soldadura, Converter={StaticResource ConPulgadas}}"
                                                    Style="{StaticResource ComboCeldaLectura}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2485,7 +2491,7 @@
                                                     SortMemberPath="EspCartabonX">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding EspCartabonX}"
+                                        <TextBlock Text="{Binding EspCartabonX, Converter={StaticResource ConPulgadas}}"
                                                    Style="{StaticResource ComboCeldaLectura}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2506,7 +2512,7 @@
                                                     SortMemberPath="EspCartabonY">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding EspCartabonY}"
+                                        <TextBlock Text="{Binding EspCartabonY, Converter={StaticResource ConPulgadas}}"
                                                    Style="{StaticResource ComboCeldaLectura}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -2573,6 +2579,38 @@
                             <DataGridTextColumn Header="Cartabones" Binding="{Binding TotalCartabones}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
+                            <!-- El BORDE LIBRE que exige la tabla L para estas anclas, y la
+                                 separacion al borde que se va a USAR de verdad.
+
+                                 Las dos estan aqui porque son el numero que explica por que una
+                                 celda de «Sep borde» se corrigio sola. Sin ellas, la celda cambia de
+                                 valor y el usuario no tiene de donde sacar el motivo.
+
+                                 Y «Sep borde usada» es distinta de lo capturado en DOS casos: cuando
+                                 la celda va en cero -automatica- y cuando lo capturado no llegaba al
+                                 borde libre. En los dos, sin esta columna se ve una cosa en la celda
+                                 y el plano sale con otra. -->
+                            <DataGridTextColumn Header="Borde libre mín." Binding="{Binding BordeLibreMinimo}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Columna L del cuadro de libramientos, para el diametro de ancla de esta fila.&#10;Es el minimo al que se sube «Sep borde» si se captura menos." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Sep borde usada" Binding="{Binding SepBordeUsada}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="X / Y, ya ajustadas. Es lo que de verdad se dibuja, incluyendo el calculo automatico cuando la celda va en cero." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
                             <DataGridTextColumn Header="Libramientos" Binding="{Binding Libramientos}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />

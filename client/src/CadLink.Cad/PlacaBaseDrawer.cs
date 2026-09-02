@@ -361,14 +361,22 @@ public sealed partial class PlacaBaseDrawer
         // ---------- El perfil, para poder medir la separación al borde ----------
         var (pX, pY) = MedidasDelPerfil(p);
 
-        // ---------- Separación al borde ----------
-        var sepX = p.SepBordeXCm > 0
-            ? p.SepBordeXCm * _escala
-            : AnclasPlacaBase.SepAuto(b, pX, dAguX, _escala);
+        // ---------- Separación al borde, respetando el BORDE LIBRE de la tabla L ----------
+        // Se ajusta aquí y no solo en la celda de la hoja: la separación se pudo capturar ANTES de
+        // cambiar el diámetro del ancla, y en ese caso la celda quedó con un número que ya no
+        // cumple. Ajustando también al dibujar, lo que sale al plano cumple siempre.
+        var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, p.DiamAnclaXCm, p.AnchoDibujoCm);
+        var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, p.DiamAnclaYCm, p.AltoDibujoCm);
 
-        var sepY = p.SepBordeYCm > 0
-            ? p.SepBordeYCm * _escala
-            : AnclasPlacaBase.SepAuto(h, pY, dAguY, _escala);
+        sepX = sepX > 0
+            ? sepX * _escala
+            : AnclasPlacaBase.SepAuto(
+                b, pX, dAguX, _escala, AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaXCm) * _escala);
+
+        sepY = sepY > 0
+            ? sepY * _escala
+            : AnclasPlacaBase.SepAuto(
+                h, pY, dAguY, _escala, AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaYCm) * _escala);
 
         // ---------- Las anclas ----------
         var anclas = AnclasPlacaBase.Construir(
@@ -379,7 +387,8 @@ public sealed partial class PlacaBaseDrawer
         if (p.ValidarSeparacionAnclas)
         {
             var falla = AnclasPlacaBase.RevisarSeparacionJ(anclas, _escala)
-                        ?? AnclasPlacaBase.RevisarDistanciaK(anclas, x0, y0, b, h, _escala);
+                        ?? AnclasPlacaBase.RevisarDistanciaK(anclas, x0, y0, b, h, _escala)
+                        ?? AnclasPlacaBase.RevisarBordeLibreL(anclas, x0, y0, b, h, _escala);
 
             if (falla is not null)
             {

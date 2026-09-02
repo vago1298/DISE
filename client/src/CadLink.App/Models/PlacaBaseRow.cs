@@ -39,8 +39,6 @@ public sealed class PlacaBaseRow : Row
     private double _sepBordeYCm;
     private string _diamAnclaX = "3/4";
     private string _diamAnclaY = "3/4";
-    private string _diamAgujeroX = string.Empty;
-    private string _diamAgujeroY = string.Empty;
     private string _electrodo = "E70";
     private string _soldadura = "1/4";
     private int _nCartabonesX;
@@ -53,20 +51,6 @@ public sealed class PlacaBaseRow : Row
     private double _escala = 10;
     private bool _girarPlaca90 = true;
     private bool _anclasEnMalla;
-
-    /// <summary>
-    /// Una fila nueva nace con el <b>agujero</b> ya puesto: el de su ancla más 1/16".
-    /// </summary>
-    /// <remarks>
-    /// Se calcula en lugar de escribirlo en el inicializador del campo. Con un <c>"13/16"</c>
-    /// literal ahí, el día que cambie el ancla de arranque las dos cosas dejarían de corresponder y
-    /// la fila nueva saldría con un agujero que no es el de su ancla.
-    /// </remarks>
-    public PlacaBaseRow()
-    {
-        _diamAgujeroX = AgujeroAutomatico(_diamAnclaX);
-        _diamAgujeroY = AgujeroAutomatico(_diamAnclaY);
-    }
 
     /// <summary>Celda <b>E2</b>: la marca de la placa. Va al rótulo.</summary>
     public string Marca { get => _marca; set => Set(ref _marca, value); }
@@ -181,17 +165,6 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Los espesores de placa y de cartabón usuales, en pulgadas.</summary>
     public string[] EspesoresPlaca => _espesoresPlaca;
 
-    /// <summary>
-    /// Los agujeros usuales: el ancla <b>más 1/16"</b> de holgura, ya en dieciseisavos.
-    /// </summary>
-    /// <remarks>
-    /// Son los que salen de los ocho diámetros de ancla de la lista de al lado. La celda se llena
-    /// sola, así que esta lista es para el caso raro: un agujero <b>holgado</b> a propósito, que en
-    /// una placa base se usa cuando el montaje necesita margen para cuadrar la columna. Por eso
-    /// llevan al final los dos sobremedida, que no corresponden a ningún ancla más 1/16".
-    /// </remarks>
-    public string[] DiametrosAgujero => _diametrosAgujero;
-
     /// <summary>Los espesores de soldadura, con el vacío al principio: vacío = sin soldadura.</summary>
     public string[] EspesoresSoldadura => _espesoresSoldadura;
 
@@ -200,15 +173,6 @@ public sealed class PlacaBaseRow : Row
 
     private static readonly string[] _espesoresPlaca =
         { "1/4", "5/16", "3/8", "1/2", "5/8", "3/4", "1", "1 1/4", "1 1/2", "2" };
-
-    // El vacío al principio sigue significando «calcúlalo»: es el respaldo de la macro, y el
-    // dibujante lo sigue respetando aunque ahora la celda se rellene sola.
-    private static readonly string[] _diametrosAgujero =
-    {
-        string.Empty,
-        "9/16", "11/16", "13/16", "15/16", "1 1/16", "1 3/16", "1 5/16", "1 9/16",
-        "1 3/4", "2"
-    };
 
     // LA LISTA DE SOLDADURA, COMPLETA. Antes iba de 3/16 a 1/2, que deja fuera los dos extremos que
     // sí se usan: el filete de 1/8 de una placa delgada y los de 5/8 en adelante de una columna de
@@ -235,96 +199,167 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>C10</b>: número de anclas en Y. Se reparten a lo <b>alto</b>.</summary>
     public int NAnclasY { get => _nAnclasY; set => Set(ref _nAnclasY, value); }
 
-    /// <summary>Celda <b>E11</b>: separación al borde en X, en cm. Cero = automática.</summary>
+    /// <summary>
+    /// Celda <b>E11</b>: separación al borde en X, en cm. Cero = automática.
+    /// </summary>
+    /// <remarks>
+    /// <b>Se corrige sola si no respeta el borde libre</b> de la tabla L para el diámetro de su
+    /// ancla. Ver <see cref="AjustarSeparacionesAlBorde"/>.
+    /// </remarks>
     public double SepBordeXCm { get => _sepBordeXCm; set => Set(ref _sepBordeXCm, value); }
 
-    /// <summary>Celda <b>E10</b>: separación al borde en Y, en cm. Cero = automática.</summary>
+    /// <summary>Celda <b>E10</b>: separación al borde en Y, en cm. Cero = automática. Se corrige sola.</summary>
     public double SepBordeYCm { get => _sepBordeYCm; set => Set(ref _sepBordeYCm, value); }
+
+    /// <summary>
+    /// Sube las separaciones al borde capturadas hasta el <b>borde libre</b> de la tabla L.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La llama la hoja <b>al salir de la celda</b>, no en el <c>set</c>. Corrigiendo en el <c>set</c>
+    /// —que con <c>UpdateSourceTrigger=PropertyChanged</c> se dispara en cada tecla— escribir «5»
+    /// para llegar a «50» se convertiría en un forcejeo: la celda subiría el 5 al mínimo antes de
+    /// que se llegue a teclear el 0. Al salir de la celda el usuario ya terminó de escribir.
+    /// </para>
+    /// <para>
+    /// Una separación en <b>cero</b> se deja en cero: cero significa «calcúlala», y el cálculo
+    /// automático ya aplica el mismo mínimo por su cuenta.
+    /// </para>
+    /// <para>
+    /// Devuelve <c>true</c> si movió algo, para que la hoja pueda decirlo en lugar de cambiar un
+    /// número delante del usuario sin explicación.
+    /// </para>
+    /// </remarks>
+    public bool AjustarSeparacionesAlBorde()
+    {
+        var p = AFormatoCad();
+
+        var x = AnclasPlacaBase.SepBordeAjustada(SepBordeXCm, p.DiamAnclaXCm, p.AnchoDibujoCm);
+        var y = AnclasPlacaBase.SepBordeAjustada(SepBordeYCm, p.DiamAnclaYCm, p.AltoDibujoCm);
+
+        var movio = false;
+
+        if (Math.Abs(x - SepBordeXCm) > 1e-9)
+        {
+            SepBordeXCm = x;
+            movio = true;
+        }
+
+        if (Math.Abs(y - SepBordeYCm) > 1e-9)
+        {
+            SepBordeYCm = y;
+            movio = true;
+        }
+
+        return movio;
+    }
+
+    /// <summary>
+    /// El <b>borde libre mínimo</b> que exige la tabla L para las anclas de esta fila, en cm.
+    /// </summary>
+    /// <remarks>
+    /// Se ve en la tabla porque es el número que explica por qué una separación al borde se corrigió
+    /// sola. Sin él, la celda cambia de valor y el usuario no tiene de dónde sacar el motivo.
+    /// </remarks>
+    public string BordeLibreMinimo
+    {
+        get
+        {
+            var p = AFormatoCad();
+
+            var lx = AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaXCm);
+            var ly = AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaYCm);
+
+            if (lx <= 0 && ly <= 0)
+            {
+                return string.Empty;
+            }
+
+            // Con las dos anclas del mismo diámetro —el caso normal— se dice un solo número: dos
+            // veces el mismo valor separado por una barra se lee como si fueran dos cosas.
+            return Math.Abs(lx - ly) < 1e-9
+                ? $"{lx:0.#} cm"
+                : $"{lx:0.#} / {ly:0.#} cm";
+        }
+    }
+
+    /// <summary>
+    /// La separación al borde que se va a <b>usar de verdad</b>, ya ajustada, en cm.
+    /// </summary>
+    /// <remarks>
+    /// Hace visible el número final, que es distinto de lo capturado en dos casos: cuando la celda
+    /// va en cero —automática— y cuando lo capturado no llegaba al borde libre. En los dos, sin
+    /// esta columna el usuario ve una cosa en la celda y el plano sale con otra.
+    /// </remarks>
+    public string SepBordeUsada
+    {
+        get
+        {
+            var p = AFormatoCad();
+
+            if (p.AnchoDibujoCm <= 0 || p.AltoDibujoCm <= 0)
+            {
+                return string.Empty;
+            }
+
+            var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : p.DiamAnclaXCm + (2.54 / 16);
+            var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : p.DiamAnclaYCm + (2.54 / 16);
+
+            var x = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, p.DiamAnclaXCm, p.AnchoDibujoCm);
+            var y = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, p.DiamAnclaYCm, p.AltoDibujoCm);
+
+            // Y si va en cero, la automática: la MISMA llamada que hace el dibujante, con el mismo
+            // borde libre. Repetir aquí una versión simplificada sería enseñar un número que el
+            // plano no usa.
+            if (x <= 0)
+            {
+                x = AnclasPlacaBase.SepAuto(
+                    p.AnchoDibujoCm, p.PerfilXDibujoCm, dAguX, 1,
+                    AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaXCm));
+            }
+
+            if (y <= 0)
+            {
+                y = AnclasPlacaBase.SepAuto(
+                    p.AltoDibujoCm, p.PerfilYDibujoCm, dAguY, 1,
+                    AnclasPlacaBase.BordeLibreMinimoCm(p.DiamAnclaYCm));
+            }
+
+            return $"{x:0.#} / {y:0.#} cm";
+        }
+    }
 
     /// <summary>Celda <b>C14</b>: diámetro de las anclas en X, en pulgadas.</summary>
     /// <remarks>Al cambiarlo, el <b>agujero</b> se recalcula solo. Ver <see cref="DiamAgujeroX"/>.</remarks>
-    public string DiamAnclaX
-    {
-        get => _diamAnclaX;
-        set
-        {
-            // EL VALOR DE ANTES SE GUARDA ANTES DE ESCRIBIR EL NUEVO. Es lo que permite saber si el
-            // agujero que hay puesto era el automático de esa ancla o uno que el usuario escribió.
-            var antes = _diamAnclaX;
-
-            Set(ref _diamAnclaX, value);
-
-            SeguirConElAgujero(antes, _diamAnclaX, _diamAgujeroX, v => DiamAgujeroX = v);
-        }
-    }
+    public string DiamAnclaX { get => _diamAnclaX; set => Set(ref _diamAnclaX, value); }
 
     /// <summary>Celda <b>C15</b>: diámetro de las anclas en Y, en pulgadas.</summary>
-    public string DiamAnclaY
-    {
-        get => _diamAnclaY;
-        set
-        {
-            var antes = _diamAnclaY;
-
-            Set(ref _diamAnclaY, value);
-
-            SeguirConElAgujero(antes, _diamAnclaY, _diamAgujeroY, v => DiamAgujeroY = v);
-        }
-    }
+    public string DiamAnclaY { get => _diamAnclaY; set => Set(ref _diamAnclaY, value); }
 
     /// <summary>
-    /// Celda <b>E14</b>: diámetro del agujero en X, en pulgadas.
+    /// Celda <b>E14</b>: diámetro del agujero en X. Es el ancla <b>más 1/16"</b>, y no se captura.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Se llena solo: el ancla más 1/16"</b> de holgura, que es la cuenta que hacía el respaldo
-    /// de la macro cuando la celda venía en blanco. Ahora se ve escrita en la celda en lugar de
-    /// resolverse por dentro al dibujar, que es la diferencia entre poder cotejar el agujero con el
-    /// plano y tener que fiarse de que el programa lo hizo bien.
+    /// <b>Es una columna calculada, no un dato.</b> El agujero de una placa base es siempre el ancla
+    /// más 1/16" de holgura, así que no hay nada que decidir: dejarlo capturable era ofrecer una
+    /// decisión que no existe, y con ella la posibilidad de que el agujero y su ancla dejaran de
+    /// corresponder sin que nada lo dijera.
     /// </para>
     /// <para>
-    /// Y <b>sigue siendo capturable</b>, porque el agujero holgado a propósito existe: en montaje se
-    /// usa para tener margen al cuadrar la columna. Lo escrito a mano se respeta y no se pisa al
-    /// cambiar el ancla —solo se recalcula si lo que había era el automático del ancla anterior—.
+    /// Antes esta cuenta se hacía por dentro y al dibujar, con la celda en blanco. Ahora se ve el
+    /// número, que es lo que permite cotejarlo con el plano en lugar de fiarse.
     /// </para>
     /// <para>
-    /// En blanco sigue significando «calcúlalo al dibujar», que es lo que hacía la macro.
+    /// Al ser de solo lectura tampoco se guarda en el <c>.clk</c> —<c>FilaSerializable</c> solo
+    /// guarda propiedades que se pueden escribir— y eso es lo correcto: se recalcula al abrir a
+    /// partir del ancla, así que no puede llegar viejo.
     /// </para>
     /// </remarks>
-    public string DiamAgujeroX { get => _diamAgujeroX; set => Set(ref _diamAgujeroX, value); }
+    public string DiamAgujeroX => AgujeroAutomatico(_diamAnclaX);
 
     /// <summary>Celda <b>E15</b>: diámetro del agujero en Y. Ver la nota de X.</summary>
-    public string DiamAgujeroY { get => _diamAgujeroY; set => Set(ref _diamAgujeroY, value); }
-
-    /// <summary>
-    /// Pone el agujero al día cuando cambia su ancla, <b>sin pisar lo que se escribió a mano</b>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// La regla: el agujero sigue al ancla si está <b>en blanco</b> o si es exactamente el
-    /// automático del ancla <b>anterior</b>. Cualquier otra cosa es una decisión del usuario y se
-    /// queda.
-    /// </para>
-    /// <para>
-    /// Se resuelve comparando con el automático de antes y <b>no guardando una bandera</b> de «esto
-    /// lo puso el programa». Una bandera es estado que hay que mantener en el copiado de filas, en
-    /// la apertura del archivo y en el deshacer, y en cuanto uno de esos tres se olvide de ponerla,
-    /// el programa empieza a pisar valores que el usuario escribió. Comparando, no hay nada que
-    /// mantener: la respuesta sale de los datos que ya están en la fila.
-    /// </para>
-    /// </remarks>
-    private static void SeguirConElAgujero(
-        string anclaAntes, string anclaAhora, string agujeroPuesto, Action<string> escribir)
-    {
-        var puesto = (agujeroPuesto ?? string.Empty).Trim();
-
-        if (puesto.Length > 0 && puesto != AgujeroAutomatico(anclaAntes))
-        {
-            return;
-        }
-
-        escribir(AgujeroAutomatico(anclaAhora));
-    }
+    public string DiamAgujeroY => AgujeroAutomatico(_diamAnclaY);
 
     /// <summary>
     /// El agujero que le toca a un ancla: su diámetro <b>más 1/16"</b>, en fracción.
@@ -599,24 +634,36 @@ public sealed class PlacaBaseRow : Row
             var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
             var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
 
-            // EL PERFIL ENTRA EN LA CUENTA, igual que en el dibujante. La separación automática
-            // reparte el sobrante entre la placa y el patín, así que sin el perfil esta columna
-            // usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría que la placa
-            // cumple y el botón se negaría a dibujarla, sin nada que explicara la diferencia.
-            var sepX = p.SepBordeXCm > 0
-                ? p.SepBordeXCm
-                : AnclasPlacaBase.SepAuto(b, p.PerfilXDibujoCm, dAguX, 1);
+            // EL PERFIL Y EL BORDE LIBRE ENTRAN EN LA CUENTA, igual que en el dibujante. La
+            // separación automática reparte el sobrante entre la placa y el patín, así que sin el
+            // perfil esta columna usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría
+            // que la placa cumple y el botón se negaría a dibujarla, sin nada que explicara la
+            // diferencia. Y el ajuste al borde libre, por lo mismo.
+            var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
+            var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
 
-            var sepY = p.SepBordeYCm > 0
-                ? p.SepBordeYCm
-                : AnclasPlacaBase.SepAuto(h, p.PerfilYDibujoCm, dAguY, 1);
+            if (sepX <= 0)
+            {
+                sepX = AnclasPlacaBase.SepAuto(
+                    b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX));
+            }
+
+            if (sepY <= 0)
+            {
+                sepY = AnclasPlacaBase.SepAuto(
+                    h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY));
+            }
 
             var anclas = AnclasPlacaBase.Construir(
                 0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
                 dAncX, dAguX, dAncY, dAguY, p.ModoAnclas);
 
+            // LAS TRES COLUMNAS DEL CUADRO, no dos. La L no es «la K con otro nombre»: en un ancla
+            // de 5/8" la K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66, así que
+            // quedarse con una deja pasar los casos en los que manda la otra.
             var falla = AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)
-                        ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1);
+                        ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1)
+                        ?? AnclasPlacaBase.RevisarBordeLibreL(anclas, 0, 0, b, h, 1);
 
             // En la celda solo cabe el titular; el detalle completo sale al intentar dibujar.
             return falla is null ? string.Empty : falla.Titulo;
@@ -655,6 +702,14 @@ public sealed class PlacaBaseRow : Row
         Raise(nameof(ReferenciaDado));
         Raise(nameof(TotalAnclas));
         Raise(nameof(TotalCartabones));
+
+        // Los agujeros son calculados desde su ancla, así que se avisa de ellos aquí: sin esto, la
+        // celda seguiría enseñando el agujero del ancla anterior.
+        Raise(nameof(DiamAgujeroX));
+        Raise(nameof(DiamAgujeroY));
+
+        Raise(nameof(BordeLibreMinimo));
+        Raise(nameof(SepBordeUsada));
         Raise(nameof(Libramientos));
         Raise(nameof(Falta));
     }

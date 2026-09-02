@@ -97,6 +97,60 @@ public partial class MainWindow
         DibujarVistaPreviaPlacaBase();
     }
 
+    /// <summary>
+    /// Se salió de una celda: es el momento de corregir la separación al borde.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Aquí y no en el <c>set</c> de la propiedad. Las celdas de la hoja escriben en cada tecla
+    /// —<c>UpdateSourceTrigger=PropertyChanged</c>—, así que corrigiendo en el <c>set</c>, teclear
+    /// «5» camino de «50» se convierte en un forcejeo: la celda sube el 5 al mínimo antes de que se
+    /// llegue a escribir el 0. Al terminar de editar el usuario ya dijo lo que quería.
+    /// </para>
+    /// <para>
+    /// Y se <b>avisa</b> cuando se mueve un número. Cambiar un valor que el usuario acaba de
+    /// escribir, sin decir nada, se parece mucho a que el programa no le hiciera caso.
+    /// </para>
+    /// </remarks>
+    private void OnCeldaPlacaEditada(object? sender, DataGridCellEditEndingEventArgs e)
+    {
+        if (!_listo || e.Row?.Item is not PlacaBaseRow fila)
+        {
+            return;
+        }
+
+        // Se hace DESPUÉS de que la celda haya escrito su valor en la fila. En este evento el
+        // enlace todavía no ha corrido, así que la corrección iría contra el valor de antes.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var antesX = fila.SepBordeXCm;
+            var antesY = fila.SepBordeYCm;
+
+            if (!fila.AjustarSeparacionesAlBorde())
+            {
+                return;
+            }
+
+            var partes = new List<string>();
+
+            if (Math.Abs(antesX - fila.SepBordeXCm) > 1e-9)
+            {
+                partes.Add($"X: {antesX:0.#} → {fila.SepBordeXCm:0.#} cm");
+            }
+
+            if (Math.Abs(antesY - fila.SepBordeYCm) > 1e-9)
+            {
+                partes.Add($"Y: {antesY:0.#} → {fila.SepBordeYCm:0.#} cm");
+            }
+
+            StatusText.Text =
+                $"{Nombre(fila)}: separación al borde ajustada al mínimo de la tabla L " +
+                $"({fila.BordeLibreMinimo}).  " + string.Join("   ", partes);
+
+            DibujarVistaPreviaPlacaBase();
+        }));
+    }
+
     private void OnFilaPlacaEditada(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         // AL ELEGIR EL DADO, SUS MEDIDAS SE TRAEN SOLAS. Va ANTES del guardia de _listo a
@@ -396,13 +450,21 @@ public partial class MainWindow
         var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
         var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
 
-        var sepX = p.SepBordeXCm > 0
-            ? p.SepBordeXCm
-            : AnclasPlacaBase.SepAuto(b, pX, dAguX, 1);
+        // La MISMA cuenta que el dibujante, ajuste al borde libre incluido.
+        var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
+        var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
 
-        var sepY = p.SepBordeYCm > 0
-            ? p.SepBordeYCm
-            : AnclasPlacaBase.SepAuto(h, pY, dAguY, 1);
+        if (sepX <= 0)
+        {
+            sepX = AnclasPlacaBase.SepAuto(
+                b, pX, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX));
+        }
+
+        if (sepY <= 0)
+        {
+            sepY = AnclasPlacaBase.SepAuto(
+                h, pY, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY));
+        }
 
         var anclas = AnclasPlacaBase.Construir(
             0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
@@ -686,9 +748,8 @@ public partial class MainWindow
         DadoYCm = f.DadoYCm,
         DadoCircular = f.DadoCircular,
 
-        // EL ORDEN IMPORTA AQUÍ: las anclas ANTES que sus agujeros. Al escribir un ancla, la fila
-        // pone su agujero al día sola, así que copiando el agujero primero el ancla lo pisaría y un
-        // agujero holgado a propósito se perdería al duplicar la fila.
+        // LOS AGUJEROS NO SE COPIAN, y no es un olvido: son calculados —el ancla más 1/16"— así
+        // que copiando el ancla, el agujero de la copia sale solo y no puede quedar descolgado.
         Familia = f.Familia,
         Seccion = f.Seccion,
         NAnclasX = f.NAnclasX,
@@ -697,8 +758,6 @@ public partial class MainWindow
         SepBordeYCm = f.SepBordeYCm,
         DiamAnclaX = f.DiamAnclaX,
         DiamAnclaY = f.DiamAnclaY,
-        DiamAgujeroX = f.DiamAgujeroX,
-        DiamAgujeroY = f.DiamAgujeroY,
         Electrodo = f.Electrodo,
         Soldadura = f.Soldadura,
         NCartabonesX = f.NCartabonesX,

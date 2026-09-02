@@ -6370,12 +6370,35 @@ def v18_planta_autocad() -> None:
     pbfilas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
     pbproy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
 
-    check("las dos tablas de libramientos J y K estan portadas",
+    #  LAS TRES COLUMNAS DEL CUADRO, no dos: faltaba la L, que es la que gobierna la separacion al
+    #  borde de las anclas. Sin ella, «Sep borde X cm» y «Sep borde Y cm» aceptaban cualquier numero.
+    check("las tres tablas de libramientos J, K y L estan portadas",
           "public static double SeparacionMinimaJmm(" in anc
           and "public static double DistanciaMinimaKmm(" in anc
+          and "public static double BordeLibreMinimoLmm(" in anc
           # Los extremos de cada tabla, para que no se cuele una lista a medias.
           and "<= 13 => 40," in anc and "<= 102 => 300," in anc
-          and "<= 13 => 22," in anc and "<= 102 => 180," in anc)
+          and "<= 13 => 22," in anc and "<= 102 => 180," in anc
+          and "<= 13 => 23," in anc and "<= 102 => 172," in anc)
+
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    #  EL CORRIMIENTO DE LA MACRO, FIJADO RENGLON POR RENGLON.
+    #
+    #  El VBA traia DOS renglones mal en las dos columnas, y el port los reprodujo fielmente:
+    #  el 1 5/8" y el 1 3/4". Un ancla de 1 3/4" pasaba la revision con 130 mm de separacion
+    #  cuando el cuadro pide 150. Eso no se ve en el dibujo -sale un detalle creible-, se ve
+    #  en obra.
+    #
+    #  Se fija aqui con los valores escritos para que nadie los «corrija» de vuelta al valor
+    #  de la macro creyendo que arregla una errata del port.
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    check("y los dos renglones que la macro traia mal quedan corregidos",
+          # 1 5/8" = 41 mm: J = 130 (la macro decia 120) y K = 75 (decia 70)
+          "<= 41 => 130," in anc and "<= 41 => 75," in anc
+          # 1 3/4" = 44 mm: J = 150 (decia 130) y K = 85 (decia 75)
+          and "<= 44 => 150," in anc and "<= 44 => 85," in anc
+          # Y el renglon de 48 mm, que en el cuadro no existe, se fue.
+          and "<= 48 =>" not in anc)
 
     #  El reparto PERIMETRAL: los totales de la hoja se reparten mitad y mitad, la impar va ABAJO
     #  en X, y las de Y van ENTRE las hileras de X para no repetir las esquinas.
@@ -6432,9 +6455,10 @@ def v18_planta_autocad() -> None:
           "p.PerfilXDibujoCm * _escala" in pbd
           and "p.PerfilYDibujoCm * _escala" in pbd
           and "private static bool GirarEstePerfil(PlacaBaseCad p) => p.GiraElPerfil;" in pbd
-          #  Y la columna de la tabla usa la MISMA, en centimetros.
-          and "AnclasPlacaBase.SepAuto(b, p.PerfilXDibujoCm, dAguX, 1)" in pbr
-          and "AnclasPlacaBase.SepAuto(h, p.PerfilYDibujoCm, dAguY, 1)" in pbr)
+          #  Y la columna de la tabla usa la MISMA, en centimetros: el ancho del perfil ya
+          #  orientado entra en la separacion automatica al borde.
+          and "b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncX)" in pbr
+          and "h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeLibreMinimoCm(dAncY)" in pbr)
 
     #  El dado va en CONCRETO y su rayado SOLO en la franja que sobresale: la placa entra como
     #  isla, porque bajo la placa lo que se ve es la placa, no el concreto.
@@ -6699,24 +6723,92 @@ def v18_planta_autocad() -> None:
           and "public static string ComoFraccion(" in pbr
           and "new[] { 16, 32, 64 }" in pbr)
 
-    #  PERO NO PISA LO ESCRITO A MANO. El agujero holgado a proposito existe: en montaje se usa
-    #  para tener margen al cuadrar la columna.
-    check("y no pisa un agujero holgado escrito a mano",
-          "private static void SeguirConElAgujero(" in pbr
-          and "puesto != AgujeroAutomatico(anclaAntes)" in pbr
-          # Se resuelve COMPARANDO con el automatico de antes y no guardando una bandera de «esto
-          # lo puso el programa»: una bandera es estado que hay que mantener en el copiado de filas,
-          # en la apertura del archivo y en el deshacer, y en cuanto uno se olvide, el programa
-          # empieza a pisar valores del usuario.
+    #  Y NO SE PUEDE ESCRIBIR. Esta comprobacion sustituye a una anterior que exigia lo contrario
+    #  —que un agujero holgado escrito a mano se respetara—, porque la celda dejo de ser capturable
+    #  a peticion del usuario. Se cambia en lugar de dejar las dos: una comprobacion que defiende un
+    #  comportamiento que ya se quito es la que te hace «arreglar» de vuelta lo que estaba bien.
+    check("y el agujero no se puede escribir: solo depende de su ancla",
+          "public string DiamAgujeroX => AgujeroAutomatico(" in pbr
+          and "SeguirConElAgujero" not in pbr
           and "_autoAgujero" not in pbr)
 
-    #  Y las celdas del agujero tienen su propia lista, la de los dieciseisavos que salen de las
-    #  anclas, no la de las anclas: ofrecer «3/4» como agujero de un ancla de 3/4 es ofrecer un
-    #  agujero en el que el ancla no entra.
-    check("las celdas de agujero ofrecen agujeros, no diametros de ancla",
-          "public string[] DiametrosAgujero =>" in pbr
-          and '"9/16", "11/16", "13/16", "15/16", "1 1/16"' in pbr
-          and tab_pb.count('ItemsSource="{Binding DiametrosAgujero}"') == 2)
+    #  Y LAS CELDAS DEL AGUJERO ESTAN BLOQUEADAS. No es un dato que se decida: el agujero de una
+    #  placa base es SIEMPRE el ancla mas 1/16", asi que dejarlo capturable era ofrecer una decision
+    #  que no existe, y con ella la posibilidad de que el agujero y su ancla dejaran de corresponder.
+    #
+    #  Al ser de solo lectura tampoco se guardan en el .clk -FilaSerializable solo guarda lo que se
+    #  puede escribir- y eso es lo correcto: se recalculan al abrir, asi que no llegan viejas.
+    check("las celdas de agujero estan bloqueadas y son calculadas",
+          "public string DiamAgujeroX => AgujeroAutomatico(_diamAnclaX);" in pbr
+          and "public string DiamAgujeroY => AgujeroAutomatico(_diamAnclaY);" in pbr
+          # Sin campo detras: si lo hubiera, seguirian siendo un dato guardado.
+          and "_diamAgujeroX" not in pbr
+          and "IsReadOnly=\"True\"" in tab_pb
+          and 'Binding="{Binding DiamAgujeroX, Converter={StaticResource ConPulgadas}}"' in tab_pb)
+
+    #  Y se refrescan al cambiar el ancla: siendo calculadas, sin el aviso la celda se queda
+    #  ensenando el agujero del ancla anterior.
+    check("y se refrescan cuando cambia su ancla",
+          "Raise(nameof(DiamAgujeroX));" in pbr
+          and "Raise(nameof(DiamAgujeroY));" in pbr)
+
+    # ---- EL SIMBOLO DE PULGADA ----
+    #  Las celdas en pulgadas se capturan en formato LIBRE -1, 3/4, 1 1/4- y eso es lo comodo al
+    #  escribir y lo malo al leer: en la columna queda un «1» suelto que no dice si es una pulgada o
+    #  un centimetro. El encabezado lo dice, pero se pierde de vista en cuanto la tabla se desplaza
+    #  a lo ancho, y esta hoja tiene cuarenta columnas.
+    #
+    #  El simbolo se pone al MOSTRAR y no se guarda dentro del texto: guardado, habria que quitarlo
+    #  antes de cada cuenta, y esa es la clase de limpieza que se olvida en un sitio -un espesor
+    #  guardado como 1" que en algun camino se lea sin limpiar da CERO-.
+    usos_pulgadas = tab_pb.count("Converter={StaticResource ConPulgadas}")
+
+    check("las celdas en pulgadas se ven con su simbolo, sin guardarlo",
+          os.path.exists(ruta("client/src/CadLink.App/ConPulgadas.cs"))
+          and "public sealed class ConPulgadas : IValueConverter" in
+              leer(ruta("client/src/CadLink.App/ConPulgadas.cs"))
+          and '<app:ConPulgadas x:Key="ConPulgadas" />' in tema
+          # Las OCHO celdas en pulgadas: espesor, dos anclas, dos agujeros, soldadura y dos
+          # espesores de cartabon.
+          and usos_pulgadas == 8,
+          f"{usos_pulgadas} celdas con el simbolo")
+
+    # ---- LA SEPARACION AL BORDE SE AJUSTA AL BORDE LIBRE ----
+    check("la separacion al borde se ajusta al borde libre de la tabla L",
+          "public static double SepBordeAjustada(" in anc
+          and "public static double BordeLibreMinimoCm(" in anc
+          and "public bool AjustarSeparacionesAlBorde()" in pbr
+          # El dibujante tambien lo aplica: la separacion se pudo capturar ANTES de cambiar el
+          # diametro del ancla, y en ese caso la celda quedo con un numero que ya no cumple.
+          and "AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, p.DiamAnclaXCm, p.AnchoDibujoCm)"
+              in pbd)
+
+    #  Y EL AUTOMATICO TAMBIEN, porque si no, dejar la celda en cero seria la manera de saltarse la
+    #  tabla sin que nada avisara.
+    check("y el calculo automatico de la separacion tambien lo respeta",
+          "double escala, double bordeLibre = 0)" in anc
+          and "if (bordeLibre > 0 && s < bordeLibre) { s = bordeLibre; }" in anc)
+
+    #  SE AJUSTA AL SALIR DE LA CELDA, no en cada tecla: con UpdateSourceTrigger=PropertyChanged,
+    #  corrigiendo en el set, teclear «5» camino de «50» se convierte en un forcejeo.
+    check("el ajuste se hace al salir de la celda y se avisa",
+          'CellEditEnding="OnCeldaPlacaEditada"' in tab_pb
+          and "private void OnCeldaPlacaEditada(" in pbw
+          and "separación al borde ajustada al mínimo de la tabla L" in pbw)
+
+    #  Y LA REVISION DE LA L, aparte de la K: no son la misma distancia ni una es siempre mayor.
+    check("la L se revisa aparte de la K",
+          "public static Incumplimiento? RevisarBordeLibreL(" in anc
+          and "RevisarBordeLibreL(anclas, x0, y0, b, h, _escala)" in pbd
+          and "RevisarBordeLibreL(anclas, 0, 0, b, h, 1)" in pbr)
+
+    #  Y el numero que EXPLICA la correccion se ve en la tabla: sin el, la celda cambia de valor y
+    #  el usuario no tiene de donde sacar el motivo.
+    check("el borde libre y la separacion usada se ven en la tabla",
+          "public string BordeLibreMinimo" in pbr
+          and "public string SepBordeUsada" in pbr
+          and 'Header="Borde libre mín."' in tab_pb
+          and 'Header="Sep borde usada"' in tab_pb)
 
     #  Y la lista de soldadura llega a los dos extremos que se usan: el filete de 1/8 de una placa
     #  delgada y los de 5/8 en adelante de una columna de varias toneladas.

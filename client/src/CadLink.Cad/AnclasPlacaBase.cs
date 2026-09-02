@@ -145,8 +145,11 @@ public static class AnclasPlacaBase
     /// natural el ancla. Con topes: nunca menos que el diámetro del agujero —o el ancla quedaría
     /// mordiendo el borde— y nunca tanto que las dos hileras se cruzarían en el centro.
     /// </remarks>
+    /// <param name="bordeLibre">
+    /// El <b>borde libre</b> mínimo de la tabla L, en unidades de dibujo. Cero para no aplicarlo.
+    /// </param>
     public static double SepAuto(
-        double dimPlaca, double dimPerfil, double dAgujero, double escala)
+        double dimPlaca, double dimPerfil, double dAgujero, double escala, double bordeLibre = 0)
     {
         var minimo = 0.5 * escala;   // medio centímetro
 
@@ -155,8 +158,63 @@ public static class AnclasPlacaBase
             : 0.12 * dimPlaca;
 
         if (s < dAgujero) { s = dAgujero; }
+
+        // EL BORDE LIBRE DE LA TABLA L MANDA SOBRE LO DEMÁS. Es lo que impide que el ancla se
+        // desconche el borde del concreto, así que se aplica DESPUÉS del reparto: da igual que la
+        // cuenta del sobrante entre placa y patín salga más chica, ese número no es admisible.
+        if (bordeLibre > 0 && s < bordeLibre) { s = bordeLibre; }
+
+        // LOS DOS TOPES DE LA PLACA VAN AL FINAL, y siguen ganando: una separación mayor que media
+        // placa cruzaría las dos hileras en el centro, y eso no es un detalle apretado, es un
+        // detalle imposible. Si el borde libre no cabe dentro de la placa, aquí se recorta y quien
+        // avisa es RevisarBordeLibreL: es la diferencia entre dibujar algo que no cumple y decir
+        // que la placa es demasiado chica para ese ancla.
         if (s > (dimPlaca / 2) - minimo) { s = (dimPlaca / 2) - minimo; }
         if (s < minimo) { s = minimo; }
+
+        return s;
+    }
+
+    /// <summary>
+    /// Ajusta una separación al borde <b>capturada</b> para que cumpla el borde libre de la tabla L.
+    /// </summary>
+    /// <param name="sepPedidaCm">Lo que se capturó, en cm. Cero o menos = automática.</param>
+    /// <param name="diamAnclaCm">Diámetro del ancla de esa dirección, en cm.</param>
+    /// <param name="dimPlacaCm">La medida de la placa en esa dirección, en cm.</param>
+    /// <remarks>
+    /// <para>
+    /// Devuelve <c>0</c> si lo pedido es cero —seguir en automático— y en los demás casos el
+    /// <b>mayor</b> entre lo pedido y el borde libre, sin pasarse de lo que cabe en la placa.
+    /// </para>
+    /// <para>
+    /// Vive aquí y no en la hoja porque la usan los dos: la celda, para corregirse sola al salir de
+    /// ella, y el dibujante, para que lo que se dibuje cumpla aunque el ancla se cambie después de
+    /// haber capturado la separación. Escrita en dos sitios, ese segundo caso se olvidaría.
+    /// </para>
+    /// </remarks>
+    public static double SepBordeAjustada(
+        double sepPedidaCm, double diamAnclaCm, double dimPlacaCm)
+    {
+        if (sepPedidaCm <= 0)
+        {
+            return 0;
+        }
+
+        var minimoCm = BordeLibreMinimoCm(diamAnclaCm);
+
+        var s = Math.Max(sepPedidaCm, minimoCm);
+
+        // Sin pasarse de media placa menos medio centímetro, que es el tope de SepAuto: pasado eso
+        // las dos hileras se cruzan.
+        if (dimPlacaCm > 0)
+        {
+            var tope = (dimPlacaCm / 2) - 0.5;
+
+            if (tope > 0 && s > tope)
+            {
+                s = tope;
+            }
+        }
 
         return s;
     }
@@ -183,27 +241,40 @@ public static class AnclasPlacaBase
     {
         var d = (int)Math.Floor(diametroMm + 0.5);
 
+        // ═══════════════════════════════════════════════════════════════════════════════════
+        //  CORREGIDA CONTRA LA TABLA. Esta columna tenía DOS renglones mal, y no era un
+        //  redondeo: era un CORRIMIENTO. La versión anterior repetía el 120 del 1 1/2" en el
+        //  1 5/8" y arrastraba los dos siguientes hacia arriba, además de meter un renglón de
+        //  48 mm que en la tabla no existe:
+        //
+        //      D           antes    tabla
+        //      1 5/8"  41   120  ->  130
+        //      1 3/4"  44   130  ->  150
+        //      (48 mm)      150      no existe
+        //
+        //  Un ancla de 1 3/4" pasaba la revisión con 130 mm de separación cuando la tabla pide
+        //  150: veinte milímetros de menos, y eso NO se ve en el dibujo. Se ve en obra.
+        // ═══════════════════════════════════════════════════════════════════════════════════
         return d switch
         {
-            <= 13 => 40,
-            <= 16 => 45,
-            <= 19 => 60,
-            <= 22 => 65,
-            <= 25 => 75,
-            <= 29 => 90,
-            <= 32 => 95,
-            <= 35 => 105,
-            <= 38 => 120,
-            <= 41 => 120,
-            <= 44 => 130,
-            <= 48 => 150,
-            <= 51 => 150,
-            <= 57 => 170,
-            <= 64 => 195,
-            <= 70 => 210,
-            <= 76 => 225,
-            <= 89 => 270,
-            <= 102 => 300,
+            <= 13 => 40,     // 1/2"
+            <= 16 => 45,     // 5/8"
+            <= 19 => 60,     // 3/4"
+            <= 22 => 65,     // 7/8"
+            <= 25 => 75,     // 1"
+            <= 29 => 90,     // 1 1/8"
+            <= 32 => 95,     // 1 1/4"
+            <= 35 => 105,    // 1 3/8"
+            <= 38 => 120,    // 1 1/2"
+            <= 41 => 130,    // 1 5/8"
+            <= 44 => 150,    // 1 3/4"
+            <= 51 => 150,    // 2"
+            <= 57 => 170,    // 2 1/4"
+            <= 64 => 195,    // 2 1/2"
+            <= 70 => 210,    // 2 3/4"
+            <= 76 => 225,    // 3"
+            <= 89 => 270,    // 3 1/2"
+            <= 102 => 300,   // 4"
             _ => 3.0 * d
         };
     }
@@ -219,30 +290,88 @@ public static class AnclasPlacaBase
     {
         var d = (int)Math.Floor(diametroMm + 0.5);
 
+        // CORREGIDA CONTRA LA TABLA, con el mismo corrimiento que tenía la J y en los mismos dos
+        // renglones: el 1 5/8" decía 70 mm y son 75, y el 1 3/4" decía 75 y son 85. El renglón de
+        // 48 mm tampoco existe en la tabla.
         return d switch
         {
-            <= 13 => 22,
-            <= 16 => 30,
-            <= 19 => 32,
-            <= 22 => 38,
-            <= 25 => 45,
-            <= 29 => 51,
-            <= 32 => 57,
-            <= 35 => 60,
-            <= 38 => 65,
-            <= 41 => 70,
-            <= 44 => 75,
-            <= 48 => 85,
-            <= 51 => 90,
-            <= 57 => 100,
-            <= 64 => 110,
-            <= 70 => 120,
-            <= 76 => 135,
-            <= 89 => 155,
-            <= 102 => 180,
+            <= 13 => 22,     // 1/2"
+            <= 16 => 30,     // 5/8"
+            <= 19 => 32,     // 3/4"
+            <= 22 => 38,     // 7/8"
+            <= 25 => 45,     // 1"
+            <= 29 => 51,     // 1 1/8"
+            <= 32 => 57,     // 1 1/4"
+            <= 35 => 60,     // 1 3/8"
+            <= 38 => 65,     // 1 1/2"
+            <= 41 => 75,     // 1 5/8"
+            <= 44 => 85,     // 1 3/4"
+            <= 51 => 90,     // 2"
+            <= 57 => 100,    // 2 1/4"
+            <= 64 => 110,    // 2 1/2"
+            <= 70 => 120,    // 2 3/4"
+            <= 76 => 135,    // 3"
+            <= 89 => 155,    // 3 1/2"
+            <= 102 => 180,   // 4"
             _ => 1.8 * d
         };
     }
+
+    /// <summary>
+    /// Columna <b>L</b>: <b>borde libre</b> mínimo del centro del ancla, en mm.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la <b>tercera</b> columna del cuadro de libramientos, y faltaba: el port se quedó con la
+    /// J y la K. Es la que gobierna la <b>separación al borde</b> de las anclas —la que se captura
+    /// en «Sep borde X cm» y «Sep borde Y cm»—, así que sin ella esas dos celdas aceptaban
+    /// cualquier número.
+    /// </para>
+    /// <para>
+    /// Mismo criterio de redondeo que las otras dos: al milímetro nominal más cercano y, entre dos
+    /// renglones, el inmediato superior. Fuera de la tabla se extrapola con el factor del último
+    /// renglón, <c>1.7 · D</c> —172 mm para un ancla de 102—, que es conservador y coherente con la
+    /// tendencia.
+    /// </para>
+    /// </remarks>
+    public static double BordeLibreMinimoLmm(double diametroMm)
+    {
+        var d = (int)Math.Floor(diametroMm + 0.5);
+
+        return d switch
+        {
+            <= 13 => 23,     // 1/2"
+            <= 16 => 28,     // 5/8"
+            <= 19 => 34,     // 3/4"
+            <= 22 => 37,     // 7/8"
+            <= 25 => 44,     // 1"
+            <= 29 => 49,     // 1 1/8"
+            <= 32 => 55,     // 1 1/4"
+            <= 35 => 60,     // 1 3/8"
+            <= 38 => 66,     // 1 1/2"
+            <= 41 => 76,     // 1 5/8"
+            <= 44 => 82,     // 1 3/4"
+            <= 51 => 87,     // 2"
+            <= 57 => 97,     // 2 1/4"
+            <= 64 => 107,    // 2 1/2"
+            <= 70 => 118,    // 2 3/4"
+            <= 76 => 130,    // 3"
+            <= 89 => 150,    // 3 1/2"
+            <= 102 => 172,   // 4"
+            _ => 1.7 * d
+        };
+    }
+
+    /// <summary>
+    /// El <b>borde libre</b> mínimo que le toca a un ancla, en <b>centímetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// El envoltorio existe para que la hoja y la vista previa no tengan que acordarse de convertir
+    /// de milímetros: la tabla trabaja en mm y todo lo demás del programa en cm, y esa conversión
+    /// repartida por cuatro sitios es una de las que se hace mal una vez y no se nota.
+    /// </remarks>
+    public static double BordeLibreMinimoCm(double diametroAnclaCm) =>
+        diametroAnclaCm <= 0 ? 0 : BordeLibreMinimoLmm(diametroAnclaCm * 10) / 10.0;
 
     /// <summary>Lo que impide dibujar la placa, dicho con nombre y números.</summary>
     /// <remarks>
@@ -361,6 +490,73 @@ public static class AnclasPlacaBase
                     $"  Distancia disponible: {menor:0.##} mm\n" +
                     $"  Distancia mínima K: {requerida:0.##} mm\n\n" +
                     "Aumenta la dimensión de la placa o ajusta la separación al borde.");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Comprueba el <b>borde libre L</b> de cada ancla al borde más cercano de la placa.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la tercera columna del cuadro y hace falta comprobarla aparte de la K: no son la misma
+    /// distancia ni una es siempre mayor que la otra —en un ancla de 5/8" la K pide 30 mm y la L
+    /// 28, y en una de 1 1/2" la K pide 65 y la L 66—, así que quedarse con una de las dos deja
+    /// pasar los casos en los que manda la otra.
+    /// </para>
+    /// <para>
+    /// Aquí solo se llega cuando la separación al borde <b>no pudo</b> ajustarse: la placa es
+    /// demasiado chica para ese ancla. Es la diferencia entre dibujar algo que no cumple y decirlo.
+    /// </para>
+    /// </remarks>
+    public static Incumplimiento? RevisarBordeLibreL(
+        IReadOnlyList<Ancla> anclas,
+        double x0, double y0, double ancho, double alto, double escala)
+    {
+        if (escala <= 0)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < anclas.Count; i++)
+        {
+            var d = anclas[i].DAncla / escala * 10;
+
+            if (d <= 0)
+            {
+                return new Incumplimiento(
+                    "Diámetro no válido",
+                    $"El diámetro del ancla {i + 1} no es válido.");
+            }
+
+            var requerido = BordeLibreMinimoLmm(d);
+
+            var izq = (anclas[i].X - x0) / escala * 10;
+            var der = (x0 + ancho - anclas[i].X) / escala * 10;
+            var inf = (anclas[i].Y - y0) / escala * 10;
+            var sup = (y0 + alto - anclas[i].Y) / escala * 10;
+
+            var menor = izq;
+            var borde = "izquierdo";
+
+            if (der < menor) { menor = der; borde = "derecho"; }
+            if (inf < menor) { menor = inf; borde = "inferior"; }
+            if (sup < menor) { menor = sup; borde = "superior"; }
+
+            if (menor + 0.01 < requerido)
+            {
+                return new Incumplimiento(
+                    "Borde libre mínimo L",
+                    $"Ancla {i + 1}:\n" +
+                    $"  Diámetro: {d:0.##} mm\n" +
+                    $"  Borde más cercano: {borde}\n" +
+                    $"  Borde libre disponible: {menor:0.##} mm\n" +
+                    $"  Borde libre mínimo L: {requerido:0.##} mm\n\n" +
+                    "La separación al borde ya se ajustó al máximo que cabe en esta placa, así " +
+                    "que\nla placa es demasiado chica para un ancla de ese diámetro: agrándala o " +
+                    "usa\nun ancla menor.");
             }
         }
 
