@@ -6294,14 +6294,17 @@ def v18_planta_autocad() -> None:
           and "&& nadaAbajo" in dibp
           and "_muroConAlgoAbajo++;" in dibp)
 
-    #  Se aplica a CUALQUIER muro que apoye, no solo al de concreto: en el modelo del usuario los
-    #  21 muros dicen TABICON, o sea que no hay ni uno de concreto, y atada al concreto la regla no
-    #  dibujaria nada. Pero la LEYENDA MC sigue siendo solo del de concreto: ponersela a uno de
-    #  tabicon seria decir en el plano que esta colado.
-    check("la base es de cualquier muro, pero la leyenda MC solo del de concreto",
-          'P("MURO_BASE_TODOS", "SI",' in cfgplano
-          and 'conLeyenda: esConcreto)' in dibp
-          and "if (!conLeyenda)" in dibp)
+    #  SOLO PARA MURO DE CONCRETO, pedido expresamente. Y es lo correcto: esta linea es el
+    #  desplante de un muro que se cuela, y dibujarla en un muro de mamposteria diria que hay algo
+    #  que colar donde no lo hay. Un muro de tabicon apoya en su cadena de desplante, y esa cadena
+    #  ya se dibuja por su cuenta.
+    #
+    #  Consecuencia asumida: si el modelo no trae muros con CONCRETO en su property note, no se
+    #  dibuja NADA. No es un fallo del dibujo, y el resumen lo dice con las notas que llegaron.
+    check("la base es SOLO del muro de concreto",
+          "var contornoMc = esConcreto" in dibp
+          and 'P("MURO_BASE_TODOS"' not in cfgplano
+          and "else if (esConcreto && !nadaAbajo)" in dibp)
 
     # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA

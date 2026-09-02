@@ -757,17 +757,18 @@ public sealed partial class PlantaDrawer
             //  otro nivel, y que valga para distintos niveles. La comprobación mira los NIVELES
             //  DEL MODELO, no la planta que se dibuja, así que sale sola en cualquier planta.
             //
-            //  Y SE APLICA A CUALQUIER MURO, no solo al de concreto —MURO_BASE_TODOS—. El motivo
-            //  es concreto: en el modelo del usuario los 21 muros dicen TABICON en su property
-            //  note, o sea que NO HAY NI UN MURO DE CONCRETO. Con la regla atada al concreto no se
-            //  dibujaría nada, que es exactamente lo que estaba pasando.
+            //  SOLO PARA MURO DE CONCRETO. Se pidió expresamente, y es lo correcto: esta línea es
+            //  el desplante de un muro que se cuela, y en un plano estructural dibujarla en un
+            //  muro de mampostería diría que hay algo que colar donde no lo hay. Un muro de
+            //  tabicón apoya en su cadena de desplante, y esa cadena ya se dibuja por su cuenta.
             //
-            //  Lo que NO se aplica a todos es la leyenda «MC»: MC es muro de concreto, y ponérsela
-            //  a un muro de tabicón sería decir en el plano que está colado. La leyenda queda solo
-            //  para los que de verdad son de concreto; la base, para todo el que apoye.
+            //  CONSECUENCIA, y hay que tenerla presente: si el modelo no trae muros con CONCRETO
+            //  en su property note, aquí no se dibuja NADA. Es lo que pasa con un modelo cuyos
+            //  muros dicen TABICON. No es un fallo del dibujo: es que no hay muros de concreto, y
+            //  el resumen lo dice con esas palabras y con las notas que llegaron.
             var nadaAbajo = NadaDebajoDelMuro(el, p);
 
-            var contornoMc = (esConcreto || _cfg.Bandera("MURO_BASE_TODOS", true))
+            var contornoMc = esConcreto
                              && nadaAbajo
                              && _cfg.Bandera("MURO_CONCRETO_CONTORNO", true)
                              && (!_cfg.Bandera("MURO_CONCRETO_SOLO_CIMENTACION", true)
@@ -778,15 +779,12 @@ public sealed partial class PlantaDrawer
 
             if (contornoMc)
             {
-                // La capa del concreto solo si lo es. Un muro de tabicón en E-MURO DE CONCRETO
-                // mentiría igual que la leyenda.
-                var capaConcreto = esConcreto && _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
+                var capaConcreto = _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
                     ? _capas.CapaMuroConcreto
                     : CapaDe(el);
 
                 if (ContornoDeMuro(el, x0, y0, capaConcreto,
-                                   Espesor(el, EspesorMuroPorOmision, "muro"), tramo,
-                                   conLeyenda: esConcreto))
+                                   Espesor(el, EspesorMuroPorOmision, "muro"), tramo))
                 {
                     _contornosMc++;
                     dibujado = true;
@@ -797,8 +795,10 @@ public sealed partial class PlantaDrawer
                     }
                 }
             }
-            else if (!nadaAbajo)
+            else if (esConcreto && !nadaAbajo)
             {
+                // Solo se cuenta el de CONCRETO: es el único al que le tocaría la base, así que
+                // es el único cuya ausencia hay que explicar.
                 _muroConAlgoAbajo++;
             }
 
@@ -938,15 +938,12 @@ public sealed partial class PlantaDrawer
         {
             var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
 
-            Nota($"{_contornosMc} muro(s) llevan dibujada la línea de su BASE, porque debajo de " +
-                 "ellos no hay ningún nivel y por tanto apoyan directamente. De ellos, " +
-                 $"{_muroConcretoVistos} son de concreto: esos van en la capa " +
-                 $"'{_capas.CapaMuroConcreto}'" +
+            Nota($"{_contornosMc} muro(s) DE CONCRETO llevan dibujada la línea de su BASE, en la " +
+                 $"capa '{_capas.CapaMuroConcreto}'" +
                  (leyenda.Length > 0 ? $" y con la leyenda '{leyenda}' dentro" : string.Empty) +
-                 ". Los demás llevan solo el contorno, en su capa: la leyenda " +
-                 (leyenda.Length > 0 ? $"'{leyenda}' " : string.Empty) +
-                 "es de muro de concreto y ponérsela a uno de otro material diría en el plano " +
-                 "que está colado.");
+                 ". La llevan porque debajo de ellos no hay ningún nivel, así que apoyan " +
+                 "directamente. Solo se dibuja en muros de concreto: es el desplante de lo que se " +
+                 "cuela, y en un muro de mampostería diría que hay algo que colar donde no lo hay.");
         }
 
         // ==============================================================================
@@ -1598,7 +1595,7 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private bool ContornoDeMuro(
         ElementoPlanta el, double x0, double y0, string capa,
-        double ancho, PanoDeApoyo.Tramo? tramo, bool conLeyenda = true)
+        double ancho, PanoDeApoyo.Tramo? tramo)
     {
         var t = tramo ?? new PanoDeApoyo.Tramo(el.X1, el.Y1, el.X2, el.Y2);
 
@@ -1637,13 +1634,9 @@ public sealed partial class PlantaDrawer
 
         // ---------- La leyenda, dentro ----------
         //
-        // Solo si el muro es de concreto de verdad. «MC» significa muro de concreto: ponérselo a
-        // uno de tabicón sería afirmar en el plano que está colado, y eso llega a obra.
-        if (!conLeyenda)
-        {
-            return true;
-        }
-
+        // Aquí solo llegan muros de concreto, así que la leyenda va siempre: quien decide es el
+        // bucle de muros, y este método no vuelve a preguntarlo. Tener la condición en un solo
+        // sitio es lo que evita que un día una de las dos diga una cosa y la otra otra.
         var leyenda = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
 
         if (leyenda.Length == 0)
