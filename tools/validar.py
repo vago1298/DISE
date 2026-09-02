@@ -6365,6 +6365,10 @@ def v18_planta_autocad() -> None:
     pbc = leer(ruta("client/src/CadLink.Cad/PlacaBaseCad.cs"))
     pbd = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.cs"))
     pbd2 = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Detalle.cs"))
+    pbr = leer(ruta("client/src/CadLink.App/Models/PlacaBaseRow.cs"))
+    pbw = leer(ruta("client/src/CadLink.App/MainWindow.PlacaBase.cs"))
+    pbfilas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    pbproy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
 
     check("las dos tablas de libramientos J y K estan portadas",
           "public static double SeparacionMinimaJmm(" in anc
@@ -6412,9 +6416,25 @@ def v18_planta_autocad() -> None:
 
     #  Las formas de I NO se giran: su geometria ya nace vertical -patines horizontales y alma
     #  vertical-, que es como va una columna, asi que girarla la acuesta.
+    #
+    #  La regla vive en PlacaBaseCad y NO en el dibujante, porque la usan dos: el dibujante, al
+    #  dibujar, y la columna «Libramientos» de la tabla, al capturar -la separacion al borde de las
+    #  anclas se calcula con el ancho del perfil YA ORIENTADO-. Con la cuenta escrita dos veces, la
+    #  tabla puede decir que la placa cumple y el dibujante negarse a dibujarla, y ese desacuerdo no
+    #  tiene ninguna explicacion visible para el usuario.
     check("las formas de I no se giran, como en la macro",
-          "private static bool GirarEstePerfil(" in pbd
-          and "!EsFormaI(p.Perfil?.Forma)" in pbd)
+          "public bool GiraElPerfil =>" in pbc
+          and "GirarPerfil90 &&" in pbc
+          and 'string.Equals(Perfil?.Forma, FormaAcero.I,' in pbc)
+
+    check("y esa regla es UNA, compartida por el dibujante y la tabla",
+          #  El dibujante la pide, no la reimplementa.
+          "p.PerfilXDibujoCm * _escala" in pbd
+          and "p.PerfilYDibujoCm * _escala" in pbd
+          and "private static bool GirarEstePerfil(PlacaBaseCad p) => p.GiraElPerfil;" in pbd
+          #  Y la columna de la tabla usa la MISMA, en centimetros.
+          and "AnclasPlacaBase.SepAuto(b, p.PerfilXDibujoCm, dAguX, 1)" in pbr
+          and "AnclasPlacaBase.SepAuto(h, p.PerfilYDibujoCm, dAguY, 1)" in pbr)
 
     #  El dado va en CONCRETO y su rayado SOLO en la franja que sobresale: la placa entra como
     #  isla, porque bajo la placa lo que se ve es la placa, no el concreto.
@@ -6438,6 +6458,99 @@ def v18_planta_autocad() -> None:
 
     check("hay verificacion ejecutable de la logica de la placa base",
           os.path.exists(ruta("tools", "verificar_placa_base.py")))
+
+    # ------------------------------------------------------------------
+    # PLACA BASE: LA PESTAÑA Y SU TABLA
+    # ------------------------------------------------------------------
+    #  La pestaña era un cartel de «modulo pendiente de portar». Ahora es una hoja de captura como
+    #  las otras cinco, y va atada al MISMO ciclo de vida: las listas de las columnas en
+    #  LlenarListas -una vez, porque no dependen del trabajo abierto- y la cuadricula en Enlazar
+    #  -cada vez, porque al abrir otro trabajo _datos es OTRO objeto y una cuadricula atada en el
+    #  constructor seguiria ensenando el trabajo anterior-.
+    #  El trozo de XAML de ESTA pestaña, delimitado por sus dos comentarios de cabecera. Se recorta
+    #  a proposito: buscar «Modulo pendiente de portar» en el XAML entero seguiria encontrandolo en
+    #  las pestañas de muros de contencion y de conexiones, que si siguen pendientes.
+    i_pb = xaml.find("<!-- ===== Placa base ===== -->")
+    i_cx = xaml.find("<!-- ===== Conexiones ===== -->")
+    tab_pb = xaml[i_pb:i_cx] if 0 <= i_pb < i_cx else ""
+
+    check("la pestaña de placa base ya no es un cartel de pendiente",
+          len(tab_pb) > 2000
+          and "Modulo pendiente de portar" not in tab_pb
+          and 'x:Name="PlacasGrid"' in tab_pb
+          and 'x:Name="PlacaBaseButton"' in tab_pb,
+          f"{len(tab_pb)} caracteres de XAML en la pestaña")
+
+    check("y esta atada al mismo ciclo de vida que las otras hojas",
+          "LlenarListasPlacaBase();" in codigo
+          and "EnlazarPlacaBase();" in codigo
+          and "private void LlenarListasPlacaBase()" in pbw
+          and "private void EnlazarPlacaBase()" in pbw
+          and "PlacasGrid.ItemsSource = _datos.PlacasBase;" in pbw)
+
+    check("la coleccion de placas vive en DatosProyecto, con las otras hojas",
+          "public ObservableCollection<PlacaBaseRow> PlacasBase { get; } = new();" in pbfilas
+          and "d.PlacasBase.Add(new PlacaBaseRow" in pbfilas)
+
+    #  SE GUARDA Y SE DESHACE. La instantanea del Ctrl+Z serializa el MISMO ProyectoGuardado que
+    #  escribe el archivo .clk, asi que una hoja que no este en ese objeto no se guarda Y ADEMAS se
+    #  borra al deshacer: capturar una placa y pulsar Ctrl+Z habria vaciado la hoja entera.
+    check("las placas se guardan en el .clk y sobreviven al deshacer",
+          "public List<FilaGuardada> PlacasBase { get; set; } = new();" in pbproy
+          and "p.PlacasBase.Add(FilaSerializable.Leer(b));" in codigo
+          and "_datos.PlacasBase.Clear();" in codigo
+          and "FilaSerializable.Aplicar(nueva, fila);" in codigo)
+
+    #  Y EL BOTON LO APAGA LA LICENCIA, no el XAML: dibujar el detalle de una placa es generar
+    #  dibujo igual que lo demas.
+    check("el boton de dibujar placas lo manda la licencia",
+          "PlacaBaseButton.IsEnabled = puedeDibujar;" in codigo)
+
+    #  LOS LIBRAMIENTOS SE VEN MIENTRAS SE CAPTURA. Es la diferencia entre saber que las anclas no
+    #  caben ahora, con la fila delante, y saberlo cuando el boton se niega a dibujar.
+    check("la tabla avisa de los libramientos J y K al capturar",
+          "public string Libramientos" in pbr
+          and "AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)" in pbr
+          and "RevisarDistanciaK(anclas, 0, 0, b, h, 1)" in pbr
+          and 'Header="Libramientos"' in tab_pb)
+
+    #  Y LA BUSQUEDA DEL PERFIL SE HACE VISIBLE. El perfil no se captura: se ELIGE un nombre y sus
+    #  medidas se buscan en el catalogo. Cuando esa busqueda no encuentra nada -un espacio de mas,
+    #  una familia que no corresponde- la fila se ve completa y el detalle sale sin su columna, sin
+    #  que nada lo hubiera dicho. Con el peralte y el ancho en una celda, eso se nota de un golpe.
+    check("la tabla ensena las medidas que trajo del catalogo",
+          "public string MedidasPerfil" in pbr
+          and '"NO ESTA EN EL CATALOGO"' in pbr
+          and 'Header="Medidas perfil"' in tab_pb)
+
+    #  Las celdas en FRACCIONES son desplegables EDITABLES y su lista sale de la FILA. Con un
+    #  DataGridComboBoxColumn y SelectedItemBinding, un espesor que no este en la lista se descarta
+    #  al salir de la celda sin decir nada, que es la peor manera de perder un dato.
+    check("las celdas en fracciones admiten una medida que no este en la lista",
+          "public string[] DiametrosAncla =>" in pbr
+          and "public string[] EspesoresPlaca =>" in pbr
+          and 'ItemsSource="{Binding DiametrosAncla}"' in tab_pb
+          and 'ItemsSource="{Binding EspesoresPlaca}"' in tab_pb
+          and 'Text="{Binding DiamAnclaX, UpdateSourceTrigger=PropertyChanged}"' in tab_pb)
+
+    #  Y LOS AVISOS DEL DIBUJO CAEN EN ESTA PESTAÑA. El panel de notas de la hoja de concreto es de
+    #  la hoja de concreto: mandar ahi el motivo por el que una placa no cumple la tabla K es
+    #  dejarlo donde nadie lo va a mirar.
+    check("los avisos del dibujo de placas se ven en su propia pestaña",
+          'x:Name="PlacasNotasText"' in tab_pb
+          and "PlacasNotasText.Text = string.Join(" in pbw
+          and "ExportHintText" not in pbw)
+
+    #  El paso entre placas se mide con la huella COMPLETA -la placa o el dado, el que sobresalga-.
+    #  El dado es casi siempre mas grande que la placa, asi que separando por el ancho de la placa
+    #  el dado de una se mete en el de la siguiente.
+    check("varias placas se reparten sin que el dado de una pise el de la otra",
+          "public double AnchoTotalDibujoCm => Math.Max(AnchoDibujoCm, DadoXDibujoCm);" in pbc
+          and "(p.AnchoTotalDibujoCm + 60) * escala" in pbw)
+
+    check("hay comprobacion de que el XAML y su code-behind coinciden",
+          os.path.exists(ruta("tools", "verificar_xaml.py"))
+          and os.path.exists(ruta("tools", "balance_cs.py")))
 
     # ------------------------------------------------------------------
     # LA CADENA, PARTIDA POR EL VANO DE LA PUERTA

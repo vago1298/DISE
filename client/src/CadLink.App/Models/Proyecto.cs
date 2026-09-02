@@ -87,6 +87,16 @@ public sealed class ProyectoGuardado
     /// llega sin la clave y la lista queda vacía, que es lo correcto: no había zapatas corridas.
     /// </remarks>
     public List<FilaGuardada> ZapatasCorridas { get; set; } = new();
+
+    /// <summary>Las filas de la hoja de <b>placas base</b>.</summary>
+    /// <remarks>
+    /// Con el mismo mecanismo genérico que las dos hojas de zapatas, y por el mismo motivo: una
+    /// columna nueva de esta hoja se guarda sola. Va también en la instantánea del deshacer —que
+    /// serializa este mismo objeto—, así que sin esta clave un Ctrl+Z después de capturar una
+    /// placa habría <b>borrado la hoja entera</b>, que es la clase de sorpresa que un deshacer no
+    /// puede dar.
+    /// </remarks>
+    public List<FilaGuardada> PlacasBase { get; set; } = new();
 }
 
 public sealed class PlanoGuardado

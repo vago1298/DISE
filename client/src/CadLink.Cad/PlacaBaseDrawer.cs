@@ -529,30 +529,21 @@ public sealed partial class PlacaBaseDrawer
         return fin - inicio;
     }
 
-    /// <summary>Las medidas del perfil <b>ya orientadas</b> en el dibujo.</summary>
-    private (double X, double Y) MedidasDelPerfil(PlacaBaseCad p)
-    {
-        if (p.Perfil is null)
-        {
-            return (0, 0);
-        }
-
-        var ancho = p.Perfil.AnchoDibujoCm * _escala;
-        var alto = p.Perfil.AltoDibujoCm * _escala;
-
-        return GirarEstePerfil(p) ? (alto, ancho) : (ancho, alto);
-    }
-
     /// <summary>
-    /// ¿Se gira este perfil? Las formas de <b>I</b> nunca.
+    /// Las medidas del perfil <b>ya orientadas</b>, en unidades de dibujo.
     /// </summary>
     /// <remarks>
-    /// Es <c>GiroPerfil90PorTipo</c> de la macro. La geometría de una I ya nace vertical —patines
-    /// horizontales y alma vertical—, que es como va una columna, así que girarla la acuesta.
+    /// El giro y la orientación los decide <see cref="PlacaBaseCad"/>, no este dibujante: la
+    /// columna «Libramientos» de la tabla necesita la misma cuenta para avisar mientras se
+    /// captura, y con la cuenta escrita dos veces la tabla y el dibujo pueden discrepar.
     /// </remarks>
-    private static bool GirarEstePerfil(PlacaBaseCad p) =>
-        p.GirarPerfil90 && !EsFormaI(p.Perfil?.Forma);
+    private (double X, double Y) MedidasDelPerfil(PlacaBaseCad p) =>
+        (p.PerfilXDibujoCm * _escala, p.PerfilYDibujoCm * _escala);
 
+    /// <summary>¿Se gira este perfil? Lo dice <see cref="PlacaBaseCad.GiraElPerfil"/>.</summary>
+    private static bool GirarEstePerfil(PlacaBaseCad p) => p.GiraElPerfil;
+
+    /// <summary>Si la forma es de las que se dibujan como perfil I.</summary>
     private static bool EsFormaI(string? forma) =>
         string.Equals(forma, FormaAcero.I, StringComparison.OrdinalIgnoreCase);
 

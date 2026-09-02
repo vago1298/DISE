@@ -253,6 +253,44 @@ public sealed class PlacaBaseCad
     /// <summary>El dado ya orientado, en cm.</summary>
     public double DadoYDibujoCm => GirarPlaca90 && GirarDado90 ? DadoXCm : DadoYCm;
 
+    /// <summary>
+    /// Lo que ocupa el detalle a lo ancho, en cm: la placa o el dado, el que sobresalga.
+    /// </summary>
+    /// <remarks>
+    /// Hace falta para repartir varias placas en fila sin que se pisen. El dado suele ser
+    /// <b>más grande</b> que la placa —es lo normal: la placa se apoya en él—, así que separar
+    /// las placas por el ancho de la placa encima el dado de una con el de la siguiente.
+    /// </remarks>
+    public double AnchoTotalDibujoCm => Math.Max(AnchoDibujoCm, DadoXDibujoCm);
+
+    /// <summary>
+    /// ¿Se gira el perfil de la columna? Las formas de <b>I</b> nunca.
+    /// </summary>
+    /// <remarks>
+    /// Es <c>GiroPerfil90PorTipo</c> de la macro. La geometría de una I ya nace vertical —patines
+    /// horizontales y alma vertical—, que es como va una columna, así que girarla la acuesta.
+    /// </remarks>
+    public bool GiraElPerfil =>
+        GirarPerfil90 &&
+        !string.Equals(Perfil?.Forma, FormaAcero.I, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Las medidas del perfil <b>ya orientadas</b> en el dibujo, en cm. Cero si no hay perfil.
+    /// </summary>
+    /// <remarks>
+    /// <b>Viven aquí y no en el dibujante a propósito.</b> Con ellas se calcula la separación al
+    /// borde de las anclas, y esa cuenta la hacen DOS sitios: el dibujante, al dibujar, y la
+    /// columna «Libramientos» de la tabla, al capturar. Con dos copias de la cuenta, la tabla
+    /// puede decir que la placa cumple y el dibujante negarse a dibujarla —o al contrario—, y ese
+    /// desacuerdo no tendría ninguna explicación visible para el usuario.
+    /// </remarks>
+    public double PerfilXDibujoCm =>
+        Perfil is null ? 0 : GiraElPerfil ? Perfil.AltoDibujoCm : Perfil.AnchoDibujoCm;
+
+    /// <summary>El perfil ya orientado, en cm. Ver la nota de <see cref="PerfilXDibujoCm"/>.</summary>
+    public double PerfilYDibujoCm =>
+        Perfil is null ? 0 : GiraElPerfil ? Perfil.AnchoDibujoCm : Perfil.AltoDibujoCm;
+
     /// <summary>Lo que falta para poder dibujar. Vacío = se puede.</summary>
     /// <remarks>
     /// Se contesta con una lista y no con un <c>bool</c> por lo mismo que en el resto del programa:

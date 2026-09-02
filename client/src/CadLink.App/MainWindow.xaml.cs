@@ -205,6 +205,7 @@ public partial class MainWindow : Window
         LlenarListasAcero();
         LlenarListasZapatas();
         LlenarListasZapatasCorridas();
+        LlenarListasPlacaBase();
     }
 
     private void Enlazar()
@@ -257,6 +258,7 @@ public partial class MainWindow : Window
         EnlazarAcero();
         EnlazarZapatas();
         EnlazarZapatasCorridas();
+        EnlazarPlacaBase();
 
         DatosCambiaron();
     }
@@ -311,6 +313,12 @@ public partial class MainWindow : Window
 
         ActualizarContadores();
         ActualizarTotales();
+
+        // El renglón de la hoja de placas base. Va aquí porque este método se llama también al
+        // ABRIR un trabajo y al DESHACER, y en esos dos casos las filas entran con _listo apagado:
+        // sin esto, el renglón de totales se quedaría con el recuento del trabajo anterior.
+        ActualizarTotalesPlacas();
+
         DibujarVistaPrevia();
     }
 
@@ -564,6 +572,10 @@ public partial class MainWindow : Window
 
         // Y las corridas, por lo mismo.
         DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;
+
+        // Y las placas base: dibujar el detalle de una placa es generar dibujo igual que lo
+        // demas, asi que lo decide la MISMA licencia.
+        PlacaBaseButton.IsEnabled = puedeDibujar;
 
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
@@ -2006,6 +2018,14 @@ public partial class MainWindow : Window
             p.ZapatasCorridas.Add(FilaSerializable.Leer(z));
         }
 
+        // Y las placas base. Va aquí y no solo en el guardado del archivo porque la instantánea
+        // del DESHACER serializa este mismo objeto: sin esta línea, un Ctrl+Z después de capturar
+        // una placa habría borrado la hoja de placas entera.
+        foreach (var b in _datos.PlacasBase)
+        {
+            p.PlacasBase.Add(FilaSerializable.Leer(b));
+        }
+
         return p;
     }
 
@@ -2144,6 +2164,16 @@ public partial class MainWindow : Window
                 var nueva = new ZapataCorridaRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.ZapatasCorridas.Add(nueva);
+            }
+
+            // ---- Placas Base ----
+            _datos.PlacasBase.Clear();
+
+            foreach (var fila in p.PlacasBase)
+            {
+                var nueva = new PlacaBaseRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.PlacasBase.Add(nueva);
             }
         }
         finally

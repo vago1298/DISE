@@ -231,6 +231,94 @@ check("SepAuto nunca baja del diametro del agujero",
 check("SepAuto nunca pasa de la mitad de la placa menos medio cm",
       sep_auto(10, 0, 20, 1) <= 10 / 2 - 0.5 + 1e-9)
 
+# ==========================================================================
+#  LA FILA DE LA TABLA: el lector de fracciones y el conteo de anclas
+# ==========================================================================
+#  Port de PlacaBaseRow.Pulgadas -el ValorFraccion de la macro-. En el taller los
+#  diametros se piden en fracciones, y equivocarse aqui NO SE VE: leer "1 1/4" como
+#  1 pulgada da un ancla creible con la medida equivocada.
+def pulgadas(texto):
+    if texto is None or texto.strip() == "":
+        return 0.0
+
+    limpio = (texto.replace('"', " ")
+                   .replace("-", " ")
+                   .replace("\u00a0", " ")
+                   .replace(",", "."))
+
+    total = 0.0
+    algo = False
+
+    for pieza in limpio.split():
+        t = pieza.strip()
+        if not t:
+            continue
+
+        v = 0.0
+        if "/" in t:
+            partes = t.split("/")
+            if len(partes) == 2:
+                try:
+                    a, b = float(partes[0]), float(partes[1])
+                    if abs(b) > 1e-9:
+                        v = a / b
+                except ValueError:
+                    v = 0.0
+        else:
+            try:
+                v = float(t)
+            except ValueError:
+                v = 0.0
+
+        if v > 0:
+            total += v
+            algo = True
+
+    return total if algo else 0.0
+
+
+def total_anclas(nx, ny, en_malla):
+    nx = max(0, nx)
+    ny = max(0, ny)
+    return nx * ny if en_malla else nx + ny
+
+
+print("\n" + "=" * 78)
+print("EL LECTOR DE FRACCIONES DE LA CELDA")
+print("=" * 78)
+
+check("una fraccion simple: 5/8", abs(pulgadas("5/8") - 0.625) < 1e-9)
+check("un entero: 1", abs(pulgadas("1") - 1.0) < 1e-9)
+check("un mixto con espacio: 1 1/4", abs(pulgadas("1 1/4") - 1.25) < 1e-9)
+check("un mixto con guion: 1-1/2", abs(pulgadas("1-1/2") - 1.5) < 1e-9)
+check("con la comilla de pulgada: 3/4\"", abs(pulgadas('3/4"') - 0.75) < 1e-9)
+check("con espacio duro, como al pegar de Excel",
+      abs(pulgadas("1\u00a01/8") - 1.125) < 1e-9)
+check("la coma vale como punto decimal", abs(pulgadas("0,625") - 0.625) < 1e-9)
+check("vacio da cero, que es «sin dato»", pulgadas("") == 0.0 and pulgadas(None) == 0.0)
+check("basura da cero y no revienta", pulgadas("como sea") == 0.0)
+check("denominador cero da cero y no divide por cero", pulgadas("1/0") == 0.0)
+
+print("\n" + "=" * 78)
+print("EL CONTEO DE ANCLAS DE LA TABLA")
+print("=" * 78)
+
+#  Los mismos numeros que da Construir: perimetral suma, malla multiplica. Es lo que se
+#  le pide al proveedor, asi que la tabla tiene que decir el que de verdad se dibuja.
+cuenta_perim = construir(0, 0, 40, 40, 4, 4, 5, 5, 1.9, 2.06, 1.9, 2.06, modo="PERIMETRAL")
+cuenta_malla = construir(0, 0, 40, 40, 4, 4, 5, 5, 1.9, 2.06, 1.9, 2.06, modo="MALLA")
+
+check("perimetral: la tabla dice lo mismo que dibuja Construir",
+      total_anclas(4, 4, False) == len(cuenta_perim),
+      f"{total_anclas(4, 4, False)} vs {len(cuenta_perim)}")
+check("malla: la tabla dice lo mismo que dibuja Construir",
+      total_anclas(4, 4, True) == len(cuenta_malla),
+      f"{total_anclas(4, 4, True)} vs {len(cuenta_malla)}")
+check("y no son el mismo numero: 8 contra 16",
+      len(cuenta_perim) == 8 and len(cuenta_malla) == 16,
+      f"{len(cuenta_perim)} y {len(cuenta_malla)}")
+check("un negativo se trata como cero", total_anclas(-3, 4, False) == 4)
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

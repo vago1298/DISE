@@ -996,6 +996,15 @@ public sealed class DatosProyecto
     /// </remarks>
     public ObservableCollection<ZapataCorridaRow> ZapatasCorridas { get; } = new();
 
+    /// <summary>Las placas base, con sus anclas, sus cartabones y su dado.</summary>
+    /// <remarks>
+    /// Una sola tabla para las diez familias de perfil, por lo mismo que la hoja de acero: la
+    /// macro <c>DibujarPlacaBase_BloqueXX</c> lee <b>las mismas celdas</b> sea la columna un IR o
+    /// un tubo. Lo único que cambia es la forma que se dibuja encima de la placa, y eso lo dice
+    /// la familia.
+    /// </remarks>
+    public ObservableCollection<PlacaBaseRow> PlacasBase { get; } = new();
+
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     public static DatosProyecto CrearEjemplo()
     {
@@ -1253,6 +1262,29 @@ public sealed class DatosProyecto
             VarMuro = "#4", SepMuroHoriz = "20", SepMuroVert = "20",
             IdContratrabe = "CT-1",
             Fc = "250"
+        });
+
+        // ===== PLACA BASE =====
+        // La del ejemplo de la macro: placa de 40x40 en 1", cuatro anclas de 3/4" repartidas en el
+        // perímetro, dado de concreto de 50x50 y una IR de 8" encima. Las separaciones al borde van
+        // en CERO, que es la manera de decir «calcúlalas»: la placa sobresale del patín y las anclas
+        // se acomodan en ese sobrante.
+        d.PlacasBase.Add(new PlacaBaseRow
+        {
+            Marca = "PB-1",
+            LargoCm = 40, AnchoCm = 40,
+            Espesor = "1", AceroPlaca = "A-36",
+            DadoXCm = 50, DadoYCm = 50,
+            // EL NOMBRE ES EL DEL CATALOGO, tal cual. La búsqueda es por nombre exacto, así que un
+            // «W8X31» escrito a la americana no se encuentra y la placa saldría sin su columna.
+            Familia = FamiliaPerfil.Ir, Seccion = "W - 8'' x 31.04 lb/ft",
+            NAnclasX = 4, NAnclasY = 0,
+            SepBordeXCm = 0, SepBordeYCm = 0,
+            DiamAnclaX = "3/4", DiamAnclaY = "3/4",
+            Electrodo = "E70",
+            Soldadura = "1/4",
+            ConCartabones = false,
+            Escala = 10
         });
 
         return d;
