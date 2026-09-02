@@ -333,6 +333,18 @@ public sealed partial class PlantaDrawer
     /// </remarks>
     private int _muroConAlgoAbajo;
 
+    /// <summary>Bases de muro de planta baja dibujadas en la cimentación.</summary>
+    private int _basesDeMuroDeArriba;
+
+    /// <summary>
+    /// Muros de planta baja que <b>no</b> llevan base porque tienen cadena de desplante.
+    /// </summary>
+    /// <remarks>
+    /// Son los de mampostería: apoyan en su cadena, y la cadena ya se dibuja por su cuenta. Se
+    /// cuentan para poder distinguir «no se dibujó» de «no se dibuja a propósito».
+    /// </remarks>
+    private int _muroDeArribaConCadena;
+
     /// <summary>Muros que salieron clasificados como de concreto.</summary>
     private int _muroConcretoVistos;
 
@@ -417,6 +429,8 @@ public sealed partial class PlantaDrawer
         _contornosMc = 0;
         _sinLeyendaMc = 0;
         _muroConAlgoAbajo = 0;
+        _basesDeMuroDeArriba = 0;
+        _muroDeArribaConCadena = 0;
         _muroConcretoVistos = 0;
         _muroMamposteriaVistos = 0;
         _muroSinMaterial = 0;
@@ -847,6 +861,58 @@ public sealed partial class PlantaDrawer
         }
 
         // ==============================================================================
+        //  LA BASE DE LOS MUROS DE LA PLANTA BAJA, EN LA CIMENTACIÓN
+        // ==============================================================================
+        //  Se pidió: «pon las líneas de la base del muro de la planta baja en la cimentación».
+        //
+        //  Y ESTO ES LO QUE FALTABA, no las reglas de antes. Un muro de planta baja pertenece al
+        //  story de planta baja, así que la planta de cimentación NO LO TIENE en p.Elementos: el
+        //  bucle de arriba nunca lo vio. Todo lo que corregí antes operaba sobre una lista que no
+        //  contenía esos muros, y por eso no se dibujaba nada por más vueltas que diera.
+        //
+        //  SOLO PARA CONCRETO, y sin preguntarle a ETABS de qué es el muro: se usa la definición
+        //  que se dio antes —«los muros de concreto NO LLEVAN CADENA DE DESPLANTE»—. Se mira si en
+        //  ESTA planta, la de cimentación, hay una cadena debajo del muro:
+        //
+        //    · si NO hay cadena  -> es de concreto, se cuela con la cimentación, y lleva su base
+        //    · si SÍ hay cadena  -> es de mampostería, apoya en su cadena, y no lleva base
+        //
+        //  Es el criterio del plano y no el de la nota, que en este modelo dice TABICON en todos.
+        //  Y la property note se sigue respetando: si dice CONCRETO, califica igual.
+        foreach (var el in p.MurosDeArriba)
+        {
+            var bajoCadena = MuroBajoCadena.Como(
+                el, p.Elementos, incluirTrabes, tolCadena, traslapeMin);
+
+            var esDeConcreto = EsMuroDeConcreto(el)
+                               || (!bajoCadena.Tapado
+                                   && _cfg.Bandera("MURO_SIN_CADENA_ES_CONCRETO", true));
+
+            if (!esDeConcreto)
+            {
+                _muroDeArribaConCadena++;
+                continue;
+            }
+
+            var capaConcreto = _cfg.Bandera("MURO_CONCRETO_CAPA_PROPIA", true)
+                ? _capas.CapaMuroConcreto
+                : CapaDe(el);
+
+            // El tramo se recorta a los paños de los castillos de ESTA planta, igual que un muro
+            // normal: si no, la base se metería dentro del castillo.
+            var tramoArriba = Pano.Recortar(el, apoyos, cruces);
+
+            // DOS LÍNEAS, que son su grosor. Es lo que hace Barra().
+            if (Barra(el, x0, y0, capaConcreto,
+                      Espesor(el, EspesorMuroPorOmision, "muro"), conEje: false, tramoArriba))
+            {
+                _basesDeMuroDeArriba++;
+
+                LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba);
+            }
+        }
+
+        // ==============================================================================
         //  DE VARIAS CADENAS EN LA MISMA LÍNEA, SOLO LA MÁS ALTA
         // ==============================================================================
         //  Se pidió: «si hay cadena intermedia abajo no lo muestres en planta; en planta solo
@@ -988,6 +1054,26 @@ public sealed partial class PlantaDrawer
             }
 
             Nota(detalle);
+        }
+
+        if (_basesDeMuroDeArriba > 0)
+        {
+            var leyendaB = _cfg.Texto("MURO_CONCRETO_LEYENDA", "MC").Trim();
+
+            Nota($"{_basesDeMuroDeArriba} muro(s) DE CONCRETO de la planta baja llevan la línea de " +
+                 $"su base dibujada aquí, con dos líneas —su grosor— en la capa " +
+                 $"'{_capas.CapaMuroConcreto}'" +
+                 (leyendaB.Length > 0 ? $" y con la leyenda '{leyendaB}' dentro" : string.Empty) +
+                 ". Se toman como de concreto los que NO llevan cadena de desplante debajo, que es " +
+                 "la señal del plano, sin depender de lo que diga su property note.");
+        }
+
+        if (_muroDeArribaConCadena > 0)
+        {
+            Nota($"Otros {_muroDeArribaConCadena} muro(s) de la planta baja NO llevan base porque " +
+                 "tienen cadena de desplante debajo: esos son de mampostería, apoyan en su cadena " +
+                 "y la cadena ya está dibujada. Si alguno es de concreto, quítale la cadena en el " +
+                 "modelo o pon CONCRETO en su property note.");
         }
 
         if (_tapados > 0)

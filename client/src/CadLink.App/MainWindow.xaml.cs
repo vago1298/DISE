@@ -2945,6 +2945,52 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Trae los muros del <b>nivel de arriba</b> a la planta de cimentación, para poder dibujar
+    /// la línea de su base.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Cuál es «el nivel de arriba».</b> El más bajo que NO es cimentación y que tiene muros:
+    /// la planta baja. Se busca por la elevación y no por el nombre, porque el nombre del story
+    /// cambia en cada modelo —«PB», «PLANTA BAJA», «NIVEL 1», «GROUND»— y esa lista no se acaba
+    /// nunca.
+    /// </para>
+    /// <para>
+    /// Van a <see cref="PlantaCad.MurosDeArriba"/> y no a <c>Elementos</c>: de ellos se quiere
+    /// solo la base, no que se dibujen como muros de esta planta.
+    /// </para>
+    /// </remarks>
+    private void AgregarMurosDeArriba(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    {
+        // Los muros que NO son de este nivel, agrupados por la cota de su base.
+        var candidatos = modelo.Elementos
+            .Where(e => e.Clase == ClaseElemento.Muro)
+            .Where(e => !string.Equals(e.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (candidatos.Count == 0)
+        {
+            return;
+        }
+
+        // La cota de arranque MÁS BAJA de todos ellos: es la planta baja. Con tolerancia, para
+        // recoger todo el nivel y no solo los muros que arranquen exactamente en el mínimo.
+        var zMin = candidatos.Min(e => Math.Min(e.Z1, e.Z2));
+
+        var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 30) / 100;
+
+        foreach (var el in candidatos)
+        {
+            if (Math.Abs(Math.Min(el.Z1, el.Z2) - zMin) > tol)
+            {
+                continue;
+            }
+
+            p.MurosDeArriba.Add(ComoElementoDePlanta(el, modelo));
+        }
+    }
+
     private void AgregarArranquesDeCimentacion(
         ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
     {
@@ -3170,6 +3216,23 @@ public partial class MainWindow : Window
         if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
         {
             AgregarArranquesDeCimentacion(modelo, p, nivel, yaEstan);
+        }
+
+        // ==============================================================================
+        //  LOS MUROS DE LA PLANTA BAJA, PARA DIBUJAR SU BASE EN LA CIMENTACIÓN
+        // ==============================================================================
+        //  Se pidió tal cual: «pon las líneas de la base del muro de la planta baja en la
+        //  cimentación». Y era lo que faltaba: un muro de planta baja pertenece al story de
+        //  planta baja, así que la planta de cimentación NO LO TIENE entre sus elementos. Por eso
+        //  no se le dibujaba nada — no estaba, y todo lo que corregí antes operaba sobre una
+        //  lista que no lo contenía.
+        //
+        //  Van a MurosDeArriba, una lista aparte, para que no pasen por lo que le toca a un muro
+        //  de esta planta —su cadena, su pier, su mampostería—. De ellos se quiere una sola cosa:
+        //  la línea de su base.
+        if (EsNivelDeCimentacion(nivel))
+        {
+            AgregarMurosDeArriba(modelo, p, nivel);
         }
 
         // ==============================================================================

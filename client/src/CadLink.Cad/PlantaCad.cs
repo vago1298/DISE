@@ -323,6 +323,28 @@ public sealed class PlantaCad
     /// </remarks>
     public List<(string Nombre, double Z)> Niveles { get; } = new();
 
+    /// <summary>
+    /// Los muros del nivel de <b>arriba</b>, para dibujar su base en la cimentación.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En el modelo, un muro de planta baja pertenece al story de planta baja, no al de
+    /// cimentación. Así que la planta de cimentación <b>no tiene esos muros entre sus
+    /// elementos</b>, y por eso no se les podía dibujar nada: no estaban ahí.
+    /// </para>
+    /// <para>
+    /// Van en una lista <b>aparte</b> y no mezclados con <see cref="Elementos"/> a propósito. Si se
+    /// añadieran ahí pasarían por todo lo que le toca a un muro de la planta —su cadena, su pier,
+    /// su línea de mampostería, el recorte a los paños— y de ellos se quiere una sola cosa: la
+    /// línea de su base.
+    /// </para>
+    /// <para>
+    /// Es el mismo camino que ya seguían los arranques de castillo, que también se traen del nivel
+    /// de arriba a la planta de cimentación.
+    /// </para>
+    /// </remarks>
+    public List<ElementoPlanta> MurosDeArriba { get; } = new();
+
     public List<(string Id, double Ordenada)> EjesX { get; } = new();
 
     /// <summary>Los <b>horizontales</b>: nombre y Y, de abajo arriba.</summary>

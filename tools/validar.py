@@ -6306,6 +6306,35 @@ def v18_planta_autocad() -> None:
           and "&& nadaAbajo" in dibp
           and "_muroConAlgoAbajo++;" in dibp)
 
+    # ------------------------------------------------------------------
+    # LA BASE DE LOS MUROS DE LA PLANTA BAJA, EN LA CIMENTACION
+    # ------------------------------------------------------------------
+    #  «Pon las lineas de la base del muro de la planta baja en la cimentacion».
+    #
+    #  Y ERA LO QUE FALTABA. Un muro de planta baja pertenece al story de planta baja, asi que la
+    #  planta de cimentacion NO LO TIENE en p.Elementos: el bucle de muros nunca lo vio. Todas las
+    #  correcciones anteriores operaban sobre una lista que no contenia esos muros, y por eso no se
+    #  dibujaba nada por mas vueltas que se diera.
+    #
+    #  Van en una lista APARTE, MurosDeArriba, y no mezclados con Elementos: si se anadieran ahi
+    #  pasarian por la cadena, el pier, la mamposteria y el recorte que le tocan a un muro de esta
+    #  planta, y de ellos se quiere una sola cosa, la linea de su base. Es el mismo camino que ya
+    #  seguian los arranques de castillo.
+    check("los muros de la planta baja llegan a la planta de cimentacion",
+          "public List<ElementoPlanta> MurosDeArriba" in plc
+          and "private void AgregarMurosDeArriba(" in codigo
+          and "if (EsNivelDeCimentacion(nivel))" in codigo
+          and "foreach (var el in p.MurosDeArriba)" in dibp)
+
+    #  Y SOLO LOS DE CONCRETO, sin preguntarle a ETABS de que es el muro: se usa la definicion que
+    #  dio el usuario -«los muros de concreto NO LLEVAN CADENA DE DESPLANTE»-. Si no hay cadena
+    #  debajo es de concreto y lleva su base; si la hay es de mamposteria y apoya en ella.
+    check("y solo se les dibuja la base a los de concreto, por no tener cadena",
+          "_basesDeMuroDeArriba++;" in dibp
+          and "_muroDeArribaConCadena++;" in dibp
+          and 'MURO_SIN_CADENA_ES_CONCRETO' in dibp
+          and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba);" in dibp)
+
     #  SOLO PARA MURO DE CONCRETO, pedido expresamente. Y es lo correcto: esta linea es el
     #  desplante de un muro que se cuela, y dibujarla en un muro de mamposteria diria que hay algo
     #  que colar donde no lo hay. Un muro de tabicon apoya en su cadena de desplante, y esa cadena
