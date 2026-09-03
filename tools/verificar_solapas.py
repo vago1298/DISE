@@ -1375,17 +1375,75 @@ check("y con dos respaldos: los margenes, y el papel entero avisando",
 check("un cajetin dinamico se estira por sus parametros",
       "private string EstirarBloqueDinamico(object br, double ancho, double alto)" in DRW
       and "(bool)b.IsDynamicBlock" in DRW
-      and "b.GetDynamicBlockProperties()" in DRW
-      and "ParametrosDeAncho" in DRW and "ParametrosDeAlto" in DRW)
+      and "b.GetDynamicBlockProperties()" in DRW)
 
-#  «largo» cuenta como ANCHO: en una hoja el lado largo es el horizontal, y es como lo dijo
-#  el usuario -«que se estreche en largo y ancho»-.
-check("y «largo» cuenta como ancho, como lo dijo el usuario",
-      '"ancho", "anchura", "base", "width", "largo"' in DRW)
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  QUE PARAMETRO MUEVE QUE LADO SE AVERIGUA PROBANDO, NO POR EL NOMBRE.
+#
+#  La version anterior buscaba «ancho», «alto», «largo», «width»... y no acerto: el cajetin
+#  del usuario los llama de otra manera, y AutoCAD los nombra «Distance1» y «Distance2»
+#  cuando nadie los renombra, que no dice nada de que lado mueven. No hay lista que cubra a
+#  todos los despachos, asi que se mide.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("que lado mueve cada parametro se mide, no se adivina por el nombre",
+      "private (double Dw, double Dh)? QueLadoMueve(object br, int indice)" in DRW
+      and "private const double TanteoDelParametro" in DRW
+      # Y ya no queda rastro de la lista de nombres, que es lo que fallaba.
+      and '"ancho", "anchura", "base", "width", "largo"' not in DRW
+      and "ParametrosDeAncho" not in DRW and "ParametrosDeAlto" not in DRW)
+
+#  EL TANTEO ES UNA PRUEBA, NO UN CAMBIO: se deshace siempre, tanto si se pudo medir como si
+#  no. Si no, el cajetin acabaria con todos sus parametros movidos 10 mm de mas.
+check("el tanteo se deshace siempre: es una prueba, no un cambio",
+      "PonerParametro(br, indice, v0.Value + TanteoDelParametro)" in DRW
+      and "PonerParametro(br, indice, v0.Value);" in DRW
+      and DRW.index("PonerParametro(br, indice, v0.Value);")
+          < DRW.index("if (m1 is null)"))
+
+#  LA GANANCIA -milimetros de caja por milimetro de parametro- resuelve el valor exacto de
+#  una: un estiramiento simetrico da 2 y uno de un solo lado da 1, y las dos salen bien sin
+#  saber cual era.
+check("de la prueba sale la GANANCIA, y con ella el valor exacto",
+      "(m1.Value.W - m0.Value.W) / TanteoDelParametro" in DRW
+      and "(m1.Value.H - m0.Value.H) / TanteoDelParametro" in DRW
+      and "var nuevo = actual.Value + (falta / p.Ganancia);" in DRW)
+
+#  SIN Update, GetBoundingBox devuelve la caja de ANTES: la medicion del tanteo saldria a
+#  cero y TODOS los parametros parecerian no mover nada.
+check("tras mover un parametro se llama a Update, o la caja seria la de antes",
+      "((dynamic)br).Update();" in DRW
+      and "GetBoundingBox devuelve la caja de ANTES" in DRW)
+
+#  EL DIAGNOSTICO: la lista de TODOS los parametros con su valor, y por que se descarta cada
+#  descartado. Es lo unico que dice como se llaman los parametros del cajetin del usuario.
+check("se informan todos los parametros y por que se descarta cada uno",
+      '"Parámetros del cajetín dinámico: " + string.Join(" · ", todos)' in DRW
+      and '(no es distancia)' in DRW
+      and '(solo lectura)' in DRW)
+
+#  Y EL RESULTADO MEDIDO, que es como se sabe si el estiramiento llego o no.
+check("y lo que quedo medido contra la hoja",
+      'queda {final.Value.W:0}x{final.Value.H:0} de {ancho:0}x{alto:0} mm' in DRW)
+
+#  UN dynamic COMO ARGUMENTO CONTAGIA LA LLAMADA. Numero devuelve double?, pero si se le pasa
+#  el pr.Value dynamic tal cual, el resultado tambien es dynamic: llega el double ya
+#  desempacado y el .Value de despues revienta en ejecucion, no al compilar.
+check("a Numero se le pasa un object, no un dynamic",
+      "double? valor = Numero((object?)pr.Value);" in DRW
+      and "var valor = Numero(pr.Value);" not in DRW)
 
 check("se estira ANTES de medir y centrar, y lo estirado se deja dicho",
       DRW.index("EstirarBloqueDinamico(br, ancho, alto)") < DRW.index("var caja = Caja(br);")
       and "Cajetín dinámico estirado a la hoja: " in DRW)
+
+#  DOS PASADAS: la primera resuelve con la ganancia medida, la segunda corrige lo que quede
+#  cuando los dos parametros se estorban entre ellos.
+check("dos pasadas, porque los dos parametros pueden estorbarse",
+      "for (var pasada = 0; pasada < 2; pasada++)" in DRW)
+
+#  Un parametro negativo no es un estiramiento: AutoCAD lo rechaza o lo vuelve del reves.
+check("un parametro no se deja en negativo",
+      "if (nuevo < 0)" in DRW)
 
 #  ---- Y SOLO SE REDUCE, NUNCA SE AGRANDA ----
 #  Agrandar es lo que sacaba el cajetin del area imprimible: se veia el marco pasado del

@@ -1835,45 +1835,189 @@ public sealed class SolapasDrawer
     // ======================================================================
     //
     //  ═════════════════════════════════════════════════════════════════════════════════════
-    //  UN CAJETÍN DINÁMICO SE ESTIRA, NO SE ESCALA.
+    //  QUÉ PARÁMETRO MUEVE QUÉ LADO SE AVERIGUA PROBANDO, NO ADIVINANDO EL NOMBRE.
     //
-    //  Escalarlo cambia el tamaño de sus textos con todo lo demás: el mismo cajetín en una
-    //  ARCH D y en una A3 saldría con la letra de dos tamaños distintos. Estirándolo por sus
-    //  parámetros, el recuadro se adapta y los rótulos se quedan como se dibujaron, que es
-    //  para lo que el usuario se tomó el trabajo de hacerlo dinámico.
+    //  El primer intento buscaba los parámetros por una lista de nombres —ancho, alto, largo,
+    //  width, height…— y no acertó: el cajetín del usuario los llama de otra manera, y no hay
+    //  lista que cubra a todos los despachos. AutoCAD además los nombra «Distance1» y
+    //  «Distance2» cuando nadie los renombra, que no dice nada de qué lado mueven.
+    //
+    //  Así que se mide: a cada parámetro que acepte una distancia se le suma un poco, se mira
+    //  CUÁNTO CAMBIÓ la caja del bloque, y se deshace. El que mueve el ancho es el del ancho.
+    //  De paso sale la GANANCIA —cuántos milímetros de caja por milímetro de parámetro— y con
+    //  ella el valor exacto se resuelve de una, sin tanteo: un estiramiento simétrico da 2 y
+    //  uno de un solo lado da 1, y las dos salen bien sin saber cuál era.
+    //
+    //  Escalar el bloque no sirve de sustituto: cambia el tamaño de sus TEXTOS con todo lo
+    //  demás, así que el mismo cajetín en una ARCH D y en una A3 saldría con dos tamaños de
+    //  letra. Por eso el usuario se tomó el trabajo de hacerlo dinámico.
     //  ═════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Nombres de parámetro que gobiernan el <b>ancho</b>, normalizados.</summary>
-    private static readonly string[] ParametrosDeAncho =
-    {
-        "ancho", "anchura", "base", "width", "largo", "longitud", "horizontal", "dx",
-    };
+    /// <summary>Cuánto se mueve un parámetro para ver qué lado cambia, en unidades de dibujo.</summary>
+    private const double TanteoDelParametro = 10.0;
 
-    /// <summary>Nombres de parámetro que gobiernan el <b>alto</b>, normalizados.</summary>
-    private static readonly string[] ParametrosDeAlto =
-    {
-        "alto", "altura", "height", "peralte", "vertical", "dy",
-    };
+    /// <summary>Por debajo de esto, mover el parámetro no cambió la caja.</summary>
+    private const double NadaSeMovio = 0.01;
 
     /// <summary>
     /// Le pone al bloque dinámico el ancho y el alto de la hoja.
     /// </summary>
     /// <returns>Lo que se cambió, para dejarlo dicho. Vacío si no es dinámico o no se pudo.</returns>
-    /// <remarks>
-    /// <para>
-    /// Los nombres de los parámetros se buscan por una lista, porque cada quien llama al suyo como
-    /// quiere. <b>«largo» cuenta como ancho</b>: en una hoja el lado largo es el horizontal, y es
-    /// como lo dijo el usuario —«que se estreche en largo y ancho»—.
-    /// </para>
-    /// <para>
-    /// Si no acierta, no pasa nada grave: el paso siguiente mide el bloque y lo centra igual. Y lo
-    /// que se cambió se deja dicho en las notas, que es lo que permite corregir la lista si el
-    /// parámetro se llama de otra manera.
-    /// </para>
-    /// </remarks>
     private string EstirarBloqueDinamico(object br, double ancho, double alto)
     {
-        var hechos = new List<string>();
+        var descripcion = new List<string>();
+        var candidatas = ParametrosDeDistancia(br, out var todos);
+
+        if (todos.Count == 0)
+        {
+            // No es dinámico, o no tiene parámetros. Se sigue por la vía de escalar y centrar.
+            return string.Empty;
+        }
+
+        Notas.Add("Parámetros del cajetín dinámico: " + string.Join(" · ", todos));
+
+        if (candidatas.Count == 0)
+        {
+            Notas.Add(
+                "Ninguno de esos parámetros acepta una distancia, así que el cajetín no se puede " +
+                "estirar. Se centra a su tamaño.");
+
+            return string.Empty;
+        }
+
+        // ---------- Qué lado mueve cada uno ----------
+        (int Indice, string Nombre, double Ganancia)? deAncho = null;
+        (int Indice, string Nombre, double Ganancia)? deAlto = null;
+
+        foreach (var (indice, nombre) in candidatas)
+        {
+            var efecto = QueLadoMueve(br, indice);
+
+            if (efecto is null)
+            {
+                continue;
+            }
+
+            var (dw, dh) = efecto.Value;
+
+            // El que más mueva el ancho es el del ancho, y con el alto igual. Se compara en valor
+            // absoluto porque un parámetro puede crecer hacia dentro.
+            if (Math.Abs(dw) >= Math.Abs(dh) && Math.Abs(dw) > NadaSeMovio)
+            {
+                if (deAncho is null || Math.Abs(dw) > Math.Abs(deAncho.Value.Ganancia))
+                {
+                    deAncho = (indice, nombre, dw);
+                }
+            }
+            else if (Math.Abs(dh) > NadaSeMovio)
+            {
+                if (deAlto is null || Math.Abs(dh) > Math.Abs(deAlto.Value.Ganancia))
+                {
+                    deAlto = (indice, nombre, dh);
+                }
+            }
+        }
+
+        if (deAncho is null && deAlto is null)
+        {
+            Notas.Add(
+                "Ninguno de los parámetros cambió el tamaño del cajetín al probarlo, así que no " +
+                "hay por dónde estirarlo. Se centra a su tamaño.");
+
+            return string.Empty;
+        }
+
+        // ---------- Y se le pone el valor que da la medida de la hoja ----------
+        // DOS PASADAS. La primera resuelve con la ganancia medida, que es exacta si el parámetro
+        // manda solo sobre ese lado. La segunda corrige lo que quede, que es lo que pasa cuando los
+        // dos parámetros se estorban entre ellos.
+        for (var pasada = 0; pasada < 2; pasada++)
+        {
+            var medida = Medida(br);
+
+            if (medida is null)
+            {
+                break;
+            }
+
+            if (deAncho is { } a && Math.Abs(medida.Value.W - ancho) > NadaSeMovio)
+            {
+                AjustarParametro(br, a, ancho - medida.Value.W, descripcion, pasada);
+            }
+
+            medida = Medida(br);
+
+            if (medida is null)
+            {
+                break;
+            }
+
+            if (deAlto is { } h && Math.Abs(medida.Value.H - alto) > NadaSeMovio)
+            {
+                AjustarParametro(br, h, alto - medida.Value.H, descripcion, pasada);
+            }
+        }
+
+        var final = Medida(br);
+
+        if (final is not null)
+        {
+            descripcion.Add($"queda {final.Value.W:0}x{final.Value.H:0} de {ancho:0}x{alto:0} mm");
+        }
+
+        return string.Join(", ", descripcion);
+    }
+
+    /// <summary>Le suma a un parámetro lo que hace falta para cubrir <paramref name="falta"/>.</summary>
+    private void AjustarParametro(
+        object br, (int Indice, string Nombre, double Ganancia) p, double falta,
+        List<string> descripcion, int pasada)
+    {
+        if (Math.Abs(p.Ganancia) < NadaSeMovio)
+        {
+            return;
+        }
+
+        var actual = LeerParametro(br, p.Indice);
+
+        if (actual is null)
+        {
+            return;
+        }
+
+        var nuevo = actual.Value + (falta / p.Ganancia);
+
+        // Un parámetro negativo no tiene sentido en un estiramiento y AutoCAD lo rechaza o lo
+        // vuelve del revés. Se deja en cero y que el centrado haga lo que pueda.
+        if (nuevo < 0)
+        {
+            nuevo = 0;
+        }
+
+        if (!PonerParametro(br, p.Indice, nuevo))
+        {
+            return;
+        }
+
+        if (pasada == 0)
+        {
+            descripcion.Add($"{p.Nombre}={nuevo:0.#}");
+        }
+    }
+
+    /// <summary>
+    /// Los parámetros dinámicos que aceptan una <b>distancia</b>, con su índice.
+    /// </summary>
+    /// <param name="todos">
+    /// TODOS los parámetros y por qué se descartan los que se descartan. Es el diagnóstico: si el
+    /// cajetín no se estira, esto dice si es que no hay parámetros, si son de otro tipo o si son de
+    /// solo lectura.
+    /// </param>
+    private List<(int Indice, string Nombre)> ParametrosDeDistancia(
+        object br, out List<string> todos)
+    {
+        var candidatas = new List<(int, string)>();
+        var lista = new List<string>();
 
         try
         {
@@ -1881,57 +2025,164 @@ public sealed class SolapasDrawer
             {
                 dynamic b = br;
 
-                hechos.Clear();
+                candidatas.Clear();
+                lista.Clear();
 
                 if (!(bool)b.IsDynamicBlock)
                 {
                     return;
                 }
 
+                var i = 0;
+
                 foreach (dynamic pr in b.GetDynamicBlockProperties())
                 {
                     string nombre = pr.PropertyName;
 
-                    var n = Solapas.Normaliza(nombre);
-
-                    double? valor = null;
-
-                    if (Array.IndexOf(ParametrosDeAncho, n) >= 0)
-                    {
-                        valor = ancho;
-                    }
-                    else if (Array.IndexOf(ParametrosDeAlto, n) >= 0)
-                    {
-                        valor = alto;
-                    }
-
-                    if (valor is null)
-                    {
-                        continue;
-                    }
+                    var soloLectura = false;
 
                     try
                     {
-                        // Un parámetro que no sea de distancia —una lista, una visibilidad— rechaza
-                        // el número. Se prueba y se sigue: no es un error, es que ese no era.
-                        pr.Value = valor.Value;
-
-                        hechos.Add($"{nombre}={valor.Value:0.#}");
+                        soloLectura = (bool)pr.ReadOnly;
                     }
                     catch (Exception)
                     {
-                        // Ese parámetro no acepta una distancia.
+                        // Esta versión no expone ReadOnly: se intenta y ya.
                     }
+
+                    // EL CAST A object NO ES ADORNO. Si se le pasa el dynamic tal cual, la llamada
+                    // se resuelve en tiempo de ejecución y `valor` queda dynamic: el double? se
+                    // devuelve ya desempacado y el `valor.Value` de abajo reventaría por no existir.
+                    double? valor = Numero((object?)pr.Value);
+
+                    if (valor is null)
+                    {
+                        lista.Add($"{nombre} (no es distancia)");
+                    }
+                    else if (soloLectura)
+                    {
+                        lista.Add($"{nombre} (solo lectura)");
+                    }
+                    else
+                    {
+                        lista.Add($"{nombre}={valor.Value:0.#}");
+                        candidatas.Add((i, nombre));
+                    }
+
+                    i++;
                 }
             });
         }
         catch (Exception)
         {
             // Un bloque no dinámico no tiene GetDynamicBlockProperties, y eso no es un fallo.
-            return string.Empty;
         }
 
-        return string.Join(", ", hechos);
+        todos = lista;
+
+        return candidatas;
+    }
+
+    /// <summary>
+    /// Cuánto cambia la caja del bloque al mover un parámetro. <c>null</c> si no se pudo medir.
+    /// </summary>
+    /// <remarks>
+    /// Se suma <see cref="TanteoDelParametro"/>, se mide, y <b>se deshace siempre</b>: esto es una
+    /// prueba, no un cambio. Devuelve el cambio POR UNIDAD de parámetro, que es la ganancia con la
+    /// que después se resuelve el valor exacto de una.
+    /// </remarks>
+    private (double Dw, double Dh)? QueLadoMueve(object br, int indice)
+    {
+        var v0 = LeerParametro(br, indice);
+        var m0 = Medida(br);
+
+        if (v0 is null || m0 is null)
+        {
+            return null;
+        }
+
+        if (!PonerParametro(br, indice, v0.Value + TanteoDelParametro))
+        {
+            return null;
+        }
+
+        var m1 = Medida(br);
+
+        PonerParametro(br, indice, v0.Value);
+
+        if (m1 is null)
+        {
+            return null;
+        }
+
+        return ((m1.Value.W - m0.Value.W) / TanteoDelParametro,
+                (m1.Value.H - m0.Value.H) / TanteoDelParametro);
+    }
+
+    private double? LeerParametro(object br, int indice)
+    {
+        try
+        {
+            return AcadConnection.Retry<double?>(() =>
+            {
+                var i = 0;
+
+                foreach (dynamic pr in ((dynamic)br).GetDynamicBlockProperties())
+                {
+                    if (i++ == indice)
+                    {
+                        return Numero((object?)pr.Value);
+                    }
+                }
+
+                return null;
+            });
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private bool PonerParametro(object br, int indice, double valor)
+    {
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                var i = 0;
+
+                foreach (dynamic pr in ((dynamic)br).GetDynamicBlockProperties())
+                {
+                    if (i++ != indice)
+                    {
+                        continue;
+                    }
+
+                    pr.Value = valor;
+
+                    // SIN Update, GetBoundingBox devuelve la caja de ANTES y la medición del tanteo
+                    // sale a cero: todos los parámetros parecerían no mover nada.
+                    ((dynamic)br).Update();
+
+                    return true;
+                }
+
+                return false;
+            });
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>El ancho y el alto de la caja del bloque.</summary>
+    private static (double W, double H)? Medida(object br)
+    {
+        var c = Caja(br);
+
+        return c is null ? null : (c.Value.X1 - c.Value.X0, c.Value.Y1 - c.Value.Y0);
     }
 
     private static (double X0, double Y0, double X1, double Y1)? Caja(object ent)
