@@ -2221,7 +2221,7 @@ check("y la hoja trae la longitud y el doblez",
 check("el alzado sale tambien en la vista previa, con la misma clase",
       "private static List<ElevacionPlacaBase.Vista> VistasDeElevacionPrevia(" in _PREV
       and "ElevacionPlacaBase.Construir(" in _PREV
-      and "DibujarElevacionPrevia(vistas, transformar);" in _PREV
+      and "DibujarAlzadoDeLaPlacaPrevia(vistas, transformar);" in _PREV
       and "ElevacionPlacaBase.SeparacionDeLaPlantaCm" in _PREV)
 
 check("y la previa encuadra por CAJA, no suponiendo el centro en la placa",

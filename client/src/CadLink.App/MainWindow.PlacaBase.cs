@@ -551,7 +551,7 @@ public partial class MainWindow
         }
 
         // ---------- El alzado, detrás de las anclas de la planta ----------
-        DibujarElevacionPrevia(vistas, transformar);
+        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar);
 
         // ---------- Las anclas: el agujero y el ancla, como en el detalle ----------
         if (anclas.Count > 0)
@@ -802,6 +802,12 @@ public partial class MainWindow
     /// El alzado en la previa: concreto, placa de canto, columna, cartabones y anclas.
     /// </summary>
     /// <remarks>
+    /// <b>El nombre no es «DibujarElevacionPrevia»</b>: ese ya lo usa la previa de las zapatas, en
+    /// otro archivo de esta misma clase parcial. Las firmas no chocan —esa lleva nueve parámetros y
+    /// esta dos— así que compila, pero dos métodos con el mismo nombre dibujando cosas distintas en
+    /// la misma clase es un error de lectura esperando a que alguien llame al que no era.
+    /// </remarks>
+    /// <remarks>
     /// <para>
     /// Con los <b>mismos colores</b> que la planta, para que se lea como el mismo detalle: el
     /// concreto beige, la placa azul, el acero gris y las anclas rojas.
@@ -812,7 +818,7 @@ public partial class MainWindow
     /// triángulo: es el mismo cuidado que en el dibujante.
     /// </para>
     /// </remarks>
-    private void DibujarElevacionPrevia(
+    private void DibujarAlzadoDeLaPlacaPrevia(
         List<ElevacionPlacaBase.Vista> vistas, Transform transformar)
     {
         if (vistas.Count == 0)

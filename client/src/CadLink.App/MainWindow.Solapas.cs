@@ -174,7 +174,7 @@ public partial class MainWindow
 
         var incompletas = solapas
             .Where(s => s.Falta.Count > 0)
-            .Select(s => $"  • {Etiqueta(s)}: falta {string.Join("; ", s.Falta)}")
+            .Select(s => $"  • {NombreDelPlano(s)}: falta {string.Join("; ", s.Falta)}")
             .ToList();
 
         if (incompletas.Count > 0)
@@ -268,8 +268,17 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Cómo se nombra un plano en los avisos: su clave, o su contenido.</summary>
-    private static string Etiqueta(SolapaCad s)
+    /// <summary>
+    /// Cómo se nombra un plano en los avisos: su clave, o su contenido.
+    /// </summary>
+    /// <remarks>
+    /// <b>No se llama <c>Etiqueta</c></b>, aunque sería el nombre natural: en esta misma clase
+    /// —repartida en ocho archivos— <c>Etiqueta</c> ya es un método que <b>dibuja</b> un rótulo en
+    /// un lienzo. Compilaría, porque el tipo del parámetro los distingue, pero dos métodos con el
+    /// mismo nombre y el sentido contrario en la misma clase se leen mal una vez y se copian mal la
+    /// siguiente.
+    /// </remarks>
+    private static string NombreDelPlano(SolapaCad s)
     {
         var clave = s.Clave.Trim();
 
