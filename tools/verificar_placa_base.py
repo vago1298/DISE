@@ -2040,7 +2040,7 @@ check("el cartabon del C# guarda PUNTOS y BULGES, no cuatro esquinas",
       and "public static Cartabon Recto(" in _CART
       # Y EsX se DEDUCE de la direccion: guardado aparte, eran dos hechos sobre la misma
       # pieza que podian discrepar.
-      and "public bool EsX => Direccion == Arriba || Direccion == Abajo;" in _CART
+      and "public bool EsX => Direccion == HaciaArriba || Direccion == HaciaAbajo;" in _CART
       and "public (double X, double Y) PuntaLibre => Direccion switch" in _CART)
 
 check("y existe BocaDePescado, con el giro de 90 grados por direccion",
@@ -2055,14 +2055,15 @@ check("el bulge sale del barrido, en el mismo orden que el port",
       and "Math.Tan(barrido / 4)" in _CART)
 
 #  LAS CUATRO DIRECCIONES, con su desplazamiento local. Es donde se esconderia un signo.
-for _dir, _expr in (("Derecha", "centro - cy"), ("Arriba", "cx - centro"),
-                    ("Izquierda", "cy - centro"), ("_", "centro - cx")):
+for _dir, _expr in (("HaciaDerecha", "centro - cy"), ("HaciaArriba", "cx - centro"),
+                    ("HaciaIzquierda", "cy - centro"), ("_", "centro - cx")):
     check(f"el desplazamiento local de {_dir} es «{_expr}»",
           f"{_dir} => {_expr}," in _CART)
 
 check("y los cuatro lados llaman a Uno con su direccion",
-      _CART.count("Uno(Arriba,") == 1 and _CART.count("Uno(Abajo,") == 1
-      and _CART.count("Uno(Derecha,") == 1 and _CART.count("Uno(Izquierda,") == 1)
+      _CART.count("Uno(HaciaArriba,") == 1 and _CART.count("Uno(HaciaAbajo,") == 1
+      and _CART.count("Uno(HaciaDerecha,") == 1
+      and _CART.count("Uno(HaciaIzquierda,") == 1)
 
 #  EL CONTORNO ENTERO, no solo sus puntos: la boca necesita la CIRCUNFERENCIA, y el
 #  rayo, los puntos. Pasando solo los puntos, una columna redonda nunca llevaria boca.
@@ -2115,10 +2116,10 @@ check("el leader del cartabon usa el REPARTO, no las entidades de AutoCAD",
       and "private (double X1, double Y1, double X2, double Y2)? Caja(" not in _DET)
 
 check("y senala el cartabon del lado del texto",
-      "ParaRotular(reparto, esX: true, CartabonesPlacaBase.Arriba)" in _DET
-      and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.Izquierda)" in _DET
-      and "public const int Arriba = 1;" in _CART
-      and "public const int Izquierda = 2;" in _CART)
+      "ParaRotular(reparto, esX: true, CartabonesPlacaBase.HaciaArriba)" in _DET
+      and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.HaciaIzquierda)" in _DET
+      and "public const int HaciaArriba = 1;" in _CART
+      and "public const int HaciaIzquierda = 2;" in _CART)
 
 check("el salto de renglon del leader se pone DESPUES de escapar",
       "private static string Renglones(params string[] partes)" in _DET
@@ -2126,6 +2127,57 @@ check("el salto de renglon del leader se pone DESPUES de escapar",
       and "yaEscapado ? s : Escapar(s)" in _DET
       # Y el renglon del filete ya no trae el \P pegado ni se escapa dos veces.
       and 'return "SOLDADURA DE " + espesor + "\\" DE ESP.";' in _DET)
+
+#  ---- EL ALZADO ----
+_ELEV = _fuente("client", "src", "CadLink.Cad", "ElevacionPlacaBase.cs")
+_DELEV = _fuente("client", "src", "CadLink.Cad", "PlacaBaseDrawer.Elevacion.cs")
+
+check("el alzado vive aparte del dibujante y sin COM, como el resto",
+      "public static class ElevacionPlacaBase" in _ELEV
+      and "_ms." not in _ELEV
+      and "AcadConnection" not in _ELEV
+      and "public static List<Vista> Construir(" in _ELEV)
+
+check("y sus tres constantes son las de la macro",
+      "public const double SeparacionDeLaPlantaCm = 60.0;" in _ELEV
+      and "public const double SeparacionEntreVistasCm = 20.0;" in _ELEV
+      and "public const double CorteDelCartabonCm = 3.0;" in _ELEV)
+
+check("los respaldos de la macro estan, uno por uno",
+      "espesorPlaca > 0 ? espesorPlaca : 1.0 * escala" in _ELEV
+      and "d.AnchoPerfil > 0 ? d.AnchoPerfil : 0.4 * d.AnchoPlaca" in _ELEV
+      and "anchoPerfil > 0.9 * d.AnchoPlaca" in _ELEV
+      and "d.AnchoDado > 0 ? d.AnchoDado : d.AnchoPlaca + (10.0 * escala)" in _ELEV
+      and "anchoConcreto < d.AnchoPlaca" in _ELEV
+      and "Math.Max(d.LongAnclaje + (5.0 * escala), 20.0 * escala)" in _ELEV
+      and "Math.Max(d.AltoCartabon + (10.0 * escala), 20.0 * escala)" in _ELEV
+      and "desplazamiento = 0.35 * anchoPlaca" in _ELEV)
+
+check("una vista si la placa es cuadrada, dos si no",
+      'Math.Abs(x.AnchoPlaca - y.AnchoPlaca) <= 0.01 * escala' in _ELEV
+      and 'UnaVista("X-Y"' in _ELEV
+      and 'UnaVista("X",' in _ELEV
+      and 'UnaVista("Y",' in _ELEV)
+
+#  Y VA DENTRO DEL BLOQUE, como en la macro: se dibuja antes de Bloquear y en capas de
+#  geometria. Dibujado despues, la planta se moveria con su bloque y el alzado se
+#  quedaria atras.
+check("el alzado se dibuja ANTES de Bloquear, para irse con la planta",
+      "Elevacion(p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY);" in _DRW
+      and _DRW.index("Elevacion(p, xRig,") < _DRW.index("UltimoBloque = Bloquear("))
+
+check("y las alturas y los ahogos llegan desde la hoja",
+      "public double AltoCartabonXCm { get; set; }" in _CAD
+      and "public double LongAnclajeXCm { get; set; }" in _CAD
+      and "public double EspesorCm { get; set; }" in _CAD
+      and "AltoCartabonXCm = AltoCartabonXCm," in _FILA
+      and "LongAnclajeXCm = LongAnclajeXCm," in _FILA
+      and "EspesorCm = Pulgadas(Espesor) * 2.54," in _FILA)
+
+check("los datos del alzado van CRUZADOS igual que en la planta",
+      "esX ? p.LongCartabonXCm : p.LongCartabonYCm" in _DELEV
+      and "esX ? p.AltoCartabonXCm : p.AltoCartabonYCm" in _DELEV
+      and "esX ? p.LongAnclajeXCm : p.LongAnclajeYCm" in _DELEV)
 
 check("la previa tambien pinta la franja del cartabon, en morado",
       "private void DibujarSoldaduraDeCartabonesPrevia(" in _PREV
@@ -2311,6 +2363,445 @@ check("y las llaves del texto del usuario siguen escapandose",
 
 check("un renglon vacio no deja un salto de mas",
       renglones('CARTABON X DE 1/2" DE ESP.', "") == 'CARTABON X DE 1/2" DE ESP.')
+
+# ==========================================================================
+#  EL ALZADO: port de ElevacionPlacaBase
+# ==========================================================================
+#  La planta no dice TRES cosas que si se capturan en la hoja: cuanto se ahoga el
+#  ancla -E12 y E13-, cuanto sube el cartabon -F18 y F19- y el espesor de la placa.
+#  En planta las tres se ven de canto, o sea que no se ven. El alzado existe para eso.
+#
+#  Y trae OCHO respaldos del tipo «si esa celda viene en cero, dibuja algo razonable».
+#  Son la parte que se equivoca en silencio: un alzado dibujado con un respaldo se ve
+#  igual de terminado que uno dibujado con el dato.
+
+SEP_DE_LA_PLANTA_CM = 60.0
+SEP_ENTRE_VISTAS_CM = 20.0
+CORTE_CARTABON_CM = 3.0
+
+
+def caja(x1, y1, x2, y2):
+    return [x1, y1, x2, y1, x2, y2, x1, y2]
+
+
+def lleva_cartabon(con_cartabones, d):
+    return (con_cartabones and d["cuantos_cart"] > 0
+            and d["long_cart"] > 0 and d["alto_cart"] > 0)
+
+
+def ancho_ocupado(d, con_cartabon, escala):
+    r = d["ancho_placa"]
+    if d["ancho_dado"] > r:
+        r = d["ancho_dado"]
+    if con_cartabon and d["ancho_perfil"] + 2.0 * d["long_cart"] > r:
+        r = d["ancho_perfil"] + 2.0 * d["long_cart"]
+    return 20.0 * escala if r <= 0 else r
+
+
+def cartabon_de_canto(x_pano, y_base, largo, alto, sentido, escala):
+    if largo <= 0 or alto <= 0:
+        return None
+
+    corte = CORTE_CARTABON_CM * escala
+    if corte > 0.45 * largo:
+        corte = 0.45 * largo
+    if corte > 0.45 * alto:
+        corte = 0.45 * alto
+
+    x_fuera = x_pano + sentido * largo
+
+    return [x_pano, y_base,
+            x_fuera, y_base,
+            x_fuera, y_base + alto - corte,
+            x_fuera - sentido * corte, y_base + alto,
+            x_pano, y_base + alto]
+
+
+def un_ancla(x, y_placa, y_arriba, largo, diametro, escala):
+    d = diametro if diametro > 0 else 1.0 * escala
+    ancho_tuerca = max(2.5 * d, 1.5 * escala)
+    alto_tuerca = max(0.75 * d, 0.5 * escala)
+    y_fondo = y_placa - largo
+
+    return {
+        "x": x,
+        "vastago": [x, y_arriba + alto_tuerca, x, y_fondo],
+        "tuerca": caja(x - ancho_tuerca / 2.0, y_arriba,
+                       x + ancho_tuerca / 2.0, y_arriba + alto_tuerca),
+        "arandela": [x - ancho_tuerca, y_arriba, x + ancho_tuerca, y_arriba],
+        "remate": [x - ancho_tuerca / 2.0, y_fondo, x + ancho_tuerca / 2.0, y_fondo],
+    }
+
+
+def anclas_de_canto(x_centro, y_placa, y_arriba, ancho_placa, sep_borde,
+                    largo, diametro, cuantas, escala):
+    if cuantas <= 0 or largo <= 0:
+        return []
+
+    desp = ancho_placa / 2.0 - sep_borde
+    if desp <= 0:
+        desp = 0.35 * ancho_placa
+
+    if cuantas == 1:
+        return [un_ancla(x_centro, y_placa, y_arriba, largo, diametro, escala)]
+
+    return [un_ancla(x_centro - desp, y_placa, y_arriba, largo, diametro, escala),
+            un_ancla(x_centro + desp, y_placa, y_arriba, largo, diametro, escala)]
+
+
+def una_vista(idv, x_centro, ancho, y_placa, escala, alto_texto,
+              esp_placa, d, con_cartabon):
+    if d["ancho_placa"] <= 0:
+        return None
+
+    esp = esp_placa if esp_placa > 0 else 1.0 * escala
+
+    ancho_perfil = d["ancho_perfil"] if d["ancho_perfil"] > 0 else 0.4 * d["ancho_placa"]
+    if ancho_perfil > 0.9 * d["ancho_placa"]:
+        ancho_perfil = 0.9 * d["ancho_placa"]
+
+    ancho_concreto = d["ancho_dado"] if d["ancho_dado"] > 0 else d["ancho_placa"] + 10.0 * escala
+    if ancho_concreto < d["ancho_placa"]:
+        ancho_concreto = d["ancho_placa"]
+
+    profundidad = max(d["long_anclaje"] + 5.0 * escala, 20.0 * escala)
+    altura_columna = max(d["alto_cart"] + 10.0 * escala, 20.0 * escala)
+    y_arriba = y_placa + esp
+
+    cartabones = []
+    if con_cartabon:
+        for sentido in (-1, 1):
+            c = cartabon_de_canto(x_centro + sentido * ancho_perfil / 2.0, y_arriba,
+                                  d["long_cart"], d["alto_cart"], sentido, escala)
+            if c is not None:
+                cartabones.append(c)
+
+    return {
+        "id": idv,
+        "x_centro": x_centro,
+        "ancho": ancho,
+        "concreto": caja(x_centro - ancho_concreto / 2.0, y_placa - profundidad,
+                         x_centro + ancho_concreto / 2.0, y_placa),
+        "placa": caja(x_centro - d["ancho_placa"] / 2.0, y_placa,
+                      x_centro + d["ancho_placa"] / 2.0, y_arriba),
+        "columna": caja(x_centro - ancho_perfil / 2.0, y_arriba,
+                        x_centro + ancho_perfil / 2.0, y_arriba + altura_columna),
+        "cartabones": cartabones,
+        "anclas": anclas_de_canto(x_centro, y_placa, y_arriba, d["ancho_placa"],
+                                  d["sep_borde"], d["long_anclaje"], d["diam_ancla"],
+                                  d["cuantas_anclas"], escala),
+        "rotulo": (x_centro, y_placa - profundidad - 2.0 * alto_texto),
+    }
+
+
+def construir_elevacion(x_inicio, y_placa, escala, alto_texto,
+                        esp_placa, con_cartabones, dx, dy):
+    if escala <= 0:
+        return []
+
+    cart_x = lleva_cartabon(con_cartabones, dx)
+    cart_y = lleva_cartabon(con_cartabones, dy)
+
+    ocupa_x = ancho_ocupado(dx, cart_x, escala)
+    ocupa_y = ancho_ocupado(dy, cart_y, escala)
+
+    cuadrada = abs(dx["ancho_placa"] - dy["ancho_placa"]) <= 0.01 * escala
+
+    if cuadrada:
+        usar_x = cart_x or dx["long_anclaje"] > 0 or dx["cuantas_anclas"] > 0
+        if usar_x:
+            v = una_vista("X-Y", x_inicio + ocupa_x / 2.0, ocupa_x, y_placa, escala,
+                          alto_texto, esp_placa, dx, cart_x)
+        else:
+            v = una_vista("X-Y", x_inicio + ocupa_y / 2.0, ocupa_y, y_placa, escala,
+                          alto_texto, esp_placa, dy, cart_y)
+        return [v] if v is not None else []
+
+    salida = []
+    vx = una_vista("X", x_inicio + ocupa_x / 2.0, ocupa_x, y_placa, escala,
+                   alto_texto, esp_placa, dx, cart_x)
+    if vx is not None:
+        salida.append(vx)
+
+    vy = una_vista("Y", x_inicio + ocupa_x + SEP_ENTRE_VISTAS_CM * escala + ocupa_y / 2.0,
+                   ocupa_y, y_placa, escala, alto_texto, esp_placa, dy, cart_y)
+    if vy is not None:
+        salida.append(vy)
+
+    return salida
+
+
+def dir_elev(ancho_placa, ancho_dado=0.0, ancho_perfil=0.0, long_cart=0.0, alto_cart=0.0,
+             cuantos_cart=0, long_anclaje=0.0, sep_borde=0.0, diam_ancla=0.0,
+             cuantas_anclas=0):
+    return {"ancho_placa": ancho_placa, "ancho_dado": ancho_dado,
+            "ancho_perfil": ancho_perfil, "long_cart": long_cart, "alto_cart": alto_cart,
+            "cuantos_cart": cuantos_cart, "long_anclaje": long_anclaje,
+            "sep_borde": sep_borde, "diam_ancla": diam_ancla,
+            "cuantas_anclas": cuantas_anclas}
+
+
+def bbox(pts):
+    return (min(pts[0::2]), min(pts[1::2]), max(pts[0::2]), max(pts[1::2]))
+
+
+print("\n" + "=" * 78)
+print("EL ALZADO: LO QUE LA PLANTA NO PUEDE ENSENAR")
+print("=" * 78)
+
+#  Placa 40 x 50 -rectangular-, dado 50 x 60, columna de 20 x 20, cartabones de 15 de
+#  largo y 20 de alto, anclas ahogadas 30 cm. Todo en cm, escala 1.
+X = dir_elev(40, 50, 20, 15, 20, 2, 30, 5, 1.9, 4)
+Y = dir_elev(50, 60, 20, 12, 25, 2, 35, 6, 1.9, 2)
+
+vistas = construir_elevacion(100.0, 0.0, 1.0, 1.6, 2.54, True, X, Y)
+
+check("una placa rectangular saca DOS vistas, X y Y",
+      len(vistas) == 2 and [v["id"] for v in vistas] == ["X", "Y"])
+
+#  Y NO SE ENCIMAN. Con las dos vistas superpuestas el plano es ilegible, y es lo que
+#  pasa si el ancho ocupado se mide con la placa en lugar de con lo que sobresalga.
+d_x, d_y = vistas[0], vistas[1]
+borde_der_x = max(bbox(d_x["concreto"])[2], bbox(d_x["columna"])[2])
+borde_izq_y = min(bbox(d_y["concreto"])[0], bbox(d_y["columna"])[0])
+
+check("y la segunda no se encima con la primera",
+      borde_izq_y >= borde_der_x + SEP_ENTRE_VISTAS_CM - 1e-9,
+      f"X acaba en {borde_der_x:.2f} y Y empieza en {borde_izq_y:.2f}")
+
+#  El ancho ocupado tiene que contar los CARTABONES, no solo la placa: en la vista X la
+#  columna con sus dos cartabones mide 20 + 2*15 = 50, mas que el dado de 50... empatan,
+#  asi que se prueba con un cartabon mas largo.
+largos = dir_elev(40, 50, 20, 30, 20, 2, 30, 5, 1.9, 4)
+check("el ancho ocupado cuenta la columna con sus DOS cartabones",
+      abs(ancho_ocupado(largos, True, 1.0) - 80.0) < 1e-9
+      and abs(ancho_ocupado(largos, False, 1.0) - 50.0) < 1e-9,
+      f"{ancho_ocupado(largos, True, 1.0)} con cartabones, "
+      f"{ancho_ocupado(largos, False, 1.0)} sin ellos")
+
+#  ---- LAS PIEZAS SE APOYAN UNA EN OTRA ----
+#  Es lo que hace que el alzado se lea: si la placa flota sobre el concreto o la columna
+#  arranca dentro de la placa, el dibujo se ve terminado y esta mal.
+cx1, cy1, cx2, cy2 = bbox(d_x["concreto"])
+px1, py1, px2, py2 = bbox(d_x["placa"])
+kx1, ky1, kx2, ky2 = bbox(d_x["columna"])
+
+check("la placa se apoya EXACTAMENTE en la cara del concreto",
+      abs(py1 - cy2) < 1e-9, f"placa en {py1}, concreto acaba en {cy2}")
+
+check("y la columna arranca EXACTAMENTE en la cara de arriba de la placa",
+      abs(ky1 - py2) < 1e-9 and abs(py2 - py1 - 2.54) < 1e-9,
+      f"columna en {ky1}, placa acaba en {py2}, espesor {py2 - py1:.2f}")
+
+check("el concreto NUNCA es mas angosto que la placa",
+      cx2 - cx1 >= px2 - px1 - 1e-9,
+      f"concreto {cx2 - cx1:.1f}, placa {px2 - px1:.1f}")
+
+#  Y si el dado es mas chico que la placa, el concreto se estira a la placa. Es de la
+#  macro, y esconde una condicion real: una placa que vuela sobre el dado.
+angosto = dir_elev(40, 25, 20, 0, 0, 0, 30, 5, 1.9, 4)
+v_ang = construir_elevacion(0, 0, 1.0, 1.6, 2.54, False, angosto,
+                            dir_elev(50, 25, 20))[0]
+ca = bbox(v_ang["concreto"])
+
+check("con un dado mas chico que la placa, el concreto se estira a la placa",
+      abs((ca[2] - ca[0]) - 40.0) < 1e-9,
+      f"dado de 25 dibujado de {ca[2] - ca[0]:.0f}: la placa NO se ve volando")
+
+#  ---- EL ANCLA QUEDA DENTRO DEL CONCRETO ----
+#  El concreto baja 5 cm mas que el ancla, y eso es lo que evita que la punta asome por
+#  debajo del dado. Es la unica relacion del alzado que no es de dibujo, es de obra.
+check("la profundidad del concreto es el ahogo mas 5 cm, y al menos 20",
+      abs((cy2 - cy1) - 35.0) < 1e-9,
+      f"ahogo 30 -> concreto de {cy2 - cy1:.0f} cm")
+
+fondos = [bbox(a["remate"])[1] for a in d_x["anclas"]]
+check("y la punta de TODAS las anclas queda dentro del concreto",
+      all(f > cy1 + 1e-9 for f in fondos),
+      f"anclas a {min(fondos):.1f}, fondo del concreto en {cy1:.1f}")
+
+check("con el ahogo en cero, el concreto baja el minimo de 20 cm",
+      abs(bbox(construir_elevacion(0, 0, 1.0, 1.6, 2.54, False,
+                                   dir_elev(40, 0, 20), dir_elev(50, 0, 20))[0]["concreto"])[1]
+          + 20.0) < 1e-9)
+
+#  ---- LAS ANCLAS ----
+check("dos o mas anclas dan DOS en el alzado, a los extremos",
+      len(d_x["anclas"]) == 2
+      and abs(d_x["anclas"][0]["x"] - (d_x["x_centro"] - 15.0)) < 1e-9
+      and abs(d_x["anclas"][1]["x"] - (d_x["x_centro"] + 15.0)) < 1e-9,
+      f"{len(d_x['anclas'])} anclas")
+
+#  Y CAEN DONDE LAS PONE LA PLANTA: el desplazamiento es semiancho menos separacion al
+#  borde, que es la misma cuenta de la planta. Sin esto, las dos vistas del mismo detalle
+#  ensenarian las anclas en sitios distintos.
+check("y en la misma abscisa que en la planta: semiancho menos separacion al borde",
+      abs((d_x["anclas"][1]["x"] - d_x["x_centro"]) - (40.0 / 2 - 5.0)) < 1e-9)
+
+una = construir_elevacion(0, 0, 1.0, 1.6, 2.54, False,
+                          dir_elev(40, 50, 20, long_anclaje=30, sep_borde=5,
+                                   diam_ancla=1.9, cuantas_anclas=1),
+                          dir_elev(50, 60, 20))[0]
+
+check("una sola ancla va al centro",
+      len(una["anclas"]) == 1
+      and abs(una["anclas"][0]["x"] - una["x_centro"]) < 1e-9)
+
+check("sin ahogo no hay anclas, aunque la planta las tenga",
+      len(construir_elevacion(0, 0, 1.0, 1.6, 2.54, False,
+                              dir_elev(40, 50, 20, sep_borde=5, diam_ancla=1.9,
+                                       cuantas_anclas=4),
+                              dir_elev(50, 60, 20))[0]["anclas"]) == 0)
+
+#  La tuerca y la arandela se apoyan en la placa, no flotan ni la atraviesan.
+a0 = d_x["anclas"][0]
+check("la tuerca se apoya en la cara de arriba de la placa",
+      abs(bbox(a0["tuerca"])[1] - py2) < 1e-9
+      and abs(a0["arandela"][1] - py2) < 1e-9
+      and abs(a0["vastago"][1] - bbox(a0["tuerca"])[3]) < 1e-9)
+
+#  ---- EL CHAFLAN DEL CARTABON ----
+check("los cartabones arrancan del pano de la columna y suben su altura",
+      len(d_x["cartabones"]) == 2
+      and all(abs(bbox(c)[3] - (py2 + 20.0)) < 1e-9 for c in d_x["cartabones"])
+      and abs(bbox(d_x["cartabones"][0])[2] - (d_x["x_centro"] - 10.0)) < 1e-9
+      and abs(bbox(d_x["cartabones"][1])[0] - (d_x["x_centro"] + 10.0)) < 1e-9)
+
+#  EL CHAFLAN A 45 GRADOS. Se recorta lo MISMO en las dos direcciones, y por eso el
+#  limite es un solo numero aplicado a las dos: limitando cada una por su cuenta la
+#  arista dejaria de estar a 45 grados sin que nada avisara.
+def catetos_del_chaflan(c):
+    """El chaflan va del vertice 2 al 3 de la polilinea de cinco puntos."""
+    return (abs(c[6] - c[4]), abs(c[7] - c[5]))
+
+
+for i, c in enumerate(d_x["cartabones"]):
+    dxc, dyc = catetos_del_chaflan(c)
+    check(f"el chaflan del cartabon {i + 1} esta a 45 grados",
+          abs(dxc - dyc) < 1e-9 and abs(dxc - CORTE_CARTABON_CM) < 1e-9,
+          f"catetos {dxc:.3f} y {dyc:.3f}")
+
+#  Y en un cartabon chico el chaflan se recorta, PERO SIGUE CUADRADO.
+chico = cartabon_de_canto(0, 0, 4.0, 100.0, 1, 1.0)
+dxc, dyc = catetos_del_chaflan(chico)
+
+check("en un cartabon corto el chaflan se recorta y sigue a 45 grados",
+      abs(dxc - dyc) < 1e-9 and abs(dxc - 1.8) < 1e-9,
+      f"catetos {dxc:.2f} y {dyc:.2f}: el 45 % de 4 cm")
+
+check("el cartabon de canto tiene CINCO vertices: el chaflan agrega uno",
+      all(len(c) == 10 for c in d_x["cartabones"]))
+
+check("sin altura no hay cartabon en el alzado, aunque haya cantidad y longitud",
+      cartabon_de_canto(0, 0, 15.0, 0, 1, 1.0) is None
+      and not lleva_cartabon(True, dir_elev(40, 0, 20, long_cart=15, alto_cart=0,
+                                            cuantos_cart=4)))
+
+check("y con la casilla de cartabones apagada tampoco",
+      len(construir_elevacion(0, 0, 1.0, 1.6, 2.54, False, X, Y)[0]["cartabones"]) == 0)
+
+#  ---- LA PLACA CUADRADA LLEVA UNA SOLA VISTA ----
+cuad_x = dir_elev(40, 50, 20, 15, 20, 2, 30, 5, 1.9, 4)
+cuad_y = dir_elev(40, 50, 20, 15, 20, 2, 30, 5, 1.9, 4)
+v_cuad = construir_elevacion(100.0, 0.0, 1.0, 1.6, 2.54, True, cuad_x, cuad_y)
+
+check("una placa cuadrada lleva UNA sola vista, rotulada X-Y",
+      len(v_cuad) == 1 and v_cuad[0]["id"] == "X-Y")
+
+#  Y si X no tiene nada que ensenar, la vista unica toma los datos de Y.
+v_solo_y = construir_elevacion(0, 0, 1.0, 1.6, 2.54, True,
+                               dir_elev(40, 50, 20),
+                               dir_elev(40, 50, 20, 15, 20, 2, 30, 5, 1.9, 4))
+
+check("y si X no tiene nada que ensenar, la vista unica toma los datos de Y",
+      len(v_solo_y) == 1 and v_solo_y[0]["id"] == "X-Y"
+      and len(v_solo_y[0]["cartabones"]) == 2
+      and len(v_solo_y[0]["anclas"]) == 2)
+
+#  ---- EL ROTULO ----
+check("el rotulo queda por DEBAJO del concreto, no encima del dibujo",
+      d_x["rotulo"][1] < cy1 - 1e-9,
+      f"rotulo en {d_x['rotulo'][1]:.2f}, concreto acaba en {cy1:.2f}")
+
+check("y centrado en la vista",
+      abs(d_x["rotulo"][0] - d_x["x_centro"]) < 1e-9)
+
+#  ---- EL ALZADO ARRANCA 60 CM DE LA PLANTA ----
+#  Y de lo que OCUPA la planta -con su dado-, no de la placa: con la placa, un dado
+#  grande se le meteria encima.
+con_dado = construir_elevacion(SEP_DE_LA_PLANTA_CM, 0, 1.0, 1.6, 2.54, False,
+                               dir_elev(40, 50, 20), dir_elev(60, 70, 20))
+
+check("el alzado arranca a 60 cm del canto derecho de la planta",
+      abs(bbox(con_dado[0]["concreto"])[0] - SEP_DE_LA_PLANTA_CM) < 1e-9,
+      f"el concreto empieza en {bbox(con_dado[0]['concreto'])[0]:.2f}")
+
+#  HALLAZGO EN LA MACRO. AnchoOcupadoElevacion mira el DADO capturado, pero
+#  DibujarElevacionDireccion, cuando no hay dado, dibuja el concreto como «la placa mas
+#  10 cm». O sea que el ancho reservado se calcula con un numero y se dibuja con otro
+#  mayor, y la vista sobresale 5 cm por cada lado del hueco que se le aparto.
+#
+#  No rompe nada -el hueco entre vistas es de 20 cm, asi que en el peor caso quedan 10-
+#  pero se deja fijado: es un cabo suelto real y esta prueba lo convierte en una linea
+#  de codigo el dia que se quiera cerrar.
+sin_dado = construir_elevacion(SEP_DE_LA_PLANTA_CM, 0, 1.0, 1.6, 2.54, False,
+                               dir_elev(40, 0, 20), dir_elev(60, 0, 20))
+
+sobresale = SEP_DE_LA_PLANTA_CM - bbox(sin_dado[0]["concreto"])[0]
+
+check("HALLAZGO: sin dado, la vista sobresale 5 cm del ancho que se le aparto",
+      abs(sobresale - 5.0) < 1e-9,
+      f"el concreto se dibuja {sobresale:.0f} cm antes de donde empieza la vista, "
+      "porque el ancho ocupado se mide con el dado y el dibujo usa placa + 10 cm")
+
+#  Y aun asi las dos vistas no se tocan: es lo que hace que el cabo suelto no se vea.
+hueco = bbox(sin_dado[1]["concreto"])[0] - bbox(sin_dado[0]["concreto"])[2]
+
+check("y aun asi las dos vistas no se tocan",
+      hueco > 0,
+      f"quedan {hueco:.0f} cm entre las dos, de los 20 nominales")
+
+#  ---- RESPALDOS: LO QUE SE DIBUJA CUANDO LA CELDA VIENE EN CERO ----
+#  Cada uno tapa un hueco y ninguno avisa. Se comprueban para que al menos esten donde
+#  la macro los puso.
+sin_nada = construir_elevacion(0, 0, 1.0, 1.6, 0, False,
+                               dir_elev(40, 0, 0), dir_elev(50, 0, 0))[0]
+
+check("sin espesor de placa se dibuja 1 cm",
+      abs((bbox(sin_nada["placa"])[3] - bbox(sin_nada["placa"])[1]) - 1.0) < 1e-9)
+
+check("sin medida de columna se dibuja el 40 % de la placa",
+      abs((bbox(sin_nada["columna"])[2] - bbox(sin_nada["columna"])[0]) - 16.0) < 1e-9)
+
+check("sin dado, el concreto es la placa mas 10 cm",
+      abs((bbox(sin_nada["concreto"])[2] - bbox(sin_nada["concreto"])[0]) - 50.0) < 1e-9)
+
+ancha = construir_elevacion(0, 0, 1.0, 1.6, 2.54, False,
+                            dir_elev(40, 0, 60), dir_elev(50, 0, 60))[0]
+
+check("una columna mas ancha que la placa se recorta al 90 %",
+      abs((bbox(ancha["columna"])[2] - bbox(ancha["columna"])[0]) - 36.0) < 1e-9,
+      f"columna de 60 en una placa de 40 dibujada de "
+      f"{bbox(ancha['columna'])[2] - bbox(ancha['columna'])[0]:.0f}")
+
+check("y la columna sube 10 cm mas que el cartabon, con un minimo de 20",
+      abs((bbox(d_x["columna"])[3] - bbox(d_x["columna"])[1]) - 30.0) < 1e-9
+      and abs((bbox(sin_nada["columna"])[3] - bbox(sin_nada["columna"])[1]) - 20.0) < 1e-9)
+
+#  ---- PRUEBA NEGATIVA: EL AGUJERO DE LA VISTA UNICA ----
+#  Una placa CUADRADA con datos distintos en X y en Y solo documenta una direccion. Es
+#  de la macro, y es un hueco real de informacion, no un defecto del port. Se fija aqui
+#  para que quede escrito y no se descubra en obra.
+distintos_x = dir_elev(40, 50, 20, 15, 20, 2, 30, 5, 1.9, 4)
+distintos_y = dir_elev(40, 50, 20, 12, 45, 6, 80, 5, 1.9, 4)
+v_dist = construir_elevacion(0, 0, 1.0, 1.6, 2.54, True, distintos_x, distintos_y)
+
+alto_dibujado = bbox(v_dist[0]["cartabones"][0])[3] - bbox(v_dist[0]["cartabones"][0])[1]
+
+check("PRUEBA NEGATIVA: cuadrada con datos distintos, el alzado solo ensena X",
+      len(v_dist) == 1 and abs(alto_dibujado - 20.0) < 1e-9,
+      f"F19 dice 45 cm de alto y el alzado dibuja {alto_dibujado:.0f}: "
+      "los cartabones Y no salen en ningun sitio")
 
 print("\n" + "=" * 78)
 if fallos:

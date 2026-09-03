@@ -682,8 +682,8 @@ public sealed partial class PlacaBaseDrawer
         // sitio solo añadiría una flecha más a un detalle que ya tiene siete.
         var filete = TextoFileteDeCartabon(p);
 
-        var deX = ParaRotular(reparto, esX: true, CartabonesPlacaBase.Arriba);
-        var deY = ParaRotular(reparto, esX: false, CartabonesPlacaBase.Izquierda);
+        var deX = ParaRotular(reparto, esX: true, CartabonesPlacaBase.HaciaArriba);
+        var deY = ParaRotular(reparto, esX: false, CartabonesPlacaBase.HaciaIzquierda);
 
         if (deX is not null)
         {

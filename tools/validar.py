@@ -6792,8 +6792,8 @@ def v18_planta_autocad() -> None:
     #  bounding box fallaba, el respaldo devolvia (0, 0), y las dos flechas acababan clavadas
     #  en el origen del dibujo con su texto colgando al lado, apuntando a nada.
     check("los leaders de cartabones leen la direccion del reparto",
-          "ParaRotular(reparto, esX: true, CartabonesPlacaBase.Arriba)" in pbd2
-          and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.Izquierda)" in pbd2
+          "ParaRotular(reparto, esX: true, CartabonesPlacaBase.HaciaArriba)" in pbd2
+          and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.HaciaIzquierda)" in pbd2
           and "public (double X, double Y) PuntaLibre => Direccion switch" in cpb
           and "deX.Value.PuntaLibre" in pbd2
           and '"GetBoundingBox",' not in pbd2)
@@ -6868,7 +6868,7 @@ def v18_planta_autocad() -> None:
           and "PlacasGrid.SelectionChanged +=" in pbw)
 
     # ---- LAS CELDAS DE CARTABON SE APAGAN ----
-    #  Sin la casilla, el dibujante no las mira: dejarlas activas invita a capturar siete numeros
+    #  Sin la casilla, el dibujante no las mira: dejarlas activas invita a capturar nueve numeros
     #  que no van a salir en el plano, y cuando el detalle aparece sin atiesadores lo que se piensa
     #  es que el programa los perdio, no que faltaba encender una casilla.
     tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
@@ -6880,10 +6880,10 @@ def v18_planta_autocad() -> None:
           'x:Key="CeldaCartabon"' in tema
           and 'Binding="{Binding ConCartabones}" Value="False"' in tema
           and '<Setter Property="IsEnabled" Value="False" />' in tema
-          # Las SIETE: cantidad, espesor y longitud de cada sentido, mas el espesor de la
-          # soldadura del contorno. Con seis, la que se quede fuera sigue aceptando lo que se
-          # escriba y nada lo delata.
-          and usos_celda_cartabon == 7,
+          # Las NUEVE: cantidad, espesor, longitud en planta y altura en alzado de cada
+          # sentido, mas el espesor de la soldadura del contorno. Con ocho, la que se quede
+          # fuera sigue aceptando lo que se escriba y nada lo delata.
+          and usos_celda_cartabon == 9,
           f"{usos_celda_cartabon} columnas la usan")
 
     #  Y LA TABLA DICE CUANTOS SALEN DE VERDAD, con el mismo descarte que el dibujo.

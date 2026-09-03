@@ -518,6 +518,15 @@ public sealed partial class PlacaBaseDrawer
         var repartoCartabones = Cartabones(
             p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna);
 
+        // ---------- El alzado, a la derecha de la planta ----------
+        // AQUÍ y no al final: va DENTRO del bloque, igual que en la macro, así que tiene que quedar
+        // entre 'inicio' y 'finGeometria'. Dibujado después de Bloquear, la planta se movería con su
+        // bloque y el alzado se quedaría atrás.
+        //
+        // Y con xRig ya crecido por el dado: el alzado arranca 60 cm del canto derecho de lo que
+        // ocupa el detalle, no de la placa. Con la placa, un dado grande se le metería encima.
+        Elevacion(p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY);
+
         // ---------- Las anclas: dos círculos cada una ----------
         var nAncX = 0;
         var nAncY = 0;

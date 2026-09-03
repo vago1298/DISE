@@ -42,16 +42,16 @@ public static class CartabonesPlacaBase
     //  esconde un error que en el plano se ve como un cartabón montado sobre el tubo.
 
     /// <summary>Sale hacia <b>+X</b>, de la cara derecha del perfil.</summary>
-    public const int Derecha = 0;
+    public const int HaciaDerecha = 0;
 
     /// <summary>Sale hacia <b>+Y</b>, de la cara de arriba.</summary>
-    public const int Arriba = 1;
+    public const int HaciaArriba = 1;
 
     /// <summary>Sale hacia <b>−X</b>, de la cara izquierda.</summary>
-    public const int Izquierda = 2;
+    public const int HaciaIzquierda = 2;
 
     /// <summary>Sale hacia <b>−Y</b>, de la cara de abajo.</summary>
-    public const int Abajo = 3;
+    public const int HaciaAbajo = 3;
 
     /// <summary>Un cartabón visto en planta: la polilínea cerrada que se dibuja.</summary>
     /// <param name="Puntos">
@@ -63,7 +63,7 @@ public static class CartabonesPlacaBase
     /// cartabón contra un perfil recto no lleva ninguno y aquí viene <c>null</c>.
     /// </param>
     /// <param name="Direccion">
-    /// <see cref="Derecha"/>, <see cref="Arriba"/>, <see cref="Izquierda"/> o <see cref="Abajo"/>.
+    /// <see cref="HaciaDerecha"/>, <see cref="HaciaArriba"/>, <see cref="HaciaIzquierda"/> o <see cref="HaciaAbajo"/>.
     /// </param>
     /// <remarks>
     /// <para>
@@ -91,7 +91,7 @@ public static class CartabonesPlacaBase
         /// el rótulo diciendo un espesor que no es el suyo. Ver la nota del cruce en
         /// <see cref="Construir"/>.
         /// </remarks>
-        public bool EsX => Direccion == Arriba || Direccion == Abajo;
+        public bool EsX => Direccion == HaciaArriba || Direccion == HaciaAbajo;
 
         /// <summary>
         /// El punto medio de la <b>punta libre</b>: el canto opuesto al perfil.
@@ -110,9 +110,9 @@ public static class CartabonesPlacaBase
         /// </remarks>
         public (double X, double Y) PuntaLibre => Direccion switch
         {
-            Derecha => (X2, (Y1 + Y2) / 2),
-            Arriba => ((X1 + X2) / 2, Y2),
-            Izquierda => (X1, (Y1 + Y2) / 2),
+            HaciaDerecha => (X2, (Y1 + Y2) / 2),
+            HaciaArriba => ((X1 + X2) / 2, Y2),
+            HaciaIzquierda => (X1, (Y1 + Y2) / 2),
             _ => ((X1 + X2) / 2, Y1),
         };
 
@@ -232,9 +232,9 @@ public static class CartabonesPlacaBase
                 var x = Posicion(xc, pX, i, cuantos);
 
                 salida.Add(lado == 0
-                    ? Uno(Arriba, xc, yc, x, CaraDeArriba(puntos, x, yc + (pY / 2)),
+                    ? Uno(HaciaArriba, xc, yc, x, CaraDeArriba(puntos, x, yc + (pY / 2)),
                           espX, largoX, circulo)
-                    : Uno(Abajo, xc, yc, x, CaraDeAbajo(puntos, x, yc - (pY / 2)),
+                    : Uno(HaciaAbajo, xc, yc, x, CaraDeAbajo(puntos, x, yc - (pY / 2)),
                           espX, largoX, circulo));
             }
         }
@@ -249,9 +249,9 @@ public static class CartabonesPlacaBase
                 var y = Posicion(yc, pY, i, cuantos);
 
                 salida.Add(lado == 0
-                    ? Uno(Derecha, xc, yc, y, CaraDerecha(puntos, y, xc + (pX / 2)),
+                    ? Uno(HaciaDerecha, xc, yc, y, CaraDerecha(puntos, y, xc + (pX / 2)),
                           espY, largoY, circulo)
-                    : Uno(Izquierda, xc, yc, y, CaraIzquierda(puntos, y, xc - (pX / 2)),
+                    : Uno(HaciaIzquierda, xc, yc, y, CaraIzquierda(puntos, y, xc - (pX / 2)),
                           espY, largoY, circulo));
             }
         }
@@ -261,7 +261,7 @@ public static class CartabonesPlacaBase
 
     /// <summary>Un cartabón: con boca de pescado si la columna es redonda, y recto si no.</summary>
     /// <param name="direccion">
-    /// <see cref="Derecha"/>, <see cref="Arriba"/>, <see cref="Izquierda"/> o <see cref="Abajo"/>.
+    /// <see cref="HaciaDerecha"/>, <see cref="HaciaArriba"/>, <see cref="HaciaIzquierda"/> o <see cref="HaciaAbajo"/>.
     /// </param>
     /// <param name="centro">
     /// Dónde cae el eje del cartabón sobre la cara: la <b>X</b> para los que salen hacia arriba o
@@ -283,10 +283,14 @@ public static class CartabonesPlacaBase
 
         return direccion switch
         {
-            Derecha => Cartabon.Recto(cara, centro - medio, cara + largo, centro + medio, Derecha),
-            Arriba => Cartabon.Recto(centro - medio, cara, centro + medio, cara + largo, Arriba),
-            Izquierda => Cartabon.Recto(cara - largo, centro - medio, cara, centro + medio, Izquierda),
-            _ => Cartabon.Recto(centro - medio, cara - largo, centro + medio, cara, Abajo),
+            HaciaDerecha => Cartabon.Recto(
+                cara, centro - medio, cara + largo, centro + medio, HaciaDerecha),
+            HaciaArriba => Cartabon.Recto(
+                centro - medio, cara, centro + medio, cara + largo, HaciaArriba),
+            HaciaIzquierda => Cartabon.Recto(
+                cara - largo, centro - medio, cara, centro + medio, HaciaIzquierda),
+            _ => Cartabon.Recto(
+                centro - medio, cara - largo, centro + medio, cara, HaciaAbajo),
         };
     }
 
@@ -352,9 +356,9 @@ public static class CartabonesPlacaBase
         // LOCAL. Es la única cuenta que depende de la dirección.
         var t = direccion switch
         {
-            Derecha => centro - cy,
-            Arriba => cx - centro,
-            Izquierda => cy - centro,
+            HaciaDerecha => centro - cy,
+            HaciaArriba => cx - centro,
+            HaciaIzquierda => cy - centro,
             _ => centro - cx,
         };
 

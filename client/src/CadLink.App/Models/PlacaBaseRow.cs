@@ -48,6 +48,14 @@ public sealed class PlacaBaseRow : Row
     private string _espCartabonY = "1/2";
     private double _longCartabonXCm = 15;
     private double _longCartabonYCm = 15;
+
+    // LO QUE SOLO SE VE EN EL ALZADO. En planta el cartabon y el ancla se ven de canto, asi que ni
+    // la altura del uno ni el ahogo del otro aparecen por ningun lado: son los datos que la macro
+    // lee de F18, F19, E12 y E13 y que solo el alzado dibuja.
+    private double _altoCartabonXCm = 20;
+    private double _altoCartabonYCm = 20;
+    private double _longAnclajeXCm = 30;
+    private double _longAnclajeYCm = 30;
     private bool _conCartabones;
     private double _escala = 10;
     private bool _girarPlaca90 = true;
@@ -530,6 +538,32 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>E18</b>: longitud de los cartabones Y, en cm. Ver la nota de X.</summary>
     public double LongCartabonYCm { get => _longCartabonYCm; set => Set(ref _longCartabonYCm, value); }
 
+    /// <summary>
+    /// Celda <b>F18</b>: lo que <b>sube</b> el cartabon X en el alzado, en cm.
+    /// </summary>
+    /// <remarks>
+    /// Va cruzada igual que la longitud: F18 es la altura de los cartabones <b>X</b>, que en planta
+    /// son los que salen de las caras Y. Es la correccion que la propia macro documenta.
+    /// En cero, el cartabon no sale en el alzado.
+    /// </remarks>
+    public double AltoCartabonXCm { get => _altoCartabonXCm; set => Set(ref _altoCartabonXCm, value); }
+
+    /// <summary>Celda <b>F19</b>: lo que sube el cartabon Y en el alzado, en cm.</summary>
+    public double AltoCartabonYCm { get => _altoCartabonYCm; set => Set(ref _altoCartabonYCm, value); }
+
+    /// <summary>
+    /// Celda <b>E12</b>: lo que se <b>ahoga</b> el ancla X en el concreto, en cm.
+    /// </summary>
+    /// <remarks>
+    /// Solo se ve en el alzado, y ademas gobierna la profundidad del dado que se dibuja ahi: el
+    /// concreto baja 5 cm mas que el ancla, para que la punta quede dentro. En cero, el alzado sale
+    /// sin anclas.
+    /// </remarks>
+    public double LongAnclajeXCm { get => _longAnclajeXCm; set => Set(ref _longAnclajeXCm, value); }
+
+    /// <summary>Celda <b>E13</b>: lo que se ahoga el ancla Y en el concreto, en cm.</summary>
+    public double LongAnclajeYCm { get => _longAnclajeYCm; set => Set(ref _longAnclajeYCm, value); }
+
     /// <summary>Celda <b>F6</b>: dibujar los cartabones.</summary>
     public bool ConCartabones { get => _conCartabones; set => Set(ref _conCartabones, value); }
 
@@ -821,6 +855,8 @@ public sealed class PlacaBaseRow : Row
             TextoDiamAgujeroX = DiamAgujeroX,
             TextoDiamAgujeroY = DiamAgujeroY,
 
+            EspesorCm = Pulgadas(Espesor) * 2.54,
+
             Electrodo = Electrodo,
             SoldaduraCm = Pulgadas(Soldadura) * 2.54,
             TextoSoldadura = Soldadura,
@@ -837,6 +873,11 @@ public sealed class PlacaBaseRow : Row
             LongCartabonXCm = LongCartabonXCm,
             LongCartabonYCm = LongCartabonYCm,
             ConCartabones = ConCartabones,
+
+            AltoCartabonXCm = AltoCartabonXCm,
+            AltoCartabonYCm = AltoCartabonYCm,
+            LongAnclajeXCm = LongAnclajeXCm,
+            LongAnclajeYCm = LongAnclajeYCm,
 
             Escala = Escala > 0 ? Escala : 10,
             GirarPlaca90 = GirarPlaca90

@@ -2468,10 +2468,10 @@
                             </DataGridTemplateColumn>
 
                             <!-- ===== LOS CARTABONES ===== -->
-                            <!-- LA CASILLA QUE MANDA. Apagada, las siete celdas de cartabon de la
+                            <!-- LA CASILLA QUE MANDA. Apagada, las nueve celdas de cartabon de la
                                  derecha se apagan con ella -ver el estilo CeldaCartabon-: el
                                  dibujante no las mira, asi que dejarlas activas invita a capturar
-                                 siete numeros que no van a salir en el plano.
+                                 nueve numeros que no van a salir en el plano.
 
                                  «Con cartabones» y no «Cartabones» a secas para no repetir el
                                  encabezado de la columna calculada del final, que dice cuantos
@@ -2558,6 +2558,54 @@
                                                 CellStyle="{StaticResource CeldaCartabon}" />
                             <DataGridTextColumn Header="L cart Y cm" Binding="{Binding LongCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCartabon}" />
+
+                            <!-- LO QUE SUBE EL CARTABON. Solo se ve en el ALZADO: en planta el
+                                 cartabon se ve de canto, asi que su altura no aparece por ningun
+                                 lado. En cero, el cartabon sale en la planta y NO en el alzado, que
+                                 es lo que hace la macro: una placa de altura nula dibujada de canto
+                                 es una linea suelta al lado de la columna. -->
+                            <DataGridTextColumn Header="H cart X cm" Binding="{Binding AltoCartabonXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Altura del cartabon X en el alzado, en cm -celda F18 de la macro-.&#10;En cero, el cartabon no sale en el alzado." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="H cart Y cm" Binding="{Binding AltoCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Altura del cartabon Y en el alzado, en cm -celda F19 de la macro-.&#10;En cero, el cartabon no sale en el alzado." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- ===== EL ALZADO =====
+                                 Lo que se ahoga el ancla en el concreto. Como la altura del
+                                 cartabon, en planta no se ve, y ademas gobierna la profundidad del
+                                 dado del alzado: el concreto baja 5 cm mas que el ancla, para que
+                                 la punta quede dentro. En cero, el alzado sale sin anclas. -->
+                            <DataGridTextColumn Header="Ahogo ancl X cm" Binding="{Binding LongAnclajeXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud de anclaje de las anclas X, en cm -celda E12 de la macro-.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Ahogo ancl Y cm" Binding="{Binding LongAnclajeYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud de anclaje de las anclas Y, en cm -celda E13 de la macro-.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
 
                             <!-- ===== ACOMODO Y ROTULO ===== -->
                             <DataGridCheckBoxColumn Header="Girar 90°" Binding="{Binding GirarPlaca90, UpdateSourceTrigger=PropertyChanged}" Width="Auto"

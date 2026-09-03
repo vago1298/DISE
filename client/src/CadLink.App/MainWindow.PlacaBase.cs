@@ -1014,6 +1014,10 @@ public partial class MainWindow
         EspCartabonY = f.EspCartabonY,
         LongCartabonXCm = f.LongCartabonXCm,
         LongCartabonYCm = f.LongCartabonYCm,
+        AltoCartabonXCm = f.AltoCartabonXCm,
+        AltoCartabonYCm = f.AltoCartabonYCm,
+        LongAnclajeXCm = f.LongAnclajeXCm,
+        LongAnclajeYCm = f.LongAnclajeYCm,
         ConCartabones = f.ConCartabones,
         Escala = f.Escala,
         GirarPlaca90 = f.GirarPlaca90

@@ -1311,6 +1311,10 @@ public sealed class DatosProyecto
             Soldadura = "1/4",
             SoldaduraCartabon = "3/16",
             ConCartabones = false,
+            // Solo se ven en el alzado: el ahogo del ancla -E12 y E13- y, si se encienden los
+            // cartabones, su altura -F18 y F19-.
+            LongAnclajeXCm = 30, LongAnclajeYCm = 30,
+            AltoCartabonXCm = 20, AltoCartabonYCm = 20,
             Escala = 10
         });
 

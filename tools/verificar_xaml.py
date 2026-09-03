@@ -132,13 +132,13 @@ def main():
         elif 'Binding="{Binding ConCartabones}" Value="False"' not in estilos:
             fallos.append('«CeldaCartabon» no se apaga con ConCartabones')
 
-        # Las SIETE celdas de cartabon tienen que usarlo. Con seis, la que se quede fuera
+        # Las NUEVE celdas de cartabon tienen que usarlo. Con ocho, la que se quede fuera
         # sigue aceptando lo que se escriba y no habria nada que lo delatara.
         usos = xaml.count('CellStyle="{StaticResource CeldaCartabon}"')
 
-        if usos != 7:
-            fallos.append(f'«CeldaCartabon» lo usan {usos} columnas y tienen que ser 7 '
-                          '(N, e y L de cada sentido, y el espesor de su soldadura)')
+        if usos != 9:
+            fallos.append(f'«CeldaCartabon» lo usan {usos} columnas y tienen que ser 9 '
+                          '(N, e, L y H de cada sentido, y el espesor de su soldadura)')
 
     print(f'{len(nombres)} x:Name en el XAML, {len(manejadores)} manejadores, '
           f'{len(metodos)} metodos en el code-behind.')

@@ -154,6 +154,17 @@ public sealed class PlacaBaseCad
     /// <summary>Espesor, tal como se escribe en la hoja —en pulgadas—. Celda E6.</summary>
     public string Espesor { get; set; } = string.Empty;
 
+    /// <summary>
+    /// El mismo espesor <b>en centímetros</b>, para poder dibujarlo.
+    /// </summary>
+    /// <remarks>
+    /// El texto no sobra: la hoja lo captura como fracción —<c>3/4</c>, <c>1 1/4</c>— y el rótulo
+    /// tiene que decir la fracción. Pero en el <b>alzado</b> la placa se ve de canto y su espesor
+    /// <i>es</i> el dibujo, así que hace falta el número. Se resuelve al leer la fila, donde ya vive
+    /// el lector de fracciones, y no aquí.
+    /// </remarks>
+    public double EspesorCm { get; set; }
+
     /// <summary>Tipo de acero de la placa. Celda E5.</summary>
     public string AceroPlaca { get; set; } = string.Empty;
 
@@ -232,6 +243,31 @@ public sealed class PlacaBaseCad
     /// <summary>Cartabones: cantidad total por dirección. Celdas C18 y C19.</summary>
     public int NCartabonesX { get; set; }
     public int NCartabonesY { get; set; }
+
+    /// <summary>
+    /// Lo que <b>sube</b> el cartabón, en cm. Celdas <b>F18</b> para X y <b>F19</b> para Y.
+    /// </summary>
+    /// <remarks>
+    /// Solo se ve en el <b>alzado</b>: en planta el cartabón se ve de canto, así que su altura no
+    /// aparece por ningún lado. En cero, el cartabón no sale en el alzado —una placa de altura nula
+    /// es una línea suelta al lado de la columna, y eso parece un error del dibujo—.
+    /// </remarks>
+    public double AltoCartabonXCm { get; set; }
+    public double AltoCartabonYCm { get; set; }
+
+    /// <summary>
+    /// Lo que se <b>ahoga</b> el ancla en el concreto, en cm. Celdas <b>E12</b> y <b>E13</b>.
+    /// </summary>
+    /// <remarks>
+    /// Como la altura del cartabón, solo se ve en el alzado. Y además gobierna la profundidad del
+    /// dado que se dibuja ahí: el concreto baja 5 cm más que el ancla, para que la punta quede
+    /// dentro. En cero, el alzado sale sin anclas.
+    /// </remarks>
+    public double LongAnclajeXCm { get; set; }
+    public double LongAnclajeYCm { get; set; }
+
+    /// <summary>Dibujar el <b>alzado</b> a la derecha de la planta.</summary>
+    public bool DibujarElevacion { get; set; } = true;
 
     /// <summary>Espesor de los cartabones, en cm, y su texto. Celdas C20 y C21.</summary>
     public double EspCartabonXCm { get; set; }
