@@ -615,15 +615,21 @@ public sealed partial class PlacaBaseDrawer
     private object? Rectangulo(double x1, double y1, double x2, double y2, string capa) =>
         Polilinea(new[] { x1, y1, x2, y1, x2, y2, x1, y2 }, capa);
 
+    /// <param name="cerrada">
+    /// <c>false</c> para una poligonal <b>abierta</b>. La usa el vástago del ancla del alzado, que
+    /// con doblez es una L de tres puntos: cerrada, AutoCAD le uniría la punta de la pata con el
+    /// arranque de arriba y el ancla saldría como un triángulo.
+    /// </param>
     private object? Polilinea(double[] puntos, string capa,
-                              (int Indice, double Bulge)[]? dobleces = null)
+                              (int Indice, double Bulge)[]? dobleces = null,
+                              bool cerrada = true)
     {
         try
         {
             return AcadConnection.Retry<object?>(() =>
             {
                 dynamic pl = _ms.AddLightWeightPolyline(puntos);
-                pl.Closed = true;
+                pl.Closed = cerrada;
                 pl.Layer = capa;
                 pl.Color = PorCapa;
 

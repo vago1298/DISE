@@ -49,20 +49,39 @@ public static class ElevacionPlacaBase
     /// <param name="LongCartabon">Lo que sobresale el cartabón, en horizontal.</param>
     /// <param name="AltoCartabon">Lo que sube el cartabón. Celdas <b>F18</b> y <b>F19</b>.</param>
     /// <param name="LongAnclaje">Lo que se ahoga el ancla. Celdas <b>E12</b> y <b>E13</b>.</param>
+    /// <param name="LongAncla">
+    /// La longitud <b>total desarrollada</b> del ancla: lo que se corta y se pide, doblez incluido.
+    /// Cero = se deduce del ahogo, que es lo que se dibujaba antes.
+    /// </param>
+    /// <param name="DoblezAncla">
+    /// La <b>pata</b> del doblez del extremo, en horizontal. Cero = ancla recta con su travesaño.
+    /// </param>
     /// <param name="SepBorde">Del ancla al canto de la placa, para colocarla en el alzado.</param>
     /// <remarks>Todo en <b>unidades de dibujo</b>, ya orientado y a escala.</remarks>
     public readonly record struct Direccion(
         double AnchoPlaca, double AnchoDado, double AnchoPerfil,
         double LongCartabon, double AltoCartabon, int CuantosCartabones,
-        double LongAnclaje, double SepBorde, double DiamAncla, int CuantasAnclas);
+        double LongAnclaje, double LongAncla, double DoblezAncla,
+        double SepBorde, double DiamAncla, int CuantasAnclas);
 
-    /// <summary>Un ancla vista de canto: vástago, tuerca, arandela y remate.</summary>
-    /// <param name="Vastago">La barra, de la tuerca al fondo. Dos puntos.</param>
+    /// <summary>Un ancla vista de canto: vástago, tuerca, arandela y remate o doblez.</summary>
+    /// <param name="Vastago">
+    /// La barra, de la tuerca al fondo, <b>abierta</b>. Dos puntos si va recta y <b>tres</b> si
+    /// lleva doblez: el tercero es la punta de la pata.
+    /// </param>
     /// <param name="Tuerca">El rectángulo sobre la placa.</param>
     /// <param name="Arandela">La línea que la apoya. Dos puntos.</param>
-    /// <param name="Remate">El travesaño del fondo. Dos puntos.</param>
+    /// <param name="Remate">
+    /// El travesaño del fondo, <c>null</c> cuando el ancla lleva doblez: ahí lo que ancla es la
+    /// pata, y un travesaño además de la pata dibuja un remate que no existe.
+    /// </param>
+    /// <param name="Ahogo">Cuánto baja de la cara de abajo de la placa, para que el dado la cubra.</param>
     public readonly record struct AnclaDeCanto(
-        double[] Vastago, double[] Tuerca, double[] Arandela, double[] Remate);
+        double[] Vastago, double[] Tuerca, double[] Arandela, double[]? Remate, double Ahogo)
+    {
+        /// <summary>¿Lleva doblez en el extremo?</summary>
+        public bool ConDoblez => Vastago.Length >= 6;
+    }
 
     /// <summary>Una vista de alzado, completa y lista para dibujar.</summary>
     /// <param name="Id">
@@ -230,15 +249,21 @@ public static class ElevacionPlacaBase
             anchoConcreto = d.AnchoPlaca;
         }
 
-        // El dado baja 5 cm más que el ancla, y al menos 20 cm: es lo que hace que la punta del
-        // ancla quede dentro del concreto y no asomando por debajo.
-        var profundidad = Math.Max(d.LongAnclaje + (5.0 * escala), 20.0 * escala);
-
         // La columna sube 10 cm más que el cartabón, y al menos 20: si acabara en el cartabón, la
         // pieza se leería como el final de la columna.
         var alturaColumna = Math.Max(d.AltoCartabon + (10.0 * escala), 20.0 * escala);
 
         var yArriba = yPlaca + esp;
+
+        // LAS ANCLAS PRIMERO, porque ahora gobiernan la profundidad del dado. Ver la nota de
+        // ProfundidadDelDado: con la longitud total capturada, el ahogo de la hoja puede quedarse
+        // corto, y un ancla dibujada asomando por debajo del concreto es un plano que no se puede
+        // construir.
+        var anclas = AnclasDeCanto(
+            xCentro, yPlaca, yArriba, d.AnchoPlaca, d.SepBorde,
+            d.LongAnclaje, d.LongAncla, d.DoblezAncla, esp, d.DiamAncla, d.CuantasAnclas, escala);
+
+        var profundidad = ProfundidadDelDado(d.LongAnclaje, anclas, escala);
 
         var cartabones = new List<double[]>();
 
@@ -253,10 +278,6 @@ public static class ElevacionPlacaBase
             if (izq is not null) { cartabones.Add(izq); }
             if (der is not null) { cartabones.Add(der); }
         }
-
-        var anclas = AnclasDeCanto(
-            xCentro, yPlaca, yArriba, d.AnchoPlaca, d.SepBorde,
-            d.LongAnclaje, d.DiamAncla, d.CuantasAnclas, escala);
 
         return new Vista(
             Id: id,
@@ -322,13 +343,20 @@ public static class ElevacionPlacaBase
     /// Si esa separación no cabe, el 35 % del semiancho: pasa con una placa muy chica.
     /// </para>
     /// </remarks>
+    /// <param name="ahogo">Celdas E12 y E13. Se usa cuando no hay longitud total capturada.</param>
+    /// <param name="largoTotal">La longitud desarrollada del ancla, doblez incluido.</param>
+    /// <param name="doblez">La pata del extremo. Cero = ancla recta.</param>
+    /// <param name="espesorPlaca">Para descontar lo que el ancla gasta por encima del concreto.</param>
     public static List<AnclaDeCanto> AnclasDeCanto(
         double xCentro, double yPlaca, double yArriba, double anchoPlaca, double sepBorde,
-        double largo, double diametro, int cuantas, double escala)
+        double ahogo, double largoTotal, double doblez, double espesorPlaca,
+        double diametro, int cuantas, double escala)
     {
         var salida = new List<AnclaDeCanto>();
 
-        if (cuantas <= 0 || largo <= 0)
+        // Sin ancla que dibujar si no hay ni ahogo ni longitud: es lo que hace la macro cuando E12
+        // viene en cero, y el alzado sale con su dado y sin anclas.
+        if (cuantas <= 0 || (ahogo <= 0 && largoTotal <= 0))
         {
             return salida;
         }
@@ -342,19 +370,29 @@ public static class ElevacionPlacaBase
 
         if (cuantas == 1)
         {
-            salida.Add(UnAncla(xCentro, yPlaca, yArriba, largo, diametro, escala));
+            // La única del centro dobla hacia la derecha: no hay un «hacia dentro» que respetar.
+            salida.Add(UnAncla(xCentro, yPlaca, yArriba, ahogo, largoTotal, doblez,
+                               espesorPlaca, diametro, 1, escala));
 
             return salida;
         }
 
-        salida.Add(UnAncla(xCentro - desplazamiento, yPlaca, yArriba, largo, diametro, escala));
-        salida.Add(UnAncla(xCentro + desplazamiento, yPlaca, yArriba, largo, diametro, escala));
+        // LAS PATAS APUNTAN HACIA DENTRO, una contra la otra. Es lo que da recubrimiento: las dos
+        // anclas van cerca de los cantos de la placa, así que una pata hacia fuera se acerca a la
+        // cara del dado y se queda sin concreto que la sujete. Hacia dentro, el doblez muerde el
+        // núcleo confinado, y además no puede salirse del dado por mucho que se alargue.
+        salida.Add(UnAncla(xCentro - desplazamiento, yPlaca, yArriba, ahogo, largoTotal, doblez,
+                           espesorPlaca, diametro, 1, escala));
+
+        salida.Add(UnAncla(xCentro + desplazamiento, yPlaca, yArriba, ahogo, largoTotal, doblez,
+                           espesorPlaca, diametro, -1, escala));
 
         return salida;
     }
 
     private static AnclaDeCanto UnAncla(
-        double x, double yPlaca, double yArriba, double largo, double diametro, double escala)
+        double x, double yPlaca, double yArriba, double ahogo, double largoTotal, double doblez,
+        double espesorPlaca, double diametro, int sentidoDoblez, double escala)
     {
         var d = diametro > 0 ? diametro : 1.0 * escala;
 
@@ -363,13 +401,83 @@ public static class ElevacionPlacaBase
         var anchoTuerca = Math.Max(2.5 * d, 1.5 * escala);
         var altoTuerca = Math.Max(0.75 * d, 0.5 * escala);
 
-        var yFondo = yPlaca - largo;
+        var yPunta = yArriba + altoTuerca;
+
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // LA LONGITUD TOTAL MANDA, Y EL AHOGO ES EL RESPALDO.
+        //
+        // «Longitud del ancla» es lo que se corta y se pide en el taller, doblez incluido. El
+        // ahogo —E12 y E13 de la macro— es la consecuencia: lo que queda dentro del concreto
+        // una vez descontado lo que el ancla gasta atravesando la placa y saliendo a la tuerca.
+        //
+        // Con las dos capturadas pueden contradecirse, y de las dos la que se puede verificar
+        // en el taller es la longitud. Así que se dibuja con ella, y el ahogo se usa cuando
+        // viene en cero: es exactamente lo que se dibujaba antes de que existiera esta columna.
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        var gasto = espesorPlaca + altoTuerca;
+
+        var largoRecto = largoTotal > 0
+            ? largoTotal - Math.Max(0, doblez)
+            : ahogo + gasto;
+
+        // Un ancla más corta que lo que gasta atravesando la placa no baja al concreto. En lugar de
+        // dibujarla al revés —la punta por encima de la placa— se le deja el mínimo que sí baja.
+        if (largoRecto <= gasto)
+        {
+            largoRecto = gasto + (1.0 * escala);
+        }
+
+        var yFondo = yPunta - largoRecto;
+
+        var pata = Math.Max(0, doblez);
+
+        var vastago = pata > 0
+            ? new[] { x, yPunta, x, yFondo, x + (sentidoDoblez * pata), yFondo }
+            : new[] { x, yPunta, x, yFondo };
 
         return new AnclaDeCanto(
-            Vastago: new[] { x, yArriba + altoTuerca, x, yFondo },
+            Vastago: vastago,
             Tuerca: Caja(x - (anchoTuerca / 2), yArriba, x + (anchoTuerca / 2), yArriba + altoTuerca),
             Arandela: new[] { x - anchoTuerca, yArriba, x + anchoTuerca, yArriba },
-            Remate: new[] { x - (anchoTuerca / 2), yFondo, x + (anchoTuerca / 2), yFondo });
+
+            // EL TRAVESAÑO SOLO SI NO HAY DOBLEZ. Con pata, lo que ancla es la pata, y dibujar
+            // además un travesaño pone en el plano un remate que la pieza no lleva.
+            Remate: pata > 0
+                ? null
+                : new[] { x - (anchoTuerca / 2), yFondo, x + (anchoTuerca / 2), yFondo },
+
+            Ahogo: yPlaca - yFondo);
+    }
+
+    /// <summary>
+    /// Hasta dónde baja el dado: <b>lo que haga falta</b> para que el ancla quede dentro.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La regla de la macro es «el ahogo más 5 cm, y al menos 20». Se conserva, pero ya no es la
+    /// única: con la longitud total capturada, el ancla puede bajar más de lo que dice E12, y ahí la
+    /// regla de la macro dibujaría la punta <b>asomando por debajo del dado</b>.
+    /// </para>
+    /// <para>
+    /// Así que el dado baja lo que pida el ancla más honda, con los mismos 5 cm de holgura. Un dado
+    /// más profundo de lo capturado es un dato que se puede discutir; un ancla fuera del concreto es
+    /// un plano que no se puede construir.
+    /// </para>
+    /// </remarks>
+    public static double ProfundidadDelDado(
+        double ahogo, IEnumerable<AnclaDeCanto> anclas, double escala)
+    {
+        var pide = ahogo;
+
+        foreach (var a in anclas)
+        {
+            if (a.Ahogo > pide)
+            {
+                pide = a.Ahogo;
+            }
+        }
+
+        return Math.Max(pide + (5.0 * escala), 20.0 * escala);
     }
 
     /// <summary>Un rectángulo como polilínea cerrada, en <b>antihorario</b>.</summary>

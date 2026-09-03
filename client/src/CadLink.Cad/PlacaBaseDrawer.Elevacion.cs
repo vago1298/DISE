@@ -69,6 +69,8 @@ public sealed partial class PlacaBaseDrawer
             AltoCartabon: (esX ? p.AltoCartabonXCm : p.AltoCartabonYCm) * escala,
             CuantosCartabones: Math.Max(0, esX ? p.NCartabonesX : p.NCartabonesY),
             LongAnclaje: (esX ? p.LongAnclajeXCm : p.LongAnclajeYCm) * escala,
+            LongAncla: (esX ? p.LongAnclaXCm : p.LongAnclaYCm) * escala,
+            DoblezAncla: (esX ? p.DoblezAnclaXCm : p.DoblezAnclaYCm) * escala,
             SepBorde: sepBorde,
             DiamAncla: diamAncla,
             CuantasAnclas: Math.Max(0, esX ? p.NAnclasX : p.NAnclasY));
@@ -105,10 +107,17 @@ public sealed partial class PlacaBaseDrawer
 
         foreach (var a in v.Anclas)
         {
-            Linea(a.Vastago[0], a.Vastago[1], a.Vastago[2], a.Vastago[3], PlacaBaseCapas.Anclas);
+            // POLILÍNEA ABIERTA y no dos líneas: con doblez el vástago tiene tres puntos, y dos
+            // líneas suetas se pueden mover por separado. El ancla es una pieza.
+            Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);
+
             Polilinea(a.Tuerca, PlacaBaseCapas.Anclas);
             Linea(a.Arandela[0], a.Arandela[1], a.Arandela[2], a.Arandela[3], PlacaBaseCapas.Anclas);
-            Linea(a.Remate[0], a.Remate[1], a.Remate[2], a.Remate[3], PlacaBaseCapas.Anclas);
+
+            if (a.Remate is { } remate)
+            {
+                Linea(remate[0], remate[1], remate[2], remate[3], PlacaBaseCapas.Anclas);
+            }
         }
 
         // El identificador SIEMPRE entre comillas, como en la macro: ELEVACION "X".

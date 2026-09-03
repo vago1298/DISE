@@ -340,10 +340,6 @@ public partial class MainWindow
         var xc = b / 2;
         var yc = h / 2;
 
-        // ---------- Lo que ocupa todo, para encuadrar ----------
-        var ocupaX = Math.Max(b, dadoX > 0 ? dadoX : 0);
-        var ocupaY = Math.Max(h, dadoY > 0 ? dadoY : 0);
-
         var (pX, pY) = (p.PerfilXDibujoCm, p.PerfilYDibujoCm);
 
         // El paño del perfil: lo MISMO que usa el dibujante, y de la misma clase. Con él los
@@ -354,26 +350,105 @@ public partial class MainWindow
         var cartabones = CartabonesPlacaBase.Construir(
             p, xc, yc, pX, pY, 1, panoColumna);
 
+        // Las anclas se calculan ANTES de encuadrar, porque el alzado las necesita y el alzado entra
+        // en el encuadre. Es la misma cuenta que el dibujante, ajuste al mínimo de la columna K
+        // incluido.
+        var dAncX = p.DiamAnclaXCm;
+        var dAncY = p.DiamAnclaYCm;
+
+        var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
+        var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
+
+        var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
+        var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
+
+        if (sepX <= 0)
+        {
+            sepX = AnclasPlacaBase.SepAuto(
+                b, pX, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
+        }
+
+        if (sepY <= 0)
+        {
+            sepY = AnclasPlacaBase.SepAuto(
+                h, pY, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
+        }
+
+        var anclas = AnclasPlacaBase.Construir(
+            0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
+            dAncX, dAguX, dAncY, dAguY);
+
+        // ---------- EL ALZADO, con la MISMA clase que el dibujante ----------
+        // A la derecha de la planta, igual que en el plano. Está en la previa porque es donde se ven
+        // los cuatro datos que en planta no se pueden ver —el espesor de la placa, la altura del
+        // cartabón, la longitud del ancla y su doblez—: si uno se captura mal, aquí se nota sin
+        // abrir AutoCAD.
+        var vistas = VistasDeElevacionPrevia(p, b, h, dadoX, dadoY, pX, pY, sepX, sepY);
+
+        // ---------- Lo que ocupa todo, para encuadrar ----------
+        // LA CAJA DE TODO, no «el doble de lo que se separa del centro de la placa». Esa cuenta daba
+        // por hecho que el dibujo está centrado en la placa, y con el alzado a la derecha ya no lo
+        // está: encuadrando así, el alzado se salía del lienzo entero.
+        double x1 = 0, y1 = 0, x2 = b, y2 = h;
+
+        void Meter(double x, double y)
+        {
+            if (x < x1) { x1 = x; }
+            if (y < y1) { y1 = y; }
+            if (x > x2) { x2 = x; }
+            if (y > y2) { y2 = y; }
+        }
+
+        void MeterPuntos(double[] pts)
+        {
+            for (var i = 0; i + 1 < pts.Length; i += 2)
+            {
+                Meter(pts[i], pts[i + 1]);
+            }
+        }
+
+        if (dadoX > 0 && dadoY > 0)
+        {
+            Meter(xc - (dadoX / 2), yc - (dadoY / 2));
+            Meter(xc + (dadoX / 2), yc + (dadoY / 2));
+        }
+
         foreach (var c in cartabones)
         {
-            ocupaX = Math.Max(ocupaX, 2 * Math.Max(Math.Abs(c.X1 - xc), Math.Abs(c.X2 - xc)));
-            ocupaY = Math.Max(ocupaY, 2 * Math.Max(Math.Abs(c.Y1 - yc), Math.Abs(c.Y2 - yc)));
+            MeterPuntos(c.Puntos);
+        }
+
+        foreach (var v in vistas)
+        {
+            MeterPuntos(v.Concreto);
+            MeterPuntos(v.Columna);
+
+            foreach (var c in v.Cartabones)
+            {
+                MeterPuntos(c);
+            }
+
+            foreach (var a in v.Anclas)
+            {
+                MeterPuntos(a.Vastago);
+                MeterPuntos(a.Tuerca);
+            }
         }
 
         const double margen = 34;
 
         var escala = Math.Min(
-            (ancho - (2 * margen)) / ocupaX,
-            (alto - (2 * margen)) / ocupaY);
+            (ancho - (2 * margen)) / (x2 - x1),
+            (alto - (2 * margen)) / (y2 - y1));
 
         if (escala <= 0 || double.IsInfinity(escala) || double.IsNaN(escala))
         {
             return;
         }
 
-        // De centímetros con la Y hacia arriba a píxeles con la Y hacia abajo, centrado en la placa.
-        var dx = (ancho / 2) - (xc * escala);
-        var dy = (alto / 2) + (yc * escala);
+        // De centímetros con la Y hacia arriba a píxeles con la Y hacia abajo, centrado en la CAJA.
+        var dx = (ancho / 2) - ((x1 + x2) / 2 * escala);
+        var dy = (alto / 2) + ((y1 + y2) / 2 * escala);
 
         var transformar = new TransformGroup();
         transformar.Children.Add(new ScaleTransform(escala, -escala));
@@ -475,33 +550,10 @@ public partial class MainWindow
             }
         }
 
+        // ---------- El alzado, detrás de las anclas de la planta ----------
+        DibujarElevacionPrevia(vistas, transformar);
+
         // ---------- Las anclas: el agujero y el ancla, como en el detalle ----------
-        var dAncX = p.DiamAnclaXCm;
-        var dAncY = p.DiamAnclaYCm;
-
-        var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
-        var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
-
-        // La MISMA cuenta que el dibujante, ajuste al mínimo de la columna K incluido.
-        var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
-        var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
-
-        if (sepX <= 0)
-        {
-            sepX = AnclasPlacaBase.SepAuto(
-                b, pX, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
-        }
-
-        if (sepY <= 0)
-        {
-            sepY = AnclasPlacaBase.SepAuto(
-                h, pY, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
-        }
-
-        var anclas = AnclasPlacaBase.Construir(
-            0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
-            dAncX, dAguX, dAncY, dAguY);
-
         if (anclas.Count > 0)
         {
             var geoAgujeros = new GeometryGroup { Transform = transformar };
@@ -691,6 +743,171 @@ public partial class MainWindow
             Stroke = new SolidColorBrush(Color.FromRgb(0x7B, 0x2F, 0xBE)),
             StrokeThickness = 0.8
         });
+    }
+
+    /// <summary>
+    /// Las vistas de alzado de la previa, con <b>la misma clase</b> que usa el dibujante.
+    /// </summary>
+    /// <remarks>
+    /// Es lo mismo que hace <c>PlacaBaseDrawer.Elevacion</c>, con las mismas dos direcciones y el
+    /// mismo cruce X/Y. Con una copia de la cuenta aquí, la previa y el plano podrían discrepar, y
+    /// justo en los datos que solo el alzado enseña.
+    /// </remarks>
+    private static List<ElevacionPlacaBase.Vista> VistasDeElevacionPrevia(
+        PlacaBaseCad p, double b, double h, double dadoX, double dadoY,
+        double pX, double pY, double sepX, double sepY)
+    {
+        if (!p.DibujarElevacion)
+        {
+            return new List<ElevacionPlacaBase.Vista>();
+        }
+
+        // A la derecha del canto de la planta, y de lo que OCUPA -con su dado-, no de la placa.
+        var xInicio = Math.Max(b, dadoX) + ElevacionPlacaBase.SeparacionDeLaPlantaCm;
+
+        return ElevacionPlacaBase.Construir(
+            xInicio, h / 2, 1, AlturaTextoPrevia, p.EspesorCm, p.ConCartabones,
+            DireccionDePrevia(p, b, dadoX, pX, esX: true, sepX, p.DiamAnclaXCm),
+            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm));
+    }
+
+    /// <summary>
+    /// La altura de texto con la que el alzado separa su rótulo, en cm.
+    /// </summary>
+    /// <remarks>
+    /// La previa no rotula, así que este número solo mueve el punto del rótulo —que aquí no se
+    /// dibuja—. Se pasa igual para que las dos llamadas a <see cref="ElevacionPlacaBase.Construir"/>
+    /// reciban lo mismo y la geometría salga idéntica.
+    /// </remarks>
+    private const double AlturaTextoPrevia = 1.6;
+
+    private static ElevacionPlacaBase.Direccion DireccionDePrevia(
+        PlacaBaseCad p, double anchoPlaca, double anchoDado, double anchoPerfil,
+        bool esX, double sepBorde, double diamAncla) =>
+        new(
+            AnchoPlaca: anchoPlaca,
+            AnchoDado: p.DibujarDado ? anchoDado : 0,
+            AnchoPerfil: anchoPerfil,
+            LongCartabon: esX ? p.LongCartabonXCm : p.LongCartabonYCm,
+            AltoCartabon: esX ? p.AltoCartabonXCm : p.AltoCartabonYCm,
+            CuantosCartabones: Math.Max(0, esX ? p.NCartabonesX : p.NCartabonesY),
+            LongAnclaje: esX ? p.LongAnclajeXCm : p.LongAnclajeYCm,
+            LongAncla: esX ? p.LongAnclaXCm : p.LongAnclaYCm,
+            DoblezAncla: esX ? p.DoblezAnclaXCm : p.DoblezAnclaYCm,
+            SepBorde: sepBorde,
+            DiamAncla: diamAncla,
+            CuantasAnclas: Math.Max(0, esX ? p.NAnclasX : p.NAnclasY));
+
+    /// <summary>
+    /// El alzado en la previa: concreto, placa de canto, columna, cartabones y anclas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con los <b>mismos colores</b> que la planta, para que se lea como el mismo detalle: el
+    /// concreto beige, la placa azul, el acero gris y las anclas rojas.
+    /// </para>
+    /// <para>
+    /// El vástago del ancla va como <b>poligonal abierta</b>, que con doblez tiene tres puntos.
+    /// Cerrándola, la punta de la pata se uniría con el arranque de arriba y el ancla saldría como un
+    /// triángulo: es el mismo cuidado que en el dibujante.
+    /// </para>
+    /// </remarks>
+    private void DibujarElevacionPrevia(
+        List<ElevacionPlacaBase.Vista> vistas, Transform transformar)
+    {
+        if (vistas.Count == 0)
+        {
+            return;
+        }
+
+        var azul = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
+        var rojo = new SolidColorBrush(Color.FromRgb(0xC0, 0x2A, 0x1B));
+
+        var geoConcreto = new GeometryGroup { Transform = transformar };
+        var geoAcero = new GeometryGroup { Transform = transformar };
+        var geoPlaca = new GeometryGroup { Transform = transformar };
+        var geoAnclas = new GeometryGroup { Transform = transformar };
+
+        foreach (var v in vistas)
+        {
+            AgregarPoligonal(geoConcreto, v.Concreto, null);
+            AgregarPoligonal(geoPlaca, v.Placa, null);
+            AgregarPoligonal(geoAcero, v.Columna, null);
+
+            foreach (var c in v.Cartabones)
+            {
+                AgregarPoligonal(geoAcero, c, null);
+            }
+
+            foreach (var a in v.Anclas)
+            {
+                AgregarAbierta(geoAnclas, a.Vastago);
+                AgregarPoligonal(geoAnclas, a.Tuerca, null);
+                AgregarAbierta(geoAnclas, a.Arandela);
+
+                if (a.Remate is { } remate)
+                {
+                    AgregarAbierta(geoAnclas, remate);
+                }
+            }
+        }
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoConcreto,
+            Fill = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0x8A, 0x84, 0x78)),
+            StrokeThickness = 1.2
+        });
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoPlaca,
+            Fill = new SolidColorBrush(Color.FromArgb(0x60, 0xC3, 0xCB, 0xD3)),
+            Stroke = azul,
+            StrokeThickness = 2
+        });
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoAcero,
+            Fill = new SolidColorBrush(Color.FromRgb(0xC3, 0xCB, 0xD3)),
+            Stroke = azul,
+            StrokeThickness = 1.2
+        });
+
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoAnclas,
+            Stroke = rojo,
+            StrokeThickness = 1.4
+        });
+    }
+
+    /// <summary>Una poligonal <b>abierta</b>, de dos o tres puntos, sin relleno.</summary>
+    private static void AgregarAbierta(GeometryGroup grupo, double[] puntos)
+    {
+        if (puntos.Length < 4)
+        {
+            return;
+        }
+
+        var figura = new PathFigure
+        {
+            StartPoint = new Point(puntos[0], puntos[1]),
+            IsClosed = false,
+            IsFilled = false
+        };
+
+        for (var i = 2; i + 1 < puntos.Length; i += 2)
+        {
+            figura.Segments.Add(new LineSegment(new Point(puntos[i], puntos[i + 1]), true));
+        }
+
+        var geo = new PathGeometry();
+        geo.Figures.Add(figura);
+
+        grupo.Children.Add(geo);
     }
 
     /// <summary>Gira 90° un arreglo plano de puntos, con el mismo giro que el dibujante.</summary>
@@ -1018,6 +1235,10 @@ public partial class MainWindow
         AltoCartabonYCm = f.AltoCartabonYCm,
         LongAnclajeXCm = f.LongAnclajeXCm,
         LongAnclajeYCm = f.LongAnclajeYCm,
+        LongAnclaXCm = f.LongAnclaXCm,
+        LongAnclaYCm = f.LongAnclaYCm,
+        DoblezAnclaXCm = f.DoblezAnclaXCm,
+        DoblezAnclaYCm = f.DoblezAnclaYCm,
         ConCartabones = f.ConCartabones,
         Escala = f.Escala,
         GirarPlaca90 = f.GirarPlaca90

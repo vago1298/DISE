@@ -2149,7 +2149,7 @@ check("los respaldos de la macro estan, uno por uno",
       and "anchoPerfil > 0.9 * d.AnchoPlaca" in _ELEV
       and "d.AnchoDado > 0 ? d.AnchoDado : d.AnchoPlaca + (10.0 * escala)" in _ELEV
       and "anchoConcreto < d.AnchoPlaca" in _ELEV
-      and "Math.Max(d.LongAnclaje + (5.0 * escala), 20.0 * escala)" in _ELEV
+      and "Math.Max(pide + (5.0 * escala), 20.0 * escala)" in _ELEV
       and "Math.Max(d.AltoCartabon + (10.0 * escala), 20.0 * escala)" in _ELEV
       and "desplazamiento = 0.35 * anchoPlaca" in _ELEV)
 
@@ -2178,6 +2178,64 @@ check("los datos del alzado van CRUZADOS igual que en la planta",
       "esX ? p.LongCartabonXCm : p.LongCartabonYCm" in _DELEV
       and "esX ? p.AltoCartabonXCm : p.AltoCartabonYCm" in _DELEV
       and "esX ? p.LongAnclajeXCm : p.LongAnclajeYCm" in _DELEV)
+
+#  ---- LA LONGITUD DEL ANCLA Y SU DOBLEZ ----
+check("la longitud total del ancla manda, y el ahogo es el respaldo",
+      "double LongAnclaje, double LongAncla, double DoblezAncla," in _ELEV
+      and "largoTotal > 0" in _ELEV
+      and "? largoTotal - Math.Max(0, doblez)" in _ELEV
+      and ": ahogo + gasto;" in _ELEV
+      and "var gasto = espesorPlaca + altoTuerca;" in _ELEV)
+
+check("con doblez el vastago lleva tres puntos y se va el travesano",
+      "x, yPunta, x, yFondo, x + (sentidoDoblez * pata), yFondo" in _ELEV
+      and "Remate: pata > 0" in _ELEV
+      and "public bool ConDoblez => Vastago.Length >= 6;" in _ELEV)
+
+#  LAS PATAS HACIA DENTRO. La de la izquierda con sentido +1 y la de la derecha con -1:
+#  al reves se acercarian a las caras del dado y se quedarian sin recubrimiento.
+check("y las dos patas apuntan una contra la otra",
+      "espesorPlaca, diametro, 1, escala));" in _ELEV
+      and "espesorPlaca, diametro, -1, escala));" in _ELEV)
+
+check("el dado crece para que el ancla no se salga",
+      "public static double ProfundidadDelDado(" in _ELEV
+      and "if (a.Ahogo > pide)" in _ELEV
+      and "var profundidad = ProfundidadDelDado(d.LongAnclaje, anclas, escala);" in _ELEV)
+
+check("el vastago se dibuja como poligonal ABIERTA, no cerrada",
+      "Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);" in _DELEV
+      and "bool cerrada = true)" in _DRW
+      and "pl.Closed = cerrada;" in _DRW)
+
+check("y la hoja trae la longitud y el doblez",
+      "public double LongAnclaXCm { get; set; }" in _CAD
+      and "public double DoblezAnclaXCm { get; set; }" in _CAD
+      and "LongAnclaXCm = LongAnclaXCm," in _FILA
+      and "DoblezAnclaXCm = DoblezAnclaXCm," in _FILA)
+
+#  ---- Y EL ALZADO ESTA EN LA PREVIA ----
+#  Con la MISMA clase que el dibujante. Y encuadrando por CAJA: la cuenta vieja daba por
+#  hecho que el dibujo esta centrado en la placa, y con el alzado a la derecha ya no lo
+#  esta -asi que el alzado se salia del lienzo entero-.
+check("el alzado sale tambien en la vista previa, con la misma clase",
+      "private static List<ElevacionPlacaBase.Vista> VistasDeElevacionPrevia(" in _PREV
+      and "ElevacionPlacaBase.Construir(" in _PREV
+      and "DibujarElevacionPrevia(vistas, transformar);" in _PREV
+      and "ElevacionPlacaBase.SeparacionDeLaPlantaCm" in _PREV)
+
+check("y la previa encuadra por CAJA, no suponiendo el centro en la placa",
+      "double x1 = 0, y1 = 0, x2 = b, y2 = h;" in _PREV
+      and "(ancho - (2 * margen)) / (x2 - x1)" in _PREV
+      and "(alto - (2 * margen)) / (y2 - y1)" in _PREV
+      and "((x1 + x2) / 2 * escala)" in _PREV
+      # Y la cuenta vieja ya no esta: era la que dejaba el alzado fuera del lienzo.
+      and "2 * Math.Max(Math.Abs(c.X1 - xc)" not in _PREV)
+
+check("el vastago de la previa tambien va abierto",
+      "private static void AgregarAbierta(" in _PREV
+      and "IsClosed = false," in _PREV
+      and "AgregarAbierta(geoAnclas, a.Vastago);" in _PREV)
 
 check("la previa tambien pinta la franja del cartabon, en morado",
       "private void DibujarSoldaduraDeCartabonesPrevia(" in _PREV
@@ -2417,25 +2475,49 @@ def cartabon_de_canto(x_pano, y_base, largo, alto, sentido, escala):
             x_pano, y_base + alto]
 
 
-def un_ancla(x, y_placa, y_arriba, largo, diametro, escala):
+def un_ancla(x, y_placa, y_arriba, ahogo, largo_total, doblez, esp_placa,
+             diametro, sentido_doblez, escala):
     d = diametro if diametro > 0 else 1.0 * escala
     ancho_tuerca = max(2.5 * d, 1.5 * escala)
     alto_tuerca = max(0.75 * d, 0.5 * escala)
-    y_fondo = y_placa - largo
+    y_punta = y_arriba + alto_tuerca
+
+    #  LA LONGITUD TOTAL MANDA Y EL AHOGO ES EL RESPALDO. «Longitud del ancla» es lo
+    #  que se corta y se pide, doblez incluido; el ahogo es la consecuencia, lo que
+    #  queda dentro del concreto una vez descontado lo que el ancla gasta atravesando
+    #  la placa y saliendo a la tuerca. De las dos, la que se verifica con una cinta
+    #  en el taller es la longitud.
+    gasto = esp_placa + alto_tuerca
+    pata = max(0.0, doblez)
+
+    largo_recto = (largo_total - pata) if largo_total > 0 else (ahogo + gasto)
+    if largo_recto <= gasto:
+        largo_recto = gasto + 1.0 * escala
+
+    y_fondo = y_punta - largo_recto
+
+    if pata > 0:
+        vastago = [x, y_punta, x, y_fondo, x + sentido_doblez * pata, y_fondo]
+        remate = None
+    else:
+        vastago = [x, y_punta, x, y_fondo]
+        remate = [x - ancho_tuerca / 2.0, y_fondo, x + ancho_tuerca / 2.0, y_fondo]
 
     return {
         "x": x,
-        "vastago": [x, y_arriba + alto_tuerca, x, y_fondo],
+        "vastago": vastago,
         "tuerca": caja(x - ancho_tuerca / 2.0, y_arriba,
                        x + ancho_tuerca / 2.0, y_arriba + alto_tuerca),
         "arandela": [x - ancho_tuerca, y_arriba, x + ancho_tuerca, y_arriba],
-        "remate": [x - ancho_tuerca / 2.0, y_fondo, x + ancho_tuerca / 2.0, y_fondo],
+        "remate": remate,
+        "ahogo": y_placa - y_fondo,
+        "con_doblez": pata > 0,
     }
 
 
 def anclas_de_canto(x_centro, y_placa, y_arriba, ancho_placa, sep_borde,
-                    largo, diametro, cuantas, escala):
-    if cuantas <= 0 or largo <= 0:
+                    ahogo, largo_total, doblez, esp_placa, diametro, cuantas, escala):
+    if cuantas <= 0 or (ahogo <= 0 and largo_total <= 0):
         return []
 
     desp = ancho_placa / 2.0 - sep_borde
@@ -2443,10 +2525,25 @@ def anclas_de_canto(x_centro, y_placa, y_arriba, ancho_placa, sep_borde,
         desp = 0.35 * ancho_placa
 
     if cuantas == 1:
-        return [un_ancla(x_centro, y_placa, y_arriba, largo, diametro, escala)]
+        return [un_ancla(x_centro, y_placa, y_arriba, ahogo, largo_total, doblez,
+                         esp_placa, diametro, 1, escala)]
 
-    return [un_ancla(x_centro - desp, y_placa, y_arriba, largo, diametro, escala),
-            un_ancla(x_centro + desp, y_placa, y_arriba, largo, diametro, escala)]
+    #  LAS PATAS APUNTAN HACIA DENTRO, una contra la otra: las dos anclas van cerca de
+    #  los cantos de la placa, asi que una pata hacia fuera se acerca a la cara del dado
+    #  y se queda sin concreto que la sujete.
+    return [un_ancla(x_centro - desp, y_placa, y_arriba, ahogo, largo_total, doblez,
+                     esp_placa, diametro, 1, escala),
+            un_ancla(x_centro + desp, y_placa, y_arriba, ahogo, largo_total, doblez,
+                     esp_placa, diametro, -1, escala)]
+
+
+def profundidad_del_dado(ahogo, anclas, escala):
+    """El dado baja lo que pida el ancla mas honda, con los 5 cm de la macro."""
+    pide = ahogo
+    for a in anclas:
+        if a["ahogo"] > pide:
+            pide = a["ahogo"]
+    return max(pide + 5.0 * escala, 20.0 * escala)
 
 
 def una_vista(idv, x_centro, ancho, y_placa, escala, alto_texto,
@@ -2464,9 +2561,16 @@ def una_vista(idv, x_centro, ancho, y_placa, escala, alto_texto,
     if ancho_concreto < d["ancho_placa"]:
         ancho_concreto = d["ancho_placa"]
 
-    profundidad = max(d["long_anclaje"] + 5.0 * escala, 20.0 * escala)
     altura_columna = max(d["alto_cart"] + 10.0 * escala, 20.0 * escala)
     y_arriba = y_placa + esp
+
+    #  LAS ANCLAS PRIMERO, porque ahora gobiernan la profundidad del dado.
+    anclas = anclas_de_canto(x_centro, y_placa, y_arriba, d["ancho_placa"],
+                             d["sep_borde"], d["long_anclaje"], d["long_ancla"],
+                             d["doblez_ancla"], esp, d["diam_ancla"],
+                             d["cuantas_anclas"], escala)
+
+    profundidad = profundidad_del_dado(d["long_anclaje"], anclas, escala)
 
     cartabones = []
     if con_cartabon:
@@ -2487,9 +2591,7 @@ def una_vista(idv, x_centro, ancho, y_placa, escala, alto_texto,
         "columna": caja(x_centro - ancho_perfil / 2.0, y_arriba,
                         x_centro + ancho_perfil / 2.0, y_arriba + altura_columna),
         "cartabones": cartabones,
-        "anclas": anclas_de_canto(x_centro, y_placa, y_arriba, d["ancho_placa"],
-                                  d["sep_borde"], d["long_anclaje"], d["diam_ancla"],
-                                  d["cuantas_anclas"], escala),
+        "anclas": anclas,
         "rotulo": (x_centro, y_placa - profundidad - 2.0 * alto_texto),
     }
 
@@ -2533,12 +2635,13 @@ def construir_elevacion(x_inicio, y_placa, escala, alto_texto,
 
 def dir_elev(ancho_placa, ancho_dado=0.0, ancho_perfil=0.0, long_cart=0.0, alto_cart=0.0,
              cuantos_cart=0, long_anclaje=0.0, sep_borde=0.0, diam_ancla=0.0,
-             cuantas_anclas=0):
+             cuantas_anclas=0, long_ancla=0.0, doblez_ancla=0.0):
     return {"ancho_placa": ancho_placa, "ancho_dado": ancho_dado,
             "ancho_perfil": ancho_perfil, "long_cart": long_cart, "alto_cart": alto_cart,
             "cuantos_cart": cuantos_cart, "long_anclaje": long_anclaje,
             "sep_borde": sep_borde, "diam_ancla": diam_ancla,
-            "cuantas_anclas": cuantas_anclas}
+            "cuantas_anclas": cuantas_anclas, "long_ancla": long_ancla,
+            "doblez_ancla": doblez_ancla}
 
 
 def bbox(pts):
@@ -2802,6 +2905,184 @@ check("PRUEBA NEGATIVA: cuadrada con datos distintos, el alzado solo ensena X",
       len(v_dist) == 1 and abs(alto_dibujado - 20.0) < 1e-9,
       f"F19 dice 45 cm de alto y el alzado dibuja {alto_dibujado:.0f}: "
       "los cartabones Y no salen en ningun sitio")
+
+print("\n" + "=" * 78)
+print("EL ANCLA: SU LONGITUD TOTAL Y SU DOBLEZ")
+print("=" * 78)
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  «LONGITUD DEL ANCLA» ES LO QUE SE CORTA. EL AHOGO ES LA CONSECUENCIA.
+#
+#  La macro solo tenia el ahogo -E12 y E13- y dibujaba una barra recta con un
+#  travesano abajo. Ahora se captura lo que se pide al taller: la longitud TOTAL
+#  desarrollada, doblez incluido. De las dos, la que se verifica con una cinta es la
+#  longitud, asi que manda ella y el ahogo queda como respaldo -y como el numero que
+#  gobierna el dado cuando la longitud no se captura-.
+#
+#  Lo que se comprueba aqui es lo que no se ve hasta que alguien mide: que la barra
+#  mida de verdad lo que dice la celda, que el doblez vaya DENTRO de esa longitud y no
+#  sumado, y que el ancla entera quede dentro del concreto.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+ESP_PLACA = 2.54
+DIAM = 1.9
+ALTO_TUERCA = max(0.75 * DIAM, 0.5)          # 1.425
+GASTO = ESP_PLACA + ALTO_TUERCA               # lo que gasta sobre el concreto
+
+
+def largo_de(a):
+    """La longitud DESARROLLADA de la barra: tramo recto mas pata."""
+    pts = a["vastago"]
+    total = 0.0
+    for i in range(0, len(pts) - 2, 2):
+        total += math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1])
+    return total
+
+
+con_doblez = dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM, cuantas_anclas=4,
+                      long_anclaje=30, long_ancla=45, doblez_ancla=10)
+v_dob = construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                            con_doblez, dir_elev(60, 70, 20))[0]
+
+check("con doblez, el vastago tiene TRES puntos: la L",
+      len(v_dob["anclas"]) == 2
+      and all(len(a["vastago"]) == 6 and a["con_doblez"] for a in v_dob["anclas"]))
+
+#  LA LONGITUD DIBUJADA ES LA CAPTURADA. Es la comprobacion que evita el error mas
+#  caro: una barra que en el plano mide 45 y en el taller se corta de otra medida.
+check("la barra mide EXACTAMENTE la longitud capturada, doblez incluido",
+      all(abs(largo_de(a) - 45.0) < 1e-9 for a in v_dob["anclas"]),
+      f"dibujada {largo_de(v_dob['anclas'][0]):.3f} contra 45 capturados")
+
+#  Y EL DOBLEZ VA DENTRO, no sumado: 45 con doblez de 10 son 35 de tramo recto.
+a_izq, a_der = v_dob["anclas"]
+recto = abs(a_izq["vastago"][3] - a_izq["vastago"][1])
+pata = abs(a_izq["vastago"][4] - a_izq["vastago"][2])
+
+check("el doblez va DENTRO de la longitud total, no sumado",
+      abs(recto - 35.0) < 1e-9 and abs(pata - 10.0) < 1e-9,
+      f"tramo recto {recto:.1f} + pata {pata:.1f} = {recto + pata:.1f}")
+
+#  LAS PATAS APUNTAN UNA CONTRA LA OTRA. Las dos anclas van cerca de los cantos de la
+#  placa: una pata hacia FUERA se acerca a la cara del dado y se queda sin concreto que
+#  la sujete. Hacia dentro muerde el nucleo, y no puede salirse del dado por mucho que
+#  se alargue.
+punta_izq = a_izq["vastago"][4]
+punta_der = a_der["vastago"][4]
+
+check("las dos patas apuntan HACIA DENTRO, una contra la otra",
+      punta_izq > a_izq["x"] and punta_der < a_der["x"],
+      f"la de la izquierda dobla a la derecha ({a_izq['x']:.1f} -> {punta_izq:.1f}) "
+      f"y la de la derecha a la izquierda ({a_der['x']:.1f} -> {punta_der:.1f})")
+
+#  Y ASI NUNCA SE SALEN DEL DADO. Es la consecuencia practica de lo de arriba.
+cd = bbox(v_dob["concreto"])
+check("y por eso ninguna pata se sale del dado, ni con un doblez enorme",
+      all(cd[0] - 1e-9 <= a["vastago"][4] <= cd[2] + 1e-9 for a in v_dob["anclas"]))
+
+enorme = construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                             dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM,
+                                      cuantas_anclas=4, long_anclaje=30,
+                                      long_ancla=60, doblez_ancla=25),
+                             dir_elev(60, 70, 20))[0]
+ce = bbox(enorme["concreto"])
+
+check("tampoco con un doblez de 25 cm en una placa de 40",
+      all(ce[0] - 1e-9 <= a["vastago"][4] <= ce[2] + 1e-9 for a in enorme["anclas"]),
+      f"las puntas caen en x = {[round(a['vastago'][4], 1) for a in enorme['anclas']]}, "
+      f"dado de {ce[0]:.1f} a {ce[2]:.1f}")
+
+#  ---- CON DOBLEZ SE VA EL TRAVESANO ----
+#  Lo que ancla es la pata. Un travesano ademas de la pata pone en el plano un remate
+#  que la pieza no lleva.
+check("con doblez desaparece el travesano del extremo",
+      all(a["remate"] is None for a in v_dob["anclas"]))
+
+recta = construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                            dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM,
+                                     cuantas_anclas=4, long_anclaje=30,
+                                     long_ancla=45, doblez_ancla=0),
+                            dir_elev(60, 70, 20))[0]
+
+check("y sin doblez el travesano sigue ahi, con dos puntos de vastago",
+      all(a["remate"] is not None and len(a["vastago"]) == 4
+          and not a["con_doblez"] for a in recta["anclas"]))
+
+#  ---- EL DADO CRECE PARA CONTENER EL ANCLA ----
+#  La regla de la macro es «el ahogo mas 5 cm». Con la longitud total capturada el ancla
+#  puede bajar mas de lo que dice E12, y ahi la regla de la macro dibujaria la punta
+#  ASOMANDO por debajo del dado: un plano que no se puede construir.
+larga = construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                            dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM,
+                                     cuantas_anclas=4, long_anclaje=10,
+                                     long_ancla=80, doblez_ancla=10),
+                            dir_elev(60, 70, 20))[0]
+
+cl = bbox(larga["concreto"])
+mas_honda = min(a["vastago"][3] for a in larga["anclas"])
+
+check("el dado baja lo que haga falta para que el ancla quede dentro",
+      mas_honda > cl[1] + 1e-9,
+      f"ahogo capturado 10, ancla de 80: el dado baja a {cl[1]:.1f} y "
+      f"el ancla llega a {mas_honda:.1f}")
+
+check("y son los mismos 5 cm de holgura de la macro",
+      abs((mas_honda - cl[1]) - 5.0) < 1e-9,
+      f"quedan {mas_honda - cl[1]:.2f} cm entre la punta y el fondo")
+
+#  PRUEBA NEGATIVA: con la regla de la macro a secas, esa ancla se salia.
+profundidad_macro = max(10.0 + 5.0, 20.0)
+check("PRUEBA NEGATIVA: con la regla de la macro a secas, el ancla se salia del dado",
+      abs(mas_honda) > profundidad_macro,
+      f"el ancla llega a {abs(mas_honda):.1f} cm y la macro dibujaria "
+      f"{profundidad_macro:.0f} cm de dado")
+
+#  ---- EL AHOGO SIGUE MANDANDO CUANDO NO HAY LONGITUD ----
+#  Es lo que se dibujaba antes de que existiera esta columna: nada cambia para una fila
+#  que no la use.
+sin_long = construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                               dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM,
+                                        cuantas_anclas=4, long_anclaje=30),
+                               dir_elev(60, 70, 20))[0]
+
+check("sin longitud capturada, el ancla se dibuja con el ahogo, como antes",
+      all(abs(a["ahogo"] - 30.0) < 1e-9 for a in sin_long["anclas"])
+      and abs(bbox(sin_long["concreto"])[1] + 35.0) < 1e-9,
+      f"ahogo dibujado {sin_long['anclas'][0]['ahogo']:.1f}")
+
+check("y sin ahogo NI longitud no hay anclas",
+      len(construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                              dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM,
+                                       cuantas_anclas=4),
+                              dir_elev(60, 70, 20))[0]["anclas"]) == 0)
+
+#  ---- EL AHOGO DIBUJADO ES COHERENTE CON LA LONGITUD ----
+#  Una barra de 45 con doblez de 10 tiene 35 de recto, y de esos 35 el ancla gasta el
+#  espesor de la placa mas el alto de la tuerca antes de entrar al concreto.
+check("el ahogo que resulta de la longitud descuenta la placa y la tuerca",
+      abs(a_izq["ahogo"] - (35.0 - GASTO)) < 1e-6,
+      f"35 de recto - {GASTO:.3f} de placa y tuerca = {a_izq['ahogo']:.3f}")
+
+#  ---- UN ANCLA IMPOSIBLE NO SE DIBUJA AL REVES ----
+#  Una barra mas corta que lo que gasta atravesando la placa no baja al concreto. En
+#  lugar de dibujarla del reves -la punta por ENCIMA de la placa, que se lee como un
+#  ancla flotando- se le deja el minimo que si baja.
+corta = construir_elevacion(0, 0, 1.0, 1.6, ESP_PLACA, False,
+                            dir_elev(40, 50, 20, sep_borde=5, diam_ancla=DIAM,
+                                     cuantas_anclas=4, long_ancla=1.0),
+                            dir_elev(60, 70, 20))[0]
+
+check("un ancla mas corta que la placa no se dibuja al reves",
+      all(a["ahogo"] > 0 for a in corta["anclas"]),
+      f"ancla de 1 cm: baja {corta['anclas'][0]['ahogo']:.2f} cm en lugar de subir")
+
+#  ---- LA TUERCA NO SE MUEVE ----
+#  Todo esto cambia el vastago; la tuerca y la arandela siguen apoyadas en la placa.
+py_arriba = bbox(v_dob["placa"])[3]
+check("la tuerca y la arandela siguen apoyadas en la placa",
+      all(abs(bbox(a["tuerca"])[1] - py_arriba) < 1e-9
+          and abs(a["arandela"][1] - py_arriba) < 1e-9
+          and abs(a["vastago"][1] - bbox(a["tuerca"])[3]) < 1e-9
+          for a in v_dob["anclas"]))
 
 print("\n" + "=" * 78)
 if fallos:

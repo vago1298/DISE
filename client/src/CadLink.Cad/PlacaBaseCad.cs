@@ -266,6 +266,27 @@ public sealed class PlacaBaseCad
     public double LongAnclajeXCm { get; set; }
     public double LongAnclajeYCm { get; set; }
 
+    /// <summary>
+    /// La longitud <b>total desarrollada</b> del ancla, en cm: lo que se corta, doblez incluido.
+    /// </summary>
+    /// <remarks>
+    /// <b>Manda sobre el ahogo</b>, que pasa a ser la consecuencia: lo que queda dentro del concreto
+    /// una vez descontado lo que el ancla gasta atravesando la placa y saliendo a la tuerca. De las
+    /// dos, esta es la que se puede verificar con una cinta en el taller. En cero se usa el ahogo,
+    /// que es lo que se dibujaba antes de que existiera este dato.
+    /// </remarks>
+    public double LongAnclaXCm { get; set; }
+    public double LongAnclaYCm { get; set; }
+
+    /// <summary>La <b>pata</b> del doblez del extremo del ancla, en cm. Cero = ancla recta.</summary>
+    /// <remarks>
+    /// Con doblez, el ancla es una <b>L</b> y lo que la ancla es la pata, así que el travesaño del
+    /// extremo desaparece: dibujar los dos pone en el plano un remate que la pieza no lleva. Las dos
+    /// patas apuntan <b>hacia dentro</b>, una contra la otra, que es donde tienen recubrimiento.
+    /// </remarks>
+    public double DoblezAnclaXCm { get; set; }
+    public double DoblezAnclaYCm { get; set; }
+
     /// <summary>Dibujar el <b>alzado</b> a la derecha de la planta.</summary>
     public bool DibujarElevacion { get; set; } = true;
 

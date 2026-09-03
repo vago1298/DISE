@@ -1314,6 +1314,8 @@ public sealed class DatosProyecto
             // Solo se ven en el alzado: el ahogo del ancla -E12 y E13- y, si se encienden los
             // cartabones, su altura -F18 y F19-.
             LongAnclajeXCm = 30, LongAnclajeYCm = 30,
+            LongAnclaXCm = 45, LongAnclaYCm = 45,
+            DoblezAnclaXCm = 10, DoblezAnclaYCm = 10,
             AltoCartabonXCm = 20, AltoCartabonYCm = 20,
             Escala = 10
         });

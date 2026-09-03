@@ -2607,6 +2607,54 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
+                            <!-- LA LONGITUD TOTAL DEL ANCLA Y SU DOBLEZ.
+
+                                 «Longitud» es lo que se corta y se pide en el taller, doblez
+                                 incluido: una de 45 con doblez de 10 lleva 35 de tramo recto. MANDA
+                                 sobre el ahogo, que pasa a ser la consecuencia -lo que queda dentro
+                                 del concreto una vez descontado lo que el ancla gasta atravesando la
+                                 placa-. De las dos, esta es la que se puede verificar con una cinta.
+
+                                 Y si la longitud pide mas hondo de lo que dice el ahogo, el dado del
+                                 alzado baja lo que haga falta: un ancla asomando por debajo del
+                                 concreto es un plano que no se puede construir. -->
+                            <DataGridTextColumn Header="L ancla X cm" Binding="{Binding LongAnclaXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud TOTAL del ancla X, en cm: lo que se corta, con el doblez incluido.&#10;En cero se usa el ahogo. Si pide mas hondo que el ahogo, el dado baja lo que haga falta." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="L ancla Y cm" Binding="{Binding LongAnclaYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud TOTAL del ancla Y, en cm: lo que se corta, con el doblez incluido.&#10;En cero se usa el ahogo." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Doblez ancla X cm" Binding="{Binding DoblezAnclaXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Pata del doblez del extremo del ancla X, en cm. Va DENTRO de la longitud total.&#10;Cero = ancla recta con su travesano. Con doblez, las dos patas apuntan una contra la otra." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Doblez ancla Y cm" Binding="{Binding DoblezAnclaYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Pata del doblez del extremo del ancla Y, en cm. Va DENTRO de la longitud total.&#10;Cero = ancla recta con su travesano." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
                             <!-- ===== ACOMODO Y ROTULO ===== -->
                             <DataGridCheckBoxColumn Header="Girar 90°" Binding="{Binding GirarPlaca90, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />

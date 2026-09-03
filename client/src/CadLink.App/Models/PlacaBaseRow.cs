@@ -56,6 +56,13 @@ public sealed class PlacaBaseRow : Row
     private double _altoCartabonYCm = 20;
     private double _longAnclajeXCm = 30;
     private double _longAnclajeYCm = 30;
+
+    // La longitud TOTAL del ancla y su doblez. La longitud manda sobre el ahogo, que pasa a ser la
+    // consecuencia; el doblez convierte el ancla en una L y le quita el travesano del extremo.
+    private double _longAnclaXCm = 45;
+    private double _longAnclaYCm = 45;
+    private double _doblezAnclaXCm = 10;
+    private double _doblezAnclaYCm = 10;
     private bool _conCartabones;
     private double _escala = 10;
     private bool _girarPlaca90 = true;
@@ -564,6 +571,33 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>E13</b>: lo que se ahoga el ancla Y en el concreto, en cm.</summary>
     public double LongAnclajeYCm { get => _longAnclajeYCm; set => Set(ref _longAnclajeYCm, value); }
 
+    /// <summary>
+    /// La longitud <b>total desarrollada</b> del ancla X, en cm: lo que se corta, doblez incluido.
+    /// </summary>
+    /// <remarks>
+    /// <b>Manda sobre el ahogo.</b> Con las dos capturadas pueden contradecirse, y de las dos la que
+    /// se puede verificar con una cinta en el taller es esta. En cero se usa el ahogo, que es lo que
+    /// se dibujaba antes. Y si la longitud pide mas hondo de lo que dice el ahogo, el dado del alzado
+    /// baja lo que haga falta: un ancla asomando por debajo del concreto no se puede construir.
+    /// </remarks>
+    public double LongAnclaXCm { get => _longAnclaXCm; set => Set(ref _longAnclaXCm, value); }
+
+    /// <summary>La longitud total del ancla Y, en cm. Ver la nota de X.</summary>
+    public double LongAnclaYCm { get => _longAnclaYCm; set => Set(ref _longAnclaYCm, value); }
+
+    /// <summary>
+    /// La <b>pata</b> del doblez del extremo del ancla X, en cm. Cero = ancla recta.
+    /// </summary>
+    /// <remarks>
+    /// Va <b>dentro</b> de la longitud total: una ancla de 45 con doblez de 10 lleva 35 de tramo
+    /// recto. Las dos patas apuntan una contra la otra, hacia dentro, que es donde tienen
+    /// recubrimiento. Con doblez desaparece el travesano del extremo: lo que ancla es la pata.
+    /// </remarks>
+    public double DoblezAnclaXCm { get => _doblezAnclaXCm; set => Set(ref _doblezAnclaXCm, value); }
+
+    /// <summary>La pata del doblez del ancla Y, en cm. Ver la nota de X.</summary>
+    public double DoblezAnclaYCm { get => _doblezAnclaYCm; set => Set(ref _doblezAnclaYCm, value); }
+
     /// <summary>Celda <b>F6</b>: dibujar los cartabones.</summary>
     public bool ConCartabones { get => _conCartabones; set => Set(ref _conCartabones, value); }
 
@@ -878,6 +912,10 @@ public sealed class PlacaBaseRow : Row
             AltoCartabonYCm = AltoCartabonYCm,
             LongAnclajeXCm = LongAnclajeXCm,
             LongAnclajeYCm = LongAnclajeYCm,
+            LongAnclaXCm = LongAnclaXCm,
+            LongAnclaYCm = LongAnclaYCm,
+            DoblezAnclaXCm = DoblezAnclaXCm,
+            DoblezAnclaYCm = DoblezAnclaYCm,
 
             Escala = Escala > 0 ? Escala : 10,
             GirarPlaca90 = GirarPlaca90
