@@ -180,7 +180,7 @@ def primera_palabra(s):
     return t[:p] if p > 0 else t
 
 
-def buscar_papel(medios, sol, preferir_expand=True, usar_full_bleed=False,
+def buscar_papel(medios, sol, preferir_expand=False, usar_full_bleed=False,
                  usar_mas_grande=True):
     """Devuelve (nombre, rotacion, cabe) o None."""
     a_mm, b_mm = hoja_orientada(sol)
@@ -228,6 +228,15 @@ def buscar_papel(medios, sol, preferir_expand=True, usar_full_bleed=False,
                 punto, rot = 100, -1
 
         if punto > 0:
+            #  ═══════════════════════════════════════════════════════════════════════════
+            #  EL NOMBRE QUE SE PIDIO GANA POR ENCIMA DE TODO. «ARCH D» tiene que dar ARCH_D
+            #  y no ARCH_expand_D: los dos miden 36x24 pulgadas, asi que empataban en la
+            #  medida y decidia el desempate. El plano salia en un papel que el usuario no
+            #  eligio y que su plotter puede no tener.
+            #  ═══════════════════════════════════════════════════════════════════════════
+            if pedido and normaliza(nombre_corto_del_papel(nm)) == pedido:
+                punto += 50
+
             if familia and nm_n.startswith(familia):
                 punto += 5
             if es_full:
@@ -572,22 +581,49 @@ check("ARCH D horizontal encuentra su pliego SIN rotar",
       r is not None and r[1] == 0 and r[2] is True,
       f"{r}")
 
-#  Y GANA EL EXPAND: tiene menos margen no imprimible, que es lo que quiere un plano que
-#  llega hasta el borde. Es el desempate por puntos.
-check("y gana el expand, que tiene menos margen no imprimible",
-      r[0] == "ARCH_expand_D_(36.00_x_24.00_Inches)", f"eligio {r[0]}")
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y GANA EL QUE SE PIDIO, no el que el programa crea mejor.
+#
+#  ARCH_D y ARCH_expand_D miden los dos 36x24 pulgadas, asi que empatan en la medida y
+#  decide el desempate. Arranco prefiriendo el expand -deja menos margen muerto- y estaba
+#  mal: el usuario eligio ARCH D en la hoja y el plano salia en ARCH expand D, que es otro
+#  nombre de papel y que su plotter puede no tener.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("gana el pliego que se pidio, no el expand",
+      r[0] == "ARCH_D_(36.00_x_24.00_Inches)", f"eligio {r[0]}")
 
-check("sin preferir expand, gana el pliego normal",
-      buscar_papel(MEDIOS, D_HORIZ, preferir_expand=False)[0]
+#  Y EL NOMBRE EXACTO GANA INCLUSO PIDIENDO EL EXPAND: son 50 puntos contra 10. La
+#  preferencia por el expand solo decide cuando el pliego que se pidio NO ESTA.
+check("el nombre exacto gana incluso prefiriendo el expand",
+      buscar_papel(MEDIOS, D_HORIZ, preferir_expand=True)[0]
       == "ARCH_D_(36.00_x_24.00_Inches)")
+
+SIN_EXACTO = [m for m in MEDIOS if not m.startswith("ARCH_D_")]
+
+check("y el expand solo gana cuando el pliego pedido no esta",
+      buscar_papel(SIN_EXACTO, D_HORIZ, preferir_expand=True)[0]
+      == "ARCH_expand_D_(36.00_x_24.00_Inches)"
+      and buscar_papel(SIN_EXACTO, D_HORIZ)[0]
+      == "ARCH_expand_D_(36.00_x_24.00_Inches)",
+      "sin ARCH_D, el expand mide lo pedido y es lo mejor que hay")
+
+#  Y si el que se pidio es el expand, tambien gana: el nombre manda en los dos sentidos.
+check("y si se pide ARCH expand D, se pone ARCH expand D",
+      buscar_papel(MEDIOS, solapa(tamano="ARCH expand D", ancho_pulg=24, alto_pulg=36))[0]
+      == "ARCH_expand_D_(36.00_x_24.00_Inches)")
 
 #  EL FULL BLEED SE DESCARTA por omision: casi ningun plotter puede imprimir sin margen,
 #  y el resultado es un plano recortado por los cuatro lados.
 check("el full bleed se descarta por omision, aunque mida exactamente lo pedido",
       "full_bleed" not in buscar_papel(MEDIOS, D_HORIZ)[0])
 
-check("y pidiendolo, gana el full bleed",
-      "full_bleed" in buscar_papel(MEDIOS, D_HORIZ, usar_full_bleed=True)[0])
+#  Y el full bleed, aun pidiendolo, no le gana al nombre exacto: son 20 puntos contra 50.
+check("y pidiendolo, el full bleed entra en juego pero no le gana al nombre exacto",
+      "full_bleed" in buscar_papel(
+          MEDIOS, solapa(tamano="ARCH full bleed D", ancho_pulg=24, alto_pulg=36),
+          usar_full_bleed=True)[0]
+      and buscar_papel(MEDIOS, D_HORIZ, usar_full_bleed=True)[0]
+      == "ARCH_D_(36.00_x_24.00_Inches)")
 
 #  ---- LA MISMA MEDIDA AL REVES: HAY QUE ROTAR EL PLOTEO ----
 rv = buscar_papel(MEDIOS, D_VERT)
@@ -1025,6 +1061,49 @@ check("el ultimo recurso marca el papel como NO exacto",
 #  Y EL DIBUJANTE AVISA en los dos casos malos: sin pliego, y con un pliego que solo
 #  aproxima. Es lo unico que separa un plano descuadrado de un plano descuadrado que
 #  alguien va a revisar.
+#  ---- EL DISPOSITIVO VA EN CADA LAYOUT ----
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  DE TRES PLANOS, SOLO EL PRIMERO RECIBIO SU TAMANO DE HOJA.
+#
+#  CanonicalMediaName solo acepta los papeles DEL DISPOSITIVO que el layout tiene puesto,
+#  y un layout nuevo nace con el de la plantilla. Ponia el dispositivo dentro de Papeles(),
+#  que guarda su resultado: en el primer plano se ponia -y su papel entraba- y del segundo
+#  en adelante Papeles() salia por la cache sin tocar el layout. AutoCAD contestaba
+#  «Invalid input» y el plano se quedaba con el papel de la plantilla, un A4.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("el dispositivo se pone en CADA layout, no solo en el primero",
+      "private void PonerDispositivo(object lay)" in DRW
+      and "PonerDispositivo(lay);" in DRW
+      # Y ya no se pone dentro de Papeles, que es donde la cache lo saltaba.
+      and DRW.index("PonerDispositivo(lay);") < DRW.index("Solapas.BuscarPapel(Papeles(lay), s)"))
+
+check("y la cache de papeles se queda: depende del dispositivo, no del layout",
+      "if (_papeles is not null)" in DRW
+      and "La lista de papeles del dispositivo. Depende SOLO del dispositivo" in DRW)
+
+#  ---- EL CENTRADO VA APARTE DEL PAPEL ----
+#  Antes iba todo en un solo bloque con CanonicalMediaName al principio, asi que cuando el
+#  papel fallaba se perdian TAMBIEN el centrado, la escala 1:1 y la rotacion: el layout se
+#  quedaba con el papel de la plantilla y encima descentrado.
+check("el centrado y la escala 1:1 van aparte, y no se pierden si el papel falla",
+      "private void CentrarEnLaHoja(object lay)" in DRW
+      and "l.CenterPlot = true;" in DRW
+      and "l.SetCustomScale(1, 1);" in DRW
+      and DRW.index("CentrarEnLaHoja(lay);") < DRW.index("l.CanonicalMediaName = p.Nombre;"))
+
+check("y la configuracion de pagina tambien centra",
+      DRW.count("CentrarEnLaHoja(lay);") >= 2)
+
+#  ---- Y SE COMPRUEBA QUE EL PAPEL ENTRO ----
+#  AutoCAD acepta la asignacion y a veces deja otro papel. Sin leerlo de vuelta, el informe
+#  diria que se puso uno que no esta.
+check("se lee el papel de vuelta para confirmar que es el que se pidio",
+      "var puesto = MedidaDelPapel(lay);" in DRW
+      and "pero el layout quedó con un papel de" in DRW)
+
+check("y si el papel falla se dice que la hoja va a salir descuadrada",
+      "El layout se queda con el papel de la plantilla" in DRW)
+
 check("el dibujante avisa cuando el tamano no existe en el dispositivo",
       "no existe en " in DRW and "PLOTTERMANAGER" in DRW
       and "papel por omisión" in DRW)

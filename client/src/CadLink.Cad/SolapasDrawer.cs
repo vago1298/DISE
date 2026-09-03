@@ -1102,8 +1102,15 @@ public sealed class SolapasDrawer
 
         if (porConfig.Length > 0 && PapelDelLayoutCoincide(lay, w, h))
         {
+            // También centrada: la configuración de página trae el papel y el dispositivo, pero su
+            // encuadre es el que se guardó, y aquí se quiere el cajetín centrado siempre.
+            CentrarEnLaHoja(lay);
+
             return "[config] " + porConfig;
         }
+
+        // EL DISPOSITIVO, EN ESTE LAYOUT. Sin esto, CanonicalMediaName no reconoce el papel.
+        PonerDispositivo(lay);
 
         var elegido = Solapas.BuscarPapel(Papeles(lay), s);
 
@@ -1119,6 +1126,16 @@ public sealed class SolapasDrawer
 
         var p = elegido.Value;
 
+        // ═══════════════════════════════════════════════════════════════════════════════════
+        // EL CENTRADO Y LA ESCALA VAN PRIMERO, Y APARTE DEL PAPEL.
+        //
+        // Antes iba todo en un solo bloque con CanonicalMediaName al principio, así que cuando
+        // el papel fallaba se perdían TAMBIÉN el centrado, la escala 1:1 y la rotación: el layout
+        // se quedaba con el papel de la plantilla y encima descentrado. Separados, un papel que
+        // no entra deja el resto puesto.
+        // ═══════════════════════════════════════════════════════════════════════════════════
+        CentrarEnLaHoja(lay);
+
         try
         {
             AcadConnection.Retry(() =>
@@ -1126,25 +1143,33 @@ public sealed class SolapasDrawer
                 dynamic l = lay;
 
                 l.CanonicalMediaName = p.Nombre;
-                l.PaperUnits = 1;                // acMillimeters
-                l.PlotType = 1;                  // acExtents
-                l.UseStandardScale = false;
-                l.SetCustomScale(1, 1);
-                l.CenterPlot = true;
+                l.RefreshPlotDeviceInfo();
 
                 if (p.Rotacion >= 0)
                 {
                     l.PlotRotation = p.Rotacion;
                 }
-
-                l.RefreshPlotDeviceInfo();
             });
         }
         catch (Exception ex)
         {
-            Notas.Add($"{Etiqueta(s)}: no se pudo asignar el papel «{p.Nombre}»: {ex.Message}");
+            Notas.Add(
+                $"{Etiqueta(s)}: no se pudo asignar el papel «{p.Nombre}»: {ex.Message}. " +
+                $"El layout se queda con el papel de la plantilla, así que la hoja va a salir " +
+                "descuadrada.");
 
             return string.Empty;
+        }
+
+        // Y SE COMPRUEBA QUE ENTRÓ. AutoCAD acepta la asignación y a veces deja otro papel; sin
+        // leerlo de vuelta, el informe diría que se puso uno que no está.
+        var puesto = MedidaDelPapel(lay);
+
+        if (puesto is not null && !Solapas.PapelCoincide(puesto.Value.Ancho, puesto.Value.Alto, w, h))
+        {
+            Notas.Add(
+                $"{Etiqueta(s)}: se pidió «{p.Nombre}» pero el layout quedó con un papel de " +
+                $"{puesto.Value.Ancho:0}x{puesto.Value.Alto:0} mm en lugar de {w:0}x{h:0}.");
         }
 
         if (!p.Cabe)
@@ -1156,6 +1181,34 @@ public sealed class SolapasDrawer
         }
 
         return Solapas.NombreCortoDelPapel(p.Nombre);
+    }
+
+    /// <summary>
+    /// Deja el ploteo <b>centrado</b> en la hoja y a escala 1:1.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que pidió el usuario: «que siempre lo deje centrado en el papel». Va aparte de la
+    /// asignación del papel para que un papel que no entra no se lleve el centrado con él.
+    /// </remarks>
+    private void CentrarEnLaHoja(object lay)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic l = lay;
+
+                l.PaperUnits = 1;                // acMillimeters
+                l.PlotType = 1;                  // acExtents: lo dibujado, no los límites
+                l.UseStandardScale = false;
+                l.SetCustomScale(1, 1);          // 1:1, que es como se dibujó el cajetín
+                l.CenterPlot = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Notas.Add($"No se pudo centrar el ploteo en la hoja: {ex.Message}");
+        }
     }
 
     private string AplicarConfigDePagina(object lay, SolapaCad s)
@@ -1279,6 +1332,45 @@ public sealed class SolapasDrawer
         }
     }
 
+    /// <summary>
+    /// Le pone el <b>dispositivo</b> de ploteo al layout.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Va en CADA layout, y aquí estaba el defecto.</b> Un layout nuevo nace con el dispositivo
+    /// de la plantilla, y <c>CanonicalMediaName</c> solo acepta los papeles <b>del dispositivo que
+    /// tiene puesto</b>: pedirle un ARCH D a un layout que sigue apuntando a la impresora de
+    /// oficina contesta <c>Invalid input</c>.
+    /// </para>
+    /// <para>
+    /// Antes se ponía dentro de <see cref="Papeles"/>, que guarda su resultado. Así que en el
+    /// primer plano se ponía —y su papel entraba— y del segundo en adelante <c>Papeles</c> salía por
+    /// la caché sin tocar el layout: tres planos generados y uno solo con su tamaño de hoja.
+    /// </para>
+    /// </remarks>
+    private void PonerDispositivo(object lay)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic l = lay;
+
+                l.ConfigName = Dispositivo;
+                l.RefreshPlotDeviceInfo();
+            });
+        }
+        catch (Exception ex)
+        {
+            Notas.Add(
+                $"No se pudo poner el dispositivo «{Dispositivo}» en el layout: {ex.Message}. " +
+                "Revisa que exista en PLOTTERMANAGER.");
+        }
+    }
+
+    /// <summary>
+    /// La lista de papeles del dispositivo. Depende SOLO del dispositivo, así que se guarda.
+    /// </summary>
     private List<string> Papeles(object lay)
     {
         if (_papeles is not null)
@@ -1293,9 +1385,6 @@ public sealed class SolapasDrawer
             AcadConnection.Retry(() =>
             {
                 dynamic l = lay;
-
-                l.ConfigName = Dispositivo;
-                l.RefreshPlotDeviceInfo();
 
                 salida.Clear();
 

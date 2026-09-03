@@ -507,9 +507,14 @@ public static class Solapas
     /// </summary>
     /// <param name="medios">Los nombres canónicos, tal como los da <c>GetCanonicalMediaNames</c>.</param>
     /// <param name="preferirExpand">
-    /// Prefiere los <c>expand</c>, que tienen menos margen no imprimible. Es lo que quiere un plano
-    /// que llega hasta el borde.
+    /// Prefiere los <c>expand</c>, que tienen menos margen no imprimible.
     /// </param>
+    /// <remarks>
+    /// <b>Por omisión NO.</b> Arrancó en <c>true</c> —un plano llega hasta el borde y el expand deja
+    /// menos margen muerto— y estaba mal: pedir <c>ARCH D</c> daba <c>ARCH expand D</c>, que es OTRO
+    /// nombre de papel. Quien elige un tamaño en la hoja quiere ese tamaño, no el que el programa
+    /// crea mejor. Se deja el parámetro para poder pedirlo a propósito.
+    /// </remarks>
     /// <param name="usarFullBleed">
     /// Los <c>full bleed</c> imprimen sin margen. Se <b>penalizan</b> por omisión: casi ningún
     /// plóter puede de verdad, y el resultado es un plano recortado.
@@ -520,7 +525,7 @@ public static class Solapas
     /// </param>
     public static PapelElegido? BuscarPapel(
         IEnumerable<string> medios, SolapaCad s,
-        bool preferirExpand = true, bool usarFullBleed = false, bool usarMasGrande = true)
+        bool preferirExpand = false, bool usarFullBleed = false, bool usarMasGrande = true)
     {
         var (aMm, bMm) = HojaOrientada(s);
 
@@ -591,6 +596,19 @@ public static class Solapas
 
             if (punto > 0)
             {
+                // ═══════════════════════════════════════════════════════════════════════════════
+                // EL NOMBRE QUE SE PIDIÓ GANA POR ENCIMA DE TODO.
+                //
+                // «ARCH D» tiene que dar ARCH_D, y no ARCH_expand_D por muy conveniente que sea
+                // su margen. Los dos miden 36x24 pulgadas, así que los dos empataban en la
+                // medida y decidía el desempate: el plano salía en un papel que el usuario no
+                // había elegido y que su plóter podía no tener.
+                // ═══════════════════════════════════════════════════════════════════════════════
+                if (pedido.Length > 0 && Normaliza(NombreCortoDelPapel(nm)) == pedido)
+                {
+                    punto += 50;
+                }
+
                 // Misma familia que pide el usuario: ARCH con ARCH, no con ANSI.
                 if (familia.Length > 0 && nmN.StartsWith(familia, StringComparison.Ordinal))
                 {
