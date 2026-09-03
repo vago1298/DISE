@@ -1045,9 +1045,7 @@ public sealed class SolapasDrawer
         // ---------- EL ÁREA DONDE SE DIBUJA ----------
         // El área imprimible real, que es el recuadro de rayitas que se ve en pantalla. Si no se
         // puede leer, la medida teórica desde el origen.
-        var area = AreaImprimible(lay) ?? (0.0, 0.0, w, h);
-
-        var (x0, y0, x1, y1) = area;
+        var (x0, y0, x1, y1) = AreaDeLaHoja(lay, nombre, w, h, out var deDondeElArea);
 
         var cx = (x0 + x1) / 2;
         var cy = (y0 + y1) / 2;
@@ -1063,7 +1061,7 @@ public sealed class SolapasDrawer
 
         if (br is not null)
         {
-            escala = EncajarYCentrar(br, cx, cy, x1 - x0, y1 - y0);
+            escala = EncajarYCentrar(br, x0, y0, x1, y1);
             nAtt = RellenarAtributos(br, s);
         }
 
@@ -1071,7 +1069,8 @@ public sealed class SolapasDrawer
             $"{nombre}: {s.Tamano} {(s.Horizontal ? "horizontal" : "vertical")} " +
             $"({w:0}x{h:0} mm), papel {(papel.Length == 0 ? "NO ASIGNADO" : papel)}, " +
             $"{nAtt} atributos" +
-            (Math.Abs(escala - 1) > 1e-6 ? $", escala {escala:0.0000}" : string.Empty));
+            (Math.Abs(escala - 1) > 1e-6 ? $", escala {escala:0.0000}" : string.Empty) +
+            $", area {x1 - x0:0}x{y1 - y0:0} mm por {deDondeElArea}");
 
         return nombre;
     }
@@ -1473,7 +1472,113 @@ public sealed class SolapasDrawer
     /// depende de activar el layout ni de regenerar el dibujo.
     /// </para>
     /// </remarks>
-    private (double X0, double Y0, double X1, double Y1)? AreaImprimible(object lay)
+    /// <summary>
+    /// El área <b>imprimible</b> del layout: el recuadro de rayitas, con su posición.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Dos fuentes, y la posición importa tanto como la medida.</b> La primera versión calculaba
+    /// solo el TAMAÑO —papel menos márgenes— y devolvía el rectángulo desde el origen. Con eso, el
+    /// cajetín se centraba en un rectángulo que no está donde se creía, y salía descolocado hacia
+    /// arriba y a la izquierda. Es lo que se veía en el plano.
+    /// </para>
+    /// <para>
+    /// <b>LIMMIN y LIMMAX</b> dan las dos cosas: AutoCAD pone los límites del espacio papel en el
+    /// área imprimible, con sus coordenadas de verdad. La macro los usaba y advertía de su pega: un
+    /// layout <b>recién creado</b> todavía no los tiene calculados y devuelve los del anterior. Se
+    /// resuelve activándolo y regenerando antes de leerlos, y comprobando el resultado contra el
+    /// tamaño nominal del papel.
+    /// </para>
+    /// <para>
+    /// Si no cuadran, se usa el tamaño por márgenes; y si tampoco, el papel entero. En los dos casos
+    /// se <b>deja dicho</b> en las notas de dónde salió, porque un cajetín descentrado se ve pero no
+    /// se explica.
+    /// </para>
+    /// </remarks>
+    private (double X0, double Y0, double X1, double Y1) AreaDeLaHoja(
+        object lay, string nombreLayout, double w, double h, out string deDonde)
+    {
+        var porLimites = AreaPorLimites(nombreLayout);
+
+        if (porLimites is not null && AreaCreible(porLimites.Value, w, h))
+        {
+            deDonde = "LIMMIN/LIMMAX";
+
+            return porLimites.Value;
+        }
+
+        var porMargenes = AreaPorMargenes(lay);
+
+        if (porMargenes is not null && AreaCreible(porMargenes.Value, w, h))
+        {
+            deDonde = "papel menos margenes";
+
+            return porMargenes.Value;
+        }
+
+        deDonde = "el papel entero (no se pudo leer el area imprimible)";
+
+        return (0, 0, w, h);
+    }
+
+    /// <summary>
+    /// ¿El área leída es creíble para un papel de <paramref name="w"/> por <paramref name="h"/>?
+    /// </summary>
+    /// <remarks>
+    /// Es la validación cruzada que hacía la macro. Un área más grande que el papel, o menor que su
+    /// 60 %, no es el área imprimible de esta hoja: es la del layout anterior o una lectura mal
+    /// interpretada. Y usarla descoloca el cajetín sin dar ningún error.
+    /// </remarks>
+    private static bool AreaCreible((double X0, double Y0, double X1, double Y1) a, double w, double h)
+    {
+        var aw = a.X1 - a.X0;
+        var ah = a.Y1 - a.Y0;
+
+        if (aw <= 1 || ah <= 1 || w <= 1 || h <= 1)
+        {
+            return false;
+        }
+
+        return aw <= w * 1.02 && ah <= h * 1.02
+               && aw >= w * 0.6 && ah >= h * 0.6;
+    }
+
+    /// <summary>El área imprimible por LIMMIN y LIMMAX, activando el layout y regenerando.</summary>
+    private (double X0, double Y0, double X1, double Y1)? AreaPorLimites(string nombreLayout)
+    {
+        try
+        {
+            return AcadConnection.Retry<(double, double, double, double)?>(() =>
+            {
+                // ACTIVAR Y REGENERAR ANTES DE LEER. Es la pega que la macro advertía: un layout
+                // recién creado devuelve los límites del anterior.
+                _doc.ActiveSpace = 0;                       // acPaperSpace
+                _doc.ActiveLayout = _doc.Layouts.Item(nombreLayout);
+                _doc.Regen(1);                              // acAllViewports
+
+                var min = ComoNumeros(new object?[] { _doc.GetVariable("LIMMIN") });
+                var max = ComoNumeros(new object?[] { _doc.GetVariable("LIMMAX") });
+
+                if (min.Count < 2 || max.Count < 2)
+                {
+                    return null;
+                }
+
+                return (min[0], min[1], max[0], max[1]);
+            });
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>El área imprimible por el tamaño del papel menos sus márgenes.</summary>
+    /// <remarks>
+    /// Da la medida pero <b>no la posición</b>, así que el rectángulo sale desde el origen. Es el
+    /// respaldo: mejor centrar en un rectángulo del tamaño correcto que en el papel entero.
+    /// </remarks>
+    private (double X0, double Y0, double X1, double Y1)? AreaPorMargenes(object lay)
     {
         try
         {
@@ -1494,9 +1599,7 @@ public sealed class SolapasDrawer
                     return null;
                 }
 
-                // GetPaperMargins entrega DOS PUNTOS por referencia: el de abajo-izquierda y el de
-                // arriba-derecha. Si no se pueden leer, se usa el papel entero: es un área un pelo
-                // mayor, y centrar en ella deja el cajetín igual de centrado.
+                // GetPaperMargins entrega DOS PUNTOS por referencia: abajo-izquierda y arriba-derecha.
                 var m = ComoNumeros(PorReferencia(lay, "GetPaperMargins"));
 
                 var mIzq = m.Count > 0 ? m[0] : 0;
@@ -1508,18 +1611,18 @@ public sealed class SolapasDrawer
 
                 var k = (int)l.PaperUnits == 0 ? 25.4 : 1.0;
 
-                var w = (pw - (mIzq + mDer)) * k;
-                var h = (ph - (mInf + mSup)) * k;
+                var aw = (pw - (mIzq + mDer)) * k;
+                var ah = (ph - (mInf + mSup)) * k;
 
                 // La hoja girada intercambia los lados del área imprimible.
                 var rot = (int)l.PlotRotation;
 
                 if (rot == 1 || rot == 3)
                 {
-                    (w, h) = (h, w);
+                    (aw, ah) = (ah, aw);
                 }
 
-                return w > 1 && h > 1 ? (0.0, 0.0, w, h) : null;
+                return aw > 1 && ah > 1 ? (0.0, 0.0, aw, ah) : null;
             });
         }
         catch (Exception)
@@ -1649,8 +1752,20 @@ public sealed class SolapasDrawer
     /// del dibujo— ni para qué tamaño de hoja se dibujó originalmente. Es lo que la macro llama
     /// «una sola ruta, sin suposiciones».
     /// </remarks>
-    private double EncajarYCentrar(object br, double cx, double cy, double w, double h)
+    private double EncajarYCentrar(
+        object br, double x0, double y0, double x1, double y1)
     {
+        var ancho = x1 - x0;
+        var alto = y1 - y0;
+
+        var cx = (x0 + x1) / 2;
+        var cy = (y0 + y1) / 2;
+
+        // 1. SI EL BLOQUE ES DINÁMICO, SE ESTIRA. Es lo que pidió el usuario: su cajetín ya trae
+        //    parámetros de ancho y largo para adaptarse a la hoja, y estirarlo respeta el tamaño de
+        //    sus textos. Escalarlo los agranda o los achica con todo lo demás.
+        var estirado = EstirarBloqueDinamico(br, ancho, alto);
+
         try
         {
             return AcadConnection.Retry(() =>
@@ -1666,14 +1781,20 @@ public sealed class SolapasDrawer
 
                 var (bx0, by0, bx1, by1) = caja.Value;
 
-                var s = Solapas.EscalaParaCaber(bx1 - bx0, by1 - by0, w, h, Margen);
+                var bw = bx1 - bx0;
+                var bh = by1 - by0;
+
+                // 2. Y SOLO SE REDUCE, NUNCA SE AGRANDA. Agrandar es lo que sacaba el cajetín del
+                //    área imprimible: se veía el marco pasado del recuadro de rayitas. Si el cajetín
+                //    es más chico que la hoja y no se pudo estirar, se queda a su tamaño y centrado,
+                //    que es honesto; agrandarlo un 1 % para «llenar» la hoja solo lo saca del área.
+                var s = Solapas.EscalaParaCaber(bw, bh, ancho, alto, Margen, soloReducir: true);
 
                 if (Math.Abs(s - 1) > 5e-4)
                 {
                     // La base del escalado es el centro de la propia caja, así que el bloque no se
                     // mueve de sitio al escalar y el centrado de abajo es una sola resta.
-                    b.ScaleEntity(
-                        new[] { (bx0 + bx1) / 2, (by0 + by1) / 2, 0.0 }, s);
+                    b.ScaleEntity(new[] { (bx0 + bx1) / 2, (by0 + by1) / 2, 0.0 }, s);
 
                     caja = Caja(br);
 
@@ -1685,6 +1806,8 @@ public sealed class SolapasDrawer
                     (bx0, by0, bx1, by1) = caja.Value;
                 }
 
+                // 3. CENTRADO EXACTO EN EL ÁREA, con las coordenadas de verdad del recuadro. Antes
+                //    el área se calculaba desde el origen y el cajetín acababa descolocado.
                 b.Move(
                     new[] { 0.0, 0.0, 0.0 },
                     new[] { cx - ((bx0 + bx1) / 2), cy - ((by0 + by1) / 2), 0.0 });
@@ -1698,6 +1821,117 @@ public sealed class SolapasDrawer
 
             return 1;
         }
+        finally
+        {
+            if (estirado.Length > 0)
+            {
+                Notas.Add("Cajetín dinámico estirado a la hoja: " + estirado);
+            }
+        }
+    }
+
+    // ======================================================================
+    //  ESTIRAR EL CAJETÍN DINÁMICO
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  UN CAJETÍN DINÁMICO SE ESTIRA, NO SE ESCALA.
+    //
+    //  Escalarlo cambia el tamaño de sus textos con todo lo demás: el mismo cajetín en una
+    //  ARCH D y en una A3 saldría con la letra de dos tamaños distintos. Estirándolo por sus
+    //  parámetros, el recuadro se adapta y los rótulos se quedan como se dibujaron, que es
+    //  para lo que el usuario se tomó el trabajo de hacerlo dinámico.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Nombres de parámetro que gobiernan el <b>ancho</b>, normalizados.</summary>
+    private static readonly string[] ParametrosDeAncho =
+    {
+        "ancho", "anchura", "base", "width", "largo", "longitud", "horizontal", "dx",
+    };
+
+    /// <summary>Nombres de parámetro que gobiernan el <b>alto</b>, normalizados.</summary>
+    private static readonly string[] ParametrosDeAlto =
+    {
+        "alto", "altura", "height", "peralte", "vertical", "dy",
+    };
+
+    /// <summary>
+    /// Le pone al bloque dinámico el ancho y el alto de la hoja.
+    /// </summary>
+    /// <returns>Lo que se cambió, para dejarlo dicho. Vacío si no es dinámico o no se pudo.</returns>
+    /// <remarks>
+    /// <para>
+    /// Los nombres de los parámetros se buscan por una lista, porque cada quien llama al suyo como
+    /// quiere. <b>«largo» cuenta como ancho</b>: en una hoja el lado largo es el horizontal, y es
+    /// como lo dijo el usuario —«que se estreche en largo y ancho»—.
+    /// </para>
+    /// <para>
+    /// Si no acierta, no pasa nada grave: el paso siguiente mide el bloque y lo centra igual. Y lo
+    /// que se cambió se deja dicho en las notas, que es lo que permite corregir la lista si el
+    /// parámetro se llama de otra manera.
+    /// </para>
+    /// </remarks>
+    private string EstirarBloqueDinamico(object br, double ancho, double alto)
+    {
+        var hechos = new List<string>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic b = br;
+
+                hechos.Clear();
+
+                if (!(bool)b.IsDynamicBlock)
+                {
+                    return;
+                }
+
+                foreach (dynamic pr in b.GetDynamicBlockProperties())
+                {
+                    string nombre = pr.PropertyName;
+
+                    var n = Solapas.Normaliza(nombre);
+
+                    double? valor = null;
+
+                    if (Array.IndexOf(ParametrosDeAncho, n) >= 0)
+                    {
+                        valor = ancho;
+                    }
+                    else if (Array.IndexOf(ParametrosDeAlto, n) >= 0)
+                    {
+                        valor = alto;
+                    }
+
+                    if (valor is null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        // Un parámetro que no sea de distancia —una lista, una visibilidad— rechaza
+                        // el número. Se prueba y se sigue: no es un error, es que ese no era.
+                        pr.Value = valor.Value;
+
+                        hechos.Add($"{nombre}={valor.Value:0.#}");
+                    }
+                    catch (Exception)
+                    {
+                        // Ese parámetro no acepta una distancia.
+                    }
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // Un bloque no dinámico no tiene GetDynamicBlockProperties, y eso no es un fallo.
+            return string.Empty;
+        }
+
+        return string.Join(", ", hechos);
     }
 
     private static (double X0, double Y0, double X1, double Y1)? Caja(object ent)
@@ -1751,6 +1985,7 @@ public sealed class SolapasDrawer
     private int RellenarAtributos(object br, SolapaCad s)
     {
         var n = 0;
+        var sinReconocer = new List<string>();
 
         try
         {
@@ -1759,6 +1994,7 @@ public sealed class SolapasDrawer
                 dynamic b = br;
 
                 n = 0;
+                sinReconocer.Clear();
 
                 if (!(bool)b.HasAttributes)
                 {
@@ -1767,10 +2003,17 @@ public sealed class SolapasDrawer
 
                 foreach (dynamic att in b.GetAttributes())
                 {
-                    var texto = Solapas.TextoDeAtributo(s, (string)att.TagString);
+                    string tag = att.TagString;
+
+                    var texto = Solapas.TextoDeAtributo(s, tag);
 
                     if (texto is null)
                     {
+                        // SE APUNTA CUÁL NO SE RECONOCIÓ. Es el diagnóstico que faltaba: con once
+                        // atributos llenados de dieciséis, saber CUÁLES son los otros cinco es lo
+                        // único que permite añadirlos a la lista de alias.
+                        sinReconocer.Add(tag);
+
                         continue;
                     }
 
@@ -1788,6 +2031,14 @@ public sealed class SolapasDrawer
         catch (Exception ex)
         {
             Notas.Add($"{Etiqueta(s)}: no se pudieron llenar todos los atributos: {ex.Message}");
+        }
+
+        if (sinReconocer.Count > 0)
+        {
+            Notas.Add(
+                $"{Etiqueta(s)}: estos atributos del cajetín NO se reconocen y se quedan como " +
+                "estaban: " + string.Join(", ", sinReconocer) +
+                ". Si alguno es un dato que la hoja tiene, dime cómo se llama y lo añado.");
         }
 
         return n;

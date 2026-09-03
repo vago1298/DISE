@@ -113,7 +113,7 @@ public partial class MainWindow
     /// </remarks>
     private static (double Ancho, double Alto) MedidasDeLaHoja(string? tamano)
     {
-        var t = Solapas.Normaliza(tamano);
+        var t = Solapas.Normaliza(Solapas.SoloElTamano(tamano));
 
         // ARCH e ANSI en pulgadas; ISO en milímetros pasados a pulgadas.
         var tabla = new Dictionary<string, (double, double)>

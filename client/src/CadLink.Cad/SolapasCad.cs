@@ -166,14 +166,13 @@ public static class Solapas
     /// </remarks>
     public static string? TextoDeAtributo(SolapaCad s, string? tag)
     {
-        switch ((tag ?? string.Empty).Trim().ToUpperInvariant())
+        // EL TAG SE TRADUCE ANTES. Así el cajetín puede llamar a la cédula «CED. PROF.» y a la obra
+        // «OBRA», que es como los llama de verdad quien dibuja cajetines.
+        switch (TagCanonico(tag) ?? string.Empty)
         {
             case "CALCULISTA": return SinTitulo(s.Calculista);
 
-            case "CEDULA":
-                // EL PREFIJO SOLO SI HAY NÚMERO. Con la celda vacía, ponerlo igual deja un
-                // «CED. PROF.» solo en el cajetín, que se lee como un dato que se perdió.
-                return s.Cedula.Trim().Length == 0 ? string.Empty : PrefijoCedula + s.Cedula.Trim();
+            case "CEDULA": return TextoDeLaCedula(s);
 
             case "PROPIETARIO": return s.Propietario;
             case "UBICACION": return s.Ubicacion;
@@ -190,10 +189,40 @@ public static class Solapas
 
             case "TOTAL": return ConCeros(s.Total, DigitosDelNumero);
             case "TITULO": return s.Titulo;
-            case "TAMANO": return s.Tamano;
+            // SIN LAS MEDIDAS: en el cajetín el recuadro del tamaño es estrecho, y «ARCH D
+            // (610 x 914 mm)» no cabe. Las medidas están en la hoja, que es donde se elige.
+            case "TAMANO": return SoloElTamano(s.Tamano);
 
             default: return null;
         }
+    }
+
+    /// <summary>
+    /// La cédula, con su prefijo <b>y sin repetirlo</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El prefijo es de la macro, así que se conserva. Pero es <b>idempotente</b>: si en la hoja se
+    /// escribe «CED. PROF. 1234567» —que es lo natural cuando alguien quiere ver en el plano
+    /// exactamente lo que capturó— no sale «CED. PROF. CED. PROF. 1234567».
+    /// </para>
+    /// <para>
+    /// Y con la celda vacía no se pone el prefijo solo: un «CED. PROF.» sin número en el cajetín se
+    /// lee como un dato que el programa perdió.
+    /// </para>
+    /// </remarks>
+    public static string TextoDeLaCedula(SolapaCad s)
+    {
+        var c = s.Cedula.Trim();
+
+        if (c.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        return Normaliza(c).StartsWith(Normaliza(PrefijoCedula), StringComparison.Ordinal)
+            ? c
+            : PrefijoCedula + c;
     }
 
     /// <summary>El número del plano: <c>01/04</c>, o <c>01</c> si no se sabe el total.</summary>
@@ -209,21 +238,77 @@ public static class Solapas
         return s.Total > 0 ? n + SeparadorDelNumero + ConCeros(s.Total, DigitosDelNumero) : n;
     }
 
-    /// <summary>¿Es uno de los atributos que el programa sabe llenar?</summary>
-    public static bool EsTagConocido(string? tag)
-    {
-        var t = (tag ?? string.Empty).Trim();
+    // ======================================================================
+    //  LOS NOMBRES QUE CADA CAJETÍN LE DA A SUS ATRIBUTOS
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  EL CAJETÍN DEL USUARIO TENÍA ONCE ATRIBUTOS RECONOCIDOS DE DIECISÉIS.
+    //
+    //  Y uno de los cinco que faltaban era la cédula, que se quedaba en blanco. El nombre del
+    //  atributo lo elige quien dibuja el cajetín: la cédula puede ser CEDULA, CED, CED_PROF o
+    //  CEDULAPROFESIONAL, y exigir uno exacto es pedirle al usuario que renombre su bloque
+    //  para que le sirva al programa. Es al revés.
+    //
+    //  Se compara NORMALIZADO —sin acentos, sin espacios, sin puntos ni guiones— así que
+    //  «CED. PROF.», «CED_PROF» y «Céd Prof» son el mismo nombre.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
 
-        foreach (var c in TagsConocidos)
+    /// <summary>Los nombres alternativos de cada atributo, ya normalizados al compararse.</summary>
+    /// <remarks>
+    /// La lista es deliberadamente <b>corta y sin ambigüedades</b>: nada de <c>HOJA</c> —que sirve
+    /// igual para la clave del plano y para el tamaño— ni <c>PLANO</c>. Un alias que apunte a dos
+    /// atributos llenaría el equivocado, y eso es peor que dejarlo en blanco.
+    /// </remarks>
+    private static readonly (string Tag, string[] Alias)[] _alias =
+    {
+        ("CALCULISTA", new[] { "calculo", "calculista", "ingeniero", "proyectista", "reviso" }),
+        ("CEDULA", new[] { "cedula", "ced", "cedprof", "cedulaprof", "cedulaprofesional" }),
+        ("PROPIETARIO", new[] { "propietario", "cliente", "dueno", "propiedad" }),
+        ("UBICACION", new[] { "ubicacion", "direccion", "localizacion", "domicilio" }),
+        ("PROYECTO", new[] { "proyecto", "obra", "nombreobra", "nombredelaobra" }),
+        ("CONTENIDO", new[] { "contenido", "contiene", "descripcion" }),
+        ("DETALLE", new[] { "detalle", "detalles", "seccionydetalles" }),
+        ("DIBUJO", new[] { "dibujo", "dibujante", "dibujado", "dibujopor" }),
+        ("FECHA", new[] { "fecha" }),
+        ("ESCALA", new[] { "escala", "esc" }),
+        ("ACOTACION", new[] { "acotacion", "acot", "acotaciones", "unidades" }),
+        ("CLAVE", new[] { "clave", "claveplano", "clavedelplano", "lamina" }),
+        ("NUMERO", new[] { "numero", "num", "nodeplano", "numeroplano" }),
+        ("TOTAL", new[] { "total", "totalplanos", "deplanos" }),
+        ("TITULO", new[] { "titulo", "tituloplano" }),
+        ("TAMANO", new[] { "tamano", "tamanio", "formato" }),
+    };
+
+    /// <summary>
+    /// A qué atributo <b>de los que se saben llenar</b> corresponde el tag de un bloque.
+    /// </summary>
+    /// <returns>El tag canónico, o <c>null</c> si no lo reconoce.</returns>
+    public static string? TagCanonico(string? tag)
+    {
+        var n = Normaliza(tag);
+
+        if (n.Length == 0)
         {
-            if (string.Equals(c, t, StringComparison.OrdinalIgnoreCase))
+            return null;
+        }
+
+        foreach (var (canonico, alias) in _alias)
+        {
+            foreach (var a in alias)
             {
-                return true;
+                if (n == a)
+                {
+                    return canonico;
+                }
             }
         }
 
-        return false;
+        return null;
     }
+
+    /// <summary>¿Es uno de los atributos que el programa sabe llenar?</summary>
+    public static bool EsTagConocido(string? tag) => TagCanonico(tag) is not null;
 
     // ======================================================================
     //  FORMATO DEL TEXTO
@@ -320,7 +405,11 @@ public static class Solapas
 
         foreach (var c in t)
         {
-            if (c is ' ' or '\u00A0' or '_' or '-')
+            // EL PUNTO TAMBIEN. Los tags de un cajetin de verdad se llaman «CED. PROF.» y «M.I.»,
+            // y sin quitarlo «CED. PROF.» normaliza a «ced.prof.» y no casa con «cedprof». Es lo que
+            // dejaba la cedula en blanco. No estorba a los nombres de papel: los numeros con punto
+            // solo se leen en MedidasDelNombre, que parsea el texto crudo.
+            if (c is ' ' or '\u00A0' or '_' or '-' or '.')
             {
                 continue;
             }
@@ -435,9 +524,33 @@ public static class Solapas
             : (Math.Min(a, b), Math.Max(a, b));
     }
 
+    /// <summary>
+    /// El tamaño <b>sin las medidas</b> que la hoja le añade para que se lea mejor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En la tabla el tamaño se elige como <c>ARCH D (610 x 914 mm)</c>, porque saber cuánto mide sin
+    /// tener que recordarlo es la diferencia entre elegir bien y elegir por costumbre. Pero lo que se
+    /// compara contra los papeles del dispositivo es <b>solo el nombre</b>: con el paréntesis dentro,
+    /// ninguna búsqueda por nombre acertaría y todos los planos caerían al último recurso.
+    /// </para>
+    /// <para>
+    /// Y vale igual para lo que ya estaba guardado: un trabajo con <c>ARCH D</c> a secas pasa por aquí
+    /// sin cambiar.
+    /// </para>
+    /// </remarks>
+    public static string SoloElTamano(string? tamano)
+    {
+        var t = (tamano ?? string.Empty).Trim();
+
+        var p = t.IndexOf('(');
+
+        return p > 0 ? t.Substring(0, p).Trim() : t;
+    }
+
     /// <summary>El nombre que le tocaría a la configuración de página: <c>ARCH D Horizontal</c>.</summary>
     public static string NombreDeConfigPagina(SolapaCad s) =>
-        s.Tamano.Trim() + (s.Horizontal ? " Horizontal" : " Vertical");
+        SoloElTamano(s.Tamano) + (s.Horizontal ? " Horizontal" : " Vertical");
 
     /// <summary>
     /// ¿La configuración de página que se encontró es la de este plano?
@@ -451,13 +564,15 @@ public static class Solapas
     {
         var n = Normaliza(nombreConfig);
 
-        if (n.Length == 0 || s.Tamano.Trim().Length == 0)
+        if (n.Length == 0 || SoloElTamano(s.Tamano).Length == 0)
         {
             return false;
         }
 
-        var largo = Normaliza(s.Tamano + (s.Horizontal ? "Horizontal" : "Vertical"));
-        var corto = Normaliza(s.Tamano + (s.Horizontal ? "H" : "V"));
+        var tamano = SoloElTamano(s.Tamano);
+
+        var largo = Normaliza(tamano + (s.Horizontal ? "Horizontal" : "Vertical"));
+        var corto = Normaliza(tamano + (s.Horizontal ? "H" : "V"));
 
         return n == largo || n == corto;
     }
@@ -529,8 +644,8 @@ public static class Solapas
     {
         var (aMm, bMm) = HojaOrientada(s);
 
-        var pedido = Normaliza(s.Tamano);
-        var familia = Normaliza(PrimeraPalabra(s.Tamano));
+        var pedido = Normaliza(SoloElTamano(s.Tamano));
+        var familia = Normaliza(PrimeraPalabra(SoloElTamano(s.Tamano)));
 
         string? mejor = null;
         var mejorPunto = -1;

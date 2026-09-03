@@ -66,8 +66,11 @@ def formatear(s, quitar_acentos=False):
 
 
 def normaliza(s):
+    #  EL PUNTO TAMBIEN: los tags de un cajetin de verdad se llaman «CED. PROF.» y «M.I.», y
+    #  sin quitarlo «CED. PROF.» normaliza a «ced.prof.» y no casa con «cedprof». Es lo que
+    #  dejaba la cedula en blanco.
     t = sin_acentos((s or "").strip().lower())
-    return "".join(c for c in t if c not in (" ", "\u00a0", "_", "-"))
+    return "".join(c for c in t if c not in (" ", "\u00a0", "_", "-", "."))
 
 
 def sin_titulo(s):
@@ -986,6 +989,150 @@ check("una carpeta sin cajetin da lista vacia, no revienta",
       cajetines_de_la_carpeta(["C:\\F\\PLANTA.dwg"]) == []
       and cajetines_de_la_carpeta([]) == [])
 
+
+print("\n" + "=" * 78)
+print("LOS NOMBRES QUE CADA CAJETIN LE DA A SUS ATRIBUTOS")
+print("=" * 78)
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  EL CAJETIN DEL USUARIO TENIA ONCE ATRIBUTOS RECONOCIDOS DE DIECISEIS, y uno de los
+#  cinco que faltaban era la CEDULA, que se quedaba en blanco.
+#
+#  El nombre del atributo lo elige quien dibuja el cajetin: la cedula puede ser CEDULA,
+#  CED, CED_PROF o CEDULAPROFESIONAL. Exigir uno exacto es pedirle al usuario que renombre
+#  su bloque para que le sirva al programa, y es al reves.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+ALIAS = {
+    "CALCULISTA": ["calculo", "calculista", "ingeniero", "proyectista", "reviso"],
+    "CEDULA": ["cedula", "ced", "cedprof", "cedulaprof", "cedulaprofesional"],
+    "PROPIETARIO": ["propietario", "cliente", "dueno", "propiedad"],
+    "UBICACION": ["ubicacion", "direccion", "localizacion", "domicilio"],
+    "PROYECTO": ["proyecto", "obra", "nombreobra", "nombredelaobra"],
+    "CONTENIDO": ["contenido", "contiene", "descripcion"],
+    "DETALLE": ["detalle", "detalles", "seccionydetalles"],
+    "DIBUJO": ["dibujo", "dibujante", "dibujado", "dibujopor"],
+    "FECHA": ["fecha"],
+    "ESCALA": ["escala", "esc"],
+    "ACOTACION": ["acotacion", "acot", "acotaciones", "unidades"],
+    "CLAVE": ["clave", "claveplano", "clavedelplano", "lamina"],
+    "NUMERO": ["numero", "num", "nodeplano", "numeroplano"],
+    "TOTAL": ["total", "totalplanos", "deplanos"],
+    "TITULO": ["titulo", "tituloplano"],
+    "TAMANO": ["tamano", "tamanio", "formato"],
+}
+
+
+def tag_canonico(tag):
+    n = normaliza(tag)
+    if not n:
+        return None
+    for canonico, alias in ALIAS.items():
+        if n in alias:
+            return canonico
+    return None
+
+
+#  «CED. PROF.», «CED_PROF» y «Céd Prof» son el MISMO nombre: se compara normalizado, sin
+#  acentos, sin espacios, sin puntos ni guiones.
+check("la cedula se reconoce como sea que se llame el atributo",
+      all(tag_canonico(t) == "CEDULA"
+          for t in ["CEDULA", "cedula", "CED", "CED. PROF.", "CED_PROF", "Céd Prof",
+                    "CEDULA PROF", "CedulaProfesional"]),
+      "; ".join(f"{t}->{tag_canonico(t)}" for t in
+                ["CED. PROF.", "CED_PROF", "Céd Prof"] if tag_canonico(t) != "CEDULA"))
+
+check("y los demas tambien tienen sus nombres de verdad",
+      tag_canonico("OBRA") == "PROYECTO"
+      and tag_canonico("CLIENTE") == "PROPIETARIO"
+      and tag_canonico("DIRECCION") == "UBICACION"
+      and tag_canonico("CONTIENE") == "CONTENIDO"
+      and tag_canonico("ESC") == "ESCALA"
+      and tag_canonico("LAMINA") == "CLAVE")
+
+check("un atributo que no es de la solapa sigue sin reconocerse",
+      tag_canonico("REVISION") is None
+      and tag_canonico("NORTE") is None
+      and tag_canonico("") is None
+      and tag_canonico(None) is None)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y NINGUN ALIAS APUNTA A DOS ATRIBUTOS. Un alias ambiguo llenaria el equivocado, que es
+#  peor que dejarlo en blanco: «HOJA» sirve igual para la clave del plano y para el tamano,
+#  y «PLANO» para tres cosas. Por eso no estan.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+repetidos = {}
+for canonico, alias in ALIAS.items():
+    for a in alias:
+        repetidos.setdefault(a, []).append(canonico)
+
+ambiguos = {a: v for a, v in repetidos.items() if len(v) > 1}
+
+check("ningun alias apunta a dos atributos distintos",
+      not ambiguos, str(ambiguos))
+
+#  Y el tag canonico de cada uno es su propio nombre, o el mapeo se contradiria.
+check("cada atributo se reconoce por su propio nombre",
+      all(tag_canonico(t) == t for t in TAGS_CONOCIDOS),
+      "; ".join(f"{t}->{tag_canonico(t)}" for t in TAGS_CONOCIDOS if tag_canonico(t) != t))
+
+
+print("\n" + "=" * 78)
+print("LAS MEDIDAS EN EL NOMBRE DEL TAMANO DE HOJA")
+print("=" * 78)
+#  En la tabla el tamano se elige como «ARCH D (610 x 914 mm)», porque saber cuanto mide sin
+#  tener que recordarlo es la diferencia entre elegir bien y elegir por costumbre. Pero lo
+#  que se compara contra los papeles del dispositivo es SOLO EL NOMBRE: con el parentesis
+#  dentro, ninguna busqueda por nombre acertaria y todos los planos caerian al ultimo
+#  recurso.
+
+
+def solo_el_tamano(t):
+    t = (t or "").strip()
+    p = t.find("(")
+    return t[:p].strip() if p > 0 else t
+
+
+check("las medidas se quitan antes de comparar",
+      solo_el_tamano("ARCH D (610 x 914 mm)") == "ARCH D"
+      and solo_el_tamano("ISO A1 (594 x 841 mm)") == "ISO A1")
+
+check("y un tamano sin medidas -de un trabajo guardado antes- pasa igual",
+      solo_el_tamano("ARCH D") == "ARCH D"
+      and solo_el_tamano("") == ""
+      and solo_el_tamano(None) == "")
+
+#  LA PRUEBA QUE IMPORTA: con las medidas dentro, el papel se sigue encontrando.
+CON_MEDIDAS = solapa(tamano="ARCH D (610 x 914 mm)", ancho_pulg=24, alto_pulg=36,
+                     horizontal=True)
+
+
+def buscar_con_limpieza(medios, sol):
+    limpia = dict(sol)
+    limpia["tamano"] = solo_el_tamano(sol["tamano"])
+    return buscar_papel(medios, limpia)
+
+
+check("con las medidas en el nombre, el papel se sigue encontrando",
+      buscar_con_limpieza(MEDIOS, CON_MEDIDAS)[0] == "ARCH_D_(36.00_x_24.00_Inches)",
+      str(buscar_con_limpieza(MEDIOS, CON_MEDIDAS)))
+
+#  PRUEBA NEGATIVA: sin limpiar, «archd610x914mm» no es «archd» y el acierto por nombre
+#  falla. Con medidas se salva por la MEDIDA, pero un tamano personalizado -que solo se
+#  encuentra por nombre- se perderia.
+check("PRUEBA NEGATIVA: sin limpiar, un tamano personalizado no se encontraria",
+      buscar_papel(["PLANO_GIPC"],
+                   solapa(tamano="PLANO GIPC (900 x 600 mm)", ancho_pulg=24, alto_pulg=36)) is None
+      and buscar_con_limpieza(["PLANO_GIPC"],
+                              solapa(tamano="PLANO GIPC (900 x 600 mm)",
+                                     ancho_pulg=24, alto_pulg=36)) is not None)
+
+#  Y la configuracion de pagina tambien: «ARCH D Horizontal» no lleva medidas.
+check("la configuracion de pagina se busca sin las medidas",
+      config_pagina_sirve(
+          {**CON_MEDIDAS, "tamano": solo_el_tamano(CON_MEDIDAS["tamano"])},
+          "ARCH D Horizontal"))
+
+
 # ==========================================================================
 print("\n" + "=" * 78)
 print("Y EL C# HACE LO MISMO QUE ESTE PORT")
@@ -1032,7 +1179,13 @@ check("y SinTitulo exige el espacio detras, para no morder el nombre",
 
 check("el prefijo de la cedula solo se pone si hay numero",
       'public const string PrefijoCedula = "CED. PROF. ";' in CAD
-      and "s.Cedula.Trim().Length == 0 ? string.Empty : PrefijoCedula" in CAD)
+      and "public static string TextoDeLaCedula(SolapaCad s)" in CAD
+      and "if (c.Length == 0)" in CAD)
+
+#  Y ES IDEMPOTENTE: quien escribe «CED. PROF. 1234567» en la hoja -porque quiere ver en el
+#  plano exactamente lo que capturo- no obtiene «CED. PROF. CED. PROF. 1234567».
+check("y no se repite si el usuario ya lo escribio",
+      "Normaliza(c).StartsWith(Normaliza(PrefijoCedula), StringComparison.Ordinal)" in CAD)
 
 check("las tres estrategias del papel estan, con sus puntos",
       "punto = 300;" in CAD and "punto = 200;" in CAD and "punto = 100;" in CAD
@@ -1130,7 +1283,7 @@ check("el cajetin se mide, se escala sin deformar y se centra",
 #  un dynamic, y deconstruirla no compilaba -CS8133-. El dynamic se queda DENTRO.
 check("las fronteras van tipadas: el dynamic se queda dentro de cada metodo",
       "Caja(object ent)" in DRW
-      and "AreaImprimible(object lay)" in DRW
+      and "AreaPorMargenes(object lay)" in DRW
       and "MedidaDelPapel(object lay)" in DRW
       and "object? lay = CrearLayout(nombre);" in DRW
       and "object? br = Insertar(lay, cx, cy);" in DRW)
@@ -1147,6 +1300,98 @@ check("y verificar_usings.py lo comprueba, en TODO el cliente y no solo en la ap
 check("y los atributos no alineados a la izquierda se recolocan",
       "(int)att.Alignment != 0" in DRW
       and "att.TextAlignmentPoint = att.TextAlignmentPoint;" in DRW)
+
+#  ---- LOS ALIAS DE LOS TAGS ----
+check("los alias de los tags estan, con la cedula entre ellos",
+      "private static readonly (string Tag, string[] Alias)[] _alias" in CAD
+      and '"cedula", "ced", "cedprof", "cedulaprof", "cedulaprofesional"' in CAD
+      and "public static string? TagCanonico(" in CAD
+      and "TagCanonico(tag) is not null" in CAD)
+
+#  Y el mapeo TRADUCE antes de decidir: si comparara el tag literal, los alias no servirian
+#  de nada.
+check("y el texto del atributo se decide con el tag CANONICO, no con el literal",
+      "switch (TagCanonico(tag) ?? string.Empty)" in CAD)
+
+#  EL PUNTO SE QUITA AL NORMALIZAR. Sin eso, «CED. PROF.» normaliza a «ced.prof.» y no casa
+#  con «cedprof»: es lo que dejaba la cedula en blanco.
+check("el punto se quita al normalizar, o «CED. PROF.» no casaria",
+      "or '.')" in CAD and "«CED. PROF.» normaliza a «ced.prof.»" in CAD)
+
+#  ---- Y SE DICE QUE ATRIBUTOS NO SE RECONOCIERON ----
+#  Es el diagnostico que faltaba: con once atributos llenados de dieciseis, saber CUALES son
+#  los otros cinco es lo unico que permite anadirlos a la lista.
+check("y se listan los atributos del cajetin que no se reconocieron",
+      "sinReconocer.Add(tag);" in DRW
+      and "NO se reconocen y se quedan como " in DRW
+      and "dime cómo se llama y lo añado" in DRW)
+
+#  ---- LAS MEDIDAS EN EL NOMBRE DEL TAMANO ----
+check("el tamano lleva sus medidas en la hoja, y se quitan antes de comparar",
+      "public static string SoloElTamano(" in CAD
+      and CAD.count("SoloElTamano(s.Tamano)") >= 4
+      and '"ARCH D (610 x 914 mm)"' in FILA
+      and '"ISO A1 (594 x 841 mm)"' in FILA)
+
+check("y en el cajetin se rotula el tamano SIN las medidas, que no caben",
+      'case "TAMANO": return SoloElTamano(s.Tamano);' in CAD)
+
+#  ---- EL AREA IMPRIMIBLE: DOS FUENTES Y VALIDACION CRUZADA ----
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  LA PRIMERA VERSION CALCULABA SOLO EL TAMANO y devolvia el rectangulo desde el origen.
+#  Con eso el cajetin se centraba en un rectangulo que no esta donde se creia, y salia
+#  descolocado hacia arriba y a la izquierda. Es lo que se veia en el plano.
+#
+#  LIMMIN y LIMMAX dan tamano Y POSICION. Su pega -que la macro advertia- es que un layout
+#  recien creado devuelve los del anterior, y se resuelve activandolo y regenerando antes de
+#  leerlos, y validando el resultado contra el tamano nominal del papel.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("el area imprimible sale de LIMMIN/LIMMAX, que dan tambien la POSICION",
+      "private (double X0, double Y0, double X1, double Y1)? AreaPorLimites(" in DRW
+      and '_doc.GetVariable("LIMMIN")' in DRW
+      and '_doc.GetVariable("LIMMAX")' in DRW)
+
+check("y se activa el layout y se regenera antes de leerlos",
+      "_doc.ActiveLayout = _doc.Layouts.Item(nombreLayout);" in DRW
+      and "_doc.Regen(1);" in DRW
+      and "recién creado devuelve los límites del anterior" in DRW)
+
+#  LA VALIDACION CRUZADA, que es lo que hacia la macro: un area mayor que el papel, o menor
+#  que su 60 %, no es la de esta hoja sino la del layout anterior.
+check("el area se valida contra el tamano nominal del papel",
+      "private static bool AreaCreible(" in DRW
+      and "aw <= w * 1.02 && ah <= h * 1.02" in DRW
+      and "aw >= w * 0.6 && ah >= h * 0.6" in DRW)
+
+check("y con dos respaldos: los margenes, y el papel entero avisando",
+      "private (double X0, double Y0, double X1, double Y1)? AreaPorMargenes(" in DRW
+      and "el papel entero (no se pudo leer el area imprimible)" in DRW
+      # Y se deja dicho de donde salio, porque un cajetin descentrado se ve pero no se explica.
+      and "por {deDondeElArea}" in DRW)
+
+#  ---- EL BLOQUE DINAMICO SE ESTIRA, NO SE ESCALA ----
+#  Escalarlo cambia el tamano de sus textos: el mismo cajetin en una ARCH D y en una A3
+#  saldria con la letra de dos tamanos distintos.
+check("un cajetin dinamico se estira por sus parametros",
+      "private string EstirarBloqueDinamico(object br, double ancho, double alto)" in DRW
+      and "(bool)b.IsDynamicBlock" in DRW
+      and "b.GetDynamicBlockProperties()" in DRW
+      and "ParametrosDeAncho" in DRW and "ParametrosDeAlto" in DRW)
+
+#  «largo» cuenta como ANCHO: en una hoja el lado largo es el horizontal, y es como lo dijo
+#  el usuario -«que se estreche en largo y ancho»-.
+check("y «largo» cuenta como ancho, como lo dijo el usuario",
+      '"ancho", "anchura", "base", "width", "largo"' in DRW)
+
+check("se estira ANTES de medir y centrar, y lo estirado se deja dicho",
+      DRW.index("EstirarBloqueDinamico(br, ancho, alto)") < DRW.index("var caja = Caja(br);")
+      and "Cajetín dinámico estirado a la hoja: " in DRW)
+
+#  ---- Y SOLO SE REDUCE, NUNCA SE AGRANDA ----
+#  Agrandar es lo que sacaba el cajetin del area imprimible: se veia el marco pasado del
+#  recuadro de rayitas.
+check("la escala solo reduce: agrandar sacaba el cajetin del area imprimible",
+      "soloReducir: true" in DRW)
 
 #  ---- LA HOJA Y EL JUEGO ----
 check("el plano trae su tamano, su orientacion y su detalle",

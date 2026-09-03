@@ -18,7 +18,7 @@ public sealed class PlanoRow : Row
     private string _contiene = string.Empty;
     private string _detalle = string.Empty;
     private string _escala = "1:50";
-    private string _tamano = "ARCH D";
+    private string _tamano = "ARCH D (610 x 914 mm)";
     private bool _horizontal = true;
     private int _numero;
     private int _total;
@@ -62,11 +62,34 @@ public sealed class PlanoRow : Row
     /// </remarks>
     public string[] Tamanos => _tamanos;
 
+    /// <remarks>
+    /// <b>Con las medidas en milimetros</b>, que es lo que pidio el usuario: saber cuanto mide una
+    /// ARCH D sin tener que recordarlo es la diferencia entre elegir bien y elegir por costumbre. Van
+    /// lado corto por lado largo, como las nombra AutoCAD -«A4 210 x 297 mm»-.
+    ///
+    /// El parentesis NO estorba a la busqueda del papel: Solapas.SoloElTamano lo quita antes de
+    /// comparar. Y un trabajo guardado con «ARCH D» a secas sigue funcionando igual.
+    /// </remarks>
     private static readonly string[] _tamanos =
     {
-        "ARCH A", "ARCH B", "ARCH C", "ARCH D", "ARCH E", "ARCH E1", "ARCH E2", "ARCH E3",
-        "ANSI A", "ANSI B", "ANSI C", "ANSI D", "ANSI E",
-        "ISO A4", "ISO A3", "ISO A2", "ISO A1", "ISO A0",
+        "ARCH A (229 x 305 mm)",
+        "ARCH B (305 x 457 mm)",
+        "ARCH C (457 x 610 mm)",
+        "ARCH D (610 x 914 mm)",
+        "ARCH E (914 x 1219 mm)",
+        "ARCH E1 (762 x 1067 mm)",
+        "ARCH E2 (660 x 965 mm)",
+        "ARCH E3 (686 x 991 mm)",
+        "ANSI A (216 x 279 mm)",
+        "ANSI B (279 x 432 mm)",
+        "ANSI C (432 x 559 mm)",
+        "ANSI D (559 x 864 mm)",
+        "ANSI E (864 x 1118 mm)",
+        "ISO A4 (210 x 297 mm)",
+        "ISO A3 (297 x 420 mm)",
+        "ISO A2 (420 x 594 mm)",
+        "ISO A1 (594 x 841 mm)",
+        "ISO A0 (841 x 1189 mm)",
     };
 
     /// <summary>Número de este plano. Lo asigna el juego, no se escribe.</summary>
@@ -261,7 +284,7 @@ public sealed class JuegoDePlanos
                 ? $"E-{Planos.Count + 1:00}"
                 : clave,
             Escala = ultimo?.Escala ?? Solapa.Escala,
-            Tamano = ultimo?.Tamano ?? "ARCH D",
+            Tamano = ultimo?.Tamano ?? "ARCH D (610 x 914 mm)",
             Horizontal = ultimo?.Horizontal ?? true
         };
 
