@@ -214,10 +214,12 @@
                                 <RowDefinition Height="34" />
                                 <RowDefinition Height="34" />
                                 <RowDefinition Height="34" />
+                                <RowDefinition Height="34" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Calculista:" VerticalAlignment="Center" />
-                            <TextBox   Grid.Row="0" Grid.Column="1" x:Name="CalculistaBox" Height="26" VerticalContentAlignment="Center" />
+                            <TextBox   Grid.Row="0" Grid.Column="1" x:Name="CalculistaBox" Height="26" VerticalContentAlignment="Center"
+                                       ToolTip="El titulo -Ing., Arq.- se puede escribir o no: el generador de solapas lo quita, porque el cajetin ya lo trae dibujado." />
                             <TextBlock Grid.Row="0" Grid.Column="3" Text="Dibujo:" VerticalAlignment="Center" />
                             <TextBox   Grid.Row="0" Grid.Column="4" x:Name="DibujoBox" Height="26" VerticalContentAlignment="Center" />
 
@@ -250,6 +252,13 @@
                                 <ComboBoxItem Content="m" />
                                 <ComboBoxItem Content="mm" />
                             </ComboBox>
+
+                            <!-- SOLO EL NUMERO. El «CED. PROF.» lo pone el generador de solapas, y
+                                 solo si hay numero: escribiendolo aqui, una cedula en blanco
+                                 dejaria un «CED. PROF.» solo en el cajetin. -->
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Cedula prof.:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="4" Grid.Column="1" x:Name="CedulaBox" Height="26" VerticalContentAlignment="Center"
+                                       ToolTip="Solo el numero. El texto «CED. PROF.» lo pone la solapa." />
                         </Grid>
 
                         <!-- ===== Juego de planos ===== -->
@@ -285,8 +294,27 @@
                                   SelectionUnit="FullRow" SelectionMode="Extended">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="Auto" />
-                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="240" />
+                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="200" />
+
+                                <!-- ATRIBUTO APARTE del cajetin, no el mismo renglon con una coma:
+                                     con los dos juntos el texto se desborda del recuadro en cuanto
+                                     el plano lleva tres cosas. -->
+                                <DataGridTextColumn Header="Seccion y detalles" Binding="{Binding Detalle}"
+                                                    Width="*" MinWidth="160" />
+
                                 <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="Auto" />
+
+                                <!-- EL TAMANO TIENE QUE EXISTIR EN EL DISPOSITIVO. Si no, AutoCAD
+                                     no da error: deja el papel por omision -Carta vertical- y el
+                                     plano sale descuadrado. La lista es una ayuda y la celda sigue
+                                     escribible, porque un plotter puede tener tamanos a medida. -->
+                                <DataGridComboBoxColumn x:Name="ColTamanoHoja" Header="Tamano hoja" Width="Auto"
+                                                        SelectedItemBinding="{Binding Tamano, UpdateSourceTrigger=PropertyChanged}"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+
+                                <DataGridCheckBoxColumn Header="Horizontal" Binding="{Binding Horizontal}" Width="Auto" />
+
                                 <!-- Solo lectura a proposito: el numero lo calcula el juego. -->
                                 <DataGridTextColumn Header="No. Plano" Binding="{Binding NumeroTexto}"
                                                     Width="Auto" IsReadOnly="True" />
@@ -296,6 +324,24 @@
                         <!-- Guardar, abrir y crear un trabajo estan ARRIBA, en la
                              barra de la ventana, no aqui. Aqui solo queda lo que es
                              propio de esta hoja. -->
+                        <!-- ===== LAS SOLAPAS EN AUTOCAD =====
+                             Un layout por plano, con su papel, su cajetin y sus atributos ya
+                             rellenados. El cajetin es un BLOQUE CON ATRIBUTOS que tiene que estar
+                             en el dibujo; si no se llama CAJETIN, el generador busca el que mas
+                             atributos conocidos tenga y lo usa. -->
+                        <TextBlock Text="Solapas en AutoCAD" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,22,0,2" Foreground="{DynamicResource BrandDarkBrush}"
+                                   ToolTip="Un layout por plano, con su tamano de hoja y el cajetin relleno.&#10;El cajetin tiene que ser un BLOQUE CON ATRIBUTOS dentro del dibujo: si no se llama CAJETIN, se busca el que mas atributos de solapa tenga." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button Content="Generar solapas" Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnGenerarSolapas"
+                                    ToolTip="Crea un layout por cada plano del juego, con su papel y su cajetin relleno." />
+                            <TextBlock x:Name="SolapasResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="520"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                        </StackPanel>
+
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
                             <Button Content="Cargar ejemplo" Style="{StaticResource PrimaryButtonStyle}" Click="OnLoadSample" />
                             <Button Content="Limpiar todo" Style="{StaticResource SecondaryButtonStyle}" Click="OnClearAll" />

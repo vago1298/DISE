@@ -41,6 +41,9 @@ public sealed class ProyectoGuardado
 
     // ---- Solapa ----
     public string Calculista { get; set; } = string.Empty;
+
+    /// <summary>Cedula profesional del calculista. Solo el numero.</summary>
+    public string Cedula { get; set; } = string.Empty;
     public string Propietario { get; set; } = string.Empty;
     public string Ubicacion { get; set; } = string.Empty;
     public string Obra { get; set; } = string.Empty;
@@ -103,7 +106,24 @@ public sealed class PlanoGuardado
 {
     public string Clave { get; set; } = string.Empty;
     public string Contiene { get; set; } = string.Empty;
+
+    /// <summary>La segunda linea del contenido: seccion y detalles.</summary>
+    public string Detalle { get; set; } = string.Empty;
+
     public string Escala { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Tamano de hoja y orientacion, para el generador de solapas.
+    /// </summary>
+    /// <remarks>
+    /// <b>Horizontal empieza en <c>true</c></b> y el tamano en blanco a proposito: al abrir un
+    /// archivo guardado ANTES de que existieran estas dos columnas, JSON deja el bool en false y
+    /// la cadena vacia. Un tamano vacio se corrige solo -el lector le pone ARCH D-, pero una hoja
+    /// vertical no se nota hasta que sale el plano. Ver el lector del proyecto.
+    /// </remarks>
+    public string Tamano { get; set; } = string.Empty;
+
+    public bool Horizontal { get; set; } = true;
 }
 
 /// <summary>

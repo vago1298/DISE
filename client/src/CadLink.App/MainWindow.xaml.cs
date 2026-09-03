@@ -207,6 +207,9 @@ public partial class MainWindow : Window
         LlenarListasZapatas();
         LlenarListasZapatasCorridas();
         LlenarListasPlacaBase();
+
+        // Y la del tamano de hoja del juego de planos, que vive en MainWindow.Solapas.cs.
+        LlenarListasSolapas();
     }
 
     private void Enlazar()
@@ -758,6 +761,7 @@ public partial class MainWindow : Window
             _juego.Solapa.Fecha = DateTime.Today;
 
             CalculistaBox.Text = string.Empty;
+            CedulaBox.Text = string.Empty;
             PropietarioBox.Text = string.Empty;
             UbicacionBox.Text = string.Empty;
             ObraBox.Text = string.Empty;
@@ -1947,6 +1951,7 @@ public partial class MainWindow : Window
         {
             Aplicacion = AppInfo.ProductName,
             Calculista = _juego.Solapa.Calculista,
+            Cedula = _juego.Solapa.Cedula,
             Propietario = _juego.Solapa.Propietario,
             Ubicacion = _juego.Solapa.Ubicacion,
             Obra = _juego.Solapa.Obra,
@@ -1967,7 +1972,8 @@ public partial class MainWindow : Window
         {
             p.Planos.Add(new PlanoGuardado
             {
-                Clave = pl.Clave, Contiene = pl.Contiene, Escala = pl.Escala
+                Clave = pl.Clave, Contiene = pl.Contiene, Detalle = pl.Detalle,
+                Escala = pl.Escala, Tamano = pl.Tamano, Horizontal = pl.Horizontal
             });
         }
 
@@ -2060,6 +2066,7 @@ public partial class MainWindow : Window
             _juego.Solapa.Acotacion = p.Acotacion;
 
             CalculistaBox.Text = p.Calculista;
+            CedulaBox.Text = p.Cedula;
             PropietarioBox.Text = p.Propietario;
             UbicacionBox.Text = p.Ubicacion;
             ObraBox.Text = p.Obra;
@@ -2085,7 +2092,19 @@ public partial class MainWindow : Window
 
             foreach (var pl in p.Planos)
             {
-                _juego.Agregar(pl.Contiene, pl.Clave).Escala = pl.Escala;
+                var fila = _juego.Agregar(pl.Contiene, pl.Clave);
+
+                fila.Escala = pl.Escala;
+                fila.Detalle = pl.Detalle;
+
+                // UN ARCHIVO GUARDADO ANTES de que existieran estas dos columnas no las trae, y
+                // JSON deja la cadena vacia. Se respeta lo que herede de Agregar -que copia del
+                // plano anterior- en lugar de pisarlo con un vacio que dejaria el juego sin hoja.
+                if (pl.Tamano.Trim().Length > 0)
+                {
+                    fila.Tamano = pl.Tamano;
+                    fila.Horizontal = pl.Horizontal;
+                }
             }
 
             _datos.SeccionesConcreto.Clear();
@@ -2224,6 +2243,7 @@ public partial class MainWindow : Window
         EscalaSolapaBox.Text = _juego.Solapa.Escala;
 
         CalculistaBox.TextChanged += (_, _) => _juego.Solapa.Calculista = CalculistaBox.Text;
+        CedulaBox.TextChanged += (_, _) => _juego.Solapa.Cedula = CedulaBox.Text;
         PropietarioBox.TextChanged += (_, _) => _juego.Solapa.Propietario = PropietarioBox.Text;
         UbicacionBox.TextChanged += (_, _) => _juego.Solapa.Ubicacion = UbicacionBox.Text;
         ObraBox.TextChanged += (_, _) => _juego.Solapa.Obra = ObraBox.Text;

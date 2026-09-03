@@ -28,6 +28,7 @@ PARCIALES = [
     'MainWindow.PlacaBase.cs',
     'MainWindow.PreviaInteractiva.cs',
     'MainWindow.Seccion3D.cs',
+    'MainWindow.Solapas.cs',
     'MainWindow.Zapatas.cs',
     'MainWindow.ZapatasCorridas.cs',
 ]

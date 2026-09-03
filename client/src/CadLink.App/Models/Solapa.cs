@@ -16,7 +16,10 @@ public sealed class PlanoRow : Row
 {
     private string _clave = string.Empty;
     private string _contiene = string.Empty;
+    private string _detalle = string.Empty;
     private string _escala = "1:50";
+    private string _tamano = "ARCH D";
+    private bool _horizontal = true;
     private int _numero;
     private int _total;
 
@@ -26,7 +29,45 @@ public sealed class PlanoRow : Row
     /// <summary>Qué contiene el plano. Va en la solapa.</summary>
     public string Contiene { get => _contiene; set => Set(ref _contiene, value); }
 
+    /// <summary>
+    /// La segunda línea del contenido: <b>sección y detalles</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es un atributo aparte del cajetín —<c>DETALLE</c>— y no el mismo texto de «Contiene» con una
+    /// coma. Con los dos juntos, el renglón se desborda del recuadro en cuanto el plano lleva tres
+    /// cosas, y en el cajetín eso no se puede arreglar sin volver a generar el plano.
+    /// </remarks>
+    public string Detalle { get => _detalle; set => Set(ref _detalle, value); }
+
     public string Escala { get => _escala; set => Set(ref _escala, value); }
+
+    /// <summary>
+    /// El tamaño de hoja, tal como lo llama el dispositivo de ploteo: <c>ARCH D</c>, <c>ISO A1</c>…
+    /// </summary>
+    /// <remarks>
+    /// <b>Tiene que existir en el dispositivo.</b> Si no, AutoCAD no da error: deja el papel por
+    /// omisión —Carta vertical— y el plano entero sale descuadrado. El generador de solapas lo
+    /// comprueba y lo dice.
+    /// </remarks>
+    public string Tamano { get => _tamano; set => Set(ref _tamano, value); }
+
+    /// <summary>La hoja va <b>acostada</b>.</summary>
+    public bool Horizontal { get => _horizontal; set => Set(ref _horizontal, value); }
+
+    /// <summary>Los tamaños de hoja más usados, para la celda.</summary>
+    /// <remarks>
+    /// Es una ayuda, no una restricción: la celda es escribible porque un dispositivo puede tener
+    /// tamaños personalizados con cualquier nombre, y encerrar la lista dejaría fuera justo los que
+    /// el despacho se creó a medida.
+    /// </remarks>
+    public string[] Tamanos => _tamanos;
+
+    private static readonly string[] _tamanos =
+    {
+        "ARCH A", "ARCH B", "ARCH C", "ARCH D", "ARCH E", "ARCH E1", "ARCH E2", "ARCH E3",
+        "ANSI A", "ANSI B", "ANSI C", "ANSI D", "ANSI E",
+        "ISO A4", "ISO A3", "ISO A2", "ISO A1", "ISO A0",
+    };
 
     /// <summary>Número de este plano. Lo asigna el juego, no se escribe.</summary>
     public int Numero
@@ -72,6 +113,7 @@ public sealed class PlanoRow : Row
 public sealed class Solapa : Row
 {
     private string _calculista = string.Empty;
+    private string _cedula = string.Empty;
     private string _propietario = string.Empty;
     private string _ubicacion = string.Empty;
     private string _obra = string.Empty;
@@ -81,6 +123,16 @@ public sealed class Solapa : Row
     private string _acotacion = "cm";
 
     public string Calculista { get => _calculista; set => Set(ref _calculista, value); }
+
+    /// <summary>
+    /// Cédula profesional del calculista. Va en el cajetín debajo de su nombre.
+    /// </summary>
+    /// <remarks>
+    /// Se captura <b>solo el número</b>: el «CED. PROF.» lo pone el generador de solapas, y solo si
+    /// hay número. Capturándolo aquí, una cédula en blanco dejaría un «CED. PROF.» solo en el
+    /// cajetín, que se lee como un dato que se perdió.
+    /// </remarks>
+    public string Cedula { get => _cedula; set => Set(ref _cedula, value); }
 
     public string Propietario { get => _propietario; set => Set(ref _propietario, value); }
 
@@ -197,13 +249,20 @@ public sealed class JuegoDePlanos
     /// </remarks>
     public PlanoRow Agregar(string? contiene = null, string? clave = null)
     {
+        // EL TAMAÑO Y LA ORIENTACIÓN SE HEREDAN del último plano, no se ponen por omisión. Un juego
+        // se dibuja casi siempre en la misma hoja, así que arrancar cada plano en ARCH D horizontal
+        // obliga a corregir a mano el que se acaba de agregar, y ese es el que se olvida.
+        var ultimo = Planos.Count > 0 ? Planos[Planos.Count - 1] : null;
+
         var p = new PlanoRow
         {
             Contiene = contiene ?? string.Empty,
             Clave = string.IsNullOrWhiteSpace(clave)
                 ? $"E-{Planos.Count + 1:00}"
                 : clave,
-            Escala = Solapa.Escala
+            Escala = ultimo?.Escala ?? Solapa.Escala,
+            Tamano = ultimo?.Tamano ?? "ARCH D",
+            Horizontal = ultimo?.Horizontal ?? true
         };
 
         Planos.Add(p);
