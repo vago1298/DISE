@@ -770,6 +770,108 @@ public static class EjeDeBarra
         };
     }
 
+    /// <summary>
+    /// La matriz 4×4 que lleva un sólido <b>hecho en el origen y en el plano XY</b> a un doblez de
+    /// centro <paramref name="centro"/> y eje de giro <paramref name="normal"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la hermana de <see cref="MatrizDeTramo"/>, para los primitivos que nacen <b>tumbados</b>
+    /// en lugar de de pie: <c>AddTorus</c> hace el toro en el plano XY con su eje en la Z, así que
+    /// para llevarlo a un doblez hay que girar esa Z hasta la normal del arco.
+    /// </para>
+    /// <para>
+    /// Las dos primeras columnas dan igual cómo salgan —el toro es igual por donde se lo mire
+    /// alrededor de su eje—, así que se toma una perpendicular cualquiera y se completa el marco.
+    /// Y se completa con <c>v = w × u</c> para que el determinante sea positivo: un marco espejado
+    /// AutoCAD lo aplicaría volteando el sólido.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// El marco ortonormal de un doblez: <c>w</c> es su eje de giro y <c>u</c>, <c>v</c> son los
+    /// dos ejes del plano en el que gira.
+    /// </summary>
+    /// <remarks>
+    /// Se expone aparte de <see cref="MatrizDeGiro"/> porque para <b>recortar</b> el doblez hacen
+    /// falta los vectores, no la matriz: los planos de corte se construyen a partir de la dirección
+    /// radial de cada extremo del arco, y esa dirección solo tiene sentido dentro de este marco.
+    /// Los dos comparten la misma elección de <c>u</c>, así que las cuentas de uno valen en el otro.
+    /// </remarks>
+    public static ((double X, double Y, double Z) U,
+                   (double X, double Y, double Z) V,
+                   (double X, double Y, double Z) W)? MarcoDeGiro(
+        (double X, double Y, double Z) normal)
+    {
+        var n = Math.Sqrt(
+            (normal.X * normal.X) + (normal.Y * normal.Y) + (normal.Z * normal.Z));
+
+        if (n <= Nada)
+        {
+            return null;
+        }
+
+        var w = new[] { normal.X / n, normal.Y / n, normal.Z / n };
+
+        var h = Math.Abs(w[2]) < 0.9
+            ? new[] { 0d, 0d, 1d }
+            : new[] { 1d, 0d, 0d };
+
+        var u = Cruz(h, w);
+
+        var nu = Math.Sqrt((u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]));
+
+        if (nu <= Nada)
+        {
+            return null;
+        }
+
+        u = new[] { u[0] / nu, u[1] / nu, u[2] / nu };
+
+        var v = Cruz(w, u);
+
+        return ((u[0], u[1], u[2]), (v[0], v[1], v[2]), (w[0], w[1], w[2]));
+    }
+
+    public static double[,]? MatrizDeGiro(
+        (double X, double Y, double Z) centro, (double X, double Y, double Z) normal)
+    {
+        var n = Math.Sqrt(
+            (normal.X * normal.X) + (normal.Y * normal.Y) + (normal.Z * normal.Z));
+
+        if (n <= Nada)
+        {
+            return null;
+        }
+
+        var w = new[] { normal.X / n, normal.Y / n, normal.Z / n };
+
+        // El eje del mundo menos paralelo a la normal, para que el producto vectorial no se anule.
+        var h = Math.Abs(w[2]) < 0.9
+            ? new[] { 0d, 0d, 1d }
+            : new[] { 1d, 0d, 0d };
+
+        var u = Cruz(h, w);
+
+        var nu = Math.Sqrt((u[0] * u[0]) + (u[1] * u[1]) + (u[2] * u[2]));
+
+        if (nu <= Nada)
+        {
+            return null;
+        }
+
+        u = new[] { u[0] / nu, u[1] / nu, u[2] / nu };
+
+        var v = Cruz(w, u);
+
+        return new[,]
+        {
+            { u[0], v[0], w[0], centro.X },
+            { u[1], v[1], w[1], centro.Y },
+            { u[2], v[2], w[2], centro.Z },
+            { 0d,   0d,   0d,   1d       }
+        };
+    }
+
     private static double[] Cruz(double[] p, double[] q) =>
         new[]
         {

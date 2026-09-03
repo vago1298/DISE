@@ -90,6 +90,7 @@ public partial class MainWindow : Window
         EngancharVistaPreviaAcero();
         EngancharVistaPreviaZapata();
         EngancharVistaPreviaZapataCorrida();
+        EngancharVistaPreviaPlacaBase();
 
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
@@ -172,7 +173,11 @@ public partial class MainWindow : Window
             SeccionConcretoRow.ElementoDadoCircular,
             "CASTILLO", "TRABE", "CONTRATRABE",
             SeccionConcretoRow.ElementoCabezal,
-            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE",
+            // Las TRES cadenas. La INTERMEDIA va con las otras dos porque es una cadena
+            // mas: el dibujante ya la conoce -la reconoce por las notas de la propiedad y
+            // tiene reglas propias para ella en el corte-, pero faltaba en la lista de la
+            // tabla, asi que habia que teclearla a mano.
+            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE", "CADENA INTERMEDIA",
 
             // OTRO va AL FINAL, y es un recordatorio de que la casilla se puede
             // escribir: el combo es editable, asi que se puede teclear cualquier nombre
@@ -201,6 +206,10 @@ public partial class MainWindow : Window
         LlenarListasAcero();
         LlenarListasZapatas();
         LlenarListasZapatasCorridas();
+        LlenarListasPlacaBase();
+
+        // Y la del tamano de hoja del juego de planos, que vive en MainWindow.Solapas.cs.
+        LlenarListasSolapas();
     }
 
     private void Enlazar()
@@ -253,6 +262,7 @@ public partial class MainWindow : Window
         EnlazarAcero();
         EnlazarZapatas();
         EnlazarZapatasCorridas();
+        EnlazarPlacaBase();
 
         DatosCambiaron();
     }
@@ -286,6 +296,11 @@ public partial class MainWindow : Window
         // en cuanto se agrega una columna.
         ActualizarListasDeZapatas();
 
+        // Y EL DADO DE LAS PLACAS BASE, por lo mismo. La placa toma las medidas de su dado de ESTA
+        // hoja, así que si el dado crece aquí, la placa que lo usa tiene que crecer con él. Sin
+        // esto la medida sería una copia que envejece, no una referencia.
+        ReferenciarDadosDeTodasLasPlacas();
+
         if (ReferenceEquals(sender, Seleccionada))
         {
             DibujarVistaPrevia();
@@ -307,6 +322,14 @@ public partial class MainWindow : Window
 
         ActualizarContadores();
         ActualizarTotales();
+
+        // La hoja de placas base. Va aquí porque este método se llama también al ABRIR un trabajo y
+        // al DESHACER, y en esos dos casos las filas entran con _listo apagado: sin esto, el
+        // renglón de totales se quedaría con el recuento del trabajo anterior y el dado de cada
+        // placa, con las medidas del dado de antes.
+        ReferenciarDadosDeTodasLasPlacas();
+        ActualizarTotalesPlacas();
+
         DibujarVistaPrevia();
     }
 
@@ -561,6 +584,10 @@ public partial class MainWindow : Window
         // Y las corridas, por lo mismo.
         DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;
 
+        // Y las placas base: dibujar el detalle de una placa es generar dibujo igual que lo
+        // demas, asi que lo decide la MISMA licencia.
+        PlacaBaseButton.IsEnabled = puedeDibujar;
+
         MostrarNotas(puedeDibujar
             ? "Cada sección se dibuja y se agrupa en un bloque con el nombre de su ID."
             : "La generación de dibujos no está incluida en la versión de prueba.");
@@ -734,6 +761,12 @@ public partial class MainWindow : Window
             _juego.Solapa.Fecha = DateTime.Today;
 
             CalculistaBox.Text = string.Empty;
+            CedulaBox.Text = string.Empty;
+
+            // LA RUTA DEL CAJETIN NO SE LIMPIA. «Limpiar todo» borra los datos de la obra, y el
+            // cajetin no es un dato de la obra: es donde el despacho guarda su formato, y volver a
+            // buscarlo cada vez que se empieza un trabajo es exactamente la molestia que esta
+            // casilla existe para quitar.
             PropietarioBox.Text = string.Empty;
             UbicacionBox.Text = string.Empty;
             ObraBox.Text = string.Empty;
@@ -1923,6 +1956,8 @@ public partial class MainWindow : Window
         {
             Aplicacion = AppInfo.ProductName,
             Calculista = _juego.Solapa.Calculista,
+            Cedula = _juego.Solapa.Cedula,
+            CajetinRuta = CajetinRutaBox.Text.Trim(),
             Propietario = _juego.Solapa.Propietario,
             Ubicacion = _juego.Solapa.Ubicacion,
             Obra = _juego.Solapa.Obra,
@@ -1943,7 +1978,8 @@ public partial class MainWindow : Window
         {
             p.Planos.Add(new PlanoGuardado
             {
-                Clave = pl.Clave, Contiene = pl.Contiene, Escala = pl.Escala
+                Clave = pl.Clave, Contiene = pl.Contiene, Detalle = pl.Detalle,
+                Escala = pl.Escala, Tamano = pl.Tamano, Horizontal = pl.Horizontal
             });
         }
 
@@ -2002,6 +2038,14 @@ public partial class MainWindow : Window
             p.ZapatasCorridas.Add(FilaSerializable.Leer(z));
         }
 
+        // Y las placas base. Va aquí y no solo en el guardado del archivo porque la instantánea
+        // del DESHACER serializa este mismo objeto: sin esta línea, un Ctrl+Z después de capturar
+        // una placa habría borrado la hoja de placas entera.
+        foreach (var b in _datos.PlacasBase)
+        {
+            p.PlacasBase.Add(FilaSerializable.Leer(b));
+        }
+
         return p;
     }
 
@@ -2028,6 +2072,8 @@ public partial class MainWindow : Window
             _juego.Solapa.Acotacion = p.Acotacion;
 
             CalculistaBox.Text = p.Calculista;
+            CedulaBox.Text = p.Cedula;
+            CajetinRutaBox.Text = p.CajetinRuta;
             PropietarioBox.Text = p.Propietario;
             UbicacionBox.Text = p.Ubicacion;
             ObraBox.Text = p.Obra;
@@ -2053,7 +2099,19 @@ public partial class MainWindow : Window
 
             foreach (var pl in p.Planos)
             {
-                _juego.Agregar(pl.Contiene, pl.Clave).Escala = pl.Escala;
+                var fila = _juego.Agregar(pl.Contiene, pl.Clave);
+
+                fila.Escala = pl.Escala;
+                fila.Detalle = pl.Detalle;
+
+                // UN ARCHIVO GUARDADO ANTES de que existieran estas dos columnas no las trae, y
+                // JSON deja la cadena vacia. Se respeta lo que herede de Agregar -que copia del
+                // plano anterior- en lugar de pisarlo con un vacio que dejaria el juego sin hoja.
+                if (pl.Tamano.Trim().Length > 0)
+                {
+                    fila.Tamano = pl.Tamano;
+                    fila.Horizontal = pl.Horizontal;
+                }
             }
 
             _datos.SeccionesConcreto.Clear();
@@ -2141,6 +2199,16 @@ public partial class MainWindow : Window
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.ZapatasCorridas.Add(nueva);
             }
+
+            // ---- Placas Base ----
+            _datos.PlacasBase.Clear();
+
+            foreach (var fila in p.PlacasBase)
+            {
+                var nueva = new PlacaBaseRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.PlacasBase.Add(nueva);
+            }
         }
         finally
         {
@@ -2182,6 +2250,7 @@ public partial class MainWindow : Window
         EscalaSolapaBox.Text = _juego.Solapa.Escala;
 
         CalculistaBox.TextChanged += (_, _) => _juego.Solapa.Calculista = CalculistaBox.Text;
+        CedulaBox.TextChanged += (_, _) => _juego.Solapa.Cedula = CedulaBox.Text;
         PropietarioBox.TextChanged += (_, _) => _juego.Solapa.Propietario = PropietarioBox.Text;
         UbicacionBox.TextChanged += (_, _) => _juego.Solapa.Ubicacion = UbicacionBox.Text;
         ObraBox.TextChanged += (_, _) => _juego.Solapa.Obra = ObraBox.Text;
@@ -2945,6 +3014,52 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Trae los muros del <b>nivel de arriba</b> a la planta de cimentación, para poder dibujar
+    /// la línea de su base.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Cuál es «el nivel de arriba».</b> El más bajo que NO es cimentación y que tiene muros:
+    /// la planta baja. Se busca por la elevación y no por el nombre, porque el nombre del story
+    /// cambia en cada modelo —«PB», «PLANTA BAJA», «NIVEL 1», «GROUND»— y esa lista no se acaba
+    /// nunca.
+    /// </para>
+    /// <para>
+    /// Van a <see cref="PlantaCad.MurosDeArriba"/> y no a <c>Elementos</c>: de ellos se quiere
+    /// solo la base, no que se dibujen como muros de esta planta.
+    /// </para>
+    /// </remarks>
+    private void AgregarMurosDeArriba(ModeloEtabs modelo, PlantaCad p, string? nivel)
+    {
+        // Los muros que NO son de este nivel, agrupados por la cota de su base.
+        var candidatos = modelo.Elementos
+            .Where(e => e.Clase == ClaseElemento.Muro)
+            .Where(e => !string.Equals(e.Story, nivel, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (candidatos.Count == 0)
+        {
+            return;
+        }
+
+        // La cota de arranque MÁS BAJA de todos ellos: es la planta baja. Con tolerancia, para
+        // recoger todo el nivel y no solo los muros que arranquen exactamente en el mínimo.
+        var zMin = candidatos.Min(e => Math.Min(e.Z1, e.Z2));
+
+        var tol = CfgPlano.Numero("CIMENTACION_COLUMNA_TOL_CM", 30) / 100;
+
+        foreach (var el in candidatos)
+        {
+            if (Math.Abs(Math.Min(el.Z1, el.Z2) - zMin) > tol)
+            {
+                continue;
+            }
+
+            p.MurosDeArriba.Add(ComoElementoDePlanta(el, modelo));
+        }
+    }
+
     private void AgregarArranquesDeCimentacion(
         ModeloEtabs modelo, PlantaCad p, string? nivel, HashSet<ElementoEtabs> yaEstan)
     {
@@ -3075,6 +3190,14 @@ public partial class MainWindow : Window
             e.Vertices.Add((v.X, v.Y));
         }
 
+        // DÓNDE tiene muro debajo, no solo si lo tiene. Es lo que permite dibujar la cadena
+        // partida: continua bajo el muro y a trazos en el vano de la puerta. Solo se pide para
+        // las cadenas y trabes, que son las únicas que se marcan.
+        if (el.Clase == ClaseElemento.Trabe)
+        {
+            e.TramosConMuro.AddRange(modelo.TramosConMuroDebajo(el));
+        }
+
         return e;
     }
 
@@ -3097,6 +3220,15 @@ public partial class MainWindow : Window
             Modelo = modelo.Archivo,
             ConRotulos = true
         };
+
+        // TODOS los niveles del modelo, con su cota. No son los de esta planta: son los del
+        // edificio, y sirven para poder contestar «¿hay algo debajo de este muro?», que es lo que
+        // decide si su línea de base se dibuja. Misma llamada que en el corte, para que las dos
+        // vistas hablen de los mismos niveles.
+        foreach (var n in modelo.NivelesConElementos())
+        {
+            p.Niveles.Add((n.Nombre, n.ElevacionM));
+        }
 
         // Lo que YA está en esta planta. Hace falta porque abajo hay tres pasadas más que
         // recogen piezas de otros story por su geometría, y sin esto la misma pieza podría
@@ -3161,6 +3293,23 @@ public partial class MainWindow : Window
         if (EsNivelDeCimentacion(nivel) && CfgPlano.Bandera("CIMENTACION_DIBUJA_COLUMNAS", true))
         {
             AgregarArranquesDeCimentacion(modelo, p, nivel, yaEstan);
+        }
+
+        // ==============================================================================
+        //  LOS MUROS DE LA PLANTA BAJA, PARA DIBUJAR SU BASE EN LA CIMENTACIÓN
+        // ==============================================================================
+        //  Se pidió tal cual: «pon las líneas de la base del muro de la planta baja en la
+        //  cimentación». Y era lo que faltaba: un muro de planta baja pertenece al story de
+        //  planta baja, así que la planta de cimentación NO LO TIENE entre sus elementos. Por eso
+        //  no se le dibujaba nada — no estaba, y todo lo que corregí antes operaba sobre una
+        //  lista que no lo contenía.
+        //
+        //  Van a MurosDeArriba, una lista aparte, para que no pasen por lo que le toca a un muro
+        //  de esta planta —su cadena, su pier, su mampostería—. De ellos se quiere una sola cosa:
+        //  la línea de su base.
+        if (EsNivelDeCimentacion(nivel))
+        {
+            AgregarMurosDeArriba(modelo, p, nivel);
         }
 
         // ==============================================================================

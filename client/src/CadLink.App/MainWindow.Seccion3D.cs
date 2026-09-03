@@ -1036,11 +1036,26 @@ public partial class MainWindow
 
         var sep = Separaciones(s.SeparacionCm);
 
+        // ===== EL TIPO REAL DE LA PIEZA, NO «COLUMNA» SIEMPRE =====
+        //
+        // Esto estaba fijo en 'vertical: true, esColumna: true' para TODA pieza, y es la causa de
+        // que en el 3D falten estribos. Dos efectos, los dos sobre cualquier elemento:
+        //
+        //   * 'vertical: true' hace que CentrosDeAlzado pida conFronteras:false, así que NO se
+        //     pone estribo en las fronteras de zona. Junto con el hueco que dejaba
+        //     PorSeparacion, en cada frontera L/4-L/2 quedaba un vacío de DOS separaciones.
+        //   * 'esColumna: true' quita el último estribo. En una columna se justifica, porque ahí
+        //     llega el nudo con la trabe; en una TRABE o un DADO es un estribo que falta y nada
+        //     más.
+        //
+        // El tipo ya estaba resuelto más arriba, en _piezaAcostada, con la MISMA llamada a TipoDe
+        // que usa el alzado. Se reutiliza en vez de suponer: es justo lo que pide el comentario de
+        // «la misma regla que el alzado», y esta llamada era lo único que no la seguía.
         var centros = Estribos.CentrosDeAlzado(
             largoM,
             sep[0] / 100, sep[1] / 100, sep[2] / 100,
-            vertical: true,
-            esColumna: true);
+            vertical: !_piezaAcostada,
+            esColumna: TipoDe(s.Elemento, s.Id) == TipoElemento.Columna);
 
         foreach (var pos in centros)
         {
@@ -1355,11 +1370,18 @@ public partial class MainWindow
 
         var sep = Separaciones(s.SeparacionCm);
 
+        // 'vertical: true' aquí SÍ es correcto: una sección circular se dibuja siempre de pie
+        // —arriba se fija _piezaAcostada = false— así que la regla del alzado vertical aplica.
+        //
+        // Lo que estaba mal era 'esColumna: true' a ciegas. Con el zuncho, quitar el último
+        // centro es quitar la ÚLTIMA VUELTA de la espiral, y eso solo tiene sentido en una
+        // columna, donde arriba llega el nudo. En una pila o un dado circular es una vuelta de
+        // zuncho que falta en el dibujo.
         var centros = Estribos.CentrosDeAlzado(
             largoM,
             sep[0] / 100, sep[1] / 100, sep[2] / 100,
             vertical: true,
-            esColumna: true);
+            esColumna: TipoDe(s.Elemento, s.Id) == TipoElemento.Columna);
 
         if (dZun > 0 && rZunEje > 0)
         {

@@ -302,6 +302,9 @@ public sealed class SeccionConcretoRow : Row
             "CABEZAL" => "CA-",
             "CADENA DE CERRAMIENTO" => "CC-",
             "CADENA DE DESPLANTE" => "CD-",
+            // La intermedia con su propio prefijo: en el plano hay que poder distinguir de qué
+            // cadena habla un ID, y CI- no choca con ninguno de los ya usados.
+            "CADENA INTERMEDIA" => "CI-",
             _ => null
         };
     }
@@ -312,7 +315,7 @@ public sealed class SeccionConcretoRow : Row
     /// que <c>C-</c>, o «CT-3» se leería como una columna llamada «T-3».
     /// </remarks>
     private static readonly string[] Prefijos =
-        { "CT-", "CC-", "CD-", "CA-", "C-", "D-", "K-", "T-" };
+        { "CT-", "CC-", "CD-", "CI-", "CA-", "C-", "D-", "K-", "T-" };
 
     /// <summary>
     /// Pone en el ID el prefijo del elemento, <b>conservando el número</b>.
@@ -593,6 +596,7 @@ public sealed class SeccionConcretoRow : Row
     /// </remarks>
     public static readonly string[] SeparacionesUsuales =
     {
+        "5-10-5",
         "6-12-6",
         "7-14-7",
         "8-16-8",
@@ -992,6 +996,15 @@ public sealed class DatosProyecto
     /// </remarks>
     public ObservableCollection<ZapataCorridaRow> ZapatasCorridas { get; } = new();
 
+    /// <summary>Las placas base, con sus anclas, sus cartabones y su dado.</summary>
+    /// <remarks>
+    /// Una sola tabla para las diez familias de perfil, por lo mismo que la hoja de acero: la
+    /// macro <c>DibujarPlacaBase_BloqueXX</c> lee <b>las mismas celdas</b> sea la columna un IR o
+    /// un tubo. Lo único que cambia es la forma que se dibuja encima de la placa, y eso lo dice
+    /// la familia.
+    /// </remarks>
+    public ObservableCollection<PlacaBaseRow> PlacasBase { get; } = new();
+
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
     public static DatosProyecto CrearEjemplo()
     {
@@ -1056,6 +1069,25 @@ public sealed class DatosProyecto
             RecubrimientoCm = 2, Estribo = "#2", SeparacionCm = "20",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
             GanchoCm = 5, Fc = "200", Escala = "10"
+        });
+
+        // UN DADO, y está aquí por la misma razón que la contratrabe de abajo: la hoja de PLACAS
+        // BASE toma las medidas de su dado de ESTA hoja, buscándolo por su ID. Sin un dado
+        // capturado, el desplegable «ID dado» de la placa saldría vacío en el ejemplo y no se vería
+        // que las dos hojas están enlazadas —que es justo lo que hay que ver de un tirón—.
+        d.SeccionesConcreto.Add(new SeccionConcretoRow
+        {
+            Elemento = SeccionConcretoRow.ElementoDado, Id = "D-1",
+            BaseCm = 50, AlturaCm = 50,
+            NEsqSup = 2, DiamEsqSup = "#4",
+            NIntSup = 0, DiamIntSup = string.Empty,
+            NEsqInf = 2, DiamEsqInf = "#4",
+            NIntInf = 0, DiamIntInf = string.Empty,
+            NInter = 0, DiamInter = string.Empty,
+            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20-10",
+            EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
+            GanchoCm = 5, Fc = "250", Escala = "20",
+            LongitudM = 1
         });
 
         // Estas dos son las que usan las ZAPATAS CORRIDAS del ejemplo: las dos macros las
@@ -1249,6 +1281,43 @@ public sealed class DatosProyecto
             VarMuro = "#4", SepMuroHoriz = "20", SepMuroVert = "20",
             IdContratrabe = "CT-1",
             Fc = "250"
+        });
+
+        // ===== PLACA BASE =====
+        // La del ejemplo de la macro: placa de 40x40 en 1", cuatro anclas de 3/4" repartidas en el
+        // perímetro, dado de concreto de 50x50 y una IR de 8" encima. Las separaciones al borde van
+        // en CERO, que es la manera de decir «calcúlalas»: la placa sobresale del patín y las anclas
+        // se acomodan en ese sobrante.
+        d.PlacasBase.Add(new PlacaBaseRow
+        {
+            Marca = "PB-1",
+            LargoCm = 40, AnchoCm = 40,
+            Espesor = "1", AceroPlaca = "A-36",
+
+            // EL DADO SE REFERENCIA, no se teclea: «D-1» es el dado capturado arriba en esta misma
+            // hoja, y de ahí salen sus 50x50. Las dos medidas se dejan puestas porque la referencia
+            // se resuelve al arrancar la ventana, no aquí: así el ejemplo se ve completo también si
+            // alguien mira estas filas antes de que la interfaz las enlace.
+            IdDado = "D-1",
+            DadoXCm = 50,
+            DadoYCm = 50,
+            // EL NOMBRE ES EL DEL CATALOGO, tal cual. La búsqueda es por nombre exacto, así que un
+            // «W8X31» escrito a la americana no se encuentra y la placa saldría sin su columna.
+            Familia = FamiliaPerfil.Ir, Seccion = "W - 8'' x 31.04 lb/ft",
+            NAnclasX = 4, NAnclasY = 0,
+            SepBordeXCm = 0, SepBordeYCm = 0,
+            DiamAnclaX = "3/4", DiamAnclaY = "3/4",
+            Electrodo = "E70XX",
+            Soldadura = "1/4",
+            SoldaduraCartabon = "3/16",
+            ConCartabones = false,
+            // Solo se ven en el alzado: el ahogo del ancla -E12 y E13- y, si se encienden los
+            // cartabones, su altura -F18 y F19-.
+            LongAnclajeXCm = 30, LongAnclajeYCm = 30,
+            LongAnclaXCm = 45, LongAnclaYCm = 45,
+            DoblezAnclaXCm = 10, DoblezAnclaYCm = 10,
+            AltoCartabonXCm = 20, AltoCartabonYCm = 20,
+            Escala = 10
         });
 
         return d;

@@ -2269,23 +2269,68 @@ public sealed class AlzadoDrawer
     /// Gira 90° todo lo dibujado desde <paramref name="inicio"/>, alrededor del
     /// origen del bloque. Es lo que convierte el alzado horizontal en vertical.
     /// </summary>
+    /// <summary>Gira el alzado 90°, entidad por entidad.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí el bucle completo iba dentro de un solo <c>AcadConnection.Retry</c></b>, y
+    /// <c>Retry</c> no reintenta la llamada: <b>reejecuta la lambda entera</b>. Si el rechazo por
+    /// «ocupado» caía en la entidad <i>k</i>, el reintento volvía a girar las <i>k</i> primeras:
+    /// esas quedaban a <b>180°</b> y el resto a 90°. En el plano se ve como media pieza girada y
+    /// media cruzada.
+    /// </para>
+    /// <para>
+    /// Girar es de las operaciones <b>menos idempotentes</b> que hay: aplicarla dos veces no es
+    /// inocuo, acumula. Por eso no puede compartir reintento con nada. Ahora cada entidad lleva el
+    /// suyo, así que un «ocupado» reintenta <b>solo esa</b> rotación.
+    /// </para>
+    /// </remarks>
     private void Girar90(object bloque, int inicio)
     {
         try
         {
-            AcadConnection.Retry(() =>
-            {
-                dynamic bd = bloque;
-                var total = (int)bd.Count;
-                var origen = new[] { 0d, 0d, 0d };
+            var origen = new[] { 0d, 0d, 0d };
+            var total = AcadConnection.Retry(() => (int)((dynamic)bloque).Count);
+            var falladas = 0;
 
-                for (var i = inicio; i < total; i++)
+            for (var i = inicio; i < total; i++)
+            {
+                var indice = i;
+
+                try
                 {
-                    dynamic ent = bd.Item(i);
+                    // El Item SÍ se reintenta: es una lectura y repetirla no cuesta nada.
+                    dynamic ent = AcadConnection.Retry<object>(() =>
+                        ((dynamic)bloque).Item(indice));
+
+                    // El Rotate NO se reintenta, y va SOLO. Es lo que acumula: si se
+                    // reintentara después de haber surtido efecto, la entidad acabaría a 180°.
+                    // Aquí no se puede preguntar «¿ya giró?», así que se intenta una vez.
                     ent.Rotate(origen, Math.PI / 2);
-                    ent.Update();
+
+                    // El Update sí se reintenta: es idempotente, solo refresca.
+                    try
+                    {
+                        AcadConnection.Retry(() => { ent.Update(); });
+                    }
+                    catch (Exception)
+                    {
+                        // Sin refrescar, la entidad ya está girada.
+                    }
                 }
-            });
+                catch (Exception)
+                {
+                    // Una que no gira se queda en horizontal; dejar el resto sin girar por ella
+                    // sería peor.
+                    falladas++;
+                }
+            }
+
+            if (falladas > 0)
+            {
+                _notas.Add(
+                    $"Alzado vertical: {falladas} de {total - inicio} entidades no se pudieron "
+                    + "girar y quedaron en horizontal. Revisa esa pieza.");
+            }
         }
         catch (Exception ex)
         {

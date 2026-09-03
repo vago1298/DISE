@@ -1552,9 +1552,15 @@ def v12_fidelidad() -> None:
         "en columna se quita el ultimo estribo",
         "esColumna" in est and "centros.RemoveAt(centros.Count - 1)" in est,
     )
+    # LAS FRONTERAS DE ZONA, AHORA SIEMPRE. Antes era "conFronteras: !vertical", copiando el VBA:
+    # el estribo de la frontera entre zonas solo se ponia en el alzado horizontal. El problema es
+    # que PorSeparacion descartaba tambien el estribo que cae EXACTAMENTE en la frontera, y en
+    # columna y dado no lo tapaba nadie, asi que en cada frontera L/4-L/2 quedaba un hueco de DOS
+    # separaciones. Medido: columna L=4.10 con 10-20-10 tenia dos huecos de 30 cm donde la
+    # separacion mas holgada es 20. Ver tools/verificar_estribos.py.
     check(
-        "las fronteras de zona solo en el alzado horizontal",
-        "conFronteras: !vertical" in est,
+        "las fronteras de zona se ponen SIEMPRE, no solo en el horizontal",
+        "conFronteras: true" in est and "conFronteras: !vertical" not in est,
     )
     n_comp = len(re.findall(r"Estribos\.CentrosDeAlzado\(", codigo + alz))
     check("el dibujo y la vista previa usan el MISMO reparto", n_comp == 2,
@@ -4009,10 +4015,14 @@ def v18_planta_autocad() -> None:
     # Es el detalle elegante de la macro y la mitad que se olvida.
     check("y la misma cuenta alarga el muro que quedo corto",
           "El apoyo queda <b>detrás</b>" in pan or "queda DETRÁS" in pan)
+    # El tramo de la trabe se guarda ahora en una variable -tramoTrabe- en lugar de calcularse
+    # dentro de la llamada, porque hace falta DOS veces: para dibujarla partida por el vano y para
+    # el respaldo de una pieza. Sigue siendo el mismo Pano.Recortar con los mismos argumentos.
     check("el muro y la trabe se dibujan sobre el tramo llevado al pano",
           "var apoyos = p.Elementos.Where(e => e.Clase == ClasePlanta.Columna).ToList();" in dib
           and "var tramo = Pano.Recortar(el, apoyos, cruces);" in dib
-          and "Pano.Recortar(el, apoyos, cruces), punteada))" in dib
+          and "var tramoTrabe = Pano.Recortar(el, apoyos, cruces);" in dib
+          and "tramoTrabe, punteada))" in dib
           and "PanoDeApoyo.Tramo? tramo = null" in dib)
     # Un castillo INTERMEDIO no recorta nada: si contara, un muro largo con un castillo a un
     # metro de la punta se quedaria cortado por la mitad.
@@ -6179,6 +6189,928 @@ def v18_planta_autocad() -> None:
     check("y el resumen dice cuantos fueron",
           "_murosDeConcreto++;" in dibp
           and "muro(s) de concreto sin cadena se dibujaron en la capa" in dibp)
+
+    # ------------------------------------------------------------------
+    # EL MURO DE CONCRETO EN CIMENTACION: CONTORNO CERRADO Y LEYENDA «MC»
+    # ------------------------------------------------------------------
+    #  «Cuando dibujes la planta de la cimentacion, para los muros de concreto que digan en
+    #  property note CONCRETO, coloca la linea en la base, solo como contorno del muro, y adentro
+    #  pon la leyenda MC».
+    #
+    #  DOS LINEAS, que es su grosor. Se pidio asi: «debe verse su cara inferior representada con 2
+    #  lineas que es su grosor». Es lo que Barra() ya hace -los dos panos separados su espesor- y
+    #  por eso se usa Barra y no una polilinea cerrada: un contorno cerrado anadiria tapas en los
+    #  extremos que ahi no van, porque el muro sigue.
+    check("la cara inferior del muro de concreto va con dos lineas",
+          'P("MURO_CONCRETO_CONTORNO", "SI",' in cfgplano
+          and "if (Barra(el, x0, y0, capaConcreto," in dibp
+          and "_contornosMc++;" in dibp)
+
+    #  LA IDENTIFICACION ES POR LA PROPERTY NOTE, y hace falta mirarla APARTE de el.Material:
+    #  SeccionesModelo.MaterialDeMuro decide con la nota y el nombre de la seccion JUNTOS y le da
+    #  prioridad a la mamposteria, asi que una propiedad llamada "MURO BLOCK 15" cuya nota diga
+    #  CONCRETO saldria clasificada como mamposteria. Es justo el caso que se quiere poder
+    #  resolver escribiendo la nota.
+    check("y se reconoce por la PROPERTY NOTE, no solo por el material",
+          'P("MURO_CONCRETO_POR_NOTA", "SI",' in cfgplano
+          and "private bool EsMuroDeConcreto(ElementoPlanta el)" in dibp
+          and "DiceConcreto(el.Notas)" in dibp
+          and 'PALABRAS_CONCRETO' in dibp)
+
+    #  La leyenda va DENTRO, centrada en el tramo ya recortado y girada con el muro. Vive en su
+    #  propio metodo porque el muro se dibuja con Barra(), que es la primitiva de TODOS los
+    #  elementos de barra y no puede saber nada de leyendas.
+    #  SIN FONDO OPACO, y esto es la correccion de «todavia no traes las lineas al frente». El MTEXT
+    #  llevaba conFondo:true, y ese fondo TAPA lo que hay detras: en el plano las dos lineas del
+    #  muro se veian interrumpidas justo en el «MC».
+    #
+    #  Y la LEYENDA SE DIBUJA ANTES QUE LAS LINEAS. Las dos van en la misma capa, y al subir una
+    #  capa al frente se conserva el orden de dentro: con el texto dibujado despues quedaba encima
+    #  de las lineas. Dibujandolo antes, las lineas nacen despues y suben por encima de el.
+    check("y la leyenda MC va dentro, centrada, girada y SIN tapar las lineas",
+          'P("MURO_CONCRETO_LEYENDA", "MC",' in cfgplano
+          and "private void LeyendaDeMuro(" in dibp
+          and 'MURO_CONCRETO_LEYENDA_ALTURA' in dibp
+          and "AnguloLegible(dx, dy), EstiloSecciones, conFondo: false);" in dibp
+          # La altura se limita al grosor del muro: el texto va ENTRE las dos caras.
+          and "altura = Math.Min(altura, espesor * 0.7);" in dibp)
+
+    #  El orden en los DOS sitios que dibujan la base: leyenda primero, lineas despues.
+    check("y las lineas se dibujan DESPUES de la leyenda, para quedar encima",
+          "LeyendaDeMuro(el, x0, y0, capaConcreto, tramo, espesorDelMuro);" in dibp
+          and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);" in dibp
+          and "if (Barra(el, x0, y0, capaConcreto, espesorMuro, conEje: false, tramoArriba))" in dibp)
+
+    #  Solo en cimentacion por omision: en un entrepiso el muro de concreto convive con la losa y
+    #  su armado, y un contorno con leyenda ahi llena el plano.
+    check("y por omision solo en la planta de cimentacion",
+          'P("MURO_CONCRETO_SOLO_CIMENTACION", "SI",' in cfgplano
+          and 'Rot.EsCimentacion(p.Nivel)' in dibp)
+
+    #  El muro al que no le cabe la leyenda se cuenta y se dice: uno corto sin su MC mientras los
+    #  de al lado si lo llevan parece un muro de otro material, y eso se malinterpreta en obra.
+    check("y el que no le cabe la leyenda se dice",
+          "_sinLeyendaMc++;" in dibp
+          and "no les cupo la leyenda" in dibp)
+
+    #  Y SE DIBUJA SIEMPRE, TAPADO O NO. Es la correccion de «haz que aparezca siempre»: en
+    #  cimentacion casi todos los muros llevan su cadena de desplante encima, asi que
+    #  OCULTAR_MURO_BAJO_CADENA los daba por tapados y no se dibujaba NINGUNO. El contorno estaba
+    #  dentro del if (!tapado) y la regla de la cadena se lo comia antes de empezar.
+    #
+    #  La regla sigue siendo la correcta para el muro NORMAL -el muro y su cadena ocupan la misma
+    #  linea en planta-, pero la BASE de un muro de concreto es el desplante que hay que colar y
+    #  tiene que estar en el plano aunque encima lleve cadena. Por eso va FUERA del if.
+    #  Y EL MURO DE CONCRETO ES EL QUE NO LLEVA CADENA DE DESPLANTE. Es la definicion que dio el
+    #  usuario -«como los muros de concreto no llevan cadena de desplante»- y la que faltaba: en su
+    #  modelo la property note dice TABICON en los 21 muros, asi que atarse a la nota no dibuja
+    #  NADA. Pero el plano si los distingue: el de mamposteria lleva su cadena encima y el de
+    #  concreto no, porque se cuela con la cimentacion.
+    #
+    #  Esto INVIERTE lo que habia antes: MURO_CONCRETO_AUNQUE_TAPADO dibujaba la linea AUNQUE
+    #  tuviera cadena, que es lo contrario del criterio. El que tiene cadena no la lleva: ahi se ve
+    #  la cadena.
+    check("el muro sin cadena de desplante se toma como de concreto",
+          'P("MURO_SIN_CADENA_ES_CONCRETO", "SI",' in cfgplano
+          and "var sinCadena = !bajoCadena.Tapado;" in dibp
+          and "&& sinCadena" in dibp
+          and 'P("MURO_CONCRETO_AUNQUE_TAPADO"' not in cfgplano)
+
+    #  Y la capa se pide SIN mirar 'tapado': CapaDeMuro() devuelve la capa generica cuando el muro
+    #  esta tapado, y aqui se quiere E-MURO DE CONCRETO SIEMPRE, que es lo que se pidio.
+    check("y va en E-MURO DE CONCRETO siempre, no en la capa generica",
+          "? _capas.CapaMuroConcreto" in dibp
+          and "if (!tapado && !dibujado)" in dibp)
+
+    #  SI NO SALIO NI UN MURO DE CONCRETO, SE DICE POR QUE.
+    #  Callar aqui hizo perder varias vueltas: el plano sin la linea del muro de concreto se ve
+    #  IGUAL en tres casos distintos -la regla no se aplico, la cadena lo tapo, o el muro no esta
+    #  clasificado como concreto- y no habia forma de distinguirlos. Era el tercero, y la pista
+    #  estaba en otra nota del propio programa: "su linea de mamposteria se dibuja en todos", que
+    #  solo puede pasar si NINGUNO es de concreto.
+    check("y si ningun muro salio de concreto, el resumen dice por que y con que notas",
+          "_muroConcretoVistos" in dibp
+          and "_notasDeMuro" in dibp
+          and "NINGUNO salió de concreto" in dibp
+          and "PALABRAS_CONCRETO" in dibp)
+
+    #  La comparacion normaliza IGUAL que el clasificador -sin espacios ni acentos-, porque
+    #  CadLink.Cad no referencia a CadLink.Etabs y no puede reusar EtabsReader.Normalizar. Si una
+    #  quitara los espacios y la otra no, el mismo muro saldria de concreto para una y de otra cosa
+    #  para la otra.
+    check("y la nota se compara normalizada, como en el clasificador",
+          "private static string NormalizarNota(string s)" in dibp
+          and "char.IsAsciiDigit(c)" in dibp)
+
+    # ------------------------------------------------------------------
+    # LA BASE DEL MURO, SOLO SI DEBAJO NO HAY NADA
+    # ------------------------------------------------------------------
+    #  «Yo solo quiero que los dibujes si abajo del muro no hay nada nada ni otro nivel, que
+    #  aplique para diferentes niveles».
+    #
+    #  Y es la regla correcta: la linea de la base es DONDE EL MURO APOYA. Si debajo hay otro
+    #  nivel, el muro apoya en la losa o la trabe de ese nivel, y dibujarle una base es dibujar un
+    #  desplante que no existe. Solo el muro que arranca desde lo mas bajo del edificio la lleva.
+    #
+    #  La comprobacion mira LOS NIVELES DEL MODELO, no la planta que se dibuja: eso es lo que hace
+    #  que valga para cualquier nivel sin preguntar en cual estamos.
+    plc = leer(ruta("client/src/CadLink.Cad/PlantaCad.cs"))
+
+    check("la planta lleva los niveles del modelo, para saber que hay debajo",
+          "public List<(string Nombre, double Z)> Niveles" in plc
+          and "p.Niveles.Add((n.Nombre, n.ElevacionM));" in codigo)
+
+    check("y la base solo se dibuja si debajo no hay ningun nivel",
+          "private bool NadaDebajoDelMuro(ElementoPlanta el, PlantaCad p)" in dibp
+          and "&& nadaAbajo" in dibp
+          and "_muroConAlgoAbajo++;" in dibp)
+
+    # ------------------------------------------------------------------
+    # LA BASE DE LOS MUROS DE LA PLANTA BAJA, EN LA CIMENTACION
+    # ------------------------------------------------------------------
+    #  «Pon las lineas de la base del muro de la planta baja en la cimentacion».
+    #
+    #  Y ERA LO QUE FALTABA. Un muro de planta baja pertenece al story de planta baja, asi que la
+    #  planta de cimentacion NO LO TIENE en p.Elementos: el bucle de muros nunca lo vio. Todas las
+    #  correcciones anteriores operaban sobre una lista que no contenia esos muros, y por eso no se
+    #  dibujaba nada por mas vueltas que se diera.
+    #
+    #  Van en una lista APARTE, MurosDeArriba, y no mezclados con Elementos: si se anadieran ahi
+    #  pasarian por la cadena, el pier, la mamposteria y el recorte que le tocan a un muro de esta
+    #  planta, y de ellos se quiere una sola cosa, la linea de su base. Es el mismo camino que ya
+    #  seguian los arranques de castillo.
+    check("los muros de la planta baja llegan a la planta de cimentacion",
+          "public List<ElementoPlanta> MurosDeArriba" in plc
+          and "private void AgregarMurosDeArriba(" in codigo
+          and "if (EsNivelDeCimentacion(nivel))" in codigo
+          and "foreach (var el in p.MurosDeArriba)" in dibp)
+
+    #  Y SOLO LOS DE CONCRETO, sin preguntarle a ETABS de que es el muro: se usa la definicion que
+    #  dio el usuario -«los muros de concreto NO LLEVAN CADENA DE DESPLANTE»-. Si no hay cadena
+    #  debajo es de concreto y lleva su base; si la hay es de mamposteria y apoya en ella.
+    check("y solo se les dibuja la base a los de concreto, por no tener cadena",
+          "_basesDeMuroDeArriba++;" in dibp
+          and "_muroDeArribaConCadena++;" in dibp
+          and 'MURO_SIN_CADENA_ES_CONCRETO' in dibp
+          and "LeyendaDeMuro(el, x0, y0, capaConcreto, tramoArriba, espesorMuro);" in dibp)
+
+    # ------------------------------------------------------------------
+    # PLACA BASE: LA MACRO DibujarPlacaBase_BloqueXX
+    # ------------------------------------------------------------------
+    #  La logica pura -reparto de anclas y las dos tablas de libramientos- vive aparte del
+    #  dibujante y sin nada de COM, igual que Estribos, y por el mismo motivo: es la parte que
+    #  decide si el detalle es CONSTRUIBLE, y equivocarse en ella no se ve en el dibujo, se ve en
+    #  obra cuando la tuerca no entra o el concreto se desconcha en el borde.
+    anc = leer(ruta("client/src/CadLink.Cad/AnclasPlacaBase.cs"))
+    pbc = leer(ruta("client/src/CadLink.Cad/PlacaBaseCad.cs"))
+    pbd = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.cs"))
+    pbd2 = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Detalle.cs"))
+    pbr = leer(ruta("client/src/CadLink.App/Models/PlacaBaseRow.cs"))
+    pbw = leer(ruta("client/src/CadLink.App/MainWindow.PlacaBase.cs"))
+    pbfilas = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+    pbproy = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    cdesp = leer(ruta("client/src/CadLink.Cad/ContornoDesplazado.cs"))
+    cpb = leer(ruta("client/src/CadLink.Cad/CartabonesPlacaBase.cs"))
+
+    #  LAS TRES COLUMNAS DEL CUADRO, con la NOMENCLATURA del estandar escrita en el codigo:
+    #      J - distancia minima ENTRE ANCLAS
+    #      K - distancia minima del ancla al CANTO RECORTADO DE LA PLACA
+    #      L - distancia minima de COLUMNA/CARTABON PARA ATORNILLAR
+    check("las tres tablas de libramientos J, K y L estan portadas",
+          "public static double SeparacionMinimaJmm(" in anc
+          and "public static double DistanciaMinimaKmm(" in anc
+          and "public static double DistanciaMinimaLmm(" in anc
+          # Los extremos de cada tabla, para que no se cuele una lista a medias.
+          and "<= 13 => 40," in anc and "<= 102 => 300," in anc
+          and "<= 13 => 22," in anc and "<= 102 => 180," in anc
+          and "<= 13 => 23," in anc and "<= 102 => 172," in anc)
+
+    check("y la fuente queda citada, con su numero de estandar",
+          "ES-03-001" in anc
+          and "DISTANCIA MÍNIMA DEL ANCLA AL CANTO RECORTADO DE LA PLACA" in anc
+          and "DISTANCIA MÍNIMA DE COLUMNA/CARTABÓN PARA ATORNILLAR" in anc)
+
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    #  EL RENGLON DE 48 mm, FIJADO. Aqui se cometio un error en las dos direcciones:
+    #
+    #  El port reprodujo bien la tabla del VBA. Luego llego una captura del mismo cuadro en
+    #  PULGADAS, se cotejo contra ella y se «corrigieron» J y K en dos renglones. La captura
+    #  era la que estaba mal: le faltaba el renglon de 48 mm -1 7/8"- y al faltarle, los
+    #  valores de 1 5/8" y 1 3/4" salian corridos uno hacia arriba. El original en milimetros
+    #  -19 renglones- lo aclaro.
+    #
+    #  Se fija con los valores escritos y con el renglon de 48 presente, porque es el que
+    #  delata el corrimiento: si algun dia desaparece, los dos de arriba estaran mal otra vez.
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    check("el renglon de 1 7/8 (48 mm) esta, que es el que delata el corrimiento",
+          "<= 48 => 150," in anc and "<= 48 => 85," in anc and "<= 48 => 82," in anc)
+
+    check("y los tres renglones de alrededor tienen el valor del original",
+          # 1 5/8" = 41 mm
+          "<= 41 => 120," in anc and "<= 41 => 70," in anc and "<= 41 => 71," in anc
+          # 1 3/4" = 44 mm
+          and "<= 44 => 130," in anc and "<= 44 => 75," in anc and "<= 44 => 76," in anc)
+
+    #  El reparto PERIMETRAL de la macro, y el UNICO: los totales de la hoja se reparten mitad y
+    #  mitad, la impar va ABAJO en X, y las de Y van ENTRE las hileras de X para no repetir las
+    #  esquinas.
+    #
+    #  Habia un segundo reparto en malla, capturable por fila. Se quito: no esta en la macro. Y no
+    #  era inocuo, era confuso de la peor manera -con 4 y 4, el perimetro da ocho anclas y la malla
+    #  dieciseis- asi que una casilla que nadie entendia podia duplicar el numero de anclas.
+    check("el reparto de anclas es el PERIMETRAL de la macro, y el unico",
+          "(nx + 1) / 2 : nx / 2" in anc
+          and "(alto - (2 * sepY)) / (enCol + 1)" in anc
+          # NI ENUM NI PARAMETRO: si vuelven, vuelve la casilla.
+          and "public enum Modo" not in anc
+          and "Modo modo" not in anc
+          and "Modo.Malla" not in anc)
+
+    check("y la casilla de malla no esta en ningun sitio",
+          "AnclasEnMalla" not in pbr
+          and "AnclasEnMalla" not in pbw
+          and "AnclasEnMalla" not in xaml
+          and "ModoAnclas" not in pbc
+          and "ModoAnclas" not in pbd)
+
+    #  ─── LOS CARTABONES ARRANCAN DEL ACERO ──────────────────────────────────────────────
+    #  Antes se usaba el rectangulo envolvente del perfil, y en un perfil I eso deja el cartabon
+    #  del eje Y flotando en el aire: se colocaba a la altura del centro pero arrancando en la
+    #  PUNTA DEL PATIN, y a media altura el patin no esta -esta el hueco entre los dos-. En el
+    #  plano se veia una placa suelta al lado de la columna, sin nada que la uniera.
+    #
+    #  Con un rayo contra el contorno, a media altura de una I lo que se encuentra es el ALMA. Y no
+    #  hay que preguntarle la forma a nadie: sale de la geometria, asi que vale igual para la te, la
+    #  canal, el angulo o el tubo.
+    check("los cartabones arrancan de la cara real del perfil, no del envolvente",
+          "public static double? CruceHorizontal(" in cdesp
+          and "public static double? CruceVertical(" in cdesp
+          and "private static double CaraDerecha(" in cpb
+          and "private static double CaraIzquierda(" in cpb
+          and "private static double CaraDeArriba(" in cpb
+          and "private static double CaraDeAbajo(" in cpb
+          and "ContornoDesplazado.CruceHorizontal(contorno, y, 1)" in cpb)
+
+    #  Y EL CONTORNO LLEGA DESDE LOS DOS SITIOS que dibujan cartabones, con el mismo pano de
+    #  columna que usa la soldadura: si a uno se le olvidara pasarlo, sus cartabones volverian al
+    #  envolvente sin decir nada.
+    #  Y SE LE PASA EL CONTORNO COMPLETO, no solo sus puntos: la boca de pescado necesita la
+    #  CIRCUNFERENCIA, que es lo unico que trae una columna redonda. Con los puntos a secas, un tubo
+    #  redondo llegaba con contorno nulo y sus cartabones volvian al envolvente -o sea, a la
+    #  tangente- sin decir nada.
+    check("y el contorno se le pasa desde el dibujante y desde la previa",
+          "p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna);" in pbd
+          and "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno)" in pbd2
+          and "p, xc, yc, pX, pY, 1, panoColumna)" in pbw
+          and "ContornoDeColumna? contorno = null)" in cpb)
+
+    #  Y no se dibuja NADA si no se cumplen J o K: un detalle con las anclas mas juntas de lo que
+    #  la tabla permite no es un detalle a medias, es uno que no se puede construir.
+    check("si no se cumplen J o K no se dibuja nada, y se dice por que",
+          "RevisarSeparacionJ(" in anc and "RevisarDistanciaK(" in anc
+          and "sealed record Incumplimiento(" in anc
+          and "return 0;" in pbd)
+
+    #  Las capas, los colores y los patrones de la macro, en un solo sitio y con su nombre.
+    check("las capas y colores de la macro estan respetados",
+          'public const string Placa = "PLACA BASE";' in pbc
+          and "public const int ColorPlaca = 140;" in pbc
+          and 'public const string Anclas = "ANCLAS";' in pbc
+          and "public const int ColorAnclas = 1;" in pbc
+          and 'public const string Concreto = "CONCRETO";' in pbc
+          and 'public const string Soldadura = "SOLDADURA";' in pbc
+          and "public const int ColorSoldadura = 240;" in pbc)
+
+    check("y los patrones de achurado con su escala",
+          'PatronDado = "AR-CONC"' in pbc and "EscalaHatchDado = 0.0002" in pbc
+          and 'PatronPerfilI = "ANSI32"' in pbc and "EscalaHatchPerfilI = 0.0009" in pbc
+          and 'PatronSoldadura = "JIS_RC_10"' in pbc and "EscalaHatchSoldadura = 0.0005" in pbc)
+
+    #  EL PERFIL NO SE TRAZA DOS VECES. TrazoAcero ya traia portadas las nueve formas del IMCA con
+    #  la misma geometria que la macro dibujaba a mano; duplicarla habria dejado dos juegos de
+    #  formulas para el mismo perfil.
+    check("el perfil se pide a TrazoAcero y no se vuelve a trazar",
+          "TrazoAcero.De(p.Perfil," in pbd2
+          and "private List<object> DibujarPerfil(" in pbd2)
+
+    #  Las formas de I NO se giran: su geometria ya nace vertical -patines horizontales y alma
+    #  vertical-, que es como va una columna, asi que girarla la acuesta.
+    #
+    #  La regla vive en PlacaBaseCad y NO en el dibujante, porque la usan dos: el dibujante, al
+    #  dibujar, y la columna «Libramientos» de la tabla, al capturar -la separacion al borde de las
+    #  anclas se calcula con el ancho del perfil YA ORIENTADO-. Con la cuenta escrita dos veces, la
+    #  tabla puede decir que la placa cumple y el dibujante negarse a dibujarla, y ese desacuerdo no
+    #  tiene ninguna explicacion visible para el usuario.
+    check("las formas de I no se giran, como en la macro",
+          "public bool GiraElPerfil =>" in pbc
+          and "GirarPerfil90 &&" in pbc
+          and 'string.Equals(Perfil?.Forma, FormaAcero.I,' in pbc)
+
+    check("y esa regla es UNA, compartida por el dibujante y la tabla",
+          #  El dibujante la pide, no la reimplementa.
+          "p.PerfilXDibujoCm * _escala" in pbd
+          and "p.PerfilYDibujoCm * _escala" in pbd
+          and "private static bool GirarEstePerfil(PlacaBaseCad p) => p.GiraElPerfil;" in pbd
+          #  Y la columna de la tabla usa la MISMA, en centimetros: el ancho del perfil ya
+          #  orientado entra en la separacion automatica al borde.
+          and "b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX)" in pbr
+          and "h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY)" in pbr)
+
+    # ------------------------------------------------------------------
+    # LA SOLDADURA SIGUE EL CONTORNO DEL PERFIL, NO SU CAJA
+    # ------------------------------------------------------------------
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+    #  El defecto: la frontera del achurado se generaba con el RECTANGULO ENVOLVENTE del
+    #  perfil crecido el espesor. Para un tubo rectangular da lo mismo, pero para todo lo
+    #  demas no: en un perfil I la caja no es una franja, es la caja entera rellena de rayado
+    #  con la I dentro como isla. En un W 8x31 con filete de 1/4" son 411 cm2 de rayado donde
+    #  van 78: cinco veces mas. Se ve en el dibujo y no se parece a una soldadura.
+    #  ══════════════════════════════════════════════════════════════════════════════════════
+
+    check("el desplazamiento del contorno vive aparte y sin nada de COM",
+          "public static class ContornoDesplazado" in cdesp
+          and "public static double[]? HaciaFuera(" in cdesp
+          and "public static double AreaConSigno(" in cdesp
+          and "_ms." not in cdesp
+          and "AcadConnection" not in cdesp)
+
+    #  EL SENTIDO SE CALCULA, no se supone: TrazoAcero entrega unas formas antihorarias y
+    #  otras horarias -el angulo y la canal se espejean para el segundo perfil de una pareja-
+    #  asi que suponer un sentido desplazaria la mitad de las formas hacia DENTRO.
+    check("y el sentido del contorno se calcula, no se supone",
+          "var sentido = area > 0 ? 1.0 : -1.0;" in cdesp)
+
+    #  Cada vertice sale de CRUZAR sus dos aristas ya desplazadas. Por la bisectriz -el atajo
+    #  obvio- la franja sale mas angosta en las esquinas, un 30 % en una de 90 grados: la
+    #  soldadura se veria adelgazar justo donde mas material hay.
+    check("cada vertice sale de cruzar sus dos aristas desplazadas",
+          "var cruz = (dx[entra] * dy[sale]) - (dy[entra] * dx[sale]);" in cdesp
+          and "AristaHaciaAtras(" in cdesp
+          and "AristaHaciaAdelante(" in cdesp)
+
+    #  Y LA FRONTERA DEL ACHURADO ES ESE CONTORNO, no un Rectangulo. Si volviera a haber un
+    #  Rectangulo ahi, el defecto habria vuelto.
+    check("la frontera de la soldadura es el contorno desplazado",
+          "ContornoDesplazado.HaciaFuera(puntos, t)" in pbd2
+          and "frontera = Polilinea(fuera, PlacaBaseCapas.Soldadura, contornoExterior.Dobleces)"
+              in pbd2
+          # El tubo redondo y el macizo: anillo, no poligonal.
+          and "frontera = Circulo(circulo.Cx, circulo.Cy, (circulo.R + t) * 2" in pbd2)
+
+    #  Y EL CONTORNO SALE DEL PERFIL QUE SE DIBUJO, ya girado, no de un segundo TrazoAcero.De:
+    #  recalculandolo habria que repetir el giro y el encuadre, y el dia que uno cambie la
+    #  soldadura rodearia un perfil que no es el que esta dibujado.
+    #  Y EL CONTORNO ES EL QUE DE VERDAD SE DIBUJO, ya girado. Ahora sale de
+    #  PlacaBaseCad.PanoDeLaColumna, que es el unico sitio que lo calcula, y de ahi lo toman los
+    #  tres que lo necesitan: el trazo del perfil, la soldadura y la revision de la columna L.
+    check("y ese contorno es el que de verdad se dibujo, ya girado",
+          "ContornoDeColumna? contornoExterior" in pbd2
+          and "public ContornoDeColumna? PanoDeLaColumna(" in pbc
+          and "var panoColumna = p.PanoDeLaColumna(x0 + (b / 2), y0 + (h / 2), _escala);" in pbd
+          and "Soldadura(p, perfil, panoColumna," in pbd)
+
+    #  Y LA FLECHA APUNTA A LA SOLDADURA, no cerca.
+    #
+    #  El defecto: se tomaba la X mas chica de la franja y se le forzaba el CENTRO VERTICAL de la
+    #  pieza. En un perfil I eso es aire —la X mas chica es la punta del patin, y a media altura por
+    #  ahi no pasa el contorno, esta el hueco entre los dos patines—. En el W 8x31 la punta caia en
+    #  (-10.835, 0.000), fuera de la franja; ahora cae en (-10.518, 9.645), dentro.
+    #
+    #  Y apunta al EJE de la franja, no a su borde: al de fuera quedaria justo sobre la linea y al de
+    #  dentro, encima del perfil. De ahi el medio espesor.
+    check("la flecha de la soldadura apunta a la soldadura",
+          "public static (double X, double Y) PuntoIzquierdo(" in cdesp
+          and "ContornoDesplazado.HaciaFuera(puntos, t / 2)" in pbd2
+          and "puntaFlecha = ContornoDesplazado.PuntoIzquierdo(medio);" in pbd2
+          and "puntaFlecha.X, puntaFlecha.Y," in pbd2
+          # Y NO la X sola con el centro de la pieza, que es lo que estaba mal.
+          and "xIzquierdaFranja" not in pbd2)
+
+    #  Y LA VISTA PREVIA DIBUJA LA FRANJA, con la misma clase. Es lo que permite ver este
+    #  arreglo sin abrir AutoCAD, que es justo lo que aqui no se puede hacer.
+    check("la vista previa ensena la franja de soldadura",
+          "private void DibujarSoldaduraPrevia(" in pbw
+          and "ContornoDesplazado.HaciaFuera(puntos, t)" in pbw)
+
+    #  El dado va en CONCRETO y su rayado SOLO en la franja que sobresale: la placa entra como
+    #  isla, porque bajo la placa lo que se ve es la placa, no el concreto.
+    check("el dado va en CONCRETO y su rayado deja la placa como isla",
+          "PlacaBaseCapas.Concreto)" in pbd
+          and "new List<object> { contornoPlaca }" in pbd)
+
+    #  Cotas y rotulos FUERA del bloque, para poder mover el detalle sin arrastrarlas.
+    check("el bloque agrupa solo geometria: cotas y rotulos quedan fuera",
+          "private string Bloquear(" in pbd2
+          and "PlacaBaseCapas.Cotas, StringComparison.OrdinalIgnoreCase)" in pbd2
+          and 'nombre.Contains("Dimension"' in pbd2)
+
+    #  Y no se sobrescribe un bloque que ya exista: podria ser del usuario.
+    check("y no se sobrescribe un bloque que ya exista",
+          "private string NombreLibre(" in pbd2 and "ExisteBloque(nombre)" in pbd2)
+
+    #  El cruce E19/E18 de los cartabones NO es un error: es la correccion que la macro documenta.
+    check("el cruce E19/E18 de la longitud de cartabones queda documentado",
+          "LongCartabonXCm" in pbc and "E19" in pbc and "E18" in pbc)
+
+    check("hay verificacion ejecutable de la logica de la placa base",
+          os.path.exists(ruta("tools", "verificar_placa_base.py")))
+
+    # ------------------------------------------------------------------
+    # PLACA BASE: LA PESTAÑA Y SU TABLA
+    # ------------------------------------------------------------------
+    #  La pestaña era un cartel de «modulo pendiente de portar». Ahora es una hoja de captura como
+    #  las otras cinco, y va atada al MISMO ciclo de vida: las listas de las columnas en
+    #  LlenarListas -una vez, porque no dependen del trabajo abierto- y la cuadricula en Enlazar
+    #  -cada vez, porque al abrir otro trabajo _datos es OTRO objeto y una cuadricula atada en el
+    #  constructor seguiria ensenando el trabajo anterior-.
+    #  El trozo de XAML de ESTA pestaña, delimitado por sus dos comentarios de cabecera. Se recorta
+    #  a proposito: buscar «Modulo pendiente de portar» en el XAML entero seguiria encontrandolo en
+    #  las pestañas de muros de contencion y de conexiones, que si siguen pendientes.
+    i_pb = xaml.find("<!-- ===== Placa base ===== -->")
+    i_cx = xaml.find("<!-- ===== Conexiones ===== -->")
+    tab_pb = xaml[i_pb:i_cx] if 0 <= i_pb < i_cx else ""
+
+    check("la pestaña de placa base ya no es un cartel de pendiente",
+          len(tab_pb) > 2000
+          and "Modulo pendiente de portar" not in tab_pb
+          and 'x:Name="PlacasGrid"' in tab_pb
+          and 'x:Name="PlacaBaseButton"' in tab_pb,
+          f"{len(tab_pb)} caracteres de XAML en la pestaña")
+
+    check("y esta atada al mismo ciclo de vida que las otras hojas",
+          "LlenarListasPlacaBase();" in codigo
+          and "EnlazarPlacaBase();" in codigo
+          and "private void LlenarListasPlacaBase()" in pbw
+          and "private void EnlazarPlacaBase()" in pbw
+          and "PlacasGrid.ItemsSource = _datos.PlacasBase;" in pbw)
+
+    check("la coleccion de placas vive en DatosProyecto, con las otras hojas",
+          "public ObservableCollection<PlacaBaseRow> PlacasBase { get; } = new();" in pbfilas
+          and "d.PlacasBase.Add(new PlacaBaseRow" in pbfilas)
+
+    #  SE GUARDA Y SE DESHACE. La instantanea del Ctrl+Z serializa el MISMO ProyectoGuardado que
+    #  escribe el archivo .clk, asi que una hoja que no este en ese objeto no se guarda Y ADEMAS se
+    #  borra al deshacer: capturar una placa y pulsar Ctrl+Z habria vaciado la hoja entera.
+    check("las placas se guardan en el .clk y sobreviven al deshacer",
+          "public List<FilaGuardada> PlacasBase { get; set; } = new();" in pbproy
+          and "p.PlacasBase.Add(FilaSerializable.Leer(b));" in codigo
+          and "_datos.PlacasBase.Clear();" in codigo
+          and "FilaSerializable.Aplicar(nueva, fila);" in codigo)
+
+    #  Y EL BOTON LO APAGA LA LICENCIA, no el XAML: dibujar el detalle de una placa es generar
+    #  dibujo igual que lo demas.
+    check("el boton de dibujar placas lo manda la licencia",
+          "PlacaBaseButton.IsEnabled = puedeDibujar;" in codigo)
+
+    #  LOS LIBRAMIENTOS SE VEN MIENTRAS SE CAPTURA. Es la diferencia entre saber que las anclas no
+    #  caben ahora, con la fila delante, y saberlo cuando el boton se niega a dibujar.
+    check("la tabla avisa de los libramientos J y K al capturar",
+          "public string Libramientos" in pbr
+          and "AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)" in pbr
+          and "RevisarDistanciaK(anclas, 0, 0, b, h, 1)" in pbr
+          and 'Header="Libramientos"' in tab_pb)
+
+    #  Y LA BUSQUEDA DEL PERFIL SE HACE VISIBLE. El perfil no se captura: se ELIGE un nombre y sus
+    #  medidas se buscan en el catalogo. Cuando esa busqueda no encuentra nada -un espacio de mas,
+    #  una familia que no corresponde- la fila se ve completa y el detalle sale sin su columna, sin
+    #  que nada lo hubiera dicho. Con el peralte y el ancho en una celda, eso se nota de un golpe.
+    check("la tabla ensena las medidas que trajo del catalogo",
+          "public string MedidasPerfil" in pbr
+          and '"NO ESTA EN EL CATALOGO"' in pbr
+          and 'Header="Medidas perfil"' in tab_pb)
+
+    #  ─── LA LISTA DE ANCLAS ES EL CUADRO ENTERO ─────────────────────────────────────────
+    #  Los DIECINUEVE diametros, los mismos renglones de los que salen J, K y L. Antes eran
+    #  ocho y se cortaba en 1 1/2": justo antes del tramo donde el cuadro se pone exigente -una
+    #  de 4" pide 300 mm entre anclas- asi que lo que no estaba a un clic era lo que mas cuidado
+    #  necesita.
+    #
+    #  Y que la lista y el cuadro coincidan no es prolijidad: un diametro que el cuadro no
+    #  tuviera resolveria sus libramientos por el renglon inmediato superior sin decirlo, o sea
+    #  que el usuario creeria leer la fila de su ancla y estaria leyendo otra. La comprobacion
+    #  de verificar_placa_base.py lo cotela renglon por renglon LEYENDO ESTE ARCHIVO, asi que no
+    #  se puede quedar vieja.
+    check("la celda de ancla ofrece los 19 diametros del cuadro",
+          '"1 3/8",    // 35 mm' in pbr
+          and '"1 7/8",    // 48 mm' in pbr
+          and '"4"         // 102 mm' in pbr
+          # Y el de 1 7/8, que es el renglon que el corrimiento habia borrado del cuadro.
+          and pbr.count("// 48 mm") == 1)
+
+    #  ─── LOS ELECTRODOS LLEVAN SU XX ────────────────────────────────────────────────────
+    #  Es la convencion del plano: un E70 se escribe «E70XX» porque los dos ultimos digitos
+    #  -posicion y tipo de corriente- los elige el taller. La lista los ofrecia sin sufijo y el
+    #  rotulo lo agregaba por su cuenta, asi que la celda decia una cosa y el plano otra.
+    check("los electrodos se ofrecen con su XX",
+          'new[] { "E60XX", "E70XX", "E80XX", "E90XX" }' in pbw
+          and '_electrodo = "E70XX"' in pbr)
+
+    #  Y EL LEADER DE SOLDADURA TAMBIEN LO PONE, no solo el rotulo. Antes este leader escribia el
+    #  electrodo crudo, asi que un E70 capturado sin sufijo salia «SOLDADURA CON E70» arriba y
+    #  «ELECTRODO E70XX» tres centimetros mas abajo: el mismo dato de dos maneras en el mismo
+    #  detalle. ConXX es idempotente, asi que un E70XX no se vuelve E70XXXX.
+    check("y el leader de soldadura lo pone igual que el rotulo",
+          "s += \" CON \" + Escapar(ConXX(electrodo));" in pbd2
+          and 'e.EndsWith("XX", StringComparison.OrdinalIgnoreCase) ? e : e + "XX"' in pbd2)
+
+    #  Las celdas en FRACCIONES son desplegables EDITABLES y su lista sale de la FILA. Con un
+    #  DataGridComboBoxColumn y SelectedItemBinding, un espesor que no este en la lista se descarta
+    #  al salir de la celda sin decir nada, que es la peor manera de perder un dato.
+    check("las celdas en fracciones admiten una medida que no este en la lista",
+          "public string[] DiametrosAncla =>" in pbr
+          and "public string[] EspesoresPlaca =>" in pbr
+          and 'ItemsSource="{Binding DiametrosAncla}"' in tab_pb
+          and 'ItemsSource="{Binding EspesoresPlaca}"' in tab_pb
+          and 'Text="{Binding DiamAnclaX, UpdateSourceTrigger=PropertyChanged}"' in tab_pb)
+
+    #  Y LOS AVISOS DEL DIBUJO CAEN EN ESTA PESTAÑA. El panel de notas de la hoja de concreto es de
+    #  la hoja de concreto: mandar ahi el motivo por el que una placa no cumple la tabla K es
+    #  dejarlo donde nadie lo va a mirar.
+    check("los avisos del dibujo de placas se ven en su propia pestaña",
+          'x:Name="PlacasNotasText"' in tab_pb
+          and "PlacasNotasText.Text = string.Join(" in pbw
+          and "ExportHintText" not in pbw)
+
+    #  El paso entre placas se mide con la huella COMPLETA -la placa o el dado, el que sobresalga-.
+    #  El dado es casi siempre mas grande que la placa, asi que separando por el ancho de la placa
+    #  el dado de una se mete en el de la siguiente.
+    check("varias placas se reparten sin que el dado de una pise el de la otra",
+          "public double AnchoTotalDibujoCm => Math.Max(AnchoDibujoCm, DadoXDibujoCm);" in pbc
+          and "(p.AnchoTotalDibujoCm + 60) * escala" in pbw)
+
+    check("hay comprobacion de que el XAML y su code-behind coinciden",
+          os.path.exists(ruta("tools", "verificar_xaml.py"))
+          and os.path.exists(ruta("tools", "balance_cs.py")))
+
+    #  EL CS0246 QUE ROMPIO LA COMPILACION, fijado por los dos lados.
+    #
+    #  El manejador de CellEditEnding declaraba 'DataGridCellEditEndingEventArgs e' y este archivo
+    #  no importa System.Windows.Controls. Se cualifica el tipo en lugar de importar el espacio
+    #  entero: el archivo solo necesita tres clases de ahi y ya usa TextBlock y Canvas cualificados.
+    check("el manejador de CellEditEnding no usa su tipo a secas",
+          "System.Windows.Controls.DataGridCellEditEndingEventArgs e" in pbw
+          and "using System.Windows.Controls;" not in pbw)
+
+    #  Y LA TABLA DE verificar_usings.py YA LOS CONOCE. Ahi estaba el hueco de verdad: la
+    #  herramienta para cazar esto ya existia y su patron para «Tipo nombre)» tambien, pero los
+    #  argumentos de los eventos del DataGrid no estaban en su tabla, asi que no los miraba.
+    check("y la tabla de verificar_usings conoce los eventos del DataGrid",
+          '"DataGridCellEditEndingEventArgs", "DataGridRowEditEndingEventArgs",' in
+          leer(ruta("tools/verificar_usings.py")))
+
+    # ------------------------------------------------------------------
+    # PLACA BASE: LA VISTA PREVIA, LOS CARTABONES Y EL DADO REFERENCIADO
+    # ------------------------------------------------------------------
+    #  EL REPARTO DE CARTABONES SALE DEL DIBUJANTE. Estaba dentro de PlacaBaseDrawer mezclado con
+    #  las llamadas a AddLightWeightPolyline, asi que la vista previa no podia usarlo y habria
+    #  tenido que reimplementarlo: dos juegos de la misma cuenta, y la previa ensenando unos
+    #  cartabones y el plano poniendo otros.
+
+    check("el reparto de cartabones vive aparte y sin nada de COM",
+          "public static class CartabonesPlacaBase" in cpb
+          and "public readonly record struct Cartabon(" in cpb
+          and "public static List<Cartabon> Construir(" in cpb
+          # NADA de COM aqui: ni una llamada al ModelSpace ni al Retry.
+          and "_ms." not in cpb
+          and "AcadConnection" not in cpb)
+
+    check("y el dibujante lo pide en lugar de repetirlo",
+          "CartabonesPlacaBase.Construir(p, xc, yc, pX, pY, _escala, contorno)" in pbd2
+          and "private static double PosicionCartabon(" not in pbd2)
+
+    #  El 60 % central y el cruce X/Y, que son las dos reglas que no se ven en el dibujo.
+    check("el 60 % central de la cara es una constante con nombre",
+          "public const double FraccionDeLaCara = 0.6;" in cpb
+          and "FraccionDeLaCara * dimension" in cpb)
+
+    #  Y LOS LEADERS LEEN LA DIRECCION DEL REPARTO. Antes recalculaban la regla del descarte y
+    #  contaban a mano el indice del primero de Y: las mismas dos cuentas en dos sitios.
+    #
+    #  Y AHORA TAMBIEN LA PUNTA DE LA FLECHA SALE DE AHI. Antes le pedia a cada polilinea su
+    #  GetBoundingBox, y para cuando los rotulos se dibujan esas polilineas YA NO EXISTEN:
+    #  Bloquear copia la geometria a la definicion del bloque y borra las originales. El
+    #  bounding box fallaba, el respaldo devolvia (0, 0), y las dos flechas acababan clavadas
+    #  en el origen del dibujo con su texto colgando al lado, apuntando a nada.
+    check("los leaders de cartabones leen la direccion del reparto",
+          "ParaRotular(reparto, esX: true, CartabonesPlacaBase.HaciaArriba)" in pbd2
+          and "ParaRotular(reparto, esX: false, CartabonesPlacaBase.HaciaIzquierda)" in pbd2
+          and "public (double X, double Y) PuntaLibre => Direccion switch" in cpb
+          and "deX.Value.PuntaLibre" in pbd2
+          and '"GetBoundingBox",' not in pbd2)
+
+    #  EL DADO SE REFERENCIA DE LA HOJA DE CONCRETO. Ya esta capturado ahi -con su armado, su
+    #  recubrimiento y su forma- porque es una seccion que se dibuja por su cuenta. Volver a
+    #  teclear sus medidas en la placa es pedir dos veces el mismo dato, y de los dos sitios el
+    #  segundo es el que se equivoca sin que se vea.
+    check("el dado de la placa sale de la hoja de secciones de concreto",
+          "public string IdDado" in pbr
+          and "private void ReferenciarDadoDePlaca(" in pbw
+          and "EsDado(s.Elemento)" in pbw
+          and 'Header="ID dado"' in tab_pb)
+
+    #  Y LA LISTA ES LA MISMA DE LA HOJA DE ZAPATAS, no una copia: con dos listas habria dos
+    #  sitios recorriendo la hoja de concreto en busca de dados, y el dia que cambie el criterio
+    #  uno de los dos se quedaria corto sin que nada avisara.
+    check("y la lista de dados es la misma que la de zapatas",
+          "ZapataAisladaRow.DadosDisponibles;" in pbr
+          and "x:Static models:PlacaBaseRow.DadosDisponibles" in tab_pb)
+
+    #  SE PONE AL DIA AL EDITAR LA SECCION, no solo al elegirla: si el dado crece en su hoja, la
+    #  placa que lo usa tiene que crecer con el. Es lo que hace que sea una referencia y no una
+    #  copia que envejece.
+    check("y se pone al dia cuando cambia esa seccion",
+          "ReferenciarDadosDeTodasLasPlacas();" in codigo
+          and codigo.count("ReferenciarDadosDeTodasLasPlacas();") >= 2)
+
+    #  UN DADO REDONDO SE DIBUJA REDONDO. En la hoja de concreto DADO CIRCULAR es otra forma, no
+    #  un cuadrado con las mismas medidas.
+    check("un dado circular se dibuja circular, no cuadrado",
+          "public bool DadoCircular" in pbc
+          and "? Circulo(x0 + (b / 2), y0 + (h / 2), dadoX, PlacaBaseCapas.Concreto)" in pbd)
+
+    #  Y su rayado solo se intenta si la placa CABE ENTERA dentro del circulo: si los dos
+    #  contornos se cruzan, la placa no puede entrar como isla y AutoCAD o falla o raya de mas.
+    #  Con la diagonal, no con los lados: un dado de 50 de diametro sobresale por el centro de los
+    #  lados de una placa de 40x40 y sus esquinas -a 56.6- se quedan FUERA.
+    check("el rayado del dado redondo mide la DIAGONAL de la placa",
+          "var placaCabeEnElDado = p.DadoCircular" in pbd
+          and "Math.Sqrt((b * b) + (h * h))" in pbd)
+
+    # ---- LA VISTA PREVIA ----
+    #  Con la MISMA geometria que va a AutoCAD, no una version de pantalla. Es la razon de que
+    #  AnclasPlacaBase, CartabonesPlacaBase y TrazoAcero existan sin COM.
+    check("la vista previa de la placa usa la geometria del dibujante",
+          "private void DibujarVistaPreviaPlacaBase()" in pbw
+          and "CartabonesPlacaBase.Construir(\n            p, xc, yc, pX, pY, 1, panoColumna)" in pbw
+          # Y CON LA POLILINEA, no con un rectangulo: contra una columna redonda el cartabon lleva
+          # boca de pescado -un arco- y RectangleGeometry no puede dibujarla. La previa ensenaria
+          # un cartabon recto y el plano saldria con el recorte, que es justo la discrepancia que
+          # esta previa existe para evitar.
+          and "AgregarPoligonal(geoCart, c.Puntos, c.Dobleces)" in pbw
+          and "AnclasPlacaBase.Construir(" in pbw
+          and "TrazoAcero.De(" in pbw
+          and 'x:Name="PlacaPreviewCanvas"' in tab_pb)
+
+    #  Y SE FILTRA CON p.Falta, NO CON fila.Falta. Son dos cosas distintas: sin el largo de la
+    #  placa no hay nada que dibujar, pero unas anclas demasiado juntas SI se pueden dibujar, y es
+    #  justo el caso en el que la previa mas sirve. Con fila.Falta -que incluye los libramientos-
+    #  la placa que incumple seria la unica que nunca se llegaria a ver.
+    check("la previa dibuja la placa que incumple J o K, y lo avisa en rojo",
+          "if (p.Falta.Count > 0)" in pbw
+          and "NO SE DIBUJARÁ — " in pbw)
+
+    #  Se engancha UNA VEZ, en el arranque, como las otras tres previas: Enlazar se vuelve a
+    #  llamar al cargar el ejemplo y al empezar de nuevo, y suscribirse ahi dejaria el mismo
+    #  evento enganchado cinco veces.
+    check("y se engancha una sola vez, como las otras previas",
+          "EngancharVistaPreviaPlacaBase();" in codigo
+          and "PlacaPreviewCanvas.SizeChanged +=" in pbw
+          and "PlacasGrid.SelectionChanged +=" in pbw)
+
+    # ---- LAS CELDAS DE CARTABON SE APAGAN ----
+    #  Sin la casilla, el dibujante no las mira: dejarlas activas invita a capturar nueve numeros
+    #  que no van a salir en el plano, y cuando el detalle aparece sin atiesadores lo que se piensa
+    #  es que el programa los perdio, no que faltaba encender una casilla.
+    tema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    # Fuera de la f-string: lleva comillas dobles escapadas y Python 3.9 no las admite dentro.
+    usos_celda_cartabon = tab_pb.count('CellStyle="{StaticResource CeldaCartabon}"')
+
+    check("las celdas de cartabon se apagan sin la casilla de cartabones",
+          'x:Key="CeldaCartabon"' in tema
+          and 'Binding="{Binding ConCartabones}" Value="False"' in tema
+          and '<Setter Property="IsEnabled" Value="False" />' in tema
+          # Las NUEVE: cantidad, espesor, longitud en planta y altura en alzado de cada
+          # sentido, mas el espesor de la soldadura del contorno. Con ocho, la que se quede
+          # fuera sigue aceptando lo que se escriba y nada lo delata.
+          and usos_celda_cartabon == 9,
+          f"{usos_celda_cartabon} columnas la usan")
+
+    #  Y LA TABLA DICE CUANTOS SALEN DE VERDAD, con el mismo descarte que el dibujo.
+    check("la tabla dice cuantos cartabones se dibujan de verdad",
+          "public static int Cuantos(PlacaBaseCad p)" in cpb
+          and "public int TotalCartabones => CartabonesPlacaBase.Cuantos(AFormatoCad());" in pbr)
+
+    # ---- EL DADO NO SE ESCRIBE AQUI ----
+    #  Solo se ve. Su UNICA definicion esta en la hoja de concreto: con las celdas escribibles
+    #  habria dos sitios donde vive la misma medida y nada que diga cual manda. Y no es una duda
+    #  teorica: lo escrito aqui se perderia en cuanto alguien toque esa seccion, porque la
+    #  referencia se vuelve a resolver sola.
+    check("las medidas del dado se ven pero no se escriben en la placa",
+          'x:Key="CeldaReferenciada"' in tema
+          # Las DOS celdas del dado, de solo lectura y con el estilo que lo hace visible: con el
+          # IsReadOnly a secas la celda se ve igual que las de al lado y el usuario descubre que no
+          # se puede escribir intentandolo.
+          and tab_pb.count('CellStyle="{StaticResource CeldaReferenciada}"') == 2
+          and 'Binding="{Binding DadoXCm, StringFormat=N1}"' in tab_pb
+          and 'Binding="{Binding DadoYCm, StringFormat=N1}"' in tab_pb
+          # Y SIN UpdateSourceTrigger: si sigue ahi, la celda seguia siendo de ida y vuelta.
+          and "DadoXCm, StringFormat=N1, UpdateSourceTrigger" not in tab_pb
+          and "DadoYCm, StringFormat=N1, UpdateSourceTrigger" not in tab_pb)
+
+    # ---- EL AGUJERO SE LLENA SOLO: ANCLA + 1/16" ----
+    #  Esa cuenta ya la hacia el respaldo de la macro cuando la celda venia en blanco, pero por
+    #  dentro y al dibujar. Escrita en la celda se puede cotejar el agujero con el plano; en blanco
+    #  habia que fiarse de que el programa lo hizo bien.
+    check("el agujero se llena solo con el ancla mas 1/16",
+          "public static string AgujeroAutomatico(" in pbr
+          and "ComoFraccion(d + (1.0 / 16.0))" in pbr
+          # Y en FRACCION, no en decimal: un plano que pida 0.8125" obliga a traducir en obra.
+          and "public static string ComoFraccion(" in pbr
+          and "new[] { 16, 32, 64 }" in pbr)
+
+    #  Y NO SE PUEDE ESCRIBIR. Esta comprobacion sustituye a una anterior que exigia lo contrario
+    #  —que un agujero holgado escrito a mano se respetara—, porque la celda dejo de ser capturable
+    #  a peticion del usuario. Se cambia en lugar de dejar las dos: una comprobacion que defiende un
+    #  comportamiento que ya se quito es la que te hace «arreglar» de vuelta lo que estaba bien.
+    check("y el agujero no se puede escribir: solo depende de su ancla",
+          "public string DiamAgujeroX => AgujeroAutomatico(" in pbr
+          and "SeguirConElAgujero" not in pbr
+          and "_autoAgujero" not in pbr)
+
+    #  Y LAS CELDAS DEL AGUJERO ESTAN BLOQUEADAS. No es un dato que se decida: el agujero de una
+    #  placa base es SIEMPRE el ancla mas 1/16", asi que dejarlo capturable era ofrecer una decision
+    #  que no existe, y con ella la posibilidad de que el agujero y su ancla dejaran de corresponder.
+    #
+    #  Al ser de solo lectura tampoco se guardan en el .clk -FilaSerializable solo guarda lo que se
+    #  puede escribir- y eso es lo correcto: se recalculan al abrir, asi que no llegan viejas.
+    check("las celdas de agujero estan bloqueadas y son calculadas",
+          "public string DiamAgujeroX => AgujeroAutomatico(_diamAnclaX);" in pbr
+          and "public string DiamAgujeroY => AgujeroAutomatico(_diamAnclaY);" in pbr
+          # Sin campo detras: si lo hubiera, seguirian siendo un dato guardado.
+          and "_diamAgujeroX" not in pbr
+          and "IsReadOnly=\"True\"" in tab_pb
+          and 'Binding="{Binding DiamAgujeroX, Converter={StaticResource ConPulgadas}}"' in tab_pb)
+
+    #  Y se refrescan al cambiar el ancla: siendo calculadas, sin el aviso la celda se queda
+    #  ensenando el agujero del ancla anterior.
+    check("y se refrescan cuando cambia su ancla",
+          "Raise(nameof(DiamAgujeroX));" in pbr
+          and "Raise(nameof(DiamAgujeroY));" in pbr)
+
+    # ---- EL SIMBOLO DE PULGADA ----
+    #  Las celdas en pulgadas se capturan en formato LIBRE -1, 3/4, 1 1/4- y eso es lo comodo al
+    #  escribir y lo malo al leer: en la columna queda un «1» suelto que no dice si es una pulgada o
+    #  un centimetro. El encabezado lo dice, pero se pierde de vista en cuanto la tabla se desplaza
+    #  a lo ancho, y esta hoja tiene cuarenta columnas.
+    #
+    #  El simbolo se pone al MOSTRAR y no se guarda dentro del texto: guardado, habria que quitarlo
+    #  antes de cada cuenta, y esa es la clase de limpieza que se olvida en un sitio -un espesor
+    #  guardado como 1" que en algun camino se lea sin limpiar da CERO-.
+    usos_pulgadas = tab_pb.count("Converter={StaticResource ConPulgadas}")
+
+    check("las celdas en pulgadas se ven con su simbolo, sin guardarlo",
+          os.path.exists(ruta("client/src/CadLink.App/ConPulgadas.cs"))
+          and "public sealed class ConPulgadas : IValueConverter" in
+              leer(ruta("client/src/CadLink.App/ConPulgadas.cs"))
+          and '<app:ConPulgadas x:Key="ConPulgadas" />' in tema
+          # Las NUEVE celdas en pulgadas: espesor, dos anclas, dos agujeros, la soldadura de la
+          # columna, los dos espesores de cartabon y la soldadura del cartabon.
+          and usos_pulgadas == 9,
+          f"{usos_pulgadas} celdas con el simbolo")
+
+    # ---- LA SEPARACION AL BORDE SE AJUSTA AL MINIMO DE LA COLUMNA K ----
+    #  K es «distancia minima del ancla al canto recortado de la placa», que es exactamente lo que
+    #  se captura en «Sep borde». Antes se ajustaba con la L, que mide otra cosa.
+    check("la separacion al borde se ajusta al minimo de la columna K",
+          "public static double SepBordeAjustada(" in anc
+          and "public static double BordeMinimoCm(" in anc
+          and "public bool AjustarSeparacionesAlBorde()" in pbr
+          # El dibujante tambien lo aplica: la separacion se pudo capturar ANTES de cambiar el
+          # diametro del ancla, y en ese caso la celda quedo con un numero que ya no cumple.
+          and "AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, p.DiamAnclaXCm, p.AnchoDibujoCm)"
+              in pbd)
+
+    #  Y EL AUTOMATICO TAMBIEN, porque si no, dejar la celda en cero seria la manera de saltarse la
+    #  tabla sin que nada avisara.
+    check("y el calculo automatico de la separacion tambien respeta la K",
+          "double escala, double bordeLibre = 0)" in anc
+          and "if (bordeLibre > 0 && s < bordeLibre) { s = bordeLibre; }" in anc)
+
+    #  SE AJUSTA AL SALIR DE LA CELDA, no en cada tecla: con UpdateSourceTrigger=PropertyChanged,
+    #  corrigiendo en el set, teclear «5» camino de «50» se convierte en un forcejeo.
+    check("el ajuste se hace al salir de la celda y se avisa",
+          'CellEditEnding="OnCeldaPlacaEditada"' in tab_pb
+          and "private void OnCeldaPlacaEditada(" in pbw
+          and "separación al borde ajustada al mínimo de la columna K" in pbw)
+
+    #  ─── LA L MIDE CONTRA LA COLUMNA, NO CONTRA LA PLACA ────────────────────────────────
+    #  Es «DISTANCIA MINIMA DE COLUMNA/CARTABON PARA ATORNILLAR»: el espacio entre el ancla y
+    #  el paño de la columna para que entre la LLAVE. En una vuelta anterior se implemento
+    #  midiendola al borde de la placa, o sea como una segunda K, que es medir contra lo
+    #  contrario: en el croquis del estandar el orden es canto de la placa -> K -> ancla -> L
+    #  -> paño de la columna.
+    check("la L mide la holgura a la COLUMNA, no al borde de la placa",
+          "public static Incumplimiento? RevisarHolguraColumnaL(" in anc
+          and "double[]? contornoColumna" in anc
+          and "ContornoDesplazado.DistanciaAlContorno(contornoColumna" in anc
+          # Y el nombre viejo, que medía al borde, ya no está en ningún sitio.
+          and "RevisarBordeLibreL" not in anc
+          and "RevisarBordeLibreL" not in pbd
+          and "RevisarBordeLibreL" not in pbr)
+
+    check("y se revisa desde el dibujante y desde la tabla, con el paño de la columna",
+          "RevisarHolguraColumnaL(\n                               anclas, panoColumna?.Puntos, _escala)"
+          in pbd
+          and "RevisarHolguraColumnaL(" in pbr
+          and "p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos" in pbr)
+
+    #  Y EL PAÑO DE LA COLUMNA SE CALCULA EN UN SOLO SITIO. Lo necesitan tres: el dibujante
+    #  -para trazarlo y rodearlo de soldadura-, la revision de la L -que corre ANTES de dibujar
+    #  nada- y la vista previa. Con tres copias del «contorno ya girado», el dia que cambie el
+    #  giro dos se quedan atras: la soldadura rodearia un perfil y la L mediria contra otro.
+    check("el pano de la columna se calcula en un solo sitio",
+          "public ContornoDeColumna? PanoDeLaColumna(" in pbc
+          and "public sealed record ContornoDeColumna" in pbc
+          and "ContornoDesplazado.Girar90(contorno.Puntos, xc, yc)" in pbc
+          # Y el dibujante ya no lleva su propia copia del giro.
+          and "private static double[] Girar90(" not in pbd2)
+
+    #  La distancia se mide al SEGMENTO, no al vertice mas cercano: un ancla frente a la mitad
+    #  de un patin largo daria la distancia a la punta del patin y pasaria una holgura que no
+    #  existe.
+    check("la distancia al contorno se mide al segmento, no al vertice",
+          "public static double DistanciaAlContorno(" in cdesp
+          and "private static double DistanciaAlSegmento(" in cdesp
+          and "if (u < 0) { u = 0; }" in cdesp
+          and "if (u > 1) { u = 1; }" in cdesp)
+
+    #  Y el numero que EXPLICA la correccion se ve en la tabla: sin el, la celda cambia de valor y
+    #  el usuario no tiene de donde sacar el motivo.
+    #  LOS DOS MINIMOS SE VEN EN LA TABLA, K y L, porque explican dos cosas que si no pasan sin
+    #  decir por que: que la separacion al borde se corrigio sola -la K- y que el detalle se nego a
+    #  dibujarse porque no cabe la llave -la L-.
+    check("los minimos de K y L y la separacion usada se ven en la tabla",
+          "public string BordeMinimo" in pbr
+          and "public string SepBordeUsada" in pbr
+          and "AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaXCm)" in pbr
+          and 'Header="Mín. K · L"' in tab_pb
+          and 'Header="Sep borde usada"' in tab_pb)
+
+    #  Y la lista de soldadura llega a los dos extremos que se usan: el filete de 1/8 de una placa
+    #  delgada y los de 5/8 en adelante de una columna de varias toneladas.
+    check("la lista de soldadura cubre de 1/8 a 1 pulgada",
+          '"1/8", "3/16", "1/4", "5/16", "3/8", "7/16", "1/2", "9/16", "5/8", "3/4", "7/8", "1"'
+          in pbr)
+
+    # ------------------------------------------------------------------
+    # LA CADENA, PARTIDA POR EL VANO DE LA PUERTA
+    # ------------------------------------------------------------------
+    #  «La parte de la izquierda debe ser continua y la derecha punteada porque es puerta».
+    #
+    #  Antes la cadena se dibujaba ENTERA de un solo tipo de linea, porque la decision venia de un
+    #  bool -MuroDePisoATecho: "tiene muro" o "no tiene"-. Con eso, una cadena con muro en la mitad
+    #  y un vano de puerta en la otra salia toda igual y el plano no decia donde esta la puerta.
+    #
+    #  Los intervalos YA los calculaba ModeloEtabs.MuroDePisoATechoBajo para decidir el bool: se
+    #  estaban tirando. TramosConMuroDebajo los devuelve, en fraccion del largo, y el dibujante
+    #  parte la cadena por ellos.
+    mod = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+
+    check("el modelo dice DONDE hay muro debajo, no solo si lo hay",
+          "public List<(double A, double B)> TramosConMuroDebajo(" in mod
+          and "public List<(double A, double B)> TramosConMuro" in plc
+          and "e.TramosConMuro.AddRange(modelo.TramosConMuroDebajo(el));" in codigo)
+
+    check("y la cadena se dibuja partida: continua con muro, a trazos en el vano",
+          'P("CADENA_PARTIR_EN_VANOS", "SI",' in cfgplano
+          and "private bool PartirCadenaPorElVano(" in dibp
+          and "_cadenasPartidas++;" in dibp
+          # El EJE va entero y una sola vez: trocearlo lo dejaria roto en cada puerta.
+          and "conEje: false, trozo, tipoLinea);" in dibp)
+
+    #  Y el texto MC va a la capa de TEXTOS, no a la del muro: es lo coherente con el resto del
+    #  plano -los rotulos de losa y de seccion ya van ahi- y resuelve de raiz el orden, porque al no
+    #  compartir capa con las lineas no puede volver a quedar por encima de ellas.
+    check("la leyenda MC va en la capa de textos, no en la del muro",
+          "leyenda, altura, CapaTextos," in dibp)
+
+    #  Y LA CAPA DEL MURO DE CONCRETO SE SUBE AL FRENTE, como las cadenas: esas dos lineas son la
+    #  base del muro, van sobre el achurado de la losa y sobre las lineas de los ejes, y si quedan
+    #  debajo el plano no las ensena aunque esten dibujadas.
+    #
+    #  Se resuelve en CapasAlFrente() y no solo escrito en la tabla de omision, porque el nombre de
+    #  la capa lo decide CAPA_MURO_CONCRETO, que es configurable: dejandolo solo a mano, el dia que
+    #  alguien renombre la capa la lista dejaria de coincidir y el muro se quedaria atras EN
+    #  SILENCIO.
+    check("la capa del muro de concreto se sube al frente, como las cadenas",
+          'P("MURO_CONCRETO_AL_FRENTE", "SI",' in cfgplano
+          and 'if (_cfg.Bandera("MURO_CONCRETO_AL_FRENTE", true))' in capp2
+          and "var muro = CapaMuroConcreto.Trim().ToUpperInvariant();" in capp2
+          # Y NO escrita a mano en la lista: la lista sigue siendo la de la macro.
+          and 'P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO"' in cfgplano)
+
+    #  SOLO PARA MURO DE CONCRETO, pedido expresamente. Y es lo correcto: esta linea es el
+    #  desplante de un muro que se cuela, y dibujarla en un muro de mamposteria diria que hay algo
+    #  que colar donde no lo hay. Un muro de tabicon apoya en su cadena de desplante, y esa cadena
+    #  ya se dibuja por su cuenta.
+    #
+    #  Consecuencia asumida: si el modelo no trae muros con CONCRETO en su property note, no se
+    #  dibuja NADA. No es un fallo del dibujo, y el resumen lo dice con las notas que llegaron.
+    check("la base es SOLO del muro de concreto",
+          "var baseMc = esMuroConcreto" in dibp
+          and 'P("MURO_BASE_TODOS"' not in cfgplano
+          and "else if (esMuroConcreto && !nadaAbajo)" in dibp)
 
     # ------------------------------------------------------------------
     # LA CADENA DE DESPLANTE, SIEMPRE CONTINUA
@@ -9901,7 +10833,14 @@ def v20_estaticos_sin_cualificar() -> None:
             # nombre de la clase de fuera.
             m_prop = re.match(
                 r"^ {4,}(?:public|private|protected|internal)[^;=]*?"
-                r"\b(\w+)\s*(?:\{|=>|=|;)", l)
+                # El cuerpo puede abrirse en el MISMO renglon -'{ get => …; }'- o en el
+                # SIGUIENTE, que es como se escribe una propiedad con documentacion larga.
+                # Con solo la primera forma se perdian esas, y su nombre se reportaba
+                # contra el estatico homonimo de otra clase: paso con el
+                # 'SoldaduraCartabon' de PlacaBaseRow contra el de PlacaBaseCapas, que es
+                # el nombre de la capa. Se recoge de mas a proposito -esto solo descarta
+                # falsos positivos- asi que colar de paso algun nombre de clase no daña.
+                r"\b(\w+)\s*(?:\{|=>|=|;|$)", l)
             if m_prop:
                 miembros_de.setdefault(clase_en(i), set()).add(m_prop.group(1))
 
@@ -10654,7 +11593,9 @@ def v21_separacion_y_acero() -> None:
     # LO QUE SE PIDIO: la lista corta. Solo las cinco de tres tramos que se repiten en
     # casi todos los planos, mas las dos unicas de 15 y 20 cm que se usan en parrillas y
     # mallas de zapata. Las demas se teclean a mano, que es lo que la celda permite.
-    for sep in ("6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"):
+    # 5-10-5 se agrego porque el usuario la usa y la pidio. Encaja en el orden documentado de
+    # la lista, que va de la mas cerrada a la mas abierta.
+    for sep in ("5-10-5", "6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"):
         check(f"esta la separacion {sep}", f'"{sep}"' in filas)
 
     m_seps = re.search(
@@ -10664,7 +11605,8 @@ def v21_separacion_y_acero() -> None:
     check("la lista de separaciones no trae nada mas",
           m_seps is not None
           and sorted(re.findall(r'"([^"]+)"', m_seps.group(1)))
-          == sorted(["6-12-6", "7-14-7", "8-16-8", "9-18-9", "10-20-10", "15", "20"]))
+          == sorted(["5-10-5", "6-12-6", "7-14-7", "8-16-8", "9-18-9",
+                     "10-20-10", "15", "20"]))
 
     # Las que se quitaron. Se comprueba que NO esten en la lista, no que no esten en el
     # archivo: «10-15-20» sigue apareciendo en los comentarios como ejemplo del formato de

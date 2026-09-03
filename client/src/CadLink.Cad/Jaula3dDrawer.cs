@@ -64,6 +64,32 @@ public sealed class Jaula3dDrawer
     /// <summary>Menos que esto no es una barra: es un nudo mal leído.</summary>
     private const double LargoMinimo = 1e-6;
 
+    private const double Pi = Math.PI;
+
+    /// <summary>
+    /// Los dobleces se hacen como <b>toro recortado</b> —una revolución— en lugar de como cadena de
+    /// cilindros.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Encendido es lo correcto: una cadena de cilindros está facetada por definición y el gancho
+    /// se ve como un acordeón. El toro es una sola superficie curva.
+    /// </para>
+    /// <para>
+    /// <b>Existe el interruptor porque hay un antecedente.</b> En este entorno no se puede probar
+    /// nada contra AutoCAD, y dos APIs de sólidos —<c>AddRevolvedSolid</c> y
+    /// <c>AddExtrudedSolidAlongPath</c>— ya cerraron AutoCAD 2026 sin lanzar ninguna excepción.
+    /// <c>AddTorus</c> es de otra familia —un primitivo paramétrico, como el <c>AddCylinder</c> que
+    /// sí funciona— y no consume ninguna región, que es lo que tenían en común las dos que
+    /// fallaron. Pero mientras no se ejecute una vez, es una deducción y no un hecho.
+    /// </para>
+    /// <para>
+    /// Si AutoCAD se cerrara al dibujar, poner esto en <c>false</c> devuelve el comportamiento
+    /// anterior, que es feo pero está probado.
+    /// </para>
+    /// </remarks>
+    public bool DoblecesRedondos { get; set; } = true;
+
     /// <summary>
     /// Cuánto se deja que la varilla se separe de su eje al simplificarlo, <b>en fracción de su
     /// propio radio</b>.
@@ -86,12 +112,26 @@ public sealed class Jaula3dDrawer
     /// </para>
     /// </remarks>
     /// <remarks>
-    /// <b>Por qué un doceavo y no menos.</b> En una varilla del cuatro son cinco centésimas de
-    /// centímetro: la veinticincoava parte de su grueso, que no se ve ni con la nariz pegada. Bajar
-    /// más no mejora nada de lo que se mira y sí cuesta: cada tramo de más es un cilindro más y una
-    /// unión más, y las uniones booleanas de AutoCAD son lo caro de esta operación.
+    /// <para>
+    /// <b>Estaba en 0.08 y era lo que dejaba los ganchos con «tanto doblez».</b> El razonamiento
+    /// de antes —que cinco centésimas de centímetro no se ven— es correcto para el <i>error de
+    /// posición</i> del eje, pero el defecto que se ve en el gancho no es de posición: es que la
+    /// superficie está <b>facetada</b>, y lo que delata una faceta no es cuánto se desvía sino el
+    /// <b>quiebre</b> entre una cara y la siguiente.
+    /// </para>
+    /// <para>
+    /// Medido con <c>tools/verificar_jaula_3d.py</c>: con 0.08 un estribo pasaba de <b>47 puntos a
+    /// 20</b>, así que de los catorce tramos por doblez que la vista previa se había tomado la
+    /// molestia de generar, al doblez le quedaban <b>tres o cuatro</b>. Un cuarto de vuelta en
+    /// cuatro trozos no es un doblez, es un chaflán.
+    /// </para>
+    /// <para>
+    /// A <b>0.01</b> el doblez conserva sus tramos y se lee como una curva. Cuesta más cilindros y
+    /// más uniones —que es lo caro—, pero es la diferencia entre un gancho y un acordeón, y el
+    /// gancho es de lo que más se mira en un armado.
+    /// </para>
     /// </remarks>
-    public const double ToleranciaEnRadios = 0.08;
+    public const double ToleranciaEnRadios = 0.01;
 
     /// <summary>
     /// Tolerancia para <b>reconocer</b> rectas y arcos en el eje, en fracción del radio de la
@@ -242,7 +282,26 @@ public sealed class Jaula3dDrawer
             }
         }
 
+        // ===== Y AHORA UN REGEN, QUE ES LO QUE FALTABA =====
+        //
+        // FACETRES, ISOLINES y DISPSILH NO CAMBIAN NADA hasta que se regenera: AutoCAD guarda la
+        // representación de pantalla de cada sólido y no la vuelve a calcular solo. ZoomExtents
+        // tampoco sirve, porque solo mueve la cámara.
+        //
+        // Sin esto, DISPSILH quedaba puesto pero sin efecto, y los sólidos seguían dibujados con
+        // la representación anterior: los que se habían fundido en uno mostraban muy pocas
+        // aristas y en la ventana PARECÍA QUE FALTABAN TRAMOS DEL ESTRIBO. La geometría estaba
+        // completa; lo que no se había actualizado era el dibujado.
+        //
+        // Es justo el defecto reportado: se veían el lado derecho y el inferior —los cilindros
+        // que habían quedado sueltos— y no el izquierdo ni el superior, que eran los fundidos.
+        Regenerar();
+
         var sombreado = Sombrear();
+
+        // Otro regen después del estilo visual: cambiar de estilo también rehace la
+        // representación, y las variables de arriba tienen que volver a aplicarse encima.
+        Regenerar();
 
         // ===== Y AHORA SE APAGAN LAS ARISTAS. AQUÍ ESTÁ LO DE LOS GANCHOS =====
         //
@@ -280,11 +339,21 @@ public sealed class Jaula3dDrawer
 
         if (!sombreado)
         {
+            // El aviso dice AHORA lo que de verdad importa: que puede PARECER que falta acero.
+            //
+            // El texto anterior decía «se van a ver como líneas» y «están bien dibujadas», y se
+            // quedaba corto: en alámbrico 2D un sólido fundido dibuja muy pocas aristas, así que
+            // el estribo no se ve fino, se ve INCOMPLETO —faltando lados enteros—. El usuario
+            // leía «están bien dibujadas», miraba un estribo al que le faltaba medio perímetro, y
+            // con razón concluía que el programa no lo había dibujado.
             _notas.Add(
-                "No se pudo poner la vista en sombreado, así que las varillas se van a ver como "
-                + "líneas en lugar de como tubos llenos. Están bien dibujadas: es el estilo "
-                + "visual de la ventana. Escribe VSCURRENT y elige «Conceptual», o usa el menú "
-                + "Vista › Estilos visuales.");
+                "IMPORTANTE: no se pudo poner la vista en sombreado, y en «Estructura alámbrica "
+                + "2D» el acero PUEDE PARECER INCOMPLETO —a un estribo se le ven unos lados y "
+                + "otros no—. No falta nada: las varillas fundidas en un solo sólido casi no "
+                + "dibujan aristas en ese estilo. Para verlo bien, escribe VSCURRENT y elige "
+                + "«Conceptual» (o menú Vista › Estilos visuales), y si aún así ves huecos, "
+                + "escribe REGEN. Para comprobarlo sin cambiar de estilo, selecciona un estribo: "
+                + "se marcará entero.");
         }
     }
 
@@ -305,6 +374,49 @@ public sealed class Jaula3dDrawer
     /// alámbrico y pensando que no se habían dibujado sólidos.
     /// </para>
     /// </remarks>
+    /// <summary>Rehace la representación de pantalla de los sólidos, en todas las ventanas.</summary>
+    /// <remarks>
+    /// Hace falta porque <c>DISPSILH</c>, <c>ISOLINES</c> y <c>FACETRES</c> solo surten efecto tras
+    /// un regen: AutoCAD conserva la representación calculada de cada sólido. El <c>1</c> es
+    /// <c>acAllViewports</c>; si esta versión no lo acepta se prueba <c>0</c>,
+    /// <c>acActiveViewport</c>, y si tampoco, el comando.
+    /// </remarks>
+    private void Regenerar()
+    {
+        foreach (var modo in new object[] { 1, 0 })
+        {
+            try
+            {
+                AcadConnection.Retry(() => { _doc.Regen(modo); });
+
+                return;
+            }
+            catch (Exception)
+            {
+                // Esta versión no acepta ese modo: se prueba el siguiente.
+            }
+        }
+
+        try
+        {
+            // Último recurso. El punto salta redefiniciones y el guion bajo fuerza el nombre en
+            // inglés, así que vale también en un AutoCAD en español. Y el ENTER es "\r": con
+            // "\n" el comando se queda esperando en la línea de órdenes sin ejecutarse.
+            _doc.SendCommand("_.REGENALL\r");
+        }
+        catch (Exception)
+        {
+            var aviso =
+                "No se pudo regenerar la vista. Si algún tramo de acero se ve incompleto, escribe "
+                + "REGEN en AutoCAD: la geometría está dibujada, es solo el refresco de pantalla.";
+
+            if (!_notas.Contains(aviso))
+            {
+                _notas.Add(aviso);
+            }
+        }
+    }
+
     private bool Sombrear()
     {
         // 1) POR VARIABLE. Es la vía limpia: sin comandos, sin depender del idioma. Se prueban
@@ -340,30 +452,56 @@ public sealed class Jaula3dDrawer
         //    redefinición del comando y el guion bajo fuerza el nombre en inglés, así que esto
         //    funciona igual en un AutoCAD en español. Y las opciones van con guion bajo por lo
         //    mismo.
+        // ===== EL RETORNO DE CARRO. AQUÍ ESTABA EL FALLO =====
+        //
+        // Estas órdenes iban terminadas en "\n", y AutoCAD espera "\r" —o un espacio— como
+        // ENTER en SendCommand. Con "\n" el comando NO SE EJECUTA: se queda a medias en la línea
+        // de órdenes esperando que alguien lo termine.
+        //
+        // Consecuencia exacta de lo que se veía: el estilo visual nunca cambiaba, la ventana se
+        // quedaba en alámbrico 2D, y ahí un sólido fundido de diecinueve cilindros dibuja tan
+        // pocas aristas que el estribo PARECE que le falta media vuelta. Y con VSEDGES sin
+        // aplicar —solo se fija si el sombreado funcionó—, los dobleces se veían facetados, que
+        // es lo del gancho «con tanto doblez».
+        //
+        // Se prueban las dos terminaciones, "\r" primero, porque en algunas versiones "\n"
+        // también vale y no cuesta nada dejar las dos.
         foreach (var orden in new[]
                  {
+                     "_.VSCURRENT\r_Conceptual\r",
+                     "_.VSCURRENT\r_C\r",
+                     "_.SHADEMODE\r_Conceptual\r",
                      "_.VSCURRENT\n_Conceptual\n",
-                     "_.VSCURRENT\n_C\n",
                      "_.SHADEMODE\n_Conceptual\n"
                  })
         {
             try
             {
-                var puesto = AcadConnection.Retry(() =>
-                {
-                    _doc.SendCommand(orden);
-
-                    return EstaSombreado();
-                });
-
-                if (puesto)
-                {
-                    return true;
-                }
+                // EL SendCommand NO VA DENTRO DE Retry, y es importante: Retry reejecuta la
+                // lambda, así que un «ocupado» ENCOLABA EL COMANDO OTRA VEZ. Con varias órdenes
+                // por doce reintentos se le podían meter a AutoCAD decenas de comandos en la
+                // línea, y ahí es donde un VSCURRENT a medias se come el siguiente como si fuera
+                // su opción.
+                _doc.SendCommand(orden);
             }
             catch (Exception)
             {
                 // Ese comando u opción no existe en esta versión. Al siguiente.
+                continue;
+            }
+
+            // Y SE COMPRUEBA DESPUÉS DE REGENERAR, no en la misma llamada.
+            //
+            // SendCommand no termina de aplicarse al volver: el estilo visual es una propiedad de
+            // la ventana y hasta que AutoCAD no rehace el dibujado, leer VSCURRENT puede devolver
+            // todavía el valor viejo. Verificar acto seguido daba un FALSO NEGATIVO: el comando
+            // había funcionado, la comprobación decía que no, se probaba el siguiente y al final
+            // se avisaba de que no se pudo sombrear cuando sí se había puesto.
+            Regenerar();
+
+            if (EstaSombreado())
+            {
+                return true;
             }
         }
 
@@ -519,8 +657,11 @@ public sealed class Jaula3dDrawer
     /// COM ya consumido es justo lo que cierra AutoCAD sin dar la cara.
     /// </para>
     /// <para>
-    /// Y si una unión falla, <b>no se pierde nada</b>: los dos sólidos se quedan en el dibujo por
-    /// separado. Se ve la costura, pero la varilla está y mide lo que tiene que medir.
+    /// <b>Cuidado con la unión que falla.</b> Aquí decía que si una unión falla «no se pierde
+    /// nada, los dos sólidos se quedan en el dibujo por separado». <b>Es falso</b>, y era el
+    /// origen de que la sección saliera incompleta: <c>Boolean</c> consume el sólido que se le
+    /// pasa <b>antes</b> de decidir si puede unirlo, así que una unión fallida <b>borra</b> ese
+    /// tramo. Por eso ahora se comprueba si sobrevivió y, si no, se vuelve a dibujar.
     /// </para>
     /// </remarks>
     private (int Hechos, int Pedidos, int Perdidos) Solida(
@@ -532,15 +673,33 @@ public sealed class Jaula3dDrawer
 
         var sueltos = 0;
         var perdidos = 0;
+        var rescatados = 0;
 
-        foreach (var pieza in piezas)
+        // Con esto encendido se deja de unir en esta varilla: ya se perdió una vez.
+        var sinFundir = false;
+
+        for (var i = 0; i < piezas.Count; i++)
         {
-            var cil = pieza();
+            var cil = piezas[i].Crear();
 
             if (cil is null)
             {
                 // Esta pieza no salió: la varilla va a tener un hueco justo aquí.
                 perdidos++;
+
+                continue;
+            }
+
+            // ===== LA PIEZA QUE NO SE FUNDE =====
+            //
+            // Los dobleces se quedan como sólidos aparte. Es lo que impide que un doblez mal
+            // formado se lleve la varilla entera al unirlo, que es lo que pasó al estrenar el toro:
+            // desaparecían TODOS los estribos, mientras el diamante —casi todo recto, sin dobleces
+            // que pasen por aquí— salía perfecto. La costura no se ve en sombreado; perder la
+            // varilla sí se ve.
+            if (!piezas[i].Fundible || sinFundir)
+            {
+                sueltos++;
 
                 continue;
             }
@@ -555,15 +714,159 @@ public sealed class Jaula3dDrawer
 
             if (Fundir(entero, cil))
             {
+                // ¿Y sigue viva la varilla acumulada?
+                //
+                // Fundir puede devolver true y aun así haber dejado 'entero' en mal estado: la
+                // unión trabaja SOBRE él. Antes nadie lo comprobaba, así que una unión que salía
+                // mal se llevaba en silencio todo lo acumulado hasta ese punto y la varilla
+                // desaparecía sin una sola nota.
+                if (Vive(entero))
+                {
+                    continue;
+                }
+
+                _notas.Add(
+                    $"La varilla '{b.Id}': una unión de sólidos se llevó la barra acumulada. Se "
+                    + "vuelve a dibujar por piezas sueltas, así que se verá con costuras.");
+
+                // Se rehace desde el principio, y esta vez SIN unir nada.
+                entero = null;
+                sueltos = 0;
+
+                for (var k = 0; k <= i; k++)
+                {
+                    if (piezas[k].Crear() is not null)
+                    {
+                        sueltos++;
+                        rescatados++;
+                    }
+                    else
+                    {
+                        perdidos++;
+                    }
+                }
+
+                // Y NO SE VUELVE A FUNDIR en esta varilla. Sin esta bandera, la pieza siguiente
+                // entraría por 'entero is null', volvería a empezar a acumular y a la primera
+                // unión mala se perdería otra vez lo acumulado. Si una unión ya salió mal en esta
+                // barra, lo prudente es dejar de intentarlo.
+                sinFundir = true;
+
                 continue;
             }
 
-            // No se fundió: se queda suelto en el dibujo. Un objeto más y una costura a la
-            // vista, pero la varilla no pierde ni un tramo.
+            // ===== LA UNIÓN FALLÓ. ¿SIGUE AHÍ EL TRAMO? =====
+            //
+            // ESTE ERA EL «no dibujas toda la sección». La suposición de todo este archivo era
+            // que una unión fallida deja los dos sólidos en el dibujo, y NO es cierta:
+            // 'Boolean' consume el sólido que se le pasa ANTES de decidir si puede unirlo, así
+            // que cuando falla —lo más común, dos sólidos que por redondeo no llegan a
+            // tocarse— 'otro' ya ha desaparecido del dibujo. El tramo no se queda suelto: se
+            // BORRA, y sin una sola excepción de por medio.
+            //
+            // En el estribo eso se ve exactamente como lo reportó el usuario: el lado derecho y
+            // el inferior están, y el izquierdo y el superior faltan. No es media sección al
+            // azar, son los tramos cuya unión falló.
+            //
+            // Así que se comprueba si sobrevivió y, si no, SE VUELVE A CREAR. La pieza se sabe
+            // rehacer sola —por eso Piezas() devuelve funciones y no objetos— y el tramo nuevo
+            // se deja suelto, sin intentar unirlo otra vez: reintentar la unión que acaba de
+            // fallar solo volvería a consumirlo.
+            if (Vive(cil))
+            {
+                // Sobrevivió: se queda suelto. Un objeto más y una costura a la vista, pero la
+                // varilla no pierde ni un tramo.
+                sueltos++;
+
+                continue;
+            }
+
+            var repuesto = piezas[i].Crear();
+
+            if (repuesto is null)
+            {
+                perdidos++;
+
+                continue;
+            }
+
             sueltos++;
+            rescatados++;
+        }
+
+        if (rescatados > 0)
+        {
+            _notas.Add(
+                $"La varilla '{b.Id}': {rescatados} tramo(s) se volvieron a dibujar porque la "
+                + "unión de sólidos se los había llevado. Quedan como piezas aparte, así que la "
+                + "varilla se ve con costuras pero está completa.");
         }
 
         return (entero is null ? 0 : sueltos, piezas.Count, perdidos);
+    }
+
+    /// <summary>Borra una entidad, tolerando que ya no exista.</summary>
+    private static void Borrar(object? ent)
+    {
+        if (ent is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ((dynamic)ent).Delete();
+        }
+        catch (Exception)
+        {
+            // Ya estaba borrada, o consumida por una unión. No hay nada que hacer.
+        }
+    }
+
+    /// <summary>Anota un fallo tolerado, con su causa real y sin repetirlo.</summary>
+    private void Fallo(string operacion, Exception ex)
+    {
+        var e = ex;
+
+        while (e is System.Reflection.TargetInvocationException && e.InnerException is not null)
+        {
+            e = e.InnerException;
+        }
+
+        var detalle = e.GetType().Name;
+
+        if (e is System.Runtime.InteropServices.COMException com)
+        {
+            detalle += $" 0x{(uint)com.HResult:X8}";
+        }
+
+        var linea = operacion + " -> " + detalle + ": "
+                    + e.Message.Replace(Environment.NewLine, " ").Trim();
+
+        if (!_notas.Contains(linea))
+        {
+            _notas.Add(linea);
+        }
+    }
+
+    /// <summary>¿La entidad sigue viva en el dibujo, o ya se la llevó una unión?</summary>
+    /// <remarks>
+    /// Se pregunta por una propiedad cualquiera. Si el objeto COM ya fue consumido, leerla lanza,
+    /// y eso es la respuesta. No hay una forma más limpia de saberlo: AutoCAD no expone un
+    /// «¿sigues ahí?», y por eso este archivo llevaba tanto tiempo dando por hecho que sí.
+    /// </remarks>
+    private static bool Vive(object ent)
+    {
+        try
+        {
+            _ = ((dynamic)ent).ObjectName;
+
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -587,13 +890,27 @@ public sealed class Jaula3dDrawer
     /// exactamente como antes: sale una lista de cilindros.
     /// </para>
     /// </remarks>
-    private List<Func<object?>> Piezas(Barra b, List<(double X, double Y, double Z)> eje)
+    /// <summary>Una pieza de la barra, y si se puede fundir con las demás.</summary>
+    /// <remarks>
+    /// <b>El doblez hecho como toro NO se funde</b>, y esa es la lección de la última regresión:
+    /// al fundirlo, un toro mal recortado se llevaba por delante <b>la varilla entera</b>, porque
+    /// <c>Boolean</c> trabaja SOBRE el sólido acumulado. Se veía como un estribo que desaparecía
+    /// completo mientras el diamante —que es casi todo recto y no pasa por aquí— salía bien.
+    /// <para>
+    /// Dejarlo suelto no cuesta nada: el toro ya es una superficie curva de una pieza, así que no
+    /// necesita la unión para verse bien, y la costura contra el tramo recto queda tapada en
+    /// sombreado. Lo que sí cuesta es perder la varilla.
+    /// </para>
+    /// </remarks>
+    private sealed record Pieza(Func<object?> Crear, bool Fundible);
+
+    private List<Pieza> Piezas(Barra b, List<(double X, double Y, double Z)> eje)
     {
         var trozos = EjeDeBarra.Curvas(eje, b.Radio * ToleranciaDeReconocer);
 
         var cerrado = EjeDeBarra.Cerrado(eje);
 
-        var piezas = new List<Func<object?>>();
+        var piezas = new List<Pieza>();
 
         for (var i = 0; i < trozos.Count; i++)
         {
@@ -637,30 +954,47 @@ public sealed class Jaula3dDrawer
                 var p1 = (a.X - (ux * da), a.Y - (uy * da), a.Z - (uz * da));
                 var p2 = (z.X + (ux * dd), z.Y + (uy * dd), z.Z + (uz * dd));
 
-                piezas.Add(() => Cilindro(p1, p2, b.Radio, b.Capa));
+                // Un tramo recto sí se funde: es un cilindro sano y la unión con otro cilindro es
+                // la operación más probada de todas.
+                piezas.Add(new Pieza(() => Cilindro(p1, p2, b.Radio, b.Capa), Fundible: true));
 
                 continue;
             }
 
-            // UN DOBLEZ: cadena de cilindros por sus propios puntos.
+            // ==================================================================
+            //  UN DOBLEZ: TORO RECORTADO, Y SI NO SE PUEDE, CADENA DE CILINDROS
+            // ==================================================================
             //
-            // AQUÍ IBA UN TORO Y SE QUITÓ. Girar el perfil con AddRevolvedSolid daba el doblez
-            // perfecto, de una sola superficie curva y sin una arista dentro. Pero CIERRA AUTOCAD
-            // 2026, igual que AddExtrudedSolidAlongPath, y por lo mismo: sin excepción, sin error
-            // y sin nada que capturar. Se probó y se cerró.
+            // EL DOBLEZ TIENE QUE SER UNA REVOLUCIÓN, no una cadena de trozos rectos. Una cadena
+            // está FACETADA por definición, y lo que delata una faceta no es cuánto se desvía sino
+            // el quiebre entre una cara y la siguiente: más tramos son más quiebres.
             //
-            // Se intentó a ciegas, que fue el error: es la SEGUNDA API de sólidos con perfil y
-            // región que mata AutoCAD en este entorno, y no hay forma de comprobarlo aquí porque
-            // el camino COM no se ejecuta. La conclusión, ya con dos casos, es que en esta versión
-            // NO se toca ninguna operación que consuma una región. Solo AddCylinder y Boolean, que
-            // están probados por el usuario.
+            // Antes se descartó la revolución porque AddRevolvedSolid CIERRA AUTOCAD 2026, igual
+            // que AddExtrudedSolidAlongPath. Y es verdad. Pero las dos tienen algo en común que la
+            // conclusión de entonces no separó: CONSUMEN UNA REGIÓN. Lo que quedó sin probar es
+            // AddTorus, que es un primitivo paramétrico —de la misma familia que AddCylinder, que
+            // está comprobado que funciona— y no toca ninguna región.
             //
-            // El precio es que el doblez queda facetado, y las aristas de las facetas se ven en
-            // sombreado. Eso NO se arregla con más tramos —serían más aristas— sino apagando el
-            // dibujo de aristas de la ventana, que es lo que hace PrepararLaVista con VSEDGES.
+            // Y un toro ES un círculo revolucionado alrededor de un eje: recortado a su barrido da
+            // el doblez exacto, con UNA SOLA superficie curva y sin ninguna arista dentro. Que es
+            // lo que se quería desde el principio.
+            //
+            // El recorte se hace con SliceSolid, que es una operación de sólido como Boolean, no de
+            // región.
+            //
+            // Si el toro no se puede hacer —barrido de media vuelta o más, radio de doblez menor
+            // que la varilla, o esta versión no acepta AddTorus— se cae a la cadena de cilindros de
+            // siempre. Nunca se queda sin doblez.
             var trozo = t;
 
-            piezas.Add(() => CadenaDeCilindros(trozo, b));
+            // Fundible: FALSE. Un doblez no se une al resto de la varilla, y es lo que impide que
+            // se repita la regresión: al fundirlo, un doblez mal formado se llevaba la varilla
+            // COMPLETA, porque Boolean trabaja sobre el sólido acumulado. Vale para el toro y para
+            // la cadena, porque el riesgo no está en cómo se hizo el doblez sino en unirlo.
+            piezas.Add(new Pieza(
+                () => (DoblecesRedondos ? ToroDeDoblez(trozo, b) : null)
+                      ?? CadenaDeCilindros(trozo, b),
+                Fundible: false));
         }
 
         return piezas;
@@ -675,21 +1009,52 @@ public sealed class Jaula3dDrawer
     /// número y no el nombre porque aquí se habla con AutoCAD por <c>dynamic</c>, sin la biblioteca
     /// de tipos delante.
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>SE LLAMA UNA SOLA VEZ, SIN REINTENTO, Y ESO NO ES NEGOCIABLE.</b>
+    /// </para>
+    /// <para>
+    /// Aquí había un <c>AcadConnection.Retry</c> envolviendo el <c>Boolean</c>, y era el que
+    /// <b>cerraba AutoCAD a media jaula</b>. El motivo está escrito tres párrafos más arriba, en
+    /// <see cref="Solida"/>: <i>la unión CONSUME el sólido que se le pasa</i>. Y <c>Retry</c> no
+    /// reintenta la llamada: <b>reejecuta la lambda entera</b>. Así que cuando AutoCAD contestaba
+    /// «ocupado» —<c>0x8001010A</c>, que es de lo más común mientras se están creando cientos de
+    /// sólidos— el reintento volvía a llamar a <c>Boolean</c> pasándole un objeto COM
+    /// <b>ya consumido</b>. Es exactamente la operación que el propio archivo describe como la que
+    /// «cierra AutoCAD sin dar la cara»: sin excepción, sin error y sin nada que capturar.
+    /// </para>
+    /// <para>
+    /// Y el síntoma es justo el reportado: AutoCAD se va a media corrida y en el dibujo queda
+    /// <b>media jaula</b>. No es un dibujo incompleto, es un programa cerrado.
+    /// </para>
+    /// <para>
+    /// No se puede arreglar reintentando con cuidado, porque <b>no hay forma de preguntar</b> si el
+    /// <c>Boolean</c> llegó a surtir efecto: si surtió, <c>otro</c> ya no existe y consultarlo es
+    /// el mismo crash. La única vía segura es intentarlo <b>una vez</b>.
+    /// </para>
+    /// <para>
+    /// Y no basta con no reintentar: <c>Boolean</c> <b>consume el sólido antes de decidir si puede
+    /// unirlo</b>, así que cuando devuelve <c>false</c> el tramo ya <b>no está en el dibujo</b>.
+    /// Quien llama tiene que comprobarlo y volver a crearlo. Ver <see cref="Solida"/>.
+    /// </para>
+    /// </remarks>
     private static bool Fundir(object cuerpo, object otro)
     {
         try
         {
-            return AcadConnection.Retry(() =>
-            {
-                ((dynamic)cuerpo).Boolean(0, (dynamic)otro);
+            ((dynamic)cuerpo).Boolean(0, (dynamic)otro);
 
-                return true;
-            });
+            return true;
         }
         catch (Exception)
         {
-            // Una unión puede fallar si los dos sólidos no llegan a tocarse por redondeo. No es
-            // motivo para tirar la varilla: se queda en dos piezas.
+            // Una unión puede fallar si los dos sólidos no llegan a tocarse por redondeo, o
+            // porque AutoCAD estaba ocupado. No es motivo para tirar la varilla: se queda en dos
+            // piezas, las dos dibujadas.
+            //
+            // 'otro' NO se borra aquí. Si el Boolean alcanzó a consumirlo, borrarlo es el crash
+            // que se acaba de quitar; y si no lo consumió, sigue dibujado y en su sitio, que es
+            // lo que se quiere.
             return false;
         }
     }
@@ -733,16 +1098,54 @@ public sealed class Jaula3dDrawer
 
         try
         {
-            return AcadConnection.Retry<object?>(() =>
+            // EL AddCylinder Y EL TransformBy VAN EN REINTENTOS SEPARADOS.
+            //
+            // Juntos en uno solo, un «ocupado» después de crear el cilindro hacía que el
+            // reintento creara OTRO, y el primero se quedaba en el dibujo: un cilindro de pie,
+            // sin transformar, plantado en el origen del mundo. Con cientos de tramos por jaula
+            // eso deja un ramillete de sólidos sueltos en el 0,0,0 que no son ninguna varilla,
+            // se seleccionan al hacer marco y falsean el ZoomExtents.
+            //
+            // TransformBy tampoco es idempotente —aplicarla dos veces transforma dos veces— así
+            // que necesita su propio reintento por el mismo motivo que el Boolean de Fundir.
+            dynamic cil = AcadConnection.Retry<object>(() =>
+                _ms.AddCylinder(new[] { 0d, 0d, 0d }, radio, largo));
+
+            try
             {
-                dynamic cil = _ms.AddCylinder(new[] { 0d, 0d, 0d }, radio, largo);
-
+                // SIN REINTENTO, y sola. TransformBy acumula: reintentarla después de que haya
+                // surtido efecto transformaría el cilindro dos veces y lo mandaría lejos de la
+                // varilla. Es el mismo motivo por el que el Boolean de Fundir tampoco se
+                // reintenta.
                 cil.TransformBy(matriz);
+            }
+            catch (Exception)
+            {
+                // Sin transformar, el cilindro está en el origen y no representa nada. Se borra:
+                // aquí SÍ es seguro, porque a diferencia del Boolean de Fundir nadie lo ha
+                // consumido todavía.
+                try
+                {
+                    AcadConnection.Retry(() => { cil.Delete(); });
+                }
+                catch (Exception)
+                {
+                    // Si tampoco se puede borrar, no se insiste.
+                }
 
-                cil.Layer = capa;
+                return null;
+            }
 
-                return (object?)cil;
-            });
+            try
+            {
+                AcadConnection.Retry(() => { cil.Layer = capa; });
+            }
+            catch (Exception)
+            {
+                // La capa es lo de menos: el sólido ya está en su sitio y con su forma.
+            }
+
+            return (object?)cil;
         }
         catch (Exception)
         {
@@ -752,11 +1155,291 @@ public sealed class Jaula3dDrawer
     }
 
 
+    /// <summary>
+    /// El doblez como <b>toro recortado</b>: una revolución de verdad, sin facetas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Cómo.</b> Se hace el toro completo en el origen —<c>AddTorus</c> lo deja tumbado en el
+    /// plano XY, con su eje en la Z— se lleva al doblez con
+    /// <see cref="EjeDeBarra.MatrizDeGiro"/>, y se le quitan las dos partes que sobran con dos
+    /// cortes por planos que pasan por el eje de giro.
+    /// </para>
+    /// <para>
+    /// <b>Por qué dos cortes bastan.</b> Dos planos que pasan por el eje dejan una cuña de como
+    /// mucho media vuelta. Los dobleces de un armado no llegan ahí —el más abierto es el gancho
+    /// sísmico, 135°— así que la cuña entre los dos planos, del lado donde está el arco, es
+    /// exactamente el barrido que se quiere. Con 180° o más haría falta trocear y unir, y no vale
+    /// la pena: se cae al respaldo.
+    /// </para>
+    /// <para>
+    /// <b>Cuál de las dos mitades se guarda.</b> No se confía en el parámetro <c>Negative</c> de
+    /// <c>SliceSolid</c>, cuyo criterio depende de la orientación del plano y es fácil de invertir
+    /// sin darse cuenta. Se compara el <c>Centroid</c> de cada mitad con el punto medio del arco y
+    /// se guarda la más cercana. Es geometría, no un convenio de la API, así que no se puede
+    /// equivocar de lado.
+    /// </para>
+    /// </remarks>
+    private object? ToroDeDoblez(EjeDeBarra.Trozo t, Barra b)
+    {
+        // ---------- Lo que hace imposible el toro ----------
+        if (!t.EsArco || b.Radio <= 0 || t.Radio <= 0)
+        {
+            return null;
+        }
+
+        // Media vuelta o más no sale con dos cortes.
+        if (t.Barrido <= 0 || t.Barrido >= Pi - 1e-6)
+        {
+            return null;
+        }
+
+        // Un barrido muy pequeño no merece un toro y además deja los dos planos de corte casi
+        // pegados, que es donde el recorte se vuelve inestable: un grado o menos es ruido.
+        if (t.Barrido < Pi / 180)
+        {
+            return null;
+        }
+
+        // Un toro cuyo tubo es más gordo que su radio se corta a sí mismo por dentro, y AutoCAD lo
+        // rechaza o lo hace mal. Pasa en los dobleces muy cerrados.
+        if (t.Radio <= b.Radio * 1.02)
+        {
+            return null;
+        }
+
+        // ===== Y UN TOPE POR ARRIBA, QUE ES EL QUE FALTABA =====
+        //
+        // El radio sale de ajustar una circunferencia por tres puntos, y cuando esos tres puntos
+        // están casi en línea la circunferencia es ENORME: metros de radio para un doblez de un
+        // centímetro. Con eso, AddTorus crea un donut gigantesco que atraviesa todo el dibujo, y al
+        // recortarlo por dos planos que pasan por su eje queda un trozo descomunal.
+        //
+        // Ese era el sólido que después rompía la unión y se llevaba la varilla. El doblez de un
+        // armado nunca pasa de unos pocos diámetros de varilla, así que treinta veces el radio es
+        // holgado de sobra y a la vez descarta cualquier ajuste disparatado.
+        if (t.Radio > b.Radio * 30)
+        {
+            return null;
+        }
+
+        if (t.Puntos.Count < 3)
+        {
+            return null;
+        }
+
+        var matriz = EjeDeBarra.MatrizDeGiro(t.Centro, t.Normal);
+
+        if (matriz is null)
+        {
+            return null;
+        }
+
+        // El punto medio del arco: el que dice de qué lado de los planos hay que quedarse.
+        var medio = t.Puntos[t.Puntos.Count / 2];
+
+        object? toro = null;
+
+        try
+        {
+            toro = AcadConnection.Retry<object>(() =>
+                _ms.AddTorus(new[] { 0d, 0d, 0d }, t.Radio, b.Radio));
+
+            // TransformBy acumula, así que va sola y sin reintento, como en Cilindro.
+            ((dynamic)toro).TransformBy(matriz);
+
+            // ---------- El recorte, RESTANDO CAJAS ----------
+            //
+            // ANTES ESTO ERA SliceSolid Y ERA EL FALLO. SliceSolid es la única API de toda esta
+            // cadena que no está verificada, y cuando no corta, mi código se quedaba con el toro
+            // ENTERO: un donut completo envolviendo la varilla. Es exactamente el «estás creando de
+            // más» que se ve en el doblez de 90°. Y en el gancho, al no poder recortar, se caía al
+            // respaldo de cilindros, que es lo de «tantas líneas».
+            //
+            // Se cambia por Boolean de sustracción, que es la operación de sólidos que SÍ está
+            // comprobada en este AutoCAD, restando dos cajas —AddBox, primitivo como AddCylinder—
+            // que tapan cada una la mitad que sobra.
+            //
+            // Dos medios espacios dejan una cuña convexa de como mucho media vuelta, y ningún
+            // doblez de armado llega ahí: el gancho sísmico son 135°, que es convexo y sale bien.
+            var marco = EjeDeBarra.MarcoDeGiro(t.Normal);
+
+            if (marco is null)
+            {
+                Borrar(toro);
+                return null;
+            }
+
+            var w = marco.Value.W;
+
+            // Lo bastante grande para tapar el toro completo por el lado que sobra.
+            var lado = 4 * (t.Radio + b.Radio);
+
+            foreach (var extremo in new[] { t.A, t.B })
+            {
+                if (!QuitarMitad(toro, t.Centro, w, extremo, medio, lado))
+                {
+                    // Sin poder recortar, un toro entero es MUCHO peor que un doblez facetado:
+                    // se tira y se deja que el respaldo dibuje la cadena de cilindros.
+                    Borrar(toro);
+                    return null;
+                }
+            }
+
+            ((dynamic)toro).Layer = b.Capa;
+
+            return toro;
+        }
+        catch (Exception ex)
+        {
+            // Se limpia el toro a medias: si se queda, es un donut entero atravesando la varilla.
+            Borrar(toro);
+
+            Fallo($"Doblez redondo de '{b.Id}' con AddTorus", ex);
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Le resta a <paramref name="solido"/> el medio espacio del plano que pasa por el eje del
+    /// doblez y por <paramref name="extremo"/>, quedándose con el lado de
+    /// <paramref name="referencia"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El plano se define por el centro del doblez, su eje de giro y el extremo del arco: es el
+    /// plano que pasa justo por donde el doblez empieza —o acaba—. Su normal sale del producto
+    /// vectorial del eje por la dirección radial del extremo.
+    /// </para>
+    /// <para>
+    /// <b>De qué lado se corta lo decide la geometría, no un convenio de la API.</b> Se mira de qué
+    /// lado del plano cae el punto medio del arco y se resta el otro. Es lo que hace que no se pueda
+    /// equivocar de mitad, que es el error más fácil de cometer aquí y el más difícil de ver.
+    /// </para>
+    /// <para>
+    /// La caja se hace con <c>AddBox</c> —primitivo, como <c>AddCylinder</c>— y se resta con
+    /// <c>Boolean</c>. Las dos son operaciones comprobadas en este AutoCAD, a diferencia de
+    /// <c>SliceSolid</c>. Y <c>Boolean</c> <b>consume la caja</b>, así que no hay que borrarla:
+    /// desaparece al restarla.
+    /// </para>
+    /// </remarks>
+    private bool QuitarMitad(
+        object solido,
+        (double X, double Y, double Z) centro,
+        (double X, double Y, double Z) eje,
+        (double X, double Y, double Z) extremo,
+        (double X, double Y, double Z) referencia,
+        double lado)
+    {
+        // Dirección radial del extremo del arco, dentro del plano del doblez.
+        var rx = extremo.X - centro.X;
+        var ry = extremo.Y - centro.Y;
+        var rz = extremo.Z - centro.Z;
+
+        var nr = Math.Sqrt((rx * rx) + (ry * ry) + (rz * rz));
+
+        if (nr <= LargoMinimo)
+        {
+            return false;
+        }
+
+        rx /= nr; ry /= nr; rz /= nr;
+
+        // Normal del plano de corte: el eje por la radial.
+        var px = (eje.Y * rz) - (eje.Z * ry);
+        var py = (eje.Z * rx) - (eje.X * rz);
+        var pz = (eje.X * ry) - (eje.Y * rx);
+
+        var np = Math.Sqrt((px * px) + (py * py) + (pz * pz));
+
+        if (np <= 1e-12)
+        {
+            return false;
+        }
+
+        px /= np; py /= np; pz /= np;
+
+        // ¿De qué lado está el punto medio del arco? Ese lado se conserva.
+        var lD = ((referencia.X - centro.X) * px)
+                 + ((referencia.Y - centro.Y) * py)
+                 + ((referencia.Z - centro.Z) * pz);
+
+        if (Math.Abs(lD) <= 1e-12)
+        {
+            // El punto medio cae EN el plano: no se puede decidir, y cortar a ciegas se llevaría
+            // la mitad buena.
+            return false;
+        }
+
+        // Se resta el lado contrario al del punto medio.
+        var s = lD > 0 ? -1d : 1d;
+
+        var qx = px * s;
+        var qy = py * s;
+        var qz = pz * s;
+
+        try
+        {
+            // La caja nace centrada en el origen y alineada con los ejes del mundo, así que se
+            // hace y se lleva a su sitio con la matriz: su eje Z pasa a ser la normal del recorte,
+            // y su centro se corre medio lado en esa dirección para que UNA CARA quede justo sobre
+            // el plano de corte.
+            var matriz = EjeDeBarra.MatrizDeGiro(
+                (centro.X + (qx * lado / 2),
+                 centro.Y + (qy * lado / 2),
+                 centro.Z + (qz * lado / 2)),
+                (qx, qy, qz));
+
+            if (matriz is null)
+            {
+                return false;
+            }
+
+            dynamic caja = AcadConnection.Retry<object>(() =>
+                _ms.AddBox(new[] { 0d, 0d, 0d }, lado, lado, lado));
+
+            // TransformBy acumula: va sola y sin reintento.
+            caja.TransformBy(matriz);
+
+            // acSubtraction es el 2 del enumerado de operaciones booleanas. Y consume la caja.
+            ((dynamic)solido).Boolean(2, caja);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Fallo("Recortar el doblez restando una caja", ex);
+
+            return false;
+        }
+    }
+
     /// <summary>El doblez a la antigua: cilindros por sus puntos. Es el respaldo del toro.</summary>
+    /// <remarks>
+    /// Lleva el <b>mismo rescate</b> que <see cref="Solida"/>, y por el mismo motivo: una unión
+    /// fallida se lleva el cilindro, y aquí eso deja el <b>doblez mordido</b> —una esquina del
+    /// estribo a medias— que es justo uno de los defectos que se veían en el dibujo.
+    /// </remarks>
     private object? CadenaDeCilindros(EjeDeBarra.Trozo t, Barra b)
     {
         object? entero = null;
 
+        // ===== EL SOLAPE VUELVE A SER UN RADIO DE VARILLA =====
+        //
+        // Se había limitado a la mitad del tramo más corto, creyendo que un solape mayor que el
+        // propio tramo hacía que los cilindros sobresalieran del doblez. ERA UN ERROR MÍO, por dos
+        // motivos:
+        //
+        //   * Sobresalir no pasa: EjeDeBarra.Tramos solo alarga una punta CUANDO HAY OTRO TRAMO
+        //     de ese lado. Las puntas exteriores del trozo no se tocan, así que el doblez no se
+        //     mete en los lados rectos. El solape grande solo hace que los cilindros de dentro se
+        //     encimen mucho, y eso es inofensivo.
+        //   * Y no es inofensivo lo contrario: con poco solape la unión booleana FALLA mucho más
+        //     -dos sólidos que apenas se rozan no se pueden unir-, y ahí es donde se perdían las
+        //     varillas enteras.
+        //
+        // Un solape generoso es justo lo que hace la unión fiable, que es lo que se quiere.
         foreach (var (a, z) in EjeDeBarra.Tramos(t.Puntos, b.Radio))
         {
             var cil = Cilindro(a, z, b.Radio, b.Capa);
@@ -773,7 +1456,13 @@ public sealed class Jaula3dDrawer
                 continue;
             }
 
-            Fundir(entero, cil);
+            if (Fundir(entero, cil) || Vive(cil))
+            {
+                continue;
+            }
+
+            // La unión se lo llevó: se rehace y se queda suelto.
+            Cilindro(a, z, b.Radio, b.Capa);
         }
 
         return entero;

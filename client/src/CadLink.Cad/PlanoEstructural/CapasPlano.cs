@@ -354,6 +354,29 @@ public sealed class CapasPlano
             salida.Add(CapaDeTipo("DALA").ToUpperInvariant());
         }
 
+        // ==============================================================================
+        //  LA CAPA DEL MURO DE CONCRETO, AL FRENTE COMO LAS CADENAS
+        // ==============================================================================
+        //  Se pidió: «a las líneas de la capa E-MURO DE CONCRETO dales draw order bring to front,
+        //  así como las de las cadenas». Y tiene el mismo motivo que las cadenas: esas dos líneas
+        //  son la base del muro, van sobre el achurado de la losa y sobre las líneas de los ejes,
+        //  y si quedan debajo el plano no las enseña aunque estén dibujadas.
+        //
+        //  SE AÑADE AQUÍ Y NO SOLO EN LA TABLA DE OMISIÓN, y esa es la parte que importa: el
+        //  nombre de la capa lo decide CAPA_MURO_CONCRETO, que es configurable. Dejándolo solo
+        //  escrito a mano en CAPAS_AL_FRENTE, el día que alguien renombre la capa la lista dejaría
+        //  de coincidir y el muro se quedaría atrás EN SILENCIO. Resolviéndolo aquí, la capa que
+        //  se sube es siempre la que de verdad se está usando.
+        if (_cfg.Bandera("MURO_CONCRETO_AL_FRENTE", true))
+        {
+            var muro = CapaMuroConcreto.Trim().ToUpperInvariant();
+
+            if (muro.Length > 0 && !salida.Contains(muro))
+            {
+                salida.Add(muro);
+            }
+        }
+
         return salida;
     }
 

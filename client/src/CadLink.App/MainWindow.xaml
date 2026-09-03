@@ -214,10 +214,12 @@
                                 <RowDefinition Height="34" />
                                 <RowDefinition Height="34" />
                                 <RowDefinition Height="34" />
+                                <RowDefinition Height="34" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Calculista:" VerticalAlignment="Center" />
-                            <TextBox   Grid.Row="0" Grid.Column="1" x:Name="CalculistaBox" Height="26" VerticalContentAlignment="Center" />
+                            <TextBox   Grid.Row="0" Grid.Column="1" x:Name="CalculistaBox" Height="26" VerticalContentAlignment="Center"
+                                       ToolTip="El titulo -Ing., Arq.- se puede escribir o no: el generador de solapas lo quita, porque el cajetin ya lo trae dibujado." />
                             <TextBlock Grid.Row="0" Grid.Column="3" Text="Dibujo:" VerticalAlignment="Center" />
                             <TextBox   Grid.Row="0" Grid.Column="4" x:Name="DibujoBox" Height="26" VerticalContentAlignment="Center" />
 
@@ -250,6 +252,13 @@
                                 <ComboBoxItem Content="m" />
                                 <ComboBoxItem Content="mm" />
                             </ComboBox>
+
+                            <!-- SOLO EL NUMERO. El «CED. PROF.» lo pone el generador de solapas, y
+                                 solo si hay numero: escribiendolo aqui, una cedula en blanco
+                                 dejaria un «CED. PROF.» solo en el cajetin. -->
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Cedula prof.:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Row="4" Grid.Column="1" x:Name="CedulaBox" Height="26" VerticalContentAlignment="Center"
+                                       ToolTip="Solo el numero. El texto «CED. PROF.» lo pone la solapa." />
                         </Grid>
 
                         <!-- ===== Juego de planos ===== -->
@@ -285,8 +294,27 @@
                                   SelectionUnit="FullRow" SelectionMode="Extended">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Clave plano" Binding="{Binding Clave}" Width="Auto" />
-                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="240" />
+                                <DataGridTextColumn Header="Contiene" Binding="{Binding Contiene}" Width="*" MinWidth="200" />
+
+                                <!-- ATRIBUTO APARTE del cajetin, no el mismo renglon con una coma:
+                                     con los dos juntos el texto se desborda del recuadro en cuanto
+                                     el plano lleva tres cosas. -->
+                                <DataGridTextColumn Header="Seccion y detalles" Binding="{Binding Detalle}"
+                                                    Width="*" MinWidth="160" />
+
                                 <DataGridTextColumn Header="Escala" Binding="{Binding Escala}" Width="Auto" />
+
+                                <!-- EL TAMANO TIENE QUE EXISTIR EN EL DISPOSITIVO. Si no, AutoCAD
+                                     no da error: deja el papel por omision -Carta vertical- y el
+                                     plano sale descuadrado. La lista es una ayuda y la celda sigue
+                                     escribible, porque un plotter puede tener tamanos a medida. -->
+                                <DataGridComboBoxColumn x:Name="ColTamanoHoja" Header="Tamano hoja" Width="Auto"
+                                                        SelectedItemBinding="{Binding Tamano, UpdateSourceTrigger=PropertyChanged}"
+                                                        ElementStyle="{StaticResource ComboCeldaMuestra}"
+                                                        EditingElementStyle="{StaticResource ComboCeldaEdicion}" />
+
+                                <DataGridCheckBoxColumn Header="Horizontal" Binding="{Binding Horizontal}" Width="Auto" />
+
                                 <!-- Solo lectura a proposito: el numero lo calcula el juego. -->
                                 <DataGridTextColumn Header="No. Plano" Binding="{Binding NumeroTexto}"
                                                     Width="Auto" IsReadOnly="True" />
@@ -296,6 +324,42 @@
                         <!-- Guardar, abrir y crear un trabajo estan ARRIBA, en la
                              barra de la ventana, no aqui. Aqui solo queda lo que es
                              propio de esta hoja. -->
+                        <!-- ===== LAS SOLAPAS EN AUTOCAD =====
+                             Un layout por plano, con su papel, su cajetin y sus atributos ya
+                             rellenados. El cajetin es un BLOQUE CON ATRIBUTOS que tiene que estar
+                             en el dibujo; si no se llama CAJETIN, el generador busca el que mas
+                             atributos conocidos tenga y lo usa. -->
+                        <TextBlock Text="Solapas en AutoCAD" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,22,0,2" Foreground="{DynamicResource BrandDarkBrush}"
+                                   ToolTip="Un layout por plano, con su tamano de hoja y el cajetin relleno.&#10;El cajetin tiene que ser un BLOQUE CON ATRIBUTOS dentro del dibujo: si no se llama CAJETIN, se busca el que mas atributos de solapa tenga." />
+
+                        <!-- EL ARCHIVO DEL CAJETIN. Se busca solo -en esta ruta, en la carpeta
+                             del dibujo y en las de siempre-, asi que esta casilla solo hace falta
+                             si el cajetin esta en un sitio raro. Puede ser el .dwg o la carpeta
+                             donde se guardan los formatos, y se guarda con el trabajo. -->
+                        <Grid Margin="0,4,0,0" HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="466" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Archivo cajetin:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Column="1" x:Name="CajetinRutaBox" Height="26" VerticalContentAlignment="Center"
+                                       ToolTip="En blanco: se busca solo en la carpeta del dibujo y en las de siempre.&#10;Puede ser el archivo .dwg o la carpeta donde guardas tus formatos." />
+                            <Button    Grid.Column="2" Content="Examinar..." Style="{StaticResource SecondaryButtonStyle}"
+                                       Click="OnExaminarCajetin" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="Generar solapas" Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="OnGenerarSolapas"
+                                    ToolTip="Crea un layout por cada plano del juego, con su papel y su cajetin relleno." />
+                            <TextBlock x:Name="SolapasResumenText" FontSize="11.5" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="520"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                        </StackPanel>
+
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
                             <Button Content="Cargar ejemplo" Style="{StaticResource PrimaryButtonStyle}" Click="OnLoadSample" />
                             <Button Content="Limpiar todo" Style="{StaticResource SecondaryButtonStyle}" Click="OnClearAll" />
@@ -572,14 +636,27 @@
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
+                                        <!-- IsTextSearchEnabled="False" ES LO QUE PERMITE ESCRIBIR.
+                                             Sin ponerlo, WPF lo deja en True, y en un ComboBox
+                                             editable eso AUTOCOMPLETA a un elemento de la lista
+                                             mientras se teclea: al escribir «5-10-5» el control
+                                             saltaba a una entrada de la lista y se perdia lo
+                                             escrito. La lista son sugerencias, no una lista
+                                             cerrada, asi que la busqueda por texto solo estorba.
+
+                                             Y el desplegable YA NO SE ABRE SOLO. Con la lista
+                                             abierta el teclado va a la lista y no al cuadro de
+                                             texto, que es la otra mitad de «no me deja poner».
+                                             Para ver las sugerencias esta la flecha. -->
                                         <ComboBox IsEditable="True"
-                                                  IsDropDownOpen="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
                                                   BorderThickness="0"
                                                   Padding="2,0"
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"
                                                   Text="{Binding SeparacionCm, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Elige una de la lista o escribe la que necesites, por ejemplo 6-12-6 o 15.&#10;Los tramos se reparten como confinamiento, centro y confinamiento." />
+                                                  ToolTip="Escribe la separacion que necesites, por ejemplo 5-10-5, 6-12-6 o 15.&#10;La lista de la flecha son solo sugerencias: puedes poner cualquier valor.&#10;Los tramos se reparten como confinamiento, centro y confinamiento." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2026,12 +2103,19 @@
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
-                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                        <!-- Mismo arreglo que la columna «Sep cm» de concreto:
+                                             sin IsTextSearchEnabled="False" el ComboBox editable
+                                             autocompleta a la lista y se come lo tecleado, y con
+                                             el desplegable abierto el teclado no llega al cuadro
+                                             de texto. -->
+                                        <ComboBox IsEditable="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
                                                   BorderThickness="0" Padding="2,0"
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding Source={x:Static models:SeccionConcretoRow.SeparacionesUsuales}}"
                                                   Text="{Binding SepEstriboDado, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Elige una de la lista o escribe la que necesites, por ejemplo 9-18-9 o 15.&#10;Con tres tramos, el dado se reparte 25 % - 50 % - 25 %: confinamiento, centro y confinamiento." />
+                                                  ToolTip="Escribe la separacion que necesites, por ejemplo 5-10-5, 9-18-9 o 15.&#10;La lista de la flecha son solo sugerencias: puedes poner cualquier valor.&#10;Con tres tramos, el dado se reparte 25 % - 50 % - 25 %: confinamiento, centro y confinamiento." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2083,22 +2167,737 @@
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                                   Text="Modulo pendiente, proximamente..." />
                     </Border>
                 </StackPanel>
             </TabItem>
 
             <!-- ===== Placa base ===== -->
             <TabItem Header="Placa Base">
-                <StackPanel Margin="22">
-                    <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}"
-                                   ToolTip="Placa, anclas, atiesadores y su detalle de montaje." />
-                    <Border Style="{StaticResource TarjetaStyle}"
-                            Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <!-- 0 cabecera  ·  1 tabla  ·  2 vista previa  ·  3 totales  ·  4 notas -->
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Placas base" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="La placa, su dado de concreto, las anclas, los cartabones y la soldadura. Cada renglon sale como un detalle completo, agrupado en un bloque con el nombre de su seccion." />
+
+                        <!-- Compacta a proposito, igual que las otras hojas: esta tira es de
+                             CONSULTA -dice como se capturan las unidades- y se lee una vez.
+                             Todo el alto que se le quite se lo gana la tabla. -->
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="9,4" Margin="0,0,0,5"
+                                HorizontalAlignment="Left">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                    <TextBlock Text="Unidades:" FontWeight="SemiBold" FontSize="12"
+                                               VerticalAlignment="Center" Margin="0,0,14,0"
+                                               Foreground="{DynamicResource BrandDarkBrush}" />
+                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Text="La placa, el dado y los cartabones en CENTIMETROS  |  el espesor, las anclas, los agujeros y la soldadura en PULGADAS, con fraccion: 5/8, 1 1/4" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="En cero:" FontWeight="SemiBold" FontSize="12"
+                                               VerticalAlignment="Center" Margin="0,0,14,0"
+                                               Foreground="{DynamicResource BrandDarkBrush}" />
+                                    <TextBlock FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Text="Separacion al borde = se calcula sola  |  dado = sin dado  |  agujero = el ancla mas 1/16&quot;  |  soldadura = sin soldadura" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <DataGrid x:Name="PlacasGrid" Grid.Row="1"
+                              Style="{StaticResource SheetGridStyle}"
+                              SelectionUnit="FullRow"
+                              FrozenColumnCount="2"
+                              HeadersVisibility="All"
+                              EnableRowVirtualization="True"
+                              CellEditEnding="OnCeldaPlacaEditada"
+                              ColumnHeaderStyle="{StaticResource EncabezadoHojaStyle}">
+                        <DataGrid.Columns>
+                            <!-- ===== IDENTIFICACION ===== -->
+                            <DataGridTextColumn Header="Marca" Binding="{Binding Marca, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaIdent}" />
+
+                            <DataGridComboBoxColumn x:Name="ColPlacaFamilia" Header="Familia"
+                                                    SelectedItemBinding="{Binding Familia, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaIdent}" />
+
+                            <!-- El perfil de la columna que se apoya en la placa. La lista sale
+                                 de la FILA y no de la columna porque cada fila puede ser de otra
+                                 familia, igual que en la hoja de acero. Es editable, para poder
+                                 capturar un perfil que no este en el catalogo. -->
+                            <DataGridTemplateColumn Header="Perfil" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="Seccion">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Seccion}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
+                                                  BorderThickness="0"
+                                                  Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding PerfilesDeLaFamilia}"
+                                                  Text="{Binding Seccion, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Elige del catalogo de su familia. Las medidas se usan para calcular la separacion de las anclas al borde y para dibujar el perfil encima de la placa." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- ===== LA PLACA ===== -->
+                            <DataGridTextColumn Header="Largo cm" Binding="{Binding LargoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+
+                            <!-- El espesor va en PULGADAS y admite fraccion, asi que es un
+                                 desplegable EDITABLE y no un DataGridComboBoxColumn: con
+                                 SelectedItemBinding, un espesor que no este en la lista se
+                                 descarta al salir de la celda sin decir nada. -->
+                            <DataGridTemplateColumn Header="e placa &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaGeom}"
+                                                    SortMemberPath="Espesor">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Espesor, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding EspesoresPlaca}"
+                                                  Text="{Binding Espesor, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="En pulgadas. Admite fraccion: 3/4, 1 1/4." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridComboBoxColumn x:Name="ColPlacaAcero" Header="Acero"
+                                                    SelectedItemBinding="{Binding AceroPlaca, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaGeom}" />
+
+                            <!-- ===== EL DADO DE CONCRETO =====
+
+                                 EL DADO SE ELIGE, NO SE TECLEA. Ya esta capturado en «Secciones
+                                 Concreto» -con su armado, su recubrimiento y su forma- porque es
+                                 una seccion que se dibuja por su cuenta. Volver a escribir sus dos
+                                 medidas aqui es pedir dos veces el mismo dato, y de los dos sitios
+                                 el segundo es el que se equivoca sin que se vea: una placa que dice
+                                 50x50 sobre un dado que se armo de 45 sale volando 2.5 cm por lado
+                                 y nada en la tabla lo delata.
+
+                                 La lista es la MISMA de la hoja de zapatas, no una copia: la
+                                 mantiene ActualizarDadosDisponibles en cada cambio, asi que las dos
+                                 hojas ofrecen exactamente los mismos dados.
+
+                                 Sigue siendo editable: se puede escribir un ID que todavia no este
+                                 capturado, porque el orden en que se llenan las hojas es del
+                                 usuario. -->
+                            <DataGridTemplateColumn Header="ID dado" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="IdDado">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IdDado}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True"
+                                                  IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:PlacaBaseRow.DadosDisponibles}}"
+                                                  Text="{Binding IdDado, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;Al elegirlo, «Dado X» y «Dado Y» se llenan solos con las medidas reales de esa seccion, y se ponen al dia si esa seccion cambia.&#10;En blanco: el dado se captura a mano en las dos celdas de al lado." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- ===== LAS MEDIDAS DEL DADO: SE VEN, NO SE ESCRIBEN =====
+
+                                 De solo lectura a proposito. El dado ya esta capturado en
+                                 «Secciones Concreto» y esa es su UNICA definicion: si estas dos
+                                 celdas se pudieran escribir, habria dos sitios donde vive la misma
+                                 medida y nada que diga cual manda. Y no es una duda teorica: el
+                                 valor escrito aqui se perderia en cuanto alguien toque esa seccion,
+                                 porque la referencia se vuelve a resolver sola.
+
+                                 Asi que el dado se cambia donde se captura, y aqui solo se ve.
+                                 Para no tener dado, se deja «ID dado» en blanco.
+
+                                 IsReadOnly Y ADEMAS el estilo referenciado: el IsReadOnly impide
+                                 escribir y el estilo lo hace VISIBLE. Con solo el primero, la
+                                 celda se ve igual que las de al lado y el usuario descubre que no
+                                 se puede escribir intentandolo. -->
+                            <DataGridTextColumn Header="Dado X cm" Binding="{Binding DadoXCm, StringFormat=N1}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaReferenciada}">
+                                <!-- El globo va en ElementStyle y NO como ToolTip de la columna:
+                                     una columna de DataGrid no es un control, no tiene ToolTip, y
+                                     ponerselo es el error MC3072. -->
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Sale de la seccion elegida en «ID dado». Para cambiarlo, ve a la pestaña «Secciones Concreto» y edita ese dado.&#10;Si el dado es redondo, esta medida es su DIAMETRO.&#10;Para dejar la placa sin dado, borra el «ID dado»." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Dado Y cm" Binding="{Binding DadoYCm, StringFormat=N1}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaReferenciada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Sale de la seccion elegida en «ID dado». Para cambiarlo, ve a la pestaña «Secciones Concreto» y edita ese dado.&#10;En un dado redondo vale lo mismo que X: un circulo tiene un solo diametro." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- ===== LAS ANCLAS =====
+
+                                 «Anclas X» son las que se reparten a lo ANCHO, en horizontal, y
+                                 «Anclas Y» a lo alto. Ojo con el cruce de la hoja de Excel, que
+                                 la macro documenta: alli la fila 10 es «N. de Anclas (y)» y la 11
+                                 es «N. de Anclas (X)». Aqui el encabezado dice la DIRECCION. -->
+                            <DataGridTextColumn Header="Anclas X" Binding="{Binding NAnclasX, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+                            <DataGridTextColumn Header="Anclas Y" Binding="{Binding NAnclasY, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaGeom}" />
+
+                            <DataGridTemplateColumn Header="Ø ancla X &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaGeom}"
+                                                    SortMemberPath="DiamAnclaX">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DiamAnclaX, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding DiametrosAncla}"
+                                                  Text="{Binding DiamAnclaX, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="En pulgadas, con fraccion. Es el diametro de las anclas de las hileras horizontales." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Ø ancla Y &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaGeom}"
+                                                    SortMemberPath="DiamAnclaY">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DiamAnclaY, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding DiametrosAncla}"
+                                                  Text="{Binding DiamAnclaY, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="En pulgadas, con fraccion. Es el diametro de las anclas de las hileras verticales." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- ===== LOS AGUJEROS: CALCULADOS, NO SE ESCRIBEN =====
+
+                                 El ancla mas 1/16" de holgura. No es un dato que se decida: en una
+                                 placa base el agujero es SIEMPRE eso, asi que dejarlo capturable era
+                                 ofrecer una decision que no existe -y con ella la posibilidad de que
+                                 el agujero y su ancla dejaran de corresponder sin que nada lo dijera.
+
+                                 Antes esta cuenta se hacia por dentro y al dibujar, con la celda en
+                                 blanco. Ahora se ve el numero, que es lo que permite cotejarlo con
+                                 el plano en lugar de fiarse de que el programa lo hizo bien.
+
+                                 Y al ser calculadas tampoco se guardan en el .clk: se recalculan al
+                                 abrir a partir del ancla, asi que no pueden llegar viejas. -->
+                            <DataGridTextColumn Header="Ø agujero X &quot;"
+                                                Binding="{Binding DiamAgujeroX, Converter={StaticResource ConPulgadas}}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="El diametro del ancla en X mas 1/16&quot; de holgura.&#10;Se calcula solo: para cambiarlo, cambia el diametro del ancla." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Ø agujero Y &quot;"
+                                                Binding="{Binding DiamAgujeroY, Converter={StaticResource ConPulgadas}}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="El diametro del ancla en Y mas 1/16&quot; de holgura.&#10;Se calcula solo: para cambiarlo, cambia el diametro del ancla." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- ===== LAS SEPARACIONES AL BORDE =====
+
+                                 EN CERO se calculan solas, a media distancia entre el paño del
+                                 perfil y el borde de la placa, que es donde cae de forma natural el
+                                 ancla.
+
+                                 Y SE CORRIGEN SOLAS si no llegan al minimo que la columna K del
+                                 cuadro Hylsa ES-03-001 exige para ese diametro de ancla -la
+                                 distancia del ancla al canto recortado de la placa, que es
+                                 exactamente lo que se captura aqui-. El ajuste se hace al SALIR de la
+                                 celda, no en cada tecla: corrigiendo mientras se escribe, teclear
+                                 «5» camino de «50» se convierte en un forcejeo -la celda sube el 5
+                                 al minimo antes de que se llegue a escribir el 0-.
+
+                                 Cuando se corrige, se dice en la barra de estado: cambiar un numero
+                                 que el usuario acaba de escribir, sin avisar, se parece mucho a que
+                                 el programa no le hiciera caso. -->
+                            <DataGridTextColumn Header="Sep borde X cm" Binding="{Binding SepBordeXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al minimo de la columna K -del ancla al canto recortado de la placa- para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Sep borde Y cm" Binding="{Binding SepBordeYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="En cero: se calcula sola.&#10;Si lo que escribas no llega al minimo de la columna K -del ancla al canto recortado de la placa- para ese diametro de ancla, se sube a ese minimo al salir de la celda." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+
+                            <!-- ===== LA SOLDADURA ===== -->
+                            <DataGridComboBoxColumn x:Name="ColPlacaElectrodo" Header="Electrodo"
+                                                    SelectedItemBinding="{Binding Electrodo, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+
+                            <DataGridTemplateColumn Header="Soldadura &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaAcabado}"
+                                                    SortMemberPath="Soldadura">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Soldadura, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding EspesoresSoldadura}"
+                                                  Text="{Binding Soldadura, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Espesor de la soldadura, en pulgadas. En blanco o en cero: sin soldadura." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- ===== LOS CARTABONES ===== -->
+                            <!-- LA CASILLA QUE MANDA. Apagada, las nueve celdas de cartabon de la
+                                 derecha se apagan con ella -ver el estilo CeldaCartabon-: el
+                                 dibujante no las mira, asi que dejarlas activas invita a capturar
+                                 nueve numeros que no van a salir en el plano.
+
+                                 «Con cartabones» y no «Cartabones» a secas para no repetir el
+                                 encabezado de la columna calculada del final, que dice cuantos
+                                 salen. Dos columnas con el mismo titulo en la misma hoja es una
+                                 manera de mirar la que no era. -->
+                            <DataGridCheckBoxColumn Header="Con cartabones" Binding="{Binding ConCartabones, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="N cart X" Binding="{Binding NCartabonesX, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}" />
+                            <DataGridTextColumn Header="N cart Y" Binding="{Binding NCartabonesY, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}" />
+
+                            <DataGridTemplateColumn Header="e cart X &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaCartabon}"
+                                                    SortMemberPath="EspCartabonX">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding EspCartabonX, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding EspesoresPlaca}"
+                                                  Text="{Binding EspCartabonX, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Espesor de los cartabones del sentido X, en pulgadas." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="e cart Y &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaCartabon}"
+                                                    SortMemberPath="EspCartabonY">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding EspCartabonY, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding EspesoresPlaca}"
+                                                  Text="{Binding EspCartabonY, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Espesor de los cartabones del sentido Y, en pulgadas." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- EL FILETE DEL CARTABON, aparte del de la columna.
+
+                                 Son dos soldaduras distintas y con espesores distintos: la del
+                                 perfil sella el pano de la columna contra la placa, y esta corre
+                                 por el contorno del atiesador. Una sola columna para las dos
+                                 obligaria a que midieran igual, que no es el caso. Sale en
+                                 morado -capa SOLDADURA CARTABON- para distinguirla de un tiron. -->
+                            <DataGridTemplateColumn Header="e sold cart &quot;" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaCartabon}"
+                                                    SortMemberPath="SoldaduraCartabon">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SoldaduraCartabon, Converter={StaticResource ConPulgadas}}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsTextSearchEnabled="False"
+                                                  StaysOpenOnEdit="True" BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding EspesoresSoldadura}"
+                                                  Text="{Binding SoldaduraCartabon, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="Espesor de la soldadura que corre por el contorno de los cartabones, en pulgadas.&#10;En blanco o en cero: el contorno sale sin soldadura." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTextColumn Header="L cart X cm" Binding="{Binding LongCartabonXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}" />
+                            <DataGridTextColumn Header="L cart Y cm" Binding="{Binding LongCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}" />
+
+                            <!-- LO QUE SUBE EL CARTABON. Solo se ve en el ALZADO: en planta el
+                                 cartabon se ve de canto, asi que su altura no aparece por ningun
+                                 lado. En cero, el cartabon sale en la planta y NO en el alzado, que
+                                 es lo que hace la macro: una placa de altura nula dibujada de canto
+                                 es una linea suelta al lado de la columna. -->
+                            <DataGridTextColumn Header="H cart X cm" Binding="{Binding AltoCartabonXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Altura del cartabon X en el alzado, en cm -celda F18 de la macro-.&#10;En cero, el cartabon no sale en el alzado." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="H cart Y cm" Binding="{Binding AltoCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCartabon}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Altura del cartabon Y en el alzado, en cm -celda F19 de la macro-.&#10;En cero, el cartabon no sale en el alzado." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- ===== EL ALZADO =====
+                                 Lo que se ahoga el ancla en el concreto. Como la altura del
+                                 cartabon, en planta no se ve, y ademas gobierna la profundidad del
+                                 dado del alzado: el concreto baja 5 cm mas que el ancla, para que
+                                 la punta quede dentro. En cero, el alzado sale sin anclas. -->
+                            <DataGridTextColumn Header="Ahogo ancl X cm" Binding="{Binding LongAnclajeXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud de anclaje de las anclas X, en cm -celda E12 de la macro-.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Ahogo ancl Y cm" Binding="{Binding LongAnclajeYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud de anclaje de las anclas Y, en cm -celda E13 de la macro-.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- LA LONGITUD TOTAL DEL ANCLA Y SU DOBLEZ.
+
+                                 «Longitud» es lo que se corta y se pide en el taller, doblez
+                                 incluido: una de 45 con doblez de 10 lleva 35 de tramo recto. MANDA
+                                 sobre el ahogo, que pasa a ser la consecuencia -lo que queda dentro
+                                 del concreto una vez descontado lo que el ancla gasta atravesando la
+                                 placa-. De las dos, esta es la que se puede verificar con una cinta.
+
+                                 Y si la longitud pide mas hondo de lo que dice el ahogo, el dado del
+                                 alzado baja lo que haga falta: un ancla asomando por debajo del
+                                 concreto es un plano que no se puede construir. -->
+                            <DataGridTextColumn Header="L ancla X cm" Binding="{Binding LongAnclaXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud TOTAL del ancla X, en cm: lo que se corta, con el doblez incluido.&#10;En cero se usa el ahogo. Si pide mas hondo que el ahogo, el dado baja lo que haga falta." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="L ancla Y cm" Binding="{Binding LongAnclaYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Longitud TOTAL del ancla Y, en cm: lo que se corta, con el doblez incluido.&#10;En cero se usa el ahogo." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Doblez ancla X cm" Binding="{Binding DoblezAnclaXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Pata del doblez del extremo del ancla X, en cm. Va DENTRO de la longitud total.&#10;Cero = ancla recta con su travesano. Con doblez, las dos patas apuntan una contra la otra." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Doblez ancla Y cm" Binding="{Binding DoblezAnclaYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Pata del doblez del extremo del ancla Y, en cm. Va DENTRO de la longitud total.&#10;Cero = ancla recta con su travesano." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <!-- ===== ACOMODO Y ROTULO ===== -->
+                            <DataGridCheckBoxColumn Header="Girar 90°" Binding="{Binding GirarPlaca90, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaAcabado}" />
+                            <DataGridTextColumn Header="Escala 1:" Binding="{Binding Escala, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                CellStyle="{StaticResource CeldaAcabado}" />
+
+                            <!-- ===== CALCULADAS =====
+
+                                 «Medidas» hace visible una busqueda que si no lo es: el perfil no
+                                 se captura, se ELIGE, y sus medidas se buscan en el catalogo. Una
+                                 seccion que no se encuentra deja la fila con pinta de completa y
+                                 el detalle sale sin su columna. Con el peralte y el ancho a la
+                                 vista, eso se nota de un golpe.
+
+                                 «Libramientos» son las tablas J y K del cuadro de libramientos
+                                 requeridos para anclas en placas base, comprobadas MIENTRAS SE
+                                 CAPTURA y no solo al dibujar: es la diferencia entre saber que
+                                 las anclas no caben ahora y saberlo cuando el boton se niega. -->
+                            <DataGridTextColumn Header="Forma" Binding="{Binding Forma}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Medidas perfil" Binding="{Binding MedidasPerfil}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <!-- Por lo mismo que «Medidas perfil»: cuando un dato se trae de otra
+                                 hoja, lo que hay que hacer visible es SI DE VERDAD SE TRAJO. Un ID
+                                 con un guion de mas no encuentra la seccion, las celdas se quedan
+                                 con lo que hubiera y la fila se ve completa. Aqui se lee de donde
+                                 salieron las medidas, si el dado es redondo, y si SOBRESALE de la
+                                 placa -que es lo que decide si el rayado de concreto se ve-. -->
+                            <DataGridTextColumn Header="Dado" Binding="{Binding ReferenciaDado}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <DataGridTextColumn Header="Anclas" Binding="{Binding TotalAnclas}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+
+                            <!-- Los que se van a dibujar DE VERDAD, con el mismo descarte que el
+                                 dibujo: con la casilla apagada son cero aunque las cantidades sigan
+                                 capturadas, y un espesor o una longitud en cero tambien descartan.
+                                 Prometer seis cartabones y dibujar cuatro es peor que no decirlo. -->
+                            <DataGridTextColumn Header="Cartabones" Binding="{Binding TotalCartabones}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <!-- El minimo de la columna K que exigen estas anclas, y la
+                                 separacion al borde que se va a USAR de verdad.
+
+                                 Las dos estan aqui porque son el numero que explica por que una
+                                 celda de «Sep borde» se corrigio sola. Sin ellas, la celda cambia de
+                                 valor y el usuario no tiene de donde sacar el motivo.
+
+                                 Y «Sep borde usada» es distinta de lo capturado en DOS casos: cuando
+                                 la celda va en cero -automatica- y cuando lo capturado no llegaba al
+                                 minimo de K. En los dos, sin esta columna se ve una cosa en la celda
+                                 y el plano sale con otra. -->
+                            <DataGridTextColumn Header="Mín. K · L" Binding="{Binding BordeMinimo}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Los dos minimos del cuadro Hylsa ES-03-001 para el diametro de ancla de esta fila.&#10;K: del ancla al canto recortado de la PLACA. Es el minimo al que se sube «Sep borde» si se captura menos.&#10;L: del ancla al paño de la COLUMNA, para que entre la llave al apretar la tuerca. Si no se cumple, el detalle no se dibuja.&#10;El ancla tiene que caber entre las dos." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Sep borde usada" Binding="{Binding SepBordeUsada}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="X / Y, ya ajustadas. Es lo que de verdad se dibuja, incluyendo el calculo automatico cuando la celda va en cero." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Libramientos" Binding="{Binding Libramientos}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                            <DataGridTextColumn Header="Falta" Binding="{Binding Falta}"
+                                                IsReadOnly="True" Width="Auto"
+                                                CellStyle="{StaticResource CeldaCalculada}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- ===== VISTA PREVIA DE LA PLACA =====
+
+                         Igual que la del concreto y la del acero, y por el mismo motivo: la tabla
+                         dice numeros y la placa se dibuja con una GEOMETRIA, asi que una separacion
+                         al borde mal capturada no se ve en la tabla pero si en el dibujo.
+
+                         Y LA GEOMETRIA ES LA MISMA QUE VA A AUTOCAD, no una version de pantalla:
+                         las anclas las coloca AnclasPlacaBase, los cartabones CartabonesPlacaBase y
+                         el perfil TrazoAcero, que son las tres clases que usa el dibujante. Una
+                         previa que calculara su propia version podria acabar ensenando algo distinto
+                         de lo que se dibuja, que es justo lo que no puede hacer. -->
+                    <Border Style="{StaticResource MarcoPreviaStyle}" Grid.Row="2" Height="260">
+                        <Grid>
+                            <Canvas x:Name="PlacaPreviewCanvas"
+                                    Background="{StaticResource PreviewFondoBrush}"
+                                    ClipToBounds="True" />
+                            <TextBlock Text="Vista previa de la placa seleccionada"
+                                       FontSize="10.5" Margin="8,6,0,0"
+                                       VerticalAlignment="Top" HorizontalAlignment="Left"
+                                       Foreground="{DynamicResource BrandDarkBrush}" />
+                        </Grid>
                     </Border>
-                </StackPanel>
+
+                    <Border Style="{StaticResource BarraTotalesStyle}" Grid.Row="3">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock x:Name="TotalesPlacasText" Grid.Column="0"
+                                       Style="{StaticResource TextoTotalesStyle}"
+                                       VerticalAlignment="Center" />
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Content="Agregar placa"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,0,8,0"
+                                        Click="OnAgregarPlaca"
+                                        ToolTip="Agrega una placa copiando la que este seleccionada, con una marca libre.&#10;En una nave con veinte placas iguales salvo la marca, arrancar de cero cada fila es volver a capturar lo que ya estaba capturado." />
+                                <Button Content="Quitar placa"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,0,14,0"
+                                        Click="OnQuitarPlaca" />
+                                <Button x:Name="PlacaBaseButton" Content="Dibujar placas base"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="OnDibujarPlacaBase" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- ===== NOTAS Y AVISOS DEL ULTIMO DIBUJO =====
+
+                         En ESTA pestaña y no en la de concreto. Las notas del dibujante de
+                         placas -que si una placa no cumple los libramientos J o K, con las dos
+                         distancias y el par de anclas- son de aqui, y mandarlas al panel de la
+                         hoja de concreto es dejarlas donde nadie las va a mirar.
+
+                         La visibilidad la manda el TEXTO, con un disparador, igual que la del
+                         concreto: asi aparece y desaparece sola y no hay que acordarse de
+                         apagarla en cada sitio que la escribe. -->
+                    <Border Grid.Row="4" Margin="0,8,0,0"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Value=""
+                                                 Binding="{Binding Text, ElementName=PlacasNotasText}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+
+                        <Expander x:Name="PlacasNotasPanel" IsExpanded="False" Padding="6,2"
+                                  Foreground="{DynamicResource MutedTextBrush}">
+                            <Expander.Header>
+                                <TextBlock Text="Notas y avisos del último dibujo de placas"
+                                           FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource BrandDarkBrush}" />
+                            </Expander.Header>
+                            <ScrollViewer MaxHeight="140" VerticalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="PlacasNotasText" FontSize="10.5"
+                                           TextWrapping="Wrap" Margin="4,2,4,6"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
+                            </ScrollViewer>
+                        </Expander>
+                    </Border>
+                </Grid>
             </TabItem>
 
             <!-- ===== Conexiones ===== -->
@@ -2109,7 +2908,7 @@
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">
                         <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente de portar. Mandame la macro de esta hoja." />
+                                   Text="Modulo pendiente, proximamente..." />
                     </Border>
                 </StackPanel>
             </TabItem>

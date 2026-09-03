@@ -64,7 +64,13 @@ public static class Estribos
             // mirar la separación resultante, y en un elemento muy corto eso da
             // estribos a 1.67 cm, que no existe en obra. Aquí se recorta el número
             // para que nunca baje del mínimo. En longitudes normales no cambia nada.
-            var n = (int)(largo / s1);
+            //
+            // El +1e-6 es imprescindible y NO es cosmética. En coma flotante
+            // 0.90/0.10 da 8.9999999999999982, y el (int) lo truncaba a 8: un dado de
+            // 1.00 m a 10 cm salía con 8 huecos de 11.25 cm en lugar de 9 de 10 cm.
+            // Se perdía un estribo Y la separación dejaba de ser la de la tabla, que
+            // es peor, porque el rótulo seguía diciendo "@10 cm".
+            var n = (int)((largo / s1) + 1e-6);
             if (n < 3) { n = 3; }
 
             var maxPorSeparacion = (int)Math.Floor(largo / SepMinimaM);
@@ -116,16 +122,42 @@ public static class Estribos
     }
 
     /// <summary>Estribos dentro de una zona, a su separación.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí estaba el hueco doble.</b> El filtro era <c>p &lt; hasta - 1e-4</c>, que
+    /// descarta el estribo que cae <b>exactamente</b> en la frontera de zona. Y eso
+    /// pasa en el caso más común de todos: cuando la zona es múltiplo exacto de la
+    /// separación (L/4 con separación redonda, que es como se captura siempre).
+    /// </para>
+    /// <para>
+    /// El efecto en el plano es que la zona pierde su último estribo y la zona
+    /// siguiente empieza a una separación de la frontera, así que en la frontera
+    /// queda un hueco de <b>dos separaciones</b>. En columna y dado no lo tapaba
+    /// nadie, porque <c>Transicion</c> solo corre con <c>conFronteras</c>, que va en
+    /// <c>false</c> en el alzado vertical. Dos huecos dobles por elemento: es la
+    /// mitad de "no me da todos los estribos".
+    /// </para>
+    /// <para>
+    /// Ahora el extremo de la zona <b>sí</b> se coloca. No hay riesgo de duplicarlo
+    /// con el de la zona siguiente ni con <c>Transicion</c>: el primero lo filtra
+    /// <see cref="ConSeparacion"/> y el segundo se autodescarta, porque su ventana
+    /// <c>[lo,hi]</c> arranca en <c>col[^1] + SepMinimaM</c> y se cierra sola.
+    /// </para>
+    /// <para>
+    /// El <c>+1e-6</c> del conteo es por coma flotante: <c>0.725/0.145</c> da
+    /// <c>4.9999…</c> y el <c>(int)</c> lo truncaba a 4, perdiendo otro estribo.
+    /// </para>
+    /// </remarks>
     private static void PorSeparacion(
         List<double> col, double ini, double desde, double hasta, double sep)
     {
-        var n = (int)((hasta - desde) / sep);
+        var n = (int)(((hasta - desde) / sep) + 1e-6);
         if (n < 1) { n = 1; }
 
         for (var i = 1; i <= n; i++)
         {
             var p = desde + (i * sep);
-            if (p < hasta - 1e-4)
+            if (p <= hasta + 1e-6)
             {
                 ConSeparacion(col, ini + p);
             }
@@ -158,6 +190,30 @@ public static class Estribos
         if (lo > hi + 1e-7)
         {
             return;
+        }
+
+        // ===== Y AHORA SE CIERRA EL HUECO DE COMA FLOTANTE =====
+        //
+        // El guardián de arriba tolera a propósito que 'lo' supere a 'hi' por hasta 1e-7: la
+        // ventana puede cerrarse a cero exacto de forma legítima y no hay que descartar el estribo
+        // por un residuo de redondeo. Pero acto seguido se llamaba a Math.Clamp(nominal, lo, hi)
+        // con ese lo > hi, y Math.Clamp NO lo tolera: lanza ArgumentException con el mensaje
+        //
+        //     '0.55' cannot be greater than 0.5499999999999999.
+        //
+        // que es lo que le salía al usuario al capturar 5-10-5. Los dos números son EL MISMO valor;
+        // se diferencian en 1.1e-16.
+        //
+        // Aparece con separaciones cerradas porque ahí la ventana se cierra justo: con 5-10-5, el
+        // límite inferior 'col[^1] + SepMinimaM' cae exactamente sobre el superior
+        // 'siguiente - SepMinimaM'. Antes no se veía porque en el alzado vertical Transicion no se
+        // llamaba nunca; al pasar conFronteras a true para tapar el hueco doble de la frontera de
+        // zona, este camino se abrió para todos los elementos.
+        //
+        // Cuando la ventana está cerrada, el único sitio posible es su borde: se usa 'hi'.
+        if (lo > hi)
+        {
+            lo = hi;
         }
 
         col.Add(Math.Clamp(nominal, lo, hi));
@@ -226,24 +282,60 @@ public static class Estribos
     {
         var centros = Centros(
             0, largo, s1, s2, s3,
-            conExtremos: false,
-            conFronteras: !vertical);
+            conExtremos: true,
+            conFronteras: true);
 
-        if (esColumna)
+        if (esColumna && centros.Count > 2)
         {
-            // RemoveLastCenter del VBA: con un solo estribo la macro devuelve un
-            // arreglo VACIO, no lo deja. Se copia ese comportamiento.
-            if (centros.Count <= 1)
-            {
-                centros.Clear();
-            }
-            else
-            {
-                centros.RemoveAt(centros.Count - 1);
-            }
+            // RemoveLastCenter del VBA: en la columna el estribo del extremo superior
+            // se quita porque ahí llega el nudo con la trabe y estorba.
+            //
+            // Se exige Count > 2 para no vaciar el elemento. El VBA hacía
+            // 'if Count <= 1 then vaciar', y eso dejaba columnas cortas SIN NI UN
+            // ESTRIBO en el plano, sin avisar de nada.
+            centros.RemoveAt(centros.Count - 1);
         }
 
         return centros;
+    }
+
+    /// <summary>
+    /// Cuántos estribos <b>deberían</b> salir, contando solo por separación.
+    /// </summary>
+    /// <remarks>
+    /// Es el número que hace el usuario a mano cuando dice "faltan estribos". Sirve
+    /// para poder <b>comparar</b> contra lo que realmente se colocó y avisar, en vez
+    /// de que las omisiones de <see cref="Transicion"/> y <see cref="ConSeparacion"/>
+    /// se queden calladas. No manda en el dibujo: solo se informa.
+    /// </remarks>
+    public static int ConteoNominal(double largo, double s1, double s2, double s3)
+    {
+        var interior = largo - (2 * BordeM);
+        if (interior <= 0)
+        {
+            return 0;
+        }
+
+        if (s1 <= 0) { s1 = 0.15; }
+        if (s2 <= 0) { s2 = s1; }
+        if (s3 <= 0) { s3 = s1; }
+
+        s1 = Math.Max(s1, SepMinimaDatoM);
+        s2 = Math.Max(s2, SepMinimaDatoM);
+        s3 = Math.Max(s3, SepMinimaDatoM);
+
+        var variable = Math.Abs(s1 - s2) > 1e-4 || Math.Abs(s2 - s3) > 1e-4;
+
+        if (!variable)
+        {
+            return (int)((interior / s1) + 1e-6) + 1;
+        }
+
+        var n1 = (int)(((interior * 0.25) / s1) + 1e-6);
+        var n2 = (int)(((interior * 0.50) / s2) + 1e-6);
+        var n3 = (int)(((interior * 0.25) / s3) + 1e-6);
+
+        return n1 + n2 + n3 + 1;
     }
 
     /// <summary>Longitud del gancho en diámetros, cuando el alzado va tendido.</summary>
