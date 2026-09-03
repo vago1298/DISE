@@ -333,7 +333,25 @@
                                    Margin="0,22,0,2" Foreground="{DynamicResource BrandDarkBrush}"
                                    ToolTip="Un layout por plano, con su tamano de hoja y el cajetin relleno.&#10;El cajetin tiene que ser un BLOQUE CON ATRIBUTOS dentro del dibujo: si no se llama CAJETIN, se busca el que mas atributos de solapa tenga." />
 
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <!-- EL ARCHIVO DEL CAJETIN. Se busca solo -en esta ruta, en la carpeta
+                             del dibujo y en las de siempre-, asi que esta casilla solo hace falta
+                             si el cajetin esta en un sitio raro. Puede ser el .dwg o la carpeta
+                             donde se guardan los formatos, y se guarda con el trabajo. -->
+                        <Grid Margin="0,4,0,0" HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="466" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Archivo cajetin:" VerticalAlignment="Center" />
+                            <TextBox   Grid.Column="1" x:Name="CajetinRutaBox" Height="26" VerticalContentAlignment="Center"
+                                       ToolTip="En blanco: se busca solo en la carpeta del dibujo y en las de siempre.&#10;Puede ser el archivo .dwg o la carpeta donde guardas tus formatos." />
+                            <Button    Grid.Column="2" Content="Examinar..." Style="{StaticResource SecondaryButtonStyle}"
+                                       Click="OnExaminarCajetin" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="Generar solapas" Style="{StaticResource PrimaryButtonStyle}"
                                     Click="OnGenerarSolapas"
                                     ToolTip="Crea un layout por cada plano del juego, con su papel y su cajetin relleno." />

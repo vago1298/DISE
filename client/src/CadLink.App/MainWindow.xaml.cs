@@ -762,6 +762,11 @@ public partial class MainWindow : Window
 
             CalculistaBox.Text = string.Empty;
             CedulaBox.Text = string.Empty;
+
+            // LA RUTA DEL CAJETIN NO SE LIMPIA. «Limpiar todo» borra los datos de la obra, y el
+            // cajetin no es un dato de la obra: es donde el despacho guarda su formato, y volver a
+            // buscarlo cada vez que se empieza un trabajo es exactamente la molestia que esta
+            // casilla existe para quitar.
             PropietarioBox.Text = string.Empty;
             UbicacionBox.Text = string.Empty;
             ObraBox.Text = string.Empty;
@@ -1952,6 +1957,7 @@ public partial class MainWindow : Window
             Aplicacion = AppInfo.ProductName,
             Calculista = _juego.Solapa.Calculista,
             Cedula = _juego.Solapa.Cedula,
+            CajetinRuta = CajetinRutaBox.Text.Trim(),
             Propietario = _juego.Solapa.Propietario,
             Ubicacion = _juego.Solapa.Ubicacion,
             Obra = _juego.Solapa.Obra,
@@ -2067,6 +2073,7 @@ public partial class MainWindow : Window
 
             CalculistaBox.Text = p.Calculista;
             CedulaBox.Text = p.Cedula;
+            CajetinRutaBox.Text = p.CajetinRuta;
             PropietarioBox.Text = p.Propietario;
             UbicacionBox.Text = p.Ubicacion;
             ObraBox.Text = p.Obra;

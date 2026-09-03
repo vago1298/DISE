@@ -761,6 +761,195 @@ check("sin medidas de hoja se avisa",
       "el tamano de la hoja" in falta_de(solapa(clave="E-01")))
 
 
+print("\n" + "=" * 78)
+print("BUSCAR EL ARCHIVO DEL CAJETIN EN EL DISCO")
+print("=" * 78)
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  ESTO LO HACIA LA MACRO Y SE QUITO POR ERROR EN EL PRIMER PORT.
+#
+#  El argumento fue que el usuario puede insertar su cajetin a mano una vez. Es falso en
+#  la practica: nadie abre el programa para hacer un INSERT y aprenderse que la
+#  definicion se queda cargada aunque borre la insercion. Y en un dibujo NUEVO hay que
+#  repetirlo, asi que es un paso que se olvida, y cuando se olvida no sale ni una solapa.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+NOMBRES_PROBABLES = ["CAJETIN", "SOLAPA", "FORMATO", "MEMBRETE"]
+EXTENSIONES = [".dwg", ".dxf"]
+
+
+def sin_extension(ruta):
+    r = (ruta or "").strip()
+    b = max(r.rfind("\\"), r.rfind("/"))
+    if b >= 0:
+        r = r[b + 1:]
+    p = r.rfind(".")
+    return r[:p] if p > 0 else r
+
+
+def es_archivo_de_dibujo(ruta):
+    r = (ruta or "").strip().lower()
+    return any(r.endswith(e) for e in EXTENSIONES)
+
+
+def archivo_parece_cajetin(nombre):
+    n = normaliza(sin_extension(nombre))
+    if not n:
+        return False
+    return any(n.startswith(normaliza(x)) for x in NOMBRES_PROBABLES)
+
+
+def nombre_de_bloque_de_archivo(ruta):
+    return limpiar(sin_extension(ruta))
+
+
+def misma_ruta(a, b):
+    x = (a or "").strip().replace("/", "\\").rstrip("\\")
+    y = (b or "").strip().replace("/", "\\").rstrip("\\")
+    return bool(x) and x.lower() == y.lower()
+
+
+def rutas_a_probar(configurada, carpeta_del_dibujo, otras=None):
+    salida = []
+    vistas = set()
+
+    def meter(r):
+        t = (r or "").strip().rstrip("\\/")
+        if t and t.lower() not in vistas:
+            vistas.add(t.lower())
+            salida.append(t)
+
+    meter(configurada)
+    meter(carpeta_del_dibujo)
+    for o in (otras or []):
+        meter(o)
+    return salida
+
+
+def cajetines_de_la_carpeta(archivos):
+    cand = []
+    for a in archivos:
+        if not es_archivo_de_dibujo(a) or not archivo_parece_cajetin(a):
+            continue
+        n = normaliza(sin_extension(a))
+        orden = len(NOMBRES_PROBABLES)
+        for i, x in enumerate(NOMBRES_PROBABLES):
+            if n.startswith(normaliza(x)):
+                orden = i
+                break
+        cand.append((orden, len(n), a.lower(), a))
+    cand.sort()
+    return [c[3] for c in cand]
+
+
+#  ---- QUE ARCHIVO PARECE UN CAJETIN ----
+#  Por PRINCIPIO DE PALABRA y normalizado, no por igualdad: en el disco el archivo se
+#  llama "CAJETIN GIPC 2024.dwg" o "cajetin-arch-d.dwg", y ninguno es igual a "CAJETIN".
+check("reconoce el cajetin aunque el archivo lleve mas cosas en el nombre",
+      archivo_parece_cajetin("CAJETIN.dwg")
+      and archivo_parece_cajetin("CAJETIN GIPC 2024.dwg")
+      and archivo_parece_cajetin("cajetin-arch-d.dwg")
+      and archivo_parece_cajetin("Cajetín E.dwg"))
+
+check("y los otros nombres que se usan de verdad",
+      archivo_parece_cajetin("SOLAPA.dwg") and archivo_parece_cajetin("Formato E-01.dwg")
+      and archivo_parece_cajetin("MEMBRETE.dwg"))
+
+check("un dibujo cualquiera NO se confunde con el cajetin",
+      not archivo_parece_cajetin("PLANTA DE CIMENTACION.dwg")
+      and not archivo_parece_cajetin("E-01.dwg")
+      and not archivo_parece_cajetin(""))
+
+check("y solo se aceptan dibujos, no un PDF ni un Excel",
+      es_archivo_de_dibujo("CAJETIN.dwg") and es_archivo_de_dibujo("CAJETIN.DXF")
+      and not es_archivo_de_dibujo("CAJETIN.pdf")
+      and not es_archivo_de_dibujo("CAJETIN.xlsx"))
+
+#  ---- EL NOMBRE DEL BLOQUE SALE DEL NOMBRE DEL ARCHIVO ----
+#  AutoCAD acepta una RUTA donde va el nombre del bloque, y crea la definicion llamada
+#  como el archivo sin extension. De ahi sale el nombre con el que despues se busca.
+check("el bloque se va a llamar como el archivo, sin carpeta ni extension",
+      nombre_de_bloque_de_archivo("C:\\Planos\\CAJETIN.dwg") == "CAJETIN"
+      and nombre_de_bloque_de_archivo("C:/Planos/Formato E.dwg") == "Formato E")
+
+#  Y pasa por Limpiar, asi que un nombre con caracteres prohibidos no rompe el bloque.
+check("y si el archivo trae caracteres que AutoCAD no acepta, se limpian",
+      nombre_de_bloque_de_archivo("C:\\x\\CAJETIN=2024.dwg") == "CAJETIN-2024")
+
+#  ---- EL DIBUJO NO SE PUEDE INSERTAR EN SI MISMO ----
+#  AutoCAD se niega, pero el mensaje que da no dice eso. Es el caso que la macro avisaba
+#  con veinte renglones.
+check("se reconoce que el archivo es el dibujo que esta abierto",
+      misma_ruta("C:\\Obra\\CAJETIN.dwg", "C:\\Obra\\CAJETIN.dwg")
+      and misma_ruta("C:/Obra/CAJETIN.dwg", "C:\\Obra\\CAJETIN.dwg")
+      and misma_ruta("c:\\obra\\cajetin.dwg", "C:\\Obra\\CAJETIN.dwg"))
+
+check("y dos archivos distintos no se confunden",
+      not misma_ruta("C:\\Obra\\CAJETIN.dwg", "C:\\Otra\\CAJETIN.dwg")
+      and not misma_ruta("", "C:\\Obra\\CAJETIN.dwg")
+      and not misma_ruta(None, None))
+
+#  ---- EL ORDEN EN QUE SE BUSCA ----
+#  La ruta capturada PRIMERO: si alguien se molesto en escribirla, manda sobre cualquier
+#  suposicion. La del dibujo segunda, porque es donde de verdad suele estar: el cajetin
+#  viaja con el juego de planos, no con el programa.
+r = rutas_a_probar("D:\\Formatos", "C:\\Obra", ["C:\\Users\\x\\Documents\\CadLink"])
+
+check("primero la ruta capturada, luego la del dibujo, luego las de siempre",
+      r == ["D:\\Formatos", "C:\\Obra", "C:\\Users\\x\\Documents\\CadLink"],
+      str(r))
+
+#  SIN REPETIR, y eso no es lo mismo que un conjunto: hay que conservar el ORDEN. La
+#  ruta capturada puede coincidir con la del dibujo, y probarla dos veces duplicaria el
+#  aviso de error con la misma carpeta escrita dos veces.
+check("una ruta que se repite no se prueba dos veces, y el orden se conserva",
+      rutas_a_probar("C:\\Obra", "C:\\Obra", ["C:\\Obra\\", "D:\\Otra"])
+      == ["C:\\Obra", "D:\\Otra"],
+      str(rutas_a_probar("C:\\Obra", "C:\\Obra", ["C:\\Obra\\", "D:\\Otra"])))
+
+check("y no distingue mayusculas ni la barra final",
+      rutas_a_probar("C:\\Obra\\", "c:\\obra", None) == ["C:\\Obra"])
+
+check("sin ruta capturada se empieza por la del dibujo",
+      rutas_a_probar("", "C:\\Obra", ["D:\\Otra"]) == ["C:\\Obra", "D:\\Otra"])
+
+#  Y si no hay NADA -ni ruta ni dibujo guardado- la lista queda vacia, y el aviso tiene
+#  que decir eso y no una lista de carpetas en blanco.
+check("sin ruta y sin dibujo guardado, no hay donde buscar",
+      rutas_a_probar("", "", None) == []
+      and rutas_a_probar(None, None, None) == [])
+
+#  ---- CUAL DE LOS ARCHIVOS DE LA CARPETA ----
+CARPETA = [
+    "C:\\F\\PLANTA DE CIMENTACION.dwg",
+    "C:\\F\\CAJETIN viejo 2019.dwg",
+    "C:\\F\\MEMBRETE.dwg",
+    "C:\\F\\CAJETIN.dwg",
+    "C:\\F\\cajetin.pdf",
+    "C:\\F\\SOLAPA.dwg",
+]
+
+elegidos = cajetines_de_la_carpeta(CARPETA)
+
+#  EL NOMBRE EXACTO Y CORTO PRIMERO: entre "CAJETIN.dwg" y "CAJETIN viejo 2019.dwg", el
+#  corto es el que se usa todos los dias.
+check("de la carpeta se elige CAJETIN.dwg antes que CAJETIN viejo 2019.dwg",
+      elegidos[0] == "C:\\F\\CAJETIN.dwg",
+      str(elegidos))
+
+check("y el orden de los nombres probables se respeta: CAJETIN antes que SOLAPA",
+      elegidos.index("C:\\F\\CAJETIN.dwg") < elegidos.index("C:\\F\\SOLAPA.dwg")
+      < elegidos.index("C:\\F\\MEMBRETE.dwg"))
+
+check("el plano de la obra y el PDF no entran en la lista",
+      "C:\\F\\PLANTA DE CIMENTACION.dwg" not in elegidos
+      and "C:\\F\\cajetin.pdf" not in elegidos
+      and len(elegidos) == 4,
+      str(elegidos))
+
+check("una carpeta sin cajetin da lista vacia, no revienta",
+      cajetines_de_la_carpeta(["C:\\F\\PLANTA.dwg"]) == []
+      and cajetines_de_la_carpeta([]) == [])
+
 # ==========================================================================
 print("\n" + "=" * 78)
 print("Y EL C# HACE LO MISMO QUE ESTE PORT")
@@ -900,6 +1089,55 @@ check("la solapa junta lo del juego con lo del plano",
 
 check("y la escala sale del PLANO, no del juego",
       "Escala = plano.Escala," in APP and "Escala = s.Escala," not in APP)
+
+#  ---- EL ARCHIVO DEL CAJETIN ----
+check("la busqueda del archivo esta en la logica pura, sin COM",
+      "public static bool ArchivoPareceCajetin(" in CAD
+      and "public static List<string> RutasAProbar(" in CAD
+      and "public static List<string> CajetinesDeLaCarpeta(" in CAD
+      and "public static bool MismaRuta(" in CAD
+      and '"CAJETIN", "SOLAPA", "FORMATO", "MEMBRETE",' in CAD)
+
+#  TRES INTENTOS Y EN ESTE ORDEN. El disco NO es el ultimo recurso: es el tercero, y va
+#  detras de los dos del dibujo porque si el dibujo YA tiene un cajetin, traer otro del
+#  archivo deja dos definiciones parecidas.
+check("tres intentos: bloque cargado, bloque con atributos, y el ARCHIVO",
+      "private bool ElegirCajetin(SolapasDrawer dibujante)" in APP
+      and APP.index("dibujante.ExisteBloque(CajetinPorOmision)")
+          < APP.index("dibujante.BuscarCajetin(out var cuantos)")
+          < APP.index("dibujante.ImportarCajetin(out var deDonde)"))
+
+check("el dibujante trae el bloque insertando el ARCHIVO y borrando la insercion",
+      "public string? ImportarCajetin(" in DRW
+      and "ms.InsertBlock(" in DRW
+      and "((dynamic)insercion).Delete()" in DRW)
+
+#  INSUNITS. Al insertar un dibujo como bloque, AutoCAD lo reescala por la relacion entre
+#  las unidades del archivo y las del dibujo, y no avisa: un cajetin en milimetros
+#  insertado en un plano en metros sale mil veces mas chico.
+check("y apaga INSUNITS para que AutoCAD no lo reescale, restaurandolo despues",
+      'PonerVariable("INSUNITS", 0)' in DRW
+      and 'PonerVariable("LIGHTINGUNITS", 0)' in DRW
+      and "finally" in DRW
+      and 'PonerVariable("INSUNITS", insUnits.Value)' in DRW
+      and 'PonerVariable("LIGHTINGUNITS", lighting.Value)' in DRW)
+
+check("se detecta que el archivo es el dibujo abierto, antes de intentar insertarlo",
+      "Solapas.MismaRuta(archivo, RutaDelDibujo())" in DRW
+      and "no se puede insertar " in DRW)
+
+#  Y EL AVISO DICE DONDE SE BUSCO. La primera version explicaba como hacer un BLOCK a
+#  mano, que es una leccion de AutoCAD que el dibujante no pidio: lo que necesita saber
+#  es en que carpetas se miro, para poder apuntar a la buena.
+check("y si no se encuentra, el aviso dice EN QUE RUTAS se busco",
+      "public List<string> RutasMiradas { get; } = new();" in DRW
+      and "dibujante.RutasMiradas" in APP
+      and "en estas rutas:" in APP)
+
+check("la ruta se captura en la hoja y se guarda con el trabajo",
+      "public string RutaDelCajetin { get; set; }" in DRW
+      and "CajetinRutaBox.Text.Trim()" in APP
+      and "private void OnExaminarCajetin(" in APP)
 
 
 print("\n" + "=" * 78)

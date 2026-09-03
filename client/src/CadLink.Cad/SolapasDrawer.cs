@@ -101,6 +101,280 @@ public sealed class SolapasDrawer
         return mejor >= 3 ? nombre : null;
     }
 
+    // ======================================================================
+    //  TRAER EL CAJETÍN DE UN ARCHIVO
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  ESTO LO HACÍA LA MACRO Y LO QUITÉ POR ERROR.
+    //
+    //  El argumento fue que el usuario puede insertar su cajetín a mano una vez. Es falso en
+    //  la práctica: nadie abre el programa para hacer un INSERT y aprenderse que la
+    //  definición se queda cargada aunque borre la inserción. Y en un dibujo NUEVO hay que
+    //  repetirlo, así que es un paso que se olvida, y cuando se olvida no sale ni una solapa.
+    //
+    //  CÓMO SE TRAE. AutoCAD acepta una RUTA DE ARCHIVO donde va el nombre del bloque:
+    //  InsertBlock con «C:\...\CAJETIN.dwg» crea la definición «CAJETIN» y además la inserta.
+    //  Se borra la inserción y la definición se queda. Es exactamente lo que el mensaje de
+    //  error le pedía al usuario que hiciera a mano.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Dónde buscar el archivo del cajetín. Lo primero que se prueba.</summary>
+    public string RutaDelCajetin { get; set; } = string.Empty;
+
+    /// <summary>Carpetas de siempre, después de la configurada y la del dibujo.</summary>
+    public List<string> CarpetasExtra { get; } = new();
+
+    /// <summary>Las rutas que se llegaron a mirar, para poder decirlo si no se encuentra.</summary>
+    public List<string> RutasMiradas { get; } = new();
+
+    /// <summary>
+    /// Busca el archivo del cajetín y trae su definición de bloque al dibujo.
+    /// </summary>
+    /// <returns>El nombre del bloque que quedó cargado, o <c>null</c>.</returns>
+    public string? ImportarCajetin(out string deDonde)
+    {
+        deDonde = string.Empty;
+
+        RutasMiradas.Clear();
+
+        var carpetaDelDibujo = CarpetaDelDibujo();
+
+        foreach (var ruta in Solapas.RutasAProbar(RutaDelCajetin, carpetaDelDibujo, CarpetasExtra))
+        {
+            RutasMiradas.Add(ruta);
+
+            foreach (var archivo in ArchivosCandidatos(ruta))
+            {
+                // EL DIBUJO ABIERTO NO SE PUEDE INSERTAR EN SÍ MISMO. AutoCAD se niega, pero el
+                // mensaje que da no dice eso, así que se detecta antes y se salta.
+                if (Solapas.MismaRuta(archivo, RutaDelDibujo()))
+                {
+                    Notas.Add(
+                        $"«{archivo}» es el dibujo que está abierto, así que no se puede insertar " +
+                        "en sí mismo. Se buscó en otro sitio.");
+
+                    continue;
+                }
+
+                var nombre = TraerBloqueDeArchivo(archivo);
+
+                if (nombre is null)
+                {
+                    continue;
+                }
+
+                deDonde = archivo;
+
+                return nombre;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Los archivos a probar de una ruta: si es archivo, ella; si es carpeta, lo que parezca.
+    /// </summary>
+    /// <remarks>
+    /// Las dos formas porque las dos se usan: hay quien apunta al archivo exacto y hay quien apunta
+    /// a la carpeta donde guarda sus formatos. Obligar a una sola sería obligar a la mitad a
+    /// cambiar de costumbre.
+    /// </remarks>
+    private List<string> ArchivosCandidatos(string ruta)
+    {
+        var salida = new List<string>();
+
+        try
+        {
+            if (System.IO.File.Exists(ruta))
+            {
+                if (Solapas.EsArchivoDeDibujo(ruta))
+                {
+                    salida.Add(ruta);
+                }
+
+                return salida;
+            }
+
+            if (!System.IO.Directory.Exists(ruta))
+            {
+                return salida;
+            }
+
+            // LOS NOMBRES EXACTOS PRIMERO, y solo después los que se parecen: en una carpeta con
+            // «CAJETIN.dwg» y «CAJETIN viejo 2019.dwg», el bueno es el primero.
+            foreach (var probable in Solapas.NombresDeArchivoProbables)
+            {
+                foreach (var ext in Solapas.ExtensionesDeDibujo)
+                {
+                    var exacto = System.IO.Path.Combine(ruta, probable + ext);
+
+                    if (System.IO.File.Exists(exacto))
+                    {
+                        salida.Add(exacto);
+                    }
+                }
+            }
+
+            foreach (var a in Solapas.CajetinesDeLaCarpeta(
+                         System.IO.Directory.GetFiles(ruta)))
+            {
+                if (!salida.Contains(a, StringComparer.OrdinalIgnoreCase))
+                {
+                    salida.Add(a);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Notas.Add($"No se pudo mirar en «{ruta}»: {ex.Message}");
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Inserta el archivo como bloque, borra la inserción y deja la <b>definición</b> cargada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Se apagan INSUNITS y LIGHTINGUNITS mientras dura.</b> Al insertar un dibujo como bloque,
+    /// AutoCAD lo reescala por la relación entre las unidades del archivo y las del dibujo: un
+    /// cajetín dibujado en milímetros insertado en un plano en metros sale mil veces más chico, y no
+    /// avisa. Con INSUNITS en 0 —sin unidades— no hay conversión y el cajetín entra a su tamaño.
+    /// LIGHTINGUNITS se apaga con él porque cambiar INSUNITS con iluminación fotométrica saca un
+    /// aviso modal, y un aviso modal en medio de una corrida de veinte planos la deja colgada.
+    /// </para>
+    /// <para>
+    /// Los dos se <b>restauran siempre</b>, incluso si algo falla en medio: son variables del dibujo
+    /// del usuario y dejárselas cambiadas afecta a todo lo que inserte después.
+    /// </para>
+    /// </remarks>
+    private string? TraerBloqueDeArchivo(string archivo)
+    {
+        var nombre = Solapas.NombreDeBloqueDeArchivo(archivo);
+
+        if (nombre.Length == 0)
+        {
+            return null;
+        }
+
+        var insUnits = Variable("INSUNITS");
+        var lighting = Variable("LIGHTINGUNITS");
+
+        try
+        {
+            PonerVariable("LIGHTINGUNITS", 0);
+            PonerVariable("INSUNITS", 0);
+
+            object? insercion = null;
+
+            AcadConnection.Retry(() =>
+            {
+                dynamic ms = _doc.ModelSpace;
+
+                insercion = (object?)ms.InsertBlock(
+                    new[] { 0.0, 0.0, 0.0 }, archivo, 1.0, 1.0, 1.0, 0.0);
+            });
+
+            // La inserción era solo el vehículo: lo que interesa es la DEFINICIÓN, que se queda en
+            // la tabla de bloques del dibujo aunque se borre lo insertado.
+            if (insercion is not null)
+            {
+                try
+                {
+                    AcadConnection.Retry(() => ((dynamic)insercion).Delete());
+                }
+                catch (Exception)
+                {
+                    Notas.Add(
+                        $"El cajetín se trajo de «{archivo}», pero no se pudo borrar la inserción " +
+                        "que quedó en el espacio modelo. Bórrala a mano.");
+                }
+            }
+
+            if (!ExisteBloque(nombre))
+            {
+                return null;
+            }
+
+            Notas.Add($"Cajetín «{nombre}» traído de: {archivo}");
+
+            return nombre;
+        }
+        catch (Exception ex)
+        {
+            Notas.Add($"No se pudo traer el cajetín de «{archivo}»: {ex.Message}");
+
+            return null;
+        }
+        finally
+        {
+            if (insUnits is not null) { PonerVariable("INSUNITS", insUnits.Value); }
+            if (lighting is not null) { PonerVariable("LIGHTINGUNITS", lighting.Value); }
+        }
+    }
+
+    private int? Variable(string nombre)
+    {
+        try
+        {
+            return AcadConnection.Retry<int?>(() => (int)_doc.GetVariable(nombre));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void PonerVariable(string nombre, int valor)
+    {
+        try
+        {
+            AcadConnection.Retry(() => _doc.SetVariable(nombre, valor));
+        }
+        catch (Exception)
+        {
+            // Si la variable no existe en esta versión, no pasa nada: lo único que se pierde es la
+            // protección contra el reescalado, y eso se ve en el dibujo.
+        }
+    }
+
+    /// <summary>La ruta completa del dibujo abierto, o vacío si nunca se ha guardado.</summary>
+    private string RutaDelDibujo()
+    {
+        try
+        {
+            return AcadConnection.Retry(() =>
+            {
+                string carpeta = _doc.Path;
+                string nombre = _doc.Name;
+
+                return carpeta.Length == 0
+                    ? string.Empty
+                    : System.IO.Path.Combine(carpeta, nombre);
+            });
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>La carpeta del dibujo abierto. Ahí es donde de verdad suele estar el cajetín.</summary>
+    private string CarpetaDelDibujo()
+    {
+        try
+        {
+            return AcadConnection.Retry(() => (string)_doc.Path);
+        }
+        catch (Exception)
+        {
+            return string.Empty;
+        }
+    }
+
     /// <summary>¿El dibujo ya tiene la definición de este bloque?</summary>
     public bool ExisteBloque(string nombre)
     {

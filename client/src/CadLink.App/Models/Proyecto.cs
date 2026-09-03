@@ -44,6 +44,16 @@ public sealed class ProyectoGuardado
 
     /// <summary>Cedula profesional del calculista. Solo el numero.</summary>
     public string Cedula { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Donde esta el archivo del cajetin: el .dwg o la carpeta de los formatos.
+    /// </summary>
+    /// <remarks>
+    /// Se guarda con el trabajo porque el cajetin viaja con el juego de planos, no con el programa:
+    /// dos obras de dos clientes distintos usan cajetines distintos. En blanco, se busca en la
+    /// carpeta del dibujo y en las de siempre.
+    /// </remarks>
+    public string CajetinRuta { get; set; } = string.Empty;
     public string Propietario { get; set; } = string.Empty;
     public string Ubicacion { get; set; } = string.Empty;
     public string Obra { get; set; } = string.Empty;

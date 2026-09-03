@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -196,36 +197,18 @@ public partial class MainWindow
             var dibujante = new SolapasDrawer(doc);
 
             // ---------- QUÉ BLOQUE ES EL CAJETÍN ----------
-            if (!dibujante.ExisteBloque(CajetinPorOmision))
+            // TRES INTENTOS, en este orden, y el archivo NO es el último recurso sino el tercero:
+            //
+            //   1. el bloque CAJETIN ya cargado en el dibujo
+            //   2. cualquier bloque del dibujo con los atributos de una solapa
+            //   3. el ARCHIVO del cajetín, buscado en el disco
+            //
+            // El disco va detrás de los dos primeros a propósito: si el dibujo YA tiene un cajetín,
+            // traer otro del archivo deja dos definiciones parecidas y la siguiente corrida no sabe
+            // cuál usar.
+            if (!ElegirCajetin(dibujante))
             {
-                var hallado = dibujante.BuscarCajetin(out var cuantos);
-
-                if (hallado is null)
-                {
-                    MessageBox.Show(
-                        $"El dibujo no tiene un bloque «{CajetinPorOmision}», y tampoco encontré " +
-                        "ningún bloque con los atributos de una solapa.\n\n" +
-                        "El cajetín tiene que ser un BLOQUE CON ATRIBUTOS dentro de este dibujo:\n\n" +
-                        "  1. Abre el archivo de tu cajetín\n" +
-                        "  2. Selecciónalo con sus atributos y usa BLOCK\n" +
-                        $"  3. Llámalo {CajetinPorOmision}\n" +
-                        "  4. Insértalo una vez en este dibujo (INSERT) y borra la inserción:\n" +
-                        "     la definición se queda cargada\n\n" +
-                        "Si los textos del cajetín son texto normal y no atributos, conviértelos " +
-                        "primero con ATTDEF o con TXT2ATT.",
-                        AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
-
-                    return;
-                }
-
-                dibujante.Cajetin = hallado;
-
-                SolapasResumenText.Text =
-                    $"Cajetín detectado: {hallado} ({cuantos} atributos).";
-            }
-            else
-            {
-                dibujante.Cajetin = CajetinPorOmision;
+                return;
             }
 
             // ---------- UN LAYOUT POR PLANO ----------
@@ -265,6 +248,159 @@ public partial class MainWindow
         finally
         {
             Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>
+    /// Decide qué bloque se va a usar de cajetín, y avisa con detalle si no hay ninguno.
+    /// </summary>
+    /// <returns><c>false</c> si no se encontró: quien llama tiene que parar.</returns>
+    /// <remarks>
+    /// El aviso de fallo dice <b>dónde se buscó</b>. La primera versión explicaba cómo hacer un
+    /// BLOCK a mano, que es una lección de AutoCAD que el dibujante no pidió; lo que necesita saber
+    /// es en qué carpetas se miró para poder apuntar a la buena.
+    /// </remarks>
+    private bool ElegirCajetin(SolapasDrawer dibujante)
+    {
+        // 1. El que ya está cargado con el nombre que este programa espera.
+        if (dibujante.ExisteBloque(CajetinPorOmision))
+        {
+            dibujante.Cajetin = CajetinPorOmision;
+
+            return true;
+        }
+
+        // 2. Cualquiera del dibujo que tenga atributos de solapa.
+        var enElDibujo = dibujante.BuscarCajetin(out var cuantos);
+
+        if (enElDibujo is not null)
+        {
+            dibujante.Cajetin = enElDibujo;
+
+            SolapasResumenText.Text = $"Cajetín detectado en el dibujo: {enElDibujo} " +
+                                      $"({cuantos} atributos).";
+
+            return true;
+        }
+
+        // 3. EL ARCHIVO, en el disco. Es lo que hacía la macro.
+        dibujante.RutaDelCajetin = CajetinRutaBox.Text.Trim();
+
+        foreach (var c in CarpetasDondeBuscarElCajetin())
+        {
+            dibujante.CarpetasExtra.Add(c);
+        }
+
+        var deArchivo = dibujante.ImportarCajetin(out var deDonde);
+
+        if (deArchivo is not null)
+        {
+            dibujante.Cajetin = deArchivo;
+
+            SolapasResumenText.Text = $"Cajetín traído de: {deDonde}";
+
+            return true;
+        }
+
+        var miradas = dibujante.RutasMiradas.Count == 0
+            ? "  (ninguna: no hay ruta capturada y el dibujo no se ha guardado)"
+            : string.Join("\n", dibujante.RutasMiradas.Select(r => "  • " + r));
+
+        MessageBox.Show(
+            "No encontré el cajetín.\n\n" +
+            "Busqué un bloque cargado en el dibujo, un bloque con atributos de solapa, y el " +
+            "archivo del cajetín en estas rutas:\n\n" + miradas + "\n\n" +
+            "Lo más rápido: escribe la ruta de tu cajetín en «Archivo del cajetín», arriba de este " +
+            "botón, o búscalo con «Examinar». Puedes apuntar al archivo .dwg o a la carpeta donde " +
+            "guardas tus formatos, y se guarda con el trabajo.\n\n" +
+            "Si el archivo existe pero no funciona, revisa que sus textos sean ATRIBUTOS y no texto " +
+            "normal: conviértelos con ATTDEF o con TXT2ATT.",
+            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Las carpetas de siempre, después de la capturada y la del dibujo.
+    /// </summary>
+    /// <remarks>
+    /// Son suposiciones, y por eso van al final: la ruta que el usuario escribe manda sobre
+    /// cualquiera de estas. Están para que la primera vez funcione sin capturar nada.
+    /// </remarks>
+    private static List<string> CarpetasDondeBuscarElCajetin()
+    {
+        var salida = new List<string>();
+
+        void Meter(string r)
+        {
+            if (r.Length > 0)
+            {
+                salida.Add(r);
+            }
+        }
+
+        try
+        {
+            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+            if (docs.Length > 0)
+            {
+                Meter(System.IO.Path.Combine(docs, "CadLink"));
+                Meter(System.IO.Path.Combine(docs, "CadLink", "Cajetines"));
+                Meter(docs);
+            }
+
+            // Junto al programa, que es donde caería un cajetín repartido con la instalación.
+            var app = AppContext.BaseDirectory;
+
+            if (app.Length > 0)
+            {
+                Meter(System.IO.Path.Combine(app, "Cajetines"));
+                Meter(app);
+            }
+        }
+        catch (Exception)
+        {
+            // Sin carpetas de respaldo, quedan la capturada y la del dibujo.
+        }
+
+        return salida;
+    }
+
+    /// <summary>Elige el archivo del cajetín con el diálogo de siempre.</summary>
+    private void OnExaminarCajetin(object sender, RoutedEventArgs e)
+    {
+        var dialogo = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Elige el archivo del cajetin",
+            Filter = "Dibujos de AutoCAD (*.dwg;*.dxf)|*.dwg;*.dxf|Todos los archivos (*.*)|*.*",
+            DefaultExt = ".dwg",
+        };
+
+        var actual = CajetinRutaBox.Text.Trim();
+
+        try
+        {
+            if (actual.Length > 0)
+            {
+                var carpeta = System.IO.Directory.Exists(actual)
+                    ? actual
+                    : System.IO.Path.GetDirectoryName(actual);
+
+                if (!string.IsNullOrEmpty(carpeta) && System.IO.Directory.Exists(carpeta))
+                {
+                    dialogo.InitialDirectory = carpeta;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Una ruta con caracteres imposibles no debe impedir abrir el diálogo.
+        }
+
+        if (dialogo.ShowDialog(this) == true)
+        {
+            CajetinRutaBox.Text = dialogo.FileName;
         }
     }
 

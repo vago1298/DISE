@@ -788,6 +788,225 @@ public static class Solapas
     }
 
     // ======================================================================
+    //  EL ARCHIVO DEL CAJETÍN
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  LA MACRO BUSCABA EL ARCHIVO EN EL DISCO, Y ESO NO ERA UN LUJO.
+    //
+    //  En el primer port se quitó, con el argumento de que el usuario podía insertar su
+    //  cajetín a mano una vez. Estaba mal: el dibujante NO abre el programa para hacer un
+    //  INSERT y aprenderse que la definición se queda cargada aunque borre la inserción.
+    //  Abre el programa para que le salgan las solapas. Un paso manual antes de cada
+    //  dibujo nuevo es un paso que se olvida, y cuando se olvida no sale ninguna solapa.
+    //
+    //  Así que vuelve, con una diferencia: la ruta se captura en la hoja y se guarda con el
+    //  trabajo, en lugar de vivir en cuatro constantes dentro del código.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Los nombres de archivo que se prueban dentro de una carpeta.</summary>
+    /// <remarks>
+    /// Cada despacho llama al suyo de una manera, así que se prueban los cuatro que se usan de
+    /// verdad. El orden importa: <c>CAJETIN</c> primero porque es el nombre del bloque que este
+    /// programa espera, así que si existe es casi seguro el bueno.
+    /// </remarks>
+    public static readonly string[] NombresDeArchivoProbables =
+    {
+        "CAJETIN", "SOLAPA", "FORMATO", "MEMBRETE",
+    };
+
+    /// <summary>Las extensiones de dibujo que AutoCAD sabe insertar como bloque.</summary>
+    public static readonly string[] ExtensionesDeDibujo = { ".dwg", ".dxf" };
+
+    /// <summary>
+    /// ¿Este archivo parece el del cajetín?
+    /// </summary>
+    /// <remarks>
+    /// Se compara <b>normalizado</b> y por <b>principio de palabra</b>, no por igualdad: en el disco
+    /// el archivo se llama <c>CAJETIN GIPC 2024.dwg</c>, <c>cajetin-arch-d.dwg</c> o
+    /// <c>Cajetín E.dwg</c>, y ninguno de los tres es igual a «CAJETIN».
+    /// </remarks>
+    public static bool ArchivoPareceCajetin(string? nombreDeArchivo)
+    {
+        var n = Normaliza(SinExtension(nombreDeArchivo));
+
+        if (n.Length == 0)
+        {
+            return false;
+        }
+
+        foreach (var probable in NombresDeArchivoProbables)
+        {
+            if (n.StartsWith(Normaliza(probable), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>¿La ruta acaba en una extensión de dibujo?</summary>
+    public static bool EsArchivoDeDibujo(string? ruta)
+    {
+        var r = (ruta ?? string.Empty).Trim();
+
+        foreach (var ext in ExtensionesDeDibujo)
+        {
+            if (r.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>El nombre del archivo sin su carpeta ni su extensión.</summary>
+    public static string SinExtension(string? ruta)
+    {
+        var r = (ruta ?? string.Empty).Trim();
+
+        var barra = r.LastIndexOfAny(new[] { '\\', '/' });
+
+        if (barra >= 0)
+        {
+            r = r.Substring(barra + 1);
+        }
+
+        var punto = r.LastIndexOf('.');
+
+        return punto > 0 ? r.Substring(0, punto) : r;
+    }
+
+    /// <summary>
+    /// El nombre que va a tener el bloque al insertar ese archivo.
+    /// </summary>
+    /// <remarks>
+    /// AutoCAD acepta una <b>ruta de archivo</b> donde va el nombre del bloque, y crea la definición
+    /// llamada como el archivo sin extensión. De ahí sale el nombre con el que después se busca:
+    /// insertar <c>C:\Planos\CAJETIN.dwg</c> deja un bloque <c>CAJETIN</c>.
+    /// </remarks>
+    public static string NombreDeBloqueDeArchivo(string? ruta) => Limpiar(SinExtension(ruta));
+
+    /// <summary>
+    /// Dos rutas son <b>el mismo archivo</b>.
+    /// </summary>
+    /// <remarks>
+    /// Hace falta para el caso que la macro avisaba con veinte renglones: si el dibujo abierto
+    /// <b>es</b> el archivo del cajetín, insertarlo sería insertar un dibujo dentro de sí mismo.
+    /// AutoCAD se niega, pero el mensaje que da no dice eso, así que se detecta antes.
+    /// </remarks>
+    public static bool MismaRuta(string? a, string? b)
+    {
+        var x = (a ?? string.Empty).Trim().Replace('/', '\\').TrimEnd('\\');
+        var y = (b ?? string.Empty).Trim().Replace('/', '\\').TrimEnd('\\');
+
+        return x.Length > 0 && string.Equals(x, y, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Las rutas donde buscar el cajetín, <b>en orden y sin repetir</b>.
+    /// </summary>
+    /// <param name="configurada">
+    /// Lo que se capturó en la hoja. Va <b>primero</b>: si alguien se molestó en escribirla, manda
+    /// sobre cualquier suposición. Puede ser un archivo o una carpeta.
+    /// </param>
+    /// <param name="carpetaDelDibujo">
+    /// La del dibujo abierto. Va segunda porque es donde de verdad suele estar: el cajetín viaja con
+    /// el juego de planos, no con el programa.
+    /// </param>
+    /// <param name="otras">Las de siempre —Documentos, la del programa—, al final.</param>
+    /// <remarks>
+    /// Sin repetir y respetando el orden, que no es lo mismo que un conjunto: la ruta configurada
+    /// puede coincidir con la del dibujo, y probarla dos veces duplicaría el aviso de error.
+    /// </remarks>
+    public static List<string> RutasAProbar(
+        string? configurada, string? carpetaDelDibujo, IEnumerable<string>? otras = null)
+    {
+        var salida = new List<string>();
+        var vistas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Meter(string? r)
+        {
+            var t = (r ?? string.Empty).Trim().TrimEnd('\\', '/');
+
+            if (t.Length > 0 && vistas.Add(t))
+            {
+                salida.Add(t);
+            }
+        }
+
+        Meter(configurada);
+        Meter(carpetaDelDibujo);
+
+        if (otras is not null)
+        {
+            foreach (var o in otras)
+            {
+                Meter(o);
+            }
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// De los archivos de una carpeta, los que parecen el cajetín, <b>los mejores primero</b>.
+    /// </summary>
+    /// <remarks>
+    /// Se ordena por el <see cref="NombresDeArchivoProbables">orden de los nombres probables</see> y,
+    /// dentro de cada uno, por el nombre más corto: entre <c>CAJETIN.dwg</c> y
+    /// <c>CAJETIN viejo 2019.dwg</c>, el corto es el que se usa todos los días.
+    /// </remarks>
+    public static List<string> CajetinesDeLaCarpeta(IEnumerable<string> archivos)
+    {
+        var candidatos = new List<(int Orden, int Largo, string Ruta)>();
+
+        foreach (var a in archivos)
+        {
+            if (!EsArchivoDeDibujo(a) || !ArchivoPareceCajetin(a))
+            {
+                continue;
+            }
+
+            var n = Normaliza(SinExtension(a));
+            var orden = NombresDeArchivoProbables.Length;
+
+            for (var i = 0; i < NombresDeArchivoProbables.Length; i++)
+            {
+                if (n.StartsWith(Normaliza(NombresDeArchivoProbables[i]), StringComparison.Ordinal))
+                {
+                    orden = i;
+                    break;
+                }
+            }
+
+            candidatos.Add((orden, n.Length, a));
+        }
+
+        candidatos.Sort((p, q) =>
+        {
+            var k = p.Orden.CompareTo(q.Orden);
+
+            if (k != 0) { return k; }
+
+            k = p.Largo.CompareTo(q.Largo);
+
+            return k != 0 ? k : string.Compare(p.Ruta, q.Ruta, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var salida = new List<string>();
+
+        foreach (var c in candidatos)
+        {
+            salida.Add(c.Ruta);
+        }
+
+        return salida;
+    }
+
+    // ======================================================================
     //  ENCAJAR EL CAJETÍN EN LA HOJA
     // ======================================================================
 
