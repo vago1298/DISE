@@ -848,13 +848,33 @@ check("el cajetin se busca por sus atributos si no se llama CAJETIN",
 #  EN lay.Block Y NO EN _doc.PaperSpace: el segundo depende de cual layout este activo en
 #  AutoCAD, asi que el cajetin podia acabar en el layout anterior.
 check("se dibuja en lay.Block, no en el espacio papel activo",
-      "lay.Block.InsertBlock(" in DRW
+      "((dynamic)lay).Block.InsertBlock(" in DRW
       and "_doc.PaperSpace" not in DRW)
 
 check("el cajetin se mide, se escala sin deformar y se centra",
       "Solapas.EscalaParaCaber(" in DRW
-      and "br.ScaleEntity(" in DRW
+      and ".ScaleEntity(" in DRW
       and "GetBoundingBox" in DRW)
+
+#  ---- Y NINGUN PARAMETRO ES 'dynamic' ----
+#  Un argumento dynamic vuelve DINAMICA la llamada entera, asi que el resultado deja de
+#  tener el tipo declarado. Tres metodos de este archivo devolvian una tupla y recibian
+#  un dynamic, y deconstruirla no compilaba -CS8133-. El dynamic se queda DENTRO.
+check("las fronteras van tipadas: el dynamic se queda dentro de cada metodo",
+      "Caja(object ent)" in DRW
+      and "AreaImprimible(object lay)" in DRW
+      and "MedidaDelPapel(object lay)" in DRW
+      and "object? lay = CrearLayout(nombre);" in DRW
+      and "object? br = Insertar(lay, cx, cy);" in DRW)
+
+#  Y lo vigila verificar_usings.py, que es quien tenia que haberlo cazado antes.
+USINGS = fuente("tools", "verificar_usings.py")
+
+check("y verificar_usings.py lo comprueba, en TODO el cliente y no solo en la app",
+      "RE_TUPLA_CON_DYNAMIC" in USINGS
+      and "def revisar_parametros_dynamic(" in USINGS
+      and "for ruta in cliente:" in USINGS
+      and "revisar_parametros_dynamic(ruta, fh.read())" in USINGS)
 
 check("y los atributos no alineados a la izquierda se recolocan",
       "(int)att.Alignment != 0" in DRW

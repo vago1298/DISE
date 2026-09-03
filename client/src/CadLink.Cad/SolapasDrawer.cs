@@ -140,7 +140,13 @@ public sealed class SolapasDrawer
 
         var nombre = Solapas.NombreLibre(Solapas.NombreDeLayout(s), NombresDeLayout(), Sobrescribir);
 
-        dynamic? lay = CrearLayout(nombre);
+        // OBJECT Y NO DYNAMIC, y esto no es estilo. Un argumento dynamic vuelve DINÁMICA LA
+        // LLAMADA ENTERA, así que el resultado deja de ser el tipo declarado y pasa a ser dynamic:
+        // AreaImprimible ya no devolvía su tupla y «var (x0, y0, x1, y1) = area» no compilaba
+        // —CS8133, no se pueden deconstruir los objetos dinámicos—. El dynamic se queda DENTRO de
+        // cada método, que es donde hace falta, y las fronteras van tipadas. Es lo que ya hacían
+        // los otros dibujantes de este proyecto.
+        object? lay = CrearLayout(nombre);
 
         if (lay is null)
         {
@@ -171,7 +177,7 @@ public sealed class SolapasDrawer
         // Se dibuja en lay.Block —el espacio papel de ESTE layout— y no en doc.PaperSpace: el
         // segundo depende de cuál esté activo en AutoCAD, así que el cajetín podía acabar en el
         // layout anterior.
-        dynamic? br = Insertar(lay, cx, cy);
+        object? br = Insertar(lay, cx, cy);
 
         var nAtt = 0;
         var escala = 1.0;
@@ -211,7 +217,7 @@ public sealed class SolapasDrawer
     /// y el plano entero sale descuadrado.
     /// </para>
     /// </remarks>
-    private string AsignarPapel(dynamic lay, SolapaCad s, double w, double h)
+    private string AsignarPapel(object lay, SolapaCad s, double w, double h)
     {
         var porConfig = AplicarConfigDePagina(lay, s);
 
@@ -238,19 +244,21 @@ public sealed class SolapasDrawer
         {
             AcadConnection.Retry(() =>
             {
-                lay.CanonicalMediaName = p.Nombre;
-                lay.PaperUnits = 1;              // acMillimeters
-                lay.PlotType = 1;                // acExtents
-                lay.UseStandardScale = false;
-                lay.SetCustomScale(1, 1);
-                lay.CenterPlot = true;
+                dynamic l = lay;
+
+                l.CanonicalMediaName = p.Nombre;
+                l.PaperUnits = 1;                // acMillimeters
+                l.PlotType = 1;                  // acExtents
+                l.UseStandardScale = false;
+                l.SetCustomScale(1, 1);
+                l.CenterPlot = true;
 
                 if (p.Rotacion >= 0)
                 {
-                    lay.PlotRotation = p.Rotacion;
+                    l.PlotRotation = p.Rotacion;
                 }
 
-                lay.RefreshPlotDeviceInfo();
+                l.RefreshPlotDeviceInfo();
             });
         }
         catch (Exception ex)
@@ -271,12 +279,14 @@ public sealed class SolapasDrawer
         return Solapas.NombreCortoDelPapel(p.Nombre);
     }
 
-    private string AplicarConfigDePagina(dynamic lay, SolapaCad s)
+    private string AplicarConfigDePagina(object lay, SolapaCad s)
     {
         try
         {
             return AcadConnection.Retry(() =>
             {
+                dynamic l = lay;
+
                 foreach (dynamic cfg in _doc.PlotConfigurations)
                 {
                     if (!Solapas.ConfigPaginaSirve(s, (string)cfg.Name))
@@ -284,7 +294,7 @@ public sealed class SolapasDrawer
                         continue;
                     }
 
-                    lay.CopyFrom(cfg);
+                    l.CopyFrom(cfg);
 
                     return (string)cfg.Name;
                 }
@@ -298,7 +308,7 @@ public sealed class SolapasDrawer
         }
     }
 
-    private bool PapelDelLayoutCoincide(dynamic lay, double w, double h)
+    private bool PapelDelLayoutCoincide(object lay, double w, double h)
     {
         var papel = MedidaDelPapel(lay);
 
@@ -306,7 +316,7 @@ public sealed class SolapasDrawer
     }
 
     /// <summary>La medida del papel del layout, en mm.</summary>
-    private (double Ancho, double Alto)? MedidaDelPapel(dynamic lay)
+    private (double Ancho, double Alto)? MedidaDelPapel(object lay)
     {
         try
         {
@@ -329,7 +339,7 @@ public sealed class SolapasDrawer
 
                 // 0 = pulgadas, 1 = mm. Sin convertir, una plantilla en pulgadas hace que todas las
                 // comparaciones de medida fallen y ningún papel «coincide».
-                var k = (int)lay.PaperUnits == 0 ? 25.4 : 1.0;
+                var k = (int)((dynamic)lay).PaperUnits == 0 ? 25.4 : 1.0;
 
                 return (pw * k, ph * k);
             });
@@ -390,7 +400,7 @@ public sealed class SolapasDrawer
         }
     }
 
-    private List<string> Papeles(dynamic lay)
+    private List<string> Papeles(object lay)
     {
         if (_papeles is not null)
         {
@@ -403,8 +413,10 @@ public sealed class SolapasDrawer
         {
             AcadConnection.Retry(() =>
             {
-                lay.ConfigName = Dispositivo;
-                lay.RefreshPlotDeviceInfo();
+                dynamic l = lay;
+
+                l.ConfigName = Dispositivo;
+                l.RefreshPlotDeviceInfo();
 
                 salida.Clear();
 
@@ -416,7 +428,7 @@ public sealed class SolapasDrawer
 
                 try
                 {
-                    nombres = lay.GetCanonicalMediaNames();
+                    nombres = l.GetCanonicalMediaNames();
                 }
                 catch (Exception)
                 {
@@ -431,7 +443,7 @@ public sealed class SolapasDrawer
 
                     try
                     {
-                        ((object)lay).GetType().InvokeMember(
+                        lay.GetType().InvokeMember(
                             "GetCanonicalMediaNames",
                             System.Reflection.BindingFlags.InvokeMethod,
                             binder: null, target: lay, args: args,
@@ -493,7 +505,7 @@ public sealed class SolapasDrawer
     /// depende de activar el layout ni de regenerar el dibujo.
     /// </para>
     /// </remarks>
-    private (double X0, double Y0, double X1, double Y1)? AreaImprimible(dynamic lay)
+    private (double X0, double Y0, double X1, double Y1)? AreaImprimible(object lay)
     {
         try
         {
@@ -524,13 +536,15 @@ public sealed class SolapasDrawer
                 var mDer = m.Count > 3 ? m[3] : 0;
                 var mSup = m.Count > 4 ? m[4] : 0;
 
-                var k = (int)lay.PaperUnits == 0 ? 25.4 : 1.0;
+                dynamic l = lay;
+
+                var k = (int)l.PaperUnits == 0 ? 25.4 : 1.0;
 
                 var w = (pw - (mIzq + mDer)) * k;
                 var h = (ph - (mInf + mSup)) * k;
 
                 // La hoja girada intercambia los lados del área imprimible.
-                var rot = (int)lay.PlotRotation;
+                var rot = (int)l.PlotRotation;
 
                 if (rot == 1 || rot == 3)
                 {
@@ -613,11 +627,11 @@ public sealed class SolapasDrawer
         return salida;
     }
 
-    private dynamic? CrearLayout(string nombre)
+    private object? CrearLayout(string nombre)
     {
         try
         {
-            return AcadConnection.Retry<dynamic?>(() =>
+            return AcadConnection.Retry<object?>(() =>
             {
                 if (Sobrescribir)
                 {
@@ -631,7 +645,7 @@ public sealed class SolapasDrawer
                     }
                 }
 
-                return _doc.Layouts.Add(nombre);
+                return (object?)_doc.Layouts.Add(nombre);
             });
         }
         catch (Exception ex)
@@ -642,12 +656,13 @@ public sealed class SolapasDrawer
         }
     }
 
-    private dynamic? Insertar(dynamic lay, double x, double y)
+    private object? Insertar(object lay, double x, double y)
     {
         try
         {
-            return AcadConnection.Retry<dynamic?>(() =>
-                lay.Block.InsertBlock(new[] { x, y, 0.0 }, Cajetin, 1.0, 1.0, 1.0, 0.0));
+            return AcadConnection.Retry<object?>(() =>
+                (object?)((dynamic)lay).Block.InsertBlock(
+                    new[] { x, y, 0.0 }, Cajetin, 1.0, 1.0, 1.0, 0.0));
         }
         catch (Exception ex)
         {
@@ -666,12 +681,14 @@ public sealed class SolapasDrawer
     /// del dibujo— ni para qué tamaño de hoja se dibujó originalmente. Es lo que la macro llama
     /// «una sola ruta, sin suposiciones».
     /// </remarks>
-    private double EncajarYCentrar(dynamic br, double cx, double cy, double w, double h)
+    private double EncajarYCentrar(object br, double cx, double cy, double w, double h)
     {
         try
         {
             return AcadConnection.Retry(() =>
             {
+                dynamic b = br;
+
                 var caja = Caja(br);
 
                 if (caja is null)
@@ -687,7 +704,7 @@ public sealed class SolapasDrawer
                 {
                     // La base del escalado es el centro de la propia caja, así que el bloque no se
                     // mueve de sitio al escalar y el centrado de abajo es una sola resta.
-                    br.ScaleEntity(
+                    b.ScaleEntity(
                         new[] { (bx0 + bx1) / 2, (by0 + by1) / 2, 0.0 }, s);
 
                     caja = Caja(br);
@@ -700,7 +717,7 @@ public sealed class SolapasDrawer
                     (bx0, by0, bx1, by1) = caja.Value;
                 }
 
-                br.Move(
+                b.Move(
                     new[] { 0.0, 0.0, 0.0 },
                     new[] { cx - ((bx0 + bx1) / 2), cy - ((by0 + by1) / 2), 0.0 });
 
@@ -715,7 +732,7 @@ public sealed class SolapasDrawer
         }
     }
 
-    private static (double X0, double Y0, double X1, double Y1)? Caja(dynamic ent)
+    private static (double X0, double Y0, double X1, double Y1)? Caja(object ent)
     {
         try
         {
@@ -724,7 +741,7 @@ public sealed class SolapasDrawer
 
             var args = new object?[] { min, max };
 
-            ((object)ent).GetType().InvokeMember(
+            ent.GetType().InvokeMember(
                 "GetBoundingBox",
                 System.Reflection.BindingFlags.InvokeMethod,
                 binder: null, target: ent, args: args,
@@ -763,7 +780,7 @@ public sealed class SolapasDrawer
     /// recuadro. Reasignar el punto lo obliga.
     /// </para>
     /// </remarks>
-    private int RellenarAtributos(dynamic br, SolapaCad s)
+    private int RellenarAtributos(object br, SolapaCad s)
     {
         var n = 0;
 
@@ -771,14 +788,16 @@ public sealed class SolapasDrawer
         {
             AcadConnection.Retry(() =>
             {
+                dynamic b = br;
+
                 n = 0;
 
-                if (!(bool)br.HasAttributes)
+                if (!(bool)b.HasAttributes)
                 {
                     return;
                 }
 
-                foreach (dynamic att in br.GetAttributes())
+                foreach (dynamic att in b.GetAttributes())
                 {
                     var texto = Solapas.TextoDeAtributo(s, (string)att.TagString);
 
