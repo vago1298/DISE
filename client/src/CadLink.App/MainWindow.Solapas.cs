@@ -318,9 +318,85 @@ public partial class MainWindow
             return true;
         }
 
+        // 4. EL CAJETIN SUELTO EN EL ESPACIO MODELO.
+        //    Un archivo de cajetin normalmente NO tiene ningun bloque dentro: tiene el recuadro
+        //    dibujado y sus atributos sueltos, porque para eso sirve -se inserta el archivo entero y
+        //    AutoCAD hace el bloque solo-. Asi que cuando el archivo del cajetin ES el dibujo
+        //    abierto, no se puede insertar en si mismo Y dentro no hay ningun bloque: los tres
+        //    pasos de arriba fallan con el cajetin delante de los ojos.
+        if (FormarCajetinDelDibujo(dibujante))
+        {
+            return true;
+        }
+
         AvisarQueNoHayCajetin(dibujante);
 
         return false;
+    }
+
+    /// <summary>
+    /// Forma el bloque con el cajetín que está <b>suelto</b> en el espacio modelo, preguntando.
+    /// </summary>
+    /// <remarks>
+    /// <b>Se pregunta antes</b> porque esto modifica el dibujo del usuario: le agrega una definición
+    /// de bloque. No borra nada —los originales se quedan— pero cambiarle el archivo sin avisar no se
+    /// hace, y menos cuando el archivo es su plantilla de cajetín.
+    /// </remarks>
+    private bool FormarCajetinDelDibujo(SolapasDrawer dibujante)
+    {
+        var conocidos = dibujante.AtributosSueltos(out var tags);
+
+        if (tags.Count == 0)
+        {
+            return false;
+        }
+
+        if (conocidos == 0)
+        {
+            // TIENE ATRIBUTOS SUELTOS, PERO CON OTROS NOMBRES. Formar el bloque no serviría de nada:
+            // saldrían las solapas en blanco. Se dice cuáles hay y cuáles harían falta.
+            MessageBox.Show(
+                $"En el espacio modelo hay {tags.Count} atributos sueltos, que parecen tu cajetin, " +
+                "pero ninguno se llama como los que esta solapa llena.\n\n" +
+                "Los que tiene:\n  " + string.Join(", ", tags) + "\n\n" +
+                "Los que necesita:\n  " + string.Join(", ", Solapas.TagsConocidos) + "\n\n" +
+                "Renombra los tags con ATTDEF -o con el editor de atributos- para que coincidan, y " +
+                "vuelve a generar.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+
+            return false;
+        }
+
+        var donde = dibujante.EsAutorreferencia
+            ? "Tienes abierto el archivo de tu cajetin, asi que no se puede insertar en si mismo.\n\n"
+            : "El dibujo tiene un cajetin suelto en el espacio modelo, sin blocar.\n\n";
+
+        var r = MessageBox.Show(
+            donde +
+            $"Encontre {conocidos} atributos de solapa sueltos en el espacio modelo. Puedo formar " +
+            "con ellos un bloque llamado CAJETIN y usarlo para las solapas.\n\n" +
+            "No se borra nada: lo que hay en el espacio modelo se queda donde esta.\n\n" +
+            "¿Lo formo?",
+            AppInfo.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (r != MessageBoxResult.Yes)
+        {
+            return false;
+        }
+
+        var nombre = dibujante.CrearCajetinDelEspacioModelo(Solapas.NombresProbables[0]);
+
+        if (nombre is null)
+        {
+            return false;
+        }
+
+        dibujante.Cajetin = nombre;
+        dibujante.RevisarAtributos(nombre);
+
+        SolapasResumenText.Text = $"Cajetin formado del espacio modelo: {nombre}";
+
+        return true;
     }
 
     /// <summary>
@@ -357,6 +433,20 @@ public partial class MainWindow
             texto.AppendLine();
         }
 
+        if (dibujante.EsAutorreferencia)
+        {
+            texto.AppendLine("LO QUE PASA ES ESTO:");
+            texto.AppendLine();
+            texto.AppendLine(
+                "  El archivo del cajetin que apuntaste ES el dibujo que tienes abierto en");
+            texto.AppendLine(
+                "  AutoCAD, y un dibujo no se puede insertar dentro de si mismo.");
+            texto.AppendLine();
+            texto.AppendLine("  Abre TU PLANO -o un dibujo nuevo- y vuelve a generar las solapas.");
+            texto.AppendLine("  El cajetin se trae solo desde el archivo, sin que tengas que abrirlo.");
+            texto.AppendLine();
+        }
+
         texto.AppendLine("Busque, en este orden:");
         texto.AppendLine($"  1. un bloque del dibujo llamado {NombresDeCajetin}");
         texto.AppendLine("  2. cualquier bloque del dibujo con atributos de solapa");
@@ -374,6 +464,7 @@ public partial class MainWindow
             }
         }
 
+        texto.AppendLine("  4. un cajetin suelto en el espacio modelo, sin blocar");
         texto.AppendLine();
         texto.AppendLine(
             "Si tu cajetin ya esta en el dibujo pero con otro nombre, renombralo con RENAME a uno " +

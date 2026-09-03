@@ -1134,15 +1134,9 @@ check("el bloque que entro se DESCUBRE comparando la tabla de antes y de despues
 
 #  Y el archivo trae TODA su tabla de bloques, no solo su espacio modelo: si el cajetin de
 #  verdad es un bloque de dentro del archivo, tambien acaba de entrar.
-check("y si el archivo trajo un bloque mejor, se usa ese",
-      "var porNombre = BuscarCajetinPorNombre();" in DRW
-      and "CuantosAtributos(porNombre) > CuantosAtributos(nombre)" in DRW)
+check("el archivo trae toda su tabla de bloques, no solo su espacio modelo",
+      "EL ARCHIVO TRAE TODA SU TABLA DE BLOQUES" in DRW)
 
-BARRA = chr(92)
-
-check("se prueban las dos formas de la ruta, con barras de Windows y normales",
-      "private static List<string> FormasDeLaRuta(" in DRW
-      and f"archivo.Replace('{BARRA}{BARRA}', '/')" in DRW)
 
 #  ---- EL DIAGNOSTICO QUE FALTABA ----
 #  Un cajetin con atributos llamados OBRA y UBICACIÓN en lugar de PROYECTO y UBICACION se
@@ -1189,9 +1183,119 @@ check("y apaga INSUNITS para que AutoCAD no lo reescale, restaurandolo despues",
       and 'PonerVariable("INSUNITS", insUnits.Value)' in DRW
       and 'PonerVariable("LIGHTINGUNITS", lighting.Value)' in DRW)
 
-check("se detecta que el archivo es el dibujo abierto, antes de intentar insertarlo",
+#  ---- LA AUTORREFERENCIA: EL ARCHIVO ES EL DIBUJO ABIERTO ----
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  ES LO QUE LE PASABA AL USUARIO, Y LA COMPARACION DE RUTAS NO LO CAZO.
+#
+#  Tenia su SOLAPA.dwg abierto en AutoCAD y apuntado como archivo del cajetin. AutoCAD
+#  contesto «Self reference» cuatro veces -dos rutas x dos formas- y el programa dijo «no
+#  encontre el cajetin».
+#
+#  La comparacion de rutas fallo: con OneDrive, con las rutas cortas 8.3 y con las
+#  unidades de red, Document.Path y lo que el usuario escribio pueden ser dos textos
+#  distintos del MISMO archivo. Asi que ahora hay tres redes: la ruta completa, el nombre
+#  del archivo, y sobre todo el mensaje de AutoCAD, que es quien tiene la palabra final.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  «Self reference» NO SIGNIFICA LO QUE CREI. Mi primer diagnostico fue que el archivo era
+#  el dibujo abierto; el usuario aclaro que no, que su solapa esta en su propio archivo.
+#
+#  Significa que el archivo CONTIENE UN BLOQUE CON SU MISMO NOMBRE: SOLAPA.dwg trae dentro
+#  el bloque SOLAPA, asi que crear un bloque «SOLAPA» a partir de ese archivo daria un
+#  bloque que se refiere a si mismo. Es lo NORMAL en un cajetin bien hecho, o sea que el
+#  caso comun era justo el que fallaba.
+#
+#  La salida es no pedirle ese nombre: se copia el archivo a uno temporal con un nombre que
+#  no choca, y se inserta ESE. AutoCAD mete en la tabla de bloques todos los del archivo,
+#  incluido el SOLAPA de verdad con sus atributos.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("«Self reference» se interpreta bien: el archivo trae un bloque de su mismo nombre",
+      "trae dentro un bloque con su " in DRW
+      and "mismo nombre" in DRW
+      and "Se prueba con una copia temporal." in DRW)
+
+check("y la salida es insertar una COPIA TEMPORAL con otro nombre",
+      "private IEnumerable<(string Ruta, string? Temporal)> FormasDeInsertar(" in DRW
+      and 'var nombre = "CADLINK_CAJETIN_" +' in DRW
+      and "DateTime.Now.Ticks" in DRW
+      and "System.IO.File.Copy(archivo, destino, overwrite: true)" in DRW)
+
+check("el temporal se borra siempre, haya funcionado o no",
+      DRW.count("BorrarTemporal(temporal)") >= 2
+      and "private void BorrarTemporal(string? temporal)" in DRW)
+
+#  Y el envoltorio con el nombre del temporal se quita: solo envuelve al bloque de verdad,
+#  y dejarlo llena la lista de bloques del usuario de basura.
+check("y el bloque envoltorio del temporal tambien",
+      "private void BorrarBloque(string nombre, string noBorrarEste)" in DRW
+      and "BorrarBloque(Solapas.NombreDeBloqueDeArchivo(temporal), nombre)" in DRW)
+
+#  EL BLOQUE QUE SE USA ES EL QUE TIENE ATRIBUTOS, no el que lleva el nombre del archivo:
+#  despues de importar entran varios y el del nombre del archivo suele ser el envoltorio.
+check("se usa el bloque que tiene atributos, no el que lleva el nombre del archivo",
+      "private string? BuscarCajetinConAtributos()" in DRW
+      and "BuscarCajetinConAtributos()" in DRW
+      and "?? DescubrirBloqueNuevo(antes, esperado)" in DRW)
+
+check("y el archivo se busca solo, sin que el usuario abra nada",
+      "public bool EsAutorreferencia { get; private set; }" in DRW
+      and "public string? ImportarCajetin(" in DRW)
+
+#  Y LA COMPARACION ES SOLO POR RUTA COMPLETA. Compare tambien por nombre de archivo, para
+#  cubrir OneDrive y las rutas cortas, y lo quite: un plano que se llame igual que el
+#  cajetin pero este en otra carpeta daria un falso positivo, y el castigo de un falso
+#  positivo es «no encuentro el cajetin», que es el problema que se esta arreglando.
+check("la autorreferencia se comprueba por ruta completa, sin falsos positivos por nombre",
       "Solapas.MismaRuta(archivo, RutaDelDibujo())" in DRW
-      and "no se puede insertar " in DRW)
+      and "no se aprieta" in DRW)
+
+
+
+#  ---- EL CUARTO INTENTO: EL CAJETIN SUELTO EN EL ESPACIO MODELO ----
+#  Un archivo de cajetin normalmente NO tiene ningun bloque dentro: tiene el recuadro
+#  dibujado y sus atributos SUELTOS, porque para eso sirve -se inserta el archivo entero y
+#  AutoCAD hace el bloque solo-. Asi que con el archivo del cajetin abierto, los tres
+#  pasos anteriores fallan con el cajetin delante de los ojos.
+check("cuarto intento: formar el bloque con el espacio modelo",
+      "public int AtributosSueltos(out List<string> todosLosTags)" in DRW
+      and "public string? CrearCajetinDelEspacioModelo(" in DRW
+      and "private bool FormarCajetinDelDibujo(SolapasDrawer dibujante)" in APP
+      and APP.index("dibujante.ImportarCajetin(out var deDonde)")
+          < APP.index("FormarCajetinDelDibujo(dibujante)"))
+
+#  NO SE BORRA NADA. Es el dibujo del usuario: dejarle el espacio modelo vacio para
+#  ahorrar una copia seria cambiarle su archivo por un atajo del programa.
+check("y no se borra nada del espacio modelo: solo se copia",
+      "Los originales no se tocaron." in DRW
+      and "_doc.CopyObjects(arr, bloque)" in DRW
+      # Y por AcadArreglos, que es quien resuelve el tipo del SAFEARRAY.
+      and "AcadArreglos.Llamar(" in DRW)
+
+#  Y SE PREGUNTA ANTES, porque agrega una definicion de bloque al dibujo del usuario.
+check("se pregunta antes de tocar el dibujo",
+      "MessageBoxButton.YesNo" in APP
+      and "r != MessageBoxResult.Yes" in APP
+      and "No se borra nada" in APP)
+
+#  Si los atributos sueltos tienen OTROS nombres, formar el bloque no serviria de nada:
+#  saldrian las solapas en blanco. Se dice cuales hay y cuales harian falta.
+check("con atributos sueltos de otro nombre no se forma el bloque, se explica",
+      "atributos sueltos, que parecen tu cajetin" in APP
+      and "Los que tiene:" in APP
+      and "Los que necesita:" in APP)
+
+#  ---- Y EL AVISO EXPLICA EL MALENTENDIDO DEL FLUJO ----
+#  «No encontre el cajetin» es la respuesta equivocada a «tienes abierto el archivo del
+#  cajetin en lugar de tu plano». No es un error del usuario, es un malentendido, y la
+#  macro lo avisaba con veinte renglones.
+check("si es autorreferencia, el aviso explica el flujo en lugar de listar rutas",
+      "if (dibujante.EsAutorreferencia)" in APP
+      and "LO QUE PASA ES ESTO:" in APP
+      and "Abre TU PLANO" in APP
+      and "sin que tengas que abrirlo" in APP)
+
+check("y el aviso lista los CUATRO intentos, no tres",
+      "4. un cajetin suelto en el espacio modelo, sin blocar" in APP)
 
 #  Y EL AVISO DICE DONDE SE BUSCO. La primera version explicaba como hacer un BLOCK a
 #  mano, que es una leccion de AutoCAD que el dibujante no pidio: lo que necesita saber
@@ -1206,6 +1310,39 @@ check("la ruta se captura en la hoja y se guarda con el trabajo",
       and "CajetinRutaBox.Text.Trim()" in APP
       and "private void OnExaminarCajetin(" in APP)
 
+
+print("\n" + "=" * 78)
+print("Y LO QUE LA APLICACION LE PIDE AL DIBUJANTE, EXISTE")
+print("=" * 78)
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  EDITANDO SolapasDrawer CON UN RECORTE DE TEXTO ME LLEVE POR DELANTE CATORCE METODOS.
+#
+#  Y ninguna de las cinco herramientas dijo nada: el balance de llaves seguia bien, los
+#  usings tambien, y la comprobacion de miembros de verificar_usings.py solo caza TYPOS
+#  -pide que el nombre se PAREZCA a uno que existe- asi que un metodo que simplemente no
+#  esta se le escapa.
+#
+#  Intente cazarlo en general y no salio -ver la nota 6 de verificar_usings.py: records
+#  con tipos tupla, clases parciales, el mismo nombre de variable para dos tipos-. Aqui
+#  si se puede, porque los DOS archivos se conocen: no hay que adivinar de que tipo es
+#  'dibujante'.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+usados = sorted(set(re.findall(r"dibujante\.(\w+)", APP)))
+
+#  Se busca la DECLARACION: el modificador de acceso, cualquier cosa, y el nombre. Asi un
+#  metodo que solo se llame a si mismo desde dentro no cuenta como declarado.
+faltan = [u for u in usados
+          if not re.search(r"\b(?:public|private|protected|internal)[^\n]*\b" + u + r"\b", DRW)]
+
+check(f"los {len(usados)} miembros que la hoja le pide al dibujante existen",
+      not faltan,
+      "faltan: " + ", ".join(faltan))
+
+#  Y al reves: que la lista no este vacia, o esta comprobacion no comprueba nada. Es el
+#  mismo cuidado que la del verde falso de verificar_usings.py.
+check("y la lista no esta vacia, o esto no comprobaria nada",
+      len(usados) >= 10, f"{len(usados)} miembros")
 
 print("\n" + "=" * 78)
 if fallos:

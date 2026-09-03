@@ -537,6 +537,37 @@ def revisar_parametros_dynamic(ruta, codigo):
             "'dynamic x = parametro;' dentro del metodo.")
 
 
+# ----------------------------------------------------------------------
+#  6. LO QUE SE INTENTO AQUI Y NO SE PUDO
+# ----------------------------------------------------------------------
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  UN MIEMBRO QUE FALTA NO SE PUEDE CAZAR EN GENERAL SIN UN COMPILADOR.
+#
+#  La comprobacion 4 solo caza TYPOS -pide ocho caracteres de principio comun con un
+#  miembro que si existe- y eso deja pasar el caso contrario: un miembro que no se parece
+#  a nada porque simplemente NO ESTA. Paso de verdad: editando SolapasDrawer con un
+#  recorte de texto me lleve por delante catorce metodos y ninguna herramienta dijo nada.
+#  El balance de llaves seguia bien y los usings tambien.
+#
+#  Intente cazarlo aqui, y no salio. Se apunta lo aprendido para que nadie lo repita:
+#
+#    - Por 'var x = new Tipo(...)' el tipo se conoce, pero enumerar sus miembros exige
+#      parsear el archivo. Los RECORDS declaran los suyos en la lista posicional del
+#      encabezado, que puede llevar tipos tupla -'(double X, double Y) A'- y contar
+#      parentesis a mano da avisos falsos: ocho seguidos en PanoDeLosa.
+#    - Descartando los records quedan las CLASES PARCIALES, repartidas en varios
+#      archivos, y atribuir cada miembro a su clase sin analisis de ambitos vuelve a
+#      fallar: otros ocho, en cuatro dibujantes que compilan perfectamente.
+#    - Y el mismo nombre de variable -'lado', 'dibujante'- es de tipos distintos en
+#      metodos distintos del mismo archivo.
+#
+#  Un verificador que avisa de lo que esta bien se deja de leer, asi que la comprobacion
+#  general se retiro. La version ESTRECHA -solo el par SolapasDrawer / MainWindow.Solapas,
+#  donde los dos archivos se conocen- vive en tools/verificar_solapas.py y si caza el
+#  defecto. Lo mismo se puede hacer para otro par el dia que haga falta.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+
 def main():
     if not os.path.isdir(APP):
         print(f"No encuentro {APP}")

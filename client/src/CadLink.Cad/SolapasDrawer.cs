@@ -129,6 +129,16 @@ public sealed class SolapasDrawer
     public List<string> RutasMiradas { get; } = new();
 
     /// <summary>
+    /// El archivo del cajetín <b>es</b> el dibujo abierto en AutoCAD.
+    /// </summary>
+    /// <remarks>
+    /// No es un error del usuario, es un malentendido del flujo: tiene abierto su archivo del
+    /// cajetín en lugar del plano donde quiere las solapas. Quien llama lo usa para decírselo con
+    /// esas palabras en lugar de un «no lo encontré».
+    /// </remarks>
+    public bool EsAutorreferencia { get; private set; }
+
+    /// <summary>
     /// Busca el archivo del cajetín y trae su definición de bloque al dibujo.
     /// </summary>
     /// <returns>El nombre del bloque que quedó cargado, o <c>null</c>.</returns>
@@ -150,12 +160,20 @@ public sealed class SolapasDrawer
                 // mensaje que da no dice eso, así que se detecta antes y se salta.
                 if (Solapas.MismaRuta(archivo, RutaDelDibujo()))
                 {
+                    EsAutorreferencia = true;
+
                     Notas.Add(
                         $"«{archivo}» es el dibujo que está abierto, así que no se puede insertar " +
                         "en sí mismo. Se buscó en otro sitio.");
 
                     continue;
                 }
+
+                // La ruta puede no coincidir aunque sea el mismo archivo —OneDrive, rutas cortas
+                // 8.3, unidades de red— y no se aprieta más: si de verdad lo fuera, AutoCAD lo dice
+                // al intentarlo. Comparar solo el NOMBRE del archivo daría falsos positivos con un
+                // plano que se llame igual en otra carpeta, y el castigo de un falso positivo aquí
+                // es «no encuentro el cajetín», que es el problema que se está arreglando.
 
                 var nombre = TraerBloqueDeArchivo(archivo);
 
@@ -278,7 +296,22 @@ public sealed class SolapasDrawer
             PonerVariable("LIGHTINGUNITS", 0);
             PonerVariable("INSUNITS", 0);
 
-            foreach (var forma in FormasDeLaRuta(archivo))
+            // ═══════════════════════════════════════════════════════════════════════════════
+            // DOS INTENTOS, Y EL SEGUNDO ES EL QUE HACE FALTA EN EL CASO NORMAL.
+            //
+            // «Self reference» de AutoCAD NO significa que el archivo sea el dibujo abierto —eso
+            // creí primero y el usuario aclaró que no—. Significa que el archivo CONTIENE UN
+            // BLOQUE CON SU MISMO NOMBRE: SOLAPA.dwg trae dentro el bloque SOLAPA, así que crear
+            // un bloque «SOLAPA» a partir de ese archivo daría uno que se refiere a sí mismo, y
+            // AutoCAD se niega. Y eso es lo NORMAL en un cajetín bien hecho, o sea que el caso
+            // común era justo el que fallaba.
+            //
+            // La salida es no pedirle ese nombre: se copia el archivo a uno temporal con un
+            // nombre que no choca con nada y se inserta ESE. AutoCAD crea el envoltorio con el
+            // nombre del temporal y, de paso, mete en la tabla de bloques del dibujo TODOS los
+            // del archivo, incluido el SOLAPA de verdad con sus atributos.
+            // ═══════════════════════════════════════════════════════════════════════════════
+            foreach (var (forma, temporal) in FormasDeInsertar(archivo))
             {
                 object? insercion = null;
 
@@ -294,7 +327,17 @@ public sealed class SolapasDrawer
                 }
                 catch (Exception ex)
                 {
-                    Notas.Add($"AutoCAD no pudo insertar «{forma}»: {ex.Message}");
+                    var suMismoNombre = ex.Message.IndexOf(
+                        "self reference", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    Notas.Add(
+                        suMismoNombre
+                            ? $"«{System.IO.Path.GetFileName(forma)}» trae dentro un bloque con su " +
+                              "mismo nombre, así que AutoCAD no lo deja insertar tal cual («Self " +
+                              "reference»). Se prueba con una copia temporal."
+                            : $"AutoCAD no pudo insertar «{forma}»: {ex.Message}");
+
+                    BorrarTemporal(temporal);
 
                     continue;
                 }
@@ -315,7 +358,16 @@ public sealed class SolapasDrawer
                     }
                 }
 
-                var nombre = DescubrirBloqueNuevo(antes, esperado);
+                BorrarTemporal(temporal);
+
+                // ═══════════════════════════════════════════════════════════════════════════════
+                // EL ARCHIVO TRAE TODA SU TABLA DE BLOQUES, no solo su espacio modelo. Así que el
+                // cajetín de verdad —el bloque de dentro del archivo— también acaba de entrar. Se
+                // prefiere el que se llame como un cajetín Y TENGA ATRIBUTOS: después de importar
+                // entran varios, y el que lleva el nombre del archivo suele ser el envoltorio.
+                // ═══════════════════════════════════════════════════════════════════════════════
+                var nombre = BuscarCajetinConAtributos()
+                             ?? DescubrirBloqueNuevo(antes, esperado);
 
                 if (nombre is null)
                 {
@@ -326,27 +378,13 @@ public sealed class SolapasDrawer
                     continue;
                 }
 
-                Notas.Add(
-                    $"Cajetín traído de: {archivo}" +
-                    (nombre == esperado ? string.Empty : $" (el bloque se llamó «{nombre}»)"));
+                Notas.Add($"Cajetín «{nombre}» traído de: {archivo}");
 
-                // ═══════════════════════════════════════════════════════════════════════════════
-                // EL ARCHIVO TRAE TODA SU TABLA DE BLOQUES, no solo su espacio modelo. Así que si
-                // el cajetín de verdad es un bloque DENTRO del archivo, ese bloque también acaba
-                // de entrar. Se prefiere el que se llame como un cajetín y tenga atributos, que
-                // puede no ser el que lleva el nombre del archivo.
-                // ═══════════════════════════════════════════════════════════════════════════════
-                var porNombre = BuscarCajetinPorNombre();
-
-                if (porNombre is not null
-                    && !string.Equals(porNombre, nombre, StringComparison.OrdinalIgnoreCase)
-                    && CuantosAtributos(porNombre) > CuantosAtributos(nombre))
+                // El envoltorio con el nombre del temporal ya no hace falta: solo envuelve al
+                // bloque de verdad, y dejarlo llena de basura la lista de bloques del usuario.
+                if (temporal is not null)
                 {
-                    Notas.Add(
-                        $"El archivo trajo también el bloque «{porNombre}», que tiene más " +
-                        "atributos de solapa. Se usa ese.");
-
-                    nombre = porNombre;
+                    BorrarBloque(Solapas.NombreDeBloqueDeArchivo(temporal), nombre);
                 }
 
                 RevisarAtributos(nombre);
@@ -369,19 +407,124 @@ public sealed class SolapasDrawer
         }
     }
 
-    /// <summary>Las formas de la ruta que se prueban, sin repetir.</summary>
-    private static List<string> FormasDeLaRuta(string archivo)
+    /// <summary>
+    /// Las formas de insertar el archivo: <b>tal cual</b> y, si no, una <b>copia temporal</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La copia temporal es la que resuelve el «Self reference»: un cajetín bien hecho está blocado
+    /// dentro de su archivo y con el mismo nombre, y entonces AutoCAD no puede crear un bloque de ese
+    /// nombre a partir de ese archivo. Con otro nombre de archivo el problema desaparece, y el bloque
+    /// de verdad entra igual en la tabla de bloques del dibujo.
+    /// </para>
+    /// <para>
+    /// El nombre del temporal lleva la hora en <b>ticks</b>, así que no choca ni con un bloque del
+    /// dibujo ni con otra corrida. Y se borra siempre, haya funcionado o no.
+    /// </para>
+    /// <para>
+    /// <b>Probé una tercera forma y la quité:</b> la ruta con barras normales, por un defecto conocido
+    /// de ActiveX. AutoCAD contestó <c>Key not found</c> las dos veces, o sea que con <c>/</c> no la
+    /// trata como archivo sino como nombre de bloque. Solo alargaba el informe de errores.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<(string Ruta, string? Temporal)> FormasDeInsertar(string archivo)
     {
-        var salida = new List<string> { archivo };
+        yield return (archivo, null);
 
-        var conBarras = archivo.Replace('\\', '/');
+        string? copia = null;
 
-        if (!string.Equals(conBarras, archivo, StringComparison.Ordinal))
+        try
         {
-            salida.Add(conBarras);
+            var nombre = "CADLINK_CAJETIN_" +
+                         DateTime.Now.Ticks.ToString(
+                             System.Globalization.CultureInfo.InvariantCulture);
+
+            var destino = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                nombre + System.IO.Path.GetExtension(archivo));
+
+            System.IO.File.Copy(archivo, destino, overwrite: true);
+
+            copia = destino;
+        }
+        catch (Exception ex)
+        {
+            Notas.Add($"No se pudo hacer una copia temporal de «{archivo}»: {ex.Message}");
         }
 
-        return salida;
+        if (copia is not null)
+        {
+            yield return (copia, copia);
+        }
+    }
+
+    private void BorrarTemporal(string? temporal)
+    {
+        if (temporal is null)
+        {
+            return;
+        }
+
+        try
+        {
+            System.IO.File.Delete(temporal);
+        }
+        catch (Exception)
+        {
+            // Un archivo de sobra en la carpeta temporal de Windows no estorba: el sistema la
+            // limpia. Fallar aquí no puede invalidar un cajetín que ya entró.
+        }
+    }
+
+    /// <summary>Borra una definición de bloque, si no es la que se va a usar.</summary>
+    private void BorrarBloque(string nombre, string noBorrarEste)
+    {
+        if (nombre.Length == 0
+            || string.Equals(nombre, noBorrarEste, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                foreach (dynamic blk in _doc.Blocks)
+                {
+                    if (string.Equals((string)blk.Name, nombre, StringComparison.OrdinalIgnoreCase))
+                    {
+                        blk.Delete();
+                        break;
+                    }
+                }
+            });
+        }
+        catch (Exception)
+        {
+            Notas.Add(
+                $"Quedó en el dibujo un bloque auxiliar llamado «{nombre}», que solo envuelve al " +
+                "cajetín. Se puede quitar con PURGE.");
+        }
+    }
+
+    /// <summary>
+    /// El bloque que se llama como un cajetín <b>y tiene atributos</b> de solapa.
+    /// </summary>
+    /// <remarks>
+    /// Se exige lo segundo: después de importar un archivo entran varios bloques, y el que lleva el
+    /// nombre del archivo suele ser el envoltorio. El que sirve es el que se puede llenar.
+    /// </remarks>
+    private string? BuscarCajetinConAtributos()
+    {
+        foreach (var c in Solapas.BloquesQueParecenCajetin(NombresDeBloque()))
+        {
+            if (CuantosAtributos(c) > 0)
+            {
+                return c;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -690,6 +833,151 @@ public sealed class SolapasDrawer
             "\n    Los que tiene:    " + string.Join(", ", todos) +
             "\n    Los que necesita: " + string.Join(", ", Solapas.TagsConocidos) +
             "\n    Renombra los tags del bloque con BEDIT y ATTDEF para que coincidan.");
+    }
+
+    // ======================================================================
+    //  EL CAJETÍN SUELTO EN EL ESPACIO MODELO
+    // ======================================================================
+    //
+    //  Para cuando el cajetín está en el dibujo abierto pero SIN BLOCAR: el recuadro dibujado y
+    //  sus atributos sueltos en el espacio modelo. Ahí no hay ningún bloque que buscar.
+
+    /// <summary>
+    /// Cuántas definiciones de atributo <b>de solapa</b> hay sueltas en el espacio modelo.
+    /// </summary>
+    public int AtributosSueltos(out List<string> todosLosTags)
+    {
+        var conocidos = 0;
+        var tags = new List<string>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                conocidos = 0;
+                tags.Clear();
+
+                foreach (dynamic ent in _doc.ModelSpace)
+                {
+                    if ((string)ent.ObjectName != "AcDbAttributeDefinition")
+                    {
+                        continue;
+                    }
+
+                    string tag = ent.TagString;
+
+                    tags.Add(tag);
+
+                    if (Solapas.EsTagConocido(tag))
+                    {
+                        conocidos++;
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Notas.Add("No se pudo revisar el espacio modelo: " + ex.Message);
+        }
+
+        todosLosTags = tags;
+
+        return conocidos;
+    }
+
+    /// <summary>
+    /// Forma un bloque con <b>todo el espacio modelo</b>, que es donde vive un cajetín sin blocar.
+    /// </summary>
+    /// <returns>El nombre del bloque creado, o <c>null</c>.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>No se borra nada.</b> Se copia a la definición del bloque y los originales se quedan
+    /// exactamente donde estaban. Es el dibujo del usuario: dejarle el espacio modelo vacío para
+    /// ahorrar una copia sería cambiarle su archivo por un atajo del programa.
+    /// </para>
+    /// <para>
+    /// El punto base es el origen y no importa: el cajetín se mide con <c>GetBoundingBox</c> y se
+    /// centra en la hoja, así que da igual dónde tenga su base. Ver <c>EncajarYCentrar</c>.
+    /// </para>
+    /// </remarks>
+    public string? CrearCajetinDelEspacioModelo(string nombreDeseado)
+    {
+        var nombre = Solapas.NombreLibre(
+            Solapas.Limpiar(nombreDeseado), NombresDeBloque(), sobrescribir: false);
+
+        var objetos = new List<object>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                objetos.Clear();
+
+                foreach (dynamic ent in _doc.ModelSpace)
+                {
+                    objetos.Add((object)ent);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Notas.Add("No se pudo recorrer el espacio modelo: " + ex.Message);
+
+            return null;
+        }
+
+        if (objetos.Count == 0)
+        {
+            Notas.Add("El espacio modelo está vacío: no hay con qué formar el cajetín.");
+
+            return null;
+        }
+
+        dynamic? bloque = null;
+
+        try
+        {
+            // El Add va FUERA de un reintento: repetirlo después de haber creado el bloque falla por
+            // nombre duplicado, y ese error no es de los que se reintentan. Es la misma nota que
+            // lleva Bloquear en el dibujante de la placa base.
+            bloque = _doc.Blocks.Add(new[] { 0.0, 0.0, 0.0 }, nombre);
+        }
+        catch (Exception ex)
+        {
+            Notas.Add($"No se pudo crear la definición del bloque «{nombre}»: {ex.Message}");
+
+            return null;
+        }
+
+        // CopyObjects va por AcadArreglos, que es quien resuelve el tipo del SAFEARRAY: con un
+        // object[] de .NET, AutoCAD contesta «Invalid object array». Ya estaba resuelto en este
+        // proyecto y se reutiliza.
+        var copiado = AcadArreglos.Llamar(
+            $"CopyObjects al bloque '{nombre}'", objetos,
+            arr => { _doc.CopyObjects(arr, bloque); },
+            (que, ex) => Notas.Add($"{que}: {ex.Message}"),
+            n => Notas.Add(n));
+
+        if (!copiado)
+        {
+            try
+            {
+                bloque.Delete();
+            }
+            catch (Exception)
+            {
+                Notas.Add(
+                    $"Quedó una definición de bloque vacía llamada «{nombre}». Bórrala con PURGE.");
+            }
+
+            return null;
+        }
+
+        Notas.Add(
+            $"Cajetín «{nombre}» formado con las {objetos.Count} entidades del espacio modelo. " +
+            "Los originales no se tocaron.");
+
+        return nombre;
     }
 
     /// <summary>¿El dibujo ya tiene la definición de este bloque?</summary>
