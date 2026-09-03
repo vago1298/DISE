@@ -1098,14 +1098,81 @@ check("la busqueda del archivo esta en la logica pura, sin COM",
       and "public static bool MismaRuta(" in CAD
       and '"CAJETIN", "SOLAPA", "FORMATO", "MEMBRETE",' in CAD)
 
-#  TRES INTENTOS Y EN ESTE ORDEN. El disco NO es el ultimo recurso: es el tercero, y va
-#  detras de los dos del dibujo porque si el dibujo YA tiene un cajetin, traer otro del
-#  archivo deja dos definiciones parecidas.
-check("tres intentos: bloque cargado, bloque con atributos, y el ARCHIVO",
+#  ---- EL BLOQUE SE BUSCA POR NOMBRE, NO SOLO «CAJETIN» ----
+#  Quien guarda su formato en SOLAPA.dwg le llama SOLAPA al bloque. Buscar solo CAJETIN
+#  era pedirle al usuario que adivinara una convencion, y con un bloque SOLAPA ya cargado
+#  el programa decia que no habia cajetin.
+check("los nombres probables son los MISMOS para el bloque y para el archivo",
+      '"CAJETIN", "SOLAPA", "FORMATO", "MEMBRETE",' in CAD
+      and "public static readonly string[] NombresProbables" in CAD
+      and "NombresDeArchivoProbables = NombresProbables;" in CAD
+      and "public static bool BloquePareceCajetin(" in CAD
+      and "public static List<string> BloquesQueParecenCajetin(" in CAD)
+
+#  TRES INTENTOS Y EN ESTE ORDEN: el nombre del bloque primero, porque es el caso comun y
+#  el mas barato; los atributos despues, para el cajetin que se llame de otra manera; y el
+#  disco tercero, que es lo que hacia la macro.
+check("tres intentos: nombre del bloque, atributos, y el ARCHIVO",
       "private bool ElegirCajetin(SolapasDrawer dibujante)" in APP
-      and APP.index("dibujante.ExisteBloque(CajetinPorOmision)")
+      and "public string? BuscarCajetinPorNombre()" in DRW
+      and APP.index("dibujante.BuscarCajetinPorNombre()")
           < APP.index("dibujante.BuscarCajetin(out var cuantos)")
           < APP.index("dibujante.ImportarCajetin(out var deDonde)"))
+
+#  Los anonimos de AutoCAD -layouts, hatches, bloques dinamicos- empiezan por «*» y no son
+#  cajetines. Sin descartarlos, «*U12» podria ganar por tener atributos.
+check("los bloques anonimos de AutoCAD se descartan",
+      'b.StartsWith("*", StringComparison.Ordinal)' in CAD)
+
+#  ---- EL NOMBRE DEL BLOQUE IMPORTADO SE DESCUBRE, NO SE SUPONE ----
+#  Dar por hecho que insertar SOLAPA.dwg deja un bloque «SOLAPA» es lo que hacia decir «no
+#  encontre el cajetin» con el cajetin ya cargado en el dibujo.
+check("el bloque que entro se DESCUBRE comparando la tabla de antes y de despues",
+      "private string? DescubrirBloqueNuevo(" in DRW
+      and "var antes = NombresDeBloque();" in DRW
+      and "!antes.Contains(n)" in DRW)
+
+#  Y el archivo trae TODA su tabla de bloques, no solo su espacio modelo: si el cajetin de
+#  verdad es un bloque de dentro del archivo, tambien acaba de entrar.
+check("y si el archivo trajo un bloque mejor, se usa ese",
+      "var porNombre = BuscarCajetinPorNombre();" in DRW
+      and "CuantosAtributos(porNombre) > CuantosAtributos(nombre)" in DRW)
+
+BARRA = chr(92)
+
+check("se prueban las dos formas de la ruta, con barras de Windows y normales",
+      "private static List<string> FormasDeLaRuta(" in DRW
+      and f"archivo.Replace('{BARRA}{BARRA}', '/')" in DRW)
+
+#  ---- EL DIAGNOSTICO QUE FALTABA ----
+#  Un cajetin con atributos llamados OBRA y UBICACIÓN en lugar de PROYECTO y UBICACION se
+#  queda en blanco, y sin ver la lista real no hay manera de adivinarlo: el programa dice
+#  «cero atributos» y el usuario esta mirando un cajetin lleno de ellos.
+check("si el bloque tiene atributos con OTROS nombres, se listan los dos juegos",
+      "public List<string> TagsDelBloque(" in DRW
+      and "public void RevisarAtributos(" in DRW
+      and "Los que tiene:" in DRW
+      and "Los que necesita:" in DRW)
+
+check("y se distingue el bloque SIN atributos del que los tiene con otro nombre",
+      "no tiene NINGÚN atributo" in DRW
+      and "ninguno se llama como " in DRW)
+
+#  ---- Y EL AVISO DE FALLO ENSEÑA LAS NOTAS ----
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  ESTO ES LO QUE COSTO UN VIAJE DE IDA Y VUELTA. El aviso listaba las rutas y nada mas,
+#  asi que cuando el archivo estaba en la lista y aun asi fallaba, el motivo real quedaba
+#  guardado en Notas y no se ensenaba. Un aviso de error que no dice el error obliga a
+#  adivinar.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("el aviso de fallo ensena QUE PASO, no solo donde se busco",
+      "private void AvisarQueNoHayCajetin(" in APP
+      and "QUE PASO:" in APP
+      and "foreach (var n in dibujante.Notas)" in APP)
+
+check("y la lista de nombres del aviso sale de la MISMA fuente que la busqueda",
+      "NombresDeCajetin => string.Join(\", \", Solapas.NombresProbables)" in APP
+      and "{NombresDeCajetin}" in APP)
 
 check("el dibujante trae el bloque insertando el ARCHIVO y borrando la insercion",
       "public string? ImportarCajetin(" in DRW
@@ -1132,7 +1199,7 @@ check("se detecta que el archivo es el dibujo abierto, antes de intentar inserta
 check("y si no se encuentra, el aviso dice EN QUE RUTAS se busco",
       "public List<string> RutasMiradas { get; } = new();" in DRW
       and "dibujante.RutasMiradas" in APP
-      and "en estas rutas:" in APP)
+      and "el archivo del cajetin, en estas rutas:" in APP)
 
 check("la ruta se captura en la hoja y se guarda con el trabajo",
       "public string RutaDelCajetin { get; set; }" in DRW

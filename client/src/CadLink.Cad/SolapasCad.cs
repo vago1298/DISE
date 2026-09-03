@@ -804,16 +804,111 @@ public static class Solapas
     //  trabajo, en lugar de vivir en cuatro constantes dentro del código.
     //  ═════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Los nombres de archivo que se prueban dentro de una carpeta.</summary>
+    /// <summary>
+    /// Los nombres que se prueban, tanto de <b>bloque</b> como de <b>archivo</b>.
+    /// </summary>
     /// <remarks>
+    /// <para>
     /// Cada despacho llama al suyo de una manera, así que se prueban los cuatro que se usan de
-    /// verdad. El orden importa: <c>CAJETIN</c> primero porque es el nombre del bloque que este
-    /// programa espera, así que si existe es casi seguro el bueno.
+    /// verdad. Y son <b>los mismos</b> para el bloque y para el archivo a propósito: quien guarda su
+    /// formato en <c>SOLAPA.dwg</c> le llama <c>SOLAPA</c> al bloque, no <c>CAJETIN</c>.
+    /// </para>
+    /// <para>
+    /// La primera versión solo buscaba el bloque <c>CAJETIN</c>, y con un bloque llamado
+    /// <c>SOLAPA</c> ya cargado en el dibujo decía que no había cajetín. Un nombre por omisión no es
+    /// una convención que el usuario tenga que adivinar.
+    /// </para>
     /// </remarks>
-    public static readonly string[] NombresDeArchivoProbables =
+    public static readonly string[] NombresProbables =
     {
         "CAJETIN", "SOLAPA", "FORMATO", "MEMBRETE",
     };
+
+    /// <summary>El mismo juego de nombres, visto como nombres de archivo.</summary>
+    public static readonly string[] NombresDeArchivoProbables = NombresProbables;
+
+    /// <summary>
+    /// ¿Este bloque se llama como un cajetín?
+    /// </summary>
+    /// <remarks>
+    /// Por <b>principio de palabra</b> y normalizado, igual que con el archivo: en el dibujo el
+    /// bloque se llama <c>SOLAPA</c>, <c>CAJETIN ARCH D</c> o <c>Cajetín-E</c>.
+    /// </remarks>
+    public static bool BloquePareceCajetin(string? nombreDeBloque)
+    {
+        var n = Normaliza(nombreDeBloque);
+
+        if (n.Length == 0)
+        {
+            return false;
+        }
+
+        foreach (var probable in NombresProbables)
+        {
+            if (n.StartsWith(Normaliza(probable), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// De varios bloques que parecen cajetín, <b>el mejor primero</b>.
+    /// </summary>
+    /// <remarks>
+    /// Mismo criterio que con los archivos: el orden de <see cref="NombresProbables"/> y, dentro de
+    /// cada uno, el nombre más corto. Entre <c>SOLAPA</c> y <c>SOLAPA VIEJA</c>, la corta.
+    /// </remarks>
+    public static List<string> BloquesQueParecenCajetin(IEnumerable<string> nombres)
+    {
+        var candidatos = new List<(int Orden, int Largo, string Nombre)>();
+
+        foreach (var b in nombres)
+        {
+            // Los que empiezan por «*» son los anónimos de AutoCAD: layouts, hatches y bloques
+            // dinámicos. Ninguno es un cajetín.
+            if (b.StartsWith("*", StringComparison.Ordinal) || !BloquePareceCajetin(b))
+            {
+                continue;
+            }
+
+            var n = Normaliza(b);
+            var orden = NombresProbables.Length;
+
+            for (var i = 0; i < NombresProbables.Length; i++)
+            {
+                if (n.StartsWith(Normaliza(NombresProbables[i]), StringComparison.Ordinal))
+                {
+                    orden = i;
+                    break;
+                }
+            }
+
+            candidatos.Add((orden, n.Length, b));
+        }
+
+        candidatos.Sort((p, q) =>
+        {
+            var k = p.Orden.CompareTo(q.Orden);
+
+            if (k != 0) { return k; }
+
+            k = p.Largo.CompareTo(q.Largo);
+
+            return k != 0 ? k : string.Compare(p.Nombre, q.Nombre, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var salida = new List<string>();
+
+        foreach (var c in candidatos)
+        {
+            salida.Add(c.Nombre);
+        }
+
+        return salida;
+    }
 
     /// <summary>Las extensiones de dibujo que AutoCAD sabe insertar como bloque.</summary>
     public static readonly string[] ExtensionesDeDibujo = { ".dwg", ".dxf" };

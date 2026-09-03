@@ -250,15 +250,25 @@ public sealed class SolapasDrawer
     /// Los dos se <b>restauran siempre</b>, incluso si algo falla en medio: son variables del dibujo
     /// del usuario y dejárselas cambiadas afecta a todo lo que inserte después.
     /// </para>
+    /// <para>
+    /// <b>Y se prueban dos formas de la ruta.</b> <c>InsertBlock</c> por ActiveX falla en algunas
+    /// versiones con las barras invertidas de Windows y funciona con barras normales. Es un defecto
+    /// conocido del enlace tardío y no cuesta nada cubrirlo: la alternativa es que el cajetín «no se
+    /// encuentre» estando ahí.
+    /// </para>
     /// </remarks>
     private string? TraerBloqueDeArchivo(string archivo)
     {
-        var nombre = Solapas.NombreDeBloqueDeArchivo(archivo);
+        var esperado = Solapas.NombreDeBloqueDeArchivo(archivo);
 
-        if (nombre.Length == 0)
+        if (esperado.Length == 0)
         {
             return null;
         }
+
+        // LOS BLOQUES QUE YA HABÍA, para poder reconocer el que entre. Ver DescubrirBloqueNuevo:
+        // el nombre no se supone, se descubre.
+        var antes = NombresDeBloque();
 
         var insUnits = Variable("INSUNITS");
         var lighting = Variable("LIGHTINGUNITS");
@@ -268,40 +278,83 @@ public sealed class SolapasDrawer
             PonerVariable("LIGHTINGUNITS", 0);
             PonerVariable("INSUNITS", 0);
 
-            object? insercion = null;
-
-            AcadConnection.Retry(() =>
+            foreach (var forma in FormasDeLaRuta(archivo))
             {
-                dynamic ms = _doc.ModelSpace;
+                object? insercion = null;
 
-                insercion = (object?)ms.InsertBlock(
-                    new[] { 0.0, 0.0, 0.0 }, archivo, 1.0, 1.0, 1.0, 0.0);
-            });
-
-            // La inserción era solo el vehículo: lo que interesa es la DEFINICIÓN, que se queda en
-            // la tabla de bloques del dibujo aunque se borre lo insertado.
-            if (insercion is not null)
-            {
                 try
                 {
-                    AcadConnection.Retry(() => ((dynamic)insercion).Delete());
+                    AcadConnection.Retry(() =>
+                    {
+                        dynamic ms = _doc.ModelSpace;
+
+                        insercion = (object?)ms.InsertBlock(
+                            new[] { 0.0, 0.0, 0.0 }, forma, 1.0, 1.0, 1.0, 0.0);
+                    });
                 }
-                catch (Exception)
+                catch (Exception ex)
+                {
+                    Notas.Add($"AutoCAD no pudo insertar «{forma}»: {ex.Message}");
+
+                    continue;
+                }
+
+                // La inserción era solo el vehículo: lo que interesa es la DEFINICIÓN, que se queda
+                // en la tabla de bloques del dibujo aunque se borre lo insertado.
+                if (insercion is not null)
+                {
+                    try
+                    {
+                        AcadConnection.Retry(() => ((dynamic)insercion).Delete());
+                    }
+                    catch (Exception)
+                    {
+                        Notas.Add(
+                            "El cajetín se trajo, pero no se pudo borrar la inserción que quedó en " +
+                            "el espacio modelo. Bórrala a mano.");
+                    }
+                }
+
+                var nombre = DescubrirBloqueNuevo(antes, esperado);
+
+                if (nombre is null)
                 {
                     Notas.Add(
-                        $"El cajetín se trajo de «{archivo}», pero no se pudo borrar la inserción " +
-                        "que quedó en el espacio modelo. Bórrala a mano.");
+                        $"«{forma}» se insertó sin dar error, pero no apareció ninguna definición " +
+                        "de bloque nueva en el dibujo.");
+
+                    continue;
                 }
+
+                Notas.Add(
+                    $"Cajetín traído de: {archivo}" +
+                    (nombre == esperado ? string.Empty : $" (el bloque se llamó «{nombre}»)"));
+
+                // ═══════════════════════════════════════════════════════════════════════════════
+                // EL ARCHIVO TRAE TODA SU TABLA DE BLOQUES, no solo su espacio modelo. Así que si
+                // el cajetín de verdad es un bloque DENTRO del archivo, ese bloque también acaba
+                // de entrar. Se prefiere el que se llame como un cajetín y tenga atributos, que
+                // puede no ser el que lleva el nombre del archivo.
+                // ═══════════════════════════════════════════════════════════════════════════════
+                var porNombre = BuscarCajetinPorNombre();
+
+                if (porNombre is not null
+                    && !string.Equals(porNombre, nombre, StringComparison.OrdinalIgnoreCase)
+                    && CuantosAtributos(porNombre) > CuantosAtributos(nombre))
+                {
+                    Notas.Add(
+                        $"El archivo trajo también el bloque «{porNombre}», que tiene más " +
+                        "atributos de solapa. Se usa ese.");
+
+                    nombre = porNombre;
+                }
+
+                RevisarAtributos(nombre);
+
+                return nombre;
             }
 
-            if (!ExisteBloque(nombre))
-            {
-                return null;
-            }
-
-            Notas.Add($"Cajetín «{nombre}» traído de: {archivo}");
-
-            return nombre;
+            return null;
         }
         catch (Exception ex)
         {
@@ -314,6 +367,151 @@ public sealed class SolapasDrawer
             if (insUnits is not null) { PonerVariable("INSUNITS", insUnits.Value); }
             if (lighting is not null) { PonerVariable("LIGHTINGUNITS", lighting.Value); }
         }
+    }
+
+    /// <summary>Las formas de la ruta que se prueban, sin repetir.</summary>
+    private static List<string> FormasDeLaRuta(string archivo)
+    {
+        var salida = new List<string> { archivo };
+
+        var conBarras = archivo.Replace('\\', '/');
+
+        if (!string.Equals(conBarras, archivo, StringComparison.Ordinal))
+        {
+            salida.Add(conBarras);
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Qué definición de bloque <b>apareció</b> después de insertar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>El nombre se descubre, no se supone.</b> La primera versión daba por hecho que insertar
+    /// <c>SOLAPA.dwg</c> deja un bloque llamado <c>SOLAPA</c>, y cuando no era exactamente así
+    /// —porque el archivo trae un nombre de bloque propio, porque AutoCAD lo renombró para no
+    /// chocar, o por cualquier otra razón— el programa decía «no encontré el cajetín» con el cajetín
+    /// ya cargado en el dibujo. Es lo que le pasó al usuario.
+    /// </para>
+    /// <para>
+    /// Se prefiere el nombre esperado si está, y si no, el bloque nuevo que <b>tenga atributos de
+    /// solapa</b>: entre varios recién llegados, ese es el cajetín y los demás son piezas suyas.
+    /// </para>
+    /// </remarks>
+    private string? DescubrirBloqueNuevo(HashSet<string> antes, string esperado)
+    {
+        if (ExisteBloque(esperado))
+        {
+            return esperado;
+        }
+
+        var nuevos = new List<string>();
+
+        foreach (var n in NombresDeBloque())
+        {
+            // Los que empiezan por «*» son los anónimos de AutoCAD: los layouts, los hatches y los
+            // bloques dinámicos. Ninguno es un cajetín.
+            if (!n.StartsWith("*", StringComparison.Ordinal) && !antes.Contains(n))
+            {
+                nuevos.Add(n);
+            }
+        }
+
+        if (nuevos.Count == 0)
+        {
+            return null;
+        }
+
+        if (nuevos.Count == 1)
+        {
+            return nuevos[0];
+        }
+
+        string? mejor = null;
+        var masAtributos = 0;
+
+        foreach (var n in nuevos)
+        {
+            var k = CuantosAtributos(n);
+
+            if (k > masAtributos)
+            {
+                masAtributos = k;
+                mejor = n;
+            }
+        }
+
+        return mejor ?? nuevos[0];
+    }
+
+    /// <summary>Los nombres de bloque que tiene el dibujo ahora mismo.</summary>
+    private HashSet<string> NombresDeBloque()
+    {
+        var salida = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                salida.Clear();
+
+                foreach (dynamic blk in _doc.Blocks)
+                {
+                    salida.Add((string)blk.Name);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Notas.Add("No se pudo leer la tabla de bloques del dibujo: " + ex.Message);
+        }
+
+        return salida;
+    }
+
+    /// <summary>Cuántos atributos <b>de solapa</b> tiene la definición de un bloque.</summary>
+    /// <remarks>
+    /// Es la medida de si ese bloque sirve: un cajetín cuyos rótulos son texto normal en lugar de
+    /// atributos da cero, y con cero salen veinte solapas en blanco.
+    /// </remarks>
+    public int CuantosAtributos(string nombre)
+    {
+        var k = 0;
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                k = 0;
+
+                foreach (dynamic blk in _doc.Blocks)
+                {
+                    if (!string.Equals((string)blk.Name, nombre, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    foreach (dynamic ent in blk)
+                    {
+                        if ((string)ent.ObjectName == "AcDbAttributeDefinition"
+                            && Solapas.EsTagConocido((string)ent.TagString))
+                        {
+                            k++;
+                        }
+                    }
+
+                    break;
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // Sin la cuenta no se puede avisar del cajetin sin atributos, pero tampoco impide nada.
+        }
+
+        return k;
     }
 
     private int? Variable(string nombre)
@@ -373,6 +571,125 @@ public sealed class SolapasDrawer
         {
             return string.Empty;
         }
+    }
+
+    /// <summary>
+    /// El bloque del dibujo que se <b>llama</b> como un cajetín, si hay alguno.
+    /// </summary>
+    /// <remarks>
+    /// Va antes de buscar por atributos, y hace falta: los atributos del cajetín de cada despacho se
+    /// llaman como quiera su autor —<c>UBICACIÓN</c> con acento, <c>PROY_1</c>, <c>OBRA</c>— y
+    /// ninguno de esos coincide con los que este programa conoce. Con un bloque llamado
+    /// <c>SOLAPA</c> ya cargado, buscar solo por atributos decía que no había cajetín.
+    /// </remarks>
+    public string? BuscarCajetinPorNombre()
+    {
+        var candidatos = Solapas.BloquesQueParecenCajetin(NombresDeBloque());
+
+        if (candidatos.Count == 0)
+        {
+            return null;
+        }
+
+        // Entre los que se llaman como un cajetín, el que MÁS atributos conocidos tenga: si hay un
+        // «SOLAPA» y un «SOLAPA VIEJA», el que sirve es el que este programa puede llenar.
+        string? mejor = null;
+        var masAtributos = -1;
+
+        foreach (var c in candidatos)
+        {
+            var k = CuantosAtributos(c);
+
+            if (k > masAtributos)
+            {
+                masAtributos = k;
+                mejor = c;
+            }
+        }
+
+        return mejor;
+    }
+
+    /// <summary>
+    /// Los <b>tags de verdad</b> de un bloque, para poder decir por qué no se puede llenar.
+    /// </summary>
+    /// <remarks>
+    /// Es el diagnóstico que faltaba. Un cajetín con atributos llamados <c>OBRA</c> y
+    /// <c>UBICACIÓN</c> en lugar de <c>PROYECTO</c> y <c>UBICACION</c> se queda en blanco, y sin ver
+    /// la lista real no hay manera de adivinarlo: el programa dice «cero atributos» y el usuario
+    /// está mirando un cajetín lleno de ellos.
+    /// </remarks>
+    public List<string> TagsDelBloque(string nombre)
+    {
+        var salida = new List<string>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                salida.Clear();
+
+                foreach (dynamic blk in _doc.Blocks)
+                {
+                    if (!string.Equals((string)blk.Name, nombre, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    foreach (dynamic ent in blk)
+                    {
+                        if ((string)ent.ObjectName == "AcDbAttributeDefinition")
+                        {
+                            salida.Add((string)ent.TagString);
+                        }
+                    }
+
+                    break;
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // Sin la lista, el aviso sale sin ella. No impide nada.
+        }
+
+        return salida;
+    }
+
+    /// <summary>
+    /// Deja dicho en las notas si un cajetín se puede llenar, y si no, por qué.
+    /// </summary>
+    public void RevisarAtributos(string nombre)
+    {
+        var conocidos = CuantosAtributos(nombre);
+
+        if (conocidos > 0)
+        {
+            Notas.Add($"Cajetín «{nombre}»: {conocidos} atributos de solapa que se van a llenar.");
+
+            return;
+        }
+
+        var todos = TagsDelBloque(nombre);
+
+        if (todos.Count == 0)
+        {
+            Notas.Add(
+                $"AVISO: el bloque «{nombre}» no tiene NINGÚN atributo, así que el cajetín va a " +
+                "salir en blanco. Sus rótulos son texto normal y tienen que ser ATRIBUTOS: " +
+                "conviértelos con ATTDEF o con TXT2ATT.");
+
+            return;
+        }
+
+        // TIENE ATRIBUTOS, PERO CON OTROS NOMBRES. Es el caso que no se podía diagnosticar: el
+        // usuario ve un cajetín lleno de atributos y el programa dice que no encuentra ninguno.
+        Notas.Add(
+            $"AVISO: el bloque «{nombre}» tiene {todos.Count} atributos, pero ninguno se llama como " +
+            "los que esta solapa llena, así que va a salir en blanco." +
+            "\n    Los que tiene:    " + string.Join(", ", todos) +
+            "\n    Los que necesita: " + string.Join(", ", Solapas.TagsConocidos) +
+            "\n    Renombra los tags del bloque con BEDIT y ATTDEF para que coincidan.");
     }
 
     /// <summary>¿El dibujo ya tiene la definición de este bloque?</summary>

@@ -27,8 +27,15 @@ namespace CadLink.App;
 /// </remarks>
 public partial class MainWindow
 {
-    /// <summary>El bloque del cajetín que se busca primero, como en la macro.</summary>
-    private const string CajetinPorOmision = "CAJETIN";
+    /// <summary>
+    /// Los nombres de bloque que se buscan en el dibujo, en orden.
+    /// </summary>
+    /// <remarks>
+    /// La lista vive en <see cref="Solapas.NombresProbables"/> y es <b>la misma</b> que se usa para
+    /// los nombres de archivo: quien guarda su formato en <c>SOLAPA.dwg</c> le llama <c>SOLAPA</c> al
+    /// bloque. Buscar solo <c>CAJETIN</c> era pedirle al usuario que adivinara una convención.
+    /// </remarks>
+    private static string NombresDeCajetin => string.Join(", ", Solapas.NombresProbables);
 
     /// <summary>Le pone a la celda del tamaño de hoja su lista.</summary>
     /// <remarks>
@@ -262,28 +269,37 @@ public partial class MainWindow
     /// </remarks>
     private bool ElegirCajetin(SolapasDrawer dibujante)
     {
-        // 1. El que ya está cargado con el nombre que este programa espera.
-        if (dibujante.ExisteBloque(CajetinPorOmision))
+        // 1. UN BLOQUE QUE SE LLAME COMO UN CAJETIN, ya cargado en el dibujo.
+        //    Y no solo «CAJETIN»: tambien SOLAPA, FORMATO y MEMBRETE. Un nombre por omision no es
+        //    una convencion que el usuario tenga que adivinar, y quien guarda su formato en
+        //    SOLAPA.dwg le llama SOLAPA al bloque.
+        var porNombre = dibujante.BuscarCajetinPorNombre();
+
+        if (porNombre is not null)
         {
-            dibujante.Cajetin = CajetinPorOmision;
+            dibujante.Cajetin = porNombre;
+            dibujante.RevisarAtributos(porNombre);
+
+            SolapasResumenText.Text = $"Cajetin del dibujo: {porNombre}";
 
             return true;
         }
 
-        // 2. Cualquiera del dibujo que tenga atributos de solapa.
-        var enElDibujo = dibujante.BuscarCajetin(out var cuantos);
+        // 2. Cualquier otro bloque del dibujo que tenga atributos de solapa, se llame como se llame.
+        var porAtributos = dibujante.BuscarCajetin(out var cuantos);
 
-        if (enElDibujo is not null)
+        if (porAtributos is not null)
         {
-            dibujante.Cajetin = enElDibujo;
+            dibujante.Cajetin = porAtributos;
+            dibujante.RevisarAtributos(porAtributos);
 
-            SolapasResumenText.Text = $"Cajetín detectado en el dibujo: {enElDibujo} " +
+            SolapasResumenText.Text = $"Cajetin detectado por sus atributos: {porAtributos} " +
                                       $"({cuantos} atributos).";
 
             return true;
         }
 
-        // 3. EL ARCHIVO, en el disco. Es lo que hacía la macro.
+        // 3. EL ARCHIVO, en el disco. Es lo que hacia la macro.
         dibujante.RutaDelCajetin = CajetinRutaBox.Text.Trim();
 
         foreach (var c in CarpetasDondeBuscarElCajetin())
@@ -297,27 +313,79 @@ public partial class MainWindow
         {
             dibujante.Cajetin = deArchivo;
 
-            SolapasResumenText.Text = $"Cajetín traído de: {deDonde}";
+            SolapasResumenText.Text = $"Cajetin traido de: {deDonde}";
 
             return true;
         }
 
-        var miradas = dibujante.RutasMiradas.Count == 0
-            ? "  (ninguna: no hay ruta capturada y el dibujo no se ha guardado)"
-            : string.Join("\n", dibujante.RutasMiradas.Select(r => "  • " + r));
-
-        MessageBox.Show(
-            "No encontré el cajetín.\n\n" +
-            "Busqué un bloque cargado en el dibujo, un bloque con atributos de solapa, y el " +
-            "archivo del cajetín en estas rutas:\n\n" + miradas + "\n\n" +
-            "Lo más rápido: escribe la ruta de tu cajetín en «Archivo del cajetín», arriba de este " +
-            "botón, o búscalo con «Examinar». Puedes apuntar al archivo .dwg o a la carpeta donde " +
-            "guardas tus formatos, y se guarda con el trabajo.\n\n" +
-            "Si el archivo existe pero no funciona, revisa que sus textos sean ATRIBUTOS y no texto " +
-            "normal: conviértelos con ATTDEF o con TXT2ATT.",
-            AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+        AvisarQueNoHayCajetin(dibujante);
 
         return false;
+    }
+
+    /// <summary>
+    /// El aviso de que no hay cajetín, <b>con lo que pasó de verdad</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí van las notas del dibujante, y esto es lo importante.</b> La primera versión de este
+    /// aviso listaba las rutas y nada más, así que cuando el archivo estaba en la lista y aun así
+    /// fallaba —el caso que reportó el usuario— el motivo real quedaba guardado en
+    /// <see cref="SolapasDrawer.Notas"/> y no se enseñaba. Ni él ni yo podíamos ver qué había pasado.
+    /// </para>
+    /// <para>
+    /// Un aviso de error que no dice el error obliga a adivinar, y adivinar cuesta un viaje de ida y
+    /// vuelta entero.
+    /// </para>
+    /// </remarks>
+    private void AvisarQueNoHayCajetin(SolapasDrawer dibujante)
+    {
+        var texto = new System.Text.StringBuilder();
+
+        texto.AppendLine("No encontre el cajetin.");
+        texto.AppendLine();
+
+        if (dibujante.Notas.Count > 0)
+        {
+            texto.AppendLine("QUE PASO:");
+
+            foreach (var n in dibujante.Notas)
+            {
+                texto.AppendLine("  • " + n);
+            }
+
+            texto.AppendLine();
+        }
+
+        texto.AppendLine("Busque, en este orden:");
+        texto.AppendLine($"  1. un bloque del dibujo llamado {NombresDeCajetin}");
+        texto.AppendLine("  2. cualquier bloque del dibujo con atributos de solapa");
+        texto.AppendLine("  3. el archivo del cajetin, en estas rutas:");
+
+        if (dibujante.RutasMiradas.Count == 0)
+        {
+            texto.AppendLine("       (ninguna: no hay ruta capturada y el dibujo no se ha guardado)");
+        }
+        else
+        {
+            foreach (var r in dibujante.RutasMiradas)
+            {
+                texto.AppendLine("       " + r);
+            }
+        }
+
+        texto.AppendLine();
+        texto.AppendLine(
+            "Si tu cajetin ya esta en el dibujo pero con otro nombre, renombralo con RENAME a uno " +
+            $"de estos: {NombresDeCajetin}.");
+        texto.AppendLine();
+        texto.AppendLine(
+            "Y si sus rotulos son texto normal, tienen que ser ATRIBUTOS: conviertelos con ATTDEF " +
+            "o con TXT2ATT.");
+
+        MessageBox.Show(
+            texto.ToString(), AppInfo.ProductName,
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     /// <summary>
