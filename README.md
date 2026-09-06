@@ -367,28 +367,49 @@ conexión. Si necesitas efecto más rápido, baja `TOKEN_TTL_INTERNAL_DAYS`.
 
 ---
 
-## Paso 5 — Publicar el ejecutable
+## Paso 5 — Armar el instalador para el cliente
+
+```
+6-crear-instalador.bat
+```
+
+Eso publica la aplicación **autocontenida** y la empaqueta en un solo
+**`dist\CadLink-Setup-1.0.0.exe`**. Es lo único que le mandas al cliente: le da
+doble clic y ya. No necesita .NET, ni Python, ni la consola, ni permisos de
+administrador.
+
+Requiere [Inno Setup 6](https://jrsoftware.org/isdl.php) instalado una vez en tu
+máquina (es gratis y sin regalías por instalador). El `.bat` te lo dice si falta.
+
+El script **se niega a armar el paquete** si la configuración todavía apunta a
+`localhost`, si la dirección del servidor no es `https`, o si falta la llave
+pública embebida: los tres casos producen un instalador que no puede funcionar en
+casa del cliente. Para probar en tu propia máquina:
+`6-crear-instalador.bat prueba`.
+
+Si prefieres publicar a mano, el comando sigue siendo:
 
 ```powershell
 cd client
 dotnet publish src\CadLink.App -c Release -r win-x64 --self-contained true
 ```
 
-El `.exe` queda en `src\CadLink.App\bin\Release\net8.0-windows\win-x64\publish\`.
-Con `--self-contained true` no requiere que el cliente instale .NET, a costa de
-un archivo más grande (~150 MB). Si prefieres un instalador liviano, usa
-`--self-contained false` y exige el runtime .NET 8 como prerrequisito.
-
 ### Antes de distribuirlo
 
-1. **Ofusca el ensamblado.** [ConfuserEx](https://github.com/mkaring/ConfuserEx)
+1. **Firma el ejecutable y el instalador** con un certificado de firma de código.
+   Sin firma, Windows le muestra al cliente «Windows protegió tu PC» y muchos no
+   pasan de ahí. Ya está cableado en el `.bat`: solo faltan las variables
+   `CADLINK_FIRMA_PFX` / `CADLINK_FIRMA_NOMBRE`.
+2. **Ofusca el ensamblado** si quieres. [ConfuserEx](https://github.com/mkaring/ConfuserEx)
    es gratuito. No hace imposible romperlo, solo lo vuelve más caro que pagar la
    suscripción, que es el objetivo realista.
-2. **Firma el ejecutable** con un certificado de firma de código. Sin firma,
-   Windows SmartScreen y Defender van a alarmar a tus clientes y muchos no lo
-   instalarán. Un certificado OV cuesta del orden de 200–400 USD al año.
-3. **Crea un instalador** con [Inno Setup](https://jrsoftware.org/isinfo.php).
-4. **Prueba en una máquina limpia**, sin .NET y sin tu entorno de desarrollo.
+3. **Prueba en una máquina limpia**, sin .NET y sin tu entorno de desarrollo.
+
+**Todo lo demás de sacarlo al público y cobrarlo por mes está en
+[`docs/distribucion.md`](docs/distribucion.md)**: qué hay que endurecer en el
+servidor antes de exponerlo a internet, cómo publicarlo con HTTPS, y las dos
+formas de cobrar la suscripción (a mano con `/admin/licenses/{clave}/extend`, o
+automática conectando la pasarela al webhook que ya existe).
 
 ---
 
@@ -397,7 +418,12 @@ un archivo más grande (~150 MB). Si prefieres un instalador liviano, usa
 ```
 cadlink/
 ├── docs/
-│   └── arquitectura-licenciamiento.md   Diseño, decisiones y límites del esquema
+│   ├── arquitectura-licenciamiento.md   Diseño, decisiones y límites del esquema
+│   └── distribucion.md                  Sacarlo al público y cobrarlo por mes
+│
+├── installer/                           Instalador para el cliente final
+│   ├── CadLink.iss                      Guion de Inno Setup 6
+│   └── LICENCIA.txt                     Contrato de licencia (plantilla)
 │
 ├── server/                              Servidor de licencias (Python + FastAPI)
 │   ├── app/

@@ -1,0 +1,104 @@
+CONTRATO DE LICENCIA DE USO DE CADLINK
+
+===============================================================================
+  PLANTILLA. ESTO NO ES ASESORIA LEGAL.
+
+  El texto de abajo cubre lo que el programa hace de verdad -suscripcion por
+  mes, activacion por equipo, que datos manda al servidor-, pero antes de
+  cobrarle a un cliente REVISALO CON UN ABOGADO. Las clausulas de limitacion
+  de responsabilidad son justo las que dependen de la ley de tu pais, y en un
+  programa de calculo estructural son las que importan.
+  
+  Cambia tambien: la razon social, el correo, la ley aplicable y la ciudad.
+===============================================================================
+
+1. QUE SE LICENCIA
+
+CadLink es un programa que automatiza dibujo de estructuras en AutoCAD y lectura
+de modelos de ETABS y SAP2000. Se licencia el USO del programa. No se vende el
+programa ni su codigo.
+
+
+2. SUSCRIPCION MENSUAL
+
+La licencia es por suscripcion y se paga por adelantado. Mientras el pago este
+al dia, el programa funciona. Si el pago se detiene, al vencer el periodo pagado
+el programa deja de generar dibujos y avisa en pantalla.
+
+Al vencer hay un periodo de gracia para que una falla de internet o un pago en
+camino no dejen a nadie sin trabajar. Los dias exactos los fija el servidor de
+licencias.
+
+
+3. ACTIVACION POR EQUIPO
+
+Cada licencia habilita el numero de equipos que se haya contratado. Al activar,
+el programa calcula una huella del equipo -a partir de identificadores de la
+placa madre, el procesador, el disco de sistema y Windows- y la licencia queda
+atada a esa huella.
+
+Cambiar la placa madre o el disco donde esta Windows cambia la huella y obliga a
+reactivar. Para mover la licencia a otra computadora se usa el boton «Liberar
+este equipo» de la pestana Licencia, o se avisa a soporte.
+
+
+4. QUE DATOS SE MANDAN AL SERVIDOR
+
+Al activar y al revalidar, el programa manda a nuestro servidor de licencias:
+la huella del equipo, el nombre del equipo, el nombre del usuario de Windows, el
+identificador del dominio de la red si el equipo esta en uno, y la version del
+programa.
+
+NO se manda ningun proyecto, ningun plano, ningun modelo ni ningun dato de tus
+obras. Los archivos de trabajo no salen de tu computadora.
+
+
+5. LO QUE NO SE PUEDE HACER
+
+No se puede revender, rentar, sublicenciar ni ceder la licencia sin autorizacion
+por escrito. No se puede desarmar, descompilar ni modificar el programa, ni
+alterar el mecanismo de licenciamiento.
+
+
+6. EL RESULTADO SE REVISA. SIEMPRE.
+
+CadLink dibuja y calcula a partir de lo que se captura en sus hojas. NO sustituye
+al criterio del ingeniero ni al proceso de revision de un proyecto estructural.
+
+Todo plano, cantidad, armado o detalle que produzca el programa debe ser revisado
+y firmado por un ingeniero responsable antes de ir a obra. La responsabilidad
+profesional del proyecto es de quien lo firma.
+
+
+7. SIN GARANTIA DE RESULTADO
+
+El programa se entrega tal como esta. No garantizamos que este libre de errores
+ni que sirva para un proposito particular. En la medida que la ley lo permita, no
+respondemos por danos indirectos, perdida de datos, perdida de utilidades ni
+costos de obra derivados del uso del programa. Nuestra responsabilidad total no
+excedera lo pagado por la suscripcion en los ultimos doce meses.
+
+
+8. SOPORTE Y ACTUALIZACIONES
+
+Mientras la suscripcion este activa, se incluyen las correcciones y las versiones
+nuevas que se publiquen, y soporte por correo en dias habiles.
+
+
+9. TERMINACION
+
+La licencia termina si se deja de pagar o si se incumple este contrato. Al
+terminar hay que dejar de usar el programa y desinstalarlo. Los planos ya
+generados son tuyos y puedes seguir usandolos.
+
+
+10. LEY APLICABLE
+
+Este contrato se rige por las leyes de los Estados Unidos Mexicanos. Para
+cualquier controversia las partes se someten a los tribunales de [CIUDAD].
+
+
+-------------------------------------------------------------------------------
+[RAZON SOCIAL]
+Soporte: soporte@miempresa.com
+Version del contrato: 1.0 - [FECHA]

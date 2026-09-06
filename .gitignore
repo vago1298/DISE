@@ -20,6 +20,13 @@ obj/
 x64/
 x86/
 publish/
+
+# ===================== INSTALADORES ARMADOS =====================
+# Los .exe de instalacion se arman con 6-crear-instalador.bat y pesan
+# unos 80 MB cada uno. Se reparten por descarga, no por el repositorio:
+# GitHub rechaza archivos de mas de 100 MB y un historial con un
+# instalador por version se vuelve inmanejable.
+dist/
 *.user
 *.suo
 *.cache
