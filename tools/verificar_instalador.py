@@ -29,6 +29,7 @@ esta en la computadora de un cliente:
 import os
 import re
 import struct
+import sys
 
 fallos = []
 
@@ -429,8 +430,68 @@ GEN = leer("tools", "make_icon.py")
 
 check("el icono de muestra se genera del mismo dibujo que el logo",
       "from make_placeholder_logo import" in GEN
-      and "BOLT" in GEN
+      and "PERFIL_I" in GEN
       and "MEDIDAS = (16, 24, 32, 48, 64, 128, 256)" in GEN)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  LA MARCA ES LA SECCION DE UN PERFIL I, Y ESO TRAE DOS PROPIEDADES QUE SE PUEDEN
+#  COMPROBAR EN NUMEROS.
+#
+#  La primera version llevaba un rayo -de cuando se creyo que el programa hablaba con
+#  ETAP, que es de instalaciones electricas- y ademas de no decir nada en un programa de
+#  estructuras, tenia diagonales: al reducirlo a 16 px salian dientes de sierra.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+sys.path.insert(0, os.path.join(RAIZ, "tools"))
+
+try:
+    from make_placeholder_logo import PERFIL_I, SIZE  # noqa: E402
+except ImportError as fallo:  # pragma: no cover
+    PERFIL_I, SIZE = [], 512
+    check("se puede leer el dibujo de la marca", False, str(fallo))
+
+#  TODAS LAS ARISTAS A ESCUADRA: cada par de vertices seguidos comparte la x o la y. Es
+#  lo que evita los dientes de sierra al reducir, y lo que un rayo no puede cumplir.
+diagonales = [
+    (PERFIL_I[i], PERFIL_I[(i + 1) % len(PERFIL_I)])
+    for i in range(len(PERFIL_I))
+    if PERFIL_I[i][0] != PERFIL_I[(i + 1) % len(PERFIL_I)][0]
+    and PERFIL_I[i][1] != PERFIL_I[(i + 1) % len(PERFIL_I)][1]
+]
+
+check("la marca no tiene ni una diagonal, asi que no se dientea al reducir",
+      PERFIL_I and not diagonales, f"{diagonales}")
+
+check("y es un perfil I de doce vertices", len(PERFIL_I) == 12, f"{len(PERFIL_I)}")
+
+#  CENTRADA. Descentrada media unidad no se nota en el 256 y en el de 16 px se ve.
+xs = [p[0] for p in PERFIL_I] or [0]
+ys = [p[1] for p in PERFIL_I] or [0]
+
+check("esta centrada en el lienzo",
+      (min(xs) + max(xs)) == SIZE and (min(ys) + max(ys)) == SIZE,
+      f"x {min(xs)}..{max(xs)}  y {min(ys)}..{max(ys)}")
+
+#  MAS ALTA QUE ANCHA, como un IR de verdad. Cuadrada se leeria como la letra I.
+check("tiene la proporcion de un IR: mas peralte que ancho",
+      (max(ys) - min(ys)) > (max(xs) - min(xs)),
+      f"{max(xs) - min(xs)} x {max(ys) - min(ys)}")
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y EL DETALLE MAS FINO TIENE QUE SOBREVIVIR A 16 PIXELES.
+#
+#  Es el tamano al que Windows dibuja el icono en la barra de tareas. Un patin de menos
+#  de pixel y medio se convierte en un gris translucido y el perfil deja de leerse: se
+#  ve una manchita azul. Por eso los patines son gruesos aunque en un perfil real sean
+#  mas delgados.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+if len(PERFIL_I) == 12:
+    patin = PERFIL_I[2][1] - PERFIL_I[1][1]      # del alto del patin superior
+    alma = PERFIL_I[3][0] - PERFIL_I[10][0]      # del ancho del alma
+    fino = min(patin, alma)
+
+    check("el detalle mas fino aguanta 16 px",
+          fino / SIZE * 16 >= 1.5,
+          f"{fino} de {SIZE} = {fino / SIZE * 16:.2f} px a 16")
 
 print()
 print("=" * 78)

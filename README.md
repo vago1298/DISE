@@ -251,9 +251,13 @@ public const string SupportEmail = "soporte@miempresa.com";
 ### Reemplazar el logo
 
 `client/src/CadLink.App/Assets/logo.png` es un marcador de posición generado
-automáticamente. Pon ahí el logo real de tu empresa: PNG con fondo transparente,
-mínimo 512×512 px. Queda **embebido en el ejecutable**, así que nadie puede
-sustituirlo para cambiar la marca del programa.
+automáticamente —la sección de un perfil I— con `tools/make_placeholder_logo.py`.
+Pon ahí el logo real de tu empresa: PNG con fondo transparente, mínimo 512×512
+px. Queda **embebido en el ejecutable**, así que nadie puede sustituirlo para
+cambiar la marca del programa.
+
+El icono del ejecutable es aparte, y sale del mismo dibujo:
+`tools/make_icon.py` arma `Assets\app.ico` con las siete medidas que Windows usa.
 
 ### Compilar y ejecutar
 

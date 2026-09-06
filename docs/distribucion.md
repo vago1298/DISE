@@ -123,9 +123,16 @@ Dos cosas que conviene saber:
   Windows la reduce al vuelo y a 16 px queda una manchita. Si el tuyo viene de un diseñador, lo más
   probable es que ya traiga todas; si lo hiciste convirtiendo un PNG en una página web, revísalo.
 
-El `app.ico` que está en el repositorio es un **marcador de posición** (el rayo azul, el mismo dibujo
-del logo de muestra). Lo genera `tools/make_icon.py` con las siete medidas, y sirve para que la
-cadena completa funcione desde el primer día. En cuanto dejes el tuyo en `installer`, lo reemplaza.
+El `app.ico` que está en el repositorio es un **marcador de posición**: la sección de un perfil I,
+el mismo dibujo que el logo de muestra. Lo genera `tools/make_icon.py` con las siete medidas, y
+sirve para que la cadena completa funcione desde el primer día. En cuanto tu `.ico` esté disponible,
+lo reemplaza.
+
+Dos propiedades del dibujo que están puestas a propósito y las vigila
+`tools/verificar_instalador.py`: **ninguna arista es diagonal** —así no se dientea al reducirlo— y
+**el detalle más fino aguanta 16 px**, que es el tamaño al que Windows lo dibuja en la barra de
+tareas. Un patín de menos de píxel y medio se convierte en un gris translúcido y el perfil deja de
+leerse.
 
 > Si ya tenías un acceso directo con el icono viejo, Windows guarda los iconos en caché y puede
 > seguir mostrando el anterior un rato. Reinstalar encima suele refrescarlo; si no, cerrar sesión y

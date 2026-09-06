@@ -24,7 +24,7 @@
 ===============================================================================
  EL DIBUJO NO SE REPITE AQUI
 
- El rayo, el degradado y el radio de las esquinas se importan de
+ El perfil, el degradado y el radio de las esquinas se importan de
  make_placeholder_logo.py, que es donde ya estaban. Tener el poligono escrito
  en dos archivos acabaria con un icono que no se parece al logo, y nadie se
  daria cuenta hasta verlos juntos.
@@ -48,10 +48,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from make_placeholder_logo import (  # noqa: E402
-    ACCENT,
-    BOLT,
+    ACERO,
     BRAND_DARK,
     BRAND_LIGHT,
+    PERFIL_I,
     point_in_polygon,
     rounded_rect_alpha,
 )
@@ -63,9 +63,9 @@ LIENZO = 512
 #  poco y evitan que el sistema tenga que interpolar en pantallas al 125 % y al 150 %.
 MEDIDAS = (16, 24, 32, 48, 64, 128, 256)
 
-#  MUESTREO. Cada pixel se calcula promediando MUESTRAS x MUESTRAS puntos: es lo que
-#  suaviza el borde redondeado y el filo del rayo. Sin esto, a 16 px el rayo sale como
-#  una escalera.
+#  MUESTREO. Cada pixel se calcula promediando MUESTRAS x MUESTRAS puntos. Hace falta
+#  aunque el perfil no tenga diagonales: la esquina redondeada del fondo si es curva, y
+#  a 16 o a 24 px los bordes del perfil caen en mitad de un pixel.
 MUESTRAS = 4
 
 
@@ -95,8 +95,8 @@ def dibujar(medida: int) -> bytes:
                     g = BRAND_DARK[1] + (BRAND_LIGHT[1] - BRAND_DARK[1]) * t
                     b = BRAND_DARK[2] + (BRAND_LIGHT[2] - BRAND_DARK[2]) * t
 
-                    if point_in_polygon(x, y, BOLT):
-                        r, g, b = ACCENT
+                    if point_in_polygon(x, y, PERFIL_I):
+                        r, g, b = ACERO
 
                     #  El color se pondera por su alpha: si no, el borde redondeado
                     #  arrastra el color del fondo y queda un halo oscuro alrededor.
