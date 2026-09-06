@@ -22,6 +22,12 @@
 #  El guion del instalador lo lee ISCC.exe, en Windows.
 *.iss -text
 
+#  Y LOS ICONOS SON BINARIOS. Git los detecta solo, pero mas vale decirlo: una
+#  conversion de finales de renglon dentro de un .ico lo corrompe sin ruido, y el
+#  sintoma seria que el ejecutable no compila por un icono invalido.
+*.ico binary
+*.png binary
+
 #  Y el contrato lo PINTA el instalador en un cuadro de texto de Windows, que
 #  solo parte el renglon con CRLF: con LF se veria todo en un solo parrafo.
 installer/LICENCIA.txt -text

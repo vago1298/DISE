@@ -85,6 +85,33 @@ servidor público, o **`2`** para el cliente. Desde la consola también se acept
 - **El `AppId` no se cambia nunca más.** Es con lo que Windows reconoce que la versión nueva es la
   misma aplicación y la actualiza encima en lugar de dejar dos instaladas.
 
+### El icono
+
+**Copia tu `CADLINK.ico` en la carpeta `installer` y ya.** Se toma de ahí con el nombre que tenga,
+y con eso quedan los tres iconos de golpe: el del ejecutable, el del acceso directo del escritorio
+y el del propio instalador.
+
+Tiene que ser un **`.ico` de verdad**, no un `.png` renombrado: el icono va incrustado en el `.exe`
+como recurso de Windows y el compilador rechaza cualquier otra cosa.
+
+Dos cosas que conviene saber:
+
+- **El icono del acceso directo sale del `.exe`**, no del instalador. Por eso no se puede arreglar
+  desde el instalador: se incrusta al compilar. Mientras no haya `client\src\CadLink.App\Assets\app.ico`,
+  el `.exe` no tiene icono y Windows le pone el genérico — es lo que se veía en el escritorio.
+- **Un `.ico` no es una imagen, son varias.** Windows toma 16 px para la barra de tareas, 32 para el
+  escritorio, 48 para iconos medianos y 256 para la vista grande. Si tu archivo solo trae la grande,
+  Windows la reduce al vuelo y a 16 px queda una manchita. Si el tuyo viene de un diseñador, lo más
+  probable es que ya traiga todas; si lo hiciste convirtiendo un PNG en una página web, revísalo.
+
+El `app.ico` que está en el repositorio es un **marcador de posición** (el rayo azul, el mismo dibujo
+del logo de muestra). Lo genera `tools/make_icon.py` con las siete medidas, y sirve para que la
+cadena completa funcione desde el primer día. En cuanto dejes el tuyo en `installer`, lo reemplaza.
+
+> Si ya tenías un acceso directo con el icono viejo, Windows guarda los iconos en caché y puede
+> seguir mostrando el anterior un rato. Reinstalar encima suele refrescarlo; si no, cerrar sesión y
+> volver a entrar lo arregla siempre.
+
 ### Antes de repartir
 
 Pruébalo en una computadora que **no sea la tuya** y que **no tenga .NET instalado**. Es la única

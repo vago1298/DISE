@@ -397,6 +397,16 @@ cd client
 dotnet publish src\CadLink.App -c Release -r win-x64 --self-contained true
 ```
 
+### Tu icono
+
+Copia tu `CADLINK.ico` en la carpeta **`installer`** y el script lo toma con el
+nombre que tenga. Con eso quedan los tres iconos: el del ejecutable, el del
+acceso directo del escritorio y el del propio instalador. Tiene que ser un `.ico`
+de verdad, no un `.png` renombrado.
+
+El `Assets\app.ico` que viene en el repositorio es un marcador de posición, con
+las siete medidas que Windows usa; lo genera `tools/make_icon.py`.
+
 ### Antes de distribuirlo
 
 1. **Firma el ejecutable y el instalador** con un certificado de firma de código.

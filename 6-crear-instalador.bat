@@ -102,6 +102,51 @@ if not errorlevel 1 goto :falta_llave
 
 
 REM ============================================================
+REM  EL ICONO DEL EJECUTABLE
+REM
+REM  PARA PONER TU ICONO: copia tu CADLINK.ico en la carpeta
+REM  installer  y ya. Se toma de ahi, con el nombre que tenga.
+REM
+REM  Tiene que ser un .ico de verdad, no un .png renombrado: el
+REM  icono va incrustado en el .exe como recurso de Windows, y el
+REM  compilador rechaza cualquier otra cosa.
+REM
+REM  El icono del ACCESO DIRECTO sale del .exe, asi que con esto
+REM  quedan los dos -y el del instalador tambien-.
+REM ============================================================
+
+set "ICONOAPP=%RAIZ%client\src\CadLink.App\Assets\app.ico"
+
+set "ICONOTUYO="
+for %%i in ("%RAIZ%installer\*.ico") do if not defined ICONOTUYO set "ICONOTUYO=%%i"
+
+if not defined ICONOTUYO goto :icono_del_repo
+
+copy /y "%ICONOTUYO%" "%ICONOAPP%" >nul
+if errorlevel 1 goto :error_icono
+
+echo Icono tomado de tu archivo:
+echo    %ICONOTUYO%
+echo.
+goto :icono_listo
+
+:icono_del_repo
+if not exist "%ICONOAPP%" goto :sin_icono
+echo Icono: el del repositorio -marcador de posicion-.
+echo    Para usar el tuyo, copia tu .ico en la carpeta installer
+echo.
+goto :icono_listo
+
+:sin_icono
+echo   AVISO: no hay ningun icono. El .exe va a salir con el icono
+echo          generico de Windows y el acceso directo tambien.
+echo          Copia tu .ico en la carpeta  installer
+echo.
+
+:icono_listo
+
+
+REM ============================================================
 REM  PUBLICAR EN LIMPIO
 REM  Se borra la carpeta antes: si quedan archivos de una version
 REM  anterior, el comodin del instalador se los lleva al cliente.
@@ -316,6 +361,15 @@ echo Sin la llave publica embebida, la aplicacion no puede
 echo verificar ninguna licencia y NINGUN cliente podria activar.
 echo.
 echo Ejecuta primero  1-instalar-servidor.bat
+goto :error
+
+:error_icono
+echo ERROR: no pude copiar el icono.
+echo    De:  %ICONOTUYO%
+echo    A:   %ICONOAPP%
+echo.
+echo Comprueba que el archivo no este abierto en otro programa y
+echo que de verdad sea un .ico, no un .png renombrado.
 goto :error
 
 :error_publicar

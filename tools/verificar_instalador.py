@@ -28,6 +28,7 @@ esta en la computadora de un cliente:
 
 import os
 import re
+import struct
 
 fallos = []
 
@@ -246,6 +247,128 @@ check("pero se puede armar un paquete de prueba a proposito",
 
 check("y el paquete de prueba se anuncia como tal",
       "MODO PRUEBA" in BAT)
+
+print()
+print("=" * 78)
+print("EL ICONO DEL EJECUTABLE")
+print("=" * 78)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  EL ICONO DEL ACCESO DIRECTO SALE DEL .exe, NO DEL INSTALADOR.
+#
+#  Sin  Assets\app.ico  el .csproj no pone ningun icono, el .exe se queda con el
+#  generico de Windows, y el acceso directo del escritorio hereda ese generico. No hay
+#  nada que se pueda arreglar en el instalador: el icono se incrusta al compilar.
+#
+#  Y UN .ico NO ES UNA IMAGEN, SON VARIAS: Windows toma 16 px para la barra de tareas,
+#  32 para el escritorio, 48 para iconos medianos y 256 para la vista grande. Con una
+#  sola medida, el sistema la reduce al vuelo y a 16 px queda una manchita.
+#
+#  Un .ico mal armado no da un icono feo: ROMPE LA COMPILACION. Por eso aqui se abre y
+#  se revisa entrada por entrada.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+RUTA_ICONO = os.path.join(RAIZ, "client", "src", "CadLink.App", "Assets", "app.ico")
+
+check("hay icono para el ejecutable", os.path.exists(RUTA_ICONO))
+
+ICO = b""
+
+if os.path.exists(RUTA_ICONO):
+    with open(RUTA_ICONO, "rb") as f:
+        ICO = f.read()
+
+entradas = []
+problemas = []
+
+if len(ICO) > 6:
+    reservado, tipo, cuantas = struct.unpack("<HHH", ICO[:6])
+
+    check("el encabezado dice que es un icono, no un cursor",
+          reservado == 0 and tipo == 1, f"reservado={reservado} tipo={tipo}")
+
+    for i in range(cuantas):
+        crudo = ICO[6 + 16 * i:6 + 16 * i + 16]
+
+        if len(crudo) < 16:
+            problemas.append("directorio truncado")
+            break
+
+        w, h, colores, rsv, planos, bits, tam, desde = struct.unpack("<BBBBHHII", crudo)
+        w = w or 256
+        h = h or 256
+        datos = ICO[desde:desde + tam]
+
+        entradas.append(w)
+
+        if len(datos) != tam:
+            problemas.append(f"{w}px: la imagen se sale del archivo")
+            continue
+
+        if datos[:8] == b"\x89PNG\r\n\x1a\n":
+            continue
+
+        #  ENTRADA BMP: el encabezado declara el DOBLE de alto -imagen mas mascara de
+        #  1 bit- y el tamano tiene que cuadrar al byte. Si no cuadra, Windows lee la
+        #  mascara como pixeles y el icono sale negro o cortado.
+        cabeza, bw, bh, bplanos, bbits = struct.unpack("<IiiHH", datos[:16])
+        esperado = 40 + w * h * 4 + ((w + 31) // 32) * 4 * h
+
+        if cabeza != 40 or bw != w or bh != 2 * h or bbits != 32:
+            problemas.append(f"{w}px: encabezado {cabeza}/{bw}x{bh}/{bbits} bits")
+        elif len(datos) != esperado:
+            problemas.append(f"{w}px: {len(datos)} bytes, se esperaban {esperado}")
+
+check("todas las entradas estan bien formadas",
+      not problemas, "; ".join(problemas))
+
+#  LAS CUATRO MEDIDAS QUE WINDOWS PIDE DE VERDAD.
+faltantes = [m for m in (16, 32, 48, 256) if m not in entradas]
+
+check("trae las medidas que Windows usa: 16, 32, 48 y 256",
+      not faltantes, f"faltan {faltantes} - hay {sorted(entradas)}")
+
+#  LA DE 256 COMPRIMIDA: sin comprimir son 256 KB de una sola entrada.
+if 256 in entradas:
+    i = entradas.index(256)
+    _, _, _, _, _, _, tam256, desde256 = struct.unpack(
+        "<BBBBHHII", ICO[6 + 16 * i:6 + 16 * i + 16])
+
+    check("la de 256 va comprimida en PNG",
+          ICO[desde256:desde256 + 8] == b"\x89PNG\r\n\x1a\n" and tam256 < 100_000,
+          f"{tam256:,} bytes")
+
+#  EL COMPILADOR LO INCRUSTA. La condicion Exists() esta para que el proyecto compile
+#  aunque el icono no este, en lugar de fallar con un error que no dice nada.
+check("el compilador lo incrusta en el .exe",
+      "<ApplicationIcon Condition=\"Exists('Assets\\app.ico')\">Assets\\app.ico"
+      "</ApplicationIcon>" in CSPROJ)
+
+#  Y EL INSTALADOR USA EL MISMO, para que el propio setup.exe no salga generico.
+check("y el instalador se pone el mismo icono",
+      '#define RutaIcono "..\\client\\src\\CadLink.App\\Assets\\app.ico"' in ISS
+      and "SetupIconFile={#RutaIcono}" in ISS)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  PARA PONER EL ICONO PROPIO NO HAY QUE EDITAR NADA: se copia el .ico a la carpeta
+#  installer y el .bat lo toma con el nombre que tenga. Pedirle a alguien que renombre
+#  un archivo a  app.ico  y lo meta cuatro carpetas adentro es pedirle que se
+#  equivoque.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("el .bat toma el icono que uno deje en la carpeta installer",
+      'for %%i in ("%RAIZ%installer\\*.ico")' in BAT
+      and 'copy /y "%ICONOTUYO%" "%ICONOAPP%"' in BAT)
+
+check("y avisa si no hay ninguno, en lugar de repartir el generico callando",
+      ":sin_icono" in BAT and "icono" in BAT and "generico de Windows" in BAT)
+
+#  EL DIBUJO DEL MARCADOR DE POSICION NO SE REPITE: se importa del que ya existia. Con
+#  el poligono escrito en dos archivos, el icono y el logo acabarian distintos.
+GEN = leer("tools", "make_icon.py")
+
+check("el icono de muestra se genera del mismo dibujo que el logo",
+      "from make_placeholder_logo import" in GEN
+      and "BOLT" in GEN
+      and "MEDIDAS = (16, 24, 32, 48, 64, 128, 256)" in GEN)
 
 print()
 print("=" * 78)
