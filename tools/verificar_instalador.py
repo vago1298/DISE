@@ -358,6 +358,68 @@ check("el .bat toma el icono que uno deje en la carpeta installer",
       'for %%i in ("%RAIZ%installer\\*.ico")' in BAT
       and 'copy /y "%ICONOTUYO%" "%ICONOAPP%"' in BAT)
 
+check("o junto a los propios .bat, que es donde uno lo suelta",
+      'for %%i in ("%RAIZ%*.ico")' in BAT)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y SI NO, LA RUTA QUE YA ESTA EN LA CONFIGURACION.
+#
+#  Es la unica de las tres que SOBREVIVE A VOLVER A DESCARGAR EL ZIP, porque viaja
+#  dentro del proyecto. Un archivo copiado a mano en installer se pierde en cuanto se
+#  extrae una version nueva.
+#
+#  El .bat lo saca con cuatro sustituciones de cmd, que no se pueden ejecutar aqui. Lo
+#  que si se puede es repetirlas en Python sobre la MISMA configuracion y comprobar que
+#  el resultado es una ruta a un .ico: asi, si algun dia se cambia el formato del
+#  archivo -o se le quita el espacio despues de los dos puntos- esto falla en lugar de
+#  fallar callando en la maquina del usuario.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("y si no, la ruta que ya trae la configuracion",
+      'findstr /c:"logo" "%CFGFUENTE%" ^| findstr /v /c:"//"' in BAT
+      and "set \"LINEA=%LINEA:*: =%\"" in BAT
+      and 'set "ICONOTUYO=%ICONOTUYO:/=\\%"' in BAT)
+
+CONFIG = leer("client", "src", "CadLink.App", "cadlink.config.json")
+
+
+def icono_de_la_config(texto):
+    """Las mismas cuatro sustituciones que hace el .bat, en Python."""
+    #  findstr /c:"logo"  |  findstr /v /c:"//"      -distingue mayusculas-
+    lineas = [l for l in texto.splitlines() if "logo" in l and "//" not in l]
+
+    if not lineas:
+        return None
+
+    linea = lineas[0]
+    corte = linea.find(": ")            # %LINEA:*: =%
+
+    if corte < 0:
+        return None
+
+    linea = linea[corte + 2:].replace(",", "")   # %LINEA:,=%
+
+    return linea.strip('"').replace("/", "\\")   # el for /f y %...:/=\%
+
+
+RUTA_CFG = icono_de_la_config(CONFIG)
+
+check("el filtro de comentarios deja un solo renglon, no un ejemplo del bloque de ayuda",
+      len([l for l in CONFIG.splitlines() if "logo" in l and "//" not in l]) == 1,
+      f"{[l.strip()[:40] for l in CONFIG.splitlines() if 'logo' in l and '//' not in l]}")
+
+check("y de ese renglon sale una ruta a un .ico",
+      RUTA_CFG is not None and RUTA_CFG.lower().endswith(".ico")
+      and "\\" in RUTA_CFG and '"' not in RUTA_CFG,
+      f"{RUTA_CFG}")
+
+#  UN .png EN ESA CLAVE ES VALIDO PARA EL LOGO Y NO PARA EL ICONO, y eso se explica en
+#  lugar de dejar al usuario pensando que su logo no se aplico.
+check("un .png en esa clave se rechaza explicando la diferencia",
+      ":icono_no_es_ico" in BAT and "para el icono del ejecutable hace falta un .ico" in BAT)
+
+check("y una ruta que ya no existe tambien se avisa",
+      ":icono_no_esta" in BAT and "no encuentro el icono que dice" in BAT)
+
 check("y avisa si no hay ninguno, en lugar de repartir el generico callando",
       ":sin_icono" in BAT and "icono" in BAT and "generico de Windows" in BAT)
 

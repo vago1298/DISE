@@ -87,9 +87,28 @@ servidor público, o **`2`** para el cliente. Desde la consola también se acept
 
 ### El icono
 
-**Copia tu `CADLINK.ico` en la carpeta `installer` y ya.** Se toma de ahí con el nombre que tenga,
-y con eso quedan los tres iconos de golpe: el del ejecutable, el del acceso directo del escritorio
-y el del propio instalador.
+**No hay que hacer nada: se toma de la ruta que ya está en `cadlink.config.json`.** La clave `logo`
+apunta a tu `CADLINK.ico` y el script la lee de ahí. Con eso quedan los tres iconos de golpe: el del
+ejecutable, el del acceso directo del escritorio y el del propio instalador.
+
+Se busca en cuatro sitios y gana el primero que aparezca:
+
+| | Dónde | Cuándo conviene |
+|---|---|---|
+| 1 | un `.ico` en la carpeta `installer` | para forzar uno distinto |
+| 2 | un `.ico` junto a los `.bat` | el más rápido: arrastrarlo ahí y ya |
+| 3 | la ruta de la clave `logo` de `cadlink.config.json` | **el que no cuesta nada** |
+| 4 | el `Assets\app.ico` de muestra del repositorio | si no hay ninguno de los otros |
+
+El 3 es el único que **sobrevive a volver a descargar el ZIP**, porque la ruta viaja dentro del
+proyecto. Un archivo copiado a mano en `installer` se pierde en cuanto extraes una versión nueva.
+
+El script te dice cuál usó:
+
+```
+Icono tomado de:
+   C:\Users\PC\OneDrive\Escritorio\GIPC\Oficina GIPC\LOGOS\CADLINK.ico
+```
 
 Tiene que ser un **`.ico` de verdad**, no un `.png` renombrado: el icono va incrustado en el `.exe`
 como recurso de Windows y el compilador rechaza cualquier otra cosa.

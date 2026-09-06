@@ -104,36 +104,88 @@ if not errorlevel 1 goto :falta_llave
 REM ============================================================
 REM  EL ICONO DEL EJECUTABLE
 REM
-REM  PARA PONER TU ICONO: copia tu CADLINK.ico en la carpeta
-REM  installer  y ya. Se toma de ahi, con el nombre que tenga.
+REM  Se busca en cuatro sitios y gana el primero que aparezca:
+REM
+REM    1. Un .ico en la carpeta  installer
+REM    2. Un .ico junto a estos .bat
+REM    3. La ruta que YA trae cadlink.config.json en su clave
+REM       "logo", si apunta a un .ico
+REM    4. El de muestra que viene en el repositorio
+REM
+REM  EL 3 ES EL QUE NO CUESTA NADA. Esa ruta ya esta escrita y
+REM  viaja con el proyecto, asi que sigue funcionando cada vez que
+REM  se vuelve a descargar el zip, sin volver a copiar nada.
 REM
 REM  Tiene que ser un .ico de verdad, no un .png renombrado: el
 REM  icono va incrustado en el .exe como recurso de Windows, y el
 REM  compilador rechaza cualquier otra cosa.
 REM
 REM  El icono del ACCESO DIRECTO sale del .exe, asi que con esto
-REM  quedan los dos -y el del instalador tambien-.
+REM  quedan los tres: ejecutable, acceso directo e instalador.
 REM ============================================================
 
 set "ICONOAPP=%RAIZ%client\src\CadLink.App\Assets\app.ico"
+set "CFGFUENTE=%RAIZ%client\src\CadLink.App\cadlink.config.json"
 
 set "ICONOTUYO="
 for %%i in ("%RAIZ%installer\*.ico") do if not defined ICONOTUYO set "ICONOTUYO=%%i"
+for %%i in ("%RAIZ%*.ico") do if not defined ICONOTUYO set "ICONOTUYO=%%i"
+if defined ICONOTUYO goto :icono_copiar
 
+if not exist "%CFGFUENTE%" goto :icono_del_repo
+
+REM  LOS COMENTARIOS SE DESCARTAN. El bloque de ayuda de esa clave trae rutas de
+REM  EJEMPLO iguales a la de verdad, y sin este filtro se tomaria una de ellas y el
+REM  aviso senalaria un archivo que nunca existio.
+set "LINEA="
+for /f "usebackq delims=" %%l in (`findstr /c:"logo" "%CFGFUENTE%" ^| findstr /v /c:"//"`) do if not defined LINEA set "LINEA=%%l"
+if not defined LINEA goto :icono_del_repo
+
+REM  De     "logo": "C:/ruta/CADLINK.ico"     a     C:\ruta\CADLINK.ico
+REM  Se corta hasta los dos puntos de la clave, se quita la coma final si la hay, y
+REM  las comillas las quita el propio for -que es la manera segura, sin un set sin
+REM  comillas que se rompa con un caracter raro en la ruta-.
+set "LINEA=%LINEA:*: =%"
+set "LINEA=%LINEA:,=%"
+for /f "delims=" %%r in (%LINEA%) do set "ICONOTUYO=%%r"
 if not defined ICONOTUYO goto :icono_del_repo
+set "ICONOTUYO=%ICONOTUYO:/=\%"
 
+if /i not "%ICONOTUYO:~-4%"==".ico" goto :icono_no_es_ico
+if not exist "%ICONOTUYO%" goto :icono_no_esta
+goto :icono_copiar
+
+:icono_no_es_ico
+echo   AVISO: la clave "logo" de cadlink.config.json no apunta a un .ico:
+echo      %ICONOTUYO%
+echo          Ese archivo si sirve para el logo de la pantalla de inicio, pero
+echo          para el icono del ejecutable hace falta un .ico. Copia el tuyo
+echo          en la carpeta  installer
+echo.
+set "ICONOTUYO="
+goto :icono_del_repo
+
+:icono_no_esta
+echo   AVISO: no encuentro el icono que dice cadlink.config.json:
+echo      %ICONOTUYO%
+echo          Comprueba la ruta, o copia tu .ico en la carpeta  installer
+echo.
+set "ICONOTUYO="
+goto :icono_del_repo
+
+:icono_copiar
 copy /y "%ICONOTUYO%" "%ICONOAPP%" >nul
 if errorlevel 1 goto :error_icono
 
-echo Icono tomado de tu archivo:
+echo Icono tomado de:
 echo    %ICONOTUYO%
 echo.
 goto :icono_listo
 
 :icono_del_repo
 if not exist "%ICONOAPP%" goto :sin_icono
-echo Icono: el del repositorio -marcador de posicion-.
-echo    Para usar el tuyo, copia tu .ico en la carpeta installer
+echo Icono: el de muestra del repositorio.
+echo    Para usar el tuyo, copia tu .ico en la carpeta  installer
 echo.
 goto :icono_listo
 
