@@ -1,0 +1,27 @@
+# ============================================================================
+#  FINALES DE RENGLON
+# ============================================================================
+#
+#  ═══════════════════════════════════════════════════════════════════════════
+#  LOS .bat TIENEN QUE LLEGAR CON CRLF, Y ESTO NO ES COSMETICO.
+#
+#  cmd.exe lee un archivo por lotes por POSICION DE BYTE. Cuando el archivo
+#  trae solo LF, un  goto  puede reanudar la lectura en el sitio equivocado y
+#  la ventana se cierra en menos de un segundo, sin mensaje y sin llegar a
+#  ningun  pause. Es imposible de diagnosticar mirando el contenido, porque el
+#  contenido esta bien.
+#
+#  Con  -text  git no convierte nada en ningun sentido: los archivos estan
+#  guardados con CRLF y llegan con CRLF, lo mismo al clonar en Windows, al
+#  clonar en Linux o al descargar el zip de GitHub -que es por donde llegan de
+#  verdad-. Si se pusiera  text eol=crlf, la conversion dependeria de que el
+#  camino de entrega la aplique, y el zip no siempre la aplica.
+#  ═══════════════════════════════════════════════════════════════════════════
+*.bat -text
+
+#  El guion del instalador lo lee ISCC.exe, en Windows.
+*.iss -text
+
+#  Y el contrato lo PINTA el instalador en un cuadro de texto de Windows, que
+#  solo parte el renglon con CRLF: con LF se veria todo en un solo parrafo.
+installer/LICENCIA.txt -text

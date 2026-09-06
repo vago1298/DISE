@@ -44,14 +44,14 @@
 #endif
 
 [Setup]
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 ;  EL AppId NO SE CAMBIA NUNCA MAS.
 ;
 ;  Es con lo que Windows reconoce que la version nueva es la MISMA aplicacion
 ;  y la actualiza encima. Si algun dia se cambia, el cliente acaba con dos
 ;  CadLink instalados a la vez, dos accesos directos y dos entradas en Agregar
 ;  o quitar programas, y ninguna de las dos desinstala a la otra.
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 AppId={{7B2C9E14-4A6D-4F58-9C31-2E8D5A0B7F63}
 AppName={#Nombre}
 AppVersion={#Version}
@@ -68,7 +68,7 @@ DefaultGroupName={#Nombre}
 DisableProgramGroupPage=yes
 DisableDirPage=auto
 
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 ;  SIN PEDIR CONTRASENA DE ADMINISTRADOR.
 ;
 ;  En un despacho el ingeniero casi nunca es administrador de su maquina, y un
@@ -80,7 +80,7 @@ DisableDirPage=auto
 ;  La licencia, de todos modos, es por usuario de Windows: se guarda cifrada
 ;  con DPAPI del usuario en %LOCALAPPDATA%\CadLink. La huella del equipo es la
 ;  misma para todos, asi que activar en dos usuarios NO gasta dos asientos.
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
@@ -118,7 +118,7 @@ SetupIconFile={#RutaIcono}
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Files]
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 ;  1. TODO LO PUBLICADO, MENOS LO QUE NO DEBE SALIR DE AQUI.
 ;
 ;  El comodin es a proposito: con la publicacion en un solo archivo casi todo
@@ -135,12 +135,12 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 ;    *.pdb          los simbolos de depuracion facilitan desarmar el programa,
 ;                   y ademas pesan. Se siguen generando, para poder leer un
 ;                   informe de error, pero se quedan en tu maquina.
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 Source: "{#Publicado}\*"; DestDir: "{app}"; \
     Excludes: "*.pdb,*.pem,*.key,*.db,*.sqlite,*.env,cadlink.config.json,perfiles-acero.csv,aceros.csv"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 ;  2. LOS TRES ARCHIVOS QUE EL CLIENTE PUEDE EDITAR: onlyifdoesntexist.
 ;
 ;  La configuracion lleva la direccion del servidor y la ruta de SU logo, y
@@ -154,7 +154,7 @@ Source: "{#Publicado}\*"; DestDir: "{app}"; \
 ;
 ;  La configuracion lleva ademas uninsneveruninstall: si el cliente
 ;  desinstala y vuelve a instalar, no tiene que volver a escribir nada.
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 Source: "{#Publicado}\cadlink.config.json"; DestDir: "{app}"; \
     Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#Publicado}\perfiles-acero.csv"; DestDir: "{app}"; Flags: onlyifdoesntexist
@@ -172,14 +172,14 @@ Name: "escritorio"; Description: "Crear un icono en el escritorio"; \
 Filename: "{app}\{#Ejecutable}"; Description: "Abrir {#Nombre} ahora"; \
     Flags: nowait postinstall skipifsilent
 
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================
 ;  LO QUE EL DESINSTALADOR *NO* BORRA, Y ES ADREDE:
 ;
 ;  %LOCALAPPDATA%\CadLink\license.dat  -la licencia activada- se queda. Asi,
 ;  reinstalar no obliga al cliente a volver a activar ni gasta otra activacion
-;  en el servidor. Para dar de baja el equipo esta el boton «Liberar este
-;  equipo» de la pestana Licencia, que es lo que borra ese archivo.
+;  en el servidor. Para dar de baja el equipo esta el boton "Liberar este
+;  equipo" de la pestana Licencia, que es lo que borra ese archivo.
 ;
 ;  Los trabajos del cliente -.clk- viven donde el los guardo y aqui no se
 ;  tocan.
-;  ═══════════════════════════════════════════════════════════════════════════
+;  ===========================================================================

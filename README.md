@@ -381,11 +381,14 @@ administrador.
 Requiere [Inno Setup 6](https://jrsoftware.org/isdl.php) instalado una vez en tu
 máquina (es gratis y sin regalías por instalador). El `.bat` te lo dice si falta.
 
-El script **se niega a armar el paquete** si la configuración todavía apunta a
-`localhost`, si la dirección del servidor no es `https`, o si falta la llave
-pública embebida: los tres casos producen un instalador que no puede funcionar en
-casa del cliente. Para probar en tu propia máquina:
-`6-crear-instalador.bat prueba`.
+Al abrirlo **te pregunta qué paquete quieres**: `1` de prueba, para tu propia
+computadora, o `2` para el cliente. El de prueba vale aunque la configuración
+apunte a `localhost`.
+
+Para el paquete del cliente, el script **se niega a armarlo** si la configuración
+todavía apunta a `localhost`, si la dirección del servidor no es `https`, o si
+falta la llave pública embebida: los tres casos producen un instalador que no
+puede funcionar en casa del cliente.
 
 Si prefieres publicar a mano, el comando sigue siendo:
 

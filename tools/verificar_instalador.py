@@ -249,6 +249,91 @@ check("y el paquete de prueba se anuncia como tal",
 
 print()
 print("=" * 78)
+print("LO QUE LEE WINDOWS: ASCII PURO Y CRLF")
+print("=" * 78)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  ESTO YA PASO, Y COSTO UN DIA.
+#
+#  El .bat se abria y se cerraba en menos de un segundo, sin mensaje, sin llegar a
+#  ningun pause. El contenido estaba bien; lo que estaba mal eran los BYTES:
+#
+#    1. Tres caracteres no ASCII en unos comentarios. cmd.exe con  chcp 65001  lee el
+#       archivo por POSICION DE BYTE y decodifica UTF-8: cuando la cuenta de bytes y la
+#       de caracteres dejan de coincidir, un  goto  reanuda la lectura en el sitio
+#       equivocado y el archivo termina de golpe. Los otros seis .bat del proyecto
+#       tienen CERO bytes no ASCII, y no era casualidad.
+#
+#    2. Finales de renglon LF en lugar de CRLF, por lo mismo.
+#
+#  No se puede probar aqui -no hay cmd.exe-, asi que se comprueba lo unico que se
+#  puede comprobar: los bytes.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+DE_WINDOWS = sorted(
+    f for f in os.listdir(RAIZ) if f.lower().endswith(".bat")
+) + [os.path.join("installer", "CadLink.iss"), os.path.join("installer", "LICENCIA.txt")]
+
+check("se encontraron los archivos que consume Windows",
+      len(DE_WINDOWS) >= 9, f"{len(DE_WINDOWS)}: {DE_WINDOWS}")
+
+con_acentos = []
+con_lf = []
+
+for nombre in DE_WINDOWS:
+    with open(os.path.join(RAIZ, nombre), "rb") as f:
+        crudo = f.read()
+
+    if any(b > 126 for b in crudo):
+        con_acentos.append(nombre)
+
+    #  Un LF que no venga precedido de CR. Basta uno para descolocar la lectura.
+    if crudo.replace(b"\r\n", b"").count(b"\n"):
+        con_lf.append(nombre)
+
+check("ninguno lleva un solo byte fuera de ASCII",
+      not con_acentos, f"{con_acentos}")
+
+check("y todos terminan los renglones con CRLF",
+      not con_lf, f"{con_lf}")
+
+#  Y QUE NO SE DESHAGA AL ENTREGARLO. Sin esto, git convierte los finales de renglon
+#  segun quien clone y por donde: el zip de GitHub -que es por donde llegan de verdad-
+#  no siempre aplica la conversion.
+check("git no toca los finales de renglon de esos archivos",
+      re.search(r"^\*\.bat\s+-text\s*$", leer(".gitattributes"), re.M) is not None
+      and re.search(r"^\*\.iss\s+-text\s*$", leer(".gitattributes"), re.M) is not None)
+
+check("y se explica por que, para que nadie lo 'arregle'",
+      "POSICION DE BYTE" in leer(".gitattributes"))
+
+print()
+print("=" * 78)
+print("SE PUEDE USAR CON DOBLE CLIC")
+print("=" * 78)
+
+#  AL DAR DOBLE CLIC EN UN .bat NO HAY FORMA DE PASARLE PARAMETROS. Pedir el modo por
+#  parametro era pedir algo que el usuario no puede dar: se pregunta.
+check("el modo se pregunta, no se exige por parametro",
+      'set /p "OPCION=' in BAT
+      and ":modo_elegido" in BAT
+      and 'if "%OPCION%"=="1" set "PRUEBA=1"' in BAT)
+
+check("pero desde la consola tambien se acepta el parametro",
+      'if /i "%~1"=="prueba" set "PRUEBA=1"' in BAT)
+
+#  Y SI SE ESCRIBE CUALQUIER OTRA COSA, se avisa y se para con pause: no se arma a
+#  ciegas el paquete que no era.
+check("una respuesta que no sea 1 ni 2 se rechaza",
+      "No entendi" in BAT)
+
+#  TODA SALIDA DE ERROR PASA POR pause. Si no, la ventana se cierra y el usuario no
+#  alcanza a leer que fue lo que fallo, que es justo el problema que trajo todo esto.
+check("todos los errores se quedan en pantalla con pause",
+      BAT.count("pause") >= 2 and BAT.rstrip().endswith("exit /b 1")
+      and "pause\nexit /b 1" in BAT.replace("\r\n", "\n"))
+
+print()
+print("=" * 78)
 print("LA FIRMA DE CODIGO")
 print("=" * 78)
 

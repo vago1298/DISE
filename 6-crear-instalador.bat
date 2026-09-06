@@ -26,16 +26,51 @@ set "GUION=%RAIZ%installer\CadLink.iss"
 set "PUBLICADO=%RAIZ%client\src\CadLink.App\bin\Release\net8.0-windows\win-x64\publish"
 set "CFG=%PUBLICADO%\cadlink.config.json"
 
-REM  MODO PRUEBA: crea el instalador aunque la configuracion siga apuntando a
-REM  tu propia computadora, para poder probar la instalacion sin servidor.
-REM  El archivo sale marcado, para que no se entregue por error.
-set "PRUEBA="
-if /i "%~1"=="prueba" set "PRUEBA=1"
-if defined PRUEBA echo   *** MODO PRUEBA: no se lo mandes a un cliente. ***
-if defined PRUEBA echo.
-
 if not exist "%CSPROJ%" goto :no_proyecto
 if not exist "%GUION%" goto :no_guion
+
+
+REM ============================================================
+REM  QUE PAQUETE SE ARMA
+REM
+REM  SE PREGUNTA, no se pasa por parametro: al dar doble clic en
+REM  un .bat no hay forma de pasarle nada, asi que un parametro
+REM  obligatorio seria un modo al que nunca se puede llegar.
+REM  Desde la consola tambien se acepta:  6-crear-instalador.bat prueba
+REM ============================================================
+
+set "PRUEBA="
+if /i "%~1"=="prueba" set "PRUEBA=1"
+if defined PRUEBA goto :modo_elegido
+
+echo   ----------------------------------------------------------
+echo    QUE PAQUETE QUIERES ARMAR
+echo   ----------------------------------------------------------
+echo.
+echo      1 = DE PRUEBA, para tu propia computadora.
+echo          Vale aunque la configuracion apunte a localhost.
+echo          NO se lo puedes mandar a un cliente.
+echo.
+echo      2 = PARA EL CLIENTE, el de verdad.
+echo          Exige que la configuracion ya apunte a tu
+echo          servidor de licencias, con https.
+echo.
+
+set "OPCION="
+set /p "OPCION=Escribe 1 o 2 y pulsa Enter: "
+
+if "%OPCION%"=="1" set "PRUEBA=1"
+if "%OPCION%"=="1" goto :modo_elegido
+if "%OPCION%"=="2" goto :modo_elegido
+
+echo.
+echo   No entendi "%OPCION%". Hay que escribir 1 o 2.
+goto :error
+
+:modo_elegido
+echo.
+if defined PRUEBA echo   *** MODO PRUEBA: no se lo mandes a un cliente. ***
+if defined PRUEBA echo.
 
 
 REM ============================================================
@@ -94,7 +129,7 @@ REM ============================================================
 
 if not exist "%CFG%" goto :sin_config
 
-REM  ¿Sigue apuntando a tu computadora? Entonces el cliente no podria activar:
+REM  Sigue apuntando a tu computadora? Entonces el cliente no podria activar:
 REM  su localhost es SU maquina, no la tuya.
 findstr /c:"servidorLicencias" "%CFG%" | findstr /c:"localhost" >nul 2>&1
 if not errorlevel 1 goto :config_localhost
@@ -116,8 +151,8 @@ if not errorlevel 1 echo   AVISO: la clave "logo" apunta a una carpeta de tu equ
 REM ============================================================
 REM  FIRMA DEL EJECUTABLE  (opcional, pero muy recomendable)
 REM
-REM  Sin firma, Windows ensena «Windows protegio tu PC» en azul y hay que
-REM  entrar en «Mas informacion» para poder instalar. La mitad de los
+REM  Sin firma, Windows ensena "Windows protegio tu PC" en azul y hay que
+REM  entrar en "Mas informacion" para poder instalar. La mitad de los
 REM  clientes no pasan de ahi.
 REM
 REM  DOS FORMAS, porque desde 2023 ya no venden certificados de codigo como

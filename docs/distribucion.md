@@ -60,11 +60,15 @@ instalador. El `.bat` te lo dice si falta.
 | falta la llave pública embebida | la app no podría verificar ninguna licencia; nadie podría activar |
 | la publicación no dejó `CadLink.exe` | no empaqueta una carpeta a medias |
 
-Para probar la instalación en tu propia máquina, sin servidor público:
+Al abrirlo te pregunta qué paquete quieres: **`1`** de prueba, para tu propia máquina y sin
+servidor público, o **`2`** para el cliente. Desde la consola también se acepta
+`6-crear-instalador.bat prueba`.
 
-```
-6-crear-instalador.bat prueba
-```
+> **Los `.bat` de este proyecto son ASCII puro y CRLF, y no es cosmético.** `cmd.exe` lee un
+> archivo por lotes por *posición de byte*: con un solo carácter acentuado y `chcp 65001`, o con
+> finales de renglón LF, un `goto` reanuda la lectura en el sitio equivocado y **la ventana se
+> cierra en menos de un segundo, sin mensaje y sin llegar a ningún `pause`**. Lo vigila
+> `tools/verificar_instalador.py` y `.gitattributes` evita que git lo deshaga al entregarlo.
 
 ### Lo que el instalador hace bien y no es obvio
 
@@ -236,7 +240,7 @@ nueva — el cliente ya manda su `app_version` en cada activación y renovación
 
 ## 8. Orden que yo seguiría
 
-1. Armar el instalador con `6-crear-instalador.bat prueba` y probarlo en otra computadora.
+1. Armar el paquete de prueba con `6-crear-instalador.bat` (opción `1`) e instalarlo en tu máquina.
 2. Corregir el desacuerdo de `TRIAL_DAYS` (1 día) con lo que dice el README (30).
 3. Publicar el servidor con HTTPS y poner `AUTO_INTERNAL_FIRST_MACHINE=false`.
 4. Cambiar `cadlink.config.json` a la dirección real y armar el instalador de verdad.

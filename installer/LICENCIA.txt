@@ -38,8 +38,8 @@ placa madre, el procesador, el disco de sistema y Windows- y la licencia queda
 atada a esa huella.
 
 Cambiar la placa madre o el disco donde esta Windows cambia la huella y obliga a
-reactivar. Para mover la licencia a otra computadora se usa el boton «Liberar
-este equipo» de la pestana Licencia, o se avisa a soporte.
+reactivar. Para mover la licencia a otra computadora se usa el boton "Liberar
+este equipo" de la pestana Licencia, o se avisa a soporte.
 
 
 4. QUE DATOS SE MANDAN AL SERVIDOR
