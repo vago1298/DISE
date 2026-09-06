@@ -134,9 +134,32 @@ Dos propiedades del dibujo que están puestas a propósito y las vigila
 tareas. Un patín de menos de píxel y medio se convierte en un gris translúcido y el perfil deja de
 leerse.
 
-> Si ya tenías un acceso directo con el icono viejo, Windows guarda los iconos en caché y puede
-> seguir mostrando el anterior un rato. Reinstalar encima suele refrescarlo; si no, cerrar sesión y
-> volver a entrar lo arregla siempre.
+### ¿Sigue apareciendo el icono anterior?
+
+```
+verificar-icono.bat
+```
+
+Doble clic y te dice qué está pasando. **No cambia nada, solo informa.** Hay cuatro causas y
+ninguna se ve a simple vista:
+
+| Causa | Cómo se ve en el diagnóstico |
+|---|---|
+| Un `.ico` viejo en `installer` o en la raíz **manda sobre el del proyecto** | el paso 2 lo lista, con su tamaño |
+| La carpeta del proyecto es de una versión anterior | el paso 1 dice «ES EL DEL RAYO» |
+| Quedó una compilación sin borrar y el `.exe` no se rehizo | el paso 4 |
+| La caché de iconos del Explorador | el paso 5 y el truco de abajo |
+
+Los tamaños identifican al icono sin abrirlo: **108,062 bytes es el del rayo** (el de las primeras
+versiones, de cuando se creyó que el programa hablaba con ETAP) y **106,770 es el del perfil I**.
+Cualquier otro tamaño es tu propio icono. `6-crear-instalador.bat` **se niega a armar el paquete**
+si detecta el del rayo, en lugar de avisar entre veinte renglones de compilación.
+
+**El truco para saber si es la caché:** mira el icono del propio `dist\CadLink-Setup-1.0.0.exe`.
+Lleva el mismo icono que la aplicación y es un archivo nuevo, así que Windows no lo tiene guardado
+de antes. Si el instalador se ve bien y el acceso directo del escritorio no, lo que estás viendo es
+una imagen guardada: borra el acceso directo, o cierra sesión de Windows y vuelve a entrar. El
+instalador ya intenta refrescarla solo con `ie4uinit`.
 
 ### Antes de repartir
 

@@ -128,6 +128,10 @@ REM ============================================================
 set "ICONOAPP=%RAIZ%client\src\CadLink.App\Assets\app.ico"
 set "CFGFUENTE=%RAIZ%client\src\CadLink.App\cadlink.config.json"
 
+REM  El tamano exacto del .ico del RAYO, el de las primeras versiones. Se reconoce por
+REM  ahi para poder rechazarlo: el del perfil I mide 106770.
+set "TAMANO_DEL_RAYO=108062"
+
 set "ICONOTUYO="
 for %%i in ("%RAIZ%installer\*.ico") do if not defined ICONOTUYO set "ICONOTUYO=%%i"
 for %%i in ("%RAIZ%*.ico") do if not defined ICONOTUYO set "ICONOTUYO=%%i"
@@ -192,7 +196,25 @@ REM  SE DICE QUE TAMANO Y QUE FECHA TIENE EL ICONO QUE SE VA A INCRUSTAR. Parece
 REM  detalle de mas, pero es lo unico que permite saber, sin instalar nada, si el
 REM  ejecutable se hizo con el icono nuevo o con el de antes.
 :icono_medida
+set "TAMICONO="
+for %%a in ("%ICONOAPP%") do set "TAMICONO=%%~za"
 for %%a in ("%ICONOAPP%") do echo    %%~za bytes, del %%~ta
+
+REM ============================================================
+REM  Y SI ES EL DEL RAYO, NO SE ARMA NADA.
+REM
+REM  El rayo era el icono de las primeras versiones, de cuando se
+REM  creyo que el programa hablaba con ETAP -instalaciones
+REM  electricas- en lugar de con ETABS. Se cambio por la seccion
+REM  de un perfil I, pero un .ico viejo puede seguir dando vueltas
+REM  en la carpeta installer, en la raiz, o en una copia del
+REM  proyecto que no se volvio a descargar.
+REM
+REM  Parar aqui es mejor que armar el paquete: el usuario dijo que
+REM  no quiere volver a ver ese icono, y un aviso mas entre veinte
+REM  renglones de compilacion no se lee.
+REM ============================================================
+if "%TAMICONO%"=="%TAMANO_DEL_RAYO%" goto :icono_es_el_rayo
 echo.
 goto :icono_listo
 
@@ -434,6 +456,38 @@ echo Sin la llave publica embebida, la aplicacion no puede
 echo verificar ninguna licencia y NINGUN cliente podria activar.
 echo.
 echo Ejecuta primero  1-instalar-servidor.bat
+goto :error
+
+:icono_es_el_rayo
+echo.
+echo ==========================================================
+echo   ESE ICONO ES EL DEL RAYO
+echo ==========================================================
+echo.
+echo   No se arma nada, para que no vuelvas a ver ese icono.
+echo.
+echo   El del rayo era de las primeras versiones. El de ahora es
+echo   la seccion de un perfil I y mide 106770 bytes.
+echo.
+echo   El que se iba a usar es:
+echo      %ICONOAPP%
+echo      %TAMICONO% bytes
+if defined ICONOTUYO echo   y salio de:
+if defined ICONOTUYO echo      %ICONOTUYO%
+echo.
+echo   Como arreglarlo, segun de donde salio:
+echo.
+echo     - Si salio de la carpeta  installer  o de la raiz:
+echo       borra ese .ico de ahi. Es una copia vieja.
+echo.
+echo     - Si es el del propio proyecto: tu carpeta es de una
+echo       version anterior. Descarga el zip otra vez y
+echo       descomprimelo en una carpeta NUEVA, no encima.
+echo.
+echo     - Para usar el tuyo: copia tu .ico en  installer
+echo.
+echo   Para ver todos los iconos que hay y cual se usaria,
+echo   ejecuta  verificar-icono.bat
 goto :error
 
 :error_icono

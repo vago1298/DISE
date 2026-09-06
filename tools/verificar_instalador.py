@@ -462,6 +462,99 @@ check("se informa el tamano y la fecha del icono que se incrusta",
       'for %%a in ("%ICONOAPP%") do echo    %%~za bytes, del %%~ta' in BAT)
 
 #  ═══════════════════════════════════════════════════════════════════════════════════
+#  EL ICONO DEL RAYO SE RECHAZA, NO SE AVISA.
+#
+#  El rayo era el icono de las primeras versiones -de cuando se creyo que el programa
+#  hablaba con ETAP, que es de instalaciones electricas- y el usuario pidio no volver a
+#  verlo. Un .ico viejo puede seguir dando vueltas en installer, en la raiz, o en una
+#  copia del proyecto que no se volvio a descargar, y en ese caso GANA sobre el del
+#  repositorio.
+#
+#  Un aviso mas entre veinte renglones de compilacion no se lee. Se para.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+DIAG = leer("verificar-icono.bat")
+
+m_rayo_bat = re.search(r'set "TAMANO_DEL_RAYO=(\d+)"', BAT)
+m_rayo_diag = re.search(r'set "TAMANO_DEL_RAYO=(\d+)"', DIAG)
+m_perfil = re.search(r'set "TAMANO_DEL_PERFIL=(\d+)"', DIAG)
+
+check("el .bat se niega a armar el paquete con el icono del rayo",
+      m_rayo_bat is not None
+      and 'if "%TAMICONO%"=="%TAMANO_DEL_RAYO%" goto :icono_es_el_rayo' in BAT
+      and ":icono_es_el_rayo" in BAT
+      and "ESE ICONO ES EL DEL RAYO" in BAT)
+
+check("y explica de donde pudo salir, que es lo que hay que borrar",
+      "borra ese .ico de ahi" in BAT
+      and "descomprimelo en una carpeta NUEVA" in BAT)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y LOS DOS TAMANOS TIENEN QUE CUADRAR CON LA REALIDAD.
+#
+#  Son constantes escritas a mano en dos .bat. Si algun dia se regenera el icono y
+#  cambia de tamano, la constante se queda vieja y el reconocimiento deja de servir sin
+#  que nada lo diga. Aqui se compara contra el archivo de verdad.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("los dos .bat reconocen el rayo por el mismo tamano",
+      m_rayo_bat and m_rayo_diag and m_rayo_bat.group(1) == m_rayo_diag.group(1),
+      f"instalador={m_rayo_bat.group(1) if m_rayo_bat else None} "
+      f"diagnostico={m_rayo_diag.group(1) if m_rayo_diag else None}")
+
+check("el repositorio NO trae el icono del rayo",
+      m_rayo_bat is not None and len(ICO) != int(m_rayo_bat.group(1)),
+      f"app.ico mide {len(ICO)}")
+
+check("y el tamano con el que se reconoce el perfil I es el del archivo de verdad",
+      m_perfil is not None and int(m_perfil.group(1)) == len(ICO),
+      f"constante={m_perfil.group(1) if m_perfil else None}  archivo={len(ICO)}")
+
+print()
+print("=" * 78)
+print("EL DIAGNOSTICO DE 'SIGO VIENDO EL ICONO VIEJO'")
+print("=" * 78)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  UN .bat QUE SE ABRE CON DOBLE CLIC Y DICE QUE ESTA PASANDO.
+#
+#  Las causas de seguir viendo el icono anterior son cuatro, y ninguna se ve: un .ico
+#  viejo en installer que manda sobre el del proyecto, una carpeta del proyecto de una
+#  version anterior, una compilacion sin borrar, o la cache de iconos del Explorador.
+#  Preguntarle al usuario "que dice el reporte" no funciono; un archivo que se abre con
+#  doble clic y se queda en pantalla, si.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("hay un diagnostico que se abre con doble clic", bool(DIAG))
+
+check("mira los cuatro sitios de donde puede salir el icono",
+      'for %%i in ("%RAIZ%installer\\*.ico")' in DIAG
+      and 'for %%i in ("%RAIZ%*.ico")' in DIAG
+      and 'findstr /c:"logo" "%CFGFUENTE%"' in DIAG
+      and "%ICONOAPP%" in DIAG)
+
+check("dice el tamano de cada uno, que es como se distinguen",
+      "%%~zi bytes" in DIAG and "%%~za bytes" in DIAG)
+
+#  LAS OTRAS DOS CAUSAS, que no son iconos.
+check("revisa tambien la compilacion vieja y lo ya instalado",
+      "%CARPETA_APP%\\obj" in DIAG
+      and "%LOCALAPPDATA%\\Programs\\CadLink\\CadLink.exe" in DIAG)
+
+#  EL TRUCO QUE CIERRA EL CASO: el instalador recien armado lleva el mismo icono y es un
+#  archivo nuevo, asi que la cache del Explorador no lo tiene guardado. Si ese se ve bien
+#  y el del escritorio no, lo que se esta viendo es la cache.
+check("y ensena como distinguir la cache de Windows de un icono mal armado",
+      "MIRA EL ICONO DEL PROPIO INSTALADOR" in DIAG
+      and "cierra sesion" in DIAG)
+
+check("no cambia nada, solo informa",
+      "Esto no cambia nada" in DIAG
+      and "del /" not in DIAG
+      and "rd /s" not in DIAG
+      and "copy " not in DIAG)
+
+check("y se queda en pantalla",
+      DIAG.rstrip().endswith("exit /b 0") and "pause" in DIAG)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
 #  Y EL INSTALADOR REFRESCA LA CACHE DE ICONOS.
 #
 #  El Explorador guarda los iconos que ya dibujo y los reutiliza mientras la ruta del
