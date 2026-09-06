@@ -169,6 +169,21 @@ Name: "escritorio"; Description: "Crear un icono en el escritorio"; \
     GroupDescription: "Accesos directos:"
 
 [Run]
+;  ===========================================================================
+;  REFRESCAR LA CACHE DE ICONOS DE WINDOWS.
+;
+;  El Explorador guarda los iconos que ya dibujo en una base de datos propia, y
+;  la reutiliza mientras la ruta del ejecutable no cambie. Al actualizar la
+;  aplicacion con un icono nuevo, el acceso directo puede seguir ensenando el
+;  ANTERIOR durante dias, y no hay forma de que el usuario adivine que lo que
+;  esta viendo es una imagen guardada.
+;
+;  ie4uinit viene con Windows y es lo que usa el propio sistema para eso. Va
+;  oculto, y si algun dia no estuviera, se salta en lugar de fallar.
+;  ===========================================================================
+Filename: "{sys}\ie4uinit.exe"; Parameters: "-show"; \
+    Flags: runhidden skipifdoesntexist
+
 Filename: "{app}\{#Ejecutable}"; Description: "Abrir {#Nombre} ahora"; \
     Flags: nowait postinstall skipifsilent
 

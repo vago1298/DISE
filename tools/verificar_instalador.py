@@ -94,6 +94,38 @@ check("la aplicacion se publica autocontenida, sin exigirle .NET al cliente",
 check("se publica en limpio, sin restos de la version anterior",
       'if exist "%PUBLICADO%" rd /s /q "%PUBLICADO%"' in BAT)
 
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y SE BORRA obj Y bin, QUE ES LO DEL ICONO.
+#
+#  El icono va incrustado en el .exe como recurso de Windows. Si MSBuild considera que
+#  el ensamblado ya esta al dia -porque el codigo no cambio, solo el .ico-, no lo vuelve
+#  a compilar y el ejecutable sale con el icono ANTERIOR. El sintoma es de los que
+#  desesperan: se cambia el icono, se vuelve a publicar, y el acceso directo sigue igual.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("y se borra lo compilado, o el .exe se queda con el icono anterior",
+      'if exist "%CARPETA_APP%\\obj" rd /s /q "%CARPETA_APP%\\obj"' in BAT
+      and 'if exist "%CARPETA_APP%\\bin" rd /s /q "%CARPETA_APP%\\bin"' in BAT
+      and "sale con el icono ANTERIOR" in BAT)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  LA MISMA CARPETA EN LOS DOS ARCHIVOS.
+#
+#  El .bat publica en una ruta y el guion empaqueta de otra. Si una cambia y la otra no,
+#  el instalador se arma con lo que quedo de la vez anterior -o no se arma-, y el error
+#  no dice que las rutas no coinciden.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+m_pub_iss = re.search(r'#define\s+Publicado\s+"\.\.\\([^"]+)"', ISS)
+m_carpeta = re.search(r'set "CARPETA_APP=%RAIZ%([^"]+)"', BAT)
+m_pub_bat = re.search(r'set "PUBLICADO=%CARPETA_APP%\\([^"]+)"', BAT)
+
+ruta_iss = m_pub_iss.group(1) if m_pub_iss else None
+ruta_bat = (m_carpeta.group(1) + "\\" + m_pub_bat.group(1)
+            if m_carpeta and m_pub_bat else None)
+
+check("el .bat publica en la misma carpeta de la que empaqueta el guion",
+      ruta_iss is not None and ruta_iss == ruta_bat,
+      f"guion={ruta_iss}  bat={ruta_bat}")
+
 print()
 print("=" * 78)
 print("LA LLAVE PRIVADA NO SALE DE AQUI")
@@ -423,6 +455,23 @@ check("y una ruta que ya no existe tambien se avisa",
 
 check("y avisa si no hay ninguno, en lugar de repartir el generico callando",
       ":sin_icono" in BAT and "icono" in BAT and "generico de Windows" in BAT)
+
+#  SE INFORMA EL TAMANO DEL .ico QUE SE VA A INCRUSTAR. Es lo unico que permite saber,
+#  sin instalar nada, si el ejecutable se hizo con el icono nuevo o con el de antes.
+check("se informa el tamano y la fecha del icono que se incrusta",
+      'for %%a in ("%ICONOAPP%") do echo    %%~za bytes, del %%~ta' in BAT)
+
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  Y EL INSTALADOR REFRESCA LA CACHE DE ICONOS.
+#
+#  El Explorador guarda los iconos que ya dibujo y los reutiliza mientras la ruta del
+#  ejecutable no cambie. Al actualizar con un icono nuevo, el acceso directo puede
+#  seguir ensenando el anterior durante dias, y el usuario no tiene forma de saber que
+#  lo que ve es una imagen guardada y no su programa.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+check("el instalador refresca la cache de iconos de Windows",
+      'Filename: "{sys}\\ie4uinit.exe"; Parameters: "-show"' in ISS
+      and "runhidden skipifdoesntexist" in ISS)
 
 #  EL DIBUJO DEL MARCADOR DE POSICION NO SE REPITE: se importa del que ya existia. Con
 #  el poligono escrito en dos archivos, el icono y el logo acabarian distintos.

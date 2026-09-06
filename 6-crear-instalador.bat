@@ -23,7 +23,8 @@ set "RAIZ=%~dp0"
 set "CSPROJ=%RAIZ%client\src\CadLink.App\CadLink.App.csproj"
 set "LLAVE=%RAIZ%client\src\CadLink.Licensing\EmbeddedPublicKey.cs"
 set "GUION=%RAIZ%installer\CadLink.iss"
-set "PUBLICADO=%RAIZ%client\src\CadLink.App\bin\Release\net8.0-windows\win-x64\publish"
+set "CARPETA_APP=%RAIZ%client\src\CadLink.App"
+set "PUBLICADO=%CARPETA_APP%\bin\Release\net8.0-windows\win-x64\publish"
 set "CFG=%PUBLICADO%\cadlink.config.json"
 
 if not exist "%CSPROJ%" goto :no_proyecto
@@ -179,13 +180,19 @@ if errorlevel 1 goto :error_icono
 
 echo Icono tomado de:
 echo    %ICONOTUYO%
-echo.
-goto :icono_listo
+goto :icono_medida
 
 :icono_del_repo
 if not exist "%ICONOAPP%" goto :sin_icono
 echo Icono: el de muestra del repositorio.
 echo    Para usar el tuyo, copia tu .ico en la carpeta  installer
+goto :icono_medida
+
+REM  SE DICE QUE TAMANO Y QUE FECHA TIENE EL ICONO QUE SE VA A INCRUSTAR. Parece un
+REM  detalle de mas, pero es lo unico que permite saber, sin instalar nada, si el
+REM  ejecutable se hizo con el icono nuevo o con el de antes.
+:icono_medida
+for %%a in ("%ICONOAPP%") do echo    %%~za bytes, del %%~ta
 echo.
 goto :icono_listo
 
@@ -207,6 +214,20 @@ REM ============================================================
 echo Publicando la aplicacion...
 echo.
 
+REM  ===========================================================================
+REM  SE BORRA LO YA COMPILADO, Y ESTO ES POR EL ICONO.
+REM
+REM  El icono va INCRUSTADO en el .exe como recurso de Windows, no como archivo
+REM  aparte. Si MSBuild considera que el ensamblado ya esta al dia -porque el
+REM  codigo no cambio, solo el .ico-, no lo vuelve a compilar y el ejecutable
+REM  sale con el icono ANTERIOR. El sintoma es exactamente ese: se cambia el
+REM  icono, se vuelve a publicar, y el acceso directo sigue con el de antes.
+REM
+REM  Cuesta un minuto de compilacion y quita de encima toda una clase de
+REM  "lo cambie y no se ve".
+REM  ===========================================================================
+if exist "%CARPETA_APP%\obj" rd /s /q "%CARPETA_APP%\obj"
+if exist "%CARPETA_APP%\bin" rd /s /q "%CARPETA_APP%\bin"
 if exist "%PUBLICADO%" rd /s /q "%PUBLICADO%"
 
 dotnet publish "%CSPROJ%" -c Release -r win-x64 --self-contained true -o "%PUBLICADO%"
