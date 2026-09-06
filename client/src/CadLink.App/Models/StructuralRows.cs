@@ -13,8 +13,20 @@ public abstract class Row : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <remarks>
+    /// <b>Una medida se guarda con los decimales que admite su celda</b>, y de eso se encarga
+    /// <see cref="Medidas.Redondear"/>. Está aquí y no en cada propiedad porque por aquí pasan
+    /// TODAS: así no hay forma de que una se quede guardando 1.234 mientras la celda enseña
+    /// 1.23. El redondeo va ANTES de la comparación, o volver a teclear el mismo valor
+    /// redondeado avisaría de un cambio que no hubo.
+    /// </remarks>
     protected void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
+        if (value is double medida)
+        {
+            value = (T)(object)Medidas.Redondear(medida, name);
+        }
+
         if (EqualityComparer<T>.Default.Equals(field, value))
         {
             return;

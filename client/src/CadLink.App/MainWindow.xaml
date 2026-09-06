@@ -550,9 +550,27 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <!-- ===================================================================
+                                 LAS CELDAS DE MEDIDA NO LLEVAN UpdateSourceTrigger=PropertyChanged.
+
+                                 Con formato y confirmacion en cada tecla juntos, el enlace
+                                 REESCRIBE lo que se esta teclando: al poner el «1» de «1.30»
+                                 la celda se volvia «1.00» y habia que borrar el «.00» a mano
+                                 para poder seguir. Sin el, se teclea «1.30» de corrido y la
+                                 fila se entera al salir de la celda -Tab, Enter o pulsar un
+                                 boton, que tambien quita el foco-.
+
+                                 Las celdas SIN formato -numero de varillas, diametros, f'c,
+                                 los desplegables- si confirman en cada tecla: ahi no hay nada
+                                 que reescribir y la vista previa se mueve mientras se escribe.
+
+                                 Los decimales: dos en las medidas y tres en las longitudes de
+                                 las elevaciones. Lo mismo que redondea Medidas.Redondear, para
+                                 que lo que se guarda y lo que se ve coincidan.
+                                 =================================================================== -->
+                            <DataGridTextColumn Header="Base cm"    Binding="{Binding BaseCm, StringFormat=N2}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N2}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
 
                             <DataGridTextColumn Header="N° esq sup"  Binding="{Binding NEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
@@ -605,7 +623,7 @@
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaSoloCircular}" />
 
-                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Rec cm"     Binding="{Binding RecubrimientoCm, StringFormat=N2}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
                             <DataGridComboBoxColumn x:Name="ColEstribo" Header="Estribo"
                                                     SelectedItemBinding="{Binding Estribo, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
@@ -668,22 +686,22 @@
                                                     SelectedItemBinding="{Binding DiamEstriboDiamante, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaEstribo}" />
-                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Gancho cm"  Binding="{Binding GanchoCm, StringFormat=N2}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
                             <DataGridTextColumn Header="f'c"        Binding="{Binding Fc, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
                             <DataGridTextColumn Header="Escala"     Binding="{Binding Escala, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Long. m"   Binding="{Binding LongitudM, StringFormat=N3}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
 
                             <DataGridTextColumn Header="Total vars." Binding="{Binding TotalVarillas, UpdateSourceTrigger=PropertyChanged}"
                                                 IsReadOnly="True" Width="Auto"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
-                            <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="As cm2"      Binding="{Binding AreaAceroCm2, StringFormat=N2}"
                                                 IsReadOnly="True" Width="Auto"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
-                            <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Cuantia %"   Binding="{Binding CuantiaPorcentaje, StringFormat=N3}"
                                                 IsReadOnly="True" Width="Auto"
                                                     CellStyle="{StaticResource CeldaCalculada}" />
                         </DataGrid.Columns>
@@ -1161,23 +1179,23 @@
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
                                                     CellStyle="{StaticResource CeldaIdent}" />
 
-                            <DataGridTextColumn Header="Peralte cm" Binding="{Binding PeralteCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Peralte cm" Binding="{Binding PeralteCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="e alma cm" Binding="{Binding EspesorAlmaCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="e alma cm" Binding="{Binding EspesorAlmaCm, StringFormat=N3}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="e patin cm" Binding="{Binding EspesorPatinCm, StringFormat=N3, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="e patin cm" Binding="{Binding EspesorPatinCm, StringFormat=N3}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Labio cm" Binding="{Binding LabioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Labio cm" Binding="{Binding LabioCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="r cm" Binding="{Binding RadioCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="r cm" Binding="{Binding RadioCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
                             <!-- Solo la ZF. Una zeta de catalogo tiene los dos patines de
                                  distinto ancho (60.3 y 54 mm en la de 2 3/8") y eso no es
                                  una errata del manual: es lo que permite traslapar dos
                                  zetas en el apoyo. En cero, la zeta sale simetrica. -->
-                            <DataGridTextColumn Header="Ancho 2 cm" Binding="{Binding AnchoMenorCm, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Ancho 2 cm" Binding="{Binding AnchoMenorCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
 
                             <DataGridCheckBoxColumn Header="Doble" Binding="{Binding Doble, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
@@ -1477,11 +1495,11 @@
                                                 Width="Auto" CellStyle="{StaticResource CeldaIdent}" />
 
                             <!-- Geometria de la zapata, EN METROS como en la macro -->
-                            <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- Parrillas de la zapata -->
@@ -1570,7 +1588,7 @@
                                  una columna no es un control y ponerselo directo da el
                                  error de compilacion MC3072. -->
                             <DataGridTextColumn Header="e muro cm"
-                                                Binding="{Binding EspesorMuroCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
+                                                Binding="{Binding EspesorMuroCm, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -1854,13 +1872,13 @@
                                                 Width="Auto" CellStyle="{StaticResource CeldaIdent}" />
 
                             <!-- Geometria de la zapata, EN METROS como en la macro -->
-                            <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Ancho m" Binding="{Binding AnchoM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Largo m" Binding="{Binding LargoM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Largo m" Binding="{Binding LargoM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Prof. m" Binding="{Binding ProfundidadM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Espesor m" Binding="{Binding EspesorM, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- Parrilla inferior -->
@@ -1985,7 +2003,7 @@
                                  vuelve a poner al dia si esa seccion cambia. Sigue siendo
                                  editable para un caso a mano, pero lo escrito a mano no gana
                                  contra la seccion: la referencia es la seccion. -->
-                            <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Dado cm" Binding="{Binding AnchoDadoCm, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaLateral}">
                                 <!-- El globo va en ElementStyle y NO como ToolTip de la
                                      columna: una columna de DataGrid no es un control, no
@@ -2032,7 +2050,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Col. cm" Binding="{Binding AnchoColumnaCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Col. cm" Binding="{Binding AnchoColumnaCm, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaLateral}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2041,7 +2059,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Rec. dado cm" Binding="{Binding RecDadoCm, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}"
+                            <DataGridTextColumn Header="Rec. dado cm" Binding="{Binding RecDadoCm, StringFormat=N2}"
                                                 Width="Auto" CellStyle="{StaticResource CeldaLateral}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2262,9 +2280,9 @@
                             </DataGridTemplateColumn>
 
                             <!-- ===== LA PLACA ===== -->
-                            <DataGridTextColumn Header="Largo cm" Binding="{Binding LargoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Largo cm" Binding="{Binding LargoCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
-                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Ancho cm" Binding="{Binding AnchoCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- El espesor va en PULGADAS y admite fraccion, asi que es un
@@ -2484,7 +2502,7 @@
                                  Cuando se corrige, se dice en la barra de estado: cambiar un numero
                                  que el usuario acaba de escribir, sin avisar, se parece mucho a que
                                  el programa no le hiciera caso. -->
-                            <DataGridTextColumn Header="Sep borde X cm" Binding="{Binding SepBordeXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Sep borde X cm" Binding="{Binding SepBordeXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2493,7 +2511,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Sep borde Y cm" Binding="{Binding SepBordeYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Sep borde Y cm" Binding="{Binding SepBordeYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2618,9 +2636,9 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTextColumn Header="L cart X cm" Binding="{Binding LongCartabonXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="L cart X cm" Binding="{Binding LongCartabonXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCartabon}" />
-                            <DataGridTextColumn Header="L cart Y cm" Binding="{Binding LongCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="L cart Y cm" Binding="{Binding LongCartabonYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCartabon}" />
 
                             <!-- LO QUE SUBE EL CARTABON. Solo se ve en el ALZADO: en planta el
@@ -2628,7 +2646,7 @@
                                  lado. En cero, el cartabon sale en la planta y NO en el alzado, que
                                  es lo que hace la macro: una placa de altura nula dibujada de canto
                                  es una linea suelta al lado de la columna. -->
-                            <DataGridTextColumn Header="H cart X cm" Binding="{Binding AltoCartabonXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="H cart X cm" Binding="{Binding AltoCartabonXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCartabon}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2637,7 +2655,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="H cart Y cm" Binding="{Binding AltoCartabonYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="H cart Y cm" Binding="{Binding AltoCartabonYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCartabon}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2652,7 +2670,7 @@
                                  cartabon, en planta no se ve, y ademas gobierna la profundidad del
                                  dado del alzado: el concreto baja 5 cm mas que el ancla, para que
                                  la punta quede dentro. En cero, el alzado sale sin anclas. -->
-                            <DataGridTextColumn Header="Ahogo ancl X cm" Binding="{Binding LongAnclajeXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Ahogo ancl X cm" Binding="{Binding LongAnclajeXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2661,7 +2679,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Ahogo ancl Y cm" Binding="{Binding LongAnclajeYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Ahogo ancl Y cm" Binding="{Binding LongAnclajeYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2682,7 +2700,7 @@
                                  Y si la longitud pide mas hondo de lo que dice el ahogo, el dado del
                                  alzado baja lo que haga falta: un ancla asomando por debajo del
                                  concreto es un plano que no se puede construir. -->
-                            <DataGridTextColumn Header="L ancla X cm" Binding="{Binding LongAnclaXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="L ancla X cm" Binding="{Binding LongAnclaXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2691,7 +2709,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="L ancla Y cm" Binding="{Binding LongAnclaYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="L ancla Y cm" Binding="{Binding LongAnclaYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2700,7 +2718,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Doblez ancla X cm" Binding="{Binding DoblezAnclaXCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Doblez ancla X cm" Binding="{Binding DoblezAnclaXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2709,7 +2727,7 @@
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Doblez ancla Y cm" Binding="{Binding DoblezAnclaYCm, StringFormat=N1, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Doblez ancla Y cm" Binding="{Binding DoblezAnclaYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
@@ -2722,7 +2740,7 @@
                             <!-- ===== ACOMODO Y ROTULO ===== -->
                             <DataGridCheckBoxColumn Header="Girar 90°" Binding="{Binding GirarPlaca90, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaAcabado}" />
-                            <DataGridTextColumn Header="Escala 1:" Binding="{Binding Escala, StringFormat=N0, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTextColumn Header="Escala 1:" Binding="{Binding Escala, StringFormat=N0}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}" />
 
                             <!-- ===== CALCULADAS =====

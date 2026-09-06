@@ -1221,6 +1221,8 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnExportAlzados(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (!_license.HasFeature("export-dxf"))
         {
             MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
@@ -1830,6 +1832,56 @@ public partial class MainWindow : Window
 
     private void OnFiltroVistaCambiado(object sender, RoutedEventArgs e) => RedibujarVistas();
 
+    // ======================================================================
+    //  CERRAR LA EDICIÓN ANTES DE LEER LAS HOJAS
+    // ======================================================================
+    //
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+    //  LAS CELDAS DE MEDIDA YA NO CONFIRMAN EN CADA TECLA, ASÍ QUE HAY QUE CERRARLAS.
+    //
+    //  Antes cada tecla escribía en la fila -UpdateSourceTrigger=PropertyChanged-, y con
+    //  eso el valor llegaba siempre, aunque el usuario no saliera de la celda. El problema
+    //  es que el enlace también REESCRIBÍA lo teclado con su formato: al poner el «1» de
+    //  «1.30» la celda se volvía «1.00» y había que corregir a mano el «.00». Por eso las
+    //  celdas con formato confirman ahora al salir.
+    //
+    //  Al salir de la celda con Tab, con Enter o pulsando un botón -que también quita el
+    //  foco-, WPF confirma solo. Lo que NO quita el foco es un atajo de teclado: con
+    //  Ctrl+S encima de una celda a medio escribir, lo teclado no se habría guardado. Esto
+    //  lo cierra a mano antes de leer.
+    //  ═════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Confirma la celda que esté abierta en las hojas, para que lo teclado llegue a la fila.
+    /// </summary>
+    private void CerrarEdicionDeLasHojas()
+    {
+        DataGrid?[] hojas =
+        {
+            SeccionesGrid, AceroGrid, ZapatasCorridasGrid, ZapatasGrid, PlacasGrid, PlanosGrid,
+        };
+
+        foreach (var hoja in hojas)
+        {
+            if (hoja is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                // La fila, no solo la celda: con CommitEdit de celda la fila se queda abierta
+                // y la siguiente lectura vuelve a ver el valor viejo.
+                hoja.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // La hoja no estaba en edición, o está en medio de un evento de edición. No
+                // hay nada que cerrar y no es un fallo.
+            }
+        }
+    }
+
     /// <summary>
     /// Filtros de la planta, que ahora vive en su propio módulo.
     /// </summary>
@@ -1868,6 +1920,8 @@ public partial class MainWindow : Window
 
     private void Guardar()
     {
+        CerrarEdicionDeLasHojas();
+
         if (string.IsNullOrWhiteSpace(_archivoActual))
         {
             GuardarComo();
@@ -2599,6 +2653,8 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnDibujarPlantaCad(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (!_license.HasFeature("export-dxf"))
         {
             MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
@@ -3723,6 +3779,8 @@ public partial class MainWindow : Window
 
     private void OnExport(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         // Segunda comprobación, en el punto de ejecución.
         if (!_license.HasFeature("export-dxf"))
         {
@@ -4231,6 +4289,8 @@ public partial class MainWindow : Window
 
     private void OnValidate(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (Revisar(out var problemas))
         {
             MessageBox.Show(

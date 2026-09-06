@@ -522,6 +522,8 @@ public partial class MainWindow
     /// <summary>Dibuja en AutoCAD todos los perfiles de la hoja de acero.</summary>
     private void OnExportAcero(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (!_license.HasFeature("export-dxf"))
         {
             MessageBox.Show("Tu licencia no incluye la generación de dibujos.",

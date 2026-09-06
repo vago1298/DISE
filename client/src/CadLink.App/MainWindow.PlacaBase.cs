@@ -1280,6 +1280,8 @@ public partial class MainWindow
     /// </remarks>
     private void OnDibujarPlacaBase(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (!_license.HasFeature("export-dxf"))
         {
             MessageBox.Show("Tu licencia no incluye la generación de dibujos.",

@@ -7559,18 +7559,38 @@ def v19_circular_y_ui() -> None:
           'Binding="{Binding Id}"' not in xaml)
 
     # ------------------------------------------------------------------
-    # La tabla se edita en TIEMPO REAL
+    # La tabla se edita en TIEMPO REAL, MENOS LAS CELDAS CON FORMATO
     # ------------------------------------------------------------------
-    # Las celdas confirmaban al SALIR, asi que la vista previa no se movia mientras se
-    # escribia. La suscripcion al PropertyChanged de cada fila ya existia; lo que faltaba
-    # era que el binding avisara en cada tecla.
+    #  ═══════════════════════════════════════════════════════════════════════════════════
+    #  ESTE CHEQUEO CAMBIO, Y LA VERSION ANTERIOR ERA LA QUE CAUSABA EL PROBLEMA.
+    #
+    #  Antes pedia que TODAS las celdas confirmaran en cada tecla, para que la vista previa
+    #  se moviera mientras se escribia. Con eso, una celda con StringFormat reescribe lo
+    #  que se esta teclando: al poner el «1» de «1.30» la celda se volvia «1.00» y habia
+    #  que borrar el «.00» a mano. El usuario lo reporto asi -«quiero que sea 1.30
+    #  corrido»-.
+    #
+    #  La regla nueva separa las dos cosas: las celdas SIN formato -varillas, diametros,
+    #  f'c, desplegables- siguen en tiempo real, y las que llevan formato -las medidas-
+    #  confirman al salir de la celda. Que es exactamente «StringFormat y
+    #  UpdateSourceTrigger=PropertyChanged no van juntos nunca».
+    #  ═══════════════════════════════════════════════════════════════════════════════════
     ini_c = xaml.find('x:Name="SeccionesGrid"')
     fin_c = xaml.find("</DataGrid.Columns>", ini_c)
     bloque = xaml[ini_c:fin_c]
     n_bind = len(re.findall(r'Binding="\{Binding \w+', bloque))
+    n_fmt = len(re.findall(r'Binding="\{Binding \w+, StringFormat=N\d\}', bloque))
     n_real = bloque.count("UpdateSourceTrigger=PropertyChanged")
-    check("las celdas de la hoja se confirman mientras se escribe",
-          n_real >= n_bind, f"{n_real} en tiempo real de {n_bind} bindings")
+    check("las celdas SIN formato se confirman mientras se escribe",
+          n_real >= n_bind - n_fmt, f"{n_real} en tiempo real de {n_bind - n_fmt} sin formato")
+
+    #  Y NINGUNA CELDA CON FORMATO CONFIRMA EN CADA TECLA, en toda la ventana: es la
+    #  combinacion que reescribe lo teclado, y con una sola que quede el usuario se
+    #  vuelve a topar con ella.
+    check("y ninguna celda con formato reescribe lo que se teclea",
+          re.search(r"StringFormat=N\d, UpdateSourceTrigger=PropertyChanged", xaml) is None
+          and re.search(r"UpdateSourceTrigger=PropertyChanged, StringFormat=N\d", xaml) is None)
+
     check("y la vista previa escucha la edicion de cada fila",
           "fila.PropertyChanged += OnFilaEditada;" in codigo)
 

@@ -169,6 +169,8 @@ public partial class MainWindow
     /// </remarks>
     private void OnGenerarSolapas(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (_juego.Planos.Count == 0)
         {
             MessageBox.Show(

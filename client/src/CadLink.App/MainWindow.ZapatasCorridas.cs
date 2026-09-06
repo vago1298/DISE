@@ -303,6 +303,8 @@ public partial class MainWindow
     /// </remarks>
     private void OnRevisarZapatasCorridas(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (!HayZapatasCorridas())
         {
             return;
@@ -455,6 +457,8 @@ public partial class MainWindow
     /// </remarks>
     private void OnExportZapatasCorridas(object sender, RoutedEventArgs e)
     {
+        CerrarEdicionDeLasHojas();
+
         if (!_license.HasFeature("export-dxf"))
         {
             MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
