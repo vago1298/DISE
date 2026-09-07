@@ -2419,6 +2419,53 @@ def v16_extruida_piers() -> None:
           "InsertarSeccion(a.Id, xSec, y)" in alz2)
 
     # ------------------------------------------------------------------
+    # EL VERDE DE LOS ROTULOS ES DE LA CAPA, NUNCA DEL OBJETO
+    # ------------------------------------------------------------------
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  ESTO SALIO AL IMPRIMIR: los rotulos del alzado salian VERDES en el PDF mientras
+    #  los de las secciones salian negros.
+    #
+    #  Los textos del alzado se creaban con  Color = 3, o sea verde puesto en la
+    #  ENTIDAD. Y las tres maneras de conseguir «verde en pantalla, negro al imprimir»
+    #  -estilo de trazado nombrado asignado a la capa, override por ventana con
+    #  -VPLAYER, o el reactor de AutoLISP que pone la capa en negro al arrancar el
+    #  PLOT- trabajan todas sobre la CAPA. Un color en el objeto gana siempre sobre lo
+    #  que se le haga a su capa, asi que esos textos se saltaban la conversion.
+    #
+    #  El dibujante de secciones ya lo hacia bien -su Rotulado(), que es el
+    #  AplicarPropiedadesRotulo de la macro-. El alzado era el unico sitio del proyecto
+    #  que rompia el patron.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    check("ningun texto del alzado lleva el verde puesto en el objeto",
+          re.search(r"\.Color = 3\s*;", alz2) is None
+          and "private const int ColorVerde" not in alz2
+          and re.search(r"\.Color = ColorVerde\s*;", alz2) is None)
+
+    #  LOS CUATRO: el CORTE A-A', el rotulo de varillas del alzado, el titulo y el
+    #  titulo girado de las columnas.
+    check("los cuatro textos del alzado van POR CAPA",
+          len(re.findall(r"mt\.Color = PorCapa;", alz2)) == 3
+          and len(re.findall(r"(?<![\w.])t\.Color = PorCapa;", alz2)) == 1)
+
+    #  Y AHORA EL COLOR DE LA CAPA IMPORTA DE VERDAD: si ROTULOS se queda sin color,
+    #  los textos que antes eran verdes por objeto saldrian BLANCOS. ROTULOS y COTAS no
+    #  estan en la tabla de la macro, asi que se resuelven como en las secciones.
+    m_cap_alz = re.search(r"public void AsegurarCapas\(\).*?\n    \}", alz2, re.S)
+    check("se puede leer AsegurarCapas del alzado", m_cap_alz is not None)
+
+    if m_cap_alz:
+        check("ROTULOS toma el verde de TEXTOS y COTAS el gris de las cotas",
+              '"ROTULOS" => CapasCad.ColorDeCapa("TEXTOS")' in m_cap_alz.group(0)
+              and '"COTAS" => ColorCotas' in m_cap_alz.group(0)
+              and "private const int ColorCotas = 253;" in alz2)
+
+    #  Y EL MOTIVO ESCRITO EN EL CODIGO, para que nadie lo revierta pensando que un
+    #  color explicito es «mas seguro».
+    check("y queda escrito por que no se pone el color en el objeto",
+          "EL VERDE DE LOS ROTULOS ES EL COLOR DE LA CAPA" in alz2
+          and "AL IMPRIMIR A PDF" in alz2)
+
+    # ------------------------------------------------------------------
     # La Y de la fila es RELATIVA a la seccion mas alta, no la cota fija
     # ------------------------------------------------------------------
     # La macro pone todo en Y=2 (su Y_BLOQUES). Con una contratrabe alta, la

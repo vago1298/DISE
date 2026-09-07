@@ -34,7 +34,36 @@ public sealed class AlzadoDrawer
     private const int ColorFondo = 9;
     private const int ColorRellenoEstribo = 152;
     private const int PorCapa = 256;
-    private const int ColorVerde = 3;
+
+    /// <summary>El gris de las cotas, el mismo que usa el dibujante de secciones.</summary>
+    private const int ColorCotas = 253;
+
+    // ======================================================================
+    //  POR QUE AQUI YA NO HAY UN «ColorVerde»
+    // ======================================================================
+    //
+    //  ========================================================================
+    //  EL VERDE DE LOS ROTULOS ES EL COLOR DE LA CAPA, NUNCA UN COLOR DE OBJETO.
+    //
+    //  Los rotulos y los titulos del alzado se creaban con  Color = 3  -verde
+    //  explicito en la entidad-. En pantalla se veia igual que en las secciones,
+    //  pero AL IMPRIMIR A PDF SALIAN VERDES mientras que los de las secciones
+    //  salian negros, y esa era la queja.
+    //
+    //  El motivo: las tres maneras de conseguir «verde en pantalla y negro al
+    //  imprimir» -un estilo de trazado nombrado asignado a la capa, un override de
+    //  color por ventana con -VPLAYER, o el reactor de AutoLISP que pone la capa en
+    //  negro al arrancar el PLOT- trabajan TODAS sobre la CAPA. Y un color puesto
+    //  en el objeto gana siempre sobre lo que se le haga a su capa, asi que esos
+    //  textos se saltaban la conversion.
+    //
+    //  El dibujante de secciones ya lo hacia bien: rotulos en la capa ROTULOS con
+    //  el color POR CAPA -su Rotulado(), que es el AplicarPropiedadesRotulo de la
+    //  macro-. El alzado era el unico sitio del proyecto que rompia el patron.
+    //
+    //  Asi que el verde vive donde debe: en el color de las capas TEXTOS y ROTULOS,
+    //  que AsegurarCapas fija en 3.
+    //  ========================================================================
 
     private const string EstiloTexto = "SECCIONES";
 
@@ -443,7 +472,7 @@ public sealed class AlzadoDrawer
                 t.Alignment = 10;              // acAlignmentBottomCenter
                 t.TextAlignmentPoint = punto;
                 t.Layer = "ROTULOS";
-                t.Color = 3;                   // verde, como la macro
+                t.Color = PorCapa;             // el verde lo pone la CAPA, ver arriba
                 t.Update();
             });
         }
@@ -954,7 +983,7 @@ public sealed class AlzadoDrawer
                 mt.InsertionPoint = new[] { x, y, 0d };
                 mt.Width = 0;
                 mt.Layer = "ROTULOS";
-                mt.Color = ColorVerde;
+                mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
             });
         }
@@ -2579,7 +2608,7 @@ public sealed class AlzadoDrawer
                 mt.AttachmentPoint = anclaje;
                 mt.Width = 0;
                 mt.Layer = "TEXTOS";
-                mt.Color = ColorVerde;
+                mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
             });
         }
@@ -2606,7 +2635,7 @@ public sealed class AlzadoDrawer
                 mt.AttachmentPoint = 5;             // centro
                 mt.Rotation = Math.PI / 2;
                 mt.Layer = "TEXTOS";
-                mt.Color = ColorVerde;
+                mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
 
                 // Se recoloca por caja envolvente para que el borde caiga exacto
@@ -2831,6 +2860,12 @@ public sealed class AlzadoDrawer
     {
         // Con los colores de la tabla de la macro para las que están en ella —CONCRETO, ESTRIBOS y
         // TEXTOS—: antes se creaban sin color y salían en blanco. Ver CapasCad.
+        //
+        // Y AHORA EL COLOR DE ROTULOS Y COTAS IMPORTA DE VERDAD, porque los rótulos van POR
+        // CAPA: si la capa se queda sin color, los textos que antes salían verdes por su
+        // color de objeto saldrían BLANCOS. Las dos se resuelven igual que en el dibujante de
+        // secciones —ROTULOS con el verde de TEXTOS y COTAS en 253—, que es lo que hace que
+        // un alzado dibujado solo, sin secciones en el dibujo, se vea igual que con ellas.
         foreach (var capa in new[] { "ALZADOS", "CONCRETO", "ESTRIBOS", "TEXTOS", "ROTULOS", "COTAS" })
         {
             try
@@ -2849,7 +2884,12 @@ public sealed class AlzadoDrawer
                         capa1 = capas.Add(capa);
                     }
 
-                    var color = CapasCad.ColorDeCapa(capa);
+                    var color = capa switch
+                    {
+                        "ROTULOS" => CapasCad.ColorDeCapa("TEXTOS"),
+                        "COTAS" => ColorCotas,
+                        _ => CapasCad.ColorDeCapa(capa),
+                    };
 
                     if (color != CapasCad.SinColor)
                     {
