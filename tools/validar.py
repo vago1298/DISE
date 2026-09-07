@@ -2447,6 +2447,30 @@ def v16_extruida_piers() -> None:
           len(re.findall(r"mt\.Color = PorCapa;", alz2)) == 3
           and len(re.findall(r"(?<![\w.])t\.Color = PorCapa;", alz2)) == 1)
 
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  Y LOS CUATRO EN LA CAPA «ROTULOS». NINGUNO EN «TEXTOS».
+    #
+    #  Con el color ya por capa, los dos TITULOS -DETALLE DE ALZADO DE ... y su
+    #  Escala 1:NN- seguian saliendo verdes en el PDF, y eran los unicos que quedaban.
+    #  Iban en la capa TEXTOS, y el mecanismo de negro al imprimir esta puesto sobre la
+    #  capa ROTULOS. Las dos son verdes en pantalla -las dos valen 3-, asi que la
+    #  diferencia NO SE VE hasta que se imprime, que es lo que la hace tan facil de
+    #  dejar pasar.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    check("el alzado no dibuja NADA en la capa TEXTOS",
+          re.search(r'\.Layer = "TEXTOS"', alz2) is None)
+
+    check("y los cuatro textos van en la capa ROTULOS",
+          len(re.findall(r'\.Layer = "ROTULOS"', alz2)) == 4)
+
+    #  QUE ES LA MISMA CAPA EN LA QUE ROTULA EL DIBUJANTE DE SECCIONES: si algun dia se
+    #  cambia alli, esto avisa de que las dos hojas dejaron de coincidir.
+    secdrw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+
+    check("la misma capa que usa el rotulo de las secciones",
+          'mt.Layer = "ROTULOS";' in secdrw
+          and 'e.Layer = "ROTULOS";' in secdrw)
+
     #  Y AHORA EL COLOR DE LA CAPA IMPORTA DE VERDAD: si ROTULOS se queda sin color,
     #  los textos que antes eran verdes por objeto saldrian BLANCOS. ROTULOS y COTAS no
     #  estan en la tabla de la macro, asi que se resuelven como en las secciones.

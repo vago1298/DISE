@@ -61,8 +61,27 @@ public sealed class AlzadoDrawer
     //  el color POR CAPA -su Rotulado(), que es el AplicarPropiedadesRotulo de la
     //  macro-. El alzado era el unico sitio del proyecto que rompia el patron.
     //
-    //  Asi que el verde vive donde debe: en el color de las capas TEXTOS y ROTULOS,
-    //  que AsegurarCapas fija en 3.
+    //  Asi que el verde vive donde debe: en el color de la capa ROTULOS, que
+    //  AsegurarCapas fija en 3.
+    //  ========================================================================
+    //
+    //  ========================================================================
+    //  Y TODO EL ROTULADO VA EN LA CAPA «ROTULOS». NINGUNO EN «TEXTOS».
+    //
+    //  Con el color ya por capa, los titulos -DETALLE DE ALZADO DE ... y su
+    //  Escala 1:NN- SEGUIAN saliendo verdes en el PDF, y eran los unicos. El
+    //  motivo es que iban en la capa TEXTOS, y el mecanismo de negro al imprimir
+    //  esta puesto sobre la capa ROTULOS, no sobre TEXTOS. Las dos son verdes en
+    //  pantalla -las dos valen 3-, asi que la diferencia no se ve hasta que se
+    //  imprime.
+    //
+    //  Las dos capas existen porque la macro las trae, pero para el rotulado la
+    //  buena es ROTULOS: es la que el dibujante de secciones usa para SUS titulos
+    //  -SeccionDrawer.cs, el MText del rotulo principal-, y la que la macro
+    //  normaliza, cambia de estilo de trazado y pone en negro al plotear.
+    //
+    //  TEXTOS se sigue creando -otros dibujantes la usan, y de ella sale el verde
+    //  de ROTULOS-, pero el alzado ya no dibuja nada en ella.
     //  ========================================================================
 
     private const string EstiloTexto = "SECCIONES";
@@ -2607,7 +2626,7 @@ public sealed class AlzadoDrawer
                 mt.Height = alto * _f;
                 mt.AttachmentPoint = anclaje;
                 mt.Width = 0;
-                mt.Layer = "TEXTOS";
+                mt.Layer = "ROTULOS";          // ROTULOS y no TEXTOS: ver arriba
                 mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
             });
@@ -2634,7 +2653,7 @@ public sealed class AlzadoDrawer
                 mt.Width = 0;
                 mt.AttachmentPoint = 5;             // centro
                 mt.Rotation = Math.PI / 2;
-                mt.Layer = "TEXTOS";
+                mt.Layer = "ROTULOS";          // ROTULOS y no TEXTOS: ver arriba
                 mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
 
