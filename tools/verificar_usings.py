@@ -89,6 +89,18 @@ TIPOS = {
         "StackPanel", "ScrollViewer", "MenuItem", "TabItem",
         "SelectionChangedEventArgs", "TextChangedEventArgs", "Orientation",
         "DataGridCell", "DataGridRow", "DataGridColumn",
+
+        # LOS ARGUMENTOS DE LOS EVENTOS DEL DataGrid. Faltaban, y por faltar dejaron
+        # pasar hasta Windows un CS0246: el manejador de CellEditEnding de la hoja de
+        # placas base declaraba 'DataGridCellEditEndingEventArgs e' y el archivo no
+        # importa System.Windows.Controls.
+        #
+        # El patron que los caza -'Tipo nombre)'- ya estaba; lo que faltaba era el
+        # nombre en esta tabla. Van los seis del DataGrid de una vez, porque el que se
+        # deje fuera es el que va a salir la proxima vez.
+        "DataGridCellEditEndingEventArgs", "DataGridRowEditEndingEventArgs",
+        "DataGridBeginningEditEventArgs", "DataGridPreparingCellForEditEventArgs",
+        "DataGridSortingEventArgs", "InitializingNewItemEventArgs",
     ],
     "System.Windows.Threading": [
         "DispatcherTimer", "DispatcherPriority",
@@ -352,7 +364,11 @@ AJENOS = {
     # De la COTA de AutoCAD, por objeto. ExtensionLineExtend se parece a «Extension» de
     # este proyecto y se reportaba como CS1061 sin serlo: es una propiedad de AcadDimension
     # y el objeto es dynamic.
-    "ExtensionLineExtend", "DecimalSeparator", "ArrowheadSize", "TextHeight",
+    #
+    # ExtensionLineOffset es su hermana -DIMEXO- y llego con el detalle de la placa base:
+    # se reportaba igual, por parecerse a «Extension» y a «ExtensionDeLoDibujado».
+    "ExtensionLineExtend", "ExtensionLineOffset", "ExtLineFixedLenSuppress",
+    "DecimalSeparator", "ArrowheadSize", "TextHeight",
     "LinetypeScale", "AddSolid", "MoveToTop", "GetExtensionDictionary",
     "AddMText", "AddText", "AddHatch", "AddCircle", "AddLine", "AddArc", "Evaluate",
     "SetFont", "CopyFrom", "Regen", "Update", "Delete", "Move", "Rotate", "Explode",
@@ -463,6 +479,95 @@ def revisar_miembros_que_no_existen(rutas):
             )
 
 
+# ----------------------------------------------------------------------
+#  5. NINGUN PARAMETRO ES 'dynamic'
+# ----------------------------------------------------------------------
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  UN ARGUMENTO 'dynamic' VUELVE DINAMICA LA LLAMADA ENTERA.
+#
+#  Y con ella el RESULTADO: un metodo que declara devolver
+#  '(double X0, double Y0, double X1, double Y1)?' pasa a devolver dynamic en cuanto se
+#  le pasa un dynamic, asi que deconstruirlo no compila -CS8133, "no se pueden
+#  deconstruir los objetos dinamicos"- y asignarlo a un tipo concreto se resuelve en
+#  tiempo de ejecucion.
+#
+#  Paso de verdad en SolapasDrawer: 'AreaImprimible(dynamic lay)' y 'Caja(dynamic ent)'
+#  reventaron la compilacion con once errores. Lo peor es que ninguna de estas
+#  herramientas lo vio venir, y por eso existe esta comprobacion.
+#
+#  LA REGLA: el 'dynamic' se queda DENTRO del metodo, donde de verdad hace falta para
+#  hablar con COM. Las fronteras van tipadas: el parametro es 'object' y adentro se
+#  hace 'dynamic x = parametro;'. Es lo que ya hacian los otros dibujantes.
+#
+#  Se permite en el CONSTRUCTOR, que es donde entra el documento de AutoCAD, y en los
+#  campos: ahi no hay ninguna llamada cuyo resultado se pueda contaminar.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+#  LA COMPROBACION ES ESTRECHA A PROPOSITO: solo los que devuelven una TUPLA.
+#
+#  Con un parametro dynamic, un metodo que devuelve 'string' o 'bool' sigue compilando
+#  -la conversion se resuelve en tiempo de ejecucion-, asi que marcarlos seria ruido: en
+#  este proyecto hay seis asi y todos funcionan. El que NO compila es el que devuelve una
+#  tupla, porque a una tupla se le hace 'var (a, b) = ...' y eso es exactamente el CS8133.
+#  Y es el caso que rompio la compilacion tres veces en el mismo archivo.
+
+RE_TUPLA_CON_DYNAMIC = re.compile(
+    r"^[ \t]*(?:public|private|protected|internal)"
+    r"(?:[ \t]+(?:static|async|override|virtual|sealed|new|unsafe|extern))*"
+    r"[ \t]+\([^()]*\)\??[ \t]+(\w+)[ \t]*\(([^()]*)\)", re.M)
+
+
+def revisar_parametros_dynamic(ruta, codigo):
+    limpio = sin_comentarios_ni_textos(codigo)
+
+    for m in RE_TUPLA_CON_DYNAMIC.finditer(limpio):
+        metodo, params = m.group(1), m.group(2)
+
+        if not re.search(r"\bdynamic\b", params):
+            continue
+
+        linea = limpio[: m.start()].count("\n") + 1
+
+        fallos.append(
+            f"{os.path.basename(ruta)}({linea}): '{metodo}' devuelve una TUPLA y "
+            "recibe un parametro 'dynamic'. Un argumento dynamic vuelve dinamica la "
+            "llamada entera, asi que el resultado deja de ser la tupla declarada y "
+            "deconstruirlo no compila (CS8133: no se pueden deconstruir los objetos "
+            "dinamicos). Declara el parametro como 'object' y haz "
+            "'dynamic x = parametro;' dentro del metodo.")
+
+
+# ----------------------------------------------------------------------
+#  6. LO QUE SE INTENTO AQUI Y NO SE PUDO
+# ----------------------------------------------------------------------
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  UN MIEMBRO QUE FALTA NO SE PUEDE CAZAR EN GENERAL SIN UN COMPILADOR.
+#
+#  La comprobacion 4 solo caza TYPOS -pide ocho caracteres de principio comun con un
+#  miembro que si existe- y eso deja pasar el caso contrario: un miembro que no se parece
+#  a nada porque simplemente NO ESTA. Paso de verdad: editando SolapasDrawer con un
+#  recorte de texto me lleve por delante catorce metodos y ninguna herramienta dijo nada.
+#  El balance de llaves seguia bien y los usings tambien.
+#
+#  Intente cazarlo aqui, y no salio. Se apunta lo aprendido para que nadie lo repita:
+#
+#    - Por 'var x = new Tipo(...)' el tipo se conoce, pero enumerar sus miembros exige
+#      parsear el archivo. Los RECORDS declaran los suyos en la lista posicional del
+#      encabezado, que puede llevar tipos tupla -'(double X, double Y) A'- y contar
+#      parentesis a mano da avisos falsos: ocho seguidos en PanoDeLosa.
+#    - Descartando los records quedan las CLASES PARCIALES, repartidas en varios
+#      archivos, y atribuir cada miembro a su clase sin analisis de ambitos vuelve a
+#      fallar: otros ocho, en cuatro dibujantes que compilan perfectamente.
+#    - Y el mismo nombre de variable -'lado', 'dibujante'- es de tipos distintos en
+#      metodos distintos del mismo archivo.
+#
+#  Un verificador que avisa de lo que esta bien se deja de leer, asi que la comprobacion
+#  general se retiro. La version ESTRECHA -solo el par SolapasDrawer / MainWindow.Solapas,
+#  donde los dos archivos se conocen- vive en tools/verificar_solapas.py y si caza el
+#  defecto. Lo mismo se puede hacer para otro par el dia que haga falta.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+
 def main():
     if not os.path.isdir(APP):
         print(f"No encuentro {APP}")
@@ -498,6 +603,15 @@ def main():
 
     revisar_miembros_que_no_existen(cliente)
 
+    # LOS PARAMETROS 'dynamic' SE REVISAN EN TODO EL CLIENTE, no solo en la aplicacion
+    # WPF. El defecto que motivo esta comprobacion estaba en CadLink.Cad -SolapasDrawer-,
+    # que es justo donde vive el 'dynamic' porque es quien habla con COM. Revisando solo
+    # CadLink.App, esta comprobacion decia "todo correcto" sin haber mirado el archivo
+    # roto: un verde falso, que es peor que no tener la comprobacion.
+    for ruta in cliente:
+        with open(ruta, encoding="utf-8") as fh:
+            revisar_parametros_dynamic(ruta, fh.read())
+
     xamls = sorted(
         os.path.join(dir_, f)
         for dir_, _, fs in os.walk(APP)
@@ -525,8 +639,8 @@ def main():
 
     print("=" * 78)
     print(" Todo correcto: cada tipo tiene su using, ninguna llamada dinamica recibe")
-    print(" un nombre de metodo suelto y ninguna columna de DataGrid lleva una")
-    print(" propiedad que no tiene.")
+    print(" un nombre de metodo suelto, ninguna columna de DataGrid lleva una")
+    print(" propiedad que no tiene y ningun parametro es 'dynamic'.")
     print("=" * 78)
 
     return 0

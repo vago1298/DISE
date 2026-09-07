@@ -127,6 +127,24 @@ public sealed class ElementoPlanta
     public bool MuroDePisoATecho { get; set; }
 
     /// <summary>
+    /// <b>Dónde</b> tiene muro debajo esta cadena, en fracción de su largo (0 a 1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Con <see cref="MuroDePisoATecho"/> a secas la cadena solo podía dibujarse <b>entera</b>
+    /// continua o <b>entera</b> a trazos, así que un tramo con muro y un vano de puerta salían
+    /// iguales. Con los intervalos se dibuja <b>partida</b>: continua donde hay muro y a trazos
+    /// donde está el vano, que es como se lee un plano.
+    /// </para>
+    /// <para>
+    /// Vacío significa «no se sabe» y entonces manda <see cref="MuroDePisoATecho"/>, que es el
+    /// comportamiento anterior: así un modelo del que no se puedan sacar los tramos sigue
+    /// dibujándose como antes en lugar de quedarse sin línea.
+    /// </para>
+    /// </remarks>
+    public List<(double A, double B)> TramosConMuro { get; } = new();
+
+    /// <summary>
     /// Este castillo se modeló como <b>área</b> —shell de muro—, no como frame.
     /// </summary>
     /// <remarks>
@@ -305,6 +323,46 @@ public sealed class PlantaCad
     /// Salen de la cuadrícula del modelo o, si el programa no la da, deducidos de las
     /// columnas y los muros. Vacío significa «esta planta va sin ejes».
     /// </remarks>
+    /// <summary>
+    /// Los niveles del modelo con su elevación, <b>todos</b>, no solo el que se dibuja.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hacen falta para poder contestar una pregunta que el nivel dibujado no puede contestar
+    /// solo: <b>¿hay algo debajo de este muro?</b> Un muro cuya base no tiene ningún nivel por
+    /// debajo apoya directamente en la cimentación, y es el que lleva dibujada su línea de base.
+    /// Si hay otro nivel abajo, el muro no apoya ahí y esa línea sobra.
+    /// </para>
+    /// <para>
+    /// Es la misma lista que ya llevaba <see cref="CorteCad.Niveles"/>, con la misma forma, y se
+    /// llena en el mismo sitio y con la misma llamada —<c>NivelesConElementos</c>—, para que las
+    /// dos vistas hablen de los mismos niveles.
+    /// </para>
+    /// </remarks>
+    public List<(string Nombre, double Z)> Niveles { get; } = new();
+
+    /// <summary>
+    /// Los muros del nivel de <b>arriba</b>, para dibujar su base en la cimentación.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En el modelo, un muro de planta baja pertenece al story de planta baja, no al de
+    /// cimentación. Así que la planta de cimentación <b>no tiene esos muros entre sus
+    /// elementos</b>, y por eso no se les podía dibujar nada: no estaban ahí.
+    /// </para>
+    /// <para>
+    /// Van en una lista <b>aparte</b> y no mezclados con <see cref="Elementos"/> a propósito. Si se
+    /// añadieran ahí pasarían por todo lo que le toca a un muro de la planta —su cadena, su pier,
+    /// su línea de mampostería, el recorte a los paños— y de ellos se quiere una sola cosa: la
+    /// línea de su base.
+    /// </para>
+    /// <para>
+    /// Es el mismo camino que ya seguían los arranques de castillo, que también se traen del nivel
+    /// de arriba a la planta de cimentación.
+    /// </para>
+    /// </remarks>
+    public List<ElementoPlanta> MurosDeArriba { get; } = new();
+
     public List<(string Id, double Ordenada)> EjesX { get; } = new();
 
     /// <summary>Los <b>horizontales</b>: nombre y Y, de abajo arriba.</summary>

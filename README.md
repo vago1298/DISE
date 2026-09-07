@@ -251,9 +251,13 @@ public const string SupportEmail = "soporte@miempresa.com";
 ### Reemplazar el logo
 
 `client/src/CadLink.App/Assets/logo.png` es un marcador de posición generado
-automáticamente. Pon ahí el logo real de tu empresa: PNG con fondo transparente,
-mínimo 512×512 px. Queda **embebido en el ejecutable**, así que nadie puede
-sustituirlo para cambiar la marca del programa.
+automáticamente —la sección de un perfil I— con `tools/make_placeholder_logo.py`.
+Pon ahí el logo real de tu empresa: PNG con fondo transparente, mínimo 512×512
+px. Queda **embebido en el ejecutable**, así que nadie puede sustituirlo para
+cambiar la marca del programa.
+
+El icono del ejecutable es aparte, y sale del mismo dibujo:
+`tools/make_icon.py` arma `Assets\app.ico` con las siete medidas que Windows usa.
 
 ### Compilar y ejecutar
 
@@ -367,28 +371,66 @@ conexión. Si necesitas efecto más rápido, baja `TOKEN_TTL_INTERNAL_DAYS`.
 
 ---
 
-## Paso 5 — Publicar el ejecutable
+## Paso 5 — Armar el instalador para el cliente
+
+```
+6-crear-instalador.bat
+```
+
+Eso publica la aplicación **autocontenida** y la empaqueta en un solo
+**`dist\CadLink-Setup-1.0.0.exe`**. Es lo único que le mandas al cliente: le da
+doble clic y ya. No necesita .NET, ni Python, ni la consola, ni permisos de
+administrador.
+
+Requiere [Inno Setup 6](https://jrsoftware.org/isdl.php) instalado una vez en tu
+máquina (es gratis y sin regalías por instalador). El `.bat` te lo dice si falta.
+
+Al abrirlo **te pregunta qué paquete quieres**: `1` de prueba, para tu propia
+computadora, o `2` para el cliente. El de prueba vale aunque la configuración
+apunte a `localhost`.
+
+Para el paquete del cliente, el script **se niega a armarlo** si la configuración
+todavía apunta a `localhost`, si la dirección del servidor no es `https`, o si
+falta la llave pública embebida: los tres casos producen un instalador que no
+puede funcionar en casa del cliente.
+
+Si prefieres publicar a mano, el comando sigue siendo:
 
 ```powershell
 cd client
 dotnet publish src\CadLink.App -c Release -r win-x64 --self-contained true
 ```
 
-El `.exe` queda en `src\CadLink.App\bin\Release\net8.0-windows\win-x64\publish\`.
-Con `--self-contained true` no requiere que el cliente instale .NET, a costa de
-un archivo más grande (~150 MB). Si prefieres un instalador liviano, usa
-`--self-contained false` y exige el runtime .NET 8 como prerrequisito.
+### Tu icono
+
+Se toma de la ruta que ya está en la clave `logo` de `cadlink.config.json`, así
+que normalmente no hay que hacer nada. Para forzar otro, copia el `.ico` en la
+carpeta **`installer`** o junto a los `.bat`. Con eso quedan los tres iconos: el
+del ejecutable, el del acceso directo del escritorio y el del propio instalador.
+
+Tiene que ser un `.ico` de verdad, no un `.png` renombrado: el icono va
+incrustado en el `.exe` como recurso de Windows y el compilador rechaza otra
+cosa. Si tu `logo` apunta a un `.png`, el script te lo dice y usa el de muestra.
+
+El `Assets\app.ico` que viene en el repositorio es un marcador de posición, con
+las siete medidas que Windows usa; lo genera `tools/make_icon.py`.
 
 ### Antes de distribuirlo
 
-1. **Ofusca el ensamblado.** [ConfuserEx](https://github.com/mkaring/ConfuserEx)
+1. **Firma el ejecutable y el instalador** con un certificado de firma de código.
+   Sin firma, Windows le muestra al cliente «Windows protegió tu PC» y muchos no
+   pasan de ahí. Ya está cableado en el `.bat`: solo faltan las variables
+   `CADLINK_FIRMA_PFX` / `CADLINK_FIRMA_NOMBRE`.
+2. **Ofusca el ensamblado** si quieres. [ConfuserEx](https://github.com/mkaring/ConfuserEx)
    es gratuito. No hace imposible romperlo, solo lo vuelve más caro que pagar la
    suscripción, que es el objetivo realista.
-2. **Firma el ejecutable** con un certificado de firma de código. Sin firma,
-   Windows SmartScreen y Defender van a alarmar a tus clientes y muchos no lo
-   instalarán. Un certificado OV cuesta del orden de 200–400 USD al año.
-3. **Crea un instalador** con [Inno Setup](https://jrsoftware.org/isinfo.php).
-4. **Prueba en una máquina limpia**, sin .NET y sin tu entorno de desarrollo.
+3. **Prueba en una máquina limpia**, sin .NET y sin tu entorno de desarrollo.
+
+**Todo lo demás de sacarlo al público y cobrarlo por mes está en
+[`docs/distribucion.md`](docs/distribucion.md)**: qué hay que endurecer en el
+servidor antes de exponerlo a internet, cómo publicarlo con HTTPS, y las dos
+formas de cobrar la suscripción (a mano con `/admin/licenses/{clave}/extend`, o
+automática conectando la pasarela al webhook que ya existe).
 
 ---
 
@@ -397,7 +439,12 @@ un archivo más grande (~150 MB). Si prefieres un instalador liviano, usa
 ```
 cadlink/
 ├── docs/
-│   └── arquitectura-licenciamiento.md   Diseño, decisiones y límites del esquema
+│   ├── arquitectura-licenciamiento.md   Diseño, decisiones y límites del esquema
+│   └── distribucion.md                  Sacarlo al público y cobrarlo por mes
+│
+├── installer/                           Instalador para el cliente final
+│   ├── CadLink.iss                      Guion de Inno Setup 6
+│   └── LICENCIA.txt                     Contrato de licencia (plantilla)
 │
 ├── server/                              Servidor de licencias (Python + FastAPI)
 │   ├── app/
@@ -455,11 +502,11 @@ en la misma fila:
 |---|---|
 | **Proyecto** | Solapa de los planos y juego de planos con su numeración |
 | **Secciones Concreto** | La tabla principal. Genera secciones y alzados, con vista previa |
-| **Secciones Acero** | Pendiente de portar |
-| **Zapatas Corridas** | Pendiente de portar |
-| **Zapatas Aisladas** | Pendiente de portar |
+| **Secciones Acero** | Las doce familias del manual IMCA en una tabla, con vista previa del perfil |
+| **Zapatas Corridas** | Centrales y de lindero en una sola tabla, con su muro y su cadena |
+| **Zapatas Aisladas** | Centrales y de lindero, con su dado y su acomodo |
 | **Muros de Contención** | Pendiente de portar |
-| **Placa Base** | Pendiente de portar |
+| **Placa Base** | Placa, anclas, cartabones y soldadura, con vista previa. El dado se toma de *Secciones Concreto* por su ID, y avisa de los libramientos J y K al capturar |
 | **Conexiones** | Pendiente de portar |
 | **ETABS** | Conexión por la CSI OAPI, lectura del modelo y de los piers, visor 3D y extruido |
 | **Dibujar planos estructurales** | La planta por nivel, y el botón *Dibujar en AutoCAD* |

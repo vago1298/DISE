@@ -11,6 +11,26 @@ Recomendación para el logo definitivo: PNG con fondo transparente, al menos
 
 Uso:
     python tools/make_placeholder_logo.py client/src/CadLink.App/Assets/logo.png
+
+===============================================================================
+ LA MARCA ES LA SECCIÓN DE UN PERFIL I, Y NO UN RAYO
+
+ La primera versión llevaba un rayo, de cuando se creyó que el programa hablaba
+ con ETAP -que es de instalaciones eléctricas- en lugar de con ETABS. Un rayo en
+ un programa de cálculo estructural no dice nada, o dice otra cosa.
+
+ Un perfil I visto en sección es lo que cualquier ingeniero estructural
+ reconoce sin explicación, y tiene dos ventajas prácticas para un icono:
+
+   1. TODAS SUS ARISTAS SON RECTAS Y A ESCUADRA. Al reducirlo no aparecen los
+      dientes de sierra que sí aparecen en las diagonales de un rayo.
+   2. AGUANTA 16 PÍXELES, que es el tamaño al que Windows lo dibuja en la barra
+      de tareas: los patines quedan de casi dos píxeles y el alma de dos y
+      medio, así que se sigue leyendo como un perfil y no como una manchita.
+
+ Las proporciones son las de un IR de verdad -más alto que ancho-, para que no
+ se lea como la letra I.
+===============================================================================
 """
 
 from __future__ import annotations
@@ -23,12 +43,18 @@ from pathlib import Path
 SIZE = 512
 BRAND_DARK = (11, 61, 107)      # azul corporativo oscuro
 BRAND_LIGHT = (23, 118, 191)    # azul corporativo claro
-ACCENT = (255, 199, 44)         # amarillo del rayo
+ACERO = (244, 247, 250)         # el perfil, en un blanco de acero galvanizado
 
-# Rayo estilizado, en coordenadas de 0..512
-BOLT = [
-    (300, 60), (170, 280), (250, 280), (205, 452),
-    (350, 232), (265, 232), (330, 60),
+# Sección de un perfil I, en coordenadas de 0..512, centrada en 256,256.
+#
+#   alto total 320   ancho total 260   patines 58   alma 74
+#
+# Es un solo polígono de doce vértices y no tres rectángulos, para que lo dibuje
+# el mismo trazador de polígonos que ya existía.
+PERFIL_I = [
+    (126, 96), (386, 96), (386, 154), (293, 154),      # patín superior
+    (293, 358), (386, 358), (386, 416), (126, 416),    # alma y patín inferior
+    (126, 358), (219, 358), (219, 154), (126, 154),
 ]
 
 
@@ -76,8 +102,8 @@ def build_rows() -> list[bytearray]:
             g = int(BRAND_DARK[1] + (BRAND_LIGHT[1] - BRAND_DARK[1]) * t)
             b = int(BRAND_DARK[2] + (BRAND_LIGHT[2] - BRAND_DARK[2]) * t)
 
-            if point_in_polygon(x, y, BOLT):
-                r, g, b = ACCENT
+            if point_in_polygon(x, y, PERFIL_I):
+                r, g, b = ACERO
 
             row.extend((r, g, b, int(alpha * 255)))
         rows.append(row)

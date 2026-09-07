@@ -41,6 +41,19 @@ public sealed class ProyectoGuardado
 
     // ---- Solapa ----
     public string Calculista { get; set; } = string.Empty;
+
+    /// <summary>Cedula profesional del calculista. Solo el numero.</summary>
+    public string Cedula { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Donde esta el archivo del cajetin: el .dwg o la carpeta de los formatos.
+    /// </summary>
+    /// <remarks>
+    /// Se guarda con el trabajo porque el cajetin viaja con el juego de planos, no con el programa:
+    /// dos obras de dos clientes distintos usan cajetines distintos. En blanco, se busca en la
+    /// carpeta del dibujo y en las de siempre.
+    /// </remarks>
+    public string CajetinRuta { get; set; } = string.Empty;
     public string Propietario { get; set; } = string.Empty;
     public string Ubicacion { get; set; } = string.Empty;
     public string Obra { get; set; } = string.Empty;
@@ -87,13 +100,40 @@ public sealed class ProyectoGuardado
     /// llega sin la clave y la lista queda vacía, que es lo correcto: no había zapatas corridas.
     /// </remarks>
     public List<FilaGuardada> ZapatasCorridas { get; set; } = new();
+
+    /// <summary>Las filas de la hoja de <b>placas base</b>.</summary>
+    /// <remarks>
+    /// Con el mismo mecanismo genérico que las dos hojas de zapatas, y por el mismo motivo: una
+    /// columna nueva de esta hoja se guarda sola. Va también en la instantánea del deshacer —que
+    /// serializa este mismo objeto—, así que sin esta clave un Ctrl+Z después de capturar una
+    /// placa habría <b>borrado la hoja entera</b>, que es la clase de sorpresa que un deshacer no
+    /// puede dar.
+    /// </remarks>
+    public List<FilaGuardada> PlacasBase { get; set; } = new();
 }
 
 public sealed class PlanoGuardado
 {
     public string Clave { get; set; } = string.Empty;
     public string Contiene { get; set; } = string.Empty;
+
+    /// <summary>La segunda linea del contenido: seccion y detalles.</summary>
+    public string Detalle { get; set; } = string.Empty;
+
     public string Escala { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Tamano de hoja y orientacion, para el generador de solapas.
+    /// </summary>
+    /// <remarks>
+    /// <b>Horizontal empieza en <c>true</c></b> y el tamano en blanco a proposito: al abrir un
+    /// archivo guardado ANTES de que existieran estas dos columnas, JSON deja el bool en false y
+    /// la cadena vacia. Un tamano vacio se corrige solo -el lector le pone ARCH D-, pero una hoja
+    /// vertical no se nota hasta que sale el plano. Ver el lector del proyecto.
+    /// </remarks>
+    public string Tamano { get; set; } = string.Empty;
+
+    public bool Horizontal { get; set; } = true;
 }
 
 /// <summary>

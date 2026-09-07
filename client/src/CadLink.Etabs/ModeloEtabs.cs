@@ -560,6 +560,9 @@ public sealed class ModeloEtabs
             }
         }
 
+        _tramosConMuro = unidos;
+        _largoDeLaCadena = largo;
+
         return unidos.Sum(t => t.B - t.A) / largo >= cubre;
 
         (double T, double D) Proyecta(double x, double y)
@@ -571,6 +574,50 @@ public sealed class ModeloEtabs
 
             return (t, Math.Abs((vx * uy) - (vy * ux)));
         }
+    }
+
+    /// <summary>Los tramos con muro debajo de la última cadena medida, y su largo.</summary>
+    private List<(double A, double B)>? _tramosConMuro;
+    private double _largoDeLaCadena;
+
+    /// <summary>
+    /// <b>Dónde</b> tiene muro debajo una cadena, en fracción de su largo (0 a 1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="MuroDePisoATechoBajo"/> ya calculaba estos intervalos y los reducía a un
+    /// <c>bool</c>: «tiene muro» o «no tiene». Con eso, la cadena solo podía dibujarse ENTERA
+    /// continua o ENTERA a trazos, y un tramo con muro y un vano de puerta salían iguales.
+    /// </para>
+    /// <para>
+    /// Devolverlos permite dibujarla <b>partida</b>: continua donde hay muro y a trazos donde está
+    /// el vano, que es como se lee un plano. La cuenta es la misma y ya estaba hecha; lo único que
+    /// faltaba era no tirarla.
+    /// </para>
+    /// <para>
+    /// Las fracciones van <b>de 0 a 1</b> a propósito, no en metros: así el dibujante las aplica
+    /// sobre el tramo que de verdad va a dibujar —el recortado a los paños de los castillos— sin
+    /// tener que rehacer ninguna proyección.
+    /// </para>
+    /// </remarks>
+    public List<(double A, double B)> TramosConMuroDebajo(
+        ElementoEtabs cadena, double cubre = 0.5, double tolM = 0.25)
+    {
+        _tramosConMuro = null;
+        _largoDeLaCadena = 0;
+
+        // Se llama por su efecto: deja los intervalos en _tramosConMuro. El bool no interesa aquí,
+        // porque lo que se quiere es el DÓNDE, no el CUÁNTO.
+        _ = MuroDePisoATechoBajo(cadena, cubre, tolM);
+
+        if (_tramosConMuro is null || _largoDeLaCadena < 1e-9)
+        {
+            return new List<(double A, double B)>();
+        }
+
+        return _tramosConMuro
+            .Select(t => (t.A / _largoDeLaCadena, t.B / _largoDeLaCadena))
+            .ToList();
     }
 
     /// <summary>Resumen para mostrarle al usuario.</summary>

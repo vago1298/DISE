@@ -8,7 +8,13 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:prim="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-                    xmlns:models="clr-namespace:CadLink.App.Models">
+                    xmlns:models="clr-namespace:CadLink.App.Models"
+                    xmlns:app="clr-namespace:CadLink.App">
+
+    <!-- El simbolo de PULGADA para las celdas que van en pulgadas. Se pone al MOSTRAR y no se
+         guarda dentro del texto: guardado, habria que quitarlo antes de cada cuenta, y esa es la
+         clase de limpieza que se olvida en un sitio. Ver ConPulgadas. -->
+    <app:ConPulgadas x:Key="ConPulgadas" />
 
     <!-- ===================== Tipografia y medidas =====================
          El rediseno empieza aqui: antes cada estilo llevaba su tamano y su radio
@@ -1344,6 +1350,59 @@
         <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
         <Setter Property="FontStyle" Value="Italic" />
         <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+
+    <!-- ==================================================================
+         CELDAS DE CARTABON: SE APAGAN CUANDO NO HAY CARTABONES
+         ==================================================================
+
+         Las seis celdas de cartabon -cantidad, espesor y longitud de cada
+         sentido- no sirven de nada si la casilla «Cartabones» esta apagada: el
+         dibujante ni las mira. Dejandolas activas, la hoja invita a capturar
+         seis numeros que no van a salir en el plano, y cuando el detalle
+         aparece sin atiesadores lo que se piensa es que el programa los
+         perdio, no que faltaba encender una casilla tres columnas a la
+         izquierda.
+
+         Se apagan con IsEnabled y no solo pintandolas de gris: el gris se lee
+         como «esto es calculado» -que es lo que significa en esta hoja- y
+         seguiria dejando escribir. Apagada, la celda no entra en edicion.
+
+         El color va ADEMAS del IsEnabled porque WPF no cambia visiblemente una
+         DataGridCell deshabilitada: sin esto la celda se veria igual y solo se
+         notaria al intentar escribir en ella, que es tarde. -->
+    <!-- ==================================================================
+         CELDAS REFERENCIADAS DE OTRA HOJA
+         ==================================================================
+
+         El dato SE VE pero no se escribe aqui, porque su sitio es otra
+         pestaña. No es lo mismo que CeldaCalculada -que significa «esto sale
+         de una cuenta»-: esto significa «esto ya esta capturado, y en otro
+         lado». La distincion importa porque la respuesta a «¿y como lo
+         cambio?» es distinta: en una calculada se cambian los datos de los
+         que sale, y aqui se va a la hoja de la que viene.
+
+         Va en su propio color y con el candado en el globo de ayuda, que es
+         donde se dice a que pestaña hay que ir. -->
+    <Style x:Key="CeldaReferenciada" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaCalculadaBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalContentAlignment" Value="Right" />
+    </Style>
+
+    <Style x:Key="CeldaCartabon" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
+        <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding ConCartabones}" Value="False">
+                <Setter Property="IsEnabled" Value="False" />
+                <Setter Property="Background" Value="{DynamicResource HeaderBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+                <Setter Property="Opacity" Value="0.45" />
+                <Setter Property="ToolTip"
+                        Value="Enciende la casilla «Cartabones» de esta fila para poder capturarlos." />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ==================================================================

@@ -691,7 +691,23 @@ public static class TrazoZapataCorrida
 
         var x = xEje <= cerca.X ? cerca.X - sep : cerca.X + sep;
 
-        return Math.Clamp(x, m.XIzq + (diamCirculo / 2), m.XDer - (diamCirculo / 2));
+        // Los dos límites se ordenan ANTES de acotar. Math.Clamp lanza
+        // ArgumentException si el mínimo supera al máximo, y aquí eso pasa en cuanto
+        // la zapata es más angosta que el diámetro del círculo: el borde izquierdo
+        // más medio diámetro se cruza con el derecho menos medio diámetro. Es el
+        // mismo fallo que reventaba en Estribos.Transicion con las separaciones
+        // cerradas, y en un dibujo de estructuras un cuadro de «error inesperado»
+        // por una zapata angosta no tiene ninguna justificación.
+        var lo = m.XIzq + (diamCirculo / 2);
+        var hi = m.XDer - (diamCirculo / 2);
+
+        if (lo > hi)
+        {
+            // No cabe centrado: el sitio razonable es el medio de la zapata.
+            return (m.XIzq + m.XDer) / 2;
+        }
+
+        return Math.Clamp(x, lo, hi);
     }
 
     /// <summary>

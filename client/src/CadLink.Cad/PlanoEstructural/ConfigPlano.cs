@@ -691,10 +691,17 @@ public sealed class ConfigPlano
         P("CADENA_SIN_MURO_LINETYPE", "ACAD_ISO02W100", "TIPO DE LINEA DE ESAS CADENAS"),
         P("CADENA_SIN_MURO_LTSCALE", "0", "0 = automatico (0.01 si el dibujo va en metros)"),
         P("CADENA_SIN_MURO_CUBRE", "0.5", "Fraccion con muro abajo para NO marcarla"),
+        P("CADENA_PARTIR_EN_VANOS", "SI",
+          "SI = la cadena se dibuja PARTIDA: continua donde tiene muro debajo y a trazos en el "
+          + "vano, que es donde va la puerta. NO = entera de un solo tipo de linea, como antes"),
         P("LOSA_HATCH_AL_PANO", "SI", "SI = EL HATCH LLEGA AL PANO DE LA CADENA, NO A LA MITAD"),
         P("TRAER_AL_FRENTE", "SI", "SI = subir CAPAS_AL_FRENTE encima de todo (Bring to Front)"),
         // CADENA y no DALA: la capa de las dalas se llama E-CADENA —ver CAPA_DALA—, así que
         // aquí tiene que ir con ese nombre o no se subiría al frente.
+        // La capa del MURO DE CONCRETO no se escribe aquí a mano: la añade CapasPlano.CapasAlFrente
+        // resolviéndola desde CAPA_MURO_CONCRETO, que es configurable. Escrita aquí, el día que
+        // alguien renombrara la capa esta lista dejaría de coincidir y el muro se quedaría atrás en
+        // silencio. Se apaga con MURO_CONCRETO_AL_FRENTE.
         P("CAPAS_AL_FRENTE", "CADENA,CADENA DESPLANTE,TRABE,ACERO", "<<< CAPAS ENCIMA DE TODO (incluye ACERO: las vigas de acero al frente)"),
 
         // AÑADIDO, no está en la hoja de la macro. Los ROTULOS tienen que quedar encima de
@@ -847,6 +854,29 @@ public sealed class ConfigPlano
         P("COLOR_MURO_CONCRETO", "4", "COLOR DE LA CAPA DEL MURO DE CONCRETO"),
         P("MURO_CONCRETO_CAPA_PROPIA", "SI",
           "SI = el muro de concreto sin cadena va a su capa, no a E-MURO"),
+        P("MURO_CONCRETO_CONTORNO", "SI",
+          "SI = el muro de concreto se dibuja como CONTORNO CERRADO (con sus tapas en los "
+          + "extremos) en lugar de dos lineas sueltas"),
+        P("MURO_CONCRETO_LEYENDA", "MC",
+          "Leyenda que se pone DENTRO del contorno del muro de concreto. En blanco = ninguna"),
+        P("MURO_CONCRETO_LEYENDA_ALTURA", "0.12",
+          "Altura de la leyenda del muro de concreto, en unidades de dibujo"),
+        P("MURO_CONCRETO_SOLO_CIMENTACION", "SI",
+          "SI = el contorno y la leyenda del muro de concreto solo en la planta de cimentacion. "
+          + "NO = en todas las plantas"),
+        P("MURO_BASE_TOLERANCIA_CM", "20",
+          "Cuanto por debajo de la base del muro tiene que estar un nivel para contar como que "
+          + "hay algo abajo. Evita que el propio nivel del muro cuente"),
+        P("MURO_CONCRETO_AL_FRENTE", "SI",
+          "SI = la capa del muro de concreto se sube al frente (Bring to Front) igual que las "
+          + "cadenas. Se resuelve por CAPA_MURO_CONCRETO, asi que sigue valiendo si se renombra"),
+        P("MURO_SIN_CADENA_ES_CONCRETO", "SI",
+          "SI = el muro que NO lleva cadena de desplante se toma como de concreto. En el plano es "
+          + "la senal que los distingue: el de mamposteria lleva su cadena y el de concreto no, "
+          + "porque se cuela con la cimentacion"),
+        P("MURO_CONCRETO_POR_NOTA", "SI",
+          "SI = un muro es de concreto si su PROPERTY NOTE de ETABS lo dice, aunque el nombre "
+          + "de la seccion diga otra cosa"),
         P("DIBUJAR_EJES", "SI", "Dibujar la cuadricula con burbujas"),
         P("LINETYPE_EJES", "DASHDOT", "Tipo de linea de la capa E-EJES"),
         P("EJES_ESCALA_TIPOLINEA", "1", "LinetypeScale de las lineas de eje (1 = no tocar)"),

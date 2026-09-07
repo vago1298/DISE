@@ -2911,15 +2911,44 @@ public sealed partial class SeccionDrawer
         }
     }
 
+    /// <remarks>
+    /// <para>
+    /// <b>Está partido en dos fases a propósito, y el reintento solo cubre la primera.</b>
+    /// </para>
+    /// <para>
+    /// Antes el método entero iba dentro de un único <c>AcadConnection.Retry</c>, que
+    /// <b>reejecuta la lambda completa</b> cuando AutoCAD contesta «ocupado». Como la segunda
+    /// mitad crea el bloque, copia dentro la geometría, borra los originales e inserta la
+    /// referencia, un «ocupado» a mitad de camino repetía todo eso: en el mejor caso el
+    /// <c>Blocks.Add</c> fallaba por nombre duplicado y la sección se quedaba <b>sin agrupar y
+    /// sin insertar</b>, con la geometría suelta en el modelo; en el peor, el
+    /// <c>CopyObjects</c> entraba dos veces y el bloque acababa con la sección duplicada dentro.
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     <b>Fase 1, medir.</b> Recorre las entidades y saca la caja envolvente. Es de solo
+    ///     lectura, así que repetirla no cuesta nada y <b>sí</b> lleva reintento.
+    ///   </item>
+    ///   <item>
+    ///     <b>Fase 2, agrupar.</b> Crea el bloque, copia, borra e inserta. Cada paso modifica el
+    ///     dibujo, así que va <b>fuera</b> del reintento y se ejecuta una sola vez.
+    ///   </item>
+    /// </list>
+    /// </remarks>
     private void Bloquear(string nombre, int inicio, int fin, double[]? destino)
     {
         try
         {
+            // ---------- FASE 1: medir. De solo lectura, con reintento ----------
+            var objetos = new List<object>();
+            double xMin = double.MaxValue, yMin = double.MaxValue;
+            double xMax = double.MinValue, yMax = double.MinValue;
+
             AcadConnection.Retry(() =>
             {
-                var objetos = new List<object>();
-                double xMin = double.MaxValue, yMin = double.MaxValue;
-                double xMax = double.MinValue, yMax = double.MinValue;
+                objetos.Clear();
+                xMin = double.MaxValue; yMin = double.MaxValue;
+                xMax = double.MinValue; yMax = double.MinValue;
 
                 for (var i = inicio; i < fin; i++)
                 {
@@ -2956,53 +2985,78 @@ public sealed partial class SeccionDrawer
                     if (mx[0] > xMax) { xMax = mx[0]; }
                     if (mx[1] > yMax) { yMax = mx[1]; }
                 }
+            });
 
-                if (objetos.Count == 0)
-                {
-                    return;
-                }
+            if (objetos.Count == 0)
+            {
+                return;
+            }
 
-                var origen = new[] { (xMin + xMax) / 2, (yMin + yMax) / 2, 0d };
+            // ---------- FASE 2: agrupar. Modifica el dibujo, SIN reintento ----------
+            var origen = new[] { (xMin + xMax) / 2, (yMin + yMax) / 2, 0d };
 
-                dynamic bloque = _doc.Blocks.Add(origen, nombre);
+            // El bloque se REUTILIZA si ya existe. El Item se reintenta —es una lectura— y el
+            // Add se llama UNA SOLA VEZ: reintentarlo después de haber creado el bloque falla
+            // por nombre duplicado, y ese error no es «busy», así que escaparía del reintento.
+            object? yaEsta = null;
 
-                var copiado = ConArregloDeEntidades(
-                    $"CopyObjects de la seccion '{nombre}'",
-                    objetos,
-                    arr => { _doc.CopyObjects(arr, bloque); });
+            try
+            {
+                yaEsta = AcadConnection.Retry<object?>(() => (object?)_doc.Blocks.Item(nombre));
+            }
+            catch (Exception)
+            {
+                // No existe todavía: se crea abajo.
+            }
 
-                // Los originales solo se borran si la copia FUNCIONÓ. Borrarlos
-                // igualmente dejaría la sección sin dibujar por ningún lado.
-                if (!copiado)
-                {
-                    return;
-                }
+            dynamic bloque = yaEsta ?? _doc.Blocks.Add(origen, nombre);
 
-                // El orden de dibujo hay que rehacerlo DENTRO del bloque. Faltaba, y
-                // es un detalle que la macro sí hace: CopyObjects no conserva la
-                // tabla de orden del espacio modelo, así que dentro del bloque el
-                // hatch de concreto podía acabar ENCIMA del acero, tapándolo. Como
-                // la geometría vive en el bloque una vez creado, ordenarlo solo en
-                // el espacio modelo no sirve de nada.
-                OrdenarDentroDelBloque(bloque);
+            var copiado = ConArregloDeEntidades(
+                $"CopyObjects de la seccion '{nombre}'",
+                objetos,
+                arr => { _doc.CopyObjects(arr, bloque); });
 
-                foreach (dynamic o in objetos)
+            // Los originales solo se borran si la copia FUNCIONÓ. Borrarlos
+            // igualmente dejaría la sección sin dibujar por ningún lado.
+            if (!copiado)
+            {
+                return;
+            }
+
+            // El orden de dibujo hay que rehacerlo DENTRO del bloque. Faltaba, y
+            // es un detalle que la macro sí hace: CopyObjects no conserva la
+            // tabla de orden del espacio modelo, así que dentro del bloque el
+            // hatch de concreto podía acabar ENCIMA del acero, tapándolo. Como
+            // la geometría vive en el bloque una vez creado, ordenarlo solo en
+            // el espacio modelo no sirve de nada.
+            OrdenarDentroDelBloque(bloque);
+
+            foreach (dynamic o in objetos)
+            {
+                try
                 {
                     o.Delete();
                 }
+                catch (Exception)
+                {
+                    // Una que no se borra deja una copia encimada, no una sección perdida.
+                }
+            }
 
-                dynamic insercion = _ms.InsertBlock(origen, nombre, 1d, 1d, 1d, 0d);
+            dynamic insercion = _ms.InsertBlock(origen, nombre, 1d, 1d, 1d, 0d);
 
-                // Al redibujar, la sección vuelve AL SITIO QUE TENÍA, no al final de
-                // la fila. Es lo que hace ActualizarSecciones en la macro, y es lo
-                // que permite acomodar el plano a mano una vez y no perderlo cada
-                // vez que cambia un armado.
-                if (destino is not null)
+            // Al redibujar, la sección vuelve AL SITIO QUE TENÍA, no al final de
+            // la fila. Es lo que hace ActualizarSecciones en la macro, y es lo
+            // que permite acomodar el plano a mano una vez y no perderlo cada
+            // vez que cambia un armado.
+            if (destino is not null)
+            {
+                AcadConnection.Retry(() =>
                 {
                     insercion.InsertionPoint = destino;
                     insercion.Update();
-                }
-            });
+                });
+            }
         }
         catch (Exception ex)
         {

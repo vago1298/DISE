@@ -34,7 +34,55 @@ public sealed class AlzadoDrawer
     private const int ColorFondo = 9;
     private const int ColorRellenoEstribo = 152;
     private const int PorCapa = 256;
-    private const int ColorVerde = 3;
+
+    /// <summary>El gris de las cotas, el mismo que usa el dibujante de secciones.</summary>
+    private const int ColorCotas = 253;
+
+    // ======================================================================
+    //  POR QUE AQUI YA NO HAY UN «ColorVerde»
+    // ======================================================================
+    //
+    //  ========================================================================
+    //  EL VERDE DE LOS ROTULOS ES EL COLOR DE LA CAPA, NUNCA UN COLOR DE OBJETO.
+    //
+    //  Los rotulos y los titulos del alzado se creaban con  Color = 3  -verde
+    //  explicito en la entidad-. En pantalla se veia igual que en las secciones,
+    //  pero AL IMPRIMIR A PDF SALIAN VERDES mientras que los de las secciones
+    //  salian negros, y esa era la queja.
+    //
+    //  El motivo: las tres maneras de conseguir «verde en pantalla y negro al
+    //  imprimir» -un estilo de trazado nombrado asignado a la capa, un override de
+    //  color por ventana con -VPLAYER, o el reactor de AutoLISP que pone la capa en
+    //  negro al arrancar el PLOT- trabajan TODAS sobre la CAPA. Y un color puesto
+    //  en el objeto gana siempre sobre lo que se le haga a su capa, asi que esos
+    //  textos se saltaban la conversion.
+    //
+    //  El dibujante de secciones ya lo hacia bien: rotulos en la capa ROTULOS con
+    //  el color POR CAPA -su Rotulado(), que es el AplicarPropiedadesRotulo de la
+    //  macro-. El alzado era el unico sitio del proyecto que rompia el patron.
+    //
+    //  Asi que el verde vive donde debe: en el color de la capa ROTULOS, que
+    //  AsegurarCapas fija en 3.
+    //  ========================================================================
+    //
+    //  ========================================================================
+    //  Y TODO EL ROTULADO VA EN LA CAPA «ROTULOS». NINGUNO EN «TEXTOS».
+    //
+    //  Con el color ya por capa, los titulos -DETALLE DE ALZADO DE ... y su
+    //  Escala 1:NN- SEGUIAN saliendo verdes en el PDF, y eran los unicos. El
+    //  motivo es que iban en la capa TEXTOS, y el mecanismo de negro al imprimir
+    //  esta puesto sobre la capa ROTULOS, no sobre TEXTOS. Las dos son verdes en
+    //  pantalla -las dos valen 3-, asi que la diferencia no se ve hasta que se
+    //  imprime.
+    //
+    //  Las dos capas existen porque la macro las trae, pero para el rotulado la
+    //  buena es ROTULOS: es la que el dibujante de secciones usa para SUS titulos
+    //  -SeccionDrawer.cs, el MText del rotulo principal-, y la que la macro
+    //  normaliza, cambia de estilo de trazado y pone en negro al plotear.
+    //
+    //  TEXTOS se sigue creando -otros dibujantes la usan, y de ella sale el verde
+    //  de ROTULOS-, pero el alzado ya no dibuja nada en ella.
+    //  ========================================================================
 
     private const string EstiloTexto = "SECCIONES";
 
@@ -443,7 +491,7 @@ public sealed class AlzadoDrawer
                 t.Alignment = 10;              // acAlignmentBottomCenter
                 t.TextAlignmentPoint = punto;
                 t.Layer = "ROTULOS";
-                t.Color = 3;                   // verde, como la macro
+                t.Color = PorCapa;             // el verde lo pone la CAPA, ver arriba
                 t.Update();
             });
         }
@@ -954,7 +1002,7 @@ public sealed class AlzadoDrawer
                 mt.InsertionPoint = new[] { x, y, 0d };
                 mt.Width = 0;
                 mt.Layer = "ROTULOS";
-                mt.Color = ColorVerde;
+                mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
             });
         }
@@ -2269,23 +2317,68 @@ public sealed class AlzadoDrawer
     /// Gira 90° todo lo dibujado desde <paramref name="inicio"/>, alrededor del
     /// origen del bloque. Es lo que convierte el alzado horizontal en vertical.
     /// </summary>
+    /// <summary>Gira el alzado 90°, entidad por entidad.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Aquí el bucle completo iba dentro de un solo <c>AcadConnection.Retry</c></b>, y
+    /// <c>Retry</c> no reintenta la llamada: <b>reejecuta la lambda entera</b>. Si el rechazo por
+    /// «ocupado» caía en la entidad <i>k</i>, el reintento volvía a girar las <i>k</i> primeras:
+    /// esas quedaban a <b>180°</b> y el resto a 90°. En el plano se ve como media pieza girada y
+    /// media cruzada.
+    /// </para>
+    /// <para>
+    /// Girar es de las operaciones <b>menos idempotentes</b> que hay: aplicarla dos veces no es
+    /// inocuo, acumula. Por eso no puede compartir reintento con nada. Ahora cada entidad lleva el
+    /// suyo, así que un «ocupado» reintenta <b>solo esa</b> rotación.
+    /// </para>
+    /// </remarks>
     private void Girar90(object bloque, int inicio)
     {
         try
         {
-            AcadConnection.Retry(() =>
-            {
-                dynamic bd = bloque;
-                var total = (int)bd.Count;
-                var origen = new[] { 0d, 0d, 0d };
+            var origen = new[] { 0d, 0d, 0d };
+            var total = AcadConnection.Retry(() => (int)((dynamic)bloque).Count);
+            var falladas = 0;
 
-                for (var i = inicio; i < total; i++)
+            for (var i = inicio; i < total; i++)
+            {
+                var indice = i;
+
+                try
                 {
-                    dynamic ent = bd.Item(i);
+                    // El Item SÍ se reintenta: es una lectura y repetirla no cuesta nada.
+                    dynamic ent = AcadConnection.Retry<object>(() =>
+                        ((dynamic)bloque).Item(indice));
+
+                    // El Rotate NO se reintenta, y va SOLO. Es lo que acumula: si se
+                    // reintentara después de haber surtido efecto, la entidad acabaría a 180°.
+                    // Aquí no se puede preguntar «¿ya giró?», así que se intenta una vez.
                     ent.Rotate(origen, Math.PI / 2);
-                    ent.Update();
+
+                    // El Update sí se reintenta: es idempotente, solo refresca.
+                    try
+                    {
+                        AcadConnection.Retry(() => { ent.Update(); });
+                    }
+                    catch (Exception)
+                    {
+                        // Sin refrescar, la entidad ya está girada.
+                    }
                 }
-            });
+                catch (Exception)
+                {
+                    // Una que no gira se queda en horizontal; dejar el resto sin girar por ella
+                    // sería peor.
+                    falladas++;
+                }
+            }
+
+            if (falladas > 0)
+            {
+                _notas.Add(
+                    $"Alzado vertical: {falladas} de {total - inicio} entidades no se pudieron "
+                    + "girar y quedaron en horizontal. Revisa esa pieza.");
+            }
         }
         catch (Exception ex)
         {
@@ -2533,8 +2626,8 @@ public sealed class AlzadoDrawer
                 mt.Height = alto * _f;
                 mt.AttachmentPoint = anclaje;
                 mt.Width = 0;
-                mt.Layer = "TEXTOS";
-                mt.Color = ColorVerde;
+                mt.Layer = "ROTULOS";          // ROTULOS y no TEXTOS: ver arriba
+                mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
             });
         }
@@ -2560,8 +2653,8 @@ public sealed class AlzadoDrawer
                 mt.Width = 0;
                 mt.AttachmentPoint = 5;             // centro
                 mt.Rotation = Math.PI / 2;
-                mt.Layer = "TEXTOS";
-                mt.Color = ColorVerde;
+                mt.Layer = "ROTULOS";          // ROTULOS y no TEXTOS: ver arriba
+                mt.Color = PorCapa;            // el verde lo pone la CAPA, ver arriba
                 mt.Update();
 
                 // Se recoloca por caja envolvente para que el borde caiga exacto
@@ -2786,6 +2879,12 @@ public sealed class AlzadoDrawer
     {
         // Con los colores de la tabla de la macro para las que están en ella —CONCRETO, ESTRIBOS y
         // TEXTOS—: antes se creaban sin color y salían en blanco. Ver CapasCad.
+        //
+        // Y AHORA EL COLOR DE ROTULOS Y COTAS IMPORTA DE VERDAD, porque los rótulos van POR
+        // CAPA: si la capa se queda sin color, los textos que antes salían verdes por su
+        // color de objeto saldrían BLANCOS. Las dos se resuelven igual que en el dibujante de
+        // secciones —ROTULOS con el verde de TEXTOS y COTAS en 253—, que es lo que hace que
+        // un alzado dibujado solo, sin secciones en el dibujo, se vea igual que con ellas.
         foreach (var capa in new[] { "ALZADOS", "CONCRETO", "ESTRIBOS", "TEXTOS", "ROTULOS", "COTAS" })
         {
             try
@@ -2804,7 +2903,12 @@ public sealed class AlzadoDrawer
                         capa1 = capas.Add(capa);
                     }
 
-                    var color = CapasCad.ColorDeCapa(capa);
+                    var color = capa switch
+                    {
+                        "ROTULOS" => CapasCad.ColorDeCapa("TEXTOS"),
+                        "COTAS" => ColorCotas,
+                        _ => CapasCad.ColorDeCapa(capa),
+                    };
 
                     if (color != CapasCad.SinColor)
                     {

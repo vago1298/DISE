@@ -237,10 +237,13 @@ previa— ya está funcionando.
 
 Cuando ya lo tengas corriendo en tu PC, los siguientes pasos serían:
 
-1. **Poner tu logo y tu nombre real** (te digo qué archivos tocar, son dos)
-2. **Portar tu primera macro** para que el botón de Excel sirva de verdad
-3. **Mover el servidor a internet** para que funcione fuera de tu oficina
+1. **Poner tu logo y tu nombre real** en `cadlink.config.json`
+2. **Mover el servidor a internet** para que funcione fuera de tu oficina
+3. **Armar el instalador** con `6-crear-instalador.bat` y probarlo en otra PC
 4. **Firmar el ejecutable** para que Windows no lo marque como sospechoso
 5. **Conectar la pasarela de pagos** para que los cobros sean automáticos
 
 Uno a la vez. No intentes todo junto.
+
+Los cinco están explicados, con lo que falta de cada uno, en
+[`docs/distribucion.md`](docs/distribucion.md).
