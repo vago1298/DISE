@@ -6687,6 +6687,24 @@ def v18_planta_autocad() -> None:
           os.path.exists(ruta("tools", "verificar_placa_base.py")))
 
     # ------------------------------------------------------------------
+    # EL ORDEN DE LOS RECURSOS DEL XAML
+    # ------------------------------------------------------------------
+    # Un {StaticResource X} escrito ANTES del x:Key="X" no tira la compilacion: tira el
+    # ARRANQUE, con «se produjo una excepcion al proporcionar un valor en
+    # StaticResourceHolder». Paso al agregar CeldaSoloGrout junto a sus hermanas, cuando
+    # hereda de CeldaAcabado, que esta 670 lineas mas abajo. Ahora hay una comprobacion
+    # ejecutable que recorre los cinco XAML y ordena las claves de cada uno.
+    check("hay verificacion ejecutable del orden de los recursos del XAML",
+          os.path.exists(ruta("tools", "verificar_recursos_xaml.py")))
+
+    # Y la que se rompio, fijada aqui: el estilo del grout va DESPUES del que hereda.
+    estilos = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("el estilo del grout se declara despues de aquel del que hereda",
+          estilos.index('x:Key="CeldaAcabado"')
+          < estilos.index('x:Key="CeldaSoloGrout"'))
+
+    # ------------------------------------------------------------------
     # PLACA BASE: LA PESTAÑA Y SU TABLA
     # ------------------------------------------------------------------
     #  La pestaña era un cartel de «modulo pendiente de portar». Ahora es una hoja de captura como

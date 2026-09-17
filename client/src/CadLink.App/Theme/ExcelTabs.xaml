@@ -962,20 +962,6 @@
          apaga sola al cambiar el tipo de muro, sin una linea de codigo.
          La opacidad es para que se vea apagada y no solo intocable.
          ============================================================== -->
-    <!-- EL ESPESOR DEL GROUT, APAGADO SI LA PLACA NO LLEVA GROUT.
-         Mismo criterio que las de arriba: la celda que el dibujo no va a leer no se deja
-         escribir. Cuelga de EsGrout, la bandera que la propia fila deriva de su casilla
-         SI/NO, así que se enciende y se apaga sola al contestar la de al lado. -->
-    <Style x:Key="CeldaSoloGrout" TargetType="DataGridCell"
-           BasedOn="{StaticResource CeldaAcabado}">
-        <Setter Property="IsEnabled" Value="{Binding EsGrout}" />
-        <Style.Triggers>
-            <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Opacity" Value="0.4" />
-            </Trigger>
-        </Style.Triggers>
-    </Style>
-
     <Style x:Key="CeldaSoloMamposteria" TargetType="DataGridCell"
            BasedOn="{StaticResource CeldaIdent}">
         <Setter Property="IsEnabled" Value="{Binding MuroEsMamposteria}" />
@@ -1637,6 +1623,33 @@
     <!-- Acabado: gancho, f'c, escala, longitud -->
     <Style x:Key="CeldaAcabado" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
+    </Style>
+
+    <!-- ==============================================================
+         EL ESPESOR DEL GROUT, APAGADO SI LA PLACA NO LLEVA GROUT
+
+         Mismo criterio que las celdas que solo aplican con un tipo de
+         muro o con seccion circular: una celda que el dibujo no va a
+         leer no se deja escribir. Cuelga de EsGrout, la bandera que la
+         propia fila deriva de su casilla SI/NO, asi que se enciende y se
+         apaga sola al contestar la de al lado.
+
+         Y VA AQUI, PEGADO A CeldaAcabado, NO CON LAS OTRAS CeldaSolo*.
+         Hereda de el, y en un diccionario un StaticResource tiene que
+         estar declarado ANTES de usarse. Puesto alla arriba -donde
+         estaba, junto a sus hermanas- la aplicacion no arrancaba: fallaba
+         al construir el diccionario con «se produjo una excepcion al
+         proporcionar un valor en StaticResourceHolder», que es lo que
+         dice WPF cuando la clave todavia no existe.
+         ============================================================== -->
+    <Style x:Key="CeldaSoloGrout" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaAcabado}">
+        <Setter Property="IsEnabled" Value="{Binding EsGrout}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Calculadas: de solo lectura. Van en gris y en cursiva para que se vea de
