@@ -109,7 +109,37 @@ public sealed partial class PlacaBaseDrawer
         {
             // POLILÍNEA ABIERTA y no dos líneas: con doblez el vástago tiene tres puntos, y dos
             // líneas suetas se pueden mover por separado. El ancla es una pieza.
-            Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);
+            var vastago = Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);
+
+            // ═════════════════════════════════════════════════════════════════════════════════
+            // EL ANCLA, CON SU GRUESO REAL.
+            //
+            // El diámetro está capturado en la hoja —«Ø ancla X: 3/4"»— y en planta ya se
+            // dibujaba con él: los dos círculos de cada ancla salen a su medida. En el alzado, en
+            // cambio, el vástago era una línea de eje, así que un ancla del 3/4" y otra de 2" se
+            // veían idénticas y el detalle no decía de qué barra hablaba.
+            //
+            // Se resuelve con el ANCHO DE LA POLILÍNEA y no con un contorno de dos caras a
+            // propósito. Es lo mismo que ya se hace con la placa unas líneas más arriba, deja el
+            // ancla como UNA pieza —una sola entidad que se selecciona y se mueve entera, con su
+            // doblez resuelto por el vértice— y no toca la geometría, así que la previa y el
+            // dibujo siguen saliendo de los mismos puntos.
+            // ═════════════════════════════════════════════════════════════════════════════════
+            if (vastago is not null && a.Diametro > 0)
+            {
+                try
+                {
+                    AcadConnection.Retry(() =>
+                    {
+                        ((dynamic)vastago).ConstantWidth = a.Diametro;
+                        ((dynamic)vastago).Update();
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Fallo("Grueso del vástago del ancla en el alzado", ex);
+                }
+            }
 
             Polilinea(a.Tuerca, PlacaBaseCapas.Anclas);
             Linea(a.Arandela[0], a.Arandela[1], a.Arandela[2], a.Arandela[3], PlacaBaseCapas.Anclas);

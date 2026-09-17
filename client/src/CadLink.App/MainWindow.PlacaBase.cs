@@ -551,7 +551,7 @@ public partial class MainWindow
         }
 
         // ---------- El alzado, detrás de las anclas de la planta ----------
-        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar);
+        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar, escala);
 
         // ---------- Las anclas: el agujero y el ancla, como en el detalle ----------
         if (anclas.Count > 0)
@@ -818,8 +818,21 @@ public partial class MainWindow
     /// triángulo: es el mismo cuidado que en el dibujante.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>El vástago va aparte, en su propio trazo, y con el GRUESO REAL de la barra.</b> Es el
+    /// único del alzado que no se pinta con una pluma fija: el diámetro está capturado en la hoja
+    /// —«Ø ancla X: 3/4"»—, viaja en <c>AnclaDeCanto.Diametro</c> y aquí se convierte a píxeles con
+    /// la misma escala de ajuste del lienzo, así que la previa enseña el mismo grosor que va a salir
+    /// en AutoCAD. Un ancla del 3/4" y otra de 2" ya no se ven iguales.
+    /// </para>
+    /// <para>
+    /// Con un mínimo de pluma: a un encuadre muy reducido, media pulgada de barra da menos de un
+    /// píxel y el ancla desaparecería del recuadro.
+    /// </para>
+    /// </remarks>
     private void DibujarAlzadoDeLaPlacaPrevia(
-        List<ElevacionPlacaBase.Vista> vistas, Transform transformar)
+        List<ElevacionPlacaBase.Vista> vistas, Transform transformar, double escala)
     {
         if (vistas.Count == 0)
         {
@@ -834,6 +847,10 @@ public partial class MainWindow
         var geoPlaca = new GeometryGroup { Transform = transformar };
         var geoAnclas = new GeometryGroup { Transform = transformar };
 
+        // Los vástagos, uno por ancla: cada uno se pinta con SU grueso, y en la placa rectangular
+        // conviven los dos diámetros —el de las anclas X y el de las Y— en el mismo recuadro.
+        var vastagos = new List<(GeometryGroup Geo, double Grueso)>();
+
         foreach (var v in vistas)
         {
             AgregarPoligonal(geoConcreto, v.Concreto, null);
@@ -847,7 +864,10 @@ public partial class MainWindow
 
             foreach (var a in v.Anclas)
             {
-                AgregarAbierta(geoAnclas, a.Vastago);
+                var geoVastago = new GeometryGroup { Transform = transformar };
+                AgregarAbierta(geoVastago, a.Vastago);
+                vastagos.Add((geoVastago, Math.Max(1.4, a.Diametro * escala)));
+
                 AgregarPoligonal(geoAnclas, a.Tuerca, null);
                 AgregarAbierta(geoAnclas, a.Arandela);
 
@@ -888,6 +908,22 @@ public partial class MainWindow
             Stroke = rojo,
             StrokeThickness = 1.4
         });
+
+        // Y los vástagos encima, cada uno con el grueso de su barra. Las puntas van a ras
+        // -PenLineCap.Flat- para que el fondo del ancla quede a la cota que dice la hoja y no medio
+        // diámetro más abajo, y el codo del doblez se redondea, que es como se ve una barra doblada.
+        foreach (var (geo, grueso) in vastagos)
+        {
+            PlacaPreviewCanvas.Children.Add(new FormaPath
+            {
+                Data = geo,
+                Stroke = rojo,
+                StrokeThickness = grueso,
+                StrokeStartLineCap = PenLineCap.Flat,
+                StrokeEndLineCap = PenLineCap.Flat,
+                StrokeLineJoin = PenLineJoin.Round
+            });
+        }
     }
 
     /// <summary>Una poligonal <b>abierta</b>, de dos o tres puntos, sin relleno.</summary>

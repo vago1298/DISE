@@ -2180,12 +2180,67 @@ check("los datos del alzado van CRUZADOS igual que en la planta",
       and "esX ? p.LongAnclajeXCm : p.LongAnclajeYCm" in _DELEV)
 
 #  ---- LA LONGITUD DEL ANCLA Y SU DOBLEZ ----
-check("la longitud total del ancla manda, y el ahogo es el respaldo",
+#  LA VERTICAL MANDA. Es la casilla que queda en la hoja -«Longitud de ancla X vertical»-,
+#  asi que es la que tiene que gobernar hasta donde baja la barra. Antes mandaba el largo
+#  TOTAL desarrollado, y entonces el dato capturado a mano acababa siendo uno que el dibujo
+#  recalculaba solo: se escribia 45 y el ancla bajaba otra cosa. El total se queda de
+#  respaldo para un trabajo guardado que solo lo traiga a el.
+check("la longitud vertical del ancla manda, y el largo total es el respaldo",
       "double LongAnclaje, double LongAncla, double DoblezAncla," in _ELEV
-      and "largoTotal > 0" in _ELEV
-      and "? largoTotal - Math.Max(0, doblez)" in _ELEV
-      and ": ahogo + gasto;" in _ELEV
+      and "var largoRecto = ahogo > 0" in _ELEV
+      and "? ahogo + gasto" in _ELEV
+      and ": largoTotal - Math.Max(0, doblez);" in _ELEV
       and "var gasto = espesorPlaca + altoTuerca;" in _ELEV)
+
+#  ---- Y SI LAS DOS PATAS SE ENCIMAN, UNA SE SUBE ----
+#  Las dos patas doblan hacia dentro y a la misma altura, asi que con un doblez largo -o una
+#  placa angosta- se dibujan encimadas y el detalle no se entiende. Mismo criterio que
+#  ZapataDrawer.DesfaseDeLosGanchos: suma de las dos patas contra el hueco menos una
+#  tolerancia, y desfase de dos diametros mas la tolerancia.
+check("hay desfase cuando las patas del doblez se alcanzan",
+      "public static double DesfaseDeLasPatas(" in _ELEV
+      and "return (2 * pata) > separacionEjes - tolerancia" in _ELEV
+      and "? (2 * d) + tolerancia" in _ELEV
+      and "var tolerancia = 0.5 * escala;" in _ELEV)
+
+check("un ancla recta no lleva desfase, que no tiene pata con que encimarse",
+      "if (pata <= 0 || separacionEjes <= 0)" in _ELEV)
+
+check("el desfase se mide de eje a eje de las dos anclas",
+      "DesfaseDeLasPatas(\n            Math.Max(0, doblez), 2 * desplazamiento, diametro, escala);"
+      in _ELEV)
+
+check("y lo lleva UNA sola de las dos, o seguirian a la misma altura",
+      _ELEV.count("diametro, desfase,") == 1
+      and _ELEV.count("diametro, 0,") == 2)
+
+check("el desfase sube el fondo del ancla, con tope para no meterlo en la placa",
+      "var sube = Math.Max(0, Math.Min(desfase, largoRecto - gasto - (1.0 * escala)));" in _ELEV
+      and "var yFondo = yPunta - largoRecto + sube;" in _ELEV)
+
+#  Y el dado sigue cubriendo a la mas honda: el ahogo se DEVUELVE MEDIDO, no copiado del
+#  dato, asi que el ancla subida pide menos y la otra manda.
+check("el ahogo se devuelve medido, asi el dado lo pide la mas honda",
+      "Ahogo: yPlaca - yFondo," in _ELEV)
+
+#  ---- EL ANCLA, CON SU GRUESO REAL ----
+#  El diametro esta capturado en la hoja y en planta ya se dibujaba con el; en el alzado el
+#  vastago era una linea de eje, asi que un 3/4" y un 2" se veian iguales. Va por el ancho de
+#  la polilinea -como la placa- y no por un contorno de dos caras: asi el ancla sigue siendo
+#  UNA pieza y la geometria no cambia, que es la que comparten el dibujo y la previa.
+check("el grueso real de la barra viaja con el ancla",
+      "double Diametro)" in _ELEV
+      and "Diametro: d);" in _ELEV)
+
+check("y el vastago se dibuja con ese grueso en AutoCAD",
+      "var vastago = Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);" in _DELEV
+      and "((dynamic)vastago).ConstantWidth = a.Diametro;" in _DELEV
+      and "if (vastago is not null && a.Diametro > 0)" in _DELEV)
+
+check("la previa pinta el vastago con el mismo grueso",
+      "vastagos.Add((geoVastago, Math.Max(1.4, a.Diametro * escala)));" in _PREV
+      and "StrokeThickness = grueso," in _PREV
+      and "StrokeStartLineCap = PenLineCap.Flat," in _PREV)
 
 check("con doblez el vastago lleva tres puntos y se va el travesano",
       "x, yPunta, x, yFondo, x + (sentidoDoblez * pata), yFondo" in _ELEV
@@ -2195,12 +2250,16 @@ check("con doblez el vastago lleva tres puntos y se va el travesano",
 #  LAS PATAS HACIA DENTRO. La de la izquierda con sentido +1 y la de la derecha con -1:
 #  al reves se acercarian a las caras del dado y se quedarian sin recubrimiento.
 check("y las dos patas apuntan una contra la otra",
-      "espesorPlaca, diametro, 1, escala));" in _ELEV
-      and "espesorPlaca, diametro, -1, escala));" in _ELEV)
+      "espesorPlaca, diametro, 0, 1, escala));" in _ELEV
+      and "espesorPlaca, diametro, desfase, -1, escala));" in _ELEV)
 
 check("el dado crece para que el ancla no se salga",
       "public static double ProfundidadDelDado(" in _ELEV
-      and "if (a.Ahogo > pide)" in _ELEV
+      # Y con MEDIO DIAMETRO de mas: los puntos del vastago son el eje de la barra, asi que su
+      # cara de abajo queda medio diametro mas honda. Con el ancla de 4" eso es 5.08 cm, mas
+      # que la holgura del dado.
+      and "var suyo = a.Ahogo + (a.Diametro / 2);" in _ELEV
+      and "if (suyo > pide)" in _ELEV
       and "var profundidad = ProfundidadDelDado(d.LongAnclaje, anclas, escala);" in _ELEV)
 
 check("el vastago se dibuja como poligonal ABIERTA, no cerrada",
@@ -2221,7 +2280,7 @@ check("y la hoja trae la longitud y el doblez",
 check("el alzado sale tambien en la vista previa, con la misma clase",
       "private static List<ElevacionPlacaBase.Vista> VistasDeElevacionPrevia(" in _PREV
       and "ElevacionPlacaBase.Construir(" in _PREV
-      and "DibujarAlzadoDeLaPlacaPrevia(vistas, transformar);" in _PREV
+      and "DibujarAlzadoDeLaPlacaPrevia(vistas, transformar, escala);" in _PREV
       and "ElevacionPlacaBase.SeparacionDeLaPlantaCm" in _PREV)
 
 check("y la previa encuadra por CAJA, no suponiendo el centro en la placa",
@@ -2235,7 +2294,9 @@ check("y la previa encuadra por CAJA, no suponiendo el centro en la placa",
 check("el vastago de la previa tambien va abierto",
       "private static void AgregarAbierta(" in _PREV
       and "IsClosed = false," in _PREV
-      and "AgregarAbierta(geoAnclas, a.Vastago);" in _PREV)
+      # Va en su PROPIO grupo -y no en el de las anclas- porque es el unico que se pinta con
+      # el grueso real de la barra; abierto, igual que antes.
+      and "AgregarAbierta(geoVastago, a.Vastago);" in _PREV)
 
 check("la previa tambien pinta la franja del cartabon, en morado",
       "private void DibujarSoldaduraDeCartabonesPrevia(" in _PREV

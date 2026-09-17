@@ -6730,9 +6730,25 @@ def v18_planta_autocad() -> None:
           and "LongAnclaXCm = LongAnclaXCm," in pbrow)
     # En cero -como nace una fila nueva- el alzado deduce el largo de la vertical, que
     # es lo que se dibujaba antes de que existiera la casilla del total.
+    # Y LA CASILLA QUE QUEDA GOBIERNA EL DIBUJO: el ancla baja lo que ella dice, y el dado
+    # baja detras de ella. Antes mandaba el largo total, asi que el dato capturado a mano
+    # acababa siendo uno que el dibujo recalculaba solo.
     elev = leer(ruta("client/src/CadLink.Cad/ElevacionPlacaBase.cs"))
-    check("en cero el alzado deduce el largo del ancla de su longitud vertical",
-          "Cero = se deduce del ahogo" in elev)
+    check("la longitud vertical gobierna la profundidad del ancla",
+          "var largoRecto = ahogo > 0" in elev
+          and "? ahogo + gasto" in elev
+          and "Es la que gobierna hasta dónde baja" in elev)
+    check("y el largo total solo queda de respaldo para los trabajos viejos",
+          ": largoTotal - Math.Max(0, doblez);" in elev
+          and "solo se usa cuando la\n    /// vertical viene en cero" in elev)
+    # El detalle se tiene que poder leer: si las dos patas se alcanzan, una sube.
+    check("si las patas del doblez se encimarian, una ancla se sube",
+          "public static double DesfaseDeLasPatas(" in elev)
+    # Y el ancla se dibuja con el diametro de la tabla, no con una linea de eje.
+    check("el ancla se dibuja con el grueso real de su barra",
+          "Diametro: d);" in elev
+          and "((dynamic)vastago).ConstantWidth = a.Diametro;"
+          in leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs")))
     # Y el ejemplo ya no la escribe, o ensenaria un ancla de 45 sin casilla donde verla.
     check("el ejemplo ya no escribe la longitud total del ancla",
           "LongAnclaXCm = 45" not in pbfilas and "LongAnclaYCm = 45" not in pbfilas)
