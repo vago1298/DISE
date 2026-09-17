@@ -141,6 +141,19 @@
     <SolidColorBrush x:Key="CeldaAcabadoBrush" Color="#FFF4F1E8" />
     <SolidColorBrush x:Key="CeldaCalculadaBrush" Color="#FFEDEDED" />
 
+    <!-- ===== LAS BANDAS DE GRUPO DEL ENCABEZADO =====
+         El renglon de arriba de la cabecera, el que dice LECHO SUPERIOR, LECHO
+         INFERIOR e INTERMEDIAS sobre las columnas de su color.
+
+         Son el MISMO pastel de las celdas, un paso mas saturado. Ni el mismo -la
+         banda se perderia contra el gris de la cabecera y no se leeria como un
+         titulo-, ni un color nuevo -entonces dejaria de verse de que columnas
+         habla-. Y por lo mismo que los nueve de arriba, no estan en Tema.cs: la
+         cuadricula se queda clara en los dos temas. -->
+    <SolidColorBrush x:Key="BandaLechoSupBrush" Color="#FFBEDFEF" />
+    <SolidColorBrush x:Key="BandaLechoInfBrush" Color="#FFDBCDEE" />
+    <SolidColorBrush x:Key="BandaLateralBrush" Color="#FFF5E5AE" />
+
     <!-- ===== La fila de acero cuando el acero no se hace en ese perfil =====
          Tres brochas, no una, porque hay que decir tres cosas distintas:
 
@@ -1236,6 +1249,161 @@
         </Grid>
     </DataTemplate>
 
+    <!-- ==================================================================
+         LAS BANDAS DE GRUPO DE LA HOJA DE SECCIONES DE CONCRETO
+         ==================================================================
+         Lo que pidio el usuario: que encima de las columnas azules diga LECHO
+         SUPERIOR, encima de las moradas LECHO INFERIOR y encima de las amarillas
+         INTERMEDIAS, «asi como los de cimentacion», CONSERVANDO el nombre que ya
+         tiene cada columna.
+
+         Y por eso es una BANDA y no una columna combinada como la de la parrilla
+         de las zapatas. Combinarlas -meter las cuatro casillas del lecho en una
+         sola columna de plantilla- daria una banda perfectamente continua, pero se
+         pagaria caro: se pierde el modo edicion de celda, la seleccion por celda,
+         el orden por columna y el ancho que cada una se ajusta sola, que es como se
+         captura hoy esta hoja. Aqui las columnas siguen siendo las de siempre; lo
+         unico que cambia es que su cabecera lleva DOS renglones.
+
+         EL TITULO VA SOLO EN LA PRIMERA COLUMNA DEL GRUPO, y las demas llevan la
+         banda del mismo color pero vacia -las plantillas «…Sigue»-. Repetir
+         «LECHO SUPERIOR» cuatro veces no solo es ruido: la cabecera es la que MANDA
+         el ancho de una columna Auto, asi que repetirlo ensancharia las cuatro. Con
+         el titulo en la primera y a 9 px, cabe en el ancho que la columna ya tenia.
+
+         La altura de la banda va FIJA en 14 px, y no en Auto, para que las diez
+         cabeceras del grupo la pinten exactamente igual de alta y el renglon de los
+         nombres quede a la misma altura que en las columnas sin banda. Con Auto, una
+         banda con texto y una vacia no miden lo mismo y el renglon de abajo se
+         desalinea. -->
+
+    <!-- El titulo de la banda. Como el de la parrilla -mismo cuerpo, mismo peso-
+         pero con la tinta oscura de la marca, que sobre estos pasteles se lee
+         mejor que el azul medio. -->
+    <Style x:Key="BandaGrupoStyle" TargetType="TextBlock"
+           BasedOn="{StaticResource BandaParrillaStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- El nombre de la columna, debajo de la banda. NO se le pone cuerpo de letra
+         a proposito: lo hereda de la cabecera -11.5 SemiBold-, y asi estas diez
+         columnas se leen igual que las demas de la hoja. Y sin recorte con puntos
+         suspensivos: la columna es de ancho automatico y tiene que caber entero. -->
+    <Style x:Key="NombreColumnaGrupoStyle" TargetType="TextBlock">
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Padding" Value="5,0" />
+    </Style>
+
+    <!-- ============ LECHO SUPERIOR (las columnas azules) ============ -->
+    <DataTemplate x:Key="CabeceraGrupoLechoSup">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLechoSupBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <TextBlock Text="LECHO SUPERIOR" Style="{StaticResource BandaGrupoStyle}" />
+            </Border>
+
+            <!-- El nombre sale de {Binding}: en la cabecera de una cuadricula el
+                 DataContext de la plantilla ES el Header, asi que el titulo de la
+                 columna se sigue escribiendo UNA vez, en la columna. -->
+            <TextBlock Grid.Row="1" Text="{Binding}"
+                       Style="{StaticResource NombreColumnaGrupoStyle}" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraGrupoLechoSupSigue">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLechoSupBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" />
+
+            <TextBlock Grid.Row="1" Text="{Binding}"
+                       Style="{StaticResource NombreColumnaGrupoStyle}" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- ============ LECHO INFERIOR (las columnas moradas) ============ -->
+    <DataTemplate x:Key="CabeceraGrupoLechoInf">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLechoInfBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <TextBlock Text="LECHO INFERIOR" Style="{StaticResource BandaGrupoStyle}" />
+            </Border>
+
+            <TextBlock Grid.Row="1" Text="{Binding}"
+                       Style="{StaticResource NombreColumnaGrupoStyle}" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraGrupoLechoInfSigue">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLechoInfBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" />
+
+            <TextBlock Grid.Row="1" Text="{Binding}"
+                       Style="{StaticResource NombreColumnaGrupoStyle}" />
+        </Grid>
+    </DataTemplate>
+
+    <!-- ============ INTERMEDIAS (las columnas amarillas) ============
+         Son las varillas laterales, las que van entre lecho y lecho. En el plano se
+         rotulan «INTERMEDIAS» -ver TextoSimple del alzado-, asi que la banda dice
+         lo mismo que sale en el dibujo. -->
+    <DataTemplate x:Key="CabeceraGrupoIntermedias">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLateralBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <TextBlock Text="INTERMEDIAS" Style="{StaticResource BandaGrupoStyle}" />
+            </Border>
+
+            <TextBlock Grid.Row="1" Text="{Binding}"
+                       Style="{StaticResource NombreColumnaGrupoStyle}" />
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CabeceraGrupoIntermediasSigue">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLateralBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" />
+
+            <TextBlock Grid.Row="1" Text="{Binding}"
+                       Style="{StaticResource NombreColumnaGrupoStyle}" />
+        </Grid>
+    </DataTemplate>
+
     <!-- ============ LAS CUATRO CASILLAS DE LA PARRILLA INFERIOR ============
          Las propiedades se llaman igual en la fila de corridas y en la de
          aisladas -VarInf, SepInf, VarInfTrans, SepInfTrans-, asi que la misma
@@ -1526,6 +1694,18 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Stretch" />
     </Style>
+
+    <!-- LA CABECERA DE UNA COLUMNA CON BANDA DE GRUPO.
+         Las diez columnas de armado de la hoja de secciones: las cuatro del lecho
+         superior, las cuatro del inferior y las dos de intermedias.
+
+         Lo mismo que la de parrilla y por lo mismo -sin relleno y estirada, para que
+         la banda de color llegue de canto a canto de la columna y no quede una orla
+         gris alrededor-. Va con su propio nombre en lugar de reusar el de parrilla
+         porque son dos cosas distintas, y el dia que una cambie no tiene por que
+         arrastrar a la otra. -->
+    <Style x:Key="CabeceraGrupoStyle" TargetType="DataGridColumnHeader"
+           BasedOn="{StaticResource CabeceraParrillaStyle}" />
 
     <!-- ==================================================================
          Barra de herramientas de arriba

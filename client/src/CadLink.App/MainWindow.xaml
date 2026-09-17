@@ -405,7 +405,7 @@
 
                     <StackPanel Grid.Row="0">
                         <TextBlock Text="Secciones estructurales de concreto" Style="{StaticResource ModuleTitleStyle}"
-                                   ToolTip="Las columnas ID, base, altura, lechos, estribo y gancho son las mismas de tu hoja. Las tres ultimas son calculadas: total de varillas, area de acero y cuantia." />
+                                   ToolTip="Las columnas ID, base, altura, lechos, estribo y gancho son las mismas de tu hoja. Las tres ultimas son calculadas: total de varillas, area de acero y cuantia.&#10;El estribo y la escala vienen puestos segun el elemento -#2 en castillos y cadenas, #3 en el resto, y escala 1:10 en todas- y se pueden cambiar renglon por renglon." />
 
                         <!-- Equivale a la celda AC de la hoja: un solo estilo para
                              TODAS las secciones de la tabla. -->
@@ -573,37 +573,72 @@
                             <DataGridTextColumn Header="Altura cm"  Binding="{Binding AlturaCm, StringFormat=N2}" Width="Auto"
                                                     CellStyle="{StaticResource CeldaGeom}" />
 
+                            <!-- ===================================================================
+                                 LAS TRES BANDAS DE GRUPO: LECHO SUPERIOR, LECHO INFERIOR
+                                 E INTERMEDIAS.
+
+                                 Las diez columnas de armado llevan un renglon mas arriba de
+                                 su nombre, con el color de su grupo, «asi como los de
+                                 cimentacion». El nombre de cada columna se queda como
+                                 estaba: la banda se AGREGA, no lo reemplaza.
+
+                                 El titulo lo escribe la PRIMERA columna de cada grupo; las
+                                 demas llevan la plantilla «…Sigue», que pinta la banda del
+                                 mismo color pero sin texto, y asi las cuatro se leen como
+                                 una sola banda. El porque esta en Theme/ExcelTabs.xaml,
+                                 junto a las plantillas.
+                                 =================================================================== -->
                             <DataGridTextColumn Header="N° esq sup"  Binding="{Binding NEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSup}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqSup" Header="Var esq sup"
                                                     SelectedItemBinding="{Binding DiamEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSupSigue}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridTextColumn Header="N° int sup"  Binding="{Binding NIntSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSupSigue}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntSup" Header="Var int sup"
                                                     SelectedItemBinding="{Binding DiamIntSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSupSigue}"
                                                     CellStyle="{StaticResource CeldaLechoSup}" />
 
                             <DataGridTextColumn Header="N° esq inf"  Binding="{Binding NEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInf}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarEsqInf" Header="Var esq inf"
                                                     SelectedItemBinding="{Binding DiamEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInfSigue}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridTextColumn Header="N° int inf"  Binding="{Binding NIntInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInfSigue}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
                             <DataGridComboBoxColumn x:Name="ColVarIntInf" Header="Var int inf"
                                                     SelectedItemBinding="{Binding DiamIntInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInfSigue}"
                                                     CellStyle="{StaticResource CeldaLechoInf}" />
 
                             <DataGridTextColumn Header="N° lateral"  Binding="{Binding NInter, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoIntermedias}"
                                                     CellStyle="{StaticResource CeldaLateral}" />
                             <DataGridComboBoxColumn x:Name="ColVarLateral" Header="Var lateral"
                                                     SelectedItemBinding="{Binding DiamInter, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
                                                     ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
+                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
+                                                    HeaderTemplate="{StaticResource CabeceraGrupoIntermediasSigue}"
                                                     CellStyle="{StaticResource CeldaLateral}" />
 
                             <!-- ===== Seccion circular =====

@@ -2185,6 +2185,11 @@ public partial class MainWindow : Window
                     NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
                     ZunchoHelicoidal = s.ZunchoHelicoidal,
                     RecubrimientoCm = s.RecubrimientoCm,
+
+                    // El ESTRIBO, por lo mismo que el f'c de mas abajo: va DESPUES del
+                    // elemento, asi lo guardado manda sobre el automatico -#2 en castillos
+                    // y cadenas- y una seccion que se armo con otro estribo se abre como se
+                    // guardo.
                     Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                     EstriboDiamante = s.EstriboDiamante,
                     DiamEstriboDiamante = s.DiamEstriboDiamante,

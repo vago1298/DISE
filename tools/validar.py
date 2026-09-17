@@ -10485,6 +10485,77 @@ def v19_circular_y_ui() -> None:
           sup is not None and inf is not None and sup != inf,
           f"sup {sup}, inf {inf}")
 
+    # ------------------------------------------------------------------
+    # Bandas de grupo del encabezado: LECHO SUPERIOR, LECHO INFERIOR, INTERMEDIAS
+    # ------------------------------------------------------------------
+    # Lo que pidio el usuario: que encima de las columnas de cada color diga de que
+    # grupo son, CONSERVANDO el nombre de cada columna. Lo que se comprueba es eso:
+    # que la banda este, que diga lo que tiene que decir, que su color se
+    # corresponda con el de sus celdas y -sobre todo- que el titulo lo lleve UNA
+    # sola columna por grupo. Si lo llevaran todas, la cabecera manda el ancho de
+    # una columna Auto y las ensancharia todas.
+    bandas = [
+        ("LechoSup", "LECHO SUPERIOR", "BandaLechoSupBrush", "CeldaLechoSupBrush", 3),
+        ("LechoInf", "LECHO INFERIOR", "BandaLechoInfBrush", "CeldaLechoInfBrush", 3),
+        ("Intermedias", "INTERMEDIAS", "BandaLateralBrush", "CeldaLateralBrush", 1),
+    ]
+
+    for clave, titulo, brocha, brocha_celda, cuantas_siguen in bandas:
+        plantilla = f"CabeceraGrupo{clave}"
+
+        check(f"existe la plantilla de cabecera {plantilla}",
+              f'x:Key="{plantilla}"' in tema)
+        check(f"y su continuacion {plantilla}Sigue",
+              f'x:Key="{plantilla}Sigue"' in tema)
+        check(f"la banda dice {titulo}",
+              f'Text="{titulo}"' in tema)
+        check(f"existe la brocha {brocha}",
+              f'x:Key="{brocha}"' in tema)
+
+        # El titulo, UNA vez; la continuacion, en las demas columnas del grupo.
+        con_titulo = xaml.count(f'HeaderTemplate="{{StaticResource {plantilla}}}"')
+        siguen = xaml.count(f'HeaderTemplate="{{StaticResource {plantilla}Sigue}}"')
+
+        check(f"el titulo de {titulo} lo lleva UNA sola columna",
+              con_titulo == 1, f"lo llevan {con_titulo}")
+        check(f"y las otras columnas de {titulo} llevan la banda sin texto",
+              siguen == cuantas_siguen, f"son {siguen}, se esperaban {cuantas_siguen}")
+
+        # La banda es el pastel de sus celdas un paso mas saturado: distinto -o no se
+        # leeria como titulo contra el gris de la cabecera- pero no un color nuevo, o
+        # dejaria de verse de que columnas habla.
+        check(f"la banda de {titulo} no es el mismo color que sus celdas",
+              color_de_brocha(brocha) != color_de_brocha(brocha_celda),
+              f"las dos son {color_de_brocha(brocha)}")
+
+    # Las tres bandas, de tres colores distintos entre si.
+    colores_banda = [color_de_brocha(b) for _, _, b, _, _ in bandas]
+    check("las tres bandas son de colores distintos",
+          len(set(colores_banda)) == 3, f"colores: {colores_banda}")
+
+    # Y el estilo de cabecera va estirado y sin relleno, o la banda de color deja una
+    # orla gris alrededor en lugar de llegar de canto a canto.
+    m_cab = re.search(
+        r'x:Key="CabeceraGrupoStyle".*?(?:/>|</Style>)', tema, re.S)
+    check("existe el estilo CabeceraGrupoStyle", m_cab is not None)
+    if m_cab:
+        check("y hereda del de la parrilla, que ya va sin relleno y estirado",
+              "CabeceraParrillaStyle" in m_cab.group(0))
+
+    # LAS DIEZ COLUMNAS DEL GRUPO SIGUEN TENIENDO SU NOMBRE. La banda se AGREGA
+    # encima; no reemplaza el titulo de la columna, que es lo que pidio el usuario.
+    for nombre in ("N° esq sup", "Var esq sup", "N° int sup", "Var int sup",
+                   "N° esq inf", "Var esq inf", "N° int inf", "Var int inf",
+                   "N° lateral", "Var lateral"):
+        check(f"la columna «{nombre}» conserva su titulo",
+              f'Header="{nombre}"' in xaml)
+
+    # Y las diez llevan el estilo de cabecera con banda: si una se quedara con el
+    # normal, su nombre saldria a otra altura que el de sus vecinas.
+    con_banda = xaml.count('HeaderStyle="{StaticResource CabeceraGrupoStyle}"')
+    check("las diez columnas del grupo llevan cabecera con banda",
+          con_banda == 10, f"la llevan {con_banda}")
+
     # Heredan del DataGridCell de serie, o se pierde el resaltado de seleccion y no
     # se ve que fila esta seleccionada.
     check("los estilos de celda heredan del DataGridCell de serie",
@@ -10563,8 +10634,15 @@ def v19_circular_y_ui() -> None:
         #                      propia porque antes tomaban GridRowBrush -que SI cambia
         #                      con el tema- y en oscuro la letra se leia casi negra
         #                      sobre gris oscuro.
+        #   Banda*Brush        las bandas de grupo del encabezado de la hoja de
+        #                      secciones -LECHO SUPERIOR, LECHO INFERIOR,
+        #                      INTERMEDIAS-. Van con el grupo de las celdas y por el
+        #                      mismo motivo: son el pastel de sus columnas un paso mas
+        #                      saturado, y si cambiaran con el tema dejarian de
+        #                      corresponderse con las celdas, que no cambian.
         aparte = ({"PreviewFondoBrush"}
                   | {b for b in declaradas if b.startswith("Celda")}
+                  | {b for b in declaradas if b.startswith("Banda")}
                   | {b for b in declaradas if b.startswith("Lista")}
                   | {b for b in declaradas
                      if b.startswith("FilaAcero") or b.startswith("Acero")})
@@ -11417,6 +11495,7 @@ def v17_guardar_y_defaults() -> None:
     codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
     xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
     diamante = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Diamante.cs"))
+    alzado_cad = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
 
     # ------------------------------------------------------------------
     # CS0117: un miembro que no existe en el inicializador de objeto
@@ -11482,6 +11561,76 @@ def v17_guardar_y_defaults() -> None:
     if m_fc:
         check("el automatico respeta lo escrito a mano",
               "if (_fcManual)" in m_fc.group(0))
+
+    # ------------------------------------------------------------------
+    # Estribo por tipo de elemento: #2 en castillos y cadenas
+    # ------------------------------------------------------------------
+    # Mismo mecanismo que el f'c, y a proposito: es el mismo tipo de dato -uno que
+    # depende del elemento, que se olvida corregir y que tiene que poder cambiarse-.
+    check("hay estribo por omision segun el elemento",
+          "public static string EstriboPorOmision(" in filas)
+    check("castillos y cadenas van con estribo del #2",
+          'EstriboConfinamiento = "#2"' in filas
+          and "EsDeConfinamiento(elemento) ? EstriboConfinamiento : EstriboGeneral"
+          in filas)
+    check("y el resto sigue con el #3", 'EstriboGeneral = "#3"' in filas)
+    # El #2 tiene que existir en la tabla de diametros, o el desplegable no lo
+    # ofreceria y el dibujo no sabria de que grosor es.
+    check("el #2 esta en la tabla de diametros", '["#2"] = 0.635' in filas)
+
+    if m_el:
+        check("cambiar el elemento reajusta el estribo",
+              "AplicarEstriboPorOmision();" in m_el.group(0))
+
+    check("elegir el estribo a mano lo deja fijo", "_estriboManual = true;" in filas)
+    m_es = re.search(
+        r"private void AplicarEstriboPorOmision\(\).*?\n    \}", filas, re.S)
+    check("se puede leer AplicarEstriboPorOmision", m_es is not None)
+    if m_es:
+        check("el estribo automatico respeta lo elegido a mano",
+              "if (_estriboManual)" in m_es.group(0))
+        # Escribe el CAMPO, no la propiedad: por la propiedad levantaria la bandera
+        # de «lo puso el usuario» y el estribo dejaria de seguir al elemento.
+        check("y no se levanta la bandera al ponerlo el programa",
+              "_estribo = nuevo;" in m_es.group(0))
+
+    # Al ABRIR un trabajo, el estribo guardado tiene que ganarle al automatico, y
+    # para eso va DESPUES del elemento en el inicializador.
+    m_abrir = re.search(r"new SeccionConcretoRow\s*\{(.*?)\n\s*\}\;", codigo, re.S)
+    if m_abrir:
+        cuerpo_abrir = m_abrir.group(1)
+        check("al abrir un trabajo el estribo guardado va despues del elemento",
+              cuerpo_abrir.find("Elemento = s.Elemento")
+              < cuerpo_abrir.find("Estribo = s.Estribo"))
+
+    # ------------------------------------------------------------------
+    # Escala del detalle: 1:10 por omision, y editable
+    # ------------------------------------------------------------------
+    check("la escala por omision es 10", 'EscalaPorOmision = "10"' in filas)
+    check("y la usa el valor de arranque de la fila",
+          "_escala = EscalaPorOmision;" in filas)
+    # Es el mismo numero al que ya recurre el alzado cuando la celda va vacia: si uno
+    # cambia y el otro no, la tabla y el dibujo dejan de decir lo mismo.
+    check("el alzado recurre a la misma escala cuando la celda va vacia",
+          'string.IsNullOrWhiteSpace(a.Escala) ? "10" : a.Escala' in alzado_cad)
+    # Y se sigue pudiendo escribir: la celda es de texto, no un valor fijo.
+    check("la escala se sigue capturando a mano",
+          'Header="Escala"     Binding="{Binding Escala' in xaml)
+    # El ejemplo NO escribe la escala ni el estribo: los dos los pone el elemento, y
+    # escribir el estribo ademas lo marcaria como puesto a mano.
+    m_ej = re.search(r"public static DatosProyecto CrearEjemplo\(\).*?\n    \}",
+                     filas, re.S)
+    check("se puede leer CrearEjemplo", m_ej is not None)
+    if m_ej:
+        # Solo el tramo de las secciones de CONCRETO: mas abajo el mismo metodo
+        # carga las de acero, las zapatas y las placas, y esas si llevan escala.
+        corte = m_ej.group(0).find("SeccionesAcero")
+        secciones_ej = m_ej.group(0)[:corte] if corte > 0 else ""
+        check("se puede leer el tramo de secciones de concreto del ejemplo",
+              len(secciones_ej) > 0)
+        check("ninguna seccion del ejemplo escribe su escala a mano",
+              "Escala = " not in secciones_ej)
+        check("ni su estribo", 'Estribo = "#' not in secciones_ej)
 
     # ------------------------------------------------------------------
     # Archivo .clk
