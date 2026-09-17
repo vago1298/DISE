@@ -479,6 +479,8 @@ public partial class MainWindow
         }
 
         // ---------- La placa ----------
+        // EN PLANTA NO SE DIBUJA EL GROUT: la cama queda debajo de la placa, así que en planta la
+        // taparía por completo. Solo se ve en el corte.
         var geoPlaca = new RectangleGeometry(new Rect(0, 0, b, h)) { Transform = transformar };
 
         PlacaPreviewCanvas.Children.Add(new FormaPath
@@ -768,7 +770,10 @@ public partial class MainWindow
         return ElevacionPlacaBase.Construir(
             xInicio, h / 2, 1, AlturaTextoPrevia, p.EspesorCm, p.ConCartabones,
             DireccionDePrevia(p, b, dadoX, pX, esX: true, sepX, p.DiamAnclaXCm),
-            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm));
+            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm),
+
+            // La previa trabaja en centímetros -escala 1-, así que el espesor va tal cual.
+            p.ConGrout ? p.EspesorGroutCm : 0);
     }
 
     /// <summary>
@@ -846,6 +851,7 @@ public partial class MainWindow
         var geoAcero = new GeometryGroup { Transform = transformar };
         var geoPlaca = new GeometryGroup { Transform = transformar };
         var geoAnclas = new GeometryGroup { Transform = transformar };
+        var geoGrout = new GeometryGroup { Transform = transformar };
 
         // Los vástagos, uno por ancla: cada uno se pinta con SU grueso, y en la placa rectangular
         // conviven los dos diámetros —el de las anclas X y el de las Y— en el mismo recuadro.
@@ -854,6 +860,14 @@ public partial class MainWindow
         foreach (var v in vistas)
         {
             AgregarPoligonal(geoConcreto, v.Concreto, null);
+
+            // LA CAMA DE GROUT, si la hay. Va en su propio grupo porque lleva su propio color: en
+            // el dibujo es otra capa y otro rayado, y en la previa se distingue por el tono.
+            if (v.Grout is { } grout)
+            {
+                AgregarPoligonal(geoGrout, grout, null);
+            }
+
             AgregarPoligonal(geoPlaca, v.Placa, null);
             AgregarPoligonal(geoAcero, v.Columna, null);
 
@@ -883,6 +897,16 @@ public partial class MainWindow
             Data = geoConcreto,
             Fill = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8)),
             Stroke = new SolidColorBrush(Color.FromRgb(0x8A, 0x84, 0x78)),
+            StrokeThickness = 1.2
+        });
+
+        // El grout ENTRE el concreto y la placa, también en el orden de pintado: el naranja va
+        // encima del beige del dado y debajo del azul de la placa, como en el corte.
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoGrout,
+            Fill = new SolidColorBrush(Color.FromRgb(0xE8, 0xC9, 0x9A)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0xB5, 0x7C, 0x2E)),
             StrokeThickness = 1.2
         });
 
@@ -1410,6 +1434,10 @@ public partial class MainWindow
                 {
                     bloques.Add(dibujante.UltimoBloque);
                 }
+
+                // Y los de los cortes, que ahora son bloques aparte: uno por vista. Se reportan
+                // igual que el de la planta para que el usuario sepa qué buscar en AutoCAD.
+                bloques.AddRange(dibujante.BloquesDeCortes);
 
                 x += Paso(p, escala);
             }

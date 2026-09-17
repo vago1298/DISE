@@ -962,6 +962,20 @@
          apaga sola al cambiar el tipo de muro, sin una linea de codigo.
          La opacidad es para que se vea apagada y no solo intocable.
          ============================================================== -->
+    <!-- EL ESPESOR DEL GROUT, APAGADO SI LA PLACA NO LLEVA GROUT.
+         Mismo criterio que las de arriba: la celda que el dibujo no va a leer no se deja
+         escribir. Cuelga de EsGrout, la bandera que la propia fila deriva de su casilla
+         SI/NO, así que se enciende y se apaga sola al contestar la de al lado. -->
+    <Style x:Key="CeldaSoloGrout" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaAcabado}">
+        <Setter Property="IsEnabled" Value="{Binding EsGrout}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <Style x:Key="CeldaSoloMamposteria" TargetType="DataGridCell"
            BasedOn="{StaticResource CeldaIdent}">
         <Setter Property="IsEnabled" Value="{Binding MuroEsMamposteria}" />

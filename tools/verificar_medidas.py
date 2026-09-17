@@ -108,6 +108,7 @@ DE_DOS_DECIMALES = [
     "LongCartabonXCm", "LongCartabonYCm", "AltoCartabonXCm", "AltoCartabonYCm",
     "LongAnclajeXCm", "LongAnclajeYCm",
     "DoblezAnclaXCm", "DoblezAnclaYCm",
+    "EspesorGroutCm",
     #  LongAnclaXCm y LongAnclaYCm YA NO ESTAN en esta lista, y no es un olvido: la
     #  hoja de placas dejo de tener casilla para la longitud TOTAL del ancla. Eran dos
     #  casillas para la misma barra -la vertical y el total- y se pisaban, asi que se

@@ -49,8 +49,17 @@ public sealed partial class PlacaBaseDrawer
     public IReadOnlyList<string> Fallos => _log;
     public IReadOnlyList<string> Notas => _notas;
 
-    /// <summary>El nombre del bloque que se creó, para poder decírselo al usuario.</summary>
+    /// <summary>El nombre del bloque de la PLANTA, para poder decírselo al usuario.</summary>
     public string UltimoBloque { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Los bloques de los <b>cortes</b> de la última placa: uno por vista.
+    /// </summary>
+    /// <remarks>
+    /// Aparte del de la planta porque son bloques distintos —eso es justo lo que se pidió— y porque
+    /// son uno o dos según si la placa es cuadrada. Se reportan junto con el de la planta.
+    /// </remarks>
+    public List<string> BloquesDeCortes { get; private set; } = new();
 
     /// <param name="escala">Cuántas unidades de dibujo mide un centímetro. 0.01 = dibujo en metros.</param>
     public PlacaBaseDrawer(dynamic doc, double escala = 0.01)
@@ -119,6 +128,10 @@ public sealed partial class PlacaBaseDrawer
         Capa(PlacaBaseCapas.Perfiles, PlacaBaseCapas.ColorPerfiles, forzar: false);
         Capa(PlacaBaseCapas.Cartabones, PlacaBaseCapas.ColorCartabones, forzar: false);
         Capa(PlacaBaseCapas.Soldadura, PlacaBaseCapas.ColorSoldadura, forzar: true);
+
+        // La del GROUT fuerza su color por lo mismo que la placa: es una capa de esta macro, no una
+        // que venga de la plantilla del usuario, y el naranja es lo que la separa del gris del dado.
+        Capa(PlacaBaseCapas.Grout, PlacaBaseCapas.ColorGrout, forzar: true);
 
         // La de los cartabones FUERZA su color, igual que la del perfil: las dos son de esta macro
         // —no vienen de la plantilla del usuario— y el morado es lo que las distingue en el detalle.
@@ -340,6 +353,10 @@ public sealed partial class PlacaBaseDrawer
     {
         var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
+        // Los bloques de los cortes son de ESTA placa: se vacían al empezar, o una fila que no se
+        // llegue a dibujar reportaría los cortes de la anterior.
+        BloquesDeCortes = new List<string>();
+
         var x0 = p.InsercionX;
         var y0 = p.InsercionY;
 
@@ -518,15 +535,6 @@ public sealed partial class PlacaBaseDrawer
         var repartoCartabones = Cartabones(
             p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna);
 
-        // ---------- El alzado, a la derecha de la planta ----------
-        // AQUÍ y no al final: va DENTRO del bloque, igual que en la macro, así que tiene que quedar
-        // entre 'inicio' y 'finGeometria'. Dibujado después de Bloquear, la planta se movería con su
-        // bloque y el alzado se quedaría atrás.
-        //
-        // Y con xRig ya crecido por el dado: el alzado arranca 60 cm del canto derecho de lo que
-        // ocupa el detalle, no de la placa. Con la placa, un dado grande se le metería encima.
-        Elevacion(p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY);
-
         // ---------- Las anclas: dos círculos cada una ----------
         var nAncX = 0;
         var nAncY = 0;
@@ -540,12 +548,23 @@ public sealed partial class PlacaBaseDrawer
             if (a.EsX) { nAncX++; } else { nAncY++; }
         }
 
-        // ---------- El bloque, ANTES de las cotas y los rótulos ----------
-        // Se forma con lo que hay entre 'inicio' y aquí, que es solo geometría. Las cotas y los
-        // rótulos se dibujan después y por eso se quedan fuera, igual que en la macro.
+        // ---------- El bloque de LA PLANTA, ANTES de las cotas y los rótulos ----------
+        // Se forma con lo que hay entre 'inicio' y aquí, que es solo geometría de la planta. Las
+        // cotas y los rótulos se dibujan después y por eso se quedan fuera, igual que en la macro.
         var finGeometria = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
         UltimoBloque = Bloquear(p.Seccion, inicio, finGeometria, x0, y0);
+
+        // ---------- Los cortes, a la derecha de la planta y CADA UNO EN SU BLOQUE ----------
+        // AQUÍ y no antes del bloqueo de la planta, que es donde estaban. Iban dentro del mismo
+        // bloque —así lo hacía la macro— y entonces no se podía llevar un corte a otro sitio de la
+        // hoja sin arrastrar la planta detrás. Ahora la planta es un bloque y cada corte es otro,
+        // que es como se usan en el plano.
+        //
+        // Y con xRig ya crecido por el dado: el corte arranca 60 cm del canto derecho de lo que
+        // ocupa el detalle, no de la placa. Con la placa, un dado grande se le metería encima.
+        BloquesDeCortes = Elevacion(
+            p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY);
 
         // ---------- Las cotas ----------
         var o1 = 2.0 * _hTxt;

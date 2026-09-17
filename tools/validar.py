@@ -6754,6 +6754,49 @@ def v18_planta_autocad() -> None:
           "LongAnclaXCm = 45" not in pbfilas and "LongAnclaYCm = 45" not in pbfilas)
 
     # ------------------------------------------------------------------
+    # LA PLANTA UN BLOQUE, CADA CORTE OTRO
+    # ------------------------------------------------------------------
+    # Iban todos en el mismo bloque -asi lo hacia la macro-, asi que no se podia llevar un
+    # corte a otro sitio de la hoja sin arrastrar la planta detras.
+    check("los cortes son bloques aparte de la planta",
+          "BloquesDeCortes = Elevacion(" in pbd
+          and "public List<string> BloquesDeCortes { get; private set; } = new();" in pbd
+          and pbd.index("UltimoBloque = Bloquear(")
+          < pbd.index("BloquesDeCortes = Elevacion("))
+    # El dibujante del corte, que es un archivo aparte del de la planta.
+    pbelev = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs"))
+    pbtema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("y el corte va acotado: cartabon, ancla y grout",
+          "private void CotasDelCorte(ElevacionPlacaBase.Vista v)" in pbelev
+          and "CotasDelCorte(v);" in pbelev)
+
+    # ------------------------------------------------------------------
+    # LA CAMA DE GROUT
+    # ------------------------------------------------------------------
+    # La casilla nueva: en SI, el corte dibuja la cama de mortero entre la placa y el dado
+    # con el espesor que se le de, y el dado baja lo que mida.
+    check("la hoja tiene la casilla del grout, con SI/NO escrito",
+          '<DataGridTemplateColumn Header="Grout" Width="Auto"' in tab_pb
+          and "{x:Static models:PlacaBaseRow.SiNo}" in tab_pb
+          and "public static string[] SiNo => ZapataAisladaRow.SiNo;" in pbr)
+    check("y su espesor al lado, que solo se puede escribir con la casilla en SI",
+          'Header="Esp grout cm" Binding="{Binding EspesorGroutCm, StringFormat=N2}"'
+          in tab_pb
+          and 'CellStyle="{StaticResource CeldaSoloGrout}"' in tab_pb
+          and 'x:Key="CeldaSoloGrout"' in pbtema
+          and '<Setter Property="IsEnabled" Value="{Binding EsGrout}" />' in pbtema)
+    check("la cama se dibuja entre la placa y el dado, con su rayado y su capa",
+          "double[]? Grout);" in elev
+          and "var yDado = yPlaca - g;" in elev
+          and 'public const string Grout = "GROUT";' in pbc
+          and "Hatch(PlacaBaseCapas.PatronGrout, PlacaBaseCapas.EscalaHatchGrout,"
+          in pbelev)
+    check("y el ancla la atraviesa: su longitud vertical se mide en el concreto",
+          "var gasto = espesorPlaca + Math.Max(0, grout) + altoTuerca;" in elev
+          and "Ahogo: yPlaca - Math.Max(0, grout) - yFondo," in elev)
+
+    # ------------------------------------------------------------------
     # La pestaña de conexiones dice tambien lo que trae de detalles
     # ------------------------------------------------------------------
     check("la pestaña se llama Conexiones/Detalles",

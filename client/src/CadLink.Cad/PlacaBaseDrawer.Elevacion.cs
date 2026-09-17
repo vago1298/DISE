@@ -17,23 +17,32 @@ public sealed partial class PlacaBaseDrawer
     /// <param name="yPlaca">La cara de abajo de la placa en el alzado.</param>
     /// <remarks>
     /// <para>
-    /// <b>Va dentro del bloque</b>, igual que en la macro: se dibuja antes de <c>Bloquear</c> y todo
-    /// lo suyo queda en capas de geometría. Lo único que se queda fuera es su rótulo, que va en
-    /// ROTULOS y por eso <c>Bloquear</c> lo salta. Así la planta y su alzado se mueven juntos.
+    /// <b>CADA CORTE ES SU PROPIO BLOQUE</b>, y la planta el suyo. Antes iba todo en uno solo
+    /// —la macro lo hacía así— y entonces no se podía llevar el corte a otro sitio de la hoja sin
+    /// arrastrar la planta detrás. Lo pidió el usuario y además es lo razonable: en el plano la
+    /// planta y sus cortes casi nunca acaban uno al lado del otro.
     /// </para>
     /// <para>
-    /// El alzado <b>no lleva cotas</b>, y eso es de la macro. Ver la nota de la vista previa: lo que
-    /// se captura en F18, F19, E12 y E13 sale como geometría y no como número.
+    /// Por eso esto se llama <b>después</b> del bloqueo de la planta y no antes: cada vista se
+    /// dibuja, se agrupa en su bloque y se acota, en ese orden. Las cotas quedan fuera del bloque
+    /// sin hacer nada especial, porque <c>Bloquear</c> salta la capa COTAS.
+    /// </para>
+    /// <para>
+    /// El rótulo <c>ELEVACION "X"</c> también se queda fuera, por la misma razón: va en la capa
+    /// ROTULOS. Es lo que ya pasaba antes.
     /// </para>
     /// </remarks>
-    private void Elevacion(
+    /// <returns>Los nombres de los bloques de los cortes, uno por vista.</returns>
+    private List<string> Elevacion(
         PlacaBaseCad p, double xInicio, double yPlaca,
         double b, double h, double dadoX, double dadoY, double pX, double pY,
         double sepX, double sepY, double dAncX, double dAncY)
     {
+        var bloques = new List<string>();
+
         if (!p.DibujarElevacion)
         {
-            return;
+            return bloques;
         }
 
         var vistas = ElevacionPlacaBase.Construir(
@@ -42,12 +51,47 @@ public sealed partial class PlacaBaseDrawer
             p.EspesorCm * _escala,
             p.ConCartabones,
             DireccionDeElevacion(p, _escala, b, dadoX, pX, esX: true, sepX, dAncX),
-            DireccionDeElevacion(p, _escala, h, dadoY, pY, esX: false, sepY, dAncY));
+            DireccionDeElevacion(p, _escala, h, dadoY, pY, esX: false, sepY, dAncY),
+            p.ConGrout ? p.EspesorGroutCm * _escala : 0);
 
         foreach (var v in vistas)
         {
+            // UN BLOQUE POR CORTE. El rango se abre y se cierra alrededor de ESTA vista, así que
+            // cada corte se lleva solo su geometría y no la de su vecino.
+            var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
+
             DibujarVistaDeElevacion(v);
+
+            var fin = (int)AcadConnection.Retry(() => (int)_ms.Count);
+
+            // El punto base es la esquina inferior izquierda del dado de ESTE corte: el mismo
+            // criterio que la planta, que se bloquea por la esquina de la placa.
+            var nombre = Bloquear(
+                NombreDelCorte(p.Seccion, v.Id), inicio, fin, v.Concreto[0], v.Concreto[1]);
+
+            if (nombre.Length > 0)
+            {
+                bloques.Add(nombre);
+            }
+
+            // Y LAS COTAS DESPUÉS, para que se queden fuera del bloque. Da igual el orden —la capa
+            // COTAS nunca entra—, pero así se lee en el mismo orden en que ocurre.
+            CotasDelCorte(v);
         }
+
+        return bloques;
+    }
+
+    /// <summary>El nombre del bloque de un corte: el de la sección más «CORTE X».</summary>
+    /// <remarks>
+    /// Con el nombre de la sección delante, los tres bloques de una placa se ordenan juntos en el
+    /// administrador de bloques de AutoCAD, que es donde se van a buscar.
+    /// </remarks>
+    private static string NombreDelCorte(string seccion, string id)
+    {
+        var s = (seccion ?? string.Empty).Trim();
+
+        return (s.Length == 0 ? "PLACA BASE" : s) + " CORTE " + id;
     }
 
     /// <summary>Los datos de una dirección, ya en unidades de dibujo.</summary>
@@ -78,6 +122,26 @@ public sealed partial class PlacaBaseDrawer
     private void DibujarVistaDeElevacion(ElevacionPlacaBase.Vista v)
     {
         Polilinea(v.Concreto, PlacaBaseCapas.Concreto);
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // LA CAMA DE GROUT, ENTRE LA PLACA Y EL DADO.
+        //
+        // Solo si la hoja lo pide: sin grout, v.Grout viene en null y aquí no pasa nada.
+        //
+        // Va RAYADA, y con otro patrón que el dado —ANSI31 a 45° contra el AR-CONC del concreto—,
+        // porque a esta escala una junta de 2 o 3 cm dibujada solo con su contorno se lee como una
+        // línea doble y no como un material. Y en su propia capa, para poder apagarla sola.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        if (v.Grout is { } grout)
+        {
+            var contorno = Polilinea(grout, PlacaBaseCapas.Grout);
+
+            if (contorno is not null)
+            {
+                Hatch(PlacaBaseCapas.PatronGrout, PlacaBaseCapas.EscalaHatchGrout,
+                      contorno, null, PlacaBaseCapas.Grout, PlacaBaseCapas.ColorGrout);
+            }
+        }
 
         var placa = Polilinea(v.Placa, PlacaBaseCapas.Placa);
 
@@ -152,6 +216,107 @@ public sealed partial class PlacaBaseDrawer
 
         // El identificador SIEMPRE entre comillas, como en la macro: ELEVACION "X".
         Texto("ELEVACION \"" + v.Id + "\"", v.Rotulo.X, v.Rotulo.Y);
+    }
+
+    /// <summary>
+    /// Las cotas del corte: el cartabón, el ancla y la cama de grout.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El corte no llevaba ninguna: lo que se captura en F18, F19, E12 y E13 salía dibujado pero
+    /// sin número, así que del plano no se podía sacar con cuánto se dibujó ni verificarlo en obra.
+    /// Lo pidió el usuario y son <b>las medidas que se capturan</b>, no todas las que se podrían
+    /// poner: la longitud y la altura del cartabón, la longitud vertical del ancla y su doblez, más
+    /// el espesor del grout cuando lo hay.
+    /// </para>
+    /// <para>
+    /// <b>Salen de la geometría de la vista y no de preguntarle a AutoCAD dónde quedó nada.</b> Es
+    /// el mismo cuidado que con los leaders de los cartabones: para cuando esto corre,
+    /// <c>Bloquear</c> ya copió el corte a la definición de su bloque y borró las originales, así
+    /// que un <c>GetBoundingBox</c> devolvería un cero y las cotas se irían al origen del dibujo.
+    /// </para>
+    /// <para>
+    /// El reparto de lados evita que se pisen entre ellas: a la <b>izquierda</b> el grout y el
+    /// ancla, a la <b>derecha</b> la altura del cartabón, <b>arriba</b> su longitud y <b>abajo</b>
+    /// el doblez. En cada lado hay como mucho dos, y con dos van a distancias distintas.
+    /// </para>
+    /// <para>
+    /// Se acota <b>un</b> cartabón y <b>un</b> ancla, no los dos de cada pareja: son la misma pieza
+    /// repetida en espejo —el mismo dato de la hoja— y acotar las dos es ensuciar el detalle con un
+    /// número que ya está. Del ancla se elige la que NO se subió por el desfase, que es la que mide
+    /// lo que dice la hoja.
+    /// </para>
+    /// </remarks>
+    private void CotasDelCorte(ElevacionPlacaBase.Vista v)
+    {
+        // Las cuatro referencias de la vista, leídas de sus cajas: Caja() devuelve
+        // {x1,y1, x2,y1, x2,y2, x1,y2}, así que [0] y [1] son la esquina inferior izquierda.
+        var xIzq = v.Concreto[0];
+        var xDer = v.Concreto[2];
+        var yFondoDado = v.Concreto[1];
+        var yDado = v.Concreto[5];
+        var yPlaca = v.Placa[1];
+        var yColumna = v.Columna[5];
+
+        var o1 = 2.0 * _hTxt;
+        var o2 = o1 + (2.5 * _hTxt);
+
+        // ---------- El cartabón: su longitud arriba y su altura a la derecha ----------
+        // El de la derecha, que es el que tiene sitio para las dos cotas. Sus puntos son los de
+        // CartabonDeCanto: [0] el paño de la columna, [2] el canto de fuera, [7] su cara de arriba.
+        if (v.Cartabones.Length > 0)
+        {
+            var c = v.Cartabones[^1];
+
+            var xPano = c[0];
+            var xFuera = c[2];
+            var yAlto = c[7];
+
+            // La longitud, por encima de la columna: ahí no hay nada que tapar.
+            CotaH(Math.Min(xPano, xFuera), Math.Max(xPano, xFuera), yAlto, yColumna + o1);
+
+            // Y la altura, medida desde la cara de arriba de la placa, que es de donde arranca.
+            CotaV(v.Placa[5], yAlto, xFuera, xDer + o1);
+        }
+
+        // ---------- El ancla: su longitud vertical a la izquierda y su doblez abajo ----------
+        if (v.Anclas.Length > 0)
+        {
+            // La más honda es la que no se subió por el desfase, y es la que mide lo capturado.
+            var a = v.Anclas[0];
+
+            foreach (var otra in v.Anclas)
+            {
+                if (otra.Ahogo > a.Ahogo)
+                {
+                    a = otra;
+                }
+            }
+
+            var xAncla = a.Vastago[0];
+            var yFondoAncla = a.Vastago[3];
+
+            // DESDE LA CARA DE ARRIBA DEL DADO, no desde la placa: es la longitud que se captura,
+            // la que se ahoga en el concreto. Sin grout las dos caras coinciden y da lo mismo; con
+            // grout, medir desde la placa daría el espesor de la cama de más.
+            CotaV(yFondoAncla, yDado, xAncla, xIzq - o2);
+
+            if (a.ConDoblez)
+            {
+                // La pata, por debajo del dado: dentro del concreto la cota se perdería en el
+                // rayado. Y el rótulo del corte ya baja cinco alturas de texto para dejarle sitio.
+                CotaH(Math.Min(a.Vastago[2], a.Vastago[4]), Math.Max(a.Vastago[2], a.Vastago[4]),
+                      yFondoAncla, yFondoDado - o1);
+            }
+        }
+
+        // ---------- El grout: su espesor, pegado al canto izquierdo ----------
+        // Es la cota más chica del corte —dos o tres centímetros— así que va en el offset corto y
+        // sin nada más en su lado a esa distancia.
+        if (v.Grout is not null)
+        {
+            CotaV(yDado, yPlaca, xIzq, xIzq - o1);
+        }
     }
 
     /// <summary>Un TEXT de una línea, centrado en el punto.</summary>

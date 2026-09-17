@@ -2400,6 +2400,49 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
+                            <!-- ===== LA CAMA DE GROUT =====
+
+                                 Va aqui, pegada al dado, porque es lo que separa la placa DE ese
+                                 dado: se lee de corrido «dado X, dado Y, grout, espesor».
+
+                                 SI/NO escrito y no una palomita, como en las hojas de zapatas: un
+                                 cuadro de placas se dicta y se revisa leyendo, y en una palomita
+                                 hay que fijarse en si esta marcada. La lista sale de
+                                 PlacaBaseRow.SiNo, que es la misma de las zapatas. -->
+                            <DataGridTemplateColumn Header="Grout" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaAcabado}"
+                                                    SortMemberPath="Grout">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Grout}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="True" IsDropDownOpen="True"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:PlacaBaseRow.SiNo}}"
+                                                  Text="{Binding Grout, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="SI: la placa se apoya en una cama de mortero de relleno, y el corte la dibuja entre la placa y el dado.&#10;NO: la placa se apoya directamente en el dado.&#10;Con SI, el espesor se pone en la celda de la derecha." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Y su espesor, que SOLO se puede escribir con la casilla en SI:
+                                 el estilo CeldaSoloGrout la apaga sola. Ver Theme/ExcelTabs.xaml. -->
+                            <DataGridTextColumn Header="Esp grout cm" Binding="{Binding EspesorGroutCm, StringFormat=N2}"
+                                                Width="Auto"
+                                                CellStyle="{StaticResource CeldaSoloGrout}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip"
+                                                Value="Espesor de la cama de grout, en centimetros. Lo usual es de 2 a 3 cm.&#10;El dado baja lo que mida la cama y el ancla se alarga otro tanto, para seguir ahogandose en el concreto la longitud que dice su celda.&#10;Se habilita al poner SI en «Grout»." />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
                             <!-- ===== LAS ANCLAS =====
 
                                  «Anclas X» son las que se reparten a lo ANCHO, en horizontal, y
