@@ -185,13 +185,15 @@ public partial class MainWindow : Window
             SeccionConcretoRow.ElementoOtro
         };
 
-        ColVarEsqSup.ItemsSource = diametros;
         ColEstribo.ItemsSource = diametros;
 
-        ColVarIntSup.ItemsSource = opcionales;
-        ColVarEsqInf.ItemsSource = opcionales;
-        ColVarIntInf.ItemsSource = opcionales;
-        ColVarLateral.ItemsSource = opcionales;
+        // LAS CINCO LISTAS DEL ARMADO YA NO SE LLENAN AQUI. Las columnas de lecho y
+        // de intermedias se combinaron en tres columnas de plantilla -para poder poner
+        // el titulo del grupo centrado encima, como en la hoja de zapatas-, y en una
+        // celda de plantilla se crea un control por fila: no hay un x:Name al que
+        // agarrarse. Sus listas salen de Varilla.Diametros y Varilla.DiametrosOpcionales
+        // con x:Static, desde el XAML, que son las MISMAS dos listas que se arman aqui
+        // abajo, asi que no se desincronizan con la validacion.
         ColVarDiamante.ItemsSource = opcionales;
 
         ColDiamante.ItemsSource = new[] { string.Empty, "SI" };

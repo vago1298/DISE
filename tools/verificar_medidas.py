@@ -106,8 +106,17 @@ DE_DOS_DECIMALES = [
     # Placa base
     "LargoCm", "SepBordeXCm", "SepBordeYCm",
     "LongCartabonXCm", "LongCartabonYCm", "AltoCartabonXCm", "AltoCartabonYCm",
-    "LongAnclajeXCm", "LongAnclajeYCm", "LongAnclaXCm", "LongAnclaYCm",
+    "LongAnclajeXCm", "LongAnclajeYCm",
     "DoblezAnclaXCm", "DoblezAnclaYCm",
+    #  LongAnclaXCm y LongAnclaYCm YA NO ESTAN en esta lista, y no es un olvido: la
+    #  hoja de placas dejo de tener casilla para la longitud TOTAL del ancla. Eran dos
+    #  casillas para la misma barra -la vertical y el total- y se pisaban, asi que se
+    #  quedo una, «Longitud de ancla X vertical», que es LongAnclajeXCm.
+    #
+    #  Las propiedades siguen existiendo y se siguen guardando en el .clk, para que un
+    #  trabajo viejo se abra igual, pero sin celda no hay formato que comprobar. Lo que
+    #  SI se comprueba -en validar.py- es que la casilla no haya vuelto por la puerta
+    #  de atras y que en cero el alzado deduzca el largo de la longitud vertical.
 ]
 
 faltan = [p for p in DE_DOS_DECIMALES

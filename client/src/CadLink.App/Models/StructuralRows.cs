@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using CadLink.Cad;
 
@@ -559,6 +560,90 @@ public sealed class SeccionConcretoRow : Row
 
     /// <summary>Columna G.</summary>
     public int NIntSup { get => _nIntSup; set => Set(ref _nIntSup, value); }
+
+    // ==================================================================
+    //  LOS CONTEOS DE VARILLAS, COMO TEXTO
+    // ==================================================================
+    //
+    //  Las cinco casillas de conteo viven ahora DENTRO de las columnas agrupadas
+    //  -LECHO SUPERIOR, LECHO INFERIOR e INTERMEDIAS-, y una celda de plantilla no
+    //  tiene modo edicion: la casilla ES un TextBox, siempre vivo.
+    //
+    //  Y UN TextBox ENLAZADO A UN int NO SE PUEDE VACIAR. Al borrar el contenido para
+    //  teclear otro numero, la cadena vacia no convierte a int: el enlace falla, la
+    //  casilla se queda con el marco rojo de dato invalido y el valor viejo, y hay que
+    //  volver a escribir encima. En una columna normal eso no se notaba porque el enlace
+    //  solo confirmaba al salir de la celda.
+    //
+    //  Con estas cinco propiedades de texto la casilla enlaza a una CADENA y traduce
+    //  ella misma:
+    //
+    //    * vacia o en blanco  ->  0, que es lo que significa «no hay varillas» en toda
+    //                             la hoja. Borrar la casilla es una forma legitima de
+    //                             capturar, no un error.
+    //    * un numero          ->  ese numero, nunca negativo.
+    //    * cualquier otra cosa -> se ignora y se conserva lo que habia. Teclear una
+    //                             letra por error no borra el dato.
+    //
+    //  Y NO avisan de vuelta al escribir -el int no levanta el PropertyChanged de su
+    //  texto-, a proposito: si lo hicieran, el enlace reescribiria la casilla en cada
+    //  tecla y al teclear «12» sobre un «0» saldria «012». Es el mismo motivo por el que
+    //  las celdas de medida de esta hoja no confirman en cada tecla, y esta explicado
+    //  ahi mismo, en el XAML.
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NEsqSup"/>.</summary>
+    public string NEsqSupTexto
+    {
+        get => _nEsqSup.ToString(CultureInfo.InvariantCulture);
+        set => NEsqSup = Conteo(value, _nEsqSup);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NIntSup"/>.</summary>
+    public string NIntSupTexto
+    {
+        get => _nIntSup.ToString(CultureInfo.InvariantCulture);
+        set => NIntSup = Conteo(value, _nIntSup);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NEsqInf"/>.</summary>
+    public string NEsqInfTexto
+    {
+        get => _nEsqInf.ToString(CultureInfo.InvariantCulture);
+        set => NEsqInf = Conteo(value, _nEsqInf);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NIntInf"/>.</summary>
+    public string NIntInfTexto
+    {
+        get => _nIntInf.ToString(CultureInfo.InvariantCulture);
+        set => NIntInf = Conteo(value, _nIntInf);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NInter"/>.</summary>
+    public string NInterTexto
+    {
+        get => _nInter.ToString(CultureInfo.InvariantCulture);
+        set => NInter = Conteo(value, _nInter);
+    }
+
+    /// <summary>
+    /// Traduce lo que se teclea en una casilla de conteo. Ver el comentario de arriba.
+    /// </summary>
+    /// <param name="texto">Lo que hay escrito en la casilla.</param>
+    /// <param name="actual">Lo que vale ahora, para poder conservarlo si no es un numero.</param>
+    private static int Conteo(string? texto, int actual)
+    {
+        var t = (texto ?? string.Empty).Trim();
+
+        if (t.Length == 0)
+        {
+            return 0;
+        }
+
+        return int.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
+            ? Math.Max(0, n)
+            : actual;
+    }
 
     /// <summary>Columna H. Si va vacía, la macro toma la F.</summary>
     public string DiamIntSup { get => _diamIntSup; set => Set(ref _diamIntSup, value); }
@@ -1415,10 +1500,13 @@ public sealed class DatosProyecto
             Soldadura = "1/4",
             SoldaduraCartabon = "3/16",
             ConCartabones = false,
-            // Solo se ven en el alzado: el ahogo del ancla -E12 y E13- y, si se encienden los
-            // cartabones, su altura -F18 y F19-.
+            // Solo se ven en el alzado: la longitud VERTICAL del ancla -E12 y E13, lo que se
+            // ahoga en el concreto- y, si se encienden los cartabones, su altura -F18 y F19-.
+            //
+            // Y NO se escribe la longitud total del ancla. Era la otra casilla de la misma
+            // barra, se quito de la hoja, y en cero el alzado deduce el largo de la longitud
+            // vertical: una sola verdad para el largo del ancla.
             LongAnclajeXCm = 30, LongAnclajeYCm = 30,
-            LongAnclaXCm = 45, LongAnclaYCm = 45,
             DoblezAnclaXCm = 10, DoblezAnclaYCm = 10,
             AltoCartabonXCm = 20, AltoCartabonYCm = 20,
             Escala = 10

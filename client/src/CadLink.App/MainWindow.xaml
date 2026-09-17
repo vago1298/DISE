@@ -574,72 +574,42 @@
                                                     CellStyle="{StaticResource CeldaGeom}" />
 
                             <!-- ===================================================================
-                                 LAS TRES BANDAS DE GRUPO: LECHO SUPERIOR, LECHO INFERIOR
-                                 E INTERMEDIAS.
+                                 LOS TRES GRUPOS DE ARMADO: LECHO SUPERIOR, LECHO
+                                 INFERIOR E INTERMEDIAS.
 
-                                 Las diez columnas de armado llevan un renglon mas arriba de
-                                 su nombre, con el color de su grupo, «asi como los de
-                                 cimentacion». El nombre de cada columna se queda como
-                                 estaba: la banda se AGREGA, no lo reemplaza.
+                                 Cada grupo es UNA columna con su banda de color y su
+                                 titulo centrado encima, y por dentro se parte en sus
+                                 casillas, que conservan el nombre que ya tenian. Es la
+                                 misma solucion de las dos parrillas de la hoja de
+                                 zapatas, y por el mismo motivo: WPF recorta cada
+                                 cabecera a SU columna, asi que un titulo centrado sobre
+                                 varias columnas solo se consigue combinandolas.
 
-                                 El titulo lo escribe la PRIMERA columna de cada grupo; las
-                                 demas llevan la plantilla «…Sigue», que pinta la banda del
-                                 mismo color pero sin texto, y asi las cuatro se leen como
-                                 una sola banda. El porque esta en Theme/ExcelTabs.xaml,
-                                 junto a las plantillas.
+                                 Las plantillas -cabecera y casillas- estan en
+                                 Theme/ExcelTabs.xaml, donde tambien esta razonado el
+                                 reparto de anchos y por que los conteos enlazan a las
+                                 propiedades de texto de la fila.
                                  =================================================================== -->
-                            <DataGridTextColumn Header="N° esq sup"  Binding="{Binding NEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTemplateColumn Header="LECHO SUPERIOR" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSup}"
-                                                    CellStyle="{StaticResource CeldaLechoSup}" />
-                            <DataGridComboBoxColumn x:Name="ColVarEsqSup" Header="Var esq sup"
-                                                    SelectedItemBinding="{Binding DiamEsqSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSupSigue}"
-                                                    CellStyle="{StaticResource CeldaLechoSup}" />
-                            <DataGridTextColumn Header="N° int sup"  Binding="{Binding NIntSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSupSigue}"
-                                                    CellStyle="{StaticResource CeldaLechoSup}" />
-                            <DataGridComboBoxColumn x:Name="ColVarIntSup" Header="Var int sup"
-                                                    SelectedItemBinding="{Binding DiamIntSup, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoSupSigue}"
-                                                    CellStyle="{StaticResource CeldaLechoSup}" />
+                                                    HeaderTemplate="{StaticResource CabeceraLechoSuperior}"
+                                                    CellTemplate="{StaticResource CeldasLechoSuperior}"
+                                                    CellStyle="{StaticResource CeldaLechoSup}"
+                                                    CanUserSort="False" />
 
-                            <DataGridTextColumn Header="N° esq inf"  Binding="{Binding NEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTemplateColumn Header="LECHO INFERIOR" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInf}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridComboBoxColumn x:Name="ColVarEsqInf" Header="Var esq inf"
-                                                    SelectedItemBinding="{Binding DiamEsqInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInfSigue}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridTextColumn Header="N° int inf"  Binding="{Binding NIntInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInfSigue}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
-                            <DataGridComboBoxColumn x:Name="ColVarIntInf" Header="Var int inf"
-                                                    SelectedItemBinding="{Binding DiamIntInf, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoLechoInfSigue}"
-                                                    CellStyle="{StaticResource CeldaLechoInf}" />
+                                                    HeaderTemplate="{StaticResource CabeceraLechoInferior}"
+                                                    CellTemplate="{StaticResource CeldasLechoInferior}"
+                                                    CellStyle="{StaticResource CeldaLechoInf}"
+                                                    CanUserSort="False" />
 
-                            <DataGridTextColumn Header="N° lateral"  Binding="{Binding NInter, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
+                            <DataGridTemplateColumn Header="INTERMEDIAS" Width="Auto"
                                                     HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoIntermedias}"
-                                                    CellStyle="{StaticResource CeldaLateral}" />
-                            <DataGridComboBoxColumn x:Name="ColVarLateral" Header="Var lateral"
-                                                    SelectedItemBinding="{Binding DiamInter, UpdateSourceTrigger=PropertyChanged}" Width="Auto"
-                                                    ElementStyle="{StaticResource ComboCeldaMuestra}" EditingElementStyle="{StaticResource ComboCeldaEdicion}"
-                                                    HeaderStyle="{StaticResource CabeceraGrupoStyle}"
-                                                    HeaderTemplate="{StaticResource CabeceraGrupoIntermediasSigue}"
-                                                    CellStyle="{StaticResource CeldaLateral}" />
+                                                    HeaderTemplate="{StaticResource CabeceraIntermedias}"
+                                                    CellTemplate="{StaticResource CeldasIntermedias}"
+                                                    CellStyle="{StaticResource CeldaLateral}"
+                                                    CanUserSort="False" />
 
                             <!-- ===== Seccion circular =====
                                  La FORMA se elige en la columna «Elemento», poniendo
@@ -2701,64 +2671,56 @@
                             </DataGridTextColumn>
 
                             <!-- ===== EL ALZADO =====
-                                 Lo que se ahoga el ancla en el concreto. Como la altura del
-                                 cartabon, en planta no se ve, y ademas gobierna la profundidad del
-                                 dado del alzado: el concreto baja 5 cm mas que el ancla, para que
-                                 la punta quede dentro. En cero, el alzado sale sin anclas. -->
-                            <DataGridTextColumn Header="Ahogo ancl X cm" Binding="{Binding LongAnclajeXCm, StringFormat=N2}" Width="Auto"
+                                 LA LONGITUD VERTICAL DEL ANCLA: lo que se ahoga en el concreto.
+                                 Como la altura del cartabon, en planta no se ve, y ademas gobierna
+                                 la profundidad del dado del alzado: el concreto baja 5 cm mas que
+                                 el ancla, para que la punta quede dentro. En cero, el alzado sale
+                                 sin anclas.
+
+                                 Se llamaba «Ahogo ancl X cm» y es la UNICA casilla de largo que
+                                 queda: la de longitud total desaparecio -ver la nota de mas
+                                 abajo-, asi que de aqui sale todo el ancla. -->
+                            <DataGridTextColumn Header="Longitud de ancla X vertical" Binding="{Binding LongAnclajeXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Longitud de anclaje de las anclas X, en cm -celda E12 de la macro-.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
+                                                Value="Longitud VERTICAL del ancla X, en cm: lo que se ahoga en el concreto -celda E12 de la macro-.&#10;De aqui sale el largo del ancla y la profundidad del dado: el concreto baja 5 cm mas que la punta.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Ahogo ancl Y cm" Binding="{Binding LongAnclajeYCm, StringFormat=N2}" Width="Auto"
+                            <DataGridTextColumn Header="Longitud de ancla Y vertical" Binding="{Binding LongAnclajeYCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Longitud de anclaje de las anclas Y, en cm -celda E13 de la macro-.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
+                                                Value="Longitud VERTICAL del ancla Y, en cm: lo que se ahoga en el concreto -celda E13 de la macro-.&#10;De aqui sale el largo del ancla y la profundidad del dado: el concreto baja 5 cm mas que la punta.&#10;Solo se dibuja en el alzado. En cero, el alzado sale sin anclas." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
-                            <!-- LA LONGITUD TOTAL DEL ANCLA Y SU DOBLEZ.
+                            <!-- EL DOBLEZ DEL EXTREMO.
 
-                                 «Longitud» es lo que se corta y se pide en el taller, doblez
-                                 incluido: una de 45 con doblez de 10 lleva 35 de tramo recto. MANDA
-                                 sobre el ahogo, que pasa a ser la consecuencia -lo que queda dentro
-                                 del concreto una vez descontado lo que el ancla gasta atravesando la
-                                 placa-. De las dos, esta es la que se puede verificar con una cinta.
+                                 Ya no hay columna de longitud TOTAL del ancla. Eran dos
+                                 casillas para la misma barra -el ahogo y el total- y se
+                                 pisaban: el total mandaba, asi que el ahogo que se
+                                 capturaba a mano acababa siendo un dato que el dibujo
+                                 recalculaba solo. El usuario pidio dejar UNA, la de
+                                 arriba, y llamarla por lo que es: la longitud VERTICAL
+                                 del ancla.
 
-                                 Y si la longitud pide mas hondo de lo que dice el ahogo, el dado del
-                                 alzado baja lo que haga falta: un ancla asomando por debajo del
-                                 concreto es un plano que no se puede construir. -->
-                            <DataGridTextColumn Header="L ancla X cm" Binding="{Binding LongAnclaXCm, StringFormat=N2}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="ToolTip"
-                                                Value="Longitud TOTAL del ancla X, en cm: lo que se corta, con el doblez incluido.&#10;En cero se usa el ahogo. Si pide mas hondo que el ahogo, el dado baja lo que haga falta." />
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
-                            <DataGridTextColumn Header="L ancla Y cm" Binding="{Binding LongAnclaYCm, StringFormat=N2}" Width="Auto"
-                                                CellStyle="{StaticResource CeldaAcabado}">
-                                <DataGridTextColumn.ElementStyle>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="ToolTip"
-                                                Value="Longitud TOTAL del ancla Y, en cm: lo que se corta, con el doblez incluido.&#10;En cero se usa el ahogo." />
-                                    </Style>
-                                </DataGridTextColumn.ElementStyle>
-                            </DataGridTextColumn>
+                                 La propiedad LongAnclaXCm/LongAnclaYCm sigue existiendo y
+                                 se sigue guardando en el .clk, para que un trabajo viejo
+                                 se abra igual. En cero -que es como nace una fila nueva-
+                                 el alzado deduce el largo del ancla de su longitud
+                                 vertical, que es lo que se dibujaba antes de que existiera
+                                 la casilla del total. Ver ElevacionPlacaBase.Direccion. -->
                             <DataGridTextColumn Header="Doblez ancla X cm" Binding="{Binding DoblezAnclaXCm, StringFormat=N2}" Width="Auto"
                                                 CellStyle="{StaticResource CeldaAcabado}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Pata del doblez del extremo del ancla X, en cm. Va DENTRO de la longitud total.&#10;Cero = ancla recta con su travesano. Con doblez, las dos patas apuntan una contra la otra." />
+                                                Value="Pata del doblez del extremo del ancla X, en cm. Va DENTRO del largo desarrollado del ancla.&#10;Cero = ancla recta con su travesano. Con doblez, las dos patas apuntan una contra la otra." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
@@ -2767,7 +2729,7 @@
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Pata del doblez del extremo del ancla Y, en cm. Va DENTRO de la longitud total.&#10;Cero = ancla recta con su travesano." />
+                                                Value="Pata del doblez del extremo del ancla Y, en cm. Va DENTRO del largo desarrollado del ancla.&#10;Cero = ancla recta con su travesano." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
@@ -2954,9 +2916,9 @@
             </TabItem>
 
             <!-- ===== Conexiones ===== -->
-            <TabItem Header="Conexiones">
+            <TabItem Header="Conexiones/Detalles">
                 <StackPanel Margin="22">
-                    <TextBlock Text="Conexiones" Style="{StaticResource ModuleTitleStyle}"
+                    <TextBlock Text="Conexiones/Detalles" Style="{StaticResource ModuleTitleStyle}"
                                    ToolTip="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
                     <Border Style="{StaticResource TarjetaStyle}"
                             Padding="16" MaxWidth="700" HorizontalAlignment="Left">

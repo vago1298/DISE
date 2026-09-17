@@ -6708,6 +6708,44 @@ def v18_planta_autocad() -> None:
           and 'x:Name="PlacaBaseButton"' in tab_pb,
           f"{len(tab_pb)} caracteres de XAML en la pestaña")
 
+    # ------------------------------------------------------------------
+    # UNA SOLA CASILLA DE LARGO POR ANCLA: su longitud VERTICAL
+    # ------------------------------------------------------------------
+    # Eran dos casillas para la misma barra -«Ahogo ancl X cm» y «L ancla X cm»- y se
+    # pisaban: el total mandaba, asi que el ahogo capturado a mano acababa siendo un
+    # dato que el dibujo recalculaba solo. El usuario pidio dejar UNA, la del ahogo, y
+    # llamarla por lo que es.
+    for eje in ("X", "Y"):
+        check(f"la casilla de largo del ancla {eje} se llama por lo que es",
+              f'Header="Longitud de ancla {eje} vertical" '
+              f'Binding="{{Binding LongAnclaje{eje}Cm, StringFormat=N2}}"' in tab_pb)
+        check(f"y ya no hay dos casillas de largo para el ancla {eje}",
+              f'Header="Ahogo ancl {eje} cm"' not in xaml
+              and f'Header="L ancla {eje} cm"' not in xaml)
+
+    # La propiedad NO se borro: un trabajo viejo la trae y se tiene que poder abrir.
+    pbrow = leer(ruta("client/src/CadLink.App/Models/PlacaBaseRow.cs"))
+    check("la longitud total del ancla sigue existiendo, para los trabajos viejos",
+          "public double LongAnclaXCm" in pbrow
+          and "LongAnclaXCm = LongAnclaXCm," in pbrow)
+    # En cero -como nace una fila nueva- el alzado deduce el largo de la vertical, que
+    # es lo que se dibujaba antes de que existiera la casilla del total.
+    elev = leer(ruta("client/src/CadLink.Cad/ElevacionPlacaBase.cs"))
+    check("en cero el alzado deduce el largo del ancla de su longitud vertical",
+          "Cero = se deduce del ahogo" in elev)
+    # Y el ejemplo ya no la escribe, o ensenaria un ancla de 45 sin casilla donde verla.
+    check("el ejemplo ya no escribe la longitud total del ancla",
+          "LongAnclaXCm = 45" not in pbfilas and "LongAnclaYCm = 45" not in pbfilas)
+
+    # ------------------------------------------------------------------
+    # La pestaña de conexiones dice tambien lo que trae de detalles
+    # ------------------------------------------------------------------
+    check("la pestaña se llama Conexiones/Detalles",
+          '<TabItem Header="Conexiones/Detalles">' in xaml
+          and '<TabItem Header="Conexiones">' not in xaml)
+    check("y su titulo dentro de la hoja dice lo mismo",
+          '<TextBlock Text="Conexiones/Detalles"' in xaml)
+
     check("y esta atada al mismo ciclo de vida que las otras hojas",
           "LlenarListasPlacaBase();" in codigo
           and "EnlazarPlacaBase();" in codigo
@@ -10486,40 +10524,94 @@ def v19_circular_y_ui() -> None:
           f"sup {sup}, inf {inf}")
 
     # ------------------------------------------------------------------
-    # Bandas de grupo del encabezado: LECHO SUPERIOR, LECHO INFERIOR, INTERMEDIAS
+    # Los tres grupos de armado: LECHO SUPERIOR, LECHO INFERIOR, INTERMEDIAS
     # ------------------------------------------------------------------
     # Lo que pidio el usuario: que encima de las columnas de cada color diga de que
-    # grupo son, CONSERVANDO el nombre de cada columna. Lo que se comprueba es eso:
-    # que la banda este, que diga lo que tiene que decir, que su color se
-    # corresponda con el de sus celdas y -sobre todo- que el titulo lo lleve UNA
-    # sola columna por grupo. Si lo llevaran todas, la cabecera manda el ancho de
-    # una columna Auto y las ensancharia todas.
-    bandas = [
-        ("LechoSup", "LECHO SUPERIOR", "BandaLechoSupBrush", "CeldaLechoSupBrush", 3),
-        ("LechoInf", "LECHO INFERIOR", "BandaLechoInfBrush", "CeldaLechoInfBrush", 3),
-        ("Intermedias", "INTERMEDIAS", "BandaLateralBrush", "CeldaLateralBrush", 1),
+    # grupo son, con el titulo CENTRADO sobre sus casillas -«como el de cimentacion»-
+    # y conservando el nombre de cada casilla.
+    #
+    # WPF no tiene cabeceras combinadas y recorta cada cabecera a SU columna, asi que
+    # un titulo centrado sobre varias columnas solo sale combinandolas: cada grupo es
+    # UNA columna de plantilla que se parte por dentro, igual que las dos parrillas de
+    # las hojas de zapatas. El primer intento dejo las columnas separadas y el titulo
+    # quedaba centrado sobre la primera, o sea pegado a la izquierda del grupo, que es
+    # justo lo que se pidio corregir.
+    #
+    # Se comprueba: que exista la columna con su banda y sus casillas, que la banda
+    # lleve el titulo del grupo -y lo pinte centrado-, que su color se corresponda con
+    # el de sus celdas, que los nombres de casilla sigan estando y que el reparto de
+    # anchos sea EL MISMO en la cabecera y en las celdas. Si los repartos se separan,
+    # los nombres dejan de caer encima de sus casillas.
+    grupos_armado = [
+        ("LechoSuperior", "LECHO SUPERIOR", "BandaLechoSupBrush", "CeldaLechoSupBrush",
+         "CeldaLechoSup",
+         ("N° esq sup", "Var esq sup", "N° int sup", "Var int sup"),
+         ("NEsqSupTexto", "DiamEsqSup", "NIntSupTexto", "DiamIntSup")),
+        ("LechoInferior", "LECHO INFERIOR", "BandaLechoInfBrush", "CeldaLechoInfBrush",
+         "CeldaLechoInf",
+         ("N° esq inf", "Var esq inf", "N° int inf", "Var int inf"),
+         ("NEsqInfTexto", "DiamEsqInf", "NIntInfTexto", "DiamIntInf")),
+        ("Intermedias", "INTERMEDIAS", "BandaLateralBrush", "CeldaLateralBrush",
+         "CeldaLateral",
+         ("N° lateral", "Var lateral"),
+         ("NInterTexto", "DiamInter")),
     ]
 
-    for clave, titulo, brocha, brocha_celda, cuantas_siguen in bandas:
-        plantilla = f"CabeceraGrupo{clave}"
+    def anchos_de(clave_plantilla):
+        """Los anchos en estrella de una plantilla, en orden."""
+        m_ = re.search(rf'x:Key="{clave_plantilla}">(.*?)</DataTemplate>', tema, re.S)
+        return re.findall(r'<ColumnDefinition Width="(\d+\*)" />', m_.group(1)) if m_ else []
 
-        check(f"existe la plantilla de cabecera {plantilla}",
-              f'x:Key="{plantilla}"' in tema)
-        check(f"y su continuacion {plantilla}Sigue",
-              f'x:Key="{plantilla}Sigue"' in tema)
-        check(f"la banda dice {titulo}",
-              f'Text="{titulo}"' in tema)
-        check(f"existe la brocha {brocha}",
-              f'x:Key="{brocha}"' in tema)
+    for clave, titulo, brocha, brocha_celda, estilo_celda, nombres, props in grupos_armado:
+        cabecera = f"Cabecera{clave}"
+        celdas = f"Celdas{clave}"
 
-        # El titulo, UNA vez; la continuacion, en las demas columnas del grupo.
-        con_titulo = xaml.count(f'HeaderTemplate="{{StaticResource {plantilla}}}"')
-        siguen = xaml.count(f'HeaderTemplate="{{StaticResource {plantilla}Sigue}}"')
+        check(f"existe la cabecera del grupo {titulo}", f'x:Key="{cabecera}"' in tema)
+        check(f"y las casillas del grupo {titulo}", f'x:Key="{celdas}"' in tema)
+        check(f"existe la brocha {brocha}", f'x:Key="{brocha}"' in tema)
 
-        check(f"el titulo de {titulo} lo lleva UNA sola columna",
-              con_titulo == 1, f"lo llevan {con_titulo}")
-        check(f"y las otras columnas de {titulo} llevan la banda sin texto",
-              siguen == cuantas_siguen, f"son {siguen}, se esperaban {cuantas_siguen}")
+        # UNA columna por grupo, con su cabecera, sus casillas, su color y su titulo.
+        check(f"la hoja usa la columna combinada de {titulo}",
+              xaml.count(f'HeaderTemplate="{{StaticResource {cabecera}}}"') == 1
+              and xaml.count(f'CellTemplate="{{StaticResource {celdas}}}"') == 1)
+        check(f"el titulo {titulo} es el Header de SU columna",
+              f'<DataGridTemplateColumn Header="{titulo}" Width="Auto"' in xaml)
+        check(f"y sus celdas van del color del grupo ({estilo_celda})",
+              f'CellStyle="{{StaticResource {estilo_celda}}}"' in xaml)
+
+        # El titulo sale del Header y se pinta con la banda centrada.
+        m_cabecera = re.search(
+            rf'x:Key="{cabecera}">(.*?)</DataTemplate>', tema, re.S)
+        check(f"se puede leer la cabecera de {titulo}", m_cabecera is not None)
+        if m_cabecera:
+            cuerpo_cab = m_cabecera.group(1)
+            check(f"la banda de {titulo} pinta el titulo de la columna",
+                  '<TextBlock Text="{Binding}" '
+                  'Style="{StaticResource BandaGrupoStyle}" />' in cuerpo_cab)
+            check(f"la banda de {titulo} lleva el color de su grupo",
+                  f'Background="{{StaticResource {brocha}}}"' in cuerpo_cab)
+            # Los nombres de casilla, tal cual estaban cuando eran columnas sueltas.
+            for nombre in nombres:
+                check(f"la casilla «{nombre}» conserva su nombre",
+                      f'Text="{nombre}"' in cuerpo_cab)
+
+        # Las casillas capturan las propiedades de la fila, y los conteos van por las
+        # propiedades de TEXTO: un TextBox enlazado a un int no se puede vaciar.
+        m_celdas = re.search(rf'x:Key="{celdas}">(.*?)</DataTemplate>', tema, re.S)
+        check(f"se pueden leer las casillas de {titulo}", m_celdas is not None)
+        if m_celdas:
+            for prop in props:
+                check(f"la casilla de {prop} esta enlazada",
+                      f"{{Binding {prop}, UpdateSourceTrigger=PropertyChanged}}"
+                      in m_celdas.group(1))
+
+        # Mismo reparto arriba y abajo, y tantos anchos como casillas.
+        check(f"el reparto de anchos de {titulo} es el mismo en cabecera y celdas",
+              anchos_de(cabecera) == anchos_de(celdas) != [],
+              f"cabecera {anchos_de(cabecera)}, celdas {anchos_de(celdas)}")
+        check(f"y hay un ancho por casilla en {titulo}",
+              len(anchos_de(celdas)) == len(nombres),
+              f"{len(anchos_de(celdas))} anchos para {len(nombres)} casillas")
 
         # La banda es el pastel de sus celdas un paso mas saturado: distinto -o no se
         # leeria como titulo contra el gris de la cabecera- pero no un color nuevo, o
@@ -10529,9 +10621,21 @@ def v19_circular_y_ui() -> None:
               f"las dos son {color_de_brocha(brocha)}")
 
     # Las tres bandas, de tres colores distintos entre si.
-    colores_banda = [color_de_brocha(b) for _, _, b, _, _ in bandas]
+    colores_banda = [color_de_brocha(g[2]) for g in grupos_armado]
     check("las tres bandas son de colores distintos",
           len(set(colores_banda)) == 3, f"colores: {colores_banda}")
+
+    # EL TITULO VA CENTRADO. Es lo que se pidio, asi que se comprueba: el estilo de la
+    # banda hereda del de la parrilla, que es el que centra.
+    m_banda = re.search(r'x:Key="BandaGrupoStyle".*?</Style>', tema, re.S)
+    check("existe el estilo BandaGrupoStyle", m_banda is not None)
+    if m_banda:
+        check("el titulo del grupo hereda del de la parrilla, que va centrado",
+              'BasedOn="{StaticResource BandaParrillaStyle}"' in m_banda.group(0))
+    m_parrilla = re.search(r'x:Key="BandaParrillaStyle".*?</Style>', tema, re.S)
+    check("y el de la parrilla centra de verdad",
+          m_parrilla is not None
+          and '<Setter Property="TextAlignment" Value="Center" />' in m_parrilla.group(0))
 
     # Y el estilo de cabecera va estirado y sin relleno, o la banda de color deja una
     # orla gris alrededor en lugar de llegar de canto a canto.
@@ -10542,19 +10646,58 @@ def v19_circular_y_ui() -> None:
         check("y hereda del de la parrilla, que ya va sin relleno y estirado",
               "CabeceraParrillaStyle" in m_cab.group(0))
 
-    # LAS DIEZ COLUMNAS DEL GRUPO SIGUEN TENIENDO SU NOMBRE. La banda se AGREGA
-    # encima; no reemplaza el titulo de la columna, que es lo que pidio el usuario.
-    for nombre in ("N° esq sup", "Var esq sup", "N° int sup", "Var int sup",
-                   "N° esq inf", "Var esq inf", "N° int inf", "Var int inf",
-                   "N° lateral", "Var lateral"):
-        check(f"la columna «{nombre}» conserva su titulo",
-              f'Header="{nombre}"' in xaml)
-
-    # Y las diez llevan el estilo de cabecera con banda: si una se quedara con el
-    # normal, su nombre saldria a otra altura que el de sus vecinas.
+    # Las tres columnas combinadas llevan ese estilo de cabecera, y NO queda ninguna
+    # columna suelta de armado: si volviera una, su nombre saldria a otra altura.
     con_banda = xaml.count('HeaderStyle="{StaticResource CabeceraGrupoStyle}"')
-    check("las diez columnas del grupo llevan cabecera con banda",
-          con_banda == 10, f"la llevan {con_banda}")
+    check("los tres grupos llevan cabecera con banda", con_banda == 3,
+          f"la llevan {con_banda}")
+    check("no queda ninguna columna suelta de armado",
+          all(f'Header="{n}"' not in xaml
+              for n in ("N° esq sup", "Var esq sup", "N° int sup", "Var int sup",
+                        "N° esq inf", "Var esq inf", "N° int inf", "Var int inf",
+                        "N° lateral", "Var lateral")))
+    check("y las listas de esas casillas ya no se llenan por codigo",
+          all(f"{c}.ItemsSource" not in codigo
+              for c in ("ColVarEsqSup", "ColVarIntSup", "ColVarEsqInf",
+                        "ColVarIntInf", "ColVarLateral")))
+    # Salen de la MISMA tabla de diametros que la validacion, con x:Static.
+    check("las casillas de diametro sacan su lista de la tabla de siempre",
+          tema.count("{x:Static models:Varilla.Diametros}") >= 1
+          and tema.count("{x:Static models:Varilla.DiametrosOpcionales}") >= 5)
+
+    # ------------------------------------------------------------------
+    # Los conteos, como texto: un TextBox enlazado a un int no se puede vaciar
+    # ------------------------------------------------------------------
+    filas_cs = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+
+    for prop, campo in (("NEsqSupTexto", "_nEsqSup"), ("NIntSupTexto", "_nIntSup"),
+                        ("NEsqInfTexto", "_nEsqInf"), ("NIntInfTexto", "_nIntInf"),
+                        ("NInterTexto", "_nInter")):
+        m_ = re.search(rf"public string {prop}\s*\{{.*?\n    \}}", filas_cs, re.S)
+        check(f"existe la propiedad de texto {prop}", m_ is not None)
+        if m_:
+            check(f"{prop} lee su conteo", campo in m_.group(0))
+            check(f"y {prop} lo traduce con Conteo", "Conteo(value" in m_.group(0))
+
+    m_conteo = re.search(
+        r"private static int Conteo\(string\? texto, int actual\).*?\n    \}",
+        filas_cs, re.S)
+    check("se puede leer Conteo", m_conteo is not None)
+    if m_conteo:
+        cuerpo = m_conteo.group(0)
+        # Vacio es 0 -«no hay varillas»-, un numero es su numero y nunca negativo, y
+        # cualquier otra cosa conserva lo que habia: teclear una letra no borra el dato.
+        check("una casilla vacia cuenta como 0", "return 0;" in cuerpo)
+        check("el conteo nunca es negativo", "Math.Max(0, n)" in cuerpo)
+        check("y lo que no es un numero conserva el valor", ": actual" in cuerpo)
+
+    # Y NO avisan de vuelta: si el int levantara el PropertyChanged de su texto, el
+    # enlace reescribiria la casilla en cada tecla y al teclear 12 sobre un 0 saldria
+    # 012. Es la misma razon por la que las celdas de medida no confirman en cada tecla.
+    check("el conteo no reescribe la casilla mientras se teclea",
+          all(f"Raise(nameof({p}))" not in filas_cs
+              for p in ("NEsqSupTexto", "NIntSupTexto", "NEsqInfTexto",
+                        "NIntInfTexto", "NInterTexto")))
 
     # Heredan del DataGridCell de serie, o se pierde el resaltado de seleccion y no
     # se ve que fila esta seleccionada.
@@ -13952,9 +14095,22 @@ def v24_rediseno() -> None:
           "public static readonly string[] Diametros = DiametrosCm.Keys.ToArray();" in modelos
           and "public static readonly string[] DiametrosOpcionales =" in modelos
           and "new[] { string.Empty }.Concat(Diametros).ToArray();" in modelos)
+    # Se cuenta DENTRO de las dos plantillas de parrilla, no en todo el archivo: los
+    # tres grupos de armado de la hoja de secciones -LECHO SUPERIOR, LECHO INFERIOR e
+    # INTERMEDIAS- son tambien columnas de plantilla y atacan las mismas dos listas con
+    # x:Static, asi que contar en todo el tema mezclaba dos cosas distintas.
+    def cuerpo_de_plantilla(clave):
+        m_ = re.search(rf'x:Key="{clave}">(.*?)</DataTemplate>', tema, re.S)
+        return m_.group(1) if m_ else ""
+
+    celdas_parrilla = (cuerpo_de_plantilla("CeldasParrillaInferior")
+                       + cuerpo_de_plantilla("CeldasParrillaSuperior"))
+
     check("la parrilla inferior las pide obligatorias y la superior opcionales",
-          tema.count('{Binding Source={x:Static models:Varilla.Diametros}}') == 2
-          and tema.count('{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}') == 2)
+          celdas_parrilla.count(
+              '{Binding Source={x:Static models:Varilla.Diametros}}') == 2
+          and celdas_parrilla.count(
+              '{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}') == 2)
     check("y ya no se rellenan por codigo, que con la columna de plantilla no se puede",
           all(f"{c}.ItemsSource" not in leer(ruta(f"client/src/CadLink.App/{f}"))
               for f, cs in (("MainWindow.ZapatasCorridas.cs",
