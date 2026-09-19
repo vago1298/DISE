@@ -148,8 +148,31 @@ def sin_comentarios_ni_textos(codigo):
     """El codigo sin comentarios ni literales, para no leer un tipo dentro de un texto."""
     codigo = re.sub(r"/\*.*?\*/", " ", codigo, flags=re.S)
     codigo = re.sub(r"//[^\n]*", " ", codigo)
-    codigo = re.sub(r'@"(?:[^"]|"")*"', '""', codigo, flags=re.S)
-    codigo = re.sub(r'"(?:\\.|[^"\\])*"', '""', codigo)
+
+    #  LOS LITERALES DE CARACTER, ANTES QUE LAS CADENAS. Y no es un adorno: un '"' -la
+    #  comilla doble como caracter, que este proyecto usa para escribir pulgadas- deja una
+    #  comilla suelta para el regex de las cadenas, que entonces empareja DESDE ahi hasta
+    #  la siguiente comilla del archivo y se come el codigo que haya en medio.
+    #
+    #  Pasaba de verdad: en TrazoZapata.cs se comia veintinueve lineas, entre ellas la
+    #  declaracion de TramosCm, y las comprobaciones de este archivo daban por no
+    #  declarado un metodo que si estaba. Un verificador que se come el codigo que tiene
+    #  que revisar dice «todo correcto» sin haberlo mirado.
+    codigo = re.sub(r"'(?:\\.|[^'\\])'", "' '", codigo)
+
+    #  LAS CADENAS, LAS DOS CLASES EN UNA SOLA PASADA. Separadas -primero las verbatim y
+    #  despues las normales- la primera pasada encuentra el @" que hay DENTRO de la cadena
+    #  ".Replace("@", ...)" y se lleva por delante todo hasta la comilla siguiente. Otras
+    #  veintinueve lineas comidas, y las mismas consecuencias.
+    #
+    #  Con la alternativa en un solo regex, el recorrido va de izquierda a derecha y cada
+    #  comilla se interpreta una sola vez: la de una cadena normal cierra su cadena y ya no
+    #  puede volver a abrir nada.
+    #
+    #  Y la cadena normal NO cruza renglon -[^"\\\n]-, porque en C# no puede: asi una
+    #  comilla desemparejada se queda en su linea en lugar de comerse el archivo.
+    codigo = re.sub(r'@"(?:[^"]|"")*"|"(?:\\.|[^"\\\n])*"', '""', codigo, flags=re.S)
+
     return codigo
 
 
@@ -480,6 +503,128 @@ def revisar_miembros_que_no_existen(rutas):
 
 
 # ----------------------------------------------------------------------
+#  4-bis. EL MIEMBRO EXISTE, PERO NO EN ESA CLASE  (CS0117)
+# ----------------------------------------------------------------------
+#  ═══════════════════════════════════════════════════════════════════════════════════
+#  'Branding.ProductName' ROMPIO LA COMPILACION Y ESTA HERRAMIENTA NO LO VIO.
+#
+#  El motivo es que la comprobacion 4 pregunta si el NOMBRE esta declarado en alguna
+#  parte del proyecto, y 'ProductName' lo esta: es de AppInfo. Lo que no preguntaba es
+#  si esta declarado en LA CLASE por la que se le pide, y ahi estaba el error:
+#
+#      MessageBox.Show(..., Branding.ProductName, ...);
+#      // error CS0117: 'Branding' no contiene una definicion para 'ProductName'
+#
+#  Branding solo carga el logo. El titulo del producto es de AppInfo, y las dos son
+#  clases estaticas del propio proyecto, asi que el nombre correcto esta a un punto de
+#  distancia y la equivocacion es facil.
+#
+#  ESTO SOLO SE MIRA EN LAS CLASES ESTATICAS del cliente, y a proposito: una clase
+#  estatica no hereda de nada, asi que todo lo que se le pueda pedir tiene que estar
+#  escrito en su cuerpo. En una clase normal, 'X.Miembro' puede venir de una clase base
+#  -Row, Window, UserControl- y mirar solo su cuerpo daria avisos falsos.
+#  ═══════════════════════════════════════════════════════════════════════════════════
+
+#  Las estaticas que se declaran en los .cs del cliente, con su cuerpo ya unido si son
+#  parciales. El cuerpo se recorta contando llaves: un regex no sabe cerrar bloques.
+RE_ESTATICA = re.compile(
+    r"\b(?:public|internal)\s+static\s+(?:partial\s+)?class\s+(\w+)")
+
+
+def _cuerpo_desde(texto, desde):
+    """El cuerpo entre llaves que arranca en 'desde', contando anidamiento."""
+    abre = texto.find("{", desde)
+
+    if abre < 0:
+        return ""
+
+    nivel = 0
+
+    for i in range(abre, len(texto)):
+        if texto[i] == "{":
+            nivel += 1
+        elif texto[i] == "}":
+            nivel -= 1
+
+            if nivel == 0:
+                return texto[abre + 1:i]
+
+    return texto[abre + 1:]
+
+
+def _miembros_de(cuerpo):
+    """Todo lo que se le puede pedir a la clase por su nombre."""
+    miembros = set()
+
+    # Propiedades, campos, metodos y constantes, con o sin modificador de acceso.
+    #  El tipo de retorno puede OCUPAR VARIOS RENGLONES -una tupla de tuplas no cabe en
+    #  uno-, asi que en esa parte se admiten espacios en blanco de cualquier clase, saltos
+    #  incluidos. No puede cruzar una sentencia: ni ';' ni '{' ni '}' estan admitidos.
+    for m in re.finditer(
+        r"\b(?:public|private|protected|internal)\s+"
+        r"(?:(?:static|readonly|const|virtual|override|sealed|abstract|partial|new|"
+        r"required|async|extern|unsafe)\s+)*"
+        r"[\w<>,?\[\]\.\(\)\s]+?\s+(\w+)\s*(?:=>|=|;|\{|\()",
+        cuerpo,
+    ):
+        miembros.add(m.group(1))
+
+    # Los tipos anidados TAMBIEN se piden con el punto: SimbolosSoldadura.TextoDwg.
+    for m in re.finditer(
+        r"\b(?:public|internal|private)\s+(?:static\s+|sealed\s+|readonly\s+|partial\s+)*"
+        r"(?:class|record|record\s+struct|struct|enum|interface)\s+(\w+)",
+        cuerpo,
+    ):
+        miembros.add(m.group(1))
+
+    return miembros
+
+
+def revisar_miembros_de_estaticas(rutas):
+    """Cada 'Estatica.Miembro' se busca en el cuerpo de ESA clase estatica."""
+    global comprobaciones
+
+    cuerpos = {}
+    textos = {}
+
+    for ruta in rutas:
+        with open(ruta, encoding="utf-8") as fh:
+            t = sin_comentarios_ni_textos(fh.read())
+
+        t = re.sub(r"^\s*(?:global\s+)?using[^\n;]*;", " ", t, flags=re.M)
+        textos[ruta] = t
+
+        for m in RE_ESTATICA.finditer(t):
+            cuerpos.setdefault(m.group(1), "")
+            cuerpos[m.group(1)] += "\n" + _cuerpo_desde(t, m.end())
+
+    miembros = {c: _miembros_de(cuerpo) for c, cuerpo in cuerpos.items()}
+
+    for ruta, t in textos.items():
+        for m in re.finditer(r"\b([A-Z]\w+)\s*\.\s*([A-Za-z_]\w*)\b", t):
+            clase, miembro = m.group(1), m.group(2)
+
+            if clase not in miembros:
+                continue
+
+            comprobaciones += 1
+
+            if miembro in miembros[clase]:
+                continue
+
+            linea = t[: m.start()].count("\n") + 1
+            donde = [c for c, ms in miembros.items() if miembro in ms and c != clase]
+
+            pista = (f" Ese miembro es de {', '.join(sorted(donde)[:2])}."
+                     if donde else "")
+
+            fallos.append(
+                f"{os.path.basename(ruta)}({linea}): '{clase}' no tiene "
+                f"'{miembro}'.{pista} Es el CS0117."
+            )
+
+
+# ----------------------------------------------------------------------
 #  5. NINGUN PARAMETRO ES 'dynamic'
 # ----------------------------------------------------------------------
 #  ═══════════════════════════════════════════════════════════════════════════════════
@@ -602,6 +747,9 @@ def main():
     )
 
     revisar_miembros_que_no_existen(cliente)
+
+    # Y el CS0117: el miembro existe, pero no en la clase por la que se le pide.
+    revisar_miembros_de_estaticas(cliente)
 
     # LOS PARAMETROS 'dynamic' SE REVISAN EN TODO EL CLIENTE, no solo en la aplicacion
     # WPF. El defecto que motivo esta comprobacion estaba en CadLink.Cad -SolapasDrawer-,

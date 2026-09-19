@@ -297,6 +297,17 @@ public partial class MainWindow
     /// </remarks>
     private void OnDibujarSimbologiaSoldadura(object sender, RoutedEventArgs e)
     {
+        // LA MISMA PUERTA QUE LOS DEMAS BOTONES DE DIBUJO. Dibujar en AutoCAD es lo que la licencia
+        // controla, y este botón dibuja: sin esto, la simbología sería la única forma de sacar
+        // geometría a AutoCAD sin licencia de exportación.
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+
+            return;
+        }
+
         try
         {
             Cursor = System.Windows.Input.Cursors.Wait;
@@ -317,7 +328,7 @@ public partial class MainWindow
                 MessageBox.Show(
                     this,
                     "No se dibujó nada. Revisa que AutoCAD tenga un dibujo abierto.",
-                    Branding.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
 
                 return;
             }
@@ -339,12 +350,12 @@ public partial class MainWindow
 
             StatusText.Text = $"Simbología de soldadura: {n} entidades.";
 
-            MessageBox.Show(this, resumen, Branding.ProductName,
+            MessageBox.Show(this, resumen, AppInfo.ProductName,
                             MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Branding.ProductName,
+            MessageBox.Show(this, ex.Message, AppInfo.ProductName,
                             MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
