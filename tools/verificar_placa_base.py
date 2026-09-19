@@ -3352,6 +3352,26 @@ check("y se dibuja rayada, como el dado",
       "if (v.Grout is { } grout)" in _DELEV
       and "Hatch(PlacaBaseCapas.PatronGrout, PlacaBaseCapas.EscalaHatchGrout," in _DELEV)
 
+#  ---- Y EL DADO DEL CORTE, RAYADO COMO EN PLANTA ----
+#  Salia como un rectangulo vacio: en el corte el concreto no se distinguia del aire y se
+#  leia como un hueco con las anclas colgando dentro. Es la MISMA pieza que la planta raya,
+#  vista de otro lado, asi que va con el mismo patron, la misma escala y la misma capa.
+check("el dado del corte va rayado con el mismo patron que en planta",
+      "var concreto = Polilinea(v.Concreto, PlacaBaseCapas.Concreto);" in _DELEV
+      and "PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado," in _DELEV
+      and "concreto, null, PlacaBaseCapas.Concreto, PorCapa);" in _DELEV)
+
+check("y ese patron es el AR-CONC a 0.0002 de la capa CONCRETO",
+      'public const string PatronDado = "AR-CONC";' in _CAD
+      and "public const double EscalaHatchDado = 0.0002;" in _CAD
+      and 'public const string Concreto = "CONCRETO";' in _CAD)
+
+#  Al fondo, como en planta: con el rayado encima, al seleccionar el corte se agarra el
+#  achurado en lugar de la pieza. Y la tabla de orden no toca los indices del ModelSpace,
+#  asi que el rango del bloque del corte sigue siendo el mismo.
+check("el rayado del corte se manda al fondo",
+      _DELEV.count("AlFondo(new List<object> { hatch });") == 1)
+
 #  El orden se mide DENTRO del metodo del alzado: la planta tiene su propio geoPlaca -y no
 #  dibuja grout, porque en planta la cama queda debajo de la placa y no se ve-.
 _ALZ_PREV = _PREV[_PREV.index("private void DibujarAlzadoDeLaPlacaPrevia"):]

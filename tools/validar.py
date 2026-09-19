@@ -6804,6 +6804,13 @@ def v18_planta_autocad() -> None:
           and 'CellStyle="{StaticResource CeldaSoloGrout}"' in tab_pb
           and 'x:Key="CeldaSoloGrout"' in pbtema
           and '<Setter Property="IsEnabled" Value="{Binding EsGrout}" />' in pbtema)
+    # Y el dado del corte va rayado como el de la planta: misma pieza, mismo patron, misma
+    # escala y misma capa. Sin el, en el corte el concreto no se distinguia del aire.
+    check("el dado del corte va rayado como en planta, en la capa CONCRETO",
+          "PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado," in pbelev
+          and "concreto, null, PlacaBaseCapas.Concreto, PorCapa);" in pbelev
+          and "public const double EscalaHatchDado = 0.0002;" in pbc)
+
     check("la cama se dibuja entre la placa y el dado, con su rayado y su capa",
           "double[]? Grout);" in elev
           and "var yDado = yPlaca - g;" in elev

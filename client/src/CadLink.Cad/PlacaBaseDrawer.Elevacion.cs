@@ -121,7 +121,36 @@ public sealed partial class PlacaBaseDrawer
 
     private void DibujarVistaDeElevacion(ElevacionPlacaBase.Vista v)
     {
-        Polilinea(v.Concreto, PlacaBaseCapas.Concreto);
+        var concreto = Polilinea(v.Concreto, PlacaBaseCapas.Concreto);
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // EL DADO DEL CORTE, RAYADO COMO EN PLANTA.
+        //
+        // Salía como un rectángulo vacío, así que en el corte el concreto no se distinguía del
+        // aire: se leía como un hueco con las anclas colgando dentro. Va con el MISMO patrón, la
+        // MISMA escala y la MISMA capa que el rayado del dado en planta —AR-CONC a 0.0002 en
+        // CONCRETO, color por capa—, porque es la misma pieza vista de otro lado.
+        //
+        // SIN ISLAS, a diferencia de la planta. Allí el contorno de la placa entra como isla
+        // porque la placa se dibuja ENCIMA del dado y taparía el rayado; aquí la placa y la cama
+        // de grout están por fuera de la caja del concreto —empiezan justo en su cara de arriba—,
+        // y lo único que la cruza son las anclas, que se dibujan después y con su grueso real, así
+        // que se pintan sobre el rayado sin necesidad de recortarlo.
+        //
+        // Y AL FONDO, como en planta: si el rayado queda por encima, al seleccionar el corte se
+        // agarra el achurado en lugar de la pieza.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        if (concreto is not null)
+        {
+            var hatch = Hatch(
+                PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado,
+                concreto, null, PlacaBaseCapas.Concreto, PorCapa);
+
+            if (hatch is not null)
+            {
+                AlFondo(new List<object> { hatch });
+            }
+        }
 
         // ═══════════════════════════════════════════════════════════════════════════════════════
         // LA CAMA DE GROUT, ENTRE LA PLACA Y EL DADO.
