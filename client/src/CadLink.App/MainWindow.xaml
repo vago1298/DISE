@@ -2960,15 +2960,68 @@
 
             <!-- ===== Conexiones ===== -->
             <TabItem Header="Conexiones/Detalles">
-                <StackPanel Margin="22">
-                    <TextBlock Text="Conexiones/Detalles" Style="{StaticResource ModuleTitleStyle}"
-                                   ToolTip="Detalles de union: tornillos, soldadura, placas de cortante y momento." />
-                    <Border Style="{StaticResource TarjetaStyle}"
-                            Padding="16" MaxWidth="700" HorizontalAlignment="Left">
-                        <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextBrush}"
-                                   Text="Modulo pendiente, proximamente..." />
-                    </Border>
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="22">
+                        <TextBlock Text="Conexiones/Detalles" Style="{StaticResource ModuleTitleStyle}"
+                                   ToolTip="Detalles de union: simbologia de soldadura, tornillos, placas de cortante y momento." />
+
+                        <!-- ===== LA SIMBOLOGIA DE SOLDADURA =====
+                             El primer detalle de esta pestaña, y el que hace falta en TODO plano de
+                             estructura metalica: el cuadro de notas que explica que quiere decir
+                             cada simbolo de soldadura del plano.
+
+                             No se captura nada: son los cinco simbolos del estandar y siempre son
+                             los mismos. Lo unico que se elige es el titulo del cuadro, porque cada
+                             despacho lo rotula a su manera. -->
+                        <TextBlock Text="Simbologia de soldadura" FontWeight="SemiBold" FontSize="12.5"
+                                   Margin="0,6,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                        <Border Style="{StaticResource TarjetaStyle}"
+                                Padding="14,10" MaxWidth="980" HorizontalAlignment="Left">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" FontSize="12"
+                                           Foreground="{DynamicResource TextBrush}"
+                                           Text="El cuadro de notas de la AWS A2.4: la flecha, la linea de referencia, el simbolo del tipo de soldadura, sus modificadores -todo alrededor, de campo- y la cola donde va el electrodo. Se dibuja como UN bloque, asi que se coloca y se mueve entero al sitio del plano donde toque." />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <TextBlock Text="Titulo del cuadro:" FontWeight="SemiBold" FontSize="11.5"
+                                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBox x:Name="TituloSimbologiaBox" Width="260" Height="26"
+                                             VerticalContentAlignment="Center" Padding="6,0"
+                                             Text="SIMBOLOGIA DE SOLDADURA"
+                                             TextChanged="OnTituloSimbologiaCambiado"
+                                             ToolTip="Como se rotula el cuadro en el plano." />
+
+                                    <Border Width="1" Background="{DynamicResource BorderBrush}"
+                                            Margin="16,2,16,2" />
+
+                                    <Button x:Name="SimbologiaSoldaduraButton"
+                                            Content="Dibujar simbologia en AutoCAD"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Click="OnDibujarSimbologiaSoldadura"
+                                            ToolTip="Dibuja el cuadro en el origen del dibujo y lo agrupa en un bloque.&#10;Si ya hay uno con ese nombre, el nuevo se llama SIMBOLOGIA DE SOLDADURA_2: no se pisa el del usuario." />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- LA VISTA PREVIA. Es el mismo reparto que va a salir en AutoCAD -misma
+                             clase de geometria- asi que lo que se ve aqui es lo que se dibuja. -->
+                        <TextBlock Text="Asi se va a dibujar" FontWeight="SemiBold" FontSize="11.5"
+                                   Margin="0,16,0,4" Foreground="{DynamicResource BrandDarkBrush}" />
+
+                        <Border Style="{StaticResource TarjetaStyle}" Padding="0"
+                                MaxWidth="980" HorizontalAlignment="Left">
+                            <Canvas x:Name="SimbologiaPreviewCanvas" Height="330" Width="940"
+                                    Background="{DynamicResource SurfaceBrush}"
+                                    ClipToBounds="True" />
+                        </Border>
+
+                        <TextBlock TextWrapping="Wrap" FontSize="11.5" Margin="0,14,0,0"
+                                   MaxWidth="980" HorizontalAlignment="Left"
+                                   Foreground="{DynamicResource MutedTextBrush}"
+                                   Text="Lo que sigue de esta pestaña -tornillos, placas de cortante y de momento- esta pendiente." />
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ===== Dibujar planos estructurales ===== -->

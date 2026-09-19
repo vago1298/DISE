@@ -92,6 +92,10 @@ public partial class MainWindow : Window
         EngancharVistaPreviaZapataCorrida();
         EngancharVistaPreviaPlacaBase();
 
+        // La simbología de soldadura: no depende de ninguna fila, así que solo se redibuja al
+        // cambiar el tamaño del recuadro -y al escribir su título, que va por el TextChanged-.
+        SimbologiaPreviewCanvas.SizeChanged += (_, _) => DibujarSimbologiaPrevia();
+
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
         // el primer layout.
@@ -103,6 +107,7 @@ public partial class MainWindow : Window
         {
             DibujarVistaPrevia();
             RedibujarVistas();
+            DibujarSimbologiaPrevia();
         };
 
         PrepararSolapa();

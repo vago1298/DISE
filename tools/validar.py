@@ -6697,6 +6697,41 @@ def v18_planta_autocad() -> None:
     check("hay verificacion ejecutable del orden de los recursos del XAML",
           os.path.exists(ruta("tools", "verificar_recursos_xaml.py")))
 
+    # ------------------------------------------------------------------
+    # LA SIMBOLOGIA DE SOLDADURA (pestaña Conexiones/Detalles)
+    # ------------------------------------------------------------------
+    # El cuadro de notas de la AWS A2.4, que hace falta en todo plano de estructura
+    # metalica. Es el primer detalle de esa pestaña, que hasta ahora era un cartel de
+    # «modulo pendiente».
+    check("hay verificacion ejecutable de la simbologia de soldadura",
+          os.path.exists(ruta("tools", "verificar_simbologia_soldadura.py")))
+
+    check("la simbologia vive en su clase sin COM, como el resto de la geometria",
+          "public static class SimbolosSoldadura" in leer(
+              ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs"))
+          and "_ms." not in leer(ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs"))
+          and "AcadConnection" not in leer(
+              ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs")))
+
+    # La pestaña deja de ser un cartel: trae el boton, su titulo editable y su previa.
+    i_cx2 = xaml.find("<!-- ===== Conexiones ===== -->")
+    i_pl = xaml.find("<!-- ===== Dibujar planos estructurales ===== -->")
+    tab_cx = xaml[i_cx2:i_pl] if 0 <= i_cx2 < i_pl else ""
+
+    check("la pestaña de conexiones ya tiene su primer detalle",
+          len(tab_cx) > 1000
+          and 'x:Name="SimbologiaSoldaduraButton"' in tab_cx
+          and 'x:Name="SimbologiaPreviewCanvas"' in tab_cx
+          and 'x:Name="TituloSimbologiaBox"' in tab_cx,
+          f"{len(tab_cx)} caracteres de XAML en la pestaña")
+
+    check("y esta cableada al dibujante, con su previa enganchada",
+          'Click="OnDibujarSimbologiaSoldadura"' in xaml
+          and "private void OnDibujarSimbologiaSoldadura(" in leer(
+              ruta("client/src/CadLink.App/MainWindow.Simbologia.cs"))
+          and "SimbologiaPreviewCanvas.SizeChanged" in codigo
+          and "DibujarSimbologiaPrevia();" in codigo)
+
     # Y la que se rompio, fijada aqui: el estilo del grout va DESPUES del que hereda.
     estilos = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
 

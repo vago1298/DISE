@@ -21,17 +21,15 @@ APP = os.path.join(RAIZ, 'client', 'src', 'CadLink.App')
 XAML = os.path.join(APP, 'MainWindow.xaml')
 
 # Los .cs que forman la clase parcial MainWindow.
-PARCIALES = [
-    'MainWindow.xaml.cs',
-    'MainWindow.Acero.cs',
-    'MainWindow.Grapas.cs',
-    'MainWindow.PlacaBase.cs',
-    'MainWindow.PreviaInteractiva.cs',
-    'MainWindow.Seccion3D.cs',
-    'MainWindow.Solapas.cs',
-    'MainWindow.Zapatas.cs',
-    'MainWindow.ZapatasCorridas.cs',
-]
+#
+# SE BUSCAN, NO SE LISTAN. Estaban escritos a mano y el dia que se agrego otro trozo de la
+# clase -MainWindow.Simbologia.cs- esta comprobacion empezo a decir que los manejadores de
+# la pestaña nueva no existian: estaban, pero en un archivo que la lista no nombraba. Un
+# falso positivo en una comprobacion es peor que no tenerla, porque ensena a ignorarla.
+PARCIALES = sorted(
+    n for n in os.listdir(APP)
+    if n.startswith('MainWindow') and n.endswith('.cs')
+)
 
 
 def leer(ruta):
