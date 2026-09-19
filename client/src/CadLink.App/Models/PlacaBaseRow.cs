@@ -57,13 +57,22 @@ public sealed class PlacaBaseRow : Row
     private double _longAnclajeXCm = 30;
     private double _longAnclajeYCm = 30;
 
-    // La longitud TOTAL del ancla y su doblez. La longitud manda sobre el ahogo, que pasa a ser la
-    // consecuencia; el doblez convierte el ancla en una L y le quita el travesano del extremo.
-    private double _longAnclaXCm = 45;
-    private double _longAnclaYCm = 45;
+    // La longitud TOTAL del ancla, en CERO y sin casilla en la hoja: la que manda es la vertical de
+    // arriba, y esta se quedo como respaldo de los trabajos guardados que solo la traigan a ella.
+    // Nacia en 45, y con la regla nueva eso seria un dato fantasma que nadie puede ver ni cambiar.
+    private double _longAnclaXCm;
+    private double _longAnclaYCm;
+
+    // El doblez convierte el ancla en una L y le quita el travesano del extremo.
     private double _doblezAnclaXCm = 10;
     private double _doblezAnclaYCm = 10;
     private bool _conCartabones;
+
+    // LA CAMA DE GROUT. En NO de fabrica: el detalle sale como siempre, con la placa apoyada
+    // directamente en el dado. Los 2.5 cm son el espesor usual de una cama nivelante.
+    private string _grout = "NO";
+    private double _espesorGroutCm = 2.5;
+
     private double _escala = 10;
     private bool _girarPlaca90 = true;
 
@@ -601,6 +610,71 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>F6</b>: dibujar los cartabones.</summary>
     public bool ConCartabones { get => _conCartabones; set => Set(ref _conCartabones, value); }
 
+    // ======================================================================
+    //  LA CAMA DE GROUT
+    // ======================================================================
+
+    /// <summary>Las dos respuestas de la casilla del grout.</summary>
+    /// <remarks>
+    /// La misma lista de las hojas de zapatas —«SI» y «NO»—, para que la casilla se conteste igual
+    /// en todo el programa. Está una sola vez, en <see cref="ZapataAisladaRow.SiNo"/>.
+    /// </remarks>
+    public static string[] SiNo => ZapataAisladaRow.SiNo;
+
+    /// <summary>
+    /// <b>GROUT</b>: ¿va la placa sobre una cama de mortero de relleno?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Texto y no casilla de palomita, como las de zapatas: en un cuadro de placas se dicta y se
+    /// revisa leyendo «SI» o «NO», y con una palomita hay que fijarse en si está marcada.
+    /// </para>
+    /// <para>
+    /// En <b>NO</b> —lo que trae de fábrica— el detalle no cambia en nada: la placa se apoya
+    /// directamente en el dado, que es como se dibujaba antes de que existiera esta casilla.
+    /// </para>
+    /// </remarks>
+    public string Grout
+    {
+        get => _grout;
+        set
+        {
+            Set(ref _grout, value);
+
+            // La celda del espesor se enciende y se apaga con esta, así que su bandera tiene que
+            // avisar. Sin este Raise, la celda de al lado se queda apagada aunque aquí diga SI.
+            // De «Falta» ya se encarga RaiseCalculadas, por donde pasa todo Set.
+            Raise(nameof(EsGrout));
+        }
+    }
+
+    /// <summary>¿La casilla del grout dice SI?</summary>
+    /// <remarks>
+    /// De aquí cuelga el <c>IsEnabled</c> de la celda del espesor —ver <c>CeldaSoloGrout</c>— y el
+    /// dibujo del corte.
+    /// </remarks>
+    public bool EsGrout =>
+        (_grout ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// El espesor de la cama de grout, en <b>centímetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En centímetros y no en pulgadas, a diferencia de la placa y de las anclas: una cama de grout
+    /// se especifica en centímetros —2, 2.5, 3— y no en fracciones de pulgada.
+    /// </para>
+    /// <para>
+    /// Solo se lee con la casilla en SI. Los 2.5 cm de arranque son el espesor usual de una cama
+    /// nivelante; se cambia renglón por renglón.
+    /// </para>
+    /// </remarks>
+    public double EspesorGroutCm
+    {
+        get => _espesorGroutCm;
+        set => Set(ref _espesorGroutCm, value);
+    }
+
     /// <summary>Escala del detalle, para el rótulo.</summary>
     public double Escala { get => _escala; set => Set(ref _escala, value); }
 
@@ -916,6 +990,11 @@ public sealed class PlacaBaseRow : Row
             LongAnclaYCm = LongAnclaYCm,
             DoblezAnclaXCm = DoblezAnclaXCm,
             DoblezAnclaYCm = DoblezAnclaYCm,
+
+            // LA CAMA DE GROUT. El «SI» de la casilla se traduce aquí a un booleano: al dibujante
+            // no le importa cómo se contestó la celda, solo si la lleva o no.
+            ConGrout = EsGrout,
+            EspesorGroutCm = EspesorGroutCm,
 
             Escala = Escala > 0 ? Escala : 10,
             GirarPlaca90 = GirarPlaca90

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using CadLink.Cad;
 
@@ -231,7 +232,7 @@ public sealed class SeccionConcretoRow : Row
     private string _zunchoHelicoidal = string.Empty;
 
     private double _recubrimientoCm = 4;
-    private string _estribo = "#3";
+    private string _estribo = EstriboGeneral;
     private string _separacionCm = "10-20-10";
     private string _estriboDiamante = string.Empty;
     private string _diamEstriboDiamante = string.Empty;
@@ -240,7 +241,7 @@ public sealed class SeccionConcretoRow : Row
     // dibujo se veía un muñón en la esquina en lugar de un gancho.
     private double _ganchoCm = 5;
     private string _fc = "250";
-    private string _escala = "25";
+    private string _escala = EscalaPorOmision;
 
     // Columna W. 0 = la longitud la calcula el programa acomodando un número
     // entero de estribos en cada zona, igual que la macro de alzados.
@@ -261,6 +262,7 @@ public sealed class SeccionConcretoRow : Row
         {
             Set(ref _elemento, value);
             AplicarFcPorOmision();
+            AplicarEstriboPorOmision();
             AplicarPrefijoDeId();
 
             // El Elemento decide la FORMA: al pasar de COLUMNA a COLUMNA CIRCULAR
@@ -476,6 +478,59 @@ public sealed class SeccionConcretoRow : Row
         }
     }
 
+    // ==================================================================
+    //  Estribo por omisión según el elemento
+    // ==================================================================
+
+    /// <summary>Estribo de siempre: el #3.</summary>
+    public const string EstriboGeneral = "#3";
+
+    /// <summary>El del confinamiento: castillos y cadenas se arman con el #2.</summary>
+    public const string EstriboConfinamiento = "#2";
+
+    /// <summary>
+    /// El usuario eligió el estribo a mano, así que ya no se toca solo.
+    /// </summary>
+    /// <remarks>
+    /// Misma bandera —y misma razón— que <c>_fcManual</c>: cambiar el elemento no puede
+    /// pisar un estribo que se puso a propósito. Un castillo con estribo del #3 es
+    /// perfectamente legítimo; lo que se quiere es que <b>por omisión</b> sea del #2.
+    /// </remarks>
+    private bool _estriboManual;
+
+    /// <summary>
+    /// Estribo por omisión según el elemento: <b>#2 en castillos y cadenas</b>, #3 en el
+    /// resto.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo criterio que el f'c de 200: castillos, cadenas de cerramiento, de
+    /// desplante e intermedias son elementos de confinamiento, y en la práctica se arman
+    /// con estribo del #2. Poner el #3 por omisión en ellos obliga a corregir a mano en
+    /// cada renglón, y ese es justo el dato que se olvida.
+    /// </remarks>
+    public static string EstriboPorOmision(string elemento) =>
+        EsDeConfinamiento(elemento) ? EstriboConfinamiento : EstriboGeneral;
+
+    private void AplicarEstriboPorOmision()
+    {
+        if (_estriboManual)
+        {
+            return;
+        }
+
+        var nuevo = EstriboPorOmision(_elemento);
+
+        if (!string.Equals(_estribo, nuevo, StringComparison.Ordinal))
+        {
+            // Se escribe el campo y NO la propiedad: pasar por la propiedad levantaría
+            // la bandera de «lo puso el usuario» y el estribo dejaría de seguir al
+            // elemento después del primer cambio.
+            _estribo = nuevo;
+            Raise(nameof(Estribo));
+            RaiseCalculadas();
+        }
+    }
+
     /// <summary>Columna B: identificador. <b>Es el nombre del bloque de AutoCAD.</b></summary>
     public string Id
     {
@@ -505,6 +560,90 @@ public sealed class SeccionConcretoRow : Row
 
     /// <summary>Columna G.</summary>
     public int NIntSup { get => _nIntSup; set => Set(ref _nIntSup, value); }
+
+    // ==================================================================
+    //  LOS CONTEOS DE VARILLAS, COMO TEXTO
+    // ==================================================================
+    //
+    //  Las cinco casillas de conteo viven ahora DENTRO de las columnas agrupadas
+    //  -LECHO SUPERIOR, LECHO INFERIOR e INTERMEDIAS-, y una celda de plantilla no
+    //  tiene modo edicion: la casilla ES un TextBox, siempre vivo.
+    //
+    //  Y UN TextBox ENLAZADO A UN int NO SE PUEDE VACIAR. Al borrar el contenido para
+    //  teclear otro numero, la cadena vacia no convierte a int: el enlace falla, la
+    //  casilla se queda con el marco rojo de dato invalido y el valor viejo, y hay que
+    //  volver a escribir encima. En una columna normal eso no se notaba porque el enlace
+    //  solo confirmaba al salir de la celda.
+    //
+    //  Con estas cinco propiedades de texto la casilla enlaza a una CADENA y traduce
+    //  ella misma:
+    //
+    //    * vacia o en blanco  ->  0, que es lo que significa «no hay varillas» en toda
+    //                             la hoja. Borrar la casilla es una forma legitima de
+    //                             capturar, no un error.
+    //    * un numero          ->  ese numero, nunca negativo.
+    //    * cualquier otra cosa -> se ignora y se conserva lo que habia. Teclear una
+    //                             letra por error no borra el dato.
+    //
+    //  Y NO avisan de vuelta al escribir -el int no levanta el PropertyChanged de su
+    //  texto-, a proposito: si lo hicieran, el enlace reescribiria la casilla en cada
+    //  tecla y al teclear «12» sobre un «0» saldria «012». Es el mismo motivo por el que
+    //  las celdas de medida de esta hoja no confirman en cada tecla, y esta explicado
+    //  ahi mismo, en el XAML.
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NEsqSup"/>.</summary>
+    public string NEsqSupTexto
+    {
+        get => _nEsqSup.ToString(CultureInfo.InvariantCulture);
+        set => NEsqSup = Conteo(value, _nEsqSup);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NIntSup"/>.</summary>
+    public string NIntSupTexto
+    {
+        get => _nIntSup.ToString(CultureInfo.InvariantCulture);
+        set => NIntSup = Conteo(value, _nIntSup);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NEsqInf"/>.</summary>
+    public string NEsqInfTexto
+    {
+        get => _nEsqInf.ToString(CultureInfo.InvariantCulture);
+        set => NEsqInf = Conteo(value, _nEsqInf);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NIntInf"/>.</summary>
+    public string NIntInfTexto
+    {
+        get => _nIntInf.ToString(CultureInfo.InvariantCulture);
+        set => NIntInf = Conteo(value, _nIntInf);
+    }
+
+    /// <summary>Lo que se lee y se escribe en la casilla de <see cref="NInter"/>.</summary>
+    public string NInterTexto
+    {
+        get => _nInter.ToString(CultureInfo.InvariantCulture);
+        set => NInter = Conteo(value, _nInter);
+    }
+
+    /// <summary>
+    /// Traduce lo que se teclea en una casilla de conteo. Ver el comentario de arriba.
+    /// </summary>
+    /// <param name="texto">Lo que hay escrito en la casilla.</param>
+    /// <param name="actual">Lo que vale ahora, para poder conservarlo si no es un numero.</param>
+    private static int Conteo(string? texto, int actual)
+    {
+        var t = (texto ?? string.Empty).Trim();
+
+        if (t.Length == 0)
+        {
+            return 0;
+        }
+
+        return int.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
+            ? Math.Max(0, n)
+            : actual;
+    }
 
     /// <summary>Columna H. Si va vacía, la macro toma la F.</summary>
     public string DiamIntSup { get => _diamIntSup; set => Set(ref _diamIntSup, value); }
@@ -771,7 +910,20 @@ public sealed class SeccionConcretoRow : Row
     public double RecubrimientoCm { get => _recubrimientoCm; set => Set(ref _recubrimientoCm, value); }
 
     /// <summary>Columna P.</summary>
-    public string Estribo { get => _estribo; set => Set(ref _estribo, value); }
+    /// <remarks>
+    /// Viene puesto según el elemento —#2 en castillos y cadenas, #3 en el resto— y
+    /// <b>se puede cambiar</b>: elegirlo a mano lo deja fijo y a partir de ahí cambiar
+    /// el elemento ya no lo pisa. Ver <see cref="EstriboPorOmision"/>.
+    /// </remarks>
+    public string Estribo
+    {
+        get => _estribo;
+        set
+        {
+            _estriboManual = true;
+            Set(ref _estribo, value);
+        }
+    }
 
     /// <summary>Columna Q: admite varios tramos, por ejemplo <c>10-15-20</c>.</summary>
     public string SeparacionCm { get => _separacionCm; set => Set(ref _separacionCm, value); }
@@ -805,7 +957,24 @@ public sealed class SeccionConcretoRow : Row
         }
     }
 
-    /// <summary>Columna V.</summary>
+    /// <summary>
+    /// Escala por omisión del detalle: el <b>1:10</b> con el que se rotula la sección.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Antes venía en 25 —y en 20 en la mitad de las filas de ejemplo—, y había que
+    /// corregir renglón por renglón: en la práctica las secciones de este juego de planos
+    /// se dibujan a 1:10. Es el mismo número al que ya recurre el alzado cuando la celda
+    /// va vacía (<c>AlzadoDrawer</c>), así que ahora la tabla y el dibujo coinciden.
+    /// </para>
+    /// <para>
+    /// <b>Es solo el valor de arranque.</b> La celda se sigue escribiendo a mano: quien
+    /// necesite 1:20 o 1:25 en una sección lo pone y ahí se queda.
+    /// </para>
+    /// </remarks>
+    public const string EscalaPorOmision = "10";
+
+    /// <summary>Columna V. Empieza en <see cref="EscalaPorOmision"/> y se puede cambiar.</summary>
     public string Escala { get => _escala; set => Set(ref _escala, value); }
 
     /// <summary>
@@ -1018,6 +1187,14 @@ public sealed class DatosProyecto
     public ObservableCollection<PlacaBaseRow> PlacasBase { get; } = new();
 
     /// <summary>Carga un ejemplo para que la interfaz no arranque vacía.</summary>
+    /// <remarks>
+    /// <b>Ninguna sección de concreto del ejemplo escribe su ESTRIBO ni su ESCALA a mano</b>,
+    /// y es a propósito: los dos los pone ya el elemento —#2 en castillos y cadenas, #3 en
+    /// el resto, y escala 1:10 en todas—, así que ponerlos aquí sería repetir el mismo dato
+    /// en dos sitios. Y algo peor: escribir el estribo levanta la bandera de «lo eligió el
+    /// usuario», y entonces cambiarle el elemento a una fila del ejemplo ya no lo
+    /// actualizaría. Ver <see cref="SeccionConcretoRow.EstriboPorOmision"/>.
+    /// </remarks>
     public static DatosProyecto CrearEjemplo()
     {
         var d = new DatosProyecto();
@@ -1033,9 +1210,9 @@ public sealed class DatosProyecto
             NEsqInf = 3, DiamEsqInf = "#8",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 1, DiamInter = "#3",
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20-10",
+            RecubrimientoCm = 4, SeparacionCm = "10-20-10",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
-            GanchoCm = 5, Fc = "250", Escala = "25"
+            GanchoCm = 5, Fc = "250"
         });
 
         d.SeccionesConcreto.Add(new SeccionConcretoRow
@@ -1047,9 +1224,9 @@ public sealed class DatosProyecto
             NEsqInf = 3, DiamEsqInf = "#8",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 1, DiamInter = "#8",
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20",
+            RecubrimientoCm = 4, SeparacionCm = "10-20",
             EstriboDiamante = "SI", DiamEstriboDiamante = "#3",
-            GanchoCm = 5, Fc = "250", Escala = "20"
+            GanchoCm = 5, Fc = "250"
         });
 
         // Columna REDONDA, para que el ejemplo muestre las dos formas. La base es el
@@ -1064,8 +1241,8 @@ public sealed class DatosProyecto
             BaseCm = 50, AlturaCm = 50,
             NVarTotal = 8, DiamVarTotal = "#8",
             ZunchoHelicoidal = "SI",
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20",
-            GanchoCm = 5, Fc = "250", Escala = "20",
+            RecubrimientoCm = 4, SeparacionCm = "10-20",
+            GanchoCm = 5, Fc = "250",
             LongitudM = 3
         });
 
@@ -1078,9 +1255,9 @@ public sealed class DatosProyecto
             NEsqInf = 2, DiamEsqInf = "#3",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 0, DiamInter = string.Empty,
-            RecubrimientoCm = 2, Estribo = "#2", SeparacionCm = "20",
+            RecubrimientoCm = 2, SeparacionCm = "20",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
-            GanchoCm = 5, Fc = "200", Escala = "10"
+            GanchoCm = 5, Fc = "200"
         });
 
         // UN DADO, y está aquí por la misma razón que la contratrabe de abajo: la hoja de PLACAS
@@ -1096,9 +1273,9 @@ public sealed class DatosProyecto
             NEsqInf = 2, DiamEsqInf = "#4",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 0, DiamInter = string.Empty,
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "10-20-10",
+            RecubrimientoCm = 4, SeparacionCm = "10-20-10",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
-            GanchoCm = 5, Fc = "250", Escala = "20",
+            GanchoCm = 5, Fc = "250",
             LongitudM = 1
         });
 
@@ -1114,9 +1291,9 @@ public sealed class DatosProyecto
             NEsqInf = 2, DiamEsqInf = "#4",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 0, DiamInter = string.Empty,
-            RecubrimientoCm = 4, Estribo = "#3", SeparacionCm = "9-18-9",
+            RecubrimientoCm = 4, SeparacionCm = "9-18-9",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
-            GanchoCm = 5, Fc = "250", Escala = "10"
+            GanchoCm = 5, Fc = "250"
         });
 
         d.SeccionesConcreto.Add(new SeccionConcretoRow
@@ -1128,9 +1305,9 @@ public sealed class DatosProyecto
             NEsqInf = 2, DiamEsqInf = "#3",
             NIntInf = 0, DiamIntInf = string.Empty,
             NInter = 0, DiamInter = string.Empty,
-            RecubrimientoCm = 3, Estribo = "#2", SeparacionCm = "20",
+            RecubrimientoCm = 3, SeparacionCm = "20",
             EstriboDiamante = string.Empty, DiamEstriboDiamante = string.Empty,
-            GanchoCm = 5, Fc = "200", Escala = "10"
+            GanchoCm = 5, Fc = "200"
         });
 
         // ---------- Secciones de acero, UNA DE CADA FAMILIA ----------
@@ -1323,10 +1500,13 @@ public sealed class DatosProyecto
             Soldadura = "1/4",
             SoldaduraCartabon = "3/16",
             ConCartabones = false,
-            // Solo se ven en el alzado: el ahogo del ancla -E12 y E13- y, si se encienden los
-            // cartabones, su altura -F18 y F19-.
+            // Solo se ven en el alzado: la longitud VERTICAL del ancla -E12 y E13, lo que se
+            // ahoga en el concreto- y, si se encienden los cartabones, su altura -F18 y F19-.
+            //
+            // Y NO se escribe la longitud total del ancla. Era la otra casilla de la misma
+            // barra, se quito de la hoja, y en cero el alzado deduce el largo de la longitud
+            // vertical: una sola verdad para el largo del ancla.
             LongAnclajeXCm = 30, LongAnclajeYCm = 30,
-            LongAnclaXCm = 45, LongAnclaYCm = 45,
             DoblezAnclaXCm = 10, DoblezAnclaYCm = 10,
             AltoCartabonXCm = 20, AltoCartabonYCm = 20,
             Escala = 10

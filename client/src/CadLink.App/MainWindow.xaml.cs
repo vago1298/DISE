@@ -92,6 +92,10 @@ public partial class MainWindow : Window
         EngancharVistaPreviaZapataCorrida();
         EngancharVistaPreviaPlacaBase();
 
+        // La simbología de soldadura: no depende de ninguna fila, así que solo se redibuja al
+        // cambiar el tamaño del recuadro -y al escribir su título, que va por el TextChanged-.
+        SimbologiaPreviewCanvas.SizeChanged += (_, _) => DibujarSimbologiaPrevia();
+
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
         // el primer layout.
@@ -103,6 +107,7 @@ public partial class MainWindow : Window
         {
             DibujarVistaPrevia();
             RedibujarVistas();
+            DibujarSimbologiaPrevia();
         };
 
         PrepararSolapa();
@@ -185,13 +190,15 @@ public partial class MainWindow : Window
             SeccionConcretoRow.ElementoOtro
         };
 
-        ColVarEsqSup.ItemsSource = diametros;
         ColEstribo.ItemsSource = diametros;
 
-        ColVarIntSup.ItemsSource = opcionales;
-        ColVarEsqInf.ItemsSource = opcionales;
-        ColVarIntInf.ItemsSource = opcionales;
-        ColVarLateral.ItemsSource = opcionales;
+        // LAS CINCO LISTAS DEL ARMADO YA NO SE LLENAN AQUI. Las columnas de lecho y
+        // de intermedias se combinaron en tres columnas de plantilla -para poder poner
+        // el titulo del grupo centrado encima, como en la hoja de zapatas-, y en una
+        // celda de plantilla se crea un control por fila: no hay un x:Name al que
+        // agarrarse. Sus listas salen de Varilla.Diametros y Varilla.DiametrosOpcionales
+        // con x:Static, desde el XAML, que son las MISMAS dos listas que se arman aqui
+        // abajo, asi que no se desincronizan con la validacion.
         ColVarDiamante.ItemsSource = opcionales;
 
         ColDiamante.ItemsSource = new[] { string.Empty, "SI" };
@@ -2185,6 +2192,11 @@ public partial class MainWindow : Window
                     NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
                     ZunchoHelicoidal = s.ZunchoHelicoidal,
                     RecubrimientoCm = s.RecubrimientoCm,
+
+                    // El ESTRIBO, por lo mismo que el f'c de mas abajo: va DESPUES del
+                    // elemento, asi lo guardado manda sobre el automatico -#2 en castillos
+                    // y cadenas- y una seccion que se armo con otro estribo se abre como se
+                    // guardo.
                     Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                     EstriboDiamante = s.EstriboDiamante,
                     DiamEstriboDiamante = s.DiamEstriboDiamante,

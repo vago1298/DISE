@@ -6687,6 +6687,59 @@ def v18_planta_autocad() -> None:
           os.path.exists(ruta("tools", "verificar_placa_base.py")))
 
     # ------------------------------------------------------------------
+    # EL ORDEN DE LOS RECURSOS DEL XAML
+    # ------------------------------------------------------------------
+    # Un {StaticResource X} escrito ANTES del x:Key="X" no tira la compilacion: tira el
+    # ARRANQUE, con «se produjo una excepcion al proporcionar un valor en
+    # StaticResourceHolder». Paso al agregar CeldaSoloGrout junto a sus hermanas, cuando
+    # hereda de CeldaAcabado, que esta 670 lineas mas abajo. Ahora hay una comprobacion
+    # ejecutable que recorre los cinco XAML y ordena las claves de cada uno.
+    check("hay verificacion ejecutable del orden de los recursos del XAML",
+          os.path.exists(ruta("tools", "verificar_recursos_xaml.py")))
+
+    # ------------------------------------------------------------------
+    # LA SIMBOLOGIA DE SOLDADURA (pestaña Conexiones/Detalles)
+    # ------------------------------------------------------------------
+    # El cuadro de notas de la AWS A2.4, que hace falta en todo plano de estructura
+    # metalica. Es el primer detalle de esa pestaña, que hasta ahora era un cartel de
+    # «modulo pendiente».
+    check("hay verificacion ejecutable de la simbologia de soldadura",
+          os.path.exists(ruta("tools", "verificar_simbologia_soldadura.py")))
+
+    check("la simbologia vive en su clase sin COM, como el resto de la geometria",
+          "public static class SimbolosSoldadura" in leer(
+              ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs"))
+          and "_ms." not in leer(ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs"))
+          and "AcadConnection" not in leer(
+              ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs")))
+
+    # La pestaña deja de ser un cartel: trae el boton, su titulo editable y su previa.
+    i_cx2 = xaml.find("<!-- ===== Conexiones ===== -->")
+    i_pl = xaml.find("<!-- ===== Dibujar planos estructurales ===== -->")
+    tab_cx = xaml[i_cx2:i_pl] if 0 <= i_cx2 < i_pl else ""
+
+    check("la pestaña de conexiones ya tiene su primer detalle",
+          len(tab_cx) > 1000
+          and 'x:Name="SimbologiaSoldaduraButton"' in tab_cx
+          and 'x:Name="SimbologiaPreviewCanvas"' in tab_cx
+          and 'x:Name="TituloSimbologiaBox"' in tab_cx,
+          f"{len(tab_cx)} caracteres de XAML en la pestaña")
+
+    check("y esta cableada al dibujante, con su previa enganchada",
+          'Click="OnDibujarSimbologiaSoldadura"' in xaml
+          and "private void OnDibujarSimbologiaSoldadura(" in leer(
+              ruta("client/src/CadLink.App/MainWindow.Simbologia.cs"))
+          and "SimbologiaPreviewCanvas.SizeChanged" in codigo
+          and "DibujarSimbologiaPrevia();" in codigo)
+
+    # Y la que se rompio, fijada aqui: el estilo del grout va DESPUES del que hereda.
+    estilos = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("el estilo del grout se declara despues de aquel del que hereda",
+          estilos.index('x:Key="CeldaAcabado"')
+          < estilos.index('x:Key="CeldaSoloGrout"'))
+
+    # ------------------------------------------------------------------
     # PLACA BASE: LA PESTAÑA Y SU TABLA
     # ------------------------------------------------------------------
     #  La pestaña era un cartel de «modulo pendiente de portar». Ahora es una hoja de captura como
@@ -6707,6 +6760,110 @@ def v18_planta_autocad() -> None:
           and 'x:Name="PlacasGrid"' in tab_pb
           and 'x:Name="PlacaBaseButton"' in tab_pb,
           f"{len(tab_pb)} caracteres de XAML en la pestaña")
+
+    # ------------------------------------------------------------------
+    # UNA SOLA CASILLA DE LARGO POR ANCLA: su longitud VERTICAL
+    # ------------------------------------------------------------------
+    # Eran dos casillas para la misma barra -«Ahogo ancl X cm» y «L ancla X cm»- y se
+    # pisaban: el total mandaba, asi que el ahogo capturado a mano acababa siendo un
+    # dato que el dibujo recalculaba solo. El usuario pidio dejar UNA, la del ahogo, y
+    # llamarla por lo que es.
+    for eje in ("X", "Y"):
+        check(f"la casilla de largo del ancla {eje} se llama por lo que es",
+              f'Header="Longitud de ancla {eje} vertical" '
+              f'Binding="{{Binding LongAnclaje{eje}Cm, StringFormat=N2}}"' in tab_pb)
+        check(f"y ya no hay dos casillas de largo para el ancla {eje}",
+              f'Header="Ahogo ancl {eje} cm"' not in xaml
+              and f'Header="L ancla {eje} cm"' not in xaml)
+
+    # La propiedad NO se borro: un trabajo viejo la trae y se tiene que poder abrir.
+    pbrow = leer(ruta("client/src/CadLink.App/Models/PlacaBaseRow.cs"))
+    check("la longitud total del ancla sigue existiendo, para los trabajos viejos",
+          "public double LongAnclaXCm" in pbrow
+          and "LongAnclaXCm = LongAnclaXCm," in pbrow)
+    # En cero -como nace una fila nueva- el alzado deduce el largo de la vertical, que
+    # es lo que se dibujaba antes de que existiera la casilla del total.
+    # Y LA CASILLA QUE QUEDA GOBIERNA EL DIBUJO: el ancla baja lo que ella dice, y el dado
+    # baja detras de ella. Antes mandaba el largo total, asi que el dato capturado a mano
+    # acababa siendo uno que el dibujo recalculaba solo.
+    elev = leer(ruta("client/src/CadLink.Cad/ElevacionPlacaBase.cs"))
+    check("la longitud vertical gobierna la profundidad del ancla",
+          "var largoRecto = ahogo > 0" in elev
+          and "? ahogo + gasto" in elev
+          and "Es la que gobierna hasta dónde baja" in elev)
+    check("y el largo total solo queda de respaldo para los trabajos viejos",
+          ": largoTotal - Math.Max(0, doblez);" in elev
+          and "solo se usa cuando la\n    /// vertical viene en cero" in elev)
+    # El detalle se tiene que poder leer: si las dos patas se alcanzan, una sube.
+    check("si las patas del doblez se encimarian, una ancla se sube",
+          "public static double DesfaseDeLasPatas(" in elev)
+    # Y el ancla se dibuja con el diametro de la tabla, no con una linea de eje.
+    check("el ancla se dibuja con el grueso real de su barra",
+          "Diametro: d);" in elev
+          and "((dynamic)vastago).ConstantWidth = a.Diametro;"
+          in leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs")))
+    # Y el ejemplo ya no la escribe, o ensenaria un ancla de 45 sin casilla donde verla.
+    check("el ejemplo ya no escribe la longitud total del ancla",
+          "LongAnclaXCm = 45" not in pbfilas and "LongAnclaYCm = 45" not in pbfilas)
+
+    # ------------------------------------------------------------------
+    # LA PLANTA UN BLOQUE, CADA CORTE OTRO
+    # ------------------------------------------------------------------
+    # Iban todos en el mismo bloque -asi lo hacia la macro-, asi que no se podia llevar un
+    # corte a otro sitio de la hoja sin arrastrar la planta detras.
+    check("los cortes son bloques aparte de la planta",
+          "BloquesDeCortes = Elevacion(" in pbd
+          and "public List<string> BloquesDeCortes { get; private set; } = new();" in pbd
+          and pbd.index("UltimoBloque = Bloquear(")
+          < pbd.index("BloquesDeCortes = Elevacion("))
+    # El dibujante del corte, que es un archivo aparte del de la planta.
+    pbelev = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs"))
+    pbtema = leer(ruta("client/src/CadLink.App/Theme/ExcelTabs.xaml"))
+
+    check("y el corte va acotado: cartabon, ancla y grout",
+          "private void CotasDelCorte(ElevacionPlacaBase.Vista v)" in pbelev
+          and "CotasDelCorte(v);" in pbelev)
+
+    # ------------------------------------------------------------------
+    # LA CAMA DE GROUT
+    # ------------------------------------------------------------------
+    # La casilla nueva: en SI, el corte dibuja la cama de mortero entre la placa y el dado
+    # con el espesor que se le de, y el dado baja lo que mida.
+    check("la hoja tiene la casilla del grout, con SI/NO escrito",
+          '<DataGridTemplateColumn Header="Grout" Width="Auto"' in tab_pb
+          and "{x:Static models:PlacaBaseRow.SiNo}" in tab_pb
+          and "public static string[] SiNo => ZapataAisladaRow.SiNo;" in pbr)
+    check("y su espesor al lado, que solo se puede escribir con la casilla en SI",
+          'Header="Esp grout cm" Binding="{Binding EspesorGroutCm, StringFormat=N2}"'
+          in tab_pb
+          and 'CellStyle="{StaticResource CeldaSoloGrout}"' in tab_pb
+          and 'x:Key="CeldaSoloGrout"' in pbtema
+          and '<Setter Property="IsEnabled" Value="{Binding EsGrout}" />' in pbtema)
+    # Y el dado del corte va rayado como el de la planta: misma pieza, mismo patron, misma
+    # escala y misma capa. Sin el, en el corte el concreto no se distinguia del aire.
+    check("el dado del corte va rayado como en planta, en la capa CONCRETO",
+          "PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado," in pbelev
+          and "concreto, null, PlacaBaseCapas.Concreto, PorCapa);" in pbelev
+          and "public const double EscalaHatchDado = 0.0002;" in pbc)
+
+    check("la cama se dibuja entre la placa y el dado, con su rayado y su capa",
+          "double[]? Grout);" in elev
+          and "var yDado = yPlaca - g;" in elev
+          and 'public const string Grout = "GROUT";' in pbc
+          and "Hatch(PlacaBaseCapas.PatronGrout, PlacaBaseCapas.EscalaHatchGrout,"
+          in pbelev)
+    check("y el ancla la atraviesa: su longitud vertical se mide en el concreto",
+          "var gasto = espesorPlaca + Math.Max(0, grout) + altoTuerca;" in elev
+          and "Ahogo: yPlaca - Math.Max(0, grout) - yFondo," in elev)
+
+    # ------------------------------------------------------------------
+    # La pestaña de conexiones dice tambien lo que trae de detalles
+    # ------------------------------------------------------------------
+    check("la pestaña se llama Conexiones/Detalles",
+          '<TabItem Header="Conexiones/Detalles">' in xaml
+          and '<TabItem Header="Conexiones">' not in xaml)
+    check("y su titulo dentro de la hoja dice lo mismo",
+          '<TextBlock Text="Conexiones/Detalles"' in xaml)
 
     check("y esta atada al mismo ciclo de vida que las otras hojas",
           "LlenarListasPlacaBase();" in codigo
@@ -10485,6 +10642,182 @@ def v19_circular_y_ui() -> None:
           sup is not None and inf is not None and sup != inf,
           f"sup {sup}, inf {inf}")
 
+    # ------------------------------------------------------------------
+    # Los tres grupos de armado: LECHO SUPERIOR, LECHO INFERIOR, INTERMEDIAS
+    # ------------------------------------------------------------------
+    # Lo que pidio el usuario: que encima de las columnas de cada color diga de que
+    # grupo son, con el titulo CENTRADO sobre sus casillas -«como el de cimentacion»-
+    # y conservando el nombre de cada casilla.
+    #
+    # WPF no tiene cabeceras combinadas y recorta cada cabecera a SU columna, asi que
+    # un titulo centrado sobre varias columnas solo sale combinandolas: cada grupo es
+    # UNA columna de plantilla que se parte por dentro, igual que las dos parrillas de
+    # las hojas de zapatas. El primer intento dejo las columnas separadas y el titulo
+    # quedaba centrado sobre la primera, o sea pegado a la izquierda del grupo, que es
+    # justo lo que se pidio corregir.
+    #
+    # Se comprueba: que exista la columna con su banda y sus casillas, que la banda
+    # lleve el titulo del grupo -y lo pinte centrado-, que su color se corresponda con
+    # el de sus celdas, que los nombres de casilla sigan estando y que el reparto de
+    # anchos sea EL MISMO en la cabecera y en las celdas. Si los repartos se separan,
+    # los nombres dejan de caer encima de sus casillas.
+    grupos_armado = [
+        ("LechoSuperior", "LECHO SUPERIOR", "BandaLechoSupBrush", "CeldaLechoSupBrush",
+         "CeldaLechoSup",
+         ("N° esq sup", "Var esq sup", "N° int sup", "Var int sup"),
+         ("NEsqSupTexto", "DiamEsqSup", "NIntSupTexto", "DiamIntSup")),
+        ("LechoInferior", "LECHO INFERIOR", "BandaLechoInfBrush", "CeldaLechoInfBrush",
+         "CeldaLechoInf",
+         ("N° esq inf", "Var esq inf", "N° int inf", "Var int inf"),
+         ("NEsqInfTexto", "DiamEsqInf", "NIntInfTexto", "DiamIntInf")),
+        ("Intermedias", "INTERMEDIAS", "BandaLateralBrush", "CeldaLateralBrush",
+         "CeldaLateral",
+         ("N° lateral", "Var lateral"),
+         ("NInterTexto", "DiamInter")),
+    ]
+
+    def anchos_de(clave_plantilla):
+        """Los anchos en estrella de una plantilla, en orden."""
+        m_ = re.search(rf'x:Key="{clave_plantilla}">(.*?)</DataTemplate>', tema, re.S)
+        return re.findall(r'<ColumnDefinition Width="(\d+\*)" />', m_.group(1)) if m_ else []
+
+    for clave, titulo, brocha, brocha_celda, estilo_celda, nombres, props in grupos_armado:
+        cabecera = f"Cabecera{clave}"
+        celdas = f"Celdas{clave}"
+
+        check(f"existe la cabecera del grupo {titulo}", f'x:Key="{cabecera}"' in tema)
+        check(f"y las casillas del grupo {titulo}", f'x:Key="{celdas}"' in tema)
+        check(f"existe la brocha {brocha}", f'x:Key="{brocha}"' in tema)
+
+        # UNA columna por grupo, con su cabecera, sus casillas, su color y su titulo.
+        check(f"la hoja usa la columna combinada de {titulo}",
+              xaml.count(f'HeaderTemplate="{{StaticResource {cabecera}}}"') == 1
+              and xaml.count(f'CellTemplate="{{StaticResource {celdas}}}"') == 1)
+        check(f"el titulo {titulo} es el Header de SU columna",
+              f'<DataGridTemplateColumn Header="{titulo}" Width="Auto"' in xaml)
+        check(f"y sus celdas van del color del grupo ({estilo_celda})",
+              f'CellStyle="{{StaticResource {estilo_celda}}}"' in xaml)
+
+        # El titulo sale del Header y se pinta con la banda centrada.
+        m_cabecera = re.search(
+            rf'x:Key="{cabecera}">(.*?)</DataTemplate>', tema, re.S)
+        check(f"se puede leer la cabecera de {titulo}", m_cabecera is not None)
+        if m_cabecera:
+            cuerpo_cab = m_cabecera.group(1)
+            check(f"la banda de {titulo} pinta el titulo de la columna",
+                  '<TextBlock Text="{Binding}" '
+                  'Style="{StaticResource BandaGrupoStyle}" />' in cuerpo_cab)
+            check(f"la banda de {titulo} lleva el color de su grupo",
+                  f'Background="{{StaticResource {brocha}}}"' in cuerpo_cab)
+            # Los nombres de casilla, tal cual estaban cuando eran columnas sueltas.
+            for nombre in nombres:
+                check(f"la casilla «{nombre}» conserva su nombre",
+                      f'Text="{nombre}"' in cuerpo_cab)
+
+        # Las casillas capturan las propiedades de la fila, y los conteos van por las
+        # propiedades de TEXTO: un TextBox enlazado a un int no se puede vaciar.
+        m_celdas = re.search(rf'x:Key="{celdas}">(.*?)</DataTemplate>', tema, re.S)
+        check(f"se pueden leer las casillas de {titulo}", m_celdas is not None)
+        if m_celdas:
+            for prop in props:
+                check(f"la casilla de {prop} esta enlazada",
+                      f"{{Binding {prop}, UpdateSourceTrigger=PropertyChanged}}"
+                      in m_celdas.group(1))
+
+        # Mismo reparto arriba y abajo, y tantos anchos como casillas.
+        check(f"el reparto de anchos de {titulo} es el mismo en cabecera y celdas",
+              anchos_de(cabecera) == anchos_de(celdas) != [],
+              f"cabecera {anchos_de(cabecera)}, celdas {anchos_de(celdas)}")
+        check(f"y hay un ancho por casilla en {titulo}",
+              len(anchos_de(celdas)) == len(nombres),
+              f"{len(anchos_de(celdas))} anchos para {len(nombres)} casillas")
+
+        # La banda es el pastel de sus celdas un paso mas saturado: distinto -o no se
+        # leeria como titulo contra el gris de la cabecera- pero no un color nuevo, o
+        # dejaria de verse de que columnas habla.
+        check(f"la banda de {titulo} no es el mismo color que sus celdas",
+              color_de_brocha(brocha) != color_de_brocha(brocha_celda),
+              f"las dos son {color_de_brocha(brocha)}")
+
+    # Las tres bandas, de tres colores distintos entre si.
+    colores_banda = [color_de_brocha(g[2]) for g in grupos_armado]
+    check("las tres bandas son de colores distintos",
+          len(set(colores_banda)) == 3, f"colores: {colores_banda}")
+
+    # EL TITULO VA CENTRADO. Es lo que se pidio, asi que se comprueba: el estilo de la
+    # banda hereda del de la parrilla, que es el que centra.
+    m_banda = re.search(r'x:Key="BandaGrupoStyle".*?</Style>', tema, re.S)
+    check("existe el estilo BandaGrupoStyle", m_banda is not None)
+    if m_banda:
+        check("el titulo del grupo hereda del de la parrilla, que va centrado",
+              'BasedOn="{StaticResource BandaParrillaStyle}"' in m_banda.group(0))
+    m_parrilla = re.search(r'x:Key="BandaParrillaStyle".*?</Style>', tema, re.S)
+    check("y el de la parrilla centra de verdad",
+          m_parrilla is not None
+          and '<Setter Property="TextAlignment" Value="Center" />' in m_parrilla.group(0))
+
+    # Y el estilo de cabecera va estirado y sin relleno, o la banda de color deja una
+    # orla gris alrededor en lugar de llegar de canto a canto.
+    m_cab = re.search(
+        r'x:Key="CabeceraGrupoStyle".*?(?:/>|</Style>)', tema, re.S)
+    check("existe el estilo CabeceraGrupoStyle", m_cab is not None)
+    if m_cab:
+        check("y hereda del de la parrilla, que ya va sin relleno y estirado",
+              "CabeceraParrillaStyle" in m_cab.group(0))
+
+    # Las tres columnas combinadas llevan ese estilo de cabecera, y NO queda ninguna
+    # columna suelta de armado: si volviera una, su nombre saldria a otra altura.
+    con_banda = xaml.count('HeaderStyle="{StaticResource CabeceraGrupoStyle}"')
+    check("los tres grupos llevan cabecera con banda", con_banda == 3,
+          f"la llevan {con_banda}")
+    check("no queda ninguna columna suelta de armado",
+          all(f'Header="{n}"' not in xaml
+              for n in ("N° esq sup", "Var esq sup", "N° int sup", "Var int sup",
+                        "N° esq inf", "Var esq inf", "N° int inf", "Var int inf",
+                        "N° lateral", "Var lateral")))
+    check("y las listas de esas casillas ya no se llenan por codigo",
+          all(f"{c}.ItemsSource" not in codigo
+              for c in ("ColVarEsqSup", "ColVarIntSup", "ColVarEsqInf",
+                        "ColVarIntInf", "ColVarLateral")))
+    # Salen de la MISMA tabla de diametros que la validacion, con x:Static.
+    check("las casillas de diametro sacan su lista de la tabla de siempre",
+          tema.count("{x:Static models:Varilla.Diametros}") >= 1
+          and tema.count("{x:Static models:Varilla.DiametrosOpcionales}") >= 5)
+
+    # ------------------------------------------------------------------
+    # Los conteos, como texto: un TextBox enlazado a un int no se puede vaciar
+    # ------------------------------------------------------------------
+    filas_cs = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+
+    for prop, campo in (("NEsqSupTexto", "_nEsqSup"), ("NIntSupTexto", "_nIntSup"),
+                        ("NEsqInfTexto", "_nEsqInf"), ("NIntInfTexto", "_nIntInf"),
+                        ("NInterTexto", "_nInter")):
+        m_ = re.search(rf"public string {prop}\s*\{{.*?\n    \}}", filas_cs, re.S)
+        check(f"existe la propiedad de texto {prop}", m_ is not None)
+        if m_:
+            check(f"{prop} lee su conteo", campo in m_.group(0))
+            check(f"y {prop} lo traduce con Conteo", "Conteo(value" in m_.group(0))
+
+    m_conteo = re.search(
+        r"private static int Conteo\(string\? texto, int actual\).*?\n    \}",
+        filas_cs, re.S)
+    check("se puede leer Conteo", m_conteo is not None)
+    if m_conteo:
+        cuerpo = m_conteo.group(0)
+        # Vacio es 0 -«no hay varillas»-, un numero es su numero y nunca negativo, y
+        # cualquier otra cosa conserva lo que habia: teclear una letra no borra el dato.
+        check("una casilla vacia cuenta como 0", "return 0;" in cuerpo)
+        check("el conteo nunca es negativo", "Math.Max(0, n)" in cuerpo)
+        check("y lo que no es un numero conserva el valor", ": actual" in cuerpo)
+
+    # Y NO avisan de vuelta: si el int levantara el PropertyChanged de su texto, el
+    # enlace reescribiria la casilla en cada tecla y al teclear 12 sobre un 0 saldria
+    # 012. Es la misma razon por la que las celdas de medida no confirman en cada tecla.
+    check("el conteo no reescribe la casilla mientras se teclea",
+          all(f"Raise(nameof({p}))" not in filas_cs
+              for p in ("NEsqSupTexto", "NIntSupTexto", "NEsqInfTexto",
+                        "NIntInfTexto", "NInterTexto")))
+
     # Heredan del DataGridCell de serie, o se pierde el resaltado de seleccion y no
     # se ve que fila esta seleccionada.
     check("los estilos de celda heredan del DataGridCell de serie",
@@ -10563,8 +10896,15 @@ def v19_circular_y_ui() -> None:
         #                      propia porque antes tomaban GridRowBrush -que SI cambia
         #                      con el tema- y en oscuro la letra se leia casi negra
         #                      sobre gris oscuro.
+        #   Banda*Brush        las bandas de grupo del encabezado de la hoja de
+        #                      secciones -LECHO SUPERIOR, LECHO INFERIOR,
+        #                      INTERMEDIAS-. Van con el grupo de las celdas y por el
+        #                      mismo motivo: son el pastel de sus columnas un paso mas
+        #                      saturado, y si cambiaran con el tema dejarian de
+        #                      corresponderse con las celdas, que no cambian.
         aparte = ({"PreviewFondoBrush"}
                   | {b for b in declaradas if b.startswith("Celda")}
+                  | {b for b in declaradas if b.startswith("Banda")}
                   | {b for b in declaradas if b.startswith("Lista")}
                   | {b for b in declaradas
                      if b.startswith("FilaAcero") or b.startswith("Acero")})
@@ -11417,6 +11757,7 @@ def v17_guardar_y_defaults() -> None:
     codigo = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
     xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
     diamante = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Diamante.cs"))
+    alzado_cad = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
 
     # ------------------------------------------------------------------
     # CS0117: un miembro que no existe en el inicializador de objeto
@@ -11482,6 +11823,76 @@ def v17_guardar_y_defaults() -> None:
     if m_fc:
         check("el automatico respeta lo escrito a mano",
               "if (_fcManual)" in m_fc.group(0))
+
+    # ------------------------------------------------------------------
+    # Estribo por tipo de elemento: #2 en castillos y cadenas
+    # ------------------------------------------------------------------
+    # Mismo mecanismo que el f'c, y a proposito: es el mismo tipo de dato -uno que
+    # depende del elemento, que se olvida corregir y que tiene que poder cambiarse-.
+    check("hay estribo por omision segun el elemento",
+          "public static string EstriboPorOmision(" in filas)
+    check("castillos y cadenas van con estribo del #2",
+          'EstriboConfinamiento = "#2"' in filas
+          and "EsDeConfinamiento(elemento) ? EstriboConfinamiento : EstriboGeneral"
+          in filas)
+    check("y el resto sigue con el #3", 'EstriboGeneral = "#3"' in filas)
+    # El #2 tiene que existir en la tabla de diametros, o el desplegable no lo
+    # ofreceria y el dibujo no sabria de que grosor es.
+    check("el #2 esta en la tabla de diametros", '["#2"] = 0.635' in filas)
+
+    if m_el:
+        check("cambiar el elemento reajusta el estribo",
+              "AplicarEstriboPorOmision();" in m_el.group(0))
+
+    check("elegir el estribo a mano lo deja fijo", "_estriboManual = true;" in filas)
+    m_es = re.search(
+        r"private void AplicarEstriboPorOmision\(\).*?\n    \}", filas, re.S)
+    check("se puede leer AplicarEstriboPorOmision", m_es is not None)
+    if m_es:
+        check("el estribo automatico respeta lo elegido a mano",
+              "if (_estriboManual)" in m_es.group(0))
+        # Escribe el CAMPO, no la propiedad: por la propiedad levantaria la bandera
+        # de «lo puso el usuario» y el estribo dejaria de seguir al elemento.
+        check("y no se levanta la bandera al ponerlo el programa",
+              "_estribo = nuevo;" in m_es.group(0))
+
+    # Al ABRIR un trabajo, el estribo guardado tiene que ganarle al automatico, y
+    # para eso va DESPUES del elemento en el inicializador.
+    m_abrir = re.search(r"new SeccionConcretoRow\s*\{(.*?)\n\s*\}\;", codigo, re.S)
+    if m_abrir:
+        cuerpo_abrir = m_abrir.group(1)
+        check("al abrir un trabajo el estribo guardado va despues del elemento",
+              cuerpo_abrir.find("Elemento = s.Elemento")
+              < cuerpo_abrir.find("Estribo = s.Estribo"))
+
+    # ------------------------------------------------------------------
+    # Escala del detalle: 1:10 por omision, y editable
+    # ------------------------------------------------------------------
+    check("la escala por omision es 10", 'EscalaPorOmision = "10"' in filas)
+    check("y la usa el valor de arranque de la fila",
+          "_escala = EscalaPorOmision;" in filas)
+    # Es el mismo numero al que ya recurre el alzado cuando la celda va vacia: si uno
+    # cambia y el otro no, la tabla y el dibujo dejan de decir lo mismo.
+    check("el alzado recurre a la misma escala cuando la celda va vacia",
+          'string.IsNullOrWhiteSpace(a.Escala) ? "10" : a.Escala' in alzado_cad)
+    # Y se sigue pudiendo escribir: la celda es de texto, no un valor fijo.
+    check("la escala se sigue capturando a mano",
+          'Header="Escala"     Binding="{Binding Escala' in xaml)
+    # El ejemplo NO escribe la escala ni el estribo: los dos los pone el elemento, y
+    # escribir el estribo ademas lo marcaria como puesto a mano.
+    m_ej = re.search(r"public static DatosProyecto CrearEjemplo\(\).*?\n    \}",
+                     filas, re.S)
+    check("se puede leer CrearEjemplo", m_ej is not None)
+    if m_ej:
+        # Solo el tramo de las secciones de CONCRETO: mas abajo el mismo metodo
+        # carga las de acero, las zapatas y las placas, y esas si llevan escala.
+        corte = m_ej.group(0).find("SeccionesAcero")
+        secciones_ej = m_ej.group(0)[:corte] if corte > 0 else ""
+        check("se puede leer el tramo de secciones de concreto del ejemplo",
+              len(secciones_ej) > 0)
+        check("ninguna seccion del ejemplo escribe su escala a mano",
+              "Escala = " not in secciones_ej)
+        check("ni su estribo", 'Estribo = "#' not in secciones_ej)
 
     # ------------------------------------------------------------------
     # Archivo .clk
@@ -13803,9 +14214,22 @@ def v24_rediseno() -> None:
           "public static readonly string[] Diametros = DiametrosCm.Keys.ToArray();" in modelos
           and "public static readonly string[] DiametrosOpcionales =" in modelos
           and "new[] { string.Empty }.Concat(Diametros).ToArray();" in modelos)
+    # Se cuenta DENTRO de las dos plantillas de parrilla, no en todo el archivo: los
+    # tres grupos de armado de la hoja de secciones -LECHO SUPERIOR, LECHO INFERIOR e
+    # INTERMEDIAS- son tambien columnas de plantilla y atacan las mismas dos listas con
+    # x:Static, asi que contar en todo el tema mezclaba dos cosas distintas.
+    def cuerpo_de_plantilla(clave):
+        m_ = re.search(rf'x:Key="{clave}">(.*?)</DataTemplate>', tema, re.S)
+        return m_.group(1) if m_ else ""
+
+    celdas_parrilla = (cuerpo_de_plantilla("CeldasParrillaInferior")
+                       + cuerpo_de_plantilla("CeldasParrillaSuperior"))
+
     check("la parrilla inferior las pide obligatorias y la superior opcionales",
-          tema.count('{Binding Source={x:Static models:Varilla.Diametros}}') == 2
-          and tema.count('{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}') == 2)
+          celdas_parrilla.count(
+              '{Binding Source={x:Static models:Varilla.Diametros}}') == 2
+          and celdas_parrilla.count(
+              '{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}') == 2)
     check("y ya no se rellenan por codigo, que con la columna de plantilla no se puede",
           all(f"{c}.ItemsSource" not in leer(ruta(f"client/src/CadLink.App/{f}"))
               for f, cs in (("MainWindow.ZapatasCorridas.cs",

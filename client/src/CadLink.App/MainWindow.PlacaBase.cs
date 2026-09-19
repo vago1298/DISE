@@ -479,6 +479,8 @@ public partial class MainWindow
         }
 
         // ---------- La placa ----------
+        // EN PLANTA NO SE DIBUJA EL GROUT: la cama queda debajo de la placa, así que en planta la
+        // taparía por completo. Solo se ve en el corte.
         var geoPlaca = new RectangleGeometry(new Rect(0, 0, b, h)) { Transform = transformar };
 
         PlacaPreviewCanvas.Children.Add(new FormaPath
@@ -551,7 +553,7 @@ public partial class MainWindow
         }
 
         // ---------- El alzado, detrás de las anclas de la planta ----------
-        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar);
+        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar, escala);
 
         // ---------- Las anclas: el agujero y el ancla, como en el detalle ----------
         if (anclas.Count > 0)
@@ -768,7 +770,10 @@ public partial class MainWindow
         return ElevacionPlacaBase.Construir(
             xInicio, h / 2, 1, AlturaTextoPrevia, p.EspesorCm, p.ConCartabones,
             DireccionDePrevia(p, b, dadoX, pX, esX: true, sepX, p.DiamAnclaXCm),
-            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm));
+            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm),
+
+            // La previa trabaja en centímetros -escala 1-, así que el espesor va tal cual.
+            p.ConGrout ? p.EspesorGroutCm : 0);
     }
 
     /// <summary>
@@ -818,8 +823,21 @@ public partial class MainWindow
     /// triángulo: es el mismo cuidado que en el dibujante.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>El vástago va aparte, en su propio trazo, y con el GRUESO REAL de la barra.</b> Es el
+    /// único del alzado que no se pinta con una pluma fija: el diámetro está capturado en la hoja
+    /// —«Ø ancla X: 3/4"»—, viaja en <c>AnclaDeCanto.Diametro</c> y aquí se convierte a píxeles con
+    /// la misma escala de ajuste del lienzo, así que la previa enseña el mismo grosor que va a salir
+    /// en AutoCAD. Un ancla del 3/4" y otra de 2" ya no se ven iguales.
+    /// </para>
+    /// <para>
+    /// Con un mínimo de pluma: a un encuadre muy reducido, media pulgada de barra da menos de un
+    /// píxel y el ancla desaparecería del recuadro.
+    /// </para>
+    /// </remarks>
     private void DibujarAlzadoDeLaPlacaPrevia(
-        List<ElevacionPlacaBase.Vista> vistas, Transform transformar)
+        List<ElevacionPlacaBase.Vista> vistas, Transform transformar, double escala)
     {
         if (vistas.Count == 0)
         {
@@ -833,10 +851,23 @@ public partial class MainWindow
         var geoAcero = new GeometryGroup { Transform = transformar };
         var geoPlaca = new GeometryGroup { Transform = transformar };
         var geoAnclas = new GeometryGroup { Transform = transformar };
+        var geoGrout = new GeometryGroup { Transform = transformar };
+
+        // Los vástagos, uno por ancla: cada uno se pinta con SU grueso, y en la placa rectangular
+        // conviven los dos diámetros —el de las anclas X y el de las Y— en el mismo recuadro.
+        var vastagos = new List<(GeometryGroup Geo, double Grueso)>();
 
         foreach (var v in vistas)
         {
             AgregarPoligonal(geoConcreto, v.Concreto, null);
+
+            // LA CAMA DE GROUT, si la hay. Va en su propio grupo porque lleva su propio color: en
+            // el dibujo es otra capa y otro rayado, y en la previa se distingue por el tono.
+            if (v.Grout is { } grout)
+            {
+                AgregarPoligonal(geoGrout, grout, null);
+            }
+
             AgregarPoligonal(geoPlaca, v.Placa, null);
             AgregarPoligonal(geoAcero, v.Columna, null);
 
@@ -847,7 +878,10 @@ public partial class MainWindow
 
             foreach (var a in v.Anclas)
             {
-                AgregarAbierta(geoAnclas, a.Vastago);
+                var geoVastago = new GeometryGroup { Transform = transformar };
+                AgregarAbierta(geoVastago, a.Vastago);
+                vastagos.Add((geoVastago, Math.Max(1.4, a.Diametro * escala)));
+
                 AgregarPoligonal(geoAnclas, a.Tuerca, null);
                 AgregarAbierta(geoAnclas, a.Arandela);
 
@@ -863,6 +897,16 @@ public partial class MainWindow
             Data = geoConcreto,
             Fill = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8)),
             Stroke = new SolidColorBrush(Color.FromRgb(0x8A, 0x84, 0x78)),
+            StrokeThickness = 1.2
+        });
+
+        // El grout ENTRE el concreto y la placa, también en el orden de pintado: el naranja va
+        // encima del beige del dado y debajo del azul de la placa, como en el corte.
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoGrout,
+            Fill = new SolidColorBrush(Color.FromRgb(0xE8, 0xC9, 0x9A)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0xB5, 0x7C, 0x2E)),
             StrokeThickness = 1.2
         });
 
@@ -888,6 +932,22 @@ public partial class MainWindow
             Stroke = rojo,
             StrokeThickness = 1.4
         });
+
+        // Y los vástagos encima, cada uno con el grueso de su barra. Las puntas van a ras
+        // -PenLineCap.Flat- para que el fondo del ancla quede a la cota que dice la hoja y no medio
+        // diámetro más abajo, y el codo del doblez se redondea, que es como se ve una barra doblada.
+        foreach (var (geo, grueso) in vastagos)
+        {
+            PlacaPreviewCanvas.Children.Add(new FormaPath
+            {
+                Data = geo,
+                Stroke = rojo,
+                StrokeThickness = grueso,
+                StrokeStartLineCap = PenLineCap.Flat,
+                StrokeEndLineCap = PenLineCap.Flat,
+                StrokeLineJoin = PenLineJoin.Round
+            });
+        }
     }
 
     /// <summary>Una poligonal <b>abierta</b>, de dos o tres puntos, sin relleno.</summary>
@@ -1374,6 +1434,10 @@ public partial class MainWindow
                 {
                     bloques.Add(dibujante.UltimoBloque);
                 }
+
+                // Y los de los cortes, que ahora son bloques aparte: uno por vista. Se reportan
+                // igual que el de la planta para que el usuario sepa qué buscar en AutoCAD.
+                bloques.AddRange(dibujante.BloquesDeCortes);
 
                 x += Paso(p, escala);
             }
