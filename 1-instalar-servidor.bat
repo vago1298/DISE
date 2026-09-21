@@ -58,20 +58,58 @@ for /f "tokens=*" %%v in ('%PYEXE% --version 2^>^&1') do echo       Encontrado: 
 echo.
 
 
-REM ---------- [2/6] Entorno aislado ----------
+REM ============================================================
+REM  [2/6] ENTORNO AISLADO
+REM
+REM  NO BASTA CON QUE EXISTA: TIENE QUE FUNCIONAR.
+REM
+REM  Un entorno de Python guarda la RUTA ABSOLUTA del Python con
+REM  el que se creo -en su pyvenv.cfg y dentro de sus propios
+REM  .exe-. Asi que si la carpeta del proyecto se copia a otra
+REM  computadora con el .venv adentro, ese .venv trae la ruta del
+REM  usuario de la PRIMERA maquina y en la segunda no sirve:
+REM
+REM     did not find executable at
+REM     'C:\Users\PC\AppData\Local\Programs\Python\Python313\python.exe'
+REM
+REM  Antes aqui solo se preguntaba si existia python.exe. El
+REM  copiado lo tiene, asi que se daba por bueno, y los pasos
+REM  siguientes fallaban uno tras otro con ese mensaje, que no
+REM  dice nada de lo que de verdad pasa.
+REM
+REM  Ahora se le pide que ejecute algo. Si no puede, se rehace.
+REM  Rehacerlo es seguro: en el .venv no hay nada del usuario
+REM  -ni llaves, ni .env, ni base de datos-, solo librerias que se
+REM  vuelven a bajar en el paso siguiente.
+REM ============================================================
 echo [2/6] Preparando el entorno de Python...
 
-if exist "%RAIZ%server\.venv\Scripts\python.exe" goto :venv_listo
+if not exist "%RAIZ%server\.venv\Scripts\python.exe" goto :venv_crear
 
+"%RAIZ%server\.venv\Scripts\python.exe" -c "pass" >nul 2>&1
+if not errorlevel 1 goto :venv_listo
+
+echo       El entorno que habia NO funciona en esta computadora.
+echo       Se copio de otra maquina -guarda la ruta de su Python-.
+echo       Se rehace desde cero. No se pierde nada tuyo.
+rmdir /s /q "%RAIZ%server\.venv"
+
+:venv_crear
 %PYEXE% -m venv "%RAIZ%server\.venv"
 if errorlevel 1 goto :error_venv
 
 if not exist "%RAIZ%server\.venv\Scripts\python.exe" goto :error_venv
+
+REM Y se comprueba TAMBIEN el recien creado: si el Python de esta
+REM maquina esta a medio instalar, el venv se crea y no arranca.
+"%RAIZ%server\.venv\Scripts\python.exe" -c "pass" >nul 2>&1
+if errorlevel 1 goto :error_venv
+
 echo       Entorno creado.
 goto :venv_fin
 
 :venv_listo
-echo       Ya existia, se reutiliza.
+echo       Ya existia y funciona, se reutiliza.
 
 :venv_fin
 set "PY=%RAIZ%server\.venv\Scripts\python.exe"

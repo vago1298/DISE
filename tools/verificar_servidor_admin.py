@@ -335,6 +335,45 @@ with open(os.path.join(RAIZ, "client", "src", "CadLink.App", "cadlink.config.jso
 check("la configuracion del cliente avisa de que localhost es la propia PC",
       "OJO CON localhost" in _CFG and "192.168" in _CFG)
 
+#  ---- 8. UN ENTORNO COPIADO DE OTRA MAQUINA SE DETECTA Y SE REHACE ----
+#  Un .venv guarda la ruta ABSOLUTA del Python con el que se creo, asi que copiar la
+#  carpeta del proyecto a otra computadora con el .venv dentro deja un entorno que existe
+#  y no arranca: «did not find executable at C:\\Users\\PC\\...\\python.exe». El instalador
+#  solo preguntaba si EXISTIA python.exe -el copiado lo tiene-, lo daba por bueno, y los
+#  pasos siguientes fallaban uno tras otro con ese mensaje, que no dice lo que pasa.
+with open(os.path.join(RAIZ, "1-instalar-servidor.bat"), encoding="utf-8") as f:
+    _INSTALA = f.read()
+
+check("el instalador comprueba que el entorno ARRANCA, no solo que exista",
+      '-c "pass"' in _INSTALA and "goto :venv_crear" in _INSTALA)
+
+check("y si no arranca lo rehace, en lugar de seguir con uno roto",
+      "rmdir /s /q" in _INSTALA and "server\\.venv" in _INSTALA)
+
+check("tambien comprueba el que acaba de crear",
+      _INSTALA.count('-c "pass"') >= 2)
+
+#  Y los otros dos .bat dicen QUE pasa en lugar de dejar salir el mensaje de Python.
+for bat in ("2-iniciar-servidor.bat", "4-hazme-permanente.bat"):
+    with open(os.path.join(RAIZ, bat), encoding="utf-8") as f:
+        texto = f.read()
+
+    check(f"{bat} avisa cuando el entorno se copio de otra maquina",
+          '-c "pass"' in texto
+          and "goto :venv_roto" in texto
+          and ":venv_roto" in texto
+          and "1-instalar-servidor.bat" in texto)
+
+#  Y la guia del usuario dice que en las PCs de los trabajadores NO se instala el servidor:
+#  es lo que llevo a copiar la carpeta entera, con su .venv, a la otra maquina.
+with open(os.path.join(RAIZ, "EMPIEZA-AQUI.md"), encoding="utf-8") as f:
+    _GUIA = f.read()
+
+check("la guia dice que el servidor va en UNA sola computadora",
+      "no se instala el servidor" in _GUIA
+      and "did not find executable" in _GUIA
+      and "servidorLicencias" in _GUIA)
+
 print()
 print("=" * 78)
 

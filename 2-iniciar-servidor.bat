@@ -16,6 +16,14 @@ goto :no_proyecto
 
 :raiz_ok
 if not exist "%RAIZ%server\.venv\Scripts\python.exe" goto :falta_instalar
+
+REM  QUE EXISTA NO BASTA: TIENE QUE ARRANCAR. Un .venv copiado de otra
+REM  computadora trae python.exe pero apunta al Python de la maquina
+REM  original, asi que falla con «did not find executable at ...». Se
+REM  comprueba aqui para poder decir QUE pasa en lugar de dejar que el
+REM  mensaje de Python salga suelto.
+"%RAIZ%server\.venv\Scripts\python.exe" -c "pass" >nul 2>&1
+if errorlevel 1 goto :venv_roto
 if not exist "%RAIZ%server\keys\private.pem" goto :faltan_llaves
 if not exist "%RAIZ%server\.env" goto :falta_env
 
@@ -88,6 +96,25 @@ echo    %~dp0cadlink\server\
 echo.
 echo Junto a este archivo deben estar las carpetas
 echo    client   server   docs   tools
+echo.
+goto :error
+
+:venv_roto
+echo.
+echo ==========================================================
+echo   ERROR: el entorno de Python no sirve en esta computadora
+echo ==========================================================
+echo.
+echo La carpeta  server\.venv  se copio de OTRA maquina. Un entorno
+echo de Python guarda la ruta absoluta del Python con el que se
+echo creo, asi que en esta computadora apunta a un usuario que no
+echo existe y de ahi el mensaje:
+echo.
+echo     did not find executable at 'C:\Users\...\python.exe'
+echo.
+echo Solucion: ejecuta  1-instalar-servidor.bat
+echo Ese lo detecta y lo rehace solo. No se pierde nada tuyo: las
+echo llaves, el .env y la base de datos NO estan ahi dentro.
 echo.
 goto :error
 
