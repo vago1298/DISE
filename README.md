@@ -204,8 +204,13 @@ Comprueba que responde:
 - http://localhost:8000/health → `{"status":"ok", ...}`
 - http://localhost:8000/docs → interfaz interactiva para probar todos los endpoints
 
-En `/docs` puedes autenticarte para los endpoints `/admin/*` poniendo tu
-`ADMIN_API_KEY` en la cabecera `X-Admin-Key`.
+En `/docs`, para usar los endpoints `/admin/*`, pulsa **Authorize** (arriba a la
+derecha), pega tu `ADMIN_API_KEY` y acepta. Queda puesta en los nueve endpoints de
+administración mientras dure la sesión del navegador.
+
+> Por debajo sigue siendo la cabecera `X-Admin-Key`, la misma que usan los scripts y
+> los ejemplos de `curl` de más abajo: lo que cambió es que ahora la documentación la
+> pide una sola vez en lugar de endpoint por endpoint.
 
 ---
 

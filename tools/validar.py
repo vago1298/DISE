@@ -6706,6 +6706,35 @@ def v18_planta_autocad() -> None:
     check("hay verificacion ejecutable de la simbologia de soldadura",
           os.path.exists(ruta("tools", "verificar_simbologia_soldadura.py")))
 
+    # ------------------------------------------------------------------
+    # LA PUERTA DEL SERVIDOR DE LICENCIAS
+    # ------------------------------------------------------------------
+    # Los nueve endpoints /admin/* son los que dan de alta equipos y emiten licencias:
+    # si uno se queda sin su dependencia, el servidor queda abierto a quien lo encuentre
+    # y todo sigue «funcionando». No habia ninguna comprobacion del servidor; ahora si.
+    check("hay verificacion ejecutable de la puerta del servidor de licencias",
+          os.path.exists(ruta("tools", "verificar_servidor_admin.py")))
+
+    admin_py = leer(ruta("server/app/admin.py"))
+
+    # La clave va como ESQUEMA DE SEGURIDAD: es lo que pone el boton Authorize en /docs,
+    # en lugar de tener que pegarla en cada uno de los nueve endpoints.
+    check("la clave de administracion sale con candado en /docs",
+          "from fastapi.security import APIKeyHeader" in admin_py
+          and "clave_admin = APIKeyHeader(" in admin_py
+          and "Security(clave_admin)" in admin_py)
+
+    # Y SIN CAMBIAR LA CABECERA: por ahi pasan los scripts y los ejemplos del README.
+    check("y la cabecera sigue siendo la misma de los scripts",
+          'CABECERA_ADMIN = "X-Admin-Key"' in admin_py
+          and '"X-Admin-Key": args.key' in leer(ruta("server/scripts/register_machine.py")))
+
+    # auto_error=False conserva el 401 de siempre: sin el, FastAPI responde su propio 403
+    # «Not authenticated» y quien llama desde un script se encuentra otro codigo.
+    check("la cabecera ausente sigue dando el 401 de siempre, no un 403 ajeno",
+          "auto_error=False" in admin_py
+          and 'x_admin_key or ""' in admin_py)
+
     check("la simbologia vive en su clase sin COM, como el resto de la geometria",
           "public static class SimbolosSoldadura" in leer(
               ruta("client/src/CadLink.Cad/SimbolosSoldadura.cs"))

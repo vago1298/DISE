@@ -8,7 +8,8 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
+from fastapi.security import APIKeyHeader
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -27,14 +28,44 @@ from .schemas import (
 
 router = APIRouter(prefix="/admin", tags=["administración"])
 
+#: El nombre de la cabecera. **No se cambia**: por aquí pasan los scripts
+#: (``register_machine.py``), los ejemplos de ``curl`` del README y cualquier integración
+#: que ya esté hecha. Lo que cambia es solo cómo lo pide la documentación.
+CABECERA_ADMIN = "X-Admin-Key"
+
+#: La clave de administración, declarada como **esquema de seguridad**.
+#:
+#: Antes era una cabecera suelta (``Header(default="")``). Funcionaba igual para los
+#: scripts, pero en ``/docs`` no había botón *Authorize*: la clave había que pegarla en un
+#: campo dentro de CADA endpoint, y son nueve. Declarada así, Swagger enseña el candado,
+#: se pega una vez y vale para todos los ``/admin/*`` de la sesión.
+#:
+#: ``auto_error=False`` es lo que conserva el comportamiento de antes. Con el valor por
+#: omisión, FastAPI responde por su cuenta un **403 «Not authenticated»** cuando falta la
+#: cabecera, y quien llama desde un script se encontraría con otro código y otro mensaje
+#: que los de hasta ahora. Apagándolo, la cabecera que falta llega como ``None`` y el 401
+#: de abajo sigue siendo el único que sale de aquí.
+clave_admin = APIKeyHeader(
+    name=CABECERA_ADMIN,
+    scheme_name="Clave de administrador",
+    description=(
+        "La `ADMIN_API_KEY` del archivo `.env` del servidor. Pégala aquí una vez y queda "
+        "puesta en todos los endpoints de administración."
+    ),
+    auto_error=False,
+)
+
 
 def require_admin(
-    x_admin_key: str = Header(default=""),
+    x_admin_key: str | None = Security(clave_admin),
     settings: Settings = Depends(get_settings),
 ) -> None:
     """Comparación en tiempo constante para no filtrar la clave por temporización."""
     expected = settings.ADMIN_API_KEY
-    if not expected or not secrets.compare_digest(x_admin_key, expected):
+
+    # El ``or ""`` es por la cabecera ausente: compare_digest no admite None, y sin esto
+    # una petición sin cabecera daría un TypeError —un 500— en lugar del 401 que le toca.
+    if not expected or not secrets.compare_digest(x_admin_key or "", expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Clave de administrador inválida."
         )
