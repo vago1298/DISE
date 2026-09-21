@@ -19,7 +19,7 @@ if not exist "%RAIZ%server\.venv\Scripts\python.exe" goto :falta_instalar
 
 REM  QUE EXISTA NO BASTA: TIENE QUE ARRANCAR. Un .venv copiado de otra
 REM  computadora trae python.exe pero apunta al Python de la maquina
-REM  original, asi que falla con «did not find executable at ...». Se
+REM  original, asi que falla con "did not find executable at ...". Se
 REM  comprueba aqui para poder decir QUE pasa en lugar de dejar que el
 REM  mensaje de Python salga suelto.
 "%RAIZ%server\.venv\Scripts\python.exe" -c "pass" >nul 2>&1

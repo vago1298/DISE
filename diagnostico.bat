@@ -81,6 +81,24 @@ findstr /c:"BEGIN PUBLIC KEY" "client\src\CadLink.Licensing\EmbeddedPublicKey.cs
 if not errorlevel 1 echo El archivo contiene un bloque PEM >> "%LOG%"
 echo. >> "%LOG%"
 
+echo --- Python del entorno virtual --- >> "%LOG%"
+if exist "%~dp0server\.venv\Scripts\python.exe" goto :diag_venv_py
+echo NO existe el entorno >> "%LOG%"
+goto :diag_venv_fin
+
+:diag_venv_py
+"%~dp0server\.venv\Scripts\python.exe" --version >> "%LOG%" 2>&1
+call :anota_nivel
+
+REM  LO QUE DE VERDAD IMPORTA: que las librerias se puedan IMPORTAR. La lista de
+REM  paquetes de mas abajo dice lo que hay instalado, pero hay que saber leerla;
+REM  esto responde si el servidor puede arrancar o no, que es la pregunta.
+"%~dp0server\.venv\Scripts\python.exe" -c "import fastapi, uvicorn, sqlalchemy, pydantic, jwt; print('Las librerias del servidor se importan bien')" >> "%LOG%" 2>&1
+call :anota_nivel
+
+:diag_venv_fin
+echo. >> "%LOG%"
+
 echo --- Librerias instaladas --- >> "%LOG%"
 if exist "server\.venv\Scripts\python.exe" "server\.venv\Scripts\python.exe" -m pip list >> "%LOG%" 2>&1
 if not exist "server\.venv\Scripts\python.exe" echo Sin entorno virtual, no hay librerias que listar >> "%LOG%"

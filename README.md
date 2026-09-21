@@ -130,11 +130,16 @@ nativo. Razones y consecuencias en
 ## Requisitos
 
 **Servidor de licencias** (puede correr en Linux, Windows o macOS)
-- Python 3.11 o superior
+- Python **3.11 a 3.13** recomendado. Con uno más nuevo también funciona —las
+  dependencias van por rangos, así que pip elige la versión que tenga compilada para tu
+  Python—, pero si acaba de salir puede que sus librerías todavía no estén listas: en ese
+  caso instala 3.13 y `1-instalar-servidor.bat` lo prefiere solo.
 
 **Aplicación cliente** (solo Windows)
 - Windows 10 o 11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) **o más nuevo**. La
+  aplicación apunta a `net8.0-windows` pero lleva `RollForward=LatestMajor`, así que corre
+  con el motor que haya instalado: en una PC con solo .NET 10 arranca igual.
 - Visual Studio 2022 con la carga de trabajo *.NET desktop development* (opcional;
   también funciona todo desde la línea de comandos)
 

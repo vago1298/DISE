@@ -34,18 +34,51 @@ echo    %RAIZ%
 echo.
 
 
-REM ---------- [1/6] Buscar un Python que sirva ----------
+REM ============================================================
+REM  [1/6] BUSCAR UN PYTHON QUE SIRVA
+REM
+REM  SE PREFIERE UNA VERSION PROBADA, no la mas nueva. Las
+REM  librerias del servidor se distribuyen compiladas -pydantic
+REM  lleva su nucleo en Rust, SQLAlchemy en C- y esas ruedas
+REM  tardan semanas o meses en aparecer para cada Python nuevo.
+REM  Con un Python recien salido, pip no encuentra rueda, intenta
+REM  compilar desde el codigo fuente, y sin Rust ni compilador de
+REM  C eso termina en un error largo y confuso.
+REM
+REM  Paso de verdad en una PC con Python 3.14: el paso [3/6]
+REM  fallaba y el servidor se quedaba sin librerias, sin llaves y
+REM  sin .env.
+REM
+REM  Asi que se prueba primero con el lanzador "py" pidiendole
+REM  3.13, 3.12 y 3.11 -las que llevan tiempo y tienen rueda de
+REM  todo-, y solo si no hay ninguna se usa el Python que este en
+REM  el PATH, sea el que sea. Con los rangos de requirements.txt
+REM  tambien funciona en los mas nuevos; esto solo evita el camino
+REM  largo cuando hay alternativa.
+REM ============================================================
 echo [1/6] Buscando Python...
 
 set "PYEXE="
+
+py -3.13 -c "import sys" >nul 2>&1
+if not errorlevel 1 set "PYEXE=py -3.13"
+if defined PYEXE goto :python_ok
+
+py -3.12 -c "import sys" >nul 2>&1
+if not errorlevel 1 set "PYEXE=py -3.12"
+if defined PYEXE goto :python_ok
+
+py -3.11 -c "import sys" >nul 2>&1
+if not errorlevel 1 set "PYEXE=py -3.11"
+if defined PYEXE goto :python_ok
 
 python -c "import sys" >nul 2>&1
 if not errorlevel 1 set "PYEXE=python"
 
 if defined PYEXE goto :python_ok
 
-REM Segundo intento: el lanzador "py", que Windows instala en el
-REM directorio del sistema. Muchas veces funciona aunque la casilla
+REM El lanzador "py" a secas, que Windows instala en el directorio
+REM del sistema. Muchas veces funciona aunque la casilla
 REM "Add python.exe to PATH" no se haya marcado al instalar.
 py -3 -c "import sys" >nul 2>&1
 if not errorlevel 1 set "PYEXE=py -3"
@@ -55,6 +88,21 @@ goto :sin_python
 
 :python_ok
 for /f "tokens=*" %%v in ('%PYEXE% --version 2^>^&1') do echo       Encontrado: %%v
+
+REM  Y SE AVISA SI ES MAS NUEVO QUE EL ULTIMO PROBADO. No se para la
+REM  instalacion -con los rangos de requirements.txt suele funcionar-
+REM  pero si el paso [3/6] falla, el aviso de arriba ya dijo por donde
+REM  mirar en lugar de dejar al usuario con un error de compilacion.
+%PYEXE% -c "import sys; raise SystemExit(0 if sys.version_info[:2] <= (3, 13) else 1)" >nul 2>&1
+if not errorlevel 1 goto :python_version_ok
+
+echo.
+echo       AVISO: este Python es mas nuevo que el ultimo con el que se
+echo       probo esto (3.13). Se intenta igual. Si las librerias fallan
+echo       en el paso 3, instala Python 3.13 desde python.org y vuelve
+echo       a ejecutar este archivo: no hace falta desinstalar el otro.
+
+:python_version_ok
 echo.
 
 
@@ -229,11 +277,33 @@ goto :error
 
 :error_pip
 echo.
-echo ERROR: fallo la descarga de las librerias.
+echo ==========================================================
+echo   ERROR: no se pudieron instalar las librerias
+echo ==========================================================
 echo.
-echo Revisa que tengas conexion a internet. Si estas en una red
-echo de empresa, el antivirus o el firewall pueden estar
-echo bloqueando la descarga.
+echo Hay dos causas posibles. Mira arriba, en el texto que dejo
+echo pip, cual de las dos es.
+echo.
+echo 1) TU PYTHON ES MUY NUEVO.
+echo.
+echo    Si arriba se lee algo de "building wheel", "Rust",
+echo    "cargo", "Microsoft Visual C++" o "metadata-generation",
+echo    es esto: las librerias vienen compiladas y todavia no
+echo    hay version compilada para tu Python, asi que pip
+echo    intento compilarlas desde el codigo fuente.
+echo.
+echo    Solucion: instala Python 3.13 desde
+echo        https://www.python.org/downloads/release/python-3130/
+echo    marcando "Add python.exe to PATH", y vuelve a ejecutar
+echo    este archivo. NO hace falta desinstalar el que tienes:
+echo    este instalador prefiere solo el 3.13 cuando existe.
+echo.
+echo 2) NO HAY PASO A INTERNET.
+echo.
+echo    Si arriba se lee "Could not find a version", "timeout",
+echo    "SSL" o "Temporary failure in name resolution", es la
+echo    red: el antivirus o el firewall de la empresa suelen
+echo    bloquear la descarga de librerias.
 echo.
 goto :error
 

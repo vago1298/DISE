@@ -4,6 +4,24 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+
+    <!-- CORRE CON EL .NET QUE HAYA, AUNQUE SEA MAS NUEVO QUE EL 8.
+
+         Sin esto, una aplicacion de net8.0 solo arranca si esta instalado
+         EXACTAMENTE el motor de .NET 8: en una PC con .NET 10 y sin el 8, se
+         compila bien y al ejecutarla dice que hay que instalar .NET 8. Paso de
+         verdad en la PC de un trabajador, cuyo diagnostico traia un unico SDK, el
+         10.0.401.
+
+         Con LatestMajor la aplicacion rueda hacia adelante hasta la version mayor
+         mas nueva que encuentre, que es lo razonable para algo que se instala en
+         maquinas ajenas: .NET mantiene la compatibilidad entre versiones mayores,
+         y el caso contrario -no arrancar teniendo un motor mas nuevo- es una
+         molestia sin ninguna ventaja.
+
+         No afecta a la publicacion autocontenida: ahi el motor va dentro del .exe
+         y no hay nada que buscar. -->
+    <RollForward>LatestMajor</RollForward>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

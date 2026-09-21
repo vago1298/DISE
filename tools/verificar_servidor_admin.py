@@ -374,6 +374,69 @@ check("la guia dice que el servidor va en UNA sola computadora",
       and "did not find executable" in _GUIA
       and "servidorLicencias" in _GUIA)
 
+#  ---- 9. LAS LIBRERIAS SE INSTALAN EN CUALQUIER PYTHON ----
+#  Estaban clavadas con ==, y en una PC con Python 3.14 la instalacion fallaba entera:
+#  ninguna de esas versiones trae rueda compilada para 3.14, asi que pip intentaba compilar
+#  pydantic-core desde el codigo fuente -eso necesita Rust- y el paso [3/6] se caia dejando
+#  el servidor sin librerias, sin llaves y sin .env.
+_REQ = leer("requirements.txt")
+
+fijadas = [
+    ln.strip() for ln in _REQ.splitlines()
+    if "==" in ln and not ln.strip().startswith("#")
+]
+
+check("ninguna libreria esta clavada a una version exacta",
+      not fijadas, "; ".join(fijadas))
+
+#  Con piso -la version con la que se probo- y techo -la mayor siguiente, donde estas
+#  librerias rompen compatibilidad-. Sin techo, un dia entra una 2.0 y nadie se enteró.
+paquetes = [
+    ln.strip() for ln in _REQ.splitlines()
+    if ln.strip() and not ln.strip().startswith("#")
+]
+
+check("se leyeron las librerias del servidor", len(paquetes) >= 7,
+      f"{len(paquetes)} lineas")
+
+sin_rango = [p for p in paquetes if ">=" not in p or "<" not in p]
+
+check("todas llevan piso y techo de version",
+      not sin_rango, "; ".join(sin_rango))
+
+#  Y el instalador prefiere un Python probado cuando hay varios, avisa si el que hay es
+#  mas nuevo, y cuando pip falla explica LAS DOS causas en lugar de hablar solo de la red.
+check("el instalador prefiere un Python con librerias compiladas disponibles",
+      "py -3.13 -c" in _INSTALA and "py -3.12 -c" in _INSTALA)
+
+check("y avisa cuando el Python es mas nuevo que el ultimo probado",
+      "sys.version_info[:2] <= (3, 13)" in _INSTALA
+      and "mas nuevo que el ultimo con el que se" in _INSTALA)
+
+check("si pip falla, se explican las dos causas: Python nuevo y red",
+      "TU PYTHON ES MUY NUEVO" in _INSTALA
+      and "NO HAY PASO A INTERNET" in _INSTALA
+      and "building wheel" in _INSTALA)
+
+#  ---- 10. LA APLICACION CORRE CON EL .NET QUE HAYA ----
+#  Sin RollForward, una aplicacion de net8.0 solo arranca con el motor de .NET 8 instalado:
+#  en la PC de un trabajador con solo .NET 10 compilaba y al ejecutarla pedia el 8.
+with open(os.path.join(RAIZ, "client", "src", "CadLink.App", "CadLink.App.csproj"),
+          encoding="utf-8") as f:
+    _CSPROJ = f.read()
+
+check("la aplicacion rueda hacia adelante al .NET que este instalado",
+      "<RollForward>LatestMajor</RollForward>" in _CSPROJ)
+
+#  Y el diagnostico dice lo que hacia falta para ver esto de un tiron: la version del
+#  Python del entorno y si las librerias se pueden IMPORTAR.
+with open(os.path.join(RAIZ, "diagnostico.bat"), encoding="utf-8") as f:
+    _DIAG = f.read()
+
+check("el diagnostico dice si las librerias del servidor se importan",
+      "Python del entorno virtual" in _DIAG
+      and "import fastapi, uvicorn, sqlalchemy, pydantic, jwt" in _DIAG)
+
 print()
 print("=" * 78)
 

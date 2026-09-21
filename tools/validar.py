@@ -115,6 +115,47 @@ def v2_bat() -> None:
     check("sin bloques ( ) en if/for", not con_bloque, "; ".join(con_bloque))
     check("todas las etiquetas goto existen", not faltan_labels, "; ".join(faltan_labels))
 
+    # ══════════════════════════════════════════════════════════════════
+    # Y LOS DOS DE LA ENTREGA: CRLF Y ASCII PURO
+    # ══════════════════════════════════════════════════════════════════
+    #
+    # Los dos estan escritos en .gitattributes y los dos ya rompieron un .bat antes
+    # -«Arreglar el .bat que se cerraba en un segundo»-, pero NADA los comprobaba, asi
+    # que volvieron a colarse: una tanda de ediciones hechas con Python guardo cuatro
+    # .bat con finales de linea Unix.
+    #
+    # Por que importa: cmd.exe lee un archivo por lotes por POSICION DE BYTE. Con solo
+    # LF, un goto puede reanudar la lectura en el sitio equivocado y la ventana se cierra
+    # en menos de un segundo, sin mensaje y sin llegar a ningun pause. Es imposible de
+    # diagnosticar mirando el contenido, porque el contenido esta bien.
+    #
+    # Y el ASCII, por lo mismo de siempre: la consola de Windows cambia de pagina de
+    # codigos segun la maquina, y una tilde o una comilla angular puede salir como basura
+    # o partir un mensaje justo donde estaba la explicacion del error.
+    sin_crlf = []
+    con_acentos = []
+
+    for p in archivos(".bat"):
+        crudo = open(p, "rb").read()
+
+        # Se cuentan los LF que NO vienen precedidos de CR.
+        sueltos = crudo.replace(b"\r\n", b"").count(b"\n")
+
+        if sueltos:
+            sin_crlf.append(f"{rel(p)} ({sueltos} renglon(es))")
+
+        try:
+            crudo.decode("ascii")
+        except UnicodeDecodeError as ex:
+            linea = crudo[: ex.start].count(b"\n") + 1
+            con_acentos.append(f"{rel(p)}:{linea}")
+
+    check("los .bat llevan CRLF, o cmd.exe se pierde con los goto",
+          not sin_crlf, "; ".join(sin_crlf))
+
+    check("y van en ASCII puro, sin acentos ni comillas angulares",
+          not con_acentos, "; ".join(con_acentos))
+
 
 # ======================================================================
 # 3. Usings faltantes por proyecto
