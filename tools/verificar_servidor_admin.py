@@ -184,6 +184,88 @@ check("y aguanta la cabecera ausente sin dar un 500",
 check("sin ADMIN_API_KEY configurada NO se deja pasar a nadie",
       "if not expected" in cuerpo)
 
+#  ---- 5-bis. LA HUELLA SE ACEPTA COMO LA ENSEÑA LA APLICACION ----
+#  La aplicacion MUESTRA la huella agrupada de ocho en ocho y en mayusculas
+#  -A49A4785-BA02427A-...-, que es como se lee y se dicta, mientras que el boton «Copiar
+#  huella» copia los 64 de corrido. Quien la teclea desde la pantalla manda la primera
+#  forma, y el servidor la rechazaba con un 422 que hablaba del JSON: el usuario hacia lo
+#  obvio y el error no decia que estaba mal.
+#
+#  Se prueba DE VERDAD, no por literales: se saca la funcion del propio schemas.py y se le
+#  pasan casos. Asi la comprobacion no puede quedarse verde con una normalizacion que no
+#  normaliza.
+_SCHEMAS = leer("app", "schemas.py")
+
+entorno: dict = {"re": re}
+arbol_schemas = ast.parse(_SCHEMAS)
+
+for nodo in arbol_schemas.body:
+    interesa = (
+        isinstance(nodo, ast.Assign)
+        and getattr(nodo.targets[0], "id", "") in {"_FINGERPRINT_RE", "_SEPARADORES_HUELLA"}
+    ) or (
+        isinstance(nodo, ast.FunctionDef) and nodo.name == "_normalizar_huella"
+    )
+
+    if interesa:
+        exec(compile(ast.Module([nodo], []), "<schemas>", "exec"), entorno)  # noqa: S102
+
+normaliza = entorno.get("_normalizar_huella")
+
+check("se pudo leer la normalizacion de la huella", callable(normaliza))
+
+if callable(normaliza):
+    PLANA = "a49a4785ba02427aa79b87ffe4c9f678a74c8fa7b9e72a2a8cb0ba179c0b4524"
+    AGRUPADA = ("A49A4785-BA02427A-A79B87FF-E4C9F678-"
+                "A74C8FA7-B9E72A2A-8CB0BA17-9C0B4524")
+
+    def acepta(valor: str) -> str | None:
+        try:
+            return normaliza(valor)
+        except ValueError:
+            return None
+
+    check("la huella de corrido se acepta", acepta(PLANA) == PLANA)
+
+    check("la huella COMO LA ENSEÑA LA APLICACION tambien",
+          acepta(AGRUPADA) == PLANA, f"{acepta(AGRUPADA)}")
+
+    check("y con espacios en lugar de guiones, por si se pega de un correo",
+          acepta(AGRUPADA.replace("-", " ")) == PLANA)
+
+    check("las mayusculas se bajan, que es la forma en que se guarda",
+          acepta(PLANA.upper()) == PLANA)
+
+    #  Y LO QUE NO ES UNA HUELLA SIGUE SIENDO UN ERROR. Es la otra mitad: una
+    #  normalizacion que acepte cualquier cosa deja entrar la huella de otro equipo.
+    for mala, porque in (
+        ("", "vacia"),
+        (PLANA[:-1], "un caracter de menos"),
+        (PLANA + "ab", "dos de mas"),
+        (PLANA[:-1] + "z", "un caracter que no es hexadecimal"),
+        (PLANA[:-1] + "_", "un separador que no se tolera"),
+    ):
+        check(f"se rechaza una huella con {porque}", acepta(mala) is None)
+
+    #  El mensaje tiene que hablar de la HUELLA y decir cuantos caracteres llegaron: el
+    #  «JSON decode error» de antes mandaba a mirar el sitio equivocado.
+    try:
+        normaliza(PLANA[:-1])
+        mensaje = ""
+    except ValueError as exc:
+        mensaje = str(exc)
+
+    check("y el error dice que es la huella y cuantos caracteres llegaron",
+          "huella" in mensaje.lower() and "63" in mensaje, mensaje)
+
+check("los tres validadores usan la misma normalizacion",
+      _SCHEMAS.count("return _normalizar_huella(v)") == 3,
+      f"{_SCHEMAS.count('return _normalizar_huella(v)')} de 3")
+
+check("y el script de alta acepta las dos formas igual que el servidor",
+      're.sub(r"[\\s\\-]+", "", args.fingerprint).lower()' in _REGISTRA
+      and 're.fullmatch(r"[0-9a-f]{64}", fingerprint)' in _REGISTRA)
+
 #  ---- 6. LOS ENDPOINTS DEL CLIENTE NO PIDEN CLAVE DE ADMINISTRADOR ----
 #  /v1/activate y /v1/renew los llama la aplicacion instalada. Pedirles la clave de
 #  administrador significaria repartirla con el programa, que es lo contrario de
