@@ -11,8 +11,20 @@
 
   // Direccion del servidor de licencias.
   //
-  //   Para probar en tu propia computadora:  http://localhost:8000
-  //   Para produccion, tu servidor real:     https://licencias.tuempresa.com
+  //   En la MISMA computadora que el servidor:  http://localhost:8000
+  //   En las PCs de la OFICINA:                 http://192.168.1.50:8000
+  //   Tu servidor real, en produccion:          https://licencias.tuempresa.com
+  //
+  // OJO CON localhost EN LAS PCs DE LOS TRABAJADORES: ahi localhost es SU
+  // propia maquina, no la del servidor, asi que la aplicacion buscaria un
+  // servidor de licencias dentro de la misma PC, no lo encontraria, y el
+  // equipo se quedaria con la prueba de 30 dias aunque ya lo hayas dado de
+  // alta como interno. Es la causa numero uno de "no tiene acceso".
+  //
+  // La direccion correcta te la dice el propio servidor: la imprime al
+  // arrancar 2-iniciar-servidor.bat, y tambien la saca
+  //     python scripts/mi_direccion.py
+  // en la carpeta server.
   //
   // En produccion DEBE ser https. Sin TLS, cualquiera en la red puede
   // interceptar y suplantar las respuestas del servidor de licencias.

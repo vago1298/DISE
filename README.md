@@ -359,6 +359,50 @@ curl -X POST "http://localhost:8000/admin/licenses/XXXX-XXXX-XXXX-XXXX/status?ne
   -H "X-Admin-Key: TU_ADMIN_API_KEY"
 ```
 
+### Las PCs de la oficina no ven el servidor
+
+Es el tropiezo más común, y casi siempre es una de estas dos cosas. El equipo puede estar
+dado de alta como `INTERNAL` y aun así quedarse en la prueba de 30 días: si la aplicación
+no puede **preguntar**, no hay licencia que recibir.
+
+**1. `localhost` en la PC del trabajador apunta a la PC del trabajador.**
+
+En `cadlink.config.json` de cada equipo, `servidorLicencias` tiene que ser la dirección
+del equipo **donde corre el servidor**, no `localhost`:
+
+```json
+"servidorLicencias": "http://192.168.1.50:8000",
+```
+
+La dirección exacta la imprime `2-iniciar-servidor.bat` al arrancar, y también:
+
+```bash
+cd server
+python scripts/mi_direccion.py
+```
+
+**2. El servidor tiene que escuchar en la red y el puerto tiene que estar abierto.**
+
+`2-iniciar-servidor.bat` ya arranca con `--host 0.0.0.0`, que es lo que permite que otros
+equipos entren. Si aun así no responde, es el firewall de Windows del equipo servidor. En
+una ventana de comandos **como administrador**:
+
+```bat
+netsh advfirewall firewall add rule name="CadLink licencias" dir=in action=allow protocol=TCP localport=8000
+```
+
+**Cómo saber cuál de las dos es.** Desde el navegador **de la PC del trabajador**, abre
+`http://192.168.1.50:8000/health` (con la IP de tu servidor):
+
+| Lo que pasa | Qué es |
+|---|---|
+| Responde `{"status":"ok"}` | la red está bien: lo que falta es corregir `servidorLicencias` en esa PC |
+| No carga o da tiempo de espera | firewall o `--host`: revisa los dos puntos de arriba |
+
+> Escuchar en toda la red deja los endpoints `/admin/*` al alcance de la oficina, y por eso
+> existe la `ADMIN_API_KEY`. Para exponer el servidor a **internet** hace falta además TLS:
+> ponlo detrás de un proxy inverso con HTTPS y usa `https://` en los clientes.
+
 ### D. Revocar un equipo (trabajador que se va, PC que se retira)
 
 ```bash

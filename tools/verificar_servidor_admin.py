@@ -298,6 +298,43 @@ check("y estan los tres de siempre: salud, activar y renovar",
 check("la portada de /docs explica el boton Authorize",
       "**Authorize**" in _MAIN and "ADMIN_API_KEY" in _MAIN)
 
+#  ---- 7. LA OFICINA TIENE QUE PODER ALCANZAR EL SERVIDOR ----
+#  Es el defecto que se reporto: la huella dada de alta, el equipo como INTERNAL, y la PC
+#  del trabajador «sin acceso». Uvicorn sin --host escucha SOLO en 127.0.0.1, asi que el
+#  servidor funcionaba perfectamente en la computadora del dueño y ninguna otra lo
+#  alcanzaba. Y desde la PC del trabajador, localhost es SU propia maquina.
+with open(os.path.join(RAIZ, "2-iniciar-servidor.bat"), encoding="utf-8") as f:
+    _BAT = f.read()
+
+check("el servidor escucha en toda la red, no solo en esta computadora",
+      "--host 0.0.0.0" in _BAT,
+      "sin --host, uvicorn solo atiende a 127.0.0.1")
+
+check("y dice al arrancar que direccion poner en las PCs de la oficina",
+      "mi_direccion.py" in _BAT
+      and os.path.exists(os.path.join(SERVER, "scripts", "mi_direccion.py")))
+
+_DIR = leer("scripts", "mi_direccion.py")
+
+check("esa ayuda da la URL ya armada para el archivo de configuracion",
+      '"servidorLicencias"' in _DIR and "/health" in _DIR)
+
+check("y dice como abrir el puerto en el firewall, que es el otro tropiezo",
+      "netsh advfirewall" in _DIR and "localport=" in _DIR)
+
+#  La IP se averigua con el socket UDP, que acierta con varias tarjetas -cable, WiFi,
+#  VPN- donde gethostname() devuelve cualquiera.
+check("la direccion se averigua por la tarjeta de salida, no por el nombre del equipo",
+      "SOCK_DGRAM" in _DIR and "10.255.255.255" in _DIR)
+
+#  Y el archivo de configuracion del cliente avisa de lo de localhost.
+with open(os.path.join(RAIZ, "client", "src", "CadLink.App", "cadlink.config.json"),
+          encoding="utf-8") as f:
+    _CFG = f.read()
+
+check("la configuracion del cliente avisa de que localhost es la propia PC",
+      "OJO CON localhost" in _CFG and "192.168" in _CFG)
+
 print()
 print("=" * 78)
 
