@@ -3742,6 +3742,256 @@ check("sin cortes el ancho sale del encuadre de la planta",
       ancho_sin_cortes > 50 and paso_nuevo(ancho_sin_cortes) > ancho_sin_cortes)
 
 
+# ==========================================================================
+#  EL RAYADO DE LA CADENA O LA TRABE: POR FRANJAS
+# ==========================================================================
+#  Reportado por el usuario: «aplica el hatch a la cadena o trabe». Y no era el patron
+#  ni la capa: era que NO SE RAYABA NADA.
+#
+#  El camino normal raya el contorno del concreto con el de la placa como ISLA, y para
+#  eso la placa tiene que caber ENTERA dentro del concreto. La condicion pedia que el
+#  concreto fuera mayor en las DOS direcciones, y una cadena de 25 x 15 bajo una placa de
+#  18 x 15 sobresale en X pero en Y mide LO MISMO: no cabe, y salia en blanco.
+#
+#  Con la isla tampoco se podria: un contorno interior que TOCA el exterior no delimita un
+#  area. Asi que la parte visible se parte en BANDAS -izquierda, derecha, abajo, arriba- y
+#  se raya cada una sin islas. Espejo de FranjasDeConcreto.Alrededor.
+print("\n" + "=" * 78)
+print("EL RAYADO DEL CONCRETO QUE SOBRESALE, POR FRANJAS")
+print("=" * 78)
+
+
+def franjas(cx1, cy1, cx2, cy2, px1, py1, px2, py2, tol=1e-6):
+    """Espejo de FranjasDeConcreto.Alrededor: devuelve [(x1,y1,x2,y2), ...]."""
+    salida = []
+
+    if cx2 - cx1 <= tol or cy2 - cy1 <= tol:
+        return salida
+
+    solapan = (px2 > cx1 + tol and px1 < cx2 - tol
+               and py2 > cy1 + tol and py1 < cy2 - tol)
+
+    if not solapan:
+        return [(cx1, cy1, cx2, cy2)]
+
+    x_izq = max(cx1, min(px1, cx2))
+    x_der = min(cx2, max(px2, cx1))
+
+    if x_izq - cx1 > tol:
+        salida.append((cx1, cy1, x_izq, cy2))
+
+    if cx2 - x_der > tol:
+        salida.append((x_der, cy1, cx2, cy2))
+
+    y_abajo = max(cy1, min(py1, cy2))
+    y_arriba = min(cy2, max(py2, cy1))
+
+    if x_der - x_izq > tol:
+        if y_abajo - cy1 > tol:
+            salida.append((x_izq, cy1, x_der, y_abajo))
+
+        if cy2 - y_arriba > tol:
+            salida.append((x_izq, y_arriba, x_der, cy2))
+
+    return salida
+
+
+def area(r):
+    return (r[2] - r[0]) * (r[3] - r[1])
+
+
+def se_solapan(a, b):
+    return (min(a[2], b[2]) - max(a[0], b[0]) > 1e-9
+            and min(a[3], b[3]) - max(a[1], b[1]) > 1e-9)
+
+
+def visible(concreto, placa, bandas):
+    """El area de las bandas tiene que ser la del concreto menos lo que tapa la placa."""
+    ancho = max(0.0, min(concreto[2], placa[2]) - max(concreto[0], placa[0]))
+    alto = max(0.0, min(concreto[3], placa[3]) - max(concreto[1], placa[1]))
+
+    esperada = area(concreto) - ancho * alto
+
+    return abs(sum(area(b) for b in bandas) - esperada) < 1e-9
+
+
+#  ---- EL CASO DEL USUARIO: cadena de 25 x 15 bajo una placa de 18 x 15 ----
+#  Centradas, asi que en Y coinciden exactamente y en X sobresale 3.5 por lado.
+cad = (0.0, 0.0, 25.0, 15.0)
+pla = (3.5, 0.0, 21.5, 15.0)
+b_usuario = franjas(*cad, *pla)
+
+check("la cadena que coincide en Y con la placa SI se raya",
+      len(b_usuario) > 0, "no se devolvio ninguna franja")
+
+check("y son las dos bandas laterales, una por lado",
+      len(b_usuario) == 2, f"{len(b_usuario)} franja(s)")
+
+check("cada banda mide 3.5 cm de ancho por los 15 de alto",
+      all(abs((b[2] - b[0]) - 3.5) < 1e-9 and abs((b[3] - b[1]) - 15.0) < 1e-9
+          for b in b_usuario), str(b_usuario))
+
+check("el area rayada es exactamente la que se ve",
+      visible(cad, pla, b_usuario))
+
+check("y las bandas no se pisan entre si",
+      not any(se_solapan(b_usuario[i], b_usuario[j])
+              for i in range(len(b_usuario)) for j in range(i + 1, len(b_usuario))))
+
+#  ---- EL CASO NORMAL: el dado sobresale por los cuatro lados ----
+#  Este NO pasa por aqui -sigue con la isla, que es una sola entidad-, pero la particion
+#  tiene que dar lo correcto igual: es la red que sostiene el caso raro.
+dado = (0.0, 0.0, 50.0, 50.0)
+placa = (17.5, 17.5, 32.5, 32.5)
+b4 = franjas(*dado, *placa)
+
+check("con el dado sobresaliendo por los cuatro lados salen cuatro bandas",
+      len(b4) == 4, f"{len(b4)}")
+
+check("y tambien cubren justo lo que se ve",
+      visible(dado, placa, b4))
+
+check("sin pisarse",
+      not any(se_solapan(b4[i], b4[j])
+              for i in range(len(b4)) for j in range(i + 1, len(b4))))
+
+#  ---- SOBRESALE SOLO EN Y: una trabe mas alta que la placa y del mismo ancho ----
+trabe = (0.0, 0.0, 18.0, 30.0)
+pl2 = (0.0, 7.5, 18.0, 22.5)
+b_y = franjas(*trabe, *pl2)
+
+check("una trabe que sobresale solo en Y da las dos bandas de arriba y abajo",
+      len(b_y) == 2 and visible(trabe, pl2, b_y), str(b_y))
+
+#  ---- LA PLACA TAPA TODO EL CONCRETO: no hay nada que rayar ----
+check("si la placa tapa el concreto entero no se raya nada",
+      franjas(5.0, 5.0, 15.0, 15.0, 0.0, 0.0, 20.0, 20.0) == [])
+
+#  ---- LA PLACA FUERA DEL CONCRETO: se raya el concreto completo, de una pieza ----
+fuera = franjas(0.0, 0.0, 10.0, 10.0, 20.0, 20.0, 30.0, 30.0)
+
+check("con la placa fuera del concreto se raya el concreto entero",
+      len(fuera) == 1 and abs(area(fuera[0]) - 100.0) < 1e-9, str(fuera))
+
+#  ---- SIN CONCRETO: nada ----
+check("sin concreto no hay franjas",
+      franjas(0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0) == [])
+
+#  ---- UNA BANDA MICROSCOPICA NO SE DIBUJA ----
+#  Con la tolerancia del dibujante -medio milimetro a escala 1- una cadena 1 mm mas ancha
+#  que la placa no da hatch: no se veria y si daria un contorno degenerado.
+#  Una cadena 4 centesimas mas ancha que la placa, con la tolerancia en 5 centesimas: no
+#  se raya. Y no se escribe la prueba EN el limite exacto -18.05 contra 0.05- porque ahi
+#  manda el error de coma flotante y la prueba diria una cosa u otra por un bit.
+b_mini = franjas(0.0, 0.0, 18.04, 15.0, 0.02, 0.0, 18.02, 15.0, tol=0.05)
+
+check("una banda de menos de medio milimetro no se raya",
+      len(b_mini) == 0, str(b_mini))
+
+
+# ==========================================================================
+#  LA MEDIDA DEL DETALLE CUENTA LOS TEXTOS
+# ==========================================================================
+#  El usuario volvio a reportar el encimado DESPUES del primer arreglo, y con razon: la
+#  primera medida conto la geometria -planta y cortes- y el detalle sigue a la derecha con
+#  los LEADERS de las anclas, cuyo texto «AGUJERO DE ANCLA O7/16"» es mas ancho que la
+#  propia planta. El rotulo, centrado, se sale por los dos lados.
+#
+#  Ahora la envolvente la llenan los propios helpers de dibujo, y el ancho de un texto se
+#  estima con AnchoDeTexto: 0.75 de la altura por caracter, generoso a proposito.
+print("\n" + "=" * 78)
+print("LA MEDIDA DEL DETALLE CUENTA LOS TEXTOS, NO SOLO LA GEOMETRIA")
+print("=" * 78)
+
+import re as _re
+
+
+#  EL FACTOR SE LEE DEL C#, no se copia aqui. Es el 0.75 de «0.75 de la altura por
+#  caracter», y copiado, esta prueba seguiria dando por bueno un factor que en el programa
+#  se hubiera quedado corto: el espejo diria que el texto es ancho y el dibujante lo
+#  mediria estrecho, que es exactamente el fallo que se esta persiguiendo.
+_FACTOR = float(_re.search(r"return mayor \* ([0-9.]+) \* altura;",
+                           _DRW).group(1))
+
+check("el factor del ancho de texto se pudo leer del codigo",
+      _FACTOR > 0, "no se encontro «return mayor * ... * altura;»")
+
+
+def ancho_de_texto(texto, altura):
+    """Espejo de PlacaBaseDrawer.AnchoDeTexto, con SU factor."""
+    if not texto or altura <= 0:
+        return 0.0
+
+    limpio = _re.sub(r"\\p[^;]*;", "", texto)
+    mayor = max(len(r.replace("\\", "")) for r in limpio.split("\\P"))
+
+    return mayor * _FACTOR * altura
+
+
+H = 0.016      # PlacaBaseCapas.AlturaTextoDwg
+
+check("los codigos de alineacion del MTEXT no cuentan como texto",
+      abs(ancho_de_texto("\\pxqc;ABC", H) - ancho_de_texto("ABC", H)) < 1e-12)
+
+check("de un MTEXT de varios renglones manda el mas largo",
+      abs(ancho_de_texto("AB\\PABCDE", H) - ancho_de_texto("ABCDE", H)) < 1e-12)
+
+check("y las barras de escape tampoco ocupan",
+      abs(ancho_de_texto("\\\\U+00D8 3/8", H) - ancho_de_texto("U+00D8 3/8", H)) < 1e-12)
+
+#  EL TEXTO DEL LEADER ES MAS ANCHO QUE LA PLANTA, que es justo lo que se quedaba fuera.
+leader = 'AGUJERO DE ANCLA \u00D87/16"'
+ancho_leader = ancho_de_texto(leader, H)
+
+#  La planta del caso de la captura: placa de 18 y cadena de 25, en unidades de dibujo.
+#
+#  LA ESCALA ES 0.01: MainWindow.EscalaDeDibujo, «cuantas unidades de dibujo mide un
+#  centimetro», o sea que el dibujo va en METROS. Y la altura de texto es ABSOLUTA -0.016
+#  unidades, PlacaBaseCapas.AlturaTextoDwg-, no proporcional a la escala. De ahi sale la
+#  magnitud del problema: un texto de 23 caracteres mide 0.276 unidades y la planta entera
+#  de esta placa mide 0.25. El texto de un leader es MAS ANCHO que el dibujo al que apunta.
+ESC = 0.01
+ancho_planta = 25.0 * ESC
+
+check("el texto de un leader de ancla es mas ancho que la planta del detalle",
+      ancho_leader > ancho_planta,
+      f"texto {ancho_leader:.3f} contra planta {ancho_planta:.3f}")
+
+#  Y EL ROTULO SE SALE POR LOS DOS LADOS: va centrado bajo la planta.
+rotulo = 'COLUMNA HSS - 4" x 3" x 3/16"'
+media = ancho_de_texto(rotulo, H) / 2
+
+check("y el rotulo se sale de la planta por los dos lados",
+      media > ancho_planta / 2,
+      f"media linea {media:.3f} contra media planta {ancho_planta / 2:.3f}")
+
+#  LO QUE ESTO CAMBIA EN EL REPARTO: con los textos contados, el detalle mide bastante mas
+#  que su geometria, y el paso tiene que salir de ahi.
+izq_g, der_g, ancho_geom = detalle(18, 15, 25, 15, escala=ESC)
+
+#  El leader arranca a 6 alturas de texto del canto derecho -LeadersDeAnclas- y de ahi se
+#  extiende lo que mida su texto.
+der_con_texto = der_g + max(6.0 * H, 5.0 * ESC) + ancho_leader
+
+check("con los textos, el canto derecho del detalle queda mas alla de la geometria",
+      der_con_texto > der_g,
+      f"{der_con_texto:.3f} contra {der_g:.3f}")
+
+check("y el paso viejo -y el primero que se hizo- no llegaba a cubrirlo",
+      paso_nuevo(ancho_geom, ESC) + izq_g < der_con_texto,
+      "medir solo la geometria dejaba el texto del leader encima del detalle siguiente")
+
+#  Con la envolvente de verdad -que es lo que ahora calcula el dibujante- si.
+ancho_real = der_con_texto - izq_g
+
+check("midiendo la envolvente completa, la siguiente placa ya no se encima",
+      paso_nuevo(ancho_real, ESC) + izq_g > der_con_texto)
+
+check("y siguen quedando los 4 cm de separacion pedidos",
+      abs((paso_nuevo(ancho_real, ESC) + izq_g) - der_con_texto
+          - SEP_DETALLES_CM * ESC) < 1e-9)
+
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

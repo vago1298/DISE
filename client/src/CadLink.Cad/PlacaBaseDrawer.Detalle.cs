@@ -409,6 +409,12 @@ public sealed partial class PlacaBaseDrawer
             return;
         }
 
+        // Las cotas también cuentan para la envolvente. Su número va centrado sobre la línea, así
+        // que en una cota corta sobresale: se le dan tres caracteres de margen, que es lo que mide
+        // un «25.00» de más a cada lado en el peor caso.
+        Apuntar(x1, x2);
+        Apuntar(((x1 + x2) / 2) - (3 * _hTxt), ((x1 + x2) / 2) + (3 * _hTxt));
+
         try
         {
             AcadConnection.Retry(() =>
@@ -431,6 +437,12 @@ public sealed partial class PlacaBaseDrawer
         {
             return;
         }
+
+        // La línea de cota está en xDim y su número va rotado 90° sobre ella, así que a lo ancho
+        // ocupa poco más que su altura. La cota vertical de la izquierda es justo la que marca el
+        // canto izquierdo del detalle.
+        Apuntar(xRef, xRef);
+        Apuntar(xDim - (2 * _hTxt), xDim + (2 * _hTxt));
 
         try
         {
@@ -997,6 +1009,20 @@ public sealed partial class PlacaBaseDrawer
         if (texto.Trim().Length == 0)
         {
             return null;
+        }
+
+        // LO QUE OCUPA EL TEXTO ENTRA EN LA ENVOLVENTE DEL DETALLE, y según su anclaje: el de un
+        // leader de la derecha crece hacia la derecha -anclaje 4, MiddleLeft-, el de la izquierda
+        // hacia la izquierda -6, MiddleRight- y el rótulo se reparte a los dos lados -2, TopCenter-.
+        // Sin esto, la medida del detalle acaba en la última línea dibujada y el texto de los
+        // leaders -que es más ancho que la planta- se queda fuera de la cuenta.
+        var ancho = AnchoDeTexto(texto, _hTxt);
+
+        switch (anclaje)
+        {
+            case 4: Apuntar(x, x + ancho); break;
+            case 6: Apuntar(x - ancho, x); break;
+            default: Apuntar(x - (ancho / 2), x + (ancho / 2)); break;
         }
 
         try

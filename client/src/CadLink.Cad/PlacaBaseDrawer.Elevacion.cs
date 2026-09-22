@@ -383,6 +383,10 @@ public sealed partial class PlacaBaseDrawer
             return null;
         }
 
+        // El rótulo de la vista —«ELEVACION "X"»— también cuenta para la envolvente: va centrado
+        // en x, y con un identificador largo sobresale del concreto por los dos lados.
+        Apuntar(x - (AnchoDeTexto(s, _hTxt) / 2), x + (AnchoDeTexto(s, _hTxt) / 2));
+
         try
         {
             return AcadConnection.Retry<object?>(() =>

@@ -6945,18 +6945,48 @@ def v18_planta_autocad() -> None:
     #
     # Ahora lo mide el que dibuja, que es el unico que sabe hasta donde llego.
     pbdelev = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs"))
+    franjas_cs = leer(ruta("client/src/CadLink.Cad/FranjasDeConcreto.cs"))
 
     check("el paso entre placas se mide con lo que de verdad ocupo el detalle",
           "public double UltimoAnchoDibujado { get; private set; }" in pbd
-          and "UltimoAnchoDibujado =" in pbd
-          and "Math.Max(xRig + o1, xDerechaDeLosCortes) - Math.Min(x0, xLef - o2)" in pbd
-          # Se pone a cero al empezar cada placa: si una se cae a medio dibujar, el que
-          # reparte no debe correrse con la medida de la otra.
+          and "UltimoAnchoDibujado = _xMaxDetalle - _xMinDetalle;" in pbd
+          # La geometria conocida se cierra al final, por si algo no hubiera pasado por los
+          # helpers que van apuntando la envolvente.
+          and "Apuntar(Math.Min(x0, xLef), Math.Max(xRig, xDerechaDeLosCortes));" in pbd
+          # Se pone a cero al empezar cada placa -y la envolvente arranca en el punto de
+          # insercion-: si una se cae a medio dibujar, el que reparte no debe correrse con la
+          # medida de la otra.
           and "UltimoAnchoDibujado = 0;" in pbd
+          and "_xMinDetalle = p.InsercionX;" in pbd
           # Y el canto derecho de los cortes sale del propio constructor de las vistas, no de
           # una segunda cuenta que pudiera discrepar.
           and "out double xDerecha)" in pbdelev
           and "var canto = v.XCentro + (v.Ancho / 2);" in pbdelev)
+
+    #  Y LA MEDIDA CUENTA LOS TEXTOS, no solo la geometria. El usuario volvio a reportar el
+    #  encimado despues del primer arreglo: la primera medida era de la planta y los cortes, y el
+    #  detalle sigue a la derecha con los LEADERS de las anclas, cuyo texto -«AGUJERO DE ANCLA
+    #  O7/16"»- mide 0.276 unidades cuando la planta entera de esa placa mide 0.25. El rotulo,
+    #  centrado, se sale por los dos lados. La altura de texto es ABSOLUTA, no proporcional a la
+    #  escala, asi que esto no es un caso raro: pasa en toda placa chica.
+    check("y la medida cuenta los textos, que son mas anchos que el dibujo",
+          "private double _xMinDetalle;" in pbd
+          and "private double _xMaxDetalle;" in pbd
+          and "private static double AnchoDeTexto(string texto, double altura)" in pbd
+          and "UltimoAnchoDibujado = _xMaxDetalle - _xMinDetalle;" in pbd
+          #  Lo apuntan los propios helpers de dibujo, asi que nada de lo que se dibuja se queda
+          #  fuera de la cuenta: geometria, cotas, leaders y rotulo.
+          and "Apuntar(cx - (diametro / 2), cx + (diametro / 2));" in pbd
+          and "case 4: Apuntar(x, x + ancho); break;" in pbd2
+          and "Apuntar(xDim - (2 * _hTxt), xDim + (2 * _hTxt));" in pbd2)
+
+    #  Y SE MIDE AL FINAL, con todo dibujado: los leaders y el rotulo van despues de los cortes,
+    #  asi que calculado antes se quedaba corto justo en lo que mas sobresale.
+    check("y se mide al final, cuando ya estan los leaders y el rotulo",
+          pbd.index("BloquesDeCortes = Elevacion(")
+          < pbd.index("UltimoAnchoDibujado = _xMaxDetalle - _xMinDetalle;")
+          and pbd.index("Rotulo(p, anclas, nAncX, nAncY,")
+          < pbd.index("UltimoAnchoDibujado = _xMaxDetalle - _xMinDetalle;"))
 
     check("y se le suma la separacion de 4 cm que se pidio",
           "public const double SeparacionEntreDetallesCm = 4.0;"
@@ -6965,6 +6995,49 @@ def v18_planta_autocad() -> None:
           and "private static double Paso(PlacaBaseCad p, double escala, double anchoDibujado)"
           in pbw
           and "dibujante.UltimoAnchoDibujado" in pbw)
+
+    # ------------------------------------------------------------------
+    # EL RAYADO DE LA CADENA O LA TRABE QUE SOBRESALE POR UN SOLO LADO
+    # ------------------------------------------------------------------
+    # Reportado por el usuario: «aplica el hatch a la cadena o trabe». No era el patron ni la
+    # capa: era que no se rayaba NADA. El camino de la ISLA necesita que la placa quepa ENTERA
+    # dentro del concreto, y una cadena de 25x15 bajo una placa de 18x15 sobresale en X pero en
+    # Y mide LO MISMO, asi que la condicion -mayor en las dos direcciones- no se cumplia.
+    #
+    # Con la isla tampoco se podria: un contorno interior que toca el exterior no delimita area.
+    # Asi que la parte visible se parte en BANDAS y se raya cada una sin islas.
+    check("la cadena o la trabe que sobresale por un lado tambien se raya",
+          "public static class FranjasDeConcreto" in franjas_cs
+          and "public static List<double[]> Alrededor(" in franjas_cs
+          and "FranjasDeConcreto.Alrededor(" in pbd
+          #  Sin islas: es lo que hace que funcione cuando los contornos se tocan.
+          and "contorno, null, PlacaBaseCapas.Concreto, PorCapa);" in pbd
+          #  Y con el MISMO patron y escala que el resto del concreto del detalle.
+          and pbd.count("PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado") >= 2)
+
+    #  EL CONTORNO AUXILIAR DE CADA BANDA SE BORRA: es para el hatch, no una linea del plano.
+    #  Dejandolo, la cadena saldria partida en cuatro rectangulos dibujados sobre su contorno.
+    #
+    #  Y BORRARLO ES SEGURO PORQUE EL HATCH NO ES ASOCIATIVO: el tercer argumento de AddHatch va
+    #  en false. Con un hatch asociativo, borrar su frontera se lleva el rayado por delante y la
+    #  cadena volveria a salir en blanco -por otro motivo-. Es el mismo camino que ya usan las
+    #  dos fronteras auxiliares del detalle.
+    check("y el contorno auxiliar de cada banda no se queda en el plano",
+          "Borrar(contorno);" in pbd
+          and "_ms.AddHatch(0, patron, false);" in pbd)
+
+    #  LAS BANDAS NO SE PISAN: las laterales se llevan toda la altura y las de arriba y abajo
+    #  solo el tramo central. Dos hatches encimados se ven el doble de densos.
+    check("y las bandas se reparten sin pisarse",
+          "if (xDer - xIzq > tolerancia)" in franjas_cs
+          #  Las LATERALES se llevan toda la altura del concreto...
+          and "salida.Add(Caja(cx1, cy1, xIzq, cy2));" in franjas_cs
+          and "salida.Add(Caja(xDer, cy1, cx2, cy2));" in franjas_cs
+          #  ...y las de arriba y abajo SOLO EL TRAMO CENTRAL, que es el que las laterales no
+          #  cogieron: de xIzq a xDer y no de cx1 a cx2. Con todo el ancho se pisarian las
+          #  cuatro esquinas, y dos hatches encimados se ven el doble de densos.
+          and "salida.Add(Caja(xIzq, cy1, xDer, yAbajo));" in franjas_cs
+          and "salida.Add(Caja(xIzq, yArriba, xDer, cy2));" in franjas_cs)
 
     # ------------------------------------------------------------------
     # LA PLANTA UN BLOQUE, CADA CORTE OTRO
