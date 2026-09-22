@@ -993,9 +993,18 @@ def v12_fidelidad() -> None:
     # La lista de elementos. COLUMNA y COLUMNA CIRCULAR llegan por CONSTANTE y no
     # como literal, porque el nombre lo comparten el desplegable, la clasificacion
     # del tipo y el rotulo: escribirlo tres veces es como se desincroniza.
-    m = re.search(r"ColElemento\.ItemsSource = new\[\](.*?)\n\s*\};", codigo, re.S)
+    #
+    # LA LISTA VIVE EN LA FILA, no en LlenarListas. Se movio al agregar el boton
+    # «Ordenar» de la hoja: ese boton agrupa las secciones por elemento y usa ESTE
+    # mismo orden, asi que con la lista escrita en dos sitios el desplegable y el
+    # orden podrian dejar de coincidir. El desplegable la ataca desde ahi.
+    m = re.search(r"ElementosEnOrden =\s*\{(.*?)\n\s*\};", filas_cs, re.S)
     lista = m.group(1) if m else ""
     check("lista de elementos localizada", m is not None)
+
+    check("y el desplegable la saca de ahi, no de una copia",
+          "ColElemento.ItemsSource = SeccionConcretoRow.ElementosEnOrden;" in codigo
+          and "ColElemento.ItemsSource = new[]" not in codigo)
 
     for fuera in ["MURO", "LOSA", "DALA", "VIGA"]:
         check(f"sin {fuera} en la lista", f'"{fuera}"' not in lista)
@@ -1004,8 +1013,8 @@ def v12_fidelidad() -> None:
     # CABEZAL y OTRO se anadieron a peticion del usuario. CABEZAL lleva alzado
     # horizontal, porque es una pieza tendida; OTRO es el recordatorio de que la casilla
     # admite un nombre escrito a mano.
-    check("la lista incluye CABEZAL", "ElementoCabezal" in codigo)
-    check("y OTRO", "ElementoOtro" in codigo)
+    check("la lista incluye CABEZAL", "ElementoCabezal" in lista)
+    check("y OTRO", "ElementoOtro" in lista)
     # El CABEZAL NO lleva alzado. Estuvo un rato devolviendo Trabe, y el usuario lo
     # quito: un cabezal se documenta con su seccion y su armado, no con un alzado de
     # estribos por zonas L/4-L/2-L/4, que es lo que dibuja el alzado de trabe.
@@ -1020,14 +1029,11 @@ def v12_fidelidad() -> None:
 
     # Y los CUATRO que van por constante: las dos columnas y los dos dados. Cada pareja es
     # la misma pieza con dos formas, y la constante es la que las mantiene juntas.
-    check("con COLUMNA en la lista",
-          "SeccionConcretoRow.ElementoColumna," in lista)
-    check("con COLUMNA CIRCULAR en la lista",
-          "SeccionConcretoRow.ElementoColumnaCircular" in lista)
-    check("con DADO en la lista",
-          "SeccionConcretoRow.ElementoDado," in lista)
-    check("con DADO CIRCULAR en la lista",
-          "SeccionConcretoRow.ElementoDadoCircular" in lista)
+    # Escritas sin el nombre de la clase delante: la lista vive DENTRO de la propia fila.
+    check("con COLUMNA en la lista", "ElementoColumna," in lista)
+    check("con COLUMNA CIRCULAR en la lista", "ElementoColumnaCircular" in lista)
+    check("con DADO en la lista", "ElementoDado," in lista)
+    check("con DADO CIRCULAR en la lista", "ElementoDadoCircular" in lista)
 
     # Las constantes tienen que valer lo que se espera: si alguien cambiara
     # ElementoColumnaCircular por otra cosa, TipoDe dejaria de reconocerla y la
@@ -6739,6 +6745,58 @@ def v18_planta_autocad() -> None:
           os.path.exists(ruta("tools", "verificar_recursos_xaml.py")))
 
     # ------------------------------------------------------------------
+    # EL BOTON ORDENAR DE LA HOJA DE SECCIONES
+    # ------------------------------------------------------------------
+    # Lo pidio el usuario: «que ponga todos los castillos juntos, todas las trabes
+    # juntas, porque a veces los agrego despues y al dibujarlos en AutoCAD estan
+    # separados». La hoja SE DIBUJA EN EL ORDEN EN QUE ESTA, asi que ordenar la hoja es
+    # ordenar el plano.
+    orden_cs = leer(ruta("client/src/CadLink.App/MainWindow.Orden.cs"))
+    ventana = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    hoja_xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    filas_orden = leer(ruta("client/src/CadLink.App/Models/StructuralRows.cs"))
+
+    check("hay verificacion ejecutable del boton Ordenar",
+          os.path.exists(ruta("tools", "verificar_orden_secciones.py")))
+
+    check("el boton Ordenar esta en la hoja y llama a su metodo",
+          'x:Name="OrdenarSeccionesButton"' in hoja_xaml
+          and 'Click="OnOrdenarSecciones"' in hoja_xaml
+          and "private void OnOrdenarSecciones(" in orden_cs)
+
+    # LAS FILAS SE MUEVEN, NO SE COPIAN. Vaciar la coleccion y volver a llenarla pierde
+    # la seleccion -y con ella la vista previa-, desengancha las grapas de cada seccion y
+    # vuelve a suscribir los avisos de cien filas para nada.
+    check("las filas se mueven, no se vacia la hoja para rellenarla",
+          "filas.Move(actual, destino);" in orden_cs
+          and ".Clear();" not in orden_cs)
+
+    # ORDENAR ES UN PASO DE DESHACER, NO CUARENTA. Cada Move avisa a la coleccion y ese
+    # aviso pasa por DatosCambiaron: sin el guardia, ordenar cuarenta filas apila treinta
+    # y cinco pasos en el historial -Ctrl+Z treinta y cinco veces- y redibuja la vista
+    # previa treinta y cinco veces.
+    check("ordenar es UN solo paso de deshacer",
+          "private bool _reordenando;" in orden_cs
+          and "_reordenando = true;" in orden_cs
+          and re.search(r"finally\s*\{[^}]*_reordenando = false;", orden_cs, re.S)
+          and orden_cs.count("DatosCambiaron();") == 1)
+
+    check("y DatosCambiaron se rinde mientras se reordena",
+          re.search(
+              r"private void DatosCambiaron\(\)\s*\{.*?if \(_reordenando\)\s*\{\s*"
+              r"return;\s*\}.*?RegistrarEnHistorial\(\);",
+              ventana, re.S) is not None)
+
+    # El ID se compara COMO LO LEE UNA PERSONA: K-2 antes de K-10. Como texto a secas,
+    # K-10 queda antes de K-2, y en una hoja de cuarenta castillos eso parece un boton
+    # roto. Y el comparador va SUELTO, no anidado en la fila: anidado, corta la lectura
+    # de las propiedades de la fila de las comprobaciones de este mismo archivo.
+    check("el ID se ordena como lo lee una persona, K-2 antes de K-10",
+          "SeccionConcretoRow.PorId" in orden_cs
+          and re.search(r"^internal sealed class ComparadorDeId", filas_orden, re.M)
+          and "return nx.CompareTo(ny);" in filas_orden)
+
+    # ------------------------------------------------------------------
     # LA SIMBOLOGIA DE SOLDADURA (pestaña Conexiones/Detalles)
     # ------------------------------------------------------------------
     # El cuadro de notas de la AWS A2.4, que hace falta en todo plano de estructura
@@ -8377,9 +8435,11 @@ def v19_circular_y_ui() -> None:
     check("DADO CIRCULAR existe como elemento",
           'public const string ElementoDadoCircular = "DADO CIRCULAR";' in filas
           and 'public const string ElementoDado = "DADO";' in filas)
+    # La lista del desplegable vive en StructuralRows.ElementosEnOrden -la leen la celda
+    # de Elemento y el boton Ordenar-, asi que los nombres van SIN cualificar. Y se pide
+    # que las dos formas esten PEGADAS: es donde se busca la redonda, junto a su cuadrada.
     check("y esta en el desplegable, junto al dado cuadrado",
-          "SeccionConcretoRow.ElementoDado," in codigo
-          and "SeccionConcretoRow.ElementoDadoCircular," in codigo)
+          "        ElementoDado,\n        ElementoDadoCircular," in filas)
     check("se dibuja REDONDO, como la columna circular",
           "|| e.Equals(ElementoDadoCircular, StringComparison.OrdinalIgnoreCase);" in filas)
     check("pero se rotula DADO, no COLUMNA",
@@ -11082,9 +11142,13 @@ def v19_circular_y_ui() -> None:
     # decia elemento e ID y la circular ademas el armado, asi que no se veian igual.
     check("la vista previa tiene una linea de titulo comun",
           "private static string TituloVistaPrevia(" in codigo)
-    check("y la usan las dos formas",
-          codigo.count("Etiqueta(TituloVistaPrevia(s)") == 2,
-          f"la usa {codigo.count('Etiqueta(TituloVistaPrevia(s)')} vez/veces")
+    # Las TRES vistas previas de la seccion -3D, rectangular y circular- y en el lienzo
+    # fijo, que es el que no se borra al redibujar. Si una se quedara sin titulo, el
+    # usuario no sabria de que pieza es lo que esta viendo.
+    check("y la usan las tres vistas previas",
+          codigo.count("Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s)") == 3,
+          f"la usan {codigo.count('Etiqueta(PreviaFijaCanvas, TituloVistaPrevia(s)')} "
+          f"vista/s")
 
     # La vista previa tambien dibuja la helice, o mostraria estribos rectos donde
     # AutoCAD va a dibujar un resorte.

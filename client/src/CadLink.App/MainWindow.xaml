@@ -474,6 +474,18 @@
                                           Margin="0,0,14,0"
                                           Content="Redibujar las que ya existen"
                                           ToolTip="Apagado: la seccion que ya es bloque se salta, como DibujarSecciones de la macro.&#10;Encendido: se rehace EN SU MISMO SITIO, como ActualizarSecciones." />
+                                <!-- ORDENAR. La hoja se dibuja EN EL ORDEN EN QUE ESTA: el
+                                     dibujante recorre las filas de arriba abajo y coloca cada
+                                     seccion al lado de la anterior, asi que una trabe
+                                     capturada al final del dia sale en el plano lejos de las
+                                     demas trabes. Esto las agrupa, y con eso ordena el plano.
+
+                                     Va ANTES de los botones de dibujar, que es el orden en que
+                                     se usan: se ordena y despues se dibuja. -->
+                                <Button x:Name="OrdenarSeccionesButton" Content="Ordenar"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="OnOrdenarSecciones"
+                                        ToolTip="Agrupa las secciones por elemento -todos los castillos juntos, todas las trabes juntas- y dentro de cada grupo las pone en orden de ID.&#10;El plano se dibuja en el orden de la hoja, asi que esto ordena tambien el dibujo.&#10;Se deshace con Ctrl+Z." />
                                 <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
                                         Click="OnValidate" />
                                 <Button x:Name="AlzadosButton" Content="Generar alzados"

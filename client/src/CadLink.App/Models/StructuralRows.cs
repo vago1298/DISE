@@ -720,6 +720,101 @@ public sealed class SeccionConcretoRow : Row
     /// </remarks>
     public const string ElementoOtro = "OTRO";
 
+    // ==================================================================
+    //  LOS ELEMENTOS, EN SU ORDEN
+    // ==================================================================
+
+    /// <summary>
+    /// Los elementos del desplegable, <b>en el orden en que se ofrecen</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Estaba escrito dentro de <c>MainWindow.LlenarListas</c>, y ahora vive aquí porque lo
+    /// usan DOS cosas: el desplegable de la celda y el botón <b>Ordenar</b> de la hoja. Ese
+    /// botón agrupa las secciones por elemento, y el orden que usa es <b>este mismo</b>: el
+    /// que el usuario ya ve al elegir. Con la lista escrita en dos sitios, el día que se
+    /// agregara un elemento nuevo el desplegable y el orden dejarían de coincidir.
+    /// </para>
+    /// <para>
+    /// El orden va por familias: primero lo vertical —columnas, dados, castillos—, luego lo
+    /// horizontal —trabes, contratrabes, cabezales— y al final las cadenas. Las dos variantes
+    /// de una misma familia van juntas, y la CIRCULAR justo después de su cuadrada, que es
+    /// donde se busca.
+    /// </para>
+    /// <para>
+    /// <b>OTRO va al final</b> a propósito: es la fila donde el usuario pone lo que quiera, y
+    /// ahí también recuerda que la casilla se puede escribir.
+    /// </para>
+    /// </remarks>
+    public static readonly string[] ElementosEnOrden =
+    {
+        // COLUMNA y DADO van juntos porque son los dos verticales, y son los dos que llevan
+        // alzado vertical. La CIRCULAR va justo después de su cuadrada: es donde se elige la
+        // FORMA, y en el plano las dos se rotulan igual. Ver ElementoRotulo.
+        ElementoColumna,
+        ElementoColumnaCircular,
+        ElementoDado,
+        ElementoDadoCircular,
+        "CASTILLO",
+        "TRABE",
+        "CONTRATRABE",
+        ElementoCabezal,
+
+        // Las TRES cadenas, juntas: el dibujante ya las conoce y tiene reglas propias para la
+        // intermedia en el corte.
+        "CADENA DE CERRAMIENTO",
+        "CADENA DE DESPLANTE",
+        "CADENA INTERMEDIA",
+        ElementoOtro,
+    };
+
+    /// <summary>
+    /// Qué lugar le toca a un elemento al ordenar la hoja.
+    /// </summary>
+    /// <remarks>
+    /// El de <see cref="ElementosEnOrden"/>. Un nombre escrito a mano —que no está en la
+    /// lista— va <b>después de todos</b> los conocidos, y entre ellos se ordenan alfabéticamente
+    /// en <c>MainWindow</c>: así también quedan agrupados, que es de lo que se trata, sin
+    /// colarse en medio de las familias del plano.
+    /// </remarks>
+    public static int OrdenDeElemento(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim();
+
+        for (var i = 0; i < ElementosEnOrden.Length; i++)
+        {
+            if (string.Equals(e, ElementosEnOrden[i], StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return ElementosEnOrden.Length;
+    }
+
+    /// <summary>
+    /// Compara dos ID de sección como los lee una persona: <c>K-2</c> antes de <c>K-10</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Un ID es un prefijo y un número —<c>K-1</c>, <c>CT-12</c>—, así que comparándolos como
+    /// texto a secas <b>K-10 queda antes de K-2</b>, porque el «1» es menor que el «2». En una
+    /// lista de cuarenta castillos eso se ve enseguida y parece que el botón de ordenar no
+    /// funciona.
+    /// </para>
+    /// <para>
+    /// Los que <b>no</b> siguen la convención se comparan como texto, y los <b>vacíos van al
+    /// final</b> de su grupo: son las filas a medio capturar, y es donde se buscan.
+    /// </para>
+    /// <para>
+    /// Quien hace la comparación es <see cref="ComparadorDeId"/>, y está <b>al final de este
+    /// archivo</b> y no anidado aquí: las comprobaciones de <c>tools/validar.py</c> leen las
+    /// propiedades de una fila desde su <c>class</c> hasta la siguiente, y una clase anidada
+    /// les cortaba la lectura a media fila.
+    /// </para>
+    /// </remarks>
+    public static readonly IComparer<string> PorId = new ComparadorDeId();
+
     /// <summary>
     /// Las separaciones de estribos que se usan a diario, para el desplegable.
     /// </summary>
@@ -1513,5 +1608,91 @@ public sealed class DatosProyecto
         });
 
         return d;
+    }
+}
+
+
+/// <summary>
+/// Compara dos ID de sección como los lee una persona: <c>K-2</c> antes de <c>K-10</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Un ID es un prefijo y un número —<c>K-1</c>, <c>CT-12</c>—, así que comparándolos como texto
+/// a secas <b>K-10 queda antes de K-2</b>, porque el «1» es menor que el «2». En una lista de
+/// cuarenta castillos eso se ve enseguida y parece que el botón <b>Ordenar</b> no funciona.
+/// </para>
+/// <para>
+/// Se llega a él por <see cref="SeccionConcretoRow.PorId"/>, que es la única instancia: no
+/// guarda nada, así que una sola sirve para toda la aplicación.
+/// </para>
+/// <para>
+/// Es una clase <b>suelta</b>, no anidada en <see cref="SeccionConcretoRow"/>, porque las
+/// comprobaciones de <c>tools/validar.py</c> leen las propiedades de una fila desde su
+/// <c>class</c> hasta la siguiente que aparece en el archivo, y una clase anidada les cortaba
+/// esa lectura a media fila.
+/// </para>
+/// </remarks>
+internal sealed class ComparadorDeId : IComparer<string>
+{
+    public int Compare(string? a, string? b)
+    {
+        var x = (a ?? string.Empty).Trim();
+        var y = (b ?? string.Empty).Trim();
+
+        // Los vacíos, al final. Y dos vacíos empatan, que es lo que deja el orden de captura
+        // entre ellos: OrderBy es estable.
+        if (x.Length == 0 || y.Length == 0)
+        {
+            return x.Length == y.Length ? 0 : (x.Length == 0 ? 1 : -1);
+        }
+
+        var (px, nx, rx) = Partir(x);
+        var (py, ny, ry) = Partir(y);
+
+        var porPrefijo = string.Compare(px, py, StringComparison.OrdinalIgnoreCase);
+
+        if (porPrefijo != 0)
+        {
+            return porPrefijo;
+        }
+
+        if (nx != ny)
+        {
+            return nx.CompareTo(ny);
+        }
+
+        return string.Compare(rx, ry, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Parte «CT-12A» en «CT-», 12 y «A».</summary>
+    /// <remarks>
+    /// Sin número reconocible devuelve <c>-1</c>, que lo pone antes que cualquier numerado del
+    /// mismo prefijo: un «K-» a secas es una fila sin terminar.
+    /// </remarks>
+    private static (string Prefijo, long Numero, string Resto) Partir(string id)
+    {
+        var i = 0;
+
+        while (i < id.Length && !char.IsDigit(id[i]))
+        {
+            i++;
+        }
+
+        var prefijo = id[..i];
+        var j = i;
+
+        while (j < id.Length && char.IsDigit(id[j]))
+        {
+            j++;
+        }
+
+        if (j == i)
+        {
+            return (prefijo, -1, string.Empty);
+        }
+
+        return long.TryParse(id[i..j], out var n)
+            ? (prefijo, n, id[j..])
+            : (prefijo, -1, id[i..]);
     }
 }

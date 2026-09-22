@@ -162,33 +162,12 @@ public partial class MainWindow : Window
         var opcionales = new List<string> { string.Empty };
         opcionales.AddRange(diametros);
 
-        ColElemento.ItemsSource = new[]
-        {
-            // COLUMNA y DADO van juntos porque son los dos verticales, y son los
-            // dos que llevan alzado vertical.
-            //
-            // COLUMNA CIRCULAR va justo despues de COLUMNA: es donde se elige la
-            // FORMA. En el plano las dos se rotulan «COLUMNA», ver
-            // SeccionConcretoRow.ElementoRotulo.
-            SeccionConcretoRow.ElementoColumna,
-            SeccionConcretoRow.ElementoColumnaCircular,
-            // Y los dos dados, con la misma idea: DADO CIRCULAR va justo despues de
-            // DADO porque es donde se elige la FORMA. Los dos se rotulan «DADO».
-            SeccionConcretoRow.ElementoDado,
-            SeccionConcretoRow.ElementoDadoCircular,
-            "CASTILLO", "TRABE", "CONTRATRABE",
-            SeccionConcretoRow.ElementoCabezal,
-            // Las TRES cadenas. La INTERMEDIA va con las otras dos porque es una cadena
-            // mas: el dibujante ya la conoce -la reconoce por las notas de la propiedad y
-            // tiene reglas propias para ella en el corte-, pero faltaba en la lista de la
-            // tabla, asi que habia que teclearla a mano.
-            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE", "CADENA INTERMEDIA",
-
-            // OTRO va AL FINAL, y es un recordatorio de que la casilla se puede
-            // escribir: el combo es editable, asi que se puede teclear cualquier nombre
-            // y ese es el que sale en el rotulo. Ver SeccionConcretoRow.ElementoOtro.
-            SeccionConcretoRow.ElementoOtro
-        };
+        // LA LISTA VIVE EN LA FILA, no aqui. La usan el desplegable y el boton «Ordenar»
+        // de la hoja -que agrupa las secciones por elemento y en ESE mismo orden-, asi que
+        // escrita en dos sitios el dia que se agregue un elemento el desplegable y el orden
+        // dejarian de coincidir. Ver SeccionConcretoRow.ElementosEnOrden, donde esta tambien
+        // el porque del orden.
+        ColElemento.ItemsSource = SeccionConcretoRow.ElementosEnOrden;
 
         ColEstribo.ItemsSource = diametros;
 
@@ -316,6 +295,16 @@ public partial class MainWindow : Window
 
     private void DatosCambiaron()
     {
+        // MIENTRAS SE REORDENA LA HOJA, NADA. El botón «Ordenar» mueve las filas una por una y
+        // cada movimiento avisa a la colección, pero para el usuario eso es UN solo cambio: sin
+        // este guardia, ordenar cuarenta secciones apilaría treinta y cinco pasos de deshacer y
+        // redibujaría la vista previa treinta y cinco veces. El propio botón llama a este método
+        // una vez al terminar. Ver MainWindow.Orden.cs.
+        if (_reordenando)
+        {
+            return;
+        }
+
         RegistrarEnHistorial();
 
         // Las listas de la hoja de zapatas —los dados y las columnas— salen de ESTA hoja,
