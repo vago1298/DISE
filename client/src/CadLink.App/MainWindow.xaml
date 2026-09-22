@@ -2482,7 +2482,7 @@
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding DiametrosAncla}"
                                                   Text="{Binding DiamAnclaX, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="En pulgadas, con fraccion. Es el diametro de las anclas de las hileras horizontales." />
+                                                  ToolTip="En pulgadas, con fraccion. Es el diametro de las anclas de las hileras horizontales.&#10;La lista son los 19 renglones del cuadro de libramientos, mas el de 3/8&quot;.&#10;El 3/8&quot; NO esta en el cuadro -empieza en 1/2&quot;-, asi que se libra con los numeros del 1/2&quot;: J=40, K=22 y L=23 mm. Se le exige mas de lo que necesita, no menos." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2503,7 +2503,7 @@
                                                   VerticalContentAlignment="Center"
                                                   ItemsSource="{Binding DiametrosAncla}"
                                                   Text="{Binding DiamAnclaY, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="En pulgadas, con fraccion. Es el diametro de las anclas de las hileras verticales." />
+                                                  ToolTip="En pulgadas, con fraccion. Es el diametro de las anclas de las hileras verticales.&#10;La lista son los 19 renglones del cuadro de libramientos, mas el de 3/8&quot;.&#10;El 3/8&quot; NO esta en el cuadro -empieza en 1/2&quot;-, asi que se libra con los numeros del 1/2&quot;: J=40, K=22 y L=23 mm. Se le exige mas de lo que necesita, no menos." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>

@@ -193,20 +193,35 @@ public sealed class PlacaBaseRow : Row
     public string[] EspesoresSoldadura => _espesoresSoldadura;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════
-    //  LOS DIECINUEVE DIÁMETROS DEL CUADRO, en el mismo orden y con su equivalente en mm.
+    //  LOS DIECINUEVE DIÁMETROS DEL CUADRO —más el de 3/8"—, en orden y con su equivalente
+    //  en mm.
     //
-    //  Son exactamente los renglones del cuadro Hylsa ES-03-001 del que salen J, K y L. Antes
-    //  la lista tenía OCHO, y le faltaban los once de arriba: un ancla de 2" había que
-    //  teclearla a mano. Y peor, faltaba justo el tramo donde el cuadro se pone exigente —una
-    //  de 4" pide 300 mm entre anclas— así que lo que no estaba a un clic era lo que más
-    //  cuidado necesita.
+    //  Del 1/2" para arriba son exactamente los renglones del cuadro Hylsa ES-03-001 del que
+    //  salen J, K y L. Antes la lista tenía OCHO, y le faltaban los once de arriba: un ancla
+    //  de 2" había que teclearla a mano. Y peor, faltaba justo el tramo donde el cuadro se
+    //  pone exigente —una de 4" pide 300 mm entre anclas— así que lo que no estaba a un clic
+    //  era lo que más cuidado necesita.
     //
-    //  Que la lista y el cuadro coincidan NO es decorativo: si aquí hubiera un diámetro que el
-    //  cuadro no tiene, sus libramientos se resolverían por el renglón inmediato superior sin
-    //  que nada lo dijera. Hay una comprobación que lo cotela renglón por renglón.
+    //  ─── EL 3/8" NO ESTÁ EN EL CUADRO, Y ESTÁ AQUÍ A PROPÓSITO ──────────────────────────
+    //  Lo pidió el usuario, y es un ancla que se usa: placas base ligeras de marquesina, de
+    //  poste, de equipo. Pero el cuadro EMPIEZA en 13 mm —1/2"— y no tiene renglón para los
+    //  9.53 mm del 3/8".
+    //
+    //  Y no se le inventa uno. Lo que hacen las tres tablas es el criterio del propio
+    //  estándar: un diámetro que no tiene renglón se resuelve por el INMEDIATO SUPERIOR, y
+    //  por debajo del primero el inmediato superior es el primero. O sea que un ancla de
+    //  3/8" se libra con los números del 1/2" —J=40, K=22, L=23 mm—, que es EXIGIRLE MÁS de
+    //  lo que necesitaría, nunca menos: el plano cumple de sobra. Inventar el renglón que
+    //  falta sería lo contrario: aflojarlo con números que el estándar no firma.
+    //
+    //  La regla que sigue en pie —y que la comprobación vigila— es que aquí no entre un
+    //  diámetro que caiga ENTRE dos renglones del cuadro: ese sí engaña, porque el usuario
+    //  leería la fila de su ancla y estaría leyendo la de otra sin que nada se lo diga. Por
+    //  debajo del primer renglón no hay ambigüedad posible, y el globo de la celda lo dice.
     // ═══════════════════════════════════════════════════════════════════════════════════════
     private static readonly string[] _diametrosAncla =
     {
+        "3/8",      // 10 mm - fuera del cuadro: se libra con el renglon de media pulgada
         "1/2",      // 13 mm
         "5/8",      // 16 mm
         "3/4",      // 19 mm

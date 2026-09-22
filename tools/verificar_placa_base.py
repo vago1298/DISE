@@ -746,9 +746,12 @@ print("\n" + "=" * 78)
 print("EL AGUJERO AUTOMATICO")
 print("=" * 78)
 
-#  Los ocho diametros usuales, con su agujero. Todos caen en dieciseisavos exactos,
-#  que es la razon de probar 16 antes que nada.
+#  Los diametros usuales, con su agujero. Todos caen en dieciseisavos exactos, que es la
+#  razon de probar 16 antes que nada. El 3/8" es el mas chico de la lista y su agujero,
+#  7/16", es el que la hoja escribe sola en la columna «Ø agujero»: la holgura es la
+#  misma 1/16" que en los demas, sin casos especiales por ser el mas pequeño.
 esperados = {
+    "3/8":   "7/16",
     "1/2":   "9/16",
     "5/8":   "11/16",
     "3/4":   "13/16",
@@ -1561,33 +1564,93 @@ with open(_fuente_fila, encoding="utf-8") as _f:
 _ini = _cs.index("private static readonly string[] _diametrosAncla")
 _fin = _cs.index("};", _ini)
 
-DIAMETROS_CELDA = re.findall(r'"([^"]+)"', _cs[_ini:_fin])
+#  Los comentarios se quitan ANTES de buscar las comillas. Un «// ... de 1/2" ...» al
+#  final de un renglon abre una comilla que no cierra hasta el renglon siguiente, y
+#  entonces el trozo de comentario entra en la lista como si fuera un diametro: paso al
+#  documentar el 3/8", y las comprobaciones de aqui empezaron a fallar todas a la vez
+#  por un motivo que no tenia nada que ver con la lista.
+_cuerpo_lista = re.sub(r"//[^\n]*", "", _cs[_ini:_fin])
+
+DIAMETROS_CELDA = re.findall(r'"([^"]+)"', _cuerpo_lista)
 
 print("\n" + "=" * 78)
 print("LA LISTA DE DIAMETROS DE ANCLA CONTRA EL CUADRO")
 print("=" * 78)
 
-check(f"la celda ofrece los {len(CUADRO)} diametros del cuadro",
-      len(DIAMETROS_CELDA) == len(CUADRO),
-      f"la celda tiene {len(DIAMETROS_CELDA)} y el cuadro {len(CUADRO)}")
+#  ─── LOS QUE QUEDAN POR DEBAJO DEL PRIMER RENGLON ───────────────────────────────
+#  El cuadro EMPIEZA en 13 mm -1/2"-. La hoja ofrece tambien el 3/8", que el usuario
+#  pidio y que se usa en placas ligeras -marquesina, poste, equipo-, y para ese no hay
+#  renglon.
+#
+#  Es el UNICO caso que se admite fuera del cuadro, y se admite porque no puede
+#  enganar: los tres switch empiezan en «<= 13», asi que un diametro menor se libra con
+#  el renglon de 1/2" -el inmediato superior, que es el criterio del propio cuadro- y se
+#  le exige MAS de lo que necesita, nunca menos.
+#
+#  Lo que sigue prohibido es un diametro que caiga ENTRE dos renglones: ese si engana,
+#  porque el usuario leeria la fila de su ancla y estaria leyendo la de otra. Por eso la
+#  regla no es una lista blanca, es esta: o esta en el cuadro, o esta por debajo del
+#  primer renglon.
+D_PRIMER_RENGLON = CUADRO[0][0]          # 13 mm
 
-#  Cada entrada de la lista tiene que caer EXACTAMENTE en su renglon: se convierte a mm
-#  y se compara contra el D del cuadro, en el mismo orden.
-descuadres = []
+en_mm = [(t, pulgadas(t) * 25.4) for t in DIAMETROS_CELDA]
+ds_cuadro = [d for d, _, _, _ in CUADRO]
 
-for i, texto in enumerate(DIAMETROS_CELDA):
-    if i >= len(CUADRO):
-        break
+del_cuadro = [t for t, mm in en_mm if int(math.floor(mm + 0.5)) in ds_cuadro]
+por_abajo = [t for t, mm in en_mm if int(math.floor(mm + 0.5)) < D_PRIMER_RENGLON]
+en_medio = [
+    f'"{t}" da {mm:.2f} mm, entre dos renglones'
+    for t, mm in en_mm
+    if int(math.floor(mm + 0.5)) not in ds_cuadro
+    and int(math.floor(mm + 0.5)) >= D_PRIMER_RENGLON
+]
 
-    mm = pulgadas(texto) * 25.4
-    d_cuadro = CUADRO[i][0]
+check(f"la celda ofrece los {len(CUADRO)} renglones del cuadro, completos",
+      len(del_cuadro) == len(CUADRO),
+      f"del cuadro ofrece {len(del_cuadro)} de {len(CUADRO)}")
 
-    # El redondeo del programa: al milimetro nominal mas cercano.
-    if int(math.floor(mm + 0.5)) != d_cuadro:
-        descuadres.append(f'"{texto}" da {mm:.2f} mm y su renglon es {d_cuadro}')
+check("y ninguno de los que ofrece cae ENTRE dos renglones del cuadro",
+      not en_medio, "; ".join(en_medio))
 
-check("y cada uno cae exactamente en su renglon del cuadro",
-      not descuadres, "; ".join(descuadres))
+check("los renglones del cuadro van en su mismo orden en la lista",
+      [int(math.floor(mm + 0.5)) for t, mm in en_mm if t in del_cuadro] == ds_cuadro,
+      "la lista no sigue el orden del cuadro")
+
+check("la lista va de menor a mayor",
+      [mm for _, mm in en_mm] == sorted(mm for _, mm in en_mm))
+
+#  EL 3/8", por su nombre: es el que se pidio.
+check('el ancla de 3/8" esta en la lista',
+      "3/8" in DIAMETROS_CELDA, f"la lista es {DIAMETROS_CELDA}")
+
+check('y es el unico que queda fuera del cuadro',
+      por_abajo == ["3/8"], f"fuera del cuadro por abajo: {por_abajo}")
+
+#  Y SUS LIBRAMIENTOS SON LOS DEL 1/2", los tres. Es lo que dice el comentario del
+#  codigo y lo que hace seguro ofrecerlo: si algun dia alguien tocara los switch y el
+#  3/8" empezara a librarse con menos, esto lo caza.
+j12, k12, l12 = CUADRO[0][1], CUADRO[0][2], CUADRO[0][3]
+mm38 = pulgadas("3/8") * 25.4
+
+check('el ancla de 3/8" se libra con los numeros del 1/2", no con menos',
+      (separacion_minima_j_mm(mm38),
+       distancia_minima_k_mm(mm38),
+       distancia_minima_l_mm(mm38)) == (j12, k12, l12),
+      f"J={separacion_minima_j_mm(mm38):.0f} K={distancia_minima_k_mm(mm38):.0f} "
+      f"L={distancia_minima_l_mm(mm38):.0f}, y el 1/2\" pide {j12}/{k12}/{l12}")
+
+#  El borde minimo en cm es el que usa la hoja y la vista previa: 22 mm = 2.2 cm.
+check('y su borde minimo en cm sale de esa misma K',
+      abs(distancia_minima_k_mm(mm38) / 10.0 - 2.2) < 1e-9,
+      f"{distancia_minima_k_mm(mm38) / 10.0:.2f} cm")
+
+#  QUE EL 3/8" NO ABLANDE AL 1/2". Los dos caen en el mismo renglon, asi que se exige
+#  que sigan pidiendo lo mismo: si alguien «hiciera sitio» al 3/8" bajando el primer
+#  renglon, el 1/2" se aflojaria con el, y ese si esta en el cuadro.
+check('agregar el 3/8" no aflojo el renglon del 1/2"',
+      (separacion_minima_j_mm(13), distancia_minima_k_mm(13),
+       distancia_minima_l_mm(13)) == (j12, k12, l12),
+      "el primer renglon del cuadro cambio de valores")
 
 #  Ninguno se puede quedar sin libramientos por caer fuera de la tabla: el ultimo
 #  renglon es 102 mm y la lista acaba en 4" = 101.6, que redondea a 102.

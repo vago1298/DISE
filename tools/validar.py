@@ -7035,23 +7035,74 @@ def v18_planta_autocad() -> None:
           and '"NO ESTA EN EL CATALOGO"' in pbr
           and 'Header="Medidas perfil"' in tab_pb)
 
-    #  ─── LA LISTA DE ANCLAS ES EL CUADRO ENTERO ─────────────────────────────────────────
+    #  ─── LA LISTA DE ANCLAS ES EL CUADRO ENTERO, MAS EL 3/8" ────────────────────────────
     #  Los DIECINUEVE diametros, los mismos renglones de los que salen J, K y L. Antes eran
     #  ocho y se cortaba en 1 1/2": justo antes del tramo donde el cuadro se pone exigente -una
     #  de 4" pide 300 mm entre anclas- asi que lo que no estaba a un clic era lo que mas cuidado
     #  necesita.
     #
-    #  Y que la lista y el cuadro coincidan no es prolijidad: un diametro que el cuadro no
-    #  tuviera resolveria sus libramientos por el renglon inmediato superior sin decirlo, o sea
-    #  que el usuario creeria leer la fila de su ancla y estaria leyendo otra. La comprobacion
-    #  de verificar_placa_base.py lo cotela renglon por renglon LEYENDO ESTE ARCHIVO, asi que no
-    #  se puede quedar vieja.
+    #  Y que la lista y el cuadro coincidan no es prolijidad: un diametro que cayera ENTRE dos
+    #  renglones resolveria sus libramientos por el inmediato superior sin decirlo, o sea que el
+    #  usuario creeria leer la fila de su ancla y estaria leyendo otra. La comprobacion de
+    #  verificar_placa_base.py lo cotela renglon por renglon LEYENDO ESTE ARCHIVO, asi que no se
+    #  puede quedar vieja.
     check("la celda de ancla ofrece los 19 diametros del cuadro",
           '"1 3/8",    // 35 mm' in pbr
           and '"1 7/8",    // 48 mm' in pbr
           and '"4"         // 102 mm' in pbr
           # Y el de 1 7/8, que es el renglon que el corrimiento habia borrado del cuadro.
           and pbr.count("// 48 mm") == 1)
+
+    #  ─── Y EL ANCLA DE 3/8", QUE EL CUADRO NO TIENE ──────────────────────────────────────
+    #  La pidio el usuario y se usa en placas ligeras -marquesina, poste, equipo-. El cuadro
+    #  EMPIEZA en 13 mm, o sea en 1/2", asi que para el 3/8" no hay renglon y NO se le inventa
+    #  uno: los tres switch empiezan en «<= 13», asi que cae en el renglon del 1/2" -el
+    #  inmediato superior, que es el criterio del propio cuadro- y se le exige MAS libramiento
+    #  del que necesitaria. Inventarle el renglon seria aflojar el plano con numeros que el
+    #  estandar no firma.
+    #
+    #  Se exige que el 10 mm vaya PRIMERO en la lista -va de menor a mayor- y que el primer
+    #  renglon del cuadro siga intacto: «hacerle sitio» bajando ese renglon aflojaria tambien
+    #  el 1/2", que si esta en el cuadro.
+    check('la celda de ancla ofrece tambien el 3/8", que el cuadro no tiene',
+          '"3/8",      // 10 mm' in pbr
+          and pbr.index('"3/8",      // 10 mm') < pbr.index('"1/2",      // 13 mm')
+          and "<= 13 => 40," in anc      # J del 1/2", intacta
+          and "<= 13 => 22," in anc      # K
+          and "<= 13 => 23," in anc)     # L
+
+    #  Y LAS TRES TABLAS SIGUEN EMPEZANDO EN 13 mm, con sus 19 renglones y en orden. Es la otra
+    #  mitad de lo mismo: el que ofrezcamos el 3/8" es seguro SOLO mientras el primer renglon
+    #  sea el del 1/2". Si alguien le «hiciera sitio» metiendo un renglon de 10 mm mas flojo, el
+    #  3/8" se libraria con menos de lo que el cuadro pide y el plano dejaria de cumplir sin que
+    #  nada lo dijera. Los topes se leen del propio codigo, asi que un renglon agregado, quitado
+    #  o movido en cualquiera de los tres switch salta aqui.
+    topes_del_cuadro = [13, 16, 19, 22, 25, 29, 32, 35, 38, 41,
+                        44, 48, 51, 57, 64, 70, 76, 89, 102]
+
+    topes = {}
+
+    for col, metodo in (("J", "SeparacionMinimaJmm"),
+                        ("K", "DistanciaMinimaKmm"),
+                        ("L", "DistanciaMinimaLmm")):
+        cuerpo = re.search(
+            rf"public static double {metodo}\(double diametroMm\)(.*?)\n    \}}", anc, re.S)
+
+        topes[col] = ([int(t) for t in re.findall(r"<=\s*(\d+)\s*=>", cuerpo.group(1))]
+                      if cuerpo else [])
+
+    descuadradas = [f"{c}: {topes[c]}" for c in ("J", "K", "L")
+                    if topes[c] != topes_del_cuadro]
+
+    check("las tres tablas siguen teniendo los 19 renglones del cuadro, y en orden",
+          not descuadradas, "; ".join(descuadradas))
+
+    #  Y queda dicho POR QUE, en el codigo y en el globo de la celda: el usuario elige el 3/8"
+    #  ahi, y es ahi donde tiene que enterarse de con que numeros se libra.
+    check('y queda dicho que el 3/8" se libra con los numeros del 1/2"',
+          "EL ANCLA DE 3/8" in anc
+          and "por debajo del primero el inmediato" in anc
+          and tab_pb.count("El 3/8&quot; NO esta en el cuadro") == 2)
 
     #  ─── LOS ELECTRODOS LLEVAN SU XX ────────────────────────────────────────────────────
     #  Es la convencion del plano: un E70 se escribe «E70XX» porque los dos ultimos digitos

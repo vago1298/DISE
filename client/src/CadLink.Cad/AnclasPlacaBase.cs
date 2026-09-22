@@ -219,6 +219,22 @@ public static class AnclasPlacaBase
     //  día aparece otra transcripción que no cuadre, cuéntense los renglones antes de tocar
     //  nada: si no son diecinueve, le falta uno.
     //  ────────────────────────────────────────────────────────────────────────────────────
+    //
+    //  ─── POR DEBAJO DEL PRIMER RENGLÓN: EL ANCLA DE 3/8" ────────────────────────────────
+    //  El cuadro EMPIEZA en 13 mm, o sea en 1/2". La hoja ofrece también anclas de 3/8"
+    //  —9.53 mm, las de una placa base ligera: marquesina, poste, equipo— y para esas no hay
+    //  renglón.
+    //
+    //  No se les inventa uno. Los tres `switch` de abajo empiezan en `<= 13`, así que
+    //  cualquier diámetro menor cae en el renglón de 1/2" y se libra con J=40, K=22 y L=23 mm.
+    //  Eso no es un descuido: es el mismo criterio que el cuadro aplica a un diámetro
+    //  intermedio —el renglón INMEDIATO SUPERIOR—, y por debajo del primero el inmediato
+    //  superior es el primero. A un ancla de 3/8" se le pide así MÁS libramiento del que
+    //  necesitaría, nunca menos, que es el lado por el que hay que equivocarse.
+    //
+    //  Inventarle un renglón sería lo contrario: aflojar el plano con números que el estándar
+    //  no firma.
+    //  ────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Columna <b>J</b>: distancia mínima <b>entre anclas</b>, centro a centro, en mm.
