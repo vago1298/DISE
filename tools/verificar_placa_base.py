@@ -3479,7 +3479,14 @@ print("LA PLACA CHICA: POR QUE EL BOTON NO DIBUJA")
 print("=" * 78)
 
 def rectangulo(xc, yc, ancho, alto):
-    """El pano de un perfil OR/PTR: un rectangulo centrado, como lo entrega el trazo."""
+    """El pano de un perfil OR, como RECTANGULO RECTO: el caso conservador.
+
+    El trazo de verdad redondea las cuatro esquinas -TuboRectangular lo dibuja con
+    RectanguloRedondeado-, y ese radio ALEJA la esquina del ancla, o sea que da algo
+    mas de holgura. Midiendo contra el rectangulo recto, lo que aqui sale que NO cumple
+    podria cumplir por poco en el programa, y lo que sale que cumple, cumple seguro.
+    Es el lado por el que conviene equivocarse en una prueba de libramientos.
+    """
     a, b = ancho / 2.0, alto / 2.0
 
     return [xc - a, yc - b, xc + a, yc - b, xc + a, yc + b, xc - a, yc + b]
