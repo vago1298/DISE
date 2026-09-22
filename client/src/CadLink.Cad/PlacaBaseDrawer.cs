@@ -61,6 +61,26 @@ public sealed partial class PlacaBaseDrawer
     /// </remarks>
     public List<string> BloquesDeCortes { get; private set; } = new();
 
+    /// <summary>
+    /// Lo que ocupó a lo ancho el último detalle, en unidades de dibujo. Cero = no se dibujó.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es para que la placa siguiente no se le encime, y lo dice <b>el que dibujó</b>: solo aquí se
+    /// sabe hasta dónde llegó el detalle, porque depende del dado, de las cotas y de si hubo uno o
+    /// dos cortes. Antes el que repartía las placas lo estimaba con la huella de la planta más 60
+    /// cm de aire, y los cortes —que arrancan justamente a 60 cm del canto— caían encima de la
+    /// planta de la siguiente.
+    /// </para>
+    /// <para>
+    /// Va desde el canto <b>izquierdo</b> de lo dibujado —las cotas verticales quedan a la
+    /// izquierda del punto de inserción— hasta el canto derecho del último corte. Contar el margen
+    /// izquierdo sobra un poco para el reparto, y sobra a propósito: es lo que deja sitio para el
+    /// margen izquierdo de la placa que viene, que tiene sus propias cotas.
+    /// </para>
+    /// </remarks>
+    public double UltimoAnchoDibujado { get; private set; }
+
     /// <param name="escala">Cuántas unidades de dibujo mide un centímetro. 0.01 = dibujo en metros.</param>
     public PlacaBaseDrawer(dynamic doc, double escala = 0.01)
     {
@@ -354,8 +374,10 @@ public sealed partial class PlacaBaseDrawer
         var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
         // Los bloques de los cortes son de ESTA placa: se vacían al empezar, o una fila que no se
-        // llegue a dibujar reportaría los cortes de la anterior.
+        // llegue a dibujar reportaría los cortes de la anterior. El ancho, por lo mismo: si esta
+        // placa se cae a medio dibujar, el que reparte no debe correrse con la medida de la otra.
         BloquesDeCortes = new List<string>();
+        UltimoAnchoDibujado = 0;
 
         var x0 = p.InsercionX;
         var y0 = p.InsercionY;
@@ -564,11 +586,19 @@ public sealed partial class PlacaBaseDrawer
         // Y con xRig ya crecido por el dado: el corte arranca 60 cm del canto derecho de lo que
         // ocupa el detalle, no de la placa. Con la placa, un dado grande se le metería encima.
         BloquesDeCortes = Elevacion(
-            p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY);
+            p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY,
+            out var xDerechaDeLosCortes);
 
         // ---------- Las cotas ----------
         var o1 = 2.0 * _hTxt;
         var o2 = o1 + (2.5 * _hTxt);
+
+        // ---------- LO QUE OCUPÓ EL DETALLE, para el reparto de la placa siguiente ----------
+        // De canto izquierdo a canto derecho de lo dibujado: a la izquierda, las cotas verticales;
+        // a la derecha, la cota del dado o el último corte, el que llegue más lejos. Se calcula
+        // aquí porque es el único sitio donde se conocen los tres.
+        UltimoAnchoDibujado =
+            Math.Max(xRig + o1, xDerechaDeLosCortes) - Math.Min(x0, xLef - o2);
 
         CadenaH(AnclasPlacaBase.ValoresUnicosX(anclas, _escala), x0 + b, y0 + h, yTop + o1);
         CotaH(x0, x0 + b, y0 + h, yTop + o2);

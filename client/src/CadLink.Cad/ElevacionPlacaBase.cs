@@ -31,6 +31,24 @@ public static class ElevacionPlacaBase
     public const double SeparacionEntreVistasCm = 20.0;
 
     /// <summary>
+    /// El aire que se deja <b>entre el detalle de una placa y el de la siguiente</b>, en cm.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario: <i>«que cuando dibuje dos o más haya separación a la derecha del otro
+    /// detalle para que no se encimen»</i>. Y se encimaban de verdad: el paso entre placas se medía
+    /// con la huella de la <b>planta</b> —la placa o el dado, el que sobresaliera— y el detalle
+    /// sigue 60 cm a la derecha con uno o dos cortes, así que los cortes de una caían sobre la
+    /// planta de la siguiente. El aire no arreglaba nada porque lo que faltaba era medir.
+    /// </para>
+    /// <para>
+    /// Ahora el paso se mide con <b>lo que de verdad ocupó el detalle</b>, cortes incluidos, y esto
+    /// es el aire que se suma a eso.
+    /// </para>
+    /// </remarks>
+    public const double SeparacionEntreDetallesCm = 4.0;
+
+    /// <summary>
     /// El chaflán del rincón exterior de arriba del cartabón, en cm. <c>CORTE_CARTABON_CM</c>.
     /// </summary>
     /// <remarks>

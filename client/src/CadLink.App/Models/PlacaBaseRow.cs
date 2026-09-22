@@ -70,6 +70,7 @@ public sealed class PlacaBaseRow : Row
 
     // LA CAMA DE GROUT. En NO de fabrica: el detalle sale como siempre, con la placa apoyada
     // directamente en el dado. Los 2.5 cm son el espesor usual de una cama nivelante.
+    private string _tipoPlaca = TipoBase;
     private string _grout = "NO";
     private double _espesorGroutCm = 2.5;
 
@@ -91,8 +92,68 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>E5</b>: tipo de acero de la placa.</summary>
     public string AceroPlaca { get => _aceroPlaca; set => Set(ref _aceroPlaca, value); }
 
+    // ======================================================================
+    //  QUÉ CLASE DE PLACA ES
+    // ======================================================================
+
     /// <summary>
-    /// ID del <b>dado</b> de la hoja de secciones de concreto, del que salen sus medidas.
+    /// <b>PLACA BASE</b> —se apoya en un dado— o <b>PLACA A MURO</b> —en una cadena o una trabe—.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario después de un caso real: había puesto <c>CC-1</c> —una cadena de
+    /// cerramiento— en el ID del apoyo, y la hoja solo buscaba <b>dados</b>. La referencia no
+    /// encontraba nada, no decía nada, y la placa se quedaba con el apoyo en cero: el detalle iba a
+    /// salir sin concreto y sin dónde ahogar las anclas.
+    /// </para>
+    /// <para>
+    /// Con <b>PLACA A MURO</b> el desplegable del ID ofrece las piezas <b>horizontales</b> de la
+    /// hoja de concreto —trabes, contratrabes y las tres cadenas— en lugar de los dados, y de ahí
+    /// salen las medidas del apoyo igual que salían las del dado.
+    /// </para>
+    /// <para>
+    /// <b>Lo que NO cambia es la geometría del detalle.</b> La placa se sigue dibujando apoyada
+    /// sobre su pieza de concreto, con las anclas ahogadas en ella, porque es el mismo detalle: una
+    /// placa sobre una cadena de cerramiento se dibuja como una placa sobre un dado, solo que el
+    /// concreto de abajo es la cadena. Lo que cambia es de dónde salen las medidas, qué ofrece el
+    /// desplegable y cómo se rotula. Si algún día hace falta el otro caso —la placa atornillada a
+    /// la <i>cara</i> vertical del muro, con las anclas horizontales— ese sí es un detalle nuevo.
+    /// </para>
+    /// </remarks>
+    public string TipoPlaca
+    {
+        get => _tipoPlaca;
+        set
+        {
+            Set(ref _tipoPlaca, (value ?? string.Empty).Trim().ToUpperInvariant());
+
+            // La lista del desplegable del ID depende de esto, y el texto de la columna del apoyo
+            // también: sin estos avisos, al cambiar el tipo la celda seguiría ofreciendo dados.
+            Raise(nameof(ApoyosDisponibles));
+            Raise(nameof(EsPlacaAMuro));
+        }
+    }
+
+    /// <summary>Los dos tipos, para el desplegable de la celda.</summary>
+    public static string[] TiposDePlaca => new[] { TipoBase, TipoMuro };
+
+    /// <summary>El valor de <see cref="TipoPlaca"/> de una placa que se apoya en un dado.</summary>
+    /// <remarks>
+    /// Es el <b>valor por omisión</b>, y lo es porque es el caso normal: una placa base. Así una
+    /// hoja capturada antes de que esto existiera —donde el archivo no trae la columna— sigue
+    /// leyéndose como lo que era.
+    /// </remarks>
+    public const string TipoBase = "PLACA BASE";
+
+    /// <summary>El valor de <see cref="TipoPlaca"/> de una placa sobre una cadena o una trabe.</summary>
+    public const string TipoMuro = "PLACA A MURO";
+
+    /// <summary>¿Es de las que se apoyan en una cadena o una trabe?</summary>
+    public bool EsPlacaAMuro =>
+        _tipoPlaca.Equals(TipoMuro, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// ID del <b>apoyo</b> de la hoja de secciones de concreto, del que salen sus medidas.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -129,6 +190,27 @@ public sealed class PlacaBaseRow : Row
     /// «DADO» y «DADO CIRCULAR»— uno de los dos se quedaría corto sin que nada avisara.
     /// </remarks>
     public static ObservableCollection<string> DadosDisponibles => ZapataAisladaRow.DadosDisponibles;
+
+    /// <summary>
+    /// Las <b>cadenas y trabes</b> capturadas en la hoja de concreto, para una placa a muro.
+    /// </summary>
+    /// <remarks>
+    /// La mantiene <c>ActualizarApoyosDeMuroDisponibles</c> con el mismo criterio que la de dados
+    /// —<c>EsApoyoDeMuro</c>—, y es estática por lo mismo: la lista es del programa, no de la fila.
+    /// </remarks>
+    public static ObservableCollection<string> ApoyosDeMuroDisponibles { get; } = new();
+
+    /// <summary>
+    /// Lo que ofrece el desplegable del ID en <b>esta</b> fila, según su tipo de placa.
+    /// </summary>
+    /// <remarks>
+    /// Es una propiedad de la FILA y no una lista de la columna, por lo mismo que los perfiles de
+    /// la familia: cada fila puede ser de un tipo distinto, así que la lista de la celda depende de
+    /// su propio renglón. Una lista por columna solo podría ofrecer dados y cadenas mezclados, que
+    /// es justo lo que hace que se elija el que no toca.
+    /// </remarks>
+    public ObservableCollection<string> ApoyosDisponibles =>
+        EsPlacaAMuro ? ApoyosDeMuroDisponibles : DadosDisponibles;
 
     /// <summary>Celda <b>D7</b>: dado de concreto en X, en cm. Cero = sin dado.</summary>
     /// <remarks>Si es redondo, es su <b>diámetro</b>.</remarks>
@@ -739,17 +821,37 @@ public sealed class PlacaBaseRow : Row
     }
 
     /// <summary>
-    /// De dónde salen las medidas del dado, y si sobresale de la placa. <b>Se ve en la tabla.</b>
+    /// De dónde salen las medidas del apoyo, y si sobresale de la placa. <b>Se ve en la tabla.</b>
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Por el mismo motivo que <see cref="MedidasPerfil"/>: cuando un dato se trae de otra hoja, lo
     /// que hay que hacer visible es <b>si de verdad se trajo</b>. Un ID escrito con un guion de más
     /// no encuentra la sección, las celdas se quedan con lo que hubiera, y la fila se ve completa.
+    /// </para>
+    /// <para>
+    /// <b>Y LO PRIMERO ES SI EL ID EXISTE.</b> Paso de verdad: una placa con <c>CC-1</c> en el ID
+    /// —una cadena de cerramiento— cuando la hoja solo buscaba dados. La referencia no encontraba
+    /// nada y salía en silencio, así que la celda decía «rectangular, de «CC-1»» con las medidas de
+    /// otro dado que traía de antes, y la de al lado, capturada después, se quedó en cero. Dos filas
+    /// con el mismo ID mostrando cosas distintas y nada que lo explicara.
+    /// </para>
     /// </remarks>
-    public string ReferenciaDado
+    public string ReferenciaApoyo
     {
         get
         {
+            // ¿ESTÁ CAPTURADO? Se pregunta ANTES que nada, porque un ID que no existe hace falsas
+            // todas las demás respuestas: las medidas que se vean serán de otra cosa o de nada.
+            var id = IdDado.Trim();
+
+            if (id.Length > 0 && !ApoyosDisponibles.Contains(id))
+            {
+                return EsPlacaAMuro
+                    ? $"«{id}» NO ES UNA CADENA NI TRABE DE LA HOJA DE CONCRETO"
+                    : $"«{id}» NO ES UN DADO DE LA HOJA DE CONCRETO";
+            }
+
             // EL REDONDO SE MIDE CON UNA SOLA MEDIDA, igual que en AFormatoCad. Exigiendo las dos,
             // un dado circular al que solo se le puso el diámetro se leería aquí como «sin dado»
             // mientras el dibujo lo pone: la tabla diciendo una cosa y el plano otra.
@@ -757,7 +859,7 @@ public sealed class PlacaBaseRow : Row
 
             if (DadoXCm <= 0 || dadoY <= 0)
             {
-                return "sin dado";
+                return EsPlacaAMuro ? "sin apoyo" : "sin dado";
             }
 
             var forma = DadoCircular ? "redondo" : "rectangular";
@@ -990,7 +1092,12 @@ public sealed class PlacaBaseRow : Row
 
         Raise(nameof(Forma));
         Raise(nameof(MedidasPerfil));
-        Raise(nameof(ReferenciaDado));
+        Raise(nameof(ReferenciaApoyo));
+
+        // El tipo no cambia solo, pero la LISTA que ofrece el desplegable del ID depende de el y
+        // sus elementos SI cambian: al capturar una cadena nueva en la hoja de concreto, la celda
+        // de esta fila tiene que ofrecerla. Ver ApoyosDisponibles.
+        Raise(nameof(ApoyosDisponibles));
         Raise(nameof(TotalAnclas));
         Raise(nameof(TotalCartabones));
 
@@ -1047,6 +1154,10 @@ public sealed class PlacaBaseRow : Row
             // distinto, el dibujo cotaría un diámetro vertical que el círculo no tiene.
             DadoYCm = DadoCircular ? DadoXCm : DadoYCm,
             DadoCircular = DadoCircular,
+
+            // Para el titulo del detalle y el nombre del bloque del corte. La geometria no cambia:
+            // ver PlacaBaseCad.EsPlacaAMuro.
+            EsPlacaAMuro = EsPlacaAMuro,
 
             Familia = Familia,
             Seccion = Seccion,

@@ -922,7 +922,9 @@ public sealed partial class PlacaBaseDrawer
     {
         var lineas = new List<string>();
 
-        var titulo = "DETALLE DE PLACA BASE";
+        // EL TITULO DICE QUE CLASE DE PLACA ES. Una placa apoyada en una cadena de cerramiento
+        // rotulada como «PLACA BASE» es un plano que dice otra cosa que la obra.
+        var titulo = p.EsPlacaAMuro ? "DETALLE DE PLACA A MURO" : "DETALLE DE PLACA BASE";
 
         if (p.Marca.Trim().Length > 0)
         {

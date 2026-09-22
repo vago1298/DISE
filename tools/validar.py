@@ -6935,6 +6935,38 @@ def v18_planta_autocad() -> None:
           "LongAnclaXCm = 45" not in pbfilas and "LongAnclaYCm = 45" not in pbfilas)
 
     # ------------------------------------------------------------------
+    # DOS O MAS PLACAS NO SE ENCIMAN
+    # ------------------------------------------------------------------
+    # Lo pidio el usuario: «que cuando dibuje dos o mas haya separacion a la derecha del otro
+    # detalle para que no se encimen». Y se encimaban: el paso entre placas se medía con la
+    # huella de la PLANTA mas 60 cm de aire, y 60 cm es exactamente la distancia a la que
+    # arranca el primer CORTE -SeparacionDeLaPlantaCm-, asi que ese aire no era aire: era el
+    # sitio del corte, y el corte caia sobre la planta de la siguiente.
+    #
+    # Ahora lo mide el que dibuja, que es el unico que sabe hasta donde llego.
+    pbdelev = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs"))
+
+    check("el paso entre placas se mide con lo que de verdad ocupo el detalle",
+          "public double UltimoAnchoDibujado { get; private set; }" in pbd
+          and "UltimoAnchoDibujado =" in pbd
+          and "Math.Max(xRig + o1, xDerechaDeLosCortes) - Math.Min(x0, xLef - o2)" in pbd
+          # Se pone a cero al empezar cada placa: si una se cae a medio dibujar, el que
+          # reparte no debe correrse con la medida de la otra.
+          and "UltimoAnchoDibujado = 0;" in pbd
+          # Y el canto derecho de los cortes sale del propio constructor de las vistas, no de
+          # una segunda cuenta que pudiera discrepar.
+          and "out double xDerecha)" in pbdelev
+          and "var canto = v.XCentro + (v.Ancho / 2);" in pbdelev)
+
+    check("y se le suma la separacion de 4 cm que se pidio",
+          "public const double SeparacionEntreDetallesCm = 4.0;"
+          in leer(ruta("client/src/CadLink.Cad/ElevacionPlacaBase.cs"))
+          and "ElevacionPlacaBase.SeparacionEntreDetallesCm * escala" in pbw
+          and "private static double Paso(PlacaBaseCad p, double escala, double anchoDibujado)"
+          in pbw
+          and "dibujante.UltimoAnchoDibujado" in pbw)
+
+    # ------------------------------------------------------------------
     # LA PLANTA UN BLOQUE, CADA CORTE OTRO
     # ------------------------------------------------------------------
     # Iban todos en el mismo bloque -asi lo hacia la macro-, asi que no se podia llevar un
@@ -7251,14 +7283,71 @@ def v18_planta_autocad() -> None:
           "public string IdDado" in pbr
           and "private void ReferenciarDadoDePlaca(" in pbw
           and "EsDado(s.Elemento)" in pbw
-          and 'Header="ID dado"' in tab_pb)
+          and 'Header="ID apoyo"' in tab_pb)
+
+    #  ─── Y PUEDE SER UNA CADENA O UNA TRABE: LA PLACA A MURO ─────────────────────────────
+    #  Lo pidio el usuario despues de un caso real: habia puesto CC-1 -una cadena de
+    #  cerramiento- en el ID, la hoja solo buscaba DADOS, no encontraba nada y salia en
+    #  silencio. La placa se quedaba con el apoyo en cero, o sea que el detalle iba a salir sin
+    #  concreto debajo y sin donde ahogar las anclas, y nada lo decia.
+    check("la placa puede ser PLACA BASE o PLACA A MURO",
+          'public const string TipoBase = "PLACA BASE";' in pbr
+          and 'public const string TipoMuro = "PLACA A MURO";' in pbr
+          and "public string TipoPlaca" in pbr
+          #  Por omision, placa base: una hoja capturada antes de que esto existiera -donde el
+          #  archivo no trae la columna- se sigue leyendo como lo que era.
+          and "private string _tipoPlaca = TipoBase;" in pbr
+          and 'Header="Tipo"' in tab_pb)
+
+    #  DONDE SE BUSCA EL ID DEPENDE DEL TIPO. Es el arreglo de fondo: con el tipo en MURO se
+    #  buscan las piezas horizontales -trabes, contratrabes y las tres cadenas- y no los dados.
+    check("y el ID se busca entre dados o entre cadenas y trabes segun el tipo",
+          "fila.EsPlacaAMuro ? EsApoyoDeMuro(s.Elemento) : EsDado(s.Elemento)" in pbw
+          and "private static bool EsApoyoDeMuro(" in pbw
+          and 'e.StartsWith("TRABE", StringComparison.OrdinalIgnoreCase)' in pbw
+          and 'e.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase)' in pbw)
+
+    #  Y AL CAMBIAR EL TIPO SE VUELVE A RESOLVER: si no, pasar una fila a PLACA A MURO dejaba
+    #  las medidas del dado que se hubiera resuelto antes.
+    check("y cambiar el tipo vuelve a traer las medidas",
+          "|| e.PropertyName == nameof(PlacaBaseRow.TipoPlaca))" in pbw)
+
+    #  EL DESPLEGABLE DEL ID ES DE LA FILA, no de la columna: cada fila puede ser de otro tipo,
+    #  asi que una lista por columna solo podria ofrecer dados y cadenas mezclados, que es
+    #  justo lo que hace que se elija el que no toca.
+    check("el desplegable del ID ofrece la lista de SU fila",
+          "public ObservableCollection<string> ApoyosDisponibles =>" in pbr
+          and "EsPlacaAMuro ? ApoyosDeMuroDisponibles : DadosDisponibles;" in pbr
+          and 'ItemsSource="{Binding ApoyosDisponibles}"' in tab_pb)
+
+    #  EL SILENCIO, QUE ES LO QUE DE VERDAD FALLO. Un ID que no esta capturado se dice en tres
+    #  sitios: la columna «Apoyo», la vista previa y el aviso de antes de dibujar. Y el aviso
+    #  PREGUNTA en lugar de negarse: puede ser que el apoyo se capture despues.
+    check("un ID de apoyo que no existe se dice, no se calla",
+          "NO ES UNA CADENA NI TRABE DE LA HOJA DE CONCRETO" in pbr
+          and "NO ES UN DADO DE LA HOJA DE CONCRETO" in pbr
+          and "private static string AvisoDelApoyo(PlacaBaseRow fila)" in pbw
+          and "var avisoApoyo = AvisoDelApoyo(fila);" in pbw
+          and "MessageBoxButton.YesNo" in pbw)
+
+    #  Y EL ROTULO DEL PLANO LO DICE. Una placa sobre una cadena rotulada «DETALLE DE PLACA
+    #  BASE» es un plano que dice otra cosa que la obra.
+    check("y el rotulo del detalle distingue la placa a muro",
+          'p.EsPlacaAMuro ? "DETALLE DE PLACA A MURO" : "DETALLE DE PLACA BASE"' in pbd2
+          and "public bool EsPlacaAMuro { get; set; }" in pbc
+          and "EsPlacaAMuro = EsPlacaAMuro," in pbr)
 
     #  Y LA LISTA ES LA MISMA DE LA HOJA DE ZAPATAS, no una copia: con dos listas habria dos
     #  sitios recorriendo la hoja de concreto en busca de dados, y el dia que cambie el criterio
     #  uno de los dos se quedaria corto sin que nada avisara.
     check("y la lista de dados es la misma que la de zapatas",
           "ZapataAisladaRow.DadosDisponibles;" in pbr
-          and "x:Static models:PlacaBaseRow.DadosDisponibles" in tab_pb)
+          #  Las dos listas se mantienen en el MISMO sitio, una al lado de la otra: separadas en
+          #  dos caminos distintos, una se queda vieja y el desplegable ofrece lo de antes.
+          and "ActualizarApoyosDeMuroDisponibles();"
+              in leer(ruta("client/src/CadLink.App/MainWindow.Zapatas.cs"))
+          and "private void ActualizarApoyosDeMuroDisponibles()" in pbw
+          and "Refrescar(PlacaBaseRow.ApoyosDeMuroDisponibles, apoyos);" in pbw)
 
     #  SE PONE AL DIA AL EDITAR LA SECCION, no solo al elegirla: si el dado crece en su hoja, la
     #  placa que lo usa tiene que crecer con el. Es lo que hace que sea una referencia y no una

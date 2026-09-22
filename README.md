@@ -560,7 +560,7 @@ en la misma fila:
 | **Zapatas Corridas** | Centrales y de lindero en una sola tabla, con su muro y su cadena |
 | **Zapatas Aisladas** | Centrales y de lindero, con su dado y su acomodo |
 | **Muros de Contención** | Pendiente de portar |
-| **Placa Base** | Placa, anclas, cartabones y soldadura, con vista previa. El dado se toma de *Secciones Concreto* por su ID, y avisa de los libramientos J y K al capturar |
+| **Placa Base** | Placa, anclas, cartabones y soldadura, con vista previa. Dos tipos: **placa base** —se apoya en un dado— y **placa a muro** —en una cadena o una trabe—; el apoyo se toma de *Secciones Concreto* por su ID, y avisa de los libramientos J, K y L al capturar |
 | **Conexiones** | Pendiente de portar |
 | **ETABS** | Conexión por la CSI OAPI, lectura del modelo y de los piers, visor 3D y extruido |
 | **Dibujar planos estructurales** | La planta por nivel, y el botón *Dibujar en AutoCAD* |

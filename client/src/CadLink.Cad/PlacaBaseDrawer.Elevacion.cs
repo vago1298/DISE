@@ -32,13 +32,19 @@ public sealed partial class PlacaBaseDrawer
     /// ROTULOS. Es lo que ya pasaba antes.
     /// </para>
     /// </remarks>
+    /// <param name="xDerecha">
+    /// Sale la <b>X del canto derecho</b> del último corte, que es lo que necesita el reparto para
+    /// no encimarle la placa siguiente. Sin cortes vale cero y manda la planta.
+    /// </param>
     /// <returns>Los nombres de los bloques de los cortes, uno por vista.</returns>
     private List<string> Elevacion(
         PlacaBaseCad p, double xInicio, double yPlaca,
         double b, double h, double dadoX, double dadoY, double pX, double pY,
-        double sepX, double sepY, double dAncX, double dAncY)
+        double sepX, double sepY, double dAncX, double dAncY,
+        out double xDerecha)
     {
         var bloques = new List<string>();
+        xDerecha = 0;
 
         if (!p.DibujarElevacion)
         {
@@ -67,7 +73,8 @@ public sealed partial class PlacaBaseDrawer
             // El punto base es la esquina inferior izquierda del dado de ESTE corte: el mismo
             // criterio que la planta, que se bloquea por la esquina de la placa.
             var nombre = Bloquear(
-                NombreDelCorte(p.Seccion, v.Id), inicio, fin, v.Concreto[0], v.Concreto[1]);
+                NombreDelCorte(p.Seccion, v.Id, p.EsPlacaAMuro),
+                inicio, fin, v.Concreto[0], v.Concreto[1]);
 
             if (nombre.Length > 0)
             {
@@ -79,6 +86,18 @@ public sealed partial class PlacaBaseDrawer
             CotasDelCorte(v);
         }
 
+        // El canto derecho del que llegue más lejos. Cada vista sabe su centro y su ancho, así que
+        // no hay que volver a recorrer la geometría ni repetir la cuenta de dónde se colocó.
+        foreach (var v in vistas)
+        {
+            var canto = v.XCentro + (v.Ancho / 2);
+
+            if (canto > xDerecha)
+            {
+                xDerecha = canto;
+            }
+        }
+
         return bloques;
     }
 
@@ -87,11 +106,15 @@ public sealed partial class PlacaBaseDrawer
     /// Con el nombre de la sección delante, los tres bloques de una placa se ordenan juntos en el
     /// administrador de bloques de AutoCAD, que es donde se van a buscar.
     /// </remarks>
-    private static string NombreDelCorte(string seccion, string id)
+    private static string NombreDelCorte(string seccion, string id, bool esPlacaAMuro)
     {
         var s = (seccion ?? string.Empty).Trim();
 
-        return (s.Length == 0 ? "PLACA BASE" : s) + " CORTE " + id;
+        // El respaldo dice QUE CLASE de placa es, por lo mismo que el titulo del rotulo: un bloque
+        // llamado «PLACA BASE CORTE X» para una placa sobre una cadena se busca donde no esta.
+        var respaldo = esPlacaAMuro ? "PLACA A MURO" : "PLACA BASE";
+
+        return (s.Length == 0 ? respaldo : s) + " CORTE " + id;
     }
 
     /// <summary>Los datos de una dirección, ya en unidades de dibujo.</summary>

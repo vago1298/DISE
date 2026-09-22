@@ -2235,8 +2235,14 @@ check("los cortes se dibujan DESPUES del bloque de la planta, no dentro",
 
 check("y cada corte se agrupa en SU bloque, con el nombre de la seccion delante",
       "private List<string> Elevacion(" in _DELEV
-      and "NombreDelCorte(p.Seccion, v.Id), inicio, fin, v.Concreto[0], v.Concreto[1]);" in _DELEV
+      and "NombreDelCorte(p.Seccion, v.Id, p.EsPlacaAMuro)," in _DELEV
+      and "inicio, fin, v.Concreto[0], v.Concreto[1]);" in _DELEV
       and '" CORTE " + id;' in _DELEV)
+
+#  Y EL RESPALDO DEL NOMBRE DICE QUE CLASE DE PLACA ES. Una placa apoyada en una cadena
+#  cuyo bloque se llama «PLACA BASE CORTE X» se busca donde no esta.
+check("y el nombre del corte distingue la placa a muro de la placa base",
+      'var respaldo = esPlacaAMuro ? "PLACA A MURO" : "PLACA BASE";' in _DELEV)
 
 check("el dibujante reporta los bloques de los cortes aparte del de la planta",
       "public List<string> BloquesDeCortes { get; private set; } = new();" in _DRW
@@ -3580,6 +3586,160 @@ check("las anclas de esquina cumplen con menos sobrante, por medir en diagonal",
       (28.0 - 20.0) / 2.0 < k38 + l38 and falla_28 is None,
       f"sobrante {(28.0 - 20.0) / 2.0:.2f} cm, falla={falla_28}")
 
+
+
+# ==========================================================================
+#  DOS O MAS PLACAS NO SE ENCIMAN
+# ==========================================================================
+#  Reportado por el usuario: «que cuando dibuje dos o mas haya separacion a la derecha
+#  del otro detalle para que no se encimen».
+#
+#  Y se encimaban de verdad. El paso entre una placa y la siguiente se medía con la
+#  huella de la PLANTA -la placa o el dado, el que sobresaliera- mas 60 cm de aire...
+#  y 60 cm es EXACTAMENTE la distancia a la que arranca el primer corte
+#  (SeparacionDeLaPlantaCm). O sea que el aire no era aire: era el sitio donde se dibuja
+#  el corte, y el corte caia sobre la planta de la placa siguiente. Con dos vistas -placa
+#  no cuadrada- se metia todavia mas.
+#
+#  Aqui se reproduce la aritmetica del reparto con los dos numeros: el de antes y el de
+#  ahora, para que se vea que el primero encimaba y el segundo no.
+print("\n" + "=" * 78)
+print("EL REPARTO DE VARIAS PLACAS: QUE NO SE ENCIMEN")
+print("=" * 78)
+
+SEP_PLANTA_CM = 60.0        # ElevacionPlacaBase.SeparacionDeLaPlantaCm
+SEP_VISTAS_CM = 20.0        # ElevacionPlacaBase.SeparacionEntreVistasCm
+SEP_DETALLES_CM = 4.0       # ElevacionPlacaBase.SeparacionEntreDetallesCm, lo que se pidio
+ALTURA_TEXTO = 0.016        # PlacaBaseCapas.AlturaTextoDwg
+
+
+def ancho_ocupado(ancho_placa, ancho_dado, ancho_perfil, long_cartabon,
+                  con_cartabon, escala):
+    """Espejo de ElevacionPlacaBase.AnchoOcupado: el que sobresalga de los tres."""
+    r = ancho_placa
+
+    if ancho_dado > r:
+        r = ancho_dado
+
+    if con_cartabon and ancho_perfil + 2 * long_cartabon > r:
+        r = ancho_perfil + 2 * long_cartabon
+
+    return 20.0 * escala if r <= 0 else r
+
+
+def detalle(placa_x, placa_y, dado_x, dado_y, escala=1.0, con_cartabon=False,
+            perfil=0.0, cartabon=0.0):
+    """Los cantos del detalle completo, en unidades de dibujo, con x0 = 0.
+
+    Devuelve (izquierda, derecha, ancho_del_dibujante), donde el tercero es lo que
+    calcula PlacaBaseDrawer.UltimoAnchoDibujado.
+    """
+    b, h = placa_x * escala, placa_y * escala
+    dx, dy = dado_x * escala, dado_y * escala
+
+    #  El encuadre de la planta, que crece con el dado -PlacaBaseDrawer, «El dado»-.
+    x_lef, x_rig = 0.0, b
+
+    if dx > 0 and dy > 0:
+        dx0 = (b - dx) / 2.0
+        x_lef = min(x_lef, dx0)
+        x_rig = max(x_rig, dx0 + dx)
+
+    o1 = 2.0 * ALTURA_TEXTO
+    o2 = o1 + 2.5 * ALTURA_TEXTO
+
+    #  Los cortes: arrancan a 60 cm del canto derecho del encuadre, y son uno o dos.
+    ocupa_x = ancho_ocupado(b, dx, perfil * escala, cartabon * escala, con_cartabon, escala)
+    ocupa_y = ancho_ocupado(h, dy, perfil * escala, cartabon * escala, con_cartabon, escala)
+
+    x_inicio = x_rig + SEP_PLANTA_CM * escala
+    cuadrada = abs(b - h) <= 0.01 * escala
+
+    if cuadrada:
+        x_derecha = x_inicio + ocupa_x
+    else:
+        x_derecha = x_inicio + ocupa_x + SEP_VISTAS_CM * escala + ocupa_y
+
+    izquierda = min(0.0, x_lef - o2)
+    derecha = max(x_rig + o1, x_derecha)
+
+    return izquierda, derecha, derecha - izquierda
+
+
+def paso_viejo(placa_x, placa_y, dado_x, dado_y, escala=1.0):
+    """Lo que se hacia antes: la huella de la planta mas 60 cm."""
+    ancho_total = max(max(placa_x, placa_y), max(dado_x, dado_y))
+
+    return (ancho_total + 60) * escala
+
+
+def paso_nuevo(ancho_dibujado, escala=1.0):
+    return ancho_dibujado + SEP_DETALLES_CM * escala
+
+
+#  ---- EL CASO DE LA CAPTURA: dos placas de 15x15 con dado de 50x50 ----
+#  Cuadradas, asi que UNA vista de corte. El dado de 50 manda en el encuadre.
+izq, der, ancho = detalle(15, 15, 50, 50)
+
+check("el detalle llega mas a la derecha que la huella de la planta",
+      der > 50, f"canto derecho {der:.2f} contra una huella de 50")
+
+#  Con el paso viejo, la placa siguiente arrancaba ANTES de que acabara el detalle: ahi
+#  esta el encimado, medido.
+x2_viejo = paso_viejo(15, 15, 50, 50)
+
+check("con el paso viejo, la placa siguiente se encimaba",
+      x2_viejo + izq < der,
+      f"la siguiente empezaba en {x2_viejo + izq:.2f} y el detalle acaba en {der:.2f}")
+
+#  Con el nuevo, no. Y la separacion es la pedida.
+x2 = paso_nuevo(ancho)
+
+check("con el paso nuevo, la siguiente empieza despues del detalle anterior",
+      x2 + izq > der,
+      f"empieza en {x2 + izq:.2f} y el anterior acaba en {der:.2f}")
+
+check("y quedan los 4 cm de separacion que se pidieron",
+      abs((x2 + izq) - der - SEP_DETALLES_CM) < 1e-9,
+      f"quedaron {(x2 + izq) - der:.3f} cm")
+
+#  ---- EL CASO PEOR: placa NO cuadrada, que lleva DOS vistas de corte ----
+izq2, der2, ancho2 = detalle(30, 20, 60, 45)
+x2b_viejo = paso_viejo(30, 20, 60, 45)
+
+check("con dos cortes el detalle es mucho mas ancho que la planta",
+      der2 > 2 * 60, f"canto derecho {der2:.2f}, huella 60")
+
+check("y el paso viejo encimaba todavia mas",
+      x2b_viejo + izq2 < der2,
+      f"la siguiente empezaba en {x2b_viejo + izq2:.2f} y el detalle acaba en {der2:.2f}")
+
+check("el paso nuevo tambien lo respeta",
+      paso_nuevo(ancho2) + izq2 > der2)
+
+#  ---- CON CARTABONES, que ensanchan cada vista del corte ----
+izq3, der3, ancho3 = detalle(30, 30, 40, 40, con_cartabon=True, perfil=20, cartabon=15)
+
+check("los cartabones ensanchan el corte, y el paso los cuenta",
+      paso_nuevo(ancho3) + izq3 > der3 and der3 > der,
+      f"con cartabones el detalle acaba en {der3:.2f}")
+
+#  ---- A ESCALA: el paso se mide en unidades de dibujo, no en cm ----
+#  A 1:10 -escala 0.1- todo el detalle mide la decima parte, y la separacion tambien.
+izq4, der4, ancho4 = detalle(15, 15, 50, 50, escala=0.1)
+
+check("a otra escala la separacion sigue siendo proporcional",
+      abs((paso_nuevo(ancho4, 0.1) + izq4) - der4 - SEP_DETALLES_CM * 0.1) < 1e-9)
+
+#  ---- SIN CORTES: manda la planta, y tampoco se encima ----
+#  Con la elevacion apagada el dibujante deja la X de los cortes en cero y el ancho sale
+#  del encuadre de la planta: es el mismo camino, sin el trozo de la derecha.
+o1_ = 2.0 * ALTURA_TEXTO
+o2_ = o1_ + 2.5 * ALTURA_TEXTO
+ancho_sin_cortes = (50 + o1_) - (-17.5 - o2_)      # dado de 50 centrado en placa de 15
+
+check("sin cortes el ancho sale del encuadre de la planta",
+      ancho_sin_cortes > 50 and paso_nuevo(ancho_sin_cortes) > ancho_sin_cortes)
 
 
 print("\n" + "=" * 78)

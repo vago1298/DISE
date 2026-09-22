@@ -2349,7 +2349,44 @@
                                  Sigue siendo editable: se puede escribir un ID que todavia no este
                                  capturado, porque el orden en que se llenan las hojas es del
                                  usuario. -->
-                            <DataGridTemplateColumn Header="ID dado" Width="Auto"
+                            <!-- ===== QUE CLASE DE PLACA ES =====
+
+                                 PLACA BASE: se apoya en un DADO, que es el caso de siempre.
+                                 PLACA A MURO: se apoya en una CADENA o una TRABE.
+
+                                 Lo que cambia es donde se busca el ID de la celda de al lado -en
+                                 los dados o en las cadenas y trabes-, y de ahi que la referencia
+                                 encuentre las medidas o no. El dibujo es el mismo: la placa sobre
+                                 su pieza de concreto.
+
+                                 Se pidio despues de un caso real: una placa con CC-1 -una cadena
+                                 de cerramiento- que la hoja no encontraba porque solo miraba
+                                 dados, y se quedaba sin apoyo SIN DECIR NADA. -->
+                            <DataGridTemplateColumn Header="Tipo" Width="Auto"
+                                                    CellStyle="{StaticResource CeldaIdent}"
+                                                    SortMemberPath="TipoPlaca">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding TipoPlaca}"
+                                                   Style="{StaticResource ComboCeldaLectura}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox IsEditable="False"
+                                                  BorderThickness="0" Padding="2,0"
+                                                  VerticalContentAlignment="Center"
+                                                  ItemsSource="{Binding Source={x:Static models:PlacaBaseRow.TiposDePlaca}}"
+                                                  SelectedItem="{Binding TipoPlaca, UpdateSourceTrigger=PropertyChanged}"
+                                                  ToolTip="PLACA BASE: se apoya en un DADO de «Secciones Concreto».&#10;PLACA A MURO: se apoya en una CADENA o una TRABE de esa misma hoja.&#10;El tipo decide que ofrece el desplegable de «ID apoyo» y donde se busca ese ID: cambiarlo vuelve a traer las medidas." />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- IsEditable SI, y la lista sale de la FILA y no de la columna: cada
+                                 fila puede ser de otro tipo, asi que su lista depende de su propio
+                                 renglon. Ver PlacaBaseRow.ApoyosDisponibles. -->
+                            <DataGridTemplateColumn Header="ID apoyo" Width="Auto"
                                                     CellStyle="{StaticResource CeldaIdent}"
                                                     SortMemberPath="IdDado">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -2365,9 +2402,9 @@
                                                   StaysOpenOnEdit="True"
                                                   BorderThickness="0" Padding="2,0"
                                                   VerticalContentAlignment="Center"
-                                                  ItemsSource="{Binding Source={x:Static models:PlacaBaseRow.DadosDisponibles}}"
+                                                  ItemsSource="{Binding ApoyosDisponibles}"
                                                   Text="{Binding IdDado, UpdateSourceTrigger=PropertyChanged}"
-                                                  ToolTip="Los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;Al elegirlo, «Dado X» y «Dado Y» se llenan solos con las medidas reales de esa seccion, y se ponen al dia si esa seccion cambia.&#10;En blanco: el dado se captura a mano en las dos celdas de al lado." />
+                                                  ToolTip="Con PLACA BASE: los dados capturados en «Secciones Concreto» (DADO y DADO CIRCULAR).&#10;Con PLACA A MURO: las cadenas, trabes y contratrabes de esa hoja.&#10;Al elegirlo, «Apoyo X» y «Apoyo Y» se llenan solos con las medidas reales de esa seccion, y se ponen al dia si esa seccion cambia.&#10;Si el ID no esta en la lista, la columna «Apoyo» lo dice: no se queda callada.&#10;En blanco: la placa se dibuja sin concreto debajo." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
@@ -2388,7 +2425,7 @@
                                  escribir y el estilo lo hace VISIBLE. Con solo el primero, la
                                  celda se ve igual que las de al lado y el usuario descubre que no
                                  se puede escribir intentandolo. -->
-                            <DataGridTextColumn Header="Dado X cm" Binding="{Binding DadoXCm, StringFormat=N1}"
+                            <DataGridTextColumn Header="Apoyo X cm" Binding="{Binding DadoXCm, StringFormat=N1}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaReferenciada}">
                                 <!-- El globo va en ElementStyle y NO como ToolTip de la columna:
@@ -2397,17 +2434,17 @@
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Sale de la seccion elegida en «ID dado». Para cambiarlo, ve a la pestaña «Secciones Concreto» y edita ese dado.&#10;Si el dado es redondo, esta medida es su DIAMETRO.&#10;Para dejar la placa sin dado, borra el «ID dado»." />
+                                                Value="Sale de la seccion elegida en «ID apoyo»: el dado, la cadena o la trabe. Para cambiarla, ve a «Secciones Concreto» y edita esa seccion.&#10;Si el apoyo es un dado redondo, esta medida es su DIAMETRO.&#10;Para dejar la placa sin concreto debajo, borra el «ID apoyo»." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="Dado Y cm" Binding="{Binding DadoYCm, StringFormat=N1}"
+                            <DataGridTextColumn Header="Apoyo Y cm" Binding="{Binding DadoYCm, StringFormat=N1}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaReferenciada}">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="ToolTip"
-                                                Value="Sale de la seccion elegida en «ID dado». Para cambiarlo, ve a la pestaña «Secciones Concreto» y edita ese dado.&#10;En un dado redondo vale lo mismo que X: un circulo tiene un solo diametro." />
+                                                Value="Sale de la seccion elegida en «ID apoyo»: el dado, la cadena o la trabe. Para cambiarla, ve a «Secciones Concreto» y edita esa seccion.&#10;En un dado redondo vale lo mismo que X: un circulo tiene un solo diametro." />
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
@@ -2820,7 +2857,7 @@
                                  con lo que hubiera y la fila se ve completa. Aqui se lee de donde
                                  salieron las medidas, si el dado es redondo, y si SOBRESALE de la
                                  placa -que es lo que decide si el rayado de concreto se ve-. -->
-                            <DataGridTextColumn Header="Dado" Binding="{Binding ReferenciaDado}"
+                            <DataGridTextColumn Header="Apoyo" Binding="{Binding ReferenciaApoyo}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />
 

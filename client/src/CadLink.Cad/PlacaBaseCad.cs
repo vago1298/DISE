@@ -207,6 +207,24 @@ public sealed class PlacaBaseCad
     /// </remarks>
     public bool DadoCircular { get; set; }
 
+    /// <summary>
+    /// La placa se apoya en una <b>cadena o una trabe</b>, no en un dado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo único que cambia en el dibujo es <b>cómo se rotula</b>: el título del detalle dice «PLACA
+    /// A MURO» y el bloque del corte se llama igual. La geometría es la misma —la placa apoyada
+    /// sobre su pieza de concreto, con las anclas ahogadas en ella— porque es el mismo detalle: una
+    /// placa sobre una cadena de cerramiento se dibuja como una sobre un dado, solo que el concreto
+    /// de abajo es la cadena, con sus medidas.
+    /// </para>
+    /// <para>
+    /// De dónde salen esas medidas lo decide la hoja, no este dibujante: aquí llegan ya resueltas
+    /// en <see cref="DadoXCm"/> y <see cref="DadoYCm"/>.
+    /// </para>
+    /// </remarks>
+    public bool EsPlacaAMuro { get; set; }
+
     /// <summary>Familia del perfil de la columna. Celda C8.</summary>
     public string Familia { get; set; } = string.Empty;
 
