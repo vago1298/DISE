@@ -3457,6 +3457,124 @@ check("la tuerca y la arandela siguen apoyadas en la placa",
           and abs(a["vastago"][1] - bbox(a["tuerca"])[3]) < 1e-9
           for a in v_dob["anclas"]))
 
+# ==========================================================================
+#  EL AVISO QUE DICE QUE CORREGIR: LA PLACA CHICA CONTRA SU PERFIL
+# ==========================================================================
+#  Reportado por el usuario: «NO ME DEJA DIBUJAR», con un aviso que decia solo
+#  «PB-2: falta holgura minima a la columna (l)». El titular sin numeros no dice de
+#  que ancla es, ni cuanta holgura hay, ni cuanta se pide, asi que no hay por donde
+#  empezar a corregir. El detalle ya estaba calculado -RevisarHolguraColumnaL lo
+#  devuelve entero- y no se ensenaba en ningun sitio.
+#
+#  Aqui se reproduce el caso con numeros, que es lo que permite decirle al usuario
+#  QUE cambiar: no son las anclas, es que la placa no tiene sitio.
+#
+#  Las dos paredes entre las que tiene que caber el ancla:
+#      canto de la placa -> K -> ancla -> L -> pano de la columna
+#  asi que un ancla alineada con el perfil necesita K + L. Para un 3/8": 22 + 23 = 45
+#  mm por lado, o sea que la placa tiene que ser 9 cm mayor que el perfil. Las de
+#  esquina miden en diagonal y ganan algo.
+print("\n" + "=" * 78)
+print("LA PLACA CHICA: POR QUE EL BOTON NO DIBUJA")
+print("=" * 78)
+
+def rectangulo(xc, yc, ancho, alto):
+    """El pano de un perfil OR/PTR: un rectangulo centrado, como lo entrega el trazo."""
+    a, b = ancho / 2.0, alto / 2.0
+
+    return [xc - a, yc - b, xc + a, yc - b, xc + a, yc + b, xc - a, yc + b]
+
+
+def placa_con_cuatro_anclas(lado_placa, lado_perfil, ancla_pulg):
+    """Las 4 anclas de las esquinas con separacion AUTOMATICA, y su holgura a la columna.
+
+    Es el caso de la captura: «Anclas X = 4», «Anclas Y = 0» y las dos separaciones al
+    borde en cero, o sea automaticas. Con nx=4 salen dos abajo y dos arriba, y con dos
+    por hilera PosLineal las manda a los extremos: las cuatro esquinas.
+    """
+    d_anc = pulgadas(ancla_pulg) * 2.54
+    d_agu = pulgadas(agujero_automatico(ancla_pulg)) * 2.54
+
+    sep = sep_auto_con_borde(lado_placa, lado_perfil, d_agu, 1, borde_minimo_cm(d_anc))
+
+    anclas = construir(0, 0, lado_placa, lado_placa, 4, 0, sep, sep,
+                       d_anc, d_agu, d_anc, d_agu)
+
+    perfil = rectangulo(lado_placa / 2.0, lado_placa / 2.0, lado_perfil, lado_perfil)
+
+    return sep, revisar_holgura_l([(a[0], a[1], a[2]) for a in anclas], perfil)
+
+
+#  ---- LO QUE PIDE EL CUADRO PARA UN 3/8" ----
+d38 = pulgadas("3/8") * 2.54
+k38 = borde_minimo_cm(d38)
+l38 = distancia_minima_l_mm(d38 * 10) / 10.0
+
+check('un ancla de 3/8" pide K = 2.2 cm y L = 2.3 cm',
+      abs(k38 - 2.2) < 1e-9 and abs(l38 - 2.3) < 1e-9,
+      f"K={k38:.2f} L={l38:.2f}")
+
+check('o sea 4.5 cm por lado entre el canto y el perfil, 9 cm de placa',
+      abs(k38 + l38 - 4.5) < 1e-9)
+
+#  Y ES EL MINIMO DE TODA LA TABLA: si con 3/8" no cabe, con ningun otro diametro cabe.
+#  Es el dato que evita que el usuario pierda la tarde probando diametros.
+peores = [t for t in DIAMETROS_CELDA
+          if borde_minimo_cm(pulgadas(t) * 2.54)
+          + distancia_minima_l_mm(pulgadas(t) * 2.54 * 10) / 10.0 < k38 + l38]
+
+check('y ningun diametro de la lista pide menos sitio que el 3/8"',
+      not peores, f"piden menos: {peores}")
+
+#  ---- LA PLACA APRETADA: NO CABE, Y EL AVISO TIENE QUE DECIR CUANTO ----
+#  Placa de 25 y perfil de 20: sobran 2.5 cm por lado y hacen falta 4.5.
+sep_apretada, falla_apretada = placa_con_cuatro_anclas(25.0, 20.0, "3/8")
+
+check("con la placa apenas mayor que el perfil, la holgura L no se cumple",
+      falla_apretada is not None,
+      "deberia negarse a dibujar")
+
+if falla_apretada is not None:
+    i_ancla, disponible, requerida = falla_apretada
+
+    check("y el aviso puede decir de QUE ancla, cuanto hay y cuanto se pide",
+          i_ancla >= 1 and disponible >= 0 and abs(requerida - 23.0) < 1e-9,
+          f"ancla {i_ancla}, {disponible:.2f} mm de {requerida:.2f}")
+
+    check("y lo que hay es MENOS que lo que se pide, con margen de sobra para verlo",
+          disponible < requerida - 1,
+          f"{disponible:.2f} mm contra {requerida:.2f}")
+
+#  El diagnostico: no son las anclas, es la placa. Se comprueba que el sobrante real
+#  es menor que K + L, que es justo la resta que el aviso pone delante del usuario.
+sobrante_apretada = (25.0 - 20.0) / 2.0
+
+check("y el motivo es el sitio: el sobrante es menor que K + L",
+      sobrante_apretada < k38 + l38,
+      f"sobran {sobrante_apretada:.2f} cm por lado y hacen falta {k38 + l38:.2f}")
+
+#  ---- LA MISMA PLACA, YA CON SITIO ----
+#  Con 30 de placa y 20 de perfil sobran 5 cm por lado, mas que los 4.5 que pide el
+#  cuadro, y las de esquina ademas miden en diagonal.
+sep_holgada, falla_holgada = placa_con_cuatro_anclas(30.0, 20.0, "3/8")
+
+check("con la placa 10 cm mayor que el perfil, la misma placa ya cumple",
+      falla_holgada is None,
+      f"sigue fallando: {falla_holgada}")
+
+#  ---- Y LA DIAGONAL DE LAS ESQUINAS NO ES UN DECIR ----
+#  Con 28 de placa el sobrante por lado -4.0 cm- NO llega a los 4.5 que pide un ancla
+#  alineada con el perfil, y sin embargo las cuatro de esquina cumplen: su holgura se
+#  mide en diagonal. Por eso el aviso dice «las de esquina ganan algo por la diagonal»
+#  en lugar de dar el sobrante como un limite.
+sep_28, falla_28 = placa_con_cuatro_anclas(28.0, 20.0, "3/8")
+
+check("las anclas de esquina cumplen con menos sobrante, por medir en diagonal",
+      (28.0 - 20.0) / 2.0 < k38 + l38 and falla_28 is None,
+      f"sobrante {(28.0 - 20.0) / 2.0:.2f} cm, falla={falla_28}")
+
+
+
 print("\n" + "=" * 78)
 if fallos:
     print(f"ATENCION: {len(fallos)} comprobacion(es) fallaron.")

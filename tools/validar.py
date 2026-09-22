@@ -7026,6 +7026,44 @@ def v18_planta_autocad() -> None:
           and "RevisarDistanciaK(anclas, 0, 0, b, h, 1)" in pbr
           and 'Header="Libramientos"' in tab_pb)
 
+    #  ─── Y EL AVISO DE ANTES DE DIBUJAR LLEVA LOS NUMEROS ────────────────────────────────
+    #  Reportado por el usuario: «NO ME DEJA DIBUJAR», y el aviso decia solo «PB-2: falta
+    #  holgura minima a la columna (l)». Con el titular solo no hay por donde empezar: no dice
+    #  de que ancla es, ni cuanta holgura hay, ni cuanta se pide. El detalle ya lo devolvia
+    #  RevisarHolguraColumnaL -entero, con sus tres numeros y que hacer- y no se ensenaba en
+    #  ningun sitio; el propio comentario del codigo prometia que «el detalle completo sale al
+    #  intentar dibujar», y no salia.
+    check("el aviso de antes de dibujar dice los numeros, no solo el titular",
+          "public string LibramientoDetalle" in pbr
+          and "fila.LibramientoDetalle" in pbw
+          and "Corrige esto antes de dibujar" in pbw)
+
+    #  EL CALCULO, EN UN SOLO SITIO. La celda ensena el titular, el aviso el detalle y la previa
+    #  el titular otra vez: con la cuenta repetida, la tabla podria decir que una placa cumple y
+    #  el boton negarse a dibujarla, que es el fallo mas desconcertante de todos.
+    check("y la comprobacion de libramientos vive en un solo metodo",
+          "private AnclasPlacaBase.Incumplimiento? RevisarLibramientos()" in pbr
+          and "public string Libramientos => RevisarLibramientos()?.Titulo" in pbr
+          and pbr.count("AnclasPlacaBase.RevisarSeparacionJ(") == 1)
+
+    #  Y EL DETALLE DICE SI SE ARREGLA MOVIENDO LAS ANCLAS O SOLO CON OTRA PLACA: el sitio que
+    #  hay entre el canto y el pano del perfil, contra el K + L que pide el cuadro. Sin esa
+    #  resta, «faltan 20 mm de holgura» no distingue un detalle apretado de uno imposible.
+    check("y dice cuanto sitio hay entre el canto de la placa y el perfil",
+          "private string SitioEntreElCantoYElPerfil()" in pbr
+          and "Entre el canto de la placa y el paño del perfil hay" in pbr
+          and "El cuadro pide K + L" in pbr
+          # Las de esquina miden en diagonal, asi que la resta es una referencia y NO el limite:
+          # queda dicho, porque si no el aviso estaria afirmando algo que no es cierto.
+          and "las de esquina ganan algo por la diagonal" in pbr)
+
+    #  El globo de la celda lo lleva tambien: asi se lee con la fila delante, sin tener que
+    #  intentar dibujar para que salga. Y se apaga cuando la placa cumple.
+    check("el globo de la celda Libramientos lleva el detalle, y se apaga si cumple",
+          'Value="{Binding LibramientoDetalle}"' in tab_pb
+          and 'DataTrigger Binding="{Binding LibramientoDetalle}" Value=""' in tab_pb
+          and "Raise(nameof(LibramientoDetalle));" in pbr)
+
     #  Y LA BUSQUEDA DEL PERFIL SE HACE VISIBLE. El perfil no se captura: se ELIGE un nombre y sus
     #  medidas se buscan en el catalogo. Cuando esa busqueda no encuentra nada -un espacio de mas,
     #  una familia que no corresponde- la fila se ve completa y el detalle sale sin su columna, sin

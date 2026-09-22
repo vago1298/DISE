@@ -2867,9 +2867,27 @@
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
 
+                            <!-- El GLOBO lleva el detalle con los numeros: que ancla, cuanta holgura
+                                 hay, cuanta se pide y cuanto sitio queda entre el canto y el perfil.
+                                 En la celda solo cabe el titular, y con el titular solo no se puede
+                                 corregir nada. Asi se lee con la fila delante, sin tener que
+                                 intentar dibujar para que salga el aviso. -->
                             <DataGridTextColumn Header="Libramientos" Binding="{Binding Libramientos}"
                                                 IsReadOnly="True" Width="Auto"
-                                                CellStyle="{StaticResource CeldaCalculada}" />
+                                                CellStyle="{StaticResource CeldaCalculada}">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="ToolTip" Value="{Binding LibramientoDetalle}" />
+                                        <!-- Sin detalle no hay globo: un globo vacio al pasar por
+                                             una placa que cumple es ruido. -->
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding LibramientoDetalle}" Value="">
+                                                <Setter Property="ToolTip" Value="{x:Null}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Falta" Binding="{Binding Falta}"
                                                 IsReadOnly="True" Width="Auto"
                                                 CellStyle="{StaticResource CeldaCalculada}" />

@@ -1359,15 +1359,45 @@ public partial class MainWindow
 
         // LO QUE FALTA SE DICE ANTES DE CONECTAR CON AUTOCAD. Abrir AutoCAD para después decir que
         // una placa no tiene medidas es hacerle perder el tiempo al usuario dos veces.
-        var incompletas = _datos.PlacasBase
-            .Where(f => f.Falta.Length > 0)
-            .Select(f => $"  • {Nombre(f)}: falta {f.Falta}")
-            .ToList();
+        //
+        // Y SE DICE CON LOS NÚMEROS. Antes este aviso llevaba solo el titular de la celda —«falta
+        // holgura mínima a la columna (l)»— y con eso no se puede corregir nada: no dice de qué
+        // ancla, ni cuánta holgura hay, ni cuánta se pide, así que el usuario se queda mirando un
+        // botón que no dibuja. El detalle ya estaba calculado; lo que faltaba era enseñarlo.
+        var incompletas = new List<string>();
+
+        foreach (var fila in _datos.PlacasBase)
+        {
+            var falta = fila.Falta;
+
+            if (falta.Length == 0)
+            {
+                continue;
+            }
+
+            var texto = $"  • {Nombre(fila)}: falta {falta}";
+            var detalle = fila.LibramientoDetalle;
+
+            if (detalle.Length > 0)
+            {
+                // Sangrado bajo su placa, para que con varias placas se vea de quién es cada
+                // número. Los renglones en blanco del detalle se dejan en blanco: separan el «qué
+                // pasa» del «qué hacer».
+                texto += "\n" + string.Join("\n", detalle
+                    .Replace("\r", string.Empty)
+                    .Split('\n')
+                    .Select(l => l.Trim().Length == 0 ? string.Empty : "        " + l.Trim()));
+            }
+
+            incompletas.Add(texto);
+        }
 
         if (incompletas.Count > 0)
         {
             MessageBox.Show(
-                "Corrige esto antes de dibujar:\n\n" + string.Join("\n", incompletas),
+                // Una línea en blanco entre placas: con el detalle de cada una, pegadas no se
+                // distingue dónde acaba una y empieza la siguiente.
+                "Corrige esto antes de dibujar:\n\n" + string.Join("\n\n", incompletas),
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }

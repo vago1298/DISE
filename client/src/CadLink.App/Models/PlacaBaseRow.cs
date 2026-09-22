@@ -806,71 +806,159 @@ public sealed class PlacaBaseRow : Row
     /// las anclas no caben mientras se captura y enterarse cuando el botón se niega a dibujar. Es la
     /// misma idea que la columna «Falta» del resto de las hojas.
     /// </remarks>
-    public string Libramientos
+    public string Libramientos => RevisarLibramientos()?.Titulo ?? string.Empty;
+
+    /// <summary>
+    /// El <b>detalle</b> del libramiento que no cumple: los números y qué hacer. Vacío = cumple.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En la celda de la tabla solo cabe el titular —«Holgura mínima a la columna (L)»—, y con el
+    /// titular solo no se puede corregir nada: dice QUÉ pasa y no de qué ancla, ni cuánta holgura
+    /// hay, ni cuánta se pide. Esto es lo que sale en el aviso de antes de dibujar, que es donde el
+    /// usuario está parado cuando necesita los números.
+    /// </para>
+    /// <para>
+    /// Y lleva al final <b>el sitio que hay entre el canto de la placa y el paño del perfil</b>,
+    /// que es el dato que dice si el problema se arregla moviendo las anclas o solo con una placa
+    /// mayor. Sin él, «faltan 20 mm de holgura» no distingue un detalle apretado de uno imposible.
+    /// </para>
+    /// </remarks>
+    public string LibramientoDetalle
     {
         get
         {
-            var p = AFormatoCad();
+            var falla = RevisarLibramientos();
 
-            // Con la fila incompleta no se dice nada: la columna «Falta» ya está diciendo lo que
-            // hay, y añadir «las anclas no caben» a una placa sin medidas es ruido.
-            if (p.Falta.Count > 0 || !p.ValidarSeparacionAnclas)
+            if (falla is null)
             {
                 return string.Empty;
             }
 
-            // Se mide en centímetros: da igual la escala del dibujo, porque las tablas J y K
-            // trabajan en milímetros y la conversión es interna.
-            var b = p.AnchoDibujoCm;
-            var h = p.AltoDibujoCm;
+            var sitio = SitioEntreElCantoYElPerfil();
 
-            var dAncX = p.DiamAnclaXCm;
-            var dAncY = p.DiamAnclaYCm;
-
-            var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
-            var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
-
-            // EL PERFIL Y LA DISTANCIA K ENTRAN EN LA CUENTA, igual que en el dibujante. La
-            // separación automática reparte el sobrante entre la placa y el patín, así que sin el
-            // perfil esta columna usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría
-            // que la placa cumple y el botón se negaría a dibujarla, sin nada que explicara la
-            // diferencia. Y el ajuste al mínimo de K, por lo mismo.
-            var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
-            var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
-
-            if (sepX <= 0)
-            {
-                sepX = AnclasPlacaBase.SepAuto(
-                    b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
-            }
-
-            if (sepY <= 0)
-            {
-                sepY = AnclasPlacaBase.SepAuto(
-                    h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
-            }
-
-            var anclas = AnclasPlacaBase.Construir(
-                0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
-                dAncX, dAguX, dAncY, dAguY);
-
-            // LAS TRES COLUMNAS DEL CUADRO, y cada una mide LO SUYO:
-            //   J - la distancia entre anclas
-            //   K - la del ancla al canto recortado de la placa
-            //   L - la del ancla al paño de la COLUMNA, para que entre la llave
-            //
-            // La L no es «la K con otro nombre»: en el croquis del estándar el orden es canto de la
-            // placa -> K -> ancla -> L -> paño de la columna, así que una mira hacia fuera y la otra
-            // hacia dentro. Los números tampoco dejan deducir una de la otra: en un ancla de 5/8" la
-            // K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66.
-            var falla = AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)
-                        ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1)
-                        ?? AnclasPlacaBase.RevisarHolguraColumnaL(
-                               anclas, p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos, 1);
-
-            // En la celda solo cabe el titular; el detalle completo sale al intentar dibujar.
-            return falla is null ? string.Empty : falla.Titulo;
+            return sitio.Length == 0 ? falla.Detalle : falla.Detalle + "\n\n" + sitio;
         }
+    }
+
+    /// <summary>
+    /// Cuánto hay —y cuánto pide el cuadro— entre el canto de la placa y el paño del perfil.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las dos paredes entre las que tiene que caber el ancla, dichas como una resta: de un lado el
+    /// sobrante real de la placa, del otro <c>K + L</c>, que es lo que el cuadro exige a un ancla
+    /// alineada con el perfil. Si el sobrante no llega, no es que las anclas estén mal puestas: no
+    /// hay dónde ponerlas, y lo que hace falta es una placa mayor o un perfil menor.
+    /// </para>
+    /// <para>
+    /// Se dice «alineada con el perfil» porque es la única posición en la que las dos distancias
+    /// caen sobre la misma línea. Las anclas de las <b>esquinas</b> —las de las hileras de X con
+    /// pocas anclas— miden su holgura en diagonal y por eso ganan algo: pueden cumplir con un
+    /// sobrante algo menor. Es una referencia para entender el aviso, no la comprobación: la que
+    /// manda es la que mide ancla por ancla contra el contorno de verdad.
+    /// </para>
+    /// </remarks>
+    private string SitioEntreElCantoYElPerfil()
+    {
+        var p = AFormatoCad();
+
+        var b = p.AnchoDibujoCm;
+        var h = p.AltoDibujoCm;
+        var px = p.PerfilXDibujoCm;
+        var py = p.PerfilYDibujoCm;
+
+        if (b <= 0 || h <= 0 || px <= 0 || py <= 0)
+        {
+            return string.Empty;
+        }
+
+        var hayX = (b - px) / 2;
+        var hayY = (h - py) / 2;
+
+        var pideX = AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaXCm)
+                    + AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaXCm);
+
+        var pideY = AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaYCm)
+                    + AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaYCm);
+
+        return
+            $"Entre el canto de la placa y el paño del perfil hay {hayX:0.#} cm en X y " +
+            $"{hayY:0.#} cm en Y.\n" +
+            $"El cuadro pide K + L = {pideX:0.#} cm en X y {pideY:0.#} cm en Y para un ancla " +
+            "alineada con el perfil\n(las de esquina ganan algo por la diagonal). Si no llega, " +
+            "hace falta placa mayor o perfil menor.";
+    }
+
+    /// <summary>
+    /// La comprobación de los libramientos, en <b>un solo sitio</b>. <c>null</c> = la placa cumple.
+    /// </summary>
+    /// <remarks>
+    /// La hacen tres: la celda «Libramientos» —que enseña el titular—, el aviso de antes de dibujar
+    /// —que enseña el detalle— y la vista previa. Con el cálculo repetido, la tabla podría decir que
+    /// una placa cumple y el botón negarse a dibujarla.
+    /// </remarks>
+    private AnclasPlacaBase.Incumplimiento? RevisarLibramientos()
+    {
+        var p = AFormatoCad();
+
+        // Con la fila incompleta no se dice nada: la columna «Falta» ya está diciendo lo que
+        // hay, y añadir «las anclas no caben» a una placa sin medidas es ruido.
+        if (p.Falta.Count > 0 || !p.ValidarSeparacionAnclas)
+        {
+            return null;
+        }
+
+        // Se mide en centímetros: da igual la escala del dibujo, porque las tablas J y K
+        // trabajan en milímetros y la conversión es interna.
+        var b = p.AnchoDibujoCm;
+        var h = p.AltoDibujoCm;
+
+        var dAncX = p.DiamAnclaXCm;
+        var dAncY = p.DiamAnclaYCm;
+
+        var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
+        var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
+
+        // EL PERFIL Y LA DISTANCIA K ENTRAN EN LA CUENTA, igual que en el dibujante. La
+        // separación automática reparte el sobrante entre la placa y el patín, así que sin el
+        // perfil esta columna usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría
+        // que la placa cumple y el botón se negaría a dibujarla, sin nada que explicara la
+        // diferencia. Y el ajuste al mínimo de K, por lo mismo.
+        var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
+        var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
+
+        if (sepX <= 0)
+        {
+            sepX = AnclasPlacaBase.SepAuto(
+                b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
+        }
+
+        if (sepY <= 0)
+        {
+            sepY = AnclasPlacaBase.SepAuto(
+                h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
+        }
+
+        var anclas = AnclasPlacaBase.Construir(
+            0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
+            dAncX, dAguX, dAncY, dAguY);
+
+        // LAS TRES COLUMNAS DEL CUADRO, y cada una mide LO SUYO:
+        //   J - la distancia entre anclas
+        //   K - la del ancla al canto recortado de la placa
+        //   L - la del ancla al paño de la COLUMNA, para que entre la llave
+        //
+        // La L no es «la K con otro nombre»: en el croquis del estándar el orden es canto de la
+        // placa -> K -> ancla -> L -> paño de la columna, así que una mira hacia fuera y la otra
+        // hacia dentro. Los números tampoco dejan deducir una de la otra: en un ancla de 5/8" la
+        // K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66.
+        // En la celda solo cabe el titular; el detalle completo —con los números— sale en el
+        // aviso de antes de dibujar, por LibramientoDetalle.
+        return AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)
+               ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1)
+               ?? AnclasPlacaBase.RevisarHolguraColumnaL(
+                      anclas, p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos, 1);
     }
 
     /// <summary>Qué falta para poder dibujar. Vacío = se puede.</summary>
@@ -914,6 +1002,10 @@ public sealed class PlacaBaseRow : Row
         Raise(nameof(BordeMinimo));
         Raise(nameof(SepBordeUsada));
         Raise(nameof(Libramientos));
+
+        // El detalle va JUNTO con su titular: es el globo de esa misma celda, y sin avisar de él
+        // el globo se quedaría con los números de la captura anterior.
+        Raise(nameof(LibramientoDetalle));
         Raise(nameof(Falta));
     }
 
