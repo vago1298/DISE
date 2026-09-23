@@ -2336,7 +2336,7 @@ check("el ahogo se devuelve medido y desde la cara del concreto",
 #  la polilinea -como la placa- y no por un contorno de dos caras: asi el ancla sigue siendo
 #  UNA pieza y la geometria no cambia, que es la que comparten el dibujo y la previa.
 check("el grueso real de la barra viaja con el ancla",
-      "double Diametro, double[][] Rosca, double[][] AristasTuerca, double[] Contorno)" in _ELEV
+      "double Diametro, double[][] Rosca, double[][] AristasTuerca, Perfil Contorno)" in _ELEV
       and "Diametro: d," in _ELEV)
 
 #  ---- EL ANCLA SE DIBUJA VACIA, CON SUS DOS CARAS. SIN PEDIT ----
@@ -2345,12 +2345,12 @@ check("el grueso real de la barra viaja con el ancla",
 #  con PEDIT- y eso dibuja una barra MACIZA: al plotear, una mancha negra que ademas tapa el
 #  rayado del concreto que cruza.
 check("el ancla se dibuja como contorno, no con ancho de polilinea",
-      "Polilinea(a.Contorno, PlacaBaseCapas.Anclas);" in _DELEV
+      "Polilinea(a.Contorno.Puntos, PlacaBaseCapas.Anclas, a.Contorno.Dobleces);" in _DELEV
       #  Y el ancho de polilinea NO vuelve: es lo unico que hay que vigilar aqui.
       and "ConstantWidth = a.Diametro;" not in _DELEV)
 
 check("y el EJE se queda solo para medir, no para dibujar",
-      "public static double[] ContornoDeLaBarra(" in _ELEV
+      "public static Perfil ContornoDeLaBarra(" in _ELEV
       and "Contorno: ContornoDeLaBarra(x, yPunta, yFondo, pata, sentidoDoblez, d));" in _ELEV
       #  Las cotas siguen saliendo del eje, que es lo que permitio cambiar el dibujo sin
       #  tocar una sola cota.
@@ -2358,7 +2358,7 @@ check("y el EJE se queda solo para medir, no para dibujar",
       and "var yFondoAncla = a.Vastago[3];" in _DELEV)
 
 check("la previa pinta el mismo contorno vacio",
-      "AgregarPoligonal(geoAnclas, a.Contorno, null);" in _PREV
+      "AgregarPoligonal(geoAnclas, a.Contorno.Puntos, a.Contorno.Dobleces);" in _PREV
       #  Y ya no pinta el eje con un trazo tan gordo como la barra.
       and "vastagos" not in _PREV)
 
@@ -2728,24 +2728,66 @@ def aristas_de_la_tuerca(x, y_abajo, y_arriba, ancho_tuerca):
             [x + cuarto, y_abajo, x + cuarto, y_arriba]]
 
 
+#  El radio del doblez y el bulge del arco se LEEN del C#, como el resto.
+RADIO_DOBLEZ_EN_D = _cte_elev("RadioDeDoblezEnDiametros")
+
+_m_bulge = re.search(r"private const double BulgeDeCuartoDeVuelta = ([0-9.]+);", _ELEV)
+BULGE_90 = float(_m_bulge.group(1)) if _m_bulge else None
+
+
+def radio_del_doblez(pata, tramo_recto, diametro):
+    """Espejo de ElevacionPlacaBase.RadioDelDoblez: al eje y recortado a lo que cabe."""
+    d = diametro if diametro > 0 else 0.0
+
+    if pata <= 0 or d <= 0:
+        return 0.0
+
+    pedido = RADIO_DOBLEZ_EN_D * d + d / 2.0
+    cabe = min(pata - d, tramo_recto - d)
+    rc = min(pedido, cabe)
+
+    return rc if rc >= pedido / 4 else 0.0
+
+
 def contorno_de_la_barra(x, y_punta, y_fondo, pata, sentido_doblez, diametro):
-    """Espejo de ElevacionPlacaBase.ContornoDeLaBarra: el perfil vacio de la barra."""
+    """Espejo de ElevacionPlacaBase.ContornoDeLaBarra: el perfil vacio, con su codo."""
     r = diametro / 2.0
     s = 1 if sentido_doblez >= 0 else -1
 
     if pata <= 0:
-        return [x - r, y_punta, x + r, y_punta, x + r, y_fondo, x - r, y_fondo]
+        return {"puntos": [x - r, y_punta, x + r, y_punta, x + r, y_fondo, x - r, y_fondo],
+                "dobleces": []}
 
     x_fuera = x - s * r
     x_dentro = x + s * r
     x_punta = x + s * (pata + r)
 
-    return [x_fuera, y_punta,
-            x_fuera, y_fondo - r,
-            x_punta, y_fondo - r,
-            x_punta, y_fondo + r,
-            x_dentro, y_fondo + r,
-            x_dentro, y_punta]
+    rc = radio_del_doblez(pata, abs(y_punta - y_fondo), diametro)
+
+    if rc <= 0:
+        #  Sin sitio para el arco, el codo se queda a escuadra: lo mismo que hace AutoCAD
+        #  cuando el radio del FILLET no cabe.
+        return {"puntos": [x_fuera, y_punta,
+                           x_fuera, y_fondo - r,
+                           x_punta, y_fondo - r,
+                           x_punta, y_fondo + r,
+                           x_dentro, y_fondo + r,
+                           x_dentro, y_punta],
+                "dobleces": []}
+
+    y_centro = y_fondo + rc
+    x_centro = x + s * rc
+    bulge = BULGE_90 * s
+
+    return {"puntos": [x_fuera, y_punta,
+                       x_fuera, y_centro,
+                       x_centro, y_fondo - r,
+                       x_punta, y_fondo - r,
+                       x_punta, y_fondo + r,
+                       x_centro, y_fondo + r,
+                       x_dentro, y_centro,
+                       x_dentro, y_punta],
+            "dobleces": [(1, bulge), (5, -bulge)]}
 
 
 def un_ancla(x, y_placa, y_arriba, ahogo, largo_total, doblez, esp_placa, grout,
@@ -4359,7 +4401,7 @@ print("=" * 78)
 
 #  ---- RECTA: un rectangulo del ancho de la barra ----
 recta = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 0.0, 2.54, 0.0, D38, 0.0, 1, ESC)
-c_recta = recta["contorno"]
+c_recta = recta["contorno"]["puntos"]
 
 check("un ancla recta es un rectangulo de cuatro vertices",
       len(c_recta) == 8, f"{len(c_recta) // 2} vertices")
@@ -4377,10 +4419,18 @@ check("y de la punta al fondo, lo mismo que el eje",
 
 #  ---- CON DOBLEZ: la L de seis vertices ----
 ele = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 10.0, 2.54, 0.0, D38, 0.0, 1, ESC)
-c_ele = ele["contorno"]
+c_ele = ele["contorno"]["puntos"]
 
-check("con doblez, el contorno es una L de seis vertices",
-      len(c_ele) == 12, f"{len(c_ele) // 2} vertices")
+#  CON EL CODO REDONDEADO SON OCHO VERTICES, no seis: cada arco se lleva dos -sus dos
+#  tangencias- en lugar de la esquina en escuadra.
+check("con doblez, el contorno lleva ocho vertices: los dos arcos del codo",
+      len(c_ele) == 16, f"{len(c_ele) // 2} vertices")
+
+check("y los dos arcos, con su bulge de 90 grados y en sentidos contrarios",
+      len(ele["contorno"]["dobleces"]) == 2
+      and abs(abs(ele["contorno"]["dobleces"][0][1]) - BULGE_90) < 1e-12
+      and abs(ele["contorno"]["dobleces"][0][1] + ele["contorno"]["dobleces"][1][1]) < 1e-12,
+      str(ele["contorno"]["dobleces"]))
 
 #  El codo: la cara de FUERA pasa por debajo del eje y la de DENTRO por encima, las dos a
 #  medio diametro. Si se cruzaran, el codo saldria con un pico hacia dentro.
@@ -4399,11 +4449,63 @@ check("la punta de la pata se cierra medio diametro mas alla de su eje",
       abs(max(c_ele[0::2]) - (x_pata + D38 / 2)) < 1e-9,
       f"llega a {max(c_ele[0::2]):.4f} y el eje de la pata acaba en {x_pata:.4f}")
 
+#  ---- EL CODO, REDONDEADO CON EL RADIO DE DOBLADO ----
+#  Pedido: «en la esquina del ancla dale fillete de 5*2.54*diametro de ancla para el fillete
+#  interno y externo». Ese 5*2.54*O" son CINCO DIAMETROS -el 2.54 pasa la pulgada a cm-, que es
+#  el radio con el que se dobla un ancla: las normas piden entre tres y seis.
+check("el radio del doblez son cinco diametros, leidos del codigo",
+      abs(RADIO_DOBLEZ_EN_D - 5.0) < 1e-12,
+      f"{RADIO_DOBLEZ_EN_D} diametros")
+
+rc38 = radio_del_doblez(10.0, 30.0, D38)
+
+check("y al eje le toca medio diametro mas que al interior",
+      abs(rc38 - (5 * D38 + D38 / 2)) < 1e-9, f"{rc38:.4f}")
+
+#  LOS DOS ARCOS SON CONCENTRICOS, que es lo que mantiene el grueso de la barra en el codo. Con
+#  el mismo radio en cada cara -un FILLET aplicado por separado a cada una- el codo engorda un
+#  41 %: los centros quedarian a un diametro por raiz de dos uno del otro.
+_dobl = ele["contorno"]["dobleces"]
+i_ext = _dobl[0][0]
+i_int = _dobl[1][0]
+
+x_centro_ext = c_ele[2 * (i_ext + 1)]
+y_centro_ext = c_ele[2 * i_ext + 1]
+x_centro_int = c_ele[2 * i_int]
+y_centro_int = c_ele[2 * (i_int + 1) + 1]
+
+check("los dos arcos del codo son concentricos: el grueso no cambia",
+      abs(x_centro_ext - x_centro_int) < 1e-9 and abs(y_centro_ext - y_centro_int) < 1e-9,
+      f"centros en ({x_centro_ext:.3f}, {y_centro_ext:.3f}) y "
+      f"({x_centro_int:.3f}, {y_centro_int:.3f})")
+
+#  Y EL RADIO SE RECORTA A LO QUE CABE. Cinco diametros de un 3/4" son 9.5 cm: en una pata de
+#  10 cm el arco se comeria la pata entera y el contorno se cruzaria consigo mismo.
+D34 = pulgadas("3/4") * 2.54
+
+check("en un ancla de 3/4 con pata de 10 cm el radio no cabe entero y se recorta",
+      0 < radio_del_doblez(10.0, 30.0, D34) < 5 * D34 + D34 / 2,
+      f"{radio_del_doblez(10.0, 30.0, D34):.3f} contra {5 * D34 + D34 / 2:.3f} pedidos")
+
+#  Y si no cabe ni un cuarto de lo pedido, el codo se queda a escuadra: es lo que hace AutoCAD
+#  cuando el FILLET no cabe, y es mas honesto que un redondeo inventado.
+check("con una pata muy corta, el codo se queda a escuadra y sin arcos",
+      radio_del_doblez(1.2 * D38, 30.0, D38) == 0
+      and len(contorno_de_la_barra(0, 10, 0, 1.2 * D38, 1, D38)["dobleces"]) == 0)
+
+#  El arco nunca se come la pata entera: queda barra recta a los dos lados del doblez.
+for pata_prueba in (5.0, 8.0, 10.0, 20.0):
+    rc = radio_del_doblez(pata_prueba, 30.0, D38)
+
+    check(f"con pata de {pata_prueba:.0f} cm queda barra recta despues del arco",
+          rc == 0 or rc + D38 / 2 < pata_prueba + D38 / 2,
+          f"radio {rc:.3f} y pata {pata_prueba:.3f}")
+
 #  ---- Y AL OTRO LADO, ESPEJADO ----
 #  La cara de fuera es la del lado CONTRARIO al doblez, asi que con la pata a la izquierda las
 #  dos se cambian el papel. Es donde un signo mal puesto cruza el contorno.
 izqda = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 10.0, 2.54, 0.0, D38, 0.0, -1, ESC)
-c_izq = izqda["contorno"]
+c_izq = izqda["contorno"]["puntos"]
 
 check("con la pata al otro lado, el contorno sale espejado",
       abs(min(c_izq[0::2]) - (-(abs(x_pata) + D38 / 2))) < 1e-9
@@ -4427,7 +4529,7 @@ check("y la profundidad del concreto sigue sumando medio diametro por eso",
 #  ---- LAS FORMULAS, ATADAS AL C# ----
 #  El espejo es una copia: si el signo del codo cambia en el codigo, esto no lo ve. Se lee del
 #  cuerpo del metodo, como en la rosca.
-_CONT = _ELEV.split("public static double[] ContornoDeLaBarra(")[-1].split("\n    /// <summary>")[0]
+_CONT = _ELEV.split("public static Perfil ContornoDeLaBarra(")[-1].split("\n    /// <summary>")[0]
 
 check("el cuerpo de ContornoDeLaBarra se pudo aislar", len(_CONT) > 300)
 
@@ -4440,6 +4542,33 @@ check("y el codo se resuelve con el signo del doblez, sin dos ramas espejadas",
       "var xFuera = x - (s * r);" in _CONT
       and "var xDentro = x + (s * r);" in _CONT
       and "var xPunta = x + (s * (pata + r));" in _CONT)
+
+check("el codo se redondea con el radio de doblado, y los arcos son concentricos",
+      "var rc = RadioDelDoblez(pata, Math.Abs(yPunta - yFondo), diametro);" in _CONT
+      and "var yCentro = yFondo + rc;" in _CONT
+      and "var xCentro = x + (s * rc);" in _CONT
+      and "var bulge = BulgeDeCuartoDeVuelta * s;" in _CONT
+      #  El de dentro gira al contrario que el de fuera.
+      and "(5, -bulge)," in _CONT)
+
+#  LAS CUATRO TANGENCIAS, en el codigo. El espejo las construye por su cuenta, asi que por si
+#  solo no ve que una se mueva: se probo separando el centro de uno de los arcos y las
+#  comprobaciones geometricas seguian pasando. Los dos arcos comparten xCentro y yCentro, y es
+#  eso lo que mantiene el grueso de la barra en el codo.
+check("las cuatro tangencias del codo cuelgan del mismo centro",
+      _CONT.count("xCentro, yFondo") == 2
+      and "xFuera, yCentro," in _CONT
+      and "xDentro, yCentro," in _CONT)
+
+#  Y EL RECORTE, tambien en el codigo: es lo que evita que el arco se coma la pata entera y el
+#  contorno se cruce consigo mismo. Mismo caso: el espejo recorta por su cuenta.
+_RADIO = _ELEV.split("public static double RadioDelDoblez(")[-1].split("\n    /// <summary>")[0]
+
+check("el radio se recorta a lo que cabe en la pata y en el tramo recto",
+      "var cabe = Math.Min(pata - d, tramoRecto - d);" in _RADIO
+      and "var rc = Math.Min(pedido, cabe);" in _RADIO
+      #  Y si no cabe ni un cuarto, cero: el codo a escuadra, como el FILLET de AutoCAD.
+      and "return rc >= pedido / 4 ? rc : 0;" in _RADIO)
 
 
 # ==========================================================================

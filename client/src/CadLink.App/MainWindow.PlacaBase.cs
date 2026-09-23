@@ -912,7 +912,7 @@ public partial class MainWindow
                 // pintaba el eje con un trazo tan grueso como la barra —el equivalente al ancho de
                 // polilínea del dibujo—, y el usuario pidió lo otro: «déjalas vacías pero con 2
                 // líneas representando su grosor». La previa pinta lo mismo que el plano.
-                AgregarPoligonal(geoAnclas, a.Contorno, null);
+                AgregarPoligonal(geoAnclas, a.Contorno.Puntos, a.Contorno.Dobleces);
 
                 AgregarAbierta(geoAnclas, a.Arandela);
 

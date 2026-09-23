@@ -56,7 +56,7 @@ public static class DetalleDeAncla
         bool Vertical, double Desde, double Hasta, double Origen, double Ref);
 
     /// <summary>El detalle completo, en coordenadas de dibujo.</summary>
-    /// <param name="Barra">El perfil de la barra, cerrado y vacío.</param>
+    /// <param name="Barra">El perfil de la barra, cerrado y vacío, con el codo redondeado.</param>
     /// <param name="Tuerca">Su rectángulo.</param>
     /// <param name="AristasTuerca">Las dos aristas del hexágono.</param>
     /// <param name="Rosca">Los flancos, la punta y las dos hebras del hilo.</param>
@@ -65,7 +65,7 @@ public static class DetalleDeAncla
     /// <param name="Renglones">Los renglones del rótulo, de arriba abajo.</param>
     /// <param name="Ancho">Lo que ocupa a lo ancho, cotas incluidas, para el reparto.</param>
     public sealed record Detalle(
-        double[] Barra,
+        ElevacionPlacaBase.Perfil Barra,
         double[] Tuerca,
         double[][] AristasTuerca,
         double[][] Rosca,

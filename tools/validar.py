@@ -6933,8 +6933,12 @@ def v18_planta_autocad() -> None:
 
     check("el ancla se dibuja vacia, con sus dos caras y sin ancho de polilinea",
           "Diametro: d," in elev
-          and "public static double[] ContornoDeLaBarra(" in elev
-          and "Polilinea(a.Contorno, PlacaBaseCapas.Anclas);" in delev
+          and "public static Perfil ContornoDeLaBarra(" in elev
+          # Y EL CODO REDONDEADO con el radio de doblado: el «5 * 2.54 * O"» que se pidio son
+          # cinco diametros, y se recorta a lo que cabe en la pata.
+          and "private const double RadioDeDoblezEnDiametros = 5.0;" in elev
+          and "public static double RadioDelDoblez(" in elev
+          and "Polilinea(a.Contorno.Puntos, PlacaBaseCapas.Anclas, a.Contorno.Dobleces);" in delev
           # Y el ancho de polilinea no vuelve.
           and "ConstantWidth = a.Diametro;" not in delev)
 
@@ -6959,7 +6963,7 @@ def v18_planta_autocad() -> None:
     check("el ancla lleva su enroscado y su tuerca con aristas",
           "public static double[][] Roscar(" in elev
           and "public static double[][] AristasDeLaTuerca(" in elev
-          and "double[][] Rosca, double[][] AristasTuerca, double[] Contorno)" in elev
+          and "double[][] Rosca, double[][] AristasTuerca, Perfil Contorno)" in elev
           and "Rosca: Roscar(x, yPunta, d, escala)," in elev)
 
     # ------------------------------------------------------------------

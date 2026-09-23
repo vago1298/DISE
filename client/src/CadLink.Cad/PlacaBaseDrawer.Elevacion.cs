@@ -164,7 +164,7 @@ public sealed partial class PlacaBaseDrawer
 
         var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
-        Polilinea(detalle.Barra, PlacaBaseCapas.Anclas);
+        Polilinea(detalle.Barra.Puntos, PlacaBaseCapas.Anclas, detalle.Barra.Dobleces);
 
         Polilinea(detalle.Tuerca, PlacaBaseCapas.Anclas,
                   color: PlacaBaseCapas.ColorRoscaYTuerca);
@@ -187,7 +187,8 @@ public sealed partial class PlacaBaseDrawer
         // cortes, el bloque se lleva solo la geometría y las cotas se quedan fuera para poder
         // moverlas sin entrar en la definición.
         var nombre = Bloquear(
-            NombreDelDetalleDeAncla(p.Seccion), inicio, fin, detalle.Barra[0], detalle.Barra[1]);
+            NombreDelDetalleDeAncla(p.Seccion), inicio, fin,
+            detalle.Barra.Puntos[0], detalle.Barra.Puntos[1]);
 
         foreach (var c in detalle.Cotas)
         {
@@ -376,7 +377,7 @@ public sealed partial class PlacaBaseDrawer
             // la profundidad del concreto. Esa separación es lo que permitió cambiar el dibujo sin
             // tocar una sola cota.
             // ═════════════════════════════════════════════════════════════════════════════════
-            Polilinea(a.Contorno, PlacaBaseCapas.Anclas);
+            Polilinea(a.Contorno.Puntos, PlacaBaseCapas.Anclas, a.Contorno.Dobleces);
 
             // ═════════════════════════════════════════════════════════════════════════════════
             // LA TUERCA Y EL ENROSCADO, EN LA CAPA DE ANCLAS Y EN COLOR 253.

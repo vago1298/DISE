@@ -117,7 +117,8 @@ public static class ElevacionPlacaBase
     /// </param>
     /// <param name="Contorno">
     /// El <b>perfil de la barra</b>, cerrado y vacío: las dos caras separadas un diámetro, con sus
-    /// extremos y el codo del doblez resuelto. Es lo que se DIBUJA.
+    /// extremos y el codo del doblez <b>redondeado</b> con el radio de doblado. Es lo que se DIBUJA,
+    /// y va con sus bulges: sin ellos el codo sale a escuadra.
     /// </param>
     /// <param name="AristasTuerca">
     /// Las dos aristas verticales de la tuerca: es lo que la hace leerse como una <b>tuerca
@@ -125,7 +126,7 @@ public static class ElevacionPlacaBase
     /// </param>
     public readonly record struct AnclaDeCanto(
         double[] Vastago, double[] Tuerca, double[] Arandela, double[]? Remate, double Ahogo,
-        double Diametro, double[][] Rosca, double[][] AristasTuerca, double[] Contorno)
+        double Diametro, double[][] Rosca, double[][] AristasTuerca, Perfil Contorno)
     {
         /// <summary>¿Lleva doblez en el extremo?</summary>
         public bool ConDoblez => Vastago.Length >= 6;
@@ -657,7 +658,7 @@ public static class ElevacionPlacaBase
     /// </remarks>
     /// <param name="pata">Lo que mide la pata del doblez. Cero o menos: la barra va recta.</param>
     /// <param name="sentidoDoblez"><c>+1</c> la pata va a la derecha, <c>-1</c> a la izquierda.</param>
-    public static double[] ContornoDeLaBarra(
+    public static Perfil ContornoDeLaBarra(
         double x, double yPunta, double yFondo, double pata, int sentidoDoblez, double diametro)
     {
         var r = diametro / 2;
@@ -665,13 +666,15 @@ public static class ElevacionPlacaBase
 
         if (pata <= 0)
         {
-            return new[]
-            {
-                x - r, yPunta,
-                x + r, yPunta,
-                x + r, yFondo,
-                x - r, yFondo,
-            };
+            return new Perfil(
+                new[]
+                {
+                    x - r, yPunta,
+                    x + r, yPunta,
+                    x + r, yFondo,
+                    x - r, yFondo,
+                },
+                Array.Empty<(int, double)>());
         }
 
         // La cara de FUERA del codo —la del lado contrario al doblez— es la que pasa por debajo del
@@ -680,15 +683,97 @@ public static class ElevacionPlacaBase
         var xDentro = x + (s * r);
         var xPunta = x + (s * (pata + r));
 
-        return new[]
+        var rc = RadioDelDoblez(pata, Math.Abs(yPunta - yFondo), diametro);
+
+        if (rc <= 0)
         {
-            xFuera, yPunta,
-            xFuera, yFondo - r,
-            xPunta, yFondo - r,
-            xPunta, yFondo + r,
-            xDentro, yFondo + r,
-            xDentro, yPunta,
-        };
+            // Sin sitio para el arco, el codo se queda a escuadra. Es lo que hace AutoCAD cuando el
+            // radio del FILLET no cabe: no lo redondea a medias.
+            return new Perfil(
+                new[]
+                {
+                    xFuera, yPunta,
+                    xFuera, yFondo - r,
+                    xPunta, yFondo - r,
+                    xPunta, yFondo + r,
+                    xDentro, yFondo + r,
+                    xDentro, yPunta,
+                },
+                Array.Empty<(int, double)>());
+        }
+
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // EL CODO, REDONDEADO. Los dos arcos son CONCÉNTRICOS: el centro está a rc del eje en las
+        // dos direcciones, y de ahí salen el radio de fuera —rc + d/2— y el de dentro —rc - d/2—.
+        //
+        // Concéntricos y no con el mismo radio cada uno, que es lo que haría un FILLET aplicado por
+        // separado a cada cara: con radios iguales y centros distintos, el codo engorda un 41 % en
+        // la diagonal. Una barra doblada tiene el MISMO grueso en todo su desarrollo.
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        var yCentro = yFondo + rc;
+        var xCentro = x + (s * rc);
+
+        // El arco de fuera gira 90° en el sentido del doblez; el de dentro, al contrario. El signo
+        // del bulge es el del giro: positivo antihorario.
+        var bulge = BulgeDeCuartoDeVuelta * s;
+
+        return new Perfil(
+            new[]
+            {
+                xFuera, yPunta,
+                xFuera, yCentro,            // tangencia del arco de fuera, en el tramo vertical
+                xCentro, yFondo - r,        // y en el tramo de la pata
+                xPunta, yFondo - r,
+                xPunta, yFondo + r,
+                xCentro, yFondo + r,        // tangencia del arco de dentro, en la pata
+                xDentro, yCentro,           // y en el tramo vertical
+                xDentro, yPunta,
+            },
+            new[]
+            {
+                // El bulge va en el vértice donde ARRANCA el arco, que es como lo guarda AutoCAD.
+                (1, bulge),
+                (5, -bulge),
+            });
+    }
+
+    /// <summary>
+    /// El radio del doblez <b>medido al eje</b> de la barra, recortado a lo que cabe.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario: <i>«en la esquina del ancla dale fillete de 5·2.54·diámetro de ancla»</i>.
+    /// Ese <c>5 · 2.54 · Ø"</c> son <b>cinco diámetros</b> —2.54 convierte la pulgada a centímetros—,
+    /// que es el radio de doblado con el que se dobla un ancla: las normas piden entre tres y seis.
+    /// Se toma como radio <b>interior</b>, así que al eje le toca medio diámetro más.
+    /// </para>
+    /// <para>
+    /// <b>Y se recorta a lo que cabe</b>, porque muchas veces no cabe: cinco diámetros de un ancla de
+    /// 3/4" son 9.5 cm, y con una pata de 10 cm el arco se comería la pata entera. Sin recorte, el
+    /// contorno se cruzaría consigo mismo y el ancla saldría como un nudo. Si no queda ni un cuarto
+    /// del radio pedido, se devuelve <c>0</c> y el codo se dibuja a escuadra: es lo que hace AutoCAD
+    /// cuando el FILLET no cabe, y es más honesto que un redondeo inventado.
+    /// </para>
+    /// </remarks>
+    public static double RadioDelDoblez(double pata, double tramoRecto, double diametro)
+    {
+        var d = diametro > 0 ? diametro : 0;
+
+        if (pata <= 0 || d <= 0)
+        {
+            return 0;
+        }
+
+        // Al eje: el interior que se pide más medio diámetro.
+        var pedido = (RadioDeDoblezEnDiametros * d) + (d / 2);
+
+        // Lo que cabe: el arco no puede comerse la pata entera ni subir más que el tramo recto. Se
+        // deja un diámetro de barra recta a cada lado para que el doblez se vea como un doblez.
+        var cabe = Math.Min(pata - d, tramoRecto - d);
+
+        var rc = Math.Min(pedido, cabe);
+
+        return rc >= pedido / 4 ? rc : 0;
     }
 
     // ======================================================================
@@ -732,6 +817,29 @@ public static class ElevacionPlacaBase
     /// </para>
     /// </remarks>
     private const double PasoEnDiametros = 0.15;
+
+    /// <summary>El radio del doblez del ancla, en diámetros y medido al <b>interior</b>.</summary>
+    /// <remarks>
+    /// Los <c>5 · 2.54 · Ø"</c> que pidió el usuario: el 2.54 pasa la pulgada a centímetros, así que
+    /// lo que queda son <b>cinco diámetros</b>. Es el radio con el que se dobla un ancla —las normas
+    /// piden entre tres y seis— y por eso va aquí con nombre y no como un número en la cuenta.
+    /// </remarks>
+    private const double RadioDeDoblezEnDiametros = 5.0;
+
+    /// <summary>El bulge de un arco de <b>90°</b>: <c>tan(90/4)</c>.</summary>
+    /// <remarks>
+    /// El bulge de una polilínea es la tangente de un cuarto del ángulo que barre el arco. Para el
+    /// codo de 90° del doblez sale <c>tan(22.5°)</c>, y se escribe con su valor y no con una llamada
+    /// a <c>Math.Tan</c> para que se pueda comparar de un vistazo con el número que guarda AutoCAD.
+    /// </remarks>
+    private const double BulgeDeCuartoDeVuelta = 0.41421356237309503;
+
+    /// <summary>Un perfil cerrado con sus arcos: los puntos y el bulge de los que lo llevan.</summary>
+    /// <remarks>
+    /// Va junto porque no se puede dibujar lo uno sin lo otro: los mismos puntos con los bulges
+    /// perdidos dan un codo a escuadra, y es un fallo que no se ve hasta que el plano está impreso.
+    /// </remarks>
+    public readonly record struct Perfil(double[] Puntos, (int Indice, double Bulge)[] Dobleces);
 
     /// <summary>Cuántos dientes se dibujan como máximo.</summary>
     /// <remarks>
