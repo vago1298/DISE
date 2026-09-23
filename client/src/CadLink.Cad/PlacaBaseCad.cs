@@ -348,6 +348,20 @@ public sealed class PlacaBaseCad
     /// <summary>Dibujar el <b>alzado</b> a la derecha de la planta.</summary>
     public bool DibujarElevacion { get; set; } = true;
 
+    /// <summary>Dibuja el <b>detalle del ancla sola</b>, al final de los cortes.</summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario: en el corte de la placa el ancla sale enterrada entre el concreto y la
+    /// placa, y ahí no se puede acotar. Suelta y a un lado se acota entera: diámetro, longitud
+    /// vertical, pata, rosca y el desarrollo que se pide al proveedor.
+    /// </para>
+    /// <para>
+    /// Encendido por omisión, como el resto del detalle: es una vista más de la misma fila. Se apaga
+    /// para una corrida en la que solo interese la planta.
+    /// </para>
+    /// </remarks>
+    public bool DibujarDetalleDeAncla { get; set; } = true;
+
     /// <summary>Espesor de los cartabones, en cm, y su texto. Celdas C20 y C21.</summary>
     public double EspCartabonXCm { get; set; }
     public double EspCartabonYCm { get; set; }

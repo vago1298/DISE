@@ -2336,18 +2336,31 @@ check("el ahogo se devuelve medido y desde la cara del concreto",
 #  la polilinea -como la placa- y no por un contorno de dos caras: asi el ancla sigue siendo
 #  UNA pieza y la geometria no cambia, que es la que comparten el dibujo y la previa.
 check("el grueso real de la barra viaja con el ancla",
-      "double Diametro, double[][] Rosca, double[][] AristasTuerca)" in _ELEV
+      "double Diametro, double[][] Rosca, double[][] AristasTuerca, double[] Contorno)" in _ELEV
       and "Diametro: d," in _ELEV)
 
-check("y el vastago se dibuja con ese grueso en AutoCAD",
-      "var vastago = Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);" in _DELEV
-      and "((dynamic)vastago).ConstantWidth = a.Diametro;" in _DELEV
-      and "if (vastago is not null && a.Diametro > 0)" in _DELEV)
+#  ---- EL ANCLA SE DIBUJA VACIA, CON SUS DOS CARAS. SIN PEDIT ----
+#  Lo pidio el usuario: «las anclas no las hagas con PEDIT, dejalas vacias pero con 2 lineas
+#  representando su grosor». El grueso era el ANCHO de la polilinea -lo que en AutoCAD se toca
+#  con PEDIT- y eso dibuja una barra MACIZA: al plotear, una mancha negra que ademas tapa el
+#  rayado del concreto que cruza.
+check("el ancla se dibuja como contorno, no con ancho de polilinea",
+      "Polilinea(a.Contorno, PlacaBaseCapas.Anclas);" in _DELEV
+      #  Y el ancho de polilinea NO vuelve: es lo unico que hay que vigilar aqui.
+      and "ConstantWidth = a.Diametro;" not in _DELEV)
 
-check("la previa pinta el vastago con el mismo grueso",
-      "vastagos.Add((geoVastago, Math.Max(1.4, a.Diametro * escala)));" in _PREV
-      and "StrokeThickness = grueso," in _PREV
-      and "StrokeStartLineCap = PenLineCap.Flat," in _PREV)
+check("y el EJE se queda solo para medir, no para dibujar",
+      "public static double[] ContornoDeLaBarra(" in _ELEV
+      and "Contorno: ContornoDeLaBarra(x, yPunta, yFondo, pata, sentidoDoblez, d));" in _ELEV
+      #  Las cotas siguen saliendo del eje, que es lo que permitio cambiar el dibujo sin
+      #  tocar una sola cota.
+      and "var xAncla = a.Vastago[0];" in _DELEV
+      and "var yFondoAncla = a.Vastago[3];" in _DELEV)
+
+check("la previa pinta el mismo contorno vacio",
+      "AgregarPoligonal(geoAnclas, a.Contorno, null);" in _PREV
+      #  Y ya no pinta el eje con un trazo tan gordo como la barra.
+      and "vastagos" not in _PREV)
 
 check("con doblez el vastago lleva tres puntos y se va el travesano",
       "x, yPunta, x, yFondo, x + (sentidoDoblez * pata), yFondo" in _ELEV
@@ -2369,13 +2382,13 @@ check("el dado crece para que el ancla no se salga",
       and "if (suyo > pide)" in _ELEV
       and "var profundidad = ProfundidadDelDado(d.LongAnclaje, anclas, escala);" in _ELEV)
 
-check("el vastago se dibuja como poligonal ABIERTA, no cerrada",
-      "Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);" in _DELEV
-      #  El parametro de color se agrego DESPUES de cerrada, con PorCapa por omision: asi el
-      #  resto del detalle sigue yendo por capa sin tocar una sola llamada.
-      and "bool cerrada = true, int color = PorCapa)" in _DRW
+#  El contorno va CERRADO -es un perfil-, y el helper sigue admitiendo abiertas, que es lo
+#  que usan la rosca y el resto del detalle.
+check("el contorno del ancla va cerrado, y el helper admite las dos cosas",
+      "bool cerrada = true, int color = PorCapa)" in _DRW
       and "pl.Closed = cerrada;" in _DRW
-      and "pl.Color = color;" in _DRW)
+      and "pl.Color = color;" in _DRW
+      and "cerrada: false," in _DELEV)
 
 check("y la hoja trae la longitud y el doblez",
       "public double LongAnclaXCm { get; set; }" in _CAD
@@ -2401,12 +2414,13 @@ check("y la previa encuadra por CAJA, no suponiendo el centro en la placa",
       # Y la cuenta vieja ya no esta: era la que dejaba el alzado fuera del lienzo.
       and "2 * Math.Max(Math.Abs(c.X1 - xc)" not in _PREV)
 
-check("el vastago de la previa tambien va abierto",
+#  La previa sigue sabiendo pintar poligonales ABIERTAS: las usan la rosca, la arandela y el
+#  remate. El ancla en si ya no, porque ahora es un contorno cerrado -ver arriba-.
+check("la previa sabe pintar abiertas y cerradas",
       "private static void AgregarAbierta(" in _PREV
       and "IsClosed = false," in _PREV
-      # Va en su PROPIO grupo -y no en el de las anclas- porque es el unico que se pinta con
-      # el grueso real de la barra; abierto, igual que antes.
-      and "AgregarAbierta(geoVastago, a.Vastago);" in _PREV)
+      and "AgregarAbierta(geoAnclas, a.Arandela);" in _PREV
+      and "foreach (var hebra in a.Rosca)" in _PREV)
 
 check("la previa tambien pinta la franja del cartabon, en morado",
       "private void DibujarSoldaduraDeCartabonesPrevia(" in _PREV
@@ -2701,6 +2715,26 @@ def aristas_de_la_tuerca(x, y_abajo, y_arriba, ancho_tuerca):
             [x + cuarto, y_abajo, x + cuarto, y_arriba]]
 
 
+def contorno_de_la_barra(x, y_punta, y_fondo, pata, sentido_doblez, diametro):
+    """Espejo de ElevacionPlacaBase.ContornoDeLaBarra: el perfil vacio de la barra."""
+    r = diametro / 2.0
+    s = 1 if sentido_doblez >= 0 else -1
+
+    if pata <= 0:
+        return [x - r, y_punta, x + r, y_punta, x + r, y_fondo, x - r, y_fondo]
+
+    x_fuera = x - s * r
+    x_dentro = x + s * r
+    x_punta = x + s * (pata + r)
+
+    return [x_fuera, y_punta,
+            x_fuera, y_fondo - r,
+            x_punta, y_fondo - r,
+            x_punta, y_fondo + r,
+            x_dentro, y_fondo + r,
+            x_dentro, y_punta]
+
+
 def un_ancla(x, y_placa, y_arriba, ahogo, largo_total, doblez, esp_placa, grout,
              diametro, desfase, sentido_doblez, escala):
     d = diametro if diametro > 0 else 1.0 * escala
@@ -2751,6 +2785,8 @@ def un_ancla(x, y_placa, y_arriba, ahogo, largo_total, doblez, esp_placa, grout,
         "rosca": roscar(x, y_punta, d, escala),
         "aristas_tuerca": aristas_de_la_tuerca(x, y_arriba, y_arriba + alto_tuerca,
                                                ancho_tuerca),
+        #  El EJE -vastago- se mide; el CONTORNO se dibuja.
+        "contorno": contorno_de_la_barra(x, y_punta, y_fondo, pata, sentido_doblez, d),
     }
 
 
@@ -4174,6 +4210,34 @@ check("y caen a un cuarto y a tres cuartos del ancho",
 check("cada arista va de la cara de abajo a la de arriba de la tuerca, sin asomar",
       all(abs(a[1] - ty1) < 1e-9 and abs(a[3] - ty2) < 1e-9 for a in ar))
 
+#  ---- LA DENSIDAD DEL HILO: QUE SE VEA UN TORNILLO, NO UN FUELLE ----
+#  El usuario rechazo la primera version a la primera: «no se parece en lo enroscado a la
+#  figura 2 que es como lo quiero». Y era el paso: estaba en 0.5 diametros, tres veces mas
+#  abierto que una rosca de verdad, asi que salian seis hilos grandes donde su croquis tiene
+#  dieciseis.
+#
+#  Asi que esto no comprueba un numero de gusto: comprueba que el paso este en el rango del
+#  paso REAL de la serie gruesa -UNC, la de las anclas-, que es de donde sale el aspecto.
+#      3/8"-16  -> 0.167 diametros      3/4"-10  -> 0.133
+#      1/2"-13  -> 0.154               2"-4 1/2 -> 0.111
+check("el paso del hilo esta en el rango del paso real de la serie gruesa",
+      0.10 <= PASO_EN_D <= 0.20,
+      f"{PASO_EN_D} diametros, y la rosca real va de 0.11 a 0.17")
+
+#  Y el numero de hilos que sale de ahi, que es lo que se ve. Con menos de doce, el zigzag se
+#  lee como un fuelle; es justo lo que se reporto.
+hilos = len(anc["rosca"][3]) // 2 - 1
+
+check("la parte roscada sale con hilos suficientes para leerse como rosca",
+      hilos >= 12, f"solo {hilos} hilos")
+
+#  Y la densidad es la MISMA para cualquier diametro: el paso va en diametros, asi que un
+#  ancla de 2" enseña tantos hilos como una de 3/8", cada uno a su tamaño.
+hilos2 = len(anc2["rosca"][3]) // 2 - 1
+
+check("y la misma densidad en cualquier diametro",
+      hilos == hilos2, f"{hilos} en el 3/8\" contra {hilos2} en el 2\"")
+
 #  ---- EL TOPE DE DIENTES ----
 #  Con una barra minuscula y el minimo en cm, el zigzag tendria miles de vertices. El tope no
 #  es un criterio de dibujo, es que el detalle no pese mas que el plano.
@@ -4231,6 +4295,190 @@ check("y la previa tambien las pinta, en su propio gris",
       "var geoRosca = new GeometryGroup" in _PREV
       and "AgregarPoligonal(geoRosca, a.Tuerca, null);" in _PREV
       and "foreach (var hebra in a.Rosca)" in _PREV)
+
+
+#  ---- EL PERFIL DE LA BARRA: VACIO Y CON SUS DOS CARAS ----
+#  Pedido: «las anclas no las hagas con PEDIT, dejalas vacias pero con 2 lineas representando
+#  su grosor». El eje se queda para MEDIR y el contorno es lo que se dibuja, y esa separacion
+#  es lo que permitio cambiar el dibujo sin tocar una sola cota: aqui se comprueban las dos.
+print("\n" + "=" * 78)
+print("EL PERFIL DE LA BARRA, VACIO")
+print("=" * 78)
+
+#  ---- RECTA: un rectangulo del ancho de la barra ----
+recta = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 0.0, 2.54, 0.0, D38, 0.0, 1, ESC)
+c_recta = recta["contorno"]
+
+check("un ancla recta es un rectangulo de cuatro vertices",
+      len(c_recta) == 8, f"{len(c_recta) // 2} vertices")
+
+check("y mide EXACTAMENTE el diametro de ancho",
+      abs((max(c_recta[0::2]) - min(c_recta[0::2])) - D38) < 1e-9,
+      f"{max(c_recta[0::2]) - min(c_recta[0::2]):.4f} y la barra es {D38:.4f}")
+
+check("centrado en el eje, medio diametro a cada lado",
+      abs(min(c_recta[0::2]) + D38 / 2) < 1e-9 and abs(max(c_recta[0::2]) - D38 / 2) < 1e-9)
+
+check("y de la punta al fondo, lo mismo que el eje",
+      abs(max(c_recta[1::2]) - recta["vastago"][1]) < 1e-9
+      and abs(min(c_recta[1::2]) - recta["vastago"][3]) < 1e-9)
+
+#  ---- CON DOBLEZ: la L de seis vertices ----
+ele = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 10.0, 2.54, 0.0, D38, 0.0, 1, ESC)
+c_ele = ele["contorno"]
+
+check("con doblez, el contorno es una L de seis vertices",
+      len(c_ele) == 12, f"{len(c_ele) // 2} vertices")
+
+#  El codo: la cara de FUERA pasa por debajo del eje y la de DENTRO por encima, las dos a
+#  medio diametro. Si se cruzaran, el codo saldria con un pico hacia dentro.
+y_fondo = ele["vastago"][3]
+
+check("la cara de fuera del codo pasa medio diametro por debajo del eje",
+      abs(min(c_ele[1::2]) - (y_fondo - D38 / 2)) < 1e-9)
+
+check("y la de dentro, medio diametro por encima",
+      any(abs(c_ele[2 * i + 1] - (y_fondo + D38 / 2)) < 1e-9 for i in range(6)))
+
+#  La punta de la pata se cierra en vertical, medio diametro mas alla del eje de la pata.
+x_pata = ele["vastago"][4]
+
+check("la punta de la pata se cierra medio diametro mas alla de su eje",
+      abs(max(c_ele[0::2]) - (x_pata + D38 / 2)) < 1e-9,
+      f"llega a {max(c_ele[0::2]):.4f} y el eje de la pata acaba en {x_pata:.4f}")
+
+#  ---- Y AL OTRO LADO, ESPEJADO ----
+#  La cara de fuera es la del lado CONTRARIO al doblez, asi que con la pata a la izquierda las
+#  dos se cambian el papel. Es donde un signo mal puesto cruza el contorno.
+izqda = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 10.0, 2.54, 0.0, D38, 0.0, -1, ESC)
+c_izq = izqda["contorno"]
+
+check("con la pata al otro lado, el contorno sale espejado",
+      abs(min(c_izq[0::2]) - (-(abs(x_pata) + D38 / 2))) < 1e-9
+      and abs(max(c_izq[0::2]) - D38 / 2) < 1e-9)
+
+check("y el contorno no se cruza: la cara de fuera sigue por debajo",
+      abs(min(c_izq[1::2]) - (y_fondo - D38 / 2)) < 1e-9)
+
+#  ---- EL EJE SE QUEDA, Y ES EL QUE MIDE ----
+check("el eje sigue ahi, y el ahogo se sigue midiendo con el",
+      abs(ele["ahogo"] - 30.0) < 1e-9
+      and len(ele["vastago"]) == 6)
+
+#  La profundidad del concreto suma medio diametro PORQUE el dato es el eje: si algun dia se
+#  midiera con el contorno, esa suma seria doble.
+prof = profundidad_del_dado(30.0, [ele], ESC)
+
+check("y la profundidad del concreto sigue sumando medio diametro por eso",
+      prof >= ele["ahogo"] + D38 / 2)
+
+#  ---- LAS FORMULAS, ATADAS AL C# ----
+#  El espejo es una copia: si el signo del codo cambia en el codigo, esto no lo ve. Se lee del
+#  cuerpo del metodo, como en la rosca.
+_CONT = _ELEV.split("public static double[] ContornoDeLaBarra(")[-1].split("\n    /// <summary>")[0]
+
+check("el cuerpo de ContornoDeLaBarra se pudo aislar", len(_CONT) > 300)
+
+check("las dos caras van a medio diametro del eje",
+      "var r = diametro / 2;" in _CONT
+      and "x - r, yPunta," in _CONT
+      and "x + r, yPunta," in _CONT)
+
+check("y el codo se resuelve con el signo del doblez, sin dos ramas espejadas",
+      "var xFuera = x - (s * r);" in _CONT
+      and "var xDentro = x + (s * r);" in _CONT
+      and "var xPunta = x + (s * (pata + r));" in _CONT)
+
+
+# ==========================================================================
+#  EL DETALLE DEL ANCLA SOLA, AL FINAL DE LOS CORTES
+# ==========================================================================
+#  Pedido: «hazme aparte un detalle de la pura ancla, asi como la imagen, pero con los datos
+#  correspondientes; ese detalle ponlo al final de los cortes».
+#
+#  Hace falta por algo concreto: en el corte de la placa el ancla sale ENTERRADA -el concreto
+#  rayado detras, la placa cruzandola, la tuerca pegada a otras piezas- asi que ni se lee el
+#  doblez ni se puede acotar sin amontonar cotas sobre las del dado.
+#
+#  Lo que se comprueba aqui, sobre todo, es que NO sea un dibujo nuevo: la barra, la tuerca y
+#  la rosca tienen que salir de las MISMAS cuentas que el corte. Un detalle que enseña una
+#  pieza que el plano no dibuja es peor que no tenerlo.
+print("\n" + "=" * 78)
+print("EL DETALLE DEL ANCLA SOLA")
+print("=" * 78)
+
+_DET_ANC = _fuente("client", "src", "CadLink.Cad", "DetalleDeAncla.cs")
+
+check("el detalle del ancla existe y es geometria pura",
+      "public static class DetalleDeAncla" in _DET_ANC
+      and "AcadConnection" not in _DET_ANC
+      and "dynamic" not in _DET_ANC)
+
+#  ---- LA MISMA GEOMETRIA DEL CORTE, NO UNA COPIA ----
+check("la barra sale de la misma cuenta que el corte",
+      "ElevacionPlacaBase.ContornoDeLaBarra(x, yPunta, yFondo, pata, 1, d)" in _DET_ANC)
+
+check("la rosca tambien",
+      "ElevacionPlacaBase.Roscar(x, yPunta, d, escala)" in _DET_ANC)
+
+check("y la tuerca, con sus mismas proporciones y sus mismas aristas",
+      "Math.Max(2.5 * d, 1.5 * escala)" in _DET_ANC
+      and "Math.Max(0.75 * d, 0.5 * escala)" in _DET_ANC
+      and "ElevacionPlacaBase.AristasDeLaTuerca(" in _DET_ANC
+      and "ElevacionPlacaBase.Caja(" in _DET_ANC)
+
+#  ---- LOS DATOS QUE PIDIO ----
+#  Cuatro cotas -vertical, rosca, diametro y pata- y un rotulo con el desarrollo, que es el
+#  numero que se pide al proveedor y el que nadie quiere calcular a mano sobre el plano.
+for dato in ('"LONG. VERTICAL ', '"DOBLEZ ', '"DESARROLLO ', '"ANCLA "', '"DETALLE DE ANCLA"'):
+    check(f"el rotulo dice {dato.strip(chr(34)).strip()}",
+          dato in _DET_ANC)
+
+check("y las cotas son cuatro: vertical, rosca, diametro y pata",
+      _DET_ANC.count("new(Vertical:") + _DET_ANC.count("new Cota(") == 4)
+
+#  LA COTA SALE DE LA GEOMETRIA, NO DEL DATO: si el desfase subio esta ancla o el grout la
+#  alargo, la cota lo dice. Es la diferencia entre un detalle y una ficha.
+check("la longitud se acota sobre la barra dibujada",
+      "Desde: yFondo, Hasta: yBaseTuerca" in _DET_ANC)
+
+#  Y LA PATA SE MIDE DEL EJE del ancla ya construida: si se dibujo sin pata, no se acota una.
+check("la pata se mide del eje del ancla, no de la celda",
+      "private static double LargoDeLaPata(" in _DELEV
+      and "a.ConDoblez ? Math.Abs(a.Vastago[4] - a.Vastago[2]) : 0;" in _DELEV)
+
+check("y sin doblez no hay cota de pata",
+      "if (pata > 0)" in _DET_ANC)
+
+#  ---- VA AL FINAL DE LOS CORTES, Y EN SU PROPIO BLOQUE ----
+check("el detalle va despues del ultimo corte",
+      "var bloqueAncla = DetalleDelAnclaSuelta(p, vistas, yPlaca, ref xDerecha);" in _DELEV
+      and "public const double SeparacionDelUltimoCorteCm = 60.0;" in _DET_ANC)
+
+check("y en su propio bloque, como cada corte",
+      "NombreDelDetalleDeAncla(p.Seccion)" in _DELEV
+      and '+ " ANCLA";' in _DELEV)
+
+#  LAS COTAS Y EL ROTULO, FUERA DEL BLOQUE: igual que la planta y los cortes.
+check("las cotas y el rotulo se quedan fuera del bloque",
+      _DELEV.index("var nombre = Bloquear(\n            NombreDelDetalleDeAncla(")
+      < _DELEV.index("foreach (var c in detalle.Cotas)"))
+
+#  Y EL REPARTO CUENTA CON EL: el detalle corre el canto derecho, que es lo que usa la placa
+#  siguiente para no encimarse. Sin esto, el detalle del ancla se lo comeria el vecino.
+check("y el canto derecho crece con el detalle, para el reparto",
+      "ref double xDerecha" in _DELEV
+      and "if (x + detalle.Ancho > xDerecha)" in _DELEV)
+
+#  ---- SE PUEDE APAGAR, COMO EL RESTO DEL DETALLE ----
+check("el detalle del ancla se puede apagar",
+      "public bool DibujarDetalleDeAncla { get; set; } = true;" in _CAD
+      and "if (!p.DibujarDetalleDeAncla || vistas.Count == 0)" in _DELEV)
+
+#  ---- Y NO SE DIBUJA SI NO HAY ANCLA QUE DIBUJAR ----
+check("sin ancla o sin ahogo no hay detalle",
+      "if (ancla.Diametro <= 0 || ancla.Ahogo <= 0)" in _DELEV
+      and "if (escala <= 0 || ahogo <= 0)" in _DET_ANC)
 
 
 print("\n" + "=" * 78)

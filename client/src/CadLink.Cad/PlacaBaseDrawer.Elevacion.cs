@@ -98,7 +98,142 @@ public sealed partial class PlacaBaseDrawer
             }
         }
 
+        // ---------- Y AL FINAL DE LOS CORTES, EL DETALLE DEL ANCLA SOLA ----------
+        var bloqueAncla = DetalleDelAnclaSuelta(p, vistas, yPlaca, ref xDerecha);
+
+        if (bloqueAncla.Length > 0)
+        {
+            bloques.Add(bloqueAncla);
+        }
+
         return bloques;
+    }
+
+    /// <summary>
+    /// El detalle de <b>una ancla sola</b>, acotado, a la derecha del último corte.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario: <i>«hazme aparte un detalle de la pura ancla con los datos
+    /// correspondientes; ese detalle ponlo al final de los cortes»</i>. Y hace falta por algo
+    /// concreto: en el corte de la placa el ancla sale enterrada —el concreto rayado detrás, la
+    /// placa cruzándola— así que ni se lee el doblez ni se puede acotar sin amontonar cotas sobre
+    /// las del dado.
+    /// </para>
+    /// <para>
+    /// Va en <b>su propio bloque</b>, como cada corte: es un detalle que se lleva a otro sitio de la
+    /// hoja o se repite en otro plano, y dentro del bloque de un corte no se podría.
+    /// </para>
+    /// <para>
+    /// Se dibuja el ancla <b>de la primera vista</b>, que es la que manda en el detalle: las de X y
+    /// las de Y comparten longitud y doblez salvo que se capturen distintas, y en ese caso el corte
+    /// de cada dirección ya las enseña por separado.
+    /// </para>
+    /// </remarks>
+    /// <param name="xDerecha">
+    /// Entra el canto derecho de los cortes y <b>sale</b> el del detalle: así el reparto de la placa
+    /// siguiente cuenta también con esto.
+    /// </param>
+    private string DetalleDelAnclaSuelta(
+        PlacaBaseCad p, List<ElevacionPlacaBase.Vista> vistas, double yPlaca, ref double xDerecha)
+    {
+        if (!p.DibujarDetalleDeAncla || vistas.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var ancla = vistas[0].Anclas.FirstOrDefault();
+
+        if (ancla.Diametro <= 0 || ancla.Ahogo <= 0)
+        {
+            return string.Empty;
+        }
+
+        var x = xDerecha + (DetalleDeAncla.SeparacionDelUltimoCorteCm * _escala)
+                + (ancla.Diametro * 2);
+
+        var detalle = DetalleDeAncla.Construir(
+            x, yPlaca, ancla.Ahogo, LargoDeLaPata(ancla), ancla.Diametro,
+            p.TextoDiamAnclaX.Trim().Length > 0 ? p.TextoDiamAnclaX : p.TextoDiamAnclaY,
+            p.Marca, _escala, _hTxt);
+
+        if (detalle is null)
+        {
+            return string.Empty;
+        }
+
+        var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
+
+        Polilinea(detalle.Barra, PlacaBaseCapas.Anclas);
+
+        Polilinea(detalle.Tuerca, PlacaBaseCapas.Anclas,
+                  color: PlacaBaseCapas.ColorRoscaYTuerca);
+
+        foreach (var arista in detalle.AristasTuerca)
+        {
+            Linea(arista[0], arista[1], arista[2], arista[3], PlacaBaseCapas.Anclas,
+                  PlacaBaseCapas.ColorRoscaYTuerca);
+        }
+
+        foreach (var hebra in detalle.Rosca)
+        {
+            Polilinea(hebra, PlacaBaseCapas.Anclas, cerrada: false,
+                      color: PlacaBaseCapas.ColorRoscaYTuerca);
+        }
+
+        var fin = (int)AcadConnection.Retry(() => (int)_ms.Count);
+
+        // El bloque se cierra AQUÍ, antes de las cotas y el rótulo: igual que la planta y los
+        // cortes, el bloque se lleva solo la geometría y las cotas se quedan fuera para poder
+        // moverlas sin entrar en la definición.
+        var nombre = Bloquear(
+            NombreDelDetalleDeAncla(p.Seccion), inicio, fin, detalle.Barra[0], detalle.Barra[1]);
+
+        foreach (var c in detalle.Cotas)
+        {
+            if (c.Vertical)
+            {
+                CotaV(c.Desde, c.Hasta, c.Origen, c.Ref);
+            }
+            else
+            {
+                CotaH(c.Desde, c.Hasta, c.Origen, c.Ref);
+            }
+        }
+
+        // El rótulo, centrado bajo la pieza y en un solo MTEXT: son cuatro renglones que se leen
+        // juntos —qué ancla, su longitud, su doblez y el desarrollo que se pide al proveedor—.
+        Mtexto(
+            "\\pxqc;" + string.Join("\\P", detalle.Renglones.Select(Escapar)),
+            detalle.Rotulo.X, detalle.Rotulo.Y, anclaje: 2);
+
+        if (x + detalle.Ancho > xDerecha)
+        {
+            xDerecha = x + detalle.Ancho;
+        }
+
+        return nombre;
+    }
+
+    /// <summary>La pata del doblez de un ancla ya construida, medida sobre su eje.</summary>
+    /// <remarks>
+    /// Se saca del EJE y no del dato de la hoja: si el ancla se dibujó sin pata —porque la celda
+    /// vino en cero— el detalle tampoco la lleva, y así no puede acotar un doblez que el plano no
+    /// dibuja.
+    /// </remarks>
+    private static double LargoDeLaPata(ElevacionPlacaBase.AnclaDeCanto a) =>
+        a.ConDoblez ? Math.Abs(a.Vastago[4] - a.Vastago[2]) : 0;
+
+    /// <summary>El nombre del bloque del detalle del ancla.</summary>
+    /// <remarks>
+    /// Con el nombre de la sección delante, como los cortes: los bloques de una placa se ordenan
+    /// juntos en el administrador de bloques, que es donde se van a buscar.
+    /// </remarks>
+    private static string NombreDelDetalleDeAncla(string seccion)
+    {
+        var s = (seccion ?? string.Empty).Trim();
+
+        return (s.Length == 0 ? "PLACA BASE" : s) + " ANCLA";
     }
 
     /// <summary>El nombre del bloque de un corte: el de la sección más «CORTE X».</summary>
@@ -223,39 +358,25 @@ public sealed partial class PlacaBaseDrawer
 
         foreach (var a in v.Anclas)
         {
-            // POLILÍNEA ABIERTA y no dos líneas: con doblez el vástago tiene tres puntos, y dos
-            // líneas suetas se pueden mover por separado. El ancla es una pieza.
-            var vastago = Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);
-
             // ═════════════════════════════════════════════════════════════════════════════════
-            // EL ANCLA, CON SU GRUESO REAL.
+            // EL ANCLA, VACÍA Y CON SUS DOS CARAS. SIN ANCHO DE POLILÍNEA.
             //
-            // El diámetro está capturado en la hoja —«Ø ancla X: 3/4"»— y en planta ya se
-            // dibujaba con él: los dos círculos de cada ancla salen a su medida. En el alzado, en
-            // cambio, el vástago era una línea de eje, así que un ancla del 3/4" y otra de 2" se
-            // veían idénticas y el detalle no decía de qué barra hablaba.
+            // Lo pidió el usuario: «las anclas no las hagas con PEDIT, déjalas vacías pero con 2
+            // líneas representando su grosor». Antes el grueso era el ANCHO de la polilínea —lo que
+            // en AutoCAD se toca con PEDIT—, y eso dibuja una barra MACIZA: al plotear sale una
+            // mancha negra, encima del rayado del concreto tapa lo que cruza, y el ancla no se
+            // puede rotular por dentro.
             //
-            // Se resuelve con el ANCHO DE LA POLILÍNEA y no con un contorno de dos caras a
-            // propósito. Es lo mismo que ya se hace con la placa unas líneas más arriba, deja el
-            // ancla como UNA pieza —una sola entidad que se selecciona y se mueve entera, con su
-            // doblez resuelto por el vértice— y no toca la geometría, así que la previa y el
-            // dibujo siguen saliendo de los mismos puntos.
+            // Ahora se dibuja el CONTORNO: las dos caras a medio diámetro del eje, cerrado, con el
+            // codo del doblez resuelto a escuadra. Sigue siendo UNA entidad —se selecciona y se
+            // mueve entera— y sigue saliendo a la medida de la barra: un 3/4" y un 2" se ven
+            // distintos, que era lo que el ancho de polilínea vino a resolver en su día.
+            //
+            // El EJE —a.Vastago— se queda, pero solo para medir: de él salen las cotas, el ahogo y
+            // la profundidad del concreto. Esa separación es lo que permitió cambiar el dibujo sin
+            // tocar una sola cota.
             // ═════════════════════════════════════════════════════════════════════════════════
-            if (vastago is not null && a.Diametro > 0)
-            {
-                try
-                {
-                    AcadConnection.Retry(() =>
-                    {
-                        ((dynamic)vastago).ConstantWidth = a.Diametro;
-                        ((dynamic)vastago).Update();
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Fallo("Grueso del vástago del ancla en el alzado", ex);
-                }
-            }
+            Polilinea(a.Contorno, PlacaBaseCapas.Anclas);
 
             // ═════════════════════════════════════════════════════════════════════════════════
             // LA TUERCA Y EL ENROSCADO, EN LA CAPA DE ANCLAS Y EN COLOR 253.

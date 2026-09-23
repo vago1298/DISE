@@ -6925,12 +6925,26 @@ def v18_planta_autocad() -> None:
     # El detalle se tiene que poder leer: si las dos patas se alcanzan, una sube.
     check("si las patas del doblez se encimarian, una ancla se sube",
           "public static double DesfaseDeLasPatas(" in elev)
-    # Y el ancla se dibuja con el diametro de la tabla, no con una linea de eje.
+    # Y el ancla se dibuja A LA MEDIDA DE SU BARRA, pero VACIA: el contorno de las dos caras, no
+    # una polilinea con ancho. Lo pidio el usuario -«no las hagas con PEDIT, dejalas vacias pero
+    # con 2 lineas representando su grosor»- y con razon: el ancho de polilinea dibuja una barra
+    # maciza, que al plotear es una mancha y encima tapa el rayado del concreto que cruza.
     delev = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs"))
 
-    check("el ancla se dibuja con el grueso real de su barra",
+    check("el ancla se dibuja vacia, con sus dos caras y sin ancho de polilinea",
           "Diametro: d," in elev
-          and "((dynamic)vastago).ConstantWidth = a.Diametro;" in delev)
+          and "public static double[] ContornoDeLaBarra(" in elev
+          and "Polilinea(a.Contorno, PlacaBaseCapas.Anclas);" in delev
+          # Y el ancho de polilinea no vuelve.
+          and "ConstantWidth = a.Diametro;" not in delev)
+
+    # EL EJE SE QUEDA, PERO SOLO PARA MEDIR. De el salen las cotas, el ahogo y la profundidad del
+    # concreto -que suma medio diametro justo porque el dato es el eje-. Separar lo que se mide de
+    # lo que se dibuja es lo que permitio cambiar el dibujo sin tocar una sola cota.
+    check("y el eje del ancla se queda para medir, no para dibujar",
+          "var xAncla = a.Vastago[0];" in delev
+          and "var yFondoAncla = a.Vastago[3];" in delev
+          and "var suyo = a.Ahogo + (a.Diametro / 2);" in elev)
 
     # ------------------------------------------------------------------
     # EL ENROSCADO DEL ANCLA Y SU TUERCA
@@ -6945,8 +6959,42 @@ def v18_planta_autocad() -> None:
     check("el ancla lleva su enroscado y su tuerca con aristas",
           "public static double[][] Roscar(" in elev
           and "public static double[][] AristasDeLaTuerca(" in elev
-          and "double[][] Rosca, double[][] AristasTuerca)" in elev
+          and "double[][] Rosca, double[][] AristasTuerca, double[] Contorno)" in elev
           and "Rosca: Roscar(x, yPunta, d, escala)," in elev)
+
+    # ------------------------------------------------------------------
+    # EL DETALLE DEL ANCLA SOLA, AL FINAL DE LOS CORTES
+    # ------------------------------------------------------------------
+    # Pedido: «hazme aparte un detalle de la pura ancla con los datos correspondientes; ese
+    # detalle ponlo al final de los cortes». En el corte de la placa el ancla sale ENTERRADA
+    # -concreto rayado detras, la placa cruzandola- asi que ni se lee el doblez ni se puede
+    # acotar sin amontonar cotas sobre las del dado.
+    det_anc = leer(ruta("client/src/CadLink.Cad/DetalleDeAncla.cs"))
+
+    check("hay un detalle del ancla sola, y es geometria pura",
+          "public static class DetalleDeAncla" in det_anc
+          and "AcadConnection" not in det_anc)
+
+    # Y NO ES UN DIBUJO NUEVO: la barra, la rosca y la tuerca salen de las MISMAS cuentas que el
+    # corte. Un detalle que ensena una pieza que el plano no dibuja es peor que no tenerlo.
+    check("y dibuja la MISMA ancla del corte, no una copia",
+          "ElevacionPlacaBase.ContornoDeLaBarra(x, yPunta, yFondo, pata, 1, d)" in det_anc
+          and "ElevacionPlacaBase.Roscar(x, yPunta, d, escala)" in det_anc
+          and "ElevacionPlacaBase.AristasDeLaTuerca(" in det_anc)
+
+    # Con sus datos: las cuatro cotas y el rotulo con el desarrollo, que es el numero que se pide
+    # al proveedor y el que nadie quiere calcular a mano sobre el plano.
+    check("con sus cotas y su rotulo: longitud, doblez y desarrollo",
+          '"LONG. VERTICAL ' in det_anc
+          and '"DOBLEZ ' in det_anc
+          and '"DESARROLLO ' in det_anc
+          and "public readonly record struct Cota(" in det_anc)
+
+    # Al final de los cortes, en su propio bloque, y contando para el reparto de la siguiente.
+    check("va al final de los cortes, en su bloque, y el reparto lo cuenta",
+          "var bloqueAncla = DetalleDelAnclaSuelta(p, vistas, yPlaca, ref xDerecha);" in delev
+          and '+ " ANCLA";' in delev
+          and "if (x + detalle.Ancho > xDerecha)" in delev)
 
     # LO QUE NO PUEDE CAMBIAR POR DIBUJAR LA ROSCA es el ancla: la rosca va por ENCIMA de la
     # tuerca -arranca en yPunta, que es donde acaba el vastago macizo-, asi que el gasto, el
@@ -6959,7 +7007,10 @@ def v18_planta_autocad() -> None:
     # bien en un ancla de 3/4" y ridicula en una de 2".
     check("las medidas de la rosca son proporcionales a la barra",
           "private const double RoscaEnDiametros = 2.5;" in elev
-          and "private const double PasoEnDiametros = 0.5;" in elev
+          # El paso, en el rango del paso REAL de la serie gruesa -0.11 a 0.17 diametros-: es
+          # de donde sale que se lea como un tornillo. Estuvo en 0.5, tres veces mas abierto,
+          # y el usuario lo rechazo a la primera -«no se parece en lo enroscado»-.
+          and "private const double PasoEnDiametros = 0.15;" in elev
           # Y un tope de dientes, para que una barra minuscula no dispare miles de vertices.
           and "private const int MaxDientes = 60;" in elev)
 

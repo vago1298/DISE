@@ -886,9 +886,6 @@ public partial class MainWindow
         // y el enroscado son líneas finas justo encima—.
         var geoRosca = new GeometryGroup { Transform = transformar };
 
-        // Los vástagos, uno por ancla: cada uno se pinta con SU grueso, y en la placa rectangular
-        // conviven los dos diámetros —el de las anclas X y el de las Y— en el mismo recuadro.
-        var vastagos = new List<(GeometryGroup Geo, double Grueso)>();
 
         foreach (var v in vistas)
         {
@@ -911,9 +908,11 @@ public partial class MainWindow
 
             foreach (var a in v.Anclas)
             {
-                var geoVastago = new GeometryGroup { Transform = transformar };
-                AgregarAbierta(geoVastago, a.Vastago);
-                vastagos.Add((geoVastago, Math.Max(1.4, a.Diametro * escala)));
+                // EL PERFIL DE LA BARRA, VACÍO: las dos caras a medio diámetro del eje. Antes se
+                // pintaba el eje con un trazo tan grueso como la barra —el equivalente al ancho de
+                // polilínea del dibujo—, y el usuario pidió lo otro: «déjalas vacías pero con 2
+                // líneas representando su grosor». La previa pinta lo mismo que el plano.
+                AgregarPoligonal(geoAnclas, a.Contorno, null);
 
                 AgregarAbierta(geoAnclas, a.Arandela);
 
@@ -979,22 +978,6 @@ public partial class MainWindow
             Stroke = rojo,
             StrokeThickness = 1.4
         });
-
-        // Y los vástagos encima, cada uno con el grueso de su barra. Las puntas van a ras
-        // -PenLineCap.Flat- para que el fondo del ancla quede a la cota que dice la hoja y no medio
-        // diámetro más abajo, y el codo del doblez se redondea, que es como se ve una barra doblada.
-        foreach (var (geo, grueso) in vastagos)
-        {
-            PlacaPreviewCanvas.Children.Add(new FormaPath
-            {
-                Data = geo,
-                Stroke = rojo,
-                StrokeThickness = grueso,
-                StrokeStartLineCap = PenLineCap.Flat,
-                StrokeEndLineCap = PenLineCap.Flat,
-                StrokeLineJoin = PenLineJoin.Round
-            });
-        }
 
         // Y LA ROSCA CON LA TUERCA AL FINAL, encima del vástago: es lo que en el dibujo va en el
         // color 253, y va por delante porque la tuerca abraza la barra, no se esconde detrás.

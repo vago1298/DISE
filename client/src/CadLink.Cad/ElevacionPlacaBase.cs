@@ -89,8 +89,14 @@ public static class ElevacionPlacaBase
 
     /// <summary>Un ancla vista de canto: vástago, tuerca, arandela y remate o doblez.</summary>
     /// <param name="Vastago">
-    /// La barra, de la tuerca al fondo, <b>abierta</b>. Dos puntos si va recta y <b>tres</b> si
-    /// lleva doblez: el tercero es la punta de la pata.
+    /// El <b>EJE</b> de la barra, de la tuerca al fondo, abierto. Dos puntos si va recta y
+    /// <b>tres</b> si lleva doblez: el tercero es la punta de la pata.
+    /// <para>
+    /// <b>Ya no se dibuja: se mide.</b> De él salen las cotas, el ahogo y la profundidad del
+    /// concreto —que suma medio diámetro justo porque esto es el eje—. Lo que se dibuja es
+    /// <see cref="Contorno"/>. Separar las dos cosas es lo que permitió pasar de la barra rellena
+    /// al perfil vacío sin tocar una sola cota.
+    /// </para>
     /// </param>
     /// <param name="Tuerca">El rectángulo sobre la placa.</param>
     /// <param name="Arandela">La línea que la apoya. Dos puntos.</param>
@@ -109,13 +115,17 @@ public static class ElevacionPlacaBase
     /// punta y las dos hebras del hilo. Poligonales <b>abiertas</b>, todas de la misma familia
     /// porque se dibujan igual. Vacío si no hay rosca que dibujar.
     /// </param>
+    /// <param name="Contorno">
+    /// El <b>perfil de la barra</b>, cerrado y vacío: las dos caras separadas un diámetro, con sus
+    /// extremos y el codo del doblez resuelto. Es lo que se DIBUJA.
+    /// </param>
     /// <param name="AristasTuerca">
     /// Las dos aristas verticales de la tuerca: es lo que la hace leerse como una <b>tuerca
     /// hexagonal de frente</b> y no como una caja. Dos líneas de dos puntos.
     /// </param>
     public readonly record struct AnclaDeCanto(
         double[] Vastago, double[] Tuerca, double[] Arandela, double[]? Remate, double Ahogo,
-        double Diametro, double[][] Rosca, double[][] AristasTuerca)
+        double Diametro, double[][] Rosca, double[][] AristasTuerca, double[] Contorno)
     {
         /// <summary>¿Lleva doblez en el extremo?</summary>
         public bool ConDoblez => Vastago.Length >= 6;
@@ -611,7 +621,74 @@ public static class ElevacionPlacaBase
             Rosca: Roscar(x, yPunta, d, escala),
 
             AristasTuerca: AristasDeLaTuerca(
-                x, yArriba, yArriba + altoTuerca, anchoTuerca));
+                x, yArriba, yArriba + altoTuerca, anchoTuerca),
+
+            // ═════════════════════════════════════════════════════════════════════════════════
+            // EL PERFIL DE LA BARRA, VACÍO Y CON SUS DOS CARAS.
+            //
+            // Lo pidió el usuario: «las anclas no las hagas con PEDIT, déjalas vacías pero con 2
+            // líneas representando su grosor». El grueso se dibujaba con el ANCHO de la polilínea
+            // —lo que en AutoCAD se toca con PEDIT—, y eso sale como una barra MACIZA: al plotear
+            // es una mancha negra, y encima no se puede rayar ni rotular por dentro.
+            //
+            // Ahora es el contorno de la pieza: las dos caras a medio diámetro del eje, con los
+            // extremos cerrados y el codo del doblez resuelto. Es como se dibuja una barra en un
+            // plano de armado, y deja el ancla como UNA entidad que se selecciona entera.
+            // ═════════════════════════════════════════════════════════════════════════════════
+            Contorno: ContornoDeLaBarra(x, yPunta, yFondo, pata, sentidoDoblez, d));
+    }
+
+    /// <summary>
+    /// El <b>perfil</b> de la barra: sus dos caras a medio diámetro del eje, cerrado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Recta es un rectángulo largo. Con doblez es una <b>L de seis vértices</b>: se baja por la
+    /// cara de fuera del codo, se cruza por debajo hasta la punta de la pata, se cierra la punta y
+    /// se vuelve por la cara de dentro. Así el codo queda a escuadra por los dos lados, que es como
+    /// se dibuja un doblez de 90° en un plano de armado.
+    /// </para>
+    /// <para>
+    /// Las caras se nombran por el codo y no por la mano: la de <b>fuera</b> es la del lado opuesto
+    /// al que dobla la pata, y es la que pasa por debajo del eje. Con <c>sentidoDoblez</c> al otro
+    /// lado, las dos se cambian el papel, y por eso el signo entra en la cuenta en lugar de haber
+    /// dos ramas iguales y espejadas.
+    /// </para>
+    /// </remarks>
+    /// <param name="pata">Lo que mide la pata del doblez. Cero o menos: la barra va recta.</param>
+    /// <param name="sentidoDoblez"><c>+1</c> la pata va a la derecha, <c>-1</c> a la izquierda.</param>
+    public static double[] ContornoDeLaBarra(
+        double x, double yPunta, double yFondo, double pata, int sentidoDoblez, double diametro)
+    {
+        var r = diametro / 2;
+        var s = sentidoDoblez >= 0 ? 1 : -1;
+
+        if (pata <= 0)
+        {
+            return new[]
+            {
+                x - r, yPunta,
+                x + r, yPunta,
+                x + r, yFondo,
+                x - r, yFondo,
+            };
+        }
+
+        // La cara de FUERA del codo —la del lado contrario al doblez— es la que pasa por debajo del
+        // eje, a medio diámetro; la de DENTRO pasa por encima del fondo del eje.
+        var xFuera = x - (s * r);
+        var xDentro = x + (s * r);
+        var xPunta = x + (s * (pata + r));
+
+        return new[]
+        {
+            xFuera, yPunta,
+            xFuera, yFondo - r,
+            xPunta, yFondo - r,
+            xPunta, yFondo + r,
+            xDentro, yFondo + r,
+            xDentro, yPunta,
+        };
     }
 
     // ======================================================================
@@ -635,12 +712,26 @@ public static class ElevacionPlacaBase
 
     /// <summary>El paso del hilo, en diámetros.</summary>
     /// <remarks>
-    /// <b>No es el paso real de la rosca</b>, y no puede serlo: el de un ancla de 3/8" son 1.6 mm,
-    /// que a 1:10 es una décima de milímetro en el papel —una mancha—. Es la representación
-    /// convencional del hilo, con el paso abierto para que se lea. Lo que sí es real es el
-    /// <b>ancho</b>: el zigzag va de flanco a flanco de la barra.
+    /// <para>
+    /// <b>Es el paso de verdad, redondeado.</b> En la serie gruesa —UNC, la de las anclas— el paso
+    /// vale entre <c>0.11</c> y <c>0.17</c> diámetros: un 3/8"-16 son 0.167, un 1/2"-13 son 0.154,
+    /// un 3/4"-10 son 0.133 y un 2"-4½ son 0.111. Un solo número para todos los diámetros es
+    /// entonces una aproximación buena, y 0.15 cae dentro del rango en los diámetros que se usan a
+    /// diario.
+    /// </para>
+    /// <para>
+    /// Estuvo en <c>0.5</c> —tres veces más abierto que la rosca real— porque se eligió pensando en
+    /// el papel: a 1:10 estos hilos quedan a un décimo de milímetro y se empastan. Y el usuario lo
+    /// rechazó a la primera: <i>«no se parece en lo enroscado a la figura 2»</i>. Tenía razón, y su
+    /// figura era la de un perno de verdad. Con 0.15 salen <b>diecisiete hilos</b> en la parte que
+    /// asoma, que es lo que se ve en su croquis.
+    /// </para>
+    /// <para>
+    /// Lo que se pierde es nitidez al plotear muy reducido; lo que se gana es que el detalle enseñe
+    /// un tornillo y no un fuelle. Si algún día hace falta lo otro, este es el número.
+    /// </para>
     /// </remarks>
-    private const double PasoEnDiametros = 0.5;
+    private const double PasoEnDiametros = 0.15;
 
     /// <summary>Cuántos dientes se dibujan como máximo.</summary>
     /// <remarks>
@@ -772,6 +863,12 @@ public static class ElevacionPlacaBase
     }
 
     /// <summary>Un rectángulo como polilínea cerrada, en <b>antihorario</b>.</summary>
-    private static double[] Caja(double x1, double y1, double x2, double y2) =>
+    /// <summary>Un rectángulo cerrado, en antihorario.</summary>
+    /// <remarks>
+    /// Público porque lo usa también el detalle del ancla suelta —<see cref="DetalleDeAncla"/>—, que
+    /// dibuja la MISMA tuerca que el corte. Con una copia allí, el día que la tuerca cambie de
+    /// proporción el plano enseñaría dos tuercas distintas de la misma pieza.
+    /// </remarks>
+    public static double[] Caja(double x1, double y1, double x2, double y2) =>
         new[] { x1, y1, x2, y1, x2, y2, x1, y2 };
 }
