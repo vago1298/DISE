@@ -6936,7 +6936,9 @@ def v18_planta_autocad() -> None:
           and "public static Perfil ContornoDeLaBarra(" in elev
           # Y EL CODO REDONDEADO con el radio de doblado: el «5 * 2.54 * O"» que se pidio son
           # cinco diametros, y se recorta a lo que cabe en la pata.
-          and "private const double RadioDeDoblezEnDiametros = 5.0;" in elev
+          # UN diametro: se pidio «quita el 5, solo deja puro diametro». Con cinco, el arco se
+          # comia la pata de un ancla de 3/4".
+          and "private const double RadioDeDoblezEnDiametros = 1.0;" in elev
           and "public static double RadioDelDoblez(" in elev
           and "Polilinea(a.Contorno.Puntos, PlacaBaseCapas.Anclas, a.Contorno.Dobleces);" in delev
           # Y el ancho de polilinea no vuelve.

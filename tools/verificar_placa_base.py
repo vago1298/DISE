@@ -4453,14 +4453,17 @@ check("la punta de la pata se cierra medio diametro mas alla de su eje",
 #  Pedido: «en la esquina del ancla dale fillete de 5*2.54*diametro de ancla para el fillete
 #  interno y externo». Ese 5*2.54*O" son CINCO DIAMETROS -el 2.54 pasa la pulgada a cm-, que es
 #  el radio con el que se dobla un ancla: las normas piden entre tres y seis.
-check("el radio del doblez son cinco diametros, leidos del codigo",
-      abs(RADIO_DOBLEZ_EN_D - 5.0) < 1e-12,
+#  UN diametro: se pidio primero como «5 * 2.54 * O"» -cinco diametros- y despues «quita el 5,
+#  solo deja puro diametro». Con cinco, en un ancla de 3/4" el radio al eje salia de 10.5 cm y
+#  una pata de 10 cm se quedaba sin tramo recto.
+check("el radio del doblez es UN diametro, leido del codigo",
+      abs(RADIO_DOBLEZ_EN_D - 1.0) < 1e-12,
       f"{RADIO_DOBLEZ_EN_D} diametros")
 
 rc38 = radio_del_doblez(10.0, 30.0, D38)
 
 check("y al eje le toca medio diametro mas que al interior",
-      abs(rc38 - (5 * D38 + D38 / 2)) < 1e-9, f"{rc38:.4f}")
+      abs(rc38 - (RADIO_DOBLEZ_EN_D * D38 + D38 / 2)) < 1e-9, f"{rc38:.4f}")
 
 #  LOS DOS ARCOS SON CONCENTRICOS, que es lo que mantiene el grueso de la barra en el codo. Con
 #  el mismo radio en cada cara -un FILLET aplicado por separado a cada una- el codo engorda un
@@ -4479,13 +4482,19 @@ check("los dos arcos del codo son concentricos: el grueso no cambia",
       f"centros en ({x_centro_ext:.3f}, {y_centro_ext:.3f}) y "
       f"({x_centro_int:.3f}, {y_centro_int:.3f})")
 
-#  Y EL RADIO SE RECORTA A LO QUE CABE. Cinco diametros de un 3/4" son 9.5 cm: en una pata de
-#  10 cm el arco se comeria la pata entera y el contorno se cruzaria consigo mismo.
+#  CON UN DIAMETRO EL RADIO CABE EN LAS PATAS NORMALES, y eso hay que comprobarlo: con cinco
+#  se recortaba casi siempre, y un recorte que salta en el caso corriente es un radio mal
+#  elegido, no una salvaguarda.
 D34 = pulgadas("3/4") * 2.54
 
-check("en un ancla de 3/4 con pata de 10 cm el radio no cabe entero y se recorta",
-      0 < radio_del_doblez(10.0, 30.0, D34) < 5 * D34 + D34 / 2,
-      f"{radio_del_doblez(10.0, 30.0, D34):.3f} contra {5 * D34 + D34 / 2:.3f} pedidos")
+check("con un diametro, el radio cabe entero en una pata normal",
+      abs(radio_del_doblez(10.0, 30.0, D34) - (RADIO_DOBLEZ_EN_D * D34 + D34 / 2)) < 1e-9,
+      f"{radio_del_doblez(10.0, 30.0, D34):.3f} de {RADIO_DOBLEZ_EN_D * D34 + D34 / 2:.3f}")
+
+#  Y EL RECORTE SIGUE AHI para cuando no cabe: una pata de dos diametros con un ancla de 2".
+check("pero el recorte sigue actuando cuando la pata es corta de verdad",
+      0 < radio_del_doblez(2.2 * D34, 30.0, D34) < RADIO_DOBLEZ_EN_D * D34 + D34 / 2,
+      f"{radio_del_doblez(2.2 * D34, 30.0, D34):.3f}")
 
 #  Y si no cabe ni un cuarto de lo pedido, el codo se queda a escuadra: es lo que hace AutoCAD
 #  cuando el FILLET no cabe, y es mas honesto que un redondeo inventado.

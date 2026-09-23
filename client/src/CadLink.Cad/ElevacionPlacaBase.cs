@@ -820,11 +820,19 @@ public static class ElevacionPlacaBase
 
     /// <summary>El radio del doblez del ancla, en diámetros y medido al <b>interior</b>.</summary>
     /// <remarks>
-    /// Los <c>5 · 2.54 · Ø"</c> que pidió el usuario: el 2.54 pasa la pulgada a centímetros, así que
-    /// lo que queda son <b>cinco diámetros</b>. Es el radio con el que se dobla un ancla —las normas
-    /// piden entre tres y seis— y por eso va aquí con nombre y no como un número en la cuenta.
+    /// <para>
+    /// <b>UN diámetro.</b> Se pidió primero como <c>5 · 2.54 · Ø"</c> —cinco diámetros, porque el
+    /// 2.54 solo pasa la pulgada a centímetros— y después <i>«quita el 5, solo deja puro
+    /// diámetro»</i>. Así que el radio interior del codo es el diámetro de la barra, y al eje le
+    /// toca medio diámetro más.
+    /// </para>
+    /// <para>
+    /// Con cinco el codo se comía la pata: en un ancla de 3/4" el radio al eje salía de 10.5 cm y
+    /// con una pata de 10 cm no quedaba recta ninguna. Con uno, el radio al eje va de 1.4 cm en un
+    /// 3/8" a 7.6 cm en uno de 2", y cabe en cualquier pata de las que se capturan.
+    /// </para>
     /// </remarks>
-    private const double RadioDeDoblezEnDiametros = 5.0;
+    private const double RadioDeDoblezEnDiametros = 1.0;
 
     /// <summary>El bulge de un arco de <b>90°</b>: <c>tan(90/4)</c>.</summary>
     /// <remarks>
