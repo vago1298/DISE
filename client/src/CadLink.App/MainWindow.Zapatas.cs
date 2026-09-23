@@ -165,6 +165,11 @@ public partial class MainWindow
             .ToList();
 
         Refrescar(ZapataAisladaRow.DadosDisponibles, dados);
+
+        // Y LA DE APOYOS DE PLACA A MURO, aquí al lado: las dos listas salen de recorrer esta misma
+        // hoja, y separarlas en dos sitios que se llaman desde caminos distintos es como una se
+        // queda vieja. Ver ActualizarApoyosDeMuroDisponibles, en MainWindow.PlacaBase.cs.
+        ActualizarApoyosDeMuroDisponibles();
     }
 
     /// <summary>

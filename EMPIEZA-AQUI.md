@@ -146,6 +146,46 @@ Si viste todo eso, **ya tienes el sistema de cobro funcionando**.
 
 ---
 
+## Las PCs de los trabajadores: qué se instala y qué NO
+
+**El servidor de licencias es UNO, y va en tu computadora.** En las PCs de los
+trabajadores **no se instala el servidor**: no ejecutes ahí `1-instalar-servidor.bat`. Esas
+PCs solo necesitan la aplicación, y que sepan dónde está tu servidor.
+
+En la PC del trabajador:
+
+1. Copia la carpeta del proyecto **sin la carpeta `server\.venv`**, o bájala otra vez del
+   zip. (Si copias el `.venv`, te sale este error, y no es tu culpa: un entorno de Python
+   guarda la ruta absoluta del Python con el que se creó, así que en la otra máquina apunta
+   a un usuario que no existe.)
+
+   ```
+   did not find executable at 'C:\Users\PC\AppData\Local\Programs\Python\Python313\python.exe'
+   ```
+
+   Si ya te pasó: ejecuta `1-instalar-servidor.bat`, que lo detecta y lo rehace solo. O
+   borra `server\.venv` a mano.
+
+2. Abre `client\src\CadLink.App\cadlink.config.json` con el Bloc de notas y pon **la
+   dirección de tu servidor**, no `localhost`:
+
+   ```json
+   "servidorLicencias": "http://192.168.1.50:8000",
+   ```
+
+   Esa dirección te la dice `2-iniciar-servidor.bat` al arrancar, en tu computadora.
+
+3. Doble clic en `3-abrir-app.bat`. Eso sí necesita el **SDK de .NET 8** en esa PC (paso
+   A.2), porque compila la aplicación.
+
+4. Con la aplicación abierta: pestaña **Licencia** → botón **Copiar huella**, y te la manda.
+   Tú la das de alta desde tu PC (paso D o el `register_machine.py`), y él pulsa
+   **Revalidar ahora**.
+
+> Comprueba antes que esa PC alcanza tu servidor: que abra en su navegador
+> `http://192.168.1.50:8000/health` (con tu dirección). Si no responde, es el firewall de
+> **tu** computadora: el comando para abrirlo lo imprime `2-iniciar-servidor.bat`.
+
 ## Paso D — Convertir tu propia PC en "equipo de la oficina"
 
 Ahora la parte que te interesa: que las PCs de tus trabajadores sean gratis.

@@ -57,13 +57,23 @@ public sealed class PlacaBaseRow : Row
     private double _longAnclajeXCm = 30;
     private double _longAnclajeYCm = 30;
 
-    // La longitud TOTAL del ancla y su doblez. La longitud manda sobre el ahogo, que pasa a ser la
-    // consecuencia; el doblez convierte el ancla en una L y le quita el travesano del extremo.
-    private double _longAnclaXCm = 45;
-    private double _longAnclaYCm = 45;
+    // La longitud TOTAL del ancla, en CERO y sin casilla en la hoja: la que manda es la vertical de
+    // arriba, y esta se quedo como respaldo de los trabajos guardados que solo la traigan a ella.
+    // Nacia en 45, y con la regla nueva eso seria un dato fantasma que nadie puede ver ni cambiar.
+    private double _longAnclaXCm;
+    private double _longAnclaYCm;
+
+    // El doblez convierte el ancla en una L y le quita el travesano del extremo.
     private double _doblezAnclaXCm = 10;
     private double _doblezAnclaYCm = 10;
     private bool _conCartabones;
+
+    // LA CAMA DE GROUT. En NO de fabrica: el detalle sale como siempre, con la placa apoyada
+    // directamente en el dado. Los 2.5 cm son el espesor usual de una cama nivelante.
+    private string _tipoPlaca = TipoBase;
+    private string _grout = "NO";
+    private double _espesorGroutCm = 2.5;
+
     private double _escala = 10;
     private bool _girarPlaca90 = true;
 
@@ -82,8 +92,68 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>E5</b>: tipo de acero de la placa.</summary>
     public string AceroPlaca { get => _aceroPlaca; set => Set(ref _aceroPlaca, value); }
 
+    // ======================================================================
+    //  QUÉ CLASE DE PLACA ES
+    // ======================================================================
+
     /// <summary>
-    /// ID del <b>dado</b> de la hoja de secciones de concreto, del que salen sus medidas.
+    /// <b>PLACA BASE</b> —se apoya en un dado— o <b>PLACA A MURO</b> —en una cadena o una trabe—.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario después de un caso real: había puesto <c>CC-1</c> —una cadena de
+    /// cerramiento— en el ID del apoyo, y la hoja solo buscaba <b>dados</b>. La referencia no
+    /// encontraba nada, no decía nada, y la placa se quedaba con el apoyo en cero: el detalle iba a
+    /// salir sin concreto y sin dónde ahogar las anclas.
+    /// </para>
+    /// <para>
+    /// Con <b>PLACA A MURO</b> el desplegable del ID ofrece las piezas <b>horizontales</b> de la
+    /// hoja de concreto —trabes, contratrabes y las tres cadenas— en lugar de los dados, y de ahí
+    /// salen las medidas del apoyo igual que salían las del dado.
+    /// </para>
+    /// <para>
+    /// <b>Lo que NO cambia es la geometría del detalle.</b> La placa se sigue dibujando apoyada
+    /// sobre su pieza de concreto, con las anclas ahogadas en ella, porque es el mismo detalle: una
+    /// placa sobre una cadena de cerramiento se dibuja como una placa sobre un dado, solo que el
+    /// concreto de abajo es la cadena. Lo que cambia es de dónde salen las medidas, qué ofrece el
+    /// desplegable y cómo se rotula. Si algún día hace falta el otro caso —la placa atornillada a
+    /// la <i>cara</i> vertical del muro, con las anclas horizontales— ese sí es un detalle nuevo.
+    /// </para>
+    /// </remarks>
+    public string TipoPlaca
+    {
+        get => _tipoPlaca;
+        set
+        {
+            Set(ref _tipoPlaca, (value ?? string.Empty).Trim().ToUpperInvariant());
+
+            // La lista del desplegable del ID depende de esto, y el texto de la columna del apoyo
+            // también: sin estos avisos, al cambiar el tipo la celda seguiría ofreciendo dados.
+            Raise(nameof(ApoyosDisponibles));
+            Raise(nameof(EsPlacaAMuro));
+        }
+    }
+
+    /// <summary>Los dos tipos, para el desplegable de la celda.</summary>
+    public static string[] TiposDePlaca => new[] { TipoBase, TipoMuro };
+
+    /// <summary>El valor de <see cref="TipoPlaca"/> de una placa que se apoya en un dado.</summary>
+    /// <remarks>
+    /// Es el <b>valor por omisión</b>, y lo es porque es el caso normal: una placa base. Así una
+    /// hoja capturada antes de que esto existiera —donde el archivo no trae la columna— sigue
+    /// leyéndose como lo que era.
+    /// </remarks>
+    public const string TipoBase = "PLACA BASE";
+
+    /// <summary>El valor de <see cref="TipoPlaca"/> de una placa sobre una cadena o una trabe.</summary>
+    public const string TipoMuro = "PLACA A MURO";
+
+    /// <summary>¿Es de las que se apoyan en una cadena o una trabe?</summary>
+    public bool EsPlacaAMuro =>
+        _tipoPlaca.Equals(TipoMuro, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// ID del <b>apoyo</b> de la hoja de secciones de concreto, del que salen sus medidas.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -120,6 +190,27 @@ public sealed class PlacaBaseRow : Row
     /// «DADO» y «DADO CIRCULAR»— uno de los dos se quedaría corto sin que nada avisara.
     /// </remarks>
     public static ObservableCollection<string> DadosDisponibles => ZapataAisladaRow.DadosDisponibles;
+
+    /// <summary>
+    /// Las <b>cadenas y trabes</b> capturadas en la hoja de concreto, para una placa a muro.
+    /// </summary>
+    /// <remarks>
+    /// La mantiene <c>ActualizarApoyosDeMuroDisponibles</c> con el mismo criterio que la de dados
+    /// —<c>EsApoyoDeMuro</c>—, y es estática por lo mismo: la lista es del programa, no de la fila.
+    /// </remarks>
+    public static ObservableCollection<string> ApoyosDeMuroDisponibles { get; } = new();
+
+    /// <summary>
+    /// Lo que ofrece el desplegable del ID en <b>esta</b> fila, según su tipo de placa.
+    /// </summary>
+    /// <remarks>
+    /// Es una propiedad de la FILA y no una lista de la columna, por lo mismo que los perfiles de
+    /// la familia: cada fila puede ser de un tipo distinto, así que la lista de la celda depende de
+    /// su propio renglón. Una lista por columna solo podría ofrecer dados y cadenas mezclados, que
+    /// es justo lo que hace que se elija el que no toca.
+    /// </remarks>
+    public ObservableCollection<string> ApoyosDisponibles =>
+        EsPlacaAMuro ? ApoyosDeMuroDisponibles : DadosDisponibles;
 
     /// <summary>Celda <b>D7</b>: dado de concreto en X, en cm. Cero = sin dado.</summary>
     /// <remarks>Si es redondo, es su <b>diámetro</b>.</remarks>
@@ -184,20 +275,35 @@ public sealed class PlacaBaseRow : Row
     public string[] EspesoresSoldadura => _espesoresSoldadura;
 
     // ═══════════════════════════════════════════════════════════════════════════════════════
-    //  LOS DIECINUEVE DIÁMETROS DEL CUADRO, en el mismo orden y con su equivalente en mm.
+    //  LOS DIECINUEVE DIÁMETROS DEL CUADRO —más el de 3/8"—, en orden y con su equivalente
+    //  en mm.
     //
-    //  Son exactamente los renglones del cuadro Hylsa ES-03-001 del que salen J, K y L. Antes
-    //  la lista tenía OCHO, y le faltaban los once de arriba: un ancla de 2" había que
-    //  teclearla a mano. Y peor, faltaba justo el tramo donde el cuadro se pone exigente —una
-    //  de 4" pide 300 mm entre anclas— así que lo que no estaba a un clic era lo que más
-    //  cuidado necesita.
+    //  Del 1/2" para arriba son exactamente los renglones del cuadro Hylsa ES-03-001 del que
+    //  salen J, K y L. Antes la lista tenía OCHO, y le faltaban los once de arriba: un ancla
+    //  de 2" había que teclearla a mano. Y peor, faltaba justo el tramo donde el cuadro se
+    //  pone exigente —una de 4" pide 300 mm entre anclas— así que lo que no estaba a un clic
+    //  era lo que más cuidado necesita.
     //
-    //  Que la lista y el cuadro coincidan NO es decorativo: si aquí hubiera un diámetro que el
-    //  cuadro no tiene, sus libramientos se resolverían por el renglón inmediato superior sin
-    //  que nada lo dijera. Hay una comprobación que lo cotela renglón por renglón.
+    //  ─── EL 3/8" NO ESTÁ EN EL CUADRO, Y ESTÁ AQUÍ A PROPÓSITO ──────────────────────────
+    //  Lo pidió el usuario, y es un ancla que se usa: placas base ligeras de marquesina, de
+    //  poste, de equipo. Pero el cuadro EMPIEZA en 13 mm —1/2"— y no tiene renglón para los
+    //  9.53 mm del 3/8".
+    //
+    //  Y no se le inventa uno. Lo que hacen las tres tablas es el criterio del propio
+    //  estándar: un diámetro que no tiene renglón se resuelve por el INMEDIATO SUPERIOR, y
+    //  por debajo del primero el inmediato superior es el primero. O sea que un ancla de
+    //  3/8" se libra con los números del 1/2" —J=40, K=22, L=23 mm—, que es EXIGIRLE MÁS de
+    //  lo que necesitaría, nunca menos: el plano cumple de sobra. Inventar el renglón que
+    //  falta sería lo contrario: aflojarlo con números que el estándar no firma.
+    //
+    //  La regla que sigue en pie —y que la comprobación vigila— es que aquí no entre un
+    //  diámetro que caiga ENTRE dos renglones del cuadro: ese sí engaña, porque el usuario
+    //  leería la fila de su ancla y estaría leyendo la de otra sin que nada se lo diga. Por
+    //  debajo del primer renglón no hay ambigüedad posible, y el globo de la celda lo dice.
     // ═══════════════════════════════════════════════════════════════════════════════════════
     private static readonly string[] _diametrosAncla =
     {
+        "3/8",      // 10 mm - fuera del cuadro: se libra con el renglon de media pulgada
         "1/2",      // 13 mm
         "5/8",      // 16 mm
         "3/4",      // 19 mm
@@ -601,6 +707,71 @@ public sealed class PlacaBaseRow : Row
     /// <summary>Celda <b>F6</b>: dibujar los cartabones.</summary>
     public bool ConCartabones { get => _conCartabones; set => Set(ref _conCartabones, value); }
 
+    // ======================================================================
+    //  LA CAMA DE GROUT
+    // ======================================================================
+
+    /// <summary>Las dos respuestas de la casilla del grout.</summary>
+    /// <remarks>
+    /// La misma lista de las hojas de zapatas —«SI» y «NO»—, para que la casilla se conteste igual
+    /// en todo el programa. Está una sola vez, en <see cref="ZapataAisladaRow.SiNo"/>.
+    /// </remarks>
+    public static string[] SiNo => ZapataAisladaRow.SiNo;
+
+    /// <summary>
+    /// <b>GROUT</b>: ¿va la placa sobre una cama de mortero de relleno?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Texto y no casilla de palomita, como las de zapatas: en un cuadro de placas se dicta y se
+    /// revisa leyendo «SI» o «NO», y con una palomita hay que fijarse en si está marcada.
+    /// </para>
+    /// <para>
+    /// En <b>NO</b> —lo que trae de fábrica— el detalle no cambia en nada: la placa se apoya
+    /// directamente en el dado, que es como se dibujaba antes de que existiera esta casilla.
+    /// </para>
+    /// </remarks>
+    public string Grout
+    {
+        get => _grout;
+        set
+        {
+            Set(ref _grout, value);
+
+            // La celda del espesor se enciende y se apaga con esta, así que su bandera tiene que
+            // avisar. Sin este Raise, la celda de al lado se queda apagada aunque aquí diga SI.
+            // De «Falta» ya se encarga RaiseCalculadas, por donde pasa todo Set.
+            Raise(nameof(EsGrout));
+        }
+    }
+
+    /// <summary>¿La casilla del grout dice SI?</summary>
+    /// <remarks>
+    /// De aquí cuelga el <c>IsEnabled</c> de la celda del espesor —ver <c>CeldaSoloGrout</c>— y el
+    /// dibujo del corte.
+    /// </remarks>
+    public bool EsGrout =>
+        (_grout ?? string.Empty).Trim().Equals("SI", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// El espesor de la cama de grout, en <b>centímetros</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En centímetros y no en pulgadas, a diferencia de la placa y de las anclas: una cama de grout
+    /// se especifica en centímetros —2, 2.5, 3— y no en fracciones de pulgada.
+    /// </para>
+    /// <para>
+    /// Solo se lee con la casilla en SI. Los 2.5 cm de arranque son el espesor usual de una cama
+    /// nivelante; se cambia renglón por renglón.
+    /// </para>
+    /// </remarks>
+    public double EspesorGroutCm
+    {
+        get => _espesorGroutCm;
+        set => Set(ref _espesorGroutCm, value);
+    }
+
     /// <summary>Escala del detalle, para el rótulo.</summary>
     public double Escala { get => _escala; set => Set(ref _escala, value); }
 
@@ -650,17 +821,37 @@ public sealed class PlacaBaseRow : Row
     }
 
     /// <summary>
-    /// De dónde salen las medidas del dado, y si sobresale de la placa. <b>Se ve en la tabla.</b>
+    /// De dónde salen las medidas del apoyo, y si sobresale de la placa. <b>Se ve en la tabla.</b>
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Por el mismo motivo que <see cref="MedidasPerfil"/>: cuando un dato se trae de otra hoja, lo
     /// que hay que hacer visible es <b>si de verdad se trajo</b>. Un ID escrito con un guion de más
     /// no encuentra la sección, las celdas se quedan con lo que hubiera, y la fila se ve completa.
+    /// </para>
+    /// <para>
+    /// <b>Y LO PRIMERO ES SI EL ID EXISTE.</b> Paso de verdad: una placa con <c>CC-1</c> en el ID
+    /// —una cadena de cerramiento— cuando la hoja solo buscaba dados. La referencia no encontraba
+    /// nada y salía en silencio, así que la celda decía «rectangular, de «CC-1»» con las medidas de
+    /// otro dado que traía de antes, y la de al lado, capturada después, se quedó en cero. Dos filas
+    /// con el mismo ID mostrando cosas distintas y nada que lo explicara.
+    /// </para>
     /// </remarks>
-    public string ReferenciaDado
+    public string ReferenciaApoyo
     {
         get
         {
+            // ¿ESTÁ CAPTURADO? Se pregunta ANTES que nada, porque un ID que no existe hace falsas
+            // todas las demás respuestas: las medidas que se vean serán de otra cosa o de nada.
+            var id = IdDado.Trim();
+
+            if (id.Length > 0 && !ApoyosDisponibles.Contains(id))
+            {
+                return EsPlacaAMuro
+                    ? $"«{id}» NO ES UNA CADENA NI TRABE DE LA HOJA DE CONCRETO"
+                    : $"«{id}» NO ES UN DADO DE LA HOJA DE CONCRETO";
+            }
+
             // EL REDONDO SE MIDE CON UNA SOLA MEDIDA, igual que en AFormatoCad. Exigiendo las dos,
             // un dado circular al que solo se le puso el diámetro se leería aquí como «sin dado»
             // mientras el dibujo lo pone: la tabla diciendo una cosa y el plano otra.
@@ -668,7 +859,7 @@ public sealed class PlacaBaseRow : Row
 
             if (DadoXCm <= 0 || dadoY <= 0)
             {
-                return "sin dado";
+                return EsPlacaAMuro ? "sin apoyo" : "sin dado";
             }
 
             var forma = DadoCircular ? "redondo" : "rectangular";
@@ -717,71 +908,159 @@ public sealed class PlacaBaseRow : Row
     /// las anclas no caben mientras se captura y enterarse cuando el botón se niega a dibujar. Es la
     /// misma idea que la columna «Falta» del resto de las hojas.
     /// </remarks>
-    public string Libramientos
+    public string Libramientos => RevisarLibramientos()?.Titulo ?? string.Empty;
+
+    /// <summary>
+    /// El <b>detalle</b> del libramiento que no cumple: los números y qué hacer. Vacío = cumple.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En la celda de la tabla solo cabe el titular —«Holgura mínima a la columna (L)»—, y con el
+    /// titular solo no se puede corregir nada: dice QUÉ pasa y no de qué ancla, ni cuánta holgura
+    /// hay, ni cuánta se pide. Esto es lo que sale en el aviso de antes de dibujar, que es donde el
+    /// usuario está parado cuando necesita los números.
+    /// </para>
+    /// <para>
+    /// Y lleva al final <b>el sitio que hay entre el canto de la placa y el paño del perfil</b>,
+    /// que es el dato que dice si el problema se arregla moviendo las anclas o solo con una placa
+    /// mayor. Sin él, «faltan 20 mm de holgura» no distingue un detalle apretado de uno imposible.
+    /// </para>
+    /// </remarks>
+    public string LibramientoDetalle
     {
         get
         {
-            var p = AFormatoCad();
+            var falla = RevisarLibramientos();
 
-            // Con la fila incompleta no se dice nada: la columna «Falta» ya está diciendo lo que
-            // hay, y añadir «las anclas no caben» a una placa sin medidas es ruido.
-            if (p.Falta.Count > 0 || !p.ValidarSeparacionAnclas)
+            if (falla is null)
             {
                 return string.Empty;
             }
 
-            // Se mide en centímetros: da igual la escala del dibujo, porque las tablas J y K
-            // trabajan en milímetros y la conversión es interna.
-            var b = p.AnchoDibujoCm;
-            var h = p.AltoDibujoCm;
+            var sitio = SitioEntreElCantoYElPerfil();
 
-            var dAncX = p.DiamAnclaXCm;
-            var dAncY = p.DiamAnclaYCm;
-
-            var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
-            var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
-
-            // EL PERFIL Y LA DISTANCIA K ENTRAN EN LA CUENTA, igual que en el dibujante. La
-            // separación automática reparte el sobrante entre la placa y el patín, así que sin el
-            // perfil esta columna usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría
-            // que la placa cumple y el botón se negaría a dibujarla, sin nada que explicara la
-            // diferencia. Y el ajuste al mínimo de K, por lo mismo.
-            var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
-            var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
-
-            if (sepX <= 0)
-            {
-                sepX = AnclasPlacaBase.SepAuto(
-                    b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
-            }
-
-            if (sepY <= 0)
-            {
-                sepY = AnclasPlacaBase.SepAuto(
-                    h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
-            }
-
-            var anclas = AnclasPlacaBase.Construir(
-                0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
-                dAncX, dAguX, dAncY, dAguY);
-
-            // LAS TRES COLUMNAS DEL CUADRO, y cada una mide LO SUYO:
-            //   J - la distancia entre anclas
-            //   K - la del ancla al canto recortado de la placa
-            //   L - la del ancla al paño de la COLUMNA, para que entre la llave
-            //
-            // La L no es «la K con otro nombre»: en el croquis del estándar el orden es canto de la
-            // placa -> K -> ancla -> L -> paño de la columna, así que una mira hacia fuera y la otra
-            // hacia dentro. Los números tampoco dejan deducir una de la otra: en un ancla de 5/8" la
-            // K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66.
-            var falla = AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)
-                        ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1)
-                        ?? AnclasPlacaBase.RevisarHolguraColumnaL(
-                               anclas, p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos, 1);
-
-            // En la celda solo cabe el titular; el detalle completo sale al intentar dibujar.
-            return falla is null ? string.Empty : falla.Titulo;
+            return sitio.Length == 0 ? falla.Detalle : falla.Detalle + "\n\n" + sitio;
         }
+    }
+
+    /// <summary>
+    /// Cuánto hay —y cuánto pide el cuadro— entre el canto de la placa y el paño del perfil.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las dos paredes entre las que tiene que caber el ancla, dichas como una resta: de un lado el
+    /// sobrante real de la placa, del otro <c>K + L</c>, que es lo que el cuadro exige a un ancla
+    /// alineada con el perfil. Si el sobrante no llega, no es que las anclas estén mal puestas: no
+    /// hay dónde ponerlas, y lo que hace falta es una placa mayor o un perfil menor.
+    /// </para>
+    /// <para>
+    /// Se dice «alineada con el perfil» porque es la única posición en la que las dos distancias
+    /// caen sobre la misma línea. Las anclas de las <b>esquinas</b> —las de las hileras de X con
+    /// pocas anclas— miden su holgura en diagonal y por eso ganan algo: pueden cumplir con un
+    /// sobrante algo menor. Es una referencia para entender el aviso, no la comprobación: la que
+    /// manda es la que mide ancla por ancla contra el contorno de verdad.
+    /// </para>
+    /// </remarks>
+    private string SitioEntreElCantoYElPerfil()
+    {
+        var p = AFormatoCad();
+
+        var b = p.AnchoDibujoCm;
+        var h = p.AltoDibujoCm;
+        var px = p.PerfilXDibujoCm;
+        var py = p.PerfilYDibujoCm;
+
+        if (b <= 0 || h <= 0 || px <= 0 || py <= 0)
+        {
+            return string.Empty;
+        }
+
+        var hayX = (b - px) / 2;
+        var hayY = (h - py) / 2;
+
+        var pideX = AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaXCm)
+                    + AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaXCm);
+
+        var pideY = AnclasPlacaBase.BordeMinimoCm(p.DiamAnclaYCm)
+                    + AnclasPlacaBase.HolguraColumnaMinimaCm(p.DiamAnclaYCm);
+
+        return
+            $"Entre el canto de la placa y el paño del perfil hay {hayX:0.#} cm en X y " +
+            $"{hayY:0.#} cm en Y.\n" +
+            $"El cuadro pide K + L = {pideX:0.#} cm en X y {pideY:0.#} cm en Y para un ancla " +
+            "alineada con el perfil\n(las de esquina ganan algo por la diagonal). Si no llega, " +
+            "hace falta placa mayor o perfil menor.";
+    }
+
+    /// <summary>
+    /// La comprobación de los libramientos, en <b>un solo sitio</b>. <c>null</c> = la placa cumple.
+    /// </summary>
+    /// <remarks>
+    /// La hacen tres: la celda «Libramientos» —que enseña el titular—, el aviso de antes de dibujar
+    /// —que enseña el detalle— y la vista previa. Con el cálculo repetido, la tabla podría decir que
+    /// una placa cumple y el botón negarse a dibujarla.
+    /// </remarks>
+    private AnclasPlacaBase.Incumplimiento? RevisarLibramientos()
+    {
+        var p = AFormatoCad();
+
+        // Con la fila incompleta no se dice nada: la columna «Falta» ya está diciendo lo que
+        // hay, y añadir «las anclas no caben» a una placa sin medidas es ruido.
+        if (p.Falta.Count > 0 || !p.ValidarSeparacionAnclas)
+        {
+            return null;
+        }
+
+        // Se mide en centímetros: da igual la escala del dibujo, porque las tablas J y K
+        // trabajan en milímetros y la conversión es interna.
+        var b = p.AnchoDibujoCm;
+        var h = p.AltoDibujoCm;
+
+        var dAncX = p.DiamAnclaXCm;
+        var dAncY = p.DiamAnclaYCm;
+
+        var dAguX = p.DiamAgujeroXCm > 0 ? p.DiamAgujeroXCm : dAncX + (2.54 / 16);
+        var dAguY = p.DiamAgujeroYCm > 0 ? p.DiamAgujeroYCm : dAncY + (2.54 / 16);
+
+        // EL PERFIL Y LA DISTANCIA K ENTRAN EN LA CUENTA, igual que en el dibujante. La
+        // separación automática reparte el sobrante entre la placa y el patín, así que sin el
+        // perfil esta columna usaría un 12 % del ancho y el dibujante otra cosa: la tabla diría
+        // que la placa cumple y el botón se negaría a dibujarla, sin nada que explicara la
+        // diferencia. Y el ajuste al mínimo de K, por lo mismo.
+        var sepX = AnclasPlacaBase.SepBordeAjustada(p.SepBordeXCm, dAncX, b);
+        var sepY = AnclasPlacaBase.SepBordeAjustada(p.SepBordeYCm, dAncY, h);
+
+        if (sepX <= 0)
+        {
+            sepX = AnclasPlacaBase.SepAuto(
+                b, p.PerfilXDibujoCm, dAguX, 1, AnclasPlacaBase.BordeMinimoCm(dAncX));
+        }
+
+        if (sepY <= 0)
+        {
+            sepY = AnclasPlacaBase.SepAuto(
+                h, p.PerfilYDibujoCm, dAguY, 1, AnclasPlacaBase.BordeMinimoCm(dAncY));
+        }
+
+        var anclas = AnclasPlacaBase.Construir(
+            0, 0, b, h, p.NAnclasX, p.NAnclasY, sepX, sepY,
+            dAncX, dAguX, dAncY, dAguY);
+
+        // LAS TRES COLUMNAS DEL CUADRO, y cada una mide LO SUYO:
+        //   J - la distancia entre anclas
+        //   K - la del ancla al canto recortado de la placa
+        //   L - la del ancla al paño de la COLUMNA, para que entre la llave
+        //
+        // La L no es «la K con otro nombre»: en el croquis del estándar el orden es canto de la
+        // placa -> K -> ancla -> L -> paño de la columna, así que una mira hacia fuera y la otra
+        // hacia dentro. Los números tampoco dejan deducir una de la otra: en un ancla de 5/8" la
+        // K pide 30 mm y la L 28, y en una de 1 1/2" la K pide 65 y la L 66.
+        // En la celda solo cabe el titular; el detalle completo —con los números— sale en el
+        // aviso de antes de dibujar, por LibramientoDetalle.
+        return AnclasPlacaBase.RevisarSeparacionJ(anclas, 1)
+               ?? AnclasPlacaBase.RevisarDistanciaK(anclas, 0, 0, b, h, 1)
+               ?? AnclasPlacaBase.RevisarHolguraColumnaL(
+                      anclas, p.PanoDeLaColumna(b / 2, h / 2, 1)?.Puntos, 1);
     }
 
     /// <summary>Qué falta para poder dibujar. Vacío = se puede.</summary>
@@ -813,7 +1092,12 @@ public sealed class PlacaBaseRow : Row
 
         Raise(nameof(Forma));
         Raise(nameof(MedidasPerfil));
-        Raise(nameof(ReferenciaDado));
+        Raise(nameof(ReferenciaApoyo));
+
+        // El tipo no cambia solo, pero la LISTA que ofrece el desplegable del ID depende de el y
+        // sus elementos SI cambian: al capturar una cadena nueva en la hoja de concreto, la celda
+        // de esta fila tiene que ofrecerla. Ver ApoyosDisponibles.
+        Raise(nameof(ApoyosDisponibles));
         Raise(nameof(TotalAnclas));
         Raise(nameof(TotalCartabones));
 
@@ -825,6 +1109,10 @@ public sealed class PlacaBaseRow : Row
         Raise(nameof(BordeMinimo));
         Raise(nameof(SepBordeUsada));
         Raise(nameof(Libramientos));
+
+        // El detalle va JUNTO con su titular: es el globo de esa misma celda, y sin avisar de él
+        // el globo se quedaría con los números de la captura anterior.
+        Raise(nameof(LibramientoDetalle));
         Raise(nameof(Falta));
     }
 
@@ -866,6 +1154,10 @@ public sealed class PlacaBaseRow : Row
             // distinto, el dibujo cotaría un diámetro vertical que el círculo no tiene.
             DadoYCm = DadoCircular ? DadoXCm : DadoYCm,
             DadoCircular = DadoCircular,
+
+            // Para el titulo del detalle y el nombre del bloque del corte. La geometria no cambia:
+            // ver PlacaBaseCad.EsPlacaAMuro.
+            EsPlacaAMuro = EsPlacaAMuro,
 
             Familia = Familia,
             Seccion = Seccion,
@@ -916,6 +1208,11 @@ public sealed class PlacaBaseRow : Row
             LongAnclaYCm = LongAnclaYCm,
             DoblezAnclaXCm = DoblezAnclaXCm,
             DoblezAnclaYCm = DoblezAnclaYCm,
+
+            // LA CAMA DE GROUT. El «SI» de la casilla se traduce aquí a un booleano: al dibujante
+            // no le importa cómo se contestó la celda, solo si la lleva o no.
+            ConGrout = EsGrout,
+            EspesorGroutCm = EspesorGroutCm,
 
             Escala = Escala > 0 ? Escala : 10,
             GirarPlaca90 = GirarPlaca90

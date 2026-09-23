@@ -1,7 +1,34 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlalchemy==2.0.36
-pydantic==2.10.4
-pydantic-settings==2.7.0
-pyjwt[crypto]==2.10.1
-python-dotenv==1.0.1
+# ======================================================================
+#  LIBRERIAS DEL SERVIDOR DE LICENCIAS
+# ======================================================================
+#
+#  RANGOS, NO VERSIONES EXACTAS. Y el motivo es concreto: estaban
+#  clavadas con == y en una PC con Python 3.14 la instalacion fallaba
+#  entera. Ninguna de esas versiones -de finales de 2024- trae ruedas
+#  compiladas para 3.14, asi que pip intentaba compilar pydantic-core
+#  desde el codigo fuente, eso necesita Rust, y el paso [3/6] del
+#  instalador se caia dejando el servidor sin librerias, sin llaves y
+#  sin .env. En el diagnostico se veia clarisimo: en el entorno solo
+#  estaba pip.
+#
+#  Con rangos, pip elige en cada computadora la version mas nueva que
+#  cumpla, que es la que SI tiene rueda para su Python. El piso de cada
+#  rango es la version con la que se probo esto; el techo es la siguiente
+#  version mayor, que es donde estas librerias rompen compatibilidad.
+#
+#  Si algun dia hace falta congelar las versiones exactas de una
+#  instalacion que ya funciona:
+#
+#      .venv\Scripts\python.exe -m pip freeze > requirements-fijas.txt
+#
+#  y se instala con ese archivo. Pero el de aqui se queda con rangos,
+#  porque es el que corre en computadoras ajenas.
+# ======================================================================
+
+fastapi>=0.115.6,<1.0
+uvicorn[standard]>=0.34.0,<1.0
+sqlalchemy>=2.0.36,<3.0
+pydantic>=2.10.4,<3.0
+pydantic-settings>=2.7.0,<3.0
+pyjwt[crypto]>=2.10.1,<3.0
+python-dotenv>=1.0.1,<2.0

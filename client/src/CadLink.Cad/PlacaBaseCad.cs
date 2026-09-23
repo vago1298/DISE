@@ -28,6 +28,22 @@ public static class PlacaBaseCapas
     public const string Anclas = "ANCLAS";
     public const int ColorAnclas = 1;
 
+    /// <summary>La <b>rosca y la tuerca</b> del ancla, en gris.</summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario —«en color 253 en la capa de anclas»— y tiene su razón de dibujo: la
+    /// barra va en rojo y llena, y el enroscado son veinte líneas finas ahí mismo. En el mismo rojo
+    /// se empastan con el vástago y lo que se lee es un borrón; en gris se distingue la parte
+    /// roscada de la barra lisa, que es justo lo que el detalle tiene que decir.
+    /// </para>
+    /// <para>
+    /// Va como color de la ENTIDAD y no de la capa: la capa sigue siendo ANCLAS —ahí está el ancla
+    /// entera, y se apaga y se congela de una vez—, y dentro de ella estas piezas llevan el suyo.
+    /// Es lo mismo que ya se hace con los rayados, que van por capa con su color propio.
+    /// </para>
+    /// </remarks>
+    public const int ColorRoscaYTuerca = 253;
+
     /// <summary>El rotulado, los leaders y sus flechas. En verde.</summary>
     public const string Rotulos = "ROTULOS";
     public const int ColorRotulos = 3;
@@ -66,6 +82,19 @@ public static class PlacaBaseCapas
     public const string SoldaduraCartabon = "SOLDADURA CARTABON";
     public const int ColorSoldaduraCartabon = 210;
 
+    /// <summary>
+    /// La cama de <b>grout</b> entre la placa y el dado, en su propia capa.
+    /// </summary>
+    /// <remarks>
+    /// Capa propia y no CONCRETO: es otro material —un mortero de relleno, no el concreto del
+    /// dado—, se rotula aparte y en el detalle hay que poder apagarla sola. El <b>30</b> de la
+    /// paleta es el naranja, que se distingue del gris del dado sin competir con el rojo de las
+    /// anclas. Va con el color forzado, como la placa y las soldaduras: es una decisión de esta
+    /// macro y no algo que venga de la plantilla del usuario.
+    /// </remarks>
+    public const string Grout = "GROUT";
+    public const int ColorGrout = 30;
+
     // ---------- Hatches ----------
 
     /// <summary>Rayado del dado, solo en la franja que sobresale de la placa.</summary>
@@ -79,6 +108,17 @@ public static class PlacaBaseCapas
 
     /// <summary>Ancho de la polilínea del contorno de un perfil I.</summary>
     public const double AnchoContornoPerfilI = 0.001;
+
+    /// <summary>
+    /// Rayado de la cama de grout: el de siempre a 45°, y a una escala fina.
+    /// </summary>
+    /// <remarks>
+    /// <b>ANSI31 y no AR-CONC</b>: el dado ya lleva AR-CONC, y con el mismo patrón en los dos la
+    /// cama de grout desaparecería dentro del dado en lugar de leerse como la junta que es. Los dos
+    /// patrones están en el <c>acad.pat</c> de serie, igual que los otros tres de esta macro.
+    /// </remarks>
+    public const string PatronGrout = "ANSI31";
+    public const double EscalaHatchGrout = 0.0006;
 
     /// <summary>Rayado de la soldadura: la franja entre el perfil y su offset.</summary>
     public const string PatronSoldadura = "JIS_RC_10";
@@ -182,6 +222,24 @@ public sealed class PlacaBaseCad
     /// mismo ID, un dado que no es el que se armó.
     /// </remarks>
     public bool DadoCircular { get; set; }
+
+    /// <summary>
+    /// La placa se apoya en una <b>cadena o una trabe</b>, no en un dado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo único que cambia en el dibujo es <b>cómo se rotula</b>: el título del detalle dice «PLACA
+    /// A MURO» y el bloque del corte se llama igual. La geometría es la misma —la placa apoyada
+    /// sobre su pieza de concreto, con las anclas ahogadas en ella— porque es el mismo detalle: una
+    /// placa sobre una cadena de cerramiento se dibuja como una sobre un dado, solo que el concreto
+    /// de abajo es la cadena, con sus medidas.
+    /// </para>
+    /// <para>
+    /// De dónde salen esas medidas lo decide la hoja, no este dibujante: aquí llegan ya resueltas
+    /// en <see cref="DadoXCm"/> y <see cref="DadoYCm"/>.
+    /// </para>
+    /// </remarks>
+    public bool EsPlacaAMuro { get; set; }
 
     /// <summary>Familia del perfil de la columna. Celda C8.</summary>
     public string Familia { get; set; } = string.Empty;
@@ -290,6 +348,20 @@ public sealed class PlacaBaseCad
     /// <summary>Dibujar el <b>alzado</b> a la derecha de la planta.</summary>
     public bool DibujarElevacion { get; set; } = true;
 
+    /// <summary>Dibuja el <b>detalle del ancla sola</b>, al final de los cortes.</summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario: en el corte de la placa el ancla sale enterrada entre el concreto y la
+    /// placa, y ahí no se puede acotar. Suelta y a un lado se acota entera: diámetro, longitud
+    /// vertical, pata, rosca y el desarrollo que se pide al proveedor.
+    /// </para>
+    /// <para>
+    /// Encendido por omisión, como el resto del detalle: es una vista más de la misma fila. Se apaga
+    /// para una corrida en la que solo interese la planta.
+    /// </para>
+    /// </remarks>
+    public bool DibujarDetalleDeAncla { get; set; } = true;
+
     /// <summary>Espesor de los cartabones, en cm, y su texto. Celdas C20 y C21.</summary>
     public double EspCartabonXCm { get; set; }
     public double EspCartabonYCm { get; set; }
@@ -310,6 +382,22 @@ public sealed class PlacaBaseCad
 
     /// <summary>Dibujar cartabones. Celda F6, «Si».</summary>
     public bool ConCartabones { get; set; }
+
+    /// <summary>
+    /// ¿Lleva cama de <b>grout</b> entre la placa y el dado?
+    /// </summary>
+    /// <remarks>
+    /// En <c>false</c> el detalle no cambia en nada: la placa se apoya directamente en el dado, que
+    /// es como se dibujaba antes de que existiera la casilla.
+    /// </remarks>
+    public bool ConGrout { get; set; }
+
+    /// <summary>El espesor de esa cama, en centímetros.</summary>
+    /// <remarks>
+    /// Solo se lee con <see cref="ConGrout"/> encendido. El dado baja lo que mida la cama y el ancla
+    /// se alarga otro tanto, para que su longitud vertical se siga ahogando dentro del concreto.
+    /// </remarks>
+    public double EspesorGroutCm { get; set; }
 
     /// <summary>Escala del detalle, para el rótulo. Celda V o la de la hoja.</summary>
     public double Escala { get; set; } = 10;
@@ -491,6 +579,13 @@ public sealed class PlacaBaseCad
             if (DibujarPerfil && Perfil is null && Seccion.Trim().Length > 0)
             {
                 falta.Add($"la sección «{Seccion}» no se encontró en el catálogo de perfiles");
+            }
+
+            // Con la casilla del grout en SI y el espesor en cero no hay cama que dibujar: la
+            // placa saldría apoyada en el dado, contradiciendo lo que dice la hoja.
+            if (ConGrout && EspesorGroutCm <= 0)
+            {
+                falta.Add("el espesor de la cama de grout");
             }
 
             return falta;

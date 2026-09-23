@@ -41,7 +41,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CadLink License Server",
     version="1.0.0",
-    description="Emisión y validación de licencias para CadLink.",
+    description=(
+        "Emisión y validación de licencias para CadLink.\n\n"
+        "**Para usar los endpoints de administración**, pulsa primero **Authorize** "
+        "(arriba a la derecha) y pega ahí la `ADMIN_API_KEY` del `.env` del servidor. "
+        "Queda puesta en todos los `/admin/*` mientras dure la sesión del navegador.\n\n"
+        "Los de `licencias` —`/v1/activate` y `/v1/renew`— los llama la aplicación y no "
+        "llevan clave de administrador: van firmados con la huella del equipo."
+    ),
     lifespan=lifespan,
 )
 

@@ -10,6 +10,42 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
 _SID_RE = re.compile(r"^S-1-5-21(-\d+){3,}$")
 
+#: Lo que se le quita a una huella antes de mirarla: espacios y guiones.
+_SEPARADORES_HUELLA = re.compile(r"[\s\-]+")
+
+
+def _normalizar_huella(v: str) -> str:
+    """La huella en su forma canónica: 64 hexadecimales en minúsculas.
+
+    **Se aceptan los guiones y las mayúsculas a propósito.** La aplicación ENSEÑA la
+    huella agrupada de ocho en ocho y en mayúsculas —``A49A4785-BA02427A-…``, que es como
+    se lee y se dicta sin equivocarse— mientras que el botón «Copiar huella» copia los 64
+    caracteres de corrido. Quien la teclea desde la pantalla manda la primera forma, y
+    antes el servidor la rechazaba con un *422* que hablaba del JSON y no de la huella:
+    el usuario hacía lo obvio y el error no decía qué estaba mal.
+
+    Así que aquí se normaliza. Lo que NO se tolera es otra cosa que no sean esos
+    separadores: siguen teniendo que quedar exactamente 64 dígitos hexadecimales, ni uno
+    más ni uno menos, así que una huella cortada o de otro equipo sigue siendo un error.
+    """
+    limpia = _SEPARADORES_HUELLA.sub("", (v or "").strip()).lower()
+
+    if _FINGERPRINT_RE.match(limpia):
+        return limpia
+
+    sobran = sorted(set(re.sub(r"[0-9a-f]", "", limpia)))
+
+    detalle = f"llegaron {len(limpia)} caracteres"
+
+    if sobran:
+        detalle += " y estos no son hexadecimales: " + " ".join(sobran)
+
+    raise ValueError(
+        "La huella tiene que ser el SHA-256 del equipo: 64 dígitos hexadecimales. "
+        "Se admite tal como la enseña la aplicación, con guiones y mayúsculas. "
+        f"Aquí {detalle}."
+    )
+
 
 class ActivateRequest(BaseModel):
     fingerprint: str = Field(..., description="SHA-256 en hexadecimal minúsculas")
@@ -22,10 +58,7 @@ class ActivateRequest(BaseModel):
     @field_validator("fingerprint")
     @classmethod
     def _check_fingerprint(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _FINGERPRINT_RE.match(v):
-            raise ValueError("La huella debe ser un SHA-256 de 64 caracteres hexadecimales")
-        return v
+        return _normalizar_huella(v)
 
     @field_validator("domain_sid")
     @classmethod
@@ -46,10 +79,7 @@ class RenewRequest(BaseModel):
     @field_validator("fingerprint")
     @classmethod
     def _check_fingerprint(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _FINGERPRINT_RE.match(v):
-            raise ValueError("Huella inválida")
-        return v
+        return _normalizar_huella(v)
 
 
 class TokenResponse(BaseModel):
@@ -90,10 +120,7 @@ class MachineCreate(BaseModel):
     @field_validator("fingerprint")
     @classmethod
     def _check_fingerprint(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _FINGERPRINT_RE.match(v):
-            raise ValueError("Huella inválida")
-        return v
+        return _normalizar_huella(v)
 
     @field_validator("tier")
     @classmethod

@@ -92,6 +92,10 @@ public partial class MainWindow : Window
         EngancharVistaPreviaZapataCorrida();
         EngancharVistaPreviaPlacaBase();
 
+        // La simbología de soldadura: no depende de ninguna fila, así que solo se redibuja al
+        // cambiar el tamaño del recuadro -y al escribir su título, que va por el TextChanged-.
+        SimbologiaPreviewCanvas.SizeChanged += (_, _) => DibujarSimbologiaPrevia();
+
         // Los lienzos del visor se redibujan al cambiar de tamaño: la escala se
         // calcula con el ancho y el alto reales, que valen 0 hasta que WPF hace
         // el primer layout.
@@ -103,6 +107,7 @@ public partial class MainWindow : Window
         {
             DibujarVistaPrevia();
             RedibujarVistas();
+            DibujarSimbologiaPrevia();
         };
 
         PrepararSolapa();
@@ -157,41 +162,22 @@ public partial class MainWindow : Window
         var opcionales = new List<string> { string.Empty };
         opcionales.AddRange(diametros);
 
-        ColElemento.ItemsSource = new[]
-        {
-            // COLUMNA y DADO van juntos porque son los dos verticales, y son los
-            // dos que llevan alzado vertical.
-            //
-            // COLUMNA CIRCULAR va justo despues de COLUMNA: es donde se elige la
-            // FORMA. En el plano las dos se rotulan «COLUMNA», ver
-            // SeccionConcretoRow.ElementoRotulo.
-            SeccionConcretoRow.ElementoColumna,
-            SeccionConcretoRow.ElementoColumnaCircular,
-            // Y los dos dados, con la misma idea: DADO CIRCULAR va justo despues de
-            // DADO porque es donde se elige la FORMA. Los dos se rotulan «DADO».
-            SeccionConcretoRow.ElementoDado,
-            SeccionConcretoRow.ElementoDadoCircular,
-            "CASTILLO", "TRABE", "CONTRATRABE",
-            SeccionConcretoRow.ElementoCabezal,
-            // Las TRES cadenas. La INTERMEDIA va con las otras dos porque es una cadena
-            // mas: el dibujante ya la conoce -la reconoce por las notas de la propiedad y
-            // tiene reglas propias para ella en el corte-, pero faltaba en la lista de la
-            // tabla, asi que habia que teclearla a mano.
-            "CADENA DE CERRAMIENTO", "CADENA DE DESPLANTE", "CADENA INTERMEDIA",
+        // LA LISTA VIVE EN LA FILA, no aqui. La usan el desplegable y el boton «Ordenar»
+        // de la hoja -que agrupa las secciones por elemento y en ESE mismo orden-, asi que
+        // escrita en dos sitios el dia que se agregue un elemento el desplegable y el orden
+        // dejarian de coincidir. Ver SeccionConcretoRow.ElementosEnOrden, donde esta tambien
+        // el porque del orden.
+        ColElemento.ItemsSource = SeccionConcretoRow.ElementosEnOrden;
 
-            // OTRO va AL FINAL, y es un recordatorio de que la casilla se puede
-            // escribir: el combo es editable, asi que se puede teclear cualquier nombre
-            // y ese es el que sale en el rotulo. Ver SeccionConcretoRow.ElementoOtro.
-            SeccionConcretoRow.ElementoOtro
-        };
-
-        ColVarEsqSup.ItemsSource = diametros;
         ColEstribo.ItemsSource = diametros;
 
-        ColVarIntSup.ItemsSource = opcionales;
-        ColVarEsqInf.ItemsSource = opcionales;
-        ColVarIntInf.ItemsSource = opcionales;
-        ColVarLateral.ItemsSource = opcionales;
+        // LAS CINCO LISTAS DEL ARMADO YA NO SE LLENAN AQUI. Las columnas de lecho y
+        // de intermedias se combinaron en tres columnas de plantilla -para poder poner
+        // el titulo del grupo centrado encima, como en la hoja de zapatas-, y en una
+        // celda de plantilla se crea un control por fila: no hay un x:Name al que
+        // agarrarse. Sus listas salen de Varilla.Diametros y Varilla.DiametrosOpcionales
+        // con x:Static, desde el XAML, que son las MISMAS dos listas que se arman aqui
+        // abajo, asi que no se desincronizan con la validacion.
         ColVarDiamante.ItemsSource = opcionales;
 
         ColDiamante.ItemsSource = new[] { string.Empty, "SI" };
@@ -309,6 +295,16 @@ public partial class MainWindow : Window
 
     private void DatosCambiaron()
     {
+        // MIENTRAS SE REORDENA LA HOJA, NADA. El botón «Ordenar» mueve las filas una por una y
+        // cada movimiento avisa a la colección, pero para el usuario eso es UN solo cambio: sin
+        // este guardia, ordenar cuarenta secciones apilaría treinta y cinco pasos de deshacer y
+        // redibujaría la vista previa treinta y cinco veces. El propio botón llama a este método
+        // una vez al terminar. Ver MainWindow.Orden.cs.
+        if (_reordenando)
+        {
+            return;
+        }
+
         RegistrarEnHistorial();
 
         // Las listas de la hoja de zapatas —los dados y las columnas— salen de ESTA hoja,
@@ -2185,6 +2181,11 @@ public partial class MainWindow : Window
                     NVarTotal = s.NVarTotal, DiamVarTotal = s.DiamVarTotal,
                     ZunchoHelicoidal = s.ZunchoHelicoidal,
                     RecubrimientoCm = s.RecubrimientoCm,
+
+                    // El ESTRIBO, por lo mismo que el f'c de mas abajo: va DESPUES del
+                    // elemento, asi lo guardado manda sobre el automatico -#2 en castillos
+                    // y cadenas- y una seccion que se armo con otro estribo se abre como se
+                    // guardo.
                     Estribo = s.Estribo, SeparacionCm = s.SeparacionCm,
                     EstriboDiamante = s.EstriboDiamante,
                     DiamEstriboDiamante = s.DiamEstriboDiamante,

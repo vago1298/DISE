@@ -49,8 +49,112 @@ public sealed partial class PlacaBaseDrawer
     public IReadOnlyList<string> Fallos => _log;
     public IReadOnlyList<string> Notas => _notas;
 
-    /// <summary>El nombre del bloque que se creó, para poder decírselo al usuario.</summary>
+    /// <summary>El nombre del bloque de la PLANTA, para poder decírselo al usuario.</summary>
     public string UltimoBloque { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Los bloques de los <b>cortes</b> de la última placa: uno por vista.
+    /// </summary>
+    /// <remarks>
+    /// Aparte del de la planta porque son bloques distintos —eso es justo lo que se pidió— y porque
+    /// son uno o dos según si la placa es cuadrada. Se reportan junto con el de la planta.
+    /// </remarks>
+    public List<string> BloquesDeCortes { get; private set; } = new();
+
+    /// <summary>
+    /// Lo que ocupó a lo ancho el último detalle, en unidades de dibujo. Cero = no se dibujó.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es para que la placa siguiente no se le encime, y lo dice <b>el que dibujó</b>: solo aquí se
+    /// sabe hasta dónde llegó el detalle, porque depende del dado, de las cotas y de si hubo uno o
+    /// dos cortes. Antes el que repartía las placas lo estimaba con la huella de la planta más 60
+    /// cm de aire, y los cortes —que arrancan justamente a 60 cm del canto— caían encima de la
+    /// planta de la siguiente.
+    /// </para>
+    /// <para>
+    /// Va desde el canto <b>izquierdo</b> de lo dibujado —las cotas verticales quedan a la
+    /// izquierda del punto de inserción— hasta el canto derecho del último corte. Contar el margen
+    /// izquierdo sobra un poco para el reparto, y sobra a propósito: es lo que deja sitio para el
+    /// margen izquierdo de la placa que viene, que tiene sus propias cotas.
+    /// </para>
+    /// </remarks>
+    public double UltimoAnchoDibujado { get; private set; }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  HASTA DONDE LLEGA EL DETALLE, A LO ANCHO
+    //
+    //  Lo apuntan los propios helpers de dibujo -Polilinea, Circulo, Linea, Mtexto, Texto y las
+    //  cotas- cada vez que crean algo. Asi la medida no es una estimacion de la geometria: es la
+    //  envolvente de TODO lo que se dibujo, y no se queda corta cuando lo que sobresale no es una
+    //  pieza sino un TEXTO.
+    //
+    //  Y ese era el fallo que quedaba: el primer arreglo midio la geometria -la planta y los
+    //  cortes- y el detalle sigue a la derecha con los leaders de las anclas, cuyo texto
+    //  -«AGUJERO DE ANCLA O7/16"»- es mas ancho que la propia planta. El rotulo, centrado, se
+    //  sale por los dos lados. Con eso sin contar, el detalle siguiente se le metia encima.
+    //
+    //  NO se usa GetBoundingBox: para cuando esto se calcula, Bloquear ya movio la geometria a la
+    //  definicion del bloque y borro las originales, asi que preguntarle a una polilinea donde
+    //  esta devuelve nada. Ver el comentario de los leaders de cartabones.
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    private double _xMinDetalle;
+    private double _xMaxDetalle;
+
+    /// <summary>Apunta un tramo horizontal en la envolvente del detalle.</summary>
+    private void Apuntar(double xa, double xb)
+    {
+        if (double.IsNaN(xa) || double.IsNaN(xb))
+        {
+            return;
+        }
+
+        var lo = Math.Min(xa, xb);
+        var hi = Math.Max(xa, xb);
+
+        if (lo < _xMinDetalle) { _xMinDetalle = lo; }
+        if (hi > _xMaxDetalle) { _xMaxDetalle = hi; }
+    }
+
+    /// <summary>Lo que mide un texto a lo ancho, en unidades de dibujo.</summary>
+    /// <remarks>
+    /// <para>
+    /// Es una <b>estimación</b>, y a propósito generosa: 0.75 de la altura por carácter. En las
+    /// fuentes de AutoCAD un carácter ocupa entre 0.55 y 0.7 de su alto contando el espaciado, así
+    /// que esto sobra un poco. Sobra <b>a favor</b>: lo que se está midiendo es cuánto aire dejarle
+    /// al detalle siguiente, y quedarse corto es que se encimen.
+    /// </para>
+    /// <para>
+    /// Se miden los <b>renglones</b> por separado —un MTEXT de varias líneas es tan ancho como su
+    /// línea más larga— y se descuentan los códigos de formato del MTEXT, que no se ven: el
+    /// <c>\pxqc;</c> de la alineación y las barras de escape.
+    /// </para>
+    /// </remarks>
+    private static double AnchoDeTexto(string texto, double altura)
+    {
+        if (texto is null || texto.Length == 0 || altura <= 0)
+        {
+            return 0;
+        }
+
+        // Los códigos de párrafo y de estilo no se dibujan: \pxqc;  \pxql;  \pxqr;
+        var limpio = System.Text.RegularExpressions.Regex.Replace(texto, @"\\p[^;]*;", string.Empty);
+
+        var mayor = 0;
+
+        foreach (var renglon in limpio.Split("\\P"))
+        {
+            // La barra de escape del MTEXT tampoco ocupa: «\\U+00D8» es UN carácter en pantalla, y
+            // «\\%%» uno. Se descuentan las barras, que es la parte que se puede contar sin
+            // interpretar el formato entero.
+            var n = renglon.Replace("\\", string.Empty).Length;
+
+            if (n > mayor) { mayor = n; }
+        }
+
+        return mayor * 0.75 * altura;
+    }
 
     /// <param name="escala">Cuántas unidades de dibujo mide un centímetro. 0.01 = dibujo en metros.</param>
     public PlacaBaseDrawer(dynamic doc, double escala = 0.01)
@@ -119,6 +223,10 @@ public sealed partial class PlacaBaseDrawer
         Capa(PlacaBaseCapas.Perfiles, PlacaBaseCapas.ColorPerfiles, forzar: false);
         Capa(PlacaBaseCapas.Cartabones, PlacaBaseCapas.ColorCartabones, forzar: false);
         Capa(PlacaBaseCapas.Soldadura, PlacaBaseCapas.ColorSoldadura, forzar: true);
+
+        // La del GROUT fuerza su color por lo mismo que la placa: es una capa de esta macro, no una
+        // que venga de la plantilla del usuario, y el naranja es lo que la separa del gris del dado.
+        Capa(PlacaBaseCapas.Grout, PlacaBaseCapas.ColorGrout, forzar: true);
 
         // La de los cartabones FUERZA su color, igual que la del perfil: las dos son de esta macro
         // —no vienen de la plantilla del usuario— y el morado es lo que las distingue en el detalle.
@@ -340,6 +448,17 @@ public sealed partial class PlacaBaseDrawer
     {
         var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
+        // Los bloques de los cortes son de ESTA placa: se vacían al empezar, o una fila que no se
+        // llegue a dibujar reportaría los cortes de la anterior. El ancho, por lo mismo: si esta
+        // placa se cae a medio dibujar, el que reparte no debe correrse con la medida de la otra.
+        BloquesDeCortes = new List<string>();
+        UltimoAnchoDibujado = 0;
+
+        // La envolvente arranca vacía en el punto de inserción y la van llenando los helpers de
+        // dibujo. Si se dejara la de la placa anterior, el reparto se correría de más.
+        _xMinDetalle = p.InsercionX;
+        _xMaxDetalle = p.InsercionX;
+
         var x0 = p.InsercionX;
         var y0 = p.InsercionY;
 
@@ -483,6 +602,56 @@ public sealed partial class PlacaBaseDrawer
                 AlFondo(new List<object> { hatch });
             }
         }
+
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // LA CADENA O LA TRABE QUE SOBRESALE SOLO POR UN LADO: SE RAYA POR FRANJAS.
+        //
+        // Reportado por el usuario: «aplica el hatch a la cadena o trabe». Y no era el patrón ni la
+        // capa: era que no se rayaba NADA. El camino de arriba necesita que la placa quepa ENTERA
+        // dentro del concreto para poder entrar como isla, y una cadena de 25 x 15 bajo una placa
+        // de 18 x 15 sobresale en X pero en Y mide LO MISMO que la placa. La condición pedía
+        // «mayor» en las dos direcciones, así que no se cumplía y el concreto salía en blanco.
+        //
+        // Y con la isla tampoco se podría: un contorno interior que TOCA el exterior no delimita un
+        // área, así que AutoCAD o falla o raya de más. La franja hay que dibujarla.
+        //
+        // Se rayan entonces las bandas del concreto que quedan fuera de la placa —hasta cuatro:
+        // izquierda, derecha, arriba y abajo—, cada una con su propio contorno y sin islas. Es lo
+        // mismo que se ve, sin depender de que la placa quepa: si una banda no existe, no se
+        // dibuja. El dado REDONDO no entra aquí; ese sigue con su nota.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        else if (p.DibujarHatchDado && !p.DadoCircular && contornoDado is not null
+                 && dadoX > 0 && dadoY > 0)
+        {
+            var dx0 = x0 + ((b - dadoX) / 2);
+            var dy0 = y0 + ((h - dadoY) / 2);
+
+            foreach (var franja in FranjasDeConcreto.Alrededor(
+                         dx0, dy0, dx0 + dadoX, dy0 + dadoY,
+                         x0, y0, x0 + b, y0 + h, 0.05 * _escala))
+            {
+                var contorno = Polilinea(franja, PlacaBaseCapas.Concreto);
+
+                if (contorno is null)
+                {
+                    continue;
+                }
+
+                var hatchFranja = Hatch(
+                    PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado,
+                    contorno, null, PlacaBaseCapas.Concreto, PorCapa);
+
+                // EL CONTORNO DE LA FRANJA SE BORRA: es un auxiliar para el rayado, no una línea
+                // del detalle. Dejándolo, el plano saldría con la cadena partida en cuatro
+                // rectángulos dibujados encima de su propio contorno.
+                Borrar(contorno);
+
+                if (hatchFranja is not null)
+                {
+                    AlFondo(new List<object> { hatchFranja });
+                }
+            }
+        }
         else if (p.DibujarHatchDado && p.DadoCircular && contornoDado is not null
                  && dadoX > 0 && dadoX <= Math.Sqrt((b * b) + (h * h)))
         {
@@ -518,15 +687,6 @@ public sealed partial class PlacaBaseDrawer
         var repartoCartabones = Cartabones(
             p, x0 + (b / 2), y0 + (h / 2), pX, pY, panoColumna);
 
-        // ---------- El alzado, a la derecha de la planta ----------
-        // AQUÍ y no al final: va DENTRO del bloque, igual que en la macro, así que tiene que quedar
-        // entre 'inicio' y 'finGeometria'. Dibujado después de Bloquear, la planta se movería con su
-        // bloque y el alzado se quedaría atrás.
-        //
-        // Y con xRig ya crecido por el dado: el alzado arranca 60 cm del canto derecho de lo que
-        // ocupa el detalle, no de la placa. Con la placa, un dado grande se le metería encima.
-        Elevacion(p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY);
-
         // ---------- Las anclas: dos círculos cada una ----------
         var nAncX = 0;
         var nAncY = 0;
@@ -540,16 +700,32 @@ public sealed partial class PlacaBaseDrawer
             if (a.EsX) { nAncX++; } else { nAncY++; }
         }
 
-        // ---------- El bloque, ANTES de las cotas y los rótulos ----------
-        // Se forma con lo que hay entre 'inicio' y aquí, que es solo geometría. Las cotas y los
-        // rótulos se dibujan después y por eso se quedan fuera, igual que en la macro.
+        // ---------- El bloque de LA PLANTA, ANTES de las cotas y los rótulos ----------
+        // Se forma con lo que hay entre 'inicio' y aquí, que es solo geometría de la planta. Las
+        // cotas y los rótulos se dibujan después y por eso se quedan fuera, igual que en la macro.
         var finGeometria = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
         UltimoBloque = Bloquear(p.Seccion, inicio, finGeometria, x0, y0);
 
+        // ---------- Los cortes, a la derecha de la planta y CADA UNO EN SU BLOQUE ----------
+        // AQUÍ y no antes del bloqueo de la planta, que es donde estaban. Iban dentro del mismo
+        // bloque —así lo hacía la macro— y entonces no se podía llevar un corte a otro sitio de la
+        // hoja sin arrastrar la planta detrás. Ahora la planta es un bloque y cada corte es otro,
+        // que es como se usan en el plano.
+        //
+        // Y con xRig ya crecido por el dado: el corte arranca 60 cm del canto derecho de lo que
+        // ocupa el detalle, no de la placa. Con la placa, un dado grande se le metería encima.
+        BloquesDeCortes = Elevacion(
+            p, xRig, y0 + (h / 2), b, h, dadoX, dadoY, pX, pY, sepX, sepY, dAncX, dAncY,
+            out var xDerechaDeLosCortes);
+
         // ---------- Las cotas ----------
         var o1 = 2.0 * _hTxt;
         var o2 = o1 + (2.5 * _hTxt);
+
+        // ---------- LO QUE OCUPÓ EL DETALLE, para el reparto de la placa siguiente ----------
+        // Se calcula AL FINAL de Dibujar, y no aquí: los leaders y el rótulo se dibujan después de
+        // este punto y son los que más sobresalen. Ver el final del método.
 
         CadenaH(AnclasPlacaBase.ValoresUnicosX(anclas, _escala), x0 + b, y0 + h, yTop + o1);
         CotaH(x0, x0 + b, y0 + h, yTop + o2);
@@ -582,6 +758,13 @@ public sealed partial class PlacaBaseDrawer
         var yr = yBot - o2 - (2.0 * _hTxt) + p.SubirRotulo - (p.BajarRotuloCm * _escala);
 
         Rotulo(p, anclas, nAncX, nAncY, x0 + (b / 2), yr);
+
+        // ---------- LO QUE OCUPÓ EL DETALLE, ya con TODO dibujado ----------
+        // La envolvente de lo que se dibujó, que la fueron llenando los helpers: geometría, cotas,
+        // leaders y rótulo. Y se cierra con la geometría conocida por si algo no pasó por ellos.
+        Apuntar(Math.Min(x0, xLef), Math.Max(xRig, xDerechaDeLosCortes));
+
+        UltimoAnchoDibujado = _xMaxDetalle - _xMinDetalle;
 
         var fin = (int)AcadConnection.Retry(() => (int)_ms.Count);
 
@@ -620,10 +803,21 @@ public sealed partial class PlacaBaseDrawer
     /// con doblez es una L de tres puntos: cerrada, AutoCAD le uniría la punta de la pata con el
     /// arranque de arriba y el ancla saldría como un triángulo.
     /// </param>
+    /// <param name="color">
+    /// El ACI de la ENTIDAD. Por omisión <see cref="PorCapa"/>, que es como va casi todo el detalle:
+    /// el color lo manda la capa y el usuario lo puede cambiar desde su plantilla. Se pasa un ACI
+    /// concreto solo cuando dos piezas de la MISMA capa tienen que distinguirse entre sí, como la
+    /// rosca y la tuerca dentro de la capa de anclas.
+    /// </param>
     private object? Polilinea(double[] puntos, string capa,
                               (int Indice, double Bulge)[]? dobleces = null,
-                              bool cerrada = true)
+                              bool cerrada = true, int color = PorCapa)
     {
+        for (var i = 0; i + 1 < puntos.Length; i += 2)
+        {
+            Apuntar(puntos[i], puntos[i]);
+        }
+
         try
         {
             return AcadConnection.Retry<object?>(() =>
@@ -631,7 +825,7 @@ public sealed partial class PlacaBaseDrawer
                 dynamic pl = _ms.AddLightWeightPolyline(puntos);
                 pl.Closed = cerrada;
                 pl.Layer = capa;
-                pl.Color = PorCapa;
+                pl.Color = color;
 
                 if (dobleces is not null)
                 {
@@ -660,6 +854,8 @@ public sealed partial class PlacaBaseDrawer
             return null;
         }
 
+        Apuntar(cx - (diametro / 2), cx + (diametro / 2));
+
         try
         {
             return AcadConnection.Retry<object?>(() =>
@@ -677,12 +873,16 @@ public sealed partial class PlacaBaseDrawer
         }
     }
 
-    private object? Linea(double xa, double ya, double xb, double yb, string capa)
+    /// <param name="color">Ver <see cref="Polilinea"/>: por omisión, el de la capa.</param>
+    private object? Linea(double xa, double ya, double xb, double yb, string capa,
+                          int color = PorCapa)
     {
         if (Math.Abs(xb - xa) < 1e-9 && Math.Abs(yb - ya) < 1e-9)
         {
             return null;
         }
+
+        Apuntar(xa, xb);
 
         try
         {
@@ -690,7 +890,7 @@ public sealed partial class PlacaBaseDrawer
             {
                 dynamic l = _ms.AddLine(Punto(xa, ya), Punto(xb, yb));
                 l.Layer = capa;
-                l.Color = PorCapa;
+                l.Color = color;
                 return (object?)l;
             });
         }

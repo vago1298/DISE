@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -33,9 +34,20 @@ def main() -> int:
     parser.add_argument("--note", default=None, help="A quién pertenece el equipo")
     args = parser.parse_args()
 
-    fingerprint = args.fingerprint.strip().lower()
-    if len(fingerprint) != 64:
-        print(f"ERROR: la huella debe tener 64 caracteres, tiene {len(fingerprint)}", file=sys.stderr)
+    # Se aceptan los guiones y las mayusculas: la aplicacion ENSEÑA la huella agrupada de
+    # ocho en ocho -A49A4785-BA02427A-...-, que es como se lee y se dicta, mientras que el
+    # boton «Copiar huella» copia los 64 de corrido. Quien la recibe por telefono o por
+    # correo manda la primera forma, y rechazarsela era hacerle buscar el error donde no
+    # estaba. El servidor normaliza igual; esto es para avisar ANTES de la llamada.
+    fingerprint = re.sub(r"[\s\-]+", "", args.fingerprint).lower()
+
+    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        print(
+            f"ERROR: la huella debe ser el SHA-256 del equipo: 64 digitos hexadecimales.\n"
+            f"       Quedaron {len(fingerprint)} caracteres utiles despues de quitar "
+            f"espacios y guiones.",
+            file=sys.stderr,
+        )
         return 2
 
     body = json.dumps(

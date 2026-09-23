@@ -130,11 +130,16 @@ nativo. Razones y consecuencias en
 ## Requisitos
 
 **Servidor de licencias** (puede correr en Linux, Windows o macOS)
-- Python 3.11 o superior
+- Python **3.11 a 3.13** recomendado. Con uno más nuevo también funciona —las
+  dependencias van por rangos, así que pip elige la versión que tenga compilada para tu
+  Python—, pero si acaba de salir puede que sus librerías todavía no estén listas: en ese
+  caso instala 3.13 y `1-instalar-servidor.bat` lo prefiere solo.
 
 **Aplicación cliente** (solo Windows)
 - Windows 10 o 11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) **o más nuevo**. La
+  aplicación apunta a `net8.0-windows` pero lleva `RollForward=LatestMajor`, así que corre
+  con el motor que haya instalado: en una PC con solo .NET 10 arranca igual.
 - Visual Studio 2022 con la carga de trabajo *.NET desktop development* (opcional;
   también funciona todo desde la línea de comandos)
 
@@ -204,8 +209,13 @@ Comprueba que responde:
 - http://localhost:8000/health → `{"status":"ok", ...}`
 - http://localhost:8000/docs → interfaz interactiva para probar todos los endpoints
 
-En `/docs` puedes autenticarte para los endpoints `/admin/*` poniendo tu
-`ADMIN_API_KEY` en la cabecera `X-Admin-Key`.
+En `/docs`, para usar los endpoints `/admin/*`, pulsa **Authorize** (arriba a la
+derecha), pega tu `ADMIN_API_KEY` y acepta. Queda puesta en los nueve endpoints de
+administración mientras dure la sesión del navegador.
+
+> Por debajo sigue siendo la cabecera `X-Admin-Key`, la misma que usan los scripts y
+> los ejemplos de `curl` de más abajo: lo que cambió es que ahora la documentación la
+> pide una sola vez en lugar de endpoint por endpoint.
 
 ---
 
@@ -353,6 +363,50 @@ Para simular el vencimiento y verificar que el bloqueo funciona:
 curl -X POST "http://localhost:8000/admin/licenses/XXXX-XXXX-XXXX-XXXX/status?new_status=CANCELLED" \
   -H "X-Admin-Key: TU_ADMIN_API_KEY"
 ```
+
+### Las PCs de la oficina no ven el servidor
+
+Es el tropiezo más común, y casi siempre es una de estas dos cosas. El equipo puede estar
+dado de alta como `INTERNAL` y aun así quedarse en la prueba de 30 días: si la aplicación
+no puede **preguntar**, no hay licencia que recibir.
+
+**1. `localhost` en la PC del trabajador apunta a la PC del trabajador.**
+
+En `cadlink.config.json` de cada equipo, `servidorLicencias` tiene que ser la dirección
+del equipo **donde corre el servidor**, no `localhost`:
+
+```json
+"servidorLicencias": "http://192.168.1.50:8000",
+```
+
+La dirección exacta la imprime `2-iniciar-servidor.bat` al arrancar, y también:
+
+```bash
+cd server
+python scripts/mi_direccion.py
+```
+
+**2. El servidor tiene que escuchar en la red y el puerto tiene que estar abierto.**
+
+`2-iniciar-servidor.bat` ya arranca con `--host 0.0.0.0`, que es lo que permite que otros
+equipos entren. Si aun así no responde, es el firewall de Windows del equipo servidor. En
+una ventana de comandos **como administrador**:
+
+```bat
+netsh advfirewall firewall add rule name="CadLink licencias" dir=in action=allow protocol=TCP localport=8000
+```
+
+**Cómo saber cuál de las dos es.** Desde el navegador **de la PC del trabajador**, abre
+`http://192.168.1.50:8000/health` (con la IP de tu servidor):
+
+| Lo que pasa | Qué es |
+|---|---|
+| Responde `{"status":"ok"}` | la red está bien: lo que falta es corregir `servidorLicencias` en esa PC |
+| No carga o da tiempo de espera | firewall o `--host`: revisa los dos puntos de arriba |
+
+> Escuchar en toda la red deja los endpoints `/admin/*` al alcance de la oficina, y por eso
+> existe la `ADMIN_API_KEY`. Para exponer el servidor a **internet** hace falta además TLS:
+> ponlo detrás de un proxy inverso con HTTPS y usa `https://` en los clientes.
 
 ### D. Revocar un equipo (trabajador que se va, PC que se retira)
 
@@ -506,7 +560,7 @@ en la misma fila:
 | **Zapatas Corridas** | Centrales y de lindero en una sola tabla, con su muro y su cadena |
 | **Zapatas Aisladas** | Centrales y de lindero, con su dado y su acomodo |
 | **Muros de Contención** | Pendiente de portar |
-| **Placa Base** | Placa, anclas, cartabones y soldadura, con vista previa. El dado se toma de *Secciones Concreto* por su ID, y avisa de los libramientos J y K al capturar |
+| **Placa Base** | Placa, anclas, cartabones y soldadura, con vista previa. Dos tipos: **placa base** —se apoya en un dado— y **placa a muro** —en una cadena o una trabe—; el apoyo se toma de *Secciones Concreto* por su ID, y avisa de los libramientos J, K y L al capturar |
 | **Conexiones** | Pendiente de portar |
 | **ETABS** | Conexión por la CSI OAPI, lectura del modelo y de los piers, visor 3D y extruido |
 | **Dibujar planos estructurales** | La planta por nivel, y el botón *Dibujar en AutoCAD* |

@@ -559,6 +559,34 @@ Verificado en `tools/verificar_recorte_diamante.py`: en cuatro armados reales no
 queda ninguna lateral atravesada, el recorrido sigue siendo antihorario y la cinta
 se construye.
 
+### El botón «Ordenar» — no está en la macro
+
+La hoja **se dibuja en el orden en que está**: el dibujante la recorre de arriba
+abajo y coloca cada sección al lado de la anterior. Así que una trabe capturada al
+final del día aparece en el plano lejos de las demás trabes, que es lo que reportó
+el usuario. Ordenar la hoja es ordenar el plano.
+
+El botón agrupa por elemento y, dentro de cada grupo, por ID:
+
+- **El orden es el del desplegable** (`SeccionConcretoRow.ElementosEnOrden`), no uno
+  propio: es el que el usuario ya tiene delante al elegir el elemento, y está en un
+  solo sitio. Con la lista escrita dos veces, un elemento nuevo saldría en el
+  desplegable y el botón lo mandaría al final sin avisar.
+- **El ID se compara como lo lee una persona**: `K-2` antes de `K-10`. Como texto a
+  secas, `K-10` va primero y en una hoja de cuarenta castillos parece que el botón
+  no funciona. Las filas sin ID quedan al final de su grupo.
+- Un elemento **escrito a mano** —la casilla es de texto libre— va después de todos
+  los conocidos, y entre ellos por nombre: también quedan agrupados.
+- Las filas se **mueven** (`Move`), no se copian: la seleccionada sigue siendo el
+  mismo objeto, así que la vista previa y las grapas no se pierden.
+- Es **un solo paso de deshacer**. Cada movimiento avisa a la colección, así que sin
+  el guardia `_reordenando` ordenar cuarenta filas apilaría treinta y cinco pasos y
+  redibujaría la vista previa treinta y cinco veces.
+
+Verificado en `tools/verificar_orden_secciones.py`, que ordena hojas de prueba con
+un espejo en Python de esa misma lógica —y la lista de elementos la lee del C#, para
+que el espejo no se quede viejo.
+
 ### Pendiente
 
 1. **Fondo sólido como propiedad `BackgroundColor` del hatch.** La macro lo

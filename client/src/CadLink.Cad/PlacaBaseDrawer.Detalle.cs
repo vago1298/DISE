@@ -240,45 +240,112 @@ public sealed partial class PlacaBaseDrawer
 
         var separacion = Math.Max(11.0 * _hTxt, 8.0 * _escala);
 
-        // LA FLECHA APUNTA A LA SOLDADURA, con su propia Y. Antes tomaba la X del borde de la franja
-        // y le forzaba el centro vertical de la pieza, y eso en un perfil I es AIRE: a media altura,
-        // por la punta del patín no pasa el contorno, está el hueco entre los dos patines. El texto
-        // sí se queda centrado; lo que se corrige es dónde acaba la punta.
-        LeaderZIzquierda(
-            TextoSoldadura(p),
-            puntaFlecha.X, puntaFlecha.Y,
-            xLef - separacion, yc);
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // EL SÍMBOLO DE SOLDADURA, NO SOLO EL TEXTO.
+        //
+        // Lo pidió el usuario señalando el renglón «SOLDADURA A TODO ALREDEDOR DE LA PIEZA» del
+        // cuadro de simbología: «cuando la soldadura sea en todo el contorno debe colocar ese
+        // detalle de línea». Y tiene razón: el detalle escribía la frase y en un plano de estructura
+        // eso se dice con el símbolo —el triángulo del filete y el CÍRCULO en el codo—, que es lo
+        // que el taller busca.
+        //
+        // Y ES «TODO ALREDEDOR» porque es lo que el dibujo hace: la franja de soldadura que se acaba
+        // de rayar rodea el perfil COMPLETO, sin interrupción. El símbolo no es una etiqueta que se
+        // elija aparte, es la lectura de esa franja: mientras el dibujo suelde todo el contorno, el
+        // símbolo lleva su círculo. El día que se pueda capturar soldadura parcial —dos lados, o por
+        // tramos— ese dato decidirá el tipo, y para entonces el símbolo ya está.
+        //
+        // El texto se queda, a la izquierda de la cola: el símbolo dice el tamaño y el electrodo en
+        // su sitio, y la frase sigue estando para quien lea el plano sin la tabla de simbología
+        // delante. Quitarla no se pidió.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        var xCodo = xLef - separacion;
+
+        var simbolo = SimbolosSoldadura.Enlazado(
+            SimbolosSoldadura.Tipo.TodoAlrededor,
+            puntaFlecha.X, puntaFlecha.Y, xCodo, yc, _hTxt,
+            despeje: Math.Max(3.0 * _hTxt, 2.5 * _escala),
+            tamano: TamanoDelFilete(p),
+            cola: ConXX(p.Electrodo.Trim()));
+
+        DibujarSimbolo(simbolo);
     }
 
-    /// <summary>El texto del leader de soldadura, en dos renglones.</summary>
-    private string TextoSoldadura(PlacaBaseCad p)
+    /// <summary>El tamaño del filete para el símbolo: lo capturado, en pulgadas.</summary>
+    /// <remarks>
+    /// Vacío si no hay nada capturado. Un símbolo sin tamaño es un símbolo incompleto, pero uno con
+    /// un tamaño inventado es un plano que pide un filete que nadie calculó.
+    /// </remarks>
+    private static string TamanoDelFilete(PlacaBaseCad p)
     {
-        var electrodo = p.Electrodo.Trim();
-        var espesor = p.TextoSoldadura.Trim().Replace("\"", string.Empty);
+        var t = p.TextoSoldadura.Trim();
 
-        if (espesor.Length == 0 && p.SoldaduraCm > 0)
+        if (t.Length > 0)
         {
-            espesor = Numero(p.SoldaduraCm / 2.54);
+            return t.EndsWith("\"", StringComparison.Ordinal) ? t : t + "\"";
         }
 
-        var s = "SOLDADURA";
-
-        if (electrodo.Length > 0)
-        {
-            // CON SU XX, igual que el rótulo. Este leader lo ponía crudo, así que un E70 capturado
-            // sin sufijo salía «SOLDADURA CON E70» aquí y «ELECTRODO E70XX» tres centímetros más
-            // abajo: el mismo dato escrito de dos maneras en el mismo detalle. ConXX es idempotente,
-            // así que un E70XX ya capturado no se convierte en E70XXXX.
-            s += " CON " + Escapar(ConXX(electrodo));
-        }
-
-        if (espesor.Length > 0)
-        {
-            s += "\\PDE " + Escapar(espesor) + "\" DE ESP.";
-        }
-
-        return s;
+        return p.SoldaduraCm > 0 ? Numero(p.SoldaduraCm / 2.54) + "\"" : string.Empty;
     }
+
+    /// <summary>
+    /// Dibuja un símbolo de soldadura ya calculado: su leader, su flecha, el símbolo y sus textos.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo recorrido que hace el cuadro de simbología —ver <c>Simbologia</c>—, y va aparte
+    /// para que el detalle y el cuadro dibujen los símbolos con el mismo código: si el triángulo
+    /// cambia de forma, cambia en los dos sitios a la vez.
+    /// </remarks>
+    private void DibujarSimbolo(SimbolosSoldadura.Renglon r)
+    {
+        Polilinea(r.Leader, PlacaBaseCapas.Rotulos, cerrada: false);
+
+        Flecha(r.Leader[0], r.Leader[1], r.Leader[2], r.Leader[3]);
+
+        foreach (var abierta in r.Abiertas)
+        {
+            Polilinea(abierta, PlacaBaseCapas.Rotulos, cerrada: false);
+        }
+
+        foreach (var cerrada in r.Cerradas)
+        {
+            Polilinea(cerrada, PlacaBaseCapas.Rotulos);
+        }
+
+        foreach (var rellena in r.Rellenas)
+        {
+            Solido(rellena);
+        }
+
+        if (r.Circulo is { } c)
+        {
+            Circulo(c.X, c.Y, 2 * c.R, PlacaBaseCapas.Rotulos);
+        }
+
+        foreach (var t in r.Textos)
+        {
+            Texto(t);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    //  LA FRASE «SOLDADURA CON E70XX DE 3/16" DE ESP.» SE QUITÓ, y no es una pérdida.
+    //
+    //  Lo pidió el usuario en cuanto vio el símbolo dibujado: «elimina el rotulado de soldadura con
+    //  E70XX de de esp, ya eso no va por la simbología utilizada». Tiene razón y es la conclusión
+    //  natural del cambio anterior: el símbolo YA dice las dos cosas, y cada una en el sitio donde
+    //  el estándar manda buscarla —el tamaño a la izquierda del triángulo y el electrodo en la
+    //  cola—, así que la frase era el mismo dato escrito dos veces en el mismo detalle.
+    //
+    //  Y EL ELECTRODO NO DESAPARECE DEL PLANO: sigue en la cola del símbolo y en el rótulo del
+    //  detalle, que escribe «ELECTRODO E70XX». Era justamente el defecto que esta frase tenía
+    //  documentado —decir el electrodo dos veces, y una de ellas sin su XX— y ahora se resuelve
+    //  quitando la repetición en lugar de arreglarla.
+    //
+    //  Aquí vivía TextoSoldadura, que la armaba. Se fue con ella: un método que ya no llama nadie
+    //  es peor que no tenerlo, porque el día que alguien lo encuentre no sabrá si sobra o falta
+    //  llamarlo.
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
 
     // ======================================================================
     //  LOS CARTABONES
@@ -409,6 +476,12 @@ public sealed partial class PlacaBaseDrawer
             return;
         }
 
+        // Las cotas también cuentan para la envolvente. Su número va centrado sobre la línea, así
+        // que en una cota corta sobresale: se le dan tres caracteres de margen, que es lo que mide
+        // un «25.00» de más a cada lado en el peor caso.
+        Apuntar(x1, x2);
+        Apuntar(((x1 + x2) / 2) - (3 * _hTxt), ((x1 + x2) / 2) + (3 * _hTxt));
+
         try
         {
             AcadConnection.Retry(() =>
@@ -431,6 +504,12 @@ public sealed partial class PlacaBaseDrawer
         {
             return;
         }
+
+        // La línea de cota está en xDim y su número va rotado 90° sobre ella, así que a lo ancho
+        // ocupa poco más que su altura. La cota vertical de la izquierda es justo la que marca el
+        // canto izquierdo del detalle.
+        Apuntar(xRef, xRef);
+        Apuntar(xDim - (2 * _hTxt), xDim + (2 * _hTxt));
 
         try
         {
@@ -922,7 +1001,9 @@ public sealed partial class PlacaBaseDrawer
     {
         var lineas = new List<string>();
 
-        var titulo = "DETALLE DE PLACA BASE";
+        // EL TITULO DICE QUE CLASE DE PLACA ES. Una placa apoyada en una cadena de cerramiento
+        // rotulada como «PLACA BASE» es un plano que dice otra cosa que la obra.
+        var titulo = p.EsPlacaAMuro ? "DETALLE DE PLACA A MURO" : "DETALLE DE PLACA BASE";
 
         if (p.Marca.Trim().Length > 0)
         {
@@ -995,6 +1076,20 @@ public sealed partial class PlacaBaseDrawer
         if (texto.Trim().Length == 0)
         {
             return null;
+        }
+
+        // LO QUE OCUPA EL TEXTO ENTRA EN LA ENVOLVENTE DEL DETALLE, y según su anclaje: el de un
+        // leader de la derecha crece hacia la derecha -anclaje 4, MiddleLeft-, el de la izquierda
+        // hacia la izquierda -6, MiddleRight- y el rótulo se reparte a los dos lados -2, TopCenter-.
+        // Sin esto, la medida del detalle acaba en la última línea dibujada y el texto de los
+        // leaders -que es más ancho que la planta- se queda fuera de la cuenta.
+        var ancho = AnchoDeTexto(texto, _hTxt);
+
+        switch (anclaje)
+        {
+            case 4: Apuntar(x, x + ancho); break;
+            case 6: Apuntar(x - ancho, x); break;
+            default: Apuntar(x - (ancho / 2), x + (ancho / 2)); break;
         }
 
         try

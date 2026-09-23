@@ -141,6 +141,19 @@
     <SolidColorBrush x:Key="CeldaAcabadoBrush" Color="#FFF4F1E8" />
     <SolidColorBrush x:Key="CeldaCalculadaBrush" Color="#FFEDEDED" />
 
+    <!-- ===== LAS BANDAS DE GRUPO DEL ENCABEZADO =====
+         El renglon de arriba de la cabecera, el que dice LECHO SUPERIOR, LECHO
+         INFERIOR e INTERMEDIAS sobre las columnas de su color.
+
+         Son el MISMO pastel de las celdas, un paso mas saturado. Ni el mismo -la
+         banda se perderia contra el gris de la cabecera y no se leeria como un
+         titulo-, ni un color nuevo -entonces dejaria de verse de que columnas
+         habla-. Y por lo mismo que los nueve de arriba, no estan en Tema.cs: la
+         cuadricula se queda clara en los dos temas. -->
+    <SolidColorBrush x:Key="BandaLechoSupBrush" Color="#FFBEDFEF" />
+    <SolidColorBrush x:Key="BandaLechoInfBrush" Color="#FFDBCDEE" />
+    <SolidColorBrush x:Key="BandaLateralBrush" Color="#FFF5E5AE" />
+
     <!-- ===== La fila de acero cuando el acero no se hace en ese perfil =====
          Tres brochas, no una, porque hay que decir tres cosas distintas:
 
@@ -1236,6 +1249,274 @@
         </Grid>
     </DataTemplate>
 
+    <!-- ==================================================================
+         LAS BANDAS DE GRUPO DE LA HOJA DE SECCIONES DE CONCRETO
+         ==================================================================
+         Lo que pidio el usuario: que encima de las columnas azules diga LECHO
+         SUPERIOR, encima de las moradas LECHO INFERIOR y encima de las amarillas
+         INTERMEDIAS, «asi como los de cimentacion», CONSERVANDO el nombre que ya
+         tiene cada columna.
+
+         SON COLUMNAS COMBINADAS, IGUAL QUE LAS DE PARRILLA. El primer intento dejo
+         las diez columnas separadas y le puso a cada una una banda de dos renglones,
+         con el titulo solo en la primera del grupo. El titulo salia entonces
+         CENTRADO SOBRE SU COLUMNA -o sea, pegado a la izquierda del grupo- y el
+         usuario pidio expresamente que se vea como el de cimentacion: centrado sobre
+         todas las casillas de su grupo.
+
+         Y eso WPF no lo da con columnas separadas: recorta cada cabecera a SU
+         columna, y no hay cabecera combinada. Es el mismo muro contra el que ya
+         chocaron las dos parrillas de zapatas -ver la nota de CabeceraParrillaInferior-
+         y la salida es la misma: UNA columna de plantilla por grupo, que se parte por
+         dentro en sus casillas.
+
+         Asi que cada grupo es una columna:
+
+           - la cabecera lleva DOS renglones: la banda de color, entera y con el
+             titulo centrado, y debajo los nombres de las casillas, que se conservan
+             tal cual estaban;
+           - la celda lleva las casillas de captura, con su linea entre ellas para que
+             se sigan viendo y contando como columnas.
+
+         Los repartos de ancho son los mismos arriba y abajo, y van en ESTRELLA: asi
+         los nombres siguen cuadrados con sus casillas aunque cambie el ancho.
+
+         La altura de la banda va FIJA en 14 px, y no en Auto, para que las tres
+         bandas se pinten igual de altas y los nombres queden a la misma altura en los
+         tres grupos.
+
+         La contrapartida, la misma que en la parrilla: la lista de una casilla ya no
+         se puede rellenar por codigo -no hay un x:Name al que agarrarse, se crea una
+         por fila-, asi que los diametros se atacan con x:Static desde el XAML. Y los
+         conteos enlazan a las propiedades de TEXTO de la fila -NEsqSupTexto y
+         compania-, porque un TextBox enlazado a un int no se puede vaciar para
+         teclear otro numero; esta razonado en SeccionConcretoRow. -->
+
+    <!-- El titulo de la banda. El mismo de la parrilla -mismo cuerpo, mismo peso y,
+         lo que importa aqui, CENTRADO sobre las casillas del grupo- pero con la
+         tinta oscura de la marca, que sobre estos pasteles se lee mejor que el azul
+         medio. -->
+    <Style x:Key="BandaGrupoStyle" TargetType="TextBlock"
+           BasedOn="{StaticResource BandaParrillaStyle}">
+        <Setter Property="Foreground" Value="{DynamicResource BrandDarkBrush}" />
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- ==================================================================
+         LECHO SUPERIOR (el grupo azul)
+         ==================================================================
+         Cuatro casillas: los dos conteos y los dos diametros. El reparto de ancho
+         -75, 90, 75, 90- deja mas sitio a los diametros, que son listas con flecha,
+         que a los conteos, que son un numero de una o dos cifras. -->
+    <DataTemplate x:Key="CabeceraLechoSuperior">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- LA CELDA COMBINADA: una sola, de lado a lado de las cuatro. El texto
+                 sale de {Binding} porque en la cabecera de una cuadricula el
+                 DataContext de la plantilla ES el Header, asi que el titulo del grupo
+                 se escribe UNA vez, en la columna. -->
+            <Border Grid.Row="0" Background="{StaticResource BandaLechoSupBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaGrupoStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="75*" />
+                    <ColumnDefinition Width="90*" />
+                    <ColumnDefinition Width="75*" />
+                    <ColumnDefinition Width="90*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="N° esq sup"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="Var esq sup"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="2" Text="N° int sup"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="3" Text="Var int sup"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CeldasLechoSuperior">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="75*" />
+                <ColumnDefinition Width="90*" />
+                <ColumnDefinition Width="75*" />
+                <ColumnDefinition Width="90*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding NEsqSupTexto, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Cuantas varillas van en las ESQUINAS del lecho superior.&#10;Vacio o 0: ninguna." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
+                          SelectedItem="{Binding DiamEsqSup, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Diametro de las varillas de esquina del lecho superior.&#10;Es el diametro del que heredan los demas si se dejan en blanco." />
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding NIntSupTexto, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Cuantas varillas INTERMEDIAS van entre las esquinas del lecho superior.&#10;Vacio o 0: ninguna." />
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding DiamIntSup, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Diametro de las intermedias del lecho superior.&#10;En blanco: el mismo de las de esquina." />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
+    <!-- ==================================================================
+         LECHO INFERIOR (el grupo morado)
+         ==================================================================
+         Igual que el superior, y de otro color a proposito: es el par que se
+         confunde al capturar. Sus dos diametros son OPCIONALES -si se dejan en
+         blanco heredan, como en la macro-, asi que las dos listas llevan la entrada
+         vacia al principio. -->
+    <DataTemplate x:Key="CabeceraLechoInferior">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLechoInfBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaGrupoStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="75*" />
+                    <ColumnDefinition Width="90*" />
+                    <ColumnDefinition Width="75*" />
+                    <ColumnDefinition Width="90*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="N° esq inf"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="Var esq inf"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="2" Text="N° int inf"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="3" Text="Var int inf"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CeldasLechoInferior">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="75*" />
+                <ColumnDefinition Width="90*" />
+                <ColumnDefinition Width="75*" />
+                <ColumnDefinition Width="90*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding NEsqInfTexto, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Cuantas varillas van en las ESQUINAS del lecho inferior.&#10;Vacio o 0: ninguna." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding DiamEsqInf, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Diametro de las varillas de esquina del lecho inferior.&#10;En blanco: el mismo de las de esquina del superior." />
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding NIntInfTexto, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Cuantas varillas INTERMEDIAS van entre las esquinas del lecho inferior.&#10;Vacio o 0: ninguna." />
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding DiamIntInf, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Diametro de las intermedias del lecho inferior.&#10;En blanco: el mismo de las de esquina de su lecho." />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
+    <!-- ==================================================================
+         INTERMEDIAS (el grupo amarillo)
+         ==================================================================
+         Las varillas laterales, las que van entre lecho y lecho. Se rotulan
+         «INTERMEDIAS» en el plano -ver TextoSimple del alzado-, asi que la banda dice
+         lo mismo que sale en el dibujo.
+
+         Son DOS casillas y no cuatro, y el conteo es POR LADO: dos intermedias
+         laterales son dos de cada lado, cuatro en la seccion. Asi lo cuenta la macro
+         y asi lo suma la columna de total. -->
+    <DataTemplate x:Key="CabeceraIntermedias">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="14" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="{StaticResource BandaLateralBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                <TextBlock Text="{Binding}" Style="{StaticResource BandaGrupoStyle}" />
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="75*" />
+                    <ColumnDefinition Width="90*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="N° lateral"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+                <TextBlock Grid.Column="1" Text="Var lateral"
+                           Style="{StaticResource NombreSubColumnaStyle}" />
+            </Grid>
+        </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CeldasIntermedias">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="75*" />
+                <ColumnDefinition Width="90*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource SubCeldaParrillaStyle}">
+                <TextBox Style="{StaticResource TextoSubCeldaStyle}"
+                         Text="{Binding NInterTexto, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Cuantas varillas intermedias laterales van POR LADO.&#10;Dos aqui son cuatro en la seccion. Vacio o 0: ninguna." />
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource SubCeldaParrillaFinStyle}">
+                <ComboBox Style="{StaticResource ComboSubCeldaStyle}"
+                          ItemsSource="{Binding Source={x:Static models:Varilla.DiametrosOpcionales}}"
+                          SelectedItem="{Binding DiamInter, UpdateSourceTrigger=PropertyChanged}"
+                          ToolTip="Diametro de las laterales.&#10;En blanco: el mismo de las de esquina del lecho superior." />
+            </Border>
+        </Grid>
+    </DataTemplate>
+
     <!-- ============ LAS CUATRO CASILLAS DE LA PARRILLA INFERIOR ============
          Las propiedades se llaman igual en la fila de corridas y en la de
          aisladas -VarInf, SepInf, VarInfTrans, SepInfTrans-, asi que la misma
@@ -1342,6 +1623,33 @@
     <!-- Acabado: gancho, f'c, escala, longitud -->
     <Style x:Key="CeldaAcabado" TargetType="DataGridCell" BasedOn="{StaticResource CeldaBase}">
         <Setter Property="Background" Value="{StaticResource CeldaAcabadoBrush}" />
+    </Style>
+
+    <!-- ==============================================================
+         EL ESPESOR DEL GROUT, APAGADO SI LA PLACA NO LLEVA GROUT
+
+         Mismo criterio que las celdas que solo aplican con un tipo de
+         muro o con seccion circular: una celda que el dibujo no va a
+         leer no se deja escribir. Cuelga de EsGrout, la bandera que la
+         propia fila deriva de su casilla SI/NO, asi que se enciende y se
+         apaga sola al contestar la de al lado.
+
+         Y VA AQUI, PEGADO A CeldaAcabado, NO CON LAS OTRAS CeldaSolo*.
+         Hereda de el, y en un diccionario un StaticResource tiene que
+         estar declarado ANTES de usarse. Puesto alla arriba -donde
+         estaba, junto a sus hermanas- la aplicacion no arrancaba: fallaba
+         al construir el diccionario con «se produjo una excepcion al
+         proporcionar un valor en StaticResourceHolder», que es lo que
+         dice WPF cuando la clave todavia no existe.
+         ============================================================== -->
+    <Style x:Key="CeldaSoloGrout" TargetType="DataGridCell"
+           BasedOn="{StaticResource CeldaAcabado}">
+        <Setter Property="IsEnabled" Value="{Binding EsGrout}" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Calculadas: de solo lectura. Van en gris y en cursiva para que se vea de
@@ -1526,6 +1834,18 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="VerticalContentAlignment" Value="Stretch" />
     </Style>
+
+    <!-- LA CABECERA DE UNA COLUMNA CON BANDA DE GRUPO.
+         Las diez columnas de armado de la hoja de secciones: las cuatro del lecho
+         superior, las cuatro del inferior y las dos de intermedias.
+
+         Lo mismo que la de parrilla y por lo mismo -sin relleno y estirada, para que
+         la banda de color llegue de canto a canto de la columna y no quede una orla
+         gris alrededor-. Va con su propio nombre en lugar de reusar el de parrilla
+         porque son dos cosas distintas, y el dia que una cambie no tiene por que
+         arrastrar a la otra. -->
+    <Style x:Key="CabeceraGrupoStyle" TargetType="DataGridColumnHeader"
+           BasedOn="{StaticResource CabeceraParrillaStyle}" />
 
     <!-- ==================================================================
          Barra de herramientas de arriba

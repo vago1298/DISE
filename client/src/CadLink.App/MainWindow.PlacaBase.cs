@@ -169,7 +169,13 @@ public partial class MainWindow
         // AL ELEGIR EL DADO, SUS MEDIDAS SE TRAEN SOLAS. Va ANTES del guardia de _listo a
         // propósito: al abrir un trabajo las filas entran con _listo apagado, y si la referencia se
         // saltara ahí, un .clk guardado con el ID del dado se abriría con las medidas viejas.
-        if (sender is PlacaBaseRow fila && e.PropertyName == nameof(PlacaBaseRow.IdDado))
+        //
+        // Y AL CAMBIAR EL TIPO DE PLACA TAMBIÉN, porque el tipo decide DÓNDE se busca ese ID: en
+        // los dados o en las cadenas y trabes. Sin esto, pasar una fila a PLACA A MURO dejaba las
+        // medidas del dado que se hubiera resuelto antes.
+        if (sender is PlacaBaseRow fila
+            && (e.PropertyName == nameof(PlacaBaseRow.IdDado)
+                || e.PropertyName == nameof(PlacaBaseRow.TipoPlaca)))
         {
             ReferenciarDadoDePlaca(fila);
         }
@@ -217,12 +223,19 @@ public partial class MainWindow
             return;
         }
 
+        // QUÉ SE BUSCA DEPENDE DEL TIPO DE PLACA. Una placa base se apoya en un dado; una placa a
+        // muro, en una cadena o una trabe. Antes se buscaba siempre un dado, así que un ID de cadena
+        // —el caso real que lo destapó: CC-1— no encontraba nada y salía por aquí en silencio.
         var dado = _datos.SeccionesConcreto.FirstOrDefault(s =>
-            EsDado(s.Elemento)
+            (fila.EsPlacaAMuro ? EsApoyoDeMuro(s.Elemento) : EsDado(s.Elemento))
             && ZapataAisladaRow.SoloElId(s.Id).Equals(id, StringComparison.OrdinalIgnoreCase));
 
         if (dado is null)
         {
+            // NO SE BORRA LO QUE HUBIERA. El orden en que se llenan las hojas es del usuario: se
+            // puede escribir el ID de una cadena que todavía no se capturó, y borrarle las medidas
+            // por eso sería castigarle por el orden en que trabaja. Quien lo dice es la columna
+            // «Apoyo» —ver ReferenciaApoyo— y el aviso de antes de dibujar.
             return;
         }
 
@@ -479,6 +492,8 @@ public partial class MainWindow
         }
 
         // ---------- La placa ----------
+        // EN PLANTA NO SE DIBUJA EL GROUT: la cama queda debajo de la placa, así que en planta la
+        // taparía por completo. Solo se ve en el corte.
         var geoPlaca = new RectangleGeometry(new Rect(0, 0, b, h)) { Transform = transformar };
 
         PlacaPreviewCanvas.Children.Add(new FormaPath
@@ -551,7 +566,7 @@ public partial class MainWindow
         }
 
         // ---------- El alzado, detrás de las anclas de la planta ----------
-        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar);
+        DibujarAlzadoDeLaPlacaPrevia(vistas, transformar, escala);
 
         // ---------- Las anclas: el agujero y el ancla, como en el detalle ----------
         if (anclas.Count > 0)
@@ -607,12 +622,27 @@ public partial class MainWindow
 
         if (dadoX > 0 && dadoY > 0)
         {
+            // Se dice QUÉ es lo que hay debajo, no siempre «dado»: en una placa a muro el concreto
+            // es la cadena o la trabe, y llamarlo dado aquí es el mismo descuido que lo llevó a
+            // buscarse entre los dados.
+            var que = p.EsPlacaAMuro ? "apoyo" : "dado";
+
             resumen += p.DadoCircular
-                ? $"    ·    dado Ø{dadoX:N0}"
-                : $"    ·    dado {dadoX:N0} × {dadoY:N0}";
+                ? $"    ·    {que} Ø{dadoX:N0}"
+                : $"    ·    {que} {dadoX:N0} × {dadoY:N0}";
         }
 
         EtiquetaPlaca(resumen, 10, alto - 22, 11, Brushes.DimGray);
+
+        // Y SI EL ID DEL APOYO NO EXISTE, SE DICE EN LA PREVIA. Es donde el usuario está mirando
+        // mientras captura, y es el aviso que faltaba el día que una cadena se buscó entre los
+        // dados: la placa se quedaba sin concreto y la previa no lo explicaba.
+        var avisoApoyo = AvisoDelApoyo(fila);
+
+        if (avisoApoyo.Length > 0)
+        {
+            EtiquetaPlaca(avisoApoyo, 10, alto - 38, 10.5, Brushes.Firebrick);
+        }
 
         // Y EL AVISO DE LOS LIBRAMIENTOS, EN ROJO Y ARRIBA. Es lo único de la previa que significa
         // «esto no se va a dibujar»: el dibujante se niega si no se cumplen las tablas J o K, así
@@ -768,7 +798,10 @@ public partial class MainWindow
         return ElevacionPlacaBase.Construir(
             xInicio, h / 2, 1, AlturaTextoPrevia, p.EspesorCm, p.ConCartabones,
             DireccionDePrevia(p, b, dadoX, pX, esX: true, sepX, p.DiamAnclaXCm),
-            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm));
+            DireccionDePrevia(p, h, dadoY, pY, esX: false, sepY, p.DiamAnclaYCm),
+
+            // La previa trabaja en centímetros -escala 1-, así que el espesor va tal cual.
+            p.ConGrout ? p.EspesorGroutCm : 0);
     }
 
     /// <summary>
@@ -818,8 +851,21 @@ public partial class MainWindow
     /// triángulo: es el mismo cuidado que en el dibujante.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>El vástago va aparte, en su propio trazo, y con el GRUESO REAL de la barra.</b> Es el
+    /// único del alzado que no se pinta con una pluma fija: el diámetro está capturado en la hoja
+    /// —«Ø ancla X: 3/4"»—, viaja en <c>AnclaDeCanto.Diametro</c> y aquí se convierte a píxeles con
+    /// la misma escala de ajuste del lienzo, así que la previa enseña el mismo grosor que va a salir
+    /// en AutoCAD. Un ancla del 3/4" y otra de 2" ya no se ven iguales.
+    /// </para>
+    /// <para>
+    /// Con un mínimo de pluma: a un encuadre muy reducido, media pulgada de barra da menos de un
+    /// píxel y el ancla desaparecería del recuadro.
+    /// </para>
+    /// </remarks>
     private void DibujarAlzadoDeLaPlacaPrevia(
-        List<ElevacionPlacaBase.Vista> vistas, Transform transformar)
+        List<ElevacionPlacaBase.Vista> vistas, Transform transformar, double escala)
     {
         if (vistas.Count == 0)
         {
@@ -833,10 +879,25 @@ public partial class MainWindow
         var geoAcero = new GeometryGroup { Transform = transformar };
         var geoPlaca = new GeometryGroup { Transform = transformar };
         var geoAnclas = new GeometryGroup { Transform = transformar };
+        var geoGrout = new GeometryGroup { Transform = transformar };
+
+        // La rosca y la tuerca, en su propio grupo: en el dibujo van en el color 253 dentro de la
+        // capa de anclas, y aquí en su propio gris por el mismo motivo —el vástago es rojo y lleno,
+        // y el enroscado son líneas finas justo encima—.
+        var geoRosca = new GeometryGroup { Transform = transformar };
+
 
         foreach (var v in vistas)
         {
             AgregarPoligonal(geoConcreto, v.Concreto, null);
+
+            // LA CAMA DE GROUT, si la hay. Va en su propio grupo porque lleva su propio color: en
+            // el dibujo es otra capa y otro rayado, y en la previa se distingue por el tono.
+            if (v.Grout is { } grout)
+            {
+                AgregarPoligonal(geoGrout, grout, null);
+            }
+
             AgregarPoligonal(geoPlaca, v.Placa, null);
             AgregarPoligonal(geoAcero, v.Columna, null);
 
@@ -847,13 +908,32 @@ public partial class MainWindow
 
             foreach (var a in v.Anclas)
             {
-                AgregarAbierta(geoAnclas, a.Vastago);
-                AgregarPoligonal(geoAnclas, a.Tuerca, null);
+                // EL PERFIL DE LA BARRA, VACÍO: las dos caras a medio diámetro del eje. Antes se
+                // pintaba el eje con un trazo tan grueso como la barra —el equivalente al ancho de
+                // polilínea del dibujo—, y el usuario pidió lo otro: «déjalas vacías pero con 2
+                // líneas representando su grosor». La previa pinta lo mismo que el plano.
+                AgregarPoligonal(geoAnclas, a.Contorno.Puntos, a.Contorno.Dobleces);
+
                 AgregarAbierta(geoAnclas, a.Arandela);
 
                 if (a.Remate is { } remate)
                 {
                     AgregarAbierta(geoAnclas, remate);
+                }
+
+                // LA ROSCA Y LA TUERCA VAN APARTE, igual que en el dibujo: ahí llevan el color 253
+                // y aquí su propio gris. En rojo, sobre el vástago rojo y lleno, el enroscado es
+                // una mancha, y la previa dejaría de enseñar lo que se va a dibujar.
+                AgregarPoligonal(geoRosca, a.Tuerca, null);
+
+                foreach (var arista in a.AristasTuerca)
+                {
+                    AgregarAbierta(geoRosca, arista);
+                }
+
+                foreach (var hebra in a.Rosca)
+                {
+                    AgregarAbierta(geoRosca, hebra);
                 }
             }
         }
@@ -863,6 +943,16 @@ public partial class MainWindow
             Data = geoConcreto,
             Fill = new SolidColorBrush(Color.FromRgb(0xD8, 0xD3, 0xC8)),
             Stroke = new SolidColorBrush(Color.FromRgb(0x8A, 0x84, 0x78)),
+            StrokeThickness = 1.2
+        });
+
+        // El grout ENTRE el concreto y la placa, también en el orden de pintado: el naranja va
+        // encima del beige del dado y debajo del azul de la placa, como en el corte.
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoGrout,
+            Fill = new SolidColorBrush(Color.FromRgb(0xE8, 0xC9, 0x9A)),
+            Stroke = new SolidColorBrush(Color.FromRgb(0xB5, 0x7C, 0x2E)),
             StrokeThickness = 1.2
         });
 
@@ -887,6 +977,15 @@ public partial class MainWindow
             Data = geoAnclas,
             Stroke = rojo,
             StrokeThickness = 1.4
+        });
+
+        // Y LA ROSCA CON LA TUERCA AL FINAL, encima del vástago: es lo que en el dibujo va en el
+        // color 253, y va por delante porque la tuerca abraza la barra, no se esconde detrás.
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoRosca,
+            Stroke = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E)),
+            StrokeThickness = 1.1
         });
     }
 
@@ -1113,6 +1212,55 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// ¿Este elemento de la hoja de concreto puede sostener una <b>placa a muro</b>?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Las piezas <b>horizontales</b>: trabes, contratrabes y las tres cadenas. Son las que corren
+    /// por encima de un muro o lo remata, y son las que el usuario pidió poder elegir: <i>«si es de
+    /// muro que deje poner cadenas o trabes»</i>.
+    /// </para>
+    /// <para>
+    /// El criterio va por el <b>nombre del elemento</b> y no por una lista cerrada de IDs, igual que
+    /// <c>EsDado</c>: así una CADENA INTERMEDIA entra sin tener que acordarse de agregarla, y un
+    /// nombre escrito a mano que empiece por TRABE o CADENA también.
+    /// </para>
+    /// <para>
+    /// El CASTILLO se queda fuera <b>a propósito</b>: es vertical, así que una placa encima de un
+    /// castillo es una placa base con el castillo de dado, y para eso está el tipo PLACA BASE. Si
+    /// hiciera falta, la celda sigue siendo editable y se puede teclear su ID.
+    /// </para>
+    /// </remarks>
+    private static bool EsApoyoDeMuro(string? elemento)
+    {
+        var e = (elemento ?? string.Empty).Trim();
+
+        return e.StartsWith("TRABE", StringComparison.OrdinalIgnoreCase)
+               || e.StartsWith("CONTRATRABE", StringComparison.OrdinalIgnoreCase)
+               || e.StartsWith("CADENA", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Rellena la lista de apoyos de una placa a muro: las cadenas y trabes de la hoja de concreto.
+    /// </summary>
+    /// <remarks>
+    /// Se mantiene igual que la de dados —<c>ActualizarDadosDisponibles</c>— y desde los mismos
+    /// sitios: al editar la hoja de concreto, al abrir un trabajo y al deshacer. Con una sola de las
+    /// dos al día, cambiar de tipo de placa dejaría la celda ofreciendo una lista vieja.
+    /// </remarks>
+    private void ActualizarApoyosDeMuroDisponibles()
+    {
+        var apoyos = _datos.SeccionesConcreto
+            .Where(s => EsApoyoDeMuro(s.Elemento))
+            .Select(s => (s.Id ?? string.Empty).Trim())
+            .Where(id => id.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Refrescar(PlacaBaseRow.ApoyosDeMuroDisponibles, apoyos);
+    }
+
     // EsDado NO SE VUELVE A ESCRIBIR AQUÍ. Ya existe en MainWindow.Zapatas.cs, y MainWindow es UNA
     // clase partida en varios archivos: declararlo otra vez es el error CS0111. Y además es lo
     // correcto: el criterio de qué cuenta como dado —que el elemento empiece por «DADO», así entran
@@ -1213,6 +1361,10 @@ public partial class MainWindow
         AnchoCm = f.AnchoCm,
         Espesor = f.Espesor,
         AceroPlaca = f.AceroPlaca,
+
+        // EL TIPO VA PRIMERO: decide donde se busca el ID del apoyo, asi que copiarlo despues
+        // dejaria la copia buscando una cadena entre los dados.
+        TipoPlaca = f.TipoPlaca,
         IdDado = f.IdDado,
         DadoXCm = f.DadoXCm,
         DadoYCm = f.DadoYCm,
@@ -1299,17 +1451,90 @@ public partial class MainWindow
 
         // LO QUE FALTA SE DICE ANTES DE CONECTAR CON AUTOCAD. Abrir AutoCAD para después decir que
         // una placa no tiene medidas es hacerle perder el tiempo al usuario dos veces.
-        var incompletas = _datos.PlacasBase
-            .Where(f => f.Falta.Length > 0)
-            .Select(f => $"  • {Nombre(f)}: falta {f.Falta}")
+        //
+        // Y SE DICE CON LOS NÚMEROS. Antes este aviso llevaba solo el titular de la celda —«falta
+        // holgura mínima a la columna (l)»— y con eso no se puede corregir nada: no dice de qué
+        // ancla, ni cuánta holgura hay, ni cuánta se pide, así que el usuario se queda mirando un
+        // botón que no dibuja. El detalle ya estaba calculado; lo que faltaba era enseñarlo.
+        var incompletas = new List<string>();
+
+        foreach (var fila in _datos.PlacasBase)
+        {
+            var falta = fila.Falta;
+
+            if (falta.Length == 0)
+            {
+                continue;
+            }
+
+            var texto = $"  • {Nombre(fila)}: falta {falta}";
+            var detalle = fila.LibramientoDetalle;
+
+            // Y si el ID del apoyo no existe, se dice aquí también. Ver el bloque de abajo: esto es
+            // un aviso, no un impedimento, así que se cuela en el texto de la placa que ya tenía
+            // algo que corregir y no obliga a otro cuadro de diálogo.
+            var apoyo = AvisoDelApoyo(fila);
+
+            if (apoyo.Length > 0)
+            {
+                texto += "\n        " + apoyo;
+            }
+
+            if (detalle.Length > 0)
+            {
+                // Sangrado bajo su placa, para que con varias placas se vea de quién es cada
+                // número. Los renglones en blanco del detalle se dejan en blanco: separan el «qué
+                // pasa» del «qué hacer».
+                texto += "\n" + string.Join("\n", detalle
+                    .Replace("\r", string.Empty)
+                    .Split('\n')
+                    .Select(l => l.Trim().Length == 0 ? string.Empty : "        " + l.Trim()));
+            }
+
+            incompletas.Add(texto);
+        }
+
+        // EL ID DEL APOYO QUE NO EXISTE: SE AVISA, PERO NO IMPIDE DIBUJAR.
+        //
+        // Es lo que le pasó al usuario y no se dijo en ningún sitio: puso CC-1 —una cadena— cuando
+        // la hoja solo buscaba dados, la referencia no encontró nada y la placa se quedó con el
+        // apoyo en cero. El detalle sale, pero sin concreto debajo y sin dónde ahogar las anclas.
+        //
+        // No bloquea porque una placa SIN apoyo es un detalle válido —se deja el ID en blanco— y
+        // porque el orden en que se llenan las hojas es del usuario: puede estar capturando las
+        // placas antes que las cadenas. Lo que no puede pasar es que no se entere.
+        var apoyosRaros = _datos.PlacasBase
+            .Where(f => f.Falta.Length == 0 && AvisoDelApoyo(f).Length > 0)
+            .Select(f => $"  • {Nombre(f)}: {AvisoDelApoyo(f)}")
             .ToList();
 
         if (incompletas.Count > 0)
         {
             MessageBox.Show(
-                "Corrige esto antes de dibujar:\n\n" + string.Join("\n", incompletas),
+                // Una línea en blanco entre placas: con el detalle de cada una, pegadas no se
+                // distingue dónde acaba una y empieza la siguiente.
+                "Corrige esto antes de dibujar:\n\n" + string.Join("\n\n", incompletas),
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
+        }
+
+        // Se PREGUNTA en lugar de negarse: puede ser a propósito —el apoyo se captura después— y
+        // también puede ser el error de escribir el ID de una cadena en una placa base. Quien sabe
+        // cuál de las dos es, es el usuario.
+        if (apoyosRaros.Count > 0)
+        {
+            var seguir = MessageBox.Show(
+                "Estas placas apuntan a un elemento de concreto que no está en «Secciones "
+                + "Concreto»:\n\n"
+                + string.Join("\n", apoyosRaros)
+                + "\n\nSe van a dibujar SIN el concreto debajo: sin la pieza, sin su rayado y sin "
+                + "dónde\nahogar las anclas.\n\n¿Dibujar así?",
+                AppInfo.ProductName, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (seguir != MessageBoxResult.Yes)
+            {
+                return;
+            }
         }
 
         try
@@ -1354,7 +1579,7 @@ public partial class MainWindow
                     partidas.Add($"{Nombre(fila)} ({ex.Message.Split('\n')[0].Trim()})");
 
                     // Se avanza igual, para no encimarle la siguiente a lo que alcanzó a dibujarse.
-                    x += Paso(p, escala);
+                    x += Paso(p, escala, dibujante.UltimoAnchoDibujado);
                     continue;
                 }
 
@@ -1375,7 +1600,11 @@ public partial class MainWindow
                     bloques.Add(dibujante.UltimoBloque);
                 }
 
-                x += Paso(p, escala);
+                // Y los de los cortes, que ahora son bloques aparte: uno por vista. Se reportan
+                // igual que el de la planta para que el usuario sepa qué buscar en AutoCAD.
+                bloques.AddRange(dibujante.BloquesDeCortes);
+
+                x += Paso(p, escala, dibujante.UltimoAnchoDibujado);
             }
 
             AcadConnection.Retry(() => { app.ZoomExtents(); });
@@ -1407,17 +1636,56 @@ public partial class MainWindow
     /// <summary>Cuánto se corre a la derecha para la placa siguiente, en unidades de dibujo.</summary>
     /// <remarks>
     /// <para>
-    /// Se mide con <see cref="PlacaBaseCad.AnchoTotalDibujoCm"/> —la placa o el dado, el que
-    /// sobresalga— y no con el ancho de la placa: el dado es casi siempre <b>más grande</b>, así
-    /// que separando por el ancho de la placa el dado de una se mete en el de la siguiente.
+    /// <b>Se mide con lo que de verdad ocupó el detalle</b>, que lo dice el dibujante en
+    /// <see cref="PlacaBaseDrawer.UltimoAnchoDibujado"/>. Antes se estimaba con la huella de la
+    /// PLANTA —la placa o el dado, el que sobresaliera— más 60 cm de aire, y eso se encimaba: el
+    /// detalle no acaba en la planta, sigue 60 cm a la derecha con uno o dos cortes, cada uno tan
+    /// ancho como su dado. Los 60 cm de aire eran exactamente los 60 cm a los que empieza el primer
+    /// corte, así que el corte de una placa caía sobre la planta de la siguiente.
     /// </para>
     /// <para>
-    /// Los 60 cm de aire son para el rotulado: el detalle lleva cotas y leaders a los dos costados,
-    /// y esos no caben dentro de la huella de la placa.
+    /// Y encima de esa medida, el aire de
+    /// <see cref="ElevacionPlacaBase.SeparacionEntreDetallesCm"/>.
+    /// </para>
+    /// <para>
+    /// El respaldo —la cuenta vieja— se usa cuando no hay medida, que es cuando la placa no llegó a
+    /// dibujarse: ahí se avanza igual para no encimarle la siguiente a lo que alcanzó a salir.
     /// </para>
     /// </remarks>
-    private static double Paso(PlacaBaseCad p, double escala) =>
-        (p.AnchoTotalDibujoCm + 60) * escala;
+    private static double Paso(PlacaBaseCad p, double escala, double anchoDibujado) =>
+        (anchoDibujado > 0 ? anchoDibujado : (p.AnchoTotalDibujoCm + 60) * escala)
+        + (ElevacionPlacaBase.SeparacionEntreDetallesCm * escala);
+
+    /// <summary>
+    /// El aviso de que el ID del apoyo no está capturado. Vacío = no hay nada que decir.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pregunta a la MISMA lista que ofrece el desplegable de esa fila —los dados si es placa
+    /// base, las cadenas y trabes si es placa a muro—, así que lo que se avisa aquí es exactamente
+    /// lo que la celda no habría dejado elegir.
+    /// </para>
+    /// <para>
+    /// Y dice el tipo de placa, porque el error típico no es teclear mal el ID: es que el ID existe
+    /// pero es de otra familia. Eso fue el caso real —una cadena en una placa base— y con un «no se
+    /// encontró» a secas el usuario se queda buscando un ID que sí está en su hoja.
+    /// </para>
+    /// </remarks>
+    private static string AvisoDelApoyo(PlacaBaseRow fila)
+    {
+        var id = (fila.IdDado ?? string.Empty).Trim();
+
+        if (id.Length == 0 || fila.ApoyosDisponibles.Contains(id))
+        {
+            return string.Empty;
+        }
+
+        return fila.EsPlacaAMuro
+            ? $"«{id}» no es una cadena ni una trabe de «Secciones Concreto». "
+              + "Captúrala ahí, o cambia el tipo a PLACA BASE si es un dado."
+            : $"«{id}» no es un dado de «Secciones Concreto». "
+              + "Captúralo ahí, o pon el tipo en PLACA A MURO si es una cadena o una trabe.";
+    }
 
     /// <summary>Cómo se llama una placa en los avisos: su marca, o su sección si no tiene.</summary>
     private static string Nombre(PlacaBaseRow f)
