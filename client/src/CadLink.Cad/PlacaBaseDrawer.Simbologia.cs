@@ -62,40 +62,14 @@ public sealed partial class PlacaBaseDrawer
 
         Texto(legenda.Titulo);
 
+        // UN SOLO RECORRIDO PARA LOS DOS SITIOS. Este bucle estaba escrito aquí y el detalle de la
+        // placa dibuja ahora su propio símbolo de soldadura —el de «todo alrededor»—, así que la
+        // parte de recorrer el renglón se movió a DibujarSimbolo. Con dos copias, el día que el
+        // triángulo del filete cambie de forma, el cuadro que explica la simbología y el símbolo del
+        // detalle dirían cosas distintas en el mismo plano.
         foreach (var r in legenda.Renglones)
         {
-            // ---------- El leader, con su flecha ----------
-            Polilinea(r.Leader, PlacaBaseCapas.Rotulos, cerrada: false);
-
-            // La flecha apunta a la junta: del primer punto del leader hacia el codo.
-            Flecha(r.Leader[0], r.Leader[1], r.Leader[2], r.Leader[3]);
-
-            // ---------- El símbolo ----------
-            foreach (var abierta in r.Abiertas)
-            {
-                Polilinea(abierta, PlacaBaseCapas.Rotulos, cerrada: false);
-            }
-
-            foreach (var cerrada in r.Cerradas)
-            {
-                Polilinea(cerrada, PlacaBaseCapas.Rotulos);
-            }
-
-            foreach (var rellena in r.Rellenas)
-            {
-                Solido(rellena);
-            }
-
-            if (r.Circulo is { } c)
-            {
-                Circulo(c.X, c.Y, 2 * c.R, PlacaBaseCapas.Rotulos);
-            }
-
-            // ---------- Y los textos ----------
-            foreach (var t in r.Textos)
-            {
-                Texto(t);
-            }
+            DibujarSimbolo(r);
         }
 
         var fin = (int)AcadConnection.Retry(() => (int)_ms.Count);

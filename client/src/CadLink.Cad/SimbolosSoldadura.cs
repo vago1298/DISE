@@ -316,6 +316,122 @@ public static class SimbolosSoldadura
     }
 
     /// <summary>
+    /// El símbolo <b>de un detalle real</b>: la flecha apunta a la junta y el símbolo cuelga a la
+    /// izquierda, con su tamaño y su electrodo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario: <i>«cuando la soldadura sea en todo el contorno debe colocar ese detalle
+    /// de línea»</i>, señalando el renglón de <see cref="Tipo.TodoAlrededor"/> del cuadro de
+    /// simbología. El detalle de la placa escribía solo el texto —«SOLDADURA CON E70XX DE 3/16" DE
+    /// ESP.»— y en un plano de estructura eso se dice con el <b>símbolo</b>: el que lo lee busca el
+    /// círculo en el codo, no una frase.
+    /// </para>
+    /// <para>
+    /// Es <see cref="UnRenglon"/> mirando al otro lado. En el cuadro la línea de referencia crece a
+    /// la derecha porque el nombre va detrás; en el detalle la pieza está a la derecha y la flecha
+    /// apunta hacia ella, así que la línea de referencia y la cola caen a la <b>izquierda</b>. Las
+    /// proporciones son las mismas —las constantes de arriba—, para que el símbolo del detalle y el
+    /// del cuadro que lo explica se vean iguales.
+    /// </para>
+    /// <para>
+    /// <b>El triángulo no se voltea.</b> Su cateto vertical sigue a la izquierda y la hipotenusa a
+    /// la derecha, como en el estándar: el símbolo del filete se lee igual venga la línea de donde
+    /// venga, y espejado se confundiría con el del bisel.
+    /// </para>
+    /// <para>
+    /// El leader lleva <b>tres tramos</b> y no dos: sube desde la punta, cruza en horizontal por
+    /// encima y baja al codo. Es lo que ya hacía el leader de este detalle, y no es decoración: por
+    /// ahí abajo pasan las dos cadenas de cotas, y una diagonal recta les cruza los números.
+    /// </para>
+    /// </remarks>
+    /// <param name="xPunta">Dónde muerde la flecha: el eje de la franja de soldadura.</param>
+    /// <param name="yPunta">Su altura. En un perfil I NO es el centro de la pieza: ahí hay aire.</param>
+    /// <param name="xCodo">Donde arranca la línea de referencia, a la izquierda de la pieza.</param>
+    /// <param name="yRef">La altura de la línea de referencia.</param>
+    /// <param name="despeje">Cuánto sube el tramo de paso sobre la punta, para librar las cotas.</param>
+    /// <param name="tamano">
+    /// El tamaño del filete, a la izquierda del triángulo, donde lo pone el estándar. Vacío si no se
+    /// capturó: mejor sin número que con uno inventado.
+    /// </param>
+    /// <param name="cola">El electrodo, dentro de la cola. Vacío = sin cola.</param>
+    public static Renglon Enlazado(
+        Tipo t, double xPunta, double yPunta, double xCodo, double yRef, double h,
+        double despeje, string tamano, string cola)
+    {
+        var abiertas = new List<double[]>();
+        var cerradas = new List<double[]>();
+        var textos = new List<TextoDwg>();
+
+        (double X, double Y, double R)? circulo = null;
+
+        // ---------- El leader: sube, cruza y baja al codo ----------
+        var yPaso = yPunta + despeje;
+        var dx = xCodo - xPunta;
+
+        var leader = new[]
+        {
+            xPunta, yPunta,
+            xPunta + (0.18 * dx), yPaso,
+            xCodo - (0.18 * dx), yPaso,
+            xCodo, yRef,
+        };
+
+        // ---------- La línea de referencia, hacia la izquierda ----------
+        var xFin = xCodo - (LineaReferencia * h);
+
+        abiertas.Add(new[] { xCodo, yRef, xFin, yRef });
+
+        // ---------- El filete, plantado sobre la línea ----------
+        var lado = LadoSimbolo * h;
+        var xs = xCodo - (SimboloDesdeCodo * h) - lado;
+
+        cerradas.Add(Triangulo(xs, yRef, lado, arriba: true));
+
+        if (tamano.Trim().Length > 0)
+        {
+            // A LA IZQUIERDA DEL TRIÁNGULO Y DEL MISMO LADO DE LA LÍNEA, que es donde el estándar
+            // pone el tamaño del filete. Anclaje 11 = a la derecha y a media altura, así el número
+            // crece hacia la izquierda y nunca se mete en el símbolo.
+            textos.Add(new TextoDwg(
+                tamano.Trim(), xs - (0.4 * h), yRef + (0.55 * lado), 0.8 * h, 11));
+        }
+
+        // ---------- El círculo de «todo alrededor», en el codo ----------
+        if (t == Tipo.TodoAlrededor)
+        {
+            circulo = (xCodo, yRef, RadioCirculo * h);
+        }
+
+        // ---------- La cola, con el electrodo ----------
+        if (cola.Trim().Length > 0)
+        {
+            abiertas.Add(new[]
+            {
+                xFin - (LargoCola * h), yRef + (SemiAltoCola * h),
+                xFin, yRef,
+                xFin - (LargoCola * h), yRef - (SemiAltoCola * h),
+            });
+
+            textos.Add(new TextoDwg(
+                cola.Trim(), xFin - ((LargoCola + 0.25) * h), yRef, AlturaCola * h, 11));
+        }
+
+        return new Renglon(t, leader, abiertas, cerradas, new List<double[]>(), circulo, textos);
+    }
+
+    /// <summary>
+    /// Hasta dónde llega el símbolo por la <b>izquierda</b>, contando su cola, en unidades de dibujo.
+    /// </summary>
+    /// <remarks>
+    /// Lo necesita el detalle para colocar el texto que va antes del símbolo, y el reparto de placas
+    /// para saber cuánto ocupa. Se calcula aquí y no allí para que sea el mismo número: repetida la
+    /// cuenta, el texto se le monta encima a la cola el día que cambie una proporción.
+    /// </remarks>
+    public static double IzquierdaDelSimbolo(double xCodo, double h) =>
+        xCodo - ((LineaReferencia + LargoCola + 0.25) * h);
+
+    /// <summary>
     /// El triángulo del filete: cateto vertical a la izquierda y base sobre la línea.
     /// </summary>
     /// <param name="arriba">

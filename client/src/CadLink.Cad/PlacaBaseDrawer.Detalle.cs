@@ -240,14 +240,99 @@ public sealed partial class PlacaBaseDrawer
 
         var separacion = Math.Max(11.0 * _hTxt, 8.0 * _escala);
 
-        // LA FLECHA APUNTA A LA SOLDADURA, con su propia Y. Antes tomaba la X del borde de la franja
-        // y le forzaba el centro vertical de la pieza, y eso en un perfil I es AIRE: a media altura,
-        // por la punta del patín no pasa el contorno, está el hueco entre los dos patines. El texto
-        // sí se queda centrado; lo que se corrige es dónde acaba la punta.
-        LeaderZIzquierda(
-            TextoSoldadura(p),
-            puntaFlecha.X, puntaFlecha.Y,
-            xLef - separacion, yc);
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // EL SÍMBOLO DE SOLDADURA, NO SOLO EL TEXTO.
+        //
+        // Lo pidió el usuario señalando el renglón «SOLDADURA A TODO ALREDEDOR DE LA PIEZA» del
+        // cuadro de simbología: «cuando la soldadura sea en todo el contorno debe colocar ese
+        // detalle de línea». Y tiene razón: el detalle escribía la frase y en un plano de estructura
+        // eso se dice con el símbolo —el triángulo del filete y el CÍRCULO en el codo—, que es lo
+        // que el taller busca.
+        //
+        // Y ES «TODO ALREDEDOR» porque es lo que el dibujo hace: la franja de soldadura que se acaba
+        // de rayar rodea el perfil COMPLETO, sin interrupción. El símbolo no es una etiqueta que se
+        // elija aparte, es la lectura de esa franja: mientras el dibujo suelde todo el contorno, el
+        // símbolo lleva su círculo. El día que se pueda capturar soldadura parcial —dos lados, o por
+        // tramos— ese dato decidirá el tipo, y para entonces el símbolo ya está.
+        //
+        // El texto se queda, a la izquierda de la cola: el símbolo dice el tamaño y el electrodo en
+        // su sitio, y la frase sigue estando para quien lea el plano sin la tabla de simbología
+        // delante. Quitarla no se pidió.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        var xCodo = xLef - separacion;
+
+        var simbolo = SimbolosSoldadura.Enlazado(
+            SimbolosSoldadura.Tipo.TodoAlrededor,
+            puntaFlecha.X, puntaFlecha.Y, xCodo, yc, _hTxt,
+            despeje: Math.Max(3.0 * _hTxt, 2.5 * _escala),
+            tamano: TamanoDelFilete(p),
+            cola: ConXX(p.Electrodo.Trim()));
+
+        DibujarSimbolo(simbolo);
+
+        // Y LA FRASE, antes de la cola. La X sale de la propia clase del símbolo para que las dos
+        // cosas no se monten el día que cambie una proporción.
+        Mtexto(
+            "\\pxqr;" + TextoSoldadura(p),
+            SimbolosSoldadura.IzquierdaDelSimbolo(xCodo, _hTxt) - (0.8 * _hTxt),
+            yc, anclaje: 6, exacto: true);
+    }
+
+    /// <summary>El tamaño del filete para el símbolo: lo capturado, en pulgadas.</summary>
+    /// <remarks>
+    /// Vacío si no hay nada capturado. Un símbolo sin tamaño es un símbolo incompleto, pero uno con
+    /// un tamaño inventado es un plano que pide un filete que nadie calculó.
+    /// </remarks>
+    private static string TamanoDelFilete(PlacaBaseCad p)
+    {
+        var t = p.TextoSoldadura.Trim();
+
+        if (t.Length > 0)
+        {
+            return t.EndsWith("\"", StringComparison.Ordinal) ? t : t + "\"";
+        }
+
+        return p.SoldaduraCm > 0 ? Numero(p.SoldaduraCm / 2.54) + "\"" : string.Empty;
+    }
+
+    /// <summary>
+    /// Dibuja un símbolo de soldadura ya calculado: su leader, su flecha, el símbolo y sus textos.
+    /// </summary>
+    /// <remarks>
+    /// Es el mismo recorrido que hace el cuadro de simbología —ver <c>Simbologia</c>—, y va aparte
+    /// para que el detalle y el cuadro dibujen los símbolos con el mismo código: si el triángulo
+    /// cambia de forma, cambia en los dos sitios a la vez.
+    /// </remarks>
+    private void DibujarSimbolo(SimbolosSoldadura.Renglon r)
+    {
+        Polilinea(r.Leader, PlacaBaseCapas.Rotulos, cerrada: false);
+
+        Flecha(r.Leader[0], r.Leader[1], r.Leader[2], r.Leader[3]);
+
+        foreach (var abierta in r.Abiertas)
+        {
+            Polilinea(abierta, PlacaBaseCapas.Rotulos, cerrada: false);
+        }
+
+        foreach (var cerrada in r.Cerradas)
+        {
+            Polilinea(cerrada, PlacaBaseCapas.Rotulos);
+        }
+
+        foreach (var rellena in r.Rellenas)
+        {
+            Solido(rellena);
+        }
+
+        if (r.Circulo is { } c)
+        {
+            Circulo(c.X, c.Y, 2 * c.R, PlacaBaseCapas.Rotulos);
+        }
+
+        foreach (var t in r.Textos)
+        {
+            Texto(t);
+        }
     }
 
     /// <summary>El texto del leader de soldadura, en dos renglones.</summary>

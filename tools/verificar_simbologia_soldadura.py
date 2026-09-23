@@ -47,6 +47,10 @@ def leer(*partes: str) -> str:
 
 _CS = leer("client", "src", "CadLink.Cad", "SimbolosSoldadura.cs")
 _DRW = leer("client", "src", "CadLink.Cad", "PlacaBaseDrawer.Simbologia.cs")
+
+#  El recorrido comun de un simbolo -DibujarSimbolo- vive en el archivo del detalle, porque
+#  lo usan los dos: el cuadro de simbologia y el simbolo de soldadura de la placa.
+_DET = leer("client", "src", "CadLink.Cad", "PlacaBaseDrawer.Detalle.cs")
 _APP = leer("client", "src", "CadLink.App", "MainWindow.Simbologia.cs")
 
 
@@ -332,17 +336,32 @@ check("y no hay ninguna medida en centimetros escrita a mano",
       and "escala" not in _CS.split("public static Legenda Construir")[1][:600])
 
 #  ---- EL DIBUJANTE Y LA PREVIA USAN ESTA MISMA GEOMETRIA ----
+#  El recorrido de un renglon -leader, flecha, simbolo, circulo y textos- se movio a
+#  DibujarSimbolo, en el archivo del detalle: lo usan el cuadro de simbologia Y el simbolo
+#  de soldadura del detalle de la placa. Con dos copias, el dia que el triangulo del filete
+#  cambie de forma, el cuadro que explica la simbologia y el simbolo del detalle dirian
+#  cosas distintas en el mismo plano.
 check("el dibujante saca el reparto de SimbolosSoldadura, no lo recalcula",
       "SimbolosSoldadura.Construir(x, y, h, titulo)" in _DRW
-      and "Flecha(r.Leader[0], r.Leader[1], r.Leader[2], r.Leader[3]);" in _DRW
+      and "DibujarSimbolo(r);" in _DRW
+      and "Flecha(r.Leader[0], r.Leader[1], r.Leader[2], r.Leader[3]);" in _DET
       and "_ms.AddSolid(" in _DRW)
+
+check("y el cuadro y el detalle dibujan los simbolos con el MISMO codigo",
+      "private void DibujarSimbolo(SimbolosSoldadura.Renglon r)" in _DET
+      #  Y el bucle viejo no se quedo copiado en el cuadro.
+      and "foreach (var abierta in r.Abiertas)" not in _DRW)
 
 check("y lo agrupa en un bloque propio",
       'NombreBloqueSimbologia = "SIMBOLOGIA DE SOLDADURA";' in _DRW
       and "UltimoBloque = Bloquear(NombreBloqueSimbologia, inicio, fin, x, y);" in _DRW)
 
+#  La capa se pone en DibujarSimbolo, que es por donde pasa todo lo que se dibuja de un
+#  simbolo. La de SOLDADURA es la de la franja rayada del detalle, otra cosa: un simbolo en
+#  esa capa saldria del color de la soldadura y se imprimiria distinto.
 check("todo va en la capa ROTULOS, que es la que se imprime en negro",
-      _DRW.count("PlacaBaseCapas.Rotulos") >= 5
+      _DET.count("PlacaBaseCapas.Rotulos")
+      >= _DET.count("Polilinea(") + 1
       and "PlacaBaseCapas.Soldadura" not in _DRW)
 
 check("la vista previa pinta la MISMA simbologia que se va a dibujar",
@@ -370,6 +389,205 @@ check("y el dibujante los pone en el Alignment de un TEXT",
       "_ms.AddText(t.S, Punto(t.X, t.Y), t.Altura);" in _DRW
       and "txt.Alignment = t.Anclaje;" in _DRW
       and "txt.TextAlignmentPoint = Punto(t.X, t.Y);" in _DRW)
+
+
+# ==========================================================================
+#  EL SIMBOLO DEL DETALLE: «TODO ALREDEDOR», CON SU CIRCULO
+# ==========================================================================
+#  Pedido por el usuario senalando el renglon «SOLDADURA A TODO ALREDEDOR DE LA PIEZA» de
+#  este mismo cuadro: «cuando la soldadura sea en todo el contorno debe colocar ese detalle
+#  de linea». El detalle de la placa escribia solo la frase -«SOLDADURA CON E70XX DE 3/16"
+#  DE ESP.»- y en un plano de estructura eso se dice con el SIMBOLO: el triangulo del filete
+#  y el CIRCULO en el codo, que es lo que el taller busca.
+#
+#  Es UnRenglon mirando al otro lado: en el cuadro la linea de referencia crece a la derecha
+#  porque el nombre va detras; en el detalle la pieza esta a la derecha, asi que la flecha
+#  apunta hacia ella y la linea y la cola caen a la IZQUIERDA. Espejo de Enlazado.
+print("\n" + "=" * 78)
+print("EL SIMBOLO DEL DETALLE DE LA PLACA")
+print("=" * 78)
+
+
+#  Las proporciones se leen del C#, no se copian: copiadas, esta prueba daria por bueno un
+#  simbolo que en el programa se dibuja con otras medidas.
+def _cte(nombre):
+    m = re.search(rf"private const double {nombre} = ([0-9.]+);", _CS)
+
+    return float(m.group(1)) if m else None
+
+
+LINEA_REF = _cte("LineaReferencia")
+LADO = _cte("LadoSimbolo")
+DESDE_CODO = _cte("SimboloDesdeCodo")
+RADIO = _cte("RadioCirculo")
+LARGO_COLA = _cte("LargoCola")
+SEMI_COLA = _cte("SemiAltoCola")
+
+check("las proporciones del simbolo se pudieron leer del codigo",
+      None not in (LINEA_REF, LADO, DESDE_CODO, RADIO, LARGO_COLA, SEMI_COLA))
+
+
+def enlazado(x_punta, y_punta, x_codo, y_ref, h, despeje, tamano, cola, todo_alrededor=True):
+    """Espejo de SimbolosSoldadura.Enlazado."""
+    y_paso = y_punta + despeje
+    dx = x_codo - x_punta
+
+    leader = [x_punta, y_punta,
+              x_punta + 0.18 * dx, y_paso,
+              x_codo - 0.18 * dx, y_paso,
+              x_codo, y_ref]
+
+    x_fin = x_codo - LINEA_REF * h
+    abiertas = [[x_codo, y_ref, x_fin, y_ref]]
+
+    lado = LADO * h
+    xs = x_codo - DESDE_CODO * h - lado
+
+    cerradas = [[xs, y_ref, xs, y_ref + lado, xs + lado, y_ref]]
+
+    textos = []
+
+    if tamano.strip():
+        textos.append((tamano.strip(), xs - 0.4 * h, y_ref + 0.55 * lado, 11))
+
+    circulo = (x_codo, y_ref, RADIO * h) if todo_alrededor else None
+
+    if cola.strip():
+        abiertas.append([x_fin - LARGO_COLA * h, y_ref + SEMI_COLA * h,
+                         x_fin, y_ref,
+                         x_fin - LARGO_COLA * h, y_ref - SEMI_COLA * h])
+        textos.append((cola.strip(), x_fin - (LARGO_COLA + 0.25) * h, y_ref, 11))
+
+    return {"leader": leader, "abiertas": abiertas, "cerradas": cerradas,
+            "circulo": circulo, "textos": textos, "x_fin": x_fin, "xs": xs, "lado": lado}
+
+
+X_PUNTA, Y_PUNTA = 0.0, 0.0
+X_CODO, Y_REF = -1.2, 0.0
+HH = 0.016
+
+sim = enlazado(X_PUNTA, Y_PUNTA, X_CODO, Y_REF, HH, 0.05, '3/16"', "E70XX")
+
+check("el circulo de «todo alrededor» va EN EL CODO, no en medio de la linea",
+      sim["circulo"] is not None
+      and abs(sim["circulo"][0] - X_CODO) < 1e-12
+      and abs(sim["circulo"][1] - Y_REF) < 1e-12)
+
+check("y su radio es el mismo del cuadro que lo explica",
+      abs(sim["circulo"][2] - RADIO * HH) < 1e-12)
+
+plano = enlazado(X_PUNTA, Y_PUNTA, X_CODO, Y_REF, HH, 0.05, '3/16"', "E70XX",
+                 todo_alrededor=False)
+
+check("un filete que NO da la vuelta sale sin circulo", plano["circulo"] is None)
+
+piezas = [c for tramo in sim["abiertas"] + sim["cerradas"] for c in tramo[0::2]]
+
+check("el simbolo entero queda a la izquierda del codo, fuera de la placa",
+      max(piezas) <= X_CODO + 1e-12, f"algo llega a {max(piezas):.4f}")
+
+check("el triangulo se planta sobre la linea de referencia",
+      all(abs(sim["cerradas"][0][i] - Y_REF) < 1e-12 for i in (1, 5)))
+
+check("y no se mete en el circulo del codo",
+      sim["xs"] + sim["lado"] < X_CODO - RADIO * HH,
+      f"acaba en {sim['xs'] + sim['lado']:.4f}, el circulo empieza en "
+      f"{X_CODO - RADIO * HH:.4f}")
+
+check("el cateto vertical va a la IZQUIERDA, como en el cuadro",
+      abs(sim["cerradas"][0][0] - sim["cerradas"][0][2]) < 1e-12
+      and sim["cerradas"][0][4] > sim["cerradas"][0][0])
+
+cola_g = sim["abiertas"][1]
+
+check("la cola se abre hacia la izquierda desde el final de la linea",
+      abs(cola_g[2] - sim["x_fin"]) < 1e-12
+      and cola_g[0] < sim["x_fin"] and cola_g[4] < sim["x_fin"])
+
+check("y es simetrica respecto a la linea de referencia",
+      abs((cola_g[1] - Y_REF) + (cola_g[5] - Y_REF)) < 1e-12)
+
+check("el tamano y el electrodo crecen hacia la izquierda",
+      all(t[3] == 11 for t in sim["textos"]))
+
+check("el tamano del filete va a la izquierda del triangulo",
+      sim["textos"][0][1] < sim["xs"])
+
+check("y del mismo lado de la linea que el triangulo", sim["textos"][0][2] > Y_REF)
+
+sin_tam = enlazado(X_PUNTA, Y_PUNTA, X_CODO, Y_REF, HH, 0.05, "", "E70XX")
+
+check("sin tamano capturado, el simbolo no lo inventa",
+      len(sin_tam["textos"]) == 1 and sin_tam["textos"][0][0] == "E70XX")
+
+check("y sin electrodo no se dibuja la cola vacia",
+      len(enlazado(X_PUNTA, Y_PUNTA, X_CODO, Y_REF, HH, 0.05, '3/16"', "")["abiertas"]) == 1)
+
+lead = sim["leader"]
+
+check("el leader lleva tres tramos", len(lead) == 8)
+
+check("y el tramo de paso va POR ENCIMA de la punta",
+      lead[3] > lead[1] and abs(lead[3] - lead[5]) < 1e-12)
+
+check("la flecha arranca en la punta, sobre la franja de soldadura",
+      abs(lead[0] - X_PUNTA) < 1e-12 and abs(lead[1] - Y_PUNTA) < 1e-12)
+
+m_izq = re.search(r"xCodo - \(\(LineaReferencia \+ LargoCola \+ ([0-9.]+)\) \* h\)", _CS)
+
+check("hay una sola cuenta de por donde acaba el simbolo por la izquierda",
+      m_izq is not None and "IzquierdaDelSimbolo" in _CS)
+
+if m_izq is not None:
+    izq = X_CODO - (LINEA_REF + LARGO_COLA + float(m_izq.group(1))) * HH
+
+    check("y esa cuenta cae a la izquierda del texto del electrodo",
+          izq <= sim["textos"][-1][1] + 1e-12,
+          f"el simbolo acaba en {izq:.4f} y el electrodo en {sim['textos'][-1][1]:.4f}")
+
+#  ══════════════════════════════════════════════════════════════════════════════════════
+#  Y LO DE ARRIBA SE ATA AL C#, NO AL ESPEJO.
+#
+#  El espejo de Enlazado es una copia de la logica escrita aqui, asi que por si solo NO caza
+#  que el codigo cambie: se probo mutando el C# -quitandole el circulo, plantando el
+#  triangulo encima del codo y volteando el anclaje del tamano- y las pruebas de arriba
+#  seguian pasando, porque estaban comprobando el espejo.
+#
+#  Asi que las tres cosas que el espejo no puede ver se leen del CUERPO de Enlazado. Del
+#  cuerpo y no del archivo entero: UnRenglon tiene sus propias lineas casi iguales, y
+#  buscandolas en todo el archivo la comprobacion pasaria por las del otro metodo.
+_ENL = _CS.split("public static Renglon Enlazado(")[-1].split("\n    /// <summary>")[0]
+
+check("el cuerpo de Enlazado se pudo aislar", len(_ENL) > 500)
+
+check("el circulo lo pone el TIPO, dentro de Enlazado",
+      "if (t == Tipo.TodoAlrededor)" in _ENL
+      and "circulo = (xCodo, yRef, RadioCirculo * h);" in _ENL)
+
+check("el triangulo se planta a SimboloDesdeCodo del codo, cabiendo entero",
+      "var xs = xCodo - (SimboloDesdeCodo * h) - lado;" in _ENL)
+
+check("y el tamano va anclado a la derecha -11-, para no caerle encima",
+      "tamano.Trim(), xs - (0.4 * h), yRef + (0.55 * lado), 0.8 * h, 11));" in _ENL)
+
+check("la linea de referencia y la cola crecen hacia la IZQUIERDA",
+      "var xFin = xCodo - (LineaReferencia * h);" in _ENL
+      and "xFin - (LargoCola * h), yRef + (SemiAltoCola * h)," in _ENL)
+
+check("el leader de Enlazado lleva sus tres tramos",
+      "xPunta + (0.18 * dx), yPaso," in _ENL
+      and "xCodo - (0.18 * dx), yPaso," in _ENL)
+
+check("el detalle de la placa dibuja el simbolo de todo alrededor",
+      "SimbolosSoldadura.Enlazado(" in _DET
+      and "SimbolosSoldadura.Tipo.TodoAlrededor," in _DET)
+
+check("el tamano del filete sale de lo capturado, con sus pulgadas",
+      "private static string TamanoDelFilete(PlacaBaseCad p)" in _DET
+      and 'return p.SoldaduraCm > 0 ? Numero(p.SoldaduraCm / 2.54) + "\\"" : string.Empty;' in _DET)
+
+check("y el electrodo va en la cola, con su XX",
+      "cola: ConXX(p.Electrodo.Trim()));" in _DET)
 
 print()
 print("=" * 78)
