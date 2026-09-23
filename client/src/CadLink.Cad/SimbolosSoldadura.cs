@@ -124,7 +124,22 @@ public static class SimbolosSoldadura
     private const double SeparacionRenglones = 4.6;
 
     /// <summary>Y del título al primer renglón.</summary>
-    private const double TituloSobreElPrimero = 3.4;
+    /// <remarks>
+    /// <para>
+    /// <b>No es una separación al gusto: tiene que caber el primer símbolo.</b> El renglón cuelga de
+    /// aquí, pero lo que sube desde él es su símbolo: la línea de referencia está
+    /// <see cref="TramoFlecha"/> más arriba del renglón y el triángulo del filete otro
+    /// <see cref="LadoSimbolo"/> por encima. Con 3.4 la punta del triángulo quedaba a 0.1 alturas
+    /// del título —o sea, <b>dentro</b> de él: el texto le pasaba por encima al primer símbolo—.
+    /// </para>
+    /// <para>
+    /// Lo reportó el usuario al dibujarlo: «el título está pegado y se sobrepone en lo demás». Con
+    /// 5.2 quedan 1.3 alturas de aire entre el fondo del título y la punta del triángulo, y hay una
+    /// comprobación que lo mide en lugar de confiar en el número: si mañana el triángulo crece o el
+    /// tramo de la flecha se alarga, salta ahí y no en el plano.
+    /// </para>
+    /// </remarks>
+    private const double TituloSobreElPrimero = 5.2;
 
     /// <summary>El texto que va en la cola de todos los renglones.</summary>
     /// <remarks>

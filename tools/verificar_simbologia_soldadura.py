@@ -162,6 +162,48 @@ RS = legenda(0.0, 0.0, H)
 check("los cinco simbolos del cuadro, en orden",
       [r["tipo"] for r in RS] == TIPOS, f"{[r['tipo'] for r in RS]}")
 
+#  ---- EL TITULO NO SE MONTA EN EL PRIMER SIMBOLO ----
+#  Reportado por el usuario al dibujarlo: «el titulo esta pegado y se sobrepone en lo demas».
+#  Y era eso, medido: con la separacion de entonces -3.4 alturas- la punta del triangulo del
+#  primer renglon quedaba 0.1 alturas por DEBAJO del titulo, o sea DENTRO de su texto.
+#
+#  El error de fondo es facil de repetir: la separacion se mide hasta el RENGLON, pero lo que
+#  sube hacia el titulo es su SIMBOLO, que esta un tramo de flecha mas arriba del renglon y un
+#  lado de triangulo por encima de su linea de referencia. Asi que esto NO comprueba el numero
+#  -que se lee del C#-, comprueba el AIRE que queda: el dia que el triangulo crezca o el tramo
+#  de la flecha se alargue, salta aqui y no en el plano.
+#
+#  La altura del titulo es 1.15 h y va con anclaje 9 -a media altura-, asi que su texto ocupa
+#  media altura hacia arriba y media hacia abajo del punto.
+MEDIA_TITULO = 1.15 / 2
+
+#  Lo mas alto del primer renglon: la punta de su triangulo. Y de TODOS, por si algun dia el
+#  cuadro se reordena y el primero pasa a ser el de campo, cuya bandera sube mas.
+topes = []
+
+for r in RS:
+    alto = [c[1::2] for c in r["cerradas"] + r["abiertas"] + r["rellenas"]]
+    topes.append(max(max(c) for c in alto) if alto else r["leader"][3])
+
+aire = (0.0 - MEDIA_TITULO * H) - topes[0]
+
+check("el titulo deja aire sobre el primer simbolo, no se le monta",
+      aire > 0, f"se solapan {-aire / H:.3f} alturas de texto")
+
+#  Y NO A RAS: al menos una altura de texto, que es lo que hace que se lea como un titulo y no
+#  como parte del primer renglon.
+check("y ese aire es de al menos una altura de texto",
+      aire >= H, f"solo {aire / H:.3f} alturas")
+
+#  NINGUN SIMBOLO TOCA EL NOMBRE DEL RENGLON DE ARRIBA, por lo mismo: la bandera del de campo
+#  es lo que mas sube y tiene que caber bajo el renglon anterior.
+for i in range(1, len(RS)):
+    y_nombre = RS[i - 1]["leader"][3]
+
+    check(f"el simbolo {i + 1} cabe debajo del renglon de arriba",
+          topes[i] < y_nombre - 0.5 * H,
+          f"sube a {topes[i]:.3f} y el de arriba esta en {y_nombre:.3f}")
+
 #  ---- EL LEADER ----
 #  Tres puntos: punta, codo y final de la linea de referencia. Y el tramo inclinado va a
 #  45 grados, como en el estandar: los dos catetos iguales.
