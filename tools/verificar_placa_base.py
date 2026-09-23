@@ -2675,6 +2675,13 @@ PASO_EN_D = _cte_elev("PasoEnDiametros")
 _m_max = re.search(r"private const int MaxDientes = ([0-9]+);", _ELEV)
 MAX_DIENTES = int(_m_max.group(1)) if _m_max else None
 
+#  EL DESFASE ENTRE LAS DOS HEBRAS TAMBIEN SE LEE DEL C#, no se copia. Es la correccion que
+#  pidio el usuario -«checa los puntos en donde salen»- y es un «+ (h / 2)» que se puede
+#  borrar de un teclazo: copiado aqui, el espejo seguiria desfasando mientras el programa
+#  dibuja las equis simetricas de antes, y las comprobaciones de abajo pasarian igual.
+_m_desf = re.search(r"hebraB\.Add\(yBase \+ \(i \* h\) \+ \(h / ([0-9.]+)\)\);", _ELEV)
+DESFASE_HEBRA = 1.0 / float(_m_desf.group(1)) if _m_desf else 0.0
+
 
 def roscar(x, y_base, diametro, escala):
     """Espejo de ElevacionPlacaBase.Roscar: flancos, punta y las dos hebras del hilo."""
@@ -2691,14 +2698,20 @@ def roscar(x, y_base, diametro, escala):
     izq, der = x - d / 2.0, x + d / 2.0
     y_punta = y_base + largo
 
+    #  LAS DOS HEBRAS, DESFASADAS MEDIO DIENTE. Espejadas -que es como estaban- los picos de
+    #  los dos flancos caen a la MISMA altura y sale una cadena de equis simetricas, no una
+    #  rosca. En un hilo de verdad la hebra de detras va media vuelta retrasada, y media vuelta
+    #  de helice es medio paso de altura: de ahi los picos intercalados.
     hebra_a, hebra_b = [], []
 
     for i in range(dientes + 1):
-        y = y_base + i * h
         par_izquierda = i % 2 == 0
 
-        hebra_a += [izq if par_izquierda else der, y]
-        hebra_b += [der if par_izquierda else izq, y]
+        hebra_a += [izq if par_izquierda else der, y_base + i * h]
+
+        if i < dientes:
+            hebra_b += [der if par_izquierda else izq,
+                        y_base + i * h + DESFASE_HEBRA * h]
 
     return [[izq, y_base, izq, y_punta],
             [der, y_base, der, y_punta],
@@ -4154,16 +4167,49 @@ check("son dos hebras y arrancan en flancos opuestos",
 
 check("y van alternando de flanco en flanco, las dos al reves una de otra",
       all(abs(hebra_a[2 * i] + hebra_b[2 * i]) < 1e-9
-          for i in range(len(hebra_a) // 2)))
+          for i in range(len(hebra_b) // 2)))
 
-check("las dos hebras suben a la misma altura, diente por diente",
-      [hebra_a[2 * i + 1] for i in range(len(hebra_a) // 2)]
-      == [hebra_b[2 * i + 1] for i in range(len(hebra_b) // 2)])
+#  ══════════════════════════════════════════════════════════════════════════════════════
+#  EL DESFASE: MEDIO DIENTE, NO CERO.
+#
+#  Es lo que el usuario cazo mirando los vertices -«checa los puntos en donde salen»-. Con
+#  las hebras espejadas, los picos de los dos flancos caen a la MISMA altura y el dibujo es
+#  una cadena de equis simetricas; en un hilo de verdad los picos de un flanco caen ENTRE los
+#  del otro, porque la hebra de detras va media vuelta retrasada.
+#
+#  Asi que esto NO comprueba que suban igual: comprueba que suban DESFASADAS medio diente, que
+#  es la diferencia entre las dos figuras.
+ys_a = [hebra_a[2 * i + 1] for i in range(len(hebra_a) // 2)]
+ys_b = [hebra_b[2 * i + 1] for i in range(len(hebra_b) // 2)]
+
+paso_diente = ys_a[1] - ys_a[0]
+
+check("el desfase entre hebras se pudo leer del codigo",
+      DESFASE_HEBRA > 0,
+      "sin desfase, los picos de los dos flancos caen a la misma altura")
+
+check("la hebra de detras va medio diente por delante de la otra",
+      abs(DESFASE_HEBRA - 0.5) < 1e-9
+      and all(abs((ys_b[i] - ys_a[i]) - paso_diente / 2) < 1e-9 for i in range(len(ys_b))),
+      f"el desfase es {DESFASE_HEBRA} dientes")
+
+check("y asi ningun pico de un flanco coincide en altura con uno del otro",
+      not any(abs(ya - yb) < 1e-9 for ya in ys_a for yb in ys_b))
+
+#  Los dientes de cada hebra siguen siendo regulares: el desfase es entre hebras, no dentro.
+check("los dientes de cada hebra siguen siendo iguales entre si",
+      all(abs((ys_a[i + 1] - ys_a[i]) - paso_diente) < 1e-9 for i in range(len(ys_a) - 1))
+      and all(abs((ys_b[i + 1] - ys_b[i]) - paso_diente) < 1e-9 for i in range(len(ys_b) - 1)))
+
+#  Y B se queda medio diente corta por arriba: la punta la cierra el remate, y un hilo que
+#  llegara al canto se leeria como un corte a ras.
+check("la hebra de detras acaba medio diente antes de la punta",
+      abs((ys_a[-1] - ys_b[-1]) - paso_diente / 2) < 1e-9)
 
 #  EL ULTIMO HILO ACABA EN LA PUNTA, no a media altura: por eso el paso se reparte con los
 #  dientes que caben en lugar de usarse tal cual.
 check("el ultimo hilo acaba justo en la punta",
-      abs(hebra_a[-1] - flanco_izq[3]) < 1e-9 and abs(hebra_b[-1] - flanco_der[3]) < 1e-9)
+      abs(hebra_a[-1] - flanco_izq[3]) < 1e-9)
 
 check("y la punta cierra la barra de flanco a flanco",
       abs(punta[1] - flanco_izq[3]) < 1e-9 and abs(punta[3] - flanco_der[3]) < 1e-9
@@ -4271,6 +4317,12 @@ check("la rosca va de flanco a flanco de la barra, medio diametro a cada lado",
 check("las dos hebras van al reves una de otra: de ahi el cruce",
       "hebraA.Add(parIzquierda ? izq : der);" in _ROSCAR
       and "hebraB.Add(parIzquierda ? der : izq);" in _ROSCAR)
+
+#  Y EL DESFASE DE MEDIO DIENTE, en el codigo: es la correccion que pidio el usuario, y es un
+#  «+ (h / 2)» que se puede borrar sin que nada mas se queje.
+check("la hebra de detras se sube medio diente en el codigo",
+      "hebraB.Add(yBase + (i * h) + (h / 2));" in _ROSCAR
+      and "if (i < dientes)" in _ROSCAR)
 
 check("el paso se reparte con los dientes que caben, para acabar en la punta",
       "var h = largo / dientes;" in _ROSCAR

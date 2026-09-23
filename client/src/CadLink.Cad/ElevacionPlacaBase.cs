@@ -775,22 +775,38 @@ public static class ElevacionPlacaBase
         var der = x + (d / 2);
         var yPunta = yBase + largo;
 
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // LAS DOS HEBRAS VAN DESFASADAS MEDIO DIENTE, NO ESPEJADAS.
+        //
+        // Es la corrección que pidió el usuario mirando los vértices: «checa los puntos en donde
+        // salen». Estaban ESPEJADAS —cuando una picaba en el flanco izquierdo, la otra picaba en el
+        // derecho A LA MISMA ALTURA—, y eso dibuja una cadena de equis simétricas con todos los
+        // vértices alineados por parejas. No es una rosca: es una celosía.
+        //
+        // En un hilo de verdad los picos de un flanco caen ENTRE los del otro, porque la hebra de
+        // detrás va media vuelta retrasada, y media vuelta de hélice es medio paso de altura. Así
+        // que la hebra B arranca medio diente más arriba, y de ahí salen las dos cosas que se ven
+        // en el croquis: los picos intercalados y los cruces con pendientes distintas.
+        //
+        // B se queda medio diente corta por arriba, y eso es correcto: la punta la cierra el remate,
+        // y un hilo que llegara justo al canto se leería como un corte a ras.
+        // ═════════════════════════════════════════════════════════════════════════════════════
         var hebraA = new List<double>();
         var hebraB = new List<double>();
 
         for (var i = 0; i <= dientes; i++)
         {
-            var y = yBase + (i * h);
-
-            // Una arranca en el flanco izquierdo y la otra en el derecho, y las dos van alternando:
-            // ahí está el medio paso de desfase que produce el cruce.
             var parIzquierda = i % 2 == 0;
 
             hebraA.Add(parIzquierda ? izq : der);
-            hebraA.Add(y);
+            hebraA.Add(yBase + (i * h));
 
-            hebraB.Add(parIzquierda ? der : izq);
-            hebraB.Add(y);
+            // El último de A cae en la punta; B, que va medio diente por delante, se para antes.
+            if (i < dientes)
+            {
+                hebraB.Add(parIzquierda ? der : izq);
+                hebraB.Add(yBase + (i * h) + (h / 2));
+            }
         }
 
         return new[]
