@@ -420,16 +420,13 @@ public static class SimbolosSoldadura
         return new Renglon(t, leader, abiertas, cerradas, new List<double[]>(), circulo, textos);
     }
 
-    /// <summary>
-    /// Hasta dónde llega el símbolo por la <b>izquierda</b>, contando su cola, en unidades de dibujo.
-    /// </summary>
-    /// <remarks>
-    /// Lo necesita el detalle para colocar el texto que va antes del símbolo, y el reparto de placas
-    /// para saber cuánto ocupa. Se calcula aquí y no allí para que sea el mismo número: repetida la
-    /// cuenta, el texto se le monta encima a la cola el día que cambie una proporción.
-    /// </remarks>
-    public static double IzquierdaDelSimbolo(double xCodo, double h) =>
-        xCodo - ((LineaReferencia + LargoCola + 0.25) * h);
+    // IzquierdaDelSimbolo SE QUITÓ. Servía para colocar la frase «SOLDADURA CON E70XX DE 3/16" DE
+    // ESP.» justo antes de la cola, y esa frase ya no se escribe: el símbolo dice el tamaño y el
+    // electrodo en el sitio donde el estándar manda buscarlos. Sin ella, esta cuenta no la usaba
+    // nadie, y una función pública sin llamadores es una invitación a usarla mal.
+    //
+    // El ancho que ocupa el símbolo sigue contado para el reparto de placas, pero no desde aquí:
+    // lo apuntan los propios helpers de dibujo cuando lo dibujan. Ver PlacaBaseDrawer.Apuntar.
 
     /// <summary>
     /// El triángulo del filete: cateto vertical a la izquierda y base sobre la línea.

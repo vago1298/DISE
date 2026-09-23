@@ -269,13 +269,6 @@ public sealed partial class PlacaBaseDrawer
             cola: ConXX(p.Electrodo.Trim()));
 
         DibujarSimbolo(simbolo);
-
-        // Y LA FRASE, antes de la cola. La X sale de la propia clase del símbolo para que las dos
-        // cosas no se monten el día que cambie una proporción.
-        Mtexto(
-            "\\pxqr;" + TextoSoldadura(p),
-            SimbolosSoldadura.IzquierdaDelSimbolo(xCodo, _hTxt) - (0.8 * _hTxt),
-            yc, anclaje: 6, exacto: true);
     }
 
     /// <summary>El tamaño del filete para el símbolo: lo capturado, en pulgadas.</summary>
@@ -335,35 +328,24 @@ public sealed partial class PlacaBaseDrawer
         }
     }
 
-    /// <summary>El texto del leader de soldadura, en dos renglones.</summary>
-    private string TextoSoldadura(PlacaBaseCad p)
-    {
-        var electrodo = p.Electrodo.Trim();
-        var espesor = p.TextoSoldadura.Trim().Replace("\"", string.Empty);
-
-        if (espesor.Length == 0 && p.SoldaduraCm > 0)
-        {
-            espesor = Numero(p.SoldaduraCm / 2.54);
-        }
-
-        var s = "SOLDADURA";
-
-        if (electrodo.Length > 0)
-        {
-            // CON SU XX, igual que el rótulo. Este leader lo ponía crudo, así que un E70 capturado
-            // sin sufijo salía «SOLDADURA CON E70» aquí y «ELECTRODO E70XX» tres centímetros más
-            // abajo: el mismo dato escrito de dos maneras en el mismo detalle. ConXX es idempotente,
-            // así que un E70XX ya capturado no se convierte en E70XXXX.
-            s += " CON " + Escapar(ConXX(electrodo));
-        }
-
-        if (espesor.Length > 0)
-        {
-            s += "\\PDE " + Escapar(espesor) + "\" DE ESP.";
-        }
-
-        return s;
-    }
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    //  LA FRASE «SOLDADURA CON E70XX DE 3/16" DE ESP.» SE QUITÓ, y no es una pérdida.
+    //
+    //  Lo pidió el usuario en cuanto vio el símbolo dibujado: «elimina el rotulado de soldadura con
+    //  E70XX de de esp, ya eso no va por la simbología utilizada». Tiene razón y es la conclusión
+    //  natural del cambio anterior: el símbolo YA dice las dos cosas, y cada una en el sitio donde
+    //  el estándar manda buscarla —el tamaño a la izquierda del triángulo y el electrodo en la
+    //  cola—, así que la frase era el mismo dato escrito dos veces en el mismo detalle.
+    //
+    //  Y EL ELECTRODO NO DESAPARECE DEL PLANO: sigue en la cola del símbolo y en el rótulo del
+    //  detalle, que escribe «ELECTRODO E70XX». Era justamente el defecto que esta frase tenía
+    //  documentado —decir el electrodo dos veces, y una de ellas sin su XX— y ahora se resuelve
+    //  quitando la repetición en lugar de arreglarla.
+    //
+    //  Aquí vivía TextoSoldadura, que la armaba. Se fue con ella: un método que ya no llama nadie
+    //  es peor que no tenerlo, porque el día que alguien lo encuentre no sabrá si sobra o falta
+    //  llamarlo.
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
 
     // ======================================================================
     //  LOS CARTABONES

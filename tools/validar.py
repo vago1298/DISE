@@ -7255,13 +7255,24 @@ def v18_planta_autocad() -> None:
           'new[] { "E60XX", "E70XX", "E80XX", "E90XX" }' in pbw
           and '_electrodo = "E70XX"' in pbr)
 
-    #  Y EL LEADER DE SOLDADURA TAMBIEN LO PONE, no solo el rotulo. Antes este leader escribia el
-    #  electrodo crudo, asi que un E70 capturado sin sufijo salia «SOLDADURA CON E70» arriba y
-    #  «ELECTRODO E70XX» tres centimetros mas abajo: el mismo dato de dos maneras en el mismo
-    #  detalle. ConXX es idempotente, asi que un E70XX no se vuelve E70XXXX.
-    check("y el leader de soldadura lo pone igual que el rotulo",
-          "s += \" CON \" + Escapar(ConXX(electrodo));" in pbd2
-          and 'e.EndsWith("XX", StringComparison.OrdinalIgnoreCase) ? e : e + "XX"' in pbd2)
+    #  Y EL ELECTRODO VA EN LA COLA DEL SIMBOLO, no en una frase aparte.
+    #
+    #  Aqui habia una comprobacion de que el leader de soldadura escribiera «SOLDADURA CON E70XX
+    #  DE 3/16" DE ESP.» con su XX. Esa frase se quito: el usuario la vio repetida en cuanto el
+    #  detalle empezo a dibujar el SIMBOLO -«ya eso no va por la simbologia utilizada»- y tenia
+    #  razon, porque el simbolo dice el tamaño a la izquierda del triangulo y el electrodo en la
+    #  cola, cada uno donde el estandar manda buscarlo.
+    #
+    #  Lo que se vigila ahora es lo que queda: que el electrodo siga en la cola y en el rotulo,
+    #  las dos veces con su XX, y que la frase NO vuelva. El defecto que la comprobacion vieja
+    #  perseguia -el mismo dato escrito de dos maneras en el mismo detalle- se resolvio quitando
+    #  la repeticion en lugar de arreglarla.
+    check("el electrodo va en la cola del simbolo y en el rotulo, con su XX",
+          "cola: ConXX(p.Electrodo.Trim()));" in pbd2
+          and 'lineas.Add("ELECTRODO " + ConXX(p.Electrodo));' in pbd2
+          and 'e.EndsWith("XX", StringComparison.OrdinalIgnoreCase) ? e : e + "XX"' in pbd2
+          #  Y sin comentarios, porque el codigo explica ahi mismo que la frase se quito.
+          and "SOLDADURA CON" not in re.sub(r"//[^\n]*", "", pbd2))
 
     #  Las celdas en FRACCIONES son desplegables EDITABLES y su lista sale de la FILA. Con un
     #  DataGridComboBoxColumn y SelectedItemBinding, un espesor que no este en la lista se descarta

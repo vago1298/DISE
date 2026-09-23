@@ -533,17 +533,31 @@ check("y el tramo de paso va POR ENCIMA de la punta",
 check("la flecha arranca en la punta, sobre la franja de soldadura",
       abs(lead[0] - X_PUNTA) < 1e-12 and abs(lead[1] - Y_PUNTA) < 1e-12)
 
-m_izq = re.search(r"xCodo - \(\(LineaReferencia \+ LargoCola \+ ([0-9.]+)\) \* h\)", _CS)
+#  LA FRASE «SOLDADURA CON E70XX DE 3/16" DE ESP.» YA NO SE ESCRIBE, y con ella se fueron
+#  las dos cuentas que la colocaban -IzquierdaDelSimbolo y TextoSoldadura-. El usuario lo
+#  pidio en cuanto vio el simbolo: «ya eso no va por la simbologia utilizada». Aqui se vigila
+#  que no vuelva: el mismo dato escrito dos veces en el mismo detalle es como una de las dos
+#  copias se queda vieja.
+#  SE MIRA EL CODIGO, NO LOS COMENTARIOS. Los dos archivos explican en un comentario que la
+#  frase se quito y por que -eso es lo que hay que dejar escrito-, asi que buscando en el
+#  texto crudo la comprobacion se caza a si misma: paso al escribirla.
+def _sin_comentarios(codigo):
+    return re.sub(r"//[^\n]*", "", codigo)
 
-check("hay una sola cuenta de por donde acaba el simbolo por la izquierda",
-      m_izq is not None and "IzquierdaDelSimbolo" in _CS)
 
-if m_izq is not None:
-    izq = X_CODO - (LINEA_REF + LARGO_COLA + float(m_izq.group(1))) * HH
+_DET_COD = _sin_comentarios(_DET)
+_CS_COD = _sin_comentarios(_CS)
 
-    check("y esa cuenta cae a la izquierda del texto del electrodo",
-          izq <= sim["textos"][-1][1] + 1e-12,
-          f"el simbolo acaba en {izq:.4f} y el electrodo en {sim['textos'][-1][1]:.4f}")
+check("la frase de la soldadura ya no se escribe: lo dice el simbolo",
+      "SOLDADURA CON" not in _DET_COD
+      and "private string TextoSoldadura(PlacaBaseCad p)" not in _DET_COD
+      and "IzquierdaDelSimbolo" not in _CS_COD)
+
+#  Y EL DATO NO SE PERDIO: el electrodo sigue en la cola del simbolo y en el rotulo del
+#  detalle. Quitar una repeticion no puede ser quitar la informacion.
+check("pero el electrodo sigue en el plano, en la cola y en el rotulo",
+      "cola: ConXX(p.Electrodo.Trim()));" in _DET_COD
+      and 'lineas.Add("ELECTRODO " + ConXX(p.Electrodo));' in _DET_COD)
 
 #  ══════════════════════════════════════════════════════════════════════════════════════
 #  Y LO DE ARRIBA SE ATA AL C#, NO AL ESPEJO.
