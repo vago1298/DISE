@@ -881,6 +881,11 @@ public partial class MainWindow
         var geoAnclas = new GeometryGroup { Transform = transformar };
         var geoGrout = new GeometryGroup { Transform = transformar };
 
+        // La rosca y la tuerca, en su propio grupo: en el dibujo van en el color 253 dentro de la
+        // capa de anclas, y aquí en su propio gris por el mismo motivo —el vástago es rojo y lleno,
+        // y el enroscado son líneas finas justo encima—.
+        var geoRosca = new GeometryGroup { Transform = transformar };
+
         // Los vástagos, uno por ancla: cada uno se pinta con SU grueso, y en la placa rectangular
         // conviven los dos diámetros —el de las anclas X y el de las Y— en el mismo recuadro.
         var vastagos = new List<(GeometryGroup Geo, double Grueso)>();
@@ -910,12 +915,26 @@ public partial class MainWindow
                 AgregarAbierta(geoVastago, a.Vastago);
                 vastagos.Add((geoVastago, Math.Max(1.4, a.Diametro * escala)));
 
-                AgregarPoligonal(geoAnclas, a.Tuerca, null);
                 AgregarAbierta(geoAnclas, a.Arandela);
 
                 if (a.Remate is { } remate)
                 {
                     AgregarAbierta(geoAnclas, remate);
+                }
+
+                // LA ROSCA Y LA TUERCA VAN APARTE, igual que en el dibujo: ahí llevan el color 253
+                // y aquí su propio gris. En rojo, sobre el vástago rojo y lleno, el enroscado es
+                // una mancha, y la previa dejaría de enseñar lo que se va a dibujar.
+                AgregarPoligonal(geoRosca, a.Tuerca, null);
+
+                foreach (var arista in a.AristasTuerca)
+                {
+                    AgregarAbierta(geoRosca, arista);
+                }
+
+                foreach (var hebra in a.Rosca)
+                {
+                    AgregarAbierta(geoRosca, hebra);
                 }
             }
         }
@@ -976,6 +995,15 @@ public partial class MainWindow
                 StrokeLineJoin = PenLineJoin.Round
             });
         }
+
+        // Y LA ROSCA CON LA TUERCA AL FINAL, encima del vástago: es lo que en el dibujo va en el
+        // color 253, y va por delante porque la tuerca abraza la barra, no se esconde detrás.
+        PlacaPreviewCanvas.Children.Add(new FormaPath
+        {
+            Data = geoRosca,
+            Stroke = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x6E)),
+            StrokeThickness = 1.1
+        });
     }
 
     /// <summary>Una poligonal <b>abierta</b>, de dos o tres puntos, sin relleno.</summary>

@@ -803,9 +803,15 @@ public sealed partial class PlacaBaseDrawer
     /// con doblez es una L de tres puntos: cerrada, AutoCAD le uniría la punta de la pata con el
     /// arranque de arriba y el ancla saldría como un triángulo.
     /// </param>
+    /// <param name="color">
+    /// El ACI de la ENTIDAD. Por omisión <see cref="PorCapa"/>, que es como va casi todo el detalle:
+    /// el color lo manda la capa y el usuario lo puede cambiar desde su plantilla. Se pasa un ACI
+    /// concreto solo cuando dos piezas de la MISMA capa tienen que distinguirse entre sí, como la
+    /// rosca y la tuerca dentro de la capa de anclas.
+    /// </param>
     private object? Polilinea(double[] puntos, string capa,
                               (int Indice, double Bulge)[]? dobleces = null,
-                              bool cerrada = true)
+                              bool cerrada = true, int color = PorCapa)
     {
         for (var i = 0; i + 1 < puntos.Length; i += 2)
         {
@@ -819,7 +825,7 @@ public sealed partial class PlacaBaseDrawer
                 dynamic pl = _ms.AddLightWeightPolyline(puntos);
                 pl.Closed = cerrada;
                 pl.Layer = capa;
-                pl.Color = PorCapa;
+                pl.Color = color;
 
                 if (dobleces is not null)
                 {
@@ -867,7 +873,9 @@ public sealed partial class PlacaBaseDrawer
         }
     }
 
-    private object? Linea(double xa, double ya, double xb, double yb, string capa)
+    /// <param name="color">Ver <see cref="Polilinea"/>: por omisión, el de la capa.</param>
+    private object? Linea(double xa, double ya, double xb, double yb, string capa,
+                          int color = PorCapa)
     {
         if (Math.Abs(xb - xa) < 1e-9 && Math.Abs(yb - ya) < 1e-9)
         {
@@ -882,7 +890,7 @@ public sealed partial class PlacaBaseDrawer
             {
                 dynamic l = _ms.AddLine(Punto(xa, ya), Punto(xb, yb));
                 l.Layer = capa;
-                l.Color = PorCapa;
+                l.Color = color;
                 return (object?)l;
             });
         }

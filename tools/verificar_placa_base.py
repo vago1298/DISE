@@ -2336,8 +2336,8 @@ check("el ahogo se devuelve medido y desde la cara del concreto",
 #  la polilinea -como la placa- y no por un contorno de dos caras: asi el ancla sigue siendo
 #  UNA pieza y la geometria no cambia, que es la que comparten el dibujo y la previa.
 check("el grueso real de la barra viaja con el ancla",
-      "double Diametro)" in _ELEV
-      and "Diametro: d);" in _ELEV)
+      "double Diametro, double[][] Rosca, double[][] AristasTuerca)" in _ELEV
+      and "Diametro: d," in _ELEV)
 
 check("y el vastago se dibuja con ese grueso en AutoCAD",
       "var vastago = Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);" in _DELEV
@@ -2371,8 +2371,11 @@ check("el dado crece para que el ancla no se salga",
 
 check("el vastago se dibuja como poligonal ABIERTA, no cerrada",
       "Polilinea(a.Vastago, PlacaBaseCapas.Anclas, cerrada: false);" in _DELEV
-      and "bool cerrada = true)" in _DRW
-      and "pl.Closed = cerrada;" in _DRW)
+      #  El parametro de color se agrego DESPUES de cerrada, con PorCapa por omision: asi el
+      #  resto del detalle sigue yendo por capa sin tocar una sola llamada.
+      and "bool cerrada = true, int color = PorCapa)" in _DRW
+      and "pl.Closed = cerrada;" in _DRW
+      and "pl.Color = color;" in _DRW)
 
 check("y la hoja trae la longitud y el doblez",
       "public double LongAnclaXCm { get; set; }" in _CAD
@@ -2643,6 +2646,61 @@ def cartabon_de_canto(x_pano, y_base, largo, alto, sentido, escala):
             x_pano, y_base + alto]
 
 
+#  LAS PROPORCIONES DE LA ROSCA SE LEEN DEL C#, no se copian: copiadas, este espejo daria
+#  por buena una rosca que en el programa se dibuja con otro paso o con otro largo.
+def _cte_elev(nombre):
+    m = re.search(rf"private const double {nombre} = ([0-9.]+);", _ELEV)
+
+    return float(m.group(1)) if m else None
+
+
+ROSCA_EN_D = _cte_elev("RoscaEnDiametros")
+ROSCA_MIN_CM = _cte_elev("RoscaMinimaCm")
+PASO_EN_D = _cte_elev("PasoEnDiametros")
+
+_m_max = re.search(r"private const int MaxDientes = ([0-9]+);", _ELEV)
+MAX_DIENTES = int(_m_max.group(1)) if _m_max else None
+
+
+def roscar(x, y_base, diametro, escala):
+    """Espejo de ElevacionPlacaBase.Roscar: flancos, punta y las dos hebras del hilo."""
+    d = diametro if diametro > 0 else 1.0 * escala
+
+    largo = max(ROSCA_EN_D * d, ROSCA_MIN_CM * escala)
+    paso = max(PASO_EN_D * d, 1e-9)
+
+    dientes = math.ceil(largo / paso)
+    dientes = max(2, min(dientes, MAX_DIENTES))
+
+    h = largo / dientes
+
+    izq, der = x - d / 2.0, x + d / 2.0
+    y_punta = y_base + largo
+
+    hebra_a, hebra_b = [], []
+
+    for i in range(dientes + 1):
+        y = y_base + i * h
+        par_izquierda = i % 2 == 0
+
+        hebra_a += [izq if par_izquierda else der, y]
+        hebra_b += [der if par_izquierda else izq, y]
+
+    return [[izq, y_base, izq, y_punta],
+            [der, y_base, der, y_punta],
+            [izq, y_punta, der, y_punta],
+            hebra_a,
+            hebra_b]
+
+
+def aristas_de_la_tuerca(x, y_abajo, y_arriba, ancho_tuerca):
+    """Espejo de ElevacionPlacaBase.AristasDeLaTuerca: las dos aristas del hexagono."""
+    cuarto = ancho_tuerca / 4.0
+
+    return [[x - cuarto, y_abajo, x - cuarto, y_arriba],
+            [x + cuarto, y_abajo, x + cuarto, y_arriba]]
+
+
 def un_ancla(x, y_placa, y_arriba, ahogo, largo_total, doblez, esp_placa, grout,
              diametro, desfase, sentido_doblez, escala):
     d = diametro if diametro > 0 else 1.0 * escala
@@ -2688,6 +2746,11 @@ def un_ancla(x, y_placa, y_arriba, ahogo, largo_total, doblez, esp_placa, grout,
         "ahogo": y_placa - max(0.0, grout) - y_fondo,
         "con_doblez": pata > 0,
         "diametro": d,
+        #  La rosca arranca en la cara de ARRIBA de la tuerca -y_punta-, que es donde acaba el
+        #  vastago macizo: es lo que asoma del perno una vez apretada.
+        "rosca": roscar(x, y_punta, d, escala),
+        "aristas_tuerca": aristas_de_la_tuerca(x, y_arriba, y_arriba + alto_tuerca,
+                                               ancho_tuerca),
     }
 
 
@@ -3990,6 +4053,184 @@ check("midiendo la envolvente completa, la siguiente placa ya no se encima",
 check("y siguen quedando los 4 cm de separacion pedidos",
       abs((paso_nuevo(ancho_real, ESC) + izq_g) - der_con_texto
           - SEP_DETALLES_CM * ESC) < 1e-9)
+
+
+# ==========================================================================
+#  EL ENROSCADO DEL ANCLA Y SU TUERCA
+# ==========================================================================
+#  Pedido por el usuario: «necesito que las anclas las dibuje con su enroscado al inicio y con
+#  su tuerca, en color 253 en la capa de anclas, la tuerca debera ser adecuada para el tamaño
+#  del ancla».
+#
+#  La tuerca YA salia a la medida de la barra -2.5 diametros de ancho por 0.75 de alto, con
+#  minimos para que se vea al plotear-, pero era un rectangulo pelado, y el vastago acababa a
+#  ras de ella: el detalle no decia que parte del ancla va roscada.
+#
+#  Lo que NO puede cambiar por dibujar la rosca es el ancla: la rosca va por ENCIMA de la
+#  tuerca, asi que el gasto, el fondo y el ahogo se quedan como estaban. Eso es lo primero que
+#  se comprueba aqui, porque es lo unico que podria romper un plano que ya estaba bien.
+print("\n" + "=" * 78)
+print("EL ENROSCADO DEL ANCLA Y SU TUERCA")
+print("=" * 78)
+
+check("las proporciones de la rosca se pudieron leer del codigo",
+      None not in (ROSCA_EN_D, ROSCA_MIN_CM, PASO_EN_D, MAX_DIENTES))
+
+ESC = 1.0
+D38 = pulgadas("3/8") * 2.54          # 0.9525 cm
+D2 = pulgadas("2") * 2.54             # 5.08 cm
+
+anc = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 10.0, 2.54, 0.0, D38, 0.0, 1, ESC)
+
+#  ---- LO DE ABAJO NO SE MUEVE ----
+sin_rosca = 0.0 - max(0.0, 0.0) - anc["ahogo"]      # y_fondo reconstruido del ahogo
+
+check("el ahogo sigue siendo el capturado: la rosca no alarga el ancla",
+      abs(anc["ahogo"] - 30.0) < 1e-9, f"{anc['ahogo']:.4f} en vez de 30")
+
+check("y el vastago macizo sigue acabando en la cara de arriba de la tuerca",
+      abs(anc["vastago"][1] - bbox(anc["tuerca"])[3]) < 1e-9)
+
+#  ---- LA ROSCA ARRANCA DONDE ACABA EL VASTAGO ----
+rosca = anc["rosca"]
+flanco_izq, flanco_der, punta, hebra_a, hebra_b = rosca
+
+check("la rosca arranca justo donde acaba el vastago, sin hueco",
+      abs(flanco_izq[1] - anc["vastago"][1]) < 1e-9
+      and abs(flanco_der[1] - anc["vastago"][1]) < 1e-9)
+
+check("y sube por encima de la tuerca, que es lo que asoma del perno",
+      flanco_izq[3] > bbox(anc["tuerca"])[3])
+
+#  ---- Y NO SE SALE DEL GRUESO DE LA BARRA ----
+#  El zigzag va de flanco a flanco: ni mas ancho -seria una rosca mas gorda que el ancla- ni
+#  mas estrecho.
+xs = [c for tramo in rosca for c in tramo[0::2]]
+
+check("la rosca mide EXACTAMENTE el grueso de la barra",
+      abs(min(xs) - (-D38 / 2)) < 1e-9 and abs(max(xs) - (D38 / 2)) < 1e-9,
+      f"de {min(xs):.4f} a {max(xs):.4f}, y la barra es {D38:.4f}")
+
+#  ---- LAS DOS HEBRAS, DESFASADAS MEDIO PASO ----
+#  Es lo que produce el cruce en X. Con las dos en fase, el dibujo es un fuelle.
+check("son dos hebras y arrancan en flancos opuestos",
+      abs(hebra_a[0] + hebra_b[0]) < 1e-9 and abs(hebra_a[0]) > 0)
+
+check("y van alternando de flanco en flanco, las dos al reves una de otra",
+      all(abs(hebra_a[2 * i] + hebra_b[2 * i]) < 1e-9
+          for i in range(len(hebra_a) // 2)))
+
+check("las dos hebras suben a la misma altura, diente por diente",
+      [hebra_a[2 * i + 1] for i in range(len(hebra_a) // 2)]
+      == [hebra_b[2 * i + 1] for i in range(len(hebra_b) // 2)])
+
+#  EL ULTIMO HILO ACABA EN LA PUNTA, no a media altura: por eso el paso se reparte con los
+#  dientes que caben en lugar de usarse tal cual.
+check("el ultimo hilo acaba justo en la punta",
+      abs(hebra_a[-1] - flanco_izq[3]) < 1e-9 and abs(hebra_b[-1] - flanco_der[3]) < 1e-9)
+
+check("y la punta cierra la barra de flanco a flanco",
+      abs(punta[1] - flanco_izq[3]) < 1e-9 and abs(punta[3] - flanco_der[3]) < 1e-9
+      and abs(punta[0] - (-D38 / 2)) < 1e-9 and abs(punta[2] - (D38 / 2)) < 1e-9)
+
+#  ---- PROPORCIONAL AL DIAMETRO, NO UNA MEDIDA FIJA ----
+#  Es lo que pidio el usuario para la tuerca, y vale igual para la rosca: un ancla de 2" tiene
+#  que verse con su tuerca y su rosca de 2", no con las de 3/8".
+anc2 = un_ancla(0.0, 0.0, 2.54, 30.0, 0.0, 10.0, 2.54, 0.0, D2, 0.0, 1, ESC)
+
+ancho_38 = bbox(anc["tuerca"])[2] - bbox(anc["tuerca"])[0]
+ancho_2 = bbox(anc2["tuerca"])[2] - bbox(anc2["tuerca"])[0]
+
+check("la tuerca de un ancla de 2\" es mas ancha que la de 3/8\"",
+      ancho_2 > ancho_38, f"{ancho_2:.2f} contra {ancho_38:.2f}")
+
+check("y las dos son 2.5 diametros de ancho, sin minimos de por medio",
+      abs(ancho_2 - 2.5 * D2) < 1e-9 and abs(ancho_38 - 2.5 * D38) < 1e-9)
+
+largo_38 = anc["rosca"][0][3] - anc["rosca"][0][1]
+largo_2 = anc2["rosca"][0][3] - anc2["rosca"][0][1]
+
+check("la rosca tambien crece con la barra",
+      largo_2 > largo_38 and abs(largo_2 - ROSCA_EN_D * D2) < 1e-9,
+      f"{largo_2:.2f} contra {largo_38:.2f}")
+
+#  EL MINIMO EN CM ES PARA LAS BARRAS CHICAS: 2.5 diametros de un 3/8" son 2.4 cm, menos que
+#  el minimo, asi que ahi manda el minimo y la rosca se sigue viendo al plotear.
+check("y una barra muy fina no se queda sin rosca visible",
+      abs(largo_38 - max(ROSCA_EN_D * D38, ROSCA_MIN_CM * ESC)) < 1e-9)
+
+#  ---- LAS ARISTAS DE LA TUERCA ----
+#  Una tuerca hexagonal de frente enseña tres caras: dos aristas a un cuarto y a tres cuartos.
+ar = anc["aristas_tuerca"]
+tx1, ty1, tx2, ty2 = bbox(anc["tuerca"])
+
+check("la tuerca lleva sus dos aristas",
+      len(ar) == 2)
+
+check("y caen a un cuarto y a tres cuartos del ancho",
+      abs(ar[0][0] - (tx1 + (tx2 - tx1) / 4)) < 1e-9
+      and abs(ar[1][0] - (tx1 + 3 * (tx2 - tx1) / 4)) < 1e-9)
+
+check("cada arista va de la cara de abajo a la de arriba de la tuerca, sin asomar",
+      all(abs(a[1] - ty1) < 1e-9 and abs(a[3] - ty2) < 1e-9 for a in ar))
+
+#  ---- EL TOPE DE DIENTES ----
+#  Con una barra minuscula y el minimo en cm, el zigzag tendria miles de vertices. El tope no
+#  es un criterio de dibujo, es que el detalle no pese mas que el plano.
+fina = roscar(0.0, 0.0, 0.02, ESC)
+
+check("una barra minuscula no dispara miles de vertices",
+      len(fina[3]) // 2 <= MAX_DIENTES + 1,
+      f"{len(fina[3]) // 2} puntos por hebra")
+
+#  ══════════════════════════════════════════════════════════════════════════════════════
+#  Y LAS FORMULAS SE ATAN AL C#, NO AL ESPEJO.
+#
+#  Todo lo de arriba corre sobre el espejo en Python, que es una COPIA de la logica: por si
+#  solo no caza que el codigo cambie. Se probo mutando el C# -poniendo las dos hebras en
+#  fase, ensanchando la rosca mas que la barra, dejando el paso sin repartir y llevando las
+#  aristas al borde de la tuerca- y las comprobaciones de arriba seguian pasando.
+#
+#  Asi que las cuatro cuentas que el espejo no puede ver se leen del CUERPO de cada metodo.
+#  Del cuerpo y no del archivo, porque ElevacionPlacaBase tiene mas de mil lineas y medio
+#  archivo habla de flancos y de anchos.
+_ROSCAR = _ELEV.split("public static double[][] Roscar(")[-1].split("\n    /// <summary>")[0]
+_ARISTAS = _ELEV.split("public static double[][] AristasDeLaTuerca(")[-1].split("\n    /// <summary>")[0]
+
+check("los cuerpos de Roscar y AristasDeLaTuerca se pudieron aislar",
+      len(_ROSCAR) > 400 and len(_ARISTAS) > 100)
+
+check("la rosca va de flanco a flanco de la barra, medio diametro a cada lado",
+      "var izq = x - (d / 2);" in _ROSCAR
+      and "var der = x + (d / 2);" in _ROSCAR)
+
+check("las dos hebras van al reves una de otra: de ahi el cruce",
+      "hebraA.Add(parIzquierda ? izq : der);" in _ROSCAR
+      and "hebraB.Add(parIzquierda ? der : izq);" in _ROSCAR)
+
+check("el paso se reparte con los dientes que caben, para acabar en la punta",
+      "var h = largo / dientes;" in _ROSCAR
+      and "var dientes = (int)Math.Ceiling(largo / paso);" in _ROSCAR)
+
+check("y las aristas de la tuerca van a un cuarto del ancho",
+      "var cuarto = anchoTuerca / 4;" in _ARISTAS)
+
+#  ---- Y EL DIBUJANTE LO PINTA EN LA CAPA DE ANCLAS, EN 253 ----
+check("la rosca y la tuerca van en color 253",
+      "public const int ColorRoscaYTuerca = 253;" in _CAD
+      and "color: PlacaBaseCapas.ColorRoscaYTuerca);" in _DELEV)
+
+check("y en la capa de ANCLAS, la misma del resto del ancla",
+      'public const string Anclas = "ANCLAS";' in _CAD
+      and "Polilinea(a.Tuerca, PlacaBaseCapas.Anclas,\n                      color:" in _DELEV
+      and "foreach (var hebra in a.Rosca)" in _DELEV
+      and "foreach (var arista in a.AristasTuerca)" in _DELEV)
+
+#  La previa pinta lo mismo: si no, se captura mirando una cosa y sale otra.
+check("y la previa tambien las pinta, en su propio gris",
+      "var geoRosca = new GeometryGroup" in _PREV
+      and "AgregarPoligonal(geoRosca, a.Tuerca, null);" in _PREV
+      and "foreach (var hebra in a.Rosca)" in _PREV)
 
 
 print("\n" + "=" * 78)

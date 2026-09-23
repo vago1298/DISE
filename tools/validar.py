@@ -6926,10 +6926,59 @@ def v18_planta_autocad() -> None:
     check("si las patas del doblez se encimarian, una ancla se sube",
           "public static double DesfaseDeLasPatas(" in elev)
     # Y el ancla se dibuja con el diametro de la tabla, no con una linea de eje.
+    delev = leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs"))
+
     check("el ancla se dibuja con el grueso real de su barra",
-          "Diametro: d);" in elev
-          and "((dynamic)vastago).ConstantWidth = a.Diametro;"
-          in leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.Elevacion.cs")))
+          "Diametro: d," in elev
+          and "((dynamic)vastago).ConstantWidth = a.Diametro;" in delev)
+
+    # ------------------------------------------------------------------
+    # EL ENROSCADO DEL ANCLA Y SU TUERCA
+    # ------------------------------------------------------------------
+    # Pedido por el usuario: «que las anclas las dibuje con su enroscado al inicio y con su
+    # tuerca, en color 253 en la capa de anclas, la tuerca debera ser adecuada para el tamaño
+    # del ancla».
+    #
+    # La tuerca YA era proporcional -2.5 diametros de ancho por 0.75 de alto- pero era un
+    # rectangulo pelado, y el vastago acababa a ras de ella: el detalle no decia que parte del
+    # ancla va roscada.
+    check("el ancla lleva su enroscado y su tuerca con aristas",
+          "public static double[][] Roscar(" in elev
+          and "public static double[][] AristasDeLaTuerca(" in elev
+          and "double[][] Rosca, double[][] AristasTuerca)" in elev
+          and "Rosca: Roscar(x, yPunta, d, escala)," in elev)
+
+    # LO QUE NO PUEDE CAMBIAR POR DIBUJAR LA ROSCA es el ancla: la rosca va por ENCIMA de la
+    # tuerca -arranca en yPunta, que es donde acaba el vastago macizo-, asi que el gasto, el
+    # fondo y el ahogo se quedan como estaban. Si entrara en el gasto, el ancla se alargaria
+    # por dibujar su rosca: el dibujo cambiando el dato.
+    check("y la rosca no alarga el ancla: el gasto sigue siendo el de antes",
+          "var gasto = espesorPlaca + Math.Max(0, grout) + altoTuerca;" in elev)
+
+    # Las proporciones, en DIAMETROS y con nombre: una rosca medida en centimetros se veria
+    # bien en un ancla de 3/4" y ridicula en una de 2".
+    check("las medidas de la rosca son proporcionales a la barra",
+          "private const double RoscaEnDiametros = 2.5;" in elev
+          and "private const double PasoEnDiametros = 0.5;" in elev
+          # Y un tope de dientes, para que una barra minuscula no dispare miles de vertices.
+          and "private const int MaxDientes = 60;" in elev)
+
+    # EL COLOR VA EN LA ENTIDAD, no en la capa: el ancla entera sigue en ANCLAS -se apaga de
+    # una vez- y dentro de ella la rosca y la tuerca llevan el 253, porque el vastago va rojo y
+    # lleno y encima de el unas lineas finas en el mismo rojo son una mancha.
+    check("la rosca y la tuerca van en 253, dentro de la capa de anclas",
+          "public const int ColorRoscaYTuerca = 253;" in pbc
+          and "color: PlacaBaseCapas.ColorRoscaYTuerca);" in delev
+          and "foreach (var hebra in a.Rosca)" in delev
+          # El parametro de color se agrego con PorCapa por omision: el resto del detalle sigue
+          # yendo por capa sin tocar una sola llamada.
+          and "bool cerrada = true, int color = PorCapa)" in pbd)
+
+    # Y LA PREVIA PINTA LO MISMO, en su propio gris: si no, se captura mirando una cosa y sale
+    # otra.
+    check("y la previa de la hoja tambien las pinta",
+          "var geoRosca = new GeometryGroup" in pbw
+          and "foreach (var hebra in a.Rosca)" in pbw)
     # Y el ejemplo ya no la escribe, o ensenaria un ancla de 45 sin casilla donde verla.
     check("el ejemplo ya no escribe la longitud total del ancla",
           "LongAnclaXCm = 45" not in pbfilas and "LongAnclaYCm = 45" not in pbfilas)

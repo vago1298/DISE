@@ -104,9 +104,18 @@ public static class ElevacionPlacaBase
     /// su espesor y no como una línea de eje. Sale del diámetro de la tabla —«3/4"»— convertido a
     /// centímetros en <c>PlacaBaseRow.AFormatoCad</c>.
     /// </param>
+    /// <param name="Rosca">
+    /// El <b>enroscado</b> que asoma por encima de la tuerca: sus dos flancos, el remate de la
+    /// punta y las dos hebras del hilo. Poligonales <b>abiertas</b>, todas de la misma familia
+    /// porque se dibujan igual. Vacío si no hay rosca que dibujar.
+    /// </param>
+    /// <param name="AristasTuerca">
+    /// Las dos aristas verticales de la tuerca: es lo que la hace leerse como una <b>tuerca
+    /// hexagonal de frente</b> y no como una caja. Dos líneas de dos puntos.
+    /// </param>
     public readonly record struct AnclaDeCanto(
         double[] Vastago, double[] Tuerca, double[] Arandela, double[]? Remate, double Ahogo,
-        double Diametro)
+        double Diametro, double[][] Rosca, double[][] AristasTuerca)
     {
         /// <summary>¿Lleva doblez en el extremo?</summary>
         public bool ConDoblez => Vastago.Length >= 6;
@@ -583,7 +592,144 @@ public static class ElevacionPlacaBase
             Ahogo: yPlaca - Math.Max(0, grout) - yFondo,
 
             // Y el grueso real de la barra viaja con ella: lo pintan el dibujante y la previa.
-            Diametro: d);
+            Diametro: d,
+
+            // ═════════════════════════════════════════════════════════════════════════════════
+            // EL ENROSCADO Y LAS ARISTAS DE LA TUERCA.
+            //
+            // Los pidió el usuario: «necesito que las anclas las dibuje con su enroscado al inicio
+            // y con su tuerca, la tuerca deberá ser adecuada para el tamaño del ancla». La tuerca
+            // ya salía a la medida de la barra —2.5 diámetros de ancho por 0.75 de alto—, pero era
+            // un rectángulo pelado y el vástago acababa a ras de ella, así que el detalle no
+            // enseñaba qué parte del ancla va roscada.
+            //
+            // LA ROSCA VA POR ENCIMA DE LA TUERCA y no cambia nada de lo de abajo: ni el gasto, ni
+            // el fondo, ni el ahogo. Es lo que asoma del perno una vez apretada la tuerca, que es
+            // lo que se dibuja en un detalle y lo que se pide en obra. Si entrara en el gasto, el
+            // ancla se alargaría por dibujar su rosca, y eso sería el dibujo cambiando el dato.
+            // ═════════════════════════════════════════════════════════════════════════════════
+            Rosca: Roscar(x, yPunta, d, escala),
+
+            AristasTuerca: AristasDeLaTuerca(
+                x, yArriba, yArriba + altoTuerca, anchoTuerca));
+    }
+
+    // ======================================================================
+    //  EL ENROSCADO DEL ANCLA
+    // ======================================================================
+    //
+    //  Las proporciones van con nombre y en DIÁMETROS, como el resto de la pieza: una rosca
+    //  medida en centímetros se vería bien en un ancla de 3/4" y ridícula en una de 2".
+
+    /// <summary>Lo que asoma la rosca por encima de la tuerca, en diámetros.</summary>
+    /// <remarks>
+    /// Dos diámetros y medio: lo que un perno asoma de su tuerca cuando está bien apretado, con
+    /// hilos de sobra para verse. Más corto no se lee como rosca, y más largo parece un ancla que
+    /// se quedó sin apretar.
+    /// </remarks>
+    private const double RoscaEnDiametros = 2.5;
+
+    /// <summary>Y el mínimo absoluto, en cm, para que se vea al plotear a 1:10.</summary>
+    /// <remarks>Es el mismo criterio que los mínimos de la tuerca y la arandela.</remarks>
+    private const double RoscaMinimaCm = 1.5;
+
+    /// <summary>El paso del hilo, en diámetros.</summary>
+    /// <remarks>
+    /// <b>No es el paso real de la rosca</b>, y no puede serlo: el de un ancla de 3/8" son 1.6 mm,
+    /// que a 1:10 es una décima de milímetro en el papel —una mancha—. Es la representación
+    /// convencional del hilo, con el paso abierto para que se lea. Lo que sí es real es el
+    /// <b>ancho</b>: el zigzag va de flanco a flanco de la barra.
+    /// </remarks>
+    private const double PasoEnDiametros = 0.5;
+
+    /// <summary>Cuántos dientes se dibujan como máximo.</summary>
+    /// <remarks>
+    /// Tope de seguridad, no un criterio de dibujo: con un diámetro minúsculo y una rosca larga, el
+    /// zigzag saldría con miles de vértices y el detalle pesaría más que el plano entero.
+    /// </remarks>
+    private const int MaxDientes = 60;
+
+    /// <summary>
+    /// El enroscado que asoma sobre la tuerca: dos flancos, el remate de la punta y dos hebras.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Dos hebras desfasadas medio paso.</b> Una sola da un zigzag, que se lee como un fuelle;
+    /// dos cruzadas es como se ve un hilo de verdad —la parte de delante subiendo y la de detrás
+    /// bajando— y es lo que enseñó el usuario en su croquis.
+    /// </para>
+    /// <para>
+    /// El vástago macizo <b>acaba</b> en la cara de arriba de la tuerca, así que aquí se dibujan
+    /// también los dos flancos: sin ellos la barra se cortaría de golpe y la rosca flotaría encima.
+    /// </para>
+    /// </remarks>
+    /// <param name="yBase">La cara de arriba de la tuerca, donde arranca lo que asoma.</param>
+    public static double[][] Roscar(double x, double yBase, double diametro, double escala)
+    {
+        var d = diametro > 0 ? diametro : 1.0 * escala;
+
+        var largo = Math.Max(RoscaEnDiametros * d, RoscaMinimaCm * escala);
+        var paso = Math.Max(PasoEnDiametros * d, 1e-9);
+
+        var dientes = (int)Math.Ceiling(largo / paso);
+
+        if (dientes < 2) { dientes = 2; }
+        if (dientes > MaxDientes) { dientes = MaxDientes; }
+
+        // El paso se reparte otra vez con los dientes que caben: así el último hilo acaba EN la
+        // punta y no a media altura, que es lo que delata un zigzag dibujado a ojo.
+        var h = largo / dientes;
+
+        var izq = x - (d / 2);
+        var der = x + (d / 2);
+        var yPunta = yBase + largo;
+
+        var hebraA = new List<double>();
+        var hebraB = new List<double>();
+
+        for (var i = 0; i <= dientes; i++)
+        {
+            var y = yBase + (i * h);
+
+            // Una arranca en el flanco izquierdo y la otra en el derecho, y las dos van alternando:
+            // ahí está el medio paso de desfase que produce el cruce.
+            var parIzquierda = i % 2 == 0;
+
+            hebraA.Add(parIzquierda ? izq : der);
+            hebraA.Add(y);
+
+            hebraB.Add(parIzquierda ? der : izq);
+            hebraB.Add(y);
+        }
+
+        return new[]
+        {
+            new[] { izq, yBase, izq, yPunta },
+            new[] { der, yBase, der, yPunta },
+            new[] { izq, yPunta, der, yPunta },
+            hebraA.ToArray(),
+            hebraB.ToArray(),
+        };
+    }
+
+    /// <summary>
+    /// Las dos aristas verticales de la tuerca, para que se lea como <b>hexagonal</b>.
+    /// </summary>
+    /// <remarks>
+    /// Una tuerca hexagonal de frente enseña tres caras, y lo que las separa son dos aristas a un
+    /// cuarto y a tres cuartos del ancho. Sin ellas el dibujo es una caja, que es lo que había, y
+    /// una caja sobre la placa se puede leer como una silleta o un dado de nivelación.
+    /// </remarks>
+    public static double[][] AristasDeLaTuerca(
+        double x, double yAbajo, double yArriba, double anchoTuerca)
+    {
+        var cuarto = anchoTuerca / 4;
+
+        return new[]
+        {
+            new[] { x - cuarto, yAbajo, x - cuarto, yArriba },
+            new[] { x + cuarto, yAbajo, x + cuarto, yArriba },
+        };
     }
 
     /// <summary>

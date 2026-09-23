@@ -257,7 +257,32 @@ public sealed partial class PlacaBaseDrawer
                 }
             }
 
-            Polilinea(a.Tuerca, PlacaBaseCapas.Anclas);
+            // ═════════════════════════════════════════════════════════════════════════════════
+            // LA TUERCA Y EL ENROSCADO, EN LA CAPA DE ANCLAS Y EN COLOR 253.
+            //
+            // Los pidió el usuario: «con su enroscado al inicio y con su tuerca, en color 253 en la
+            // capa de anclas». El color va en la ENTIDAD porque la capa es la misma: ahí está el
+            // ancla entera y se apaga de una vez, pero el vástago va rojo y lleno y estas piezas
+            // son líneas finas justo encima. En el mismo rojo se empastan con la barra.
+            //
+            // La tuerca lleva ahora sus dos ARISTAS: una tuerca hexagonal de frente enseña tres
+            // caras, y sin las aristas el dibujo es una caja, que se puede leer como una silleta.
+            // ═════════════════════════════════════════════════════════════════════════════════
+            Polilinea(a.Tuerca, PlacaBaseCapas.Anclas,
+                      color: PlacaBaseCapas.ColorRoscaYTuerca);
+
+            foreach (var arista in a.AristasTuerca)
+            {
+                Linea(arista[0], arista[1], arista[2], arista[3], PlacaBaseCapas.Anclas,
+                      PlacaBaseCapas.ColorRoscaYTuerca);
+            }
+
+            foreach (var hebra in a.Rosca)
+            {
+                Polilinea(hebra, PlacaBaseCapas.Anclas, cerrada: false,
+                          color: PlacaBaseCapas.ColorRoscaYTuerca);
+            }
+
             Linea(a.Arandela[0], a.Arandela[1], a.Arandela[2], a.Arandela[3], PlacaBaseCapas.Anclas);
 
             if (a.Remate is { } remate)

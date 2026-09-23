@@ -28,6 +28,22 @@ public static class PlacaBaseCapas
     public const string Anclas = "ANCLAS";
     public const int ColorAnclas = 1;
 
+    /// <summary>La <b>rosca y la tuerca</b> del ancla, en gris.</summary>
+    /// <remarks>
+    /// <para>
+    /// Lo pidió el usuario —«en color 253 en la capa de anclas»— y tiene su razón de dibujo: la
+    /// barra va en rojo y llena, y el enroscado son veinte líneas finas ahí mismo. En el mismo rojo
+    /// se empastan con el vástago y lo que se lee es un borrón; en gris se distingue la parte
+    /// roscada de la barra lisa, que es justo lo que el detalle tiene que decir.
+    /// </para>
+    /// <para>
+    /// Va como color de la ENTIDAD y no de la capa: la capa sigue siendo ANCLAS —ahí está el ancla
+    /// entera, y se apaga y se congela de una vez—, y dentro de ella estas piezas llevan el suyo.
+    /// Es lo mismo que ya se hace con los rayados, que van por capa con su color propio.
+    /// </para>
+    /// </remarks>
+    public const int ColorRoscaYTuerca = 253;
+
     /// <summary>El rotulado, los leaders y sus flechas. En verde.</summary>
     public const string Rotulos = "ROTULOS";
     public const int ColorRotulos = 3;
