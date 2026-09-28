@@ -12,6 +12,9 @@ echo.
 echo Convierte tu equipo en equipo de la empresa: licencia
 echo gratuita, sin fecha de vencimiento y con todos los modulos.
 echo.
+echo Si hay varios equipos registrados, abajo te va a preguntar
+echo cual quieres. Escribe el ID de la lista, o la palabra TODOS.
+echo.
 
 REM ---------- Localizar la raiz del proyecto ----------
 set "RAIZ=%~dp0"
@@ -27,8 +30,11 @@ if not exist "%RAIZ%server\.venv\Scripts\python.exe" goto :falta_instalar
 
 cd /d "%RAIZ%server"
 
+REM El script pregunta en pantalla cual equipo promover cuando hay varios, asi
+REM que aqui NO se redirige ni se canaliza su salida: si se hiciera, dejaria de
+REM ver una consola interactiva y volveria a rendirse sin dejarte elegir.
 ".venv\Scripts\python.exe" "scripts\hazme_permanente.py" %*
-if errorlevel 1 goto :error
+if errorlevel 1 goto :error_explicado
 
 echo.
 pause
@@ -38,6 +44,18 @@ exit /b 0
 REM ==========================================================
 REM  ERRORES
 REM ==========================================================
+
+REM El script de Python ya imprimio en pantalla el motivo y que hacer. Aqui solo
+REM se detiene la ventana para que se pueda leer. Antes este caso caia en :error
+REM y se tapaba con el mensaje generico de diagnostico.bat, que era lo unico que
+REM se llegaba a ver junto al 'presione una tecla para continuar'.
+:error_explicado
+echo.
+pause
+exit /b 1
+
+
+REM ---------- Fallos del entorno, antes de llegar al script ----------
 
 :no_proyecto
 echo.
