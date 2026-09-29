@@ -666,6 +666,100 @@ internal static class Programa
         Casi("y el muro quedo ya ajustado en el modelo",
             elMuro.Vertices.Max(p => p.Z), 2.60);
 
+        Console.WriteLine("\n[2g] Columnas: entre que niveles van");
+
+        // El error que Revit marca como imposible de ignorar: "Position of end cut planes has
+        // resulted in a slanted column without any geometry". Sale de crear la columna con la
+        // API de columna INCLINADA. La salida es colocarla por niveles.
+        var nivs = new List<NivelJson>
+        {
+            new() { Nombre = "Planta baja", ElevacionM = 0 },
+            new() { Nombre = "Nv-02", ElevacionM = 2.78 },
+            new() { Nombre = "Nv-03", ElevacionM = 5.56 }
+        };
+
+        var col = Colocacion.De(0, 2.78, nivs);
+
+        Igual("la base cae en Planta baja", col.NivelBase, "Planta baja");
+        Casi("sin desfase", col.DesfaseBaseM, 0);
+        Igual("la punta cae en Nv-02", col.NivelPunta, "Nv-02");
+        Casi("y tampoco se desfasa", col.DesfasePuntaM, 0);
+
+        // ETABS asigna la columna al nivel al que SUBE. Si se usara ese como base, la columna
+        // quedaria con la base por encima de la punta y sin geometria.
+        var alReves2 = Colocacion.De(2.78, 0, nivs);
+        Igual("da igual el orden en que vengan las cotas: la base es la de abajo",
+            alReves2.NivelBase, "Planta baja");
+        Igual("y la punta la de arriba", alReves2.NivelPunta, "Nv-02");
+
+        // Una columna que no arranca en un nivel exacto se ata con desfase.
+        var conDesfase = Colocacion.De(0.5, 2.78, nivs);
+        Igual("una columna que arranca a media altura se ata al nivel mas cercano",
+            conDesfase.NivelBase, "Planta baja");
+        Casi("con su desfase", conDesfase.DesfaseBaseM, 0.5);
+
+        // Vertical o inclinada.
+        Check("una columna a plomo se reconoce como vertical",
+            Colocacion.EsVertical(new BarraJson
+            {
+                P1 = P(1, 1, 0), P2 = P(1, 1, 3), Clase = ClasePieza.Columna
+            }));
+
+        Check("3 mm fuera de plomo sigue siendo vertical",
+            Colocacion.EsVertical(new BarraJson
+            {
+                P1 = P(1, 1, 0), P2 = P(1.003, 1, 3), Clase = ClasePieza.Columna
+            }),
+            "un modelo real no tiene columnas perfectas al milimetro");
+
+        Check("una diagonal de verdad no es vertical",
+            !Colocacion.EsVertical(new BarraJson
+            {
+                P1 = P(0, 0, 0), P2 = P(3, 0, 3), Clase = ClasePieza.Diagonal
+            }));
+
+        Check("una barra horizontal tampoco",
+            !Colocacion.EsVertical(new BarraJson
+            {
+                P1 = P(0, 0, 3), P2 = P(5, 0, 3), Clase = ClasePieza.Trabe
+            }));
+
+        Igual("sin niveles no se inventa ninguno",
+            Colocacion.De(0, 3, null).NivelBase, "");
+
+        Console.WriteLine("\n[2h] Losas inclinadas: se conservan con su pendiente");
+
+        // Lo que se pidio: una losa de entrepiso inclinada modelada en el calculo debe salir
+        // inclinada, no aplanada.
+        var rampaLosa = new List<PuntoJson>
+            { P(0, 0, 3), P(6, 0, 3), P(6, 5, 4), P(0, 5, 4) };   // 1 m de desnivel
+
+        var forma = Losas.Preparar(rampaLosa);
+
+        Casi("se apoya en la cota mas baja", forma.ZBaseM, 3);
+        Casi("y el desnivel es de un metro", forma.DesnivelM, 1);
+        Check("no es plana", !forma.EsPlana);
+        Igual("hay un desfase por vertice", forma.DesfasesM.Count, 4);
+        Check("los desfases son todos positivos", forma.DesfasesM.All(d => d >= 0),
+            string.Join(", ", forma.DesfasesM));
+        Check("el contorno de apoyo es horizontal",
+            forma.EnPlanta.All(p => Math.Abs(p.Z - 3) < 1e-12));
+
+        // El emparejado por posicion en planta, que es lo que evita poner la pendiente al
+        // reves: el editor de Revit devuelve sus vertices en el orden que quiere.
+        Casi("el vertice de la esquina baja no se sube", Losas.DesfaseDe(0, 0, forma), 0);
+        Casi("y el de la esquina alta sube un metro", Losas.DesfaseDe(6, 5, forma), 1);
+        Casi("un vertice que no existe no se toca", Losas.DesfaseDe(99, 99, forma), 0);
+
+        // Una losa plana de verdad no se edita: hacerlo solo agrega subelementos.
+        var planaDeVerdad = Losas.Preparar(new List<PuntoJson>
+            { P(0, 0, 3), P(5, 0, 3.001), P(5, 5, 3), P(0, 5, 3) });
+
+        Check("un milimetro de ruido no cuenta como inclinacion", planaDeVerdad.EsPlana,
+            "desnivel=" + planaDeVerdad.DesnivelM);
+
+        Igual("una losa sin vertices no revienta", Losas.Preparar(null).EnPlanta.Count, 0);
+
         Console.WriteLine("\n[2c] Agrupar los errores por causa");
 
         // El caso real: una importacion que falla por UN motivo que afecta a cientos de

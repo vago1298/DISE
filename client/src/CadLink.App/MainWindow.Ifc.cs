@@ -297,23 +297,16 @@ public partial class MainWindow : Window
                         CultureInfo.InvariantCulture, decision.Aviso, el.Etiqueta));
                 }
 
-                // Una LOSA se aplana a una sola cota. Floor.Create exige el contorno plano y
-                // paralelo a XY, y un contorno que viene de una malla de ETABS trae vertices
-                // que difieren milimetros en Z: para Revit eso ya no es plano, y contesta que
-                // "each curve loop is not planar".
-                if (decision.Clase == ClasePieza.Losa)
-                {
-                    var (aplanado, _, desvio) = Contornos.AHorizontal(contorno);
-                    contorno = Contornos.SinRepetidos(aplanado);
-
-                    if (desvio > Contornos.ToleranciaPlanoM)
-                    {
-                        salida.Avisos.Add(
-                            $"La losa «{el.Etiqueta}» tenia {desvio * 100:0.#} cm de desnivel "
-                            + "entre sus vertices; se aplano a su cota mas alta porque Revit no "
-                            + "admite un suelo alabeado.");
-                    }
-                }
+                // El contorno se manda con sus cotas REALES, sin aplanar.
+                //
+                // Antes se aplanaba aqui porque Floor.Create solo acepta contornos paralelos a
+                // XY. Pero aplanar PIERDE la pendiente, y una losa de entrepiso inclinada
+                // modelada en el calculo tiene que salir inclinada.
+                //
+                // Ahora el complemento lo hace en dos pasos: crea la losa plana en la cota mas
+                // baja y despues sube cada vertice a su cota con el editor de forma. Para eso
+                // necesita las cotas, asi que aqui no se tocan.
+                contorno = Contornos.SinRepetidos(contorno);
 
                 var pano = new PanoJson
                 {

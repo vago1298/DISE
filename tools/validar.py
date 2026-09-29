@@ -15466,15 +15466,77 @@ def v26_plugin_revit() -> None:
     check("existe el estabilizador de etiquetas",
           os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Contornos.cs")))
 
-    # ---- Losas: contorno plano y paralelo a XY ----
-    check("el contorno de las losas se aplana",
-          "Contornos.AHorizontal(" in parcial,
-          "Floor.Create exige el contorno plano; una malla de ETABS trae milimetros de "
-          "diferencia en Z y Revit lo rechaza")
+    # ---- Losas inclinadas: la pendiente NO se pierde al exportar ----
+    #
+    # Floor.Create solo acepta contornos planos y paralelos a XY, pero aplanar al exportar
+    # PIERDE la pendiente: una losa de entrepiso inclinada modelada en el calculo tiene que
+    # salir inclinada. El aplanado tiene que ocurrir en el complemento, que crea la losa plana
+    # y despues sube cada vertice con el editor de forma.
+    check("la exportacion NO aplana las losas, para no perder la pendiente",
+          "Contornos.AHorizontal(" not in parcial,
+          "aplanar aqui deja la losa horizontal para siempre")
 
-    check("y se quitan los repetidos que aparecen al aplanar",
+    check("se quitan los vertices repetidos del contorno",
           "Contornos.SinRepetidos(" in parcial,
-          "dos vertices que solo diferian en Z pasan a ser el mismo punto")
+          "un lado de largo cero hace que Revit rechace el contorno entero")
+
+    check("el complemento prepara la losa conservando su desnivel",
+          "Losas.Preparar(" in modelador)
+
+    check("y sube cada vertice con el editor de forma de la losa",
+          "SlabShapeEditor" in modelador and "ModifySubElement" in modelador,
+          "es lo unico que permite una losa inclinada o alabeada en Revit")
+
+    check("los vertices se emparejan por posicion, no por indice",
+          "Losas.DesfaseDe(" in modelador,
+          "el editor devuelve sus vertices en otro orden; por indice la pendiente sale al reves")
+
+    check("si falla el editor, la losa se queda plana en vez de perderse",
+          "La losa ya existe y esta plana" in modelador)
+
+    # ---- Columnas: por niveles, no por su linea ----
+    #
+    # Crear una columna vertical con la API de columna INCLINADA produce el error que Revit
+    # marca como imposible de ignorar: "Position of end cut planes has resulted in a slanted
+    # column without any geometry". Y como no se puede ignorar, al cancelar se deshace TODA la
+    # transaccion: el informe dice 451 creadas y el modelo queda vacio.
+    check("las columnas verticales se colocan por niveles",
+          "Colocacion.EsVertical(b)" in modelador
+          and "StructuralType.Column)" in modelador,
+          "por su linea sale el error de los planos de corte, que no se puede ignorar")
+
+    check("y se atan a nivel de base y de punta con sus desfases",
+          "FAMILY_BASE_LEVEL_PARAM" in modelador
+          and "FAMILY_TOP_LEVEL_PARAM" in modelador,
+          "sin esto la columna se queda con la altura del tipo, no la del calculo")
+
+    check("la base es la cota de ABAJO, aunque ETABS asigne el nivel de arriba",
+          "Math.Min(b.P1.Z, b.P2.Z)" in modelador,
+          "con el nivel al que sube como base, la columna queda del reves y sin geometria")
+
+    check("existe el calculo de la colocacion",
+          os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs")))
+
+    # ---- Que el commit no se pueda abortar ----
+    check("hay manejador de fallos para que el commit no lo aborte un cuadro de Revit",
+          os.path.exists(ruta("client/src/CadLink.Revit/SinCuadros.cs")))
+
+    check("y se le pasa a la transaccion",
+          "SetFailuresPreprocessor(" in modelador and "SetFailureHandlingOptions(" in modelador,
+          "sin esto, un error 'cannot be ignored' deshace la importacion entera al cancelar")
+
+    if os.path.exists(ruta("client/src/CadLink.Revit/SinCuadros.cs")):
+        sc = leer(ruta("client/src/CadLink.Revit/SinCuadros.cs"))
+
+        check("silencia los avisos", "DeleteWarning(" in sc)
+        check("y borra el elemento que da un error irreparable, para salvar el resto",
+              "DeleteElements(" in sc)
+        check("pero lo CUENTA, para decirlo en el informe",
+              "ElementosBorrados" in sc and "AvisosSilenciados" in sc,
+              "borrar en silencio seria peor que el problema")
+        check("y no devuelve ProceedWithCommit cuando no resolvio nada",
+              "FailureProcessingResult.Continue" in sc,
+              "devolverlo siempre puede meter a Revit en un bucle")
 
     # ---- Muros: bajo la cadena y al pano de los castillos ----
     check("los muros se ajustan antes de modelarlos",

@@ -354,6 +354,7 @@ public static class AjusteDeMuros
     private static double Distancia(double x1, double y1, double x2, double y2) =>
         Math.Sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)));
 
+
     /// <summary>Ajusta TODOS los muros del modelo, en su sitio, y devuelve el resumen.</summary>
     public static List<string> AplicarATodos(ModeloJson modelo, OpcionesMuro? op = null)
     {

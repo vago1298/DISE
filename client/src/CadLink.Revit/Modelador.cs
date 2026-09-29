@@ -47,6 +47,25 @@ internal static class Modelador
         using var t = new Transaction(doc, "Importar modelo de CadLink");
         t.Start();
 
+        // ---- Que el commit NO se pueda abortar ----
+        //
+        // Sin esto, Revit levanta su propio cuadro al confirmar. Los avisos se podrian
+        // descartar, pero un error marcado "cannot be ignored" -por ejemplo
+        // "Position of end cut planes has resulted in a slanted column without any geometry"-
+        // deja el cuadro con el OK apagado y solo Cancel, y al cancelar SE DESHACE TODA LA
+        // TRANSACCION. El informe dice que se crearon cuatrocientas cincuenta piezas y en el
+        // modelo no aparece ninguna.
+        //
+        // Con este manejador los avisos se silencian, y el elemento que causa un error se
+        // borra para que el resto SI se confirme. Lo que se silencio y lo que se borro se
+        // cuenta y se dice en el informe: no se esconde nada, se evita perderlo todo.
+        var manejador = new SinCuadros();
+        var opciones = t.GetFailureHandlingOptions();
+
+        opciones.SetFailuresPreprocessor(manejador);
+        opciones.SetClearAfterRollback(true);
+        t.SetFailureHandlingOptions(opciones);
+
         try
         {
             var niveles = CrearNivelesQueFaltan(doc, plan, r);
@@ -71,6 +90,24 @@ internal static class Modelador
             }
 
             t.Commit();
+
+            if (manejador.AvisosSilenciados > 0)
+            {
+                r.Avisos.Add($"Revit levanto {manejador.AvisosSilenciados} aviso(s) al "
+                             + "confirmar y se descartaron para no interrumpir la importacion.");
+            }
+
+            if (manejador.ElementosBorrados > 0)
+            {
+                r.Errores.Add($"«Revit»: {manejador.ElementosBorrados} elemento(s) se borraron "
+                              + "porque Revit dio un error que no se puede ignorar. "
+                              + "El resto se importo igual.");
+            }
+
+            foreach (var m in manejador.Motivos.Take(4))
+            {
+                r.Avisos.Add("Revit dijo: " + m);
+            }
         }
         catch (Exception e)
         {
@@ -197,16 +234,48 @@ internal static class Modelador
             doc.Regenerate();
         }
 
-        var linea = Line.CreateBound(Unidades.Punto(b.P1), Unidades.Punto(b.P2));
+        FamilyInstance inst;
 
-        var comoQue = b.Clase switch
+        if (b.Clase == ClasePieza.Columna && Colocacion.EsVertical(b))
         {
-            ClasePieza.Columna => StructuralType.Column,
-            ClasePieza.Diagonal => StructuralType.Brace,
-            _ => StructuralType.Beam
-        };
+            // ---- La columna vertical se coloca POR NIVELES, no por su linea ----
+            //
+            // Pasarle la linea de sus dos extremos usa la API de columna INCLINADA, y de ahi
+            // sale el error que Revit marca como imposible de ignorar:
+            //
+            //   "Position of end cut planes has resulted in a slanted column without any
+            //    geometry."
+            //
+            // Ademas ETABS asigna la columna al nivel al que SUBE, no al que arranca, asi que
+            // usando ese nivel como base la columna quedaba con la base por encima de la punta.
+            //
+            // Asi se modela una columna en Revit a mano: en su punto, con nivel de base y de
+            // punta y sus desfases.
+            var abajo = Math.Min(b.P1.Z, b.P2.Z);
+            var punto = new XYZ(
+                Unidades.AInternas(b.P1.X), Unidades.AInternas(b.P1.Y), Unidades.AInternas(abajo));
 
-        var inst = doc.Create.NewFamilyInstance(linea, simbolo, nivel, comoQue);
+            inst = doc.Create.NewFamilyInstance(punto, simbolo, nivel, StructuralType.Column);
+
+            AtarAColumna(doc, inst, b, nivel);
+        }
+        else
+        {
+            var linea = Line.CreateBound(Unidades.Punto(b.P1), Unidades.Punto(b.P2));
+
+            var comoQue = b.Clase switch
+            {
+                // Una columna que NO esta a plomo se sigue creando por su linea, porque no hay
+                // otra forma de darle su inclinacion. Es el caso donde puede volver a salir el
+                // error de los planos de corte, y por eso va dentro del try de cada pieza: si
+                // falla, falla ella sola y se dice.
+                ClasePieza.Columna => StructuralType.Column,
+                ClasePieza.Diagonal => StructuralType.Brace,
+                _ => StructuralType.Beam
+            };
+
+            inst = doc.Create.NewFamilyInstance(linea, simbolo, nivel, comoQue);
+        }
 
         // El giro de la seccion. En Revit es el parametro "Rotacion de la seccion", en
         // RADIANES; en el modelo viene en grados.
@@ -253,9 +322,100 @@ internal static class Modelador
                 + "Cambia la categoria de esta seccion en el cuadro de mapeo.");
         }
 
-        var lazo = CurveLoop.Create(curvas);
+        // ---- La losa, conservando su pendiente ----
+        //
+        // Floor.Create solo acepta un contorno PLANO y paralelo a XY, asi que una losa
+        // inclinada no se puede crear de una vez. Pero aplanarla y dejarla asi pierde el dato:
+        // una losa de entrepiso con pendiente modelada en el calculo tiene que salir con su
+        // pendiente.
+        //
+        // Se hace en dos pasos: plana en su cota mas baja, y despues cada vertice a la suya con
+        // el editor de forma de la losa.
+        var forma = Losas.Preparar(p.Vertices);
 
-        return Floor.Create(doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id);
+        if (forma.EnPlanta.Count < 3)
+        {
+            throw new InvalidOperationException(
+                "El contorno se queda en menos de tres vertices distintos.");
+        }
+
+        var enPlanta = new List<Curve>();
+
+        for (var i = 0; i < forma.EnPlanta.Count; i++)
+        {
+            var a = Unidades.Punto(forma.EnPlanta[i]);
+            var z = Unidades.Punto(forma.EnPlanta[(i + 1) % forma.EnPlanta.Count]);
+
+            if (a.DistanceTo(z) >= Unidades.AInternas(0.001))
+            {
+                enPlanta.Add(Line.CreateBound(a, z));
+            }
+        }
+
+        if (enPlanta.Count < 3)
+        {
+            throw new InvalidOperationException(
+                "El contorno se queda en menos de tres lados al quitar los de largo cero.");
+        }
+
+        var lazo = CurveLoop.Create(enPlanta);
+        var piso = Floor.Create(doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id);
+
+        if (!forma.EsPlana)
+        {
+            LevantarVertices(doc, piso, forma);
+        }
+
+        return piso;
+    }
+
+    /// <summary>Sube cada vertice de la losa a su cota real.</summary>
+    /// <remarks>
+    /// <para>
+    /// Hay que regenerar antes: el editor de forma no existe hasta que Revit ha construido la
+    /// losa.
+    /// </para>
+    /// <para>
+    /// Y los vertices se emparejan por su POSICION EN PLANTA, no por indice: el editor devuelve
+    /// los suyos en el orden que quiere, y emparejarlos por indice pondria la pendiente al
+    /// reves.
+    /// </para>
+    /// <para>
+    /// Si algo falla, la losa se queda PLANA en vez de perderse. Una losa horizontal que se
+    /// corrige a mano es mejor que ninguna losa.
+    /// </para>
+    /// </remarks>
+    private static void LevantarVertices(Document doc, Floor piso, FormaDeLosa forma)
+    {
+        try
+        {
+            doc.Regenerate();
+
+            var editor = piso.SlabShapeEditor;
+
+            if (editor is null)
+            {
+                return;
+            }
+
+            editor.ResetSlabShape();
+            doc.Regenerate();
+
+            foreach (SlabShapeVertex v in editor.SlabShapeVertices)
+            {
+                var d = Losas.DesfaseDe(
+                    Unidades.AMetros(v.Position.X), Unidades.AMetros(v.Position.Y), forma);
+
+                if (Math.Abs(d) > 1e-6)
+                {
+                    editor.ModifySubElement(v, Unidades.AInternas(d));
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // La losa ya existe y esta plana. Se deja asi.
+        }
     }
 
     /// <summary>El contorno del pano como curvas cerradas.</summary>
@@ -287,6 +447,40 @@ internal static class Modelador
         }
 
         return curvas;
+    }
+
+    /// <summary>Ata la columna a su nivel de base y su nivel de punta, con sus desfases.</summary>
+    /// <remarks>
+    /// Es lo que le da altura. Sin esto la columna se queda con la altura por omision del tipo
+    /// y no con la del modelo de calculo.
+    /// </remarks>
+    private static void AtarAColumna(Document doc, FamilyInstance inst, BarraJson b, Level nivel)
+    {
+        var deRevit = new FilteredElementCollector(doc)
+            .OfClass(typeof(Level))
+            .Cast<Level>()
+            .ToList();
+
+        var comoJson = deRevit
+            .Select(n => new NivelJson
+            {
+                Nombre = n.Name ?? string.Empty,
+                ElevacionM = Unidades.AMetros(n.Elevation)
+            })
+            .ToList();
+
+        var donde = Colocacion.De(b.P1.Z, b.P2.Z, comoJson);
+
+        var nBase = deRevit.FirstOrDefault(n => n.Name == donde.NivelBase) ?? nivel;
+        var nPunta = deRevit.FirstOrDefault(n => n.Name == donde.NivelPunta) ?? nivel;
+
+        inst.get_Parameter(BuiltInParameter.FAMILY_BASE_LEVEL_PARAM)?.Set(nBase.Id);
+        inst.get_Parameter(BuiltInParameter.FAMILY_BASE_LEVEL_OFFSET_PARAM)
+            ?.Set(Unidades.AInternas(donde.DesfaseBaseM));
+
+        inst.get_Parameter(BuiltInParameter.FAMILY_TOP_LEVEL_PARAM)?.Set(nPunta.Id);
+        inst.get_Parameter(BuiltInParameter.FAMILY_TOP_LEVEL_OFFSET_PARAM)
+            ?.Set(Unidades.AInternas(donde.DesfasePuntaM));
     }
 
     // ==================================================================
