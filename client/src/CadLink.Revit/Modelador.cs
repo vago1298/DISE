@@ -231,12 +231,26 @@ internal static class Modelador
 
         var curvas = Contorno(p);
 
-        if (p.Clase == ClasePieza.Muro)
+        // Se mira la categoria del TIPO ELEGIDO, no la clase que trae el modelo. El usuario
+        // puede cambiar la categoria en el cuadro -un paño que ETABS trae como muro puede
+        // tener que ser un suelo-, y si aqui se decidiera por la clase, esa eleccion se
+        // ignoraria y se llamaria a la API equivocada.
+        if (paso.Tipo!.Categoria == CategoriaRevit.Muro)
         {
             // Wall.Create con el CONTORNO, no con una linea y una altura: un pano de muro de
             // ETABS puede ser cualquier poligono, y con la version de linea mas altura se
             // perderia su forma en cuanto no sea un rectangulo.
             return Wall.Create(doc, curvas, tipoId, nivel.Id, structural: true);
+        }
+
+        if (paso.Tipo.Categoria != CategoriaRevit.Piso)
+        {
+            // Una categoria que no sabe hacer un paño. Se dice en vez de dejar que Revit
+            // conteste algo incomprensible.
+            throw new InvalidOperationException(
+                "El tipo elegido es de " + Categorias.Nombre(paso.Tipo.Categoria).ToLowerInvariant()
+                + ", y un paño solo se puede modelar como muro o como suelo. "
+                + "Cambia la categoria de esta seccion en el cuadro de mapeo.");
         }
 
         var lazo = CurveLoop.Create(curvas);

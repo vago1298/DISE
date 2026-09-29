@@ -15454,6 +15454,85 @@ def v26_plugin_revit() -> None:
     check("existe el agrupador",
           os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Agrupador.cs")))
 
+    # ---- Etiquetas: un modelo sin piers no puede colapsar los muros ----
+    #
+    # El lector pone el PIER como etiqueta del muro. Sin piers asignados, todos los muros
+    # quedan con la etiqueta vacia, la llave de todos resulta «CadLink|Muro||Story1» y el
+    # planificador modela uno y descarta el resto con un aviso por cada uno.
+    check("las etiquetas se estabilizan antes de armar la llave",
+          parcial.count("Etiquetas.Estable(") >= 2,
+          "hacen falta en barras Y en panos; sin eso un modelo sin piers pierde muros")
+
+    check("existe el estabilizador de etiquetas",
+          os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Contornos.cs")))
+
+    # ---- Losas: contorno plano y paralelo a XY ----
+    check("el contorno de las losas se aplana",
+          "Contornos.AHorizontal(" in parcial,
+          "Floor.Create exige el contorno plano; una malla de ETABS trae milimetros de "
+          "diferencia en Z y Revit lo rechaza")
+
+    check("y se quitan los repetidos que aparecen al aplanar",
+          "Contornos.SinRepetidos(" in parcial,
+          "dos vertices que solo diferian en Z pasan a ser el mismo punto")
+
+    # ---- Muros: bajo la cadena y al pano de los castillos ----
+    check("los muros se ajustan antes de modelarlos",
+          "AjusteDeMuros.AplicarATodos(" in parcial,
+          "sin esto el muro ocupa el sitio de su cadena y de sus castillos, y Revit avisa "
+          "'One element is completely inside another' una vez por solape")
+
+    ajuste = ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")
+    check("existe el ajuste de muros", os.path.exists(ajuste))
+
+    if os.path.exists(ajuste):
+        aj = leer(ajuste)
+
+        check("baja el muro por el peralte de lo que va encima",
+              "PeralteDeLoQueVaEncima" in aj)
+
+        check("y lo recorta medio castillo por punta",
+              "MedioCastilloEn" in aj and "MedioAncho" in aj)
+
+        check("solo ajusta panos rectangulares y verticales",
+              "ComoRecto" in aj,
+              "recortar a ciegas un pano de forma libre es peor que no tocarlo")
+
+        check("y no deja muros de altura o largo negativos",
+              "0.05" in aj,
+              "si la cadena se come el muro, se deja como estaba")
+
+    # ---- La categoria la elige el usuario ----
+    vista = leer(ruta("client/src/CadLink.Revit.Nucleo/VistaMapeo.cs"))
+
+    check("el cuadro ofrece TODAS las categorias, no solo la que toca por la clase",
+          "Enum.GetValues<CategoriaRevit>()" in vista,
+          "el usuario tiene que poder corregir una seccion mal clasificada en el calculo")
+
+    check("cambiar de categoria repuebla las familias",
+          "RepoblarFamilias" in vista)
+
+    check("el mapeo guarda la categoria ELEGIDA",
+          "public CategoriaRevit Categoria" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/Mapeo.cs")),
+          "deducirla de la clase borraba la eleccion en silencio")
+
+    check("y el mapeo busca el tipo por la categoria guardada",
+          "PorNombre(f.Categoria" in leer(ruta("client/src/CadLink.Revit.Nucleo/Mapeo.cs")))
+
+    check("el modelador decide muro o suelo por la categoria del TIPO, no por la clase",
+          "paso.Tipo!.Categoria == CategoriaRevit.Muro" in modelador,
+          "decidir por la clase ignoraria la categoria que eligio el usuario")
+
+    check("y avisa si la categoria elegida no puede hacer un pano",
+          "solo se puede modelar como muro o como suelo" in modelador)
+
+    ventana = ruta("client/src/CadLink.Revit/VentanaMapeo.xaml")
+
+    if os.path.exists(ventana):
+        check("el cuadro tiene columna de categoria",
+              'Header="Categoría"' in leer(ventana))
+
     nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
     bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)
     catalogo = leer(ruta("client/src/CadLink.Revit.Nucleo/CatalogoRevit.cs"))

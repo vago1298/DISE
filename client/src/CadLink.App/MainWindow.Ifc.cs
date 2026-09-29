@@ -297,9 +297,30 @@ public partial class MainWindow : Window
                         CultureInfo.InvariantCulture, decision.Aviso, el.Etiqueta));
                 }
 
+                // Una LOSA se aplana a una sola cota. Floor.Create exige el contorno plano y
+                // paralelo a XY, y un contorno que viene de una malla de ETABS trae vertices
+                // que difieren milimetros en Z: para Revit eso ya no es plano, y contesta que
+                // "each curve loop is not planar".
+                if (decision.Clase == ClasePieza.Losa)
+                {
+                    var (aplanado, _, desvio) = Contornos.AHorizontal(contorno);
+                    contorno = Contornos.SinRepetidos(aplanado);
+
+                    if (desvio > Contornos.ToleranciaPlanoM)
+                    {
+                        salida.Avisos.Add(
+                            $"La losa «{el.Etiqueta}» tenia {desvio * 100:0.#} cm de desnivel "
+                            + "entre sus vertices; se aplano a su cota mas alta porque Revit no "
+                            + "admite un suelo alabeado.");
+                    }
+                }
+
                 var pano = new PanoJson
                 {
-                    Etiqueta = el.Etiqueta,
+                    // La etiqueta puede venir VACIA: el lector pone el pier como etiqueta del
+                    // muro, y un modelo sin piers asignados deja todos los muros sin ella.
+                    // Entonces la llave de todos resulta la misma y solo se modela uno.
+                    Etiqueta = Etiquetas.Estable(el.Etiqueta, contorno),
                     Clase = decision.Clase,
                     Nivel = el.Story,
                     Seccion = new SeccionJson
@@ -320,13 +341,16 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            var p1 = new PuntoJson { X = el.X1, Y = el.Y1, Z = el.Z1 };
+            var p2 = new PuntoJson { X = el.X2, Y = el.Y2, Z = el.Z2 };
+
             salida.Barras.Add(new BarraJson
             {
-                Etiqueta = el.Etiqueta,
+                Etiqueta = Etiquetas.Estable(el.Etiqueta, new[] { p1, p2 }),
                 Clase = APieza(el.Clase),
                 Nivel = el.Story,
-                P1 = new PuntoJson { X = el.X1, Y = el.Y1, Z = el.Z1 },
-                P2 = new PuntoJson { X = el.X2, Y = el.Y2, Z = el.Z2 },
+                P1 = p1,
+                P2 = p2,
                 AnguloGrados = el.AnguloGrados,
                 Seccion = new SeccionJson
                 {
@@ -342,6 +366,15 @@ public partial class MainWindow : Window
                 }
             });
         }
+
+        // Los muros se ajustan AL FINAL, cuando ya estan todas las barras: para bajar un muro
+        // bajo su cadena hay que conocer las trabes, y para recortarlo al pano de sus castillos
+        // hay que conocer las columnas.
+        //
+        // Sin esto, el muro de ETABS va de cota de piso a cota de piso y de eje a eje de
+        // columna, asi que en Revit OCUPA el mismo sitio que su cadena y que los castillos, y
+        // Revit avisa "One element is completely inside another" una vez por cada solape.
+        salida.Avisos.AddRange(AjusteDeMuros.AplicarATodos(salida));
 
         return salida;
     }

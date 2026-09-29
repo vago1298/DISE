@@ -24,14 +24,25 @@ public sealed class FilaVista : Avisador
 {
     private string _familia = string.Empty;
     private TipoRevit? _tipo;
+    private CategoriaRevit _categoria;
 
     internal FilaVista(SeccionDelModelo seccion, CatalogoRevit catalogo)
     {
         Seccion = seccion;
         Catalogo = catalogo;
 
-        Familias = new ObservableCollection<string>(catalogo.FamiliasDe(seccion.Categoria));
+        // Arranca en la categoria que le toca por su clase, pero es SOLO el punto de partida:
+        // se puede cambiar. Un paño que ETABS trae como muro puede tener que modelarse como
+        // suelo, y quien decide eso es la persona, no la clasificacion del calculo.
+        _categoria = seccion.Categoria;
+
+        Categorias = new ObservableCollection<CategoriaRevit>(
+            Enum.GetValues<CategoriaRevit>());
+
+        Familias = new ObservableCollection<string>();
         Tipos = new ObservableCollection<TipoRevit>();
+
+        RepoblarFamilias();
     }
 
     public SeccionDelModelo Seccion { get; }
@@ -45,7 +56,44 @@ public sealed class FilaVista : Avisador
 
     public int Cuantas => Seccion.Cuantas;
 
-    public string Categoria => Categorias.Nombre(Seccion.Categoria);
+    /// <summary>Todas las categorias, para poder cambiar la de esta fila.</summary>
+    public ObservableCollection<CategoriaRevit> Categorias { get; }
+
+    /// <summary>
+    /// La categoria de Revit con la que se va a modelar esta seccion.
+    /// </summary>
+    /// <remarks>
+    /// Se puede cambiar, y al cambiarla se repueblan las familias y se descarta el tipo: un
+    /// tipo de muro no existe entre los de suelo, y dejarlo puesto mostraria una combinacion
+    /// que no se corresponde con lo que se va a modelar.
+    /// </remarks>
+    public CategoriaRevit Categoria
+    {
+        get => _categoria;
+        set
+        {
+            if (_categoria == value)
+            {
+                return;
+            }
+
+            _categoria = value;
+
+            Aviso();
+            Aviso(nameof(CategoriaLegible));
+
+            RepoblarFamilias();
+        }
+    }
+
+    /// <summary>Como se lee la categoria en la pantalla.</summary>
+    public string CategoriaLegible => Nucleo.Categorias.Nombre(_categoria);
+
+    /// <summary>La categoria que le tocaria por la clase del elemento, para poder volver.</summary>
+    public CategoriaRevit CategoriaPorOmision => Seccion.Categoria;
+
+    /// <summary>Si la categoria se cambio a mano.</summary>
+    public bool CategoriaCambiada => _categoria != Seccion.Categoria;
 
     /// <summary>Las familias que se pueden elegir, las de la categoria de esta fila.</summary>
     public ObservableCollection<string> Familias { get; }
@@ -110,11 +158,32 @@ public sealed class FilaVista : Avisador
     /// asi que se descarta. Si se dejara, el cuadro mostraria "Familia A / Tipo de la B" y al
     /// modelar se usaria un tipo que no corresponde a lo que se ve.
     /// </remarks>
+    /// <summary>Vuelve a llenar las familias con las de la categoria elegida.</summary>
+    private void RepoblarFamilias()
+    {
+        Familias.Clear();
+
+        foreach (var f in Catalogo.FamiliasDe(_categoria))
+        {
+            Familias.Add(f);
+        }
+
+        // Si la familia que estaba puesta no existe en la categoria nueva, se descarta con su
+        // tipo. Dejarla mostraria "categoria de suelos / familia de muros".
+        if (!Familias.Contains(_familia, StringComparer.CurrentCultureIgnoreCase))
+        {
+            _familia = string.Empty;
+            Aviso(nameof(Familia));
+        }
+
+        RepoblarTipos();
+    }
+
     private void RepoblarTipos()
     {
         Tipos.Clear();
 
-        foreach (var t in Catalogo.TiposDe(Seccion.Categoria, _familia))
+        foreach (var t in Catalogo.TiposDe(_categoria, _familia))
         {
             Tipos.Add(t);
         }
@@ -131,6 +200,18 @@ public sealed class FilaVista : Avisador
     /// <summary>Pone familia y tipo de una vez, sin perder el tipo por el camino.</summary>
     internal void Poner(TipoRevit tipo, bool esSugerencia, string porque)
     {
+        // La categoria sale del TIPO. Asi, un mapeo guardado con una categoria cambiada a mano
+        // vuelve con ella puesta, y no con la que le tocaria por su clase.
+        if (_categoria != tipo.Categoria)
+        {
+            _categoria = tipo.Categoria;
+            Aviso(nameof(Categoria));
+            Aviso(nameof(CategoriaLegible));
+            Aviso(nameof(CategoriaCambiada));
+
+            RepoblarFamilias();
+        }
+
         _familia = tipo.Familia;
         Aviso(nameof(Familia));
 

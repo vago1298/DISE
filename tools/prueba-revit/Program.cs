@@ -28,6 +28,14 @@ internal static class Programa
     private static void Igual(string nombre, object? dio, object? esperado) =>
         Check(nombre, Equals(dio, esperado), $"esperaba «{esperado}» y dio «{dio}»");
 
+    /// <summary>Compara dos numeros con tolerancia.</summary>
+    /// <remarks>
+    /// Hace falta para la geometria: recortar un muro al pano de un castillo es una cuenta con
+    /// senos y cosenos, y comparar por igualdad exacta fallaria por el ultimo bit.
+    /// </remarks>
+    private static void Casi(string nombre, double dio, double esperado, double tol = 1e-9) =>
+        Check(nombre, Math.Abs(dio - esperado) <= tol, $"esperaba {esperado} y dio {dio}");
+
     // ==================================================================
     //  Cosas de ejemplo
     // ==================================================================
@@ -471,6 +479,192 @@ internal static class Programa
         alReves.Reverse();
         Igual("el giro del contorno no cambia la clase",
             ClasePano.De(alReves, "LOSA", ClasePieza.Muro).Clase, ClasePieza.Losa);
+
+        Console.WriteLine("\n[2d] Etiquetas: un modelo sin piers no puede colapsar los muros");
+
+        // El caso del informe: el lector pone el PIER como etiqueta del muro, y sin piers
+        // asignados todos quedan con la etiqueta vacia. La llave sale «CadLink|Muro||Story1»
+        // para todos, y el planificador modela uno y descarta el resto.
+        var m1 = new List<PuntoJson> { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) };
+        var m2 = new List<PuntoJson> { P(0, 4, 0), P(5, 4, 0), P(5, 4, 3), P(0, 4, 3) };
+
+        var e1 = Etiquetas.Estable("", m1);
+        var e2 = Etiquetas.Estable("", m2);
+
+        Check("sin etiqueta se deriva una de la posicion", e1.Length > 1, e1);
+        Check("y dos muros distintos dan etiquetas distintas", e1 != e2, $"{e1} vs {e2}");
+        Igual("la misma pieza da siempre la misma etiqueta", Etiquetas.Estable("", m1), e1);
+
+        // Estable aunque se reordenen los vertices: eso permite reimportar y ACTUALIZAR.
+        var revuelto = new List<PuntoJson> { m1[2], m1[3], m1[0], m1[1] };
+        Igual("el orden de los vertices no cambia la etiqueta",
+            Etiquetas.Estable("", revuelto), e1);
+
+        Igual("si el modelo SI trae etiqueta, se respeta", Etiquetas.Estable("M1", m1), "M1");
+        Check("un reajuste de milimetros no cambia la etiqueta",
+            Etiquetas.Estable("", new List<PuntoJson>
+            {
+                P(0.001, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3)
+            }) == e1, "cambio");
+
+        // Y las llaves resultantes ya no chocan.
+        Check("las llaves de los dos muros son distintas",
+            Llave.De(ClasePieza.Muro, e1, "Story1") != Llave.De(ClasePieza.Muro, e2, "Story1"));
+
+        Console.WriteLine("\n[2e] Contorno de losa: plano y paralelo a XY");
+
+        // El error del informe: "each curve loop is not planar; or each curve loop is not in a
+        // plane parallel to the horizontal(XY) plane".
+        var torcida = new List<PuntoJson>
+            { P(0, 0, 3), P(5, 0, 3.004), P(5, 5, 3), P(0, 5, 2.998) };
+
+        var (plana, z, desv) = Contornos.AHorizontal(torcida);
+
+        Check("todos los vertices quedan a la misma cota",
+            plana.All(p => Math.Abs(p.Z - plana[0].Z) < 1e-12), "siguen distintos");
+        Casi("se toma la cota mas alta, que es la cara superior", z, 3.004);
+        Casi("y se reporta cuanto se movio", desv, 0.006, 1e-9);
+        Igual("no se pierde ningun vertice", plana.Count, 4);
+        Check("la planta no se toca",
+            Math.Abs(plana[1].X - 5) < 1e-12 && Math.Abs(plana[2].Y - 5) < 1e-12);
+
+        // Al aplanar pueden aparecer repetidos: dos vertices que solo diferian en Z.
+        var conRepetido = new List<PuntoJson>
+            { P(0, 0, 3), P(5, 0, 3.01), P(5, 0, 3), P(5, 5, 3), P(0, 5, 3) };
+
+        var (ap, _, _) = Contornos.AHorizontal(conRepetido);
+        Igual("aplanar junta los que solo diferian en Z",
+            Contornos.SinRepetidos(ap).Count, 4);
+
+        Igual("un contorno vacio no revienta", Contornos.AHorizontal(null).Contorno.Count, 0);
+
+        Console.WriteLine("\n[2f] Muros: bajo la cadena y al pano de los castillos");
+
+        // Un muro de 5 m entre dos castillos de 15x15, con una cadena de 40 de peralte encima.
+        var mm = new ModeloJson();
+        mm.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 3 });
+
+        var elMuro = new PanoJson
+        {
+            Etiqueta = "MURO-A", Clase = ClasePieza.Muro, Nivel = "Story1",
+            Seccion = new SeccionJson { Nombre = "MURO 15", Forma = FormaSeccion.Pano, EspesorM = 0.15 }
+        };
+        elMuro.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) });
+        mm.Panos.Add(elMuro);
+
+        // La cadena de cerramiento, encima y en la misma direccion.
+        mm.Barras.Add(new BarraJson
+        {
+            Etiqueta = "CAD-1", Clase = ClasePieza.Trabe, Nivel = "Story1",
+            P1 = P(0, 0, 3), P2 = P(5, 0, 3),
+            Seccion = Rect("CADENA 15X40", 15, 40)
+        });
+
+        // Los dos castillos, en las puntas.
+        mm.Barras.Add(new BarraJson
+        {
+            Etiqueta = "K-1", Clase = ClasePieza.Columna, Nivel = "Story1",
+            P1 = P(0, 0, 0), P2 = P(0, 0, 3), Seccion = Rect("K 15X15", 15, 15)
+        });
+        mm.Barras.Add(new BarraJson
+        {
+            Etiqueta = "K-2", Clase = ClasePieza.Columna, Nivel = "Story1",
+            P1 = P(5, 0, 0), P2 = P(5, 0, 3), Seccion = Rect("K 15X15", 15, 15)
+        });
+
+        var aj = AjusteDeMuros.Ajustar(elMuro, mm);
+
+        Check("el muro se reconoce como rectangulo vertical", aj.Nota is null, aj.Nota ?? "");
+        Casi("baja 40 cm, el peralte de la cadena", aj.BajoM, 0.40);
+        Casi("y se recorta 7.5 cm por punta, medio castillo", aj.RecortadoM, 0.15);
+
+        var zs = aj.Contorno.Select(p => p.Z).Distinct().OrderBy(v => v).ToList();
+        Igual("el contorno sigue teniendo dos cotas", zs.Count, 2);
+        Casi("arranca en la base", zs[0], 0);
+        Casi("y muere bajo la cadena, en 2.60", zs[1], 2.60);
+
+        var xs = aj.Contorno.Select(p => p.X).Distinct().OrderBy(v => v).ToList();
+        Casi("empieza al pano del primer castillo", xs[0], 0.075);
+        Casi("y acaba al pano del segundo", xs[1], 4.925);
+
+        // Sin cadena encima, no se baja.
+        var sinCadena = new ModeloJson();
+        sinCadena.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 3 });
+        var m3 = new PanoJson { Etiqueta = "M", Clase = ClasePieza.Muro, Nivel = "Story1" };
+        m3.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) });
+        sinCadena.Panos.Add(m3);
+
+        Casi("sin cadena encima no se baja nada",
+            AjusteDeMuros.Ajustar(m3, sinCadena).BajoM, 0);
+
+        // Una trabe PERPENDICULAR no cuenta: cruza el muro, no corre encima.
+        var perpend = new ModeloJson();
+        perpend.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 3 });
+        var m4 = new PanoJson { Etiqueta = "M", Clase = ClasePieza.Muro, Nivel = "Story1" };
+        m4.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) });
+        perpend.Panos.Add(m4);
+        perpend.Barras.Add(new BarraJson
+        {
+            Etiqueta = "T", Clase = ClasePieza.Trabe, Nivel = "Story1",
+            P1 = P(2.5, -3, 3), P2 = P(2.5, 3, 3), Seccion = Rect("T 20X50", 20, 50)
+        });
+
+        Casi("una trabe perpendicular no baja el muro",
+            AjusteDeMuros.Ajustar(m4, perpend).BajoM, 0);
+
+        // Un castillo de OTRO piso no recorta.
+        var otroPiso = new ModeloJson();
+        otroPiso.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 3 });
+        var m5 = new PanoJson { Etiqueta = "M", Clase = ClasePieza.Muro, Nivel = "Story1" };
+        m5.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) });
+        otroPiso.Panos.Add(m5);
+        otroPiso.Barras.Add(new BarraJson
+        {
+            Etiqueta = "K-arriba", Clase = ClasePieza.Columna, Nivel = "Story2",
+            P1 = P(0, 0, 6), P2 = P(0, 0, 9), Seccion = Rect("K 15X15", 15, 15)
+        });
+
+        Casi("un castillo de otro piso no recorta", AjusteDeMuros.Ajustar(m5, otroPiso).RecortadoM, 0);
+
+        // Un pano de forma libre se deja en paz, con nota.
+        var libre = new PanoJson { Etiqueta = "HASTIAL", Clase = ClasePieza.Muro, Nivel = "Story1" };
+        libre.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(2.5, 0, 4) });
+        var ajLibre = AjusteDeMuros.Ajustar(libre, mm);
+
+        Check("un pano triangular no se toca", ajLibre.Nota is not null);
+        Igual("y conserva sus vertices", ajLibre.Contorno.Count, 3);
+
+        // Una columna rectangular girada se proyecta bien sobre la direccion del muro.
+        var girada = new BarraJson
+        {
+            Etiqueta = "C", Clase = ClasePieza.Columna,
+            P1 = P(0, 0, 0), P2 = P(0, 0, 3),
+            AnguloGrados = 90,
+            Seccion = Rect("C 20X60", 20, 60)
+        };
+
+        // A 90 grados, el eje local 2 apunta a +Y, asi que sobre la direccion X del muro se
+        // proyecta el ANCHO -eje 3-, que son 20 cm: medio son 10.
+        Casi("una columna girada 90 grados proyecta su otra medida",
+            AjusteDeMuros.MedioAncho(girada, 1, 0), 0.10);
+
+        var sinGirar = new BarraJson
+        {
+            Etiqueta = "C", Clase = ClasePieza.Columna,
+            P1 = P(0, 0, 0), P2 = P(0, 0, 3),
+            Seccion = Rect("C 20X60", 20, 60)
+        };
+
+        Casi("y sin girar, la suya", AjusteDeMuros.MedioAncho(sinGirar, 1, 0), 0.30);
+
+        // Y el pase completo sobre el modelo deja resumen.
+        var resumen = AjusteDeMuros.AplicarATodos(mm);
+        Check("el pase completo informa de lo que hizo",
+            resumen.Any(a => a.Contains("recortaron")) && resumen.Any(a => a.Contains("bajaron")),
+            string.Join(" | ", resumen));
+
+        Casi("y el muro quedo ya ajustado en el modelo",
+            elMuro.Vertices.Max(p => p.Z), 2.60);
 
         Console.WriteLine("\n[2c] Agrupar los errores por causa");
 
@@ -1003,6 +1197,64 @@ internal static class Programa
         var puestas = vc.AceptarLoMasParecido();
         Igual("aceptar lo mas parecido la pone", puestas, 1);
         Check("y ya se puede modelar", vc.PuedeModelar);
+
+        // ---- La categoria se puede CAMBIAR: no la impone la clase de ETABS ----
+        var vCat = new VistaMapeo(modelo, cat);
+        var filaMuro = vCat.Filas.First(f => f.Seccion.Clase == ClasePieza.Muro);
+
+        Igual("un muro arranca en la categoria de muros",
+            filaMuro.Categoria, CategoriaRevit.Muro);
+        Check("pero se ofrecen TODAS las categorias, no solo la suya",
+            filaMuro.Categorias.Count == Enum.GetValues<CategoriaRevit>().Length,
+            filaMuro.Categorias.Count.ToString());
+        Check("y se sabe que no se ha cambiado", !filaMuro.CategoriaCambiada);
+
+        // El caso que se pidio: un paño que ETABS trae como muro y hay que modelar como suelo.
+        filaMuro.Categoria = CategoriaRevit.Piso;
+
+        Igual("al cambiar a suelos, la categoria queda cambiada",
+            filaMuro.Categoria, CategoriaRevit.Piso);
+        Check("se marca como cambiada a mano", filaMuro.CategoriaCambiada);
+        Check("las familias son ahora las de suelos",
+            filaMuro.Familias.SequenceEqual(cat.FamiliasDe(CategoriaRevit.Piso)),
+            string.Join(", ", filaMuro.Familias));
+        Check("y el tipo de muro que estaba puesto se descarto", filaMuro.Tipo is null,
+            filaMuro.Tipo?.NombreCompleto ?? "null");
+
+        // Y se puede elegir un tipo de suelo para ese muro.
+        filaMuro.Familia = filaMuro.Familias.First();
+        filaMuro.Tipo = filaMuro.Tipos.First();
+
+        Check("se puede poner un tipo de suelo en una seccion de muro", filaMuro.Mapeada);
+        Igual("y el tipo elegido es de suelos",
+            filaMuro.Tipo!.Categoria, CategoriaRevit.Piso);
+
+        // La eleccion tiene que SOBREVIVIR al guardado: es lo que se rompia al deducir la
+        // categoria de la clase.
+        var mapCat = vCat.AMapeo();
+        var filaGuardada = mapCat.De(filaMuro.Seccion.Clave)!;
+
+        Igual("el mapeo guarda la categoria elegida, no la de la clase",
+            filaGuardada.Categoria, CategoriaRevit.Piso);
+
+        var textoCat = ArchivoMapeo.ATexto(mapCat.AGuardado());
+        var vueltaCat = Mapeo.DeGuardado(ArchivoMapeo.DeTexto(textoCat));
+
+        Igual("y sobrevive el ida y vuelta por disco",
+            vueltaCat.TipoDe(filaMuro.Seccion, cat)?.Categoria, CategoriaRevit.Piso);
+
+        var vCat2 = new VistaMapeo(modelo, cat, vueltaCat);
+        var filaMuro2 = vCat2.Filas.First(f => f.Seccion.Clave == filaMuro.Seccion.Clave);
+
+        Igual("al reabrir el cuadro, la categoria cambiada vuelve puesta",
+            filaMuro2.Categoria, CategoriaRevit.Piso);
+        Check("y sigue marcada como cambiada", filaMuro2.CategoriaCambiada);
+
+        // Volver a la categoria original tambien funciona.
+        filaMuro.Categoria = CategoriaRevit.Muro;
+        Check("se puede volver a la categoria de origen", !filaMuro.CategoriaCambiada);
+        Check("y las familias vuelven a ser las de muros",
+            filaMuro.Familias.SequenceEqual(cat.FamiliasDe(CategoriaRevit.Muro)));
 
         // Un mapeo guardado MANDA sobre la sugerencia.
         var guardado = new Mapeo();

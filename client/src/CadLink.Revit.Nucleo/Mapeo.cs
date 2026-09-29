@@ -15,6 +15,17 @@ public sealed class FilaMapeo
 
     public ClasePieza Clase { get; set; }
 
+    /// <summary>
+    /// La categoria de Revit ELEGIDA, que no tiene que ser la que le tocaria por su clase.
+    /// </summary>
+    /// <remarks>
+    /// Se guarda porque el usuario puede cambiarla en el cuadro. Un paño que ETABS trae como
+    /// muro puede querer modelarse como suelo -pasa cuando la propiedad esta mal clasificada
+    /// en el calculo-, y esa decision tiene que sobrevivir a la siguiente importacion.
+    /// Deducirla de la clase, como se hacia antes, borraba la eleccion en silencio.
+    /// </remarks>
+    public CategoriaRevit Categoria { get; set; }
+
     public string Familia { get; set; } = string.Empty;
 
     public string Tipo { get; set; } = string.Empty;
@@ -89,6 +100,9 @@ public sealed class Mapeo
             Clave = seccion.Clave,
             Seccion = seccion.Seccion.Nombre,
             Clase = seccion.Clase,
+
+            // La del TIPO, no la que le tocaria por su clase: es la que el usuario eligio.
+            Categoria = tipo.Categoria,
             Familia = tipo.Familia,
             Tipo = tipo.Tipo,
             TipoId = tipo.Id
@@ -112,7 +126,7 @@ public sealed class Mapeo
 
         foreach (var f in _filas.Values.ToList())
         {
-            var t = catalogo.PorNombre(Categorias.De(f.Clase), f.Familia, f.Tipo);
+            var t = catalogo.PorNombre(f.Categoria, f.Familia, f.Tipo);
 
             if (t is null)
             {
@@ -137,7 +151,9 @@ public sealed class Mapeo
             return null;
         }
 
-        return catalogo.PorNombre(seccion.Categoria, f.Familia, f.Tipo);
+        // Por la categoria GUARDADA. Usar la de la seccion perderia la eleccion del usuario
+        // cuando cambio de categoria en el cuadro.
+        return catalogo.PorNombre(f.Categoria, f.Familia, f.Tipo);
     }
 
     public MapeoGuardado AGuardado() => new()
