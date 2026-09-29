@@ -35,11 +35,29 @@ hay cargado, y puede crear elementos nativos con el tipo que elijas.
 
 ## Instalar
 
-Hace falta **Revit 2026** y el **SDK de .NET 8**.
+Hace falta **Revit 2025 o 2026** y el **SDK de .NET 8**.
 
 > Revit 2025 y 2026 usan .NET 8. Hasta Revit 2024 los complementos eran .NET Framework 4.8,
 > así que este **no sirve para 2024 o anterior** sin recompilarlo con otro
 > `TargetFramework`.
+
+### La forma fácil
+
+Doble clic en **`7-instalar-plugin-revit.bat`**, en la raíz del proyecto. Compila, busca Revit,
+y copia los tres archivos donde van.
+
+Si tu Revit está en una carpeta que no es la normal, pasale la ruta:
+
+```
+7-instalar-plugin-revit.bat "D:\Autodesk\Revit 2026"
+```
+
+Después: **cerrar Revit y volver a abrirlo**. El complemento se carga al arrancar, así que no
+aparece hasta que Revit se reinicia. Es el motivo número uno de «lo instalé y no sale nada».
+
+### A mano
+
+Por si el `.bat` falla o querés entender qué hace.
 
 1. Compilar:
 
@@ -68,6 +86,42 @@ Hace falta **Revit 2026** y el **SDK de .NET 8**.
    - y también `CadLink.Revit.Nucleo.dll`, que va al lado de la primera.
 
 3. Abrir Revit. Aparece una pestaña **CadLink** con el botón *Importar modelo*.
+
+---
+
+## Cómo aparece la ventana dentro de Revit
+
+No hace falta ningún otro complemento: la ventana de mapeo **es parte de este**. La cadena
+completa, para que se entienda dónde mirar si algo no sale:
+
+```
+1. Revit arranca y lee los .addin de  %APPDATA%\Autodesk\Revit\Addins\2026\
+        |
+2. Encuentra CadLink.Revit.addin, que le dice que cargue CadLink.Revit.dll
+   y que la clase de entrada es  CadLink.Revit.Aplicacion
+        |
+3. Llama a  Aplicacion.OnStartup(...)  -> IExternalApplication
+   Ahi se crea la pestana CadLink y el boton "Importar modelo"      (Aplicacion.cs)
+        |
+4. Al pulsar el boton, Revit ejecuta  ComandoImportar.Execute(...)  -> IExternalCommand
+        |
+5. El comando pide el archivo, recorre el documento para ver que familias hay,
+   y hace  ventana.ShowDialog()                                     (ComandoImportar.cs)
+        |
+6. Y esa ventana es  VentanaMapeo.xaml  <-- LA DE LA IMAGEN
+        |
+7. Al pulsar "Modelar nuevos", el comando abre una transaccion y crea los elementos
+```
+
+Donde mirar si falla cada paso:
+
+| Síntoma | Dónde está el problema |
+|---|---|
+| No aparece la pestaña CadLink | Paso 1 o 2: los archivos no están en la carpeta, o no reiniciaste Revit |
+| Revit avisa de un complemento que falló al cargar | Paso 3: `FullClassName` del `.addin` no coincide, o falta `CadLink.Revit.Nucleo.dll` al lado |
+| El botón está pero no hace nada | Paso 4: falta el atributo `[Transaction]` en el comando |
+| Se abre el diálogo de archivo y luego nada | Paso 5: la ventana quedó detrás de Revit, o el modelo no trae piezas |
+| La ventana sale vacía | Paso 5: en el proyecto no hay familias estructurales cargadas |
 
 > **Las DLL de Revit no se copian.** Las referencias van con `Private=false` a propósito.
 > Copiar `RevitAPI.dll` junto al complemento hace que Revit cargue dos veces los mismos tipos
