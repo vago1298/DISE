@@ -1,0 +1,97 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- El complemento de Revit.
+
+       ESTE PROYECTO NO SE PUEDE COMPILAR SIN REVIT INSTALADO, y no se puede compilar en
+       Linux en absoluto: necesita RevitAPI.dll y RevitAPIUI.dll, que vienen con Revit, son
+       de Windows y no se pueden redistribuir.
+
+       Por eso aqui hay lo MENOS posible. Todo lo que se puede decidir sin Revit delante
+       -leer el modelo, inventariar secciones, emparejarlas con las familias, armar el plan
+       de que crear y que actualizar, y el comportamiento del cuadro- vive en
+       CadLink.Revit.Nucleo, que es net8.0 pelado y tiene pruebas que corren en cualquier
+       maquina (tools/prueba-revit).
+
+       Lo que queda aqui es: leer el documento de Revit para llenar los DTO del nucleo,
+       ensenar la ventana, y llamar a la API para crear las piezas. Nada mas.
+
+       REVIT 2026 USA .NET 8. Hasta Revit 2024 los complementos eran .NET Framework 4.8;
+       desde 2025 son .NET 8. Si se quiere dar soporte a 2024 o anterior hace falta OTRA
+       compilacion con otro TargetFramework, no basta con esta.
+
+       COMO SE COMPILA
+
+       Con Revit 2026 instalado en la ruta normal, basta:
+
+           dotnet build client/src/CadLink.Revit/CadLink.Revit.csproj
+
+       Si Revit esta en otro sitio, se le dice:
+
+           dotnet build ... /p:RutaRevit="D:\Autodesk\Revit 2026"
+
+       Las dos DLL se referencian con Private=false a proposito: no se copian a la salida.
+       Copiarlas y cargarlas junto al complemento es un error clasico que hace que Revit
+       cargue dos veces los mismos tipos y falle con errores incomprensibles. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Revit</RootNamespace>
+    <AssemblyName>CadLink.Revit</AssemblyName>
+    <Version>1.0.0</Version>
+
+    <!-- En un complemento de Revit hay que apagarlo: el anfitrion es Revit.exe y no hay
+         ningun ejecutable que generar. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+    <!-- En un proyecto de WPF, System.IO NO entra entre los using implicitos, al contrario
+         que en una libreria normal. Sin esto, cualquier uso de Path o File falla con un
+         CS0103 desconcertante. Es la misma linea que lleva CadLink.App y por el mismo
+         motivo. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Donde esta Revit. Se puede pisar desde la linea de comandos. -->
+    <RutaRevit Condition="'$(RutaRevit)' == ''">C:\Program Files\Autodesk\Revit 2026</RutaRevit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI" Condition="Exists('$(RutaRevit)\RevitAPI.dll')">
+      <HintPath>$(RutaRevit)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <Reference Include="RevitAPIUI" Condition="Exists('$(RutaRevit)\RevitAPIUI.dll')">
+      <HintPath>$(RutaRevit)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="AvisarSiFaltaRevit" BeforeTargets="Build"
+          Condition="!Exists('$(RutaRevit)\RevitAPI.dll')">
+    <!-- Un mensaje claro en vez de doscientos CS0246. Sin esto, el primer sintoma de que
+         Revit no esta donde se creia es una pared de errores de tipos que no existen, y
+         nadie relaciona eso con una ruta mal puesta. -->
+    <Error Text="No se encuentra RevitAPI.dll en &quot;$(RutaRevit)&quot;. Instala Revit 2026 o indica la ruta con /p:RutaRevit=&quot;...&quot;" />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="CadLink.Revit.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

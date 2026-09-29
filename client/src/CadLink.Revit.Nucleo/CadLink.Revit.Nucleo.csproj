@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- El nucleo del complemento de Revit: TODO lo que se puede decidir sin Revit delante.
+
+       Aqui vive lo interesante: leer el modelo que escribe CadLink, inventariar sus
+       secciones, emparejarlas con las familias que de verdad hay cargadas en el proyecto
+       de Revit, guardar ese mapeo, y decidir que se crea y que se actualiza.
+
+       POR QUE ESTA SEPARADO DEL COMPLEMENTO
+
+       El complemento (CadLink.Revit) tiene que referenciar RevitAPI.dll, que viene con
+       Revit: es de Windows, no se puede redistribuir, y no existe en la maquina donde se
+       escribe este repositorio. Un proyecto que la referencie NO se puede compilar ni
+       probar aqui.
+
+       Este no la referencia. Es net8.0 pelado, sin ningun paquete, asi que se compila y se
+       EJECUTA en cualquier parte -incluida esta-, y por eso tools/prueba-revit puede
+       comprobar de verdad el emparejador, el plan de modelado y el comportamiento del
+       cuadro de mapeo.
+
+       La regla que lo sostiene: el nucleo NO conoce ningun tipo de Revit. Lo que sabe de
+       Revit llega como los DTO de CatalogoRevit.cs, que el complemento rellena. Asi, lo
+       que queda sin poder compilarse es solo la capa que llama a la API.
+
+       Es la misma division que se hizo con CadLink.Ifc y por el mismo motivo. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Revit.Nucleo</RootNamespace>
+    <AssemblyName>CadLink.Revit.Nucleo</AssemblyName>
+  </PropertyGroup>
+
+</Project>

@@ -11904,7 +11904,8 @@ def main() -> int:
               v22_zapatas_corridas,
               v23_hoja_zapatas_corridas,
               v24_rediseno,
-              v25_ifc):
+              v25_ifc,
+              v26_plugin_revit):
         f()
 
     print("\n" + "=" * 66)
@@ -15149,6 +15150,232 @@ def v25_ifc() -> None:
     escritor = leer(ruta("client/src/CadLink.Ifc/EscritorPaso.cs"))
     check("las cadenas escapan lo que no es ASCII con \\X2\\",
           r"\\X2\\" in escritor)
+
+# ======================================================================
+# 26. El complemento de Revit
+#
+#     CadLink.Revit es el UNICO proyecto de este repositorio que no se puede compilar sin
+#     Revit instalado: necesita RevitAPI.dll, que viene con el programa, es de Windows y no
+#     se puede redistribuir.
+#
+#     De ahi que su arquitectura tenga una regla que vale la pena vigilar: todo lo que se
+#     puede decidir sin Revit vive en CadLink.Revit.Nucleo, que es net8.0 pelado y tiene
+#     pruebas que corren en cualquier maquina (tools/prueba-revit). Si esa frontera se
+#     rompe -si el nucleo empieza a conocer tipos de Revit- se pierde la unica parte
+#     comprobable del complemento, y no hay ningun error que lo delate.
+#
+#     Eso es lo que se comprueba aqui, mas los tres errores de empaquetado que hacen que un
+#     complemento no cargue y que Revit no explica.
+# ======================================================================
+def v26_plugin_revit() -> None:
+    print("\n[26] Complemento de Revit")
+
+    nucleo_csproj = ruta("client/src/CadLink.Revit.Nucleo/CadLink.Revit.Nucleo.csproj")
+    addin_csproj = ruta("client/src/CadLink.Revit/CadLink.Revit.csproj")
+
+    check("existe el nucleo CadLink.Revit.Nucleo", os.path.exists(nucleo_csproj))
+    check("existe el complemento CadLink.Revit", os.path.exists(addin_csproj))
+
+    if not (os.path.exists(nucleo_csproj) and os.path.exists(addin_csproj)):
+        return
+
+    nucleo = re.sub(r"<!--.*?-->", " ", leer(nucleo_csproj), flags=re.S)
+    addin = re.sub(r"<!--.*?-->", " ", leer(addin_csproj), flags=re.S)
+
+    # ---- La frontera, que es lo importante ----
+    check("el nucleo es net8.0, para poder probarlo en cualquier maquina",
+          "<TargetFramework>net8.0</TargetFramework>" in nucleo)
+
+    check("el nucleo no tiene PackageReference", "PackageReference" not in nucleo)
+
+    check("el nucleo no referencia otros proyectos", "ProjectReference" not in nucleo,
+          "referenciar CadLink.Ifc o CadLink.Etabs lo ataria a net8.0-windows")
+
+    # LA regla: en el nucleo no puede entrar ni un tipo de Revit.
+    del_nucleo = [p for p in archivos(".cs")
+                  if os.sep + "CadLink.Revit.Nucleo" + os.sep in p]
+
+    check("hay archivos en el nucleo", len(del_nucleo) >= 5, str(len(del_nucleo)))
+
+    con_revit = []
+    for p in del_nucleo:
+        txt = leer(p)
+        for m in re.finditer(r"^\s*using\s+(Autodesk[\w.]*)\s*;", txt, re.M):
+            con_revit.append(f"{rel(p)}: using {m.group(1)}")
+
+    check("NINGUN archivo del nucleo usa la Revit API", not con_revit,
+          "; ".join(con_revit[:3]))
+
+    # ---- El complemento ----
+    check("el complemento es net8.0-windows, que es lo que pide Revit 2026",
+          "<TargetFramework>net8.0-windows</TargetFramework>" in addin,
+          "Revit 2025 y 2026 usan .NET 8; hasta 2024 era .NET Framework 4.8")
+
+    check("el complemento usa WPF, para el cuadro de mapeo", "<UseWPF>true</UseWPF>" in addin)
+
+    for dll in ("RevitAPI", "RevitAPIUI"):
+        check(f"referencia {dll}", f'Include="{dll}"' in addin)
+
+    # Copiar las DLL de Revit junto al complemento hace que Revit cargue dos veces los
+    # mismos tipos y falle con errores incomprensibles.
+    check("las DLL de Revit van con Private=false, sin copiarse",
+          addin.count("<Private>false</Private>") >= 2,
+          str(addin.count("<Private>false</Private>")))
+
+    check("la ruta de Revit se puede cambiar desde la linea de comandos",
+          "RutaRevit" in addin)
+
+    check("y si falta Revit se avisa con un mensaje claro",
+          "<Error Text=" in addin,
+          "sin esto el primer sintoma son doscientos CS0246")
+
+    check("el complemento referencia el nucleo",
+          "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in addin)
+
+    # ---- Las soluciones ----
+    sln = leer(ruta("client/CadLink.sln"))
+
+    check("el NUCLEO si esta en la solucion principal",
+          "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in sln)
+
+    # Esta es la importante: meter el complemento en la solucion principal hace que
+    # CadLink.sln deje de compilar en cualquier maquina sin Revit instalado.
+    check("el COMPLEMENTO no esta en la solucion principal",
+          "CadLink.Revit\\CadLink.Revit.csproj" not in sln,
+          "romperia la compilacion de CadLink.sln en una maquina sin Revit")
+
+    sln_addin = ruta("client/CadLink.Revit.sln")
+    check("hay una solucion aparte para el complemento", os.path.exists(sln_addin))
+
+    if os.path.exists(sln_addin):
+        sa = leer(sln_addin)
+        check("y contiene el complemento y su nucleo",
+              "CadLink.Revit\\CadLink.Revit.csproj" in sa
+              and "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in sa)
+
+    app = leer(ruta("client/src/CadLink.App/CadLink.App.csproj"))
+    check("la aplicacion referencia el nucleo, para escribir el archivo de intercambio",
+          "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in app)
+
+    check("y NO referencia el complemento",
+          "CadLink.Revit\\CadLink.Revit.csproj" not in app)
+
+    # ---- El manifiesto ----
+    manifiesto = ruta("client/src/CadLink.Revit/CadLink.Revit.addin")
+    check("existe el manifiesto .addin", os.path.exists(manifiesto))
+
+    if os.path.exists(manifiesto):
+        man = leer(manifiesto)
+
+        try:
+            ET.fromstring(man)
+            bien = True
+        except ET.ParseError as e:
+            bien = False
+            print(f"        {e}")
+
+        check("el manifiesto es XML valido", bien)
+
+        # Si el FullClassName no coincide con la clase de verdad, Revit dice solo que el
+        # complemento fallo al cargar, sin decir por que.
+        check("el FullClassName apunta a la clase que existe",
+              "<FullClassName>CadLink.Revit.Aplicacion</FullClassName>" in man
+              and "class Aplicacion : IExternalApplication"
+              in leer(ruta("client/src/CadLink.Revit/Aplicacion.cs")))
+
+        check("el Assembly coincide con el AssemblyName del proyecto",
+              "<Assembly>CadLink.Revit.dll</Assembly>" in man
+              and "<AssemblyName>CadLink.Revit</AssemblyName>" in addin)
+
+        check("el manifiesto se copia a la salida",
+              "CadLink.Revit.addin" in addin and "PreserveNewest" in addin)
+
+        m = re.search(r"<AddInId>([0-9A-Fa-f-]{36})</AddInId>", man)
+        check("el AddInId es un GUID", bool(m), "hace falta uno unico y estable")
+
+    # ---- Los errores clasicos del codigo del complemento ----
+    comando = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
+
+    check("el comando lleva el atributo Transaction",
+          "[Transaction(TransactionMode.Manual)]" in comando,
+          "sin el, Revit rechaza el comando al ejecutarlo")
+
+    check("el comando implementa IExternalCommand", "IExternalCommand" in comando)
+
+    modelador = leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
+
+    check("el modelado va en UNA transaccion, para que un Ctrl+Z lo deshaga",
+          modelador.count("new Transaction(") == 1,
+          str(modelador.count("new Transaction(")))
+
+    check("se activa el tipo antes de colocarlo",
+          "IsActive" in modelador and "Activate()" in modelador,
+          "un FamilySymbol sin activar no se puede colocar, y el error de Revit no lo dice")
+
+    check("la marca se escribe en Comentarios y no en Marca",
+          "ALL_MODEL_INSTANCE_COMMENTS" in modelador,
+          "Revit avisa de marcas repetidas y llenaria la pantalla de advertencias")
+
+    # Las unidades: Revit trabaja en pies por dentro. Un metro metido como pie sale con la
+    # escala multiplicada por 3.28, y como todo queda proporcionado, en pantalla parece bien.
+    fuentes = {os.path.basename(p): leer(p) for p in archivos(".cs")
+               if os.sep + "CadLink.Revit" + os.sep in p
+               and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p}
+
+    fuera = [n for n, t in fuentes.items() if "UnitUtils" in t and n != "Unidades.cs"]
+
+    check("la conversion de unidades esta centralizada en Unidades.cs", not fuera,
+          "tambien convierten: " + ", ".join(fuera))
+
+    check("Unidades.cs convierte desde metros",
+          "UnitTypeId.Meters" in leer(ruta("client/src/CadLink.Revit/Unidades.cs")))
+
+    # ---- La traduccion de la aplicacion cubre lo que el lector produce ----
+    parcial = leer(ruta("client/src/CadLink.App/MainWindow.Ifc.cs"))
+
+    check("la aplicacion escribe el archivo de intercambio",
+          "ArchivoModelo.Guardar(" in parcial and "AModeloJson(" in parcial)
+
+    etabs_modelo = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    bloque = re.search(r"public enum ClaseElemento\s*\{(.*?)\}", etabs_modelo, re.S)
+
+    if bloque:
+        clases = [c.strip() for c in bloque.group(1).split(",") if c.strip()]
+        faltan = [c for c in clases if f"ClaseElemento.{c} => ClasePieza." not in parcial]
+        check("la traduccion al complemento cubre todas las ClaseElemento", not faltan,
+              ", ".join(faltan))
+
+    nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
+    bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)
+    catalogo = leer(ruta("client/src/CadLink.Revit.Nucleo/CatalogoRevit.cs"))
+
+    if bloque_p:
+        piezas = [c.strip() for c in bloque_p.group(1).split(",") if c.strip()]
+        sin_cat = [c for c in piezas if f"ClasePieza.{c} =>" not in catalogo]
+        check("cada ClasePieza tiene categoria de Revit asignada", not sin_cat,
+              ", ".join(sin_cat))
+
+    # Las formas que escribe el lector de ETABS, traducidas para el complemento. Una forma
+    # nueva que nadie traduzca sale modelada como rectangulo sin que nadie se entere.
+    formas = set(re.findall(r'"([A-Z]+)"\s*=>\s*FormaSeccion\.', parcial))
+    faltan_f = sorted({"RECT", "CIRC", "I", "C", "L", "T", "TUBO", "CAJON"} - formas)
+
+    check("la traduccion al complemento conoce todas las formas del lector", not faltan_f,
+          "sin traducir: " + ", ".join(faltan_f))
+
+    # ---- Las pruebas ----
+    check("existe la prueba ejecutable tools/prueba-revit",
+          os.path.exists(ruta("tools/prueba-revit/Program.cs")))
+
+    pp = ruta("tools/prueba-revit/Prueba.csproj")
+    check("y su proyecto", os.path.exists(pp))
+
+    if os.path.exists(pp):
+        check("la prueba es net8.0, para poder correrla en cualquier maquina",
+              "<TargetFramework>net8.0</TargetFramework>" in leer(pp))
+        check("y solo referencia el nucleo",
+              "CadLink.Revit.Nucleo" in leer(pp) and "CadLink.Revit\\" not in leer(pp))
+
 
 if __name__ == "__main__":
     sys.exit(main())

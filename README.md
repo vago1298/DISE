@@ -71,6 +71,7 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | **Lectura de ETABS (CSI OAPI)** | ✅ Completo — `EtabsConnection` por ProgID `CSI.ETABS.API.ETABSObject` |
 | **Lectura de SAP2000** | 🚧 En proceso — CSI comparte la OAPI, así que es el mismo lector con otro ProgID |
 | **Exportar a Revit por IFC** | ✅ Completo, sin probar en Revit real — ver [`docs/exportar-a-revit.md`](docs/exportar-a-revit.md) |
+| **Complemento propio para Revit**, con cuadro de mapeo sección → familia | ✅ Núcleo completo y probado; la capa de la Revit API sin ejecutar — ver [`docs/complemento-revit.md`](docs/complemento-revit.md) |
 
 Los pendientes están marcados en el código con el comentario
 `PENDIENTE DE IMPLEMENTAR`.

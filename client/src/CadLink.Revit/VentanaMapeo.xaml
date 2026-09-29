@@ -1,0 +1,127 @@
+<Window x:Class="CadLink.Revit.VentanaMapeo"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Mapeo de secciones: modelo de cálculo a Revit"
+        Height="620" Width="900"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        MinHeight="420" MinWidth="720">
+
+    <!-- El cuadro que pide, para cada sección del modelo de cálculo, con qué familia y tipo
+         de Revit se va a modelar.
+
+         Las familias y los tipos que se ofrecen NO están escritos aquí: salen de recorrer el
+         proyecto abierto (LectorDeCatalogo), así que son los que el usuario tiene de verdad.
+
+         Esta ventana no decide nada. Todo -qué se propone, qué pasa al cambiar de familia,
+         cuándo se pueden pulsar los botones- está en VistaMapeo, en el núcleo, que sí tiene
+         pruebas. Aquí solo se enlaza. -->
+
+    <Window.Resources>
+        <Style x:Key="Celda" TargetType="ComboBox">
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
+                   Text="Asigna una familia y un tipo de Revit a cada sección del modelo de cálculo:" />
+
+        <TextBlock Grid.Row="1" Margin="0,6,0,10" TextWrapping="Wrap" Foreground="#555"
+                   x:Name="ResumenText" />
+
+        <DataGrid Grid.Row="2" x:Name="Reja"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False" CanUserDeleteRows="False"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal"
+                  RowHeight="30"
+                  SelectionMode="Single">
+
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Sección del cálculo" Width="220"
+                                    Binding="{Binding Etiqueta}" IsReadOnly="True" />
+
+                <DataGridTextColumn Header="Medidas" Width="110"
+                                    Binding="{Binding Medidas}" IsReadOnly="True" />
+
+                <DataGridTextColumn Header="Piezas" Width="60"
+                                    Binding="{Binding Cuantas}" IsReadOnly="True" />
+
+                <!-- Familia y Tipo van como plantilla y no como DataGridComboBoxColumn porque
+                     cada fila tiene SU propia lista: las familias dependen de la categoría de
+                     esa sección, y los tipos de la familia que se eligió en esa fila. -->
+                <DataGridTemplateColumn Header="Familia de Revit" Width="230">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox Style="{StaticResource Celda}"
+                                      ItemsSource="{Binding Familias}"
+                                      SelectedItem="{Binding Familia, Mode=TwoWay}"
+                                      ToolTip="{Binding Sugerido}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="Tipo" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox Style="{StaticResource Celda}"
+                                      ItemsSource="{Binding Tipos}"
+                                      SelectedItem="{Binding Tipo, Mode=TwoWay}"
+                                      DisplayMemberPath="Tipo"
+                                      ToolTip="{Binding Sugerido}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <!-- Sin tipo elegido se marca en rojo claro: esa sección NO se va a
+                             modelar, y eso tiene que verse antes de pulsar el botón. -->
+                        <DataTrigger Binding="{Binding Mapeada}" Value="False">
+                            <Setter Property="Background" Value="#FFF0F0" />
+                        </DataTrigger>
+
+                        <!-- Y lo que puso el emparejador, en azul claro: es una propuesta, no
+                             una decisión de la persona. -->
+                        <DataTrigger Binding="{Binding EsSugerencia}" Value="True">
+                            <Setter Property="Background" Value="#F0F6FF" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+        </DataGrid>
+
+        <TextBlock Grid.Row="3" Margin="0,10,0,0" TextWrapping="Wrap" Foreground="#555"
+                   x:Name="NivelesText" />
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,12,0,0">
+
+            <Button x:Name="ParecidoButton" Content="Aceptar lo más parecido"
+                    Padding="12,6" Margin="0,0,8,0" Click="OnAceptarLoMasParecido"
+                    ToolTip="Rellena las filas vacías con el tipo más parecido que haya, aunque no convenza del todo." />
+
+            <Button x:Name="NuevosButton" Content="Modelar nuevos"
+                    Padding="16,6" Margin="0,0,8,0" Click="OnModelarNuevos"
+                    ToolTip="Crea las piezas que aún no están en Revit. No toca las que ya están." />
+
+            <Button x:Name="ActualizarButton" Content="Actualizar existentes"
+                    Padding="16,6" Margin="0,0,8,0" Click="OnActualizarExistentes"
+                    ToolTip="Cambia el tipo y la posición de las piezas que ya están. No crea ninguna nueva." />
+
+            <Button Content="Cancelar" Padding="16,6" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

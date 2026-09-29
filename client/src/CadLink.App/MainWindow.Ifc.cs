@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using CadLink.Etabs;
 using CadLink.Ifc;
+using CadLink.Revit.Nucleo;
 using Microsoft.Win32;
 
 namespace CadLink.App;
@@ -68,7 +69,19 @@ public partial class MainWindow : Window
             var tabla = Path.ChangeExtension(dialogo.FileName, ".secciones.csv");
             var cuantas = EscribirTablaDeSecciones(paraIfc, tabla);
 
-            EtabsStatusText.Text = TextoDelResumen(r, dialogo.FileName, tabla, cuantas);
+            // Y el archivo que come el COMPLEMENTO de Revit. Va junto al .ifc y no en su
+            // lugar: son dos caminos distintos y los dos sirven.
+            //
+            //   el .ifc   -> vincular o abrir en Revit. Rapido, con geometria y tipos, pero
+            //                los elementos no son nativos y Revit no pregunta familias.
+            //   el .json  -> el complemento de CadLink para Revit. Pregunta que familia va
+            //                con cada seccion y crea columnas, trabes, muros y losas
+            //                NATIVOS de Revit.
+            var paraPlugin = Path.ChangeExtension(dialogo.FileName, null) + ArchivoModelo.Extension;
+            ArchivoModelo.Guardar(AModeloJson(_modeloEtabs, obra), paraPlugin);
+
+            EtabsStatusText.Text =
+                TextoDelResumen(r, dialogo.FileName, tabla, cuantas, paraPlugin);
             StatusText.Text =
                 $"IFC exportado: {r.Total} pieza(s) en {Path.GetFileName(dialogo.FileName)}.";
         }
@@ -214,6 +227,125 @@ public partial class MainWindow : Window
         };
     }
 
+    // ==================================================================
+    //  La traduccion para el COMPLEMENTO de Revit
+    // ==================================================================
+
+    /// <summary>
+    /// Pasa el modelo leido al formato que come el complemento de CadLink para Revit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es un formato APARTE del que usa el exportador de IFC, y a proposito. El IFC necesita
+    /// la terna de ejes locales ya calculada; el complemento necesita en cambio el ANGULO de
+    /// giro, porque es lo que Revit pide en su parametro de rotacion de la seccion. Compartir
+    /// un solo modelo obligaria a llevar las dos cosas y a que cada consumidor ignorara la
+    /// mitad.
+    /// </para>
+    /// <para>
+    /// Y sobre todo: el JSON es un CONTRATO entre dos programas que se instalan por separado
+    /// y se actualizan por separado. Atarlo al modelo interno del exportador de IFC haria
+    /// que un cambio pensado para el IFC rompiera los archivos ya repartidos.
+    /// </para>
+    /// </remarks>
+    internal static ModeloJson AModeloJson(ModeloEtabs modelo, string obra)
+    {
+        var salida = new ModeloJson
+        {
+            Programa = modelo.Programa,
+            Archivo = modelo.Archivo,
+            Obra = obra,
+            Exportado = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)
+        };
+
+        foreach (var n in modelo.NivelesConElementos())
+        {
+            salida.Niveles.Add(new NivelJson { Nombre = n.Nombre, ElevacionM = n.ElevacionM });
+        }
+
+        foreach (var el in modelo.Elementos)
+        {
+            if (string.Equals(el.Forma, "AREA", StringComparison.OrdinalIgnoreCase))
+            {
+                var pano = new PanoJson
+                {
+                    Etiqueta = el.Etiqueta,
+                    Clase = el.Clase == ClaseElemento.Muro ? ClasePieza.Muro : ClasePieza.Losa,
+                    Nivel = el.Story,
+                    Seccion = new SeccionJson
+                    {
+                        Nombre = el.Seccion,
+                        Forma = FormaSeccion.Pano,
+
+                        // En un area, el "ancho" que trae el lector es el espesor.
+                        EspesorM = el.AnchoM,
+                        Material = el.Material,
+                        Notas = el.Notas
+                    }
+                };
+
+                foreach (var v in el.Vertices3D)
+                {
+                    pano.Vertices.Add(new PuntoJson { X = v.X, Y = v.Y, Z = v.Z });
+                }
+
+                salida.Panos.Add(pano);
+
+                continue;
+            }
+
+            salida.Barras.Add(new BarraJson
+            {
+                Etiqueta = el.Etiqueta,
+                Clase = APieza(el.Clase),
+                Nivel = el.Story,
+                P1 = new PuntoJson { X = el.X1, Y = el.Y1, Z = el.Z1 },
+                P2 = new PuntoJson { X = el.X2, Y = el.Y2, Z = el.Z2 },
+                AnguloGrados = el.AnguloGrados,
+                Seccion = new SeccionJson
+                {
+                    Nombre = el.Seccion,
+                    Forma = AFormaSeccion(el.Forma),
+                    AnchoM = el.AnchoM,
+                    PeralteM = el.PeralteM,
+                    PatinM = el.PatinM,
+                    AlmaM = el.AlmaM,
+                    ParedM = el.ParedM,
+                    Material = el.Material,
+                    Notas = el.Notas
+                }
+            });
+        }
+
+        return salida;
+    }
+
+    private static ClasePieza APieza(ClaseElemento c) => c switch
+    {
+        ClaseElemento.Columna => ClasePieza.Columna,
+        ClaseElemento.Trabe => ClasePieza.Trabe,
+        ClaseElemento.Diagonal => ClasePieza.Diagonal,
+        ClaseElemento.Muro => ClasePieza.Muro,
+        ClaseElemento.Losa => ClasePieza.Losa,
+        _ => ClasePieza.Trabe
+    };
+
+    /// <summary>La forma del lector, en la enumeracion que usa el complemento.</summary>
+    internal static FormaSeccion AFormaSeccion(string? forma) =>
+        (forma ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "RECT" => FormaSeccion.Rectangulo,
+            "CIRC" => FormaSeccion.Circulo,
+            "TUBO" => FormaSeccion.Tubo,
+            "PIPE" => FormaSeccion.Tubo,
+            "CAJON" => FormaSeccion.Cajon,
+            "I" => FormaSeccion.PerfilI,
+            "C" => FormaSeccion.PerfilC,
+            "T" => FormaSeccion.PerfilT,
+            "L" => FormaSeccion.PerfilL,
+            _ => FormaSeccion.Rectangulo
+        };
+
     private static ClaseIfc AClase(ClaseElemento c) => c switch
     {
         ClaseElemento.Columna => ClaseIfc.Columna,
@@ -336,7 +468,8 @@ public partial class MainWindow : Window
     //  El aviso al usuario
     // ==================================================================
 
-    private static string TextoDelResumen(ResumenIfc r, string ifc, string csv, int secciones)
+    private static string TextoDelResumen(
+        ResumenIfc r, string ifc, string csv, int secciones, string json)
     {
         var sb = new StringBuilder();
 
@@ -350,6 +483,11 @@ public partial class MainWindow : Window
 
         sb.Append(secciones).Append(" seccion(es) distintas, listadas en ")
           .Append(Path.GetFileName(csv)).AppendLine(" para elegir su familia en Revit.");
+
+        sb.AppendLine();
+        sb.Append("Para modelar elementos NATIVOS de Revit -y elegir la familia de cada ")
+          .AppendLine("seccion en un cuadro- usa el complemento de CadLink para Revit con:");
+        sb.Append("  ").AppendLine(Path.GetFileName(json));
 
         if (r.Avisos.Count > 0)
         {

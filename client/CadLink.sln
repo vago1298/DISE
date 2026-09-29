@@ -12,6 +12,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Etabs", "src\CadLin
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Ifc", "src\CadLink.Ifc\CadLink.Ifc.csproj", "{38F20418-BCF3-4CB5-86B2-8BE9A78F495D}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Revit.Nucleo", "src\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj", "{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +40,10 @@ Global
 		{38F20418-BCF3-4CB5-86B2-8BE9A78F495D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{38F20418-BCF3-4CB5-86B2-8BE9A78F495D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{38F20418-BCF3-4CB5-86B2-8BE9A78F495D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

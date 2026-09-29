@@ -93,6 +93,13 @@
          El motivo de que sea net8.0 esta explicado en su propio .csproj: es lo que permite
          compilarlo y PROBARLO en cualquier maquina. -->
     <ProjectReference Include="..\CadLink.Ifc\CadLink.Ifc.csproj" />
+
+    <!-- El nucleo del complemento de Revit. La aplicacion lo usa SOLO para escribir el
+         archivo de intercambio .cadlink-modelo.json; el complemento en si (CadLink.Revit)
+         NO se referencia desde aqui y no entra en esta solucion, porque necesita
+         RevitAPI.dll y no compilaria en una maquina sin Revit. Tambien es net8.0, asi que
+         no ata esta aplicacion a nada. -->
+    <ProjectReference Include="..\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

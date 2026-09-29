@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Revit.Nucleo", "src\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj", "{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CadLink.Revit", "src\CadLink.Revit\CadLink.Revit.csproj", "{6B1F9A28-04C7-4E3A-9D52-71C8E0B4F613}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DAF64E32-7855-4FC4-B593-E4B5BD092A0A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6B1F9A28-04C7-4E3A-9D52-71C8E0B4F613}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B1F9A28-04C7-4E3A-9D52-71C8E0B4F613}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B1F9A28-04C7-4E3A-9D52-71C8E0B4F613}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B1F9A28-04C7-4E3A-9D52-71C8E0B4F613}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1D7C4E90-8B26-4A53-8F41-2C05E7A9B8D4}
+	EndGlobalSection
+EndGlobal
