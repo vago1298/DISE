@@ -11903,7 +11903,8 @@ def main() -> int:
               v21_separacion_y_acero,
               v22_zapatas_corridas,
               v23_hoja_zapatas_corridas,
-              v24_rediseno):
+              v24_rediseno,
+              v25_ifc):
         f()
 
     print("\n" + "=" * 66)
@@ -14922,6 +14923,232 @@ def v24_rediseno() -> None:
               temacs.count(f'["{brocha}"]') == 2)
         check(f"y {brocha} esta declarada en la paleta",
               f'x:Key="{brocha}"' in tema)
+
+
+# ======================================================================
+# 25. Exportacion a Revit por IFC
+#
+#     Lo que se vigila aqui NO es el exportador en si: ese vive en CadLink.Ifc, que es
+#     net8.0 pelado y por tanto se compila y se PRUEBA de verdad con
+#     tools/prueba-ifc (dotnet run) en cualquier maquina, incluida esta.
+#
+#     Lo que se vigila es todo lo que rodea a eso y no se puede compilar aqui:
+#
+#       * que CadLink.Ifc siga siendo net8.0 y SIN dependencias. Es la condicion de la
+#         que depende que se pueda probar. En cuanto alguien le anada un PackageReference
+#         o lo pase a net8.0-windows, tools/prueba-ifc deja de correr sin internet y el
+#         exportador vuelve a escribirse a ciegas, como el resto del C# de este repo;
+#       * que la aplicacion lo referencie y que el boton este cableado;
+#       * que el traductor de CadLink.App cubra TODAS las formas y clases que el lector
+#         de ETABS puede producir, porque una forma nueva que nadie traduzca sale
+#         exportada como un rectangulo sin avisar;
+#       * que no vuelva la trampa de params que ya produjo un IFC invalido una vez;
+#       * y que las cuentas de atributos anotadas en el C# coincidan con la tabla del
+#         verificador, que es la que salio del esquema oficial.
+# ======================================================================
+def v25_ifc() -> None:
+    print("\n[25] Exportacion a Revit por IFC")
+
+    csproj_ifc = ruta("client/src/CadLink.Ifc/CadLink.Ifc.csproj")
+
+    check("existe el proyecto CadLink.Ifc", os.path.exists(csproj_ifc))
+
+    if not os.path.exists(csproj_ifc):
+        return
+
+    ifc_proj = leer(csproj_ifc)
+
+    # Los comentarios se quitan antes de buscar: este .csproj EXPLICA en un comentario por
+    # que no lleva PackageReference, y buscar la palabra a secas daba un falso positivo.
+    ifc_sin_comentarios = re.sub(r"<!--.*?-->", " ", ifc_proj, flags=re.S)
+
+    # ---- La condicion que hace que esto sea comprobable ----
+    check("CadLink.Ifc es net8.0, NO net8.0-windows",
+          "<TargetFramework>net8.0</TargetFramework>" in ifc_sin_comentarios,
+          "si pasa a net8.0-windows, tools/prueba-ifc ya no corre sin internet")
+
+    check("CadLink.Ifc no tiene PackageReference",
+          "PackageReference" not in ifc_sin_comentarios)
+
+    check("CadLink.Ifc no referencia otros proyectos",
+          "ProjectReference" not in ifc_sin_comentarios,
+          "referenciar CadLink.Etabs lo ataria a net8.0-windows")
+
+    # ---- Cableado ----
+    app_proj = leer(ruta("client/src/CadLink.App/CadLink.App.csproj"))
+    check("CadLink.App referencia CadLink.Ifc",
+          "CadLink.Ifc\\CadLink.Ifc.csproj" in app_proj)
+
+    sln = leer(ruta("client/CadLink.sln"))
+    check("CadLink.Ifc esta en la solucion",
+          "CadLink.Ifc\\CadLink.Ifc.csproj" in sln)
+
+    m = re.search(
+        r'"CadLink\.Ifc",\s*"src\\CadLink\.Ifc\\CadLink\.Ifc\.csproj",\s*"(\{[0-9A-F-]+\})"',
+        sln)
+    check("y con su GUID", bool(m))
+
+    if m:
+        g = re.escape(m.group(1))
+        filas = len(re.findall(g + r"\.(?:Debug|Release)\|Any CPU\.(?:ActiveCfg|Build\.0)", sln))
+        check("con sus cuatro filas de configuracion", filas == 4, str(filas))
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    parcial = leer(ruta("client/src/CadLink.App/MainWindow.Ifc.cs"))
+
+    check("hay boton para exportar a IFC",
+          'x:Name="ExportarIfcButton"' in xaml and 'Click="OnExportarIfc"' in xaml)
+    check("y entrada en el menu de ETABS",
+          'Header="Exportar a _Revit (IFC)"' in xaml)
+    check("el manejador existe", "void OnExportarIfc(" in parcial)
+
+    # Los usings que ya rompieron la compilacion en otros archivos de este repo.
+    for u, porque in (
+            ("using Microsoft.Win32;", "SaveFileDialog"),
+            ("using CadLink.Ifc;", "ModeloIfc y ExportadorIfc"),
+            ("using CadLink.Etabs;", "ElementoEtabs y PuntoDeInsercion"),
+            ("using System.Windows.Input;", "Cursors"),
+            ("using System.Text;", "StringBuilder"),
+            ("using System.Globalization;", "CultureInfo")):
+        check(f"MainWindow.Ifc.cs trae {u} (para {porque})", u in parcial)
+
+    check("guarda con SaveFileDialog y filtro .ifc",
+          'Filter = "Archivo IFC (*.ifc)|*.ifc"' in parcial)
+
+    check("protege contra que no haya modelo leido",
+          "_modeloEtabs is null" in parcial)
+
+    check("restaura el cursor en un finally",
+          "finally" in parcial and "Cursor = Cursors.Arrow" in parcial)
+
+    # ---- El traductor cubre lo que el lector produce ----
+    #
+    # Las formas las escribe EtabsReader. Si aparece una nueva y nadie la traduce, la
+    # pieza se exporta como rectangulo y nadie se entera.
+    lector = leer(ruta("client/src/CadLink.Etabs/EtabsReader.cs"))
+    delLector = set(re.findall(r'Forma\s*=\s*"([A-Z]+)"', lector))
+    delLector |= set(re.findall(r'"([A-Z]{1,5})"\s*,\s*(?:dims\.)?Patin', lector))
+
+    # Las que el lector declara en su documentacion de Dims.
+    for f in ("RECT", "CIRC", "I", "C", "L", "TUBO", "CAJON"):
+        delLector.add(f)
+
+    delLector.discard("AREA")   # las areas no pasan por el traductor de barras
+
+    traducidas = set(re.findall(r'"([A-Z]+)"\s*=>\s*FormaIfc\.', parcial))
+    faltan = sorted(delLector - traducidas)
+
+    check("el traductor conoce todas las formas del lector", not faltan,
+          "sin traducir: " + ", ".join(faltan))
+
+    # Y al contrario: cada valor de FormaIfc tiene que tener perfil.
+    modelo_ifc = leer(ruta("client/src/CadLink.Ifc/ModeloIfc.cs"))
+    perfiles = leer(ruta("client/src/CadLink.Ifc/PerfilesIfc.cs"))
+
+    bloque = re.search(r"public enum FormaIfc\s*\{(.*?)\}", modelo_ifc, re.S)
+    check("se puede leer el enum FormaIfc", bool(bloque))
+
+    if bloque:
+        valores = [v.strip() for v in bloque.group(1).split(",") if v.strip()]
+        sinPerfil = [v for v in valores if f"FormaIfc.{v}" not in perfiles]
+        check("cada forma de FormaIfc tiene su perfil de IFC", not sinPerfil,
+              ", ".join(sinPerfil))
+
+        sinEntidad = [v for v in valores
+                      if f"FormaIfc.{v} =>" not in perfiles]
+        check("y cada una esta en la tabla Entidad()", not sinEntidad,
+              ", ".join(sinEntidad))
+
+    # Todas las clases del lector tienen que traducirse.
+    etabs_modelo = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    bloqueClase = re.search(r"public enum ClaseElemento\s*\{(.*?)\}", etabs_modelo, re.S)
+
+    if bloqueClase:
+        clases = [c.strip() for c in bloqueClase.group(1).split(",") if c.strip()]
+        sinClase = [c for c in clases if f"ClaseElemento.{c}" not in parcial]
+        check("el traductor cubre todas las ClaseElemento", not sinClase,
+              ", ".join(sinClase))
+
+    # ---- La trampa de params, que ya produjo un IFC invalido ----
+    #
+    # Ent(string tipo, params object?[] args) hace que un 'new object?[] { ... }' suelto
+    # se APLANE en la lista de argumentos en vez de ser un argumento que es una lista.
+    # Asi salio IFCCARTESIANPOINT(0.,0.,0.) -tres atributos- donde el esquema pide UNO.
+    # El compilador no dice nada. Se prohibe la construccion y se obliga a EscritorPaso.L.
+    exportador = leer(ruta("client/src/CadLink.Ifc/ExportadorIfc.cs"))
+
+    check("ExportadorIfc no usa 'new object?[]' (usa EscritorPaso.L)",
+          "new object?[]" not in exportador,
+          "un object?[] suelto se aplana en el params y rompe las cuentas de atributos")
+
+    check("EscritorPaso tiene el tipo Lista y el ayudante L",
+          "readonly record struct Lista" in leer(ruta("client/src/CadLink.Ifc/EscritorPaso.cs"))
+          and "public static Lista L(" in leer(ruta("client/src/CadLink.Ifc/EscritorPaso.cs")))
+
+    # ---- Las cuentas de atributos ----
+    #
+    # En el C# cada llamada va anotada con la cuenta que dice el esquema: "IfcColumn [9]".
+    # El verificador tiene la misma tabla, sacada del .exp oficial. Si las dos no
+    # coinciden, una de las dos esta mal y hay que mirarlo.
+    verificador = leer(ruta("tools/verificar_ifc.py"))
+    tabla = dict(re.findall(r'"(IFC[A-Z0-9]+)":\s*(\d+),', verificador))
+
+    check("el verificador trae la tabla de cuentas", len(tabla) > 30, str(len(tabla)))
+
+    anotadas = {}
+    for texto in (exportador, perfiles):
+        for nombre, n in re.findall(r"(Ifc[A-Za-z0-9]+)\s*\[(\d+)\]", texto):
+            anotadas[nombre.upper()] = n
+
+    check("hay cuentas anotadas en el C#", len(anotadas) > 15, str(len(anotadas)))
+
+    discrepan = [
+        f"{k}: el C# dice {v} y la tabla {tabla[k]}"
+        for k, v in sorted(anotadas.items())
+        if k in tabla and tabla[k] != v
+    ]
+
+    check("las cuentas anotadas en el C# coinciden con la tabla del esquema",
+          not discrepan, "; ".join(discrepan[:4]))
+
+    sinTabla = sorted(k for k in anotadas if k not in tabla)
+    check("toda entidad anotada esta en la tabla del verificador", not sinTabla,
+          ", ".join(sinTabla))
+
+    # ---- Las herramientas de comprobacion existen ----
+    check("existe la prueba ejecutable tools/prueba-ifc",
+          os.path.exists(ruta("tools/prueba-ifc/Program.cs")))
+
+    pruebaProj = ruta("tools/prueba-ifc/Prueba.csproj")
+    check("y su proyecto", os.path.exists(pruebaProj))
+
+    if os.path.exists(pruebaProj):
+        check("la prueba tambien es net8.0, para poder correrla en cualquier maquina",
+              "<TargetFramework>net8.0</TargetFramework>" in leer(pruebaProj))
+
+    check("existe tools/verificar_ifc.py",
+          os.path.exists(ruta("tools/verificar_ifc.py")))
+
+    # La decision geometrica que sostiene que los perfiles asimetricos no salgan
+    # espejeados. Si alguien "simplifica" a Axis = E1, los angulos y canales se voltean y
+    # el archivo sigue abriendo igual de bien.
+    check("la extrusion sigue yendo por -E1 desde el extremo J",
+          "Axis = -E1" in exportador and "-e1[0], -e1[1], -e1[2]" in exportador,
+          "con Axis = +E1 la Y de la colocacion sale -E2 y los perfiles L, U y T se voltean")
+
+    check("se comprueba que la terna sea derecha antes de exportar",
+          "EsTernaDerecha" in exportador)
+
+    # La jerarquia espacial, que falto en la primera version: el archivo era valido y
+    # estaba desconectado.
+    check("se escriben las relaciones IfcRelAggregates",
+          exportador.count("IFCRELAGGREGATES") >= 1,
+          "sin ellas Revit importa geometria sin niveles")
+
+    # El escapado de acentos: el modelo trae secciones y niveles con Ñ y tildes.
+    escritor = leer(ruta("client/src/CadLink.Ifc/EscritorPaso.cs"))
+    check("las cadenas escapan lo que no es ASCII con \\X2\\",
+          r"\\X2\\" in escritor)
 
 if __name__ == "__main__":
     sys.exit(main())

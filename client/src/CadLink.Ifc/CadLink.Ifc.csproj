@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Exportador de IFC, para llevar el modelo leido de ETABS o SAP2000 a Revit.
+
+       OJO CON EL TARGET FRAMEWORK: este proyecto es net8.0 PELADO, no
+       net8.0-windows como los otros cuatro. No es un descuido, es a proposito, y
+       conviene no "corregirlo":
+
+         1. Escribir un IFC es texto y aritmetica. No toca WPF, ni COM, ni el
+            registro, ni nada de Windows. No hay motivo tecnico para atarlo.
+
+         2. Y lo importante: un proyecto net8.0 sin ningun PackageReference se
+            compila y se EJECUTA en cualquier maquina, incluida la de Linux donde
+            se escribe este repo. Los net8.0-windows no: necesitan bajar su ref
+            pack, y sin internet no compilan. Ese es el motivo de que casi todo
+            el C# de aqui se haya escrito sin poder compilarlo nunca, y de la
+            fila de commits "Arregla el CS0103", "Arregla el CS0246"...
+
+            Al ser net8.0, tools/prueba-ifc SI se puede ejecutar de verdad, y de
+            hecho el exportador se escribio corriendolo. Por eso el nucleo del
+            IFC esta aqui y no en CadLink.App.
+
+       Un proyecto net8.0-windows puede referenciar uno net8.0 sin problema, asi
+       que CadLink.App lo usa con normalidad. Al contrario NO se puede, y de ahi
+       la regla de este proyecto: NO referenciar CadLink.Etabs ni CadLink.Cad.
+
+       Consecuencia de diseno: aqui no se conoce ElementoEtabs. La aplicacion
+       rellena los tipos neutros de ModeloIfc.cs copiando campos, que es trabajo
+       mecanico, y TODA la decision de verdad -que entidad IFC, que perfil, donde
+       se coloca- ocurre aqui, donde hay pruebas que la respaldan. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Ifc</RootNamespace>
+    <AssemblyName>CadLink.Ifc</AssemblyName>
+  </PropertyGroup>
+
+</Project>
