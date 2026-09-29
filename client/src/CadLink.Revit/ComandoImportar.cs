@@ -161,8 +161,19 @@ public sealed class ComandoImportar : IExternalCommand
         //
         // Ahora se ajusta con las medidas de los tipos elegidos, que son las de las piezas que
         // van a existir de verdad.
-        var avisosMuros = AjusteDeMuros.AplicarATodos(
-            modelo, null, Orientacion.Medidor(modelo, mapeo, catalogo));
+        var medidor = Orientacion.Medidor(modelo, mapeo, catalogo);
+
+        var avisosMuros = AjusteDeMuros.AplicarATodos(modelo, null, medidor);
+
+        // Cuantas barras pudieron dar sus medidas REALES. Se dice porque es la diferencia entre
+        // recortar el muro al pano del castillo que va a existir y recortarlo al de la seccion
+        // del calculo: si esta cuenta sale baja, el ajuste esta trabajando a ciegas y hay que
+        // saberlo aqui, no deducirlo del modelo terminado.
+        var conMedidas = modelo.Barras.Count(b => medidor(b) is not null);
+
+        avisosMuros.Add(
+            $"«medidas»: {conMedidas} de {modelo.Barras.Count} barra(s) se ajustaron con las "
+            + "medidas del tipo de Revit elegido; el resto, con las de la seccion del calculo");
 
         // ---- 7. El plan y el modelado ----
         var plan = Planificador.Armar(

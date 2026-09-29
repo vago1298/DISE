@@ -100,6 +100,17 @@ public sealed class BarraJson
     /// </remarks>
     public double AnguloGrados { get; set; }
 
+    /// <summary>
+    /// El <b>punto cardinal</b> del punto de insercion de ETABS: que punto de la seccion va
+    /// sobre la linea que traen <see cref="P1"/> y <see cref="P2"/>.
+    /// </summary>
+    /// <remarks>
+    /// 10 es el centroide y es el de OMISION de ETABS; 8 es arriba al centro, el habitual de una
+    /// cadena de cerramiento. Ver <see cref="Insercion"/>. Solo importa su parte vertical: el
+    /// corrimiento en planta ya viene sumado a la X y la Y.
+    /// </remarks>
+    public int PuntoCardinal { get; set; } = Insercion.Centroide;
+
     public SeccionJson Seccion { get; set; } = new();
 }
 
@@ -143,8 +154,10 @@ public sealed class ModeloJson
     /// <remarks>
     /// La 2 anade la <see cref="Cuadricula"/>. Un archivo de la 1 se sigue leyendo: la
     /// cuadricula queda nula y el complemento no crea ejes, que es exactamente lo que hacia.
+    /// La 3 anade <see cref="BarraJson.PuntoCardinal"/>; en un archivo viejo queda en el
+    /// centroide, que es el de omision de ETABS.
     /// </remarks>
-    public const int VersionActual = 2;
+    public const int VersionActual = 3;
 
     public int Version { get; set; } = VersionActual;
 

@@ -15743,12 +15743,7 @@ def v26_plugin_revit() -> None:
           "es el punto cardinal 8, 'top center', el de ETABS")
 
     check("y sin desvio lateral",
-          "YJustification.Origin" in modelador
-          and "BuiltInParameter.Y_JUSTIFICATION" in modelador)
-
-    check("solo a las trabes, no a columnas ni diagonales",
-          "ClasePieza.Trabe" in modelador and "PedirCaraDeArriba(" in modelador,
-          "una columna se ata por niveles y una diagonal viene por su centroide")
+          "BuiltInParameter.Y_JUSTIFICATION" in modelador)
 
     # ---- Y SIN DESFASE DE NIVEL ----
     #
@@ -15758,20 +15753,74 @@ def v26_plugin_revit() -> None:
     # piso. Hubo una version que lo corregia MOVIENDO la pieza segun su caja envolvente; se
     # quito porque la caja de una viga estructural incluye mas que su solido y el
     # desplazamiento salia impredecible.
-    check("la trabe se deja sin desfase de nivel",
-          "SinDesfase(" in modelador
-          and "STRUCTURAL_BEAM_END0_ELEVATION" in modelador
-          and "STRUCTURAL_BEAM_END1_ELEVATION" in modelador,
-          "con desfase, la cadena no queda a nivel de piso")
-
     check("y NO se mueve la pieza a mano para colocarla",
           "ElementTransformUtils.MoveElement(" not in modelador,
           "mover segun la caja envolvente daba un desplazamiento impredecible, porque la caja "
           "de una viga estructural incluye mas que su solido")
 
+    check("ni se le fuerza el desfase de nivel",
+          "STRUCTURAL_BEAM_END0_ELEVATION" not in modelador,
+          "la cota de la linea es la que trae el calculo; la cara la pone la justificacion")
+
     check("tambien se escriben los justificados de cada extremo",
           "START_Z_JUSTIFICATION" in modelador and "END_Z_JUSTIFICATION" in modelador,
           "con 'yz Justification' en Independent, el de la pieza entera se ignora")
+
+    # ---- EL PUNTO DE INSERCION DE ETABS ----
+    #
+    # El complemento tenia el punto cardinal 8 -arriba al centro- escrito a mano para todas las
+    # trabes. El 8 es el habitual de una cadena, pero el de OMISION de ETABS es el 10, el
+    # centroide: con el, la linea que llega ya pasa por el centro de la seccion, y forzar
+    # «arriba» sube la pieza. Ese era el alzado que no se iba.
+    ins = ruta("client/src/CadLink.Revit.Nucleo/Insercion.cs")
+    check("existe la traduccion del punto de insercion de ETABS", os.path.exists(ins))
+
+    if os.path.exists(ins):
+        it = leer(ins)
+
+        check("el centroide es el punto de omision, como en ETABS",
+              "Centroide = 10" in it,
+              "suponer el 8 es lo que alzaba las cadenas")
+
+        check("se reparten las tres filas de la cuadricula de puntos cardinales",
+              "1 or 2 or 3" in it and "4 or 5 or 6" in it and "7 or 8 or 9" in it)
+
+        check("y se sabe cuanto cuelga la pieza bajo su linea",
+              "CuelgaM(" in it and "CaraInferior(" in it,
+              "lo que cuelga no es el peralte: depende del punto cardinal")
+
+    check("el punto cardinal viaja en el contrato",
+          "public int PuntoCardinal" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("y por omision es el centroide, nunca el 8",
+          "PuntoCardinal { get; set; } = Insercion.Centroide" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")),
+          "un archivo viejo no lo trae, y suponer el 8 es la suposicion que fallaba")
+
+    check("la exportacion lo manda",
+          "PuntoCardinal = el.PuntoCardinal" in parcial)
+
+    check("la version del formato subio al anadirlo",
+          "VersionActual = 3" in leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("el modelador justifica segun el punto cardinal, no a mano",
+          "JustificarComoEnEtabs(" in modelador
+          and "Insercion.Cara(" in modelador
+          and "PedirCaraDeArriba(" not in modelador,
+          "tener el 8 escrito a mano alzaba todas las trabes cuyo punto era otro")
+
+    check("a lo ancho la seccion va centrada, porque el corrimiento en planta ya viene aplicado",
+          "YJustification.Center" in modelador,
+          "volver a aplicarlo aqui lo contaria dos veces")
+
+    check("y el ajuste de muros baja lo que CUELGA la cadena, no su peralte",
+          "Insercion.CuelgaM(" in leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")),
+          "bajar el peralte entero cuando solo cuelga la mitad deja un hueco bajo la cadena")
+
+    check("el informe dice cuantas barras se ajustaron con las medidas del tipo",
+          "de {modelo.Barras.Count} barra(s) se ajustaron" in ci,
+          "si esa cuenta sale baja, el ajuste trabaja a ciegas y hay que verlo en el informe")
 
     # ---- Los castillos, girados como en ETABS ----
     #
@@ -15852,7 +15901,8 @@ def v26_plugin_revit() -> None:
               ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
 
     check("y la version del formato subio al anadirla",
-          "VersionActual = 2" in leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")),
+          "La 2 anade la <see cref=\"Cuadricula\"/>" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")),
           "un archivo viejo se sigue leyendo, pero el formato cambio")
 
     check("la exportacion manda los ejes",

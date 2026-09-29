@@ -346,6 +346,14 @@ public partial class MainWindow : Window
                 P1 = p1,
                 P2 = p2,
                 AnguloGrados = el.AnguloGrados,
+
+                // El punto de insercion. El lector ya sumo su parte en PLANTA a la X y la Y,
+                // pero deja la Z sin tocar -mover la elevacion cambiaria el nivel al que se
+                // reparte la pieza-, asi que el complemento necesita saber contra que cara se
+                // midio la cota para colocar la seccion. Sin esto tenia el 8 escrito a mano y
+                // subia las trabes cuyo punto era otro, que con el 10 de omision son todas.
+                PuntoCardinal = el.PuntoCardinal,
+
                 Seccion = new SeccionJson
                 {
                     Nombre = el.Seccion,

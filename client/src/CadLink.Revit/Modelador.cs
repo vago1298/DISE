@@ -524,97 +524,58 @@ internal static class Modelador
             inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEND_DIR_ANGLE)?.Set(giroCurva);
         }
 
-        if (b.Clase == ClasePieza.Trabe)
-        {
-            PedirCaraDeArriba(inst);
-            SinDesfase(inst, r);
-        }
+        JustificarComoEnEtabs(inst, b);
 
         return inst;
     }
 
     /// <summary>
-    /// Cuelga la trabe de su CARA DE ARRIBA, que es como la trae el modelo de calculo.
+    /// Coloca la seccion contra la MISMA cara que el punto de insercion de ETABS.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// En ETABS el punto de insercion por omision de una viga es <b>top center</b>, o sea que la
-    /// linea que se exporta es la de la cara de ARRIBA de la seccion. Si en Revit se coloca la
-    /// pieza sin decir nada, donde cae la seccion respecto de esa linea depende de donde tenga
-    /// el origen la familia: con las familias de hormigon del usuario la trabe quedaba apoyada
-    /// SOBRE la linea, o sea un peralte mas arriba de donde tiene que estar, y una cadena de
-    /// cerramiento asomaba por encima del muro en vez de coronarlo.
+    /// Aqui estaba el alzado que no se iba. El complemento tenia el punto cardinal <b>8</b>
+    /// -arriba al centro- escrito a mano para todas las trabes. El 8 es el habitual de una
+    /// cadena, pero <b>el de omision de ETABS es el 10</b>, el centroide: con el, la linea que
+    /// llega ya pasa por el centro de la seccion, y forzar «arriba» sube la pieza. De ahi que
+    /// las cadenas subieran un peralte y que no hubiera forma de bajarlas tocando el desfase.
     /// </para>
     /// <para>
-    /// La correccion no se hace moviendo la linea -eso obligaria a adivinar donde tiene el
-    /// origen cada familia- sino diciendole a Revit respecto de que cara se justifica:
-    /// </para>
-    /// <list type="bullet">
-    ///   <item><c>Y_JUSTIFICATION = Origin</c>: sin desvio lateral.</item>
-    ///   <item><c>Z_JUSTIFICATION = Top</c>: la geometria cuelga bajo la linea.</item>
-    /// </list>
-    /// <para>
-    /// Esa pareja es exactamente el <b>punto cardinal 8</b>, que es como se llama "top center"
-    /// en IFC y en ETABS. La equivalencia no es una suposicion: es la que usa el propio
-    /// exportador de IFC de Autodesk para traducir entre los dos sistemas.
+    /// Ahora se lee el punto cardinal del modelo y se traduce. A lo ANCHO la seccion va siempre
+    /// centrada, porque el lector de ETABS ya sumo el corrimiento en planta a la X y la Y; lo
+    /// unico que depende del punto cardinal es contra que cara se mide la altura.
     /// </para>
     /// <para>
-    /// Se aplica solo a las trabes. Una columna se ata por niveles y una diagonal viene por su
-    /// centroide, asi que en esas dos justificar por la cara de arriba las descolocaria.
+    /// No se toca ningun desfase de nivel: la cota de la linea es la que trae el calculo y la
+    /// cara de la seccion la pone la justificacion. Forzar el desfase a cero movia la pieza.
     /// </para>
     /// </remarks>
-    private static void PedirCaraDeArriba(FamilyInstance inst)
+    private static void JustificarComoEnEtabs(FamilyInstance inst, BarraJson b)
     {
         try
         {
-            // Los parametros se escriben como ENTERO, que es como los guarda Revit.
+            var z = Insercion.Cara(b.PuntoCardinal) switch
+            {
+                CaraDeInsercion.Arriba => ZJustification.Top,
+                CaraDeInsercion.Abajo => ZJustification.Bottom,
+                _ => ZJustification.Center
+            };
+
+            // A lo ancho, centrada: el corrimiento en planta ya viene en las coordenadas, y
+            // volverlo a aplicar aqui lo contaria dos veces.
             inst.get_Parameter(BuiltInParameter.Y_JUSTIFICATION)
-                ?.Set((int)YJustification.Origin);
+                ?.Set((int)YJustification.Center);
 
-            inst.get_Parameter(BuiltInParameter.Z_JUSTIFICATION)
-                ?.Set((int)ZJustification.Top);
+            inst.get_Parameter(BuiltInParameter.Z_JUSTIFICATION)?.Set((int)z);
 
-            // Con "yz Justification" en Independent, los dos de arriba se ignoran y manda cada
-            // extremo por su cuenta. Se escriben tambien los de los extremos para que la pieza
-            // quede bien en los dos modos. Escribir un parametro que no aplica no cuesta nada:
-            // get_Parameter devuelve null y el «?.» lo deja pasar.
-            inst.get_Parameter(BuiltInParameter.START_Z_JUSTIFICATION)
-                ?.Set((int)ZJustification.Top);
-
-            inst.get_Parameter(BuiltInParameter.END_Z_JUSTIFICATION)
-                ?.Set((int)ZJustification.Top);
+            // Con "yz Justification" en Independent los de arriba se ignoran y manda cada
+            // extremo por su cuenta, asi que se escriben tambien.
+            inst.get_Parameter(BuiltInParameter.START_Z_JUSTIFICATION)?.Set((int)z);
+            inst.get_Parameter(BuiltInParameter.END_Z_JUSTIFICATION)?.Set((int)z);
         }
         catch (Exception)
         {
-            // Hay familias que no exponen la justificacion. Se ensena en el informe por medio
-            // del aviso de SinDesfase si tampoco se pudo poner el desfase; perderla deja la
-            // trabe un peralte mas arriba, que es molesto pero no invalida el resto.
-        }
-    }
-
-    /// <summary>Deja la trabe SIN DESFASE de nivel: su linea, en la cota del nivel.</summary>
-    /// <remarks>
-    /// <para>
-    /// Una cadena de cerramiento o de desplante va en la cota del piso, no a una altura
-    /// cualquiera. Revit calcula el desfase de cada extremo a partir de la cota de la linea que
-    /// se le paso, asi que cualquier diferencia entre la cota de ETABS y la del nivel aparece
-    /// como un desfase de arranque y final, y la pieza queda separada del piso.
-    /// </para>
-    /// <para>
-    /// Se ponen los dos desfases a cero. Junto con la justificacion por la cara de arriba, eso
-    /// deja la trabe colgando del nivel hacia abajo, que es donde va.
-    /// </para>
-    /// </remarks>
-    private static void SinDesfase(FamilyInstance inst, ResultadoModelado r)
-    {
-        try
-        {
-            inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEAM_END0_ELEVATION)?.Set(0.0);
-            inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEAM_END1_ELEVATION)?.Set(0.0);
-        }
-        catch (Exception e)
-        {
-            r.Avisos.Add("«trabes»: no se pudo poner a cero el desfase de nivel: " + e.Message);
+            // Hay familias que no exponen la justificacion. Se queda como la ponga Revit.
         }
     }
 

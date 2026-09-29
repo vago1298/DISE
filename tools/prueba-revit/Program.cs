@@ -597,11 +597,13 @@ internal static partial class Programa
         elMuro.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) });
         mm.Panos.Add(elMuro);
 
-        // La cadena de cerramiento, encima y en la misma direccion.
+        // La cadena de cerramiento, encima y en la misma direccion. Con punto cardinal 8
+        // -arriba al centro-, que es como se modela una cadena: su cara de ARRIBA va a la cota
+        // del piso y cuelga el peralte entero por debajo.
         mm.Barras.Add(new BarraJson
         {
             Etiqueta = "CAD-1", Clase = ClasePieza.Trabe, Nivel = "Story1",
-            P1 = P(0, 0, 3), P2 = P(5, 0, 3),
+            P1 = P(0, 0, 3), P2 = P(5, 0, 3), PuntoCardinal = 8,
             Seccion = Rect("CADENA 15X40", 15, 40)
         });
 
@@ -710,6 +712,79 @@ internal static partial class Programa
 
         Casi("y el muro quedo ya ajustado en el modelo",
             elMuro.Vertices.Max(p => p.Z), 2.60);
+
+        // ---- EL PUNTO DE INSERCION MANDA EN CUANTO SE BAJA EL MURO ----
+        //
+        // Esto es lo que hacia que la cadena quedara alzada y el muro no muriera bajo ella. Lo
+        // que cuelga una trabe por debajo de su linea NO es su peralte: depende de su punto
+        // cardinal. El complemento tenia el 8 escrito a mano, y el de OMISION de ETABS es el 10.
+        Igual("el punto 8 mide contra la cara de arriba",
+            Insercion.Cara(8), CaraDeInsercion.Arriba);
+        Igual("el 10 -el de omision de ETABS- contra el centro",
+            Insercion.Cara(10), CaraDeInsercion.Centro);
+        Igual("el 5 tambien", Insercion.Cara(5), CaraDeInsercion.Centro);
+        Igual("el 11, centro de cortante, tambien",
+            Insercion.Cara(11), CaraDeInsercion.Centro);
+        Igual("y el 2 contra la cara de abajo", Insercion.Cara(2), CaraDeInsercion.Abajo);
+        Igual("un valor raro se trata como el centro",
+            Insercion.Cara(99), CaraDeInsercion.Centro);
+
+        Casi("con el 8 cuelga el peralte entero", Insercion.CuelgaM(0.40, 8), 0.40);
+        Casi("con el 10 cuelga la mitad", Insercion.CuelgaM(0.40, 10), 0.20);
+        Casi("y con el 2 no cuelga nada", Insercion.CuelgaM(0.40, 2), 0);
+
+        Casi("la cara inferior con el 8", Insercion.CaraInferior(3, 0.40, 8), 2.60);
+        Casi("con el 10", Insercion.CaraInferior(3, 0.40, 10), 2.80);
+        Casi("y con el 2", Insercion.CaraInferior(3, 0.40, 2), 3.0);
+
+        // Y se ve en el ajuste del muro: la MISMA cadena de 40, con el punto de omision, solo
+        // obliga a bajar 20. Bajar 40 dejaba un hueco de 20 cm entre muro y cadena.
+        var conCentroide = new ModeloJson();
+        conCentroide.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 3 });
+
+        var muroC = new PanoJson
+        {
+            Etiqueta = "MURO-C", Clase = ClasePieza.Muro, Nivel = "Story1",
+            Seccion = new SeccionJson
+            {
+                Nombre = "MURO 15", Forma = FormaSeccion.Pano, EspesorM = 0.15
+            }
+        };
+
+        muroC.Vertices.AddRange(new[] { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) });
+        conCentroide.Panos.Add(muroC);
+
+        conCentroide.Barras.Add(new BarraJson
+        {
+            Etiqueta = "CAD-C", Clase = ClasePieza.Trabe, Nivel = "Story1",
+            P1 = P(0, 0, 3), P2 = P(5, 0, 3), PuntoCardinal = 10,
+            Seccion = Rect("CADENA 15X40", 15, 40)
+        });
+
+        var ajC = AjusteDeMuros.Ajustar(muroC, conCentroide);
+
+        Casi("con el punto de omision el muro solo baja media cadena", ajC.BajoM, 0.20);
+
+        // Y con la cadena apoyada ENCIMA del piso, el muro no baja nada.
+        conCentroide.Barras[0].PuntoCardinal = 2;
+        var ajA = AjusteDeMuros.Ajustar(muroC, conCentroide);
+
+        Casi("con la cadena apoyada encima, el muro no se baja", ajA.BajoM, 0);
+
+        // Y el punto cardinal viaja por el archivo: sin el, el complemento volveria a suponer.
+        var idaC = ArchivoModelo.ATexto(conCentroide);
+        var vueltaC = ArchivoModelo.DeTexto(idaC);
+
+        Igual("el punto cardinal sobrevive el ida y vuelta por disco",
+            vueltaC.Barras[0].PuntoCardinal, 2);
+
+        // Un archivo de una version anterior no lo trae, y entonces tiene que quedar en el
+        // centroide, que es el de omision de ETABS: nunca en el 8, que era la suposicion mala.
+        var sinCardinal = ArchivoModelo.DeTexto(
+            idaC.Replace("\"PuntoCardinal\":", "\"PuntoCardinalX\":"));
+
+        Igual("y un archivo sin el queda en el centroide, no en el 8",
+            sinCardinal.Barras[0].PuntoCardinal, Insercion.Centroide);
 
         Console.WriteLine("\n[2g] Columnas: entre que niveles van");
 
@@ -1775,7 +1850,8 @@ internal static partial class Programa
         m.Barras.Add(new BarraJson
         {
             Etiqueta = "CC1", Clase = ClasePieza.Trabe, Nivel = "N2",
-            P1 = P(0, 0, 3), P2 = P(4, 0, 3), Seccion = Rect("CC 15X20", 15, 20)
+            P1 = P(0, 0, 3), P2 = P(4, 0, 3), PuntoCardinal = 8,
+            Seccion = Rect("CC 15X20", 15, 20)
         });
 
         var muro = new PanoJson

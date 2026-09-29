@@ -269,10 +269,24 @@ public static class AjusteDeMuros
                 continue;
             }
 
-            // El peralte con el que la trabe se va a modelar, no el del calculo. Si el usuario
-            // la mapeo a un tipo de otro tamaño, el muro tiene que morir bajo la cara inferior
-            // de LA PIEZA QUE VA A EXISTIR.
-            mayor = Math.Max(mayor, Peralte(b, medidas));
+            // CUANTO CUELGA la trabe por debajo de su linea, que no es su peralte entero: eso
+            // depende de su punto de insercion. Con el punto 8 -arriba al centro- cuelga el
+            // peralte completo; con el 10 -el centroide, que es el de OMISION de ETABS- cuelga
+            // solo la mitad; con el 2 -abajo al centro- no cuelga nada y se apoya encima.
+            //
+            // Bajar el muro su peralte entero cuando la trabe solo cuelga la mitad dejaba un
+            // hueco de medio peralte entre la cabeza del muro y la cara inferior de su cadena.
+            // Y con el peralte del calculo en vez del del tipo modelado, el hueco era otro.
+            var cuelga = Insercion.CuelgaM(Peralte(b, medidas), b.PuntoCardinal);
+
+            // La cara inferior tiene que quedar por debajo de la cabeza del muro; si la trabe se
+            // apoya encima -punto de abajo- no hay nada que bajar.
+            var bajarHasta = (zb - cuelga) - muro.ZAlta;
+
+            if (bajarHasta < 0)
+            {
+                mayor = Math.Max(mayor, -bajarHasta);
+            }
         }
 
         return mayor;
