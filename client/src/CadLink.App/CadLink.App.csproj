@@ -87,6 +87,12 @@
     <ProjectReference Include="..\CadLink.Licensing\CadLink.Licensing.csproj" />
     <ProjectReference Include="..\CadLink.Cad\CadLink.Cad.csproj" />
     <ProjectReference Include="..\CadLink.Etabs\CadLink.Etabs.csproj" />
+
+    <!-- CadLink.Ifc es net8.0 pelado, no net8.0-windows como los otros tres. Un proyecto
+         de Windows puede referenciar uno que no lo es, asi que esto funciona sin mas.
+         El motivo de que sea net8.0 esta explicado en su propio .csproj: es lo que permite
+         compilarlo y PROBARLO en cualquier maquina. -->
+    <ProjectReference Include="..\CadLink.Ifc\CadLink.Ifc.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

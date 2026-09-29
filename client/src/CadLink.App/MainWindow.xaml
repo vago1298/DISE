@@ -105,6 +105,8 @@
                 <MenuItem Header="_Leer modelo" Click="OnImportModeloCsi" />
                 <MenuItem Header="Leer _plantas" Click="OnLeerPlantas" />
                 <MenuItem Header="Leer piers de _muros" Click="OnLeerPiers" />
+                <Separator />
+                <MenuItem Header="Exportar a _Revit (IFC)" Click="OnExportarIfc" />
             </MenuItem>
 
             <MenuItem Header="A_yuda">
@@ -3139,6 +3141,16 @@
                                     Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnDibujar3dCad"
                                     ToolTip="Dibuja todo el modelo en 3D en AutoCAD, cada barra con su perfil real como sólido." />
+
+                            <!-- A Revit por IFC. Va junto al de 3D porque es lo mismo visto
+                                 de otra forma: los dos mandan fuera el modelo completo que
+                                 se acaba de leer, uno a AutoCAD y el otro a un archivo.
+                                 A diferencia del de AutoCAD, este NO necesita que haya
+                                 ningun programa abierto: escribe un archivo y ya. -->
+                            <Button x:Name="ExportarIfcButton" Content="Exportar a Revit (IFC)"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="OnExportarIfc"
+                                    ToolTip="Escribe el modelo completo como archivo IFC, para abrirlo o vincularlo en Revit.&#10;Cada sección se exporta como un TIPO con su nombre, que es lo que en Revit se empareja con una familia.&#10;Deja al lado un .secciones.csv con la lista de secciones para hacer ese mapeo.&#10;No hace falta tener Revit ni AutoCAD abiertos." />
 
                             <Button x:Name="PlantaCadButton" Content="Dibujar en AutoCAD"
                                     Style="{StaticResource PrimaryButtonStyle}"

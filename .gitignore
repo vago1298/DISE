@@ -45,3 +45,10 @@ venv/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+
+# ===================== Salida de las pruebas =====================
+#  Los .ifc que deja  tools/prueba-ifc  son GENERADOS: los escribe  dotnet run  y los lee
+#  despues  tools/verificar_ifc.py.  No se versionan, igual que no se versiona bin/.
+#  Para regenerarlos:  cd tools/prueba-ifc && dotnet run
+tools/prueba-ifc/salida/

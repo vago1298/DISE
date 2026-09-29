@@ -70,6 +70,7 @@ Antes de invertir tiempo, ten claro qué está listo y qué no:
 | **Motor de dibujo en AutoCAD** | 🚧 En proceso — decidida la ruta A (COM) |
 | **Lectura de ETABS (CSI OAPI)** | ✅ Completo — `EtabsConnection` por ProgID `CSI.ETABS.API.ETABSObject` |
 | **Lectura de SAP2000** | 🚧 En proceso — CSI comparte la OAPI, así que es el mismo lector con otro ProgID |
+| **Exportar a Revit por IFC** | ✅ Completo, sin probar en Revit real — ver [`docs/exportar-a-revit.md`](docs/exportar-a-revit.md) |
 
 Los pendientes están marcados en el código con el comentario
 `PENDIENTE DE IMPLEMENTAR`.

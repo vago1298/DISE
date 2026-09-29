@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE del exportador de IFC.
+
+       A diferencia de las demas prueba-* de esta carpeta, esta corre en CUALQUIER
+       maquina, tambien en Linux y sin internet. El motivo es que CadLink.Ifc es
+       net8.0 pelado y sin paquetes, asi que no necesita bajar ningun ref pack.
+       Las otras pruebas referencian CadLink.Cad o CadLink.Etabs, que son
+       net8.0-windows, y ahi ya no hay nada que hacer.
+
+       Por eso el exportador se escribio con esta prueba corriendo al lado, y por
+       eso vale la pena mantenerla: es la unica parte del C# de este repo que se
+       puede comprobar antes de llegar a una maquina con Visual Studio.
+
+           cd tools/prueba-ifc
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla.
+
+       Ademas deja el archivo  salida/modelo-de-prueba.ifc,  que es lo que come
+       tools/verificar_ifc.py para revisar el archivo ya escrito. Los dos se
+       complementan: aqui se comprueba la ARITMETICA -donde queda cada pieza- y
+       alli la SINTAXIS y las cuentas de atributos del esquema. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-ifc</AssemblyName>
+
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Ifc\CadLink.Ifc.csproj" />
+  </ItemGroup>
+
+</Project>
