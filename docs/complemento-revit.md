@@ -234,6 +234,22 @@ cuanto no sea un rectángulo.
 tolerancia: en ETABS el nivel se llama `Story1` y en Revit `PLANTA BAJA`. Los que no tengan
 pareja **se crean**.
 
+### Tres convenciones de ETABS que hay que deshacer
+
+No son detalles de implementación: son las tres formas en que el modelo de cálculo dice una
+cosa y Revit entiende otra. Cada una produjo un fallo con un síntoma que no se parecía a su
+causa.
+
+| En ETABS | Si se toma tal cual | Lo que hace el complemento |
+|---|---|---|
+| Una **viga** se inserta por *top center*: la línea que se exporta es la de su **cara de arriba** | La cadena de cerramiento queda un peralte más arriba y asoma por encima del muro | Justifica la trabe con `z Justification = Top` e `y Justification = Origin`, que es el **punto cardinal 8** |
+| Un **área** pertenece a la planta de su **parte de arriba** | Un muro de planta baja queda atado a la planta primera y no sale en la vista de planta baja | Lo ata al nivel más cercano a su **base**, igual que ya se hacía con las columnas |
+| La etiqueta de un muro es su **pier**, y un pier agrupa **varios** paños | Los trozos de un muro mallado comparten llave y solo se modela uno: la planta con más huecos se queda vacía | La etiqueta de un paño lleva **siempre** su posición; y si aun así dos llaves chocan, se desempatan en vez de descartar |
+
+La equivalencia entre la justificación de Revit y el punto cardinal de ETABS no es una
+suposición: es la que usa el propio exportador de IFC de Autodesk para traducir entre los dos
+sistemas.
+
 ### Cómo reconoce sus propias piezas
 
 Cada pieza creada lleva una marca en su parámetro **Comentarios**:

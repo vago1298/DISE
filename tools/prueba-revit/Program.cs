@@ -146,6 +146,12 @@ internal static class Programa
         return m;
     }
 
+    /// <summary>El trozo i de un muro mallado en seis: todos comparten pier.</summary>
+    private static List<PuntoJson> Trozo(int i) => new()
+    {
+        P(i, 0, 0), P(i + 1, 0, 0), P(i + 1, 0, 3), P(i, 0, 3)
+    };
+
     /// <summary>Un catalogo de Revit parecido al de una plantilla de verdad.</summary>
     private static CatalogoRevit CatalogoDePrueba()
     {
@@ -511,6 +517,34 @@ internal static class Programa
         Check("las llaves de los dos muros son distintas",
             Llave.De(ClasePieza.Muro, e1, "Story1") != Llave.De(ClasePieza.Muro, e2, "Story1"));
 
+        // ---- Unica: para un paño no basta con respetar la etiqueta del modelo ----
+        //
+        // El lector pone el PIER como etiqueta del muro, y un pier agrupa varios paños. Dos
+        // trozos del mismo muro con pier P1 tienen la MISMA etiqueta del modelo, asi que
+        // Estable los deja iguales y sus llaves chocan. Ese es el fallo que dejaba la planta
+        // baja sin muros.
+        Igual("Estable respeta el pier y por eso NO distingue dos trozos",
+            Etiquetas.Estable("P1", m1), Etiquetas.Estable("P1", m2));
+
+        var u1 = Etiquetas.Unica("P1", m1);
+        var u2 = Etiquetas.Unica("P1", m2);
+
+        Check("Unica SI los distingue", u1 != u2, $"{u1} vs {u2}");
+        Check("y conserva el pier delante, para que la marca se pueda leer",
+            u1.StartsWith("P1", StringComparison.Ordinal), u1);
+        Igual("es estable entre exportaciones", Etiquetas.Unica("P1", m1), u1);
+        Igual("y no depende del orden de los vertices", Etiquetas.Unica("P1", revuelto), u1);
+        Check("sin etiqueta se comporta como Estable",
+            Etiquetas.Unica("", m1) == Etiquetas.Estable("", m1));
+        Check("un reajuste de milimetros tampoco la cambia",
+            Etiquetas.Unica("P1", new List<PuntoJson>
+            {
+                P(0.001, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3)
+            }) == u1, "cambio");
+
+        Check("las llaves de los dos trozos con el mismo pier ya no chocan",
+            Llave.De(ClasePieza.Muro, u1, "Story1") != Llave.De(ClasePieza.Muro, u2, "Story1"));
+
         Console.WriteLine("\n[2e] Contorno de losa: plano y paralelo a XY");
 
         // El error del informe: "each curve loop is not planar; or each curve loop is not in a
@@ -726,6 +760,35 @@ internal static class Programa
 
         Igual("sin niveles no se inventa ninguno",
             Colocacion.De(0, 3, null).NivelBase, "");
+
+        // ---- El nivel de un PAÑO: el de su base, no el de la planta que le da ETABS ----
+        //
+        // ETABS asigna un area a la planta de su parte de ARRIBA, asi que un muro de planta
+        // baja llega con el nivel de la planta primera. Atado a ese nivel, el muro no sale en
+        // la vista de planta baja aunque su geometria este bien. Es la misma correccion que ya
+        // se hacia para las columnas, que hasta ahora los paños no tenian.
+        var nivsPB = new List<NivelJson>
+        {
+            new() { Nombre = "Base", ElevacionM = 0 },
+            new() { Nombre = "Story1", ElevacionM = 3 },
+            new() { Nombre = "Story2", ElevacionM = 6 }
+        };
+
+        var muroPB = Colocacion.NivelDePano(0, nivsPB);
+
+        Igual("un muro que arranca en 0 va al nivel de abajo, no al de arriba",
+            muroPB.Nombre, "Base");
+        Casi("y sin desfase", muroPB.DesfaseM, 0);
+
+        var muroP1 = Colocacion.NivelDePano(3, nivsPB);
+        Igual("el de la planta siguiente va a Story1", muroP1.Nombre, "Story1");
+
+        var muroRaro = Colocacion.NivelDePano(3.2, nivsPB);
+        Igual("uno que arranca algo mas arriba se ata al mas cercano", muroRaro.Nombre, "Story1");
+        Casi("con el desfase que le falta", muroRaro.DesfaseM, 0.2);
+
+        Igual("sin niveles no se inventa ninguno para el paño",
+            Colocacion.NivelDePano(0, null).Nombre, "");
 
         Console.WriteLine("\n[2h] Losas inclinadas: se conservan con su pendiente");
 
@@ -1189,8 +1252,109 @@ internal static class Programa
 
         var planRepe = Planificador.Armar(repe, mapeo, cat, null, Modo.ModelarNuevos);
         Check("dos piezas con la misma etiqueta y nivel dan aviso",
-            planRepe.Avisos.Any(a => a.Contains("misma etiqueta")),
+            planRepe.Avisos.Any(a => a.Contains("mas de una pieza con esta etiqueta")),
             string.Join(" | ", planRepe.Avisos));
+
+        // Y LAS DOS SE MODELAN. Antes la segunda desaparecia del plan entera: no contaba ni
+        // como creada ni como saltada, solo dejaba un aviso. Asi es como una planta podia
+        // quedarse sin modelar mientras el informe decia que todo habia ido bien.
+        var basePlan = Planificador.Armar(ModeloDePrueba(), mapeo, cat, null, Modo.ModelarNuevos);
+
+        Igual("la pieza repetida NO se pierde, se desempata por su posicion",
+            planRepe.Pasos.Count, basePlan.Pasos.Count + 1);
+        Igual("y se cuenta como desempatada", planRepe.Desempatadas, 1);
+        Igual("sin descartar ninguna", planRepe.Duplicadas, 0);
+        Check("las llaves resultantes son distintas",
+            planRepe.Pasos.Select(p => p.Llave).Distinct().Count() == planRepe.Pasos.Count);
+
+        // Solo se descarta lo que es la MISMA pieza en el MISMO sitio, que si es un duplicado.
+        var igualito = ModeloDePrueba();
+        var clon = igualito.Barras[0];
+
+        igualito.Barras.Add(new BarraJson
+        {
+            Etiqueta = clon.Etiqueta, Clase = clon.Clase, Nivel = clon.Nivel,
+            P1 = P(clon.P1.X, clon.P1.Y, clon.P1.Z),
+            P2 = P(clon.P2.X, clon.P2.Y, clon.P2.Z),
+            Seccion = clon.Seccion
+        });
+
+        var planClon = Planificador.Armar(igualito, mapeo, cat, null, Modo.ModelarNuevos);
+
+        Igual("una pieza identica en el mismo sitio si se descarta", planClon.Duplicadas, 1);
+        Igual("y no se desempata", planClon.Desempatadas, 0);
+        Igual("asi que el plan no crece", planClon.Pasos.Count, basePlan.Pasos.Count);
+
+        // ---- El caso del usuario: un muro mallado con el MISMO PIER ----
+        //
+        // El lector pone el pier como etiqueta del muro, y un pier no identifica un paño:
+        // identifica un grupo. Seis trozos de muro de planta baja con pier P1 daban seis veces
+        // la llave «CadLink|Muro|P1|Story1» y se modelaba UNO. El sintoma reportado fue
+        // exactamente ese: la planta baja sin nada, mientras columnas y trabes salian bien.
+        var mallado = ModeloDePrueba();
+        var cuantosAntes = mallado.Panos.Count;
+
+        for (var i = 0; i < 6; i++)
+        {
+            var trozo = new PanoJson
+            {
+                Etiqueta = Etiquetas.Unica("P1", Trozo(i)),
+                Clase = ClasePieza.Muro,
+                Nivel = "Story1",
+                Seccion = new SeccionJson
+                {
+                    Nombre = "MURO20", Forma = FormaSeccion.Pano, EspesorM = 0.20
+                }
+            };
+
+            trozo.Vertices.AddRange(Trozo(i));
+            mallado.Panos.Add(trozo);
+        }
+
+        var planMallado = Planificador.Armar(mallado, mapeo, cat, null, Modo.ModelarNuevos);
+
+        Igual("los seis trozos de muro con el mismo pier dan seis pasos",
+            planMallado.Pasos.Count, basePlan.Pasos.Count + 6);
+        Igual("y no hubo que desempatar ninguno: la etiqueta ya los distingue",
+            planMallado.Desempatadas, 0);
+        Igual("ni se descarto ninguno", planMallado.Duplicadas, 0);
+        Igual("el modelo tenia los paños que se le pusieron",
+            mallado.Panos.Count, cuantosAntes + 6);
+
+        // Y con el etiquetado VIEJO -Estable, que respeta el pier y por tanto deja los seis
+        // trozos con la misma etiqueta- tampoco se pierde ninguno, porque ahora el planificador
+        // desempata por posicion en vez de descartar. Son dos defensas independientes: si un
+        // modelo exportado con una version anterior se reimporta, sigue saliendo completo.
+        var viejo = ModeloDePrueba();
+
+        for (var i = 0; i < 6; i++)
+        {
+            var trozo = new PanoJson
+            {
+                Etiqueta = Etiquetas.Estable("P1", Trozo(i)),
+                Clase = ClasePieza.Muro,
+                Nivel = "Story1",
+                Seccion = new SeccionJson
+                {
+                    Nombre = "MURO20", Forma = FormaSeccion.Pano, EspesorM = 0.20
+                }
+            };
+
+            trozo.Vertices.AddRange(Trozo(i));
+            viejo.Panos.Add(trozo);
+        }
+
+        Igual("con el etiquetado viejo los seis trozos comparten etiqueta",
+            viejo.Panos.TakeLast(6).Select(p => p.Etiqueta).Distinct().Count(), 1);
+
+        var planViejo = Planificador.Armar(viejo, mapeo, cat, null, Modo.ModelarNuevos);
+
+        Igual("y aun asi se modelan los seis",
+            planViejo.Pasos.Count, basePlan.Pasos.Count + 6);
+        Igual("desempatando cinco", planViejo.Desempatadas, 5);
+        Igual("sin descartar ninguno", planViejo.Duplicadas, 0);
+        Check("con llaves todas distintas",
+            planViejo.Pasos.Select(p => p.Llave).Distinct().Count() == planViejo.Pasos.Count);
 
         // La llave lleva el nivel: "C1" en dos niveles son dos piezas.
         Check("la llave distingue el mismo nombre en dos niveles",

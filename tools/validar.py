@@ -15459,8 +15459,11 @@ def v26_plugin_revit() -> None:
     # El lector pone el PIER como etiqueta del muro. Sin piers asignados, todos los muros
     # quedan con la etiqueta vacia, la llave de todos resulta «CadLink|Muro||Story1» y el
     # planificador modela uno y descarta el resto con un aviso por cada uno.
+    # Barras y paños llevan etiquetas distintas a proposito: una barra de ETABS tiene etiqueta
+    # unica por pieza, asi que basta con estabilizarla cuando falta; un paño trae el PIER, que
+    # agrupa varios, y necesita la posicion SIEMPRE.
     check("las etiquetas se estabilizan antes de armar la llave",
-          parcial.count("Etiquetas.Estable(") >= 2,
+          parcial.count("Etiquetas.Estable(") >= 1 and parcial.count("Etiquetas.Unica(") >= 1,
           "hacen falta en barras Y en panos; sin eso un modelo sin piers pierde muros")
 
     check("existe el estabilizador de etiquetas",
@@ -15662,6 +15665,79 @@ def v26_plugin_revit() -> None:
 
     check("y el nucleo sabe decir si una fila quedo incoherente",
           "public bool Coherente" in vistaFila and "public int Incoherentes" in vistaFila)
+
+    # ---- Ninguna pieza se pierde en silencio ----
+    #
+    # Sintoma reportado: "en la planta baja no modela nada". El lector pone el PIER como
+    # etiqueta de un muro, y un pier agrupa varios paños: un muro mallado en seis trozos daba
+    # seis veces la llave «CadLink|Muro|P1|Story1». El planificador, al ver la llave repetida,
+    # hacia «return» sin anadir ningun Paso, asi que esas piezas no aparecian en NINGUNA cuenta
+    # -ni creadas ni saltadas- y una planta entera podia quedarse sin modelar mientras el
+    # informe decia que todo habia ido bien.
+    planpy = leer(ruta("client/src/CadLink.Revit.Nucleo/Plan.cs"))
+    contornospy = leer(ruta("client/src/CadLink.Revit.Nucleo/Contornos.cs"))
+
+    check("existe una etiqueta que SIEMPRE lleva la posicion, para los paños",
+          "public static string Unica(" in contornospy,
+          "Estable() solo sustituye la etiqueta cuando esta VACIA, asi que no distingue dos "
+          "trozos de muro que comparten pier")
+
+    check("y la exportacion la usa en los paños",
+          "Etiquetas.Unica(" in parcial,
+          "con Estable, los trozos de un muro mallado comparten llave y solo se modela uno")
+
+    check("el planificador desempata las llaves repetidas por posicion",
+          "plan.Desempatadas++" in planpy and "Etiquetas.Donde(" in planpy,
+          "perder geometria en silencio no es aceptable")
+
+    check("y distingue una pieza repetida de verdad de dos que solo comparten etiqueta",
+          "sitios.Add(" in planpy,
+          "sin la posicion de TODAS las piezas, la primera se queda sin sitio y un duplicado "
+          "real parece una pieza distinta")
+
+    check("el plan cuenta las desempatadas y las descartadas",
+          "public int Desempatadas" in planpy and "public int Duplicadas" in planpy)
+
+    ci = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
+
+    check("y el informe las dice",
+          "plan.Desempatadas" in ci and "plan.Duplicadas" in ci,
+          "lo que no se cuenta en el informe es lo que se descubre tarde")
+
+    check("los avisos van AGRUPADOS por causa, no cortados a los seis primeros",
+          "Agrupador.Texto(r.Avisos" in ci and "r.Avisos.Take(" not in ci,
+          "un muro mallado en cien trozos daba cien avisos con la misma causa y el informe "
+          "ensenaba seis, escondiendo la causa y la escala")
+
+    # ---- Los paños se atan al nivel de su base ----
+    check("existe el calculo del nivel de un paño",
+          "public static (string Nombre, double DesfaseM) NivelDePano(" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs")),
+          "ETABS asigna un area a la planta de ARRIBA, asi que un muro de planta baja llega "
+          "con el nivel de la planta primera")
+
+    check("y el modelador lo usa para los paños",
+          "Colocacion.NivelDePano(" in modelador,
+          "atado al nivel de arriba, el muro no sale en la vista de la planta en que esta")
+
+    # ---- Las trabes cuelgan de su cara de arriba ----
+    #
+    # En ETABS el punto de insercion por omision de una viga es "top center": la linea que se
+    # exporta es la de la cara de ARRIBA. Sin decirle nada a Revit, donde cae la seccion
+    # respecto de esa linea depende de donde tenga el origen la familia, y la cadena de
+    # cerramiento asomaba por encima del muro en vez de coronarlo.
+    check("las trabes se justifican por su cara de arriba",
+          "ZJustification.Top" in modelador
+          and "BuiltInParameter.Z_JUSTIFICATION" in modelador,
+          "es el punto cardinal 8, 'top center', el de ETABS")
+
+    check("y sin desvio lateral",
+          "YJustification.Origin" in modelador
+          and "BuiltInParameter.Y_JUSTIFICATION" in modelador)
+
+    check("solo a las trabes, no a columnas ni diagonales",
+          "ClasePieza.Trabe" in modelador and "PonerEnLaCaraDeArriba(" in modelador,
+          "una columna se ata por niveles y una diagonal viene por su centroide")
 
     nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
     bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)

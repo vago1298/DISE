@@ -204,7 +204,7 @@ internal static class Modelador
 
             Element? hecho = paso.Barra is not null
                 ? CrearBarra(doc, paso, nivel, tipoId)
-                : CrearPano(doc, paso, nivel, tipoId);
+                : CrearPano(doc, paso, NivelDePano(doc, paso, nivel), tipoId);
 
             if (hecho is null)
             {
@@ -292,7 +292,102 @@ internal static class Modelador
                 ?.Set(b.AnguloGrados * Math.PI / 180.0);
         }
 
+        if (b.Clase == ClasePieza.Trabe)
+        {
+            PonerEnLaCaraDeArriba(inst);
+        }
+
         return inst;
+    }
+
+    /// <summary>
+    /// Cuelga la trabe de su CARA DE ARRIBA, que es como la trae el modelo de calculo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En ETABS el punto de insercion por omision de una viga es <b>top center</b>, o sea que la
+    /// linea que se exporta es la de la cara de ARRIBA de la seccion. Si en Revit se coloca la
+    /// pieza sin decir nada, donde cae la seccion respecto de esa linea depende de donde tenga
+    /// el origen la familia: con las familias de hormigon del usuario la trabe quedaba apoyada
+    /// SOBRE la linea, o sea un peralte mas arriba de donde tiene que estar, y una cadena de
+    /// cerramiento asomaba por encima del muro en vez de coronarlo.
+    /// </para>
+    /// <para>
+    /// La correccion no se hace moviendo la linea -eso obligaria a adivinar donde tiene el
+    /// origen cada familia- sino diciendole a Revit respecto de que cara se justifica:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><c>Y_JUSTIFICATION = Origin</c>: sin desvio lateral.</item>
+    ///   <item><c>Z_JUSTIFICATION = Top</c>: la geometria cuelga bajo la linea.</item>
+    /// </list>
+    /// <para>
+    /// Esa pareja es exactamente el <b>punto cardinal 8</b>, que es como se llama "top center"
+    /// en IFC y en ETABS. La equivalencia no es una suposicion: es la que usa el propio
+    /// exportador de IFC de Autodesk para traducir entre los dos sistemas.
+    /// </para>
+    /// <para>
+    /// Se aplica solo a las trabes. Una columna se ata por niveles y una diagonal viene por su
+    /// centroide, asi que en esas dos justificar por la cara de arriba las descolocaria.
+    /// </para>
+    /// </remarks>
+    private static void PonerEnLaCaraDeArriba(FamilyInstance inst)
+    {
+        try
+        {
+            // Los dos parametros se escriben como ENTERO, que es como los guarda Revit.
+            inst.get_Parameter(BuiltInParameter.Y_JUSTIFICATION)
+                ?.Set((int)YJustification.Origin);
+
+            inst.get_Parameter(BuiltInParameter.Z_JUSTIFICATION)
+                ?.Set((int)ZJustification.Top);
+        }
+        catch (Exception)
+        {
+            // Hay familias que no exponen la justificacion. Perderla deja la trabe un peralte
+            // mas arriba, que es molesto pero no invalida el resto del modelado, asi que no se
+            // tira la pieza por esto.
+        }
+    }
+
+    /// <summary>El nivel al que se ata un paño: el de su BASE, no el que le asigna ETABS.</summary>
+    /// <remarks>
+    /// ETABS asigna un area a la planta de su parte de ARRIBA, asi que un muro de planta baja
+    /// viene con el nivel de la planta primera. Atandolo a ese nivel, el muro no sale en la
+    /// vista de planta baja aunque su geometria este en el sitio correcto. Es la misma
+    /// correccion que <see cref="AtarAColumna"/> hace para las columnas.
+    /// </remarks>
+    private static Level NivelDePano(Document doc, Paso paso, Level porOmision)
+    {
+        var p = paso.Pano;
+
+        if (p is null || p.Vertices.Count == 0)
+        {
+            return porOmision;
+        }
+
+        var deRevit = new FilteredElementCollector(doc)
+            .OfClass(typeof(Level))
+            .Cast<Level>()
+            .ToList();
+
+        var comoJson = deRevit
+            .Select(n => new NivelJson
+            {
+                Nombre = n.Name ?? string.Empty,
+                ElevacionM = Unidades.AMetros(n.Elevation)
+            })
+            .ToList();
+
+        var donde = Colocacion.NivelDePano(p.Vertices.Min(v => v.Z), comoJson);
+
+        if (donde.Nombre.Length == 0)
+        {
+            return porOmision;
+        }
+
+        return deRevit.FirstOrDefault(n =>
+            string.Equals(n.Name, donde.Nombre, StringComparison.CurrentCultureIgnoreCase))
+            ?? porOmision;
     }
 
     private static Element? CrearPano(Document doc, Paso paso, Level nivel, ElementId tipoId)

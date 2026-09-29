@@ -88,7 +88,15 @@ public static class Agrupador
     }
 
     /// <summary>El informe de los errores, ya agrupado y listo para ensenar.</summary>
-    public static string Texto(IEnumerable<string>? errores, int motivosMaximos = 5)
+    /// <param name="errores">Los mensajes, con la forma <c>«llave»: motivo</c>.</param>
+    /// <param name="motivosMaximos">Cuantos motivos distintos se ensenan.</param>
+    /// <param name="encabezado">
+    /// Como empieza el informe. Con <c>null</c> se usa el de los errores. Los AVISOS necesitan
+    /// otro: agruparlos igual es util, pero decir de ellos "no se pudieron modelar" seria
+    /// mentira, porque un aviso no impide modelar.
+    /// </param>
+    public static string Texto(
+        IEnumerable<string>? errores, int motivosMaximos = 5, string? encabezado = null)
     {
         var grupos = Agrupar(errores);
 
@@ -100,7 +108,8 @@ public static class Agrupador
         var total = grupos.Sum(g => g.Cuantas);
         var sb = new System.Text.StringBuilder();
 
-        sb.Append("No se pudieron modelar ").Append(total).Append(" pieza(s), por ")
+        sb.Append(encabezado ?? "No se pudieron modelar")
+          .Append(' ').Append(total).Append(" pieza(s), por ")
           .Append(grupos.Count).AppendLine(grupos.Count == 1 ? " motivo:" : " motivos:");
 
         foreach (var g in grupos.Take(motivosMaximos))

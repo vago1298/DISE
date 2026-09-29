@@ -252,7 +252,13 @@ public enum BuiltInParameter
     FAMILY_BASE_LEVEL_PARAM,
     FAMILY_BASE_LEVEL_OFFSET_PARAM,
     FAMILY_TOP_LEVEL_PARAM,
-    FAMILY_TOP_LEVEL_OFFSET_PARAM
+    FAMILY_TOP_LEVEL_OFFSET_PARAM,
+
+    // La justificacion de una viga. Comprobada en la Revit API 2026 contra el exportador de
+    // IFC de Autodesk, que los lee con AsInteger(), y contra rhino.inside-revit, que los
+    // escribe en una viga recien creada. Ver Recortes.Structure.cs.
+    Y_JUSTIFICATION,
+    Z_JUSTIFICATION
 }
 
 public static class UnitUtils

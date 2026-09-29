@@ -310,10 +310,11 @@ public partial class MainWindow : Window
 
                 var pano = new PanoJson
                 {
-                    // La etiqueta puede venir VACIA: el lector pone el pier como etiqueta del
-                    // muro, y un modelo sin piers asignados deja todos los muros sin ella.
-                    // Entonces la llave de todos resulta la misma y solo se modela uno.
-                    Etiqueta = Etiquetas.Estable(el.Etiqueta, contorno),
+                    // En un paño la etiqueta SIEMPRE lleva donde esta, no solo cuando viene
+                    // vacia. El lector pone el PIER como etiqueta del muro, y un pier no
+                    // identifica un paño: identifica un grupo. Un muro mallado en seis trozos
+                    // con el mismo pier daba seis veces la misma llave y se modelaba uno solo.
+                    Etiqueta = Etiquetas.Unica(el.Etiqueta, contorno),
                     Clase = decision.Clase,
                     Nivel = el.Story,
                     Seccion = new SeccionJson

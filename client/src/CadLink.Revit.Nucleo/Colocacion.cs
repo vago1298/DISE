@@ -91,6 +91,42 @@ public static class Colocacion
             .OrderBy(n => Math.Abs(n.ElevacionM - z))
             .ThenBy(n => n.Nombre, StringComparer.CurrentCultureIgnoreCase)
             .First();
+
+    /// <summary>
+    /// A que nivel va un paño: el de su BASE, no el de la planta que ETABS le asigna.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es el mismo desajuste que en las columnas, y hasta ahora solo se corregia para ellas.
+    /// ETABS asigna un area a la planta de su <b>parte de arriba</b>: un muro que va del suelo
+    /// de planta baja al de la primera planta pertenece a la planta primera. Si se le pasa ese
+    /// nivel a Revit, el muro queda con su restriccion de base una planta por encima de donde
+    /// esta, y en la vista de planta baja no aparece: el muro existe, pero no en la planta en
+    /// la que se le busca.
+    /// </para>
+    /// <para>
+    /// Se devuelve el nombre del nivel de cota mas cercana a la BASE del paño, y el desfase que
+    /// falta para llegar a ella. Si no hay niveles, se devuelve vacio y quien llama se queda con
+    /// el que traiga el paso.
+    /// </para>
+    /// </remarks>
+    /// <returns>El nombre del nivel y el desfase en metros desde su cota.</returns>
+    public static (string Nombre, double DesfaseM) NivelDePano(
+        double zBaseM, IReadOnlyList<NivelJson>? niveles)
+    {
+        var lista = (niveles ?? new List<NivelJson>())
+            .Where(n => !string.IsNullOrWhiteSpace(n.Nombre))
+            .ToList();
+
+        if (lista.Count == 0)
+        {
+            return (string.Empty, 0);
+        }
+
+        var n = MasCercano(lista, zBaseM);
+
+        return (n.Nombre, zBaseM - n.ElevacionM);
+    }
 }
 
 /// <summary>

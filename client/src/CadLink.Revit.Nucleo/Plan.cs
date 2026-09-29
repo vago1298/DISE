@@ -119,6 +119,18 @@ public sealed class Plan
     /// <summary>Avisos no fatales.</summary>
     public List<string> Avisos { get; } = new();
 
+    /// <summary>
+    /// Piezas que compartian etiqueta y nivel con otra y se distinguieron por su posicion.
+    /// </summary>
+    /// <remarks>
+    /// Es normal que sea alto en un modelo con piers: un pier agrupa varios paños. Lo que
+    /// importa es que estas piezas SI se modelan; antes se descartaban.
+    /// </remarks>
+    public int Desempatadas { get; set; }
+
+    /// <summary>Piezas descartadas por ser otra pieza igual en el mismo sitio.</summary>
+    public int Duplicadas { get; set; }
+
     public int Cuantos(Accion a) => Pasos.Count(p => p.Accion == a);
 
     public int Crear => Cuantos(Accion.Crear);
@@ -237,16 +249,60 @@ public static class Planificador
 
         var vistas = new HashSet<string>(StringComparer.Ordinal);
 
+        // Las llaves con la posicion pegada, de TODAS las piezas. Es lo que distingue una pieza
+        // repetida de verdad -misma etiqueta, mismo nivel y mismo sitio- de dos piezas que solo
+        // comparten la etiqueta, como los trozos de un muro mallado bajo un mismo pier.
+        var sitios = new HashSet<string>(StringComparer.Ordinal);
+
         void Uno(string llave, ClasePieza clase, SeccionJson seccion, string nivelModelo,
                  BarraJson? barra, PanoJson? pano)
         {
+            // ---- Llave repetida: se DESEMPATA por geometria, no se descarta la pieza ----
+            //
+            // Antes esto hacia «return» y la pieza desaparecia del plan entera: no contaba en
+            // ninguna cuenta -ni creadas, ni saltadas- y solo dejaba un aviso, de los que el
+            // informe ensena unos pocos. Asi es como una planta entera podia no modelarse sin
+            // que el informe dijera que faltaba nada.
+            //
+            // Perder geometria en silencio no es una opcion aceptable, asi que si la llave se
+            // repite se le anade DONDE esta la pieza, que es un dato que la distingue y que es
+            // el mismo en cada exportacion -a diferencia de un contador, que depende del orden
+            // en que se recorra el modelo y convertiria cada reimportacion en un duplicado-.
+            // La llave de la pieza MAS donde esta. Se calcula para todas, no solo para las que
+            // chocan, porque es lo que permite distinguir "dos piezas que se llaman igual" de
+            // "la misma pieza dos veces": si solo se le pusiera el sitio a la segunda, la
+            // primera se quedaria sin el y las dos parecerian distintas.
+            var puntos = pano is not null
+                ? (IEnumerable<PuntoJson>)pano.Vertices
+                : new[] { barra!.P1, barra.P2 };
+
+            var conSitio = llave + Etiquetas.Donde(puntos);
+
+            if (!sitios.Add(conSitio))
+            {
+                // Misma etiqueta, mismo nivel Y mismo sitio: entonces si es la misma pieza dos
+                // veces, y modelar las dos dejaria dos elementos superpuestos.
+                //
+                // Los avisos llevan la forma «llave»: motivo a proposito, para que el informe
+                // los agrupe por causa. Sin eso, un muro mallado en cien trozos producia cien
+                // avisos distintos y el informe ensenaba los seis primeros.
+                plan.Avisos.Add(
+                    $"«{llave}»: hay otra pieza igual en el mismo sitio, solo se modela una");
+
+                plan.Duplicadas++;
+
+                return;
+            }
+
             if (!vistas.Add(llave))
             {
                 plan.Avisos.Add(
-                    $"El modelo trae dos piezas con la misma etiqueta y nivel («{llave}»). "
-                    + "Solo se modelara una.");
+                    $"«{llave}»: habia mas de una pieza con esta etiqueta y este nivel, se "
+                    + "distinguen por su posicion para que todas se modelen");
 
-                return;
+                plan.Desempatadas++;
+                llave = conSitio;
+                vistas.Add(llave);
             }
 
             var clave = Inventario.Clave(clase, seccion);

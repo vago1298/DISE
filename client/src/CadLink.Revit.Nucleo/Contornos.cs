@@ -159,6 +159,42 @@ public static class Etiquetas
             return e;
         }
 
+        return Donde(puntos);
+    }
+
+    /// <summary>
+    /// La etiqueta del modelo <b>mas</b> donde esta la pieza, siempre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es la que hay que usar en los <b>paños</b>, y la razon es que en un muro la etiqueta que
+    /// trae el modelo es su <b>pier</b>, y un pier NO identifica un paño: identifica un grupo
+    /// de paños. Un muro de planta baja mallado en seis trozos, todos con pier <c>P1</c>, daba
+    /// seis veces la misma llave <c>CadLink|Muro|P1|Story1</c>, y el planificador se quedaba con
+    /// uno y descartaba cinco.
+    /// </para>
+    /// <para>
+    /// El sintoma era exactamente el que se reporto: la planta baja -que es donde el muro suele
+    /// venir mallado en mas trozos porque tiene mas huecos- se quedaba sin nada, mientras que
+    /// columnas y trabes, que en ETABS si tienen etiqueta unica por pieza, salian bien.
+    /// </para>
+    /// <para>
+    /// <see cref="Estable"/> no bastaba: solo sustituia la etiqueta cuando estaba VACIA, asi
+    /// que arreglaba el modelo sin piers y no tocaba el que si los tiene, que es este.
+    /// </para>
+    /// </remarks>
+    public static string Unica(string? etiqueta, IEnumerable<PuntoJson>? puntos)
+    {
+        var e = (etiqueta ?? string.Empty).Trim();
+
+        // El pier se conserva delante porque es lo que hace la marca legible para una persona
+        // que la lee en los comentarios de Revit: «P1@1234,-560,300» dice el pier Y el sitio.
+        return e.Length > 0 ? e + Donde(puntos) : Donde(puntos);
+    }
+
+    /// <summary>Donde esta la pieza, redondeado a centimetro: <c>@x,y,z</c>.</summary>
+    public static string Donde(IEnumerable<PuntoJson>? puntos)
+    {
         var c = Contornos.Centro(puntos);
 
         return "@" + Cm(c.X) + "," + Cm(c.Y) + "," + Cm(c.Z);

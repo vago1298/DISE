@@ -197,6 +197,22 @@ public sealed class ComandoImportar : IExternalCommand
             sb.Append("Sin tipo elegido, no modeladas: ").Append(plan.SinMapeo).AppendLine();
         }
 
+        // Estas dos cuentas existen porque su ausencia escondio el fallo mas caro que ha tenido
+        // el complemento: los paños que compartian pier se descartaban sin aparecer en ninguna
+        // cuenta, y una planta entera podia quedarse sin modelar mientras el informe decia que
+        // todo habia ido bien.
+        if (plan.Desempatadas > 0)
+        {
+            sb.Append("Compartian etiqueta con otra y se distinguieron por su posicion: ")
+              .Append(plan.Desempatadas).AppendLine(" (SI se modelan)");
+        }
+
+        if (plan.Duplicadas > 0)
+        {
+            sb.Append("Descartadas por estar repetidas en el mismo sitio: ")
+              .Append(plan.Duplicadas).AppendLine();
+        }
+
         if (plan.Sobra > 0)
         {
             sb.AppendLine();
@@ -206,18 +222,11 @@ public sealed class ComandoImportar : IExternalCommand
 
         if (r.Avisos.Count > 0)
         {
+            // AGRUPADOS por causa, igual que los errores y por el mismo motivo: un muro mallado
+            // en cien trozos generaba cien avisos con la misma causa, y ensenar los seis
+            // primeros escondia tanto la causa como la escala.
             sb.AppendLine();
-            sb.AppendLine("Avisos:");
-
-            foreach (var a in r.Avisos.Take(6))
-            {
-                sb.Append("  - ").AppendLine(a);
-            }
-
-            if (r.Avisos.Count > 6)
-            {
-                sb.Append("  ... y ").Append(r.Avisos.Count - 6).AppendLine(" mas.");
-            }
+            sb.Append(Agrupador.Texto(r.Avisos, 6, "Hay algo que decir de")).AppendLine();
         }
 
         if (r.Errores.Count > 0)
