@@ -2,6 +2,32 @@ using System.Globalization;
 
 namespace CadLink.Revit.Nucleo;
 
+/// <summary>
+/// Las medidas con las que una barra se va a modelar DE VERDAD en Revit.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Esto existe porque el ajuste de los muros se estaba haciendo con las medidas de la seccion
+/// de ETABS, y en Revit la pieza no se modela con esas medidas: se modela con las del
+/// <b>tipo de familia que eligio el usuario</b>, que puede ser otro tamaño. Un castillo de
+/// 15x25 en el calculo modelado con un tipo «300 x 450» mide 30x45 en el modelo.
+/// </para>
+/// <para>
+/// Con las medidas del calculo, el muro se recortaba medio castillo de 15 cm y el castillo de
+/// verdad medía 30: el muro quedaba metido dentro. Y se bajaba el peralte de la trabe del
+/// calculo en vez del de la trabe modelada, asi que no moria en la cara inferior de su cadena.
+/// Ese es el motivo por el que los paños no cuadraban aunque el informe dijera que se habian
+/// recortado.
+/// </para>
+/// <para>
+/// Devuelve <c>null</c> cuando no se sabe -no hay tipo elegido, o el tipo no dice sus
+/// medidas-, y entonces se usan las del calculo, que es lo mejor que hay.
+/// </para>
+/// </remarks>
+/// <param name="barra">La barra de la que se quieren las medidas.</param>
+/// <returns>Ancho y peralte en metros, ya en la orientacion en que se va a colocar.</returns>
+public delegate (double AnchoM, double PeralteM)? MedidasModeladas(BarraJson barra);
+
 /// <summary>Que ajustes se le hacen a los muros antes de modelarlos.</summary>
 public sealed class OpcionesMuro
 {
@@ -99,7 +125,8 @@ public static class AjusteDeMuros
 
     /// <summary>Devuelve el contorno ajustado de un muro.</summary>
     public static Ajuste Ajustar(
-        PanoJson muro, ModeloJson modelo, OpcionesMuro? op = null)
+        PanoJson muro, ModeloJson modelo, OpcionesMuro? op = null,
+        MedidasModeladas? medidas = null)
     {
         op ??= new OpcionesMuro();
 
@@ -132,7 +159,7 @@ public static class AjusteDeMuros
 
         if (op.BajarBajoLaCadena)
         {
-            var peralte = PeralteDeLoQueVaEncima(recto, ux, uy, modelo, op);
+            var peralte = PeralteDeLoQueVaEncima(recto, ux, uy, modelo, op, medidas);
 
             if (peralte > 1e-6)
             {
@@ -156,8 +183,8 @@ public static class AjusteDeMuros
 
         if (op.RecortarEnCastillos)
         {
-            recorteA = MedioCastilloEn(recto.X1, recto.Y1, ux, uy, recto, modelo, op);
-            recorteB = MedioCastilloEn(recto.X2, recto.Y2, ux, uy, recto, modelo, op);
+            recorteA = MedioCastilloEn(recto.X1, recto.Y1, ux, uy, recto, modelo, op, medidas);
+            recorteB = MedioCastilloEn(recto.X2, recto.Y2, ux, uy, recto, modelo, op, medidas);
         }
 
         // Igual que arriba: si los castillos se comen el muro, no se recorta.
@@ -193,7 +220,8 @@ public static class AjusteDeMuros
     /// mas alta de las dos caras inferiores, o volveria a solapar.
     /// </remarks>
     public static double PeralteDeLoQueVaEncima(
-        MuroRecto muro, double ux, double uy, ModeloJson modelo, OpcionesMuro op)
+        MuroRecto muro, double ux, double uy, ModeloJson modelo, OpcionesMuro op,
+        MedidasModeladas? medidas = null)
     {
         var mayor = 0.0;
 
@@ -241,10 +269,21 @@ public static class AjusteDeMuros
                 continue;
             }
 
-            mayor = Math.Max(mayor, b.Seccion.PeralteM);
+            // El peralte con el que la trabe se va a modelar, no el del calculo. Si el usuario
+            // la mapeo a un tipo de otro tamaño, el muro tiene que morir bajo la cara inferior
+            // de LA PIEZA QUE VA A EXISTIR.
+            mayor = Math.Max(mayor, Peralte(b, medidas));
         }
 
         return mayor;
+    }
+
+    /// <summary>El peralte con el que se va a modelar la barra.</summary>
+    private static double Peralte(BarraJson b, MedidasModeladas? medidas)
+    {
+        var m = medidas?.Invoke(b);
+
+        return m is not null && m.Value.PeralteM > 0 ? m.Value.PeralteM : b.Seccion.PeralteM;
     }
 
     /// <summary>
@@ -256,7 +295,7 @@ public static class AjusteDeMuros
     /// </remarks>
     public static double MedioCastilloEn(
         double x, double y, double ux, double uy,
-        MuroRecto muro, ModeloJson modelo, OpcionesMuro op)
+        MuroRecto muro, ModeloJson modelo, OpcionesMuro op, MedidasModeladas? medidas = null)
     {
         var mayor = 0.0;
 
@@ -285,7 +324,7 @@ public static class AjusteDeMuros
                 continue;
             }
 
-            mayor = Math.Max(mayor, MedioAncho(c, ux, uy));
+            mayor = Math.Max(mayor, MedioAncho(c, ux, uy, medidas));
         }
 
         return mayor;
@@ -304,7 +343,8 @@ public static class AjusteDeMuros
     /// grados, es el mismo cabo que esta anotado en MainWindow.Ifc.cs.
     /// </para>
     /// </remarks>
-    public static double MedioAncho(BarraJson columna, double ux, double uy)
+    public static double MedioAncho(
+        BarraJson columna, double ux, double uy, MedidasModeladas? medidas = null)
     {
         var t = columna.AnguloGrados * Math.PI / 180.0;
         var c = Math.Cos(t);
@@ -316,8 +356,18 @@ public static class AjusteDeMuros
         var e3x = -s;
         var e3y = c;
 
-        var dim2 = columna.Seccion.PeralteM;
-        var dim3 = columna.Seccion.AnchoM;
+        // Las medidas con las que el castillo se va a modelar de verdad. Recortar el muro con
+        // las del calculo cuando el tipo elegido es de otro tamaño es justo lo que dejaba el
+        // muro metido dentro del castillo.
+        var real = medidas?.Invoke(columna);
+
+        var dim2 = real is not null && real.Value.PeralteM > 0
+            ? real.Value.PeralteM
+            : columna.Seccion.PeralteM;
+
+        var dim3 = real is not null && real.Value.AnchoM > 0
+            ? real.Value.AnchoM
+            : columna.Seccion.AnchoM;
 
         var proyeccion = (Math.Abs((ux * e2x) + (uy * e2y)) * dim2)
                          + (Math.Abs((ux * e3x) + (uy * e3y)) * dim3);
@@ -360,7 +410,8 @@ public static class AjusteDeMuros
 
 
     /// <summary>Ajusta TODOS los muros del modelo, en su sitio, y devuelve el resumen.</summary>
-    public static List<string> AplicarATodos(ModeloJson modelo, OpcionesMuro? op = null)
+    public static List<string> AplicarATodos(
+        ModeloJson modelo, OpcionesMuro? op = null, MedidasModeladas? medidas = null)
     {
         op ??= new OpcionesMuro();
 
@@ -371,7 +422,7 @@ public static class AjusteDeMuros
 
         foreach (var pano in modelo.Panos.Where(p => p.Clase == ClasePieza.Muro))
         {
-            var a = Ajustar(pano, modelo, op);
+            var a = Ajustar(pano, modelo, op, medidas);
 
             if (a.Nota is not null)
             {

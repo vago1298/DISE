@@ -150,6 +150,43 @@ public static class Colocacion
 /// </remarks>
 public static class Orientacion
 {
+    /// <summary>
+    /// Las medidas con las que se va a modelar cada barra, segun el mapeo elegido.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que necesita <see cref="AjusteDeMuros"/> para recortar el muro al pano del
+    /// castillo QUE VA A EXISTIR y no al de la seccion del calculo. Si el tipo vino emparejado
+    /// con las medidas al reves, se devuelven cambiadas, porque asi es como va a quedar
+    /// colocado.
+    /// </remarks>
+    public static MedidasModeladas Medidor(
+        ModeloJson modelo, Mapeo mapeo, CatalogoRevit catalogo)
+    {
+        var secciones = Inventario.De(modelo)
+            .ToDictionary(s => s.Clave, StringComparer.Ordinal);
+
+        return b =>
+        {
+            var clave = Inventario.Clave(b.Clase, b.Seccion);
+
+            if (!secciones.TryGetValue(clave, out var s))
+            {
+                return null;
+            }
+
+            var tipo = mapeo.TipoDe(s, catalogo);
+
+            if (tipo?.AnchoM is not > 0 || tipo.PeralteM is not > 0)
+            {
+                return null;
+            }
+
+            return TipoGirado(b.Seccion, tipo)
+                ? (tipo.PeralteM.Value, tipo.AnchoM.Value)
+                : (tipo.AnchoM.Value, tipo.PeralteM.Value);
+        };
+    }
+
     /// <summary>Por debajo de esto una seccion se considera cuadrada.</summary>
     /// <remarks>
     /// En una seccion cuadrada el giro de noventa grados no se nota, asi que no se aplica: se

@@ -152,7 +152,19 @@ public sealed class ComandoImportar : IExternalCommand
                 + e.Message);
         }
 
-        // ---- 6. El plan y el modelado ----
+        // ---- 6. Ajustar los muros, YA CON EL MAPEO ELEGIDO ----
+        //
+        // Esto se hacia al exportar, y estaba mal de raiz: al exportar todavia no se sabe con
+        // que tipo de familia se va a modelar cada pieza, porque se elige aqui. Asi que el muro
+        // se recortaba medio castillo de la SECCION DEL CALCULO y el castillo modelado podia
+        // medir otra cosa: el muro quedaba metido dentro. Lo mismo con el peralte de la cadena.
+        //
+        // Ahora se ajusta con las medidas de los tipos elegidos, que son las de las piezas que
+        // van a existir de verdad.
+        var avisosMuros = AjusteDeMuros.AplicarATodos(
+            modelo, null, Orientacion.Medidor(modelo, mapeo, catalogo));
+
+        // ---- 7. El plan y el modelado ----
         var plan = Planificador.Armar(
             modelo, mapeo, catalogo, LectorDeCatalogo.Existentes(doc), modo);
 
@@ -169,6 +181,7 @@ public sealed class ComandoImportar : IExternalCommand
         // que tomar al exportar -un paño cuyas notas dicen losa y cuyo contorno es vertical,
         // por ejemplo- y quien esta en Revit tiene que poder enterarse sin volver a CadLink.
         r.Avisos.InsertRange(0, modelo.Avisos);
+        r.Avisos.InsertRange(0, avisosMuros);
 
         TaskDialog.Show("CadLink", Informe(modo, plan, r, rutaMapeo));
 

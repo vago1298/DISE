@@ -368,7 +368,17 @@ public partial class MainWindow : Window
         // Sin esto, el muro de ETABS va de cota de piso a cota de piso y de eje a eje de
         // columna, asi que en Revit OCUPA el mismo sitio que su cadena y que los castillos, y
         // Revit avisa "One element is completely inside another" una vez por cada solape.
-        salida.Avisos.AddRange(AjusteDeMuros.AplicarATodos(salida));
+        // OJO: el ajuste de los muros YA NO SE HACE AQUI.
+        //
+        // Se hacia, y estaba mal por un motivo de fondo: aqui todavia no se sabe con QUE TIPO
+        // DE FAMILIA se va a modelar cada pieza, porque eso se elige despues, en el cuadro de
+        // Revit. Asi que se recortaba el muro medio castillo de 15 cm -la seccion del calculo-
+        // y el castillo modelado medía 30, con lo que el muro quedaba metido dentro; y se bajaba
+        // el peralte de la trabe del calculo en vez del de la trabe modelada, con lo que el muro
+        // no moria en la cara inferior de su cadena.
+        //
+        // Ahora lo hace el complemento, despues del mapeo, con las medidas de los tipos
+        // elegidos. Ver AjusteDeMuros.AplicarATodos y Orientacion.Medidor.
 
         // ---- La cuadricula de ejes ----
         //

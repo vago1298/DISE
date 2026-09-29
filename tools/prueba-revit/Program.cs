@@ -214,6 +214,7 @@ internal static partial class Programa
         NivelesResueltos();
         Cuadro();
         GiroDeLaSeccion();
+        MuroAlPanoDeLoModelado();
         NombresBonitosDeNivel();
         MallaDeEjes();
 
@@ -1744,6 +1745,102 @@ internal static partial class Programa
         Check("un giro de cero no vale la pena aplicarlo", !Orientacion.Vale(0));
         Check("uno de noventa grados si", Orientacion.Vale(Math.PI / 2));
         Check("sin barra no hay giro", Orientacion.GiroRad(null, T(0.25, 0.15)) == 0);
+    }
+
+    // ------------------------------------------------------------------
+    private static void MuroAlPanoDeLoModelado()
+    {
+        Console.WriteLine("\n[13] El muro se ajusta a lo MODELADO, no a la seccion del calculo");
+
+        // Un muro de 4 m entre dos castillos de 15x15 en el calculo, con una cadena de 20 de
+        // peralte encima. Pero el usuario mapea los castillos a un tipo de 30x30 y la cadena a
+        // uno de 40 de peralte: en Revit las piezas miden ESO, y el muro tiene que morir en el
+        // pano de esas, no de las del calculo.
+        var m = new ModeloJson();
+        m.Niveles.Add(new NivelJson { Nombre = "N", ElevacionM = 0 });
+        m.Niveles.Add(new NivelJson { Nombre = "N2", ElevacionM = 3 });
+
+        void Castillo(double x)
+        {
+            m.Barras.Add(new BarraJson
+            {
+                Etiqueta = "K" + x, Clase = ClasePieza.Columna, Nivel = "N2",
+                P1 = P(x, 0, 0), P2 = P(x, 0, 3), Seccion = Rect("K 15X15", 15, 15)
+            });
+        }
+
+        Castillo(0);
+        Castillo(4);
+
+        m.Barras.Add(new BarraJson
+        {
+            Etiqueta = "CC1", Clase = ClasePieza.Trabe, Nivel = "N2",
+            P1 = P(0, 0, 3), P2 = P(4, 0, 3), Seccion = Rect("CC 15X20", 15, 20)
+        });
+
+        var muro = new PanoJson
+        {
+            Etiqueta = "M1", Clase = ClasePieza.Muro, Nivel = "N2",
+            Seccion = new SeccionJson
+            {
+                Nombre = "MURO15", Forma = FormaSeccion.Pano, EspesorM = 0.15
+            }
+        };
+
+        muro.Vertices.AddRange(new[] { P(0, 0, 0), P(4, 0, 0), P(4, 0, 3), P(0, 0, 3) });
+        m.Panos.Add(muro);
+
+        // ---- Primero, con las medidas del calculo ----
+        var conCalculo = AjusteDeMuros.Ajustar(muro, m);
+        var altoCalculo = conCalculo.Contorno.Max(v => v.Z);
+        var largoCalculo = conCalculo.Contorno.Max(v => v.X) - conCalculo.Contorno.Min(v => v.X);
+
+        Casi("con la seccion del calculo el muro baja el peralte de 20", altoCalculo, 2.80, 1e-9);
+        Casi("y se recorta medio castillo de 15 por punta", largoCalculo, 4 - 0.15, 1e-9);
+
+        // ---- Y ahora con las medidas de los TIPOS elegidos ----
+        MedidasModeladas medidor = b => b.Clase == ClasePieza.Columna
+            ? (0.30, 0.30)
+            : (0.15, 0.40);
+
+        var conTipos = AjusteDeMuros.Ajustar(muro, m, null, medidor);
+        var altoTipos = conTipos.Contorno.Max(v => v.Z);
+        var largoTipos = conTipos.Contorno.Max(v => v.X) - conTipos.Contorno.Min(v => v.X);
+
+        Casi("con el tipo elegido baja el peralte de 40, que es el que se va a modelar",
+            altoTipos, 2.60, 1e-9);
+        Casi("y se recorta medio castillo de 30 por punta", largoTipos, 4 - 0.30, 1e-9);
+
+        Check("asi que el ajuste SI depende de las medidas modeladas",
+            Math.Abs(altoCalculo - altoTipos) > 0.1 && Math.Abs(largoCalculo - largoTipos) > 0.1,
+            "si no, el muro se recorta al pano de una pieza que no existe");
+
+        // Un medidor que no sabe -sin tipo elegido- tiene que dejarlo como el calculo.
+        MedidasModeladas nose = _ => null;
+
+        var conNada = AjusteDeMuros.Ajustar(muro, m, null, nose);
+
+        Casi("sin saber las medidas se usan las del calculo",
+            conNada.Contorno.Max(v => v.Z), altoCalculo, 1e-9);
+
+        // Y el medidor de verdad: sale del mapeo, y respeta el giro del tipo.
+        var cat = CatalogoDePrueba();
+        var vista = new VistaMapeo(m, cat);
+        vista.AceptarLoMasParecido();
+        var real = Orientacion.Medidor(m, vista.AMapeo(), cat);
+
+        var deCastillo = real(m.Barras[0]);
+
+        Check("el medidor del mapeo devuelve medidas para una pieza mapeada",
+            deCastillo is not null,
+            "sin esto el ajuste volveria a usar la seccion del calculo");
+
+        if (deCastillo is not null)
+        {
+            Check("y son las del tipo, no las del calculo",
+                deCastillo.Value.AnchoM > 0 && deCastillo.Value.PeralteM > 0,
+                $"{deCastillo.Value.AnchoM} x {deCastillo.Value.PeralteM}");
+        }
     }
 
     // ------------------------------------------------------------------

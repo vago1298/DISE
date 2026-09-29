@@ -15369,6 +15369,7 @@ def v26_plugin_revit() -> None:
     check("el comando implementa IExternalCommand", "IExternalCommand" in comando)
 
     modelador = leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
+    ci = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
 
     check("el modelado va en UNA transaccion, para que un Ctrl+Z lo deshaga",
           modelador.count("new Transaction(") == 1,
@@ -15549,10 +15550,22 @@ def v26_plugin_revit() -> None:
               "devolverlo siempre puede meter a Revit en un bucle")
 
     # ---- Muros: bajo la cadena y al pano de los castillos ----
-    check("los muros se ajustan antes de modelarlos",
-          "AjusteDeMuros.AplicarATodos(" in parcial,
-          "sin esto el muro ocupa el sitio de su cadena y de sus castillos, y Revit avisa "
-          "'One element is completely inside another' una vez por solape")
+    #
+    # El ajuste se hace EN REVIT, no al exportar. Al exportar todavia no se sabe con que tipo de
+    # familia se va a modelar cada pieza -eso se elige en el cuadro-, asi que el muro se
+    # recortaba medio castillo de la seccion del CALCULO y el castillo modelado podia medir otra
+    # cosa: el muro quedaba metido dentro. Lo mismo con el peralte de la cadena.
+    check("los muros se ajustan con las medidas de los tipos ELEGIDOS",
+          "AjusteDeMuros.AplicarATodos(" in ci and "Orientacion.Medidor(" in ci,
+          "sin esto el muro se recorta al pano de una pieza que no existe")
+
+    check("y NO se ajustan al exportar, cuando todavia no se sabe el tipo",
+          "AjusteDeMuros.AplicarATodos(" not in parcial,
+          "hacerlo dos veces recortaria el doble, y hacerlo solo alli usa medidas equivocadas")
+
+    check("el ajuste acepta las medidas de lo que se va a modelar",
+          "MedidasModeladas" in leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")),
+          "con las de la seccion del calculo, el muro no muere en el pano del castillo real")
 
     ajuste = ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")
     check("existe el ajuste de muros", os.path.exists(ajuste))
@@ -15698,8 +15711,6 @@ def v26_plugin_revit() -> None:
     check("el plan cuenta las desempatadas y las descartadas",
           "public int Desempatadas" in planpy and "public int Duplicadas" in planpy)
 
-    ci = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
-
     check("y el informe las dice",
           "plan.Desempatadas" in ci and "plan.Duplicadas" in ci,
           "lo que no se cuenta en el informe es lo que se descubre tarde")
@@ -15739,30 +15750,24 @@ def v26_plugin_revit() -> None:
           "ClasePieza.Trabe" in modelador and "PedirCaraDeArriba(" in modelador,
           "una columna se ata por niveles y una diagonal viene por su centroide")
 
-    # ---- Y NO SE CONFIA EN EL PARAMETRO: SE MIDE ----
+    # ---- Y SIN DESFASE DE NIVEL ----
     #
-    # Pedir la justificacion no bastaba, y fallaba de la peor forma: get_Parameter devuelve null
-    # en una familia que no la expone, el «?.» se lo traga, y la trabe queda un peralte mas
-    # arriba sin que nada lo diga. La cadena de cerramiento asomaba sobre el muro.
-    check("la posicion de la trabe se COMPRUEBA midiendo la pieza, no suponiendola",
-          "BajarTrabesQueAsoman(" in modelador
-          and "get_BoundingBox(" in modelador
-          and "ElementTransformUtils.MoveElement(" in modelador,
-          "un parametro que no se aplica falla en silencio; una caja medida no")
+    # Una cadena de cerramiento o de desplante va en la cota del piso. Revit calcula el desfase
+    # de cada extremo a partir de la cota de la linea que se le pasa, asi que cualquier
+    # diferencia entre la cota de ETABS y la del nivel sale como desfase y separa la pieza del
+    # piso. Hubo una version que lo corregia MOVIENDO la pieza segun su caja envolvente; se
+    # quito porque la caja de una viga estructural incluye mas que su solido y el
+    # desplazamiento salia impredecible.
+    check("la trabe se deja sin desfase de nivel",
+          "SinDesfase(" in modelador
+          and "STRUCTURAL_BEAM_END0_ELEVATION" in modelador
+          and "STRUCTURAL_BEAM_END1_ELEVATION" in modelador,
+          "con desfase, la cadena no queda a nivel de piso")
 
-    # El Regenerate tiene que estar FUERA del bucle. Dentro, un modelo de cuatrocientas piezas
-    # regenera el documento cuatrocientas veces y la importacion se vuelve inusable.
-    iBajar = modelador.find("private static void BajarTrabesQueAsoman")
-
-    # _bloque_llaves quiere el indice de la LLAVE que abre, no el de la firma.
-    cuerpoBajar = (_bloque_llaves(modelador, modelador.find("{", iBajar))
-                   if iBajar >= 0 else None)
-
-    check("y se mide UNA vez al final, no una por pieza",
-          cuerpoBajar is not None
-          and cuerpoBajar.count("Regenerate()") == 1
-          and cuerpoBajar.index("Regenerate()") < cuerpoBajar.index("foreach"),
-          "regenerar el documento una vez por pieza hace inusable un modelo de 400 piezas")
+    check("y NO se mueve la pieza a mano para colocarla",
+          "ElementTransformUtils.MoveElement(" not in modelador,
+          "mover segun la caja envolvente daba un desplazamiento impredecible, porque la caja "
+          "de una viga estructural incluye mas que su solido")
 
     check("tambien se escriben los justificados de cada extremo",
           "START_Z_JUSTIFICATION" in modelador and "END_Z_JUSTIFICATION" in modelador,
@@ -15864,6 +15869,14 @@ def v26_plugin_revit() -> None:
 
     check("el informe dice cuantos ejes se crearon",
           "EjesCreados" in ci)
+
+    check("las burbujas de los ejes van en los DOS extremos, o sea los cuatro lados del plano",
+          "BurbujasEnLosCuatroLados(" in modelador
+          and "DatumEnds.End0" in modelador and "DatumEnds.End1" in modelador,
+          "con la burbuja en un solo extremo el plano queda rotulado por dos lados")
+
+    check("y se encienden en las vistas de planta, porque es una propiedad POR VISTA",
+          "ViewPlan" in modelador and "ShowBubbleInView(" in modelador)
 
     # ---- Los avisos tienen que poder agruparse ----
     #

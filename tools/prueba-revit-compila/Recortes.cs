@@ -133,18 +133,13 @@ public abstract class Element
 
     public void ChangeTypeId(ElementId tipo) { }
 
-    /// <summary>
-    /// La caja que envuelve al elemento. Con <c>null</c> por vista es la del modelo.
-    /// </summary>
-    /// <remarks>
-    /// Es lo que permite COMPROBAR donde quedo una pieza en vez de suponerlo por los
-    /// parametros que se le escribieron.
-    /// </remarks>
-    public BoundingBoxXYZ? get_BoundingBox(View? vista) => null;
 }
 
-/// <summary>Una vista. El complemento solo la usa para pedir la caja del modelo con null.</summary>
-public class View : Element { }
+/// <summary>Una vista. El complemento la usa para encender las burbujas de los ejes.</summary>
+public class View : Element
+{
+    public bool IsTemplate => false;
+}
 
 public abstract class ElementType : Element
 {
@@ -280,19 +275,21 @@ public enum BuiltInParameter
     // Los de cada extremo, para cuando "yz Justification" esta en Independent y los de arriba
     // se ignoran. Confirmados en la misma lista generada para 2026.
     START_Z_JUSTIFICATION,
-    END_Z_JUSTIFICATION
+    END_Z_JUSTIFICATION,
+
+    // El desfase de nivel de cada extremo de una viga. Confirmados en la misma lista de 2026:
+    // STRUCTURAL_BEAM_END0_ELEVATION y STRUCTURAL_BEAM_END1_ELEVATION.
+    STRUCTURAL_BEAM_END0_ELEVATION,
+    STRUCTURAL_BEAM_END1_ELEVATION
 }
 
 /// <summary>
-/// Mover y girar elementos. Comprobado en la Revit API 2026: son los dos metodos con que se
-/// gira una columna colocada por punto -que no tiene parametro de rotacion de seccion- y con
-/// que se corrige una trabe que asoma sobre su cota.
+/// Girar elementos. Comprobado en la Revit API 2026: es con lo que se gira una columna
+/// colocada por punto, que no tiene parametro de rotacion de seccion.
 /// </summary>
 public static class ElementTransformUtils
 {
     public static void RotateElement(Document doc, ElementId id, Line eje, double angulo) { }
-
-    public static void MoveElement(Document doc, ElementId id, XYZ desplazamiento) { }
 }
 
 /// <summary>
@@ -300,18 +297,30 @@ public static class ElementTransformUtils
 /// la forma documentada de crear un eje recto, y es la que usa el propio SDK de Autodesk en su
 /// ejemplo GridCreation. La linea tiene que estar en un plano horizontal.
 /// </summary>
-public sealed class Grid : Element
+public sealed class Grid : DatumPlane
 {
     public static Grid Create(Document doc, Line linea) => new();
 }
 
-/// <summary>La caja que envuelve a un elemento, en coordenadas del modelo.</summary>
-public sealed class BoundingBoxXYZ
+/// <summary>
+/// Un plano de referencia: de aqui heredan los ejes y los niveles la visibilidad de su
+/// burbuja. Comprobado en la Revit API 2026: ShowBubbleInView(DatumEnds, View) es lo que usan
+/// el SDK de Autodesk y rhino.inside-revit para encender la burbuja de un extremo.
+/// </summary>
+public abstract class DatumPlane : Element
 {
-    public XYZ Min { get; set; } = new(0, 0, 0);
+    public void ShowBubbleInView(DatumEnds extremo, View vista) { }
 
-    public XYZ Max { get; set; } = new(0, 0, 0);
+    public void HideBubbleInView(DatumEnds extremo, View vista) { }
+
+    public bool IsBubbleVisibleInView(DatumEnds extremo, View vista) => false;
 }
+
+/// <summary>Los dos extremos de un eje o un nivel.</summary>
+public enum DatumEnds { End0, End1 }
+
+/// <summary>Una vista de planta.</summary>
+public sealed class ViewPlan : View { }
 
 public static class UnitUtils
 {

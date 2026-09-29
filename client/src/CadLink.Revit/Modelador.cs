@@ -75,14 +75,12 @@ internal static class Modelador
 
             CrearEjes(doc, plan, r);
 
-            var trabes = new List<TrabePorComprobar>();
-
             foreach (var paso in plan.Pasos)
             {
                 switch (paso.Accion)
                 {
                     case Accion.Crear:
-                        Crear(doc, paso, niveles, r, trabes);
+                        Crear(doc, paso, niveles, r);
                         break;
 
                     case Accion.Actualizar:
@@ -95,9 +93,6 @@ internal static class Modelador
                         break;
                 }
             }
-
-            // Antes del commit, porque mueve elementos: tiene que ir dentro de la transaccion.
-            BajarTrabesQueAsoman(doc, trabes, r);
 
             t.Commit();
 
@@ -274,6 +269,8 @@ internal static class Modelador
         XYZ P(double x, double y) =>
             new(Unidades.AInternas(x), Unidades.AInternas(y), 0);
 
+        var nuevas = new List<Grid>();
+
         void Uno(EjeJson e, XYZ a, XYZ z)
         {
             var id = (e.Id ?? string.Empty).Trim();
@@ -286,6 +283,8 @@ internal static class Modelador
             try
             {
                 var rejilla = Grid.Create(doc, Line.CreateBound(a, z));
+
+                nuevas.Add(rejilla);
 
                 if (id.Length > 0)
                 {
@@ -320,6 +319,70 @@ internal static class Modelador
         {
             Uno(e, P(xMin, e.Ordenada), P(xMax, e.Ordenada));
         }
+
+        BurbujasEnLosCuatroLados(doc, nuevas, r);
+    }
+
+    /// <summary>Pone la burbuja de cada eje en SUS DOS EXTREMOS.</summary>
+    /// <remarks>
+    /// <para>
+    /// Con la burbuja en un solo extremo, el plano queda rotulado por dos lados. Con los dos
+    /// extremos de los ejes verticales y de los horizontales, queda rotulado por los
+    /// <b>cuatro</b>, que es como se entrega un plano estructural: se puede leer la retícula
+    /// desde cualquier borde de la hoja sin cruzar el dibujo con la vista.
+    /// </para>
+    /// <para>
+    /// La visibilidad de la burbuja es <b>por vista</b>, no del eje, asi que hay que ponerla en
+    /// cada vista de planta. Se hace en todas las que no sean plantilla.
+    /// </para>
+    /// </remarks>
+    private static void BurbujasEnLosCuatroLados(
+        Document doc, List<Grid> rejillas, ResultadoModelado r)
+    {
+        if (rejillas.Count == 0)
+        {
+            return;
+        }
+
+        // Una sola vez: hasta que Revit no regenera, un eje recien creado no esta en las vistas.
+        doc.Regenerate();
+
+        var plantas = new FilteredElementCollector(doc)
+            .OfClass(typeof(ViewPlan))
+            .Cast<ViewPlan>()
+            .Where(v => !v.IsTemplate)
+            .ToList();
+
+        if (plantas.Count == 0)
+        {
+            return;
+        }
+
+        var fallos = 0;
+
+        foreach (var rejilla in rejillas)
+        {
+            foreach (var vista in plantas)
+            {
+                try
+                {
+                    rejilla.ShowBubbleInView(DatumEnds.End0, vista);
+                    rejilla.ShowBubbleInView(DatumEnds.End1, vista);
+                }
+                catch (Exception)
+                {
+                    // Hay vistas donde el eje no llega a verse, y entonces Revit no deja tocar
+                    // su burbuja. No es un fallo del modelo: se cuenta y se sigue.
+                    fallos++;
+                }
+            }
+        }
+
+        if (fallos > 0)
+        {
+            r.Avisos.Add($"«{fallos} burbuja(s)»: no se pudieron encender porque el eje no se ve "
+                         + "en esa vista");
+        }
     }
 
     private static Level? Nivel(Dictionary<string, Level> niveles, string nombre) =>
@@ -330,8 +393,7 @@ internal static class Modelador
     // ==================================================================
 
     private static void Crear(
-        Document doc, Paso paso, Dictionary<string, Level> niveles, ResultadoModelado r,
-        List<TrabePorComprobar> trabes)
+        Document doc, Paso paso, Dictionary<string, Level> niveles, ResultadoModelado r)
     {
         try
         {
@@ -347,7 +409,7 @@ internal static class Modelador
             var tipoId = new ElementId(paso.Tipo!.Id);
 
             Element? hecho = paso.Barra is not null
-                ? CrearBarra(doc, paso, nivel, tipoId, trabes)
+                ? CrearBarra(doc, paso, nivel, tipoId, r)
                 : CrearPano(doc, paso, NivelDePano(doc, paso, nivel), tipoId);
 
             if (hecho is null)
@@ -368,11 +430,8 @@ internal static class Modelador
         }
     }
 
-    /// <summary>Una trabe recien creada, para comprobar despues que no asoma sobre su cota.</summary>
-    private sealed record TrabePorComprobar(ElementId Id, double ArribaZ, string Llave);
-
     private static Element? CrearBarra(
-        Document doc, Paso paso, Level nivel, ElementId tipoId, List<TrabePorComprobar> trabes)
+        Document doc, Paso paso, Level nivel, ElementId tipoId, ResultadoModelado r)
     {
         var b = paso.Barra!;
 
@@ -468,14 +527,7 @@ internal static class Modelador
         if (b.Clase == ClasePieza.Trabe)
         {
             PedirCaraDeArriba(inst);
-
-            // La cota que tiene que quedar ARRIBA es la de la linea del modelo, porque ETABS
-            // exporta la viga por su cara superior. Se apunta para comprobarlo despues, cuando
-            // Revit ya haya calculado la geometria.
-            trabes.Add(new TrabePorComprobar(
-                inst.Id,
-                Unidades.AInternas(Math.Max(b.P1.Z, b.P2.Z)),
-                paso.Llave));
+            SinDesfase(inst, r);
         }
 
         return inst;
@@ -534,86 +586,35 @@ internal static class Modelador
         }
         catch (Exception)
         {
-            // Que esto falle ya no es grave: lo que garantiza la posicion es la comprobacion
-            // de BajarTrabesQueAsoman, no este parametro.
+            // Hay familias que no exponen la justificacion. Se ensena en el informe por medio
+            // del aviso de SinDesfase si tampoco se pudo poner el desfase; perderla deja la
+            // trabe un peralte mas arriba, que es molesto pero no invalida el resto.
         }
     }
 
-    /// <summary>
-    /// Comprueba que ninguna trabe asoma sobre su cota, y baja la que asome.
-    /// </summary>
+    /// <summary>Deja la trabe SIN DESFASE de nivel: su linea, en la cota del nivel.</summary>
     /// <remarks>
     /// <para>
-    /// Esto existe porque pedir la justificacion NO BASTA, y la forma en que no bastaba era la
-    /// peor posible: <c>get_Parameter</c> devuelve <c>null</c> en una familia que no expone la
-    /// justificacion, el <c>?.</c> se lo traga, y la trabe queda un peralte mas arriba sin que
-    /// nada lo diga. La cadena de cerramiento asomaba por encima del muro en vez de coronarlo.
+    /// Una cadena de cerramiento o de desplante va en la cota del piso, no a una altura
+    /// cualquiera. Revit calcula el desfase de cada extremo a partir de la cota de la linea que
+    /// se le paso, asi que cualquier diferencia entre la cota de ETABS y la del nivel aparece
+    /// como un desfase de arranque y final, y la pieza queda separada del piso.
     /// </para>
     /// <para>
-    /// Asi que no se confia en el parametro: se MIDE la pieza ya construida y, si su cara de
-    /// arriba no esta donde tiene que estar, se baja. Medir la caja es independiente de donde
-    /// tenga el origen la familia y de si la justificacion se aplico o no.
-    /// </para>
-    /// <para>
-    /// Va en UNA sola pasada al final, con un unico <c>Regenerate</c>, porque regenerar el
-    /// documento una vez por pieza en un modelo de cuatrocientas piezas lo hace inusable.
+    /// Se ponen los dos desfases a cero. Junto con la justificacion por la cara de arriba, eso
+    /// deja la trabe colgando del nivel hacia abajo, que es donde va.
     /// </para>
     /// </remarks>
-    private static void BajarTrabesQueAsoman(
-        Document doc, List<TrabePorComprobar> trabes, ResultadoModelado r)
+    private static void SinDesfase(FamilyInstance inst, ResultadoModelado r)
     {
-        if (trabes.Count == 0)
+        try
         {
-            return;
+            inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEAM_END0_ELEVATION)?.Set(0.0);
+            inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEAM_END1_ELEVATION)?.Set(0.0);
         }
-
-        // Un solo Regenerate para todas: hasta que Revit no calcula la geometria, la caja no
-        // existe o esta sin actualizar.
-        doc.Regenerate();
-
-        // 2 mm. Por debajo de eso es ruido de la geometria y mover la pieza no arregla nada.
-        var tolerancia = Unidades.AInternas(0.002);
-        var bajadas = 0;
-
-        foreach (var t in trabes)
+        catch (Exception e)
         {
-            try
-            {
-                if (doc.GetElement(t.Id) is not Element e)
-                {
-                    // La pudo borrar el manejador de fallos. No es asunto de este metodo.
-                    continue;
-                }
-
-                var caja = e.get_BoundingBox(null);
-
-                if (caja is null)
-                {
-                    continue;
-                }
-
-                var asoma = caja.Max.Z - t.ArribaZ;
-
-                if (asoma <= tolerancia)
-                {
-                    continue;
-                }
-
-                ElementTransformUtils.MoveElement(doc, t.Id, new XYZ(0, 0, -asoma));
-                bajadas++;
-            }
-            catch (Exception ex)
-            {
-                r.Avisos.Add($"«{t.Llave}»: no se pudo comprobar si la trabe asoma sobre su "
-                             + "cota: " + ex.Message);
-            }
-        }
-
-        if (bajadas > 0)
-        {
-            r.Avisos.Add($"«{bajadas} trabe(s)»: asomaban sobre su cota porque su familia no "
-                         + "admite justificarse por la cara de arriba, y se bajaron para que "
-                         + "coronen el muro en vez de montarse encima");
+            r.Avisos.Add("«trabes»: no se pudo poner a cero el desfase de nivel: " + e.Message);
         }
     }
 
