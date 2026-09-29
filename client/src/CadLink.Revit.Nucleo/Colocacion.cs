@@ -93,12 +93,26 @@ public static class Colocacion
             .First();
 }
 
-/// <summary>El desnivel de cada vertice de una losa respecto de su plano de apoyo.</summary>
+/// <summary>
+/// Una losa lista para Revit: su contorno en el plano de apoyo y, si esta inclinada, la
+/// flecha de pendiente con que se le da la inclinacion.
+/// </summary>
+/// <param name="ZBaseM">La cota del plano de apoyo: la del vertice mas bajo.</param>
+/// <param name="EnPlanta">El contorno, todo a <paramref name="ZBaseM"/>.</param>
+/// <param name="ColaX">Donde arranca la flecha de pendiente. Es el vertice mas bajo.</param>
+/// <param name="PuntaX">Hacia donde apunta: la planta del vertice mas alto.</param>
+/// <param name="AnguloRad">La pendiente, en radianes, que es lo que pide Revit.</param>
+/// <param name="DesnivelM">Cuanto sube del vertice mas bajo al mas alto.</param>
 public sealed record FormaDeLosa(
-    double ZBaseM, List<PuntoJson> EnPlanta, List<double> DesfasesM, double DesnivelM)
+    double ZBaseM,
+    List<PuntoJson> EnPlanta,
+    double ColaX, double ColaY,
+    double PuntaX, double PuntaY,
+    double AnguloRad,
+    double DesnivelM)
 {
-    /// <summary>Si la losa es plana y no hay que modificar su forma.</summary>
-    public bool EsPlana => DesnivelM <= Losas.ToleranciaPlanaM;
+    /// <summary>Si la losa es plana y se crea sin flecha de pendiente.</summary>
+    public bool EsPlana => DesnivelM <= Losas.ToleranciaPlanaM || AnguloRad <= 1e-9;
 }
 
 /// <summary>
@@ -112,14 +126,26 @@ public sealed record FormaDeLosa(
 /// pendiente.
 /// </para>
 /// <para>
-/// El camino es en dos pasos: se crea PLANA a una cota, y despues se sube o baja cada vertice
-/// a su cota real con el editor de forma de la losa. Esta clase calcula lo que hace falta para
-/// el segundo paso.
+/// Se usa la sobrecarga de <c>Floor.Create</c> que acepta una <b>flecha de pendiente</b>: se le
+/// pasa el contorno plano en la cota mas baja, una linea HORIZONTAL que marca hacia donde sube,
+/// y el angulo en radianes. Es API documentada y estable.
 /// </para>
 /// <para>
-/// La cota de apoyo es la mas BAJA del contorno, no la mas alta: asi todos los desfases salen
-/// positivos y la losa se levanta desde su punto mas bajo. Con la cota alta habria que bajar
-/// vertices, que funciona igual pero deja la losa por debajo de su nivel mientras se edita.
+/// <b>No se usa SlabShapeEditor.</b> Fue el primer intento y no compila: <c>Floor</c> ya no
+/// expone esa propiedad -en Revit 2026 da
+/// <c>CS1061: "Floor" no contiene una definicion para "SlabShapeEditor"</c>- porque el miembro
+/// cambio de sitio al reorganizarse la jerarquia de suelos y toposolidos. La flecha de
+/// pendiente hace lo mismo con una sola llamada y sin depender de donde viva ese miembro en
+/// cada version.
+/// </para>
+/// <para>
+/// La cota de apoyo es la mas BAJA del contorno: asi la losa solo sube desde ahi, que es lo que
+/// entiende la flecha de pendiente.
+/// </para>
+/// <para>
+/// <b>Limite:</b> una flecha de pendiente hace un plano inclinado. Una losa ALABEADA -cuyos
+/// cuatro vertices no estan en un plano- no se puede reproducir asi, y se aproxima por el plano
+/// que pasa por su vertice mas bajo y su mas alto. Se avisa cuando pasa.
 /// </para>
 /// </remarks>
 public static class Losas
@@ -132,67 +158,117 @@ public static class Losas
     /// </remarks>
     public const double ToleranciaPlanaM = 0.005;
 
-    /// <summary>Descompone el contorno en un plano de apoyo mas un desfase por vertice.</summary>
+    /// <summary>
+    /// Saca el contorno de apoyo y la flecha de pendiente.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La flecha va del vertice MAS BAJO a la planta del MAS ALTO, y el angulo es el que forman
+    /// esa carrera horizontal y el desnivel entre los dos. Para una losa plana inclinada eso es
+    /// exacto.
+    /// </para>
+    /// <para>
+    /// Se eligen esos dos vertices, y no se ajusta un plano por minimos cuadrados, porque la
+    /// cola de la flecha tiene que caer <b>sobre el contorno</b>: un vertice lo cumple siempre,
+    /// un punto calculado no.
+    /// </para>
+    /// </remarks>
     public static FormaDeLosa Preparar(IReadOnlyList<PuntoJson>? vertices)
     {
         var v = Contornos.SinRepetidos(vertices, 0.001);
 
         if (v.Count == 0)
         {
-            return new FormaDeLosa(0, new List<PuntoJson>(), new List<double>(), 0);
+            return new FormaDeLosa(0, new List<PuntoJson>(), 0, 0, 0, 0, 0, 0);
         }
 
-        var zMin = v.Min(p => p.Z);
-        var zMax = v.Max(p => p.Z);
+        var bajo = v[0];
+        var alto = v[0];
+
+        foreach (var p in v)
+        {
+            if (p.Z < bajo.Z)
+            {
+                bajo = p;
+            }
+
+            if (p.Z > alto.Z)
+            {
+                alto = p;
+            }
+        }
+
+        var zMin = bajo.Z;
+        var desnivel = alto.Z - zMin;
 
         var enPlanta = v
             .Select(p => new PuntoJson { X = p.X, Y = p.Y, Z = zMin })
             .ToList();
 
-        var desfases = v.Select(p => p.Z - zMin).ToList();
+        var dx = alto.X - bajo.X;
+        var dy = alto.Y - bajo.Y;
+        var carrera = Math.Sqrt((dx * dx) + (dy * dy));
 
-        return new FormaDeLosa(zMin, enPlanta, desfases, zMax - zMin);
+        // Sin carrera en planta no hay pendiente que expresar: los dos vertices estan uno
+        // encima del otro, asi que el contorno no es una losa.
+        if (desnivel <= ToleranciaPlanaM || carrera < 0.01)
+        {
+            return new FormaDeLosa(
+                zMin, enPlanta, bajo.X, bajo.Y, bajo.X, bajo.Y, 0, desnivel);
+        }
+
+        return new FormaDeLosa(
+            zMin, enPlanta,
+            bajo.X, bajo.Y,
+            alto.X, alto.Y,
+            Math.Atan2(desnivel, carrera),
+            desnivel);
     }
 
     /// <summary>
-    /// Empareja cada vertice del editor de Revit con el desfase que le toca, por su posicion
-    /// en planta.
+    /// Si los vertices estan en un plano, con la tolerancia dada.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Hace falta porque el editor de forma de la losa devuelve SUS vertices en el orden que
-    /// quiere, que no es el del contorno que se le dio. Emparejarlos por indice pondria la
-    /// pendiente al reves.
-    /// </para>
-    /// <para>
-    /// Se emparejan por cercania en planta, y si alguno no encuentra pareja se devuelve cero
-    /// para el: mejor un vertice sin subir que la losa retorcida.
-    /// </para>
+    /// Una flecha de pendiente solo hace un PLANO inclinado. Si la losa esta alabeada, la
+    /// inclinacion que se consigue es una aproximacion y hay que decirlo. Se mide comparando la
+    /// cota de cada vertice con la que le tocaria en el plano que definen la cola y la punta de
+    /// la flecha.
     /// </remarks>
-    public static double DesfaseDe(
-        double x, double y, FormaDeLosa forma, double toleranciaM = 0.05)
+    public static double DesviacionDelPlano(
+        IReadOnlyList<PuntoJson>? vertices, FormaDeLosa forma)
     {
-        var mejor = -1;
-        var mejorDistancia = double.MaxValue;
+        var v = Contornos.SinRepetidos(vertices, 0.001);
 
-        for (var i = 0; i < forma.EnPlanta.Count; i++)
-        {
-            var p = forma.EnPlanta[i];
-            var d = Math.Sqrt(((p.X - x) * (p.X - x)) + ((p.Y - y) * (p.Y - y)));
-
-            if (d < mejorDistancia)
-            {
-                mejorDistancia = d;
-                mejor = i;
-            }
-        }
-
-        if (mejor < 0 || mejorDistancia > toleranciaM)
+        if (v.Count < 4 || forma.AnguloRad <= 1e-9)
         {
             return 0;
         }
 
-        return forma.DesfasesM[mejor];
+        var dx = forma.PuntaX - forma.ColaX;
+        var dy = forma.PuntaY - forma.ColaY;
+        var carrera = Math.Sqrt((dx * dx) + (dy * dy));
+
+        if (carrera < 1e-9)
+        {
+            return 0;
+        }
+
+        // La direccion de maxima pendiente, y cuanto sube por metro recorrido en ella.
+        var ux = dx / carrera;
+        var uy = dy / carrera;
+        var subidaPorMetro = Math.Tan(forma.AnguloRad);
+
+        var mayor = 0.0;
+
+        foreach (var p in v)
+        {
+            var avance = ((p.X - forma.ColaX) * ux) + ((p.Y - forma.ColaY) * uy);
+            var zDelPlano = forma.ZBaseM + (avance * subidaPorMetro);
+
+            mayor = Math.Max(mayor, Math.Abs(p.Z - zDelPlano));
+        }
+
+        return mayor;
     }
 
     /// <summary>Para los mensajes.</summary>

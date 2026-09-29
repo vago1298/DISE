@@ -132,7 +132,14 @@ internal static class Modelador
 
         foreach (var n in new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>())
         {
-            porNombre[n.Name] = n;
+            // Un nivel sin nombre no deberia existir, pero la API lo declara opcional y un
+            // nulo aqui reventaria al indexar el diccionario.
+            var nombre = n.Name;
+
+            if (!string.IsNullOrWhiteSpace(nombre))
+            {
+                porNombre[nombre] = n;
+            }
         }
 
         foreach (var falta in plan.NivelesQueFaltan)
@@ -359,94 +366,25 @@ internal static class Modelador
         }
 
         var lazo = CurveLoop.Create(enPlanta);
-        var piso = Floor.Create(doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id);
 
-        if (!forma.EsPlana)
+        if (forma.EsPlana)
         {
-            LevantarVertices(doc, piso, forma);
+            return Floor.Create(doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id);
         }
 
-        return piso;
-    }
+        // La FLECHA DE PENDIENTE: una linea horizontal que va del vertice mas bajo hacia la
+        // planta del mas alto, mas el angulo en radianes. Es la forma documentada de crear un
+        // suelo inclinado, y tiene que ser horizontal: la inclinacion la da el angulo, no la
+        // linea.
+        var cota = Unidades.AInternas(forma.ZBaseM);
 
-    /// <summary>Sube cada vertice de la losa a su cota real.</summary>
-    /// <remarks>
-    /// <para>
-    /// Hay que regenerar antes: el editor de forma no existe hasta que Revit ha construido la
-    /// losa.
-    /// </para>
-    /// <para>
-    /// Y los vertices se emparejan por su POSICION EN PLANTA, no por indice: el editor devuelve
-    /// los suyos en el orden que quiere, y emparejarlos por indice pondria la pendiente al
-    /// reves.
-    /// </para>
-    /// <para>
-    /// Si algo falla, la losa se queda PLANA en vez de perderse. Una losa horizontal que se
-    /// corrige a mano es mejor que ninguna losa.
-    /// </para>
-    /// </remarks>
-    private static void LevantarVertices(Document doc, Floor piso, FormaDeLosa forma)
-    {
-        try
-        {
-            doc.Regenerate();
+        var flecha = Line.CreateBound(
+            new XYZ(Unidades.AInternas(forma.ColaX), Unidades.AInternas(forma.ColaY), cota),
+            new XYZ(Unidades.AInternas(forma.PuntaX), Unidades.AInternas(forma.PuntaY), cota));
 
-            var editor = piso.SlabShapeEditor;
-
-            if (editor is null)
-            {
-                return;
-            }
-
-            editor.ResetSlabShape();
-            doc.Regenerate();
-
-            foreach (SlabShapeVertex v in editor.SlabShapeVertices)
-            {
-                var d = Losas.DesfaseDe(
-                    Unidades.AMetros(v.Position.X), Unidades.AMetros(v.Position.Y), forma);
-
-                if (Math.Abs(d) > 1e-6)
-                {
-                    editor.ModifySubElement(v, Unidades.AInternas(d));
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // La losa ya existe y esta plana. Se deja asi.
-        }
-    }
-
-    /// <summary>El contorno del pano como curvas cerradas.</summary>
-    private static IList<Curve> Contorno(PanoJson p)
-    {
-        var puntos = p.Vertices.Select(Unidades.Punto).ToList();
-        var curvas = new List<Curve>();
-
-        for (var i = 0; i < puntos.Count; i++)
-        {
-            var a = puntos[i];
-            var b = puntos[(i + 1) % puntos.Count];
-
-            // Un lado de largo cero hace que Revit rechace el contorno entero. Los vertices
-            // repetidos ya se limpian al exportar, pero un modelo puede traer dos puntos a
-            // una decima de milimetro y eso tambien cuenta como cero para Revit.
-            if (a.DistanceTo(b) < Unidades.AInternas(0.001))
-            {
-                continue;
-            }
-
-            curvas.Add(Line.CreateBound(a, b));
-        }
-
-        if (curvas.Count < 3)
-        {
-            throw new InvalidOperationException(
-                "El contorno se queda en menos de tres lados al quitar los de largo cero.");
-        }
-
-        return curvas;
+        return Floor.Create(
+            doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id,
+            structural: true, flecha, forma.AnguloRad);
     }
 
     /// <summary>Ata la columna a su nivel de base y su nivel de punta, con sus desfases.</summary>
@@ -481,6 +419,41 @@ internal static class Modelador
         inst.get_Parameter(BuiltInParameter.FAMILY_TOP_LEVEL_PARAM)?.Set(nPunta.Id);
         inst.get_Parameter(BuiltInParameter.FAMILY_TOP_LEVEL_OFFSET_PARAM)
             ?.Set(Unidades.AInternas(donde.DesfasePuntaM));
+    }
+
+    /// <summary>El contorno de un pano como curvas cerradas, en sus cotas reales.</summary>
+    /// <remarks>
+    /// Lo usan los MUROS, que se crean con su contorno tal cual. Las losas no pasan por aqui:
+    /// necesitan el contorno aplanado al plano de apoyo, y eso lo prepara <c>Losas</c>.
+    /// </remarks>
+    private static IList<Curve> Contorno(PanoJson p)
+    {
+        var puntos = p.Vertices.Select(Unidades.Punto).ToList();
+        var curvas = new List<Curve>();
+
+        for (var i = 0; i < puntos.Count; i++)
+        {
+            var a = puntos[i];
+            var b = puntos[(i + 1) % puntos.Count];
+
+            // Un lado de largo cero hace que Revit rechace el contorno entero. Los vertices
+            // repetidos ya se limpian al exportar, pero un modelo puede traer dos puntos a una
+            // decima de milimetro y eso tambien cuenta como cero para Revit.
+            if (a.DistanceTo(b) < Unidades.AInternas(0.001))
+            {
+                continue;
+            }
+
+            curvas.Add(Line.CreateBound(a, b));
+        }
+
+        if (curvas.Count < 3)
+        {
+            throw new InvalidOperationException(
+                "El contorno se queda en menos de tres lados al quitar los de largo cero.");
+        }
+
+        return curvas;
     }
 
     // ==================================================================

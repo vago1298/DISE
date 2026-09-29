@@ -739,24 +739,57 @@ internal static class Programa
         Casi("se apoya en la cota mas baja", forma.ZBaseM, 3);
         Casi("y el desnivel es de un metro", forma.DesnivelM, 1);
         Check("no es plana", !forma.EsPlana);
-        Igual("hay un desfase por vertice", forma.DesfasesM.Count, 4);
-        Check("los desfases son todos positivos", forma.DesfasesM.All(d => d >= 0),
-            string.Join(", ", forma.DesfasesM));
         Check("el contorno de apoyo es horizontal",
             forma.EnPlanta.All(p => Math.Abs(p.Z - 3) < 1e-12));
 
-        // El emparejado por posicion en planta, que es lo que evita poner la pendiente al
-        // reves: el editor de Revit devuelve sus vertices en el orden que quiere.
-        Casi("el vertice de la esquina baja no se sube", Losas.DesfaseDe(0, 0, forma), 0);
-        Casi("y el de la esquina alta sube un metro", Losas.DesfaseDe(6, 5, forma), 1);
-        Casi("un vertice que no existe no se toca", Losas.DesfaseDe(99, 99, forma), 0);
+        // La flecha de pendiente: arranca en el vertice MAS BAJO -que esta sobre el contorno,
+        // como pide Revit- y apunta a la planta del mas alto.
+        Casi("la flecha arranca en el vertice mas bajo, en X", forma.ColaX, 0);
+        Casi("y en Y", forma.ColaY, 0);
+        Casi("y apunta a la planta del mas alto, en X", forma.PuntaX, 6);
+        Casi("y en Y", forma.PuntaY, 5);
 
-        // Una losa plana de verdad no se edita: hacerlo solo agrega subelementos.
+        // El angulo: sube 1 m en la carrera entre esos dos puntos.
+        var carrera = Math.Sqrt((6 * 6) + (5 * 5));
+        Casi("el angulo es el del desnivel sobre la carrera",
+            forma.AnguloRad, Math.Atan2(1, carrera), 1e-12);
+        Check("y es un angulo razonable, no un absurdo",
+            forma.AnguloRad > 0 && forma.AnguloRad < Math.PI / 4,
+            forma.AnguloRad.ToString("0.0000"));
+
+        // Una rampa PLANA de verdad: la flecha la reproduce exacta.
+        var rampaPlana = new List<PuntoJson>
+            { P(0, 0, 3), P(6, 0, 3), P(6, 5, 3), P(0, 5, 3) };
+        rampaPlana[1] = P(6, 0, 3.6);
+        rampaPlana[2] = P(6, 5, 3.6);
+
+        var fPlana = Losas.Preparar(rampaPlana);
+        Casi("una rampa plana no se desvia del plano de la flecha",
+            Losas.DesviacionDelPlano(rampaPlana, fPlana), 0, 1e-9);
+
+        // Una losa ALABEADA no se puede reproducir con una flecha, y hay que saberlo.
+        var alabeada = new List<PuntoJson>
+            { P(0, 0, 3), P(6, 0, 3.5), P(6, 5, 4), P(0, 5, 3.9) };
+
+        var fAlabeada = Losas.Preparar(alabeada);
+        Check("una losa alabeada se detecta como aproximacion",
+            Losas.DesviacionDelPlano(alabeada, fAlabeada) > 0.01,
+            "desviacion=" + Losas.DesviacionDelPlano(alabeada, fAlabeada));
+
+        // Una losa plana de verdad no lleva flecha: crearla con una la inclinaria por ruido.
         var planaDeVerdad = Losas.Preparar(new List<PuntoJson>
             { P(0, 0, 3), P(5, 0, 3.001), P(5, 5, 3), P(0, 5, 3) });
 
         Check("un milimetro de ruido no cuenta como inclinacion", planaDeVerdad.EsPlana,
             "desnivel=" + planaDeVerdad.DesnivelM);
+        Casi("y no se calcula angulo", planaDeVerdad.AnguloRad, 0);
+
+        // Dos vertices uno encima del otro no dan pendiente expresable.
+        var sinCarrera = Losas.Preparar(new List<PuntoJson>
+            { P(0, 0, 3), P(0, 0, 5), P(1, 0, 3) });
+
+        Check("sin carrera en planta no se inventa una flecha", sinCarrera.EsPlana,
+            "angulo=" + sinCarrera.AnguloRad);
 
         Igual("una losa sin vertices no revienta", Losas.Preparar(null).EnPlanta.Count, 0);
 

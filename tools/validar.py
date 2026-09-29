@@ -15483,16 +15483,23 @@ def v26_plugin_revit() -> None:
     check("el complemento prepara la losa conservando su desnivel",
           "Losas.Preparar(" in modelador)
 
-    check("y sube cada vertice con el editor de forma de la losa",
-          "SlabShapeEditor" in modelador and "ModifySubElement" in modelador,
-          "es lo unico que permite una losa inclinada o alabeada en Revit")
+    check("la inclinacion se da con la FLECHA DE PENDIENTE de Floor.Create",
+          "forma.AnguloRad" in modelador and "flecha" in modelador,
+          "es API documentada para 2026")
 
-    check("los vertices se emparejan por posicion, no por indice",
-          "Losas.DesfaseDe(" in modelador,
-          "el editor devuelve sus vertices en otro orden; por indice la pendiente sale al reves")
+    # SlabShapeEditor fue el primer intento y NO compila: Floor ya no expone esa propiedad y
+    # da CS1061 en Revit 2026. Se prohibe para que no vuelva.
+    check("no se usa SlabShapeEditor, que ya no existe en Floor",
+          "SlabShapeEditor" not in modelador,
+          "da CS1061 en Revit 2026: el miembro cambio de sitio")
 
-    check("si falla el editor, la losa se queda plana en vez de perderse",
-          "La losa ya existe y esta plana" in modelador)
+    check("la flecha de pendiente es HORIZONTAL, con las dos puntas a la misma cota",
+          modelador.count("cota)") >= 2,
+          "Revit lo exige: la inclinacion la da el angulo, no la linea")
+
+    check("y una losa plana se crea sin flecha",
+          "forma.EsPlana" in modelador,
+          "con flecha, el ruido de la malla la inclinaria")
 
     # ---- Columnas: por niveles, no por su linea ----
     #
@@ -15612,6 +15619,53 @@ def v26_plugin_revit() -> None:
 
     check("la traduccion al complemento conoce todas las formas del lector", not faltan_f,
           "sin traducir: " + ", ".join(faltan_f))
+
+    # ---- El arnes que COMPILA la capa de Revit sin tener Revit ----
+    #
+    # CadLink.Revit referencia RevitAPI.dll y sus errores de compilacion solo aparecian en la
+    # maquina del usuario, de uno en uno y con una vuelta entera de por medio. Compilando sus
+    # archivos contra unos recortes de la API, la mayoria salen aqui.
+    compila = ruta("tools/prueba-revit-compila/Prueba.csproj")
+    check("existe el arnes que compila la capa de Revit", os.path.exists(compila))
+
+    recortes = ruta("tools/prueba-revit-compila/Recortes.cs")
+    check("y sus recortes de la Revit API", os.path.exists(recortes))
+
+    if os.path.exists(compila) and os.path.exists(recortes):
+        cp = leer(compila)
+
+        check("el arnes es net8.0, para poder correrlo en cualquier maquina",
+              "<TargetFramework>net8.0</TargetFramework>" in cp)
+
+        # Si se anade un archivo al complemento y no se incluye aqui, deja de comprobarse sin
+        # que nada lo diga. Se comparan las listas.
+        delComplemento = {
+            os.path.basename(p) for p in archivos(".cs")
+            if os.sep + "CadLink.Revit" + os.sep in p
+            and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p
+        }
+
+        # Los que dependen de WPF no se pueden compilar aqui: WPF pide net8.0-windows.
+        conWpf = set()
+
+        for p in archivos(".cs"):
+            if (os.sep + "CadLink.Revit" + os.sep in p
+                    and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p):
+                txt = leer(p)
+
+                if "using System.Windows" in txt or "partial class VentanaMapeo" in txt:
+                    conWpf.add(os.path.basename(p))
+
+        deberian = sorted(delComplemento - conWpf)
+        faltan_c = [f for f in deberian if f not in cp]
+
+        check("el arnes compila todos los archivos del complemento que no usan WPF",
+              not faltan_c,
+              "sin incluir: " + ", ".join(faltan_c))
+
+        check("los recortes avisan de que NO son la Revit API",
+              "NO es la Revit API" in leer(recortes) or "NO es la Revit API" in leer(recortes),
+              "quien los lea tiene que saber que son declaraciones, no la API")
 
     # ---- Las pruebas ----
     check("existe la prueba ejecutable tools/prueba-revit",
