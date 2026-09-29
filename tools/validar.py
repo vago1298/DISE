@@ -15599,8 +15599,69 @@ def v26_plugin_revit() -> None:
     ventana = ruta("client/src/CadLink.Revit/VentanaMapeo.xaml")
 
     if os.path.exists(ventana):
-        check("el cuadro tiene columna de categoria",
-              'Header="Categoría"' in leer(ventana))
+        vx = leer(ventana)
+
+        check("el cuadro tiene columna de categoria", 'Header="Categoría"' in vx)
+
+        # ---- El enlazado de los desplegables de la reja ----
+        #
+        # Sintoma reportado: al elegir la familia HSS, la columna Tipo seguia ofreciendo los
+        # tipos de Hormigon-Rectangular-Pilar. El nucleo hace lo correcto y tiene pruebas, asi
+        # que lo que se descolgaba era el enlazado de la ventana, que no se puede ejecutar aqui.
+        # Estas reglas fijan las tres condiciones que lo evitan.
+        # El \s tras el nombre es para NO recoger <DataGridTemplateColumn.CellTemplate>, que es
+        # un elemento hijo y no una columna.
+        plantillas = re.findall(r"<DataGridTemplateColumn\s[^>]*>", vx)
+        sinLectura = [c for c in plantillas if 'IsReadOnly="True"' not in c]
+
+        check("las columnas de desplegable son IsReadOnly, para que la reja no reconstruya "
+              "la celda al editar",
+              not sinLectura,
+              "sin esto la reja destruye el ComboBox enlazado a media eleccion y quedan "
+              "familia y tipos que no se corresponden: " + "; ".join(sinLectura))
+
+        combos = re.findall(r"<ComboBox\b.*?/>", vx, re.S)
+
+        check("hay un desplegable por columna editable (categoria, familia y tipo)",
+              len(combos) == 3, str(len(combos)))
+
+        sinTrigger = [
+            c.split("\n")[0].strip() for c in combos
+            if ("SelectedItem=" in c or "SelectedValue=" in c)
+            and "UpdateSourceTrigger=PropertyChanged" not in c
+        ]
+
+        check("y todos escriben la eleccion en el momento (UpdateSourceTrigger)",
+              not sinTrigger,
+              "si la escritura se retrasa, el nucleo no repuebla los tipos y el cuadro "
+              "ensena la familia nueva con los tipos viejos: " + "; ".join(sinTrigger))
+
+        check("la categoria se ofrece con su nombre legible, no con el valor del enum",
+              "CategoriasOpciones" in vx and 'DisplayMemberPath="Nombre"' in vx,
+              "con los valores a pelo en la pantalla salia 'ColumnaEstructural'")
+
+        check("una fila incoherente se ve en la pantalla",
+              "{Binding Coherente}" in vx,
+              "si el enlazado vuelve a descolgarse hay que verlo en el cuadro, no en el "
+              "modelo ya hecho")
+
+    cb = ruta("client/src/CadLink.Revit/VentanaMapeo.xaml.cs")
+
+    if os.path.exists(cb):
+        # Sin comentarios: el comentario que explica por que se quito nombra la llamada.
+        check("la ventana no regenera las celdas a mano con Items.Refresh()",
+              "Items.Refresh()" not in _sin_comentarios(leer(cb)),
+              "regenerar las celdas es justo la maniobra que desengancha un desplegable "
+              "del dato que ensena; las filas ya avisan por INotifyPropertyChanged")
+
+    vistaFila = leer(ruta("client/src/CadLink.Revit.Nucleo/VistaMapeo.cs"))
+
+    check("al repoblar se avisa de la LISTA, no solo de su contenido",
+          "Aviso(nameof(Tipos))" in vistaFila and "Aviso(nameof(Familias))" in vistaFila,
+          "un desplegable enganchado a la lista anterior no se entera de un Clear")
+
+    check("y el nucleo sabe decir si una fila quedo incoherente",
+          "public bool Coherente" in vistaFila and "public int Incoherentes" in vistaFila)
 
     nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
     bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)

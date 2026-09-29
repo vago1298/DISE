@@ -1292,10 +1292,91 @@ internal static class Programa
             fila.Tipo?.NombreCompleto ?? "null");
         Check("asi que la fila queda sin mapear", !fila.Mapeada);
 
+        Check("y la fila NO queda incoherente: nunca se ensena familia A con tipos de la B",
+            fila.Coherente, fila.Diagnostico);
+        Igual("asi que el cuadro no reporta ninguna incoherencia", v.Incoherentes, 0);
+        Check("el diagnostico dice la familia y cuantos tipos se ofrecen",
+            fila.Diagnostico.Contains(otra) && fila.Diagnostico.Contains("tipo(s) ofrecidos"),
+            fila.Diagnostico);
+
         // Elegir a mano deja de ser sugerencia.
         fila.Tipo = fila.Tipos.First();
         Check("elegir a mano marca la fila como revisada", !fila.EsSugerencia);
         Check("y vuelve a estar mapeada", fila.Mapeada);
+        Check("y sigue siendo coherente", fila.Coherente, fila.Diagnostico);
+
+        // ---- El caso que reporto el usuario: acero HSS junto a hormigon rectangular ----
+        //
+        // Con una columna HSS y otra de hormigon en el mismo cuadro, elegir la familia HSS
+        // ensenaba los tipos del hormigon. El nucleo tiene que ofrecer SOLO los de la familia
+        // elegida, y ninguno de la otra.
+        var catMixto = new CatalogoRevit();
+
+        foreach (var t in new[] { "300 x 450", "450 x 600", "600 x 750", "C-01 40X40" })
+        {
+            catMixto.Tipos.Add(new TipoRevit
+            {
+                Categoria = CategoriaRevit.ColumnaEstructural,
+                Familia = "Hormigón-Rectangular-Pilar", Tipo = t,
+                Id = catMixto.Tipos.Count + 1, Forma = FormaSeccion.Rectangulo
+            });
+        }
+
+        foreach (var t in new[] { "HSS3x2x1/4", "HSS4x4x1/4", "HSS6x6x3/8" })
+        {
+            catMixto.Tipos.Add(new TipoRevit
+            {
+                Categoria = CategoriaRevit.ColumnaEstructural,
+                Familia = "HSS-Hollow Structural Section-Column", Tipo = t,
+                Id = catMixto.Tipos.Count + 1, Forma = FormaSeccion.Cajon
+            });
+        }
+
+        catMixto.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 0 });
+
+        var mixto = new ModeloJson();
+        mixto.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 0 });
+        mixto.Barras.Add(new BarraJson
+        {
+            Etiqueta = "C1", Clase = ClasePieza.Columna, Nivel = "Story1",
+            P1 = P(0, 0, 0), P2 = P(0, 0, 3),
+            Seccion = new SeccionJson
+            {
+                Nombre = "HSS3X2X1/4", Forma = FormaSeccion.Cajon,
+                AnchoM = 0.051, PeralteM = 0.076
+            }
+        });
+
+        var vMix = new VistaMapeo(mixto, catMixto);
+        var fHss = vMix.Filas.Single();
+
+        Igual("las dos familias de columnas se ofrecen", fHss.Familias.Count, 2);
+
+        fHss.Familia = "HSS-Hollow Structural Section-Column";
+
+        Igual("al elegir HSS se ofrecen sus 3 tipos", fHss.Tipos.Count, 3);
+        Check("y NINGUNO es de hormigón rectangular",
+            fHss.Tipos.All(t => t.Familia == "HSS-Hollow Structural Section-Column"),
+            string.Join(", ", fHss.Tipos.Select(t => t.NombreCompleto)));
+        Check("en concreto no aparece 300 x 450",
+            fHss.Tipos.All(t => t.Tipo != "300 x 450"));
+
+        fHss.Familia = "Hormigón-Rectangular-Pilar";
+
+        Igual("y al volver a hormigón se ofrecen sus 4", fHss.Tipos.Count, 4);
+        Check("sin ninguno de acero", fHss.Tipos.All(t => t.Tipo != "HSS4x4x1/4"));
+        Igual("el cuadro nunca queda incoherente", vMix.Incoherentes, 0);
+
+        // ---- Las categorias se leen, no salen como nombre del enum ----
+        Igual("hay una opcion por categoria",
+            fHss.CategoriasOpciones.Count, Enum.GetValues<CategoriaRevit>().Length);
+        Check("y se leen en castellano, no 'ColumnaEstructural'",
+            fHss.CategoriasOpciones.Any(o => o.Nombre == "Pilares estructurales")
+            && fHss.CategoriasOpciones.All(o => !o.Nombre.Contains("Estructural")),
+            string.Join(", ", fHss.CategoriasOpciones.Select(o => o.Nombre)));
+        Check("cada opcion arrastra su valor del enum",
+            fHss.CategoriasOpciones.Select(o => o.Valor)
+                .SequenceEqual(Enum.GetValues<CategoriaRevit>()));
 
         // Una fila sin sugerencia buena se queda vacia pero con la pista puesta.
         var canal = new ModeloJson();

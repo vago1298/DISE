@@ -19,6 +19,27 @@ public abstract class Avisador : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propiedad));
 }
 
+/// <summary>Una categoria como se ofrece en el desplegable: el valor y como se lee.</summary>
+/// <remarks>
+/// El desplegable no puede llevar los valores del enum a pelo, porque entonces en la pantalla
+/// sale "ColumnaEstructural" en vez de "Pilares estructurales". Se ofrece esta pareja y el
+/// desplegable ensena el nombre y guarda el valor.
+/// </remarks>
+public sealed class OpcionCategoria
+{
+    internal OpcionCategoria(CategoriaRevit valor)
+    {
+        Valor = valor;
+        Nombre = Categorias.Nombre(valor);
+    }
+
+    public CategoriaRevit Valor { get; }
+
+    public string Nombre { get; }
+
+    public override string ToString() => Nombre;
+}
+
 /// <summary>Una fila del cuadro de mapeo.</summary>
 public sealed class FilaVista : Avisador
 {
@@ -39,6 +60,9 @@ public sealed class FilaVista : Avisador
         Categorias = new ObservableCollection<CategoriaRevit>(
             Enum.GetValues<CategoriaRevit>());
 
+        CategoriasOpciones = new ObservableCollection<OpcionCategoria>(
+            Enum.GetValues<CategoriaRevit>().Select(c => new OpcionCategoria(c)));
+
         Familias = new ObservableCollection<string>();
         Tipos = new ObservableCollection<TipoRevit>();
 
@@ -58,6 +82,9 @@ public sealed class FilaVista : Avisador
 
     /// <summary>Todas las categorias, para poder cambiar la de esta fila.</summary>
     public ObservableCollection<CategoriaRevit> Categorias { get; }
+
+    /// <summary>Las mismas categorias, con su nombre legible, para el desplegable.</summary>
+    public ObservableCollection<OpcionCategoria> CategoriasOpciones { get; }
 
     /// <summary>
     /// La categoria de Revit con la que se va a modelar esta seccion.
@@ -144,11 +171,33 @@ public sealed class FilaVista : Avisador
 
             Aviso();
             Aviso(nameof(Mapeada));
+            Aviso(nameof(Coherente));
+            Aviso(nameof(Diagnostico));
         }
     }
 
     /// <summary>Si la fila ya tiene tipo elegido.</summary>
     public bool Mapeada => _tipo is not null;
+
+    /// <summary>
+    /// Si lo que se ve en la fila se corresponde con lo que se va a modelar.
+    /// </summary>
+    /// <remarks>
+    /// Tiene que ser siempre <c>true</c>: al cambiar de familia se descarta el tipo que no
+    /// pertenece. Existe porque este cuadro solo se puede ver dentro de Revit, y si alguna vez
+    /// vuelve a ensenar "familia A con los tipos de la B" hay que poder VERLO en la pantalla en
+    /// vez de tener que deducirlo. La fila se marca y el informe lo dice.
+    /// </remarks>
+    public bool Coherente =>
+        _tipo is null
+        || string.Equals(_tipo.Familia, _familia, StringComparison.CurrentCultureIgnoreCase);
+
+    /// <summary>El estado de la fila en texto, para poder verlo sin adivinarlo.</summary>
+    public string Diagnostico =>
+        Nucleo.Categorias.Nombre(_categoria)
+        + " / familia «" + (_familia.Length == 0 ? "(sin elegir)" : _familia) + "»"
+        + " / " + Tipos.Count + " tipo(s) ofrecidos"
+        + " / elegido: " + (_tipo is null ? "(ninguno)" : _tipo.NombreCompleto);
 
     /// <summary>
     /// Vuelve a llenar los tipos con los de la familia elegida.
@@ -167,6 +216,13 @@ public sealed class FilaVista : Avisador
         {
             Familias.Add(f);
         }
+
+        // Avisar del cambio de la LISTA, no solo de lo que hay dentro. Vaciar y volver a
+        // llenar una coleccion observable deberia bastar, pero un desplegable que se haya
+        // quedado enganchado a la lista anterior no se enteraria, y lo que se ve entonces son
+        // las familias de otra categoria. Avisar de la propiedad obliga a leer la lista otra
+        // vez y no cuesta nada.
+        Aviso(nameof(Familias));
 
         // Si la familia que estaba puesta no existe en la categoria nueva, se descarta con su
         // tipo. Dejarla mostraria "categoria de suelos / familia de muros".
@@ -195,6 +251,12 @@ public sealed class FilaVista : Avisador
             Aviso(nameof(Tipo));
             Aviso(nameof(Mapeada));
         }
+
+        // Igual que con las familias: se avisa de la LISTA, para que el desplegable de tipos
+        // no pueda quedarse ensenando los de la familia anterior.
+        Aviso(nameof(Tipos));
+        Aviso(nameof(Coherente));
+        Aviso(nameof(Diagnostico));
     }
 
     /// <summary>Pone familia y tipo de una vez, sin perder el tipo por el camino.</summary>
@@ -231,6 +293,8 @@ public sealed class FilaVista : Avisador
         Aviso(nameof(Mapeada));
         Aviso(nameof(Sugerido));
         Aviso(nameof(EsSugerencia));
+        Aviso(nameof(Coherente));
+        Aviso(nameof(Diagnostico));
     }
 }
 
@@ -300,11 +364,13 @@ public sealed class VistaMapeo : Avisador
 
             fila.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName is nameof(FilaVista.Mapeada) or nameof(FilaVista.Tipo))
+                if (e.PropertyName is nameof(FilaVista.Mapeada) or nameof(FilaVista.Tipo)
+                    or nameof(FilaVista.Coherente))
                 {
                     Aviso(nameof(SinMapear));
                     Aviso(nameof(Mapeadas));
                     Aviso(nameof(PuedeModelar));
+                    Aviso(nameof(Incoherentes));
                     Aviso(nameof(Resumen));
                 }
             };
@@ -336,6 +402,16 @@ public sealed class VistaMapeo : Avisador
     public int Sugeridas => Filas.Count(f => f.EsSugerencia);
 
     /// <summary>
+    /// Filas cuyo tipo elegido no pertenece a la familia que se ensena.
+    /// </summary>
+    /// <remarks>
+    /// Tiene que ser siempre cero. Se cuenta y se dice en el resumen porque este cuadro solo se
+    /// puede ver dentro de Revit: si el enlazado de la ventana vuelve a descolgarse, hay que
+    /// enterarse leyendo el cuadro y no modelando con el tipo equivocado.
+    /// </remarks>
+    public int Incoherentes => Filas.Count(f => !f.Coherente);
+
+    /// <summary>
     /// Si se puede modelar. Basta con que haya UNA fila mapeada.
     /// </summary>
     /// <remarks>
@@ -365,7 +441,16 @@ public sealed class VistaMapeo : Avisador
             t += $". Las {SinMapear} sin elegir NO se modelaran";
         }
 
-        return t + ".";
+        t += ".";
+
+        if (Incoherentes > 0)
+        {
+            t += $" ATENCION: en {Incoherentes} fila(s) el tipo elegido no pertenece a la "
+                 + "familia que se ensena, asi que el cuadro no esta mostrando lo que se "
+                 + "modelaria. Vuelve a elegir la familia en esas filas.";
+        }
+
+        return t;
     }
 
     /// <summary>El mapeo resultante, para guardarlo y para armar el plan.</summary>

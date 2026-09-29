@@ -29,7 +29,8 @@ public partial class VentanaMapeo : Window
         {
             f.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName is nameof(FilaVista.Mapeada) or nameof(FilaVista.Tipo))
+                if (e.PropertyName is nameof(FilaVista.Mapeada) or nameof(FilaVista.Tipo)
+                    or nameof(FilaVista.Familia) or nameof(FilaVista.Coherente))
                 {
                     Refrescar();
                 }
@@ -81,9 +82,10 @@ public partial class VentanaMapeo : Window
                 "CadLink", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        // La reja no se enlaza a una lista nueva, se modifican las filas, asi que hay que
-        // pedirle que vuelva a pintar.
-        Reja.Items.Refresh();
+        // Antes aqui habia un Reja.Items.Refresh(). Se quito: las filas avisan de cada cambio
+        // por INotifyPropertyChanged, asi que la reja se repinta sola. Refrescar a mano
+        // destruye y regenera todas las celdas, que es justo la maniobra que puede dejar un
+        // desplegable desenlazado del dato que ensena.
         Refrescar();
     }
 

@@ -61,12 +61,25 @@
                      ETABS, pero eso es solo el punto de partida: si el cálculo trae un paño
                      clasificado como muro y en realidad es una losa, aquí se corrige sin tener
                      que volver a ETABS. Al cambiarla se repueblan familias y tipos. -->
-                <DataGridTemplateColumn Header="Categoría" Width="150">
+                <!-- IsReadOnly="True" en las tres columnas de desplegable NO las deja
+                     inservibles: lo que hace es que la reja no intente entrar en modo edicion
+                     en esa celda. Sin esto, la reja destruye y vuelve a crear el contenido de
+                     la celda al empezar a editar, y el desplegable con el que la persona esta
+                     interactuando deja de ser el que estaba enlazado: la eleccion se pierde sin
+                     llegar a escribirse, y en la pantalla quedan una familia y unos tipos que
+                     no se corresponden. Los ComboBox siguen funcionando igual, y de paso se
+                     abren al PRIMER clic en vez de al segundo. -->
+                <DataGridTemplateColumn Header="Categoría" Width="150" IsReadOnly="True">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
+                            <!-- Se ensena el nombre legible y se guarda el valor del enum. Con
+                                 los valores a pelo en la pantalla salia "ColumnaEstructural". -->
                             <ComboBox Style="{StaticResource Celda}"
-                                      ItemsSource="{Binding Categorias}"
-                                      SelectedItem="{Binding Categoria, Mode=TwoWay}"
+                                      ItemsSource="{Binding CategoriasOpciones}"
+                                      DisplayMemberPath="Nombre"
+                                      SelectedValuePath="Valor"
+                                      SelectedValue="{Binding Categoria, Mode=TwoWay,
+                                                      UpdateSourceTrigger=PropertyChanged}"
                                       ToolTip="Cámbiala si el cálculo trae esta sección en la categoría equivocada." />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
@@ -75,25 +88,27 @@
                 <!-- Familia y Tipo van como plantilla y no como DataGridComboBoxColumn porque
                      cada fila tiene SU propia lista: las familias dependen de la categoría
                      elegida en esa fila, y los tipos de la familia. -->
-                <DataGridTemplateColumn Header="Familia de Revit" Width="230">
+                <DataGridTemplateColumn Header="Familia de Revit" Width="230" IsReadOnly="True">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <ComboBox Style="{StaticResource Celda}"
                                       ItemsSource="{Binding Familias}"
-                                      SelectedItem="{Binding Familia, Mode=TwoWay}"
-                                      ToolTip="{Binding Sugerido}" />
+                                      SelectedItem="{Binding Familia, Mode=TwoWay,
+                                                     UpdateSourceTrigger=PropertyChanged}"
+                                      ToolTip="{Binding Diagnostico}" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Tipo" Width="*">
+                <DataGridTemplateColumn Header="Tipo" Width="*" IsReadOnly="True">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <ComboBox Style="{StaticResource Celda}"
                                       ItemsSource="{Binding Tipos}"
-                                      SelectedItem="{Binding Tipo, Mode=TwoWay}"
+                                      SelectedItem="{Binding Tipo, Mode=TwoWay,
+                                                     UpdateSourceTrigger=PropertyChanged}"
                                       DisplayMemberPath="Tipo"
-                                      ToolTip="{Binding Sugerido}" />
+                                      ToolTip="{Binding Diagnostico}" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
@@ -112,6 +127,15 @@
                              una decisión de la persona. -->
                         <DataTrigger Binding="{Binding EsSugerencia}" Value="True">
                             <Setter Property="Background" Value="#F0F6FF" />
+                        </DataTrigger>
+
+                        <!-- Una fila donde el tipo elegido NO pertenece a la familia que se ve
+                             es un fallo del cuadro, no una decisión. Se pinta en ámbar y el
+                             tooltip dice el estado exacto: así se ve en la pantalla en vez de
+                             tener que deducirlo del modelo ya hecho. -->
+                        <DataTrigger Binding="{Binding Coherente}" Value="False">
+                            <Setter Property="Background" Value="#FFF3D6" />
+                            <Setter Property="ToolTip" Value="{Binding Diagnostico}" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
