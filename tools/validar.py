@@ -15814,9 +15814,36 @@ def v26_plugin_revit() -> None:
           "YJustification.Center" in modelador,
           "volver a aplicarlo aqui lo contaria dos veces")
 
-    check("y el ajuste de muros baja lo que CUELGA la cadena, no su peralte",
-          "Insercion.CuelgaM(" in leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")),
-          "bajar el peralte entero cuando solo cuelga la mitad deja un hueco bajo la cadena")
+    # ---- Y LA REGLA DE LA CADENA ESTA ESCRITA UNA SOLA VEZ ----
+    #
+    # Una cadena o trabe cuelga SIEMPRE su peralte entero bajo el nivel, porque es lo que se
+    # construye: corona el muro y el piso se apoya encima. No se deduce del punto de insercion de
+    # ETABS -cuyo valor de omision es el centroide, que deja la trabe repartida-, y ese fue el
+    # error de tres vueltas.
+    #
+    # Lo critico es que el modelador y el ajuste de muros usen LA MISMA regla. Cuando cada uno
+    # suponia otra cosa, el muro moria a media altura de su cadena y quedaba un hueco.
+    aj = leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs"))
+
+    check("la regla de cuanto cuelga una cadena esta en UN solo sitio",
+          "public static class CadenaBajoElNivel" in leer(ins),
+          "dos copias de la misma regla se separan, y entonces el muro no muere donde empieza "
+          "su cadena")
+
+    check("y el ajuste de muros la usa",
+          "CadenaBajoElNivel.CuelgaM(" in aj,
+          "bajar otra cosa deja un hueco entre el muro y su cadena")
+
+    check("la trabe cuelga bajo el nivel SIEMPRE, no segun su punto cardinal",
+          "b.Clase == ClasePieza.Trabe\n                ? ZJustification.Top" in modelador
+          or "ClasePieza.Trabe" in modelador and "ZJustification.Top" in modelador,
+          "el punto de omision de ETABS es el centroide, y respetarlo dejaba la trabe repartida "
+          "media por encima del nivel")
+
+    check("cuando una punta de muro no encuentra su castillo, se DICE",
+          "SinCastillo" in aj,
+          "es la unica forma de distinguir 'se recorto mal' de 'no se encontro el castillo', y "
+          "sin decirlo hay que deducirlo del modelo terminado")
 
     check("el informe dice cuantas barras se ajustaron con las medidas del tipo",
           "de {modelo.Barras.Count} barra(s) se ajustaron" in ci,

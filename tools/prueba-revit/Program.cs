@@ -737,8 +737,19 @@ internal static partial class Programa
         Casi("con el 10", Insercion.CaraInferior(3, 0.40, 10), 2.80);
         Casi("y con el 2", Insercion.CaraInferior(3, 0.40, 2), 3.0);
 
-        // Y se ve en el ajuste del muro: la MISMA cadena de 40, con el punto de omision, solo
-        // obliga a bajar 20. Bajar 40 dejaba un hueco de 20 cm entre muro y cadena.
+        // ---- PERO EL MURO Y LA CADENA TIENEN QUE ESTAR DE ACUERDO ----
+        //
+        // El modelador cuelga SIEMPRE la cadena su peralte entero bajo el nivel, porque es lo que
+        // se construye: la cadena corona el muro y el piso se apoya encima. Respetar el punto de
+        // insercion al pie de la letra dejaba la trabe repartida -media por encima del nivel-,
+        // que es correcto para el calculo y no es lo que se construye.
+        //
+        // Asi que el ajuste del muro tiene que usar LA MISMA regla. Si cada uno supone otra cosa,
+        // aparece un hueco entre el muro y su cadena, que es el sintoma que se reporto.
+        Casi("la cadena cuelga su peralte entero, pase lo que pase",
+            CadenaBajoElNivel.CuelgaM(0.40), 0.40);
+        Casi("y su cara inferior sale de ahi",
+            CadenaBajoElNivel.CaraInferior(3, 0.40), 2.60);
         var conCentroide = new ModeloJson();
         conCentroide.Niveles.Add(new NivelJson { Nombre = "Story1", ElevacionM = 3 });
 
@@ -763,15 +774,24 @@ internal static partial class Programa
 
         var ajC = AjusteDeMuros.Ajustar(muroC, conCentroide);
 
-        Casi("con el punto de omision el muro solo baja media cadena", ajC.BajoM, 0.20);
+        Casi("el muro baja la cadena entera aunque su punto cardinal sea el centroide",
+            ajC.BajoM, 0.40);
 
-        // Y con la cadena apoyada ENCIMA del piso, el muro no baja nada.
+        // Y no cambia si el punto cardinal es otro: la regla es de obra, no del calculo. Esto es
+        // lo que garantiza que el muro muera exactamente en la cara inferior de su cadena.
+        foreach (var punto in new[] { 2, 5, 8, 10, 11 })
+        {
+            conCentroide.Barras[0].PuntoCardinal = punto;
+
+            Casi($"con el punto {punto} el muro baja lo mismo",
+                AjusteDeMuros.Ajustar(muroC, conCentroide).BajoM, 0.40);
+        }
+
+        // Y el punto cardinal viaja por el archivo. Sigue haciendo falta para las piezas que NO
+        // son trabes -una diagonal no tiene "arriba" que valga- y para poder decirlo en el
+        // informe, asi que se comprueba que sobrevive.
         conCentroide.Barras[0].PuntoCardinal = 2;
-        var ajA = AjusteDeMuros.Ajustar(muroC, conCentroide);
 
-        Casi("con la cadena apoyada encima, el muro no se baja", ajA.BajoM, 0);
-
-        // Y el punto cardinal viaja por el archivo: sin el, el complemento volveria a suponer.
         var idaC = ArchivoModelo.ATexto(conCentroide);
         var vueltaC = ArchivoModelo.DeTexto(idaC);
 

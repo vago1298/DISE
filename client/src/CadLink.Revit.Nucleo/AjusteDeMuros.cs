@@ -277,7 +277,10 @@ public static class AjusteDeMuros
             // Bajar el muro su peralte entero cuando la trabe solo cuelga la mitad dejaba un
             // hueco de medio peralte entre la cabeza del muro y la cara inferior de su cadena.
             // Y con el peralte del calculo en vez del del tipo modelado, el hueco era otro.
-            var cuelga = Insercion.CuelgaM(Peralte(b, medidas), b.PuntoCardinal);
+            // Cuelga su PERALTE ENTERO, porque asi es como la coloca el modelador. Las dos
+            // reglas salen del mismo sitio a proposito: cuando el modelador suponia una cosa y
+            // esto otra, el muro moria a media altura de su cadena y quedaba un hueco.
+            var cuelga = CadenaBajoElNivel.CuelgaM(Peralte(b, medidas));
 
             // La cara inferior tiene que quedar por debajo de la cabeza del muro; si la trabe se
             // apoya encima -punto de abajo- no hay nada que bajar.
@@ -312,6 +315,7 @@ public static class AjusteDeMuros
         MuroRecto muro, ModeloJson modelo, OpcionesMuro op, MedidasModeladas? medidas = null)
     {
         var mayor = 0.0;
+        var encontrado = false;
 
         foreach (var c in modelo.Barras)
         {
@@ -338,11 +342,29 @@ public static class AjusteDeMuros
                 continue;
             }
 
+            encontrado = true;
             mayor = Math.Max(mayor, MedioAncho(c, ux, uy, medidas));
+        }
+
+        // Si en esta punta NO hay castillo, el muro se queda como esta y se APUNTA, porque es la
+        // diferencia entre "el muro llega al pano" y "el muro llega al eje". Un muro que no
+        // encuentra su castillo es la unica forma en que puede seguir metido dentro de el, asi
+        // que hay que poder contarlo en el informe en vez de deducirlo del modelo.
+        if (!encontrado)
+        {
+            SinCastillo++;
         }
 
         return mayor;
     }
+
+    /// <summary>Puntas de muro en las que no se encontro castillo. Para el informe.</summary>
+    /// <remarks>
+    /// Es un contador global y bastante tosco, pero responde la pregunta que importa: si el muro
+    /// no llega al pano del castillo, ¿es porque se recorto mal o porque no se encontro el
+    /// castillo? Se pone a cero en cada <see cref="AplicarATodos"/>.
+    /// </remarks>
+    public static int SinCastillo { get; private set; }
 
     /// <summary>
     /// La mitad de lo que mide la seccion de la columna en la direccion del muro.
@@ -434,6 +456,8 @@ public static class AjusteDeMuros
         var recortados = 0;
         var sinTocar = 0;
 
+        SinCastillo = 0;
+
         foreach (var pano in modelo.Panos.Where(p => p.Clase == ClasePieza.Muro))
         {
             var a = Ajustar(pano, modelo, op, medidas);
@@ -482,6 +506,13 @@ public static class AjusteDeMuros
         {
             avisos.Add($"En total {sinTocar} pano(s) no son rectangulos verticales y se "
                        + "dejaron como estaban.");
+        }
+
+        if (SinCastillo > 0)
+        {
+            avisos.Add($"«castillos»: en {SinCastillo} punta(s) de muro no se encontro castillo "
+                       + $"a menos de {Cm(op.ToleranciaEjeM)} cm, asi que esa punta se quedo en "
+                       + "el eje y no en el pano");
         }
 
         return avisos;

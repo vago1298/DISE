@@ -554,12 +554,22 @@ internal static class Modelador
     {
         try
         {
-            var z = Insercion.Cara(b.PuntoCardinal) switch
-            {
-                CaraDeInsercion.Arriba => ZJustification.Top,
-                CaraDeInsercion.Abajo => ZJustification.Bottom,
-                _ => ZJustification.Center
-            };
+            // UNA CADENA O TRABE CUELGA SIEMPRE BAJO EL NIVEL. No se deduce del punto de
+            // insercion de ETABS, y ese fue el error de tres vueltas: el punto de omision de
+            // ETABS es el centroide -para calcular da igual donde este la seccion respecto del
+            // eje-, asi que respetarlo al pie de la letra dejaba la trabe repartida, media por
+            // encima del nivel. Correcto para el calculo, y no es lo que se construye.
+            //
+            // El resto de las barras si respetan su punto de insercion: una diagonal o una
+            // columna inclinada no tienen "arriba" que valga.
+            var z = b.Clase == ClasePieza.Trabe
+                ? ZJustification.Top
+                : Insercion.Cara(b.PuntoCardinal) switch
+                {
+                    CaraDeInsercion.Arriba => ZJustification.Top,
+                    CaraDeInsercion.Abajo => ZJustification.Bottom,
+                    _ => ZJustification.Center
+                };
 
             // A lo ancho, centrada: el corrimiento en planta ya viene en las coordenadas, y
             // volverlo a aplicar aqui lo contaria dos veces.

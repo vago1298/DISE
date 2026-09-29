@@ -1,5 +1,42 @@
 namespace CadLink.Revit.Nucleo;
 
+/// <summary>
+/// Como se coloca una cadena o trabe respecto de la cota que trae el calculo.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Una cadena o una trabe SIEMPRE cuelga por debajo del nivel.</b> Es lo que se construye en
+/// obra: la cadena corona el muro y el piso se apoya encima; no hay ninguna cadena que asome por
+/// encima de la losa.
+/// </para>
+/// <para>
+/// Esto no se deduce del punto de insercion de ETABS, y ese fue el error de tres vueltas. El
+/// punto de insercion de omision de ETABS es el <b>10</b>, el centroide, porque para calcular da
+/// igual donde este la seccion respecto de la linea: lo que importa es el eje. Al respetarlo al
+/// pie de la letra, la trabe salia repartida -media por encima del nivel y media por debajo- que
+/// es correcto para el calculo y NO es lo que se construye.
+/// </para>
+/// <para>
+/// Asi que la regla es una y no depende del modelo: la pieza cuelga <b>su peralte entero</b> bajo
+/// la cota de su linea. Y la usan los dos sitios que tienen que estar de acuerdo -donde se coloca
+/// la trabe y hasta donde sube el muro que va debajo-, porque si cada uno supone otra cosa
+/// aparece un hueco entre los dos.
+/// </para>
+/// </remarks>
+public static class CadenaBajoElNivel
+{
+    /// <summary>Cuanto cuelga la pieza por debajo de la cota de su linea: TODO su peralte.</summary>
+    /// <remarks>
+    /// Un solo sitio donde esta escrito, a proposito. Cuando el modelador suponia una cosa y el
+    /// ajuste de muros otra, el muro moria a media altura de su cadena.
+    /// </remarks>
+    public static double CuelgaM(double peralteM) => peralteM > 0 ? peralteM : 0;
+
+    /// <summary>La cota de la cara inferior de la pieza.</summary>
+    public static double CaraInferior(double zLinea, double peralteM) =>
+        zLinea - CuelgaM(peralteM);
+}
+
 /// <summary>Contra que cara de la seccion se mide la linea que exporta el calculo.</summary>
 public enum CaraDeInsercion
 {
