@@ -15436,7 +15436,7 @@ def v26_plugin_revit() -> None:
           "con el producto cruz de dos lados, un contorno mallado da una normal de ruido")
 
     check("y avisa cuando la nota contradice a la geometria",
-          "Revisa la propiedad" in clasepano,
+          "evisa la propiedad" in clasepano,
           "callar la contradiccion deja la pieza en una categoria que nadie pidio")
 
     check("los avisos del modelo viajan en el archivo de intercambio",
@@ -15736,8 +15736,162 @@ def v26_plugin_revit() -> None:
           and "BuiltInParameter.Y_JUSTIFICATION" in modelador)
 
     check("solo a las trabes, no a columnas ni diagonales",
-          "ClasePieza.Trabe" in modelador and "PonerEnLaCaraDeArriba(" in modelador,
+          "ClasePieza.Trabe" in modelador and "PedirCaraDeArriba(" in modelador,
           "una columna se ata por niveles y una diagonal viene por su centroide")
+
+    # ---- Y NO SE CONFIA EN EL PARAMETRO: SE MIDE ----
+    #
+    # Pedir la justificacion no bastaba, y fallaba de la peor forma: get_Parameter devuelve null
+    # en una familia que no la expone, el «?.» se lo traga, y la trabe queda un peralte mas
+    # arriba sin que nada lo diga. La cadena de cerramiento asomaba sobre el muro.
+    check("la posicion de la trabe se COMPRUEBA midiendo la pieza, no suponiendola",
+          "BajarTrabesQueAsoman(" in modelador
+          and "get_BoundingBox(" in modelador
+          and "ElementTransformUtils.MoveElement(" in modelador,
+          "un parametro que no se aplica falla en silencio; una caja medida no")
+
+    # El Regenerate tiene que estar FUERA del bucle. Dentro, un modelo de cuatrocientas piezas
+    # regenera el documento cuatrocientas veces y la importacion se vuelve inusable.
+    iBajar = modelador.find("private static void BajarTrabesQueAsoman")
+
+    # _bloque_llaves quiere el indice de la LLAVE que abre, no el de la firma.
+    cuerpoBajar = (_bloque_llaves(modelador, modelador.find("{", iBajar))
+                   if iBajar >= 0 else None)
+
+    check("y se mide UNA vez al final, no una por pieza",
+          cuerpoBajar is not None
+          and cuerpoBajar.count("Regenerate()") == 1
+          and cuerpoBajar.index("Regenerate()") < cuerpoBajar.index("foreach"),
+          "regenerar el documento una vez por pieza hace inusable un modelo de 400 piezas")
+
+    check("tambien se escriben los justificados de cada extremo",
+          "START_Z_JUSTIFICATION" in modelador and "END_Z_JUSTIFICATION" in modelador,
+          "con 'yz Justification' en Independent, el de la pieza entera se ignora")
+
+    # ---- Los castillos, girados como en ETABS ----
+    #
+    # STRUCTURAL_BEND_DIR_ANGLE es de las piezas que Revit define por una CURVA. Una columna a
+    # plomo colocada por punto y niveles no lo tiene, asi que el «?.Set» no hacia nada: ni giro,
+    # ni excepcion, ni aviso. Por eso las inclinadas salian bien y los castillos a plomo no.
+    orient = ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs")
+
+    check("existe el calculo del giro de la seccion",
+          "public static class Orientacion" in leer(orient)
+          and "public static double GiroRad(" in leer(orient))
+
+    check("y tiene en cuenta que el tipo de Revit puede venir con las medidas al reves",
+          "TipoGirado(" in leer(orient),
+          "el emparejador acepta un tipo girado y antes tiraba esa decision, asi que la "
+          "seccion salia girada noventa grados por construccion")
+
+    check("la columna a plomo se GIRA de verdad, rotando la pieza",
+          "ElementTransformUtils.RotateElement(" in modelador,
+          "STRUCTURAL_BEND_DIR_ANGLE no existe en una columna colocada por punto: el ?.Set "
+          "no hacia nada")
+
+    check("y el giro sale del calculo del nucleo, no de la barra a pelo",
+          "Orientacion.GiroRad(" in modelador
+          and "b.AnguloGrados * Math.PI" not in modelador,
+          "el giro del modelo por si solo no corrige un tipo emparejado al reves")
+
+    # ---- Los niveles, con nombre de plano ----
+    nivnom = ruta("client/src/CadLink.Revit.Nucleo/NombresDeNivel.cs")
+    check("existe el nombrador de niveles", os.path.exists(nivnom))
+
+    if os.path.exists(nivnom):
+        nn = leer(nivnom)
+
+        check("la planta baja y la cimentacion tienen nombre propio",
+              '"Planta baja"' in nn and '"Cimentacion"' in nn)
+
+        check("y los de arriba se numeran Nvl-NN con su cota",
+              '"Nvl-"' in nn and '"00"' in nn)
+
+        check("la numeracion va por COTA, no por el numero que traiga ETABS",
+              "OrderBy(n => n.ElevacionM)" in nn,
+              "ETABS lista las plantas de arriba abajo, asi que numerar por el nombre las "
+              "pondria al reves")
+
+        check("renombrar un nivel renombra tambien la planta que cita cada pieza",
+              "b.Nivel = Nuevo(" in nn and "p.Nivel = Nuevo(" in nn,
+              "una pieza que cita una planta que ya no existe NO se modela")
+
+        check("y dos niveles nunca acaban con el mismo nombre",
+              "while (!usados.Add(" in nn,
+              "Revit rechaza el nivel repetido, y con el se pierden sus piezas")
+
+    check("la exportacion pone los nombres de nivel",
+          "NombresDeNivel.Aplicar(" in parcial)
+
+    # ---- La malla de ejes ----
+    cuad = ruta("client/src/CadLink.Revit.Nucleo/Cuadricula.cs")
+    check("existe la cuadricula de ejes en el contrato", os.path.exists(cuad))
+
+    if os.path.exists(cuad):
+        cu = leer(cuad)
+
+        check("los extremos se corren al paño y el interior se queda en el eje",
+              "AlPanoExterior(" in cu and "MedioAnchoSobreEje(" in cu,
+              "es el mismo criterio que el plano de AutoCAD")
+
+        check("con la preferencia muro, trabe, apoyo",
+              "deMuro" in cu and "deTrabe" in cu and "deApoyo" in cu,
+              "el paño de la fachada lo define el muro, no la trabe")
+
+        check("y los ejes repetidos se unen antes de correr los extremos",
+              "SinRepetidos(" in cu,
+              "si no, el duplicado del eje extremo se queda sin correr")
+
+    check("el modelo lleva la cuadricula",
+          "public CuadriculaJson? Cuadricula" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("y la version del formato subio al anadirla",
+          "VersionActual = 2" in leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")),
+          "un archivo viejo se sigue leyendo, pero el formato cambio")
+
+    check("la exportacion manda los ejes",
+          "Cuadriculas.Colocar(" in parcial and "EjesModelo.DesdeGeometria(" in parcial,
+          "si el programa no da la cuadricula, se deduce de donde estan las columnas")
+
+    check("y el complemento crea las rejillas",
+          "Grid.Create(" in modelador and "CrearEjes(" in modelador)
+
+    check("sin duplicar una rejilla que ya existe",
+          "yaEstan" in modelador,
+          "Revit no admite dos rejillas con el mismo nombre, y reimportar no debe dejar "
+          "seis llamadas «1» una encima de otra")
+
+    check("el informe dice cuantos ejes se crearon",
+          "EjesCreados" in ci)
+
+    # ---- Los avisos tienen que poder agruparse ----
+    #
+    # El informe decia "11 pieza(s), por 11 motivos" porque estos avisos metian la etiqueta en
+    # MEDIO del texto, y entonces cada aviso era un motivo distinto.
+    sueltos = []
+
+    for f in ("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs",
+              "client/src/CadLink.Revit.Nucleo/ClasePano.cs",
+              "client/src/CadLink.Revit.Nucleo/Plan.cs"):
+        if os.path.exists(ruta(f)):
+            # Aqui NO sirve _sin_comentarios: ese tambien vacia las cadenas, y las cadenas son
+            # justo lo que hay que mirar. Se quitan solo los comentarios, para que un ejemplo
+            # escrito en un comentario no cuente como aviso.
+            txt = leer(ruta(f))
+            txt = re.sub(r"//[^\n]*", "", txt)
+            txt = re.sub(r"/\*.*?\*/", "", txt, flags=re.S)
+
+            # Un texto de aviso que EMPIEZA por palabra y mete la etiqueta despues. La regla es
+            # al reves: la etiqueta primero, «llave»: motivo, que es la forma que Agrupador
+            # sabe partir.
+            for m in re.finditer(r'"[A-Z][^"\n]*«', txt):
+                sueltos.append(rel(ruta(f)) + ": " + m.group(0)[:50])
+
+    check("los avisos empiezan por la etiqueta, para que el informe los agrupe por causa",
+          not sueltos,
+          "con la etiqueta en medio del texto cada aviso es un motivo distinto y el informe "
+          "dice '11 piezas por 11 motivos': " + "; ".join(sueltos))
 
     nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
     bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)

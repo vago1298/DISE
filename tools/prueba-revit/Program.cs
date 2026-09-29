@@ -1,3 +1,4 @@
+using System.Globalization;
 using CadLink.Revit.Nucleo;
 
 namespace CadLink.Pruebas;
@@ -10,7 +11,7 @@ namespace CadLink.Pruebas;
 /// modela cada seccion, y que piezas se crean, se cambian o se dejan en paz. Todo eso se
 /// decide aqui, sin Revit, y por eso se puede comprobar de verdad.
 /// </remarks>
-internal static class Programa
+internal static partial class Programa
 {
     private static readonly List<string> Fallos = new();
 
@@ -212,6 +213,9 @@ internal static class Programa
         PlanDeModelado();
         NivelesResueltos();
         Cuadro();
+        GiroDeLaSeccion();
+        NombresBonitosDeNivel();
+        MallaDeEjes();
 
         Console.WriteLine();
         Console.WriteLine("============================================================");
@@ -263,8 +267,14 @@ internal static class Programa
         Igual("los vertices del muro sobreviven", v.Panos[0].Vertices.Count, 4);
         Igual("la cuenta de piezas", v.Piezas, 7);
 
-        // Una version futura se rechaza, y con un mensaje que dice que hacer.
-        var futuro = texto.Replace("\"Version\": 1", "\"Version\": 99");
+        // Una version futura se rechaza, y con un mensaje que dice que hacer. La version de
+        // partida se lee de la constante y no se escribe a mano, para que subirla no rompa esta
+        // prueba por un motivo que no tiene nada que ver con lo que comprueba.
+        var futuro = texto.Replace(
+            "\"Version\": " + ModeloJson.VersionActual.ToString(CultureInfo.InvariantCulture),
+            "\"Version\": 99");
+
+        Check("la sustitucion de version encontro su sitio", futuro != texto);
         var rechazo = string.Empty;
 
         try
@@ -1666,5 +1676,286 @@ internal static class Programa
 
         Igual("el mapeo del cuadro tiene una fila por seccion mapeada", m4.Cuantas, v4.Mapeadas);
         Igual("y la obra viaja con el", m4.Obra, "Edificio ÑOÑO");
+    }
+}
+
+
+// ==========================================================================
+//  Lo que se pidio en la vuelta de los castillos, los niveles y los ejes
+// ==========================================================================
+
+internal static partial class Programa
+{
+    // ------------------------------------------------------------------
+    private static void GiroDeLaSeccion()
+    {
+        Console.WriteLine("\n[10] El giro de la seccion: los castillos como en ETABS");
+
+        SeccionJson S(double a, double p) => new()
+        {
+            Nombre = "K", Forma = FormaSeccion.Rectangulo, AnchoM = a, PeralteM = p
+        };
+
+        TipoRevit T(double a, double p) => new()
+        {
+            Categoria = CategoriaRevit.ColumnaEstructural,
+            Familia = "F", Tipo = "T", AnchoM = a, PeralteM = p, Id = 1
+        };
+
+        // Una seccion cuadrada no se gira: el cuarto de vuelta no se notaria y mover piezas
+        // sin motivo solo crea ruido en el modelo.
+        Check("una seccion cuadrada no se considera girada",
+            !Orientacion.TipoGirado(S(0.20, 0.20), T(0.20, 0.20)));
+        Check("ni aunque el tipo sea de otra medida",
+            !Orientacion.TipoGirado(S(0.20, 0.20), T(0.30, 0.30)));
+
+        // El caso que importa: el emparejador acepta un tipo con las medidas al reves.
+        Check("un tipo con las medidas al reves SI esta girado",
+            Orientacion.TipoGirado(S(0.15, 0.25), T(0.25, 0.15)));
+        Check("y uno con las medidas en el mismo orden NO",
+            !Orientacion.TipoGirado(S(0.15, 0.25), T(0.15, 0.25)));
+
+        // Sin las cuatro medidas no se adivina: girar a ciegas es peor que no girar.
+        Check("sin medidas en el tipo no se gira",
+            !Orientacion.TipoGirado(S(0.15, 0.25), T(0, 0)));
+        Check("sin seccion tampoco", !Orientacion.TipoGirado(null, T(0.25, 0.15)));
+        Check("sin tipo tampoco", !Orientacion.TipoGirado(S(0.15, 0.25), null));
+
+        // El giro total: el del modelo, mas el cuarto de vuelta si hace falta.
+        BarraJson B(double grados) => new()
+        {
+            Etiqueta = "C", Clase = ClasePieza.Columna, Nivel = "N",
+            P1 = P(0, 0, 0), P2 = P(0, 0, 3),
+            AnguloGrados = grados, Seccion = S(0.15, 0.25)
+        };
+
+        Casi("el giro del modelo pasa a radianes",
+            Orientacion.GiroRad(B(90), T(0.15, 0.25)), Math.PI / 2, 1e-9);
+
+        Casi("sin giro en el modelo y sin cambio de orden, no se gira",
+            Orientacion.GiroRad(B(0), T(0.15, 0.25)), 0, 1e-9);
+
+        Casi("un tipo al reves aporta un cuarto de vuelta",
+            Orientacion.GiroRad(B(0), T(0.25, 0.15)), Math.PI / 2, 1e-9);
+
+        Casi("y los dos se suman",
+            Orientacion.GiroRad(B(90), T(0.25, 0.15)), Math.PI, 1e-9);
+
+        Check("un giro de cero no vale la pena aplicarlo", !Orientacion.Vale(0));
+        Check("uno de noventa grados si", Orientacion.Vale(Math.PI / 2));
+        Check("sin barra no hay giro", Orientacion.GiroRad(null, T(0.25, 0.15)) == 0);
+    }
+
+    // ------------------------------------------------------------------
+    private static void NombresBonitosDeNivel()
+    {
+        Console.WriteLine("\n[11] Los niveles, con nombre de plano y no de ETABS");
+
+        var m = new ModeloJson();
+
+        void N(string nombre, double z) =>
+            m.Niveles.Add(new NivelJson { Nombre = nombre, ElevacionM = z });
+
+        // A proposito EN DESORDEN, y con los numeros de ETABS mintiendo: Story3 esta debajo de
+        // Story2. ETABS lista las plantas de arriba abajo, asi que esto pasa de verdad, y
+        // numerar por el nombre daria los niveles al reves.
+        N("Story2", 5.78);
+        N("Base", -0.60);
+        N("Story3", 2.89);
+        N("Story1", 0.0);
+
+        m.Barras.Add(new BarraJson
+        {
+            Etiqueta = "C1", Clase = ClasePieza.Columna, Nivel = "Story3",
+            P1 = P(0, 0, 0), P2 = P(0, 0, 3), Seccion = Rect("K 15X15", 15, 15)
+        });
+
+        var pano = new PanoJson
+        {
+            Etiqueta = "M1", Clase = ClasePieza.Muro, Nivel = "Story1",
+            Seccion = new SeccionJson { Nombre = "M", Forma = FormaSeccion.Pano, EspesorM = 0.15 }
+        };
+
+        pano.Vertices.AddRange(new[] { P(0, 0, 0), P(3, 0, 0), P(3, 0, 3), P(0, 0, 3) });
+        m.Panos.Add(pano);
+
+        var mapa = NombresDeNivel.Aplicar(m);
+
+        string De(double z) => m.Niveles.First(n => Math.Abs(n.ElevacionM - z) < 1e-9).Nombre;
+
+        Igual("la cota cero es la planta baja", De(0), "Planta baja +0.00");
+        Igual("bajo cero es la cimentacion", De(-0.60), "Cimentacion");
+        Igual("el primero por encima es el Nvl-01", De(2.89), "Nvl-01 + 2.89");
+        Igual("y el siguiente el Nvl-02", De(5.78), "Nvl-02 + 5.78");
+
+        Check("la numeracion va por COTA, no por el numero de ETABS",
+            De(2.89).StartsWith("Nvl-01", StringComparison.Ordinal),
+            "Story3 esta debajo de Story2, asi que le toca el 01");
+
+        // Y lo que hace que el modelo siga funcionando: las piezas se renombran con ellos.
+        Igual("la columna apunta al nombre nuevo", m.Barras[0].Nivel, "Nvl-01 + 2.89");
+        Igual("y el muro tambien", m.Panos[0].Nivel, "Planta baja +0.00");
+
+        Check("todos los nombres son distintos",
+            m.Niveles.Select(n => n.Nombre).Distinct().Count() == m.Niveles.Count);
+
+        Igual("el mapa dice de donde viene cada uno", mapa["Story1"], "Planta baja +0.00");
+
+        // Dos cimentaciones: los nombres no pueden repetirse, porque Revit rechaza el segundo
+        // nivel y con el se pierden todas las piezas que cuelgan de el.
+        var dos = new ModeloJson();
+        dos.Niveles.Add(new NivelJson { Nombre = "Base", ElevacionM = -0.60 });
+        dos.Niveles.Add(new NivelJson { Nombre = "Zapatas", ElevacionM = -1.20 });
+        NombresDeNivel.Aplicar(dos);
+
+        Check("con dos niveles bajo cero los dos nombres siguen siendo distintos",
+            dos.Niveles[0].Nombre != dos.Niveles[1].Nombre,
+            string.Join(" | ", dos.Niveles.Select(n => n.Nombre)));
+
+        // La mas profunda se queda con «Cimentacion» a secas, que es la que lo es de verdad, y
+        // la otra lleva su cota pegada para distinguirse.
+        Igual("la mas profunda es la cimentacion a secas",
+            dos.Niveles.First(n => Math.Abs(n.ElevacionM + 1.20) < 1e-9).Nombre, "Cimentacion");
+
+        Check("y la otra lleva su cota para distinguirse",
+            dos.Niveles.First(n => Math.Abs(n.ElevacionM + 0.60) < 1e-9)
+                .Nombre.Contains("0.60", StringComparison.Ordinal),
+            string.Join(" | ", dos.Niveles.Select(n => n.Nombre)));
+
+        Igual("la cota se rotula con signo y dos decimales",
+            NombresDeNivel.Cota(2.891), "+ 2.89");
+        Igual("y en negativo tambien", NombresDeNivel.Cota(-0.6), "- 0.60");
+
+        Check("un modelo sin niveles no revienta", NombresDeNivel.Aplicar(new ModeloJson()).Count == 0);
+        Check("ni uno nulo", NombresDeNivel.Aplicar(null).Count == 0);
+    }
+
+    // ------------------------------------------------------------------
+    private static void MallaDeEjes()
+    {
+        Console.WriteLine("\n[12] La malla de ejes: extremos a paño, interior al eje");
+
+        // Un modelo con muros de 15 cm sobre los ejes X=0 y X=6, y nada sobre el X=3.
+        var m = new ModeloJson();
+        m.Niveles.Add(new NivelJson { Nombre = "N", ElevacionM = 0 });
+
+        void Muro(double x)
+        {
+            var p = new PanoJson
+            {
+                Etiqueta = "M" + x, Clase = ClasePieza.Muro, Nivel = "N",
+                Seccion = new SeccionJson
+                {
+                    Nombre = "M15", Forma = FormaSeccion.Pano, EspesorM = 0.15
+                }
+            };
+
+            p.Vertices.AddRange(new[] { P(x, 0, 0), P(x, 8, 0), P(x, 8, 3), P(x, 0, 3) });
+            m.Panos.Add(p);
+        }
+
+        Muro(0);
+        Muro(6);
+
+        var cruda = new CuadriculaJson();
+        cruda.X.Add(new EjeJson { Id = "1", Ordenada = 0 });
+        cruda.X.Add(new EjeJson { Id = "2", Ordenada = 3 });
+        cruda.X.Add(new EjeJson { Id = "3", Ordenada = 6 });
+        cruda.Y.Add(new EjeJson { Id = "A", Ordenada = 0 });
+        cruda.Y.Add(new EjeJson { Id = "B", Ordenada = 8 });
+
+        var puesta = Cuadriculas.Colocar(cruda, m);
+
+        double X(string id) => puesta.X.First(e => e.Id == id).Ordenada;
+
+        Casi("el eje extremo se corre medio espesor hacia fuera", X("1"), -0.075, 1e-9);
+        Casi("el del otro extremo, hacia el otro lado", X("3"), 6.075, 1e-9);
+        Casi("y el interior NO se mueve", X("2"), 3, 1e-9);
+
+        Check("no se pierde ningun eje", puesta.Cuantos == 5, puesta.Cuantos.ToString());
+        Check("y la cuadricula dice que la hay", puesta.Hay);
+
+        // Los de Y no tienen muro a lo largo, asi que se quedan donde estan: los muros de este
+        // modelo corren en Y, o sea que CRUZAN los ejes horizontales y no los definen.
+        double Y(string id) => puesta.Y.First(e => e.Id == id).Ordenada;
+
+        Casi("un eje sin pieza a lo largo se queda en su sitio", Y("A"), 0, 1e-9);
+        Casi("el otro tambien", Y("B"), 8, 1e-9);
+
+        // Ejes repetidos: se quedan con el primero, que trae el nombre bueno.
+        var repe = new CuadriculaJson();
+        repe.X.Add(new EjeJson { Id = "1", Ordenada = 0 });
+        repe.X.Add(new EjeJson { Id = "1-bis", Ordenada = 0.005 });
+        repe.X.Add(new EjeJson { Id = "2", Ordenada = 4 });
+
+        var limpia = Cuadriculas.Colocar(repe, m);
+
+        Igual("dos ejes a menos de un centimetro son el mismo", limpia.X.Count, 2);
+        Check("y se queda el primero, que trae el nombre bueno",
+            limpia.X.Any(e => e.Id == "1") && limpia.X.All(e => e.Id != "1-bis"),
+            string.Join(", ", limpia.X.Select(e => e.Id)));
+
+        // Sin modelo no se puede medir el paño, pero los ejes no se pierden.
+        var sinModelo = Cuadriculas.Colocar(cruda, null);
+        Igual("sin modelo los ejes siguen saliendo", sinModelo.Cuantos, 5);
+        Casi("aunque sin correr los extremos",
+            sinModelo.X.First(e => e.Id == "1").Ordenada, 0, 1e-9);
+
+        Check("una cuadricula nula da una vacia", !Cuadriculas.Colocar(null, m).Hay);
+
+        // ---- Y viaja por el archivo ----
+        m.Cuadricula = puesta;
+        var ida = ArchivoModelo.ATexto(m);
+        var vuelta = ArchivoModelo.DeTexto(ida);
+
+        Check("la cuadricula sobrevive el ida y vuelta por disco",
+            vuelta.Cuadricula is not null && vuelta.Cuadricula.Cuantos == 5,
+            vuelta.Cuadricula?.Cuantos.ToString() ?? "null");
+
+        Casi("con las ordenadas ya corridas",
+            vuelta.Cuadricula!.X.First(e => e.Id == "1").Ordenada, -0.075, 1e-9);
+
+        // Un archivo de la version anterior no trae cuadricula, y tiene que seguir leyendose:
+        // lo que no se puede es que el complemento se niegue a abrir lo que ya esta repartido.
+        var vieja = ida
+            .Replace("\"Version\": " + ModeloJson.VersionActual.ToString(CultureInfo.InvariantCulture),
+                     "\"Version\": 1");
+
+        var deAntes = ArchivoModelo.DeTexto(vieja);
+
+        Igual("un archivo de la version 1 se sigue leyendo", deAntes.Version, 1);
+
+        // Y una cuadricula explicitamente nula no revienta al leerla.
+        var sinMalla = ArchivoModelo.DeTexto(ida.Replace("\"Cuadricula\":", "\"CuadriculaX\":"));
+        Check("un archivo sin cuadricula se lee sin reventar", sinMalla.Cuadricula is null);
+
+        // Un solo eje en una direccion no se corre: no hay extremo que distinguir.
+        var uno = new CuadriculaJson();
+        uno.X.Add(new EjeJson { Id = "1", Ordenada = 0 });
+
+        Casi("con un solo eje no se mueve nada",
+            Cuadriculas.Colocar(uno, m).X[0].Ordenada, 0, 1e-9);
+
+        // Y el ancho manda: una columna gruesa sobre el eje corre menos que un muro, porque el
+        // muro tiene preferencia por ser lo que define el paño.
+        var conTrabe = new ModeloJson();
+        conTrabe.Niveles.Add(new NivelJson { Nombre = "N", ElevacionM = 0 });
+        conTrabe.Barras.Add(new BarraJson
+        {
+            Etiqueta = "T1", Clase = ClasePieza.Trabe, Nivel = "N",
+            P1 = P(0, 0, 3), P2 = P(0, 8, 3),
+            Seccion = Rect("T 30X60", 30, 60)
+        });
+        conTrabe.Barras.Add(new BarraJson
+        {
+            Etiqueta = "T2", Clase = ClasePieza.Trabe, Nivel = "N",
+            P1 = P(6, 0, 3), P2 = P(6, 8, 3),
+            Seccion = Rect("T 30X60", 30, 60)
+        });
+
+        var conT = Cuadriculas.Colocar(cruda, conTrabe);
+
+        Casi("sin muro, el paño lo marca la trabe",
+            conT.X.First(e => e.Id == "1").Ordenada, -0.15, 1e-9);
     }
 }

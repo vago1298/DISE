@@ -70,7 +70,12 @@ public sealed class XYZ
 
     public double Z { get; }
 
+    /// <summary>El vector unitario vertical. Con el se arma el eje de giro de una columna.</summary>
+    public static XYZ BasisZ => new(0, 0, 1);
+
     public double DistanceTo(XYZ otro) => 0;
+
+    public static XYZ operator +(XYZ a, XYZ b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
 }
 
 public abstract class Curve
@@ -127,7 +132,19 @@ public abstract class Element
     public ElementId GetTypeId() => new(0);
 
     public void ChangeTypeId(ElementId tipo) { }
+
+    /// <summary>
+    /// La caja que envuelve al elemento. Con <c>null</c> por vista es la del modelo.
+    /// </summary>
+    /// <remarks>
+    /// Es lo que permite COMPROBAR donde quedo una pieza en vez de suponerlo por los
+    /// parametros que se le escribieron.
+    /// </remarks>
+    public BoundingBoxXYZ? get_BoundingBox(View? vista) => null;
 }
+
+/// <summary>Una vista. El complemento solo la usa para pedir la caja del modelo con null.</summary>
+public class View : Element { }
 
 public abstract class ElementType : Element
 {
@@ -258,7 +275,42 @@ public enum BuiltInParameter
     // IFC de Autodesk, que los lee con AsInteger(), y contra rhino.inside-revit, que los
     // escribe en una viga recien creada. Ver Recortes.Structure.cs.
     Y_JUSTIFICATION,
-    Z_JUSTIFICATION
+    Z_JUSTIFICATION,
+
+    // Los de cada extremo, para cuando "yz Justification" esta en Independent y los de arriba
+    // se ignoran. Confirmados en la misma lista generada para 2026.
+    START_Z_JUSTIFICATION,
+    END_Z_JUSTIFICATION
+}
+
+/// <summary>
+/// Mover y girar elementos. Comprobado en la Revit API 2026: son los dos metodos con que se
+/// gira una columna colocada por punto -que no tiene parametro de rotacion de seccion- y con
+/// que se corrige una trabe que asoma sobre su cota.
+/// </summary>
+public static class ElementTransformUtils
+{
+    public static void RotateElement(Document doc, ElementId id, Line eje, double angulo) { }
+
+    public static void MoveElement(Document doc, ElementId id, XYZ desplazamiento) { }
+}
+
+/// <summary>
+/// Una rejilla de eje. Comprobado en la Revit API 2026: <c>Grid.Create(Document, Line)</c> es
+/// la forma documentada de crear un eje recto, y es la que usa el propio SDK de Autodesk en su
+/// ejemplo GridCreation. La linea tiene que estar en un plano horizontal.
+/// </summary>
+public sealed class Grid : Element
+{
+    public static Grid Create(Document doc, Line linea) => new();
+}
+
+/// <summary>La caja que envuelve a un elemento, en coordenadas del modelo.</summary>
+public sealed class BoundingBoxXYZ
+{
+    public XYZ Min { get; set; } = new(0, 0, 0);
+
+    public XYZ Max { get; set; } = new(0, 0, 0);
 }
 
 public static class UnitUtils

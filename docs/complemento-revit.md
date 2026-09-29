@@ -234,21 +234,54 @@ cuanto no sea un rectángulo.
 tolerancia: en ETABS el nivel se llama `Story1` y en Revit `PLANTA BAJA`. Los que no tengan
 pareja **se crean**.
 
-### Tres convenciones de ETABS que hay que deshacer
+### Cuatro convenciones de ETABS que hay que deshacer
 
-No son detalles de implementación: son las tres formas en que el modelo de cálculo dice una
-cosa y Revit entiende otra. Cada una produjo un fallo con un síntoma que no se parecía a su
-causa.
+No son detalles de implementación: son las formas en que el modelo de cálculo dice una cosa y
+Revit entiende otra. Cada una produjo un fallo con un síntoma que no se parecía a su causa.
 
 | En ETABS | Si se toma tal cual | Lo que hace el complemento |
 |---|---|---|
-| Una **viga** se inserta por *top center*: la línea que se exporta es la de su **cara de arriba** | La cadena de cerramiento queda un peralte más arriba y asoma por encima del muro | Justifica la trabe con `z Justification = Top` e `y Justification = Origin`, que es el **punto cardinal 8** |
+| Una **viga** se inserta por *top center*: la línea que se exporta es la de su **cara de arriba** | La cadena de cerramiento queda un peralte más arriba y asoma por encima del muro | Justifica la trabe con `z Justification = Top` e `y Justification = Origin` —el **punto cardinal 8**— y después **mide la pieza** y la baja si aun así asoma |
 | Un **área** pertenece a la planta de su **parte de arriba** | Un muro de planta baja queda atado a la planta primera y no sale en la vista de planta baja | Lo ata al nivel más cercano a su **base**, igual que ya se hacía con las columnas |
 | La etiqueta de un muro es su **pier**, y un pier agrupa **varios** paños | Los trozos de un muro mallado comparten llave y solo se modela uno: la planta con más huecos se queda vacía | La etiqueta de un paño lleva **siempre** su posición; y si aun así dos llaves chocan, se desempatan en vez de descartar |
+| La orientación de una sección es el **ángulo del eje local**, no un intercambio de medidas | Los castillos a plomo salen girados 90° | Rota la pieza como hace el plano de AutoCAD, sumando el cuarto de vuelta que corrige un tipo de Revit emparejado con las medidas al revés |
 
 La equivalencia entre la justificación de Revit y el punto cardinal de ETABS no es una
 suposición: es la que usa el propio exportador de IFC de Autodesk para traducir entre los dos
 sistemas.
+
+#### Por qué la trabe se mide y no solo se justifica
+
+Pedir la justificación no basta, y fallaba de la peor manera: `get_Parameter` devuelve `null`
+en una familia que no la expone, el `?.` se lo traga, y la trabe queda un peralte más arriba
+**sin que nada lo diga**. Así que después de crearlas se mide la caja de cada trabe y se baja
+la que asome. Medir es independiente de dónde tenga el origen la familia y de si el parámetro
+se aplicó. Va en **una sola pasada** al final, con un único `Regenerate`: hacerlo pieza por
+pieza en un modelo de cuatrocientas es inusable.
+
+### Los niveles y la malla de ejes
+
+**Los niveles se renombran** al exportar, porque `Story1` no sirve en un plano:
+
+| Cota | Nombre |
+|---|---|
+| bajo cero | `Cimentacion` |
+| 0 | `Planta baja +0.00` |
+| 2.89 | `Nvl-01 + 2.89` |
+| 5.78 | `Nvl-02 + 5.78` |
+
+La numeración va por **cota**, no por el número que traiga el nombre de ETABS: ETABS lista las
+plantas de arriba abajo, así que `Story3` puede estar debajo de `Story2`. El renombrado ocurre
+sobre el modelo ya armado y arrastra **la planta que cita cada pieza**; renombrar solo el nivel
+dejaría a las piezas pidiendo una planta que ya no existe, y esas piezas no se modelarían.
+
+**La malla de ejes** se crea con el mismo criterio que el plano de AutoCAD: **los extremos a
+paño y el interior al eje**. ETABS modela los muros por su línea media, así que el eje de
+fachada pasa por el centro del muro; en un plano lo que se acota por fuera es la cara
+exterior, de modo que el primer y el último eje de cada dirección se corren hacia fuera medio
+espesor de la pieza más gruesa que corre a lo largo de ellos, con preferencia **muro, trabe,
+apoyo**. Los ejes interiores no se mueven. Un eje cuyo nombre ya existe no se vuelve a crear,
+para que reimportar no deje seis rejillas llamadas `1` una encima de otra.
 
 ### Cómo reconoce sus propias piezas
 

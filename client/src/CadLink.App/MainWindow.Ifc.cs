@@ -370,6 +370,53 @@ public partial class MainWindow : Window
         // Revit avisa "One element is completely inside another" una vez por cada solape.
         salida.Avisos.AddRange(AjusteDeMuros.AplicarATodos(salida));
 
+        // ---- La cuadricula de ejes ----
+        //
+        // Los ejes ya se leen del modelo -y si el programa no los da, se deducen de donde estan
+        // las columnas-, pero hasta ahora solo los usaba el plano de AutoCAD. Se mandan tambien
+        // a Revit para que la malla salga igual en los dos sitios.
+        //
+        // Se colocan con el mismo criterio que el plano: los extremos a paño y el interior al
+        // eje. Se hace AQUI, sobre el modelo ya armado, porque el desplazamiento depende del
+        // espesor de los muros y las columnas que corren sobre cada eje.
+        var deEtabs = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        if (deEtabs.Hay)
+        {
+            var cruda = new CuadriculaJson();
+
+            foreach (var e in deEtabs.X)
+            {
+                cruda.X.Add(new EjeJson { Id = e.Id, Ordenada = e.Ordenada });
+            }
+
+            foreach (var e in deEtabs.Y)
+            {
+                cruda.Y.Add(new EjeJson { Id = e.Id, Ordenada = e.Ordenada });
+            }
+
+            salida.Cuadricula = Cuadriculas.Colocar(cruda, salida);
+        }
+
+        // ---- Los nombres de los niveles, al final ----
+        //
+        // ETABS llama a sus plantas «Story1» y «Base»; en Revit el nombre del nivel se ve en
+        // cada vista y en cada corte, asi que se traduce a «Planta baja +0.00», «Nvl-01 + 2.89»
+        // y «Cimentacion».
+        //
+        // Va AQUI, sobre el modelo ya armado, y no al crear el nivel en Revit: renombrar solo
+        // al crearlo dejaria a cada pieza citando su planta por el nombre viejo, y una pieza que
+        // pide una planta que ya no existe no se modela.
+        var renombrados = NombresDeNivel.Aplicar(salida);
+
+        if (renombrados.Count > 0)
+        {
+            salida.Avisos.Add(
+                "Los niveles se renombraron para Revit: "
+                + string.Join(", ", renombrados.OrderBy(p => p.Key, StringComparer.CurrentCulture)
+                    .Select(p => p.Key + " -> " + p.Value)));
+        }
+
         return salida;
     }
 

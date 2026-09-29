@@ -99,8 +99,9 @@ public static class ClasePano
         if (v >= CosHorizontal)
         {
             var aviso = diceMuro
-                ? "El pano «{0}» tiene el contorno horizontal, asi que se modela como LOSA, "
-                  + "pero sus notas dicen MURO. Revisa la propiedad en el modelo de calculo."
+                // «llave»: motivo, para que el informe los agrupe por causa.
+                ? "«{0}»: tiene el contorno horizontal, asi que se modela como LOSA, pero sus "
+                  + "notas dicen MURO; revisa la propiedad en el modelo de calculo"
                 : null;
 
             return new Resultado(ClasePieza.Losa, "su contorno es horizontal", aviso);
@@ -109,8 +110,8 @@ public static class ClasePano
         if (v <= CosVertical)
         {
             var aviso = diceLosa
-                ? "El pano «{0}» tiene el contorno vertical, asi que se modela como MURO, "
-                  + "pero sus notas dicen LOSA. Revisa la propiedad en el modelo de calculo."
+                ? "«{0}»: tiene el contorno vertical, asi que se modela como MURO, pero sus "
+                  + "notas dicen LOSA; revisa la propiedad en el modelo de calculo"
                 : null;
 
             return new Resultado(ClasePieza.Muro, "su contorno es vertical", aviso);

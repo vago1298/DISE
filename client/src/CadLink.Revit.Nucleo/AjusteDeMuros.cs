@@ -108,8 +108,12 @@ public static class AjusteDeMuros
         if (recto is null)
         {
             return new Ajuste(muro.Vertices.ToList(), 0, 0,
-                $"El pano «{muro.Etiqueta}» no es un rectangulo vertical, asi que no se "
-                + "recorto ni bajo. Revisa si se mete en su cadena o en los castillos.");
+                // La etiqueta va DELANTE, con la forma «llave»: motivo, para que el informe
+                // agrupe estos avisos por su causa. Con la etiqueta metida en medio del texto
+                // cada aviso era un motivo distinto y el informe decia "11 piezas por 11
+                // motivos" en vez de "5 x no es un rectangulo vertical".
+                $"«{muro.Etiqueta}»: no es un rectangulo vertical, asi que no se recorto ni "
+                + "bajo; revisa si se mete en su cadena o en los castillos");
         }
 
         var largo = Distancia(recto.X1, recto.Y1, recto.X2, recto.Y2);
@@ -143,8 +147,8 @@ public static class AjusteDeMuros
         if (zAlta - recto.ZBase < 0.05)
         {
             return new Ajuste(muro.Vertices.ToList(), 0, 0,
-                $"El pano «{muro.Etiqueta}» quedaria de menos de 5 cm al bajarlo bajo su "
-                + "cadena, asi que se dejo con su altura original.");
+                $"«{muro.Etiqueta}»: quedaria de menos de 5 cm al bajarlo bajo su cadena, asi "
+                + "que se dejo con su altura original");
         }
 
         var recorteA = 0.0;

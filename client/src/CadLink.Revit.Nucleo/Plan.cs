@@ -116,6 +116,18 @@ public sealed class Plan
     /// <summary>Niveles del modelo que no existen en Revit y habria que crear.</summary>
     public List<NivelJson> NivelesQueFaltan { get; } = new();
 
+    /// <summary>
+    /// El modelo del que salio el plan, para lo que no es pieza por pieza.
+    /// </summary>
+    /// <remarks>
+    /// Lo necesita la malla de ejes: para saber hasta donde llega cada linea hay que mirar toda
+    /// la geometria, no un paso.
+    /// </remarks>
+    public ModeloJson? Modelo { get; set; }
+
+    /// <summary>La cuadricula de ejes, ya colocada, si el modelo la trae.</summary>
+    public CuadriculaJson? Cuadricula => Modelo?.Cuadricula;
+
     /// <summary>Avisos no fatales.</summary>
     public List<string> Avisos { get; } = new();
 
@@ -221,7 +233,7 @@ public static class Planificador
             throw new ArgumentNullException(nameof(modelo));
         }
 
-        var plan = new Plan();
+        var plan = new Plan { Modelo = modelo };
         var secciones = Inventario.De(modelo).ToDictionary(s => s.Clave, StringComparer.Ordinal);
 
         var yaEsta = new Dictionary<string, PiezaExistente>(StringComparer.Ordinal);
@@ -239,8 +251,8 @@ public static class Planificador
             if (!yaEsta.TryAdd(e.Llave, e))
             {
                 plan.Avisos.Add(
-                    $"Hay mas de una pieza en Revit con la marca «{e.Llave}». Se actualizara "
-                    + "solo una; revisa si se duplico a mano.");
+                    $"«{e.Llave}»: hay mas de una pieza en Revit con esta marca, se actualizara "
+                    + "solo una; revisa si se duplico a mano");
             }
         }
 

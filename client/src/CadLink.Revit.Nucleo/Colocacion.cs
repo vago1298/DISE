@@ -130,6 +130,91 @@ public static class Colocacion
 }
 
 /// <summary>
+/// El giro que hay que darle a una pieza para que se vea igual que en el modelo de calculo.
+/// </summary>
+/// <remarks>
+/// <para>
+/// La regla es la del plano de AutoCAD, que es el que esta bien: el contorno se arma con
+/// <c>AnchoM</c> sobre la <b>X</b> y <c>PeralteM</c> sobre la <b>Y</b>, y despues se gira todo
+/// por el angulo del eje local que dio ETABS. No hay ningun intercambio de medidas: el
+/// intercambio SALE del giro.
+/// </para>
+/// <para>
+/// En Revit hay un segundo giro que en AutoCAD no existe, y es el que faltaba. El plano dibuja
+/// la seccion que trae el modelo; Revit coloca un TIPO DE FAMILIA, que tiene sus propias
+/// medidas. El emparejador acepta a proposito un tipo con las medidas al reves -un
+/// «300 x 450» de Revit sirve para una seccion de 45x30, porque lo que cambia es el giro de la
+/// pieza y no el tipo-, pero calculaba esa decision y la tiraba. Sin recuperarla, una seccion
+/// emparejada al reves sale girada noventa grados por construccion.
+/// </para>
+/// </remarks>
+public static class Orientacion
+{
+    /// <summary>Por debajo de esto una seccion se considera cuadrada.</summary>
+    /// <remarks>
+    /// En una seccion cuadrada el giro de noventa grados no se nota, asi que no se aplica: se
+    /// evita mover piezas sin motivo.
+    /// </remarks>
+    public const double ToleranciaCuadradaM = 0.002;
+
+    /// <summary>Si el tipo de Revit elegido trae las medidas al reves que la seccion.</summary>
+    public static bool TipoGirado(SeccionJson? seccion, TipoRevit? tipo)
+    {
+        if (seccion is null || tipo is null)
+        {
+            return false;
+        }
+
+        var sa = seccion.AnchoM;
+        var sp = seccion.PeralteM;
+        var ta = tipo.AnchoM;
+        var tp = tipo.PeralteM;
+
+        if (sa <= 0 || sp <= 0 || ta is null or <= 0 || tp is null or <= 0)
+        {
+            // Sin las cuatro medidas no se puede decidir. Se deja como este: girar a ciegas
+            // seria peor que no girar.
+            return false;
+        }
+
+        if (Math.Abs(sa - sp) <= ToleranciaCuadradaM)
+        {
+            return false;
+        }
+
+        var directo = Math.Abs(sa - ta.Value) + Math.Abs(sp - tp.Value);
+        var girado = Math.Abs(sa - tp.Value) + Math.Abs(sp - ta.Value);
+
+        return girado < directo - 1e-9;
+    }
+
+    /// <summary>El giro total de la pieza, en RADIANES.</summary>
+    /// <remarks>
+    /// El del modelo mas, si hace falta, el cuarto de vuelta que corrige un tipo emparejado
+    /// con las medidas al reves.
+    /// </remarks>
+    public static double GiroRad(BarraJson? b, TipoRevit? tipo)
+    {
+        if (b is null)
+        {
+            return 0;
+        }
+
+        var g = b.AnguloGrados * Math.PI / 180.0;
+
+        if (TipoGirado(b.Seccion, tipo))
+        {
+            g += Math.PI / 2.0;
+        }
+
+        return g;
+    }
+
+    /// <summary>Si el giro es lo bastante grande para que valga la pena aplicarlo.</summary>
+    public static bool Vale(double giroRad) => Math.Abs(giroRad) > 1e-6;
+}
+
+/// <summary>
 /// Una losa lista para Revit: su contorno en el plano de apoyo y, si esta inclinada, la
 /// flecha de pendiente con que se le da la inclinacion.
 /// </summary>

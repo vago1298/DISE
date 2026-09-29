@@ -140,7 +140,11 @@ public sealed class PanoJson
 public sealed class ModeloJson
 {
     /// <summary>La version del formato. Se sube cuando un cambio no es compatible.</summary>
-    public const int VersionActual = 1;
+    /// <remarks>
+    /// La 2 anade la <see cref="Cuadricula"/>. Un archivo de la 1 se sigue leyendo: la
+    /// cuadricula queda nula y el complemento no crea ejes, que es exactamente lo que hacia.
+    /// </remarks>
+    public const int VersionActual = 2;
 
     public int Version { get; set; } = VersionActual;
 
@@ -159,6 +163,9 @@ public sealed class ModeloJson
     public List<BarraJson> Barras { get; set; } = new();
 
     public List<PanoJson> Panos { get; set; } = new();
+
+    /// <summary>La cuadricula de ejes, si el modelo la trae.</summary>
+    public CuadriculaJson? Cuadricula { get; set; }
 
     /// <summary>
     /// Lo que hubo que resolver al exportar y conviene que vea quien importa.
@@ -246,6 +253,14 @@ public static class ArchivoModelo
         m.Barras ??= new List<BarraJson>();
         m.Panos ??= new List<PanoJson>();
         m.Avisos ??= new List<string>();
+
+        // La cuadricula puede no venir -un archivo de la version 1 no la trae- y sus listas
+        // pueden llegar nulas por lo mismo que las de arriba.
+        if (m.Cuadricula is not null)
+        {
+            m.Cuadricula.X ??= new List<EjeJson>();
+            m.Cuadricula.Y ??= new List<EjeJson>();
+        }
 
         return m;
     }

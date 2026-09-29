@@ -192,6 +192,11 @@ public sealed class ComandoImportar : IExternalCommand
             sb.Append("Niveles creados: ").Append(r.NivelesCreados).AppendLine();
         }
 
+        if (r.EjesCreados > 0)
+        {
+            sb.Append("Ejes creados: ").Append(r.EjesCreados).AppendLine();
+        }
+
         if (plan.SinMapeo > 0)
         {
             sb.Append("Sin tipo elegido, no modeladas: ").Append(plan.SinMapeo).AppendLine();

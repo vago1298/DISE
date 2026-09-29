@@ -13,6 +13,9 @@ public sealed class ResultadoModelado
 
     public int Saltadas { get; set; }
 
+    /// <summary>Rejillas de eje creadas.</summary>
+    public int EjesCreados { get; set; }
+
     public int NivelesCreados { get; set; }
 
     /// <summary>Lo que fallo, pieza por pieza y con el motivo.</summary>
@@ -70,12 +73,16 @@ internal static class Modelador
         {
             var niveles = CrearNivelesQueFaltan(doc, plan, r);
 
+            CrearEjes(doc, plan, r);
+
+            var trabes = new List<TrabePorComprobar>();
+
             foreach (var paso in plan.Pasos)
             {
                 switch (paso.Accion)
                 {
                     case Accion.Crear:
-                        Crear(doc, paso, niveles, r);
+                        Crear(doc, paso, niveles, r, trabes);
                         break;
 
                     case Accion.Actualizar:
@@ -88,6 +95,9 @@ internal static class Modelador
                         break;
                 }
             }
+
+            // Antes del commit, porque mueve elementos: tiene que ir dentro de la transaccion.
+            BajarTrabesQueAsoman(doc, trabes, r);
 
             t.Commit();
 
@@ -179,6 +189,139 @@ internal static class Modelador
         return porNombre;
     }
 
+    // ==================================================================
+    //  Ejes
+    // ==================================================================
+
+    /// <summary>Crea la malla de ejes del modelo, con sus nombres.</summary>
+    /// <remarks>
+    /// <para>
+    /// Los ejes llegan YA COLOCADOS: los extremos corridos a paño y los interiores sobre el
+    /// eje, decidido en el nucleo con el mismo criterio que el plano de AutoCAD. Aqui solo se
+    /// dibujan, que es la parte que necesita Revit.
+    /// </para>
+    /// <para>
+    /// Un eje cuyo nombre ya existe en el proyecto NO se vuelve a crear. Es lo que permite
+    /// reimportar sin acabar con seis rejillas llamadas «1» encima unas de otras; Revit ademas
+    /// no admite dos con el mismo nombre.
+    /// </para>
+    /// </remarks>
+    private static void CrearEjes(Document doc, Plan plan, ResultadoModelado r)
+    {
+        var c = plan.Cuadricula;
+
+        if (c is null || !c.Hay)
+        {
+            return;
+        }
+
+        var yaEstan = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+        foreach (var g in new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>())
+        {
+            if (!string.IsNullOrWhiteSpace(g.Name))
+            {
+                yaEstan.Add(g.Name!);
+            }
+        }
+
+        // Hasta donde llega cada linea. Se mira la geometria del modelo y tambien los propios
+        // ejes, para que un eje que cae fuera del edificio salga con su linea igual de larga.
+        var xs = new List<double>();
+        var ys = new List<double>();
+
+        var modelo = plan.Modelo;
+
+        if (modelo is null)
+        {
+            return;
+        }
+
+        foreach (var b in modelo.Barras)
+        {
+            xs.Add(b.P1.X);
+            xs.Add(b.P2.X);
+            ys.Add(b.P1.Y);
+            ys.Add(b.P2.Y);
+        }
+
+        foreach (var p in modelo.Panos)
+        {
+            foreach (var v in p.Vertices)
+            {
+                xs.Add(v.X);
+                ys.Add(v.Y);
+            }
+        }
+
+        xs.AddRange(c.X.Select(e => e.Ordenada));
+        ys.AddRange(c.Y.Select(e => e.Ordenada));
+
+        if (xs.Count == 0 || ys.Count == 0)
+        {
+            return;
+        }
+
+        // Lo que sobresale la linea del edificio, para que la burbuja no caiga encima.
+        const double margenM = 2.0;
+
+        var xMin = xs.Min() - margenM;
+        var xMax = xs.Max() + margenM;
+        var yMin = ys.Min() - margenM;
+        var yMax = ys.Max() + margenM;
+
+        // A cota cero: Grid.Create pide la linea en un plano horizontal.
+        XYZ P(double x, double y) =>
+            new(Unidades.AInternas(x), Unidades.AInternas(y), 0);
+
+        void Uno(EjeJson e, XYZ a, XYZ z)
+        {
+            var id = (e.Id ?? string.Empty).Trim();
+
+            if (id.Length > 0 && yaEstan.Contains(id))
+            {
+                return;
+            }
+
+            try
+            {
+                var rejilla = Grid.Create(doc, Line.CreateBound(a, z));
+
+                if (id.Length > 0)
+                {
+                    try
+                    {
+                        rejilla.Name = id;
+                        yaEstan.Add(id);
+                    }
+                    catch (Exception)
+                    {
+                        // El nombre lo puede rechazar Revit. La rejilla ya esta, que es lo que
+                        // importa; se queda con el nombre que le puso Revit.
+                        r.Avisos.Add($"«eje {id}»: la rejilla se creo pero no se le pudo poner "
+                                     + "ese nombre");
+                    }
+                }
+
+                r.EjesCreados++;
+            }
+            catch (Exception ex)
+            {
+                r.Avisos.Add($"«eje {id}»: no se pudo crear: {ex.Message}");
+            }
+        }
+
+        foreach (var e in c.X)
+        {
+            Uno(e, P(e.Ordenada, yMin), P(e.Ordenada, yMax));
+        }
+
+        foreach (var e in c.Y)
+        {
+            Uno(e, P(xMin, e.Ordenada), P(xMax, e.Ordenada));
+        }
+    }
+
     private static Level? Nivel(Dictionary<string, Level> niveles, string nombre) =>
         niveles.TryGetValue(nombre ?? string.Empty, out var n) ? n : null;
 
@@ -187,7 +330,8 @@ internal static class Modelador
     // ==================================================================
 
     private static void Crear(
-        Document doc, Paso paso, Dictionary<string, Level> niveles, ResultadoModelado r)
+        Document doc, Paso paso, Dictionary<string, Level> niveles, ResultadoModelado r,
+        List<TrabePorComprobar> trabes)
     {
         try
         {
@@ -203,7 +347,7 @@ internal static class Modelador
             var tipoId = new ElementId(paso.Tipo!.Id);
 
             Element? hecho = paso.Barra is not null
-                ? CrearBarra(doc, paso, nivel, tipoId)
+                ? CrearBarra(doc, paso, nivel, tipoId, trabes)
                 : CrearPano(doc, paso, NivelDePano(doc, paso, nivel), tipoId);
 
             if (hecho is null)
@@ -224,7 +368,11 @@ internal static class Modelador
         }
     }
 
-    private static Element? CrearBarra(Document doc, Paso paso, Level nivel, ElementId tipoId)
+    /// <summary>Una trabe recien creada, para comprobar despues que no asoma sobre su cota.</summary>
+    private sealed record TrabePorComprobar(ElementId Id, double ArribaZ, string Llave);
+
+    private static Element? CrearBarra(
+        Document doc, Paso paso, Level nivel, ElementId tipoId, List<TrabePorComprobar> trabes)
     {
         var b = paso.Barra!;
 
@@ -265,6 +413,29 @@ internal static class Modelador
             inst = doc.Create.NewFamilyInstance(punto, simbolo, nivel, StructuralType.Column);
 
             AtarAColumna(doc, inst, b, nivel);
+
+            // ---- Y AHORA SE GIRA, DE VERDAD ----
+            //
+            // Aqui estaba el fallo de los castillos. Mas abajo se escribia
+            // STRUCTURAL_BEND_DIR_ANGLE -"Rotacion de la seccion"-, pero ese parametro es de
+            // las piezas que Revit define por una CURVA: vigas, arriostres y columnas
+            // inclinadas. Una columna a plomo colocada por punto y niveles no lo tiene, asi que
+            // get_Parameter devolvia null, el «?.» se lo tragaba y no pasaba nada: ni giro, ni
+            // excepcion, ni aviso. Por eso las piezas inclinadas salian bien y los castillos a
+            // plomo -que son casi todos- salian girados.
+            //
+            // A una columna colocada por punto se la gira como en AutoCAD: rotando la pieza
+            // alrededor de su eje vertical.
+            var giro = Orientacion.GiroRad(b, paso.Tipo);
+
+            if (Orientacion.Vale(giro))
+            {
+                var eje = Line.CreateBound(punto, punto + XYZ.BasisZ);
+
+                ElementTransformUtils.RotateElement(doc, inst.Id, eje, giro);
+            }
+
+            return inst;
         }
         else
         {
@@ -284,17 +455,27 @@ internal static class Modelador
             inst = doc.Create.NewFamilyInstance(linea, simbolo, nivel, comoQue);
         }
 
-        // El giro de la seccion. En Revit es el parametro "Rotacion de la seccion", en
-        // RADIANES; en el modelo viene en grados.
-        if (Math.Abs(b.AnguloGrados) > 1e-9)
+        // El giro de la seccion, SOLO para las piezas que Revit define por una curva: vigas,
+        // arriostres y columnas inclinadas. Son las unicas que tienen este parametro. La
+        // columna a plomo se gira arriba, rotando la pieza, porque para ella esto es un no-op.
+        var giroCurva = Orientacion.GiroRad(b, paso.Tipo);
+
+        if (Orientacion.Vale(giroCurva))
         {
-            inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEND_DIR_ANGLE)
-                ?.Set(b.AnguloGrados * Math.PI / 180.0);
+            inst.get_Parameter(BuiltInParameter.STRUCTURAL_BEND_DIR_ANGLE)?.Set(giroCurva);
         }
 
         if (b.Clase == ClasePieza.Trabe)
         {
-            PonerEnLaCaraDeArriba(inst);
+            PedirCaraDeArriba(inst);
+
+            // La cota que tiene que quedar ARRIBA es la de la linea del modelo, porque ETABS
+            // exporta la viga por su cara superior. Se apunta para comprobarlo despues, cuando
+            // Revit ya haya calculado la geometria.
+            trabes.Add(new TrabePorComprobar(
+                inst.Id,
+                Unidades.AInternas(Math.Max(b.P1.Z, b.P2.Z)),
+                paso.Llave));
         }
 
         return inst;
@@ -330,22 +511,109 @@ internal static class Modelador
     /// centroide, asi que en esas dos justificar por la cara de arriba las descolocaria.
     /// </para>
     /// </remarks>
-    private static void PonerEnLaCaraDeArriba(FamilyInstance inst)
+    private static void PedirCaraDeArriba(FamilyInstance inst)
     {
         try
         {
-            // Los dos parametros se escriben como ENTERO, que es como los guarda Revit.
+            // Los parametros se escriben como ENTERO, que es como los guarda Revit.
             inst.get_Parameter(BuiltInParameter.Y_JUSTIFICATION)
                 ?.Set((int)YJustification.Origin);
 
             inst.get_Parameter(BuiltInParameter.Z_JUSTIFICATION)
                 ?.Set((int)ZJustification.Top);
+
+            // Con "yz Justification" en Independent, los dos de arriba se ignoran y manda cada
+            // extremo por su cuenta. Se escriben tambien los de los extremos para que la pieza
+            // quede bien en los dos modos. Escribir un parametro que no aplica no cuesta nada:
+            // get_Parameter devuelve null y el «?.» lo deja pasar.
+            inst.get_Parameter(BuiltInParameter.START_Z_JUSTIFICATION)
+                ?.Set((int)ZJustification.Top);
+
+            inst.get_Parameter(BuiltInParameter.END_Z_JUSTIFICATION)
+                ?.Set((int)ZJustification.Top);
         }
         catch (Exception)
         {
-            // Hay familias que no exponen la justificacion. Perderla deja la trabe un peralte
-            // mas arriba, que es molesto pero no invalida el resto del modelado, asi que no se
-            // tira la pieza por esto.
+            // Que esto falle ya no es grave: lo que garantiza la posicion es la comprobacion
+            // de BajarTrabesQueAsoman, no este parametro.
+        }
+    }
+
+    /// <summary>
+    /// Comprueba que ninguna trabe asoma sobre su cota, y baja la que asome.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Esto existe porque pedir la justificacion NO BASTA, y la forma en que no bastaba era la
+    /// peor posible: <c>get_Parameter</c> devuelve <c>null</c> en una familia que no expone la
+    /// justificacion, el <c>?.</c> se lo traga, y la trabe queda un peralte mas arriba sin que
+    /// nada lo diga. La cadena de cerramiento asomaba por encima del muro en vez de coronarlo.
+    /// </para>
+    /// <para>
+    /// Asi que no se confia en el parametro: se MIDE la pieza ya construida y, si su cara de
+    /// arriba no esta donde tiene que estar, se baja. Medir la caja es independiente de donde
+    /// tenga el origen la familia y de si la justificacion se aplico o no.
+    /// </para>
+    /// <para>
+    /// Va en UNA sola pasada al final, con un unico <c>Regenerate</c>, porque regenerar el
+    /// documento una vez por pieza en un modelo de cuatrocientas piezas lo hace inusable.
+    /// </para>
+    /// </remarks>
+    private static void BajarTrabesQueAsoman(
+        Document doc, List<TrabePorComprobar> trabes, ResultadoModelado r)
+    {
+        if (trabes.Count == 0)
+        {
+            return;
+        }
+
+        // Un solo Regenerate para todas: hasta que Revit no calcula la geometria, la caja no
+        // existe o esta sin actualizar.
+        doc.Regenerate();
+
+        // 2 mm. Por debajo de eso es ruido de la geometria y mover la pieza no arregla nada.
+        var tolerancia = Unidades.AInternas(0.002);
+        var bajadas = 0;
+
+        foreach (var t in trabes)
+        {
+            try
+            {
+                if (doc.GetElement(t.Id) is not Element e)
+                {
+                    // La pudo borrar el manejador de fallos. No es asunto de este metodo.
+                    continue;
+                }
+
+                var caja = e.get_BoundingBox(null);
+
+                if (caja is null)
+                {
+                    continue;
+                }
+
+                var asoma = caja.Max.Z - t.ArribaZ;
+
+                if (asoma <= tolerancia)
+                {
+                    continue;
+                }
+
+                ElementTransformUtils.MoveElement(doc, t.Id, new XYZ(0, 0, -asoma));
+                bajadas++;
+            }
+            catch (Exception ex)
+            {
+                r.Avisos.Add($"«{t.Llave}»: no se pudo comprobar si la trabe asoma sobre su "
+                             + "cota: " + ex.Message);
+            }
+        }
+
+        if (bajadas > 0)
+        {
+            r.Avisos.Add($"«{bajadas} trabe(s)»: asomaban sobre su cota porque su familia no "
+                         + "admite justificarse por la cara de arriba, y se bajaron para que "
+                         + "coronen el muro en vez de montarse encima");
         }
     }
 
