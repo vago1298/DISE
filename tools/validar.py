@@ -15620,6 +15620,60 @@ def v26_plugin_revit() -> None:
     check("la traduccion al complemento conoce todas las formas del lector", not faltan_f,
           "sin traducir: " + ", ".join(faltan_f))
 
+    # ---- Nada de argumentos con nombre al llamar a la Revit API ----
+    #
+    # "Floor.Create(..., structural: true, ...)" costo una vuelta entera: CS1739, porque en la
+    # Revit API 2026 ese parametro no se llama "structural". El NOMBRE de un parametro es parte
+    # de la firma, y aqui no hay RevitAPI.dll de donde leerlo: cualquier nombre que se escriba
+    # es una adivinanza que solo se comprueba en la maquina del usuario. El arnes tampoco lo ve,
+    # porque compila contra recortes cuyos nombres tambien son inventados.
+    #
+    # Posicionalmente el problema no existe: el orden si esta documentado y si se puede
+    # comprobar. Lo que se pierde en legibilidad se recupera con un comentario al lado.
+    #
+    # La lista de miembros de Revit sale de los propios recortes, que son por definicion todo
+    # lo que el complemento usa de la API. Asi la regla no se queda corta al crecer el
+    # complemento.
+    deRevit: set[str] = set()
+
+    for r in ("tools/prueba-revit-compila/Recortes.cs",
+              "tools/prueba-revit-compila/Recortes.Structure.cs"):
+        if os.path.exists(ruta(r)):
+            deRevit |= set(re.findall(
+                r"public\s+(?:static\s+|sealed\s+|override\s+)*"
+                r"[\w<>,?\[\]\. ]+?\s+(\w+)\s*\(",
+                leer(ruta(r))))
+
+    conNombre: list[str] = []
+
+    for p in archivos(".cs"):
+        if (os.sep + "CadLink.Revit" + os.sep not in p
+                or os.sep + "CadLink.Revit.Nucleo" + os.sep in p):
+            continue
+
+        limpio = _sin_comentarios(leer(p))
+
+        for m in re.finditer(r"\b(\w+)\s*\(", limpio):
+            if m.group(1) not in deRevit:
+                continue
+
+            hallado = _lista_balanceada(limpio, m.end() - 1)
+
+            if hallado is None:
+                continue
+
+            lista, _ = hallado
+
+            # Un argumento con nombre va SIEMPRE justo detras de '(' o de una coma. Pedirlo asi
+            # evita confundirlo con el ':' de un ternario o de una etiqueta.
+            if re.search(r"(?:^|,)\s*[a-z][A-Za-z0-9_]*\s*:(?!:)", lista):
+                linea = limpio[: m.start()].count("\n") + 1
+                conNombre.append(f"{rel(p)}:{linea} {m.group(1)}")
+
+    check("ninguna llamada a la Revit API usa argumentos con nombre", not conNombre,
+          "el nombre del parametro no se puede comprobar sin RevitAPI.dll y da CS1739 en la "
+          "maquina del usuario; van posicionales: " + ", ".join(conNombre))
+
     # ---- El arnes que COMPILA la capa de Revit sin tener Revit ----
     #
     # CadLink.Revit referencia RevitAPI.dll y sus errores de compilacion solo aparecian en la

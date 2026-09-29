@@ -316,7 +316,12 @@ internal static class Modelador
             // Wall.Create con el CONTORNO, no con una linea y una altura: un pano de muro de
             // ETABS puede ser cualquier poligono, y con la version de linea mas altura se
             // perderia su forma en cuanto no sea un rectangulo.
-            return Wall.Create(doc, curvas, tipoId, nivel.Id, structural: true);
+            // Los argumentos van POSICIONALES, nunca con nombre. El nombre del parametro es
+            // parte de la firma y aqui no hay Revit con el que comprobarlo: si se escribe
+            // "structural: true" y en la DLL real ese parametro se llama de otra forma, no
+            // compila en la maquina del usuario aunque compile en el arnes. El ultimo bool de
+            // esta sobrecarga es el de estructural.
+            return Wall.Create(doc, curvas, tipoId, nivel.Id, true);
         }
 
         if (paso.Tipo.Categoria != CategoriaRevit.Piso)
@@ -382,9 +387,11 @@ internal static class Modelador
             new XYZ(Unidades.AInternas(forma.ColaX), Unidades.AInternas(forma.ColaY), cota),
             new XYZ(Unidades.AInternas(forma.PuntaX), Unidades.AInternas(forma.PuntaY), cota));
 
+        // Posicionales por el mismo motivo que en el muro. El orden de esta sobrecarga es
+        // documento, contornos, tipo, nivel, estructural, flecha de pendiente y angulo.
         return Floor.Create(
             doc, new List<CurveLoop> { lazo }, tipoId, nivel.Id,
-            structural: true, flecha, forma.AnguloRad);
+            true, flecha, forma.AnguloRad);
     }
 
     /// <summary>Ata la columna a su nivel de base y su nivel de punta, con sus desfases.</summary>

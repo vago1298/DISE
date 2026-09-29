@@ -115,7 +115,15 @@ public sealed class ComandoImportar : IExternalCommand
         // colgo. Se le pone la ventana principal de Revit como dueno.
         try
         {
-            new WindowInteropHelper(ventana).Owner = commandData.Application.MainWindowHandle;
+            // El ?. no es de adorno: Application viene declarado como que puede faltar, y
+            // ponerle dueno a la ventana es cosmetico. Si no hay de donde sacar el asa, se
+            // ensena la ventana sin dueno antes que tirar el comando por un detalle de forma.
+            var asaDeRevit = commandData.Application?.MainWindowHandle;
+
+            if (asaDeRevit is not null)
+            {
+                new WindowInteropHelper(ventana).Owner = asaDeRevit.Value;
+            }
         }
         catch (Exception)
         {

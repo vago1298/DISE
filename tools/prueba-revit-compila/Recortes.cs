@@ -16,6 +16,17 @@
 //  declara un miembro que no existe, el codigo compilara contra este recorte y fallara alla.
 //  Por eso cada miembro lleva anotada la version en que se comprobo y de donde.
 //
+//  LOS NOMBRES DE LOS PARAMETROS DE AQUI NO SON LOS DE REVIT. El nombre de un parametro solo
+//  se puede leer de la DLL real, y aqui no hay ninguna. Por eso los parametros de este archivo
+//  van EN ESPAÑOL a proposito: asi ningun argumento con nombre que se escriba en el
+//  complemento puede coincidir por casualidad con el recorte y pasar la compilacion de aqui
+//  para fallar en la maquina del usuario. En el complemento los argumentos van posicionales, y
+//  validar.py §26 lo comprueba.
+//
+//  Ya sirvio de aviso: el complemento llamaba a Floor.Create con "structural: true" y en la
+//  Revit API 2026 ese parametro no se llama asi -da CS1739-, pero el recorte tambien lo
+//  llamaba "structural" y por eso compilaba aqui.
+//
 //  ESTE ARCHIVO ES LA LISTA DE TODO LO QUE EL COMPLEMENTO SUPONE DE REVIT. Leerlo es la forma
 //  mas rapida de revisar esas suposiciones sin leer el complemento entero.
 //
@@ -158,8 +169,8 @@ public sealed class Wall : Element
     /// Es la que permite un pano de cualquier forma.
     /// </summary>
     public static Wall Create(
-        Document doc, IList<Curve> profile, ElementId wallTypeId, ElementId levelId,
-        bool structural) => new();
+        Document doc, IList<Curve> contorno, ElementId tipoDeMuro, ElementId nivel,
+        bool estructural) => new();
 }
 
 public sealed class CompoundStructure
@@ -176,7 +187,7 @@ public sealed class Floor : Element
 {
     /// <summary>Comprobado en la Revit API 2026: la sobrecarga sin pendiente.</summary>
     public static Floor Create(
-        Document doc, IList<CurveLoop> profile, ElementId floorTypeId, ElementId levelId) =>
+        Document doc, IList<CurveLoop> contorno, ElementId tipoDeSuelo, ElementId nivel) =>
         new();
 
     /// <summary>
@@ -185,8 +196,8 @@ public sealed class Floor : Element
     /// sale un suelo horizontal.
     /// </summary>
     public static Floor Create(
-        Document doc, IList<CurveLoop> profile, ElementId floorTypeId, ElementId levelId,
-        bool structural, Line? slopeArrow, double slope) => new();
+        Document doc, IList<CurveLoop> contorno, ElementId tipoDeSuelo, ElementId nivel,
+        bool estructural, Line? flechaDePendiente, double pendienteRad) => new();
 }
 
 public sealed class Document
