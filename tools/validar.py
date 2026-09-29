@@ -15293,6 +15293,72 @@ def v26_plugin_revit() -> None:
         m = re.search(r"<AddInId>([0-9A-Fa-f-]{36})</AddInId>", man)
         check("el AddInId es un GUID", bool(m), "hace falta uno unico y estable")
 
+    # ---- Los iconos de la cinta ----
+    #
+    # Un boton sin imagen sale EN BLANCO con el texto solo debajo, y Revit no se queja. Lo
+    # que rompe esto son tres cosas, y ninguna da error al compilar:
+    #   1. que falte el PNG;
+    #   2. que el nombre que pide el codigo no sea el LogicalName que declara el .csproj;
+    #   3. que falte el CacheOption, con lo que el flujo se cierra antes de leerse.
+    arranque = leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
+
+    pedidos = set(re.findall(r'Imagen\("([^"]+)"\)', arranque))
+    declarados = set(re.findall(r"<LogicalName>([^<]+)</LogicalName>", addin))
+
+    check("el boton pide sus dos iconos", len(pedidos) == 2, str(sorted(pedidos)))
+
+    check("el .csproj declara los dos como recurso embebido", len(declarados) == 2,
+          str(sorted(declarados)))
+
+    sin_declarar = sorted(pedidos - declarados)
+    check("el nombre que pide el codigo coincide con el LogicalName del .csproj",
+          not sin_declarar,
+          "el codigo pide y nadie declara: " + ", ".join(sin_declarar))
+
+    sin_usar = sorted(declarados - pedidos)
+    check("y no se embebe ningun icono que nadie use", not sin_usar, ", ".join(sin_usar))
+
+    check("se ponen las DOS medidas, la grande y la chica",
+          "LargeImage =" in arranque and "boton.Image =" in arranque,
+          "con solo la grande, Revit la reduce al vuelo y a 16 px queda una mancha")
+
+    check("la imagen se lee con CacheOption.OnLoad",
+          "BitmapCacheOption.OnLoad" in arranque,
+          "sin esto el flujo se cierra antes de leerse y el boton sale en blanco")
+
+    check("la imagen se congela, por la afinidad de hilo de la cinta",
+          ".Freeze()" in arranque)
+
+    check("un icono que no cargue no impide arrancar",
+          "catch (Exception)" in arranque)
+
+    # Los PNG, de verdad: que existan, que sean PNG y que midan lo que dicen.
+    for nombre, medida in (("importar-32.png", 32), ("importar-16.png", 16)):
+        p = ruta("client/src/CadLink.Revit/Assets", nombre)
+
+        if not os.path.exists(p):
+            check(f"existe el icono {nombre}", False)
+            continue
+
+        with open(p, "rb") as f:
+            crudo = f.read()
+
+        check(f"{nombre} es un PNG de verdad",
+              crudo[:8] == b"\x89PNG\r\n\x1a\n")
+
+        if len(crudo) >= 26:
+            import struct as _s
+            ancho, alto = _s.unpack(">II", crudo[16:24])
+            check(f"{nombre} mide {medida}x{medida}",
+                  ancho == medida and alto == medida, f"{ancho}x{alto}")
+
+    check("existe el generador de los iconos",
+          os.path.exists(ruta("tools/make_iconos_revit.py")))
+
+    check("y reutiliza el dibujo del icono de la aplicacion",
+          "from make_icon import" in leer(ruta("tools/make_iconos_revit.py")),
+          "con el poligono copiado, el icono de Revit y el de la app se separarian")
+
     # ---- Los errores clasicos del codigo del complemento ----
     comando = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
 

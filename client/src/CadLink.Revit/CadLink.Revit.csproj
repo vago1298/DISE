@@ -59,6 +59,31 @@
     <Using Include="System.IO" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Los iconos del boton de la cinta, EMBEBIDOS en la DLL.
+
+         Embebidos y no como archivo suelto a proposito: instalar el complemento es copiar
+         archivos a mano a la carpeta de complementos de Revit, y un archivo suelto que
+         alguien olvide copiar deja el boton en blanco sin decir por que. Dentro de la DLL
+         no se puede olvidar.
+
+         El LogicalName va ESCRITO en vez de dejar que MSBuild lo componga. Por omision
+         seria RootNamespace mas la carpeta mas el archivo -CadLink.Revit.Assets.importar-32.png-
+         y ese nombre cambia si alguien mueve la carpeta o toca el RootNamespace, sin que
+         nada falle al compilar: el boton simplemente vuelve a salir en blanco.
+         Lo que pide el codigo esta comprobado en tools/validar.py seccion 26.
+
+         Se generan con  python tools/make_iconos_revit.py,  que reutiliza el dibujo del
+         icono de la aplicacion para que las dos marcas no se separen. -->
+    <EmbeddedResource Include="Assets\importar-32.png">
+      <LogicalName>CadLink.Revit.importar-32.png</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="Assets\importar-16.png">
+      <LogicalName>CadLink.Revit.importar-16.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <PropertyGroup>
     <!-- Donde esta Revit. Se puede pisar desde la linea de comandos. -->
     <RutaRevit Condition="'$(RutaRevit)' == ''">C:\Program Files\Autodesk\Revit 2026</RutaRevit>
