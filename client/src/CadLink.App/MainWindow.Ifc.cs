@@ -138,15 +138,24 @@ public partial class MainWindow : Window
 
     private static PanoIfc APano(ElementoEtabs el)
     {
+        // La misma decision que para el complemento, y por el mismo motivo: el lector
+        // resuelve muro o losa solo por geometria y no mira las notas de la propiedad. Se
+        // reutiliza ClasePano para que el IFC y el complemento NO se contradigan: que el
+        // mismo paño saliera muro en un camino y losa en el otro seria imposible de explicar.
+        var decidida = ClasePano.De(
+            el.Vertices3D.Select(v => new PuntoJson { X = v.X, Y = v.Y, Z = v.Z }).ToList(),
+            SeccionesModelo.TipoDeLasNotas(el.Notas),
+            el.Clase == ClaseElemento.Muro ? ClasePieza.Muro : ClasePieza.Losa);
+
         var pano = new PanoIfc
         {
             Etiqueta = el.Etiqueta,
-            Clase = el.Clase == ClaseElemento.Muro ? ClaseIfc.Muro : ClaseIfc.Losa,
+            Clase = decidida.Clase == ClasePieza.Muro ? ClaseIfc.Muro : ClaseIfc.Losa,
             Nivel = el.Story,
 
             // En un muro el nombre util es su PIER, no la propiedad de area: es con lo que
             // se identifica en el modelo y en los planos. Si no tiene, queda la propiedad.
-            Seccion = string.IsNullOrWhiteSpace(el.Pier) || el.Clase != ClaseElemento.Muro
+            Seccion = string.IsNullOrWhiteSpace(el.Pier) || decidida.Clase != ClasePieza.Muro
                 ? el.Seccion
                 : el.Seccion + " (" + el.Pier.Trim() + ")",
 
@@ -267,10 +276,31 @@ public partial class MainWindow : Window
         {
             if (string.Equals(el.Forma, "AREA", StringComparison.OrdinalIgnoreCase))
             {
+                var contorno = el.Vertices3D
+                    .Select(v => new PuntoJson { X = v.X, Y = v.Y, Z = v.Z })
+                    .ToList();
+
+                // MURO o LOSA se decide aqui, no se copia de el.Clase. El lector lo resuelve
+                // SOLO por geometria -EtabsReader.cs: esVertical ? Muro : Losa- y no mira las
+                // notas de la propiedad. Una propiedad cuya nota dice LOSA puede llegar
+                // clasificada como muro, y entonces en Revit se ofrecen familias de muro y al
+                // modelar se llama a Wall.Create con un contorno horizontal, que Revit
+                // rechaza: falla el paño y todos los demás iguales.
+                var decision = ClasePano.De(
+                    contorno,
+                    SeccionesModelo.TipoDeLasNotas(el.Notas),
+                    el.Clase == ClaseElemento.Muro ? ClasePieza.Muro : ClasePieza.Losa);
+
+                if (decision.Aviso is not null)
+                {
+                    salida.Avisos.Add(string.Format(
+                        CultureInfo.InvariantCulture, decision.Aviso, el.Etiqueta));
+                }
+
                 var pano = new PanoJson
                 {
                     Etiqueta = el.Etiqueta,
-                    Clase = el.Clase == ClaseElemento.Muro ? ClasePieza.Muro : ClasePieza.Losa,
+                    Clase = decision.Clase,
                     Nivel = el.Story,
                     Seccion = new SeccionJson
                     {
@@ -284,11 +314,7 @@ public partial class MainWindow : Window
                     }
                 };
 
-                foreach (var v in el.Vertices3D)
-                {
-                    pano.Vertices.Add(new PuntoJson { X = v.X, Y = v.Y, Z = v.Z });
-                }
-
+                pano.Vertices.AddRange(contorno);
                 salida.Panos.Add(pano);
 
                 continue;

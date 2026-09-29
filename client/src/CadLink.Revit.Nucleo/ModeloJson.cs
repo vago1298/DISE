@@ -160,6 +160,16 @@ public sealed class ModeloJson
 
     public List<PanoJson> Panos { get; set; } = new();
 
+    /// <summary>
+    /// Lo que hubo que resolver al exportar y conviene que vea quien importa.
+    /// </summary>
+    /// <remarks>
+    /// Viaja en el archivo a proposito. Aqui van cosas como un paño cuyas notas dicen LOSA y
+    /// cuyo contorno es vertical: se resolvio de una forma concreta, y quien abre el modelo en
+    /// Revit tiene que poder enterarse sin volver a CadLink.
+    /// </remarks>
+    public List<string> Avisos { get; set; } = new();
+
     public int Piezas => Barras.Count + Panos.Count;
 }
 
@@ -235,6 +245,7 @@ public static class ArchivoModelo
         m.Niveles ??= new List<NivelJson>();
         m.Barras ??= new List<BarraJson>();
         m.Panos ??= new List<PanoJson>();
+        m.Avisos ??= new List<string>();
 
         return m;
     }

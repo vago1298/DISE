@@ -392,6 +392,127 @@ internal static class Programa
         Igual("«Hormigón» no se confunde con un perfil HE",
             Sugeridor.FormaPorNombre("Hormigón"), FormaSeccion.Rectangulo);
 
+        Console.WriteLine("\n[2b] Muro o losa: la nota de la propiedad y la geometria");
+
+        // Un contorno HORIZONTAL a la cota 3, como una losa.
+        var horizontal = new List<PuntoJson>
+            { P(0, 0, 3), P(5, 0, 3), P(5, 5, 3), P(0, 5, 3) };
+
+        // Un contorno VERTICAL en el plano XZ, como un muro.
+        var vertical = new List<PuntoJson>
+            { P(0, 0, 0), P(5, 0, 0), P(5, 0, 3), P(0, 0, 3) };
+
+        // El caso que se reporto: la nota dice LOSA pero el lector la trajo como MURO,
+        // porque el lector decide solo por geometria. Tiene que salir LOSA.
+        var r1 = ClasePano.De(horizontal, "LOSA", ClasePieza.Muro);
+        Igual("nota LOSA y contorno horizontal, aunque el lector diga muro -> LOSA",
+            r1.Clase, ClasePieza.Losa);
+        Check("y sin aviso, porque nota y geometria coinciden", r1.Aviso is null, r1.Aviso ?? "");
+
+        // LOSACERO cuenta como losa.
+        Igual("LOSACERO tambien es losa",
+            ClasePano.De(horizontal, "LOSACERO", ClasePieza.Muro).Clase, ClasePieza.Losa);
+
+        // Un muro de verdad sigue siendo muro.
+        Igual("nota MURO y contorno vertical -> MURO",
+            ClasePano.De(vertical, "MURO", ClasePieza.Muro).Clase, ClasePieza.Muro);
+
+        // La geometria manda cuando es clara, porque es la que decide si la llamada a Revit
+        // puede funcionar: no existe un suelo vertical.
+        var r2 = ClasePano.De(vertical, "LOSA", ClasePieza.Losa);
+        Igual("nota LOSA pero contorno vertical -> MURO, porque no hay suelos verticales",
+            r2.Clase, ClasePieza.Muro);
+        Check("y se avisa de la contradiccion", r2.Aviso is not null, "no aviso");
+
+        var r3 = ClasePano.De(horizontal, "MURO", ClasePieza.Muro);
+        Igual("nota MURO pero contorno horizontal -> LOSA", r3.Clase, ClasePieza.Losa);
+        Check("y tambien se avisa", r3.Aviso is not null, "no aviso");
+
+        // Sin notas, decide la geometria.
+        Igual("sin notas, un contorno horizontal es losa",
+            ClasePano.De(horizontal, "", ClasePieza.Muro).Clase, ClasePieza.Losa);
+        Igual("sin notas, un contorno vertical es muro",
+            ClasePano.De(vertical, "", ClasePieza.Losa).Clase, ClasePieza.Muro);
+
+        // Inclinado de verdad: la geometria no decide y hablan las notas.
+        var rampa = new List<PuntoJson>
+            { P(0, 0, 0), P(5, 0, 0), P(5, 5, 4), P(0, 5, 4) };   // unos 39 grados
+
+        var incl = ClasePano.VerticalidadDe(rampa);
+        Check("la rampa de prueba queda en la zona ambigua",
+            incl is not null && Math.Abs(incl.Value) < ClasePano.CosHorizontal
+                             && Math.Abs(incl.Value) > ClasePano.CosVertical,
+            "verticalidad=" + incl);
+
+        Igual("inclinado con nota de losa -> losa",
+            ClasePano.De(rampa, "LOSA", ClasePieza.Muro).Clase, ClasePieza.Losa);
+        Igual("inclinado con nota de muro -> muro",
+            ClasePano.De(rampa, "MURO", ClasePieza.Losa).Clase, ClasePieza.Muro);
+        Igual("inclinado y sin notas, se respeta lo del modelo",
+            ClasePano.De(rampa, "", ClasePieza.Muro).Clase, ClasePieza.Muro);
+
+        // Degenerados: no revientan.
+        Igual("sin contorno deciden las notas",
+            ClasePano.De(null, "LOSA", ClasePieza.Muro).Clase, ClasePieza.Losa);
+        Igual("con dos vertices deciden las notas",
+            ClasePano.De(new List<PuntoJson> { P(0, 0, 0), P(1, 0, 0) }, "MURO",
+                ClasePieza.Losa).Clase, ClasePieza.Muro);
+        Igual("un contorno en linea no da verticalidad",
+            ClasePano.VerticalidadDe(new List<PuntoJson>
+                { P(0, 0, 0), P(1, 0, 0), P(2, 0, 0) }), null);
+
+        // Una losa a la cota cero, que es el caso de una cimentacion.
+        Igual("una losa en la cota cero sigue siendo losa",
+            ClasePano.De(new List<PuntoJson> { P(0, 0, 0), P(4, 0, 0), P(4, 4, 0), P(0, 4, 0) },
+                "LOSA", ClasePieza.Muro).Clase, ClasePieza.Losa);
+
+        // Y el orden de los vertices no debe cambiar la decision.
+        var alReves = new List<PuntoJson>(horizontal);
+        alReves.Reverse();
+        Igual("el giro del contorno no cambia la clase",
+            ClasePano.De(alReves, "LOSA", ClasePieza.Muro).Clase, ClasePieza.Losa);
+
+        Console.WriteLine("\n[2c] Agrupar los errores por causa");
+
+        // El caso real: una importacion que falla por UN motivo que afecta a cientos de
+        // piezas. Un informe que solo diga "372" no permite arreglar nada.
+        var muchos = new List<string>();
+
+        for (var i = 0; i < 372; i++)
+        {
+            muchos.Add($"«CadLink|Losa|L{i}|Story1»: el tipo elegido no admite este contorno");
+        }
+
+        muchos.Add("«CadLink|Muro|M1|Story1»: otra cosa distinta");
+
+        var g = Agrupador.Agrupar(muchos);
+
+        Igual("372 errores iguales y uno distinto dan DOS motivos", g.Count, 2);
+        Igual("el motivo mas frecuente va primero", g[0].Cuantas, 372);
+        Igual("y dice cual es", g[0].Motivo, "el tipo elegido no admite este contorno");
+        Igual("guarda tres ejemplos", g[0].Ejemplos.Count, 3);
+        Check("y los ejemplos son las piezas, sin el motivo",
+            g[0].Ejemplos[0].Contains("L0"), g[0].Ejemplos[0]);
+        Igual("el segundo motivo cuenta uno", g[1].Cuantas, 1);
+
+        var texto = Agrupador.Texto(muchos);
+        Check("el informe dice el total", texto.Contains("373"), texto.Split('\n')[0]);
+        Check("y dice cuantas por motivo", texto.Contains("372 x"), texto);
+
+        // Un mensaje sin el separador se agrupa por el texto completo, sin adivinar.
+        var sueltos = Agrupador.Agrupar(new[] { "fallo general", "fallo general", "otro" });
+        Igual("los mensajes sin pieza tambien se agrupan", sueltos.Count, 2);
+        Igual("y cuentan bien", sueltos[0].Cuantas, 2);
+        Igual("sin inventar ejemplos", sueltos[0].Ejemplos.Count, 0);
+
+        Igual("sin errores no hay informe", Agrupador.Texto(null), "");
+        Igual("ni con una lista vacia", Agrupador.Texto(new string[0]), "");
+        Igual("los vacios se descartan",
+            Agrupador.Agrupar(new[] { "", "  ", "de verdad" }).Count, 1);
+
+        // Determinista: dos corridas dan el mismo informe.
+        Igual("el informe es determinista", Agrupador.Texto(muchos), Agrupador.Texto(muchos));
+
         Console.WriteLine("\n[3a] Sacar las medidas del nombre de un tipo de Revit");
 
         // Con unidad escrita o con numeros que solo pueden ser milimetros: se contesta.

@@ -15411,6 +15411,49 @@ def v26_plugin_revit() -> None:
         check("la traduccion al complemento cubre todas las ClaseElemento", not faltan,
               ", ".join(faltan))
 
+    # ---- Muro o losa: la decision NO se copia del lector ----
+    #
+    # El lector resuelve la clase de un area SOLO por geometria -EtabsReader: esVertical ?
+    # Muro : Losa- y no mira las notas de la propiedad. Copiar esa clase tal cual hace que una
+    # propiedad cuya nota dice LOSA llegue a Revit como muro: se ofrecen familias de muro y
+    # al modelar se llama a Wall.Create con un contorno horizontal, que Revit rechaza. Falla
+    # el paño y todos los demas iguales, que es el fallo en masa que se vio.
+    check("el paso al complemento decide muro o losa con ClasePano",
+          "ClasePano.De(" in parcial,
+          "copiar el.Clase tal cual ignora las notas de la propiedad")
+
+    check("y tambien lo hace el paso al IFC, para que los dos coincidan",
+          parcial.count("ClasePano.De(") >= 2,
+          str(parcial.count("ClasePano.De(")))
+
+    check("la decision usa las notas de la propiedad",
+          "SeccionesModelo.TipoDeLasNotas(" in parcial)
+
+    clasepano = leer(ruta("client/src/CadLink.Revit.Nucleo/ClasePano.cs"))
+
+    check("ClasePano mira la geometria con el metodo de Newell",
+          "VerticalidadDe" in clasepano,
+          "con el producto cruz de dos lados, un contorno mallado da una normal de ruido")
+
+    check("y avisa cuando la nota contradice a la geometria",
+          "Revisa la propiedad" in clasepano,
+          "callar la contradiccion deja la pieza en una categoria que nadie pidio")
+
+    check("los avisos del modelo viajan en el archivo de intercambio",
+          "public List<string> Avisos" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("y el complemento los ensena",
+          "modelo.Avisos" in comando)
+
+    # ---- El informe de errores, agrupado ----
+    check("los errores del modelado se agrupan por causa",
+          "Agrupador.Texto(" in comando,
+          "una lista de los ocho primeros no dice nada si los 372 son el mismo motivo")
+
+    check("existe el agrupador",
+          os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Agrupador.cs")))
+
     nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
     bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)
     catalogo = leer(ruta("client/src/CadLink.Revit.Nucleo/CatalogoRevit.cs"))

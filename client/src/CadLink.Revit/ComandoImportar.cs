@@ -157,6 +157,11 @@ public sealed class ComandoImportar : IExternalCommand
 
         var r = Modelador.Ejecutar(doc, plan);
 
+        // Los avisos que trae el propio archivo van PRIMERO: son decisiones que CadLink tuvo
+        // que tomar al exportar -un paño cuyas notas dicen losa y cuyo contorno es vertical,
+        // por ejemplo- y quien esta en Revit tiene que poder enterarse sin volver a CadLink.
+        r.Avisos.InsertRange(0, modelo.Avisos);
+
         TaskDialog.Show("CadLink", Informe(modo, plan, r, rutaMapeo));
 
         return Result.Succeeded;
@@ -209,18 +214,13 @@ public sealed class ComandoImportar : IExternalCommand
 
         if (r.Errores.Count > 0)
         {
+            // AGRUPADOS por causa, no una lista de los ocho primeros. Una importacion que
+            // falla casi nunca falla por trescientos motivos distintos: falla por UNO que
+            // afecta a trescientas piezas, y los ocho primeros mensajes dicen todos lo mismo
+            // sin que se vea que son iguales. Agrupado se lee "372 x el tipo elegido no admite
+            // este contorno", y eso si dice donde mirar.
             sb.AppendLine();
-            sb.Append("NO se pudieron modelar ").Append(r.Errores.Count).AppendLine(":");
-
-            foreach (var e in r.Errores.Take(8))
-            {
-                sb.Append("  - ").AppendLine(e);
-            }
-
-            if (r.Errores.Count > 8)
-            {
-                sb.Append("  ... y ").Append(r.Errores.Count - 8).AppendLine(" mas.");
-            }
+            sb.AppendLine(Agrupador.Texto(r.Errores));
         }
 
         sb.AppendLine();
