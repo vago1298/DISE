@@ -5817,30 +5817,20 @@ public partial class MainWindow : Window
 
         // ---------- El corte A-A' ----------
         //
-        // La misma línea de quiebre que pone AutoCAD, en el mismo sitio —L/4 + 5 cm— y con
-        // la misma forma: las dos salen de AlzadoLayout. Aquí el alzado va siempre tendido,
-        // así que la línea es vertical: A arriba y A' abajo, con su flechita a la izquierda.
+        // La misma línea recta que pone AutoCAD, en el mismo sitio —L/4 + 5 cm—, que sale de
+        // AlzadoLayout. Aquí el alzado va siempre tendido, así que la línea es vertical:
+        // A arriba y A' abajo, con su flechita a la izquierda.
         {
             var xCorte = izquierda + (AlzadoLayout.PosicionCorte(largo) * esc);
             const double salidaPx = 7;
 
-            // El zigzag en metros, pasado a píxeles: así guarda la proporción con la pieza.
-            var st = AlzadoLayout.LineaDeQuiebre(
-                -salidaPx / esc, (h + salidaPx) / esc, h / 2 / esc, peralteM);
-
-            var linea = new Polyline
+            PreviaFijaCanvas.Children.Add(new Line
             {
+                X1 = xCorte, Y1 = top - salidaPx,
+                X2 = xCorte, Y2 = top + h + salidaPx,
                 Stroke = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33)),
-                StrokeThickness = 1.3,
-                StrokeLineJoin = PenLineJoin.Round
-            };
-
-            for (var i = 0; i < st.Length; i += 2)
-            {
-                linea.Points.Add(new Point(xCorte + (st[i + 1] * esc), top + (st[i] * esc)));
-            }
-
-            PreviaFijaCanvas.Children.Add(linea);
+                StrokeThickness = 1.3
+            });
 
             // Las flechitas, hacia la izquierda desde cada punta. En píxeles fijos: a la
             // escala de la pieza saldrían de un píxel en una trabe larga.

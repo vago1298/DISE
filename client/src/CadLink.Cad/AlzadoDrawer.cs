@@ -2510,9 +2510,9 @@ public sealed class AlzadoDrawer
     private const double SalidaCorteColumna = 0.04;
 
     /// <summary>
-    /// La <b>línea de corte A-A'</b> sobre el alzado: una línea de quiebre que cruza la
-    /// pieza por donde se tomó el <c>CORTE A-A'</c> de al lado, con <c>A</c> arriba y
-    /// <c>A'</c> abajo.
+    /// La <b>línea de corte A-A'</b> sobre el alzado: una línea recta que cruza la pieza
+    /// por donde se tomó el <c>CORTE A-A'</c> de al lado, con <c>A</c> arriba y <c>A'</c>
+    /// abajo, y una flechita en cada punta hacia el lado desde el que se mira.
     /// </summary>
     /// <param name="posicion">
     /// La X del corte en la trabe, o su Y en la columna.
@@ -2531,8 +2531,8 @@ public sealed class AlzadoDrawer
     /// alzado, donde no se podría mover ni borrar sin explotarlo.
     /// </para>
     /// <para>
-    /// La forma del quiebre sale de <see cref="AlzadoLayout.LineaDeQuiebre"/>, la misma que
-    /// pinta la vista previa.
+    /// La posición sale de <see cref="AlzadoLayout.PosicionCorte"/>, la misma que usa la
+    /// vista previa.
     /// </para>
     /// </remarks>
     private void LineaDeCorte(double posicion, double desde, double hasta, bool vertical)
@@ -2552,18 +2552,10 @@ public sealed class AlzadoDrawer
         var ini = desde - salida;
         var fin = hasta + salida;
 
-        var st = AlzadoLayout.LineaDeQuiebre(ini, fin, (desde + hasta) / 2, grueso);
-
-        // (a lo largo, de través) -> (x, y)
-        var pts = new double[st.Length];
-        for (var i = 0; i < st.Length; i += 2)
-        {
-            var s = st[i];
-            var t = st[i + 1];
-
-            pts[i] = vertical ? posicion + t : s;
-            pts[i + 1] = vertical ? s : posicion + t;
-        }
+        // Una línea RECTA de cara a cara, sin zigzag: así lo pidió el usuario.
+        var pts = vertical
+            ? new[] { posicion, ini, posicion, fin }
+            : new[] { ini, posicion, fin, posicion };
 
         // El cast a object no es adorno: con _ms dynamic, la llamada entera se resolvería en
         // tiempo de ejecución y 'pl' saldría dynamic.

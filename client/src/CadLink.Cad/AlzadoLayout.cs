@@ -283,7 +283,7 @@ public static class AlzadoLayout
     /// <remarks>
     /// <para>
     /// El alzado trae al lado su <c>CORTE A-A'</c>, pero sobre el alzado no había nada que
-    /// dijera <b>por dónde</b> se cortó. Una línea de quiebre cruza la pieza y lleva
+    /// dijera <b>por dónde</b> se cortó. Una línea recta cruza la pieza y lleva
     /// <c>A</c> en un extremo y <c>A'</c> en el otro.
     /// </para>
     /// <para>
@@ -319,48 +319,4 @@ public static class AlzadoLayout
     /// </remarks>
     public const double SalidaCorte = 0.015;
 
-    /// <summary>
-    /// La polilínea de una <b>línea de quiebre</b>: recta, con un zigzag en
-    /// <paramref name="centro"/>.
-    /// </summary>
-    /// <returns>
-    /// Pares <c>(a lo largo, de través)</c> aplanados: <c>s0, t0, s1, t1, …</c>. Quien
-    /// dibuja los convierte a sus ejes; así la trabe, la columna y la vista previa usan la
-    /// misma forma.
-    /// </returns>
-    /// <param name="inicio">Coordenada a lo largo donde empieza la línea.</param>
-    /// <param name="fin">Coordenada a lo largo donde acaba.</param>
-    /// <param name="centro">Dónde va el zigzag, normalmente a media pieza.</param>
-    /// <param name="grueso">
-    /// Lo que mide la pieza de través a la línea —el peralte de la trabe, el ancho de la
-    /// columna—. El zigzag se topa a una fracción de él para que nunca se salga de la pieza.
-    /// </param>
-    public static double[] LineaDeQuiebre(double inicio, double fin, double centro, double grueso)
-    {
-        if (fin < inicio)
-        {
-            (inicio, fin) = (fin, inicio);
-        }
-
-        // Medio tramo del zigzag: 2 cm, o un quinto de la pieza si es más delgada.
-        var w = Math.Min(0.02, Math.Abs(grueso) / 5);
-        var amp = w * 0.75;
-
-        if (w < 0.004 || centro - w <= inicio || centro + w >= fin)
-        {
-            // Sin sitio para el zigzag, la línea va recta: mejor eso que un quiebre que
-            // se dobla sobre sí mismo, o uno de 2 mm que en el plano es una mancha.
-            return new[] { inicio, 0d, fin, 0d };
-        }
-
-        return new[]
-        {
-            inicio, 0d,
-            centro - w, 0d,
-            centro - (w / 2), amp,
-            centro + (w / 2), -amp,
-            centro + w, 0d,
-            fin, 0d,
-        };
-    }
 }

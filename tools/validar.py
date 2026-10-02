@@ -2513,7 +2513,8 @@ def v16_extruida_piers() -> None:
     #  ═══════════════════════════════════════════════════════════════════════════════
     #  LA LINEA DE CORTE A-A' SOBRE EL ALZADO
     #
-    #  Pedido del usuario: una linea de quiebre que cruce el alzado de las piezas
+    #  Pedido del usuario: una linea RECTA (primero fue de quiebre, y pidio quitar el
+    #  zigzag) que cruce el alzado de las piezas
     #  horizontales y verticales, con «A» arriba y «A'» abajo, para que se vea por donde
     #  se tomo el CORTE A-A' que va al lado.
     #  ═══════════════════════════════════════════════════════════════════════════════
@@ -2531,8 +2532,10 @@ def v16_extruida_piers() -> None:
 
     if m_corte:
         cuerpo = m_corte.group(0)
-        check("la linea es un QUIEBRE, sacado de AlzadoLayout",
-              "AlzadoLayout.LineaDeQuiebre(" in cuerpo)
+        check("la linea es RECTA, de dos puntos y sin zigzag",
+              "LineaDeQuiebre" not in cuerpo
+              and "new[] { posicion, ini, posicion, fin }" in cuerpo
+              and "new[] { ini, posicion, fin, posicion }" in cuerpo)
         check("con A y A'", 'LetraCorte("A",' in cuerpo and "LetraCorte(\"A'\"," in cuerpo)
         #  Pedido del usuario: flechitas hacia la IZQUIERDA junto a cada letra, para que
         #  se vea desde que lado se mira el corte. En la columna -la trabe girada 90°-
@@ -2547,8 +2550,9 @@ def v16_extruida_piers() -> None:
 
     lay_alz = leer(ruta("client/src/CadLink.Cad/AlzadoLayout.cs"))
     check("el sitio del corte vive en UN solo lugar",
-          "public static double PosicionCorte(" in lay_alz
-          and "public static double[] LineaDeQuiebre(" in lay_alz)
+          "public static double PosicionCorte(" in lay_alz)
+    check("y ya no queda el zigzag del quiebre",
+          "LineaDeQuiebre" not in lay_alz)
     check("y es el primer L/4 mas 5 cm",
           "(largo / 4) + CorrimientoCorte" in lay_alz
           and "public const double CorrimientoCorte = 0.05;" in lay_alz)
@@ -2560,7 +2564,7 @@ def v16_extruida_piers() -> None:
     m_prev = re.search(r"private void DibujarAlzadoPrevio\(.*?\n    \}", mw_alz, re.S)
     check("la vista previa pinta el mismo corte",
           m_prev is not None
-          and "AlzadoLayout.LineaDeQuiebre(" in m_prev.group(0)
+          and "LineaDeQuiebre" not in m_prev.group(0)
           and "AlzadoLayout.PosicionCorte(largo)" in m_prev.group(0)
           and "Flecha(top - salidaPx)" in m_prev.group(0))
 
