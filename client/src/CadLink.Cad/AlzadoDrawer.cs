@@ -1063,8 +1063,12 @@ public sealed class AlzadoDrawer
             {
                 foreach (var b in a.Bastones.Where(Bastones.EsValido))
                 {
-                    lineas.Add(Bastones.Texto(b) +
-                               (b.Posicion == PosicionBaston.Superior ? " sup." : " inf."));
+                    lineas.Add(Bastones.Texto(b) + b.Posicion switch
+                    {
+                        PosicionBaston.Superior => " sup.",
+                        PosicionBaston.Medio => " en medio",
+                        _ => " inf."
+                    });
                 }
             }
         }
@@ -2101,9 +2105,12 @@ public sealed class AlzadoDrawer
     /// los extremos si lleva gancho.
     /// </summary>
     /// <param name="hacia">Hacia dónde dobla el gancho: <c>true</c> arriba.</param>
+    /// <param name="ganchoIzq">Si lleva gancho en la punta izquierda. Las corridas, siempre.</param>
+    /// <param name="ganchoDer">Y en la derecha. Un bastón de extremo lo lleva solo en la del paño.</param>
     private void VarillaConGanchos(
         object bloque, double xL, double xR, double yc, double dBar, string capa,
-        List<double> centros, double dEst, double gancho, bool hacia, bool relleno)
+        List<double> centros, double dEst, double gancho, bool hacia, bool relleno,
+        bool ganchoIzq = true, bool ganchoDer = true)
     {
         if (dBar <= 0 || xR <= xL + 1e-6)
         {
@@ -2114,12 +2121,14 @@ public sealed class AlzadoDrawer
         var hueco = dEst / 2;
 
         var conGancho = gancho > r && xR - dBar - r > xL + dBar + r;
+        var gI = conGancho && ganchoIzq;
+        var gD = conGancho && ganchoDer;
 
         // Relleno sólido de la varilla, con el color de su capa. El contorno cerrado
         // es temporal: el hatch no es asociativo, así que se puede borrar.
         if (relleno)
         {
-            var borde = BordeDeVarilla(bloque, xL, xR, yc, dBar, conGancho ? gancho : 0, hacia);
+            var borde = BordeDeVarilla(bloque, xL, xR, yc, dBar, conGancho ? gancho : 0, hacia, gI, gD);
 
             if (borde is not null)
             {
@@ -2133,7 +2142,7 @@ public sealed class AlzadoDrawer
             }
         }
 
-        if (!conGancho)
+        if (!gI && !gD)
         {
             CaraSegmentada(bloque, yc + r, capa, centros, hueco, xL, xR);
             CaraSegmentada(bloque, yc - r, capa, centros, hueco, xL, xR);
@@ -2147,33 +2156,56 @@ public sealed class AlzadoDrawer
         var yInterior = yc + (u * r);
         var yPunta = yc + (u * (r + gancho));
 
-        CaraSegmentada(bloque, yExterior, capa, centros, hueco, xL + dBar, xR - dBar);
-        CaraSegmentada(bloque, yInterior, capa, centros, hueco, xL + dBar + r, xR - dBar - r);
+        CaraSegmentada(bloque, yExterior, capa, centros, hueco,
+            gI ? xL + dBar : xL, gD ? xR - dBar : xR);
+        CaraSegmentada(bloque, yInterior, capa, centros, hueco,
+            gI ? xL + dBar + r : xL, gD ? xR - dBar - r : xR);
 
         var pi = Math.PI;
 
-        if (hacia)
+        if (gI)
         {
-            Arco(bloque, xL + dBar, yc + r, dBar, pi, 1.5 * pi, capa);
-            Arco(bloque, xL + dBar + r, yc + dBar, r, pi, 1.5 * pi, capa);
-            Arco(bloque, xR - dBar, yc + r, dBar, 1.5 * pi, 2 * pi, capa);
-            Arco(bloque, xR - dBar - r, yc + dBar, r, 1.5 * pi, 2 * pi, capa);
+            if (hacia)
+            {
+                Arco(bloque, xL + dBar, yc + r, dBar, pi, 1.5 * pi, capa);
+                Arco(bloque, xL + dBar + r, yc + dBar, r, pi, 1.5 * pi, capa);
+            }
+            else
+            {
+                Arco(bloque, xL + dBar, yc - r, dBar, pi / 2, pi, capa);
+                Arco(bloque, xL + dBar + r, yc - dBar, r, pi / 2, pi, capa);
+            }
+
+            Linea(bloque, xL, yc + (u * r), xL, yPunta, capa);
+            Linea(bloque, xL + dBar, yc + (u * dBar), xL + dBar, yPunta, capa);
+            Linea(bloque, xL, yPunta, xL + dBar, yPunta, capa);
         }
         else
         {
-            Arco(bloque, xL + dBar, yc - r, dBar, pi / 2, pi, capa);
-            Arco(bloque, xL + dBar + r, yc - dBar, r, pi / 2, pi, capa);
-            Arco(bloque, xR - dBar, yc - r, dBar, 0, pi / 2, capa);
-            Arco(bloque, xR - dBar - r, yc - dBar, r, 0, pi / 2, capa);
+            Linea(bloque, xL, yc - r, xL, yc + r, capa);
         }
 
-        Linea(bloque, xL, yc + (u * r), xL, yPunta, capa);
-        Linea(bloque, xL + dBar, yc + (u * dBar), xL + dBar, yPunta, capa);
-        Linea(bloque, xL, yPunta, xL + dBar, yPunta, capa);
+        if (gD)
+        {
+            if (hacia)
+            {
+                Arco(bloque, xR - dBar, yc + r, dBar, 1.5 * pi, 2 * pi, capa);
+                Arco(bloque, xR - dBar - r, yc + dBar, r, 1.5 * pi, 2 * pi, capa);
+            }
+            else
+            {
+                Arco(bloque, xR - dBar, yc - r, dBar, 0, pi / 2, capa);
+                Arco(bloque, xR - dBar - r, yc - dBar, r, 0, pi / 2, capa);
+            }
 
-        Linea(bloque, xR, yc + (u * r), xR, yPunta, capa);
-        Linea(bloque, xR - dBar, yc + (u * dBar), xR - dBar, yPunta, capa);
-        Linea(bloque, xR, yPunta, xR - dBar, yPunta, capa);
+            Linea(bloque, xR, yc + (u * r), xR, yPunta, capa);
+            Linea(bloque, xR - dBar, yc + (u * dBar), xR - dBar, yPunta, capa);
+            Linea(bloque, xR, yPunta, xR - dBar, yPunta, capa);
+        }
+        else
+        {
+            Linea(bloque, xR, yc - r, xR, yc + r, capa);
+        }
     }
 
     /// <summary>
@@ -2222,45 +2254,78 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>Contorno cerrado de la varilla, para su relleno sólido.</summary>
+    /// <remarks>
+    /// Se arma por lados: la cara de dentro de izquierda a derecha y la de fuera de vuelta,
+    /// con cada punta en gancho o recta según lleve. Así sirve igual para la corrida, con
+    /// dos ganchos, que para el bastón, con uno.
+    /// </remarks>
     private object? BordeDeVarilla(
-        object bloque, double xL, double xR, double yc, double dBar, double gancho, bool hacia)
+        object bloque, double xL, double xR, double yc, double dBar, double gancho, bool hacia,
+        bool ganchoIzq = true, bool ganchoDer = true)
     {
         var r = dBar / 2;
         var conGancho = gancho > r && xR - dBar - r > xL + dBar + r;
-
-        if (!conGancho)
-        {
-            return Poli(bloque, new[]
-            {
-                xL, yc - r,
-                xR, yc - r,
-                xR, yc + r,
-                xL, yc + r
-            }, "CONCRETO", cerrada: true, bulges: null);
-        }
+        var gI = conGancho && ganchoIzq;
+        var gD = conGancho && ganchoDer;
 
         var u = hacia ? 1d : -1d;
         var yPunta = yc + (u * (r + gancho));
         const double b90 = 0.414213562373095;
 
-        return Poli(bloque, new[]
+        var pts = new List<double>();
+        var bulges = new List<(int, double)>();
+
+        void P(double x, double y, double bulge = 0)
         {
-            xL,             yc + (u * r),
-            xL,             yPunta,
-            xL + dBar,      yPunta,
-            xL + dBar,      yc + (u * dBar),
-            xL + dBar + r,  yc + (u * r),
-            xR - dBar - r,  yc + (u * r),
-            xR - dBar,      yc + (u * dBar),
-            xR - dBar,      yPunta,
-            xR,             yPunta,
-            xR,             yc + (u * r),
-            xR - dBar,      yc - (u * r),
-            xL + dBar,      yc - (u * r)
-        }, "CONCRETO", cerrada: true, bulges: new (int, double)[]
+            if (bulge != 0)
+            {
+                bulges.Add((pts.Count / 2, bulge));
+            }
+
+            pts.Add(x);
+            pts.Add(y);
+        }
+
+        // La cara del lado del gancho, de izquierda a derecha.
+        if (gI)
         {
-            (3, b90 * u), (5, b90 * u), (9, -b90 * u), (11, -b90 * u)
-        });
+            P(xL, yc + (u * r));
+            P(xL, yPunta);
+            P(xL + dBar, yPunta);
+            P(xL + dBar, yc + (u * dBar), b90 * u);
+            P(xL + dBar + r, yc + (u * r));
+        }
+        else
+        {
+            P(xL, yc + (u * r));
+        }
+
+        if (gD)
+        {
+            P(xR - dBar - r, yc + (u * r), b90 * u);
+            P(xR - dBar, yc + (u * dBar));
+            P(xR - dBar, yPunta);
+            P(xR, yPunta);
+            P(xR, yc + (u * r), -b90 * u);
+            P(xR - dBar, yc - (u * r));
+        }
+        else
+        {
+            P(xR, yc + (u * r));
+            P(xR, yc - (u * r));
+        }
+
+        // La de fuera, de vuelta.
+        if (gI)
+        {
+            P(xL + dBar, yc - (u * r), -b90 * u);
+        }
+        else
+        {
+            P(xL, yc - (u * r));
+        }
+
+        return Poli(bloque, pts.ToArray(), "CONCRETO", cerrada: true, bulges: bulges.ToArray());
     }
 
     private void Intermedias(
@@ -2318,15 +2383,15 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>
-    /// Los <b>bastones</b> del alzado: cada uno en su cama, por dentro de su lecho, y con
-    /// gancho en la punta que llega al paño.
+    /// Los <b>bastones</b> del alzado: tres como mucho —arriba, en medio y abajo—, cada
+    /// uno dibujado con la <b>misma rutina que las varillas corridas</b>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// La cama queda a <see cref="Bastones.SeparacionCamaCm"/> libres del lecho, la misma
-    /// que usa el corte: así la varilla que se ve en la sección es la que pasa por el
-    /// alzado. Si hay más de un bastón en el mismo lecho y se enciman a lo largo, el
-    /// segundo baja (o sube) una cama más.
+    /// El de arriba y el de abajo van a <see cref="Bastones.SeparacionCamaCm"/> libres por
+    /// dentro de su lecho, con gancho en la punta que llega al paño; el de en medio, a
+    /// media altura y recto, como las intermedias. Son las mismas alturas que usa el
+    /// corte, así que la varilla que se ve en la sección es la que pasa por el alzado.
     /// </para>
     /// <para>
     /// El gancho es el de la trabe —12 diámetros, <see cref="Estribos.GanchoNominal"/>—
@@ -2348,11 +2413,18 @@ public sealed class AlzadoDrawer
 
         var sep = Bastones.SeparacionCamaCm * _escala;
 
-        // Lo ya ocupado en cada lecho, por cama: (cama, ini, fin).
-        var ocupado = new List<(PosicionBaston P, int Cama, double Ini, double Fin)>();
+        // Uno por posición, y tres como mucho: arriba, en medio y abajo. Si llegara un
+        // archivo con más, manda el primero de cada posición.
+        var usados = new HashSet<PosicionBaston>();
 
         foreach (var b in a.Bastones)
         {
+            if (!usados.Add(b.Posicion))
+            {
+                _notas.Add($"Alzado '{a.Id}': sobra un bastón {b.Posicion.ToString().ToLowerInvariant()}; solo va uno por posición.");
+                continue;
+            }
+
             var dB = b.Var.Cm * _escala;
             var tramos = Bastones.Tramos(b, largo);
 
@@ -2361,28 +2433,22 @@ public sealed class AlzadoDrawer
                 continue;
             }
 
-            // La primera cama libre en la que no se encima con otro bastón del mismo lecho.
-            var cama = 0;
-            while (tramos.Any(t => ocupado.Any(o =>
-                       o.P == b.Posicion && o.Cama == cama && t.Ini < o.Fin && t.Fin > o.Ini)))
+            double yc;
+
+            switch (b.Posicion)
             {
-                cama++;
+                case PosicionBaston.Superior:
+                    yc = ycSup - (dSup / 2) - sep - (dB / 2);
+                    break;
+
+                case PosicionBaston.Inferior:
+                    yc = ycInf + (dInf / 2) + sep + (dB / 2);
+                    break;
+
+                default:
+                    yc = Bastones.YMedio(ycInf + (dInf / 2), ycSup - (dSup / 2), a.NLateral);
+                    break;
             }
-
-            foreach (var t in tramos)
-            {
-                ocupado.Add((b.Posicion, cama, t.Ini, t.Fin));
-            }
-
-            var arriba = b.Posicion == PosicionBaston.Superior;
-
-            // Desde la cara interior del lecho: la separación libre, y media varilla hasta
-            // su eje. Cada cama extra se aparta una varilla y una separación más.
-            var desdeLecho = sep + (dB / 2) + (cama * (sep + dB));
-
-            var yc = arriba
-                ? ycSup - (dSup / 2) - desdeLecho
-                : ycInf + (dInf / 2) + desdeLecho;
 
             // Si la pieza es tan baja que la cama se sale del núcleo, no se dibuja: un
             // bastón por fuera del estribo no es armado.
@@ -2392,13 +2458,20 @@ public sealed class AlzadoDrawer
                 continue;
             }
 
-            // Hacia dónde dobla el gancho: hacia DENTRO, como el de su lecho.
-            var disponible = arriba
-                ? yc - (dB / 2) - (ycInf + (dInf / 2))
-                : (ycSup - (dSup / 2)) - (yc + (dB / 2));
+            // El gancho, solo en los de arriba y abajo, y hacia DENTRO como el de su lecho.
+            // El de en medio va recto, como las intermedias.
+            var arriba = b.Posicion == PosicionBaston.Superior;
+            var g = 0d;
 
-            var g = Estribos.GanchoEfectivo(
-                Estribos.GanchoNominal(false, a.GanchoCm * _escala, dB), disponible, dB);
+            if (b.Posicion != PosicionBaston.Medio)
+            {
+                var disponible = arriba
+                    ? yc - (dB / 2) - (ycInf + (dInf / 2))
+                    : (ycSup - (dSup / 2)) - (yc + (dB / 2));
+
+                g = Estribos.GanchoEfectivo(
+                    Estribos.GanchoNominal(false, a.GanchoCm * _escala, dB), disponible, dB);
+            }
 
             var capa = CapaVar(b.Var.Clave);
 
@@ -2413,53 +2486,17 @@ public sealed class AlzadoDrawer
                     continue;
                 }
 
-                VarillaConGanchos(bloque, xL, xR, yc, dB, capa, centros, dEst, 0,
-                    hacia: !arriba, relleno);
-
-                if (g > 0 && t.GanchoIzq)
-                {
-                    GanchoDeBaston(bloque, xL, yc, dB, g, arriba, capa, relleno);
-                }
-
-                if (g > 0 && t.GanchoDer)
-                {
-                    GanchoDeBaston(bloque, xR - dB, yc, dB, g, arriba, capa, relleno);
-                }
+                // LA MISMA RUTINA QUE LAS CORRIDAS: mismas caras, mismos cortes en los
+                // estribos, mismo doblez y mismo relleno. Solo cambia en qué punta va el
+                // gancho: en la que llega al paño.
+                VarillaConGanchos(bloque, xL, xR, yc, dB, capa, centros, dEst, g,
+                    hacia: !arriba, relleno, ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);
 
                 res.Add((b, t, yc));
             }
         }
 
         return res;
-    }
-
-    /// <summary>
-    /// El gancho de un bastón: una pata de un diámetro de ancho que dobla hacia dentro de
-    /// la pieza desde su eje.
-    /// </summary>
-    private void GanchoDeBaston(
-        object bloque, double xIzq, double yc, double dB, double g, bool arriba,
-        string capa, bool relleno)
-    {
-        var u = arriba ? -1d : 1d;
-        var yPunta = yc + (u * ((dB / 2) + g));
-
-        var pl = Poli(bloque, new[]
-        {
-            xIzq,      yc,
-            xIzq + dB, yc,
-            xIzq + dB, yPunta,
-            xIzq,      yPunta
-        }, capa, cerrada: true, bulges: null);
-
-        if (relleno && pl is not null)
-        {
-            var h = Hatch(bloque, "SOLID", 1, pl, capa, PorCapa);
-            if (h is not null)
-            {
-                _fillVarillas.Add(h);
-            }
-        }
     }
 
     private static double CorrerADerecha(
@@ -2981,6 +3018,7 @@ public sealed class AlzadoDrawer
 
         foreach (var (b, t, _) in geo.Bastones)
         {
+            // El de en medio se acota abajo, con los inferiores.
             var arriba = b.Posicion == PosicionBaston.Superior;
             var filas = arriba ? filaSup : filaInf;
 

@@ -2314,19 +2314,39 @@ public sealed partial class SeccionDrawer
     {
         var res = new List<(BastonCad, List<(double, double)>, double)>();
         var sep = Bastones.SeparacionCamaCm * _escala;
-        var camaSup = 0;
-        var camaInf = 0;
+        var usados = new HashSet<PosicionBaston>();
 
         foreach (var bas in s.BastonesEnCorte.Where(Bastones.EsValido))
         {
-            var dB = bas.Var.Cm * _escala;
-            var arriba = bas.Posicion == PosicionBaston.Superior;
-            var cama = arriba ? camaSup++ : camaInf++;
+            // Uno por posición, igual que en el alzado.
+            if (!usados.Add(bas.Posicion))
+            {
+                continue;
+            }
 
-            var desdeLecho = sep + (dB / 2) + (cama * (sep + dB));
-            var y = arriba
-                ? y0 + h - (rec + dEst + dSup) - desdeLecho
-                : y0 + (rec + dEst + dInf) + desdeLecho;
+            var dB = bas.Var.Cm * _escala;
+            var off = rec + dEst + (dB / 2);
+
+            double y;
+            List<double> xs;
+
+            if (bas.Posicion == PosicionBaston.Medio)
+            {
+                // A media altura, con la misma cuenta del alzado, y por DENTRO de las
+                // laterales: repartido en el ancho sin tocar los costados, donde van ellas.
+                y = Bastones.YMedio(y0 + rec + dEst + dInf, y0 + h - rec - dEst - dSup, s.NLateral);
+                xs = Enumerable.Range(1, bas.Cantidad)
+                    .Select(i => x0 + off + ((b - (2 * off)) * i / (bas.Cantidad + 1)))
+                    .ToList();
+            }
+            else
+            {
+                var arriba = bas.Posicion == PosicionBaston.Superior;
+                y = arriba
+                    ? y0 + h - (rec + dEst + dSup) - sep - (dB / 2)
+                    : y0 + (rec + dEst + dInf) + sep + (dB / 2);
+                xs = Bastones.XsEnCama(bas.Cantidad, x0 + off, x0 + b - off);
+            }
 
             // Fuera del núcleo no es armado: no se dibuja.
             if (y - (dB / 2) < y0 + rec + dEst || y + (dB / 2) > y0 + h - rec - dEst)
@@ -2334,12 +2354,7 @@ public sealed partial class SeccionDrawer
                 continue;
             }
 
-            var off = rec + dEst + (dB / 2);
-            var pos = Bastones.XsEnCama(bas.Cantidad, x0 + off, x0 + b - off)
-                .Select(x => (x, y))
-                .ToList();
-
-            res.Add((bas, pos, dB / 2));
+            res.Add((bas, xs.Select(x => (x, y)).ToList(), dB / 2));
         }
 
         return res;

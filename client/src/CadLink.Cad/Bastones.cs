@@ -7,7 +7,10 @@ public enum PosicionBaston
     Superior,
 
     /// <summary>Abajo, junto al lecho inferior. Típico al centro del claro.</summary>
-    Inferior
+    Inferior,
+
+    /// <summary>A media altura, como las intermedias. Va recto, sin gancho.</summary>
+    Medio
 }
 
 /// <summary>En qué parte de la trabe va el bastón.</summary>
@@ -71,6 +74,33 @@ public sealed class BastonCad
 /// </remarks>
 public static class Bastones
 {
+    /// <summary>
+    /// Cuántos bastones admite una pieza: <b>tres</b>, uno arriba, uno en medio y uno
+    /// abajo. Lo pidió el usuario: más que eso no es un armado que se dibuje.
+    /// </summary>
+    public const int Maximo = 3;
+
+    /// <summary>
+    /// La altura del bastón de en medio, medida desde la cara de abajo del núcleo
+    /// (<paramref name="yBot"/>) hasta la de arriba (<paramref name="yTop"/>).
+    /// </summary>
+    /// <remarks>
+    /// A media altura, salvo que haya un número <b>impar</b> de intermedias: entonces una
+    /// de ellas cae justo ahí, y el bastón sube medio paso para no quedar encima de ella.
+    /// Es la misma cuenta en el alzado y en el corte.
+    /// </remarks>
+    public static double YMedio(double yBot, double yTop, int nIntermedias)
+    {
+        var medio = (yBot + yTop) / 2;
+
+        if (nIntermedias > 0 && nIntermedias % 2 == 1)
+        {
+            medio += (yTop - yBot) / (nIntermedias + 1) / 2;
+        }
+
+        return medio;
+    }
+
     /// <summary>Separación libre entre el lecho y la cama de bastones: 2.5 cm.</summary>
     public const double SeparacionCamaCm = 2.5;
 

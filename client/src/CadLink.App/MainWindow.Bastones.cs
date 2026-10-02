@@ -66,8 +66,9 @@ public partial class MainWindow
     /// <remarks>
     /// <list type="bullet">
     ///   <item>Sobre un bastón: lo <b>quita</b>.</item>
-    ///   <item>Mitad de <b>arriba</b> del alzado: bastón superior; mitad de <b>abajo</b>:
-    ///   inferior.</item>
+    ///   <item>Tercio de <b>arriba</b> del alzado: bastón superior; tercio <b>de en
+    ///   medio</b>: a media altura; tercio de <b>abajo</b>: inferior. Uno por posición: si
+    ///   ya hay, se cambia.</item>
     ///   <item>En el <b>primer o último tercio</b>: bastón de extremo, desde el paño hasta
     ///   donde se hizo clic. Va en los dos extremos; con <b>Ctrl</b>, solo en ese.</item>
     ///   <item>En el <b>tercio central</b>: bastón al centro, que empieza a L/4 de cada
@@ -105,7 +106,12 @@ public partial class MainWindow
             }
         }
 
-        var arriba = p.Y < a.Top + (a.H / 2);
+        // Tres franjas de alto: arriba, en medio y abajo. Son las tres únicas posiciones.
+        var posicion = p.Y < a.Top + (a.H / 3)
+            ? BastonSeccion.TextoSuperior
+            : p.Y > a.Top + (2 * a.H / 3)
+                ? BastonSeccion.TextoInferior
+                : BastonSeccion.TextoMedio;
         var xm = (p.X - a.Izq) / a.Esc;
         var soloUno = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
@@ -132,18 +138,23 @@ public partial class MainWindow
 
         var nuevo = new BastonSeccion
         {
-            Posicion = arriba ? BastonSeccion.TextoSuperior : BastonSeccion.TextoInferior,
+            Posicion = posicion,
             Ubicacion = ubicacion,
             Cantidad = CantidadBastonElegida,
             Diametro = DiametroBastonElegido,
             DistanciaM = distancia
         };
 
-        fila.ReemplazarBastones(fila.Bastones.Append(nuevo).ToList());
+        // UNO POR POSICIÓN: el clic en una franja que ya tiene bastón lo cambia, no añade
+        // otro. Así nunca hay más de tres.
+        var habia = fila.Bastones.Any(b => b.Posicion == posicion);
+        fila.ReemplazarBastones(
+            fila.Bastones.Where(b => b.Posicion != posicion).Append(nuevo).ToList());
 
         StatusText.Text =
             $"Bastón {nuevo.Cantidad} {nuevo.Diametro} {nuevo.Posicion.ToLowerInvariant()}, " +
-            $"{nuevo.Ubicacion.ToLowerInvariant()}, a {distancia:0.00} m del paño. " +
+            $"{nuevo.Ubicacion.ToLowerInvariant()}, a {distancia:0.00} m del paño" +
+            (habia ? ", en lugar del que había. " : ". ") +
             "Clic encima para quitarlo; «Bastones…» para afinar.";
 
         DibujarVistaPrevia();
@@ -254,6 +265,19 @@ public partial class MainWindow
 
         agregar.Click += (_, _) =>
         {
+            // Tres como mucho, uno por posición: el nuevo toma la que quede libre.
+            var libre = BastonSeccion.Posiciones.FirstOrDefault(
+                pos => copias.All(b => b.Posicion != pos));
+
+            if (libre is null)
+            {
+                // La ventana del botón: el cuadro todavía no tiene nombre en este punto.
+                MessageBox.Show(Window.GetWindow(agregar)!,
+                    "Ya hay un bastón arriba, uno en medio y uno abajo, que son los tres que caben.",
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             // El primero va arriba en los extremos, que es el bastón típico; el siguiente
             // abajo al centro, que es el otro. A partir de ahí, copia el último.
             var nuevo = copias.Count switch
@@ -267,6 +291,7 @@ public partial class MainWindow
                 _ => copias[^1].Copia()
             };
 
+            nuevo.Posicion = libre;
             copias.Add(nuevo);
             tabla.SelectedItem = nuevo;
         };
@@ -312,6 +337,16 @@ public partial class MainWindow
         {
             // Que la celda que se esté escribiendo cuente.
             tabla.CommitEdit(DataGridEditingUnit.Row, true);
+
+            var repetida = copias.GroupBy(b => b.Posicion).FirstOrDefault(g => g.Count() > 1);
+            if (repetida is not null)
+            {
+                MessageBox.Show(ventana,
+                    $"Hay más de un bastón «{repetida.Key}». Va uno arriba, uno en medio y uno abajo.",
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             ventana.DialogResult = true;
         };
 

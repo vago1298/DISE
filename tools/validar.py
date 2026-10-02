@@ -2690,6 +2690,17 @@ def v16_extruida_piers() -> None:
           and "_bastonesEnPrevia.Add(" in mw_alz)
     check("con sus mandos de varillas y diametro",
           'x:Name="BastonCantidadTxt"' in xaml_sel and 'x:Name="BastonDiametroCombo"' in xaml_sel)
+    #  Pedido del usuario: SOLO TRES bastones -arriba, en medio y abajo- y con la misma
+    #  linea que las varillas corridas.
+    check("tres posiciones de baston: arriba, en medio y abajo",
+          "public const int Maximo = 3;" in bast and "    Medio\n" in bast)
+    check("un clic en una posicion ocupada la cambia, no anade otra",
+          "fila.Bastones.Where(b => b.Posicion != posicion).Append(nuevo)" in mw_bast)
+    check("el alzado de AutoCAD dibuja el baston con la rutina de las corridas",
+          "ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);" in alz_drw
+          and "private void GanchoDeBaston(" not in alz_drw)
+    check("y la vista previa tambien",
+          "BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM," in mw_alz)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

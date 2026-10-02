@@ -4529,6 +4529,14 @@ public partial class MainWindow : Window
         var largo = AlzadoDrawer.LargoDe(AFormatoAlzado(s));
         var n = 0;
 
+        // Tres como mucho: uno arriba, uno en medio y uno abajo.
+        foreach (var g in s.Bastones.GroupBy(b => b.Posicion).Where(g => g.Count() > 1))
+        {
+            problemas.Add(
+                $"• {etiqueta}: lleva {g.Count()} bastones «{g.Key}». Va uno por posición " +
+                "(arriba, en medio y abajo).");
+        }
+
         foreach (var b in s.Bastones)
         {
             n++;
@@ -6006,14 +6014,18 @@ public partial class MainWindow : Window
         // el usuario está ajustando en la casilla— era justo lo único que no se veía.
         var ganchoM = a.GanchoCm / 100.0;
 
-        void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM)
+        // xDesde/xHasta y los ganchos por punta son para los BASTONES: así se pintan con
+        // esta misma rutina, igual que las corridas, y no con una raya aparte.
+        void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM,
+            double? xDesde = null, double? xHasta = null,
+            bool ganchoIzq = true, bool ganchoDer = true)
         {
             var dM = dCm / 100.0;
             var grosor = Math.Max(dM * esc, 1.4);
             var verde = new SolidColorBrush(Color.FromRgb(0x1D, 0x8A, 0x4E));
 
-            var xIni = izquierda + rec;
-            var xFin = izquierda + w - rec;
+            var xIni = xDesde ?? izquierda + rec;
+            var xFin = xHasta ?? izquierda + w - rec;
 
             // ===== UNA SOLA POLILINEA, CON LAS UNIONES REDONDEADAS =====
             //
@@ -6055,9 +6067,9 @@ public partial class MainWindow : Window
             // llamador—, para que se vea que son dos piezas distintas.
             var gM = Math.Min(15 * dM, disponibleM);
 
-            if (gM < dM)
+            if (gM < dM || (!ganchoIzq && !ganchoDer))
             {
-                gM = 0;   // no cabe ni un diámetro: no hay gancho que dibujar
+                gM = 0;   // no cabe ni un diámetro, o no lleva: no hay gancho que dibujar
             }
 
             if (gM > 0)
@@ -6088,10 +6100,10 @@ public partial class MainWindow : Window
                 {
                     // Sin sitio para el doblez se deja en pico: es mejor que un arco que
                     // se dobla sobre sí mismo.
-                    trazo.Add(new Point(xIni, yCentro + g));
+                    if (ganchoIzq) { trazo.Add(new Point(xIni, yCentro + g)); }
                     trazo.Add(new Point(xIni, yCentro));
                     trazo.Add(new Point(xFin, yCentro));
-                    trazo.Add(new Point(xFin, yCentro + g));
+                    if (ganchoDer) { trazo.Add(new Point(xFin, yCentro + g)); }
                 }
                 else
                 {
@@ -6099,16 +6111,30 @@ public partial class MainWindow : Window
 
                     // La punta de la cola de la izquierda, y el doblez que la entrega al
                     // tramo recto.
-                    trazo.Add(new Point(xIni, yCentro + g));
+                    if (ganchoIzq)
+                    {
+                        trazo.Add(new Point(xIni, yCentro + g));
 
-                    Doblez(xIni + radio, yCentro + (s * radio), radio,
-                           pi, pi + (s * pi / 2));
+                        Doblez(xIni + radio, yCentro + (s * radio), radio,
+                               pi, pi + (s * pi / 2));
+                    }
+                    else
+                    {
+                        trazo.Add(new Point(xIni, yCentro));
+                    }
 
                     // El tramo recto lo pone el propio doblez de la derecha.
-                    Doblez(xFin - radio, yCentro + (s * radio), radio,
-                           (2 * pi) - (s * pi / 2), 2 * pi);
+                    if (ganchoDer)
+                    {
+                        Doblez(xFin - radio, yCentro + (s * radio), radio,
+                               (2 * pi) - (s * pi / 2), 2 * pi);
 
-                    trazo.Add(new Point(xFin, yCentro + g));
+                        trazo.Add(new Point(xFin, yCentro + g));
+                    }
+                    else
+                    {
+                        trazo.Add(new Point(xFin, yCentro));
+                    }
                 }
             }
             else
@@ -6296,52 +6322,61 @@ public partial class MainWindow : Window
 
         // ---------- Los bastones ----------
         //
-        // Los MISMOS tramos que AutoCAD, sacados de CadLink.Cad.Bastones, en su cama por
-        // dentro del lecho. Aquí van rectos y sin gancho: la vista previa enseña dónde van
-        // y cuánto miden, que es lo que se está ajustando en su cuadro.
+        // Con la MISMA rutina que las corridas —BarraDeAlzado—, así se ven igual: mismo
+        // grosor, mismo color, mismo doblez. Tres como mucho: arriba, en medio y abajo, a
+        // las mismas alturas que AutoCAD (CadLink.Cad.Bastones). El gancho, solo en la punta
+        // que llega al paño, y solo en los de arriba y abajo.
         if (!a.EsVertical && a.Bastones.Count > 0)
         {
             var sepCama = CadLink.Cad.Bastones.SeparacionCamaCm / 100.0 * esc;
-            var camas = new Dictionary<PosicionBaston, int>();
-            var naranja = new SolidColorBrush(Color.FromRgb(0xC2, 0x6A, 0x12));
+            var caraSup = top + rec + (dSupCm / 100.0 * esc);       // cara de dentro del lecho de arriba
+            var caraInf = top + h - rec - (dInfCm / 100.0 * esc);   // y del de abajo
+            var usadas = new HashSet<PosicionBaston>();
 
             for (var iB = 0; iB < a.Bastones.Count; iB++)
             {
                 var b = a.Bastones[iB];
                 var tramos = CadLink.Cad.Bastones.Tramos(b, largo);
-                if (tramos.Count == 0)
+
+                if (tramos.Count == 0 || !usadas.Add(b.Posicion))
                 {
                     continue;
                 }
 
-                var arriba = b.Posicion == PosicionBaston.Superior;
-                var cama = camas.TryGetValue(b.Posicion, out var c) ? c : 0;
-                camas[b.Posicion] = cama + 1;
-
                 var dB = b.Var.Cm / 100.0 * esc;
-                var desde = sepCama + (dB / 2) + (cama * (sepCama + dB));
 
-                // El lienzo crece hacia ABAJO: el lecho superior está en top.
-                var yB = arriba
-                    ? top + rec + (dSupCm / 100.0 * esc) + desde
-                    : top + h - rec - (dInfCm / 100.0 * esc) - desde;
+                // El lienzo crece hacia ABAJO.
+                var yB = b.Posicion switch
+                {
+                    PosicionBaston.Superior => caraSup + sepCama + (dB / 2),
+                    PosicionBaston.Inferior => caraInf - sepCama - (dB / 2),
+                    _ => CadLink.Cad.Bastones.YMedio(caraInf, caraSup, a.NLateral)
+                };
+
+                var arriba = b.Posicion == PosicionBaston.Superior;
+                var disponibleM = b.Posicion switch
+                {
+                    PosicionBaston.Superior => (caraInf - yB - (dB / 2)) / esc,
+                    PosicionBaston.Inferior => (yB - (dB / 2) - caraSup) / esc,
+                    _ => 0
+                };
 
                 foreach (var t in tramos)
                 {
-                    var xIni = izquierda + (Math.Max(t.Ini * esc, rec));
-                    var xFin = izquierda + (Math.Min(t.Fin * esc, w - rec));
+                    var xIni = izquierda + Math.Max(t.Ini * esc, rec);
+                    var xFin = izquierda + Math.Min(t.Fin * esc, w - rec);
+
+                    if (xFin <= xIni + 1)
+                    {
+                        continue;
+                    }
 
                     // Su caja, para que un clic encima lo quite.
-                    _bastonesEnPrevia.Add((new Rect(xIni, yB - 5, Math.Max(xFin - xIni, 1), 10), iB));
+                    _bastonesEnPrevia.Add((new Rect(xIni, yB - 5, xFin - xIni, 10), iB));
 
-                    PreviaFijaCanvas.Children.Add(new Line
-                    {
-                        X1 = xIni, Y1 = yB, X2 = xFin, Y2 = yB,
-                        Stroke = naranja,
-                        StrokeThickness = Math.Max(dB, 1.6),
-                        StrokeStartLineCap = PenLineCap.Round,
-                        StrokeEndLineCap = PenLineCap.Round
-                    });
+                    BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
+                        xDesde: xIni, xHasta: xFin,
+                        ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);
                 }
 
                 // El rótulo, sobre el primer tramo.

@@ -23,6 +23,7 @@ public sealed class BastonSeccion : INotifyPropertyChanged
 {
     public const string TextoSuperior = "Superior";
     public const string TextoInferior = "Inferior";
+    public const string TextoMedio = "En medio";
 
     public const string TextoExtremos = "Ambos extremos";
     public const string TextoIzquierdo = "Extremo izquierdo";
@@ -30,7 +31,7 @@ public sealed class BastonSeccion : INotifyPropertyChanged
     public const string TextoCentro = "Centro";
 
     /// <summary>Las opciones de los dos combos del cuadro.</summary>
-    public static IReadOnlyList<string> Posiciones { get; } = new[] { TextoSuperior, TextoInferior };
+    public static IReadOnlyList<string> Posiciones { get; } = new[] { TextoSuperior, TextoMedio, TextoInferior };
 
     public static IReadOnlyList<string> Ubicaciones { get; } =
         new[] { TextoExtremos, TextoIzquierdo, TextoDerecho, TextoCentro };
@@ -69,7 +70,12 @@ public sealed class BastonSeccion : INotifyPropertyChanged
     /// <summary>Al formato del dibujante, con el diámetro ya en centímetros.</summary>
     public BastonCad ACad() => new()
     {
-        Posicion = Posicion == TextoInferior ? PosicionBaston.Inferior : PosicionBaston.Superior,
+        Posicion = Posicion switch
+        {
+            TextoInferior => PosicionBaston.Inferior,
+            TextoMedio => PosicionBaston.Medio,
+            _ => PosicionBaston.Superior
+        },
         Ubicacion = Ubicacion switch
         {
             TextoIzquierdo => UbicacionBaston.Izquierdo,
