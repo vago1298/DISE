@@ -1636,13 +1636,13 @@ public partial class MainWindow : Window
                 var ultimoConAlzado = _datos.SeccionesConcreto
                     .LastOrDefault(s => TipoDe(s.Elemento, s.Id) is not null);
 
+                // Sin aviso aparte, a pedido del usuario: basta con que el resumen diga que el
+                // alzado se rehízo al final de la fila.
                 if (nuevoAlzado && !ReferenceEquals(ultimoConAlzado, fila))
                 {
                     x0 = XEnLaFilaDeAlzados(alzados, null);
-                    avisos.Add(
-                        $"El alzado de \"{id}\" es nuevo y la fila está a media tabla: su lugar " +
-                        "ya lo ocupa el alzado siguiente, así que lo dibujé al final de la fila.");
                 }
+
                 var antes = AcadConnection.Retry(() => (int)ms.Count);
 
                 var siguiente = alzados.DibujarElemento(AFormatoAlzado(fila), x0);
@@ -1651,7 +1651,7 @@ public partial class MainWindow : Window
                 {
                     MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(id), x0, alzados.UltimaYFila);
                     hecho.Add(nuevoAlzado && !ReferenceEquals(ultimoConAlzado, fila)
-                        ? "su alzado, al final de la fila"
+                        ? "su alzado, hasta el final de la fila"
                         : "su alzado, en su lugar de la tabla");
                 }
 
