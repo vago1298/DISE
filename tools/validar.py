@@ -2648,6 +2648,39 @@ def v16_extruida_piers() -> None:
           and "MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(r.Id), x, dibujante.UltimaYFila)"
           in m_exa.group(0))
 
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  BASTONES
+    #
+    #  Pedido del usuario: superiores e inferiores, NO en la tabla sino aparte como las
+    #  grapas, con la distancia desde los paños; en el alzado con su longitud y su
+    #  varilla, y en el corte cuando la linea A-A' los cruza. Solo trabes y contratrabes.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    bast = leer(ruta("client/src/CadLink.Cad/Bastones.cs"))
+    check("las reglas de los bastones viven en un solo sitio, sin AutoCAD",
+          "public static List<Tramo> Tramos(" in bast
+          and "public static List<BastonCad> EnElCorte(" in bast
+          and "AcadConnection" not in bast)
+    check("el corte de los bastones es el de la linea A-A'",
+          "AlzadoLayout.PosicionCorte(largo)" in bast)
+    check("el alzado dibuja los bastones solo en horizontal",
+          "var bastones = girar" in alz_drw and "DibujarBastones(bloque, a, largo" in alz_drw)
+    check("y los acota con su longitud y su varilla",
+          'Bastones.Texto(b) + "  L = <>"' in alz_drw)
+    check("el corte los dibuja en su cama, con llamada",
+          "BastonesDelCorte(circulos, s, xIzquierda, yAbajo" in sec_drw
+          and "LeaderBaston(" in sec_drw)
+    sec_circ = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Circular.cs"))
+    check("y sus llamadas se rehacen junto al bloque del alzado",
+          "LeaderBaston(pos[0].X, pos[0].Y, bas, xIzquierda);" in sec_circ)
+    check("solo trabes y contratrabes llevan bastones",
+          "TipoDe(r.Elemento, r.Id) is TipoElemento.Trabe or TipoElemento.Contratrabe" in mw_alz)
+    check("no van en la tabla: tienen su cuadro",
+          'Click="OnEditarBastones"' in xaml_sel
+          and "private void OnEditarBastones(" in leer(ruta("client/src/CadLink.App/MainWindow.Bastones.cs")))
+    check("se guardan en el trabajo",
+          "guardada.Bastones.Add(new BastonGuardado" in mw_alz
+          and "fila.CargarBaston(new BastonSeccion" in mw_alz)
+
     #  QUE ES LA MISMA CAPA EN LA QUE ROTULA EL DIBUJANTE DE SECCIONES: si algun dia se
     #  cambia alli, esto avisa de que las dos hojas dejaron de coincidir.
     secdrw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))

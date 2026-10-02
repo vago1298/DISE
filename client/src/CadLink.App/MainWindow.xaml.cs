@@ -2420,6 +2420,15 @@ public partial class MainWindow : Window
                 });
             }
 
+            foreach (var b in s.Bastones)
+            {
+                guardada.Bastones.Add(new BastonGuardado
+                {
+                    Posicion = b.Posicion, Ubicacion = b.Ubicacion,
+                    Cantidad = b.Cantidad, Diametro = b.Diametro, DistanciaM = b.DistanciaM
+                });
+            }
+
             p.Secciones.Add(guardada);
         }
 
@@ -2573,6 +2582,22 @@ public partial class MainWindow : Window
                         A = new RefVarilla((LechoVarilla)g.LechoA, g.IndiceA),
                         B = new RefVarilla((LechoVarilla)g.LechoB, g.IndiceB),
                         Diametro = string.IsNullOrWhiteSpace(g.Diametro) ? "#3" : g.Diametro
+                    });
+                }
+
+                // Los bastones. Lo que no se reconozca toma el valor de siempre en lugar de
+                // tumbar la carga, igual que el resto de la fila.
+                foreach (var b in s.Bastones ?? new List<BastonGuardado>())
+                {
+                    fila.CargarBaston(new BastonSeccion
+                    {
+                        Posicion = BastonSeccion.Posiciones.Contains(b.Posicion)
+                            ? b.Posicion : BastonSeccion.TextoSuperior,
+                        Ubicacion = BastonSeccion.Ubicaciones.Contains(b.Ubicacion)
+                            ? b.Ubicacion : BastonSeccion.TextoExtremos,
+                        Cantidad = b.Cantidad,
+                        Diametro = string.IsNullOrWhiteSpace(b.Diametro) ? "#4" : b.Diametro,
+                        DistanciaM = b.DistanciaM
                     });
                 }
 
@@ -4398,6 +4423,12 @@ public partial class MainWindow : Window
             {
                 yield return Varilla.Normalizar(g.Diametro);
             }
+
+            // Los bastones, para que su capa de varilla exista con su color.
+            foreach (var b in s.Bastones)
+            {
+                yield return Varilla.Normalizar(b.Diametro);
+            }
         }
     }
 
@@ -4477,9 +4508,65 @@ public partial class MainWindow : Window
             // de CAD justamente para que no haya que traducirlas y no puedan divergir.
             Grapas = r.Grapas
                 .Select(g => new GrapaCad { A = g.A, B = g.B, Var = V(g.Diametro) })
-                .ToList()
+                .ToList(),
+
+            // ---------- Bastones ----------
+            // Solo los que CRUZA el corte A-A', que es lo que se ve en la sección. El corte
+            // está donde lo pone el alzado, así que la longitud sale del mismo cálculo.
+            BastonesEnCorte = LlevaBastones(r)
+                ? CadLink.Cad.Bastones.EnElCorte(
+                    r.Bastones.Select(b => b.ACad()), AlzadoDrawer.LargoDe(AFormatoAlzado(r)))
+                : new List<BastonCad>()
         };
     }
+
+    /// <summary>
+    /// Que cada bastón se pueda dibujar: varillas, diámetro reconocido y una distancia que
+    /// quepa en la trabe.
+    /// </summary>
+    private void RevisarBastones(List<string> problemas, string etiqueta, SeccionConcretoRow s)
+    {
+        var largo = AlzadoDrawer.LargoDe(AFormatoAlzado(s));
+        var n = 0;
+
+        foreach (var b in s.Bastones)
+        {
+            n++;
+            var cual = $"• {etiqueta}: el bastón {n} ({b.Posicion.ToLowerInvariant()}, {b.Ubicacion.ToLowerInvariant()})";
+
+            if (b.Cantidad <= 0)
+            {
+                problemas.Add($"{cual} no tiene varillas.");
+            }
+
+            if (!Varilla.TryDiametroCm(b.Diametro, out _))
+            {
+                problemas.Add($"{cual} tiene un diámetro que no reconozco: «{b.Diametro}».");
+            }
+
+            if (b.DistanciaM <= 0)
+            {
+                problemas.Add($"{cual} necesita una distancia desde el paño mayor que cero.");
+            }
+            else if (b.Ubicacion == BastonSeccion.TextoCentro && 2 * b.DistanciaM >= largo)
+            {
+                problemas.Add(
+                    $"{cual} empieza a {b.DistanciaM:0.##} m de cada paño, y la trabe mide " +
+                    $"{largo:0.##} m: no queda bastón.");
+            }
+            else if (b.Ubicacion == BastonSeccion.TextoExtremos && 2 * b.DistanciaM > largo)
+            {
+                problemas.Add(
+                    $"{cual} mide {b.DistanciaM:0.##} m desde cada paño, y la trabe mide " +
+                    $"{largo:0.##} m: los dos bastones se enciman al centro.");
+            }
+        }
+    }
+
+    /// <summary>Solo las trabes y las contratrabes llevan bastones.</summary>
+    private static bool LlevaBastones(SeccionConcretoRow r) =>
+        TipoDe(r.Elemento, r.Id) is TipoElemento.Trabe or TipoElemento.Contratrabe
+        && !r.EsCircular;
 
     /// <summary>Convierte una fila de la tabla en datos de alzado.</summary>
     private AlzadoCad AFormatoAlzado(SeccionConcretoRow r)
@@ -4546,7 +4633,11 @@ public partial class MainWindow : Window
             Circular = r.EsCircular,
             NVarTotal = r.NVarTotal,
             VarTotal = V(r.DiamVarTotalEfectivo),
-            ZunchoHelicoidal = r.EsZunchoHelicoidal
+            ZunchoHelicoidal = r.EsZunchoHelicoidal,
+
+            Bastones = LlevaBastones(r)
+                ? r.Bastones.Select(b => b.ACad()).ToList()
+                : new List<BastonCad>()
         };
     }
 
@@ -4721,6 +4812,11 @@ public partial class MainWindow : Window
             }
 
             RevisarDiametro(problemas, etiqueta, "estribo", s.Estribo, obligatorio: true);
+
+            if (LlevaBastones(s))
+            {
+                RevisarBastones(problemas, etiqueta, s);
+            }
 
             if (s.EsCircular)
             {
@@ -6184,6 +6280,60 @@ public partial class MainWindow : Window
                 rLatCm * 2,
                 dobleHaciaAbajo: false,
                 disponibleM: 0);
+        }
+
+        // ---------- Los bastones ----------
+        //
+        // Los MISMOS tramos que AutoCAD, sacados de CadLink.Cad.Bastones, en su cama por
+        // dentro del lecho. Aquí van rectos y sin gancho: la vista previa enseña dónde van
+        // y cuánto miden, que es lo que se está ajustando en su cuadro.
+        if (!a.EsVertical && a.Bastones.Count > 0)
+        {
+            var sepCama = CadLink.Cad.Bastones.SeparacionCamaCm / 100.0 * esc;
+            var camas = new Dictionary<PosicionBaston, int>();
+            var naranja = new SolidColorBrush(Color.FromRgb(0xC2, 0x6A, 0x12));
+
+            foreach (var b in a.Bastones)
+            {
+                var tramos = CadLink.Cad.Bastones.Tramos(b, largo);
+                if (tramos.Count == 0)
+                {
+                    continue;
+                }
+
+                var arriba = b.Posicion == PosicionBaston.Superior;
+                var cama = camas.TryGetValue(b.Posicion, out var c) ? c : 0;
+                camas[b.Posicion] = cama + 1;
+
+                var dB = b.Var.Cm / 100.0 * esc;
+                var desde = sepCama + (dB / 2) + (cama * (sepCama + dB));
+
+                // El lienzo crece hacia ABAJO: el lecho superior está en top.
+                var yB = arriba
+                    ? top + rec + (dSupCm / 100.0 * esc) + desde
+                    : top + h - rec - (dInfCm / 100.0 * esc) - desde;
+
+                foreach (var t in tramos)
+                {
+                    var xIni = izquierda + (Math.Max(t.Ini * esc, rec));
+                    var xFin = izquierda + (Math.Min(t.Fin * esc, w - rec));
+
+                    PreviaFijaCanvas.Children.Add(new Line
+                    {
+                        X1 = xIni, Y1 = yB, X2 = xFin, Y2 = yB,
+                        Stroke = naranja,
+                        StrokeThickness = Math.Max(dB, 1.6),
+                        StrokeStartLineCap = PenLineCap.Round,
+                        StrokeEndLineCap = PenLineCap.Round
+                    });
+                }
+
+                // El rótulo, sobre el primer tramo.
+                Etiqueta(PreviaFijaCanvas,
+                    CadLink.Cad.Bastones.Texto(b) + $"  {tramos[0].Largo:0.00} m",
+                    izquierda + (tramos[0].Ini * esc) + 4,
+                    arriba ? yB + 2 : yB - 16);
+            }
         }
 
         // Y AHORA los estribos, encima de las varillas.

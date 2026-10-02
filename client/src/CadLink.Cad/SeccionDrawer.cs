@@ -1071,6 +1071,9 @@ public sealed partial class SeccionDrawer
 
         Laterales(circulos, s, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf);
 
+        // Los bastones que cruza el corte A-A', en su cama por dentro del lecho.
+        BastonesDelCorte(circulos, s, xIzquierda, yAbajo, b, h, rec, dEst, dSup, dInf);
+
         var rellenosVarilla = new List<object>();
         RellenarVarillas(circulos, rellenosVarilla);
 
@@ -2288,6 +2291,95 @@ public sealed partial class SeccionDrawer
             LeaderVarilla(xIzq, y, 2, s.Lateral.Clave, x0);
             LeaderVarilla(xDer, y, 2, s.Lateral.Clave, x0);
         }
+    }
+
+    /// <summary>
+    /// <b>Dónde</b> van las varillas de los bastones del corte, sin dibujar nada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cada bastón es una <b>cama</b> por dentro de su lecho, a
+    /// <see cref="Bastones.SeparacionCamaCm"/> libres, y repartida entre las dos esquinas.
+    /// Si hay dos bastones en el mismo lecho, el segundo va una cama más adentro: es el
+    /// mismo orden que usa el alzado, así que la cama del corte es la del alzado.
+    /// </para>
+    /// <para>
+    /// Separado del dibujo por lo mismo que <see cref="PosicionesDeLecho"/>: las llamadas se
+    /// rehacen junto al bloque que inserta el alzado.
+    /// </para>
+    /// </remarks>
+    private List<(BastonCad B, List<(double X, double Y)> Pos, double R)> PosicionesDeBastones(
+        SeccionCad s, double x0, double y0, double b, double h,
+        double rec, double dEst, double dSup, double dInf)
+    {
+        var res = new List<(BastonCad, List<(double, double)>, double)>();
+        var sep = Bastones.SeparacionCamaCm * _escala;
+        var camaSup = 0;
+        var camaInf = 0;
+
+        foreach (var bas in s.BastonesEnCorte.Where(Bastones.EsValido))
+        {
+            var dB = bas.Var.Cm * _escala;
+            var arriba = bas.Posicion == PosicionBaston.Superior;
+            var cama = arriba ? camaSup++ : camaInf++;
+
+            var desdeLecho = sep + (dB / 2) + (cama * (sep + dB));
+            var y = arriba
+                ? y0 + h - (rec + dEst + dSup) - desdeLecho
+                : y0 + (rec + dEst + dInf) + desdeLecho;
+
+            // Fuera del núcleo no es armado: no se dibuja.
+            if (y - (dB / 2) < y0 + rec + dEst || y + (dB / 2) > y0 + h - rec - dEst)
+            {
+                continue;
+            }
+
+            var off = rec + dEst + (dB / 2);
+            var pos = Bastones.XsEnCama(bas.Cantidad, x0 + off, x0 + b - off)
+                .Select(x => (x, y))
+                .ToList();
+
+            res.Add((bas, pos, dB / 2));
+        }
+
+        return res;
+    }
+
+    /// <summary>Dibuja los bastones del corte y sus llamadas.</summary>
+    private void BastonesDelCorte(
+        List<object> circulos, SeccionCad s,
+        double x0, double y0, double b, double h, double rec, double dEst,
+        double dSup, double dInf)
+    {
+        foreach (var (bas, pos, r) in
+                 PosicionesDeBastones(s, x0, y0, b, h, rec, dEst, dSup, dInf))
+        {
+            foreach (var (x, y) in pos)
+            {
+                Agregar(circulos, Varilla(x, y, r, bas.Var.Clave));
+            }
+
+            if (pos.Count > 0)
+            {
+                LeaderBaston(pos[0].X, pos[0].Y, bas, x0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// La llamada de un bastón en el corte: igual que la de una varilla lateral, con su
+    /// texto de bastón.
+    /// </summary>
+    private void LeaderBaston(double x, double y, BastonCad bas, double xIzquierdaSeccion)
+    {
+        var yAbajo = y - (LineaVerticalDist * _f);
+        var xTexto = xIzquierdaSeccion - (0.02 * _f);
+
+        Rotulado(Linea(x, y, x, yAbajo, "ROTULOS"));
+        FlechaTriangular(x, y, haciaArriba: false);
+        Rotulado(Linea(x, yAbajo, xTexto, yAbajo, "ROTULOS"));
+
+        TextoLeader(xTexto, yAbajo, Bastones.Texto(bas));
     }
 
     private object? Varilla(double cx, double cy, double radio, string clave)

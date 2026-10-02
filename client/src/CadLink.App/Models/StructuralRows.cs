@@ -1229,6 +1229,30 @@ public sealed class SeccionConcretoRow : Row
     /// </remarks>
     public void CargarGrapa(GrapaSeccion g) => _grapas.Add(g);
 
+    // ======================================================================
+    //  Bastones: varillas adicionales que no corren de paño a paño
+    // ======================================================================
+
+    private readonly List<BastonSeccion> _bastones = new();
+
+    /// <summary>Los bastones de esta fila. Solo cuentan en trabes y contratrabes.</summary>
+    /// <remarks>
+    /// De solo lectura por lo mismo que <see cref="Grapas"/>: los cambios pasan por
+    /// <see cref="ReemplazarBastones"/> para que el aviso salga siempre.
+    /// </remarks>
+    public IReadOnlyList<BastonSeccion> Bastones => _bastones;
+
+    /// <summary>Cambia todos los bastones de una vez, que es como los entrega su cuadro.</summary>
+    public void ReemplazarBastones(IEnumerable<BastonSeccion> nuevos)
+    {
+        _bastones.Clear();
+        _bastones.AddRange(nuevos);
+        Raise(nameof(Bastones));
+    }
+
+    /// <summary>Mete un bastón <b>sin</b> avisar, para cargar el proyecto.</summary>
+    public void CargarBaston(BastonSeccion b) => _bastones.Add(b);
+
     protected override void RaiseCalculadas()
     {
         Raise(nameof(DiamIntSupEfectivo));

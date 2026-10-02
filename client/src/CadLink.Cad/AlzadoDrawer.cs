@@ -667,7 +667,11 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>Longitud del elemento: la columna W o, si viene vacía, la calculada.</summary>
-    private static double LargoDe(AlzadoCad a)
+    /// <remarks>
+    /// Pública porque el corte la necesita para saber qué bastones cruza: con otra cuenta,
+    /// el corte y el alzado discutirían sobre dónde está la línea A-A'.
+    /// </remarks>
+    public static double LargoDe(AlzadoCad a)
     {
         if (a.LongitudM > 0)
         {
@@ -769,6 +773,9 @@ public sealed class AlzadoDrawer
         public double GanchoSup;
         public double GanchoInf;
         public List<double> Centros = new();
+
+        /// <summary>Cada tramo de bastón dibujado, con la Y de su eje, para acotarlo.</summary>
+        public List<(BastonCad B, Bastones.Tramo T, double Yc)> Bastones = new();
     }
 
     /// <summary>
@@ -951,6 +958,14 @@ public sealed class AlzadoDrawer
                 dSup, dInf, gSup, gInf, centros, dEst, relleno);
         }
 
+        // ---------- Bastones ----------
+        // Solo en el alzado HORIZONTAL: trabes y contratrabes. Van antes del color y del
+        // orden para que se rellenen y se ordenen como cualquier otra varilla.
+        var bastones = girar
+            ? new List<(BastonCad B, Bastones.Tramo T, double Yc)>()
+            : DibujarBastones(bloque, a, largo, y0, y1, rec, ycSup, ycInf, dSup, dInf,
+                centros, dEst, relleno);
+
         // ---------- Color y orden ----------
         if (relleno)
         {
@@ -993,7 +1008,8 @@ public sealed class AlzadoDrawer
             YcSup = ycSup, YcInf = ycInf,
             Xa = xa, Xb = xb, XaInf = xaInf, XbInf = xbInf,
             GanchoSup = gSup, GanchoInf = gInf,
-            Centros = centros
+            Centros = centros,
+            Bastones = bastones
         };
     }
 
@@ -1041,6 +1057,16 @@ public sealed class AlzadoDrawer
             if (sup != "---") { lineas.Add(sup); }
             if (lat != "---") { lineas.Add(lat); }
             if (inf != "---") { lineas.Add(inf); }
+
+            // Los bastones, solo en trabes y contratrabes.
+            if (!a.EsVertical)
+            {
+                foreach (var b in a.Bastones.Where(Bastones.EsValido))
+                {
+                    lineas.Add(Bastones.Texto(b) +
+                               (b.Posicion == PosicionBaston.Superior ? " sup." : " inf."));
+                }
+            }
         }
 
         // Acero transversal. Se usa la separación TAL COMO se capturó —«10-20-20»— y no
@@ -2291,6 +2317,151 @@ public sealed class AlzadoDrawer
         }
     }
 
+    /// <summary>
+    /// Los <b>bastones</b> del alzado: cada uno en su cama, por dentro de su lecho, y con
+    /// gancho en la punta que llega al paño.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La cama queda a <see cref="Bastones.SeparacionCamaCm"/> libres del lecho, la misma
+    /// que usa el corte: así la varilla que se ve en la sección es la que pasa por el
+    /// alzado. Si hay más de un bastón en el mismo lecho y se enciman a lo largo, el
+    /// segundo baja (o sube) una cama más.
+    /// </para>
+    /// <para>
+    /// El gancho es el de la trabe —12 diámetros, <see cref="Estribos.GanchoNominal"/>—
+    /// topado a lo que cabe, y dobla hacia dentro de la pieza como el de su lecho.
+    /// </para>
+    /// </remarks>
+    /// <returns>Cada tramo dibujado, con la Y de su eje, para acotarlo después.</returns>
+    private List<(BastonCad B, Bastones.Tramo T, double Yc)> DibujarBastones(
+        object bloque, AlzadoCad a, double largo, double y0, double y1, double rec,
+        double ycSup, double ycInf, double dSup, double dInf,
+        List<double> centros, double dEst, bool relleno)
+    {
+        var res = new List<(BastonCad B, Bastones.Tramo T, double Yc)>();
+
+        if (a.Circular || a.Bastones.Count == 0)
+        {
+            return res;
+        }
+
+        var sep = Bastones.SeparacionCamaCm * _escala;
+
+        // Lo ya ocupado en cada lecho, por cama: (cama, ini, fin).
+        var ocupado = new List<(PosicionBaston P, int Cama, double Ini, double Fin)>();
+
+        foreach (var b in a.Bastones)
+        {
+            var dB = b.Var.Cm * _escala;
+            var tramos = Bastones.Tramos(b, largo);
+
+            if (dB <= 0 || tramos.Count == 0)
+            {
+                continue;
+            }
+
+            // La primera cama libre en la que no se encima con otro bastón del mismo lecho.
+            var cama = 0;
+            while (tramos.Any(t => ocupado.Any(o =>
+                       o.P == b.Posicion && o.Cama == cama && t.Ini < o.Fin && t.Fin > o.Ini)))
+            {
+                cama++;
+            }
+
+            foreach (var t in tramos)
+            {
+                ocupado.Add((b.Posicion, cama, t.Ini, t.Fin));
+            }
+
+            var arriba = b.Posicion == PosicionBaston.Superior;
+
+            // Desde la cara interior del lecho: la separación libre, y media varilla hasta
+            // su eje. Cada cama extra se aparta una varilla y una separación más.
+            var desdeLecho = sep + (dB / 2) + (cama * (sep + dB));
+
+            var yc = arriba
+                ? ycSup - (dSup / 2) - desdeLecho
+                : ycInf + (dInf / 2) + desdeLecho;
+
+            // Si la pieza es tan baja que la cama se sale del núcleo, no se dibuja: un
+            // bastón por fuera del estribo no es armado.
+            if (yc - (dB / 2) < y0 + rec || yc + (dB / 2) > y1 - rec)
+            {
+                _notas.Add($"Alzado '{a.Id}': el bastón {Bastones.Texto(b)} no cabe en el peralte y no se dibujó.");
+                continue;
+            }
+
+            // Hacia dónde dobla el gancho: hacia DENTRO, como el de su lecho.
+            var disponible = arriba
+                ? yc - (dB / 2) - (ycInf + (dInf / 2))
+                : (ycSup - (dSup / 2)) - (yc + (dB / 2));
+
+            var g = Estribos.GanchoEfectivo(
+                Estribos.GanchoNominal(false, a.GanchoCm * _escala, dB), disponible, dB);
+
+            var capa = CapaVar(b.Var.Clave);
+
+            foreach (var t in tramos)
+            {
+                // Del paño al recubrimiento: la varilla no llega a la cara del concreto.
+                var xL = Math.Max(t.Ini, rec);
+                var xR = Math.Min(t.Fin, largo - rec);
+
+                if (xR <= xL + dB)
+                {
+                    continue;
+                }
+
+                VarillaConGanchos(bloque, xL, xR, yc, dB, capa, centros, dEst, 0,
+                    hacia: !arriba, relleno);
+
+                if (g > 0 && t.GanchoIzq)
+                {
+                    GanchoDeBaston(bloque, xL, yc, dB, g, arriba, capa, relleno);
+                }
+
+                if (g > 0 && t.GanchoDer)
+                {
+                    GanchoDeBaston(bloque, xR - dB, yc, dB, g, arriba, capa, relleno);
+                }
+
+                res.Add((b, t, yc));
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// El gancho de un bastón: una pata de un diámetro de ancho que dobla hacia dentro de
+    /// la pieza desde su eje.
+    /// </summary>
+    private void GanchoDeBaston(
+        object bloque, double xIzq, double yc, double dB, double g, bool arriba,
+        string capa, bool relleno)
+    {
+        var u = arriba ? -1d : 1d;
+        var yPunta = yc + (u * ((dB / 2) + g));
+
+        var pl = Poli(bloque, new[]
+        {
+            xIzq,      yc,
+            xIzq + dB, yc,
+            xIzq + dB, yPunta,
+            xIzq,      yPunta
+        }, capa, cerrada: true, bulges: null);
+
+        if (relleno && pl is not null)
+        {
+            var h = Hatch(bloque, "SOLID", 1, pl, capa, PorCapa);
+            if (h is not null)
+            {
+                _fillVarillas.Add(h);
+            }
+        }
+    }
+
     private static double CorrerADerecha(
         double x, double ancho, List<double> centros, double hueco, double holgura)
     {
@@ -2591,6 +2762,9 @@ public sealed class AlzadoDrawer
             Cota(q[i], y, q[i + 1], y, medio, yZona, etiquetas[i], false);
         }
 
+        // Los bastones: su longitud y su varilla.
+        CotasDeBastones(x, y, y1, geo);
+
         // El corte A-A': línea vertical que cruza la trabe, A arriba y A' abajo.
         LineaDeCorte(x + AlzadoLayout.PosicionCorte(largo), y, y1, vertical: true);
 
@@ -2826,6 +3000,53 @@ public sealed class AlzadoDrawer
         catch (Exception ex)
         {
             Fallo($"Letra {letra} del corte del alzado", ex);
+        }
+    }
+
+    /// <summary>Donde empieza la primera fila de cotas de bastones, pasadas las del armado.</summary>
+    /// <remarks>
+    /// Arriba, las cotas del armado llegan a 32 cm de la cara; abajo, el título y su escala
+    /// bajan hasta unos 30 cm. Así que los bastones van más allá, en filas de 8 cm, la misma
+    /// separación que las demás cotas del alzado.
+    /// </remarks>
+    private const double PrimeraCotaBaston = 0.40;
+
+    private const double PasoCotaBaston = 0.08;
+
+    /// <summary>
+    /// Una cota por tramo de bastón con <b>su longitud desde el paño</b> y su varilla:
+    /// <c>2 Var. (Bastones) #4C  L = 1.20</c>.
+    /// </summary>
+    /// <remarks>
+    /// Los superiores arriba y los inferiores abajo, cada bastón en su propia fila; los dos
+    /// tramos de un bastón de extremos comparten fila, porque no se enciman. La cifra la
+    /// pone AutoCAD —el <c>&lt;&gt;</c> del texto—, así que siempre dice lo que mide.
+    /// </remarks>
+    private void CotasDeBastones(double x, double y, double y1, Geo geo)
+    {
+        var filaSup = new Dictionary<BastonCad, int>();
+        var filaInf = new Dictionary<BastonCad, int>();
+
+        foreach (var (b, t, _) in geo.Bastones)
+        {
+            var arriba = b.Posicion == PosicionBaston.Superior;
+            var filas = arriba ? filaSup : filaInf;
+
+            if (!filas.TryGetValue(b, out var fila))
+            {
+                fila = filas.Count;
+                filas[b] = fila;
+            }
+
+            var off = PrimeraCotaBaston + (fila * PasoCotaBaston);
+            var yCara = arriba ? y1 : y;
+            var yDim = arriba ? y1 + off : y - off;
+
+            var xa = x + t.Ini;
+            var xb = x + t.Fin;
+
+            Cota(xa, yCara, xb, yCara, (xa + xb) / 2, yDim,
+                Bastones.Texto(b) + "  L = <>", false);
         }
     }
 
