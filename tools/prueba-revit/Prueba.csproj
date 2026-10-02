@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba EJECUTABLE del nucleo del complemento de Revit.
+
+       Como tools/prueba-ifc, esta corre en CUALQUIER maquina: CadLink.Revit.Nucleo es
+       net8.0 pelado y no referencia RevitAPI.dll, asi que no hace falta tener Revit
+       instalado ni internet.
+
+       Lo que se comprueba aqui es todo lo que decide el complemento ANTES de tocar la
+       Revit API: leer el modelo, inventariar las secciones, emparejarlas con las
+       familias que hay cargadas, armar el plan de que crear y que actualizar, y el
+       comportamiento del cuadro de mapeo.
+
+       Lo que NO se puede comprobar aqui es la capa que llama a la API, en
+       client/src/CadLink.Revit, y por eso esa capa se dejo lo mas delgada posible.
+
+           cd tools/prueba-revit
+           dotnet run
+
+       Devuelve 0 si todo pasa y 1 si algo falla. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-revit</AssemblyName>
+
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj" />
+  </ItemGroup>
+
+</Project>

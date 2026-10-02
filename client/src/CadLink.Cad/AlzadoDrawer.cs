@@ -187,6 +187,9 @@ public sealed class AlzadoDrawer
     /// </remarks>
     private double YDeLaFila => AlzadoLayout.YArranque(AltoMaximoSeccion);
 
+    /// <summary>La Y de fila con la que se dibujó el último elemento.</summary>
+    public double UltimaYFila { get; private set; }
+
     public IReadOnlyList<string> Fallos => _log;
 
     public IReadOnlyList<string> Notas
@@ -250,7 +253,12 @@ public sealed class AlzadoDrawer
     ///   </item>
     /// </list>
     /// </remarks>
-    public double DibujarElemento(AlzadoCad a, double x0)
+    /// <param name="yFila">
+    /// La Y de la fila. Vacía, la de siempre (<see cref="YDeLaFila"/>). Se da al
+    /// <b>redibujar un solo elemento</b> en el sitio que ya tenía: si la sección más alta
+    /// cambió desde entonces, la fila calculada ya no es la de ese alzado.
+    /// </param>
+    public double DibujarElemento(AlzadoCad a, double x0, double? yFila = null)
     {
         var largo = LargoDe(a);
 
@@ -264,7 +272,10 @@ public sealed class AlzadoDrawer
         // MARGEN_COL de la columna.
         var xSec = AlzadoLayout.XSeccion(x0, a.EsVertical);
 
-        var y = YDeLaFila;
+        var y = yFila ?? YDeLaFila;
+
+        // Para quien quiera guardar dónde quedó y volver aquí.
+        UltimaYFila = y;
 
         var sec = InsertarSeccion(a.Id, xSec, y);
 
@@ -298,6 +309,160 @@ public sealed class AlzadoDrawer
         }
 
         return p.XSiguiente;
+    }
+
+    /// <summary>
+    /// Ancho y alto de cada bloque de sección insertado en el dibujo, por nombre.
+    /// </summary>
+    /// <remarks>
+    /// Una sola pasada por el modelo para todas: preguntarlo sección por sección recorrería
+    /// el plano entero una vez por fila. Es la misma caja que mide
+    /// <see cref="InsertarSeccion"/>, así que da el mismo avance.
+    /// </remarks>
+    public Dictionary<string, (double Ancho, double Alto)> MedidasDeSecciones()
+    {
+        var res = new Dictionary<string, (double, double)>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                res.Clear();
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    try
+                    {
+                        dynamic ent = _ms.Item(i);
+
+                        string clase = ent.ObjectName;
+                        if (!clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        string nombre = ent.Name;
+                        if (res.ContainsKey(nombre))
+                        {
+                            continue;
+                        }
+
+                        var caja = Caja((object)ent);
+                        if (caja is not null)
+                        {
+                            res[nombre] = (caja.Value.Max[0] - caja.Value.Min[0],
+                                           caja.Value.Max[1] - caja.Value.Min[1]);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Una entidad que no contesta no es una sección.
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Medir las secciones del dibujo", ex);
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// La X donde empieza el elemento siguiente, <b>sin dibujar nada</b>: la misma que
+    /// devolvería <see cref="DibujarElemento"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sirve para saber dónde va un alzado por su <b>lugar en la tabla</b>: se recorren las
+    /// filas anteriores sumando lo que avanzó cada una, con la misma aritmética de
+    /// <see cref="AlzadoLayout"/> y el ancho real de su bloque de sección.
+    /// </remarks>
+    public double XSiguienteSinDibujar(
+        AlzadoCad a, double x0, IReadOnlyDictionary<string, (double Ancho, double Alto)> medidas)
+    {
+        var largo = LargoDe(a);
+        if (largo <= 0)
+        {
+            return x0;
+        }
+
+        var y = YDeLaFila;
+
+        var (ancho, alto) = medidas.TryGetValue((a.Id ?? string.Empty).Trim(), out var m)
+            ? m
+            : (AlzadoLayout.AnchoSeccionSupuesto, AlzadoLayout.AltoSeccionSupuesto);
+
+        var dosCaras = a.EsVertical
+                       && !a.Circular
+                       && a.BaseCm > 0
+                       && Math.Abs(a.BaseCm - a.AlturaCm) > 1e-4;
+
+        return AlzadoLayout.Colocar(x0, a.EsVertical, ancho, y + alto, largo, dosCaras, y).XSiguiente;
+    }
+
+    /// <summary>
+    /// Borra las inserciones del alzado de <paramref name="id"/> (<c>ALZ-</c>, <c>ALZX-</c>,
+    /// <c>ALZY-</c>). Es para el alzado dibujado con una versión que no lo marcaba.
+    /// </summary>
+    /// <returns>Cuántas se borraron.</returns>
+    public int BorrarInsercionesDeAlzado(string id)
+    {
+        var nombres = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ALZ-" + id, "ALZX-" + id, "ALZY-" + id
+        };
+
+        var borrar = new List<object>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                borrar.Clear();
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    try
+                    {
+                        dynamic ent = _ms.Item(i);
+
+                        string clase = ent.ObjectName;
+                        if (clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase)
+                            && nombres.Contains((string)ent.Name))
+                        {
+                            borrar.Add((object)ent);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Se sigue con la siguiente.
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Buscar el alzado viejo de '{id}'", ex);
+        }
+
+        var n = 0;
+        foreach (var b in borrar)
+        {
+            try
+            {
+                AcadConnection.Retry(() => { ((dynamic)b).Delete(); });
+                n++;
+            }
+            catch (Exception)
+            {
+                // Uno que no se borra queda encimado, y el aviso lo dice.
+            }
+        }
+
+        return n;
     }
 
     /// <summary>Ancho y paño superior de una sección ya insertada.</summary>
@@ -2426,6 +2591,9 @@ public sealed class AlzadoDrawer
             Cota(q[i], y, q[i + 1], y, medio, yZona, etiquetas[i], false);
         }
 
+        // El corte A-A': línea vertical que cruza la trabe, A arriba y A' abajo.
+        LineaDeCorte(x + AlzadoLayout.PosicionCorte(largo), y, y1, vertical: true);
+
         Titulo(a, x, y, largo);
     }
 
@@ -2497,6 +2665,170 @@ public sealed class AlzadoDrawer
         }
     }
 
+    /// <summary>Alto de las letras A y A' del corte, antes de la escala.</summary>
+    private const double AlturaLetraCorte = 0.025;
+
+    /// <summary>
+    /// Lo que sobresale la línea de corte en la columna. Allí hay 8 cm libres entre cada
+    /// cara y su primera cota, así que la letra cabe ENCIMA del tramo que sobresale.
+    /// </summary>
+    private const double SalidaCorteColumna = 0.04;
+
+    /// <summary>
+    /// La <b>línea de corte A-A'</b> sobre el alzado: una línea recta que cruza la pieza
+    /// por donde se tomó el <c>CORTE A-A'</c> de al lado, con <c>A</c> arriba y <c>A'</c>
+    /// abajo, y una flechita en cada punta hacia el lado desde el que se mira.
+    /// </summary>
+    /// <param name="posicion">
+    /// La X del corte en la trabe, o su Y en la columna.
+    /// </param>
+    /// <param name="desde">Una cara de la pieza: la de abajo en la trabe, la izquierda en la columna.</param>
+    /// <param name="hasta">La cara opuesta.</param>
+    /// <param name="vertical">
+    /// Si la línea corre en vertical, que es el caso de la trabe. En la columna la línea es
+    /// horizontal: <c>A</c> va encima de su punta izquierda y <c>A'</c> debajo de la derecha,
+    /// para que también ahí la A quede arriba y la A' abajo.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Va en el espacio modelo y en la capa <c>ROTULOS</c>, como el resto del rotulado: así
+    /// sale verde en pantalla y negra al imprimir, y no se queda metida en el bloque del
+    /// alzado, donde no se podría mover ni borrar sin explotarlo.
+    /// </para>
+    /// <para>
+    /// La posición sale de <see cref="AlzadoLayout.PosicionCorte"/>, la misma que usa la
+    /// vista previa.
+    /// </para>
+    /// </remarks>
+    private void LineaDeCorte(double posicion, double desde, double hasta, bool vertical)
+    {
+        if (hasta < desde)
+        {
+            (desde, hasta) = (hasta, desde);
+        }
+
+        var grueso = hasta - desde;
+        if (grueso <= 0)
+        {
+            return;
+        }
+
+        var salida = vertical ? AlzadoLayout.SalidaCorte : SalidaCorteColumna;
+        var ini = desde - salida;
+        var fin = hasta + salida;
+
+        // Una línea RECTA de cara a cara, sin zigzag: así lo pidió el usuario.
+        var pts = vertical
+            ? new[] { posicion, ini, posicion, fin }
+            : new[] { ini, posicion, fin, posicion };
+
+        // El cast a object no es adorno: con _ms dynamic, la llamada entera se resolvería en
+        // tiempo de ejecución y 'pl' saldría dynamic.
+        object? pl = Poli((object)_ms, pts, "ROTULOS", cerrada: false, bulges: null);
+        if (pl is null)
+        {
+            return;
+        }
+
+        var h = AlturaLetraCorte * _f;
+        const double aire = 0.004;
+
+        if (vertical)
+        {
+            // Trabe: la A pasa la punta de arriba y la A' la de abajo.
+            LetraCorte("A", posicion, fin + aire + (h / 2), h);
+            LetraCorte("A'", posicion, ini - aire - (h / 2), h);
+
+            // Y en cada punta, una flechita hacia la IZQUIERDA: el corte se está viendo
+            // desde ese lado. Va pegada a la línea, debajo de la A y encima de la A'.
+            FlechaCorte(posicion, fin, -1, 0);
+            FlechaCorte(posicion, ini, -1, 0);
+        }
+        else
+        {
+            // Columna: cada letra sobre el tramo que sobresale de su cara.
+            LetraCorte("A", desde - (salida / 2), posicion + aire + (h / 2), h);
+            LetraCorte("A'", hasta + (salida / 2), posicion - aire - (h / 2), h);
+
+            // La columna es la trabe girada 90°, así que la izquierda de la trabe es ABAJO
+            // en la columna: las flechas bajan desde cada punta. Así el corte de la columna
+            // se mira hacia su arranque, igual que el de la trabe.
+            FlechaCorte(ini, posicion, 0, -1);
+            FlechaCorte(fin, posicion, 0, -1);
+        }
+    }
+
+    /// <summary>
+    /// Una flechita del corte: arranca en <c>(x, y)</c> —la punta de la línea— y apunta en
+    /// la dirección <c>(dx, dy)</c>, que es hacia donde se mira el corte.
+    /// </summary>
+    /// <remarks>
+    /// Es una sola polilínea de tres vértices: el palo, con ancho cero, y la punta, que va
+    /// del ancho de su base a cero. Así sale una flecha rellena sin hatch, que se mueve y se
+    /// borra como una sola pieza.
+    /// </remarks>
+    private void FlechaCorte(double x, double y, double dx, double dy)
+    {
+        var largo = AlzadoLayout.LargoFlechaCorte;
+        var punta = AlzadoLayout.PuntaFlechaCorte;
+
+        var pts = new[]
+        {
+            x, y,
+            x + (dx * (largo - punta)), y + (dy * (largo - punta)),
+            x + (dx * largo), y + (dy * largo),
+        };
+
+        object? pl = Poli((object)_ms, pts, "ROTULOS", cerrada: false, bulges: null);
+        if (pl is null)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic p = pl;
+                p.SetWidth(0, 0d, 0d);
+                p.SetWidth(1, AlzadoLayout.AnchoPuntaFlechaCorte, 0d);
+                p.Update();
+            });
+        }
+        catch (Exception ex)
+        {
+            // Sin ancho queda un palo sin punta, pero en su sitio.
+            Fallo("Punta de la flecha del corte", ex);
+        }
+    }
+
+    /// <summary>Una letra del corte, centrada en el punto que se le da.</summary>
+    private void LetraCorte(string letra, double x, double y, double alto)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                var punto = new[] { x, y, 0d };
+
+                dynamic t = _ms.AddText(letra, punto, alto);
+                t.StyleName = EstiloTexto;
+
+                // acAlignmentMiddleCenter. Con el punto en el centro, quien llama decide
+                // dónde queda la letra sin tener que saber cuánto mide.
+                t.Alignment = 10;
+                t.TextAlignmentPoint = punto;
+                t.Layer = "ROTULOS";
+                t.Color = PorCapa;             // el verde lo pone la CAPA, ver arriba
+                t.Update();
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Letra {letra} del corte del alzado", ex);
+        }
+    }
+
     /// <summary>Separación de la primera cota de gancho: <c>HOOK_DIM_OFF_1</c>.</summary>
     private const double HookDimOff1 = 0.06;
 
@@ -2549,6 +2881,11 @@ public sealed class AlzadoDrawer
         {
             Cota(xIzq, y, xIzq, y1, xIzq - 0.28, y + (largo / 2), string.Empty, true);
         }
+
+        // El corte A-A': línea horizontal que cruza la columna, A arriba (en su extremo
+        // izquierdo) y A' abajo (en el derecho). Va en las DOS caras de una columna
+        // rectangular, porque cada alzado se lee solo.
+        LineaDeCorte(y + AlzadoLayout.PosicionCorte(largo), xIzq, xDer, vertical: false);
 
         if (conRotulo)
         {

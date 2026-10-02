@@ -328,6 +328,34 @@ public sealed partial class SeccionDrawer
     /// </summary>
     public bool UltimaFueASuSitio { get; private set; }
 
+    /// <summary>
+    /// Al redibujar, si el <b>bloque</b> vuelve al punto donde estaba insertado. Encendido
+    /// por omisión, que es lo de siempre.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Ojo: solo mueve el bloque.</b> Las cotas y los rótulos van sueltos y se dibujan
+    /// en la X que se le pasa a <see cref="Dibujar"/>. Si esa X no es la del sitio viejo,
+    /// el bloque y su rotulado quedan separados: así salió «Dibujar solo la seleccionada»
+    /// la primera vez, con las cotas en el origen.
+    /// </para>
+    /// <para>
+    /// Se apaga cuando quien llama ya sabe la X buena —la del lugar de la fila en la
+    /// tabla— y quiere que todo vaya ahí.
+    /// </para>
+    /// </remarks>
+    public bool VolverASuSitio { get; set; } = true;
+
+    /// <summary>
+    /// Índice del espacio modelo donde empezó lo que dibujó la última llamada a
+    /// <see cref="Dibujar"/>. De ahí al final es todo suyo: el bloque y sus cotas y rótulos.
+    /// </summary>
+    /// <remarks>
+    /// Lo usa <see cref="MarcasCad"/> para marcarlo, y así poder borrar después las cotas
+    /// sueltas de esta sección sin tocar las de las demás.
+    /// </remarks>
+    public int InicioUltima { get; private set; } = -1;
+
     /// <summary>Anota algo informativo, sin repetirlo.</summary>
     private void Nota(string texto)
     {
@@ -902,6 +930,9 @@ public sealed partial class SeccionDrawer
         // Al redibujar, aquí se guarda dónde estaba para devolverla a su sitio.
         double[]? destino = null;
 
+        // Una sección saltada no dibujó nada: que nadie marque lo que no es suyo.
+        InicioUltima = -1;
+
         if (BloqueYaExiste(s.Id))
         {
             if (!Redibujar)
@@ -917,7 +948,10 @@ public sealed partial class SeccionDrawer
 
             // El punto se lee ANTES de borrar. Después ya no hay a quién
             // preguntárselo, y la sección acabaría al final de la fila.
-            destino = PuntoDeInsercion(s.Id);
+            //
+            // Sin VolverASuSitio no se lee: quien llama ya dio la X buena —la de su
+            // lugar en la tabla— y ahí van el bloque Y sus cotas.
+            destino = VolverASuSitio ? PuntoDeInsercion(s.Id) : null;
 
             if (!BorrarSeccion(s.Id))
             {
@@ -935,6 +969,10 @@ public sealed partial class SeccionDrawer
         UltimaFueASuSitio = destino is not null;
 
         var inicio = (int)AcadConnection.Retry(() => (int)_ms.Count);
+
+        // Se publica DESPUÉS del BorrarSeccion: borrar corre los índices hacia abajo, y
+        // contado antes el tramo de lo nuevo empezaría donde ya hay piezas viejas.
+        InicioUltima = inicio;
 
         // El registro de varillas es POR SECCION: si no se limpia, el estribo
         // diamante de una seccion se abrazaria a las varillas de la anterior.

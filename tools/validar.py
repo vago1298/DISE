@@ -1970,7 +1970,7 @@ def v14_bloques_diamante_etabs() -> None:
         cuerpo = m_dib.group(0)
         # El orden manda: si se borrara antes de leer el punto, ya no habria a
         # quien preguntarselo y la seccion acabaria al final de la fila.
-        pos_pto = cuerpo.find("destino = PuntoDeInsercion(s.Id)")
+        pos_pto = cuerpo.find("PuntoDeInsercion(s.Id)")
         pos_del = cuerpo.find("BorrarSeccion(s.Id)")
         check("el punto se lee ANTES de borrar la seccion",
               pos_pto != -1 and pos_del != -1 and pos_pto < pos_del)
@@ -2488,11 +2488,11 @@ def v16_extruida_piers() -> None:
           and "private const int ColorVerde" not in alz2
           and re.search(r"\.Color = ColorVerde\s*;", alz2) is None)
 
-    #  LOS CUATRO: el CORTE A-A', el rotulo de varillas del alzado, el titulo y el
-    #  titulo girado de las columnas.
-    check("los cuatro textos del alzado van POR CAPA",
+    #  LOS CINCO: el CORTE A-A', el rotulo de varillas del alzado, el titulo, el
+    #  titulo girado de las columnas, y las letras A / A' de la linea de corte.
+    check("los cinco textos del alzado van POR CAPA",
           len(re.findall(r"mt\.Color = PorCapa;", alz2)) == 3
-          and len(re.findall(r"(?<![\w.])t\.Color = PorCapa;", alz2)) == 1)
+          and len(re.findall(r"(?<![\w.])t\.Color = PorCapa;", alz2)) == 2)
 
     #  ═══════════════════════════════════════════════════════════════════════════════
     #  Y LOS CUATRO EN LA CAPA «ROTULOS». NINGUNO EN «TEXTOS».
@@ -2507,8 +2507,146 @@ def v16_extruida_piers() -> None:
     check("el alzado no dibuja NADA en la capa TEXTOS",
           re.search(r'\.Layer = "TEXTOS"', alz2) is None)
 
-    check("y los cuatro textos van en la capa ROTULOS",
-          len(re.findall(r'\.Layer = "ROTULOS"', alz2)) == 4)
+    check("y los cinco textos van en la capa ROTULOS",
+          len(re.findall(r'\.Layer = "ROTULOS"', alz2)) == 5)
+
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  LA LINEA DE CORTE A-A' SOBRE EL ALZADO
+    #
+    #  Pedido del usuario: una linea RECTA (primero fue de quiebre, y pidio quitar el
+    #  zigzag) que cruce el alzado de las piezas
+    #  horizontales y verticales, con «A» arriba y «A'» abajo, para que se vea por donde
+    #  se tomo el CORTE A-A' que va al lado.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    m_corte = re.search(r"private void LineaDeCorte\(.*?\n    \}", alz2, re.S)
+    check("existe la linea de corte del alzado", m_corte is not None)
+
+    m_hor = re.search(r"private void AnotarHorizontal\(.*?\n    \}", alz2, re.S)
+    m_ver = re.search(r"private void AnotarVertical\(.*?\n    \}", alz2, re.S)
+    check("la trabe lleva su linea de corte, vertical",
+          m_hor is not None and "LineaDeCorte(" in m_hor.group(0)
+          and "vertical: true" in m_hor.group(0))
+    check("y la columna la suya, horizontal, en CADA cara",
+          m_ver is not None and "LineaDeCorte(" in m_ver.group(0)
+          and "vertical: false" in m_ver.group(0))
+
+    if m_corte:
+        cuerpo = m_corte.group(0)
+        check("la linea es RECTA, de dos puntos y sin zigzag",
+              "LineaDeQuiebre" not in cuerpo
+              and "new[] { posicion, ini, posicion, fin }" in cuerpo
+              and "new[] { ini, posicion, fin, posicion }" in cuerpo)
+        check("con A y A'", 'LetraCorte("A",' in cuerpo and "LetraCorte(\"A'\"," in cuerpo)
+        #  Pedido del usuario: flechitas hacia la IZQUIERDA junto a cada letra, para que
+        #  se vea desde que lado se mira el corte. En la columna -la trabe girada 90°-
+        #  la izquierda es abajo.
+        check("y una flechita en cada punta",
+              len(re.findall(r"FlechaCorte\(", cuerpo)) == 4)
+        check("hacia la izquierda en la trabe y hacia abajo en la columna",
+              len(re.findall(r"FlechaCorte\([^;]*,\s*-1,\s*0\)", cuerpo)) == 2
+              and len(re.findall(r"FlechaCorte\([^;]*,\s*0,\s*-1\)", cuerpo)) == 2)
+        check("y va en la capa ROTULOS, como el resto del rotulado",
+              '"ROTULOS"' in cuerpo)
+
+    lay_alz = leer(ruta("client/src/CadLink.Cad/AlzadoLayout.cs"))
+    check("el sitio del corte vive en UN solo lugar",
+          "public static double PosicionCorte(" in lay_alz)
+    check("y ya no queda el zigzag del quiebre",
+          "LineaDeQuiebre" not in lay_alz)
+    check("y es el primer L/4 mas 5 cm",
+          "(largo / 4) + CorrimientoCorte" in lay_alz
+          and "public const double CorrimientoCorte = 0.05;" in lay_alz)
+    check("los dos alzados lo piden ahi",
+          "AlzadoLayout.PosicionCorte(largo)" in (m_hor.group(0) if m_hor else "")
+          and "AlzadoLayout.PosicionCorte(largo)" in (m_ver.group(0) if m_ver else ""))
+
+    mw_alz = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    m_prev = re.search(r"private void DibujarAlzadoPrevio\(.*?\n    \}", mw_alz, re.S)
+    check("la vista previa pinta el mismo corte",
+          m_prev is not None
+          and "LineaDeQuiebre" not in m_prev.group(0)
+          and "AlzadoLayout.PosicionCorte(largo)" in m_prev.group(0)
+          and "Flecha(top - salidaPx)" in m_prev.group(0))
+
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  DIBUJAR SOLO LA FILA SELECCIONADA
+    #
+    #  Pedido del usuario: poder rehacer UN elemento -porque cambio de medidas o de
+    #  armado- sin volver a dibujar todos. Las cotas y rotulos van SUELTOS en el modelo,
+    #  asi que para borrar los viejos cada pieza se marca con XData al dibujarla.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    marcas = leer(ruta("client/src/CadLink.Cad/MarcasCad.cs"))
+    check("existen las marcas de XData",
+          all(f in marcas for f in ("public static void Registrar(", "public static int Marcar(",
+                                    "public static List<Marcada> Buscar(", "public static int Borrar(")))
+    check("las marcas se buscan con un conjunto de seleccion filtrado por la aplicacion",
+          "new short[] { 1001 }" in marcas and "ss.Select(5," in marcas)
+
+    xaml_sel = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    check("hay boton para dibujar solo la seleccionada",
+          'x:Name="DibujarSeleccionadaButton"' in xaml_sel
+          and 'Click="OnDibujarSeleccionada"' in xaml_sel)
+    check("y la licencia lo habilita igual que a los otros",
+          "DibujarSeleccionadaButton.IsEnabled = puedeDibujar;" in mw_alz)
+
+    m_sel = re.search(r"private void OnDibujarSeleccionada\(.*?\n    \}", mw_alz, re.S)
+    check("existe el manejador", m_sel is not None)
+    if m_sel:
+        cs = m_sel.group(0)
+        check("rehace la seccion ANTES que el alzado, que inserta su bloque",
+              "secciones.Dibujar(" in cs and "alzados.DibujarElemento(" in cs
+              and cs.index("secciones.Dibujar(") < cs.index("alzados.DibujarElemento("))
+        check("la seccion se rehace siempre, sin depender de la casilla",
+              "Redibujar = true" in cs)
+        check("borra las cotas viejas pero deja la insercion para volver a su sitio",
+              "!MarcasCad.EsBloque(m.Entidad)" in cs)
+        #  EL LUGAR LO DA LA TABLA. La primera version devolvia el bloque a su punto de
+        #  insercion, pero las cotas -que van sueltas- se dibujaban en la X que se pasaba,
+        #  que era 0: el usuario vio la seccion rehecha EN EL ORIGEN, encima de otra.
+        check("la seccion va a su lugar por el orden de la tabla, bloque y cotas juntos",
+              "secciones.VolverASuSitio = false;" in cs
+              and "var xSec = XEnLaFilaDeSecciones(fila, escala);" in cs)
+        check("y el alzado tambien",
+              "var x0 = XEnLaFilaDeAlzados(alzados, fila);" in cs)
+        check("una fila nueva a media tabla va al final, para no encimarse",
+              "XEnLaFilaDeSecciones(null, escala)" in cs
+              and "XEnLaFilaDeAlzados(alzados, null)" in cs)
+        check("el alzado viejo sin marca se quita por el nombre de su bloque",
+              "alzados.BorrarInsercionesDeAlzado(id);" in cs)
+        check("lo nuevo se marca",
+              "MarcasCad.ClaveSeccion(id)" in cs and "MarcasCad.ClaveAlzado(id)" in cs
+              and cs.count("MarcasCad.Marcar(") == 2)
+        check("lo de una version anterior se avisa por nombre",
+              "versión anterior" in cs)
+
+    sec_drw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+    check("el volver a su sitio del bloque se puede apagar",
+          "public bool VolverASuSitio { get; set; } = true;" in sec_drw
+          and "destino = VolverASuSitio ? PuntoDeInsercion(s.Id) : null;" in sec_drw)
+    m_xsec = re.search(r"private double XEnLaFilaDeSecciones\(.*?\n    \}", mw_alz, re.S)
+    m_full = re.search(r"private void OnExport\(.*?\n    \}", mw_alz, re.S)
+    check("la X por la tabla avanza IGUAL que el dibujo completo",
+          m_xsec is not None and m_full is not None
+          and "x += (s.BaseCm + 35) * escala;" in m_xsec.group(0)
+          and "x += (s.BaseCm + 35) * escala;" in m_full.group(0))
+    alz_drw = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
+    check("el avance del alzado sin dibujar usa la misma colocacion",
+          "AlzadoLayout.Colocar(x0, a.EsVertical, ancho, y + alto, largo, dosCaras, y).XSiguiente"
+          in alz_drw)
+    m_dib = re.search(r"public int Dibujar\(SeccionCad s.*?InicioUltima = inicio;", sec_drw, re.S)
+    check("el inicio de lo nuevo se cuenta DESPUES de borrar la seccion vieja",
+          m_dib is not None and "BorrarSeccion(s.Id)" in m_dib.group(0))
+
+    m_exp = re.search(r"private void OnExport\(.*?\n    \}", mw_alz, re.S)
+    m_exa = re.search(r"private void OnExportAlzados\(.*?\n    \}", mw_alz, re.S)
+    check("el dibujo completo de secciones tambien marca",
+          m_exp is not None and "MarcasCad.Marcar(" in m_exp.group(0))
+    check("y al redibujar en su sitio borra sus cotas viejas",
+          m_exp is not None and "!MarcasCad.EsBloque(m.Entidad)" in m_exp.group(0))
+    check("el de alzados tambien marca, con su X y su Y",
+          m_exa is not None
+          and "MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(r.Id), x, dibujante.UltimaYFila)"
+          in m_exa.group(0))
 
     #  QUE ES LA MISMA CAPA EN LA QUE ROTULA EL DIBUJANTE DE SECCIONES: si algun dia se
     #  cambia alli, esto avisa de que las dos hojas dejaron de coincidir.
@@ -10118,10 +10256,11 @@ def v19_circular_y_ui() -> None:
     check("hay un solo sitio que escribe las notas",
           "private void MostrarNotas(string texto)" in codigo
           and "NotasPanel.IsExpanded = false;" in codigo)
-    # NUEVE: las siete de antes mas las dos de los cortes -lo que no se entendio del campo y los
-    # cortes que no caen sobre ningun eje, que van rotulados con su sitio-.
+    # DIEZ: las siete de antes mas las dos de los cortes -lo que no se entendio del campo y los
+    # cortes que no caen sobre ningun eje, que van rotulados con su sitio- y la de «Dibujar solo
+    # la seleccionada».
     check("y los sitios que las escriben pasan por ahi",
-          codigo.count("MostrarNotas(") == 9
+          codigo.count("MostrarNotas(") == 10
           and codigo.count("ExportHintText.Text =") == 1,
           f"{codigo.count('MostrarNotas(')} llamadas, "
           f"{codigo.count('ExportHintText.Text =')} asignaciones directas")
@@ -11904,7 +12043,8 @@ def main() -> int:
               v22_zapatas_corridas,
               v23_hoja_zapatas_corridas,
               v24_rediseno,
-              v25_ifc):
+              v25_ifc,
+              v26_plugin_revit):
         f()
 
     print("\n" + "=" * 66)
@@ -15149,6 +15289,971 @@ def v25_ifc() -> None:
     escritor = leer(ruta("client/src/CadLink.Ifc/EscritorPaso.cs"))
     check("las cadenas escapan lo que no es ASCII con \\X2\\",
           r"\\X2\\" in escritor)
+
+# ======================================================================
+# 26. El complemento de Revit
+#
+#     CadLink.Revit es el UNICO proyecto de este repositorio que no se puede compilar sin
+#     Revit instalado: necesita RevitAPI.dll, que viene con el programa, es de Windows y no
+#     se puede redistribuir.
+#
+#     De ahi que su arquitectura tenga una regla que vale la pena vigilar: todo lo que se
+#     puede decidir sin Revit vive en CadLink.Revit.Nucleo, que es net8.0 pelado y tiene
+#     pruebas que corren en cualquier maquina (tools/prueba-revit). Si esa frontera se
+#     rompe -si el nucleo empieza a conocer tipos de Revit- se pierde la unica parte
+#     comprobable del complemento, y no hay ningun error que lo delate.
+#
+#     Eso es lo que se comprueba aqui, mas los tres errores de empaquetado que hacen que un
+#     complemento no cargue y que Revit no explica.
+# ======================================================================
+def v26_plugin_revit() -> None:
+    print("\n[26] Complemento de Revit")
+
+    nucleo_csproj = ruta("client/src/CadLink.Revit.Nucleo/CadLink.Revit.Nucleo.csproj")
+    addin_csproj = ruta("client/src/CadLink.Revit/CadLink.Revit.csproj")
+
+    check("existe el nucleo CadLink.Revit.Nucleo", os.path.exists(nucleo_csproj))
+    check("existe el complemento CadLink.Revit", os.path.exists(addin_csproj))
+
+    if not (os.path.exists(nucleo_csproj) and os.path.exists(addin_csproj)):
+        return
+
+    nucleo = re.sub(r"<!--.*?-->", " ", leer(nucleo_csproj), flags=re.S)
+    addin = re.sub(r"<!--.*?-->", " ", leer(addin_csproj), flags=re.S)
+
+    # ---- La frontera, que es lo importante ----
+    check("el nucleo es net8.0, para poder probarlo en cualquier maquina",
+          "<TargetFramework>net8.0</TargetFramework>" in nucleo)
+
+    check("el nucleo no tiene PackageReference", "PackageReference" not in nucleo)
+
+    check("el nucleo no referencia otros proyectos", "ProjectReference" not in nucleo,
+          "referenciar CadLink.Ifc o CadLink.Etabs lo ataria a net8.0-windows")
+
+    # LA regla: en el nucleo no puede entrar ni un tipo de Revit.
+    del_nucleo = [p for p in archivos(".cs")
+                  if os.sep + "CadLink.Revit.Nucleo" + os.sep in p]
+
+    check("hay archivos en el nucleo", len(del_nucleo) >= 5, str(len(del_nucleo)))
+
+    con_revit = []
+    for p in del_nucleo:
+        txt = leer(p)
+        for m in re.finditer(r"^\s*using\s+(Autodesk[\w.]*)\s*;", txt, re.M):
+            con_revit.append(f"{rel(p)}: using {m.group(1)}")
+
+    check("NINGUN archivo del nucleo usa la Revit API", not con_revit,
+          "; ".join(con_revit[:3]))
+
+    # ---- El complemento ----
+    check("el complemento es net8.0-windows, que es lo que pide Revit 2026",
+          "<TargetFramework>net8.0-windows</TargetFramework>" in addin,
+          "Revit 2025 y 2026 usan .NET 8; hasta 2024 era .NET Framework 4.8")
+
+    check("el complemento usa WPF, para el cuadro de mapeo", "<UseWPF>true</UseWPF>" in addin)
+
+    for dll in ("RevitAPI", "RevitAPIUI"):
+        check(f"referencia {dll}", f'Include="{dll}"' in addin)
+
+    # Copiar las DLL de Revit junto al complemento hace que Revit cargue dos veces los
+    # mismos tipos y falle con errores incomprensibles.
+    check("las DLL de Revit van con Private=false, sin copiarse",
+          addin.count("<Private>false</Private>") >= 2,
+          str(addin.count("<Private>false</Private>")))
+
+    check("la ruta de Revit se puede cambiar desde la linea de comandos",
+          "RutaRevit" in addin)
+
+    check("y si falta Revit se avisa con un mensaje claro",
+          "<Error Text=" in addin,
+          "sin esto el primer sintoma son doscientos CS0246")
+
+    check("el complemento referencia el nucleo",
+          "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in addin)
+
+    # ---- Las soluciones ----
+    sln = leer(ruta("client/CadLink.sln"))
+
+    check("el NUCLEO si esta en la solucion principal",
+          "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in sln)
+
+    # Esta es la importante: meter el complemento en la solucion principal hace que
+    # CadLink.sln deje de compilar en cualquier maquina sin Revit instalado.
+    check("el COMPLEMENTO no esta en la solucion principal",
+          "CadLink.Revit\\CadLink.Revit.csproj" not in sln,
+          "romperia la compilacion de CadLink.sln en una maquina sin Revit")
+
+    sln_addin = ruta("client/CadLink.Revit.sln")
+    check("hay una solucion aparte para el complemento", os.path.exists(sln_addin))
+
+    if os.path.exists(sln_addin):
+        sa = leer(sln_addin)
+        check("y contiene el complemento y su nucleo",
+              "CadLink.Revit\\CadLink.Revit.csproj" in sa
+              and "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in sa)
+
+    app = leer(ruta("client/src/CadLink.App/CadLink.App.csproj"))
+    check("la aplicacion referencia el nucleo, para escribir el archivo de intercambio",
+          "CadLink.Revit.Nucleo\\CadLink.Revit.Nucleo.csproj" in app)
+
+    check("y NO referencia el complemento",
+          "CadLink.Revit\\CadLink.Revit.csproj" not in app)
+
+    # ---- El manifiesto ----
+    manifiesto = ruta("client/src/CadLink.Revit/CadLink.Revit.addin")
+    check("existe el manifiesto .addin", os.path.exists(manifiesto))
+
+    if os.path.exists(manifiesto):
+        man = leer(manifiesto)
+
+        try:
+            ET.fromstring(man)
+            bien = True
+        except ET.ParseError as e:
+            bien = False
+            print(f"        {e}")
+
+        check("el manifiesto es XML valido", bien)
+
+        # Si el FullClassName no coincide con la clase de verdad, Revit dice solo que el
+        # complemento fallo al cargar, sin decir por que.
+        check("el FullClassName apunta a la clase que existe",
+              "<FullClassName>CadLink.Revit.Aplicacion</FullClassName>" in man
+              and "class Aplicacion : IExternalApplication"
+              in leer(ruta("client/src/CadLink.Revit/Aplicacion.cs")))
+
+        check("el Assembly coincide con el AssemblyName del proyecto",
+              "<Assembly>CadLink.Revit.dll</Assembly>" in man
+              and "<AssemblyName>CadLink.Revit</AssemblyName>" in addin)
+
+        check("el manifiesto se copia a la salida",
+              "CadLink.Revit.addin" in addin and "PreserveNewest" in addin)
+
+        m = re.search(r"<AddInId>([0-9A-Fa-f-]{36})</AddInId>", man)
+        check("el AddInId es un GUID", bool(m), "hace falta uno unico y estable")
+
+    # ---- Los iconos de la cinta ----
+    #
+    # Un boton sin imagen sale EN BLANCO con el texto solo debajo, y Revit no se queja. Lo
+    # que rompe esto son tres cosas, y ninguna da error al compilar:
+    #   1. que falte el PNG;
+    #   2. que el nombre que pide el codigo no sea el LogicalName que declara el .csproj;
+    #   3. que falte el CacheOption, con lo que el flujo se cierra antes de leerse.
+    arranque = leer(ruta("client/src/CadLink.Revit/Aplicacion.cs"))
+
+    pedidos = set(re.findall(r'Imagen\("([^"]+)"\)', arranque))
+    declarados = set(re.findall(r"<LogicalName>([^<]+)</LogicalName>", addin))
+
+    check("el boton pide sus dos iconos", len(pedidos) == 2, str(sorted(pedidos)))
+
+    check("el .csproj declara los dos como recurso embebido", len(declarados) == 2,
+          str(sorted(declarados)))
+
+    sin_declarar = sorted(pedidos - declarados)
+    check("el nombre que pide el codigo coincide con el LogicalName del .csproj",
+          not sin_declarar,
+          "el codigo pide y nadie declara: " + ", ".join(sin_declarar))
+
+    sin_usar = sorted(declarados - pedidos)
+    check("y no se embebe ningun icono que nadie use", not sin_usar, ", ".join(sin_usar))
+
+    check("se ponen las DOS medidas, la grande y la chica",
+          "LargeImage =" in arranque and "boton.Image =" in arranque,
+          "con solo la grande, Revit la reduce al vuelo y a 16 px queda una mancha")
+
+    check("la imagen se lee con CacheOption.OnLoad",
+          "BitmapCacheOption.OnLoad" in arranque,
+          "sin esto el flujo se cierra antes de leerse y el boton sale en blanco")
+
+    check("la imagen se congela, por la afinidad de hilo de la cinta",
+          ".Freeze()" in arranque)
+
+    check("un icono que no cargue no impide arrancar",
+          "catch (Exception)" in arranque)
+
+    # Los PNG, de verdad: que existan, que sean PNG y que midan lo que dicen.
+    for nombre, medida in (("importar-32.png", 32), ("importar-16.png", 16)):
+        p = ruta("client/src/CadLink.Revit/Assets", nombre)
+
+        if not os.path.exists(p):
+            check(f"existe el icono {nombre}", False)
+            continue
+
+        with open(p, "rb") as f:
+            crudo = f.read()
+
+        check(f"{nombre} es un PNG de verdad",
+              crudo[:8] == b"\x89PNG\r\n\x1a\n")
+
+        if len(crudo) >= 26:
+            import struct as _s
+            ancho, alto = _s.unpack(">II", crudo[16:24])
+            check(f"{nombre} mide {medida}x{medida}",
+                  ancho == medida and alto == medida, f"{ancho}x{alto}")
+
+    check("existe el generador de los iconos",
+          os.path.exists(ruta("tools/make_iconos_revit.py")))
+
+    check("y reutiliza el dibujo del icono de la aplicacion",
+          "from make_icon import" in leer(ruta("tools/make_iconos_revit.py")),
+          "con el poligono copiado, el icono de Revit y el de la app se separarian")
+
+    # ---- Los errores clasicos del codigo del complemento ----
+    comando = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
+
+    check("el comando lleva el atributo Transaction",
+          "[Transaction(TransactionMode.Manual)]" in comando,
+          "sin el, Revit rechaza el comando al ejecutarlo")
+
+    check("el comando implementa IExternalCommand", "IExternalCommand" in comando)
+
+    modelador = leer(ruta("client/src/CadLink.Revit/Modelador.cs"))
+    ci = leer(ruta("client/src/CadLink.Revit/ComandoImportar.cs"))
+
+    check("el modelado va en UNA transaccion, para que un Ctrl+Z lo deshaga",
+          modelador.count("new Transaction(") == 1,
+          str(modelador.count("new Transaction(")))
+
+    check("se activa el tipo antes de colocarlo",
+          "IsActive" in modelador and "Activate()" in modelador,
+          "un FamilySymbol sin activar no se puede colocar, y el error de Revit no lo dice")
+
+    check("la marca se escribe en Comentarios y no en Marca",
+          "ALL_MODEL_INSTANCE_COMMENTS" in modelador,
+          "Revit avisa de marcas repetidas y llenaria la pantalla de advertencias")
+
+    # Las unidades: Revit trabaja en pies por dentro. Un metro metido como pie sale con la
+    # escala multiplicada por 3.28, y como todo queda proporcionado, en pantalla parece bien.
+    fuentes = {os.path.basename(p): leer(p) for p in archivos(".cs")
+               if os.sep + "CadLink.Revit" + os.sep in p
+               and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p}
+
+    fuera = [n for n, t in fuentes.items() if "UnitUtils" in t and n != "Unidades.cs"]
+
+    check("la conversion de unidades esta centralizada en Unidades.cs", not fuera,
+          "tambien convierten: " + ", ".join(fuera))
+
+    check("Unidades.cs convierte desde metros",
+          "UnitTypeId.Meters" in leer(ruta("client/src/CadLink.Revit/Unidades.cs")))
+
+    # ---- La traduccion de la aplicacion cubre lo que el lector produce ----
+    parcial = leer(ruta("client/src/CadLink.App/MainWindow.Ifc.cs"))
+
+    check("la aplicacion escribe el archivo de intercambio",
+          "ArchivoModelo.Guardar(" in parcial and "AModeloJson(" in parcial)
+
+    etabs_modelo = leer(ruta("client/src/CadLink.Etabs/ModeloEtabs.cs"))
+    bloque = re.search(r"public enum ClaseElemento\s*\{(.*?)\}", etabs_modelo, re.S)
+
+    if bloque:
+        clases = [c.strip() for c in bloque.group(1).split(",") if c.strip()]
+        faltan = [c for c in clases if f"ClaseElemento.{c} => ClasePieza." not in parcial]
+        check("la traduccion al complemento cubre todas las ClaseElemento", not faltan,
+              ", ".join(faltan))
+
+    # ---- Muro o losa: la decision NO se copia del lector ----
+    #
+    # El lector resuelve la clase de un area SOLO por geometria -EtabsReader: esVertical ?
+    # Muro : Losa- y no mira las notas de la propiedad. Copiar esa clase tal cual hace que una
+    # propiedad cuya nota dice LOSA llegue a Revit como muro: se ofrecen familias de muro y
+    # al modelar se llama a Wall.Create con un contorno horizontal, que Revit rechaza. Falla
+    # el paño y todos los demas iguales, que es el fallo en masa que se vio.
+    check("el paso al complemento decide muro o losa con ClasePano",
+          "ClasePano.De(" in parcial,
+          "copiar el.Clase tal cual ignora las notas de la propiedad")
+
+    check("y tambien lo hace el paso al IFC, para que los dos coincidan",
+          parcial.count("ClasePano.De(") >= 2,
+          str(parcial.count("ClasePano.De(")))
+
+    check("la decision usa las notas de la propiedad",
+          "SeccionesModelo.TipoDeLasNotas(" in parcial)
+
+    clasepano = leer(ruta("client/src/CadLink.Revit.Nucleo/ClasePano.cs"))
+
+    check("ClasePano mira la geometria con el metodo de Newell",
+          "VerticalidadDe" in clasepano,
+          "con el producto cruz de dos lados, un contorno mallado da una normal de ruido")
+
+    check("y avisa cuando la nota contradice a la geometria",
+          "evisa la propiedad" in clasepano,
+          "callar la contradiccion deja la pieza en una categoria que nadie pidio")
+
+    check("los avisos del modelo viajan en el archivo de intercambio",
+          "public List<string> Avisos" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("y el complemento los ensena",
+          "modelo.Avisos" in comando)
+
+    # ---- El informe de errores, agrupado ----
+    check("los errores del modelado se agrupan por causa",
+          "Agrupador.Texto(" in comando,
+          "una lista de los ocho primeros no dice nada si los 372 son el mismo motivo")
+
+    check("existe el agrupador",
+          os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Agrupador.cs")))
+
+    # ---- Etiquetas: un modelo sin piers no puede colapsar los muros ----
+    #
+    # El lector pone el PIER como etiqueta del muro. Sin piers asignados, todos los muros
+    # quedan con la etiqueta vacia, la llave de todos resulta «CadLink|Muro||Story1» y el
+    # planificador modela uno y descarta el resto con un aviso por cada uno.
+    # Barras y paños llevan etiquetas distintas a proposito: una barra de ETABS tiene etiqueta
+    # unica por pieza, asi que basta con estabilizarla cuando falta; un paño trae el PIER, que
+    # agrupa varios, y necesita la posicion SIEMPRE.
+    check("las etiquetas se estabilizan antes de armar la llave",
+          parcial.count("Etiquetas.Estable(") >= 1 and parcial.count("Etiquetas.Unica(") >= 1,
+          "hacen falta en barras Y en panos; sin eso un modelo sin piers pierde muros")
+
+    check("existe el estabilizador de etiquetas",
+          os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Contornos.cs")))
+
+    # ---- Losas inclinadas: la pendiente NO se pierde al exportar ----
+    #
+    # Floor.Create solo acepta contornos planos y paralelos a XY, pero aplanar al exportar
+    # PIERDE la pendiente: una losa de entrepiso inclinada modelada en el calculo tiene que
+    # salir inclinada. El aplanado tiene que ocurrir en el complemento, que crea la losa plana
+    # y despues sube cada vertice con el editor de forma.
+    check("la exportacion NO aplana las losas, para no perder la pendiente",
+          "Contornos.AHorizontal(" not in parcial,
+          "aplanar aqui deja la losa horizontal para siempre")
+
+    check("se quitan los vertices repetidos del contorno",
+          "Contornos.SinRepetidos(" in parcial,
+          "un lado de largo cero hace que Revit rechace el contorno entero")
+
+    check("el complemento prepara la losa conservando su desnivel",
+          "Losas.Preparar(" in modelador)
+
+    check("la inclinacion se da con la FLECHA DE PENDIENTE de Floor.Create",
+          "forma.AnguloRad" in modelador and "flecha" in modelador,
+          "es API documentada para 2026")
+
+    # SlabShapeEditor fue el primer intento y NO compila: Floor ya no expone esa propiedad y
+    # da CS1061 en Revit 2026. Se prohibe para que no vuelva.
+    check("no se usa SlabShapeEditor, que ya no existe en Floor",
+          "SlabShapeEditor" not in modelador,
+          "da CS1061 en Revit 2026: el miembro cambio de sitio")
+
+    check("la flecha de pendiente es HORIZONTAL, con las dos puntas a la misma cota",
+          modelador.count("cota)") >= 2,
+          "Revit lo exige: la inclinacion la da el angulo, no la linea")
+
+    check("y una losa plana se crea sin flecha",
+          "forma.EsPlana" in modelador,
+          "con flecha, el ruido de la malla la inclinaria")
+
+    # ---- Columnas: por niveles, no por su linea ----
+    #
+    # Crear una columna vertical con la API de columna INCLINADA produce el error que Revit
+    # marca como imposible de ignorar: "Position of end cut planes has resulted in a slanted
+    # column without any geometry". Y como no se puede ignorar, al cancelar se deshace TODA la
+    # transaccion: el informe dice 451 creadas y el modelo queda vacio.
+    check("las columnas verticales se colocan por niveles",
+          "Colocacion.EsVertical(b)" in modelador
+          and "StructuralType.Column)" in modelador,
+          "por su linea sale el error de los planos de corte, que no se puede ignorar")
+
+    check("y se atan a nivel de base y de punta con sus desfases",
+          "FAMILY_BASE_LEVEL_PARAM" in modelador
+          and "FAMILY_TOP_LEVEL_PARAM" in modelador,
+          "sin esto la columna se queda con la altura del tipo, no la del calculo")
+
+    check("la base es la cota de ABAJO, aunque ETABS asigne el nivel de arriba",
+          "Math.Min(b.P1.Z, b.P2.Z)" in modelador,
+          "con el nivel al que sube como base, la columna queda del reves y sin geometria")
+
+    check("existe el calculo de la colocacion",
+          os.path.exists(ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs")))
+
+    # ---- Que el commit no se pueda abortar ----
+    check("hay manejador de fallos para que el commit no lo aborte un cuadro de Revit",
+          os.path.exists(ruta("client/src/CadLink.Revit/SinCuadros.cs")))
+
+    check("y se le pasa a la transaccion",
+          "SetFailuresPreprocessor(" in modelador and "SetFailureHandlingOptions(" in modelador,
+          "sin esto, un error 'cannot be ignored' deshace la importacion entera al cancelar")
+
+    if os.path.exists(ruta("client/src/CadLink.Revit/SinCuadros.cs")):
+        sc = leer(ruta("client/src/CadLink.Revit/SinCuadros.cs"))
+
+        check("silencia los avisos", "DeleteWarning(" in sc)
+        check("y borra el elemento que da un error irreparable, para salvar el resto",
+              "DeleteElements(" in sc)
+        check("pero lo CUENTA, para decirlo en el informe",
+              "ElementosBorrados" in sc and "AvisosSilenciados" in sc,
+              "borrar en silencio seria peor que el problema")
+        check("y no devuelve ProceedWithCommit cuando no resolvio nada",
+              "FailureProcessingResult.Continue" in sc,
+              "devolverlo siempre puede meter a Revit en un bucle")
+
+    # ---- Muros: bajo la cadena y al pano de los castillos ----
+    #
+    # El ajuste se hace EN REVIT, no al exportar. Al exportar todavia no se sabe con que tipo de
+    # familia se va a modelar cada pieza -eso se elige en el cuadro-, asi que el muro se
+    # recortaba medio castillo de la seccion del CALCULO y el castillo modelado podia medir otra
+    # cosa: el muro quedaba metido dentro. Lo mismo con el peralte de la cadena.
+    check("los muros se ajustan con las medidas de los tipos ELEGIDOS",
+          "AjusteDeMuros.AplicarATodos(" in ci and "Orientacion.Medidor(" in ci,
+          "sin esto el muro se recorta al pano de una pieza que no existe")
+
+    check("y NO se ajustan al exportar, cuando todavia no se sabe el tipo",
+          "AjusteDeMuros.AplicarATodos(" not in parcial,
+          "hacerlo dos veces recortaria el doble, y hacerlo solo alli usa medidas equivocadas")
+
+    check("el ajuste acepta las medidas de lo que se va a modelar",
+          "MedidasModeladas" in leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")),
+          "con las de la seccion del calculo, el muro no muere en el pano del castillo real")
+
+    ajuste = ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs")
+    check("existe el ajuste de muros", os.path.exists(ajuste))
+
+    if os.path.exists(ajuste):
+        aj = leer(ajuste)
+
+        check("baja el muro por el peralte de lo que va encima",
+              "PeralteDeLoQueVaEncima" in aj)
+
+        check("y lo recorta medio castillo por punta",
+              "MedioCastilloEn" in aj and "MedioAncho" in aj)
+
+        check("solo ajusta panos rectangulares y verticales",
+              "ComoRecto" in aj,
+              "recortar a ciegas un pano de forma libre es peor que no tocarlo")
+
+        check("y no deja muros de altura o largo negativos",
+              "0.05" in aj,
+              "si la cadena se come el muro, se deja como estaba")
+
+    # ---- La categoria la elige el usuario ----
+    vista = leer(ruta("client/src/CadLink.Revit.Nucleo/VistaMapeo.cs"))
+
+    check("el cuadro ofrece TODAS las categorias, no solo la que toca por la clase",
+          "Enum.GetValues<CategoriaRevit>()" in vista,
+          "el usuario tiene que poder corregir una seccion mal clasificada en el calculo")
+
+    check("cambiar de categoria repuebla las familias",
+          "RepoblarFamilias" in vista)
+
+    check("el mapeo guarda la categoria ELEGIDA",
+          "public CategoriaRevit Categoria" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/Mapeo.cs")),
+          "deducirla de la clase borraba la eleccion en silencio")
+
+    check("y el mapeo busca el tipo por la categoria guardada",
+          "PorNombre(f.Categoria" in leer(ruta("client/src/CadLink.Revit.Nucleo/Mapeo.cs")))
+
+    check("el modelador decide muro o suelo por la categoria del TIPO, no por la clase",
+          "paso.Tipo!.Categoria == CategoriaRevit.Muro" in modelador,
+          "decidir por la clase ignoraria la categoria que eligio el usuario")
+
+    check("y avisa si la categoria elegida no puede hacer un pano",
+          "solo se puede modelar como muro o como suelo" in modelador)
+
+    ventana = ruta("client/src/CadLink.Revit/VentanaMapeo.xaml")
+
+    if os.path.exists(ventana):
+        vx = leer(ventana)
+
+        check("el cuadro tiene columna de categoria", 'Header="Categoría"' in vx)
+
+        # ---- El enlazado de los desplegables de la reja ----
+        #
+        # Sintoma reportado: al elegir la familia HSS, la columna Tipo seguia ofreciendo los
+        # tipos de Hormigon-Rectangular-Pilar. El nucleo hace lo correcto y tiene pruebas, asi
+        # que lo que se descolgaba era el enlazado de la ventana, que no se puede ejecutar aqui.
+        # Estas reglas fijan las tres condiciones que lo evitan.
+        # El \s tras el nombre es para NO recoger <DataGridTemplateColumn.CellTemplate>, que es
+        # un elemento hijo y no una columna.
+        plantillas = re.findall(r"<DataGridTemplateColumn\s[^>]*>", vx)
+        sinLectura = [c for c in plantillas if 'IsReadOnly="True"' not in c]
+
+        check("las columnas de desplegable son IsReadOnly, para que la reja no reconstruya "
+              "la celda al editar",
+              not sinLectura,
+              "sin esto la reja destruye el ComboBox enlazado a media eleccion y quedan "
+              "familia y tipos que no se corresponden: " + "; ".join(sinLectura))
+
+        combos = re.findall(r"<ComboBox\b.*?/>", vx, re.S)
+
+        check("hay un desplegable por columna editable (categoria, familia y tipo)",
+              len(combos) == 3, str(len(combos)))
+
+        sinTrigger = [
+            c.split("\n")[0].strip() for c in combos
+            if ("SelectedItem=" in c or "SelectedValue=" in c)
+            and "UpdateSourceTrigger=PropertyChanged" not in c
+        ]
+
+        check("y todos escriben la eleccion en el momento (UpdateSourceTrigger)",
+              not sinTrigger,
+              "si la escritura se retrasa, el nucleo no repuebla los tipos y el cuadro "
+              "ensena la familia nueva con los tipos viejos: " + "; ".join(sinTrigger))
+
+        check("la categoria se ofrece con su nombre legible, no con el valor del enum",
+              "CategoriasOpciones" in vx and 'DisplayMemberPath="Nombre"' in vx,
+              "con los valores a pelo en la pantalla salia 'ColumnaEstructural'")
+
+        check("una fila incoherente se ve en la pantalla",
+              "{Binding Coherente}" in vx,
+              "si el enlazado vuelve a descolgarse hay que verlo en el cuadro, no en el "
+              "modelo ya hecho")
+
+    cb = ruta("client/src/CadLink.Revit/VentanaMapeo.xaml.cs")
+
+    if os.path.exists(cb):
+        # Sin comentarios: el comentario que explica por que se quito nombra la llamada.
+        check("la ventana no regenera las celdas a mano con Items.Refresh()",
+              "Items.Refresh()" not in _sin_comentarios(leer(cb)),
+              "regenerar las celdas es justo la maniobra que desengancha un desplegable "
+              "del dato que ensena; las filas ya avisan por INotifyPropertyChanged")
+
+    vistaFila = leer(ruta("client/src/CadLink.Revit.Nucleo/VistaMapeo.cs"))
+
+    check("al repoblar se avisa de la LISTA, no solo de su contenido",
+          "Aviso(nameof(Tipos))" in vistaFila and "Aviso(nameof(Familias))" in vistaFila,
+          "un desplegable enganchado a la lista anterior no se entera de un Clear")
+
+    check("y el nucleo sabe decir si una fila quedo incoherente",
+          "public bool Coherente" in vistaFila and "public int Incoherentes" in vistaFila)
+
+    # ---- Ninguna pieza se pierde en silencio ----
+    #
+    # Sintoma reportado: "en la planta baja no modela nada". El lector pone el PIER como
+    # etiqueta de un muro, y un pier agrupa varios paños: un muro mallado en seis trozos daba
+    # seis veces la llave «CadLink|Muro|P1|Story1». El planificador, al ver la llave repetida,
+    # hacia «return» sin anadir ningun Paso, asi que esas piezas no aparecian en NINGUNA cuenta
+    # -ni creadas ni saltadas- y una planta entera podia quedarse sin modelar mientras el
+    # informe decia que todo habia ido bien.
+    planpy = leer(ruta("client/src/CadLink.Revit.Nucleo/Plan.cs"))
+    contornospy = leer(ruta("client/src/CadLink.Revit.Nucleo/Contornos.cs"))
+
+    check("existe una etiqueta que SIEMPRE lleva la posicion, para los paños",
+          "public static string Unica(" in contornospy,
+          "Estable() solo sustituye la etiqueta cuando esta VACIA, asi que no distingue dos "
+          "trozos de muro que comparten pier")
+
+    check("y la exportacion la usa en los paños",
+          "Etiquetas.Unica(" in parcial,
+          "con Estable, los trozos de un muro mallado comparten llave y solo se modela uno")
+
+    check("el planificador desempata las llaves repetidas por posicion",
+          "plan.Desempatadas++" in planpy and "Etiquetas.Donde(" in planpy,
+          "perder geometria en silencio no es aceptable")
+
+    check("y distingue una pieza repetida de verdad de dos que solo comparten etiqueta",
+          "sitios.Add(" in planpy,
+          "sin la posicion de TODAS las piezas, la primera se queda sin sitio y un duplicado "
+          "real parece una pieza distinta")
+
+    check("el plan cuenta las desempatadas y las descartadas",
+          "public int Desempatadas" in planpy and "public int Duplicadas" in planpy)
+
+    check("y el informe las dice",
+          "plan.Desempatadas" in ci and "plan.Duplicadas" in ci,
+          "lo que no se cuenta en el informe es lo que se descubre tarde")
+
+    check("los avisos van AGRUPADOS por causa, no cortados a los seis primeros",
+          "Agrupador.Texto(r.Avisos" in ci and "r.Avisos.Take(" not in ci,
+          "un muro mallado en cien trozos daba cien avisos con la misma causa y el informe "
+          "ensenaba seis, escondiendo la causa y la escala")
+
+    # ---- Los paños se atan al nivel de su base ----
+    check("existe el calculo del nivel de un paño",
+          "public static (string Nombre, double DesfaseM) NivelDePano(" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs")),
+          "ETABS asigna un area a la planta de ARRIBA, asi que un muro de planta baja llega "
+          "con el nivel de la planta primera")
+
+    check("y el modelador lo usa para los paños",
+          "Colocacion.NivelDePano(" in modelador,
+          "atado al nivel de arriba, el muro no sale en la vista de la planta en que esta")
+
+    # ---- Las trabes cuelgan de su cara de arriba ----
+    #
+    # En ETABS el punto de insercion por omision de una viga es "top center": la linea que se
+    # exporta es la de la cara de ARRIBA. Sin decirle nada a Revit, donde cae la seccion
+    # respecto de esa linea depende de donde tenga el origen la familia, y la cadena de
+    # cerramiento asomaba por encima del muro en vez de coronarlo.
+    check("las trabes se justifican por su cara de arriba",
+          "ZJustification.Top" in modelador
+          and "BuiltInParameter.Z_JUSTIFICATION" in modelador,
+          "es el punto cardinal 8, 'top center', el de ETABS")
+
+    check("y sin desvio lateral",
+          "BuiltInParameter.Y_JUSTIFICATION" in modelador)
+
+    # ---- Y SIN DESFASE DE NIVEL ----
+    #
+    # Una cadena de cerramiento o de desplante va en la cota del piso. Revit calcula el desfase
+    # de cada extremo a partir de la cota de la linea que se le pasa, asi que cualquier
+    # diferencia entre la cota de ETABS y la del nivel sale como desfase y separa la pieza del
+    # piso. Hubo una version que lo corregia MOVIENDO la pieza segun su caja envolvente; se
+    # quito porque la caja de una viga estructural incluye mas que su solido y el
+    # desplazamiento salia impredecible.
+    check("y NO se mueve la pieza a mano para colocarla",
+          "ElementTransformUtils.MoveElement(" not in modelador,
+          "mover segun la caja envolvente daba un desplazamiento impredecible, porque la caja "
+          "de una viga estructural incluye mas que su solido")
+
+    check("ni se le fuerza el desfase de nivel",
+          "STRUCTURAL_BEAM_END0_ELEVATION" not in modelador,
+          "la cota de la linea es la que trae el calculo; la cara la pone la justificacion")
+
+    check("tambien se escriben los justificados de cada extremo",
+          "START_Z_JUSTIFICATION" in modelador and "END_Z_JUSTIFICATION" in modelador,
+          "con 'yz Justification' en Independent, el de la pieza entera se ignora")
+
+    # ---- EL PUNTO DE INSERCION DE ETABS ----
+    #
+    # El complemento tenia el punto cardinal 8 -arriba al centro- escrito a mano para todas las
+    # trabes. El 8 es el habitual de una cadena, pero el de OMISION de ETABS es el 10, el
+    # centroide: con el, la linea que llega ya pasa por el centro de la seccion, y forzar
+    # «arriba» sube la pieza. Ese era el alzado que no se iba.
+    ins = ruta("client/src/CadLink.Revit.Nucleo/Insercion.cs")
+    check("existe la traduccion del punto de insercion de ETABS", os.path.exists(ins))
+
+    if os.path.exists(ins):
+        it = leer(ins)
+
+        check("el centroide es el punto de omision, como en ETABS",
+              "Centroide = 10" in it,
+              "suponer el 8 es lo que alzaba las cadenas")
+
+        check("se reparten las tres filas de la cuadricula de puntos cardinales",
+              "1 or 2 or 3" in it and "4 or 5 or 6" in it and "7 or 8 or 9" in it)
+
+        check("y se sabe cuanto cuelga la pieza bajo su linea",
+              "CuelgaM(" in it and "CaraInferior(" in it,
+              "lo que cuelga no es el peralte: depende del punto cardinal")
+
+    check("el punto cardinal viaja en el contrato",
+          "public int PuntoCardinal" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("y por omision es el centroide, nunca el 8",
+          "PuntoCardinal { get; set; } = Insercion.Centroide" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")),
+          "un archivo viejo no lo trae, y suponer el 8 es la suposicion que fallaba")
+
+    check("la exportacion lo manda",
+          "PuntoCardinal = el.PuntoCardinal" in parcial)
+
+    check("la version del formato subio al anadirlo",
+          "VersionActual = 3" in leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("el modelador justifica segun el punto cardinal, no a mano",
+          "JustificarComoEnEtabs(" in modelador
+          and "Insercion.Cara(" in modelador
+          and "PedirCaraDeArriba(" not in modelador,
+          "tener el 8 escrito a mano alzaba todas las trabes cuyo punto era otro")
+
+    check("a lo ancho la seccion va centrada, porque el corrimiento en planta ya viene aplicado",
+          "YJustification.Center" in modelador,
+          "volver a aplicarlo aqui lo contaria dos veces")
+
+    # ---- Y LA REGLA DE LA CADENA ESTA ESCRITA UNA SOLA VEZ ----
+    #
+    # Una cadena o trabe cuelga SIEMPRE su peralte entero bajo el nivel, porque es lo que se
+    # construye: corona el muro y el piso se apoya encima. No se deduce del punto de insercion de
+    # ETABS -cuyo valor de omision es el centroide, que deja la trabe repartida-, y ese fue el
+    # error de tres vueltas.
+    #
+    # Lo critico es que el modelador y el ajuste de muros usen LA MISMA regla. Cuando cada uno
+    # suponia otra cosa, el muro moria a media altura de su cadena y quedaba un hueco.
+    aj = leer(ruta("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs"))
+
+    check("la regla de cuanto cuelga una cadena esta en UN solo sitio",
+          "public static class CadenaBajoElNivel" in leer(ins),
+          "dos copias de la misma regla se separan, y entonces el muro no muere donde empieza "
+          "su cadena")
+
+    check("y el ajuste de muros la usa",
+          "CadenaBajoElNivel.CuelgaM(" in aj,
+          "bajar otra cosa deja un hueco entre el muro y su cadena")
+
+    check("la trabe cuelga bajo el nivel SIEMPRE, no segun su punto cardinal",
+          "b.Clase == ClasePieza.Trabe\n                ? ZJustification.Top" in modelador
+          or "ClasePieza.Trabe" in modelador and "ZJustification.Top" in modelador,
+          "el punto de omision de ETABS es el centroide, y respetarlo dejaba la trabe repartida "
+          "media por encima del nivel")
+
+    check("cuando una punta de muro no encuentra su castillo, se DICE",
+          "SinCastillo" in aj,
+          "es la unica forma de distinguir 'se recorto mal' de 'no se encontro el castillo', y "
+          "sin decirlo hay que deducirlo del modelo terminado")
+
+    check("el informe dice cuantas barras se ajustaron con las medidas del tipo",
+          "de {modelo.Barras.Count} barra(s) se ajustaron" in ci,
+          "si esa cuenta sale baja, el ajuste trabaja a ciegas y hay que verlo en el informe")
+
+    # ---- Los castillos, girados como en ETABS ----
+    #
+    # STRUCTURAL_BEND_DIR_ANGLE es de las piezas que Revit define por una CURVA. Una columna a
+    # plomo colocada por punto y niveles no lo tiene, asi que el «?.Set» no hacia nada: ni giro,
+    # ni excepcion, ni aviso. Por eso las inclinadas salian bien y los castillos a plomo no.
+    orient = ruta("client/src/CadLink.Revit.Nucleo/Colocacion.cs")
+
+    check("existe el calculo del giro de la seccion",
+          "public static class Orientacion" in leer(orient)
+          and "public static double GiroRad(" in leer(orient))
+
+    check("y tiene en cuenta que el tipo de Revit puede venir con las medidas al reves",
+          "TipoGirado(" in leer(orient),
+          "el emparejador acepta un tipo girado y antes tiraba esa decision, asi que la "
+          "seccion salia girada noventa grados por construccion")
+
+    check("la columna a plomo se GIRA de verdad, rotando la pieza",
+          "ElementTransformUtils.RotateElement(" in modelador,
+          "STRUCTURAL_BEND_DIR_ANGLE no existe en una columna colocada por punto: el ?.Set "
+          "no hacia nada")
+
+    check("y el giro sale del calculo del nucleo, no de la barra a pelo",
+          "Orientacion.GiroRad(" in modelador
+          and "b.AnguloGrados * Math.PI" not in modelador,
+          "el giro del modelo por si solo no corrige un tipo emparejado al reves")
+
+    # ---- Los niveles, con nombre de plano ----
+    nivnom = ruta("client/src/CadLink.Revit.Nucleo/NombresDeNivel.cs")
+    check("existe el nombrador de niveles", os.path.exists(nivnom))
+
+    if os.path.exists(nivnom):
+        nn = leer(nivnom)
+
+        check("la planta baja y la cimentacion tienen nombre propio",
+              '"Planta baja"' in nn and '"Cimentacion"' in nn)
+
+        check("y los de arriba se numeran Nvl-NN con su cota",
+              '"Nvl-"' in nn and '"00"' in nn)
+
+        check("la numeracion va por COTA, no por el numero que traiga ETABS",
+              "OrderBy(n => n.ElevacionM)" in nn,
+              "ETABS lista las plantas de arriba abajo, asi que numerar por el nombre las "
+              "pondria al reves")
+
+        check("renombrar un nivel renombra tambien la planta que cita cada pieza",
+              "b.Nivel = Nuevo(" in nn and "p.Nivel = Nuevo(" in nn,
+              "una pieza que cita una planta que ya no existe NO se modela")
+
+        check("y dos niveles nunca acaban con el mismo nombre",
+              "while (!usados.Add(" in nn,
+              "Revit rechaza el nivel repetido, y con el se pierden sus piezas")
+
+    check("la exportacion pone los nombres de nivel",
+          "NombresDeNivel.Aplicar(" in parcial)
+
+    # ---- La malla de ejes ----
+    cuad = ruta("client/src/CadLink.Revit.Nucleo/Cuadricula.cs")
+    check("existe la cuadricula de ejes en el contrato", os.path.exists(cuad))
+
+    if os.path.exists(cuad):
+        cu = leer(cuad)
+
+        check("los extremos se corren al paño y el interior se queda en el eje",
+              "AlPanoExterior(" in cu and "MedioAnchoSobreEje(" in cu,
+              "es el mismo criterio que el plano de AutoCAD")
+
+        check("con la preferencia muro, trabe, apoyo",
+              "deMuro" in cu and "deTrabe" in cu and "deApoyo" in cu,
+              "el paño de la fachada lo define el muro, no la trabe")
+
+        check("y los ejes repetidos se unen antes de correr los extremos",
+              "SinRepetidos(" in cu,
+              "si no, el duplicado del eje extremo se queda sin correr")
+
+    check("el modelo lleva la cuadricula",
+          "public CuadriculaJson? Cuadricula" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+
+    check("y la version del formato subio al anadirla",
+          "La 2 anade la <see cref=\"Cuadricula\"/>" in leer(
+              ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")),
+          "un archivo viejo se sigue leyendo, pero el formato cambio")
+
+    check("la exportacion manda los ejes",
+          "Cuadriculas.Colocar(" in parcial and "EjesModelo.DesdeGeometria(" in parcial,
+          "si el programa no da la cuadricula, se deduce de donde estan las columnas")
+
+    check("y el complemento crea las rejillas",
+          "Grid.Create(" in modelador and "CrearEjes(" in modelador)
+
+    check("sin duplicar una rejilla que ya existe",
+          "yaEstan" in modelador,
+          "Revit no admite dos rejillas con el mismo nombre, y reimportar no debe dejar "
+          "seis llamadas «1» una encima de otra")
+
+    check("el informe dice cuantos ejes se crearon",
+          "EjesCreados" in ci)
+
+    check("las burbujas de los ejes van en los DOS extremos, o sea los cuatro lados del plano",
+          "BurbujasEnLosCuatroLados(" in modelador
+          and "DatumEnds.End0" in modelador and "DatumEnds.End1" in modelador,
+          "con la burbuja en un solo extremo el plano queda rotulado por dos lados")
+
+    check("y se encienden en las vistas de planta, porque es una propiedad POR VISTA",
+          "ViewPlan" in modelador and "ShowBubbleInView(" in modelador)
+
+    # ---- Los avisos tienen que poder agruparse ----
+    #
+    # El informe decia "11 pieza(s), por 11 motivos" porque estos avisos metian la etiqueta en
+    # MEDIO del texto, y entonces cada aviso era un motivo distinto.
+    sueltos = []
+
+    for f in ("client/src/CadLink.Revit.Nucleo/AjusteDeMuros.cs",
+              "client/src/CadLink.Revit.Nucleo/ClasePano.cs",
+              "client/src/CadLink.Revit.Nucleo/Plan.cs"):
+        if os.path.exists(ruta(f)):
+            # Aqui NO sirve _sin_comentarios: ese tambien vacia las cadenas, y las cadenas son
+            # justo lo que hay que mirar. Se quitan solo los comentarios, para que un ejemplo
+            # escrito en un comentario no cuente como aviso.
+            txt = leer(ruta(f))
+            txt = re.sub(r"//[^\n]*", "", txt)
+            txt = re.sub(r"/\*.*?\*/", "", txt, flags=re.S)
+
+            # Un texto de aviso que EMPIEZA por palabra y mete la etiqueta despues. La regla es
+            # al reves: la etiqueta primero, «llave»: motivo, que es la forma que Agrupador
+            # sabe partir.
+            for m in re.finditer(r'"[A-Z][^"\n]*«', txt):
+                sueltos.append(rel(ruta(f)) + ": " + m.group(0)[:50])
+
+    check("los avisos empiezan por la etiqueta, para que el informe los agrupe por causa",
+          not sueltos,
+          "con la etiqueta en medio del texto cada aviso es un motivo distinto y el informe "
+          "dice '11 piezas por 11 motivos': " + "; ".join(sueltos))
+
+    nucleo_modelo = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
+    bloque_p = re.search(r"public enum ClasePieza\s*\{(.*?)\}", nucleo_modelo, re.S)
+    catalogo = leer(ruta("client/src/CadLink.Revit.Nucleo/CatalogoRevit.cs"))
+
+    if bloque_p:
+        piezas = [c.strip() for c in bloque_p.group(1).split(",") if c.strip()]
+        sin_cat = [c for c in piezas if f"ClasePieza.{c} =>" not in catalogo]
+        check("cada ClasePieza tiene categoria de Revit asignada", not sin_cat,
+              ", ".join(sin_cat))
+
+    # Las formas que escribe el lector de ETABS, traducidas para el complemento. Una forma
+    # nueva que nadie traduzca sale modelada como rectangulo sin que nadie se entere.
+    formas = set(re.findall(r'"([A-Z]+)"\s*=>\s*FormaSeccion\.', parcial))
+    faltan_f = sorted({"RECT", "CIRC", "I", "C", "L", "T", "TUBO", "CAJON"} - formas)
+
+    check("la traduccion al complemento conoce todas las formas del lector", not faltan_f,
+          "sin traducir: " + ", ".join(faltan_f))
+
+    # ---- Nada de argumentos con nombre al llamar a la Revit API ----
+    #
+    # "Floor.Create(..., structural: true, ...)" costo una vuelta entera: CS1739, porque en la
+    # Revit API 2026 ese parametro no se llama "structural". El NOMBRE de un parametro es parte
+    # de la firma, y aqui no hay RevitAPI.dll de donde leerlo: cualquier nombre que se escriba
+    # es una adivinanza que solo se comprueba en la maquina del usuario. El arnes tampoco lo ve,
+    # porque compila contra recortes cuyos nombres tambien son inventados.
+    #
+    # Posicionalmente el problema no existe: el orden si esta documentado y si se puede
+    # comprobar. Lo que se pierde en legibilidad se recupera con un comentario al lado.
+    #
+    # La lista de miembros de Revit sale de los propios recortes, que son por definicion todo
+    # lo que el complemento usa de la API. Asi la regla no se queda corta al crecer el
+    # complemento.
+    deRevit: set[str] = set()
+
+    for r in ("tools/prueba-revit-compila/Recortes.cs",
+              "tools/prueba-revit-compila/Recortes.Structure.cs"):
+        if os.path.exists(ruta(r)):
+            deRevit |= set(re.findall(
+                r"public\s+(?:static\s+|sealed\s+|override\s+)*"
+                r"[\w<>,?\[\]\. ]+?\s+(\w+)\s*\(",
+                leer(ruta(r))))
+
+    conNombre: list[str] = []
+
+    for p in archivos(".cs"):
+        if (os.sep + "CadLink.Revit" + os.sep not in p
+                or os.sep + "CadLink.Revit.Nucleo" + os.sep in p):
+            continue
+
+        limpio = _sin_comentarios(leer(p))
+
+        for m in re.finditer(r"\b(\w+)\s*\(", limpio):
+            if m.group(1) not in deRevit:
+                continue
+
+            hallado = _lista_balanceada(limpio, m.end() - 1)
+
+            if hallado is None:
+                continue
+
+            lista, _ = hallado
+
+            # Un argumento con nombre va SIEMPRE justo detras de '(' o de una coma. Pedirlo asi
+            # evita confundirlo con el ':' de un ternario o de una etiqueta.
+            if re.search(r"(?:^|,)\s*[a-z][A-Za-z0-9_]*\s*:(?!:)", lista):
+                linea = limpio[: m.start()].count("\n") + 1
+                conNombre.append(f"{rel(p)}:{linea} {m.group(1)}")
+
+    check("ninguna llamada a la Revit API usa argumentos con nombre", not conNombre,
+          "el nombre del parametro no se puede comprobar sin RevitAPI.dll y da CS1739 en la "
+          "maquina del usuario; van posicionales: " + ", ".join(conNombre))
+
+    # ---- El arnes que COMPILA la capa de Revit sin tener Revit ----
+    #
+    # CadLink.Revit referencia RevitAPI.dll y sus errores de compilacion solo aparecian en la
+    # maquina del usuario, de uno en uno y con una vuelta entera de por medio. Compilando sus
+    # archivos contra unos recortes de la API, la mayoria salen aqui.
+    compila = ruta("tools/prueba-revit-compila/Prueba.csproj")
+    check("existe el arnes que compila la capa de Revit", os.path.exists(compila))
+
+    recortes = ruta("tools/prueba-revit-compila/Recortes.cs")
+    check("y sus recortes de la Revit API", os.path.exists(recortes))
+
+    if os.path.exists(compila) and os.path.exists(recortes):
+        cp = leer(compila)
+
+        check("el arnes es net8.0, para poder correrlo en cualquier maquina",
+              "<TargetFramework>net8.0</TargetFramework>" in cp)
+
+        # Si se anade un archivo al complemento y no se incluye aqui, deja de comprobarse sin
+        # que nada lo diga. Se comparan las listas.
+        delComplemento = {
+            os.path.basename(p) for p in archivos(".cs")
+            if os.sep + "CadLink.Revit" + os.sep in p
+            and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p
+        }
+
+        # Los que dependen de WPF no se pueden compilar aqui: WPF pide net8.0-windows.
+        conWpf = set()
+
+        for p in archivos(".cs"):
+            if (os.sep + "CadLink.Revit" + os.sep in p
+                    and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p):
+                txt = leer(p)
+
+                if "using System.Windows" in txt or "partial class VentanaMapeo" in txt:
+                    conWpf.add(os.path.basename(p))
+
+        deberian = sorted(delComplemento - conWpf)
+        faltan_c = [f for f in deberian if f not in cp]
+
+        check("el arnes compila todos los archivos del complemento que no usan WPF",
+              not faltan_c,
+              "sin incluir: " + ", ".join(faltan_c))
+
+        check("los recortes avisan de que NO son la Revit API",
+              "NO es la Revit API" in leer(recortes) or "NO es la Revit API" in leer(recortes),
+              "quien los lea tiene que saber que son declaraciones, no la API")
+
+    # ---- Las pruebas ----
+    check("existe la prueba ejecutable tools/prueba-revit",
+          os.path.exists(ruta("tools/prueba-revit/Program.cs")))
+
+    pp = ruta("tools/prueba-revit/Prueba.csproj")
+    check("y su proyecto", os.path.exists(pp))
+
+    if os.path.exists(pp):
+        check("la prueba es net8.0, para poder correrla en cualquier maquina",
+              "<TargetFramework>net8.0</TargetFramework>" in leer(pp))
+        check("y solo referencia el nucleo",
+              "CadLink.Revit.Nucleo" in leer(pp) and "CadLink.Revit\\" not in leer(pp))
+
 
 if __name__ == "__main__":
     sys.exit(main())

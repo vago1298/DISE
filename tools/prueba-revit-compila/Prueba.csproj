@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Compila la capa de Revit del complemento SIN tener Revit instalado.
+
+       CadLink.Revit referencia RevitAPI.dll, que viene con el programa y no se puede
+       redistribuir. Eso hacia que sus errores de compilacion solo aparecieran en la maquina
+       del usuario, de uno en uno y con una vuelta entera de por medio cada vez.
+
+       Aqui se compilan sus archivos contra los RECORTES de Recortes.cs: declaraciones
+       minimas de los tipos de Revit que el complemento usa.
+
+           cd tools/prueba-revit-compila
+           dotnet build
+
+       QUE ATRAPA: nombres mal escritos, argumentos de mas o de menos, tipos que no cuadran,
+       usings que faltan y cualquier incoherencia del propio complemento. Es la mayoria de los
+       errores de compilacion.
+
+       QUE NO ATRAPA: que una firma de Recortes.cs no coincida con la de la Revit API de
+       verdad. Si ahi se declara un miembro que no existe, esto compila y la maquina con Revit
+       no. Por eso Recortes.cs lleva anotado en cada miembro donde se comprobo, y leerlo es la
+       forma mas rapida de revisar todo lo que el complemento supone de Revit.
+
+       NO SE COMPILAN los archivos que necesitan WPF -Aplicacion.cs, ComandoImportar.cs y la
+       ventana-, porque WPF pide net8.0-windows y su ref pack no esta disponible aqui. Se
+       compila lo que lleva la logica: Modelador, LectorDeCatalogo, Unidades y SinCuadros. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CadLink.Pruebas.Compila</RootNamespace>
+    <AssemblyName>prueba-revit-compila</AssemblyName>
+    <IsPackable>false</IsPackable>
+
+    <!-- Los recortes tienen metodos que no usan sus parametros y devuelven valores fijos:
+         es lo que son, declaraciones. No hace falta el ruido. -->
+    <NoWarn>$(NoWarn);CS0169;CS0649;IDE0060</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\client\src\CadLink.Revit.Nucleo\CadLink.Revit.Nucleo.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Los archivos del complemento que no dependen de WPF. -->
+    <Compile Include="..\..\client\src\CadLink.Revit\Unidades.cs" />
+    <Compile Include="..\..\client\src\CadLink.Revit\SinCuadros.cs" />
+    <Compile Include="..\..\client\src\CadLink.Revit\LectorDeCatalogo.cs" />
+    <Compile Include="..\..\client\src\CadLink.Revit\Modelador.cs" />
+  </ItemGroup>
+
+</Project>

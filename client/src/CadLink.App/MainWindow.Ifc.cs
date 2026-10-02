@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using CadLink.Etabs;
 using CadLink.Ifc;
+using CadLink.Revit.Nucleo;
 using Microsoft.Win32;
 
 namespace CadLink.App;
@@ -68,7 +69,19 @@ public partial class MainWindow : Window
             var tabla = Path.ChangeExtension(dialogo.FileName, ".secciones.csv");
             var cuantas = EscribirTablaDeSecciones(paraIfc, tabla);
 
-            EtabsStatusText.Text = TextoDelResumen(r, dialogo.FileName, tabla, cuantas);
+            // Y el archivo que come el COMPLEMENTO de Revit. Va junto al .ifc y no en su
+            // lugar: son dos caminos distintos y los dos sirven.
+            //
+            //   el .ifc   -> vincular o abrir en Revit. Rapido, con geometria y tipos, pero
+            //                los elementos no son nativos y Revit no pregunta familias.
+            //   el .json  -> el complemento de CadLink para Revit. Pregunta que familia va
+            //                con cada seccion y crea columnas, trabes, muros y losas
+            //                NATIVOS de Revit.
+            var paraPlugin = Path.ChangeExtension(dialogo.FileName, null) + ArchivoModelo.Extension;
+            ArchivoModelo.Guardar(AModeloJson(_modeloEtabs, obra), paraPlugin);
+
+            EtabsStatusText.Text =
+                TextoDelResumen(r, dialogo.FileName, tabla, cuantas, paraPlugin);
             StatusText.Text =
                 $"IFC exportado: {r.Total} pieza(s) en {Path.GetFileName(dialogo.FileName)}.";
         }
@@ -125,15 +138,24 @@ public partial class MainWindow : Window
 
     private static PanoIfc APano(ElementoEtabs el)
     {
+        // La misma decision que para el complemento, y por el mismo motivo: el lector
+        // resuelve muro o losa solo por geometria y no mira las notas de la propiedad. Se
+        // reutiliza ClasePano para que el IFC y el complemento NO se contradigan: que el
+        // mismo paño saliera muro en un camino y losa en el otro seria imposible de explicar.
+        var decidida = ClasePano.De(
+            el.Vertices3D.Select(v => new PuntoJson { X = v.X, Y = v.Y, Z = v.Z }).ToList(),
+            SeccionesModelo.TipoDeLasNotas(el.Notas),
+            el.Clase == ClaseElemento.Muro ? ClasePieza.Muro : ClasePieza.Losa);
+
         var pano = new PanoIfc
         {
             Etiqueta = el.Etiqueta,
-            Clase = el.Clase == ClaseElemento.Muro ? ClaseIfc.Muro : ClaseIfc.Losa,
+            Clase = decidida.Clase == ClasePieza.Muro ? ClaseIfc.Muro : ClaseIfc.Losa,
             Nivel = el.Story,
 
             // En un muro el nombre util es su PIER, no la propiedad de area: es con lo que
             // se identifica en el modelo y en los planos. Si no tiene, queda la propiedad.
-            Seccion = string.IsNullOrWhiteSpace(el.Pier) || el.Clase != ClaseElemento.Muro
+            Seccion = string.IsNullOrWhiteSpace(el.Pier) || decidida.Clase != ClasePieza.Muro
                 ? el.Seccion
                 : el.Seccion + " (" + el.Pier.Trim() + ")",
 
@@ -213,6 +235,234 @@ public partial class MainWindow : Window
             }
         };
     }
+
+    // ==================================================================
+    //  La traduccion para el COMPLEMENTO de Revit
+    // ==================================================================
+
+    /// <summary>
+    /// Pasa el modelo leido al formato que come el complemento de CadLink para Revit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Es un formato APARTE del que usa el exportador de IFC, y a proposito. El IFC necesita
+    /// la terna de ejes locales ya calculada; el complemento necesita en cambio el ANGULO de
+    /// giro, porque es lo que Revit pide en su parametro de rotacion de la seccion. Compartir
+    /// un solo modelo obligaria a llevar las dos cosas y a que cada consumidor ignorara la
+    /// mitad.
+    /// </para>
+    /// <para>
+    /// Y sobre todo: el JSON es un CONTRATO entre dos programas que se instalan por separado
+    /// y se actualizan por separado. Atarlo al modelo interno del exportador de IFC haria
+    /// que un cambio pensado para el IFC rompiera los archivos ya repartidos.
+    /// </para>
+    /// </remarks>
+    internal static ModeloJson AModeloJson(ModeloEtabs modelo, string obra)
+    {
+        var salida = new ModeloJson
+        {
+            Programa = modelo.Programa,
+            Archivo = modelo.Archivo,
+            Obra = obra,
+            Exportado = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)
+        };
+
+        foreach (var n in modelo.NivelesConElementos())
+        {
+            salida.Niveles.Add(new NivelJson { Nombre = n.Nombre, ElevacionM = n.ElevacionM });
+        }
+
+        foreach (var el in modelo.Elementos)
+        {
+            if (string.Equals(el.Forma, "AREA", StringComparison.OrdinalIgnoreCase))
+            {
+                var contorno = el.Vertices3D
+                    .Select(v => new PuntoJson { X = v.X, Y = v.Y, Z = v.Z })
+                    .ToList();
+
+                // MURO o LOSA se decide aqui, no se copia de el.Clase. El lector lo resuelve
+                // SOLO por geometria -EtabsReader.cs: esVertical ? Muro : Losa- y no mira las
+                // notas de la propiedad. Una propiedad cuya nota dice LOSA puede llegar
+                // clasificada como muro, y entonces en Revit se ofrecen familias de muro y al
+                // modelar se llama a Wall.Create con un contorno horizontal, que Revit
+                // rechaza: falla el paño y todos los demás iguales.
+                var decision = ClasePano.De(
+                    contorno,
+                    SeccionesModelo.TipoDeLasNotas(el.Notas),
+                    el.Clase == ClaseElemento.Muro ? ClasePieza.Muro : ClasePieza.Losa);
+
+                if (decision.Aviso is not null)
+                {
+                    salida.Avisos.Add(string.Format(
+                        CultureInfo.InvariantCulture, decision.Aviso, el.Etiqueta));
+                }
+
+                // El contorno se manda con sus cotas REALES, sin aplanar.
+                //
+                // Antes se aplanaba aqui porque Floor.Create solo acepta contornos paralelos a
+                // XY. Pero aplanar PIERDE la pendiente, y una losa de entrepiso inclinada
+                // modelada en el calculo tiene que salir inclinada.
+                //
+                // Ahora el complemento lo hace en dos pasos: crea la losa plana en la cota mas
+                // baja y despues sube cada vertice a su cota con el editor de forma. Para eso
+                // necesita las cotas, asi que aqui no se tocan.
+                contorno = Contornos.SinRepetidos(contorno);
+
+                var pano = new PanoJson
+                {
+                    // En un paño la etiqueta SIEMPRE lleva donde esta, no solo cuando viene
+                    // vacia. El lector pone el PIER como etiqueta del muro, y un pier no
+                    // identifica un paño: identifica un grupo. Un muro mallado en seis trozos
+                    // con el mismo pier daba seis veces la misma llave y se modelaba uno solo.
+                    Etiqueta = Etiquetas.Unica(el.Etiqueta, contorno),
+                    Clase = decision.Clase,
+                    Nivel = el.Story,
+                    Seccion = new SeccionJson
+                    {
+                        Nombre = el.Seccion,
+                        Forma = FormaSeccion.Pano,
+
+                        // En un area, el "ancho" que trae el lector es el espesor.
+                        EspesorM = el.AnchoM,
+                        Material = el.Material,
+                        Notas = el.Notas
+                    }
+                };
+
+                pano.Vertices.AddRange(contorno);
+                salida.Panos.Add(pano);
+
+                continue;
+            }
+
+            var p1 = new PuntoJson { X = el.X1, Y = el.Y1, Z = el.Z1 };
+            var p2 = new PuntoJson { X = el.X2, Y = el.Y2, Z = el.Z2 };
+
+            salida.Barras.Add(new BarraJson
+            {
+                Etiqueta = Etiquetas.Estable(el.Etiqueta, new[] { p1, p2 }),
+                Clase = APieza(el.Clase),
+                Nivel = el.Story,
+                P1 = p1,
+                P2 = p2,
+                AnguloGrados = el.AnguloGrados,
+
+                // El punto de insercion. El lector ya sumo su parte en PLANTA a la X y la Y,
+                // pero deja la Z sin tocar -mover la elevacion cambiaria el nivel al que se
+                // reparte la pieza-, asi que el complemento necesita saber contra que cara se
+                // midio la cota para colocar la seccion. Sin esto tenia el 8 escrito a mano y
+                // subia las trabes cuyo punto era otro, que con el 10 de omision son todas.
+                PuntoCardinal = el.PuntoCardinal,
+
+                Seccion = new SeccionJson
+                {
+                    Nombre = el.Seccion,
+                    Forma = AFormaSeccion(el.Forma),
+                    AnchoM = el.AnchoM,
+                    PeralteM = el.PeralteM,
+                    PatinM = el.PatinM,
+                    AlmaM = el.AlmaM,
+                    ParedM = el.ParedM,
+                    Material = el.Material,
+                    Notas = el.Notas
+                }
+            });
+        }
+
+        // Los muros se ajustan AL FINAL, cuando ya estan todas las barras: para bajar un muro
+        // bajo su cadena hay que conocer las trabes, y para recortarlo al pano de sus castillos
+        // hay que conocer las columnas.
+        //
+        // Sin esto, el muro de ETABS va de cota de piso a cota de piso y de eje a eje de
+        // columna, asi que en Revit OCUPA el mismo sitio que su cadena y que los castillos, y
+        // Revit avisa "One element is completely inside another" una vez por cada solape.
+        // OJO: el ajuste de los muros YA NO SE HACE AQUI.
+        //
+        // Se hacia, y estaba mal por un motivo de fondo: aqui todavia no se sabe con QUE TIPO
+        // DE FAMILIA se va a modelar cada pieza, porque eso se elige despues, en el cuadro de
+        // Revit. Asi que se recortaba el muro medio castillo de 15 cm -la seccion del calculo-
+        // y el castillo modelado medía 30, con lo que el muro quedaba metido dentro; y se bajaba
+        // el peralte de la trabe del calculo en vez del de la trabe modelada, con lo que el muro
+        // no moria en la cara inferior de su cadena.
+        //
+        // Ahora lo hace el complemento, despues del mapeo, con las medidas de los tipos
+        // elegidos. Ver AjusteDeMuros.AplicarATodos y Orientacion.Medidor.
+
+        // ---- La cuadricula de ejes ----
+        //
+        // Los ejes ya se leen del modelo -y si el programa no los da, se deducen de donde estan
+        // las columnas-, pero hasta ahora solo los usaba el plano de AutoCAD. Se mandan tambien
+        // a Revit para que la malla salga igual en los dos sitios.
+        //
+        // Se colocan con el mismo criterio que el plano: los extremos a paño y el interior al
+        // eje. Se hace AQUI, sobre el modelo ya armado, porque el desplazamiento depende del
+        // espesor de los muros y las columnas que corren sobre cada eje.
+        var deEtabs = modelo.Ejes ?? EjesModelo.DesdeGeometria(modelo);
+
+        if (deEtabs.Hay)
+        {
+            var cruda = new CuadriculaJson();
+
+            foreach (var e in deEtabs.X)
+            {
+                cruda.X.Add(new EjeJson { Id = e.Id, Ordenada = e.Ordenada });
+            }
+
+            foreach (var e in deEtabs.Y)
+            {
+                cruda.Y.Add(new EjeJson { Id = e.Id, Ordenada = e.Ordenada });
+            }
+
+            salida.Cuadricula = Cuadriculas.Colocar(cruda, salida);
+        }
+
+        // ---- Los nombres de los niveles, al final ----
+        //
+        // ETABS llama a sus plantas «Story1» y «Base»; en Revit el nombre del nivel se ve en
+        // cada vista y en cada corte, asi que se traduce a «Planta baja +0.00», «Nvl-01 + 2.89»
+        // y «Cimentacion».
+        //
+        // Va AQUI, sobre el modelo ya armado, y no al crear el nivel en Revit: renombrar solo
+        // al crearlo dejaria a cada pieza citando su planta por el nombre viejo, y una pieza que
+        // pide una planta que ya no existe no se modela.
+        var renombrados = NombresDeNivel.Aplicar(salida);
+
+        if (renombrados.Count > 0)
+        {
+            salida.Avisos.Add(
+                "Los niveles se renombraron para Revit: "
+                + string.Join(", ", renombrados.OrderBy(p => p.Key, StringComparer.CurrentCulture)
+                    .Select(p => p.Key + " -> " + p.Value)));
+        }
+
+        return salida;
+    }
+
+    private static ClasePieza APieza(ClaseElemento c) => c switch
+    {
+        ClaseElemento.Columna => ClasePieza.Columna,
+        ClaseElemento.Trabe => ClasePieza.Trabe,
+        ClaseElemento.Diagonal => ClasePieza.Diagonal,
+        ClaseElemento.Muro => ClasePieza.Muro,
+        ClaseElemento.Losa => ClasePieza.Losa,
+        _ => ClasePieza.Trabe
+    };
+
+    /// <summary>La forma del lector, en la enumeracion que usa el complemento.</summary>
+    internal static FormaSeccion AFormaSeccion(string? forma) =>
+        (forma ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "RECT" => FormaSeccion.Rectangulo,
+            "CIRC" => FormaSeccion.Circulo,
+            "TUBO" => FormaSeccion.Tubo,
+            "PIPE" => FormaSeccion.Tubo,
+            "CAJON" => FormaSeccion.Cajon,
+            "I" => FormaSeccion.PerfilI,
+            "C" => FormaSeccion.PerfilC,
+            "T" => FormaSeccion.PerfilT,
+            "L" => FormaSeccion.PerfilL,
+            _ => FormaSeccion.Rectangulo
+        };
 
     private static ClaseIfc AClase(ClaseElemento c) => c switch
     {
@@ -336,7 +586,8 @@ public partial class MainWindow : Window
     //  El aviso al usuario
     // ==================================================================
 
-    private static string TextoDelResumen(ResumenIfc r, string ifc, string csv, int secciones)
+    private static string TextoDelResumen(
+        ResumenIfc r, string ifc, string csv, int secciones, string json)
     {
         var sb = new StringBuilder();
 
@@ -350,6 +601,11 @@ public partial class MainWindow : Window
 
         sb.Append(secciones).Append(" seccion(es) distintas, listadas en ")
           .Append(Path.GetFileName(csv)).AppendLine(" para elegir su familia en Revit.");
+
+        sb.AppendLine();
+        sb.Append("Para modelar elementos NATIVOS de Revit -y elegir la familia de cada ")
+          .AppendLine("seccion en un cuadro- usa el complemento de CadLink para Revit con:");
+        sb.Append("  ").AppendLine(Path.GetFileName(json));
 
         if (r.Avisos.Count > 0)
         {

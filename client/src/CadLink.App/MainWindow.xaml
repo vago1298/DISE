@@ -95,6 +95,7 @@
                 <Separator />
                 <MenuItem Header="Generar _dibujo de las secciones" Click="OnExport" />
                 <MenuItem Header="Generar _alzados" Click="OnExportAlzados" />
+                <MenuItem Header="Dibujar _solo la seccion seleccionada" Click="OnDibujarSeleccionada" />
                 <MenuItem Header="Dibujar la _planta en AutoCAD" Click="OnDibujarPlantaCad" />
             </MenuItem>
 
@@ -490,6 +491,12 @@
                                         ToolTip="Agrupa las secciones por elemento -todos los castillos juntos, todas las trabes juntas- y dentro de cada grupo las pone en orden de ID.&#10;El plano se dibuja en el orden de la hoja, asi que esto ordena tambien el dibujo.&#10;Se deshace con Ctrl+Z." />
                                 <Button Content="Revisar datos" Style="{StaticResource SecondaryButtonStyle}"
                                         Click="OnValidate" />
+                                <!-- UN SOLO ELEMENTO. Para cuando se cambian las medidas o el
+                                     armado de una fila: rehace su seccion y su alzado EN SU
+                                     SITIO, cotas incluidas, sin volver a dibujar todo. -->
+                                <Button x:Name="DibujarSeleccionadaButton" Content="Dibujar solo la seleccionada"
+                                        Style="{StaticResource SecondaryButtonStyle}" Click="OnDibujarSeleccionada"
+                                        ToolTip="Rehace SOLO la fila seleccionada: su seccion y, si lleva, su alzado.&#10;Si ya estaban dibujados vuelven a su mismo sitio y se borran sus cotas y rotulos viejos.&#10;Si no, se dibujan al final de su fila." />
                                 <Button x:Name="AlzadosButton" Content="Generar alzados"
                                         Style="{StaticResource SecondaryButtonStyle}" Click="OnExportAlzados" />
                                 <Button x:Name="ExportButton" Content="Generar dibujo"
