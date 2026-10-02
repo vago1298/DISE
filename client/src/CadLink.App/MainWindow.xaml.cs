@@ -5815,16 +5815,48 @@ public partial class MainWindow : Window
         // Y AHORA los estribos, encima de las varillas.
         DibujarEstribosDelAlzado();
 
+        // ---------- El corte A-A' ----------
+        //
+        // La misma línea de quiebre que pone AutoCAD, en el mismo sitio —5/8 de L— y con la
+        // misma forma: las dos salen de AlzadoLayout. Aquí el alzado va siempre tendido, así
+        // que la línea es vertical: A arriba y A' abajo.
+        {
+            var xCorte = izquierda + (AlzadoLayout.FraccionCorte * w);
+            const double salidaPx = 7;
+
+            // El zigzag en metros, pasado a píxeles: así guarda la proporción con la pieza.
+            var st = AlzadoLayout.LineaDeQuiebre(
+                -salidaPx / esc, (h + salidaPx) / esc, h / 2 / esc, peralteM);
+
+            var linea = new Polyline
+            {
+                Stroke = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33)),
+                StrokeThickness = 1.3,
+                StrokeLineJoin = PenLineJoin.Round
+            };
+
+            for (var i = 0; i < st.Length; i += 2)
+            {
+                linea.Points.Add(new Point(xCorte + (st[i + 1] * esc), top + (st[i] * esc)));
+            }
+
+            PreviaFijaCanvas.Children.Add(linea);
+
+            Etiqueta(PreviaFijaCanvas, "A", xCorte - 4, top - salidaPx - 15);
+            Etiqueta(PreviaFijaCanvas, "A'", xCorte - 5, top + h + salidaPx);
+        }
+
         Etiqueta(PreviaFijaCanvas, $"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);
 
         var textoGancho = ganchoM > 0
             ? $"   ·   gancho {a.GanchoCm:N0} cm"
             : "   ·   sin gancho";
 
+        // Baja un renglón para dejarle sitio a la A' del corte, que cuelga de la cara de abajo.
         Etiqueta(PreviaFijaCanvas, $"L = {largo:N2} m   ·   {centros.Count} estribos   ·   " +
                  $"{a.SeparacionesCm[0]:N0}-{a.SeparacionesCm[1]:N0}-{a.SeparacionesCm[2]:N0} cm" +
                  textoGancho,
-            izquierda, top + h + 8);
+            izquierda, top + h + 24);
     }
 
     private void DibujarLecho(

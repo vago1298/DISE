@@ -2488,11 +2488,11 @@ def v16_extruida_piers() -> None:
           and "private const int ColorVerde" not in alz2
           and re.search(r"\.Color = ColorVerde\s*;", alz2) is None)
 
-    #  LOS CUATRO: el CORTE A-A', el rotulo de varillas del alzado, el titulo y el
-    #  titulo girado de las columnas.
-    check("los cuatro textos del alzado van POR CAPA",
+    #  LOS CINCO: el CORTE A-A', el rotulo de varillas del alzado, el titulo, el
+    #  titulo girado de las columnas, y las letras A / A' de la linea de corte.
+    check("los cinco textos del alzado van POR CAPA",
           len(re.findall(r"mt\.Color = PorCapa;", alz2)) == 3
-          and len(re.findall(r"(?<![\w.])t\.Color = PorCapa;", alz2)) == 1)
+          and len(re.findall(r"(?<![\w.])t\.Color = PorCapa;", alz2)) == 2)
 
     #  ═══════════════════════════════════════════════════════════════════════════════
     #  Y LOS CUATRO EN LA CAPA «ROTULOS». NINGUNO EN «TEXTOS».
@@ -2507,8 +2507,47 @@ def v16_extruida_piers() -> None:
     check("el alzado no dibuja NADA en la capa TEXTOS",
           re.search(r'\.Layer = "TEXTOS"', alz2) is None)
 
-    check("y los cuatro textos van en la capa ROTULOS",
-          len(re.findall(r'\.Layer = "ROTULOS"', alz2)) == 4)
+    check("y los cinco textos van en la capa ROTULOS",
+          len(re.findall(r'\.Layer = "ROTULOS"', alz2)) == 5)
+
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  LA LINEA DE CORTE A-A' SOBRE EL ALZADO
+    #
+    #  Pedido del usuario: una linea de quiebre que cruce el alzado de las piezas
+    #  horizontales y verticales, con «A» arriba y «A'» abajo, para que se vea por donde
+    #  se tomo el CORTE A-A' que va al lado.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    m_corte = re.search(r"private void LineaDeCorte\(.*?\n    \}", alz2, re.S)
+    check("existe la linea de corte del alzado", m_corte is not None)
+
+    m_hor = re.search(r"private void AnotarHorizontal\(.*?\n    \}", alz2, re.S)
+    m_ver = re.search(r"private void AnotarVertical\(.*?\n    \}", alz2, re.S)
+    check("la trabe lleva su linea de corte, vertical",
+          m_hor is not None and "LineaDeCorte(" in m_hor.group(0)
+          and "vertical: true" in m_hor.group(0))
+    check("y la columna la suya, horizontal, en CADA cara",
+          m_ver is not None and "LineaDeCorte(" in m_ver.group(0)
+          and "vertical: false" in m_ver.group(0))
+
+    if m_corte:
+        cuerpo = m_corte.group(0)
+        check("la linea es un QUIEBRE, sacado de AlzadoLayout",
+              "AlzadoLayout.LineaDeQuiebre(" in cuerpo)
+        check("con A y A'", 'LetraCorte("A",' in cuerpo and "LetraCorte(\"A'\"," in cuerpo)
+        check("y va en la capa ROTULOS, como el resto del rotulado",
+              '"ROTULOS"' in cuerpo)
+
+    lay_alz = leer(ruta("client/src/CadLink.Cad/AlzadoLayout.cs"))
+    check("el sitio del corte vive en UN solo lugar",
+          "public const double FraccionCorte" in lay_alz
+          and "public static double[] LineaDeQuiebre(" in lay_alz)
+
+    mw_alz = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    m_prev = re.search(r"private void DibujarAlzadoPrevio\(.*?\n    \}", mw_alz, re.S)
+    check("la vista previa pinta el mismo corte",
+          m_prev is not None
+          and "AlzadoLayout.LineaDeQuiebre(" in m_prev.group(0)
+          and "AlzadoLayout.FraccionCorte" in m_prev.group(0))
 
     #  QUE ES LA MISMA CAPA EN LA QUE ROTULA EL DIBUJANTE DE SECCIONES: si algun dia se
     #  cambia alli, esto avisa de que las dos hojas dejaron de coincidir.

@@ -2426,6 +2426,9 @@ public sealed class AlzadoDrawer
             Cota(q[i], y, q[i + 1], y, medio, yZona, etiquetas[i], false);
         }
 
+        // El corte A-A': línea vertical que cruza la trabe, A arriba y A' abajo.
+        LineaDeCorte(x + (AlzadoLayout.FraccionCorte * largo), y, y1, vertical: true);
+
         Titulo(a, x, y, largo);
     }
 
@@ -2497,6 +2500,123 @@ public sealed class AlzadoDrawer
         }
     }
 
+    /// <summary>Alto de las letras A y A' del corte, antes de la escala.</summary>
+    private const double AlturaLetraCorte = 0.025;
+
+    /// <summary>
+    /// Lo que sobresale la línea de corte en la columna. Allí hay 8 cm libres entre cada
+    /// cara y su primera cota, así que la letra cabe ENCIMA del tramo que sobresale.
+    /// </summary>
+    private const double SalidaCorteColumna = 0.04;
+
+    /// <summary>
+    /// La <b>línea de corte A-A'</b> sobre el alzado: una línea de quiebre que cruza la
+    /// pieza por donde se tomó el <c>CORTE A-A'</c> de al lado, con <c>A</c> arriba y
+    /// <c>A'</c> abajo.
+    /// </summary>
+    /// <param name="posicion">
+    /// La X del corte en la trabe, o su Y en la columna.
+    /// </param>
+    /// <param name="desde">Una cara de la pieza: la de abajo en la trabe, la izquierda en la columna.</param>
+    /// <param name="hasta">La cara opuesta.</param>
+    /// <param name="vertical">
+    /// Si la línea corre en vertical, que es el caso de la trabe. En la columna la línea es
+    /// horizontal: <c>A</c> va encima de su punta izquierda y <c>A'</c> debajo de la derecha,
+    /// para que también ahí la A quede arriba y la A' abajo.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Va en el espacio modelo y en la capa <c>ROTULOS</c>, como el resto del rotulado: así
+    /// sale verde en pantalla y negra al imprimir, y no se queda metida en el bloque del
+    /// alzado, donde no se podría mover ni borrar sin explotarlo.
+    /// </para>
+    /// <para>
+    /// La forma del quiebre sale de <see cref="AlzadoLayout.LineaDeQuiebre"/>, la misma que
+    /// pinta la vista previa.
+    /// </para>
+    /// </remarks>
+    private void LineaDeCorte(double posicion, double desde, double hasta, bool vertical)
+    {
+        if (hasta < desde)
+        {
+            (desde, hasta) = (hasta, desde);
+        }
+
+        var grueso = hasta - desde;
+        if (grueso <= 0)
+        {
+            return;
+        }
+
+        var salida = vertical ? AlzadoLayout.SalidaCorte : SalidaCorteColumna;
+        var ini = desde - salida;
+        var fin = hasta + salida;
+
+        var st = AlzadoLayout.LineaDeQuiebre(ini, fin, (desde + hasta) / 2, grueso);
+
+        // (a lo largo, de través) -> (x, y)
+        var pts = new double[st.Length];
+        for (var i = 0; i < st.Length; i += 2)
+        {
+            var s = st[i];
+            var t = st[i + 1];
+
+            pts[i] = vertical ? posicion + t : s;
+            pts[i + 1] = vertical ? s : posicion + t;
+        }
+
+        // El cast a object no es adorno: con _ms dynamic, la llamada entera se resolvería en
+        // tiempo de ejecución y 'pl' saldría dynamic.
+        object? pl = Poli((object)_ms, pts, "ROTULOS", cerrada: false, bulges: null);
+        if (pl is null)
+        {
+            return;
+        }
+
+        var h = AlturaLetraCorte * _f;
+        const double aire = 0.004;
+
+        if (vertical)
+        {
+            // Trabe: la A pasa la punta de arriba y la A' la de abajo.
+            LetraCorte("A", posicion, fin + aire + (h / 2), h);
+            LetraCorte("A'", posicion, ini - aire - (h / 2), h);
+        }
+        else
+        {
+            // Columna: cada letra sobre el tramo que sobresale de su cara.
+            LetraCorte("A", desde - (salida / 2), posicion + aire + (h / 2), h);
+            LetraCorte("A'", hasta + (salida / 2), posicion - aire - (h / 2), h);
+        }
+    }
+
+    /// <summary>Una letra del corte, centrada en el punto que se le da.</summary>
+    private void LetraCorte(string letra, double x, double y, double alto)
+    {
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                var punto = new[] { x, y, 0d };
+
+                dynamic t = _ms.AddText(letra, punto, alto);
+                t.StyleName = EstiloTexto;
+
+                // acAlignmentMiddleCenter. Con el punto en el centro, quien llama decide
+                // dónde queda la letra sin tener que saber cuánto mide.
+                t.Alignment = 10;
+                t.TextAlignmentPoint = punto;
+                t.Layer = "ROTULOS";
+                t.Color = PorCapa;             // el verde lo pone la CAPA, ver arriba
+                t.Update();
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Letra {letra} del corte del alzado", ex);
+        }
+    }
+
     /// <summary>Separación de la primera cota de gancho: <c>HOOK_DIM_OFF_1</c>.</summary>
     private const double HookDimOff1 = 0.06;
 
@@ -2549,6 +2669,11 @@ public sealed class AlzadoDrawer
         {
             Cota(xIzq, y, xIzq, y1, xIzq - 0.28, y + (largo / 2), string.Empty, true);
         }
+
+        // El corte A-A': línea horizontal que cruza la columna, A arriba (en su extremo
+        // izquierdo) y A' abajo (en el derecho). Va en las DOS caras de una columna
+        // rectangular, porque cada alzado se lee solo.
+        LineaDeCorte(y + (AlzadoLayout.FraccionCorte * largo), xIzq, xDer, vertical: false);
 
         if (conRotulo)
         {

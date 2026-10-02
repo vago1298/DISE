@@ -267,4 +267,82 @@ public static class AlzadoLayout
             XSiguiente = x0 + anchoSeccion + SepSecAlz + largo + HookDimOff2 + SepSecciones
         };
     }
+
+    // ==================================================================
+    //  La línea de corte A-A' sobre el alzado
+    // ==================================================================
+
+    /// <summary>
+    /// Dónde cae el corte A-A', como fracción de la longitud del elemento medida desde su
+    /// arranque: <b>5/8 de L</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// El alzado trae al lado su <c>CORTE A-A'</c>, pero sobre el alzado no había nada que
+    /// dijera <b>por dónde</b> se cortó. Ahora una línea de quiebre cruza la pieza y lleva
+    /// <c>A</c> en un extremo y <c>A'</c> en el otro.
+    /// </para>
+    /// <para>
+    /// <b>Por qué 5/8 y no el centro.</b> A media pieza están centrados los textos de las
+    /// cotas —el armado arriba y el estribado de la zona L/2 abajo—, y una línea en L/2 los
+    /// atravesaría. En L/4 y 3L/4 caen las líneas de extensión de las cotas de zona, y una
+    /// línea de corte encima de una de ellas no se distingue. 5/8 queda dentro de la zona
+    /// central, que es la sección típica, y libre de las dos cosas.
+    /// </para>
+    /// </remarks>
+    public const double FraccionCorte = 0.625;
+
+    /// <summary>
+    /// Cuánto sobresale la línea de corte de cada cara de la pieza, en metros de dibujo.
+    /// </summary>
+    /// <remarks>
+    /// Corto a propósito: la primera cota de abajo de la trabe va a 5 cm de su cara, y la
+    /// letra tiene que caber entre la punta de la línea y esa cota.
+    /// </remarks>
+    public const double SalidaCorte = 0.015;
+
+    /// <summary>
+    /// La polilínea de una <b>línea de quiebre</b>: recta, con un zigzag en
+    /// <paramref name="centro"/>.
+    /// </summary>
+    /// <returns>
+    /// Pares <c>(a lo largo, de través)</c> aplanados: <c>s0, t0, s1, t1, …</c>. Quien
+    /// dibuja los convierte a sus ejes; así la trabe, la columna y la vista previa usan la
+    /// misma forma.
+    /// </returns>
+    /// <param name="inicio">Coordenada a lo largo donde empieza la línea.</param>
+    /// <param name="fin">Coordenada a lo largo donde acaba.</param>
+    /// <param name="centro">Dónde va el zigzag, normalmente a media pieza.</param>
+    /// <param name="grueso">
+    /// Lo que mide la pieza de través a la línea —el peralte de la trabe, el ancho de la
+    /// columna—. El zigzag se topa a una fracción de él para que nunca se salga de la pieza.
+    /// </param>
+    public static double[] LineaDeQuiebre(double inicio, double fin, double centro, double grueso)
+    {
+        if (fin < inicio)
+        {
+            (inicio, fin) = (fin, inicio);
+        }
+
+        // Medio tramo del zigzag: 2 cm, o un quinto de la pieza si es más delgada.
+        var w = Math.Min(0.02, Math.Abs(grueso) / 5);
+        var amp = w * 0.75;
+
+        if (w < 0.004 || centro - w <= inicio || centro + w >= fin)
+        {
+            // Sin sitio para el zigzag, la línea va recta: mejor eso que un quiebre que
+            // se dobla sobre sí mismo, o uno de 2 mm que en el plano es una mancha.
+            return new[] { inicio, 0d, fin, 0d };
+        }
+
+        return new[]
+        {
+            inicio, 0d,
+            centro - w, 0d,
+            centro - (w / 2), amp,
+            centro + (w / 2), -amp,
+            centro + w, 0d,
+            fin, 0d,
+        };
+    }
 }
