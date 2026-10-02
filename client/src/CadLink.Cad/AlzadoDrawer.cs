@@ -187,6 +187,72 @@ public sealed class AlzadoDrawer
     /// </remarks>
     private double YDeLaFila => AlzadoLayout.YArranque(AltoMaximoSeccion);
 
+    /// <summary>La Y de fila con la que se dibujó el último elemento.</summary>
+    public double UltimaYFila { get; private set; }
+
+    /// <summary>
+    /// La X donde empezar un alzado nuevo <b>al final de la fila</b>: pasado el último
+    /// bloque de alzado (<c>ALZ-…</c>) que haya en el dibujo, con el aire entre elementos.
+    /// </summary>
+    /// <remarks>
+    /// Para el alzado que se dibuja solo y no tiene sitio guardado: o nunca se dibujó, o se
+    /// dibujó con una versión que no lo marcaba. Empezar en X = 0, como el dibujo completo,
+    /// lo pondría encima del primero de la fila.
+    /// </remarks>
+    public double XAlFinalDeLaFila()
+    {
+        try
+        {
+            var maxX = double.MinValue;
+
+            AcadConnection.Retry(() =>
+            {
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    dynamic ent = _ms.Item(i);
+
+                    try
+                    {
+                        string clase = ent.ObjectName;
+                        if (!clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        string nombre = ent.Name;
+                        if (!nombre.StartsWith("ALZ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var caja = Caja((object)ent);
+                        if (caja is not null && caja.Value.Max[0] > maxX)
+                        {
+                            maxX = caja.Value.Max[0];
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Una entidad que no contesta no es un alzado.
+                    }
+                }
+            });
+
+            // Lo que sobresale a la derecha de un alzado —cotas de gancho, rótulo de la
+            // columna— más el aire de la macro entre elementos.
+            return maxX == double.MinValue
+                ? 0
+                : maxX + AlzadoLayout.AnchoCotasVertical + AlzadoLayout.SepSecciones;
+        }
+        catch (Exception ex)
+        {
+            Fallo("Buscar el final de la fila de alzados", ex);
+            return 0;
+        }
+    }
+
     public IReadOnlyList<string> Fallos => _log;
 
     public IReadOnlyList<string> Notas
@@ -250,7 +316,12 @@ public sealed class AlzadoDrawer
     ///   </item>
     /// </list>
     /// </remarks>
-    public double DibujarElemento(AlzadoCad a, double x0)
+    /// <param name="yFila">
+    /// La Y de la fila. Vacía, la de siempre (<see cref="YDeLaFila"/>). Se da al
+    /// <b>redibujar un solo elemento</b> en el sitio que ya tenía: si la sección más alta
+    /// cambió desde entonces, la fila calculada ya no es la de ese alzado.
+    /// </param>
+    public double DibujarElemento(AlzadoCad a, double x0, double? yFila = null)
     {
         var largo = LargoDe(a);
 
@@ -264,7 +335,10 @@ public sealed class AlzadoDrawer
         // MARGEN_COL de la columna.
         var xSec = AlzadoLayout.XSeccion(x0, a.EsVertical);
 
-        var y = YDeLaFila;
+        var y = yFila ?? YDeLaFila;
+
+        // Para quien quiera guardar dónde quedó y volver aquí.
+        UltimaYFila = y;
 
         var sec = InsertarSeccion(a.Id, xSec, y);
 

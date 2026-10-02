@@ -565,6 +565,7 @@ public partial class MainWindow : Window
         var puedeDibujar = _license.HasFeature("export-dxf");
         ExportButton.IsEnabled = puedeDibujar;
         AlzadosButton.IsEnabled = puedeDibujar;
+        DibujarSeleccionadaButton.IsEnabled = puedeDibujar;
 
         // La planta se dibuja con el MISMO permiso que las secciones y los alzados:
         // es generar dibujo. Dejarla habilitada en la version de prueba seria una
@@ -1242,40 +1243,14 @@ public partial class MainWindow : Window
 
             dynamic app = AcadConnection.Connect(launchIfMissing: false);
             dynamic doc = AcadConnection.GetOrCreateDocument(app);
+            dynamic ms = AcadConnection.Retry(() => doc.ModelSpace);
 
-            var dibujante = new AlzadoDrawer(doc, escala)
-            {
-                EscalaHatch = LeerEscalaHatch(),
+            // Con el tipo escrito: con 'doc' dynamic, 'var' saldría dynamic también.
+            AlzadoDrawer dibujante = CrearDibujanteDeAlzados(doc, escala);
 
-                // Los bloques y los alzados van 2 m por ENCIMA de la seccion mas
-                // alta, no en la cota fija Y=2 de la macro. Con una contratrabe o un
-                // muro altos, la cota fija dejaba la seccion invadiendo la fila de
-                // alzados.
-                AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)
-            };
-
-            // Capas de varilla, estilos de texto y de cota: los mismos de la sección
-            var secciones = new SeccionDrawer(doc, escala);
-            secciones.AsegurarCapas(ClavesDeVarillaUsadas());
-
-            // Las llamadas de las varillas NO viajan dentro del bloque de la sección:
-            // Bloquear deja fuera las capas COTAS y ROTULOS a propósito, así que el
-            // corte que se inserta junto al alzado llegaba sin ellas. Se rehacen aquí,
-            // cuando el alzado avisa de dónde dejó el bloque.
-            dibujante.TrasInsertarSeccion = (id, xs, ys) =>
-            {
-                var fila = _datos.SeccionesConcreto.FirstOrDefault(
-                    f => string.Equals((f.Id ?? string.Empty).Trim(), id,
-                        StringComparison.OrdinalIgnoreCase));
-
-                if (fila is not null)
-                {
-                    secciones.LlamadasJuntoAlBloque(AFormatoCad(fila), xs, ys);
-                }
-            };
-
-            // Y la capa ALZADOS, que solo usa el alzado
-            dibujante.AsegurarCapas();
+            // Cada alzado se marca al dibujarlo, para que «Dibujar solo la seleccionada»
+            // lo encuentre después y lo rehaga en este mismo sitio.
+            MarcasCad.Registrar(doc);
 
             var x = 0d;
             var dibujados = 0;
@@ -1296,10 +1271,13 @@ public partial class MainWindow : Window
                 // la X del elemento siguiente. El avance no se calcula aquí a
                 // propósito: depende del tipo de elemento y son cinco constantes de
                 // la macro. Vive en AlzadoLayout, comprobado contra el VBA.
+                var antes = AcadConnection.Retry(() => (int)ms.Count);
                 var siguiente = dibujante.DibujarElemento(a, x);
 
                 if (siguiente > x)
                 {
+                    MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(r.Id), x, dibujante.UltimaYFila);
+
                     dibujados++;
                     x = siguiente;
                 }
@@ -1347,6 +1325,283 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show("No se pudieron generar los alzados:\n\n" + ex.Message,
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Cursor = Cursors.Arrow;
+        }
+    }
+
+    /// <summary>
+    /// El dibujante de alzados listo para usar: escala, fila, capas y las llamadas del corte.
+    /// </summary>
+    /// <remarks>
+    /// Lo comparten «Generar alzados» y «Dibujar solo la seleccionada». Si cada uno lo armara
+    /// a su manera, el alzado de un solo elemento acabaría distinto del de la fila completa.
+    /// </remarks>
+    private AlzadoDrawer CrearDibujanteDeAlzados(dynamic doc, double escala)
+    {
+        var dibujante = new AlzadoDrawer(doc, escala)
+        {
+            EscalaHatch = LeerEscalaHatch(),
+
+            // Los bloques y los alzados van 2 m por ENCIMA de la seccion mas
+            // alta, no en la cota fija Y=2 de la macro. Con una contratrabe o un
+            // muro altos, la cota fija dejaba la seccion invadiendo la fila de
+            // alzados.
+            AltoMaximoSeccion = AltoMaximoDeLasSecciones(escala)
+        };
+
+        // Capas de varilla, estilos de texto y de cota: los mismos de la sección
+        var secciones = new SeccionDrawer(doc, escala);
+        secciones.AsegurarCapas(ClavesDeVarillaUsadas());
+
+        // Las llamadas de las varillas NO viajan dentro del bloque de la sección:
+        // Bloquear deja fuera las capas COTAS y ROTULOS a propósito, así que el
+        // corte que se inserta junto al alzado llegaba sin ellas. Se rehacen aquí,
+        // cuando el alzado avisa de dónde dejó el bloque.
+        dibujante.TrasInsertarSeccion = (id, xs, ys) =>
+        {
+            var fila = _datos.SeccionesConcreto.FirstOrDefault(
+                f => string.Equals((f.Id ?? string.Empty).Trim(), id,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (fila is not null)
+            {
+                secciones.LlamadasJuntoAlBloque(AFormatoCad(fila), xs, ys);
+            }
+        };
+
+        // Y la capa ALZADOS, que solo usa el alzado
+        dibujante.AsegurarCapas();
+
+        return dibujante;
+    }
+
+    // ======================================================================
+    // Dibujar SOLO la fila seleccionada
+    // ======================================================================
+
+    /// <summary>
+    /// Rehace en AutoCAD <b>solo la fila seleccionada</b>: su sección y, si lleva, su alzado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Se pidió para no tener que redibujar todo cuando cambian las medidas o el armado de
+    /// un elemento. Lo que hace con cada parte:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Ya dibujada:</b> vuelve a su mismo sitio —el acomodo hecho a mano no se
+    ///     pierde— y se borran sus cotas y rótulos viejos, que van sueltos en el modelo y
+    ///     sin esto se quedarían midiendo lo que ya no es.
+    ///   </item>
+    ///   <item>
+    ///     <b>Nueva:</b> se dibuja al final de su fila, sin encimarse con nada.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// <b>Las cotas viejas se encuentran por su marca</b> (<see cref="MarcasCad"/>), que se
+    /// pone al dibujar desde esta versión. Lo dibujado con una versión anterior no la lleva:
+    /// entonces la geometría sí se actualiza, pero las cotas y rótulos viejos hay que
+    /// borrarlos a mano, y se avisa con el nombre del elemento.
+    /// </para>
+    /// <para>
+    /// La sección va <b>antes</b> que el alzado a propósito: el alzado inserta el bloque de
+    /// la sección como su <c>CORTE A-A'</c>, así que tiene que encontrarlo ya rehecho.
+    /// </para>
+    /// </remarks>
+    private void OnDibujarSeleccionada(object sender, RoutedEventArgs e)
+    {
+        CerrarEdicionDeLasHojas();
+
+        if (!_license.HasFeature("export-dxf"))
+        {
+            MessageBox.Show("Tu licencia no incluye la generación de dibujos.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var fila = Seleccionada;
+        var id = (fila?.Id ?? string.Empty).Trim();
+
+        if (fila is null || id.Length == 0)
+        {
+            MessageBox.Show(
+                fila is null
+                    ? "Selecciona en la hoja la fila que quieres dibujar."
+                    : "La fila seleccionada no tiene ID, y el ID es el nombre de su bloque en AutoCAD.",
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Solo detienen los problemas de ESTA fila: un error en otra no tiene por qué
+        // impedir rehacer la que sí está bien. Revisar los rotula con el ID de su fila.
+        Revisar(out var todos);
+        var problemas = todos
+            .Where(p => p.Contains("'" + id + "'", StringComparison.OrdinalIgnoreCase)
+                        || p.Contains(id + ":", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (problemas.Count > 0)
+        {
+            MessageBox.Show(
+                $"Corrige esto antes de dibujar \"{id}\":\n\n" + string.Join("\n", problemas),
+                AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Cursor = Cursors.Wait;
+
+            var escala = LeerEscala();
+
+            dynamic app = AcadConnection.Connect(launchIfMissing: false);
+            dynamic doc = AcadConnection.GetOrCreateDocument(app);
+            dynamic ms = AcadConnection.Retry(() => doc.ModelSpace);
+
+            MarcasCad.Registrar(doc);
+
+            var avisos = new List<string>();
+            var hecho = new List<string>();
+            var fallos = new List<string>();
+
+            // ---------- 1. La sección ----------
+            var secciones = new SeccionDrawer(doc, escala)
+            {
+                EscalaHatch = LeerEscalaHatch(),
+
+                // Aquí SIEMPRE se rehace: es justo lo que se pidió. La casilla
+                // «Redibujar las que ya existen» es para el dibujo de toda la hoja.
+                Redibujar = true
+            };
+
+            secciones.AsegurarCapas(ClavesDeVarillaUsadas());
+
+            var yaExistia = secciones.BloqueYaExiste(id);
+
+            // Sus cotas y rótulos viejos. La inserción del bloque NO se borra aquí: el
+            // dibujante la necesita para saber a qué sitio volver, y la borra él.
+            List<MarcasCad.Marcada> viejasSec = MarcasCad.Buscar(doc, ms, MarcasCad.ClaveSeccion(id));
+            MarcasCad.Borrar(viejasSec.Where(m => !MarcasCad.EsBloque(m.Entidad)));
+
+            if (yaExistia && viejasSec.Count == 0)
+            {
+                avisos.Add(
+                    $"La sección \"{id}\" se dibujó con una versión anterior, que no marcaba sus " +
+                    "cotas: la sección ya está rehecha en su sitio, pero sus cotas y rótulos " +
+                    "VIEJOS siguen ahí. Bórralos a mano; desde ahora quedan marcados y la " +
+                    "próxima vez se van solos.");
+            }
+
+            // Nueva: al final de la fila de secciones. Ya existente: el dibujante ignora esta
+            // X y la devuelve al punto donde estaba.
+            var xSec = yaExistia ? 0 : secciones.PosicionInicialX();
+
+            secciones.Dibujar(AFormatoCad(fila), xSec, 0);
+
+            if (secciones.InicioUltima >= 0)
+            {
+                MarcasCad.Marcar(ms, secciones.InicioUltima, MarcasCad.ClaveSeccion(id), xSec, 0);
+                hecho.Add(yaExistia ? "la sección, en su mismo sitio" : "la sección, al final de su fila");
+            }
+            else
+            {
+                avisos.Add($"La sección \"{id}\" no se pudo rehacer: su bloque no se dejó borrar.");
+            }
+
+            secciones.RotulosAlFrente();
+            secciones.RevisarColorNegro();
+            fallos.AddRange(secciones.Fallos);
+
+            // ---------- 2. El alzado, si lleva ----------
+            if (TipoDe(fila.Elemento, fila.Id) is not null)
+            {
+                AlzadoDrawer alzados = CrearDibujanteDeAlzados(doc, escala);
+
+                List<MarcasCad.Marcada> viejasAlz = MarcasCad.Buscar(doc, ms, MarcasCad.ClaveAlzado(id));
+                var sitio = MarcasCad.SitioMasReciente(viejasAlz);
+
+                // Un alzado de una versión anterior: está su bloque pero no su marca.
+                var alzadoSinMarca = sitio is null
+                    && (secciones.BloqueYaExiste("ALZ-" + id)
+                        || secciones.BloqueYaExiste("ALZX-" + id));
+
+                if (alzadoSinMarca)
+                {
+                    avisos.Add(
+                        $"El alzado de \"{id}\" se dibujó con una versión anterior, que no lo " +
+                        "marcaba, así que no sé dónde estaba: el nuevo va al final de la fila de " +
+                        "alzados. Borra el viejo a mano —con sus cotas—; desde ahora queda " +
+                        "marcado y la próxima vez se rehace en su sitio.");
+                }
+
+                // Todo lo del alzado viejo: su bloque, sus cotas, su corte A-A' insertado y la
+                // línea de corte. Lo que la sección ya se llevó al rehacerse simplemente no
+                // está, y Borrar lo pasa por alto.
+                MarcasCad.Borrar(viejasAlz);
+
+                var x0 = sitio?.X ?? alzados.XAlFinalDeLaFila();
+                var antes = AcadConnection.Retry(() => (int)ms.Count);
+
+                var siguiente = alzados.DibujarElemento(AFormatoAlzado(fila), x0, sitio?.Y);
+
+                if (siguiente > x0)
+                {
+                    MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(id), x0, alzados.UltimaYFila);
+                    hecho.Add(sitio is not null
+                        ? "su alzado, en su mismo sitio"
+                        : "su alzado, al final de la fila de alzados");
+                }
+
+                fallos.AddRange(alzados.Fallos);
+            }
+
+            try
+            {
+                AcadConnection.Retry(() => { doc.Regen(1); });   // acAllViewports
+            }
+            catch (Exception)
+            {
+                // Sin regenerar, el dibujo ya está hecho: se ve al primer zoom.
+            }
+
+            StatusText.Text = $"Dibujado solo \"{id}\": " + string.Join(" y ", hecho) + ".";
+
+            var texto =
+                $"Listo: \"{id}\".\n\nSe rehízo " +
+                (hecho.Count == 0 ? "nada" : string.Join(" y ", hecho)) + "." +
+                (avisos.Count == 0 ? string.Empty : "\n\n" + string.Join("\n\n", avisos));
+
+            if (fallos.Count > 0)
+            {
+                var detalle = string.Join(Environment.NewLine, fallos.Select(f => "  - " + f));
+                MostrarNotas("AVISOS DEL ULTIMO DIBUJO (" + fallos.Count + "):" +
+                             Environment.NewLine + detalle);
+
+                texto += $"\n\nHubo {fallos.Count} fallo(s) que se toleraron:\n\n" + detalle;
+            }
+
+            MessageBox.Show(texto, AppInfo.ProductName, MessageBoxButton.OK,
+                fallos.Count == 0 && avisos.Count == 0
+                    ? MessageBoxImage.Information
+                    : MessageBoxImage.Warning);
+        }
+        catch (AcadNotAvailableException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (AcadBusyException ex)
+        {
+            MessageBox.Show(ex.Message, AppInfo.ProductName,
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"No se pudo dibujar \"{id}\":\n\n" + ex.Message,
                 AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -3821,6 +4076,11 @@ public partial class MainWindow : Window
 
             dibujante.AsegurarCapas(ClavesDeVarillaUsadas());
 
+            // Cada sección se marca al dibujarla: así sus cotas y rótulos, que van sueltos,
+            // se pueden encontrar y borrar al rehacerla. Ver MarcasCad.
+            MarcasCad.Registrar(doc);
+            dynamic ms = AcadConnection.Retry(() => doc.ModelSpace);
+
             // Se empieza después de lo que ya esté dibujado, para no encimarlo
             var x = dibujante.PosicionInicialX();
             var entidades = 0;
@@ -3831,7 +4091,22 @@ public partial class MainWindow : Window
             {
                 var saltadasAntes = dibujante.Saltadas.Count;
 
+                // Si se va a rehacer en su sitio, fuera sus cotas y rótulos viejos: antes se
+                // quedaban debajo de los nuevos, midiendo las medidas de antes. La inserción
+                // del bloque se deja, que el dibujante la necesita para saber a dónde volver.
+                if (dibujante.Redibujar && dibujante.BloqueYaExiste(s.Id))
+                {
+                    List<MarcasCad.Marcada> viejas =
+                        MarcasCad.Buscar(doc, ms, MarcasCad.ClaveSeccion(s.Id));
+                    MarcasCad.Borrar(viejas.Where(m => !MarcasCad.EsBloque(m.Entidad)));
+                }
+
                 var n = dibujante.Dibujar(AFormatoCad(s), x, 0);
+
+                if (dibujante.InicioUltima >= 0)
+                {
+                    MarcasCad.Marcar(ms, dibujante.InicioUltima, MarcasCad.ClaveSeccion(s.Id), x, 0);
+                }
 
                 // Igual que la macro: la seccion que ya es bloque se SALTA. Quien
                 // decide es el dibujante, no esta linea: aqui solo se detecta que

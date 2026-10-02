@@ -2568,6 +2568,62 @@ def v16_extruida_piers() -> None:
           and "AlzadoLayout.PosicionCorte(largo)" in m_prev.group(0)
           and "Flecha(top - salidaPx)" in m_prev.group(0))
 
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    #  DIBUJAR SOLO LA FILA SELECCIONADA
+    #
+    #  Pedido del usuario: poder rehacer UN elemento -porque cambio de medidas o de
+    #  armado- sin volver a dibujar todos. Las cotas y rotulos van SUELTOS en el modelo,
+    #  asi que para borrar los viejos cada pieza se marca con XData al dibujarla.
+    #  ═══════════════════════════════════════════════════════════════════════════════
+    marcas = leer(ruta("client/src/CadLink.Cad/MarcasCad.cs"))
+    check("existen las marcas de XData",
+          all(f in marcas for f in ("public static void Registrar(", "public static int Marcar(",
+                                    "public static List<Marcada> Buscar(", "public static int Borrar(")))
+    check("las marcas se buscan con un conjunto de seleccion filtrado por la aplicacion",
+          "new short[] { 1001 }" in marcas and "ss.Select(5," in marcas)
+
+    xaml_sel = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    check("hay boton para dibujar solo la seleccionada",
+          'x:Name="DibujarSeleccionadaButton"' in xaml_sel
+          and 'Click="OnDibujarSeleccionada"' in xaml_sel)
+    check("y la licencia lo habilita igual que a los otros",
+          "DibujarSeleccionadaButton.IsEnabled = puedeDibujar;" in mw_alz)
+
+    m_sel = re.search(r"private void OnDibujarSeleccionada\(.*?\n    \}", mw_alz, re.S)
+    check("existe el manejador", m_sel is not None)
+    if m_sel:
+        cs = m_sel.group(0)
+        check("rehace la seccion ANTES que el alzado, que inserta su bloque",
+              "secciones.Dibujar(" in cs and "alzados.DibujarElemento(" in cs
+              and cs.index("secciones.Dibujar(") < cs.index("alzados.DibujarElemento("))
+        check("la seccion se rehace siempre, sin depender de la casilla",
+              "Redibujar = true" in cs)
+        check("borra las cotas viejas pero deja la insercion para volver a su sitio",
+              "!MarcasCad.EsBloque(m.Entidad)" in cs)
+        check("el alzado vuelve a su X y su Y guardadas",
+              "alzados.DibujarElemento(AFormatoAlzado(fila), x0, sitio?.Y)" in cs)
+        check("lo nuevo se marca",
+              "MarcasCad.ClaveSeccion(id)" in cs and "MarcasCad.ClaveAlzado(id)" in cs
+              and cs.count("MarcasCad.Marcar(") == 2)
+        check("lo de una version anterior se avisa por nombre",
+              "versión anterior" in cs)
+
+    sec_drw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+    m_dib = re.search(r"public int Dibujar\(SeccionCad s.*?InicioUltima = inicio;", sec_drw, re.S)
+    check("el inicio de lo nuevo se cuenta DESPUES de borrar la seccion vieja",
+          m_dib is not None and "BorrarSeccion(s.Id)" in m_dib.group(0))
+
+    m_exp = re.search(r"private void OnExport\(.*?\n    \}", mw_alz, re.S)
+    m_exa = re.search(r"private void OnExportAlzados\(.*?\n    \}", mw_alz, re.S)
+    check("el dibujo completo de secciones tambien marca",
+          m_exp is not None and "MarcasCad.Marcar(" in m_exp.group(0))
+    check("y al redibujar en su sitio borra sus cotas viejas",
+          m_exp is not None and "!MarcasCad.EsBloque(m.Entidad)" in m_exp.group(0))
+    check("el de alzados tambien marca, con su X y su Y",
+          m_exa is not None
+          and "MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(r.Id), x, dibujante.UltimaYFila)"
+          in m_exa.group(0))
+
     #  QUE ES LA MISMA CAPA EN LA QUE ROTULA EL DIBUJANTE DE SECCIONES: si algun dia se
     #  cambia alli, esto avisa de que las dos hojas dejaron de coincidir.
     secdrw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
@@ -10176,10 +10232,11 @@ def v19_circular_y_ui() -> None:
     check("hay un solo sitio que escribe las notas",
           "private void MostrarNotas(string texto)" in codigo
           and "NotasPanel.IsExpanded = false;" in codigo)
-    # NUEVE: las siete de antes mas las dos de los cortes -lo que no se entendio del campo y los
-    # cortes que no caen sobre ningun eje, que van rotulados con su sitio-.
+    # DIEZ: las siete de antes mas las dos de los cortes -lo que no se entendio del campo y los
+    # cortes que no caen sobre ningun eje, que van rotulados con su sitio- y la de «Dibujar solo
+    # la seleccionada».
     check("y los sitios que las escriben pasan por ahi",
-          codigo.count("MostrarNotas(") == 9
+          codigo.count("MostrarNotas(") == 10
           and codigo.count("ExportHintText.Text =") == 1,
           f"{codigo.count('MostrarNotas(')} llamadas, "
           f"{codigo.count('ExportHintText.Text =')} asignaciones directas")
