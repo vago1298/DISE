@@ -2427,7 +2427,7 @@ public sealed class AlzadoDrawer
         }
 
         // El corte A-A': línea vertical que cruza la trabe, A arriba y A' abajo.
-        LineaDeCorte(x + (AlzadoLayout.FraccionCorte * largo), y, y1, vertical: true);
+        LineaDeCorte(x + AlzadoLayout.PosicionCorte(largo), y, y1, vertical: true);
 
         Titulo(a, x, y, largo);
     }
@@ -2581,12 +2581,67 @@ public sealed class AlzadoDrawer
             // Trabe: la A pasa la punta de arriba y la A' la de abajo.
             LetraCorte("A", posicion, fin + aire + (h / 2), h);
             LetraCorte("A'", posicion, ini - aire - (h / 2), h);
+
+            // Y en cada punta, una flechita hacia la IZQUIERDA: el corte se está viendo
+            // desde ese lado. Va pegada a la línea, debajo de la A y encima de la A'.
+            FlechaCorte(posicion, fin, -1, 0);
+            FlechaCorte(posicion, ini, -1, 0);
         }
         else
         {
             // Columna: cada letra sobre el tramo que sobresale de su cara.
             LetraCorte("A", desde - (salida / 2), posicion + aire + (h / 2), h);
             LetraCorte("A'", hasta + (salida / 2), posicion - aire - (h / 2), h);
+
+            // La columna es la trabe girada 90°, así que la izquierda de la trabe es ABAJO
+            // en la columna: las flechas bajan desde cada punta. Así el corte de la columna
+            // se mira hacia su arranque, igual que el de la trabe.
+            FlechaCorte(ini, posicion, 0, -1);
+            FlechaCorte(fin, posicion, 0, -1);
+        }
+    }
+
+    /// <summary>
+    /// Una flechita del corte: arranca en <c>(x, y)</c> —la punta de la línea— y apunta en
+    /// la dirección <c>(dx, dy)</c>, que es hacia donde se mira el corte.
+    /// </summary>
+    /// <remarks>
+    /// Es una sola polilínea de tres vértices: el palo, con ancho cero, y la punta, que va
+    /// del ancho de su base a cero. Así sale una flecha rellena sin hatch, que se mueve y se
+    /// borra como una sola pieza.
+    /// </remarks>
+    private void FlechaCorte(double x, double y, double dx, double dy)
+    {
+        var largo = AlzadoLayout.LargoFlechaCorte;
+        var punta = AlzadoLayout.PuntaFlechaCorte;
+
+        var pts = new[]
+        {
+            x, y,
+            x + (dx * (largo - punta)), y + (dy * (largo - punta)),
+            x + (dx * largo), y + (dy * largo),
+        };
+
+        object? pl = Poli((object)_ms, pts, "ROTULOS", cerrada: false, bulges: null);
+        if (pl is null)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic p = pl;
+                p.SetWidth(0, 0d, 0d);
+                p.SetWidth(1, AlzadoLayout.AnchoPuntaFlechaCorte, 0d);
+                p.Update();
+            });
+        }
+        catch (Exception ex)
+        {
+            // Sin ancho queda un palo sin punta, pero en su sitio.
+            Fallo("Punta de la flecha del corte", ex);
         }
     }
 
@@ -2673,7 +2728,7 @@ public sealed class AlzadoDrawer
         // El corte A-A': línea horizontal que cruza la columna, A arriba (en su extremo
         // izquierdo) y A' abajo (en el derecho). Va en las DOS caras de una columna
         // rectangular, porque cada alzado se lee solo.
-        LineaDeCorte(y + (AlzadoLayout.FraccionCorte * largo), xIzq, xDer, vertical: false);
+        LineaDeCorte(y + AlzadoLayout.PosicionCorte(largo), xIzq, xDer, vertical: false);
 
         if (conRotulo)
         {

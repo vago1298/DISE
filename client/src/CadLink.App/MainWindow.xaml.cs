@@ -5817,11 +5817,11 @@ public partial class MainWindow : Window
 
         // ---------- El corte A-A' ----------
         //
-        // La misma línea de quiebre que pone AutoCAD, en el mismo sitio —5/8 de L— y con la
-        // misma forma: las dos salen de AlzadoLayout. Aquí el alzado va siempre tendido, así
-        // que la línea es vertical: A arriba y A' abajo.
+        // La misma línea de quiebre que pone AutoCAD, en el mismo sitio —L/4 + 5 cm— y con
+        // la misma forma: las dos salen de AlzadoLayout. Aquí el alzado va siempre tendido,
+        // así que la línea es vertical: A arriba y A' abajo, con su flechita a la izquierda.
         {
-            var xCorte = izquierda + (AlzadoLayout.FraccionCorte * w);
+            var xCorte = izquierda + (AlzadoLayout.PosicionCorte(largo) * esc);
             const double salidaPx = 7;
 
             // El zigzag en metros, pasado a píxeles: así guarda la proporción con la pieza.
@@ -5841,6 +5841,31 @@ public partial class MainWindow : Window
             }
 
             PreviaFijaCanvas.Children.Add(linea);
+
+            // Las flechitas, hacia la izquierda desde cada punta. En píxeles fijos: a la
+            // escala de la pieza saldrían de un píxel en una trabe larga.
+            void Flecha(double yPunta)
+            {
+                const double largoPx = 14, puntaPx = 6, medioAnchoPx = 3;
+                var tinta = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33));
+
+                PreviaFijaCanvas.Children.Add(new Line
+                {
+                    X1 = xCorte, Y1 = yPunta,
+                    X2 = xCorte - largoPx + puntaPx, Y2 = yPunta,
+                    Stroke = tinta,
+                    StrokeThickness = 1.3
+                });
+
+                var cabeza = new Polygon { Fill = tinta };
+                cabeza.Points.Add(new Point(xCorte - largoPx, yPunta));
+                cabeza.Points.Add(new Point(xCorte - largoPx + puntaPx, yPunta - medioAnchoPx));
+                cabeza.Points.Add(new Point(xCorte - largoPx + puntaPx, yPunta + medioAnchoPx));
+                PreviaFijaCanvas.Children.Add(cabeza);
+            }
+
+            Flecha(top - salidaPx);
+            Flecha(top + h + salidaPx);
 
             Etiqueta(PreviaFijaCanvas, "A", xCorte - 4, top - salidaPx - 15);
             Etiqueta(PreviaFijaCanvas, "A'", xCorte - 5, top + h + salidaPx);

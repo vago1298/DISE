@@ -2534,20 +2534,35 @@ def v16_extruida_piers() -> None:
         check("la linea es un QUIEBRE, sacado de AlzadoLayout",
               "AlzadoLayout.LineaDeQuiebre(" in cuerpo)
         check("con A y A'", 'LetraCorte("A",' in cuerpo and "LetraCorte(\"A'\"," in cuerpo)
+        #  Pedido del usuario: flechitas hacia la IZQUIERDA junto a cada letra, para que
+        #  se vea desde que lado se mira el corte. En la columna -la trabe girada 90°-
+        #  la izquierda es abajo.
+        check("y una flechita en cada punta",
+              len(re.findall(r"FlechaCorte\(", cuerpo)) == 4)
+        check("hacia la izquierda en la trabe y hacia abajo en la columna",
+              len(re.findall(r"FlechaCorte\([^;]*,\s*-1,\s*0\)", cuerpo)) == 2
+              and len(re.findall(r"FlechaCorte\([^;]*,\s*0,\s*-1\)", cuerpo)) == 2)
         check("y va en la capa ROTULOS, como el resto del rotulado",
               '"ROTULOS"' in cuerpo)
 
     lay_alz = leer(ruta("client/src/CadLink.Cad/AlzadoLayout.cs"))
     check("el sitio del corte vive en UN solo lugar",
-          "public const double FraccionCorte" in lay_alz
+          "public static double PosicionCorte(" in lay_alz
           and "public static double[] LineaDeQuiebre(" in lay_alz)
+    check("y es el primer L/4 mas 5 cm",
+          "(largo / 4) + CorrimientoCorte" in lay_alz
+          and "public const double CorrimientoCorte = 0.05;" in lay_alz)
+    check("los dos alzados lo piden ahi",
+          "AlzadoLayout.PosicionCorte(largo)" in (m_hor.group(0) if m_hor else "")
+          and "AlzadoLayout.PosicionCorte(largo)" in (m_ver.group(0) if m_ver else ""))
 
     mw_alz = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
     m_prev = re.search(r"private void DibujarAlzadoPrevio\(.*?\n    \}", mw_alz, re.S)
     check("la vista previa pinta el mismo corte",
           m_prev is not None
           and "AlzadoLayout.LineaDeQuiebre(" in m_prev.group(0)
-          and "AlzadoLayout.FraccionCorte" in m_prev.group(0))
+          and "AlzadoLayout.PosicionCorte(largo)" in m_prev.group(0)
+          and "Flecha(top - salidaPx)" in m_prev.group(0))
 
     #  QUE ES LA MISMA CAPA EN LA QUE ROTULA EL DIBUJANTE DE SECCIONES: si algun dia se
     #  cambia alli, esto avisa de que las dos hojas dejaron de coincidir.

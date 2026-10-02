@@ -273,24 +273,42 @@ public static class AlzadoLayout
     // ==================================================================
 
     /// <summary>
-    /// Dónde cae el corte A-A', como fracción de la longitud del elemento medida desde su
-    /// arranque: <b>5/8 de L</b>.
+    /// Lo que se corre el corte A-A' pasando el primer cuarto: <b>5 cm</b>.
+    /// </summary>
+    public const double CorrimientoCorte = 0.05;
+
+    /// <summary>
+    /// Dónde cae el corte A-A', medido desde el arranque de la pieza: <b>L/4 + 5 cm</b>.
     /// </summary>
     /// <remarks>
     /// <para>
     /// El alzado trae al lado su <c>CORTE A-A'</c>, pero sobre el alzado no había nada que
-    /// dijera <b>por dónde</b> se cortó. Ahora una línea de quiebre cruza la pieza y lleva
+    /// dijera <b>por dónde</b> se cortó. Una línea de quiebre cruza la pieza y lleva
     /// <c>A</c> en un extremo y <c>A'</c> en el otro.
     /// </para>
     /// <para>
-    /// <b>Por qué 5/8 y no el centro.</b> A media pieza están centrados los textos de las
-    /// cotas —el armado arriba y el estribado de la zona L/2 abajo—, y una línea en L/2 los
-    /// atravesaría. En L/4 y 3L/4 caen las líneas de extensión de las cotas de zona, y una
-    /// línea de corte encima de una de ellas no se distingue. 5/8 queda dentro de la zona
-    /// central, que es la sección típica, y libre de las dos cosas.
+    /// <b>Lo pidió el usuario así:</b> el primer L/4 más 5 cm hacia la derecha —hacia arriba
+    /// en la columna—. Los 5 cm la apartan de la línea de extensión de la cota de zona que
+    /// cae justo en L/4, con la que se confundiría.
+    /// </para>
+    /// <para>
+    /// En una pieza tan corta que L/4 + 5 cm no quepa, el corte se queda a media pieza.
     /// </para>
     /// </remarks>
-    public const double FraccionCorte = 0.625;
+    public static double PosicionCorte(double largo)
+    {
+        var p = (largo / 4) + CorrimientoCorte;
+        return p < largo ? p : largo / 2;
+    }
+
+    /// <summary>Largo total de la flechita del corte, punta incluida.</summary>
+    public const double LargoFlechaCorte = 0.035;
+
+    /// <summary>Largo de la punta de la flechita.</summary>
+    public const double PuntaFlechaCorte = 0.012;
+
+    /// <summary>Ancho de la punta de la flechita en su base.</summary>
+    public const double AnchoPuntaFlechaCorte = 0.01;
 
     /// <summary>
     /// Cuánto sobresale la línea de corte de cada cara de la pieza, en metros de dibujo.
