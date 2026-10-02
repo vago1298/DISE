@@ -877,6 +877,22 @@
                                             Padding="8,2"
                                             Click="OnQuitarGrapas"
                                             ToolTip="Quita TODAS las grapas de la seccion seleccionada." />
+
+                                    <!-- LOS MANDOS DEL BASTON: con que varillas y diametro se pone
+                                         el baston al hacer clic sobre el ALZADO. -->
+                                    <TextBlock Text="Bastón" FontSize="10.5"
+                                               VerticalAlignment="Center" Margin="12,0,4,0"
+                                               Foreground="{DynamicResource MutedTextBrush}" />
+                                    <TextBox x:Name="BastonCantidadTxt" Text="2"
+                                             Width="26" FontSize="11" Height="22"
+                                             VerticalContentAlignment="Center" Margin="0,0,4,0"
+                                             ToolTip="Cuantas varillas lleva el baston que se ponga con clic en el alzado." />
+                                    <ComboBox x:Name="BastonDiametroCombo"
+                                              Width="58" FontSize="11" Height="22"
+                                              VerticalAlignment="Center" Margin="0,0,6,0"
+                                              SelectedValue="#4"
+                                              ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
+                                              ToolTip="Diametro del baston que se ponga con clic en el alzado.&#10;Clic arriba = superior, abajo = inferior.&#10;Cerca de un extremo: desde el paño hasta el clic, en los dos extremos (Ctrl: solo en ese).&#10;En el tercio central: al centro, desde L/4 de cada paño.&#10;Clic sobre un baston lo quita." />
                                 </StackPanel>
 
                                 <!-- Los del encuadre, a la derecha: son de mirar, no de
@@ -1047,7 +1063,7 @@
                                  iba flotando sobre la esquina de abajo y le comia sitio
                                  al alzado. -->
                             <TextBlock Grid.Row="2"
-                                       Text="Arrastra para mover · rueda para zoom · clic en dos varillas = grapa · doble clic = ajustar"
+                                       Text="Arrastra para mover · rueda para zoom · clic en dos varillas = grapa · clic en el alzado = bastón · doble clic = ajustar"
                                        FontSize="10" Margin="9,2,0,5"
                                        Foreground="{DynamicResource MutedTextBrush}" />
                         </Grid>

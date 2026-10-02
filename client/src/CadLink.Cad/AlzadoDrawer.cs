@@ -2843,25 +2843,18 @@ public sealed class AlzadoDrawer
     private const double AlturaLetraCorte = 0.025;
 
     /// <summary>
-    /// Lo que sobresale la línea de corte en la columna. Allí hay 8 cm libres entre cada
-    /// cara y su primera cota, así que la letra cabe ENCIMA del tramo que sobresale.
-    /// </summary>
-    private const double SalidaCorteColumna = 0.04;
-
-    /// <summary>
     /// La <b>línea de corte A-A'</b> sobre el alzado: una línea recta que cruza la pieza
-    /// por donde se tomó el <c>CORTE A-A'</c> de al lado, con <c>A</c> arriba y <c>A'</c>
-    /// abajo, y una flechita en cada punta hacia el lado desde el que se mira.
+    /// por donde se tomó el <c>CORTE A-A'</c> de al lado. En cada punta lleva el símbolo
+    /// que pidió el usuario: una raya con una <b>flecha abierta</b> hacia el lado desde el
+    /// que se mira, la letra detrás de la flecha, y un <b>triángulo</b> del otro lado.
     /// </summary>
-    /// <param name="posicion">
-    /// La X del corte en la trabe, o su Y en la columna.
-    /// </param>
+    /// <param name="posicion">La X del corte en la trabe, o su Y en la columna.</param>
     /// <param name="desde">Una cara de la pieza: la de abajo en la trabe, la izquierda en la columna.</param>
     /// <param name="hasta">La cara opuesta.</param>
     /// <param name="vertical">
-    /// Si la línea corre en vertical, que es el caso de la trabe. En la columna la línea es
-    /// horizontal: <c>A</c> va encima de su punta izquierda y <c>A'</c> debajo de la derecha,
-    /// para que también ahí la A quede arriba y la A' abajo.
+    /// Si la línea corre en vertical, que es el caso de la trabe: ahí se mira hacia la
+    /// izquierda, con la A arriba y la A' abajo. La columna es la trabe girada 90°, así que
+    /// se mira hacia abajo, con la A en la punta izquierda y la A' en la derecha.
     /// </param>
     /// <remarks>
     /// <para>
@@ -2870,8 +2863,8 @@ public sealed class AlzadoDrawer
     /// alzado, donde no se podría mover ni borrar sin explotarlo.
     /// </para>
     /// <para>
-    /// La posición sale de <see cref="AlzadoLayout.PosicionCorte"/>, la misma que usa la
-    /// vista previa.
+    /// La forma sale de <see cref="AlzadoLayout.Extremo"/> y la posición de
+    /// <see cref="AlzadoLayout.PosicionCorte"/>, las mismas que usa la vista previa.
     /// </para>
     /// </remarks>
     private void LineaDeCorte(double posicion, double desde, double hasta, bool vertical)
@@ -2881,103 +2874,65 @@ public sealed class AlzadoDrawer
             (desde, hasta) = (hasta, desde);
         }
 
-        var grueso = hasta - desde;
-        if (grueso <= 0)
+        if (hasta - desde <= 0)
         {
             return;
         }
 
-        var salida = vertical ? AlzadoLayout.SalidaCorte : SalidaCorteColumna;
+        var salida = AlzadoLayout.SalidaCorte * _f;
         var ini = desde - salida;
         var fin = hasta + salida;
 
-        // Una línea RECTA de cara a cara, sin zigzag: así lo pidió el usuario.
-        var pts = vertical
-            ? new[] { posicion, ini, posicion, fin }
-            : new[] { ini, posicion, fin, posicion };
-
-        // El cast a object no es adorno: con _ms dynamic, la llamada entera se resolvería en
-        // tiempo de ejecución y 'pl' saldría dynamic.
-        object? pl = Poli((object)_ms, pts, "ROTULOS", cerrada: false, bulges: null);
-        if (pl is null)
+        // (s, t) -> (x, y). En la trabe s es la Y y t la X; en la columna, al revés.
+        double[] AXY(double[] st)
         {
-            return;
+            var xy = new double[st.Length];
+            for (var i = 0; i < st.Length; i += 2)
+            {
+                xy[i] = vertical ? posicion + st[i + 1] : st[i];
+                xy[i + 1] = vertical ? st[i] : posicion + st[i + 1];
+            }
+
+            return xy;
         }
+
+        // La línea, recta de punta a punta.
+        Poli((object)_ms, AXY(new[] { ini, 0d, fin, 0d }), "ROTULOS", cerrada: false, bulges: null);
 
         var h = AlturaLetraCorte * _f;
-        const double aire = 0.004;
 
-        if (vertical)
+        // En la trabe la A va arriba (en 'fin'); en la columna, a la izquierda (en 'ini').
+        var extremos = vertical
+            ? new[] { ("A", fin, -1), ("A'", ini, +1) }
+            : new[] { ("A", ini, +1), ("A'", fin, -1) };
+
+        foreach (var (letra, punta, dentro) in extremos)
         {
-            // Trabe: la A pasa la punta de arriba y la A' la de abajo.
-            LetraCorte("A", posicion, fin + aire + (h / 2), h);
-            LetraCorte("A'", posicion, ini - aire - (h / 2), h);
+            var e = AlzadoLayout.Extremo(punta, dentro, _f);
 
-            // Y en cada punta, una flechita hacia la IZQUIERDA: el corte se está viendo
-            // desde ese lado. Va pegada a la línea, debajo de la A y encima de la A'.
-            FlechaCorte(posicion, fin, -1, 0);
-            FlechaCorte(posicion, ini, -1, 0);
-        }
-        else
-        {
-            // Columna: cada letra sobre el tramo que sobresale de su cara.
-            LetraCorte("A", desde - (salida / 2), posicion + aire + (h / 2), h);
-            LetraCorte("A'", hasta + (salida / 2), posicion - aire - (h / 2), h);
+            Poli((object)_ms, AXY(e.Raya), "ROTULOS", cerrada: false, bulges: null);
+            Poli((object)_ms, AXY(e.Punta), "ROTULOS", cerrada: false, bulges: null);
+            Poli((object)_ms, AXY(e.Triangulo), "ROTULOS", cerrada: true, bulges: null);
 
-            // La columna es la trabe girada 90°, así que la izquierda de la trabe es ABAJO
-            // en la columna: las flechas bajan desde cada punta. Así el corte de la columna
-            // se mira hacia su arranque, igual que el de la trabe.
-            FlechaCorte(ini, posicion, 0, -1);
-            FlechaCorte(fin, posicion, 0, -1);
+            var l = AXY(new[] { e.SLetra, e.TLetra });
+
+            // La letra DETRÁS de la flecha: a su izquierda en la trabe, debajo en la columna.
+            LetraCorte(letra, l[0], l[1], h, vertical ? AlineaMedioDerecha : AlineaArribaCentro);
         }
     }
 
-    /// <summary>
-    /// Una flechita del corte: arranca en <c>(x, y)</c> —la punta de la línea— y apunta en
-    /// la dirección <c>(dx, dy)</c>, que es hacia donde se mira el corte.
-    /// </summary>
-    /// <remarks>
-    /// Es una sola polilínea de tres vértices: el palo, con ancho cero, y la punta, que va
-    /// del ancho de su base a cero. Así sale una flecha rellena sin hatch, que se mueve y se
-    /// borra como una sola pieza.
-    /// </remarks>
-    private void FlechaCorte(double x, double y, double dx, double dy)
-    {
-        var largo = AlzadoLayout.LargoFlechaCorte;
-        var punta = AlzadoLayout.PuntaFlechaCorte;
+    /// <summary><c>acAlignmentMiddleRight</c>.</summary>
+    private const int AlineaMedioDerecha = 11;
 
-        var pts = new[]
-        {
-            x, y,
-            x + (dx * (largo - punta)), y + (dy * (largo - punta)),
-            x + (dx * largo), y + (dy * largo),
-        };
+    /// <summary><c>acAlignmentTopCenter</c>.</summary>
+    private const int AlineaArribaCentro = 7;
 
-        object? pl = Poli((object)_ms, pts, "ROTULOS", cerrada: false, bulges: null);
-        if (pl is null)
-        {
-            return;
-        }
-
-        try
-        {
-            AcadConnection.Retry(() =>
-            {
-                dynamic p = pl;
-                p.SetWidth(0, 0d, 0d);
-                p.SetWidth(1, AlzadoLayout.AnchoPuntaFlechaCorte, 0d);
-                p.Update();
-            });
-        }
-        catch (Exception ex)
-        {
-            // Sin ancho queda un palo sin punta, pero en su sitio.
-            Fallo("Punta de la flecha del corte", ex);
-        }
-    }
-
-    /// <summary>Una letra del corte, centrada en el punto que se le da.</summary>
-    private void LetraCorte(string letra, double x, double y, double alto)
+    /// <summary>Una letra del corte, anclada en el punto que se le da.</summary>
+    /// <param name="alineacion">
+    /// Por dónde se ancla: así quien llama pone la letra pegada a la flecha sin tener que
+    /// saber cuánto mide.
+    /// </param>
+    private void LetraCorte(string letra, double x, double y, double alto, int alineacion)
     {
         try
         {
@@ -2987,10 +2942,7 @@ public sealed class AlzadoDrawer
 
                 dynamic t = _ms.AddText(letra, punto, alto);
                 t.StyleName = EstiloTexto;
-
-                // acAlignmentMiddleCenter. Con el punto en el centro, quien llama decide
-                // dónde queda la letra sin tener que saber cuánto mide.
-                t.Alignment = 10;
+                t.Alignment = alineacion;
                 t.TextAlignmentPoint = punto;
                 t.Layer = "ROTULOS";
                 t.Color = PorCapa;             // el verde lo pone la CAPA, ver arriba

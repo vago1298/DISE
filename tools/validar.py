@@ -2532,19 +2532,18 @@ def v16_extruida_piers() -> None:
 
     if m_corte:
         cuerpo = m_corte.group(0)
-        check("la linea es RECTA, de dos puntos y sin zigzag",
+        #  EL SIMBOLO QUE PIDIO EL USUARIO CON SU IMAGEN: en cada punta una raya con flecha
+        #  abierta hacia donde se mira, la letra detras, y un triangulo del otro lado.
+        check("la linea es RECTA, de punta a punta",
               "LineaDeQuiebre" not in cuerpo
-              and "new[] { posicion, ini, posicion, fin }" in cuerpo
-              and "new[] { ini, posicion, fin, posicion }" in cuerpo)
-        check("con A y A'", 'LetraCorte("A",' in cuerpo and "LetraCorte(\"A'\"," in cuerpo)
-        #  Pedido del usuario: flechitas hacia la IZQUIERDA junto a cada letra, para que
-        #  se vea desde que lado se mira el corte. En la columna -la trabe girada 90°-
-        #  la izquierda es abajo.
-        check("y una flechita en cada punta",
-              len(re.findall(r"FlechaCorte\(", cuerpo)) == 4)
-        check("hacia la izquierda en la trabe y hacia abajo en la columna",
-              len(re.findall(r"FlechaCorte\([^;]*,\s*-1,\s*0\)", cuerpo)) == 2
-              and len(re.findall(r"FlechaCorte\([^;]*,\s*0,\s*-1\)", cuerpo)) == 2)
+              and "AXY(new[] { ini, 0d, fin, 0d })" in cuerpo)
+        check("con A y A'", '("A", ' in cuerpo and "(\"A'\", " in cuerpo)
+        check("cada punta lleva raya, flecha abierta y triangulo",
+              "AlzadoLayout.Extremo(punta, dentro, _f)" in cuerpo
+              and "AXY(e.Raya)" in cuerpo and "AXY(e.Punta)" in cuerpo
+              and "AXY(e.Triangulo), \"ROTULOS\", cerrada: true" in cuerpo)
+        check("la letra va detras de la flecha",
+              "vertical ? AlineaMedioDerecha : AlineaArribaCentro" in cuerpo)
         check("y va en la capa ROTULOS, como el resto del rotulado",
               '"ROTULOS"' in cuerpo)
 
@@ -2566,7 +2565,9 @@ def v16_extruida_piers() -> None:
           m_prev is not None
           and "LineaDeQuiebre" not in m_prev.group(0)
           and "AlzadoLayout.PosicionCorte(largo)" in m_prev.group(0)
-          and "Flecha(top - salidaPx)" in m_prev.group(0))
+          and "AlzadoLayout.Extremo(punta, dentro, PxCorte)" in m_prev.group(0))
+    check("el simbolo del corte vive en un solo sitio",
+          "public static ExtremoCorte Extremo(" in lay_alz)
 
     #  ═══════════════════════════════════════════════════════════════════════════════
     #  DIBUJAR SOLO LA FILA SELECCIONADA
@@ -2677,6 +2678,18 @@ def v16_extruida_piers() -> None:
     check("no van en la tabla: tienen su cuadro",
           'Click="OnEditarBastones"' in xaml_sel
           and "private void OnEditarBastones(" in leer(ruta("client/src/CadLink.App/MainWindow.Bastones.cs")))
+    #  Y se ponen con un clic sobre el ALZADO de la vista previa, como las grapas en la
+    #  seccion: el usuario lo pidio asi, no solo desde el boton.
+    mw_bast = leer(ruta("client/src/CadLink.App/MainWindow.Bastones.cs"))
+    mw_pi = leer(ruta("client/src/CadLink.App/MainWindow.PreviaInteractiva.cs"))
+    check("un clic en el alzado pone o quita un baston",
+          "private bool ProcesarClicEnAlzado(Point p)" in mw_bast
+          and "if (!ProcesarClicEnAlzado(e.GetPosition(PreviaFijaCanvas)))" in mw_pi)
+    check("y la vista previa guarda donde quedo el alzado y cada baston",
+          "_alzadoPrevio = new AlzadoEnPrevia(" in mw_alz
+          and "_bastonesEnPrevia.Add(" in mw_alz)
+    check("con sus mandos de varillas y diametro",
+          'x:Name="BastonCantidadTxt"' in xaml_sel and 'x:Name="BastonDiametroCombo"' in xaml_sel)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

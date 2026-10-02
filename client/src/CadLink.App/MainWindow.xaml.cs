@@ -5856,6 +5856,11 @@ public partial class MainWindow : Window
     /// </remarks>
     private void DibujarAlzadoPrevio(SeccionConcretoRow s, double izquierda, double alto)
     {
+        // Se olvida dónde estaba el alzado anterior: si este no se dibuja, un clic no debe
+        // poner bastones en un alzado que ya no está.
+        _alzadoPrevio = null;
+        _bastonesEnPrevia.Clear();
+
         // Mismo filtro que al dibujar: si este elemento no lleva alzado, la vista
         // previa lo dice en lugar de mostrar uno que nunca se va a generar.
         if (TipoDe(s.Elemento, s.Id) is null)
@@ -5898,6 +5903,13 @@ public partial class MainWindow : Window
         var w = largo * esc;
         var h = peralteM * esc;
         var top = (alto - h) / 2;
+
+        // Para los clics: dónde quedó el alzado, a qué escala y de qué fila. Solo en las
+        // piezas que llevan bastones.
+        if (!a.EsVertical && LlevaBastones(s))
+        {
+            _alzadoPrevio = new AlzadoEnPrevia(s, izquierda, top, w, h, esc, largo);
+        }
 
         // El alzado se dibuja SIEMPRE plano, también con el botón en 3D.
         //
@@ -6293,8 +6305,9 @@ public partial class MainWindow : Window
             var camas = new Dictionary<PosicionBaston, int>();
             var naranja = new SolidColorBrush(Color.FromRgb(0xC2, 0x6A, 0x12));
 
-            foreach (var b in a.Bastones)
+            for (var iB = 0; iB < a.Bastones.Count; iB++)
             {
+                var b = a.Bastones[iB];
                 var tramos = CadLink.Cad.Bastones.Tramos(b, largo);
                 if (tramos.Count == 0)
                 {
@@ -6317,6 +6330,9 @@ public partial class MainWindow : Window
                 {
                     var xIni = izquierda + (Math.Max(t.Ini * esc, rec));
                     var xFin = izquierda + (Math.Min(t.Fin * esc, w - rec));
+
+                    // Su caja, para que un clic encima lo quite.
+                    _bastonesEnPrevia.Add((new Rect(xIni, yB - 5, Math.Max(xFin - xIni, 1), 10), iB));
 
                     PreviaFijaCanvas.Children.Add(new Line
                     {
@@ -6341,48 +6357,53 @@ public partial class MainWindow : Window
 
         // ---------- El corte A-A' ----------
         //
-        // La misma línea recta que pone AutoCAD, en el mismo sitio —L/4 + 5 cm—, que sale de
-        // AlzadoLayout. Aquí el alzado va siempre tendido, así que la línea es vertical:
-        // A arriba y A' abajo, con su flechita a la izquierda.
+        // El MISMO símbolo que pone AutoCAD —AlzadoLayout.Extremo— en el mismo sitio, L/4 +
+        // 5 cm. Aquí el alzado va siempre tendido, así que la línea es vertical: A arriba y
+        // A' abajo, con la flecha mirando a la izquierda y el triángulo del otro lado.
+        //
+        // El símbolo va en píxeles fijos (PxCorte por unidad de dibujo) y no a la escala de
+        // la pieza: en una trabe larga saldría de un píxel.
         {
+            const double PxCorte = 300;
             var xCorte = izquierda + (AlzadoLayout.PosicionCorte(largo) * esc);
-            const double salidaPx = 7;
+            var salidaPx = AlzadoLayout.SalidaCorte * PxCorte;
+            var tinta = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33));
 
-            PreviaFijaCanvas.Children.Add(new Line
+            // (s, t) -> píxeles: s es la Y del lienzo y t la X, negativa hacia la izquierda.
+            Polyline Trazo(double[] st, bool cerrar)
             {
-                X1 = xCorte, Y1 = top - salidaPx,
-                X2 = xCorte, Y2 = top + h + salidaPx,
-                Stroke = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33)),
-                StrokeThickness = 1.3
-            });
-
-            // Las flechitas, hacia la izquierda desde cada punta. En píxeles fijos: a la
-            // escala de la pieza saldrían de un píxel en una trabe larga.
-            void Flecha(double yPunta)
-            {
-                const double largoPx = 14, puntaPx = 6, medioAnchoPx = 3;
-                var tinta = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33));
-
-                PreviaFijaCanvas.Children.Add(new Line
+                var pl = new Polyline { Stroke = tinta, StrokeThickness = 1.1 };
+                for (var i = 0; i < st.Length; i += 2)
                 {
-                    X1 = xCorte, Y1 = yPunta,
-                    X2 = xCorte - largoPx + puntaPx, Y2 = yPunta,
-                    Stroke = tinta,
-                    StrokeThickness = 1.3
-                });
+                    pl.Points.Add(new Point(xCorte + st[i + 1], st[i]));
+                }
 
-                var cabeza = new Polygon { Fill = tinta };
-                cabeza.Points.Add(new Point(xCorte - largoPx, yPunta));
-                cabeza.Points.Add(new Point(xCorte - largoPx + puntaPx, yPunta - medioAnchoPx));
-                cabeza.Points.Add(new Point(xCorte - largoPx + puntaPx, yPunta + medioAnchoPx));
-                PreviaFijaCanvas.Children.Add(cabeza);
+                if (cerrar && st.Length >= 2)
+                {
+                    pl.Points.Add(new Point(xCorte + st[1], st[0]));
+                }
+
+                return pl;
             }
 
-            Flecha(top - salidaPx);
-            Flecha(top + h + salidaPx);
+            var yIni = top - salidaPx;
+            var yFin = top + h + salidaPx;
 
-            Etiqueta(PreviaFijaCanvas, "A", xCorte - 4, top - salidaPx - 15);
-            Etiqueta(PreviaFijaCanvas, "A'", xCorte - 5, top + h + salidaPx);
+            PreviaFijaCanvas.Children.Add(Trazo(new[] { yIni, 0d, yFin, 0d }, false));
+
+            // El lienzo crece hacia abajo: la punta de arriba tiene la pieza hacia +s.
+            foreach (var (letra, punta, dentro) in new[] { ("A", yIni, +1), ("A'", yFin, -1) })
+            {
+                var e = AlzadoLayout.Extremo(punta, dentro, PxCorte);
+
+                PreviaFijaCanvas.Children.Add(Trazo(e.Raya, false));
+                PreviaFijaCanvas.Children.Add(Trazo(e.Punta, false));
+                PreviaFijaCanvas.Children.Add(Trazo(e.Triangulo, true));
+
+                // La letra detrás de la flecha, a su izquierda y a la altura de la raya.
+                Etiqueta(PreviaFijaCanvas, letra,
+                    xCorte + e.TLetra - (letra.Length * 7), e.SLetra - 8);
+            }
         }
 
         Etiqueta(PreviaFijaCanvas, $"ALZADO  {a.TipoTexto}  {a.Id}", izquierda, top - 20);

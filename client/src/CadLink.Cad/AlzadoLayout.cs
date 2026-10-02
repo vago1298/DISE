@@ -301,22 +301,75 @@ public static class AlzadoLayout
         return p < largo ? p : largo / 2;
     }
 
-    /// <summary>Largo total de la flechita del corte, punta incluida.</summary>
-    public const double LargoFlechaCorte = 0.035;
+    // ==================================================================
+    //  El símbolo de cada extremo de la línea de corte
+    // ==================================================================
+    //
+    //  Como lo pidió el usuario con su imagen:
+    //
+    //          A <-----+\            la línea pasa de la pieza, y a un cateto de su
+    //                  |  \          punta la cruza una raya: hacia el lado desde el
+    //                  +---+         que se mira, una FLECHA abierta con la letra
+    //                  |             detrás; hacia el otro, un TRIÁNGULO rectángulo
+    //                  |             entre la raya y la punta de la línea.
+    //
+    //  Las cuentas van en coordenadas (s, t): s a lo largo de la línea de corte, t de
+    //  través, con t NEGATIVO hacia donde se mira. Quien dibuja las pasa a sus ejes: en la
+    //  trabe t es la X, en la columna la Y.
 
-    /// <summary>Largo de la punta de la flechita.</summary>
-    public const double PuntaFlechaCorte = 0.012;
+    /// <summary>Cateto del triángulo, y lo que hay entre la raya y la punta de la línea.</summary>
+    public const double CatetoCorte = 0.025;
 
-    /// <summary>Ancho de la punta de la flechita en su base.</summary>
-    public const double AnchoPuntaFlechaCorte = 0.01;
+    /// <summary>Largo de la flecha, de la línea a su punta.</summary>
+    public const double LargoFlechaCorte = 0.05;
+
+    /// <summary>Largo de las alas de la punta abierta, a lo largo de la flecha.</summary>
+    public const double LargoPuntaCorte = 0.015;
+
+    /// <summary>Lo que se abre cada ala de la punta, de través.</summary>
+    public const double AnchoPuntaCorte = 0.012;
+
+    /// <summary>Aire entre la cara de la pieza y la raya de la flecha.</summary>
+    public const double AireCorte = 0.01;
+
+    /// <summary>Aire entre la punta de la flecha y su letra.</summary>
+    public const double AireLetraCorte = 0.008;
+
+    /// <summary>Cuánto sobresale la línea de corte de cada cara de la pieza.</summary>
+    public const double SalidaCorte = AireCorte + CatetoCorte;
+
+    /// <summary>Las piezas del símbolo de un extremo, en (s, t) aplanados.</summary>
+    /// <param name="Raya">La raya de través: de la punta de la flecha al vértice del triángulo.</param>
+    /// <param name="Punta">La punta abierta: ala, vértice, ala.</param>
+    /// <param name="Triangulo">Los tres vértices del triángulo.</param>
+    /// <param name="SLetra">Dónde va la letra, a lo largo.</param>
+    /// <param name="TLetra">Y de través: pasada la punta de la flecha.</param>
+    public readonly record struct ExtremoCorte(
+        double[] Raya, double[] Punta, double[] Triangulo, double SLetra, double TLetra);
 
     /// <summary>
-    /// Cuánto sobresale la línea de corte de cada cara de la pieza, en metros de dibujo.
+    /// El símbolo del extremo de la línea de corte cuya punta está en <paramref name="sPunta"/>.
     /// </summary>
-    /// <remarks>
-    /// Corto a propósito: la primera cota de abajo de la trabe va a 5 cm de su cara, y la
-    /// letra tiene que caber entre la punta de la línea y esa cota.
-    /// </remarks>
-    public const double SalidaCorte = 0.015;
+    /// <param name="haciaDentro">
+    /// <c>+1</c> si la pieza queda hacia s crecientes desde esta punta, <c>-1</c> si al revés.
+    /// </param>
+    /// <param name="escala">Para la vista previa, que lo pinta en píxeles; 1 en AutoCAD.</param>
+    public static ExtremoCorte Extremo(double sPunta, int haciaDentro, double escala = 1)
+    {
+        var k = Math.Sign(haciaDentro);
+        var cat = CatetoCorte * escala;
+        var fle = LargoFlechaCorte * escala;
+        var lp = LargoPuntaCorte * escala;
+        var ap = AnchoPuntaCorte * escala;
+
+        var sRaya = sPunta + (k * cat);
+
+        return new ExtremoCorte(
+            Raya: new[] { sRaya, -fle, sRaya, cat },
+            Punta: new[] { sRaya - ap, -fle + lp, sRaya, -fle, sRaya + ap, -fle + lp },
+            Triangulo: new[] { sPunta, 0, sRaya, 0, sRaya, cat },
+            SLetra: sRaya,
+            TLetra: -fle - (AireLetraCorte * escala));
+    }
 
 }

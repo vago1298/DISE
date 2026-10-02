@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using CadLink.App.Models;
 using CadLink.Cad;
 
@@ -27,6 +28,136 @@ namespace CadLink.App;
 /// </remarks>
 public partial class MainWindow
 {
+    // ======================================================================
+    //  Poner bastones con un clic sobre el ALZADO de la vista previa
+    // ======================================================================
+    //
+    //  Pedido del usuario: que se dibujen desde el alzado, como las grapas desde la
+    //  sección, y no solo desde el botón. El cuadro del botón sigue para afinar números.
+
+    /// <summary>Dónde quedó el alzado en la vista previa, en píxeles de su lienzo fijo.</summary>
+    private sealed record AlzadoEnPrevia(
+        SeccionConcretoRow Fila, double Izq, double Top, double W, double H,
+        double Esc, double Largo);
+
+    private AlzadoEnPrevia? _alzadoPrevio;
+
+    /// <summary>La caja de cada tramo de bastón pintado, con su índice en la fila.</summary>
+    private readonly List<(Rect Caja, int Indice)> _bastonesEnPrevia = new();
+
+    /// <summary>Redondeo de la distancia que da el clic: 5 cm.</summary>
+    private const double PasoBastonM = 0.05;
+
+    /// <summary>¿El punto cae sobre el alzado que admite bastones?</summary>
+    private bool EnElAlzado(Point p)
+    {
+        var a = _alzadoPrevio;
+
+        return a is not null
+               && ReferenceEquals(a.Fila, Seleccionada)
+               && p.X >= a.Izq && p.X <= a.Izq + a.W
+               && p.Y >= a.Top && p.Y <= a.Top + a.H;
+    }
+
+    /// <summary>
+    /// Un clic sobre el alzado: pone o quita un bastón.
+    /// </summary>
+    /// <returns><c>true</c> si el clic era del alzado y ya se atendió.</returns>
+    /// <remarks>
+    /// <list type="bullet">
+    ///   <item>Sobre un bastón: lo <b>quita</b>.</item>
+    ///   <item>Mitad de <b>arriba</b> del alzado: bastón superior; mitad de <b>abajo</b>:
+    ///   inferior.</item>
+    ///   <item>En el <b>primer o último tercio</b>: bastón de extremo, desde el paño hasta
+    ///   donde se hizo clic. Va en los dos extremos; con <b>Ctrl</b>, solo en ese.</item>
+    ///   <item>En el <b>tercio central</b>: bastón al centro, que empieza a L/4 de cada
+    ///   paño.</item>
+    /// </list>
+    /// Las varillas y el diámetro salen de los mandos «Bastón» de la vista previa. Para
+    /// afinar la distancia, el botón <i>Bastones…</i>.
+    /// </remarks>
+    private bool ProcesarClicEnAlzado(Point p)
+    {
+        if (!EnElAlzado(p))
+        {
+            return false;
+        }
+
+        var a = _alzadoPrevio!;
+        var fila = a.Fila;
+
+        // Sobre uno que ya está: se quita.
+        foreach (var (caja, indice) in _bastonesEnPrevia)
+        {
+            var holgada = caja;
+            holgada.Inflate(2, 3);
+
+            if (holgada.Contains(p) && indice < fila.Bastones.Count)
+            {
+                var quitado = fila.Bastones[indice];
+                fila.ReemplazarBastones(fila.Bastones.Where((_, i) => i != indice).ToList());
+
+                StatusText.Text =
+                    $"Bastón quitado ({quitado.Posicion.ToLowerInvariant()}, " +
+                    $"{quitado.Ubicacion.ToLowerInvariant()}). Quedan {fila.Bastones.Count}.";
+                DibujarVistaPrevia();
+                return true;
+            }
+        }
+
+        var arriba = p.Y < a.Top + (a.H / 2);
+        var xm = (p.X - a.Izq) / a.Esc;
+        var soloUno = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+
+        string ubicacion;
+        double distancia;
+
+        if (xm <= a.Largo / 3)
+        {
+            ubicacion = soloUno ? BastonSeccion.TextoIzquierdo : BastonSeccion.TextoExtremos;
+            distancia = xm;
+        }
+        else if (xm >= 2 * a.Largo / 3)
+        {
+            ubicacion = soloUno ? BastonSeccion.TextoDerecho : BastonSeccion.TextoExtremos;
+            distancia = a.Largo - xm;
+        }
+        else
+        {
+            ubicacion = BastonSeccion.TextoCentro;
+            distancia = a.Largo / 4;
+        }
+
+        distancia = Math.Max(PasoBastonM, Math.Round(distancia / PasoBastonM) * PasoBastonM);
+
+        var nuevo = new BastonSeccion
+        {
+            Posicion = arriba ? BastonSeccion.TextoSuperior : BastonSeccion.TextoInferior,
+            Ubicacion = ubicacion,
+            Cantidad = CantidadBastonElegida,
+            Diametro = DiametroBastonElegido,
+            DistanciaM = distancia
+        };
+
+        fila.ReemplazarBastones(fila.Bastones.Append(nuevo).ToList());
+
+        StatusText.Text =
+            $"Bastón {nuevo.Cantidad} {nuevo.Diametro} {nuevo.Posicion.ToLowerInvariant()}, " +
+            $"{nuevo.Ubicacion.ToLowerInvariant()}, a {distancia:0.00} m del paño. " +
+            "Clic encima para quitarlo; «Bastones…» para afinar.";
+
+        DibujarVistaPrevia();
+        return true;
+    }
+
+    /// <summary>Las varillas del bastón que se ponga con clic. 2 si no se entiende.</summary>
+    private int CantidadBastonElegida =>
+        int.TryParse(BastonCantidadTxt.Text, out var n) && n > 0 ? n : 2;
+
+    /// <summary>El diámetro del bastón que se ponga con clic. #4 si no se eligió.</summary>
+    private string DiametroBastonElegido =>
+        BastonDiametroCombo.SelectedItem is string d && !string.IsNullOrWhiteSpace(d) ? d : "#4";
+
     private void OnEditarBastones(object sender, RoutedEventArgs e)
     {
         CerrarEdicionDeLasHojas();
