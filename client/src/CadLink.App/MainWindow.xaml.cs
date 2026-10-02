@@ -1384,6 +1384,65 @@ public partial class MainWindow : Window
     // ======================================================================
 
     /// <summary>
+    /// La X donde va una sección <b>por su lugar en la tabla</b>.
+    /// </summary>
+    /// <remarks>
+    /// Es la misma cuenta que hace «Generar dibujo» sobre un plano vacío: arranca en 0 y
+    /// cada sección avanza su base más 35 cm de aire. Si las dos cuentas se separaran, la
+    /// sección rehecha sola quedaría corrida respecto de donde la puso el dibujo completo.
+    /// </remarks>
+    /// <param name="fila">La fila; con <c>null</c>, el final de la fila completa.</param>
+    private double XEnLaFilaDeSecciones(SeccionConcretoRow? fila, double escala)
+    {
+        var x = 0d;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            if (ReferenceEquals(s, fila))
+            {
+                return x;
+            }
+
+            x += (s.BaseCm + 35) * escala;
+        }
+
+        return x;
+    }
+
+    /// <summary>
+    /// La X donde va un alzado <b>por su lugar en la tabla</b>: la que le daría «Generar
+    /// alzados» recorriendo la hoja desde 0.
+    /// </summary>
+    /// <remarks>
+    /// Las filas sin alzado —castillos, cadenas— no avanzan, igual que en el dibujo
+    /// completo. El avance de cada una lo calcula el propio dibujante, con el ancho real de
+    /// su bloque de sección.
+    /// </remarks>
+    /// <param name="fila">La fila; con <c>null</c>, el final de la fila completa.</param>
+    private double XEnLaFilaDeAlzados(AlzadoDrawer dibujante, SeccionConcretoRow? fila)
+    {
+        var medidas = dibujante.MedidasDeSecciones();
+        var x = 0d;
+
+        foreach (var s in _datos.SeccionesConcreto)
+        {
+            if (ReferenceEquals(s, fila))
+            {
+                return x;
+            }
+
+            if (TipoDe(s.Elemento, s.Id) is null)
+            {
+                continue;
+            }
+
+            x = dibujante.XSiguienteSinDibujar(AFormatoAlzado(s), x, medidas);
+        }
+
+        return x;
+    }
+
+    /// <summary>
     /// Rehace en AutoCAD <b>solo la fila seleccionada</b>: su sección y, si lleva, su alzado.
     /// </summary>
     /// <remarks>
@@ -1480,6 +1539,12 @@ public partial class MainWindow : Window
 
             secciones.AsegurarCapas(ClavesDeVarillaUsadas());
 
+            // TODO va a la X que le toca por su lugar en la tabla, bloque y cotas juntos.
+            // Con el «volver a su sitio» de siempre solo se movía el bloque, y las cotas y
+            // rótulos —que van sueltos— se quedaban en la X que se pasaba: salían en el
+            // origen, encima de la primera sección.
+            secciones.VolverASuSitio = false;
+
             var yaExistia = secciones.BloqueYaExiste(id);
 
             // Sus cotas y rótulos viejos. La inserción del bloque NO se borra aquí: el
@@ -1491,21 +1556,38 @@ public partial class MainWindow : Window
             {
                 avisos.Add(
                     $"La sección \"{id}\" se dibujó con una versión anterior, que no marcaba sus " +
-                    "cotas: la sección ya está rehecha en su sitio, pero sus cotas y rótulos " +
+                    "cotas: la sección ya está rehecha en su lugar de la tabla, pero sus cotas y rótulos " +
                     "VIEJOS siguen ahí. Bórralos a mano; desde ahora quedan marcados y la " +
                     "próxima vez se van solos.");
             }
 
-            // Nueva: al final de la fila de secciones. Ya existente: el dibujante ignora esta
-            // X y la devuelve al punto donde estaba.
-            var xSec = yaExistia ? 0 : secciones.PosicionInicialX();
+            // Su lugar es el que le da la TABLA: la hoja se dibuja en su orden, cada sección a
+            // la derecha de la anterior. Así vuelve exactamente a donde la puso el dibujo
+            // completo.
+            var xSec = XEnLaFilaDeSecciones(fila, escala);
+
+            // Una fila NUEVA a media tabla no tiene sitio: el suyo lo ocupa ya la siguiente,
+            // que se dibujó antes de que existiera. Va al final, y se dice.
+            var esLaUltima = ReferenceEquals(_datos.SeccionesConcreto.LastOrDefault(), fila);
+
+            if (!yaExistia && !esLaUltima)
+            {
+                xSec = XEnLaFilaDeSecciones(null, escala);
+                avisos.Add(
+                    $"\"{id}\" es nueva y está a media tabla: su lugar en el plano ya lo ocupa " +
+                    "la sección siguiente, así que la dibujé al final de la fila para no " +
+                    "encimarla. Muévela a mano, o genera el plano completo en un dibujo limpio " +
+                    "para que todas queden en el orden de la tabla.");
+            }
 
             secciones.Dibujar(AFormatoCad(fila), xSec, 0);
 
             if (secciones.InicioUltima >= 0)
             {
                 MarcasCad.Marcar(ms, secciones.InicioUltima, MarcasCad.ClaveSeccion(id), xSec, 0);
-                hecho.Add(yaExistia ? "la sección, en su mismo sitio" : "la sección, al final de su fila");
+                hecho.Add(ReferenceEquals(fila, _datos.SeccionesConcreto.LastOrDefault()) || yaExistia
+                    ? "la sección, en su lugar de la tabla"
+                    : "la sección, al final de su fila");
             }
             else
             {
@@ -1522,38 +1604,55 @@ public partial class MainWindow : Window
                 AlzadoDrawer alzados = CrearDibujanteDeAlzados(doc, escala);
 
                 List<MarcasCad.Marcada> viejasAlz = MarcasCad.Buscar(doc, ms, MarcasCad.ClaveAlzado(id));
-                var sitio = MarcasCad.SitioMasReciente(viejasAlz);
 
                 // Un alzado de una versión anterior: está su bloque pero no su marca.
-                var alzadoSinMarca = sitio is null
+                var alzadoSinMarca = viejasAlz.Count == 0
                     && (secciones.BloqueYaExiste("ALZ-" + id)
                         || secciones.BloqueYaExiste("ALZX-" + id));
-
-                if (alzadoSinMarca)
-                {
-                    avisos.Add(
-                        $"El alzado de \"{id}\" se dibujó con una versión anterior, que no lo " +
-                        "marcaba, así que no sé dónde estaba: el nuevo va al final de la fila de " +
-                        "alzados. Borra el viejo a mano —con sus cotas—; desde ahora queda " +
-                        "marcado y la próxima vez se rehace en su sitio.");
-                }
 
                 // Todo lo del alzado viejo: su bloque, sus cotas, su corte A-A' insertado y la
                 // línea de corte. Lo que la sección ya se llevó al rehacerse simplemente no
                 // está, y Borrar lo pasa por alto.
                 MarcasCad.Borrar(viejasAlz);
 
-                var x0 = sitio?.X ?? alzados.XAlFinalDeLaFila();
+                if (alzadoSinMarca)
+                {
+                    // Su bloque sí se puede quitar por nombre; sus cotas sueltas no.
+                    alzados.BorrarInsercionesDeAlzado(id);
+
+                    avisos.Add(
+                        $"El alzado de \"{id}\" se dibujó con una versión anterior, que no " +
+                        "marcaba sus cotas: el alzado nuevo ya está en su lugar y el bloque " +
+                        "viejo se quitó, pero sus cotas y rótulos VIEJOS siguen ahí. Bórralos " +
+                        "a mano; desde ahora quedan marcados y la próxima vez se van solos.");
+                }
+
+                // Su lugar es el que le da la TABLA, igual que a la sección: la fila de
+                // alzados también se dibuja en el orden de la hoja.
+                var x0 = XEnLaFilaDeAlzados(alzados, fila);
+
+                // Un alzado NUEVO a media tabla: su lugar ya lo ocupa el siguiente. Al final.
+                var nuevoAlzado = viejasAlz.Count == 0 && !alzadoSinMarca;
+                var ultimoConAlzado = _datos.SeccionesConcreto
+                    .LastOrDefault(s => TipoDe(s.Elemento, s.Id) is not null);
+
+                if (nuevoAlzado && !ReferenceEquals(ultimoConAlzado, fila))
+                {
+                    x0 = XEnLaFilaDeAlzados(alzados, null);
+                    avisos.Add(
+                        $"El alzado de \"{id}\" es nuevo y la fila está a media tabla: su lugar " +
+                        "ya lo ocupa el alzado siguiente, así que lo dibujé al final de la fila.");
+                }
                 var antes = AcadConnection.Retry(() => (int)ms.Count);
 
-                var siguiente = alzados.DibujarElemento(AFormatoAlzado(fila), x0, sitio?.Y);
+                var siguiente = alzados.DibujarElemento(AFormatoAlzado(fila), x0);
 
                 if (siguiente > x0)
                 {
                     MarcasCad.Marcar(ms, antes, MarcasCad.ClaveAlzado(id), x0, alzados.UltimaYFila);
-                    hecho.Add(sitio is not null
-                        ? "su alzado, en su mismo sitio"
-                        : "su alzado, al final de la fila de alzados");
+                    hecho.Add(nuevoAlzado && !ReferenceEquals(ultimoConAlzado, fila)
+                        ? "su alzado, al final de la fila"
+                        : "su alzado, en su lugar de la tabla");
                 }
 
                 fallos.AddRange(alzados.Fallos);

@@ -190,69 +190,6 @@ public sealed class AlzadoDrawer
     /// <summary>La Y de fila con la que se dibujó el último elemento.</summary>
     public double UltimaYFila { get; private set; }
 
-    /// <summary>
-    /// La X donde empezar un alzado nuevo <b>al final de la fila</b>: pasado el último
-    /// bloque de alzado (<c>ALZ-…</c>) que haya en el dibujo, con el aire entre elementos.
-    /// </summary>
-    /// <remarks>
-    /// Para el alzado que se dibuja solo y no tiene sitio guardado: o nunca se dibujó, o se
-    /// dibujó con una versión que no lo marcaba. Empezar en X = 0, como el dibujo completo,
-    /// lo pondría encima del primero de la fila.
-    /// </remarks>
-    public double XAlFinalDeLaFila()
-    {
-        try
-        {
-            var maxX = double.MinValue;
-
-            AcadConnection.Retry(() =>
-            {
-                var total = (int)_ms.Count;
-
-                for (var i = 0; i < total; i++)
-                {
-                    dynamic ent = _ms.Item(i);
-
-                    try
-                    {
-                        string clase = ent.ObjectName;
-                        if (!clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        string nombre = ent.Name;
-                        if (!nombre.StartsWith("ALZ", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        var caja = Caja((object)ent);
-                        if (caja is not null && caja.Value.Max[0] > maxX)
-                        {
-                            maxX = caja.Value.Max[0];
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        // Una entidad que no contesta no es un alzado.
-                    }
-                }
-            });
-
-            // Lo que sobresale a la derecha de un alzado —cotas de gancho, rótulo de la
-            // columna— más el aire de la macro entre elementos.
-            return maxX == double.MinValue
-                ? 0
-                : maxX + AlzadoLayout.AnchoCotasVertical + AlzadoLayout.SepSecciones;
-        }
-        catch (Exception ex)
-        {
-            Fallo("Buscar el final de la fila de alzados", ex);
-            return 0;
-        }
-    }
-
     public IReadOnlyList<string> Fallos => _log;
 
     public IReadOnlyList<string> Notas
@@ -372,6 +309,160 @@ public sealed class AlzadoDrawer
         }
 
         return p.XSiguiente;
+    }
+
+    /// <summary>
+    /// Ancho y alto de cada bloque de sección insertado en el dibujo, por nombre.
+    /// </summary>
+    /// <remarks>
+    /// Una sola pasada por el modelo para todas: preguntarlo sección por sección recorrería
+    /// el plano entero una vez por fila. Es la misma caja que mide
+    /// <see cref="InsertarSeccion"/>, así que da el mismo avance.
+    /// </remarks>
+    public Dictionary<string, (double Ancho, double Alto)> MedidasDeSecciones()
+    {
+        var res = new Dictionary<string, (double, double)>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                res.Clear();
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    try
+                    {
+                        dynamic ent = _ms.Item(i);
+
+                        string clase = ent.ObjectName;
+                        if (!clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        string nombre = ent.Name;
+                        if (res.ContainsKey(nombre))
+                        {
+                            continue;
+                        }
+
+                        var caja = Caja((object)ent);
+                        if (caja is not null)
+                        {
+                            res[nombre] = (caja.Value.Max[0] - caja.Value.Min[0],
+                                           caja.Value.Max[1] - caja.Value.Min[1]);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Una entidad que no contesta no es una sección.
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo("Medir las secciones del dibujo", ex);
+        }
+
+        return res;
+    }
+
+    /// <summary>
+    /// La X donde empieza el elemento siguiente, <b>sin dibujar nada</b>: la misma que
+    /// devolvería <see cref="DibujarElemento"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sirve para saber dónde va un alzado por su <b>lugar en la tabla</b>: se recorren las
+    /// filas anteriores sumando lo que avanzó cada una, con la misma aritmética de
+    /// <see cref="AlzadoLayout"/> y el ancho real de su bloque de sección.
+    /// </remarks>
+    public double XSiguienteSinDibujar(
+        AlzadoCad a, double x0, IReadOnlyDictionary<string, (double Ancho, double Alto)> medidas)
+    {
+        var largo = LargoDe(a);
+        if (largo <= 0)
+        {
+            return x0;
+        }
+
+        var y = YDeLaFila;
+
+        var (ancho, alto) = medidas.TryGetValue((a.Id ?? string.Empty).Trim(), out var m)
+            ? m
+            : (AlzadoLayout.AnchoSeccionSupuesto, AlzadoLayout.AltoSeccionSupuesto);
+
+        var dosCaras = a.EsVertical
+                       && !a.Circular
+                       && a.BaseCm > 0
+                       && Math.Abs(a.BaseCm - a.AlturaCm) > 1e-4;
+
+        return AlzadoLayout.Colocar(x0, a.EsVertical, ancho, y + alto, largo, dosCaras, y).XSiguiente;
+    }
+
+    /// <summary>
+    /// Borra las inserciones del alzado de <paramref name="id"/> (<c>ALZ-</c>, <c>ALZX-</c>,
+    /// <c>ALZY-</c>). Es para el alzado dibujado con una versión que no lo marcaba.
+    /// </summary>
+    /// <returns>Cuántas se borraron.</returns>
+    public int BorrarInsercionesDeAlzado(string id)
+    {
+        var nombres = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ALZ-" + id, "ALZX-" + id, "ALZY-" + id
+        };
+
+        var borrar = new List<object>();
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                borrar.Clear();
+                var total = (int)_ms.Count;
+
+                for (var i = 0; i < total; i++)
+                {
+                    try
+                    {
+                        dynamic ent = _ms.Item(i);
+
+                        string clase = ent.ObjectName;
+                        if (clase.Contains("BlockReference", StringComparison.OrdinalIgnoreCase)
+                            && nombres.Contains((string)ent.Name))
+                        {
+                            borrar.Add((object)ent);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Se sigue con la siguiente.
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Fallo($"Buscar el alzado viejo de '{id}'", ex);
+        }
+
+        var n = 0;
+        foreach (var b in borrar)
+        {
+            try
+            {
+                AcadConnection.Retry(() => { ((dynamic)b).Delete(); });
+                n++;
+            }
+            catch (Exception)
+            {
+                // Uno que no se borra queda encimado, y el aviso lo dice.
+            }
+        }
+
+        return n;
     }
 
     /// <summary>Ancho y paño superior de una sección ya insertada.</summary>

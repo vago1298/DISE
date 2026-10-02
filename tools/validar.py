@@ -1970,7 +1970,7 @@ def v14_bloques_diamante_etabs() -> None:
         cuerpo = m_dib.group(0)
         # El orden manda: si se borrara antes de leer el punto, ya no habria a
         # quien preguntarselo y la seccion acabaria al final de la fila.
-        pos_pto = cuerpo.find("destino = PuntoDeInsercion(s.Id)")
+        pos_pto = cuerpo.find("PuntoDeInsercion(s.Id)")
         pos_del = cuerpo.find("BorrarSeccion(s.Id)")
         check("el punto se lee ANTES de borrar la seccion",
               pos_pto != -1 and pos_del != -1 and pos_pto < pos_del)
@@ -2600,8 +2600,19 @@ def v16_extruida_piers() -> None:
               "Redibujar = true" in cs)
         check("borra las cotas viejas pero deja la insercion para volver a su sitio",
               "!MarcasCad.EsBloque(m.Entidad)" in cs)
-        check("el alzado vuelve a su X y su Y guardadas",
-              "alzados.DibujarElemento(AFormatoAlzado(fila), x0, sitio?.Y)" in cs)
+        #  EL LUGAR LO DA LA TABLA. La primera version devolvia el bloque a su punto de
+        #  insercion, pero las cotas -que van sueltas- se dibujaban en la X que se pasaba,
+        #  que era 0: el usuario vio la seccion rehecha EN EL ORIGEN, encima de otra.
+        check("la seccion va a su lugar por el orden de la tabla, bloque y cotas juntos",
+              "secciones.VolverASuSitio = false;" in cs
+              and "var xSec = XEnLaFilaDeSecciones(fila, escala);" in cs)
+        check("y el alzado tambien",
+              "var x0 = XEnLaFilaDeAlzados(alzados, fila);" in cs)
+        check("una fila nueva a media tabla va al final, para no encimarse",
+              "XEnLaFilaDeSecciones(null, escala)" in cs
+              and "XEnLaFilaDeAlzados(alzados, null)" in cs)
+        check("el alzado viejo sin marca se quita por el nombre de su bloque",
+              "alzados.BorrarInsercionesDeAlzado(id);" in cs)
         check("lo nuevo se marca",
               "MarcasCad.ClaveSeccion(id)" in cs and "MarcasCad.ClaveAlzado(id)" in cs
               and cs.count("MarcasCad.Marcar(") == 2)
@@ -2609,6 +2620,19 @@ def v16_extruida_piers() -> None:
               "versión anterior" in cs)
 
     sec_drw = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.cs"))
+    check("el volver a su sitio del bloque se puede apagar",
+          "public bool VolverASuSitio { get; set; } = true;" in sec_drw
+          and "destino = VolverASuSitio ? PuntoDeInsercion(s.Id) : null;" in sec_drw)
+    m_xsec = re.search(r"private double XEnLaFilaDeSecciones\(.*?\n    \}", mw_alz, re.S)
+    m_full = re.search(r"private void OnExport\(.*?\n    \}", mw_alz, re.S)
+    check("la X por la tabla avanza IGUAL que el dibujo completo",
+          m_xsec is not None and m_full is not None
+          and "x += (s.BaseCm + 35) * escala;" in m_xsec.group(0)
+          and "x += (s.BaseCm + 35) * escala;" in m_full.group(0))
+    alz_drw = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
+    check("el avance del alzado sin dibujar usa la misma colocacion",
+          "AlzadoLayout.Colocar(x0, a.EsVertical, ancho, y + alto, largo, dosCaras, y).XSiguiente"
+          in alz_drw)
     m_dib = re.search(r"public int Dibujar\(SeccionCad s.*?InicioUltima = inicio;", sec_drw, re.S)
     check("el inicio de lo nuevo se cuenta DESPUES de borrar la seccion vieja",
           m_dib is not None and "BorrarSeccion(s.Id)" in m_dib.group(0))

@@ -39,12 +39,7 @@ public static class MarcasCad
     private static string NormalizarId(string? id) => (id ?? string.Empty).Trim().ToUpperInvariant();
 
     /// <summary>Una entidad marcada, con el sitio que se guardó en ella.</summary>
-    /// <param name="Orden">
-    /// Su <c>Handle</c> como número. AutoCAD los reparte crecientes, así que el mayor es el
-    /// de lo último que se dibujó: sirve para quedarse con el sitio más reciente cuando un
-    /// alzado quedó dibujado dos veces.
-    /// </param>
-    public sealed record Marcada(object Entidad, double X, double Y, long Orden);
+    public sealed record Marcada(object Entidad, double X, double Y);
 
     /// <summary>¿Es una inserción de bloque?</summary>
     public static bool EsBloque(object entidad)
@@ -61,20 +56,6 @@ public static class MarcasCad
         {
             return false;
         }
-    }
-
-    /// <summary>
-    /// El sitio guardado más reciente entre las marcadas, o <c>null</c> si no hay ninguna.
-    /// </summary>
-    public static (double X, double Y)? SitioMasReciente(IReadOnlyList<Marcada> marcadas)
-    {
-        if (marcadas.Count == 0)
-        {
-            return null;
-        }
-
-        var m = marcadas.MaxBy(k => k.Orden)!;
-        return (m.X, m.Y);
     }
 
     /// <summary>
@@ -149,7 +130,7 @@ public static class MarcasCad
             var leida = Leer(ent);
             if (leida is not null && string.Equals(leida.Value.Clave, clave, StringComparison.Ordinal))
             {
-                res.Add(new Marcada(ent, leida.Value.X, leida.Value.Y, Orden(ent)));
+                res.Add(new Marcada(ent, leida.Value.X, leida.Value.Y));
             }
         }
 
@@ -235,20 +216,6 @@ public static class MarcasCad
             {
                 // Un conjunto que no se borra se va con el documento.
             }
-        }
-    }
-
-    private static long Orden(object entidad)
-    {
-        try
-        {
-            var h = AcadConnection.Retry(() => (string)((dynamic)entidad).Handle);
-            return long.TryParse(h, System.Globalization.NumberStyles.HexNumber,
-                System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
-        }
-        catch (Exception)
-        {
-            return 0;
         }
     }
 
