@@ -315,24 +315,15 @@ public partial class MainWindow
     private static readonly Brush TintaMuroAcero = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
 
     /// <summary>
-    /// El color de la capa VAR_ de cada diametro, el mismo ACI de la macro -CapasCad- pasado a
-    /// RGB: lo que se ve en la vista previa es lo que sale en AutoCAD.
+    /// El color de la capa VAR_ de cada diametro: el de «Estilo de dibujo» -perfil «Capas
+    /// compartidas»-, pasado a RGB. Lo que se ve en la vista previa es lo que sale en AutoCAD.
     /// </summary>
-    private static readonly Dictionary<string, Brush> TintaPorDiametro = new(StringComparer.OrdinalIgnoreCase)
+    private static Brush TintaDeVarilla(string? clave)
     {
-        ["#2"] = new SolidColorBrush(Color.FromRgb(0x00, 0x7F, 0xFF)),   // ACI 150
-        ["#2.5"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0xFF)), // ACI 6
-        ["#3"] = new SolidColorBrush(Color.FromRgb(0x00, 0xA5, 0xA5)),   // ACI 132
-        ["#4"] = new SolidColorBrush(Color.FromRgb(0x00, 0x7C, 0xA5)),   // ACI 142
-        ["#5"] = new SolidColorBrush(Color.FromRgb(0x00, 0x3F, 0xFF)),   // ACI 160
-        ["#6"] = new SolidColorBrush(Color.FromRgb(0x00, 0xFF, 0xFF)),   // ACI 4
-        ["#8"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x00)),   // ACI 1
-        ["#10"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0xFF)),  // ACI 6
-        ["#12"] = new SolidColorBrush(Color.FromRgb(0x81, 0x56, 0x56)),  // ACI 15
-    };
+        var aci = EstiloDibujo.Actual.ColorDeVarilla(clave);
+        return aci >= 1 && aci <= 255 ? PincelAci(aci) : TintaMuroAcero;
+    }
 
-    private static Brush TintaDeVarilla(string? clave) =>
-        clave is not null && TintaPorDiametro.TryGetValue(clave.Trim(), out var b) ? b : TintaMuroAcero;
     private static readonly Brush TintaMuroCota = new SolidColorBrush(Color.FromRgb(0x70, 0x78, 0x82));
     private static readonly Brush TintaMuroRotulo = new SolidColorBrush(Color.FromRgb(0x1D, 0x7A, 0x3E));
     private static readonly Brush TintaMuroTexto = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33));

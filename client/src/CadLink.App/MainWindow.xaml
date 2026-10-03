@@ -97,6 +97,8 @@
                 <MenuItem Header="Generar _alzados" Click="OnExportAlzados" />
                 <MenuItem Header="Dibujar _solo la seccion seleccionada" Click="OnDibujarSeleccionada" />
                 <MenuItem Header="Dibujar la _planta en AutoCAD" Click="OnDibujarPlantaCad" />
+                <Separator />
+                <MenuItem Header="_Estilo de dibujo (letras, cotas y colores)..." Click="OnEstiloDibujo" />
             </MenuItem>
 
             <!-- El menu no dice de que programa lee: eso lo manda la casilla de la
@@ -159,6 +161,10 @@
 
                     <!-- El texto dice A DONDE se va, no donde se esta: es lo que espera
                          quien pulsa un boton. Lo cambia OnCambiarTema. -->
+                    <Button Content="Estilo de dibujo" Style="{StaticResource ToolbarButtonStyle}"
+                            Click="OnEstiloDibujo"
+                            ToolTip="Letras, cotas y colores de los dibujos de AutoCAD, para cada tipo de dibujo. Vale para toda la aplicación." />
+
                     <Button x:Name="TemaButton" Content="Tema oscuro"
                             Style="{StaticResource ToolbarButtonStyle}"
                             Click="OnCambiarTema"

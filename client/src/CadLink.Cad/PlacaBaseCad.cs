@@ -17,16 +17,30 @@ namespace CadLink.Cad;
 /// </remarks>
 public static class PlacaBaseCapas
 {
+    // Los colores de las capas, la fuente, las alturas y la marca salen del estilo «Placa base y
+    // simbología» de la ventana «Estilo de dibujo». Sus valores por defecto son los que estaban
+    // aqui escritos como constantes.
+    private static PerfilEstilo EstiloPlaca => EstiloDibujo.Actual.Perfil(EstiloDibujo.PlacaBase);
+
+    /// <summary>La altura del numero de COTA_ACERO.</summary>
+    public static double AlturaNumeroCota => EstiloPlaca.Numero("cota.alto");
+
+    /// <summary>El color del numero de COTA_ACERO.</summary>
+    public static int ColorNumeroCota => EstiloPlaca.ColorAci("cota.color.texto");
+
+    /// <summary>¿El usuario eligio otro color para esta capa? Entonces se le pone aunque exista.</summary>
+    public static bool ColorElegido(string capa) => EstiloPlaca.Cambiado("capa." + capa);
+
     /// <summary>La placa, su contorno y los agujeros de las anclas.</summary>
     public const string Placa = "PLACA BASE";
-    public const int ColorPlaca = 140;
+    public static int ColorPlaca => EstiloPlaca.ColorAci("capa.PLACA BASE");
 
     /// <summary>Ancho de la polilínea del contorno de la placa: el <c>PEDIT Width</c>.</summary>
     public const double AnchoLineaPlaca = 0.0004;
 
     /// <summary>Las anclas, en rojo.</summary>
     public const string Anclas = "ANCLAS";
-    public const int ColorAnclas = 1;
+    public static int ColorAnclas => EstiloPlaca.ColorAci("capa.ANCLAS");
 
     /// <summary>La <b>rosca y la tuerca</b> del ancla, en gris.</summary>
     /// <remarks>
@@ -46,24 +60,24 @@ public static class PlacaBaseCapas
 
     /// <summary>El rotulado, los leaders y sus flechas. En verde.</summary>
     public const string Rotulos = "ROTULOS";
-    public const int ColorRotulos = 3;
+    public static int ColorRotulos => EstiloPlaca.ColorAci("capa.ROTULOS");
 
     public const string Cotas = "COTAS";
-    public const int ColorCotas = 7;
+    public static int ColorCotas => EstiloPlaca.ColorAci("capa.COTAS");
 
     /// <summary>El <b>dado</b> va aquí, no en la capa de la placa.</summary>
     public const string Concreto = "CONCRETO";
-    public const int ColorConcreto = 8;
+    public static int ColorConcreto => EstiloPlaca.ColorAci("capa.CONCRETO");
 
     /// <summary>Todos los perfiles, sea cual sea su familia.</summary>
     public const string Perfiles = "PERFILES";
-    public const int ColorPerfiles = 7;
+    public static int ColorPerfiles => EstiloPlaca.ColorAci("capa.PERFILES");
 
     public const string Cartabones = "CARTABONES";
-    public const int ColorCartabones = 140;
+    public static int ColorCartabones => EstiloPlaca.ColorAci("capa.CARTABONES");
 
     public const string Soldadura = "SOLDADURA";
-    public const int ColorSoldadura = 240;
+    public static int ColorSoldadura => EstiloPlaca.ColorAci("capa.SOLDADURA");
 
     /// <summary>
     /// La soldadura de los <b>cartabones</b>, en su propia capa y en <b>morado</b>.
@@ -80,7 +94,7 @@ public static class PlacaBaseCapas
     /// </para>
     /// </remarks>
     public const string SoldaduraCartabon = "SOLDADURA CARTABON";
-    public const int ColorSoldaduraCartabon = 210;
+    public static int ColorSoldaduraCartabon => EstiloPlaca.ColorAci("capa.SOLDADURA CARTABON");
 
     /// <summary>
     /// La cama de <b>grout</b> entre la placa y el dado, en su propia capa.
@@ -93,7 +107,7 @@ public static class PlacaBaseCapas
     /// macro y no algo que venga de la plantilla del usuario.
     /// </remarks>
     public const string Grout = "GROUT";
-    public const int ColorGrout = 30;
+    public static int ColorGrout => EstiloPlaca.ColorAci("capa.GROUT");
 
     // ---------- Hatches ----------
 
@@ -131,22 +145,22 @@ public static class PlacaBaseCapas
 
     /// <summary>Estilo de texto propio de esta macro, con altura fija.</summary>
     public const string EstiloTexto = "ACERO_PLACA";
-    public const double AlturaTextoDwg = 0.016;
+    public static double AlturaTextoDwg => EstiloPlaca.Numero("alto.texto");
 
     /// <summary>Estilo del MTEXT del rótulo. Si no está en el dibujo se usa el de arriba.</summary>
     public const string EstiloRotulo = "SECCIONES";
 
-    public const string FuenteTexto = "Bahnschrift Light SemiCondensed";
+    public static string FuenteTexto => EstiloPlaca.Texto("fuente");
 
     /// <summary>Flecha de las cotas: la marca oblicua, no el triángulo relleno.</summary>
-    public const string FlechaCota = "_OBLIQUE";
+    public static string FlechaCota => EstiloPlaca.Texto("cota.marca");
 
     /// <summary>Líneas de extensión del estilo de cota, en unidades de dibujo.</summary>
     public const double DimExe = 0.0;
     public const double DimExo = 0.04;
 
     /// <summary>Tamaño de flecha ploteado, en mm.</summary>
-    public const double AltoFlechaMm = 1.5;
+    public static double AltoFlechaMm => EstiloPlaca.Numero("cota.marca.mm");
 }
 
 /// <summary>

@@ -25,6 +25,9 @@
   <ItemGroup>
     <Compile Include="..\..\client\src\CadLink.Cad\MuroContencionCad.cs" />
     <Compile Include="..\..\client\src\CadLink.Cad\TrazoMuroContencion.cs" />
+    <!-- Las alturas de los textos salen del estilo de dibujo, y sus colores de CapasCad. -->
+    <Compile Include="..\..\client\src\CadLink.Cad\EstiloDibujo.cs" />
+    <Compile Include="..\..\client\src\CadLink.Cad\CapasCad.cs" />
   </ItemGroup>
 
 </Project>

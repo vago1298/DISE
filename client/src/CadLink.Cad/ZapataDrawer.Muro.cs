@@ -226,15 +226,20 @@ public sealed partial class ZapataDrawer
     }
 
     /// <summary>
-    /// Crea <c>COTA_MC</c>: las MISMAS variables que <c>COTA_ESTRUCTURAL</c> -marcas, huecos,
-    /// unidades, decimales- y solo el <c>DIMTXT</c> distinto. Despues deja las variables y el
+    /// Crea <c>COTA_MC</c>: las MISMAS variables que <c>COTA_ESTRUCTURAL</c> -huecos, unidades,
+    /// decimales- con el alto del numero y la marca del estilo «Muros de contención» (por
+    /// defecto 0.08, y la marca de las zapatas). Despues deja las variables y el
     /// estilo activo como estaban, para que las zapatas sigan con el suyo.
     /// </summary>
     private void AsegurarEstiloCotaMuro()
     {
-        // AsegurarEstiloCota ya fijo todas las variables de COTA_ESTRUCTURAL: aqui se cambia solo
-        // el alto del numero y se copia ese estado al estilo nuevo.
+        // AsegurarEstiloCota ya fijo todas las variables de COTA_ESTRUCTURAL: aqui se cambia el
+        // alto del numero -y la marca, si en «Estilo de dibujo» se eligio otra- y se copia ese
+        // estado al estilo nuevo.
         Dimvar("DIMTXT", TrazoMuroContencion.AltoCotaMuro);
+        Dimvar("DIMASZ", TrazoMuroContencion.MarcaCotaMuro);
+        Dimvar("DIMSAH", 0);
+        Dimvar("DIMBLK", TrazoMuroContencion.BloqueMarcaMuro);
 
         try
         {

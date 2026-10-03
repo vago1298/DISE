@@ -36,7 +36,7 @@ public sealed class AlzadoDrawer
     private const int PorCapa = 256;
 
     /// <summary>El gris de las cotas, el mismo que usa el dibujante de secciones.</summary>
-    private const int ColorCotas = 253;
+    private static int ColorCotas => EstiloAlzado.ColorAci("capa.COTAS");
 
     // ======================================================================
     //  POR QUE AQUI YA NO HAY UN «ColorVerde»
@@ -94,8 +94,12 @@ public sealed class AlzadoDrawer
     private const double HookClearV = 0.01;
     private const double HookClearEst = 0.005;
 
-    private const double AlturaTitulo = 0.03;
-    private const double AlturaEscala = 0.0225;
+    // Las alturas salen del estilo «Secciones y alzados» de la ventana «Estilo de dibujo»; sus
+    // valores por defecto son los que estaban aqui escritos.
+    private static PerfilEstilo EstiloAlzado => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones);
+
+    private static double AlturaTitulo => EstiloAlzado.Numero("alto.titulo.alzado");
+    private static double AlturaEscala => EstiloAlzado.Numero("alto.escala.alzado");
 
     private readonly dynamic _doc;
     private readonly dynamic _ms;
@@ -1179,7 +1183,7 @@ public sealed class AlzadoDrawer
     /// El mismo <c>H_TX_ROTULO</c> de la macro, para que el rótulo del alzado y el de la
     /// sección se lean del mismo tamaño cuando quedan uno al lado del otro.
     /// </remarks>
-    private const double AlturaRotulo = 0.025;
+    private static double AlturaRotulo => EstiloAlzado.Numero("alto.rotulos.alzado");
 
     /// <summary>
     /// El texto del rótulo, en la capa ROTULOS y anclado por <b>arriba y al centro</b>.
@@ -2958,7 +2962,7 @@ public sealed class AlzadoDrawer
     }
 
     /// <summary>Alto de las letras A y A' del corte, antes de la escala.</summary>
-    private const double AlturaLetraCorte = 0.025;
+    private static double AlturaLetraCorte => EstiloAlzado.Numero("alto.letra.corte");
 
     /// <summary>
     /// La <b>línea de corte A-A'</b> sobre el alzado: una línea recta que cruza la pieza

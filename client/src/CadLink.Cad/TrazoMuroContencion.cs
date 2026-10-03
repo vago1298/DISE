@@ -91,9 +91,14 @@ public static class TrazoMuroContencion
     /// <summary>Lo que se aparta una cota de lo que mide.</summary>
     public const double SepCota = 0.45;
 
-    public const double AltoRotulo = 0.09;
-    public const double AltoTitulo = 0.15;
-    public const double AltoSubtitulo = 0.10;
+    // Las alturas salen del estilo «Muros de contención» de la ventana «Estilo de dibujo». Sus
+    // valores por defecto: 0.09 las llamadas, 0.15 el titulo, 0.10 el subtitulo y 0.08 el numero
+    // de las cotas. La vista previa y AutoCAD leen los mismos.
+    private static PerfilEstilo EstiloMuros => EstiloDibujo.Actual.Perfil(EstiloDibujo.Muros);
+
+    public static double AltoRotulo => EstiloMuros.Numero("alto.rotulos");
+    public static double AltoTitulo => EstiloMuros.Numero("alto.titulo");
+    public static double AltoSubtitulo => EstiloMuros.Numero("alto.subtitulo");
 
     /// <summary>
     /// Ancho de una letra en relacion a su alto, con holgura: el hombro de la llamada tiene que
@@ -108,7 +113,13 @@ public static class TrazoMuroContencion
     /// El alto de los numeros de las cotas de los muros: el DIMTXT del estilo COTA_MC, que es
     /// COTA_ESTRUCTURAL con el numero mas grande. Un muro de 5 m con numeros de 2.5 cm no se lee.
     /// </summary>
-    public const double AltoCotaMuro = 0.08;
+    public static double AltoCotaMuro => EstiloMuros.Numero("cota.alto");
+
+    /// <summary>El tamano de la marca de COTA_MC.</summary>
+    public static double MarcaCotaMuro => EstiloMuros.Numero("cota.marca.tam");
+
+    /// <summary>El tipo de marca de COTA_MC.</summary>
+    public static string BloqueMarcaMuro => EstiloMuros.Texto("cota.marca");
 
     /// <summary>Lo ancho que sale un texto, para su hombro.</summary>
     public static double AnchoTexto(string texto, double alto) => texto.Length * alto * FactorLetra;

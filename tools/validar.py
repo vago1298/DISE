@@ -1101,7 +1101,9 @@ def v12_fidelidad() -> None:
     check("estilo de texto SECCIONES creado", "AsegurarEstiloTexto" in drawer)
     check(
         "la fuente es la de la macro",
-        'FuenteTexto = "BAHNSCHRIFT SEMILIGHT"' in drawer,
+        # La de la macro es el DEFECTO del estilo «Secciones y alzados»; se cambia en la ventana.
+        'private static string FuenteTexto => EstiloSecciones.Texto("fuente");' in drawer
+        and '"Fuente del estilo de texto SECCIONES", TipoAjuste.Fuente, "BAHNSCHRIFT SEMILIGHT")' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs")),
     )
     check(
         "los dos MText llevan el estilo",
@@ -2784,7 +2786,9 @@ def v16_extruida_piers() -> None:
         check("ROTULOS toma el verde de TEXTOS y COTAS el gris de las cotas",
               '"ROTULOS" => CapasCad.ColorDeCapa("TEXTOS")' in m_cap_alz.group(0)
               and '"COTAS" => ColorCotas' in m_cap_alz.group(0)
-              and "private const int ColorCotas = 253;" in alz2)
+              # El 253 es el defecto del estilo «Secciones y alzados»; se cambia en la ventana.
+              and 'private static int ColorCotas => EstiloAlzado.ColorAci("capa.COTAS");' in alz2
+              and '.Con("capa.COTAS", GrupoColores, "Capa COTAS", TipoAjuste.ColorAci, C(253)));' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs")))
 
     #  Y EL MOTIVO ESCRITO EN EL CODIGO, para que nadie lo revierta pensando que un
     #  color explicito es «mas seguro».
@@ -6848,12 +6852,16 @@ def v18_planta_autocad() -> None:
     #  Las capas, los colores y los patrones de la macro, en un solo sitio y con su nombre.
     check("las capas y colores de la macro estan respetados",
           'public const string Placa = "PLACA BASE";' in pbc
-          and "public const int ColorPlaca = 140;" in pbc
+          and 'public static int ColorPlaca => EstiloPlaca.ColorAci("capa.PLACA BASE");' in pbc
           and 'public const string Anclas = "ANCLAS";' in pbc
-          and "public const int ColorAnclas = 1;" in pbc
+          and 'public static int ColorAnclas => EstiloPlaca.ColorAci("capa.ANCLAS");' in pbc
           and 'public const string Concreto = "CONCRETO";' in pbc
           and 'public const string Soldadura = "SOLDADURA";' in pbc
-          and "public const int ColorSoldadura = 240;" in pbc)
+          and 'public static int ColorSoldadura => EstiloPlaca.ColorAci("capa.SOLDADURA");' in pbc
+          # Los colores de la macro son los DEFECTOS del estilo «Placa base», que se cambian en
+          # la ventana «Estilo de dibujo».
+          and all(f'.Con("capa.{c}", GrupoColores, "Capa {c}", TipoAjuste.ColorAci, C({n}))' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
+                  for c, n in (("PLACA BASE", 140), ("ANCLAS", 1), ("SOLDADURA", 240))))
 
     check("y los patrones de achurado con su escala",
           'PatronDado = "AR-CONC"' in pbc and "EscalaHatchDado = 0.0002" in pbc
@@ -9667,7 +9675,7 @@ def v19_circular_y_ui() -> None:
     check("y a las capas de la macro se les pone su color aunque ya existan",
           "private void CrearCapa(string nombre, int color, bool forzarColor)" in zap_pla
           and "if (color > 0 && (nueva || forzarColor))" in zap_pla
-          and "forzarColor: CapasCad.EsDeLaMacro(nombre));" in zap_pla)
+          and "forzarColor: CapasCad.EsDeLaMacro(nombre)" in zap_pla)
     check("un diametro que no este en la tabla se queda sin color, no en blanco",
           "public const int SinColor = -1;" in capas_cad
           and "if (color != CapasCad.SinColor)" in leer(
@@ -10168,8 +10176,10 @@ def v19_circular_y_ui() -> None:
     # Aqui estaba el defecto de las cotas gigantes: un estilo creado sin fijar antes las
     # variables se crea con las del dibujo -texto de 0.18 al lado de una zapata de un metro-.
     check("las variables de cota se fijan antes de crear el estilo",
-          'Dimvar("DIMTXT", 0.025)' in zap_pla
-          and 'Dimvar("DIMASZ", 0.025)' in zap_pla
+          # El 0.025 del numero y de la marca es el DEFECTO del estilo «Zapatas».
+          'Dimvar("DIMTXT", EstiloZapatas.Numero("cota.alto"));' in zap_pla
+          and 'Dimvar("DIMASZ", EstiloZapatas.Numero("cota.marca.tam"));' in zap_pla
+          and '"Altura del número de las cotas (COTA_ESTRUCTURAL)", TipoAjuste.Medida, N(0.025))' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
           and 'Dimvar("DIMEXO", 0.02)' in zap_pla
           and "estilo.CopyFrom(_doc);" in zap_pla)
     check("y queda escrito el defecto que arregla",
@@ -10177,7 +10187,7 @@ def v19_circular_y_ui() -> None:
     check("las cotas van en metros con dos decimales",
           'Dimvar("DIMLUNIT", 2)' in zap_pla and 'Dimvar("DIMDEC", 2)' in zap_pla)
     check("y con marcas abiertas, con DIMSAH antes de DIMBLK",
-          zap_pla.index('Dimvar("DIMSAH", 0)') < zap_pla.index('Dimvar("DIMBLK", "_OPEN90")'))
+          zap_pla.index('Dimvar("DIMSAH", 0)') < zap_pla.index('Dimvar("DIMBLK", EstiloZapatas.Texto("cota.marca"));'))
 
     # ------------------------------------------------------------------
     # LA VISTA EN PLANTA, EN SU PROPIO BLOQUE
@@ -12162,7 +12172,7 @@ def main() -> int:
               v23_hoja_zapatas_corridas,
               v24_rediseno,
               v25_ifc,
-              v26_plugin_revit, v27_muros_contencion):
+              v26_plugin_revit, v27_muros_contencion, v28_estilo_dibujo):
         f()
 
     print("\n" + "=" * 66)
@@ -12957,7 +12967,9 @@ def v21_separacion_y_acero() -> None:
 
     check("ni capas por familia: una sola PERFILES, la de las macros",
           'CapaPerfiles = "PERFILES"' in acero_cad
-          and "Capa(CapaPerfiles, 7);" in acero_cad
+          # El 7 es el defecto del estilo «Perfiles de acero»; se cambia en «Estilo de dibujo».
+          and 'Capa(CapaPerfiles, EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).ColorAci("capa.PERFILES"));' in acero_cad
+          and '.Con("capa.PERFILES", GrupoColores, "Capa PERFILES", TipoAjuste.ColorAci, C(7)));' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
           and 'CapaBase + "-"' not in acero_cad)
 
     check("y los objetos van por capa, no con el color pegado",
@@ -15501,7 +15513,8 @@ def v27_muros_contencion() -> None:
     check("las cotas del muro van en su estilo COTA_MC, sin cambios encima",
           'EstiloCotaMuro = "COTA_MC";' in drw
           and 'Dimvar("DIMTXT", TrazoMuroContencion.AltoCotaMuro);' in drw
-          and "public const double AltoCotaMuro = 0.08;" in trazo
+          and 'public static double AltoCotaMuro => EstiloMuros.Numero("cota.alto");' in trazo
+          and '"Altura del número de las cotas (COTA_MC)", TipoAjuste.Medida, N(0.08))' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
           and "r.Cotas += CotaMuro(c, EstiloCotaMuro);" in drw
           and "TextHeight" not in drw and "ScaleFactor" not in drw)
     check("los textos de las llamadas van sobre un hombro, sin flecha que los tache",
@@ -15515,6 +15528,62 @@ def v27_muros_contencion() -> None:
 
     check("hay prueba ejecutable de la geometria",
           os.path.exists(ruta("tools/prueba-muro-contencion/Program.cs")))
+
+def v28_estilo_dibujo() -> None:
+    print("\n[28] Estilo de dibujo: letras, cotas y colores")
+
+    est = leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
+    check("el estilo es puro, sin AutoCAD ni WPF",
+          "public sealed class EstiloDibujo" in est and "dynamic" not in est
+          and "System.Windows" not in est and "AcadConnection" not in est)
+    check("hay un perfil por tipo de dibujo",
+          all(f'public const string {k} = "' in est
+              for k in ("Comun", "Secciones", "Acero", "Zapatas", "Muros", "PlacaBase", "PlantaEtabs")))
+    check("y se guarda solo lo que difiere del defecto",
+          "public Dictionary<string, Dictionary<string, string>> ParaGuardar()" in est
+          and "Where(a => a.Cambiado)" in est)
+    check("lo guardado que no sirve se ignora", "a.Problema(valor).Length == 0" in est)
+
+    capas = leer(ruta("client/src/CadLink.Cad/CapasCad.cs"))
+    check("los colores de la macro son el defecto del perfil comun",
+          "CapasCad.TablaDeLaMacro" in est and "EstiloDibujo.Actual.Perfil(EstiloDibujo.Comun)" in capas)
+
+    # Cada dibujante lee su perfil al dibujar.
+    for archivo, perfil in (("SeccionDrawer.cs", "Secciones"), ("AlzadoDrawer.cs", "Secciones"),
+                            ("ZapataDrawer.cs", "Zapatas"), ("TrazoMuroContencion.cs", "Muros"),
+                            ("PlacaBaseCad.cs", "PlacaBase"), ("PlantaDrawer.cs", "PlantaEtabs"),
+                            ("SeccionDrawer.Acero.cs", "Acero")):
+        check(f"{archivo} lee el estilo «{perfil}»",
+              f"EstiloDibujo.Actual.Perfil(EstiloDibujo.{perfil})" in leer(ruta("client/src/CadLink.Cad/" + archivo)))
+
+    planta = leer(ruta("client/src/CadLink.Cad/PlantaDrawer.cs"))
+    i_cfg = planta.find("_cfg.Poner(a.Clave, a.Valor.Trim());")
+    check("la planta recibe el estilo como parametros de CONFIG, antes de crear sus capas",
+          i_cfg > 0 and i_cfg < planta.find("_capas = new PlanoEstructural.CapasPlano(_cfg);"))
+
+    zp = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Planta.cs"))
+    check("un color elegido se pone aunque la capa ya exista",
+          'EstiloZapatas.Cambiado("capa." + nombre)' in zp
+          and "PlacaBaseCapas.ColorElegido(" in leer(ruta("client/src/CadLink.Cad/PlacaBaseDrawer.cs")))
+
+    app = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    ven = leer(ruta("client/src/CadLink.App/MainWindow.EstiloDibujo.cs"))
+    arc = leer(ruta("client/src/CadLink.App/EstiloDibujoArchivo.cs"))
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    check("se carga al arrancar, para toda la aplicacion",
+          "EstiloDibujoArchivo.Cargar();" in app and "LocalApplicationData" in arc
+          and '"estilo-dibujo.json"' in arc)
+    check("la ventana edita una COPIA y solo al guardar pasa a ser la actual",
+          "var copia = EstiloDibujo.Actual.Copia();" in ven and "EstiloDibujo.Actual = copia;" in ven
+          and ven.index("ventana.ShowDialog() != true") < ven.index("EstiloDibujo.Actual = copia;"))
+    check("cada ajuste se puede volver a su defecto, uno por uno o todos",
+          "poner(a.Defecto)" in ven and "p.Restaurar();" in ven)
+    check("y se abre desde el menu Dibujar y desde la barra",
+          xaml.count('Click="OnEstiloDibujo"') == 2)
+    check("la vista previa del muro pinta el acero con el color del estilo",
+          "EstiloDibujo.Actual.ColorDeVarilla(clave)" in leer(ruta("client/src/CadLink.App/MainWindow.MurosContencion.cs")))
+    check("hay prueba ejecutable del estilo",
+          os.path.exists(ruta("tools/prueba-estilo-dibujo/Program.cs")))
 
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")

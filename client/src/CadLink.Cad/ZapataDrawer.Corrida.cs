@@ -33,7 +33,7 @@ public sealed partial class ZapataDrawer
     private const string CapaMuroEnrase = "MURO DE ENRASE";
 
     /// <summary>Color de la capa del muro de enrase: el 140 de las dos macros.</summary>
-    private const int ColorMuroEnrase = 140;
+    private static int ColorMuroEnrase => EstiloZapatas.ColorAci("capa.MURO DE ENRASE");
 
     /// <summary>Nombre del bloque de la zapata de lindero: <c>ZAPATA_LINDERO_</c> + ID.</summary>
     private const string PrefijoBloqueLindero = "ZAPATA_LINDERO_";
@@ -165,7 +165,14 @@ public sealed partial class ZapataDrawer
 
                 try
                 {
-                    _ = todas.Item(CapaMuroEnrase);
+                    dynamic ya = todas.Item(CapaMuroEnrase);
+
+                    // Ya existe: se respeta su color, salvo que en «Estilo de dibujo» se haya
+                    // elegido otro.
+                    if (EstiloZapatas.Cambiado("capa." + CapaMuroEnrase))
+                    {
+                        ya.Color = ColorMuroEnrase;
+                    }
                 }
                 catch (Exception)
                 {

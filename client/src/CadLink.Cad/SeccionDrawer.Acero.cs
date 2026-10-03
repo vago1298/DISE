@@ -39,6 +39,9 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private const string EstiloTextoAcero = "ACERO";
 
+    /// <summary>La fuente de ACERO: la del estilo «Perfiles de acero».</summary>
+    private static string FuenteAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Texto("fuente");
+
     /// <summary>Capa de los perfiles de acero, la de las cuatro macros.</summary>
     /// <remarks>
     /// <b>Una sola capa para las doce familias</b>, como en las macros. Se probó a darle una
@@ -96,8 +99,8 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     public void AsegurarCapasAcero()
     {
-        Capa(CapaPerfiles, 7);
-        Capa("COTAS", 253);
+        Capa(CapaPerfiles, EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).ColorAci("capa.PERFILES"));
+        Capa("COTAS", EstiloSecciones.ColorAci("capa.COTAS"));
         Capa("ROTULOS", 3);
 
         // Los DOS estilos de texto, que es lo que faltaba. Las macros usan uno para los
@@ -158,7 +161,7 @@ public sealed partial class SeccionDrawer
                     estilo = estilos.Add(EstiloTextoAcero);
                 }
 
-                estilo.SetFont(FuenteTexto, false, false, 0, 0);
+                estilo.SetFont(FuenteAcero, false, false, 0, 0);
 
                 // Altura 0 = variable. Ver el remarks: es lo que permite que cada cota
                 // fije la suya, que es lo que hacen las cuatro macros.
@@ -170,7 +173,7 @@ public sealed partial class SeccionDrawer
         {
             // Si la fuente no está instalada AutoCAD la sustituye y el texto sale igual;
             // solo cambia el tipo de letra.
-            Fallo($"Estilo de texto '{EstiloTextoAcero}' con la fuente '{FuenteTexto}'", ex);
+            Fallo($"Estilo de texto '{EstiloTextoAcero}' con la fuente '{FuenteAcero}'", ex);
         }
     }
 

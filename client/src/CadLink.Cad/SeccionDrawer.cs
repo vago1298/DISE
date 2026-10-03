@@ -130,18 +130,28 @@ public sealed partial class SeccionDrawer
 
     // ---------- Estilos de texto y de cota ----------
     private const string EstiloTexto = "SECCIONES";
-    private const string FuenteTexto = "BAHNSCHRIFT SEMILIGHT";
-    private const double AlturaTextoCotas = 0.025;
+    // La fuente, las alturas, la marca y los colores salen del estilo «Secciones y alzados» de la
+    // ventana «Estilo de dibujo». Sus valores por defecto son los que estaban aqui escritos.
+    private static PerfilEstilo EstiloSecciones => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones);
+
+    private static string FuenteTexto => EstiloSecciones.Texto("fuente");
+    private static double AlturaTextoCotas => EstiloSecciones.Numero("alto.estilo");
     private const double FactorAnchoTexto = 1.0;
 
     private const string EstiloCota = "COTA_ESTRUCTURAL";
-    private const string BloqueFlechaCota = "_OPEN90";
-    private const int ColorLineaCota = 253;
-    private const int ColorExtensionCota = 253;
-    private const int ColorTextoCota = 1;
+    private static string BloqueFlechaCota => EstiloSecciones.Texto("cota.marca");
+    private static int ColorLineaCota => EstiloSecciones.ColorAci("cota.color.lineas");
+    private static int ColorExtensionCota => EstiloSecciones.ColorAci("cota.color.lineas");
+    private static int ColorTextoCota => EstiloSecciones.ColorAci("cota.color.texto");
+
+    /// <summary>La altura del numero de las cotas, a la escala base.</summary>
+    private static double AltoNumeroCota => EstiloSecciones.Numero("cota.alto");
+
+    /// <summary>El tamano de la marca de las cotas, a la escala base.</summary>
+    private static double TamMarcaCota => EstiloSecciones.Numero("cota.marca.tam");
 
     // ---------- Llamadas (leaders) de los lechos ----------
-    private const double AlturaTextoLeader = 0.021;
+    private static double AlturaTextoLeader => EstiloSecciones.Numero("alto.llamadas");
     private const double LechoSepY = 0.032;
     private const double LechoSepX = 0.045;
     private const double OffsetIntermediaSup = 0.011;
@@ -492,7 +502,7 @@ public sealed partial class SeccionDrawer
         Capa("ESTRIBOS", CapasCad.ColorDeCapa("ESTRIBOS"));
         Capa("TEXTOS", CapasCad.ColorDeCapa("TEXTOS"));
         Capa("ROTULOS", CapasCad.ColorDeCapa("TEXTOS"));
-        Capa("COTAS", 253);
+        Capa("COTAS", EstiloSecciones.ColorAci("capa.COTAS"));
 
         // La tabla de colores vive en CapasCad, compartida con los demás dibujantes: estaba escrita
         // solo aquí, y por eso el de zapatas creaba VAR_#5 en blanco.
@@ -688,7 +698,7 @@ public sealed partial class SeccionDrawer
         Dimvar("DIMCLRE", ColorExtensionCota);
         Dimvar("DIMCLRT", ColorTextoCota);
 
-        Dimvar("DIMTXT", 0.017 * _f);
+        Dimvar("DIMTXT", AltoNumeroCota * _f);
         Dimvar("DIMGAP", 0.005 * _f);
 
         // Aquí había un DIMTOFF que AutoCAD rechazaba, y con razón: esa variable
@@ -715,7 +725,7 @@ public sealed partial class SeccionDrawer
         // Flechas: marca abierta a 90, no el triángulo relleno de fábrica.
         // Al final, por ser lo más frágil. Se fijan las tres porque cuál manda
         // depende de DIMSAH, que se deja como lo tenga el dibujo, igual que la macro.
-        Dimvar("DIMASZ", 0.02 * _f);
+        Dimvar("DIMASZ", TamMarcaCota * _f);
         Dimvar("DIMBLK", BloqueFlechaCota);
         Dimvar("DIMBLK1", BloqueFlechaCota);
         Dimvar("DIMBLK2", BloqueFlechaCota);
@@ -884,9 +894,9 @@ public sealed partial class SeccionDrawer
 
         // --- Texto y flechas ---
         PropCota(cota, "TextGap", 0.005 * _f);
-        PropCota(cota, "TextHeight", 0.017 * _f);
+        PropCota(cota, "TextHeight", AltoNumeroCota * _f);
         PropCota(cota, "TextStyle", EstiloTexto);
-        PropCota(cota, "ArrowheadSize", 0.02 * _f);
+        PropCota(cota, "ArrowheadSize", TamMarcaCota * _f);
         PropCota(cota, "TextRotation", 0d);
 
         // Los DOS decimales se fijan también EN LA COTA, no solo con DIMDEC: la

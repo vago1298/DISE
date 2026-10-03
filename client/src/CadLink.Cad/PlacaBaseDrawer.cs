@@ -216,12 +216,12 @@ public sealed partial class PlacaBaseDrawer
     public void AsegurarCapas()
     {
         Capa(PlacaBaseCapas.Placa, PlacaBaseCapas.ColorPlaca, forzar: true);
-        Capa(PlacaBaseCapas.Anclas, PlacaBaseCapas.ColorAnclas, forzar: false);
-        Capa(PlacaBaseCapas.Rotulos, PlacaBaseCapas.ColorRotulos, forzar: false);
-        Capa(PlacaBaseCapas.Cotas, PlacaBaseCapas.ColorCotas, forzar: false);
-        Capa(PlacaBaseCapas.Concreto, PlacaBaseCapas.ColorConcreto, forzar: false);
-        Capa(PlacaBaseCapas.Perfiles, PlacaBaseCapas.ColorPerfiles, forzar: false);
-        Capa(PlacaBaseCapas.Cartabones, PlacaBaseCapas.ColorCartabones, forzar: false);
+        Capa(PlacaBaseCapas.Anclas, PlacaBaseCapas.ColorAnclas, forzar: PlacaBaseCapas.ColorElegido(PlacaBaseCapas.Anclas));
+        Capa(PlacaBaseCapas.Rotulos, PlacaBaseCapas.ColorRotulos, forzar: PlacaBaseCapas.ColorElegido(PlacaBaseCapas.Rotulos));
+        Capa(PlacaBaseCapas.Cotas, PlacaBaseCapas.ColorCotas, forzar: PlacaBaseCapas.ColorElegido(PlacaBaseCapas.Cotas));
+        Capa(PlacaBaseCapas.Concreto, PlacaBaseCapas.ColorConcreto, forzar: PlacaBaseCapas.ColorElegido(PlacaBaseCapas.Concreto));
+        Capa(PlacaBaseCapas.Perfiles, PlacaBaseCapas.ColorPerfiles, forzar: PlacaBaseCapas.ColorElegido(PlacaBaseCapas.Perfiles));
+        Capa(PlacaBaseCapas.Cartabones, PlacaBaseCapas.ColorCartabones, forzar: PlacaBaseCapas.ColorElegido(PlacaBaseCapas.Cartabones));
         Capa(PlacaBaseCapas.Soldadura, PlacaBaseCapas.ColorSoldadura, forzar: true);
 
         // La del GROUT fuerza su color por lo mismo que la placa: es una capa de esta macro, no una
@@ -374,7 +374,7 @@ public sealed partial class PlacaBaseDrawer
     private void AsegurarEstiloCota()
     {
         Dimvar("DIMSCALE", 1.0);
-        Dimvar("DIMTXT", _hTxt);
+        Dimvar("DIMTXT", PlacaBaseCapas.AlturaNumeroCota);
         Dimvar("DIMASZ", _hFle);
 
         // Las dos líneas de extensión. Son las que la macro fuerza SIEMPRE, aunque el estilo ya
@@ -397,7 +397,7 @@ public sealed partial class PlacaBaseDrawer
 
         // El texto de las cotas se lee siempre en CENTÍMETROS, aunque el dibujo esté en metros.
         Dimvar("DIMLFAC", 1.0 / _escala);
-        Dimvar("DIMCLRT", 1);
+        Dimvar("DIMCLRT", PlacaBaseCapas.ColorNumeroCota);
         Dimvar("DIMTFILL", 0);
         Dimvar("DIMTXSTY", PlacaBaseCapas.EstiloTexto);
 

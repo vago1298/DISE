@@ -80,6 +80,10 @@ public partial class MainWindow : Window
         Tema.Cargar();
         TemaButton.Content = Tema.TextoDelBoton;
 
+        // El estilo de dibujo -letras, cotas y colores- que se dejo guardado. Sin archivo, los
+        // valores de siempre.
+        EstiloDibujoArchivo.Cargar();
+
         PreviewCanvas.SizeChanged += (_, _) => DibujarVistaPrevia();
         SeccionesGrid.SelectionChanged += OnSeccionSeleccionada;
 

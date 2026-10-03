@@ -45,7 +45,11 @@ internal static class CapasCad
     /// <summary>Lo que devuelve <see cref="Color"/> cuando la capa no es de la macro.</summary>
     public const int SinColor = -1;
 
-    /// <summary>La tabla, tal cual.</summary>
+    /// <summary>
+    /// La tabla, tal cual. Son los colores <b>por defecto</b>: el usuario los puede cambiar en la
+    /// ventana «Estilo de dibujo» -perfil «Capas compartidas»-, y <see cref="ColorDeCapa"/> da el
+    /// que este puesto.
+    /// </summary>
     private static readonly Dictionary<string, int> Tabla =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -69,8 +73,21 @@ internal static class CapasCad
     /// WPF, y un estático con ese nombre hace que el verificador de <c>validar.py</c> señale como
     /// sospechoso cada <c>Color</c> del proyecto de ventana.
     /// </remarks>
-    public static int ColorDeCapa(string? capa) =>
-        capa is not null && Tabla.TryGetValue(capa.Trim(), out var c) ? c : SinColor;
+    public static int ColorDeCapa(string? capa)
+    {
+        if (capa is null || !Tabla.ContainsKey(capa.Trim()))
+        {
+            return SinColor;
+        }
+
+        // El de la ventana «Estilo de dibujo»; sin cambiar, es el de la tabla.
+        var comun = EstiloDibujo.Actual.Perfil(EstiloDibujo.Comun);
+        return comun.Buscar("capa." + capa.Trim()) is { } a ? comun.ColorAci(a.Clave) : Tabla[capa.Trim()];
+    }
+
+    /// <summary>La tabla de la macro, para los valores por defecto de <see cref="EstiloDibujo"/>.</summary>
+    internal static IEnumerable<(string Capa, int Color)> TablaDeLaMacro =>
+        Tabla.Select(kv => (kv.Key, kv.Value));
 
     /// <summary>¿Esta capa lleva color de macro, y por tanto se le fuerza?</summary>
     public static bool EsDeLaMacro(string? capa) => ColorDeCapa(capa) != SinColor;
