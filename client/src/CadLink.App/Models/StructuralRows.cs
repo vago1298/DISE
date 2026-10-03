@@ -1296,6 +1296,12 @@ public sealed class DatosProyecto
     /// </remarks>
     public ObservableCollection<ZapataCorridaRow> ZapatasCorridas { get; } = new();
 
+    /// <summary>Los muros de contencion de concreto armado.</summary>
+    public ObservableCollection<MuroArmadoRow> MurosArmados { get; } = new();
+
+    /// <summary>Los muros de contencion de concreto ciclopeo.</summary>
+    public ObservableCollection<MuroCiclopeoRow> MurosCiclopeos { get; } = new();
+
     /// <summary>Las placas base, con sus anclas, sus cartabones y su dado.</summary>
     /// <remarks>
     /// Una sola tabla para las diez familias de perfil, por lo mismo que la hoja de acero: la
@@ -1630,6 +1636,12 @@ public sealed class DatosProyecto
             AltoCartabonXCm = 20, AltoCartabonYCm = 20,
             Escala = 10
         });
+
+        // Los muros de contencion: el de concreto armado es el de la imagen del muro con
+        // espolon; el ciclopeo, el de la imagen de las letras. Los valores por omision de cada
+        // fila son esos mismos.
+        d.MurosArmados.Add(new MuroArmadoRow { Id = "MC-01" });
+        d.MurosCiclopeos.Add(new MuroCiclopeoRow { Id = "MCC-01" });
 
         return d;
     }

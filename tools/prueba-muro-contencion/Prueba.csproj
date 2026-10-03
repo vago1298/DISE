@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Prueba de la geometria de los muros de contencion, SIN AutoCAD.
+
+       Compila solo los dos archivos del muro -MuroContencionCad.cs y TrazoMuroContencion.cs-
+       en net8.0 pelado, asi que corre en cualquier maquina:
+
+           cd tools/prueba-muro-contencion
+           dotnet run
+
+       Es la MISMA cuenta que pintan la vista previa de CadLink y el dibujo de AutoCAD. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>CadLink.Pruebas</RootNamespace>
+    <AssemblyName>prueba-muro-contencion</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\client\src\CadLink.Cad\MuroContencionCad.cs" />
+    <Compile Include="..\..\client\src\CadLink.Cad\TrazoMuroContencion.cs" />
+  </ItemGroup>
+
+</Project>

@@ -12162,7 +12162,7 @@ def main() -> int:
               v23_hoja_zapatas_corridas,
               v24_rediseno,
               v25_ifc,
-              v26_plugin_revit):
+              v26_plugin_revit, v27_muros_contencion):
         f()
 
     print("\n" + "=" * 66)
@@ -15424,6 +15424,76 @@ def v25_ifc() -> None:
 #     Eso es lo que se comprueba aqui, mas los tres errores de empaquetado que hacen que un
 #     complemento no cargue y que Revit no explica.
 # ======================================================================
+
+# ============================================================================
+# 27. Muros de contencion: concreto armado y concreto ciclopeo
+#
+#     Pedido del usuario: una tabla para el muro de concreto armado con los datos de su
+#     imagen -pantalla, zapata con punta y talon, espolon con espigas, y el acero de cada
+#     cara- y otra para el ciclopeo con las letras de su dibujo (h, d, c, b, M, E, G, N). Con
+#     vista previa en CadLink y dibujo en AutoCAD, los dos de la MISMA geometria.
+# ============================================================================
+def v27_muros_contencion() -> None:
+    print("\n[27] Muros de contencion: concreto armado y ciclopeo")
+
+    xaml = leer(ruta("client/src/CadLink.App/MainWindow.xaml"))
+    i_tab = xaml.index('<TabItem Header="Muros de Contencion">')
+    pestana = xaml[i_tab:xaml.index("<!-- ===== Placa base ===== -->", i_tab)]
+
+    check("la pestana ya no es un marcador", "Modulo pendiente" not in pestana)
+    check("trae las dos tablas, la vista previa y sus totales",
+          'x:Name="MurosArmadosGrid"' in pestana and 'x:Name="MurosCiclopeosGrid"' in pestana
+          and 'x:Name="MurosPreviewCanvas"' in pestana and 'x:Name="TotalesMurosText"' in pestana)
+
+    for prop in ("AlturaM", "EspesorZapataM", "BaseM", "PuntaM", "CoronaM", "EspesorPieM",
+                 "EspolonDistM", "EspolonAnchoM", "EspolonProfM", "VarVertTierra", "SepVertTierraCm",
+                 "VarVertExt", "VarHoriz", "VarEspiga", "LongEspigaM", "VarZapSup", "VarRepSup",
+                 "VarZapInf", "VarRepInf"):
+        check(f"la tabla de concreto armado pide {prop}", "{Binding " + prop in pestana)
+
+    for prop in ("HM", "DM", "CM", "BM", "MM", "EM", "GM", "NM", "PiedraPct"):
+        check(f"la tabla de ciclopeo pide {prop}", "{Binding " + prop in pestana)
+
+    check("el talon y la base del ciclopeo se calculan, no se capturan",
+          'Binding="{Binding TalonM, StringFormat=N2}" Width="Auto" IsReadOnly="True"' in pestana
+          and 'Binding="{Binding BaseM, StringFormat=N2}" Width="Auto" IsReadOnly="True"' in pestana)
+
+    filas = leer(ruta("client/src/CadLink.App/Models/MurosContencionRows.cs"))
+    check("las dos filas heredan de Row",
+          "public sealed class MuroArmadoRow : Row" in filas and "public sealed class MuroCiclopeoRow : Row" in filas)
+    check("y pasan a geometria en un solo sitio", filas.count("public MuroContencionCad AFormatoCad()") == 2)
+
+    trazo = leer(ruta("client/src/CadLink.Cad/TrazoMuroContencion.cs"))
+    check("la geometria es pura, sin AutoCAD",
+          "public static class TrazoMuroContencion" in trazo and "AcadConnection" not in trazo
+          and "dynamic" not in trazo)
+    check("y dice lo que falta", "public static List<string> Problemas(MuroContencionCad m)" in trazo)
+
+    ventana = leer(ruta("client/src/CadLink.App/MainWindow.xaml.cs"))
+    muros = leer(ruta("client/src/CadLink.App/MainWindow.MurosContencion.cs"))
+    check("la vista previa pinta la MISMA geometria que AutoCAD",
+          "TrazoMuroContencion.Dibujar(m, 0, 0)" in muros)
+    check("el boton lo enciende la licencia", "DibujarMurosButton.IsEnabled = puedeDibujar;" in ventana)
+    check("la vista previa se engancha una vez", ventana.count("EngancharVistaPreviaMuros();") == 1)
+    check("las tablas se cierran antes de dibujar", "MurosArmadosGrid, MurosCiclopeosGrid," in ventana)
+
+    proyecto = leer(ruta("client/src/CadLink.App/Models/Proyecto.cs"))
+    check("el proyecto guarda los muros",
+          "public List<FilaGuardada> MurosArmados" in proyecto and "public List<FilaGuardada> MurosCiclopeos" in proyecto
+          and "p.MurosArmados.Add(FilaSerializable.Leer(mu));" in ventana
+          and "_datos.MurosCiclopeos.Clear();" in ventana)
+
+    drw = leer(ruta("client/src/CadLink.Cad/ZapataDrawer.Muro.cs"))
+    check("el dibujante es un parcial del de zapatas y reutiliza sus primitivas",
+          "public sealed partial class ZapataDrawer" in drw
+          and "private object? Linea(" not in drw and "HatchPoligono(" in drw)
+    check("dibuja desde la geometria pura", "TrazoMuroContencion.Dibujar(m, x, TrazoMuroContencion.YBase)" in drw)
+    check("el ciclopeo va con piedras y las espigas a trazos",
+          'PatronCiclopeo = "GRAVEL"' in drw and "ATrazos(pl);" in drw)
+
+    check("hay prueba ejecutable de la geometria",
+          os.path.exists(ruta("tools/prueba-muro-contencion/Program.cs")))
+
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")
 

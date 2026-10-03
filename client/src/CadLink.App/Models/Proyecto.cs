@@ -101,6 +101,11 @@ public sealed class ProyectoGuardado
     /// </remarks>
     public List<FilaGuardada> ZapatasCorridas { get; set; } = new();
 
+    /// <summary>Los muros de contencion. Un .clk de antes no las trae y quedan vacias.</summary>
+    public List<FilaGuardada> MurosArmados { get; set; } = new();
+
+    public List<FilaGuardada> MurosCiclopeos { get; set; } = new();
+
     /// <summary>Las filas de la hoja de <b>placas base</b>.</summary>
     /// <remarks>
     /// Con el mismo mecanismo genérico que las dos hojas de zapatas, y por el mismo motivo: una

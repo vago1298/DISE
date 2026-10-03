@@ -90,6 +90,7 @@ public partial class MainWindow : Window
         EngancharVistaPreviaAcero();
         EngancharVistaPreviaZapata();
         EngancharVistaPreviaZapataCorrida();
+        EngancharVistaPreviaMuros();
         EngancharVistaPreviaPlacaBase();
 
         // La simbología de soldadura: no depende de ninguna fila, así que solo se redibuja al
@@ -248,6 +249,7 @@ public partial class MainWindow : Window
         EnlazarAcero();
         EnlazarZapatas();
         EnlazarZapatasCorridas();
+        EnlazarMuros();
         EnlazarPlacaBase();
 
         DatosCambiaron();
@@ -580,6 +582,7 @@ public partial class MainWindow : Window
 
         // Y las corridas, por lo mismo.
         DibujarZapatasCorridasButton.IsEnabled = puedeDibujar;
+        DibujarMurosButton.IsEnabled = puedeDibujar;
 
         // Y las placas base: dibujar el detalle de una placa es generar dibujo igual que lo
         // demas, asi que lo decide la MISMA licencia.
@@ -2213,6 +2216,7 @@ public partial class MainWindow : Window
         DataGrid?[] hojas =
         {
             SeccionesGrid, AceroGrid, ZapatasCorridasGrid, ZapatasGrid, PlacasGrid, PlanosGrid,
+            MurosArmadosGrid, MurosCiclopeosGrid,
         };
 
         foreach (var hoja in hojas)
@@ -2455,6 +2459,16 @@ public partial class MainWindow : Window
             p.ZapatasCorridas.Add(FilaSerializable.Leer(z));
         }
 
+        foreach (var mu in _datos.MurosArmados)
+        {
+            p.MurosArmados.Add(FilaSerializable.Leer(mu));
+        }
+
+        foreach (var mu in _datos.MurosCiclopeos)
+        {
+            p.MurosCiclopeos.Add(FilaSerializable.Leer(mu));
+        }
+
         // Y las placas base. Va aquí y no solo en el guardado del archivo porque la instantánea
         // del DESHACER serializa este mismo objeto: sin esta línea, un Ctrl+Z después de capturar
         // una placa habría borrado la hoja de placas entera.
@@ -2643,6 +2657,25 @@ public partial class MainWindow : Window
                 var nueva = new ZapataCorridaRow();
                 FilaSerializable.Aplicar(nueva, fila);
                 _datos.ZapatasCorridas.Add(nueva);
+            }
+
+            // ---- Muros de contencion ----
+            _datos.MurosArmados.Clear();
+
+            foreach (var fila in p.MurosArmados ?? new List<FilaGuardada>())
+            {
+                var nueva = new MuroArmadoRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.MurosArmados.Add(nueva);
+            }
+
+            _datos.MurosCiclopeos.Clear();
+
+            foreach (var fila in p.MurosCiclopeos ?? new List<FilaGuardada>())
+            {
+                var nueva = new MuroCiclopeoRow();
+                FilaSerializable.Aplicar(nueva, fila);
+                _datos.MurosCiclopeos.Add(nueva);
             }
 
             // ---- Placas Base ----
