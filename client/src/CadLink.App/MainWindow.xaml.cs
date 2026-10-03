@@ -4522,7 +4522,7 @@ public partial class MainWindow : Window
             // está donde lo pone el alzado, así que la longitud sale del mismo cálculo.
             BastonesEnCorte = LlevaBastones(r)
                 ? CadLink.Cad.Bastones.EnElCorte(
-                    BastonesCad(r), AlzadoDrawer.LargoDe(AFormatoAlzado(r)))
+                    BastonesCad(r), AlzadoDrawer.LargoDe(AFormatoAlzado(r)), MargenBastonesM(r))
                 : new List<BastonCad>()
         };
     }
@@ -4562,19 +4562,18 @@ public partial class MainWindow : Window
 
             if (b.DistanciaM <= 0)
             {
-                problemas.Add($"{cual} necesita una distancia desde el paño mayor que cero.");
+                problemas.Add($"{cual} necesita una longitud mayor que cero.");
             }
-            else if (ubic == BastonSeccion.TextoCentro && 2 * b.DistanciaM >= largo)
+            else if (ubic == BastonSeccion.TextoCentro && b.DistanciaM >= largo)
             {
                 problemas.Add(
-                    $"{cual} empieza a {b.DistanciaM:0.##} m de cada paño, y la trabe mide " +
-                    $"{largo:0.##} m: no queda bastón.");
+                    $"{cual} mide {b.DistanciaM:0.##} m y la trabe {largo:0.##} m: no cabe.");
             }
             else if (ubic == BastonSeccion.TextoExtremos && 2 * b.DistanciaM > largo)
             {
                 problemas.Add(
-                    $"{cual} mide {b.DistanciaM:0.##} m desde cada paño, y la trabe mide " +
-                    $"{largo:0.##} m: los dos bastones se enciman al centro.");
+                    $"{cual} mide {b.DistanciaM:0.##} m en cada extremo y la trabe " +
+                    $"{largo:0.##} m: los dos se enciman al centro.");
             }
         }
     }
@@ -4582,6 +4581,26 @@ public partial class MainWindow : Window
     /// <summary>Los bastones de la fila listos para dibujar, con la regla de su tipo.</summary>
     private static List<BastonCad> BastonesCad(SeccionConcretoRow r) =>
         CadLink.Cad.Bastones.Normalizar(r.Bastones.Select(b => b.ACad()), EsContratrabe(r));
+
+    /// <summary>
+    /// Desde dónde arrancan los bastones de extremo, en metros desde el paño: recubrimiento
+    /// más el gancho de la corrida y su holgura. Es el que usa AutoCAD; aquí sirve para saber
+    /// qué bastones cruza el corte sin dibujar el alzado.
+    /// </summary>
+    private static double MargenBastonesM(SeccionConcretoRow r)
+    {
+        var rec = (r.RecubrimientoCm > 0 ? r.RecubrimientoCm : 2.5) / 100.0;
+
+        if (r.GanchoCm <= 0)
+        {
+            return rec;
+        }
+
+        var dSup = Varilla.TryDiametroCm(r.DiamEsqSup, out var a) ? a : 0.95;
+        var dInf = Varilla.TryDiametroCm(r.DiamEsqInfEfectivo, out var b) ? b : 0.95;
+
+        return rec + (Math.Max(dSup, dInf) / 100.0) + 0.015;
+    }
 
     private static bool EsContratrabe(SeccionConcretoRow r) =>
         TipoDe(r.Elemento, r.Id) == TipoElemento.Contratrabe;
@@ -5328,6 +5347,14 @@ public partial class MainWindow : Window
             Barra(PX(x), PY(y), r * escala);
         }
 
+        // LOS BASTONES QUE CRUZA EL CORTE A-A': arriba, abajo o los dos, según lo que pase
+        // por la línea de corte. Mismas posiciones que en AutoCAD
+        // (SeccionDrawer.PosicionesDeBastones), en verde tenue como en el alzado.
+        foreach (var (x, y, r) in PosicionesDeBastonesPrevia(s, de, rec))
+        {
+            Barra(PX(x), PY(y), r * escala, baston: true);
+        }
+
         // EL ESTRIBO DIAMANTE, encima de las varillas.
         //
         // Va al final y por encima, igual que en AutoCAD, donde las dos cintas se suben al
@@ -6041,11 +6068,14 @@ public partial class MainWindow : Window
         // esta misma rutina, igual que las corridas, y no con una raya aparte.
         void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM,
             double? xDesde = null, double? xHasta = null,
-            bool ganchoIzq = true, bool ganchoDer = true)
+            bool ganchoIzq = true, bool ganchoDer = true,
+            double? ganchoComoCm = null, Color? tono = null)
         {
             var dM = dCm / 100.0;
             var grosor = Math.Max(dM * esc, 1.4);
-            var verde = new SolidColorBrush(Color.FromRgb(0x1D, 0x8A, 0x4E));
+            // Los bastones van en un verde TENUE, para distinguirlos de las corridas aquí. En
+            // AutoCAD no: allí van en la capa de su diámetro, como cualquier varilla.
+            var verde = new SolidColorBrush(tono ?? Color.FromRgb(0x1D, 0x8A, 0x4E));
 
             var xIni = xDesde ?? izquierda + rec;
             var xFin = xHasta ?? izquierda + w - rec;
@@ -6088,7 +6118,9 @@ public partial class MainWindow : Window
             // leía como una sola varilla doblada de arriba abajo. El tope deja siempre un
             // hueco entre las dos puntas —disponibleM ya viene descontado en el
             // llamador—, para que se vea que son dos piezas distintas.
-            var gM = Math.Min(15 * dM, disponibleM);
+            // El gancho de un bastón mide lo que el de la corrida de su lecho: 15 diámetros de
+            // ESA corrida (ganchoComoCm), no del bastón.
+            var gM = Math.Min(15 * ((ganchoComoCm ?? dCm) / 100.0), disponibleM);
 
             if (gM < dM || (!ganchoIzq && !ganchoDer))
             {
@@ -6345,10 +6377,10 @@ public partial class MainWindow : Window
 
         // ---------- Los bastones ----------
         //
-        // Con la MISMA rutina que las corridas —BarraDeAlzado—, así se ven igual: mismo
-        // grosor, mismo color, mismo doblez. Tres como mucho: arriba, en medio y abajo, a
-        // las mismas alturas que AutoCAD (CadLink.Cad.Bastones). El gancho, solo en la punta
-        // que llega al paño, y solo en los de arriba y abajo.
+        // Con la MISMA rutina que las corridas —BarraDeAlzado— pero en verde tenue, para que
+        // aquí se distingan. A las mismas alturas y con los mismos tramos que AutoCAD
+        // (CadLink.Cad.Bastones): LONGITUD REAL, los de extremo pegados afuera pasado el
+        // gancho de la corrida, el del centro centrado. Gancho como el de la corrida.
         if (!a.EsVertical && a.Bastones.Count > 0)
         {
             var sepCama = CadLink.Cad.Bastones.SeparacionCamaCm / 100.0 * esc;
@@ -6356,6 +6388,7 @@ public partial class MainWindow : Window
             var caraInf = top + h - rec - (dInfCm / 100.0 * esc);   // y del de abajo
             var usadas = new HashSet<PosicionBaston>();
             var filaCota = 0;
+            var verdeTenue = Color.FromRgb(0x7F, 0xC8, 0x9C);
 
             // El ancho del gancho de las corridas, en píxeles: el bastón arranca pasado él y
             // una holgura, para que su doblez quede ANTES, por dentro, y no encima.
@@ -6364,9 +6397,15 @@ public partial class MainWindow : Window
             var anchoGanchoInf = Math.Max(dInfCm / 100.0 * esc, 1.4);
             var holguraPx = Math.Max(0.015 * esc, 2);
 
-            // Dónde va cada uno ANTES de dibujar: el gancho de uno se topa contra los otros,
-            // con la misma regla que AutoCAD (Bastones.LibreParaGancho). El lienzo crece
-            // hacia ABAJO.
+            // El margen de cada extremo, en metros: recubrimiento más el gancho de la corrida.
+            double MargenM(PosicionBaston pos) =>
+                (rec + (!hayGanchoCorrida ? 0 : holguraPx + pos switch
+                {
+                    PosicionBaston.Superior => anchoGanchoSup,
+                    PosicionBaston.Inferior => anchoGanchoInf,
+                    _ => Math.Max(anchoGanchoSup, anchoGanchoInf)
+                })) / esc;
+
             double YDe(PosicionBaston pos, double dPx) => pos switch
             {
                 PosicionBaston.Superior => caraSup + sepCama + (dPx / 2),
@@ -6374,13 +6413,14 @@ public partial class MainWindow : Window
                 _ => CadLink.Cad.Bastones.YMedio(caraInf, caraSup, a.NLateral)
             };
 
-            var puestos = new Dictionary<PosicionBaston, (BastonCad B, double Y, double D)>();
+            var puestos = new Dictionary<PosicionBaston, (BastonCad B, double Y, double D, double M)>();
             foreach (var bp in a.Bastones)
             {
-                if (!puestos.ContainsKey(bp.Posicion) && CadLink.Cad.Bastones.Tramos(bp, largo).Count > 0)
+                var m = MargenM(bp.Posicion);
+                if (!puestos.ContainsKey(bp.Posicion) && CadLink.Cad.Bastones.Tramos(bp, largo, m).Count > 0)
                 {
                     var dPx = bp.Var.Cm / 100.0 * esc;
-                    puestos[bp.Posicion] = (bp, YDe(bp.Posicion, dPx), dPx);
+                    puestos[bp.Posicion] = (bp, YDe(bp.Posicion, dPx), dPx, m);
                 }
             }
 
@@ -6389,7 +6429,8 @@ public partial class MainWindow : Window
             for (var iB = 0; iB < a.Bastones.Count; iB++)
             {
                 var b = a.Bastones[iB];
-                var tramos = CadLink.Cad.Bastones.Tramos(b, largo);
+                var margen = MargenM(b.Posicion);
+                var tramos = CadLink.Cad.Bastones.Tramos(b, largo, margen);
 
                 if (tramos.Count == 0 || !usadas.Add(b.Posicion))
                 {
@@ -6409,37 +6450,31 @@ public partial class MainWindow : Window
                     }
 
                     var cara = arriba ? yB + (dB / 2) : yB - (dB / 2);
+                    var tol = (dB / esc) + 0.015;
 
-                    double? Hasta(PosicionBaston otra)
+                    double? Hasta(PosicionBaston otra, out bool conGancho)
                     {
+                        conGancho = false;
+
                         if (!puestos.TryGetValue(otra, out var o)
-                            || !CadLink.Cad.Bastones.PasaPor(o.B, largo, xGm, (dB / esc) + 0.015))
+                            || !CadLink.Cad.Bastones.PasaPor(o.B, largo, xGm, tol, o.M))
                         {
                             return null;
                         }
 
+                        conGancho = CadLink.Cad.Bastones.GanchoEn(o.B, largo, o.M, xGm, tol);
                         return arriba ? (o.Y - (o.D / 2)) - cara : cara - (o.Y + (o.D / 2));
                     }
 
+                    var opuesto = Hasta(
+                        arriba ? PosicionBaston.Inferior : PosicionBaston.Superior, out var conG);
+
                     var libre = CadLink.Cad.Bastones.LibreParaGancho(
                         arriba ? caraInf - cara : cara - caraSup,
-                        Hasta(PosicionBaston.Medio),
-                        Hasta(arriba ? PosicionBaston.Inferior : PosicionBaston.Superior),
-                        holguraGancho);
+                        Hasta(PosicionBaston.Medio, out _), opuesto, holguraGancho, conG);
 
                     return libre / esc;
                 }
-
-                // Lo que ocupa el gancho de la corrida que tiene al lado. El de en medio esquiva
-                // los dos, como las intermedias.
-                var esquiva = !hayGanchoCorrida
-                    ? 0
-                    : holguraPx + b.Posicion switch
-                    {
-                        PosicionBaston.Superior => anchoGanchoSup,
-                        PosicionBaston.Inferior => anchoGanchoInf,
-                        _ => Math.Max(anchoGanchoSup, anchoGanchoInf)
-                    };
 
                 // La fila de su cota, arriba del alzado y por encima del título.
                 var yCota = top - 26 - (filaCota * FilaCotaBastonPx);
@@ -6447,8 +6482,8 @@ public partial class MainWindow : Window
 
                 foreach (var t in tramos)
                 {
-                    var xIni = izquierda + Math.Max(t.Ini * esc, rec + esquiva);
-                    var xFin = izquierda + Math.Min(t.Fin * esc, w - rec - esquiva);
+                    var xIni = izquierda + (t.Ini * esc);
+                    var xFin = izquierda + (t.Fin * esc);
 
                     if (xFin <= xIni + 1)
                     {
@@ -6458,17 +6493,19 @@ public partial class MainWindow : Window
                     // Su caja, para que un clic encima lo quite.
                     _bastonesEnPrevia.Add((new Rect(xIni, yB - 5, xFin - xIni, 10), iB));
 
-                    var disponibleM = DisponibleEn(
-                        ((t.GanchoIzq ? xIni : xFin) - izquierda) / esc);
+                    // Un largo de gancho para toda la varilla: el menor de sus dos puntas.
+                    var disponibleM = double.MaxValue;
+                    if (t.GanchoIzq) { disponibleM = Math.Min(disponibleM, DisponibleEn(t.Ini)); }
+                    if (t.GanchoDer) { disponibleM = Math.Min(disponibleM, DisponibleEn(t.Fin)); }
+                    if (disponibleM == double.MaxValue) { disponibleM = 0; }
 
                     BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
                         xDesde: xIni, xHasta: xFin,
-                        ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);
+                        ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer,
+                        ganchoComoCm: arriba ? dSupCm : dInfCm, tono: verdeTenue);
 
-                    // LA COTA del tramo, desde el paño, como en AutoCAD: línea con sus dos
-                    // remates y el texto encima.
-                    CotaDeBastonPrevia(
-                        izquierda + (t.Ini * esc), izquierda + (t.Fin * esc), yCota, top,
+                    // LA COTA del tramo, con su LONGITUD REAL, como en AutoCAD.
+                    CotaDeBastonPrevia(xIni, xFin, yCota, top,
                         CadLink.Cad.Bastones.Texto(b) + $"  L = {t.Largo:0.00} m");
                 }
             }
@@ -7223,15 +7260,62 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Barra(double cx, double cy, double radio)
+    /// <summary>
+    /// Dónde van, en <b>centímetros</b> desde la esquina de abajo, las varillas de los
+    /// bastones que cruza el corte. Es la cuenta de <c>SeccionDrawer.PosicionesDeBastones</c>.
+    /// </summary>
+    private List<(double X, double Y, double R)> PosicionesDeBastonesPrevia(
+        SeccionConcretoRow s, double de, double rec)
+    {
+        var res = new List<(double, double, double)>();
+
+        if (!LlevaBastones(s))
+        {
+            return res;
+        }
+
+        var sec = AFormatoCad(s);
+        var dSup = sec.Superior.Esquina.Cm > 0 ? sec.Superior.Esquina.Cm : de;
+        var dInf = sec.Inferior.Esquina.Cm > 0 ? sec.Inferior.Esquina.Cm : de;
+        var sep = CadLink.Cad.Bastones.SeparacionCamaCm;
+
+        foreach (var bas in sec.BastonesEnCorte.Where(CadLink.Cad.Bastones.EsValido))
+        {
+            var dB = bas.Var.Cm;
+            var arriba = bas.Posicion == PosicionBaston.Superior;
+
+            var y = arriba
+                ? s.AlturaCm - (rec + de + dSup) - sep - (dB / 2)
+                : rec + de + dInf + sep + (dB / 2);
+
+            if (y - (dB / 2) < rec + de || y + (dB / 2) > s.AlturaCm - rec - de)
+            {
+                continue;
+            }
+
+            var off = rec + de + (dB / 2);
+            foreach (var x in CadLink.Cad.Bastones.XsEnCama(bas.Cantidad, off, s.BaseCm - off))
+            {
+                res.Add((x, y, dB / 2));
+            }
+        }
+
+        return res;
+    }
+
+    private void Barra(double cx, double cy, double radio, bool baston = false)
     {
         var r = Math.Max(radio, 1.8);
         var c = new Ellipse
         {
             Width = r * 2,
             Height = r * 2,
-            Fill = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B)),
-            Stroke = new SolidColorBrush(Color.FromRgb(0x7B, 0x24, 0x1B)),
+            Fill = new SolidColorBrush(baston
+                ? Color.FromRgb(0x7F, 0xC8, 0x9C)
+                : Color.FromRgb(0xC0, 0x39, 0x2B)),
+            Stroke = new SolidColorBrush(baston
+                ? Color.FromRgb(0x2E, 0x7D, 0x4F)
+                : Color.FromRgb(0x7B, 0x24, 0x1B)),
             StrokeThickness = 0.8
         };
         Canvas.SetLeft(c, cx - r);

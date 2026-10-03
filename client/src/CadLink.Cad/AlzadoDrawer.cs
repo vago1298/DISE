@@ -2420,7 +2420,7 @@ public sealed class AlzadoDrawer
         // PRIMERA PASADA: dónde va cada uno. Hace falta tenerlos todos antes de dibujar,
         // porque el gancho de uno se topa contra los otros.
         var usados = new HashSet<PosicionBaston>();
-        var puestos = new Dictionary<PosicionBaston, (BastonCad B, double DB, double Yc, List<Bastones.Tramo> T)>();
+        var puestos = new Dictionary<PosicionBaston, (BastonCad B, double DB, double Yc, List<Bastones.Tramo> T, double M)>();
 
         foreach (var b in a.Bastones)
         {
@@ -2431,7 +2431,13 @@ public sealed class AlzadoDrawer
             }
 
             var dB = b.Var.Cm * _escala;
-            var tramos = Bastones.Tramos(b, largo);
+
+            // EL DOBLEZ DEL BASTÓN VA ANTES QUE EL DE LA CORRIDA, por dentro: arranca pasado
+            // el gancho de la corrida y su holgura. Ese es el margen de los extremos.
+            var (limIzq, _) = LimitesDelBaston(b.Posicion, rec, largo,
+                xa, xb, xaInf, xbInf, dSup, dInf, gSup, gInf);
+
+            var tramos = Bastones.Tramos(b, largo, limIzq);
 
             if (dB <= 0 || tramos.Count == 0)
             {
@@ -2453,70 +2459,78 @@ public sealed class AlzadoDrawer
                 continue;
             }
 
-            puestos[b.Posicion] = (b, dB, yc, tramos);
+            puestos[b.Posicion] = (b, dB, yc, tramos, limIzq);
         }
 
         // SEGUNDA PASADA: dibujarlos, con cada gancho topado para no chocar.
-        foreach (var (pos, (b, dB, yc, tramos)) in puestos)
+        foreach (var (pos, (b, dB, yc, tramos, _)) in puestos)
         {
             var arriba = pos == PosicionBaston.Superior;
             var capa = CapaVar(b.Var.Clave);
 
-            var (limIzq, limDer) = LimitesDelBaston(pos, rec, largo,
-                xa, xb, xaInf, xbInf, dSup, dInf, gSup, gInf);
+            // EL GANCHO MIDE LO QUE EL DE LA CORRIDA DE SU LECHO: la misma cuenta de
+            // Estribos.GanchoNominal con el diámetro de esa corrida.
+            var nominal = Estribos.GanchoNominal(false, a.GanchoCm * _escala, arriba ? dSup : dInf);
 
             foreach (var t in tramos)
             {
-                // EL DOBLEZ DEL BASTÓN VA ANTES QUE EL DE LA CORRIDA, por dentro: si
-                // arrancara en el recubrimiento, su gancho caería encima del de la corrida.
-                var xL = Math.Max(t.Ini, limIzq);
-                var xR = Math.Min(t.Fin, limDer);
+                // Los tramos ya vienen con su LONGITUD REAL y en su sitio.
+                var xL = t.Ini;
+                var xR = t.Fin;
 
                 if (xR <= xL + dB)
                 {
                     continue;
                 }
 
-                // El gancho, solo en los de arriba y abajo, y hacia DENTRO. El de en medio
-                // va recto, como las intermedias.
                 var g = 0d;
 
                 if (pos != PosicionBaston.Medio && (t.GanchoIzq || t.GanchoDer))
                 {
-                    var xG = t.GanchoIzq ? xL : xR;
                     var cara = arriba ? yc - (dB / 2) : yc + (dB / 2);
 
-                    double? Hasta(PosicionBaston otra)
+                    // El hueco libre en una punta. Las dos puntas del de centro se miran por
+                    // separado y se queda el menor, porque la varilla lleva un solo largo.
+                    double LibreEn(double xG)
                     {
-                        if (!puestos.TryGetValue(otra, out var o)
-                            || !Bastones.PasaPor(o.B, largo, xG, dB + HookClearH))
+                        double? Hasta(PosicionBaston otra, out bool conGancho)
                         {
-                            return null;
+                            conGancho = false;
+
+                            if (!puestos.TryGetValue(otra, out var o)
+                                || !Bastones.PasaPor(o.B, largo, xG, dB + HookClearH, o.M))
+                            {
+                                return null;
+                            }
+
+                            conGancho = Bastones.GanchoEn(o.B, largo, o.M, xG, dB + HookClearH);
+
+                            return arriba
+                                ? cara - (o.Yc + (o.DB / 2))
+                                : (o.Yc - (o.DB / 2)) - cara;
                         }
 
-                        // A la cara del otro que mira hacia este.
-                        return arriba
-                            ? cara - (o.Yc + (o.DB / 2))
-                            : (o.Yc - (o.DB / 2)) - cara;
+                        var hastaLecho = arriba
+                            ? cara - (ycInf + (dInf / 2))
+                            : (ycSup - (dSup / 2)) - cara;
+
+                        var opuesto = Hasta(
+                            arriba ? PosicionBaston.Inferior : PosicionBaston.Superior, out var conG);
+
+                        return Bastones.LibreParaGancho(
+                            hastaLecho, Hasta(PosicionBaston.Medio, out _), opuesto,
+                            HookClearV, conG);
                     }
 
-                    var hastaLecho = arriba
-                        ? cara - (ycInf + (dInf / 2))
-                        : (ycSup - (dSup / 2)) - cara;
+                    var libre = double.MaxValue;
+                    if (t.GanchoIzq) { libre = Math.Min(libre, LibreEn(xL)); }
+                    if (t.GanchoDer) { libre = Math.Min(libre, LibreEn(xR)); }
 
-                    var libre = Bastones.LibreParaGancho(
-                        hastaLecho,
-                        Hasta(PosicionBaston.Medio),
-                        Hasta(arriba ? PosicionBaston.Inferior : PosicionBaston.Superior),
-                        HookClearV);
-
-                    g = Estribos.GanchoEfectivo(
-                        Estribos.GanchoNominal(false, a.GanchoCm * _escala, dB), libre, dB);
+                    g = Estribos.GanchoEfectivo(nominal, libre, dB);
                 }
 
                 // LA MISMA RUTINA QUE LAS CORRIDAS: mismas caras, mismos cortes en los
-                // estribos, mismo doblez y mismo relleno. Solo cambia en qué punta va el
-                // gancho: en la que llega al paño.
+                // estribos, mismo doblez y mismo relleno.
                 VarillaConGanchos(bloque, xL, xR, yc, dB, capa, centros, dEst, g,
                     hacia: !arriba, relleno, ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);
 

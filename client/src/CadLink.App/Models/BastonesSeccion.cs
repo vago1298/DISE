@@ -59,8 +59,8 @@ public sealed class BastonSeccion : INotifyPropertyChanged
     public string Diametro { get => _diametro; set => Set(ref _diametro, value); }
 
     /// <summary>
-    /// Distancia desde el paño, en metros. En un extremo es lo que mide el bastón; al
-    /// centro, dónde empieza.
+    /// La <b>longitud real</b> de la varilla, en metros. El nombre se queda por los archivos
+    /// ya guardados. Al centro va la mitad a cada lado del centro de la pieza.
     /// </summary>
     public double DistanciaM { get => _distanciaM; set => Set(ref _distanciaM, value); }
 

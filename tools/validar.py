@@ -2702,8 +2702,8 @@ def v16_extruida_piers() -> None:
     check("y la vista previa tambien",
           "BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM," in mw_alz)
     check("el doblez del baston va por dentro del de la corrida",
-          "LimitesDelBaston(pos, rec, largo," in alz_drw
-          and "rec + esquiva" in mw_alz)
+          "var tramos = Bastones.Tramos(b, largo, limIzq);" in alz_drw
+          and "double MargenM(PosicionBaston pos)" in mw_alz)
     check("las cotas de los bastones van arriba del alzado, y la vista previa las acota",
           "var yDim = y1 + off;" in alz_drw and "CotaDeBastonPrevia(" in mw_alz)
     check("los ganchos de los bastones no chocan entre si, ni con el de en medio",
@@ -2726,6 +2726,16 @@ def v16_extruida_piers() -> None:
           "textoArriba: true" in alz_drw and "d.VerticalTextPosition = 1;" in alz_drw)
     check("la punta de la cola del gancho en la vista previa cierra en escuadra",
           mw_alz.index("var qoY = poY + (largo * uy);") < mw_alz.index("poX = bx + rIn - (Math.Sqrt(2) * rOut);"))
+    check("la longitud del baston es la real, y el del centro va centrado",
+          "res.Add(new Tramo((largo - l) / 2, (largo + l) / 2, true, true));" in bast
+          and 'Header = "Longitud real (m)",' in mw_bast)
+    check("el gancho del baston mide lo que el de la corrida de su lecho",
+          "Estribos.GanchoNominal(false, a.GanchoCm * _escala, arriba ? dSup : dInf)" in alz_drw
+          and "ganchoComoCm: arriba ? dSupCm : dInfCm" in mw_alz)
+    check("la seccion de la vista previa muestra los bastones del corte, en verde tenue",
+          "PosicionesDeBastonesPrevia(s, de, rec)" in mw_alz and "baston: true" in mw_alz)
+    check("el corte de AutoCAD sabe donde arrancan los de extremo",
+          "MargenBastonesM(r))" in mw_alz)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

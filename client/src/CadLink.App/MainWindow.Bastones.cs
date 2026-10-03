@@ -70,7 +70,8 @@ public partial class MainWindow
     ///   Uno por lecho: si ya hay, se cambia.</item>
     ///   <item>La ubicación la da el tipo: en la trabe, arriba en ambos extremos y abajo
     ///   al centro; en la contratrabe, al revés.</item>
-    ///   <item>La distancia es la del clic al paño más cercano.</item>
+    ///   <item>La longitud real: de extremo, la del clic al paño más cercano; al centro, el
+    ///   doble de la del clic al centro.</item>
     /// </list>
     /// Las varillas y el diámetro salen de los mandos «Bastón» de la vista previa. Para
     /// afinar la distancia, el botón <i>Bastones…</i>.
@@ -113,16 +114,13 @@ public partial class MainWindow
 
         var ubicacion = BastonSeccion.UbicacionTexto(posicion, EsContratrabe(fila));
 
-        // La distancia sale de dónde se hizo clic, medida desde el paño más cercano. En los
-        // extremos es lo que mide cada bastón; al centro, donde empieza, igual de cada paño.
+        // La LONGITUD REAL sale de dónde se hizo clic. De extremo: del paño más cercano al
+        // clic. Al centro: el doble de lo que hay del clic al centro, porque va la mitad a
+        // cada lado.
         var xm = (p.X - a.Izq) / a.Esc;
-        var distancia = Math.Min(xm, a.Largo - xm);
-
-        if (ubicacion == BastonSeccion.TextoCentro)
-        {
-            // Que quede bastón: al centro no puede empezar pasada la mitad.
-            distancia = Math.Min(distancia, (a.Largo / 2) - (2 * PasoBastonM));
-        }
+        var distancia = ubicacion == BastonSeccion.TextoCentro
+            ? Math.Min(2 * Math.Abs(xm - (a.Largo / 2)), a.Largo - (4 * PasoBastonM))
+            : Math.Min(xm, a.Largo - xm);
 
         distancia = Math.Max(PasoBastonM, Math.Round(distancia / PasoBastonM) * PasoBastonM);
 
@@ -143,7 +141,7 @@ public partial class MainWindow
 
         StatusText.Text =
             $"Bastón {nuevo.Cantidad} {nuevo.Diametro} {nuevo.Posicion.ToLowerInvariant()}, " +
-            $"{nuevo.Ubicacion.ToLowerInvariant()}, a {distancia:0.00} m del paño" +
+            $"{nuevo.Ubicacion.ToLowerInvariant()}, de {distancia:0.00} m" +
             (habia ? ", en lugar del que había. " : ". ") +
             "Clic encima para quitarlo; «Bastones…» para afinar.";
 
@@ -250,7 +248,7 @@ public partial class MainWindow
 
         tabla.Columns.Add(new DataGridTextColumn
         {
-            Header = "Desde el paño (m)",
+            Header = "Longitud real (m)",
             Binding = new Binding(nameof(BastonSeccion.DistanciaM))
             {
                 // Con el punto decimal, como el resto del programa: con la coma de un
@@ -269,8 +267,8 @@ public partial class MainWindow
                 (contratrabe
                     ? "Contratrabe: abajo en ambos extremos y arriba al centro.\n"
                     : "Trabe: arriba en ambos extremos y abajo al centro.\n") +
-                "La distancia se mide desde el paño. En un extremo es lo que mide el bastón; " +
-                "al centro, es donde empieza, igual desde cada paño.\n" +
+                "La longitud es lo que mide la varilla. Los de extremo van pegados a su extremo, " +
+                "pasado el gancho de la corrida; el del centro, centrado: la mitad a cada lado.\n" +
                 "En el corte A-A' salen los bastones que cruza su línea (a L/4 + 5 cm)."
         };
 

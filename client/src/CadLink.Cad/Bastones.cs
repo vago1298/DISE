@@ -59,7 +59,10 @@ public sealed class BastonCad
 
     public VarCad Var { get; set; }
 
-    /// <summary>Distancia desde el paño, en metros.</summary>
+    /// <summary>
+    /// Lo que <b>mide la varilla</b>, en metros. El nombre se queda por los archivos ya
+    /// guardados. Ver <see cref="Bastones.Tramos"/>.
+    /// </summary>
     public double DistanciaM { get; set; }
 }
 
@@ -114,14 +117,19 @@ public static class Bastones
     /// así que el hueco se reparte a medias.
     /// </param>
     /// <param name="holgura">Lo que se deja libre entre la punta y lo que tiene enfrente.</param>
+    /// <param name="opuestoConGancho">
+    /// Si el bastón de enfrente también trae gancho ahí: entonces el hueco se reparte a
+    /// medias. Si solo pasa de largo, este gancho puede llegar hasta él.
+    /// </param>
     public static double LibreParaGancho(
-        double hastaLechoOpuesto, double? hastaMedio, double? hastaBastonOpuesto, double holgura)
+        double hastaLechoOpuesto, double? hastaMedio, double? hastaBastonOpuesto, double holgura,
+        bool opuestoConGancho = true)
     {
         var libre = hastaLechoOpuesto;
 
         if (hastaBastonOpuesto is double o)
         {
-            libre = Math.Min(libre, (o - holgura) / 2);
+            libre = Math.Min(libre, opuestoConGancho ? (o - holgura) / 2 : o - holgura);
         }
 
         if (hastaMedio is double m)
@@ -138,8 +146,9 @@ public static class Bastones
     /// ahí: un bastón de centro que empieza a L/4 no estorba al gancho del paño.
     /// </summary>
     /// <param name="xGancho">La X del gancho, en metros desde el paño izquierdo.</param>
-    public static bool PasaPor(BastonCad b, double largo, double xGancho, double margen) =>
-        Tramos(b, largo).Any(t => t.Ini <= xGancho + margen && t.Fin >= xGancho - margen);
+    public static bool PasaPor(BastonCad b, double largo, double xGancho, double margen,
+        double margenExtremos = 0) =>
+        Tramos(b, largo, margenExtremos).Any(t => t.Ini <= xGancho + margen && t.Fin >= xGancho - margen);
 
     /// <summary>Separación libre entre el lecho y la cama de bastones: 2.5 cm.</summary>
     public const double SeparacionCamaCm = 2.5;
@@ -197,15 +206,29 @@ public static class Bastones
         b.Cantidad > 0 && b.Var.Existe && b.DistanciaM > 0;
 
     /// <summary>
-    /// Los tramos del bastón en una pieza de <paramref name="largo"/> metros.
+    /// Los tramos del bastón en una pieza de <paramref name="largo"/> metros, con su
+    /// <b>longitud real</b>.
     /// </summary>
+    /// <param name="margen">
+    /// Desde dónde puede arrancar una varilla en cada extremo: el recubrimiento más el gancho
+    /// de la corrida y su holgura. Los de extremo se pegan ahí, lo más afuera posible.
+    /// </param>
     /// <remarks>
-    /// Los de extremo llevan gancho en la punta del paño, que es la que se ancla en el
-    /// apoyo; el del centro va recto. Un bastón que no cabe —de extremo más largo que la
-    /// mitad, o de centro que empezaría pasado el medio— se recorta a lo que cabe o no
-    /// devuelve nada: dos bastones de extremo encimados al centro no son un armado.
+    /// <para>
+    /// <see cref="BastonCad.DistanciaM"/> es lo que <b>mide la varilla</b>, no una distancia
+    /// al paño, a pedido del usuario:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><b>De extremo:</b> cada pieza mide eso, pegada a su extremo.</item>
+    ///   <item><b>Al centro:</b> mide eso centrada en la pieza, mitad a cada lado. Un bastón
+    ///   de 60 cm va 30 cm a la izquierda y 30 a la derecha del centro.</item>
+    /// </list>
+    /// <para>
+    /// Todos llevan gancho en sus puntas: los de extremo en la del paño, el del centro en las
+    /// dos. Lo que no cabe se recorta a lo que cabe.
+    /// </para>
     /// </remarks>
-    public static List<Tramo> Tramos(BastonCad b, double largo)
+    public static List<Tramo> Tramos(BastonCad b, double largo, double margen = 0)
     {
         var res = new List<Tramo>();
 
@@ -215,40 +238,54 @@ public static class Bastones
         }
 
         var d = b.DistanciaM;
+        var util = largo - (2 * margen);
+
+        if (util <= 0)
+        {
+            return res;
+        }
 
         switch (b.Ubicacion)
         {
             case UbicacionBaston.Extremos:
             {
-                var l = Math.Min(d, largo / 2);
-                res.Add(new Tramo(0, l, true, false));
-                res.Add(new Tramo(largo - l, largo, false, true));
+                var l = Math.Min(d, util / 2);
+                res.Add(new Tramo(margen, margen + l, true, false));
+                res.Add(new Tramo(largo - margen - l, largo - margen, false, true));
                 break;
             }
 
             case UbicacionBaston.Izquierdo:
-                res.Add(new Tramo(0, Math.Min(d, largo), true, false));
+                res.Add(new Tramo(margen, margen + Math.Min(d, util), true, false));
                 break;
 
             case UbicacionBaston.Derecho:
-                res.Add(new Tramo(Math.Max(0, largo - d), largo, false, true));
+                res.Add(new Tramo(largo - margen - Math.Min(d, util), largo - margen, false, true));
                 break;
 
             case UbicacionBaston.AlCentro:
-                if (2 * d < largo)
-                {
-                    res.Add(new Tramo(d, largo - d, false, false));
-                }
-
+            {
+                var l = Math.Min(d, util);
+                res.Add(new Tramo((largo - l) / 2, (largo + l) / 2, true, true));
                 break;
+            }
         }
 
         return res;
     }
 
+    /// <summary>
+    /// ¿Lleva el bastón un gancho cerca de <paramref name="x"/>? Para repartir el hueco solo
+    /// cuando dos ganchos vienen de frente en el mismo sitio.
+    /// </summary>
+    public static bool GanchoEn(BastonCad b, double largo, double margen, double x, double tol) =>
+        Tramos(b, largo, margen).Any(t =>
+            (t.GanchoIzq && Math.Abs(t.Ini - x) <= tol) ||
+            (t.GanchoDer && Math.Abs(t.Fin - x) <= tol));
+
     /// <summary>¿El corte, a <paramref name="xCorte"/> metros del paño izquierdo, cruza el bastón?</summary>
-    public static bool CruzaElCorte(BastonCad b, double largo, double xCorte) =>
-        Tramos(b, largo).Any(t => xCorte >= t.Ini - 1e-9 && xCorte <= t.Fin + 1e-9);
+    public static bool CruzaElCorte(BastonCad b, double largo, double xCorte, double margen = 0) =>
+        Tramos(b, largo, margen).Any(t => xCorte >= t.Ini - 1e-9 && xCorte <= t.Fin + 1e-9);
 
     /// <summary>
     /// Los bastones que se ven en el <c>CORTE A-A'</c>: los que cruza la línea de corte.
@@ -258,10 +295,11 @@ public static class Bastones
     /// de la línea A-A' del alzado. Por eso un bastón de extremo más corto que L/4 + 5 cm no
     /// sale en el corte: la línea pasa más allá de su punta.
     /// </remarks>
-    public static List<BastonCad> EnElCorte(IEnumerable<BastonCad> bastones, double largo)
+    public static List<BastonCad> EnElCorte(
+        IEnumerable<BastonCad> bastones, double largo, double margen = 0)
     {
         var xCorte = AlzadoLayout.PosicionCorte(largo);
-        return bastones.Where(b => CruzaElCorte(b, largo, xCorte)).ToList();
+        return bastones.Where(b => CruzaElCorte(b, largo, xCorte, margen)).ToList();
     }
 
     /// <summary>El rótulo del bastón: <c>2 Var. (Bastones) #4C</c>.</summary>
