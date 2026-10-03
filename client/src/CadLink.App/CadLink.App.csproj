@@ -47,6 +47,9 @@
     <!-- Resource (no Content): el logo queda EMBEBIDO en el ejecutable, así que
          nadie puede sustituir el archivo para cambiar la marca del programa. -->
     <Resource Include="Assets\logo.png" />
+    <!-- El icono, tambien como recurso: es el de la ventana y la barra de tareas mientras la
+         aplicacion esta abierta. Asi la ventana ensena el MISMO icono que el ejecutable. -->
+    <Resource Include="Assets\app.ico" Condition="Exists('Assets\app.ico')" />
   </ItemGroup>
 
   <ItemGroup>

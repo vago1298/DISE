@@ -39,7 +39,7 @@ public partial class ActivationWindow : Window
         SupportText.Text = AppInfo.SupportEmail;
 
         LogoImage.Source = Branding.Logo;
-        Icon = Branding.Logo;
+        Icon = Branding.Icono;
 
         if (!string.IsNullOrWhiteSpace(current.Message))
         {

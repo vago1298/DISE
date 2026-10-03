@@ -28,6 +28,58 @@ public static class Branding
     /// <summary>Logo listo para usar. Se carga una sola vez.</summary>
     public static ImageSource Logo => _logo ??= Cargar();
 
+    private static ImageSource? _icono;
+
+    /// <summary>
+    /// El <b>icono</b> de las ventanas -barra de título y barra de tareas-. NO es el logo.
+    /// </summary>
+    /// <remarks>
+    /// Antes las ventanas usaban el logo, así que con el logo de la empresa en la configuración la
+    /// barra de tareas enseñaba ese logo aunque el ejecutable tuviera el perfil I. Ahora el icono es
+    /// el de la clave <c>icono</c> si se puso, y si no, el mismo que va incrustado en el ejecutable
+    /// -<c>Assets\app.ico</c>, el perfil I-. El logo se queda para la pantalla de inicio.
+    /// </remarks>
+    public static ImageSource Icono => _icono ??= CargarIcono();
+
+    private static ImageSource CargarIcono()
+    {
+        var ruta = AppInfo.Config.Icono;
+
+        if (!string.IsNullOrWhiteSpace(ruta) && DesdeArchivo(ruta.Trim()) is { } propio)
+        {
+            return propio;
+        }
+
+        try
+        {
+            var decodificador = BitmapDecoder.Create(
+                new Uri("pack://application:,,,/Assets/app.ico"),
+                BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+
+            // De un icono, el fotograma de 32 px o el más cercano: es el que mejor se ve en la
+            // barra de título; Windows toma los demás tamaños del propio ejecutable.
+            var mejor = decodificador.Frames
+                .OrderBy(f => Math.Abs(f.PixelWidth - 32))
+                .First();
+
+            if (mejor.CanFreeze)
+            {
+                mejor.Freeze();
+            }
+
+            return mejor;
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or UriFormatException
+                                      or NotSupportedException
+                                      or ArgumentException
+                                      or InvalidOperationException)
+        {
+            // Sin icono incrustado, la ventana usa el logo, como antes.
+            return Logo;
+        }
+    }
+
     /// <summary>Ruta que se acabó usando, para mostrarla en diagnósticos.</summary>
     public static string Origen { get; private set; } = "(embebido)";
 

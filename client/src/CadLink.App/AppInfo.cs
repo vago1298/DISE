@@ -28,6 +28,13 @@ public sealed class AppConfig
     public string Logo { get; set; } = string.Empty;
 
     /// <summary>
+    /// Ruta al .ico del ICONO de la aplicación -ventana, barra de tareas-. Vacío = el que va
+    /// incrustado en el ejecutable, el perfil I. Es aparte del logo: el logo es la marca de la
+    /// pantalla de inicio, y el icono puede ser otro.
+    /// </summary>
+    public string Icono { get; set; } = string.Empty;
+
+    /// <summary>
     /// Ruta a <c>ETABSv1.dll</c>, la librería de la API de ETABS. Se admite tanto
     /// la carpeta como el archivo.
     /// </summary>

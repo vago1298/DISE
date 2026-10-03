@@ -55,7 +55,7 @@ public partial class MainWindow : Window
 
         // El logo ya no se pinta en un encabezado propio: es el ICONO de la ventana,
         // que es donde Windows lo muestra sin gastar alto de la hoja.
-        Icon = Branding.Logo;
+        Icon = Branding.Icono;
 
         LlenarListas();
 

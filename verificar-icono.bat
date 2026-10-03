@@ -89,14 +89,14 @@ echo    %TAMANO_DEL_RAYO% bytes es el del rayo: borralo.
 :paso3
 echo.
 echo ----------------------------------------------------------
-echo  3. LA RUTA QUE DICE TU CONFIGURACION
+echo  3. LA CLAVE "icono" DE TU CONFIGURACION
 echo ----------------------------------------------------------
 echo.
 
 if not exist "%CFGFUENTE%" goto :sin_config
 
 set "LINEA="
-for /f "usebackq delims=" %%l in (`findstr /c:"logo" "%CFGFUENTE%" ^| findstr /v /c:"//"`) do if not defined LINEA set "LINEA=%%l"
+for /f "usebackq delims=" %%l in (`findstr /c:"icono" "%CFGFUENTE%" ^| findstr /v /c:"//"`) do if not defined LINEA set "LINEA=%%l"
 if not defined LINEA goto :sin_clave
 
 set "LINEA=%LINEA:*: =%"
@@ -116,8 +116,7 @@ echo    ninguno en installer ni en la raiz.
 goto :paso4
 
 :cfg_no_ico
-echo    No es un .ico, asi que sirve para el logo de la pantalla
-echo    de inicio pero NO para el icono del ejecutable.
+echo    No es un .ico, asi que NO sirve para el icono del ejecutable.
 goto :paso4
 
 :cfg_no_existe
@@ -125,7 +124,9 @@ echo    NO EXISTE ese archivo. Por eso no se usa tu icono.
 goto :paso4
 
 :sin_clave
-echo    La configuracion no tiene la clave "logo".
+echo    La clave "icono" esta vacia: se usa el perfil I del repositorio.
+echo    (La clave "logo" ya NO cuenta para el icono: es la marca de la
+echo    pantalla de inicio.)
 goto :paso4
 
 :sin_config

@@ -8447,9 +8447,15 @@ def v19_circular_y_ui() -> None:
     check("la licencia bajo a la barra de estado, debajo de las hojas",
           i_lic > i_tabs, f"licencia en {i_lic}, hojas en {i_tabs}")
 
-    # El logo no se perdio: es el icono de la ventana.
-    check("el logo sigue vivo como icono de la ventana",
-          "Icon = Branding.Logo;" in codigo)
+    # La ventana lleva el ICONO de la aplicacion -el perfil I del ejecutable, o el de la clave
+    # «icono»-, no el logo: con el logo de CadLink en la configuracion, la barra de tareas
+    # enseñaba ese logo en lugar del perfil I que se pidio. El logo sigue en la pantalla de inicio.
+    branding = leer(ruta("client/src/CadLink.App/Branding.cs"))
+    check("la ventana lleva el icono de la aplicacion, no el logo",
+          "Icon = Branding.Icono;" in codigo and "Icon = Branding.Logo;" not in codigo
+          and "public static ImageSource Icono =>" in branding
+          and "pack://application:,,,/Assets/app.ico" in branding
+          and '<Resource Include="Assets\\app.ico"' in leer(ruta("client/src/CadLink.App/CadLink.App.csproj")))
 
     # ------------------------------------------------------------------
     # Pestañas arriba
