@@ -7428,33 +7428,52 @@ public partial class MainWindow : Window
             return res;
         }
 
-        var sec = AFormatoCad(s);
-        var dSup = sec.Superior.Esquina.Cm > 0 ? sec.Superior.Esquina.Cm : de;
-        var dInf = sec.Inferior.Esquina.Cm > 0 ? sec.Inferior.Esquina.Cm : de;
-        var sep = CadLink.Cad.Bastones.SeparacionCamaCm;
-
-        foreach (var bas in sec.BastonesEnCorte.Where(CadLink.Cad.Bastones.EsValido))
+        foreach (var bas in AFormatoCad(s).BastonesEnCorte.Where(CadLink.Cad.Bastones.EsValido))
         {
-            var dB = bas.Var.Cm;
-            var arriba = bas.Posicion == PosicionBaston.Superior;
-
-            var y = arriba
-                ? s.AlturaCm - (rec + de + dSup) - sep - (dB / 2)
-                : rec + de + dInf + sep + (dB / 2);
-
-            if (y - (dB / 2) < rec + de || y + (dB / 2) > s.AlturaCm - rec - de)
+            var cama = CamaDeBaston(s, bas, de, rec);
+            if (cama is null)
             {
                 continue;
             }
 
-            var off = rec + de + (dB / 2);
-            foreach (var x in CadLink.Cad.Bastones.XsEnCama(bas.Cantidad, off, s.BaseCm - off))
+            foreach (var x in cama.Value.Xs)
             {
-                res.Add((x, y, dB / 2));
+                res.Add((x, cama.Value.Y, cama.Value.R));
             }
         }
 
         return res;
+    }
+
+    /// <summary>
+    /// Dónde va la cama de un bastón en la sección, en <b>centímetros</b> desde la esquina de
+    /// abajo: <b>pegada</b> a las varillas de su lecho y repartida entre las esquinas. Lo usan
+    /// el corte de la vista previa y el 3D, con la misma cuenta que AutoCAD.
+    /// </summary>
+    private (List<double> Xs, double Y, double R)? CamaDeBaston(
+        SeccionConcretoRow s, BastonCad bas, double de, double rec)
+    {
+        var sec = AFormatoCad(s);
+        var dSup = sec.Superior.Esquina.Cm > 0 ? sec.Superior.Esquina.Cm : de;
+        var dInf = sec.Inferior.Esquina.Cm > 0 ? sec.Inferior.Esquina.Cm : de;
+        var dB = bas.Var.Cm;
+
+        if (dB <= 0)
+        {
+            return null;
+        }
+
+        var y = bas.Posicion == PosicionBaston.Superior
+            ? s.AlturaCm - (rec + de + dSup) - (dB / 2)
+            : rec + de + dInf + (dB / 2);
+
+        if (y - (dB / 2) < rec + de || y + (dB / 2) > s.AlturaCm - rec - de)
+        {
+            return null;
+        }
+
+        var off = rec + de + (dB / 2);
+        return (CadLink.Cad.Bastones.XsEnCama(bas.Cantidad, off, s.BaseCm - off), y, dB / 2);
     }
 
     private void Barra(double cx, double cy, double radio, bool baston = false)

@@ -2342,9 +2342,11 @@ public sealed partial class SeccionDrawer
             else
             {
                 var arriba = bas.Posicion == PosicionBaston.Superior;
+                // EN EL CORTE VAN PEGADOS a las varillas de su lecho, sin separación: lo
+                // pidió el usuario. En el alzado sí llevan la separación de la cama.
                 y = arriba
-                    ? y0 + h - (rec + dEst + dSup) - sep - (dB / 2)
-                    : y0 + (rec + dEst + dInf) + sep + (dB / 2);
+                    ? y0 + h - (rec + dEst + dSup) - (dB / 2)
+                    : y0 + (rec + dEst + dInf) + (dB / 2);
                 xs = Bastones.XsEnCama(bas.Cantidad, x0 + off, x0 + b - off);
             }
 

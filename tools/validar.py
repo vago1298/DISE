@@ -2754,6 +2754,14 @@ def v16_extruida_piers() -> None:
           "private bool EstriboConGanchoComoAutoCad(" in mw_alz
           and "Arco(x2 - rfS, y2 - rfS, rfS, 1.75 * pi, 2.5 * pi)" in mw_alz
           and "Arco(x2 - rS, y2 - rS, rS, 1.75 * pi, 2.75 * pi)" in mw_alz)
+    check("en el corte los bastones van pegados a las varillas de su lecho",
+          "? y0 + h - (rec + dEst + dSup) - (dB / 2)" in sec_drw
+          and "? s.AlturaCm - (rec + de + dSup) - (dB / 2)" in mw_alz)
+    s3d = leer(ruta("client/src/CadLink.App/MainWindow.Seccion3D.cs"))
+    check("los bastones salen en el 3D, en su propia malla",
+          "var mallaBastones = new TuboDeMalla.Malla();" in s3d
+          and "mundoAlto, bx / 2, mundoFondo / 2, mallaBastones);" in s3d
+          and "Agregar3D(jaula, bastones," in s3d)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

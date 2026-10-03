@@ -977,6 +977,61 @@ public partial class MainWindow
                 vr, esEstribo: false);
         }
 
+        // ---------- Los bastones ----------
+        //
+        // Cada pieza como un tubo a lo largo, con su longitud real y en su sitio —los mismos
+        // tramos que el alzado (CadLink.Cad.Bastones)—, pegada a las varillas de su lecho como
+        // en el corte, y con su gancho de 12 diámetros doblado hacia dentro de la pieza en las
+        // dos puntas. Van en su propia malla, en verde, para distinguirlos de las corridas.
+        var mallaBastones = new TuboDeMalla.Malla();
+
+        if (LlevaBastones(s))
+        {
+            var margenCm = MargenBastonesM(s) * 100.0;
+
+            foreach (var bas in BastonesCad(s))
+            {
+                var cama = CamaDeBaston(s, bas, de, rec);
+                if (cama is null)
+                {
+                    continue;
+                }
+
+                var (xs, yB, rB) = cama.Value;
+                var dB = rB * 2;
+                var haciaDentro = bas.Posicion == PosicionBaston.Superior ? -1.0 : 1.0;
+
+                // El gancho: 12 diámetros, sin pasar de medio núcleo para no salirse.
+                var nucleo = s.AlturaCm - (2 * (rec + de));
+                var g = Math.Min(CadLink.Cad.Bastones.GanchoDiametros * dB, nucleo / 2);
+
+                foreach (var t in CadLink.Cad.Bastones.Tramos(bas, largoM, margenCm / 100.0))
+                {
+                    var z0 = t.Ini * 100.0;
+                    var z1 = t.Fin * 100.0;
+
+                    foreach (var x in xs)
+                    {
+                        var eje = new List<(double X, double Y, double Z)>();
+
+                        void P(double sx, double sy, double z)
+                        {
+                            var w = Mundo(sx, sy, z);
+                            eje.Add((w.X, w.Y, w.Z));
+                        }
+
+                        if (t.GanchoIzq && g > dB) { P(x, yB + (haciaDentro * g), z0); }
+                        P(x, yB, z0);
+                        P(x, yB, z1);
+                        if (t.GanchoDer && g > dB) { P(x, yB + (haciaDentro * g), z1); }
+
+                        TuboDeMalla.Agregar(mallaBastones, eje, rB, lados: _ladosDelTubo3D);
+                        ApuntarBarra(eje, rB, esEstribo: false);
+                    }
+                }
+            }
+        }
+
         // ---------- El estribo, el diamante y las grapas en cada posición ----------
         //
         // Se calculan UNA vez: son los mismos en todas las posiciones, y armarlos pasa por
@@ -1186,7 +1241,7 @@ public partial class MainWindow
         MontarEscena3D(
             mallaVarillas, mallaEstribos, mallaConcreto,
             new[] { (0.0, 0.0), (bx, 0.0), (bx, mundoFondo), (0.0, mundoFondo) },
-            mundoAlto, bx / 2, mundoFondo / 2);
+            mundoAlto, bx / 2, mundoFondo / 2, mallaBastones);
 
         Etiqueta(PreviaFijaCanvas,
             $"SECCIÓN 3D   ·   L = {largoM:N2} m   ·   {centros.Count} estribos"
@@ -1636,7 +1691,7 @@ public partial class MainWindow
         TuboDeMalla.Malla estribos,
         TuboDeMalla.Malla concreto,
         IReadOnlyList<(double X, double Z)> planta,
-        double by, double cx, double cz)
+        double by, double cx, double cz, TuboDeMalla.Malla? bastones = null)
     {
         _plantaDeLaPieza = (planta.ToList(), cx, cz, by);
 
@@ -1674,6 +1729,13 @@ public partial class MainWindow
         // dibujo de WPF importa con transparencia, y así el reborde queda detrás.
         Agregar3D(jaula, varillas, Color.FromRgb(0xC0, 0x39, 0x2B), 0.35,
                   contorno: Color.FromRgb(0x4A, 0x10, 0x0C));
+
+        // Los bastones, en verde, con su reborde como las varillas.
+        if (bastones is not null)
+        {
+            Agregar3D(jaula, bastones, Color.FromRgb(0x5F, 0xB8, 0x80), 0.35,
+                      contorno: Color.FromRgb(0x1E, 0x5C, 0x37));
+        }
 
         Agregar3D(jaula, estribos, Color.FromRgb(0x1F, 0x6F, 0xB2), 0.35);
         Agregar3D(jaula, concreto, Color.FromRgb(0x8F, 0xA6, 0xBC), 0.05);
