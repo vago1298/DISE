@@ -15487,9 +15487,27 @@ def v27_muros_contencion() -> None:
     check("el dibujante es un parcial del de zapatas y reutiliza sus primitivas",
           "public sealed partial class ZapataDrawer" in drw
           and "private object? Linea(" not in drw and "HatchPoligono(" in drw)
-    check("dibuja desde la geometria pura", "TrazoMuroContencion.Dibujar(m, x, TrazoMuroContencion.YBase)" in drw)
+    check("dibuja desde la geometria pura, cada tipo en su fila",
+          "TrazoMuroContencion.Dibujar(m, xArmado, TrazoMuroContencion.YBase)" in drw
+          and "TrazoMuroContencion.Dibujar(m, xCiclopeo, TrazoMuroContencion.YBaseCiclopeo)" in drw)
     check("el ciclopeo va con piedras y las espigas a trazos",
           'PatronCiclopeo = "GRAVEL"' in drw and "ATrazos(pl);" in drw)
+    check("el GRAVEL del ciclopeo va a escala 0.0170", "EscalaCiclopeo = 0.0170;" in drw)
+    check("las varillas van con su grosor real y en la capa de su diametro",
+          "Grueso(pl, TrazoMuroContencion.DiametroM(m, v.Clave));" in drw
+          and "var capa = CapaVar(v.Clave);" in drw and "AsegurarCapaVarilla(capa);" in drw
+          and 'CapaMuroAcero' not in drw)
+    check("las cotas del muro llevan el alto de numero que les toca",
+          "d.TextHeight = altoNumero;" in drw and "TrazoMuroContencion.AltoCotaArmado" in drw
+          and "ScaleFactor = EscalaCotasMuro" not in drw)
+    check("los textos de las llamadas van sobre un hombro, sin flecha que los tache",
+          "LeaderQuebrado(t.XPunta, t.YPunta, t.XCodo, t.YCodo, xHombro, t.YCodo);" in drw
+          and "double XHombro" in trazo)
+    check("la vista previa pinta el acero con el color de su diametro",
+          "TintaDeVarilla(v.Clave)" in muros and "TrazoMuroContencion.DiametroM(m, v.Clave) * esc" in muros)
+    check("dibujar y revisar solo toman la pestana abierta",
+          "var muros = MurosParaDibujar();" in muros and "if (EnPestanaCiclopeo)" in muros
+          and ".Concat(_datos.MurosCiclopeos" not in muros)
 
     check("hay prueba ejecutable de la geometria",
           os.path.exists(ruta("tools/prueba-muro-contencion/Program.cs")))

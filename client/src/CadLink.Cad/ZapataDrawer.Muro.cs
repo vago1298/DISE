@@ -27,24 +27,22 @@ public sealed partial class ZapataDrawer
         public int Cotas { get; set; }
 
         public override string ToString() =>
-            $"{Armados} muro(s) de concreto armado y {Ciclopeos} de concreto ciclopeo.\n"
+            (Ciclopeos == 0 ? $"{Armados} muro(s) de concreto armado.\n"
+                : Armados == 0 ? $"{Ciclopeos} muro(s) de concreto ciclopeo.\n"
+                : $"{Armados} muro(s) de concreto armado y {Ciclopeos} de concreto ciclopeo.\n")
             + $"{Varillas} varilla(s) y {Cotas} cota(s).";
     }
 
-    private const string CapaMuroAcero = "ACERO MURO";
     private const string PatronCiclopeo = "GRAVEL";
 
     /// <summary>El AR-CONC de un muro: mas grande que el de una zapata, que mide la quinta parte.</summary>
     private const double EscalaConcretoMuro = 0.0015;
 
-    /// <summary>Las piedras del ciclopeo: unos 15 cm.</summary>
-    private const double EscalaCiclopeo = 0.15;
+    /// <summary>La escala del GRAVEL del ciclopeo, la que pidio el usuario.</summary>
+    private const double EscalaCiclopeo = 0.0170;
 
-    /// <summary>
-    /// Las cotas de un muro, al triple que las de una zapata: un muro de 5 m con cotas de 2.5 cm
-    /// de letra no se lee en un plano a 1:50.
-    /// </summary>
-    private const double EscalaCotasMuro = 3.0;
+    /// <summary>El tamano de las puntas de flecha de las cotas del muro.</summary>
+    private const double FlechaCotaMuro = 0.08;
 
     /// <summary>
     /// Dibuja los muros uno a la derecha del otro, en la fila de <see cref="TrazoMuroContencion.YBase"/>.
@@ -57,27 +55,33 @@ public sealed partial class ZapataDrawer
         AsegurarEstiloTexto();
         AsegurarEstiloCota();
 
-        if (_capas.Add(CapaMuroAcero))
-        {
-            CrearCapa(CapaMuroAcero, 1, false);
-        }
-
         _relleno = SeccionRellena;
         _cont = _ms;
 
-        var x = 0d;
+        // Cada tipo en su fila: los armados en YBase y los ciclopeos mas abajo.
+        var xArmado = 0d;
+        var xCiclopeo = 0d;
 
         foreach (var m in muros)
         {
             try
             {
-                var d = TrazoMuroContencion.Dibujar(m, x, TrazoMuroContencion.YBase);
+                var d = m.EsCiclopeo
+                    ? TrazoMuroContencion.Dibujar(m, xCiclopeo, TrazoMuroContencion.YBaseCiclopeo)
+                    : TrazoMuroContencion.Dibujar(m, xArmado, TrazoMuroContencion.YBase);
 
                 DibujarMuro(m, d, r);
 
-                if (m.EsCiclopeo) { r.Ciclopeos++; } else { r.Armados++; }
-
-                x = d.XMax + TrazoMuroContencion.SeparacionMuros;
+                if (m.EsCiclopeo)
+                {
+                    r.Ciclopeos++;
+                    xCiclopeo = d.XMax + TrazoMuroContencion.SeparacionMuros;
+                }
+                else
+                {
+                    r.Armados++;
+                    xArmado = d.XMax + TrazoMuroContencion.SeparacionMuros;
+                }
             }
             catch (Exception ex)
             {
@@ -124,10 +128,17 @@ public sealed partial class ZapataDrawer
             Polilinea(Plano(l.Puntos), CapaConcreto, l.Cerrada);
         }
 
-        // ---------- El acero ----------
+        // ---------- El acero: con su GROSOR REAL y en la capa de su diametro ----------
+        // Cada varilla va en VAR_#n, con el color de la macro para ese diametro, y la polilinea
+        // tiene de ancho el diametro de la varilla: una #5 sale de 1.59 cm de gruesa.
         foreach (var v in d.Varillas)
         {
-            var pl = Polilinea(Plano(v.Puntos), CapaMuroAcero, v.Cerrada);
+            var capa = CapaVar(v.Clave);
+            AsegurarCapaVarilla(capa);
+
+            var pl = Polilinea(Plano(v.Puntos), capa, v.Cerrada);
+
+            Grueso(pl, TrazoMuroContencion.DiametroM(m, v.Clave));
 
             if (v.Oculta)
             {
@@ -137,34 +148,103 @@ public sealed partial class ZapataDrawer
             r.Varillas++;
         }
 
+        // Las de punta: un circulo del diametro real, relleno del color de su capa.
         foreach (var p in d.Puntos)
         {
-            CirculoRelleno(p.X, p.Y, Math.Max(p.R, 0.004), CapaMuroAcero);
+            var capa = CapaVar(p.Clave);
+            AsegurarCapaVarilla(capa);
+
+            var radio = Math.Max(p.R, 0.003);
+
+            RellenarCirculo(p.X, p.Y, radio, capa, 0);
+            Circulo(p.X, p.Y, radio, capa);
             r.Varillas++;
         }
 
         // ---------- Cotas ----------
         foreach (var c in d.Cotas)
         {
-            r.Cotas += CotaMuro(c);
+            r.Cotas += CotaMuro(c, m.EsCiclopeo
+                ? TrazoMuroContencion.AltoCotaCiclopeo
+                : TrazoMuroContencion.AltoCotaArmado);
         }
 
         // ---------- Llamadas y textos ----------
         foreach (var t in d.Rotulos)
         {
-            LeaderQuebrado(t.XPunta, t.YPunta, t.XCodo, t.YCodo, t.XTexto, t.YTexto);
-            Texto(t.XTexto, t.YTexto - (TrazoMuroContencion.AltoRotulo / 2),
-                TrazoMuroContencion.AltoRotulo, t.Texto, CapaRotulos, Alineacion.Izquierda);
+            Rotulo(t);
         }
 
+        // Centrados en (X, Y), como en la vista previa: el Centro de Texto ya es «medio-medio».
         foreach (var t in d.Textos)
         {
-            Texto(t.X, t.Y - (t.Alto / 2), t.Alto, t.Texto, CapaRotulos, Alineacion.Centro);
+            Texto(t.X, t.Y, t.Alto, t.Texto, CapaRotulos, Alineacion.Centro);
         }
     }
 
-    /// <summary>Una cota del muro, con su escala propia.</summary>
-    private int CotaMuro(TrazoCota c)
+    /// <summary>
+    /// Una llamada: flecha en la punta, quiebre en el codo y el texto ENCIMA de un hombro
+    /// horizontal, alineado con los demas de su columna. Ninguna linea lo atraviesa.
+    /// </summary>
+    /// <remarks>
+    /// El texto se escribe primero y se mide de verdad: el hombro tiene que acabar donde acaba
+    /// la palabra, y una llamada a la izquierda tiene que acabar justo en su codo, como las otras
+    /// de su columna. La estimacion de la geometria solo queda si AutoCAD no da la medida.
+    /// </remarks>
+    private void Rotulo(TrazoRotulo t)
+    {
+        var alto = TrazoMuroContencion.AltoRotulo;
+        var aLaIzquierda = t.XHombro < t.XCodo;
+
+        var txt = Texto(t.XTexto, t.YTexto, alto, t.Texto, CapaRotulos, Alineacion.Izquierda);
+        var xHombro = t.XHombro;
+        var caja = Caja(txt);
+
+        if (caja is not null)
+        {
+            var (x1, _, x2, _) = caja.Value;
+
+            if (aLaIzquierda)
+            {
+                // Que acabe a 2 cm del codo, como las demas de su columna.
+                var dx = (t.XCodo - 0.02) - x2;
+                Mover(txt, dx, 0);
+                xHombro = x1 + dx - 0.02;
+            }
+            else
+            {
+                xHombro = x2 + 0.02;
+            }
+        }
+
+        LeaderQuebrado(t.XPunta, t.YPunta, t.XCodo, t.YCodo, xHombro, t.YCodo);
+    }
+
+    /// <summary>El grosor real de una varilla: el ancho constante de su polilinea.</summary>
+    private void Grueso(object? pl, double ancho)
+    {
+        if (pl is null || ancho <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            AcadConnection.Retry(() =>
+            {
+                dynamic p = pl;
+                p.ConstantWidth = ancho;
+                p.Update();
+            });
+        }
+        catch (Exception)
+        {
+            Nota("Una varilla del muro no acepto su grosor: salio como linea fina.");
+        }
+    }
+
+    /// <summary>Una cota del muro, con el alto de numero que le toca.</summary>
+    private int CotaMuro(TrazoCota c, double altoNumero)
     {
         if (Math.Abs(c.X2 - c.X1) < 1e-6 && Math.Abs(c.Y2 - c.Y1) < 1e-6)
         {
@@ -189,13 +269,19 @@ public sealed partial class ZapataDrawer
 
                 d.Layer = CapaCotas;
 
+                // El numero, al alto que toca y no al del estilo: con ScaleFactor el alto sale del
+                // estilo multiplicado, y el estilo de las zapatas trae letra de 2.5 cm.
                 try
                 {
-                    d.ScaleFactor = EscalaCotasMuro;
+                    d.ScaleFactor = 1.0;
+                    d.TextHeight = altoNumero;
+                    d.ArrowheadSize = FlechaCotaMuro;
+                    d.TextGap = altoNumero / 4;
+                    d.ExtensionLineExtend = altoNumero / 2;
                 }
                 catch (Exception)
                 {
-                    // Con la escala del estilo se sigue leyendo; solo sale mas chica.
+                    // Se queda con lo del estilo: se lee, pero mas chico.
                 }
 
                 if (c.Vertical)

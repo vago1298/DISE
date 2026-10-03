@@ -24,9 +24,17 @@ public readonly record struct TrazoPunto(double X, double Y, double R, string Cl
 /// <summary>Una cota alineada: de (X1,Y1) a (X2,Y2), con el texto en (Xt,Yt).</summary>
 public readonly record struct TrazoCota(double X1, double Y1, double X2, double Y2, double Xt, double Yt, bool Vertical);
 
-/// <summary>Una llamada: flecha en la punta, quiebre en el codo y texto que arranca en (XTexto, YTexto).</summary>
+/// <summary>
+/// Una llamada: flecha en la punta, quiebre en el codo y un HOMBRO horizontal de (XCodo, YCodo)
+/// a (XHombro, YCodo) con el texto ENCIMA, arrancando en (XTexto, YTexto) -su linea base-.
+/// </summary>
+/// <remarks>
+/// Asi se rotula en un plano: la linea de la flecha llega al hombro y el texto va sobre el, sin
+/// que ninguna linea lo atraviese. Antes la flecha llegaba a media altura del texto y lo tachaba.
+/// </remarks>
 public sealed record TrazoRotulo(
-    string Texto, double XPunta, double YPunta, double XCodo, double YCodo, double XTexto, double YTexto);
+    string Texto, double XPunta, double YPunta, double XCodo, double YCodo, double XHombro,
+    double XTexto, double YTexto);
 
 /// <summary>Un texto suelto, centrado en X.</summary>
 public sealed record TrazoTexto(string Texto, double X, double Y, double Alto);
@@ -68,6 +76,12 @@ public static class TrazoMuroContencion
     /// <summary>Donde se apoya la fila de muros en AutoCAD: lejos de lo demas.</summary>
     public const double YBase = -20.0;
 
+    /// <summary>
+    /// La fila de los ciclopeos, mas abajo: cada pestaña se dibuja por su lado, y asi dibujar
+    /// los ciclopeos despues de los armados no los encima.
+    /// </summary>
+    public const double YBaseCiclopeo = -34.0;
+
     /// <summary>Aire entre un muro y el siguiente.</summary>
     public const double SeparacionMuros = 2.5;
 
@@ -81,8 +95,66 @@ public static class TrazoMuroContencion
     public const double AltoTitulo = 0.15;
     public const double AltoSubtitulo = 0.10;
 
-    /// <summary>Ancho medio de una letra en relacion a su alto, para colocar textos a la izquierda.</summary>
-    public const double FactorLetra = 0.72;
+    /// <summary>
+    /// Ancho de una letra en relacion a su alto, con holgura: el hombro de la llamada tiene que
+    /// cubrir el texto entero, y quedarse corto es peor que pasarse.
+    /// </summary>
+    public const double FactorLetra = 0.85;
+
+    /// <summary>Lo que se levanta el texto sobre el hombro de su llamada.</summary>
+    public const double AireTexto = 0.03;
+
+    /// <summary>
+    /// El alto de los numeros de las cotas del muro de concreto armado. Mas grande que el de los
+    /// textos: un muro de 5 m se dibuja para leerse a 1:50.
+    /// </summary>
+    public const double AltoCotaArmado = 0.15;
+
+    /// <summary>El del ciclopeo, que suele medir la mitad.</summary>
+    public const double AltoCotaCiclopeo = 0.09;
+
+    /// <summary>Lo ancho que sale un texto, para su hombro.</summary>
+    public static double AnchoTexto(string texto, double alto) => texto.Length * alto * FactorLetra;
+
+    /// <summary>
+    /// El diametro REAL, en m, de la varilla de esa clave en ese muro: es el grosor con que se
+    /// dibuja. 0 si el muro no la lleva.
+    /// </summary>
+    public static double DiametroM(MuroContencionCad m, string? clave)
+    {
+        if (string.IsNullOrWhiteSpace(clave))
+        {
+            return 0;
+        }
+
+        foreach (var v in new[]
+                 {
+                     m.VarVertTierra, m.VarVertExt, m.VarHoriz, m.VarEspiga,
+                     m.VarZapSup, m.VarRepSup, m.VarZapInf, m.VarRepInf
+                 })
+        {
+            if (v.Existe && string.Equals(v.Clave.Trim(), clave.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return v.M;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>Una llamada con su texto a la DERECHA del codo.</summary>
+    public static TrazoRotulo LlamadaDerecha(string texto, double xp, double yp, double xCodo, double yCodo)
+    {
+        var w = AnchoTexto(texto, AltoRotulo);
+        return new TrazoRotulo(texto, xp, yp, xCodo, yCodo, xCodo + w + 0.04, xCodo + 0.02, yCodo + AireTexto);
+    }
+
+    /// <summary>Una llamada con su texto a la IZQUIERDA del codo, que acaba en el.</summary>
+    public static TrazoRotulo LlamadaIzquierda(string texto, double xp, double yp, double xCodo, double yCodo)
+    {
+        var w = AnchoTexto(texto, AltoRotulo);
+        return new TrazoRotulo(texto, xp, yp, xCodo, yCodo, xCodo - w - 0.04, xCodo - w - 0.02, yCodo + AireTexto);
+    }
 
     /// <summary>Espesor de las franjas de terreno.</summary>
     public const double FranjaTerreno = 0.15;
@@ -271,24 +343,40 @@ public static class TrazoMuroContencion
             d.Terreno.Add(Rect(x0 - 0.3, y0 - f, x0 + B + 0.3, y0));
         }
 
-        // ---------- El acero de la zapata: un lazo cerrado por el recubrimiento ----------
+        // ---------- El acero de la zapata: un lecho arriba y otro abajo ----------
+        // Cada lecho es su propia varilla, con su diametro: asi se dibuja con su grosor real y en
+        // la capa de su diametro. Las patas del de arriba bajan y las del de abajo suben, sin
+        // tocarse.
         var dZs = m.VarZapSup.M;
         var dZi = m.VarZapInf.M;
         var aZ = r + (Math.Max(dZs, dZi) / 2);
+        var aS = r + (dZs / 2);
+        var aI = r + (dZi / 2);
+        var hueco = (yZap - y0) - (2 * r);
+        var pataS = Math.Min(12 * dZs, 0.42 * hueco);
+        var pataI = Math.Min(12 * dZi, 0.42 * hueco);
 
         d.Varillas.Add(new TrazoPoli(
             Redondear(new List<(double, double)>
             {
-                (x0 + aZ, y0 + aZ), (x0 + B - aZ, y0 + aZ),
-                (x0 + B - aZ, yZap - aZ), (x0 + aZ, yZap - aZ)
-            }, 3 * Math.Max(dZs, dZi), true),
-            true, m.VarZapSup.Clave, false));
+                (x0 + aS, yZap - aS - pataS), (x0 + aS, yZap - aS),
+                (x0 + B - aS, yZap - aS), (x0 + B - aS, yZap - aS - pataS)
+            }, 3 * dZs, false),
+            false, m.VarZapSup.Clave, false));
+
+        d.Varillas.Add(new TrazoPoli(
+            Redondear(new List<(double, double)>
+            {
+                (x0 + aI, y0 + aI + pataI), (x0 + aI, y0 + aI),
+                (x0 + B - aI, y0 + aI), (x0 + B - aI, y0 + aI + pataI)
+            }, 3 * dZi, false),
+            false, m.VarZapInf.Clave, false));
 
         // La reparticion: de punta, pegada por dentro de cada lecho.
         var dRs = m.VarRepSup.M;
         var dRi = m.VarRepInf.M;
-        var yRepSup = yZap - aZ - (dZs / 2) - (dRs / 2);
-        var yRepInf = y0 + aZ + (dZi / 2) + (dRi / 2);
+        var yRepSup = yZap - aS - (dZs / 2) - (dRs / 2);
+        var yRepInf = y0 + aI + (dZi / 2) + (dRi / 2);
 
         foreach (var x in Repartir(x0 + aZ + 0.05, x0 + B - aZ - 0.05, m.SepRepSupCm / 100))
         {
@@ -314,13 +402,28 @@ public static class TrazoMuroContencion
         var yArriba = yCorona - r - (Math.Max(dVt, dVe) / 2);
         var yAbajo = y0 + aZ + dZi + dRi + PieDelAcero;
 
+        // Una varilla por cara, cada una con SU diametro. La de la tierra cruza la corona por
+        // arriba; la exterior dobla por debajo de ella. Las dos llevan su bota en la zapata: la de
+        // la tierra hacia el talon y la exterior hacia la punta.
+        var yT = yCorona - r - (dVt / 2);
+        var yE = yT - (dVt / 2) - (dVe / 2);
+        var bota = 0.30;
+
         d.Varillas.Add(new TrazoPoli(
             Redondear(new List<(double, double)>
             {
-                (XBarExterior(yAbajo), yAbajo), (XBarExterior(yArriba), yArriba),
-                (xBarTierra, yArriba), (xBarTierra, yAbajo)
-            }, 3 * Math.Max(dVt, dVe), true),
-            true, m.VarVertTierra.Clave, false));
+                (Math.Min(xBarTierra + bota, x0 + B - r), yAbajo), (xBarTierra, yAbajo),
+                (xBarTierra, yT), (XBarExterior(yT), yT)
+            }, 3 * dVt, false),
+            false, m.VarVertTierra.Clave, false));
+
+        d.Varillas.Add(new TrazoPoli(
+            Redondear(new List<(double, double)>
+            {
+                (Math.Max(XBarExterior(yAbajo) - bota, x0 + r), yAbajo), (XBarExterior(yAbajo), yAbajo),
+                (XBarExterior(yE), yE), (xBarTierra - (dVt / 2) - (dVe / 2), yE)
+            }, 3 * dVe, false),
+            false, m.VarVertExt.Clave, false));
 
         // Las horizontales, de punta, por dentro de las verticales de las dos caras.
         var paso = m.SepHorizCm / 100;
@@ -348,16 +451,12 @@ public static class TrazoMuroContencion
         }
 
         // ---------- Las llamadas ----------
-        var ah = AltoRotulo;
 
         void Derecha(string texto, double xp, double yp, double xTexto, double yTexto) =>
-            d.Rotulos.Add(new TrazoRotulo(texto, xp, yp, xTexto - 0.08, yTexto, xTexto, yTexto));
+            d.Rotulos.Add(LlamadaDerecha(texto, xp, yp, xTexto - 0.08, yTexto));
 
-        void Izquierda(string texto, double xp, double yp, double xFinTexto, double yTexto)
-        {
-            var w = texto.Length * ah * FactorLetra;
-            d.Rotulos.Add(new TrazoRotulo(texto, xp, yp, xFinTexto + 0.08, yTexto, xFinTexto - w, yTexto));
-        }
+        void Izquierda(string texto, double xp, double yp, double xFinTexto, double yTexto) =>
+            d.Rotulos.Add(LlamadaIzquierda(texto, xp, yp, xFinTexto + 0.08, yTexto));
 
         var xDer = xTierra + 0.55;
 
@@ -367,13 +466,17 @@ public static class TrazoMuroContencion
         Derecha(TextoVarilla(m.VarHoriz, m.SepHorizCm),
             xBarTierra - (dVt / 2) - (dH / 2), Cerca(ysH, yZap + (0.45 * H)), xDer, yZap + (0.50 * H));
 
+        // Las dos de la cara exterior acaban en la MISMA columna, la de la mas baja: la cara es
+        // inclinada y, si cada una se apartara de ella lo mismo, saldrian escalonadas.
+        var xFinIzq = XExterior(yZap + (0.40 * H)) - 0.35;
+
         Izquierda(TextoVarilla(m.VarVertExt, m.SepVertExtCm),
             XBarExterior(yZap + (0.60 * H)), yZap + (0.60 * H),
-            XExterior(yZap + (0.66 * H)) - 0.35, yZap + (0.66 * H));
+            xFinIzq, yZap + (0.66 * H));
 
         Izquierda(TextoVarilla(m.VarHoriz, m.SepHorizCm),
             XBarExterior(Cerca(ysH, yZap + (0.35 * H))) + (dVe / 2) + (dH / 2), Cerca(ysH, yZap + (0.35 * H)),
-            XExterior(yZap + (0.40 * H)) - 0.35, yZap + (0.40 * H));
+            xFinIzq, yZap + (0.40 * H));
 
         if (m.Espolon)
         {
@@ -381,19 +484,21 @@ public static class TrazoMuroContencion
                 xEspiga, yZap + (m.LongEspigaM * 0.6), xDer, yZap + (0.22 * H));
         }
 
-        // La zapata: arriba sobre el talon, abajo bajo la punta.
+        // La zapata: arriba sobre el talon, abajo bajo la punta. Las dos de arriba en la misma
+        // columna, y las flechas por la izquierda de esa columna: la de la de arriba baja por
+        // fuera del texto de la de abajo, sin tacharlo.
         var xTalon = xTierra + (m.TalonM / 2);
+        var xZap = xTalon + 0.40;
 
         Derecha(TextoVarilla(m.VarZapSup, m.SepZapSupCm),
-            xTalon, yZap - aZ, xTierra + 0.60, yZap + 0.40);
+            xTalon, yZap - aS, xZap, yZap + 0.62);
 
         Derecha(TextoVarilla(m.VarRepSup, m.SepRepSupCm),
-            Cerca(d.Puntos.Where(p => Math.Abs(p.Y - yRepSup) < 1e-9).Select(p => p.X).ToList(), xTalon + 0.3),
-            yRepSup, xTierra + 0.60, yZap + 0.22);
-
+            Cerca(d.Puntos.Where(p => Math.Abs(p.Y - yRepSup) < 1e-9).Select(p => p.X).ToList(), xTalon + 0.25),
+            yRepSup, xZap, yZap + 0.30);
 
         Izquierda(TextoVarilla(m.VarZapInf, m.SepZapInfCm),
-            x0 + (P / 2), y0 + aZ, x0 - 0.15, y0 - 0.30);
+            x0 + (P / 2), y0 + aI, x0 - 0.15, y0 - 0.30);
 
         Izquierda(TextoVarilla(m.VarRepInf, m.SepRepInfCm),
             Cerca(d.Puntos.Where(p => Math.Abs(p.Y - yRepInf) < 1e-9).Select(p => p.X).ToList(), x0 + (P * 0.3)),
@@ -507,7 +612,7 @@ public static class TrazoMuroContencion
         var xT = xe + W + 0.45;
 
         void Llamada(string texto, double xp, double yp, double yT) =>
-            d.Rotulos.Add(new TrazoRotulo(texto, xp, yp, xT - 0.08, yT, xT, yT));
+            d.Rotulos.Add(LlamadaDerecha(texto, xp, yp, xT - 0.08, yT));
 
         Llamada(TextoVarilla(m.VarHoriz, m.SepHorizCm),
             xe + (0.75 * W), Cerca(ysH, yZap + (0.85 * H)), yZap + (0.92 * H));
@@ -631,15 +736,15 @@ public static class TrazoMuroContencion
         foreach (var c in d.Cotas) { xs.Add(c.Xt + 0.3); }
         foreach (var r in d.Rotulos)
         {
-            xs.Add(r.XTexto);
-            xs.Add(r.XTexto + (r.Texto.Length * AltoRotulo * FactorLetra));
+            xs.Add(Math.Min(r.XCodo, r.XHombro));
+            xs.Add(Math.Max(r.XCodo, r.XHombro));
         }
 
         // Y los textos centrados: el titulo de un muro angosto es mas ancho que el muro, y sin
         // contarlo se encimaba con el titulo del siguiente.
         foreach (var t in d.Textos)
         {
-            var w = t.Texto.Length * t.Alto * FactorLetra;
+            var w = AnchoTexto(t.Texto, t.Alto);
             xs.Add(t.X - (w / 2));
             xs.Add(t.X + (w / 2));
         }
@@ -669,7 +774,7 @@ public static class TrazoMuroContencion
         d.Rotulos.AddRange(o.Rotulos.Select(r => r with
         {
             XPunta = r.XPunta + dx, YPunta = r.YPunta + dy, XCodo = r.XCodo + dx,
-            YCodo = r.YCodo + dy, XTexto = r.XTexto + dx, YTexto = r.YTexto + dy
+            YCodo = r.YCodo + dy, XHombro = r.XHombro + dx, XTexto = r.XTexto + dx, YTexto = r.YTexto + dy
         }));
         d.Textos.AddRange(o.Textos.Select(t => t with { X = t.X + dx, Y = t.Y + dy }));
 

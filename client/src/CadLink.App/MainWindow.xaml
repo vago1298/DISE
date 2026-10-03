@@ -2248,14 +2248,14 @@
                             <Button Content="Revisar muros"
                                     Style="{StaticResource SecondaryButtonStyle}"
                                     Click="OnRevisarMuros"
-                                    ToolTip="Comprueba las dos tablas y dice que falta en cada muro." />
+                                    ToolTip="Comprueba la tabla de la pestaña abierta y dice que falta en cada muro." />
 
                             <Button x:Name="DibujarMurosButton"
                                     Content="Dibujar muros en AutoCAD"
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     Click="OnExportMuros"
                                     Margin="8,0,0,0"
-                                    ToolTip="Dibuja todos los muros de las dos tablas en el AutoCAD abierto, uno al lado del otro, con su detalle, sus cotas y sus llamadas.&#10;El estilo relleno o no relleno es el de la hoja de secciones." />
+                                    ToolTip="Dibuja SOLO los muros de la pestaña abierta (concreto armado o ciclopeo) en el AutoCAD abierto, uno al lado del otro, con su detalle, sus cotas y sus llamadas.&#10;El estilo relleno o no relleno es el de la hoja de secciones." />
                         </StackPanel>
                     </StackPanel>
 

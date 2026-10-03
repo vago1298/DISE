@@ -134,6 +134,26 @@ public partial class MainWindow
     //  Revisar y dibujar
     // ======================================================================
 
+    /// <summary>¿Esta abierta la pestaña del ciclopeo? Si no, la del concreto armado.</summary>
+    private bool EnPestanaCiclopeo => MurosTabs.SelectedIndex == 1;
+
+    /// <summary>Lo que dice la pestaña abierta, para los avisos.</summary>
+    private string NombrePestanaMuros => EnPestanaCiclopeo ? "de concreto ciclópeo" : "de concreto armado";
+
+    /// <summary>Cuantos muros tiene la pestaña abierta.</summary>
+    private int MurosDeLaPestana =>
+        EnPestanaCiclopeo ? _datos.MurosCiclopeos.Count : _datos.MurosArmados.Count;
+
+    /// <summary>
+    /// Los muros de la pestaña ABIERTA, nada mas: dibujar en la de concreto armado dibuja solo
+    /// los de concreto armado, y en la de ciclopeo solo los ciclopeos.
+    /// </summary>
+    private List<MuroContencionCad> MurosParaDibujar() =>
+        EnPestanaCiclopeo
+            ? _datos.MurosCiclopeos.Select(f => f.AFormatoCad()).ToList()
+            : _datos.MurosArmados.Select(f => f.AFormatoCad()).ToList();
+
+    /// <summary>Revisa solo la pestaña abierta, que es la que se va a dibujar.</summary>
     private List<string> RevisarMuros()
     {
         var problemas = new List<string>();
@@ -154,14 +174,19 @@ public partial class MainWindow
             }
         }
 
-        for (var i = 0; i < _datos.MurosArmados.Count; i++)
+        if (EnPestanaCiclopeo)
         {
-            Una("Concreto armado", i + 1, _datos.MurosArmados[i].AFormatoCad());
+            for (var i = 0; i < _datos.MurosCiclopeos.Count; i++)
+            {
+                Una("Ciclópeo", i + 1, _datos.MurosCiclopeos[i].AFormatoCad());
+            }
         }
-
-        for (var i = 0; i < _datos.MurosCiclopeos.Count; i++)
+        else
         {
-            Una("Ciclópeo", i + 1, _datos.MurosCiclopeos[i].AFormatoCad());
+            for (var i = 0; i < _datos.MurosArmados.Count; i++)
+            {
+                Una("Concreto armado", i + 1, _datos.MurosArmados[i].AFormatoCad());
+            }
         }
 
         return problemas;
@@ -171,9 +196,9 @@ public partial class MainWindow
     {
         CerrarEdicionDeLasHojas();
 
-        if (_datos.MurosArmados.Count + _datos.MurosCiclopeos.Count == 0)
+        if (MurosDeLaPestana == 0)
         {
-            MessageBox.Show("No hay muros de contención capturados.", AppInfo.ProductName,
+            MessageBox.Show($"No hay muros {NombrePestanaMuros} capturados en esta pestaña.", AppInfo.ProductName,
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -182,7 +207,7 @@ public partial class MainWindow
 
         MessageBox.Show(
             problemas.Count == 0
-                ? "Los muros de contención están completos."
+                ? $"Los muros {NombrePestanaMuros} están completos."
                 : $"Hay {problemas.Count} cosa(s) que corregir:\n\n" + string.Join("\n", problemas),
             AppInfo.ProductName, MessageBoxButton.OK,
             problemas.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
@@ -199,9 +224,9 @@ public partial class MainWindow
             return;
         }
 
-        if (_datos.MurosArmados.Count + _datos.MurosCiclopeos.Count == 0)
+        if (MurosDeLaPestana == 0)
         {
-            MessageBox.Show("No hay muros de contención capturados.", AppInfo.ProductName,
+            MessageBox.Show($"No hay muros {NombrePestanaMuros} capturados en esta pestaña.", AppInfo.ProductName,
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -231,9 +256,8 @@ public partial class MainWindow
                 SeccionRellena = ModoElegido == ModoSeccion.Tipo2Rellena
             };
 
-            var muros = _datos.MurosArmados.Select(f => f.AFormatoCad())
-                .Concat(_datos.MurosCiclopeos.Select(f => f.AFormatoCad()))
-                .ToList();
+            // Solo los de la pestaña abierta.
+            var muros = MurosParaDibujar();
 
             var r = dibujante.DibujarMuros(muros);
 
@@ -244,7 +268,7 @@ public partial class MainWindow
 
             if (fallos.Count == 0)
             {
-                StatusText.Text = $"Dibujados {r.Armados + r.Ciclopeos} muro(s) de contención en AutoCAD.";
+                StatusText.Text = $"Dibujados {r.Armados + r.Ciclopeos} muro(s) {NombrePestanaMuros} en AutoCAD.";
 
                 MostrarNotas(dibujante.Notas.Count == 0
                     ? string.Empty
@@ -289,6 +313,26 @@ public partial class MainWindow
 
     private static readonly Brush TintaMuroConcreto = new SolidColorBrush(Color.FromRgb(0x0B, 0x3D, 0x6B));
     private static readonly Brush TintaMuroAcero = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
+
+    /// <summary>
+    /// El color de la capa VAR_ de cada diametro, el mismo ACI de la macro -CapasCad- pasado a
+    /// RGB: lo que se ve en la vista previa es lo que sale en AutoCAD.
+    /// </summary>
+    private static readonly Dictionary<string, Brush> TintaPorDiametro = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["#2"] = new SolidColorBrush(Color.FromRgb(0x00, 0x7F, 0xFF)),   // ACI 150
+        ["#2.5"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0xFF)), // ACI 6
+        ["#3"] = new SolidColorBrush(Color.FromRgb(0x00, 0xA5, 0xA5)),   // ACI 132
+        ["#4"] = new SolidColorBrush(Color.FromRgb(0x00, 0x7C, 0xA5)),   // ACI 142
+        ["#5"] = new SolidColorBrush(Color.FromRgb(0x00, 0x3F, 0xFF)),   // ACI 160
+        ["#6"] = new SolidColorBrush(Color.FromRgb(0x00, 0xFF, 0xFF)),   // ACI 4
+        ["#8"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x00)),   // ACI 1
+        ["#10"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0xFF)),  // ACI 6
+        ["#12"] = new SolidColorBrush(Color.FromRgb(0x81, 0x56, 0x56)),  // ACI 15
+    };
+
+    private static Brush TintaDeVarilla(string? clave) =>
+        clave is not null && TintaPorDiametro.TryGetValue(clave.Trim(), out var b) ? b : TintaMuroAcero;
     private static readonly Brush TintaMuroCota = new SolidColorBrush(Color.FromRgb(0x70, 0x78, 0x82));
     private static readonly Brush TintaMuroRotulo = new SolidColorBrush(Color.FromRgb(0x1D, 0x7A, 0x3E));
     private static readonly Brush TintaMuroTexto = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33));
@@ -384,15 +428,19 @@ public partial class MainWindow
         }
 
         // ---------- Acero ----------
+        // Con su grosor REAL -el diametro a la escala de la vista- y el color de la capa de su
+        // diametro, como en AutoCAD. Con un minimo para que una #2 no desaparezca.
         foreach (var v in d.Varillas)
         {
-            lienzo.Children.Add(TrazoMuroPrevio(v.Puntos.Select(q => Pt(q)), v.Cerrada, TintaMuroAcero, 1.3, v.Oculta));
+            var grosor = Math.Max(TrazoMuroContencion.DiametroM(m, v.Clave) * esc, 1.0);
+            lienzo.Children.Add(TrazoMuroPrevio(
+                v.Puntos.Select(q => Pt(q)), v.Cerrada, TintaDeVarilla(v.Clave), grosor, v.Oculta));
         }
 
         foreach (var p in d.Puntos)
         {
-            var r = Math.Max(p.R * esc, 1.8);
-            var e = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = TintaMuroAcero };
+            var r = Math.Max(p.R * esc, 1.2);
+            var e = new Ellipse { Width = 2 * r, Height = 2 * r, Fill = TintaDeVarilla(p.Clave) };
             Canvas.SetLeft(e, PX(p.X) - r);
             Canvas.SetTop(e, PY(p.Y) - r);
             lienzo.Children.Add(e);
@@ -401,17 +449,31 @@ public partial class MainWindow
         // ---------- Cotas ----------
         foreach (var c in d.Cotas)
         {
-            CotaMuroPrevia(lienzo, c, PX, PY, Letra(TrazoMuroContencion.AltoRotulo));
+            CotaMuroPrevia(lienzo, c, PX, PY, Letra(m.EsCiclopeo
+                ? TrazoMuroContencion.AltoCotaCiclopeo
+                : TrazoMuroContencion.AltoCotaArmado));
         }
 
         // ---------- Llamadas ----------
         var letraRotulo = Letra(TrazoMuroContencion.AltoRotulo);
 
+        // Flecha -> codo -> hombro, y el texto ENCIMA del hombro: ninguna linea lo cruza. El
+        // texto se mide, para que el hombro acabe donde acaba y las llamadas de la izquierda
+        // terminen todas en su codo, alineadas.
         foreach (var t in d.Rotulos)
         {
+            var tb = new TextBlock { Text = t.Texto, FontSize = letraRotulo, Foreground = TintaMuroRotulo };
+            tb.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+            var xCodo = PX(t.XCodo);
+            var yCodo = PY(t.YCodo);
+            var aLaIzquierda = t.XHombro < t.XCodo;
+
+            var xTexto = aLaIzquierda ? xCodo - 2 - tb.DesiredSize.Width : xCodo + 2;
+            var xHombro = aLaIzquierda ? xTexto - 2 : xTexto + tb.DesiredSize.Width + 2;
+
             lienzo.Children.Add(TrazoMuroPrevio(
-                new[] { new Point(PX(t.XPunta), PY(t.YPunta)), new Point(PX(t.XCodo), PY(t.YCodo)),
-                        new Point(PX(t.XTexto), PY(t.YTexto)) },
+                new[] { new Point(PX(t.XPunta), PY(t.YPunta)), new Point(xCodo, yCodo), new Point(xHombro, yCodo) },
                 false, TintaMuroRotulo, 0.9, false));
 
             var punta = new Ellipse { Width = 4, Height = 4, Fill = TintaMuroRotulo };
@@ -419,7 +481,9 @@ public partial class MainWindow
             Canvas.SetTop(punta, PY(t.YPunta) - 2);
             lienzo.Children.Add(punta);
 
-            TextoMuro(t.Texto, PX(t.XTexto) + 2, PY(t.YTexto) - (letraRotulo * 0.7), letraRotulo, TintaMuroRotulo);
+            Canvas.SetLeft(tb, xTexto);
+            Canvas.SetTop(tb, yCodo - tb.DesiredSize.Height);
+            lienzo.Children.Add(tb);
         }
 
         // ---------- Textos centrados ----------

@@ -60,11 +60,23 @@ Vale("y sube 1.45 sobre la zapata", Casi(esp.Puntos[1].Y, 0.65 + 1.45, 1e-9));
 var xTierra = corona[1];
 Vale("la espiga del corte queda dentro de la pantalla", esp.Puntos[0].X < xTierra && esp.Puntos[0].X > corona[0] - 0.40);
 
-// Los lazos: el de la zapata y el de la pantalla, cerrados y por dentro del concreto.
-var lazos = d.Varillas.Where(v => v.Cerrada).ToList();
-Vale("dos lazos cerrados: zapata y pantalla", lazos.Count == 2);
-Vale("el de la zapata queda a 5 cm del fondo", Casi(lazos[0].Puntos.Min(p => p.Y), 0.05 + (1.27 / 200), 1e-6));
-Vale("el de la pantalla no se sale por la corona", lazos[1].Puntos.Max(p => p.Y) < 5.00 - 0.05 + 1e-9);
+// El acero corrido: una varilla por cara y por lecho, cada una con SU diametro.
+var corridas = d.Varillas.Where(v => !v.Oculta && v.Puntos.Min(p => p.X) >= xMinC).ToList();
+Vale("cuatro varillas corridas: dos lechos y dos caras", corridas.Count == 4);
+Vale("ninguna es un lazo cerrado: cada una lleva su grosor", corridas.All(v => !v.Cerrada));
+var lechoInf = corridas.Single(v => v.Clave == "#2");
+var lechoSup = corridas.Single(v => v.Clave == "#4");
+Vale("el lecho de abajo queda a 5 cm del fondo", Casi(lechoInf.Puntos.Min(p => p.Y), 0.05 + (0.64 / 200), 1e-6));
+Vale("el de arriba a 5 cm de la cara de la zapata", Casi(lechoSup.Puntos.Max(p => p.Y), 0.65 - 0.05 - (1.27 / 200), 1e-6));
+Vale("las patas de los dos lechos no se tocan",
+    lechoInf.Puntos.Max(p => p.Y) < lechoSup.Puntos.Min(p => p.Y));
+var caraTierra = corridas.Single(v => v.Clave == "#5");
+var caraExt = corridas.Single(v => v.Clave == "#6");
+Vale("la de la tierra no se sale por la corona", caraTierra.Puntos.Max(p => p.Y) < 5.00 - 0.05 + 1e-9);
+Vale("la exterior dobla por debajo de la de la tierra",
+    caraExt.Puntos.Max(p => p.Y) < caraTierra.Puntos.Max(p => p.Y));
+Vale("el diametro sale de la clave: #5 = 1.59 cm", Casi(TrazoMuroContencion.DiametroM(armado, "#5"), 0.0159, 1e-9));
+Vale("y una que el muro no lleva no tiene grosor", TrazoMuroContencion.DiametroM(armado, "#8") == 0);
 
 var horiz = d.Puntos.Where(p => p.Clave == "#6" && p.Y > 0.65).ToList();
 Vale("las horizontales van de 33 en 33 en las dos caras", horiz.Count > 20 && horiz.Count % 2 == 0);
@@ -72,6 +84,62 @@ Vale("y no pasan de la corona", horiz.All(p => p.Y < 5.00));
 
 Vale("rotulos con el texto de la imagen", d.Rotulos.Any(r => r.Texto == "Ø#5 @ 10 cm")
     && d.Rotulos.Any(r => r.Texto.Contains("Espigas")));
+// Ningun texto de llamada lo tacha una linea, ni la suya ni la de otra, y no se enciman.
+(double X1, double Y1, double X2, double Y2) CajaRotulo(TrazoRotulo r)
+{
+    var w = TrazoMuroContencion.AnchoTexto(r.Texto, TrazoMuroContencion.AltoRotulo);
+    return (r.XTexto, r.YTexto, r.XTexto + w, r.YTexto + TrazoMuroContencion.AltoRotulo);
+}
+
+bool Cruza((double X1, double Y1, double X2, double Y2) c, double ax, double ay, double bx, double by)
+{
+    for (var k = 0; k <= 400; k++)
+    {
+        var t = k / 400.0;
+        var x = ax + ((bx - ax) * t);
+        var y = ay + ((by - ay) * t);
+        if (x > c.X1 + 1e-6 && x < c.X2 - 1e-6 && y > c.Y1 + 1e-6 && y < c.Y2 - 1e-6) { return true; }
+    }
+    return false;
+}
+
+var tachados = new List<string>();
+foreach (var r1 in d.Rotulos)
+{
+    var c = CajaRotulo(r1);
+    foreach (var r2 in d.Rotulos)
+    {
+        if (Cruza(c, r2.XPunta, r2.YPunta, r2.XCodo, r2.YCodo) || Cruza(c, r2.XCodo, r2.YCodo, r2.XHombro, r2.YCodo))
+        {
+            tachados.Add($"'{r1.Texto}' por la flecha de '{r2.Texto}'");
+        }
+    }
+}
+Vale("ninguna flecha tacha un texto " + string.Join("; ", tachados), tachados.Count == 0);
+
+var encimados = 0;
+for (var i = 0; i < d.Rotulos.Count; i++)
+{
+    for (var j = i + 1; j < d.Rotulos.Count; j++)
+    {
+        var a1 = CajaRotulo(d.Rotulos[i]);
+        var a2 = CajaRotulo(d.Rotulos[j]);
+        if (a1.X1 < a2.X2 && a2.X1 < a1.X2 && a1.Y1 < a2.Y2 && a2.Y1 < a1.Y2) { encimados++; }
+    }
+}
+Vale("ningun texto se encima con otro", encimados == 0);
+Vale("el texto va ENCIMA de su hombro", d.Rotulos.All(r => r.YTexto > r.YCodo));
+Vale("y el hombro lo cubre entero", d.Rotulos.All(r =>
+{
+    var c = CajaRotulo(r);
+    return Math.Min(r.XCodo, r.XHombro) <= c.X1 + 1e-9 && Math.Max(r.XCodo, r.XHombro) >= c.X2 - 1e-9;
+}));
+
+var derechaPantalla = d.Rotulos.Where(r => r.XHombro > r.XCodo && r.XCodo > xMinC && r.YCodo > 0.65 + 1.0).Select(r => r.XTexto).Distinct().Count();
+Vale("las de la cara de la tierra empiezan en la misma columna", derechaPantalla == 1);
+var izquierdaPantalla = d.Rotulos.Where(r => r.XHombro < r.XCodo && r.XCodo > xMinC && r.YCodo > 0.65).Select(r => r.XCodo).Distinct().Count();
+Vale("y las de la cara exterior acaban en la misma", izquierdaPantalla == 1);
+
 Vale("el titulo dice el tipo y el ID", d.Textos.Any(t => t.Texto == "MURO DE CONTENCION DE CONCRETO ARMADO \"MC-01\""));
 Vale("y el detalle su leyenda", d.Textos.Any(t => t.Texto == "ACERO EN LA PANTALLA"));
 Vale("las cotas incluyen el ancho total", d.Cotas.Any(c => !c.Vertical && Casi(c.X2 - c.X1, 5.00, 1e-9)));
