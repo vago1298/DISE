@@ -2748,6 +2748,12 @@ def v16_extruida_piers() -> None:
     check("los bastones de extremo llevan gancho en sus dos puntas",
           "res.Add(new Tramo(margen, margen + l, true, true));" in bast
           and "res.Add(new Tramo(largo - margen - l, largo - margen, true, true));" in bast)
+    check("los bastones del alzado de la vista previa van rellenos",
+          "rellenar: true);" in mw_alz and "|| rellenar)" in mw_alz)
+    check("la esquina del gancho en la vista previa es la de AutoCAD, sin doble doblez",
+          "private bool EstriboConGanchoComoAutoCad(" in mw_alz
+          and "Arco(x2 - rfS, y2 - rfS, rfS, 1.75 * pi, 2.5 * pi)" in mw_alz
+          and "Arco(x2 - rS, y2 - rS, rS, 1.75 * pi, 2.75 * pi)" in mw_alz)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

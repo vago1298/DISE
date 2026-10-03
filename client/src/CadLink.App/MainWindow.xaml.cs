@@ -5323,6 +5323,11 @@ public partial class MainWindow : Window
                     negro,
                     radioExtPx));
             }
+            else if (EstriboConGanchoComoAutoCad(s, de, rec, escala, PX, PY,
+                         conFondoSolido ? negro : gris))
+            {
+                // Ya está: la esquina del gancho va como en AutoCAD. Ver el método.
+            }
             else
             {
                 var trazo = conFondoSolido ? negro : gris;
@@ -5345,7 +5350,8 @@ public partial class MainWindow : Window
         // Va antes de los lechos para que la varilla de la esquina quede ENCIMA de su
         // doblez, igual que en AutoCAD: el gancho se dobla alrededor de esa varilla, así
         // que la varilla tapa la parte del doblez que le pasa por debajo.
-        DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris);
+        DibujarGanchoPrevio(s, de, rec, escala, PX, PY, conFondoSolido ? negro : gris,
+            conFondoSolido);
 
         var varillas = TodasLasVarillas(s, de, rec);
 
@@ -6091,7 +6097,7 @@ public partial class MainWindow : Window
         void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM,
             double? xDesde = null, double? xHasta = null,
             bool ganchoIzq = true, bool ganchoDer = true,
-            double factorGancho = 15, Color? tono = null)
+            double factorGancho = 15, Color? tono = null, bool rellenar = false)
         {
             var dM = dCm / 100.0;
             var grosor = Math.Max(dM * esc, 1.4);
@@ -6268,7 +6274,9 @@ public partial class MainWindow : Window
 
             // El RELLENO, en el tipo 2, va entero y sin cortar: en AutoCAD el achurado de
             // la varilla es continuo y lo que se corta son sus caras.
-            if (a.Modo == ModoSeccion.Tipo2Rellena)
+            // Los BASTONES van rellenos siempre, con su verde tenue: así se leen como una
+            // pieza aparte y no como una línea más.
+            if (a.Modo == ModoSeccion.Tipo2Rellena || rellenar)
             {
                 PreviaFijaCanvas.Children.Add(new FormaPath
                 {
@@ -6524,7 +6532,8 @@ public partial class MainWindow : Window
                     BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
                         xDesde: xIni, xHasta: xFin,
                         ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer,
-                        factorGancho: CadLink.Cad.Bastones.GanchoDiametros, tono: verdeTenue);
+                        factorGancho: CadLink.Cad.Bastones.GanchoDiametros, tono: verdeTenue,
+                        rellenar: true);
 
                     // LA COTA del tramo, con su LONGITUD REAL, como en AutoCAD.
                     CotaDeBastonPrevia(xIni, xFin, yCota, top,
@@ -7057,9 +7066,126 @@ public partial class MainWindow : Window
     /// gancho apunta para el otro lado.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// El contorno del estribo con su gancho <b>como lo dibuja AutoCAD</b>: la misma
+    /// cuenta de <c>SeccionDrawer.EstriboExterior</c> y <c>EstriboInterior</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// En la esquina del gancho el estribo <b>no lleva su redondeo</b>: el doblez es el arco
+    /// del gancho, con centro en la varilla de la esquina —de 315° a 90° la cara de fuera y
+    /// de 315° a 135° la de dentro—, y la cara de dentro del costado derecho se recorta
+    /// donde la cruza la cola. Las colas las pone <see cref="DibujarGanchoPrevio"/>.
+    /// </para>
+    /// <para>
+    /// Antes se dibujaban dos rectángulos redondeados completos y encima los arcos del
+    /// gancho: en la esquina salían dos dobleces, uno encima del otro.
+    /// </para>
+    /// </remarks>
+    /// <returns><c>false</c> si no aplica —sin gancho, o con paquete—, y entonces el estribo
+    /// se dibuja como siempre.</returns>
+    private bool EstriboConGanchoComoAutoCad(
+        SeccionConcretoRow s, double de, double rec, double escala,
+        Func<double, double> px, Func<double, double> py, Brush trazo)
+    {
+        if (s.GanchoCm <= 0 || de <= 0 || PaqueteVarillas.EsPaquete(s.NEsqSup))
+        {
+            return false;
+        }
+
+        // Los mismos diámetros que el dibujante: sin varilla, el del estribo.
+        var dSup = Varilla.TryDiametroCm(s.DiamEsqSup, out var a) && a > 0 ? a : de;
+        var dInf = Varilla.TryDiametroCm(s.DiamEsqInfEfectivo, out var b) && b > 0 ? b : de;
+
+        var B = s.BaseCm;
+        var H = s.AlturaCm;
+
+        if (rec <= 0 || 2 * (rec + de) >= B || 2 * (rec + de) >= H)
+        {
+            return false;
+        }
+
+        var pi = Math.PI;
+
+        void Trazo(IEnumerable<Point> puntos) =>
+            PreviewCanvas.Children.Add(new Polyline
+            {
+                Points = new PointCollection(puntos),
+                Stroke = trazo,
+                StrokeThickness = LineaAcero,
+                StrokeLineJoin = PenLineJoin.Round
+            });
+
+        // Un arco en cm, muestreado, en el sentido de a0 a a1.
+        IEnumerable<Point> Arco(double cx, double cy, double rr, double a0, double a1)
+        {
+            for (var k = 0; k <= 16; k++)
+            {
+                var t = a0 + ((a1 - a0) * k / 16.0);
+                yield return new Point(px(cx + (rr * Math.Cos(t))), py(cy + (rr * Math.Sin(t))));
+            }
+        }
+
+        Point P(double x, double y) => new(px(x), py(y));
+
+        // ---------- La cara de FUERA ----------
+        {
+            var rfS = de + (dSup / 2);
+            var rfI = de + (dInf / 2);
+            double x1 = rec, y1 = rec, x2 = B - rec, y2 = H - rec;
+
+            var pts = new List<Point>();
+            pts.AddRange(Arco(x2 - rfS, y2 - rfS, rfS, 1.75 * pi, 2.5 * pi));    // el doblez del gancho, 315° a 90°
+            pts.Add(P(x1 + rfS, y2));
+            pts.AddRange(Arco(x1 + rfS, y2 - rfS, rfS, 0.5 * pi, pi));
+            pts.Add(P(x1, y1 + rfI));
+            pts.AddRange(Arco(x1 + rfI, y1 + rfI, rfI, pi, 1.5 * pi));
+            pts.Add(P(x2 - rfI, y1));
+            pts.AddRange(Arco(x2 - rfI, y1 + rfI, rfI, 1.5 * pi, 2 * pi));
+            pts.Add(P(x2, y2 - rfS));
+            Trazo(pts);
+        }
+
+        // ---------- La cara de DENTRO ----------
+        {
+            var rS = dSup / 2;
+            var rI = dInf / 2;
+            double x1 = rec + de, y1 = rec + de, x2 = B - rec - de, y2 = H - rec - de;
+
+            // El costado derecho se recorta donde lo cruza la cola: misma condición que
+            // EstriboInterior.
+            var yFinDer = y2 - rS;
+            var rOut = rS + de;
+            var tCruce = rOut - (Math.Sqrt(2) * rS);
+
+            if (tCruce >= 0 && tCruce <= s.GanchoCm)
+            {
+                var yTrim = y2 - (Math.Sqrt(2) * rOut);
+                if (yTrim > y1 + rI)
+                {
+                    yFinDer = yTrim;
+                }
+            }
+
+            // El doblez del gancho, 315° a 135°, alrededor de la varilla.
+            Trazo(Arco(x2 - rS, y2 - rS, rS, 1.75 * pi, 2.75 * pi));
+
+            var pts = new List<Point> { P(x2, yFinDer), P(x2, y1 + rI) };
+            pts.AddRange(Arco(x2 - rI, y1 + rI, rI, 2 * pi, 1.5 * pi));
+            pts.Add(P(x1 + rI, y1));
+            pts.AddRange(Arco(x1 + rI, y1 + rI, rI, 1.5 * pi, pi));
+            pts.Add(P(x1, y2 - rS));
+            pts.AddRange(Arco(x1 + rS, y2 - rS, rS, pi, 0.5 * pi));
+            pts.Add(P(x2 - rS, y2));
+            Trazo(pts);
+        }
+
+        return true;
+    }
+
     private void DibujarGanchoPrevio(
         SeccionConcretoRow s, double dEst, double rec, double escala,
-        Func<double, double> px, Func<double, double> py, Brush trazo)
+        Func<double, double> px, Func<double, double> py, Brush trazo, bool conFondoSolido = false)
     {
         // Sin gancho no hay nada que dibujar, y sin estribo tampoco: el doblez se apoya en
         // el espesor del estribo.
@@ -7219,10 +7345,16 @@ public partial class MainWindow : Window
 
         // ---------- Sin paquete: el gancho de siempre, de 180° en la esquina ----------
 
-        // Media vuelta, de 315° a 135°, pasando por la esquina. Es el sector del dibujante:
-        // sectores.Add(new[] { bx, by, rIn, rOut, 1.75 * Pi, 0.75 * Pi }).
-        ArcoDoblez(bx, by, rIn, 1.75 * Math.PI, Math.PI);
-        ArcoDoblez(bx, by, rOut, 1.75 * Math.PI, Math.PI);
+        // Los ARCOS DEL DOBLEZ ya los pone el contorno del estribo
+        // (EstriboConGanchoComoAutoCad), igual que en AutoCAD, donde salen de
+        // EstriboExterior/Interior y Ganchos solo añade las colas. Dibujarlos también aquí
+        // los duplicaba: era el doble arco que se veía en la esquina. Solo se dibujan si el
+        // estribo va como anillo relleno, que no los trae.
+        if (conFondoSolido)
+        {
+            ArcoDoblez(bx, by, rIn, 1.75 * Math.PI, Math.PI);
+            ArcoDoblez(bx, by, rOut, 1.75 * Math.PI, Math.PI);
+        }
 
         // Las dos colas, hacia el núcleo. rt2I es cos(45°): la dirección es 225°.
         const double ux = -rt2I;
