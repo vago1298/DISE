@@ -108,7 +108,7 @@ public static class TrazoMuroContencion
     /// El alto de los numeros de las cotas de los muros: el DIMTXT del estilo COTA_MC, que es
     /// COTA_ESTRUCTURAL con el numero mas grande. Un muro de 5 m con numeros de 2.5 cm no se lee.
     /// </summary>
-    public const double AltoCotaMuro = 0.15;
+    public const double AltoCotaMuro = 0.08;
 
     /// <summary>Lo ancho que sale un texto, para su hombro.</summary>
     public static double AnchoTexto(string texto, double alto) => texto.Length * alto * FactorLetra;

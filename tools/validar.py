@@ -15501,6 +15501,7 @@ def v27_muros_contencion() -> None:
     check("las cotas del muro van en su estilo COTA_MC, sin cambios encima",
           'EstiloCotaMuro = "COTA_MC";' in drw
           and 'Dimvar("DIMTXT", TrazoMuroContencion.AltoCotaMuro);' in drw
+          and "public const double AltoCotaMuro = 0.08;" in trazo
           and "r.Cotas += CotaMuro(c, EstiloCotaMuro);" in drw
           and "TextHeight" not in drw and "ScaleFactor" not in drw)
     check("los textos de las llamadas van sobre un hombro, sin flecha que los tache",
