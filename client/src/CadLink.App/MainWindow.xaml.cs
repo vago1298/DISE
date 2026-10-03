@@ -6409,7 +6409,9 @@ public partial class MainWindow : Window
             var caraInf = top + h - rec - (dInfCm / 100.0 * esc);   // y del de abajo
             var usadas = new HashSet<PosicionBaston>();
             var filaCota = 0;
-            var verdeTenue = Color.FromRgb(0x7F, 0xC8, 0x9C);
+            // Verde MUY tenue, casi blanco: que se distinga de las corridas sin competir con
+            // ellas. Solo en el alzado; en la sección se quedan como están.
+            var verdeTenue = Color.FromRgb(0xB9, 0xE0, 0xC8);
 
             // El ancho del gancho de las corridas, en píxeles: el bastón arranca pasado él y
             // una holgura, para que su doblez quede ANTES, por dentro, y no encima.

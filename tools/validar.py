@@ -2745,6 +2745,9 @@ def v16_extruida_piers() -> None:
           "PosicionesDeBastonesPrevia(s, de, rec)" in mw_alz and "baston: true" in mw_alz)
     check("el corte de AutoCAD sabe donde arrancan los de extremo",
           "MargenBastonesM(r))" in mw_alz)
+    check("los bastones de extremo llevan gancho en sus dos puntas",
+          "res.Add(new Tramo(margen, margen + l, true, true));" in bast
+          and "res.Add(new Tramo(largo - margen - l, largo - margen, true, true));" in bast)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

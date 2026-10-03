@@ -241,8 +241,8 @@ public static class Bastones
     ///   de 60 cm va 30 cm a la izquierda y 30 a la derecha del centro.</item>
     /// </list>
     /// <para>
-    /// Todos llevan gancho en sus puntas: los de extremo en la del paño, el del centro en las
-    /// dos. Lo que no cabe se recorta a lo que cabe.
+    /// Todos llevan gancho en <b>sus dos puntas</b>: los de extremo en la del paño y en la
+    /// que acaba hacia dentro, y el del centro en las dos. Lo que no cabe se recorta.
     /// </para>
     /// </remarks>
     public static List<Tramo> Tramos(BastonCad b, double largo, double margen = 0)
@@ -267,17 +267,17 @@ public static class Bastones
             case UbicacionBaston.Extremos:
             {
                 var l = Math.Min(d, util / 2);
-                res.Add(new Tramo(margen, margen + l, true, false));
-                res.Add(new Tramo(largo - margen - l, largo - margen, false, true));
+                res.Add(new Tramo(margen, margen + l, true, true));
+                res.Add(new Tramo(largo - margen - l, largo - margen, true, true));
                 break;
             }
 
             case UbicacionBaston.Izquierdo:
-                res.Add(new Tramo(margen, margen + Math.Min(d, util), true, false));
+                res.Add(new Tramo(margen, margen + Math.Min(d, util), true, true));
                 break;
 
             case UbicacionBaston.Derecho:
-                res.Add(new Tramo(largo - margen - Math.Min(d, util), largo - margen, false, true));
+                res.Add(new Tramo(largo - margen - Math.Min(d, util), largo - margen, true, true));
                 break;
 
             case UbicacionBaston.AlCentro:
