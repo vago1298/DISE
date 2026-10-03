@@ -152,6 +152,26 @@ public static class Bastones
         public double Largo => Fin - Ini;
     }
 
+    /// <summary>
+    /// Las reglas de colocación que pidió el usuario: los de <b>arriba</b> solo van en los
+    /// extremos, y el del <b>centro</b> solo va abajo. Un bastón que llegue de otra forma
+    /// —un trabajo viejo— se corrige aquí: al centro pasa abajo, y arriba no se queda al
+    /// centro.
+    /// </summary>
+    public static BastonCad Normalizar(BastonCad b)
+    {
+        if (b.Ubicacion == UbicacionBaston.AlCentro && b.Posicion != PosicionBaston.Inferior)
+        {
+            b.Posicion = PosicionBaston.Inferior;
+        }
+
+        return b;
+    }
+
+    /// <summary>¿Respeta las reglas de colocación? Ver <see cref="Normalizar"/>.</summary>
+    public static bool UbicacionPermitida(PosicionBaston p, UbicacionBaston u) =>
+        u != UbicacionBaston.AlCentro || p == PosicionBaston.Inferior;
+
     /// <summary>¿Se puede dibujar? Varillas, diámetro y distancia válidos.</summary>
     public static bool EsValido(BastonCad b) =>
         b.Cantidad > 0 && b.Var.Existe && b.DistanciaM > 0;

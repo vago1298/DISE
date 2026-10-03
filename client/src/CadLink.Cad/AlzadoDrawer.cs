@@ -3089,7 +3089,7 @@ public sealed class AlzadoDrawer
             var xb = x + t.Fin;
 
             Cota(xa, yCara, xb, yCara, (xa + xb) / 2, yDim,
-                Bastones.Texto(b) + "  L = <>", false);
+                Bastones.Texto(b) + "  L = <>", false, textoArriba: true);
         }
     }
 
@@ -3159,7 +3159,7 @@ public sealed class AlzadoDrawer
 
     private void Cota(
         double x1, double y1, double x2, double y2,
-        double xt, double yt, string texto, bool vertical)
+        double xt, double yt, string texto, bool vertical, bool textoArriba = false)
     {
         try
         {
@@ -3177,6 +3177,22 @@ public sealed class AlzadoDrawer
                 if (vertical)
                 {
                     d.TextRotation = Math.PI / 2;
+                }
+
+                // El texto ENCIMA de la línea de cota, centrado, y no atravesado por ella.
+                // acAbove = 1. En su propio try: un estilo que no lo admita deja la cota
+                // como estaba, que es mejor que perderla.
+                if (textoArriba)
+                {
+                    try
+                    {
+                        d.VerticalTextPosition = 1;
+                        d.HorizontalTextPosition = 0;   // acHorzCentered
+                    }
+                    catch (Exception)
+                    {
+                        // Se queda con la posición del estilo.
+                    }
                 }
 
                 d.Update();

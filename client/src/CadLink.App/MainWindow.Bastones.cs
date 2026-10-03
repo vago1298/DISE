@@ -118,6 +118,13 @@ public partial class MainWindow
         string ubicacion;
         double distancia;
 
+        // Los de arriba van solo en los extremos, y el del centro solo abajo: un clic en el
+        // tercio central pone SIEMPRE el inferior del centro, sea cual sea la altura.
+        if (xm > a.Largo / 3 && xm < 2 * a.Largo / 3)
+        {
+            posicion = BastonSeccion.TextoInferior;
+        }
+
         if (xm <= a.Largo / 3)
         {
             ubicacion = soloUno ? BastonSeccion.TextoIzquierdo : BastonSeccion.TextoExtremos;
@@ -253,6 +260,7 @@ public partial class MainWindow
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),
             Text =
+                "Arriba y en medio van solo en los extremos; el del centro, solo abajo.\n" +
                 "La distancia se mide desde el paño. En un extremo es lo que mide el bastón; " +
                 "al centro, es donde empieza, igual desde cada paño.\n" +
                 "En el corte A-A' salen los bastones que cruza su línea (a L/4 + 5 cm)."
@@ -337,6 +345,16 @@ public partial class MainWindow
         {
             // Que la celda que se esté escribiendo cuente.
             tabla.CommitEdit(DataGridEditingUnit.Row, true);
+
+            var alCentro = copias.FirstOrDefault(b =>
+                b.Ubicacion == BastonSeccion.TextoCentro && b.Posicion != BastonSeccion.TextoInferior);
+            if (alCentro is not null)
+            {
+                MessageBox.Show(ventana,
+                    "El bastón del centro solo va abajo, y los de arriba y en medio solo en los extremos.",
+                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             var repetida = copias.GroupBy(b => b.Posicion).FirstOrDefault(g => g.Count() > 1);
             if (repetida is not null)

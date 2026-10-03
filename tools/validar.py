@@ -2712,6 +2712,14 @@ def v16_extruida_piers() -> None:
           and mw_alz.count("CadLink.Cad.Bastones.LibreParaGancho(") == 1)
     check("el de en medio baja, no sube, cuando cae en una intermedia",
           "medio -= (yTop - yBot) / (nIntermedias + 1) / 2;" in bast)
+    check("arriba solo en extremos y el del centro solo abajo",
+          "public static BastonCad Normalizar(" in bast
+          and "CadLink.Cad.Bastones.Normalizar(new BastonCad" in leer(ruta("client/src/CadLink.App/Models/BastonesSeccion.cs"))
+          and "posicion = BastonSeccion.TextoInferior;" in mw_bast)
+    check("el texto de la cota del baston va encima de la linea, no tachado",
+          "textoArriba: true" in alz_drw and "d.VerticalTextPosition = 1;" in alz_drw)
+    check("la punta de la cola del gancho en la vista previa cierra en escuadra",
+          mw_alz.index("var qoY = poY + (largo * uy);") < mw_alz.index("poX = bx + rIn - (Math.Sqrt(2) * rOut);"))
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

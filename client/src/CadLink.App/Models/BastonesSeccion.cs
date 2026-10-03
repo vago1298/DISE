@@ -68,7 +68,7 @@ public sealed class BastonSeccion : INotifyPropertyChanged
     };
 
     /// <summary>Al formato del dibujante, con el diámetro ya en centímetros.</summary>
-    public BastonCad ACad() => new()
+    public BastonCad ACad() => CadLink.Cad.Bastones.Normalizar(new BastonCad
     {
         Posicion = Posicion switch
         {
@@ -88,7 +88,7 @@ public sealed class BastonSeccion : INotifyPropertyChanged
             ? new VarCad(Varilla.Normalizar(Diametro), cm)
             : new VarCad(string.Empty, 0),
         DistanciaM = DistanciaM
-    };
+    });
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

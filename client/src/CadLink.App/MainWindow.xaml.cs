@@ -4529,6 +4529,14 @@ public partial class MainWindow : Window
         var largo = AlzadoDrawer.LargoDe(AFormatoAlzado(s));
         var n = 0;
 
+        foreach (var b in s.Bastones.Where(b =>
+                     b.Ubicacion == BastonSeccion.TextoCentro && b.Posicion != BastonSeccion.TextoInferior))
+        {
+            problemas.Add(
+                $"• {etiqueta}: el bastón «{b.Posicion}» está al centro; el del centro solo va " +
+                "abajo. Al dibujar se pasa abajo.");
+        }
+
         // Tres como mucho: uno arriba, uno en medio y uno abajo.
         foreach (var g in s.Bastones.GroupBy(b => b.Posicion).Where(g => g.Count() > 1))
         {
@@ -7173,17 +7181,21 @@ public partial class MainWindow : Window
             var poX = bx + (rOut * nx);
             var poY = by + (rOut * ny);
 
+            // LAS PUNTAS SE CALCULAN ANTES DEL RECORTE, como en SeccionDrawer.Cola. Antes se
+            // calculaban después, desde el arranque ya recortado, así que la cara de fuera
+            // terminaba más lejos que la de dentro y la punta salía en diagonal en lugar de
+            // cerrar la cola en escuadra.
+            var qiX = piX + (largo * ux);
+            var qiY = piY + (largo * uy);
+            var qoX = poX + (largo * ux);
+            var qoY = poY + (largo * uy);
+
             // La cola recortada arranca donde la cruza el estribo, no en la perpendicular.
             if (recorta)
             {
                 poX = bx + rIn - (Math.Sqrt(2) * rOut);
                 poY = by + rIn;
             }
-
-            var qiX = piX + (largo * ux);
-            var qiY = piY + (largo * uy);
-            var qoX = poX + (largo * ux);
-            var qoY = poY + (largo * uy);
 
             // Las TRES líneas de la cola: interior, exterior y la punta que las cierra.
             foreach (var (ax, ay, bx2, by2) in new[]
