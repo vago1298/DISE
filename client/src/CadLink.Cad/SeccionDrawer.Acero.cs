@@ -42,6 +42,9 @@ public sealed partial class SeccionDrawer
     /// <summary>El factor del rotulo del perfil, del estilo «Perfiles de acero» (1 = el de siempre).</summary>
     private static double FactorRotuloAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero("factor.rotulo");
 
+    /// <summary>El estilo «Perfiles de acero»: fuente, factores y los hatch de cada material.</summary>
+    private static PerfilEstilo EstiloAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero);
+
     /// <summary>La fuente de ACERO: la del estilo «Perfiles de acero».</summary>
     private static string FuenteAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Texto("fuente");
 
@@ -880,21 +883,24 @@ public sealed partial class SeccionDrawer
             case FormaAcero.Canal:
             case FormaAcero.Angulo:
             case FormaAcero.Cruz:
-                Hatch("ANSI32", 0.0009 * _f, contorno, islas, CapaPerfiles, 252);
+                Hatch(EstiloAcero.Texto("hatch.laminados"), EstiloAcero.Numero("hatch.laminados.escala") * _f,
+                    contorno, islas, CapaPerfiles, 252);
                 break;
 
             // Formados en frío: el de la macro del CF.
             case FormaAcero.CanalConLabios:
             case FormaAcero.Zeta:
                 Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 4);
-                Hatch("ANSI31", 0.0008 * _f, contorno, islas, CapaPerfiles, 142);
+                Hatch(EstiloAcero.Texto("hatch.frio"), EstiloAcero.Numero("hatch.frio.escala") * _f,
+                    contorno, islas, CapaPerfiles, 142);
                 break;
 
             // Redondos: el de la macro del OC.
             case FormaAcero.TuboRedondo:
             case FormaAcero.RedondoMacizo:
                 Hatch("SOLID", 1, contorno, islas, CapaPerfiles, 162);
-                Hatch("ANSI31", 0.002 * _f, contorno, islas, CapaPerfiles, 162);
+                Hatch(EstiloAcero.Texto("hatch.redondos"), EstiloAcero.Numero("hatch.redondos.escala") * _f,
+                    contorno, islas, CapaPerfiles, 162);
                 break;
 
             // Tubo rectangular: el de la macro del HSS, con su corte de las 5 pulgadas.
@@ -912,8 +918,8 @@ public sealed partial class SeccionDrawer
                 }
 
                 var trama = Hatch(
-                    "ANSI31",
-                    (menorDe5 ? 0.001 : 0.002) * _f,
+                    EstiloAcero.Texto("hatch.tubo"),
+                    EstiloAcero.Numero(menorDe5 ? "hatch.tubo.escala.chico" : "hatch.tubo.escala.grande") * _f,
                     contorno, islas, CapaPerfiles,
                     menorDe5 ? 142 : 144);
 

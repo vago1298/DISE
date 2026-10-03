@@ -28,7 +28,8 @@ namespace CadLink.Cad;
 /// </remarks>
 public sealed class AlzadoDrawer
 {
-    private const string PatronConcreto = "AR-CONC";
+    // El patrón del concreto, del estilo «Secciones y alzados» (AR-CONC por defecto).
+    private static string PatronConcreto => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones).Texto("hatch.concreto");
     private const string PatronRespaldo = "ANSI31";
     private const int ColorPatron = 251;
     private const int ColorFondo = 9;

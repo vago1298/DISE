@@ -1265,13 +1265,35 @@ m_rayar = _re.search(r"private void RayarPerfil\(.*?\n    \}", fuente_cad, _re.S
 
 check("existe RayarPerfil, que decide el rayado de cada forma", m_rayar is not None)
 
+# Los patrones y escalas de las macros son ahora los DEFECTOS del estilo «Perfiles de acero»
+# de la ventana «Estilo de dibujo»; el dibujante los lee de ahi. Se cotejan contra ese defecto.
+with open("client/src/CadLink.Cad/EstiloDibujo.cs", encoding="utf-8") as f:
+    _bloque_acero = f.read().split("new PerfilEstilo(Acero,", 1)[1].split("new PerfilEstilo(", 1)[0]
+
+
+def defecto_acero(clave):
+    """El defecto de un ajuste del estilo «Perfiles de acero», sin comillas ni N(...)."""
+    m = _re.search(r'\.Con\("' + _re.escape(clave)
+                   + r'",\s*\w+,\s*"(?:[^"\\]|\\.)*",\s*TipoAjuste\.\w+,\s*("[^"]*"|[^,)]+\)?)',
+                   _bloque_acero)
+    if not m:
+        return ""
+    v = m.group(1).strip()
+    return v.strip('"') if v.startswith('"') else v[2:-1] if v.startswith("N(") else v
+
+
 if m_rayar:
     cuerpo = m_rayar.group(0)
 
-    # Los pares (patron, color) que el codigo pide, en el orden en que aparecen.
+    # Los pares (patron, color) que el codigo pide, en el orden en que aparecen: el SOLID escrito
+    # y los demas leidos del estilo.
     en_codigo = [(m.group(1), int(m.group(2)))
                  for m in _re.finditer(
                      r'Hatch\(\s*"(\w+)"[^;]*?CapaPerfiles,\s*(\d+)\)', cuerpo, _re.S)]
+    en_codigo += [(defecto_acero(m.group(1)), int(m.group(2)))
+                  for m in _re.finditer(
+                      r'Hatch\(\s*EstiloAcero\.Texto\("([\w.]+)"\)[^;]*?CapaPerfiles,\s*(\d+)\)',
+                      cuerpo, _re.S)]
 
     # Y los del tubo, que van con un condicional en vez de un numero suelto.
     condicionales = _re.findall(r"menorDe5 \? (\d+) : (\d+)", cuerpo)
@@ -1301,13 +1323,16 @@ if m_rayar:
     # Las cuatro escalas de rayado de las macros, tal cual. Un rayado con separacion
     # FIJA da la misma densidad en el papel para cualquier tamaño de perfil, que es lo
     # que tiene que hacer un patron de sombreado: no se liga al peralte.
-    for escala in ("0.0009", "0.0008", "0.002"):
+    for clave, escala in (("hatch.laminados.escala", "0.0009"), ("hatch.frio.escala", "0.0008"),
+                          ("hatch.redondos.escala", "0.002")):
         check(f"esta la escala de rayado {escala} de su macro",
-              f"{escala} * _f" in cuerpo)
+              defecto_acero(clave) == escala and f'EstiloAcero.Numero("{clave}") * _f' in cuerpo)
 
     # La del tubo va con un condicional, porque su macro la cambia a las 5 pulgadas.
     check("la escala del tubo cambia a las 5 pulgadas, como su macro",
-          "(menorDe5 ? 0.001 : 0.002) * _f" in cuerpo)
+          'menorDe5 ? "hatch.tubo.escala.chico" : "hatch.tubo.escala.grande"' in cuerpo
+          and defecto_acero("hatch.tubo.escala.chico") == "0.001"
+          and defecto_acero("hatch.tubo.escala.grande") == "0.002")
 
     # Y NINGUN color por familia: ni tabla, ni capa por familia, ni campo de color.
     check("no queda ninguna tabla de color por familia",

@@ -37,6 +37,21 @@ def leer(p: str) -> str:
         return f.read()
 
 
+def defecto_estilo(perfil: str, clave: str) -> str:
+    """El valor POR DEFECTO de un ajuste de «Estilo de dibujo», tal como esta escrito en
+    EstiloDibujo.PorDefecto(): '"GRAVEL"', 'N(0.017)', 'C(253)'... Vacio si no esta.
+
+    Desde que los dibujantes leen sus letras, cotas, colores y hatch del estilo, el numero de
+    la macro ya no esta en el dibujante sino aqui: las comprobaciones lo buscan en este sitio."""
+    est = leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
+    for bloque in re.split(r"new PerfilEstilo\(", est)[1:]:
+        if bloque.split(",")[0].strip() != perfil:
+            continue
+        m = re.search(r'\.Con\("' + re.escape(clave) + r'",\s*\w+,\s*"(?:[^"\\]|\\.)*",\s*TipoAjuste\.\w+,\s*("[^"]*"|[^,)]+\)?)', bloque)
+        return m.group(1).strip() if m else ""
+    return ""
+
+
 def archivos(ext: str, subdir: str = "") -> list[str]:
     base = ruta(subdir) if subdir else RAIZ
     encontrados = []
@@ -2788,7 +2803,7 @@ def v16_extruida_piers() -> None:
               and '"COTAS" => ColorCotas' in m_cap_alz.group(0)
               # El 253 es el defecto del estilo «Secciones y alzados»; se cambia en la ventana.
               and 'private static int ColorCotas => EstiloAlzado.ColorAci("capa.COTAS");' in alz2
-              and '.Con("capa.COTAS", GrupoColores, "Capa COTAS", TipoAjuste.ColorAci, C(253)));' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs")))
+              and defecto_estilo("Secciones", "capa.COTAS") == "C(253)")
 
     #  Y EL MOTIVO ESCRITO EN EL CODIGO, para que nadie lo revierta pensando que un
     #  color explicito es «mas seguro».
@@ -6863,10 +6878,14 @@ def v18_planta_autocad() -> None:
           and all(f'.Con("capa.{c}", GrupoColores, "Capa {c}", TipoAjuste.ColorAci, C({n}))' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
                   for c, n in (("PLACA BASE", 140), ("ANCLAS", 1), ("SOLDADURA", 240))))
 
+    # Los de la macro son los DEFECTOS del estilo «Placa base»; se cambian en la ventana.
     check("y los patrones de achurado con su escala",
-          'PatronDado = "AR-CONC"' in pbc and "EscalaHatchDado = 0.0002" in pbc
-          and 'PatronPerfilI = "ANSI32"' in pbc and "EscalaHatchPerfilI = 0.0009" in pbc
-          and 'PatronSoldadura = "JIS_RC_10"' in pbc and "EscalaHatchSoldadura = 0.0005" in pbc)
+          all(defecto_estilo("PlacaBase", k) == v for k, v in (
+              ("hatch.dado", '"AR-CONC"'), ("hatch.dado.escala", "N(0.0002)"),
+              ("hatch.perfil", '"ANSI32"'), ("hatch.perfil.escala", "N(0.0009)"),
+              ("hatch.soldadura", '"JIS_RC_10"'), ("hatch.soldadura.escala", "N(0.0005)")))
+          and 'PatronDado => EstiloPlaca.Texto("hatch.dado");' in pbc
+          and 'PatronSoldadura => EstiloPlaca.Texto("hatch.soldadura");' in pbc)
 
     #  EL PERFIL NO SE TRAZA DOS VECES. TrazoAcero ya traia portadas las nueve formas del IMCA con
     #  la misma geometria que la macro dibujaba a mano; duplicarla habria dejado dos juegos de
@@ -7447,7 +7466,8 @@ def v18_planta_autocad() -> None:
     check("el dado del corte va rayado como en planta, en la capa CONCRETO",
           "PlacaBaseCapas.PatronDado, PlacaBaseCapas.EscalaHatchDado," in pbelev
           and "concreto, null, PlacaBaseCapas.Concreto, PorCapa);" in pbelev
-          and "public const double EscalaHatchDado = 0.0002;" in pbc)
+          and 'public static double EscalaHatchDado => EstiloPlaca.Numero("hatch.dado.escala");' in pbc
+          and defecto_estilo("PlacaBase", "hatch.dado.escala") == "N(0.0002)")
 
     check("la cama se dibuja entre la placa y el dado, con su rayado y su capa",
           "double[]? Grout);" in elev
@@ -9614,10 +9634,12 @@ def v19_circular_y_ui() -> None:
           "no es un plano, son dos" in zap_drw)
     check("modo 1: solido 9 + AR-CONC 0.0003 color 251",
           "ColorSolidoRelleno = 9" in zap_drw
-          and "EscalaConcretoRelleno = 0.0003" in zap_drw
+          and 'EscalaConcretoRelleno => EstiloZapatas.Numero("hatch.concreto.escala.relleno");' in zap_drw
+          and defecto_estilo("Zapatas", "hatch.concreto.escala.relleno") == "N(0.0003)"
           and "ColorPatronRelleno = 251" in zap_drw)
     check("modo 2: el AR-CONC de siempre a 0.0005",
-          "EscalaConcretoNormal = 0.0005" in zap_drw)
+          'EscalaConcretoNormal => EstiloZapatas.Numero("hatch.concreto.escala");' in zap_drw
+          and defecto_estilo("Zapatas", "hatch.concreto.escala") == "N(0.0005)")
     check("los estribos rellenos van en 152 y el contorno del acero en negro",
           "ColorEstriboRelleno = 152" in zap_drw
           and "ColorContornoNegro = 250" in zap_drw
@@ -12966,7 +12988,7 @@ def v21_separacion_y_acero() -> None:
     check("lleva sus cotas, el rayado y el contorno de los laminados",
           "case FormaAcero.Cruz:\n                CotasCruz(" in drw_ac
           and "or FormaAcero.Angulo or FormaAcero.Cruz)" in drw_ac
-          and "case FormaAcero.Cruz:\n                Hatch(\"ANSI32\"" in drw_ac)
+          and "case FormaAcero.Cruz:\n                Hatch(EstiloAcero.Texto(\"hatch.laminados\")" in drw_ac)
     check("y no se dobla: ya son dos perfiles",
           "Doble = r.Doble && r.Forma != FormaPerfil.Cruz," in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs")))
     check("si los patines de las dos I chocan, se avisa",
@@ -12989,7 +13011,7 @@ def v21_separacion_y_acero() -> None:
           'CapaPerfiles = "PERFILES"' in acero_cad
           # El 7 es el defecto del estilo «Perfiles de acero»; se cambia en «Estilo de dibujo».
           and 'Capa(CapaPerfiles, EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).ColorAci("capa.PERFILES"));' in acero_cad
-          and '.Con("capa.PERFILES", GrupoColores, "Capa PERFILES", TipoAjuste.ColorAci, C(7)));' in leer(ruta("client/src/CadLink.Cad/EstiloDibujo.cs"))
+          and defecto_estilo("Acero", "capa.PERFILES") == "C(7)"
           and 'CapaBase + "-"' not in acero_cad)
 
     check("y los objetos van por capa, no con el color pegado",
@@ -13009,17 +13031,26 @@ def v21_separacion_y_acero() -> None:
                 ("SOLID", 4, "el CF"), ("ANSI31", 142, "el CF"),
                 ("SOLID", 162, "el OC"), ("ANSI31", 162, "el OC"),
                 ("SOLID", 141, "el HSS grande")):
+            # El patron sale del estilo «Perfiles de acero» -el de la macro es su defecto-; el
+            # SOLID va escrito, porque es el fondo y no un patron.
+            patron_ok = (f'"{patron}", ' in rayar if patron == "SOLID"
+                         else f'"{patron}"' in [defecto_estilo("Acero", k) for k in
+                                                ("hatch.laminados", "hatch.frio", "hatch.redondos", "hatch.tubo")])
             check(f"esta el rayado {patron} en {color}, de la macro de {de_quien}",
-                  f'"{patron}", ' in rayar and f"CapaPerfiles, {color})" in rayar)
+                  patron_ok and f"CapaPerfiles, {color})" in rayar)
 
-        # Las escalas, tal cual. Un rayado con separacion FIJA da la misma densidad en el
-        # papel para cualquier tamaño de perfil, que es lo que tiene que hacer.
-        for escala in ("0.0009", "0.0008", "0.002"):
+        # Las escalas, tal cual, como defectos del estilo. Un rayado con separacion FIJA da la
+        # misma densidad en el papel para cualquier tamaño de perfil, que es lo que tiene que hacer.
+        for clave, escala in (("hatch.laminados.escala", "0.0009"), ("hatch.frio.escala", "0.0008"),
+                              ("hatch.redondos.escala", "0.002")):
             check(f"esta la escala de rayado {escala} de su macro",
-                  f"{escala} * _f" in rayar)
+                  defecto_estilo("Acero", clave) == f"N({escala})"
+                  and f'EstiloAcero.Numero("{clave}") * _f' in rayar)
 
         check("y la del tubo cambia a las 5 pulgadas, como su macro",
-              "(menorDe5 ? 0.001 : 0.002) * _f" in rayar)
+              'EstiloAcero.Numero(menorDe5 ? "hatch.tubo.escala.chico" : "hatch.tubo.escala.grande") * _f' in rayar
+              and defecto_estilo("Acero", "hatch.tubo.escala.chico") == "N(0.001)"
+              and defecto_estilo("Acero", "hatch.tubo.escala.grande") == "N(0.002)")
 
         # Las cinco formas nuevas van agrupadas con la macro de su material: la te, la
         # canal laminada y el angulo con el IR; la zeta con el CF; el macizo con el OC.
@@ -15523,9 +15554,13 @@ def v27_muros_contencion() -> None:
     check("dibuja desde la geometria pura, cada tipo en su fila",
           "TrazoMuroContencion.Dibujar(m, xArmado, TrazoMuroContencion.YBase)" in drw
           and "TrazoMuroContencion.Dibujar(m, xCiclopeo, TrazoMuroContencion.YBaseCiclopeo)" in drw)
+    # El patron y la escala son los DEFECTOS del estilo «Muros de contención».
     check("el ciclopeo va con piedras y las espigas a trazos",
-          'PatronCiclopeo = "GRAVEL"' in drw and "ATrazos(pl);" in drw)
-    check("el GRAVEL del ciclopeo va a escala 0.0170", "EscalaCiclopeo = 0.0170;" in drw)
+          'PatronCiclopeo => EstiloMuros.Texto("hatch.ciclopeo");' in drw
+          and defecto_estilo("Muros", "hatch.ciclopeo") == '"GRAVEL"' and "ATrazos(pl);" in drw)
+    check("el GRAVEL del ciclopeo va a escala 0.0170",
+          'EscalaCiclopeo => EstiloMuros.Numero("hatch.ciclopeo.escala");' in drw
+          and defecto_estilo("Muros", "hatch.ciclopeo.escala") == "N(0.017)")
     check("las varillas van con su diametro real a DOS LINEAS y en la capa de su diametro",
           "TrazoMuroContencion.ContornoVarilla(" in drw
           and "var capa = CapaVar(v.Clave);" in drw and "AsegurarCapaVarilla(capa);" in drw
@@ -15618,15 +15653,22 @@ def v28_estilo_dibujo() -> None:
         r'|Capa\("[^"]+", *[0-9]+\)'
         r'|CrearCapa\([^,]+, *[0-9]+,'
         r'|\.TextHeight = [0-9]|"TextHeight", *[0-9]')
+    # Y los hatch: un patron (que no sea SOLID) con su escala escritos en la llamada, una
+    # constante de patron -salvo el de respaldo- o una escala de patron a mano.
+    hatch_a_mano = re.compile(
+        r'Hatch\w*\(.*"(?!SOLID")[A-Z][A-Z0-9_-]+"\s*,\s*[0-9.(]'
+        r'|const string Patron(?!Respaldo)\w* = "'
+        r'|PatternScale = [0-9]')
     cad = os.path.join(RAIZ, "client", "src", "CadLink.Cad")
     escritos = []
     for p in archivos(".cs"):
         if not p.startswith(cad) or os.sep + "obj" + os.sep in p:
             continue
         for n, linea in enumerate(leer(p).splitlines(), 1):
-            if a_mano.search(linea.split("//")[0]):
+            codigo = linea.split("//")[0]
+            if a_mano.search(codigo) or ("_cfg." not in codigo and hatch_a_mano.search(codigo)):
                 escritos.append(f"{rel(p)}:{n}: {linea.strip()[:90]}")
-    check("ningun dibujante escribe a mano alturas de texto, cotas ni colores de capa",
+    check("ningun dibujante escribe a mano alturas de texto, cotas, colores de capa ni hatch",
           not escritos, "; ".join(escritos[:4]) + " -> agregalo a EstiloDibujo.PorDefecto() y leelo de su perfil")
 
     # Y cada ajuste que un dibujante pide EXISTE en su perfil: uno que falte truena al dibujar.
@@ -15636,20 +15678,28 @@ def v28_estilo_dibujo() -> None:
         claves[nombre] = set(re.findall(r'\.Con\("([^"]+)"', bloque))
     claves["Comun"] = {"capa." + c for c in re.findall(r'\["([^"]+)"\] = \d+,', capas)}
     alias = {"EstiloSecciones": "Secciones", "EstiloAlzado": "Secciones", "EstiloZapatas": "Zapatas",
-             "EstiloMuros": "Muros", "EstiloPlaca": "PlacaBase"}
+             "EstiloMuros": "Muros", "EstiloPlaca": "PlacaBase", "EstiloAcero": "Acero"}
     faltan = []
     for p in archivos(".cs"):
         if not p.startswith(cad) or os.sep + "obj" + os.sep in p:
             continue
         txt = leer(p)
         usos = [(alias[m.group(1)], m.group(3)) for m in re.finditer(
-            r'\b(EstiloSecciones|EstiloAlzado|EstiloZapatas|EstiloMuros|EstiloPlaca)\.(Numero|Texto|ColorAci|Cambiado)\("([^"]+)"\)', txt)]
+            r'\b(EstiloSecciones|EstiloAlzado|EstiloZapatas|EstiloMuros|EstiloPlaca|EstiloAcero)\.(Numero|Texto|ColorAci|Cambiado)\("([^"]+)"\)', txt)]
         usos += [(m.group(1), m.group(3)) for m in re.finditer(
             r'Perfil\(EstiloDibujo\.(\w+)\)\.(Numero|Texto|ColorAci|Cambiado)\("([^"]+)"\)', txt)]
         for perfil, clave in usos:
             if clave not in claves.get(perfil, set()):
                 faltan.append(f"{rel(p)}: {perfil}/{clave}")
     check("cada ajuste que piden los dibujantes esta en su perfil", not faltan, "; ".join(faltan[:5]))
+    check("el hatch se elige en la ventana: patron de la lista o escrito, y su escala",
+          "case TipoAjuste.Patron:" in ven and "ItemsSource = EstiloDibujo.Patrones," in ven
+          and 'public const string GrupoHatch = "Hatch: patrón y escala";' in est)
+    pbprev = leer(ruta("client/src/CadLink.App/MainWindow.PlacaBase.cs"))
+    m_pol = re.search(r"private static void AgregarPoligonal\(.*?\n    \}", pbprev, re.S)
+    check("la vista previa de la placa muestrea los dobleces con la cuenta de AutoCAD",
+          m_pol is not None and "TrazoAcero.Muestrear(" in m_pol.group(0)
+          and "ArcSegment" not in m_pol.group(0))
     check("y la regla queda escrita para quien agregue algo",
           os.path.exists(ruta(".kiro/steering/estilo-dibujo.md")))
 

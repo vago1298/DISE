@@ -158,12 +158,14 @@ public sealed partial class ZapataDrawer
     private const double TerrenoVuelo = 0.2;
 
     // Hatches
-    private const string PatronConcreto = "AR-CONC";
+    // Los patrones y sus escalas, del estilo «Zapatas aisladas y corridas»; por defecto los de la
+    // macro: AR-CONC a 0.0005 (0.0003 rellena) y EARTH a 0.01.
+    private static string PatronConcreto => EstiloZapatas.Texto("hatch.concreto");
     private const string PatronRespaldo = "ANSI31";
-    private const string PatronTerreno = "EARTH";
-    private const double EscalaConcretoNormal = 0.0005;   // HATCH_ESCALA_CONCRETO
-    private const double EscalaConcretoRelleno = 0.0003;  // RELLENO_HATCH_ESCALA
-    private const double EscalaTerreno = 0.01;            // HATCH_ESCALA_TERRENO
+    private static string PatronTerreno => EstiloZapatas.Texto("hatch.terreno");
+    private static double EscalaConcretoNormal => EstiloZapatas.Numero("hatch.concreto.escala");          // HATCH_ESCALA_CONCRETO
+    private static double EscalaConcretoRelleno => EstiloZapatas.Numero("hatch.concreto.escala.relleno"); // RELLENO_HATCH_ESCALA
+    private static double EscalaTerreno => EstiloZapatas.Numero("hatch.terreno.escala");                  // HATCH_ESCALA_TERRENO
     private const string TranspTerreno = "45";            // HATCH_TRANSP_TERRENO
     private const int ColorSolidoRelleno = 9;             // RELLENO_COLOR_SOLIDO
     private const int ColorPatronRelleno = 251;           // RELLENO_COLOR_CONCRETO

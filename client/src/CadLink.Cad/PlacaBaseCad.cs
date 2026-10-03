@@ -112,12 +112,12 @@ public static class PlacaBaseCapas
     // ---------- Hatches ----------
 
     /// <summary>Rayado del dado, solo en la franja que sobresale de la placa.</summary>
-    public const string PatronDado = "AR-CONC";
-    public const double EscalaHatchDado = 0.0002;
+    public static string PatronDado => EstiloPlaca.Texto("hatch.dado");
+    public static double EscalaHatchDado => EstiloPlaca.Numero("hatch.dado.escala");
 
     /// <summary>Rayado del perfil, para las familias con forma de I.</summary>
-    public const string PatronPerfilI = "ANSI32";
-    public const double EscalaHatchPerfilI = 0.0009;
+    public static string PatronPerfilI => EstiloPlaca.Texto("hatch.perfil");
+    public static double EscalaHatchPerfilI => EstiloPlaca.Numero("hatch.perfil.escala");
     public const int ColorHatchPerfilI = 252;
 
     /// <summary>Ancho de la polilínea del contorno de un perfil I.</summary>
@@ -131,12 +131,12 @@ public static class PlacaBaseCapas
     /// cama de grout desaparecería dentro del dado en lugar de leerse como la junta que es. Los dos
     /// patrones están en el <c>acad.pat</c> de serie, igual que los otros tres de esta macro.
     /// </remarks>
-    public const string PatronGrout = "ANSI31";
-    public const double EscalaHatchGrout = 0.0006;
+    public static string PatronGrout => EstiloPlaca.Texto("hatch.grout");
+    public static double EscalaHatchGrout => EstiloPlaca.Numero("hatch.grout.escala");
 
     /// <summary>Rayado de la soldadura: la franja entre el perfil y su offset.</summary>
-    public const string PatronSoldadura = "JIS_RC_10";
-    public const double EscalaHatchSoldadura = 0.0005;
+    public static string PatronSoldadura => EstiloPlaca.Texto("hatch.soldadura");
+    public static double EscalaHatchSoldadura => EstiloPlaca.Numero("hatch.soldadura.escala");
     public const int ColorLineasSoldadura = 240;
 
     // ---------- Estilos ----------

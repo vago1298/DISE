@@ -33,13 +33,16 @@ public sealed partial class ZapataDrawer
             + $"{Varillas} varilla(s) y {Cotas} cota(s).";
     }
 
-    private const string PatronCiclopeo = "GRAVEL";
+    // Los hatch del muro, del estilo «Muros de contención». Por defecto: GRAVEL a 0.017 -la
+    // escala que pidio el usuario- en el ciclopeo, AR-CONC a 0.0015 en el armado y EARTH a 0.01.
+    private static string PatronCiclopeo => EstiloMuros.Texto("hatch.ciclopeo");
+    private static double EscalaCiclopeo => EstiloMuros.Numero("hatch.ciclopeo.escala");
+    private static string PatronConcretoMuro => EstiloMuros.Texto("hatch.concreto");
+    private static double EscalaConcretoMuro => EstiloMuros.Numero("hatch.concreto.escala");
+    private static string PatronTerrenoMuro => EstiloMuros.Texto("hatch.terreno");
+    private static double EscalaTerrenoMuro => EstiloMuros.Numero("hatch.terreno.escala");
 
-    /// <summary>El AR-CONC de un muro: mas grande que el de una zapata, que mide la quinta parte.</summary>
-    private const double EscalaConcretoMuro = 0.0015;
-
-    /// <summary>La escala del GRAVEL del ciclopeo, la que pidio el usuario.</summary>
-    private const double EscalaCiclopeo = 0.0170;
+    private static PerfilEstilo EstiloMuros => EstiloDibujo.Actual.Perfil(EstiloDibujo.Muros);
 
     /// <summary>
     /// El estilo de cota de los muros de contencion: IGUAL EN TODO a COTA_ESTRUCTURAL, menos el
@@ -102,7 +105,7 @@ public sealed partial class ZapataDrawer
         // ---------- El terreno, debajo de todo ----------
         foreach (var t in d.Terreno)
         {
-            HatchPoligono(Plano(t), CapaTerrenoHatch, PatronTerreno, EscalaTerreno, string.Empty, 0);
+            HatchPoligono(Plano(t), CapaTerrenoHatch, PatronTerrenoMuro, EscalaTerrenoMuro, string.Empty, 0);
         }
 
         // ---------- El concreto: contorno y relleno ----------
@@ -119,11 +122,11 @@ public sealed partial class ZapataDrawer
             else if (_relleno)
             {
                 HatchPoligono(pts, CapaConcreto, "SOLID", 1, string.Empty, ColorSolidoRelleno);
-                HatchPoligono(pts, CapaConcreto, PatronConcreto, EscalaConcretoMuro, string.Empty, ColorPatronRelleno);
+                HatchPoligono(pts, CapaConcreto, PatronConcretoMuro, EscalaConcretoMuro, string.Empty, ColorPatronRelleno);
             }
             else
             {
-                HatchPoligono(pts, CapaConcreto, PatronConcreto, EscalaConcretoMuro, string.Empty, 0);
+                HatchPoligono(pts, CapaConcreto, PatronConcretoMuro, EscalaConcretoMuro, string.Empty, 0);
             }
         }
 

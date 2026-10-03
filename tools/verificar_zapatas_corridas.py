@@ -61,7 +61,23 @@ def leer(p):
 def const(texto, nombre):
     m = re.search(
         r"public const (?:double|int) " + nombre + r"\s*=\s*(-?[0-9.]+)\s*;", texto)
-    return float(m.group(1)) if m else None
+    if m:
+        return float(m.group(1))
+
+    # Las alturas de letra y las escalas de hatch ya no son constantes: se leen del estilo
+    # «Zapatas aisladas y corridas» de la ventana «Estilo de dibujo», y el valor de la macro es
+    # su DEFECTO. Se coteja ese defecto.
+    m = re.search(
+        r"public static (?:double|int) " + nombre
+        + r'\s*=>\s*EstiloDibujo\.Actual\.Perfil\(EstiloDibujo\.(\w+)\)\.Numero\("([^"]+)"\)', texto)
+    if not m:
+        return None
+    estilo = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "client", "src", "CadLink.Cad", "EstiloDibujo.cs"), encoding="utf-8").read()
+    bloque = estilo.split(f"new PerfilEstilo({m.group(1)},", 1)[1].split("new PerfilEstilo(", 1)[0]
+    d = re.search(r'\.Con\("' + re.escape(m.group(2))
+                  + r'",\s*\w+,\s*"(?:[^"\\]|\\.)*",\s*TipoAjuste\.\w+,\s*N\((-?[0-9.]+)\)', bloque)
+    return float(d.group(1)) if d else None
 
 
 def igual(a, b, tol=1e-9):

@@ -869,20 +869,20 @@ public static class TrazoZapataCorrida
     public const int ConcretoColorPatron = 251;
 
     /// <summary>Escala del <c>AR-CONC</c> en la sección rellena.</summary>
-    public const double ConcretoEscalaPatron = 0.0003;
+    public static double ConcretoEscalaPatron => EstiloDibujo.Actual.Perfil(EstiloDibujo.Zapatas).Numero("hatch.concreto.escala.relleno");
 
     /// <summary>Escala del <c>AR-CONC</c> de la zapata y la plantilla, sin relleno.</summary>
-    public const double ConcretoEscalaZapata = 0.0005;
+    public static double ConcretoEscalaZapata => EstiloDibujo.Actual.Perfil(EstiloDibujo.Zapatas).Numero("hatch.concreto.escala");
 
     /// <summary>Escala del <c>AR-CONC</c> del muro de concreto, sin relleno.</summary>
     /// <remarks>
     /// Sí: <b>0.05</b>, cien veces la de la zapata, y es lo que dicen las dos macros. En modo
     /// relleno las dos usan la misma que la zapata.
     /// </remarks>
-    public const double ConcretoEscalaMuro = 0.05;
+    public static double ConcretoEscalaMuro => EstiloDibujo.Actual.Perfil(EstiloDibujo.Zapatas).Numero("hatch.muro.escala");
 
     /// <summary>Escala del patrón <c>EARTH</c> del terreno.</summary>
-    public const double TerrenoEscalaPatron = 0.01;
+    public static double TerrenoEscalaPatron => EstiloDibujo.Actual.Perfil(EstiloDibujo.Zapatas).Numero("hatch.terreno.escala");
 
     /// <summary>Transparencia del hatch de terreno, en porcentaje.</summary>
     public const int TerrenoTransparencia = 45;

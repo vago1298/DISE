@@ -2095,6 +2095,18 @@ _DET = _fuente("client", "src", "CadLink.Cad", "PlacaBaseDrawer.Detalle.cs")
 _CAD = _fuente("client", "src", "CadLink.Cad", "PlacaBaseCad.cs")
 _DRW = _fuente("client", "src", "CadLink.Cad", "PlacaBaseDrawer.cs")
 _PREV = _fuente("client", "src", "CadLink.App", "MainWindow.PlacaBase.cs")
+_ESTILO = _fuente("client", "src", "CadLink.Cad", "EstiloDibujo.cs")
+
+
+def _defecto_placa(clave):
+    """El valor por defecto de un ajuste del estilo «Placa base» de EstiloDibujo.
+
+    Los colores, patrones y escalas de la macro ya no son constantes de PlacaBaseCapas: son los
+    DEFECTOS de la ventana «Estilo de dibujo», y PlacaBaseCapas los lee de ahi."""
+    bloque = _ESTILO.split("new PerfilEstilo(PlacaBase,", 1)[1].split("new PerfilEstilo(", 1)[0]
+    m = re.search(r'\.Con\("' + re.escape(clave)
+                  + r'",\s*\w+,\s*"(?:[^"\\]|\\.)*",\s*TipoAjuste\.\w+,\s*("[^"]*"|[^,)]+\)?)', bloque)
+    return m.group(1).strip() if m else ""
 _FILA = _fuente("client", "src", "CadLink.App", "Models", "PlacaBaseRow.cs")
 
 check("el cartabon del C# guarda PUNTOS y BULGES, no cuatro esquinas",
@@ -2146,7 +2158,8 @@ check("y la previa lo saca con AgregarPoligonal, no con RectangleGeometry",
 #  ---- LA SOLDADURA DEL CARTABON ----
 check("la soldadura del cartabon tiene su capa y su color MORADO",
       'public const string SoldaduraCartabon = "SOLDADURA CARTABON";' in _CAD
-      and "public const int ColorSoldaduraCartabon = 210;" in _CAD
+      and 'public static int ColorSoldaduraCartabon => EstiloPlaca.ColorAci("capa.SOLDADURA CARTABON");' in _CAD
+      and _defecto_placa("capa.SOLDADURA CARTABON") == "C(210)"
       and "Capa(PlacaBaseCapas.SoldaduraCartabon, PlacaBaseCapas.ColorSoldaduraCartabon" in _DRW)
 
 check("y su propio espesor, aparte del de la columna",
@@ -3567,8 +3580,10 @@ check("con la casilla en SI y el espesor en cero, la hoja avisa de lo que falta"
 
 check("la cama va en su propia capa, con su rayado y su color",
       'public const string Grout = "GROUT";' in _CAD
-      and "public const int ColorGrout = 30;" in _CAD
-      and 'public const string PatronGrout = "ANSI31";' in _CAD
+      and 'public static int ColorGrout => EstiloPlaca.ColorAci("capa.GROUT");' in _CAD
+      and _defecto_placa("capa.GROUT") == "C(30)"
+      and 'public static string PatronGrout => EstiloPlaca.Texto("hatch.grout");' in _CAD
+      and _defecto_placa("hatch.grout") == '"ANSI31"'
       and "Capa(PlacaBaseCapas.Grout, PlacaBaseCapas.ColorGrout, forzar: true);" in _DRW)
 
 check("y se dibuja rayada, como el dado",
@@ -3585,8 +3600,8 @@ check("el dado del corte va rayado con el mismo patron que en planta",
       and "concreto, null, PlacaBaseCapas.Concreto, PorCapa);" in _DELEV)
 
 check("y ese patron es el AR-CONC a 0.0002 de la capa CONCRETO",
-      'public const string PatronDado = "AR-CONC";' in _CAD
-      and "public const double EscalaHatchDado = 0.0002;" in _CAD
+      _defecto_placa("hatch.dado") == '"AR-CONC"' and _defecto_placa("hatch.dado.escala") == "N(0.0002)"
+      and 'public static string PatronDado => EstiloPlaca.Texto("hatch.dado");' in _CAD
       and 'public const string Concreto = "CONCRETO";' in _CAD)
 
 #  Al fondo, como en planta: con el rayado encima, al seleccionar el corte se agarra el

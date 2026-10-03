@@ -281,6 +281,28 @@ public partial class MainWindow
                 return (cb, v => { cb.Text = v; a.Valor = v; });
             }
 
+            case TipoAjuste.Patron:
+            {
+                // Los patrones de AutoCAD en la lista, y se puede escribir cualquier otro.
+                var cb = new ComboBox
+                {
+                    IsEditable = true,
+                    ItemsSource = EstiloDibujo.Patrones,
+                    Text = a.Valor,
+                    Margin = new Thickness(0, 2, 0, 2),
+                    ToolTip = "Elige un patrón de hatch de AutoCAD o escribe su nombre."
+                };
+                cb.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => a.Valor = cb.Text));
+                cb.SelectionChanged += (_, _) =>
+                {
+                    if (cb.SelectedItem is string pat)
+                    {
+                        a.Valor = pat;
+                    }
+                };
+                return (cb, v => { cb.Text = v; a.Valor = v; });
+            }
+
             case TipoAjuste.Marca:
             {
                 var cb = new ComboBox

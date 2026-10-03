@@ -94,7 +94,9 @@ public sealed partial class SeccionDrawer
     /// <summary>Traslape cola-doblez del gancho: 10 micras, como en la macro.</summary>
     private const double SolapeGancho = 0.00001;
 
-    private const string PatronConcreto = "AR-CONC";
+    // El patrón del concreto, del estilo «Secciones y alzados» (AR-CONC por defecto). La escala
+    // es la de la casilla de la hoja, que se guarda con el trabajo.
+    private static string PatronConcreto => EstiloDibujo.Actual.Perfil(EstiloDibujo.Secciones).Texto("hatch.concreto");
     private const string PatronRespaldo = "ANSI31";
 
     /// <summary>

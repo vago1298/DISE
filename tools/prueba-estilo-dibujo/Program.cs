@@ -33,6 +33,22 @@ var pla = e.Perfil(EstiloDibujo.PlacaBase);
 Vale("placa: COTA_ACERO oblicua, textos de 0.016",
     pla.Texto("cota.marca") == "_OBLIQUE" && pla.Numero("alto.texto") == 0.016 && pla.ColorAci("capa.PLACA BASE") == 140);
 
+Vale("muros: GRAVEL a 0.017 y AR-CONC a 0.0015",
+    mur.Texto("hatch.ciclopeo") == "GRAVEL" && mur.Numero("hatch.ciclopeo.escala") == 0.017
+    && mur.Texto("hatch.concreto") == "AR-CONC" && mur.Numero("hatch.concreto.escala") == 0.0015);
+Vale("zapatas: AR-CONC 0.0005 (0.0003 rellena) y EARTH 0.01",
+    zap.Texto("hatch.concreto") == "AR-CONC" && zap.Numero("hatch.concreto.escala") == 0.0005
+    && zap.Numero("hatch.concreto.escala.relleno") == 0.0003 && zap.Texto("hatch.terreno") == "EARTH");
+var ace = e.Perfil(EstiloDibujo.Acero);
+Vale("acero: ANSI32 0.0009 los laminados, ANSI31 0.0008 los de lamina",
+    ace.Texto("hatch.laminados") == "ANSI32" && ace.Numero("hatch.laminados.escala") == 0.0009
+    && ace.Texto("hatch.frio") == "ANSI31" && ace.Numero("hatch.frio.escala") == 0.0008);
+Vale("placa: dado AR-CONC 0.0002 y soldadura JIS_RC_10 0.0005",
+    pla.Texto("hatch.dado") == "AR-CONC" && pla.Numero("hatch.dado.escala") == 0.0002
+    && pla.Texto("hatch.soldadura") == "JIS_RC_10");
+var patron = EstiloDibujo.PorDefecto().Perfil(EstiloDibujo.Muros).Buscar("hatch.ciclopeo")!;
+Vale("un patron con espacios o vacio no sirve", patron.Problema("AR CONC").Length > 0 && patron.Problema("").Length > 0);
+Vale("y uno que no esta en la lista si, si tiene nombre de patron", patron.Problema("MI_PATRON-2").Length == 0);
 Vale("comun: VAR_#5 en 160 y VAR_#6 en 4, como la macro",
     e.ColorDeVarilla("#5") == 160 && e.ColorDeVarilla("#6") == 4 && CapasCad.ColorDeCapa("VAR_#5") == 160);
 Vale("una capa que no es de la macro sigue sin color", CapasCad.ColorDeCapa("OTRA") == CapasCad.SinColor);

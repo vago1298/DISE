@@ -27,7 +27,10 @@ public enum TipoAjuste
     ColorAci,
 
     /// <summary>El bloque de las marcas de cota: <c>_OPEN90</c>, <c>_OBLIQUE</c>…</summary>
-    Marca
+    Marca,
+
+    /// <summary>El nombre de un patrón de hatch de AutoCAD: <c>AR-CONC</c>, <c>ANSI31</c>…</summary>
+    Patron
 }
 
 /// <summary>Un ajuste: su valor y su valor por defecto.</summary>
@@ -88,6 +91,13 @@ public sealed class AjusteEstilo
                 return int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var c) && c >= 0 && c <= 256
                     ? string.Empty
                     : "tiene que ser un color de AutoCAD, de 0 a 256";
+
+            case TipoAjuste.Patron:
+                // El nombre de un patrón del .pat: letras, números, guion y guion bajo. Si el
+                // patrón no existe en el AutoCAD, el dibujante usa el de respaldo y lo avisa.
+                return v.Length > 0 && v.Length <= 40 && v.All(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-')
+                    ? string.Empty
+                    : "tiene que ser el nombre de un patrón de AutoCAD, por ejemplo AR-CONC";
 
             case TipoAjuste.Marca:
                 return EstiloDibujo.Marcas.Any(m => string.Equals(m.Bloque, v, StringComparison.OrdinalIgnoreCase))
@@ -198,6 +208,23 @@ public sealed class EstiloDibujo
     public const string GrupoLetras = "Letras";
     public const string GrupoCotas = "Cotas";
     public const string GrupoColores = "Colores de capa";
+    public const string GrupoHatch = "Hatch: patrón y escala";
+
+    /// <summary>
+    /// Los patrones de hatch de AutoCAD que ofrece la ventana -los de <c>acad.pat</c> y los JIS
+    /// que ya usa el programa-. Se puede escribir cualquier otro que tenga el AutoCAD.
+    /// </summary>
+    public static IReadOnlyList<string> Patrones { get; } = new[]
+    {
+        "AR-CONC", "AR-SAND", "AR-B816", "AR-B816C", "AR-B88", "AR-BRELM", "AR-BRSTD", "AR-HBONE",
+        "AR-PARQ1", "AR-RROOF", "AR-RSHKE", "ANSI31", "ANSI32", "ANSI33", "ANSI34", "ANSI35",
+        "ANSI36", "ANSI37", "ANSI38", "BOX", "BRASS", "BRICK", "BRSTONE", "CLAY", "CORK", "CROSS",
+        "DASH", "DOLMIT", "DOTS", "EARTH", "ESCHER", "FLEX", "GOST_GLASS", "GOST_GROUND",
+        "GOST_WOOD", "GRASS", "GRATE", "GRAVEL", "HEX", "HONEY", "HOUND", "INSUL", "JIS_LC_20",
+        "JIS_LC_8", "JIS_RC_10", "JIS_RC_18", "JIS_RC_30", "JIS_STN_1E", "JIS_WOOD", "LINE",
+        "MUDST", "NET", "NET3", "PLAST", "PLASTI", "SACNCR", "SQUARE", "STARS", "STEEL", "SWAMP",
+        "TRANS", "TRIANG", "ZIGZAG", "SOLID"
+    };
 
     /// <summary>
     /// El estilo con que se dibuja. Lo pone CadLink al arrancar -con lo guardado- y al aceptar la
@@ -286,7 +313,9 @@ public sealed class EstiloDibujo
             .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OPEN90")
             .Con("cota.color.texto", GrupoCotas, "Color del número", TipoAjuste.ColorAci, C(1))
             .Con("cota.color.lineas", GrupoCotas, "Color de las líneas de cota y de extensión", TipoAjuste.ColorAci, C(253))
-            .Con("capa.COTAS", GrupoColores, "Capa COTAS", TipoAjuste.ColorAci, C(253)));
+            .Con("capa.COTAS", GrupoColores, "Capa COTAS", TipoAjuste.ColorAci, C(253))
+            .Con("hatch.concreto", GrupoHatch, "Patrón del concreto (secciones y alzados)", TipoAjuste.Patron, "AR-CONC",
+                "La escala va en la casilla «Escala hatch» de la hoja Secciones Concreto, porque se guarda con cada trabajo."));
 
         // ------------------------------------------------------------------
         // Perfiles de acero: la hoja de acero, con su estilo ACERO.
@@ -298,7 +327,16 @@ public sealed class EstiloDibujo
                 "La altura del rótulo sale del tamaño del perfil; este factor la multiplica: 1.5 = 50 % más grande.")
             .Con("factor.cotas", GrupoCotas, "Tamaño del número y de la marca de las cotas (1 = el de siempre)", TipoAjuste.Medida, N(1),
                 "Salen del peralte del perfil; este factor los multiplica.")
-            .Con("capa.PERFILES", GrupoColores, "Capa PERFILES", TipoAjuste.ColorAci, C(7)));
+            .Con("capa.PERFILES", GrupoColores, "Capa PERFILES", TipoAjuste.ColorAci, C(7))
+            .Con("hatch.laminados", GrupoHatch, "Patrón de los laminados (I, IC, te, canal, ángulo)", TipoAjuste.Patron, "ANSI32")
+            .Con("hatch.laminados.escala", GrupoHatch, "Escala de ese patrón", TipoAjuste.Medida, N(0.0009))
+            .Con("hatch.frio", GrupoHatch, "Patrón de los formados en frío (CF, ZF)", TipoAjuste.Patron, "ANSI31")
+            .Con("hatch.frio.escala", GrupoHatch, "Escala de ese patrón", TipoAjuste.Medida, N(0.0008))
+            .Con("hatch.redondos", GrupoHatch, "Patrón de los redondos (OC, OS)", TipoAjuste.Patron, "ANSI31")
+            .Con("hatch.redondos.escala", GrupoHatch, "Escala de ese patrón", TipoAjuste.Medida, N(0.002))
+            .Con("hatch.tubo", GrupoHatch, "Patrón del tubo rectangular (OR)", TipoAjuste.Patron, "ANSI31")
+            .Con("hatch.tubo.escala.chico", GrupoHatch, "Escala del tubo de menos de 5\"", TipoAjuste.Medida, N(0.001))
+            .Con("hatch.tubo.escala.grande", GrupoHatch, "Escala del tubo de 5\" o más", TipoAjuste.Medida, N(0.002)));
 
         // ------------------------------------------------------------------
         // Zapatas aisladas y corridas: ZapataDrawer.
@@ -324,7 +362,13 @@ public sealed class EstiloDibujo
             .Con("capa.PLANTILLA", GrupoColores, "Capa PLANTILLA", TipoAjuste.ColorAci, C(8))
             .Con("capa.BLOQUE_DADO", GrupoColores, "Capa BLOQUE_DADO", TipoAjuste.ColorAci, C(7))
             .Con("capa.BLOQUE_ZAPATA", GrupoColores, "Capa BLOQUE_ZAPATA", TipoAjuste.ColorAci, C(7))
-            .Con("capa.MURO DE ENRASE", GrupoColores, "Capa MURO DE ENRASE (corridas)", TipoAjuste.ColorAci, C(140)));
+            .Con("capa.MURO DE ENRASE", GrupoColores, "Capa MURO DE ENRASE (corridas)", TipoAjuste.ColorAci, C(140))
+            .Con("hatch.concreto", GrupoHatch, "Patrón del concreto", TipoAjuste.Patron, "AR-CONC")
+            .Con("hatch.concreto.escala", GrupoHatch, "Escala del concreto", TipoAjuste.Medida, N(0.0005))
+            .Con("hatch.concreto.escala.relleno", GrupoHatch, "Escala del concreto con la sección rellena", TipoAjuste.Medida, N(0.0003))
+            .Con("hatch.muro.escala", GrupoHatch, "Escala del concreto del muro de las corridas", TipoAjuste.Medida, N(0.05))
+            .Con("hatch.terreno", GrupoHatch, "Patrón del terreno", TipoAjuste.Patron, "EARTH")
+            .Con("hatch.terreno.escala", GrupoHatch, "Escala del terreno", TipoAjuste.Medida, N(0.01)));
 
         // ------------------------------------------------------------------
         // Muros de contencion: TrazoMuroContencion y ZapataDrawer.Muro. COTA_MC es
@@ -337,7 +381,13 @@ public sealed class EstiloDibujo
             .Con("alto.subtitulo", GrupoLetras, "Altura del subtítulo y las leyendas", TipoAjuste.Medida, N(0.10))
             .Con("cota.alto", GrupoCotas, "Altura del número de las cotas (COTA_MC)", TipoAjuste.Medida, N(0.08))
             .Con("cota.marca.tam", GrupoCotas, "Tamaño de la marca", TipoAjuste.Medida, N(0.025))
-            .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OPEN90"));
+            .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OPEN90")
+            .Con("hatch.concreto", GrupoHatch, "Patrón del concreto armado", TipoAjuste.Patron, "AR-CONC")
+            .Con("hatch.concreto.escala", GrupoHatch, "Escala del concreto armado", TipoAjuste.Medida, N(0.0015))
+            .Con("hatch.ciclopeo", GrupoHatch, "Patrón del concreto ciclópeo", TipoAjuste.Patron, "GRAVEL")
+            .Con("hatch.ciclopeo.escala", GrupoHatch, "Escala del ciclópeo", TipoAjuste.Medida, N(0.017))
+            .Con("hatch.terreno", GrupoHatch, "Patrón del terreno", TipoAjuste.Patron, "EARTH")
+            .Con("hatch.terreno.escala", GrupoHatch, "Escala del terreno", TipoAjuste.Medida, N(0.01)));
 
         // ------------------------------------------------------------------
         // Placa base y simbologia: PlacaBaseDrawer.
@@ -359,7 +409,15 @@ public sealed class EstiloDibujo
             .Con("capa.CARTABONES", GrupoColores, "Capa CARTABONES", TipoAjuste.ColorAci, C(140))
             .Con("capa.SOLDADURA", GrupoColores, "Capa SOLDADURA", TipoAjuste.ColorAci, C(240))
             .Con("capa.SOLDADURA CARTABON", GrupoColores, "Capa SOLDADURA CARTABON", TipoAjuste.ColorAci, C(210))
-            .Con("capa.GROUT", GrupoColores, "Capa GROUT", TipoAjuste.ColorAci, C(30)));
+            .Con("capa.GROUT", GrupoColores, "Capa GROUT", TipoAjuste.ColorAci, C(30))
+            .Con("hatch.dado", GrupoHatch, "Patrón del dado", TipoAjuste.Patron, "AR-CONC")
+            .Con("hatch.dado.escala", GrupoHatch, "Escala del dado", TipoAjuste.Medida, N(0.0002))
+            .Con("hatch.perfil", GrupoHatch, "Patrón del perfil I de la columna", TipoAjuste.Patron, "ANSI32")
+            .Con("hatch.perfil.escala", GrupoHatch, "Escala del perfil", TipoAjuste.Medida, N(0.0009))
+            .Con("hatch.grout", GrupoHatch, "Patrón del grout", TipoAjuste.Patron, "ANSI31")
+            .Con("hatch.grout.escala", GrupoHatch, "Escala del grout", TipoAjuste.Medida, N(0.0006))
+            .Con("hatch.soldadura", GrupoHatch, "Patrón de la soldadura", TipoAjuste.Patron, "JIS_RC_10")
+            .Con("hatch.soldadura.escala", GrupoHatch, "Escala de la soldadura", TipoAjuste.Medida, N(0.0005)));
 
         // ------------------------------------------------------------------
         // Planta estructural: PlantaDrawer. Las claves SON los parametros de su hoja CONFIG
@@ -403,7 +461,15 @@ public sealed class EstiloDibujo
             .Con("COLOR_EJES", GrupoColores, "Líneas de eje", TipoAjuste.ColorAci, "8")
             .Con("COLOR_BURBUJA_EJES", GrupoColores, "Círculos de los ejes", TipoAjuste.ColorAci, "4")
             .Con("COLOR_EJES_TEXTO", GrupoColores, "Números de los ejes", TipoAjuste.ColorAci, "6")
-            .Con("COLOR_TITULO", GrupoColores, "Capa E-TITULO (0 = negro real)", TipoAjuste.ColorAci, "7"));
+            .Con("COLOR_TITULO", GrupoColores, "Capa E-TITULO (0 = negro real)", TipoAjuste.ColorAci, "7")
+            .Con("LOSA_HATCH_PATRON", GrupoHatch, "Patrón de la losa", TipoAjuste.Patron, "ANSI37")
+            .Con("LOSA_HATCH_ESCALA", GrupoHatch, "Escala de la losa", TipoAjuste.Medida, "0.0475")
+            .Con("LOSACERO_HATCH_PATRON", GrupoHatch, "Patrón de la losacero", TipoAjuste.Patron, "FLEX")
+            .Con("LOSACERO_HATCH_ESCALA", GrupoHatch, "Escala de la losacero", TipoAjuste.Medida, "0.02")
+            .Con("CORTE_HATCH_TABIQUE", GrupoHatch, "Patrón del tabique en el corte", TipoAjuste.Patron, "AR-BRSTD")
+            .Con("CORTE_HATCH_TABIQUE_ESCALA", GrupoHatch, "Escala del tabique", TipoAjuste.Medida, "0.0010")
+            .Con("CORTE_HATCH_TABICON", GrupoHatch, "Patrón del tabicón en el corte", TipoAjuste.Patron, "AR-B816")
+            .Con("CORTE_HATCH_TABICON_ESCALA", GrupoHatch, "Escala del tabicón", TipoAjuste.Medida, "0.0005"));
 
         return e;
     }
