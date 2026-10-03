@@ -112,6 +112,12 @@ public sealed class BarraJson
     public int PuntoCardinal { get; set; } = Insercion.Centroide;
 
     public SeccionJson Seccion { get; set; } = new();
+
+    /// <summary>
+    /// Su armado, si CadLink encontro en su tabla la fila que lo arma. Nulo si no: la pieza se
+    /// modela igual y simplemente se queda sin varillas. Ver <see cref="ArmadoBarraJson"/>.
+    /// </summary>
+    public ArmadoBarraJson? Armado { get; set; }
 }
 
 /// <summary>Un pano: muro o losa. Un poligono con espesor.</summary>
@@ -156,8 +162,10 @@ public sealed class ModeloJson
     /// cuadricula queda nula y el complemento no crea ejes, que es exactamente lo que hacia.
     /// La 3 anade <see cref="BarraJson.PuntoCardinal"/>; en un archivo viejo queda en el
     /// centroide, que es el de omision de ETABS.
+    /// La 4 anade el ARMADO: <see cref="Armados"/> y <see cref="BarraJson.Armado"/>. Un archivo
+    /// de la 3 se sigue leyendo y sus piezas quedan sin armado.
     /// </remarks>
-    public const int VersionActual = 3;
+    public const int VersionActual = 4;
 
     public int Version { get; set; } = VersionActual;
 
@@ -189,6 +197,9 @@ public sealed class ModeloJson
     /// Revit tiene que poder enterarse sin volver a CadLink.
     /// </remarks>
     public List<string> Avisos { get; set; } = new();
+
+    /// <summary>El armado de cada fila de la tabla de secciones de CadLink que se uso.</summary>
+    public List<ArmadoJson> Armados { get; set; } = new();
 
     public int Piezas => Barras.Count + Panos.Count;
 }
@@ -266,6 +277,7 @@ public static class ArchivoModelo
         m.Barras ??= new List<BarraJson>();
         m.Panos ??= new List<PanoJson>();
         m.Avisos ??= new List<string>();
+        m.Armados ??= new List<ArmadoJson>();
 
         // La cuadricula puede no venir -un archivo de la version 1 no la trae- y sus listas
         // pueden llegar nulas por lo mismo que las de arriba.

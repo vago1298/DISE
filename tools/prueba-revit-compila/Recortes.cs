@@ -117,6 +117,26 @@ public sealed class LocationCurve : Location
     public Curve Curve { get; set; } = new Line();
 }
 
+/// <summary>
+/// La ubicacion de una columna colocada por punto. Revit API 2025/2026: LocationPoint.Point.
+/// La usa el armado para el centro de la columna.
+/// </summary>
+public sealed class LocationPoint : Location
+{
+    public XYZ Point => new(0, 0, 0);
+}
+
+/// <summary>
+/// La caja de un elemento. Revit API 2025/2026: Element.get_BoundingBox(View) devuelve un
+/// BoundingBoxXYZ con Min y Max en coordenadas del modelo cuando la vista es null.
+/// </summary>
+public sealed class BoundingBoxXYZ
+{
+    public XYZ Min { get; set; } = new(0, 0, 0);
+
+    public XYZ Max { get; set; } = new(0, 0, 0);
+}
+
 public abstract class Element
 {
     public ElementId Id => new(0);
@@ -128,6 +148,9 @@ public abstract class Element
     public Parameter? get_Parameter(BuiltInParameter p) => new();
 
     public Parameter? LookupParameter(string nombre) => new();
+
+    /// <summary>Revit API 2025/2026: Element.get_BoundingBox(View); con null, la del modelo.</summary>
+    public BoundingBoxXYZ? get_BoundingBox(View? vista) => new();
 
     public ElementId GetTypeId() => new(0);
 
@@ -163,7 +186,16 @@ public sealed class FamilySymbol : ElementType
     public Structure.StructuralSection? GetStructuralSection() => null;
 }
 
-public sealed class FamilyInstance : Element { }
+/// <summary>
+/// Revit API 2025/2026: FamilyInstance.HandOrientation y FacingOrientation son las direcciones
+/// X e Y de la familia colocada. El armado las usa para los lados de la columna.
+/// </summary>
+public sealed class FamilyInstance : Element
+{
+    public XYZ HandOrientation => new(1, 0, 0);
+
+    public XYZ FacingOrientation => new(0, 1, 0);
+}
 
 public enum WallKind { Basic, Curtain, Stacked, Unknown }
 
@@ -221,6 +253,9 @@ public sealed class Document
     public Element? GetElement(ElementId id) => null;
 
     public void Regenerate() { }
+
+    /// <summary>Revit API 2025/2026: Document.Delete(ICollection&lt;ElementId&gt;).</summary>
+    public ICollection<ElementId> Delete(ICollection<ElementId> ids) => ids;
 }
 
 public sealed class Creation

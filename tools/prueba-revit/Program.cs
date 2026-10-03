@@ -217,6 +217,7 @@ internal static partial class Programa
         MuroAlPanoDeLoModelado();
         NombresBonitosDeNivel();
         MallaDeEjes();
+        Armado();
 
         Console.WriteLine();
         Console.WriteLine("============================================================");
@@ -2150,5 +2151,129 @@ internal static partial class Programa
 
         Casi("sin muro, el paño lo marca la trabe",
             conT.X.First(e => e.Id == "1").Ordenada, -0.15, 1e-9);
+    }
+
+    // ==================================================================
+    //  [13] El armado: de la tabla de CadLink a varillas de Revit
+    // ==================================================================
+    private static void Armado()
+    {
+        Console.WriteLine();
+        Console.WriteLine("[13] El armado: de la tabla de CadLink a varillas de Revit");
+
+        var t01 = new ArmadoJson
+        {
+            Id = "T-01", Tipo = "Trabe", BaseCm = 20, AlturaCm = 40, RecubrimientoCm = 2.5,
+            ClaveEstribo = "#3", DiamEstriboCm = 0.95
+        };
+        t01.Varillas.Add(new VarillaJson { Clave = "#5", DiamCm = 1.59, XCm = 4.25, YCm = 35.75, Lecho = "Superior" });
+        t01.Varillas.Add(new VarillaJson { Clave = "#5", DiamCm = 1.59, XCm = 15.75, YCm = 4.25, Lecho = "Inferior" });
+        t01.Varillas.Add(new VarillaJson { Clave = "#3", DiamCm = 0.95, XCm = 4.0, YCm = 20, Lecho = "Lateral" });
+
+        var c01 = new ArmadoJson { Id = "C-01", Tipo = "Columna", BaseCm = 40, AlturaCm = 40, RecubrimientoCm = 3 };
+        var t02 = new ArmadoJson { Id = "T-02", Tipo = "Trabe", BaseCm = 30, AlturaCm = 60 };
+        var t03 = new ArmadoJson { Id = "T-03", Tipo = "Trabe", BaseCm = 30, AlturaCm = 60 };
+        var armados = new List<ArmadoJson> { t01, c01, t02, t03 };
+
+        // ---------- Emparejar la seccion de ETABS con la fila ----------
+        var porNombre = EmparejarArmado.Buscar("t 01", ClasePieza.Trabe, 0.2, 0.4, armados);
+        Check("por nombre, sin mayusculas, espacios ni guiones", porNombre.Armado == t01 && porNombre.Por == "nombre");
+
+        var porMedidas = EmparejarArmado.Buscar("V20X40", ClasePieza.Trabe, 0.2, 0.4, armados);
+        Check("si no hay nombre, la unica fila con sus medidas", porMedidas.Armado == t01 && porMedidas.Por == "medidas");
+
+        var ambigua = EmparejarArmado.Buscar("V30X60", ClasePieza.Trabe, 0.3, 0.6, armados);
+        Check("dos filas con las mismas medidas: no se elige ninguna, y se dice cuales",
+            ambigua.Armado is null && ambigua.Motivo.Contains("T-02") && ambigua.Motivo.Contains("T-03"));
+
+        Check("una columna no se arma con una fila de trabe",
+            EmparejarArmado.Buscar("T-01", ClasePieza.Columna, 0.2, 0.4, armados).Armado is null);
+
+        Check("ni una losa con nada",
+            EmparejarArmado.Buscar("T-01", ClasePieza.Losa, 0.2, 0.4, armados).Armado is null);
+
+        // ---------- Los estribos en juegos ----------
+        var juegos = PlanDeArmado.Juegos(new[] { 0.05, 0.10, 0.15, 0.20, 0.40, 0.60, 0.65, 0.70 });
+        Igual("tres juegos: 5 cm, 20 cm, 5 cm", juegos.Count, 3);
+        Check("el primero, de 4 a 5 cm", juegos[0].Cuenta == 4 && Math.Abs(juegos[0].PasoM - 0.05) < 1e-9);
+        Check("el de en medio, de 20 cm; la frontera no se duplica",
+            juegos[1].Cuenta == 2 && Math.Abs(juegos[1].InicioM - 0.40) < 1e-9 && Math.Abs(juegos[1].PasoM - 0.20) < 1e-9);
+        Check("y el ultimo juego cierra en el ultimo estribo", juegos[2].Cuenta == 2 && Math.Abs(juegos[2].InicioM - 0.65) < 1e-9);
+        Igual("un estribo solo es un juego de uno", PlanDeArmado.Juegos(new[] { 1.0 }).Single().Cuenta, 1);
+        Igual("sin estribos no hay juegos", PlanDeArmado.Juegos(Array.Empty<double>()).Count, 0);
+        Igual("los centros desordenados se ordenan", PlanDeArmado.Juegos(new[] { 0.2, 0.1, 0.3 }).Single().Cuenta, 3);
+
+        // ---------- El marco de una trabe y sus varillas ----------
+        var marco = MarcoPieza.DeTrabe(new V3(0, 0, 3), new V3(6, 0, 3), 2.6, 20);
+        Casi("la trabe mide 6 m", marco.LargoM, 6);
+        Casi("su seccion se centra en la linea", marco.En(10, 0, 0).Y, 0, 1e-12);
+        Casi("y se apoya en la cara de abajo", marco.En(0, 0, 0).Z, 2.6, 1e-12);
+
+        var ab = new ArmadoBarraJson { Id = "T-01", LargoM = 6, EstribosM = new List<double> { 0.05, 0.10, 0.15, 3.0 } };
+        ab.Bastones.Add(new TramoBastonJson
+        {
+            Clave = "#4", DiamCm = 1.27, Lecho = "Superior", XsCm = new List<double> { 4, 16 }, YCm = 33,
+            IniM = 0.05, FinM = 1.55, GanchoIni = true, GanchoFin = true
+        });
+
+        var v = PlanDeArmado.Armar(t01, ab, marco);
+        var corridas = v.Where(x => x.Que == "corrida").ToList();
+
+        Igual("dos corridas", corridas.Count, 2);
+        Casi("la corrida va de recubrimiento a recubrimiento", corridas[0].Puntos[0].X, 0.025, 1e-12);
+        Casi("hasta el otro extremo", corridas[0].Puntos[1].X, 5.975, 1e-12);
+        Check("las corridas de la trabe llevan gancho de 90 en las dos puntas",
+            corridas.All(c => c.GanchoIni == GanchoVarilla.De90 && c.GanchoFin == GanchoVarilla.De90));
+        Check("la lateral va recta", v.Single(x => x.Que == "lateral").GanchoIni == GanchoVarilla.Ninguno);
+
+        // El gancho dobla HACIA DENTRO: arriba hacia abajo, abajo hacia arriba. Deben quedar en
+        // lados opuestos, porque la normal y la direccion son las mismas.
+        Check("los ganchos de arriba y de abajo doblan hacia lados opuestos",
+            corridas[0].LadoIni != corridas[1].LadoIni);
+
+        var bast = v.Where(x => x.Que == "baston").ToList();
+        Igual("un baston de dos varillas son dos varillas", bast.Count, 2);
+        Check("con su tramo y sus ganchos", Math.Abs(bast[0].Puntos[0].X - 0.05) < 1e-12
+            && Math.Abs(bast[0].Puntos[1].X - 1.55) < 1e-12 && bast[0].GanchoFin == GanchoVarilla.De90);
+        Check("y doblan hacia el mismo lado que la corrida de su lecho", bast[0].LadoIni == corridas[0].LadoIni);
+
+        var est = v.Where(x => x.Que == "estribo").ToList();
+        Igual("los cuatro estribos son dos juegos", est.Count, 2);
+        Check("el primer juego lleva los tres de 5 cm", est[0].Cuenta == 3 && Math.Abs(est[0].PasoM - 0.05) < 1e-9);
+        Igual("el estribo es una vuelta cerrada de cuatro lados", est[0].Puntos.Count, 5);
+        Check("que arranca y acaba en la misma esquina", est[0].Puntos[0] == est[0].Puntos[4]);
+        Casi("por el eje del alambre: medio diametro por dentro del recubrimiento",
+            est[0].Puntos[0].Z, 2.6 + ((40 - 2.5 - 0.475) / 100), 1e-12);
+        Check("con sus dos ganchos de 135, hacia el mismo lado",
+            est[0].GanchoIni == GanchoVarilla.De135 && est[0].LadoIni == est[0].LadoFin);
+        Check("y su normal es el eje de la pieza, hacia donde se reparte",
+            Math.Abs(est[0].Normal.X - 1) < 1e-12);
+
+        // ---------- El lado del gancho ----------
+        var arriba = new V3(0, 0, 1);
+        Check("el lado es izquierda o derecha segun la normal",
+            PlanDeArmado.Lado(new V3(0, 1, 0), new V3(1, 0, 0), arriba * -1)
+            != PlanDeArmado.Lado(new V3(0, 1, 0), new V3(1, 0, 0), arriba));
+
+        // ---------- Una columna ----------
+        var col = MarcoPieza.DeColumna(new V3(5, 5, 0), new V3(1, 0, 0), new V3(0, 1, 0), 0, 3, 40, 40);
+        Casi("la columna mide su altura", col.LargoM, 3);
+        Casi("y su esquina queda a medio lado del centro", col.Origen.X, 4.8, 1e-12);
+        c01.Varillas.Add(new VarillaJson { Clave = "#6", DiamCm = 1.9, XCm = 5, YCm = 5, Lecho = "Superior" });
+        var vc = PlanDeArmado.Armar(c01, new ArmadoBarraJson(), col);
+        Check("en la columna las varillas van rectas y verticales",
+            vc.Single().GanchoIni == GanchoVarilla.Ninguno && Math.Abs(vc.Single().Puntos[1].Z - 2.97) < 1e-12);
+
+        // ---------- El archivo ----------
+        var m = new ModeloJson();
+        m.Barras.Add(new BarraJson { Etiqueta = "B1", Clase = ClasePieza.Trabe, Armado = ab });
+        m.Armados.Add(t01);
+        var vuelta = ArchivoModelo.DeTexto(ArchivoModelo.ATexto(m));
+        Igual("el archivo es de la version 4", vuelta.Version, 4);
+        Check("y el armado sobrevive al ida y vuelta",
+            vuelta.Armados.Single().Varillas.Count == 3
+            && vuelta.Barras.Single().Armado!.Bastones.Single().XsCm.Count == 2);
+        Check("un archivo de la 3, sin armado, se sigue leyendo",
+            ArchivoModelo.DeTexto("{\"Version\":3,\"Barras\":[{\"Etiqueta\":\"B1\"}]}").Barras.Single().Armado is null);
     }
 }

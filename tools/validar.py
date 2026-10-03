@@ -16058,8 +16058,12 @@ def v26_plugin_revit() -> None:
     check("la exportacion lo manda",
           "PuntoCardinal = el.PuntoCardinal" in parcial)
 
+    #  La 3 trajo el punto cardinal; despues puede seguir subiendo (la 4 trae el armado), pero
+    #  nunca bajar de 3.
+    m_ver = re.search(r"VersionActual = (\d+);",
+                      leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
     check("la version del formato subio al anadirlo",
-          "VersionActual = 3" in leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs")))
+          m_ver is not None and int(m_ver.group(1)) >= 3)
 
     check("el modelador justifica segun el punto cardinal, no a mano",
           "JustificarComoEnEtabs(" in modelador
@@ -16345,7 +16349,10 @@ def v26_plugin_revit() -> None:
                     and os.sep + "CadLink.Revit.Nucleo" + os.sep not in p):
                 txt = leer(p)
 
-                if "using System.Windows" in txt or "partial class VentanaMapeo" in txt:
+                # Microsoft.Win32.OpenFileDialog es de WPF -PresentationFramework-, igual que
+                # System.Windows: los comandos que piden un archivo tampoco compilan aqui.
+                if ("using System.Windows" in txt or "using Microsoft.Win32" in txt
+                        or "partial class VentanaMapeo" in txt):
                     conWpf.add(os.path.basename(p))
 
         deberian = sorted(delComplemento - conWpf)
@@ -16371,6 +16378,46 @@ def v26_plugin_revit() -> None:
               "<TargetFramework>net8.0</TargetFramework>" in leer(pp))
         check("y solo referencia el nucleo",
               "CadLink.Revit.Nucleo" in leer(pp) and "CadLink.Revit\\" not in leer(pp))
+
+    # ------------------------------------------------------------------
+    # EL ARMADO EN REVIT, FASE 1
+    # ------------------------------------------------------------------
+    #  Pedido del usuario: que el complemento ponga el armado nativo -Rebar- en las trabes y
+    #  columnas, con el armado de la tabla de secciones de CadLink. Las reglas NO se repiten
+    #  en Revit: CadLink resuelve las posiciones, los estribos y los bastones con las MISMAS
+    #  funciones del dibujo, y el complemento solo coloca.
+    arm_json = leer(ruta("client/src/CadLink.Revit.Nucleo/ArmadoJson.cs"))
+    arm_plan = leer(ruta("client/src/CadLink.Revit.Nucleo/PlanDeArmado.cs"))
+    arm_rev = leer(ruta("client/src/CadLink.Revit/Armador.cs"))
+    arm_app = leer(ruta("client/src/CadLink.App/MainWindow.ArmadoRevit.cs"))
+    modelo_j = leer(ruta("client/src/CadLink.Revit.Nucleo/ModeloJson.cs"))
+    check("el archivo de intercambio trae el armado, en la version 4",
+          "public List<ArmadoJson> Armados" in modelo_j
+          and "public ArmadoBarraJson? Armado" in modelo_j
+          and "VersionActual = 4;" in modelo_j)
+    check("la fila se empareja por nombre y, si no, por la UNICA con sus medidas",
+          "public static Resultado Buscar(" in arm_json and "porMedidas.Count == 1" in arm_json)
+    check("CadLink resuelve el armado con las mismas funciones del dibujo",
+          "TodasLasVarillas(s, de, rec)" in arm_app
+          and "Estribos.CentrosDeAlzado(" in arm_app
+          and "CadLink.Cad.Bastones.Tramos(bas, largoM, margen)" in arm_app
+          and "CamaDeBaston(s, bas, de, rec)" in arm_app)
+    check("y lo escribe al exportar a Revit",
+          "var armadas = AgregarArmado(paraRevit);" in leer(ruta("client/src/CadLink.App/MainWindow.Ifc.cs")))
+    check("la geometria del armado vive en el nucleo, sin Revit",
+          "public static List<VarillaArmada> Armar(" in arm_plan
+          and "public static List<JuegoDeEstribos> Juegos(" in arm_plan
+          and "Autodesk" not in arm_plan)
+    check("los estribos van en juegos de separacion constante, no sueltos",
+          "SetLayoutAsNumberWithSpacing(" in arm_rev)
+    check("el armado de CadLink se marca y se rehace, no se duplica",
+          'MarcaArmado = Llave.Prefijo + "|Armado|"' in arm_rev and "doc.Delete(ids);" in arm_rev)
+    check("solo arma lo que Revit acepta como anfitrion",
+          "RebarHostData.GetRebarHostData(inst)" in arm_rev and "IsValidHost()" in arm_rev)
+    check("hay boton Armar en la cinta",
+          "typeof(ComandoArmar).FullName" in leer(ruta("client/src/CadLink.Revit/Aplicacion.cs")))
+    check("el arnes compila el armador",
+          "CadLink.Revit\\Armador.cs" in leer(ruta("tools/prueba-revit-compila/Prueba.csproj")))
 
 
 if __name__ == "__main__":

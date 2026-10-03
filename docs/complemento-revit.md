@@ -301,6 +301,74 @@ pieza que "sobra" puede ser una que alguien renombró.
 
 ---
 
+## El armado (fase 1)
+
+El botón **CadLink → Armar** pone **varillas nativas de Revit** (`Rebar`) en las trabes y
+columnas que ya importó *Importar modelo*.
+
+### Cómo se usa
+
+1. En CadLink, llena la tabla de secciones de concreto y exporta con **Exportar a Revit
+   (IFC)**. El armado viaja en el mismo `.cadlink-modelo.json` (versión 4).
+2. En Revit: **Importar modelo**, si aún no están las piezas, y luego **Armar**, con el mismo
+   archivo.
+
+### Qué fila arma cada pieza
+
+La sección de ETABS se empareja con la fila de la tabla:
+
+1. **Por nombre**: la sección se llama como el ID de la fila, sin distinguir mayúsculas,
+   espacios, guiones ni puntos (`T 01` = `T-01`).
+2. **Por medidas**: si no, la **única** fila del mismo tipo con la misma base y peralte.
+   Si hay dos, no se elige ninguna y se avisa: dos trabes de 30×60 con distinto armado no se
+   distinguen por sus medidas.
+
+Lo que no tiene fila se modela igual y se queda sin varillas; el informe lo dice por sección.
+
+### Qué se arma
+
+| | Trabe y contratrabe | Columna y dado |
+|---|---|---|
+| Corridas de arriba y abajo | Con gancho de 90° (12 db) en las dos puntas, hacia dentro | Rectas |
+| Laterales | Rectas | Rectas |
+| Bastones | Con su longitud real, su lecho y sus ganchos de 12 db | — |
+| Estribos | Por zonas, en juegos de separación constante, gancho de 135° | Igual |
+
+Las posiciones, los estribos y los tramos de los bastones **los calcula CadLink** con las
+mismas funciones del dibujo de AutoCAD. Revit no vuelve a decidir nada. Si se cambia una regla
+en CadLink, cambia en los dos sitios.
+
+Los ganchos son tipos propios, `CadLink - 90° (12 db)` y `CadLink - 135° estribo (6 db)`, para
+que midan lo del plano aunque la plantilla traiga otros. Los tipos de varilla se buscan por
+nombre (`#4`) o por diámetro; si faltan, se crean, y el informe lo dice.
+
+**Volver a armar rehace** el armado de CadLink de cada pieza (marca `CadLink|Armado|…` en
+*Comentarios*). El armado puesto a mano no se toca. Todo va en una transacción: un Ctrl+Z.
+
+### Límites de la fase 1
+
+- Solo trabes **horizontales** y columnas **verticales**; las inclinadas se saltan y se avisa.
+- Solo secciones **rectangulares**. Sin grapas, estribo diamante ni zuncho.
+- Las varillas van de recubrimiento a recubrimiento de la línea de la pieza; no se calculan
+  anclajes ni traslapes en los nudos.
+- La pieza tiene que ser de **concreto**: Revit no arma otro material, y se avisa.
+
+### Sin probar, y qué revisar primero
+
+**Nada del armado se ha ejecutado en Revit.** La lógica tiene 38 comprobaciones en
+`tools/prueba-revit` y la capa de Revit compila contra `tools/prueba-revit-compila`, pero los
+recortes de la API de armado (`Recortes.Armado.cs`) salen de la documentación, no de la DLL.
+
+En la primera prueba:
+
+1. **Que compile**: si falla, la firma que no cuadra estará en `Recortes.Armado.cs`.
+2. **Hacia dónde doblan los ganchos.** Es la suposición más delicada. Si salen hacia fuera de
+   la pieza, se invierte **una línea**: `PlanDeArmado.Lado`.
+3. **Que la columna no salga girada**: su base va por la `HandOrientation` de la familia.
+4. **La cara de abajo de la trabe**: se toma de la caja del elemento.
+
+---
+
 ## Cómo está construido, y por qué
 
 El complemento es el único proyecto de este repositorio que **no se puede compilar sin Revit

@@ -77,6 +77,33 @@ public sealed class Aplicacion : IExternalApplication
         boton.Image = Imagen("CadLink.Revit.importar-16.png");
 
         panel.AddItem(boton);
+
+        // ---- El armado ----
+        //
+        // Un boton aparte para poder REHACER el armado -despues de cambiar una seccion en
+        // CadLink- sin volver a pasar por el cuadro de mapeo. Lleva por ahora el icono del de
+        // importar.
+        var armar = new PushButtonData(
+            "CadLinkArmar",
+            "Armar",
+            dll,
+            typeof(ComandoArmar).FullName)
+        {
+            ToolTip = "Pone el armado de CadLink -varillas, bastones y estribos- en las trabes y "
+                      + "columnas ya modeladas.",
+
+            LongDescription =
+                "Lee el mismo archivo .cadlink-modelo.json, que trae el armado de la tabla de "
+                + "secciones de concreto, y crea varillas nativas de Revit en cada pieza que "
+                + "importo CadLink: corridas y laterales con sus ganchos, bastones con su "
+                + "longitud real y estribos por zonas.\n\n"
+                + "Volver a armar rehace el armado de CadLink; el puesto a mano no se toca."
+        };
+
+        armar.LargeImage = Imagen("CadLink.Revit.importar-32.png");
+        armar.Image = Imagen("CadLink.Revit.importar-16.png");
+
+        panel.AddItem(armar);
     }
 
     /// <summary>Carga un icono embebido en esta DLL.</summary>

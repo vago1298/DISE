@@ -78,10 +78,19 @@ public partial class MainWindow : Window
             //                con cada seccion y crea columnas, trabes, muros y losas
             //                NATIVOS de Revit.
             var paraPlugin = Path.ChangeExtension(dialogo.FileName, null) + ArchivoModelo.Extension;
-            ArchivoModelo.Guardar(AModeloJson(_modeloEtabs, obra), paraPlugin);
+            //
+            // Desde la version 4 lleva tambien el ARMADO de la tabla de secciones de concreto,
+            // para el boton «Armar» del complemento. Ver MainWindow.ArmadoRevit.cs.
+            var paraRevit = AModeloJson(_modeloEtabs, obra);
+            var armadas = AgregarArmado(paraRevit);
+            ArchivoModelo.Guardar(paraRevit, paraPlugin);
 
             EtabsStatusText.Text =
-                TextoDelResumen(r, dialogo.FileName, tabla, cuantas, paraPlugin);
+                TextoDelResumen(r, dialogo.FileName, tabla, cuantas, paraPlugin)
+                + Environment.NewLine
+                + (armadas > 0
+                    ? $"Armado para Revit: {armadas} trabe(s) y columna(s) con su fila de la tabla de secciones."
+                    : "Sin armado para Revit: ninguna seccion del modelo tiene fila en la tabla de secciones.");
             StatusText.Text =
                 $"IFC exportado: {r.Total} pieza(s) en {Path.GetFileName(dialogo.FileName)}.";
         }
