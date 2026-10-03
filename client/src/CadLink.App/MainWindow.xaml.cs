@@ -6349,6 +6349,28 @@ public partial class MainWindow : Window
             var anchoGanchoInf = Math.Max(dInfCm / 100.0 * esc, 1.4);
             var holguraPx = Math.Max(0.015 * esc, 2);
 
+            // Dónde va cada uno ANTES de dibujar: el gancho de uno se topa contra los otros,
+            // con la misma regla que AutoCAD (Bastones.LibreParaGancho). El lienzo crece
+            // hacia ABAJO.
+            double YDe(PosicionBaston pos, double dPx) => pos switch
+            {
+                PosicionBaston.Superior => caraSup + sepCama + (dPx / 2),
+                PosicionBaston.Inferior => caraInf - sepCama - (dPx / 2),
+                _ => CadLink.Cad.Bastones.YMedio(caraInf, caraSup, a.NLateral)
+            };
+
+            var puestos = new Dictionary<PosicionBaston, (BastonCad B, double Y, double D)>();
+            foreach (var bp in a.Bastones)
+            {
+                if (!puestos.ContainsKey(bp.Posicion) && CadLink.Cad.Bastones.Tramos(bp, largo).Count > 0)
+                {
+                    var dPx = bp.Var.Cm / 100.0 * esc;
+                    puestos[bp.Posicion] = (bp, YDe(bp.Posicion, dPx), dPx);
+                }
+            }
+
+            var holguraGancho = 0.01 * esc;
+
             for (var iB = 0; iB < a.Bastones.Count; iB++)
             {
                 var b = a.Bastones[iB];
@@ -6360,22 +6382,38 @@ public partial class MainWindow : Window
                 }
 
                 var dB = b.Var.Cm / 100.0 * esc;
-
-                // El lienzo crece hacia ABAJO.
-                var yB = b.Posicion switch
-                {
-                    PosicionBaston.Superior => caraSup + sepCama + (dB / 2),
-                    PosicionBaston.Inferior => caraInf - sepCama - (dB / 2),
-                    _ => CadLink.Cad.Bastones.YMedio(caraInf, caraSup, a.NLateral)
-                };
-
+                var yB = YDe(b.Posicion, dB);
                 var arriba = b.Posicion == PosicionBaston.Superior;
-                var disponibleM = b.Posicion switch
+
+                // Lo que puede bajar (o subir) el gancho en la punta xG, en metros.
+                double DisponibleEn(double xGm)
                 {
-                    PosicionBaston.Superior => (caraInf - yB - (dB / 2)) / esc,
-                    PosicionBaston.Inferior => (yB - (dB / 2) - caraSup) / esc,
-                    _ => 0
-                };
+                    if (b.Posicion == PosicionBaston.Medio)
+                    {
+                        return 0;
+                    }
+
+                    var cara = arriba ? yB + (dB / 2) : yB - (dB / 2);
+
+                    double? Hasta(PosicionBaston otra)
+                    {
+                        if (!puestos.TryGetValue(otra, out var o)
+                            || !CadLink.Cad.Bastones.PasaPor(o.B, largo, xGm, (dB / esc) + 0.015))
+                        {
+                            return null;
+                        }
+
+                        return arriba ? (o.Y - (o.D / 2)) - cara : cara - (o.Y + (o.D / 2));
+                    }
+
+                    var libre = CadLink.Cad.Bastones.LibreParaGancho(
+                        arriba ? caraInf - cara : cara - caraSup,
+                        Hasta(PosicionBaston.Medio),
+                        Hasta(arriba ? PosicionBaston.Inferior : PosicionBaston.Superior),
+                        holguraGancho);
+
+                    return libre / esc;
+                }
 
                 // Lo que ocupa el gancho de la corrida que tiene al lado. El de en medio esquiva
                 // los dos, como las intermedias.
@@ -6404,6 +6442,9 @@ public partial class MainWindow : Window
 
                     // Su caja, para que un clic encima lo quite.
                     _bastonesEnPrevia.Add((new Rect(xIni, yB - 5, xFin - xIni, 10), iB));
+
+                    var disponibleM = DisponibleEn(
+                        ((t.GanchoIzq ? xIni : xFin) - izquierda) / esc);
 
                     BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
                         xDesde: xIni, xHasta: xFin,

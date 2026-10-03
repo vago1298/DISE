@@ -2702,10 +2702,16 @@ def v16_extruida_piers() -> None:
     check("y la vista previa tambien",
           "BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM," in mw_alz)
     check("el doblez del baston va por dentro del de la corrida",
-          "LimitesDelBaston(b.Posicion, rec, largo," in alz_drw
+          "LimitesDelBaston(pos, rec, largo," in alz_drw
           and "rec + esquiva" in mw_alz)
     check("las cotas de los bastones van arriba del alzado, y la vista previa las acota",
           "var yDim = y1 + off;" in alz_drw and "CotaDeBastonPrevia(" in mw_alz)
+    check("los ganchos de los bastones no chocan entre si, ni con el de en medio",
+          "public static double LibreParaGancho(" in bast
+          and alz_drw.count("Bastones.LibreParaGancho(") == 1
+          and mw_alz.count("CadLink.Cad.Bastones.LibreParaGancho(") == 1)
+    check("el de en medio baja, no sube, cuando cae en una intermedia",
+          "medio -= (yTop - yBot) / (nIntermedias + 1) / 2;" in bast)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)

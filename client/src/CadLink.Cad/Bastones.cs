@@ -86,7 +86,8 @@ public static class Bastones
     /// </summary>
     /// <remarks>
     /// A media altura, salvo que haya un número <b>impar</b> de intermedias: entonces una
-    /// de ellas cae justo ahí, y el bastón sube medio paso para no quedar encima de ella.
+    /// de ellas cae justo ahí, y el bastón <b>baja</b> medio paso para no quedar encima de
+    /// ella. Baja y no sube: lo pidió el usuario, el de en medio va en la parte de abajo.
     /// Es la misma cuenta en el alzado y en el corte.
     /// </remarks>
     public static double YMedio(double yBot, double yTop, int nIntermedias)
@@ -95,11 +96,50 @@ public static class Bastones
 
         if (nIntermedias > 0 && nIntermedias % 2 == 1)
         {
-            medio += (yTop - yBot) / (nIntermedias + 1) / 2;
+            medio -= (yTop - yBot) / (nIntermedias + 1) / 2;
         }
 
         return medio;
     }
+
+    /// <summary>
+    /// Lo que puede medir el gancho de un bastón de arriba o de abajo <b>sin chocar</b> con
+    /// otro bastón: todas las medidas son huecos libres, hacia dentro de la pieza, desde la
+    /// cara del bastón.
+    /// </summary>
+    /// <param name="hastaLechoOpuesto">Hasta la cara de la corrida del otro lecho.</param>
+    /// <param name="hastaMedio">Hasta el bastón de en medio, si lo hay en esa punta.</param>
+    /// <param name="hastaBastonOpuesto">
+    /// Hasta el bastón del otro lecho, si lo hay en esa punta. Su gancho viene de frente,
+    /// así que el hueco se reparte a medias.
+    /// </param>
+    /// <param name="holgura">Lo que se deja libre entre la punta y lo que tiene enfrente.</param>
+    public static double LibreParaGancho(
+        double hastaLechoOpuesto, double? hastaMedio, double? hastaBastonOpuesto, double holgura)
+    {
+        var libre = hastaLechoOpuesto;
+
+        if (hastaBastonOpuesto is double o)
+        {
+            libre = Math.Min(libre, (o - holgura) / 2);
+        }
+
+        if (hastaMedio is double m)
+        {
+            libre = Math.Min(libre, m - holgura);
+        }
+
+        return Math.Max(0, libre);
+    }
+
+    /// <summary>
+    /// ¿Llega el bastón a la punta izquierda (o derecha) de la pieza, donde está el gancho
+    /// de otro? Hace falta para que solo se tope el gancho contra lo que de verdad pasa por
+    /// ahí: un bastón de centro que empieza a L/4 no estorba al gancho del paño.
+    /// </summary>
+    /// <param name="xGancho">La X del gancho, en metros desde el paño izquierdo.</param>
+    public static bool PasaPor(BastonCad b, double largo, double xGancho, double margen) =>
+        Tramos(b, largo).Any(t => t.Ini <= xGancho + margen && t.Fin >= xGancho - margen);
 
     /// <summary>Separación libre entre el lecho y la cama de bastones: 2.5 cm.</summary>
     public const double SeparacionCamaCm = 2.5;

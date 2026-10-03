@@ -2416,7 +2416,11 @@ public sealed class AlzadoDrawer
 
         // Uno por posición, y tres como mucho: arriba, en medio y abajo. Si llegara un
         // archivo con más, manda el primero de cada posición.
+        //
+        // PRIMERA PASADA: dónde va cada uno. Hace falta tenerlos todos antes de dibujar,
+        // porque el gancho de uno se topa contra los otros.
         var usados = new HashSet<PosicionBaston>();
+        var puestos = new Dictionary<PosicionBaston, (BastonCad B, double DB, double Yc, List<Bastones.Tramo> T)>();
 
         foreach (var b in a.Bastones)
         {
@@ -2434,22 +2438,12 @@ public sealed class AlzadoDrawer
                 continue;
             }
 
-            double yc;
-
-            switch (b.Posicion)
+            var yc = b.Posicion switch
             {
-                case PosicionBaston.Superior:
-                    yc = ycSup - (dSup / 2) - sep - (dB / 2);
-                    break;
-
-                case PosicionBaston.Inferior:
-                    yc = ycInf + (dInf / 2) + sep + (dB / 2);
-                    break;
-
-                default:
-                    yc = Bastones.YMedio(ycInf + (dInf / 2), ycSup - (dSup / 2), a.NLateral);
-                    break;
-            }
+                PosicionBaston.Superior => ycSup - (dSup / 2) - sep - (dB / 2),
+                PosicionBaston.Inferior => ycInf + (dInf / 2) + sep + (dB / 2),
+                _ => Bastones.YMedio(ycInf + (dInf / 2), ycSup - (dSup / 2), a.NLateral)
+            };
 
             // Si la pieza es tan baja que la cama se sale del núcleo, no se dibuja: un
             // bastón por fuera del estribo no es armado.
@@ -2459,38 +2453,65 @@ public sealed class AlzadoDrawer
                 continue;
             }
 
-            // El gancho, solo en los de arriba y abajo, y hacia DENTRO como el de su lecho.
-            // El de en medio va recto, como las intermedias.
-            var arriba = b.Posicion == PosicionBaston.Superior;
-            var g = 0d;
+            puestos[b.Posicion] = (b, dB, yc, tramos);
+        }
 
-            if (b.Posicion != PosicionBaston.Medio)
-            {
-                var disponible = arriba
-                    ? yc - (dB / 2) - (ycInf + (dInf / 2))
-                    : (ycSup - (dSup / 2)) - (yc + (dB / 2));
-
-                g = Estribos.GanchoEfectivo(
-                    Estribos.GanchoNominal(false, a.GanchoCm * _escala, dB), disponible, dB);
-            }
-
+        // SEGUNDA PASADA: dibujarlos, con cada gancho topado para no chocar.
+        foreach (var (pos, (b, dB, yc, tramos)) in puestos)
+        {
+            var arriba = pos == PosicionBaston.Superior;
             var capa = CapaVar(b.Var.Clave);
+
+            var (limIzq, limDer) = LimitesDelBaston(pos, rec, largo,
+                xa, xb, xaInf, xbInf, dSup, dInf, gSup, gInf);
 
             foreach (var t in tramos)
             {
                 // EL DOBLEZ DEL BASTÓN VA ANTES QUE EL DE LA CORRIDA, por dentro: si
-                // arrancara en el recubrimiento, su gancho caería encima del de la corrida
-                // y las dos varillas se verían como una. Es la misma holgura con la que las
-                // intermedias esquivan los ganchos.
-                var (limIzq, limDer) = LimitesDelBaston(b.Posicion, rec, largo,
-                    xa, xb, xaInf, xbInf, dSup, dInf, gSup, gInf);
-
+                // arrancara en el recubrimiento, su gancho caería encima del de la corrida.
                 var xL = Math.Max(t.Ini, limIzq);
                 var xR = Math.Min(t.Fin, limDer);
 
                 if (xR <= xL + dB)
                 {
                     continue;
+                }
+
+                // El gancho, solo en los de arriba y abajo, y hacia DENTRO. El de en medio
+                // va recto, como las intermedias.
+                var g = 0d;
+
+                if (pos != PosicionBaston.Medio && (t.GanchoIzq || t.GanchoDer))
+                {
+                    var xG = t.GanchoIzq ? xL : xR;
+                    var cara = arriba ? yc - (dB / 2) : yc + (dB / 2);
+
+                    double? Hasta(PosicionBaston otra)
+                    {
+                        if (!puestos.TryGetValue(otra, out var o)
+                            || !Bastones.PasaPor(o.B, largo, xG, dB + HookClearH))
+                        {
+                            return null;
+                        }
+
+                        // A la cara del otro que mira hacia este.
+                        return arriba
+                            ? cara - (o.Yc + (o.DB / 2))
+                            : (o.Yc - (o.DB / 2)) - cara;
+                    }
+
+                    var hastaLecho = arriba
+                        ? cara - (ycInf + (dInf / 2))
+                        : (ycSup - (dSup / 2)) - cara;
+
+                    var libre = Bastones.LibreParaGancho(
+                        hastaLecho,
+                        Hasta(PosicionBaston.Medio),
+                        Hasta(arriba ? PosicionBaston.Inferior : PosicionBaston.Superior),
+                        HookClearV);
+
+                    g = Estribos.GanchoEfectivo(
+                        Estribos.GanchoNominal(false, a.GanchoCm * _escala, dB), libre, dB);
                 }
 
                 // LA MISMA RUTINA QUE LAS CORRIDAS: mismas caras, mismos cortes en los
