@@ -964,7 +964,7 @@ public sealed class AlzadoDrawer
         var bastones = girar
             ? new List<(BastonCad B, Bastones.Tramo T, double Yc)>()
             : DibujarBastones(bloque, a, largo, y0, y1, rec, ycSup, ycInf, dSup, dInf,
-                centros, dEst, relleno);
+                centros, dEst, relleno, xa, xb, xaInf, xbInf, gSup, gInf);
 
         // ---------- Color y orden ----------
         if (relleno)
@@ -2402,7 +2402,8 @@ public sealed class AlzadoDrawer
     private List<(BastonCad B, Bastones.Tramo T, double Yc)> DibujarBastones(
         object bloque, AlzadoCad a, double largo, double y0, double y1, double rec,
         double ycSup, double ycInf, double dSup, double dInf,
-        List<double> centros, double dEst, bool relleno)
+        List<double> centros, double dEst, bool relleno,
+        double xa, double xb, double xaInf, double xbInf, double gSup, double gInf)
     {
         var res = new List<(BastonCad B, Bastones.Tramo T, double Yc)>();
 
@@ -2477,9 +2478,15 @@ public sealed class AlzadoDrawer
 
             foreach (var t in tramos)
             {
-                // Del paño al recubrimiento: la varilla no llega a la cara del concreto.
-                var xL = Math.Max(t.Ini, rec);
-                var xR = Math.Min(t.Fin, largo - rec);
+                // EL DOBLEZ DEL BASTÓN VA ANTES QUE EL DE LA CORRIDA, por dentro: si
+                // arrancara en el recubrimiento, su gancho caería encima del de la corrida
+                // y las dos varillas se verían como una. Es la misma holgura con la que las
+                // intermedias esquivan los ganchos.
+                var (limIzq, limDer) = LimitesDelBaston(b.Posicion, rec, largo,
+                    xa, xb, xaInf, xbInf, dSup, dInf, gSup, gInf);
+
+                var xL = Math.Max(t.Ini, limIzq);
+                var xR = Math.Min(t.Fin, limDer);
 
                 if (xR <= xL + dB)
                 {
@@ -2497,6 +2504,34 @@ public sealed class AlzadoDrawer
         }
 
         return res;
+    }
+
+    /// <summary>
+    /// Desde dónde y hasta dónde puede ir un bastón sin encimarse con los ganchos de las
+    /// corridas: pasado el gancho de su lecho más una holgura. El de en medio esquiva los
+    /// dos, como las intermedias.
+    /// </summary>
+    private static (double Izq, double Der) LimitesDelBaston(
+        PosicionBaston pos, double rec, double largo,
+        double xa, double xb, double xaInf, double xbInf,
+        double dSup, double dInf, double gSup, double gInf)
+    {
+        var izq = rec;
+        var der = largo - rec;
+
+        if (gSup > 0 && pos != PosicionBaston.Inferior)
+        {
+            izq = Math.Max(izq, xa + dSup + HookClearH);
+            der = Math.Min(der, xb - dSup - HookClearH);
+        }
+
+        if (gInf > 0 && pos != PosicionBaston.Superior)
+        {
+            izq = Math.Max(izq, xaInf + dInf + HookClearH);
+            der = Math.Min(der, xbInf - dInf - HookClearH);
+        }
+
+        return (izq, der);
     }
 
     private static double CorrerADerecha(
@@ -3007,21 +3042,18 @@ public sealed class AlzadoDrawer
     /// <c>2 Var. (Bastones) #4C  L = 1.20</c>.
     /// </summary>
     /// <remarks>
-    /// Los superiores arriba y los inferiores abajo, cada bastón en su propia fila; los dos
+    /// Todos ARRIBA del alzado, cada bastón en su propia fila; los dos
     /// tramos de un bastón de extremos comparten fila, porque no se enciman. La cifra la
     /// pone AutoCAD —el <c>&lt;&gt;</c> del texto—, así que siempre dice lo que mide.
     /// </remarks>
     private void CotasDeBastones(double x, double y, double y1, Geo geo)
     {
-        var filaSup = new Dictionary<BastonCad, int>();
-        var filaInf = new Dictionary<BastonCad, int>();
+        // TODAS ARRIBA del alzado, una fila por bastón: abajo se encimaban con las cotas de
+        // estribos y el título. Los dos tramos de un bastón de extremos comparten fila.
+        var filas = new Dictionary<BastonCad, int>();
 
         foreach (var (b, t, _) in geo.Bastones)
         {
-            // El de en medio se acota abajo, con los inferiores.
-            var arriba = b.Posicion == PosicionBaston.Superior;
-            var filas = arriba ? filaSup : filaInf;
-
             if (!filas.TryGetValue(b, out var fila))
             {
                 fila = filas.Count;
@@ -3029,8 +3061,8 @@ public sealed class AlzadoDrawer
             }
 
             var off = PrimeraCotaBaston + (fila * PasoCotaBaston);
-            var yCara = arriba ? y1 : y;
-            var yDim = arriba ? y1 + off : y - off;
+            var yCara = y1;
+            var yDim = y1 + off;
 
             var xa = x + t.Ini;
             var xb = x + t.Fin;

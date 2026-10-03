@@ -5902,7 +5902,15 @@ public partial class MainWindow : Window
         // limita si de verdad no cabe de alto. Antes el tope era 0.55 del alto y en un
         // elemento de poco peralte era ESE tope el que mandaba, así que el alzado
         // salía corto y apretado con media pantalla vacía a la derecha.
-        var esc = Math.Min(anchoDisp / largo, (alto * 0.92) / peralteM);
+        // Sitio ARRIBA para las cotas de los bastones: una fila de 22 px por bastón, por
+        // encima del título. Se reserva lo mismo abajo para que el alzado siga centrado.
+        var nBastones = !a.EsVertical
+            ? a.Bastones.Select(b => b.Posicion).Distinct().Count()
+            : 0;
+        var reservaBastones = nBastones * FilaCotaBastonPx;
+
+        var esc = Math.Min(anchoDisp / largo,
+            Math.Max((alto * 0.92) - (2 * reservaBastones), alto * 0.3) / peralteM);
         if (esc <= 0 || double.IsInfinity(esc))
         {
             return;
@@ -6332,6 +6340,14 @@ public partial class MainWindow : Window
             var caraSup = top + rec + (dSupCm / 100.0 * esc);       // cara de dentro del lecho de arriba
             var caraInf = top + h - rec - (dInfCm / 100.0 * esc);   // y del de abajo
             var usadas = new HashSet<PosicionBaston>();
+            var filaCota = 0;
+
+            // El ancho del gancho de las corridas, en píxeles: el bastón arranca pasado él y
+            // una holgura, para que su doblez quede ANTES, por dentro, y no encima.
+            var hayGanchoCorrida = ganchoM > 0;
+            var anchoGanchoSup = Math.Max(dSupCm / 100.0 * esc, 1.4);
+            var anchoGanchoInf = Math.Max(dInfCm / 100.0 * esc, 1.4);
+            var holguraPx = Math.Max(0.015 * esc, 2);
 
             for (var iB = 0; iB < a.Bastones.Count; iB++)
             {
@@ -6361,10 +6377,25 @@ public partial class MainWindow : Window
                     _ => 0
                 };
 
+                // Lo que ocupa el gancho de la corrida que tiene al lado. El de en medio esquiva
+                // los dos, como las intermedias.
+                var esquiva = !hayGanchoCorrida
+                    ? 0
+                    : holguraPx + b.Posicion switch
+                    {
+                        PosicionBaston.Superior => anchoGanchoSup,
+                        PosicionBaston.Inferior => anchoGanchoInf,
+                        _ => Math.Max(anchoGanchoSup, anchoGanchoInf)
+                    };
+
+                // La fila de su cota, arriba del alzado y por encima del título.
+                var yCota = top - 26 - (filaCota * FilaCotaBastonPx);
+                filaCota++;
+
                 foreach (var t in tramos)
                 {
-                    var xIni = izquierda + Math.Max(t.Ini * esc, rec);
-                    var xFin = izquierda + Math.Min(t.Fin * esc, w - rec);
+                    var xIni = izquierda + Math.Max(t.Ini * esc, rec + esquiva);
+                    var xFin = izquierda + Math.Min(t.Fin * esc, w - rec - esquiva);
 
                     if (xFin <= xIni + 1)
                     {
@@ -6377,13 +6408,13 @@ public partial class MainWindow : Window
                     BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
                         xDesde: xIni, xHasta: xFin,
                         ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer);
-                }
 
-                // El rótulo, sobre el primer tramo.
-                Etiqueta(PreviaFijaCanvas,
-                    CadLink.Cad.Bastones.Texto(b) + $"  {tramos[0].Largo:0.00} m",
-                    izquierda + (tramos[0].Ini * esc) + 4,
-                    arriba ? yB + 2 : yB - 16);
+                    // LA COTA del tramo, desde el paño, como en AutoCAD: línea con sus dos
+                    // remates y el texto encima.
+                    CotaDeBastonPrevia(
+                        izquierda + (t.Ini * esc), izquierda + (t.Fin * esc), yCota, top,
+                        CadLink.Cad.Bastones.Texto(b) + $"  L = {t.Largo:0.00} m");
+                }
             }
         }
 
@@ -6452,6 +6483,46 @@ public partial class MainWindow : Window
                  $"{a.SeparacionesCm[0]:N0}-{a.SeparacionesCm[1]:N0}-{a.SeparacionesCm[2]:N0} cm" +
                  textoGancho,
             izquierda, top + h + 24);
+    }
+
+    /// <summary>Alto de cada fila de cotas de bastones en la vista previa.</summary>
+    private const double FilaCotaBastonPx = 22;
+
+    /// <summary>
+    /// Una cota de bastón en la vista previa: línea de cota con remates oblicuos, líneas de
+    /// extensión hasta la cara del alzado, y el texto centrado encima.
+    /// </summary>
+    private void CotaDeBastonPrevia(double x1, double x2, double y, double yCara, string texto)
+    {
+        var tinta = new SolidColorBrush(Color.FromRgb(0x5A, 0x64, 0x6E));
+
+        void L(double xa, double ya, double xb, double yb) =>
+            PreviaFijaCanvas.Children.Add(new Line
+            {
+                X1 = xa, Y1 = ya, X2 = xb, Y2 = yb, Stroke = tinta, StrokeThickness = 0.8
+            });
+
+        L(x1, y, x2, y);
+        L(x1, y - 3, x1, yCara);
+        L(x2, y - 3, x2, yCara);
+        L(x1 - 3, y + 3, x1 + 3, y - 3);
+        L(x2 - 3, y + 3, x2 + 3, y - 3);
+
+        var t = new TextBlock
+        {
+            Text = texto,
+            FontSize = 9.5,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x33))
+        };
+
+        // Centrado sobre la línea; si el tramo es más corto que el texto, arranca en él.
+        t.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var ancho = t.DesiredSize.Width;
+        var left = ancho < (x2 - x1) ? ((x1 + x2) / 2) - (ancho / 2) : x1;
+
+        Canvas.SetLeft(t, left);
+        Canvas.SetTop(t, y - 14);
+        PreviaFijaCanvas.Children.Add(t);
     }
 
     private void DibujarLecho(

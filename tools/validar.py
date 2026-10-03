@@ -2701,6 +2701,11 @@ def v16_extruida_piers() -> None:
           and "private void GanchoDeBaston(" not in alz_drw)
     check("y la vista previa tambien",
           "BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM," in mw_alz)
+    check("el doblez del baston va por dentro del de la corrida",
+          "LimitesDelBaston(b.Posicion, rec, largo," in alz_drw
+          and "rec + esquiva" in mw_alz)
+    check("las cotas de los bastones van arriba del alzado, y la vista previa las acota",
+          "var yDim = y1 + off;" in alz_drw and "CotaDeBastonPrevia(" in mw_alz)
     check("se guardan en el trabajo",
           "guardada.Bastones.Add(new BastonGuardado" in mw_alz
           and "fila.CargarBaston(new BastonSeccion" in mw_alz)
