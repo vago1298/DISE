@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     # internet, para que un desconocido no pueda ser "el primero".
     AUTO_INTERNAL_FIRST_MACHINE: bool = True
 
+    # CODIGO DE OFICINA: lo lleva el instalador «de oficina» (6-crear-instalador.bat,
+    # opcion 3) y cada PC que lo instala queda INTERNA sola, sin copiar huellas. Lo
+    # genera ese .bat la primera vez. Vacio = desactivado.
+    #
+    # Quien tenga ESE instalador obtiene licencia interna: no se lo des a un cliente. Si se
+    # filtra, cambia el codigo aqui -los equipos ya dados de alta siguen igual- y vuelve a
+    # armar el instalador de oficina. El tope de INTERNAL_SEATS sigue mandando.
+    OFFICE_CODE: str = ""
+
     # Administración
     ADMIN_API_KEY: str = ""
     PAYMENT_WEBHOOK_SECRET: str = ""

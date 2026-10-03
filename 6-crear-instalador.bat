@@ -41,8 +41,12 @@ REM  Desde la consola tambien se acepta:  6-crear-instalador.bat prueba
 REM ============================================================
 
 set "PRUEBA="
+set "OFICINA="
+set "REINICIAR="
 if /i "%~1"=="prueba" set "PRUEBA=1"
+if /i "%~1"=="oficina" set "OFICINA=1"
 if defined PRUEBA goto :modo_elegido
+if defined OFICINA goto :modo_elegido
 
 echo   ----------------------------------------------------------
 echo    QUE PAQUETE QUIERES ARMAR
@@ -56,22 +60,32 @@ echo      2 = PARA EL CLIENTE, el de verdad.
 echo          Exige que la configuracion ya apunte a tu
 echo          servidor de licencias, con https.
 echo.
+echo      3 = PARA LAS PCs DE TU OFICINA. El facil.
+echo          Se arma en ESTA computadora, la del servidor.
+echo          La PC que lo instala queda AUTORIZADA SOLA, con
+echo          licencia interna: sin huellas y sin editar nada.
+echo          NO se lo des a un cliente.
+echo.
 
 set "OPCION="
-set /p "OPCION=Escribe 1 o 2 y pulsa Enter: "
+set /p "OPCION=Escribe 1, 2 o 3 y pulsa Enter: "
 
 if "%OPCION%"=="1" set "PRUEBA=1"
 if "%OPCION%"=="1" goto :modo_elegido
 if "%OPCION%"=="2" goto :modo_elegido
+if "%OPCION%"=="3" set "OFICINA=1"
+if "%OPCION%"=="3" goto :modo_elegido
 
 echo.
-echo   No entendi "%OPCION%". Hay que escribir 1 o 2.
+echo   No entendi "%OPCION%". Hay que escribir 1, 2 o 3.
 goto :error
 
 :modo_elegido
 echo.
 if defined PRUEBA echo   *** MODO PRUEBA: no se lo mandes a un cliente. ***
 if defined PRUEBA echo.
+if defined OFICINA echo   *** PAQUETE DE OFICINA: solo para las PCs de tu oficina. ***
+if defined OFICINA echo.
 
 
 REM ============================================================
@@ -283,6 +297,12 @@ REM ============================================================
 
 if not exist "%CFG%" goto :sin_config
 
+REM  EL DE OFICINA no mira la direccion de la configuracion: lleva la de
+REM  ESTA computadora y el codigo de oficina en su propio archivo,
+REM  cadlink.oficina.json, que manda sobre cadlink.config.json. Lo escribe
+REM  el servidor, que es el que sabe su direccion y su codigo.
+if defined OFICINA goto :preparar_oficina
+
 REM  Sigue apuntando a tu computadora? Entonces el cliente no podria activar:
 REM  su localhost es SU maquina, no la tuya.
 findstr /c:"servidorLicencias" "%CFG%" | findstr /c:"localhost" >nul 2>&1
@@ -367,10 +387,15 @@ if not defined ISCC goto :sin_inno
 echo Empaquetando el instalador...
 echo.
 
-"%ISCC%" /DVersion=%VER% "%GUION%"
+REM  El de oficina se llama distinto, para no mandarle a un cliente por
+REM  error el que autoriza solo.
+set "NOMBRESETUP=CadLink-Setup-%VER%"
+if defined OFICINA set "NOMBRESETUP=CadLink-Setup-%VER%-OFICINA"
+
+"%ISCC%" /DVersion=%VER% /F%NOMBRESETUP% "%GUION%"
 if errorlevel 1 goto :error_iscc
 
-set "SETUPEXE=%RAIZ%dist\CadLink-Setup-%VER%.exe"
+set "SETUPEXE=%RAIZ%dist\%NOMBRESETUP%.exe"
 if not exist "%SETUPEXE%" goto :sin_setup
 
 if not defined HAYFIRMA goto :listo
@@ -394,8 +419,44 @@ echo   tuya y que NO tenga .NET instalado.
 echo.
 if defined PRUEBA echo   *** ES UN PAQUETE DE PRUEBA: apunta a localhost. ***
 if defined PRUEBA echo.
+if defined OFICINA echo   ES EL DE OFICINA: instalalo en cada PC de tu oficina y
+if defined OFICINA echo   queda autorizada sola al abrir CadLink. Deja encendido
+if defined OFICINA echo   2-iniciar-servidor.bat en esta computadora.
+if defined OFICINA echo.
+if defined REINICIAR echo   *** IMPORTANTE: CIERRA Y VUELVE A ABRIR 2-iniciar-servidor.bat ***
+if defined REINICIAR echo   *** para que el servidor use el codigo de oficina nuevo.        ***
+if defined REINICIAR echo.
 pause
 exit /b 0
+
+
+REM ============================================================
+REM  EL PAQUETE DE OFICINA
+REM  Escribe cadlink.oficina.json junto al ejecutable publicado y
+REM  vuelve a donde se quedo: el aviso del logo y la firma.
+REM ============================================================
+
+:preparar_oficina
+set "PYSERVIDOR=%RAIZ%server\.venv\Scripts\python.exe"
+if not exist "%PYSERVIDOR%" goto :oficina_sin_servidor
+
+echo Preparando el paquete de oficina...
+"%PYSERVIDOR%" "%RAIZ%server\scripts\paquete_oficina.py" --salida "%PUBLICADO%\cadlink.oficina.json"
+set "RCOFICINA=%errorlevel%"
+if "%RCOFICINA%"=="1" goto :error
+if not exist "%PUBLICADO%\cadlink.oficina.json" goto :error
+if "%RCOFICINA%"=="3" set "REINICIAR=1"
+echo.
+goto :config_ok
+
+:oficina_sin_servidor
+echo.
+echo   ERROR: el paquete de oficina se arma en la computadora del SERVIDOR.
+echo.
+echo   No encuentro  server\.venv  en esta carpeta. Si el servidor de
+echo   licencias corre en ESTA computadora, ejecuta antes
+echo   1-instalar-servidor.bat.
+goto :error
 
 
 REM ==========================================================

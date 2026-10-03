@@ -137,7 +137,7 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 ;                   informe de error, pero se quedan en tu maquina.
 ;  ===========================================================================
 Source: "{#Publicado}\*"; DestDir: "{app}"; \
-    Excludes: "*.pdb,*.pem,*.key,*.db,*.sqlite,*.env,cadlink.config.json,perfiles-acero.csv,aceros.csv"; \
+    Excludes: "*.pdb,*.pem,*.key,*.db,*.sqlite,*.env,cadlink.config.json,cadlink.oficina.json,perfiles-acero.csv,aceros.csv"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 ;  ===========================================================================
@@ -158,6 +158,18 @@ Source: "{#Publicado}\*"; DestDir: "{app}"; \
 Source: "{#Publicado}\cadlink.config.json"; DestDir: "{app}"; \
     Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#Publicado}\perfiles-acero.csv"; DestDir: "{app}"; Flags: onlyifdoesntexist
+
+;  ===========================================================================
+;  3. EL ARCHIVO DEL PAQUETE DE OFICINA, SOLO SI LO HAY: SIEMPRE ENCIMA.
+;
+;  Lo escribe 6-crear-instalador.bat en la opcion 3: la direccion del servidor
+;  de la oficina y su codigo. Con el, la PC queda autorizada sola. Se copia
+;  SIEMPRE -ignoreversion- para que instalarlo encima de una version de prueba
+;  la arregle, aunque su cadlink.config.json diga localhost. En los paquetes 1
+;  y 2 no existe, y skipifsourcedoesntexist hace que no se eche de menos.
+;  ===========================================================================
+Source: "{#Publicado}\cadlink.oficina.json"; DestDir: "{app}"; \
+    Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Publicado}\aceros.csv";         DestDir: "{app}"; Flags: onlyifdoesntexist
 
 [Icons]

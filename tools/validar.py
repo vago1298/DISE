@@ -12200,7 +12200,8 @@ def main() -> int:
               v23_hoja_zapatas_corridas,
               v24_rediseno,
               v25_ifc,
-              v26_plugin_revit, v27_muros_contencion, v28_estilo_dibujo):
+              v26_plugin_revit, v27_muros_contencion, v28_estilo_dibujo,
+              v29_paquete_oficina):
         f()
 
     print("\n" + "=" * 66)
@@ -15708,6 +15709,47 @@ def v28_estilo_dibujo() -> None:
           and "ArcSegment" not in m_pol.group(0))
     check("y la regla queda escrita para quien agregue algo",
           os.path.exists(ruta(".kiro/steering/estilo-dibujo.md")))
+
+def v29_paquete_oficina() -> None:
+    print("\n[29] El paquete de oficina: la PC se autoriza sola")
+
+    bat = leer(ruta("6-crear-instalador.bat"))
+    iss = leer(ruta("installer/CadLink.iss"))
+    srv = leer(ruta("server/app/main.py"))
+    cfg = leer(ruta("server/app/config.py"))
+    sch = leer(ruta("server/app/schemas.py"))
+    pyo = leer(ruta("server/scripts/paquete_oficina.py"))
+    api = leer(ruta("client/src/CadLink.Licensing/LicenseApiClient.cs"))
+    svc = leer(ruta("client/src/CadLink.Licensing/LicenseService.cs"))
+    app = leer(ruta("client/src/CadLink.App/AppInfo.cs"))
+
+    check("el .bat ofrece la opcion 3, para las PCs de la oficina",
+          'if "%OPCION%"=="3" set "OFICINA=1"' in bat and ":preparar_oficina" in bat)
+    check("la prepara el servidor, que sabe su direccion y su codigo",
+          'server\\scripts\\paquete_oficina.py" --salida "%PUBLICADO%\\cadlink.oficina.json"' in bat
+          and "def asegurar_codigo()" in pyo and "ip_de_salida()" in pyo)
+    check("y vuelve a pasar por la firma, no se la salta", "goto :config_ok" in bat.split(":preparar_oficina", 1)[1])
+    check("el de oficina se llama distinto, para no mandarselo a un cliente",
+          'set "NOMBRESETUP=CadLink-Setup-%VER%-OFICINA"' in bat and "/F%NOMBRESETUP%" in bat)
+    check("el instalador lo copia SIEMPRE y solo si existe",
+          'Source: "{#Publicado}\\cadlink.oficina.json"; DestDir: "{app}"' in iss
+          and "Flags: ignoreversion skipifsourcedoesntexist" in iss
+          and "cadlink.oficina.json,perfiles-acero.csv" in iss)
+    check("la app lo pone encima de la configuracion",
+          'OficinaFileName = "cadlink.oficina.json"' in app and "ConLoDeLaOficina(config, opciones);" in app
+          and "OfficeCode = Config.CodigoOficina" in app)
+    check("y manda el codigo al activar",
+          '["office_code"] = string.IsNullOrWhiteSpace(_options.OfficeCode)' in api)
+    check("una PC en prueba con el codigo se reactiva para quedar interna",
+          "claims.Tier == LicenseTier.Trial && !string.IsNullOrWhiteSpace(_options.OfficeCode)" in svc)
+    check("el servidor da INTERNAL con el codigo, con el tope de asientos",
+          'OFFICE_CODE: str = ""' in cfg and "office_code: str | None" in sch
+          and "elif _es_codigo_de_oficina(payload.office_code, settings):" in srv
+          and "hmac.compare_digest(" in srv and srv.count("_internal_seats_used(db) >= settings.INTERNAL_SEATS") >= 3)
+    check("sin codigo configurado, nadie entra por ahi",
+          "if not configurado or not codigo:\n        return False" in srv)
+    check("queda explicado en EMPIEZA-AQUI.md",
+          "## Las PCs de tu oficina: la forma fácil" in leer(ruta("EMPIEZA-AQUI.md")))
 
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")

@@ -81,7 +81,10 @@ internal sealed class LicenseApiClient : IDisposable
             ["os_user"] = SafeUserName(),
             ["domain_sid"] = DomainInfo.GetDomainSid(),
             ["app_version"] = _options.AppVersion,
-            ["license_key"] = string.IsNullOrWhiteSpace(licenseKey) ? null : licenseKey.Trim()
+            ["license_key"] = string.IsNullOrWhiteSpace(licenseKey) ? null : licenseKey.Trim(),
+
+            // El del instalador de oficina: con él, el servidor da licencia INTERNA.
+            ["office_code"] = string.IsNullOrWhiteSpace(_options.OfficeCode) ? null : _options.OfficeCode.Trim()
         };
 
         return await PostAsync("v1/activate", body, ct).ConfigureAwait(false);

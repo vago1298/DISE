@@ -54,6 +54,8 @@ class ActivateRequest(BaseModel):
     domain_sid: str | None = Field(default=None, max_length=200)
     app_version: str | None = Field(default=None, max_length=40)
     license_key: str | None = Field(default=None, max_length=64)
+    # El codigo de oficina que trae el instalador de oficina: con el, el equipo queda INTERNO.
+    office_code: str | None = Field(default=None, max_length=128)
 
     @field_validator("fingerprint")
     @classmethod

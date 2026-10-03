@@ -97,6 +97,19 @@ public sealed class LicenseService : IDisposable
 
         _cache.TouchLastSeen(envelope);
 
+        // EL INSTALADOR DE OFICINA ENCIMA DE UNA PRUEBA. Este equipo trae el código de oficina
+        // pero su licencia guardada es de prueba: se pide la activación otra vez, que con el
+        // código lo deja INTERNO. Si el servidor no contesta, se sigue con la prueba que hay.
+        if (claims.Tier == LicenseTier.Trial && !string.IsNullOrWhiteSpace(_options.OfficeCode))
+        {
+            var promovida = await ActivateAsync(licenseKey: null, ct).ConfigureAwait(false);
+
+            if (promovida.IsUsable && promovida.Tier == LicenseTier.Internal)
+            {
+                return promovida;
+            }
+        }
+
         // Suscripción vencida según el propio token. Puede que el cliente ya pagó,
         // así que vale la pena preguntarle al servidor antes de bloquear.
         if (claims.LicenseExpiresAt is not null && now > claims.LicenseExpiresAt)

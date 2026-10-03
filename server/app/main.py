@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -96,8 +97,12 @@ def activate(
     Decide el tier así:
       1. Si el equipo ya existe, respeta el tier que tenga asignado.
       2. Si trae clave de licencia válida  -> COMMERCIAL
-      3. Si el SID de dominio coincide     -> INTERNAL (si hay asientos libres)
-      4. En cualquier otro caso            -> TRIAL (si está permitido)
+      3. Si trae el código de oficina      -> INTERNAL (si hay asientos libres)
+      4. Si el SID de dominio coincide     -> INTERNAL (si hay asientos libres)
+      5. En cualquier otro caso            -> TRIAL (si está permitido)
+
+    Un equipo que ya estaba en PRUEBA y llega con el código de oficina se promueve a
+    INTERNAL: es lo que pasa al instalar el paquete de oficina encima de uno de prueba.
     """
     now = utcnow()
     machine = db.scalar(
@@ -108,6 +113,31 @@ def activate(
         machine = _create_machine(payload, db, settings, request, now)
     else:
         _refresh_machine(machine, payload, now)
+        # Si un equipo que estaba en PRUEBA llega con el código de oficina, se promueve.
+        if (machine.tier == Tier.TRIAL.value and not payload.license_key
+                and _es_codigo_de_oficina(payload.office_code, settings)):
+            if _internal_seats_used(db) >= settings.INTERNAL_SEATS:
+                _audit(
+                    db,
+                    "INTERNAL_SEATS_EXCEEDED",
+                    fingerprint=machine.fingerprint,
+                    message=(
+                        f"Se alcanzó el tope de {settings.INTERNAL_SEATS} equipos internos. "
+                        f"Equipo {payload.hostname} sigue en TRIAL."
+                    ),
+                    request=request,
+                )
+            else:
+                machine.tier = Tier.INTERNAL.value
+                machine.trial_expires_at = None
+                _audit(
+                    db,
+                    "INTERNAL_OFICINA",
+                    fingerprint=machine.fingerprint,
+                    message=f"Promovido a INTERNAL con el código de oficina: {payload.hostname}",
+                    request=request,
+                )
+
         # Si un equipo que estaba en prueba llega con clave de licencia, se promueve.
         if payload.license_key and machine.tier != Tier.COMMERCIAL.value:
             license_ = _resolve_license(payload.license_key, db)
@@ -219,6 +249,30 @@ def _create_machine(
             request=request,
         )
 
+    elif _es_codigo_de_oficina(payload.office_code, settings):
+        # El instalador de oficina: el equipo queda INTERNO sin copiar huellas.
+        if _internal_seats_used(db) >= settings.INTERNAL_SEATS:
+            _audit(
+                db,
+                "INTERNAL_SEATS_EXCEEDED",
+                fingerprint=payload.fingerprint,
+                message=(
+                    f"Se alcanzó el tope de {settings.INTERNAL_SEATS} equipos internos. "
+                    f"Equipo {payload.hostname} quedó en TRIAL."
+                ),
+                request=request,
+            )
+            machine.trial_expires_at = now + timedelta(days=settings.TRIAL_DAYS)
+        else:
+            machine.tier = Tier.INTERNAL.value
+            _audit(
+                db,
+                "INTERNAL_OFICINA",
+                fingerprint=payload.fingerprint,
+                message=f"Dado de alta con el código de oficina: {payload.hostname}",
+                request=request,
+            )
+
     elif _is_internal_domain(payload.domain_sid, settings):
         if _internal_seats_used(db) >= settings.INTERNAL_SEATS:
             _audit(
@@ -273,6 +327,15 @@ def _is_internal_domain(domain_sid: str | None, settings: Settings) -> bool:
     if not configured or not domain_sid:
         return False
     return domain_sid.strip().upper() == configured
+
+
+def _es_codigo_de_oficina(codigo: str | None, settings: Settings) -> bool:
+    """¿Trae el código de oficina del servidor? Sin código configurado, nunca."""
+    configurado = (settings.OFFICE_CODE or "").strip()
+    if not configurado or not codigo:
+        return False
+    # compare_digest: el tiempo de la comparación no dice cuántas letras se acertaron.
+    return hmac.compare_digest(codigo.strip().encode(), configurado.encode())
 
 
 def _no_hay_equipos(db: Session) -> bool:
