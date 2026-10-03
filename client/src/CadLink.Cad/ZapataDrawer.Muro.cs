@@ -41,8 +41,11 @@ public sealed partial class ZapataDrawer
     /// <summary>La escala del GRAVEL del ciclopeo, la que pidio el usuario.</summary>
     private const double EscalaCiclopeo = 0.0170;
 
-    /// <summary>El tamano de las puntas de flecha de las cotas del muro.</summary>
-    private const double FlechaCotaMuro = 0.08;
+    /// <summary>
+    /// El estilo de cota de los muros de contencion: IGUAL EN TODO a COTA_ESTRUCTURAL, menos el
+    /// alto del numero, que es mas grande.
+    /// </summary>
+    private const string EstiloCotaMuro = "COTA_MC";
 
     /// <summary>
     /// Dibuja los muros uno a la derecha del otro, en la fila de <see cref="TrazoMuroContencion.YBase"/>.
@@ -54,6 +57,7 @@ public sealed partial class ZapataDrawer
         AsegurarCapasBase();
         AsegurarEstiloTexto();
         AsegurarEstiloCota();
+        AsegurarEstiloCotaMuro();
 
         _relleno = SeccionRellena;
         _cont = _ms;
@@ -128,17 +132,20 @@ public sealed partial class ZapataDrawer
             Polilinea(Plano(l.Puntos), CapaConcreto, l.Cerrada);
         }
 
-        // ---------- El acero: con su GROSOR REAL y en la capa de su diametro ----------
-        // Cada varilla va en VAR_#n, con el color de la macro para ese diametro, y la polilinea
-        // tiene de ancho el diametro de la varilla: una #5 sale de 1.59 cm de gruesa.
+        // ---------- El acero: con su DIAMETRO REAL, a dos lineas ----------
+        // Cada varilla va en VAR_#n, con el color de la macro para ese diametro, y se dibuja
+        // con sus DOS caras a medio diametro del eje -una #5 mide 1.59 cm de cara a cara-. Sin
+        // ancho de polilinea: el grosor es geometria de verdad, se acota y se ve igual a
+        // cualquier escala de impresion.
         foreach (var v in d.Varillas)
         {
             var capa = CapaVar(v.Clave);
             AsegurarCapaVarilla(capa);
 
-            var pl = Polilinea(Plano(v.Puntos), capa, v.Cerrada);
+            var contorno = TrazoMuroContencion.ContornoVarilla(
+                v.Puntos, TrazoMuroContencion.DiametroM(m, v.Clave));
 
-            Grueso(pl, TrazoMuroContencion.DiametroM(m, v.Clave));
+            var pl = Polilinea(Plano(contorno), capa, contorno.Count > v.Puntos.Count);
 
             if (v.Oculta)
             {
@@ -164,9 +171,7 @@ public sealed partial class ZapataDrawer
         // ---------- Cotas ----------
         foreach (var c in d.Cotas)
         {
-            r.Cotas += CotaMuro(c, m.EsCiclopeo
-                ? TrazoMuroContencion.AltoCotaCiclopeo
-                : TrazoMuroContencion.AltoCotaArmado);
+            r.Cotas += CotaMuro(c, EstiloCotaMuro);
         }
 
         // ---------- Llamadas y textos ----------
@@ -220,31 +225,48 @@ public sealed partial class ZapataDrawer
         LeaderQuebrado(t.XPunta, t.YPunta, t.XCodo, t.YCodo, xHombro, t.YCodo);
     }
 
-    /// <summary>El grosor real de una varilla: el ancho constante de su polilinea.</summary>
-    private void Grueso(object? pl, double ancho)
+    /// <summary>
+    /// Crea <c>COTA_MC</c>: las MISMAS variables que <c>COTA_ESTRUCTURAL</c> -marcas, huecos,
+    /// unidades, decimales- y solo el <c>DIMTXT</c> distinto. Despues deja las variables y el
+    /// estilo activo como estaban, para que las zapatas sigan con el suyo.
+    /// </summary>
+    private void AsegurarEstiloCotaMuro()
     {
-        if (pl is null || ancho <= 0)
-        {
-            return;
-        }
+        // AsegurarEstiloCota ya fijo todas las variables de COTA_ESTRUCTURAL: aqui se cambia solo
+        // el alto del numero y se copia ese estado al estilo nuevo.
+        Dimvar("DIMTXT", TrazoMuroContencion.AltoCotaMuro);
 
         try
         {
             AcadConnection.Retry(() =>
             {
-                dynamic p = pl;
-                p.ConstantWidth = ancho;
-                p.Update();
+                dynamic estilos = _doc.DimStyles;
+                dynamic estilo;
+
+                try
+                {
+                    estilo = estilos.Item(EstiloCotaMuro);
+                }
+                catch (Exception)
+                {
+                    estilo = estilos.Add(EstiloCotaMuro);
+                }
+
+                estilo.CopyFrom(_doc);
             });
         }
         catch (Exception)
         {
-            Nota("Una varilla del muro no acepto su grosor: salio como linea fina.");
+            Nota($"No se pudo crear el estilo de cota '{EstiloCotaMuro}'; las cotas del muro usan "
+                 + $"'{EstiloCota}'.");
         }
+
+        // Y todo de vuelta a COTA_ESTRUCTURAL.
+        AsegurarEstiloCota();
     }
 
-    /// <summary>Una cota del muro, con el alto de numero que le toca.</summary>
-    private int CotaMuro(TrazoCota c, double altoNumero)
+    /// <summary>Una cota del muro, en su estilo y SIN cambios encima: todo lo da el estilo.</summary>
+    private int CotaMuro(TrazoCota c, string estiloCota)
     {
         if (Math.Abs(c.X2 - c.X1) < 1e-6 && Math.Abs(c.Y2 - c.Y1) < 1e-6)
         {
@@ -260,7 +282,7 @@ public sealed partial class ZapataDrawer
 
                 try
                 {
-                    d.StyleName = EstiloCota;
+                    d.StyleName = estiloCota;
                 }
                 catch (Exception)
                 {
@@ -268,21 +290,6 @@ public sealed partial class ZapataDrawer
                 }
 
                 d.Layer = CapaCotas;
-
-                // El numero, al alto que toca y no al del estilo: con ScaleFactor el alto sale del
-                // estilo multiplicado, y el estilo de las zapatas trae letra de 2.5 cm.
-                try
-                {
-                    d.ScaleFactor = 1.0;
-                    d.TextHeight = altoNumero;
-                    d.ArrowheadSize = FlechaCotaMuro;
-                    d.TextGap = altoNumero / 4;
-                    d.ExtensionLineExtend = altoNumero / 2;
-                }
-                catch (Exception)
-                {
-                    // Se queda con lo del estilo: se lee, pero mas chico.
-                }
 
                 if (c.Vertical)
                 {

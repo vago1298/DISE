@@ -78,6 +78,18 @@ Vale("la exterior dobla por debajo de la de la tierra",
 Vale("el diametro sale de la clave: #5 = 1.59 cm", Casi(TrazoMuroContencion.DiametroM(armado, "#5"), 0.0159, 1e-9));
 Vale("y una que el muro no lleva no tiene grosor", TrazoMuroContencion.DiametroM(armado, "#8") == 0);
 
+// A dos lineas: las caras quedan a medio diametro del eje, a cada lado.
+var recta = TrazoMuroContencion.ContornoVarilla(new List<(double, double)> { (0, 0), (1, 0) }, 0.0159);
+Vale("una varilla recta son sus dos caras: 4 vertices", recta.Count == 4);
+Vale("separadas el diametro real", Casi(recta.Max(p => p.Y) - recta.Min(p => p.Y), 0.0159, 1e-12));
+var conDoblez = TrazoMuroContencion.ContornoVarilla(caraTierra.Puntos, 0.0159);
+Vale("la de la tierra, con su doblez, tiene sus dos caras", conDoblez.Count == 2 * caraTierra.Puntos.Distinct().Count());
+var codo = TrazoMuroContencion.ContornoVarilla(new List<(double, double)> { (0, 0), (0, 1), (1, 1) }, 0.0159);
+Vale("en un doblez las caras siguen a un diametro: abajo",
+    Casi(Math.Abs(codo[0].X - codo[^1].X), 0.0159, 1e-12) && Casi(codo[0].Y, 0) && Casi(codo[^1].Y, 0));
+Vale("y en la esquina, a un diametro por los dos lados",
+    Casi(Math.Abs(codo[1].X - codo[4].X), 0.0159, 1e-9) && Casi(Math.Abs(codo[1].Y - codo[4].Y), 0.0159, 1e-9));
+
 var horiz = d.Puntos.Where(p => p.Clave == "#6" && p.Y > 0.65).ToList();
 Vale("las horizontales van de 33 en 33 en las dos caras", horiz.Count > 20 && horiz.Count % 2 == 0);
 Vale("y no pasan de la corona", horiz.All(p => p.Y < 5.00));

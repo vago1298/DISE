@@ -428,13 +428,13 @@ public partial class MainWindow
         }
 
         // ---------- Acero ----------
-        // Con su grosor REAL -el diametro a la escala de la vista- y el color de la capa de su
-        // diametro, como en AutoCAD. Con un minimo para que una #2 no desaparezca.
+        // Con su DIAMETRO REAL a dos lineas -el mismo contorno que va a AutoCAD- y el color de la
+        // capa de su diametro. Si a esta escala las dos caras se juntan, se ve como una linea.
         foreach (var v in d.Varillas)
         {
-            var grosor = Math.Max(TrazoMuroContencion.DiametroM(m, v.Clave) * esc, 1.0);
+            var contorno = TrazoMuroContencion.ContornoVarilla(v.Puntos, TrazoMuroContencion.DiametroM(m, v.Clave));
             lienzo.Children.Add(TrazoMuroPrevio(
-                v.Puntos.Select(q => Pt(q)), v.Cerrada, TintaDeVarilla(v.Clave), grosor, v.Oculta));
+                contorno.Select(q => Pt(q)), contorno.Count > v.Puntos.Count, TintaDeVarilla(v.Clave), 0.8, v.Oculta));
         }
 
         foreach (var p in d.Puntos)
@@ -449,9 +449,7 @@ public partial class MainWindow
         // ---------- Cotas ----------
         foreach (var c in d.Cotas)
         {
-            CotaMuroPrevia(lienzo, c, PX, PY, Letra(m.EsCiclopeo
-                ? TrazoMuroContencion.AltoCotaCiclopeo
-                : TrazoMuroContencion.AltoCotaArmado));
+            CotaMuroPrevia(lienzo, c, PX, PY, Letra(TrazoMuroContencion.AltoCotaMuro));
         }
 
         // ---------- Llamadas ----------

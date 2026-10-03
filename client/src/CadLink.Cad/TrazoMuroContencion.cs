@@ -105,13 +105,10 @@ public static class TrazoMuroContencion
     public const double AireTexto = 0.03;
 
     /// <summary>
-    /// El alto de los numeros de las cotas del muro de concreto armado. Mas grande que el de los
-    /// textos: un muro de 5 m se dibuja para leerse a 1:50.
+    /// El alto de los numeros de las cotas de los muros: el DIMTXT del estilo COTA_MC, que es
+    /// COTA_ESTRUCTURAL con el numero mas grande. Un muro de 5 m con numeros de 2.5 cm no se lee.
     /// </summary>
-    public const double AltoCotaArmado = 0.15;
-
-    /// <summary>El del ciclopeo, que suele medir la mitad.</summary>
-    public const double AltoCotaCiclopeo = 0.09;
+    public const double AltoCotaMuro = 0.15;
 
     /// <summary>Lo ancho que sale un texto, para su hombro.</summary>
     public static double AnchoTexto(string texto, double alto) => texto.Length * alto * FactorLetra;
@@ -140,6 +137,87 @@ public static class TrazoMuroContencion
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// El contorno de una varilla con su DIAMETRO REAL: las dos lineas de sus caras, a medio
+    /// diametro a cada lado del eje, cerradas en las puntas. Asi se dibuja el acero del muro, con
+    /// dos lineas, y no con el ancho de la polilinea.
+    /// </summary>
+    /// <remarks>
+    /// Cada vertice se aparta por la bisectriz de sus dos tramos, alargada lo que pide el angulo
+    /// -con tope, para que un doblez cerrado no saque un pico-. Los dobleces ya vienen muestreados
+    /// por <see cref="Redondear"/>, asi que las caras siguen la curva.
+    /// </remarks>
+    public static List<(double X, double Y)> ContornoVarilla(IReadOnlyList<(double X, double Y)> eje, double diametro)
+    {
+        // Sin puntos repetidos: un tramo de largo cero no tiene normal.
+        var p = new List<(double X, double Y)>();
+        foreach (var q in eje)
+        {
+            if (p.Count == 0 || Math.Abs(q.X - p[^1].X) + Math.Abs(q.Y - p[^1].Y) > 1e-9)
+            {
+                p.Add(q);
+            }
+        }
+
+        if (p.Count < 2 || diametro <= 0)
+        {
+            return p;
+        }
+
+        var r = diametro / 2;
+        var izq = new List<(double X, double Y)>();
+        var der = new List<(double X, double Y)>();
+
+        (double X, double Y) Normal((double X, double Y) a, (double X, double Y) b)
+        {
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+            var l = Math.Sqrt((dx * dx) + (dy * dy));
+            return (-dy / l, dx / l);
+        }
+
+        for (var i = 0; i < p.Count; i++)
+        {
+            (double X, double Y) n;
+            var largo = r;
+
+            if (i == 0)
+            {
+                n = Normal(p[0], p[1]);
+            }
+            else if (i == p.Count - 1)
+            {
+                n = Normal(p[i - 1], p[i]);
+            }
+            else
+            {
+                var n1 = Normal(p[i - 1], p[i]);
+                var n2 = Normal(p[i], p[i + 1]);
+                var sx = n1.X + n2.X;
+                var sy = n1.Y + n2.Y;
+                var ls = Math.Sqrt((sx * sx) + (sy * sy));
+
+                if (ls < 1e-9)
+                {
+                    n = n1;
+                }
+                else
+                {
+                    n = (sx / ls, sy / ls);
+                    var cos = (n.X * n1.X) + (n.Y * n1.Y);
+                    largo = r / Math.Max(cos, 0.5);
+                }
+            }
+
+            izq.Add((p[i].X + (n.X * largo), p[i].Y + (n.Y * largo)));
+            der.Add((p[i].X - (n.X * largo), p[i].Y - (n.Y * largo)));
+        }
+
+        der.Reverse();
+        izq.AddRange(der);
+        return izq;
     }
 
     /// <summary>Una llamada con su texto a la DERECHA del codo.</summary>

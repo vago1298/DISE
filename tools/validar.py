@@ -15493,18 +15493,21 @@ def v27_muros_contencion() -> None:
     check("el ciclopeo va con piedras y las espigas a trazos",
           'PatronCiclopeo = "GRAVEL"' in drw and "ATrazos(pl);" in drw)
     check("el GRAVEL del ciclopeo va a escala 0.0170", "EscalaCiclopeo = 0.0170;" in drw)
-    check("las varillas van con su grosor real y en la capa de su diametro",
-          "Grueso(pl, TrazoMuroContencion.DiametroM(m, v.Clave));" in drw
+    check("las varillas van con su diametro real a DOS LINEAS y en la capa de su diametro",
+          "TrazoMuroContencion.ContornoVarilla(" in drw
           and "var capa = CapaVar(v.Clave);" in drw and "AsegurarCapaVarilla(capa);" in drw
-          and 'CapaMuroAcero' not in drw)
-    check("las cotas del muro llevan el alto de numero que les toca",
-          "d.TextHeight = altoNumero;" in drw and "TrazoMuroContencion.AltoCotaArmado" in drw
-          and "ScaleFactor = EscalaCotasMuro" not in drw)
+          and "ConstantWidth" not in drw and "Grueso(" not in drw and 'CapaMuroAcero' not in drw
+          and "public static List<(double X, double Y)> ContornoVarilla(" in trazo)
+    check("las cotas del muro van en su estilo COTA_MC, sin cambios encima",
+          'EstiloCotaMuro = "COTA_MC";' in drw
+          and 'Dimvar("DIMTXT", TrazoMuroContencion.AltoCotaMuro);' in drw
+          and "r.Cotas += CotaMuro(c, EstiloCotaMuro);" in drw
+          and "TextHeight" not in drw and "ScaleFactor" not in drw)
     check("los textos de las llamadas van sobre un hombro, sin flecha que los tache",
           "LeaderQuebrado(t.XPunta, t.YPunta, t.XCodo, t.YCodo, xHombro, t.YCodo);" in drw
           and "double XHombro" in trazo)
     check("la vista previa pinta el acero con el color de su diametro",
-          "TintaDeVarilla(v.Clave)" in muros and "TrazoMuroContencion.DiametroM(m, v.Clave) * esc" in muros)
+          "TintaDeVarilla(v.Clave)" in muros and "TrazoMuroContencion.ContornoVarilla(v.Puntos" in muros)
     check("dibujar y revisar solo toman la pestana abierta",
           "var muros = MurosParaDibujar();" in muros and "if (EnPestanaCiclopeo)" in muros
           and ".Concat(_datos.MurosCiclopeos" not in muros)
