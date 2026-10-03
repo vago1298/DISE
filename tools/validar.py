@@ -3640,7 +3640,7 @@ def v16_extruida_piers() -> None:
         check("el rotulo dice el gancho", "gancho {a.GanchoCm" in cuerpo)
 
         # El alzado se estira a lo LARGO: manda el ancho.
-        m_esc = re.search(r"var esc = Math\.Min\(anchoDisp / largo, \(alto \* ([\d.]+)\)", cuerpo)
+        m_esc = re.search(r"var esc = Math\.Min\(anchoDisp / largo,\s*(?:Math\.Max\()?\(alto \* ([\d.]+)\)", cuerpo)
         check("se puede leer la escala de la vista previa", m_esc is not None)
         if m_esc:
             check("el alzado se estira a lo largo (el alto ya no lo aprieta)",
