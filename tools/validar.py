@@ -2629,7 +2629,8 @@ def v16_extruida_piers() -> None:
     check("la X por la tabla avanza IGUAL que el dibujo completo",
           m_xsec is not None and m_full is not None
           and "x += (s.BaseCm + 35) * escala;" in m_xsec.group(0)
-          and "x += (s.BaseCm + 35) * escala;" in m_full.group(0))
+          and "x = xSec + ((s.BaseCm + 35) * escala);" in m_full.group(0)
+          and "AireExtraBastones(s)" in m_xsec.group(0))
     alz_drw = leer(ruta("client/src/CadLink.Cad/AlzadoDrawer.cs"))
     check("el avance del alzado sin dibujar usa la misma colocacion",
           "AlzadoLayout.Colocar(x0, a.EsVertical, ancho, y + alto, largo, dosCaras, y).XSiguiente"
@@ -2672,7 +2673,7 @@ def v16_extruida_piers() -> None:
           and "LeaderBaston(" in sec_drw)
     sec_circ = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Circular.cs"))
     check("y sus llamadas se rehacen junto al bloque del alzado",
-          "LeaderBaston(pos[0].X, pos[0].Y, bas, xIzquierda);" in sec_circ)
+          "LeaderBaston(pos, bas, xIzquierda);" in sec_circ)
     check("solo trabes y contratrabes llevan bastones",
           "TipoDe(r.Elemento, r.Id) is TipoElemento.Trabe or TipoElemento.Contratrabe" in mw_alz)
     check("no van en la tabla: tienen su cuadro",
@@ -2729,9 +2730,17 @@ def v16_extruida_piers() -> None:
     check("la longitud del baston es la real, y el del centro va centrado",
           "res.Add(new Tramo((largo - l) / 2, (largo + l) / 2, true, true));" in bast
           and 'Header = "Longitud real (m)",' in mw_bast)
-    check("el gancho del baston mide lo que el de la corrida de su lecho",
-          "Estribos.GanchoNominal(false, a.GanchoCm * _escala, arriba ? dSup : dInf)" in alz_drw
-          and "ganchoComoCm: arriba ? dSupCm : dInfCm" in mw_alz)
+    check("el gancho del baston es de 12 diametros del propio baston",
+          "var nominal = Bastones.GanchoDiametros * dB;" in alz_drw
+          and "factorGancho: CadLink.Cad.Bastones.GanchoDiametros" in mw_alz)
+    check("la llamada del baston senala todas sus varillas",
+          "LeaderBaston(pos, bas, x0);" in sec_drw)
+    check("con bastones, 0.2 mas de aire antes de la seccion, en los dos dibujos",
+          "var xSec = x + AireExtraBastones(s);" in mw_alz
+          and "x += AireExtraBastones(s);" in mw_alz)
+    check("con bastones, un estribo menos en cada extremo, en AutoCAD y en la vista previa",
+          "Bastones.QuitarEstribosExtremos(centros);" in alz_drw
+          and "CadLink.Cad.Bastones.QuitarEstribosExtremos(centros);" in mw_alz)
     check("la seccion de la vista previa muestra los bastones del corte, en verde tenue",
           "PosicionesDeBastonesPrevia(s, de, rec)" in mw_alz and "baston: true" in mw_alz)
     check("el corte de AutoCAD sabe donde arrancan los de extremo",

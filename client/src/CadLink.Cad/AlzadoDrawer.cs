@@ -835,6 +835,13 @@ public sealed class AlzadoDrawer
             centros[i] += x0;
         }
 
+        // Con bastones, un estribo menos al inicio y al final: ahí coinciden los ganchos de
+        // la corrida y del bastón, y el extremo se veía saturado. Solo en el horizontal.
+        if (!girar && a.Bastones.Any(Bastones.EsValido))
+        {
+            Bastones.QuitarEstribosExtremos(centros);
+        }
+
         var dEst = a.EstriboDibujo.Cm * _escala;
         if (dEst <= 0) { dEst = 0.0095 * _f; }
 
@@ -2470,7 +2477,8 @@ public sealed class AlzadoDrawer
 
             // EL GANCHO MIDE LO QUE EL DE LA CORRIDA DE SU LECHO: la misma cuenta de
             // Estribos.GanchoNominal con el diámetro de esa corrida.
-            var nominal = Estribos.GanchoNominal(false, a.GanchoCm * _escala, arriba ? dSup : dInf);
+            // 12 DIÁMETROS DEL PROPIO BASTÓN.
+            var nominal = Bastones.GanchoDiametros * dB;
 
             foreach (var t in tramos)
             {
@@ -2554,13 +2562,16 @@ public sealed class AlzadoDrawer
         var izq = rec;
         var der = largo - rec;
 
-        if (gSup > 0 && pos != PosicionBaston.Inferior)
+        // LOS DOS GANCHOS DE LAS CORRIDAS, sea cual sea el lecho del bastón: el gancho del
+        // bastón baja (o sube) casi todo el peralte y se cruzaba con el de la corrida del
+        // OTRO lecho, que además puede ir corrido hacia dentro (xaInf).
+        if (gSup > 0)
         {
             izq = Math.Max(izq, xa + dSup + HookClearH);
             der = Math.Min(der, xb - dSup - HookClearH);
         }
 
-        if (gInf > 0 && pos != PosicionBaston.Superior)
+        if (gInf > 0)
         {
             izq = Math.Max(izq, xaInf + dInf + HookClearH);
             der = Math.Min(der, xbInf - dInf - HookClearH);

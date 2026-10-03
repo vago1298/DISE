@@ -1154,7 +1154,7 @@ public sealed partial class SeccionDrawer
             {
                 if (pos.Count > 0)
                 {
-                    LeaderBaston(pos[0].X, pos[0].Y, bas, xIzquierda);
+                    LeaderBaston(pos, bas, xIzquierda);
                 }
             }
         }

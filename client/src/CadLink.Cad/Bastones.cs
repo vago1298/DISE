@@ -150,6 +150,23 @@ public static class Bastones
         double margenExtremos = 0) =>
         Tramos(b, largo, margenExtremos).Any(t => t.Ini <= xGancho + margen && t.Fin >= xGancho - margen);
 
+    /// <summary>El gancho de un bastón: <b>12 diámetros</b> del propio bastón.</summary>
+    public const double GanchoDiametros = 12;
+
+    /// <summary>
+    /// Quita el <b>primer y el último estribo</b> del alzado de una pieza con bastones, para
+    /// que los extremos —donde coinciden los ganchos de la corrida y del bastón— no se vean
+    /// saturados. Lo pidió el usuario. Con dos estribos o menos no se toca.
+    /// </summary>
+    public static void QuitarEstribosExtremos(List<double> centros)
+    {
+        if (centros.Count > 2)
+        {
+            centros.RemoveAt(centros.Count - 1);
+            centros.RemoveAt(0);
+        }
+    }
+
     /// <summary>Separación libre entre el lecho y la cama de bastones: 2.5 cm.</summary>
     public const double SeparacionCamaCm = 2.5;
 

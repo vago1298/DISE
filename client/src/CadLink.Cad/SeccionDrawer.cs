@@ -2376,23 +2376,39 @@ public sealed partial class SeccionDrawer
 
             if (pos.Count > 0)
             {
-                LeaderBaston(pos[0].X, pos[0].Y, bas, x0);
+                LeaderBaston(pos, bas, x0);
             }
         }
     }
 
     /// <summary>
-    /// La llamada de un bastón en el corte: igual que la de una varilla lateral, con su
-    /// texto de bastón.
+    /// La llamada de un bastón en el corte: <b>una flecha a cada varilla</b> del bastón,
+    /// colgadas de una misma espina que llega al texto, como la llamada de un lecho.
     /// </summary>
-    private void LeaderBaston(double x, double y, BastonCad bas, double xIzquierdaSeccion)
+    /// <remarks>
+    /// Antes señalaba solo la primera varilla, y la otra quedaba sin llamada: no se sabía que
+    /// también era bastón. La espina va por debajo de las varillas, a la altura de la de las
+    /// laterales, para no cruzar las llamadas de los lechos.
+    /// </remarks>
+    private void LeaderBaston(
+        IReadOnlyList<(double X, double Y)> pos, BastonCad bas, double xIzquierdaSeccion)
     {
+        if (pos.Count == 0)
+        {
+            return;
+        }
+
+        var y = pos[0].Y;
         var yAbajo = y - (LineaVerticalDist * _f);
         var xTexto = xIzquierdaSeccion - (0.02 * _f);
 
-        Rotulado(Linea(x, y, x, yAbajo, "ROTULOS"));
-        FlechaTriangular(x, y, haciaArriba: false);
-        Rotulado(Linea(x, yAbajo, xTexto, yAbajo, "ROTULOS"));
+        Rotulado(Linea(xTexto, yAbajo, pos.Max(p => p.X), yAbajo, "ROTULOS"));
+
+        foreach (var (x, yv) in pos)
+        {
+            Rotulado(Linea(x, yv, x, yAbajo, "ROTULOS"));
+            FlechaTriangular(x, yv, haciaArriba: false);
+        }
 
         TextoLeader(xTexto, yAbajo, Bastones.Texto(bas));
     }

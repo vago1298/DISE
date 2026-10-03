@@ -1398,6 +1398,10 @@ public partial class MainWindow : Window
 
         foreach (var s in _datos.SeccionesConcreto)
         {
+            // El aire extra de una sección con bastones va ANTES de ella, igual que al
+            // dibujar la hoja entera.
+            x += AireExtraBastones(s);
+
             if (ReferenceEquals(s, fila))
             {
                 return x;
@@ -4232,11 +4236,15 @@ public partial class MainWindow : Window
                     MarcasCad.Borrar(viejas.Where(m => !MarcasCad.EsBloque(m.Entidad)));
                 }
 
-                var n = dibujante.Dibujar(AFormatoCad(s), x, 0);
+                // Con bastones, 20 cm más de aire ANTES de la sección: su llamada es larga y
+                // crece hacia la izquierda, encima de la sección anterior.
+                var xSec = x + AireExtraBastones(s);
+
+                var n = dibujante.Dibujar(AFormatoCad(s), xSec, 0);
 
                 if (dibujante.InicioUltima >= 0)
                 {
-                    MarcasCad.Marcar(ms, dibujante.InicioUltima, MarcasCad.ClaveSeccion(s.Id), x, 0);
+                    MarcasCad.Marcar(ms, dibujante.InicioUltima, MarcasCad.ClaveSeccion(s.Id), xSec, 0);
                 }
 
                 // Igual que la macro: la seccion que ya es bloque se SALTA. Quien
@@ -4260,7 +4268,7 @@ public partial class MainWindow : Window
                 // plano ya acomodado dejaria la fila llena de huecos.
                 if (!dibujante.UltimaFueASuSitio)
                 {
-                    x += (s.BaseCm + 35) * escala;
+                    x = xSec + ((s.BaseCm + 35) * escala);
                 }
             }
 
@@ -4604,6 +4612,14 @@ public partial class MainWindow : Window
 
     private static bool EsContratrabe(SeccionConcretoRow r) =>
         TipoDe(r.Elemento, r.Id) == TipoElemento.Contratrabe;
+
+    /// <summary>
+    /// El aire de más que lleva una sección cuyo corte muestra bastones: <b>0.2</b> sobre la
+    /// separación de siempre. Su llamada «2 Var. (Bastones) #4C» es más larga que las de las
+    /// varillas y chocaba con la sección de al lado. Las que no muestran bastones no cambian.
+    /// </summary>
+    private double AireExtraBastones(SeccionConcretoRow s) =>
+        LlevaBastones(s) && AFormatoCad(s).BastonesEnCorte.Count > 0 ? 0.2 : 0;
 
     /// <summary>Solo las trabes y las contratrabes llevan bastones.</summary>
     private static bool LlevaBastones(SeccionConcretoRow r) =>
@@ -6000,6 +6016,12 @@ public partial class MainWindow : Window
             vertical: a.EsVertical,
             esColumna: a.Tipo == TipoElemento.Columna);
 
+        // Con bastones, un estribo menos al inicio y al final, como en AutoCAD.
+        if (!a.EsVertical && a.Bastones.Any(CadLink.Cad.Bastones.EsValido))
+        {
+            CadLink.Cad.Bastones.QuitarEstribosExtremos(centros);
+        }
+
         var brochaEst = new SolidColorBrush(Color.FromRgb(0x1F, 0x6F, 0xB2));
 
         // ===== LOS ESTRIBOS SE PINTAN AL FINAL, ENCIMA DE LAS VARILLAS =====
@@ -6069,7 +6091,7 @@ public partial class MainWindow : Window
         void BarraDeAlzado(double yCentro, double dCm, bool dobleHaciaAbajo, double disponibleM,
             double? xDesde = null, double? xHasta = null,
             bool ganchoIzq = true, bool ganchoDer = true,
-            double? ganchoComoCm = null, Color? tono = null)
+            double factorGancho = 15, Color? tono = null)
         {
             var dM = dCm / 100.0;
             var grosor = Math.Max(dM * esc, 1.4);
@@ -6118,9 +6140,8 @@ public partial class MainWindow : Window
             // leía como una sola varilla doblada de arriba abajo. El tope deja siempre un
             // hueco entre las dos puntas —disponibleM ya viene descontado en el
             // llamador—, para que se vea que son dos piezas distintas.
-            // El gancho de un bastón mide lo que el de la corrida de su lecho: 15 diámetros de
-            // ESA corrida (ganchoComoCm), no del bastón.
-            var gM = Math.Min(15 * ((ganchoComoCm ?? dCm) / 100.0), disponibleM);
+            // 15 diámetros en las corridas; 12 del propio bastón en los bastones.
+            var gM = Math.Min(factorGancho * dM, disponibleM);
 
             if (gM < dM || (!ganchoIzq && !ganchoDer))
             {
@@ -6398,13 +6419,12 @@ public partial class MainWindow : Window
             var holguraPx = Math.Max(0.015 * esc, 2);
 
             // El margen de cada extremo, en metros: recubrimiento más el gancho de la corrida.
+            // Pasados los DOS ganchos de las corridas, como en AutoCAD: el del bastón baja casi
+            // todo el peralte y chocaba con el de la corrida del otro lecho.
             double MargenM(PosicionBaston pos) =>
-                (rec + (!hayGanchoCorrida ? 0 : holguraPx + pos switch
-                {
-                    PosicionBaston.Superior => anchoGanchoSup,
-                    PosicionBaston.Inferior => anchoGanchoInf,
-                    _ => Math.Max(anchoGanchoSup, anchoGanchoInf)
-                })) / esc;
+                (rec + (!hayGanchoCorrida
+                    ? 0
+                    : holguraPx + Math.Max(anchoGanchoSup, anchoGanchoInf))) / esc;
 
             double YDe(PosicionBaston pos, double dPx) => pos switch
             {
@@ -6502,7 +6522,7 @@ public partial class MainWindow : Window
                     BarraDeAlzado(yB, b.Var.Cm, dobleHaciaAbajo: arriba, disponibleM,
                         xDesde: xIni, xHasta: xFin,
                         ganchoIzq: t.GanchoIzq, ganchoDer: t.GanchoDer,
-                        ganchoComoCm: arriba ? dSupCm : dInfCm, tono: verdeTenue);
+                        factorGancho: CadLink.Cad.Bastones.GanchoDiametros, tono: verdeTenue);
 
                     // LA COTA del tramo, con su LONGITUD REAL, como en AutoCAD.
                     CotaDeBastonPrevia(xIni, xFin, yCota, top,
