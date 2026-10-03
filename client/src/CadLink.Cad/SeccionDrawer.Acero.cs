@@ -39,6 +39,9 @@ public sealed partial class SeccionDrawer
     /// </remarks>
     private const string EstiloTextoAcero = "ACERO";
 
+    /// <summary>El factor del rotulo del perfil, del estilo «Perfiles de acero» (1 = el de siempre).</summary>
+    private static double FactorRotuloAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero("factor.rotulo");
+
     /// <summary>La fuente de ACERO: la del estilo «Perfiles de acero».</summary>
     private static string FuenteAcero => EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Texto("fuente");
 
@@ -101,7 +104,7 @@ public sealed partial class SeccionDrawer
     {
         Capa(CapaPerfiles, EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).ColorAci("capa.PERFILES"));
         Capa("COTAS", EstiloSecciones.ColorAci("capa.COTAS"));
-        Capa("ROTULOS", 3);
+        Capa("ROTULOS", CapasCad.ColorDeCapa("TEXTOS"));   // ROTULOS sigue a TEXTOS: 3 por defecto
 
         // Los DOS estilos de texto, que es lo que faltaba. Las macros usan uno para los
         // rótulos —SECCIONES— y otro para las cotas —ACERO—, y se lo ponen a cada cota a
@@ -209,8 +212,11 @@ public sealed partial class SeccionDrawer
         var referencia = p.PeralteCm * _escala;
 
         _gapAcero = Acotar(referencia / 5, 0.8 * Cm, 6 * Cm);
-        _flechaAcero = Acotar(referencia / 15, 0.4 * Cm, 2 * Cm);
-        _textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm);
+        // El tamano sale del perfil; el factor de «Estilo de dibujo» lo agranda o lo achica (1 = el
+        // de siempre).
+        var factorCotas = EstiloDibujo.Actual.Perfil(EstiloDibujo.Acero).Numero("factor.cotas");
+        _flechaAcero = Acotar(referencia / 15, 0.4 * Cm, 2 * Cm) * factorCotas;
+        _textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm) * factorCotas;
         _extOffsetAcero = Acotar(referencia / 15, 0.3 * Cm, 2 * Cm);
         _extExtiendeAcero = Acotar(referencia / 8, 0.5 * Cm, 3.5 * Cm);
     }
@@ -921,9 +927,9 @@ public sealed partial class SeccionDrawer
             string.Join("\\P", p.LineasRotulo),
             xCentro,
             yBase,
-            p.AlturaRotuloCm * _escala,
+            p.AlturaRotuloCm * _escala * FactorRotuloAcero,
             "ROTULOS",
-            p.AnchoRotuloCm * _escala);
+            p.AnchoRotuloCm * _escala * FactorRotuloAcero);
     }
 
     // ==================================================================

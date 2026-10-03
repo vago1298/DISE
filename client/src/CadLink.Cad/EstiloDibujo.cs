@@ -78,7 +78,9 @@ public sealed class AjusteEstilo
                 return v.Length == 0 ? "falta el nombre de la fuente" : string.Empty;
 
             case TipoAjuste.Medida:
-                return EstiloDibujo.LeerNumero(v) is double n && n > 0 && n < 1000
+                // El 0 vale solo donde el 0 es el defecto: ahi quiere decir «automatica».
+                return EstiloDibujo.LeerNumero(v) is double n && n < 1000
+                       && (n > 0 || (n == 0 && EstiloDibujo.LeerNumero(Defecto) == 0))
                     ? string.Empty
                     : "tiene que ser un numero mayor que cero, por ejemplo 0.08";
 
@@ -277,6 +279,8 @@ public sealed class EstiloDibujo
             .Con("alto.escala.alzado", GrupoLetras, "Altura de la escala del alzado", TipoAjuste.Medida, N(0.0225))
             .Con("alto.rotulos.alzado", GrupoLetras, "Altura de los rótulos del alzado", TipoAjuste.Medida, N(0.025))
             .Con("alto.letra.corte", GrupoLetras, "Altura de la letra del corte (A, A')", TipoAjuste.Medida, N(0.025))
+            .Con("alto.rotulo.seccion", GrupoLetras, "Altura del rótulo bajo la sección (ID, f'c, escala)", TipoAjuste.Medida, N(0.03))
+            .Con("alto.corte.alzado", GrupoLetras, "Altura del «CORTE A-A'» del alzado", TipoAjuste.Medida, N(0.025))
             .Con("cota.alto", GrupoCotas, "Altura del número de las cotas (COTA_ESTRUCTURAL)", TipoAjuste.Medida, N(0.017))
             .Con("cota.marca.tam", GrupoCotas, "Tamaño de la marca", TipoAjuste.Medida, N(0.02))
             .Con("cota.marca", GrupoCotas, "Tipo de marca", TipoAjuste.Marca, "_OPEN90")
@@ -290,6 +294,10 @@ public sealed class EstiloDibujo
         e._perfiles.Add(new PerfilEstilo(Acero, "Perfiles de acero",
                 "Las secciones de perfiles de acero. Sus cotas usan COTA_ESTRUCTURAL, el de «Secciones y alzados».")
             .Con("fuente", GrupoLetras, "Fuente del estilo de texto ACERO", TipoAjuste.Fuente, "BAHNSCHRIFT SEMILIGHT")
+            .Con("factor.rotulo", GrupoLetras, "Tamaño del rótulo del perfil (1 = el de siempre)", TipoAjuste.Medida, N(1),
+                "La altura del rótulo sale del tamaño del perfil; este factor la multiplica: 1.5 = 50 % más grande.")
+            .Con("factor.cotas", GrupoCotas, "Tamaño del número y de la marca de las cotas (1 = el de siempre)", TipoAjuste.Medida, N(1),
+                "Salen del peralte del perfil; este factor los multiplica.")
             .Con("capa.PERFILES", GrupoColores, "Capa PERFILES", TipoAjuste.ColorAci, C(7)));
 
         // ------------------------------------------------------------------
@@ -303,7 +311,7 @@ public sealed class EstiloDibujo
             .Con("alto.subtitulo", GrupoLetras, "Altura del subtítulo (ELEVACION, PLANTA)", TipoAjuste.Medida, N(0.05))
             .Con("alto.escala", GrupoLetras, "Altura de la escala", TipoAjuste.Medida, N(0.04))
             .Con("alto.rotulos", GrupoLetras, "Altura de los rótulos del acero", TipoAjuste.Medida, N(0.015))
-            .Con("alto.terreno", GrupoLetras, "Altura del texto del terreno", TipoAjuste.Medida, N(0.025))
+            .Con("alto.terreno", GrupoLetras, "Altura del texto del terreno y del nivel del terreno", TipoAjuste.Medida, N(0.025))
             .Con("alto.plantilla", GrupoLetras, "Altura del texto de la plantilla", TipoAjuste.Medida, N(0.02))
             .Con("alto.planta.rotulos", GrupoLetras, "Altura de los rótulos de la planta", TipoAjuste.Medida, N(0.03))
             .Con("alto.planta.id", GrupoLetras, "Altura del ID del dado en la planta", TipoAjuste.Medida, N(0.03))
@@ -362,10 +370,14 @@ public sealed class EstiloDibujo
             .Con("SEC_NOMBRE_FUENTE", GrupoLetras, "Fuente de los rótulos de sección", TipoAjuste.Fuente, "Bahnschrift")
             .Con("SEC_ALTURA", GrupoLetras, "Altura de los rótulos de sección", TipoAjuste.Medida, "0.12")
             .Con("ALTURA_TEXTO", GrupoLetras, "Altura de las etiquetas", TipoAjuste.Medida, "0.12")
+            .Con("ALTURA_TEXTO_SECCION", GrupoLetras, "Altura del texto de las secciones (0 = 0.8 de las etiquetas)", TipoAjuste.Medida, "0")
+            .Con("ALTURA_TEXTO_BURBUJA", GrupoLetras, "Altura del número de los ejes (0 = automática)", TipoAjuste.Medida, "0")
+            .Con("MURO_CONCRETO_LEYENDA_ALTURA", GrupoLetras, "Altura de la leyenda del muro de concreto", TipoAjuste.Medida, "0.12")
             .Con("CADENA_NOMBRE_FUENTE", GrupoLetras, "Fuente del rótulo de las cadenas", TipoAjuste.Fuente, "Bahnschrift")
             .Con("CADENA_TEXTO_ALTURA", GrupoLetras, "Altura del rótulo de las cadenas", TipoAjuste.Medida, "0.09")
             .Con("LOSA_NOMBRE_FUENTE", GrupoLetras, "Fuente del rótulo de las losas", TipoAjuste.Fuente, "Bahnschrift")
             .Con("LOSA_TEXTO_ALTURA", GrupoLetras, "Altura del rótulo de las losas", TipoAjuste.Medida, "0.072")
+            .Con("LOSACERO_TEXTO_ALTURA", GrupoLetras, "Altura del rótulo de la losacero (0 = la de la losa)", TipoAjuste.Medida, "0")
             .Con("ROTULO_NOMBRE_FUENTE", GrupoLetras, "Fuente del rótulo de la planta", TipoAjuste.Fuente, "Haettenschweiler")
             .Con("ROTULO_ALTURA_TITULO", GrupoLetras, "Altura de PLANTA ESTRUCTURAL", TipoAjuste.Medida, "0.52")
             .Con("ROTULO_ALTURA_NIVEL", GrupoLetras, "Altura del renglón del nivel", TipoAjuste.Medida, "0.26")

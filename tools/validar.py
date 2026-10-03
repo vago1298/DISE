@@ -13899,7 +13899,8 @@ def v21_separacion_y_acero() -> None:
     # uno de 30 cm da EXACTAMENTE ese 0.015. Lo comprueba numericamente
     # verificar_perfiles_acero.py; aqui solo que el tope de arriba sea ese.
     check("el tope de la altura de cota sigue siendo el 0.015 de las macros",
-          "_textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm);" in acero_cad)
+          # Con el factor de «Estilo de dibujo» encima, que por defecto es 1.
+          "_textoCotaAcero = Acotar(referencia / 10, 0.4 * Cm, 1.5 * Cm) * factorCotas;" in acero_cad)
     check("hay comprobacion de que un perfil de 30 cm sale como antes",
           "un perfil de 30 cm sale con el" in leer(
               ruta("tools/verificar_perfiles_acero.py")))
@@ -15584,6 +15585,53 @@ def v28_estilo_dibujo() -> None:
           "EstiloDibujo.Actual.ColorDeVarilla(clave)" in leer(ruta("client/src/CadLink.App/MainWindow.MurosContencion.cs")))
     check("hay prueba ejecutable del estilo",
           os.path.exists(ruta("tools/prueba-estilo-dibujo/Program.cs")))
+
+    # ------------------------------------------------------------------
+    # LA REGLA: todo lo que se pueda editar va en «Estilo de dibujo». Ningun dibujante escribe a
+    # mano una altura de texto, un numero o una marca de cota, ni el color de una capa: los lee
+    # de su perfil. Asi lo que se agregue aparece solo en la ventana.
+    # ------------------------------------------------------------------
+    a_mano = re.compile(
+        r'\.Height = (?!0d;)[0-9.]+'
+        r'|AddM?Text\([^;]*, *[0-9.]+( *\* *_f)?\)'
+        r'|Dimvar\("DIM(TXT|ASZ|CLRT|CLRD|CLRE|BLK1?2?)", *("_|[0-9])'
+        r'|Capa\("[^"]+", *[0-9]+\)'
+        r'|CrearCapa\([^,]+, *[0-9]+,'
+        r'|\.TextHeight = [0-9]|"TextHeight", *[0-9]')
+    cad = os.path.join(RAIZ, "client", "src", "CadLink.Cad")
+    escritos = []
+    for p in archivos(".cs"):
+        if not p.startswith(cad) or os.sep + "obj" + os.sep in p:
+            continue
+        for n, linea in enumerate(leer(p).splitlines(), 1):
+            if a_mano.search(linea.split("//")[0]):
+                escritos.append(f"{rel(p)}:{n}: {linea.strip()[:90]}")
+    check("ningun dibujante escribe a mano alturas de texto, cotas ni colores de capa",
+          not escritos, "; ".join(escritos[:4]) + " -> agregalo a EstiloDibujo.PorDefecto() y leelo de su perfil")
+
+    # Y cada ajuste que un dibujante pide EXISTE en su perfil: uno que falte truena al dibujar.
+    claves = {}
+    for bloque in re.split(r"new PerfilEstilo\(", est)[1:]:
+        nombre = bloque.split(",")[0].strip()
+        claves[nombre] = set(re.findall(r'\.Con\("([^"]+)"', bloque))
+    claves["Comun"] = {"capa." + c for c in re.findall(r'\["([^"]+)"\] = \d+,', capas)}
+    alias = {"EstiloSecciones": "Secciones", "EstiloAlzado": "Secciones", "EstiloZapatas": "Zapatas",
+             "EstiloMuros": "Muros", "EstiloPlaca": "PlacaBase"}
+    faltan = []
+    for p in archivos(".cs"):
+        if not p.startswith(cad) or os.sep + "obj" + os.sep in p:
+            continue
+        txt = leer(p)
+        usos = [(alias[m.group(1)], m.group(3)) for m in re.finditer(
+            r'\b(EstiloSecciones|EstiloAlzado|EstiloZapatas|EstiloMuros|EstiloPlaca)\.(Numero|Texto|ColorAci|Cambiado)\("([^"]+)"\)', txt)]
+        usos += [(m.group(1), m.group(3)) for m in re.finditer(
+            r'Perfil\(EstiloDibujo\.(\w+)\)\.(Numero|Texto|ColorAci|Cambiado)\("([^"]+)"\)', txt)]
+        for perfil, clave in usos:
+            if clave not in claves.get(perfil, set()):
+                faltan.append(f"{rel(p)}: {perfil}/{clave}")
+    check("cada ajuste que piden los dibujantes esta en su perfil", not faltan, "; ".join(faltan[:5]))
+    check("y la regla queda escrita para quien agregue algo",
+          os.path.exists(ruta(".kiro/steering/estilo-dibujo.md")))
 
 def v26_plugin_revit() -> None:
     print("\n[26] Complemento de Revit")

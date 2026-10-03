@@ -2813,7 +2813,7 @@ public sealed partial class SeccionDrawer
             AcadConnection.Retry(() =>
             {
                 dynamic mt = _ms.AddMText(new[] { xCentro, yBase, 0d }, 0.45 * _f, texto);
-                mt.Height = 0.03 * _f;
+                mt.Height = EstiloSecciones.Numero("alto.rotulo.seccion") * _f;
                 mt.AttachmentPoint = 2;   // acAttachmentPointTopCenter
                 mt.InsertionPoint = new[] { xCentro, yBase, 0d };
                 mt.Layer = "ROTULOS";

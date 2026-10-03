@@ -655,7 +655,7 @@ public sealed class AlzadoDrawer
             {
                 var punto = new[] { xCentro, yTope + (0.15 * _f), 0d };
 
-                dynamic t = _ms.AddText("CORTE A-A'", punto, 0.025 * _f);
+                dynamic t = _ms.AddText("CORTE A-A'", punto, EstiloAlzado.Numero("alto.corte.alzado") * _f);
                 t.StyleName = "SECCIONES";
                 t.Alignment = 10;              // acAlignmentBottomCenter
                 t.TextAlignmentPoint = punto;
