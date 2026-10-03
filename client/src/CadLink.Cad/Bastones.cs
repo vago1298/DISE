@@ -75,10 +75,10 @@ public sealed class BastonCad
 public static class Bastones
 {
     /// <summary>
-    /// Cuántos bastones admite una pieza: <b>tres</b>, uno arriba, uno en medio y uno
-    /// abajo. Lo pidió el usuario: más que eso no es un armado que se dibuje.
+    /// Cuántos bastones admite una pieza: <b>dos</b>, uno arriba y otro abajo. Lo pidió el
+    /// usuario: la ubicación de cada uno la da <see cref="UbicacionDe"/>.
     /// </summary>
-    public const int Maximo = 3;
+    public const int Maximo = 2;
 
     /// <summary>
     /// La altura del bastón de en medio, medida desde la cara de abajo del núcleo
@@ -153,24 +153,44 @@ public static class Bastones
     }
 
     /// <summary>
-    /// Las reglas de colocación que pidió el usuario: los de <b>arriba</b> solo van en los
-    /// extremos, y el del <b>centro</b> solo va abajo. Un bastón que llegue de otra forma
-    /// —un trabajo viejo— se corrige aquí: al centro pasa abajo, y arriba no se queda al
-    /// centro.
+    /// La ubicación que le toca a cada lecho, que <b>no se elige</b>: lo pidió el usuario.
     /// </summary>
-    public static BastonCad Normalizar(BastonCad b)
+    /// <remarks>
+    /// <list type="bullet">
+    ///   <item><b>Trabe:</b> arriba en ambos extremos (momento negativo en los apoyos) y
+    ///   abajo al centro (positivo en el claro).</item>
+    ///   <item><b>Contratrabe:</b> al revés, porque trabaja invertida: abajo en ambos
+    ///   extremos y arriba al centro.</item>
+    /// </list>
+    /// </remarks>
+    public static UbicacionBaston UbicacionDe(PosicionBaston p, bool contratrabe)
     {
-        if (b.Ubicacion == UbicacionBaston.AlCentro && b.Posicion != PosicionBaston.Inferior)
-        {
-            b.Posicion = PosicionBaston.Inferior;
-        }
-
-        return b;
+        var enExtremos = contratrabe ? PosicionBaston.Inferior : PosicionBaston.Superior;
+        return p == enExtremos ? UbicacionBaston.Extremos : UbicacionBaston.AlCentro;
     }
 
-    /// <summary>¿Respeta las reglas de colocación? Ver <see cref="Normalizar"/>.</summary>
-    public static bool UbicacionPermitida(PosicionBaston p, UbicacionBaston u) =>
-        u != UbicacionBaston.AlCentro || p == PosicionBaston.Inferior;
+    /// <summary>
+    /// Aplica la regla: dos bastones como mucho, uno arriba y otro abajo, con la ubicación
+    /// de <see cref="UbicacionDe"/>. Lo que llegue de otra forma —un trabajo viejo con el
+    /// de «en medio»— se descarta.
+    /// </summary>
+    public static List<BastonCad> Normalizar(IEnumerable<BastonCad> bastones, bool contratrabe)
+    {
+        var res = new List<BastonCad>();
+
+        foreach (var b in bastones)
+        {
+            if (b.Posicion == PosicionBaston.Medio || res.Any(o => o.Posicion == b.Posicion))
+            {
+                continue;
+            }
+
+            b.Ubicacion = UbicacionDe(b.Posicion, contratrabe);
+            res.Add(b);
+        }
+
+        return res;
+    }
 
     /// <summary>¿Se puede dibujar? Varillas, diámetro y distancia válidos.</summary>
     public static bool EsValido(BastonCad b) =>

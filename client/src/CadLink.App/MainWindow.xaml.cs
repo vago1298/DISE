@@ -2589,10 +2589,17 @@ public partial class MainWindow : Window
                 // tumbar la carga, igual que el resto de la fila.
                 foreach (var b in s.Bastones ?? new List<BastonGuardado>())
                 {
+                    // Uno arriba y otro abajo: el de «en medio» de versiones anteriores, o uno
+                    // repetido, se deja fuera.
+                    if (!BastonSeccion.Posiciones.Contains(b.Posicion)
+                        || fila.Bastones.Any(o => o.Posicion == b.Posicion))
+                    {
+                        continue;
+                    }
+
                     fila.CargarBaston(new BastonSeccion
                     {
-                        Posicion = BastonSeccion.Posiciones.Contains(b.Posicion)
-                            ? b.Posicion : BastonSeccion.TextoSuperior,
+                        Posicion = b.Posicion,
                         Ubicacion = BastonSeccion.Ubicaciones.Contains(b.Ubicacion)
                             ? b.Ubicacion : BastonSeccion.TextoExtremos,
                         Cantidad = b.Cantidad,
@@ -4515,7 +4522,7 @@ public partial class MainWindow : Window
             // está donde lo pone el alzado, así que la longitud sale del mismo cálculo.
             BastonesEnCorte = LlevaBastones(r)
                 ? CadLink.Cad.Bastones.EnElCorte(
-                    r.Bastones.Select(b => b.ACad()), AlzadoDrawer.LargoDe(AFormatoAlzado(r)))
+                    BastonesCad(r), AlzadoDrawer.LargoDe(AFormatoAlzado(r)))
                 : new List<BastonCad>()
         };
     }
@@ -4529,26 +4536,19 @@ public partial class MainWindow : Window
         var largo = AlzadoDrawer.LargoDe(AFormatoAlzado(s));
         var n = 0;
 
-        foreach (var b in s.Bastones.Where(b =>
-                     b.Ubicacion == BastonSeccion.TextoCentro && b.Posicion != BastonSeccion.TextoInferior))
-        {
-            problemas.Add(
-                $"• {etiqueta}: el bastón «{b.Posicion}» está al centro; el del centro solo va " +
-                "abajo. Al dibujar se pasa abajo.");
-        }
-
-        // Tres como mucho: uno arriba, uno en medio y uno abajo.
+        // Dos como mucho: uno arriba y otro abajo.
         foreach (var g in s.Bastones.GroupBy(b => b.Posicion).Where(g => g.Count() > 1))
         {
             problemas.Add(
                 $"• {etiqueta}: lleva {g.Count()} bastones «{g.Key}». Va uno por posición " +
-                "(arriba, en medio y abajo).");
+                "(arriba y abajo).");
         }
 
         foreach (var b in s.Bastones)
         {
             n++;
-            var cual = $"• {etiqueta}: el bastón {n} ({b.Posicion.ToLowerInvariant()}, {b.Ubicacion.ToLowerInvariant()})";
+            var ubic = BastonSeccion.UbicacionTexto(b.Posicion, EsContratrabe(s));
+            var cual = $"• {etiqueta}: el bastón {n} ({b.Posicion.ToLowerInvariant()}, {ubic.ToLowerInvariant()})";
 
             if (b.Cantidad <= 0)
             {
@@ -4564,13 +4564,13 @@ public partial class MainWindow : Window
             {
                 problemas.Add($"{cual} necesita una distancia desde el paño mayor que cero.");
             }
-            else if (b.Ubicacion == BastonSeccion.TextoCentro && 2 * b.DistanciaM >= largo)
+            else if (ubic == BastonSeccion.TextoCentro && 2 * b.DistanciaM >= largo)
             {
                 problemas.Add(
                     $"{cual} empieza a {b.DistanciaM:0.##} m de cada paño, y la trabe mide " +
                     $"{largo:0.##} m: no queda bastón.");
             }
-            else if (b.Ubicacion == BastonSeccion.TextoExtremos && 2 * b.DistanciaM > largo)
+            else if (ubic == BastonSeccion.TextoExtremos && 2 * b.DistanciaM > largo)
             {
                 problemas.Add(
                     $"{cual} mide {b.DistanciaM:0.##} m desde cada paño, y la trabe mide " +
@@ -4578,6 +4578,13 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    /// <summary>Los bastones de la fila listos para dibujar, con la regla de su tipo.</summary>
+    private static List<BastonCad> BastonesCad(SeccionConcretoRow r) =>
+        CadLink.Cad.Bastones.Normalizar(r.Bastones.Select(b => b.ACad()), EsContratrabe(r));
+
+    private static bool EsContratrabe(SeccionConcretoRow r) =>
+        TipoDe(r.Elemento, r.Id) == TipoElemento.Contratrabe;
 
     /// <summary>Solo las trabes y las contratrabes llevan bastones.</summary>
     private static bool LlevaBastones(SeccionConcretoRow r) =>
@@ -4652,7 +4659,7 @@ public partial class MainWindow : Window
             ZunchoHelicoidal = r.EsZunchoHelicoidal,
 
             Bastones = LlevaBastones(r)
-                ? r.Bastones.Select(b => b.ACad()).ToList()
+                ? BastonesCad(r)
                 : new List<BastonCad>()
         };
     }

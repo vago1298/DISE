@@ -2692,8 +2692,8 @@ def v16_extruida_piers() -> None:
           'x:Name="BastonCantidadTxt"' in xaml_sel and 'x:Name="BastonDiametroCombo"' in xaml_sel)
     #  Pedido del usuario: SOLO TRES bastones -arriba, en medio y abajo- y con la misma
     #  linea que las varillas corridas.
-    check("tres posiciones de baston: arriba, en medio y abajo",
-          "public const int Maximo = 3;" in bast and "    Medio\n" in bast)
+    check("dos bastones: arriba y abajo",
+          "public const int Maximo = 2;" in bast)
     check("un clic en una posicion ocupada la cambia, no anade otra",
           "fila.Bastones.Where(b => b.Posicion != posicion).Append(nuevo)" in mw_bast)
     check("el alzado de AutoCAD dibuja el baston con la rutina de las corridas",
@@ -2712,10 +2712,16 @@ def v16_extruida_piers() -> None:
           and mw_alz.count("CadLink.Cad.Bastones.LibreParaGancho(") == 1)
     check("el de en medio baja, no sube, cuando cae en una intermedia",
           "medio -= (yTop - yBot) / (nIntermedias + 1) / 2;" in bast)
-    check("arriba solo en extremos y el del centro solo abajo",
-          "public static BastonCad Normalizar(" in bast
-          and "CadLink.Cad.Bastones.Normalizar(new BastonCad" in leer(ruta("client/src/CadLink.App/Models/BastonesSeccion.cs"))
-          and "posicion = BastonSeccion.TextoInferior;" in mw_bast)
+    #  Regla del usuario: dos bastones. Trabe: arriba ambos extremos, abajo centro.
+    #  Contratrabe: al reves. La ubicacion no se elige.
+    check("la ubicacion de cada baston la da el tipo: trabe y contratrabe al reves",
+          "public static UbicacionBaston UbicacionDe(PosicionBaston p, bool contratrabe)" in bast
+          and "var enExtremos = contratrabe ? PosicionBaston.Inferior : PosicionBaston.Superior;" in bast
+          and "CadLink.Cad.Bastones.Normalizar(r.Bastones.Select(b => b.ACad()), EsContratrabe(r))" in mw_alz)
+    check("el clic arriba pone el superior y abajo el inferior",
+          "var ubicacion = BastonSeccion.UbicacionTexto(posicion, EsContratrabe(fila));" in mw_bast)
+    check("en el cuadro la ubicacion no se elige",
+          "IsReadOnly = true," in mw_bast and "BastonSeccion.Ubicaciones" not in mw_bast)
     check("el texto de la cota del baston va encima de la linea, no tachado",
           "textoArriba: true" in alz_drw and "d.VerticalTextPosition = 1;" in alz_drw)
     check("la punta de la cola del gancho en la vista previa cierra en escuadra",

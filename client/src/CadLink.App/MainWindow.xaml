@@ -892,7 +892,7 @@
                                               VerticalAlignment="Center" Margin="0,0,6,0"
                                               SelectedValue="#4"
                                               ItemsSource="{Binding Source={x:Static models:Varilla.Diametros}}"
-                                              ToolTip="Diametro del baston que se ponga con clic en el alzado.&#10;Cerca de un extremo: arriba, en medio o abajo segun la altura del clic, desde el paño hasta el clic, en los dos extremos (Ctrl: solo en ese).&#10;En el tercio central: el baston del centro, SIEMPRE abajo, desde L/4 de cada paño.&#10;Clic sobre un baston lo quita." />
+                                              ToolTip="Diametro del baston que se ponga con clic en el alzado.&#10;Clic arriba = baston superior, abajo = inferior. La distancia es la del clic al paño mas cercano.&#10;Trabe: arriba en ambos extremos, abajo al centro. Contratrabe: al reves.&#10;Clic sobre un baston lo quita." />
                                 </StackPanel>
 
                                 <!-- Los del encuadre, a la derecha: son de mirar, no de

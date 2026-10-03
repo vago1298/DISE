@@ -66,13 +66,11 @@ public partial class MainWindow
     /// <remarks>
     /// <list type="bullet">
     ///   <item>Sobre un bastón: lo <b>quita</b>.</item>
-    ///   <item>Tercio de <b>arriba</b> del alzado: bastón superior; tercio <b>de en
-    ///   medio</b>: a media altura; tercio de <b>abajo</b>: inferior. Uno por posición: si
-    ///   ya hay, se cambia.</item>
-    ///   <item>En el <b>primer o último tercio</b>: bastón de extremo, desde el paño hasta
-    ///   donde se hizo clic. Va en los dos extremos; con <b>Ctrl</b>, solo en ese.</item>
-    ///   <item>En el <b>tercio central</b>: bastón al centro, que empieza a L/4 de cada
-    ///   paño.</item>
+    ///   <item>Mitad de <b>arriba</b>: bastón superior; mitad de <b>abajo</b>: inferior.
+    ///   Uno por lecho: si ya hay, se cambia.</item>
+    ///   <item>La ubicación la da el tipo: en la trabe, arriba en ambos extremos y abajo
+    ///   al centro; en la contratrabe, al revés.</item>
+    ///   <item>La distancia es la del clic al paño más cercano.</item>
     /// </list>
     /// Las varillas y el diámetro salen de los mandos «Bastón» de la vista previa. Para
     /// afinar la distancia, el botón <i>Bastones…</i>.
@@ -106,39 +104,24 @@ public partial class MainWindow
             }
         }
 
-        // Tres franjas de alto: arriba, en medio y abajo. Son las tres únicas posiciones.
-        var posicion = p.Y < a.Top + (a.H / 3)
+        // DOS FRANJAS: arriba y abajo. La ubicación la da el tipo, no el clic:
+        //   trabe        arriba = ambos extremos, abajo = centro
+        //   contratrabe  arriba = centro,         abajo = ambos extremos
+        var posicion = p.Y < a.Top + (a.H / 2)
             ? BastonSeccion.TextoSuperior
-            : p.Y > a.Top + (2 * a.H / 3)
-                ? BastonSeccion.TextoInferior
-                : BastonSeccion.TextoMedio;
+            : BastonSeccion.TextoInferior;
+
+        var ubicacion = BastonSeccion.UbicacionTexto(posicion, EsContratrabe(fila));
+
+        // La distancia sale de dónde se hizo clic, medida desde el paño más cercano. En los
+        // extremos es lo que mide cada bastón; al centro, donde empieza, igual de cada paño.
         var xm = (p.X - a.Izq) / a.Esc;
-        var soloUno = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        var distancia = Math.Min(xm, a.Largo - xm);
 
-        string ubicacion;
-        double distancia;
-
-        // Los de arriba van solo en los extremos, y el del centro solo abajo: un clic en el
-        // tercio central pone SIEMPRE el inferior del centro, sea cual sea la altura.
-        if (xm > a.Largo / 3 && xm < 2 * a.Largo / 3)
+        if (ubicacion == BastonSeccion.TextoCentro)
         {
-            posicion = BastonSeccion.TextoInferior;
-        }
-
-        if (xm <= a.Largo / 3)
-        {
-            ubicacion = soloUno ? BastonSeccion.TextoIzquierdo : BastonSeccion.TextoExtremos;
-            distancia = xm;
-        }
-        else if (xm >= 2 * a.Largo / 3)
-        {
-            ubicacion = soloUno ? BastonSeccion.TextoDerecho : BastonSeccion.TextoExtremos;
-            distancia = a.Largo - xm;
-        }
-        else
-        {
-            ubicacion = BastonSeccion.TextoCentro;
-            distancia = a.Largo / 4;
+            // Que quede bastón: al centro no puede empezar pasada la mitad.
+            distancia = Math.Min(distancia, (a.Largo / 2) - (2 * PasoBastonM));
         }
 
         distancia = Math.Max(PasoBastonM, Math.Round(distancia / PasoBastonM) * PasoBastonM);
@@ -153,7 +136,7 @@ public partial class MainWindow
         };
 
         // UNO POR POSICIÓN: el clic en una franja que ya tiene bastón lo cambia, no añade
-        // otro. Así nunca hay más de tres.
+        // otro. Así nunca hay más de dos.
         var habia = fila.Bastones.Any(b => b.Posicion == posicion);
         fila.ReemplazarBastones(
             fila.Bastones.Where(b => b.Posicion != posicion).Append(nuevo).ToList());
@@ -197,7 +180,30 @@ public partial class MainWindow
             return;
         }
 
+        var contratrabe = EsContratrabe(fila);
         var copias = new ObservableCollection<BastonSeccion>(fila.Bastones.Select(b => b.Copia()));
+
+        // LA UBICACIÓN NO SE ELIGE: sale del lecho y del tipo. Se fija al abrir y se rehace
+        // cada vez que se cambia el lecho de una fila.
+        void FijarUbicacion(BastonSeccion b) =>
+            b.Ubicacion = BastonSeccion.UbicacionTexto(b.Posicion, contratrabe);
+
+        void Vigilar(BastonSeccion b)
+        {
+            FijarUbicacion(b);
+            b.PropertyChanged += (_, ev) =>
+            {
+                if (ev.PropertyName == nameof(BastonSeccion.Posicion))
+                {
+                    FijarUbicacion(b);
+                }
+            };
+        }
+
+        foreach (var b in copias)
+        {
+            Vigilar(b);
+        }
 
         var tabla = new DataGrid
         {
@@ -219,11 +225,11 @@ public partial class MainWindow
             Width = 90
         });
 
-        tabla.Columns.Add(new DataGridComboBoxColumn
+        tabla.Columns.Add(new DataGridTextColumn
         {
             Header = "Ubicación",
-            ItemsSource = BastonSeccion.Ubicaciones,
-            SelectedItemBinding = new Binding(nameof(BastonSeccion.Ubicacion)),
+            Binding = new Binding(nameof(BastonSeccion.Ubicacion)) { Mode = BindingMode.OneWay },
+            IsReadOnly = true,
             Width = 130
         });
 
@@ -260,7 +266,9 @@ public partial class MainWindow
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8),
             Text =
-                "Arriba y en medio van solo en los extremos; el del centro, solo abajo.\n" +
+                (contratrabe
+                    ? "Contratrabe: abajo en ambos extremos y arriba al centro.\n"
+                    : "Trabe: arriba en ambos extremos y abajo al centro.\n") +
                 "La distancia se mide desde el paño. En un extremo es lo que mide el bastón; " +
                 "al centro, es donde empieza, igual desde cada paño.\n" +
                 "En el corte A-A' salen los bastones que cruza su línea (a L/4 + 5 cm)."
@@ -273,7 +281,7 @@ public partial class MainWindow
 
         agregar.Click += (_, _) =>
         {
-            // Tres como mucho, uno por posición: el nuevo toma la que quede libre.
+            // Dos como mucho, uno por lecho: el nuevo toma el que quede libre.
             var libre = BastonSeccion.Posiciones.FirstOrDefault(
                 pos => copias.All(b => b.Posicion != pos));
 
@@ -281,25 +289,14 @@ public partial class MainWindow
             {
                 // La ventana del botón: el cuadro todavía no tiene nombre en este punto.
                 MessageBox.Show(Window.GetWindow(agregar)!,
-                    "Ya hay un bastón arriba, uno en medio y uno abajo, que son los tres que caben.",
+                    "Ya hay un bastón arriba y otro abajo, que son los dos que caben.",
                     AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            // El primero va arriba en los extremos, que es el bastón típico; el siguiente
-            // abajo al centro, que es el otro. A partir de ahí, copia el último.
-            var nuevo = copias.Count switch
-            {
-                0 => new BastonSeccion(),
-                1 => new BastonSeccion
-                {
-                    Posicion = BastonSeccion.TextoInferior,
-                    Ubicacion = BastonSeccion.TextoCentro
-                },
-                _ => copias[^1].Copia()
-            };
-
+            var nuevo = new BastonSeccion();
             nuevo.Posicion = libre;
+            Vigilar(nuevo);
             copias.Add(nuevo);
             tabla.SelectedItem = nuevo;
         };
@@ -346,21 +343,11 @@ public partial class MainWindow
             // Que la celda que se esté escribiendo cuente.
             tabla.CommitEdit(DataGridEditingUnit.Row, true);
 
-            var alCentro = copias.FirstOrDefault(b =>
-                b.Ubicacion == BastonSeccion.TextoCentro && b.Posicion != BastonSeccion.TextoInferior);
-            if (alCentro is not null)
-            {
-                MessageBox.Show(ventana,
-                    "El bastón del centro solo va abajo, y los de arriba y en medio solo en los extremos.",
-                    AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             var repetida = copias.GroupBy(b => b.Posicion).FirstOrDefault(g => g.Count() > 1);
             if (repetida is not null)
             {
                 MessageBox.Show(ventana,
-                    $"Hay más de un bastón «{repetida.Key}». Va uno arriba, uno en medio y uno abajo.",
+                    $"Hay más de un bastón «{repetida.Key}». Va uno arriba y otro abajo.",
                     AppInfo.ProductName, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }

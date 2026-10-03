@@ -31,7 +31,14 @@ public sealed class BastonSeccion : INotifyPropertyChanged
     public const string TextoCentro = "Centro";
 
     /// <summary>Las opciones de los dos combos del cuadro.</summary>
-    public static IReadOnlyList<string> Posiciones { get; } = new[] { TextoSuperior, TextoMedio, TextoInferior };
+    /// <summary>Los dos lechos que admite un bastón.</summary>
+    public static IReadOnlyList<string> Posiciones { get; } = new[] { TextoSuperior, TextoInferior };
+
+    /// <summary>La ubicación que le toca a un lecho: ver <see cref="CadLink.Cad.Bastones.UbicacionDe"/>.</summary>
+    public static string UbicacionTexto(string posicion, bool contratrabe) =>
+        CadLink.Cad.Bastones.UbicacionDe(
+            posicion == TextoInferior ? PosicionBaston.Inferior : PosicionBaston.Superior,
+            contratrabe) == UbicacionBaston.Extremos ? TextoExtremos : TextoCentro;
 
     public static IReadOnlyList<string> Ubicaciones { get; } =
         new[] { TextoExtremos, TextoIzquierdo, TextoDerecho, TextoCentro };
@@ -68,7 +75,8 @@ public sealed class BastonSeccion : INotifyPropertyChanged
     };
 
     /// <summary>Al formato del dibujante, con el diámetro ya en centímetros.</summary>
-    public BastonCad ACad() => CadLink.Cad.Bastones.Normalizar(new BastonCad
+    /// <remarks>La ubicación la corrige <see cref="CadLink.Cad.Bastones.Normalizar"/> al juntarlos.</remarks>
+    public BastonCad ACad() => new BastonCad
     {
         Posicion = Posicion switch
         {
@@ -88,7 +96,7 @@ public sealed class BastonSeccion : INotifyPropertyChanged
             ? new VarCad(Varilla.Normalizar(Diametro), cm)
             : new VarCad(string.Empty, 0),
         DistanciaM = DistanciaM
-    });
+    };
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
