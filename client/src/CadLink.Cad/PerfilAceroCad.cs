@@ -82,6 +82,9 @@ public sealed class PerfilAceroCad
     public double AnchoDeUnoCm => Forma switch
     {
         FormaAcero.TuboRedondo or FormaAcero.RedondoMacizo => PeralteCm,
+
+        // La cruz mide su peralte en los dos sentidos: la segunda I va acostada.
+        FormaAcero.Cruz => PeralteCm,
         FormaAcero.Zeta => AnchoCm + PatinAngostoCm - EspesorCm,
 
         // El tubo rectangular se dibuja DE PIE: su lado menor es el ancho, pase lo que pase

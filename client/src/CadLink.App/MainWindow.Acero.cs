@@ -345,6 +345,8 @@ public partial class MainWindow
 
         Etiqueta(
             $"{altoCm:N2} × {anchoCm:N2} cm" +
+            // La cruz: las medidas de la tabla son las de CADA una de sus dos I.
+            (fila.Forma == FormaPerfil.Cruz ? $"    ·    cada I: {p.PeralteCm:N2} × {p.AnchoCm:N2} cm" : string.Empty) +
             (fila.Propiedades.AreaCm2 is { } a ? $"    ·    área {a:N2} cm²" : string.Empty) +
             (fila.Propiedades.PesoKgM is { } w ? $"    ·    {w:N2} kg/m" : string.Empty),
             10, alto - 22, 11.5, Brushes.DimGray);
@@ -456,7 +458,8 @@ public partial class MainWindow
         Elemento = r.ElementoRotulo,
         Perfil = r.PerfilRotulo,
         Acero = r.Acero,
-        Doble = r.Doble,
+        // La cruz ya son dos perfiles: no se dobla.
+        Doble = r.Doble && r.Forma != FormaPerfil.Cruz,
         PeralteCm = r.PeralteCm,
         AnchoCm = r.AnchoCm,
         EspesorCm = r.EspesorAlmaCm,

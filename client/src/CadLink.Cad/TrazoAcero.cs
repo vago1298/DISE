@@ -92,6 +92,9 @@ public static class TrazoAcero
             FormaAcero.Te => new Trazo(
                 Exterior: PerfilTe(x0 + (uno / 2), y0, h, b, t, tf)),
 
+            FormaAcero.Cruz => new Trazo(
+                Exterior: PerfilCruz(x0 + (uno / 2), y0, h, b, t, tf)),
+
             FormaAcero.Canal => new Trazo(
                 Exterior: PerfilCanal(x0, y0, h, b, t, tf, espejo)),
 
@@ -146,6 +149,57 @@ public static class TrazoAcero
             cx - (bf / 2), cy + tf,
             cx - (bf / 2), cy
         });
+
+    /// <summary>
+    /// La <b>cruz de dos perfiles I</b> -la IC-, de veintiocho vértices y en UN solo contorno.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// La I de pie va entera, con su alma vertical. La segunda, girada 90°, se parte por el alma
+    /// y cada mitad -una te- se suelda a un lado del alma de la primera: su alma corre en
+    /// horizontal desde el paño del alma vertical hasta su patín, que queda de pie en la orilla.
+    /// Las dos I son iguales, así que la cruz mide <paramref name="d"/> en los dos sentidos.
+    /// </para>
+    /// <para>
+    /// Un contorno y no dos I encimadas: dos contornos que se cruzan se rayan como dos piezas y
+    /// en la vista previa el cruce sale hueco. El área es la de dos I menos el cuadrito del
+    /// centro que comparten: <c>2·(2·bf·tf + (d − 2·tf)·tw) − tw²</c>.
+    /// </para>
+    /// </remarks>
+    private static Contorno PerfilCruz(
+        double cx, double cy, double d, double bf, double tw, double tf)
+    {
+        // Desde el centro de la cruz.
+        var yc = cy + (d / 2);
+        var m = d / 2;          // medio peralte: hasta la orilla de cada brazo
+        var b = bf / 2;         // medio patín
+        var w = tw / 2;         // medio alma
+        var f = tf;
+
+        double X(double u) => cx + u;
+        double Y(double v) => yc + v;
+
+        return EnPico(new[]
+        {
+            // Patín de abajo de la I de pie, y su alma subiendo por la derecha.
+            X(b), Y(-m), X(b), Y(-m + f), X(w), Y(-m + f), X(w), Y(-w),
+
+            // El brazo de la derecha: alma horizontal y su patín de pie.
+            X(m - f), Y(-w), X(m - f), Y(-b), X(m), Y(-b), X(m), Y(b),
+            X(m - f), Y(b), X(m - f), Y(w), X(w), Y(w),
+
+            // El alma sigue subiendo hasta el patín de arriba.
+            X(w), Y(m - f), X(b), Y(m - f), X(b), Y(m), X(-b), Y(m), X(-b), Y(m - f),
+            X(-w), Y(m - f), X(-w), Y(w),
+
+            // El brazo de la izquierda.
+            X(-(m - f)), Y(w), X(-(m - f)), Y(b), X(-m), Y(b), X(-m), Y(-b),
+            X(-(m - f)), Y(-b), X(-(m - f)), Y(-w), X(-w), Y(-w),
+
+            // Y baja hasta el patín de abajo.
+            X(-w), Y(-m + f), X(-b), Y(-m + f), X(-b), Y(-m)
+        });
+    }
 
     /// <summary>La te: un patín arriba y el alma colgando. Ocho vértices.</summary>
     /// <remarks>

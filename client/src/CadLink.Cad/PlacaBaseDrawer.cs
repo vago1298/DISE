@@ -787,7 +787,7 @@ public sealed partial class PlacaBaseDrawer
 
     /// <summary>Si la forma es de las que se dibujan como perfil I.</summary>
     private static bool EsFormaI(string? forma) =>
-        string.Equals(forma, FormaAcero.I, StringComparison.OrdinalIgnoreCase);
+        FormaAcero.EsDeI(forma);
 
     // ======================================================================
     //  PRIMITIVAS

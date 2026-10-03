@@ -12948,9 +12948,29 @@ def v21_separacion_y_acero() -> None:
     check("cada familia sabe con que forma se dibuja",
           "public static string DeLaFamilia(string? familia)" in perfil_row)
 
-    check("las cuatro familias de perfil I comparten la forma I",
-          "FamiliaPerfil.Ir or FamiliaPerfil.Is or FamiliaPerfil.Ic or FamiliaPerfil.S => I"
+    check("las tres familias de perfil I comparten la forma I",
+          "FamiliaPerfil.Ir or FamiliaPerfil.Is or FamiliaPerfil.S => I"
           in perfil_row)
+
+    # La IC NO es una I: son DOS I iguales que forman una cruz. Se pidio expresamente.
+    check("la IC se dibuja como cruz de dos I",
+          "FamiliaPerfil.Ic => Cruz," in perfil_row
+          and 'public const string Cruz = "CRUZ";' in leer(ruta("client/src/CadLink.Cad/FormaAcero.cs")))
+    trazo_ac = leer(ruta("client/src/CadLink.Cad/TrazoAcero.cs"))
+    drw_ac = leer(ruta("client/src/CadLink.Cad/SeccionDrawer.Acero.cs"))
+    check("la cruz es UN contorno de 28 vertices, de la vista previa y de AutoCAD",
+          "private static Contorno PerfilCruz(" in trazo_ac
+          and "FormaAcero.Cruz => new Trazo(" in trazo_ac)
+    check("ocupa su peralte en los dos sentidos",
+          "FormaAcero.Cruz => PeralteCm," in leer(ruta("client/src/CadLink.Cad/PerfilAceroCad.cs")))
+    check("lleva sus cotas, el rayado y el contorno de los laminados",
+          "case FormaAcero.Cruz:\n                CotasCruz(" in drw_ac
+          and "or FormaAcero.Angulo or FormaAcero.Cruz)" in drw_ac
+          and "case FormaAcero.Cruz:\n                Hatch(\"ANSI32\"" in drw_ac)
+    check("y no se dobla: ya son dos perfiles",
+          "Doble = r.Doble && r.Forma != FormaPerfil.Cruz," in leer(ruta("client/src/CadLink.App/MainWindow.Acero.cs")))
+    check("si los patines de las dos I chocan, se avisa",
+          "FormaPerfil.Cruz when _anchoCm >= _peralteCm - (2 * _espesorPatinCm) =>" in perfil_row)
 
     check("y la forma se ve en la cuadricula, para que se note que la comparten",
           "public string FormaNombre" in perfil_row

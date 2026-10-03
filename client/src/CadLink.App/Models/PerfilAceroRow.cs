@@ -10,8 +10,9 @@ namespace CadLink.App.Models;
 /// <b>Familia y forma son dos cosas distintas y hace falta separarlas.</b> La familia es
 /// la lista en la que se busca el perfil y el nombre con el que se rotula: quien pide una
 /// <c>IR</c> quiere ver <b>solo</b> las W, y quien pide una <c>IS</c> solo las I soldadas.
-/// La forma es la geometría: y ahí resulta que IR, IS, IC y S <b>se dibujan igual</b>,
-/// porque las cuatro son un alma con dos patines.
+/// La forma es la geometría: y ahí resulta que IR, IS y S <b>se dibujan igual</b>,
+/// porque las tres son un alma con dos patines. La IC no: son <b>dos</b> I iguales que forman
+/// una cruz, y tiene su propia forma.
 /// </para>
 /// <para>
 /// Antes esto estaba mezclado: las cuatro se metían en la familia <c>IR</c> «porque son
@@ -29,6 +30,9 @@ public static class FormaPerfil
 
     /// <inheritdoc cref="FormaAcero.I"/>
     public const string I = FormaAcero.I;
+
+    /// <inheritdoc cref="FormaAcero.Cruz"/>
+    public const string Cruz = FormaAcero.Cruz;
 
     /// <inheritdoc cref="FormaAcero.Te"/>
     public const string Te = FormaAcero.Te;
@@ -57,7 +61,10 @@ public static class FormaPerfil
     /// <summary>La forma que le toca a cada familia.</summary>
     public static string DeLaFamilia(string? familia) => (familia ?? string.Empty).Trim().ToUpperInvariant() switch
     {
-        FamiliaPerfil.Ir or FamiliaPerfil.Is or FamiliaPerfil.Ic or FamiliaPerfil.S => I,
+        FamiliaPerfil.Ir or FamiliaPerfil.Is or FamiliaPerfil.S => I,
+
+        // La IC NO es una I: son dos que forman una cruz.
+        FamiliaPerfil.Ic => Cruz,
         FamiliaPerfil.Wt => Te,
         FamiliaPerfil.C => Canal,
         FamiliaPerfil.Cf => CanalConLabios,
@@ -225,7 +232,7 @@ public static class FamiliaPerfil
         {
             Ir => "IR — perfil I laminado (las W del IMCA)",
             Is => "IS — I soldada de tres placas",
-            Ic => "IC — I soldada para columna",
+            Ic => "IC — cruz de dos I soldadas, para columna",
             S => "S — viga estándar americana",
             Wt => "WT — te, que sale de cortar un perfil I",
             C => "C — canal estándar laminada, sin labios",
@@ -920,7 +927,7 @@ public sealed class PerfilAceroRow : Row
             // El macizo es el único que no lleva espesor: es una barra llena.
             if (forma != FormaPerfil.RedondoMacizo && _espesorAlmaCm <= 0)
             {
-                faltan.Add(forma is FormaPerfil.I or FormaPerfil.Te or FormaPerfil.Canal
+                faltan.Add(forma is FormaPerfil.I or FormaPerfil.Cruz or FormaPerfil.Te or FormaPerfil.Canal
                     ? "e alma"
                     : "espesor");
             }
@@ -933,7 +940,7 @@ public sealed class PerfilAceroRow : Row
             // Los paréntesis del patrón no son de adorno: sin ellos se lee igual, pero al
             // siguiente que agregue una forma a la lista le costará ver dónde acaba el «or»
             // y dónde empieza el «&&».
-            if ((forma is FormaPerfil.I or FormaPerfil.Te or FormaPerfil.Canal) &&
+            if ((forma is FormaPerfil.I or FormaPerfil.Cruz or FormaPerfil.Te or FormaPerfil.Canal) &&
                 _espesorPatinCm <= 0)
             {
                 faltan.Add("e patin");
@@ -964,11 +971,15 @@ public sealed class PerfilAceroRow : Row
     /// <summary>Lo que hace que el perfil no quepa en sí mismo, o <c>null</c>.</summary>
     private string? NoCabe(string forma) => forma switch
     {
-        FormaPerfil.I or FormaPerfil.Canal when 2 * _espesorPatinCm >= _peralteCm =>
+        FormaPerfil.I or FormaPerfil.Cruz or FormaPerfil.Canal when 2 * _espesorPatinCm >= _peralteCm =>
             "los dos patines no caben en el peralte",
 
-        FormaPerfil.I or FormaPerfil.Canal when _espesorAlmaCm >= _anchoCm =>
+        FormaPerfil.I or FormaPerfil.Cruz or FormaPerfil.Canal when _espesorAlmaCm >= _anchoCm =>
             "el alma es mas ancha que el patin",
+
+        // En la cruz, los patines de la I acostada no pueden tocar los de la I de pie.
+        FormaPerfil.Cruz when _anchoCm >= _peralteCm - (2 * _espesorPatinCm) =>
+            "los patines de las dos I de la cruz chocan: el ancho no cabe en el peralte",
 
         // La te lleva UN patín, así que el que no quepa se comprueba con uno solo.
         FormaPerfil.Te when _espesorPatinCm >= _peralteCm =>

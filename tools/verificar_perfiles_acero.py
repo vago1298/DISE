@@ -65,11 +65,13 @@ PULGADA_CM = 2.54
 PERALTE_LIMITE_PULG = 5.0
 
 # La forma con la que se dibuja cada familia. Tiene que decir lo mismo que
-# FormaPerfil.DeLaFamilia del programa y que FORMAS de tools/catalogo_imca.py.
+# FormaPerfil.DeLaFamilia del programa. La IC es una CRUZ de dos I: sus medidas del catalogo
+# son las de cada I (por eso tools/catalogo_imca.py la lee con las columnas de la I), pero se
+# dibuja como cruz.
 FORMAS = {
     "IR": "I",
     "IS": "I",
-    "IC": "I",
+    "IC": "cruz",
     "S": "I",
     "WT": "te",
     "C": "canal",
@@ -92,6 +94,7 @@ ORDEN_FAMILIAS = ("IR", "IS", "IC", "S", "WT", "C", "CF", "ZF", "L", "OR", "OC",
 # codigo mas abajo, no se da por bueno.
 RAYADOS = {
     "I": [("ANSI32", 252)],
+    "cruz": [("ANSI32", 252)],
     "te": [("ANSI32", 252)],
     "canal": [("ANSI32", 252)],
     "angulo": [("ANSI32", 252)],
@@ -198,6 +201,19 @@ def perfil_ir(cx, cy, d, bf, tw, tf):
         (cx - bf / 2, cy + tf),
         (cx - bf / 2, cy),
     ]
+
+
+def perfil_cruz(cx, cy, d, bf, tw, tf):
+    """Port de PerfilCruz: la IC, dos I en cruz en un solo contorno de 28 vertices."""
+    yc, m, b, w, f = cy + d / 2, d / 2, bf / 2, tw / 2, tf
+    rel = [
+        (b, -m), (b, -m + f), (w, -m + f), (w, -w),
+        (m - f, -w), (m - f, -b), (m, -b), (m, b), (m - f, b), (m - f, w), (w, w),
+        (w, m - f), (b, m - f), (b, m), (-b, m), (-b, m - f), (-w, m - f), (-w, w),
+        (-(m - f), w), (-(m - f), b), (-m, b), (-m, -b), (-(m - f), -b), (-(m - f), -w), (-w, -w),
+        (-w, -m + f), (-b, -m + f), (-b, -m),
+    ]
+    return [(cx + u, yc + v) for u, v in rel]
 
 
 print("=" * 78)
@@ -1311,7 +1327,7 @@ if m_pedit:
 
     print("\n    el PEDIT del contorno, que solo hace la macro del IR:")
 
-    for forma, lo_lleva in (("I", True), ("Te", True), ("Canal", True),
+    for forma, lo_lleva in (("I", True), ("Cruz", True), ("Te", True), ("Canal", True),
                             ("Angulo", True), ("CanalConLabios", False),
                             ("Zeta", False), ("TuboRectangular", False),
                             ("TuboRedondo", False), ("RedondoMacizo", False)):
@@ -1562,7 +1578,7 @@ def ancho_que_ocupa(p):
     """Port de PerfilAceroCad.AnchoDeUnoCm: el hueco que pide en la fila."""
     forma = forma_de(p)
 
-    if forma in ("tubo redondo", "redondo macizo"):
+    if forma in ("tubo redondo", "redondo macizo", "cruz"):
         return p["peralte"]
 
     if forma == "zeta":
@@ -1592,7 +1608,7 @@ def falta_algo(p):
 
     faltan = []
     redondo = forma in ("tubo redondo", "redondo macizo")
-    laminada = forma in ("I", "te", "canal")
+    laminada = forma in ("I", "cruz", "te", "canal")
 
     if p["peralte"] <= 0:
         faltan.append("diametro" if redondo
@@ -1616,11 +1632,14 @@ def falta_algo(p):
 
     h, b, t, tf = p["peralte"], p["ancho"], p["e_alma"], p["e_patin"]
 
-    if forma in ("I", "canal"):
+    if forma in ("I", "cruz", "canal"):
         if 2 * tf >= h:
             return "los dos patines no caben en el peralte"
         if t >= b:
             return "el alma es mas ancha que el patin"
+
+    if forma == "cruz" and b >= h - 2 * tf:
+        return "los patines de las dos I de la cruz chocan: el ancho no cabe en el peralte"
 
     if forma == "te":
         if tf >= h:
@@ -1657,7 +1676,7 @@ def proporcion_imposible(p):
     forma = forma_de(p)
     h, b, t, tf = p["peralte"], p["ancho"], p["e_alma"], p["e_patin"]
 
-    if forma in ("I", "canal"):
+    if forma in ("I", "cruz", "canal"):
         if t > h / 6:
             return f"alma {t:.2f} cm en peralte {h:.2f} cm (mas de 1/6)"
         if tf > h / 3:
@@ -1708,6 +1727,8 @@ def dibujo_degenera(p):
     en_pico = {
         "I": (lambda: perfil_ir(0, 0, h, b, t, tf),
               lambda: 2 * b * tf + (h - 2 * tf) * t),
+        "cruz": (lambda: perfil_cruz(0, 0, h, b, t, tf),
+                 lambda: 2 * (2 * b * tf + (h - 2 * tf) * t) - t * t),
         "te": (lambda: perfil_te(0, 0, h, b, t, tf),
                lambda: b * tf + (h - tf) * t),
         "canal": (lambda: perfil_canal(0, 0, h, b, t, tf, False),

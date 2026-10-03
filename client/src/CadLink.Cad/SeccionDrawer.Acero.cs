@@ -333,6 +333,10 @@ public sealed partial class SeccionDrawer
                 CotasI(xIzquierda, yAbajo, h, b, t, tf, p.Doble, true);
                 break;
 
+            case FormaAcero.Cruz:
+                CotasCruz(xIzquierda, yAbajo, h, b, t, tf);
+                break;
+
             case FormaAcero.Canal:
                 CotasCanal(xIzquierda, yAbajo, h, b, t, tf, p.Doble);
                 break;
@@ -429,6 +433,35 @@ public sealed partial class SeccionDrawer
             var cx2 = cx + bf;
             CotaAcero(cx2 - (tw / 2), yAlma, cx2 + (tw / 2), yAlma, cx2, yAlma - gap);
         }
+    }
+
+    /// <summary>
+    /// Las cotas de la <b>cruz de dos I</b>: el patín y la cruz completa arriba, el peralte y el
+    /// patín del brazo a la derecha, el espesor del patín a la izquierda y el del alma.
+    /// </summary>
+    private void CotasCruz(double xIzq, double cy, double d, double bf, double tw, double tf)
+    {
+        var gap = _gapAcero;
+        var escalon = _textoCotaAcero + _flechaAcero;
+        var cx = xIzq + (d / 2);
+        var yc = cy + (d / 2);
+
+        // Arriba: el patín de la I de pie y, más arriba, la cruz de brazo a brazo.
+        CotaAcero(cx - (bf / 2), cy + d, cx + (bf / 2), cy + d, cx, cy + d + gap);
+        CotaAcero(xIzq, yc + (bf / 2), xIzq + d, yc + (bf / 2), cx, cy + d + gap + escalon);
+
+        // A la derecha: el patín del brazo y, más afuera, la cruz de arriba abajo.
+        CotaAcero(xIzq + d, yc - (bf / 2), xIzq + d, yc + (bf / 2), xIzq + d + gap, yc);
+        CotaAcero(cx + (bf / 2), cy, cx + (bf / 2), cy + d, xIzq + d + gap + escalon, yc);
+
+        // El espesor del patín de arriba, a su izquierda.
+        CotaAcero(
+            cx - (bf / 2), cy + d, cx - (bf / 2), cy + d - tf,
+            cx - (bf / 2) - gap, cy + d - (tf / 2));
+
+        // Y el del alma, entre el patín de arriba y el brazo, donde va sola.
+        var yAlma = yc + (bf / 2) + ((d / 2 - (bf / 2) - tf) / 2);
+        CotaAcero(cx - (tw / 2), yAlma, cx + (tw / 2), yAlma, cx, yAlma - gap);
     }
 
     // ==================================================================
@@ -799,7 +832,7 @@ public sealed partial class SeccionDrawer
     private void PeditDeLaForma(object pl, PerfilAceroCad p)
     {
         if (p.Forma is FormaAcero.I or FormaAcero.Te or FormaAcero.Canal
-            or FormaAcero.Angulo)
+            or FormaAcero.Angulo or FormaAcero.Cruz)
         {
             AnchoConstante(pl, 0.1 * Cm);
         }
@@ -846,6 +879,7 @@ public sealed partial class SeccionDrawer
             case FormaAcero.Te:
             case FormaAcero.Canal:
             case FormaAcero.Angulo:
+            case FormaAcero.Cruz:
                 Hatch("ANSI32", 0.0009 * _f, contorno, islas, CapaPerfiles, 252);
                 break;
 

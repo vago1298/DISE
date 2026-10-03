@@ -1159,7 +1159,7 @@
                                                Foreground="{DynamicResource BrandDarkBrush}" />
                                     <TextBlock FontSize="11.5" VerticalAlignment="Center"
                                                Foreground="{DynamicResource MutedTextBrush}"
-                                               Text="IR, IS, IC y S: perfil I  |  WT: te  |  C: canal laminada  |  CF: canal con labios (monten)  |  ZF: zeta  |  L: angulo  |  OR: tubo rectangular  |  OC: tubo redondo  |  OS: redondo macizo" />
+                                               Text="IR, IS y S: perfil I  |  IC: cruz de dos I  |  WT: te  |  C: canal laminada  |  CF: canal con labios (monten)  |  ZF: zeta  |  L: angulo  |  OR: tubo rectangular  |  OC: tubo redondo  |  OS: redondo macizo" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

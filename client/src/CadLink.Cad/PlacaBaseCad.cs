@@ -547,7 +547,8 @@ public sealed class PlacaBaseCad
     /// </remarks>
     public bool GiraElPerfil =>
         GirarPerfil90 &&
-        !string.Equals(Perfil?.Forma, FormaAcero.I, StringComparison.OrdinalIgnoreCase);
+        !string.Equals(Perfil?.Forma, FormaAcero.I, StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(Perfil?.Forma, FormaAcero.Cruz, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Las medidas del perfil <b>ya orientadas</b> en el dibujo, en cm. Cero si no hay perfil.
