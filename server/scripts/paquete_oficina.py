@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Prepara el instalador DE OFICINA: el que deja cada PC de tu oficina autorizada sola.
+"""Prepara el instalador DE OFICINA: cada PC que lo instala pide permiso sola.
 
 Lo llama 6-crear-instalador.bat, opcion 3. Hace dos cosas:
 
   1. Se asegura de que el servidor tenga un CODIGO DE OFICINA (OFFICE_CODE en server/.env).
-     Si no lo tiene, lo genera y lo escribe. Con ese codigo el servidor da licencia INTERNA
-     a quien lo traiga, sin copiar huellas.
+     Si no lo tiene, lo genera y lo escribe. La PC que llega con ese codigo queda ESPERANDO
+     hasta que el dueño la aprueba con un clic en 8-aprobar-equipos.bat: sin copiar huellas,
+     y sin que entre nada que el no haya visto.
 
   2. Escribe cadlink.oficina.json junto al ejecutable que se va a empaquetar, con la
      direccion de ESTE equipo en la red -la del servidor, no localhost- y el codigo.
@@ -67,7 +68,8 @@ def asegurar_codigo() -> tuple[str, bool]:
             texto += "\n"
         texto += (
             "\n# Codigo de oficina: lo genero 6-crear-instalador.bat (opcion 3).\n"
-            "# Cada PC que instala el paquete de oficina queda INTERNA sola.\n"
+            "# Cada PC que instala el paquete de oficina pide permiso; se aprueba\n"
+            "# con un clic en 8-aprobar-equipos.bat.\n"
             f"{linea}\n"
         )
 

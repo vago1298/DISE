@@ -62,9 +62,9 @@ echo          servidor de licencias, con https.
 echo.
 echo      3 = PARA LAS PCs DE TU OFICINA. El facil.
 echo          Se arma en ESTA computadora, la del servidor.
-echo          La PC que lo instala queda AUTORIZADA SOLA, con
-echo          licencia interna: sin huellas y sin editar nada.
-echo          NO se lo des a un cliente.
+echo          La PC que lo instala te PIDE PERMISO sola: tu la
+echo          apruebas con un clic en 8-aprobar-equipos.bat.
+echo          Sin huellas y sin editar nada.
 echo.
 
 set "OPCION="
@@ -419,8 +419,9 @@ echo   tuya y que NO tenga .NET instalado.
 echo.
 if defined PRUEBA echo   *** ES UN PAQUETE DE PRUEBA: apunta a localhost. ***
 if defined PRUEBA echo.
-if defined OFICINA echo   ES EL DE OFICINA: instalalo en cada PC de tu oficina y
-if defined OFICINA echo   queda autorizada sola al abrir CadLink. Deja encendido
+if defined OFICINA echo   ES EL DE OFICINA: instalalo en cada PC de tu oficina y abre
+if defined OFICINA echo   CadLink. La PC te pide permiso: apruebala con un clic en
+if defined OFICINA echo   8-aprobar-equipos.bat, aqui. Deja encendido
 if defined OFICINA echo   2-iniciar-servidor.bat en esta computadora.
 if defined OFICINA echo.
 if defined REINICIAR echo   *** IMPORTANTE: CIERRA Y VUELVE A ABRIR 2-iniciar-servidor.bat ***

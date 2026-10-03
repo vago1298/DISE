@@ -15711,7 +15711,7 @@ def v28_estilo_dibujo() -> None:
           os.path.exists(ruta(".kiro/steering/estilo-dibujo.md")))
 
 def v29_paquete_oficina() -> None:
-    print("\n[29] El paquete de oficina: la PC se autoriza sola")
+    print("\n[29] El paquete de oficina: la PC pide permiso y el dueño la aprueba")
 
     bat = leer(ruta("6-crear-instalador.bat"))
     iss = leer(ruta("installer/CadLink.iss"))
@@ -15742,10 +15742,40 @@ def v29_paquete_oficina() -> None:
           '["office_code"] = string.IsNullOrWhiteSpace(_options.OfficeCode)' in api)
     check("una PC en prueba con el codigo se reactiva para quedar interna",
           "claims.Tier == LicenseTier.Trial && !string.IsNullOrWhiteSpace(_options.OfficeCode)" in svc)
-    check("el servidor da INTERNAL con el codigo, con el tope de asientos",
+    ofi = leer(ruta("server/app/oficina.py"))
+    mod = leer(ruta("server/app/models.py"))
+    ven = leer(ruta("client/src/CadLink.App/ActivationWindow.xaml.cs"))
+
+    # LA OPCION 2 QUE SE PIDIO: el codigo NO autoriza solo. La PC queda ESPERANDO y el dueño
+    # la aprueba con un clic; una copia del instalador en una PC ajena solo PIDE permiso.
+    check("con el codigo la PC NO entra sola: queda esperando aprobacion",
           'OFFICE_CODE: str = ""' in cfg and "office_code: str | None" in sch
-          and "elif _es_codigo_de_oficina(payload.office_code, settings):" in srv
-          and "hmac.compare_digest(" in srv and srv.count("_internal_seats_used(db) >= settings.INTERNAL_SEATS") >= 3)
+          and "_tramitar_oficina(machine, payload, db, request, now)" in srv
+          and "status_code=status.HTTP_409_CONFLICT, detail=MENSAJE_PENDIENTE" in srv
+          and "machine.tier = Tier.INTERNAL.value" not in srv.split("def _tramitar_oficina", 1)[1].split("\ndef ", 1)[0]
+          and "hmac.compare_digest(" in srv)
+    check("la solicitud se guarda antes de contestar con error",
+          srv.split("def _tramitar_oficina", 1)[1].index("db.commit()")
+          < srv.split("def _tramitar_oficina", 1)[1].index("raise HTTPException"))
+    check("una PC dada de baja no se vuelve a colar pidiendo permiso",
+          "not machine.revoked and not payload.license_key" in srv)
+    check("las solicitudes van en una tabla NUEVA, que create_all agrega a una base vieja",
+          'class SolicitudOficina(Base):' in mod and '__tablename__ = "solicitudes_oficina"' in mod)
+    check("la pagina de aprobar solo se abre en la computadora del servidor",
+          '@router.get("/oficina"' in ofi and "_solo_desde_aqui(request)" in ofi
+          and '"x-forwarded-for"' in ofi and "app.include_router(oficina_router)" in srv)
+    check("y sus botones llevan un testigo, contra paginas ajenas",
+          "_TESTIGO = secrets.token_urlsafe(24)" in ofi and "secrets.compare_digest(t or \"\", _TESTIGO)" in ofi)
+    check("aprobar respeta el tope de equipos internos",
+          "usadas >= settings.INTERNAL_SEATS" in ofi)
+    check("rechazar una ya aprobada la da de baja",
+          "machine.revoked = True" in ofi)
+    check("la PC que espera vuelve a preguntar sola y entra en cuanto la aprueban",
+          'SenalDeEspera = "ESPERANDO APROBACIÓN"' in ven and "Interval = TimeSpan.FromSeconds(15)" in ven
+          and "ESPERANDO APROBACIÓN" in srv)
+    bat8 = leer(ruta("8-aprobar-equipos.bat"))
+    check("hay un .bat que abre la pagina de aprobar",
+          'set "URL=http://localhost:8000/oficina"' in bat8 and 'start "" "%URL%"' in bat8)
     check("sin codigo configurado, nadie entra por ahi",
           "if not configurado or not codigo:\n        return False" in srv)
     check("queda explicado en EMPIEZA-AQUI.md",

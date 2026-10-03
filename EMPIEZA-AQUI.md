@@ -155,18 +155,25 @@ Si viste todo eso, **ya tienes el sistema de cobro funcionando**.
    primera vez, cuando se crea el código de oficina.
 3. En la carpeta `dist` queda **`CadLink-Setup-<versión>-OFICINA.exe`**.
 
-**En cada PC de la oficina:** instala ese `.exe` y abre CadLink. **Listo**: queda con
-*"Licencia interna"*, sin copiar huellas ni editar archivos. Si esa PC ya tenía CadLink en
-prueba, instalar el de oficina encima también la arregla.
+**En cada PC de la oficina:** instala ese `.exe` y abre CadLink. La PC **te pide permiso**:
+su pantalla dice *"ESPERANDO APROBACIÓN"*.
+
+**En TU computadora:** doble clic en **`8-aprobar-equipos.bat`**. Se abre una página con las PCs
+que pidieron acceso —nombre del equipo, usuario de Windows, desde dónde y cuándo— y pulsas
+**Aprobar**. En unos segundos la otra PC entra sola con *"Licencia interna"*: nadie copia huellas
+ni edita archivos, y **nada entra sin que tú lo apruebes**. Si una PC ya tenía CadLink en
+prueba, instalar el de oficina encima también la manda a pedir permiso.
+
+La página solo se abre en la computadora del servidor. Si rechazas una PC que ya estaba
+aprobada, deja de funcionar en su siguiente renovación.
 
 Lo único que tiene que pasar es que esa PC **alcance tu servidor**: deja abierto
 `2-iniciar-servidor.bat` en tu computadora, y si no conecta, abre el firewall con el comando que
 ese mismo `.bat` imprime.
 
-> **No le des el instalador de OFICINA a un cliente**: quien lo instale recibe licencia interna.
-> Si se filtra, borra el valor de `OFFICE_CODE` en `server\.env`, reinicia el servidor y vuelve a
-> armar el de oficina. Los equipos ya autorizados siguen igual, y el tope de `INTERNAL_SEATS`
-> sigue mandando.
+> Aunque alguien copie el instalador de oficina o la carpeta instalada a otra PC, esa PC solo
+> **pide** permiso: aparece en tu página y tú decides. Fuera de tu red ni siquiera encuentra tu
+> servidor.
 
 ## Las PCs de los trabajadores, a mano: qué se instala y qué NO
 
