@@ -434,7 +434,7 @@ conexión. Si necesitas efecto más rápido, baja `TOKEN_TTL_INTERNAL_DAYS`.
 ```
 
 Eso publica la aplicación **autocontenida** y la empaqueta en un solo
-**`dist\CadLink-Setup-1.0.0.exe`**. Es lo único que le mandas al cliente: le da
+**`dist\CadLink-Setup-1.1.0.exe`**. Es lo único que le mandas al cliente: le da
 doble clic y ya. No necesita .NET, ni Python, ni la consola, ni permisos de
 administrador.
 

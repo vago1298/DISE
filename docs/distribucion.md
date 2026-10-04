@@ -43,7 +43,7 @@ Lo que **falta** es el empaquetado y el cobro:
 Eso hace todo: publica la aplicación autocontenida, comprueba lo que no debe salir mal, y
 empaqueta.
 
-Resultado: **`dist\CadLink-Setup-1.0.0.exe`**, un solo archivo de unos 80 MB. Es lo único que le
+Resultado: **`dist\CadLink-Setup-1.1.0.exe`**, un solo archivo de unos 80 MB. Es lo único que le
 mandas al cliente. Él le da doble clic y ya: **no necesita .NET, ni Python, ni la consola, ni
 permisos de administrador.**
 
@@ -153,7 +153,7 @@ versiones, de cuando se creyó que el programa hablaba con ETAP) y **106,770 es 
 Cualquier otro tamaño es tu propio icono. `6-crear-instalador.bat` **se niega a armar el paquete**
 si detecta el del rayo, en lugar de avisar entre veinte renglones de compilación.
 
-**El truco para saber si es la caché:** mira el icono del propio `dist\CadLink-Setup-1.0.0.exe`.
+**El truco para saber si es la caché:** mira el icono del propio `dist\CadLink-Setup-1.1.0.exe`.
 Lleva el mismo icono que la aplicación y es un archivo nuevo, así que Windows no lo tiene guardado
 de antes. Si el instalador se ve bien y el acceso directo del escritorio no, lo que estás viendo es
 una imagen guardada: borra el acceso directo, o cierra sesión de Windows y vuelve a entrar. El

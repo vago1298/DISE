@@ -2,7 +2,7 @@
 ;  CADLINK - GUION DEL INSTALADOR                          Inno Setup 6
 ; ============================================================================
 ;
-;  Esto produce UN SOLO ARCHIVO -CadLink-Setup-1.0.0.exe- que el cliente abre
+;  Esto produce UN SOLO ARCHIVO -CadLink-Setup-1.1.0.exe- que el cliente abre
 ;  con doble clic. Nada de consola, nada de instalar .NET, nada de Python:
 ;  la aplicacion se publica AUTOCONTENIDA, o sea con su propio motor de .NET
 ;  metido dentro del ejecutable.
@@ -22,7 +22,7 @@
 ;  ============================================================================
 
 #ifndef Version
-  #define Version "1.0.0"
+  #define Version "1.1.0"
 #endif
 
 #define Nombre       "CadLink"
